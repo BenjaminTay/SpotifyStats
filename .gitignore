@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+*.db
+*.db-shm
+*.db-wal
+.venv/
+.streamlit/secrets.toml
+.DS_Store
+
+# Personal Spotify data — contains IP addresses and listening history
+Spotify Extended Streaming History - 251029/
+
+# Claude Code session data
+.claude/
