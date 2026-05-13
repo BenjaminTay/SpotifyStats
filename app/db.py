@@ -54,9 +54,17 @@ CREATE INDEX IF NOT EXISTS idx_plays_track    ON plays(track_id);
 CREATE INDEX IF NOT EXISTS idx_plays_platform ON plays(platform);
 CREATE INDEX IF NOT EXISTS idx_plays_skipped  ON plays(skipped);
 CREATE INDEX IF NOT EXISTS idx_plays_dow_hour ON plays(ts_dow, ts_hour);
+CREATE TABLE IF NOT EXISTS track_albums (
+    track_id INTEGER NOT NULL REFERENCES tracks(track_id),
+    album_id INTEGER NOT NULL REFERENCES albums(album_id),
+    UNIQUE(track_id, album_id)
+);
+
 CREATE INDEX IF NOT EXISTS idx_tracks_artist  ON tracks(artist_id);
 CREATE INDEX IF NOT EXISTS idx_tracks_album   ON tracks(album_id);
 CREATE INDEX IF NOT EXISTS idx_albums_artist  ON albums(artist_id);
+CREATE INDEX IF NOT EXISTS idx_track_albums_track ON track_albums(track_id);
+CREATE INDEX IF NOT EXISTS idx_track_albums_album ON track_albums(album_id);
 """
 
 

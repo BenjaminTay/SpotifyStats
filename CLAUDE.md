@@ -20,6 +20,9 @@ result = import_data()
 print(result)
 "
 
+# 分析每周独特曲目分布（确定 Billboard 默认 Top N）
+source .venv/bin/activate && python3 scripts/analyze_weekly_tracks.py
+
 # 清除 Streamlit 缓存后重启
 streamlit run app/main.py --server.clearCaches=true
 
@@ -41,19 +44,21 @@ JSON 文件 (Spotify导出) ──→ import_data.py ──→ SQLite (spotify_s
 ### 核心模块
 
 - **`app/db.py`** — 数据库层。`get_db()` 获取连接（默认只读，WAL模式），`base_filters()` 生成标准 WHERE 条件片段（排除跳过 + 最短时长 + 仅音乐），所有统计页面通过此函数统一过滤逻辑。
-- **`app/import_data.py`** — ETL 管线。逐文件读取 JSON，UTC→本地时间转换，平台字符串归一化，维度表 upsert（artist/album/track），事实表 5000 行批量插入。
+- **`app/import_data.py`** — ETL 管线。逐文件读取 JSON，UTC→本地时间转换，平台字符串归一化，维度表 upsert（artist/album/track，以 `(artist_id, track_name)` 为 key 合并重复版本），同步写入 `track_albums` 关联表，事实表 5000 行批量插入。
 - **`app/utils.py`** — `convert_to_local_time()` 按国家代码查表转本地时间（CN=UTC+8）；`classify_platform()` 将类似 `iOS 15.5 (iPhone14,5)` 归一化为 `ios`。
 - **`app/main.py`** — 入口 + 总览仪表盘。在 `st.session_state` 中初始化全局过滤参数（`min_ms`, `exclude_skipped`, `music_only`），侧边栏渲染过滤控件，首次运行时自动触发数据导入。
 
 ### 数据库设计
 
-维度表 `artists` → `albums` → `tracks`，事实表 `plays` 通过 `track_id` 关联。
+维度表 `artists` → `albums` → `tracks`，事实表 `plays` 通过 `track_id` 关联。`track_albums` 关联表处理同一歌曲（同艺人+同曲名）出现在多张专辑的情况，`_cache_track` 以 `(artist_id, track_name)` 为唯一标识合并重复版本。
 
 `plays` 表预计算了时间字段（`ts_year`, `ts_month`, `ts_week`, `ts_dow`, `ts_hour`, `ts_date`），均为本地时间。所有 `boolean` 字段用 INTEGER 0/1 存储。
 
 ### 页面结构
 
-Streamlit 原生多页：`main.py` 为首页，`pages/` 下 6 个分析页自动发现。每个页面独立加载数据，使用 `@st.cache_data(ttl=3600)` 缓存查询结果。页面间通过 `st.session_state` 共享过滤参数。
+Streamlit 原生多页：`main.py` 为首页，`pages/` 下 7 个分析页自动发现。每个页面独立加载数据，使用 `@st.cache_data(ttl=3600)` 缓存查询结果。页面间通过 `st.session_state` 共享过滤参数。
+
+`08_billboard.py` 包含 8 个子 Tab：周榜、冠单历史、单曲历史、艺人榜单、专辑榜单、歌曲总榜、艺人总榜、专辑总榜。Billboard 周以周五 12:00 为界，排名 tiebreaker 为总收听时长。`st.session_state.bb_selected_track_id` 实现跨 Tab 曲目导航。
 
 ### 数据过滤策略
 

@@ -55,34 +55,36 @@ def _cache_track(
     artist_id: int,
     album_id: Optional[int],
     spotify_uri: Optional[str],
-    cache: dict[str, int],
+    cache: dict[tuple, int],
 ) -> int:
-    # Use URI as identity key if available, otherwise fall back to name+artist
-    if spotify_uri and spotify_uri in cache:
-        return cache[spotify_uri]
-    key = spotify_uri or f"{track_name}||{artist_id}"
+    # Use (artist_id, track_name) as canonical key to merge duplicate versions
+    key = (artist_id, track_name)
     if key in cache:
-        return cache[key]
-
-    cur = conn.execute(
-        """INSERT OR IGNORE INTO tracks(track_name, artist_id, album_id, spotify_track_uri)
-           VALUES (?, ?, ?, ?)""",
-        (track_name, artist_id, album_id, spotify_uri),
-    )
-    if cur.lastrowid:
-        cache[key] = cur.lastrowid
+        tid = cache[key]
     else:
-        if spotify_uri:
-            row = conn.execute(
-                "SELECT track_id FROM tracks WHERE spotify_track_uri = ?", (spotify_uri,)
-            ).fetchone()
+        cur = conn.execute(
+            """INSERT OR IGNORE INTO tracks(track_name, artist_id, album_id, spotify_track_uri)
+               VALUES (?, ?, ?, ?)""",
+            (track_name, artist_id, album_id, spotify_uri),
+        )
+        if cur.lastrowid:
+            tid = cur.lastrowid
         else:
             row = conn.execute(
                 "SELECT track_id FROM tracks WHERE track_name = ? AND artist_id = ?",
                 (track_name, artist_id),
             ).fetchone()
-        cache[key] = row[0]
-    return cache[key]
+            tid = row[0]
+        cache[key] = tid
+
+    # If track already existed and current play has a different album, record the association
+    if album_id is not None:
+        conn.execute(
+            "INSERT OR IGNORE INTO track_albums(track_id, album_id) VALUES (?, ?)",
+            (tid, album_id),
+        )
+
+    return tid
 
 
 def import_data(

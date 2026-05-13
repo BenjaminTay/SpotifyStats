@@ -11,6 +11,7 @@
 - **Spotify Wrapped 风格年度报告** — 卡片式叙事布局，听歌人格识别（Explorer / Loyalist / Binger / Skipper）
 - **艺人深度分析** — 选择任意艺人查看完整数据画像，包含月度趋势、Top 曲目、专辑分布、时段热力图
 - **听歌时段分析** — 周几×小时热力图、逐年趋势对比、周末 vs 工作日、深夜听歌比例
+- **Billboard 周榜** — Billboard Hot 100 风格周榜（周五12:00为界），周榜/冠单历史/单曲历史/艺人榜单/专辑榜单/歌曲总榜/艺人总榜/专辑总榜，支持排名升降、进榜周数、跨 Tab 曲目导航
 
 ## 快速开始
 
@@ -71,7 +72,10 @@ SpotifyStats/
 │       ├── 04_behavior.py          # 播放行为分析
 │       ├── 05_wrapped.py           # Wrapped 年度报告
 │       ├── 06_artist_deep.py       # 艺人/专辑深度分析
-│       └── 07_listening_hours.py   # 听歌时段热力图
+│       ├── 07_listening_hours.py   # 听歌时段热力图
+│       └── 08_billboard.py         # Billboard 周榜（8 个子页面）
+├── scripts/
+│   └── analyze_weekly_tracks.py    # 每周独特曲目数分析（确定默认 Top N）
 ├── .streamlit/config.toml          # 主题配置
 ├── requirements.txt
 └── README.md
@@ -86,6 +90,7 @@ artists ──< albums ──< tracks ──< plays
 - `plays` 表预计算了本地时间字段（year/month/week/dow/hour/date），避免每次查询解析 ISO 8601 时间戳
 - 时区转换基于 `conn_country` 字段，CN → UTC+8
 - 布尔字段用 INTEGER 0/1 存储（SQLite 无原生 boolean）
+- `track_albums` 关联表处理同一歌曲出现在多张专辑的情况（以 `(artist_id, track_name)` 为唯一标识合并重复版本）
 
 ## License
 
