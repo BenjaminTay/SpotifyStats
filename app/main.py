@@ -29,7 +29,7 @@ if "music_only" not in st.session_state:
     st.session_state.music_only = True
 
 
-# ── Sidebar: global filters ─────────────────────────────────────────
+# ── Sidebar ──────────────────────────────────────────────────────────
 def render_sidebar():
     with st.sidebar:
         st.title("🎵 Spotify Stats")
@@ -37,32 +37,20 @@ def render_sidebar():
 
         st.divider()
 
-        st.subheader("数据过滤")
-        min_sec = st.selectbox(
-            "最短播放时长",
-            options=[0, 10, 30, 60, 120],
-            index=2,  # 30s default
-            format_func=lambda x: f"{x} 秒" if x > 0 else "不过滤",
-            key="sidebar_min_sec",
+        # Current filter summary
+        st.caption(
+            f"过滤：最短 {st.session_state.min_ms // 1000}s · "
+            f"跳过={'排除' if st.session_state.exclude_skipped else '包含'} · "
+            f"{'仅音乐' if st.session_state.music_only else '含播客'}"
         )
-        st.session_state.min_ms = min_sec * 1000
 
-        st.session_state.exclude_skipped = st.checkbox(
-            "排除已跳过的播放", value=True, key="sidebar_skip"
-        )
-        st.session_state.music_only = st.checkbox(
-            "仅音乐（排除播客/有声书）", value=True, key="sidebar_music"
-        )
+        # Billboard summary
+        bb_n = st.session_state.get("bb_top_n", 50)
+        st.caption(f"Billboard：Top {bb_n}")
 
         st.divider()
 
-        if st.button("🔄 重新导入数据", use_container_width=True):
-            with st.spinner("正在重新导入..."):
-                import_data()
-                st.cache_data.clear()
-            st.rerun()
-
-        # Show database status
+        # Database status
         if db_exists():
             conn = get_db()
             count = conn.execute("SELECT COUNT(*) FROM plays").fetchone()[0]
@@ -70,6 +58,8 @@ def render_sidebar():
             st.caption(f"数据库：{count:,} 条记录")
         else:
             st.caption("数据库：未导入")
+
+        st.caption("💡 前往「⚙️ 设置」调整参数和导入数据")
 
 
 # ── First-run import ────────────────────────────────────────────────

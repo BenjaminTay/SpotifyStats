@@ -23,7 +23,8 @@ music_only = st.session_state.get("music_only", True)
 if "bb_selected_track_id" not in st.session_state:
     st.session_state.bb_selected_track_id = None
 
-DEFAULT_TOP_N = 50
+if "bb_top_n" not in st.session_state:
+    st.session_state.bb_top_n = 50
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -31,15 +32,15 @@ DEFAULT_TOP_N = 50
 # ═══════════════════════════════════════════════════════════════════════
 
 @st.cache_data(ttl=3600)
-def load_billboard_raw(_min_ms, _exclude_skipped, _music_only):
+def load_billboard_raw(min_ms, exclude_skipped, music_only):
     """Load filtered plays and compute billboard_week."""
     conn = get_db()
     _f, _fp = base_filters(
-        min_ms=_min_ms, exclude_skipped=_exclude_skipped, music_only=_music_only
+        min_ms=min_ms, exclude_skipped=exclude_skipped, music_only=music_only
     )
     _w = f"WHERE {_f}" if _f else ""
     df = pd.read_sql_query(
-        f"""SELECT p.ts_date, p.ts_dow, p.ts_hour, p.ms_played, p.track_id,
+        f"""SELECT p.ts_date, p.ts_dow, p.ts_hour, p.ms_played, p.skipped, p.track_id,
                    t.track_name, a.artist_name, al.album_name
             FROM plays p
             LEFT JOIN tracks t ON p.track_id = t.track_id
@@ -89,8 +90,7 @@ def load_track_album_map():
     return pd.DataFrame(records)
 
 
-@st.cache_data(ttl=3600)
-def compute_weekly_rankings(_df, _top_n):
+def compute_weekly_rankings(_df, top_n):
     """Aggregate per-week rankings with tiebreaker (play_count > total_ms)."""
     df = _df.copy()
     weekly = (
@@ -105,7 +105,7 @@ def compute_weekly_rankings(_df, _top_n):
         ascending=[True, False, False],
     )
     weekly["rank"] = weekly.groupby("billboard_week").cumcount() + 1
-    weekly = weekly[weekly["rank"] <= _top_n]
+    weekly = weekly[weekly["rank"] <= top_n]
 
     return weekly
 
@@ -114,31 +114,63 @@ def compute_weekly_rankings(_df, _top_n):
 df_raw = load_billboard_raw(min_ms, exclude_skipped, music_only)
 album_map = load_track_album_map()
 
-# Weeks sorted DESC (newest first) for selectors; ASC for LW calculation
-all_weeks_desc = sorted(df_raw["billboard_week"].unique().tolist(), reverse=True)
-all_weeks_asc = sorted(df_raw["billboard_week"].unique().tolist())
-all_weeks_str = [f"{w} (Fri)" for w in all_weeks_desc]
+# Detect bb_top_n changes from Settings page → clear caches to force recomputation
+if "_applied_bb_top_n" not in st.session_state:
+    st.session_state._applied_bb_top_n = st.session_state.bb_top_n
+if st.session_state.bb_top_n != st.session_state._applied_bb_top_n:
+    st.cache_data.clear()
+    st.session_state._applied_bb_top_n = st.session_state.bb_top_n
+    st.rerun()
 
+# ── Billboard-specific filters (sidebar) ─────────────────────────────
+# Compute available years from all_weeks (before year filtering)
+raw_years = sorted(df_raw["billboard_week"].apply(lambda x: x.year).unique())
 
-# ── Sidebar ───────────────────────────────────────────────────────────
 with st.sidebar:
     st.title("📈 Billboard 周榜")
-    st.caption(f"过滤：跳过=否，最短={min_ms // 1000}s · 仅音乐")
+    st.caption(
+        f"数据过滤（来自「⚙️ 设置」）：最短 {min_ms // 1000}s · "
+        f"跳过={'排除' if exclude_skipped else '包含'} · {'仅音乐' if music_only else '含播客'}"
+    )
     st.divider()
 
-    top_n = st.slider("每周上榜数量 (Top N)", 10, 100, DEFAULT_TOP_N, step=5)
+    st.subheader("榜单数据过滤")
+
+    bb_year_range = st.select_slider(
+        "年份范围",
+        options=raw_years,
+        value=(raw_years[0], raw_years[-1]),
+    )
+
+    st.divider()
+
+    # Top N — controlled from Settings page
+    st.caption(f"上榜数量：Top {st.session_state.bb_top_n}（在「⚙️ 设置」中调整）")
+
+# Apply year-range post-load filter (min_ms/exclude_skipped already handled at SQL level)
+df_raw = df_raw.copy()  # avoid mutating cached DataFrame
+df_raw["_year"] = df_raw["billboard_week"].apply(lambda x: x.year)
+df_filtered = df_raw[
+    (df_raw["_year"] >= bb_year_range[0])
+    & (df_raw["_year"] <= bb_year_range[1])
+].copy()
+
+# Weeks sorted DESC (newest first) for selectors; ASC for LW calculation
+all_weeks_desc = sorted(df_filtered["billboard_week"].unique().tolist(), reverse=True)
+all_weeks_asc = sorted(df_filtered["billboard_week"].unique().tolist())
+all_weeks_str = [f"{w} (Fri)" for w in all_weeks_desc]
 
 st.caption(
     f"统计周期：每周五 12:00 — 下周五 12:00（北京时间）| "
     f"规则：播放次数相同按总收听时长排 | "
-    f"共 {len(all_weeks_asc)} 周 · {len(df_raw):,} 条过滤后记录"
+    f"共 {len(all_weeks_asc)} 周 · {len(df_filtered):,} 条过滤后记录"
 )
-
 
 # ═══════════════════════════════════════════════════════════════════════
 # Compute rankings
 # ═══════════════════════════════════════════════════════════════════════
-weekly = compute_weekly_rankings(df_raw, top_n)
+top_n = st.session_state.bb_top_n
+weekly = compute_weekly_rankings(df_filtered, top_n)
 
 # Build track-level summary (peak, weeks on chart, etc.)
 track_summary = (
@@ -156,11 +188,39 @@ track_summary = (
 
 # Total plays per track (all-time, for single-track detail cards)
 track_total_plays = (
-    df_raw.groupby("track_id")
+    df_filtered.groupby("track_id")
     .agg(total_plays=("ms_played", "count"))
     .reset_index()
 )
 track_summary = track_summary.merge(track_total_plays, on="track_id", how="left")
+
+# Weeks at #1 per track
+weeks_at_no1 = (
+    weekly[weekly["rank"] == 1]
+    .groupby("track_id")
+    .agg(weeks_at_no1=("billboard_week", "nunique"))
+    .reset_index()
+)
+track_summary = track_summary.merge(weeks_at_no1, on="track_id", how="left")
+track_summary["weeks_at_no1"] = track_summary["weeks_at_no1"].fillna(0).astype(int)
+
+# First week at peak position
+first_peak = weekly.merge(
+    track_summary[["track_id", "peak_position"]], on="track_id"
+)
+first_peak = first_peak[first_peak["rank"] == first_peak["peak_position"]]
+first_peak = first_peak.groupby("track_id")["billboard_week"].min().reset_index()
+first_peak.columns = ["track_id", "first_peak_week"]
+track_summary = track_summary.merge(first_peak, on="track_id", how="left")
+
+# Add running peak weeks to weekly (cumulative count of weeks at all-time peak)
+wp = weekly.merge(
+    track_summary[["track_id", "peak_position"]], on="track_id", how="left"
+)
+wp = wp.sort_values(["track_id", "billboard_week"])
+wp["at_peak"] = (wp["rank"] == wp["peak_position"]).astype(int)
+wp["running_peak_wks"] = wp.groupby("track_id")["at_peak"].cumsum()
+weekly = wp.drop(columns=["peak_position", "at_peak"])
 
 # ── Pre-compute artist / album summary DataFrames (used by Tabs 3,5,7,8) ─
 artist_summary = (
@@ -196,6 +256,15 @@ artist_track_counts["best_peak_track"] = artist_track_counts["artist_name"].appl
     .iloc[0]["track_name"]
 )
 
+# Artist weeks at #1 (sum of all tracks' weeks at #1)
+artist_weeks_no1 = (
+    track_summary.groupby("artist_name")["weeks_at_no1"]
+    .sum()
+    .reset_index()
+)
+artist_track_counts = artist_track_counts.merge(artist_weeks_no1, on="artist_name", how="left")
+artist_track_counts["weeks_at_no1"] = artist_track_counts["weeks_at_no1"].fillna(0).astype(int)
+
 # Album expanded view (track → all its albums via album_map)
 ts_for_album = track_summary.drop(columns=["album_name"])
 track_albums_expanded = ts_for_album.merge(album_map, on="track_id", how="left")
@@ -230,6 +299,16 @@ album_track_counts["best_peak_track"] = album_track_counts.apply(
     axis=1,
 )
 
+# Album weeks at #1 (sum of all tracks' weeks at #1 per album)
+# track_per_album already has weeks_at_no1 from track_summary via ts_for_album
+album_weeks_no1 = (
+    track_per_album.groupby(["album_name", "artist_name"])["weeks_at_no1"]
+    .sum()
+    .reset_index()
+)
+album_track_counts = album_track_counts.merge(album_weeks_no1, on=["album_name", "artist_name"], how="left")
+album_track_counts["weeks_at_no1"] = album_track_counts["weeks_at_no1"].fillna(0).astype(int)
+
 # ── Tabs ──────────────────────────────────────────────────────────────
 tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
     "📋 周榜", "👑 冠单历史", "🎵 单曲历史", "🎤 艺人榜单", "💿 专辑榜单",
@@ -241,12 +320,18 @@ tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
 # Tab 1: Weekly Chart
 # ═══════════════════════════════════════════════════════════════════════
 with tab1:
-    # Week selector — newest first
+    # Week selector — newest first, remembers last selection
+    if "bb_week_selector" not in st.session_state:
+        st.session_state.bb_week_selector = 0
+    max_week_idx = len(all_weeks_desc) - 1
+    if st.session_state.bb_week_selector > max_week_idx:
+        st.session_state.bb_week_selector = max_week_idx
+
     selected_week_idx = st.selectbox(
         "选择周",
         options=range(len(all_weeks_desc)),
         format_func=lambda i: all_weeks_str[i],
-        index=0,
+        key="bb_week_selector",
     )
     selected_week = all_weeks_desc[selected_week_idx]
 
@@ -258,6 +343,9 @@ with tab1:
     else:
         n_tracks = len(week_df)
         st.subheader(f"{selected_week} 周榜 · Top {n_tracks}")
+
+        total_week_plays = int(week_df["play_count"].sum())
+        st.metric("本周入榜歌曲总播放次数", f"{total_week_plays:,}")
 
         # ── Top 10 Highlight Cards ────────────────────────────────────
         top10 = week_df.head(10)
@@ -324,9 +412,11 @@ with tab1:
             how="left",
         )
 
+        # running_peak_wks is already in week_df (inherited from weekly)
+
         # ── Hot 100 Table ─────────────────────────────────────────────
-        display_df = week_df[["rank", "track_name", "artist_name", "play_count", "LW", "peak_position", "weeks_on_chart"]].copy()
-        display_df.columns = ["#", "曲目", "艺人", "播放次数", "LW", "Peak", "Wks"]
+        display_df = week_df[["rank", "track_name", "artist_name", "play_count", "LW", "peak_position", "weeks_on_chart", "running_peak_wks"]].copy()
+        display_df.columns = ["#", "曲目", "艺人", "播放次数", "LW", "Peak", "Wks", "Pk Wks"]
         display_df = display_df.set_index("#")
 
         st.dataframe(
@@ -338,6 +428,7 @@ with tab1:
                 "LW": st.column_config.TextColumn("LW", width="small"),
                 "Peak": st.column_config.NumberColumn("Peak", format="%d"),
                 "Wks": st.column_config.NumberColumn("Wks", format="%d"),
+                "Pk Wks": st.column_config.NumberColumn("Pk Wks", format="%d"),
             },
             use_container_width=True,
         )
@@ -405,15 +496,19 @@ with tab3:
         ts_row = track_summary[track_summary["track_id"] == selected_tid].iloc[0]
 
         # ── Summary Cards ─────────────────────────────────────────────
-        col1, col2, col3, col4, col5 = st.columns(5)
+        col1, col2, col3 = st.columns(3)
         peak_str = f"#{ts_row['peak_position']}"
         if ts_row["weeks_at_peak"] > 1:
             peak_str += f" ({ts_row['weeks_at_peak']}wks)"
         col1.metric("最高排名", peak_str)
         col2.metric("进榜周数", f"{ts_row['weeks_on_chart']} 周")
         col3.metric("首次入榜", str(ts_row["first_week"]))
-        col4.metric("总上榜播放", f"{int(ts_row['total_chart_plays']):,}")
-        col5.metric("总播放次数", f"{int(ts_row['total_plays']):,}")
+
+        col4, col5, col6 = st.columns(3)
+        first_peak_str = str(ts_row["first_peak_week"]) if pd.notna(ts_row["first_peak_week"]) else "—"
+        col4.metric("首次 Peak 周", first_peak_str)
+        col5.metric("总上榜播放", f"{int(ts_row['total_chart_plays']):,}")
+        col6.metric("总播放次数", f"{int(ts_row['total_plays']):,}")
 
         st.divider()
 
@@ -511,15 +606,32 @@ with tab3:
 # Tab 4: Artist Billboard Summary
 # ═══════════════════════════════════════════════════════════════════════
 with tab4:
+    # Artist search
+    artist_search = st.text_input(
+        "搜索艺人",
+        placeholder="输入艺人名筛选...",
+        key="bb_artist_search",
+    )
+
+    if artist_search:
+        term = artist_search.lower()
+        mask = artist_track_counts["artist_name"].str.lower().str.contains(term, na=False)
+        filtered_artists = artist_track_counts[mask].reset_index(drop=True)
+    else:
+        filtered_artists = artist_track_counts.reset_index(drop=True)
+
     # Artist selector
     artist_labels = [
         f"{r['artist_name']} ({int(r['total_tracks'])}首入榜)"
-        for _, r in artist_track_counts.iterrows()
+        for _, r in filtered_artists.iterrows()
     ]
-    artist_names = artist_track_counts["artist_name"].tolist()
+    artist_names = filtered_artists["artist_name"].tolist()
 
     if not artist_labels:
-        st.warning("暂无数据")
+        if artist_search:
+            st.warning(f"没有匹配「{artist_search}」的艺人")
+        else:
+            st.warning("暂无数据")
     else:
         selected_artist_idx = st.selectbox(
             "选择艺人",
@@ -538,10 +650,11 @@ with tab4:
         col3.metric("总上榜周数", f"{int(art_row['total_weeks'])} 周")
         col4.metric("平均在榜", f"{art_row['avg_weeks']:.1f} 周")
 
-        col1b, col2b, col3b, _ = st.columns(4)
+        col1b, col2b, col3b, col4b = st.columns(4)
         col1b.metric("#1 曲数", f"{int(art_row['top1'])} 首")
         col2b.metric("Top 5 曲数", f"{int(art_row['top5'])} 首")
         col3b.metric("Top 10 曲数", f"{int(art_row['top10'])} 首")
+        col4b.metric("冠军周数", f"{int(art_row['weeks_at_no1'])} 周")
 
         st.divider()
 
@@ -624,6 +737,51 @@ with tab4:
             )
             fig.update_layout(height=max(300, len(art_tracks) * 25))
             st.plotly_chart(fig, use_container_width=True)
+
+        # ── Artist weekly charting history ──────────────────────────────
+        st.divider()
+        st.subheader(f"{selected_artist} · 每周入榜概况")
+
+        artist_weekly = weekly[weekly["artist_name"] == selected_artist]
+        aw_summary = (
+            artist_weekly.groupby("billboard_week")
+            .agg(
+                tracks_on_chart=("track_id", "nunique"),
+                total_plays=("play_count", "sum"),
+            )
+            .reset_index()
+        )
+
+        # Get #1 track names per week
+        artist_no1 = (
+            artist_weekly[artist_weekly["rank"] == 1]
+            .groupby("billboard_week")["track_name"]
+            .apply(lambda x: "、".join(dict.fromkeys(x)))
+            .reset_index()
+        )
+        artist_no1.columns = ["billboard_week", "no1_track_names"]
+        aw_summary = aw_summary.merge(artist_no1, on="billboard_week", how="left")
+        aw_summary["no1_track_names"] = aw_summary["no1_track_names"].fillna("—")
+        aw_summary = aw_summary.sort_values("billboard_week", ascending=False)
+
+        if aw_summary.empty:
+            st.caption("该艺人在当前过滤条件下无上榜记录")
+        else:
+            display_aw = aw_summary.copy()
+            display_aw["billboard_week"] = display_aw["billboard_week"].astype(str)
+            display_aw.columns = ["周", "上榜曲数", "当周总播放", "#1 曲目"]
+            display_aw = display_aw.set_index("周")
+
+            st.dataframe(
+                display_aw,
+                column_config={
+                    "上榜曲数": st.column_config.NumberColumn("上榜曲数", format="%d"),
+                    "当周总播放": st.column_config.NumberColumn("当周总播放", format="%d"),
+                    "#1 曲目": st.column_config.TextColumn("#1 曲目", width="medium"),
+                },
+                use_container_width=True,
+                height=400,
+            )
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -714,19 +872,71 @@ with tab6:
             f"👉 切换到「🎵 单曲历史」Tab 查看榜单详情"
         )
 
+    # ── Song-weekly top plays ───────────────────────────────────────────
+    st.divider()
+    st.subheader("歌曲周播放次数 Top 100")
+
+    song_weekly_top = (
+        weekly.sort_values("play_count", ascending=False)
+        .head(100)
+        .reset_index(drop=True)
+    )
+    song_weekly_top.index = song_weekly_top.index + 1
+    song_weekly_top.index.name = "#"
+    song_weekly_top["billboard_week"] = song_weekly_top["billboard_week"].astype(str)
+    song_weekly_top["rank_display"] = song_weekly_top["rank"].apply(lambda x: f"#{x}")
+
+    display_swt = song_weekly_top[
+        ["track_name", "artist_name", "billboard_week", "play_count", "rank_display"]
+    ].copy()
+    display_swt.columns = ["曲目", "艺人", "榜单周", "播放次数", "当周 Peak"]
+
+    st.dataframe(
+        display_swt,
+        column_config={
+            "曲目": st.column_config.TextColumn("曲目", width="medium"),
+            "艺人": st.column_config.TextColumn("艺人", width="medium"),
+            "榜单周": st.column_config.TextColumn("榜单周"),
+            "播放次数": st.column_config.NumberColumn("播放次数", format="%d"),
+            "当周 Peak": st.column_config.TextColumn("当周 Peak", width="small"),
+        },
+        use_container_width=True,
+        height=500,
+    )
+
 
 # ═══════════════════════════════════════════════════════════════════════
 # Tab 5: Album Billboard Summary
 # ═══════════════════════════════════════════════════════════════════════
 with tab5:
+    # Album search
+    album_search = st.text_input(
+        "搜索专辑/艺人",
+        placeholder="输入专辑名或艺人名筛选...",
+        key="bb_album_search",
+    )
+
+    if album_search:
+        term = album_search.lower()
+        mask = (
+            album_track_counts["album_name"].str.lower().str.contains(term, na=False)
+            | album_track_counts["artist_name"].str.lower().str.contains(term, na=False)
+        )
+        filtered_albums = album_track_counts[mask].reset_index(drop=True)
+    else:
+        filtered_albums = album_track_counts.reset_index(drop=True)
+
     # Album selector
     album_labels = [
         f"{r['album_name']} — {r['artist_name']} ({int(r['total_tracks'])}首入榜)"
-        for _, r in album_track_counts.iterrows()
+        for _, r in filtered_albums.iterrows()
     ]
 
     if not album_labels:
-        st.warning("暂无数据")
+        if album_search:
+            st.warning(f"没有匹配「{album_search}」的专辑")
+        else:
+            st.warning("暂无数据")
     else:
         selected_album_idx = st.selectbox(
             "选择专辑",
@@ -734,7 +944,7 @@ with tab5:
             format_func=lambda i: album_labels[i],
             index=0,
         )
-        selected_album_row = album_track_counts.iloc[selected_album_idx]
+        selected_album_row = filtered_albums.iloc[selected_album_idx]
         selected_album = selected_album_row["album_name"]
         selected_album_artist = selected_album_row["artist_name"]
 
@@ -749,10 +959,11 @@ with tab5:
         col3.metric("总上榜周数", f"{int(selected_album_row['total_weeks'])} 周")
         col4.metric("平均在榜", f"{selected_album_row['avg_weeks']:.1f} 周")
 
-        col1b, col2b, col3b, _ = st.columns(4)
+        col1b, col2b, col3b, col4b = st.columns(4)
         col1b.metric("#1 曲数", f"{int(selected_album_row['top1'])} 首")
         col2b.metric("Top 5 曲数", f"{int(selected_album_row['top5'])} 首")
         col3b.metric("Top 10 曲数", f"{int(selected_album_row['top10'])} 首")
+        col4b.metric("冠军周数", f"{int(selected_album_row['weeks_at_no1'])} 周")
 
         st.divider()
 
@@ -852,6 +1063,52 @@ with tab5:
             )
             fig.update_layout(height=max(300, len(alb_tracks) * 25))
             st.plotly_chart(fig, use_container_width=True)
+
+        # ── Album weekly charting history ───────────────────────────────
+        st.divider()
+        st.subheader(f"《{selected_album}》· 每周入榜概况")
+
+        alb_track_ids = set(alb_tracks["track_id"].tolist())
+        album_weekly = weekly[weekly["track_id"].isin(alb_track_ids)]
+        alw_summary = (
+            album_weekly.groupby("billboard_week")
+            .agg(
+                tracks_on_chart=("track_id", "nunique"),
+                total_plays=("play_count", "sum"),
+            )
+            .reset_index()
+        )
+
+        # Get #1 track names per week
+        album_no1 = (
+            album_weekly[album_weekly["rank"] == 1]
+            .groupby("billboard_week")["track_name"]
+            .apply(lambda x: "、".join(dict.fromkeys(x)))
+            .reset_index()
+        )
+        album_no1.columns = ["billboard_week", "no1_track_names"]
+        alw_summary = alw_summary.merge(album_no1, on="billboard_week", how="left")
+        alw_summary["no1_track_names"] = alw_summary["no1_track_names"].fillna("—")
+        alw_summary = alw_summary.sort_values("billboard_week", ascending=False)
+
+        if alw_summary.empty:
+            st.caption("该专辑在当前过滤条件下无上榜记录")
+        else:
+            display_alw = alw_summary.copy()
+            display_alw["billboard_week"] = display_alw["billboard_week"].astype(str)
+            display_alw.columns = ["周", "上榜曲数", "当周总播放", "#1 曲目"]
+            display_alw = display_alw.set_index("周")
+
+            st.dataframe(
+                display_alw,
+                column_config={
+                    "上榜曲数": st.column_config.NumberColumn("上榜曲数", format="%d"),
+                    "当周总播放": st.column_config.NumberColumn("当周总播放", format="%d"),
+                    "#1 曲目": st.column_config.TextColumn("#1 曲目", width="medium"),
+                },
+                use_container_width=True,
+                height=400,
+            )
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -981,6 +1238,114 @@ with tab2:
     )
     fig.update_layout(height=500)
     st.plotly_chart(fig, use_container_width=True)
+
+    # ── Annual unique #1 songs ────────────────────────────────────────
+    st.divider()
+    st.subheader("每年独特冠单统计")
+
+    number_ones["year"] = pd.to_datetime(number_ones["billboard_week"]).dt.year
+    annual_no1 = (
+        number_ones.groupby("year")
+        .agg(
+            unique_no1=("track_id", "nunique"),
+            songs=("track_name", lambda x: "、".join(dict.fromkeys(x))),
+        )
+        .reset_index()
+        .sort_values("year", ascending=False)
+    )
+
+    display_annual = annual_no1.copy()
+    display_annual.columns = ["年份", "独特冠单数", "冠单曲目"]
+    display_annual = display_annual.set_index("年份")
+
+    st.dataframe(
+        display_annual,
+        column_config={
+            "独特冠单数": st.column_config.NumberColumn("独特冠单数", format="%d"),
+            "冠单曲目": st.column_config.TextColumn("冠单曲目", width="large"),
+        },
+        use_container_width=True,
+    )
+
+    # ── Debut at #1 (空冠歌曲) ─────────────────────────────────────────
+    st.divider()
+    st.subheader("空冠歌曲（首次上榜即 #1）")
+
+    first_appear = (
+        weekly.sort_values("billboard_week")
+        .groupby("track_id")
+        .first()
+        .reset_index()
+    )
+    debut_no1 = first_appear[first_appear["rank"] == 1][
+        ["track_id", "track_name", "artist_name", "billboard_week"]
+    ].copy()
+    debut_no1 = debut_no1.merge(
+        track_summary[["track_id", "weeks_on_chart", "weeks_at_no1"]],
+        on="track_id",
+        how="left",
+    )
+    debut_no1 = debut_no1.sort_values("billboard_week", ascending=False)
+    debut_no1["billboard_week"] = debut_no1["billboard_week"].astype(str)
+    debut_no1.columns = ["track_id", "曲目", "艺人", "首次上榜周", "在榜周数", "冠单周数"]
+
+    if debut_no1.empty:
+        st.info("暂无空冠歌曲")
+    else:
+        st.metric("空冠歌曲数", f"{len(debut_no1)} 首")
+        st.dataframe(
+            debut_no1[["曲目", "艺人", "首次上榜周", "在榜周数", "冠单周数"]],
+            column_config={
+                "曲目": st.column_config.TextColumn("曲目", width="medium"),
+                "艺人": st.column_config.TextColumn("艺人", width="medium"),
+                "首次上榜周": st.column_config.TextColumn("首次上榜周"),
+                "在榜周数": st.column_config.NumberColumn("在榜周数", format="%d"),
+                "冠单周数": st.column_config.NumberColumn("冠单周数", format="%d"),
+            },
+            use_container_width=True,
+        )
+
+    # ── Weekly total plays ranking (榜单大盘) ────────────────────────────
+    st.divider()
+    st.subheader("榜单周总播放次数排名（大盘）")
+
+    week_total_plays = (
+        weekly.groupby("billboard_week")
+        .agg(
+            total_plays=("play_count", "sum"),
+            tracks_count=("track_id", "nunique"),
+        )
+        .reset_index()
+    )
+    # Find #1 song for each week
+    week_no1 = weekly[weekly["rank"] == 1][
+        ["billboard_week", "track_name", "artist_name", "play_count"]
+    ].copy()
+    week_no1.columns = ["billboard_week", "no1_track", "no1_artist", "no1_plays"]
+    week_total_plays = week_total_plays.merge(week_no1, on="billboard_week", how="left")
+    week_total_plays = week_total_plays.sort_values("total_plays", ascending=False)
+    week_total_plays = week_total_plays.reset_index(drop=True)
+    week_total_plays.index = week_total_plays.index + 1
+    week_total_plays.index.name = "#"
+    week_total_plays["billboard_week"] = week_total_plays["billboard_week"].astype(str)
+
+    display_wtp = week_total_plays[
+        ["billboard_week", "total_plays", "no1_track", "no1_artist", "no1_plays"]
+    ].copy()
+    display_wtp.columns = ["周", "总播放次数", "#1 曲目", "#1 艺人", "#1 播放次数"]
+
+    st.dataframe(
+        display_wtp,
+        column_config={
+            "周": st.column_config.TextColumn("周"),
+            "总播放次数": st.column_config.NumberColumn("总播放次数", format="%d"),
+            "#1 曲目": st.column_config.TextColumn("#1 曲目", width="medium"),
+            "#1 艺人": st.column_config.TextColumn("#1 艺人", width="medium"),
+            "#1 播放次数": st.column_config.NumberColumn("#1 播放次数", format="%d"),
+        },
+        use_container_width=True,
+        height=500,
+    )
 
 
 # ═══════════════════════════════════════════════════════════════════════
