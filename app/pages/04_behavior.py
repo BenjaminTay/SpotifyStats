@@ -9,8 +9,10 @@ import plotly.express as px
 import plotly.graph_objects as go
 
 from app.db import get_db, base_filters
+from app.styles import inject_global_styles, page_header
 
 st.set_page_config(page_title="播放行为", page_icon="🔍", layout="wide")
+inject_global_styles()
 
 min_ms = st.session_state.get("min_ms", 30000)
 exclude_skipped = st.session_state.get("exclude_skipped", True)
@@ -36,8 +38,14 @@ df = load_all_data()
 
 # ── Sidebar ─────────────────────────────────────────────────────────
 with st.sidebar:
-    st.title("🔍 播放行为")
-    st.caption("本页使用全量数据（含跳过和短播放）")
+    st.markdown(
+        '<div style="text-align:center;margin-bottom:0.5rem;">'
+        '<div style="font-size:2rem;margin-bottom:0.25rem;">🔍</div>'
+        '<div style="font-size:1.05rem;font-weight:700;color:#F0F0F5;">播放行为</div>'
+        '<div style="font-size:0.7rem;color:#8888A0;margin-top:0.15rem;">全量数据（含跳过和短播放）</div>'
+        '</div>',
+        unsafe_allow_html=True,
+    )
     st.divider()
 
     section = st.radio(

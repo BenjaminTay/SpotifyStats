@@ -9,8 +9,10 @@ import streamlit as st
 
 from app.db import get_db, db_exists
 from app.import_data import import_data
+from app.styles import inject_global_styles, page_header
 
 st.set_page_config(page_title="设置", page_icon="⚙️", layout="wide")
+inject_global_styles()
 
 # ── Session state defaults ──────────────────────────────────────────────
 if "min_ms" not in st.session_state:
@@ -21,6 +23,10 @@ if "music_only" not in st.session_state:
     st.session_state.music_only = True
 if "bb_top_n" not in st.session_state:
     st.session_state.bb_top_n = 50
+if "bb_week_start_dow" not in st.session_state:
+    st.session_state.bb_week_start_dow = 4  # Friday
+if "bb_week_start_hour" not in st.session_state:
+    st.session_state.bb_week_start_hour = 12
 
 # Sync widget keys from canonical values (first visit only)
 if "settings_min_sec" not in st.session_state:
@@ -31,6 +37,10 @@ if "settings_music" not in st.session_state:
     st.session_state.settings_music = st.session_state.music_only
 if "settings_bb_top_n_widget" not in st.session_state:
     st.session_state.settings_bb_top_n_widget = st.session_state.bb_top_n
+if "settings_bb_week_dow" not in st.session_state:
+    st.session_state.settings_bb_week_dow = st.session_state.bb_week_start_dow
+if "settings_bb_week_hour" not in st.session_state:
+    st.session_state.settings_bb_week_hour = st.session_state.bb_week_start_hour
 
 # Track previous values for change detection
 if "_prev_min_ms" not in st.session_state:
@@ -41,8 +51,12 @@ if "_prev_music_only" not in st.session_state:
     st.session_state._prev_music_only = st.session_state.music_only
 if "_prev_bb_top_n" not in st.session_state:
     st.session_state._prev_bb_top_n = st.session_state.bb_top_n
+if "_prev_bb_week_start_dow" not in st.session_state:
+    st.session_state._prev_bb_week_start_dow = st.session_state.bb_week_start_dow
+if "_prev_bb_week_start_hour" not in st.session_state:
+    st.session_state._prev_bb_week_start_hour = st.session_state.bb_week_start_hour
 
-st.title("⚙️ 设置")
+page_header("⚙️ 设置", description="集中管理数据过滤、Billboard 榜单和数据导入")
 
 # ═══════════════════════════════════════════════════════════════════════════
 # Data Filtering
@@ -102,20 +116,64 @@ st.divider()
 st.subheader("Billboard 周榜")
 st.caption("Billboard 页面专属设置，修改后榜单统计即时重算")
 
-new_top_n = st.slider(
-    "每周上榜歌曲数量 (Top N)",
-    min_value=10,
-    max_value=100,
-    step=5,
-    key="settings_bb_top_n_widget",
-    help="每期 Billboard 周榜收录的歌曲数量上限",
+col_bb1, col_bb2, col_bb3 = st.columns(3)
+
+with col_bb1:
+    new_top_n = st.slider(
+        "每周上榜歌曲数量 (Top N)",
+        min_value=10,
+        max_value=100,
+        step=5,
+        key="settings_bb_top_n_widget",
+        help="每期 Billboard 周榜收录的歌曲数量上限",
+    )
+
+with col_bb2:
+    DOW_OPTIONS = {0: "周一", 1: "周二", 2: "周三", 3: "周四", 4: "周五", 5: "周六", 6: "周日"}
+    new_week_dow = st.selectbox(
+        "统计周期起始日",
+        options=list(DOW_OPTIONS.keys()),
+        format_func=lambda x: DOW_OPTIONS[x],
+        index=list(DOW_OPTIONS.keys()).index(st.session_state.settings_bb_week_dow),
+        key="settings_bb_week_dow_raw",
+        help="每周榜单从周几开始计算",
+    )
+    st.session_state.bb_week_start_dow = new_week_dow
+
+with col_bb3:
+    new_week_hour = st.selectbox(
+        "起始时间",
+        options=list(range(24)),
+        format_func=lambda x: f"{x:02d}:00",
+        index=st.session_state.bb_week_start_hour,
+        key="settings_bb_week_hour_raw",
+        help="起始日当天从几点开始划入新一周（北京时间）",
+    )
+    st.session_state.bb_week_start_hour = new_week_hour
+
+# Summary of current week boundary
+st.caption(
+    f"当前统计周期：每{DOW_OPTIONS[st.session_state.bb_week_start_dow]} "
+    f"{st.session_state.bb_week_start_hour:02d}:00 — "
+    f"下{DOW_OPTIONS[st.session_state.bb_week_start_dow]} "
+    f"{st.session_state.bb_week_start_hour:02d}:00（北京时间）"
 )
 
 # Detect changes and sync to canonical key
+_bb_changed = False
 if new_top_n != st.session_state._prev_bb_top_n:
     st.session_state.bb_top_n = new_top_n
     st.session_state._prev_bb_top_n = new_top_n
-    # Clear Billboard-related caches to force full recomputation on next visit
+    _bb_changed = True
+if st.session_state.bb_week_start_dow != st.session_state._prev_bb_week_start_dow:
+    st.session_state._prev_bb_week_start_dow = st.session_state.bb_week_start_dow
+    st.session_state.settings_bb_week_dow = st.session_state.bb_week_start_dow
+    _bb_changed = True
+if st.session_state.bb_week_start_hour != st.session_state._prev_bb_week_start_hour:
+    st.session_state._prev_bb_week_start_hour = st.session_state.bb_week_start_hour
+    st.session_state.settings_bb_week_hour = st.session_state.bb_week_start_hour
+    _bb_changed = True
+if _bb_changed:
     st.cache_data.clear()
     st.rerun()
 

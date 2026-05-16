@@ -9,17 +9,19 @@ import plotly.express as px
 import plotly.graph_objects as go
 
 from app.db import get_db, base_filters
+from app.styles import inject_global_styles
 
 st.set_page_config(page_title="Wrapped 年度报告", page_icon="🎁", layout="wide")
+inject_global_styles()
 
 min_ms = st.session_state.get("min_ms", 30000)
 exclude_skipped = st.session_state.get("exclude_skipped", True)
 music_only = st.session_state.get("music_only", True)
 
-# Spotify brand colors
+# Spotify brand colors (matching Neon Vinyl theme)
 SPOTIFY_GREEN = "#1DB954"
-SPOTIFY_DARK = "#191414"
-SPOTIFY_LIGHT = "#FFFFFF"
+SPOTIFY_DARK = "#0A0A0F"
+SPOTIFY_CARD = "#181825"
 
 
 @st.cache_data(ttl=3600)
@@ -62,8 +64,14 @@ years = sorted(df["ts_year"].unique().tolist(), reverse=True)
 
 # ── Sidebar ─────────────────────────────────────────────────────────
 with st.sidebar:
-    st.title("🎁 Wrapped")
-    st.caption(f"过滤：跳过=否，最短={min_ms//1000}s")
+    st.markdown(
+        '<div style="text-align:center;margin-bottom:0.5rem;">'
+        '<div style="font-size:2rem;margin-bottom:0.25rem;">🎁</div>'
+        '<div style="font-size:1.05rem;font-weight:700;color:#F0F0F5;">Wrapped</div>'
+        f'<div style="font-size:0.7rem;color:#8888A0;margin-top:0.15rem;">跳过=否，最短={min_ms//1000}s</div>'
+        '</div>',
+        unsafe_allow_html=True,
+    )
     st.divider()
 
     selected_year = st.selectbox("选择年份", years, index=0)
@@ -169,7 +177,8 @@ st.markdown(
     line-height: 1;
 }}
 .wrapped-card {{
-    background: linear-gradient(135deg, #1A1C23 0%, #282828 100%);
+    background: linear-gradient(135deg, #12121A 0%, #181825 100%);
+    border: 1px solid rgba(255,255,255,0.06);
     border-radius: 16px;
     padding: 28px;
     margin-bottom: 16px;

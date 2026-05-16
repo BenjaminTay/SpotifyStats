@@ -1,4 +1,4 @@
-"""Billboard Hot 100 style weekly chart: Friday noon to Friday noon tracking weeks."""
+"""Billboard Hot 100 style weekly chart with configurable tracking week boundary."""
 
 import sys
 import os
@@ -6,18 +6,23 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 import streamlit as st
+import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 import plotly.express as px
 
 from app.db import get_db, base_filters
+from app.styles import inject_global_styles
 
 st.set_page_config(page_title="Billboard 周榜", page_icon="📈", layout="wide")
+inject_global_styles()
 
 # ── Session state defaults ────────────────────────────────────────────
 min_ms = st.session_state.get("min_ms", 30000)
 exclude_skipped = st.session_state.get("exclude_skipped", True)
 music_only = st.session_state.get("music_only", True)
+bb_week_start_dow = st.session_state.get("bb_week_start_dow", 4)  # Friday
+bb_week_start_hour = st.session_state.get("bb_week_start_hour", 12)
 
 # Cross-tab track selection
 if "bb_selected_track_id" not in st.session_state:
@@ -26,14 +31,18 @@ if "bb_selected_track_id" not in st.session_state:
 if "bb_top_n" not in st.session_state:
     st.session_state.bb_top_n = 50
 
+# Weekday labels
+DOW_NAMES = {0: "周一", 1: "周二", 2: "周三", 3: "周四", 4: "周五", 5: "周六", 6: "周日"}
+DOW_SHORT = {0: "Mon", 1: "Tue", 2: "Wed", 3: "Thu", 4: "Fri", 5: "Sat", 6: "Sun"}
+
 
 # ═══════════════════════════════════════════════════════════════════════
 # Data loading (cached)
 # ═══════════════════════════════════════════════════════════════════════
 
 @st.cache_data(ttl=3600)
-def load_billboard_raw(min_ms, exclude_skipped, music_only):
-    """Load filtered plays and compute billboard_week."""
+def load_billboard_raw(min_ms, exclude_skipped, music_only, week_start_dow, week_start_hour):
+    """Load filtered plays and compute billboard_week with configurable boundary."""
     conn = get_db()
     _f, _fp = base_filters(
         min_ms=min_ms, exclude_skipped=exclude_skipped, music_only=music_only
@@ -52,10 +61,10 @@ def load_billboard_raw(min_ms, exclude_skipped, music_only):
     )
     conn.close()
 
-    # Billboard week: Friday 12:00 noon boundary
-    df["days_back"] = (df["ts_dow"] - 4) % 7
-    mask_fri_am = (df["ts_dow"] == 4) & (df["ts_hour"] < 12)
-    df.loc[mask_fri_am, "days_back"] = 7
+    # Billboard week: configurable boundary
+    df["days_back"] = (df["ts_dow"] - week_start_dow) % 7
+    mask_before = (df["ts_dow"] == week_start_dow) & (df["ts_hour"] < week_start_hour)
+    df.loc[mask_before, "days_back"] = 7
     df["ts_date_dt"] = pd.to_datetime(df["ts_date"])
     df["billboard_week"] = (
         df["ts_date_dt"] - pd.to_timedelta(df["days_back"], unit="D")
@@ -110,16 +119,106 @@ def compute_weekly_rankings(_df, top_n):
     return weekly
 
 
+def compute_power_scores(weekly, N):
+    """Compute Power Score for each track — composite ranking metric.
+
+    Power Score = Σ(weekly_base_points × play_intensity_weight)
+                  + peak_bonus + top5_bonus + top10_bonus
+
+    Base points are normalized to rank/N so scores are comparable
+    regardless of chart size N.
+    """
+    tier1_count = int(N * 0.1)
+    tier2_count = int(N * 0.2)
+
+    # Week median plays (competition baseline)
+    week_medians = weekly.groupby("billboard_week")["play_count"].median().to_dict()
+
+    scores = []
+    for (track_id, track_name, artist_name), group in weekly.groupby(
+        ["track_id", "track_name", "artist_name"]
+    ):
+        peak = group["rank"].min()
+        weeks_total = group["billboard_week"].nunique()
+        weeks_top5 = int((group["rank"] <= 5).sum())
+        weeks_top10 = int((group["rank"] <= 10).sum())
+        weeks_at_no1 = int((group["rank"] == 1).sum())
+
+        total = 0.0
+        for _, row in group.iterrows():
+            rank = row["rank"]
+            plays = row["play_count"]
+            median = week_medians.get(row["billboard_week"], 1)
+
+            # 1. Base points (normalized by rank/N)
+            r_norm = rank / N if N > 0 else 0
+            if rank == 1:
+                base = 200
+            elif r_norm <= 0.1:
+                base = int(200 * (0.75 - 2.5 * r_norm))
+            elif r_norm <= 0.2:
+                rank_in_tier = rank - tier1_count
+                base = max(1, int(85 * (0.85 ** rank_in_tier)))
+            else:
+                start_val = int(85 * 0.85 ** (tier2_count - tier1_count))
+                base = max(1, int(start_val * (1 - (r_norm - 0.2) / 0.8)))
+
+            # 2. Play intensity weight: log₂ ratio to week median
+            if median > 0 and plays > 0:
+                weight = 1 + min(3.0, max(0.0, np.log2(plays / median)))
+            else:
+                weight = 1.0
+
+            total += base * weight
+
+        # 3. Bonuses
+        peak_bonus = {1: 100, 2: 50, 3: 30}.get(peak, 0)
+        top5_bonus = weeks_top5 * 20
+        top10_bonus = weeks_top10 * 5
+
+        power_score = round(total + peak_bonus + top5_bonus + top10_bonus)
+
+        scores.append(
+            {
+                "track_id": track_id,
+                "track_name": track_name,
+                "artist_name": artist_name,
+                "power_score": power_score,
+                "peak_position": peak,
+                "weeks_on_chart": weeks_total,
+                "weeks_top5": weeks_top5,
+                "weeks_top10": weeks_top10,
+                "weeks_at_no1": weeks_at_no1,
+            }
+        )
+
+    return pd.DataFrame(scores).sort_values("power_score", ascending=False).reset_index(drop=True)
+
+
 # ── Load data ─────────────────────────────────────────────────────────
-df_raw = load_billboard_raw(min_ms, exclude_skipped, music_only)
+df_raw = load_billboard_raw(min_ms, exclude_skipped, music_only, bb_week_start_dow, bb_week_start_hour)
 album_map = load_track_album_map()
 
-# Detect bb_top_n changes from Settings page → clear caches to force recomputation
+# Detect config changes from Settings page → clear caches to force recomputation
 if "_applied_bb_top_n" not in st.session_state:
     st.session_state._applied_bb_top_n = st.session_state.bb_top_n
+if "_applied_bb_week_dow" not in st.session_state:
+    st.session_state._applied_bb_week_dow = bb_week_start_dow
+if "_applied_bb_week_hour" not in st.session_state:
+    st.session_state._applied_bb_week_hour = bb_week_start_hour
+
+_config_changed = False
 if st.session_state.bb_top_n != st.session_state._applied_bb_top_n:
-    st.cache_data.clear()
     st.session_state._applied_bb_top_n = st.session_state.bb_top_n
+    _config_changed = True
+if bb_week_start_dow != st.session_state._applied_bb_week_dow:
+    st.session_state._applied_bb_week_dow = bb_week_start_dow
+    _config_changed = True
+if bb_week_start_hour != st.session_state._applied_bb_week_hour:
+    st.session_state._applied_bb_week_hour = bb_week_start_hour
+    _config_changed = True
+if _config_changed:
+    st.cache_data.clear()
     st.rerun()
 
 # ── Billboard-specific filters (sidebar) ─────────────────────────────
@@ -127,10 +226,14 @@ if st.session_state.bb_top_n != st.session_state._applied_bb_top_n:
 raw_years = sorted(df_raw["billboard_week"].apply(lambda x: x.year).unique())
 
 with st.sidebar:
-    st.title("📈 Billboard 周榜")
-    st.caption(
-        f"数据过滤（来自「⚙️ 设置」）：最短 {min_ms // 1000}s · "
-        f"跳过={'排除' if exclude_skipped else '包含'} · {'仅音乐' if music_only else '含播客'}"
+    st.markdown(
+        '<div style="text-align:center;margin-bottom:0.5rem;">'
+        '<div style="font-size:2rem;margin-bottom:0.25rem;">📈</div>'
+        '<div style="font-size:1.05rem;font-weight:700;color:#F0F0F5;">Billboard 周榜</div>'
+        f'<div style="font-size:0.68rem;color:#8888A0;margin-top:0.15rem;">最短 {min_ms // 1000}s · '
+        f'跳过={"排除" if exclude_skipped else "包含"} · {"仅音乐" if music_only else "含播客"}</div>'
+        '</div>',
+        unsafe_allow_html=True,
     )
     st.divider()
 
@@ -158,10 +261,11 @@ df_filtered = df_raw[
 # Weeks sorted DESC (newest first) for selectors; ASC for LW calculation
 all_weeks_desc = sorted(df_filtered["billboard_week"].unique().tolist(), reverse=True)
 all_weeks_asc = sorted(df_filtered["billboard_week"].unique().tolist())
-all_weeks_str = [f"{w} (Fri)" for w in all_weeks_desc]
+all_weeks_str = [f"{w} ({DOW_SHORT[bb_week_start_dow]})" for w in all_weeks_desc]
 
 st.caption(
-    f"统计周期：每周五 12:00 — 下周五 12:00（北京时间）| "
+    f"统计周期：每{DOW_NAMES[bb_week_start_dow]} {bb_week_start_hour:02d}:00 — "
+    f"下{DOW_NAMES[bb_week_start_dow]} {bb_week_start_hour:02d}:00（北京时间）| "
     f"规则：播放次数相同按总收听时长排 | "
     f"共 {len(all_weeks_asc)} 周 · {len(df_filtered):,} 条过滤后记录"
 )
@@ -310,9 +414,9 @@ album_track_counts = album_track_counts.merge(album_weeks_no1, on=["album_name",
 album_track_counts["weeks_at_no1"] = album_track_counts["weeks_at_no1"].fillna(0).astype(int)
 
 # ── Tabs ──────────────────────────────────────────────────────────────
-tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab_power, tab6, tab7, tab8 = st.tabs([
     "📋 周榜", "👑 冠单历史", "🎵 单曲历史", "🎤 艺人榜单", "💿 专辑榜单",
-    "🏆 歌曲总榜", "📊 艺人总榜", "📀 专辑总榜",
+    "⭐ 歌曲走势总榜", "🏆 歌曲总榜", "📊 艺人总榜", "📀 专辑总榜",
 ])
 
 
@@ -782,6 +886,125 @@ with tab4:
                 use_container_width=True,
                 height=400,
             )
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# Tab: Power Score Ranking (歌曲走势总榜)
+# ═══════════════════════════════════════════════════════════════════════
+with tab_power:
+    st.subheader("⭐ 歌曲走势总榜")
+    st.caption(
+        "综合衡量最高排名、在榜周数、竞争强度（播放量相对当周大盘）、"
+        "前五/前十稳定性及冠单奖励的复合评分"
+    )
+
+    power_df = compute_power_scores(weekly, top_n)
+
+    if power_df.empty:
+        st.info("暂无足够数据计算走势评分")
+    else:
+        # ── Summary cards ─────────────────────────────────────────────────
+        col_p1, col_p2, col_p3, col_p4 = st.columns(4)
+        with col_p1:
+            st.metric("上榜歌曲数", f"{len(power_df):,}")
+        with col_p2:
+            top10_avg = power_df.head(10)["power_score"].mean()
+            st.metric("Top 10 平均分", f"{top10_avg:,.0f}")
+        with col_p3:
+            st.metric("最高 Power Score", f"{power_df.iloc[0]['power_score']:,}")
+        with col_p4:
+            no1_count = int((power_df["peak_position"] == 1).sum())
+            st.metric("冠单数量", f"{no1_count}")
+
+        st.divider()
+
+        # ── Leaderboard table ────────────────────────────────────────────
+        display_ps = power_df[
+            [
+                "track_name", "artist_name", "power_score", "peak_position",
+                "weeks_on_chart", "weeks_top5", "weeks_at_no1",
+            ]
+        ].copy()
+        display_ps.index = display_ps.index + 1
+        display_ps.index.name = "#"
+        display_ps.columns = [
+            "曲目", "艺人", "Power", "Peak", "Wks", "Top5", "#1 Wks",
+        ]
+
+        select_event_ps = st.dataframe(
+            display_ps,
+            column_config={
+                "曲目": st.column_config.TextColumn("曲目", width="medium"),
+                "艺人": st.column_config.TextColumn("艺人", width="medium"),
+                "Power": st.column_config.NumberColumn("Power", format="%,d"),
+                "Peak": st.column_config.NumberColumn("Peak", format="%d"),
+                "Wks": st.column_config.NumberColumn("Wks", format="%d"),
+                "Top5": st.column_config.NumberColumn("Top5", format="%d"),
+                "#1 Wks": st.column_config.NumberColumn("#1 Wks", format="%d"),
+            },
+            use_container_width=True,
+            selection_mode="single-row",
+            on_select="rerun",
+        )
+
+        # Handle row selection → navigate to Tab 2 (单曲历史)
+        if select_event_ps.selection.rows:
+            row_idx = select_event_ps.selection.rows[0]
+            selected_track = power_df.iloc[row_idx]
+            st.session_state.bb_selected_track_id = int(selected_track["track_id"])
+            st.success(
+                f"已选择 **{selected_track['track_name']}** — {selected_track['artist_name']}"
+                f" ｜ Power {selected_track['power_score']:,} · "
+                f"Peak #{selected_track['peak_position']} · "
+                f"{selected_track['weeks_on_chart']}wks\n\n"
+                f"👉 切换到「🎵 单曲历史」Tab 查看榜单详情"
+            )
+
+        st.divider()
+
+        # ── Scoring formula explainer ─────────────────────────────────────
+        with st.expander("📐 Power Score 计算方式"):
+            st.markdown(f"""
+            **核心公式**：`Power Score = Σ(每周得分) + 冠单奖励 + 稳定性加成`
+
+            **1. 周基础分**（归一化到 rank ÷ Top N，保证调整 Top N 后分数可比）：
+            - #1 = 200 分
+            - Top 10%（排名 ≤ {int(top_n * 0.1)}）：200 × (0.75 − 2.5 × rank/N)，约 150 → 85 分
+            - 10%−20%（排名 ≤ {int(top_n * 0.2)}）：85 × 0.85^(排名−{int(top_n * 0.1)})，约 72 → 40 分
+            - 20%−100%：线性衰减至 1 分
+
+            **2. 播放量加权**：`1 + log₂(当周播放次数 ÷ 当周大盘中位数)`，范围 1−4
+            - 播放量 = 中位数 → ×1.0；2× 中位数 → ×2.0；8×+ 中位数 → ×4.0（上限）
+            - 意义：真正大热的周，排名含金量更高
+
+            **3. 奖励**：Peak #1 +100 · #2 +50 · #3 +30 | 每在前五一周 +20 | 每在前十一周 +5
+
+            **总分 {top_n} 首歌曲**，已从高到低排序
+            """)
+
+        # ── Top 20 horizontal bar chart ───────────────────────────────────
+        st.subheader("Top 20 Power Score")
+        top20 = power_df.head(20).iloc[::-1]
+        fig_ps = px.bar(
+            top20,
+            x="power_score",
+            y="track_name",
+            orientation="h",
+            hover_data=["artist_name", "peak_position", "weeks_on_chart"],
+            labels={
+                "power_score": "Power Score",
+                "track_name": "",
+                "artist_name": "艺人",
+            },
+            height=600,
+        )
+        fig_ps.update_yaxes(autorange="reversed")
+        fig_ps.update_traces(
+            marker_color=top20["power_score"].apply(
+                lambda x: f"rgba(29,185,84,{max(0.3, min(1, x / top20['power_score'].max()))})"
+            )
+        )
+        st.plotly_chart(fig_ps, use_container_width=True)
 
 
 # ═══════════════════════════════════════════════════════════════════════

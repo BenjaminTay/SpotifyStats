@@ -9,8 +9,10 @@ import plotly.express as px
 from datetime import datetime
 
 from app.db import get_db, base_filters
+from app.styles import inject_global_styles, page_header
 
 st.set_page_config(page_title="时间报告", page_icon="📅", layout="wide")
+inject_global_styles()
 
 min_ms = st.session_state.get("min_ms", 30000)
 exclude_skipped = st.session_state.get("exclude_skipped", True)
@@ -54,8 +56,14 @@ def load_all_timeline():
 
 # ── Sidebar ─────────────────────────────────────────────────────────
 with st.sidebar:
-    st.title("📅 时间报告")
-    st.caption(f"过滤：跳过=否，最短={min_ms//1000}s")
+    st.markdown(
+        '<div style="text-align:center;margin-bottom:0.5rem;">'
+        '<div style="font-size:2rem;margin-bottom:0.25rem;">📅</div>'
+        '<div style="font-size:1.05rem;font-weight:700;color:#F0F0F5;">时间报告</div>'
+        f'<div style="font-size:0.7rem;color:#8888A0;margin-top:0.15rem;">跳过=否，最短={min_ms//1000}s</div>'
+        '</div>',
+        unsafe_allow_html=True,
+    )
     st.divider()
 
     tab_choice = st.radio("视图", ["年度汇总", "月度详情", "周度详情"])

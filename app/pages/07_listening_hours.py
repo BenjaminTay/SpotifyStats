@@ -9,8 +9,10 @@ import plotly.express as px
 import plotly.graph_objects as go
 
 from app.db import get_db, base_filters
+from app.styles import inject_global_styles, page_header
 
 st.set_page_config(page_title="时段分析", page_icon="⏰", layout="wide")
+inject_global_styles()
 
 min_ms = st.session_state.get("min_ms", 30000)
 exclude_skipped = st.session_state.get("exclude_skipped", True)
@@ -40,8 +42,14 @@ df["dow_label"] = df["ts_dow"].map(dow_names)
 
 # ── Sidebar ─────────────────────────────────────────────────────────
 with st.sidebar:
-    st.title("⏰ 时段分析")
-    st.caption(f"过滤：跳过=否，最短={min_ms//1000}s")
+    st.markdown(
+        '<div style="text-align:center;margin-bottom:0.5rem;">'
+        '<div style="font-size:2rem;margin-bottom:0.25rem;">⏰</div>'
+        '<div style="font-size:1.05rem;font-weight:700;color:#F0F0F5;">时段分析</div>'
+        f'<div style="font-size:0.7rem;color:#8888A0;margin-top:0.15rem;">跳过=否，最短={min_ms//1000}s</div>'
+        '</div>',
+        unsafe_allow_html=True,
+    )
     st.divider()
 
     view = st.radio("视图", ["核心热力图", "逐年趋势", "周末vs工作日", "深夜听歌", "平台时段"])

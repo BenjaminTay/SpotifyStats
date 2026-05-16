@@ -9,9 +9,11 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
 
 from app.db import get_db, init_db, base_filters, query_plays, db_exists
 from app.import_data import import_data
+from app.styles import inject_global_styles, page_header, kpi_row, filter_badge
 
 st.set_page_config(
     page_title="Spotify Stats",
@@ -19,6 +21,26 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded",
 )
+
+inject_global_styles()
+
+# ── Plotly dark template ────────────────────────────────────────────
+PLOTLY_TEMPLATE = {
+    "layout": {
+        "plot_bgcolor": "rgba(0,0,0,0)",
+        "paper_bgcolor": "rgba(0,0,0,0)",
+        "font": {"color": "#8888A0", "size": 11},
+        "xaxis": {"gridcolor": "rgba(255,255,255,0.05)", "linecolor": "rgba(255,255,255,0.08)"},
+        "yaxis": {"gridcolor": "rgba(255,255,255,0.05)", "linecolor": "rgba(255,255,255,0.08)"},
+        "legend": {"font": {"color": "#8888A0"}},
+        "title": {"font": {"color": "#F0F0F5", "size": 14}},
+        "margin": {"l": 10, "r": 10, "t": 40, "b": 10},
+        "hoverlabel": {"bgcolor": "#181825", "font": {"color": "#F0F0F5"}},
+    }
+}
+
+COLORS = ["#1DB954", "#FF6B6B", "#4ECDC4", "#FFD93D", "#A78BFA", "#FF8C42", "#6BCB77", "#E8AA42"]
+
 
 # ── Session state defaults ──────────────────────────────────────────
 if "min_ms" not in st.session_state:
@@ -32,21 +54,46 @@ if "music_only" not in st.session_state:
 # ── Sidebar ──────────────────────────────────────────────────────────
 def render_sidebar():
     with st.sidebar:
-        st.title("🎵 Spotify Stats")
-        st.caption("Extended Streaming History")
+        st.markdown(
+            """
+            <div style="text-align:center;margin-bottom:0.5rem;">
+                <div style="font-size:2.5rem;margin-bottom:0.25rem;">🎵</div>
+                <div style="font-size:1.05rem;font-weight:700;color:#F0F0F5;">Spotify Stats</div>
+                <div style="font-size:0.7rem;color:#8888A0;margin-top:0.1rem;">Extended Streaming History</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
         st.divider()
 
-        # Current filter summary
-        st.caption(
-            f"过滤：最短 {st.session_state.min_ms // 1000}s · "
-            f"跳过={'排除' if st.session_state.exclude_skipped else '包含'} · "
-            f"{'仅音乐' if st.session_state.music_only else '含播客'}"
+        # Filter summary
+        st.markdown(
+            '<div style="font-size:0.65rem;text-transform:uppercase;letter-spacing:0.08em;color:#555;margin-bottom:0.4rem;">当前过滤</div>',
+            unsafe_allow_html=True,
+        )
+        min_s = st.session_state.min_ms // 1000
+        st.markdown(
+            f"""
+            <div style="display:flex;flex-wrap:wrap;gap:0.3rem;margin-bottom:0.75rem;">
+                <span class="sidebar-badge">⏱ {min_s}s</span>
+                <span class="sidebar-badge">{'🚫 跳过' if st.session_state.exclude_skipped else '✅ 跳过'}</span>
+                <span class="sidebar-badge">{'🎶 音乐' if st.session_state.music_only else '📻 全部'}</span>
+            </div>
+            """,
+            unsafe_allow_html=True,
         )
 
-        # Billboard summary
         bb_n = st.session_state.get("bb_top_n", 50)
-        st.caption(f"Billboard：Top {bb_n}")
+        st.markdown(
+            f"""
+            <div style="font-size:0.65rem;text-transform:uppercase;letter-spacing:0.08em;color:#555;margin-bottom:0.4rem;">Billboard</div>
+            <div style="display:flex;flex-wrap:wrap;gap:0.3rem;margin-bottom:0.75rem;">
+                <span class="sidebar-badge">📈 Top {bb_n}</span>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
         st.divider()
 
@@ -55,11 +102,41 @@ def render_sidebar():
             conn = get_db()
             count = conn.execute("SELECT COUNT(*) FROM plays").fetchone()[0]
             conn.close()
-            st.caption(f"数据库：{count:,} 条记录")
+            st.markdown(
+                f"""
+                <div style="font-size:0.65rem;text-transform:uppercase;letter-spacing:0.08em;color:#555;margin-bottom:0.4rem;">数据库</div>
+                <div style="font-size:0.8rem;color:#1DB954;font-weight:600;">● {count:,} 条记录</div>
+                """,
+                unsafe_allow_html=True,
+            )
         else:
-            st.caption("数据库：未导入")
+            st.markdown(
+                '<div style="font-size:0.8rem;color:#FF6B6B;font-weight:600;">● 未导入</div>',
+                unsafe_allow_html=True,
+            )
 
-        st.caption("💡 前往「⚙️ 设置」调整参数和导入数据")
+        st.markdown(
+            '<div style="margin-top:1rem;font-size:0.7rem;color:#8888A0;">💡 前往「⚙️ 设置」调整参数</div>',
+            unsafe_allow_html=True,
+        )
+
+        # Sidebar badge CSS
+        st.markdown(
+            """
+            <style>
+            .sidebar-badge {
+                display:inline-block;
+                background:rgba(24,24,37,0.8);
+                border:1px solid rgba(255,255,255,0.06);
+                border-radius:16px;
+                padding:0.15rem 0.6rem;
+                font-size:0.68rem;
+                color:#8888A0;
+            }
+            </style>
+            """,
+            unsafe_allow_html=True,
+        )
 
 
 # ── First-run import ────────────────────────────────────────────────
@@ -127,8 +204,6 @@ def load_all_plays_df() -> pd.DataFrame:
 render_sidebar()
 ensure_data()
 
-st.title("📊 总览仪表盘")
-
 min_ms = st.session_state.min_ms
 exclude_skipped = st.session_state.exclude_skipped
 music_only = st.session_state.music_only
@@ -143,22 +218,24 @@ total_artists = df["artist_name"].dropna().nunique()
 total_albums = df["album_name"].dropna().nunique()
 total_days = df["ts_date"].nunique()
 avg_daily_hours = total_hours / total_days if total_days > 0 else 0
-
 skip_rate_all = df_all["skipped"].sum() / max(len(df_all), 1) * 100
 
-# KPI 卡片
-st.subheader("关键指标")
-cols = st.columns(6)
-cols[0].metric("总播放次数", f"{total_plays:,}")
-cols[1].metric("总时长", f"{total_hours:,.0f} 小时")
-cols[2].metric("独特曲目", f"{total_tracks:,}")
-cols[3].metric("独特艺人", f"{total_artists:,}")
-cols[4].metric("日均听歌", f"{avg_daily_hours:.1f} 小时")
-cols[5].metric("总跳过率", f"{skip_rate_all:.1f}%")
+page_header("📊 总览仪表盘", description="全局播放数据概览")
 
-st.divider()
+# ── KPI Cards ───────────────────────────────────────────────────────
+kpi_metrics = [
+    {"label": "总播放次数", "value": f"{total_plays:,}"},
+    {"label": "总时长", "value": f"{total_hours:,.0f} 小时"},
+    {"label": "独特曲目", "value": f"{total_tracks:,}"},
+    {"label": "独特艺人", "value": f"{total_artists:,}"},
+    {"label": "日均听歌", "value": f"{avg_daily_hours:.1f} 小时"},
+    {"label": "总跳过率", "value": f"{skip_rate_all:.1f}%"},
+]
+kpi_row(kpi_metrics)
 
-# 月度趋势
+st.markdown("<br>", unsafe_allow_html=True)
+
+# ── Monthly trend ──────────────────────────────────────────────────
 st.subheader("月度播放趋势")
 monthly = (
     df.groupby(["ts_year", "ts_month"])
@@ -166,17 +243,49 @@ monthly = (
     .reset_index()
 )
 monthly["period"] = monthly["ts_year"].astype(str) + "-" + monthly["ts_month"].astype(str).str.zfill(2)
+monthly = monthly.sort_values("period")
 
-fig_trend = px.line(
-    monthly,
-    x="period",
-    y=["plays", "hours"],
-    title="月度播放次数与时长",
-    labels={"value": "数值", "period": "月份", "variable": "指标"},
+fig_trend = go.Figure()
+fig_trend.add_trace(
+    go.Scatter(
+        x=monthly["period"],
+        y=monthly["plays"],
+        name="播放次数",
+        mode="lines+markers",
+        line={"color": "#1DB954", "width": 2.5},
+        marker={"size": 5, "color": "#1DB954"},
+        fill="tozeroy",
+        fillcolor="rgba(29,185,84,0.08)",
+    )
+)
+fig_trend.add_trace(
+    go.Scatter(
+        x=monthly["period"],
+        y=monthly["hours"],
+        name="时长 (小时)",
+        mode="lines+markers",
+        line={"color": "#A78BFA", "width": 2.5},
+        marker={"size": 5, "color": "#A78BFA"},
+        yaxis="y2",
+    )
+)
+fig_trend.update_layout(
+    plot_bgcolor="rgba(0,0,0,0)",
+    paper_bgcolor="rgba(0,0,0,0)",
+    font={"color": "#8888A0", "size": 11},
+    hovermode="x unified",
+    hoverlabel={"bgcolor": "#181825", "font": {"color": "#F0F0F5"}},
+    xaxis={"gridcolor": "rgba(255,255,255,0.05)"},
+    yaxis={"title": "播放次数", "gridcolor": "rgba(255,255,255,0.05)"},
+    yaxis2={"title": "小时", "overlaying": "y", "side": "right", "gridcolor": "rgba(255,255,255,0.03)"},
+    legend={"orientation": "h", "yanchor": "bottom", "y": 1.02, "font": {"color": "#8888A0"}},
+    margin={"l": 10, "r": 10, "t": 40, "b": 10},
 )
 st.plotly_chart(fig_trend, use_container_width=True)
 
-# Top 10 + 平台 + 周天
+st.markdown("<br>", unsafe_allow_html=True)
+
+# ── Three-column grid: Top 10 / Platform / DOW ──────────────────────
 col1, col2, col3 = st.columns(3)
 
 with col1:
@@ -196,8 +305,12 @@ with col1:
         hover_data=["artist_name"],
         labels={"track_name": "", "plays": "播放次数"},
         height=350,
+        color_discrete_sequence=[COLORS[0]],
+        template="plotly_dark",
     )
+    fig_top.update_layout(**PLOTLY_TEMPLATE["layout"])
     fig_top.update_yaxes(autorange="reversed")
+    fig_top.update_traces(marker={"color": COLORS[0]})
     st.plotly_chart(fig_top, use_container_width=True)
 
 with col2:
@@ -209,27 +322,30 @@ with col2:
         names="platform",
         values="count",
         height=350,
+        color_discrete_sequence=COLORS,
     )
+    fig_plat.update_layout(**PLOTLY_TEMPLATE["layout"])
+    fig_plat.update_traces(textinfo="label+percent", textfont={"color": "#F0F0F5"})
     st.plotly_chart(fig_plat, use_container_width=True)
 
 with col3:
     st.subheader("一周各天听歌量")
     dow_names = {0: "周一", 1: "周二", 2: "周三", 3: "周四", 4: "周五", 5: "周六", 6: "周日"}
-    dow_counts = (
-        df["ts_dow"]
-        .value_counts()
-        .sort_index()
-        .reset_index()
-    )
+    dow_counts = df["ts_dow"].value_counts().sort_index().reset_index()
     dow_counts.columns = ["dow", "count"]
     dow_counts["day"] = dow_counts["dow"].map(dow_names)
+
     fig_dow = px.bar(
         dow_counts,
         x="day",
         y="count",
         labels={"day": "", "count": "播放次数"},
         height=350,
+        color_discrete_sequence=[COLORS[2]],
+        template="plotly_dark",
     )
+    fig_dow.update_layout(**PLOTLY_TEMPLATE["layout"])
+    fig_dow.update_traces(marker={"color": COLORS[2]})
     st.plotly_chart(fig_dow, use_container_width=True)
 
 st.divider()

@@ -47,7 +47,7 @@ JSON 文件 (Spotify导出) ──→ import_data.py ──→ SQLite (spotify_s
 - **`app/import_data.py`** — ETL 管线。逐文件读取 JSON，UTC→本地时间转换，平台字符串归一化，维度表 upsert（artist/album/track，以 `(artist_id, track_name)` 为 key 合并重复版本），同步写入 `track_albums` 关联表，事实表 5000 行批量插入。
 - **`app/utils.py`** — `convert_to_local_time()` 按国家代码查表转本地时间（CN=UTC+8）；`classify_platform()` 将类似 `iOS 15.5 (iPhone14,5)` 归一化为 `ios`。
 - **`app/main.py`** — 入口 + 总览仪表盘。在 `st.session_state` 中初始化全局过滤参数（`min_ms`, `exclude_skipped`, `music_only`），侧边栏仅展示当前参数摘要和数据库状态，首次运行时自动触发数据导入。
-- **`app/pages/09_settings.py`** — 总设置页。集中管理数据过滤（最短播放时长/排除跳过/仅音乐）、Billboard 上榜数量（`bb_top_n`）、数据导入。任何参数变更时自动清除全局缓存并重跑，确保所有页面数据一致。
+- **`app/pages/09_settings.py`** — 总设置页。集中管理数据过滤（最短播放时长/排除跳过/仅音乐）、Billboard 上榜数量（`bb_top_n`）和统计周期边界（`bb_week_start_dow`/`bb_week_start_hour`）、数据导入。任何参数变更时自动清除全局缓存并重跑，确保所有页面数据一致。
 
 ### 数据库设计
 
@@ -61,7 +61,7 @@ Streamlit 原生多页：`main.py` 为首页，`pages/` 下 8 个分析页自动
 
 `09_settings.py` 为总设置页，集中管理所有参数：数据过滤（`min_ms`/`exclude_skipped`/`music_only`）、Billboard 上榜数量（`bb_top_n`）、数据导入。`main.py` 侧边栏仅展示当前参数摘要和数据库状态。
 
-`08_billboard.py` 包含 8 个子 Tab：周榜、冠单历史、单曲历史、艺人榜单、专辑榜单、歌曲总榜、艺人总榜、专辑总榜。Billboard 周以周五 12:00 为界，排名 tiebreaker 为总收听时长。侧边栏仅提供年份范围过滤，数据过滤（最短播放时长/排除跳过/仅音乐）统一遵从「设置」页全局参数。周榜支持实时 Peak 周数（`running_peak_wks`），冠单历史含年度冠单统计和空冠歌曲列表，歌曲总榜含歌曲周播放 Top 100，艺人/专辑榜单含搜索和每周入榜概况。`st.session_state.bb_selected_track_id` 实现跨 Tab 曲目导航，`st.session_state.bb_week_selector` 记忆周选择器位置，`st.session_state.bb_top_n` 控制每周上榜数量。
+`08_billboard.py` 包含 9 个子 Tab：周榜、冠单历史、单曲历史、艺人榜单、专辑榜单、歌曲走势总榜（Power Score 综合评分）、歌曲总榜、艺人总榜、专辑总榜。Billboard 统计周期可通过「设置」页面配置（默认周五 12:00 为界），排名 tiebreaker 为总收听时长。歌曲走势总榜采用复合评分算法：归一化逆排名基础分 + log₂ 播放量加权 + 冠单/稳定性奖励，Top N 参数变更时排名自适应。侧边栏仅提供年份范围过滤，数据过滤（最短播放时长/排除跳过/仅音乐）统一遵从「设置」页全局参数。周榜支持实时 Peak 周数（`running_peak_wks`），冠单历史含年度冠单统计和空冠歌曲列表，歌曲总榜含歌曲周播放 Top 100，艺人/专辑榜单含搜索和每周入榜概况。`st.session_state.bb_selected_track_id` 实现跨 Tab 曲目导航，`st.session_state.bb_week_selector` 记忆周选择器位置，`st.session_state.bb_top_n` 控制每周上榜数量，`st.session_state.bb_week_start_dow`/`st.session_state.bb_week_start_hour` 控制统计周期边界。
 
 ### 数据过滤策略
 

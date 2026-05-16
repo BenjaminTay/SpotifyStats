@@ -9,8 +9,10 @@ import plotly.express as px
 import plotly.graph_objects as go
 
 from app.db import get_db, base_filters
+from app.styles import inject_global_styles, page_header
 
 st.set_page_config(page_title="艺人深度分析", page_icon="🎸", layout="wide")
+inject_global_styles()
 
 min_ms = st.session_state.get("min_ms", 30000)
 exclude_skipped = st.session_state.get("exclude_skipped", True)
@@ -61,8 +63,14 @@ artist_names = [f"{name} ({cnt}次)" for _, name, cnt in artist_list]
 
 # ── Sidebar ─────────────────────────────────────────────────────────
 with st.sidebar:
-    st.title("🎸 艺人深度")
-    st.caption(f"过滤：跳过=否，最短={min_ms//1000}s")
+    st.markdown(
+        '<div style="text-align:center;margin-bottom:0.5rem;">'
+        '<div style="font-size:2rem;margin-bottom:0.25rem;">🎸</div>'
+        '<div style="font-size:1.05rem;font-weight:700;color:#F0F0F5;">艺人深度</div>'
+        f'<div style="font-size:0.7rem;color:#8888A0;margin-top:0.15rem;">跳过=否，最短={min_ms//1000}s</div>'
+        '</div>',
+        unsafe_allow_html=True,
+    )
     st.divider()
 
     selected_idx = st.selectbox(
@@ -82,8 +90,7 @@ first_date = artist_df["ts_date"].min()
 last_date = artist_df["ts_date"].max()
 
 # ── Stats cards ─────────────────────────────────────────────────────
-st.title(f"🎸 {selected_artist_name}")
-st.caption(f"共 {total_plays:,} 次播放 · {total_hours:,.1f} 小时 · {unique_tracks} 首曲目")
+page_header(f"🎸 {selected_artist_name}", description=f"共 {total_plays:,} 次播放 · {total_hours:,.1f} 小时 · {unique_tracks} 首曲目")
 
 col1, col2, col3, col4 = st.columns(4)
 col1.metric("总播放次数", f"{total_plays:,}")
