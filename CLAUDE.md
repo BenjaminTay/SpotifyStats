@@ -6,6 +6,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Spotify Extended Streaming History 数据分析 Web 应用。从 Spotify 官方导出的 JSON 播放记录中导入数据到 SQLite，通过 Streamlit 提供交互式多维度统计仪表盘。
 
+**UI 主题**：「Vinyl Archive」黑胶档案馆 — 暖奶油白底色 + 暗金强调 + 衬线字体 + 噪点纹理，装饰层用复古唱片美学，数据区域保持清晰可读。
+
 ## 常用命令
 
 ```bash
@@ -46,7 +48,8 @@ JSON 文件 (Spotify导出) ──→ import_data.py ──→ SQLite (spotify_s
 - **`app/db.py`** — 数据库层。`get_db()` 获取连接（默认只读，WAL模式），`base_filters()` 生成标准 WHERE 条件片段（排除跳过 + 最短时长 + 仅音乐），所有统计页面通过此函数统一过滤逻辑。
 - **`app/import_data.py`** — ETL 管线。逐文件读取 JSON，UTC→本地时间转换，平台字符串归一化，维度表 upsert（artist/album/track，以 `(artist_id, track_name)` 为 key 合并重复版本），同步写入 `track_albums` 关联表，事实表 5000 行批量插入。
 - **`app/utils.py`** — `convert_to_local_time()` 按国家代码查表转本地时间（CN=UTC+8）；`classify_platform()` 将类似 `iOS 15.5 (iPhone14,5)` 归一化为 `ios`。
-- **`app/main.py`** — 入口 + 总览仪表盘。在 `st.session_state` 中初始化全局过滤参数（`min_ms`, `exclude_skipped`, `music_only`），侧边栏仅展示当前参数摘要和数据库状态，首次运行时自动触发数据导入。
+- **`app/styles.py`** — 全局 CSS 注入。「Vinyl Archive」暖色主题：CSS 变量（`--gold`/`--bg-page`/`--bg-card` 等）、噪点纹理背景、卡片金左边线、衬线字体、表头暖金底色、侧边栏牛皮纸色。`page_header()` 和 `kpi_row()` 和 `filter_badge()` 辅助函数供各页面统一使用。
+- **`app/main.py`** — 入口 + 总览仪表盘。在 `st.session_state` 中初始化全局过滤参数（`min_ms`, `exclude_skipped`, `music_only`），侧边栏仅展示当前参数摘要和数据库状态，首次运行时自动触发数据导入。定义暖色 Plotly 图表模板（`WARM_TEMPLATE`）和色盘（`COLORS`），供各页面复用。
 - **`app/pages/09_settings.py`** — 总设置页。集中管理数据过滤（最短播放时长/排除跳过/仅音乐）、Billboard 上榜数量（`bb_top_n`）和统计周期边界（`bb_week_start_dow`/`bb_week_start_hour`）、数据导入。任何参数变更时自动清除全局缓存并重跑，确保所有页面数据一致。
 
 ### 数据库设计

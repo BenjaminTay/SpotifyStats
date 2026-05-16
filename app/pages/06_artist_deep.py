@@ -66,8 +66,8 @@ with st.sidebar:
     st.markdown(
         '<div style="text-align:center;margin-bottom:0.5rem;">'
         '<div style="font-size:2rem;margin-bottom:0.25rem;">🎸</div>'
-        '<div style="font-size:1.05rem;font-weight:700;color:#F0F0F5;">艺人深度</div>'
-        f'<div style="font-size:0.7rem;color:#8888A0;margin-top:0.15rem;">跳过=否，最短={min_ms//1000}s</div>'
+        '<div style="font-size:1.05rem;font-weight:700;color:#2C2416;">艺人深度</div>'
+        f'<div style="font-size:0.7rem;color:#8B7355;margin-top:0.15rem;">跳过=否，最短={min_ms//1000}s</div>'
         '</div>',
         unsafe_allow_html=True,
     )

@@ -10,7 +10,7 @@ from .utils import convert_to_local_time, classify_platform
 
 DATA_DIR = os.path.join(
     os.path.dirname(os.path.dirname(__file__)),
-    "Spotify Extended Streaming History - 251029",
+    "Spotify Extended Streaming History",
 )
 
 

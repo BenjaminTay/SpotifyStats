@@ -18,10 +18,12 @@ min_ms = st.session_state.get("min_ms", 30000)
 exclude_skipped = st.session_state.get("exclude_skipped", True)
 music_only = st.session_state.get("music_only", True)
 
-# Spotify brand colors (matching Neon Vinyl theme)
-SPOTIFY_GREEN = "#1DB954"
-SPOTIFY_DARK = "#0A0A0F"
-SPOTIFY_CARD = "#181825"
+# Vinyl Archive warm palette
+GOLD = "#B8860B"
+WARM_DARK = "#3C1F0A"
+CARD_BG = "#FFFFFF"
+TEXT_PRIMARY = "#2C2416"
+TEXT_SECONDARY = "#8B7355"
 
 
 @st.cache_data(ttl=3600)
@@ -67,8 +69,8 @@ with st.sidebar:
     st.markdown(
         '<div style="text-align:center;margin-bottom:0.5rem;">'
         '<div style="font-size:2rem;margin-bottom:0.25rem;">🎁</div>'
-        '<div style="font-size:1.05rem;font-weight:700;color:#F0F0F5;">Wrapped</div>'
-        f'<div style="font-size:0.7rem;color:#8888A0;margin-top:0.15rem;">跳过=否，最短={min_ms//1000}s</div>'
+        '<div style="font-size:1.05rem;font-weight:700;color:#2C2416;">Wrapped</div>'
+        f'<div style="font-size:0.7rem;color:#8B7355;margin-top:0.15rem;">跳过=否，最短={min_ms//1000}s</div>'
         '</div>',
         unsafe_allow_html=True,
     )
@@ -159,7 +161,7 @@ st.markdown(
     f"""
 <style>
 .wrapped-hero {{
-    background: linear-gradient(135deg, {SPOTIFY_DARK} 0%, {SPOTIFY_GREEN} 100%);
+    background: linear-gradient(135deg, {WARM_DARK} 0%, {GOLD} 100%);
     border-radius: 20px;
     padding: 40px;
     text-align: center;
@@ -177,29 +179,34 @@ st.markdown(
     line-height: 1;
 }}
 .wrapped-card {{
-    background: linear-gradient(135deg, #12121A 0%, #181825 100%);
-    border: 1px solid rgba(255,255,255,0.06);
+    background: #FFFFFF;
+    border: 1px solid rgba(139,115,85,0.12);
     border-radius: 16px;
     padding: 28px;
     margin-bottom: 16px;
-    border-left: 4px solid {SPOTIFY_GREEN};
+    border-left: 4px solid {GOLD};
+    box-shadow: 0 1px 3px rgba(139,69,19,0.06);
 }}
 .wrapped-card h3 {{
-    color: {SPOTIFY_GREEN};
+    color: {GOLD};
     margin-top: 0;
+    font-family: Georgia, serif;
 }}
 .rank-number {{
     font-size: 2.5em;
     font-weight: 900;
-    color: {SPOTIFY_GREEN};
+    color: {GOLD};
+    font-family: Georgia, serif;
 }}
 .artist-name {{
     font-size: 1.5em;
     font-weight: 700;
+    color: {TEXT_PRIMARY};
 }}
 .track-name {{
     font-size: 1.2em;
     font-weight: 600;
+    color: {TEXT_PRIMARY};
 }}
 </style>
 """,
@@ -229,135 +236,124 @@ st.markdown(
 col1, col2 = st.columns(2)
 
 with col1:
-    st.markdown('<div class="wrapped-card">', unsafe_allow_html=True)
-    st.subheader("🎤 Top 5 艺人")
-    for i, (_, row) in enumerate(top_artists.iterrows()):
-        st.markdown(
-            f"""
-            <div style="display:flex; align-items:center; gap:16px; margin-bottom:16px;">
-                <span class="rank-number">#{i+1}</span>
-                <div>
-                    <span class="artist-name">{row['artist_name']}</span><br>
-                    <span style="color:#999;">{row['plays']:,} 次 · {row['hours']:.1f} 小时</span>
-                </div>
+    artists_html = "".join(
+        f"""<div style="display:flex; align-items:center; gap:16px; margin-bottom:16px;">
+            <span class="rank-number">#{i+1}</span>
+            <div>
+                <span class="artist-name">{row['artist_name']}</span><br>
+                <span style="color:#8B7355;">{row['plays']:,} 次 · {row['hours']:.1f} 小时</span>
             </div>
-            """,
-            unsafe_allow_html=True,
-        )
-    st.markdown("</div>", unsafe_allow_html=True)
+        </div>"""
+        for i, (_, row) in enumerate(top_artists.iterrows())
+    )
+    st.markdown(
+        f'<div class="wrapped-card"><h3>🎤 Top 5 艺人</h3>{artists_html}</div>',
+        unsafe_allow_html=True,
+    )
 
 with col2:
-    st.markdown('<div class="wrapped-card">', unsafe_allow_html=True)
-    st.subheader("🎵 Top 5 曲目")
-    for i, (_, row) in enumerate(top_tracks.iterrows()):
-        st.markdown(
-            f"""
-            <div style="display:flex; align-items:center; gap:16px; margin-bottom:16px;">
-                <span class="rank-number">#{i+1}</span>
-                <div>
-                    <span class="track-name">{row['track_name']}</span><br>
-                    <span style="color:#999;">{row['artist_name']} · {row['plays']:,} 次 · {row['hours']:.1f} 小时</span>
-                </div>
+    tracks_html = "".join(
+        f"""<div style="display:flex; align-items:center; gap:16px; margin-bottom:16px;">
+            <span class="rank-number">#{i+1}</span>
+            <div>
+                <span class="track-name">{row['track_name']}</span><br>
+                <span style="color:#8B7355;">{row['artist_name']} · {row['plays']:,} 次 · {row['hours']:.1f} 小时</span>
             </div>
-            """,
-            unsafe_allow_html=True,
-        )
-    st.markdown("</div>", unsafe_allow_html=True)
+        </div>"""
+        for i, (_, row) in enumerate(top_tracks.iterrows())
+    )
+    st.markdown(
+        f'<div class="wrapped-card"><h3>🎵 Top 5 曲目</h3>{tracks_html}</div>',
+        unsafe_allow_html=True,
+    )
 
 # ── Row 2: Top Album + Personality ──────────────────────────────────
 col3, col4 = st.columns(2)
 
 with col3:
-    st.markdown('<div class="wrapped-card">', unsafe_allow_html=True)
-    st.subheader("💿 年度最佳专辑")
     if not top_albums.empty:
         album = top_albums.iloc[0]
-        st.markdown(
-            f"""
-            <div style="text-align:center; padding:20px 0;">
-                <span class="artist-name">{album['album_name']}</span><br>
-                <span style="color:#999;">{album['artist_name']}</span><br>
-                <span style="font-size:1.5em; font-weight:700; color:{SPOTIFY_GREEN};">{album['hours']:.1f} 小时</span>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-    st.markdown("</div>", unsafe_allow_html=True)
-
-with col4:
-    st.markdown('<div class="wrapped-card">', unsafe_allow_html=True)
-    st.subheader("🎭 你的听歌人格")
+        album_html = f"""<div style="text-align:center; padding:20px 0;">
+            <span class="artist-name">{album['album_name']}</span><br>
+            <span style="color:#8B7355;">{album['artist_name']}</span><br>
+            <span style="font-size:1.5em; font-weight:700; color:{GOLD};">{album['hours']:.1f} 小时</span>
+        </div>"""
+    else:
+        album_html = ""
     st.markdown(
-        f"""
-        <div style="text-align:center; padding:20px 0;">
-            <span style="font-size:2em; font-weight:900; color:{SPOTIFY_GREEN};">{personality_label}</span><br>
-            <p style="color:#ccc; margin-top:12px;">{personality_desc}</p>
-        </div>
-        """,
+        f'<div class="wrapped-card"><h3>💿 年度最佳专辑</h3>{album_html}</div>',
         unsafe_allow_html=True,
     )
-    # Sub-score bars
+
+with col4:
+    # Build progress bars as HTML
+    progress_bars = ""
     for label, (score_val, _) in scores.items():
-        st.caption(f"{label}: {score_val:.0f}%")
-        st.progress(min(score_val / 100, 1.0))
-    st.markdown("</div>", unsafe_allow_html=True)
+        pct = min(score_val / 100, 1.0)
+        progress_bars += f"""<p style="color:#8B7355; margin:8px 0 4px; font-size:0.8em;">{label}: {score_val:.0f}%</p>
+        <div style="background:rgba(139,115,85,0.15); border-radius:4px; height:6px; margin-bottom:8px;">
+            <div style="background:{GOLD}; width:{pct*100:.0f}%; height:100%; border-radius:4px;"></div>
+        </div>"""
+
+    st.markdown(
+        f"""<div class="wrapped-card">
+        <h3>🎭 你的听歌人格</h3>
+        <div style="text-align:center; padding:20px 0;">
+            <span style="font-size:2em; font-weight:900; color:{GOLD};">{personality_label}</span><br>
+            <p style="color:#8B7355; margin-top:12px;">{personality_desc}</p>
+        </div>
+        {progress_bars}
+        </div>""",
+        unsafe_allow_html=True,
+    )
 
 # ── Row 3: Time Machine + Platform Story ────────────────────────────
 col5, col6 = st.columns(2)
 
 with col5:
-    st.markdown('<div class="wrapped-card">', unsafe_allow_html=True)
-    st.subheader("⏰ 时间机器")
     st.markdown(
-        f"""
+        f"""<div class="wrapped-card">
+        <h3>⏰ 时间机器</h3>
         <div style="text-align:center;">
-            <p style="color:#999;">一月最爱</p>
+            <p style="color:#8B7355;">一月最爱</p>
             <span class="track-name">{jan_top}</span>
-            <hr style="border-color:#333;">
-            <p style="color:#999;">十二月最爱</p>
+            <hr style="border-color:#D4A84B;">
+            <p style="color:#8B7355;">十二月最爱</p>
             <span class="track-name">{dec_top}</span>
         </div>
-        """,
+        </div>""",
         unsafe_allow_html=True,
     )
-    st.markdown("</div>", unsafe_allow_html=True)
 
 with col6:
-    st.markdown('<div class="wrapped-card">', unsafe_allow_html=True)
-    st.subheader("📱 平台故事")
-    for platform, hours in platform_hours.items():
-        st.markdown(
-            f"""
-            <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
-                <span>{platform.upper()}</span>
-                <span style="color:{SPOTIFY_GREEN}; font-weight:700;">{hours:.1f} 小时</span>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-    st.markdown("</div>", unsafe_allow_html=True)
+    platforms_html = "".join(
+        f"""<div style="display:flex; justify-content:space-between; margin-bottom:8px;">
+            <span>{p.upper()}</span>
+            <span style="color:{GOLD}; font-weight:700;">{h:.1f} 小时</span>
+        </div>"""
+        for p, h in platform_hours.items()
+    )
+    st.markdown(
+        f'<div class="wrapped-card"><h3>📱 平台故事</h3>{platforms_html}</div>',
+        unsafe_allow_html=True,
+    )
 
 # ── Row 4: Peak Hour + Monthly Pulse ────────────────────────────────
 col7, col8 = st.columns(2)
 
 with col7:
-    st.markdown('<div class="wrapped-card">', unsafe_allow_html=True)
-    st.subheader("🌙 高峰时段")
     st.markdown(
-        f"""
+        f"""<div class="wrapped-card">
+        <h3>🌙 高峰时段</h3>
         <div style="text-align:center; padding:30px 0;">
-            <p style="color:#999;">你最常听歌的时间是</p>
-            <span style="font-size:3em; font-weight:900; color:{SPOTIFY_GREEN};">{peak_hour}:00</span>
+            <p style="color:#8B7355;">你最常听歌的时间是</p>
+            <span style="font-size:3em; font-weight:900; color:{GOLD};">{peak_hour}:00</span>
         </div>
-        """,
+        </div>""",
         unsafe_allow_html=True,
     )
-    st.markdown("</div>", unsafe_allow_html=True)
 
 with col8:
-    st.markdown('<div class="wrapped-card">', unsafe_allow_html=True)
-    st.subheader("📊 月度脉搏")
-
     monthly = (
         year_df.groupby("ts_month")
         .agg(hours=("ms_played", lambda x: x.sum() / 3_600_000))
@@ -371,17 +367,19 @@ with col8:
         y="hours",
         labels={"ts_month": "月份", "hours": "小时"},
     )
-    fig.update_traces(marker_color=SPOTIFY_GREEN)
+    fig.update_traces(marker_color=GOLD)
     fig.update_layout(
         height=220,
         margin=dict(l=0, r=0, t=0, b=0),
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
-        font_color="#999",
+        font_color="#8B7355",
     )
     fig.update_xaxes(tickvals=list(range(1, 13)))
-    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
-    st.markdown("</div>", unsafe_allow_html=True)
+
+    with st.container(border=True):
+        st.markdown('<h3 style="color:#B8860B; margin-top:0;">📊 月度脉搏</h3>', unsafe_allow_html=True)
+        st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
 
 # ── Footer ──────────────────────────────────────────────────────────
 st.divider()

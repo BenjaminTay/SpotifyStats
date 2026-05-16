@@ -47,8 +47,8 @@ with st.sidebar:
     st.markdown(
         '<div style="text-align:center;margin-bottom:0.5rem;">'
         '<div style="font-size:2rem;margin-bottom:0.25rem;">🏆</div>'
-        '<div style="font-size:1.05rem;font-weight:700;color:#F0F0F5;">排行榜</div>'
-        f'<div style="font-size:0.7rem;color:#8888A0;margin-top:0.15rem;">跳过=否，最短={min_ms//1000}s</div>'
+        '<div style="font-size:1.05rem;font-weight:700;color:#2C2416;">排行榜</div>'
+        f'<div style="font-size:0.7rem;color:#8B7355;margin-top:0.15rem;">跳过=否，最短={min_ms//1000}s</div>'
         '</div>',
         unsafe_allow_html=True,
     )
@@ -138,7 +138,7 @@ ranked.index.name = "#"
 col1, col2 = st.columns([1, 1])
 
 with col1:
-    st.markdown('<div style="font-size:1.1rem;font-weight:600;color:#F0F0F5;margin-bottom:0.75rem;">📋 排行表格</div>', unsafe_allow_html=True)
+    st.markdown('<div style="font-size:1.1rem;font-weight:600;color:#2C2416;margin-bottom:0.75rem;">📋 排行表格</div>', unsafe_allow_html=True)
     display_cols = [sort_col]
     if entity_type == "曲目":
         display_cols = ["track_name", "artist_name", "plays", "hours"]
@@ -157,7 +157,7 @@ with col1:
     st.dataframe(ranked_display, use_container_width=True)
 
 with col2:
-    st.markdown('<div style="font-size:1.1rem;font-weight:600;color:#F0F0F5;margin-bottom:0.75rem;">📊 图表</div>', unsafe_allow_html=True)
+    st.markdown('<div style="font-size:1.1rem;font-weight:600;color:#2C2416;margin-bottom:0.75rem;">📊 图表</div>', unsafe_allow_html=True)
     if entity_type == "曲目":
         y_col = "track_name"
         hover_data = ["artist_name"]

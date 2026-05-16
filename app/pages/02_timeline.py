@@ -59,8 +59,8 @@ with st.sidebar:
     st.markdown(
         '<div style="text-align:center;margin-bottom:0.5rem;">'
         '<div style="font-size:2rem;margin-bottom:0.25rem;">📅</div>'
-        '<div style="font-size:1.05rem;font-weight:700;color:#F0F0F5;">时间报告</div>'
-        f'<div style="font-size:0.7rem;color:#8888A0;margin-top:0.15rem;">跳过=否，最短={min_ms//1000}s</div>'
+        '<div style="font-size:1.05rem;font-weight:700;color:#2C2416;">时间报告</div>'
+        f'<div style="font-size:0.7rem;color:#8B7355;margin-top:0.15rem;">跳过=否，最短={min_ms//1000}s</div>'
         '</div>',
         unsafe_allow_html=True,
     )
@@ -207,16 +207,24 @@ else:
     )
 
     if selected_week:
-        parts = selected_week.replace("W", "-").split("-")
-        yr, wk = int(parts[0]), int(parts[1])
+        yr, wk = selected_week.split("-W")
+        yr, wk = int(yr), int(wk)
         week_df = df[(df["ts_year"] == yr) & (df["ts_week"] == wk)]
         if not week_df.empty:
             st.write(f"{len(week_df)} 次播放")
             top5 = (
                 week_df.groupby(["track_name", "artist_name"])
-                .size()
-                .sort_values(ascending=False)
+                .agg(plays=("play_id", "count"), hours=("ms_played", lambda x: x.sum() / 3_600_000))
+                .sort_values("plays", ascending=False)
                 .head(5)
-                .reset_index(name="plays")
+                .reset_index()
             )
-            st.dataframe(top5, use_container_width=True, hide_index=True)
+            top5["hours"] = top5["hours"].round(1)
+
+            cols = st.columns(5)
+            for i, (_, row) in enumerate(top5.iterrows()):
+                cols[i].metric(
+                    f"#{i+1} {row['track_name'][:20]}",
+                    f"{row['plays']} 次",
+                    delta=row["artist_name"][:25],
+                )

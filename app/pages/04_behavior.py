@@ -41,8 +41,8 @@ with st.sidebar:
     st.markdown(
         '<div style="text-align:center;margin-bottom:0.5rem;">'
         '<div style="font-size:2rem;margin-bottom:0.25rem;">🔍</div>'
-        '<div style="font-size:1.05rem;font-weight:700;color:#F0F0F5;">播放行为</div>'
-        '<div style="font-size:0.7rem;color:#8888A0;margin-top:0.15rem;">全量数据（含跳过和短播放）</div>'
+        '<div style="font-size:1.05rem;font-weight:700;color:#2C2416;">播放行为</div>'
+        '<div style="font-size:0.7rem;color:#8B7355;margin-top:0.15rem;">全量数据（含跳过和短播放）</div>'
         '</div>',
         unsafe_allow_html=True,
     )

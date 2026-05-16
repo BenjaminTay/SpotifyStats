@@ -2,6 +2,8 @@
 
 从 Spotify 官方导出的 Extended Streaming History 数据中导入播放记录，提供多维度交互式统计分析仪表盘。
 
+**UI 主题**：「Vinyl Archive」黑胶档案馆 — 暖奶油白底色、暗金强调色、Georgia 衬线字体、噪点纹理，以复古唱片美学为装饰层，数据区域保持清晰可读。
+
 ## 功能
 
 - **总览仪表盘** — 关键指标卡片、月度播放趋势、Top 10 曲目、平台分布、一周听歌热力图
@@ -54,19 +56,21 @@ streamlit run app/main.py
 ## 技术栈
 
 - **Streamlit** — Web 应用框架
-- **SQLite** — 本地数据库（74,000+ 条记录，查询毫秒级）
-- **Plotly** — 交互式图表
+- **SQLite** — 本地数据库（86,000+ 条记录，查询毫秒级）
+- **Plotly** — 交互式图表（暖色色盘）
 - **Pandas** — 数据聚合处理
+- **CSS** — 「Vinyl Archive」黑胶档案馆暖色主题（自定义全局 CSS 注入）
 
 ## 项目结构
 
 ```
 SpotifyStats/
 ├── app/
-│   ├── main.py                     # 入口 + 总览仪表盘
+│   ├── main.py                     # 入口 + 总览仪表盘 + Plotly 暖色模板
 │   ├── db.py                       # 数据库层（建表/查询/过滤）
 │   ├── import_data.py              # JSON → SQLite 导入管线
 │   ├── utils.py                    # 工具函数（时区转换/平台归一化）
+│   ├── styles.py                   # 全局 CSS（Vinyl Archive 暖色主题）
 │   └── pages/
 │       ├── 02_timeline.py          # 年度/月度/周度报告
 │       ├── 03_leaderboard.py       # 排行榜
@@ -78,7 +82,7 @@ SpotifyStats/
 │       └── 09_settings.py          # 设置（集中管理所有参数）
 ├── scripts/
 │   └── analyze_weekly_tracks.py    # 每周独特曲目数分析（确定默认 Top N）
-├── .streamlit/config.toml          # 主题配置
+├── .streamlit/config.toml          # 主题配置（暖色 + 衬线字体）
 ├── requirements.txt
 └── README.md
 ```

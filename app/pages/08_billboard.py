@@ -229,8 +229,8 @@ with st.sidebar:
     st.markdown(
         '<div style="text-align:center;margin-bottom:0.5rem;">'
         '<div style="font-size:2rem;margin-bottom:0.25rem;">📈</div>'
-        '<div style="font-size:1.05rem;font-weight:700;color:#F0F0F5;">Billboard 周榜</div>'
-        f'<div style="font-size:0.68rem;color:#8888A0;margin-top:0.15rem;">最短 {min_ms // 1000}s · '
+        '<div style="font-size:1.05rem;font-weight:700;color:#2C2416;">Billboard 周榜</div>'
+        f'<div style="font-size:0.68rem;color:#8B7355;margin-top:0.15rem;">最短 {min_ms // 1000}s · '
         f'跳过={"排除" if exclude_skipped else "包含"} · {"仅音乐" if music_only else "含播客"}</div>'
         '</div>',
         unsafe_allow_html=True,
@@ -678,8 +678,8 @@ with tab3:
                 y=y_vals,
                 mode="lines+markers",
                 name=filtered_options.iloc[selected_track_idx]["track_name"],
-                line=dict(color="#1DB954", width=2),
-                marker=dict(size=7, color="#1DB954"),
+                line=dict(color="#B8860B", width=2),
+                marker=dict(size=7, color="#B8860B"),
                 text=texts,
                 hovertemplate="%{text}<extra></extra>",
                 connectgaps=False,
@@ -696,7 +696,7 @@ with tab3:
         fig.add_hline(
             y=ts_row["peak_position"],
             line_dash="dot",
-            line_color="#1DB954",
+            line_color="#B8860B",
             annotation_text=f"Peak #{ts_row['peak_position']}",
         )
 
@@ -758,7 +758,7 @@ with tab4:
         col1b.metric("#1 曲数", f"{int(art_row['top1'])} 首")
         col2b.metric("Top 5 曲数", f"{int(art_row['top5'])} 首")
         col3b.metric("Top 10 曲数", f"{int(art_row['top10'])} 首")
-        col4b.metric("冠军周数", f"{int(art_row['weeks_at_no1'])} 周")
+        col4b.metric("#1周数", f"{int(art_row['weeks_at_no1'])} 周")
 
         st.divider()
 
@@ -772,24 +772,32 @@ with tab4:
 
         # ── Charting tracks table ─────────────────────────────────────
         art_tracks = artist_summary[artist_summary["artist_name"] == selected_artist].copy()
+        # Merge weeks_at_no1 and first_peak_week from track_summary
+        art_tracks = art_tracks.merge(
+            track_summary[["track_id", "weeks_at_no1", "first_peak_week"]],
+            on="track_id", how="left"
+        )
+        art_tracks["weeks_at_no1"] = art_tracks["weeks_at_no1"].fillna(0).astype(int)
+        art_tracks["first_peak_week"] = art_tracks["first_peak_week"].astype(str)
+        # Three-level sort: Peak → chosen tiebreaker → the other
         if peak_tiebreaker == "在榜周数":
             art_tracks = art_tracks.sort_values(
-                ["peak_position", "weeks_on_chart"], ascending=[True, False]
+                ["peak_position", "weeks_on_chart", "weeks_at_peak"], ascending=[True, False, False]
             )
         else:
             art_tracks = art_tracks.sort_values(
-                ["peak_position", "weeks_at_peak"], ascending=[True, False]
+                ["peak_position", "weeks_at_peak", "weeks_on_chart"], ascending=[True, False, False]
             )
         art_tracks = art_tracks.reset_index(drop=True)
         art_tracks.index = art_tracks.index + 1
 
         display_art = art_tracks[
             ["track_name", "peak_position", "weeks_on_chart", "weeks_at_peak",
-             "first_week", "last_week", "total_chart_plays"]
+             "first_week", "first_peak_week", "last_week", "total_chart_plays"]
         ].copy()
         display_art["first_week"] = display_art["first_week"].astype(str)
         display_art["last_week"] = display_art["last_week"].astype(str)
-        display_art.columns = ["曲目", "Peak", "Wks", "Pk Wks", "首次入榜", "最近上榜", "总播放"]
+        display_art.columns = ["曲目", "Peak", "Wks", "Pk Wks", "首次入榜", "首次Peak周", "最近上榜", "总播放"]
         display_art.index.name = "#"
 
         st.subheader(f"{selected_artist} · 入榜曲目")
@@ -802,6 +810,7 @@ with tab4:
                 "Wks": st.column_config.NumberColumn("Wks", format="%d"),
                 "Pk Wks": st.column_config.NumberColumn("Pk Wks", format="%d"),
                 "首次入榜": st.column_config.TextColumn("首次入榜"),
+                "首次Peak周": st.column_config.TextColumn("首次Peak周"),
                 "最近上榜": st.column_config.TextColumn("最近上榜"),
                 "总播放": st.column_config.NumberColumn("总播放", format="%d"),
             },
@@ -1001,7 +1010,7 @@ with tab_power:
         fig_ps.update_yaxes(autorange="reversed")
         fig_ps.update_traces(
             marker_color=top20["power_score"].apply(
-                lambda x: f"rgba(29,185,84,{max(0.3, min(1, x / top20['power_score'].max()))})"
+                lambda x: f"rgba(184,134,11,{max(0.3, min(1, x / top20['power_score'].max()))})"
             )
         )
         st.plotly_chart(fig_ps, use_container_width=True)
@@ -1056,10 +1065,16 @@ with tab6:
         )
 
         st.subheader(f"Peak 排行（Peak 相同按{peak_tie}）")
-        ranked = track_summary.sort_values(
-            ["peak_position", "weeks_on_chart" if peak_tie == "在榜周数" else "weeks_at_peak"],
-            ascending=[True, False],
-        ).reset_index(drop=True)
+        if peak_tie == "在榜周数":
+            ranked = track_summary.sort_values(
+                ["peak_position", "weeks_on_chart", "weeks_at_peak"],
+                ascending=[True, False, False],
+            ).reset_index(drop=True)
+        else:
+            ranked = track_summary.sort_values(
+                ["peak_position", "weeks_at_peak", "weeks_on_chart"],
+                ascending=[True, False, False],
+            ).reset_index(drop=True)
         ranked.index = ranked.index + 1
         ranked.index.name = "#"
 
@@ -1186,7 +1201,7 @@ with tab5:
         col1b.metric("#1 曲数", f"{int(selected_album_row['top1'])} 首")
         col2b.metric("Top 5 曲数", f"{int(selected_album_row['top5'])} 首")
         col3b.metric("Top 10 曲数", f"{int(selected_album_row['top10'])} 首")
-        col4b.metric("冠军周数", f"{int(selected_album_row['weeks_at_no1'])} 周")
+        col4b.metric("#1周数", f"{int(selected_album_row['weeks_at_no1'])} 周")
 
         st.divider()
 
@@ -1206,22 +1221,23 @@ with tab5:
 
         if album_tiebreaker == "在榜周数":
             alb_tracks = alb_tracks.sort_values(
-                ["peak_position", "weeks_on_chart"], ascending=[True, False]
+                ["peak_position", "weeks_on_chart", "weeks_at_peak"], ascending=[True, False, False]
             )
         else:
             alb_tracks = alb_tracks.sort_values(
-                ["peak_position", "weeks_at_peak"], ascending=[True, False]
+                ["peak_position", "weeks_at_peak", "weeks_on_chart"], ascending=[True, False, False]
             )
         alb_tracks = alb_tracks.reset_index(drop=True)
         alb_tracks.index = alb_tracks.index + 1
 
         display_alb = alb_tracks[
             ["track_name", "peak_position", "weeks_on_chart", "weeks_at_peak",
-             "first_week", "last_week", "total_chart_plays"]
+             "first_week", "first_peak_week", "last_week", "total_chart_plays"]
         ].copy()
+        display_alb["first_peak_week"] = display_alb["first_peak_week"].astype(str)
         display_alb["first_week"] = display_alb["first_week"].astype(str)
         display_alb["last_week"] = display_alb["last_week"].astype(str)
-        display_alb.columns = ["曲目", "Peak", "Wks", "Pk Wks", "首次入榜", "最近上榜", "总播放"]
+        display_alb.columns = ["曲目", "Peak", "Wks", "Pk Wks", "首次入榜", "首次Peak周", "最近上榜", "总播放"]
         display_alb.index.name = "#"
 
         st.subheader(f"《{selected_album}》 · 入榜曲目")
@@ -1234,6 +1250,7 @@ with tab5:
                 "Wks": st.column_config.NumberColumn("Wks", format="%d"),
                 "Pk Wks": st.column_config.NumberColumn("Pk Wks", format="%d"),
                 "首次入榜": st.column_config.TextColumn("首次入榜"),
+                "首次Peak周": st.column_config.TextColumn("首次Peak周"),
                 "最近上榜": st.column_config.TextColumn("最近上榜"),
                 "总播放": st.column_config.NumberColumn("总播放", format="%d"),
             },
@@ -1395,45 +1412,50 @@ with tab2:
 
     st.divider()
 
-    # ── Two-column layout ─────────────────────────────────────────────
-    col_left, col_right = st.columns([3, 2])
+    # ── Weekly #1 Table ────────────────────────────────────────────────
+    st.subheader("每周冠单")
 
-    with col_left:
-        st.subheader("每周冠单")
+    display = number_ones[["billboard_week", "track_name", "artist_name", "play_count", "running_peak_wks"]].copy()
+    display.columns = ["周", "冠单曲目", "艺人", "播放次数", "Pk Wks"]
+    display = display.set_index("周")
 
-        display = number_ones[["billboard_week", "track_name", "artist_name", "play_count"]].copy()
-        display.columns = ["周", "冠单曲目", "艺人", "播放次数"]
-        display = display.set_index("周")
+    st.dataframe(
+        display,
+        column_config={
+            "冠单曲目": st.column_config.TextColumn("冠单曲目", width="large"),
+            "艺人": st.column_config.TextColumn("艺人", width="medium"),
+            "播放次数": st.column_config.NumberColumn("播放次数", format="%d"),
+            "Pk Wks": st.column_config.NumberColumn("Pk Wks", format="%d"),
+        },
+        use_container_width=True,
+        height=600,
+    )
 
-        st.dataframe(
-            display,
-            column_config={
-                "冠单曲目": st.column_config.TextColumn("冠单曲目", width="large"),
-                "艺人": st.column_config.TextColumn("艺人", width="medium"),
-                "播放次数": st.column_config.NumberColumn("播放次数", format="%d"),
-            },
-            use_container_width=True,
-            height=600,
-        )
+    st.divider()
+    st.subheader("冠单周数排行")
 
-    with col_right:
-        st.subheader("冠单周数排行")
+    # Merge Pk Wks and first peak week from track_summary
+    ws_data = weeks_at_one.head(20).merge(
+        track_summary[["track_id", "weeks_at_peak", "first_peak_week"]],
+        on="track_id", how="left"
+    )
+    ws_data["first_peak_week"] = ws_data["first_peak_week"].astype(str)
+    ws_display = ws_data.reset_index(drop=True)
+    ws_display.index = ws_display.index + 1
+    ws_display.index.name = "#"
 
-        ws_display = weeks_at_one.head(20).reset_index(drop=True)
-        ws_display.index = ws_display.index + 1
-        ws_display.index.name = "#"
-
-        st.dataframe(
-            ws_display[["track_name", "artist_name", "weeks_at_no1", "total_no1_plays"]],
-            column_config={
-                "track_name": st.column_config.TextColumn("曲目", width="medium"),
-                "artist_name": st.column_config.TextColumn("艺人", width="medium"),
-                "weeks_at_no1": st.column_config.NumberColumn("冠单周数", format="%d"),
-                "total_no1_plays": st.column_config.NumberColumn("总播放", format="%d"),
-            },
-            use_container_width=True,
-            height=600,
-        )
+    st.dataframe(
+        ws_display[["track_name", "artist_name", "weeks_at_peak", "first_peak_week", "total_no1_plays"]],
+        column_config={
+            "track_name": st.column_config.TextColumn("曲目", width="medium"),
+            "artist_name": st.column_config.TextColumn("艺人", width="medium"),
+            "weeks_at_peak": st.column_config.NumberColumn("Pk Wks", format="%d"),
+            "first_peak_week": st.column_config.TextColumn("首次Peak周"),
+            "total_no1_plays": st.column_config.NumberColumn("总播放", format="%d"),
+        },
+        use_container_width=True,
+        height=600,
+    )
 
     # ── Chart ─────────────────────────────────────────────────────────
     st.divider()
@@ -1579,7 +1601,7 @@ with tab7:
 
     artist_rank_metric = st.radio(
         "排行指标",
-        ["入榜曲数", "总上榜周数", "#1 曲数", "Top 5 曲数", "Top 10 曲数"],
+        ["入榜曲数", "总上榜周数", "#1 曲数", "Top 5 曲数", "Top 10 曲数", "#1周数"],
         horizontal=True,
         key="artist_overall_metric",
     )
@@ -1590,6 +1612,7 @@ with tab7:
         "#1 曲数": "top1",
         "Top 5 曲数": "top5",
         "Top 10 曲数": "top10",
+        "#1周数": "weeks_at_no1",
     }
     sort_col = metric_map[artist_rank_metric]
 
@@ -1597,15 +1620,16 @@ with tab7:
     ranked_art.index = ranked_art.index + 1
     ranked_art.index.name = "#"
 
-    display = ranked_art[["artist_name", "total_tracks", "top1", "top5", "top10", "total_weeks"]].copy()
-    display.columns = ["艺人", "入榜曲数", "#1", "Top5", "Top10", "总周数"]
+    display = ranked_art[["artist_name", "total_tracks", "top1", "weeks_at_no1", "top5", "top10", "total_weeks"]].copy()
+    display.columns = ["艺人", "入榜曲数", "#1 曲数", "#1周数", "Top5", "Top10", "总周数"]
 
     st.dataframe(
         display,
         column_config={
             "艺人": st.column_config.TextColumn("艺人", width="medium"),
             "入榜曲数": st.column_config.NumberColumn("入榜曲数", format="%d"),
-            "#1": st.column_config.NumberColumn("#1", format="%d"),
+            "#1 曲数": st.column_config.NumberColumn("#1 曲数", format="%d"),
+            "#1周数": st.column_config.NumberColumn("#1周数", format="%d"),
             "Top5": st.column_config.NumberColumn("Top5", format="%d"),
             "Top10": st.column_config.NumberColumn("Top10", format="%d"),
             "总周数": st.column_config.NumberColumn("总周数", format="%d"),
@@ -1637,7 +1661,7 @@ with tab8:
 
     album_rank_metric = st.radio(
         "排行指标",
-        ["入榜曲数", "总上榜周数", "#1 曲数", "Top 5 曲数", "Top 10 曲数"],
+        ["入榜曲数", "总上榜周数", "#1 曲数", "Top 5 曲数", "Top 10 曲数", "#1周数"],
         horizontal=True,
         key="album_overall_metric",
     )
@@ -1648,6 +1672,7 @@ with tab8:
         "#1 曲数": "top1",
         "Top 5 曲数": "top5",
         "Top 10 曲数": "top10",
+        "#1周数": "weeks_at_no1",
     }
     album_sort_col = album_metric_map[album_rank_metric]
 
@@ -1655,8 +1680,8 @@ with tab8:
     ranked_alb.index = ranked_alb.index + 1
     ranked_alb.index.name = "#"
 
-    display_alb = ranked_alb[["album_name", "artist_name", "total_tracks", "top1", "top5", "top10", "total_weeks"]].copy()
-    display_alb.columns = ["专辑", "艺人", "入榜曲数", "#1", "Top5", "Top10", "总周数"]
+    display_alb = ranked_alb[["album_name", "artist_name", "total_tracks", "top1", "weeks_at_no1", "top5", "top10", "total_weeks"]].copy()
+    display_alb.columns = ["专辑", "艺人", "入榜曲数", "#1 曲数", "#1周数", "Top5", "Top10", "总周数"]
 
     st.dataframe(
         display_alb,
@@ -1664,7 +1689,8 @@ with tab8:
             "专辑": st.column_config.TextColumn("专辑", width="medium"),
             "艺人": st.column_config.TextColumn("艺人", width="medium"),
             "入榜曲数": st.column_config.NumberColumn("入榜曲数", format="%d"),
-            "#1": st.column_config.NumberColumn("#1", format="%d"),
+            "#1 曲数": st.column_config.NumberColumn("#1 曲数", format="%d"),
+            "#1周数": st.column_config.NumberColumn("#1周数", format="%d"),
             "Top5": st.column_config.NumberColumn("Top5", format="%d"),
             "Top10": st.column_config.NumberColumn("Top10", format="%d"),
             "总周数": st.column_config.NumberColumn("总周数", format="%d"),

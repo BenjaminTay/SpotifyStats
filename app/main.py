@@ -24,22 +24,22 @@ st.set_page_config(
 
 inject_global_styles()
 
-# ── Plotly dark template ────────────────────────────────────────────
+# ── Plotly warm template (Vinyl Archive) ─────────────────────────────
 PLOTLY_TEMPLATE = {
     "layout": {
         "plot_bgcolor": "rgba(0,0,0,0)",
         "paper_bgcolor": "rgba(0,0,0,0)",
-        "font": {"color": "#8888A0", "size": 11},
-        "xaxis": {"gridcolor": "rgba(255,255,255,0.05)", "linecolor": "rgba(255,255,255,0.08)"},
-        "yaxis": {"gridcolor": "rgba(255,255,255,0.05)", "linecolor": "rgba(255,255,255,0.08)"},
-        "legend": {"font": {"color": "#8888A0"}},
-        "title": {"font": {"color": "#F0F0F5", "size": 14}},
+        "font": {"color": "#8B7355", "size": 11, "family": "Palatino, Book Antiqua, serif"},
+        "xaxis": {"gridcolor": "rgba(139,115,85,0.08)", "linecolor": "rgba(139,115,85,0.15)"},
+        "yaxis": {"gridcolor": "rgba(139,115,85,0.08)", "linecolor": "rgba(139,115,85,0.15)"},
+        "legend": {"font": {"color": "#8B7355"}},
+        "title": {"font": {"color": "#2C2416", "size": 14, "family": "Georgia, serif"}},
         "margin": {"l": 10, "r": 10, "t": 40, "b": 10},
-        "hoverlabel": {"bgcolor": "#181825", "font": {"color": "#F0F0F5"}},
+        "hoverlabel": {"bgcolor": "#FFFFFF", "font": {"color": "#2C2416"}, "bordercolor": "#D4A84B"},
     }
 }
 
-COLORS = ["#1DB954", "#FF6B6B", "#4ECDC4", "#FFD93D", "#A78BFA", "#FF8C42", "#6BCB77", "#E8AA42"]
+COLORS = ["#B8860B", "#C45C3A", "#7D8C4E", "#D4845A", "#D4A84B", "#5C3D2E", "#C4956A", "#8B6914"]
 
 
 # ── Session state defaults ──────────────────────────────────────────
@@ -58,8 +58,8 @@ def render_sidebar():
             """
             <div style="text-align:center;margin-bottom:0.5rem;">
                 <div style="font-size:2.5rem;margin-bottom:0.25rem;">🎵</div>
-                <div style="font-size:1.05rem;font-weight:700;color:#F0F0F5;">Spotify Stats</div>
-                <div style="font-size:0.7rem;color:#8888A0;margin-top:0.1rem;">Extended Streaming History</div>
+                <div style="font-size:1.05rem;font-weight:700;color:#2C2416;">Spotify Stats</div>
+                <div style="font-size:0.7rem;color:#8B7355;margin-top:0.1rem;">Extended Streaming History</div>
             </div>
             """,
             unsafe_allow_html=True,
@@ -69,7 +69,7 @@ def render_sidebar():
 
         # Filter summary
         st.markdown(
-            '<div style="font-size:0.65rem;text-transform:uppercase;letter-spacing:0.08em;color:#555;margin-bottom:0.4rem;">当前过滤</div>',
+            '<div style="font-size:0.65rem;text-transform:uppercase;letter-spacing:0.08em;color:#8B7355;margin-bottom:0.4rem;">当前过滤</div>',
             unsafe_allow_html=True,
         )
         min_s = st.session_state.min_ms // 1000
@@ -87,7 +87,7 @@ def render_sidebar():
         bb_n = st.session_state.get("bb_top_n", 50)
         st.markdown(
             f"""
-            <div style="font-size:0.65rem;text-transform:uppercase;letter-spacing:0.08em;color:#555;margin-bottom:0.4rem;">Billboard</div>
+            <div style="font-size:0.65rem;text-transform:uppercase;letter-spacing:0.08em;color:#8B7355;margin-bottom:0.4rem;">Billboard</div>
             <div style="display:flex;flex-wrap:wrap;gap:0.3rem;margin-bottom:0.75rem;">
                 <span class="sidebar-badge">📈 Top {bb_n}</span>
             </div>
@@ -104,19 +104,19 @@ def render_sidebar():
             conn.close()
             st.markdown(
                 f"""
-                <div style="font-size:0.65rem;text-transform:uppercase;letter-spacing:0.08em;color:#555;margin-bottom:0.4rem;">数据库</div>
-                <div style="font-size:0.8rem;color:#1DB954;font-weight:600;">● {count:,} 条记录</div>
+                <div style="font-size:0.65rem;text-transform:uppercase;letter-spacing:0.08em;color:#8B7355;margin-bottom:0.4rem;">数据库</div>
+                <div style="font-size:0.8rem;color:#B8860B;font-weight:600;">● {count:,} 条记录</div>
                 """,
                 unsafe_allow_html=True,
             )
         else:
             st.markdown(
-                '<div style="font-size:0.8rem;color:#FF6B6B;font-weight:600;">● 未导入</div>',
+                '<div style="font-size:0.8rem;color:#C45C3A;font-weight:600;">● 未导入</div>',
                 unsafe_allow_html=True,
             )
 
         st.markdown(
-            '<div style="margin-top:1rem;font-size:0.7rem;color:#8888A0;">💡 前往「⚙️ 设置」调整参数</div>',
+            '<div style="margin-top:1rem;font-size:0.7rem;color:#8B7355;">💡 前往「⚙️ 设置」调整参数</div>',
             unsafe_allow_html=True,
         )
 
@@ -126,12 +126,12 @@ def render_sidebar():
             <style>
             .sidebar-badge {
                 display:inline-block;
-                background:rgba(24,24,37,0.8);
-                border:1px solid rgba(255,255,255,0.06);
+                background:var(--bg-card);
+                border:1px solid var(--border-gold);
                 border-radius:16px;
                 padding:0.15rem 0.6rem;
                 font-size:0.68rem;
-                color:#8888A0;
+                color:#8B7355;
             }
             </style>
             """,
@@ -252,10 +252,10 @@ fig_trend.add_trace(
         y=monthly["plays"],
         name="播放次数",
         mode="lines+markers",
-        line={"color": "#1DB954", "width": 2.5},
-        marker={"size": 5, "color": "#1DB954"},
+        line={"color": "#B8860B", "width": 2.5},
+        marker={"size": 5, "color": "#B8860B"},
         fill="tozeroy",
-        fillcolor="rgba(29,185,84,0.08)",
+        fillcolor="rgba(184,134,11,0.08)",
     )
 )
 fig_trend.add_trace(
@@ -264,21 +264,21 @@ fig_trend.add_trace(
         y=monthly["hours"],
         name="时长 (小时)",
         mode="lines+markers",
-        line={"color": "#A78BFA", "width": 2.5},
-        marker={"size": 5, "color": "#A78BFA"},
+        line={"color": "#C45C3A", "width": 2.5},
+        marker={"size": 5, "color": "#C45C3A"},
         yaxis="y2",
     )
 )
 fig_trend.update_layout(
     plot_bgcolor="rgba(0,0,0,0)",
     paper_bgcolor="rgba(0,0,0,0)",
-    font={"color": "#8888A0", "size": 11},
+    font={"color": "#8B7355", "size": 11},
     hovermode="x unified",
-    hoverlabel={"bgcolor": "#181825", "font": {"color": "#F0F0F5"}},
-    xaxis={"gridcolor": "rgba(255,255,255,0.05)"},
-    yaxis={"title": "播放次数", "gridcolor": "rgba(255,255,255,0.05)"},
-    yaxis2={"title": "小时", "overlaying": "y", "side": "right", "gridcolor": "rgba(255,255,255,0.03)"},
-    legend={"orientation": "h", "yanchor": "bottom", "y": 1.02, "font": {"color": "#8888A0"}},
+    hoverlabel={"bgcolor": "#FFFFFF", "font": {"color": "#2C2416"}, "bordercolor": "#D4A84B"},
+    xaxis={"gridcolor": "rgba(139,115,85,0.08)"},
+    yaxis={"title": "播放次数", "gridcolor": "rgba(139,115,85,0.08)"},
+    yaxis2={"title": "小时", "overlaying": "y", "side": "right", "gridcolor": "rgba(139,115,85,0.04)"},
+    legend={"orientation": "h", "yanchor": "bottom", "y": 1.02, "font": {"color": "#8B7355"}},
     margin={"l": 10, "r": 10, "t": 40, "b": 10},
 )
 st.plotly_chart(fig_trend, use_container_width=True)
@@ -306,7 +306,6 @@ with col1:
         labels={"track_name": "", "plays": "播放次数"},
         height=350,
         color_discrete_sequence=[COLORS[0]],
-        template="plotly_dark",
     )
     fig_top.update_layout(**PLOTLY_TEMPLATE["layout"])
     fig_top.update_yaxes(autorange="reversed")
@@ -325,7 +324,7 @@ with col2:
         color_discrete_sequence=COLORS,
     )
     fig_plat.update_layout(**PLOTLY_TEMPLATE["layout"])
-    fig_plat.update_traces(textinfo="label+percent", textfont={"color": "#F0F0F5"})
+    fig_plat.update_traces(textinfo="label+percent", textfont={"color": "#2C2416"})
     st.plotly_chart(fig_plat, use_container_width=True)
 
 with col3:
@@ -342,7 +341,6 @@ with col3:
         labels={"day": "", "count": "播放次数"},
         height=350,
         color_discrete_sequence=[COLORS[2]],
-        template="plotly_dark",
     )
     fig_dow.update_layout(**PLOTLY_TEMPLATE["layout"])
     fig_dow.update_traces(marker={"color": COLORS[2]})
