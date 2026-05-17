@@ -13,7 +13,7 @@
 - **Spotify Wrapped 风格年度报告** — 卡片式叙事布局，听歌人格识别（Explorer / Loyalist / Binger / Skipper）
 - **艺人深度分析** — 选择任意艺人查看完整数据画像，包含月度趋势、Top 曲目、专辑分布、时段热力图
 - **听歌时段分析** — 周几×小时热力图、逐年趋势对比、周末 vs 工作日、深夜听歌比例
-- **Billboard 周榜** — Billboard Hot 100 风格周榜（统计周期可配置），9 个子 Tab：周榜/冠单历史/单曲历史/艺人榜单/专辑榜单/歌曲走势总榜/歌曲总榜/艺人总榜/专辑总榜。歌曲走势总榜采用 Power Score 综合评分（逆排名 + 播放量加权 + 冠单奖励）。支持排名升降、实时 Peak 周数、空冠歌曲、年度冠单统计、榜单大盘排名、歌曲周播放 Top 100、艺人/专辑每周入榜概况、侧边栏年份过滤、搜索艺人/专辑、跨 Tab 曲目导航
+- **Billboard 周榜** — Billboard Hot 100 风格周榜（统计周期可配置），10 个子 Tab：周榜（含单曲/专辑/艺人 3 个子榜单）/每周榜首（冠单/冠军专辑/冠军艺人表 + 三种冠军周数图 + 空冠歌曲/专辑/双空冠 + 扩展大盘表）/单曲历史/艺人榜单（含艺人周榜历史+排名趋势）/专辑榜单（含专辑周榜历史+排名趋势）/走势总榜（含歌曲/专辑/艺人三维 Power Score 综合评分）/歌曲总榜/艺人总榜（含 #1 专辑数等新指标）/专辑总榜（含专辑#1周数）/榜单记录。支持排名升降、实时 Peak 周数、侧边栏年份过滤、搜索艺人/专辑、跨 Tab 曲目/艺人/专辑/周导航
 - **设置** — 集中管理所有参数：数据过滤（最短播放时长/排除跳过/仅音乐）、Billboard 上榜数量、一键重新导入数据。参数变更自动清除缓存，保证各页面数据一致性
 
 ## 快速开始
@@ -69,7 +69,7 @@ SpotifyStats/
 │   ├── main.py                     # 入口 + 总览仪表盘 + Plotly 暖色模板
 │   ├── db.py                       # 数据库层（建表/查询/过滤）
 │   ├── import_data.py              # JSON → SQLite 导入管线
-│   ├── utils.py                    # 工具函数（时区转换/平台归一化）
+│   ├── utils.py                    # 工具函数（固定北京时间 UTC+8 / 平台归一化）
 │   ├── styles.py                   # 全局 CSS（Vinyl Archive 暖色主题）
 │   └── pages/
 │       ├── 02_timeline.py          # 年度/月度/周度报告
@@ -78,8 +78,8 @@ SpotifyStats/
 │       ├── 05_wrapped.py           # Wrapped 年度报告
 │       ├── 06_artist_deep.py       # 艺人/专辑深度分析
 │       ├── 07_listening_hours.py   # 听歌时段热力图
-│       ├── 08_billboard.py         # Billboard 周榜（9 个子 Tab，含 Power Score 走势总榜）
-│       └── 09_settings.py          # 设置（集中管理所有参数）
+│       ├── 08_billboard.py         # Billboard 周榜（10 个子 Tab：周榜/每周榜首/单曲历史/艺人榜单/专辑榜单/走势总榜/歌曲总榜/艺人总榜/专辑总榜/榜单记录）
+│       └── 09_settings.py          # 设置（集中管理所有参数：数据过滤 + Billboard 三榜单 Top N + 统计周期 + 数据导入）
 ├── scripts/
 │   └── analyze_weekly_tracks.py    # 每周独特曲目数分析（确定默认 Top N）
 ├── .streamlit/config.toml          # 主题配置（暖色 + 衬线字体）
@@ -94,7 +94,7 @@ artists ──< albums ──< tracks ──< plays
 ```
 
 - `plays` 表预计算了本地时间字段（year/month/week/dow/hour/date），避免每次查询解析 ISO 8601 时间戳
-- 时区转换基于 `conn_country` 字段，CN → UTC+8
+- 时区固定使用北京时间 UTC+8（忽略 Spotify 上报的 `conn_country` 字段，避免 VPN/网络路由导致该字段不准确）
 - 布尔字段用 INTEGER 0/1 存储（SQLite 无原生 boolean）
 - `track_albums` 关联表处理同一歌曲出现在多张专辑的情况（以 `(artist_id, track_name)` 为唯一标识合并重复版本）
 

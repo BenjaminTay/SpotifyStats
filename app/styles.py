@@ -337,13 +337,17 @@ def filter_badge():
     min_ms = st.session_state.get("min_ms", 30000)
     exclude = st.session_state.get("exclude_skipped", True)
     music = st.session_state.get("music_only", True)
-    bb_n = st.session_state.get("bb_top_n", 50)
+    bb_n = st.session_state.get("bb_top_n", 30)
+    bb_album_n = st.session_state.get("bb_album_top_n", 20)
+    bb_artist_n = st.session_state.get("bb_artist_top_n", 20)
 
     badges = [
         f"最短 {min_ms // 1000}s",
         "跳过排除" if exclude else "跳过包含",
         "仅音乐" if music else "含播客",
-        f"Billboard Top {bb_n}",
+        f"单曲 Top {bb_n}",
+        f"专辑 Top {bb_album_n}",
+        f"艺人 Top {bb_artist_n}",
     ]
     html = "".join(
         f'<span style="display:inline-block;background:var(--bg-card);border:1px solid var(--border-gold);'

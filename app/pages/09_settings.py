@@ -22,11 +22,15 @@ if "exclude_skipped" not in st.session_state:
 if "music_only" not in st.session_state:
     st.session_state.music_only = True
 if "bb_top_n" not in st.session_state:
-    st.session_state.bb_top_n = 50
+    st.session_state.bb_top_n = 30
 if "bb_week_start_dow" not in st.session_state:
     st.session_state.bb_week_start_dow = 4  # Friday
 if "bb_week_start_hour" not in st.session_state:
-    st.session_state.bb_week_start_hour = 12
+    st.session_state.bb_week_start_hour = 0
+if "bb_album_top_n" not in st.session_state:
+    st.session_state.bb_album_top_n = 20
+if "bb_artist_top_n" not in st.session_state:
+    st.session_state.bb_artist_top_n = 20
 
 # Sync widget keys from canonical values (first visit only)
 if "settings_min_sec" not in st.session_state:
@@ -41,6 +45,10 @@ if "settings_bb_week_dow" not in st.session_state:
     st.session_state.settings_bb_week_dow = st.session_state.bb_week_start_dow
 if "settings_bb_week_hour" not in st.session_state:
     st.session_state.settings_bb_week_hour = st.session_state.bb_week_start_hour
+if "settings_bb_album_top_n_widget" not in st.session_state:
+    st.session_state.settings_bb_album_top_n_widget = st.session_state.bb_album_top_n
+if "settings_bb_artist_top_n_widget" not in st.session_state:
+    st.session_state.settings_bb_artist_top_n_widget = st.session_state.bb_artist_top_n
 
 # Track previous values for change detection
 if "_prev_min_ms" not in st.session_state:
@@ -55,6 +63,10 @@ if "_prev_bb_week_start_dow" not in st.session_state:
     st.session_state._prev_bb_week_start_dow = st.session_state.bb_week_start_dow
 if "_prev_bb_week_start_hour" not in st.session_state:
     st.session_state._prev_bb_week_start_hour = st.session_state.bb_week_start_hour
+if "_prev_bb_album_top_n" not in st.session_state:
+    st.session_state._prev_bb_album_top_n = st.session_state.bb_album_top_n
+if "_prev_bb_artist_top_n" not in st.session_state:
+    st.session_state._prev_bb_artist_top_n = st.session_state.bb_artist_top_n
 
 page_header("⚙️ 设置", description="集中管理数据过滤、Billboard 榜单和数据导入")
 
@@ -116,20 +128,45 @@ st.divider()
 st.subheader("Billboard 周榜")
 st.caption("Billboard 页面专属设置，修改后榜单统计即时重算")
 
-col_bb1, col_bb2, col_bb3 = st.columns(3)
+DOW_OPTIONS = {0: "周一", 1: "周二", 2: "周三", 3: "周四", 4: "周五", 5: "周六", 6: "周日"}
 
-with col_bb1:
-    new_top_n = st.slider(
-        "每周上榜歌曲数量 (Top N)",
+# Row 1: Top N sliders for 单曲/专辑/艺人
+col_t1, col_t2, col_t3 = st.columns(3)
+
+with col_t1:
+    new_track_top_n = st.slider(
+        "每周上榜歌曲数量 (单曲 Top N)",
         min_value=10,
         max_value=100,
         step=5,
         key="settings_bb_top_n_widget",
-        help="每期 Billboard 周榜收录的歌曲数量上限",
+        help="每期 Billboard 单曲周榜收录的歌曲数量上限",
     )
 
-with col_bb2:
-    DOW_OPTIONS = {0: "周一", 1: "周二", 2: "周三", 3: "周四", 4: "周五", 5: "周六", 6: "周日"}
+with col_t2:
+    new_album_top_n = st.slider(
+        "每周上榜专辑数量 (专辑 Top N)",
+        min_value=5,
+        max_value=100,
+        step=5,
+        key="settings_bb_album_top_n_widget",
+        help="每期 Billboard 专辑周榜收录的专辑数量上限",
+    )
+
+with col_t3:
+    new_artist_top_n = st.slider(
+        "每周上榜艺人数量 (艺人 Top N)",
+        min_value=5,
+        max_value=100,
+        step=5,
+        key="settings_bb_artist_top_n_widget",
+        help="每期 Billboard 艺人周榜收录的艺人数量上限",
+    )
+
+# Row 2: Week boundary configuration
+col_w1, col_w2, col_w3 = st.columns(3)
+
+with col_w1:
     new_week_dow = st.selectbox(
         "统计周期起始日",
         options=list(DOW_OPTIONS.keys()),
@@ -140,7 +177,7 @@ with col_bb2:
     )
     st.session_state.bb_week_start_dow = new_week_dow
 
-with col_bb3:
+with col_w2:
     new_week_hour = st.selectbox(
         "起始时间",
         options=list(range(24)),
@@ -151,19 +188,27 @@ with col_bb3:
     )
     st.session_state.bb_week_start_hour = new_week_hour
 
-# Summary of current week boundary
-st.caption(
-    f"当前统计周期：每{DOW_OPTIONS[st.session_state.bb_week_start_dow]} "
-    f"{st.session_state.bb_week_start_hour:02d}:00 — "
-    f"下{DOW_OPTIONS[st.session_state.bb_week_start_dow]} "
-    f"{st.session_state.bb_week_start_hour:02d}:00（北京时间）"
-)
+with col_w3:
+    st.caption(
+        f"当前统计周期：每{DOW_OPTIONS[st.session_state.bb_week_start_dow]} "
+        f"{st.session_state.bb_week_start_hour:02d}:00 — "
+        f"下{DOW_OPTIONS[st.session_state.bb_week_start_dow]} "
+        f"{st.session_state.bb_week_start_hour:02d}:00（北京时间）"
+    )
 
 # Detect changes and sync to canonical key
 _bb_changed = False
-if new_top_n != st.session_state._prev_bb_top_n:
-    st.session_state.bb_top_n = new_top_n
-    st.session_state._prev_bb_top_n = new_top_n
+if new_track_top_n != st.session_state._prev_bb_top_n:
+    st.session_state.bb_top_n = new_track_top_n
+    st.session_state._prev_bb_top_n = new_track_top_n
+    _bb_changed = True
+if new_album_top_n != st.session_state._prev_bb_album_top_n:
+    st.session_state.bb_album_top_n = new_album_top_n
+    st.session_state._prev_bb_album_top_n = new_album_top_n
+    _bb_changed = True
+if new_artist_top_n != st.session_state._prev_bb_artist_top_n:
+    st.session_state.bb_artist_top_n = new_artist_top_n
+    st.session_state._prev_bb_artist_top_n = new_artist_top_n
     _bb_changed = True
 if st.session_state.bb_week_start_dow != st.session_state._prev_bb_week_start_dow:
     st.session_state._prev_bb_week_start_dow = st.session_state.bb_week_start_dow

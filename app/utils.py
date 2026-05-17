@@ -28,7 +28,9 @@ def convert_to_local_time(iso_str: str, country: Optional[str]) -> dict[str, Uni
         ts_hour (0-23), ts_date (YYYY-MM-DD)
     """
     dt_utc = datetime.fromisoformat(iso_str.replace("Z", "+00:00"))
-    offset_hours = COUNTRY_TZ_OFFSETS.get(country or "", 8)
+    # 固定使用北京时间 (UTC+8)，忽略 conn_country 字段
+    # Spotify 上报的 conn_country 可能因 VPN/网络路由而不准确
+    offset_hours = 8
     dt_local = dt_utc + timedelta(hours=offset_hours)
 
     return {

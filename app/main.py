@@ -84,12 +84,16 @@ def render_sidebar():
             unsafe_allow_html=True,
         )
 
-        bb_n = st.session_state.get("bb_top_n", 50)
+        bb_n = st.session_state.get("bb_top_n", 30)
+        bb_album_n = st.session_state.get("bb_album_top_n", 20)
+        bb_artist_n = st.session_state.get("bb_artist_top_n", 20)
         st.markdown(
             f"""
             <div style="font-size:0.65rem;text-transform:uppercase;letter-spacing:0.08em;color:#8B7355;margin-bottom:0.4rem;">Billboard</div>
             <div style="display:flex;flex-wrap:wrap;gap:0.3rem;margin-bottom:0.75rem;">
-                <span class="sidebar-badge">📈 Top {bb_n}</span>
+                <span class="sidebar-badge">🎵 单曲 Top {bb_n}</span>
+                <span class="sidebar-badge">💿 专辑 Top {bb_album_n}</span>
+                <span class="sidebar-badge">🎤 艺人 Top {bb_artist_n}</span>
             </div>
             """,
             unsafe_allow_html=True,
