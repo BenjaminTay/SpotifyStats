@@ -8,10 +8,9 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 
-from app.db import get_db, base_filters
+from app.db import get_db, base_filters, load_plays
 from app.styles import inject_global_styles, page_header
 
-st.set_page_config(page_title="艺人深度分析", page_icon="🎸", layout="wide")
 inject_global_styles()
 
 min_ms = st.session_state.get("min_ms", 30000)
@@ -22,18 +21,7 @@ music_only = st.session_state.get("music_only", True)
 @st.cache_data(ttl=3600)
 def load_artist_data(_min_ms, _exclude_skipped, _music_only):
     conn = get_db()
-    _f, _fp = base_filters(min_ms=_min_ms, exclude_skipped=_exclude_skipped, music_only=_music_only)
-    _w = f"WHERE {_f}" if _f else ""
-    df = pd.read_sql_query(
-        f"""SELECT p.*, t.track_name, t.spotify_track_uri, a.artist_name, al.album_name
-            FROM plays p
-            LEFT JOIN tracks t ON p.track_id = t.track_id
-            LEFT JOIN artists a ON t.artist_id = a.artist_id
-            LEFT JOIN albums al ON t.album_id = al.album_id
-            {_w}""",
-        conn,
-        params=_fp,
-    )
+    df = load_plays(conn, min_ms=_min_ms, exclude_skipped=_exclude_skipped, music_only=_music_only)
     conn.close()
     return df
 
@@ -57,8 +45,12 @@ def get_artist_list(_min_ms, _exclude_skipped, _music_only):
     return [(r[0], r[1], r[2]) for r in rows]
 
 
-df = load_artist_data(min_ms, exclude_skipped, music_only)
-artist_list = get_artist_list(min_ms, exclude_skipped, music_only)
+try:
+    df = load_artist_data(min_ms, exclude_skipped, music_only)
+    artist_list = get_artist_list(min_ms, exclude_skipped, music_only)
+except Exception as e:
+    st.error(f"加载艺人数据失败：{e}")
+    st.stop()
 artist_names = [f"{name} ({cnt}次)" for _, name, cnt in artist_list]
 
 # ── Sidebar ─────────────────────────────────────────────────────────

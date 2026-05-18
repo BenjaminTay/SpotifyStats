@@ -8,10 +8,9 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 
-from app.db import get_db, base_filters
+from app.db import get_db, load_plays
 from app.styles import inject_global_styles, page_header
 
-st.set_page_config(page_title="播放行为", page_icon="🔍", layout="wide")
 inject_global_styles()
 
 min_ms = st.session_state.get("min_ms", 30000)
@@ -22,14 +21,7 @@ music_only = st.session_state.get("music_only", True)
 @st.cache_data(ttl=3600)
 def load_all_data():
     conn = get_db()
-    df = pd.read_sql_query(
-        """SELECT p.*, t.track_name, a.artist_name, al.album_name
-           FROM plays p
-           LEFT JOIN tracks t ON p.track_id = t.track_id
-           LEFT JOIN artists a ON t.artist_id = a.artist_id
-           LEFT JOIN albums al ON t.album_id = al.album_id""",
-        conn,
-    )
+    df = load_plays(conn, min_ms=0, exclude_skipped=False, music_only=False)
     conn.close()
     return df
 

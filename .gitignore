@@ -12,3 +12,9 @@ Spotify Extended Streaming History/
 
 # Claude Code session data
 .claude/
+
+# Personal skill configuration
+.superpowers/
+
+# Personal reference notes
+Spotify官方数据.md

@@ -5,7 +5,7 @@ import glob
 import os
 from typing import Any, Optional
 
-from .db import get_db, init_db, DB_PATH
+from .db import get_db, init_db, DB_PATH, build_aggregations
 from .utils import convert_to_local_time, classify_platform
 
 DATA_DIR = os.path.join(
@@ -90,12 +90,18 @@ def _cache_track(
 def import_data(
     data_dir: Optional[str] = None,
     progress_callback=None,
+    agg_min_ms: int = 30000,
+    agg_exclude_skipped: bool = True,
+    agg_music_only: bool = True,
+    agg_week_start_dow: int = 4,
+    agg_week_start_hour: int = 0,
 ) -> dict[str, Any]:
     """Import all JSON streaming history files into the SQLite database.
 
     Args:
         data_dir: Path to the folder containing JSON files.
         progress_callback: Optional callable(step: str, pct: float) for progress.
+        agg_*: Parameters for building pre-aggregated Billboard tables after import.
 
     Returns:
         Dict with summary stats.
@@ -107,6 +113,17 @@ def import_data(
 
     if not json_files:
         raise FileNotFoundError(f"No Streaming_History_Audio_*.json files found in {data_dir}")
+
+    # Pre-count total records for accurate progress (fast — just json.load)
+    if progress_callback:
+        progress_callback("计算总记录数...", 0.0)
+    total_records_est = 0
+    file_record_counts = {}
+    for filepath in json_files:
+        with open(filepath, encoding="utf-8") as f:
+            records = json.load(f)
+            file_record_counts[filepath] = len(records)
+            total_records_est += len(records)
 
     # Reset database
     if os.path.exists(DB_PATH):
@@ -128,8 +145,9 @@ def import_data(
             records = json.load(f)
 
         plays_batch: list[tuple] = []
+        records_in_file = len(records)
 
-        for rec in records:
+        for rec_idx, rec in enumerate(records):
             ts_raw = rec.get("ts", "")
             country = rec.get("conn_country", "CN")
             time_info = convert_to_local_time(ts_raw, country)
@@ -189,12 +207,15 @@ def import_data(
                 total_records += len(plays_batch)
                 plays_batch.clear()
 
-            if progress_callback and total_records > 0 and total_records % 10000 == 0:
-                progress_callback(
-                    f"处理中... ({total_records} 条)",
-                    (file_idx + (len(records) - len(plays_batch)) / max(len(records), 1))
-                    / total_files,
-                )
+            # Progress: per-file granularity
+            if progress_callback and total_records_est > 0:
+                processed = total_records + len(plays_batch)
+                pct = min(0.95, processed / total_records_est)
+                if processed % 5000 == 0:
+                    progress_callback(
+                        f"导入中... {processed:,} / {total_records_est:,} ({pct:.0%})",
+                        pct,
+                    )
 
         # Insert remaining batch
         if plays_batch:
@@ -208,20 +229,41 @@ def import_data(
             conn.commit()
             total_records += len(plays_batch)
 
-        if progress_callback:
-            progress_callback(
-                f"已导入 {os.path.basename(filepath)}",
-                (file_idx + 1) / total_files,
-            )
-
     conn.commit()
+
+    # Build pre-aggregated weekly Billboard tables
+    if progress_callback:
+        progress_callback("构建预聚合表...", 0.96)
+    try:
+        agg_results = build_aggregations(
+            min_ms=agg_min_ms,
+            exclude_skipped=agg_exclude_skipped,
+            music_only=agg_music_only,
+            week_start_dow=agg_week_start_dow,
+            week_start_hour=agg_week_start_hour,
+            progress_callback=progress_callback,
+        )
+    except Exception as e:
+        import traceback
+        print(f"[WARN] 预聚合表构建失败（Billboard 页面将使用实时计算）: {e}")
+        traceback.print_exc()
+        agg_results = {}
+
     conn.close()
 
-    return {
+    result = {
         "total_records": total_records,
         "total_skipped": total_skipped,
         "unique_artists": len(artist_cache),
         "unique_albums": len(album_cache),
         "unique_tracks": len(track_cache),
         "files_imported": total_files,
+        "agg_track_wks": agg_results.get("tracks", 0),
+        "agg_album_wks": agg_results.get("albums", 0),
+        "agg_artist_wks": agg_results.get("artists", 0),
     }
+
+    if progress_callback:
+        progress_callback("导入完成", 1.0)
+
+    return result

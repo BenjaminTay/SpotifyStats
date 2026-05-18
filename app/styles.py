@@ -1,5 +1,8 @@
 """Global CSS injection for Spotify Stats — Vinyl Archive theme."""
 
+import traceback
+from contextlib import contextmanager
+
 import streamlit as st
 
 
@@ -303,6 +306,15 @@ hr, [data-testid="stDivider"] {
     font-size: 1.15rem !important;
   }
 }
+
+/* ── Skeleton shimmer ─────────────────────────────────────────── */
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+.skeleton-card {
+  box-shadow: var(--shadow-sm);
+}
 </style>
 """,
         unsafe_allow_html=True,
@@ -356,3 +368,41 @@ def filter_badge():
         for b in badges
     )
     st.markdown(f'<div style="margin:0.5rem 0;">{html}</div>', unsafe_allow_html=True)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Skeleton loading placeholders
+# ═══════════════════════════════════════════════════════════════════════════
+
+def render_skeleton(n: int = 3, height: str = "4rem"):
+    """Render animated skeleton placeholder cards for loading states."""
+    cards = ""
+    for _ in range(n):
+        cards += (
+            f'<div class="skeleton-card" style="height:{height};border-radius:var(--radius);'
+            f'background:linear-gradient(90deg,var(--bg-card) 25%,var(--bg-elevated) 50%,var(--bg-card) 75%);'
+            f'background-size:200% 100%;animation:shimmer 1.5s infinite;'
+            f'margin-bottom:0.75rem;border:1px solid var(--border);"></div>'
+        )
+    st.markdown(
+        f"""<div>{cards}</div>""",
+        unsafe_allow_html=True,
+    )
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Error boundary
+# ═══════════════════════════════════════════════════════════════════════════
+
+@contextmanager
+def error_boundary(section_name: str = ""):
+    """Catch and display errors with a styled message instead of crashing the page."""
+    label = f"「{section_name}」" if section_name else "此模块"
+    try:
+        yield
+    except Exception as e:
+        st.error(
+            f"加载{label}时发生错误：{e}",
+        )
+        with st.expander("错误详情"):
+            st.code(traceback.format_exc())

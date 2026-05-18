@@ -8,10 +8,9 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 
-from app.db import get_db, base_filters
+from app.db import get_db, load_plays
 from app.styles import inject_global_styles, page_header
 
-st.set_page_config(page_title="时段分析", page_icon="⏰", layout="wide")
 inject_global_styles()
 
 min_ms = st.session_state.get("min_ms", 30000)
@@ -22,15 +21,7 @@ music_only = st.session_state.get("music_only", True)
 @st.cache_data(ttl=3600)
 def load_hours_data(_min_ms, _exclude_skipped, _music_only):
     conn = get_db()
-    _f, _fp = base_filters(min_ms=_min_ms, exclude_skipped=_exclude_skipped, music_only=_music_only)
-    _w = f"WHERE {_f}" if _f else ""
-    df = pd.read_sql_query(
-        f"""SELECT p.ts_hour, p.ts_dow, p.ts_year, p.ts_month, p.platform, p.ms_played
-            FROM plays p
-            {_w}""",
-        conn,
-        params=_fp,
-    )
+    df = load_plays(conn, join_albums=False, min_ms=_min_ms, exclude_skipped=_exclude_skipped, music_only=_music_only)
     conn.close()
     return df
 

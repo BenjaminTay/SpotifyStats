@@ -45,11 +45,11 @@ JSON 文件 (Spotify导出) ──→ import_data.py ──→ SQLite (spotify_s
 
 ### 核心模块
 
-- **`app/db.py`** — 数据库层。`get_db()` 获取连接（默认只读，WAL模式），`base_filters()` 生成标准 WHERE 条件片段（排除跳过 + 最短时长 + 仅音乐），所有统计页面通过此函数统一过滤逻辑。
+- **`app/db.py`** — 数据库层。`get_db()` 获取连接（默认只读，WAL模式），`base_filters()` 生成标准 WHERE 条件片段（排除跳过 + 最短时长 + 仅音乐），`load_plays()` 统一数据加载入口（4 表 JOIN + 过滤），`ensure_schema()` 增量升级 schema（新增表/索引安全重复执行），所有统计页面通过此函数统一过滤逻辑。预聚合表 `agg_weekly_{tracks,albums,artists}` + `agg_config` 存储 Billboard 预计算结果，参数变更时通过参数哈希自动失效回退实时计算。
 - **`app/import_data.py`** — ETL 管线。逐文件读取 JSON，UTC→本地时间转换，平台字符串归一化，维度表 upsert（artist/album/track，以 `(artist_id, track_name)` 为 key 合并重复版本），同步写入 `track_albums` 关联表，事实表 5000 行批量插入。
 - **`app/utils.py`** — `convert_to_local_time()` 固定使用北京时间（UTC+8），忽略 Spotify 上报的 `conn_country` 字段（因 VPN/网络路由可能导致该字段不准确）；`classify_platform()` 将类似 `iOS 15.5 (iPhone14,5)` 归一化为 `ios`。
 - **`app/styles.py`** — 全局 CSS 注入。「Vinyl Archive」暖色主题：CSS 变量（`--gold`/`--bg-page`/`--bg-card` 等）、噪点纹理背景、卡片金左边线、衬线字体、表头暖金底色、侧边栏牛皮纸色。`page_header()` 和 `kpi_row()` 和 `filter_badge()` 辅助函数供各页面统一使用。
-- **`app/main.py`** — 入口 + 总览仪表盘。在 `st.session_state` 中初始化全局过滤参数（`min_ms`, `exclude_skipped`, `music_only`），侧边栏仅展示当前参数摘要和数据库状态，首次运行时自动触发数据导入。定义暖色 Plotly 图表模板（`WARM_TEMPLATE`）和色盘（`COLORS`），供各页面复用。
+- **`app/main.py`** — 入口 + 总览仪表盘。使用 `st.navigation` + `st.Page` 定义全站导航结构（中文侧边栏标签/英文文件名），`dashboard()` 函数包含仪表盘全部内容。在 `st.session_state` 中初始化全局过滤参数（`min_ms`, `exclude_skipped`, `music_only`），侧边栏仅展示当前参数摘要和数据库状态，首次运行时自动触发数据导入。定义暖色 Plotly 图表模板（`PLOTLY_TEMPLATE`）和色盘（`COLORS`），供各页面复用。
 - **`app/pages/09_settings.py`** — 总设置页。集中管理数据过滤（最短播放时长/排除跳过/仅音乐）、Billboard 三个榜单独立 Top N（`bb_top_n` 单曲 / `bb_album_top_n` 专辑 / `bb_artist_top_n` 艺人）、统计周期边界（`bb_week_start_dow`/`bb_week_start_hour`）、数据导入。任何参数变更时自动清除全局缓存并重跑，确保所有页面数据一致。
 
 ### 数据库设计
@@ -60,11 +60,30 @@ JSON 文件 (Spotify导出) ──→ import_data.py ──→ SQLite (spotify_s
 
 ### 页面结构
 
-Streamlit 原生多页：`main.py` 为首页，`pages/` 下 8 个分析页自动发现。每个页面独立加载数据，使用 `@st.cache_data(ttl=3600)` 缓存查询结果。页面间通过 `st.session_state` 共享过滤参数。
+使用 `st.navigation` + `st.Page` 统一管理侧边栏导航，文件名保持英文（兼容性），侧边栏显示中文标签。`main.py` 为入口，定义所有页面的导航结构和中文标题；每个页面文件作为独立的 MPA 脚本运行。
 
-`09_settings.py` 为总设置页，集中管理所有参数：数据过滤（`min_ms`/`exclude_skipped`/`music_only`）、Billboard 三个榜单独立 Top N（`bb_top_n`/`bb_album_top_n`/`bb_artist_top_n`）、数据导入。`main.py` 侧边栏展示当前过滤参数摘要、Billboard 三个 Top N 徽章和数据库状态。
+`09_settings.py` 为总设置页，集中管理所有参数：数据过滤（`min_ms`/`exclude_skipped`/`music_only`）、Billboard 三个榜单独立 Top N（`bb_top_n`/`bb_album_top_n`/`bb_artist_top_n`）、统计周期边界（`bb_week_start_dow`/`bb_week_start_hour`）、数据导入。`main.py` 侧边栏展示当前过滤参数摘要、Billboard 三个 Top N 徽章和数据库状态。
 
-`08_billboard.py` 包含 10 个子 Tab：**周榜**（3 个子 Tab：单曲榜/专辑榜/艺人榜，各自按当周全部歌曲总播放量排名，tiebreaker 为总收听时长，首周 LW 显示 "NEW"）、**每周榜首**（每周冠单/冠军专辑/冠军艺人表，单曲/专辑/艺人冠军周数 Top 15 图，每年独特冠单统计，空冠歌曲/专辑/双空冠艺人表，扩展大盘表含 #1 曲目/专辑/艺人的播放次数）、**单曲历史**（搜索曲目、榜单历史、排名趋势图）、**艺人榜单**（搜索艺人、入榜曲目总览、每周入榜概况、艺人周榜历史 + 排名趋势）、**专辑榜单**（搜索专辑/艺人、入榜曲目、每周入榜概况、专辑周榜历史 + 排名趋势）、**走势总榜**（3 个子 Tab：歌曲/专辑/艺人 Power Score 复合评分，归一化逆排名基础分 + log₂ 播放量加权 + 冠军/稳定性奖励）、**歌曲总榜**、**艺人总榜**（含 #1 专辑数/专辑#1周数/艺人榜#1周数等排行指标）、**专辑总榜**（含专辑#1周数排行指标）、**榜单记录**。Billboard 统计周期可通过「设置」页面配置（默认周五 00:00 为界）。侧边栏仅提供年份范围过滤，数据过滤统一遵从「设置」页全局参数。`st.session_state` 实现跨 Tab 导航（曲目/艺人/专辑/周）、子 Tab 记忆、周选择器位置记忆。
+`08_billboard.py` 为薄入口（15 行），委派至 `app/pages/billboard/` 模块化包（13 个文件，~3,900 行）：
+
+```
+app/pages/billboard/
+├── __init__.py          # 主路由 + session_state 初始化 + query_params 处理
+├── shared.py            # 公共数据加载 + 排名计算 + _bb_url + _render_bb_table
+├── weekly.py            # Tab 1: 周榜（单曲/专辑/艺人 3 子 Tab）
+├── number_ones.py       # Tab 2: 每周榜首 + 冠单排行 + 空冠 + 大盘
+├── track_history.py     # Tab 3: 单曲历史
+├── artist_chart.py      # Tab 4: 艺人榜单 + 艺人周榜历史
+├── album_chart.py       # Tab 5: 专辑榜单 + 专辑周榜历史
+├── power_score.py       # Tab 6: 走势总榜（歌曲/专辑/艺人 Power Score）
+├── all_time_tracks.py   # Tab 7: 歌曲总榜
+├── all_time_artists.py  # Tab 8: 艺人总榜
+├── all_time_albums.py   # Tab 9: 专辑总榜
+├── records.py           # Tab 10: 榜单记录（12 类）
+└── versus.py            # Tab 11: 对决（歌曲/专辑/艺人对决对比）
+```
+
+每个模块暴露 `render(df, weekly, ...)` 函数，由 `__init__.py` 传递所需数据。`st.session_state` 实现跨 Tab 导航、子 Tab 记忆、周选择器位置记忆。
 
 ### 数据过滤策略
 

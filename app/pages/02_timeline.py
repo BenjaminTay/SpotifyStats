@@ -8,34 +8,19 @@ import pandas as pd
 import plotly.express as px
 from datetime import datetime
 
-from app.db import get_db, base_filters
+from app.db import get_db, load_plays
 from app.styles import inject_global_styles, page_header
 
-st.set_page_config(page_title="时间报告", page_icon="📅", layout="wide")
 inject_global_styles()
 
 min_ms = st.session_state.get("min_ms", 30000)
 exclude_skipped = st.session_state.get("exclude_skipped", True)
 music_only = st.session_state.get("music_only", True)
 
-filters, fparams = base_filters(min_ms=min_ms, exclude_skipped=exclude_skipped, music_only=music_only)
-where = f"WHERE {filters}" if filters else ""
-
-
 @st.cache_data(ttl=3600)
 def load_timeline_data(_min_ms, _exclude_skipped, _music_only):
     conn = get_db()
-    _f, _fp = base_filters(min_ms=_min_ms, exclude_skipped=_exclude_skipped, music_only=_music_only)
-    _w = f"WHERE {_f}" if _f else ""
-    df = pd.read_sql_query(
-        f"""SELECT p.*, t.track_name, a.artist_name
-            FROM plays p
-            LEFT JOIN tracks t ON p.track_id = t.track_id
-            LEFT JOIN artists a ON t.artist_id = a.artist_id
-            {_w}""",
-        conn,
-        params=_fp,
-    )
+    df = load_plays(conn, join_albums=False, min_ms=_min_ms, exclude_skipped=_exclude_skipped, music_only=_music_only)
     conn.close()
     return df
 
@@ -43,13 +28,7 @@ def load_timeline_data(_min_ms, _exclude_skipped, _music_only):
 @st.cache_data(ttl=3600)
 def load_all_timeline():
     conn = get_db()
-    df = pd.read_sql_query(
-        """SELECT p.*, t.track_name, a.artist_name
-           FROM plays p
-           LEFT JOIN tracks t ON p.track_id = t.track_id
-           LEFT JOIN artists a ON t.artist_id = a.artist_id""",
-        conn,
-    )
+    df = load_plays(conn, join_albums=False, min_ms=0, exclude_skipped=False, music_only=False)
     conn.close()
     return df
 

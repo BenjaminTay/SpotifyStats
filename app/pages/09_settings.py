@@ -7,12 +7,15 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspa
 
 import streamlit as st
 
-from app.db import get_db, db_exists
+from app.db import get_db, db_exists, ensure_schema
 from app.import_data import import_data
 from app.styles import inject_global_styles, page_header
 
-st.set_page_config(page_title="设置", page_icon="⚙️", layout="wide")
 inject_global_styles()
+
+# Ensure schema is up-to-date (adds agg tables for existing DBs)
+if db_exists():
+    ensure_schema()
 
 # ── Session state defaults ──────────────────────────────────────────────
 if "min_ms" not in st.session_state:
@@ -31,24 +34,6 @@ if "bb_album_top_n" not in st.session_state:
     st.session_state.bb_album_top_n = 20
 if "bb_artist_top_n" not in st.session_state:
     st.session_state.bb_artist_top_n = 20
-
-# Sync widget keys from canonical values (first visit only)
-if "settings_min_sec" not in st.session_state:
-    st.session_state.settings_min_sec = st.session_state.min_ms // 1000
-if "settings_skip" not in st.session_state:
-    st.session_state.settings_skip = st.session_state.exclude_skipped
-if "settings_music" not in st.session_state:
-    st.session_state.settings_music = st.session_state.music_only
-if "settings_bb_top_n_widget" not in st.session_state:
-    st.session_state.settings_bb_top_n_widget = st.session_state.bb_top_n
-if "settings_bb_week_dow" not in st.session_state:
-    st.session_state.settings_bb_week_dow = st.session_state.bb_week_start_dow
-if "settings_bb_week_hour" not in st.session_state:
-    st.session_state.settings_bb_week_hour = st.session_state.bb_week_start_hour
-if "settings_bb_album_top_n_widget" not in st.session_state:
-    st.session_state.settings_bb_album_top_n_widget = st.session_state.bb_album_top_n
-if "settings_bb_artist_top_n_widget" not in st.session_state:
-    st.session_state.settings_bb_artist_top_n_widget = st.session_state.bb_artist_top_n
 
 # Track previous values for change detection
 if "_prev_min_ms" not in st.session_state:
@@ -79,10 +64,13 @@ st.caption("应用于所有统计页面的数据过滤条件，修改后即时�
 col1, col2, col3 = st.columns(3)
 
 with col1:
+    _sec_options = [0, 10, 30, 60, 120]
+    _default_sec = st.session_state.min_ms // 1000
+    _sec_idx = _sec_options.index(_default_sec) if _default_sec in _sec_options else 2
     min_sec = st.selectbox(
         "最短播放时长",
-        options=[0, 10, 30, 60, 120],
-        index=2,
+        options=_sec_options,
+        index=_sec_idx,
         format_func=lambda x: f"{x} 秒" if x > 0 else "不过滤",
         key="settings_min_sec",
         help="低于此值的播放不计入统计",
@@ -139,6 +127,7 @@ with col_t1:
         min_value=10,
         max_value=100,
         step=5,
+        value=st.session_state.bb_top_n,
         key="settings_bb_top_n_widget",
         help="每期 Billboard 单曲周榜收录的歌曲数量上限",
     )
@@ -149,6 +138,7 @@ with col_t2:
         min_value=5,
         max_value=100,
         step=5,
+        value=st.session_state.bb_album_top_n,
         key="settings_bb_album_top_n_widget",
         help="每期 Billboard 专辑周榜收录的专辑数量上限",
     )
@@ -159,6 +149,7 @@ with col_t3:
         min_value=5,
         max_value=100,
         step=5,
+        value=st.session_state.bb_artist_top_n,
         key="settings_bb_artist_top_n_widget",
         help="每期 Billboard 艺人周榜收录的艺人数量上限",
     )
@@ -171,7 +162,7 @@ with col_w1:
         "统计周期起始日",
         options=list(DOW_OPTIONS.keys()),
         format_func=lambda x: DOW_OPTIONS[x],
-        index=list(DOW_OPTIONS.keys()).index(st.session_state.settings_bb_week_dow),
+        index=list(DOW_OPTIONS.keys()).index(st.session_state.bb_week_start_dow),
         key="settings_bb_week_dow_raw",
         help="每周榜单从周几开始计算",
     )
@@ -219,6 +210,15 @@ if st.session_state.bb_week_start_hour != st.session_state._prev_bb_week_start_h
     st.session_state.settings_bb_week_hour = st.session_state.bb_week_start_hour
     _bb_changed = True
 if _bb_changed:
+    # Persist config to URL so it survives app restarts
+    import json
+    st.query_params["bb_cfg"] = json.dumps({
+        "tn": st.session_state.bb_top_n,
+        "an": st.session_state.bb_album_top_n,
+        "arn": st.session_state.bb_artist_top_n,
+        "dow": st.session_state.bb_week_start_dow,
+        "hr": st.session_state.bb_week_start_hour,
+    })
     st.cache_data.clear()
     st.rerun()
 
@@ -235,7 +235,13 @@ with col_mgmt1:
     if st.button("🔄 重新导入数据", use_container_width=True, type="primary"):
         with st.spinner("正在重新导入 Spotify 播放记录..."):
             try:
-                result = import_data()
+                result = import_data(
+                    agg_min_ms=st.session_state.min_ms,
+                    agg_exclude_skipped=st.session_state.exclude_skipped,
+                    agg_music_only=st.session_state.music_only,
+                    agg_week_start_dow=st.session_state.bb_week_start_dow,
+                    agg_week_start_hour=st.session_state.bb_week_start_hour,
+                )
                 st.cache_data.clear()
                 st.success(
                     f"导入完成！{result['total_records']:,} 条记录，"

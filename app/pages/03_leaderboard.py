@@ -7,10 +7,9 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 
-from app.db import get_db, base_filters
+from app.db import get_db, load_plays
 from app.styles import inject_global_styles, page_header
 
-st.set_page_config(page_title="排行榜", page_icon="🏆", layout="wide")
 inject_global_styles()
 
 min_ms = st.session_state.get("min_ms", 30000)
@@ -21,23 +20,16 @@ music_only = st.session_state.get("music_only", True)
 @st.cache_data(ttl=3600)
 def load_leaderboard_data(_min_ms, _exclude_skipped, _music_only):
     conn = get_db()
-    _f, _fp = base_filters(min_ms=_min_ms, exclude_skipped=_exclude_skipped, music_only=_music_only)
-    _w = f"WHERE {_f}" if _f else ""
-    df = pd.read_sql_query(
-        f"""SELECT p.*, t.track_name, t.spotify_track_uri, a.artist_name, al.album_name
-            FROM plays p
-            LEFT JOIN tracks t ON p.track_id = t.track_id
-            LEFT JOIN artists a ON t.artist_id = a.artist_id
-            LEFT JOIN albums al ON t.album_id = al.album_id
-            {_w}""",
-        conn,
-        params=_fp,
-    )
+    df = load_plays(conn, min_ms=_min_ms, exclude_skipped=_exclude_skipped, music_only=_music_only)
     conn.close()
     return df
 
 
-df = load_leaderboard_data(min_ms, exclude_skipped, music_only)
+try:
+    df = load_leaderboard_data(min_ms, exclude_skipped, music_only)
+except Exception as e:
+    st.error(f"加载排行榜数据失败：{e}")
+    st.stop()
 
 years = sorted(df["ts_year"].unique().tolist(), reverse=True)
 months = sorted(df["ts_year"].astype(str) + "-" + df["ts_month"].astype(str).str.zfill(2))[::-1]
@@ -155,6 +147,12 @@ with col1:
 
     ranked_display["时长(小时)"] = ranked_display["时长(小时)"].round(1)
     st.dataframe(ranked_display, use_container_width=True)
+    st.download_button(
+        f"导出 CSV ({entity_type} Top {top_n})",
+        ranked_display.to_csv(index=False).encode("utf-8"),
+        f"spotify_{entity_type}_top{top_n}.csv",
+        "text/csv",
+    )
 
 with col2:
     st.markdown('<div style="font-size:1.1rem;font-weight:600;color:#2C2416;margin-bottom:0.75rem;">📊 图表</div>', unsafe_allow_html=True)
