@@ -8,13 +8,16 @@ __pycache__/
 .DS_Store
 
 # Personal Spotify data — contains IP addresses and listening history
-Spotify Extended Streaming History*/
+data/streaming/
+data/account/
+data/README.md
 
 # Claude Code session data
 .claude/
 
 # Personal skill configuration
 .superpowers/
+docs/superpowers/
 
-# Personal reference notes
-Spotify官方数据.md
+# Environment secrets (Spotify API credentials, etc.)
+.env

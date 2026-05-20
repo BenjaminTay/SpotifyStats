@@ -14,19 +14,19 @@ from app.styles import inject_global_styles, page_header
 inject_global_styles()
 
 min_ms = st.session_state.get("min_ms", 30000)
-exclude_skipped = st.session_state.get("exclude_skipped", True)
 music_only = st.session_state.get("music_only", True)
+merge_enabled = st.session_state.get("merge_enabled", True)
 
 
 @st.cache_data(ttl=3600)
-def load_hours_data(_min_ms, _exclude_skipped, _music_only):
+def load_hours_data(_min_ms, _music_only, _merge_enabled):
     conn = get_db()
-    df = load_plays(conn, join_albums=False, min_ms=_min_ms, exclude_skipped=_exclude_skipped, music_only=_music_only)
+    df = load_plays(conn, join_albums=False, min_ms=_min_ms, music_only=_music_only, merge_enabled=_merge_enabled)
     conn.close()
     return df
 
 
-df = load_hours_data(min_ms, exclude_skipped, music_only)
+df = load_hours_data(min_ms, music_only, merge_enabled)
 
 dow_names = {0: "周一", 1: "周二", 2: "周三", 3: "周四", 4: "周五", 5: "周六", 6: "周日"}
 df["dow_label"] = df["ts_dow"].map(dow_names)
@@ -37,7 +37,7 @@ with st.sidebar:
         '<div style="text-align:center;margin-bottom:0.5rem;">'
         '<div style="font-size:2rem;margin-bottom:0.25rem;">⏰</div>'
         '<div style="font-size:1.05rem;font-weight:700;color:#2C2416;">时段分析</div>'
-        f'<div style="font-size:0.7rem;color:#8B7355;margin-top:0.15rem;">跳过=否，最短={min_ms//1000}s</div>'
+        f'<div style="font-size:0.7rem;color:#8B7355;margin-top:0.15rem;">最短={min_ms//1000}s</div>'
         '</div>',
         unsafe_allow_html=True,
     )

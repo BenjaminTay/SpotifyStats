@@ -14,7 +14,7 @@
 - **艺人深度分析** — 选择任意艺人查看完整数据画像，包含月度趋势、Top 曲目、专辑分布、时段热力图
 - **听歌时段分析** — 周几×小时热力图、逐年趋势对比、周末 vs 工作日、深夜听歌比例
 - **Billboard 周榜** — Billboard Hot 100 风格周榜（统计周期可配置），11 个子 Tab：周榜（单曲/专辑/艺人 3 个子榜单）/每周榜首/单曲历史/艺人榜单/专辑榜单/走势总榜（Power Score 三维度）/歌曲总榜/艺人总榜/专辑总榜/榜单记录/对决。支持排名升降、实时 Peak 周数、侧边栏年份过滤、跨 Tab 导航
-- **设置** — 集中管理所有参数：数据过滤（最短播放时长/排除跳过/仅音乐）、Billboard 上榜数量、一键重新导入数据。参数变更自动清除缓存，保证各页面数据一致性
+- **设置** — 集中管理所有参数：数据过滤（最短播放时长/仅音乐/合并连续播放）、Billboard 上榜数量、一键重新导入数据。参数变更自动清除缓存，保证各页面数据一致性
 
 ## 快速开始
 
@@ -23,7 +23,7 @@
 - Python 3.9+
 - 从 Spotify 下载的 Extended Streaming History 数据（JSON 格式）
 
-> **获取数据**：登录 [Spotify 账户隐私页面](https://www.spotify.com/account/privacy/)，请求下载「Extended Streaming History」数据包。解压后将整个文件夹命名为 `Spotify Extended Streaming History - 251029/` 放到项目根目录。
+> **获取数据**：登录 [Spotify 账户隐私页面](https://www.spotify.com/account/privacy/)，请求下载「Extended Streaming History」数据包。解压后将文件夹内容放入 `data/streaming/`，账号数据放入 `data/account/`。详见 `data/README.md`。
 
 ### 安装与运行
 
@@ -48,10 +48,10 @@ streamlit run app/main.py
 | 过滤项 | 默认值 | 说明 |
 |--------|--------|------|
 | 最短播放时长 | 30 秒 | 过滤误触和快速切歌 |
-| 排除已跳过 | 开启 | 主动跳过的播放不计入排行 |
 | 仅音乐 | 开启 | 排除播客和有声书 |
+| 合并连续播放 | 开启 | 将连续同曲目播放拼接为逻辑播放次数，再按最短时长过滤 |
 
-行为分析页面使用全量数据以保证分析准确性，并在页面上标注当前数据范围。
+行为分析页面使用全量数据以保证分析准确性（`skipped` 标记不可靠，所有页面均不按其过滤）。
 
 ## 技术栈
 
@@ -67,7 +67,7 @@ streamlit run app/main.py
 SpotifyStats/
 ├── app/
 │   ├── main.py                     # 入口 + 总览仪表盘（st.navigation 导航 + Plotly 暖色模板）
-│   ├── db.py                       # 数据库层（建表/查询/过滤/预聚合表）
+│   ├── db.py                       # 数据库层（建表/查询/过滤/预聚合表/合并连续播放）
 │   ├── import_data.py              # JSON → SQLite 导入管线
 │   ├── utils.py                    # 工具函数（固定北京时间 UTC+8 / 平台归一化）
 │   ├── styles.py                   # 全局 CSS（Vinyl Archive 暖色主题）
@@ -79,7 +79,7 @@ SpotifyStats/
 │       ├── 06_artist_deep.py       # 艺人/专辑深度分析
 │       ├── 07_listening_hours.py   # 听歌时段热力图
 │       ├── 08_billboard.py         # Billboard 周榜（薄入口，委派至 billboard/ 包）
-│       ├── 09_settings.py          # 设置（数据过滤 + Billboard 配置 + 数据导入）
+│       ├── 09_settings.py          # 设置（数据过滤 + 合并连续播放 + Billboard 配置 + 数据导入）
 │       └── billboard/              # Billboard 模块化包（11 个子 Tab）
 │           ├── __init__.py          # 主路由 + session_state 初始化
 │           ├── shared.py            # 公共数据加载 + 排名计算 + URL/表格渲染
@@ -94,6 +94,11 @@ SpotifyStats/
 │           ├── all_time_albums.py   # 专辑总榜
 │           ├── records.py           # 榜单记录（12 类）
 │           └── versus.py            # 对决（歌曲/专辑/艺人对决对比）
+├── data/
+│   ├── README.md                   # 数据使用指引
+│   ├── spotify_stats.db            # SQLite 数据库
+│   ├── streaming/                  # 长期串流播放记录（JSON）
+│   └── account/                    # 账号数据（JSON）
 ├── scripts/
 │   └── analyze_weekly_tracks.py    # 每周独特曲目数分析（确定默认 Top N）
 ├── .streamlit/config.toml          # 主题配置（暖色 + 衬线字体）

@@ -17,7 +17,7 @@ from app.db import get_db, base_filters
 def main():
     # ── Load filtered data ─────────────────────────────────────────────
     conn = get_db()
-    _f, _fp = base_filters(min_ms=30000, exclude_skipped=True, music_only=True)
+    _f, _fp = base_filters(min_ms=30000, music_only=True)
     _w = f"WHERE {_f}" if _f else ""
 
     df = pd.read_sql_query(

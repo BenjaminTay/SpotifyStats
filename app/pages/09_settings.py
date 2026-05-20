@@ -20,10 +20,10 @@ if db_exists():
 # ── Session state defaults ──────────────────────────────────────────────
 if "min_ms" not in st.session_state:
     st.session_state.min_ms = 30000
-if "exclude_skipped" not in st.session_state:
-    st.session_state.exclude_skipped = True
 if "music_only" not in st.session_state:
     st.session_state.music_only = True
+if "merge_enabled" not in st.session_state:
+    st.session_state.merge_enabled = True
 if "bb_top_n" not in st.session_state:
     st.session_state.bb_top_n = 30
 if "bb_week_start_dow" not in st.session_state:
@@ -38,10 +38,10 @@ if "bb_artist_top_n" not in st.session_state:
 # Track previous values for change detection
 if "_prev_min_ms" not in st.session_state:
     st.session_state._prev_min_ms = st.session_state.min_ms
-if "_prev_exclude_skipped" not in st.session_state:
-    st.session_state._prev_exclude_skipped = st.session_state.exclude_skipped
 if "_prev_music_only" not in st.session_state:
     st.session_state._prev_music_only = st.session_state.music_only
+if "_prev_merge_enabled" not in st.session_state:
+    st.session_state._prev_merge_enabled = st.session_state.merge_enabled
 if "_prev_bb_top_n" not in st.session_state:
     st.session_state._prev_bb_top_n = st.session_state.bb_top_n
 if "_prev_bb_week_start_dow" not in st.session_state:
@@ -61,7 +61,7 @@ page_header("⚙️ 设置", description="集中管理数据过滤、Billboard �
 st.subheader("数据过滤")
 st.caption("应用于所有统计页面的数据过滤条件，修改后即时生效")
 
-col1, col2, col3 = st.columns(3)
+col1, col2 = st.columns(2)
 
 with col1:
     _sec_options = [0, 10, 30, 60, 120]
@@ -73,24 +73,24 @@ with col1:
         index=_sec_idx,
         format_func=lambda x: f"{x} 秒" if x > 0 else "不过滤",
         key="settings_min_sec",
-        help="低于此值的播放不计入统计",
+        help="低于此值的播放不计入统计。已主动跳过（按上一首/下一首按钮）和播放错误的记录自动排除。",
     )
     st.session_state.min_ms = min_sec * 1000
 
 with col2:
-    st.session_state.exclude_skipped = st.checkbox(
-        "排除已跳过的播放",
-        value=st.session_state.exclude_skipped,
-        key="settings_skip",
-        help="主动跳过的播放不计入排行和统计",
-    )
-
-with col3:
     st.session_state.music_only = st.checkbox(
         "仅音乐（排除播客/有声书）",
         value=st.session_state.music_only,
         key="settings_music",
         help="排除播客和有声书内容",
+    )
+    st.session_state.merge_enabled = st.checkbox(
+        "合并连续播放",
+        value=st.session_state.merge_enabled,
+        key="settings_merge",
+        help="将同一首歌的连续播放记录合并为逻辑播放次数。\n\n"
+             "例如：一首歌被切分成 20s + 200s 两次记录，合并后计为 1 次完整播放。"
+             "关闭后每条记录独立计数，仅保留 ≥ 最短时长的记录。",
     )
 
 # Detect data filter changes → clear caches and rerun
@@ -98,11 +98,11 @@ _filter_changed = False
 if st.session_state.min_ms != st.session_state._prev_min_ms:
     st.session_state._prev_min_ms = st.session_state.min_ms
     _filter_changed = True
-if st.session_state.exclude_skipped != st.session_state._prev_exclude_skipped:
-    st.session_state._prev_exclude_skipped = st.session_state.exclude_skipped
-    _filter_changed = True
 if st.session_state.music_only != st.session_state._prev_music_only:
     st.session_state._prev_music_only = st.session_state.music_only
+    _filter_changed = True
+if st.session_state.merge_enabled != st.session_state._prev_merge_enabled:
+    st.session_state._prev_merge_enabled = st.session_state.merge_enabled
     _filter_changed = True
 if _filter_changed:
     st.cache_data.clear()
@@ -237,7 +237,6 @@ with col_mgmt1:
             try:
                 result = import_data(
                     agg_min_ms=st.session_state.min_ms,
-                    agg_exclude_skipped=st.session_state.exclude_skipped,
                     agg_music_only=st.session_state.music_only,
                     agg_week_start_dow=st.session_state.bb_week_start_dow,
                     agg_week_start_hour=st.session_state.bb_week_start_hour,

@@ -14,8 +14,8 @@ from app.styles import inject_global_styles
 inject_global_styles()
 
 min_ms = st.session_state.get("min_ms", 30000)
-exclude_skipped = st.session_state.get("exclude_skipped", True)
 music_only = st.session_state.get("music_only", True)
+merge_enabled = st.session_state.get("merge_enabled", True)
 
 # Vinyl Archive warm palette
 GOLD = "#B8860B"
@@ -26,9 +26,9 @@ TEXT_SECONDARY = "#8B7355"
 
 
 @st.cache_data(ttl=3600)
-def load_wrapped_data(_min_ms, _exclude_skipped, _music_only):
+def load_wrapped_data(_min_ms, _music_only, _merge_enabled):
     conn = get_db()
-    df = load_plays(conn, min_ms=_min_ms, exclude_skipped=_exclude_skipped, music_only=_music_only)
+    df = load_plays(conn, min_ms=_min_ms, music_only=_music_only, merge_enabled=_merge_enabled)
     conn.close()
     return df
 
@@ -36,12 +36,12 @@ def load_wrapped_data(_min_ms, _exclude_skipped, _music_only):
 @st.cache_data(ttl=3600)
 def load_all_wrapped():
     conn = get_db()
-    df = load_plays(conn, join_albums=False, min_ms=0, exclude_skipped=False, music_only=False)
+    df = load_plays(conn, join_albums=False, filtered=False, music_only=False)
     conn.close()
     return df
 
 
-df = load_wrapped_data(min_ms, exclude_skipped, music_only)
+df = load_wrapped_data(min_ms, music_only, merge_enabled)
 df_all = load_all_wrapped()
 
 years = sorted(df["ts_year"].unique().tolist(), reverse=True)
@@ -52,7 +52,7 @@ with st.sidebar:
         '<div style="text-align:center;margin-bottom:0.5rem;">'
         '<div style="font-size:2rem;margin-bottom:0.25rem;">🎁</div>'
         '<div style="font-size:1.05rem;font-weight:700;color:#2C2416;">Wrapped</div>'
-        f'<div style="font-size:0.7rem;color:#8B7355;margin-top:0.15rem;">跳过=否，最短={min_ms//1000}s</div>'
+        f'<div style="font-size:0.7rem;color:#8B7355;margin-top:0.15rem;">最短={min_ms//1000}s</div>'
         '</div>',
         unsafe_allow_html=True,
     )

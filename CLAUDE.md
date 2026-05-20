@@ -45,12 +45,12 @@ JSON 文件 (Spotify导出) ──→ import_data.py ──→ SQLite (spotify_s
 
 ### 核心模块
 
-- **`app/db.py`** — 数据库层。`get_db()` 获取连接（默认只读，WAL模式），`base_filters()` 生成标准 WHERE 条件片段（排除跳过 + 最短时长 + 仅音乐），`load_plays()` 统一数据加载入口（4 表 JOIN + 过滤），`ensure_schema()` 增量升级 schema（新增表/索引安全重复执行），所有统计页面通过此函数统一过滤逻辑。预聚合表 `agg_weekly_{tracks,albums,artists}` + `agg_config` 存储 Billboard 预计算结果，参数变更时通过参数哈希自动失效回退实时计算。
+- **`app/db.py`** — 数据库层。`get_db()` 获取连接（默认只读，WAL模式），`base_filters()` 生成标准 WHERE 条件片段（最短时长 + 仅音乐，已移除不可靠的 skipped 过滤），`load_plays()` 统一数据加载入口（4 表 JOIN + 过滤），`merge_consecutive_plays()` 合并连续同曲目播放为逻辑播放次数（先合并再过滤，避免碎片丢失）。`ensure_schema()` 增量升级 schema（新增表/索引安全重复执行），所有统计页面通过此函数统一过滤逻辑。预聚合表 `agg_weekly_{tracks,albums,artists}` + `agg_config` 存储 Billboard 预计算结果，参数变更时通过参数哈希自动失效回退实时计算。
 - **`app/import_data.py`** — ETL 管线。逐文件读取 JSON，UTC→本地时间转换，平台字符串归一化，维度表 upsert（artist/album/track，以 `(artist_id, track_name)` 为 key 合并重复版本），同步写入 `track_albums` 关联表，事实表 5000 行批量插入。
 - **`app/utils.py`** — `convert_to_local_time()` 固定使用北京时间（UTC+8），忽略 Spotify 上报的 `conn_country` 字段（因 VPN/网络路由可能导致该字段不准确）；`classify_platform()` 将类似 `iOS 15.5 (iPhone14,5)` 归一化为 `ios`。
 - **`app/styles.py`** — 全局 CSS 注入。「Vinyl Archive」暖色主题：CSS 变量（`--gold`/`--bg-page`/`--bg-card` 等）、噪点纹理背景、卡片金左边线、衬线字体、表头暖金底色、侧边栏牛皮纸色。`page_header()` 和 `kpi_row()` 和 `filter_badge()` 辅助函数供各页面统一使用。
-- **`app/main.py`** — 入口 + 总览仪表盘。使用 `st.navigation` + `st.Page` 定义全站导航结构（中文侧边栏标签/英文文件名），`dashboard()` 函数包含仪表盘全部内容。在 `st.session_state` 中初始化全局过滤参数（`min_ms`, `exclude_skipped`, `music_only`），侧边栏仅展示当前参数摘要和数据库状态，首次运行时自动触发数据导入。定义暖色 Plotly 图表模板（`PLOTLY_TEMPLATE`）和色盘（`COLORS`），供各页面复用。
-- **`app/pages/09_settings.py`** — 总设置页。集中管理数据过滤（最短播放时长/排除跳过/仅音乐）、Billboard 三个榜单独立 Top N（`bb_top_n` 单曲 / `bb_album_top_n` 专辑 / `bb_artist_top_n` 艺人）、统计周期边界（`bb_week_start_dow`/`bb_week_start_hour`）、数据导入。任何参数变更时自动清除全局缓存并重跑，确保所有页面数据一致。
+- **`app/main.py`** — 入口 + 总览仪表盘。使用 `st.navigation` + `st.Page` 定义全站导航结构（中文侧边栏标签/英文文件名），`dashboard()` 函数包含仪表盘全部内容。在 `st.session_state` 中初始化全局过滤参数（`min_ms`, `music_only`, `merge_enabled`），侧边栏展示当前参数摘要（最短时长/仅音乐/合并状态）和数据库状态，首次运行时自动触发数据导入。定义暖色 Plotly 图表模板（`PLOTLY_TEMPLATE`）和色盘（`COLORS`），供各页面复用。
+- **`app/pages/09_settings.py`** — 总设置页。集中管理数据过滤（最短播放时长/仅音乐/合并连续播放）、Billboard 三个榜单独立 Top N（`bb_top_n` 单曲 / `bb_album_top_n` 专辑 / `bb_artist_top_n` 艺人）、统计周期边界（`bb_week_start_dow`/`bb_week_start_hour`）、数据导入。任何参数变更时自动清除全局缓存并重跑，确保所有页面数据一致。
 
 ### 数据库设计
 
@@ -62,7 +62,7 @@ JSON 文件 (Spotify导出) ──→ import_data.py ──→ SQLite (spotify_s
 
 使用 `st.navigation` + `st.Page` 统一管理侧边栏导航，文件名保持英文（兼容性），侧边栏显示中文标签。`main.py` 为入口，定义所有页面的导航结构和中文标题；每个页面文件作为独立的 MPA 脚本运行。
 
-`09_settings.py` 为总设置页，集中管理所有参数：数据过滤（`min_ms`/`exclude_skipped`/`music_only`）、Billboard 三个榜单独立 Top N（`bb_top_n`/`bb_album_top_n`/`bb_artist_top_n`）、统计周期边界（`bb_week_start_dow`/`bb_week_start_hour`）、数据导入。`main.py` 侧边栏展示当前过滤参数摘要、Billboard 三个 Top N 徽章和数据库状态。
+`09_settings.py` 为总设置页，集中管理所有参数：数据过滤（`min_ms`/`music_only`/`merge_enabled`）、Billboard 三个榜单独立 Top N（`bb_top_n`/`bb_album_top_n`/`bb_artist_top_n`）、统计周期边界（`bb_week_start_dow`/`bb_week_start_hour`）、数据导入。`main.py` 侧边栏展示当前过滤参数摘要、Billboard 三个 Top N 徽章和数据库状态。
 
 `08_billboard.py` 为薄入口（15 行），委派至 `app/pages/billboard/` 模块化包（13 个文件，~3,900 行）：
 
@@ -89,9 +89,12 @@ app/pages/billboard/
 
 通过「⚙️ 设置」页面集中管理，参数存入 `st.session_state` 供所有页面读取。变更时自动 `st.cache_data.clear()` + `st.rerun()`，确保 Billboard 等页面拿到全新数据。
 
-两个层级：
-- **硬过滤**（排行榜/时长统计）：`skipped=0 AND ms_played >= 30000`（30秒可调），默认启用
-- **全量数据**（行为分析页）：跳过率、快进行为等分析需要完整数据，页面标注当前数据范围
+两个过滤条件：
+- **`ms_played >= min_ms`**（默认 30s）：过滤过短的播放，仅此一个硬过滤条件
+- **`music_only`**：排除播客/有声书（`track_id IS NOT NULL`）
+- 已移除 `skipped` 过滤——`skipped` 和 `reason_end` 字段反映按钮行为而非收听行为，不可靠
+
+合并连续播放（`merge_enabled`，默认开启）：先合并再过滤，将连续同曲目记录拼接为逻辑播放次数，避免碎片化片段被误丢弃。可关闭以保留原始逐条计数。
 
 `base_filters()` 是唯一的过滤入口，修改此函数即可影响所有统计页面。
 
@@ -99,5 +102,5 @@ app/pages/billboard/
 
 - Python 3.9 — 使用 `Optional[X]` 而非 `X | None`，`dict[str, int]` 可用
 - `sys.path.insert(0, ...)` 在每个文件顶部，因为 Streamlit 运行时项目根目录不在 path 中
-- SQLite 数据库文件位于项目根目录 `spotify_stats.db`，由 `.gitignore` 排除
-- 数据文件夹 `Spotify Extended Streaming History - 251029/` 需手动放置
+- SQLite 数据库文件位于 `data/spotify_stats.db`，由 `.gitignore` 排除
+- 数据文件夹结构：`data/streaming/`（长期串流记录）、`data/account/`（账号数据），详见 `data/README.md`

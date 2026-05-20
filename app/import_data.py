@@ -5,28 +5,28 @@ import glob
 import os
 from typing import Any, Optional
 
-from .db import get_db, init_db, DB_PATH, build_aggregations
+from .db import get_db, init_db, ensure_schema, DB_PATH, build_aggregations
 from .utils import convert_to_local_time, classify_platform
 
 DATA_DIR = os.path.join(
     os.path.dirname(os.path.dirname(__file__)),
-    "Spotify Extended Streaming History",
+    "data", "streaming",
 )
 
 
 def _cache_artist(conn, name: str, cache: dict[str, int]) -> int:
     if name in cache:
         return cache[name]
-    cur = conn.execute(
-        "INSERT OR IGNORE INTO artists(artist_name) VALUES (?)", (name,)
-    )
-    if cur.lastrowid:
-        cache[name] = cur.lastrowid
-    else:
-        row = conn.execute(
-            "SELECT artist_id FROM artists WHERE artist_name = ?", (name,)
-        ).fetchone()
+    row = conn.execute(
+        "SELECT artist_id FROM artists WHERE artist_name = ?", (name,)
+    ).fetchone()
+    if row:
         cache[name] = row[0]
+    else:
+        cur = conn.execute(
+            "INSERT INTO artists(artist_name) VALUES (?)", (name,)
+        )
+        cache[name] = cur.lastrowid
     return cache[name]
 
 
@@ -34,18 +34,18 @@ def _cache_album(conn, album_name: str, artist_id: int, cache: dict[tuple, int])
     key = (album_name, artist_id)
     if key in cache:
         return cache[key]
-    cur = conn.execute(
-        "INSERT OR IGNORE INTO albums(album_name, artist_id) VALUES (?, ?)",
+    row = conn.execute(
+        "SELECT album_id FROM albums WHERE album_name = ? AND artist_id = ?",
         (album_name, artist_id),
-    )
-    if cur.lastrowid:
-        cache[key] = cur.lastrowid
-    else:
-        row = conn.execute(
-            "SELECT album_id FROM albums WHERE album_name = ? AND artist_id = ?",
-            (album_name, artist_id),
-        ).fetchone()
+    ).fetchone()
+    if row:
         cache[key] = row[0]
+    else:
+        cur = conn.execute(
+            "INSERT INTO albums(album_name, artist_id) VALUES (?, ?)",
+            (album_name, artist_id),
+        )
+        cache[key] = cur.lastrowid
     return cache[key]
 
 
@@ -62,19 +62,19 @@ def _cache_track(
     if key in cache:
         tid = cache[key]
     else:
-        cur = conn.execute(
-            """INSERT OR IGNORE INTO tracks(track_name, artist_id, album_id, spotify_track_uri)
-               VALUES (?, ?, ?, ?)""",
-            (track_name, artist_id, album_id, spotify_uri),
-        )
-        if cur.lastrowid:
-            tid = cur.lastrowid
-        else:
-            row = conn.execute(
-                "SELECT track_id FROM tracks WHERE track_name = ? AND artist_id = ?",
-                (track_name, artist_id),
-            ).fetchone()
+        row = conn.execute(
+            "SELECT track_id FROM tracks WHERE track_name = ? AND artist_id = ?",
+            (track_name, artist_id),
+        ).fetchone()
+        if row:
             tid = row[0]
+        else:
+            cur = conn.execute(
+                """INSERT INTO tracks(track_name, artist_id, album_id, spotify_track_uri)
+                   VALUES (?, ?, ?, ?)""",
+                (track_name, artist_id, album_id, spotify_uri),
+            )
+            tid = cur.lastrowid
         cache[key] = tid
 
     # If track already existed and current play has a different album, record the association
@@ -91,7 +91,6 @@ def import_data(
     data_dir: Optional[str] = None,
     progress_callback=None,
     agg_min_ms: int = 30000,
-    agg_exclude_skipped: bool = True,
     agg_music_only: bool = True,
     agg_week_start_dow: int = 4,
     agg_week_start_hour: int = 0,
@@ -125,12 +124,38 @@ def import_data(
             file_record_counts[filepath] = len(records)
             total_records_est += len(records)
 
-    # Reset database
-    if os.path.exists(DB_PATH):
-        os.remove(DB_PATH)
+    # Ensure tables exist
     init_db()
 
+    # Clear old play data and pre-aggregations BEFORE ensure_schema,
+    # so we can safely deduplicate dimension tables before UNIQUE indexes are created
     conn = get_db(readonly=False)
+    conn.execute("DELETE FROM plays")
+    conn.execute("DELETE FROM agg_weekly_tracks")
+    conn.execute("DELETE FROM agg_weekly_albums")
+    conn.execute("DELETE FROM agg_weekly_artists")
+    conn.execute("DELETE FROM agg_config")
+    conn.execute("DELETE FROM track_albums")
+    conn.commit()
+
+    # Deduplicate tracks: keep lowest track_id per (artist_id, track_name)
+    conn.execute(
+        "DELETE FROM tracks WHERE track_id IN ("
+        "SELECT t1.track_id FROM tracks t1 "
+        "JOIN tracks t2 ON t1.artist_id = t2.artist_id AND t1.track_name = t2.track_name "
+        "WHERE t1.track_id > t2.track_id)"
+    )
+    # Deduplicate albums: keep lowest album_id per (album_name, artist_id)
+    conn.execute(
+        "DELETE FROM albums WHERE album_id IN ("
+        "SELECT a1.album_id FROM albums a1 "
+        "JOIN albums a2 ON a1.album_name = a2.album_name AND a1.artist_id = a2.artist_id "
+        "WHERE a1.album_id > a2.album_id)"
+    )
+    conn.commit()
+
+    # Now safe to create UNIQUE indexes (schema upgrade)
+    ensure_schema()
 
     artist_cache: dict[str, int] = {}
     album_cache: dict[tuple, int] = {}
@@ -237,7 +262,6 @@ def import_data(
     try:
         agg_results = build_aggregations(
             min_ms=agg_min_ms,
-            exclude_skipped=agg_exclude_skipped,
             music_only=agg_music_only,
             week_start_dow=agg_week_start_dow,
             week_start_hour=agg_week_start_hour,

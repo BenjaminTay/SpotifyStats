@@ -5,10 +5,10 @@ import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 
-from .shared import _bb_url, _render_bb_table
+from .shared import _bb_url, _render_bb_table, compute_power_scores
 
 
-def render(weekly, weekly_album, track_per_album, album_track_counts, bb_album_top_n):
+def render(weekly, weekly_album, track_per_album, album_track_counts, bb_album_top_n, top_n):
     # ── Consume cross-tab album navigation ───────────────────────────
     nav_album = st.session_state.get("bb_selected_album_name")
     nav_album_artist = st.session_state.get("_bb_selected_album_artist")
@@ -62,13 +62,62 @@ def render(weekly, weekly_album, track_per_album, album_track_counts, bb_album_t
         selected_album = selected_album_row["album_name"]
         selected_album_artist = selected_album_row["artist_name"]
 
-        # ── Album summary cards ───────────────────────────────────────
+        # Pre-compute power scores for delta text
+        track_power = compute_power_scores(weekly, top_n)
+        album_track_ids = set(
+            track_per_album[
+                (track_per_album["album_name"] == selected_album)
+                & (track_per_album["artist_name"] == selected_album_artist)
+            ]["track_id"].tolist()
+        )
+        album_track_power = track_power[track_power["track_id"].isin(album_track_ids)]
+
+        # ═════════════════════════════════════════════════════════════════
+        # 组1: 专辑榜成绩（从 weekly_album 计算）
+        # ═════════════════════════════════════════════════════════════════
+        album_chart_data = weekly_album[
+            (weekly_album["album_name"] == selected_album)
+            & (weekly_album["artist_name"] == selected_album_artist)
+        ]
+        if not album_chart_data.empty:
+            alb_peak = int(album_chart_data["rank"].min())
+            alb_weeks = int(album_chart_data["billboard_week"].nunique())
+            alb_first_week = album_chart_data["billboard_week"].min()
+            alb_first_peak = album_chart_data.loc[
+                album_chart_data["rank"] == alb_peak, "billboard_week"
+            ].min()
+            alb_no1 = int((album_chart_data["rank"] == 1).sum())
+
+            st.subheader("专辑榜成绩")
+            ca1, ca2, ca3, ca4, ca5 = st.columns(5)
+            ca1.metric("专辑最高排名", f"#{alb_peak}")
+            ca2.metric("进榜周数", f"{alb_weeks} 周")
+            ca3.metric("首次入榜", str(alb_first_week))
+            ca4.metric("首次Peak周", str(alb_first_peak))
+            ca5.metric("专辑 #1 周数", f"{alb_no1} 周")
+        else:
+            st.caption("该专辑暂无专辑榜记录")
+
+        st.divider()
+
+        # ═════════════════════════════════════════════════════════════════
+        # 组2: 单曲成绩
+        # ═════════════════════════════════════════════════════════════════
+        # Best peak delta: highest Power Score track at that peak
+        best_peak_val = int(selected_album_row["best_peak"])
+        at_peak_tracks = album_track_power[album_track_power["peak_position"] == best_peak_val]
+        if not at_peak_tracks.empty:
+            best_peak_delta = at_peak_tracks.iloc[0]["track_name"][:30]
+        else:
+            best_peak_delta = selected_album_row["best_peak_track"][:30]
+
+        st.subheader("单曲成绩")
         col1, col2, col3, col4 = st.columns(4)
         col1.metric("入榜曲数", f"{int(selected_album_row['total_tracks'])} 首")
         col2.metric(
-            "最佳 Peak",
-            f"#{int(selected_album_row['best_peak'])}",
-            delta=selected_album_row["best_peak_track"][:30],
+            "最佳单曲Peak",
+            f"#{best_peak_val}",
+            delta=best_peak_delta,
         )
         col3.metric("总上榜周数", f"{int(selected_album_row['total_weeks'])} 周")
         col4.metric("平均在榜", f"{selected_album_row['avg_weeks']:.1f} 周")
@@ -77,7 +126,7 @@ def render(weekly, weekly_album, track_per_album, album_track_counts, bb_album_t
         col1b.metric("#1 曲数", f"{int(selected_album_row['top1'])} 首")
         col2b.metric("Top 5 曲数", f"{int(selected_album_row['top5'])} 首")
         col3b.metric("Top 10 曲数", f"{int(selected_album_row['top10'])} 首")
-        col4b.metric("#1周数", f"{int(selected_album_row['weeks_at_no1'])} 周")
+        col4b.metric("单曲 #1 周数", f"{int(selected_album_row['weeks_at_no1'])} 周")
 
         st.divider()
 
@@ -136,26 +185,19 @@ def render(weekly, weekly_album, track_per_album, album_track_counts, bb_album_t
         _render_bb_table(_alb_t_headers, _alb_t_rows,
             col_formats={0: "rank", 2: "num", 3: "num", 4: "num", 8: "num"})
 
-        # ── Album weekly charting history ───────────────────────────────
+        # ── Merged: 每周入榜概况 + 专辑周榜历史 ──────────────────────────
         st.divider()
-        st.subheader(f"《{selected_album}》· 每周入榜概况")
+        st.subheader(f"《{selected_album}》· 周榜历史")
 
+        album_wk_history = weekly_album[
+            (weekly_album["album_name"] == selected_album)
+            & (weekly_album["artist_name"] == selected_album_artist)
+        ].copy()
+
+        # Build singles-side summary (#1 track info per week)
         alb_track_ids = set(alb_tracks["track_id"].tolist())
         album_weekly = weekly[weekly["track_id"].isin(alb_track_ids)]
-        alw_summary = (
-            album_weekly.groupby("billboard_week")
-            .agg(
-                tracks_on_chart=("track_id", "nunique"),
-                total_plays=("play_count", "sum"),
-            )
-            .reset_index()
-        )
-
-        # Get #1 track names and IDs per week
-        album_no1_grp = (
-            album_weekly[album_weekly["rank"] == 1]
-            .groupby("billboard_week")
-        )
+        album_no1_grp = album_weekly[album_weekly["rank"] == 1].groupby("billboard_week")
         album_no1 = (
             album_no1_grp["track_name"]
             .apply(lambda x: "、".join(dict.fromkeys(x)))
@@ -167,59 +209,44 @@ def render(weekly, weekly_album, track_per_album, album_track_counts, bb_album_t
             .reset_index()
         )
         album_no1 = album_no1.merge(album_no1_ids, on="billboard_week", how="left")
-        alw_summary = alw_summary.merge(album_no1, on="billboard_week", how="left")
-        alw_summary["no1_track_names"] = alw_summary["no1_track_names"].fillna("—")
-        alw_summary = alw_summary.sort_values("billboard_week", ascending=False)
 
-        if alw_summary.empty:
-            st.caption("该专辑在当前过滤条件下无上榜记录")
-        else:
-            _alw_headers = ["周", "上榜曲数", "当周总播放", "#1 曲目"]
-            _alw_rows = []
-            for _, _r in alw_summary.iterrows():
-                _week_url = _bb_url(bb_nav="week", bb_date=_r['billboard_week'], bb_tab="📋 周榜")
+        # Merge album chart data with #1 track info
+        if not album_wk_history.empty:
+            merged = album_wk_history.merge(album_no1, on="billboard_week", how="left")
+            merged["no1_track_names"] = merged["no1_track_names"].fillna("—")
+            merged = merged.sort_values("billboard_week", ascending=False)
+
+            _m_headers = ["周", "专辑排名", "总播放", "入榜曲数", "#1 曲目"]
+            _m_rows = []
+            for _, _r in merged.iterrows():
+                _week_url = _bb_url(bb_nav="week", bb_date=_r['billboard_week'], bb_tab="📋 周榜", bb_subtab="1")
                 no1_names = str(_r["no1_track_names"])
                 if pd.notna(_r.get("no1_count")) and int(_r["no1_count"]) == 1 and pd.notna(_r.get("no1_track_id")):
                     no1_url = _bb_url(bb_nav="track", bb_id=int(_r['no1_track_id']), bb_tab="🎵 单曲历史")
                     _no1_cell = (_html.escape(no1_names), no1_url)
                 else:
                     _no1_cell = _html.escape(no1_names)
-                _alw_rows.append([
-                    (str(_r["billboard_week"]), _week_url),
-                    str(_r["tracks_on_chart"]),
-                    f"{_r['total_plays']:,}",
-                    _no1_cell,
-                ])
-            _render_bb_table(_alw_headers, _alw_rows,
-                col_formats={1: "num", 2: "num"})
-        # ── Album Weekly Chart History (专辑周榜) ────────────────────────
-        st.divider()
-        st.subheader(f"《{selected_album}》· 专辑周榜历史")
-
-        album_wk_history = weekly_album[(weekly_album["album_name"] == selected_album) & (weekly_album["artist_name"] == selected_album_artist)].copy()
-        if album_wk_history.empty:
-            st.info("该专辑在当前过滤条件下无周榜记录")
-        else:
-            album_wk_history = album_wk_history.sort_values("billboard_week", ascending=False)
-            album_wk_history["total_hours"] = album_wk_history["total_ms"] / 3_600_000
-
-            _alwh_headers = ["周", "排名", "总播放次数", "入榜曲数", "总时长(小时)"]
-            _alwh_rows = []
-            for _, _r in album_wk_history.iterrows():
-                _week_url = _bb_url(bb_nav="week", bb_date=_r['billboard_week'], bb_tab="📋 周榜", bb_subtab="1")
-                _alwh_rows.append([
+                _m_rows.append([
                     (_html.escape(str(_r["billboard_week"])), _week_url),
                     str(_r["rank"]),
                     f"{_r['play_count']:,}",
                     str(_r["tracks_count"]),
-                    f"{_r['total_hours']:.1f}",
+                    _no1_cell,
                 ])
-            _render_bb_table(_alwh_headers, _alwh_rows,
-                col_formats={1: "rank", 2: "num", 3: "num", 4: "num"}, height="500px")
+            _render_bb_table(_m_headers, _m_rows,
+                col_formats={1: "rank", 2: "num", 3: "num"}, height="500px")
+        else:
+            st.caption("该专辑在当前过滤条件下无周榜记录")
 
-            # Rank trend chart
+        # ── Rank trend chart with hottest track overlay ─────────────────
+        if not album_wk_history.empty:
+            st.divider()
             st.subheader("专辑周榜排名趋势")
+
             trend_data2 = album_wk_history.sort_values("billboard_week", ascending=True).copy()
+            trend_data2["billboard_week"] = pd.to_datetime(trend_data2["billboard_week"])
+            all_weeks2 = pd.date_range(trend_data2["billboard_week"].min(), trend_data2["billboard_week"].max(), freq="7D")
+            trend_data2 = pd.DataFrame({"billboard_week": all_weeks2}).merge(trend_data2, on="billboard_week", how="left")
             peak_row2 = trend_data2.loc[trend_data2["rank"].idxmin()]
             fig_alb_trend = go.Figure()
             fig_alb_trend.add_trace(
@@ -227,9 +254,10 @@ def render(weekly, weekly_album, track_per_album, album_track_counts, bb_album_t
                     x=trend_data2["billboard_week"],
                     y=trend_data2["rank"],
                     mode="lines+markers",
-                    name="排名",
+                    name="专辑排名",
                     line={"color": "#B8860B", "width": 2},
                     marker={"size": 6, "color": "#B8860B"},
+                    connectgaps=False,
                 )
             )
             fig_alb_trend.add_trace(
@@ -243,11 +271,37 @@ def render(weekly, weekly_album, track_per_album, album_track_counts, bb_album_t
                     marker={"size": 14, "color": "#C45C3A", "symbol": "star"},
                 )
             )
+
+            # Overlay: best singles chart rank per week for this album
+            album_singles_rank = (
+                album_weekly.groupby("billboard_week")["rank"]
+                .min()
+                .reset_index()
+                .sort_values("billboard_week")
+            )
+            if not album_singles_rank.empty:
+                album_singles_rank["billboard_week"] = pd.to_datetime(album_singles_rank["billboard_week"])
+                all_aw = pd.date_range(album_singles_rank["billboard_week"].min(), album_singles_rank["billboard_week"].max(), freq="7D")
+                album_singles_rank = pd.DataFrame({"billboard_week": all_aw}).merge(album_singles_rank, on="billboard_week", how="left")
+                fig_alb_trend.add_trace(
+                    go.Scatter(
+                        x=album_singles_rank["billboard_week"],
+                        y=album_singles_rank["rank"],
+                        mode="lines+markers",
+                        name="最佳单曲排名",
+                        line={"color": "#2E8B57", "width": 1.5, "dash": "dot"},
+                        marker={"size": 5, "color": "#2E8B57", "symbol": "triangle-up"},
+                        connectgaps=False,
+                        hovertemplate="最佳单曲 #%{y}<extra></extra>",
+                    )
+                )
+
             fig_alb_trend.update_layout(
                 yaxis={"autorange": "reversed", "title": "排名", "gridcolor": "rgba(139,115,85,0.08)"},
                 xaxis={"title": "", "gridcolor": "rgba(139,115,85,0.08)"},
                 height=400,
                 hovermode="x unified",
-                showlegend=False,
+                showlegend=True,
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
             )
             st.plotly_chart(fig_alb_trend, use_container_width=True)

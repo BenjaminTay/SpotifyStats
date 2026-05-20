@@ -1,8 +1,10 @@
 """Tab: 榜单记录 (Billboard Records & Milestones)."""
 
+import html as _html
 import streamlit as st
+import pandas as pd
 
-from .shared import _render_record_table
+from .shared import _bb_url, _render_bb_table, _render_record_table
 
 
 def render(records):
@@ -202,3 +204,68 @@ def render(records):
             _render_record_table(records["year_end_no1"], link_col_map={"track_name": "track", "artist_name": "artist"}, drop_cols=["track_id"])
         else:
             st.info("暂无数据")
+
+    st.divider()
+
+    # ── Section 7: 双空冠 ─────────────────────────────────────────────────
+    st.subheader("双空冠（同周歌曲+专辑同时空冠）")
+
+    if "double_debut" in records and not records["double_debut"].empty:
+        dd = records["double_debut"]
+        st.metric("双空冠次数", f"{len(dd)} 次")
+        _dd_headers = ["周", "艺人", "空冠歌曲", "空冠专辑"]
+        _dd_rows = []
+        for _, _r in dd.iterrows():
+            _artist_url = _bb_url(bb_nav="artist", bb_name=str(_r['debut_artist']), bb_tab="🎤 艺人榜单")
+            _week_url = _bb_url(bb_nav="week", bb_date=str(_r['debut_week']), bb_tab="📋 周榜")
+            _dd_rows.append([
+                (_html.escape(str(_r["debut_week"])), _week_url),
+                (_html.escape(str(_r["debut_artist"])), _artist_url),
+                _html.escape(str(_r["debut_track"])),
+                _html.escape(str(_r["debut_album"])),
+            ])
+        _render_bb_table(_dd_headers, _dd_rows)
+    else:
+        st.info("暂无同时实现歌曲和专辑双空冠的艺人")
+
+    st.divider()
+
+    # ── Section 8: 大盘 ───────────────────────────────────────────────────
+    st.subheader("周总播放次数排名（大盘）")
+
+    if "week_total_plays" in records and not records["week_total_plays"].empty:
+        wtp = records["week_total_plays"]
+        _wtp_headers = ["#", "周", "总播放次数", "#1 曲目", "#1 曲目播放次数", "#1 专辑", "#1 专辑播放次数", "#1 艺人", "#1 艺人播放次数"]
+        _wtp_rows = []
+        for _i, _r in wtp.iterrows():
+            _week_url = _bb_url(bb_nav="week", bb_date=_r['billboard_week'], bb_tab="📋 周榜")
+            if pd.notna(_r.get("no1_track_id")):
+                _no1_track_url = _bb_url(bb_nav="track", bb_id=int(_r['no1_track_id']), bb_tab="🎵 单曲历史")
+                _no1_track_cell = (_html.escape(str(_r["no1_track"])), _no1_track_url)
+            else:
+                _no1_track_cell = "—"
+            if pd.notna(_r.get("no1_album")):
+                _no1_album_url = _bb_url(bb_nav="album", bb_name=str(_r['no1_album']), bb_art=str(_r.get('no1_album_artist', '')), bb_tab="💿 专辑榜单")
+                _no1_album_cell = (_html.escape(str(_r["no1_album"])), _no1_album_url)
+            else:
+                _no1_album_cell = "—"
+            if pd.notna(_r.get("no1_chart_artist")):
+                _no1_artist_url = _bb_url(bb_nav="artist", bb_name=str(_r['no1_chart_artist']), bb_tab="🎤 艺人榜单")
+                _no1_artist_cell = (_html.escape(str(_r["no1_chart_artist"])), _no1_artist_url)
+            else:
+                _no1_artist_cell = "—"
+            _wtp_rows.append([
+                str(_r.name),
+                (_html.escape(str(_r["billboard_week"])), _week_url),
+                f"{_r['total_plays']:,}",
+                _no1_track_cell,
+                f"{_r['no1_track_plays']:,.0f}" if pd.notna(_r.get("no1_track_plays")) else "—",
+                _no1_album_cell,
+                f"{_r['no1_album_plays']:,.0f}" if pd.notna(_r.get("no1_album_plays")) else "—",
+                _no1_artist_cell,
+                f"{_r['no1_chart_artist_plays']:,.0f}" if pd.notna(_r.get("no1_chart_artist_plays")) else "—",
+            ])
+        _render_bb_table(_wtp_headers, _wtp_rows,
+            col_formats={0: "rank", 2: "num", 4: "num", 6: "num", 8: "num"}, height="500px")
+    else:
+        st.info("暂无大盘数据")

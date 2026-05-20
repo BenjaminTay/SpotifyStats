@@ -45,10 +45,10 @@ COLORS = ["#B8860B", "#C45C3A", "#7D8C4E", "#D4845A", "#D4A84B", "#5C3D2E", "#C4
 # ── Session state defaults ──────────────────────────────────────────
 if "min_ms" not in st.session_state:
     st.session_state.min_ms = 30000
-if "exclude_skipped" not in st.session_state:
-    st.session_state.exclude_skipped = True
 if "music_only" not in st.session_state:
     st.session_state.music_only = True
+if "merge_enabled" not in st.session_state:
+    st.session_state.merge_enabled = True
 
 
 # ── Sidebar ──────────────────────────────────────────────────────────
@@ -73,12 +73,13 @@ def render_sidebar():
             unsafe_allow_html=True,
         )
         min_s = st.session_state.min_ms // 1000
+        merge = st.session_state.get("merge_enabled", True)
         st.markdown(
             f"""
             <div style="display:flex;flex-wrap:wrap;gap:0.3rem;margin-bottom:0.75rem;">
                 <span class="sidebar-badge">⏱ {min_s}s</span>
-                <span class="sidebar-badge">{'🚫 跳过' if st.session_state.exclude_skipped else '✅ 跳过'}</span>
                 <span class="sidebar-badge">{'🎶 音乐' if st.session_state.music_only else '📻 全部'}</span>
+                <span class="sidebar-badge">{'🔗 合并' if merge else '📋 独立'}</span>
             </div>
             """,
             unsafe_allow_html=True,
@@ -151,7 +152,6 @@ def ensure_data():
                 result = import_data(
                     progress_callback=lambda msg, pct: st.info(msg) if pct == 0 else None,
                     agg_min_ms=st.session_state.get("min_ms", 30000),
-                    agg_exclude_skipped=st.session_state.get("exclude_skipped", True),
                     agg_music_only=st.session_state.get("music_only", True),
                     agg_week_start_dow=st.session_state.get("bb_week_start_dow", 4),
                     agg_week_start_hour=st.session_state.get("bb_week_start_hour", 0),
@@ -174,9 +174,9 @@ def ensure_data():
 
 # ── Helper: get filtered data as DataFrame ─────────────────────────
 @st.cache_data(ttl=3600)
-def load_plays_df(min_ms: int, exclude_skipped: bool, music_only: bool) -> pd.DataFrame:
+def load_plays_df(min_ms: int, music_only: bool) -> pd.DataFrame:
     conn = get_db()
-    df = load_plays(conn, min_ms=min_ms, exclude_skipped=exclude_skipped, music_only=music_only)
+    df = load_plays(conn, min_ms=min_ms, music_only=music_only, merge_enabled=st.session_state.merge_enabled)
     conn.close()
     return df
 
@@ -185,7 +185,7 @@ def load_plays_df(min_ms: int, exclude_skipped: bool, music_only: bool) -> pd.Da
 def load_all_plays_df() -> pd.DataFrame:
     """Unfiltered data for behavior analysis pages."""
     conn = get_db()
-    df = load_plays(conn, min_ms=0, exclude_skipped=False, music_only=False)
+    df = load_plays(conn, filtered=False, music_only=False)
     conn.close()
     return df
 
@@ -196,10 +196,9 @@ def dashboard():
     ensure_data()
 
     min_ms = st.session_state.min_ms
-    exclude_skipped = st.session_state.exclude_skipped
     music_only = st.session_state.music_only
 
-    df = load_plays_df(min_ms, exclude_skipped, music_only)
+    df = load_plays_df(min_ms, music_only)
     df_all = load_all_plays_df()
 
     total_plays = len(df)
@@ -299,6 +298,7 @@ def dashboard():
             color_discrete_sequence=[COLORS[0]],
         )
         fig_top.update_layout(**PLOTLY_TEMPLATE["layout"])
+        fig_top.update_layout(title="")
         fig_top.update_yaxes(autorange="reversed")
         fig_top.update_traces(marker={"color": COLORS[0]})
         st.plotly_chart(fig_top, use_container_width=True)
@@ -315,6 +315,7 @@ def dashboard():
             color_discrete_sequence=COLORS,
         )
         fig_plat.update_layout(**PLOTLY_TEMPLATE["layout"])
+        fig_plat.update_layout(title="")
         fig_plat.update_traces(textinfo="label+percent", textfont={"color": "#2C2416"})
         st.plotly_chart(fig_plat, use_container_width=True)
 
@@ -334,6 +335,7 @@ def dashboard():
             color_discrete_sequence=[COLORS[2]],
         )
         fig_dow.update_layout(**PLOTLY_TEMPLATE["layout"])
+        fig_dow.update_layout(title="")
         fig_dow.update_traces(marker={"color": COLORS[2]})
         st.plotly_chart(fig_dow, use_container_width=True)
 
@@ -342,7 +344,7 @@ def dashboard():
         st.divider()
         st.subheader("🎲 回忆推荐")
         conn_rec = get_db()
-        _f, _fp = base_filters(min_ms=min_ms, exclude_skipped=exclude_skipped, music_only=music_only)
+        _f, _fp = base_filters(min_ms=min_ms, music_only=music_only)
         _w = f"WHERE {_f}" if _f else ""
         random_track = conn_rec.execute(
             f"""SELECT p.track_id, t.track_name, a.artist_name, al.album_name,
@@ -379,15 +381,15 @@ def dashboard():
 # ── Navigation ──────────────────────────────────────────────────────
 pg = st.navigation(
     [
-        st.Page(dashboard, title="总览仪表盘", icon="📊", default=True),
-        st.Page("pages/02_timeline.py", title="时间线", icon="⏱"),
-        st.Page("pages/03_leaderboard.py", title="排行榜", icon="🏆"),
-        st.Page("pages/04_behavior.py", title="行为分析", icon="🔍"),
-        st.Page("pages/05_wrapped.py", title="年度总结", icon="🎁"),
-        st.Page("pages/06_artist_deep.py", title="艺人深潜", icon="🎤"),
-        st.Page("pages/07_listening_hours.py", title="听歌时段", icon="🕐"),
-        st.Page("pages/08_billboard.py", title="Billboard 周榜", icon="📈"),
-        st.Page("pages/09_settings.py", title="设置", icon="⚙️"),
+        st.Page(dashboard, title="总览仪表盘", default=True),
+        st.Page("pages/02_timeline.py", title="时间线"),
+        st.Page("pages/03_leaderboard.py", title="排行榜"),
+        st.Page("pages/04_behavior.py", title="行为分析"),
+        st.Page("pages/05_wrapped.py", title="年度总结"),
+        st.Page("pages/06_artist_deep.py", title="艺人深潜"),
+        st.Page("pages/07_listening_hours.py", title="听歌时段"),
+        st.Page("pages/08_billboard.py", title="Billboard 周榜"),
+        st.Page("pages/09_settings.py", title="设置"),
     ]
 )
 pg.run()

@@ -63,7 +63,6 @@ def run():
 
     # ── Session state defaults ────────────────────────────────────────────
     min_ms = st.session_state.get("min_ms", 30000)
-    exclude_skipped = st.session_state.get("exclude_skipped", True)
     music_only = st.session_state.get("music_only", True)
     bb_week_start_dow = st.session_state.get("bb_week_start_dow", 4)  # Friday
     bb_week_start_hour = st.session_state.get("bb_week_start_hour", 0)
@@ -135,7 +134,7 @@ def run():
 
     # ── Load data ─────────────────────────────────────────────────────────
     try:
-        df_raw = load_billboard_raw(min_ms, exclude_skipped, music_only, bb_week_start_dow, bb_week_start_hour)
+        df_raw = load_billboard_raw(min_ms, music_only, bb_week_start_dow, bb_week_start_hour)
         album_map = load_track_album_map()
     except Exception as e:
         st.error(f"数据加载失败：{e}")
@@ -183,7 +182,7 @@ def run():
             '<div style="font-size:2rem;margin-bottom:0.25rem;">📈</div>'
             '<div style="font-size:1.05rem;font-weight:700;color:#2C2416;">Billboard 周榜</div>'
             f'<div style="font-size:0.68rem;color:#8B7355;margin-top:0.15rem;">最短 {min_ms // 1000}s · '
-            f'跳过={"排除" if exclude_skipped else "包含"} · {"仅音乐" if music_only else "含播客"}</div>'
+            f'{"仅音乐" if music_only else "含播客"}</div>'
             '</div>',
             unsafe_allow_html=True,
         )
@@ -206,7 +205,7 @@ def run():
             f"艺人 Top {bb_artist_top_n}（在「⚙️ 设置」中调整）"
         )
 
-    # Apply year-range post-load filter (min_ms/exclude_skipped already handled at SQL level)
+    # Apply year-range post-load filter (min_ms already handled at SQL level)
     df_raw = df_raw.copy()  # avoid mutating cached DataFrame
     df_raw["_year"] = df_raw["billboard_week"].apply(lambda x: x.year)
     df_filtered = df_raw[
@@ -231,7 +230,7 @@ def run():
     # ═══════════════════════════════════════════════════════════════════════
     top_n = st.session_state.bb_top_n
     _agg_tracks, _agg_albums, _agg_artists = _try_load_from_agg(
-        min_ms, exclude_skipped, music_only, bb_week_start_dow, bb_week_start_hour
+        min_ms, music_only, bb_week_start_dow, bb_week_start_hour
     )
 
     if _agg_tracks is not None:
@@ -256,6 +255,39 @@ def run():
     weekly = compute_weekly_rankings(df_filtered, top_n, pre_agg=_agg_tracks)
     weekly_album = compute_album_weekly_rankings(df_filtered, bb_album_top_n, pre_agg=_agg_albums)
     weekly_artist = compute_artist_weekly_rankings(df_filtered, bb_artist_top_n, pre_agg=_agg_artists)
+
+    # Patch tracks_count from weekly (singles) chart — pre-aggregated tables lack track-level data
+    if _agg_tracks is not None:
+        _album_tc = (
+            weekly.groupby(["billboard_week", "album_name", "artist_name"])
+            .agg(tracks_count=("track_id", "nunique"))
+            .reset_index()
+        )
+        weekly_album = weekly_album.drop(columns=["tracks_count"], errors="ignore").merge(
+            _album_tc, on=["billboard_week", "album_name", "artist_name"], how="left"
+        )
+        weekly_album["tracks_count"] = weekly_album["tracks_count"].fillna(0).astype(int)
+
+        _artist_tc = (
+            weekly.groupby(["billboard_week", "artist_name"])
+            .agg(tracks_count=("track_id", "nunique"))
+            .reset_index()
+        )
+        weekly_artist = weekly_artist.drop(columns=["tracks_count"], errors="ignore").merge(
+            _artist_tc, on=["billboard_week", "artist_name"], how="left"
+        )
+        weekly_artist["tracks_count"] = weekly_artist["tracks_count"].fillna(0).astype(int)
+
+    # Patch albums_count for weekly_artist: number of albums on album chart that week
+    _artist_ac = (
+        weekly_album.groupby(["billboard_week", "artist_name"])
+        .agg(albums_count=("album_name", "nunique"))
+        .reset_index()
+    )
+    weekly_artist = weekly_artist.merge(
+        _artist_ac, on=["billboard_week", "artist_name"], how="left"
+    )
+    weekly_artist["albums_count"] = weekly_artist["albums_count"].fillna(0).astype(int)
 
     # Build track-level summary (peak, weeks on chart, etc.)
     track_summary = (
@@ -416,7 +448,7 @@ def run():
     album_track_counts["album_chart_no1_weeks"] = album_track_counts["album_chart_no1_weeks"].fillna(0).astype(int)
 
     # ── Compute Records ────────────────────────────────────────────────────
-    records = compute_records(weekly, track_summary, top_n)
+    records = compute_records(weekly, track_summary, top_n, weekly_album, weekly_artist)
 
     # ── Tabs (radio + CSS styled as tabs for programmatic control) ────────
     TAB_NAMES = [
@@ -554,7 +586,7 @@ def run():
         render_track_history(weekly, track_summary, top_n, all_weeks_str, all_weeks_desc)
     # ═══════════════════════════════════════════════════════════════════════
     if st.session_state.bb_active_tab == "🎤 艺人榜单":
-        render_artist_chart(weekly, weekly_artist, artist_track_counts, artist_summary, track_summary, bb_artist_top_n)
+        render_artist_chart(weekly, weekly_artist, weekly_album, artist_track_counts, artist_summary, track_summary, bb_artist_top_n, top_n, bb_album_top_n)
     # ═══════════════════════════════════════════════════════════════════════
     if st.session_state.bb_active_tab == "⭐ 走势总榜":
         render_power_score(weekly, weekly_album, weekly_artist, top_n, bb_album_top_n, bb_artist_top_n)
@@ -564,7 +596,7 @@ def run():
         render_all_time_tracks(track_summary, weekly)
     # ═══════════════════════════════════════════════════════════════════════
     if st.session_state.bb_active_tab == "💿 专辑榜单":
-        render_album_chart(weekly, weekly_album, track_per_album, album_track_counts, bb_album_top_n)
+        render_album_chart(weekly, weekly_album, track_per_album, album_track_counts, bb_album_top_n, top_n)
     # ═══════════════════════════════════════════════════════════════════════
     if st.session_state.bb_active_tab == "👑 每周榜首":
         render_number_ones(weekly, weekly_album, weekly_artist, track_summary)

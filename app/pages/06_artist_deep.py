@@ -14,22 +14,22 @@ from app.styles import inject_global_styles, page_header
 inject_global_styles()
 
 min_ms = st.session_state.get("min_ms", 30000)
-exclude_skipped = st.session_state.get("exclude_skipped", True)
 music_only = st.session_state.get("music_only", True)
+merge_enabled = st.session_state.get("merge_enabled", True)
 
 
 @st.cache_data(ttl=3600)
-def load_artist_data(_min_ms, _exclude_skipped, _music_only):
+def load_artist_data(_min_ms, _music_only, _merge_enabled):
     conn = get_db()
-    df = load_plays(conn, min_ms=_min_ms, exclude_skipped=_exclude_skipped, music_only=_music_only)
+    df = load_plays(conn, min_ms=_min_ms, music_only=_music_only, merge_enabled=_merge_enabled)
     conn.close()
     return df
 
 
 @st.cache_data(ttl=3600)
-def get_artist_list(_min_ms, _exclude_skipped, _music_only):
+def get_artist_list(_min_ms, _music_only):
     conn = get_db()
-    _f, _fp = base_filters(min_ms=_min_ms, exclude_skipped=_exclude_skipped, music_only=_music_only)
+    _f, _fp = base_filters(min_ms=_min_ms, music_only=_music_only)
     _w = f"WHERE {_f}" if _f else ""
     rows = conn.execute(
         f"""SELECT a.artist_id, a.artist_name, COUNT(*) as cnt
@@ -46,8 +46,8 @@ def get_artist_list(_min_ms, _exclude_skipped, _music_only):
 
 
 try:
-    df = load_artist_data(min_ms, exclude_skipped, music_only)
-    artist_list = get_artist_list(min_ms, exclude_skipped, music_only)
+    df = load_artist_data(min_ms, music_only, merge_enabled)
+    artist_list = get_artist_list(min_ms, music_only)
 except Exception as e:
     st.error(f"加载艺人数据失败：{e}")
     st.stop()
@@ -59,7 +59,7 @@ with st.sidebar:
         '<div style="text-align:center;margin-bottom:0.5rem;">'
         '<div style="font-size:2rem;margin-bottom:0.25rem;">🎸</div>'
         '<div style="font-size:1.05rem;font-weight:700;color:#2C2416;">艺人深度</div>'
-        f'<div style="font-size:0.7rem;color:#8B7355;margin-top:0.15rem;">跳过=否，最短={min_ms//1000}s</div>'
+        f'<div style="font-size:0.7rem;color:#8B7355;margin-top:0.15rem;">最短={min_ms//1000}s</div>'
         '</div>',
         unsafe_allow_html=True,
     )

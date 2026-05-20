@@ -14,14 +14,13 @@ from app.styles import inject_global_styles, page_header
 inject_global_styles()
 
 min_ms = st.session_state.get("min_ms", 30000)
-exclude_skipped = st.session_state.get("exclude_skipped", True)
 music_only = st.session_state.get("music_only", True)
 
 
 @st.cache_data(ttl=3600)
 def load_all_data():
     conn = get_db()
-    df = load_plays(conn, min_ms=0, exclude_skipped=False, music_only=False)
+    df = load_plays(conn, filtered=False, music_only=False)
     conn.close()
     return df
 

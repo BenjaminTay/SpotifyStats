@@ -11,7 +11,7 @@ import streamlit as st
 import numpy as np
 import pandas as pd
 
-from app.db import get_db, base_filters
+from app.db import get_db, base_filters, merge_consecutive_plays
 
 # Weekday labels
 DOW_NAMES = {0: "周一", 1: "周二", 2: "周三", 3: "周四", 4: "周五", 5: "周六", 6: "周日"}
@@ -125,7 +125,7 @@ def _render_record_table(df, link_col_map=None, drop_cols=None, col_formats=None
 # Data loading (cached)
 # ═══════════════════════════════════════════════════════════════════════
 
-def _try_load_from_agg(min_ms, exclude_skipped, music_only, week_start_dow, week_start_hour):
+def _try_load_from_agg(min_ms, music_only, week_start_dow, week_start_hour):
     """Try to load pre-aggregated weekly data from agg tables.
 
     Returns (tracks_df, albums_df, artists_df) if valid agg data exists,
@@ -135,7 +135,7 @@ def _try_load_from_agg(min_ms, exclude_skipped, music_only, week_start_dow, week
     from app.db import get_db, _agg_param_hash, check_agg_valid, \
         load_agg_weekly_tracks, load_agg_weekly_albums, load_agg_weekly_artists
 
-    param_hash = _agg_param_hash(min_ms, exclude_skipped, music_only, week_start_dow, week_start_hour)
+    param_hash = _agg_param_hash(min_ms, music_only, week_start_dow, week_start_hour)
     conn = get_db()
     if not check_agg_valid(conn, param_hash):
         conn.close()
@@ -155,21 +155,24 @@ def _try_load_from_agg(min_ms, exclude_skipped, music_only, week_start_dow, week
 
 
 @st.cache_data(ttl=3600)
-def load_billboard_raw(min_ms, exclude_skipped, music_only, week_start_dow, week_start_hour):
+def load_billboard_raw(min_ms, music_only, week_start_dow, week_start_hour):
     """Load filtered plays and compute billboard_week with configurable boundary."""
     conn = get_db()
     _f, _fp = base_filters(
-        min_ms=min_ms, exclude_skipped=exclude_skipped, music_only=music_only
+        min_ms=min_ms, music_only=music_only
     )
     _w = f"WHERE {_f}" if _f else ""
     df = pd.read_sql_query(
-        f"""SELECT p.ts_date, p.ts_dow, p.ts_hour, p.ms_played, p.skipped, p.track_id,
-                   t.track_name, a.artist_name, al.album_name
+        f"""SELECT p.ts, p.ts_date, p.ts_dow, p.ts_hour, p.ms_played, p.skipped, p.track_id,
+                   t.track_name, a.artist_name, al.album_name, stm.duration_ms
             FROM plays p
             LEFT JOIN tracks t ON p.track_id = t.track_id
             LEFT JOIN artists a ON t.artist_id = a.artist_id
             LEFT JOIN albums al ON t.album_id = al.album_id
-            {_w}""",
+            LEFT JOIN spotify_track_meta stm
+              ON REPLACE(t.spotify_track_uri, 'spotify:track:', '') = stm.spotify_track_id
+            {_w}
+            ORDER BY p.ts""",
         conn,
         params=_fp,
     )
@@ -183,6 +186,9 @@ def load_billboard_raw(min_ms, exclude_skipped, music_only, week_start_dow, week
     df["billboard_week"] = (
         df["ts_date_dt"] - pd.to_timedelta(df["days_back"], unit="D")
     ).dt.date
+
+    # Merge consecutive same-track plays into logical play counts
+    df = merge_consecutive_plays(df, min_ms)
 
     return df
 
@@ -494,7 +500,7 @@ def compute_artist_power_scores(weekly_artist, N):
     return pd.DataFrame(scores).sort_values("power_score", ascending=False).reset_index(drop=True)
 
 
-def compute_records(weekly, track_summary, top_n):
+def compute_records(weekly, track_summary, top_n, weekly_album=None, weekly_artist=None):
     """Compute all-time Billboard records from weekly rankings.
 
     Returns a dict of record DataFrames and highlight values for the 榜单记录 tab.
@@ -704,5 +710,77 @@ def compute_records(weekly, track_summary, top_n):
                 "weeks_on_chart": top["weeks_on_chart"],
             })
     records["year_end_no1"] = pd.DataFrame(ye_results).sort_values("year", ascending=False) if ye_results else pd.DataFrame()
+
+    # ── 13. Double Debut #1 (双空冠) ─────────────────────────────────────
+    if weekly_album is not None:
+        first_track_appear = (
+            weekly.sort_values("billboard_week")
+            .groupby("track_id")
+            .first()
+            .reset_index()
+        )
+        debut_tracks = first_track_appear[first_track_appear["rank"] == 1][
+            ["track_name", "artist_name", "billboard_week"]
+        ].copy()
+        debut_tracks.columns = ["debut_track", "debut_artist", "debut_week"]
+
+        first_album_appear = (
+            weekly_album.sort_values("billboard_week")
+            .groupby(["album_name", "artist_name"])
+            .first()
+            .reset_index()
+        )
+        debut_albums = first_album_appear[first_album_appear["rank"] == 1][
+            ["album_name", "artist_name", "billboard_week"]
+        ].copy()
+        debut_albums.columns = ["debut_album", "debut_artist", "debut_week"]
+
+        double_debut = debut_tracks.merge(
+            debut_albums, on=["debut_artist", "debut_week"], how="inner"
+        ).sort_values("debut_week", ascending=False)
+        if not double_debut.empty:
+            double_debut["debut_week"] = double_debut["debut_week"].astype(str)
+        records["double_debut"] = double_debut
+    else:
+        records["double_debut"] = pd.DataFrame()
+
+    # ── 14. Weekly Total Plays Ranking (大盘) ────────────────────────────
+    if weekly_album is not None and weekly_artist is not None:
+        week_total_plays = (
+            weekly.groupby("billboard_week")
+            .agg(
+                total_plays=("play_count", "sum"),
+                tracks_count=("track_id", "nunique"),
+            )
+            .reset_index()
+        )
+        week_no1 = weekly[weekly["rank"] == 1][
+            ["billboard_week", "track_id", "track_name", "artist_name", "play_count"]
+        ].copy()
+        week_no1.columns = [
+            "billboard_week", "no1_track_id", "no1_track",
+            "no1_track_artist", "no1_track_plays",
+        ]
+        week_total_plays = week_total_plays.merge(week_no1, on="billboard_week", how="left")
+        week_album_no1 = weekly_album[weekly_album["rank"] == 1][
+            ["billboard_week", "album_name", "artist_name", "play_count"]
+        ].copy()
+        week_album_no1.columns = [
+            "billboard_week", "no1_album", "no1_album_artist", "no1_album_plays",
+        ]
+        week_total_plays = week_total_plays.merge(week_album_no1, on="billboard_week", how="left")
+        week_artist_no1 = weekly_artist[weekly_artist["rank"] == 1][
+            ["billboard_week", "artist_name", "play_count"]
+        ].copy()
+        week_artist_no1.columns = [
+            "billboard_week", "no1_chart_artist", "no1_chart_artist_plays",
+        ]
+        week_total_plays = week_total_plays.merge(week_artist_no1, on="billboard_week", how="left")
+        week_total_plays = week_total_plays.sort_values("total_plays", ascending=False)
+        week_total_plays.index = week_total_plays.index + 1
+        week_total_plays["billboard_week"] = week_total_plays["billboard_week"].astype(str)
+        records["week_total_plays"] = week_total_plays
+    else:
+        records["week_total_plays"] = pd.DataFrame()
 
     return records

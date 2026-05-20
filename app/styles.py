@@ -347,7 +347,6 @@ def kpi_row(metrics: list[dict]):
 def filter_badge():
     """Show current filter settings as a styled badge row."""
     min_ms = st.session_state.get("min_ms", 30000)
-    exclude = st.session_state.get("exclude_skipped", True)
     music = st.session_state.get("music_only", True)
     bb_n = st.session_state.get("bb_top_n", 30)
     bb_album_n = st.session_state.get("bb_album_top_n", 20)
@@ -355,7 +354,6 @@ def filter_badge():
 
     badges = [
         f"最短 {min_ms // 1000}s",
-        "跳过排除" if exclude else "跳过包含",
         "仅音乐" if music else "含播客",
         f"单曲 Top {bb_n}",
         f"专辑 Top {bb_album_n}",

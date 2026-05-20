@@ -161,12 +161,7 @@ def render(weekly, weekly_album, weekly_artist, track_summary,
             st.subheader(f"{selected_week} 专辑周榜 · Top {n_albums}")
 
             total_album_plays = int(album_week_df["play_count"].sum())
-            total_album_tracks = int(album_week_df["tracks_count"].sum())
-            col_a1, col_a2 = st.columns(2)
-            with col_a1:
-                st.metric("上榜专辑总播放次数", f"{total_album_plays:,}")
-            with col_a2:
-                st.metric("上榜专辑涉及曲目数", f"{total_album_tracks:,}")
+            st.metric("上榜专辑总播放次数", f"{total_album_plays:,}")
 
             # ── Top 3 KPI highlight cards ────────────────────────────────
             top3 = album_week_df.head(3)
@@ -239,11 +234,8 @@ def render(weekly, weekly_album, weekly_artist, track_summary,
                 album_alltime, on=["album_name", "artist_name"], how="left"
             )
 
-            # Total hours
-            album_week_df["total_hours"] = (album_week_df["total_ms"] / 3_600_000).round(1)
-
             # ── Table ─────────────────────────────────────────────────────
-            headers = ["#", "专辑", "艺人", "总播放次数", "入榜曲数", "总时长(小时)", "LW", "Peak", "Wks"]
+            headers = ["#", "专辑", "艺人", "总播放次数", "LW", "Peak", "Wks"]
             rows = []
             for _, r in album_week_df.iterrows():
                 album_url = _bb_url(bb_nav="album", bb_name=str(r["album_name"]),
@@ -254,14 +246,12 @@ def render(weekly, weekly_album, weekly_artist, track_summary,
                     (_html.escape(str(r["album_name"])), album_url),
                     (_html.escape(str(r["artist_name"])), artist_url),
                     f"{r['play_count']:,}",
-                    str(r["tracks_count"]),
-                    f"{r['total_hours']:.1f}",
                     str(r.get("LW", "-")),
                     str(int(r.get("peak_position", 0)) or "-"),
                     str(int(r.get("weeks_on_chart", 0)) or "-"),
                 ])
             _render_bb_table(headers, rows,
-                col_formats={0: "rank", 3: "num", 4: "num", 5: "num", 6: "num", 7: "num", 8: "num"})
+                col_formats={0: "rank", 3: "num", 4: "num", 5: "num", 6: "num"})
 
             if n_albums < bb_album_top_n:
                 st.caption(f"本周仅 {n_albums} 张专辑上榜（不足 Top {bb_album_top_n}）")
@@ -280,12 +270,7 @@ def render(weekly, weekly_album, weekly_artist, track_summary,
             st.subheader(f"{selected_week} 艺人周榜 · Top {n_artists}")
 
             total_artist_plays = int(artist_week_df["play_count"].sum())
-            total_artist_tracks = int(artist_week_df["tracks_count"].sum())
-            col_a1, col_a2 = st.columns(2)
-            with col_a1:
-                st.metric("上榜艺人总播放次数", f"{total_artist_plays:,}")
-            with col_a2:
-                st.metric("上榜艺人涉及曲目数", f"{total_artist_tracks:,}")
+            st.metric("上榜艺人总播放次数", f"{total_artist_plays:,}")
 
             # ── Top 3 KPI highlight cards ────────────────────────────────
             top3 = artist_week_df.head(3)
@@ -351,11 +336,8 @@ def render(weekly, weekly_album, weekly_artist, track_summary,
                 artist_alltime, on="artist_name", how="left"
             )
 
-            # Total hours
-            artist_week_df["total_hours"] = (artist_week_df["total_ms"] / 3_600_000).round(1)
-
             # ── Table ─────────────────────────────────────────────────────
-            headers = ["#", "艺人", "总播放次数", "入榜曲数", "总时长(小时)", "LW", "Peak", "Wks"]
+            headers = ["#", "艺人", "总播放次数", "LW", "Peak", "Wks"]
             rows = []
             for _, r in artist_week_df.iterrows():
                 artist_url = _bb_url(bb_nav="artist", bb_name=str(r["artist_name"]), bb_tab="🎤 艺人榜单")
@@ -363,14 +345,12 @@ def render(weekly, weekly_album, weekly_artist, track_summary,
                     str(r["rank"]),
                     (_html.escape(str(r["artist_name"])), artist_url),
                     f"{r['play_count']:,}",
-                    str(r["tracks_count"]),
-                    f"{r['total_hours']:.1f}",
                     str(r.get("LW", "-")),
                     str(int(r.get("peak_position", 0)) or "-"),
                     str(int(r.get("weeks_on_chart", 0)) or "-"),
                 ])
             _render_bb_table(headers, rows,
-                col_formats={0: "rank", 2: "num", 3: "num", 4: "num", 5: "num", 6: "num", 7: "num"})
+                col_formats={0: "rank", 2: "num", 3: "num", 4: "num", 5: "num"})
 
             if n_artists < bb_artist_top_n:
                 st.caption(f"本周仅 {n_artists} 位艺人上榜（不足 Top {bb_artist_top_n}）")
