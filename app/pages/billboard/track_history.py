@@ -5,7 +5,7 @@ import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 
-from .shared import _bb_url, _render_bb_table
+from .shared import _bb_url, _render_bb_table, compute_power_scores
 
 
 def render(weekly, track_summary, top_n, all_weeks_str, all_weeks_desc):
@@ -66,20 +66,30 @@ def render(weekly, track_summary, top_n, all_weeks_str, all_weeks_desc):
         track_hist = weekly[weekly["track_id"] == selected_tid].sort_values("billboard_week")
         ts_row = track_summary[track_summary["track_id"] == selected_tid].iloc[0]
 
+        # ── Power Score ────────────────────────────────────────────────
+        track_power_df = compute_power_scores(weekly, top_n)
+        track_power_df = track_power_df.reset_index(drop=True)
+        track_power_df.index = track_power_df.index + 1
+        tp_row = track_power_df[track_power_df["track_id"] == selected_tid]
+        power_score = int(tp_row.iloc[0]["power_score"]) if not tp_row.empty else 0
+        power_rank = str(int(tp_row.iloc[0].name)) if not tp_row.empty else "—"
+
         # ── Summary Cards ─────────────────────────────────────────────
-        col1, col2, col3 = st.columns(3)
+        col1, col2, col3, col4 = st.columns(4)
         peak_str = f"#{ts_row['peak_position']}"
         if ts_row["weeks_at_peak"] > 1:
             peak_str += f" ({ts_row['weeks_at_peak']}wks)"
         col1.metric("最高排名", peak_str)
         col2.metric("进榜周数", f"{ts_row['weeks_on_chart']} 周")
         col3.metric("首次入榜", str(ts_row["first_week"]))
-
-        col4, col5, col6 = st.columns(3)
         first_peak_str = str(ts_row["first_peak_week"]) if pd.notna(ts_row["first_peak_week"]) else "—"
         col4.metric("首次 Peak 周", first_peak_str)
+
+        col5, col6, col7, col8 = st.columns(4)
         col5.metric("总上榜播放", f"{int(ts_row['total_chart_plays']):,}")
         col6.metric("总播放次数", f"{int(ts_row['total_plays']):,}")
+        col7.metric("走势点数", f"{power_score:,}")
+        col8.metric("走势排名", f"#{power_rank}")
 
         st.divider()
 
@@ -88,12 +98,17 @@ def render(weekly, track_summary, top_n, all_weeks_str, all_weeks_desc):
 
         track_hist_display = track_hist.copy()
         track_hist_display["prev_rank"] = track_hist_display["rank"].shift(1)
+        track_hist_display["prev_week"] = track_hist_display["billboard_week"].shift(1)
         changes = []
         for _, r in track_hist_display.iterrows():
             p = r["prev_rank"]
+            prev_wk = r["prev_week"]
+            cur_wk = r["billboard_week"]
             cur = r["rank"]
             if pd.isna(p):
                 changes.append("NEW")
+            elif pd.notna(prev_wk) and (cur_wk - prev_wk).days > 8:
+                changes.append("RE")
             else:
                 diff = int(p) - int(cur)
                 if diff > 0:

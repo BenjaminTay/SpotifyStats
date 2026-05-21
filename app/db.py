@@ -11,25 +11,13 @@ DB_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "spot
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS artists (
     artist_id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    artist_name        TEXT NOT NULL UNIQUE,
-    spotify_artist_id  TEXT,
-    popularity         INTEGER,
-    followers          INTEGER,
-    genres             TEXT,
-    image_url          TEXT
+    artist_name        TEXT NOT NULL UNIQUE
 );
 
 CREATE TABLE IF NOT EXISTS albums (
     album_id           INTEGER PRIMARY KEY AUTOINCREMENT,
     album_name         TEXT NOT NULL,
     artist_id          INTEGER NOT NULL REFERENCES artists(artist_id),
-    spotify_album_id   TEXT,
-    album_type         TEXT,
-    release_date       TEXT,
-    popularity         INTEGER,
-    label              TEXT,
-    genres             TEXT,
-    image_url          TEXT,
     UNIQUE(album_name, artist_id)
 );
 
@@ -39,13 +27,6 @@ CREATE TABLE IF NOT EXISTS tracks (
     artist_id          INTEGER NOT NULL REFERENCES artists(artist_id),
     album_id           INTEGER REFERENCES albums(album_id),
     spotify_track_uri  TEXT,
-    duration_ms        INTEGER,
-    popularity         INTEGER,
-    explicit           INTEGER,
-    track_number       INTEGER,
-    disc_number        INTEGER,
-    isrc               TEXT,
-    spotify_album_id   TEXT,
     UNIQUE(artist_id, track_name)
 );
 
@@ -67,7 +48,8 @@ CREATE TABLE IF NOT EXISTS plays (
     shuffle          INTEGER NOT NULL DEFAULT 0,
     skipped          INTEGER NOT NULL DEFAULT 0,
     offline          INTEGER NOT NULL DEFAULT 0,
-    incognito_mode   INTEGER NOT NULL DEFAULT 0
+    incognito_mode   INTEGER NOT NULL DEFAULT 0,
+    content_type     TEXT NOT NULL DEFAULT 'audio'
 );
 
 CREATE INDEX IF NOT EXISTS idx_plays_year     ON plays(ts_year);
@@ -159,6 +141,201 @@ CREATE TABLE IF NOT EXISTS spotify_artist_meta (
     genres             TEXT,
     image_url          TEXT
 );
+
+-- ── Spotify Account Data ─────────────────────────────────────────────
+-- Wrapped 2025
+CREATE TABLE IF NOT EXISTS wrapped_top_artists (
+    rank INTEGER,
+    artist_uri TEXT,
+    ms_played INTEGER,
+    percentile REAL
+);
+
+CREATE TABLE IF NOT EXISTS wrapped_top_tracks (
+    rank INTEGER,
+    track_uri TEXT,
+    play_count INTEGER,
+    ms_played INTEGER
+);
+
+CREATE TABLE IF NOT EXISTS wrapped_top_albums (
+    rank INTEGER,
+    album_uri TEXT,
+    play_count INTEGER,
+    ms_played INTEGER
+);
+
+CREATE TABLE IF NOT EXISTS wrapped_artist_race (
+    artist_uri TEXT,
+    month TEXT,
+    rank INTEGER,
+    trail_size TEXT
+);
+
+CREATE TABLE IF NOT EXISTS wrapped_clubs (
+    club_name TEXT,
+    percent_in_club REAL,
+    role TEXT,
+    artist_uri TEXT
+);
+
+CREATE TABLE IF NOT EXISTS wrapped_party (
+    metric TEXT PRIMARY KEY,
+    value REAL
+);
+
+CREATE TABLE IF NOT EXISTS wrapped_listening_age (
+    listening_age INTEGER,
+    window_start_year INTEGER,
+    decade_phase TEXT
+);
+
+CREATE TABLE IF NOT EXISTS wrapped_archive_reports (
+    column_qualifier TEXT,
+    title TEXT,
+    description TEXT,
+    reason TEXT,
+    minutes_listened INTEGER,
+    filed_under_tags TEXT
+);
+
+CREATE TABLE IF NOT EXISTS wrapped_top_genres (
+    rank INTEGER,
+    genre_uri TEXT
+);
+
+CREATE TABLE IF NOT EXISTS wrapped_top_podcasts (
+    rank INTEGER,
+    podcast_uri TEXT
+);
+
+-- Music Library
+CREATE TABLE IF NOT EXISTS saved_tracks (
+    track_uri TEXT PRIMARY KEY,
+    track_name TEXT,
+    artist_name TEXT,
+    album_name TEXT,
+    added_date TEXT
+);
+
+CREATE TABLE IF NOT EXISTS saved_albums (
+    album_uri TEXT PRIMARY KEY,
+    album_name TEXT,
+    artist_name TEXT
+);
+
+CREATE TABLE IF NOT EXISTS saved_artists (
+    artist_uri TEXT PRIMARY KEY,
+    artist_name TEXT
+);
+
+CREATE TABLE IF NOT EXISTS saved_shows (
+    show_uri TEXT PRIMARY KEY,
+    show_name TEXT,
+    publisher TEXT
+);
+
+CREATE TABLE IF NOT EXISTS banned_items (
+    uri TEXT PRIMARY KEY,
+    item_name TEXT,
+    item_type TEXT
+);
+
+CREATE TABLE IF NOT EXISTS playlists (
+    playlist_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    playlist_name TEXT NOT NULL,
+    last_modified_date TEXT,
+    track_count INTEGER,
+    follower_count INTEGER DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS playlist_tracks (
+    playlist_id INTEGER REFERENCES playlists(playlist_id),
+    track_uri TEXT,
+    track_name TEXT,
+    artist_name TEXT,
+    album_name TEXT,
+    added_date TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_playlist_tracks_uri ON playlist_tracks(track_uri);
+
+-- Search
+CREATE TABLE IF NOT EXISTS search_queries (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    query_text TEXT NOT NULL,
+    search_time_utc TEXT NOT NULL,
+    search_date TEXT NOT NULL,
+    search_hour INTEGER NOT NULL,
+    search_dow INTEGER NOT NULL,
+    platform TEXT,
+    interaction_uri TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_search_date ON search_queries(search_date);
+CREATE INDEX IF NOT EXISTS idx_search_query ON search_queries(query_text);
+
+-- Insights & Highlights
+CREATE TABLE IF NOT EXISTS inferences (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    inference_text TEXT NOT NULL,
+    category TEXT
+);
+
+CREATE TABLE IF NOT EXISTS sound_capsule_highlights (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    highlight_date TEXT NOT NULL,
+    highlight_type TEXT NOT NULL,
+    entity_name TEXT,
+    detail_json TEXT
+);
+
+CREATE TABLE IF NOT EXISTS sound_capsule_daily (
+    date TEXT PRIMARY KEY,
+    stream_count INTEGER,
+    seconds_played INTEGER,
+    top_data_json TEXT
+);
+
+CREATE TABLE IF NOT EXISTS marquee_impressions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    artist_name TEXT,
+    segment TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_marquee_artist ON marquee_impressions(artist_name);
+
+-- Podcast
+CREATE TABLE IF NOT EXISTS podcast_plays (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    end_time TEXT NOT NULL,
+    podcast_name TEXT NOT NULL,
+    episode_name TEXT NOT NULL,
+    ms_played INTEGER NOT NULL,
+    play_date TEXT NOT NULL,
+    play_hour INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS podcast_interactions (
+    interaction_type TEXT NOT NULL,
+    entity_uri TEXT,
+    content_json TEXT,
+    created_at TEXT
+);
+
+-- User Profile
+CREATE TABLE IF NOT EXISTS user_profile (
+    key TEXT PRIMARY KEY,
+    value TEXT
+);
+
+CREATE TABLE IF NOT EXISTS user_follows (
+    relationship_type TEXT NOT NULL,
+    display_name TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS user_prompts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    message TEXT,
+    created_timestamp TEXT
+);
 """
 
 
@@ -192,28 +369,8 @@ def ensure_schema() -> None:
     conn.executescript(SCHEMA)
     # 增量添加新列（SQLite 不支持 ADD COLUMN IF NOT EXISTS）
     _add_columns = [
-        # tracks
-        ("tracks", "duration_ms", "INTEGER"),
-        ("tracks", "popularity", "INTEGER"),
-        ("tracks", "explicit", "INTEGER"),
-        ("tracks", "track_number", "INTEGER"),
-        ("tracks", "disc_number", "INTEGER"),
-        ("tracks", "isrc", "TEXT"),
-        ("tracks", "spotify_album_id", "TEXT"),
-        # albums
-        ("albums", "spotify_album_id", "TEXT"),
-        ("albums", "album_type", "TEXT"),
-        ("albums", "release_date", "TEXT"),
-        ("albums", "popularity", "INTEGER"),
-        ("albums", "label", "TEXT"),
-        ("albums", "genres", "TEXT"),
-        ("albums", "image_url", "TEXT"),
-        # artists
-        ("artists", "spotify_artist_id", "TEXT"),
-        ("artists", "popularity", "INTEGER"),
-        ("artists", "followers", "INTEGER"),
-        ("artists", "genres", "TEXT"),
-        ("artists", "image_url", "TEXT"),
+        # plays
+        ("plays", "content_type", "TEXT NOT NULL DEFAULT 'audio'"),
     ]
     for table, col, col_type in _add_columns:
         try:
@@ -227,6 +384,11 @@ def ensure_schema() -> None:
         pass
     try:
         conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_albums_name_artist ON albums(album_name, artist_id)")
+    except sqlite3.OperationalError:
+        pass
+    # content_type index (after ALTER TABLE ensures column exists)
+    try:
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_plays_content_type ON plays(content_type)")
     except sqlite3.OperationalError:
         pass
     conn.commit()
@@ -335,7 +497,7 @@ def query_plays(
     """Execute a query against plays.
 
     When `filtered=True` (default), base_filters() are applied to count only valid
-    plays. Set `filtered=False` to query raw data (e.g. for skip-rate analysis).
+    plays. Set `filtered=False` to query raw data.
     `base_sql` should contain the SELECT and FROM clauses.
     """
     parts = [base_sql, "WHERE 1=1"]

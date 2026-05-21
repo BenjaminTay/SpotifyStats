@@ -73,7 +73,7 @@ with col1:
         index=_sec_idx,
         format_func=lambda x: f"{x} 秒" if x > 0 else "不过滤",
         key="settings_min_sec",
-        help="低于此值的播放不计入统计。已主动跳过（按上一首/下一首按钮）和播放错误的记录自动排除。",
+        help="低于此值的播放不计入统计。播放错误的记录自动排除。",
     )
     st.session_state.min_ms = min_sec * 1000
 
@@ -260,3 +260,44 @@ with col_mgmt2:
         st.metric("数据库记录数", f"{count:,}")
     else:
         st.warning("数据库未导入，请先导入数据")
+
+st.divider()
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Account Data Import
+# ═══════════════════════════════════════════════════════════════════════════
+st.subheader("账号数据")
+
+col_acct1, col_acct2 = st.columns([1, 3])
+
+with col_acct1:
+    if st.button("📦 导入账号数据", use_container_width=True):
+        from app.import_account_data import import_all
+        with st.spinner("正在导入 Spotify 账号数据..."):
+            try:
+                result = import_all(
+                    progress_callback=lambda msg, pct: None,
+                )
+                st.cache_data.clear()
+                st.success("账号数据导入完成！")
+                with st.expander("查看导入详情"):
+                    st.json(result)
+                st.rerun()
+            except Exception as e:
+                st.error(f"导入失败：{e}")
+
+with col_acct2:
+    conn = get_db()
+    try:
+        sc = conn.execute("SELECT COUNT(*) FROM search_queries").fetchone()[0]
+        stc = conn.execute("SELECT COUNT(*) FROM saved_tracks").fetchone()[0]
+        plc = conn.execute("SELECT COUNT(*) FROM playlists").fetchone()[0]
+        pdc = conn.execute("SELECT COUNT(*) FROM podcast_plays").fetchone()[0]
+        st.metric(
+            "账号数据概况",
+            f"搜索 {sc} 条 · 收藏 {stc} 首 · 歌单 {plc} 个 · 播客 {pdc} 次",
+        )
+    except Exception:
+        st.caption("暂无账号数据，请点击左侧按钮导入")
+    finally:
+        conn.close()

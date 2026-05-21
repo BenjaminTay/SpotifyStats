@@ -113,12 +113,18 @@ def import_data(
     if not json_files:
         raise FileNotFoundError(f"No Streaming_History_Audio_*.json files found in {data_dir}")
 
+    # Collect video files too
+    video_files = sorted(glob.glob(os.path.join(data_dir, "Streaming_History_Video_*.json")))
+
     # Pre-count total records for accurate progress (fast — just json.load)
     if progress_callback:
         progress_callback("计算总记录数...", 0.0)
     total_records_est = 0
     file_record_counts = {}
-    for filepath in json_files:
+    all_files = list(json_files)
+    if video_files:
+        all_files += video_files
+    for filepath in all_files:
         with open(filepath, encoding="utf-8") as f:
             records = json.load(f)
             file_record_counts[filepath] = len(records)
@@ -217,6 +223,7 @@ def import_data(
                 skipped,
                 1 if rec.get("offline") else 0,
                 1 if rec.get("incognito_mode") else 0,
+                'audio',
             ))
 
             # Batch insert every 5000 rows to keep memory in check
@@ -224,8 +231,8 @@ def import_data(
                 conn.executemany(
                     """INSERT INTO plays(ts, ts_year, ts_month, ts_week, ts_dow, ts_hour,
                        ts_date, platform, ms_played, conn_country, track_id,
-                       reason_start, reason_end, shuffle, skipped, offline, incognito_mode)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                       reason_start, reason_end, shuffle, skipped, offline, incognito_mode, content_type)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     plays_batch,
                 )
                 conn.commit()
@@ -247,12 +254,99 @@ def import_data(
             conn.executemany(
                 """INSERT INTO plays(ts, ts_year, ts_month, ts_week, ts_dow, ts_hour,
                    ts_date, platform, ms_played, conn_country, track_id,
-                   reason_start, reason_end, shuffle, skipped, offline, incognito_mode)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                   reason_start, reason_end, shuffle, skipped, offline, incognito_mode, content_type)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 plays_batch,
             )
             conn.commit()
             total_records += len(plays_batch)
+
+    conn.commit()
+
+    # ── Import video records ────────────────────────────────────────────
+    video_total = 0
+    if video_files:
+        for file_idx, filepath in enumerate(video_files):
+            with open(filepath, encoding="utf-8") as f:
+                records = json.load(f)
+
+            plays_batch: list[tuple] = []
+            for rec in records:
+                ts_raw = rec.get("ts", "")
+                country = rec.get("conn_country", "CN")
+                time_info = convert_to_local_time(ts_raw, country)
+
+                platform = classify_platform(rec.get("platform", ""))
+                ms_played = rec.get("ms_played", 0)
+                skipped = 1 if rec.get("skipped") else 0
+
+                track_name = rec.get("master_metadata_track_name")
+                artist_name = rec.get("master_metadata_album_artist_name")
+                album_name = rec.get("master_metadata_album_album_name")
+                spotify_uri = rec.get("spotify_track_uri")
+
+                track_id = None
+                if track_name and artist_name:
+                    artist_id = _cache_artist(conn, artist_name, artist_cache)
+                    album_id = None
+                    if album_name:
+                        album_id = _cache_album(conn, album_name, artist_id, album_cache)
+                    track_id = _cache_track(
+                        conn, track_name, artist_id, album_id, spotify_uri, track_cache
+                    )
+
+                plays_batch.append((
+                    time_info["ts"],
+                    time_info["ts_year"],
+                    time_info["ts_month"],
+                    time_info["ts_week"],
+                    time_info["ts_dow"],
+                    time_info["ts_hour"],
+                    time_info["ts_date"],
+                    platform,
+                    ms_played,
+                    country,
+                    track_id,
+                    rec.get("reason_start"),
+                    rec.get("reason_end"),
+                    1 if rec.get("shuffle") else 0,
+                    skipped,
+                    1 if rec.get("offline") else 0,
+                    1 if rec.get("incognito_mode") else 0,
+                    'video',
+                ))
+
+                if len(plays_batch) >= 5000:
+                    conn.executemany(
+                        """INSERT INTO plays(ts, ts_year, ts_month, ts_week, ts_dow, ts_hour,
+                           ts_date, platform, ms_played, conn_country, track_id,
+                           reason_start, reason_end, shuffle, skipped, offline, incognito_mode, content_type)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                        plays_batch,
+                    )
+                    conn.commit()
+                    video_total += len(plays_batch)
+                    plays_batch.clear()
+
+                if progress_callback and total_records_est > 0:
+                    processed = total_records + video_total + len(plays_batch)
+                    pct = min(0.95, processed / total_records_est)
+                    if processed % 5000 == 0:
+                        progress_callback(
+                            f"导入视频... {processed:,} / {total_records_est:,} ({pct:.0%})",
+                            pct,
+                        )
+
+            if plays_batch:
+                conn.executemany(
+                    """INSERT INTO plays(ts, ts_year, ts_month, ts_week, ts_dow, ts_hour,
+                       ts_date, platform, ms_played, conn_country, track_id,
+                       reason_start, reason_end, shuffle, skipped, offline, incognito_mode, content_type)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    plays_batch,
+                )
+                conn.commit()
+                video_total += len(plays_batch)
 
     conn.commit()
 
@@ -276,12 +370,14 @@ def import_data(
     conn.close()
 
     result = {
-        "total_records": total_records,
+        "total_records": total_records + video_total,
+        "audio_records": total_records,
+        "video_records": video_total,
         "total_skipped": total_skipped,
         "unique_artists": len(artist_cache),
         "unique_albums": len(album_cache),
         "unique_tracks": len(track_cache),
-        "files_imported": total_files,
+        "files_imported": total_files + len(video_files),
         "agg_track_wks": agg_results.get("tracks", 0),
         "agg_album_wks": agg_results.get("albums", 0),
         "agg_artist_wks": agg_results.get("artists", 0),

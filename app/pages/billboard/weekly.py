@@ -22,19 +22,30 @@ def render(weekly, weekly_album, weekly_artist, track_summary,
         except (ValueError, TypeError):
             pass
 
-    # Week selector — newest first, remembers last selection
+    # Week selector with prev/next buttons
     if "bb_week_selector" not in st.session_state:
         st.session_state.bb_week_selector = 0
     max_week_idx = len(all_weeks_desc) - 1
     if st.session_state.bb_week_selector > max_week_idx:
         st.session_state.bb_week_selector = max_week_idx
-
-    selected_week_idx = st.selectbox(
-        "选择周",
-        options=range(len(all_weeks_desc)),
-        format_func=lambda i: all_weeks_str[i],
-        key="bb_week_selector",
-    )
+    cur_idx = st.session_state.bb_week_selector
+    c1, c2, c3 = st.columns([1, 8, 1])
+    with c1:
+        if st.button("◀ 上一周", use_container_width=True, disabled=cur_idx >= max_week_idx):
+            st.session_state.bb_week_selector = min(cur_idx + 1, max_week_idx)
+            st.rerun()
+    with c3:
+        if st.button("下一周 ▶", use_container_width=True, disabled=cur_idx <= 0):
+            st.session_state.bb_week_selector = max(cur_idx - 1, 0)
+            st.rerun()
+    with c2:
+        selected_week_idx = st.selectbox(
+            "选择周",
+            options=range(len(all_weeks_desc)),
+            format_func=lambda i: all_weeks_str[i],
+            key="bb_week_selector",
+            label_visibility="collapsed",
+        )
     selected_week = all_weeks_desc[selected_week_idx]
 
     # Clamp sub-tab index
@@ -118,12 +129,27 @@ def render(weekly, weekly_album, weekly_artist, track_summary,
 
             week_df["LW"] = lw_values
 
-            # Merge peak and weeks from track_summary
-            week_df = week_df.merge(
-                track_summary[["track_id", "peak_position", "weeks_on_chart"]],
-                on="track_id",
-                how="left",
+            # ── Compute running Peak / Wks / Pk Wks as of selected_week ──
+            running_w = weekly[weekly["billboard_week"] <= selected_week]
+            cur_ids = week_df["track_id"].unique()
+            track_running = (
+                running_w[running_w["track_id"].isin(cur_ids)]
+                .groupby("track_id")
+                .agg(
+                    running_peak=("rank", "min"),
+                    running_wks=("billboard_week", "nunique"),
+                )
+                .reset_index()
             )
+            # running_peak_wks: weeks at the running peak (not all-time peak)
+            rwp = running_w[running_w["track_id"].isin(cur_ids)].merge(
+                track_running[["track_id", "running_peak"]], on="track_id"
+            )
+            rwp["at_peak"] = (rwp["rank"] == rwp["running_peak"]).astype(int)
+            rpk = rwp.groupby("track_id")["at_peak"].sum().reset_index()
+            rpk.columns = ["track_id", "running_pk_wks"]
+            track_running = track_running.merge(rpk, on="track_id")
+            week_df = week_df.merge(track_running, on="track_id", how="left")
 
             # ── Hot 100 Table ─────────────────────────────────────────────
             headers = ["#", "曲目", "艺人", "播放次数", "LW", "Peak", "Wks", "Pk Wks"]
@@ -137,9 +163,9 @@ def render(weekly, weekly_album, weekly_artist, track_summary,
                     (_html.escape(str(r["artist_name"])), artist_url),
                     f"{r['play_count']:,}",
                     str(r.get("LW", "-")),
-                    str(r["peak_position"]),
-                    str(r["weeks_on_chart"]),
-                    str(r["running_peak_wks"]),
+                    str(int(r["running_peak"])),
+                    str(int(r["running_wks"])),
+                    str(int(r["running_pk_wks"])),
                 ])
             _render_bb_table(headers, rows,
                 col_formats={0: "rank", 3: "num", 4: "num", 5: "num", 6: "num", 7: "num"})
@@ -221,21 +247,32 @@ def render(weekly, weekly_album, weekly_artist, track_summary,
                     lw_album_values.append("NEW")
             album_week_df["LW"] = lw_album_values
 
-            # ── Compute Peak/Wks for albums from all-time weekly_album ──
-            album_alltime = (
-                weekly_album.groupby(["album_name", "artist_name"])
+            # ── Compute running Peak/Wks for albums as of selected_week ──
+            running_alb = weekly_album[weekly_album["billboard_week"] <= selected_week]
+            album_running = (
+                running_alb.groupby(["album_name", "artist_name"])
                 .agg(
-                    peak_position=("rank", "min"),
-                    weeks_on_chart=("billboard_week", "nunique"),
+                    running_peak=("rank", "min"),
+                    running_wks=("billboard_week", "nunique"),
                 )
                 .reset_index()
             )
             album_week_df = album_week_df.merge(
-                album_alltime, on=["album_name", "artist_name"], how="left"
+                album_running, on=["album_name", "artist_name"], how="left"
             )
 
+            # running_peak_wks: weeks at the running peak
+            rwp_alb = running_alb.merge(
+                album_running[["album_name", "artist_name", "running_peak"]],
+                on=["album_name", "artist_name"]
+            )
+            rwp_alb["at_peak"] = (rwp_alb["rank"] == rwp_alb["running_peak"]).astype(int)
+            rpk_alb = rwp_alb.groupby(["album_name", "artist_name"])["at_peak"].sum().reset_index()
+            rpk_alb.columns = ["album_name", "artist_name", "running_pk_wks"]
+            album_week_df = album_week_df.merge(rpk_alb, on=["album_name", "artist_name"], how="left")
+
             # ── Table ─────────────────────────────────────────────────────
-            headers = ["#", "专辑", "艺人", "总播放次数", "LW", "Peak", "Wks"]
+            headers = ["#", "专辑", "艺人", "总播放次数", "LW", "Peak", "Wks", "Pk Wks"]
             rows = []
             for _, r in album_week_df.iterrows():
                 album_url = _bb_url(bb_nav="album", bb_name=str(r["album_name"]),
@@ -247,11 +284,12 @@ def render(weekly, weekly_album, weekly_artist, track_summary,
                     (_html.escape(str(r["artist_name"])), artist_url),
                     f"{r['play_count']:,}",
                     str(r.get("LW", "-")),
-                    str(int(r.get("peak_position", 0)) or "-"),
-                    str(int(r.get("weeks_on_chart", 0)) or "-"),
+                    str(int(r.get("running_peak", 0)) or "-"),
+                    str(int(r.get("running_wks", 0)) or "-"),
+                    str(int(r.get("running_pk_wks", 0)) or "-"),
                 ])
             _render_bb_table(headers, rows,
-                col_formats={0: "rank", 3: "num", 4: "num", 5: "num", 6: "num"})
+                col_formats={0: "rank", 3: "num", 4: "num", 5: "num", 6: "num", 7: "num"})
 
             if n_albums < bb_album_top_n:
                 st.caption(f"本周仅 {n_albums} 张专辑上榜（不足 Top {bb_album_top_n}）")
@@ -323,21 +361,32 @@ def render(weekly, weekly_album, weekly_artist, track_summary,
                     lw_artist_values.append("NEW")
             artist_week_df["LW"] = lw_artist_values
 
-            # ── Compute Peak/Wks for artists from all-time weekly_artist ──
-            artist_alltime = (
-                weekly_artist.groupby("artist_name")
+            # ── Compute running Peak/Wks for artists as of selected_week ──
+            running_art = weekly_artist[weekly_artist["billboard_week"] <= selected_week]
+            artist_running = (
+                running_art.groupby("artist_name")
                 .agg(
-                    peak_position=("rank", "min"),
-                    weeks_on_chart=("billboard_week", "nunique"),
+                    running_peak=("rank", "min"),
+                    running_wks=("billboard_week", "nunique"),
                 )
                 .reset_index()
             )
             artist_week_df = artist_week_df.merge(
-                artist_alltime, on="artist_name", how="left"
+                artist_running, on="artist_name", how="left"
             )
 
+            # running_peak_wks: weeks at the running peak
+            rwp_art = running_art.merge(
+                artist_running[["artist_name", "running_peak"]],
+                on="artist_name"
+            )
+            rwp_art["at_peak"] = (rwp_art["rank"] == rwp_art["running_peak"]).astype(int)
+            rpk_art = rwp_art.groupby("artist_name")["at_peak"].sum().reset_index()
+            rpk_art.columns = ["artist_name", "running_pk_wks"]
+            artist_week_df = artist_week_df.merge(rpk_art, on="artist_name", how="left")
+
             # ── Table ─────────────────────────────────────────────────────
-            headers = ["#", "艺人", "总播放次数", "LW", "Peak", "Wks"]
+            headers = ["#", "艺人", "总播放次数", "LW", "Peak", "Wks", "Pk Wks"]
             rows = []
             for _, r in artist_week_df.iterrows():
                 artist_url = _bb_url(bb_nav="artist", bb_name=str(r["artist_name"]), bb_tab="🎤 艺人榜单")
@@ -346,11 +395,12 @@ def render(weekly, weekly_album, weekly_artist, track_summary,
                     (_html.escape(str(r["artist_name"])), artist_url),
                     f"{r['play_count']:,}",
                     str(r.get("LW", "-")),
-                    str(int(r.get("peak_position", 0)) or "-"),
-                    str(int(r.get("weeks_on_chart", 0)) or "-"),
+                    str(int(r.get("running_peak", 0)) or "-"),
+                    str(int(r.get("running_wks", 0)) or "-"),
+                    str(int(r.get("running_pk_wks", 0)) or "-"),
                 ])
             _render_bb_table(headers, rows,
-                col_formats={0: "rank", 2: "num", 3: "num", 4: "num", 5: "num"})
+                col_formats={0: "rank", 2: "num", 3: "num", 4: "num", 5: "num", 6: "num"})
 
             if n_artists < bb_artist_top_n:
                 st.caption(f"本周仅 {n_artists} 位艺人上榜（不足 Top {bb_artist_top_n}）")

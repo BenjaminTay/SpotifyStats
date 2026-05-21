@@ -163,7 +163,7 @@ def load_billboard_raw(min_ms, music_only, week_start_dow, week_start_hour):
     )
     _w = f"WHERE {_f}" if _f else ""
     df = pd.read_sql_query(
-        f"""SELECT p.ts, p.ts_date, p.ts_dow, p.ts_hour, p.ms_played, p.skipped, p.track_id,
+        f"""SELECT p.ts, p.ts_date, p.ts_dow, p.ts_hour, p.ms_played, p.track_id,
                    t.track_name, a.artist_name, al.album_name, stm.duration_ms
             FROM plays p
             LEFT JOIN tracks t ON p.track_id = t.track_id
@@ -217,6 +217,31 @@ def load_track_album_map():
     for tid, albums in data.items():
         records.append({"track_id": tid, "album_list": sorted(set(albums))})
     return pd.DataFrame(records)
+
+
+@st.cache_data(ttl=3600)
+def load_album_type_map():
+    """(album_name, artist_name) → album_type 映射，用于过滤 single。"""
+    conn = get_db()
+    df = pd.read_sql_query(
+        """SELECT DISTINCT al.album_name, a.artist_name, sam.album_type
+           FROM track_albums ta
+           JOIN albums al ON ta.album_id = al.album_id
+           JOIN artists a ON al.artist_id = a.artist_id
+           JOIN tracks t ON ta.track_id = t.track_id
+           JOIN spotify_track_meta stm
+             ON REPLACE(t.spotify_track_uri, 'spotify:track:', '') = stm.spotify_track_id
+           JOIN spotify_album_meta sam ON stm.spotify_album_id = sam.spotify_album_id""",
+        conn,
+    )
+    conn.close()
+    # 去重：同一 (album_name, artist_name) 可能映射多个 Spotify ID，优先非 single
+    priority = {"album": 0, "compilation": 1, "single": 2}
+    df["_pri"] = df["album_type"].map(priority)
+    df = df.sort_values("_pri").drop_duplicates(
+        subset=["album_name", "artist_name"], keep="first"
+    ).drop(columns="_pri")
+    return df
 
 
 def compute_weekly_rankings(_df, top_n, pre_agg=None):
@@ -277,6 +302,12 @@ def compute_album_weekly_rankings(_df, top_n, pre_agg=None):
         ["billboard_week", "play_count", "total_ms"],
         ascending=[True, False, False],
     )
+    # 排除 single 类型（单曲不是专辑）
+    album_types = load_album_type_map()
+    weekly_album = weekly_album.merge(
+        album_types, on=["album_name", "artist_name"], how="left"
+    )
+    weekly_album = weekly_album[weekly_album["album_type"] != "single"]
     weekly_album["rank"] = weekly_album.groupby("billboard_week").cumcount() + 1
     weekly_album = weekly_album[weekly_album["rank"] <= top_n]
     return weekly_album

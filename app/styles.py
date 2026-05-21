@@ -404,3 +404,27 @@ def error_boundary(section_name: str = ""):
         )
         with st.expander("错误详情"):
             st.code(traceback.format_exc())
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Plotly shared template and color palette (Vinyl Archive theme)
+# ═══════════════════════════════════════════════════════════════════════════
+
+PLOTLY_TEMPLATE = {
+    "layout": {
+        "plot_bgcolor": "rgba(0,0,0,0)",
+        "paper_bgcolor": "rgba(0,0,0,0)",
+        "font": {"color": "#8B7355", "size": 11, "family": "Palatino, Book Antiqua, serif"},
+        "legend": {"font": {"color": "#8B7355"}, "title": {"text": ""}},
+        "title": {"font": {"color": "#2C2416", "size": 14, "family": "Georgia, serif"}},
+        "margin": {"l": 10, "r": 10, "t": 40, "b": 10},
+        "hoverlabel": {"bgcolor": "#FFFFFF", "font": {"color": "#2C2416"}, "bordercolor": "#D4A84B"},
+    }
+}
+
+AXIS_GRID = {
+    "gridcolor": "rgba(139,115,85,0.08)",
+    "linecolor": "rgba(139,115,85,0.15)",
+}
+
+COLORS = ["#B8860B", "#C45C3A", "#7D8C4E", "#D4845A", "#D4A84B", "#5C3D2E", "#C4956A", "#8B6914"]

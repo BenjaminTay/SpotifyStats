@@ -13,7 +13,7 @@ import plotly.graph_objects as go
 
 from app.db import get_db, init_db, ensure_schema, base_filters, load_plays, db_exists
 from app.import_data import import_data
-from app.styles import inject_global_styles, page_header, kpi_row, filter_badge
+from app.styles import inject_global_styles, page_header, kpi_row, filter_badge, PLOTLY_TEMPLATE, COLORS
 
 st.set_page_config(
     page_title="Spotify Stats",
@@ -23,23 +23,6 @@ st.set_page_config(
 )
 
 inject_global_styles()
-
-# ── Plotly warm template (Vinyl Archive) ─────────────────────────────
-PLOTLY_TEMPLATE = {
-    "layout": {
-        "plot_bgcolor": "rgba(0,0,0,0)",
-        "paper_bgcolor": "rgba(0,0,0,0)",
-        "font": {"color": "#8B7355", "size": 11, "family": "Palatino, Book Antiqua, serif"},
-        "xaxis": {"gridcolor": "rgba(139,115,85,0.08)", "linecolor": "rgba(139,115,85,0.15)"},
-        "yaxis": {"gridcolor": "rgba(139,115,85,0.08)", "linecolor": "rgba(139,115,85,0.15)"},
-        "legend": {"font": {"color": "#8B7355"}},
-        "title": {"font": {"color": "#2C2416", "size": 14, "family": "Georgia, serif"}},
-        "margin": {"l": 10, "r": 10, "t": 40, "b": 10},
-        "hoverlabel": {"bgcolor": "#FFFFFF", "font": {"color": "#2C2416"}, "bordercolor": "#D4A84B"},
-    }
-}
-
-COLORS = ["#B8860B", "#C45C3A", "#7D8C4E", "#D4845A", "#D4A84B", "#5C3D2E", "#C4956A", "#8B6914"]
 
 
 # ── Session state defaults ──────────────────────────────────────────
@@ -106,6 +89,11 @@ def render_sidebar():
         if db_exists():
             conn = get_db()
             count = conn.execute("SELECT COUNT(*) FROM plays").fetchone()[0]
+            # Quick account data check
+            try:
+                acct_count = conn.execute("SELECT COUNT(*) FROM search_queries").fetchone()[0]
+            except Exception:
+                acct_count = 0
             conn.close()
             st.markdown(
                 f"""
@@ -114,6 +102,11 @@ def render_sidebar():
                 """,
                 unsafe_allow_html=True,
             )
+            if acct_count > 0:
+                st.markdown(
+                    f'<div style="font-size:0.75rem;color:#7D8C4E;font-weight:500;">● 账号数据已导入</div>',
+                    unsafe_allow_html=True,
+                )
         else:
             st.markdown(
                 '<div style="font-size:0.8rem;color:#C45C3A;font-weight:600;">● 未导入</div>',
@@ -181,15 +174,6 @@ def load_plays_df(min_ms: int, music_only: bool) -> pd.DataFrame:
     return df
 
 
-@st.cache_data(ttl=3600)
-def load_all_plays_df() -> pd.DataFrame:
-    """Unfiltered data for behavior analysis pages."""
-    conn = get_db()
-    df = load_plays(conn, filtered=False, music_only=False)
-    conn.close()
-    return df
-
-
 # ── Dashboard ───────────────────────────────────────────────────────
 def dashboard():
     render_sidebar()
@@ -199,7 +183,6 @@ def dashboard():
     music_only = st.session_state.music_only
 
     df = load_plays_df(min_ms, music_only)
-    df_all = load_all_plays_df()
 
     total_plays = len(df)
     total_hours = df["ms_played"].sum() / 3_600_000
@@ -208,8 +191,6 @@ def dashboard():
     total_albums = df["album_name"].dropna().nunique()
     total_days = df["ts_date"].nunique()
     avg_daily_hours = total_hours / total_days if total_days > 0 else 0
-    skip_rate_all = df_all["skipped"].sum() / max(len(df_all), 1) * 100
-
     page_header("📊 总览仪表盘", description="全局播放数据概览")
 
     # ── KPI Cards ───────────────────────────────────────────────────────
@@ -219,9 +200,30 @@ def dashboard():
         {"label": "独特曲目", "value": f"{total_tracks:,}"},
         {"label": "独特艺人", "value": f"{total_artists:,}"},
         {"label": "日均听歌", "value": f"{avg_daily_hours:.1f} 小时"},
-        {"label": "总跳过率", "value": f"{skip_rate_all:.1f}%"},
     ]
     kpi_row(kpi_metrics)
+
+    # ── Account Data KPIs (if available) ───────────────────────────────
+    try:
+        conn = get_db()
+        sc = conn.execute("SELECT COUNT(*) FROM search_queries").fetchone()[0]
+        if sc > 0:
+            stc = conn.execute("SELECT COUNT(*) FROM saved_tracks").fetchone()[0]
+            plc = conn.execute("SELECT COUNT(*) FROM playlists").fetchone()[0]
+            video_count = conn.execute(
+                "SELECT COUNT(*) FROM plays WHERE content_type='video'"
+            ).fetchone()[0]
+            conn.close()
+            kpi_row([
+                {"label": "收藏曲目", "value": f"{stc:,}"},
+                {"label": "歌单数", "value": f"{plc}"},
+                {"label": "搜索次数", "value": f"{sc:,}"},
+                {"label": "视频播放", "value": f"{video_count:,}"},
+            ])
+        else:
+            conn.close()
+    except Exception:
+        pass
 
     st.markdown("<br>", unsafe_allow_html=True)
 
@@ -382,13 +384,10 @@ def dashboard():
 pg = st.navigation(
     [
         st.Page(dashboard, title="总览仪表盘", default=True),
-        st.Page("pages/02_timeline.py", title="时间线"),
-        st.Page("pages/03_leaderboard.py", title="排行榜"),
-        st.Page("pages/04_behavior.py", title="行为分析"),
-        st.Page("pages/05_wrapped.py", title="年度总结"),
-        st.Page("pages/06_artist_deep.py", title="艺人深潜"),
-        st.Page("pages/07_listening_hours.py", title="听歌时段"),
+        st.Page("pages/02_playback.py", title="播放分析"),
+        st.Page("pages/03_yearly.py", title="年度回顾"),
         st.Page("pages/08_billboard.py", title="Billboard 周榜"),
+        st.Page("pages/04_account.py", title="账号中心"),
         st.Page("pages/09_settings.py", title="设置"),
     ]
 )
