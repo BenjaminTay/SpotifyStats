@@ -12,9 +12,6 @@ import plotly.graph_objects as go
 import plotly.express as px
 
 from app.pages.billboard.shared import (
-    _render_bb_table,
-    _bb_url,
-    _render_record_table,
     load_billboard_raw,
     load_track_album_map,
     compute_weekly_rankings,
@@ -582,35 +579,34 @@ def run():
     if st.session_state.bb_active_tab == "📋 周榜":
         render_weekly(weekly, weekly_album, weekly_artist, track_summary, all_weeks_desc, all_weeks_asc, all_weeks_str, top_n, bb_album_top_n, bb_artist_top_n)
     # ═══════════════════════════════════════════════════════════════════════
-    if st.session_state.bb_active_tab == "🎵 单曲历史":
+    elif st.session_state.bb_active_tab == "🎵 单曲历史":
         render_track_history(weekly, track_summary, top_n, all_weeks_str, all_weeks_desc)
     # ═══════════════════════════════════════════════════════════════════════
-    if st.session_state.bb_active_tab == "🎤 艺人榜单":
+    elif st.session_state.bb_active_tab == "🎤 艺人榜单":
         render_artist_chart(weekly, weekly_artist, weekly_album, artist_track_counts, artist_summary, track_summary, bb_artist_top_n, top_n, bb_album_top_n)
     # ═══════════════════════════════════════════════════════════════════════
-    if st.session_state.bb_active_tab == "⭐ 走势总榜":
+    elif st.session_state.bb_active_tab == "⭐ 走势总榜":
         render_power_score(weekly, weekly_album, weekly_artist, top_n, bb_album_top_n, bb_artist_top_n)
 
-
-    if st.session_state.bb_active_tab == "🏆 歌曲总榜":
+    elif st.session_state.bb_active_tab == "🏆 歌曲总榜":
         render_all_time_tracks(track_summary, weekly)
     # ═══════════════════════════════════════════════════════════════════════
-    if st.session_state.bb_active_tab == "💿 专辑榜单":
+    elif st.session_state.bb_active_tab == "💿 专辑榜单":
         render_album_chart(weekly, weekly_album, track_per_album, album_track_counts, bb_album_top_n, top_n)
     # ═══════════════════════════════════════════════════════════════════════
-    if st.session_state.bb_active_tab == "👑 每周榜首":
+    elif st.session_state.bb_active_tab == "👑 每周榜首":
         render_number_ones(weekly, weekly_album, weekly_artist, track_summary)
     # ═══════════════════════════════════════════════════════════════════════
-    if st.session_state.bb_active_tab == "📊 艺人总榜":
+    elif st.session_state.bb_active_tab == "📊 艺人总榜":
         render_all_time_artists(artist_track_counts)
     # ═══════════════════════════════════════════════════════════════════════
-    if st.session_state.bb_active_tab == "📀 专辑总榜":
+    elif st.session_state.bb_active_tab == "📀 专辑总榜":
         render_all_time_albums(album_track_counts)
     # ═══════════════════════════════════════════════════════════════════════
-    if st.session_state.bb_active_tab == "🏅 榜单记录":
+    elif st.session_state.bb_active_tab == "🏅 榜单记录":
         render_records(records)
     # ═══════════════════════════════════════════════════════════════════════════
-    if st.session_state.bb_active_tab == "⚔️ 对决":
+    elif st.session_state.bb_active_tab == "⚔️ 对决":
         power_scores = compute_power_scores(weekly, top_n)
         album_power_scores = compute_album_power_scores(weekly_album, bb_album_top_n)
         artist_power_scores = compute_artist_power_scores(weekly_artist, bb_artist_top_n)

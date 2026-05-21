@@ -13,7 +13,7 @@ import plotly.graph_objects as go
 
 from app.db import get_db, init_db, ensure_schema, base_filters, load_plays, db_exists
 from app.import_data import import_data
-from app.styles import inject_global_styles, page_header, kpi_row, filter_badge, PLOTLY_TEMPLATE, COLORS
+from app.styles import inject_global_styles, page_header, kpi_row, PLOTLY_TEMPLATE, COLORS
 
 st.set_page_config(
     page_title="Spotify Stats",
@@ -167,9 +167,9 @@ def ensure_data():
 
 # ── Helper: get filtered data as DataFrame ─────────────────────────
 @st.cache_data(ttl=3600)
-def load_plays_df(min_ms: int, music_only: bool) -> pd.DataFrame:
+def load_plays_df(min_ms: int, music_only: bool, merge_enabled: bool) -> pd.DataFrame:
     conn = get_db()
-    df = load_plays(conn, min_ms=min_ms, music_only=music_only, merge_enabled=st.session_state.merge_enabled)
+    df = load_plays(conn, min_ms=min_ms, music_only=music_only, merge_enabled=merge_enabled)
     conn.close()
     return df
 
@@ -182,7 +182,7 @@ def dashboard():
     min_ms = st.session_state.min_ms
     music_only = st.session_state.music_only
 
-    df = load_plays_df(min_ms, music_only)
+    df = load_plays_df(min_ms, music_only, st.session_state.merge_enabled)
 
     total_plays = len(df)
     total_hours = df["ms_played"].sum() / 3_600_000

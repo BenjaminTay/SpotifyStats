@@ -17,13 +17,6 @@ ACCOUNT_DATA_DIR = os.path.join(
 )
 
 
-def _extract_uri_id(uri: str) -> str:
-    """Extract the ID portion from a Spotify URI: spotify:track:XXX -> XXX"""
-    if uri and ":" in uri:
-        return uri.split(":")[-1]
-    return uri or ""
-
-
 # ═══════════════════════════════════════════════════════════════════════════
 # Wrapped 2025
 # ═══════════════════════════════════════════════════════════════════════════

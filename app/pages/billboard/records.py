@@ -218,11 +218,13 @@ def render(records):
         for _, _r in dd.iterrows():
             _artist_url = _bb_url(bb_nav="artist", bb_name=str(_r['debut_artist']), bb_tab="🎤 艺人榜单")
             _week_url = _bb_url(bb_nav="week", bb_date=str(_r['debut_week']), bb_tab="📋 周榜")
+            _track_url = _bb_url(bb_nav="track", bb_id=int(_r['debut_track_id']), bb_tab="🎵 单曲历史")
+            _album_url = _bb_url(bb_nav="album", bb_name=str(_r['debut_album']), bb_art=str(_r['debut_artist']), bb_tab="💿 专辑榜单")
             _dd_rows.append([
                 (_html.escape(str(_r["debut_week"])), _week_url),
                 (_html.escape(str(_r["debut_artist"])), _artist_url),
-                _html.escape(str(_r["debut_track"])),
-                _html.escape(str(_r["debut_album"])),
+                (_html.escape(str(_r["debut_track"])), _track_url),
+                (_html.escape(str(_r["debut_album"])), _album_url),
             ])
         _render_bb_table(_dd_headers, _dd_rows)
     else:

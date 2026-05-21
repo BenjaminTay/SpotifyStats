@@ -429,15 +429,18 @@ def render(weekly, weekly_artist, weekly_album, artist_track_counts, artist_summ
                 _aa_rows = []
                 for _, _r in artist_album_summary.iterrows():
                     album_url = _bb_url(bb_nav="album", bb_name=str(_r["album_name"]), bb_art=selected_artist, bb_tab="💿 专辑榜单")
+                    _first_week_str = str(_r["first_week"])
+                    _first_peak_str = str(_r.get("first_peak_week", "—"))
+                    _last_week_str = str(_r["last_week"])
                     _aa_rows.append([
                         str(_r.name),
                         (_html.escape(str(_r["album_name"])), album_url),
                         str(int(_r["peak"])),
                         str(int(_r["weeks"])),
                         str(int(_r["pk_wks"])),
-                        str(_r["first_week"]),
-                        str(_r.get("first_peak_week", "—")),
-                        str(_r["last_week"]),
+                        (_html.escape(_first_week_str), _bb_url(bb_nav="week", bb_date=_first_week_str, bb_tab="📋 周榜")),
+                        (_html.escape(_first_peak_str), _bb_url(bb_nav="week", bb_date=_first_peak_str, bb_tab="📋 周榜")),
+                        (_html.escape(_last_week_str), _bb_url(bb_nav="week", bb_date=_last_week_str, bb_tab="📋 周榜")),
                         f"{int(_r['total_plays']):,}",
                         f"{_r['power_score']:,}",
                         str(int(_r["power_rank"])) if _r["power_rank"] > 0 else "—",

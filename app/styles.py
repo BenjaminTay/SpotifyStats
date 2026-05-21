@@ -1,8 +1,5 @@
 """Global CSS injection for Spotify Stats — Vinyl Archive theme."""
 
-import traceback
-from contextlib import contextmanager
-
 import streamlit as st
 
 
@@ -344,69 +341,7 @@ def kpi_row(metrics: list[dict]):
             st.metric(label=m["label"], value=m["value"], delta=delta)
 
 
-def filter_badge():
-    """Show current filter settings as a styled badge row."""
-    min_ms = st.session_state.get("min_ms", 30000)
-    music = st.session_state.get("music_only", True)
-    bb_n = st.session_state.get("bb_top_n", 30)
-    bb_album_n = st.session_state.get("bb_album_top_n", 20)
-    bb_artist_n = st.session_state.get("bb_artist_top_n", 20)
 
-    badges = [
-        f"最短 {min_ms // 1000}s",
-        "仅音乐" if music else "含播客",
-        f"单曲 Top {bb_n}",
-        f"专辑 Top {bb_album_n}",
-        f"艺人 Top {bb_artist_n}",
-    ]
-    html = "".join(
-        f'<span style="display:inline-block;background:var(--bg-card);border:1px solid var(--border-gold);'
-        f'border-radius:20px;padding:0.2rem 0.75rem;font-size:0.7rem;color:var(--text-secondary);'
-        f'margin-right:0.4rem;">{b}</span>'
-        for b in badges
-    )
-    st.markdown(f'<div style="margin:0.5rem 0;">{html}</div>', unsafe_allow_html=True)
-
-
-# ═══════════════════════════════════════════════════════════════════════════
-# Skeleton loading placeholders
-# ═══════════════════════════════════════════════════════════════════════════
-
-def render_skeleton(n: int = 3, height: str = "4rem"):
-    """Render animated skeleton placeholder cards for loading states."""
-    cards = ""
-    for _ in range(n):
-        cards += (
-            f'<div class="skeleton-card" style="height:{height};border-radius:var(--radius);'
-            f'background:linear-gradient(90deg,var(--bg-card) 25%,var(--bg-elevated) 50%,var(--bg-card) 75%);'
-            f'background-size:200% 100%;animation:shimmer 1.5s infinite;'
-            f'margin-bottom:0.75rem;border:1px solid var(--border);"></div>'
-        )
-    st.markdown(
-        f"""<div>{cards}</div>""",
-        unsafe_allow_html=True,
-    )
-
-
-# ═══════════════════════════════════════════════════════════════════════════
-# Error boundary
-# ═══════════════════════════════════════════════════════════════════════════
-
-@contextmanager
-def error_boundary(section_name: str = ""):
-    """Catch and display errors with a styled message instead of crashing the page."""
-    label = f"「{section_name}」" if section_name else "此模块"
-    try:
-        yield
-    except Exception as e:
-        st.error(
-            f"加载{label}时发生错误：{e}",
-        )
-        with st.expander("错误详情"):
-            st.code(traceback.format_exc())
-
-
-# ═══════════════════════════════════════════════════════════════════════════
 # Plotly shared template and color palette (Vinyl Archive theme)
 # ═══════════════════════════════════════════════════════════════════════════
 
@@ -420,11 +355,6 @@ PLOTLY_TEMPLATE = {
         "margin": {"l": 10, "r": 10, "t": 40, "b": 10},
         "hoverlabel": {"bgcolor": "#FFFFFF", "font": {"color": "#2C2416"}, "bordercolor": "#D4A84B"},
     }
-}
-
-AXIS_GRID = {
-    "gridcolor": "rgba(139,115,85,0.08)",
-    "linecolor": "rgba(139,115,85,0.15)",
 }
 
 COLORS = ["#B8860B", "#C45C3A", "#7D8C4E", "#D4845A", "#D4A84B", "#5C3D2E", "#C4956A", "#8B6914"]

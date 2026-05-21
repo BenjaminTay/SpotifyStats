@@ -8,6 +8,21 @@ import plotly.graph_objects as go
 from .shared import _bb_url, _render_bb_table
 
 
+def _longest_streak(hist, week_col="billboard_week"):
+    weeks = sorted(hist[week_col].unique())
+    if len(weeks) < 2:
+        return len(weeks)
+    max_s = 1
+    cur_s = 1
+    for i in range(1, len(weeks)):
+        if (weeks[i] - weeks[i - 1]).days == 7:
+            cur_s += 1
+            max_s = max(max_s, cur_s)
+        else:
+            cur_s = 1
+    return max_s
+
+
 def render(weekly, weekly_album, weekly_artist, track_summary):
     # Extract #1 songs, newest first
     number_ones = weekly[weekly["rank"] == 1].copy()
@@ -23,21 +38,6 @@ def render(weekly, weekly_album, weekly_artist, track_summary):
         .reset_index()
         .sort_values("weeks_at_no1", ascending=False)
     )
-
-    # Compute longest consecutive #1 streak (generic)
-    def _longest_streak(hist, week_col="billboard_week"):
-        weeks = sorted(hist[week_col].unique())
-        if len(weeks) < 2:
-            return len(weeks)
-        max_s = 1
-        cur_s = 1
-        for i in range(1, len(weeks)):
-            if (weeks[i] - weeks[i - 1]).days == 7:
-                cur_s += 1
-                max_s = max(max_s, cur_s)
-            else:
-                cur_s = 1
-        return max_s
 
     longest_streak = 0
     longest_streak_track = ""

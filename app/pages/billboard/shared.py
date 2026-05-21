@@ -132,7 +132,7 @@ def _try_load_from_agg(min_ms, music_only, week_start_dow, week_start_hour):
     or (None, None, None) if parameters don't match or tables are empty.
     Each DataFrame is pre-grouped (play_count + total_ms) but NOT ranked.
     """
-    from app.db import get_db, _agg_param_hash, check_agg_valid, \
+    from app.db import _agg_param_hash, check_agg_valid, \
         load_agg_weekly_tracks, load_agg_weekly_albums, load_agg_weekly_artists
 
     param_hash = _agg_param_hash(min_ms, music_only, week_start_dow, week_start_hour)
@@ -220,11 +220,10 @@ def load_track_album_map():
 
 
 @st.cache_data(ttl=3600)
-def load_album_type_map():
-    """(album_name, artist_name) → album_type 映射，用于过滤 single。"""
+def _load_album_metadata():
     conn = get_db()
     df = pd.read_sql_query(
-        """SELECT DISTINCT al.album_name, a.artist_name, sam.album_type
+        """SELECT DISTINCT al.album_name, a.artist_name, sam.album_type, sam.release_date
            FROM track_albums ta
            JOIN albums al ON ta.album_id = al.album_id
            JOIN artists a ON al.artist_id = a.artist_id
@@ -235,13 +234,18 @@ def load_album_type_map():
         conn,
     )
     conn.close()
-    # 去重：同一 (album_name, artist_name) 可能映射多个 Spotify ID，优先非 single
+
+    base = df[["album_name", "artist_name", "album_type"]].copy()
     priority = {"album": 0, "compilation": 1, "single": 2}
-    df["_pri"] = df["album_type"].map(priority)
-    df = df.sort_values("_pri").drop_duplicates(
+    base["_pri"] = base["album_type"].map(priority)
+    type_df = base.sort_values("_pri").drop_duplicates(
         subset=["album_name", "artist_name"], keep="first"
-    ).drop(columns="_pri")
-    return df
+    ).drop(columns=["_pri"])
+
+    date_df = df.dropna(subset=["release_date"])
+    date_df = date_df.groupby(["album_name", "artist_name"], as_index=False)["release_date"].min()
+
+    return {"type": type_df, "release_date": date_df}
 
 
 def compute_weekly_rankings(_df, top_n, pre_agg=None):
@@ -250,7 +254,7 @@ def compute_weekly_rankings(_df, top_n, pre_agg=None):
     If pre_agg DataFrame is provided (from agg_weekly_tracks), skips the
     expensive groupby step and directly ranks the pre-aggregated data.
     """
-    if pre_agg is not None and len(pre_agg) > 0:
+    if pre_agg is not None and not pre_agg.empty:
         weekly = pre_agg.copy()
         # pre_agg already has: billboard_week, track_id, track_name,
         # artist_name, album_name, play_count, total_ms
@@ -279,7 +283,7 @@ def compute_album_weekly_rankings(_df, top_n, pre_agg=None):
     If pre_agg DataFrame is provided (from agg_weekly_albums), skips the
     expensive groupby step.
     """
-    if pre_agg is not None and len(pre_agg) > 0:
+    if pre_agg is not None and not pre_agg.empty:
         weekly_album = pre_agg.copy()
         # pre_agg already has: billboard_week, album_id, album_name,
         # artist_name, play_count, total_ms
@@ -302,12 +306,23 @@ def compute_album_weekly_rankings(_df, top_n, pre_agg=None):
         ["billboard_week", "play_count", "total_ms"],
         ascending=[True, False, False],
     )
-    # 排除 single 类型（单曲不是专辑）
-    album_types = load_album_type_map()
+    # 排除 single 类型 + 排除专辑发行前的周数
+    album_meta = _load_album_metadata()
     weekly_album = weekly_album.merge(
-        album_types, on=["album_name", "artist_name"], how="left"
+        album_meta["type"], on=["album_name", "artist_name"], how="left"
     )
     weekly_album = weekly_album[weekly_album["album_type"] != "single"]
+    weekly_album = weekly_album.merge(
+        album_meta["release_date"], on=["album_name", "artist_name"], how="left"
+    )
+    if not weekly_album.empty:
+        weekly_album["_bb_week"] = pd.to_datetime(weekly_album["billboard_week"])
+        weekly_album["_rel_date"] = pd.to_datetime(weekly_album["release_date"], errors="coerce")
+        weekly_album = weekly_album[
+            weekly_album["_rel_date"].isna()
+            | (weekly_album["_bb_week"] + pd.Timedelta(days=6) >= weekly_album["_rel_date"])
+        ].drop(columns=["_bb_week", "_rel_date"])
+
     weekly_album["rank"] = weekly_album.groupby("billboard_week").cumcount() + 1
     weekly_album = weekly_album[weekly_album["rank"] <= top_n]
     return weekly_album
@@ -319,7 +334,7 @@ def compute_artist_weekly_rankings(_df, top_n, pre_agg=None):
     If pre_agg DataFrame is provided (from agg_weekly_artists), skips the
     expensive groupby step.
     """
-    if pre_agg is not None and len(pre_agg) > 0:
+    if pre_agg is not None and not pre_agg.empty:
         weekly_artist = pre_agg.copy()
         # pre_agg already has: billboard_week, artist_id, artist_name,
         # play_count, total_ms
@@ -751,9 +766,9 @@ def compute_records(weekly, track_summary, top_n, weekly_album=None, weekly_arti
             .reset_index()
         )
         debut_tracks = first_track_appear[first_track_appear["rank"] == 1][
-            ["track_name", "artist_name", "billboard_week"]
+            ["track_id", "track_name", "artist_name", "billboard_week"]
         ].copy()
-        debut_tracks.columns = ["debut_track", "debut_artist", "debut_week"]
+        debut_tracks.columns = ["debut_track_id", "debut_track", "debut_artist", "debut_week"]
 
         first_album_appear = (
             weekly_album.sort_values("billboard_week")

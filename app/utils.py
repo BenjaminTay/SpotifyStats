@@ -3,6 +3,10 @@
 from datetime import datetime, timedelta
 from typing import Optional, Union
 
+# Time conversion constants
+MS_TO_HOURS = 3_600_000
+MS_TO_MINUTES = 60_000
+
 # Timezone offsets in hours for common countries
 COUNTRY_TZ_OFFSETS: dict[str, int] = {
     "CN": 8,
@@ -66,18 +70,3 @@ def classify_platform(raw: Optional[str]) -> str:
     if "web" in lower or "browser" in lower:
         return "web"
     return "other"
-
-
-def format_duration(ms: int) -> str:
-    """Format milliseconds into a human-readable string."""
-    seconds = ms // 1000
-    hours = seconds // 3600
-    minutes = (seconds % 3600) // 60
-    if hours > 0:
-        return f"{hours}h {minutes}m"
-    return f"{minutes}m {seconds % 60}s"
-
-
-def format_hours(total_ms: int) -> str:
-    """Format total ms as hours with one decimal."""
-    return f"{total_ms / 3_600_000:,.1f}"
