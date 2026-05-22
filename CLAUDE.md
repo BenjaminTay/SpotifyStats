@@ -74,14 +74,14 @@ JSON 文件 (账号数据)  ──→ import_account_data.py ──┘
 ├── 总览仪表盘 (main.py, default)
 ├── 播放分析 (02_playback.py)       ← 5 Tab: 时间线 / 排行榜 / 行为分析 / 听歌时段 / 艺人深潜
 ├── 年度回顾 (03_yearly.py)         ← 2 Tab: 自定义年度总结 / Wrapped 2025 官方
-├── Billboard 周榜 (08_billboard.py) ← 11 Tab，委派至 billboard/ 包
+├── Billboard 周榜 (08_billboard.py) ← 12 Tab，委派至 billboard/ 包
 ├── 账号中心 (04_account.py)        ← 6 Tab: 音乐库 / 搜索编年史 / 音乐画像 / 播客专区 / 视频分析 / 个人档案
 └── 设置 (09_settings.py)
 ```
 
 每个原始页面暴露 `render()` 函数，由 wrapper 在对应 Tab 内调用。`st.stop()` 均改为 `return`，避免 Tab 内警告波及整个 wrapper。
 
-`08_billboard.py` 为薄入口（15 行），委派至 `app/pages/billboard/` 模块化包（13 个文件，~3,900 行）：
+`08_billboard.py` 为薄入口（15 行），委派至 `app/pages/billboard/` 模块化包（18 个文件，~5,700 行）：
 
 ```
 app/pages/billboard/
@@ -97,7 +97,13 @@ app/pages/billboard/
 ├── all_time_artists.py  # Tab 8: 艺人总榜
 ├── all_time_albums.py   # Tab 9: 专辑总榜
 ├── records.py           # Tab 10: 榜单记录（12 类）
-└── versus.py            # Tab 11: 对决（歌曲/专辑/艺人对决对比）
+├── versus.py            # Tab 11: 对决（歌曲/专辑/艺人对决对比）
+└── release_cycle/       # Tab 12: 发行周期分析
+    ├── __init__.py       # 主路由 + 艺人选择器 + 三个视图切换（st.session_state）
+    ├── shared.py         # 数据加载（load_artist_releases 等）+ 指标计算 + Spotify API 集成
+    ├── artist_view.py    # 视图①：艺人总览（KPI 卡片、排名趋势图 + 发行事件标记、发行卡片流）
+    ├── album_view.py     # 视图②：专辑下钻（发行周期曲线、先行单曲、歌曲入榜矩阵、老歌回榜）
+    └── compare_view.py   # 视图③：多发行周期叠加对比（排名/播放量曲线 + 指标对比表）
 ```
 
 每个模块暴露 `render(df, weekly, ...)` 函数，由 `__init__.py` 传递所需数据。`st.session_state` 实现跨 Tab 导航、子 Tab 记忆、周选择器位置记忆。

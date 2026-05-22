@@ -130,7 +130,8 @@ CREATE TABLE IF NOT EXISTS spotify_album_meta (
     popularity         INTEGER,
     label              TEXT,
     genres             TEXT,
-    image_url          TEXT
+    image_url          TEXT,
+    album_artists      TEXT
 );
 
 CREATE TABLE IF NOT EXISTS spotify_artist_meta (
@@ -371,6 +372,8 @@ def ensure_schema() -> None:
     _add_columns = [
         # plays
         ("plays", "content_type", "TEXT NOT NULL DEFAULT 'audio'"),
+        # spotify_album_meta — 存储专辑主艺人，用于发行归属验证
+        ("spotify_album_meta", "album_artists", "TEXT"),
     ]
     for table, col, col_type in _add_columns:
         try:

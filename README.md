@@ -9,7 +9,7 @@
 - **总览仪表盘** — 关键指标卡片、月度播放趋势、Top 10 曲目、平台分布、一周听歌热力图
 - **播放分析**（5 个子 Tab）— 时间线（年度/月度/周度报告）、排行榜（曲目/艺人/专辑）、行为分析（快进快退/平台/隐身/随机）、听歌时段热力图、艺人深度分析
 - **年度回顾**（2 个子 Tab）— 自定义年度总结（Wrapped 风格卡片叙事、听歌人格识别）、Wrapped 2025 官方官方年度回顾（艺人竞速、收听性格、官方排行榜）
-- **Billboard 周榜**（11 个子 Tab）— 周榜（单曲/专辑/艺人，支持快速切周、截至当周滚动统计）、每周榜首、单曲历史（含升降列）、艺人榜单、专辑榜单、走势总榜（Power Score 三维度）、歌曲/艺人/专辑总榜、榜单记录、对决
+- **Billboard 周榜**（12 个子 Tab）— 周榜（单曲/专辑/艺人，支持快速切周、截至当周滚动统计）、每周榜首、单曲历史（含升降列）、艺人榜单、专辑榜单、走势总榜（Power Score 三维度）、歌曲/艺人/专辑总榜、榜单记录、对决、发行周期分析（艺人总览/专辑下钻/多发行对比）
 - **账号中心**（6 个子 Tab）— 音乐库（收藏曲目/专辑/艺人 vs 实际收听）、搜索编年史、音乐画像（粉丝层级分析 + Marquee 推广转化）、播客专区、视频分析（≥30s 有效观看）、个人档案
 - **设置** — 集中管理所有参数：数据过滤（最短播放时长/仅音乐/合并连续播放）、Billboard 上榜数量、一键重新导入数据
 
@@ -88,7 +88,7 @@ SpotifyStats/
 │       ├── 16_profile.py             #   └─ 个人档案
 │       ├── 08_billboard.py           # Billboard 周榜（薄入口，委派至 billboard/ 包）
 │       ├── 09_settings.py            # 设置（数据过滤 + Billboard 配置 + 数据导入）
-│       └── billboard/                # Billboard 模块化包（11 个子 Tab）
+│       └── billboard/                # Billboard 模块化包（12 个子 Tab）
 │           ├── __init__.py            # 主路由 + session_state 初始化
 │           ├── shared.py              # 公共数据加载 + 排名计算
 │           ├── weekly.py              # 周榜（单曲/专辑/艺人）
@@ -101,7 +101,13 @@ SpotifyStats/
 │           ├── all_time_artists.py    # 艺人总榜
 │           ├── all_time_albums.py     # 专辑总榜
 │           ├── records.py             # 榜单记录
-│           └── versus.py              # 对决
+│           ├── versus.py              # 对决
+│           └── release_cycle/         # 发行周期分析
+│               ├── __init__.py         # 主路由 + 艺人选择 + 视图切换
+│               ├── shared.py           # 数据加载 + 指标计算 + Spotify API
+│               ├── artist_view.py      # 艺人总览（排名趋势 + 发行卡片）
+│               ├── album_view.py       # 专辑下钻（周期曲线 + 入榜矩阵）
+│               └── compare_view.py     # 多发行周期叠加对比
 ├── data/
 │   ├── README.md                     # 数据使用指引
 │   ├── spotify_stats.db              # SQLite 数据库

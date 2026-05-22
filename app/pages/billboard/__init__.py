@@ -40,6 +40,7 @@ from app.pages.billboard.all_time_tracks import render as render_all_time_tracks
 from app.pages.billboard.all_time_artists import render as render_all_time_artists
 from app.pages.billboard.all_time_albums import render as render_all_time_albums
 from app.pages.billboard.records import render as render_records
+from app.pages.billboard.release_cycle import run as run_release_cycle
 
 
 def run():
@@ -451,7 +452,7 @@ def run():
     TAB_NAMES = [
         "📋 周榜", "👑 每周榜首", "🎵 单曲历史", "🎤 艺人榜单", "💿 专辑榜单",
         "⭐ 走势总榜", "🏆 歌曲总榜", "📊 艺人总榜", "📀 专辑总榜",
-        "🏅 榜单记录", "⚔️ 对决",
+        "🏅 榜单记录", "⚔️ 对决", "📅 发行周期",
     ]
 
     # 消费来自 query param 导航的待处理 tab 切换请求
@@ -621,4 +622,8 @@ def run():
 
         with versus_tabs[2]:
             render_artist_versus(weekly_artist, weekly, weekly_album, artist_power_scores, power_scores, album_power_scores)
+
+    # ═══════════════════════════════════════════════════════════════════════
+    elif st.session_state.bb_active_tab == "📅 发行周期":
+        run_release_cycle(df_filtered, weekly, weekly_artist, weekly_album)
 
