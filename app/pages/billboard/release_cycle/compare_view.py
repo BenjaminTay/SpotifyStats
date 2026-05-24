@@ -12,6 +12,8 @@ from app.styles import PLOTLY_TEMPLATE, COLORS
 from app.pages.billboard.release_cycle.shared import (
     compute_release_cycle,
     compute_release_metrics,
+    format_artist_impact,
+    format_market_impact,
 )
 
 
@@ -59,7 +61,8 @@ def render_compare_view(df_raw, weekly_artist, weekly_album):
             "空降排名": f"#{metrics['debut_rank']}" if metrics["debut_rank"] else "—",
             "Peak": f"#{metrics['peak_rank']}" if metrics["peak_rank"] else "—",
             "在榜周数": metrics["weeks_on_chart"],
-            "冲击力": f"+{metrics['impact_force']:.0f}%" if metrics["impact_force"] else "—",
+            "艺人冲击力": format_artist_impact(metrics["artist_impact"]),
+            "大盘冲击力": format_market_impact(metrics["market_impact"]),
             "半衰期": f"{metrics['half_life']}周" if metrics.get("half_life") else ">24周",
         })
 

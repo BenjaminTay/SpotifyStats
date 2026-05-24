@@ -233,7 +233,6 @@ def _load_album_metadata():
            JOIN spotify_album_meta sam ON stm.spotify_album_id = sam.spotify_album_id""",
         conn,
     )
-    conn.close()
 
     base = df[["album_name", "artist_name", "album_type"]].copy()
     priority = {"album": 0, "compilation": 1, "single": 2}
@@ -245,7 +244,168 @@ def _load_album_metadata():
     date_df = df.dropna(subset=["release_date"])
     date_df = date_df.groupby(["album_name", "artist_name"], as_index=False)["release_date"].min()
 
+    # 补充 release group canonical name 的元数据行
+    _add_canonical_metadata(type_df, date_df, conn)
+
+    conn.close()
     return {"type": type_df, "release_date": date_df}
+
+
+def _add_canonical_metadata(type_df, date_df, conn):
+    """为 release group 的 canonical_name 补充 album_type 和 release_date 行。
+
+    将 canonical_name 映射到 primary_album 的 album_name，然后从现有 metadata
+    中复制对应行。这样 release_date 过滤和 album_type 过滤能正确作用于合并后的名称。
+    """
+    mapping = pd.read_sql_query(
+        """SELECT al.album_name, a.artist_name, rg.canonical_name,
+                  rg.primary_album_id, pa.album_name AS primary_album_name
+           FROM release_group_members rgm
+           JOIN release_groups rg ON rgm.group_id = rg.group_id
+           JOIN albums al ON rgm.album_id = al.album_id
+           JOIN artists a ON al.artist_id = a.artist_id
+           LEFT JOIN albums pa ON rg.primary_album_id = pa.album_id""",
+        conn,
+    )
+    if mapping.empty:
+        return
+
+    # album_type: 从 primary_album 的 metadata 复制
+    primary_types = type_df.merge(
+        mapping[["primary_album_name", "artist_name", "canonical_name"]].drop_duplicates(),
+        left_on=["album_name", "artist_name"],
+        right_on=["primary_album_name", "artist_name"],
+        how="inner",
+    )[["canonical_name", "artist_name", "album_type"]].rename(
+        columns={"canonical_name": "album_name"}
+    )
+    if not primary_types.empty:
+        existing = set(zip(type_df["album_name"], type_df["artist_name"]))
+        for _, row in primary_types.iterrows():
+            key = (row["album_name"], row["artist_name"])
+            if key not in existing:
+                type_df.loc[len(type_df)] = row
+
+    # release_date: 取 primary_album 的最早发行日期
+    primary_dates = date_df.merge(
+        mapping[["primary_album_name", "artist_name", "canonical_name"]].drop_duplicates(),
+        left_on=["album_name", "artist_name"],
+        right_on=["primary_album_name", "artist_name"],
+        how="inner",
+    ).groupby(["canonical_name", "artist_name"], as_index=False)["release_date"].min().rename(
+        columns={"canonical_name": "album_name"}
+    )
+    if not primary_dates.empty:
+        existing = set(zip(date_df["album_name"], date_df["artist_name"]))
+        for _, row in primary_dates.iterrows():
+            key = (row["album_name"], row["artist_name"])
+            if key not in existing:
+                date_df.loc[len(date_df)] = row
+
+
+def _get_album_canonical_map():
+    """获取所有 release group 成员的 (album_name, artist_name) → canonical_name 映射。"""
+    conn = get_db()
+    mapping = pd.read_sql_query(
+        """SELECT al.album_name, a.artist_name, rg.canonical_name
+           FROM release_group_members rgm
+           JOIN release_groups rg ON rgm.group_id = rg.group_id
+           JOIN albums al ON rgm.album_id = al.album_id
+           JOIN artists a ON al.artist_id = a.artist_id""",
+        conn,
+    )
+    conn.close()
+    return mapping
+
+
+def _normalize_album_column(df, album_col="album_name", artist_col="artist_name",
+                            dedup_cols=None):
+    """将 DataFrame 中的 album_name 替换为 canonical_name，可选去重。
+
+    dedup_cols: 替换后按这些列去重（如 ["track_id", "album_name", "artist_name"]）。
+    """
+    mapping = _get_album_canonical_map()
+    if mapping.empty:
+        return df
+
+    # 去重（同一 album 不应属于多个 group，但防御）
+    mapping = mapping.drop_duplicates(subset=["album_name", "artist_name"])
+
+    # 重命名右表列避免合并时后缀冲突
+    mapping = mapping.rename(columns={
+        "album_name": "_rg_album",
+        "artist_name": "_rg_artist",
+    })
+    df = df.merge(mapping, left_on=[album_col, artist_col],
+                  right_on=["_rg_album", "_rg_artist"], how="left")
+    mask = df["canonical_name"].notna()
+    df.loc[mask, album_col] = df.loc[mask, "canonical_name"]
+    df = df.drop(columns=["canonical_name", "_rg_album", "_rg_artist"], errors="ignore")
+    if dedup_cols:
+        df = df.drop_duplicates(subset=dedup_cols)
+    return df
+
+
+def _resolve_album_members(album_name, artist_name):
+    """返回 release group 所有成员的 album_name 列表（含自身）。
+
+    如果 album_name 不在任何 group 中，返回 [album_name]。
+    同时返回 canonical_name。
+    """
+    conn = get_db()
+    row = conn.execute(
+        """SELECT rg.canonical_name
+           FROM release_group_members rgm
+           JOIN release_groups rg ON rgm.group_id = rg.group_id
+           JOIN albums al ON rgm.album_id = al.album_id
+           JOIN artists a ON al.artist_id = a.artist_id
+           WHERE al.album_name = ? AND a.artist_name = ?
+           LIMIT 1""",
+        [album_name, artist_name],
+    ).fetchone()
+
+    if not row:
+        conn.close()
+        return [album_name], album_name
+
+    canonical = row[0]
+    members = conn.execute(
+        """SELECT al.album_name
+           FROM release_group_members rgm
+           JOIN release_groups rg ON rgm.group_id = rg.group_id
+           JOIN albums al ON rgm.album_id = al.album_id
+           JOIN artists a ON al.artist_id = a.artist_id
+           WHERE rg.canonical_name = ? AND a.artist_name = ?""",
+        [canonical, artist_name],
+    ).fetchall()
+    conn.close()
+    return [m[0] for m in members], canonical
+
+
+def _apply_album_release_groups(df):
+    """将 release_group 成员的 album_name 替换为 canonical_name 并重新聚合。
+
+    多版本专辑（豪华版、Acoustic版等）的周播放量被合并到 canonical name 下，
+    使榜单排名反映合并后的成绩。
+    """
+    mapping = _get_album_canonical_map()
+    if mapping.empty:
+        return df
+
+    df = df.merge(mapping, on=["album_name", "artist_name"], how="left")
+    mask = df["canonical_name"].notna()
+    df.loc[mask, "album_name"] = df.loc[mask, "canonical_name"]
+    df = df.drop(columns=["canonical_name"])
+
+    agg_cols = {"play_count": "sum", "total_ms": "sum", "tracks_count": "sum"}
+    if "album_id" in df.columns:
+        agg_cols["album_id"] = "min"
+
+    df = df.groupby(
+        ["billboard_week", "album_name", "artist_name"], as_index=False
+    ).agg(agg_cols)
+
+    return df
 
 
 def compute_weekly_rankings(_df, top_n, pre_agg=None):
@@ -282,6 +442,9 @@ def compute_album_weekly_rankings(_df, top_n, pre_agg=None):
 
     If pre_agg DataFrame is provided (from agg_weekly_albums), skips the
     expensive groupby step.
+
+    Release groups are applied to merge different album versions (deluxe,
+    acoustic, etc.) into canonical names before ranking.
     """
     if pre_agg is not None and not pre_agg.empty:
         weekly_album = pre_agg.copy()
@@ -301,6 +464,9 @@ def compute_album_weekly_rankings(_df, top_n, pre_agg=None):
             )
             .reset_index()
         )
+
+    # 应用发行版本合并：将组内成员的 album_name 替换为 canonical_name 并重新聚合
+    weekly_album = _apply_album_release_groups(weekly_album)
 
     weekly_album = weekly_album.sort_values(
         ["billboard_week", "play_count", "total_ms"],
@@ -716,8 +882,9 @@ def compute_records(weekly, track_summary, top_n, weekly_album=None, weekly_arti
         records["biggest_drop"] = pd.DataFrame()
 
     # ── 10. Same album most simultaneous entries ───────────────────────
+    _weekly_norm = _normalize_album_column(weekly.copy())
     album_weekly = (
-        weekly.groupby(["billboard_week", "artist_name", "album_name"])
+        _weekly_norm.groupby(["billboard_week", "artist_name", "album_name"])
         .size()
         .reset_index(name="track_count")
     )

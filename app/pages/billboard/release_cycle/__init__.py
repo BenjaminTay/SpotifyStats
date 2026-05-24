@@ -77,7 +77,7 @@ def run(df_raw, weekly, weekly_artist, weekly_album):
     view = st.session_state.rc_view
 
     if view == "artist":
-        render_artist_overview(selected_artist, df_raw, weekly_artist, weekly_album)
+        render_artist_overview(selected_artist, df_raw, weekly, weekly_artist, weekly_album)
 
     elif view == "album":
         album = st.session_state.rc_selected_album

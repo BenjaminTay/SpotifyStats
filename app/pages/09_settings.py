@@ -264,6 +264,420 @@ with col_mgmt2:
 st.divider()
 
 # ═══════════════════════════════════════════════════════════════════════════
+# Version Merge Management
+# ═══════════════════════════════════════════════════════════════════════════
+st.subheader("🔗 版本合并管理")
+st.caption("将同一专辑的不同版本（豪华版、Acoustic版等）合并统计。")
+
+import pandas as pd
+from app.version_merge import (
+    detect_release_groups, apply_detected_groups, get_all_groups,
+    get_group_members, delete_group, set_primary, get_ungrouped_albums,
+    create_group, update_group_members, get_album_types, normalize_album_name,
+    get_album_track_comparison,
+)
+
+tab_detect, tab_groups, tab_create = st.tabs(
+    ["🔍 自动检测", "📋 已保存组", "➕ 手动创建"]
+)
+
+# ── Tab 1: Auto Detection ──────────────────────────────────────────────
+with tab_detect:
+    if st.button("🔄 运行自动检测", use_container_width=True, key="vm_detect_btn"):
+        with st.spinner("正在分析专辑版本关系（含 Spotify API 查询）..."):
+            st.session_state.vm_detection = detect_release_groups()
+            if st.session_state.vm_detection.empty:
+                st.info("未发现可合并的专辑版本组。")
+            else:
+                high = st.session_state.vm_detection[
+                    st.session_state.vm_detection["confidence"] == "high"
+                ]
+                st.success(
+                    f"发现 {len(st.session_state.vm_detection)} 个候选组"
+                    f"（{len(high)} 个高置信度）"
+                )
+
+    detection_df = st.session_state.get("vm_detection")
+    if detection_df is not None and not detection_df.empty:
+        # Reset index so sequential position matches checkbox keys
+        detection_df = detection_df.reset_index(drop=True)
+
+        # ── Confidence filter ──────────────────────────────────────────
+        has_group_type = "group_type" in detection_df.columns
+        if has_group_type:
+            album_mask = detection_df["group_type"] == "album"
+            single_mask = detection_df["group_type"] == "single"
+        else:
+            album_mask = pd.Series([True] * len(detection_df))
+            single_mask = pd.Series([False] * len(detection_df))
+
+        high_count = len(detection_df[detection_df["confidence"] == "high"])
+        low_count = len(detection_df[detection_df["confidence"] == "low"])
+
+        conf_filter = st.radio(
+            "筛选置信度",
+            options=[f"全部 ({len(detection_df)})", f"🟢 高置信 ({high_count})", f"🟡 中置信 ({low_count})"],
+            horizontal=True,
+            key="vm_conf_filter",
+        )
+
+        st.divider()
+
+        # ── Select/Deselect shortcuts ──────────────────────────────────
+        col_sel1, col_sel2, col_sel3 = st.columns([1, 1, 3])
+        with col_sel1:
+            if st.button("全选高置信", key="vm_sel_all_high", use_container_width=True):
+                for i, (_, row) in enumerate(detection_df.iterrows()):
+                    st.session_state[f"vm_chk_{i}"] = (row["confidence"] == "high")
+                st.rerun()
+        with col_sel2:
+            if st.button("取消全选", key="vm_desel_all", use_container_width=True):
+                for i in range(len(detection_df)):
+                    st.session_state[f"vm_chk_{i}"] = False
+                st.rerun()
+
+        # ── Render groups ──────────────────────────────────────────────
+        def _render_detection_section(mask, label, icon):
+            matched = detection_df[mask]
+            if matched.empty:
+                return
+            st.caption(f"#### {icon} {label} ({len(matched)})")
+
+            for seq_idx in matched.index:
+                row = detection_df.iloc[seq_idx]
+
+                conf_icon = "🟢" if row["confidence"] == "high" else "🟡"
+                members = row["members"] if isinstance(row["members"], list) else []
+
+                # Filter visibility
+                if conf_filter.startswith("🟢") and row["confidence"] != "high":
+                    continue
+                if conf_filter.startswith("🟡") and row["confidence"] != "low":
+                    continue
+
+                with st.expander(
+                    f"{conf_icon} **{row['canonical_name']}** "
+                    f"({row['artist_name']}) — {len(members)} 成员"
+                ):
+                    # Reason
+                    reason = row.get("reason", "")
+                    st.caption(f"判定依据：{reason}" if reason else "判定依据：—")
+
+                    # Overlap details (Phase 1 groups)
+                    overlap_details = row.get("overlap_details", [])
+                    if overlap_details and isinstance(overlap_details, list):
+                        for od in overlap_details:
+                            od_name = od.get("album_name", "?")
+                            od_overlap = od.get("overlap", 0)
+                            od_ok = "✅" if od_overlap >= 0.4 else "⚠️"
+                            st.caption(
+                                f"  {od_ok} **{od_name}** vs 主版本："
+                                f"曲目重叠率 {od_overlap:.1%}"
+                            )
+
+                    # Member list
+                    members_str = " ← ".join(
+                        f"**{m['album_name']}**" for m in members
+                    )
+                    primary_id = int(row["primary_album_id"])
+                    st.caption(f"⭐ 主版本：**{row['primary_album_name']}**")
+                    st.caption(f"成员：{members_str}")
+
+                    # Track comparison table — directly inline
+                    non_primary = [m for m in members if m["album_id"] != primary_id]
+                    if non_primary:
+                        for m in non_primary:
+                            cmp = get_album_track_comparison(primary_id, m["album_id"])
+                            rows = []
+                            # 主专辑曲目优先（共享 + 仅主专辑），按主专辑 track number 排序
+                            for t_name, t_artist, disc_num, track_num in cmp.get("shared", []):
+                                seq = f"{disc_num}-{track_num}" if disc_num and disc_num > 1 else str(track_num or "")
+                                rows.append({"序号": seq, "曲目": t_name, "艺人": t_artist, "归属": "🔄 共享"})
+                            for t_name, t_artist, disc_num, track_num in cmp.get("only_in_a", []):
+                                seq = f"{disc_num}-{track_num}" if disc_num and disc_num > 1 else str(track_num or "")
+                                rows.append({"序号": seq, "曲目": t_name, "艺人": t_artist, "归属": f"⭐ {row['primary_album_name'][:12]}"})
+                            # 加曲按豪华版专辑 track number 排序
+                            for t_name, t_artist, disc_num, track_num in cmp.get("only_in_b", []):
+                                seq = f"{disc_num}-{track_num}" if disc_num and disc_num > 1 else str(track_num or "")
+                                rows.append({"序号": seq, "曲目": t_name, "艺人": t_artist, "归属": f"➕ {m['album_name'][:12]}"})
+
+                            if rows:
+                                cmp_df = pd.DataFrame(rows)
+                                shared_n = len(cmp.get("shared", []))
+                                only_p = len(cmp.get("only_in_a", []))
+                                only_m = len(cmp.get("only_in_b", []))
+                                st.caption(
+                                    f"**{row['primary_album_name']}** vs "
+                                    f"**{m['album_name']}** · "
+                                    f"🔄{shared_n} ⭐{only_p} ➕{only_m}"
+                                )
+                                st.dataframe(
+                                    cmp_df,
+                                    use_container_width=True,
+                                    hide_index=True,
+                                    height=min(len(cmp_df) * 35 + 38, 250),
+                                )
+                            else:
+                                st.caption(
+                                    f"**{row['primary_album_name']}** vs "
+                                    f"**{m['album_name']}** · 无曲目数据"
+                                )
+
+                    # Checkbox
+                    st.checkbox(
+                        "选中此组合并",
+                        value=st.session_state.get(f"vm_chk_{seq_idx}", False),
+                        key=f"vm_chk_{seq_idx}",
+                    )
+
+        _render_detection_section(album_mask, "专辑合并候选", "📀")
+        _render_detection_section(single_mask, "单曲合并候选", "🎵")
+
+        # ── Apply selected ─────────────────────────────────────────────
+        st.divider()
+        col_apply1, col_apply2 = st.columns([1, 3])
+        with col_apply1:
+            # Gather checked indices
+            checked_count = sum(
+                1 for i in range(len(detection_df))
+                if st.session_state.get(f"vm_chk_{i}", False)
+            )
+            if st.button(
+                f"✅ 应用选中组 ({checked_count})",
+                type="primary",
+                use_container_width=True,
+                key="vm_apply_sel",
+                disabled=checked_count == 0,
+            ):
+                # Build filtered DataFrame
+                checked_indices = [
+                    i for i in range(len(detection_df))
+                    if st.session_state.get(f"vm_chk_{i}", False)
+                ]
+                filtered = detection_df.iloc[checked_indices]
+                with st.spinner(f"正在写入 {len(filtered)} 个版本合并组..."):
+                    count = apply_detected_groups(filtered, only_high_confidence=False)
+                    st.cache_data.clear()
+                    st.success(f"已创建 {count} 个版本合并组")
+                    # Clean up checkbox states
+                    for i in range(len(detection_df)):
+                        st.session_state.pop(f"vm_chk_{i}", None)
+                    del st.session_state.vm_detection
+                    st.rerun()
+
+        with col_apply2:
+            if st.button("🗑️ 清除检测结果", key="vm_clear_detect", use_container_width=True):
+                for i in range(len(detection_df)):
+                    st.session_state.pop(f"vm_chk_{i}", None)
+                del st.session_state.vm_detection
+                st.rerun()
+
+# ── Tab 2: Saved Groups Management ─────────────────────────────────────
+with tab_groups:
+    existing_groups = get_all_groups()
+    if existing_groups.empty:
+        st.info("暂无保存的版本合并组。请使用「自动检测」或「手动创建」标签页。")
+    else:
+        # Pre-load all album types
+        all_member_ids = []
+        for _, grp in existing_groups.iterrows():
+            members = get_group_members(int(grp["group_id"]))
+            all_member_ids.extend(members["album_id"].tolist())
+        album_types = get_album_types(list(set(all_member_ids)))
+
+        # Classify groups as album or single by primary member's type
+        album_groups = []
+        single_groups = []
+        for _, grp in existing_groups.iterrows():
+            gid = int(grp["group_id"])
+            primary_id = int(grp["primary_album_id"]) if grp["primary_album_id"] is not None else None
+            primary_type = album_types.get(primary_id, "unknown")
+            if primary_type == "single":
+                single_groups.append(grp)
+            else:
+                album_groups.append(grp)
+
+        def _render_group(grp):
+            gid = int(grp["group_id"])
+            artist = grp["artist_name"]
+            canonical = grp["canonical_name"]
+            primary_id = int(grp["primary_album_id"]) if grp["primary_album_id"] is not None else None
+            is_manual = bool(grp["is_manual"])
+            manual_badge = " ✋人工" if is_manual else " 🤖自动"
+
+            members = get_group_members(gid)
+
+            with st.expander(
+                f"📀 **{canonical}** ({artist}){manual_badge} — {len(members)} 成员"
+            ):
+                # Member list
+                for _, m in members.iterrows():
+                    aid = int(m["album_id"])
+                    name = m["album_name"]
+                    atype = album_types.get(aid, "unknown")
+                    is_primary = (aid == primary_id)
+
+                    badge_map = {"album": "🟤", "single": "🟡", "compilation": "🟠", "unknown": "⚪"}
+                    badge = badge_map.get(atype, "⚪")
+                    primary_mark = " ⭐" if is_primary else ""
+
+                    col_info, col_act1, col_act2 = st.columns([4, 0.5, 0.5])
+                    with col_info:
+                        st.caption(f"{badge} **{name}**{primary_mark}  `{atype}`")
+                    with col_act1:
+                        if not is_primary:
+                            if st.button("⭐", key=f"vm_setp_{gid}_{aid}",
+                                         help="设为主版本"):
+                                set_primary(gid, aid)
+                                st.cache_data.clear()
+                                st.rerun()
+                    with col_act2:
+                        if len(members) > 2:
+                            if st.button("✕", key=f"vm_rm_{gid}_{aid}",
+                                         help="移除此成员"):
+                                update_group_members(gid, remove_ids=[aid])
+                                st.cache_data.clear()
+                                st.rerun()
+
+                # Add member
+                st.caption("**添加成员**")
+                ungrouped = get_ungrouped_albums(artist_name=artist)
+                if not ungrouped.empty:
+                    options = {
+                        f"{row['album_name']}": int(row["album_id"])
+                        for _, row in ungrouped.iterrows()
+                    }
+                    selected_names = st.multiselect(
+                        "选择要加入此组的专辑",
+                        options=list(options.keys()),
+                        key=f"vm_addm_{gid}",
+                        label_visibility="collapsed",
+                    )
+                    if selected_names and st.button("加入组", key=f"vm_addb_{gid}"):
+                        add_ids = [options[n] for n in selected_names]
+                        update_group_members(gid, add_ids=add_ids)
+                        st.cache_data.clear()
+                        st.rerun()
+                else:
+                    st.caption("该艺人下所有专辑都已分组。")
+
+                # Delete group
+                if st.button("🗑️ 删除此组", key=f"vm_delg_{gid}", type="secondary"):
+                    delete_group(gid)
+                    st.cache_data.clear()
+                    st.rerun()
+
+        # ── Album groups ──────────────────────────────────────────────
+        if album_groups:
+            st.caption(f"📀 专辑合并 ({len(album_groups)})")
+            for grp in album_groups:
+                _render_group(grp)
+
+        # ── Single groups ─────────────────────────────────────────────
+        if single_groups:
+            st.caption(f"🎵 单曲合并 ({len(single_groups)})")
+            for grp in single_groups:
+                _render_group(grp)
+
+        # Clear all
+        st.divider()
+        if st.button("🗑️ 清除全部组合", key="vm_clear_all", type="secondary"):
+            from app.db import get_db
+            conn = get_db(readonly=False)
+            conn.execute("DELETE FROM release_group_members")
+            conn.execute("DELETE FROM release_groups")
+            conn.commit()
+            conn.close()
+            st.cache_data.clear()
+            st.success("已清除所有版本合并组")
+            st.rerun()
+
+# ── Tab 3: Manual Create ───────────────────────────────────────────────
+with tab_create:
+    # Get all artists
+    conn = get_db()
+    rows = conn.execute(
+        "SELECT DISTINCT a.artist_name FROM artists a "
+        "JOIN albums al ON al.artist_id = a.artist_id "
+        "ORDER BY a.artist_name"
+    ).fetchall()
+    conn.close()
+    all_artists = sorted(set(r[0] for r in rows))
+
+    if not all_artists:
+        st.info("数据库中暂无艺人数据。")
+    else:
+        selected_artist = st.selectbox(
+            "选择艺人", options=all_artists, key="vm_create_artist"
+        )
+
+        ungrouped = get_ungrouped_albums(artist_name=selected_artist)
+        if ungrouped.empty:
+            st.info(f"**{selected_artist}** 下所有专辑都已分组。")
+        else:
+            album_options = {
+                f"{row['album_name']}": int(row["album_id"])
+                for _, row in ungrouped.iterrows()
+            }
+            selected_albums = st.multiselect(
+                f"选择要合并的专辑（至少 2 个）",
+                options=list(album_options.keys()),
+                key="vm_create_albums",
+            )
+
+            if len(selected_albums) >= 2:
+                selected_ids = [album_options[n] for n in selected_albums]
+
+                primary_name = st.selectbox(
+                    "选择主版本（排行榜以此为准）",
+                    options=selected_albums,
+                    key="vm_create_primary",
+                    index=0,
+                    help="主版本的发行日期和名称将作为合并后的代表。通常选最早发行的原始版本。",
+                )
+                primary_id = album_options[primary_name]
+
+                suggested = normalize_album_name(primary_name)
+                canonical_name = st.text_input(
+                    "合并后的显示名称",
+                    value=suggested,
+                    key="vm_create_canonical",
+                    help="排行榜上将以此名称显示该合并组。",
+                )
+
+                if canonical_name.strip():
+                    if st.button("✅ 创建合并组", key="vm_create_btn", type="primary"):
+                        conn2 = get_db()
+                        artist_id_row = conn2.execute(
+                            "SELECT artist_id FROM artists WHERE artist_name = ?",
+                            [selected_artist],
+                        ).fetchone()
+                        conn2.close()
+
+                        if artist_id_row:
+                            group_id = create_group(
+                                canonical_name=canonical_name.strip(),
+                                artist_id=artist_id_row[0],
+                                primary_album_id=primary_id,
+                                member_ids=selected_ids,
+                            )
+                            if group_id:
+                                st.cache_data.clear()
+                                st.success(
+                                    f"已创建合并组: **{canonical_name}** "
+                                    f"({len(selected_ids)} 成员)"
+                                )
+                                st.rerun()
+                            else:
+                                st.error("创建失败。可能已存在同名的组。")
+                else:
+                    st.caption("显示名称不能为空。")
+            elif len(selected_albums) == 1:
+                st.caption("请至少选择 2 张专辑以创建合并组。")
+
+st.divider()
+
+# ═══════════════════════════════════════════════════════════════════════════
 # Account Data Import
 # ═══════════════════════════════════════════════════════════════════════════
 st.subheader("账号数据")

@@ -24,6 +24,7 @@ from app.pages.billboard.shared import (
     DOW_NAMES,
     DOW_SHORT,
     _try_load_from_agg,
+    _normalize_album_column,
 )
 from app.pages.billboard.versus import (
     render_track_versus,
@@ -261,6 +262,13 @@ def run():
             .agg(tracks_count=("track_id", "nunique"))
             .reset_index()
         )
+        # 归一化 album_name 以匹配 weekly_album（已应用 release group）
+        _album_tc = _normalize_album_column(_album_tc, dedup_cols=["billboard_week", "album_name", "artist_name"])
+        _album_tc = (
+            _album_tc.groupby(["billboard_week", "album_name", "artist_name"])
+            .agg(tracks_count=("tracks_count", "sum"))
+            .reset_index()
+        )
         weekly_album = weekly_album.drop(columns=["tracks_count"], errors="ignore").merge(
             _album_tc, on=["billboard_week", "album_name", "artist_name"], how="left"
         )
@@ -404,6 +412,12 @@ def run():
     track_per_album = track_albums_expanded.explode("album_list")
     track_per_album = track_per_album.dropna(subset=["album_list"])
     track_per_album = track_per_album.rename(columns={"album_list": "album_name"})
+
+    # 归一化 album_name：将 release group 成员的名称替换为 canonical_name
+    track_per_album = _normalize_album_column(
+        track_per_album,
+        dedup_cols=["track_id", "album_name", "artist_name"],
+    )
 
     album_track_counts = (
         track_per_album.groupby(["album_name", "artist_name"])

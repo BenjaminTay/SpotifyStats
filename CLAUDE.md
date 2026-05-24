@@ -47,17 +47,17 @@ JSON 文件 (账号数据)  ──→ import_account_data.py ──┘
 
 ### 核心模块
 
-- **`app/db.py`** — 数据库层。`get_db()` 获取连接（默认只读，WAL模式），`base_filters()` 生成标准 WHERE 条件片段（最短时长 + 仅音乐，已移除不可靠的 skipped 过滤），`load_plays()` 统一数据加载入口（4 表 JOIN + 过滤），`merge_consecutive_plays()` 合并连续同曲目播放为逻辑播放次数（先合并再过滤，避免碎片丢失）。`ensure_schema()` 增量升级 schema（新增表/索引安全重复执行），所有统计页面通过此函数统一过滤逻辑。预聚合表 `agg_weekly_{tracks,albums,artists}` + `agg_config` 存储 Billboard 预计算结果，参数变更时通过参数哈希自动失效回退实时计算。
+- **`app/db.py`** — 数据库层。`get_db()` 获取连接（默认只读，WAL模式），`base_filters()` 生成标准 WHERE 条件片段（最短时长 + 仅音乐，已移除不可靠的 skipped 过滤），`load_plays()` 统一数据加载入口（4 表 JOIN + 过滤），`merge_consecutive_plays()` 合并连续同曲目播放为逻辑播放次数（先合并再过滤，避免碎片丢失）。`ensure_schema()` 增量升级 schema（新增表/索引/列安全重复执行），所有统计页面通过此函数统一过滤逻辑。预聚合表 `agg_weekly_{tracks,albums,artists}` + `agg_config` 存储 Billboard 预计算结果，参数变更时通过参数哈希自动失效回退实时计算。`release_groups` + `release_group_members` 表管理专辑版本合并关系；`spotify_album_meta` 新增 `total_tracks` 和 `track_list` 列用于版本合并超集检测。
 - **`app/import_data.py`** — 串流数据 ETL 管线。逐文件读取 JSON，UTC→本地时间转换，平台字符串归一化，维度表 upsert（artist/album/track，以 `(artist_id, track_name)` 为 key 合并重复版本），同步写入 `track_albums` 关联表，事实表 5000 行批量插入。
 - **`app/import_account_data.py`** — 账号数据 ETL 管线。从 Spotify Account Data 包中导入：搜索历史（`search_queries`）、收藏（`saved_tracks`/`saved_albums`/`saved_artists`）、播客（`podcast_plays`/`podcast_interactions`/`saved_shows`）、播放列表（`playlists`/`playlist_tracks`）、社交（`user_follows`）、个人资料（`user_profile`）、Marquee 推广（`marquee_impressions`）、Wrapped 年度回顾（各种 `wrapped_*` 表）、黑名单（`banned_items`）。
 - **`app/utils.py`** — `convert_to_local_time()` 固定使用北京时间（UTC+8），忽略 Spotify 上报的 `conn_country` 字段（因 VPN/网络路由可能导致该字段不准确）；`classify_platform()` 将类似 `iOS 15.5 (iPhone14,5)` 归一化为 `ios`。
 - **`app/styles.py`** — 全局 CSS 注入。「Vinyl Archive」暖色主题：CSS 变量（`--gold`/`--bg-page`/`--bg-card` 等）、噪点纹理背景、卡片金左边线、衬线字体、表头暖金底色、侧边栏牛皮纸色。`page_header()` 和 `kpi_row()` 辅助函数供各页面统一使用。`PLOTLY_TEMPLATE` 定义全局 Plotly 图表样式（含 legend title 修复），`COLORS` 定义暖色色盘。
-- **`app/main.py`** — 入口 + 总览仪表盘。使用 `st.navigation` + `st.Page` 定义全站导航结构（中文侧边栏标签/英文文件名），`dashboard()` 函数包含仪表盘全部内容。在 `st.session_state` 中初始化全局过滤参数（`min_ms`, `music_only`, `merge_enabled`），侧边栏展示当前参数摘要和数据库状态，首次运行时自动触发数据导入。
-- **`app/pages/09_settings.py`** — 总设置页。集中管理数据过滤（最短播放时长/仅音乐/合并连续播放）、Billboard 三个榜单独立 Top N（`bb_top_n` 单曲 / `bb_album_top_n` 专辑 / `bb_artist_top_n` 艺人）、统计周期边界（`bb_week_start_dow`/`bb_week_start_hour`）、数据导入。任何参数变更时自动清除全局缓存并重跑，确保所有页面数据一致。
+- **`app/version_merge.py`** — 版本合并引擎。`detect_release_groups()` 自动检测同名专辑的不同版本（豪华版、Acoustic版等），通过曲目重叠率（Phase 1）和名称归一化（Phase 2）判定合并候选；`apply_detected_groups()` / `create_group()` / `delete_group()` / `update_group_members()` 管理 release groups；`get_album_track_comparison()` 对比两版本曲目差异（共享/独有/加曲）。- **`app/main.py`** — 入口 + 总览仪表盘。使用 `st.navigation` + `st.Page` 定义全站导航结构（中文侧边栏标签/英文文件名），`dashboard()` 函数包含仪表盘全部内容。在 `st.session_state` 中初始化全局过滤参数（`min_ms`, `music_only`, `merge_enabled`），侧边栏展示当前参数摘要和数据库状态，首次运行时自动触发数据导入。
+- **`app/pages/09_settings.py`** — 总设置页。集中管理数据过滤（最短播放时长/仅音乐/合并连续播放）、Billboard 三个榜单独立 Top N（`bb_top_n` 单曲 / `bb_album_top_n` 专辑 / `bb_artist_top_n` 艺人）、统计周期边界（`bb_week_start_dow`/`bb_week_start_hour`）、版本合并管理（自动检测/手动创建/已保存组管理）、数据导入。任何参数变更时自动清除全局缓存并重跑，确保所有页面数据一致。
 
 ### 数据库设计
 
-维度表 `artists` → `albums` → `tracks`，事实表 `plays` 通过 `track_id` 关联。`track_albums` 关联表处理同一歌曲（同艺人+同曲名）出现在多张专辑的情况，`_cache_track` 以 `(artist_id, track_name)` 为唯一标识合并重复版本。维度表仅保留核心识别字段，Spotify API 元数据（专辑类型、发行日期、热度、厂牌、曲风、封面图等）独立存储在 `spotify_album_meta`/`spotify_artist_meta`/`spotify_track_meta` 三张表中，通过 `spotify_track_uri` 链式关联。
+维度表 `artists` → `albums` → `tracks`，事实表 `plays` 通过 `track_id` 关联。`track_albums` 关联表处理同一歌曲（同艺人+同曲名）出现在多张专辑的情况，`_cache_track` 以 `(artist_id, track_name)` 为唯一标识合并重复版本。维度表仅保留核心识别字段，Spotify API 元数据（专辑类型、发行日期、热度、厂牌、曲风、封面图、总曲目数 `total_tracks`、曲目列表 `track_list` 等）独立存储在 `spotify_album_meta`/`spotify_artist_meta`/`spotify_track_meta` 三张表中，通过 `spotify_track_uri` 链式关联。`release_groups` + `release_group_members` 两张表管理专辑版本合并（豪华版、Acoustic版等合并为 canonical 名称），`version_merge.py` 提供自动检测和手动管理功能。
 
 `plays` 表预计算了时间字段（`ts_year`, `ts_month`, `ts_week`, `ts_dow`, `ts_hour`, `ts_date`），均为本地时间（固定北京时间 UTC+8）。所有 `boolean` 字段用 INTEGER 0/1 存储。
 
@@ -81,28 +81,28 @@ JSON 文件 (账号数据)  ──→ import_account_data.py ──┘
 
 每个原始页面暴露 `render()` 函数，由 wrapper 在对应 Tab 内调用。`st.stop()` 均改为 `return`，避免 Tab 内警告波及整个 wrapper。
 
-`08_billboard.py` 为薄入口（15 行），委派至 `app/pages/billboard/` 模块化包（18 个文件，~5,700 行）：
+`08_billboard.py` 为薄入口（15 行），委派至 `app/pages/billboard/` 模块化包（18 个文件，~9,000 行）：
 
 ```
 app/pages/billboard/
 ├── __init__.py          # 主路由 + session_state 初始化 + query_params 处理
-├── shared.py            # 公共数据加载 + 排名计算 + _bb_url + _render_bb_table
+├── shared.py            # 公共数据加载 + 排名计算 + 版本合并（_normalize_album_column / _apply_album_release_groups / _resolve_album_members / _add_canonical_metadata）+ _bb_url + _render_bb_table
 ├── weekly.py            # Tab 1: 周榜（单曲/专辑/艺人 3 子 Tab）+ ◀▶ 快速切周 + 截至当周滚动 Peak/Wks/Pk Wks
 ├── number_ones.py       # Tab 2: 每周榜首 + 冠单排行 + 空冠 + 大盘
 ├── track_history.py     # Tab 3: 单曲历史 + 升降列（断档 >8 天显示 RE，连续在榜正常计算升降）
 ├── artist_chart.py      # Tab 4: 艺人榜单 + 艺人周榜历史（含升降列，断档显示 RE）
-├── album_chart.py       # Tab 5: 专辑榜单 + 专辑周榜历史（含升降列，断档显示 RE）
+├── album_chart.py       # Tab 5: 专辑榜单 + 专辑周榜历史（含升降列，断档显示 RE，支持版本合并）
 ├── power_score.py       # Tab 6: 走势总榜（歌曲/专辑/艺人 Power Score）
 ├── all_time_tracks.py   # Tab 7: 歌曲总榜
 ├── all_time_artists.py  # Tab 8: 艺人总榜
 ├── all_time_albums.py   # Tab 9: 专辑总榜
-├── records.py           # Tab 10: 榜单记录（12 类）
-├── versus.py            # Tab 11: 对决（歌曲/专辑/艺人对决对比）
+├── records.py           # Tab 10: 榜单记录（12 类，含版本合并支持）
+├── versus.py            # Tab 11: 对决（歌曲/专辑/艺人对决对比，支持版本合并）
 └── release_cycle/       # Tab 12: 发行周期分析
     ├── __init__.py       # 主路由 + 艺人选择器 + 三个视图切换（st.session_state）
-    ├── shared.py         # 数据加载（load_artist_releases 等）+ 指标计算 + Spotify API 集成
-    ├── artist_view.py    # 视图①：艺人总览（KPI 卡片、排名趋势图 + 发行事件标记、发行卡片流）
-    ├── album_view.py     # 视图②：专辑下钻（发行周期曲线、先行单曲、歌曲入榜矩阵、老歌回榜）
+    ├── shared.py         # 数据加载（load_artist_releases / _ad_hoc_name_grouping / _filter_release_group_duplicates）+ 指标计算 + 先行曲识别（三级查找：DB → Spotify API → 最早播放日期）+ Spotify API 集成
+    ├── artist_view.py    # 视图①：艺人总览（KPI 卡片、排名趋势图 + 发行事件标记、发行卡片流、对比入口）
+    ├── album_view.py     # 视图②：专辑下钻（周期曲线仅连续周连线、先行曲/最佳单曲单曲榜排名线、歌曲入榜矩阵、老歌回榜、加曲来源）
     └── compare_view.py   # 视图③：多发行周期叠加对比（排名/播放量曲线 + 指标对比表）
 ```
 

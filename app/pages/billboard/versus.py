@@ -4,6 +4,8 @@ import streamlit as st
 import plotly.graph_objects as go
 import pandas as pd
 
+from .shared import _resolve_album_members
+
 VS_COLORS = {"A": "#B8860B", "B": "#C45C3A"}
 
 _VS_TEMPLATE = {
@@ -235,8 +237,9 @@ def render_album_versus(weekly_album, weekly, album_power_scores=None, track_pow
         # Album power score and rank
         aps_val, aps_rank = _ps_rank(album_power_scores, "album_name", aname, aartist)
 
-        # Album's track-level stats from weekly
-        album_tracks = weekly[weekly["album_name"] == aname]
+        # Album's track-level stats from weekly（解析 release group 成员）
+        member_names, _ = _resolve_album_members(aname, aartist)
+        album_tracks = weekly[weekly["album_name"].isin(member_names)]
         num_tracks = album_tracks["track_id"].nunique()
         num_no1_tracks = album_tracks[album_tracks["rank"] == 1]["track_id"].nunique()
         total_no1_weeks = int((album_tracks["rank"] == 1).sum())

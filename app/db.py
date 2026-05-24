@@ -109,6 +109,26 @@ CREATE INDEX IF NOT EXISTS idx_agg_wt_week ON agg_weekly_tracks(billboard_week);
 CREATE INDEX IF NOT EXISTS idx_agg_wa_week ON agg_weekly_albums(billboard_week);
 CREATE INDEX IF NOT EXISTS idx_agg_war_week ON agg_weekly_artists(billboard_week);
 
+-- Version merging: group different album/track releases into canonical entities
+CREATE TABLE IF NOT EXISTS release_groups (
+    group_id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    canonical_name    TEXT NOT NULL,
+    artist_id         INTEGER NOT NULL REFERENCES artists(artist_id),
+    primary_album_id  INTEGER REFERENCES albums(album_id),
+    is_manual         INTEGER NOT NULL DEFAULT 0,
+    created_at        TEXT DEFAULT (datetime('now')),
+    UNIQUE(canonical_name, artist_id)
+);
+
+CREATE TABLE IF NOT EXISTS release_group_members (
+    group_id   INTEGER REFERENCES release_groups(group_id),
+    album_id   INTEGER REFERENCES albums(album_id),
+    UNIQUE(group_id, album_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_rgm_album ON release_group_members(album_id);
+CREATE INDEX IF NOT EXISTS idx_rg_artist ON release_groups(artist_id);
+
 -- Spotify metadata tables (independent from import cycle, survive data re-imports)
 CREATE TABLE IF NOT EXISTS spotify_track_meta (
     spotify_track_id   TEXT PRIMARY KEY,
@@ -131,7 +151,9 @@ CREATE TABLE IF NOT EXISTS spotify_album_meta (
     label              TEXT,
     genres             TEXT,
     image_url          TEXT,
-    album_artists      TEXT
+    album_artists      TEXT,
+    total_tracks       INTEGER,
+    track_list         TEXT    -- JSON array of Spotify track IDs in this album
 );
 
 CREATE TABLE IF NOT EXISTS spotify_artist_meta (
@@ -374,6 +396,9 @@ def ensure_schema() -> None:
         ("plays", "content_type", "TEXT NOT NULL DEFAULT 'audio'"),
         # spotify_album_meta — 存储专辑主艺人，用于发行归属验证
         ("spotify_album_meta", "album_artists", "TEXT"),
+        # spotify_album_meta — 存储真实曲目列表，用于版本合并超集检测
+        ("spotify_album_meta", "total_tracks", "INTEGER"),
+        ("spotify_album_meta", "track_list", "TEXT"),
     ]
     for table, col, col_type in _add_columns:
         try:
