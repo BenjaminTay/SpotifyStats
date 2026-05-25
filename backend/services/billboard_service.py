@@ -1165,14 +1165,36 @@ def compute_billboard_data(
     first_peak.columns = ["track_id", "first_peak_week"]
     track_summary = track_summary.merge(first_peak, on="track_id", how="left")
 
-    # Running peak weeks (cumulative)
-    wp = weekly.merge(
-        track_summary[["track_id", "peak_position"]], on="track_id", how="left"
-    )
-    wp = wp.sort_values(["track_id", "billboard_week"])
-    wp["at_peak"] = (wp["rank"] == wp["peak_position"]).astype(int)
-    wp["running_peak_wks"] = wp.groupby("track_id")["at_peak"].cumsum()
-    weekly = wp.drop(columns=["peak_position", "at_peak"])
+    # Running (as-of-week) metrics: PK, 在榜, PK Wks 均截至当周计算
+
+    def _add_running_metrics(df, group_cols):
+        """Add running_peak, running_wks, running_peak_wks columns.
+
+        All three metrics are computed up to and including the current week,
+        not as all-time aggregates. When the peak improves (e.g. 2→1), the
+        peak-weeks count resets to only include weeks at the new peak.
+        """
+        df = df.sort_values(group_cols + ["billboard_week"])
+        df["running_peak"] = df.groupby(group_cols)["rank"].cummin()
+        df["running_wks"] = df.groupby(group_cols).cumcount() + 1
+
+        def _running_peak_wks(group):
+            ranks = group["rank"].values
+            rp = np.minimum.accumulate(ranks)
+            rank_counts = {}
+            result = np.zeros(len(ranks), dtype=int)
+            for i, r in enumerate(ranks):
+                rank_counts[r] = rank_counts.get(r, 0) + 1
+                result[i] = rank_counts[rp[i]]
+            group = group.copy()
+            group["running_peak_wks"] = result
+            return group
+
+        return df.groupby(group_cols, group_keys=False).apply(_running_peak_wks)
+
+    weekly = _add_running_metrics(weekly, ["track_id"])
+    weekly_album = _add_running_metrics(weekly_album, ["artist_name", "album_name"])
+    weekly_artist = _add_running_metrics(weekly_artist, ["artist_name"])
 
     # ── Artist summary ─────────────────────────────────────────────────
     artist_summary = (

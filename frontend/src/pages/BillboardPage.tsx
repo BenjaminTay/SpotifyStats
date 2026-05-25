@@ -404,21 +404,11 @@ export function BillboardPage() {
                           ? (entry as WeeklyAlbumEntry).artist_name
                           : `${(entry as WeeklyArtistEntry).tracks_count} 首曲目`
 
-                    // Peak position from track summary (only for tracks tab)
-                    const peakPosition = isNewOrRe
-                      ? entry.rank
-                      : activeTab === 'tracks'
-                        ? data.track_summary.find(
-                            (s) => s.track_id === (entry as WeeklyTrackEntry).track_id,
-                          )?.peak_position ?? entry.rank
-                        : entry.rank
-
-                    const peakWks =
-                      activeTab === 'tracks'
-                        ? data.track_summary.find(
-                            (s) => s.track_id === (entry as WeeklyTrackEntry).track_id,
-                          )?.weeks_at_peak ?? 0
-                        : 0
+                    // As-of-week metrics from weekly entry (PK, Wks, PK Wks are
+                    // computed up to and including the current week, not all-time)
+                    const runningPeak = entry.running_peak ?? entry.rank
+                    const runningWks = entry.running_wks ?? 1
+                    const runningPeakWks = entry.running_peak_wks ?? 0
 
                     return (
                       <tr
@@ -461,21 +451,17 @@ export function BillboardPage() {
                         <td
                           className={cn(
                             'pb-3.5 pt-3.5 text-right font-sans text-[13px]',
-                            peakPosition === 1 ? 'font-bold text-accent-foreground' : 'text-muted-foreground',
+                            (isNewOrRe ? entry.rank : runningPeak) === 1 ? 'font-bold text-accent-foreground' : 'text-muted-foreground',
                           )}
                         >
-                          {peakPosition}
+                          {isNewOrRe ? entry.rank : runningPeak}
                         </td>
                         <td className="pb-3.5 pt-3.5 text-right font-sans text-[13px] text-muted-foreground">
-                          {activeTab === 'tracks'
-                            ? data.track_summary.find(
-                                (s) => s.track_id === (entry as WeeklyTrackEntry).track_id,
-                              )?.weeks_on_chart ?? '-'
-                            : '-'}
+                          {runningWks}
                         </td>
                         <td className="pb-3.5 pt-3.5 text-right font-sans text-[13px] text-muted-foreground">
-                          {peakWks > 0 ? (
-                            <span className="font-semibold">{peakWks}</span>
+                          {runningPeakWks > 0 ? (
+                            <span className="font-semibold">{runningPeakWks}</span>
                           ) : (
                             '—'
                           )}
