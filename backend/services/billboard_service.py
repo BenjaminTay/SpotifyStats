@@ -899,6 +899,7 @@ def compute_records(weekly, track_summary, top_n, weekly_album=None, weekly_arti
 # Main Billboard computation — mirrors app/pages/billboard/__init__.py:run()
 # ═══════════════════════════════════════════════════════════════════════════
 
+@lru_cache(maxsize=1)
 def compute_billboard_data(
     min_ms=30000,
     music_only=True,

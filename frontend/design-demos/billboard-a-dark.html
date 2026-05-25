@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>A. 暗黑沉浸 · Billboard 周榜 — Spotify Stats</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  :root {
+    --bg-root: #0A0A0A;
+    --bg-elevated: #111111;
+    --bg-card: #1A1A1A;
+    --bg-hover: #242424;
+    --green: #1ED760;
+    --text-primary: #FFFFFF;
+    --text-secondary: #9CA3AF;
+    --text-muted: #6B7280;
+    --accent-purple: #A78BFA;
+    --accent-blue: #60A5FA;
+    --accent-gold: #F59E0B;
+    --accent-coral: #FB7185;
+    --accent-teal: #2DD4BF;
+    --accent-rose: #FDA4AF;
+    --border: rgba(255,255,255,0.08);
+    --radius: 12px;
+    --font-sans: 'Geist Variable', 'Inter', system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: var(--font-sans);
+    background: var(--bg-root);
+    color: var(--text-primary);
+    min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+  }
+  body::before {
+    content: '';
+    position: fixed; inset: 0; opacity: 0.03; z-index: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    background-size: 128px 128px;
+    pointer-events: none;
+  }
+
+  .app { position: relative; z-index: 2; display: flex; min-height: 100vh; }
+
+  .sidebar { width: 220px; background: var(--bg-elevated); border-right: 1px solid var(--border); padding: 24px 14px; display: flex; flex-direction: column; gap: 6px; flex-shrink: 0; }
+  .sidebar-logo { font-size: 18px; font-weight: 700; padding: 0 10px; margin-bottom: 20px; display: flex; align-items: center; gap: 8px; }
+  .sidebar-logo .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--green); box-shadow: 0 0 10px rgba(30,215,96,0.5); }
+  .nav-item { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 8px; font-size: 13px; color: var(--text-secondary); cursor: pointer; transition: all 0.15s; font-weight: 500; }
+  .nav-item:hover { background: var(--bg-hover); color: var(--text-primary); }
+  .nav-item.active { background: var(--bg-card); color: var(--text-primary); font-weight: 600; }
+  .nav-item .icon { width: 18px; height: 18px; border-radius: 4px; background: var(--text-muted); flex-shrink: 0; }
+  .nav-item.active .icon { background: var(--green); }
+
+  .main { flex: 1; padding: 28px 36px; overflow-y: auto; }
+  .breadcrumb { font-size: 12px; color: var(--text-muted); margin-bottom: 8px; }
+  .page-title { font-size: 26px; font-weight: 700; letter-spacing: -0.5px; margin-bottom: 24px; }
+
+  /* Tabs */
+  .tab-bar { display: flex; gap: 2px; background: var(--bg-elevated); padding: 3px; border-radius: 10px; width: fit-content; margin-bottom: 20px; }
+  .tab-btn { padding: 8px 20px; border-radius: 8px; font-size: 13px; font-weight: 500; color: var(--text-secondary); cursor: pointer; border: none; background: none; transition: all 0.15s; }
+  .tab-btn.active { background: var(--bg-card); color: var(--text-primary); font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,0.3); }
+
+  /* Week Selector */
+  .week-bar { display: flex; align-items: center; gap: 16px; margin-bottom: 24px; }
+  .week-nav { width: 36px; height: 36px; border-radius: 50%; background: var(--bg-card); border: 1px solid var(--border); color: var(--text-secondary); display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 16px; transition: all 0.15s; }
+  .week-nav:hover { background: var(--bg-hover); color: var(--text-primary); }
+  .week-label { font-size: 18px; font-weight: 700; letter-spacing: -0.3px; }
+  .week-label span { font-weight: 400; color: var(--text-muted); font-size: 13px; display: block; }
+  .week-badge { font-size: 11px; font-weight: 600; padding: 4px 12px; border-radius: 20px; background: rgba(30,215,96,0.1); color: var(--green); border: 1px solid rgba(30,215,96,0.2); }
+
+  /* Summary bar */
+  .summary-bar { display: flex; gap: 32px; margin-bottom: 24px; }
+  .summary-item { }
+  .summary-value { font-size: 22px; font-weight: 700; letter-spacing: -0.5px; }
+  .summary-label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.8px; margin-top: 2px; }
+
+  /* Table */
+  .chart-container { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+  .chart-table { width: 100%; border-collapse: collapse; }
+  .chart-table th {
+    text-align: left; font-size: 10px; font-weight: 600;
+    color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px;
+    padding: 14px 16px; border-bottom: 1px solid var(--border);
+    background: var(--bg-elevated);
+  }
+  .chart-table th.pin-right { text-align: right; }
+  .chart-table td {
+    padding: 12px 16px; border-bottom: 1px solid rgba(255,255,255,0.04);
+    font-size: 14px; vertical-align: middle;
+  }
+  .chart-table tr:hover td { background: var(--bg-hover); }
+  .chart-table tr.top3 td { background: rgba(30,215,96,0.02); }
+  .chart-table tr.top3:hover td { background: rgba(30,215,96,0.05); }
+
+  .cell-rank { font-weight: 700; font-size: 16px; width: 48px; text-align: center; }
+  .cell-rank.gold { color: var(--accent-gold); }
+  .cell-rank.silver { color: var(--text-secondary); }
+  .cell-rank.bronze { color: #CD7F32; }
+
+  .cell-change { font-weight: 700; font-size: 12px; width: 44px; text-align: center; }
+  .cell-change.up { color: var(--green); }
+  .cell-change.down { color: var(--accent-coral); }
+  .cell-change.same { color: var(--text-muted); }
+  .cell-change.new { color: var(--accent-teal); font-size: 10px; text-transform: uppercase; letter-spacing: 1px; }
+  .cell-change.re { color: var(--accent-gold); font-size: 10px; text-transform: uppercase; letter-spacing: 1px; }
+
+  .cell-track { font-weight: 600; }
+  .cell-artist { font-size: 12px; color: var(--text-secondary); }
+  .cell-artist a { color: var(--text-secondary); text-decoration: none; }
+  .cell-artist a:hover { color: var(--text-primary); text-decoration: underline; }
+
+  .cell-plays { text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .cell-stat { text-align: right; font-variant-numeric: tabular-nums; color: var(--text-secondary); }
+
+  .peak-badge { display: inline-block; padding: 2px 6px; border-radius: 3px; font-size: 11px; font-weight: 700; }
+  .peak-badge.peak-1 { background: rgba(245,158,11,0.15); color: var(--accent-gold); }
+
+  /* Progress bar for plays */
+  .plays-bar-wrap { width: 80px; height: 4px; background: var(--bg-elevated); border-radius: 2px; overflow: hidden; display: inline-block; vertical-align: middle; margin-left: 10px; }
+  .plays-bar-fill { height: 100%; border-radius: 2px; background: var(--green); }
+
+  /* Section footer */
+  .section-footer { margin-top: 20px; font-size: 12px; color: var(--text-muted); }
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <div class="sidebar-logo"><span class="dot"></span>Spotify Stats</div>
+    <div class="nav-item"><span class="icon"></span>总览仪表盘</div>
+    <div class="nav-item active"><span class="icon"></span>Billboard 周榜</div>
+    <div class="nav-item"><span class="icon"></span>排行榜</div>
+    <div class="nav-item"><span class="icon"></span>年度回顾</div>
+    <div class="nav-item"><span class="icon"></span>艺人深潜</div>
+    <div class="nav-item"><span class="icon"></span>发行周期</div>
+    <div style="margin-top:auto; padding:12px; border-radius:8px; background:var(--bg-card); border:1px solid var(--border);">
+      <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px;">主题</div>
+      <div style="font-size:12px;font-weight:600;color:var(--green);">暗黑沉浸 A</div>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="breadcrumb">Spotify Stats / Billboard</div>
+    <h1 class="page-title">Billboard 周榜</h1>
+
+    <!-- Tab bar -->
+    <div class="tab-bar">
+      <button class="tab-btn active">🎵 单曲榜</button>
+      <button class="tab-btn">💿 专辑榜</button>
+      <button class="tab-btn">🎤 艺人榜</button>
+    </div>
+
+    <!-- Week Selector -->
+    <div class="week-bar">
+      <button class="week-nav">◀</button>
+      <div>
+        <div class="week-label">Week 21</div>
+        <span>2026 · 5月18日 – 5月24日</span>
+      </div>
+      <button class="week-nav">▶</button>
+      <span class="week-badge">本周</span>
+    </div>
+
+    <!-- Summary -->
+    <div class="summary-bar">
+      <div class="summary-item"><div class="summary-value" style="color:var(--accent-teal);">4</div><div class="summary-label">新入榜</div></div>
+      <div class="summary-item"><div class="summary-value" style="color:var(--accent-gold);">2</div><div class="summary-label">重回榜</div></div>
+      <div class="summary-item"><div class="summary-value">247</div><div class="summary-label">最高播放</div></div>
+      <div class="summary-item"><div class="summary-value">12,840</div><div class="summary-label">当周总播放</div></div>
+    </div>
+
+    <!-- Chart Table -->
+    <div class="chart-container">
+      <table class="chart-table">
+        <thead>
+          <tr>
+            <th style="width:48px;text-align:center;">#</th>
+            <th style="width:44px;text-align:center;">变动</th>
+            <th>曲目</th>
+            <th class="pin-right">播放</th>
+            <th class="pin-right" style="width:70px;">PK</th>
+            <th class="pin-right" style="width:70px;">在榜</th>
+            <th class="pin-right" style="width:80px;">PK Wks</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr class="top3">
+            <td class="cell-rank gold">01</td>
+            <td class="cell-change up">↑ 1</td>
+            <td><div class="cell-track">Blinding Lights</div><div class="cell-artist"><a href="#">The Weeknd</a></div></td>
+            <td class="cell-plays">247 <span class="plays-bar-wrap"><span class="plays-bar-fill" style="width:100%;"></span></span></td>
+            <td class="cell-stat"><span class="peak-badge peak-1">1</span></td>
+            <td class="cell-stat">88</td>
+            <td class="cell-stat" style="color:var(--accent-gold);font-weight:600;">34</td>
+          </tr>
+          <tr class="top3">
+            <td class="cell-rank silver">02</td>
+            <td class="cell-change down">↓ 1</td>
+            <td><div class="cell-track">As It Was</div><div class="cell-artist"><a href="#">Harry Styles</a></div></td>
+            <td class="cell-plays">231 <span class="plays-bar-wrap"><span class="plays-bar-fill" style="width:94%;background:var(--accent-blue);"></span></span></td>
+            <td class="cell-stat"><span class="peak-badge peak-1">1</span></td>
+            <td class="cell-stat">96</td>
+            <td class="cell-stat" style="color:var(--accent-gold);font-weight:600;">51</td>
+          </tr>
+          <tr class="top3">
+            <td class="cell-rank bronze">03</td>
+            <td class="cell-change same">—</td>
+            <td><div class="cell-track">vampire</div><div class="cell-artist"><a href="#">Olivia Rodrigo</a></div></td>
+            <td class="cell-plays">218 <span class="plays-bar-wrap"><span class="plays-bar-fill" style="width:88%;background:var(--accent-coral);"></span></span></td>
+            <td class="cell-stat">3</td>
+            <td class="cell-stat">42</td>
+            <td class="cell-stat">—</td>
+          </tr>
+          <tr>
+            <td class="cell-rank">04</td>
+            <td class="cell-change up">↑ 5</td>
+            <td><div class="cell-track">Flowers</div><div class="cell-artist"><a href="#">Miley Cyrus</a></div></td>
+            <td class="cell-plays">205 <span class="plays-bar-wrap"><span class="plays-bar-fill" style="width:83%;background:var(--accent-purple);"></span></span></td>
+            <td class="cell-stat">4</td>
+            <td class="cell-stat">29</td>
+            <td class="cell-stat">—</td>
+          </tr>
+          <tr>
+            <td class="cell-rank">05</td>
+            <td class="cell-change down">↓ 1</td>
+            <td><div class="cell-track">Espresso</div><div class="cell-artist"><a href="#">Sabrina Carpenter</a></div></td>
+            <td class="cell-plays">198 <span class="plays-bar-wrap"><span class="plays-bar-fill" style="width:80%;background:var(--accent-teal);"></span></span></td>
+            <td class="cell-stat"><span class="peak-badge peak-1">1</span></td>
+            <td class="cell-stat">54</td>
+            <td class="cell-stat" style="color:var(--accent-gold);font-weight:600;">8</td>
+          </tr>
+          <tr>
+            <td class="cell-rank">06</td>
+            <td class="cell-change up">↑ 2</td>
+            <td><div class="cell-track">Cruel Summer</div><div class="cell-artist"><a href="#">Taylor Swift</a></div></td>
+            <td class="cell-plays">185 <span class="plays-bar-wrap"><span class="plays-bar-fill" style="width:75%;background:var(--accent-blue);"></span></span></td>
+            <td class="cell-stat">2</td>
+            <td class="cell-stat">104</td>
+            <td class="cell-stat" style="color:var(--accent-gold);font-weight:600;">12</td>
+          </tr>
+          <tr>
+            <td class="cell-rank">07</td>
+            <td class="cell-change down">↓ 3</td>
+            <td><div class="cell-track">Bad Habit</div><div class="cell-artist"><a href="#">Steve Lacy</a></div></td>
+            <td class="cell-plays">172 <span class="plays-bar-wrap"><span class="plays-bar-fill" style="width:70%;background:var(--accent-coral);"></span></span></td>
+            <td class="cell-stat">4</td>
+            <td class="cell-stat">67</td>
+            <td class="cell-stat">—</td>
+          </tr>
+          <tr>
+            <td class="cell-rank">08</td>
+            <td class="cell-change up">↑ 1</td>
+            <td><div class="cell-track">Anti-Hero</div><div class="cell-artist"><a href="#">Taylor Swift</a></div></td>
+            <td class="cell-plays">164 <span class="plays-bar-wrap"><span class="plays-bar-fill" style="width:66%;background:var(--accent-purple);"></span></span></td>
+            <td class="cell-stat">1</td>
+            <td class="cell-stat">78</td>
+            <td class="cell-stat" style="color:var(--accent-gold);font-weight:600;">22</td>
+          </tr>
+          <tr>
+            <td class="cell-rank">09</td>
+            <td class="cell-change down">↓ 2</td>
+            <td><div class="cell-track">Kill Bill</div><div class="cell-artist"><a href="#">SZA</a></div></td>
+            <td class="cell-plays">158 <span class="plays-bar-wrap"><span class="plays-bar-fill" style="width:64%;background:var(--accent-teal);"></span></span></td>
+            <td class="cell-stat">5</td>
+            <td class="cell-stat">33</td>
+            <td class="cell-stat">—</td>
+          </tr>
+          <tr>
+            <td class="cell-rank">10</td>
+            <td class="cell-change up">↑ 4</td>
+            <td><div class="cell-track">Die With A Smile</div><div class="cell-artist"><a href="#">Lady Gaga, Bruno Mars</a></div></td>
+            <td class="cell-plays">149 <span class="plays-bar-wrap"><span class="plays-bar-fill" style="width:60%;background:var(--accent-gold);"></span></span></td>
+            <td class="cell-stat">8</td>
+            <td class="cell-stat">18</td>
+            <td class="cell-stat">—</td>
+          </tr>
+          <tr>
+            <td class="cell-rank">11</td>
+            <td class="cell-change new">NEW</td>
+            <td><div class="cell-track">BIRDS OF A FEATHER</div><div class="cell-artist"><a href="#">Billie Eilish</a></div></td>
+            <td class="cell-plays">142 <span class="plays-bar-wrap"><span class="plays-bar-fill" style="width:58%;background:var(--accent-teal);"></span></span></td>
+            <td class="cell-stat">11</td>
+            <td class="cell-stat" style="color:var(--accent-teal);font-weight:600;">1</td>
+            <td class="cell-stat" style="color:var(--accent-teal);font-weight:600;">1</td>
+          </tr>
+          <tr>
+            <td class="cell-rank">12</td>
+            <td class="cell-change down">↓ 1</td>
+            <td><div class="cell-track">Heat Waves</div><div class="cell-artist"><a href="#">Glass Animals</a></div></td>
+            <td class="cell-plays">136 <span class="plays-bar-wrap"><span class="plays-bar-fill" style="width:55%;background:var(--accent-purple);"></span></span></td>
+            <td class="cell-stat">2</td>
+            <td class="cell-stat">156</td>
+            <td class="cell-stat" style="color:var(--accent-gold);font-weight:600;">18</td>
+          </tr>
+          <tr>
+            <td class="cell-rank">13</td>
+            <td class="cell-change up">↑ 3</td>
+            <td><div class="cell-track">Good Luck, Babe!</div><div class="cell-artist"><a href="#">Chappell Roan</a></div></td>
+            <td class="cell-plays">131 <span class="plays-bar-wrap"><span class="plays-bar-fill" style="width:53%;background:var(--accent-rose);"></span></span></td>
+            <td class="cell-stat">3</td>
+            <td class="cell-stat">26</td>
+            <td class="cell-stat">—</td>
+          </tr>
+          <tr>
+            <td class="cell-rank">14</td>
+            <td class="cell-change re">RE</td>
+            <td><div class="cell-track">Levitating</div><div class="cell-artist"><a href="#">Dua Lipa</a></div></td>
+            <td class="cell-plays">124 <span class="plays-bar-wrap"><span class="plays-bar-fill" style="width:50%;background:var(--accent-gold);"></span></span></td>
+            <td class="cell-stat"><span class="peak-badge peak-1">1</span></td>
+            <td class="cell-stat">132</td>
+            <td class="cell-stat" style="color:var(--accent-gold);font-weight:600;">46</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="section-footer">共 50 首 · 更新时间：2026-05-24 22:00 CST · 暗黑沉浸 Cinematic 主题</div>
+  </main>
+</div>
+</body>
+</html>

@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlite3 import Connection
 
 from backend.dependencies import get_conn, PlayFilters
+from backend.core.db import load_plays
 from backend.services.play_service import (
     get_dashboard_summary,
     get_account_kpis,
@@ -30,14 +31,22 @@ def dashboard_full(
     filters: PlayFilters = Depends(),
     conn: Connection = Depends(get_conn),
 ):
-    """Complete dashboard data — all KPIs, charts, and random track in one request."""
+    """Complete dashboard data — all KPIs, charts, and random track in one request.
+
+    Loads plays once and reuses the DataFrame across all sub-functions to avoid
+    redundant SQL queries (was 6 calls, now 1).
+    """
+    df = load_plays(
+        conn, min_ms=filters.min_ms, music_only=filters.music_only,
+        merge_enabled=filters.merge_enabled,
+    )
     return {
-        "summary": get_dashboard_summary(conn, filters.min_ms, filters.music_only, filters.merge_enabled),
+        "summary": get_dashboard_summary(conn, filters.min_ms, filters.music_only, filters.merge_enabled, df=df),
         "account_kpis": get_account_kpis(conn),
-        "monthly_trend": get_monthly_trend(conn, filters.min_ms, filters.music_only, filters.merge_enabled),
-        "top_tracks": get_top_tracks(conn, filters.min_ms, filters.music_only, filters.merge_enabled),
-        "platform_dist": get_platform_dist(conn, filters.min_ms, filters.music_only, filters.merge_enabled),
-        "dow_dist": get_dow_dist(conn, filters.min_ms, filters.music_only, filters.merge_enabled),
+        "monthly_trend": get_monthly_trend(conn, filters.min_ms, filters.music_only, filters.merge_enabled, df=df),
+        "top_tracks": get_top_tracks(conn, filters.min_ms, filters.music_only, filters.merge_enabled, df=df),
+        "platform_dist": get_platform_dist(conn, filters.min_ms, filters.music_only, filters.merge_enabled, df=df),
+        "dow_dist": get_dow_dist(conn, filters.min_ms, filters.music_only, filters.merge_enabled, df=df),
         "random_track": get_random_track(conn, filters.min_ms, filters.music_only),
     }
 

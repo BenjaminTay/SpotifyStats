@@ -27,12 +27,14 @@ def _count(x):
 # ── Dashboard ──────────────────────────────────────────────────────────────
 
 def get_dashboard_summary(
-    conn: sqlite3.Connection, min_ms: int, music_only: bool, merge_enabled: bool
+    conn: sqlite3.Connection, min_ms: int, music_only: bool, merge_enabled: bool,
+    df: Optional[pd.DataFrame] = None,
 ) -> dict:
     """Compute dashboard KPIs from plays data."""
-    df = load_plays(
-        conn, min_ms=min_ms, music_only=music_only, merge_enabled=merge_enabled,
-    )
+    if df is None:
+        df = load_plays(
+            conn, min_ms=min_ms, music_only=music_only, merge_enabled=merge_enabled,
+        )
     if df.empty:
         return {
             "total_plays": 0, "total_hours": 0.0, "total_tracks": 0,
@@ -73,11 +75,15 @@ def get_account_kpis(conn: sqlite3.Connection) -> Optional[dict]:
         return None
 
 
-def get_monthly_trend(conn: sqlite3.Connection, min_ms: int, music_only: bool, merge_enabled: bool) -> list[dict]:
+def get_monthly_trend(
+    conn: sqlite3.Connection, min_ms: int, music_only: bool, merge_enabled: bool,
+    df: Optional[pd.DataFrame] = None,
+) -> list[dict]:
     """Get monthly plays/hours trend."""
-    df = load_plays(
-        conn, min_ms=min_ms, music_only=music_only, merge_enabled=merge_enabled,
-    )
+    if df is None:
+        df = load_plays(
+            conn, min_ms=min_ms, music_only=music_only, merge_enabled=merge_enabled,
+        )
     if df.empty:
         return []
     monthly = (
@@ -93,11 +99,15 @@ def get_monthly_trend(conn: sqlite3.Connection, min_ms: int, music_only: bool, m
     ]
 
 
-def get_top_tracks(conn: sqlite3.Connection, min_ms: int, music_only: bool, merge_enabled: bool, n: int = 10) -> list[dict]:
+def get_top_tracks(
+    conn: sqlite3.Connection, min_ms: int, music_only: bool, merge_enabled: bool,
+    n: int = 10, df: Optional[pd.DataFrame] = None,
+) -> list[dict]:
     """Get top N most-played tracks."""
-    df = load_plays(
-        conn, min_ms=min_ms, music_only=music_only, merge_enabled=merge_enabled,
-    )
+    if df is None:
+        df = load_plays(
+            conn, min_ms=min_ms, music_only=music_only, merge_enabled=merge_enabled,
+        )
     if df.empty:
         return []
     top = (
@@ -113,11 +123,15 @@ def get_top_tracks(conn: sqlite3.Connection, min_ms: int, music_only: bool, merg
     ]
 
 
-def get_platform_dist(conn: sqlite3.Connection, min_ms: int, music_only: bool, merge_enabled: bool) -> list[dict]:
+def get_platform_dist(
+    conn: sqlite3.Connection, min_ms: int, music_only: bool, merge_enabled: bool,
+    df: Optional[pd.DataFrame] = None,
+) -> list[dict]:
     """Get platform distribution."""
-    df = load_plays(
-        conn, min_ms=min_ms, music_only=music_only, merge_enabled=merge_enabled,
-    )
+    if df is None:
+        df = load_plays(
+            conn, min_ms=min_ms, music_only=music_only, merge_enabled=merge_enabled,
+        )
     if df.empty:
         return []
     dist = df["platform"].value_counts().reset_index()
@@ -125,12 +139,16 @@ def get_platform_dist(conn: sqlite3.Connection, min_ms: int, music_only: bool, m
     return [{"platform": r.platform, "count": int(r.cnt)} for r in dist.itertuples(index=False)]
 
 
-def get_dow_dist(conn: sqlite3.Connection, min_ms: int, music_only: bool, merge_enabled: bool) -> list[dict]:
+def get_dow_dist(
+    conn: sqlite3.Connection, min_ms: int, music_only: bool, merge_enabled: bool,
+    df: Optional[pd.DataFrame] = None,
+) -> list[dict]:
     """Get day-of-week distribution."""
     dow_names = {0: "周一", 1: "周二", 2: "周三", 3: "周四", 4: "周五", 5: "周六", 6: "周日"}
-    df = load_plays(
-        conn, min_ms=min_ms, music_only=music_only, merge_enabled=merge_enabled,
-    )
+    if df is None:
+        df = load_plays(
+            conn, min_ms=min_ms, music_only=music_only, merge_enabled=merge_enabled,
+        )
     if df.empty:
         return []
     counts = df["ts_dow"].value_counts().sort_index()

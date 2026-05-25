@@ -4,17 +4,26 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 项目概述
 
-Spotify Extended Streaming History 数据分析 Web 应用。从 Spotify 官方导出的 JSON 播放记录中导入数据到 SQLite，通过 Streamlit 提供交互式多维度统计仪表盘。
+Spotify Extended Streaming History 数据分析 Web 应用。从 Spotify 官方导出的 JSON 播放记录中导入数据到 SQLite，通过 FastAPI + React 提供交互式多维度统计仪表盘。
 
-**架构演进**：正在从 Streamlit 单体架构迁移到 FastAPI 后端 + React 前端。后端已完成（56 个 API 端点），前端待构建。当前 Streamlit 应用和后端 API 可并行运行。
+**架构演进**：已从 Streamlit 单体架构迁移到 FastAPI 后端 + React 前端。后端 56 个 API 端点已全部完成，前端 Dashboard 总览页和 Billboard 周榜页已完成开发。Streamlit 原有应用和后端 API 仍可并行运行。
 
-**UI 主题**：「Vinyl Archive」黑胶档案馆 — 暖奶油白底色 + 暗金强调 + 衬线字体 + 噪点纹理，装饰层用复古唱片美学，数据区域保持清晰可读。
+**UI 主题**：「编辑风 × 液态玻璃」— 杂志式排版（Playfair Display 衬线标题 + Inter 无衬线正文）+ 毛玻璃卡片材质 + 日/夜双皮肤。详细风格指南见 `frontend/UI_STYLE_GUIDE.md`。
 
 ## 常用命令
 
 ```bash
 # 启动 FastAPI 后端（端口 8000，Swagger UI: http://localhost:8000/docs）
 source .venv/bin/activate && uvicorn backend.main:app --reload
+
+# 启动前端开发服务器（端口 5173，自动代理 /api → 后端 8000）
+cd frontend && npm run dev
+
+# 构建前端生产版本
+cd frontend && npm run build
+
+# 添加 shadcn/ui 组件
+cd frontend && npx shadcn@latest add <component-name>
 
 # 启动 Streamlit 开发服务器
 source .venv/bin/activate && streamlit run app/main.py
@@ -114,8 +123,8 @@ POST /api/import/account                 账号数据导入
 
 计算逻辑从 Streamlit 页面中提取，不依赖任何 Web 框架。每个服务文件职责单一：
 
-- **`play_service.py`** — 核心播放数据服务。`load_plays()` 封装，通用 groupby 聚合（按年/月/周/小时/平台/艺术家等），仪表盘 KPI、时间线、排行榜、行为分析、听歌时段热力图、年度总结 Wrapped 等所有基于播放数据的端点均调用此服务
-- **`billboard_service.py`** — Billboard 计算管线。`compute_billboard_data()` 一次性计算 15+ 数据结构（周榜 ×3、总榜 ×3、走势总榜 ×3、榜单记录、每周榜首等），`@lru_cache` 缓存。Power Score 只计算一次（原 Streamlit 代码重复计算 ~10 次）
+- **`play_service.py`** — 核心播放数据服务。`load_plays()` 封装，通用 groupby 聚合（按年/月/周/小时/平台/艺术家等），仪表盘 KPI、时间线、排行榜、行为分析、听歌时段热力图、年度总结 Wrapped 等所有基于播放数据的端点均调用此服务。Dashboard 相关函数支持可选 `df` 参数，`/dashboard/full` 端点加载一次 plays 后传递给 5 个子函数复用，避免 6 次冗余 SQL 查询
+- **`billboard_service.py`** — Billboard 计算管线。`compute_billboard_data()` 一次性计算 15+ 数据结构（周榜 ×3、总榜 ×3、走势总榜 ×3、榜单记录、每周榜首等），`@lru_cache(maxsize=1)` 缓存完整结果。Power Score 只计算一次（原 Streamlit 代码重复计算 ~10 次）
 - **`release_cycle_service.py`** — 发行周期分析。艺人发行列表、单曲 Billboard 历史、专辑周期指标（首周排名、峰值、影响力得分、半衰期）、先行曲识别（三级查找：DB → Spotify API → 最早播放日期）、`compare_releases()` 多发行叠加对比。`@ttl_cached` 缓存 Spotify API 令牌（~58 分钟 TTL）
 - **`library_service.py`** — 收藏交叉查询（收藏曲目/专辑/艺人与实际收听对比）
 - **`search_service.py`** — 搜索历史统计（日搜索量、意图分类、时段热力图）
@@ -151,6 +160,51 @@ Pydantic v2 模型定义 API 响应结构，按领域拆分：
 - **`test_services.py`** — Service 层测试，30 个用例 7 类。直接调用服务函数验证计算逻辑：数值断言、numpy 类型安全、JSON 序列化、TTL 缓存行为
 
 测试设计模式：真实数据断言（如 `total_plays > 50000`）而非 mock 返回固定值；交叉校验（如 dashboard 的 total_plays 与 timeline 的 annual 求和一致）；边界条件（不存在的艺人返回空、空年份标记 `empty: true`）。
+
+### 前端架构 (frontend/)
+
+React + Vite + Tailwind CSS v4 + shadcn/ui（样式 `base-nova`，基础色 `neutral`，图标库 `lucide-react`）。TypeScript 6.0 + React 19。
+
+**技术栈**：
+- **构建**：Vite 8，开发端口 5173，自动代理 `/api` → `localhost:8000`
+- **样式**：Tailwind CSS v4（`@tailwindcss/vite` 插件），`tw-animate-css` 动画库
+- **主题**：CSS 变量 + `.dark` class 切换，`oklch()` 色彩空间。结构变量在 `@theme inline`，颜色在 `:root` / `.dark`。`useTheme()` hook 提供 localStorage 持久化 + 系统偏好回退
+- **组件**：shadcn/ui v4（base-nova 风格），源码在 `@/components/ui/`
+- **路由**：React Router v7，当前两个路由：`/`（DashboardPage）、`/billboard`（BillboardPage）
+- **图表**：ECharts 6 + echarts-for-react（月度趋势图）；平台分布使用纯 DOM 进度条
+- **字体**：Inter Variable（`@fontsource-variable/inter`）+ Playfair Display（Google Fonts CDN）
+- **客户端缓存**：模块级变量缓存 API 响应，页面切换时避免重复请求
+
+**目录结构**：
+```
+frontend/src/
+├── components/
+│   ├── ui/          ← shadcn/ui 组件（可随意修改）
+│   ├── charts/      ← ECharts 封装 + 纯 DOM 图表
+│   ├── layout/      ← 布局（AppLayout, Masthead, ThemeToggle）
+│   └── shared/      ← 共享组件（GlassCard, KpiCard, WeekSelector, NoiseOverlay, PageSwitcher）
+├── pages/           ← 页面组件
+│   ├── DashboardPage.tsx  ← 总览仪表盘
+│   └── BillboardPage.tsx  ← Billboard 周榜（3 Tab + 排名表）
+├── hooks/           ← 自定义 hooks
+│   ├── useTheme.tsx  ← 主题管理（Context + localStorage）
+│   ├── useDashboard.ts  ← Dashboard 数据获取 + 缓存
+│   └── useBillboard.ts  ← Billboard 数据获取 + 缓存 + 周导航
+├── lib/             ← API 客户端、工具函数
+│   ├── api.ts       ← fetch 封装，类型定义
+│   ├── theme.ts     ← 图表色盘常量 + getChartColors(isDark)
+│   └── utils.ts     ← cn() 工具（tailwind-merge + clsx）
+├── types/           ← TypeScript 类型定义
+│   ├── dashboard.ts ← Dashboard 响应类型
+│   └── billboard.ts ← Billboard 响应类型
+└── UI_STYLE_GUIDE.md ← 详细 UI 风格指南（新增页面必读）
+```
+
+**路径别名**：`@/` → `src/`（Vite resolve.alias + tsconfig paths）。
+
+**shadcn/ui 主题**：CSS 变量定义在 `src/index.css`，`components.json` 记录配置。已安装的组件：button, card, table, tabs, select, slider, separator, skeleton, tooltip, badge, avatar, sheet, collapsible, dropdown-menu, scroll-area。
+
+**UI 风格指南**：`frontend/UI_STYLE_GUIDE.md` 包含完整的颜色系统、字体规格、布局模式、组件 API 和页面模板。新增页面时必须参考此文档。
 
 ### Streamlit 应用 (app/)
 

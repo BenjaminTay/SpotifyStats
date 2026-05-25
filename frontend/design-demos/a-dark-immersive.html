@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>A. 暗黑沉浸 / Cinematic — Spotify Stats</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  :root {
+    --bg-root: #0A0A0A;
+    --bg-elevated: #111111;
+    --bg-card: #1A1A1A;
+    --bg-hover: #242424;
+    --green: #1ED760;
+    --text-primary: #FFFFFF;
+    --text-secondary: #9CA3AF;
+    --text-muted: #6B7280;
+    --accent-purple: #A78BFA;
+    --accent-blue: #60A5FA;
+    --accent-gold: #F59E0B;
+    --accent-coral: #FB7185;
+    --accent-teal: #2DD4BF;
+    --border: rgba(255,255,255,0.08);
+    --radius: 12px;
+    --font-sans: 'Geist Variable', 'Inter', system-ui, sans-serif;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: var(--font-sans);
+    background: var(--bg-root);
+    color: var(--text-primary);
+    min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Noise texture overlay */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    opacity: 0.03;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    background-size: 128px 128px;
+    pointer-events: none;
+    z-index: 1;
+  }
+
+  .app { position: relative; z-index: 2; display: flex; min-height: 100vh; }
+
+  /* Sidebar */
+  .sidebar {
+    width: 240px;
+    background: var(--bg-elevated);
+    border-right: 1px solid var(--border);
+    padding: 24px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+  .sidebar-logo {
+    font-size: 20px;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+    padding: 0 12px;
+    margin-bottom: 16px;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .sidebar-logo .dot {
+    width: 10px; height: 10px; border-radius: 50%; background: var(--green);
+    box-shadow: 0 0 12px rgba(30,215,96,0.5);
+  }
+  .nav-item {
+    display: flex; align-items: center; gap: 12px;
+    padding: 10px 12px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .nav-item:hover { background: var(--bg-hover); color: var(--text-primary); }
+  .nav-item.active { background: var(--bg-card); color: var(--text-primary); font-weight: 600; }
+  .nav-item .icon { width: 20px; height: 20px; border-radius: 4px; background: var(--text-muted); flex-shrink: 0; }
+  .nav-item.active .icon { background: var(--green); }
+
+  /* Main */
+  .main { flex: 1; padding: 32px 40px; overflow-y: auto; }
+  .page-title { font-size: 28px; font-weight: 700; letter-spacing: -0.5px; margin-bottom: 4px; }
+  .page-subtitle { font-size: 14px; color: var(--text-secondary); margin-bottom: 32px; }
+
+  /* KPI Cards */
+  .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 28px; }
+  .kpi-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px 24px;
+    transition: all 0.2s;
+  }
+  .kpi-card:hover { background: var(--bg-hover); border-color: rgba(255,255,255,0.14); }
+  .kpi-label { font-size: 12px; font-weight: 500; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
+  .kpi-value { font-size: 32px; font-weight: 700; letter-spacing: -1px; margin-bottom: 4px; }
+  .kpi-change { font-size: 13px; font-weight: 500; }
+  .kpi-change.up { color: var(--green); }
+  .kpi-change.down { color: var(--accent-coral); }
+
+  /* Chart Section */
+  .section-title { font-size: 16px; font-weight: 600; margin-bottom: 16px; }
+  .chart-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 24px;
+    margin-bottom: 24px;
+  }
+  .chart-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+  .chart-header h3 { font-size: 15px; font-weight: 600; }
+  .chart-tabs { display: flex; gap: 4px; background: var(--bg-elevated); padding: 3px; border-radius: 8px; }
+  .chart-tab {
+    padding: 6px 14px; border-radius: 6px; font-size: 12px; font-weight: 500;
+    color: var(--text-secondary); cursor: pointer; border: none; background: none;
+  }
+  .chart-tab.active { background: var(--bg-hover); color: var(--text-primary); }
+
+  /* Simulated Bar Chart */
+  .bar-chart { display: flex; align-items: flex-end; gap: 12px; height: 200px; padding-top: 8px; }
+  .bar-col { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 8px; height: 100%; justify-content: flex-end; }
+  .bar { width: 100%; border-radius: 6px 6px 2px 2px; transition: height 0.3s; position: relative; min-height: 4px; }
+  .bar-label { font-size: 11px; color: var(--text-muted); white-space: nowrap; }
+
+  /* Table */
+  .data-table { width: 100%; border-collapse: collapse; }
+  .data-table th {
+    text-align: left; font-size: 11px; font-weight: 600; color: var(--text-muted);
+    text-transform: uppercase; letter-spacing: 0.5px; padding: 10px 16px;
+    border-bottom: 1px solid var(--border);
+  }
+  .data-table td {
+    padding: 12px 16px; font-size: 14px; border-bottom: 1px solid rgba(255,255,255,0.04);
+  }
+  .data-table tr:hover td { background: var(--bg-hover); }
+  .rank { font-weight: 700; font-size: 16px; color: var(--text-secondary); width: 40px; }
+  .rank.gold { color: var(--accent-gold); }
+  .track-name { font-weight: 600; }
+  .track-artist { font-size: 13px; color: var(--text-secondary); }
+
+  /* Two column layout */
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 24px; }
+</style>
+</head>
+<body>
+<div class="app">
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="sidebar-logo"><span class="dot"></span>Spotify Stats</div>
+    <div class="nav-item active"><span class="icon"></span>总览仪表盘</div>
+    <div class="nav-item"><span class="icon"></span>Billboard 周榜</div>
+    <div class="nav-item"><span class="icon"></span>排行榜</div>
+    <div class="nav-item"><span class="icon"></span>年度回顾</div>
+    <div class="nav-item"><span class="icon"></span>艺人深潜</div>
+    <div class="nav-item"><span class="icon"></span>发行周期</div>
+    <div style="margin-top:auto; padding: 12px; border-radius: 8px; background: var(--bg-card); border: 1px solid var(--border);">
+      <div style="font-size:12px;color:var(--text-muted);margin-bottom:6px;">当前主题</div>
+      <div style="font-size:13px;font-weight:600;color:var(--green);">暗黑沉浸 Cinematic</div>
+    </div>
+  </aside>
+
+  <!-- Main Content -->
+  <main class="main">
+    <h1 class="page-title">总览仪表盘</h1>
+    <p class="page-subtitle">Spotify 播放数据分析总览 · 过去 12 个月</p>
+
+    <!-- KPI Cards -->
+    <div class="kpi-grid">
+      <div class="kpi-card">
+        <div class="kpi-label">总播放次数</div>
+        <div class="kpi-value">128,493</div>
+        <div class="kpi-change up">↑ 12.5% vs 去年</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">总播放时长</div>
+        <div class="kpi-value">7,842h</div>
+        <div class="kpi-change up">↑ 8.3% vs 去年</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">独特曲目数</div>
+        <div class="kpi-value">4,216</div>
+        <div class="kpi-change down">↓ 3.1% vs 去年</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">艺人数量</div>
+        <div class="kpi-value">1,847</div>
+        <div class="kpi-change up">↑ 5.7% vs 去年</div>
+      </div>
+    </div>
+
+    <div class="two-col">
+      <!-- Monthly Trend Chart -->
+      <div class="chart-card">
+        <div class="chart-header">
+          <h3>月度播放趋势</h3>
+          <div class="chart-tabs">
+            <button class="chart-tab active">12个月</button>
+            <button class="chart-tab">6个月</button>
+            <button class="chart-tab">3个月</button>
+          </div>
+        </div>
+        <div class="bar-chart">
+          <div class="bar-col"><div class="bar" style="height:45%;background:var(--green)"></div><span class="bar-label">7月</span></div>
+          <div class="bar-col"><div class="bar" style="height:52%;background:var(--green)"></div><span class="bar-label">8月</span></div>
+          <div class="bar-col"><div class="bar" style="height:48%;background:var(--green)"></div><span class="bar-label">9月</span></div>
+          <div class="bar-col"><div class="bar" style="height:60%;background:var(--green)"></div><span class="bar-label">10月</span></div>
+          <div class="bar-col"><div class="bar" style="height:55%;background:var(--green)"></div><span class="bar-label">11月</span></div>
+          <div class="bar-col"><div class="bar" style="height:72%;background:var(--green)"></div><span class="bar-label">12月</span></div>
+          <div class="bar-col"><div class="bar" style="height:68%;background:var(--green)"></div><span class="bar-label">1月</span></div>
+          <div class="bar-col"><div class="bar" style="height:80%;background:var(--green)"></div><span class="bar-label">2月</span></div>
+          <div class="bar-col"><div class="bar" style="height:75%;background:var(--green)"></div><span class="bar-label">3月</span></div>
+          <div class="bar-col"><div class="bar" style="height:85%;background:var(--green)"></div><span class="bar-label">4月</span></div>
+          <div class="bar-col"><div class="bar" style="height:78%;background:var(--green)"></div><span class="bar-label">5月</span></div>
+          <div class="bar-col"><div class="bar" style="height:90%;background:var(--green)"></div><span class="bar-label">6月</span></div>
+        </div>
+      </div>
+
+      <!-- Platform Distribution -->
+      <div class="chart-card">
+        <div class="chart-header">
+          <h3>平台分布</h3>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:14px;">
+          <div>
+            <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:6px;"><span>iOS</span><span style="color:var(--green);font-weight:600;">42%</span></div>
+            <div style="height:6px;background:var(--bg-elevated);border-radius:3px;overflow:hidden;"><div style="width:42%;height:100%;background:var(--accent-blue);border-radius:3px;"></div></div>
+          </div>
+          <div>
+            <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:6px;"><span>Android</span><span style="color:var(--green);font-weight:600;">31%</span></div>
+            <div style="height:6px;background:var(--bg-elevated);border-radius:3px;overflow:hidden;"><div style="width:31%;height:100%;background:var(--accent-purple);border-radius:3px;"></div></div>
+          </div>
+          <div>
+            <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:6px;"><span>Desktop</span><span style="color:var(--green);font-weight:600;">18%</span></div>
+            <div style="height:6px;background:var(--bg-elevated);border-radius:3px;overflow:hidden;"><div style="width:18%;height:100%;background:var(--accent-teal);border-radius:3px;"></div></div>
+          </div>
+          <div>
+            <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:6px;"><span>Web Player</span><span style="color:var(--green);font-weight:600;">9%</span></div>
+            <div style="height:6px;background:var(--bg-elevated);border-radius:3px;overflow:hidden;"><div style="width:9%;height:100%;background:var(--accent-gold);border-radius:3px;"></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Top Tracks Table -->
+    <div class="chart-card">
+      <div class="chart-header">
+        <h3>本周排行榜 · Top Tracks</h3>
+        <span style="font-size:12px;color:var(--text-muted);">2026 Week 21</span>
+      </div>
+      <table class="data-table">
+        <thead><tr><th>#</th><th>曲目</th><th>艺人</th><th style="text-align:right">播放</th><th style="text-align:right">时长</th><th style="text-align:right">趋势</th></tr></thead>
+        <tbody>
+          <tr>
+            <td class="rank gold">1</td>
+            <td><div class="track-name">Blinding Lights</div></td>
+            <td class="track-artist">The Weeknd</td>
+            <td style="text-align:right;font-weight:600;">247</td>
+            <td style="text-align:right;color:var(--text-secondary);">12.4h</td>
+            <td style="text-align:right;color:var(--green);font-weight:600;">↑ 3</td>
+          </tr>
+          <tr>
+            <td class="rank gold">2</td>
+            <td><div class="track-name">As It Was</div></td>
+            <td class="track-artist">Harry Styles</td>
+            <td style="text-align:right;font-weight:600;">231</td>
+            <td style="text-align:right;color:var(--text-secondary);">10.8h</td>
+            <td style="text-align:right;color:var(--green);font-weight:600;">↑ 1</td>
+          </tr>
+          <tr>
+            <td class="rank gold">3</td>
+            <td><div class="track-name">vampire</div></td>
+            <td class="track-artist">Olivia Rodrigo</td>
+            <td style="text-align:right;font-weight:600;">218</td>
+            <td style="text-align:right;color:var(--text-secondary);">9.6h</td>
+            <td style="text-align:right;color:var(--accent-coral);font-weight:600;">↓ 2</td>
+          </tr>
+          <tr>
+            <td class="rank">4</td>
+            <td><div class="track-name">Flowers</div></td>
+            <td class="track-artist">Miley Cyrus</td>
+            <td style="text-align:right;font-weight:600;">205</td>
+            <td style="text-align:right;color:var(--text-secondary);">8.9h</td>
+            <td style="text-align:right;color:var(--green);font-weight:600;">↑ 5</td>
+          </tr>
+          <tr>
+            <td class="rank">5</td>
+            <td><div class="track-name">Espresso</div></td>
+            <td class="track-artist">Sabrina Carpenter</td>
+            <td style="text-align:right;font-weight:600;">198</td>
+            <td style="text-align:right;color:var(--text-secondary);">8.2h</td>
+            <td style="text-align:right;color:var(--text-secondary);">—</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </main>
+</div>
+</body>
+</html>

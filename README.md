@@ -2,9 +2,9 @@
 
 从 Spotify 官方导出的 Extended Streaming History 及账号数据中导入播放记录，提供多维度交互式统计分析仪表盘。
 
-**UI 主题**：「Vinyl Archive」黑胶档案馆 — 暖奶油白底色、暗金强调色、Georgia 衬线字体、噪点纹理，以复古唱片美学为装饰层，数据区域保持清晰可读。
+**UI 主题**：「编辑风 × 液态玻璃」— 杂志式排版（Playfair Display 衬线 + Inter 无衬线）+ 毛玻璃卡片材质 + 日/夜双皮肤。详细规范见 `frontend/UI_STYLE_GUIDE.md`。
 
-**架构**：FastAPI 后端 + Streamlit 前端（前后端分离迁移中，后端已完成，React 前端待构建）。
+**架构**：FastAPI 后端 + React 前端（Dashboard 和 Billboard 页面已完成）。Streamlit 原有应用仍可运行。
 
 ## 功能
 
@@ -31,20 +31,26 @@
 python3 -m venv .venv
 source .venv/bin/activate
 
-# 安装依赖
+# 安装后端依赖
 pip install -r requirements.txt
+
+# 安装前端依赖
+cd frontend && npm install && cd ..
 
 # 启动 FastAPI 后端（端口 8000，Swagger UI: http://localhost:8000/docs）
 uvicorn backend.main:app --reload
 
-# 启动 Streamlit 前端（端口 8501）
+# 启动 React 前端（端口 5173，自动代理 /api → 后端 8000）
+cd frontend && npm run dev
+
+# 或启动 Streamlit 前端（端口 8501）
 streamlit run app/main.py
 
 # 运行后端测试（需先启动后端或有 SQLite 数据库）
 pytest backend/tests/ -v
 ```
 
-浏览器打开 `http://localhost:8501` 即可使用 Streamlit 界面，或 `http://localhost:8000/docs` 查看 API 文档。首次启动会自动将 JSON 数据导入 SQLite 数据库（约需 10-20 秒），后续启动直接读取。
+浏览器打开 `http://localhost:5173` 使用 React 界面，或 `http://localhost:8000/docs` 查看 API 文档。首次启动会自动将 JSON 数据导入 SQLite 数据库（约需 10-20 秒），后续启动直接读取。
 
 ### 数据过滤
 
@@ -61,13 +67,14 @@ pytest backend/tests/ -v
 ## 技术栈
 
 - **FastAPI** — 后端 API 框架（56 个端点，依赖注入，自动 Swagger 文档）
-- **Streamlit** — 前端 Web 应用框架
+- **React 19** — 前端 UI 框架（TypeScript 6.0，Vite 8，React Router v7）
+- **Tailwind CSS v4** — 原子化 CSS 框架（shadcn/ui v4 组件库，`tw-animate-css` 动画）
+- **ECharts 6** — 交互式图表（echarts-for-react）
+- **Streamlit** — 原有前端（逐步迁移中）
 - **SQLite** — 本地数据库（87,000+ 条记录，WAL 模式，查询毫秒级）
-- **Plotly** — 交互式图表（暖色色盘）
 - **Pandas** — 数据聚合处理
 - **Pydantic** — API 响应模型与数据校验
 - **Pytest** — 后端测试框架（104 个测试，覆盖 API 和 Service 层）
-- **CSS** — 「Vinyl Archive」黑胶档案馆暖色主题（自定义全局 CSS 注入）
 
 ## 项目结构
 
@@ -167,6 +174,20 @@ SpotifyStats/
 │   ├── spotify_stats.db                # SQLite 数据库
 │   ├── streaming/                      # 长期串流播放记录（JSON）
 │   └── account/                        # 账号数据（JSON）
+├── frontend/                            # React 前端（新架构）
+│   ├── src/
+│   │   ├── components/
+│   │   │   ├── ui/                      # shadcn/ui 组件
+│   │   │   ├── charts/                  # 图表组件（ECharts + 纯 DOM）
+│   │   │   ├── layout/                  # 布局（AppLayout, Masthead, ThemeToggle）
+│   │   │   └── shared/                  # 共享组件（GlassCard, KpiCard 等）
+│   │   ├── pages/                       # 页面（DashboardPage, BillboardPage）
+│   │   ├── hooks/                       # 自定义 hooks（数据获取 + 客户端缓存）
+│   │   ├── lib/                         # API 客户端、工具函数、主题配置
+│   │   └── types/                       # TypeScript 类型定义
+│   ├── UI_STYLE_GUIDE.md                # 详细 UI 风格指南
+│   ├── index.html
+│   └── package.json
 ├── scripts/
 │   └── analyze_weekly_tracks.py        # 每周独特曲目数分析
 ├── .streamlit/config.toml              # Streamlit 主题配置

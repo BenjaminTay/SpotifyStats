@@ -1,0 +1,631 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>编辑风 × 液态玻璃 · Spotify Stats — 日/夜双皮肤</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400;1,500&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  /* ===== STRUCTURAL VARIABLES — same in both themes ===== */
+  :root {
+    --font-serif: 'Playfair Display', Georgia, 'Times New Roman', serif;
+    --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    --radius-sm: 8px;
+    --radius: 12px;
+    --radius-lg: 16px;
+    --glass-blur: 12px;
+    --transition-theme: 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  /* ===== LIGHT THEME — colors only ===== */
+  [data-theme="light"] {
+    --bg-page: #FAF7F2;
+    --bg-elevated: rgba(255,255,255,0.55);
+    --bg-card: rgba(255,255,255,0.7);
+    --bg-card-high: rgba(255,255,255,0.85);
+    --bg-glass: rgba(255,255,255,0.45);
+    --bg-glass-hover: rgba(255,255,255,0.65);
+    --bg-warm: rgba(245,240,232,0.5);
+    --bg-table-hover: rgba(0,0,0,0.02);
+    --text-primary: #2D2420;
+    --text-secondary: #6B5E58;
+    --text-muted: #9B8E87;
+    --accent: #C84C3D;
+    --accent-soft: #E8A89E;
+    --accent-blue: #3B5998;
+    --accent-moss: #4A6B4F;
+    --accent-gold: #B8860B;
+    --accent-terracotta: #C17A4E;
+    --accent-up: #4A6B4F;
+    --accent-down: #C84C3D;
+    --accent-new: #3B5998;
+    --accent-re: #B8860B;
+    --border: rgba(0,0,0,0.06);
+    --border-strong: rgba(0,0,0,0.10);
+    --shadow-sm: 0 1px 4px rgba(0,0,0,0.03);
+    --shadow-md: 0 4px 16px rgba(0,0,0,0.04);
+    --shadow-glass: 0 8px 32px rgba(0,0,0,0.04);
+    --chart-1: #C84C3D; --chart-2: #C17A4E; --chart-3: #B8860B;
+    --chart-4: #4A6B4F; --chart-5: #3B5998; --chart-6: #8B6F7A;
+    --cover-bg: #EEE8E0;
+  }
+
+  /* ===== DARK THEME — colors only ===== */
+  [data-theme="dark"] {
+    --bg-page: #141416;
+    --bg-elevated: rgba(30,30,34,0.55);
+    --bg-card: rgba(30,30,34,0.65);
+    --bg-card-high: rgba(40,40,46,0.8);
+    --bg-glass: rgba(255,255,255,0.03);
+    --bg-glass-hover: rgba(255,255,255,0.07);
+    --bg-warm: rgba(40,38,34,0.5);
+    --bg-table-hover: rgba(255,255,255,0.03);
+    --text-primary: #F0EBE3;
+    --text-secondary: #A09888;
+    --text-muted: #6E6860;
+    --accent: #D4836F;
+    --accent-soft: #8B5045;
+    --accent-blue: #7B9CC8;
+    --accent-moss: #7D9B76;
+    --accent-gold: #D4A24E;
+    --accent-terracotta: #C97B6B;
+    --accent-up: #7D9B76;
+    --accent-down: #D4836F;
+    --accent-new: #7B9CC8;
+    --accent-re: #D4A24E;
+    --border: rgba(255,255,255,0.06);
+    --border-strong: rgba(255,255,255,0.10);
+    --shadow-sm: 0 1px 4px rgba(0,0,0,0.2);
+    --shadow-md: 0 4px 16px rgba(0,0,0,0.3);
+    --shadow-glass: 0 8px 32px rgba(0,0,0,0.3);
+    --chart-1: #D4836F; --chart-2: #C97B6B; --chart-3: #D4A24E;
+    --chart-4: #7D9B76; --chart-5: #7B9CC8; --chart-6: #B09CA5;
+    --cover-bg: #2A2826;
+  }
+
+  /* ===== Base ===== */
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: var(--font-sans);
+    background: var(--bg-page);
+    color: var(--text-primary);
+    min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+    transition: background var(--transition-theme), color var(--transition-theme);
+  }
+
+  /* Ambient grain — same both modes */
+  body::before {
+    content: '';
+    position: fixed; inset: 0; z-index: 0; opacity: 0.035;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    background-size: 256px 256px;
+    pointer-events: none;
+  }
+
+  /* Subtle ambient gradient — dark only */
+  [data-theme="dark"] body::after {
+    content: '';
+    position: fixed; inset: 0; z-index: 0; opacity: 0.5;
+    background:
+      radial-gradient(ellipse 60% 50% at 20% 30%, rgba(200,76,61,0.06), transparent),
+      radial-gradient(ellipse 50% 40% at 70% 60%, rgba(212,162,78,0.04), transparent);
+    pointer-events: none;
+  }
+
+  .app { position: relative; z-index: 1; display: flex; flex-direction: column; min-height: 100vh; }
+
+  /* ===== Masthead ===== */
+  .masthead {
+    position: sticky; top: 0; z-index: 50;
+    background: var(--bg-glass);
+    backdrop-filter: blur(var(--glass-blur));
+    -webkit-backdrop-filter: blur(var(--glass-blur));
+    border-bottom: 1px solid var(--border);
+    padding: 16px 40px;
+    display: flex; align-items: center; justify-content: space-between;
+    transition: background var(--transition-theme), border var(--transition-theme);
+  }
+  .masthead-left { display: flex; align-items: center; gap: 32px; }
+  .masthead-logo { font-family: var(--font-serif); font-size: 22px; font-weight: 700; letter-spacing: -0.3px; display: flex; align-items: baseline; gap: 2px; }
+  .masthead-logo .italic { font-style: italic; color: var(--accent); transition: color var(--transition-theme); }
+  .masthead-nav { display: flex; gap: 24px; }
+  .masthead-nav a {
+    font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 1.2px;
+    color: var(--text-secondary); text-decoration: none; padding-bottom: 3px;
+    border-bottom: 2px solid transparent; transition: color 0.2s, border 0.2s;
+  }
+  .masthead-nav a:hover { color: var(--text-primary); }
+  .masthead-nav a.active { color: var(--text-primary); border-bottom-color: var(--accent); }
+
+  /* ===== Theme Toggle ===== */
+  .theme-toggle {
+    display: flex; align-items: center; gap: 4px;
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: 24px; padding: 4px;
+    cursor: pointer;
+    transition: background var(--transition-theme), border var(--transition-theme);
+  }
+  .theme-toggle:hover { border-color: var(--border-strong); }
+  .theme-option {
+    display: flex; align-items: center; gap: 6px;
+    padding: 6px 14px; border-radius: 20px; font-size: 11px; font-weight: 600;
+    color: var(--text-muted); font-family: var(--font-sans);
+    transition: color 0.25s, background 0.25s, box-shadow 0.25s;
+  }
+  .theme-option.active {
+    background: var(--bg-card-high); color: var(--text-primary);
+    box-shadow: var(--shadow-sm);
+  }
+  .theme-icon { font-size: 14px; }
+
+  /* ===== Main ===== */
+  .main { flex: 1; max-width: 1200px; width: 100%; margin: 0 auto; padding: 40px 48px; }
+
+  /* ===== Hero Section ===== */
+  .hero { margin-bottom: 48px; }
+  .hero-kicker { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.8px; color: var(--accent); margin-bottom: 16px; transition: color var(--transition-theme); font-family: var(--font-sans); }
+  .hero-title { font-family: var(--font-serif); font-size: 52px; font-weight: 700; line-height: 1.06; letter-spacing: -1.2px; margin-bottom: 12px; transition: color var(--transition-theme); }
+  .hero-subtitle { font-size: 17px; color: var(--text-secondary); line-height: 1.7; max-width: 520px; font-weight: 400; font-family: var(--font-sans); transition: color var(--transition-theme); }
+
+  /* ===== KPI Row (serif numbers, editorial style) ===== */
+  .kpi-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 40px; margin-bottom: 48px; padding-bottom: 40px; border-bottom: 1px solid var(--border); transition: border var(--transition-theme); }
+  .kpi-item { }
+  .kpi-value { font-family: var(--font-serif); font-size: 44px; font-weight: 700; line-height: 1; margin-bottom: 8px; letter-spacing: -1px; transition: color var(--transition-theme); }
+  .kpi-label { font-family: var(--font-sans); font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted); margin-bottom: 6px; transition: color var(--transition-theme); }
+  .kpi-meta { font-family: var(--font-sans); font-size: 12px; font-weight: 600; transition: color var(--transition-theme); }
+  .kpi-meta.up { color: var(--accent-up); }
+  .kpi-meta.down { color: var(--accent-down); }
+
+  /* ===== Glass Cards (subtle from D) ===== */
+  .glass-card {
+    background: var(--bg-card);
+    backdrop-filter: blur(var(--glass-blur));
+    -webkit-backdrop-filter: blur(var(--glass-blur));
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 28px 32px;
+    box-shadow: var(--shadow-sm);
+    transition: background var(--transition-theme), border var(--transition-theme), box-shadow var(--transition-theme);
+  }
+  .glass-card:hover {
+    background: var(--bg-card-high);
+    box-shadow: var(--shadow-glass);
+  }
+
+  /* ===== Content Grid ===== */
+  .content-grid { display: grid; grid-template-columns: 1fr 380px; gap: 40px; margin-bottom: 48px; }
+
+  /* ===== Chart Area ===== */
+  .section-title { font-family: var(--font-serif); font-size: 20px; font-weight: 600; margin-bottom: 20px; transition: color var(--transition-theme); }
+  .bar-chart { display: flex; align-items: flex-end; gap: 14px; height: 200px; padding-top: 8px; }
+  .bar-col { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 10px; height: 100%; justify-content: flex-end; }
+  .bar { width: 100%; border-radius: 3px 3px 0 0; min-height: 4px; transition: background var(--transition-theme), height 0.3s; }
+  .bar-label { font-family: var(--font-sans); font-size: 11px; color: var(--text-muted); font-weight: 500; transition: color var(--transition-theme); }
+
+  .chart-note { font-family: var(--font-serif); font-style: italic; font-size: 14px; color: var(--text-secondary); margin-top: 20px; line-height: 1.8; padding-left: 16px; border-left: 3px solid var(--accent); transition: color var(--transition-theme), border var(--transition-theme); }
+
+  /* ===== Sidebar Data ===== */
+  .data-block { margin-bottom: 28px; }
+  .data-block h4 { font-family: var(--font-sans); font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.2px; color: var(--text-muted); margin-bottom: 12px; transition: color var(--transition-theme); }
+  .platform-bar { margin-bottom: 12px; }
+  .platform-bar .pb-head { font-family: var(--font-sans); display: flex; justify-content: space-between; font-size: 13px; font-weight: 500; margin-bottom: 5px; }
+  .platform-bar .pb-track { height: 5px; background: var(--border); border-radius: 3px; overflow: hidden; }
+  .platform-bar .pb-fill { height: 100%; border-radius: 3px; transition: background var(--transition-theme); }
+
+  /* ===== Page Switcher ===== */
+  .page-switcher { display: flex; gap: 0; margin-bottom: 36px; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; width: fit-content; transition: border var(--transition-theme); }
+  .page-switch-btn {
+    font-family: var(--font-sans); padding: 10px 24px; font-size: 13px; font-weight: 500;
+    cursor: pointer; border: none; background: transparent; color: var(--text-secondary);
+    transition: background 0.2s, color 0.2s;
+  }
+  .page-switch-btn.active { background: var(--bg-card); color: var(--text-primary); font-weight: 600; }
+  .page-switch-btn:first-child { border-right: 1px solid var(--border); }
+
+  .page-dashboard, .page-billboard { display: none; }
+  .page-dashboard.active, .page-billboard.active { display: block; }
+
+  /* ===== Billboard Tabs ===== */
+  .bb-tabs { display: flex; gap: 28px; border-bottom: 1px solid var(--border); padding-bottom: 0; transition: border var(--transition-theme); }
+  .bb-tab {
+    font-family: var(--font-sans); font-size: 13px; font-weight: 500; color: var(--text-muted);
+    cursor: pointer; border: none; background: none; padding: 10px 0;
+    border-bottom: 2px solid transparent; margin-bottom: -1px;
+    transition: color 0.2s, border 0.2s;
+  }
+  .bb-tab.active { color: var(--text-primary); font-weight: 600; border-bottom-color: var(--accent); }
+
+  /* Week Selector */
+  .week-selector { display: flex; align-items: center; gap: 14px; margin-bottom: 24px; }
+  .week-nav-btn {
+    width: 34px; height: 34px; border-radius: 50%;
+    background: var(--bg-card); border: 1px solid var(--border);
+    color: var(--text-secondary); display: flex; align-items: center; justify-content: center;
+    cursor: pointer; font-size: 14px; font-family: var(--font-sans);
+    backdrop-filter: blur(var(--glass-blur));
+    transition: background var(--transition-theme), border var(--transition-theme), color var(--transition-theme);
+  }
+  .week-nav-btn:hover { border-color: var(--border-strong); color: var(--text-primary); }
+  .week-label { font-family: var(--font-serif); font-size: 28px; font-weight: 600; line-height: 1.1; transition: color var(--transition-theme); }
+  .week-dates { font-family: var(--font-sans); font-size: 13px; color: var(--text-muted); transition: color var(--transition-theme); }
+
+  /* Summary Strip */
+  .summary-strip { display: flex; gap: 36px; margin-bottom: 24px; padding: 16px 0; border-bottom: 1px solid var(--border); transition: border var(--transition-theme); }
+  .summary-strip .s-val { font-family: var(--font-serif); font-size: 24px; font-weight: 600; transition: color var(--transition-theme); }
+  .summary-strip .s-lbl { font-family: var(--font-sans); font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted); transition: color var(--transition-theme); }
+
+  /* ===== Billboard Table ===== */
+  .chart-table { width: 100%; border-collapse: collapse; }
+  .chart-table th {
+    font-family: var(--font-sans); text-align: left; font-size: 10px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 1.2px; color: var(--text-muted);
+    padding: 14px 0; border-bottom: 2px solid var(--border-strong);
+    transition: color var(--transition-theme), border var(--transition-theme);
+  }
+  .chart-table th.num { text-align: right; }
+  .chart-table td {
+    padding: 14px 0; border-bottom: 1px solid var(--border);
+    font-size: 14px; vertical-align: middle;
+    transition: border var(--transition-theme);
+  }
+  .chart-table tr:hover td { background: var(--bg-table-hover); }
+  .chart-table td:first-child { padding-left: 0; }
+  .chart-table td:last-child { padding-right: 0; }
+
+  /* Cover art cell */
+  .cell-cover { width: 52px; padding-right: 14px !important; }
+  .cover-img {
+    width: 40px; height: 40px; border-radius: var(--radius-sm);
+    background: var(--cover-bg);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px; transition: background var(--transition-theme);
+  }
+  .cover-img.with-art {
+    background: linear-gradient(135deg, var(--chart-1), var(--chart-2));
+    opacity: 0.85;
+  }
+
+  .cell-rank { font-family: var(--font-serif); font-size: 22px; font-weight: 600; width: 40px; color: var(--text-muted); }
+  .cell-rank.gold { color: var(--accent); }
+  .cell-rank.silver { color: var(--text-secondary); }
+  .cell-rank.bronze { color: var(--accent-terracotta); }
+
+  .cell-change { font-family: var(--font-sans); font-size: 11px; font-weight: 700; width: 44px; }
+  .cell-change.up { color: var(--accent-up); }
+  .cell-change.down { color: var(--accent-down); }
+  .cell-change.same { color: var(--text-muted); }
+  .cell-change.new { color: var(--accent-new); font-size: 10px; text-transform: uppercase; letter-spacing: 1px; }
+  .cell-change.re { color: var(--accent-re); font-size: 10px; text-transform: uppercase; letter-spacing: 1px; }
+
+  .cell-track { font-family: var(--font-sans); font-weight: 600; }
+  .cell-artist { font-family: var(--font-sans); font-size: 12px; color: var(--text-muted); margin-top: 2px; font-style: italic; }
+
+  .cell-plays { font-family: var(--font-sans); text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .cell-stat { font-family: var(--font-sans); text-align: right; color: var(--text-secondary); font-size: 13px; }
+
+  .plays-bar-wrap { width: 70px; height: 3px; background: var(--border); display: inline-block; vertical-align: middle; margin-left: 8px; border-radius: 2px; overflow: hidden; transition: background var(--transition-theme); }
+  .plays-bar-fill { height: 100%; border-radius: 2px; transition: background var(--transition-theme); }
+
+  .section-footer { font-family: var(--font-serif); font-style: italic; font-size: 13px; color: var(--text-secondary); margin-top: 24px; transition: color var(--transition-theme); }
+</style>
+</head>
+<body>
+<div class="app">
+  <!-- Masthead -->
+  <header class="masthead">
+    <div class="masthead-left">
+      <div class="masthead-logo">Spotify <span class="italic">Stats</span></div>
+      <nav class="masthead-nav">
+        <a href="#" class="active">总览</a>
+        <a href="#">Billboard</a>
+        <a href="#">排行榜</a>
+        <a href="#">年度回顾</a>
+        <a href="#">分析</a>
+      </nav>
+    </div>
+    <div class="theme-toggle" id="themeToggle" title="切换日/夜模式">
+      <span class="theme-option active" data-theme="light">
+        <span class="theme-icon">☀️</span> 白日
+      </span>
+      <span class="theme-option" data-theme="dark">
+        <span class="theme-icon">🌙</span> 夜晚
+      </span>
+    </div>
+  </header>
+
+  <main class="main">
+    <!-- Page Switcher -->
+    <div class="page-switcher" id="pageSwitcher">
+      <button class="page-switch-btn active" data-page="dashboard">总览仪表盘</button>
+      <button class="page-switch-btn" data-page="billboard">Billboard 周榜</button>
+    </div>
+
+    <!-- ============ DASHBOARD PAGE ============ -->
+    <div class="page-dashboard active" id="pageDashboard">
+      <section class="hero">
+        <div class="hero-kicker">Dashboard / 2026 Mid-Year</div>
+        <h1 class="hero-title">聆听的<br>形状与轨迹</h1>
+        <p class="hero-subtitle">从 128,493 次播放中提取的音乐聆听模式。数据覆盖过去 12 个月，聚焦播放趋势、平台偏好与曲目排行。</p>
+      </section>
+
+      <div class="kpi-row">
+        <div class="kpi-item">
+          <div class="kpi-label">总播放次数</div>
+          <div class="kpi-value">128,493</div>
+          <div class="kpi-meta up">↑ 12.5% vs 去年同期</div>
+        </div>
+        <div class="kpi-item">
+          <div class="kpi-label">总播放时长</div>
+          <div class="kpi-value">7,842h</div>
+          <div class="kpi-meta up">↑ 8.3% 增长</div>
+        </div>
+        <div class="kpi-item">
+          <div class="kpi-label">独特曲目</div>
+          <div class="kpi-value">4,216</div>
+          <div class="kpi-meta down">↓ 3.1% 减少</div>
+        </div>
+        <div class="kpi-item">
+          <div class="kpi-label">覆盖艺人</div>
+          <div class="kpi-value">1,847</div>
+          <div class="kpi-meta up">↑ 5.7% 增长</div>
+        </div>
+      </div>
+
+      <div class="content-grid">
+        <div>
+          <h2 class="section-title">月度播放趋势</h2>
+          <div class="bar-chart">
+            <div class="bar-col"><div class="bar" style="height:45%;background:var(--chart-1)"></div><span class="bar-label">7月</span></div>
+            <div class="bar-col"><div class="bar" style="height:52%;background:var(--chart-2)"></div><span class="bar-label">8月</span></div>
+            <div class="bar-col"><div class="bar" style="height:48%;background:var(--chart-3)"></div><span class="bar-label">9月</span></div>
+            <div class="bar-col"><div class="bar" style="height:60%;background:var(--chart-4)"></div><span class="bar-label">10月</span></div>
+            <div class="bar-col"><div class="bar" style="height:55%;background:var(--chart-5)"></div><span class="bar-label">11月</span></div>
+            <div class="bar-col"><div class="bar" style="height:72%;background:var(--chart-6)"></div><span class="bar-label">12月</span></div>
+            <div class="bar-col"><div class="bar" style="height:68%;background:var(--chart-1)"></div><span class="bar-label">1月</span></div>
+            <div class="bar-col"><div class="bar" style="height:80%;background:var(--chart-2)"></div><span class="bar-label">2月</span></div>
+            <div class="bar-col"><div class="bar" style="height:75%;background:var(--chart-3)"></div><span class="bar-label">3月</span></div>
+            <div class="bar-col"><div class="bar" style="height:85%;background:var(--chart-4)"></div><span class="bar-label">4月</span></div>
+            <div class="bar-col"><div class="bar" style="height:78%;background:var(--chart-5)"></div><span class="bar-label">5月</span></div>
+            <div class="bar-col"><div class="bar" style="height:90%;background:var(--chart-6)"></div><span class="bar-label">6月</span></div>
+          </div>
+          <p class="chart-note">冬季是聆听的高峰期。12 月和 2 月形成两个明显的播放高峰，与假期和新年的节奏吻合。夏季数据平稳但持续走高。</p>
+        </div>
+
+        <div>
+          <div class="glass-card" style="margin-bottom:24px;">
+            <div class="data-block">
+              <h4>平台分布</h4>
+              <div class="platform-bar"><div class="pb-head"><span>iOS</span><span style="font-weight:600;">42%</span></div><div class="pb-track"><div class="pb-fill" style="width:42%;background:var(--accent);"></div></div></div>
+              <div class="platform-bar"><div class="pb-head"><span>Android</span><span style="font-weight:600;">31%</span></div><div class="pb-track"><div class="pb-fill" style="width:31%;background:var(--accent-terracotta);"></div></div></div>
+              <div class="platform-bar"><div class="pb-head"><span>Desktop</span><span style="font-weight:600;">18%</span></div><div class="pb-track"><div class="pb-fill" style="width:18%;background:var(--accent-gold);"></div></div></div>
+              <div class="platform-bar"><div class="pb-head"><span>Web</span><span style="font-weight:600;">9%</span></div><div class="pb-track"><div class="pb-fill" style="width:9%;background:var(--accent-blue);"></div></div></div>
+            </div>
+          </div>
+
+          <div class="glass-card">
+            <div class="data-block">
+              <h4>一天中的聆听高峰</h4>
+              <div style="font-family:var(--font-serif);font-size:32px;font-weight:700;margin-bottom:4px;">21:00</div>
+              <div style="font-size:13px;color:var(--text-secondary);line-height:1.7;font-family:var(--font-sans);">晚间九点是全天播放最密集的时段，其次是通勤时间 8:00–9:00。</div>
+            </div>
+            <div class="data-block" style="margin-bottom:0;">
+              <h4>当前风格</h4>
+              <div style="font-size:14px;font-weight:600;font-family:var(--font-sans);">编辑风 × 液态玻璃</div>
+              <div style="font-size:12px;color:var(--text-muted);font-family:var(--font-sans);">B + D 融合 · 日/夜双皮肤</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ BILLBOARD PAGE ============ -->
+    <div class="page-billboard" id="pageBillboard">
+      <section class="hero">
+        <div class="hero-kicker">Chart / Weekly</div>
+        <h1 class="hero-title" style="font-size:44px;">Billboard<br>周榜</h1>
+      </section>
+
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">
+        <div class="bb-tabs">
+          <button class="bb-tab active">单曲榜</button>
+          <button class="bb-tab">专辑榜</button>
+          <button class="bb-tab">艺人榜</button>
+        </div>
+      </div>
+
+      <div class="week-selector">
+        <button class="week-nav-btn">←</button>
+        <div>
+          <div class="week-label">Week 21, 2026</div>
+          <div class="week-dates">5月18日 — 5月24日</div>
+        </div>
+        <button class="week-nav-btn">→</button>
+      </div>
+
+      <div class="summary-strip">
+        <div><div class="s-val" style="color:var(--accent-blue);">4</div><div class="s-lbl">新入榜</div></div>
+        <div><div class="s-val" style="color:var(--accent-gold);">2</div><div class="s-lbl">重回榜</div></div>
+        <div><div class="s-val">247</div><div class="s-lbl">当周最高播放</div></div>
+        <div><div class="s-val">12,840</div><div class="s-lbl">当周总播放</div></div>
+      </div>
+
+      <!-- Glass card wrapping the table -->
+      <div class="glass-card" style="padding:0;overflow:hidden;">
+        <table class="chart-table" style="margin:0 28px;width:calc(100% - 56px);">
+          <thead>
+            <tr>
+              <th style="width:40px;text-align:center;">#</th>
+              <th style="width:44px;">变动</th>
+              <th style="width:52px;"></th>
+              <th>曲目</th>
+              <th class="num">播放</th>
+              <th class="num" style="width:56px;">PK</th>
+              <th class="num" style="width:56px;">在榜</th>
+              <th class="num" style="width:64px;">PK Wks</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr class="top3">
+              <td class="cell-rank gold">01</td>
+              <td class="cell-change up">↑ 1</td>
+              <td class="cell-cover"><div class="cover-img with-art" style="background:linear-gradient(135deg,#C84C3D,#E8A89E);">🎵</div></td>
+              <td><div class="cell-track">Blinding Lights</div><div class="cell-artist">The Weeknd</div></td>
+              <td class="cell-plays">247<span class="plays-bar-wrap"><span class="plays-bar-fill" style="width:100%;background:var(--accent);"></span></span></td>
+              <td class="cell-stat" style="font-weight:700;color:var(--accent);">1</td>
+              <td class="cell-stat">88</td>
+              <td class="cell-stat" style="font-weight:600;">34</td>
+            </tr>
+            <tr class="top3">
+              <td class="cell-rank silver">02</td>
+              <td class="cell-change down">↓ 1</td>
+              <td class="cell-cover"><div class="cover-img with-art" style="background:linear-gradient(135deg,#3B5998,#7B9CC8);">🎵</div></td>
+              <td><div class="cell-track">As It Was</div><div class="cell-artist">Harry Styles</div></td>
+              <td class="cell-plays">231<span class="plays-bar-wrap"><span class="plays-bar-fill" style="width:94%;background:var(--accent-blue);"></span></span></td>
+              <td class="cell-stat" style="font-weight:700;color:var(--accent);">1</td>
+              <td class="cell-stat">96</td>
+              <td class="cell-stat" style="font-weight:600;">51</td>
+            </tr>
+            <tr class="top3">
+              <td class="cell-rank bronze">03</td>
+              <td class="cell-change same">—</td>
+              <td class="cell-cover"><div class="cover-img with-art" style="background:linear-gradient(135deg,#C17A4E,#D4A24E);">🎵</div></td>
+              <td><div class="cell-track">vampire</div><div class="cell-artist">Olivia Rodrigo</div></td>
+              <td class="cell-plays">218<span class="plays-bar-wrap"><span class="plays-bar-fill" style="width:88%;background:var(--accent-terracotta);"></span></span></td>
+              <td class="cell-stat">3</td>
+              <td class="cell-stat">42</td>
+              <td class="cell-stat">—</td>
+            </tr>
+            <tr>
+              <td class="cell-rank">04</td>
+              <td class="cell-change up">↑ 5</td>
+              <td class="cell-cover"><div class="cover-img with-art" style="background:linear-gradient(135deg,#4A6B4F,#7D9B76);">🎵</div></td>
+              <td><div class="cell-track">Flowers</div><div class="cell-artist">Miley Cyrus</div></td>
+              <td class="cell-plays">205<span class="plays-bar-wrap"><span class="plays-bar-fill" style="width:83%;background:var(--accent-moss);"></span></span></td>
+              <td class="cell-stat">4</td><td class="cell-stat">29</td><td class="cell-stat">—</td>
+            </tr>
+            <tr>
+              <td class="cell-rank">05</td>
+              <td class="cell-change down">↓ 1</td>
+              <td class="cell-cover"><div class="cover-img with-art" style="background:linear-gradient(135deg,#B8860B,#D4A24E);">🎵</div></td>
+              <td><div class="cell-track">Espresso</div><div class="cell-artist">Sabrina Carpenter</div></td>
+              <td class="cell-plays">198<span class="plays-bar-wrap"><span class="plays-bar-fill" style="width:80%;background:var(--accent-gold);"></span></span></td>
+              <td class="cell-stat" style="font-weight:700;color:var(--accent);">1</td>
+              <td class="cell-stat">54</td><td class="cell-stat" style="font-weight:600;">8</td>
+            </tr>
+            <tr>
+              <td class="cell-rank">06</td>
+              <td class="cell-change up">↑ 2</td>
+              <td class="cell-cover"><div class="cover-img with-art" style="background:linear-gradient(135deg,#3B5998,#8BA1B8);">🎵</div></td>
+              <td><div class="cell-track">Cruel Summer</div><div class="cell-artist">Taylor Swift</div></td>
+              <td class="cell-plays">185<span class="plays-bar-wrap"><span class="plays-bar-fill" style="width:75%;background:var(--accent-blue);"></span></span></td>
+              <td class="cell-stat">2</td><td class="cell-stat">104</td><td class="cell-stat" style="font-weight:600;">12</td>
+            </tr>
+            <tr>
+              <td class="cell-rank">07</td>
+              <td class="cell-change down">↓ 3</td>
+              <td class="cell-cover"><div class="cover-img with-art" style="background:linear-gradient(135deg,#C17A4E,#E8A89E);">🎵</div></td>
+              <td><div class="cell-track">Bad Habit</div><div class="cell-artist">Steve Lacy</div></td>
+              <td class="cell-plays">172<span class="plays-bar-wrap"><span class="plays-bar-fill" style="width:70%;background:var(--accent-terracotta);"></span></span></td>
+              <td class="cell-stat">4</td><td class="cell-stat">67</td><td class="cell-stat">—</td>
+            </tr>
+            <tr>
+              <td class="cell-rank">08</td>
+              <td class="cell-change up">↑ 1</td>
+              <td class="cell-cover"><div class="cover-img with-art" style="background:linear-gradient(135deg,#8B6F7A,#B09CA5);">🎵</div></td>
+              <td><div class="cell-track">Anti-Hero</div><div class="cell-artist">Taylor Swift</div></td>
+              <td class="cell-plays">164<span class="plays-bar-wrap"><span class="plays-bar-fill" style="width:66%;background:var(--accent-moss);"></span></span></td>
+              <td class="cell-stat" style="font-weight:700;color:var(--accent);">1</td>
+              <td class="cell-stat">78</td><td class="cell-stat" style="font-weight:600;">22</td>
+            </tr>
+            <tr>
+              <td class="cell-rank">09</td>
+              <td class="cell-change down">↓ 2</td>
+              <td class="cell-cover"><div class="cover-img with-art" style="background:linear-gradient(135deg,#3B5998,#60A5FA);">🎵</div></td>
+              <td><div class="cell-track">Kill Bill</div><div class="cell-artist">SZA</div></td>
+              <td class="cell-plays">158<span class="plays-bar-wrap"><span class="plays-bar-fill" style="width:64%;background:var(--accent-blue);"></span></span></td>
+              <td class="cell-stat">5</td><td class="cell-stat">33</td><td class="cell-stat">—</td>
+            </tr>
+            <tr>
+              <td class="cell-rank">10</td>
+              <td class="cell-change up">↑ 4</td>
+              <td class="cell-cover"><div class="cover-img with-art" style="background:linear-gradient(135deg,#B8860B,#FBBF24);">🎵</div></td>
+              <td><div class="cell-track">Die With A Smile</div><div class="cell-artist">Lady Gaga, Bruno Mars</div></td>
+              <td class="cell-plays">149<span class="plays-bar-wrap"><span class="plays-bar-fill" style="width:60%;background:var(--accent-gold);"></span></span></td>
+              <td class="cell-stat">8</td><td class="cell-stat">18</td><td class="cell-stat">—</td>
+            </tr>
+            <tr>
+              <td class="cell-rank">11</td>
+              <td class="cell-change new">NEW</td>
+              <td class="cell-cover"><div class="cover-img">🆕</div></td>
+              <td><div class="cell-track">BIRDS OF A FEATHER</div><div class="cell-artist">Billie Eilish</div></td>
+              <td class="cell-plays">142<span class="plays-bar-wrap"><span class="plays-bar-fill" style="width:58%;background:var(--accent-new);"></span></span></td>
+              <td class="cell-stat" style="color:var(--accent-new);font-weight:600;">11</td>
+              <td class="cell-stat" style="color:var(--accent-new);font-weight:600;">1</td>
+              <td class="cell-stat" style="color:var(--accent-new);font-weight:600;">1</td>
+            </tr>
+            <tr>
+              <td class="cell-rank">12</td>
+              <td class="cell-change down">↓ 1</td>
+              <td class="cell-cover"><div class="cover-img with-art" style="background:linear-gradient(135deg,#4A6B4F,#7D9B76);">🎵</div></td>
+              <td><div class="cell-track">Heat Waves</div><div class="cell-artist">Glass Animals</div></td>
+              <td class="cell-plays">136<span class="plays-bar-wrap"><span class="plays-bar-fill" style="width:55%;background:var(--accent-moss);"></span></span></td>
+              <td class="cell-stat">2</td><td class="cell-stat">156</td><td class="cell-stat" style="font-weight:600;">18</td>
+            </tr>
+            <tr>
+              <td class="cell-rank">13</td>
+              <td class="cell-change up">↑ 3</td>
+              <td class="cell-cover"><div class="cover-img with-art" style="background:linear-gradient(135deg,#C17A4E,#C97B6B);">🎵</div></td>
+              <td><div class="cell-track">Good Luck, Babe!</div><div class="cell-artist">Chappell Roan</div></td>
+              <td class="cell-plays">131<span class="plays-bar-wrap"><span class="plays-bar-fill" style="width:53%;background:var(--accent-terracotta);"></span></span></td>
+              <td class="cell-stat">3</td><td class="cell-stat">26</td><td class="cell-stat">—</td>
+            </tr>
+            <tr>
+              <td class="cell-rank">14</td>
+              <td class="cell-change re">RE</td>
+              <td class="cell-cover"><div class="cover-img">🔄</div></td>
+              <td><div class="cell-track">Levitating</div><div class="cell-artist">Dua Lipa</div></td>
+              <td class="cell-plays">124<span class="plays-bar-wrap"><span class="plays-bar-fill" style="width:50%;background:var(--accent-re);"></span></span></td>
+              <td class="cell-stat" style="font-weight:700;color:var(--accent);">1</td>
+              <td class="cell-stat">132</td><td class="cell-stat" style="font-weight:600;">46</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="section-footer">共 50 首曲目 &nbsp;·&nbsp; 更新时间 2026年5月24日 22:00 CST &nbsp;·&nbsp; 编辑风 × 液态玻璃</div>
+    </div>
+  </main>
+</div>
+
+<script>
+  // Theme toggle
+  const html = document.documentElement;
+  const themeToggle = document.getElementById('themeToggle');
+
+  themeToggle.addEventListener('click', (e) => {
+    const option = e.target.closest('.theme-option');
+    if (!option) return;
+    const theme = option.dataset.theme;
+    html.setAttribute('data-theme', theme);
+    themeToggle.querySelectorAll('.theme-option').forEach(o => o.classList.remove('active'));
+    option.classList.add('active');
+  });
+
+  // Page switcher
+  const pageSwitcher = document.getElementById('pageSwitcher');
+  const dashboardPage = document.getElementById('pageDashboard');
+  const billboardPage = document.getElementById('pageBillboard');
+
+  pageSwitcher.addEventListener('click', (e) => {
+    const btn = e.target.closest('.page-switch-btn');
+    if (!btn) return;
+    const page = btn.dataset.page;
+    pageSwitcher.querySelectorAll('.page-switch-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    dashboardPage.classList.toggle('active', page === 'dashboard');
+    billboardPage.classList.toggle('active', page === 'billboard');
+  });
+</script>
+</body>
+</html>

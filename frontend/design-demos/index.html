@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Spotify Stats — UI 设计方向对比</title>
+<style>
+  :root {
+    --bg: #F5F3EE;
+    --text: #2D2420;
+    --border: #E8E2D9;
+    --font: 'Geist Variable', 'Inter', system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: var(--font);
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 48px;
+    -webkit-font-smoothing: antialiased;
+  }
+  h1 { font-size: 32px; font-weight: 700; margin-bottom: 8px; }
+  .subtitle { color: #7A7268; margin-bottom: 40px; font-size: 15px; }
+
+  .demo-grid { display: flex; flex-direction: column; gap: 20px; max-width: 800px; }
+
+  .demo-card {
+    display: flex; align-items: center; gap: 24px;
+    padding: 24px 28px;
+    background: white;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    text-decoration: none;
+    color: var(--text);
+    transition: all 0.2s;
+  }
+  .demo-card:hover {
+    border-color: #C4BDB3;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.04);
+    transform: translateX(4px);
+  }
+
+  .demo-letter { width: 48px; height: 48px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 22px; font-weight: 800; flex-shrink: 0; }
+  .demo-info { flex: 1; }
+  .demo-info h3 { font-size: 18px; font-weight: 700; margin-bottom: 4px; }
+  .demo-info p { font-size: 13px; color: #7A7268; line-height: 1.5; }
+  .demo-tags { display: flex; gap: 6px; margin-top: 6px; }
+  .demo-tags span { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.8px; padding: 3px 8px; border-radius: 4px; }
+  .demo-arrow { font-size: 20px; color: #B8B0A6; flex-shrink: 0; }
+
+  .a .demo-letter { background: #1A1A1A; color: #1ED760; }
+  .a .demo-tags span { background: #1A1A1A; color: #9CA3AF; }
+  .b .demo-letter { background: #FAF7F2; color: #C84C3D; border: 1px solid #E8E2D9; }
+  .b .demo-tags span { background: #F5F3EE; color: #6B5E58; }
+  .c .demo-letter { background: #FEFBF6; color: #D4A24E; border: 1px solid #EDE8E0; }
+  .c .demo-tags span { background: #FEFBF6; color: #7A7268; border: 1px solid #EDE8E0; }
+  .d .demo-letter { background: #0F172A; color: #C084FC; }
+  .d .demo-tags span { background: #0F172A; color: #B0B8C8; }
+  .e .demo-letter { background: #FFFDF7; color: #E11D48; border: 3px solid #000; }
+  .e .demo-tags span { background: #FFFDF7; color: #4A4A4A; border: 2px solid #000; }
+
+  .final .demo-letter { background: linear-gradient(135deg, #FAF7F2 0%, #F5F3EE 100%); color: #C84C3D; border: 1px solid #E8E2D9; font-size: 14px; width: 56px; }
+  .final .demo-tags span { background: rgba(200,76,61,0.08); color: #C84C3D; }
+  .final { border-color: #C84C3D; border-width: 2px; }
+
+  .note { margin-top: 40px; padding: 16px 20px; background: white; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; color: #7A7268; max-width: 800px; line-height: 1.6; }
+  .note strong { color: var(--text); }
+</style>
+</head>
+<body>
+<h1>Spotify Stats · UI 设计方向</h1>
+<p class="subtitle">五种不同风格的仪表盘 demo，各自打开链接可预览完整效果</p>
+
+<!-- Final choice spotlight -->
+<a href="final-b-plus-d.html" class="demo-card final" style="margin-bottom:28px;border:2px solid #C84C3D;">
+  <div class="demo-letter" style="background: linear-gradient(135deg, #FAF7F2 0%, rgba(200,76,61,0.08) 100%); color: #C84C3D; width: 56px;">★</div>
+  <div class="demo-info">
+    <h3 style="color:#C84C3D;">最终方案 · 编辑风 × 液态玻璃</h3>
+    <p>B（编辑风）为主导 + D（液态玻璃）点缀。含日/夜皮肤切换按钮，含仪表盘和 Billboard 两个页面。</p>
+    <div class="demo-tags"><span style="background:rgba(200,76,61,0.08);color:#C84C3D;">最终选定</span><span style="background:rgba(200,76,61,0.08);color:#C84C3D;">日/夜切换</span><span style="background:rgba(200,76,61,0.08);color:#C84C3D;">B+D融合</span></div>
+  </div>
+  <span class="demo-arrow" style="color:#C84C3D;">→</span>
+</a>
+
+<div class="demo-grid">
+  <a href="a-dark-immersive.html" class="demo-card a">
+    <div class="demo-letter">A</div>
+    <div class="demo-info">
+      <h3>暗黑沉浸 / Cinematic</h3>
+      <p>深黑层级 + 霓虹色图表 + Spotify 绿强调。数据像在影院银幕上呈现。</p>
+      <div class="demo-tags"><span>暗黑模式</span><span>高对比</span><span>专注感</span></div>
+    </div>
+    <span class="demo-arrow">→</span>
+  </a>
+
+  <a href="b-editorial.html" class="demo-card b">
+    <div class="demo-letter">B</div>
+    <div class="demo-info">
+      <h3>编辑风 / Typography-First</h3>
+      <p>衬线标题 + 大面积留白 + 数据叙事。仪表盘像一本精心编排的杂志。</p>
+      <div class="demo-tags"><span>衬线字体</span><span>留白</span><span>叙事感</span></div>
+    </div>
+    <span class="demo-arrow">→</span>
+  </a>
+
+  <a href="c-calm-tech.html" class="demo-card c">
+    <div class="demo-letter">C</div>
+    <div class="demo-info">
+      <h3>便当网格 / Calm Tech</h3>
+      <p>软色模块卡片 + 噪点纹理 + 暖色调。让数据"呼吸"，安静不打扰。</p>
+      <div class="demo-tags"><span>Bento</span><span>暖色</span><span>低认知负荷</span></div>
+    </div>
+    <span class="demo-arrow">→</span>
+  </a>
+
+  <a href="d-liquid-glass.html" class="demo-card d">
+    <div class="demo-letter">D</div>
+    <div class="demo-info">
+      <h3>液态玻璃 / Liquid Glass</h3>
+      <p>毛玻璃面板 + 动态渐变背景 + 纵深层次。前卫、通透、科技感。</p>
+      <div class="demo-tags"><span>Glassmorphism</span><span>渐变</span><span>科技感</span></div>
+    </div>
+    <span class="demo-arrow">→</span>
+  </a>
+
+  <a href="e-neo-brutalist.html" class="demo-card e">
+    <div class="demo-letter">E</div>
+    <div class="demo-info">
+      <h3>新粗野主义 / Neo-Brutalist</h3>
+      <p>粗黑边框 + 硬阴影 + 高饱和撞色。有个性、反精致、一眼认出。</p>
+      <div class="demo-tags"><span>硬边框</span><span>高饱和</span><span>反精致</span></div>
+    </div>
+    <span class="demo-arrow">→</span>
+  </a>
+</div>
+
+<h2 style="margin-top:48px;margin-bottom:16px;font-size:22px;">Billboard 周榜（核心功能）</h2>
+<p style="color:#7A7268;font-size:14px;margin-bottom:24px;">周选择器 · 单曲/专辑/艺人子Tab · 排名升降 · Peak/Wks指标 · NEW/RE标记</p>
+
+<div class="demo-grid">
+  <a href="billboard-a-dark.html" class="demo-card a">
+    <div class="demo-letter">A</div>
+    <div class="demo-info">
+      <h3>暗黑沉浸 · Billboard</h3>
+      <p>暗色表格 + 霓虹进度条 + 绿/珊瑚升降色。数据密集页面最高效的处理方式。</p>
+      <div class="demo-tags"><span>高密度</span><span>色彩编码</span><span>暗色最优</span></div>
+    </div>
+    <span class="demo-arrow">→</span>
+  </a>
+
+  <a href="billboard-b-editorial.html" class="demo-card b">
+    <div class="demo-letter">B</div>
+    <div class="demo-info">
+      <h3>编辑风 · Billboard</h3>
+      <p>衬线数字 + 宽松行距 + 斜体艺人名。榜单像杂志乐评栏目一样优雅。</p>
+      <div class="demo-tags"><span>优雅</span><span>低密度</span><span>叙事感</span></div>
+    </div>
+    <span class="demo-arrow">→</span>
+  </a>
+
+  <a href="billboard-c-calm.html" class="demo-card c">
+    <div class="demo-letter">C</div>
+    <div class="demo-info">
+      <h3>便当网格 · Billboard</h3>
+      <p>卡片化 Tabs + 独立 KPI 小卡 + 软色进度条。数据被温柔包裹，不压迫。</p>
+      <div class="demo-tags"><span>亲和</span><span>卡片化</span><span>低压力</span></div>
+    </div>
+    <span class="demo-arrow">→</span>
+  </a>
+
+  <a href="billboard-d-glass.html" class="demo-card d">
+    <div class="demo-letter">D</div>
+    <div class="demo-info">
+      <h3>液态玻璃 · Billboard</h3>
+      <p>毛玻璃表格容器 + 渐变进度条 + 彩色光晕背景。最具"未来感"的榜单。</p>
+      <div class="demo-tags"><span>前卫</span><span>通透</span><span>氛围感</span></div>
+    </div>
+    <span class="demo-arrow">→</span>
+  </a>
+
+  <a href="billboard-e-brutalist.html" class="demo-card e">
+    <div class="demo-letter">E</div>
+    <div class="demo-info">
+      <h3>新粗野主义 · Billboard</h3>
+      <p>粗黑表头 + 硬阴影容器 + 8px 进度条。榜单的竞争感被视觉语言放大。</p>
+      <div class="demo-tags"><span>冲击力</span><span>竞争感</span><span>辨识度</span></div>
+    </div>
+    <span class="demo-arrow">→</span>
+  </a>
+</div>
+
+<div class="note" style="margin-top:40px;">
+  <strong>提示：</strong>所有文件为纯静态 HTML，无需构建即可在浏览器中打开。每个 Billboard demo 包含单曲榜子 Tab、周选择器、14 行含升降/NEW/RE 的完整榜单数据。<br>
+  <strong>推荐做法：</strong>在 5 个浏览器标签页中同时打开各 Billboard demo，并排对比表格密度、色彩编码和信息扫描效率。
+</div>
+</body>
+</html>

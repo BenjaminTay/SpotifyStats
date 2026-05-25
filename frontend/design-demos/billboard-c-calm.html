@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>C. 便当网格 · Billboard 周榜 — Spotify Stats</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  :root {
+    --bg-page: #FEFBF6;
+    --bg-card: #FFFFFF;
+    --bg-card-warm: #FFFBF5;
+    --bg-card-cool: #F8FAFB;
+    --text-primary: #2D2420;
+    --text-secondary: #7A7268;
+    --text-muted: #B8B0A6;
+    --accent-amber: #D4A24E;
+    --accent-sage: #7D9B76;
+    --accent-blue: #8BA1B8;
+    --accent-rose: #C97B7B;
+    --border: #EDE8E0;
+    --shadow-sm: 0 1px 3px rgba(0,0,0,0.03), 0 1px 2px rgba(0,0,0,0.04);
+    --shadow-md: 0 4px 12px rgba(0,0,0,0.03), 0 2px 4px rgba(0,0,0,0.04);
+    --radius-sm: 12px;
+    --radius: 16px;
+    --radius-lg: 20px;
+    --font-sans: 'Geist Variable', 'Inter', system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: var(--font-sans);
+    background: var(--bg-page);
+    color: var(--text-primary);
+    min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+  }
+  body::before {
+    content: '';
+    position: fixed; inset: 0; z-index: 0; opacity: 0.025;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    background-size: 200px 200px;
+    pointer-events: none;
+  }
+  .app { position: relative; z-index: 2; display: flex; flex-direction: column; min-height: 100vh; }
+
+  .topbar { display: flex; align-items: center; justify-content: space-between; padding: 16px 32px; border-bottom: 1px solid var(--border); }
+  .topbar-logo { font-size: 17px; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+  .topbar-logo .mark { width: 26px; height: 26px; border-radius: 8px; background: var(--accent-amber); display: flex; align-items: center; justify-content: center; color: white; font-size: 13px; }
+  .topbar-nav { display: flex; gap: 20px; }
+  .topbar-nav a { font-size: 13px; font-weight: 500; color: var(--text-secondary); text-decoration: none; padding: 6px 12px; border-radius: 8px; }
+  .topbar-nav a:hover { background: rgba(0,0,0,0.03); }
+  .topbar-nav a.active { color: var(--text-primary); background: rgba(0,0,0,0.04); font-weight: 600; }
+
+  .main { flex: 1; max-width: 1200px; width: 100%; margin: 0 auto; padding: 28px 32px; }
+
+  .page-header { margin-bottom: 24px; }
+  .page-title { font-size: 24px; font-weight: 700; letter-spacing: -0.3px; margin-bottom: 4px; }
+  .page-subtitle { font-size: 13px; color: var(--text-secondary); }
+
+  /* Bento grid for Billboard */
+  .bento-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 14px; }
+
+  .bento-card {
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 20px 22px;
+    box-shadow: var(--shadow-sm); transition: all 0.2s;
+  }
+  .bento-card:hover { box-shadow: var(--shadow-md); }
+
+  .span-3 { grid-column: span 3; }
+  .span-6 { grid-column: span 6; }
+
+  /* Tabs as pill buttons inside card */
+  .tab-bar { display: flex; gap: 6px; margin-bottom: 18px; }
+  .tab-btn { padding: 7px 18px; border-radius: 20px; font-size: 13px; font-weight: 500; color: var(--text-muted); cursor: pointer; border: 1px solid var(--border); background: white; transition: all 0.15s; }
+  .tab-btn.active { background: var(--bg-card-warm); color: var(--text-primary); font-weight: 600; border-color: var(--accent-amber); }
+
+  /* Week selector */
+  .week-bar { display: flex; align-items: center; gap: 14px; margin-bottom: 18px; }
+  .week-nav { width: 32px; height: 32px; border-radius: 50%; background: white; border: 1px solid var(--border); color: var(--text-muted); display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 14px; }
+  .week-nav:hover { border-color: var(--accent-amber); color: var(--text-primary); }
+  .week-label { font-size: 16px; font-weight: 700; }
+  .week-dates { font-size: 12px; color: var(--text-muted); }
+
+  /* Summary KPI cards (bento row) */
+  .summary-kpi { text-align: center; padding: 16px 12px; }
+  .summary-kpi .val { font-size: 26px; font-weight: 700; letter-spacing: -0.5px; }
+  .summary-kpi .lbl { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.8px; color: var(--text-muted); margin-top: 4px; }
+
+  /* Table — soft style */
+  .chart-table { width: 100%; border-collapse: collapse; }
+  .chart-table th { text-align: left; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.8px; color: var(--text-muted); padding: 12px 14px; border-bottom: 1px solid var(--border); }
+  .chart-table th.pin-right { text-align: right; }
+  .chart-table td { padding: 12px 14px; border-bottom: 1px solid var(--border); font-size: 13px; vertical-align: middle; }
+  .chart-table tr:hover td { background: var(--bg-card-warm); }
+  .chart-table tr.top3 td { background: rgba(212,162,78,0.03); }
+
+  .cell-rank { font-weight: 700; font-size: 15px; width: 44px; text-align: center; }
+  .cell-rank.gold { color: var(--accent-amber); }
+  .cell-rank.silver { color: var(--text-secondary); }
+  .cell-rank.bronze { color: var(--accent-rose); }
+
+  .cell-change { font-weight: 600; font-size: 11px; width: 42px; text-align: center; }
+  .cell-change.up { color: var(--accent-sage); }
+  .cell-change.down { color: var(--accent-rose); }
+  .cell-change.same { color: var(--text-muted); }
+  .cell-change.new { color: var(--accent-blue); font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; }
+  .cell-change.re { color: var(--accent-amber); font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; }
+
+  .cell-track { font-weight: 600; }
+  .cell-artist { font-size: 11px; color: var(--text-muted); }
+
+  .cell-plays { text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .cell-stat { text-align: right; color: var(--text-secondary); font-size: 12px; }
+
+  .plays-bar-wrap { width: 70px; height: 3px; background: var(--border); border-radius: 2px; overflow: hidden; display: inline-block; vertical-align: middle; margin-left: 8px; }
+  .plays-bar-fill { height: 100%; border-radius: 2px; }
+
+  .footer-note { font-size: 12px; color: var(--text-muted); margin-top: 16px; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="topbar">
+    <div class="topbar-logo"><span class="mark">♪</span>Spotify Stats</div>
+    <nav class="topbar-nav">
+      <a href="#">总览</a>
+      <a href="#" class="active">Billboard</a>
+      <a href="#">排行榜</a>
+      <a href="#">年度回顾</a>
+      <a href="#">分析</a>
+    </nav>
+  </header>
+
+  <main class="main">
+    <div class="page-header">
+      <h1 class="page-title">Billboard 周榜</h1>
+      <p class="page-subtitle">个人 Spotify 播放周榜 · 基于 Power Score 排名</p>
+    </div>
+
+    <div class="bento-grid">
+      <!-- Tab bar + Week selector -->
+      <div class="bento-card span-6" style="padding:16px 22px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;">
+          <div class="tab-bar">
+            <button class="tab-btn active">单曲榜</button>
+            <button class="tab-btn">专辑榜</button>
+            <button class="tab-btn">艺人榜</button>
+          </div>
+          <div class="week-bar" style="margin-bottom:0;">
+            <button class="week-nav">◀</button>
+            <div><div class="week-label">Week 21, 2026</div><div class="week-dates">5/18 – 5/24</div></div>
+            <button class="week-nav">▶</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Summary row (bento) -->
+      <div class="bento-card" style="grid-column:span 2;grid-row:span 1;background:var(--bg-card-warm);">
+        <div class="summary-kpi"><div class="val" style="color:var(--accent-blue);">4</div><div class="lbl">新入榜</div></div>
+      </div>
+      <div class="bento-card" style="grid-column:span 2;grid-row:span 1;background:var(--bg-card-warm);">
+        <div class="summary-kpi"><div class="val" style="color:var(--accent-amber);">2</div><div class="lbl">重回榜</div></div>
+      </div>
+      <div class="bento-card" style="grid-column:span 2;grid-row:span 1;background:var(--bg-card-cool);">
+        <div class="summary-kpi"><div class="val">12,840</div><div class="lbl">当周总播放</div></div>
+      </div>
+
+      <!-- Chart table -->
+      <div class="bento-card span-6">
+        <table class="chart-table">
+          <thead><tr><th style="width:44px;text-align:center;">#</th><th style="width:42px;text-align:center;">变动</th><th>曲目</th><th class="pin-right">播放</th><th class="pin-right" style="width:60px;">PK</th><th class="pin-right" style="width:60px;">在榜</th><th class="pin-right" style="width:70px;">PK Wks</th></tr></thead>
+          <tbody>
+            <tr class="top3"><td class="cell-rank gold">01</td><td class="cell-change up">↑1</td><td><div class="cell-track">Blinding Lights</div><div class="cell-artist">The Weeknd</div></td><td class="cell-plays">247<span class="plays-bar-wrap"><span class="plays-bar-fill" style="width:100%;background:var(--accent-amber);"></span></span></td><td class="cell-stat" style="font-weight:700;color:var(--accent-amber);">1</td><td class="cell-stat">88</td><td class="cell-stat" style="font-weight:600;">34</td></tr>
+            <tr class="top3"><td class="cell-rank silver">02</td><td class="cell-change down">↓1</td><td><div class="cell-track">As It Was</div><div class="cell-artist">Harry Styles</div></td><td class="cell-plays">231<span class="plays-bar-wrap"><span class="plays-bar-fill" style="width:94%;background:var(--accent-blue);"></span></span></td><td class="cell-stat" style="font-weight:700;color:var(--accent-amber);">1</td><td class="cell-stat">96</td><td class="cell-stat" style="font-weight:600;">51</td></tr>
+            <tr class="top3"><td class="cell-rank bronze">03</td><td class="cell-change same">—</td><td><div class="cell-track">vampire</div><div class="cell-artist">Olivia Rodrigo</div></td><td class="cell-plays">218<span class="plays-bar-wrap"><span class="plays-bar-fill" style="width:88%;background:var(--accent-rose);"></span></span></td><td class="cell-stat">3</td><td class="cell-stat">42</td><td class="cell-stat">—</td></tr>
+            <tr><td class="cell-rank">04</td><td class="cell-change up">↑5</td><td><div class="cell-track">Flowers</div><div class="cell-artist">Miley Cyrus</div></td><td class="cell-plays">205<span class="plays-bar-wrap"><span class="plays-bar-fill" style="width:83%;background:var(--accent-sage);"></span></span></td><td class="cell-stat">4</td><td class="cell-stat">29</td><td class="cell-stat">—</td></tr>
+            <tr><td class="cell-rank">05</td><td class="cell-change down">↓1</td><td><div class="cell-track">Espresso</div><div class="cell-artist">Sabrina Carpenter</div></td><td class="cell-plays">198<span class="plays-bar-wrap"><span class="plays-bar-fill" style="width:80%;background:var(--accent-amber);"></span></span></td><td class="cell-stat" style="font-weight:700;color:var(--accent-amber);">1</td><td class="cell-stat">54</td><td class="cell-stat" style="font-weight:600;">8</td></tr>
+            <tr><td class="cell-rank">06</td><td class="cell-change up">↑2</td><td><div class="cell-track">Cruel Summer</div><div class="cell-artist">Taylor Swift</div></td><td class="cell-plays">185<span class="plays-bar-wrap"><span class="plays-bar-fill" style="width:75%;background:var(--accent-blue);"></span></span></td><td class="cell-stat">2</td><td class="cell-stat">104</td><td class="cell-stat" style="font-weight:600;">12</td></tr>
+            <tr><td class="cell-rank">07</td><td class="cell-change down">↓3</td><td><div class="cell-track">Bad Habit</div><div class="cell-artist">Steve Lacy</div></td><td class="cell-plays">172<span class="plays-bar-wrap"><span class="plays-bar-fill" style="width:70%;background:var(--accent-rose);"></span></span></td><td class="cell-stat">4</td><td class="cell-stat">67</td><td class="cell-stat">—</td></tr>
+            <tr><td class="cell-rank">08</td><td class="cell-change up">↑1</td><td><div class="cell-track">Anti-Hero</div><div class="cell-artist">Taylor Swift</div></td><td class="cell-plays">164<span class="plays-bar-wrap"><span class="plays-bar-fill" style="width:66%;background:var(--accent-sage);"></span></span></td><td class="cell-stat" style="font-weight:700;color:var(--accent-amber);">1</td><td class="cell-stat">78</td><td class="cell-stat" style="font-weight:600;">22</td></tr>
+            <tr><td class="cell-rank">09</td><td class="cell-change down">↓2</td><td><div class="cell-track">Kill Bill</div><div class="cell-artist">SZA</div></td><td class="cell-plays">158<span class="plays-bar-wrap"><span class="plays-bar-fill" style="width:64%;background:var(--accent-blue);"></span></span></td><td class="cell-stat">5</td><td class="cell-stat">33</td><td class="cell-stat">—</td></tr>
+            <tr><td class="cell-rank">10</td><td class="cell-change up">↑4</td><td><div class="cell-track">Die With A Smile</div><div class="cell-artist">Lady Gaga, Bruno Mars</div></td><td class="cell-plays">149<span class="plays-bar-wrap"><span class="plays-bar-fill" style="width:60%;background:var(--accent-amber);"></span></span></td><td class="cell-stat">8</td><td class="cell-stat">18</td><td class="cell-stat">—</td></tr>
+            <tr><td class="cell-rank">11</td><td class="cell-change new">NEW</td><td><div class="cell-track">BIRDS OF A FEATHER</div><div class="cell-artist">Billie Eilish</div></td><td class="cell-plays">142<span class="plays-bar-wrap"><span class="plays-bar-fill" style="width:58%;background:var(--accent-blue);"></span></span></td><td class="cell-stat" style="color:var(--accent-blue);font-weight:600;">11</td><td class="cell-stat" style="color:var(--accent-blue);font-weight:600;">1</td><td class="cell-stat" style="color:var(--accent-blue);font-weight:600;">1</td></tr>
+            <tr><td class="cell-rank">12</td><td class="cell-change down">↓1</td><td><div class="cell-track">Heat Waves</div><div class="cell-artist">Glass Animals</div></td><td class="cell-plays">136<span class="plays-bar-wrap"><span class="plays-bar-fill" style="width:55%;background:var(--accent-sage);"></span></span></td><td class="cell-stat">2</td><td class="cell-stat">156</td><td class="cell-stat" style="font-weight:600;">18</td></tr>
+            <tr><td class="cell-rank">13</td><td class="cell-change up">↑3</td><td><div class="cell-track">Good Luck, Babe!</div><div class="cell-artist">Chappell Roan</div></td><td class="cell-plays">131<span class="plays-bar-wrap"><span class="plays-bar-fill" style="width:53%;background:var(--accent-rose);"></span></span></td><td class="cell-stat">3</td><td class="cell-stat">26</td><td class="cell-stat">—</td></tr>
+            <tr><td class="cell-rank">14</td><td class="cell-change re">RE</td><td><div class="cell-track">Levitating</div><div class="cell-artist">Dua Lipa</div></td><td class="cell-plays">124<span class="plays-bar-wrap"><span class="plays-bar-fill" style="width:50%;background:var(--accent-amber);"></span></span></td><td class="cell-stat" style="font-weight:700;color:var(--accent-amber);">1</td><td class="cell-stat">132</td><td class="cell-stat" style="font-weight:600;">46</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="footer-note">共 50 首 · 更新时间 2026-05-24 22:00 CST · 便当网格 Calm Tech</div>
+  </main>
+</div>
+</body>
+</html>
