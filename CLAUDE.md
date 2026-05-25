@@ -6,15 +6,20 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Spotify Extended Streaming History 数据分析 Web 应用。从 Spotify 官方导出的 JSON 播放记录中导入数据到 SQLite，通过 Streamlit 提供交互式多维度统计仪表盘。
 
+**架构演进**：正在从 Streamlit 单体架构迁移到 FastAPI 后端 + React 前端。后端已完成（56 个 API 端点），前端待构建。当前 Streamlit 应用和后端 API 可并行运行。
+
 **UI 主题**：「Vinyl Archive」黑胶档案馆 — 暖奶油白底色 + 暗金强调 + 衬线字体 + 噪点纹理，装饰层用复古唱片美学，数据区域保持清晰可读。
 
 ## 常用命令
 
 ```bash
-# 启动开发服务器
+# 启动 FastAPI 后端（端口 8000，Swagger UI: http://localhost:8000/docs）
+source .venv/bin/activate && uvicorn backend.main:app --reload
+
+# 启动 Streamlit 开发服务器
 source .venv/bin/activate && streamlit run app/main.py
 
-# 仅重新导入数据（不启动UI）
+# 仅重新导入数据（不启动 UI）
 source .venv/bin/activate && python3 -c "
 import sys; sys.path.insert(0, '.')
 from app.import_data import import_data
@@ -41,11 +46,100 @@ JSON 文件 (Spotify导出) ──→ import_data.py ──→ SQLite (spotify_s
                                     │
 JSON 文件 (账号数据)  ──→ import_account_data.py ──┘
                                                         │
-                         Streamlit pages ────────────────┘
-                         (st.cache_data 缓存查询结果)
+                    ┌───────────────────────────────────┘
+                    │
+                    ├──→ FastAPI backend (backend/)
+                    │    ├── api/      路由层 (Depends 依赖注入)
+                    │    ├── services/ 计算逻辑层 (lru_cache)
+                    │    ├── models/   Pydantic 响应模型
+                    │    └── core/     核心工具 (db, utils, cache, json_helpers)
+                    │
+                    └──→ Streamlit app (app/)
+                         st.cache_data 缓存查询结果
 ```
 
-### 核心模块
+### 后端架构 (backend/)
+
+FastAPI 后端采用三层分离架构：**路由层 (api/)** → **服务层 (services/)** → **核心工具层 (core/)**。
+
+#### 路由层 (api/)
+
+18 个子路由模块，共 56 个 API 端点。所有路由通过 `backend/api/router.py` 组装，挂载到 `backend/main.py` 的 `/api` 前缀下。
+
+**过滤参数依赖注入** (`backend/dependencies.py`)：
+- `PlayFilters` — 标准播放数据过滤（`min_ms`, `music_only`, `merge_enabled`），用于仪表盘、时间线、排行榜、行为分析、听歌时段等端点
+- `BillboardFilters` — Billboard 计算过滤（继承播放过滤 + `bb_top_n`, `bb_album_top_n`, `bb_artist_top_n`, `bb_week_start_dow`, `bb_week_start_hour`, `year_start`, `year_end`）
+- `get_conn()` — 数据库连接依赖注入（默认只读连接）
+
+端点使用方式：`def endpoint(filters: PlayFilters = Depends(), conn: Connection = Depends(get_conn)):`
+
+**连接管理约定**：
+- API 层：通过 `Depends(get_conn)` 注入连接，请求结束时自动关闭
+- 非缓存服务：接收 `conn` 参数从 API 层传入
+- 缓存服务（`@lru_cache` / `@ttl_cached`）：内部调用 `get_db()` 获取连接（连接对象不可哈希，无法作为缓存键）
+
+**端点清单**：
+```
+GET  /api/health                         健康检查
+GET  /api/dashboard/*                    仪表盘（6 端点：summary, monthly-trend, top-tracks, platform-dist, dow-dist, random-track）
+GET  /api/timeline/*                     时间线（annual, monthly）
+GET  /api/leaderboard                    排行榜（track/artist/album × plays/hours × all/year）
+GET  /api/behavior                       行为分析（reason_end, reason_start, fwdbtn, shuffle, platform）
+GET  /api/listening-hours/*              听歌时段（heatmap, yearly-heatmap, late-night）
+GET  /api/artist/{name}/deep-dive        艺人深度分析
+GET  /api/wrapped/{year}                 自定义年度总结
+GET  /api/wrapped-hub/*                  Wrapped 2025 官方
+GET  /api/library/*                      音乐库
+GET  /api/search-history/*               搜索编年史
+GET  /api/insights/*                     音乐画像
+GET  /api/podcast/*                      播客
+GET  /api/video/*                        视频分析
+GET  /api/profile                        个人档案
+GET  /api/billboard/data                  Billboard 统一数据入口（返回全部 15 个数据结构，~2-5MB JSON）
+GET  /api/billboard/release-cycle/*       发行周期分析（artist-list, artist/{name}, artist/{name}/album/{album}, compare）
+GET  /api/settings                       设置（GET 读取 / PUT 更新）
+GET  /api/version-merge/*                版本合并管理（groups, detect, apply）
+POST /api/import/streaming               串流数据导入（异步任务）
+POST /api/import/account                 账号数据导入
+```
+
+#### 服务层 (services/)
+
+计算逻辑从 Streamlit 页面中提取，不依赖任何 Web 框架。每个服务文件职责单一：
+
+- **`play_service.py`** — 核心播放数据服务。`load_plays()` 封装，通用 groupby 聚合（按年/月/周/小时/平台/艺术家等），仪表盘 KPI、时间线、排行榜、行为分析、听歌时段热力图、年度总结 Wrapped 等所有基于播放数据的端点均调用此服务
+- **`billboard_service.py`** — Billboard 计算管线。`compute_billboard_data()` 一次性计算 15+ 数据结构（周榜 ×3、总榜 ×3、走势总榜 ×3、榜单记录、每周榜首等），`@lru_cache` 缓存。Power Score 只计算一次（原 Streamlit 代码重复计算 ~10 次）
+- **`release_cycle_service.py`** — 发行周期分析。艺人发行列表、单曲 Billboard 历史、专辑周期指标（首周排名、峰值、影响力得分、半衰期）、先行曲识别（三级查找：DB → Spotify API → 最早播放日期）、`compare_releases()` 多发行叠加对比。`@ttl_cached` 缓存 Spotify API 令牌（~58 分钟 TTL）
+- **`library_service.py`** — 收藏交叉查询（收藏曲目/专辑/艺人与实际收听对比）
+- **`search_service.py`** — 搜索历史统计（日搜索量、意图分类、时段热力图）
+- **`insights_service.py`** — 粉丝层级分析 + Marquee 推广转化率
+- **`podcast_service.py`** / **`video_service.py`** / **`profile_service.py`** / **`wrapped_hub_service.py`** — 账号数据页面服务
+
+#### 核心工具层 (core/)
+
+从 `app/` 目录原样迁移或提取的纯逻辑模块，不含任何 Web 框架依赖：
+
+- **`db.py`** — 从 `app/db.py` 完整迁移。`get_db()`, `base_filters()`, `load_plays()`, `merge_consecutive_plays()`, `ensure_schema()`, `build_aggregations()` 等所有函数
+- **`utils.py`** — 从 `app/utils.py` 完整迁移。`convert_to_local_time()`, `classify_platform()`
+- **`version_merge.py`** — 从 `app/version_merge.py` 完整迁移。`detect_release_groups()`, `apply_detected_groups()`, `create_group()`, `delete_group()` 等
+- **`import_data.py`** / **`import_account_data.py`** — 从 `app/` 迁移，progress_callback 改为 threading.Event + 共享字典
+- **`json_helpers.py`** — 消除 3 处重复定义的序列化工具。`py_val()` 将 numpy/pandas 类型转为 JSON 安全的原生 Python 类型；`df_to_json()` 将 DataFrame 转为 dict 列表
+- **`cache.py`** — 从 `release_cycle_service.py` 提取。`ttl_cached(ttl_seconds)` 装饰器，用于 Spotify API 等需要时间过期的外部调用缓存
+
+#### 响应模型 (models/)
+
+Pydantic v2 模型定义 API 响应结构，按领域拆分：
+- `common.py` — 通用模型（分页、错误响应）
+- `dashboard.py` — 仪表盘响应
+- `timeline.py` — 时间线 + Wrapped 年度总结响应（`AnnualTimelinePoint`, `MonthlyTimelinePoint`, `YearlyWrapped` 等）
+- `leaderboard.py` — 排行榜响应（`LeaderboardEntry`, `LeaderboardResponse`）
+- `behavior.py` — 行为分析 + 听歌时段响应（`ReasonDist`, `FwdbtnByHour`, `HeatmapResponse` 等）
+
+### Streamlit 应用 (app/)
+
+以下为原有 Streamlit 架构文档，在 React 前端构建完成前仍为主要的用户界面。
+
+#### 核心模块
 
 - **`app/db.py`** — 数据库层。`get_db()` 获取连接（默认只读，WAL模式），`base_filters()` 生成标准 WHERE 条件片段（最短时长 + 仅音乐，已移除不可靠的 skipped 过滤），`load_plays()` 统一数据加载入口（4 表 JOIN + 过滤），`merge_consecutive_plays()` 合并连续同曲目播放为逻辑播放次数（先合并再过滤，避免碎片丢失）。`ensure_schema()` 增量升级 schema（新增表/索引/列安全重复执行），所有统计页面通过此函数统一过滤逻辑。预聚合表 `agg_weekly_{tracks,albums,artists}` + `agg_config` 存储 Billboard 预计算结果，参数变更时通过参数哈希自动失效回退实时计算。`release_groups` + `release_group_members` 表管理专辑版本合并关系；`spotify_album_meta` 新增 `total_tracks` 和 `track_list` 列用于版本合并超集检测。
 - **`app/import_data.py`** — 串流数据 ETL 管线。逐文件读取 JSON，UTC→本地时间转换，平台字符串归一化，维度表 upsert（artist/album/track，以 `(artist_id, track_name)` 为 key 合并重复版本），同步写入 `track_albums` 关联表，事实表 5000 行批量插入。
@@ -130,7 +224,11 @@ app/pages/billboard/
 ## 技术约束
 
 - Python 3.9 — 使用 `Optional[X]` 而非 `X | None`，`dict[str, int]` 可用
-- `sys.path.insert(0, ...)` 在每个文件顶部，因为 Streamlit 运行时项目根目录不在 path 中
+- **后端**：使用标准 Python 绝对导入（`from backend.core.db import get_db`），uvicorn 自动处理模块路径
+- **Streamlit**：`sys.path.insert(0, ...)` 在每个文件顶部，因为 Streamlit 运行时项目根目录不在 path 中
 - SQLite 数据库文件位于 `data/spotify_stats.db`，由 `.gitignore` 排除
 - 数据文件夹结构：`data/streaming/`（长期串流记录）、`data/account/`（账号数据），详见 `data/README.md`
 - 数字前缀文件名（如 `02_timeline.py`）通过 `importlib.util.spec_from_file_location()` 动态加载，不要在 wrapper 中直接 `import`
+- FastAPI `:path` 参数是贪婪匹配的，含子路径的路由（如 `/artist/{name:path}/album/{album_name:path}`）必须注册在更泛化的路由之前
+- `backend/core/json_helpers.py` 是所有 numpy/pandas → JSON 序列化的唯一入口，不要在 service 层重复定义 `_py_val` / `_df_to_json`
+- 缓存服务函数使用 `@lru_cache` 时，内部必须调用 `get_db()` 获取连接（连接对象不可哈希）；非缓存服务从 API 层接收 `conn` 参数

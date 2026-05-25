@@ -4,6 +4,8 @@
 
 **UI 主题**：「Vinyl Archive」黑胶档案馆 — 暖奶油白底色、暗金强调色、Georgia 衬线字体、噪点纹理，以复古唱片美学为装饰层，数据区域保持清晰可读。
 
+**架构**：FastAPI 后端 + Streamlit 前端（前后端分离迁移中，后端已完成，React 前端待构建）。
+
 ## 功能
 
 - **总览仪表盘** — 关键指标卡片、月度播放趋势、Top 10 曲目、平台分布、一周听歌热力图
@@ -32,11 +34,14 @@ source .venv/bin/activate
 # 安装依赖
 pip install -r requirements.txt
 
-# 启动应用
+# 启动 FastAPI 后端（端口 8000，Swagger UI: http://localhost:8000/docs）
+uvicorn backend.main:app --reload
+
+# 启动 Streamlit 前端（端口 8501）
 streamlit run app/main.py
 ```
 
-浏览器打开 `http://localhost:8501` 即可使用。首次启动会自动将 JSON 数据导入 SQLite 数据库（约需 10-20 秒），后续启动直接读取。
+浏览器打开 `http://localhost:8501` 即可使用 Streamlit 界面，或 `http://localhost:8000/docs` 查看 API 文档。首次启动会自动将 JSON 数据导入 SQLite 数据库（约需 10-20 秒），后续启动直接读取。
 
 ### 数据过滤
 
@@ -52,72 +57,111 @@ streamlit run app/main.py
 
 ## 技术栈
 
-- **Streamlit** — Web 应用框架
-- **SQLite** — 本地数据库（86,000+ 条记录，查询毫秒级）
+- **FastAPI** — 后端 API 框架（56 个端点，依赖注入，自动 Swagger 文档）
+- **Streamlit** — 前端 Web 应用框架
+- **SQLite** — 本地数据库（87,000+ 条记录，WAL 模式，查询毫秒级）
 - **Plotly** — 交互式图表（暖色色盘）
 - **Pandas** — 数据聚合处理
+- **Pydantic** — API 响应模型与数据校验
 - **CSS** — 「Vinyl Archive」黑胶档案馆暖色主题（自定义全局 CSS 注入）
 
 ## 项目结构
 
 ```
 SpotifyStats/
-├── app/
-│   ├── main.py                       # 入口 + 总览仪表盘（st.navigation 导航）
-│   ├── db.py                         # 数据库层（建表/查询/过滤/预聚合表/合并连续播放）
-│   ├── import_data.py                # 串流数据 JSON → SQLite 导入管线
-│   ├── import_account_data.py        # 账号数据 JSON → SQLite 导入管线
-│   ├── utils.py                      # 工具函数（固定北京时间 UTC+8 / 平台归一化）
-│   ├── styles.py                     # 全局 CSS + Plotly 模板 + 辅助函数
+├── backend/                            # FastAPI 后端（新架构）
+│   ├── main.py                         # FastAPI 入口 + CORS + lifespan
+│   ├── dependencies.py                 # Depends 依赖注入（PlayFilters / BillboardFilters + get_conn）
+│   ├── api/
+│   │   ├── router.py                   # 顶层路由组装（18 个子路由）
+│   │   ├── dashboard.py                # GET /api/dashboard/*（6 端点）
+│   │   ├── timeline.py                 # GET /api/timeline/*
+│   │   ├── leaderboard.py              # GET /api/leaderboard
+│   │   ├── behavior.py                 # GET /api/behavior
+│   │   ├── listening_hours.py          # GET /api/listening-hours/*
+│   │   ├── artist_deep.py              # GET /api/artist/{name}/deep-dive
+│   │   ├── wrapped.py                  # GET /api/wrapped/{year}
+│   │   ├── wrapped_hub.py              # GET /api/wrapped-hub/*
+│   │   ├── library.py                  # GET /api/library/*
+│   │   ├── search.py                   # GET /api/search-history/*
+│   │   ├── insights.py                 # GET /api/insights/*
+│   │   ├── podcast.py                  # GET /api/podcast/*
+│   │   ├── video.py                    # GET /api/video/*
+│   │   ├── profile.py                  # GET /api/profile
+│   │   ├── settings.py                 # GET/PUT /api/settings
+│   │   ├── version_merge.py            # CRUD /api/version-merge/*
+│   │   ├── import_.py                  # POST /api/import/*（异步导入）
+│   │   └── billboard/
+│   │       ├── __init__.py             # 路由组装 + /release-cycle 前缀
+│   │       ├── data.py                 # GET /api/billboard/data（统一入口）
+│   │       └── release_cycle.py        # GET /api/billboard/release-cycle/*（4 端点）
+│   ├── services/                       # 计算逻辑层
+│   │   ├── play_service.py             # 播放数据加载 + 通用 groupby
+│   │   ├── billboard_service.py        # Billboard 计算管线（排名/走势/记录/全时）
+│   │   ├── release_cycle_service.py    # 发行周期分析 + Spotify API + 先行曲识别
+│   │   ├── library_service.py          # 收藏交叉查询
+│   │   ├── search_service.py           # 搜索历史 + 意图分类
+│   │   ├── insights_service.py         # 艺人分级 + Marquee 转化
+│   │   ├── podcast_service.py          # 播客统计
+│   │   ├── video_service.py            # 视频分析
+│   │   ├── profile_service.py          # 个人档案
+│   │   └── wrapped_hub_service.py      # Wrapped 2025 官方数据
+│   ├── models/                         # Pydantic 响应模型
+│   │   ├── common.py                   # 通用模型
+│   │   ├── dashboard.py                # 仪表盘
+│   │   ├── timeline.py                 # 时间线 + Wrapped
+│   │   ├── leaderboard.py              # 排行榜
+│   │   └── behavior.py                 # 行为分析 + 听歌时段
+│   ├── core/                           # 核心工具（从 app/ 原样迁移）
+│   │   ├── db.py                       # SQLite 连接 + base_filters + load_plays + merge_consecutive_plays
+│   │   ├── utils.py                    # 时区转换 + 平台分类
+│   │   ├── json_helpers.py             # numpy/pandas → JSON 安全序列化
+│   │   ├── cache.py                    # TTL 缓存装饰器（Spotify API 等外部调用）
+│   │   ├── import_data.py              # 串流数据 ETL
+│   │   ├── import_account_data.py      # 账号数据 ETL
+│   │   └── version_merge.py            # 专辑版本合并引擎
+│   └── tests/
+├── app/                                # Streamlit 前端（原架构，逐步替换）
+│   ├── main.py                         # 入口 + 总览仪表盘
+│   ├── db.py                           # 数据库层
+│   ├── utils.py                        # 工具函数
+│   ├── styles.py                       # 全局 CSS + Plotly 模板
+│   ├── import_data.py                  # 串流数据 ETL
+│   ├── import_account_data.py          # 账号数据 ETL
+│   ├── version_merge.py               # 版本合并引擎
 │   └── pages/
-│       ├── 02_playback.py            # 播放分析（5 Tab wrapper）
-│       ├── 02_timeline.py            #   ├─ 时间线
-│       ├── 03_leaderboard.py         #   ├─ 排行榜
-│       ├── 04_behavior.py            #   ├─ 行为分析
-│       ├── 07_listening_hours.py     #   ├─ 听歌时段
-│       ├── 06_artist_deep.py         #   └─ 艺人深潜
-│       ├── 03_yearly.py              # 年度回顾（2 Tab wrapper）
-│       ├── 05_wrapped.py             #   ├─ 自定义年度总结
-│       ├── 10_wrapped_hub.py         #   └─ Wrapped 2025 官方
-│       ├── 04_account.py             # 账号中心（6 Tab wrapper）
-│       ├── 11_library.py             #   ├─ 音乐库
-│       ├── 12_search.py              #   ├─ 搜索编年史
-│       ├── 13_insights.py            #   ├─ 音乐画像（粉丝层级+推广）
-│       ├── 14_podcast.py             #   ├─ 播客专区
-│       ├── 15_video.py               #   ├─ 视频分析（≥30s）
-│       ├── 16_profile.py             #   └─ 个人档案
-│       ├── 08_billboard.py           # Billboard 周榜（薄入口，委派至 billboard/ 包）
-│       ├── 09_settings.py            # 设置（数据过滤 + Billboard 配置 + 版本合并管理 + 数据导入）
-│       └── billboard/                # Billboard 模块化包（12 个子 Tab，~9,000 行）
-│           ├── __init__.py            # 主路由 + session_state 初始化
-│           ├── shared.py              # 公共数据加载 + 排名计算 + 版本合并 + canonical 元数据
-│           ├── weekly.py              # 周榜（单曲/专辑/艺人）
-│           ├── number_ones.py         # 每周榜首 + 冠单排行 + 空冠
-│           ├── track_history.py       # 单曲历史（含升降列、断档 RE 标记）
-│           ├── artist_chart.py        # 艺人榜单 + 艺人周榜历史
-│           ├── album_chart.py         # 专辑榜单 + 专辑周榜历史（含版本合并）
-│           ├── power_score.py         # 走势总榜（Power Score 三维度）
-│           ├── all_time_tracks.py     # 歌曲总榜
-│           ├── all_time_artists.py    # 艺人总榜
-│           ├── all_time_albums.py     # 专辑总榜
-│           ├── records.py             # 榜单记录（12 类）
-│           ├── versus.py              # 对决（歌曲/专辑/艺人，支持版本合并）
-│           └── release_cycle/         # 发行周期分析
-│               ├── __init__.py         # 主路由 + 艺人选择 + 视图切换
-│               ├── shared.py           # 数据加载 + 指标计算 + 先行曲识别 + Spotify API
-│               ├── artist_view.py      # 艺人总览（排名趋势 + 发行事件标记 + 发行卡片流）
-│               ├── album_view.py       # 专辑下钻（周期曲线 + 先行曲/最佳单曲榜排名线 + 入榜矩阵）
-│               └── compare_view.py     # 多发行周期叠加对比
-├── app/
-│   ├── version_merge.py              # 版本合并引擎（检测/创建/管理 release groups）
+│       ├── 02_playback.py              # 播放分析（5 Tab wrapper）
+│       ├── 03_yearly.py                # 年度回顾（2 Tab wrapper）
+│       ├── 04_account.py               # 账号中心（6 Tab wrapper）
+│       ├── 08_billboard.py             # Billboard 周榜（薄入口 → billboard/ 包）
+│       ├── 09_settings.py              # 设置
+│       └── billboard/                  # Billboard 模块化包（18 文件，~9,000 行）
+│           ├── __init__.py              # 主路由 + session_state
+│           ├── shared.py               # 公共计算 + 排名 + 版本合并
+│           ├── weekly.py               # Tab 1: 周榜
+│           ├── number_ones.py          # Tab 2: 每周榜首
+│           ├── track_history.py        # Tab 3: 单曲历史
+│           ├── artist_chart.py         # Tab 4: 艺人榜单
+│           ├── album_chart.py          # Tab 5: 专辑榜单
+│           ├── power_score.py          # Tab 6: 走势总榜
+│           ├── all_time_tracks.py     # Tab 7: 歌曲总榜
+│           ├── all_time_artists.py    # Tab 8: 艺人总榜
+│           ├── all_time_albums.py     # Tab 9: 专辑总榜
+│           ├── records.py             # Tab 10: 榜单记录
+│           ├── versus.py              # Tab 11: 对决
+│           └── release_cycle/          # Tab 12: 发行周期分析
+│               ├── __init__.py
+│               ├── shared.py
+│               ├── artist_view.py
+│               ├── album_view.py
+│               └── compare_view.py
 ├── data/
-│   ├── README.md                     # 数据使用指引
-│   ├── spotify_stats.db              # SQLite 数据库
-│   ├── streaming/                    # 长期串流播放记录（JSON）
-│   └── account/                      # 账号数据（JSON）
+│   ├── spotify_stats.db                # SQLite 数据库
+│   ├── streaming/                      # 长期串流播放记录（JSON）
+│   └── account/                        # 账号数据（JSON）
 ├── scripts/
-│   └── analyze_weekly_tracks.py      # 每周独特曲目数分析
-├── .streamlit/config.toml            # 主题配置（暖色 + 衬线字体）
+│   └── analyze_weekly_tracks.py        # 每周独特曲目数分析
+├── .streamlit/config.toml              # Streamlit 主题配置
 ├── requirements.txt
 └── README.md
 ```
