@@ -2,6 +2,9 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { AppLayout } from '@/components/layout/AppLayout'
 import { DashboardPage } from '@/pages/DashboardPage'
 import { BillboardPage } from '@/pages/BillboardPage'
+import { TrackDetailPage } from '@/pages/TrackDetailPage'
+import { ArtistDetailPage } from '@/pages/ArtistDetailPage'
+import { AlbumDetailPage } from '@/pages/AlbumDetailPage'
 
 function App() {
   return (
@@ -10,6 +13,9 @@ function App() {
         <Route element={<AppLayout />}>
           <Route path="/" element={<DashboardPage />} />
           <Route path="/billboard" element={<BillboardPage />} />
+          <Route path="/billboard/track/:trackId" element={<TrackDetailPage />} />
+          <Route path="/billboard/artist/:artistName" element={<ArtistDetailPage />} />
+          <Route path="/billboard/album/:albumName" element={<AlbumDetailPage />} />
         </Route>
       </Routes>
     </BrowserRouter>

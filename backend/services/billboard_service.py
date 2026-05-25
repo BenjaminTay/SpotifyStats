@@ -1383,27 +1383,27 @@ def _serialize_records(records):
 def _compute_change_column(hist_df):
     """Compute NEW/RE/▲n/▼n/─ change column for a sorted weekly history DataFrame."""
     hist = hist_df.sort_values("billboard_week").copy()
-    hist["billboard_week"] = pd.to_datetime(hist["billboard_week"])
+    week_dt = pd.to_datetime(hist["billboard_week"])
     hist["prev_rank"] = hist["rank"].shift(1)
-    hist["prev_week"] = hist["billboard_week"].shift(1)
     changes = []
-    for _, r in hist.iterrows():
+    for i, (_, r) in enumerate(hist.iterrows()):
         p = r["prev_rank"]
-        pw = r["prev_week"]
-        cw = r["billboard_week"]
         cur = r["rank"]
         if pd.isna(p):
             changes.append("NEW")
-        elif pd.notna(pw) and (cw - pw).days > 8:
-            changes.append("RE")
         else:
-            diff = int(p) - int(cur)
-            if diff > 0:
-                changes.append(f"▲{diff}")
-            elif diff < 0:
-                changes.append(f"▼{abs(diff)}")
+            cw = week_dt.iloc[i]
+            pw = week_dt.iloc[i - 1]
+            if (cw - pw).days > 8:
+                changes.append("RE")
             else:
-                changes.append("─")
+                diff = int(p) - int(cur)
+                if diff > 0:
+                    changes.append(f"▲{diff}")
+                elif diff < 0:
+                    changes.append(f"▼{abs(diff)}")
+                else:
+                    changes.append("─")
     hist["change"] = changes
     return hist
 
@@ -1457,11 +1457,14 @@ def get_track_history(track_id, min_ms, music_only, bb_top_n, bb_album_top_n, bb
     # Gapped chart data
     x_vals, y_vals, texts = _build_gapped_chart_data(track_hist)
 
+    cover_url = track_hist.iloc[0].get("cover_url") if "cover_url" in track_hist.columns else None
+
     return {
         "found": True,
         "track_id": track_id,
         "track_name": str(track_hist.iloc[0]["track_name"]),
         "artist_name": str(track_hist.iloc[0]["artist_name"]),
+        "cover_url": cover_url if pd.notna(cover_url) else None,
         "summary": {
             "peak_position": int(info.get("peak_position", 0)),
             "weeks_on_chart": int(info.get("weeks_on_chart", 0)),
@@ -1481,6 +1484,9 @@ def get_track_history(track_id, min_ms, music_only, bb_top_n, bb_album_top_n, bb
                 "rank": int(r["rank"]),
                 "play_count": int(r["play_count"]),
                 "change": r["change"],
+                "running_peak": int(r.get("running_peak", r["rank"])),
+                "running_wks": int(r.get("running_wks", 1)),
+                "running_peak_wks": int(r.get("running_peak_wks", 0)),
             }
             for _, r in hist_with_change.iterrows()
         ],
@@ -1627,9 +1633,17 @@ def get_artist_chart_detail(artist_name, min_ms, music_only, bb_top_n, bb_album_
             for _, r in album_summary.iterrows()
         ]
 
+    # Artist cover URL from weekly_artist data
+    artist_cover_url = None
+    if not artist_chart_data.empty and "cover_url" in artist_chart_data.columns:
+        first_cover = artist_chart_data.iloc[0].get("cover_url")
+        if pd.notna(first_cover):
+            artist_cover_url = first_cover
+
     return {
         "found": True,
         "artist_name": artist_name,
+        "cover_url": artist_cover_url,
         "info": {
             "total_tracks": int(art_row["total_tracks"]),
             "best_peak": int(art_row["best_peak"]),
@@ -1653,6 +1667,9 @@ def get_artist_chart_detail(artist_name, min_ms, music_only, bb_top_n, bb_album_
                 "tracks_count": int(r.get("tracks_count", 0)),
                 "albums_count": int(r.get("albums_count", 0)),
                 "change": r["change"],
+                "running_peak": int(r.get("running_peak", r["rank"])),
+                "running_wks": int(r.get("running_wks", 1)),
+                "running_peak_wks": int(r.get("running_peak_wks", 0)),
             }
             for _, r in artist_wk_history.iterrows()
         ] if not artist_wk_history.empty else [],
@@ -1790,10 +1807,18 @@ def get_album_chart_detail(album_name, artist_name, min_ms, music_only, bb_top_n
             "power_rank": album_power_rank,
         }
 
+    # Album cover URL from weekly_album data
+    album_cover_url = None
+    if not album_chart_data.empty and "cover_url" in album_chart_data.columns:
+        first_cover = album_chart_data.iloc[0].get("cover_url")
+        if pd.notna(first_cover):
+            album_cover_url = first_cover
+
     return {
         "found": True,
         "album_name": album_name,
         "artist_name": artist_name,
+        "cover_url": album_cover_url,
         "info": {
             "total_tracks": int(alb_row["total_tracks"]),
             "best_peak": int(alb_row["best_peak"]),
@@ -1814,6 +1839,9 @@ def get_album_chart_detail(album_name, artist_name, min_ms, music_only, bb_top_n
                 "play_count": int(r["play_count"]),
                 "tracks_count": int(r.get("tracks_count", 0)),
                 "change": r["change"],
+                "running_peak": int(r.get("running_peak", r["rank"])),
+                "running_wks": int(r.get("running_wks", 1)),
+                "running_peak_wks": int(r.get("running_peak_wks", 0)),
             }
             for _, r in album_wk_history.iterrows()
         ] if not album_wk_history.empty else [],

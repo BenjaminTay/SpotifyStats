@@ -4,7 +4,7 @@
 
 **UI 主题**：「编辑风 × 液态玻璃」— 杂志式排版（Playfair Display 衬线 + Inter 无衬线）+ 毛玻璃卡片材质 + 日/夜双皮肤。详细规范见 `frontend/UI_STYLE_GUIDE.md`。
 
-**架构**：FastAPI 后端 + React 前端（Dashboard 和 Billboard 页面已完成）。Streamlit 原有应用仍可运行。
+**架构**：FastAPI 后端 + React 前端（Dashboard、Billboard 周榜和三个详情子页面已完成）。Streamlit 原有应用仍可运行。
 
 ## 功能
 
@@ -179,11 +179,11 @@ SpotifyStats/
 │   ├── src/
 │   │   ├── components/
 │   │   │   ├── ui/                      # shadcn/ui 组件
-│   │   │   ├── charts/                  # 图表组件（ECharts + 纯 DOM）
+│   │   │   ├── charts/                  # 图表组件（RankTrendChart 等）
 │   │   │   ├── layout/                  # 布局（AppLayout, Masthead, ThemeToggle）
-│   │   │   └── shared/                  # 共享组件（GlassCard, KpiCard 等）
-│   │   ├── pages/                       # 页面（DashboardPage, BillboardPage）
-│   │   ├── hooks/                       # 自定义 hooks（数据获取 + 客户端缓存）
+│   │   │   └── shared/                  # 共享组件（GlassCard, KpiCard, ChangeCell 等）
+│   │   ├── pages/                       # 页面（Dashboard, Billboard, TrackDetail, ArtistDetail, AlbumDetail）
+│   │   ├── hooks/                       # 自定义 hooks（数据获取 + 客户端缓存 + 周状态保持）
 │   │   ├── lib/                         # API 客户端、工具函数、主题配置
 │   │   └── types/                       # TypeScript 类型定义
 │   ├── UI_STYLE_GUIDE.md                # 详细 UI 风格指南

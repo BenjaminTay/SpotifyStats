@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Spotify Extended Streaming History 数据分析 Web 应用。从 Spotify 官方导出的 JSON 播放记录中导入数据到 SQLite，通过 FastAPI + React 提供交互式多维度统计仪表盘。
 
-**架构演进**：已从 Streamlit 单体架构迁移到 FastAPI 后端 + React 前端。后端 66 个 API 端点已全部完成，前端 Dashboard 总览页和 Billboard 周榜页已完成开发。Streamlit 原有应用和后端 API 仍可并行运行。
+**架构演进**：已从 Streamlit 单体架构迁移到 FastAPI 后端 + React 前端。后端 66 个 API 端点已全部完成，前端 Dashboard 总览页、Billboard 周榜页以及三个详情子页面（单曲/艺人/专辑）已完成开发。Streamlit 原有应用和后端 API 仍可并行运行。
 
 **UI 主题**：「编辑风 × 液态玻璃」— 杂志式排版（Playfair Display 衬线标题 + Inter 无衬线正文）+ 毛玻璃卡片材质 + 日/夜双皮肤。详细风格指南见 `frontend/UI_STYLE_GUIDE.md`。
 
@@ -132,7 +132,7 @@ POST /api/import/account                 账号数据导入
 计算逻辑从 Streamlit 页面中提取，不依赖任何 Web 框架。每个服务文件职责单一：
 
 - **`play_service.py`** — 核心播放数据服务。`load_plays()` 封装，通用 groupby 聚合（按年/月/周/小时/平台/艺术家等），仪表盘 KPI、时间线（年度/月度/周度+下钻）、排行榜、行为分析、听歌时段热力图、工作日vs周末对比、平台×小时分布、年度总结 Wrapped（含听歌人格 Explorer/Loyalist/Binger）等所有基于播放数据的端点均调用此服务。Dashboard 相关函数支持可选 `df` 参数，`/dashboard/full` 端点加载一次 plays 后传递给 5 个子函数复用，避免 6 次冗余 SQL 查询
-- **`billboard_service.py`** — Billboard 计算管线。`compute_billboard_data()` 一次性计算 15+ 数据结构（周榜 ×3、总榜 ×3、走势总榜 ×3、榜单记录、每周榜首等），`@lru_cache(maxsize=1)` 缓存完整结果。Power Score 只计算一次（原 Streamlit 代码重复计算 ~10 次）。新增详情和对比功能：`get_track_history()`（升降列 NEW/RE/▲n/▼n/─ + 断档 gap 检测）、`get_artist_chart_detail()`（艺人周榜历史 + 歌曲/专辑表现）、`get_album_chart_detail()`（专辑周榜历史 + 收录曲表现）、`get_versus_{track,album,artist}()`（双实体对决对比）、`get_billboard_entity_lists()`（对决搜索选择器）
+- **`billboard_service.py`** — Billboard 计算管线。`compute_billboard_data()` 一次性计算 15+ 数据结构（周榜 ×3、总榜 ×3、走势总榜 ×3、榜单记录、每周榜首等），`@lru_cache(maxsize=1)` 缓存完整结果。Power Score 只计算一次（原 Streamlit 代码重复计算 ~10 次）。详情和对比功能：`get_track_history()`（升降列 NEW/RE/▲n/▼n/─ + 断档 gap 检测 + 封面图 + 截至当周滚动指标 `running_peak`/`running_wks`/`running_peak_wks`）、`get_artist_chart_detail()`（艺人周榜历史 + 封面图 + 歌曲/专辑表现，含截至当周滚动指标）、`get_album_chart_detail()`（专辑周榜历史 + 封面图 + 收录曲表现，含截至当周滚动指标）、`get_versus_{track,album,artist}()`（双实体对决对比）、`get_billboard_entity_lists()`（对决搜索选择器）。`_compute_change_column()` 使用临时 `week_dt` 变量不修改原列以避免日期格式污染
 - **`release_cycle_service.py`** — 发行周期分析。艺人发行列表、单曲 Billboard 历史、专辑周期指标（首周排名、峰值、影响力得分、半衰期）、先行曲识别（三级查找：DB → Spotify API → 最早播放日期）、`compare_releases()` 多发行叠加对比。`@ttl_cached` 缓存 Spotify API 令牌（~58 分钟 TTL）
 - **`library_service.py`** — 收藏交叉查询（收藏曲目/专辑/艺人与实际收听对比）
 - **`search_service.py`** — 搜索历史统计（日搜索量、意图分类、时段热力图）
@@ -179,7 +179,7 @@ React + Vite + Tailwind CSS v4 + shadcn/ui（样式 `base-nova`，基础色 `neu
 - **样式**：Tailwind CSS v4（`@tailwindcss/vite` 插件），`tw-animate-css` 动画库
 - **主题**：CSS 变量 + `.dark` class 切换，`oklch()` 色彩空间。结构变量在 `@theme inline`，颜色在 `:root` / `.dark`。`useTheme()` hook 提供 localStorage 持久化 + 系统偏好回退
 - **组件**：shadcn/ui v4（base-nova 风格），源码在 `@/components/ui/`
-- **路由**：React Router v7，当前两个路由：`/`（DashboardPage）、`/billboard`（BillboardPage）
+- **路由**：React Router v7，当前 5 个路由：`/`（DashboardPage）、`/billboard`（BillboardPage）、`/billboard/track/:trackId`（TrackDetailPage）、`/billboard/artist/:artistName`（ArtistDetailPage）、`/billboard/album/:albumName`（AlbumDetailPage）
 - **图表**：ECharts 6 + echarts-for-react（月度趋势图）；平台分布使用纯 DOM 进度条
 - **字体**：Inter Variable（`@fontsource-variable/inter`）+ Playfair Display（Google Fonts CDN）
 - **客户端缓存**：模块级变量缓存 API 响应，页面切换时避免重复请求
@@ -189,16 +189,19 @@ React + Vite + Tailwind CSS v4 + shadcn/ui（样式 `base-nova`，基础色 `neu
 frontend/src/
 ├── components/
 │   ├── ui/          ← shadcn/ui 组件（可随意修改）
-│   ├── charts/      ← ECharts 封装 + 纯 DOM 图表
+│   ├── charts/      ← ECharts 封装 + 纯 DOM 图表（RankTrendChart）
 │   ├── layout/      ← 布局（AppLayout, Masthead, ThemeToggle）
-│   └── shared/      ← 共享组件（GlassCard, KpiCard, WeekSelector, NoiseOverlay, PageSwitcher）
+│   └── shared/      ← 共享组件（GlassCard, KpiCard, WeekSelector, NoiseOverlay, PageSwitcher, ChangeCell）
 ├── pages/           ← 页面组件
-│   ├── DashboardPage.tsx  ← 总览仪表盘
-│   └── BillboardPage.tsx  ← Billboard 周榜（3 Tab + 排名表）
+│   ├── DashboardPage.tsx    ← 总览仪表盘
+│   ├── BillboardPage.tsx    ← Billboard 周榜（3 Tab + 排名表 + 详情链接）
+│   ├── TrackDetailPage.tsx  ← 单曲详情（KPI + 排名趋势图 + 榜单历史表）
+│   ├── ArtistDetailPage.tsx ← 艺人详情（3 Tab：榜单表现/周榜历史/曲目表现）
+│   └── AlbumDetailPage.tsx  ← 专辑详情（2 Tab：榜单表现/曲目表现）
 ├── hooks/           ← 自定义 hooks
 │   ├── useTheme.tsx  ← 主题管理（Context + localStorage）
 │   ├── useDashboard.ts  ← Dashboard 数据获取 + 缓存
-│   └── useBillboard.ts  ← Billboard 数据获取 + 缓存 + 周导航
+│   └── useBillboard.ts  ← Billboard 数据获取 + 缓存 + 周导航（含模块级缓存保留切周状态）
 ├── lib/             ← API 客户端、工具函数
 │   ├── api.ts       ← fetch 封装，类型定义
 │   ├── theme.ts     ← 图表色盘常量 + getChartColors(isDark)

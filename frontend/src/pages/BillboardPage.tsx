@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect } from 'react'
+import { Link, useSearchParams } from 'react-router-dom'
 import { useBillboard } from '@/hooks/useBillboard'
 import { GlassCard } from '@/components/shared/GlassCard'
 import { WeekSelector } from '@/components/shared/WeekSelector'
@@ -7,6 +8,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { AlertCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { WeeklyTrackEntry, WeeklyAlbumEntry, WeeklyArtistEntry } from '@/types/billboard'
+import { type RankChange, ChangeCell } from '@/components/shared/ChangeCell'
 
 // ── helpers ──────────────────────────────────────────────
 
@@ -55,11 +57,6 @@ const TABS: { key: TabKey; label: string }[] = [
 
 // ── rank change computation ───────────────────────────────
 
-interface RankChange {
-  type: 'up' | 'down' | 'same' | 'new' | 're'
-  delta?: number
-}
-
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyEntry = any
 
@@ -88,32 +85,6 @@ function computeRankChange(
 }
 
 // ── sub-components ────────────────────────────────────────
-
-function ChangeCell({ change }: { change: RankChange }) {
-  if (change.type === 'new') {
-    return (
-      <span className="text-[10px] font-bold uppercase tracking-[1px] text-[#3B5998] dark:text-[#7B9CC8]">
-        NEW
-      </span>
-    )
-  }
-  if (change.type === 're') {
-    return (
-      <span className="text-[10px] font-bold uppercase tracking-[1px] text-[#B8860B] dark:text-[#D4A24E]">
-        RE
-      </span>
-    )
-  }
-  if (change.type === 'same') {
-    return <span className="text-[11px] text-muted-foreground">—</span>
-  }
-  const arrow = change.type === 'up' ? '↑' : '↓'
-  const color =
-    change.type === 'up'
-      ? 'text-[#4A6B4F] dark:text-[#7D9B76]'
-      : 'text-accent-foreground'
-  return <span className={cn('text-[11px] font-bold', color)}>{arrow} {change.delta}</span>
-}
 
 function CoverCell({ index, isNewOrRe, coverUrl }: { index: number; isNewOrRe: boolean; coverUrl?: string | null }) {
   const [imgError, setImgError] = useState(false)
@@ -186,6 +157,9 @@ function BillboardSkeleton() {
 // ── main page ─────────────────────────────────────────────
 
 export function BillboardPage() {
+  const [searchParams] = useSearchParams()
+  const initialWeek = searchParams.get('week')
+
   const {
     data,
     loading,
@@ -197,7 +171,7 @@ export function BillboardPage() {
     totalWeeks,
     goNext,
     goPrev,
-  } = useBillboard()
+  } = useBillboard(initialWeek)
 
   const [activeTab, setActiveTab] = useState<TabKey>('tracks')
 
@@ -363,11 +337,11 @@ export function BillboardPage() {
                   <th className="w-14 pb-3.5 pt-4 text-right font-sans text-[10px] font-bold uppercase tracking-[1.2px] text-muted-foreground">
                     PK
                   </th>
-                  <th className="w-14 pb-3.5 pt-4 text-right font-sans text-[10px] font-bold uppercase tracking-[1.2px] text-muted-foreground">
-                    在榜
-                  </th>
                   <th className="w-16 pb-3.5 pt-4 text-right font-sans text-[10px] font-bold uppercase tracking-[1.2px] text-muted-foreground">
                     PK Wks
+                  </th>
+                  <th className="w-14 pb-3.5 pt-4 text-right font-sans text-[10px] font-bold uppercase tracking-[1.2px] text-muted-foreground">
+                    在榜
                   </th>
                 </tr>
               </thead>
@@ -390,13 +364,27 @@ export function BillboardPage() {
                     const isTop3 = i < 3
                     const rankColor = i === 0 ? 'text-accent-foreground' : i === 1 ? 'text-muted-foreground' : 'text-[#C17A4E] dark:text-[#C97B6B]'
 
-                    // Compute track/album/artist display name
+                    // Navigation links
+                    const detailLink =
+                      activeTab === 'artists'
+                        ? `/billboard/artist/${encodeURIComponent((entry as WeeklyArtistEntry).artist_name)}`
+                        : activeTab === 'albums'
+                          ? `/billboard/album/${encodeURIComponent((entry as WeeklyAlbumEntry).album_name)}?artist=${encodeURIComponent((entry as WeeklyAlbumEntry).artist_name)}`
+                          : `/billboard/track/${(entry as WeeklyTrackEntry).track_id}`
                     const displayName =
                       activeTab === 'artists'
                         ? (entry as WeeklyArtistEntry).artist_name
                         : activeTab === 'albums'
                           ? (entry as WeeklyAlbumEntry).album_name
                           : (entry as WeeklyTrackEntry).track_name
+                    const artistLink =
+                      activeTab !== 'artists'
+                        ? `/billboard/artist/${encodeURIComponent(
+                            activeTab === 'tracks'
+                              ? (entry as WeeklyTrackEntry).artist_name
+                              : (entry as WeeklyAlbumEntry).artist_name,
+                          )}`
+                        : null
                     const subLabel =
                       activeTab === 'tracks'
                         ? (entry as WeeklyTrackEntry).artist_name
@@ -430,12 +418,24 @@ export function BillboardPage() {
                           <CoverCell index={i} isNewOrRe={isNewOrRe} coverUrl={entry.cover_url} />
                         </td>
                         <td className="pb-3.5 pt-3.5">
-                          <div className="font-sans text-sm font-semibold">
+                          <Link
+                            to={detailLink}
+                            className="font-sans text-sm font-semibold transition-colors hover:text-accent-foreground"
+                          >
                             {displayName}
-                          </div>
-                          <div className="mt-0.5 font-sans text-[12px] italic text-muted-foreground">
-                            {subLabel}
-                          </div>
+                          </Link>
+                          {artistLink ? (
+                            <Link
+                              to={artistLink}
+                              className="mt-0.5 block font-sans text-[12px] italic text-muted-foreground transition-colors hover:text-accent-foreground"
+                            >
+                              {subLabel}
+                            </Link>
+                          ) : (
+                            <div className="mt-0.5 font-sans text-[12px] italic text-muted-foreground">
+                              {subLabel}
+                            </div>
+                          )}
                         </td>
                         <td className="pb-3.5 pt-3.5 text-right font-sans text-[15px] font-semibold tabular-nums">
                           {formatNumber(entry.play_count)}
@@ -457,14 +457,14 @@ export function BillboardPage() {
                           {isNewOrRe ? entry.rank : runningPeak}
                         </td>
                         <td className="pb-3.5 pt-3.5 text-right font-sans text-[13px] text-muted-foreground">
-                          {runningWks}
-                        </td>
-                        <td className="pb-3.5 pt-3.5 text-right font-sans text-[13px] text-muted-foreground">
                           {runningPeakWks > 0 ? (
                             <span className="font-semibold">{runningPeakWks}</span>
                           ) : (
                             '—'
                           )}
+                        </td>
+                        <td className="pb-3.5 pt-3.5 text-right font-sans text-[13px] text-muted-foreground">
+                          {runningWks}
                         </td>
                       </tr>
                     )
