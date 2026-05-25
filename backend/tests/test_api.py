@@ -151,6 +151,53 @@ class TestTimeline:
 
 
 # ═══════════════════════════════════════════════════════════════════════════
+# Timeline Weekly
+# ═══════════════════════════════════════════════════════════════════════════
+
+class TestTimelineWeekly:
+    def test_weekly_structure(self, client, default_params):
+        r = client.get("/api/timeline/weekly", params=default_params)
+        assert r.status_code == 200
+        d = r.json()
+        assert "weeks" in d
+        assert "drilldown" in d
+        assert d["drilldown"] is None
+        weeks = d["weeks"]
+        assert len(weeks) >= 150
+        for w in weeks:
+            assert "label" in w
+            assert "plays" in w
+            assert "hours" in w
+            assert isinstance(w["plays"], int)
+            assert isinstance(w["hours"], (int, float))
+
+    def test_weekly_labels_format(self, client, default_params):
+        r = client.get("/api/timeline/weekly", params=default_params)
+        labels = [w["label"] for w in r.json()["weeks"]]
+        for label in labels[:5]:
+            assert "-W" in label
+
+    def test_weekly_drilldown(self, client, default_params):
+        r = client.get("/api/timeline/weekly", params={**default_params, "week": "2024-W01"})
+        assert r.status_code == 200
+        d = r.json()
+        drilldown = d["drilldown"]
+        assert drilldown is not None
+        assert len(drilldown) >= 1
+        for t in drilldown:
+            assert "track_name" in t
+            assert "artist_name" in t
+            assert "plays" in t
+            assert "hours" in t
+            assert t["plays"] > 0
+
+    def test_weekly_drilldown_invalid_week(self, client, default_params):
+        r = client.get("/api/timeline/weekly", params={**default_params, "week": "invalid"})
+        assert r.status_code == 200
+        assert r.json()["drilldown"] is None
+
+
+# ═══════════════════════════════════════════════════════════════════════════
 # Leaderboard
 # ═══════════════════════════════════════════════════════════════════════════
 
@@ -295,6 +342,62 @@ class TestListeningHours:
             assert "z" in y
 
 
+class TestListeningHoursWeekdayWeekend:
+    def test_structure(self, client, default_params):
+        r = client.get("/api/listening-hours/weekday-weekend", params=default_params)
+        assert r.status_code == 200
+        d = r.json()
+        assert "hours" in d
+        assert "weekend" in d
+        assert "weekday" in d
+        assert len(d["hours"]) == 24
+        assert len(d["weekend"]) == 24
+        assert len(d["weekday"]) == 24
+        for v in d["weekend"] + d["weekday"]:
+            assert isinstance(v, int)
+            assert v >= 0
+
+    def test_weekend_plus_weekday_matches_total(self, client, default_params):
+        r = client.get("/api/listening-hours/weekday-weekend", params=default_params)
+        d = r.json()
+        total = sum(d["weekend"]) + sum(d["weekday"])
+        assert total > 50000
+
+
+class TestListeningHoursPlatformHourly:
+    def test_structure(self, client, default_params):
+        r = client.get("/api/listening-hours/platform-hourly", params=default_params)
+        assert r.status_code == 200
+        d = r.json()
+        assert "platform_hourly" in d
+        assert "platform_pct" in d
+        assert "platform_peaks" in d
+        assert len(d["platform_hourly"]) > 0
+        assert len(d["platform_pct"]) > 0
+        assert len(d["platform_peaks"]) >= 1
+
+    def test_platform_peaks_fields(self, client, default_params):
+        r = client.get("/api/listening-hours/platform-hourly", params=default_params)
+        peaks = r.json()["platform_peaks"]
+        for p in peaks:
+            for k in ["platform", "peak_hour", "peak_count", "total_count", "total_pct"]:
+                assert k in p, f"Missing key: {k}"
+            assert 0 <= p["peak_hour"] <= 23
+            assert p["peak_count"] > 0
+            assert p["total_count"] > 0
+            assert 0 <= p["total_pct"] <= 100
+
+    def test_platform_pct_normalized(self, client, default_params):
+        r = client.get("/api/listening-hours/platform-hourly", params=default_params)
+        pct_data = r.json()["platform_pct"]
+        # Group percentages by platform, they should all be between 0-100
+        for entry in pct_data:
+            assert "platform" in entry
+            assert "hour" in entry
+            assert "pct" in entry
+            assert 0 <= entry["pct"] <= 100
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # Artist Deep Dive
 # ═══════════════════════════════════════════════════════════════════════════
@@ -371,6 +474,22 @@ class TestWrapped:
         d = r.json()
         for season in ["spring", "summer", "autumn", "winter"]:
             assert season in d["season_tops"]
+
+    def test_wrapped_personality(self, client, default_params):
+        r = client.get("/api/wrapped/2024", params=default_params)
+        d = r.json()
+        assert "personality" in d
+        p = d["personality"]
+        assert "primary" in p
+        assert "explorer" in p
+        assert "loyalist" in p
+        assert "binger" in p
+        for key in ["primary", "explorer", "loyalist", "binger"]:
+            item = p[key]
+            assert "label" in item
+            assert "score" in item
+            assert isinstance(item["score"], (int, float))
+            assert 0 <= item["score"] <= 100
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -487,7 +606,7 @@ class TestReleaseCycle:
             json={
                 "items": [
                     {"artist_name": "Taylor Swift", "album_name": "Midnights"},
-                    {"artist_name": "Taylor Swift", "album_name": "evermore"},
+                    {"artist_name": "Taylor Swift", "album_name": "evermore (deluxe version)"},
                 ],
                 "weeks_before": 8,
                 "weeks_after": 16,
@@ -507,6 +626,182 @@ class TestReleaseCycle:
         assert r.status_code == 200
         d = r.json()
         assert "error" in d
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Billboard Details & Versus
+# ═══════════════════════════════════════════════════════════════════════════
+
+class TestBillboardDetails:
+    def test_entity_lists(self, client, default_params):
+        r = client.get("/api/billboard/entity-lists", params=default_params)
+        assert r.status_code == 200
+        d = r.json()
+        assert "tracks" in d
+        assert "albums" in d
+        assert "artists" in d
+        assert len(d["tracks"]) > 500
+        assert len(d["albums"]) > 200
+        assert len(d["artists"]) > 100
+        t = d["tracks"][0]
+        assert "display" in t
+        assert "track_id" in t
+
+    def test_track_history(self, client, default_params):
+        r = client.get("/api/billboard/track/157", params=default_params)
+        assert r.status_code == 200
+        d = r.json()
+        assert d["found"] is True
+        assert d["track_id"] == 157
+        assert "track_name" in d
+        assert "artist_name" in d
+        assert "summary" in d
+        assert "history" in d
+        assert "chart_data" in d
+        s = d["summary"]
+        for k in ["peak_position", "weeks_on_chart", "power_score", "power_rank"]:
+            assert k in s, f"Missing summary key: {k}"
+        assert s["weeks_on_chart"] >= 1
+        # Change column present in history
+        for h in d["history"]:
+            assert "change" in h
+            assert h["change"] in ("NEW", "RE", "─") or h["change"].startswith("▲") or h["change"].startswith("▼")
+
+    def test_track_history_not_found(self, client, default_params):
+        r = client.get("/api/billboard/track/99999", params=default_params)
+        assert r.status_code == 200
+        assert r.json()["found"] is False
+
+    def test_artist_chart_detail(self, client, default_params):
+        r = client.get("/api/billboard/artist/Taylor Swift", params=default_params)
+        assert r.status_code == 200
+        d = r.json()
+        assert d["found"] is True
+        assert d["artist_name"] == "Taylor Swift"
+        assert "info" in d
+        assert "chart_summary" in d
+        assert "tracks" in d
+        assert "albums" in d
+        assert "artist_weekly_history" in d
+        assert "best_singles_overlay" in d
+        assert len(d["tracks"]) > 10
+        assert len(d["albums"]) >= 1
+
+    def test_artist_chart_detail_not_found(self, client, default_params):
+        r = client.get("/api/billboard/artist/NonExistentArtistXYZ123", params=default_params)
+        assert r.status_code == 200
+        assert r.json()["found"] is False
+
+    def test_album_chart_detail(self, client, default_params):
+        r = client.get(
+            "/api/billboard/album/Midnights",
+            params={**default_params, "artist_name": "Taylor Swift"},
+        )
+        assert r.status_code == 200
+        d = r.json()
+        assert d["found"] is True
+        assert d["album_name"] == "Midnights"
+        assert d["artist_name"] == "Taylor Swift"
+        assert "info" in d
+        assert "chart_summary" in d
+        assert "tracks" in d
+        assert "album_weekly_history" in d
+        assert "best_singles_overlay" in d
+
+    def test_album_chart_detail_not_found(self, client, default_params):
+        r = client.get(
+            "/api/billboard/album/NonExistentAlbumXYZ",
+            params={**default_params, "artist_name": "FakeArtist"},
+        )
+        assert r.status_code == 200
+        assert r.json()["found"] is False
+
+    def test_artist_history_has_change_column(self, client, default_params):
+        r = client.get("/api/billboard/artist/Taylor Swift", params=default_params)
+        history = r.json()["artist_weekly_history"]
+        if history:
+            for h in history:
+                assert "change" in h
+
+    def test_album_history_has_change_column(self, client, default_params):
+        r = client.get(
+            "/api/billboard/album/Midnights",
+            params={**default_params, "artist_name": "Taylor Swift"},
+        )
+        history = r.json()["album_weekly_history"]
+        if history:
+            for h in history:
+                assert "change" in h
+
+
+class TestBillboardVersus:
+    def test_versus_track(self, client, default_params):
+        r = client.get("/api/billboard/versus/track", params={
+            **default_params, "track_id_a": 157, "track_id_b": 149,
+        })
+        assert r.status_code == 200
+        d = r.json()
+        assert d["found"] is True
+        for key in ["entity_a", "entity_b"]:
+            e = d[key]
+            assert "name" in e
+            assert "rank_history" in e
+            assert "metrics" in e
+            m = e["metrics"]
+            for k in ["power_score", "peak_position", "weeks_on_chart", "no1_weeks"]:
+                assert k in m, f"Missing metric: {k}"
+            assert len(e["rank_history"]) >= 1
+
+    def test_versus_track_not_found(self, client, default_params):
+        r = client.get("/api/billboard/versus/track", params={
+            **default_params, "track_id_a": 99999, "track_id_b": 99998,
+        })
+        assert r.status_code == 200
+        assert r.json()["found"] is False
+
+    def test_versus_album(self, client, default_params):
+        r = client.get("/api/billboard/versus/album", params={
+            **default_params,
+            "album_a": "Midnights", "artist_a": "Taylor Swift",
+            "album_b": "folklore", "artist_b": "Taylor Swift",
+        })
+        assert r.status_code == 200
+        d = r.json()
+        assert d["found"] is True
+        e = d["entity_a"]
+        assert "num_tracks" in e["metrics"]
+        assert "track_power_sum" in e["metrics"]
+
+    def test_versus_album_not_found(self, client, default_params):
+        r = client.get("/api/billboard/versus/album", params={
+            **default_params,
+            "album_a": "FakeAlbum", "artist_a": "FakeArtist",
+            "album_b": "FakeAlbum2", "artist_b": "FakeArtist2",
+        })
+        assert r.status_code == 200
+        assert r.json()["found"] is False
+
+    def test_versus_artist(self, client, default_params):
+        r = client.get("/api/billboard/versus/artist", params={
+            **default_params,
+            "artist_a": "Taylor Swift", "artist_b": "Olivia Rodrigo",
+        })
+        assert r.status_code == 200
+        d = r.json()
+        assert d["found"] is True
+        e = d["entity_a"]
+        assert "num_tracks" in e["metrics"]
+        assert "num_albums" in e["metrics"]
+        assert "track_power_sum" in e["metrics"]
+        assert "album_power_sum" in e["metrics"]
+
+    def test_versus_artist_not_found(self, client, default_params):
+        r = client.get("/api/billboard/versus/artist", params={
+            **default_params,
+            "artist_a": "FakeArtistAAA", "artist_b": "FakeArtistBBB",
+        })
+        assert r.status_code == 200
+        assert r.json()["found"] is False
 
 
 # ═══════════════════════════════════════════════════════════════════════════

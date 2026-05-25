@@ -274,6 +274,55 @@ def get_monthly_timeline_drilldown(
     return result
 
 
+def get_weekly_timeline(
+    conn: sqlite3.Connection, min_ms: int, music_only: bool, merge_enabled: bool,
+    week_label: Optional[str] = None,
+) -> dict:
+    """Weekly timeline with optional top-5 drilldown for a specific week."""
+    df = load_plays(
+        conn, min_ms=min_ms, music_only=music_only, merge_enabled=merge_enabled,
+    )
+    if df.empty:
+        return {"weeks": [], "drilldown": None}
+
+    weekly = (
+        df.groupby(["ts_year", "ts_week"])
+        .agg(plays=("play_id", "count"), hours=("ms_played", _hour))
+        .reset_index()
+    )
+    weekly["label"] = weekly["ts_year"].astype(str) + "-W" + weekly["ts_week"].astype(str).str.zfill(2)
+
+    result = {
+        "weeks": [
+            {"label": r.label, "plays": int(r.plays), "hours": round(float(r.hours), 1)}
+            for r in weekly.sort_values(["ts_year", "ts_week"]).itertuples(index=False)
+        ],
+        "drilldown": None,
+    }
+
+    if week_label:
+        try:
+            yr, wk = week_label.split("-W")
+            yr, wk = int(yr), int(wk)
+            week_df = df[(df["ts_year"] == yr) & (df["ts_week"] == wk)]
+            if not week_df.empty:
+                top5 = (
+                    week_df.groupby(["track_name", "artist_name"])
+                    .agg(plays=("play_id", "count"), hours=("ms_played", _hour))
+                    .sort_values("plays", ascending=False)
+                    .head(5)
+                    .reset_index()
+                )
+                result["drilldown"] = [
+                    {"track_name": r.track_name, "artist_name": r.artist_name,
+                     "plays": int(r.plays), "hours": round(float(r.hours), 1)}
+                    for r in top5.itertuples(index=False)
+                ]
+        except (ValueError, TypeError):
+            pass
+    return result
+
+
 # ── Leaderboard ─────────────────────────────────────────────────────────────
 
 def get_leaderboard(
@@ -373,6 +422,7 @@ def get_wrapped_data(
     unique_artists = year_df["artist_name"].dropna().nunique()
     total_days = year_df["ts_date"].nunique()
     avg_minutes_per_day = total_minutes / total_days if total_days > 0 else 0
+    avg_hours_per_day = total_minutes / 60 / max(total_days, 1)
 
     # Top artists
     top_artists = (
@@ -439,6 +489,16 @@ def get_wrapped_data(
         .reset_index()
     )
 
+    # Personality scoring
+    unique_ratio = unique_tracks / max(total_plays, 1) * 100
+    top_artist_share = (top_artists.iloc[0]["plays"] / max(total_plays, 1) * 100) if len(top_artists) > 0 else 0
+    personality = {
+        "explorer": {"label": "Explorer 探索者", "score": round(min(unique_ratio / 40 * 100, 100), 1), "desc": "广泛涉猎不同曲目，保持音乐品味多样化"},
+        "loyalist": {"label": "Loyalist 专一者", "score": round(min(top_artist_share / 20 * 100, 100), 1), "desc": "对喜爱的艺人从一而终，深入了解他们的作品"},
+        "binger": {"label": "Binger 狂听者", "score": round(min(avg_hours_per_day / 4 * 100, 100), 1), "desc": "音乐是日常必需品，每天大量时间沉浸在旋律中"},
+    }
+    primary_personality = max(personality.items(), key=lambda x: x[1]["score"])
+
     return {
         "year": year,
         "empty": False,
@@ -477,6 +537,12 @@ def get_wrapped_data(
             {"month": int(r.ts_month), "hours": round(float(r.hours), 1)}
             for r in monthly_pulse.itertuples(index=False)
         ],
+        "personality": {
+            "primary": {"label": primary_personality[1]["label"], "score": primary_personality[1]["score"], "desc": primary_personality[1]["desc"]},
+            "explorer": personality["explorer"],
+            "loyalist": personality["loyalist"],
+            "binger": personality["binger"],
+        },
     }
 
 
@@ -628,6 +694,83 @@ def get_late_night_ratio(
     ln = late_night.groupby("ts_year").size()
     ratio = (ln / total * 100).round(1)
     return [{"year": int(y), "rate": float(ratio.get(y, 0))} for y in sorted(total.index)]
+
+
+def get_weekday_weekend_comparison(
+    conn: sqlite3.Connection, min_ms: int, music_only: bool, merge_enabled: bool,
+) -> dict:
+    """Weekend vs workday hourly listening comparison."""
+    df = load_plays(
+        conn, min_ms=min_ms, music_only=music_only, merge_enabled=merge_enabled,
+    )
+    if df.empty:
+        return {"weekend": [], "weekday": [], "comparison": []}
+
+    hours = list(range(24))
+    df["day_type"] = df["ts_dow"].apply(lambda d: "weekend" if d >= 5 else "weekday")
+
+    weekend_df = df[df["day_type"] == "weekend"]
+    weekday_df = df[df["day_type"] == "weekday"]
+
+    weekend_counts = weekend_df.groupby("ts_hour").size().reindex(hours, fill_value=0)
+    weekday_counts = weekday_df.groupby("ts_hour").size().reindex(hours, fill_value=0)
+
+    return {
+        "hours": [f"{h}:00" for h in hours],
+        "weekend": [int(weekend_counts.get(h, 0)) for h in hours],
+        "weekday": [int(weekday_counts.get(h, 0)) for h in hours],
+    }
+
+
+def get_platform_hourly_listening(
+    conn: sqlite3.Connection, min_ms: int, music_only: bool, merge_enabled: bool,
+) -> dict:
+    """Platform × hour listening distribution (stacked area + normalized %)."""
+    df = load_plays(
+        conn, min_ms=min_ms, music_only=music_only, merge_enabled=merge_enabled,
+    )
+    if df.empty:
+        return {"platform_hourly": [], "platform_pct": [], "platform_peaks": []}
+
+    # Raw counts: platform × hour
+    platform_hourly = (
+        df.groupby(["platform", "ts_hour"])
+        .size()
+        .reset_index(name="count")
+    )
+
+    # Normalized percentage per hour
+    hourly_total = platform_hourly.groupby("ts_hour")["count"].sum().reset_index()
+    platform_pct = platform_hourly.merge(hourly_total, on="ts_hour", suffixes=("", "_total"))
+    platform_pct["pct"] = (platform_pct["count"] / platform_pct["count_total"] * 100).round(1)
+
+    # Peak hour per platform
+    peaks = []
+    for plat in platform_hourly["platform"].unique():
+        plat_df = platform_hourly[platform_hourly["platform"] == plat]
+        if not plat_df.empty:
+            peak_row = plat_df.loc[plat_df["count"].idxmax()]
+            total = int(plat_df["count"].sum())
+            pct = round(total / max(int(platform_hourly["count"].sum()), 1) * 100, 1)
+            peaks.append({
+                "platform": plat,
+                "peak_hour": int(peak_row["ts_hour"]),
+                "peak_count": int(peak_row["count"]),
+                "total_count": total,
+                "total_pct": pct,
+            })
+
+    return {
+        "platform_hourly": [
+            {"platform": str(r.platform), "hour": int(r.ts_hour), "count": int(r.count)}
+            for r in platform_hourly.itertuples(index=False)
+        ],
+        "platform_pct": [
+            {"platform": str(r.platform), "hour": int(r.ts_hour), "pct": float(r.pct)}
+            for r in platform_pct.itertuples(index=False)
+        ],
+        "platform_peaks": peaks,
+    }
 
 
 # ── Artist Deep Dive ────────────────────────────────────────────────────────

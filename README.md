@@ -66,7 +66,7 @@ pytest backend/tests/ -v
 
 ## 技术栈
 
-- **FastAPI** — 后端 API 框架（56 个端点，依赖注入，自动 Swagger 文档）
+- **FastAPI** — 后端 API 框架（66 个端点，依赖注入，自动 Swagger 文档）
 - **React 19** — 前端 UI 框架（TypeScript 6.0，Vite 8，React Router v7）
 - **Tailwind CSS v4** — 原子化 CSS 框架（shadcn/ui v4 组件库，`tw-animate-css` 动画）
 - **ECharts 6** — 交互式图表（echarts-for-react）
@@ -74,7 +74,7 @@ pytest backend/tests/ -v
 - **SQLite** — 本地数据库（87,000+ 条记录，WAL 模式，查询毫秒级）
 - **Pandas** — 数据聚合处理
 - **Pydantic** — API 响应模型与数据校验
-- **Pytest** — 后端测试框架（104 个测试，覆盖 API 和 Service 层）
+- **Pytest** — 后端测试框架（142 个测试，覆盖 API 和 Service 层）
 
 ## 项目结构
 
@@ -105,10 +105,11 @@ SpotifyStats/
 │   │   └── billboard/
 │   │       ├── __init__.py             # 路由组装 + /release-cycle 前缀
 │   │       ├── data.py                 # GET /api/billboard/data（统一入口）
+│   │       ├── details.py              # GET /api/billboard/{track,artist,album,versus}/*（10 端点）
 │   │       └── release_cycle.py        # GET /api/billboard/release-cycle/*（4 端点）
 │   ├── services/                       # 计算逻辑层
-│   │   ├── play_service.py             # 播放数据加载 + 通用 groupby
-│   │   ├── billboard_service.py        # Billboard 计算管线（排名/走势/记录/全时）
+│   │   ├── play_service.py             # 播放数据 + 周度时间线 + 听歌人格 + 工作日/平台×小时分析
+│   │   ├── billboard_service.py        # Billboard 计算管线（排名/走势/记录/全时/详情/对决）
 │   │   ├── release_cycle_service.py    # 发行周期分析 + Spotify API + 先行曲识别
 │   │   ├── library_service.py          # 收藏交叉查询
 │   │   ├── search_service.py           # 搜索历史 + 意图分类
@@ -134,8 +135,8 @@ SpotifyStats/
 │   └── tests/
 │       ├── __init__.py
 │       ├── conftest.py                   # 共享 fixtures（TestClient, default_params）
-│       ├── test_api.py                   # API 层测试（74 个用例，24 类）
-│       └── test_services.py              # Service 层测试（30 个用例，7 类）
+│       ├── test_api.py                   # API 层测试（99 个用例，26 类）
+│       └── test_services.py              # Service 层测试（43 个用例，9 类）
 ├── app/                                # Streamlit 前端（原架构，逐步替换）
 │   ├── main.py                         # 入口 + 总览仪表盘
 │   ├── db.py                           # 数据库层

@@ -6,7 +6,7 @@ from typing import Optional
 
 from backend.dependencies import get_conn, PlayFilters
 from backend.services.play_service import (
-    get_annual_timeline, get_monthly_timeline_drilldown,
+    get_annual_timeline, get_monthly_timeline_drilldown, get_weekly_timeline,
 )
 
 router = APIRouter(prefix="/timeline", tags=["Timeline"])
@@ -27,3 +27,12 @@ def timeline_monthly(
     conn: Connection = Depends(get_conn),
 ):
     return get_monthly_timeline_drilldown(conn, filters.min_ms, filters.music_only, filters.merge_enabled, period)
+
+
+@router.get("/weekly")
+def timeline_weekly(
+    filters: PlayFilters = Depends(),
+    week: Optional[str] = Query(None, description="YYYY-Www for drilldown top5"),
+    conn: Connection = Depends(get_conn),
+):
+    return get_weekly_timeline(conn, filters.min_ms, filters.music_only, filters.merge_enabled, week)

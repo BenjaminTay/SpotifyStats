@@ -144,6 +144,27 @@ class TestPlayService:
         finally:
             conn.close()
 
+    def test_wrapped_personality(self):
+        from backend.services.play_service import get_wrapped_data
+        from backend.core.db import get_db
+
+        conn = get_db()
+        try:
+            data = get_wrapped_data(conn, min_ms=30000, music_only=True, merge_enabled=True, year=2024)
+            p = data["personality"]
+            assert "primary" in p
+            assert "explorer" in p
+            assert "loyalist" in p
+            assert "binger" in p
+            for key in ["primary", "explorer", "loyalist", "binger"]:
+                item = p[key]
+                assert "label" in item
+                assert "score" in item
+                assert isinstance(item["score"], (int, float))
+                assert 0 <= item["score"] <= 100
+        finally:
+            conn.close()
+
     def test_listening_heatmap(self):
         from backend.services.play_service import get_listening_heatmap
         from backend.core.db import get_db
@@ -155,6 +176,72 @@ class TestPlayService:
             assert len(data["z"][0]) == 24
             assert data["x"] == list(range(24))
             assert len(data["y"]) == 7
+        finally:
+            conn.close()
+
+    def test_weekly_timeline(self):
+        from backend.services.play_service import get_weekly_timeline
+        from backend.core.db import get_db
+
+        conn = get_db()
+        try:
+            data = get_weekly_timeline(conn, min_ms=30000, music_only=True, merge_enabled=True)
+            assert len(data["weeks"]) >= 150
+            assert data["drilldown"] is None
+            w = data["weeks"][0]
+            assert "label" in w
+            assert "plays" in w
+            assert "hours" in w
+            assert "-W" in w["label"]
+        finally:
+            conn.close()
+
+    def test_weekly_timeline_drilldown(self):
+        from backend.services.play_service import get_weekly_timeline
+        from backend.core.db import get_db
+
+        conn = get_db()
+        try:
+            data = get_weekly_timeline(conn, min_ms=30000, music_only=True, merge_enabled=True, week_label="2024-W01")
+            drilldown = data["drilldown"]
+            assert drilldown is not None
+            assert len(drilldown) >= 1
+            for t in drilldown:
+                assert "track_name" in t
+                assert "artist_name" in t
+                assert t["plays"] > 0
+        finally:
+            conn.close()
+
+    def test_weekday_weekend_comparison(self):
+        from backend.services.play_service import get_weekday_weekend_comparison
+        from backend.core.db import get_db
+
+        conn = get_db()
+        try:
+            data = get_weekday_weekend_comparison(conn, min_ms=30000, music_only=True, merge_enabled=True)
+            assert len(data["hours"]) == 24
+            assert len(data["weekend"]) == 24
+            assert len(data["weekday"]) == 24
+            assert sum(data["weekend"]) + sum(data["weekday"]) > 50000
+        finally:
+            conn.close()
+
+    def test_platform_hourly_listening(self):
+        from backend.services.play_service import get_platform_hourly_listening
+        from backend.core.db import get_db
+
+        conn = get_db()
+        try:
+            data = get_platform_hourly_listening(conn, min_ms=30000, music_only=True, merge_enabled=True)
+            assert len(data["platform_hourly"]) > 0
+            assert len(data["platform_pct"]) > 0
+            assert len(data["platform_peaks"]) >= 1
+            for p in data["platform_peaks"]:
+                assert "platform" in p
+                assert "peak_hour" in p
+                assert 0 <= p["peak_hour"] <= 23
+                assert p["peak_count"] > 0
         finally:
             conn.close()
 
@@ -219,6 +306,132 @@ class TestBillboardService:
         assert result_2024["meta"]["total_weeks"] < result_all["meta"]["total_weeks"]
         assert result_2024["meta"]["total_weeks"] == 52
         assert len(result_2024["weekly"]) < len(result_all["weekly"])
+
+    def test_track_history(self):
+        from backend.services.billboard_service import get_track_history
+
+        data = get_track_history(
+            track_id=157, min_ms=30000, music_only=True,
+            bb_top_n=30, bb_album_top_n=20, bb_artist_top_n=20,
+            bb_week_start_dow=4, bb_week_start_hour=0,
+            year_start=None, year_end=None,
+        )
+        assert data["found"] is True
+        assert data["track_id"] == 157
+        assert len(data["history"]) >= 1
+        assert data["summary"]["weeks_on_chart"] >= 1
+        # Change column
+        for h in data["history"]:
+            assert h["change"] in ("NEW", "RE", "─") or h["change"].startswith("▲") or h["change"].startswith("▼")
+        # Chart data (may have None gaps inserted for >9 day breaks)
+        assert len(data["chart_data"]["x"]) >= len(data["history"])
+        assert len(data["chart_data"]["y"]) >= len(data["history"])
+
+    def test_track_history_not_found(self):
+        from backend.services.billboard_service import get_track_history
+
+        data = get_track_history(
+            track_id=99999, min_ms=30000, music_only=True,
+            bb_top_n=30, bb_album_top_n=20, bb_artist_top_n=20,
+            bb_week_start_dow=4, bb_week_start_hour=0,
+            year_start=None, year_end=None,
+        )
+        assert data["found"] is False
+
+    def test_artist_chart_detail(self):
+        from backend.services.billboard_service import get_artist_chart_detail
+
+        data = get_artist_chart_detail(
+            artist_name="Taylor Swift", min_ms=30000, music_only=True,
+            bb_top_n=30, bb_album_top_n=20, bb_artist_top_n=20,
+            bb_week_start_dow=4, bb_week_start_hour=0,
+            year_start=None, year_end=None,
+        )
+        assert data["found"] is True
+        assert data["artist_name"] == "Taylor Swift"
+        assert len(data["tracks"]) > 10
+        assert len(data["albums"]) >= 1
+        assert "chart_summary" in data
+        assert "artist_weekly_history" in data
+
+    def test_album_chart_detail(self):
+        from backend.services.billboard_service import get_album_chart_detail
+
+        data = get_album_chart_detail(
+            album_name="Midnights", artist_name="Taylor Swift",
+            min_ms=30000, music_only=True,
+            bb_top_n=30, bb_album_top_n=20, bb_artist_top_n=20,
+            bb_week_start_dow=4, bb_week_start_hour=0,
+            year_start=None, year_end=None,
+        )
+        assert data["found"] is True
+        assert data["album_name"] == "Midnights"
+        assert len(data["tracks"]) >= 1
+        assert "chart_summary" in data
+        assert "album_weekly_history" in data
+
+    def test_entity_lists(self):
+        from backend.services.billboard_service import get_billboard_entity_lists
+
+        data = get_billboard_entity_lists(
+            min_ms=30000, music_only=True,
+            bb_top_n=30, bb_album_top_n=20, bb_artist_top_n=20,
+            bb_week_start_dow=4, bb_week_start_hour=0,
+            year_start=None, year_end=None,
+        )
+        assert len(data["tracks"]) > 500
+        assert len(data["albums"]) > 200
+        assert len(data["artists"]) > 100
+        assert "display" in data["tracks"][0]
+        assert "track_id" in data["tracks"][0]
+
+    def test_versus_track(self):
+        from backend.services.billboard_service import get_versus_track
+
+        data = get_versus_track(
+            tid_a=157, tid_b=149, min_ms=30000, music_only=True,
+            bb_top_n=30, bb_album_top_n=20, bb_artist_top_n=20,
+            bb_week_start_dow=4, bb_week_start_hour=0,
+            year_start=None, year_end=None,
+        )
+        assert data["found"] is True
+        for key in ["entity_a", "entity_b"]:
+            e = data[key]
+            assert "name" in e
+            assert "rank_history" in e
+            assert len(e["rank_history"]) >= 1
+            assert "power_score" in e["metrics"]
+            assert "peak_position" in e["metrics"]
+
+    def test_versus_album(self):
+        from backend.services.billboard_service import get_versus_album
+
+        data = get_versus_album(
+            aname_a="Midnights", aart_a="Taylor Swift",
+            aname_b="folklore", aart_b="Taylor Swift",
+            min_ms=30000, music_only=True,
+            bb_top_n=30, bb_album_top_n=20, bb_artist_top_n=20,
+            bb_week_start_dow=4, bb_week_start_hour=0,
+            year_start=None, year_end=None,
+        )
+        assert data["found"] is True
+        assert "num_tracks" in data["entity_a"]["metrics"]
+        assert "track_power_sum" in data["entity_a"]["metrics"]
+
+    def test_versus_artist(self):
+        from backend.services.billboard_service import get_versus_artist
+
+        data = get_versus_artist(
+            sel_a="Taylor Swift", sel_b="Olivia Rodrigo",
+            min_ms=30000, music_only=True,
+            bb_top_n=30, bb_album_top_n=20, bb_artist_top_n=20,
+            bb_week_start_dow=4, bb_week_start_hour=0,
+            year_start=None, year_end=None,
+        )
+        assert data["found"] is True
+        assert "num_tracks" in data["entity_a"]["metrics"]
+        assert "num_albums" in data["entity_a"]["metrics"]
+        assert "album_power_sum" in data["entity_a"]["metrics"]
 
 
 # ═══════════════════════════════════════════════════════════════════════════

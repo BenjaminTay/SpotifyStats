@@ -70,3 +70,4 @@ class YearlyWrapped(BaseModel):
     last_track: Optional[WrappedFirstLastTrack] = None
     season_tops: dict[str, str] = {}
     monthly_pulse: list[WrappedMonthlyPulse] = []
+    personality: Optional[dict] = None

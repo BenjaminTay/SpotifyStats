@@ -1374,3 +1374,732 @@ def _serialize_records(records):
         else:
             result[key] = _py_val(val)
     return result
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Track History Detail
+# ═══════════════════════════════════════════════════════════════════════════
+
+def _compute_change_column(hist_df):
+    """Compute NEW/RE/▲n/▼n/─ change column for a sorted weekly history DataFrame."""
+    hist = hist_df.sort_values("billboard_week").copy()
+    hist["billboard_week"] = pd.to_datetime(hist["billboard_week"])
+    hist["prev_rank"] = hist["rank"].shift(1)
+    hist["prev_week"] = hist["billboard_week"].shift(1)
+    changes = []
+    for _, r in hist.iterrows():
+        p = r["prev_rank"]
+        pw = r["prev_week"]
+        cw = r["billboard_week"]
+        cur = r["rank"]
+        if pd.isna(p):
+            changes.append("NEW")
+        elif pd.notna(pw) and (cw - pw).days > 8:
+            changes.append("RE")
+        else:
+            diff = int(p) - int(cur)
+            if diff > 0:
+                changes.append(f"▲{diff}")
+            elif diff < 0:
+                changes.append(f"▼{abs(diff)}")
+            else:
+                changes.append("─")
+    hist["change"] = changes
+    return hist
+
+
+def _build_gapped_chart_data(hist_df):
+    """Build x/y arrays with None gaps for >9 day breaks in chart history."""
+    chart_data = hist_df.sort_values("billboard_week")[["billboard_week", "rank", "play_count"]].copy()
+    chart_data["week_dt"] = pd.to_datetime(chart_data["billboard_week"])
+
+    x_vals, y_vals, texts = [], [], []
+    for i, (_, row) in enumerate(chart_data.iterrows()):
+        if i > 0:
+            gap_days = (row["week_dt"] - chart_data.iloc[i - 1]["week_dt"]).days
+            if gap_days > 9:
+                x_vals.append(None)
+                y_vals.append(None)
+                texts.append(None)
+        x_vals.append(str(row["billboard_week"]))
+        y_vals.append(int(row["rank"]))
+        texts.append(f"#{int(row['rank'])} · {int(row['play_count'])}次")
+    return x_vals, y_vals, texts
+
+
+def get_track_history(track_id, min_ms, music_only, bb_top_n, bb_album_top_n, bb_artist_top_n,
+                      bb_week_start_dow, bb_week_start_hour, year_start, year_end):
+    """Get detailed track chart history with change column and gapped chart data."""
+    data = compute_billboard_data(
+        min_ms, music_only, bb_top_n, bb_album_top_n, bb_artist_top_n,
+        bb_week_start_dow, bb_week_start_hour, year_start, year_end,
+    )
+    weekly = pd.DataFrame(data["weekly"])
+    track_summary = pd.DataFrame(data["track_summary"])
+    power_scores = pd.DataFrame(data["power_scores"])
+
+    track_hist = weekly[weekly["track_id"] == track_id]
+    if track_hist.empty:
+        return {"found": False}
+
+    track_hist = track_hist.sort_values("billboard_week")
+    ts_row = track_summary[track_summary["track_id"] == track_id]
+    info = ts_row.iloc[0].to_dict() if not ts_row.empty else {}
+
+    tp = power_scores[power_scores["track_id"] == track_id]
+    power_score = int(tp.iloc[0]["power_score"]) if not tp.empty else 0
+    power_scores_sorted = power_scores.sort_values("power_score", ascending=False).reset_index(drop=True)
+    power_rank = int(power_scores_sorted[power_scores_sorted["track_id"] == track_id].index[0]) + 1 if not tp.empty else None
+
+    # Change column
+    hist_with_change = _compute_change_column(track_hist)
+
+    # Gapped chart data
+    x_vals, y_vals, texts = _build_gapped_chart_data(track_hist)
+
+    return {
+        "found": True,
+        "track_id": track_id,
+        "track_name": str(track_hist.iloc[0]["track_name"]),
+        "artist_name": str(track_hist.iloc[0]["artist_name"]),
+        "summary": {
+            "peak_position": int(info.get("peak_position", 0)),
+            "weeks_on_chart": int(info.get("weeks_on_chart", 0)),
+            "weeks_at_peak": int(info.get("weeks_at_peak", 0)),
+            "first_week": str(info.get("first_week", "")),
+            "last_week": str(info.get("last_week", "")),
+            "first_peak_week": str(info.get("first_peak_week", "")) if pd.notna(info.get("first_peak_week")) else None,
+            "total_chart_plays": int(info.get("total_chart_plays", 0)),
+            "total_plays": int(info.get("total_plays", 0)),
+            "weeks_at_no1": int(info.get("weeks_at_no1", 0)),
+            "power_score": power_score,
+            "power_rank": power_rank,
+        },
+        "history": [
+            {
+                "week": str(r["billboard_week"]),
+                "rank": int(r["rank"]),
+                "play_count": int(r["play_count"]),
+                "change": r["change"],
+            }
+            for _, r in hist_with_change.iterrows()
+        ],
+        "chart_data": {
+            "x": x_vals,
+            "y": y_vals,
+            "texts": texts,
+            "top_n": bb_top_n,
+            "peak_position": int(info.get("peak_position", 0)),
+        },
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Artist Chart Detail
+# ═══════════════════════════════════════════════════════════════════════════
+
+def get_artist_chart_detail(artist_name, min_ms, music_only, bb_top_n, bb_album_top_n, bb_artist_top_n,
+                             bb_week_start_dow, bb_week_start_hour, year_start, year_end):
+    """Get detailed artist chart data: history, track/album performances, trend."""
+    data = compute_billboard_data(
+        min_ms, music_only, bb_top_n, bb_album_top_n, bb_artist_top_n,
+        bb_week_start_dow, bb_week_start_hour, year_start, year_end,
+    )
+    weekly = pd.DataFrame(data["weekly"])
+    weekly_artist = pd.DataFrame(data["weekly_artist"])
+    weekly_album = pd.DataFrame(data["weekly_album"])
+    artist_track_counts = pd.DataFrame(data["artist_track_counts"])
+    artist_summary = pd.DataFrame(data["artist_summary"])
+    track_summary = pd.DataFrame(data["track_summary"])
+    power_scores = pd.DataFrame(data["power_scores"])
+    album_power_scores = pd.DataFrame(data["album_power_scores"])
+    artist_power_scores = pd.DataFrame(data["artist_power_scores"])
+
+    art_row = artist_track_counts[artist_track_counts["artist_name"] == artist_name]
+    if art_row.empty:
+        return {"found": False}
+    art_row = art_row.iloc[0]
+
+    # Artist weekly history
+    artist_chart_data = weekly_artist[weekly_artist["artist_name"] == artist_name]
+    artist_weekly = weekly[weekly["artist_name"] == artist_name]
+
+    # Artist power score/rank
+    aps_sorted = artist_power_scores.sort_values("power_score", ascending=False).reset_index(drop=True)
+    ap_row = aps_sorted[aps_sorted["artist_name"] == artist_name]
+    artist_power_score = int(ap_row.iloc[0]["power_score"]) if not ap_row.empty else 0
+    artist_power_rank = int(ap_row.iloc[0].name) + 1 if not ap_row.empty else None
+
+    # Track power scores for this artist
+    track_power = power_scores.sort_values("power_score", ascending=False).reset_index(drop=True)
+    track_power["power_rank"] = track_power.index + 1
+    artist_track_power = track_power[track_power["artist_name"] == artist_name]
+
+    # Album power scores for this artist
+    album_power = album_power_scores.sort_values("power_score", ascending=False).reset_index(drop=True)
+    album_power["power_rank"] = album_power.index + 1
+    artist_album_power = album_power[album_power["artist_name"] == artist_name]
+
+    # Charting tracks with power scores
+    art_tracks = artist_summary[artist_summary["artist_name"] == artist_name].copy()
+    art_tracks = art_tracks.merge(
+        track_summary[["track_id", "weeks_at_no1", "first_peak_week"]],
+        on="track_id", how="left"
+    )
+    art_tracks["weeks_at_no1"] = art_tracks["weeks_at_no1"].fillna(0).astype(int)
+    art_tracks = art_tracks.merge(
+        artist_track_power[["track_id", "power_score", "power_rank"]],
+        on="track_id", how="left"
+    )
+    art_tracks["power_score"] = art_tracks["power_score"].fillna(0).astype(int)
+    art_tracks["power_rank"] = art_tracks["power_rank"].fillna(0).astype(int)
+    art_tracks = art_tracks.sort_values(["peak_position", "weeks_on_chart"], ascending=[True, False])
+
+    # Best singles rank per week (for overlay chart)
+    best_singles = (
+        artist_weekly.groupby("billboard_week")["rank"]
+        .min()
+        .reset_index()
+        .sort_values("billboard_week")
+    )
+
+    # Artist weekly history with change column and #1 info
+    artist_no1 = artist_weekly[artist_weekly["rank"] == 1].groupby("billboard_week").agg(
+        no1_track_names=("track_name", lambda x: "、".join(dict.fromkeys(x))),
+        no1_track_id=("track_id", "first"),
+        no1_count=("track_id", "nunique"),
+    ).reset_index()
+
+    # #1 album per week
+    week_no1_albums = weekly_album[weekly_album["rank"] == 1][["billboard_week", "album_name", "artist_name"]].copy()
+
+    artist_wk_history = _compute_change_column(artist_chart_data) if not artist_chart_data.empty else pd.DataFrame()
+
+    # Artist chart summary
+    chart_summary = {}
+    if not artist_chart_data.empty:
+        art_peak = int(artist_chart_data["rank"].min())
+        chart_summary = {
+            "peak_position": art_peak,
+            "weeks_on_chart": int(artist_chart_data["billboard_week"].nunique()),
+            "first_week": str(artist_chart_data["billboard_week"].min()),
+            "first_peak_week": str(artist_chart_data.loc[artist_chart_data["rank"] == art_peak, "billboard_week"].min()),
+            "no1_weeks": int((artist_chart_data["rank"] == 1).sum()),
+            "power_score": artist_power_score,
+            "power_rank": artist_power_rank,
+        }
+
+    # Album chart performance summary
+    artist_albums_all = weekly_album[weekly_album["artist_name"] == artist_name]
+    album_perf = []
+    if not artist_albums_all.empty:
+        album_summary = (
+            artist_albums_all.groupby("album_name")
+            .agg(
+                peak=("rank", "min"),
+                pk_wks=("rank", lambda x: (x == x.min()).sum()),
+                weeks=("billboard_week", "nunique"),
+                first_week=("billboard_week", "min"),
+                last_week=("billboard_week", "max"),
+                total_plays=("play_count", "sum"),
+            )
+            .reset_index()
+            .sort_values(["peak", "pk_wks", "weeks"], ascending=[True, False, False])
+        )
+        album_summary = album_summary.merge(
+            artist_album_power[["album_name", "power_score", "power_rank"]],
+            on="album_name", how="left"
+        )
+        album_summary["power_score"] = album_summary["power_score"].fillna(0).astype(int)
+        album_summary["power_rank"] = album_summary["power_rank"].fillna(0).astype(int)
+        album_perf = [
+            {
+                "album_name": r["album_name"],
+                "peak": int(r["peak"]),
+                "weeks": int(r["weeks"]),
+                "pk_wks": int(r["pk_wks"]),
+                "first_week": str(r["first_week"]),
+                "last_week": str(r["last_week"]),
+                "total_plays": int(r["total_plays"]),
+                "power_score": int(r["power_score"]),
+                "power_rank": int(r["power_rank"]) if r["power_rank"] > 0 else None,
+            }
+            for _, r in album_summary.iterrows()
+        ]
+
+    return {
+        "found": True,
+        "artist_name": artist_name,
+        "info": {
+            "total_tracks": int(art_row["total_tracks"]),
+            "best_peak": int(art_row["best_peak"]),
+            "total_weeks": int(art_row["total_weeks"]),
+            "avg_weeks": round(float(art_row["avg_weeks"]), 1),
+            "top1": int(art_row["top1"]),
+            "top5": int(art_row["top5"]),
+            "top10": int(art_row["top10"]),
+            "weeks_at_no1": int(art_row["weeks_at_no1"]),
+            "num_no1_albums": int(art_row.get("num_no1_albums", 0)),
+            "album_no1_weeks": int(art_row.get("album_no1_weeks", 0)),
+            "total_track_power": int(artist_track_power["power_score"].sum()),
+            "total_album_power": int(artist_album_power["power_score"].sum()),
+        },
+        "chart_summary": chart_summary,
+        "artist_weekly_history": [
+            {
+                "week": str(r["billboard_week"]),
+                "rank": int(r["rank"]),
+                "play_count": int(r["play_count"]),
+                "tracks_count": int(r.get("tracks_count", 0)),
+                "albums_count": int(r.get("albums_count", 0)),
+                "change": r["change"],
+            }
+            for _, r in artist_wk_history.iterrows()
+        ] if not artist_wk_history.empty else [],
+        "artist_no1_by_week": [
+            {
+                "week": str(r["billboard_week"]),
+                "no1_track_names": r["no1_track_names"],
+                "no1_track_id": int(r["no1_track_id"]) if pd.notna(r.get("no1_track_id")) else None,
+                "no1_count": int(r["no1_count"]),
+            }
+            for _, r in artist_no1.iterrows()
+        ],
+        "week_no1_albums": [
+            {
+                "week": str(r["billboard_week"]),
+                "album_name": r["album_name"],
+                "artist_name": r["artist_name"],
+            }
+            for _, r in week_no1_albums.iterrows()
+        ],
+        "best_singles_overlay": [
+            {"week": str(r["billboard_week"]), "rank": int(r["rank"])}
+            for _, r in best_singles.iterrows()
+        ] if not best_singles.empty else [],
+        "tracks": [
+            {
+                "track_id": r["track_id"],
+                "track_name": r["track_name"],
+                "peak_position": int(r["peak_position"]),
+                "weeks_on_chart": int(r["weeks_on_chart"]),
+                "weeks_at_peak": int(r["weeks_at_peak"]),
+                "first_week": str(r["first_week"]),
+                "first_peak_week": str(r.get("first_peak_week", "")),
+                "last_week": str(r["last_week"]),
+                "total_chart_plays": int(r["total_chart_plays"]),
+                "power_score": int(r["power_score"]),
+                "power_rank": int(r["power_rank"]) if r["power_rank"] > 0 else None,
+            }
+            for _, r in art_tracks.iterrows()
+        ],
+        "albums": album_perf,
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Album Chart Detail
+# ═══════════════════════════════════════════════════════════════════════════
+
+def get_album_chart_detail(album_name, artist_name, min_ms, music_only, bb_top_n, bb_album_top_n, bb_artist_top_n,
+                            bb_week_start_dow, bb_week_start_hour, year_start, year_end):
+    """Get detailed album chart data: history, track performances, trend."""
+    data = compute_billboard_data(
+        min_ms, music_only, bb_top_n, bb_album_top_n, bb_artist_top_n,
+        bb_week_start_dow, bb_week_start_hour, year_start, year_end,
+    )
+    weekly = pd.DataFrame(data["weekly"])
+    weekly_album = pd.DataFrame(data["weekly_album"])
+    album_track_counts = pd.DataFrame(data["album_track_counts"])
+    track_per_album = pd.DataFrame(data["track_per_album"])
+    power_scores = pd.DataFrame(data["power_scores"])
+    album_power_scores = pd.DataFrame(data["album_power_scores"])
+
+    # Find matching album
+    alb_row = album_track_counts[
+        (album_track_counts["album_name"] == album_name) & (album_track_counts["artist_name"] == artist_name)
+    ]
+    if alb_row.empty:
+        return {"found": False}
+    alb_row = alb_row.iloc[0]
+
+    # Album chart data
+    album_chart_data = weekly_album[
+        (weekly_album["album_name"] == album_name) & (weekly_album["artist_name"] == artist_name)
+    ]
+
+    # Album power score/rank
+    aps_sorted = album_power_scores.sort_values("power_score", ascending=False).reset_index(drop=True)
+    ap_row = aps_sorted[
+        (aps_sorted["album_name"] == album_name) & (aps_sorted["artist_name"] == artist_name)
+    ]
+    album_power_score = int(ap_row.iloc[0]["power_score"]) if not ap_row.empty else 0
+    album_power_rank = int(ap_row.iloc[0].name) + 1 if not ap_row.empty else None
+
+    # Album's charting tracks
+    alb_track_ids = set(
+        track_per_album[
+            (track_per_album["album_name"] == album_name) & (track_per_album["artist_name"] == artist_name)
+        ]["track_id"].tolist()
+    )
+    track_power = power_scores.sort_values("power_score", ascending=False).reset_index(drop=True)
+    track_power["power_rank"] = track_power.index + 1
+    album_track_power = track_power[track_power["track_id"].isin(alb_track_ids)]
+
+    alb_tracks = track_per_album[
+        (track_per_album["album_name"] == album_name) & (track_per_album["artist_name"] == artist_name)
+    ].copy()
+    alb_tracks = alb_tracks.merge(
+        album_track_power[["track_id", "power_score", "power_rank"]],
+        on="track_id", how="left"
+    )
+    alb_tracks["power_score"] = alb_tracks["power_score"].fillna(0).astype(int)
+    alb_tracks["power_rank"] = alb_tracks["power_rank"].fillna(0).astype(int)
+    alb_tracks = alb_tracks.sort_values(["peak_position", "weeks_on_chart"], ascending=[True, False])
+
+    # Singles weekly for this album (for overlay chart)
+    album_weekly = weekly[weekly["track_id"].isin(alb_track_ids)]
+    best_singles = (
+        album_weekly.groupby("billboard_week")["rank"]
+        .min()
+        .reset_index()
+        .sort_values("billboard_week")
+    )
+
+    # #1 track info per week
+    album_no1 = album_weekly[album_weekly["rank"] == 1].groupby("billboard_week").agg(
+        no1_track_names=("track_name", lambda x: "、".join(dict.fromkeys(x))),
+        no1_track_id=("track_id", "first"),
+        no1_count=("track_id", "nunique"),
+    ).reset_index()
+
+    # Album weekly history with change column
+    album_wk_history = _compute_change_column(album_chart_data) if not album_chart_data.empty else pd.DataFrame()
+
+    # Chart summary
+    chart_summary = {}
+    if not album_chart_data.empty:
+        alb_peak = int(album_chart_data["rank"].min())
+        chart_summary = {
+            "peak_position": alb_peak,
+            "weeks_on_chart": int(album_chart_data["billboard_week"].nunique()),
+            "first_week": str(album_chart_data["billboard_week"].min()),
+            "first_peak_week": str(album_chart_data.loc[album_chart_data["rank"] == alb_peak, "billboard_week"].min()),
+            "no1_weeks": int((album_chart_data["rank"] == 1).sum()),
+            "power_score": album_power_score,
+            "power_rank": album_power_rank,
+        }
+
+    return {
+        "found": True,
+        "album_name": album_name,
+        "artist_name": artist_name,
+        "info": {
+            "total_tracks": int(alb_row["total_tracks"]),
+            "best_peak": int(alb_row["best_peak"]),
+            "total_weeks": int(alb_row["total_weeks"]),
+            "avg_weeks": round(float(alb_row["avg_weeks"]), 1),
+            "top1": int(alb_row["top1"]),
+            "top5": int(alb_row["top5"]),
+            "top10": int(alb_row["top10"]),
+            "weeks_at_no1": int(alb_row["weeks_at_no1"]),
+            "album_chart_no1_weeks": int(alb_row.get("album_chart_no1_weeks", 0)),
+            "total_track_power": int(album_track_power["power_score"].sum()),
+        },
+        "chart_summary": chart_summary,
+        "album_weekly_history": [
+            {
+                "week": str(r["billboard_week"]),
+                "rank": int(r["rank"]),
+                "play_count": int(r["play_count"]),
+                "tracks_count": int(r.get("tracks_count", 0)),
+                "change": r["change"],
+            }
+            for _, r in album_wk_history.iterrows()
+        ] if not album_wk_history.empty else [],
+        "album_no1_by_week": [
+            {
+                "week": str(r["billboard_week"]),
+                "no1_track_names": r["no1_track_names"],
+                "no1_track_id": int(r["no1_track_id"]) if pd.notna(r.get("no1_track_id")) else None,
+                "no1_count": int(r["no1_count"]),
+            }
+            for _, r in album_no1.iterrows()
+        ],
+        "best_singles_overlay": [
+            {"week": str(r["billboard_week"]), "rank": int(r["rank"])}
+            for _, r in best_singles.iterrows()
+        ] if not best_singles.empty else [],
+        "tracks": [
+            {
+                "track_id": r["track_id"],
+                "track_name": r["track_name"],
+                "peak_position": int(r["peak_position"]),
+                "weeks_on_chart": int(r["weeks_on_chart"]),
+                "weeks_at_peak": int(r["weeks_at_peak"]),
+                "first_week": str(r["first_week"]),
+                "first_peak_week": str(r.get("first_peak_week", "")),
+                "last_week": str(r["last_week"]),
+                "total_chart_plays": int(r["total_chart_plays"]),
+                "power_score": int(r["power_score"]),
+                "power_rank": int(r["power_rank"]) if r["power_rank"] > 0 else None,
+            }
+            for _, r in alb_tracks.iterrows()
+        ],
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Versus
+# ═══════════════════════════════════════════════════════════════════════════
+
+def _get_ps_rank(power_scores_df, key_col, key_val, artist_val=None):
+    """Look up power score and rank for an entity in a power_scores DataFrame."""
+    if power_scores_df is None or len(power_scores_df) == 0:
+        return None, None
+    ps = power_scores_df.sort_values("power_score", ascending=False).reset_index(drop=True)
+    if artist_val is not None:
+        mask = (ps[key_col] == key_val) & (ps["artist_name"] == artist_val)
+    else:
+        mask = ps[key_col] == key_val
+    match = ps[mask]
+    if len(match) == 0:
+        return None, None
+    idx = int(match.index[0])
+    return int(match.iloc[0]["power_score"]), idx + 1
+
+
+def _resolve_album_members_vs(album_name, artist_name):
+    """Resolve all member album names in a release group."""
+    conn = get_db()
+    row = conn.execute(
+        """SELECT a.album_name FROM release_group_members rgm
+           JOIN release_groups rg ON rg.group_id = rgm.group_id
+           JOIN albums a ON a.album_id = rgm.album_id
+           JOIN artists ar ON a.artist_id = ar.artist_id
+           WHERE rg.canonical_name = ? AND ar.artist_name = ?
+           UNION SELECT ?""",
+        (album_name, artist_name, album_name),
+    ).fetchall()
+    conn.close()
+    if row:
+        return [r["album_name"] for r in row]
+    return [album_name]
+
+
+def get_versus_track(tid_a, tid_b, min_ms, music_only, bb_top_n, bb_album_top_n, bb_artist_top_n,
+                     bb_week_start_dow, bb_week_start_hour, year_start, year_end):
+    """Compare two tracks side-by-side."""
+    data = compute_billboard_data(
+        min_ms, music_only, bb_top_n, bb_album_top_n, bb_artist_top_n,
+        bb_week_start_dow, bb_week_start_hour, year_start, year_end,
+    )
+    weekly = pd.DataFrame(data["weekly"])
+    power_scores = pd.DataFrame(data["power_scores"])
+
+    def _track_data(tid):
+        grp = weekly[weekly["track_id"] == tid].sort_values("billboard_week")
+        if grp.empty:
+            return None
+        ps_val, ps_rank = _get_ps_rank(power_scores, "track_id", tid)
+        return {
+            "name": f"{grp['track_name'].iloc[0]} — {grp['artist_name'].iloc[0]}",
+            "track_name": str(grp["track_name"].iloc[0]),
+            "artist_name": str(grp["artist_name"].iloc[0]),
+            "rank_history": [
+                {"week": str(r["billboard_week"]), "rank": int(r["rank"]), "play_count": int(r["play_count"])}
+                for _, r in grp.iterrows()
+            ],
+            "metrics": {
+                "power_score": ps_val,
+                "power_rank": ps_rank,
+                "peak_position": int(grp["rank"].min()),
+                "weeks_on_chart": int(grp["billboard_week"].nunique()),
+                "no1_weeks": int((grp["rank"] == 1).sum()),
+                "top5_weeks": int((grp["rank"] <= 5).sum()),
+                "total_chart_plays": int(grp["play_count"].sum()),
+            },
+        }
+
+    result_a = _track_data(tid_a)
+    result_b = _track_data(tid_b)
+    if result_a is None or result_b is None:
+        return {"found": False, "reason": "其中一首歌在选定的年份范围内没有入榜记录"}
+    return {"found": True, "entity_a": result_a, "entity_b": result_b}
+
+
+def get_versus_album(aname_a, aart_a, aname_b, aart_b, min_ms, music_only, bb_top_n, bb_album_top_n, bb_artist_top_n,
+                     bb_week_start_dow, bb_week_start_hour, year_start, year_end):
+    """Compare two albums side-by-side."""
+    data = compute_billboard_data(
+        min_ms, music_only, bb_top_n, bb_album_top_n, bb_artist_top_n,
+        bb_week_start_dow, bb_week_start_hour, year_start, year_end,
+    )
+    weekly = pd.DataFrame(data["weekly"])
+    weekly_album = pd.DataFrame(data["weekly_album"])
+    album_power_scores = pd.DataFrame(data["album_power_scores"])
+    track_power_scores = pd.DataFrame(data["power_scores"])
+
+    def _album_data(aname, aart):
+        grp = weekly_album[
+            (weekly_album["album_name"] == aname) & (weekly_album["artist_name"] == aart)
+        ].sort_values("billboard_week")
+        if grp.empty:
+            return None
+        aps_val, aps_rank = _get_ps_rank(album_power_scores, "album_name", aname, aart)
+
+        # Track-level stats via release group members
+        member_names = _resolve_album_members_vs(aname, aart)
+        album_tracks = weekly[weekly["album_name"].isin(member_names)]
+        num_tracks = int(album_tracks["track_id"].nunique())
+        num_no1_tracks = int(album_tracks[album_tracks["rank"] == 1]["track_id"].nunique())
+        total_no1_weeks = int((album_tracks["rank"] == 1).sum())
+
+        # Sum of track power scores
+        album_track_ids = album_tracks["track_id"].unique()
+        track_ps_sum = 0
+        if track_power_scores is not None and len(track_power_scores) > 0:
+            track_ps_sum = int(track_power_scores[
+                track_power_scores["track_id"].isin(album_track_ids)
+            ]["power_score"].sum())
+
+        return {
+            "name": f"{aname} — {aart}",
+            "album_name": aname,
+            "artist_name": aart,
+            "rank_history": [
+                {"week": str(r["billboard_week"]), "rank": int(r["rank"]), "play_count": int(r["play_count"])}
+                for _, r in grp.iterrows()
+            ],
+            "metrics": {
+                "power_score": aps_val,
+                "power_rank": aps_rank,
+                "peak_position": int(grp["rank"].min()),
+                "weeks_on_chart": int(grp["billboard_week"].nunique()),
+                "no1_weeks": int((grp["rank"] == 1).sum()),
+                "num_tracks": num_tracks,
+                "num_no1_tracks": num_no1_tracks,
+                "total_no1_track_weeks": total_no1_weeks,
+                "track_power_sum": track_ps_sum,
+                "total_plays": int(grp["play_count"].sum()),
+            },
+        }
+
+    result_a = _album_data(aname_a, aart_a)
+    result_b = _album_data(aname_b, aart_b)
+    if result_a is None or result_b is None:
+        return {"found": False, "reason": "其中一张专辑在选定的年份范围内没有入榜记录"}
+    return {"found": True, "entity_a": result_a, "entity_b": result_b}
+
+
+def get_versus_artist(sel_a, sel_b, min_ms, music_only, bb_top_n, bb_album_top_n, bb_artist_top_n,
+                      bb_week_start_dow, bb_week_start_hour, year_start, year_end):
+    """Compare two artists side-by-side."""
+    data = compute_billboard_data(
+        min_ms, music_only, bb_top_n, bb_album_top_n, bb_artist_top_n,
+        bb_week_start_dow, bb_week_start_hour, year_start, year_end,
+    )
+    weekly = pd.DataFrame(data["weekly"])
+    weekly_artist = pd.DataFrame(data["weekly_artist"])
+    weekly_album = pd.DataFrame(data["weekly_album"])
+    artist_power_scores = pd.DataFrame(data["artist_power_scores"])
+    track_power_scores = pd.DataFrame(data["power_scores"])
+    album_power_scores = pd.DataFrame(data["album_power_scores"])
+
+    def _artist_data(artist_name):
+        grp = weekly_artist[weekly_artist["artist_name"] == artist_name].sort_values("billboard_week")
+        if grp.empty:
+            return None
+        aps_val, aps_rank = _get_ps_rank(artist_power_scores, "artist_name", artist_name)
+
+        # Track-level stats
+        artist_tracks = weekly[weekly["artist_name"] == artist_name]
+        num_tracks = int(artist_tracks["track_id"].nunique())
+        num_no1_tracks = int(artist_tracks[artist_tracks["rank"] == 1]["track_id"].nunique())
+        total_no1_track_weeks = int((artist_tracks["rank"] == 1).sum())
+
+        # Sum of track power scores
+        artist_track_ids = artist_tracks["track_id"].unique()
+        track_ps_sum = 0
+        if track_power_scores is not None and len(track_power_scores) > 0:
+            track_ps_sum = int(track_power_scores[
+                track_power_scores["track_id"].isin(artist_track_ids)
+            ]["power_score"].sum())
+
+        # Album-level stats
+        artist_albums = weekly_album[weekly_album["artist_name"] == artist_name]
+        num_albums = int(artist_albums["album_name"].dropna().nunique())
+        num_no1_albums = int(artist_albums[artist_albums["rank"] == 1]["album_name"].nunique())
+        total_no1_album_weeks = int((artist_albums["rank"] == 1).sum())
+
+        # Sum of album power scores
+        album_ps_sum = 0
+        if album_power_scores is not None and len(album_power_scores) > 0:
+            album_ps_sum = int(album_power_scores[
+                album_power_scores["artist_name"] == artist_name
+            ]["power_score"].sum())
+
+        return {
+            "name": artist_name,
+            "rank_history": [
+                {"week": str(r["billboard_week"]), "rank": int(r["rank"]), "play_count": int(r["play_count"])}
+                for _, r in grp.iterrows()
+            ],
+            "metrics": {
+                "power_score": aps_val,
+                "power_rank": aps_rank,
+                "peak_position": int(grp["rank"].min()),
+                "weeks_on_chart": int(grp["billboard_week"].nunique()),
+                "no1_weeks": int((grp["rank"] == 1).sum()),
+                "num_tracks": num_tracks,
+                "num_no1_tracks": num_no1_tracks,
+                "total_no1_track_weeks": total_no1_track_weeks,
+                "track_power_sum": track_ps_sum,
+                "num_albums": num_albums,
+                "num_no1_albums": num_no1_albums,
+                "total_no1_album_weeks": total_no1_album_weeks,
+                "album_power_sum": album_ps_sum,
+                "total_plays": int(grp["play_count"].sum()),
+            },
+        }
+
+    result_a = _artist_data(sel_a)
+    result_b = _artist_data(sel_b)
+    if result_a is None or result_b is None:
+        return {"found": False, "reason": "其中一位艺人在选定的年份范围内没有入榜记录"}
+    return {"found": True, "entity_a": result_a, "entity_b": result_b}
+
+
+def get_billboard_entity_lists(min_ms, music_only, bb_top_n, bb_album_top_n, bb_artist_top_n,
+                                bb_week_start_dow, bb_week_start_hour, year_start, year_end):
+    """Return entity lists for versus search pickers (tracks, albums, artists)."""
+    data = compute_billboard_data(
+        min_ms, music_only, bb_top_n, bb_album_top_n, bb_artist_top_n,
+        bb_week_start_dow, bb_week_start_hour, year_start, year_end,
+    )
+    weekly = pd.DataFrame(data["weekly"])
+    weekly_album = pd.DataFrame(data["weekly_album"])
+    weekly_artist = pd.DataFrame(data["weekly_artist"])
+
+    # Tracks: (display_name, track_id)
+    track_agg = weekly.groupby(["track_id", "track_name", "artist_name"])["play_count"].sum().reset_index()
+    track_agg = track_agg.sort_values("play_count", ascending=False)
+    tracks = [
+        {"display": f"{r['track_name']} — {r['artist_name']}", "track_id": r["track_id"]}
+        for _, r in track_agg.iterrows()
+    ]
+
+    # Albums: (display_name, (album_name, artist_name))
+    album_agg = weekly_album.groupby(["album_name", "artist_name"])["play_count"].sum().reset_index()
+    album_agg = album_agg.sort_values("play_count", ascending=False)
+    albums = [
+        {"display": f"{r['album_name']} — {r['artist_name']}", "album_name": r["album_name"], "artist_name": r["artist_name"]}
+        for _, r in album_agg.iterrows()
+    ]
+
+    # Artists
+    artist_agg = weekly_artist.groupby("artist_name")["play_count"].sum().reset_index()
+    artist_agg = artist_agg.sort_values("play_count", ascending=False)
+    artists = [{"display": r["artist_name"], "artist_name": r["artist_name"]} for _, r in artist_agg.iterrows()]
+
+    return {"tracks": tracks, "albums": albums, "artists": artists}

@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Spotify Extended Streaming History 数据分析 Web 应用。从 Spotify 官方导出的 JSON 播放记录中导入数据到 SQLite，通过 FastAPI + React 提供交互式多维度统计仪表盘。
 
-**架构演进**：已从 Streamlit 单体架构迁移到 FastAPI 后端 + React 前端。后端 56 个 API 端点已全部完成，前端 Dashboard 总览页和 Billboard 周榜页已完成开发。Streamlit 原有应用和后端 API 仍可并行运行。
+**架构演进**：已从 Streamlit 单体架构迁移到 FastAPI 后端 + React 前端。后端 66 个 API 端点已全部完成，前端 Dashboard 总览页和 Billboard 周榜页已完成开发。Streamlit 原有应用和后端 API 仍可并行运行。
 
 **UI 主题**：「编辑风 × 液态玻璃」— 杂志式排版（Playfair Display 衬线标题 + Inter 无衬线正文）+ 毛玻璃卡片材质 + 日/夜双皮肤。详细风格指南见 `frontend/UI_STYLE_GUIDE.md`。
 
@@ -80,7 +80,7 @@ FastAPI 后端采用三层分离架构：**路由层 (api/)** → **服务层 (s
 
 #### 路由层 (api/)
 
-18 个子路由模块，共 56 个 API 端点。所有路由通过 `backend/api/router.py` 组装，挂载到 `backend/main.py` 的 `/api` 前缀下。
+18 个子路由模块，共 66 个 API 端点。所有路由通过 `backend/api/router.py` 组装，挂载到 `backend/main.py` 的 `/api` 前缀下。
 
 **过滤参数依赖注入** (`backend/dependencies.py`)：
 - `PlayFilters` — 标准播放数据过滤（`min_ms`, `music_only`, `merge_enabled`），用于仪表盘、时间线、排行榜、行为分析、听歌时段等端点
@@ -98,12 +98,12 @@ FastAPI 后端采用三层分离架构：**路由层 (api/)** → **服务层 (s
 ```
 GET  /api/health                         健康检查
 GET  /api/dashboard/*                    仪表盘（6 端点：summary, monthly-trend, top-tracks, platform-dist, dow-dist, random-track）
-GET  /api/timeline/*                     时间线（annual, monthly）
+GET  /api/timeline/*                     时间线（annual, monthly, weekly + 周下钻 top5）
 GET  /api/leaderboard                    排行榜（track/artist/album × plays/hours × all/year）
 GET  /api/behavior                       行为分析（reason_end, reason_start, fwdbtn, shuffle, platform）
-GET  /api/listening-hours/*              听歌时段（heatmap, yearly-heatmap, late-night）
+GET  /api/listening-hours/*              听歌时段（heatmap, yearly-heatmap, late-night, weekday-weekend, platform-hourly）
 GET  /api/artist/{name}/deep-dive        艺人深度分析
-GET  /api/wrapped/{year}                 自定义年度总结
+GET  /api/wrapped/{year}                 自定义年度总结（含听歌人格识别：Explorer/Loyalist/Binger）
 GET  /api/wrapped-hub/*                  Wrapped 2025 官方
 GET  /api/library/*                      音乐库
 GET  /api/search-history/*               搜索编年史
@@ -112,6 +112,13 @@ GET  /api/podcast/*                      播客
 GET  /api/video/*                        视频分析
 GET  /api/profile                        个人档案
 GET  /api/billboard/data                  Billboard 统一数据入口（返回全部 15 个数据结构，~2-5MB JSON，含 cover_url）
+GET  /api/billboard/track/{id}            单曲榜单历史（升降列 NEW/RE/▲n/▼n/─ + 断档 gap 检测）
+GET  /api/billboard/artist/{name}         艺人榜单详情（周榜历史 + 歌曲/专辑表现 + Power Score）
+GET  /api/billboard/album/{name}          专辑榜单详情（周榜历史 + 收录曲表现 + 最佳单曲叠加）
+GET  /api/billboard/entity-lists          对决搜索选择器数据（歌曲/专辑/艺人列表）
+GET  /api/billboard/versus/track          歌曲对决（排名历史 + 指标对比）
+GET  /api/billboard/versus/album          专辑对决（含版本合并成员聚合）
+GET  /api/billboard/versus/artist         艺人对决（歌曲/专辑双维度统计）
 GET  /api/billboard/release-cycle/*       发行周期分析（artist-list, artist/{name}, artist/{name}/album/{album}, compare）
 GET  /api/settings                       设置（GET 读取 / PUT 更新）
 GET  /api/version-merge/*                版本合并管理（groups, detect, apply）
@@ -124,8 +131,8 @@ POST /api/import/account                 账号数据导入
 
 计算逻辑从 Streamlit 页面中提取，不依赖任何 Web 框架。每个服务文件职责单一：
 
-- **`play_service.py`** — 核心播放数据服务。`load_plays()` 封装，通用 groupby 聚合（按年/月/周/小时/平台/艺术家等），仪表盘 KPI、时间线、排行榜、行为分析、听歌时段热力图、年度总结 Wrapped 等所有基于播放数据的端点均调用此服务。Dashboard 相关函数支持可选 `df` 参数，`/dashboard/full` 端点加载一次 plays 后传递给 5 个子函数复用，避免 6 次冗余 SQL 查询
-- **`billboard_service.py`** — Billboard 计算管线。`compute_billboard_data()` 一次性计算 15+ 数据结构（周榜 ×3、总榜 ×3、走势总榜 ×3、榜单记录、每周榜首等），`@lru_cache(maxsize=1)` 缓存完整结果。Power Score 只计算一次（原 Streamlit 代码重复计算 ~10 次）
+- **`play_service.py`** — 核心播放数据服务。`load_plays()` 封装，通用 groupby 聚合（按年/月/周/小时/平台/艺术家等），仪表盘 KPI、时间线（年度/月度/周度+下钻）、排行榜、行为分析、听歌时段热力图、工作日vs周末对比、平台×小时分布、年度总结 Wrapped（含听歌人格 Explorer/Loyalist/Binger）等所有基于播放数据的端点均调用此服务。Dashboard 相关函数支持可选 `df` 参数，`/dashboard/full` 端点加载一次 plays 后传递给 5 个子函数复用，避免 6 次冗余 SQL 查询
+- **`billboard_service.py`** — Billboard 计算管线。`compute_billboard_data()` 一次性计算 15+ 数据结构（周榜 ×3、总榜 ×3、走势总榜 ×3、榜单记录、每周榜首等），`@lru_cache(maxsize=1)` 缓存完整结果。Power Score 只计算一次（原 Streamlit 代码重复计算 ~10 次）。新增详情和对比功能：`get_track_history()`（升降列 NEW/RE/▲n/▼n/─ + 断档 gap 检测）、`get_artist_chart_detail()`（艺人周榜历史 + 歌曲/专辑表现）、`get_album_chart_detail()`（专辑周榜历史 + 收录曲表现）、`get_versus_{track,album,artist}()`（双实体对决对比）、`get_billboard_entity_lists()`（对决搜索选择器）
 - **`release_cycle_service.py`** — 发行周期分析。艺人发行列表、单曲 Billboard 历史、专辑周期指标（首周排名、峰值、影响力得分、半衰期）、先行曲识别（三级查找：DB → Spotify API → 最早播放日期）、`compare_releases()` 多发行叠加对比。`@ttl_cached` 缓存 Spotify API 令牌（~58 分钟 TTL）
 - **`library_service.py`** — 收藏交叉查询（收藏曲目/专辑/艺人与实际收听对比）
 - **`search_service.py`** — 搜索历史统计（日搜索量、意图分类、时段热力图）
@@ -149,7 +156,7 @@ POST /api/import/account                 账号数据导入
 Pydantic v2 模型定义 API 响应结构，按领域拆分：
 - `common.py` — 通用模型（分页、错误响应）
 - `dashboard.py` — 仪表盘响应
-- `timeline.py` — 时间线 + Wrapped 年度总结响应（`AnnualTimelinePoint`, `MonthlyTimelinePoint`, `YearlyWrapped` 等）
+- `timeline.py` — 时间线 + Wrapped 年度总结响应（`AnnualTimelinePoint`, `MonthlyTimelinePoint`, `YearlyWrapped` 含 `personality` 听歌人格字段）
 - `leaderboard.py` — 排行榜响应（`LeaderboardEntry`, `LeaderboardResponse`）
 - `behavior.py` — 行为分析 + 听歌时段响应（`ReasonDist`, `FwdbtnByHour`, `HeatmapResponse` 等）
 
@@ -158,8 +165,8 @@ Pydantic v2 模型定义 API 响应结构，按领域拆分：
 测试套件使用生产 SQLite 数据库（只读模式），不创建独立测试数据库。旨在验证计算逻辑对真实数据的正确性。
 
 - **`conftest.py`** — 共享 fixtures：`client`（FastAPI TestClient，module 级复用）、`default_params`（默认过滤参数 session 级共享）
-- **`test_api.py`** — API 层测试，74 个用例 24 类。覆盖所有 56 个端点：结构验证、数据自洽性、跨端点交叉校验、边界条件（空数据/不存在实体/参数约束）、过滤器变化影响、HTTP 响应格式
-- **`test_services.py`** — Service 层测试，30 个用例 7 类。直接调用服务函数验证计算逻辑：数值断言、numpy 类型安全、JSON 序列化、TTL 缓存行为
+- **`test_api.py`** — API 层测试，99 个用例 26 类。覆盖所有 66 个端点：结构验证、数据自洽性、跨端点交叉校验、边界条件（空数据/不存在实体/参数约束）、过滤器变化影响、HTTP 响应格式
+- **`test_services.py`** — Service 层测试，43 个用例 9 类。直接调用服务函数验证计算逻辑：数值断言、numpy 类型安全、JSON 序列化、TTL 缓存行为
 
 测试设计模式：真实数据断言（如 `total_plays > 50000`）而非 mock 返回固定值；交叉校验（如 dashboard 的 total_plays 与 timeline 的 annual 求和一致）；边界条件（不存在的艺人返回空、空年份标记 `empty: true`）。
 
