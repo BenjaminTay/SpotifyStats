@@ -22,6 +22,7 @@ from backend.core.version_merge import (
     get_groups_for_artist,
     get_album_types,
 )
+from backend.core.json_helpers import df_to_json, py_val
 from backend.dependencies import get_conn
 
 router = APIRouter(prefix="/version-merge", tags=["Version Merge"])
@@ -138,8 +139,9 @@ def run_detection(
 ):
     """Auto-detect release groups by album name suffix + track overlap + superset."""
     result = detect_release_groups(overlap_threshold=overlap_threshold)
-    # Convert any DataFrames/numpy in the result to native Python
-    return _serialize_detection(result)
+    if result.empty:
+        return []
+    return df_to_json(result)
 
 
 @router.post("/apply")

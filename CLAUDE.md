@@ -35,6 +35,13 @@ streamlit run app/main.py --server.clearCaches=true
 
 # 安装/更新依赖
 source .venv/bin/activate && pip install -r requirements.txt
+
+# 运行后端测试（使用生产 SQLite 数据库，只读模式）
+source .venv/bin/activate && pytest backend/tests/ -v
+
+# 运行单个测试文件
+source .venv/bin/activate && pytest backend/tests/test_api.py -v
+source .venv/bin/activate && pytest backend/tests/test_services.py -v
 ```
 
 ## 架构
@@ -134,6 +141,16 @@ Pydantic v2 模型定义 API 响应结构，按领域拆分：
 - `timeline.py` — 时间线 + Wrapped 年度总结响应（`AnnualTimelinePoint`, `MonthlyTimelinePoint`, `YearlyWrapped` 等）
 - `leaderboard.py` — 排行榜响应（`LeaderboardEntry`, `LeaderboardResponse`）
 - `behavior.py` — 行为分析 + 听歌时段响应（`ReasonDist`, `FwdbtnByHour`, `HeatmapResponse` 等）
+
+#### 测试 (tests/)
+
+测试套件使用生产 SQLite 数据库（只读模式），不创建独立测试数据库。旨在验证计算逻辑对真实数据的正确性。
+
+- **`conftest.py`** — 共享 fixtures：`client`（FastAPI TestClient，module 级复用）、`default_params`（默认过滤参数 session 级共享）
+- **`test_api.py`** — API 层测试，74 个用例 24 类。覆盖所有 56 个端点：结构验证、数据自洽性、跨端点交叉校验、边界条件（空数据/不存在实体/参数约束）、过滤器变化影响、HTTP 响应格式
+- **`test_services.py`** — Service 层测试，30 个用例 7 类。直接调用服务函数验证计算逻辑：数值断言、numpy 类型安全、JSON 序列化、TTL 缓存行为
+
+测试设计模式：真实数据断言（如 `total_plays > 50000`）而非 mock 返回固定值；交叉校验（如 dashboard 的 total_plays 与 timeline 的 annual 求和一致）；边界条件（不存在的艺人返回空、空年份标记 `empty: true`）。
 
 ### Streamlit 应用 (app/)
 

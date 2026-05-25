@@ -279,7 +279,7 @@ def _spotify_search_album(album_name, artist_name, skip_db_check=False):
 # ═══════════════════════════════════════════════════════════════════════════
 
 def load_artist_list(df_raw):
-    """Extract sorted list of artist names from play data."""
+    """Extract sorted list of artists with track counts from play data."""
     artists = (
         df_raw.groupby("artist_name")["track_id"]
         .nunique()
@@ -287,7 +287,7 @@ def load_artist_list(df_raw):
         .reset_index()
     )
     artists.columns = ["artist_name", "track_count"]
-    return artists["artist_name"].tolist()
+    return artists.to_dict(orient="records")
 
 
 @lru_cache(maxsize=4)

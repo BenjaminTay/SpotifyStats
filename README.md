@@ -39,6 +39,9 @@ uvicorn backend.main:app --reload
 
 # 启动 Streamlit 前端（端口 8501）
 streamlit run app/main.py
+
+# 运行后端测试（需先启动后端或有 SQLite 数据库）
+pytest backend/tests/ -v
 ```
 
 浏览器打开 `http://localhost:8501` 即可使用 Streamlit 界面，或 `http://localhost:8000/docs` 查看 API 文档。首次启动会自动将 JSON 数据导入 SQLite 数据库（约需 10-20 秒），后续启动直接读取。
@@ -63,6 +66,7 @@ streamlit run app/main.py
 - **Plotly** — 交互式图表（暖色色盘）
 - **Pandas** — 数据聚合处理
 - **Pydantic** — API 响应模型与数据校验
+- **Pytest** — 后端测试框架（104 个测试，覆盖 API 和 Service 层）
 - **CSS** — 「Vinyl Archive」黑胶档案馆暖色主题（自定义全局 CSS 注入）
 
 ## 项目结构
@@ -121,6 +125,10 @@ SpotifyStats/
 │   │   ├── import_account_data.py      # 账号数据 ETL
 │   │   └── version_merge.py            # 专辑版本合并引擎
 │   └── tests/
+│       ├── __init__.py
+│       ├── conftest.py                   # 共享 fixtures（TestClient, default_params）
+│       ├── test_api.py                   # API 层测试（74 个用例，24 类）
+│       └── test_services.py              # Service 层测试（30 个用例，7 类）
 ├── app/                                # Streamlit 前端（原架构，逐步替换）
 │   ├── main.py                         # 入口 + 总览仪表盘
 │   ├── db.py                           # 数据库层
