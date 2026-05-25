@@ -22,6 +22,7 @@ export interface WeeklyTrackEntry {
   total_ms: number
   rank: number
   running_peak_wks: number
+  cover_url: string | null
 }
 
 export interface WeeklyAlbumEntry {
@@ -34,6 +35,7 @@ export interface WeeklyAlbumEntry {
   rank: number
   album_type: string | null
   release_date: string | null
+  cover_url: string | null
 }
 
 export interface WeeklyArtistEntry {
@@ -44,6 +46,7 @@ export interface WeeklyArtistEntry {
   tracks_count: number
   rank: number
   albums_count: number
+  cover_url: string | null
 }
 
 export interface TrackSummary {

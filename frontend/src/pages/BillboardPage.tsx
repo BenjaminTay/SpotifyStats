@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useBillboard } from '@/hooks/useBillboard'
 import { GlassCard } from '@/components/shared/GlassCard'
 import { WeekSelector } from '@/components/shared/WeekSelector'
@@ -115,12 +115,37 @@ function ChangeCell({ change }: { change: RankChange }) {
   return <span className={cn('text-[11px] font-bold', color)}>{arrow} {change.delta}</span>
 }
 
-function CoverCell({ index, isNewOrRe }: { index: number; isNewOrRe: boolean }) {
+function CoverCell({ index, isNewOrRe, coverUrl }: { index: number; isNewOrRe: boolean; coverUrl?: string | null }) {
+  const [imgError, setImgError] = useState(false)
+  useEffect(() => { setImgError(false) }, [coverUrl])
+
   if (isNewOrRe) {
+    if (coverUrl && !imgError) {
+      return (
+        <img
+          src={coverUrl}
+          alt=""
+          className="h-10 w-10 rounded-[8px] object-cover"
+          onError={() => setImgError(true)}
+          loading="lazy"
+        />
+      )
+    }
     return (
       <div className="flex h-10 w-10 items-center justify-center rounded-[8px] bg-muted text-base">
-        {isNewOrRe ? '🆕' : '🔄'}
+        {'🆕'}
       </div>
+    )
+  }
+  if (coverUrl && !imgError) {
+    return (
+      <img
+        src={coverUrl}
+        alt=""
+        className="h-10 w-10 rounded-[8px] object-cover"
+        onError={() => setImgError(true)}
+        loading="lazy"
+      />
     )
   }
   const c = CHART_COLORS[index % CHART_COLORS.length]
@@ -412,7 +437,7 @@ export function BillboardPage() {
                           <ChangeCell change={change} />
                         </td>
                         <td className="pb-3.5 pt-3.5">
-                          <CoverCell index={i} isNewOrRe={isNewOrRe} />
+                          <CoverCell index={i} isNewOrRe={isNewOrRe} coverUrl={entry.cover_url} />
                         </td>
                         <td className="pb-3.5 pt-3.5">
                           <div className="font-sans text-sm font-semibold">

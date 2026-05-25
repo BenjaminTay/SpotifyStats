@@ -899,6 +899,99 @@ def compute_records(weekly, track_summary, top_n, weekly_album=None, weekly_arti
 # Main Billboard computation — mirrors app/pages/billboard/__init__.py:run()
 # ═══════════════════════════════════════════════════════════════════════════
 
+def _add_cover_urls(weekly, weekly_album, weekly_artist):
+    """为三个周榜 DataFrame 添加 cover_url 列。
+
+    cover_url 统一指向智能封面端点 /covers/{type}/{id}.jpg：
+    - 本地有缓存 → 直接返回文件
+    - 本地缺失 → 重定向到 Spotify CDN + 后台下载缓存
+    - 无任何数据 → null（前端回退 emoji 占位符）
+    """
+    conn = get_db()
+
+    def _build_url(image_path, image_url, cover_type, entity_id):
+        """只要有任何封面数据就返回智能端点 URL，由端点处理回退链。"""
+        if image_path or image_url:
+            return f"/covers/{cover_type}/{entity_id}.jpg"
+        return None
+
+    # ── 曲目榜：track_id → album_id → albums ─────────────────────────
+    if not weekly.empty and "track_id" in weekly.columns:
+        track_ids = weekly["track_id"].unique().tolist()
+        placeholders = ",".join("?" for _ in track_ids)
+        rows = conn.execute(
+            f"""SELECT t.track_id, al.album_id, al.image_path, al.image_url
+                FROM tracks t
+                LEFT JOIN albums al ON t.album_id = al.album_id
+                WHERE t.track_id IN ({placeholders})""",
+            track_ids,
+        ).fetchall()
+        cover_map = {
+            r["track_id"]: _build_url(
+                r["image_path"], r["image_url"], "albums", r["album_id"]
+            ) if r["album_id"] else None
+            for r in rows
+        }
+        weekly = weekly.copy()
+        weekly["cover_url"] = weekly["track_id"].map(cover_map)
+
+    # ── 专辑榜：(album_name, artist_name) → album_id → albums ────────
+    if not weekly_album.empty:
+        album_rows = conn.execute(
+            """SELECT al.album_id, al.album_name, a.artist_name,
+                      al.image_path, al.image_url
+               FROM albums al
+               JOIN artists a ON al.artist_id = a.artist_id"""
+        ).fetchall()
+        album_cover_map = {
+            (r["album_name"], r["artist_name"]): _build_url(
+                r["image_path"], r["image_url"], "albums", r["album_id"]
+            )
+            for r in album_rows
+        }
+        # 也查 release_groups: canonical_name → primary_album 的封面
+        rg_rows = conn.execute(
+            """SELECT rg.canonical_name, a.artist_name,
+                      pa.album_id, pa.image_path, pa.image_url
+               FROM release_groups rg
+               JOIN albums pa ON rg.primary_album_id = pa.album_id
+               JOIN artists a ON pa.artist_id = a.artist_id"""
+        ).fetchall()
+        for r in rg_rows:
+            key = (r["canonical_name"], r["artist_name"])
+            if key not in album_cover_map:
+                album_cover_map[key] = _build_url(
+                    r["image_path"], r["image_url"], "albums", r["album_id"]
+                )
+
+        weekly_album = weekly_album.copy()
+        weekly_album["cover_url"] = weekly_album.apply(
+            lambda row: album_cover_map.get(
+                (row["album_name"], row["artist_name"])
+            ), axis=1
+        )
+
+    # ── 艺人榜：artist_name → artist_id → artists ────────────────────
+    if not weekly_artist.empty:
+        artist_rows = conn.execute(
+            """SELECT artist_id, artist_name, image_path, image_url
+               FROM artists
+               WHERE image_path IS NOT NULL AND image_path != ''
+                  OR image_url IS NOT NULL AND image_url != ''"""
+        ).fetchall()
+        artist_cover_map = {
+            r["artist_name"]: _build_url(
+                r["image_path"], r["image_url"], "artists", r["artist_id"]
+            )
+            for r in artist_rows
+        }
+        weekly_artist = weekly_artist.copy()
+        weekly_artist["cover_url"] = weekly_artist["artist_name"].map(artist_cover_map)
+
+    conn.close()
+    return weekly, weekly_album, weekly_artist
+
+
 @lru_cache(maxsize=1)
 def compute_billboard_data(
     min_ms=30000,
@@ -1203,6 +1296,11 @@ def compute_billboard_data(
     power_scores = compute_power_scores(weekly, bb_top_n)
     album_power_scores = compute_album_power_scores(weekly_album, bb_album_top_n)
     artist_power_scores = compute_artist_power_scores(weekly_artist, bb_artist_top_n)
+
+    # ── Enrich with cover URLs ───────────────────────────────────────
+    weekly, weekly_album, weekly_artist = _add_cover_urls(
+        weekly, weekly_album, weekly_artist
+    )
 
     # ── Convert to JSON-safe format ────────────────────────────────────
     date_cols_week = ["billboard_week", "first_week", "last_week", "first_peak_week"]

@@ -111,10 +111,11 @@ GET  /api/insights/*                     音乐画像
 GET  /api/podcast/*                      播客
 GET  /api/video/*                        视频分析
 GET  /api/profile                        个人档案
-GET  /api/billboard/data                  Billboard 统一数据入口（返回全部 15 个数据结构，~2-5MB JSON）
+GET  /api/billboard/data                  Billboard 统一数据入口（返回全部 15 个数据结构，~2-5MB JSON，含 cover_url）
 GET  /api/billboard/release-cycle/*       发行周期分析（artist-list, artist/{name}, artist/{name}/album/{album}, compare）
 GET  /api/settings                       设置（GET 读取 / PUT 更新）
 GET  /api/version-merge/*                版本合并管理（groups, detect, apply）
+GET  /covers/{type}/{id}.jpg              封面图片服务（三级回退：本地缓存 → CDN 重定向 + 后台下载 → 404）
 POST /api/import/streaming               串流数据导入（异步任务）
 POST /api/import/account                 账号数据导入
 ```
@@ -141,6 +142,7 @@ POST /api/import/account                 账号数据导入
 - **`import_data.py`** / **`import_account_data.py`** — 从 `app/` 迁移，progress_callback 改为 threading.Event + 共享字典
 - **`json_helpers.py`** — 消除 3 处重复定义的序列化工具。`py_val()` 将 numpy/pandas 类型转为 JSON 安全的原生 Python 类型；`df_to_json()` 将 DataFrame 转为 dict 列表
 - **`cache.py`** — 从 `release_cycle_service.py` 提取。`ttl_cached(ttl_seconds)` 装饰器，用于 Spotify API 等需要时间过期的外部调用缓存
+- **`scripts/fetch_covers.py`** — 封面批量下载脚本。通过 Spotify API 批量拉取播放记录中所有专辑/艺人的封面，下载到 `data/covers/`，支持增量更新（已有 `image_path` 的记录自动跳过）。三级 ID 解析：`spotify_*_meta` 表 → Track API 反向查找 → Search API 模糊匹配
 
 #### 响应模型 (models/)
 
@@ -223,6 +225,8 @@ frontend/src/
 ### 数据库设计
 
 维度表 `artists` → `albums` → `tracks`，事实表 `plays` 通过 `track_id` 关联。`track_albums` 关联表处理同一歌曲（同艺人+同曲名）出现在多张专辑的情况，`_cache_track` 以 `(artist_id, track_name)` 为唯一标识合并重复版本。维度表仅保留核心识别字段，Spotify API 元数据（专辑类型、发行日期、热度、厂牌、曲风、封面图、总曲目数 `total_tracks`、曲目列表 `track_list` 等）独立存储在 `spotify_album_meta`/`spotify_artist_meta`/`spotify_track_meta` 三张表中，通过 `spotify_track_uri` 链式关联。`release_groups` + `release_group_members` 两张表管理专辑版本合并（豪华版、Acoustic版等合并为 canonical 名称），`version_merge.py` 提供自动检测和手动管理功能。
+
+`albums` / `artists` 表新增 `image_url`（Spotify CDN URL）和 `image_path`（本地相对路径）列，封面通过 `/covers/{type}/{id}.jpg` 端点服务。`scripts/fetch_covers.py` 批量拉取并缓存封面，支持增量更新。
 
 `plays` 表预计算了时间字段（`ts_year`, `ts_month`, `ts_week`, `ts_dow`, `ts_hour`, `ts_date`），均为本地时间（固定北京时间 UTC+8）。所有 `boolean` 字段用 INTEGER 0/1 存储。
 

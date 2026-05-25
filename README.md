@@ -189,7 +189,8 @@ SpotifyStats/
 │   ├── index.html
 │   └── package.json
 ├── scripts/
-│   └── analyze_weekly_tracks.py        # 每周独特曲目数分析
+│   ├── analyze_weekly_tracks.py        # 每周独特曲目数分析
+│   └── fetch_covers.py                 # Spotify API 封面批量下载
 ├── .streamlit/config.toml              # Streamlit 主题配置
 ├── requirements.txt
 └── README.md
@@ -208,6 +209,7 @@ artists ──< albums ──< tracks ──< plays
 - 布尔字段用 INTEGER 0/1 存储（SQLite 无原生 boolean）
 - `track_albums` 关联表处理同一歌曲出现在多张专辑的情况（以 `(artist_id, track_name)` 为唯一标识合并重复版本）
 - Billboard 专辑榜自动排除 `album_type = 'single'` 的发行（单曲不是专辑）
+- `albums` / `artists` 表新增 `image_url`（Spotify CDN URL）和 `image_path`（本地缓存路径）列，封面通过智能端点 `/covers/{type}/{id}.jpg` 三级回退（本地缓存 → CDN 重定向 + 后台下载 → 404）
 - 账号数据独立存储于 `saved_tracks`/`saved_albums`/`saved_artists`/`playlists`/`search_queries`/`podcast_plays`/`user_profile` 等表中
 
 ## License

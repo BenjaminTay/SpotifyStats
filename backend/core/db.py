@@ -400,6 +400,11 @@ def ensure_schema() -> None:
         # spotify_album_meta — 存储真实曲目列表，用于版本合并超集检测
         ("spotify_album_meta", "total_tracks", "INTEGER"),
         ("spotify_album_meta", "track_list", "TEXT"),
+        # albums / artists — 封面图片 URL 和本地路径
+        ("albums", "image_url", "TEXT"),
+        ("albums", "image_path", "TEXT"),
+        ("artists", "image_url", "TEXT"),
+        ("artists", "image_path", "TEXT"),
     ]
     for table, col, col_type in _add_columns:
         try:

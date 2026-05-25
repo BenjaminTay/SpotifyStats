@@ -8,9 +8,7 @@ __pycache__/
 .DS_Store
 
 # Personal Spotify data — contains IP addresses and listening history
-data/streaming/
-data/account/
-data/README.md
+data/
 
 # Claude Code session data
 .claude/
