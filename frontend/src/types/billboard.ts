@@ -186,6 +186,7 @@ export interface TrackDetailResponse {
   track_name: string
   artist_name: string
   cover_url: string | null
+  meta: TrackSpotifyMeta | null
   summary: {
     peak_position: number
     weeks_on_chart: number
@@ -284,6 +285,7 @@ export interface ArtistDetailResponse {
   found: boolean
   artist_name: string
   cover_url: string | null
+  meta: ArtistSpotifyMeta | null
   info: ArtistInfo
   chart_summary: ArtistChartSummary
   artist_weekly_history: ArtistWeeklyHistoryEntry[]
@@ -352,10 +354,51 @@ export interface AlbumDetailResponse {
   album_name: string
   artist_name: string
   cover_url: string | null
+  meta: AlbumSpotifyMeta | null
   info: AlbumInfo
   chart_summary: AlbumChartSummary
   album_weekly_history: AlbumWeeklyHistoryEntry[]
   album_no1_by_week: { week: string; no1_track_names: string; no1_track_id: number | null; no1_count: number }[]
   best_singles_overlay: { week: string; rank: number }[]
   tracks: AlbumTrackEntry[]
+}
+
+// ── Spotify Metadata ────────────────────────────────────────
+
+export interface TrackSpotifyMeta {
+  duration_ms?: number
+  popularity?: number
+  explicit: boolean
+  track_number?: number
+  disc_number?: number
+  spotify_album_name?: string
+}
+
+export interface ArtistSpotifyMeta {
+  popularity?: number
+  followers?: number
+  genres?: string[]
+}
+
+export interface AlbumSpotifyMeta {
+  album_type?: string
+  release_date?: string
+  popularity?: number
+  label?: string
+  total_tracks?: number
+}
+
+// ── Genius Lyrics ──────────────────────────────────────────
+
+export interface LyricsData {
+  found: boolean
+  lyrics: string
+  genius_url: string
+  genius_song_id: number
+  cached: boolean
+}
+
+export interface GeniusUrlData {
+  found: boolean
+  genius_url: string
 }

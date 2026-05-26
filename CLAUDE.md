@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Spotify Extended Streaming History 数据分析 Web 应用。从 Spotify 官方导出的 JSON 播放记录中导入数据到 SQLite，通过 FastAPI + React 提供交互式多维度统计仪表盘。
 
-**架构演进**：已从 Streamlit 单体架构迁移到 FastAPI 后端 + React 前端。后端 66 个 API 端点已全部完成，前端 Dashboard 总览页、Billboard 周榜页、每周榜首页、三个详情子页面（单曲/艺人/专辑）以及设置页面已完成开发。Streamlit 原有应用和后端 API 仍可并行运行。
+**架构演进**：已从 Streamlit 单体架构迁移到 FastAPI 后端 + React 前端。后端 68 个 API 端点已全部完成，前端 Dashboard 总览页、Billboard 周榜页、每周榜首页、三个详情子页面（单曲/艺人/专辑，含 Genius 歌词和 Spotify 元数据展示）以及设置页面已完成开发。Streamlit 原有应用和后端 API 仍可并行运行。
 
 **UI 主题**：「编辑风 × 液态玻璃」— 杂志式排版（Playfair Display 衬线标题 + Inter 无衬线正文）+ 毛玻璃卡片材质 + 日/夜双皮肤。详细风格指南见 `frontend/UI_STYLE_GUIDE.md`。
 
@@ -80,7 +80,7 @@ FastAPI 后端采用三层分离架构：**路由层 (api/)** → **服务层 (s
 
 #### 路由层 (api/)
 
-18 个子路由模块，共 66 个 API 端点。所有路由通过 `backend/api/router.py` 组装，挂载到 `backend/main.py` 的 `/api` 前缀下。
+19 个子路由模块，共 68 个 API 端点。所有路由通过 `backend/api/router.py` 组装，挂载到 `backend/main.py` 的 `/api` 前缀下。
 
 **过滤参数依赖注入** (`backend/dependencies.py`)：
 - `PlayFilters` — 标准播放数据过滤（`min_ms`, `music_only`, `merge_enabled`），用于仪表盘、时间线、排行榜、行为分析、听歌时段等端点
@@ -120,6 +120,8 @@ GET  /api/billboard/versus/track          歌曲对决（排名历史 + 指标�
 GET  /api/billboard/versus/album          专辑对决（含版本合并成员聚合）
 GET  /api/billboard/versus/artist         艺人对决（歌曲/专辑双维度统计）
 GET  /api/billboard/release-cycle/*       发行周期分析（artist-list, artist/{name}, artist/{name}/album/{album}, compare）
+GET  /api/lyrics/{track_id}               Genius 歌词获取（按需获取 + SQLite 缓存）
+GET  /api/lyrics/{track_id}/url           Genius 链接查询（轻量，仅返回 URL）
 GET  /api/settings                       设置（GET 读取 / PUT 更新）
 GET  /api/version-merge/*                版本合并管理（groups, detect, apply）
 GET  /covers/{type}/{id}.jpg              封面图片服务（三级回退：本地缓存 → CDN 重定向 + 后台下载 → 404）
@@ -137,13 +139,15 @@ POST /api/import/account                 账号数据导入
 - **`library_service.py`** — 收藏交叉查询（收藏曲目/专辑/艺人与实际收听对比）
 - **`search_service.py`** — 搜索历史统计（日搜索量、意图分类、时段热力图）
 - **`insights_service.py`** — 粉丝层级分析 + Marquee 推广转化率
+- **`genius_service.py`** — Genius 歌词服务。懒加载 `GeniusClient` 单例（token 从 `.env` 读取），`get_track_lyrics()` 按需获取歌词并缓存到 `track_lyrics` 表，`get_track_genius_url()` 轻量 URL 查询。歌词清洗：去除 Genius 元数据（Contributors/Translations/Read More），提取嵌入式分段标题（`[Verse]`/`[Chorus]` 等），规范化分段间距（每段之间恰好一空行）
 - **`podcast_service.py`** / **`video_service.py`** / **`profile_service.py`** / **`wrapped_hub_service.py`** — 账号数据页面服务
 
 #### 核心工具层 (core/)
 
 从 `app/` 目录原样迁移或提取的纯逻辑模块，不含任何 Web 框架依赖：
 
-- **`db.py`** — 从 `app/db.py` 完整迁移。`get_db()`, `base_filters()`, `load_plays()`, `merge_consecutive_plays()`, `ensure_schema()`, `build_aggregations()` 等所有函数
+- **`genius/`** — Genius API 客户端模块。`client.py`（`lyricsgenius` 封装：搜索、获取歌词/专辑/艺人/排行榜、封面下载、`_clean_lyrics()` 清洗）+ `models.py`（`Song`/`SearchResult`/`AlbumInfo` dataclass）
+- **`db.py`** — 从 `app/db.py` 完整迁移。`get_db()`, `base_filters()`, `load_plays()`（`@lru_cache(maxsize=16)` 按参数缓存 DataFrame，避免重复 SQL+merge 计算），`merge_consecutive_plays()`, `ensure_schema()`（含 `track_lyrics` 表）, `build_aggregations()` 等所有函数
 - **`utils.py`** — 从 `app/utils.py` 完整迁移。`convert_to_local_time()`, `classify_platform()`
 - **`version_merge.py`** — 从 `app/version_merge.py` 完整迁移。`detect_release_groups()`, `apply_detected_groups()`, `create_group()`, `delete_group()` 等
 - **`import_data.py`** / **`import_account_data.py`** — 从 `app/` 迁移，progress_callback 改为 threading.Event + 共享字典
@@ -165,8 +169,8 @@ Pydantic v2 模型定义 API 响应结构，按领域拆分：
 测试套件使用生产 SQLite 数据库（只读模式），不创建独立测试数据库。旨在验证计算逻辑对真实数据的正确性。
 
 - **`conftest.py`** — 共享 fixtures：`client`（FastAPI TestClient，module 级复用）、`default_params`（默认过滤参数 session 级共享）
-- **`test_api.py`** — API 层测试，99 个用例 26 类。覆盖所有 66 个端点：结构验证、数据自洽性、跨端点交叉校验、边界条件（空数据/不存在实体/参数约束）、过滤器变化影响、HTTP 响应格式
-- **`test_services.py`** — Service 层测试，43 个用例 9 类。直接调用服务函数验证计算逻辑：数值断言、numpy 类型安全、JSON 序列化、TTL 缓存行为
+- **`test_api.py`** — API 层测试，104 个用例 27 类。覆盖所有 68 个端点：结构验证、数据自洽性、跨端点交叉校验、边界条件（空数据/不存在实体/参数约束）、过滤器变化影响、HTTP 响应格式、Genius 歌词缓存标记
+- **`test_services.py`** — Service 层测试，49 个用例 10 类。直接调用服务函数验证计算逻辑：数值断言、numpy 类型安全、JSON 序列化、TTL 缓存行为、Genius 歌词清洗
 
 测试设计模式：真实数据断言（如 `total_plays > 50000`）而非 mock 返回固定值；交叉校验（如 dashboard 的 total_plays 与 timeline 的 annual 求和一致）；边界条件（不存在的艺人返回空、空年份标记 `empty: true`）。
 
@@ -179,7 +183,7 @@ React + Vite + Tailwind CSS v4 + shadcn/ui（样式 `base-nova`，基础色 `neu
 - **样式**：Tailwind CSS v4（`@tailwindcss/vite` 插件），`tw-animate-css` 动画库
 - **主题**：CSS 变量 + `.dark` class 切换，`oklch()` 色彩空间。结构变量在 `@theme inline`，颜色在 `:root` / `.dark`。`useTheme()` hook 提供 localStorage 持久化 + 系统偏好回退
 - **组件**：shadcn/ui v4（base-nova 风格），源码在 `@/components/ui/`
-- **路由**：React Router v7，当前 7 个路由：`/`（DashboardPage，动态洞察）、`/billboard`（BillboardPage，CoverCell 封面）、`/billboard/number-ones`（NumberOnesPage）、`/billboard/track/:trackId`（TrackDetailPage）、`/billboard/artist/:artistName`（ArtistDetailPage，3 Tab：榜单表现/单曲成绩/专辑成绩）、`/billboard/album/:albumName`（AlbumDetailPage，2 Tab：榜单表现/曲目表现）、`/settings`（SettingsPage）
+- **路由**：React Router v7，当前 7 个路由：`/`（DashboardPage，动态洞察）、`/billboard`（BillboardPage，CoverCell 封面）、`/billboard/number-ones`（NumberOnesPage）、`/billboard/track/:trackId`（TrackDetailPage，2 Tab：榜单表现/Genius 歌词）、`/billboard/artist/:artistName`（ArtistDetailPage，3 Tab：榜单表现/单曲成绩/专辑成绩）、`/billboard/album/:albumName`（AlbumDetailPage，2 Tab：榜单表现/曲目表现）、`/settings`（SettingsPage）
 - **图表**：ECharts 6 + echarts-for-react（月度趋势图）；平台分布使用纯 DOM 进度条
 - **字体**：Inter Variable（`@fontsource-variable/inter`）+ Playfair Display（Google Fonts CDN）
 - **国际化**：中文简繁转换（opencc-js），`displayName()` 覆盖所有页面的名称展示
@@ -198,9 +202,9 @@ frontend/src/
 │   ├── DashboardPage.tsx    ← 总览仪表盘（动态数据洞察：月度趋势 + 聆听高峰智能分析）
 │   ├── BillboardPage.tsx    ← Billboard 周榜（3 Tab + 排名表 + CoverCell 封面 + 详情链接）
 │   ├── NumberOnesPage.tsx   ← 每周榜首（3 子 Tab：单曲/专辑/艺人，年度筛选 + Power Score 平局排序 + KPI 卡片 + 冠单表 + 排行 + 柱状图 + 空冠）
-│   ├── TrackDetailPage.tsx  ← 单曲详情（KPI + 排名趋势图 + 榜单历史表）
-│   ├── ArtistDetailPage.tsx ← 艺人详情（3 Tab：榜单表现/单曲成绩/专辑成绩，6 KPI 卡片 + 封面 + 视觉播放条 + 走势点数/排名）
-│   ├── AlbumDetailPage.tsx  ← 专辑详情（2 Tab：榜单表现/曲目表现，6 KPI 卡片 + 封面 + 视觉播放条 + 走势点数/排名）
+│   ├── TrackDetailPage.tsx  ← 单曲详情（2 Tab：榜单表现/歌词，8 KPI + 排名趋势图 + 榜单历史表 + Genius 歌词分段渲染）
+│   ├── ArtistDetailPage.tsx ← 艺人详情（3 Tab：榜单表现/单曲成绩/专辑成绩，6 KPI 卡片 + 封面 + Spotify 元数据 + 视觉播放条 + 走势点数/排名）
+│   ├── AlbumDetailPage.tsx  ← 专辑详情（2 Tab：榜单表现/曲目表现，6 KPI 卡片 + 封面 + Spotify 元数据 + 视觉播放条 + 走势点数/排名）
 │   └── SettingsPage.tsx     ← 设置（4 区块：Data & Display / Billboard Parameters / Version Merge / Data Import）
 ├── hooks/           ← 自定义 hooks
 │   ├── useTheme.tsx  ← 主题管理（Context + localStorage）
@@ -215,7 +219,7 @@ frontend/src/
 │   └── insights.ts  ← 动态洞察生成（月度趋势季节分析 + 聆听高峰智能识别）
 ├── types/           ← TypeScript 类型定义
 │   ├── dashboard.ts ← Dashboard 响应类型
-│   ├── billboard.ts ← Billboard 响应类型
+│   ├── billboard.ts ← Billboard 响应类型（含 TrackSpotifyMeta / ArtistSpotifyMeta / AlbumSpotifyMeta / LyricsData 等）
 │   └── settings.ts  ← 设置（SettingsData / ImportJob / ReleaseGroup / DetectionResult / TrackComparison 等）
 └── UI_STYLE_GUIDE.md ← 详细 UI 风格指南（新增页面必读）
 ```

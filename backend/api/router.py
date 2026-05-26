@@ -20,6 +20,7 @@ from backend.api.settings import router as settings_router
 from backend.api.billboard import router as billboard_router
 from backend.api.version_merge import router as version_merge_router
 from backend.api.import_ import router as import_router
+from backend.api.lyrics import router as lyrics_router
 
 api_router = APIRouter()
 
@@ -41,3 +42,4 @@ api_router.include_router(settings_router)
 api_router.include_router(billboard_router)
 api_router.include_router(version_merge_router)
 api_router.include_router(import_router)
+api_router.include_router(lyrics_router, prefix="/lyrics", tags=["Lyrics"])

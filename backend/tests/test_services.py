@@ -585,3 +585,119 @@ class TestCache:
         assert expensive(2) == "2-2"
         assert expensive(1) == "1-1"  # cached separately
         assert call_count == 2
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Genius Service
+# ═══════════════════════════════════════════════════════════════════════════
+
+class TestGeniusService:
+    def test_get_track_lyrics_cached(self):
+        """Fetching the same track twice returns cached=True on second call."""
+        from backend.services.genius_service import get_track_lyrics, _get_client
+        from backend.core.db import get_db
+
+        # Ensure we have a cached entry for a known track
+        client = _get_client()
+        if client is None:
+            pytest.skip("Genius client not available")
+
+        # Seed cache
+        conn = get_db(readonly=False)
+        try:
+            conn.execute(
+                "INSERT OR REPLACE INTO track_lyrics (track_id, genius_song_id, lyrics_text, genius_url) VALUES (?, ?, ?, ?)",
+                (9999, 12345, "[Verse]\nTest lyrics line 1\nTest lyrics line 2", "https://genius.com/test"),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        result1 = get_track_lyrics(9999)
+        assert result1["found"] is True
+        assert result1["cached"] is True
+        assert "[Verse]" in result1["lyrics"]
+        assert result1["genius_url"] == "https://genius.com/test"
+
+        # Clean up
+        conn = get_db(readonly=False)
+        try:
+            conn.execute("DELETE FROM track_lyrics WHERE track_id = 9999")
+            conn.commit()
+        finally:
+            conn.close()
+
+    def test_get_track_lyrics_nonexistent_track(self):
+        """Non-existent track_id returns found=False."""
+        from backend.services.genius_service import get_track_lyrics
+
+        result = get_track_lyrics(-1)
+        assert result["found"] is False
+
+    def test_get_track_genius_url_cached(self):
+        """URL-only lookup returns genius_url from cache."""
+        from backend.services.genius_service import get_track_genius_url
+        from backend.core.db import get_db
+
+        # Seed cache
+        conn = get_db(readonly=False)
+        try:
+            conn.execute(
+                "INSERT OR REPLACE INTO track_lyrics (track_id, genius_song_id, lyrics_text, genius_url) VALUES (?, ?, ?, ?)",
+                (9998, 12346, "lyrics", "https://genius.com/test-url"),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        result = get_track_genius_url(9998)
+        assert result["found"] is True
+        assert result["genius_url"] == "https://genius.com/test-url"
+
+        # Clean up
+        conn = get_db(readonly=False)
+        try:
+            conn.execute("DELETE FROM track_lyrics WHERE track_id = 9998")
+            conn.commit()
+        finally:
+            conn.close()
+
+    def test_get_track_genius_url_nonexistent(self):
+        """URL lookup for non-existent track returns found=False."""
+        from backend.services.genius_service import get_track_genius_url
+
+        result = get_track_genius_url(-1)
+        assert result["found"] is False
+
+    def test_lyrics_cleaning_removes_metadata(self):
+        """_clean_lyrics strips contributor/translation headers."""
+        from backend.services.genius_service import _get_client
+
+        client = _get_client()
+        if client is None:
+            pytest.skip("Genius client not available")
+
+        raw = "130 ContributorsTranslationsTest Song LyricsSome description text… Read More [Verse 1]\nLine one\nLine two\n\nYou Might Also Like"
+        cleaned = client._clean_lyrics(raw)
+        lines = cleaned.split("\n")
+        assert "[Verse 1]" == lines[0].strip()
+        assert "Line one" in cleaned
+        assert "Contributors" not in cleaned
+        assert "You Might Also Like" not in cleaned
+
+    def test_lyrics_cleaning_section_spacing(self):
+        """Sections are separated by exactly one blank line."""
+        from backend.services.genius_service import _get_client
+
+        client = _get_client()
+        if client is None:
+            pytest.skip("Genius client not available")
+
+        raw = "[Verse 1]\nLine one\nLine two\n\n\n[Chorus]\nChorus line"
+        cleaned = client._clean_lyrics(raw)
+        # No consecutive blank lines
+        assert "\n\n\n" not in cleaned
+        # One blank line before [Chorus]
+        assert "\n\n[Chorus]" in cleaned
+        # First section header preserved
+        assert cleaned.startswith("[Verse 1]")

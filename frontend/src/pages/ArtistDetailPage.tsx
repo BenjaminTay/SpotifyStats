@@ -47,6 +47,12 @@ function formatTimeSpan(start: string, end: string): string {
   return `${months} 个月`
 }
 
+function formatFollowers(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`
+  return String(n)
+}
+
 type TabKey = 'overview' | 'tracks' | 'albums'
 
 const TABS: { key: TabKey; label: string }[] = [
@@ -59,7 +65,8 @@ function ArtistDetailSkeleton() {
   return (
     <>
       <Skeleton className="mb-3 h-3 w-32" />
-      <Skeleton className="mb-6 h-[44px] w-72" />
+      <Skeleton className="mb-2 h-[44px] w-72" />
+      <Skeleton className="mb-6 h-4 w-64" />
       <div className="mb-5 flex gap-7">
         {TABS.map((_, i) => (
           <Skeleton key={i} className="h-6 w-16" />
@@ -221,9 +228,28 @@ export function ArtistDetailPage() {
                       className="h-[120px] w-[120px] flex-shrink-0 rounded-full object-cover shadow-lg"
                     />
                   )}
-                  <h1 className="font-serif text-[44px] font-bold leading-[1.06] tracking-[-1.2px]">
-                    {displayName(data.artist_name)}
-                  </h1>
+                  <div>
+                    <h1 className="font-serif text-[44px] font-bold leading-[1.06] tracking-[-1.2px]">
+                      {displayName(data.artist_name)}
+                    </h1>
+                    {data.meta && (
+                      <div className="mt-2 font-sans text-[14px] text-muted-foreground">
+                        {data.meta.genres && data.meta.genres.length > 0 && (
+                          <p>
+                            {data.meta.genres.slice(0, 4).map(
+                              (g) => g.charAt(0).toUpperCase() + g.slice(1)
+                            ).join(' · ')}
+                          </p>
+                        )}
+                        <p>
+                          {[
+                            data.meta.followers && `${formatFollowers(data.meta.followers)} followers`,
+                            data.meta.popularity && `Popularity ${data.meta.popularity}`,
+                          ].filter(Boolean).join(' · ')}
+                        </p>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </section>
 

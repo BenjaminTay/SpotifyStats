@@ -47,6 +47,24 @@ function formatTimeSpan(start: string, end: string): string {
   return `${months} 个月`
 }
 
+function formatReleaseDate(iso: string): string {
+  const [y, m, d] = iso.split('-')
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+                  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+  const mi = parseInt(m) - 1
+  if (mi < 0 || mi >= 12) return iso
+  return `${parseInt(d)} ${months[mi]} ${y}`
+}
+
+function formatAlbumType(t: string): string {
+  switch (t) {
+    case 'album': return 'Album'
+    case 'single': return 'Single'
+    case 'compilation': return 'Compilation'
+    default: return t
+  }
+}
+
 type TabKey = 'overview' | 'tracks'
 
 const TABS: { key: TabKey; label: string }[] = [
@@ -59,7 +77,8 @@ function AlbumDetailSkeleton() {
     <>
       <Skeleton className="mb-3 h-3 w-32" />
       <Skeleton className="mb-2 h-[44px] w-80" />
-      <Skeleton className="mb-6 h-5 w-48" />
+      <Skeleton className="mb-2 h-5 w-48" />
+      <Skeleton className="mb-6 h-4 w-72" />
       <div className="mb-5 flex gap-7">
         <Skeleton className="h-6 w-16" />
         <Skeleton className="h-6 w-16" />
@@ -232,6 +251,16 @@ export function AlbumDetailPage() {
                     <p className="mt-2 font-sans text-[17px] text-muted-foreground">
                       {displayName(data.artist_name)}
                     </p>
+                    {data.meta && (
+                      <p className="mt-1 font-sans text-[14px] text-muted-foreground">
+                        {[
+                          data.meta.album_type && formatAlbumType(data.meta.album_type),
+                          data.meta.release_date && formatReleaseDate(data.meta.release_date),
+                          data.meta.total_tracks && `${data.meta.total_tracks} tracks`,
+                          data.meta.label,
+                        ].filter(Boolean).join(' · ')}
+                      </p>
+                    )}
                   </div>
                 </div>
               </section>

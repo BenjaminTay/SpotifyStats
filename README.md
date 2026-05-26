@@ -4,7 +4,7 @@
 
 **UI 主题**：「编辑风 × 液态玻璃」— 杂志式排版（Playfair Display 衬线 + Inter 无衬线）+ 毛玻璃卡片材质 + 日/夜双皮肤。详细规范见 `frontend/UI_STYLE_GUIDE.md`。
 
-**架构**：FastAPI 后端 + React 前端（Dashboard、Billboard 周榜、每周榜首、三个详情子页面、设置页面已完成）。Streamlit 原有应用仍可运行。
+**架构**：FastAPI 后端 + React 前端（Dashboard、Billboard 周榜、每周榜首、三个详情子页面含 Genius 歌词、设置页面已完成）。Streamlit 原有应用仍可运行。
 
 ## 功能
 
@@ -12,6 +12,8 @@
 - **播放分析**（5 个子 Tab）— 时间线（年度/月度/周度报告）、排行榜（曲目/艺人/专辑）、行为分析（快进快退/平台/隐身/随机）、听歌时段热力图、艺人深度分析
 - **年度回顾**（2 个子 Tab）— 自定义年度总结（Wrapped 风格卡片叙事、听歌人格识别）、Wrapped 2025 官方官方年度回顾（艺人竞速、收听性格、官方排行榜）
 - **Billboard 周榜**（12 个子 Tab）— 周榜（单曲/专辑/艺人，支持快速切周、截至当周滚动统计）、每周榜首、单曲历史（含升降列、断档 RE 标记）、艺人榜单、专辑榜单（含版本合并）、走势总榜（Power Score 三维度）、歌曲/艺人/专辑总榜、榜单记录（12 类）、对决（歌曲/专辑/艺人）、发行周期分析（先行曲识别、单曲榜排名线、艺人总览/专辑下钻/多发行对比）
+- **单曲详情** — 双 Tab（榜单表现 / Genius 歌词），KPI 卡片（入榜峰值/在榜周数/走势点数等 8 项）、排名趋势图、榜单历史表（含升降列、PK/PK Wks/在榜滚动统计）、Genius 歌词（分段渲染、按需获取、SQLite 缓存）
+- **专辑/艺人详情** — 多 Tab 子页面，KPI 卡片 + 排名趋势图 + 周榜历史表 + 收录曲表现，头部展示 Spotify 元数据（流派/厂牌/发行日期/热度等）
 - **账号中心**（6 个子 Tab）— 音乐库（收藏曲目/专辑/艺人 vs 实际收听）、搜索编年史、音乐画像（粉丝层级分析 + Marquee 推广转化）、播客专区、视频分析（≥30s 有效观看）、个人档案
 - **设置** — 集中管理所有参数：数据过滤（最短播放时长/仅音乐/合并连续播放/中文简繁转换）、Billboard 上榜数量与统计周期、专辑版本合并（自动检测/手动创建/已保存组管理）、数据导入（异步进度轮询）
 
@@ -66,7 +68,7 @@ pytest backend/tests/ -v
 
 ## 技术栈
 
-- **FastAPI** — 后端 API 框架（66 个端点，依赖注入，自动 Swagger 文档）
+- **FastAPI** — 后端 API 框架（68 个端点，依赖注入，自动 Swagger 文档）
 - **React 19** — 前端 UI 框架（TypeScript 6.0，Vite 8，React Router v7）
 - **Tailwind CSS v4** — 原子化 CSS 框架（shadcn/ui v4 组件库，`tw-animate-css` 动画）
 - **ECharts 6** — 交互式图表（echarts-for-react）
@@ -74,7 +76,7 @@ pytest backend/tests/ -v
 - **SQLite** — 本地数据库（87,000+ 条记录，WAL 模式，查询毫秒级）
 - **Pandas** — 数据聚合处理
 - **Pydantic** — API 响应模型与数据校验
-- **Pytest** — 后端测试框架（142 个测试，覆盖 API 和 Service 层）
+- **Pytest** — 后端测试框架（152 个测试，覆盖 API 和 Service 层）
 
 ## 项目结构
 
@@ -100,6 +102,7 @@ SpotifyStats/
 │   │   ├── video.py                    # GET /api/video/*
 │   │   ├── profile.py                  # GET /api/profile
 │   │   ├── settings.py                 # GET/PUT /api/settings
+│   │   ├── lyrics.py                   # GET /api/lyrics/{track_id}（Genius 歌词获取 + 缓存）
 │   │   ├── version_merge.py            # CRUD /api/version-merge/*
 │   │   ├── import_.py                  # POST /api/import/*（异步导入）
 │   │   └── billboard/
@@ -117,6 +120,7 @@ SpotifyStats/
 │   │   ├── podcast_service.py          # 播客统计
 │   │   ├── video_service.py            # 视频分析
 │   │   ├── profile_service.py          # 个人档案
+│   │   ├── genius_service.py           # Genius 歌词获取 + SQLite 缓存
 │   │   └── wrapped_hub_service.py      # Wrapped 2025 官方数据
 │   ├── models/                         # Pydantic 响应模型
 │   │   ├── common.py                   # 通用模型
@@ -129,14 +133,15 @@ SpotifyStats/
 │   │   ├── utils.py                    # 时区转换 + 平台分类
 │   │   ├── json_helpers.py             # numpy/pandas → JSON 安全序列化
 │   │   ├── cache.py                    # TTL 缓存装饰器（Spotify API 等外部调用）
+│   │   ├── genius/                     # Genius API 客户端（lyricsgenius 封装 + 歌词清洗）
 │   │   ├── import_data.py              # 串流数据 ETL
 │   │   ├── import_account_data.py      # 账号数据 ETL
 │   │   └── version_merge.py            # 专辑版本合并引擎
 │   └── tests/
 │       ├── __init__.py
 │       ├── conftest.py                   # 共享 fixtures（TestClient, default_params）
-│       ├── test_api.py                   # API 层测试（99 个用例，26 类）
-│       └── test_services.py              # Service 层测试（43 个用例，9 类）
+│       ├── test_api.py                   # API 层测试（104 个用例，27 类）
+│       └── test_services.py              # Service 层测试（49 个用例，10 类）
 ├── app/                                # Streamlit 前端（原架构，逐步替换）
 │   ├── main.py                         # 入口 + 总览仪表盘
 │   ├── db.py                           # 数据库层
@@ -211,6 +216,7 @@ artists ──< albums ──< tracks ──< plays
 - `track_albums` 关联表处理同一歌曲出现在多张专辑的情况（以 `(artist_id, track_name)` 为唯一标识合并重复版本）
 - Billboard 专辑榜自动排除 `album_type = 'single'` 的发行（单曲不是专辑）
 - `albums` / `artists` 表新增 `image_url`（Spotify CDN URL）和 `image_path`（本地缓存路径）列，封面通过智能端点 `/covers/{type}/{id}.jpg` 三级回退（本地缓存 → CDN 重定向 + 后台下载 → 404）
+- `track_lyrics` 表缓存 Genius 歌词（`track_id` PRIMARY KEY，`lyrics_text` / `genius_url` / `genius_song_id`），按需获取、永久有效
 - 账号数据独立存储于 `saved_tracks`/`saved_albums`/`saved_artists`/`playlists`/`search_queries`/`podcast_plays`/`user_profile` 等表中
 
 ## License

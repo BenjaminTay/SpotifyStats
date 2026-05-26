@@ -5,6 +5,7 @@ from urllib.parse import quote as _url_quote
 import numpy as np
 import pandas as pd
 from functools import lru_cache
+import json
 
 from backend.core.db import get_db, base_filters, merge_consecutive_plays
 from backend.core.json_helpers import py_val as _py_val, df_to_json as _df_to_json
@@ -50,7 +51,7 @@ def _try_load_from_agg(min_ms, music_only, week_start_dow, week_start_hour):
         return None, None, None
 
 
-@lru_cache(maxsize=1)
+@lru_cache(maxsize=8)
 def load_billboard_raw(min_ms, music_only, week_start_dow, week_start_hour):
     """Load filtered plays and compute billboard_week with configurable boundary."""
     conn = get_db()
@@ -89,7 +90,7 @@ def load_billboard_raw(min_ms, music_only, week_start_dow, week_start_hour):
     return df
 
 
-@lru_cache(maxsize=1)
+@lru_cache(maxsize=8)
 def load_track_album_map():
     """Get all album names for each track_id (including track_albums junction)."""
     conn = get_db()
@@ -115,7 +116,7 @@ def load_track_album_map():
     return pd.DataFrame(records)
 
 
-@lru_cache(maxsize=1)
+@lru_cache(maxsize=8)
 def _load_album_metadata():
     conn = get_db()
     df = pd.read_sql_query(
@@ -1010,7 +1011,7 @@ def _add_cover_urls(weekly, weekly_album, weekly_artist):
     return weekly, weekly_album, weekly_artist
 
 
-@lru_cache(maxsize=1)
+@lru_cache(maxsize=8)
 def compute_billboard_data(
     min_ms=30000,
     music_only=True,
@@ -1445,6 +1446,127 @@ def _build_gapped_chart_data(hist_df):
     return x_vals, y_vals, texts
 
 
+def _get_track_spotify_meta(track_id):
+    """Fetch Spotify metadata for a track by local track_id."""
+    conn = get_db()
+    row = conn.execute(
+        """SELECT stm.duration_ms, stm.popularity, stm.explicit,
+                  stm.track_number, stm.disc_number,
+                  sam.album_name AS spotify_album_name
+           FROM tracks t
+           JOIN spotify_track_meta stm
+             ON REPLACE(t.spotify_track_uri, 'spotify:track:', '') = stm.spotify_track_id
+           LEFT JOIN spotify_album_meta sam ON stm.spotify_album_id = sam.spotify_album_id
+           WHERE t.track_id = ?
+           LIMIT 1""",
+        (track_id,)
+    ).fetchone()
+    conn.close()
+
+    if not row:
+        return None
+
+    meta = {}
+    if row["duration_ms"] is not None:
+        meta["duration_ms"] = row["duration_ms"]
+    if row["popularity"] is not None:
+        meta["popularity"] = row["popularity"]
+    meta["explicit"] = bool(row["explicit"])
+    if row["track_number"] is not None:
+        meta["track_number"] = row["track_number"]
+    if row["disc_number"] is not None:
+        meta["disc_number"] = row["disc_number"]
+    if row["spotify_album_name"]:
+        meta["spotify_album_name"] = row["spotify_album_name"]
+
+    return meta if meta else None
+
+
+def _get_artist_spotify_meta(artist_name):
+    """Fetch Spotify metadata for an artist by name."""
+    conn = get_db()
+    row = conn.execute(
+        """SELECT popularity, followers, genres
+           FROM spotify_artist_meta
+           WHERE artist_name = ?
+           LIMIT 1""",
+        (artist_name,)
+    ).fetchone()
+    conn.close()
+
+    if not row:
+        return None
+
+    meta = {}
+    if row["popularity"] is not None:
+        meta["popularity"] = row["popularity"]
+    if row["followers"] is not None:
+        meta["followers"] = row["followers"]
+    if row["genres"]:
+        try:
+            parsed = json.loads(row["genres"])
+            if isinstance(parsed, list) and parsed:
+                meta["genres"] = parsed
+        except (json.JSONDecodeError, TypeError):
+            pass
+
+    return meta if meta else None
+
+
+def _get_album_spotify_meta(album_name, artist_name):
+    """Fetch Spotify metadata for an album by name + artist."""
+    conn = get_db()
+    row = conn.execute(
+        """SELECT DISTINCT sam.album_type, sam.release_date, sam.popularity,
+                  sam.label, sam.total_tracks
+           FROM albums al
+           JOIN artists a ON al.artist_id = a.artist_id
+           JOIN track_albums ta ON ta.album_id = al.album_id
+           JOIN tracks t ON ta.track_id = t.track_id
+           JOIN spotify_track_meta stm
+             ON REPLACE(t.spotify_track_uri, 'spotify:track:', '') = stm.spotify_track_id
+           JOIN spotify_album_meta sam ON stm.spotify_album_id = sam.spotify_album_id
+           LEFT JOIN release_group_members rgm ON al.album_id = rgm.album_id
+           LEFT JOIN release_groups rg ON rgm.group_id = rg.group_id
+           WHERE (al.album_name = ? OR rg.canonical_name = ?)
+             AND a.artist_name = ?
+           LIMIT 1""",
+        (album_name, album_name, artist_name)
+    ).fetchone()
+    conn.close()
+
+    if not row:
+        return None
+
+    meta = {}
+    if row["album_type"]:
+        meta["album_type"] = row["album_type"]
+    if row["release_date"]:
+        meta["release_date"] = row["release_date"]
+    if row["popularity"] is not None:
+        meta["popularity"] = row["popularity"]
+    if row["label"]:
+        meta["label"] = row["label"]
+    if row["total_tracks"] is not None:
+        meta["total_tracks"] = row["total_tracks"]
+    else:
+        # Fallback: count from local track_albums
+        conn2 = get_db()
+        tc = conn2.execute(
+            """SELECT COUNT(DISTINCT ta.track_id) as cnt
+               FROM albums al
+               JOIN artists a ON al.artist_id = a.artist_id
+               JOIN track_albums ta ON ta.album_id = al.album_id
+               WHERE al.album_name = ? AND a.artist_name = ?""",
+            (album_name, artist_name)
+        ).fetchone()
+        conn2.close()
+        if tc and tc["cnt"] > 0:
+            meta["total_tracks"] = tc["cnt"]
+
+    return meta if meta else None
+
+
 def get_track_history(track_id, min_ms, music_only, bb_top_n, bb_album_top_n, bb_artist_top_n,
                       bb_week_start_dow, bb_week_start_hour, year_start, year_end):
     """Get detailed track chart history with change column and gapped chart data."""
@@ -1458,7 +1580,7 @@ def get_track_history(track_id, min_ms, music_only, bb_top_n, bb_album_top_n, bb
 
     track_hist = weekly[weekly["track_id"] == track_id]
     if track_hist.empty:
-        return {"found": False}
+        return {"found": False, "meta": None}
 
     track_hist = track_hist.sort_values("billboard_week")
     ts_row = track_summary[track_summary["track_id"] == track_id]
@@ -1483,6 +1605,7 @@ def get_track_history(track_id, min_ms, music_only, bb_top_n, bb_album_top_n, bb
         "track_name": str(track_hist.iloc[0]["track_name"]),
         "artist_name": str(track_hist.iloc[0]["artist_name"]),
         "cover_url": cover_url if pd.notna(cover_url) else None,
+        "meta": _get_track_spotify_meta(track_id),
         "summary": {
             "peak_position": int(info.get("peak_position", 0)),
             "weeks_on_chart": int(info.get("weeks_on_chart", 0)),
@@ -1541,7 +1664,7 @@ def get_artist_chart_detail(artist_name, min_ms, music_only, bb_top_n, bb_album_
 
     art_row = artist_track_counts[artist_track_counts["artist_name"] == artist_name]
     if art_row.empty:
-        return {"found": False}
+        return {"found": False, "meta": None}
     art_row = art_row.iloc[0]
 
     # Artist weekly history
@@ -1693,6 +1816,7 @@ def get_artist_chart_detail(artist_name, min_ms, music_only, bb_top_n, bb_album_
         "found": True,
         "artist_name": artist_name,
         "cover_url": artist_cover_url,
+        "meta": _get_artist_spotify_meta(artist_name),
         "info": {
             "total_tracks": int(art_row["total_tracks"]),
             "best_peak": int(art_row["best_peak"]),
@@ -1787,7 +1911,7 @@ def get_album_chart_detail(album_name, artist_name, min_ms, music_only, bb_top_n
         (album_track_counts["album_name"] == album_name) & (album_track_counts["artist_name"] == artist_name)
     ]
     if alb_row.empty:
-        return {"found": False}
+        return {"found": False, "meta": None}
     alb_row = alb_row.iloc[0]
 
     # Album chart data
@@ -1878,6 +2002,7 @@ def get_album_chart_detail(album_name, artist_name, min_ms, music_only, bb_top_n
         "album_name": album_name,
         "artist_name": artist_name,
         "cover_url": album_cover_url,
+        "meta": _get_album_spotify_meta(album_name, artist_name),
         "info": {
             "total_tracks": int(alb_row["total_tracks"]),
             "best_peak": int(alb_row["best_peak"]),

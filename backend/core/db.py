@@ -4,6 +4,7 @@ import hashlib
 import json
 import sqlite3
 import os
+from functools import lru_cache
 from typing import Any, Optional
 
 # backend/core/ → os.path.dirname x3 = project root
@@ -164,6 +165,16 @@ CREATE TABLE IF NOT EXISTS spotify_artist_meta (
     followers          INTEGER,
     genres             TEXT,
     image_url          TEXT
+);
+
+-- ── Genius Lyrics Cache ──────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS track_lyrics (
+    track_id       INTEGER PRIMARY KEY,
+    genius_song_id INTEGER,
+    lyrics_text    TEXT,
+    genius_url     TEXT,
+    fetched_at     TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (track_id) REFERENCES tracks(track_id)
 );
 
 -- ── Spotify Account Data ─────────────────────────────────────────────
@@ -557,6 +568,81 @@ def query_plays(
     return conn.execute(sql, params).fetchall()
 
 
+@lru_cache(maxsize=16)
+def _load_plays_cached(
+    min_ms: int,
+    music_only: bool,
+    merge_enabled: bool,
+    filtered: bool,
+    join_albums: bool,
+    columns: str,
+    extra_where: str,
+    extra_params: tuple,
+) -> "pd.DataFrame":
+    """Cacheable inner loader — connection is created internally so it
+    doesn't appear in the LRU cache key."""
+    import pandas as pd
+
+    conn = get_db()
+    try:
+        params: list[Any] = []
+
+        if filtered:
+            if merge_enabled:
+                f, fp = base_filters(min_ms=0, music_only=music_only)
+            else:
+                f, fp = base_filters(min_ms=min_ms, music_only=music_only)
+            where = f"WHERE {f}" if f else ""
+        else:
+            where = "WHERE p.track_id IS NOT NULL" if music_only else ""
+            fp = []
+
+        if extra_where:
+            where += f" AND {extra_where}" if where else f"WHERE {extra_where}"
+        params = fp + list(extra_params)
+
+        if columns == "*":
+            if join_albums:
+                cols = "p.*, t.track_name, t.spotify_track_uri, a.artist_name, al.album_name"
+            else:
+                cols = "p.*, t.track_name, t.spotify_track_uri, a.artist_name"
+            if filtered:
+                cols += ", stm.duration_ms"
+        else:
+            cols = columns
+
+        if join_albums:
+            from_clause = (
+                "FROM plays p "
+                "LEFT JOIN tracks t ON p.track_id = t.track_id "
+                "LEFT JOIN artists a ON t.artist_id = a.artist_id "
+                "LEFT JOIN albums al ON t.album_id = al.album_id"
+            )
+        else:
+            from_clause = (
+                "FROM plays p "
+                "LEFT JOIN tracks t ON p.track_id = t.track_id "
+                "LEFT JOIN artists a ON t.artist_id = a.artist_id"
+            )
+        if filtered:
+            from_clause += (
+                " LEFT JOIN spotify_track_meta stm "
+                "ON REPLACE(t.spotify_track_uri, 'spotify:track:', '') = stm.spotify_track_id"
+            )
+
+        sql = f"SELECT {cols} {from_clause} {where} ORDER BY p.ts"
+        df = pd.read_sql_query(sql, conn, params=params)
+
+        if filtered and merge_enabled:
+            df = merge_consecutive_plays(df, min_ms)
+            if min_ms > 0:
+                df = df[df["ms_played"] >= min_ms]
+
+        return df
+    finally:
+        conn.close()
+
+
 def load_plays(
     conn: sqlite3.Connection,
     columns: str = "*",
@@ -571,6 +657,7 @@ def load_plays(
     """统一的播放数据加载函数，所有统计页面复用。
 
     内部封装 base_filters() + 标准 JOIN，返回 pd.DataFrame。
+    结果按参数缓存于内存中，避免重复 SQL 查询和 merge 计算。
     filtered=False 可跳过 base_filters 获取原始数据（行为分析等）。
     columns="*" 时自动选择完整列集合，也可传入自定义列字符串。
     join_albums=False 可跳过 albums JOIN 减少查询开销。
@@ -578,63 +665,16 @@ def load_plays(
     当 merge_enabled=True 时，先合并连续同曲目播放再过滤 ms_played，
     避免碎片化播放片段被误丢弃。
     """
-    import pandas as pd
-
-    params: list[Any] = []
-
-    if filtered:
-        if merge_enabled:
-            # 先不过滤 ms_played：查全量数据 → 合并 → 再过滤
-            f, fp = base_filters(min_ms=0, music_only=music_only)
-        else:
-            f, fp = base_filters(min_ms=min_ms, music_only=music_only)
-        where = f"WHERE {f}" if f else ""
-    else:
-        where = "WHERE p.track_id IS NOT NULL" if music_only else ""
-        fp = []
-
-    if extra_where:
-        where += f" AND {extra_where}" if where else f"WHERE {extra_where}"
-    params = fp + (extra_params or [])
-
-    if columns == "*":
-        if join_albums:
-            cols = "p.*, t.track_name, t.spotify_track_uri, a.artist_name, al.album_name"
-        else:
-            cols = "p.*, t.track_name, t.spotify_track_uri, a.artist_name"
-        if filtered:
-            cols += ", stm.duration_ms"
-    else:
-        cols = columns
-
-    if join_albums:
-        from_clause = (
-            "FROM plays p "
-            "LEFT JOIN tracks t ON p.track_id = t.track_id "
-            "LEFT JOIN artists a ON t.artist_id = a.artist_id "
-            "LEFT JOIN albums al ON t.album_id = al.album_id"
-        )
-    else:
-        from_clause = (
-            "FROM plays p "
-            "LEFT JOIN tracks t ON p.track_id = t.track_id "
-            "LEFT JOIN artists a ON t.artist_id = a.artist_id"
-        )
-    if filtered:
-        from_clause += (
-            " LEFT JOIN spotify_track_meta stm "
-            "ON REPLACE(t.spotify_track_uri, 'spotify:track:', '') = stm.spotify_track_id"
-        )
-
-    sql = f"SELECT {cols} {from_clause} {where} ORDER BY p.ts"
-    df = pd.read_sql_query(sql, conn, params=params)
-
-    if filtered and merge_enabled:
-        df = merge_consecutive_plays(df, min_ms)
-        if min_ms > 0:
-            df = df[df["ms_played"] >= min_ms]
-
-    return df
+    return _load_plays_cached(
+        min_ms=min_ms,
+        music_only=music_only,
+        merge_enabled=merge_enabled,
+        filtered=filtered,
+        join_albums=join_albums,
+        columns=columns,
+        extra_where=extra_where,
+        extra_params=tuple(extra_params or ()),
+    ).copy()
 
 def db_exists() -> bool:
     """Check if the database file already exists and has data."""

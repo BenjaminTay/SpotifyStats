@@ -996,3 +996,85 @@ class TestResponseFormat:
     def test_gzip_for_large_response(self, client, default_params):
         r = client.get("/api/billboard/data", params=default_params)
         assert len(r.content) > 100000
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Lyrics API
+# ═══════════════════════════════════════════════════════════════════════════
+
+class TestLyrics:
+    def test_lyrics_endpoint_structure(self, client):
+        """GET /api/lyrics/{track_id} returns correct structure for a valid track."""
+        # First, get a track_id from the database
+        from backend.core.db import get_db
+        conn = get_db()
+        try:
+            row = conn.execute("SELECT track_id FROM tracks LIMIT 1").fetchone()
+        finally:
+            conn.close()
+        if not row:
+            pytest.skip("No tracks in database")
+
+        r = client.get(f"/api/lyrics/{row[0]}")
+        assert r.status_code == 200
+        d = r.json()
+        assert "found" in d
+        assert "lyrics" in d
+        assert "genius_url" in d
+        assert "genius_song_id" in d
+        assert "cached" in d
+
+    def test_lyrics_endpoint_nonexistent(self, client):
+        """GET /api/lyrics/{track_id} for non-existent track returns found=False."""
+        r = client.get("/api/lyrics/-1")
+        assert r.status_code == 200
+        d = r.json()
+        assert d["found"] is False
+
+    def test_lyrics_url_endpoint_structure(self, client):
+        """GET /api/lyrics/{track_id}/url returns correct structure."""
+        from backend.core.db import get_db
+        conn = get_db()
+        try:
+            row = conn.execute("SELECT track_id FROM tracks LIMIT 1").fetchone()
+        finally:
+            conn.close()
+        if not row:
+            pytest.skip("No tracks in database")
+
+        r = client.get(f"/api/lyrics/{row[0]}/url")
+        assert r.status_code == 200
+        d = r.json()
+        assert "found" in d
+        if d["found"]:
+            assert "genius_url" in d
+            assert d["genius_url"].startswith("https://genius.com/")
+
+    def test_lyrics_url_endpoint_nonexistent(self, client):
+        """GET /api/lyrics/{track_id}/url for non-existent track returns found=False."""
+        r = client.get("/api/lyrics/-1/url")
+        assert r.status_code == 200
+        d = r.json()
+        assert d["found"] is False
+
+    def test_lyrics_cached_on_repeat(self, client):
+        """Second request for the same track returns cached=True."""
+        from backend.core.db import get_db
+        conn = get_db()
+        try:
+            row = conn.execute("SELECT track_id FROM tracks LIMIT 1").fetchone()
+        finally:
+            conn.close()
+        if not row:
+            pytest.skip("No tracks in database")
+
+        # First request — fetches from Genius (or hits cache if pre-populated)
+        r1 = client.get(f"/api/lyrics/{row[0]}")
+        assert r1.status_code == 200
+
+        # Second request — must be cached
+        r2 = client.get(f"/api/lyrics/{row[0]}")
+        assert r2.status_code == 200
+        d2 = r2.json()
+        if d2["found"]:
+            assert d2["cached"] is True
