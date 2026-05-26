@@ -5,6 +5,7 @@ import { BillboardPage } from '@/pages/BillboardPage'
 import { TrackDetailPage } from '@/pages/TrackDetailPage'
 import { ArtistDetailPage } from '@/pages/ArtistDetailPage'
 import { AlbumDetailPage } from '@/pages/AlbumDetailPage'
+import { NumberOnesPage } from '@/pages/NumberOnesPage'
 
 function App() {
   return (
@@ -16,6 +17,7 @@ function App() {
           <Route path="/billboard/track/:trackId" element={<TrackDetailPage />} />
           <Route path="/billboard/artist/:artistName" element={<ArtistDetailPage />} />
           <Route path="/billboard/album/:albumName" element={<AlbumDetailPage />} />
+          <Route path="/billboard/number-ones" element={<NumberOnesPage />} />
         </Route>
       </Routes>
     </BrowserRouter>
