@@ -21,6 +21,7 @@ interface UseBillboardResult {
   totalWeeks: number
   goNext: () => void
   goPrev: () => void
+  goToWeek: (week: string) => void
 }
 
 export function useBillboard(initialWeek?: string | null): UseBillboardResult {
@@ -97,6 +98,14 @@ export function useBillboard(initialWeek?: string | null): UseBillboardResult {
     })
   }, [totalWeeks])
 
+  const goToWeek = useCallback((week: string) => {
+    const idx = allWeeks.indexOf(week)
+    if (idx >= 0) {
+      setWeekIndex(idx)
+      cachedWeekIndex = idx
+    }
+  }, [allWeeks])
+
   return {
     data,
     loading,
@@ -108,5 +117,6 @@ export function useBillboard(initialWeek?: string | null): UseBillboardResult {
     totalWeeks,
     goNext,
     goPrev,
+    goToWeek,
   }
 }

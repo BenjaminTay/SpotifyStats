@@ -7,6 +7,7 @@ import { WeekSelector } from '@/components/shared/WeekSelector'
 import { Skeleton } from '@/components/ui/skeleton'
 import { AlertCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { displayName } from '@/lib/chinese'
 import type { WeeklyTrackEntry, WeeklyAlbumEntry, WeeklyArtistEntry } from '@/types/billboard'
 import { type RankChange, ChangeCell } from '@/components/shared/ChangeCell'
 
@@ -171,6 +172,7 @@ export function BillboardPage() {
     totalWeeks,
     goNext,
     goPrev,
+    goToWeek,
   } = useBillboard(initialWeek)
 
   const [activeTab, setActiveTab] = useState<TabKey>('tracks')
@@ -286,6 +288,9 @@ export function BillboardPage() {
             onNext={() => goNext()}
             disablePrev={currentIndex >= totalWeeks - 1}
             disableNext={currentIndex <= 0}
+            allWeeks={data.meta.all_weeks_desc}
+            selectedWeek={selectedWeek}
+            onGoToWeek={goToWeek}
           />
 
           {/* Summary Strip */}
@@ -379,7 +384,7 @@ export function BillboardPage() {
                         : activeTab === 'albums'
                           ? `/billboard/album/${encodeURIComponent((entry as WeeklyAlbumEntry).album_name)}?artist=${encodeURIComponent((entry as WeeklyAlbumEntry).artist_name)}`
                           : `/billboard/track/${(entry as WeeklyTrackEntry).track_id}`
-                    const displayName =
+                    const chartName =
                       activeTab === 'artists'
                         ? (entry as WeeklyArtistEntry).artist_name
                         : activeTab === 'albums'
@@ -394,11 +399,13 @@ export function BillboardPage() {
                           )}`
                         : null
                     const subLabel =
-                      activeTab === 'tracks'
-                        ? (entry as WeeklyTrackEntry).artist_name
-                        : activeTab === 'albums'
-                          ? (entry as WeeklyAlbumEntry).artist_name
-                          : `${(entry as WeeklyArtistEntry).tracks_count} 首曲目`
+                      activeTab === 'artists'
+                        ? `${(entry as WeeklyArtistEntry).tracks_count} 首曲目`
+                        : displayName(
+                            activeTab === 'tracks'
+                              ? (entry as WeeklyTrackEntry).artist_name
+                              : (entry as WeeklyAlbumEntry).artist_name,
+                          )
 
                     // As-of-week metrics from weekly entry (PK, Wks, PK Wks are
                     // computed up to and including the current week, not all-time)
@@ -430,7 +437,7 @@ export function BillboardPage() {
                             to={detailLink}
                             className="font-sans text-sm font-semibold transition-colors hover:text-accent-foreground"
                           >
-                            {displayName}
+                            {displayName(chartName)}
                           </Link>
                           {artistLink ? (
                             <Link

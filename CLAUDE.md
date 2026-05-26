@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Spotify Extended Streaming History 数据分析 Web 应用。从 Spotify 官方导出的 JSON 播放记录中导入数据到 SQLite，通过 FastAPI + React 提供交互式多维度统计仪表盘。
 
-**架构演进**：已从 Streamlit 单体架构迁移到 FastAPI 后端 + React 前端。后端 66 个 API 端点已全部完成，前端 Dashboard 总览页、Billboard 周榜页、每周榜首页以及三个详情子页面（单曲/艺人/专辑）已完成开发。Streamlit 原有应用和后端 API 仍可并行运行。
+**架构演进**：已从 Streamlit 单体架构迁移到 FastAPI 后端 + React 前端。后端 66 个 API 端点已全部完成，前端 Dashboard 总览页、Billboard 周榜页、每周榜首页、三个详情子页面（单曲/艺人/专辑）以及设置页面已完成开发。Streamlit 原有应用和后端 API 仍可并行运行。
 
 **UI 主题**：「编辑风 × 液态玻璃」— 杂志式排版（Playfair Display 衬线标题 + Inter 无衬线正文）+ 毛玻璃卡片材质 + 日/夜双皮肤。详细风格指南见 `frontend/UI_STYLE_GUIDE.md`。
 
@@ -179,43 +179,49 @@ React + Vite + Tailwind CSS v4 + shadcn/ui（样式 `base-nova`，基础色 `neu
 - **样式**：Tailwind CSS v4（`@tailwindcss/vite` 插件），`tw-animate-css` 动画库
 - **主题**：CSS 变量 + `.dark` class 切换，`oklch()` 色彩空间。结构变量在 `@theme inline`，颜色在 `:root` / `.dark`。`useTheme()` hook 提供 localStorage 持久化 + 系统偏好回退
 - **组件**：shadcn/ui v4（base-nova 风格），源码在 `@/components/ui/`
-- **路由**：React Router v7，当前 6 个路由：`/`（DashboardPage）、`/billboard`（BillboardPage）、`/billboard/number-ones`（NumberOnesPage）、`/billboard/track/:trackId`（TrackDetailPage）、`/billboard/artist/:artistName`（ArtistDetailPage）、`/billboard/album/:albumName`（AlbumDetailPage）
+- **路由**：React Router v7，当前 7 个路由：`/`（DashboardPage）、`/billboard`（BillboardPage）、`/billboard/number-ones`（NumberOnesPage）、`/billboard/track/:trackId`（TrackDetailPage）、`/billboard/artist/:artistName`（ArtistDetailPage）、`/billboard/album/:albumName`（AlbumDetailPage）、`/settings`（SettingsPage）
 - **图表**：ECharts 6 + echarts-for-react（月度趋势图）；平台分布使用纯 DOM 进度条
 - **字体**：Inter Variable（`@fontsource-variable/inter`）+ Playfair Display（Google Fonts CDN）
+- **国际化**：中文简繁转换（opencc-js），`displayName()` 覆盖所有页面的名称展示
+- **日期工具**：date-fns + react-day-picker（日历周选择器，`Popover` + `Calendar` 弹窗跳转）
 - **客户端缓存**：模块级变量缓存 API 响应，页面切换时避免重复请求
 
 **目录结构**：
 ```
 frontend/src/
 ├── components/
-│   ├── ui/          ← shadcn/ui 组件（可随意修改）
+│   ├── ui/          ← shadcn/ui 组件（可随意修改，含 calendar, popover）
 │   ├── charts/      ← ECharts 封装 + 纯 DOM 图表（RankTrendChart）
 │   ├── layout/      ← 布局（AppLayout, Masthead, ThemeToggle）
-│   └── shared/      ← 共享组件（GlassCard, KpiCard, WeekSelector, NoiseOverlay, PageSwitcher, ChangeCell）
+│   └── shared/      ← 共享组件（GlassCard, KpiCard, WeekSelector 含日历弹窗, NoiseOverlay, PageSwitcher, ChangeCell）
 ├── pages/           ← 页面组件
 │   ├── DashboardPage.tsx    ← 总览仪表盘
 │   ├── BillboardPage.tsx    ← Billboard 周榜（3 Tab + 排名表 + 详情链接）
-│   ├── NumberOnesPage.tsx   ← 每周榜首（3 子 Tab：单曲/专辑/艺人，KPI 卡片 + 冠单表 + 排行 + 柱状图 + 空冠）
+│   ├── NumberOnesPage.tsx   ← 每周榜首（3 子 Tab：单曲/专辑/艺人，年度筛选 + Power Score 平局排序 + KPI 卡片 + 冠单表 + 排行 + 柱状图 + 空冠）
 │   ├── TrackDetailPage.tsx  ← 单曲详情（KPI + 排名趋势图 + 榜单历史表）
 │   ├── ArtistDetailPage.tsx ← 艺人详情（3 Tab：榜单表现/周榜历史/曲目表现）
-│   └── AlbumDetailPage.tsx  ← 专辑详情（2 Tab：榜单表现/曲目表现）
+│   ├── AlbumDetailPage.tsx  ← 专辑详情（2 Tab：榜单表现/曲目表现）
+│   └── SettingsPage.tsx     ← 设置（4 区块：Data & Display / Billboard Parameters / Version Merge / Data Import）
 ├── hooks/           ← 自定义 hooks
 │   ├── useTheme.tsx  ← 主题管理（Context + localStorage）
 │   ├── useDashboard.ts  ← Dashboard 数据获取 + 缓存
-│   └── useBillboard.ts  ← Billboard 数据获取 + 缓存 + 周导航（含模块级缓存保留切周状态）
+│   ├── useBillboard.ts  ← Billboard 数据获取 + 缓存 + goToWeek 周导航
+│   └── useSettings.ts   ← 设置 + 版本合并 API + 异步导入轮询
 ├── lib/             ← API 客户端、工具函数
-│   ├── api.ts       ← fetch 封装，类型定义
+│   ├── api.ts       ← fetch 封装（GET/PUT/POST/DELETE），类型重导出
 │   ├── theme.ts     ← 图表色盘常量 + getChartColors(isDark)
-│   └── utils.ts     ← cn() 工具（tailwind-merge + clsx）
+│   ├── utils.ts     ← cn() 工具（tailwind-merge + clsx）
+│   └── chinese.ts   ← 中文简繁转换（opencc-js），displayName() 统一入口
 ├── types/           ← TypeScript 类型定义
 │   ├── dashboard.ts ← Dashboard 响应类型
-│   └── billboard.ts ← Billboard 响应类型
+│   ├── billboard.ts ← Billboard 响应类型
+│   └── settings.ts  ← 设置（SettingsData / ImportJob / ReleaseGroup / DetectionResult / TrackComparison 等）
 └── UI_STYLE_GUIDE.md ← 详细 UI 风格指南（新增页面必读）
 ```
 
 **路径别名**：`@/` → `src/`（Vite resolve.alias + tsconfig paths）。
 
-**shadcn/ui 主题**：CSS 变量定义在 `src/index.css`，`components.json` 记录配置。已安装的组件：button, card, table, tabs, select, slider, separator, skeleton, tooltip, badge, avatar, sheet, collapsible, dropdown-menu, scroll-area。
+**shadcn/ui 主题**：CSS 变量定义在 `src/index.css`，`components.json` 记录配置。已安装的组件：button, card, table, tabs, select, slider, separator, skeleton, tooltip, badge, avatar, sheet, collapsible, dropdown-menu, scroll-area, calendar, popover。
 
 **UI 风格指南**：`frontend/UI_STYLE_GUIDE.md` 包含完整的颜色系统、字体规格、布局模式、组件 API 和页面模板。新增页面时必须参考此文档。
 

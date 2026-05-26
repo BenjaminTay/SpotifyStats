@@ -5,6 +5,7 @@ import { cn } from '@/lib/utils'
 const NAV_ITEMS = [
   { to: '/', label: '总览' },
   { to: '/billboard', label: 'Billboard' },
+  { to: '/settings', label: '设置' },
   { to: '#', label: '排行榜', disabled: true },
   { to: '#', label: '年度回顾', disabled: true },
   { to: '#', label: '分析', disabled: true },

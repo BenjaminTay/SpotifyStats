@@ -9,6 +9,7 @@ import { getChartColors } from '@/lib/theme'
 import { Skeleton } from '@/components/ui/skeleton'
 import { AlertCircle, ArrowLeft } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { displayName } from '@/lib/chinese'
 import type {
   WeeklyTrackEntry,
   WeeklyAlbumEntry,
@@ -74,10 +75,10 @@ function CoverImg({ url }: { url?: string | null }) {
 function PlayCountCell({ value, max }: { value: number; max: number }) {
   return (
     <span className="inline-flex items-center gap-2">
-      <span className="font-sans text-[15px] font-semibold tabular-nums">
+      <span className="inline-block w-[52px] text-right font-sans text-[15px] font-semibold tabular-nums">
         {formatNumber(value)}
       </span>
-      <span className="inline-block h-[3px] w-[70px] rounded-[2px] bg-muted">
+      <span className="inline-block h-[3px] w-[56px] rounded-[2px] bg-muted">
         <span
           className="block h-full rounded-[2px] bg-accent-foreground transition-[width] duration-300"
           style={{ width: `${Math.round((value / (max || 1)) * 100)}%` }}
@@ -99,16 +100,16 @@ function No1BarChart({
   const colors = getChartColors(isDark)
 
   const chartData = [...data].reverse()
-  const labels = chartData.map((d) => d.name)
+  const labels = chartData.map((d) => displayName(d.name))
   const values = chartData.map((d) => d.value)
-  const subtitles = chartData.map((d) => d.subtitle ?? '')
+  const subtitles = chartData.map((d) => (d.subtitle ? displayName(d.subtitle) : ''))
 
   const option = {
     ...base,
     tooltip: {
       ...base.tooltip,
       formatter: (params: { name: string; value: number; dataIndex: number }) =>
-        `<b>${params.name}</b><br/>${subtitles[params.dataIndex] ? subtitles[params.dataIndex] + '<br/>' : ''}${label}: ${params.value} 周`,
+        `<b>${displayName(params.name)}</b><br/>${subtitles[params.dataIndex] ? subtitles[params.dataIndex] + '<br/>' : ''}${label}: ${params.value} 周`,
     },
     xAxis: { type: 'value' as const, ...base.xAxis, axisLabel: { ...base.xAxis.axisLabel } },
     yAxis: {
@@ -187,7 +188,7 @@ function NameWithCover({
             to={nameLink}
             className="truncate font-sans text-sm font-semibold transition-colors hover:text-accent-foreground"
           >
-            {name}
+            {displayName(name)}
           </Link>
           {badge && (
             <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 font-sans text-[10px] font-semibold uppercase tracking-[0.6px] text-amber-600 dark:text-amber-400">
@@ -201,11 +202,11 @@ function NameWithCover({
               to={artistLink}
               className="mt-0.5 block font-sans text-[12px] italic text-muted-foreground transition-colors hover:text-accent-foreground"
             >
-              {artistName}
+              {displayName(artistName)}
             </Link>
           ) : (
             <span className="mt-0.5 block font-sans text-[12px] italic text-muted-foreground">
-              {artistName}
+              {displayName(artistName)}
             </span>
           ))}
       </div>
@@ -221,6 +222,7 @@ interface TrackNo1Info {
   artist_name: string
   cover_url?: string | null
   weeks_at_no1: number
+  power_score: number
   total_no1_plays: number
   longest_streak: number
   no1_weeks: string[]
@@ -231,6 +233,7 @@ interface AlbumNo1Info {
   artist_name: string
   cover_url?: string | null
   weeks_at_no1: number
+  power_score: number
   longest_streak: number
   no1_weeks: string[]
 }
@@ -239,6 +242,7 @@ interface ArtistNo1Info {
   artist_name: string
   cover_url?: string | null
   weeks_at_no1: number
+  power_score: number
   longest_streak: number
   no1_weeks: string[]
 }
@@ -300,7 +304,15 @@ export function NumberOnesPage() {
     }
     if (!data) return empty
 
-    const { weekly, weekly_album, weekly_artist, track_summary } = data
+    const { weekly, weekly_album, weekly_artist, track_summary, power_scores, album_power_scores, artist_power_scores } = data
+
+    // ── Power score lookup maps ────────────────────────────
+    const psByTrack = new Map<number, number>()
+    for (const p of power_scores) psByTrack.set(p.track_id, p.power_score)
+    const psByAlbum = new Map<string, number>()
+    for (const p of album_power_scores) psByAlbum.set(`${p.album_name}|||${p.artist_name}`, p.power_score)
+    const psByArtist = new Map<string, number>()
+    for (const p of artist_power_scores) psByArtist.set(p.artist_name, p.power_score)
 
     // ── Track #1s ─────────────────────────────────────────
     const trackNo1s = weekly
@@ -330,6 +342,7 @@ export function NumberOnesPage() {
         artist_name: entries[0].artist_name,
         cover_url: entries[0].cover_url,
         weeks_at_no1: new Set(weeks).size,
+        power_score: psByTrack.get(tid) ?? 0,
         total_no1_plays: entries.reduce((s, e) => s + e.play_count, 0),
         longest_streak: streak,
         no1_weeks: weeks,
@@ -340,7 +353,7 @@ export function NumberOnesPage() {
         trackLongestArtist = entries[0].artist_name
       }
     }
-    trackNo1Infos.sort((a, b) => b.weeks_at_no1 - a.weeks_at_no1)
+    trackNo1Infos.sort((a, b) => b.weeks_at_no1 - a.weeks_at_no1 || b.power_score - a.power_score)
 
     // ── Album #1s ─────────────────────────────────────────
     const albumNo1s = weekly_album
@@ -370,6 +383,7 @@ export function NumberOnesPage() {
         artist_name: entries[0].artist_name,
         cover_url: entries[0].cover_url,
         weeks_at_no1: new Set(weeks).size,
+        power_score: psByAlbum.get(`${entries[0].album_name}|||${entries[0].artist_name}`) ?? 0,
         longest_streak: streak,
         no1_weeks: weeks,
       })
@@ -379,7 +393,7 @@ export function NumberOnesPage() {
         albumLongestArtist = entries[0].artist_name
       }
     }
-    albumNo1Infos.sort((a, b) => b.weeks_at_no1 - a.weeks_at_no1)
+    albumNo1Infos.sort((a, b) => b.weeks_at_no1 - a.weeks_at_no1 || b.power_score - a.power_score)
 
     // ── Artist #1s ────────────────────────────────────────
     const artistNo1s = weekly_artist
@@ -406,6 +420,7 @@ export function NumberOnesPage() {
         artist_name: name,
         cover_url: entries[0].cover_url,
         weeks_at_no1: new Set(weeks).size,
+        power_score: psByArtist.get(name) ?? 0,
         longest_streak: streak,
         no1_weeks: weeks,
       })
@@ -414,7 +429,7 @@ export function NumberOnesPage() {
         artistLongestName = name
       }
     }
-    artistNo1Infos.sort((a, b) => b.weeks_at_no1 - a.weeks_at_no1)
+    artistNo1Infos.sort((a, b) => b.weeks_at_no1 - a.weeks_at_no1 || b.power_score - a.power_score)
 
     // ── Debut at #1 (tracks) ──────────────────────────────
     const summaryMap = new Map<number, TrackSummary>()
@@ -554,6 +569,95 @@ export function NumberOnesPage() {
 
   const [activeTab, setActiveTab] = useState<SubTabKey>('tracks')
 
+  // ── Year filter ───────────────────────────────────────
+
+  const availableYears = useMemo(() => {
+    const entries =
+      activeTab === 'tracks' ? computed.trackNo1List
+      : activeTab === 'albums' ? computed.albumNo1List
+      : computed.artistNo1List
+    const years = new Set<number>()
+    for (const e of entries) {
+      years.add(new Date(e.billboard_week + 'T00:00:00').getFullYear())
+    }
+    return [...years].sort((a, b) => b - a)
+  }, [activeTab, computed.trackNo1List, computed.albumNo1List, computed.artistNo1List])
+
+  const [selectedYear, setSelectedYear] = useState(0)
+
+  useEffect(() => {
+    if (availableYears.length === 0) return
+    if (!availableYears.includes(selectedYear)) {
+      setSelectedYear(availableYears[0])
+    }
+  }, [availableYears, selectedYear])
+
+  const yearFiltered = useMemo(() => {
+    const filterFn = (e: { billboard_week: string }) =>
+      new Date(e.billboard_week + 'T00:00:00').getFullYear() === selectedYear
+
+    const tracks = computed.trackNo1List.filter(filterFn)
+    const albums = computed.albumNo1WithPkWks.filter(filterFn)
+    const artists = computed.artistNo1WithPkWks.filter(filterFn)
+
+    return {
+      tracks,
+      albums,
+      artists,
+      trackMaxPlays: Math.max(...tracks.map((e) => e.play_count), 1),
+      albumMaxPlays: Math.max(...albums.map((e) => e.play_count), 1),
+      artistMaxPlays: Math.max(...artists.map((e) => e.play_count), 1),
+      uniqueTrackCount: new Set(tracks.map((e) => e.track_id)).size,
+      uniqueAlbumCount: new Set(
+        computed.albumNo1List.filter(filterFn).map((e) => `${e.album_name}|||${e.artist_name}`),
+      ).size,
+      uniqueArtistCount: new Set(
+        computed.artistNo1List.filter(filterFn).map((e) => e.artist_name),
+      ).size,
+    }
+  }, [selectedYear, computed])
+
+  // ── Year switcher sub-component ───────────────────────
+
+  function YearSwitcher({
+    uniqueCount,
+    unit,
+  }: {
+    uniqueCount: number
+    unit: string
+  }) {
+    const idx = availableYears.indexOf(selectedYear)
+    const prevYear = idx < availableYears.length - 1 ? availableYears[idx + 1] : null
+    const nextYear = idx > 0 ? availableYears[idx - 1] : null
+
+    return (
+      <div className="flex items-center gap-2.5">
+        <span className="font-sans text-[12px] text-muted-foreground">
+          {uniqueCount} {unit}
+        </span>
+        <div className="flex items-center gap-0.5 rounded-[8px] border border-border bg-muted/30 p-0.5">
+          <button
+            onClick={() => prevYear != null && setSelectedYear(prevYear)}
+            disabled={prevYear == null}
+            className="inline-flex h-7 w-7 items-center justify-center rounded-[6px] text-[13px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-30"
+          >
+            ◀
+          </button>
+          <span className="inline-flex min-w-[48px] items-center justify-center font-serif text-[18px] font-bold tabular-nums">
+            {selectedYear}
+          </span>
+          <button
+            onClick={() => nextYear != null && setSelectedYear(nextYear)}
+            disabled={nextYear == null}
+            className="inline-flex h-7 w-7 items-center justify-center rounded-[6px] text-[13px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-30"
+          >
+            ▶
+          </button>
+        </div>
+      </div>
+    )
+  }
+
   // ── Render ──────────────────────────────────────────────
 
   if (loading) return <SkeletonBlock />
@@ -604,7 +708,7 @@ export function NumberOnesPage() {
                   </span>
                 </div>
                 <p className="mt-1.5 font-sans text-[13px] leading-relaxed text-muted-foreground">
-                  {row.songs}
+                  {displayName(row.songs)}
                 </p>
               </div>
             </div>
@@ -661,7 +765,7 @@ export function NumberOnesPage() {
           <div className="mb-8 grid grid-cols-3 gap-6">
             <GlassCard className="p-6">
               <p className="mb-3 font-sans text-[12px] font-semibold uppercase tracking-[1px] text-muted-foreground">
-                总冠单曲目数
+                总冠军歌曲数
               </p>
               <p className="mb-4 font-serif text-[44px] font-bold leading-none tracking-[-1px]">
                 {computed.trackNo1WeeksSorted.length} <span className="text-[18px] font-normal">首</span>
@@ -679,7 +783,7 @@ export function NumberOnesPage() {
             </GlassCard>
             <GlassCard className="p-6">
               <p className="mb-3 font-sans text-[12px] font-semibold uppercase tracking-[1px] text-muted-foreground">
-                最多冠单周数
+                最多冠军周数
               </p>
               <p className="mb-4 font-serif text-[44px] font-bold leading-none tracking-[-1px]">
                 {computed.trackNo1WeeksSorted[0]?.weeks_at_no1 ?? 0}{' '}
@@ -710,7 +814,7 @@ export function NumberOnesPage() {
                   <NameWithCover
                     coverUrl={e.cover_url}
                     name={e.track_name}
-                    artistName={e.artist_name}
+                    artistName={displayName(e.artist_name)}
                     nameLink={`/billboard/track/${e.track_id}`}
                     artistLink={`/billboard/artist/${encodeURIComponent(e.artist_name)}`}
                   />
@@ -721,21 +825,24 @@ export function NumberOnesPage() {
 
           {/* Weekly #1 Table */}
           <GlassCard className="mb-8 overflow-hidden p-6">
-            <h2 className="mb-5 font-serif text-[22px] font-bold tracking-[-0.3px]">每周冠单</h2>
+            <div className="mb-5 flex items-center justify-between">
+              <h2 className="font-serif text-[22px] font-bold tracking-[-0.3px]">每周冠军歌曲</h2>
+              <YearSwitcher uniqueCount={yearFiltered.uniqueTrackCount} unit="首冠军歌曲" />
+            </div>
             <div className="max-h-[600px] overflow-auto">
-              <table className="w-full border-collapse">
+              <table className="w-full table-fixed border-collapse">
                 <thead>
                   <tr className="border-b border-border text-left">
-                    <th className="sticky top-0 bg-card pb-3 font-sans text-[11px] font-semibold uppercase tracking-[1px] text-muted-foreground">周</th>
+                    <th className="sticky top-0 w-[96px] bg-card pb-3 font-sans text-[11px] font-semibold uppercase tracking-[1px] text-muted-foreground">周</th>
                     <th className="sticky top-0 bg-card pb-3 font-sans text-[11px] font-semibold uppercase tracking-[1px] text-muted-foreground">冠单曲目</th>
-                    <th className="sticky top-0 bg-card pb-3 text-right font-sans text-[11px] font-semibold uppercase tracking-[1px] text-muted-foreground">播放次数</th>
-                    <th className="sticky top-0 bg-card pb-3 text-right font-sans text-[11px] font-semibold uppercase tracking-[1px] text-muted-foreground">Pk Wks</th>
+                    <th className="sticky top-0 w-[132px] bg-card pb-3 text-right font-sans text-[11px] font-semibold uppercase tracking-[1px] text-muted-foreground">播放次数</th>
+                    <th className="sticky top-0 w-[64px] bg-card pb-3 text-right font-sans text-[11px] font-semibold uppercase tracking-[1px] text-muted-foreground">Pk Wks</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {computed.trackNo1List.map((e) => (
+                  {yearFiltered.tracks.map((e) => (
                     <tr key={`${e.track_id}-${e.billboard_week}`} className="border-b border-border transition-colors hover:bg-muted/30">
-                      <td className="py-3 font-sans text-[13px]">
+                      <td className="w-[96px] py-3 font-sans text-[13px]">
                         <Link to={`/billboard?week=${e.billboard_week}`} className="text-foreground transition-colors hover:text-accent-foreground">
                           {formatWeekStart(e.billboard_week)}
                         </Link>
@@ -744,13 +851,13 @@ export function NumberOnesPage() {
                         <NameWithCover
                           coverUrl={e.cover_url}
                           name={e.track_name}
-                          artistName={e.artist_name}
+                          artistName={displayName(e.artist_name)}
                           nameLink={`/billboard/track/${e.track_id}`}
                           artistLink={`/billboard/artist/${encodeURIComponent(e.artist_name)}`}
                         />
                       </td>
                       <td className="py-3 text-right">
-                        <PlayCountCell value={e.play_count} max={computed.trackMaxPlays} />
+                        <PlayCountCell value={e.play_count} max={yearFiltered.trackMaxPlays} />
                       </td>
                       <td className="py-3 text-right font-sans text-[13px] tabular-nums">{e.running_peak_wks}</td>
                     </tr>
@@ -781,7 +888,7 @@ export function NumberOnesPage() {
                           <NameWithCover
                             coverUrl={e.cover_url}
                             name={e.track_name}
-                            artistName={e.artist_name}
+                            artistName={displayName(e.artist_name)}
                             nameLink={`/billboard/track/${e.track_id}`}
                             artistLink={`/billboard/artist/${encodeURIComponent(e.artist_name)}`}
                           />
@@ -837,7 +944,7 @@ export function NumberOnesPage() {
                         <NameWithCover
                           coverUrl={e.cover_url}
                           name={e.track_name}
-                          artistName={e.artist_name}
+                          artistName={displayName(e.artist_name)}
                           nameLink={`/billboard/track/${e.track_id}`}
                           artistLink={`/billboard/artist/${encodeURIComponent(e.artist_name)}`}
                         />
@@ -910,7 +1017,7 @@ export function NumberOnesPage() {
                   <NameWithCover
                     coverUrl={e.cover_url}
                     name={e.album_name}
-                    artistName={e.artist_name}
+                    artistName={displayName(e.artist_name)}
                     nameLink={`/billboard/album/${encodeURIComponent(e.album_name)}`}
                     artistLink={`/billboard/artist/${encodeURIComponent(e.artist_name)}`}
                   />
@@ -920,22 +1027,25 @@ export function NumberOnesPage() {
           </div>
 
           <GlassCard className="mb-8 overflow-hidden p-6">
-            <h2 className="mb-5 font-serif text-[22px] font-bold tracking-[-0.3px]">每周冠军专辑</h2>
+            <div className="mb-5 flex items-center justify-between">
+              <h2 className="font-serif text-[22px] font-bold tracking-[-0.3px]">每周冠军专辑</h2>
+              <YearSwitcher uniqueCount={yearFiltered.uniqueAlbumCount} unit="张冠军专辑" />
+            </div>
             <div className="max-h-[600px] overflow-auto">
-              <table className="w-full border-collapse">
+              <table className="w-full table-fixed border-collapse">
                 <thead>
                   <tr className="border-b border-border text-left">
-                    <th className="sticky top-0 bg-card pb-3 font-sans text-[11px] font-semibold uppercase tracking-[1px] text-muted-foreground">周</th>
+                    <th className="sticky top-0 w-[96px] bg-card pb-3 font-sans text-[11px] font-semibold uppercase tracking-[1px] text-muted-foreground">周</th>
                     <th className="sticky top-0 bg-card pb-3 font-sans text-[11px] font-semibold uppercase tracking-[1px] text-muted-foreground">冠军专辑</th>
-                    <th className="sticky top-0 bg-card pb-3 text-right font-sans text-[11px] font-semibold uppercase tracking-[1px] text-muted-foreground">总播放</th>
-                    <th className="sticky top-0 bg-card pb-3 text-right font-sans text-[11px] font-semibold uppercase tracking-[1px] text-muted-foreground">入榜曲数</th>
-                    <th className="sticky top-0 bg-card pb-3 text-right font-sans text-[11px] font-semibold uppercase tracking-[1px] text-muted-foreground">Pk Wks</th>
+                    <th className="sticky top-0 w-[132px] bg-card pb-3 text-right font-sans text-[11px] font-semibold uppercase tracking-[1px] text-muted-foreground">总播放</th>
+                    <th className="sticky top-0 w-[72px] bg-card pb-3 text-right font-sans text-[11px] font-semibold uppercase tracking-[1px] text-muted-foreground">入榜曲数</th>
+                    <th className="sticky top-0 w-[64px] bg-card pb-3 text-right font-sans text-[11px] font-semibold uppercase tracking-[1px] text-muted-foreground">Pk Wks</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {computed.albumNo1WithPkWks.map((e) => (
+                  {yearFiltered.albums.map((e) => (
                     <tr key={`${e.album_name}-${e.artist_name}-${e.billboard_week}`} className="border-b border-border transition-colors hover:bg-muted/30">
-                      <td className="py-3 font-sans text-[13px]">
+                      <td className="w-[96px] py-3 font-sans text-[13px]">
                         <Link to={`/billboard?week=${e.billboard_week}`} className="text-foreground transition-colors hover:text-accent-foreground">
                           {formatWeekStart(e.billboard_week)}
                         </Link>
@@ -944,13 +1054,13 @@ export function NumberOnesPage() {
                         <NameWithCover
                           coverUrl={e.cover_url}
                           name={e.album_name}
-                          artistName={e.artist_name}
+                          artistName={displayName(e.artist_name)}
                           nameLink={`/billboard/album/${encodeURIComponent(e.album_name)}`}
                           artistLink={`/billboard/artist/${encodeURIComponent(e.artist_name)}`}
                         />
                       </td>
                       <td className="py-3 text-right">
-                        <PlayCountCell value={e.play_count} max={computed.albumMaxPlays} />
+                        <PlayCountCell value={e.play_count} max={yearFiltered.albumMaxPlays} />
                       </td>
                       <td className="py-3 text-right font-sans text-[13px] tabular-nums">{e.tracks_count}</td>
                       <td className="py-3 text-right font-sans text-[13px] tabular-nums">{e.album_pk_wks}</td>
@@ -981,7 +1091,7 @@ export function NumberOnesPage() {
                           <NameWithCover
                             coverUrl={e.cover_url}
                             name={e.album_name}
-                            artistName={e.artist_name}
+                            artistName={displayName(e.artist_name)}
                             nameLink={`/billboard/album/${encodeURIComponent(e.album_name)}`}
                             artistLink={`/billboard/artist/${encodeURIComponent(e.artist_name)}`}
                           />
@@ -1039,7 +1149,7 @@ export function NumberOnesPage() {
                         <NameWithCover
                           coverUrl={e.cover_url}
                           name={e.album_name}
-                          artistName={e.artist_name}
+                          artistName={displayName(e.artist_name)}
                           nameLink={`/billboard/album/${encodeURIComponent(e.album_name)}`}
                           artistLink={`/billboard/artist/${encodeURIComponent(e.artist_name)}`}
                         />
@@ -1080,7 +1190,7 @@ export function NumberOnesPage() {
                         to={`/billboard/artist/${encodeURIComponent(computed.artistNo1List[0].artist_name)}`}
                         className="truncate font-sans text-sm font-semibold transition-colors hover:text-accent-foreground"
                       >
-                        {computed.artistNo1List[0].artist_name}
+                        {displayName(computed.artistNo1List[0].artist_name)}
                       </Link>
                       <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 font-sans text-[10px] font-semibold uppercase tracking-[0.6px] text-amber-600 dark:text-amber-400">
                         最新冠军
@@ -1103,7 +1213,7 @@ export function NumberOnesPage() {
                     to={`/billboard/artist/${encodeURIComponent(computed.artistNo1WeeksSorted[0].artist_name)}`}
                     className="block truncate font-sans text-sm font-semibold transition-colors hover:text-accent-foreground"
                   >
-                    {computed.artistNo1WeeksSorted[0].artist_name}
+                    {displayName(computed.artistNo1WeeksSorted[0].artist_name)}
                   </Link>
                 </div>
               )}
@@ -1124,7 +1234,7 @@ export function NumberOnesPage() {
                       to={`/billboard/artist/${encodeURIComponent(e.artist_name)}`}
                       className="block truncate font-sans text-sm font-semibold transition-colors hover:text-accent-foreground"
                     >
-                      {e.artist_name}
+                      {displayName(e.artist_name)}
                     </Link>
                   </div>
                 )
@@ -1133,23 +1243,26 @@ export function NumberOnesPage() {
           </div>
 
           <GlassCard className="mb-8 overflow-hidden p-6">
-            <h2 className="mb-5 font-serif text-[22px] font-bold tracking-[-0.3px]">每周冠军艺人</h2>
+            <div className="mb-5 flex items-center justify-between">
+              <h2 className="font-serif text-[22px] font-bold tracking-[-0.3px]">每周冠军艺人</h2>
+              <YearSwitcher uniqueCount={yearFiltered.uniqueArtistCount} unit="位冠军艺人" />
+            </div>
             <div className="max-h-[600px] overflow-auto">
-              <table className="w-full border-collapse">
+              <table className="w-full table-fixed border-collapse">
                 <thead>
                   <tr className="border-b border-border text-left">
-                    <th className="sticky top-0 bg-card pb-3 font-sans text-[11px] font-semibold uppercase tracking-[1px] text-muted-foreground">周</th>
+                    <th className="sticky top-0 w-[96px] bg-card pb-3 font-sans text-[11px] font-semibold uppercase tracking-[1px] text-muted-foreground">周</th>
                     <th className="sticky top-0 bg-card pb-3 font-sans text-[11px] font-semibold uppercase tracking-[1px] text-muted-foreground">冠军艺人</th>
-                    <th className="sticky top-0 bg-card pb-3 text-right font-sans text-[11px] font-semibold uppercase tracking-[1px] text-muted-foreground">总播放</th>
-                    <th className="sticky top-0 bg-card pb-3 text-right font-sans text-[11px] font-semibold uppercase tracking-[1px] text-muted-foreground">入榜曲数</th>
-                    <th className="sticky top-0 bg-card pb-3 text-right font-sans text-[11px] font-semibold uppercase tracking-[1px] text-muted-foreground">入榜专辑</th>
-                    <th className="sticky top-0 bg-card pb-3 text-right font-sans text-[11px] font-semibold uppercase tracking-[1px] text-muted-foreground">Pk Wks</th>
+                    <th className="sticky top-0 w-[132px] bg-card pb-3 text-right font-sans text-[11px] font-semibold uppercase tracking-[1px] text-muted-foreground">总播放</th>
+                    <th className="sticky top-0 w-[72px] bg-card pb-3 text-right font-sans text-[11px] font-semibold uppercase tracking-[1px] text-muted-foreground">入榜曲数</th>
+                    <th className="sticky top-0 w-[72px] bg-card pb-3 text-right font-sans text-[11px] font-semibold uppercase tracking-[1px] text-muted-foreground">入榜专辑</th>
+                    <th className="sticky top-0 w-[64px] bg-card pb-3 text-right font-sans text-[11px] font-semibold uppercase tracking-[1px] text-muted-foreground">Pk Wks</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {computed.artistNo1WithPkWks.map((e) => (
+                  {yearFiltered.artists.map((e) => (
                     <tr key={`${e.artist_name}-${e.billboard_week}`} className="border-b border-border transition-colors hover:bg-muted/30">
-                      <td className="py-3 font-sans text-[13px]">
+                      <td className="w-[96px] py-3 font-sans text-[13px]">
                         <Link to={`/billboard?week=${e.billboard_week}`} className="text-foreground transition-colors hover:text-accent-foreground">
                           {formatWeekStart(e.billboard_week)}
                         </Link>
@@ -1161,12 +1274,12 @@ export function NumberOnesPage() {
                             to={`/billboard/artist/${encodeURIComponent(e.artist_name)}`}
                             className="block truncate font-sans text-sm font-semibold transition-colors hover:text-accent-foreground"
                           >
-                            {e.artist_name}
+                            {displayName(e.artist_name)}
                           </Link>
                         </div>
                       </td>
                       <td className="py-3 text-right">
-                        <PlayCountCell value={e.play_count} max={computed.artistMaxPlays} />
+                        <PlayCountCell value={e.play_count} max={yearFiltered.artistMaxPlays} />
                       </td>
                       <td className="py-3 text-right font-sans text-[13px] tabular-nums">{e.tracks_count}</td>
                       <td className="py-3 text-right font-sans text-[13px] tabular-nums">{e.albums_count}</td>
@@ -1192,7 +1305,7 @@ export function NumberOnesPage() {
                   </thead>
                   <tbody>
                     {computed.artistNo1WeeksSorted.slice(0, 20).map((e, i) => (
-                      <tr key={e.artist_name} className="border-b border-border transition-colors hover:bg-muted/30">
+                      <tr key={displayName(e.artist_name)} className="border-b border-border transition-colors hover:bg-muted/30">
                         <td className="py-3 font-serif text-[15px] font-semibold tabular-nums text-muted-foreground">{i + 1}</td>
                         <td className="py-3">
                           <div className="flex items-center gap-3">
@@ -1201,7 +1314,7 @@ export function NumberOnesPage() {
                               to={`/billboard/artist/${encodeURIComponent(e.artist_name)}`}
                               className="block truncate font-sans text-sm font-semibold transition-colors hover:text-accent-foreground"
                             >
-                              {e.artist_name}
+                              {displayName(e.artist_name)}
                             </Link>
                           </div>
                         </td>

@@ -4,7 +4,7 @@
 
 **UI 主题**：「编辑风 × 液态玻璃」— 杂志式排版（Playfair Display 衬线 + Inter 无衬线）+ 毛玻璃卡片材质 + 日/夜双皮肤。详细规范见 `frontend/UI_STYLE_GUIDE.md`。
 
-**架构**：FastAPI 后端 + React 前端（Dashboard、Billboard 周榜、每周榜首和三个详情子页面已完成）。Streamlit 原有应用仍可运行。
+**架构**：FastAPI 后端 + React 前端（Dashboard、Billboard 周榜、每周榜首、三个详情子页面、设置页面已完成）。Streamlit 原有应用仍可运行。
 
 ## 功能
 
@@ -13,7 +13,7 @@
 - **年度回顾**（2 个子 Tab）— 自定义年度总结（Wrapped 风格卡片叙事、听歌人格识别）、Wrapped 2025 官方官方年度回顾（艺人竞速、收听性格、官方排行榜）
 - **Billboard 周榜**（12 个子 Tab）— 周榜（单曲/专辑/艺人，支持快速切周、截至当周滚动统计）、每周榜首、单曲历史（含升降列、断档 RE 标记）、艺人榜单、专辑榜单（含版本合并）、走势总榜（Power Score 三维度）、歌曲/艺人/专辑总榜、榜单记录（12 类）、对决（歌曲/专辑/艺人）、发行周期分析（先行曲识别、单曲榜排名线、艺人总览/专辑下钻/多发行对比）
 - **账号中心**（6 个子 Tab）— 音乐库（收藏曲目/专辑/艺人 vs 实际收听）、搜索编年史、音乐画像（粉丝层级分析 + Marquee 推广转化）、播客专区、视频分析（≥30s 有效观看）、个人档案
-- **设置** — 集中管理所有参数：数据过滤（最短播放时长/仅音乐/合并连续播放）、Billboard 上榜数量、一键重新导入数据
+- **设置** — 集中管理所有参数：数据过滤（最短播放时长/仅音乐/合并连续播放/中文简繁转换）、Billboard 上榜数量与统计周期、专辑版本合并（自动检测/手动创建/已保存组管理）、数据导入（异步进度轮询）
 
 ## 快速开始
 
@@ -178,14 +178,14 @@ SpotifyStats/
 ├── frontend/                            # React 前端（新架构）
 │   ├── src/
 │   │   ├── components/
-│   │   │   ├── ui/                      # shadcn/ui 组件
+│   │   │   ├── ui/                      # shadcn/ui 组件（含 calendar, popover）
 │   │   │   ├── charts/                  # 图表组件（RankTrendChart 等）
 │   │   │   ├── layout/                  # 布局（AppLayout, Masthead, ThemeToggle）
-│   │   │   └── shared/                  # 共享组件（GlassCard, KpiCard, ChangeCell 等）
-│   │   ├── pages/                       # 页面（Dashboard, Billboard, NumberOnes, TrackDetail, ArtistDetail, AlbumDetail）
-│   │   ├── hooks/                       # 自定义 hooks（数据获取 + 客户端缓存 + 周状态保持）
-│   │   ├── lib/                         # API 客户端、工具函数、主题配置
-│   │   └── types/                       # TypeScript 类型定义
+│   │   │   └── shared/                  # 共享组件（GlassCard, KpiCard, WeekSelector 含日历弹窗, ChangeCell 等）
+│   │   ├── pages/                       # 页面（Dashboard, Billboard, NumberOnes, Settings, TrackDetail, ArtistDetail, AlbumDetail）
+│   │   ├── hooks/                       # 自定义 hooks（数据获取 + 客户端缓存 + 周状态保持 + 导入轮询）
+│   │   ├── lib/                         # API 客户端（GET/PUT/POST/DELETE）、工具函数、主题配置、中文转换
+│   │   └── types/                       # TypeScript 类型定义（dashboard, billboard, settings）
 │   ├── UI_STYLE_GUIDE.md                # 详细 UI 风格指南
 │   ├── index.html
 │   └── package.json

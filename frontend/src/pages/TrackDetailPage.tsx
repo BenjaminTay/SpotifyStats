@@ -5,6 +5,7 @@ import type { TrackDetailResponse } from '@/types/billboard'
 import { GlassCard } from '@/components/shared/GlassCard'
 import { ChangeCell } from '@/components/shared/ChangeCell'
 import { RankTrendChart } from '@/components/charts/RankTrendChart'
+import { displayName } from '@/lib/chinese'
 import { Skeleton } from '@/components/ui/skeleton'
 import { AlertCircle, ArrowLeft } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -142,10 +143,10 @@ export function TrackDetailPage() {
                   )}
                   <div>
                     <h1 className="font-serif text-[44px] font-bold leading-[1.06] tracking-[-1.2px]">
-                      {data.track_name}
+                      {displayName(data.track_name)}
                     </h1>
                     <p className="mt-2 font-sans text-[17px] text-muted-foreground">
-                      {data.artist_name}
+                      {displayName(data.artist_name)}
                     </p>
                   </div>
                 </div>

@@ -1,21 +1,38 @@
 const BASE_URL = '/api'
 
-async function request<T>(path: string, params?: Record<string, string | number | boolean>): Promise<T> {
+interface RequestOptions {
+  method?: string
+  body?: unknown
+  params?: Record<string, string | number | boolean>
+}
+
+async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const url = new URL(`${BASE_URL}${path}`, window.location.origin)
-  if (params) {
-    Object.entries(params).forEach(([k, v]) => {
+  if (options.params) {
+    Object.entries(options.params).forEach(([k, v]) => {
       if (v !== undefined && v !== null) url.searchParams.set(k, String(v))
     })
   }
-  const res = await fetch(url)
+  const res = await fetch(url, {
+    method: options.method ?? 'GET',
+    headers: options.body !== undefined ? { 'Content-Type': 'application/json' } : undefined,
+    body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
+  })
   if (!res.ok) throw new Error(`API error: ${res.status} ${res.statusText}`)
   return res.json()
 }
 
 export const api = {
   get: <T>(path: string, params?: Record<string, string | number | boolean>) =>
-    request<T>(path, params),
+    request<T>(path, { params }),
+  put: <T>(path: string, body?: unknown) =>
+    request<T>(path, { method: 'PUT', body }),
+  post: <T>(path: string, body?: unknown) =>
+    request<T>(path, { method: 'POST', body }),
+  del: <T>(path: string) =>
+    request<T>(path, { method: 'DELETE' }),
 }
 
 export type { DashboardSummary, DashboardFullResponse, MonthlyTrendPoint, PlatformDist, TopTrack, DowDist, RandomTrack, AccountKpi } from '@/types/dashboard'
 export type { BillboardDataResponse, BillboardMeta, WeeklyTrackEntry, WeeklyAlbumEntry, WeeklyArtistEntry, TrackSummary, PowerScoreEntry, TrackDetailResponse, ArtistDetailResponse, AlbumDetailResponse } from '@/types/billboard'
+export type { SettingsData, SettingsUpdatePayload, ImportJob, ReleaseGroup, GroupMember, UngroupedAlbum, DetectionResult, DetectionMember, TrackComparison, TrackRow, RebuildResult } from '@/types/settings'

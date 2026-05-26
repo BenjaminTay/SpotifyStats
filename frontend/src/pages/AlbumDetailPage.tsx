@@ -5,6 +5,7 @@ import type { AlbumDetailResponse } from '@/types/billboard'
 import { GlassCard } from '@/components/shared/GlassCard'
 import { ChangeCell } from '@/components/shared/ChangeCell'
 import { RankTrendChart } from '@/components/charts/RankTrendChart'
+import { displayName } from '@/lib/chinese'
 import { Skeleton } from '@/components/ui/skeleton'
 import { AlertCircle, ArrowLeft } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -147,10 +148,10 @@ export function AlbumDetailPage() {
                   )}
                   <div>
                     <h1 className="font-serif text-[44px] font-bold leading-[1.06] tracking-[-1.2px]">
-                      {data.album_name}
+                      {displayName(data.album_name)}
                     </h1>
                     <p className="mt-2 font-sans text-[17px] text-muted-foreground">
-                      {data.artist_name}
+                      {displayName(data.artist_name)}
                     </p>
                   </div>
                 </div>
@@ -412,7 +413,7 @@ export function AlbumDetailPage() {
                                 to={`/billboard/track/${t.track_id}`}
                                 className="font-sans text-[14px] font-semibold transition-colors hover:text-accent-foreground"
                               >
-                                {t.track_name}
+                                {displayName(t.track_name)}
                               </Link>
                             </td>
                             <td
@@ -459,7 +460,7 @@ export function AlbumDetailPage() {
               )}
 
               <p className="mt-6 font-serif text-[13px] italic text-muted-foreground">
-                {data.album_name} · {data.artist_name} · 共 {data.info.total_tracks} 首曲目入榜
+                {displayName(data.album_name)} · {displayName(data.artist_name)} · 共 {data.info.total_tracks} 首曲目入榜
               </p>
             </>
           )}

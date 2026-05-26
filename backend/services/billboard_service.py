@@ -943,15 +943,16 @@ def _add_cover_urls(weekly, weekly_album, weekly_artist):
                FROM albums al
                JOIN artists a ON al.artist_id = a.artist_id"""
         ).fetchall()
-        album_cover_map = {
-            (r["album_name"], r["artist_name"]): _build_url(
-                r["image_path"], r["image_url"], "albums", r["album_id"]
-            )
-            for r in album_rows
-        }
-        # 也查 release_groups: canonical_name → primary_album 的封面
+        album_cover_map = {}
+        for r in album_rows:
+            key = (r["album_name"], r["artist_name"])
+            url = _build_url(r["image_path"], r["image_url"], "albums", r["album_id"])
+            # 只保留有封面的；None 不覆盖已有有效 URL
+            if url or key not in album_cover_map:
+                album_cover_map[key] = url
+        # 也查 release_groups: canonical_name → 封面（优先主专辑，回退到成员）
         rg_rows = conn.execute(
-            """SELECT rg.canonical_name, a.artist_name,
+            """SELECT rg.group_id, rg.canonical_name, a.artist_name,
                       pa.album_id, pa.image_path, pa.image_url
                FROM release_groups rg
                JOIN albums pa ON rg.primary_album_id = pa.album_id
@@ -959,10 +960,27 @@ def _add_cover_urls(weekly, weekly_album, weekly_artist):
         ).fetchall()
         for r in rg_rows:
             key = (r["canonical_name"], r["artist_name"])
-            if key not in album_cover_map:
-                album_cover_map[key] = _build_url(
-                    r["image_path"], r["image_url"], "albums", r["album_id"]
-                )
+            if album_cover_map.get(key) is None:
+                url = _build_url(r["image_path"], r["image_url"], "albums", r["album_id"])
+                if url is None:
+                    # 主专辑无封面 → 回退到有封面的成员专辑
+                    member_row = conn.execute(
+                        """SELECT al.album_id, al.image_path, al.image_url
+                           FROM release_group_members rgm
+                           JOIN albums al ON rgm.album_id = al.album_id
+                           WHERE rgm.group_id = ?
+                             AND (al.image_path IS NOT NULL AND al.image_path != ''
+                                  OR al.image_url IS NOT NULL AND al.image_url != '')
+                           ORDER BY al.album_id
+                           LIMIT 1""",
+                        (r["group_id"],),
+                    ).fetchone()
+                    if member_row:
+                        url = _build_url(
+                            member_row["image_path"], member_row["image_url"],
+                            "albums", member_row["album_id"],
+                        )
+                album_cover_map[key] = url
 
         weekly_album = weekly_album.copy()
         weekly_album["cover_url"] = weekly_album.apply(
