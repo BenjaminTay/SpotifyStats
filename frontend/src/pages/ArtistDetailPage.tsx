@@ -36,7 +36,10 @@ function formatTimeSpan(start: string, end: string): string {
   const s = new Date(start + 'T00:00:00')
   const e = new Date(end + 'T00:00:00')
   if (isNaN(s.getTime()) || isNaN(e.getTime())) return '—'
+  const diffMs = e.getTime() - s.getTime()
+  const diffWeeks = Math.round(diffMs / (7 * 24 * 60 * 60 * 1000))
   const totalMonths = (e.getFullYear() - s.getFullYear()) * 12 + (e.getMonth() - s.getMonth())
+  if (totalMonths < 1) return `${diffWeeks} 周`
   const years = Math.floor(totalMonths / 12)
   const months = totalMonths % 12
   if (years > 0 && months > 0) return `${years} 年 ${months} 个月`
@@ -79,11 +82,13 @@ function KpiCard({
   value,
   sub,
   accent,
+  accentColor,
 }: {
   label: string
   value: string
   sub?: string
   accent?: boolean
+  accentColor?: string
 }) {
   return (
     <GlassCard className="p-5">
@@ -92,7 +97,7 @@ function KpiCard({
       </p>
       <p
         className="mt-1 font-serif text-[32px] font-bold leading-none"
-        style={accent ? { color: 'var(--accent-foreground)' } : undefined}
+        style={accentColor ? { color: accentColor } : accent ? { color: 'var(--accent-foreground)' } : undefined}
       >
         {value}
       </p>
@@ -244,36 +249,29 @@ export function ArtistDetailPage() {
               {/* ═══ Tab 1: 榜单表现 ═══ */}
               {activeTab === 'overview' && (
                 <>
-                  {/* KPI Cards — 2 rows × 3 */}
+                  {/* KPI Cards — 2 rows × 2 */}
                   {data.chart_summary && (
-                    <div className="mb-8 grid grid-cols-3 gap-5">
+                    <div className="mb-8 grid grid-cols-2 gap-5">
                       <KpiCard
                         label="最高排名"
-                        value={`#${data.chart_summary.peak_position}`}
-                        sub={`冠军 ${data.chart_summary.no1_weeks} 周`}
+                        value={`#${data.chart_summary.peak_position}${data.chart_summary.peak_weeks > 1 ? ` (${data.chart_summary.peak_weeks}wks)` : ''}`}
+                        sub={`首次达峰 ${formatDateShort(data.chart_summary.first_peak_week)}`}
                         accent={data.chart_summary.peak_position === 1}
                       />
                       <KpiCard
                         label="在榜周数"
                         value={formatNumber(data.chart_summary.weeks_on_chart)}
-                        sub={`自 ${formatDateShort(data.chart_summary.first_week)}`}
+                        sub={`首次入榜 ${formatDateShort(data.chart_summary.first_week)}`}
                       />
                       <KpiCard
-                        label="Power Score"
+                        label="走势点数"
                         value={formatNumber(data.chart_summary.power_score)}
                         sub={
                           data.chart_summary.power_rank
                             ? `走势排名 #${data.chart_summary.power_rank}`
                             : '—'
                         }
-                      />
-                      <KpiCard
-                        label="首次入榜"
-                        value={formatDateShort(data.chart_summary.first_week)}
-                      />
-                      <KpiCard
-                        label="首次达峰"
-                        value={formatDateShort(data.chart_summary.first_peak_week)}
+                        accentColor="#d94a4a"
                       />
                       <KpiCard
                         label="在榜跨度"

@@ -1617,6 +1617,7 @@ def get_artist_chart_detail(artist_name, min_ms, music_only, bb_top_n, bb_album_
             "first_peak_week": str(artist_chart_data.loc[artist_chart_data["rank"] == art_peak, "billboard_week"].min()),
             "latest_week": str(artist_chart_data["billboard_week"].max()),
             "no1_weeks": int((artist_chart_data["rank"] == 1).sum()),
+            "peak_weeks": int((artist_chart_data["rank"] == art_peak).sum()),
             "power_score": artist_power_score,
             "power_rank": artist_power_rank,
         }
@@ -1860,6 +1861,7 @@ def get_album_chart_detail(album_name, artist_name, min_ms, music_only, bb_top_n
             "first_peak_week": str(album_chart_data.loc[album_chart_data["rank"] == alb_peak, "billboard_week"].min()),
             "latest_week": str(album_chart_data["billboard_week"].max()),
             "no1_weeks": int((album_chart_data["rank"] == 1).sum()),
+            "peak_weeks": int((album_chart_data["rank"] == alb_peak).sum()),
             "power_score": album_power_score,
             "power_rank": album_power_rank,
         }

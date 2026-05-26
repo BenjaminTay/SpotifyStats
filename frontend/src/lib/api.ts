@@ -34,5 +34,5 @@ export const api = {
 }
 
 export type { DashboardSummary, DashboardFullResponse, MonthlyTrendPoint, PlatformDist, TopTrack, DowDist, RandomTrack, AccountKpi } from '@/types/dashboard'
-export type { BillboardDataResponse, BillboardMeta, WeeklyTrackEntry, WeeklyAlbumEntry, WeeklyArtistEntry, TrackSummary, PowerScoreEntry, TrackDetailResponse, ArtistDetailResponse, AlbumDetailResponse } from '@/types/billboard'
+export type { BillboardDataResponse, BillboardMeta, WeeklyTrackEntry, WeeklyAlbumEntry, WeeklyArtistEntry, TrackSummary, AlbumTrackCounts, ArtistTrackCounts, PowerScoreEntry, TrackDetailResponse, ArtistDetailResponse, AlbumDetailResponse } from '@/types/billboard'
 export type { SettingsData, SettingsUpdatePayload, ImportJob, ReleaseGroup, GroupMember, UngroupedAlbum, DetectionResult, DetectionMember, TrackComparison, TrackRow, RebuildResult } from '@/types/settings'

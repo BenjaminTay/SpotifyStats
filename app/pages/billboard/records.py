@@ -194,13 +194,13 @@ def render(records):
     alltime_tabs = st.tabs(["All-Time Greatest Top 20", "年度代表歌曲"])
     with alltime_tabs[0]:
         if "all_time_greatest" in records and len(records["all_time_greatest"]) > 0:
-            st.caption("基于 Power Score 综合评分：Σ(每周归一化排名得分 × 播放强度权重) + Peak/冠单奖励")
+            st.caption("基于 走势点数 综合评分：Σ(每周归一化排名得分 × 播放强度权重) + Peak/冠单奖励")
             _render_record_table(records["all_time_greatest"], link_col_map={"track_name": "track", "artist_name": "artist"}, drop_cols=["track_id"])
         else:
             st.info("暂无数据")
     with alltime_tabs[1]:
         if "year_end_no1" in records and len(records["year_end_no1"]) > 0:
-            st.caption("各年度 Power Score 最高的年度代表歌曲")
+            st.caption("各年度 走势点数 最高的年度代表歌曲")
             _render_record_table(records["year_end_no1"], link_col_map={"track_name": "track", "artist_name": "artist"}, drop_cols=["track_id"])
         else:
             st.info("暂无数据")

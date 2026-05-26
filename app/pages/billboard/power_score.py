@@ -43,7 +43,7 @@ def render(weekly, weekly_album, weekly_artist, top_n, bb_album_top_n, bb_artist
                 top10_avg = power_df.head(10)["power_score"].mean()
                 st.metric("Top 10 平均分", f"{top10_avg:,.0f}")
             with col_p3:
-                st.metric("最高 Power Score", f"{power_df.iloc[0]['power_score']:,}")
+                st.metric("最高 走势点数", f"{power_df.iloc[0]['power_score']:,}")
             with col_p4:
                 no1_count = int((power_df["peak_position"] == 1).sum())
                 st.metric("冠单数量", f"{no1_count}")
@@ -70,7 +70,7 @@ def render(weekly, weekly_album, weekly_artist, top_n, bb_album_top_n, bb_artist
 
             st.divider()
 
-            with st.expander("📐 Power Score 计算方式"):
+            with st.expander("📐 走势点数 计算方式"):
                 st.markdown(f"""
                 **核心公式**：
 
@@ -88,7 +88,7 @@ def render(weekly, weekly_album, weekly_artist, top_n, bb_album_top_n, bb_artist
                 **总分 {top_n} 首歌曲**，已从高到低排序
                 """)
 
-            st.subheader("Top 20 Power Score")
+            st.subheader("Top 20 走势点数")
             top20 = power_df.head(20).iloc[::-1]
             fig_ps = px.bar(
                 top20,
@@ -97,7 +97,7 @@ def render(weekly, weekly_album, weekly_artist, top_n, bb_album_top_n, bb_artist
                 orientation="h",
                 hover_data=["artist_name", "peak_position", "weeks_on_chart"],
                 labels={
-                    "power_score": "Power Score",
+                    "power_score": "走势点数",
                     "track_name": "",
                     "artist_name": "艺人",
                 },
@@ -125,7 +125,7 @@ def render(weekly, weekly_album, weekly_artist, top_n, bb_album_top_n, bb_artist
                 a_top10_avg = album_power_df.head(10)["power_score"].mean()
                 st.metric("Top 10 平均分", f"{a_top10_avg:,.0f}")
             with col_a3:
-                st.metric("最高 Power Score", f"{album_power_df.iloc[0]['power_score']:,}")
+                st.metric("最高 走势点数", f"{album_power_df.iloc[0]['power_score']:,}")
             with col_a4:
                 a_no1_count = int((album_power_df["peak_position"] == 1).sum())
                 st.metric("冠军专辑数", f"{a_no1_count}")
@@ -151,7 +151,7 @@ def render(weekly, weekly_album, weekly_artist, top_n, bb_album_top_n, bb_artist
 
             st.divider()
 
-            st.subheader("Top 20 专辑 Power Score")
+            st.subheader("Top 20 专辑 走势点数")
             top20_alb = album_power_df.head(20).iloc[::-1]
             fig_aps = px.bar(
                 top20_alb,
@@ -159,7 +159,7 @@ def render(weekly, weekly_album, weekly_artist, top_n, bb_album_top_n, bb_artist
                 y="album_name",
                 orientation="h",
                 hover_data=["artist_name", "peak_position", "weeks_on_chart"],
-                labels={"power_score": "Power Score", "album_name": "", "artist_name": "艺人"},
+                labels={"power_score": "走势点数", "album_name": "", "artist_name": "艺人"},
                 height=600,
             )
             fig_aps.update_yaxes(autorange="reversed")
@@ -184,7 +184,7 @@ def render(weekly, weekly_album, weekly_artist, top_n, bb_album_top_n, bb_artist
                 r_top10_avg = artist_power_df.head(10)["power_score"].mean()
                 st.metric("Top 10 平均分", f"{r_top10_avg:,.0f}")
             with col_r3:
-                st.metric("最高 Power Score", f"{artist_power_df.iloc[0]['power_score']:,}")
+                st.metric("最高 走势点数", f"{artist_power_df.iloc[0]['power_score']:,}")
             with col_r4:
                 r_no1_count = int((artist_power_df["peak_position"] == 1).sum())
                 st.metric("冠军艺人人数", f"{r_no1_count}")
@@ -208,7 +208,7 @@ def render(weekly, weekly_album, weekly_artist, top_n, bb_album_top_n, bb_artist
 
             st.divider()
 
-            st.subheader("Top 20 艺人 Power Score")
+            st.subheader("Top 20 艺人 走势点数")
             top20_art = artist_power_df.head(20).iloc[::-1]
             fig_rps = px.bar(
                 top20_art,
@@ -216,7 +216,7 @@ def render(weekly, weekly_album, weekly_artist, top_n, bb_album_top_n, bb_artist
                 y="artist_name",
                 orientation="h",
                 hover_data=["peak_position", "weeks_on_chart"],
-                labels={"power_score": "Power Score", "artist_name": ""},
+                labels={"power_score": "走势点数", "artist_name": ""},
                 height=600,
             )
             fig_rps.update_yaxes(autorange="reversed")

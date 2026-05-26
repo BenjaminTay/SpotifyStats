@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useBillboard } from '@/hooks/useBillboard'
 import { GlassCard } from '@/components/shared/GlassCard'
+import { BillboardSubNav } from '@/components/shared/BillboardSubNav'
 import { WeekSelector } from '@/components/shared/WeekSelector'
 
 import { Skeleton } from '@/components/ui/skeleton'
@@ -190,22 +191,16 @@ export function BillboardPage() {
 
       {data && !loading && (
         <>
+          <BillboardSubNav active="weekly" />
+
           {/* Hero */}
-          <section className="mb-6">
+          <section className="mt-6 mb-6">
             <p className="mb-4 font-sans text-[11px] font-bold uppercase tracking-[1.8px] text-accent-foreground">
               Chart / Weekly
             </p>
-            <div className="flex items-end justify-between">
-              <h1 className="font-serif text-[44px] font-bold leading-[1.06] tracking-[-1.2px]">
-                Billboard 周榜
-              </h1>
-              <Link
-                to="/billboard/number-ones"
-                className="mb-1 font-sans text-[13px] font-medium text-muted-foreground transition-colors hover:text-foreground"
-              >
-                每周榜首 →
-              </Link>
-            </div>
+            <h1 className="font-serif text-[44px] font-bold leading-[1.06] tracking-[-1.2px]">
+              Billboard 周榜
+            </h1>
           </section>
 
           {/* Tabs */}

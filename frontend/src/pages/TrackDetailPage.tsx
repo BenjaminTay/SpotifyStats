@@ -184,7 +184,7 @@ export function TrackDetailPage() {
                   value={data.summary.power_rank ? `#${formatNumber(data.summary.power_rank)}` : '—'}
                 />
                 <KpiItem
-                  label="Power Score"
+                  label="走势点数"
                   value={formatNumber(data.summary.power_score)}
                   accent
                 />

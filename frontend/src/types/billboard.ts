@@ -86,6 +86,37 @@ export interface ArtistSummary {
   total_chart_plays: number
 }
 
+export interface AlbumTrackCounts {
+  album_name: string
+  artist_name: string
+  total_tracks: number
+  best_peak: number
+  total_weeks: number
+  avg_weeks: number
+  top1: number
+  top5: number
+  top10: number
+  best_peak_track: string
+  weeks_at_no1: number
+  album_chart_no1_weeks: number
+}
+
+export interface ArtistTrackCounts {
+  artist_name: string
+  total_tracks: number
+  best_peak: number
+  total_weeks: number
+  avg_weeks: number
+  top1: number
+  top5: number
+  top10: number
+  best_peak_track: string
+  weeks_at_no1: number
+  num_no1_albums: number
+  album_no1_weeks: number
+  artist_chart_no1_weeks: number
+}
+
 export interface PowerScoreEntry {
   track_id: number
   track_name: string
@@ -125,6 +156,8 @@ export interface BillboardDataResponse {
   power_scores: PowerScoreEntry[]
   album_power_scores: AlbumPowerScoreEntry[]
   artist_power_scores: ArtistPowerScoreEntry[]
+  album_track_counts: AlbumTrackCounts[]
+  artist_track_counts: ArtistTrackCounts[]
 }
 
 // ── Track Detail ────────────────────────────────────────────
@@ -179,6 +212,7 @@ export interface ArtistChartSummary {
   first_peak_week: string
   latest_week: string
   no1_weeks: number
+  peak_weeks: number
   power_score: number
   power_rank: number | null
 }
@@ -269,6 +303,7 @@ export interface AlbumChartSummary {
   first_peak_week: string
   latest_week: string
   no1_weeks: number
+  peak_weeks: number
   power_score: number
   power_rank: number | null
 }

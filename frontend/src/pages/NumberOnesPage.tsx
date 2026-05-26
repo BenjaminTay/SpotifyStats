@@ -2,12 +2,13 @@ import { useState, useEffect, useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import { useBillboard } from '@/hooks/useBillboard'
 import { GlassCard } from '@/components/shared/GlassCard'
+import { BillboardSubNav } from '@/components/shared/BillboardSubNav'
 import ReactECharts from 'echarts-for-react'
 import { useTheme } from '@/hooks/useTheme'
 import { buildChartBase } from '@/components/charts/EChartsTheme'
 import { getChartColors } from '@/lib/theme'
 import { Skeleton } from '@/components/ui/skeleton'
-import { AlertCircle, ArrowLeft } from 'lucide-react'
+import { AlertCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { displayName } from '@/lib/chinese'
 import type {
@@ -720,16 +721,11 @@ export function NumberOnesPage() {
 
   return (
     <>
+      <BillboardSubNav active="number-ones" />
+
       {/* Header */}
-      <section className="mb-6">
-        <Link
-          to="/billboard"
-          className="mb-4 inline-flex items-center gap-1.5 font-sans text-[12px] font-medium text-muted-foreground transition-colors hover:text-foreground"
-        >
-          <ArrowLeft className="h-3.5 w-3.5" />
-          返回 Billboard
-        </Link>
-        <p className="mb-2 font-sans text-[11px] font-bold uppercase tracking-[1.8px] text-accent-foreground">
+      <section className="mt-6 mb-6">
+        <p className="mb-4 font-sans text-[11px] font-bold uppercase tracking-[1.8px] text-accent-foreground">
           Chart / Number Ones
         </p>
         <h1 className="font-serif text-[44px] font-bold leading-[1.06] tracking-[-1.2px]">
