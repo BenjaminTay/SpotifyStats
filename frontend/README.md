@@ -24,11 +24,11 @@ npm run build      # 生产构建
 
 | 路由 | 页面 | 说明 |
 |------|------|------|
-| `/` | DashboardPage | 总览仪表盘：KPI 行、月度趋势图、平台分布、聆听高峰 |
-| `/billboard` | BillboardPage | Billboard 周榜：单曲/专辑/艺人三榜、周切换（含 URL 参数 `?week=`）、排名表（含跳转详情链接） |
+| `/` | DashboardPage | 总览仪表盘：KPI 行、月度趋势图、平台分布、动态数据洞察（月度季节分析 + 聆听高峰） |
+| `/billboard` | BillboardPage | Billboard 周榜：单曲/专辑/艺人三榜、周切换（含 URL 参数 `?week=`）、排名表（含 CoverCell 封面 + 跳转详情链接） |
 | `/billboard/track/:trackId` | TrackDetailPage | 单曲详情：封面 Hero、KPI 卡片行、排名趋势图、榜单历史表（含播放条、PK/PK Wks/在榜滚动统计） |
-| `/billboard/artist/:artistName` | ArtistDetailPage | 艺人详情：3 Tab（榜单表现/周榜历史/曲目表现）、封面 Hero、排名趋势图 + 最佳单曲叠加线 |
-| `/billboard/album/:albumName` | AlbumDetailPage | 专辑详情：2 Tab（榜单表现/曲目表现）、封面 Hero、排名趋势图 + 最佳单曲叠加线 |
+| `/billboard/artist/:artistName` | ArtistDetailPage | 艺人详情：3 Tab（榜单表现/单曲成绩/专辑成绩）、封面 Hero、6 KPI 卡片、排名趋势图 + 最佳单曲叠加线、视觉播放条、走势点数/排名 |
+| `/billboard/album/:albumName` | AlbumDetailPage | 专辑详情：2 Tab（榜单表现/曲目表现）、封面 Hero、6 KPI 卡片、排名趋势图 + 最佳单曲叠加线、视觉播放条、走势点数/排名 |
 
 ## UI 风格
 
@@ -44,7 +44,7 @@ src/
 │   ├── ui/          ← shadcn/ui 组件
 │   ├── charts/      ← 图表组件（ECharts + 纯 DOM，含 RankTrendChart 排名趋势图）
 │   ├── layout/      ← 布局（AppLayout, Masthead, ThemeToggle）
-│   └── shared/      ← 共享组件（GlassCard, KpiCard, WeekSelector, ChangeCell 等）
+│   └── shared/      ← 共享组件（GlassCard, KpiCard, WeekSelector, ChangeCell, CoverCell 等）
 ├── pages/           ← 页面组件
 ├── hooks/           ← 自定义 hooks（数据获取 + 客户端缓存）
 ├── lib/             ← API 客户端、工具函数、图表色盘

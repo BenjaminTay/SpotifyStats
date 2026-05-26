@@ -177,6 +177,7 @@ export interface ArtistChartSummary {
   weeks_on_chart: number
   first_week: string
   first_peak_week: string
+  latest_week: string
   no1_weeks: number
   power_score: number
   power_rank: number | null
@@ -219,6 +220,7 @@ export interface ArtistNo1ByWeek {
 export interface ArtistTrackEntry {
   track_id: number
   track_name: string
+  cover_url: string | null
   peak_position: number
   weeks_on_chart: number
   weeks_at_peak: number
@@ -232,10 +234,12 @@ export interface ArtistTrackEntry {
 
 export interface ArtistAlbumEntry {
   album_name: string
+  cover_url: string | null
   peak: number
   weeks: number
   pk_wks: number
   first_week: string
+  first_peak_week: string
   last_week: string
   total_plays: number
   power_score: number
@@ -263,6 +267,7 @@ export interface AlbumChartSummary {
   weeks_on_chart: number
   first_week: string
   first_peak_week: string
+  latest_week: string
   no1_weeks: number
   power_score: number
   power_rank: number | null
@@ -295,6 +300,7 @@ export interface AlbumWeeklyHistoryEntry {
 export interface AlbumTrackEntry {
   track_id: number
   track_name: string
+  cover_url: string | null
   peak_position: number
   weeks_on_chart: number
   weeks_at_peak: number

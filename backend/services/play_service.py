@@ -99,6 +99,25 @@ def get_monthly_trend(
     ]
 
 
+def get_hourly_dist(
+    conn: sqlite3.Connection, min_ms: int, music_only: bool, merge_enabled: bool,
+    df: Optional[pd.DataFrame] = None,
+) -> list[dict]:
+    """Get hourly play count distribution."""
+    if df is None:
+        df = load_plays(
+            conn, min_ms=min_ms, music_only=music_only, merge_enabled=merge_enabled,
+        )
+    if df.empty:
+        return []
+    hourly = df.groupby("ts_hour").size().reset_index(name="count")
+    hourly = hourly.sort_values("ts_hour")
+    return [
+        {"hour": int(r.ts_hour), "count": int(r.count)}
+        for r in hourly.itertuples(index=False)
+    ]
+
+
 def get_top_tracks(
     conn: sqlite3.Connection, min_ms: int, music_only: bool, merge_enabled: bool,
     n: int = 10, df: Optional[pd.DataFrame] = None,

@@ -1579,6 +1579,13 @@ def get_artist_chart_detail(artist_name, min_ms, music_only, bb_top_n, bb_album_
     art_tracks["power_rank"] = art_tracks["power_rank"].fillna(0).astype(int)
     art_tracks = art_tracks.sort_values(["peak_position", "weeks_on_chart"], ascending=[True, False])
 
+    # Track cover_url lookup
+    track_cover_map = {}
+    if "cover_url" in weekly.columns:
+        for _, r in weekly[["track_id", "cover_url"]].drop_duplicates("track_id").iterrows():
+            if pd.notna(r["cover_url"]):
+                track_cover_map[int(r["track_id"])] = r["cover_url"]
+
     # Best singles rank per week (for overlay chart)
     best_singles = (
         artist_weekly.groupby("billboard_week")["rank"]
@@ -1608,6 +1615,7 @@ def get_artist_chart_detail(artist_name, min_ms, music_only, bb_top_n, bb_album_
             "weeks_on_chart": int(artist_chart_data["billboard_week"].nunique()),
             "first_week": str(artist_chart_data["billboard_week"].min()),
             "first_peak_week": str(artist_chart_data.loc[artist_chart_data["rank"] == art_peak, "billboard_week"].min()),
+            "latest_week": str(artist_chart_data["billboard_week"].max()),
             "no1_weeks": int((artist_chart_data["rank"] == 1).sum()),
             "power_score": artist_power_score,
             "power_rank": artist_power_rank,
@@ -1636,6 +1644,21 @@ def get_artist_chart_detail(artist_name, min_ms, music_only, bb_top_n, bb_album_
         )
         album_summary["power_score"] = album_summary["power_score"].fillna(0).astype(int)
         album_summary["power_rank"] = album_summary["power_rank"].fillna(0).astype(int)
+
+        # Album cover_url + first_peak_week lookup
+        album_cover_map = {}
+        album_peak_map = {}
+        if "cover_url" in weekly_album.columns:
+            for _, r in weekly_album[weekly_album["artist_name"] == artist_name][
+                ["album_name", "cover_url", "rank"]
+            ].iterrows():
+                aname = r["album_name"]
+                if aname not in album_cover_map and pd.notna(r["cover_url"]):
+                    album_cover_map[aname] = r["cover_url"]
+                # Track first week this album hit its peak
+                if aname not in album_peak_map:
+                    album_peak_map[aname] = r
+
         album_perf = [
             {
                 "album_name": r["album_name"],
@@ -1643,10 +1666,17 @@ def get_artist_chart_detail(artist_name, min_ms, music_only, bb_top_n, bb_album_
                 "weeks": int(r["weeks"]),
                 "pk_wks": int(r["pk_wks"]),
                 "first_week": str(r["first_week"]),
+                "first_peak_week": str(
+                    artist_albums_all[
+                        (artist_albums_all["album_name"] == r["album_name"])
+                        & (artist_albums_all["rank"] == int(r["peak"]))
+                    ]["billboard_week"].min()
+                ),
                 "last_week": str(r["last_week"]),
                 "total_plays": int(r["total_plays"]),
                 "power_score": int(r["power_score"]),
                 "power_rank": int(r["power_rank"]) if r["power_rank"] > 0 else None,
+                "cover_url": album_cover_map.get(r["album_name"]),
             }
             for _, r in album_summary.iterrows()
         ]
@@ -1725,6 +1755,7 @@ def get_artist_chart_detail(artist_name, min_ms, music_only, bb_top_n, bb_album_
                 "total_chart_plays": int(r["total_chart_plays"]),
                 "power_score": int(r["power_score"]),
                 "power_rank": int(r["power_rank"]) if r["power_rank"] > 0 else None,
+                "cover_url": track_cover_map.get(int(r["track_id"])),
             }
             for _, r in art_tracks.iterrows()
         ],
@@ -1792,6 +1823,13 @@ def get_album_chart_detail(album_name, artist_name, min_ms, music_only, bb_top_n
     alb_tracks["power_rank"] = alb_tracks["power_rank"].fillna(0).astype(int)
     alb_tracks = alb_tracks.sort_values(["peak_position", "weeks_on_chart"], ascending=[True, False])
 
+    # Track cover_url lookup
+    album_track_cover_map = {}
+    if "cover_url" in weekly.columns:
+        for _, r in weekly[["track_id", "cover_url"]].drop_duplicates("track_id").iterrows():
+            if pd.notna(r["cover_url"]):
+                album_track_cover_map[int(r["track_id"])] = r["cover_url"]
+
     # Singles weekly for this album (for overlay chart)
     album_weekly = weekly[weekly["track_id"].isin(alb_track_ids)]
     best_singles = (
@@ -1820,6 +1858,7 @@ def get_album_chart_detail(album_name, artist_name, min_ms, music_only, bb_top_n
             "weeks_on_chart": int(album_chart_data["billboard_week"].nunique()),
             "first_week": str(album_chart_data["billboard_week"].min()),
             "first_peak_week": str(album_chart_data.loc[album_chart_data["rank"] == alb_peak, "billboard_week"].min()),
+            "latest_week": str(album_chart_data["billboard_week"].max()),
             "no1_weeks": int((album_chart_data["rank"] == 1).sum()),
             "power_score": album_power_score,
             "power_rank": album_power_rank,
@@ -1889,6 +1928,7 @@ def get_album_chart_detail(album_name, artist_name, min_ms, music_only, bb_top_n
                 "total_chart_plays": int(r["total_chart_plays"]),
                 "power_score": int(r["power_score"]),
                 "power_rank": int(r["power_rank"]) if r["power_rank"] > 0 else None,
+                "cover_url": album_track_cover_map.get(int(r["track_id"])),
             }
             for _, r in alb_tracks.iterrows()
         ],

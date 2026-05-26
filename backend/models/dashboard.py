@@ -55,6 +55,13 @@ class DowDist(BaseModel):
     count: int
 
 
+class HourlyDist(BaseModel):
+    """Hourly play count distribution."""
+
+    hour: int
+    count: int
+
+
 class RandomTrack(BaseModel):
     """Random nostalgic track recommendation."""
 
@@ -74,4 +81,5 @@ class DashboardFullResponse(BaseModel):
     top_tracks: list[TopTrack]
     platform_dist: list[PlatformDist]
     dow_dist: list[DowDist]
+    hourly_dist: list[HourlyDist]
     random_track: Optional[RandomTrack]

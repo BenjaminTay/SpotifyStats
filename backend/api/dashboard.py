@@ -9,6 +9,7 @@ from backend.services.play_service import (
     get_dashboard_summary,
     get_account_kpis,
     get_monthly_trend,
+    get_hourly_dist,
     get_top_tracks,
     get_platform_dist,
     get_dow_dist,
@@ -47,6 +48,7 @@ def dashboard_full(
         "top_tracks": get_top_tracks(conn, filters.min_ms, filters.music_only, filters.merge_enabled, df=df),
         "platform_dist": get_platform_dist(conn, filters.min_ms, filters.music_only, filters.merge_enabled, df=df),
         "dow_dist": get_dow_dist(conn, filters.min_ms, filters.music_only, filters.merge_enabled, df=df),
+        "hourly_dist": get_hourly_dist(conn, filters.min_ms, filters.music_only, filters.merge_enabled, df=df),
         "random_track": get_random_track(conn, filters.min_ms, filters.music_only),
     }
 

@@ -3,9 +3,11 @@ import { KpiCard } from '@/components/shared/KpiCard'
 import { GlassCard } from '@/components/shared/GlassCard'
 import { MonthlyTrendChart } from '@/components/charts/MonthlyTrendChart'
 import { PlatformDistChart } from '@/components/charts/PlatformDistChart'
+import { generateMonthlyInsight, generatePeakHourInsight } from '@/lib/insights'
 
 import { Skeleton } from '@/components/ui/skeleton'
 import { AlertCircle } from 'lucide-react'
+import { useMemo } from 'react'
 
 function formatNumber(n: number): string {
   return new Intl.NumberFormat('zh-CN').format(n)
@@ -45,6 +47,15 @@ function DashboardSkeleton() {
 
 export function DashboardPage() {
   const { data, loading, error, refetch } = useDashboard()
+
+  const monthlyInsight = useMemo(
+    () => (data ? generateMonthlyInsight(data.monthly_trend) : ''),
+    [data],
+  )
+  const peakHourInsight = useMemo(
+    () => (data ? generatePeakHourInsight(data.hourly_dist) : { peak: 0, text: '' }),
+    [data],
+  )
 
   return (
     <>
@@ -115,9 +126,11 @@ export function DashboardPage() {
             <div>
               <h2 className="mb-5 font-serif text-xl font-semibold">月度播放趋势</h2>
               <MonthlyTrendChart data={data.monthly_trend} />
-              <p className="mt-5 border-l-[3px] border-accent-foreground pl-4 font-serif text-sm italic leading-relaxed text-muted-foreground">
-                冬季是聆听的高峰期。12 月和 2 月形成两个明显的播放高峰，与假期和新年的节奏吻合。夏季数据平稳但持续走高。
-              </p>
+              {monthlyInsight && (
+                <p className="mt-5 border-l-[3px] border-accent-foreground pl-4 font-serif text-sm italic leading-relaxed text-muted-foreground">
+                  {monthlyInsight}
+                </p>
+              )}
             </div>
 
             {/* Right: Platform + Peak Hour */}
@@ -133,9 +146,11 @@ export function DashboardPage() {
                 <h4 className="mb-3 font-sans text-[10px] font-bold uppercase tracking-[1.2px] text-muted-foreground">
                   一天中的聆听高峰
                 </h4>
-                <p className="mb-1 font-serif text-[32px] font-bold">21:00</p>
+                <p className="mb-1 font-serif text-[32px] font-bold">
+                  {String(peakHourInsight.peak).padStart(2, '0')}:00
+                </p>
                 <p className="font-sans text-[13px] leading-relaxed text-muted-foreground">
-                  晚间九点是全天播放最密集的时段，其次是通勤时间 8:00–9:00。
+                  {peakHourInsight.text}
                 </p>
               </GlassCard>
             </div>

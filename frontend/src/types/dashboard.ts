@@ -37,6 +37,11 @@ export interface DowDist {
   count: number
 }
 
+export interface HourlyDist {
+  hour: number
+  count: number
+}
+
 export interface RandomTrack {
   track_name: string
   artist_name: string
@@ -52,5 +57,6 @@ export interface DashboardFullResponse {
   top_tracks: TopTrack[]
   platform_dist: PlatformDist[]
   dow_dist: DowDist[]
+  hourly_dist: HourlyDist[]
   random_track: RandomTrack | null
 }

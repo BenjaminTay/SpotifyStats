@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useBillboard } from '@/hooks/useBillboard'
 import { GlassCard } from '@/components/shared/GlassCard'
@@ -10,6 +10,7 @@ import { cn } from '@/lib/utils'
 import { displayName } from '@/lib/chinese'
 import type { WeeklyTrackEntry, WeeklyAlbumEntry, WeeklyArtistEntry } from '@/types/billboard'
 import { type RankChange, ChangeCell } from '@/components/shared/ChangeCell'
+import { CoverCell } from '@/components/shared/CoverCell'
 
 // ── helpers ──────────────────────────────────────────────
 
@@ -38,15 +39,6 @@ function formatDateRange(iso: string): string {
 function formatNumber(n: number): string {
   return new Intl.NumberFormat('zh-CN').format(n)
 }
-
-const CHART_COLORS = [
-  'oklch(0.563 0.18 28.2)',
-  'oklch(0.583 0.108 51.4)',
-  'oklch(0.623 0.14 79.9)',
-  'oklch(0.443 0.065 151.5)',
-  'oklch(0.425 0.095 267.8)',
-  'oklch(0.47 0.06 330)',
-]
 
 type TabKey = 'tracks' | 'albums' | 'artists'
 
@@ -86,51 +78,6 @@ function computeRankChange(
 }
 
 // ── sub-components ────────────────────────────────────────
-
-function CoverCell({ index, isNewOrRe, coverUrl }: { index: number; isNewOrRe: boolean; coverUrl?: string | null }) {
-  const [imgError, setImgError] = useState(false)
-  useEffect(() => { setImgError(false) }, [coverUrl])
-
-  if (isNewOrRe) {
-    if (coverUrl && !imgError) {
-      return (
-        <img
-          src={coverUrl}
-          alt=""
-          className="h-10 w-10 rounded-[8px] object-cover"
-          onError={() => setImgError(true)}
-          loading="lazy"
-        />
-      )
-    }
-    return (
-      <div className="flex h-10 w-10 items-center justify-center rounded-[8px] bg-muted text-base">
-        {'🆕'}
-      </div>
-    )
-  }
-  if (coverUrl && !imgError) {
-    return (
-      <img
-        src={coverUrl}
-        alt=""
-        className="h-10 w-10 rounded-[8px] object-cover"
-        onError={() => setImgError(true)}
-        loading="lazy"
-      />
-    )
-  }
-  const c = CHART_COLORS[index % CHART_COLORS.length]
-  const c2 = CHART_COLORS[(index + 1) % CHART_COLORS.length]
-  return (
-    <div
-      className="flex h-10 w-10 items-center justify-center rounded-[8px] text-base opacity-85"
-      style={{ background: `linear-gradient(135deg, ${c}, ${c2})` }}
-    >
-      🎵
-    </div>
-  )
-}
 
 function BillboardSkeleton() {
   return (
