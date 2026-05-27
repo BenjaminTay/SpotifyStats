@@ -4,7 +4,7 @@
 
 **UI 主题**：「编辑风 × 液态玻璃」— 杂志式排版（Playfair Display 衬线 + Inter 无衬线）+ 毛玻璃卡片材质 + 日/夜双皮肤。详细规范见 `frontend/UI_STYLE_GUIDE.md`。
 
-**架构**：FastAPI 后端 + React 前端（Dashboard、Billboard 周榜、每周榜首、总榜、榜单记录、三个详情子页面含 Genius 歌词、设置页面已完成）。Streamlit 原有应用仍可运行。
+**架构**：FastAPI 后端 + React 前端（Dashboard、Billboard 周榜、每周榜首、总榜、榜单记录、三个详情子页面含 Genius 歌词与 Wikipedia 百科 AI 结构化数据、设置页面含 LLM 配置档案持久化管理）。Streamlit 原有应用仍可运行。
 
 ## 功能
 
@@ -12,10 +12,10 @@
 - **播放分析**（5 个子 Tab）— 时间线（年度/月度/周度报告）、排行榜（曲目/艺人/专辑）、行为分析（快进快退/平台/隐身/随机）、听歌时段热力图、艺人深度分析
 - **年度回顾**（2 个子 Tab）— 自定义年度总结（Wrapped 风格卡片叙事、听歌人格识别）、Wrapped 2025 官方官方年度回顾（艺人竞速、收听性格、官方排行榜）
 - **Billboard 周榜**（12 个子 Tab）— 周榜（单曲/专辑/艺人，支持快速切周、截至当周滚动统计）、每周榜首、单曲历史（含升降列、断档 RE 标记）、艺人榜单、专辑榜单（含版本合并）、走势总榜（Power Score 三维度）、歌曲/艺人/专辑总榜、榜单记录（6 大展区 37 项记录，灵感来自 Billboard Chart Beat / Guinness World Records）、对决（歌曲/专辑/艺人）、发行周期分析（先行曲识别、单曲榜排名线、艺人总览/专辑下钻/多发行对比）
-- **单曲详情** — 双 Tab（榜单表现 / Genius 歌词），KPI 卡片（入榜峰值/在榜周数/走势点数等 8 项）、排名趋势图、榜单历史表（含升降列、PK/PK Wks/在榜滚动统计）、Genius 歌词（分段渲染、按需获取、SQLite 缓存）
-- **专辑/艺人详情** — 多 Tab 子页面，KPI 卡片 + 排名趋势图 + 周榜历史表 + 收录曲表现，头部展示 Spotify 元数据（流派/厂牌/发行日期/热度等）
+- **单曲详情** — 三 Tab（榜单表现 / Genius 歌词 / Wikipedia 百科），KPI 卡片（入榜峰值/在榜周数/走势点数等 8 项）、排名趋势图、榜单历史表（含升降列、PK/PK Wks/在榜滚动统计）、Genius 歌词（分段渲染、按需获取、SQLite 缓存）、Wikipedia 百科扩展数据
+- **专辑/艺人详情** — 多 Tab 子页面（含 AI 百科结构化视图），KPI 卡片 + 排名趋势图 + 周榜历史表 + 收录曲表现，头部展示 Spotify 元数据（流派/厂牌/发行日期/热度等），Wikipedia 百科数据经 LLM 结构化后展示（关键信息/音乐风格/榜单表现/生涯时间线/荣誉等）
 - **账号中心**（6 个子 Tab）— 音乐库（收藏曲目/专辑/艺人 vs 实际收听）、搜索编年史、音乐画像（粉丝层级分析 + Marquee 推广转化）、播客专区、视频分析（≥30s 有效观看）、个人档案
-- **设置** — 集中管理所有参数：数据过滤（最短播放时长/仅音乐/合并连续播放/中文简繁转换）、Billboard 上榜数量与统计周期、专辑版本合并（自动检测/手动创建/已保存组管理）、数据导入（异步进度轮询）
+- **设置** — 集中管理所有参数：数据过滤（最短播放时长/仅音乐/合并连续播放/中文简繁转换）、LLM 翻译与百科结构化（多提供商 API Key 配置 + 命名档案保存/切换）、Billboard 上榜数量与统计周期、专辑版本合并（自动检测/手动创建/已保存组管理）、数据导入（异步进度轮询）
 
 ## 快速开始
 
@@ -68,7 +68,7 @@ pytest backend/tests/ -v
 
 ## 技术栈
 
-- **FastAPI** — 后端 API 框架（68 个端点，依赖注入，自动 Swagger 文档）
+- **FastAPI** — 后端 API 框架（76 个端点，依赖注入，自动 Swagger 文档）
 - **React 19** — 前端 UI 框架（TypeScript 6.0，Vite 8，React Router v7）
 - **Tailwind CSS v4** — 原子化 CSS 框架（shadcn/ui v4 组件库，`tw-animate-css` 动画）
 - **ECharts 6** — 交互式图表（echarts-for-react）
@@ -106,10 +106,11 @@ SpotifyStats/
 │   │   ├── version_merge.py            # CRUD /api/version-merge/*
 │   │   ├── import_.py                  # POST /api/import/*（异步导入）
 │   │   └── billboard/
-│   │       ├── __init__.py             # 路由组装 + /release-cycle 前缀
+│   │       ├── __init__.py             # 路由组装 + /release-cycle + /enrichment 前缀
 │   │       ├── data.py                 # GET /api/billboard/data（统一入口）
 │   │       ├── details.py              # GET /api/billboard/{track,artist,album,versus}/*（10 端点）
-│   │       └── release_cycle.py        # GET /api/billboard/release-cycle/*（4 端点）
+│   │       ├── release_cycle.py        # GET /api/billboard/release-cycle/*（4 端点）
+│   │       └── enrichment.py           # GET /api/billboard/enrichment/{album,artist,track}/*（3 端点）
 │   ├── services/                       # 计算逻辑层
 │   │   ├── play_service.py             # 播放数据 + 周度时间线 + 听歌人格 + 工作日/平台×小时分析
 │   │   ├── billboard_service.py        # Billboard 计算管线（排名/走势/记录/全时/详情/对决）
@@ -121,6 +122,8 @@ SpotifyStats/
 │   │   ├── video_service.py            # 视频分析
 │   │   ├── profile_service.py          # 个人档案
 │   │   ├── genius_service.py           # Genius 歌词获取 + SQLite 缓存
+│   │   ├── wikipedia_service.py         # Wikipedia 百科扩展（搜索/提取/缓存/翻译/LLM 结构化）
+│   │   ├── llm_translator.py            # LLM 翻译与结构化服务（多提供商 + 代理支持）
 │   │   └── wrapped_hub_service.py      # Wrapped 2025 官方数据
 │   ├── models/                         # Pydantic 响应模型
 │   │   ├── common.py                   # 通用模型
@@ -184,9 +187,9 @@ SpotifyStats/
 │   ├── src/
 │   │   ├── components/
 │   │   │   ├── ui/                      # shadcn/ui 组件（含 calendar, popover）
-│   │   │   ├── charts/                  # 图表组件（RankTrendChart 等）
+│   │   │   ├── charts/                  # 图表组件（RankTrendChart, ReleaseTimelineChart 等）
 │   │   │   ├── layout/                  # 布局（AppLayout, Masthead, ThemeToggle）
-│   │   │   └── shared/                  # 共享组件（GlassCard, KpiCard, WeekSelector 含日历弹窗, ChangeCell 等）
+│   │   │   └── shared/                  # 共享组件（GlassCard, KpiCard, WeekSelector 含日历弹窗, ChangeCell, CoverCell, ArtistEnrichmentView, AlbumEnrichmentView, KeyFactsCard, StatsGrid, CareerTimeline, GenreTags, ChartBars, FormattedText）
 │   │   ├── pages/                       # 页面（Dashboard, Billboard, NumberOnes, AllTimeCharts, Records, TrackDetail, ArtistDetail, AlbumDetail, Settings）
 │   │   ├── hooks/                       # 自定义 hooks（数据获取 + 客户端缓存 + 周状态保持 + 导入轮询）
 │   │   ├── lib/                         # API 客户端（GET/PUT/POST/DELETE）、工具函数、主题配置、中文转换
@@ -217,6 +220,8 @@ artists ──< albums ──< tracks ──< plays
 - Billboard 专辑榜自动排除 `album_type = 'single'` 的发行（单曲不是专辑）
 - `albums` / `artists` 表新增 `image_url`（Spotify CDN URL）和 `image_path`（本地缓存路径）列，封面通过智能端点 `/covers/{type}/{id}.jpg` 三级回退（本地缓存 → CDN 重定向 + 后台下载 → 404）
 - `track_lyrics` 表缓存 Genius 歌词（`track_id` PRIMARY KEY，`lyrics_text` / `genius_url` / `genius_song_id`），按需获取、永久有效
+- `settings` 表（KV 存储）和 `llm_profiles` 表持久化用户设置与 LLM 配置档案，服务重启后自动恢复
+- `wikipedia_cache` 表缓存 Wikipedia 百科扩展数据，避免重复 API 调用
 - 账号数据独立存储于 `saved_tracks`/`saved_albums`/`saved_artists`/`playlists`/`search_queries`/`podcast_plays`/`user_profile` 等表中
 
 ## License

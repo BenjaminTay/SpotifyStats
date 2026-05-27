@@ -5,9 +5,11 @@ from fastapi import APIRouter
 from backend.api.billboard.data import router as data_router
 from backend.api.billboard.release_cycle import router as release_cycle_router
 from backend.api.billboard.details import router as details_router
+from backend.api.billboard.enrichment import router as enrichment_router
 
 router = APIRouter(prefix="/billboard", tags=["Billboard"])
 
 router.include_router(data_router)
 router.include_router(release_cycle_router, prefix="/release-cycle")
 router.include_router(details_router)
+router.include_router(enrichment_router, prefix="/enrichment")

@@ -23,7 +23,7 @@ class BillboardConfig(BaseModel):
 
 
 class SettingsResponse(BaseModel):
-    """All application settings."""
+    """All application settings (API key excluded from response for security)."""
 
     min_ms: int
     music_only: bool
@@ -35,6 +35,11 @@ class SettingsResponse(BaseModel):
     bb_week_start_hour: int
     db_record_count: int
     account_data_imported: bool
+    # LLM translation
+    llm_enabled: bool = False
+    llm_provider: str = "deepseek"
+    llm_model: str = ""
+    has_llm_key: bool = False
 
 
 class SettingsUpdateRequest(BaseModel):
@@ -48,6 +53,12 @@ class SettingsUpdateRequest(BaseModel):
     bb_artist_top_n: Optional[int] = None
     bb_week_start_dow: Optional[int] = None
     bb_week_start_hour: Optional[int] = None
+    # LLM translation
+    llm_enabled: Optional[bool] = None
+    llm_provider: Optional[str] = None
+    llm_model: Optional[str] = None
+    llm_api_key: Optional[str] = None
+    llm_base_url: Optional[str] = None
 
 
 class ImportJobStatus(BaseModel):
@@ -58,3 +69,45 @@ class ImportJobStatus(BaseModel):
     progress_pct: float
     message: str
     result: Optional[dict] = None
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# LLM Profile models
+# ═══════════════════════════════════════════════════════════════════════════
+
+class LLMProfileResponse(BaseModel):
+    """A saved LLM profile (without API key for list view)."""
+    id: int
+    profile_name: str
+    llm_provider: str = "deepseek"
+    llm_model: str = ""
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+
+
+class LLMProfileDetailResponse(BaseModel):
+    """A saved LLM profile with full details including API key."""
+    id: int
+    profile_name: str
+    llm_provider: str = "deepseek"
+    llm_model: str = ""
+    llm_api_key: str = ""
+    llm_base_url: str = ""
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+
+
+class LLMProfileCreateRequest(BaseModel):
+    profile_name: str = Field(..., min_length=1)
+    llm_provider: str = "deepseek"
+    llm_model: str = ""
+    llm_api_key: str = ""
+    llm_base_url: str = ""
+
+
+class LLMProfileUpdateRequest(BaseModel):
+    profile_name: Optional[str] = None
+    llm_provider: Optional[str] = None
+    llm_model: Optional[str] = None
+    llm_api_key: Optional[str] = None
+    llm_base_url: Optional[str] = None

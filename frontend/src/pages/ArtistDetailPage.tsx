@@ -1,14 +1,16 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { api } from '@/lib/api'
-import type { ArtistDetailResponse } from '@/types/billboard'
+import type { ArtistDetailResponse, ArtistEnrichmentResponse } from '@/types/billboard'
 import { GlassCard } from '@/components/shared/GlassCard'
 import { ChangeCell } from '@/components/shared/ChangeCell'
 import { CoverCell } from '@/components/shared/CoverCell'
+import { FormattedText } from '@/components/shared/FormattedText'
+import { ArtistEnrichmentView } from '@/components/shared/ArtistEnrichmentView'
 import { RankTrendChart } from '@/components/charts/RankTrendChart'
 import { displayName } from '@/lib/chinese'
 import { Skeleton } from '@/components/ui/skeleton'
-import { AlertCircle, ArrowLeft } from 'lucide-react'
+import { AlertCircle, ArrowLeft, ExternalLink } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 function formatNumber(n: number): string {
@@ -53,12 +55,16 @@ function formatFollowers(n: number): string {
   return String(n)
 }
 
-type TabKey = 'overview' | 'tracks' | 'albums'
+// Module-level enrichment cache — survives navigation away and back
+const enrichmentCache = new Map<string, ArtistEnrichmentResponse>()
+
+type TabKey = 'overview' | 'tracks' | 'albums' | 'career'
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: 'overview', label: '榜单表现' },
   { key: 'tracks', label: '单曲成绩' },
   { key: 'albums', label: '专辑成绩' },
+  { key: 'career', label: '艺人生涯' },
 ]
 
 function ArtistDetailSkeleton() {
@@ -165,6 +171,10 @@ export function ArtistDetailPage() {
   const [error, setError] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<TabKey>('overview')
 
+  // Enrichment (Wikipedia, Spotify)
+  const [enrichment, setEnrichment] = useState<ArtistEnrichmentResponse | null>(null)
+  const [enrichmentLoading, setEnrichmentLoading] = useState(false)
+
   const fetchData = useCallback(() => {
     if (!artistName) return
     setLoading(true)
@@ -179,6 +189,27 @@ export function ArtistDetailPage() {
   useEffect(() => {
     fetchData()
   }, [fetchData])
+
+  // Fetch enrichment when user switches to career tab
+  useEffect(() => {
+    if (activeTab === 'career' && data?.found && !enrichment && !enrichmentLoading) {
+      const cacheKey = data.artist_name
+      const cached = enrichmentCache.get(cacheKey)
+      if (cached) {
+        setEnrichment(cached)
+        return
+      }
+      setEnrichmentLoading(true)
+      api
+        .get<ArtistEnrichmentResponse>('/billboard/enrichment/artist/' + encodeURIComponent(data.artist_name))
+        .then((result) => {
+          enrichmentCache.set(cacheKey, result)
+          setEnrichment(result)
+        })
+        .catch(() => setEnrichment(null))
+        .finally(() => setEnrichmentLoading(false))
+    }
+  }, [activeTab, data, enrichment, enrichmentLoading])
 
   return (
     <>
@@ -721,6 +752,140 @@ export function ArtistDetailPage() {
                     <p className="py-12 text-center font-sans text-[13px] text-muted-foreground">
                       暂无专辑入榜数据
                     </p>
+                  )}
+                </div>
+              )}
+
+              {/* ═══ Tab 4: 艺人生涯 ═══ */}
+              {activeTab === 'career' && (
+                <div className="mb-8">
+                  {/* Wikipedia Bio */}
+                  {enrichmentLoading ? (
+                    <div className="space-y-4">
+                      <Skeleton className="h-[200px] w-full rounded-[16px]" />
+                      <Skeleton className="h-[120px] w-full rounded-[16px]" />
+                    </div>
+                  ) : enrichment?.wiki ? (
+                    <>
+                      {/* Structured enrichment (LLM) */}
+                      {enrichment.wiki.structured ? (
+                        <div className="mb-8">
+                          <h3 className="mb-4 font-serif text-xl font-semibold">艺人简介</h3>
+                          <ArtistEnrichmentView data={enrichment.wiki.structured} />
+                          <div className="mt-4">
+                            <a
+                              href={enrichment.wiki.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 font-sans text-[12px] text-muted-foreground transition-colors hover:text-accent-foreground"
+                            >
+                              <ExternalLink className="h-3 w-3" />
+                              Wikipedia
+                            </a>
+                          </div>
+                        </div>
+                      ) : (
+                        <>
+                          {/* Fallback: plain text sections */}
+                          <div className="mb-8">
+                            <h3 className="mb-4 font-serif text-xl font-semibold">艺人简介</h3>
+                            <GlassCard className="p-5">
+                              <FormattedText
+                                text={enrichment.wiki.summary_zh || enrichment.wiki.summary}
+                                className="font-sans text-[14px] leading-relaxed text-foreground/85"
+                              />
+                              <div className="mt-3">
+                                <a
+                                  href={enrichment.wiki.url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-1 font-sans text-[12px] text-muted-foreground transition-colors hover:text-accent-foreground"
+                                >
+                                  <ExternalLink className="h-3 w-3" />
+                                  Wikipedia
+                                </a>
+                              </div>
+                            </GlassCard>
+                          </div>
+                          {(enrichment.wiki.sections_zh?.early_life || enrichment.wiki.sections.early_life) && (
+                            <div className="mb-8">
+                              <h3 className="mb-4 font-serif text-xl font-semibold">早期生涯</h3>
+                              <GlassCard className="p-5">
+                                <FormattedText
+                                  text={enrichment.wiki.sections_zh?.early_life || enrichment.wiki.sections.early_life}
+                                  className="font-sans text-[14px] leading-relaxed text-foreground/85"
+                                />
+                              </GlassCard>
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </>
+                  ) : (
+                    <div className="mb-8">
+                      <h3 className="mb-4 font-serif text-xl font-semibold">艺人简介</h3>
+                      <GlassCard className="p-5">
+                        <p className="font-sans text-[14px] leading-relaxed text-muted-foreground">
+                          未找到 Wikipedia 信息
+                        </p>
+                      </GlassCard>
+                    </div>
+                  )}
+
+                  {/* Spotify Metadata */}
+                  {data.meta && (
+                    <div className="mb-8">
+                      <h3 className="mb-4 font-serif text-xl font-semibold">Spotify 档案</h3>
+                      <GlassCard className="p-5">
+                        <div className="grid grid-cols-2 gap-6 sm:grid-cols-4">
+                          {data.meta.popularity != null && (
+                            <div>
+                              <p className="font-sans text-[10px] font-bold uppercase tracking-[1.2px] text-muted-foreground">
+                                流行度
+                              </p>
+                              <div className="mt-2 flex items-center gap-2">
+                                <div className="h-2 flex-1 overflow-hidden rounded-full bg-muted">
+                                  <div
+                                    className="h-full rounded-full bg-accent-foreground"
+                                    style={{ width: `${data.meta.popularity}%` }}
+                                  />
+                                </div>
+                                <span className="font-sans text-[13px] font-semibold tabular-nums">
+                                  {data.meta.popularity}
+                                </span>
+                              </div>
+                            </div>
+                          )}
+                          {data.meta.followers != null && (
+                            <div>
+                              <p className="font-sans text-[10px] font-bold uppercase tracking-[1.2px] text-muted-foreground">
+                                粉丝数
+                              </p>
+                              <p className="mt-1 font-serif text-[28px] font-bold">
+                                {formatFollowers(data.meta.followers)}
+                              </p>
+                            </div>
+                          )}
+                          {data.meta.genres && data.meta.genres.length > 0 && (
+                            <div className="col-span-2">
+                              <p className="font-sans text-[10px] font-bold uppercase tracking-[1.2px] text-muted-foreground">
+                                流派
+                              </p>
+                              <div className="mt-1 flex flex-wrap gap-1.5">
+                                {data.meta.genres.map((g) => (
+                                  <span
+                                    key={g}
+                                    className="rounded-full border border-border px-3 py-1 font-sans text-[12px] text-foreground/75"
+                                  >
+                                    {g}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </GlassCard>
+                    </div>
                   )}
                 </div>
               )}

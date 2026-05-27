@@ -11,9 +11,17 @@ export interface SettingsData {
   bb_week_start_hour: number
   db_record_count: number
   account_data_imported: boolean
+  // LLM translation
+  llm_enabled: boolean
+  llm_provider: string
+  llm_model: string
+  has_llm_key: boolean
 }
 
-export type SettingsUpdatePayload = Partial<Omit<SettingsData, 'db_record_count' | 'account_data_imported'>>
+export type SettingsUpdatePayload = Partial<Omit<SettingsData, 'db_record_count' | 'account_data_imported' | 'has_llm_key'> & {
+  llm_api_key: string
+  llm_base_url: string
+}>
 
 // ── Import ──────────────────────────────────────────────────
 
@@ -92,4 +100,35 @@ export interface TrackComparison {
 export interface RebuildResult {
   status: string
   [key: string]: unknown
+}
+
+// ── LLM Profiles ────────────────────────────────────────────
+
+export interface LLMProfile {
+  id: number
+  profile_name: string
+  llm_provider: string
+  llm_model: string
+  created_at: string | null
+  updated_at: string | null
+}
+
+export interface LLMProfileDetail extends LLMProfile {
+  llm_api_key: string
+  llm_base_url: string
+}
+
+export interface LLMProfileCreatePayload {
+  profile_name: string
+  llm_provider: string
+  llm_model: string
+  llm_api_key: string
+  llm_base_url: string
+}
+
+export type LLMProfileUpdatePayload = Partial<LLMProfileCreatePayload>
+
+export interface LLMProfileCreateResult {
+  id: number
+  status: string
 }

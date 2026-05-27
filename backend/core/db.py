@@ -107,6 +107,11 @@ CREATE TABLE IF NOT EXISTS agg_config (
     value TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_agg_wt_week ON agg_weekly_tracks(billboard_week);
 CREATE INDEX IF NOT EXISTS idx_agg_wa_week ON agg_weekly_albums(billboard_week);
 CREATE INDEX IF NOT EXISTS idx_agg_war_week ON agg_weekly_artists(billboard_week);
@@ -359,6 +364,17 @@ CREATE TABLE IF NOT EXISTS podcast_interactions (
 CREATE TABLE IF NOT EXISTS user_profile (
     key TEXT PRIMARY KEY,
     value TEXT
+);
+
+CREATE TABLE IF NOT EXISTS llm_profiles (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    profile_name TEXT NOT NULL UNIQUE,
+    llm_provider TEXT NOT NULL DEFAULT 'deepseek',
+    llm_model TEXT NOT NULL DEFAULT '',
+    llm_api_key TEXT NOT NULL DEFAULT '',
+    llm_base_url TEXT NOT NULL DEFAULT '',
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS user_follows (

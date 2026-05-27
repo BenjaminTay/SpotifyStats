@@ -1,14 +1,17 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useParams, useSearchParams, Link, useNavigate } from 'react-router-dom'
 import { api } from '@/lib/api'
-import type { AlbumDetailResponse } from '@/types/billboard'
+import type { AlbumDetailResponse, AlbumEnrichmentResponse } from '@/types/billboard'
 import { GlassCard } from '@/components/shared/GlassCard'
 import { ChangeCell } from '@/components/shared/ChangeCell'
 import { CoverCell } from '@/components/shared/CoverCell'
+import { FormattedText } from '@/components/shared/FormattedText'
+import { AlbumEnrichmentView } from '@/components/shared/AlbumEnrichmentView'
 import { RankTrendChart } from '@/components/charts/RankTrendChart'
+import { ReleaseTimelineChart } from '@/components/charts/ReleaseTimelineChart'
 import { displayName } from '@/lib/chinese'
 import { Skeleton } from '@/components/ui/skeleton'
-import { AlertCircle, ArrowLeft } from 'lucide-react'
+import { AlertCircle, ArrowLeft, ChevronDown, ChevronUp, ExternalLink } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 function formatNumber(n: number): string {
@@ -65,11 +68,15 @@ function formatAlbumType(t: string): string {
   }
 }
 
-type TabKey = 'overview' | 'tracks'
+// Module-level enrichment cache — survives page navigation
+const enrichmentCache = new Map<string, AlbumEnrichmentResponse>()
+
+type TabKey = 'overview' | 'tracks' | 'era'
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: 'overview', label: '榜单表现' },
   { key: 'tracks', label: '曲目表现' },
+  { key: 'era', label: '发行档案' },
 ]
 
 function AlbumDetailSkeleton() {
@@ -164,6 +171,104 @@ function PlaysCell({ plays, maxPlays }: { plays: number; maxPlays: number }) {
   )
 }
 
+// ── Album Story Card (collapsible) ─────────────────────────
+
+function AlbumStoryCard({
+  summary,
+  background,
+  url,
+}: {
+  summary: string
+  background: string
+  url: string
+}) {
+  const [expanded, setExpanded] = useState(false)
+  const text = (background || summary || '').trim()
+  if (!text) return null
+
+  const preview = text.slice(0, 280)
+  const hasMore = text.length > 280
+
+  return (
+    <GlassCard className="p-5">
+      <FormattedText
+        text={expanded || !hasMore ? text : `${preview}...`}
+        className="font-sans text-[14px] leading-relaxed text-foreground/85"
+      />
+      <div className="mt-3 flex items-center gap-3">
+        {hasMore && (
+          <button
+            onClick={() => setExpanded(!expanded)}
+            className="inline-flex items-center gap-1 font-sans text-[12px] font-semibold text-accent-foreground transition-opacity hover:opacity-80"
+          >
+            {expanded ? (
+              <>
+                <ChevronUp className="h-3.5 w-3.5" />
+                收起
+              </>
+            ) : (
+              <>
+                <ChevronDown className="h-3.5 w-3.5" />
+                展开全文
+              </>
+            )}
+          </button>
+        )}
+        {url && (
+          <a
+            href={url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 font-sans text-[12px] text-muted-foreground transition-colors hover:text-accent-foreground"
+          >
+            <ExternalLink className="h-3 w-3" />
+            Wikipedia
+          </a>
+        )}
+      </div>
+    </GlassCard>
+  )
+}
+
+// ── Info Row ────────────────────────────────────────────────
+
+function InfoRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <dt className="font-sans text-[10px] font-bold uppercase tracking-[1.2px] text-muted-foreground">
+        {label}
+      </dt>
+      <dd className="mt-0.5 font-sans text-[13px] text-foreground/85">{value}</dd>
+    </div>
+  )
+}
+
+// ── Mini Stat ───────────────────────────────────────────────
+
+function MiniStat({
+  label,
+  value,
+  accent,
+}: {
+  label: string
+  value: string
+  accent?: boolean
+}) {
+  return (
+    <div>
+      <p className="font-sans text-[10px] font-bold uppercase tracking-[1.2px] text-muted-foreground">
+        {label}
+      </p>
+      <p
+        className="mt-1 font-serif text-[26px] font-bold leading-none"
+        style={accent ? { color: 'var(--accent-foreground)' } : undefined}
+      >
+        {value}
+      </p>
+    </div>
+  )
+}
+
 // ═══════════════════════════════════════════════════════════
 // Page
 // ═══════════════════════════════════════════════════════════
@@ -178,6 +283,10 @@ export function AlbumDetailPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<TabKey>('overview')
+
+  // Enrichment (Wikipedia, Genius) — fetched on demand when user clicks 发行档案 tab
+  const [enrichment, setEnrichment] = useState<AlbumEnrichmentResponse | null>(null)
+  const [enrichmentLoading, setEnrichmentLoading] = useState(false)
 
   const fetchData = useCallback(() => {
     if (!albumName) return
@@ -195,6 +304,29 @@ export function AlbumDetailPage() {
   useEffect(() => {
     fetchData()
   }, [fetchData])
+
+  // Fetch enrichment when user switches to the 发行档案 tab (with module-level cache)
+  useEffect(() => {
+    if (activeTab === 'era' && data?.found && !enrichment && !enrichmentLoading) {
+      const cacheKey = `${data.artist_name}:${data.album_name}`
+      const cached = enrichmentCache.get(cacheKey)
+      if (cached) {
+        setEnrichment(cached)
+        return
+      }
+      setEnrichmentLoading(true)
+      api
+        .get<AlbumEnrichmentResponse>('/billboard/enrichment/album/' + encodeURIComponent(data.album_name), {
+          artist_name: data.artist_name,
+        })
+        .then((result) => {
+          enrichmentCache.set(cacheKey, result)
+          setEnrichment(result)
+        })
+        .catch(() => setEnrichment(null))
+        .finally(() => setEnrichmentLoading(false))
+    }
+  }, [activeTab, data, enrichment, enrichmentLoading])
 
   return (
     <>
@@ -594,6 +726,170 @@ export function AlbumDetailPage() {
                       </tbody>
                     </table>
                   </GlassCard>
+                </div>
+              )}
+
+              {/* ═══ Tab 3: 发行档案 ═══ */}
+              {activeTab === 'era' && (
+                <div className="mb-8">
+                  {/* Release Timeline Chart */}
+                  <div className="mb-8">
+                    <h3 className="mb-4 font-serif text-xl font-semibold">发行周期</h3>
+                    <GlassCard className="p-6">
+                      {enrichmentLoading ? (
+                        <Skeleton className="h-[380px] w-full rounded-[12px]" />
+                      ) : (
+                        <ReleaseTimelineChart
+                          albumHistory={data.album_weekly_history.map((e) => ({
+                            week: e.week,
+                            rank: e.rank,
+                            play_count: e.play_count,
+                          }))}
+                          singlesOverlay={data.best_singles_overlay}
+                          wikiSingles={enrichment?.wiki?.infobox?.singles ?? []}
+                          albumReleaseDate={data.meta?.release_date ?? ''}
+                        />
+                      )}
+                      {enrichment?.wiki && (
+                        <p className="mt-2 font-sans text-[11px] text-muted-foreground">
+                          发行信息来自 Wikipedia
+                          {enrichment.wiki.infobox.singles.length > 0 && (
+                            <span> · 共识别 {enrichment.wiki.infobox.singles.length} 支单曲</span>
+                          )}
+                        </p>
+                      )}
+                    </GlassCard>
+                  </div>
+
+                  {/* Singles Detail */}
+                  {enrichment?.wiki?.infobox?.singles && enrichment.wiki.infobox.singles.length > 0 && (
+                    <div className="mb-8">
+                      <h3 className="mb-4 font-serif text-xl font-semibold">单曲发行</h3>
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                        {enrichment.wiki.infobox.singles.map((s, i) => (
+                          <GlassCard key={i} className="p-4">
+                            <div className="flex items-start gap-3">
+                              <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-muted font-sans text-[11px] font-bold text-muted-foreground">
+                                {i + 1}
+                              </span>
+                              <div>
+                                <p className="font-sans text-[14px] font-semibold">{s.name}</p>
+                                {s.date && (
+                                  <p className="mt-0.5 font-sans text-[12px] text-muted-foreground">
+                                    {s.date}
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                          </GlassCard>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Structured enrichment (LLM) or fallback */}
+                  {enrichment?.wiki?.structured ? (
+                    <div className="mb-8">
+                      <h3 className="mb-4 font-serif text-xl font-semibold">专辑简介</h3>
+                      <AlbumEnrichmentView data={enrichment.wiki.structured} />
+                      <div className="mt-4">
+                        <a
+                          href={enrichment.wiki.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 font-sans text-[12px] text-muted-foreground transition-colors hover:text-accent-foreground"
+                        >
+                          <ExternalLink className="h-3 w-3" />
+                          Wikipedia
+                        </a>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      {/* Fallback: plain text sections */}
+                      {(enrichment?.wiki?.sections?.background || enrichment?.wiki?.summary) && (
+                        <div className="mb-8 grid grid-cols-1 gap-6 lg:grid-cols-2">
+                          <div>
+                            <h3 className="mb-4 font-serif text-xl font-semibold">专辑故事</h3>
+                            <AlbumStoryCard
+                              summary={enrichment.wiki.summary_zh || enrichment.wiki.summary}
+                              background={enrichment.wiki.sections_zh?.background || enrichment.wiki.sections.background}
+                              url={enrichment.wiki.url}
+                            />
+                          </div>
+                          <div>
+                            <h3 className="mb-4 font-serif text-xl font-semibold">制作信息</h3>
+                            <GlassCard className="p-5">
+                              <dl className="space-y-3">
+                                {enrichment.wiki.infobox.genre && (
+                                  <InfoRow label="流派" value={enrichment.wiki.infobox.genre.replace(/^\*\s*/gm, '').replace(/\*/g, ' · ')} />
+                                )}
+                                {enrichment.wiki.infobox.label && (
+                                  <InfoRow label="厂牌" value={enrichment.wiki.infobox.label.replace(/^\*\s*/gm, '').replace(/\*/g, ' · ')} />
+                                )}
+                                {enrichment.wiki.infobox.producer && (
+                                  <InfoRow label="制作人" value={enrichment.wiki.infobox.producer.replace(/^\*\s*/gm, '').replace(/\*/g, ' · ')} />
+                                )}
+                                {enrichment.wiki.infobox.recorded && (
+                                  <InfoRow label="录制" value={enrichment.wiki.infobox.recorded} />
+                                )}
+                                {enrichment.wiki.infobox.studio && (
+                                  <InfoRow label="录音室" value={enrichment.wiki.infobox.studio} />
+                                )}
+                                {enrichment.wiki.infobox.length && (
+                                  <InfoRow label="时长" value={enrichment.wiki.infobox.length} />
+                                )}
+                                {data.meta?.popularity != null && (
+                                  <InfoRow label="Spotify 流行度" value={`${data.meta.popularity}/100`} />
+                                )}
+                              </dl>
+                            </GlassCard>
+                          </div>
+                        </div>
+                      )}
+                      {enrichment?.wiki?.sections?.reception && (
+                        <div className="mb-8">
+                          <h3 className="mb-4 font-serif text-xl font-semibold">专业评价</h3>
+                          <AlbumStoryCard
+                            summary=""
+                            background={enrichment.wiki.sections_zh?.reception || enrichment.wiki.sections.reception}
+                            url={enrichment.wiki.url}
+                          />
+                        </div>
+                      )}
+                    </>
+                  )}
+
+                  {/* Personal Story */}
+                  <div className="mb-8">
+                    <h3 className="mb-4 font-serif text-xl font-semibold">你的收听故事</h3>
+                    <GlassCard className="p-5">
+                      <div className="grid grid-cols-2 gap-5 sm:grid-cols-4">
+                        <MiniStat
+                          label="首次收听"
+                          value={(() => {
+                            const firstWeek = data.album_weekly_history[0]
+                            return firstWeek ? formatDateShort(firstWeek.week) : '—'
+                          })()}
+                        />
+                        <MiniStat
+                          label="总播放次数"
+                          value={formatNumber(
+                            data.album_weekly_history.reduce((sum, e) => sum + e.play_count, 0)
+                          )}
+                        />
+                        <MiniStat
+                          label="在榜周数"
+                          value={formatNumber(data.chart_summary.weeks_on_chart)}
+                        />
+                        <MiniStat
+                          label="最高排名"
+                          value={`#${data.chart_summary.peak_position}`}
+                          accent={data.chart_summary.peak_position === 1}
+                        />
+                      </div>
+                    </GlassCard>
+                  </div>
                 </div>
               )}
 

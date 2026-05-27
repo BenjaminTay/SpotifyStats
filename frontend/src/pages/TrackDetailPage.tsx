@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { api } from '@/lib/api'
-import type { TrackDetailResponse, LyricsData } from '@/types/billboard'
+import type { TrackDetailResponse, LyricsData, TrackEnrichmentResponse } from '@/types/billboard'
 import { GlassCard } from '@/components/shared/GlassCard'
 import { ChangeCell } from '@/components/shared/ChangeCell'
+import { FormattedText } from '@/components/shared/FormattedText'
 import { RankTrendChart } from '@/components/charts/RankTrendChart'
 import { displayName } from '@/lib/chinese'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -46,6 +47,9 @@ function computeChange(history: TrackDetailResponse['history'], index: number): 
   if (delta < 0) return { type: 'down', delta: Math.abs(delta) }
   return { type: 'same' }
 }
+
+// Module-level enrichment cache — survives navigation away and back
+const enrichmentCache = new Map<string, TrackEnrichmentResponse>()
 
 type TabKey = 'overview' | 'lyrics'
 
@@ -90,6 +94,10 @@ export function TrackDetailPage() {
   const [lyrics, setLyrics] = useState<LyricsData | null>(null)
   const [lyricsLoading, setLyricsLoading] = useState(false)
 
+  // Enrichment (Genius + Wikipedia)
+  const [enrichment, setEnrichment] = useState<TrackEnrichmentResponse | null>(null)
+  const [enrichmentLoading, setEnrichmentLoading] = useState(false)
+
   const fetchData = useCallback(() => {
     if (!trackId) return
     setLoading(true)
@@ -115,9 +123,33 @@ export function TrackDetailPage() {
       .finally(() => setLyricsLoading(false))
   }, [trackId, lyrics])
 
+  const fetchEnrichment = useCallback(() => {
+    if (!data?.found || enrichment || enrichmentLoading) return
+    const cacheKey = `${data.track_name}:${data.artist_name}`
+    const cached = enrichmentCache.get(cacheKey)
+    if (cached) {
+      setEnrichment(cached)
+      return
+    }
+    setEnrichmentLoading(true)
+    api
+      .get<TrackEnrichmentResponse>('/billboard/enrichment/track/' + encodeURIComponent(data.track_name), {
+        artist_name: data.artist_name,
+      })
+      .then((result) => {
+        enrichmentCache.set(cacheKey, result)
+        setEnrichment(result)
+      })
+      .catch(() => setEnrichment(null))
+      .finally(() => setEnrichmentLoading(false))
+  }, [data, enrichment, enrichmentLoading])
+
   const handleTabChange = (tab: TabKey) => {
     setActiveTab(tab)
-    if (tab === 'lyrics') fetchLyrics()
+    if (tab === 'lyrics') {
+      fetchLyrics()
+      fetchEnrichment()
+    }
   }
 
   return (
@@ -385,6 +417,84 @@ export function TrackDetailPage() {
               {/* ═══ Tab 2: 歌词 ═══ */}
               {activeTab === 'lyrics' && (
                 <div className="mb-8">
+                  {/* Genius Song Info */}
+                  {enrichment?.genius && (
+                    <div className="mb-6">
+                      <h3 className="mb-3 font-serif text-xl font-semibold">歌曲信息</h3>
+                      <GlassCard className="p-5">
+                        <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+                          {enrichment.genius.album_name && (
+                            <div>
+                              <p className="font-sans text-[10px] font-bold uppercase tracking-[1.2px] text-muted-foreground">
+                                收录专辑
+                              </p>
+                              <p className="mt-1 font-sans text-[13px] font-semibold">{enrichment.genius.album_name}</p>
+                            </div>
+                          )}
+                          {enrichment.genius.release_date && (
+                            <div>
+                              <p className="font-sans text-[10px] font-bold uppercase tracking-[1.2px] text-muted-foreground">
+                                发行日期
+                              </p>
+                              <p className="mt-1 font-sans text-[13px] font-semibold">{enrichment.genius.release_date}</p>
+                            </div>
+                          )}
+                          {data.meta?.popularity != null && (
+                            <div>
+                              <p className="font-sans text-[10px] font-bold uppercase tracking-[1.2px] text-muted-foreground">
+                                Spotify 流行度
+                              </p>
+                              <p className="mt-1 font-sans text-[13px] font-semibold">{data.meta.popularity}/100</p>
+                            </div>
+                          )}
+                          {data.meta?.duration_ms && (
+                            <div>
+                              <p className="font-sans text-[10px] font-bold uppercase tracking-[1.2px] text-muted-foreground">
+                                时长
+                              </p>
+                              <p className="mt-1 font-sans text-[13px] font-semibold">{formatDuration(data.meta.duration_ms)}</p>
+                            </div>
+                          )}
+                        </div>
+                        {enrichment.genius.url && (
+                          <a
+                            href={enrichment.genius.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="mt-3 inline-flex items-center gap-1.5 font-sans text-[12px] text-muted-foreground transition-colors hover:text-accent-foreground"
+                          >
+                            在 Genius 上查看歌曲详情
+                            <ExternalLink className="h-3 w-3" />
+                          </a>
+                        )}
+                      </GlassCard>
+                    </div>
+                  )}
+
+                  {/* Wikipedia Song Info */}
+                  {enrichment?.wiki && (
+                    <div className="mb-6">
+                      <h3 className="mb-3 font-serif text-xl font-semibold">歌曲背景</h3>
+                      <GlassCard className="p-5">
+                        <FormattedText
+                          text={enrichment.wiki.summary_zh || enrichment.wiki.summary || enrichment.wiki.sections_zh?.background || enrichment.wiki.sections.background || '暂无详细信息'}
+                          className="font-sans text-[14px] leading-relaxed text-foreground/85"
+                        />
+                        {enrichment.wiki.url && (
+                          <a
+                            href={enrichment.wiki.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="mt-3 inline-flex items-center gap-1.5 font-sans text-[12px] text-muted-foreground transition-colors hover:text-accent-foreground"
+                          >
+                            在 Wikipedia 上阅读更多
+                            <ExternalLink className="h-3 w-3" />
+                          </a>
+                        )}
+                      </GlassCard>
+                    </div>
+                  )}
+
                   {lyricsLoading ? (
                     <GlassCard className="p-8">
                       <div className="space-y-3">

@@ -372,9 +372,18 @@ className="rounded-[16px] border border-border bg-card backdrop-blur-[12px] shad
 | `src/components/shared/KpiCard.tsx` | KPI 数值卡片 |
 | `src/components/shared/WeekSelector.tsx` | 周导航选择器 |
 | `src/components/shared/PageSwitcher.tsx` | 页面切换按钮组（已废弃，导航由 Masthead 承担） |
+| `src/components/shared/ArtistEnrichmentView.tsx` | 艺人百科结构化视图（摘要/基本信息/生涯时间线/风格/数据/成就） |
+| `src/components/shared/AlbumEnrichmentView.tsx` | 专辑百科结构化视图（摘要/基本信息/风格/榜单表现/荣誉/单曲） |
+| `src/components/shared/KeyFactsCard.tsx` | 基本信息卡片（分类着色图标） |
+| `src/components/shared/StatsGrid.tsx` | 统计数据网格（渐变背景 + 彩色数值） |
+| `src/components/shared/CareerTimeline.tsx` | 生涯时间线（彩色节点 + 渐变连线） |
+| `src/components/shared/GenreTags.tsx` | 音乐风格标签（按流派着色） |
+| `src/components/shared/ChartBars.tsx` | 榜单表现条形图（渐变进度条 + 冠单皇冠图标） |
+| `src/components/shared/FormattedText.tsx` | 格式化文本（段落分割 + 粗体标注） |
 | `src/components/charts/EChartsTheme.ts` | ECharts 公共主题配置 |
 | `src/components/charts/MonthlyTrendChart.tsx` | 月度趋势柱状图 |
 | `src/components/charts/PlatformDistChart.tsx` | 平台分布进度条 |
+| `src/components/charts/ReleaseTimelineChart.tsx` | 发行周期排名趋势图 |
 | `src/pages/DashboardPage.tsx` | 总览仪表盘页面 |
 | `src/pages/BillboardPage.tsx` | Billboard 周榜页面 |
 | `src/types/dashboard.ts` | Dashboard 类型定义 |

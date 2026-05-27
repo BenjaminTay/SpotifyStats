@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Spotify Extended Streaming History 数据分析 Web 应用。从 Spotify 官方导出的 JSON 播放记录中导入数据到 SQLite，通过 FastAPI + React 提供交互式多维度统计仪表盘。
 
-**架构演进**：已从 Streamlit 单体架构迁移到 FastAPI 后端 + React 前端。后端 68 个 API 端点已全部完成，前端 Dashboard 总览页、Billboard 周榜页、每周榜首页、三个详情子页面（单曲/艺人/专辑，含 Genius 歌词和 Spotify 元数据展示）以及设置页面已完成开发。Streamlit 原有应用和后端 API 仍可并行运行。
+**架构演进**：已从 Streamlit 单体架构迁移到 FastAPI 后端 + React 前端。后端 76 个 API 端点已全部完成，前端 Dashboard 总览页、Billboard 周榜页（含对决、发行周期分析、榜单记录等 12 子 Tab）、三个详情子页面（单曲/艺人/专辑，含 Genius 歌词、Spotify 元数据展示、Wikipedia 百科 AI 结构化数据）以及设置页面（含 LLM 配置档案持久化管理）已完成开发。Streamlit 原有应用和后端 API 仍可并行运行。
 
 **UI 主题**：「编辑风 × 液态玻璃」— 杂志式排版（Playfair Display 衬线标题 + Inter 无衬线正文）+ 毛玻璃卡片材质 + 日/夜双皮肤。详细风格指南见 `frontend/UI_STYLE_GUIDE.md`。
 
@@ -80,7 +80,7 @@ FastAPI 后端采用三层分离架构：**路由层 (api/)** → **服务层 (s
 
 #### 路由层 (api/)
 
-19 个子路由模块，共 68 个 API 端点。所有路由通过 `backend/api/router.py` 组装，挂载到 `backend/main.py` 的 `/api` 前缀下。
+20 个子路由模块，共 76 个 API 端点。所有路由通过 `backend/api/router.py` 组装，挂载到 `backend/main.py` 的 `/api` 前缀下。
 
 **过滤参数依赖注入** (`backend/dependencies.py`)：
 - `PlayFilters` — 标准播放数据过滤（`min_ms`, `music_only`, `merge_enabled`），用于仪表盘、时间线、排行榜、行为分析、听歌时段等端点
@@ -120,9 +120,17 @@ GET  /api/billboard/versus/track          歌曲对决（排名历史 + 指标�
 GET  /api/billboard/versus/album          专辑对决（含版本合并成员聚合）
 GET  /api/billboard/versus/artist         艺人对决（歌曲/专辑双维度统计）
 GET  /api/billboard/release-cycle/*       发行周期分析（artist-list, artist/{name}, artist/{name}/album/{album}, compare）
+GET  /api/billboard/enrichment/album/{name}  Wikipedia 百科 + Genius 专辑扩展（AI 结构化数据）
+GET  /api/billboard/enrichment/artist/{name} Wikipedia 百科 + Genius 艺人扩展（AI 结构化数据）
+GET  /api/billboard/enrichment/track/{name}  Wikipedia 百科 + Genius 单曲扩展
 GET  /api/lyrics/{track_id}               Genius 歌词获取（按需获取 + SQLite 缓存）
 GET  /api/lyrics/{track_id}/url           Genius 链接查询（轻量，仅返回 URL）
-GET  /api/settings                       设置（GET 读取 / PUT 更新）
+GET  /api/settings                       设置（GET 读取 / PUT 更新，含 has_llm_key 状态）
+GET  /api/settings/llm-profiles          LLM 配置档案列表（不含 key/base_url）
+GET  /api/settings/llm-profiles/{id}     LLM 配置档案详情（含完整 key/base_url）
+POST /api/settings/llm-profiles          创建 LLM 配置档案
+PUT  /api/settings/llm-profiles/{id}     更新 LLM 配置档案
+DELETE /api/settings/llm-profiles/{id}   删除 LLM 配置档案
 GET  /api/version-merge/*                版本合并管理（groups, detect, apply）
 GET  /covers/{type}/{id}.jpg              封面图片服务（三级回退：本地缓存 → CDN 重定向 + 后台下载 → 404）
 POST /api/import/streaming               串流数据导入（异步任务）
@@ -141,13 +149,15 @@ POST /api/import/account                 账号数据导入
 - **`insights_service.py`** — 粉丝层级分析 + Marquee 推广转化率
 - **`genius_service.py`** — Genius 歌词服务。懒加载 `GeniusClient` 单例（token 从 `.env` 读取），`get_track_lyrics()` 按需获取歌词并缓存到 `track_lyrics` 表，`get_track_genius_url()` 轻量 URL 查询。歌词清洗：去除 Genius 元数据（Contributors/Translations/Read More），提取嵌入式分段标题（`[Verse]`/`[Chorus]` 等），规范化分段间距（每段之间恰好一空行）
 - **`podcast_service.py`** / **`video_service.py`** / **`profile_service.py`** / **`wrapped_hub_service.py`** — 账号数据页面服务
+- **`wikipedia_service.py`** — Wikipedia 百科扩展服务。专辑/艺人/单曲页面搜索、全文提取、Infobox 解析、段落分割、SQLite 缓存（`wikipedia_cache` 表）、中文翻译（LLM 优先 → Google Translate 回退）、LLM 结构化数据生成（artist → key_facts + career_timeline + genres + stats + achievements，album → key_facts + genres + chart_performance + accolades + singles）
+- **`llm_translator.py`** — LLM 翻译/结构化服务。多提供商（DeepSeek/OpenAI/Anthropic/自定义）、API Key 配置从 settings 模块懒加载、代理支持、`translate_with_llm()` 翻译 + `enrich_with_llm()` 结构化 JSON 提取、长文本自动分段（4000 字符/段）、含 3 次重试和速率限制退避
 
 #### 核心工具层 (core/)
 
 从 `app/` 目录原样迁移或提取的纯逻辑模块，不含任何 Web 框架依赖：
 
 - **`genius/`** — Genius API 客户端模块。`client.py`（`lyricsgenius` 封装：搜索、获取歌词/专辑/艺人/排行榜、封面下载、`_clean_lyrics()` 清洗）+ `models.py`（`Song`/`SearchResult`/`AlbumInfo` dataclass）
-- **`db.py`** — 从 `app/db.py` 完整迁移。`get_db()`, `base_filters()`, `load_plays()`（`@lru_cache(maxsize=16)` 按参数缓存 DataFrame，避免重复 SQL+merge 计算），`merge_consecutive_plays()`, `ensure_schema()`（含 `track_lyrics` 表）, `build_aggregations()` 等所有函数
+- **`db.py`** — 从 `app/db.py` 完整迁移。`get_db()`, `base_filters()`, `load_plays()`（`@lru_cache(maxsize=16)` 按参数缓存 DataFrame，避免重复 SQL+merge 计算），`merge_consecutive_plays()`, `ensure_schema()`（含 `track_lyrics`, `settings`, `llm_profiles`, `wikipedia_cache` 表）, `build_aggregations()` 等所有函数
 - **`utils.py`** — 从 `app/utils.py` 完整迁移。`convert_to_local_time()`, `classify_platform()`
 - **`version_merge.py`** — 从 `app/version_merge.py` 完整迁移。`detect_release_groups()`, `apply_detected_groups()`, `create_group()`, `delete_group()` 等
 - **`import_data.py`** / **`import_account_data.py`** — 从 `app/` 迁移，progress_callback 改为 threading.Event + 共享字典
@@ -183,7 +193,7 @@ React + Vite + Tailwind CSS v4 + shadcn/ui（样式 `base-nova`，基础色 `neu
 - **样式**：Tailwind CSS v4（`@tailwindcss/vite` 插件），`tw-animate-css` 动画库
 - **主题**：CSS 变量 + `.dark` class 切换，`oklch()` 色彩空间。结构变量在 `@theme inline`，颜色在 `:root` / `.dark`。`useTheme()` hook 提供 localStorage 持久化 + 系统偏好回退
 - **组件**：shadcn/ui v4（base-nova 风格），源码在 `@/components/ui/`
-- **路由**：React Router v7，当前 9 个路由：`/`（DashboardPage，动态洞察）、`/billboard`（BillboardPage，CoverCell 封面，Tab 记忆跨页面保持）、`/billboard/number-ones`（NumberOnesPage，子 Tab + 年份记忆保持）、`/billboard/all-time`（AllTimeChartsPage，总榜三实体 Tab，Tab/筛选/排序/翻页记忆保持）、`/billboard/records`（RecordsPage，6 大展区 37 项榜单记录）、`/billboard/track/:trackId`（TrackDetailPage，2 Tab：榜单表现/Genius 歌词，艺人名和专辑名可点击跳转详情）、`/billboard/artist/:artistName`（ArtistDetailPage，3 Tab：榜单表现/单曲成绩/专辑成绩，Popularity 视觉进度条）、`/billboard/album/:albumName`（AlbumDetailPage，2 Tab：榜单表现/曲目表现，艺人名可点击跳转详情）、`/settings`（SettingsPage）
+- **路由**：React Router v7，当前 9 个路由：`/`（DashboardPage，动态洞察）、`/billboard`（BillboardPage，CoverCell 封面，Tab 记忆跨页面保持）、`/billboard/number-ones`（NumberOnesPage，子 Tab + 年份记忆保持）、`/billboard/all-time`（AllTimeChartsPage，总榜三实体 Tab，Tab/筛选/排序/翻页记忆保持）、`/billboard/records`（RecordsPage，6 大展区 37 项榜单记录）、`/billboard/track/:trackId`（TrackDetailPage，3 Tab：榜单表现/歌词/Wikipedia 百科，艺人名和专辑名可点击跳转详情）、`/billboard/artist/:artistName`（ArtistDetailPage，4 Tab：榜单表现/单曲成绩/专辑成绩/歌手生涯，AI 百科结构化视图）、`/billboard/album/:albumName`（AlbumDetailPage，3 Tab：榜单表现/曲目表现/专辑百科，AI 百科结构化视图）、`/settings`（SettingsPage，含 LLM 配置档案管理）
 - **图表**：ECharts 6 + echarts-for-react（月度趋势图）；平台分布使用纯 DOM 进度条
 - **字体**：Inter Variable（`@fontsource-variable/inter`）+ Playfair Display（Google Fonts CDN）
 - **国际化**：中文简繁转换（opencc-js），`displayName()` 覆盖所有页面的名称展示
@@ -195,24 +205,24 @@ React + Vite + Tailwind CSS v4 + shadcn/ui（样式 `base-nova`，基础色 `neu
 frontend/src/
 ├── components/
 │   ├── ui/          ← shadcn/ui 组件（可随意修改，含 calendar, popover）
-│   ├── charts/      ← ECharts 封装 + 纯 DOM 图表（RankTrendChart：时间线填充断档周、全貌/细节缩放切换+dataZoom滑块、峰值Pin标记+连续冠周markArea色带）
+│   ├── charts/      ← ECharts 封装 + 纯 DOM 图表（RankTrendChart：时间线填充断档周、全貌/细节缩放切换+dataZoom滑块、峰值Pin标记+连续冠周markArea色带；ReleaseTimelineChart：发行周期排名趋势图）
 │   ├── layout/      ← 布局（AppLayout, Masthead, ThemeToggle）
-│   └── shared/      ← 共享组件（GlassCard, KpiCard, WeekSelector 含日历弹窗, NoiseOverlay, PageSwitcher, ChangeCell, CoverCell）
+│   └── shared/      ← 共享组件（GlassCard, KpiCard, WeekSelector 含日历弹窗, NoiseOverlay, PageSwitcher, ChangeCell, CoverCell, ArtistEnrichmentView, AlbumEnrichmentView, KeyFactsCard, StatsGrid, CareerTimeline, GenreTags, ChartBars, FormattedText）
 ├── pages/           ← 页面组件
 │   ├── DashboardPage.tsx    ← 总览仪表盘（动态数据洞察：月度趋势 + 聆听高峰智能分析）
 │   ├── BillboardPage.tsx    ← Billboard 周榜（3 Tab + 排名表 + CoverCell 封面 + 详情链接，Tab 记忆跨页面保持）
 │   ├── NumberOnesPage.tsx   ← 每周榜首（3 子 Tab：单曲/专辑/艺人，年度筛选 + Power Score 平局排序 + KPI 卡片 + 冠单表 + 排行 + 柱状图 + 空冠，子 Tab + 年份记忆保持）
 │   ├── AllTimeChartsPage.tsx ← Billboard 总榜（3 实体 Tab：歌曲/专辑/艺人，8 列头排序 + 排名峰值筛选 + 翻页，Tab/筛选/排序/翻页均记忆保持）
 │   ├── RecordsPage.tsx      ← 榜单记录（6 大展区 37 项记录：冠军圣殿/持久传奇/爆发时刻/名人堂/奇趣纪录/每周大盘，React Portal 分页控件）
-│   ├── TrackDetailPage.tsx  ← 单曲详情（2 Tab：榜单表现/歌词，8 KPI + 排名趋势图 + 榜单历史表 + Genius 歌词分段渲染，艺人名和专辑名可点击跳转详情）
-│   ├── ArtistDetailPage.tsx ← 艺人详情（3 Tab：榜单表现/单曲成绩/专辑成绩，6 KPI 卡片 + 封面 + Spotify 元数据 + Popularity 视觉进度条 + 走势点数/排名）
-│   ├── AlbumDetailPage.tsx  ← 专辑详情（2 Tab：榜单表现/曲目表现，6 KPI 卡片 + 封面 + Spotify 元数据 + 视觉播放条 + 走势点数/排名，艺人名可点击跳转详情）
-│   └── SettingsPage.tsx     ← 设置（4 区块：Data & Display / Billboard Parameters / Version Merge / Data Import）
+│   ├── TrackDetailPage.tsx  ← 单曲详情（3 Tab：榜单表现/歌词/Wikipedia 百科，8 KPI + 排名趋势图 + 榜单历史表 + Genius 歌词分段渲染 + 百科扩展数据，艺人名和专辑名可点击跳转详情）
+│   ├── ArtistDetailPage.tsx ← 艺人详情（4 Tab：榜单表现/单曲成绩/专辑成绩/歌手生涯，6 KPI 卡片 + 封面 + Spotify 元数据 + Popularity 视觉进度条 + 走势点数/排名 + AI 百科结构化视图）
+│   ├── AlbumDetailPage.tsx  ← 专辑详情（3 Tab：榜单表现/曲目表现/专辑百科，6 KPI 卡片 + 封面 + Spotify 元数据 + 视觉播放条 + 走势点数/排名 + AI 百科结构化视图，艺人名可点击跳转详情）
+│   └── SettingsPage.tsx     ← 设置（5 区块：Data & Display / LLM Translation / Billboard Parameters / Version Merge / Data Import，含 LLM 配置档案管理）
 ├── hooks/           ← 自定义 hooks
 │   ├── useTheme.tsx  ← 主题管理（Context + localStorage）
 │   ├── useDashboard.ts  ← Dashboard 数据获取 + 缓存
 │   ├── useBillboard.ts  ← Billboard 数据获取 + 缓存 + goToWeek 周导航
-│   └── useSettings.ts   ← 设置 + 版本合并 API + 异步导入轮询
+│   └── useSettings.ts   ← 设置 + 版本合并 API + LLM 档案 CRUD + 异步导入轮询
 ├── lib/             ← API 客户端、工具函数
 │   ├── api.ts       ← fetch 封装（GET/PUT/POST/DELETE），类型重导出
 │   ├── theme.ts     ← 图表色盘常量 + getChartColors(isDark)
@@ -221,8 +231,8 @@ frontend/src/
 │   └── insights.ts  ← 动态洞察生成（月度趋势季节分析 + 聆听高峰智能识别）
 ├── types/           ← TypeScript 类型定义
 │   ├── dashboard.ts ← Dashboard 响应类型
-│   ├── billboard.ts ← Billboard 响应类型（含 TrackSpotifyMeta / ArtistSpotifyMeta / AlbumSpotifyMeta / LyricsData 等）
-│   └── settings.ts  ← 设置（SettingsData / ImportJob / ReleaseGroup / DetectionResult / TrackComparison 等）
+│   ├── billboard.ts ← Billboard 响应类型（含 TrackSpotifyMeta / ArtistSpotifyMeta / AlbumSpotifyMeta / LyricsData / StructuredArtist / StructuredAlbum 等）
+│   └── settings.ts  ← 设置（SettingsData / ImportJob / ReleaseGroup / DetectionResult / LLMProfile / LLMProfileDetail 等）
 └── UI_STYLE_GUIDE.md ← 详细 UI 风格指南（新增页面必读）
 ```
 

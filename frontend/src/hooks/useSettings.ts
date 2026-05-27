@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { api, type SettingsData, type SettingsUpdatePayload, type ImportJob, type ReleaseGroup, type GroupMember, type UngroupedAlbum, type DetectionResult, type TrackComparison, type RebuildResult } from '@/lib/api'
+import { api, type SettingsData, type SettingsUpdatePayload, type ImportJob, type ReleaseGroup, type GroupMember, type UngroupedAlbum, type DetectionResult, type TrackComparison, type RebuildResult, type LLMProfile, type LLMProfileDetail, type LLMProfileCreatePayload, type LLMProfileUpdatePayload, type LLMProfileCreateResult } from '@/lib/api'
 
 // ── Module-level settings cache ─────────────────────────────
 
@@ -7,17 +7,30 @@ let cachedSettings: SettingsData | null = null
 
 // ── useSettings ─────────────────────────────────────────────
 
+interface ClearCacheResult {
+  status: string
+  deleted_count: number
+}
+
 interface UseSettingsResult {
   settings: SettingsData | null
   loading: boolean
   error: string | null
   refetch: () => void
   updateSettings: (payload: SettingsUpdatePayload) => Promise<void>
+  updateApiKey: (apiKey: string, baseUrl?: string) => Promise<void>
+  clearTranslationCache: () => Promise<ClearCacheResult>
   rebuildAgg: () => Promise<RebuildResult>
   startStreamingImport: () => void
   startAccountImport: () => void
   streamingJob: ImportJob | null
   accountJob: ImportJob | null
+  // LLM profiles
+  fetchProfiles: () => Promise<LLMProfile[]>
+  getProfileDetail: (profileId: number) => Promise<LLMProfileDetail>
+  createProfile: (payload: LLMProfileCreatePayload) => Promise<LLMProfileCreateResult>
+  updateProfile: (profileId: number, payload: LLMProfileUpdatePayload) => Promise<LLMProfileDetail>
+  deleteProfile: (profileId: number) => Promise<{ status: string }>
 }
 
 export function useSettings(): UseSettingsResult {
@@ -58,8 +71,38 @@ export function useSettings(): UseSettingsResult {
     setSettings(updated)
   }, [])
 
+  const updateApiKey = useCallback(async (apiKey: string, baseUrl?: string) => {
+    const payload: Record<string, string> = { llm_api_key: apiKey }
+    if (baseUrl !== undefined) payload.llm_base_url = baseUrl
+    await api.put('/settings', payload)
+  }, [])
+
   const rebuildAgg = useCallback(() => {
     return api.post<RebuildResult>('/settings/rebuild-agg')
+  }, [])
+
+  const clearTranslationCache = useCallback(() => {
+    return api.post<ClearCacheResult>('/settings/clear-translation-cache')
+  }, [])
+
+  const fetchProfiles = useCallback(() => {
+    return api.get<LLMProfile[]>('/settings/llm-profiles')
+  }, [])
+
+  const getProfileDetail = useCallback((profileId: number) => {
+    return api.get<LLMProfileDetail>(`/settings/llm-profiles/${profileId}`)
+  }, [])
+
+  const createProfile = useCallback((payload: LLMProfileCreatePayload) => {
+    return api.post<LLMProfileCreateResult>('/settings/llm-profiles', payload)
+  }, [])
+
+  const updateProfile = useCallback((profileId: number, payload: LLMProfileUpdatePayload) => {
+    return api.put<LLMProfileDetail>(`/settings/llm-profiles/${profileId}`, payload)
+  }, [])
+
+  const deleteProfile = useCallback((profileId: number) => {
+    return api.del<{ status: string }>(`/settings/llm-profiles/${profileId}`)
   }, [])
 
   const pollImport = useCallback((jobId: string, setter: React.Dispatch<React.SetStateAction<ImportJob | null>>) => {
@@ -107,8 +150,9 @@ export function useSettings(): UseSettingsResult {
   }, [refetch])
 
   return {
-    settings, loading, error, refetch, updateSettings, rebuildAgg,
+    settings, loading, error, refetch, updateSettings, updateApiKey, clearTranslationCache, rebuildAgg,
     startStreamingImport, startAccountImport, streamingJob, accountJob,
+    fetchProfiles, getProfileDetail, createProfile, updateProfile, deleteProfile,
   }
 }
 

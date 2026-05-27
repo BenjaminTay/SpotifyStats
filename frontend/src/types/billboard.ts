@@ -832,3 +832,153 @@ export interface GeniusUrlData {
   found: boolean
   genius_url: string
 }
+
+// ── Wikipedia Enrichment ─────────────────────────────────────
+
+// ── Structured Enrichment (LLM-generated JSON) ────────────
+
+export interface KeyFact {
+  label: string
+  value: string
+}
+
+export interface StatItem {
+  label: string
+  value: string
+}
+
+export interface CareerEvent {
+  year: number
+  event: string
+  detail?: string
+}
+
+export interface Achievement {
+  title: string
+  year: number
+  detail?: string
+}
+
+export interface StructuredArtist {
+  summary: string
+  key_facts: KeyFact[]
+  career_timeline: CareerEvent[]
+  genres: string[]
+  stats: StatItem[]
+  achievements: Achievement[]
+}
+
+export interface ChartEntry {
+  region: string
+  peak: number
+  detail?: string
+}
+
+export interface AlbumSingle {
+  name: string
+  peak: number
+  certification?: string
+}
+
+export interface StructuredAlbum {
+  summary: string
+  key_facts: KeyFact[]
+  genres: string[]
+  chart_performance: ChartEntry[]
+  accolades: Achievement[]
+  singles: AlbumSingle[]
+}
+
+// ── Wiki Data ──────────────────────────────────────────────
+
+export interface WikiSingle {
+  name: string
+  date: string | null
+}
+
+export interface AlbumWikiInfobox {
+  release_date: string
+  recorded: string
+  studio: string
+  genre: string
+  length: string
+  label: string
+  producer: string
+  singles: WikiSingle[]
+}
+
+export interface AlbumWikiSections {
+  background: string
+  reception: string
+  commercial: string
+}
+
+export interface AlbumWikiData {
+  url: string
+  lang: string
+  summary: string
+  summary_zh: string
+  description: string
+  description_zh: string
+  thumbnail: string
+  infobox: AlbumWikiInfobox
+  sections: AlbumWikiSections
+  sections_zh: AlbumWikiSections
+  structured?: StructuredAlbum
+}
+
+export interface AlbumEnrichmentResponse {
+  wiki: AlbumWikiData | null
+  genius: {
+    name: string
+    artist: string
+    cover_url: string
+    release_date: string
+    url: string
+  } | null
+}
+
+export interface ArtistWikiData {
+  url: string
+  lang: string
+  summary: string
+  summary_zh: string
+  description: string
+  description_zh: string
+  thumbnail: string
+  sections: {
+    early_life: string
+    discography: string
+  }
+  sections_zh: {
+    early_life: string
+    discography: string
+  }
+  structured?: StructuredArtist
+}
+
+export interface ArtistEnrichmentResponse {
+  wiki: ArtistWikiData | null
+  genius: Record<string, unknown> | null
+}
+
+export interface TrackEnrichmentResponse {
+  wiki: {
+    url: string
+    lang: string
+    summary: string
+    summary_zh: string
+    description: string
+    description_zh: string
+    sections: { background: string }
+    sections_zh: { background: string }
+  } | null
+  genius: {
+    title: string
+    artist: string
+    url: string
+    album_name: string
+    cover_url: string
+    release_date: string
+  } | null
+}
