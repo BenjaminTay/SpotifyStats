@@ -183,28 +183,29 @@ React + Vite + Tailwind CSS v4 + shadcn/ui（样式 `base-nova`，基础色 `neu
 - **样式**：Tailwind CSS v4（`@tailwindcss/vite` 插件），`tw-animate-css` 动画库
 - **主题**：CSS 变量 + `.dark` class 切换，`oklch()` 色彩空间。结构变量在 `@theme inline`，颜色在 `:root` / `.dark`。`useTheme()` hook 提供 localStorage 持久化 + 系统偏好回退
 - **组件**：shadcn/ui v4（base-nova 风格），源码在 `@/components/ui/`
-- **路由**：React Router v7，当前 7 个路由：`/`（DashboardPage，动态洞察）、`/billboard`（BillboardPage，CoverCell 封面）、`/billboard/number-ones`（NumberOnesPage）、`/billboard/track/:trackId`（TrackDetailPage，2 Tab：榜单表现/Genius 歌词）、`/billboard/artist/:artistName`（ArtistDetailPage，3 Tab：榜单表现/单曲成绩/专辑成绩）、`/billboard/album/:albumName`（AlbumDetailPage，2 Tab：榜单表现/曲目表现）、`/settings`（SettingsPage）
+- **路由**：React Router v7，当前 8 个路由：`/`（DashboardPage，动态洞察）、`/billboard`（BillboardPage，CoverCell 封面，Tab 记忆跨页面保持）、`/billboard/number-ones`（NumberOnesPage，子 Tab + 年份记忆保持）、`/billboard/all-time`（AllTimeChartsPage，总榜三实体 Tab，Tab/筛选/排序/翻页记忆保持）、`/billboard/track/:trackId`（TrackDetailPage，2 Tab：榜单表现/Genius 歌词，艺人名和专辑名可点击跳转详情）、`/billboard/artist/:artistName`（ArtistDetailPage，3 Tab：榜单表现/单曲成绩/专辑成绩，Popularity 视觉进度条）、`/billboard/album/:albumName`（AlbumDetailPage，2 Tab：榜单表现/曲目表现，艺人名可点击跳转详情）、`/settings`（SettingsPage）
 - **图表**：ECharts 6 + echarts-for-react（月度趋势图）；平台分布使用纯 DOM 进度条
 - **字体**：Inter Variable（`@fontsource-variable/inter`）+ Playfair Display（Google Fonts CDN）
 - **国际化**：中文简繁转换（opencc-js），`displayName()` 覆盖所有页面的名称展示
 - **日期工具**：date-fns + react-day-picker（日历周选择器，`Popover` + `Calendar` 弹窗跳转）
-- **客户端缓存**：模块级变量缓存 API 响应，页面切换时避免重复请求
+- **客户端缓存**：模块级变量缓存 API 响应，页面切换时避免重复请求；BillboardPage/NumberOnesPage/AllTimeChartsPage 使用模块级变量记忆 Tab/筛选/排序/翻页状态，导航返回后自动恢复
 
 **目录结构**：
 ```
 frontend/src/
 ├── components/
 │   ├── ui/          ← shadcn/ui 组件（可随意修改，含 calendar, popover）
-│   ├── charts/      ← ECharts 封装 + 纯 DOM 图表（RankTrendChart）
+│   ├── charts/      ← ECharts 封装 + 纯 DOM 图表（RankTrendChart：时间线填充断档周、全貌/细节缩放切换+dataZoom滑块、峰值Pin标记+连续冠周markArea色带）
 │   ├── layout/      ← 布局（AppLayout, Masthead, ThemeToggle）
 │   └── shared/      ← 共享组件（GlassCard, KpiCard, WeekSelector 含日历弹窗, NoiseOverlay, PageSwitcher, ChangeCell, CoverCell）
 ├── pages/           ← 页面组件
 │   ├── DashboardPage.tsx    ← 总览仪表盘（动态数据洞察：月度趋势 + 聆听高峰智能分析）
-│   ├── BillboardPage.tsx    ← Billboard 周榜（3 Tab + 排名表 + CoverCell 封面 + 详情链接）
-│   ├── NumberOnesPage.tsx   ← 每周榜首（3 子 Tab：单曲/专辑/艺人，年度筛选 + Power Score 平局排序 + KPI 卡片 + 冠单表 + 排行 + 柱状图 + 空冠）
-│   ├── TrackDetailPage.tsx  ← 单曲详情（2 Tab：榜单表现/歌词，8 KPI + 排名趋势图 + 榜单历史表 + Genius 歌词分段渲染）
-│   ├── ArtistDetailPage.tsx ← 艺人详情（3 Tab：榜单表现/单曲成绩/专辑成绩，6 KPI 卡片 + 封面 + Spotify 元数据 + 视觉播放条 + 走势点数/排名）
-│   ├── AlbumDetailPage.tsx  ← 专辑详情（2 Tab：榜单表现/曲目表现，6 KPI 卡片 + 封面 + Spotify 元数据 + 视觉播放条 + 走势点数/排名）
+│   ├── BillboardPage.tsx    ← Billboard 周榜（3 Tab + 排名表 + CoverCell 封面 + 详情链接，Tab 记忆跨页面保持）
+│   ├── NumberOnesPage.tsx   ← 每周榜首（3 子 Tab：单曲/专辑/艺人，年度筛选 + Power Score 平局排序 + KPI 卡片 + 冠单表 + 排行 + 柱状图 + 空冠，子 Tab + 年份记忆保持）
+│   ├── AllTimeChartsPage.tsx ← Billboard 总榜（3 实体 Tab：歌曲/专辑/艺人，8 列头排序 + 排名峰值筛选 + 翻页，Tab/筛选/排序/翻页均记忆保持）
+│   ├── TrackDetailPage.tsx  ← 单曲详情（2 Tab：榜单表现/歌词，8 KPI + 排名趋势图 + 榜单历史表 + Genius 歌词分段渲染，艺人名和专辑名可点击跳转详情）
+│   ├── ArtistDetailPage.tsx ← 艺人详情（3 Tab：榜单表现/单曲成绩/专辑成绩，6 KPI 卡片 + 封面 + Spotify 元数据 + Popularity 视觉进度条 + 走势点数/排名）
+│   ├── AlbumDetailPage.tsx  ← 专辑详情（2 Tab：榜单表现/曲目表现，6 KPI 卡片 + 封面 + Spotify 元数据 + 视觉播放条 + 走势点数/排名，艺人名可点击跳转详情）
 │   └── SettingsPage.tsx     ← 设置（4 区块：Data & Display / Billboard Parameters / Version Merge / Data Import）
 ├── hooks/           ← 自定义 hooks
 │   ├── useTheme.tsx  ← 主题管理（Context + localStorage）

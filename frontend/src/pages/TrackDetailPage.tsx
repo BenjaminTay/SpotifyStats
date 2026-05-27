@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { useParams, Link } from 'react-router-dom'
+import { useParams, useNavigate, Link } from 'react-router-dom'
 import { api } from '@/lib/api'
 import type { TrackDetailResponse, LyricsData } from '@/types/billboard'
 import { GlassCard } from '@/components/shared/GlassCard'
@@ -82,6 +82,7 @@ function TrackDetailSkeleton() {
 
 export function TrackDetailPage() {
   const { trackId } = useParams<{ trackId: string }>()
+  const navigate = useNavigate()
   const [data, setData] = useState<TrackDetailResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -142,24 +143,24 @@ export function TrackDetailPage() {
             <div className="flex flex-col items-center gap-4 py-20 text-center">
               <AlertCircle className="h-8 w-8 text-accent-foreground" />
               <p className="text-muted-foreground">未找到该曲目的榜单数据</p>
-              <Link
-                to="/billboard"
+              <button
+                onClick={() => navigate(-1)}
                 className="rounded-full border border-border px-6 py-2 text-[13px] font-semibold transition-colors hover:bg-muted"
               >
                 返回 Billboard
-              </Link>
+              </button>
             </div>
           ) : (
             <>
               {/* Hero */}
               <section className="mb-6">
-                <Link
-                  to="/billboard"
+                <button
+                  onClick={() => navigate(-1)}
                   className="mb-4 inline-flex items-center gap-1.5 font-sans text-[11px] font-bold uppercase tracking-[1.8px] text-muted-foreground transition-colors hover:text-accent-foreground"
                 >
                   <ArrowLeft className="h-3 w-3" />
                   Billboard / 单曲详情
-                </Link>
+                </button>
                 <div className="flex items-start gap-6">
                   {data.cover_url && (
                     <img
@@ -173,16 +174,32 @@ export function TrackDetailPage() {
                       {displayName(data.track_name)}
                     </h1>
                     <p className="mt-2 font-sans text-[17px] text-muted-foreground">
-                      {displayName(data.artist_name)}
+                      <Link
+                        to={`/billboard/artist/${encodeURIComponent(data.artist_name)}`}
+                        className="transition-colors hover:text-accent-foreground"
+                      >
+                        {displayName(data.artist_name)}
+                      </Link>
                     </p>
                     {data.meta && (
                       <p className="mt-1 font-sans text-[14px] text-muted-foreground">
                         {[
-                          data.meta.spotify_album_name,
+                          data.meta.spotify_album_name && (
+                            <Link
+                              key="album"
+                              to={`/billboard/album/${encodeURIComponent(data.meta.spotify_album_name)}?artist=${encodeURIComponent(data.artist_name)}`}
+                              className="transition-colors hover:text-accent-foreground"
+                            >
+                              {displayName(data.meta.spotify_album_name)}
+                            </Link>
+                          ),
                           data.meta.track_number && `Track ${data.meta.track_number}`,
                           data.meta.duration_ms && formatDuration(data.meta.duration_ms),
                           data.meta.explicit ? '🅴 Explicit' : null,
-                        ].filter(Boolean).join(' · ')}
+                        ].filter(Boolean).reduce<React.ReactNode[]>((acc, item, i) => {
+                          if (i === 0) return [item]
+                          return [...acc, ' · ', item]
+                        }, [])}
                       </p>
                     )}
                   </div>

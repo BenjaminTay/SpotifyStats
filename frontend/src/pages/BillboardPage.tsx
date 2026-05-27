@@ -43,6 +43,8 @@ function formatNumber(n: number): string {
 
 type TabKey = 'tracks' | 'albums' | 'artists'
 
+let cachedTab: TabKey = 'tracks'
+
 const TABS: { key: TabKey; label: string }[] = [
   { key: 'tracks', label: '单曲榜' },
   { key: 'albums', label: '专辑榜' },
@@ -123,7 +125,7 @@ export function BillboardPage() {
     goToWeek,
   } = useBillboard(initialWeek)
 
-  const [activeTab, setActiveTab] = useState<TabKey>('tracks')
+  const [activeTab, setActiveTab] = useState<TabKey>(cachedTab)
 
   // compute rank changes for current tab
   const prevWeek = data?.meta.all_weeks_desc[currentIndex + 1]
@@ -208,7 +210,7 @@ export function BillboardPage() {
             {TABS.map((tab) => (
               <button
                 key={tab.key}
-                onClick={() => setActiveTab(tab.key)}
+                onClick={() => { cachedTab = tab.key; setActiveTab(tab.key) }}
                 className={cn(
                   '-mb-px cursor-pointer border-none bg-transparent px-0 pb-2.5 font-sans text-[13px] font-medium transition-[color,border] duration-200',
                   'border-b-2',

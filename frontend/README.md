@@ -25,12 +25,12 @@ npm run build      # 生产构建
 | 路由 | 页面 | 说明 |
 |------|------|------|
 | `/` | DashboardPage | 总览仪表盘：KPI 行、月度趋势图、平台分布、动态数据洞察（月度季节分析 + 聆听高峰） |
-| `/billboard` | BillboardPage | Billboard 周榜：单曲/专辑/艺人三榜、周切换（含 URL 参数 `?week=`）、排名表（含 CoverCell 封面 + 跳转详情链接） |
-| `/billboard/number-ones` | NumberOnesPage | 每周榜首：3 子 Tab（单曲/专辑/艺人）、年度筛选 + KPI 卡片 + 冠单表 + 排行柱状图 + 空冠统计 |
-| `/billboard/all-time` | AllTimeChartsPage | Billboard 总榜：3 实体 Tab（歌曲/专辑/艺人）、富数据表格（走势评分/排名峰值/在榜周数等）、列头排序、排名峰值筛选（全部/#1/Top5/Top10/空冠）、可拖拽列宽（localStorage 记忆）、翻页 |
-| `/billboard/track/:trackId` | TrackDetailPage | 单曲详情：封面 Hero、KPI 卡片行、排名趋势图、榜单历史表（含播放条、PK/PK Wks/在榜滚动统计） |
-| `/billboard/artist/:artistName` | ArtistDetailPage | 艺人详情：3 Tab（榜单表现/单曲成绩/专辑成绩）、封面 Hero、6 KPI 卡片、排名趋势图 + 最佳单曲叠加线、视觉播放条、走势点数/排名 |
-| `/billboard/album/:albumName` | AlbumDetailPage | 专辑详情：2 Tab（榜单表现/曲目表现）、封面 Hero、6 KPI 卡片、排名趋势图 + 最佳单曲叠加线、视觉播放条、走势点数/排名 |
+| `/billboard` | BillboardPage | Billboard 周榜：单曲/专辑/艺人三榜、周切换（含 URL 参数 `?week=`）、排名表（含 CoverCell 封面 + 跳转详情链接）、Tab 选择跨页面记忆保持 |
+| `/billboard/number-ones` | NumberOnesPage | 每周榜首：3 子 Tab（单曲/专辑/艺人）、年度筛选 + KPI 卡片 + 冠单表 + 排行柱状图 + 空冠统计、子 Tab 和年份选择跨页面记忆保持 |
+| `/billboard/all-time` | AllTimeChartsPage | Billboard 总榜：3 实体 Tab（歌曲/专辑/艺人）、富数据表格（走势评分/排名峰值/在榜周数等）、列头排序、排名峰值筛选（全部/#1/Top5/Top10/空冠）、可拖拽列宽（localStorage 记忆）、翻页、Tab/筛选/排序/翻页均跨页面记忆保持 |
+| `/billboard/track/:trackId` | TrackDetailPage | 单曲详情：封面 Hero、KPI 卡片行、排名趋势图（含断档填充 + 全貌/细节缩放 + 峰值标记 + 连续冠周色带）、榜单历史表（含播放条、PK/PK Wks/在榜滚动统计）、艺人名和专辑名可点击跳转对应详情 |
+| `/billboard/artist/:artistName` | ArtistDetailPage | 艺人详情：3 Tab（榜单表现/单曲成绩/专辑成绩）、封面 Hero、6 KPI 卡片、排名趋势图 + 最佳单曲叠加线、视觉播放条、走势点数/排名、Popularity 视觉进度条 |
+| `/billboard/album/:albumName` | AlbumDetailPage | 专辑详情：2 Tab（榜单表现/曲目表现）、封面 Hero、6 KPI 卡片、排名趋势图 + 最佳单曲叠加线、视觉播放条、走势点数/排名、艺人名可点击跳转艺人详情 |
 
 ## UI 风格
 

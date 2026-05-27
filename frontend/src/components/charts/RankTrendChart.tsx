@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import ReactECharts from 'echarts-for-react'
 import { useTheme } from '@/hooks/useTheme'
 import { buildChartBase } from './EChartsTheme'
@@ -16,6 +17,84 @@ interface RankTrendChartProps {
   overlayLabel?: string
 }
 
+function parseWeek(str: string): Date | null {
+  const parts = str.split('-')
+  if (parts.length !== 3) return null
+  const [y, m, d] = parts.map(Number)
+  if (isNaN(y) || isNaN(m) || isNaN(d)) return null
+  return new Date(y, m - 1, d)
+}
+
+function formatWeekISO(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+}
+
+function formatWeekDisplay(iso: string): string {
+  const parts = iso.split('-')
+  if (parts.length >= 3) return `${parts[0]}/${parts[1]}/${parts[2]}`
+  return iso
+}
+
+interface PeakRun {
+  start: number
+  end: number
+  length: number
+}
+
+/** Fill every 7-day interval between the first and last charting week with null for off-chart weeks. */
+function buildTimeline(data: RankDataPoint[]): { labels: string[]; values: (number | null)[] } {
+  const rankByWeek = new Map<string, number | null>()
+  const dates: Date[] = []
+
+  for (const d of data) {
+    if (!d.week) continue
+    rankByWeek.set(d.week, d.rank)
+    const dt = parseWeek(d.week)
+    if (dt) dates.push(dt)
+  }
+
+  if (dates.length === 0) return { labels: [], values: [] }
+
+  dates.sort((a, b) => a.getTime() - b.getTime())
+  const minDate = dates[0]
+  const maxDate = dates[dates.length - 1]
+
+  const labels: string[] = []
+  const values: (number | null)[] = []
+  const current = new Date(minDate)
+
+  while (current <= maxDate) {
+    const weekStr = formatWeekISO(current)
+    labels.push(weekStr)
+    values.push(rankByWeek.has(weekStr) ? rankByWeek.get(weekStr)! : null)
+    current.setDate(current.getDate() + 7)
+  }
+
+  return { labels, values }
+}
+
+/** Split rank values into runs of consecutive peak positions. */
+function findPeakRuns(values: (number | null)[], peakRank: number): PeakRun[] {
+  const runs: PeakRun[] = []
+  let runStart = -1
+
+  for (let i = 0; i < values.length; i++) {
+    if (values[i] === peakRank) {
+      if (runStart === -1) runStart = i
+    } else {
+      if (runStart !== -1) {
+        runs.push({ start: runStart, end: i - 1, length: i - runStart })
+        runStart = -1
+      }
+    }
+  }
+  if (runStart !== -1) {
+    runs.push({ start: runStart, end: values.length - 1, length: values.length - runStart })
+  }
+
+  return runs
+}
+
 export function RankTrendChart({
   data,
   topN,
@@ -27,27 +106,37 @@ export function RankTrendChart({
   const base = buildChartBase(isDark)
   const colors = [...getChartColors(isDark)]
 
-  const labels = data.map((d) => {
-    if (!d.week) return ''
-    const parts = d.week.split('-')
-    if (parts.length >= 3) return `${parts[0]}/${parts[1]}/${parts[2]}`
-    return d.week
-  })
+  const { labels: rawLabels, values } = buildTimeline(data)
 
-  const values = data.map((d) => d.rank)
+  const labels = rawLabels.map(formatWeekDisplay)
   const hasGaps = values.some((v) => v === null)
   const totalPoints = values.length
 
+  // ── Zoom: overview vs detail (50-week window) ──
+  const WINDOW_SIZE = 50
+  const [viewMode, setViewMode] = useState<'overview' | 'detail'>('overview')
+  const showZoomToggle = totalPoints > WINDOW_SIZE
+  const effectiveTotal = viewMode === 'detail' && showZoomToggle
+    ? Math.min(totalPoints, WINDOW_SIZE)
+    : totalPoints
+
   // Show sparse x-axis labels — only major time boundaries, not every data point
   const labelInterval =
-    totalPoints > 52 ? Math.floor(totalPoints / 8)   // ~8 labels per year of weekly data
-    : totalPoints > 26 ? Math.floor(totalPoints / 6)  // ~6 labels for 6-month data
-    : totalPoints > 12 ? Math.floor(totalPoints / 4)  // ~4 labels for quarterly data
+    effectiveTotal > 52 ? Math.floor(effectiveTotal / 8)
+    : effectiveTotal > 26 ? Math.floor(effectiveTotal / 6)
+    : effectiveTotal > 12 ? Math.floor(effectiveTotal / 4)
     : 0
 
   const textColor = isDark ? '#A09888' : '#6B5E58'
   const rankColor = isDark ? '#D4836F' : '#C84C3D'
   const overlayColor = isDark ? '#7BA587' : '#4A7C59'
+
+  // ── Peak annotation ──
+  const validRanks = values.filter((v): v is number => v !== null)
+  const peakRank = validRanks.length > 0 ? Math.min(...validRanks) : null
+  const peakRuns = peakRank !== null ? findPeakRuns(values, peakRank) : []
+  const singlePeaks = peakRuns.filter((r) => r.length === 1)
+  const multiWeekPeaks = peakRuns.filter((r) => r.length > 1)
 
   const series: any[] = [
     {
@@ -57,11 +146,20 @@ export function RankTrendChart({
       connectNulls: false,
       smooth: false,
       symbol: 'circle',
-      symbolSize: hasGaps ? 5 : 4,
-      showSymbol: totalPoints < 40,
+      symbolSize: 7,
+      showSymbol: true,
+      showAllSymbol: true,
+      z: 10,
       emphasis: {
-        focus: 'series',
-        symbolSize: 8,
+        symbolSize: 13,
+        itemStyle: {
+          borderColor: rankColor,
+          borderWidth: 2,
+        },
+      },
+      blur: {
+        itemStyle: { opacity: 1 },
+        lineStyle: { opacity: 1 },
       },
       lineStyle: {
         width: 2,
@@ -105,20 +203,36 @@ export function RankTrendChart({
             data: [{ yAxis: peakPosition }],
           }
         : undefined,
-      // Highlight #1 positions with larger emphasis
-      markPoint: totalPoints <= 30
+      // Pin markers for ALL peaks (pin at first peak week)
+      markPoint: peakRuns.length > 0
         ? {
             silent: true,
             symbol: 'pin',
             symbolSize: 24,
             animation: false,
-            label: {
-              fontSize: 9,
-              color: '#fff',
+            label: { fontSize: 9, color: '#fff' },
+            data: peakRuns.map((r) => ({
+              coord: [r.start, peakRank!] as [number, number],
+              value: `#${peakRank}`,
+            })),
+          }
+        : undefined,
+      // Shaded band behind consecutive multi-week peak runs (visual only, no labels)
+      markArea: multiWeekPeaks.length > 0
+        ? {
+            silent: true,
+            animation: false,
+            itemStyle: {
+              color: isDark ? 'rgba(212,131,111,0.20)' : 'rgba(200,76,61,0.10)',
+              borderColor: rankColor,
+              borderWidth: 2,
+              borderType: 'solid',
+              borderRadius: 8,
             },
-            data: values
-              .map((v, i) => (v === 1 ? { coord: [i, 1], value: '#1' } : null))
-              .filter(Boolean),
+            data: multiWeekPeaks.map((run) => [
+              { xAxis: run.start, yAxis: peakRank! - 0.45 },
+              { xAxis: run.end, yAxis: peakRank! + 0.45 },
+            ]),
           }
         : undefined,
     },
@@ -126,7 +240,7 @@ export function RankTrendChart({
 
   if (overlayData && overlayData.length > 0) {
     const overlayMap = new Map(overlayData.map((d) => [d.week, d.rank]))
-    const overlayValues = data.map((d) => overlayMap.get(d.week) ?? null)
+    const overlayValues = rawLabels.map((week) => overlayMap.get(week) ?? null)
 
     series.push({
       name: overlayLabel || '最佳单曲',
@@ -135,11 +249,20 @@ export function RankTrendChart({
       connectNulls: false,
       smooth: false,
       symbol: 'diamond',
-      symbolSize: 5,
-      showSymbol: totalPoints < 30,
+      symbolSize: 7,
+      showSymbol: true,
+      showAllSymbol: true,
+      z: 1,
       emphasis: {
-        focus: 'series',
-        symbolSize: 9,
+        symbolSize: 13,
+        itemStyle: {
+          borderColor: overlayColor,
+          borderWidth: 2,
+        },
+      },
+      blur: {
+        itemStyle: { opacity: 1 },
+        lineStyle: { opacity: 1 },
       },
       lineStyle: {
         width: 1.5,
@@ -155,16 +278,6 @@ export function RankTrendChart({
     })
   }
 
-  // Compute nice tick values (show rank milestones)
-  const tickValues: number[] = [1]
-  if (topN >= 5) tickValues.push(5)
-  if (topN >= 10) tickValues.push(10)
-  if (topN >= 20) tickValues.push(20)
-  if (topN >= 30) tickValues.push(30)
-  if (topN >= 50) tickValues.push(50)
-  if (topN >= 75) tickValues.push(75)
-  if (topN >= 100) tickValues.push(100)
-
   const option = {
     ...base,
     animation: true,
@@ -174,8 +287,10 @@ export function RankTrendChart({
       ...base.grid,
       left: 8,
       right: 20,
-      top: 20,
-      bottom: labels.length > 20 ? 40 : 8,
+      top: 32,
+      bottom: showZoomToggle && viewMode === 'detail'
+        ? 60
+        : labels.length > 20 ? 40 : 8,
     },
     xAxis: {
       ...base.xAxis,
@@ -230,7 +345,7 @@ export function RankTrendChart({
     legend: overlayData && overlayData.length > 0
       ? {
           show: true,
-          bottom: 0,
+          bottom: showZoomToggle && viewMode === 'detail' ? 24 : 0,
           left: 'center',
           textStyle: { color: textColor, fontSize: 11 },
           itemWidth: 16,
@@ -238,7 +353,77 @@ export function RankTrendChart({
           icon: 'roundRect',
         }
       : undefined,
+    dataZoom: showZoomToggle && viewMode === 'detail'
+      ? [
+          {
+            type: 'slider' as const,
+            start: 100 - (WINDOW_SIZE / totalPoints) * 100,
+            end: 100,
+            zoomLock: true,
+            handleSize: '80%',
+            showDetail: false,
+            backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)',
+            dataBackground: {
+              lineStyle: { color: textColor, opacity: 0.15 },
+              areaStyle: { color: textColor, opacity: 0.04 },
+            },
+            selectedDataBackground: {
+              lineStyle: { color: rankColor, opacity: 0.35 },
+              areaStyle: { color: rankColor, opacity: 0.08 },
+            },
+            handleStyle: { color: rankColor, opacity: 0.7 },
+            moveHandleStyle: { color: rankColor },
+            textStyle: { color: textColor, fontSize: 10 },
+            borderColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)',
+          },
+          {
+            type: 'inside' as const,
+            zoomOnMouseWheel: false,
+            moveOnMouseMove: true,
+            moveOnMouseWheel: true,
+          },
+        ]
+      : undefined,
   }
 
-  return <ReactECharts option={option} style={{ height: 360 }} notMerge />
+  return (
+    <div>
+      {showZoomToggle && (
+        <div className="flex items-center justify-end mb-1">
+          <div
+            className="inline-flex rounded-md border text-xs font-medium overflow-hidden"
+            style={{
+              borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)',
+            }}
+          >
+            <button
+              onClick={() => setViewMode('overview')}
+              className="px-2.5 py-1 transition-colors cursor-pointer"
+              style={{
+                backgroundColor: viewMode === 'overview'
+                  ? (isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)')
+                  : 'transparent',
+                color: viewMode === 'overview' ? textColor : (isDark ? '#78716C' : '#9B8E85'),
+              }}
+            >
+              全貌
+            </button>
+            <button
+              onClick={() => setViewMode('detail')}
+              className="px-2.5 py-1 transition-colors cursor-pointer"
+              style={{
+                backgroundColor: viewMode === 'detail'
+                  ? (isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)')
+                  : 'transparent',
+                color: viewMode === 'detail' ? textColor : (isDark ? '#78716C' : '#9B8E85'),
+              }}
+            >
+              细节
+            </button>
+          </div>
+        </div>
+      )}
+      <ReactECharts option={option} style={{ height: 360 }} notMerge />
+    </div>
+  )
 }

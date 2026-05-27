@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { useParams, useSearchParams, Link } from 'react-router-dom'
+import { useParams, useSearchParams, Link, useNavigate } from 'react-router-dom'
 import { api } from '@/lib/api'
 import type { AlbumDetailResponse } from '@/types/billboard'
 import { GlassCard } from '@/components/shared/GlassCard'
@@ -172,6 +172,7 @@ export function AlbumDetailPage() {
   const { albumName } = useParams<{ albumName: string }>()
   const [searchParams] = useSearchParams()
   const artistName = searchParams.get('artist') || ''
+  const navigate = useNavigate()
 
   const [data, setData] = useState<AlbumDetailResponse | null>(null)
   const [loading, setLoading] = useState(true)
@@ -218,24 +219,24 @@ export function AlbumDetailPage() {
             <div className="flex flex-col items-center gap-4 py-20 text-center">
               <AlertCircle className="h-8 w-8 text-accent-foreground" />
               <p className="text-muted-foreground">未找到该专辑的榜单数据</p>
-              <Link
-                to="/billboard"
+              <button
+                onClick={() => navigate(-1)}
                 className="rounded-full border border-border px-6 py-2 text-[13px] font-semibold transition-colors hover:bg-muted"
               >
                 返回 Billboard
-              </Link>
+              </button>
             </div>
           ) : (
             <>
               {/* Hero */}
               <section className="mb-6">
-                <Link
-                  to="/billboard"
+                <button
+                  onClick={() => navigate(-1)}
                   className="mb-4 inline-flex items-center gap-1.5 font-sans text-[11px] font-bold uppercase tracking-[1.8px] text-muted-foreground transition-colors hover:text-accent-foreground"
                 >
                   <ArrowLeft className="h-3 w-3" />
                   Billboard / 专辑详情
-                </Link>
+                </button>
                 <div className="flex items-start gap-6">
                   {data.cover_url && (
                     <img
@@ -249,7 +250,12 @@ export function AlbumDetailPage() {
                       {displayName(data.album_name)}
                     </h1>
                     <p className="mt-2 font-sans text-[17px] text-muted-foreground">
-                      {displayName(data.artist_name)}
+                      <Link
+                        to={`/billboard/artist/${encodeURIComponent(data.artist_name)}`}
+                        className="transition-colors hover:text-accent-foreground"
+                      >
+                        {displayName(data.artist_name)}
+                      </Link>
                     </p>
                     {data.meta && (
                       <p className="mt-1 font-sans text-[14px] text-muted-foreground">

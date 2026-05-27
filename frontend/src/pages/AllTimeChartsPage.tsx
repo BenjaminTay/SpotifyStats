@@ -123,6 +123,16 @@ interface MergedArtistRow {
 
 type EntityTab = 'tracks' | 'albums' | 'artists'
 
+let cachedEntityTab: EntityTab = 'tracks'
+let cachedPeakFilter: PeakFilter = 'all'
+let cachedPage = 1
+let cachedSortKeyTrack = 'power_score'
+let cachedSortDirTrack: 'asc' | 'desc' = 'desc'
+let cachedSortKeyAlbum = 'power_score'
+let cachedSortDirAlbum: 'asc' | 'desc' = 'desc'
+let cachedSortKeyArtist = 'power_score'
+let cachedSortDirArtist: 'asc' | 'desc' = 'desc'
+
 type PeakFilter = 'all' | 'no1' | 'top5' | 'top10' | 'debut_no1'
 
 // ── column definitions ───────────────────────────────────────
@@ -343,16 +353,15 @@ export function AllTimeChartsPage() {
   const { data, loading, error, refetch } = useBillboard()
 
   const PAGE_SIZE = 50
-  const [activeTab, setActiveTab] = useState<EntityTab>('tracks')
-  const [peakFilter, setPeakFilter] = useState<PeakFilter>('all')
-  const [page, setPage] = useState(1)
-  // Sort state per tab
-  const [sortKeyTrack, setSortKeyTrack] = useState('power_score')
-  const [sortDirTrack, setSortDirTrack] = useState<'asc' | 'desc'>('desc')
-  const [sortKeyAlbum, setSortKeyAlbum] = useState('power_score')
-  const [sortDirAlbum, setSortDirAlbum] = useState<'asc' | 'desc'>('desc')
-  const [sortKeyArtist, setSortKeyArtist] = useState('power_score')
-  const [sortDirArtist, setSortDirArtist] = useState<'asc' | 'desc'>('desc')
+  const [activeTab, setActiveTab] = useState<EntityTab>(cachedEntityTab)
+  const [peakFilter, setPeakFilter] = useState<PeakFilter>(cachedPeakFilter)
+  const [page, setPage] = useState(cachedPage)
+  const [sortKeyTrack, setSortKeyTrack] = useState(cachedSortKeyTrack)
+  const [sortDirTrack, setSortDirTrack] = useState<'asc' | 'desc'>(cachedSortDirTrack)
+  const [sortKeyAlbum, setSortKeyAlbum] = useState(cachedSortKeyAlbum)
+  const [sortDirAlbum, setSortDirAlbum] = useState<'asc' | 'desc'>(cachedSortDirAlbum)
+  const [sortKeyArtist, setSortKeyArtist] = useState(cachedSortKeyArtist)
+  const [sortDirArtist, setSortDirArtist] = useState<'asc' | 'desc'>(cachedSortDirArtist)
 
   const sortKey = activeTab === 'tracks' ? sortKeyTrack : activeTab === 'albums' ? sortKeyAlbum : sortKeyArtist
   const sortDir = activeTab === 'tracks' ? sortDirTrack : activeTab === 'albums' ? sortDirAlbum : sortDirArtist
@@ -361,6 +370,17 @@ export function AllTimeChartsPage() {
 
   // Reset page when tab, filter, or sort changes
   useEffect(() => { setPage(1) }, [activeTab, peakFilter, sortKey, sortDir])
+
+  // Sync state to module-level cache for persistence across navigations
+  useEffect(() => { cachedEntityTab = activeTab }, [activeTab])
+  useEffect(() => { cachedPeakFilter = peakFilter }, [peakFilter])
+  useEffect(() => { cachedPage = page }, [page])
+  useEffect(() => { cachedSortKeyTrack = sortKeyTrack }, [sortKeyTrack])
+  useEffect(() => { cachedSortDirTrack = sortDirTrack }, [sortDirTrack])
+  useEffect(() => { cachedSortKeyAlbum = sortKeyAlbum }, [sortKeyAlbum])
+  useEffect(() => { cachedSortDirAlbum = sortDirAlbum }, [sortDirAlbum])
+  useEffect(() => { cachedSortKeyArtist = sortKeyArtist }, [sortKeyArtist])
+  useEffect(() => { cachedSortDirArtist = sortDirArtist }, [sortDirArtist])
 
   // ── weekly-based stats for albums (missing from backend) ──
 
@@ -867,7 +887,7 @@ export function AllTimeChartsPage() {
             key={tab.key}
             role="tab"
             aria-selected={activeTab === tab.key}
-            onClick={() => setActiveTab(tab.key)}
+            onClick={() => { cachedEntityTab = tab.key; setActiveTab(tab.key) }}
             className={cn(
               '-mb-px border-none bg-transparent px-0 pb-2.5 font-sans text-[13px] font-medium transition-[color,border] duration-200',
               'border-b-2',

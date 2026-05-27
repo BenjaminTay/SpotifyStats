@@ -271,6 +271,9 @@ interface AlbumDebutNo1 {
 
 type SubTabKey = 'tracks' | 'albums' | 'artists'
 
+let cachedSubTab: SubTabKey = 'tracks'
+let cachedYear = 0
+
 const SUB_TABS: { key: SubTabKey; label: string }[] = [
   { key: 'tracks', label: '单曲榜' },
   { key: 'albums', label: '专辑榜' },
@@ -568,7 +571,7 @@ export function NumberOnesPage() {
     }
   }, [data])
 
-  const [activeTab, setActiveTab] = useState<SubTabKey>('tracks')
+  const [activeTab, setActiveTab] = useState<SubTabKey>(cachedSubTab)
 
   // ── Year filter ───────────────────────────────────────
 
@@ -584,11 +587,12 @@ export function NumberOnesPage() {
     return [...years].sort((a, b) => b - a)
   }, [activeTab, computed.trackNo1List, computed.albumNo1List, computed.artistNo1List])
 
-  const [selectedYear, setSelectedYear] = useState(0)
+  const [selectedYear, setSelectedYear] = useState(cachedYear)
 
   useEffect(() => {
     if (availableYears.length === 0) return
     if (!availableYears.includes(selectedYear)) {
+      cachedYear = availableYears[0]
       setSelectedYear(availableYears[0])
     }
   }, [availableYears, selectedYear])
@@ -638,7 +642,7 @@ export function NumberOnesPage() {
         </span>
         <div className="flex items-center gap-0.5 rounded-[8px] border border-border bg-muted/30 p-0.5">
           <button
-            onClick={() => prevYear != null && setSelectedYear(prevYear)}
+            onClick={() => prevYear != null && (cachedYear = prevYear, setSelectedYear(prevYear))}
             disabled={prevYear == null}
             className="inline-flex h-7 w-7 items-center justify-center rounded-[6px] text-[13px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-30"
           >
@@ -648,7 +652,7 @@ export function NumberOnesPage() {
             {selectedYear}
           </span>
           <button
-            onClick={() => nextYear != null && setSelectedYear(nextYear)}
+            onClick={() => nextYear != null && (cachedYear = nextYear, setSelectedYear(nextYear))}
             disabled={nextYear == null}
             className="inline-flex h-7 w-7 items-center justify-center rounded-[6px] text-[13px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-30"
           >
@@ -738,7 +742,7 @@ export function NumberOnesPage() {
         {SUB_TABS.map((tab) => (
           <button
             key={tab.key}
-            onClick={() => setActiveTab(tab.key)}
+            onClick={() => { cachedSubTab = tab.key; setActiveTab(tab.key) }}
             className={cn(
               '-mb-px cursor-pointer border-none bg-transparent px-0 pb-2.5 font-sans text-[13px] font-medium transition-[color,border] duration-200',
               'border-b-2',
