@@ -531,7 +531,7 @@ class TestReleaseCycleService:
     @pytest.fixture(scope="class")
     def _df_raw(self):
         from backend.services.billboard_service import load_billboard_raw
-        return load_billboard_raw(30000, True, week_start_dow=4, week_start_hour=0)
+        return load_billboard_raw(30000, True, 4, 0)
 
     def test_load_artist_list(self, _df_raw):
         from backend.services.release_cycle_service import load_artist_list
@@ -561,7 +561,7 @@ class TestReleaseCycleService:
             compute_artist_weekly_rankings, compute_album_weekly_rankings,
         )
 
-        df_raw = load_billboard_raw(30000, True, week_start_dow=4, week_start_hour=0)
+        df_raw = load_billboard_raw(30000, True, 4, 0)
         releases = load_artist_releases("Taylor Swift")
         weekly = compute_weekly_rankings(df_raw, 30)
         weekly_artist = compute_artist_weekly_rankings(df_raw, 20)
@@ -572,6 +572,22 @@ class TestReleaseCycleService:
         )
         assert summary["total_albums"] > 0
         assert summary["total_singles"] > 0
+
+    def test_spotify_token_network_failure_returns_none(self, monkeypatch):
+        import urllib.error
+
+        import backend.services.release_cycle_service as svc
+
+        monkeypatch.setenv("SPOTIFY_CLIENT_ID", "test-client-id")
+        monkeypatch.setenv("SPOTIFY_CLIENT_SECRET", "test-client-secret")
+
+        def raise_url_error(*_args, **_kwargs):
+            raise urllib.error.URLError("network disabled")
+
+        monkeypatch.setattr(svc.urllib.request, "urlopen", raise_url_error)
+        svc._get_spotify_token.cache_clear()
+
+        assert svc._get_spotify_token() is None
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -674,6 +690,53 @@ class TestCache:
         assert expensive(2) == "2-2"
         assert expensive(1) == "1-1"  # cached separately
         assert call_count == 2
+
+    def test_ttl_cached_does_not_cache_none(self):
+        from backend.core.cache import ttl_cached
+
+        call_count = 0
+
+        @ttl_cached(60)
+        def maybe_missing():
+            nonlocal call_count
+            call_count += 1
+            return None
+
+        assert maybe_missing() is None
+        assert maybe_missing() is None
+        assert call_count == 2
+
+
+class TestWarmup:
+    def test_warm_common_caches_invokes_hot_paths(self, monkeypatch):
+        from backend.core import warmup
+
+        calls = []
+
+        def fake_load_plays(conn, **kwargs):
+            calls.append(("load_plays", kwargs))
+            return None
+
+        def fake_compute_billboard_data(**kwargs):
+            calls.append(("compute_billboard_data", kwargs))
+            return None
+
+        class FakeConn:
+            def close(self):
+                calls.append(("close", {}))
+
+        monkeypatch.setattr(warmup, "get_db", lambda: FakeConn())
+        monkeypatch.setattr(warmup, "load_plays", fake_load_plays)
+        monkeypatch.setattr(warmup, "compute_billboard_data", fake_compute_billboard_data)
+
+        warmup.warm_common_caches()
+
+        assert calls[0][0] == "load_plays"
+        assert calls[1][0] == "close"
+        assert calls[2][0] == "compute_billboard_data"
+        assert calls[0][1]["min_ms"] == 30000
+        assert calls[0][1]["merge_enabled"] is True
+        assert calls[2][1]["bb_top_n"] == 30
 
 
 # ═══════════════════════════════════════════════════════════════════════════

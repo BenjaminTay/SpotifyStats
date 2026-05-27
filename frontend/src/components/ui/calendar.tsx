@@ -106,6 +106,7 @@ function Calendar({
   const headerLabel = viewMode === "calendar"
     ? format(currentMonth, "yyyy年M月")
     : `${viewYear}年`
+  const pickerProps = props as React.ComponentProps<typeof DayPicker>
 
   return (
     <div className={cn("p-4 select-none w-[320px]", className)}>
@@ -193,6 +194,7 @@ function Calendar({
           modifiers={modifiers}
           modifiersClassNames={modifiersClassNames}
           onDayClick={onDayClick}
+          {...pickerProps}
           classNames={{
             months: "flex flex-col",
             month: "flex flex-col",
@@ -220,7 +222,6 @@ function Calendar({
             hidden: "invisible",
             ...classNames,
           }}
-          {...props}
         />
       )}
 

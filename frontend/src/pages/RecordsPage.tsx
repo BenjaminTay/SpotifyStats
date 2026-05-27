@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, createContext, useContext, useRef } from 'react'
+import { useState, useEffect, useMemo, createContext, useContext } from 'react'
 import { createPortal } from 'react-dom'
 import { Link, useNavigate } from 'react-router-dom'
 import { useBillboard } from '@/hooks/useBillboard'
@@ -149,7 +149,7 @@ function Pagination({ page, totalPages, startIdx, endIdx, totalItems, onPageChan
   )
 }
 
-function MiniRankTable<T extends Record<string, unknown>>({ rows, columns, emptyText = '暂无数据', fixed }: {
+function MiniRankTable<T extends object>({ rows, columns, emptyText = '暂无数据', fixed }: {
   rows: T[]; columns: { header: React.ReactNode; width?: string; align?: 'left' | 'right' | 'center'; render: (row: T, idx: number) => React.ReactNode }[]; emptyText?: string; fixed?: boolean
 }) {
   const PAGE_SIZE = 10
@@ -732,7 +732,7 @@ function BreakthroughSection({ rec, covers }: { rec: BillboardRecords; covers: C
   )
 }
 
-function DecadeBestCard({ rec, covers, decadeGroups }: { rec: BillboardRecords; covers: CoverMaps; decadeGroups: Map<string, DecadeBestRecord[]> }) {
+function DecadeBestCard({ covers, decadeGroups }: { covers: CoverMaps; decadeGroups: Map<string, DecadeBestRecord[]> }) {
   const decades = useMemo(() => Array.from(decadeGroups.keys()).sort(), [decadeGroups])
   const [activeDecade, setActiveDecade] = useState<string>(decades[decades.length - 1] ?? '')
 
@@ -878,7 +878,7 @@ function HallOfFameSection({ rec, covers }: { rec: BillboardRecords; covers: Cov
       </RecordCard>
 
       {/* 年代之王 */}
-      <DecadeBestCard rec={rec} covers={covers} decadeGroups={decadeGroups} />
+      <DecadeBestCard covers={covers} decadeGroups={decadeGroups} />
     </div>
   )
 }

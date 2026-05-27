@@ -1,5 +1,6 @@
 """Release Cycle API — endpoints for the 发行周期分析 (Tab 12)."""
 
+import json
 from typing import Optional, List
 
 import pandas as pd
@@ -75,6 +76,30 @@ def _precompute_artist_context(df_raw, artist_name):
     total_daily.name = "play_count"
 
     return artist_df, artist_median, total_daily
+
+
+def _find_release_row(releases: pd.DataFrame, album_name: str):
+    """Find a release by canonical album name or merged sub-album name."""
+    rel_row = releases[releases["album_name"] == album_name]
+    if not rel_row.empty:
+        return rel_row.iloc[0], album_name, rel_row.iloc[0]["release_date"]
+
+    for _, row in releases.iterrows():
+        raw_subs = row.get("sub_albums")
+        if pd.isna(raw_subs) or not raw_subs:
+            continue
+        try:
+            sub_albums = json.loads(raw_subs)
+        except (TypeError, json.JSONDecodeError):
+            continue
+        for sub in sub_albums:
+            if sub.get("album_name") == album_name:
+                release_date = pd.to_datetime(sub.get("release_date"), errors="coerce")
+                if pd.isna(release_date):
+                    release_date = row["release_date"]
+                return row, row["album_name"], release_date
+
+    return None, album_name, None
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -347,13 +372,12 @@ def compare_releases(
     result = []
     for item in body.items:
         releases = load_artist_releases(item.artist_name)
-        rel_row = releases[releases["album_name"] == item.album_name]
-        if rel_row.empty:
+        rel_row, cycle_album_name, release_date = _find_release_row(releases, item.album_name)
+        if rel_row is None:
             continue
-        release_date = rel_row.iloc[0]["release_date"]
 
         cycle = compute_release_cycle(
-            df_raw, item.artist_name, item.album_name, release_date,
+            df_raw, item.artist_name, cycle_album_name, release_date,
             weekly_artist=weekly_artist, weekly_album=weekly_album,
             weeks_before=body.weeks_before, weeks_after=body.weeks_after,
         )

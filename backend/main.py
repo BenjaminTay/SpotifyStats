@@ -2,22 +2,38 @@
 
 import os
 import urllib.request
+from contextlib import asynccontextmanager
 from typing import Optional
 
 from fastapi import FastAPI, BackgroundTasks
 from fastapi.exceptions import HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.responses import FileResponse, RedirectResponse
 
 from backend.api.router import api_router
+from backend.core.warmup import start_warmup_thread
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    if (
+        os.environ.get("SPOTIFY_STATS_WARMUP", "1") != "0"
+        and "PYTEST_CURRENT_TEST" not in os.environ
+    ):
+        start_warmup_thread()
+    yield
 
 app = FastAPI(
     title="Spotify Stats API",
     description="Spotify Extended Streaming History 数据分析 API",
     version="1.0.0",
     docs_url=None,
+    lifespan=lifespan,
 )
+
+app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 app.add_middleware(
     CORSMiddleware,

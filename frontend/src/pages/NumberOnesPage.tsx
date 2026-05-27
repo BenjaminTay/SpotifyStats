@@ -1,9 +1,8 @@
-import { useState, useEffect, useMemo } from 'react'
+import { lazy, Suspense, useState, useEffect, useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import { useBillboard } from '@/hooks/useBillboard'
 import { GlassCard } from '@/components/shared/GlassCard'
 import { BillboardSubNav } from '@/components/shared/BillboardSubNav'
-import ReactECharts from 'echarts-for-react'
 import { useTheme } from '@/hooks/useTheme'
 import { buildChartBase } from '@/components/charts/EChartsTheme'
 import { getChartColors } from '@/lib/theme'
@@ -17,6 +16,8 @@ import type {
   WeeklyArtistEntry,
   TrackSummary,
 } from '@/types/billboard'
+
+const ReactECharts = lazy(() => import('echarts-for-react'))
 
 // ── helpers ──────────────────────────────────────────────
 
@@ -140,7 +141,11 @@ function No1BarChart({
     grid: { left: 8, right: 56, top: 8, bottom: 8, containLabel: true },
   }
 
-  return <ReactECharts option={option} style={{ height: 460 }} notMerge />
+  return (
+    <Suspense fallback={<div className="h-[460px] animate-pulse rounded-lg bg-muted/40" />}>
+      <ReactECharts option={option} style={{ height: 460 }} notMerge />
+    </Suspense>
+  )
 }
 
 function SkeletonBlock() {
@@ -379,7 +384,7 @@ export function NumberOnesPage() {
     let albumLongestName = ''
     let albumLongestArtist = ''
 
-    for (const [key, entries] of albumNo1Map) {
+    for (const entries of albumNo1Map.values()) {
       const weeks = entries.map((e) => e.billboard_week)
       const streak = longestStreak(weeks)
       albumNo1Infos.push({
@@ -682,9 +687,11 @@ export function NumberOnesPage() {
   function AnnualSection({
     title,
     items,
+    unit = '首',
   }: {
     title: string
-    items: { year: number; count: number; songs: string }[]
+    items: { year: number; count: number; songs?: string; albums?: string }[]
+    unit?: string
   }) {
     if (items.length === 0) return null
     const maxCount = Math.max(...items.map((r) => r.count), 1)
@@ -703,7 +710,7 @@ export function NumberOnesPage() {
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-3">
                   <span className="font-sans text-[18px] font-semibold tabular-nums">
-                    {row.count} 首
+                    {row.count} {unit}
                   </span>
                   <span className="h-[4px] flex-1 rounded-[2px] bg-muted">
                     <span
@@ -713,7 +720,7 @@ export function NumberOnesPage() {
                   </span>
                 </div>
                 <p className="mt-1.5 font-sans text-[13px] leading-relaxed text-muted-foreground">
-                  {displayName(row.songs)}
+                  {displayName(row.songs ?? row.albums ?? '')}
                 </p>
               </div>
             </div>
@@ -1122,7 +1129,7 @@ export function NumberOnesPage() {
           </div>
 
           <div className="mb-8">
-            <AnnualSection title="每年独特冠军专辑统计" items={computed.albumAnnualNo1} />
+            <AnnualSection title="每年独特冠军专辑统计" items={computed.albumAnnualNo1} unit="张" />
           </div>
 
           <GlassCard className="overflow-hidden p-6">

@@ -1,8 +1,9 @@
+import { lazy, Suspense } from 'react'
 import { useTheme } from '@/hooks/useTheme'
 import { buildChartBase } from './EChartsTheme'
-import { getChartColors } from '@/lib/theme'
-import ReactECharts from 'echarts-for-react'
 import type { WikiSingle } from '@/types/billboard'
+
+const ReactECharts = lazy(() => import('echarts-for-react'))
 
 interface AlbumHistoryEntry {
   week: string
@@ -49,7 +50,6 @@ export function ReleaseTimelineChart({
 }: ReleaseTimelineChartProps) {
   const { isDark } = useTheme()
   const base = buildChartBase(isDark)
-  const colors = getChartColors(isDark)
 
   // Build complete timeline from the album history
   const dates = albumHistory
@@ -101,12 +101,6 @@ export function ReleaseTimelineChart({
   const markLines: any[] = []
 
   if (releaseDate && !isNaN(releaseDate.getTime())) {
-    const idx = labels.findIndex((_, i) => {
-      const d = new Date(current)
-      // We need to find the closest label to releaseDate
-      return false // handled differently below
-    })
-
     // Find the label index closest to releaseDate
     let releaseIdx = -1
     let minDiff = Infinity
@@ -246,5 +240,9 @@ export function ReleaseTimelineChart({
     ],
   }
 
-  return <ReactECharts option={option} style={{ height: 380 }} />
+  return (
+    <Suspense fallback={<div className="h-[380px] animate-pulse rounded-lg bg-muted/40" />}>
+      <ReactECharts option={option} style={{ height: 380 }} />
+    </Suspense>
+  )
 }

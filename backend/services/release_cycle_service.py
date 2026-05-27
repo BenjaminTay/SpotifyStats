@@ -60,8 +60,11 @@ def _get_spotify_token():
             "Content-Type": "application/x-www-form-urlencoded",
         },
     )
-    with urllib.request.urlopen(req, timeout=10) as resp:
-        return json.loads(resp.read().decode())["access_token"]
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            return json.loads(resp.read().decode())["access_token"]
+    except (OSError, urllib.error.URLError, TimeoutError, KeyError, json.JSONDecodeError):
+        return None
 
 
 # ═══════════════════════════════════════════════════════════════════════════

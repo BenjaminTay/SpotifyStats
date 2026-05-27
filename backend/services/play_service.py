@@ -228,7 +228,7 @@ def get_annual_timeline(conn: sqlite3.Connection, min_ms: int, music_only: bool,
         )
         .reset_index()
     )
-    tops = df.groupby("ts_year").apply(_top_track_year).reset_index()
+    tops = df.groupby("ts_year").apply(_top_track_year, include_groups=False).reset_index()
     annual = annual.merge(tops, on="ts_year", how="left")
     annual = annual.sort_values("ts_year")
     return [

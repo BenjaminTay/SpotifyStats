@@ -566,7 +566,8 @@ function LLMTranslationSection({
     setTimeout(() => setNotice(false), 3000)
   }
 
-  const handleProviderChange = (provider: string) => {
+  const handleProviderChange = (provider: string | null) => {
+    if (!provider) return
     const preset = LLM_PROVIDERS.find((p) => p.value === provider)
     update({
       llm_provider: provider,
@@ -1469,7 +1470,7 @@ export function SettingsPage() {
   const [rebuildLoading, setRebuildLoading] = useState(false)
   const [rebuildMsg, setRebuildMsg] = useState('')
   const [chineseStyle, setChineseStyleState] = useState<ChineseStyle>(getChineseStyle)
-  const [profiles, setProfiles] = useState<LLMProfile[]>([])
+  const [profiles] = useState<LLMProfile[]>([])
 
   const handleRebuild = () => {
     setRebuildLoading(true)

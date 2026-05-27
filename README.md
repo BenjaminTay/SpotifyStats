@@ -6,6 +6,8 @@
 
 **架构**：FastAPI 后端 + React 前端（Dashboard、Billboard 周榜、每周榜首、总榜、榜单记录、三个详情子页面含 Genius 歌词与 Wikipedia 百科 AI 结构化数据、设置页面含 LLM 配置档案持久化管理）。Streamlit 原有应用仍可运行。
 
+**性能优化**：后端启动后后台预热默认 Dashboard/Billboard 缓存，大响应启用 gzip，Billboard 全量计算使用 normalized cache key + single-flight 避免重复冷算。前端使用路由级 lazy 分包、共享 in-flight request、延迟预取常用数据；ECharts 与 OpenCC 按需动态加载，减少首次打开页面的静态下载量。
+
 ## 功能
 
 - **总览仪表盘** — 关键指标卡片、月度播放趋势、Top 10 曲目、平台分布、一周听歌热力图
@@ -48,8 +50,11 @@ cd frontend && npm run dev
 # 或启动 Streamlit 前端（端口 8501）
 streamlit run app/main.py
 
-# 运行后端测试（需先启动后端或有 SQLite 数据库）
+# 运行后端测试（使用 SQLite 数据库，只读模式）
 pytest backend/tests/ -v
+
+# 快速验证测试耗时与慢点
+pytest backend/tests/ --durations=20 -q
 ```
 
 浏览器打开 `http://localhost:5173` 使用 React 界面，或 `http://localhost:8000/docs` 查看 API 文档。首次启动会自动将 JSON 数据导入 SQLite 数据库（约需 10-20 秒），后续启动直接读取。
@@ -66,24 +71,32 @@ pytest backend/tests/ -v
 
 行为分析页面使用全量数据以保证分析准确性。视频分析页面仅统计 ≥30s 的播放以排除滑动自动预览的噪音。
 
+## 性能与缓存
+
+- 后端默认预热 `load_plays()` 和 `compute_billboard_data()`，预热后 Dashboard/Billboard 首次访问通常接近热缓存响应；如需调试冷启动，可设置 `SPOTIFY_STATS_WARMUP=0`。
+- Billboard 全量数据使用规范化参数缓存，位置参数和关键字参数会命中同一个 cache key；`singleflight()` 避免预热和用户请求并发时重复计算。
+- `/api/billboard/entity-lists` 直接复用已计算好的 summary/power score 数据生成选择器列表，避免从大 weekly JSON 重建 DataFrame。
+- 前端页面按路由分包，Dashboard/Billboard 使用共享 in-flight request；布局渲染后延迟预取常用数据，减少页面第一次点击等待。
+- ECharts 和 OpenCC 是独立动态 chunk：图表出现时加载 ECharts，用户切换简/繁中文时才加载 OpenCC 字典。
+
 ## 技术栈
 
-- **FastAPI** — 后端 API 框架（76 个端点，依赖注入，自动 Swagger 文档）
-- **React 19** — 前端 UI 框架（TypeScript 6.0，Vite 8，React Router v7）
+- **FastAPI** — 后端 API 框架（76 个端点，依赖注入，自动 Swagger 文档，lifespan 后台缓存预热，gzip 大响应压缩）
+- **React 19** — 前端 UI 框架（TypeScript 6.0，Vite 8，React Router v7，路由级 lazy 分包）
 - **Tailwind CSS v4** — 原子化 CSS 框架（shadcn/ui v4 组件库，`tw-animate-css` 动画）
-- **ECharts 6** — 交互式图表（echarts-for-react）
+- **ECharts 6** — 交互式图表（echarts-for-react，组件内动态加载）
 - **Streamlit** — 原有前端（逐步迁移中）
 - **SQLite** — 本地数据库（87,000+ 条记录，WAL 模式，查询毫秒级）
 - **Pandas** — 数据聚合处理
 - **Pydantic** — API 响应模型与数据校验
-- **Pytest** — 后端测试框架（154 个测试，覆盖 API 和 Service 层）
+- **Pytest** — 后端测试框架（157 个测试，覆盖 API 和 Service 层，session 级缓存预热减少重复冷算）
 
 ## 项目结构
 
 ```
 SpotifyStats/
 ├── backend/                            # FastAPI 后端（新架构）
-│   ├── main.py                         # FastAPI 入口 + CORS + lifespan
+│   ├── main.py                         # FastAPI 入口 + CORS + gzip + lifespan 缓存预热
 │   ├── dependencies.py                 # Depends 依赖注入（PlayFilters / BillboardFilters + get_conn）
 │   ├── api/
 │   │   ├── router.py                   # 顶层路由组装（18 个子路由）
@@ -135,16 +148,17 @@ SpotifyStats/
 │   │   ├── db.py                       # SQLite 连接 + base_filters + load_plays + merge_consecutive_plays
 │   │   ├── utils.py                    # 时区转换 + 平台分类
 │   │   ├── json_helpers.py             # numpy/pandas → JSON 安全序列化
-│   │   ├── cache.py                    # TTL 缓存装饰器（Spotify API 等外部调用）
+│   │   ├── cache.py                    # TTL 缓存装饰器 + single-flight
+│   │   ├── warmup.py                   # 后端启动缓存预热（Dashboard/Billboard）
 │   │   ├── genius/                     # Genius API 客户端（lyricsgenius 封装 + 歌词清洗）
 │   │   ├── import_data.py              # 串流数据 ETL
 │   │   ├── import_account_data.py      # 账号数据 ETL
 │   │   └── version_merge.py            # 专辑版本合并引擎
 │   └── tests/
 │       ├── __init__.py
-│       ├── conftest.py                   # 共享 fixtures（TestClient, default_params）
-│       ├── test_api.py                   # API 层测试（104 个用例，27 类）
-│       └── test_services.py              # Service 层测试（50 个用例，10 类）
+│       ├── conftest.py                   # 共享 fixtures（TestClient, default_params, warm_default_caches）
+│       ├── test_api.py                   # API 层测试
+│       └── test_services.py              # Service 层测试
 ├── app/                                # Streamlit 前端（原架构，逐步替换）
 │   ├── main.py                         # 入口 + 总览仪表盘
 │   ├── db.py                           # 数据库层
@@ -187,12 +201,12 @@ SpotifyStats/
 │   ├── src/
 │   │   ├── components/
 │   │   │   ├── ui/                      # shadcn/ui 组件（含 calendar, popover）
-│   │   │   ├── charts/                  # 图表组件（RankTrendChart, ReleaseTimelineChart 等）
+│   │   │   ├── charts/                  # 图表组件（ECharts 动态加载，RankTrendChart, ReleaseTimelineChart 等）
 │   │   │   ├── layout/                  # 布局（AppLayout, Masthead, ThemeToggle）
 │   │   │   └── shared/                  # 共享组件（GlassCard, KpiCard, WeekSelector 含日历弹窗, ChangeCell, CoverCell, ArtistEnrichmentView, AlbumEnrichmentView, KeyFactsCard, StatsGrid, CareerTimeline, GenreTags, ChartBars, FormattedText）
 │   │   ├── pages/                       # 页面（Dashboard, Billboard, NumberOnes, AllTimeCharts, Records, TrackDetail, ArtistDetail, AlbumDetail, Settings）
-│   │   ├── hooks/                       # 自定义 hooks（数据获取 + 客户端缓存 + 周状态保持 + 导入轮询）
-│   │   ├── lib/                         # API 客户端（GET/PUT/POST/DELETE）、工具函数、主题配置、中文转换
+│   │   ├── hooks/                       # 自定义 hooks（数据获取 + in-flight 缓存 + 周状态保持 + 导入轮询）
+│   │   ├── lib/                         # API 客户端、工具函数、主题配置、OpenCC 动态中文转换
 │   │   └── types/                       # TypeScript 类型定义（dashboard, billboard, settings）
 │   ├── UI_STYLE_GUIDE.md                # 详细 UI 风格指南
 │   ├── index.html

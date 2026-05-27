@@ -18,6 +18,8 @@ def py_val(v):
         return v.isoformat()
     if isinstance(v, np.ndarray):
         return v.tolist()
+    if isinstance(v, (list, tuple, dict, set)):
+        return v
     if isinstance(v, float) and np.isnan(v):
         return None
     try:

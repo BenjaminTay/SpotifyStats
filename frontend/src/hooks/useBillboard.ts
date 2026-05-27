@@ -2,7 +2,32 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { api, type BillboardDataResponse, type WeeklyTrackEntry, type WeeklyAlbumEntry, type WeeklyArtistEntry } from '@/lib/api'
 
 let cachedBillboard: BillboardDataResponse | null = null
+let cachedBillboardRequest: Promise<BillboardDataResponse> | null = null
 let cachedWeekIndex = 0
+let requestVersion = 0
+
+export function loadBillboardData(force = false): Promise<BillboardDataResponse> {
+  if (cachedBillboardRequest) return cachedBillboardRequest
+  if (cachedBillboard && !force) return Promise.resolve(cachedBillboard)
+
+  const version = ++requestVersion
+  const request = api
+    .get<BillboardDataResponse>('/billboard/data')
+    .then((d) => {
+      if (version === requestVersion) cachedBillboard = d
+      return d
+    })
+    .finally(() => {
+      if (cachedBillboardRequest === request) cachedBillboardRequest = null
+    })
+
+  cachedBillboardRequest = request
+  return cachedBillboardRequest
+}
+
+export function preloadBillboardData(): void {
+  void loadBillboardData().catch(() => {})
+}
 
 interface CurrentWeekData {
   tracks: WeeklyTrackEntry[]
@@ -31,20 +56,21 @@ export function useBillboard(initialWeek?: string | null): UseBillboardResult {
   const [weekIndex, setWeekIndex] = useState(cachedWeekIndex)
   const initialWeekApplied = useRef(false)
 
-  const fetchData = useCallback(() => {
+  const fetchData = useCallback((force = false) => {
     setLoading(true)
     setError(null)
-    api
-      .get<BillboardDataResponse>('/billboard/data')
+    loadBillboardData(force)
       .then((d) => {
-        const isFirstLoad = !cachedBillboard
-        cachedBillboard = d
+        const shouldResetWeek = force || weekIndex >= d.meta.all_weeks_desc.length
         setData(d)
-        if (isFirstLoad) setWeekIndex(0)
+        if (shouldResetWeek) {
+          cachedWeekIndex = 0
+          setWeekIndex(0)
+        }
       })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false))
-  }, [])
+  }, [weekIndex])
 
   useEffect(() => {
     if (!cachedBillboard) {
@@ -110,7 +136,7 @@ export function useBillboard(initialWeek?: string | null): UseBillboardResult {
     data,
     loading,
     error,
-    refetch: fetchData,
+    refetch: () => fetchData(true),
     selectedWeek,
     currentWeekData,
     currentIndex: weekIndex,

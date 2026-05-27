@@ -1,4 +1,4 @@
-import { type LucideIcon, Info, CalendarDays, Cake, Zap, Disc, Music, Music2, Building2, Users, Tag, Clock, Globe, Trophy, User } from 'lucide-react'
+import { type LucideIcon, Info, CalendarDays, Cake, Zap, Disc, Music, Music2, Building2, Users, Tag, Clock, Globe, User } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { KeyFact } from '@/types/billboard'
 

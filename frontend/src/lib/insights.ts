@@ -1,10 +1,5 @@
 import type { MonthlyTrendPoint, HourlyDist } from '@/types/dashboard'
 
-const MONTH_NAMES = [
-  '1月', '2月', '3月', '4月', '5月', '6月',
-  '7月', '8月', '9月', '10月', '11月', '12月',
-]
-
 type Season = '春季' | '夏季' | '秋季' | '冬季'
 
 function seasonOf(month: number): Season {
@@ -79,7 +74,6 @@ export function generateMonthlyInsight(data: MonthlyTrendPoint[]): string {
 
   // Seasonal pattern
   const monthsInTopSeason = ranked.filter(([m]) => seasonOf(m) === topSeason[0])
-  const totalPlaysInSeason = monthsInTopSeason.reduce((s, [, p]) => s + p, 0)
 
   if (monthsInTopSeason.length >= 2) {
     parts.push(

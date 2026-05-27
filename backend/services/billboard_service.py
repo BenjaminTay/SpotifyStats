@@ -8,6 +8,7 @@ from functools import lru_cache
 import json
 
 from backend.core.db import get_db, base_filters, merge_consecutive_plays
+from backend.core.cache import singleflight
 from backend.core.json_helpers import py_val as _py_val, df_to_json as _df_to_json
 
 # Weekday labels
@@ -1125,7 +1126,7 @@ def compute_records(weekly, track_summary, top_n, weekly_album=None, weekly_arti
             .apply(lambda g: [
                 {"track_id": int(r["track_id_no2"]), "track_name": str(r["track_name"]), "artist_name": str(r["artist_name"])}
                 for r in g.drop_duplicates(subset=["track_id_no2"]).to_dict("records")
-            ])
+            ], include_groups=False)
             .to_dict()
         )
         records["blocked_tracks_map"] = blocked_detail
@@ -1676,8 +1677,9 @@ def _add_cover_urls(weekly, weekly_album, weekly_artist):
     return weekly, weekly_album, weekly_artist
 
 
+@singleflight
 @lru_cache(maxsize=8)
-def compute_billboard_data(
+def _compute_billboard_data_cached(
     min_ms=30000,
     music_only=True,
     bb_top_n=30,
@@ -1862,7 +1864,7 @@ def compute_billboard_data(
         df["running_peak"] = df.groupby(group_cols)["rank"].cummin()
         df["running_wks"] = df.groupby(group_cols).cumcount() + 1
 
-        def _running_peak_wks(group):
+        def _running_peak_wks(group, key):
             ranks = group["rank"].values
             rp = np.minimum.accumulate(ranks)
             rank_counts = {}
@@ -1871,10 +1873,17 @@ def compute_billboard_data(
                 rank_counts[r] = rank_counts.get(r, 0) + 1
                 result[i] = rank_counts[rp[i]]
             group = group.copy()
+            key = key if isinstance(key, tuple) else (key,)
+            for col, val in zip(group_cols, key):
+                group[col] = val
             group["running_peak_wks"] = result
             return group
 
-        return df.groupby(group_cols, group_keys=False).apply(_running_peak_wks)
+        groups = [
+            _running_peak_wks(group, key)
+            for key, group in df.groupby(group_cols, sort=False)
+        ]
+        return pd.concat(groups, ignore_index=True) if groups else df
 
     weekly = _add_running_metrics(weekly, ["track_id"])
     weekly_album = _add_running_metrics(weekly_album, ["artist_name", "album_name"])
@@ -2045,6 +2054,35 @@ def compute_billboard_data(
     }
 
     return result
+
+
+def compute_billboard_data(
+    min_ms=30000,
+    music_only=True,
+    bb_top_n=30,
+    bb_album_top_n=20,
+    bb_artist_top_n=20,
+    bb_week_start_dow=4,
+    bb_week_start_hour=0,
+    year_start=None,
+    year_end=None,
+):
+    """Compute all Billboard data with normalized cache keys."""
+    return _compute_billboard_data_cached(
+        min_ms,
+        music_only,
+        bb_top_n,
+        bb_album_top_n,
+        bb_artist_top_n,
+        bb_week_start_dow,
+        bb_week_start_hour,
+        year_start,
+        year_end,
+    )
+
+
+compute_billboard_data.cache_clear = _compute_billboard_data_cached.cache_clear
+compute_billboard_data.cache_info = _compute_billboard_data_cached.cache_info
 
 
 def _serialize_records(records):
@@ -2960,29 +2998,32 @@ def get_billboard_entity_lists(min_ms, music_only, bb_top_n, bb_album_top_n, bb_
         min_ms, music_only, bb_top_n, bb_album_top_n, bb_artist_top_n,
         bb_week_start_dow, bb_week_start_hour, year_start, year_end,
     )
-    weekly = pd.DataFrame(data["weekly"])
-    weekly_album = pd.DataFrame(data["weekly_album"])
-    weekly_artist = pd.DataFrame(data["weekly_artist"])
 
-    # Tracks: (display_name, track_id)
-    track_agg = weekly.groupby(["track_id", "track_name", "artist_name"])["play_count"].sum().reset_index()
-    track_agg = track_agg.sort_values("play_count", ascending=False)
+    track_rows = sorted(
+        data["track_summary"],
+        key=lambda r: r.get("total_chart_plays") or 0,
+        reverse=True,
+    )
     tracks = [
         {"display": f"{r['track_name']} — {r['artist_name']}", "track_id": r["track_id"]}
-        for _, r in track_agg.iterrows()
+        for r in track_rows
     ]
 
-    # Albums: (display_name, (album_name, artist_name))
-    album_agg = weekly_album.groupby(["album_name", "artist_name"])["play_count"].sum().reset_index()
-    album_agg = album_agg.sort_values("play_count", ascending=False)
+    album_rows = sorted(
+        data["album_power_scores"],
+        key=lambda r: r.get("power_score") or 0,
+        reverse=True,
+    )
     albums = [
         {"display": f"{r['album_name']} — {r['artist_name']}", "album_name": r["album_name"], "artist_name": r["artist_name"]}
-        for _, r in album_agg.iterrows()
+        for r in album_rows
     ]
 
-    # Artists
-    artist_agg = weekly_artist.groupby("artist_name")["play_count"].sum().reset_index()
-    artist_agg = artist_agg.sort_values("play_count", ascending=False)
-    artists = [{"display": r["artist_name"], "artist_name": r["artist_name"]} for _, r in artist_agg.iterrows()]
+    artist_rows = sorted(
+        data["artist_power_scores"],
+        key=lambda r: r.get("power_score") or 0,
+        reverse=True,
+    )
+    artists = [{"display": r["artist_name"], "artist_name": r["artist_name"]} for r in artist_rows]
 
     return {"tracks": tracks, "albums": albums, "artists": artists}

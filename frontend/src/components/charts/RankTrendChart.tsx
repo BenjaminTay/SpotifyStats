@@ -1,8 +1,8 @@
-import { useState } from 'react'
-import ReactECharts from 'echarts-for-react'
+import { lazy, Suspense, useState } from 'react'
 import { useTheme } from '@/hooks/useTheme'
 import { buildChartBase } from './EChartsTheme'
-import { getChartColors } from '@/lib/theme'
+
+const ReactECharts = lazy(() => import('echarts-for-react'))
 
 interface RankDataPoint {
   week: string
@@ -104,12 +104,10 @@ export function RankTrendChart({
 }: RankTrendChartProps) {
   const { isDark } = useTheme()
   const base = buildChartBase(isDark)
-  const colors = [...getChartColors(isDark)]
 
   const { labels: rawLabels, values } = buildTimeline(data)
 
   const labels = rawLabels.map(formatWeekDisplay)
-  const hasGaps = values.some((v) => v === null)
   const totalPoints = values.length
 
   // ── Zoom: overview vs detail (50-week window) ──
@@ -135,7 +133,6 @@ export function RankTrendChart({
   const validRanks = values.filter((v): v is number => v !== null)
   const peakRank = validRanks.length > 0 ? Math.min(...validRanks) : null
   const peakRuns = peakRank !== null ? findPeakRuns(values, peakRank) : []
-  const singlePeaks = peakRuns.filter((r) => r.length === 1)
   const multiWeekPeaks = peakRuns.filter((r) => r.length > 1)
 
   const series: any[] = [
@@ -423,7 +420,9 @@ export function RankTrendChart({
           </div>
         </div>
       )}
-      <ReactECharts option={option} style={{ height: 360 }} notMerge />
+      <Suspense fallback={<div className="h-[360px] animate-pulse rounded-lg bg-muted/40" />}>
+        <ReactECharts option={option} style={{ height: 360 }} notMerge />
+      </Suspense>
     </div>
   )
 }

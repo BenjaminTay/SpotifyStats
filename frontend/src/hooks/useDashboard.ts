@@ -9,21 +9,42 @@ interface UseDashboardResult {
 }
 
 let cachedData: DashboardFullResponse | null = null
+let cachedRequest: Promise<DashboardFullResponse> | null = null
+let requestVersion = 0
+
+export function loadDashboardData(force = false): Promise<DashboardFullResponse> {
+  if (cachedRequest) return cachedRequest
+  if (cachedData && !force) return Promise.resolve(cachedData)
+
+  const version = ++requestVersion
+  const request = api
+    .get<DashboardFullResponse>('/dashboard/full')
+    .then((d) => {
+      if (version === requestVersion) cachedData = d
+      return d
+    })
+    .finally(() => {
+      if (cachedRequest === request) cachedRequest = null
+    })
+
+  cachedRequest = request
+  return cachedRequest
+}
+
+export function preloadDashboardData(): void {
+  void loadDashboardData().catch(() => {})
+}
 
 export function useDashboard(): UseDashboardResult {
   const [data, setData] = useState<DashboardFullResponse | null>(cachedData)
   const [loading, setLoading] = useState(!cachedData)
   const [error, setError] = useState<string | null>(null)
 
-  const fetchData = useCallback(() => {
+  const fetchData = useCallback((force = false) => {
     setLoading(true)
     setError(null)
-    api
-      .get<DashboardFullResponse>('/dashboard/full')
-      .then((d) => {
-        cachedData = d
-        setData(d)
-      })
+    loadDashboardData(force)
+      .then(setData)
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false))
   }, [])
@@ -34,5 +55,5 @@ export function useDashboard(): UseDashboardResult {
     }
   }, [fetchData])
 
-  return { data, loading, error, refetch: fetchData }
+  return { data, loading, error, refetch: () => fetchData(true) }
 }

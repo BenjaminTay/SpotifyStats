@@ -1,8 +1,23 @@
+import { useEffect } from 'react'
 import { Outlet } from 'react-router-dom'
 import { Masthead } from './Masthead'
 import { NoiseOverlay } from '@/components/shared/NoiseOverlay'
+import { preloadBillboardData } from '@/hooks/useBillboard'
+import { preloadDashboardData } from '@/hooks/useDashboard'
+import { useChineseTextVersion } from '@/lib/chinese'
 
 export function AppLayout() {
+  useChineseTextVersion()
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      preloadDashboardData()
+      preloadBillboardData()
+    }, 600)
+
+    return () => window.clearTimeout(timer)
+  }, [])
+
   return (
     <div className="relative flex min-h-screen flex-col">
       <NoiseOverlay />

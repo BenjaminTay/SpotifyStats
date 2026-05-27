@@ -1,8 +1,10 @@
-import ReactECharts from 'echarts-for-react'
+import { lazy, Suspense } from 'react'
 import { useTheme } from '@/hooks/useTheme'
 import { buildChartBase } from './EChartsTheme'
 import { getChartColors } from '@/lib/theme'
 import type { MonthlyTrendPoint } from '@/types/dashboard'
+
+const ReactECharts = lazy(() => import('echarts-for-react'))
 
 interface MonthlyTrendChartProps {
   data: MonthlyTrendPoint[]
@@ -58,5 +60,9 @@ export function MonthlyTrendChart({ data }: MonthlyTrendChartProps) {
     },
   }
 
-  return <ReactECharts option={option} style={{ height: 240 }} notMerge />
+  return (
+    <Suspense fallback={<div className="h-[240px] animate-pulse rounded-lg bg-muted/40" />}>
+      <ReactECharts option={option} style={{ height: 240 }} notMerge />
+    </Suspense>
+  )
 }

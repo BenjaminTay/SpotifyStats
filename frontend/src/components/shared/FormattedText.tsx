@@ -1,5 +1,3 @@
-import { useTheme } from '@/hooks/useTheme'
-
 interface FormattedTextProps {
   text: string
   className?: string
