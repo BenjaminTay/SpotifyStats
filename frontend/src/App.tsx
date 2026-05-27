@@ -7,6 +7,7 @@ import { ArtistDetailPage } from '@/pages/ArtistDetailPage'
 import { AlbumDetailPage } from '@/pages/AlbumDetailPage'
 import { NumberOnesPage } from '@/pages/NumberOnesPage'
 import { AllTimeChartsPage } from '@/pages/AllTimeChartsPage'
+import { RecordsPage } from '@/pages/RecordsPage'
 import { SettingsPage } from '@/pages/SettingsPage'
 
 function App() {
@@ -21,6 +22,7 @@ function App() {
           <Route path="/billboard/album/:albumName" element={<AlbumDetailPage />} />
           <Route path="/billboard/number-ones" element={<NumberOnesPage />} />
           <Route path="/billboard/all-time" element={<AllTimeChartsPage />} />
+          <Route path="/billboard/records" element={<RecordsPage />} />
           <Route path="/settings" element={<SettingsPage />} />
         </Route>
       </Routes>

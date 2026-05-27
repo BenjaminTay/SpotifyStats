@@ -251,61 +251,152 @@ class TestPlayService:
 # ═══════════════════════════════════════════════════════════════════════════
 
 class TestBillboardService:
-    def test_compute_billboard_data_meta(self):
-        from backend.services.billboard_service import compute_billboard_data
-
-        result = compute_billboard_data(
-            min_ms=30000, music_only=True,
-            bb_top_n=30, bb_album_top_n=20, bb_artist_top_n=20,
-        )
-        meta = result["meta"]
+    def test_compute_billboard_data_meta(self, billboard_data):
+        meta = billboard_data["meta"]
         assert meta["total_weeks"] >= 150
         assert meta["total_filtered_records"] > 50000
         assert len(meta["all_weeks_asc"]) == meta["total_weeks"]
 
-    def test_compute_billboard_data_weekly(self):
-        from backend.services.billboard_service import compute_billboard_data
-
-        result = compute_billboard_data(bb_top_n=30)
-        weekly = result["weekly"]
+    def test_compute_billboard_data_weekly(self, billboard_data):
+        weekly = billboard_data["weekly"]
         assert len(weekly) > 5000
         entry = weekly[0]
         assert 1 <= entry["rank"] <= 30
         assert isinstance(entry["billboard_week"], str)
         assert isinstance(entry["track_name"], str)
 
-    def test_compute_billboard_data_track_summary(self):
-        from backend.services.billboard_service import compute_billboard_data
-
-        result = compute_billboard_data(bb_top_n=30)
-        ts = result["track_summary"]
+    def test_compute_billboard_data_track_summary(self, billboard_data):
+        ts = billboard_data["track_summary"]
         assert len(ts) > 500
         assert ts[0]["peak_position"] >= 1
         assert ts[0]["weeks_on_chart"] >= 1
 
-    def test_compute_billboard_data_records(self):
+    def test_compute_billboard_data_records(self, billboard_data):
+        records = billboard_data["records"]
+        assert len(records) >= 40
+
+        # ── 冠军圣殿 ──
+        r = records
+        assert len(r["artist_most_no1"]) > 0
+        a1 = r["artist_most_no1"][0]
+        assert "冠单数" in a1
+        assert "冠军专辑数" in a1
+        assert "单曲冠军周数" in a1
+        assert "专辑冠军周数" in a1
+
+        assert len(r["debut_no1"]) > 0
+        assert "track_id" in r["debut_no1"][0]
+        assert "weeks_at_no1" in r["debut_no1"][0]
+        assert len(r["debut_no1_album"]) > 0
+        assert "weeks_at_no1" in r["debut_no1_album"][0]
+
+        assert len(r["return_to_no1"]) > 0
+        assert len(r["return_to_no1_album"]) > 0
+
+        assert len(r["self_replacement_no1"]) > 0
+        assert len(r["self_replacement_no1_album"]) > 0
+        assert "前冠专" in r["self_replacement_no1_album"][0]
+
+        assert len(r["blocker_king"]) > 0
+        assert "阻挡数" in r["blocker_king"][0]
+        assert "走势评分" in r["blocker_king"][0]
+        assert len(r["blocked_tracks_map"]) > 0
+        assert len(r["blocker_king_album"]) > 0
+        assert "走势评分" in r["blocker_king_album"][0]
+        assert len(r["blocked_albums_map"]) > 0
+
+        assert len(r["longest_to_no1"]) > 0
+        assert "登顶周数" in r["longest_to_no1"][0]
+        assert len(r["fastest_to_no1"]) > 0
+
+        # ── 持久传奇 ──
+        for key in ["longest_charting", "longest_charting_album", "longest_streak", "longest_streak_album",
+                     "longest_no_top5", "longest_no_top5_album", "most_weeks_no2_no_no1",
+                     "most_weeks_no2_no_no1_album", "most_reentries", "most_reentries_album",
+                     "longest_consecutive_same_rank", "longest_consecutive_same_rank_album"]:
+            assert len(r[key]) > 0, f"{key} should have data"
+
+        assert len(r["longest_artist_span"]) > 0
+        assert "跨度天数" in r["longest_artist_span"][0]
+
+        # ── 爆发时刻 ──
+        assert "artist_simul" in r
+        assert "album_simul" in r
+        assert len(r["artist_simul_list"]) > 0
+        assert len(r["album_simul_list"]) > 0
+        assert "most_top10_simul" in r
+        assert len(r["biggest_jump"]) > 0
+        assert len(r["biggest_drop"]) > 0
+        assert len(r["fastest_exit_after_no1"]) > 0
+        assert "strongest_week" in r
+
+        # ── 名人堂 ──
+        assert len(r["all_time_greatest"]) > 0
+        assert "走势评分" in r["all_time_greatest"][0]
+        assert len(r["album_power_ranking"]) > 0
+        assert len(r["artist_power_ranking"]) > 0
+        assert len(r["year_end_no1"]) > 0
+        assert len(r["decade_best"]) > 0
+        assert "年代" in r["decade_best"][0]
+
+        # ── 奇趣纪录 ──
+        assert len(r["double_debut"]) > 0
+        assert len(r["triple_no1"]) > 0
+
+        # ── 每周大盘 ──
+        assert len(r["week_total_plays"]) > 0
+        wtp = r["week_total_plays"][0]
+        assert "total_plays" in wtp
+        assert "no1_album" in wtp
+        assert "no1_album_artist" in wtp
+        assert "closest_no1_vs_no2" in r
+        if r["closest_no1_vs_no2"]:
+            assert "gap_pct" in r["closest_no1_vs_no2"]
+        assert "largest_no1_vs_no2" in r
+        if r["largest_no1_vs_no2"]:
+            assert "gap_pct" in r["largest_no1_vs_no2"]
+
+        assert len(r["new_entry_ratio"]) > 0
+        ner = r["new_entry_ratio"]
+        # 验证按活跃度降序排列
+        if len(ner) >= 2:
+            assert ner[0]["新歌占比"] >= ner[-1]["新歌占比"], "new_entry_ratio should be sorted by 新歌占比 descending"
+        assert "大盘播放" in ner[0]
+
+    def test_compute_billboard_data_records_album_fields(self, billboard_data):
+        """验证专辑维度记录的关键字段存在"""
+        records = billboard_data["records"]
+
+        for key in ["longest_charting_album", "longest_streak_album",
+                     "longest_no_top5_album", "most_weeks_no2_no_no1_album",
+                     "most_reentries_album", "longest_consecutive_same_rank_album"]:
+            data = records[key]
+            assert len(data) > 0, f"{key} should have data"
+            assert "album_name" in data[0], f"{key} missing album_name"
+            assert "artist_name" in data[0], f"{key} missing artist_name"
+
+        # 验证 blocked_tracks_map 结构
+        assert isinstance(records["blocked_tracks_map"], dict)
+        first_key = next(iter(records["blocked_tracks_map"]))
+        assert isinstance(records["blocked_tracks_map"][first_key], list)
+
+        # 验证 blocked_albums_map 结构
+        assert isinstance(records["blocked_albums_map"], dict)
+        first_alb_key = next(iter(records["blocked_albums_map"]))
+        assert isinstance(records["blocked_albums_map"][first_alb_key], list)
+
+    def test_compute_billboard_data_power_scores(self, billboard_data):
+        assert len(billboard_data["power_scores"]) > 0
+        assert len(billboard_data["album_power_scores"]) > 0
+        assert len(billboard_data["artist_power_scores"]) > 0
+
+    def test_year_filter(self, billboard_data):
         from backend.services.billboard_service import compute_billboard_data
 
-        result = compute_billboard_data(bb_top_n=30)
-        assert len(result["records"]) >= 12
-
-    def test_compute_billboard_data_power_scores(self):
-        from backend.services.billboard_service import compute_billboard_data
-
-        result = compute_billboard_data(bb_top_n=30)
-        assert len(result["power_scores"]) > 0
-        assert len(result["album_power_scores"]) > 0
-        assert len(result["artist_power_scores"]) > 0
-
-    def test_year_filter(self):
-        from backend.services.billboard_service import compute_billboard_data
-
-        result_all = compute_billboard_data(bb_top_n=30)
         result_2024 = compute_billboard_data(bb_top_n=30, year_start=2024, year_end=2024)
-
-        assert result_2024["meta"]["total_weeks"] < result_all["meta"]["total_weeks"]
+        assert result_2024["meta"]["total_weeks"] < billboard_data["meta"]["total_weeks"]
         assert result_2024["meta"]["total_weeks"] == 52
-        assert len(result_2024["weekly"]) < len(result_all["weekly"])
+        assert len(result_2024["weekly"]) < len(billboard_data["weekly"])
 
     def test_track_history(self):
         from backend.services.billboard_service import get_track_history
@@ -320,10 +411,8 @@ class TestBillboardService:
         assert data["track_id"] == 157
         assert len(data["history"]) >= 1
         assert data["summary"]["weeks_on_chart"] >= 1
-        # Change column
         for h in data["history"]:
             assert h["change"] in ("NEW", "RE", "─") or h["change"].startswith("▲") or h["change"].startswith("▼")
-        # Chart data (may have None gaps inserted for >9 day breaks)
         assert len(data["chart_data"]["x"]) >= len(data["history"])
         assert len(data["chart_data"]["y"]) >= len(data["history"])
 

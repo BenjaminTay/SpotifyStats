@@ -4,14 +4,14 @@
 
 **UI 主题**：「编辑风 × 液态玻璃」— 杂志式排版（Playfair Display 衬线 + Inter 无衬线）+ 毛玻璃卡片材质 + 日/夜双皮肤。详细规范见 `frontend/UI_STYLE_GUIDE.md`。
 
-**架构**：FastAPI 后端 + React 前端（Dashboard、Billboard 周榜、每周榜首、三个详情子页面含 Genius 歌词、设置页面已完成）。Streamlit 原有应用仍可运行。
+**架构**：FastAPI 后端 + React 前端（Dashboard、Billboard 周榜、每周榜首、总榜、榜单记录、三个详情子页面含 Genius 歌词、设置页面已完成）。Streamlit 原有应用仍可运行。
 
 ## 功能
 
 - **总览仪表盘** — 关键指标卡片、月度播放趋势、Top 10 曲目、平台分布、一周听歌热力图
 - **播放分析**（5 个子 Tab）— 时间线（年度/月度/周度报告）、排行榜（曲目/艺人/专辑）、行为分析（快进快退/平台/隐身/随机）、听歌时段热力图、艺人深度分析
 - **年度回顾**（2 个子 Tab）— 自定义年度总结（Wrapped 风格卡片叙事、听歌人格识别）、Wrapped 2025 官方官方年度回顾（艺人竞速、收听性格、官方排行榜）
-- **Billboard 周榜**（12 个子 Tab）— 周榜（单曲/专辑/艺人，支持快速切周、截至当周滚动统计）、每周榜首、单曲历史（含升降列、断档 RE 标记）、艺人榜单、专辑榜单（含版本合并）、走势总榜（Power Score 三维度）、歌曲/艺人/专辑总榜、榜单记录（12 类）、对决（歌曲/专辑/艺人）、发行周期分析（先行曲识别、单曲榜排名线、艺人总览/专辑下钻/多发行对比）
+- **Billboard 周榜**（12 个子 Tab）— 周榜（单曲/专辑/艺人，支持快速切周、截至当周滚动统计）、每周榜首、单曲历史（含升降列、断档 RE 标记）、艺人榜单、专辑榜单（含版本合并）、走势总榜（Power Score 三维度）、歌曲/艺人/专辑总榜、榜单记录（6 大展区 37 项记录，灵感来自 Billboard Chart Beat / Guinness World Records）、对决（歌曲/专辑/艺人）、发行周期分析（先行曲识别、单曲榜排名线、艺人总览/专辑下钻/多发行对比）
 - **单曲详情** — 双 Tab（榜单表现 / Genius 歌词），KPI 卡片（入榜峰值/在榜周数/走势点数等 8 项）、排名趋势图、榜单历史表（含升降列、PK/PK Wks/在榜滚动统计）、Genius 歌词（分段渲染、按需获取、SQLite 缓存）
 - **专辑/艺人详情** — 多 Tab 子页面，KPI 卡片 + 排名趋势图 + 周榜历史表 + 收录曲表现，头部展示 Spotify 元数据（流派/厂牌/发行日期/热度等）
 - **账号中心**（6 个子 Tab）— 音乐库（收藏曲目/专辑/艺人 vs 实际收听）、搜索编年史、音乐画像（粉丝层级分析 + Marquee 推广转化）、播客专区、视频分析（≥30s 有效观看）、个人档案
@@ -76,7 +76,7 @@ pytest backend/tests/ -v
 - **SQLite** — 本地数据库（87,000+ 条记录，WAL 模式，查询毫秒级）
 - **Pandas** — 数据聚合处理
 - **Pydantic** — API 响应模型与数据校验
-- **Pytest** — 后端测试框架（152 个测试，覆盖 API 和 Service 层）
+- **Pytest** — 后端测试框架（154 个测试，覆盖 API 和 Service 层）
 
 ## 项目结构
 
@@ -141,7 +141,7 @@ SpotifyStats/
 │       ├── __init__.py
 │       ├── conftest.py                   # 共享 fixtures（TestClient, default_params）
 │       ├── test_api.py                   # API 层测试（104 个用例，27 类）
-│       └── test_services.py              # Service 层测试（49 个用例，10 类）
+│       └── test_services.py              # Service 层测试（50 个用例，10 类）
 ├── app/                                # Streamlit 前端（原架构，逐步替换）
 │   ├── main.py                         # 入口 + 总览仪表盘
 │   ├── db.py                           # 数据库层
@@ -187,7 +187,7 @@ SpotifyStats/
 │   │   │   ├── charts/                  # 图表组件（RankTrendChart 等）
 │   │   │   ├── layout/                  # 布局（AppLayout, Masthead, ThemeToggle）
 │   │   │   └── shared/                  # 共享组件（GlassCard, KpiCard, WeekSelector 含日历弹窗, ChangeCell 等）
-│   │   ├── pages/                       # 页面（Dashboard, Billboard, NumberOnes, Settings, TrackDetail, ArtistDetail, AlbumDetail）
+│   │   ├── pages/                       # 页面（Dashboard, Billboard, NumberOnes, AllTimeCharts, Records, TrackDetail, ArtistDetail, AlbumDetail, Settings）
 │   │   ├── hooks/                       # 自定义 hooks（数据获取 + 客户端缓存 + 周状态保持 + 导入轮询）
 │   │   ├── lib/                         # API 客户端（GET/PUT/POST/DELETE）、工具函数、主题配置、中文转换
 │   │   └── types/                       # TypeScript 类型定义（dashboard, billboard, settings）

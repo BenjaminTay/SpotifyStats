@@ -158,6 +158,436 @@ export interface BillboardDataResponse {
   artist_power_scores: ArtistPowerScoreEntry[]
   album_track_counts: AlbumTrackCounts[]
   artist_track_counts: ArtistTrackCounts[]
+  records: BillboardRecords
+}
+
+// ── Billboard Records ──────────────────────────────────────────
+
+export interface BillboardRecords {
+  // Section 1: 冠军圣殿
+  artist_most_no1: ArtistMostNo1Record[]
+  debut_no1: DebutNo1Record[]
+  debut_no1_album: DebutNo1AlbumRecord[]
+  return_to_no1: ReturnToNo1Record[]
+  return_to_no1_album: ReturnToNo1AlbumRecord[]
+  self_replacement_no1: SelfReplacementRecord[]
+  self_replacement_no1_album: SelfReplacementAlbumRecord[]
+  blocker_king: BlockerKingRecord[]
+  blocked_tracks_map: Record<number, BlockedTrackInfo[]>
+  blocker_king_album: BlockerKingAlbumRecord[]
+  blocked_albums_map: Record<string, BlockedAlbumInfo[]>
+  longest_to_no1: ClimbToNo1Record[]
+  fastest_to_no1: ClimbToNo1Record[]
+
+  // Section 2: 持久传奇
+  longest_charting: LongestChartingRecord[]
+  longest_charting_album: LongestChartingAlbumRecord[]
+  longest_streak: LongestStreakRecord[]
+  longest_streak_album: LongestStreakAlbumRecord[]
+  longest_no_top5: LongestNoTop5Record[]
+  longest_no_top5_album: LongestNoTop5AlbumRecord[]
+  most_weeks_no2_no_no1: MostWeeksNo2Record[]
+  most_weeks_no2_no_no1_album: MostWeeksNo2AlbumRecord[]
+  most_reentries: MostReentriesRecord[]
+  most_reentries_album: MostReentriesAlbumRecord[]
+  longest_consecutive_same_rank: LongestSameRankRecord[]
+  longest_consecutive_same_rank_album: LongestSameRankAlbumRecord[]
+  longest_artist_span: LongestArtistSpanRecord[]
+
+  // Section 3: 爆发时刻
+  artist_simul: ArtistSimulHighlight
+  artist_simul_list: ArtistSimulEntry[]
+  album_simul: AlbumSimulHighlight
+  album_simul_list: AlbumSimulEntry[]
+  most_top10_simul: Top10SimulHighlight
+  biggest_jump: RankChangeRecord[]
+  biggest_drop: RankChangeRecord[]
+  fastest_exit_after_no1: FastestExitRecord[]
+  strongest_week: StrongestWeekHighlight
+
+  // Section 4: 名人堂
+  all_time_greatest: AllTimeGreatestRecord[]
+  album_power_ranking: AlbumPowerRankingRecord[]
+  artist_power_ranking: ArtistPowerRankingRecord[]
+  year_end_no1: YearEndNo1Record[]
+  decade_best: DecadeBestRecord[]
+
+  // Section 5: 奇趣纪录
+  double_debut: DoubleDebutRecord[]
+  triple_no1: TripleNo1Record[]
+
+  // Section 6: 每周大盘
+  week_total_plays: WeekTotalPlaysRecord[]
+  closest_no1_vs_no2: No1VsNo2Highlight
+  largest_no1_vs_no2: No1VsNo2Highlight
+  new_entry_ratio: NewEntryRatioRecord[]
+}
+
+// ── Section 1: 冠军圣殿 ──────────────────────────────────────
+
+export interface ArtistMostNo1Record {
+  artist_name: string
+  '冠单数': number
+  '单曲冠军周数': number
+  '冠军专辑数': number
+  '专辑冠军周数': number
+}
+
+export interface DebutNo1Record {
+  track_id: number
+  track_name: string
+  artist_name: string
+  first_week: string
+  weeks_at_no1: number
+  weeks_on_chart: number
+}
+
+export interface DebutNo1AlbumRecord {
+  album_name: string
+  artist_name: string
+  first_week: string
+  weeks_at_no1: number
+  weeks_on_chart: number
+}
+
+export interface ReturnToNo1Record {
+  track_id: number
+  track_name: string
+  artist_name: string
+  '首次冠单': string
+  '回冠日期': string
+  '间隔周数': number
+}
+
+export interface ReturnToNo1AlbumRecord {
+  album_name: string
+  artist_name: string
+  '首次冠专': string
+  '回冠日期': string
+  '间隔周数': number
+}
+
+export interface SelfReplacementRecord {
+  '周次': string
+  '艺人': string
+  '前冠单_id': number
+  '前冠单': string
+  '新冠单_id': number
+  '新冠单': string
+}
+
+export interface SelfReplacementAlbumRecord {
+  '周次': string
+  '艺人': string
+  '前冠专': string
+  '新冠专': string
+}
+
+export interface BlockerKingRecord {
+  track_id: number
+  track_name: string
+  artist_name: string
+  '阻挡数': number
+  '走势评分': number
+}
+
+export interface BlockerKingAlbumRecord {
+  album_name: string
+  artist_name: string
+  '阻挡数': number
+  '走势评分': number
+}
+
+export interface BlockedTrackInfo {
+  track_id: number
+  track_name: string
+  artist_name: string
+}
+
+export interface BlockedAlbumInfo {
+  album_name: string
+  artist_name: string
+}
+
+export interface ClimbToNo1Record {
+  track_id: number
+  track_name: string
+  artist_name: string
+  first_week: string
+  first_peak_week: string
+  '登顶周数': number
+}
+
+// ── Section 2: 持久传奇 ──────────────────────────────────────
+
+export interface LongestChartingRecord {
+  track_id: number
+  track_name: string
+  artist_name: string
+  weeks_on_chart: number
+  peak_position: number
+  weeks_at_no1: number
+}
+
+export interface LongestStreakRecord {
+  track_id: number
+  track_name: string
+  artist_name: string
+  '连续周数': number
+  '起始周': string
+  '结束周': string
+}
+
+export interface LongestChartingAlbumRecord {
+  album_name: string
+  artist_name: string
+  weeks_on_chart: number
+  peak_position: number
+  weeks_at_no1: number
+}
+
+export interface LongestStreakAlbumRecord {
+  album_name: string
+  artist_name: string
+  '连续周数': number
+  '起始周': string
+  '结束周': string
+}
+
+export interface LongestNoTop5Record {
+  track_id: number
+  track_name: string
+  artist_name: string
+  weeks_on_chart: number
+  peak_position: number
+}
+
+export interface LongestNoTop5AlbumRecord {
+  album_name: string
+  artist_name: string
+  weeks_on_chart: number
+  peak_position: number
+}
+
+export interface LongestNoTop10Record {
+  track_id: number
+  track_name: string
+  artist_name: string
+  weeks_on_chart: number
+  peak_position: number
+}
+
+export interface MostWeeksNo2Record {
+  track_id: number
+  track_name: string
+  artist_name: string
+  peak_position: number
+  weeks_at_no2: number
+}
+
+export interface MostWeeksNo2AlbumRecord {
+  album_name: string
+  artist_name: string
+  peak_position: number
+  weeks_at_no2: number
+}
+
+export interface MostReentriesRecord {
+  track_id: number
+  track_name: string
+  artist_name: string
+  '回榜次数': number
+  '在榜周数': number
+}
+
+export interface MostReentriesAlbumRecord {
+  album_name: string
+  artist_name: string
+  '回榜次数': number
+  '在榜周数': number
+}
+
+export interface LongestSameRankRecord {
+  track_id: number
+  track_name: string
+  artist_name: string
+  '停留排名': number
+  '连续周数': number
+  '起始周': string
+  '结束周': string
+}
+
+export interface LongestSameRankAlbumRecord {
+  album_name: string
+  artist_name: string
+  '停留排名': number
+  '连续周数': number
+  '起始周': string
+  '结束周': string
+}
+
+export interface LongestArtistSpanRecord {
+  artist_name: string
+  '首次上榜': string
+  '最近上榜': string
+  '上榜歌曲数': number
+  '跨度天数': number
+}
+
+// ── Section 3: 爆发时刻 ──────────────────────────────────────
+
+export interface ArtistSimulHighlight {
+  artist: string
+  week: string
+  count: number
+}
+
+export interface ArtistSimulEntry {
+  billboard_week: string
+  artist_name: string
+  track_count: number
+}
+
+export interface AlbumSimulHighlight {
+  album: string
+  artist: string
+  week: string
+  count: number
+}
+
+export interface AlbumSimulEntry {
+  billboard_week: string
+  artist_name: string
+  album_name: string
+  track_count: number
+}
+
+export interface Top10SimulHighlight {
+  artist: string
+  week: string
+  count: number
+}
+
+export interface RankChangeRecord {
+  track_id: number
+  track_name: string
+  artist_name: string
+  '日期': string
+  '上周排名': number
+  '本周排名': number
+  '变化': number
+}
+
+export interface FastestExitRecord {
+  track_id: number
+  track_name: string
+  artist_name: string
+  first_peak_week: string
+  last_week: string
+  '巅峰后周数': number
+}
+
+export interface StrongestWeekHighlight {
+  week: string
+  total_plays: number
+  tracks_count: number
+}
+
+// ── Section 4: 名人堂 ─────────────────────────────────────────
+
+export interface AllTimeGreatestRecord {
+  track_id: number
+  track_name: string
+  artist_name: string
+  peak_position: number
+  weeks_on_chart: number
+  weeks_at_no1: number
+  '走势评分': number
+}
+
+export interface AlbumPowerRankingRecord {
+  album_name: string
+  artist_name: string
+  peak_position: number
+  weeks_on_chart: number
+  '走势评分': number
+}
+
+export interface ArtistPowerRankingRecord {
+  artist_name: string
+  peak_position: number
+  weeks_on_chart: number
+  '走势评分': number
+}
+
+export interface YearEndNo1Record {
+  year: number
+  track_id: number
+  track_name: string
+  artist_name: string
+  peak: number
+  weeks_on_chart: number
+}
+
+export interface DecadeBestRecord {
+  '年代': string
+  track_id: number
+  track_name: string
+  artist_name: string
+  peak: number
+  weeks_on_chart: number
+  '走势评分': number
+}
+
+// ── Section 5: 奇趣纪录 ──────────────────────────────────────
+
+export interface DoubleDebutRecord {
+  debut_track_id: number
+  debut_track: string
+  debut_artist: string
+  debut_week: string
+  debut_album: string
+}
+
+export interface TripleNo1Record {
+  billboard_week: string
+  '艺人': string
+}
+
+// ── Section 6: 每周大盘 ──────────────────────────────────────
+
+export interface WeekTotalPlaysRecord {
+  billboard_week: string
+  total_plays: number
+  tracks_count: number
+  no1_track_id: number | null
+  no1_track: string | null
+  no1_track_artist: string | null
+  no1_track_plays: number | null
+  no1_album: string | null
+  no1_album_artist: string | null
+  no1_album_plays: number | null
+  no1_chart_artist: string | null
+  no1_chart_artist_plays: number | null
+}
+
+export interface No1VsNo2Highlight {
+  week: string
+  no1_track: string
+  no1_artist: string
+  no1_plays: number
+  no2_track: string
+  no2_artist: string
+  no2_plays: number
+  gap: number
+  gap_pct: number
+}
+
+export interface NewEntryRatioRecord {
+  billboard_week: string
+  '总歌曲数': number
+  '新入榜歌曲数': number
+  '新歌占比': number
 }
 
 // ── Track Detail ────────────────────────────────────────────

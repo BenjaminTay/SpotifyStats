@@ -168,9 +168,9 @@ Pydantic v2 模型定义 API 响应结构，按领域拆分：
 
 测试套件使用生产 SQLite 数据库（只读模式），不创建独立测试数据库。旨在验证计算逻辑对真实数据的正确性。
 
-- **`conftest.py`** — 共享 fixtures：`client`（FastAPI TestClient，module 级复用）、`default_params`（默认过滤参数 session 级共享）
+- **`conftest.py`** — 共享 fixtures：`client`（FastAPI TestClient，module 级复用）、`default_params`（默认过滤参数 session 级共享）、`billboard_data`（`compute_billboard_data()` module 级缓存，消除重复计算）
 - **`test_api.py`** — API 层测试，104 个用例 27 类。覆盖所有 68 个端点：结构验证、数据自洽性、跨端点交叉校验、边界条件（空数据/不存在实体/参数约束）、过滤器变化影响、HTTP 响应格式、Genius 歌词缓存标记
-- **`test_services.py`** — Service 层测试，49 个用例 10 类。直接调用服务函数验证计算逻辑：数值断言、numpy 类型安全、JSON 序列化、TTL 缓存行为、Genius 歌词清洗
+- **`test_services.py`** — Service 层测试，50 个用例 10 类。直接调用服务函数验证计算逻辑：数值断言、numpy 类型安全、JSON 序列化、TTL 缓存行为、Genius 歌词清洗
 
 测试设计模式：真实数据断言（如 `total_plays > 50000`）而非 mock 返回固定值；交叉校验（如 dashboard 的 total_plays 与 timeline 的 annual 求和一致）；边界条件（不存在的艺人返回空、空年份标记 `empty: true`）。
 
@@ -183,12 +183,12 @@ React + Vite + Tailwind CSS v4 + shadcn/ui（样式 `base-nova`，基础色 `neu
 - **样式**：Tailwind CSS v4（`@tailwindcss/vite` 插件），`tw-animate-css` 动画库
 - **主题**：CSS 变量 + `.dark` class 切换，`oklch()` 色彩空间。结构变量在 `@theme inline`，颜色在 `:root` / `.dark`。`useTheme()` hook 提供 localStorage 持久化 + 系统偏好回退
 - **组件**：shadcn/ui v4（base-nova 风格），源码在 `@/components/ui/`
-- **路由**：React Router v7，当前 8 个路由：`/`（DashboardPage，动态洞察）、`/billboard`（BillboardPage，CoverCell 封面，Tab 记忆跨页面保持）、`/billboard/number-ones`（NumberOnesPage，子 Tab + 年份记忆保持）、`/billboard/all-time`（AllTimeChartsPage，总榜三实体 Tab，Tab/筛选/排序/翻页记忆保持）、`/billboard/track/:trackId`（TrackDetailPage，2 Tab：榜单表现/Genius 歌词，艺人名和专辑名可点击跳转详情）、`/billboard/artist/:artistName`（ArtistDetailPage，3 Tab：榜单表现/单曲成绩/专辑成绩，Popularity 视觉进度条）、`/billboard/album/:albumName`（AlbumDetailPage，2 Tab：榜单表现/曲目表现，艺人名可点击跳转详情）、`/settings`（SettingsPage）
+- **路由**：React Router v7，当前 9 个路由：`/`（DashboardPage，动态洞察）、`/billboard`（BillboardPage，CoverCell 封面，Tab 记忆跨页面保持）、`/billboard/number-ones`（NumberOnesPage，子 Tab + 年份记忆保持）、`/billboard/all-time`（AllTimeChartsPage，总榜三实体 Tab，Tab/筛选/排序/翻页记忆保持）、`/billboard/records`（RecordsPage，6 大展区 37 项榜单记录）、`/billboard/track/:trackId`（TrackDetailPage，2 Tab：榜单表现/Genius 歌词，艺人名和专辑名可点击跳转详情）、`/billboard/artist/:artistName`（ArtistDetailPage，3 Tab：榜单表现/单曲成绩/专辑成绩，Popularity 视觉进度条）、`/billboard/album/:albumName`（AlbumDetailPage，2 Tab：榜单表现/曲目表现，艺人名可点击跳转详情）、`/settings`（SettingsPage）
 - **图表**：ECharts 6 + echarts-for-react（月度趋势图）；平台分布使用纯 DOM 进度条
 - **字体**：Inter Variable（`@fontsource-variable/inter`）+ Playfair Display（Google Fonts CDN）
 - **国际化**：中文简繁转换（opencc-js），`displayName()` 覆盖所有页面的名称展示
 - **日期工具**：date-fns + react-day-picker（日历周选择器，`Popover` + `Calendar` 弹窗跳转）
-- **客户端缓存**：模块级变量缓存 API 响应，页面切换时避免重复请求；BillboardPage/NumberOnesPage/AllTimeChartsPage 使用模块级变量记忆 Tab/筛选/排序/翻页状态，导航返回后自动恢复
+- **客户端缓存**：模块级变量缓存 API 响应，页面切换时避免重复请求；BillboardPage/NumberOnesPage/AllTimeChartsPage 使用模块级变量记忆 Tab/筛选/排序/翻页状态，导航返回后自动恢复；RecordsPage 复用 Billboard 模块级缓存
 
 **目录结构**：
 ```
@@ -203,6 +203,7 @@ frontend/src/
 │   ├── BillboardPage.tsx    ← Billboard 周榜（3 Tab + 排名表 + CoverCell 封面 + 详情链接，Tab 记忆跨页面保持）
 │   ├── NumberOnesPage.tsx   ← 每周榜首（3 子 Tab：单曲/专辑/艺人，年度筛选 + Power Score 平局排序 + KPI 卡片 + 冠单表 + 排行 + 柱状图 + 空冠，子 Tab + 年份记忆保持）
 │   ├── AllTimeChartsPage.tsx ← Billboard 总榜（3 实体 Tab：歌曲/专辑/艺人，8 列头排序 + 排名峰值筛选 + 翻页，Tab/筛选/排序/翻页均记忆保持）
+│   ├── RecordsPage.tsx      ← 榜单记录（6 大展区 37 项记录：冠军圣殿/持久传奇/爆发时刻/名人堂/奇趣纪录/每周大盘，React Portal 分页控件）
 │   ├── TrackDetailPage.tsx  ← 单曲详情（2 Tab：榜单表现/歌词，8 KPI + 排名趋势图 + 榜单历史表 + Genius 歌词分段渲染，艺人名和专辑名可点击跳转详情）
 │   ├── ArtistDetailPage.tsx ← 艺人详情（3 Tab：榜单表现/单曲成绩/专辑成绩，6 KPI 卡片 + 封面 + Spotify 元数据 + Popularity 视觉进度条 + 走势点数/排名）
 │   ├── AlbumDetailPage.tsx  ← 专辑详情（2 Tab：榜单表现/曲目表现，6 KPI 卡片 + 封面 + Spotify 元数据 + 视觉播放条 + 走势点数/排名，艺人名可点击跳转详情）
@@ -288,7 +289,7 @@ app/pages/billboard/
 ├── all_time_tracks.py   # Tab 7: 歌曲总榜
 ├── all_time_artists.py  # Tab 8: 艺人总榜
 ├── all_time_albums.py   # Tab 9: 专辑总榜
-├── records.py           # Tab 10: 榜单记录（12 类，含版本合并支持）
+├── records.py           # Tab 10: 榜单记录（6 大展区 37 项记录）
 ├── versus.py            # Tab 11: 对决（歌曲/专辑/艺人对决对比，支持版本合并）
 └── release_cycle/       # Tab 12: 发行周期分析
     ├── __init__.py       # 主路由 + 艺人选择器 + 三个视图切换（st.session_state）
