@@ -11,6 +11,7 @@ const NumberOnesPage = lazy(() => import('@/pages/NumberOnesPage').then((m) => (
 const AllTimeChartsPage = lazy(() => import('@/pages/AllTimeChartsPage').then((m) => ({ default: m.AllTimeChartsPage })))
 const RecordsPage = lazy(() => import('@/pages/RecordsPage').then((m) => ({ default: m.RecordsPage })))
 const SettingsPage = lazy(() => import('@/pages/SettingsPage').then((m) => ({ default: m.SettingsPage })))
+const YearlyReviewPage = lazy(() => import('@/pages/YearlyReviewPage').then((m) => ({ default: m.YearlyReviewPage })))
 const AnalysisLayout = lazy(() => import('@/pages/AnalysisLayout').then((m) => ({ default: m.AnalysisLayout })))
 const AnalysisStatsPage = lazy(() => import('@/pages/AnalysisStatsPage').then((m) => ({ default: m.AnalysisStatsPage })))
 const AnalysisChartsPage = lazy(() => import('@/pages/AnalysisChartsPage').then((m) => ({ default: m.AnalysisChartsPage })))
@@ -64,6 +65,7 @@ function App() {
             <Route path="artists" element={<Navigate to="/analysis/charts?entity=artist" replace />} />
           </Route>
           <Route path="/settings" element={<Suspense fallback={<RouteFallback />}><SettingsPage /></Suspense>} />
+          <Route path="/yearly-review" element={<Suspense fallback={<RouteFallback />}><YearlyReviewPage /></Suspense>} />
         </Route>
       </Routes>
     </BrowserRouter>

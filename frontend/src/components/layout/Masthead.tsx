@@ -2,12 +2,18 @@ import { NavLink } from 'react-router-dom'
 import { ThemeToggle } from './ThemeToggle'
 import { cn } from '@/lib/utils'
 
-const NAV_ITEMS = [
+type NavItem = {
+  to: string
+  label: string
+  disabled?: boolean
+}
+
+const NAV_ITEMS: NavItem[] = [
   { to: '/', label: '总览' },
-  { to: '/billboard', label: 'Billboard' },
   { to: '/analysis', label: '分析' },
+  { to: '/yearly-review', label: '年度回顾' },
+  { to: '/billboard', label: 'Billboard' },
   { to: '/settings', label: '设置' },
-  { to: '#', label: '年度回顾', disabled: true },
 ]
 
 export function Masthead() {

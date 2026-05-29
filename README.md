@@ -12,7 +12,7 @@
 
 - **总览仪表盘** — 关键指标卡片、月度播放趋势、Top 10 曲目、平台分布、一周听歌热力图
 - **播放分析** — stats.fm 风格总体播放统计与个人排行榜：支持 lifetime、今天、本周、今年、最近 4 周、最近 6 个月、自定义日期；可按播放次数 / 播放时长查看歌曲、专辑、艺人排行
-- **年度回顾**（2 个子 Tab）— 自定义年度总结（Wrapped 风格卡片叙事、听歌人格识别）、Wrapped 2025 官方官方年度回顾（艺人竞速、收听性格、官方排行榜）
+- **年度回顾**（2 个子 Tab）— 自定义年度总结（Wrapped 风格渐变卡片叙事、听歌人格识别 6 型、Top 5 排行榜、曲风五大洲全景、24 小时时钟图高峰识别、发现与回归三分类、聆听深度金字塔、特殊时刻、月度钻取、年度对比变化率）+ 官方 Wrapped 2025（俱乐部、艺人竞速、收听年龄、排行榜、存档报告）
 - **Billboard 周榜**（12 个子 Tab）— 周榜（单曲/专辑/艺人，支持快速切周、截至当周滚动统计）、每周榜首、单曲历史（含升降列、断档 RE 标记）、艺人榜单、专辑榜单（含版本合并）、走势总榜（Power Score 三维度）、歌曲/艺人/专辑总榜、榜单记录（6 大展区 37 项记录，灵感来自 Billboard Chart Beat / Guinness World Records）、对决（歌曲/专辑/艺人）、发行周期分析（先行曲识别、单曲榜排名线、艺人总览/专辑下钻/多发行对比）
 - **全局音乐实体详情** — `/music/tracks/*`、`/music/albums/*`、`/music/artists/*` 独立于 Billboard，整合个人播放统计、Billboard 成绩、Genius 歌词、Wikipedia 百科、发行周期等内容；旧 `/billboard/track|album|artist/*` 自动跳转
 - **账号中心**（6 个子 Tab）— 音乐库（收藏曲目/专辑/艺人 vs 实际收听）、搜索编年史、音乐画像（粉丝层级分析 + Marquee 推广转化）、播客专区、视频分析（≥30s 有效观看）、个人档案
@@ -112,7 +112,7 @@ SpotifyStats/
 │   │   ├── behavior.py                 # GET /api/behavior
 │   │   ├── listening_hours.py          # GET /api/listening-hours/*
 │   │   ├── artist_deep.py              # GET /api/artist/{name}/deep-dive
-│   │   ├── wrapped.py                  # GET /api/wrapped/{year}
+│   │   ├── wrapped.py                  # GET /api/wrapped/{available-years,{year}/full}（自定义年度总结）
 │   │   ├── wrapped_hub.py              # GET /api/wrapped-hub/*
 │   │   ├── library.py                  # GET /api/library/*
 │   │   ├── search.py                   # GET /api/search-history/*
@@ -134,6 +134,7 @@ SpotifyStats/
 │   │   ├── analysis_stats_service.py   # 总体播放统计 + 个人排行榜 + 时间范围解析
 │   │   ├── entity_stats_service.py     # 歌曲/专辑/艺人个人播放统计
 │   │   ├── play_service.py             # 播放数据 + 周度时间线 + 听歌人格 + 工作日/平台×小时分析
+│   │   ├── wrapped_service.py          # 自定义年度总结完整数据构建（英雄区/Top榜/曲风全景/时间故事/发现回归/聆听深度/特殊时刻/月度钻取/年度对比）
 │   │   ├── billboard_service.py        # Billboard 计算管线（排名/走势/记录/全时/详情/对决）
 │   │   ├── release_cycle_service.py    # 发行周期分析 + Spotify API + 先行曲识别
 │   │   ├── library_service.py          # 收藏交叉查询
@@ -151,7 +152,8 @@ SpotifyStats/
 │   │   ├── dashboard.py                # 仪表盘
 │   │   ├── timeline.py                 # 时间线 + Wrapped
 │   │   ├── leaderboard.py              # 排行榜
-│   │   └── behavior.py                 # 行为分析 + 听歌时段
+│   │   ├── behavior.py                 # 行为分析 + 听歌时段
+│   │   └── wrapped.py                  # 年度总结完整响应模型
 │   ├── core/                           # 核心工具（从 app/ 原样迁移）
 │   │   ├── db.py                       # SQLite 连接 + base_filters + load_plays + merge_consecutive_plays
 │   │   ├── utils.py                    # 时区转换 + 平台分类
@@ -166,7 +168,8 @@ SpotifyStats/
 │       ├── __init__.py
 │       ├── conftest.py                   # 共享 fixtures（TestClient, default_params, warm_default_caches）
 │       ├── test_api.py                   # API 层测试
-│       └── test_services.py              # Service 层测试
+│       ├── test_services.py              # Service 层测试
+│       └── test_wrapped_full.py          # 年度总结服务专项测试
 ├── app/                                # Streamlit 前端（原架构，逐步替换）
 │   ├── main.py                         # 入口 + 总览仪表盘
 │   ├── db.py                           # 数据库层
@@ -212,10 +215,11 @@ SpotifyStats/
 │   │   │   ├── charts/                  # 图表组件（ECharts 动态加载，RankTrendChart, ReleaseTimelineChart 等）
 │   │   │   ├── layout/                  # 布局（AppLayout, Masthead, ThemeToggle）
 │   │   │   └── shared/                  # 共享组件（GlassCard, KpiCard, WeekSelector 含日历弹窗, ChangeCell, CoverCell, ArtistEnrichmentView, AlbumEnrichmentView, KeyFactsCard, StatsGrid, CareerTimeline, GenreTags, ChartBars, FormattedText）
-│   │   ├── pages/                       # 页面（Dashboard, Billboard, NumberOnes, AllTimeCharts, Records, TrackDetail, ArtistDetail, AlbumDetail, Settings）
-│   │   ├── hooks/                       # 自定义 hooks（数据获取 + in-flight 缓存 + 周状态保持 + 导入轮询）
-│   │   ├── lib/                         # API 客户端、工具函数、主题配置、OpenCC 动态中文转换
-│   │   └── types/                       # TypeScript 类型定义（dashboard, billboard, settings）
+│   │   ├── pages/                       # 页面（Dashboard, YearlyReview, Billboard, NumberOnes, AllTimeCharts, Records, TrackDetail, ArtistDetail, AlbumDetail, Settings）
+│   │   │   └── yearly-review/           # 年度回顾子组件（HeroSection, PersonalityReveal, TopCharts, GenrePanorama, TimeStory, HourClock, MusicMap, DiscoveryReturns, ListeningDepth, SpecialMoments, MonthlyDrilldown, YearComparison, ShareButton, OfficialWrapped）
+│   │   ├── hooks/                       # 自定义 hooks（数据获取 + in-flight 缓存 + 周状态保持 + 导入轮询 + 年度总结序列化预取）
+│   │   ├── lib/                         # API 客户端、工具函数、主题配置、OpenCC 动态中文转换、听歌人格主题、曲风地理映射
+│   │   └── types/                       # TypeScript 类型定义（dashboard, billboard, settings, yearly-review）
 │   ├── UI_STYLE_GUIDE.md                # 详细 UI 风格指南
 │   ├── index.html
 │   └── package.json

@@ -432,6 +432,14 @@ class TestArtistDeep:
 # ═══════════════════════════════════════════════════════════════════════════
 
 class TestWrapped:
+    def test_wrapped_available_years(self, client):
+        r = client.get("/api/wrapped/available-years")
+        assert r.status_code == 200
+        d = r.json()
+        assert "years" in d
+        assert d["years"] == sorted(d["years"])
+        assert 2024 in d["years"]
+
     def test_wrapped_valid_year(self, client, default_params):
         r = client.get("/api/wrapped/2024", params=default_params)
         assert r.status_code == 200
@@ -905,11 +913,29 @@ class TestProfile:
 
 
 class TestWrappedHub:
+    def test_wrapped_hub_available_years(self, client):
+        r = client.get("/api/wrapped-hub/available-years")
+        assert r.status_code == 200
+        d = r.json()
+        assert "years" in d
+        assert d["years"] in ([], [2025])
+
     def test_wrapped_hub(self, client):
         r = client.get("/api/wrapped-hub")
         assert r.status_code == 200
         d = r.json()
         assert "available" in d
+
+    def test_wrapped_hub_cover_fields(self, client):
+        r = client.get("/api/wrapped-hub")
+        assert r.status_code == 200
+        d = r.json()
+        if not d.get("available") or d.get("empty"):
+            return
+        for key in ["top_artists", "top_tracks", "top_albums"]:
+            assert key in d
+            for item in d[key]:
+                assert "cover_url" in item
 
 
 # ═══════════════════════════════════════════════════════════════════════════

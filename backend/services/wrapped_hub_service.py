@@ -5,6 +5,33 @@ import sqlite3
 import pandas as pd
 
 
+def _get_cover_for_name(conn: sqlite3.Connection, name: str, kind: str) -> str:
+    """Look up cover image URL by display name."""
+    if not name:
+        return ""
+    if kind == "artist":
+        r = conn.execute(
+            "SELECT image_url FROM spotify_artist_meta WHERE artist_name = ? LIMIT 1",
+            (name,),
+        ).fetchone()
+    elif kind == "track":
+        r = conn.execute(
+            "SELECT sam.image_url FROM spotify_track_meta stm "
+            "JOIN spotify_album_meta sam ON stm.spotify_album_id = sam.spotify_album_id "
+            "JOIN tracks t ON REPLACE(t.spotify_track_uri, 'spotify:track:', '') = stm.spotify_track_id "
+            "WHERE t.track_name = ? LIMIT 1",
+            (name,),
+        ).fetchone()
+    elif kind == "album":
+        r = conn.execute(
+            "SELECT image_url FROM spotify_album_meta WHERE album_name = ? LIMIT 1",
+            (name,),
+        ).fetchone()
+    else:
+        return ""
+    return (r[0] or "") if r else ""
+
+
 def _resolve_uri_name(conn: sqlite3.Connection, uri: str, uri_type: str = "artist") -> str:
     """Resolve a Spotify URI to a display name using saved data and meta tables."""
     spotify_id = uri.replace(f"spotify:{uri_type}:", "") if uri else ""
@@ -89,19 +116,22 @@ def get_wrapped_hub(conn: sqlite3.Connection) -> dict:
         "top_artists": [
             {"rank": int(r.rank), "name": r.display_name or r.artist_uri,
              "ms_played": int(r.ms_played) if pd.notna(r.ms_played) else 0,
-             "percentile": float(r.percentile) if pd.notna(r.percentile) else None}
+             "percentile": float(r.percentile) if pd.notna(r.percentile) else None,
+             "cover_url": _get_cover_for_name(conn, r.display_name, "artist") if pd.notna(r.display_name) else ""}
             for r in top_artists.itertuples(index=False)
         ],
         "top_tracks": [
             {"rank": int(r.rank), "name": r.display_name or r.track_uri,
              "play_count": int(r.play_count) if pd.notna(r.play_count) else 0,
-             "ms_played": int(r.ms_played) if pd.notna(r.ms_played) else 0}
+             "ms_played": int(r.ms_played) if pd.notna(r.ms_played) else 0,
+             "cover_url": _get_cover_for_name(conn, r.display_name, "track") if pd.notna(r.display_name) else ""}
             for r in top_tracks.itertuples(index=False)
         ],
         "top_albums": [
             {"rank": int(r.rank), "name": r.display_name or r.album_uri,
              "play_count": int(r.play_count) if pd.notna(r.play_count) else 0,
-             "ms_played": int(r.ms_played) if pd.notna(r.ms_played) else 0}
+             "ms_played": int(r.ms_played) if pd.notna(r.ms_played) else 0,
+             "cover_url": _get_cover_for_name(conn, r.display_name, "album") if pd.notna(r.display_name) else ""}
             for r in top_albums.itertuples(index=False)
         ],
         "top_genres": [

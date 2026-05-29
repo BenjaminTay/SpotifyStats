@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Spotify Extended Streaming History 数据分析 Web 应用。从 Spotify 官方导出的 JSON 播放记录中导入数据到 SQLite，通过 FastAPI + React 提供交互式多维度统计仪表盘。
 
-**架构演进**：已从 Streamlit 单体架构迁移到 FastAPI 后端 + React 前端。前端包含 Dashboard、stats.fm 风格播放统计、Billboard 周榜页（含对决、发行周期分析、榜单记录等 12 子 Tab）、全局音乐实体详情页（歌曲/专辑/艺人，含个人播放统计、Billboard 成绩、Genius 歌词、Spotify 元数据展示、Wikipedia 百科 AI 结构化数据）以及设置页面（含 LLM 配置档案持久化管理）。Streamlit 原有应用和后端 API 仍可并行运行。
+**架构演进**：已从 Streamlit 单体架构迁移到 FastAPI 后端 + React 前端。前端包含 Dashboard、stats.fm 风格播放统计、年度回顾页面（自定义总结 + 官方 Wrapped，双 Tab）、Billboard 周榜页（含对决、发行周期分析、榜单记录等 12 子 Tab）、全局音乐实体详情页（歌曲/专辑/艺人，含个人播放统计、Billboard 成绩、Genius 歌词、Spotify 元数据展示、Wikipedia 百科 AI 结构化数据）以及设置页面（含 LLM 配置档案持久化管理）。Streamlit 原有应用和后端 API 仍可并行运行。
 
 **UI 主题**：「编辑风 × 液态玻璃」— 杂志式排版（Playfair Display 衬线标题 + Inter 无衬线正文）+ 毛玻璃卡片材质 + 日/夜双皮肤。详细风格指南见 `frontend/UI_STYLE_GUIDE.md`。
 
@@ -141,8 +141,10 @@ GET  /api/music/{tracks,albums,artists}/*/plays  实体最近播放记录
 GET  /api/behavior                       行为分析（reason_end, reason_start, fwdbtn, shuffle, platform）
 GET  /api/listening-hours/*              听歌时段（heatmap, yearly-heatmap, late-night, weekday-weekend, platform-hourly）
 GET  /api/artist/{name}/deep-dive        艺人深度分析
-GET  /api/wrapped/{year}                 自定义年度总结（含听歌人格识别：Explorer/Loyalist/Binger）
-GET  /api/wrapped-hub/*                  Wrapped 2025 官方
+GET  /api/wrapped/available-years        自定义年度总结可用年份列表
+GET  /api/wrapped/{year}/full            年度总结完整数据（含听歌人格、英雄区、Top榜、曲风全景、时间故事、发现与回归、聆听深度、特殊时刻、月度钻取、年度对比）
+GET  /api/wrapped-hub/available-years    Wrapped 2025 官方可用年份列表
+GET  /api/wrapped-hub                    Wrapped 2025 官方数据（俱乐部、Top榜、收听年龄、存档报告等）
 GET  /api/library/*                      音乐库
 GET  /api/search-history/*               搜索编年史
 GET  /api/insights/*                     音乐画像
@@ -180,7 +182,8 @@ POST /api/import/account                 账号数据导入
 计算逻辑从 Streamlit 页面中提取，不依赖任何 Web 框架。每个服务文件职责单一：
 
 - **`analysis_stats_service.py` / `entity_stats_service.py`** — stats.fm 风格播放统计。前者负责统一时间范围解析、总体统计、个人排行榜、最近播放记录；后者负责歌曲/专辑/艺人个人播放统计、实体排名、Top 250 计数、实体内曲目/专辑拆解。两者继续复用 `load_plays()` 的标准过滤与合并口径
-- **`play_service.py`** — 核心播放数据服务。`load_plays()` 封装，通用 groupby 聚合（按年/月/周/小时/平台/艺术家等），仪表盘 KPI、时间线（年度/月度/周度+下钻）、排行榜、行为分析、听歌时段热力图、工作日vs周末对比、平台×小时分布、年度总结 Wrapped（含听歌人格 Explorer/Loyalist/Binger）等所有基于播放数据的旧端点均调用此服务。Dashboard 相关函数支持可选 `df` 参数，`/dashboard/full` 端点加载一次 plays 后传递给 5 个子函数复用，避免 6 次冗余 SQL 查询。`get_hourly_dist()` 提供逐小时播放量分布，用于前端动态洞察生成
+- **`play_service.py`** — 核心播放数据服务。`load_plays()` 封装，通用 groupby 聚合（按年/月/周/小时/平台/艺术家等），仪表盘 KPI、时间线（年度/月度/周度+下钻）、排行榜、行为分析、听歌时段热力图、工作日vs周末对比、平台×小时分布等所有基于播放数据的旧端点均调用此服务。Dashboard 相关函数支持可选 `df` 参数，`/dashboard/full` 端点加载一次 plays 后传递给 5 个子函数复用，避免 6 次冗余 SQL 查询。`get_hourly_dist()` 提供逐小时播放量分布，用于前端动态洞察生成
+- **`wrapped_service.py`** — 自定义年度总结服务。`get_wrapped_full()` 一次性构建年度总结的完整数据结构（英雄区 KPI + 去年对比变化率、听歌人格识别 Explorer/Loyalist/Binger/深度鉴赏家/午夜诗人/潮流捕手、Top 5 曲目/艺人/专辑含封面与占比、曲风全景五大洲地图映射、逐小时播放分布 + 高峰识别、发现与新欢/老歌回归/遗忘曲目三分类、聆听深度金字塔、特殊时刻识别、月度钻取 Top 3、年度对比变化率），通过 `get_available_years()` 提供可用年份列表。内部复用 `load_plays()` 缓存，单年查询约 1-3 秒
 - **`billboard_service.py`** — Billboard 计算管线。`compute_billboard_data()` 一次性计算 15+ 数据结构（周榜 ×3、总榜 ×3、走势总榜 ×3、榜单记录、每周榜首等），公开函数统一规范化参数后进入内部 cached 函数，避免位置参数/关键字参数造成 cache key 分裂；内部使用 `@lru_cache(maxsize=8)` + `singleflight`，同一组参数首次并发只计算一次。Power Score 只计算一次（原 Streamlit 代码重复计算 ~10 次）。详情和对比功能：`get_track_history()`（升降列 NEW/RE/▲n/▼n/─ + 断档 gap 检测 + 封面图 + 截至当周滚动指标 `running_peak`/`running_wks`/`running_peak_wks`）、`get_artist_chart_detail()`（艺人周榜历史 + 封面图 + 歌曲/专辑表现，含截至当周滚动指标，chart_summary 含 `latest_week`，tracks/albums 含 `cover_url` 与 `first_peak_week`）、`get_album_chart_detail()`（专辑周榜历史 + 封面图 + 收录曲表现，含截至当周滚动指标，chart_summary 含 `latest_week`，tracks 含 `cover_url`）、`get_versus_{track,album,artist}()`（双实体对决对比）、`get_billboard_entity_lists()`（对决搜索选择器，直接复用 `track_summary` / `album_power_scores` / `artist_power_scores`，避免从大 weekly JSON 重建 DataFrame）。`_compute_change_column()` 使用临时 `week_dt` 变量不修改原列以避免日期格式污染
 - **`release_cycle_service.py`** — 发行周期分析。艺人发行列表、单曲 Billboard 历史、专辑周期指标（首周排名、峰值、影响力得分、半衰期）、先行曲识别（三级查找：DB → Spotify API → 最早播放日期）、`compare_releases()` 多发行叠加对比。Spotify API 令牌通过 `@ttl_cached` 缓存（~58 分钟 TTL），网络/解析失败返回 `None` 进入离线回退路径且不会缓存失败值；对比接口支持通过合并子版本名解析到 canonical 专辑，并保留子版本发行日期用于周期对齐
 - **`library_service.py`** — 收藏交叉查询（收藏曲目/专辑/艺人与实际收听对比）
@@ -213,6 +216,7 @@ Pydantic v2 模型定义 API 响应结构，按领域拆分：
 - `timeline.py` — 时间线 + Wrapped 年度总结响应（`AnnualTimelinePoint`, `MonthlyTimelinePoint`, `YearlyWrapped` 含 `personality` 听歌人格字段）
 - `leaderboard.py` — 排行榜响应（`LeaderboardEntry`, `LeaderboardResponse`）
 - `behavior.py` — 行为分析 + 听歌时段响应（`ReasonDist`, `FwdbtnByHour`, `HeatmapResponse` 等）
+- `wrapped.py` — 年度总结完整响应模型（`WrappedFullResponse` 含 hero/personality/top_lists/genre_panorama/time_story/discovery_returns/listening_depth/special_moments/monthly_drilldown/comparison）
 
 #### 测试 (tests/)
 
@@ -221,8 +225,9 @@ Pydantic v2 模型定义 API 响应结构，按领域拆分：
 - **`conftest.py`** — 共享 fixtures：`client`（FastAPI TestClient，module 级复用）、`default_params`（默认过滤参数 session 级共享）、`warm_default_caches`（session 级预热默认 `load_plays()` 与 `compute_billboard_data()`）、`billboard_data`（复用规范化 cache key，消除重复冷算）
 - **`test_api.py`** — API 层测试，覆盖所有主要端点：结构验证、数据自洽性、跨端点交叉校验、边界条件（空数据/不存在实体/参数约束）、过滤器变化影响、HTTP 响应格式、Genius 歌词缓存标记
 - **`test_services.py`** — Service 层测试，直接调用服务函数验证计算逻辑：数值断言、numpy 类型安全、JSON 序列化、TTL 缓存行为、Genius 歌词清洗、缓存预热、Spotify API 离线回退
+- **`test_wrapped_full.py`** — 年度总结服务测试，验证 `get_wrapped_full()` 各年数据结构完整性、听歌人格标签一致性、Top 榜排序正确性、曲风映射覆盖、高峰时段识别、特殊时刻检测、月度钻取与年度对比数据自洽
 
-当前后端测试为 168 个用例，使用真实生产 SQLite 数据库只读验证；默认缓存预热和 cache key 规范化后，全量测试约 44 秒（本机环境可能有少量波动）。测试输出中若出现 urllib3/LibreSSL 警告，属于本机 Python SSL 编译环境提醒，不是项目逻辑问题。
+当前后端测试覆盖 API 层、Service 层及年度总结专项测试（`test_wrapped_full.py`），使用真实生产 SQLite 数据库只读验证；默认缓存预热和 cache key 规范化后，全量测试约 50 秒（本机环境可能有少量波动）。测试输出中若出现 urllib3/LibreSSL 警告，属于本机 Python SSL 编译环境提醒，不是项目逻辑问题。
 
 测试设计模式：真实数据断言（如 `total_plays > 50000`）而非 mock 返回固定值；交叉校验（如 dashboard 的 total_plays 与 timeline 的 annual 求和一致）；边界条件（不存在的艺人返回空、空年份标记 `empty: true`）。
 
@@ -235,12 +240,12 @@ React + Vite + Tailwind CSS v4 + shadcn/ui（样式 `base-nova`，基础色 `neu
 - **样式**：Tailwind CSS v4（`@tailwindcss/vite` 插件），`tw-animate-css` 动画库
 - **主题**：CSS 变量 + `.dark` class 切换，`oklch()` 色彩空间。结构变量在 `@theme inline`，颜色在 `:root` / `.dark`。`useTheme()` hook 提供 localStorage 持久化 + 系统偏好回退
 - **组件**：shadcn/ui v4（base-nova 风格），源码在 `@/components/ui/`
-- **路由**：React Router v7。主导航包含 `/`、`/analysis`、`/billboard`、`/settings`；播放分析使用 `/analysis/stats`（总体统计）与 `/analysis/charts`（个人排行榜）；音乐实体详情使用全局 `/music/tracks/:trackId`、`/music/albums/:albumName`、`/music/artists/:artistName`，旧 `/billboard/track|album|artist/*` 仅做兼容跳转。页面组件均通过 `React.lazy()` 路由级分包，首屏只下载当前路由代码
+- **路由**：React Router v7。主导航包含 `/`、`/analysis`、`/yearly-review`、`/billboard`、`/settings`（顺序：总览 → 分析 → 年度回顾 → Billboard → 设置）；播放分析使用 `/analysis/stats`（总体统计）与 `/analysis/charts`（个人排行榜）；音乐实体详情使用全局 `/music/tracks/:trackId`、`/music/albums/:albumName`、`/music/artists/:artistName`，旧 `/billboard/track|album|artist/*` 仅做兼容跳转。页面组件均通过 `React.lazy()` 路由级分包，首屏只下载当前路由代码
 - **图表**：ECharts 6 + echarts-for-react（月度趋势图、排名趋势图、发行周期图）；图表库通过组件内动态 import 按需加载。平台分布使用纯 DOM 进度条
 - **字体**：Inter Variable（`@fontsource-variable/inter`）+ Playfair Display（Google Fonts CDN）
 - **国际化**：中文简繁转换（opencc-js），`displayName()` 覆盖所有页面的名称展示；OpenCC 转换器按需动态 import，默认「原文」模式不加载大字典包，切换简/繁后通过事件触发页面重渲染
 - **日期工具**：date-fns + react-day-picker（日历周选择器，`Popover` + `Calendar` 弹窗跳转）
-- **客户端缓存**：模块级变量缓存 API 响应和 in-flight Promise，页面切换和后台预取不会重复请求；AppLayout 首屏渲染后延迟预取 Dashboard/Billboard 常用数据；Analysis 统计页等设置读取完成后再请求，避免默认参数重复请求；BillboardPage/NumberOnesPage/AllTimeChartsPage 使用模块级变量记忆 Tab/筛选/排序/翻页状态，导航返回后自动恢复；RecordsPage 复用 Billboard 模块级缓存
+- **客户端缓存**：模块级变量缓存 API 响应和 in-flight Promise，页面切换和后台预取不会重复请求；AppLayout 首屏渲染后延迟预取 Dashboard/Billboard 常用数据；Analysis 统计页等设置读取完成后再请求，避免默认参数重复请求；BillboardPage/NumberOnesPage/AllTimeChartsPage 使用模块级变量记忆 Tab/筛选/排序/翻页状态，导航返回后自动恢复；RecordsPage 复用 Billboard 模块级缓存；年度回顾使用序列化预取（`for...of` + `await`）避免并发请求触发 SQLite 锁竞争导致 500 错误
 
 **目录结构**：
 ```
@@ -252,6 +257,8 @@ frontend/src/
 │   └── shared/      ← 共享组件（GlassCard, KpiCard, WeekSelector 含日历弹窗, NoiseOverlay, PageSwitcher, ChangeCell, CoverCell, ArtistEnrichmentView, AlbumEnrichmentView, KeyFactsCard, StatsGrid, CareerTimeline, GenreTags, ChartBars, FormattedText）
 ├── pages/           ← 页面组件
 │   ├── DashboardPage.tsx    ← 总览仪表盘（动态数据洞察：月度趋势 + 聆听高峰智能分析）
+│   ├── YearlyReviewPage.tsx ← 年度回顾（2 Tab：自定义年度总结 + 官方 Wrapped，年份选择器 + 序列化预取 + ErrorBoundary 容错）
+│   ├── yearly-review/       ← 年度回顾子组件（12 个：HeroSection 渐变英雄区、PersonalityReveal 听歌人格、TopCharts 排行榜、GenrePanorama 曲风全景、TimeStory 时间故事含 HourClock 时钟图、MusicMap 音乐地图、DiscoveryReturns 发现与回归、ListeningDepth 聆听深度、SpecialMoments 特殊时刻、MonthlyDrilldown 月度钻取、YearComparison 年度对比、ShareButton 分享按钮 + OfficialWrapped 官方 Wrapped）
 │   ├── BillboardPage.tsx    ← Billboard 周榜（3 Tab + 排名表 + CoverCell 封面 + 详情链接，Tab 记忆跨页面保持）
 │   ├── NumberOnesPage.tsx   ← 每周榜首（3 子 Tab：单曲/专辑/艺人，年度筛选 + Power Score 平局排序 + KPI 卡片 + 冠单表 + 排行 + 柱状图 + 空冠，子 Tab + 年份记忆保持）
 │   ├── AllTimeChartsPage.tsx ← Billboard 总榜（3 实体 Tab：歌曲/专辑/艺人，8 列头排序 + 排名峰值筛选 + 翻页，Tab/筛选/排序/翻页均记忆保持）
@@ -264,17 +271,21 @@ frontend/src/
 │   ├── useTheme.tsx  ← 主题管理（Context + localStorage）
 │   ├── useDashboard.ts  ← Dashboard 数据获取 + 缓存
 │   ├── useBillboard.ts  ← Billboard 数据获取 + 缓存 + goToWeek 周导航
+│   ├── useYearlyReview.ts ← 年度总结数据获取（模块级 Map 缓存 + in-flight Promise 去重 + 序列化预取，避免 SQLite 并发锁）
 │   └── useSettings.ts   ← 设置 + 版本合并 API + LLM 档案 CRUD + 异步导入轮询
 ├── lib/             ← API 客户端、工具函数
 │   ├── api.ts       ← fetch 封装（GET/PUT/POST/DELETE），类型重导出
 │   ├── theme.ts     ← 图表色盘常量 + getChartColors(isDark)
 │   ├── utils.ts     ← cn() 工具（tailwind-merge + clsx）
 │   ├── chinese.ts   ← 中文简繁转换（opencc-js 动态加载），displayName() 统一入口
-│   └── insights.ts  ← 动态洞察生成（月度趋势季节分析 + 聆听高峰智能识别）
+│   ├── insights.ts  ← 动态洞察生成（月度趋势季节分析 + 聆听高峰智能识别）
+│   ├── personality-themes.ts ← 听歌人格主题定义（6 种人格 × 渐变配色）
+│   └── genre-regions.ts ← 曲风五大洲地理映射
 ├── types/           ← TypeScript 类型定义
 │   ├── dashboard.ts ← Dashboard 响应类型
 │   ├── billboard.ts ← Billboard 响应类型（含 TrackSpotifyMeta / ArtistSpotifyMeta / AlbumSpotifyMeta / LyricsData / StructuredArtist / StructuredAlbum 等）
-│   └── settings.ts  ← 设置（SettingsData / ImportJob / ReleaseGroup / DetectionResult / LLMProfile / LLMProfileDetail 等）
+│   ├── settings.ts  ← 设置（SettingsData / ImportJob / ReleaseGroup / DetectionResult / LLMProfile / LLMProfileDetail 等）
+│   └── yearly-review.ts ← 年度总结完整类型（WrappedFullResponse / WrappedFullHero / PersonalityResult / TopLists / GenrePanorama / TimeStory / DiscoveryReturns / ListeningDepth / SpecialMoments / MonthlyDrilldown / YearComparison / LastYearComparison）
 └── UI_STYLE_GUIDE.md ← 详细 UI 风格指南（新增页面必读）
 ```
 

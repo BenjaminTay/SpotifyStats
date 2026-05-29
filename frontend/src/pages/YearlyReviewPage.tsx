@@ -1,0 +1,209 @@
+import { useState, useEffect, Suspense, lazy, Component } from 'react'
+import { useSearchParams } from 'react-router-dom'
+import { useYearlyReview } from '@/hooks/useYearlyReview'
+import { CustomSummary } from '@/pages/yearly-review/CustomSummary'
+import { ShareButton } from '@/pages/yearly-review/ShareButton'
+import { api } from '@/lib/api'
+import { cn } from '@/lib/utils'
+
+// OfficialWrapped 懒加载
+const OfficialWrapped = lazy(() => import('@/pages/yearly-review/OfficialWrapped').then(m => ({ default: m.OfficialWrapped })))
+
+class ErrorBoundary extends Component<{ children: React.ReactNode }, { error: Error | null }> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props)
+    this.state = { error: null }
+  }
+  static getDerivedStateFromError(error: Error) {
+    return { error }
+  }
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="py-16 text-center">
+          <p className="font-serif text-[28px] font-bold mb-3">页面渲染错误</p>
+          <p className="font-sans text-[13px] text-muted-foreground mb-4 font-mono whitespace-pre-wrap">{this.state.error.message}</p>
+          <p className="font-sans text-[12px] text-muted-foreground/60 font-mono whitespace-pre-wrap max-h-64 overflow-auto">{this.state.error.stack}</p>
+        </div>
+      )
+    }
+    return this.props.children
+  }
+}
+
+function LoadingSkeleton() {
+  return (
+    <div className="space-y-6">
+      <div className="h-64 animate-pulse rounded-2xl bg-muted" />
+      <div className="grid grid-cols-3 gap-6">
+        <div className="h-48 animate-pulse rounded-xl bg-muted" />
+        <div className="h-48 animate-pulse rounded-xl bg-muted" />
+        <div className="h-48 animate-pulse rounded-xl bg-muted" />
+      </div>
+    </div>
+  )
+}
+
+function ErrorState({ message }: { message: string }) {
+  return (
+    <div className="py-16 text-center">
+      <p className="font-sans text-[14px] text-muted-foreground mb-2">加载失败</p>
+      <p className="font-sans text-[13px] text-muted-foreground/60">{message}</p>
+    </div>
+  )
+}
+
+function EmptyState({ year }: { year: number }) {
+  return (
+    <div className="py-16 text-center">
+      <p className="font-serif text-[28px] font-bold mb-3">{year} 年暂无数据</p>
+      <p className="font-sans text-[14px] text-muted-foreground">换个年份试试</p>
+    </div>
+  )
+}
+
+type TabKey = 'custom' | 'official'
+
+export function YearlyReviewPage() {
+  const [searchParams, setSearchParams] = useSearchParams()
+  const [playYears, setPlayYears] = useState<number[]>([])
+  const [wrappedYears, setWrappedYears] = useState<number[]>([])
+  const [activeTab, setActiveTab] = useState<TabKey>('custom')
+  const [yearsLoading, setYearsLoading] = useState(true)
+  const [yearsError, setYearsError] = useState<string | null>(null)
+
+  // Fetch available years on mount.
+  useEffect(() => {
+    let cancelled = false
+    let loaded = 0
+
+    function checkDone() {
+      loaded++
+      if (loaded >= 2 && !cancelled) setYearsLoading(false)
+    }
+
+    api.get<{ years: number[] }>('/wrapped/available-years').then(d => {
+      if (cancelled) return
+      setPlayYears(d.years)
+      checkDone()
+    }).catch(err => {
+      if (cancelled) return
+      setYearsError(err instanceof Error ? err.message : 'Failed to load available years')
+      checkDone()
+    })
+
+    api.get<{ years: number[] }>('/wrapped-hub/available-years').then(d => {
+      if (cancelled) return
+      setWrappedYears(d.years)
+      checkDone()
+    }).catch(() => {
+      // Wrapped-hub is non-critical; silently ignore failures
+      if (!cancelled) checkDone()
+    })
+
+    return () => { cancelled = true }
+  }, [])
+
+  // Per-tab available years
+  const displayYears = activeTab === 'custom' ? playYears : wrappedYears
+
+  // Determine current year: URL param > latest from active tab
+  const yearParam = searchParams.get('year')
+  const currentYear = yearParam && displayYears.includes(parseInt(yearParam))
+    ? parseInt(yearParam)
+    : displayYears[displayYears.length - 1] ?? null
+
+  // Keep the URL year valid for the active tab.
+  useEffect(() => {
+    const parsedYear = yearParam ? parseInt(yearParam) : null
+    if (displayYears.length > 0 && (!parsedYear || !displayYears.includes(parsedYear))) {
+      setSearchParams({ year: String(displayYears[displayYears.length - 1]) })
+    }
+  }, [displayYears, setSearchParams, yearParam])
+
+  const { data, loading, error } = useYearlyReview(
+    activeTab === 'custom' ? (currentYear ?? 0) : 0,
+  )
+
+  return (
+    <>
+      {/* 页面头部 */}
+      <section className="mb-8">
+        <p className="mb-4 font-sans text-[11px] font-bold uppercase tracking-[1.8px] text-accent-foreground">
+          Yearly / Review
+        </p>
+        <h1 className="mb-3 font-serif text-[48px] font-bold leading-[1.06] tracking-[-1.2px]">
+          年度回顾
+        </h1>
+        <p className="max-w-[620px] font-sans text-[16px] leading-relaxed text-muted-foreground">
+          你的年度音乐档案，用数据讲述这一年的听觉故事。
+        </p>
+      </section>
+
+      {/* 年份选择器 + Tab 导航 */}
+      <div className="flex items-center justify-between mb-8">
+        <div className="flex gap-2">
+          {displayYears.map(y => (
+            <button
+              key={y}
+              onClick={() => setSearchParams({ year: String(y) })}
+              className={cn(
+                'px-4 py-1.5 rounded-full font-sans text-[13px] font-medium transition-colors',
+                y === currentYear
+                  ? 'bg-accent-foreground text-card'
+                  : 'bg-muted text-muted-foreground hover:text-foreground',
+              )}
+            >
+              {y}
+            </button>
+          ))}
+        </div>
+        <div className="flex gap-6 border-b border-border">
+          {[
+            { key: 'custom' as TabKey, label: '年度总结' },
+            { key: 'official' as TabKey, label: '官方 Wrapped' },
+          ].map(tab => (
+            <button
+              key={tab.key}
+              onClick={() => setActiveTab(tab.key)}
+              className={cn(
+                'pb-2.5 font-sans text-[13px] font-medium border-b-2 transition-colors -mb-[1px]',
+                activeTab === tab.key
+                  ? 'border-accent-foreground text-foreground font-semibold'
+                  : 'border-transparent text-muted-foreground hover:text-foreground',
+              )}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* 内容区域 */}
+      <ErrorBoundary>
+        {yearsLoading && <LoadingSkeleton />}
+        {yearsError && <ErrorState message={yearsError} />}
+
+        {!yearsLoading && !yearsError && (
+          <>
+            {loading && <LoadingSkeleton />}
+            {error && <ErrorState message={error} />}
+
+            {activeTab === 'custom' && data && !data.empty && (
+              <>
+                <CustomSummary data={data} />
+                <ShareButton />
+              </>
+            )}
+            {activeTab === 'official' && (
+              <Suspense fallback={<LoadingSkeleton />}>
+                <OfficialWrapped />
+              </Suspense>
+            )}
+            {activeTab === 'custom' && data?.empty && <EmptyState year={currentYear ?? 0} />}
+          </>
+        )}
+      </ErrorBoundary>
+    </>
+  )
+}

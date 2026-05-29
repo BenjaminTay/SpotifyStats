@@ -42,8 +42,13 @@ def warm_default_caches(default_params):
 
 
 @pytest.fixture(scope="module")
-def client(warm_default_caches):
-    """FastAPI TestClient — shared across all tests in a module."""
+def client():
+    """FastAPI TestClient — shared across all tests in a module.
+
+    Keep this fixture lightweight so focused selections like
+    ``pytest -k Wrapped`` do not pay Billboard warmup costs. Tests that need
+    expensive shared data should request their own warming fixture explicitly.
+    """
     with TestClient(app) as c:
         yield c
 
