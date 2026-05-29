@@ -1,12 +1,13 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { api } from '@/lib/api'
-import type { ArtistDetailResponse, ArtistEnrichmentResponse } from '@/types/billboard'
+import type { ArtistDetailResponse, ArtistEnrichmentResponse, ReleaseCycleArtistOverviewResponse } from '@/types/billboard'
 import { GlassCard } from '@/components/shared/GlassCard'
 import { ChangeCell } from '@/components/shared/ChangeCell'
 import { CoverCell } from '@/components/shared/CoverCell'
 import { FormattedText } from '@/components/shared/FormattedText'
 import { ArtistEnrichmentView } from '@/components/shared/ArtistEnrichmentView'
+import { EntityStatsPanel } from '@/components/shared/EntityStatsPanel'
 import { RankTrendChart } from '@/components/charts/RankTrendChart'
 import { displayName } from '@/lib/chinese'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -17,9 +18,14 @@ function formatNumber(n: number): string {
   return new Intl.NumberFormat('zh-CN').format(n)
 }
 
+function dateOnly(iso: string): string {
+  if (!iso) return ''
+  return iso.split('T')[0].split(' ')[0]
+}
+
 function formatWeekStart(iso: string): string {
   if (!iso) return ''
-  const dateStr = iso.includes(' ') ? iso.split(' ')[0] : iso
+  const dateStr = dateOnly(iso)
   const d = new Date(dateStr + 'T00:00:00')
   if (isNaN(d.getTime())) return iso
   return `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}`
@@ -27,16 +33,16 @@ function formatWeekStart(iso: string): string {
 
 function formatDateShort(iso: string): string {
   if (!iso) return '—'
-  const dateStr = iso.includes(' ') ? iso.split(' ')[0] : iso
+  const dateStr = dateOnly(iso)
   const d = new Date(dateStr + 'T00:00:00')
-  if (isNaN(d.getTime())) return iso
+  if (isNaN(d.getTime())) return dateStr || iso
   return `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}`
 }
 
 function formatTimeSpan(start: string, end: string): string {
   if (!start || !end) return '—'
-  const s = new Date(start + 'T00:00:00')
-  const e = new Date(end + 'T00:00:00')
+  const s = new Date(dateOnly(start) + 'T00:00:00')
+  const e = new Date(dateOnly(end) + 'T00:00:00')
   if (isNaN(s.getTime()) || isNaN(e.getTime())) return '—'
   const diffMs = e.getTime() - s.getTime()
   const diffWeeks = Math.round(diffMs / (7 * 24 * 60 * 60 * 1000))
@@ -57,13 +63,34 @@ function formatFollowers(n: number): string {
 
 // Module-level enrichment cache — survives navigation away and back
 const enrichmentCache = new Map<string, ArtistEnrichmentResponse>()
+const releaseCycleCache = new Map<string, ReleaseCycleArtistOverviewResponse>()
 
-type TabKey = 'overview' | 'tracks' | 'albums' | 'career'
+type ReleaseCoverSource = {
+  cover_url?: string | null
+  db_album_id?: number | null
+}
+
+function releaseCoverUrl(item: ReleaseCoverSource): string | null {
+  if (item.cover_url) return item.cover_url
+  if (item.db_album_id != null) return `/covers/albums/${item.db_album_id}.jpg`
+  return null
+}
+
+function hasAnyReleaseCover(data: ReleaseCycleArtistOverviewResponse): boolean {
+  return (
+    data.cycles.some((cycle) => releaseCoverUrl(cycle) != null) ||
+    data.release_events.some((event) => releaseCoverUrl(event) != null)
+  )
+}
+
+type TabKey = 'overview' | 'stats' | 'tracks' | 'albums' | 'releases' | 'career'
 
 const TABS: { key: TabKey; label: string }[] = [
-  { key: 'overview', label: '榜单表现' },
+  { key: 'overview', label: 'Billboard' },
+  { key: 'stats', label: '播放统计' },
   { key: 'tracks', label: '单曲成绩' },
   { key: 'albums', label: '专辑成绩' },
+  { key: 'releases', label: '发行周期' },
   { key: 'career', label: '艺人生涯' },
 ]
 
@@ -159,6 +186,16 @@ function PlaysCell({ plays, maxPlays }: { plays: number; maxPlays: number }) {
   )
 }
 
+function formatOptionalRank(rank: number | null | undefined): string {
+  return rank ? `#${rank}` : '—'
+}
+
+function formatReleaseType(type: string): string {
+  if (type === 'album') return '专辑'
+  if (type === 'single') return '单曲'
+  return type
+}
+
 // ═══════════════════════════════════════════════════════════
 // Page
 // ═══════════════════════════════════════════════════════════
@@ -174,6 +211,10 @@ export function ArtistDetailPage() {
   // Enrichment (Wikipedia, Spotify)
   const [enrichment, setEnrichment] = useState<ArtistEnrichmentResponse | null>(null)
   const [enrichmentLoading, setEnrichmentLoading] = useState(false)
+  const [releaseCycle, setReleaseCycle] = useState<ReleaseCycleArtistOverviewResponse | null>(null)
+  const [releaseCycleLoading, setReleaseCycleLoading] = useState(false)
+  const [releaseCycleError, setReleaseCycleError] = useState<string | null>(null)
+  const [releaseCycleFetchedKey, setReleaseCycleFetchedKey] = useState<string | null>(null)
 
   const fetchData = useCallback(() => {
     if (!artistName) return
@@ -210,6 +251,45 @@ export function ArtistDetailPage() {
         .finally(() => setEnrichmentLoading(false))
     }
   }, [activeTab, data, enrichment, enrichmentLoading])
+
+  useEffect(() => {
+    if (activeTab === 'releases' && data?.found && !releaseCycleLoading) {
+      const cacheKey = `${data.artist_name}:release-covers-v2`
+      const shouldFetch = !releaseCycle || !hasAnyReleaseCover(releaseCycle)
+      if (!shouldFetch || releaseCycleFetchedKey === cacheKey) return
+
+      const cached = releaseCycleCache.get(cacheKey)
+      if (cached && hasAnyReleaseCover(cached)) {
+        setReleaseCycle(cached)
+        setReleaseCycleFetchedKey(cacheKey)
+        return
+      }
+      setReleaseCycleLoading(true)
+      setReleaseCycleError(null)
+      setReleaseCycleFetchedKey(cacheKey)
+      api
+        .get<ReleaseCycleArtistOverviewResponse>(
+          '/billboard/release-cycle/artist/' + encodeURIComponent(data.artist_name),
+          { weeks_before: 4, weeks_after: 24 },
+        )
+        .then((result) => {
+          releaseCycleCache.set(cacheKey, result)
+          setReleaseCycle(result)
+        })
+        .catch((e: Error) => setReleaseCycleError(e.message))
+        .finally(() => setReleaseCycleLoading(false))
+    }
+  }, [activeTab, data, releaseCycle, releaseCycleFetchedKey, releaseCycleLoading])
+
+  const releaseCycles = releaseCycle?.cycles ?? []
+  const albumReleaseCycles = releaseCycles.filter((cycle) => cycle.album_type === 'album')
+  const singleReleaseCycles = releaseCycles.filter((cycle) => cycle.album_type === 'single')
+  const releaseTrendPoints = releaseCycle?.rank_trend
+    .filter((entry) => entry.rank != null)
+    .map((entry) => ({
+      week: dateOnly(entry.billboard_week),
+      rank: entry.rank,
+    })) ?? []
 
   return (
     <>
@@ -250,7 +330,7 @@ export function ArtistDetailPage() {
                   className="mb-4 inline-flex items-center gap-1.5 font-sans text-[11px] font-bold uppercase tracking-[1.8px] text-muted-foreground transition-colors hover:text-accent-foreground"
                 >
                   <ArrowLeft className="h-3 w-3" />
-                  Billboard / 艺人详情
+                  Music / 艺人详情
                 </button>
                 <div className="flex items-start gap-6">
                   {data.cover_url && (
@@ -501,6 +581,10 @@ export function ArtistDetailPage() {
               )}
 
               {/* ═══ Tab 2: 单曲成绩 ═══ */}
+              {activeTab === 'stats' && (
+                <EntityStatsPanel kind="artist" artistName={data.artist_name} />
+              )}
+
               {activeTab === 'tracks' && (
                 <div className="mb-8">
                   <KpiStrip
@@ -563,7 +647,7 @@ export function ArtistDetailPage() {
                               </td>
                               <td className="py-3.5 pl-1">
                                 <Link
-                                  to={`/billboard/track/${t.track_id}`}
+                                  to={`/music/tracks/${t.track_id}`}
                                   className="font-sans text-sm font-semibold leading-snug transition-colors hover:text-accent-foreground"
                                 >
                                   {displayName(t.track_name)}
@@ -688,7 +772,7 @@ export function ArtistDetailPage() {
                                 </td>
                                 <td className="py-3.5 pl-1">
                                   <Link
-                                    to={`/billboard/album/${encodeURIComponent(a.album_name)}?artist=${encodeURIComponent(data.artist_name)}`}
+                                    to={`/music/albums/${encodeURIComponent(a.album_name)}?artist=${encodeURIComponent(data.artist_name)}`}
                                     className="font-sans text-sm font-semibold leading-snug transition-colors hover:text-accent-foreground"
                                   >
                                     {displayName(a.album_name)}
@@ -752,6 +836,132 @@ export function ArtistDetailPage() {
                     <p className="py-12 text-center font-sans text-[13px] text-muted-foreground">
                       暂无专辑入榜数据
                     </p>
+                  )}
+                </div>
+              )}
+
+              {/* ═══ Tab 4: 发行周期 ═══ */}
+              {activeTab === 'releases' && (
+                <div className="mb-8">
+                  {releaseCycleLoading ? (
+                    <div className="space-y-4">
+                      <Skeleton className="h-[112px] w-full rounded-[16px]" />
+                      <Skeleton className="h-[340px] w-full rounded-[16px]" />
+                    </div>
+                  ) : releaseCycleError ? (
+                    <GlassCard className="p-8 text-center">
+                      <p className="font-sans text-[14px] text-destructive">
+                        发行周期数据加载失败：{releaseCycleError}
+                      </p>
+                    </GlassCard>
+                  ) : releaseCycle?.summary ? (
+                    <>
+                      <div className="mb-8 grid grid-cols-2 gap-5 lg:grid-cols-4">
+                        <KpiCard
+                          label="发行总数"
+                          value={`${releaseCycle.summary.total_albums}/${releaseCycle.summary.total_singles}`}
+                          sub="专辑 / 单曲"
+                        />
+                        <KpiCard
+                          label="空冠发行"
+                          value={`${releaseCycle.summary.album_debut_no1_count + releaseCycle.summary.single_debut_no1_count}`}
+                          sub={`专辑 ${releaseCycle.summary.album_debut_no1_count} · 单曲 ${releaseCycle.summary.single_debut_no1_count}`}
+                          accent={releaseCycle.summary.album_debut_no1_count + releaseCycle.summary.single_debut_no1_count > 0}
+                        />
+                        <KpiCard
+                          label="同周双空冠"
+                          value={formatNumber(releaseCycle.summary.double_debut_count)}
+                          sub="单曲榜与专辑榜同周空冠"
+                          accent={releaseCycle.summary.double_debut_count > 0}
+                        />
+                        <KpiCard
+                          label="老歌回榜"
+                          value={formatNumber(releaseCycle.summary.total_catalog_reentries)}
+                          sub="新发行带动旧作回流"
+                        />
+                        <KpiCard
+                          label="最大艺人冲击"
+                          value={releaseCycle.summary.max_artist_impact_fmt ?? '—'}
+                          sub={releaseCycle.summary.max_artist_impact_album ? displayName(releaseCycle.summary.max_artist_impact_album) : undefined}
+                          accent
+                        />
+                        <KpiCard
+                          label="最大大盘冲击"
+                          value={releaseCycle.summary.max_market_impact_fmt ?? '—'}
+                          sub={releaseCycle.summary.max_market_impact_album ? displayName(releaseCycle.summary.max_market_impact_album) : undefined}
+                        />
+                        <KpiCard
+                          label="发行事件"
+                          value={formatNumber(releaseCycle.release_events.length)}
+                          sub="落在播放历史附近的发行"
+                        />
+                        <KpiCard
+                          label="统计跨度"
+                          value={formatTimeSpan(releaseCycle.first_play_week ?? '', releaseCycle.last_play_week ?? '')}
+                          sub={releaseCycle.first_play_week && releaseCycle.last_play_week ? `${formatDateShort(releaseCycle.first_play_week)} — ${formatDateShort(releaseCycle.last_play_week)}` : undefined}
+                        />
+                      </div>
+
+                      <div className="mb-8">
+                        <h3 className="mb-4 font-serif text-xl font-semibold">发行事件与艺人走势</h3>
+                        <GlassCard className="p-6">
+                          {releaseTrendPoints.length > 0 ? (
+                            <RankTrendChart data={releaseTrendPoints} topN={30} />
+                          ) : (
+                            <div className="flex h-[220px] items-center justify-center rounded-[12px] border border-dashed border-border">
+                              <p className="font-sans text-[13px] text-muted-foreground">
+                                当前筛选范围内没有艺人榜排名点。
+                              </p>
+                            </div>
+                          )}
+                          {releaseCycle.release_events.length > 0 && (
+                            <div className="mt-5 grid grid-cols-1 gap-3 md:grid-cols-2">
+                              {releaseCycle.release_events.slice(0, 12).map((event, index) => (
+                                <div
+                                  key={`${event.album_name}-${event.release_date}`}
+                                  className="flex items-center gap-3 rounded-[10px] border border-border/70 p-3"
+                                >
+                                  <CoverCell index={index} coverUrl={releaseCoverUrl(event)} />
+                                  <div className="min-w-0">
+                                    <p className="truncate font-sans text-[13px] font-semibold">
+                                      {displayName(event.album_name)}
+                                    </p>
+                                    <p className="mt-0.5 font-sans text-[11px] text-muted-foreground">
+                                      {formatDateShort(event.release_date)} · {formatReleaseType(event.album_type)}
+                                    </p>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </GlassCard>
+                      </div>
+
+                      <div className="mb-8">
+                        <h3 className="mb-4 font-serif text-xl font-semibold">发行列表</h3>
+                        {albumReleaseCycles.length > 0 && (
+                          <ReleaseCycleSection
+                            title="专辑"
+                            cycles={albumReleaseCycles}
+                            artistName={data.artist_name}
+                          />
+                        )}
+                        {singleReleaseCycles.length > 0 && (
+                          <ReleaseCycleSection
+                            title="单曲"
+                            cycles={singleReleaseCycles}
+                            artistName={data.artist_name}
+                            startIndex={albumReleaseCycles.length}
+                          />
+                        )}
+                      </div>
+                    </>
+                  ) : (
+                    <GlassCard className="p-8 text-center">
+                      <p className="font-sans text-[14px] text-muted-foreground">
+                        未找到发行周期数据，可能缺少 Spotify 专辑元数据。
+                      </p>
+                    </GlassCard>
                   )}
                 </div>
               )}
@@ -898,5 +1108,92 @@ export function ArtistDetailPage() {
         </>
       )}
     </>
+  )
+}
+
+type ArtistReleaseCycle = ReleaseCycleArtistOverviewResponse['cycles'][number]
+
+function ReleaseCycleSection({
+  title,
+  cycles,
+  artistName,
+  startIndex = 0,
+}: {
+  title: string
+  cycles: ArtistReleaseCycle[]
+  artistName: string
+  startIndex?: number
+}) {
+  return (
+    <div className="mb-5 last:mb-0">
+      <div className="mb-3 flex items-end justify-between border-b border-border pb-2">
+        <p className="font-sans text-[11px] font-bold uppercase tracking-[1.4px] text-muted-foreground">
+          {title}
+        </p>
+        <p className="font-sans text-[11px] text-muted-foreground">{cycles.length} 个发行</p>
+      </div>
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+        {cycles.map((cycle, index) => (
+          <GlassCard key={`${cycle.album_name}-${cycle.release_date}`} className="p-5">
+            <div className="flex items-start gap-4">
+              <CoverCell index={startIndex + index} coverUrl={releaseCoverUrl(cycle)} />
+              <div className="min-w-0 flex-1">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="min-w-0">
+                    <p className="truncate font-sans text-[14px] font-semibold">
+                      {displayName(cycle.album_name)}
+                    </p>
+                    <p className="mt-1 font-sans text-[12px] text-muted-foreground">
+                      {formatDateShort(cycle.release_date)} · {formatReleaseType(cycle.album_type)}
+                    </p>
+                  </div>
+                  <Link
+                    to={`/music/albums/${encodeURIComponent(cycle.album_name)}?artist=${encodeURIComponent(artistName)}`}
+                    className="shrink-0 font-sans text-[12px] font-semibold text-accent-foreground transition-opacity hover:opacity-80"
+                  >
+                    查看
+                  </Link>
+                </div>
+                <div className="mt-4 grid grid-cols-4 gap-3">
+                  <MiniReleaseStat label="空降" value={formatOptionalRank(cycle.metrics.debut_rank)} />
+                  <MiniReleaseStat label="Peak" value={formatOptionalRank(cycle.metrics.peak_rank)} accent={cycle.metrics.peak_rank === 1} />
+                  <MiniReleaseStat label="在榜" value={`${cycle.metrics.weeks_on_chart || 0}`} />
+                  <MiniReleaseStat label="冲击" value={cycle.metrics.artist_impact_fmt ?? (cycle.metrics.artist_impact != null ? cycle.metrics.artist_impact.toFixed(2) : '—')} />
+                </div>
+                {cycle.sub_albums && (
+                  <p className="mt-3 line-clamp-2 font-sans text-[11px] text-muted-foreground">
+                    含合并子版本
+                  </p>
+                )}
+              </div>
+            </div>
+          </GlassCard>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function MiniReleaseStat({
+  label,
+  value,
+  accent,
+}: {
+  label: string
+  value: string
+  accent?: boolean
+}) {
+  return (
+    <div>
+      <p className="font-sans text-[9px] font-bold uppercase tracking-[1px] text-muted-foreground">
+        {label}
+      </p>
+      <p
+        className="mt-1 font-serif text-[22px] font-bold leading-none"
+        style={accent ? { color: 'var(--accent-foreground)' } : undefined}
+      >
+        {value}
+      </p>
+    </div>
   )
 }

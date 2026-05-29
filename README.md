@@ -4,18 +4,17 @@
 
 **UI 主题**：「编辑风 × 液态玻璃」— 杂志式排版（Playfair Display 衬线 + Inter 无衬线）+ 毛玻璃卡片材质 + 日/夜双皮肤。详细规范见 `frontend/UI_STYLE_GUIDE.md`。
 
-**架构**：FastAPI 后端 + React 前端（Dashboard、Billboard 周榜、每周榜首、总榜、榜单记录、三个详情子页面含 Genius 歌词与 Wikipedia 百科 AI 结构化数据、设置页面含 LLM 配置档案持久化管理）。Streamlit 原有应用仍可运行。
+**架构**：FastAPI 后端 + React 前端（Dashboard、stats.fm 风格播放统计、Billboard 周榜、每周榜首、总榜、榜单记录、全局音乐实体详情页含个人播放统计 / Billboard 成绩 / Genius 歌词 / Wikipedia 百科、设置页面含 LLM 配置档案持久化管理）。Streamlit 原有应用仍可运行。
 
-**性能优化**：后端启动后后台预热默认 Dashboard/Billboard 缓存，大响应启用 gzip，Billboard 全量计算使用 normalized cache key + single-flight 避免重复冷算。前端使用路由级 lazy 分包、共享 in-flight request、延迟预取常用数据；ECharts 与 OpenCC 按需动态加载，减少首次打开页面的静态下载量。
+**性能优化**：后端启动后后台预热默认 Dashboard/Analysis/Billboard 缓存，大响应启用 gzip，Billboard 全量计算使用 normalized cache key + single-flight 避免重复冷算，播放统计使用参数化结果缓存。前端使用路由级 lazy 分包、共享 in-flight request、延迟预取常用数据；ECharts 与 OpenCC 按需动态加载，减少首次打开页面的静态下载量。
 
 ## 功能
 
 - **总览仪表盘** — 关键指标卡片、月度播放趋势、Top 10 曲目、平台分布、一周听歌热力图
-- **播放分析**（5 个子 Tab）— 时间线（年度/月度/周度报告）、排行榜（曲目/艺人/专辑）、行为分析（快进快退/平台/隐身/随机）、听歌时段热力图、艺人深度分析
+- **播放分析** — stats.fm 风格总体播放统计与个人排行榜：支持 lifetime、今天、本周、今年、最近 4 周、最近 6 个月、自定义日期；可按播放次数 / 播放时长查看歌曲、专辑、艺人排行
 - **年度回顾**（2 个子 Tab）— 自定义年度总结（Wrapped 风格卡片叙事、听歌人格识别）、Wrapped 2025 官方官方年度回顾（艺人竞速、收听性格、官方排行榜）
 - **Billboard 周榜**（12 个子 Tab）— 周榜（单曲/专辑/艺人，支持快速切周、截至当周滚动统计）、每周榜首、单曲历史（含升降列、断档 RE 标记）、艺人榜单、专辑榜单（含版本合并）、走势总榜（Power Score 三维度）、歌曲/艺人/专辑总榜、榜单记录（6 大展区 37 项记录，灵感来自 Billboard Chart Beat / Guinness World Records）、对决（歌曲/专辑/艺人）、发行周期分析（先行曲识别、单曲榜排名线、艺人总览/专辑下钻/多发行对比）
-- **单曲详情** — 三 Tab（榜单表现 / Genius 歌词 / Wikipedia 百科），KPI 卡片（入榜峰值/在榜周数/走势点数等 8 项）、排名趋势图、榜单历史表（含升降列、PK/PK Wks/在榜滚动统计）、Genius 歌词（分段渲染、按需获取、SQLite 缓存）、Wikipedia 百科扩展数据
-- **专辑/艺人详情** — 多 Tab 子页面（含 AI 百科结构化视图），KPI 卡片 + 排名趋势图 + 周榜历史表 + 收录曲表现，头部展示 Spotify 元数据（流派/厂牌/发行日期/热度等），Wikipedia 百科数据经 LLM 结构化后展示（关键信息/音乐风格/榜单表现/生涯时间线/荣誉等）
+- **全局音乐实体详情** — `/music/tracks/*`、`/music/albums/*`、`/music/artists/*` 独立于 Billboard，整合个人播放统计、Billboard 成绩、Genius 歌词、Wikipedia 百科、发行周期等内容；旧 `/billboard/track|album|artist/*` 自动跳转
 - **账号中心**（6 个子 Tab）— 音乐库（收藏曲目/专辑/艺人 vs 实际收听）、搜索编年史、音乐画像（粉丝层级分析 + Marquee 推广转化）、播客专区、视频分析（≥30s 有效观看）、个人档案
 - **设置** — 集中管理所有参数：数据过滤（最短播放时长/仅音乐/合并连续播放/中文简繁转换）、LLM 翻译与百科结构化（多提供商 API Key 配置 + 命名档案保存/切换）、Billboard 上榜数量与统计周期、专辑版本合并（自动检测/手动创建/已保存组管理）、数据导入（异步进度轮询）
 
@@ -42,7 +41,11 @@ pip install -r requirements.txt
 cd frontend && npm install && cd ..
 
 # 启动 FastAPI 后端（端口 8000，Swagger UI: http://localhost:8000/docs）
-uvicorn backend.main:app --reload
+# 开发时只监听 backend/，避免 --reload 扫描 .venv、frontend/node_modules、data 导致 CPU 持续偏高
+uvicorn backend.main:app --reload --reload-dir backend
+
+# 调试冷启动或暂时不需要预热缓存时，可关闭启动预热
+SPOTIFY_STATS_WARMUP=0 uvicorn backend.main:app --reload --reload-dir backend
 
 # 启动 React 前端（端口 5173，自动代理 /api → 后端 8000）
 cd frontend && npm run dev
@@ -73,10 +76,11 @@ pytest backend/tests/ --durations=20 -q
 
 ## 性能与缓存
 
-- 后端默认预热 `load_plays()` 和 `compute_billboard_data()`，预热后 Dashboard/Billboard 首次访问通常接近热缓存响应；如需调试冷启动，可设置 `SPOTIFY_STATS_WARMUP=0`。
+- 后端默认预热 `load_plays()`、播放统计默认页和 `compute_billboard_data()`，启动后短时间 CPU 占用较高属于正常现象；预热后 Dashboard/Analysis/Billboard 首次访问通常接近热缓存响应。如需调试冷启动，可设置 `SPOTIFY_STATS_WARMUP=0`。
+- 开发模式使用 `uvicorn --reload --reload-dir backend`，只监听后端代码变更；不要让 reloader 扫描整个仓库，否则 `.venv`、`frontend/node_modules`、`data` 等大目录会导致 CPU 持续偏高。
 - Billboard 全量数据使用规范化参数缓存，位置参数和关键字参数会命中同一个 cache key；`singleflight()` 避免预热和用户请求并发时重复计算。
 - `/api/billboard/entity-lists` 直接复用已计算好的 summary/power score 数据生成选择器列表，避免从大 weekly JSON 重建 DataFrame。
-- 前端页面按路由分包，Dashboard/Billboard 使用共享 in-flight request；布局渲染后延迟预取常用数据，减少页面第一次点击等待。
+- 前端页面按路由分包，Dashboard/Billboard/Analysis 使用共享 in-flight request 或参数化缓存；布局渲染后延迟预取常用数据，减少页面第一次点击等待。
 - ECharts 和 OpenCC 是独立动态 chunk：图表出现时加载 ECharts，用户切换简/繁中文时才加载 OpenCC 字典。
 
 ## 技术栈
@@ -89,7 +93,7 @@ pytest backend/tests/ --durations=20 -q
 - **SQLite** — 本地数据库（87,000+ 条记录，WAL 模式，查询毫秒级）
 - **Pandas** — 数据聚合处理
 - **Pydantic** — API 响应模型与数据校验
-- **Pytest** — 后端测试框架（157 个测试，覆盖 API 和 Service 层，session 级缓存预热减少重复冷算）
+- **Pytest** — 后端测试框架（168 个测试，覆盖 API 和 Service 层，session 级缓存预热减少重复冷算）
 
 ## 项目结构
 
@@ -99,7 +103,9 @@ SpotifyStats/
 │   ├── main.py                         # FastAPI 入口 + CORS + gzip + lifespan 缓存预热
 │   ├── dependencies.py                 # Depends 依赖注入（PlayFilters / BillboardFilters + get_conn）
 │   ├── api/
-│   │   ├── router.py                   # 顶层路由组装（18 个子路由）
+│   │   ├── router.py                   # 顶层路由组装
+│   │   ├── analysis.py                 # GET /api/analysis/{overview,stats,charts}
+│   │   ├── music.py                    # GET /api/music/{tracks,albums,artists}/*/stats|plays
 │   │   ├── dashboard.py                # GET /api/dashboard/*（6 端点）
 │   │   ├── timeline.py                 # GET /api/timeline/*
 │   │   ├── leaderboard.py              # GET /api/leaderboard
@@ -125,6 +131,8 @@ SpotifyStats/
 │   │       ├── release_cycle.py        # GET /api/billboard/release-cycle/*（4 端点）
 │   │       └── enrichment.py           # GET /api/billboard/enrichment/{album,artist,track}/*（3 端点）
 │   ├── services/                       # 计算逻辑层
+│   │   ├── analysis_stats_service.py   # 总体播放统计 + 个人排行榜 + 时间范围解析
+│   │   ├── entity_stats_service.py     # 歌曲/专辑/艺人个人播放统计
 │   │   ├── play_service.py             # 播放数据 + 周度时间线 + 听歌人格 + 工作日/平台×小时分析
 │   │   ├── billboard_service.py        # Billboard 计算管线（排名/走势/记录/全时/详情/对决）
 │   │   ├── release_cycle_service.py    # 发行周期分析 + Spotify API + 先行曲识别
@@ -149,7 +157,7 @@ SpotifyStats/
 │   │   ├── utils.py                    # 时区转换 + 平台分类
 │   │   ├── json_helpers.py             # numpy/pandas → JSON 安全序列化
 │   │   ├── cache.py                    # TTL 缓存装饰器 + single-flight
-│   │   ├── warmup.py                   # 后端启动缓存预热（Dashboard/Billboard）
+│   │   ├── warmup.py                   # 后端启动缓存预热（Dashboard/Analysis/Billboard）
 │   │   ├── genius/                     # Genius API 客户端（lyricsgenius 封装 + 歌词清洗）
 │   │   ├── import_data.py              # 串流数据 ETL
 │   │   ├── import_account_data.py      # 账号数据 ETL

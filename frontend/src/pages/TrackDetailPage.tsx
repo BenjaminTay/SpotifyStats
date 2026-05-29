@@ -5,6 +5,7 @@ import type { TrackDetailResponse, LyricsData, TrackEnrichmentResponse } from '@
 import { GlassCard } from '@/components/shared/GlassCard'
 import { ChangeCell } from '@/components/shared/ChangeCell'
 import { FormattedText } from '@/components/shared/FormattedText'
+import { EntityStatsPanel } from '@/components/shared/EntityStatsPanel'
 import { RankTrendChart } from '@/components/charts/RankTrendChart'
 import { displayName } from '@/lib/chinese'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -38,23 +39,25 @@ function formatDuration(ms: number): string {
   return `${min}:${sec.toString().padStart(2, '0')}`
 }
 
-function computeChange(history: TrackDetailResponse['history'], index: number): { type: 'up' | 'down' | 'same' | 'new' | 're'; delta?: number } {
-  if (index === 0) return { type: 'new' }
-  const prev = history[index - 1]
-  const cur = history[index]
-  const delta = prev.rank - cur.rank
-  if (delta > 0) return { type: 'up', delta }
-  if (delta < 0) return { type: 'down', delta: Math.abs(delta) }
+function parseChange(change: string | undefined): { type: 'up' | 'down' | 'same' | 'new' | 're'; delta?: number } {
+  if (change === 'NEW') return { type: 'new' }
+  if (change === 'RE') return { type: 're' }
+  if (change === '─' || change === '—') return { type: 'same' }
+  const up = change?.match(/^▲(\d+)$/)
+  if (up) return { type: 'up', delta: parseInt(up[1]) }
+  const down = change?.match(/^▼(\d+)$/)
+  if (down) return { type: 'down', delta: parseInt(down[1]) }
   return { type: 'same' }
 }
 
 // Module-level enrichment cache — survives navigation away and back
 const enrichmentCache = new Map<string, TrackEnrichmentResponse>()
 
-type TabKey = 'overview' | 'lyrics'
+type TabKey = 'overview' | 'stats' | 'lyrics'
 
 const TABS: { key: TabKey; label: string }[] = [
-  { key: 'overview', label: '榜单表现' },
+  { key: 'overview', label: 'Billboard' },
+  { key: 'stats', label: '播放统计' },
   { key: 'lyrics', label: '歌词' },
 ]
 
@@ -191,7 +194,7 @@ export function TrackDetailPage() {
                   className="mb-4 inline-flex items-center gap-1.5 font-sans text-[11px] font-bold uppercase tracking-[1.8px] text-muted-foreground transition-colors hover:text-accent-foreground"
                 >
                   <ArrowLeft className="h-3 w-3" />
-                  Billboard / 单曲详情
+                  Music / 单曲详情
                 </button>
                 <div className="flex items-start gap-6">
                   {data.cover_url && (
@@ -207,7 +210,7 @@ export function TrackDetailPage() {
                     </h1>
                     <p className="mt-2 font-sans text-[17px] text-muted-foreground">
                       <Link
-                        to={`/billboard/artist/${encodeURIComponent(data.artist_name)}`}
+                        to={`/music/artists/${encodeURIComponent(data.artist_name)}`}
                         className="transition-colors hover:text-accent-foreground"
                       >
                         {displayName(data.artist_name)}
@@ -219,7 +222,7 @@ export function TrackDetailPage() {
                           data.meta.spotify_album_name && (
                             <Link
                               key="album"
-                              to={`/billboard/album/${encodeURIComponent(data.meta.spotify_album_name)}?artist=${encodeURIComponent(data.artist_name)}`}
+                              to={`/music/albums/${encodeURIComponent(data.meta.spotify_album_name)}?artist=${encodeURIComponent(data.artist_name)}`}
                               className="transition-colors hover:text-accent-foreground"
                             >
                               {displayName(data.meta.spotify_album_name)}
@@ -348,8 +351,8 @@ export function TrackDetailPage() {
                         <tbody>
                           {(() => {
                             const maxPlays = Math.max(...data.history.map((e) => e.play_count), 1)
-                            return data.history.map((entry, i) => {
-                              const change = computeChange(data.history, i)
+                            return data.history.map((entry) => {
+                              const change = parseChange(entry.change)
                               const isNewOrRe = change.type === 'new' || change.type === 're'
                               const rankColor = entry.rank === 1 ? 'var(--accent-foreground)' : entry.rank === 2 ? undefined : entry.rank === 3 ? '#C17A4E' : undefined
                               return (
@@ -412,6 +415,10 @@ export function TrackDetailPage() {
                     共 {data.history.length} 周在榜 · 首发 {data.summary.first_week} · 末次 {data.summary.last_week}
                   </p>
                 </>
+              )}
+
+              {activeTab === 'stats' && (
+                <EntityStatsPanel kind="track" trackId={trackId} />
               )}
 
               {/* ═══ Tab 2: 歌词 ═══ */}

@@ -793,6 +793,170 @@ export interface AlbumDetailResponse {
   tracks: AlbumTrackEntry[]
 }
 
+// ── Release Cycle ──────────────────────────────────────────
+
+export interface ReleaseCycleMetrics {
+  debut_rank: number | null
+  peak_rank: number | null
+  weeks_to_peak: number | null
+  weeks_on_chart: number
+  artist_impact: number | null
+  market_impact: number | null
+  artist_impact_fmt?: string
+  market_impact_fmt?: string
+  artist_impact_detail?: Record<string, unknown> | null
+  market_impact_detail?: Record<string, unknown> | null
+  half_life: number | null
+  peak_play_count: number
+  release_week_plays: number
+  pre_release_avg: number
+}
+
+export interface ReleaseCycleTimelineEntry {
+  week_offset: number
+  play_count: number
+  total_ms?: number
+  tracks_count?: number
+}
+
+export interface ReleaseCycleRankEntry {
+  billboard_week?: string
+  week_offset: number
+  rank: number
+  play_count?: number
+}
+
+export interface ReleaseCycleTrackTimelineEntry {
+  week_offset: number
+  track_id: number
+  track_name: string
+  play_count: number
+}
+
+export interface AdvanceSingle {
+  single_name: string
+  release_date: string
+}
+
+export interface AdvanceSingleRank {
+  name: string
+  release_date?: string
+  ranks: ReleaseCycleRankEntry[]
+}
+
+export interface CatalogReentry {
+  track_name: string
+  source_album: string
+  reentry_offset: number
+  weeks_in_chart: number
+}
+
+export interface BonusTrack {
+  track_name: string
+  play_count: number
+  first_appearance: string
+  source_album: string
+}
+
+export interface TrackMatrix {
+  tracks: string[]
+  weeks: number[]
+  data: number[][]
+}
+
+export interface ReleaseCycleAlbumDetailResponse {
+  error?: string
+  album_name: string
+  artist_name: string
+  album_type: string
+  release_date: string
+  release_date_iso: string
+  canonical_name: string
+  primary_name: string
+  group_albums: string[]
+  is_grouped: boolean
+  advance_singles: AdvanceSingle[]
+  metrics: ReleaseCycleMetrics
+  artist_timeline: ReleaseCycleTimelineEntry[]
+  album_timeline: ReleaseCycleTimelineEntry[]
+  track_timelines: ReleaseCycleTrackTimelineEntry[]
+  artist_ranks: ReleaseCycleRankEntry[]
+  album_ranks: ReleaseCycleRankEntry[]
+  total_timeline: ReleaseCycleTimelineEntry[]
+  artist_all_time_median: number | null
+  clean_baseline_start: number | null
+  advance_single_ranks: AdvanceSingleRank[]
+  best_track_ranks: { name: string; ranks: ReleaseCycleRankEntry[] } | null
+  catalog_reentries: CatalogReentry[]
+  bonus_tracks: BonusTrack[]
+  track_matrix: TrackMatrix | null
+}
+
+export interface ReleaseCycleRelease {
+  album_name: string
+  album_type: string
+  release_date: string
+  db_album_id?: number | null
+  spotify_album_id?: string | null
+  canonical_name?: string | null
+  sub_albums?: string | null
+  cover_url?: string | null
+}
+
+export interface ReleaseCycleArtistSummary {
+  total_albums: number
+  total_singles: number
+  album_debut_no1_count: number
+  single_debut_no1_count: number
+  double_debut_count: number
+  max_artist_impact: number | null
+  max_artist_impact_album: string
+  max_market_impact: number | null
+  max_market_impact_album: string
+  total_catalog_reentries: number
+  max_artist_impact_fmt?: string
+  max_market_impact_fmt?: string
+}
+
+export interface ReleaseCycleArtistOverviewResponse {
+  artist_name: string
+  summary: ReleaseCycleArtistSummary | null
+  releases: ReleaseCycleRelease[]
+  rank_trend: Array<{
+    billboard_week: string
+    play_count: number
+    total_ms: number
+    tracks_count: number
+    rank: number | null
+  }>
+  release_events: Array<{
+    album_name: string
+    album_type: string
+    release_date: string
+    db_album_id?: number | null
+    cover_url?: string | null
+  }>
+  first_play_week: string | null
+  last_play_week: string | null
+  cycles: Array<{
+    album_name: string
+    album_type: string
+    release_date: string
+    db_album_id?: number | null
+    spotify_album_id?: string | null
+    canonical_name?: string | null
+    sub_albums?: string | null
+    cover_url?: string | null
+    metrics: ReleaseCycleMetrics
+    artist_timeline: ReleaseCycleTimelineEntry[]
+    album_timeline: ReleaseCycleTimelineEntry[]
+    artist_ranks: ReleaseCycleRankEntry[]
+    album_ranks: ReleaseCycleRankEntry[]
+    total_timeline: ReleaseCycleTimelineEntry[]
+    artist_all_time_median: number | null
+  }>
+}
+
 // ── Spotify Metadata ────────────────────────────────────────
 
 export interface TrackSpotifyMeta {

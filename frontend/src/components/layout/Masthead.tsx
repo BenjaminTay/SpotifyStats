@@ -5,9 +5,9 @@ import { cn } from '@/lib/utils'
 const NAV_ITEMS = [
   { to: '/', label: '总览' },
   { to: '/billboard', label: 'Billboard' },
+  { to: '/analysis', label: '分析' },
   { to: '/settings', label: '设置' },
   { to: '#', label: '年度回顾', disabled: true },
-  { to: '#', label: '分析', disabled: true },
 ]
 
 export function Masthead() {

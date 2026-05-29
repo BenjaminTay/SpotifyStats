@@ -359,11 +359,12 @@ className="rounded-[16px] border border-border bg-card backdrop-blur-[12px] shad
 | 文件 | 职责 |
 |------|------|
 | `src/index.css` | 全局主题变量（`@theme inline` + `:root` + `.dark`） |
-| `src/App.tsx` | 路由定义（`/` + `/billboard`） |
+| `src/App.tsx` | 路由定义（`/` + `/analysis` + `/billboard` + `/music/*`） |
 | `src/lib/theme.ts` | 图表色盘常量 + `getChartColors()` |
 | `src/hooks/useTheme.tsx` | ThemeProvider + useTheme hook |
 | `src/hooks/useDashboard.ts` | Dashboard 数据获取 + 缓存 |
 | `src/hooks/useBillboard.ts` | Billboard 数据获取 + 缓存 + 周导航 |
+| `src/hooks/useAnalysis.ts` | 播放统计、个人排行榜、实体播放统计 API hook |
 | `src/components/layout/AppLayout.tsx` | 全局布局壳（NoiseOverlay + 深色渐变 + Masthead + Outlet） |
 | `src/components/layout/Masthead.tsx` | 粘性顶栏（Logo + Nav + ThemeToggle） |
 | `src/components/layout/ThemeToggle.tsx` | 日/夜切换药丸 |

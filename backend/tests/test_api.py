@@ -577,6 +577,24 @@ class TestReleaseCycle:
         assert len(d["rank_trend"]) > 100
         assert d["summary"] is not None
         assert len(d["cycles"]) > 0
+        assert d["summary"]["max_artist_impact"] is not None
+        assert d["summary"]["max_artist_impact_fmt"] != "—"
+        assert d["cycles"][0]["cover_url"].startswith("/covers/albums/")
+        assert d["releases"][0]["cover_url"].startswith("/covers/albums/")
+        assert d["release_events"][0]["cover_url"].startswith("/covers/albums/")
+
+    def test_artist_overview_release_covers_resolve(self, client, default_params):
+        r = client.get("/api/billboard/release-cycle/artist/Taylor Swift", params=default_params)
+        assert r.status_code == 200
+        d = r.json()
+        target = next(
+            c for c in d["cycles"]
+            if c["album_name"] == "THE TORTURED POETS DEPARTMENT"
+        )
+        assert target["cover_url"].startswith("/covers/albums/")
+
+        cover = client.get(target["cover_url"], follow_redirects=False)
+        assert cover.status_code in (200, 307)
 
     def test_album_detail(self, client, default_params):
         r = client.get(

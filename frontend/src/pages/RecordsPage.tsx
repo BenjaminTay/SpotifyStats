@@ -212,14 +212,14 @@ function PeakNum({ rank }: { rank: number }) {
 }
 
 function TrackCell({ trackId, trackName, artistName, coverUrl }: { trackId?: number; trackName: string; artistName?: string; coverUrl?: string | null }) {
-  const link = trackId != null ? `/billboard/track/${trackId}` : '#'
+  const link = trackId != null ? `/music/tracks/${trackId}` : '#'
   return (
     <div className="flex items-center gap-3">
       <CoverImg url={coverUrl} />
       <div className="min-w-0">
         <Link to={link} className="block truncate font-sans text-[13px] font-semibold transition-colors hover:text-accent-foreground">{displayName(trackName)}</Link>
         {artistName && (
-          <Link to={`/billboard/artist/${encodeURIComponent(artistName)}`} className="block truncate font-sans text-[11px] italic text-muted-foreground transition-colors hover:text-accent-foreground">{displayName(artistName)}</Link>
+          <Link to={`/music/artists/${encodeURIComponent(artistName)}`} className="block truncate font-sans text-[11px] italic text-muted-foreground transition-colors hover:text-accent-foreground">{displayName(artistName)}</Link>
         )}
       </div>
     </div>
@@ -230,7 +230,7 @@ function ArtistCell({ artistName, coverUrl }: { artistName: string; coverUrl?: s
   return (
     <div className="flex items-center gap-3">
       <ArtistCoverImg url={coverUrl} />
-      <Link to={`/billboard/artist/${encodeURIComponent(artistName)}`} className="font-sans text-[13px] font-semibold transition-colors hover:text-accent-foreground">{displayName(artistName)}</Link>
+      <Link to={`/music/artists/${encodeURIComponent(artistName)}`} className="font-sans text-[13px] font-semibold transition-colors hover:text-accent-foreground">{displayName(artistName)}</Link>
     </div>
   )
 }
@@ -240,8 +240,8 @@ function AlbumCell({ albumName, artistName, coverUrl }: { albumName: string; art
     <div className="flex items-center gap-3">
       <CoverImg url={coverUrl} />
       <div className="min-w-0">
-        <Link to={`/billboard/album/${encodeURIComponent(albumName)}`} className="block truncate font-sans text-[13px] font-semibold transition-colors hover:text-accent-foreground">{displayName(albumName)}</Link>
-        <Link to={`/billboard/artist/${encodeURIComponent(artistName)}`} className="block truncate font-sans text-[11px] italic text-muted-foreground transition-colors hover:text-accent-foreground">{displayName(artistName)}</Link>
+        <Link to={`/music/albums/${encodeURIComponent(albumName)}`} className="block truncate font-sans text-[13px] font-semibold transition-colors hover:text-accent-foreground">{displayName(albumName)}</Link>
+        <Link to={`/music/artists/${encodeURIComponent(artistName)}`} className="block truncate font-sans text-[11px] italic text-muted-foreground transition-colors hover:text-accent-foreground">{displayName(artistName)}</Link>
       </div>
     </div>
   )
@@ -350,7 +350,7 @@ function ChampionshipSection({ rec, covers, onWeekClick }: { rec: BillboardRecor
                 unit={no1Type === 'album' ? '张冠军专辑' : '首冠军单曲'}
                 caption={`${r.artist_name} · 冠周 ${no1Type === 'album' ? r['专辑冠军周数'] : r['单曲冠军周数']}`}
                 coverUrl={covers.artist.get(r.artist_name)}
-                linkTo={`/billboard/artist/${encodeURIComponent(r.artist_name)}`}
+                linkTo={`/music/artists/${encodeURIComponent(r.artist_name)}`}
               />
             ))}
           </div>
@@ -459,7 +459,7 @@ function ChampionshipSection({ rec, covers, onWeekClick }: { rec: BillboardRecor
           <>
             {blockerKingSorted.length > 0 && (
               <div className="mb-4">
-                <FeaturedRecord label="最强阻挡" value={blockerKingSorted[0]['阻挡数']} unit="首 Peak #2 歌曲被挡" caption={`${blockerKingSorted[0].track_name} — ${blockerKingSorted[0].artist_name}`} coverUrl={covers.track.get(blockerKingSorted[0].track_id)} linkTo={`/billboard/track/${blockerKingSorted[0].track_id}`} />
+                <FeaturedRecord label="最强阻挡" value={blockerKingSorted[0]['阻挡数']} unit="首 Peak #2 歌曲被挡" caption={`${blockerKingSorted[0].track_name} — ${blockerKingSorted[0].artist_name}`} coverUrl={covers.track.get(blockerKingSorted[0].track_id)} linkTo={`/music/tracks/${blockerKingSorted[0].track_id}`} />
               </div>
             )}
             <MiniRankTable fixed rows={blockerKingSorted} columns={[
@@ -469,7 +469,7 @@ function ChampionshipSection({ rec, covers, onWeekClick }: { rec: BillboardRecor
               { header: <span className="pl-8">被阻挡歌曲</span>, render: (r) => {
                 const blocked: BlockedTrackInfo[] = rec.blocked_tracks_map?.[r.track_id] ?? []
                 if (blocked.length === 0) return <span className="text-[11px] text-muted-foreground">—</span>
-                return <div className="flex flex-wrap gap-1 pl-8">{blocked.map(b => <Link key={b.track_id} to={`/billboard/track/${b.track_id}`} className="inline-flex items-center gap-1 rounded-[4px] bg-muted/50 px-1.5 py-0.5 font-sans text-[11px] transition-colors hover:bg-muted hover:text-accent-foreground">{displayName(b.track_name)}</Link>)}</div>
+                return <div className="flex flex-wrap gap-1 pl-8">{blocked.map(b => <Link key={b.track_id} to={`/music/tracks/${b.track_id}`} className="inline-flex items-center gap-1 rounded-[4px] bg-muted/50 px-1.5 py-0.5 font-sans text-[11px] transition-colors hover:bg-muted hover:text-accent-foreground">{displayName(b.track_name)}</Link>)}</div>
               }},
             ]} />
           </>
@@ -477,7 +477,7 @@ function ChampionshipSection({ rec, covers, onWeekClick }: { rec: BillboardRecor
           <>
             {blockerKingAlbumSorted.length > 0 && (
               <div className="mb-4">
-                <FeaturedRecord label="最强阻挡" value={blockerKingAlbumSorted[0]['阻挡数']} unit="张 Peak #2 专辑被挡" caption={`${blockerKingAlbumSorted[0].album_name} — ${blockerKingAlbumSorted[0].artist_name}`} linkTo={`/billboard/album/${encodeURIComponent(blockerKingAlbumSorted[0].album_name)}`} />
+                <FeaturedRecord label="最强阻挡" value={blockerKingAlbumSorted[0]['阻挡数']} unit="张 Peak #2 专辑被挡" caption={`${blockerKingAlbumSorted[0].album_name} — ${blockerKingAlbumSorted[0].artist_name}`} linkTo={`/music/albums/${encodeURIComponent(blockerKingAlbumSorted[0].album_name)}`} />
               </div>
             )}
             <MiniRankTable fixed rows={blockerKingAlbumSorted} columns={[
@@ -488,7 +488,7 @@ function ChampionshipSection({ rec, covers, onWeekClick }: { rec: BillboardRecor
                 const key = `${r.album_name}||${r.artist_name}`
                 const blocked: BlockedAlbumInfo[] = rec.blocked_albums_map?.[key] ?? []
                 if (blocked.length === 0) return <span className="text-[11px] text-muted-foreground">—</span>
-                return <div className="flex flex-wrap gap-1 pl-8">{blocked.map((b, i) => <Link key={i} to={`/billboard/album/${encodeURIComponent(b.album_name)}`} className="inline-flex items-center gap-1 rounded-[4px] bg-muted/50 px-1.5 py-0.5 font-sans text-[11px] transition-colors hover:bg-muted hover:text-accent-foreground">{displayName(b.album_name)}</Link>)}</div>
+                return <div className="flex flex-wrap gap-1 pl-8">{blocked.map((b, i) => <Link key={i} to={`/music/albums/${encodeURIComponent(b.album_name)}`} className="inline-flex items-center gap-1 rounded-[4px] bg-muted/50 px-1.5 py-0.5 font-sans text-[11px] transition-colors hover:bg-muted hover:text-accent-foreground">{displayName(b.album_name)}</Link>)}</div>
               }},
             ]} />
           </>
@@ -498,10 +498,10 @@ function ChampionshipSection({ rec, covers, onWeekClick }: { rec: BillboardRecor
       {/* 最长/最快登顶 */}
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
         <RecordCard title="最长登顶路 · Longest Climb to #1">
-          {rec.longest_to_no1.length > 0 && <FeaturedRecord label="马拉松冠军" value={rec.longest_to_no1[0]['登顶周数']} unit="周登顶" caption={`${rec.longest_to_no1[0].track_name} — ${rec.longest_to_no1[0].artist_name}`} linkTo={`/billboard/track/${rec.longest_to_no1[0].track_id}`} />}
+          {rec.longest_to_no1.length > 0 && <FeaturedRecord label="马拉松冠军" value={rec.longest_to_no1[0]['登顶周数']} unit="周登顶" caption={`${rec.longest_to_no1[0].track_name} — ${rec.longest_to_no1[0].artist_name}`} linkTo={`/music/tracks/${rec.longest_to_no1[0].track_id}`} />}
         </RecordCard>
         <RecordCard title="最快登顶 · Fastest Climb to #1" subtitle="非空降歌曲（排除入榜即夺冠）">
-          {rec.fastest_to_no1.length > 0 && <FeaturedRecord label="闪电战冠军" value={rec.fastest_to_no1[0]['登顶周数']} unit="周登顶" caption={`${rec.fastest_to_no1[0].track_name} — ${rec.fastest_to_no1[0].artist_name}`} linkTo={`/billboard/track/${rec.fastest_to_no1[0].track_id}`} />}
+          {rec.fastest_to_no1.length > 0 && <FeaturedRecord label="闪电战冠军" value={rec.fastest_to_no1[0]['登顶周数']} unit="周登顶" caption={`${rec.fastest_to_no1[0].track_name} — ${rec.fastest_to_no1[0].artist_name}`} linkTo={`/music/tracks/${rec.fastest_to_no1[0].track_id}`} />}
         </RecordCard>
       </div>
     </div>
@@ -661,7 +661,7 @@ function BreakthroughSection({ rec, covers }: { rec: BillboardRecords; covers: C
       <RecordCard title="艺人霸榜 · Most Simultaneous Chart Entries" subtitle="单周同一艺人上榜歌曲数最多">
         {rec.artist_simul && (
           <div className="mb-4">
-            <FeaturedRecord label="艺人霸榜纪录" value={rec.artist_simul.count} unit="首歌曲同时在榜" caption={`${rec.artist_simul.artist} · ${fmtDate(rec.artist_simul.week)}`} coverUrl={covers.artist.get(rec.artist_simul.artist)} linkTo={`/billboard/artist/${encodeURIComponent(rec.artist_simul.artist || '')}`} />
+            <FeaturedRecord label="艺人霸榜纪录" value={rec.artist_simul.count} unit="首歌曲同时在榜" caption={`${rec.artist_simul.artist} · ${fmtDate(rec.artist_simul.week)}`} coverUrl={covers.artist.get(rec.artist_simul.artist)} linkTo={`/music/artists/${encodeURIComponent(rec.artist_simul.artist || '')}`} />
           </div>
         )}
         {rec.artist_simul_list?.length > 0 && (
@@ -677,7 +677,7 @@ function BreakthroughSection({ rec, covers }: { rec: BillboardRecords; covers: C
       <RecordCard title="专辑霸榜 · Most Simultaneous Album Entries" subtitle="单周同一专辑上榜歌曲数最多">
         {rec.album_simul && (
           <div className="mb-4">
-            <FeaturedRecord label="专辑霸榜纪录" value={rec.album_simul.count} unit="首歌曲同时在榜" caption={`${rec.album_simul.album} · ${rec.album_simul.artist} · ${fmtDate(rec.album_simul.week)}`} coverUrl={covers.album.get(rec.album_simul.album)} linkTo={`/billboard/album/${encodeURIComponent(rec.album_simul.album || '')}`} />
+            <FeaturedRecord label="专辑霸榜纪录" value={rec.album_simul.count} unit="首歌曲同时在榜" caption={`${rec.album_simul.album} · ${rec.album_simul.artist} · ${fmtDate(rec.album_simul.week)}`} coverUrl={covers.album.get(rec.album_simul.album)} linkTo={`/music/albums/${encodeURIComponent(rec.album_simul.album || '')}`} />
           </div>
         )}
         {rec.album_simul_list?.length > 0 && (
@@ -692,7 +692,7 @@ function BreakthroughSection({ rec, covers }: { rec: BillboardRecords; covers: C
 
       <RecordCard title="Top 10 屠榜 · Most Simultaneous Top 10" subtitle="单周同一艺人 Top 10 歌曲数最多">
         {rec.most_top10_simul ? (
-          <FeaturedRecord label="Top 10 屠榜纪录" value={rec.most_top10_simul.count} unit="首进入 Top 10" caption={`${rec.most_top10_simul.artist} · ${fmtDate(rec.most_top10_simul.week)}`} coverUrl={covers.artist.get(rec.most_top10_simul.artist)} linkTo={`/billboard/artist/${encodeURIComponent(rec.most_top10_simul.artist || '')}`} />
+          <FeaturedRecord label="Top 10 屠榜纪录" value={rec.most_top10_simul.count} unit="首进入 Top 10" caption={`${rec.most_top10_simul.artist} · ${fmtDate(rec.most_top10_simul.week)}`} coverUrl={covers.artist.get(rec.most_top10_simul.artist)} linkTo={`/music/artists/${encodeURIComponent(rec.most_top10_simul.artist || '')}`} />
         ) : (
           <p className="py-4 text-center font-sans text-[12px] text-muted-foreground">暂无数据</p>
         )}
@@ -796,7 +796,7 @@ function HallOfFameSection({ rec, covers }: { rec: BillboardRecords; covers: Cov
                 unit="走势评分"
                 caption={`${r.track_name} — ${r.artist_name}`}
                 coverUrl={covers.track.get(r.track_id)}
-                linkTo={`/billboard/track/${r.track_id}`}
+                linkTo={`/music/tracks/${r.track_id}`}
               />
             ))}
           </div>
@@ -821,7 +821,7 @@ function HallOfFameSection({ rec, covers }: { rec: BillboardRecords; covers: Cov
                 unit="走势评分"
                 caption={`${r.album_name} — ${r.artist_name}`}
                 coverUrl={covers.album.get(r.album_name)}
-                linkTo={`/billboard/album/${encodeURIComponent(r.album_name)}`}
+                linkTo={`/music/albums/${encodeURIComponent(r.album_name)}`}
               />
             ))}
           </div>
@@ -846,7 +846,7 @@ function HallOfFameSection({ rec, covers }: { rec: BillboardRecords; covers: Cov
                 unit="走势评分"
                 caption={r.artist_name}
                 coverUrl={covers.artist.get(r.artist_name)}
-                linkTo={`/billboard/artist/${encodeURIComponent(r.artist_name)}`}
+                linkTo={`/music/artists/${encodeURIComponent(r.artist_name)}`}
               />
             ))}
           </div>
@@ -865,7 +865,7 @@ function HallOfFameSection({ rec, covers }: { rec: BillboardRecords; covers: Cov
         {rec.year_end_no1.length > 0 ? (
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-5">
             {rec.year_end_no1.map((r) => (
-              <Link key={r.year} to={`/billboard/track/${r.track_id}`} className="group rounded-[10px] border border-border bg-muted/20 p-4 transition-colors hover:bg-muted/40">
+              <Link key={r.year} to={`/music/tracks/${r.track_id}`} className="group rounded-[10px] border border-border bg-muted/20 p-4 transition-colors hover:bg-muted/40">
                 <CoverImg url={covers.track.get(r.track_id)} />
                 <p className="mt-2 font-serif text-[28px] font-bold leading-none tracking-[-0.5px]">{r.year}</p>
                 <p className="mt-2 truncate font-sans text-[12px] font-semibold group-hover:text-accent-foreground">{displayName(r.track_name)}</p>
@@ -907,7 +907,7 @@ function CuriositiesSection({ rec, covers, trackSummary, artistTrackCounts }: {
           { header: '#', width: '48px', align: 'center', render: (_, idx) => <RankNum rank={idx + 1} /> },
           { header: '歌曲', render: (r) => <TrackCell trackId={r.debut_track_id} trackName={r.debut_track} artistName={r.debut_artist} coverUrl={covers.track.get(r.debut_track_id)} /> },
           { header: '空降日期', width: '110px', render: (r) => <span className="font-sans text-[12px] tabular-nums text-muted-foreground">{fmtDate(r.debut_week)}</span> },
-          { header: '所属专辑', render: (r) => <Link to={`/billboard/album/${encodeURIComponent(r.debut_album)}`} className="font-sans text-[12px] transition-colors hover:text-accent-foreground">{displayName(r.debut_album)}</Link> },
+          { header: '所属专辑', render: (r) => <Link to={`/music/albums/${encodeURIComponent(r.debut_album)}`} className="font-sans text-[12px] transition-colors hover:text-accent-foreground">{displayName(r.debut_album)}</Link> },
         ]} />
       </RecordCard>
 
@@ -923,7 +923,7 @@ function CuriositiesSection({ rec, covers, trackSummary, artistTrackCounts }: {
         {oneHitWonders.length > 0 ? (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3">
             {oneHitWonders.slice(0, 9).map((a) => (
-              <Link key={a.artist_name} to={`/billboard/artist/${encodeURIComponent(a.artist_name)}`} className="flex items-center gap-3 rounded-[10px] border border-border bg-muted/20 p-3 transition-colors hover:bg-muted/40">
+              <Link key={a.artist_name} to={`/music/artists/${encodeURIComponent(a.artist_name)}`} className="flex items-center gap-3 rounded-[10px] border border-border bg-muted/20 p-3 transition-colors hover:bg-muted/40">
                 <ArtistCoverImg url={covers.artist.get(a.artist_name)} />
                 <div className="min-w-0">
                   <p className="truncate font-sans text-[13px] font-semibold">{displayName(a.artist_name)}</p>
@@ -954,7 +954,7 @@ function CuriositiesSection({ rec, covers, trackSummary, artistTrackCounts }: {
                 <p className="mb-2 font-sans text-[14px] font-bold">"{displayName(group[0].track_name)}"</p>
                 <div className="flex flex-wrap gap-2">
                   {group.map((t) => (
-                    <Link key={t.track_id} to={`/billboard/track/${t.track_id}`} className="inline-flex items-center gap-1.5 rounded-[6px] bg-background px-2.5 py-1 font-sans text-[12px] transition-colors hover:bg-muted">{displayName(t.artist_name)}<span className="text-[10px] text-muted-foreground">Peak #{t.peak_position}</span></Link>
+                    <Link key={t.track_id} to={`/music/tracks/${t.track_id}`} className="inline-flex items-center gap-1.5 rounded-[6px] bg-background px-2.5 py-1 font-sans text-[12px] transition-colors hover:bg-muted">{displayName(t.artist_name)}<span className="text-[10px] text-muted-foreground">Peak #{t.peak_position}</span></Link>
                   ))}
                 </div>
               </div>
@@ -965,19 +965,19 @@ function CuriositiesSection({ rec, covers, trackSummary, artistTrackCounts }: {
 
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
         <RecordCard title="最早上榜 · Oldest Chart Entry">
-          {oldestTrack && <FeaturedRecord label="最早入榜" value={fmtDate(oldestTrack.first_week)} caption={`${oldestTrack.track_name} — ${oldestTrack.artist_name}`} linkTo={`/billboard/track/${oldestTrack.track_id}`} />}
+          {oldestTrack && <FeaturedRecord label="最早入榜" value={fmtDate(oldestTrack.first_week)} caption={`${oldestTrack.track_name} — ${oldestTrack.artist_name}`} linkTo={`/music/tracks/${oldestTrack.track_id}`} />}
         </RecordCard>
         <RecordCard title="最新上榜 · Newest Chart Entry">
-          {newestTrack && <FeaturedRecord label="最新入榜" value={fmtDate(newestTrack.first_week)} caption={`${newestTrack.track_name} — ${newestTrack.artist_name}`} linkTo={`/billboard/track/${newestTrack.track_id}`} />}
+          {newestTrack && <FeaturedRecord label="最新入榜" value={fmtDate(newestTrack.first_week)} caption={`${newestTrack.track_name} — ${newestTrack.artist_name}`} linkTo={`/music/tracks/${newestTrack.track_id}`} />}
         </RecordCard>
       </div>
 
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
         <RecordCard title="最长歌名 · Longest Track Name">
-          {longestName && <FeaturedRecord label="最长歌名" value={longestName.track_name.length} unit="字" caption={`${longestName.track_name} — ${longestName.artist_name}`} linkTo={`/billboard/track/${longestName.track_id}`} />}
+          {longestName && <FeaturedRecord label="最长歌名" value={longestName.track_name.length} unit="字" caption={`${longestName.track_name} — ${longestName.artist_name}`} linkTo={`/music/tracks/${longestName.track_id}`} />}
         </RecordCard>
         <RecordCard title="最短歌名 · Shortest Track Name">
-          {shortestName && <FeaturedRecord label="最短歌名" value={shortestName.track_name.length} unit="字" caption={`${shortestName.track_name} — ${shortestName.artist_name}`} linkTo={`/billboard/track/${shortestName.track_id}`} />}
+          {shortestName && <FeaturedRecord label="最短歌名" value={shortestName.track_name.length} unit="字" caption={`${shortestName.track_name} — ${shortestName.artist_name}`} linkTo={`/music/tracks/${shortestName.track_id}`} />}
         </RecordCard>
       </div>
     </div>

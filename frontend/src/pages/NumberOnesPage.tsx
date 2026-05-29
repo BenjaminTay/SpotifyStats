@@ -782,8 +782,8 @@ export function NumberOnesPage() {
                   coverUrl={computed.trackNo1List[0].cover_url}
                   name={computed.trackNo1List[0].track_name}
                   artistName={computed.trackNo1List[0].artist_name}
-                  nameLink={`/billboard/track/${computed.trackNo1List[0].track_id}`}
-                  artistLink={`/billboard/artist/${encodeURIComponent(computed.trackNo1List[0].artist_name)}`}
+                  nameLink={`/music/tracks/${computed.trackNo1List[0].track_id}`}
+                  artistLink={`/music/artists/${encodeURIComponent(computed.trackNo1List[0].artist_name)}`}
                   badge="最新冠军"
                 />
               )}
@@ -801,8 +801,8 @@ export function NumberOnesPage() {
                   coverUrl={computed.trackNo1WeeksSorted[0].cover_url}
                   name={computed.trackNo1WeeksSorted[0].track_name}
                   artistName={computed.trackNo1WeeksSorted[0].artist_name}
-                  nameLink={`/billboard/track/${computed.trackNo1WeeksSorted[0].track_id}`}
-                  artistLink={`/billboard/artist/${encodeURIComponent(computed.trackNo1WeeksSorted[0].artist_name)}`}
+                  nameLink={`/music/tracks/${computed.trackNo1WeeksSorted[0].track_id}`}
+                  artistLink={`/music/artists/${encodeURIComponent(computed.trackNo1WeeksSorted[0].artist_name)}`}
                 />
               )}
             </GlassCard>
@@ -822,8 +822,8 @@ export function NumberOnesPage() {
                     coverUrl={e.cover_url}
                     name={e.track_name}
                     artistName={displayName(e.artist_name)}
-                    nameLink={`/billboard/track/${e.track_id}`}
-                    artistLink={`/billboard/artist/${encodeURIComponent(e.artist_name)}`}
+                    nameLink={`/music/tracks/${e.track_id}`}
+                    artistLink={`/music/artists/${encodeURIComponent(e.artist_name)}`}
                   />
                 )
               })()}
@@ -859,8 +859,8 @@ export function NumberOnesPage() {
                           coverUrl={e.cover_url}
                           name={e.track_name}
                           artistName={displayName(e.artist_name)}
-                          nameLink={`/billboard/track/${e.track_id}`}
-                          artistLink={`/billboard/artist/${encodeURIComponent(e.artist_name)}`}
+                          nameLink={`/music/tracks/${e.track_id}`}
+                          artistLink={`/music/artists/${encodeURIComponent(e.artist_name)}`}
                         />
                       </td>
                       <td className="py-3 text-right">
@@ -896,8 +896,8 @@ export function NumberOnesPage() {
                             coverUrl={e.cover_url}
                             name={e.track_name}
                             artistName={displayName(e.artist_name)}
-                            nameLink={`/billboard/track/${e.track_id}`}
-                            artistLink={`/billboard/artist/${encodeURIComponent(e.artist_name)}`}
+                            nameLink={`/music/tracks/${e.track_id}`}
+                            artistLink={`/music/artists/${encodeURIComponent(e.artist_name)}`}
                           />
                         </td>
                         <td className="py-3 text-right font-sans text-[13px] font-semibold tabular-nums">{e.weeks_at_no1}</td>
@@ -952,8 +952,8 @@ export function NumberOnesPage() {
                           coverUrl={e.cover_url}
                           name={e.track_name}
                           artistName={displayName(e.artist_name)}
-                          nameLink={`/billboard/track/${e.track_id}`}
-                          artistLink={`/billboard/artist/${encodeURIComponent(e.artist_name)}`}
+                          nameLink={`/music/tracks/${e.track_id}`}
+                          artistLink={`/music/artists/${encodeURIComponent(e.artist_name)}`}
                         />
                       </td>
                       <td className="py-3 font-sans text-[13px]">
@@ -989,8 +989,8 @@ export function NumberOnesPage() {
                   coverUrl={computed.albumNo1List[0].cover_url}
                   name={computed.albumNo1List[0].album_name}
                   artistName={computed.albumNo1List[0].artist_name}
-                  nameLink={`/billboard/album/${encodeURIComponent(computed.albumNo1List[0].album_name)}`}
-                  artistLink={`/billboard/artist/${encodeURIComponent(computed.albumNo1List[0].artist_name)}`}
+                  nameLink={`/music/albums/${encodeURIComponent(computed.albumNo1List[0].album_name)}`}
+                  artistLink={`/music/artists/${encodeURIComponent(computed.albumNo1List[0].artist_name)}`}
                   badge="最新冠军"
                 />
               )}
@@ -1006,8 +1006,8 @@ export function NumberOnesPage() {
                   coverUrl={computed.albumNo1WeeksSorted[0].cover_url}
                   name={computed.albumNo1WeeksSorted[0].album_name}
                   artistName={computed.albumNo1WeeksSorted[0].artist_name}
-                  nameLink={`/billboard/album/${encodeURIComponent(computed.albumNo1WeeksSorted[0].album_name)}`}
-                  artistLink={`/billboard/artist/${encodeURIComponent(computed.albumNo1WeeksSorted[0].artist_name)}`}
+                  nameLink={`/music/albums/${encodeURIComponent(computed.albumNo1WeeksSorted[0].album_name)}`}
+                  artistLink={`/music/artists/${encodeURIComponent(computed.albumNo1WeeksSorted[0].artist_name)}`}
                 />
               )}
             </GlassCard>
@@ -1025,8 +1025,8 @@ export function NumberOnesPage() {
                     coverUrl={e.cover_url}
                     name={e.album_name}
                     artistName={displayName(e.artist_name)}
-                    nameLink={`/billboard/album/${encodeURIComponent(e.album_name)}`}
-                    artistLink={`/billboard/artist/${encodeURIComponent(e.artist_name)}`}
+                    nameLink={`/music/albums/${encodeURIComponent(e.album_name)}`}
+                    artistLink={`/music/artists/${encodeURIComponent(e.artist_name)}`}
                   />
                 )
               })()}
@@ -1062,8 +1062,8 @@ export function NumberOnesPage() {
                           coverUrl={e.cover_url}
                           name={e.album_name}
                           artistName={displayName(e.artist_name)}
-                          nameLink={`/billboard/album/${encodeURIComponent(e.album_name)}`}
-                          artistLink={`/billboard/artist/${encodeURIComponent(e.artist_name)}`}
+                          nameLink={`/music/albums/${encodeURIComponent(e.album_name)}`}
+                          artistLink={`/music/artists/${encodeURIComponent(e.artist_name)}`}
                         />
                       </td>
                       <td className="py-3 text-right">
@@ -1099,8 +1099,8 @@ export function NumberOnesPage() {
                             coverUrl={e.cover_url}
                             name={e.album_name}
                             artistName={displayName(e.artist_name)}
-                            nameLink={`/billboard/album/${encodeURIComponent(e.album_name)}`}
-                            artistLink={`/billboard/artist/${encodeURIComponent(e.artist_name)}`}
+                            nameLink={`/music/albums/${encodeURIComponent(e.album_name)}`}
+                            artistLink={`/music/artists/${encodeURIComponent(e.artist_name)}`}
                           />
                         </td>
                         <td className="py-3 text-right font-sans text-[13px] font-semibold tabular-nums">{e.weeks_at_no1}</td>
@@ -1157,8 +1157,8 @@ export function NumberOnesPage() {
                           coverUrl={e.cover_url}
                           name={e.album_name}
                           artistName={displayName(e.artist_name)}
-                          nameLink={`/billboard/album/${encodeURIComponent(e.album_name)}`}
-                          artistLink={`/billboard/artist/${encodeURIComponent(e.artist_name)}`}
+                          nameLink={`/music/albums/${encodeURIComponent(e.album_name)}`}
+                          artistLink={`/music/artists/${encodeURIComponent(e.artist_name)}`}
                         />
                       </td>
                       <td className="py-3 font-sans text-[13px]">
@@ -1194,7 +1194,7 @@ export function NumberOnesPage() {
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
                       <Link
-                        to={`/billboard/artist/${encodeURIComponent(computed.artistNo1List[0].artist_name)}`}
+                        to={`/music/artists/${encodeURIComponent(computed.artistNo1List[0].artist_name)}`}
                         className="truncate font-sans text-sm font-semibold transition-colors hover:text-accent-foreground"
                       >
                         {displayName(computed.artistNo1List[0].artist_name)}
@@ -1217,7 +1217,7 @@ export function NumberOnesPage() {
                 <div className="flex items-center gap-3">
                   <CoverImg url={computed.artistNo1WeeksSorted[0].cover_url} />
                   <Link
-                    to={`/billboard/artist/${encodeURIComponent(computed.artistNo1WeeksSorted[0].artist_name)}`}
+                    to={`/music/artists/${encodeURIComponent(computed.artistNo1WeeksSorted[0].artist_name)}`}
                     className="block truncate font-sans text-sm font-semibold transition-colors hover:text-accent-foreground"
                   >
                     {displayName(computed.artistNo1WeeksSorted[0].artist_name)}
@@ -1238,7 +1238,7 @@ export function NumberOnesPage() {
                   <div className="flex items-center gap-3">
                     <CoverImg url={e.cover_url} />
                     <Link
-                      to={`/billboard/artist/${encodeURIComponent(e.artist_name)}`}
+                      to={`/music/artists/${encodeURIComponent(e.artist_name)}`}
                       className="block truncate font-sans text-sm font-semibold transition-colors hover:text-accent-foreground"
                     >
                       {displayName(e.artist_name)}
@@ -1278,7 +1278,7 @@ export function NumberOnesPage() {
                         <div className="flex items-center gap-3">
                           <CoverImg url={e.cover_url} />
                           <Link
-                            to={`/billboard/artist/${encodeURIComponent(e.artist_name)}`}
+                            to={`/music/artists/${encodeURIComponent(e.artist_name)}`}
                             className="block truncate font-sans text-sm font-semibold transition-colors hover:text-accent-foreground"
                           >
                             {displayName(e.artist_name)}
@@ -1318,7 +1318,7 @@ export function NumberOnesPage() {
                           <div className="flex items-center gap-3">
                             <CoverImg url={e.cover_url} />
                             <Link
-                              to={`/billboard/artist/${encodeURIComponent(e.artist_name)}`}
+                              to={`/music/artists/${encodeURIComponent(e.artist_name)}`}
                               className="block truncate font-sans text-sm font-semibold transition-colors hover:text-accent-foreground"
                             >
                               {displayName(e.artist_name)}

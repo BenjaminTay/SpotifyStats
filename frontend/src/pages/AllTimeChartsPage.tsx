@@ -729,13 +729,13 @@ export function AllTimeChartsPage() {
         <CoverImg url={row.cover_url} />
         <div className="min-w-0">
           <Link
-            to={`/billboard/track/${row.track_id}`}
+            to={`/music/tracks/${row.track_id}`}
             className="block truncate font-sans text-[14px] font-semibold text-foreground hover:text-accent-foreground transition-colors"
           >
             {displayName(row.track_name)}
           </Link>
           <Link
-            to={`/billboard/artist/${encodeURIComponent(row.artist_name)}`}
+            to={`/music/artists/${encodeURIComponent(row.artist_name)}`}
             className="block truncate font-sans text-[12px] text-muted-foreground hover:text-accent-foreground transition-colors"
           >
             {displayName(row.artist_name)}
@@ -751,13 +751,13 @@ export function AllTimeChartsPage() {
         <CoverImg url={row.cover_url} />
         <div className="min-w-0">
           <Link
-            to={`/billboard/album/${encodeURIComponent(row.album_name)}?artist=${encodeURIComponent(row.artist_name)}`}
+            to={`/music/albums/${encodeURIComponent(row.album_name)}?artist=${encodeURIComponent(row.artist_name)}`}
             className="block truncate font-sans text-[14px] font-semibold text-foreground hover:text-accent-foreground transition-colors"
           >
             {displayName(row.album_name)}
           </Link>
           <Link
-            to={`/billboard/artist/${encodeURIComponent(row.artist_name)}`}
+            to={`/music/artists/${encodeURIComponent(row.artist_name)}`}
             className="block truncate font-sans text-[12px] text-muted-foreground hover:text-accent-foreground transition-colors"
           >
             {displayName(row.artist_name)}
@@ -772,7 +772,7 @@ export function AllTimeChartsPage() {
       <div className="flex items-center gap-3">
         <CoverImg url={row.cover_url} />
         <Link
-          to={`/billboard/artist/${encodeURIComponent(row.artist_name)}`}
+          to={`/music/artists/${encodeURIComponent(row.artist_name)}`}
           className="font-sans text-[14px] font-semibold text-foreground hover:text-accent-foreground transition-colors"
         >
           {displayName(row.artist_name)}

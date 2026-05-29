@@ -324,10 +324,10 @@ export function BillboardPage() {
                     // Navigation links
                     const detailLink =
                       activeTab === 'artists'
-                        ? `/billboard/artist/${encodeURIComponent((entry as WeeklyArtistEntry).artist_name)}`
+                        ? `/music/artists/${encodeURIComponent((entry as WeeklyArtistEntry).artist_name)}`
                         : activeTab === 'albums'
-                          ? `/billboard/album/${encodeURIComponent((entry as WeeklyAlbumEntry).album_name)}?artist=${encodeURIComponent((entry as WeeklyAlbumEntry).artist_name)}`
-                          : `/billboard/track/${(entry as WeeklyTrackEntry).track_id}`
+                          ? `/music/albums/${encodeURIComponent((entry as WeeklyAlbumEntry).album_name)}?artist=${encodeURIComponent((entry as WeeklyAlbumEntry).artist_name)}`
+                          : `/music/tracks/${(entry as WeeklyTrackEntry).track_id}`
                     const chartName =
                       activeTab === 'artists'
                         ? (entry as WeeklyArtistEntry).artist_name
@@ -336,7 +336,7 @@ export function BillboardPage() {
                           : (entry as WeeklyTrackEntry).track_name
                     const artistLink =
                       activeTab !== 'artists'
-                        ? `/billboard/artist/${encodeURIComponent(
+                        ? `/music/artists/${encodeURIComponent(
                             activeTab === 'tracks'
                               ? (entry as WeeklyTrackEntry).artist_name
                               : (entry as WeeklyAlbumEntry).artist_name,

@@ -2,6 +2,7 @@
 
 from fastapi import APIRouter
 
+from backend.api.analysis import router as analysis_router
 from backend.api.dashboard import router as dashboard_router
 from backend.api.timeline import router as timeline_router
 from backend.api.leaderboard import router as leaderboard_router
@@ -21,9 +22,11 @@ from backend.api.billboard import router as billboard_router
 from backend.api.version_merge import router as version_merge_router
 from backend.api.import_ import router as import_router
 from backend.api.lyrics import router as lyrics_router
+from backend.api.music import router as music_router
 
 api_router = APIRouter()
 
+api_router.include_router(analysis_router)
 api_router.include_router(dashboard_router)
 api_router.include_router(timeline_router)
 api_router.include_router(leaderboard_router)
@@ -43,3 +46,4 @@ api_router.include_router(billboard_router)
 api_router.include_router(version_merge_router)
 api_router.include_router(import_router)
 api_router.include_router(lyrics_router, prefix="/lyrics", tags=["Lyrics"])
+api_router.include_router(music_router)

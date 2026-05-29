@@ -4,6 +4,7 @@ import logging
 import threading
 
 from backend.core.db import get_db, load_plays
+from backend.services.analysis_stats_service import get_analysis_charts, get_analysis_stats
 from backend.services.billboard_service import compute_billboard_data
 
 logger = logging.getLogger(__name__)
@@ -32,6 +33,10 @@ def warm_common_caches() -> None:
     conn = get_db()
     try:
         load_plays(conn, **DEFAULT_PLAY_FILTERS)
+        get_analysis_stats(conn, **DEFAULT_PLAY_FILTERS, period="lifetime")
+        get_analysis_charts(conn, **DEFAULT_PLAY_FILTERS, period="lifetime", entity="track", metric="plays", limit=250)
+        get_analysis_charts(conn, **DEFAULT_PLAY_FILTERS, period="lifetime", entity="album", metric="plays", limit=250)
+        get_analysis_charts(conn, **DEFAULT_PLAY_FILTERS, period="lifetime", entity="artist", metric="plays", limit=250)
     finally:
         conn.close()
 

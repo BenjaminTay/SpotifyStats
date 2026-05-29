@@ -55,7 +55,31 @@ def _get_cover_cdn_url(cover_type: str, entity_id: int) -> Optional[str]:
     conn = get_db()
     if cover_type == "albums":
         row = conn.execute(
-            "SELECT image_url FROM albums WHERE album_id = ?", [entity_id]
+            """SELECT image_url
+               FROM (
+                   SELECT image_url, 0 AS priority
+                   FROM albums
+                   WHERE album_id = ?
+                     AND image_url IS NOT NULL
+                     AND image_url != ''
+
+                   UNION ALL
+
+                   SELECT sam.image_url, 1 AS priority
+                   FROM albums al
+                   JOIN track_albums ta ON ta.album_id = al.album_id
+                   JOIN tracks t ON t.track_id = ta.track_id
+                   JOIN spotify_track_meta stm
+                     ON REPLACE(t.spotify_track_uri, 'spotify:track:', '') = stm.spotify_track_id
+                   JOIN spotify_album_meta sam
+                     ON sam.spotify_album_id = stm.spotify_album_id
+                   WHERE al.album_id = ?
+                     AND sam.image_url IS NOT NULL
+                     AND sam.image_url != ''
+               )
+               ORDER BY priority
+               LIMIT 1""",
+            [entity_id, entity_id],
         ).fetchone()
     elif cover_type == "artists":
         row = conn.execute(

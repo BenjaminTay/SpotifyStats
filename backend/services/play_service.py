@@ -24,6 +24,59 @@ def _count(x):
     return int(x.count())
 
 
+def _cover_url(image_path, image_url, cover_type: str, entity_id) -> Optional[str]:
+    """Return the smart local cover endpoint when any cover source exists."""
+    if entity_id is None:
+        return None
+    if image_path or image_url:
+        return f"/covers/{cover_type}/{int(entity_id)}.jpg"
+    return None
+
+
+def _track_cover_urls(conn: sqlite3.Connection, track_ids) -> dict[int, Optional[str]]:
+    ids = [int(v) for v in pd.Series(track_ids).dropna().unique().tolist()]
+    if not ids:
+        return {}
+    placeholders = ",".join("?" for _ in ids)
+    rows = conn.execute(
+        f"""SELECT t.track_id, al.album_id, al.image_path, al.image_url
+            FROM tracks t
+            LEFT JOIN albums al ON t.album_id = al.album_id
+            WHERE t.track_id IN ({placeholders})""",
+        ids,
+    ).fetchall()
+    return {
+        int(r["track_id"]): _cover_url(r["image_path"], r["image_url"], "albums", r["album_id"])
+        for r in rows
+    }
+
+
+def _artist_cover_lookup(conn: sqlite3.Connection) -> dict[str, Optional[str]]:
+    rows = conn.execute(
+        """SELECT artist_id, artist_name, image_path, image_url
+           FROM artists"""
+    ).fetchall()
+    return {
+        r["artist_name"]: _cover_url(r["image_path"], r["image_url"], "artists", r["artist_id"])
+        for r in rows
+    }
+
+
+def _album_cover_lookup(conn: sqlite3.Connection) -> dict[tuple[str, str], Optional[str]]:
+    rows = conn.execute(
+        """SELECT al.album_id, al.album_name, a.artist_name, al.image_path, al.image_url
+           FROM albums al
+           JOIN artists a ON al.artist_id = a.artist_id"""
+    ).fetchall()
+    cover_map: dict[tuple[str, str], Optional[str]] = {}
+    for r in rows:
+        key = (r["album_name"], r["artist_name"])
+        url = _cover_url(r["image_path"], r["image_url"], "albums", r["album_id"])
+        if url or key not in cover_map:
+            cover_map[key] = url
+    return cover_map
+
+
 # ── Dashboard ──────────────────────────────────────────────────────────────
 
 def get_dashboard_summary(
@@ -129,15 +182,22 @@ def get_top_tracks(
         )
     if df.empty:
         return []
+    cover_map = _track_cover_urls(conn, df["track_id"])
     top = (
-        df.groupby(["track_name", "artist_name"])
+        df.groupby(["track_id", "track_name", "artist_name"])
         .size()
         .sort_values(ascending=False)
         .head(n)
         .reset_index(name="plays")
     )
     return [
-        {"track_name": r.track_name, "artist_name": r.artist_name, "plays": int(r.plays)}
+        {
+            "track_id": int(r.track_id),
+            "track_name": r.track_name,
+            "artist_name": r.artist_name,
+            "plays": int(r.plays),
+            "cover_url": cover_map.get(int(r.track_id)),
+        }
         for r in top.itertuples(index=False)
     ]
 
@@ -253,6 +313,7 @@ def get_monthly_timeline_drilldown(
     )
     if df.empty:
         return {"months": [], "drilldown": None}
+    cover_map = _track_cover_urls(conn, df["track_id"])
 
     monthly = (
         df.groupby(["ts_year", "ts_month"])
@@ -277,15 +338,16 @@ def get_monthly_timeline_drilldown(
             month_df = df[mask]
             if not month_df.empty:
                 top5 = (
-                    month_df.groupby(["track_name", "artist_name"])
+                    month_df.groupby(["track_id", "track_name", "artist_name"])
                     .agg(plays=("play_id", "count"), hours=("ms_played", _hour))
                     .sort_values("plays", ascending=False)
                     .head(5)
                     .reset_index()
                 )
                 result["drilldown"] = [
-                    {"track_name": r.track_name, "artist_name": r.artist_name,
-                     "plays": int(r.plays), "hours": round(float(r.hours), 1)}
+                    {"track_id": int(r.track_id), "track_name": r.track_name, "artist_name": r.artist_name,
+                     "plays": int(r.plays), "hours": round(float(r.hours), 1),
+                     "cover_url": cover_map.get(int(r.track_id))}
                     for r in top5.itertuples(index=False)
                 ]
         except (ValueError, TypeError):
@@ -303,6 +365,7 @@ def get_weekly_timeline(
     )
     if df.empty:
         return {"weeks": [], "drilldown": None}
+    cover_map = _track_cover_urls(conn, df["track_id"])
 
     weekly = (
         df.groupby(["ts_year", "ts_week"])
@@ -326,15 +389,16 @@ def get_weekly_timeline(
             week_df = df[(df["ts_year"] == yr) & (df["ts_week"] == wk)]
             if not week_df.empty:
                 top5 = (
-                    week_df.groupby(["track_name", "artist_name"])
+                    week_df.groupby(["track_id", "track_name", "artist_name"])
                     .agg(plays=("play_id", "count"), hours=("ms_played", _hour))
                     .sort_values("plays", ascending=False)
                     .head(5)
                     .reset_index()
                 )
                 result["drilldown"] = [
-                    {"track_name": r.track_name, "artist_name": r.artist_name,
-                     "plays": int(r.plays), "hours": round(float(r.hours), 1)}
+                    {"track_id": int(r.track_id), "track_name": r.track_name, "artist_name": r.artist_name,
+                     "plays": int(r.plays), "hours": round(float(r.hours), 1),
+                     "cover_url": cover_map.get(int(r.track_id))}
                     for r in top5.itertuples(index=False)
                 ]
         except (ValueError, TypeError):
@@ -356,6 +420,9 @@ def get_leaderboard(
     )
     if df.empty:
         return {"time_label": "", "total_records": 0, "rows": []}
+    track_cover_map = _track_cover_urls(conn, df["track_id"]) if "track_id" in df.columns else {}
+    artist_cover_map = _artist_cover_lookup(conn)
+    album_cover_map = _album_cover_lookup(conn)
 
     # Time filter
     label_parts = []
@@ -379,7 +446,7 @@ def get_leaderboard(
 
     if entity == "track":
         agg = (
-            df.groupby(["track_name", "artist_name"])
+            df.groupby(["track_id", "track_name", "artist_name"])
             .agg(plays=("play_id", "count"), hours=("ms_played", _hour))
             .reset_index()
         )
@@ -409,14 +476,18 @@ def get_leaderboard(
     for i, r in enumerate(agg.itertuples(index=False)):
         row = {"rank": i + 1, "plays": int(r.plays), "hours": round(float(r.hours), 1)}
         if entity == "track":
+            row["track_id"] = int(r.track_id)
             row["track_name"] = r.track_name
             row["artist_name"] = r.artist_name
+            row["cover_url"] = track_cover_map.get(int(r.track_id))
         elif entity == "artist":
             row["artist_name"] = r.artist_name
             row["unique_tracks"] = int(r.unique_tracks)
+            row["cover_url"] = artist_cover_map.get(r.artist_name)
         elif entity == "album":
             row["album_name"] = r.album_name
             row["artist_name"] = r.artist_name
+            row["cover_url"] = album_cover_map.get((r.album_name, r.artist_name))
         rows.append(row)
 
     return {"time_label": time_label, "total_records": len(df), "rows": rows}
@@ -801,14 +872,22 @@ def get_artist_list(
     f, fp = base_filters(min_ms=min_ms, music_only=music_only)
     w = f"WHERE {f}" if f else ""
     rows = conn.execute(
-        f"""SELECT a.artist_id, a.artist_name, COUNT(*) as cnt
+        f"""SELECT a.artist_id, a.artist_name, a.image_path, a.image_url, COUNT(*) as cnt
             FROM plays p JOIN tracks t ON p.track_id = t.track_id
             JOIN artists a ON t.artist_id = a.artist_id
             {w}
             GROUP BY a.artist_id ORDER BY cnt DESC""",
         fp,
     ).fetchall()
-    return [{"artist_id": r["artist_id"], "artist_name": r["artist_name"], "play_count": r["cnt"]} for r in rows]
+    return [
+        {
+            "artist_id": r["artist_id"],
+            "artist_name": r["artist_name"],
+            "play_count": r["cnt"],
+            "cover_url": _cover_url(r["image_path"], r["image_url"], "artists", r["artist_id"]),
+        }
+        for r in rows
+    ]
 
 
 def get_artist_deep_dive(
@@ -822,6 +901,9 @@ def get_artist_deep_dive(
     artist_df = df[df["artist_name"] == artist_name]
     if artist_df.empty:
         return {"found": False}
+    track_cover_map = _track_cover_urls(conn, artist_df["track_id"])
+    album_cover_map = _album_cover_lookup(conn)
+    artist_cover_map = _artist_cover_lookup(conn)
 
     dow_names_cn = {0: "周一", 1: "周二", 2: "周三", 3: "周四", 4: "周五", 5: "周六", 6: "周日"}
 
@@ -834,7 +916,7 @@ def get_artist_deep_dive(
 
     # Top tracks
     top_tracks = (
-        artist_df.groupby("track_name")
+        artist_df.groupby(["track_id", "track_name"])
         .agg(plays=("play_id", "count"), hours=("ms_played", _hour))
         .sort_values("plays", ascending=False)
         .reset_index()
@@ -859,6 +941,7 @@ def get_artist_deep_dive(
     return {
         "found": True,
         "artist_name": artist_name,
+        "cover_url": artist_cover_map.get(artist_name),
         "info": {
             "total_plays": len(artist_df),
             "total_hours": round(artist_df["ms_played"].sum() / 3_600_000, 1),
@@ -871,7 +954,13 @@ def get_artist_deep_dive(
             "y": [dow_names_cn[d] for d in range(7)],
         },
         "top_tracks": [
-            {"track_name": r.track_name, "plays": int(r.plays), "hours": round(float(r.hours), 1)}
+            {
+                "track_id": int(r.track_id),
+                "track_name": r.track_name,
+                "plays": int(r.plays),
+                "hours": round(float(r.hours), 1),
+                "cover_url": track_cover_map.get(int(r.track_id)),
+            }
             for r in top_tracks.itertuples(index=False)
         ],
         "monthly_trend": [
@@ -879,7 +968,12 @@ def get_artist_deep_dive(
             for r in monthly.itertuples(index=False)
         ],
         "album_breakdown": [
-            {"album_name": r.album_name or "未知专辑", "plays": int(r.plays), "hours": round(float(r.hours), 1)}
+            {
+                "album_name": r.album_name or "未知专辑",
+                "plays": int(r.plays),
+                "hours": round(float(r.hours), 1),
+                "cover_url": album_cover_map.get((r.album_name, artist_name)),
+            }
             for r in album_stats.itertuples(index=False)
         ],
     }

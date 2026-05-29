@@ -78,6 +78,53 @@ def _precompute_artist_context(df_raw, artist_name):
     return artist_df, artist_median, total_daily
 
 
+def _album_cover_url(album_id):
+    """Build the local cover endpoint for an album row."""
+    album_id = py_val(album_id)
+    if album_id is None:
+        return None
+    try:
+        album_id_int = int(album_id)
+    except (TypeError, ValueError):
+        return None
+
+    from backend.core.db import get_db
+    conn = get_db()
+    row = conn.execute(
+        """SELECT 1
+           FROM (
+               SELECT 1 AS hit, 0 AS priority
+               FROM albums
+               WHERE album_id = ?
+                 AND (
+                     image_path IS NOT NULL AND image_path != ''
+                     OR image_url IS NOT NULL AND image_url != ''
+                 )
+
+               UNION ALL
+
+               SELECT 1 AS hit, 1 AS priority
+               FROM albums al
+               JOIN track_albums ta ON ta.album_id = al.album_id
+               JOIN tracks t ON t.track_id = ta.track_id
+               JOIN spotify_track_meta stm
+                 ON REPLACE(t.spotify_track_uri, 'spotify:track:', '') = stm.spotify_track_id
+               JOIN spotify_album_meta sam
+                 ON sam.spotify_album_id = stm.spotify_album_id
+               WHERE al.album_id = ?
+                 AND sam.image_url IS NOT NULL
+                 AND sam.image_url != ''
+           )
+           ORDER BY priority
+           LIMIT 1""",
+        [album_id_int, album_id_int],
+    ).fetchone()
+    conn.close()
+    if not row:
+        return None
+    return f"/covers/albums/{album_id_int}.jpg"
+
+
 def _find_release_row(releases: pd.DataFrame, album_name: str):
     """Find a release by canonical album name or merged sub-album name."""
     rel_row = releases[releases["album_name"] == album_name]
@@ -267,6 +314,7 @@ def get_artist_overview(
     artist_df, artist_median, total_daily = _precompute_artist_context(df_raw, artist_name)
 
     cycles_out = []
+    all_cycles_map = {}
     for _, rel in releases.iterrows():
         cycle = compute_release_cycle(
             df_raw, artist_name, rel["album_name"], rel["release_date"],
@@ -274,14 +322,17 @@ def get_artist_overview(
             weeks_before=weeks_before, weeks_after=weeks_after,
             artist_df=artist_df, artist_median=artist_median, total_daily=total_daily,
         )
+        all_cycles_map[rel["album_name"]] = cycle
         metrics = compute_release_metrics(cycle, rel["album_type"])
         cycles_out.append({
             "album_name": rel["album_name"],
             "album_type": rel["album_type"],
             "release_date": rel["release_date"].isoformat() if hasattr(rel["release_date"], "isoformat") else str(rel["release_date"]),
+            "db_album_id": py_val(rel.get("db_album_id")),
             "spotify_album_id": py_val(rel.get("spotify_album_id")),
             "canonical_name": py_val(rel.get("canonical_name")),
             "sub_albums": rel.get("sub_albums"),
+            "cover_url": _album_cover_url(rel.get("db_album_id")),
             "metrics": metrics,
             "artist_timeline": df_to_json(cycle.get("artist_timeline")),
             "album_timeline": df_to_json(cycle.get("album_timeline")),
@@ -292,14 +343,6 @@ def get_artist_overview(
         })
 
     summary = compute_artist_summary(artist_name, releases, weekly, weekly_artist, weekly_album)
-    all_cycles_map = {}
-    for i, (_, rel) in enumerate(releases.iterrows()):
-        key = rel["album_name"]
-        co = cycles_out[i]
-        all_cycles_map[key] = {
-            "album_timeline": pd.DataFrame(co["album_timeline"]) if co["album_timeline"] else pd.DataFrame(),
-            "album_ranks": pd.DataFrame(co["album_ranks"]) if co["album_ranks"] else pd.DataFrame(),
-        }
     fill_summary_from_cycles(summary, artist_name, releases, all_cycles_map, df_raw)
 
     artist_timeline = compute_artist_play_timeline(df_raw, artist_name)
@@ -326,11 +369,15 @@ def get_artist_overview(
                 "album_name": rel["album_name"],
                 "album_type": rel["album_type"],
                 "release_date": rd.isoformat() if hasattr(rd, "isoformat") else str(rd),
+                "db_album_id": py_val(rel.get("db_album_id")),
+                "cover_url": _album_cover_url(rel.get("db_album_id")),
             })
     else:
         release_events = []
 
     releases_out = df_to_json(releases, date_cols=["release_date"])
+    for row in releases_out:
+        row["cover_url"] = _album_cover_url(row.get("db_album_id"))
 
     summary["max_artist_impact_fmt"] = format_artist_impact(summary["max_artist_impact"])
     summary["max_market_impact_fmt"] = format_market_impact(summary["max_market_impact"])

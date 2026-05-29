@@ -1,12 +1,13 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useParams, useSearchParams, Link, useNavigate } from 'react-router-dom'
 import { api } from '@/lib/api'
-import type { AlbumDetailResponse, AlbumEnrichmentResponse } from '@/types/billboard'
+import type { AlbumDetailResponse, AlbumEnrichmentResponse, ReleaseCycleAlbumDetailResponse } from '@/types/billboard'
 import { GlassCard } from '@/components/shared/GlassCard'
 import { ChangeCell } from '@/components/shared/ChangeCell'
 import { CoverCell } from '@/components/shared/CoverCell'
 import { FormattedText } from '@/components/shared/FormattedText'
 import { AlbumEnrichmentView } from '@/components/shared/AlbumEnrichmentView'
+import { EntityStatsPanel } from '@/components/shared/EntityStatsPanel'
 import { RankTrendChart } from '@/components/charts/RankTrendChart'
 import { ReleaseTimelineChart } from '@/components/charts/ReleaseTimelineChart'
 import { displayName } from '@/lib/chinese'
@@ -18,9 +19,14 @@ function formatNumber(n: number): string {
   return new Intl.NumberFormat('zh-CN').format(n)
 }
 
+function dateOnly(iso: string): string {
+  if (!iso) return ''
+  return iso.split('T')[0].split(' ')[0]
+}
+
 function formatWeekStart(iso: string): string {
   if (!iso) return ''
-  const dateStr = iso.includes(' ') ? iso.split(' ')[0] : iso
+  const dateStr = dateOnly(iso)
   const d = new Date(dateStr + 'T00:00:00')
   if (isNaN(d.getTime())) return iso
   return `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}`
@@ -28,16 +34,16 @@ function formatWeekStart(iso: string): string {
 
 function formatDateShort(iso: string): string {
   if (!iso) return '—'
-  const dateStr = iso.includes(' ') ? iso.split(' ')[0] : iso
+  const dateStr = dateOnly(iso)
   const d = new Date(dateStr + 'T00:00:00')
-  if (isNaN(d.getTime())) return iso
+  if (isNaN(d.getTime())) return dateStr || iso
   return `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}`
 }
 
 function formatTimeSpan(start: string, end: string): string {
   if (!start || !end) return '—'
-  const s = new Date(start + 'T00:00:00')
-  const e = new Date(end + 'T00:00:00')
+  const s = new Date(dateOnly(start) + 'T00:00:00')
+  const e = new Date(dateOnly(end) + 'T00:00:00')
   if (isNaN(s.getTime()) || isNaN(e.getTime())) return '—'
   const diffMs = e.getTime() - s.getTime()
   const diffWeeks = Math.round(diffMs / (7 * 24 * 60 * 60 * 1000))
@@ -70,11 +76,13 @@ function formatAlbumType(t: string): string {
 
 // Module-level enrichment cache — survives page navigation
 const enrichmentCache = new Map<string, AlbumEnrichmentResponse>()
+const releaseCycleCache = new Map<string, ReleaseCycleAlbumDetailResponse>()
 
-type TabKey = 'overview' | 'tracks' | 'era'
+type TabKey = 'overview' | 'stats' | 'tracks' | 'era'
 
 const TABS: { key: TabKey; label: string }[] = [
-  { key: 'overview', label: '榜单表现' },
+  { key: 'overview', label: 'Billboard' },
+  { key: 'stats', label: '播放统计' },
   { key: 'tracks', label: '曲目表现' },
   { key: 'era', label: '发行档案' },
 ]
@@ -269,6 +277,29 @@ function MiniStat({
   )
 }
 
+function formatOptionalRank(rank: number | null | undefined): string {
+  return rank ? `#${rank}` : '—'
+}
+
+function formatHalfLife(weeks: number | null | undefined): string {
+  if (weeks == null) return '>24 周'
+  return `${weeks} 周`
+}
+
+function MatrixCell({ value, max }: { value: number; max: number }) {
+  const opacity = value <= 0 ? 0 : 0.15 + 0.75 * (value / Math.max(max, 1))
+  return (
+    <td className="min-w-12 border-b border-border/50 px-2 py-2 text-right font-sans text-[12px] tabular-nums">
+      <span
+        className="inline-flex min-w-8 justify-end rounded-[4px] px-1.5 py-0.5"
+        style={value > 0 ? { backgroundColor: `rgba(184,134,11,${opacity})` } : undefined}
+      >
+        {value > 0 ? value : '·'}
+      </span>
+    </td>
+  )
+}
+
 // ═══════════════════════════════════════════════════════════
 // Page
 // ═══════════════════════════════════════════════════════════
@@ -287,6 +318,9 @@ export function AlbumDetailPage() {
   // Enrichment (Wikipedia, Genius) — fetched on demand when user clicks 发行档案 tab
   const [enrichment, setEnrichment] = useState<AlbumEnrichmentResponse | null>(null)
   const [enrichmentLoading, setEnrichmentLoading] = useState(false)
+  const [releaseCycle, setReleaseCycle] = useState<ReleaseCycleAlbumDetailResponse | null>(null)
+  const [releaseCycleLoading, setReleaseCycleLoading] = useState(false)
+  const [releaseCycleError, setReleaseCycleError] = useState<string | null>(null)
 
   const fetchData = useCallback(() => {
     if (!albumName) return
@@ -328,6 +362,31 @@ export function AlbumDetailPage() {
     }
   }, [activeTab, data, enrichment, enrichmentLoading])
 
+  useEffect(() => {
+    if (activeTab === 'era' && data?.found && !releaseCycle && !releaseCycleLoading) {
+      const cacheKey = `${data.artist_name}:${data.album_name}`
+      const cached = releaseCycleCache.get(cacheKey)
+      if (cached) {
+        setReleaseCycle(cached)
+        return
+      }
+      setReleaseCycleLoading(true)
+      setReleaseCycleError(null)
+      api
+        .get<ReleaseCycleAlbumDetailResponse>(
+          `/billboard/release-cycle/artist/${encodeURIComponent(data.artist_name)}/album/${encodeURIComponent(data.album_name)}`,
+          { weeks_before: 12, weeks_after: 24 },
+        )
+        .then((result) => {
+          releaseCycleCache.set(cacheKey, result)
+          setReleaseCycle(result)
+          if (result.error) setReleaseCycleError(result.error)
+        })
+        .catch((e: Error) => setReleaseCycleError(e.message))
+        .finally(() => setReleaseCycleLoading(false))
+    }
+  }, [activeTab, data, releaseCycle, releaseCycleLoading])
+
   return (
     <>
       {loading && <AlbumDetailSkeleton />}
@@ -367,7 +426,7 @@ export function AlbumDetailPage() {
                   className="mb-4 inline-flex items-center gap-1.5 font-sans text-[11px] font-bold uppercase tracking-[1.8px] text-muted-foreground transition-colors hover:text-accent-foreground"
                 >
                   <ArrowLeft className="h-3 w-3" />
-                  Billboard / 专辑详情
+                  Music / 专辑详情
                 </button>
                 <div className="flex items-start gap-6">
                   {data.cover_url && (
@@ -383,7 +442,7 @@ export function AlbumDetailPage() {
                     </h1>
                     <p className="mt-2 font-sans text-[17px] text-muted-foreground">
                       <Link
-                        to={`/billboard/artist/${encodeURIComponent(data.artist_name)}`}
+                        to={`/music/artists/${encodeURIComponent(data.artist_name)}`}
                         className="transition-colors hover:text-accent-foreground"
                       >
                         {displayName(data.artist_name)}
@@ -604,6 +663,10 @@ export function AlbumDetailPage() {
               )}
 
               {/* ═══ Tab 2: 曲目表现 ═══ */}
+              {activeTab === 'stats' && (
+                <EntityStatsPanel kind="album" albumName={data.album_name} artistName={data.artist_name} />
+              )}
+
               {activeTab === 'tracks' && (
                 <div className="mb-8">
                   <KpiStrip
@@ -666,7 +729,7 @@ export function AlbumDetailPage() {
                               </td>
                               <td className="py-3.5 pl-1">
                                 <Link
-                                  to={`/billboard/track/${t.track_id}`}
+                                  to={`/music/tracks/${t.track_id}`}
                                   className="font-sans text-sm font-semibold leading-snug transition-colors hover:text-accent-foreground"
                                 >
                                   {displayName(t.track_name)}
@@ -732,59 +795,246 @@ export function AlbumDetailPage() {
               {/* ═══ Tab 3: 发行档案 ═══ */}
               {activeTab === 'era' && (
                 <div className="mb-8">
+                  {releaseCycle && !releaseCycle.error && (
+                    <>
+                      <div className="mb-8">
+                        <h3 className="mb-4 font-serif text-xl font-semibold">发行概览</h3>
+                        <GlassCard className="p-5">
+                          <div className="flex flex-col gap-5 md:flex-row md:items-start">
+                            {data.cover_url && (
+                              <img
+                                src={data.cover_url}
+                                alt={data.album_name}
+                                className="h-[104px] w-[104px] flex-shrink-0 rounded-[12px] object-cover shadow-md"
+                                loading="lazy"
+                              />
+                            )}
+                            <div className="min-w-0 flex-1">
+                              <p className="font-serif text-[24px] font-semibold leading-tight">
+                                {displayName(releaseCycle.primary_name || releaseCycle.album_name)}
+                              </p>
+                              <p className="mt-1 font-sans text-[13px] text-muted-foreground">
+                                {formatDateShort(releaseCycle.release_date_iso || releaseCycle.release_date)} · {formatAlbumType(releaseCycle.album_type)}
+                              </p>
+                              <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
+                                <MiniStat label="主版本" value={displayName(releaseCycle.primary_name || releaseCycle.canonical_name)} />
+                                <MiniStat label="合并版本" value={releaseCycle.is_grouped ? `${releaseCycle.group_albums.length}` : '1'} />
+                                <MiniStat label="先行单曲" value={formatNumber(releaseCycle.advance_singles.length)} />
+                                <MiniStat label="周期窗口" value="发行前后" />
+                              </div>
+                            </div>
+                          </div>
+                        </GlassCard>
+                      </div>
+
+                      <div className="mb-8 grid grid-cols-2 gap-5 lg:grid-cols-4">
+                        <KpiCard
+                          label="空降排名"
+                          value={formatOptionalRank(releaseCycle.metrics.debut_rank)}
+                          sub={`发行周播放 ${formatNumber(releaseCycle.metrics.release_week_plays)}`}
+                          accent={releaseCycle.metrics.debut_rank === 1}
+                        />
+                        <KpiCard
+                          label="周期峰值"
+                          value={formatOptionalRank(releaseCycle.metrics.peak_rank)}
+                          sub={releaseCycle.metrics.weeks_to_peak != null ? `登顶/达峰需 ${releaseCycle.metrics.weeks_to_peak} 周` : '未入专辑榜'}
+                          accent={releaseCycle.metrics.peak_rank === 1}
+                        />
+                        <KpiCard
+                          label="半衰期"
+                          value={formatHalfLife(releaseCycle.metrics.half_life)}
+                          sub={`峰值播放 ${formatNumber(releaseCycle.metrics.peak_play_count)}`}
+                        />
+                        <KpiCard
+                          label="收听冲击力"
+                          value={releaseCycle.metrics.artist_impact_fmt ?? '—'}
+                          sub={releaseCycle.metrics.market_impact_fmt ? `大盘 ${releaseCycle.metrics.market_impact_fmt}` : undefined}
+                          accent
+                        />
+                      </div>
+                    </>
+                  )}
+
                   {/* Release Timeline Chart */}
                   <div className="mb-8">
-                    <h3 className="mb-4 font-serif text-xl font-semibold">发行周期</h3>
+                    <h3 className="mb-4 font-serif text-xl font-semibold">发行走势</h3>
                     <GlassCard className="p-6">
-                      {enrichmentLoading ? (
+                      {releaseCycleLoading ? (
                         <Skeleton className="h-[380px] w-full rounded-[12px]" />
                       ) : (
                         <ReleaseTimelineChart
-                          albumHistory={data.album_weekly_history.map((e) => ({
-                            week: e.week,
-                            rank: e.rank,
-                            play_count: e.play_count,
-                          }))}
-                          singlesOverlay={data.best_singles_overlay}
+                          albumHistory={
+                            releaseCycle && !releaseCycle.error
+                              ? releaseCycle.album_ranks.map((e) => ({
+                                  week: e.billboard_week,
+                                  week_offset: e.week_offset,
+                                  rank: e.rank,
+                                  play_count: e.play_count,
+                                }))
+                              : data.album_weekly_history.map((e) => ({
+                                  week: e.week,
+                                  rank: e.rank,
+                                  play_count: e.play_count,
+                                }))
+                          }
+                          singlesOverlay={releaseCycle ? releaseCycle.best_track_ranks?.ranks ?? [] : data.best_singles_overlay}
                           wikiSingles={enrichment?.wiki?.infobox?.singles ?? []}
-                          albumReleaseDate={data.meta?.release_date ?? ''}
+                          albumReleaseDate={releaseCycle?.release_date_iso ?? data.meta?.release_date ?? ''}
+                          albumTimeline={releaseCycle?.album_timeline ?? []}
+                          advanceSingleRanks={releaseCycle?.advance_single_ranks ?? []}
+                          bestTrackRanks={releaseCycle?.best_track_ranks ?? null}
                         />
                       )}
-                      {enrichment?.wiki && (
+                      {releaseCycleError && (
+                        <p className="mt-2 font-sans text-[11px] text-destructive">
+                          发行周期数据加载失败：{releaseCycleError}
+                        </p>
+                      )}
+                      {(releaseCycle || enrichment?.wiki) && (
                         <p className="mt-2 font-sans text-[11px] text-muted-foreground">
-                          发行信息来自 Wikipedia
-                          {enrichment.wiki.infobox.singles.length > 0 && (
-                            <span> · 共识别 {enrichment.wiki.infobox.singles.length} 支单曲</span>
+                          发行周期来自本地播放数据
+                          {enrichment?.wiki && <span> · 单曲发行标记来自 Wikipedia</span>}
+                          {(enrichment?.wiki?.infobox?.singles.length ?? 0) > 0 && (
+                            <span> · 共识别 {enrichment?.wiki?.infobox?.singles.length} 支单曲</span>
                           )}
                         </p>
                       )}
                     </GlassCard>
                   </div>
 
-                  {/* Singles Detail */}
-                  {enrichment?.wiki?.infobox?.singles && enrichment.wiki.infobox.singles.length > 0 && (
-                    <div className="mb-8">
-                      <h3 className="mb-4 font-serif text-xl font-semibold">单曲发行</h3>
-                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                        {enrichment.wiki.infobox.singles.map((s, i) => (
-                          <GlassCard key={i} className="p-4">
-                            <div className="flex items-start gap-3">
-                              <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-muted font-sans text-[11px] font-bold text-muted-foreground">
-                                {i + 1}
-                              </span>
-                              <div>
-                                <p className="font-sans text-[14px] font-semibold">{s.name}</p>
-                                {s.date && (
-                                  <p className="mt-0.5 font-sans text-[12px] text-muted-foreground">
-                                    {s.date}
-                                  </p>
-                                )}
-                              </div>
-                            </div>
+                  {releaseCycle && !releaseCycle.error && (
+                    <>
+                      {(releaseCycle.is_grouped || releaseCycle.advance_singles.length > 0 || (enrichment?.wiki?.infobox?.singles.length ?? 0) > 0) && (
+                        <div className="mb-8">
+                          <h3 className="mb-4 font-serif text-xl font-semibold">发行构成</h3>
+                          <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+                            {releaseCycle.is_grouped && (
+                              <GlassCard className="p-5">
+                                <h4 className="mb-3 font-serif text-[18px] font-semibold">版本家族</h4>
+                                <p className="font-sans text-[13px] text-muted-foreground">
+                                  主版本：{displayName(releaseCycle.primary_name || releaseCycle.canonical_name)}
+                                </p>
+                                <div className="mt-3 flex flex-wrap gap-2">
+                                  {releaseCycle.group_albums.map((name) => (
+                                    <span key={name} className="rounded-full border border-border px-3 py-1 font-sans text-[12px] text-foreground/75">
+                                      {displayName(name)}
+                                    </span>
+                                  ))}
+                                </div>
+                              </GlassCard>
+                            )}
+                            {releaseCycle.advance_singles.length > 0 && (
+                              <GlassCard className="p-5">
+                                <h4 className="mb-3 font-serif text-[18px] font-semibold">先行单曲</h4>
+                                <div className="space-y-2">
+                                  {releaseCycle.advance_singles.map((single) => (
+                                    <div key={`${single.single_name}-${single.release_date}`} className="flex items-center justify-between gap-4 border-b border-border/60 pb-2 last:border-0 last:pb-0">
+                                      <span className="font-sans text-[13px] font-semibold">{displayName(single.single_name)}</span>
+                                      <span className="font-sans text-[12px] text-muted-foreground">{formatDateShort(single.release_date)}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </GlassCard>
+                            )}
+                            {enrichment?.wiki?.infobox?.singles && enrichment.wiki.infobox.singles.length > 0 && (
+                              <GlassCard className="p-5">
+                                <h4 className="mb-3 font-serif text-[18px] font-semibold">单曲发行</h4>
+                                <div className="space-y-2">
+                                  {enrichment.wiki.infobox.singles.slice(0, 12).map((s, i) => (
+                                    <div key={`${s.name}-${i}`} className="flex items-center justify-between gap-4 border-b border-border/60 pb-2 last:border-0 last:pb-0">
+                                      <span className="font-sans text-[13px] font-semibold">{displayName(s.name)}</span>
+                                      {s.date && <span className="font-sans text-[12px] text-muted-foreground">{s.date}</span>}
+                                    </div>
+                                  ))}
+                                </div>
+                              </GlassCard>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {releaseCycle.track_matrix && (
+                        <div className="mb-8">
+                          <h3 className="mb-4 font-serif text-xl font-semibold">收听展开</h3>
+                          <GlassCard className="overflow-auto p-0">
+                            <table className="mx-6 my-0 min-w-full border-collapse">
+                              <thead>
+                                <tr>
+                                  <th className="sticky left-0 bg-card pb-3.5 pt-4 text-left font-sans text-[10px] font-bold uppercase tracking-[1.2px] text-muted-foreground">
+                                    曲目
+                                  </th>
+                                  {releaseCycle.track_matrix.weeks.map((week) => (
+                                    <th key={week} className="min-w-12 pb-3.5 pt-4 text-right font-sans text-[10px] font-bold uppercase tracking-[1.2px] text-muted-foreground">
+                                      {week >= 0 ? `+${week}` : week}
+                                    </th>
+                                  ))}
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {(() => {
+                                  const max = Math.max(...releaseCycle.track_matrix!.data.flat(), 1)
+                                  return releaseCycle.track_matrix!.tracks.map((track, rowIndex) => (
+                                    <tr key={track} className="transition-colors hover:bg-muted/40">
+                                      <td className="sticky left-0 max-w-[220px] bg-card py-2 pr-4 font-sans text-[12px] font-semibold">
+                                        {displayName(track)}
+                                      </td>
+                                      {releaseCycle.track_matrix!.data[rowIndex].map((value, colIndex) => (
+                                        <MatrixCell key={`${track}-${colIndex}`} value={value} max={max} />
+                                      ))}
+                                    </tr>
+                                  ))
+                                })()}
+                              </tbody>
+                            </table>
                           </GlassCard>
-                        ))}
-                      </div>
-                    </div>
+                          <p className="mt-2 font-sans text-[11px] text-muted-foreground">数字为距发行周的周播放次数，横轴 0 为发行周。</p>
+                        </div>
+                      )}
+
+                      {(releaseCycle.catalog_reentries.length > 0 || releaseCycle.bonus_tracks.length > 0) && (
+                        <div className="mb-8">
+                          <h3 className="mb-4 font-serif text-xl font-semibold">外溢影响</h3>
+                          <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+                            {releaseCycle.catalog_reentries.length > 0 && (
+                              <div>
+                                <h4 className="mb-3 font-serif text-[18px] font-semibold">老歌回榜</h4>
+                              <GlassCard className="overflow-hidden p-0">
+                                <table className="mx-6 my-0 w-[calc(100%-48px)] border-collapse">
+                                  <tbody>
+                                    {releaseCycle.catalog_reentries.map((item) => (
+                                      <tr key={`${item.track_name}-${item.reentry_offset}`} className="border-b border-border/60 last:border-0">
+                                        <td className="py-3 font-sans text-[13px] font-semibold">{displayName(item.track_name)}</td>
+                                        <td className="py-3 font-sans text-[12px] text-muted-foreground">{displayName(item.source_album)}</td>
+                                        <td className="py-3 text-right font-sans text-[12px] text-muted-foreground">+{item.reentry_offset} 周</td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </GlassCard>
+                              </div>
+                            )}
+                            {releaseCycle.bonus_tracks.length > 0 && (
+                              <div>
+                                <h4 className="mb-3 font-serif text-[18px] font-semibold">加曲来源</h4>
+                              <GlassCard className="overflow-hidden p-0">
+                                <table className="mx-6 my-0 w-[calc(100%-48px)] border-collapse">
+                                  <tbody>
+                                    {releaseCycle.bonus_tracks.slice(0, 12).map((item) => (
+                                      <tr key={`${item.track_name}-${item.source_album}`} className="border-b border-border/60 last:border-0">
+                                        <td className="py-3 font-sans text-[13px] font-semibold">{displayName(item.track_name)}</td>
+                                        <td className="py-3 font-sans text-[12px] text-muted-foreground">{displayName(item.source_album)}</td>
+                                        <td className="py-3 text-right font-sans text-[12px] tabular-nums">{formatNumber(item.play_count)}</td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </GlassCard>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </>
                   )}
 
                   {/* Structured enrichment (LLM) or fallback */}

@@ -13,10 +13,12 @@ export function CoverCell({
   index,
   isNewOrRe = false,
   coverUrl,
+  className = 'h-10 w-10',
 }: {
   index: number
   isNewOrRe?: boolean
   coverUrl?: string | null
+  className?: string
 }) {
   const [imgError, setImgError] = useState(false)
   useEffect(() => { setImgError(false) }, [coverUrl])
@@ -27,14 +29,14 @@ export function CoverCell({
         <img
           src={coverUrl}
           alt=""
-          className="h-10 w-10 rounded-[8px] object-cover"
+          className={`${className} rounded-[8px] object-cover`}
           onError={() => setImgError(true)}
           loading="lazy"
         />
       )
     }
     return (
-      <div className="flex h-10 w-10 items-center justify-center rounded-[8px] bg-muted text-base">
+      <div className={`flex ${className} items-center justify-center rounded-[8px] bg-muted text-base`}>
         {'🆕'}
       </div>
     )
@@ -42,9 +44,9 @@ export function CoverCell({
   if (coverUrl && !imgError) {
     return (
       <img
-        src={coverUrl}
-        alt=""
-        className="h-10 w-10 rounded-[8px] object-cover"
+      src={coverUrl}
+      alt=""
+      className={`${className} rounded-[8px] object-cover`}
         onError={() => setImgError(true)}
         loading="lazy"
       />
@@ -54,7 +56,7 @@ export function CoverCell({
   const c2 = COVER_COLORS[(index + 1) % COVER_COLORS.length]
   return (
     <div
-      className="flex h-10 w-10 items-center justify-center rounded-[8px] text-base opacity-85"
+      className={`flex ${className} items-center justify-center rounded-[8px] text-base opacity-85`}
       style={{ background: `linear-gradient(135deg, ${c}, ${c2})` }}
     >
       🎵

@@ -6,17 +6,21 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Spotify Extended Streaming History 数据分析 Web 应用。从 Spotify 官方导出的 JSON 播放记录中导入数据到 SQLite，通过 FastAPI + React 提供交互式多维度统计仪表盘。
 
-**架构演进**：已从 Streamlit 单体架构迁移到 FastAPI 后端 + React 前端。后端 76 个 API 端点已全部完成，前端 Dashboard 总览页、Billboard 周榜页（含对决、发行周期分析、榜单记录等 12 子 Tab）、三个详情子页面（单曲/艺人/专辑，含 Genius 歌词、Spotify 元数据展示、Wikipedia 百科 AI 结构化数据）以及设置页面（含 LLM 配置档案持久化管理）已完成开发。Streamlit 原有应用和后端 API 仍可并行运行。
+**架构演进**：已从 Streamlit 单体架构迁移到 FastAPI 后端 + React 前端。前端包含 Dashboard、stats.fm 风格播放统计、Billboard 周榜页（含对决、发行周期分析、榜单记录等 12 子 Tab）、全局音乐实体详情页（歌曲/专辑/艺人，含个人播放统计、Billboard 成绩、Genius 歌词、Spotify 元数据展示、Wikipedia 百科 AI 结构化数据）以及设置页面（含 LLM 配置档案持久化管理）。Streamlit 原有应用和后端 API 仍可并行运行。
 
 **UI 主题**：「编辑风 × 液态玻璃」— 杂志式排版（Playfair Display 衬线标题 + Inter 无衬线正文）+ 毛玻璃卡片材质 + 日/夜双皮肤。详细风格指南见 `frontend/UI_STYLE_GUIDE.md`。
 
-**性能策略**：后端启动后后台预热默认 Dashboard/Billboard 缓存，`/api/billboard/data` 等大响应启用 gzip，Billboard 全量计算使用 normalized cache key + single-flight 避免重复冷算。前端使用路由级 lazy 分包、Dashboard/Billboard 共享 in-flight request、布局层延迟预取常用数据；ECharts 与 OpenCC 改为按需动态加载，默认首屏入口包约 276KB（gzip 约 89KB）。
+**性能策略**：后端启动后后台预热默认 Dashboard/Analysis/Billboard 缓存，`/api/billboard/data` 等大响应启用 gzip，Billboard 全量计算使用 normalized cache key + single-flight 避免重复冷算，播放统计使用参数化结果缓存。前端使用路由级 lazy 分包、Dashboard/Billboard/Analysis 共享 in-flight request 或参数化缓存，布局层延迟预取常用数据；ECharts 与 OpenCC 改为按需动态加载，默认首屏入口包约 276KB（gzip 约 89KB）。
 
 ## 常用命令
 
 ```bash
 # 启动 FastAPI 后端（端口 8000，Swagger UI: http://localhost:8000/docs）
-source .venv/bin/activate && uvicorn backend.main:app --reload
+# 开发时只监听 backend/，避免 --reload 扫描 .venv、frontend/node_modules、data 导致 CPU 持续偏高
+source .venv/bin/activate && uvicorn backend.main:app --reload --reload-dir backend
+
+# 调试冷启动或暂时不需要预热缓存时，可关闭启动预热
+source .venv/bin/activate && SPOTIFY_STATS_WARMUP=0 uvicorn backend.main:app --reload --reload-dir backend
 
 # 启动前端开发服务器（端口 5173，自动代理 /api → 后端 8000）
 cd frontend && npm run dev
@@ -58,6 +62,26 @@ source .venv/bin/activate && pytest backend/tests/test_api.py -v
 source .venv/bin/activate && pytest backend/tests/test_services.py -v
 ```
 
+## Git 提交说明规范
+
+提交信息必须延续本仓库既有的详细说明风格，不要只写一行简略标题。推荐格式：
+
+```text
+<type>: <中文概括标题>
+
+- 后端/数据层改动：说明新增或调整的 API、服务、缓存、数据库或计算口径
+- 前端/UI 改动：说明新增页面、路由、组件、交互和视觉结构
+- 性能/稳定性改动：说明缓存、预热、请求复用、错误回退或兼容迁移
+- 测试验证：说明新增/更新的测试，以及实际跑过的验证命令或结果
+- 文档同步：说明 README、CLAUDE、AGENTS、UI 指南等是否已同步
+```
+
+要求：
+- 标题使用 conventional commit 前缀（如 `feat:` / `fix:` / `perf:` / `docs:`），后面用中文准确概括本次提交。
+- 正文用 4-7 条中文 bullet，覆盖本次改动的关键模块和用户可感知行为。
+- 如果改动包含文档同步、测试提速、缓存策略或路由兼容迁移，必须在正文单独写明。
+- 提交前先看最近几条 `git log --format=fuller -n 5`，保持粒度和措辞风格一致。
+
 ## 架构
 
 ### 数据流
@@ -79,7 +103,7 @@ JSON 文件 (账号数据)  ──→ import_account_data.py ──┘
                          st.cache_data 缓存查询结果
 ```
 
-后端生产入口 `backend/main.py` 通过 FastAPI lifespan 启动后台缓存预热线程（`backend/core/warmup.py`），默认预热 `load_plays()` 与 `compute_billboard_data()`。设置 `SPOTIFY_STATS_WARMUP=0` 可关闭启动预热，测试环境通过 pytest fixture 控制预热节奏。
+后端生产入口 `backend/main.py` 通过 FastAPI lifespan 启动后台缓存预热线程（`backend/core/warmup.py`），默认预热 `load_plays()`、播放统计默认页与 `compute_billboard_data()`。启动后短时间 CPU 占用较高属于正常预热现象；设置 `SPOTIFY_STATS_WARMUP=0` 可关闭启动预热，测试环境通过 pytest fixture 控制预热节奏。开发模式下使用 `uvicorn --reload --reload-dir backend`，只监听后端代码变更；不要让 reloader 扫描整个仓库，否则 `.venv`、`frontend/node_modules`、`data` 等大目录会导致 CPU 持续偏高。
 
 ### 后端架构 (backend/)
 
@@ -87,7 +111,7 @@ FastAPI 后端采用三层分离架构：**路由层 (api/)** → **服务层 (s
 
 #### 路由层 (api/)
 
-20 个子路由模块，共 76 个 API 端点。所有路由通过 `backend/api/router.py` 组装，挂载到 `backend/main.py` 的 `/api` 前缀下。
+后端按领域拆分子路由模块，所有路由通过 `backend/api/router.py` 组装，挂载到 `backend/main.py` 的 `/api` 前缀下。
 
 **过滤参数依赖注入** (`backend/dependencies.py`)：
 - `PlayFilters` — 标准播放数据过滤（`min_ms`, `music_only`, `merge_enabled`），用于仪表盘、时间线、排行榜、行为分析、听歌时段等端点
@@ -107,6 +131,13 @@ GET  /api/health                         健康检查
 GET  /api/dashboard/*                    仪表盘（6 端点：summary, monthly-trend, top-tracks, platform-dist, dow-dist, random-track）
 GET  /api/timeline/*                     时间线（annual, monthly, weekly + 周下钻 top5）
 GET  /api/leaderboard                    排行榜（track/artist/album × plays/hours × all/year）
+GET  /api/analysis/overview              播放分析入口摘要
+GET  /api/analysis/stats                 总体播放统计（时间范围、日/累计趋势、时钟、分布、最近播放）
+GET  /api/analysis/charts                个人排行榜（track/album/artist × plays/hours × 任意时间范围）
+GET  /api/music/tracks/{id}/stats        歌曲个人播放统计
+GET  /api/music/albums/{name}/stats      专辑个人播放统计
+GET  /api/music/artists/{name}/stats     艺人个人播放统计
+GET  /api/music/{tracks,albums,artists}/*/plays  实体最近播放记录
 GET  /api/behavior                       行为分析（reason_end, reason_start, fwdbtn, shuffle, platform）
 GET  /api/listening-hours/*              听歌时段（heatmap, yearly-heatmap, late-night, weekday-weekend, platform-hourly）
 GET  /api/artist/{name}/deep-dive        艺人深度分析
@@ -148,7 +179,8 @@ POST /api/import/account                 账号数据导入
 
 计算逻辑从 Streamlit 页面中提取，不依赖任何 Web 框架。每个服务文件职责单一：
 
-- **`play_service.py`** — 核心播放数据服务。`load_plays()` 封装，通用 groupby 聚合（按年/月/周/小时/平台/艺术家等），仪表盘 KPI、时间线（年度/月度/周度+下钻）、排行榜、行为分析、听歌时段热力图、工作日vs周末对比、平台×小时分布、年度总结 Wrapped（含听歌人格 Explorer/Loyalist/Binger）等所有基于播放数据的端点均调用此服务。Dashboard 相关函数支持可选 `df` 参数，`/dashboard/full` 端点加载一次 plays 后传递给 5 个子函数复用，避免 6 次冗余 SQL 查询。`get_hourly_dist()` 提供逐小时播放量分布，用于前端动态洞察生成
+- **`analysis_stats_service.py` / `entity_stats_service.py`** — stats.fm 风格播放统计。前者负责统一时间范围解析、总体统计、个人排行榜、最近播放记录；后者负责歌曲/专辑/艺人个人播放统计、实体排名、Top 250 计数、实体内曲目/专辑拆解。两者继续复用 `load_plays()` 的标准过滤与合并口径
+- **`play_service.py`** — 核心播放数据服务。`load_plays()` 封装，通用 groupby 聚合（按年/月/周/小时/平台/艺术家等），仪表盘 KPI、时间线（年度/月度/周度+下钻）、排行榜、行为分析、听歌时段热力图、工作日vs周末对比、平台×小时分布、年度总结 Wrapped（含听歌人格 Explorer/Loyalist/Binger）等所有基于播放数据的旧端点均调用此服务。Dashboard 相关函数支持可选 `df` 参数，`/dashboard/full` 端点加载一次 plays 后传递给 5 个子函数复用，避免 6 次冗余 SQL 查询。`get_hourly_dist()` 提供逐小时播放量分布，用于前端动态洞察生成
 - **`billboard_service.py`** — Billboard 计算管线。`compute_billboard_data()` 一次性计算 15+ 数据结构（周榜 ×3、总榜 ×3、走势总榜 ×3、榜单记录、每周榜首等），公开函数统一规范化参数后进入内部 cached 函数，避免位置参数/关键字参数造成 cache key 分裂；内部使用 `@lru_cache(maxsize=8)` + `singleflight`，同一组参数首次并发只计算一次。Power Score 只计算一次（原 Streamlit 代码重复计算 ~10 次）。详情和对比功能：`get_track_history()`（升降列 NEW/RE/▲n/▼n/─ + 断档 gap 检测 + 封面图 + 截至当周滚动指标 `running_peak`/`running_wks`/`running_peak_wks`）、`get_artist_chart_detail()`（艺人周榜历史 + 封面图 + 歌曲/专辑表现，含截至当周滚动指标，chart_summary 含 `latest_week`，tracks/albums 含 `cover_url` 与 `first_peak_week`）、`get_album_chart_detail()`（专辑周榜历史 + 封面图 + 收录曲表现，含截至当周滚动指标，chart_summary 含 `latest_week`，tracks 含 `cover_url`）、`get_versus_{track,album,artist}()`（双实体对决对比）、`get_billboard_entity_lists()`（对决搜索选择器，直接复用 `track_summary` / `album_power_scores` / `artist_power_scores`，避免从大 weekly JSON 重建 DataFrame）。`_compute_change_column()` 使用临时 `week_dt` 变量不修改原列以避免日期格式污染
 - **`release_cycle_service.py`** — 发行周期分析。艺人发行列表、单曲 Billboard 历史、专辑周期指标（首周排名、峰值、影响力得分、半衰期）、先行曲识别（三级查找：DB → Spotify API → 最早播放日期）、`compare_releases()` 多发行叠加对比。Spotify API 令牌通过 `@ttl_cached` 缓存（~58 分钟 TTL），网络/解析失败返回 `None` 进入离线回退路径且不会缓存失败值；对比接口支持通过合并子版本名解析到 canonical 专辑，并保留子版本发行日期用于周期对齐
 - **`library_service.py`** — 收藏交叉查询（收藏曲目/专辑/艺人与实际收听对比）
@@ -190,7 +222,7 @@ Pydantic v2 模型定义 API 响应结构，按领域拆分：
 - **`test_api.py`** — API 层测试，覆盖所有主要端点：结构验证、数据自洽性、跨端点交叉校验、边界条件（空数据/不存在实体/参数约束）、过滤器变化影响、HTTP 响应格式、Genius 歌词缓存标记
 - **`test_services.py`** — Service 层测试，直接调用服务函数验证计算逻辑：数值断言、numpy 类型安全、JSON 序列化、TTL 缓存行为、Genius 歌词清洗、缓存预热、Spotify API 离线回退
 
-当前后端测试为 157 个用例，使用真实生产 SQLite 数据库只读验证；默认缓存预热和 cache key 规范化后，全量测试约 26 秒（本机环境可能有少量波动）。测试输出中若出现 urllib3/LibreSSL 警告，属于本机 Python SSL 编译环境提醒，不是项目逻辑问题。
+当前后端测试为 168 个用例，使用真实生产 SQLite 数据库只读验证；默认缓存预热和 cache key 规范化后，全量测试约 44 秒（本机环境可能有少量波动）。测试输出中若出现 urllib3/LibreSSL 警告，属于本机 Python SSL 编译环境提醒，不是项目逻辑问题。
 
 测试设计模式：真实数据断言（如 `total_plays > 50000`）而非 mock 返回固定值；交叉校验（如 dashboard 的 total_plays 与 timeline 的 annual 求和一致）；边界条件（不存在的艺人返回空、空年份标记 `empty: true`）。
 
@@ -203,12 +235,12 @@ React + Vite + Tailwind CSS v4 + shadcn/ui（样式 `base-nova`，基础色 `neu
 - **样式**：Tailwind CSS v4（`@tailwindcss/vite` 插件），`tw-animate-css` 动画库
 - **主题**：CSS 变量 + `.dark` class 切换，`oklch()` 色彩空间。结构变量在 `@theme inline`，颜色在 `:root` / `.dark`。`useTheme()` hook 提供 localStorage 持久化 + 系统偏好回退
 - **组件**：shadcn/ui v4（base-nova 风格），源码在 `@/components/ui/`
-- **路由**：React Router v7，当前 9 个路由：`/`（DashboardPage，动态洞察）、`/billboard`（BillboardPage，CoverCell 封面，Tab 记忆跨页面保持）、`/billboard/number-ones`（NumberOnesPage，子 Tab + 年份记忆保持）、`/billboard/all-time`（AllTimeChartsPage，总榜三实体 Tab，Tab/筛选/排序/翻页记忆保持）、`/billboard/records`（RecordsPage，6 大展区 37 项榜单记录）、`/billboard/track/:trackId`（TrackDetailPage，3 Tab：榜单表现/歌词/Wikipedia 百科，艺人名和专辑名可点击跳转详情）、`/billboard/artist/:artistName`（ArtistDetailPage，4 Tab：榜单表现/单曲成绩/专辑成绩/歌手生涯，AI 百科结构化视图）、`/billboard/album/:albumName`（AlbumDetailPage，3 Tab：榜单表现/曲目表现/专辑百科，AI 百科结构化视图）、`/settings`（SettingsPage，含 LLM 配置档案管理）。页面组件均通过 `React.lazy()` 路由级分包，首屏只下载当前路由代码
+- **路由**：React Router v7。主导航包含 `/`、`/analysis`、`/billboard`、`/settings`；播放分析使用 `/analysis/stats`（总体统计）与 `/analysis/charts`（个人排行榜）；音乐实体详情使用全局 `/music/tracks/:trackId`、`/music/albums/:albumName`、`/music/artists/:artistName`，旧 `/billboard/track|album|artist/*` 仅做兼容跳转。页面组件均通过 `React.lazy()` 路由级分包，首屏只下载当前路由代码
 - **图表**：ECharts 6 + echarts-for-react（月度趋势图、排名趋势图、发行周期图）；图表库通过组件内动态 import 按需加载。平台分布使用纯 DOM 进度条
 - **字体**：Inter Variable（`@fontsource-variable/inter`）+ Playfair Display（Google Fonts CDN）
 - **国际化**：中文简繁转换（opencc-js），`displayName()` 覆盖所有页面的名称展示；OpenCC 转换器按需动态 import，默认「原文」模式不加载大字典包，切换简/繁后通过事件触发页面重渲染
 - **日期工具**：date-fns + react-day-picker（日历周选择器，`Popover` + `Calendar` 弹窗跳转）
-- **客户端缓存**：模块级变量缓存 API 响应和 in-flight Promise，页面切换和后台预取不会重复请求；AppLayout 首屏渲染后延迟预取 Dashboard/Billboard 常用数据；BillboardPage/NumberOnesPage/AllTimeChartsPage 使用模块级变量记忆 Tab/筛选/排序/翻页状态，导航返回后自动恢复；RecordsPage 复用 Billboard 模块级缓存
+- **客户端缓存**：模块级变量缓存 API 响应和 in-flight Promise，页面切换和后台预取不会重复请求；AppLayout 首屏渲染后延迟预取 Dashboard/Billboard 常用数据；Analysis 统计页等设置读取完成后再请求，避免默认参数重复请求；BillboardPage/NumberOnesPage/AllTimeChartsPage 使用模块级变量记忆 Tab/筛选/排序/翻页状态，导航返回后自动恢复；RecordsPage 复用 Billboard 模块级缓存
 
 **目录结构**：
 ```
