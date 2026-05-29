@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Spotify Extended Streaming History 数据分析 Web 应用。从 Spotify 官方导出的 JSON 播放记录中导入数据到 SQLite，通过 FastAPI + React 提供交互式多维度统计仪表盘。
 
-**架构演进**：已从 Streamlit 单体架构迁移到 FastAPI 后端 + React 前端。前端包含 Dashboard、stats.fm 风格播放统计、年度回顾页面（自定义总结 + 官方 Wrapped，双 Tab）、Billboard 周榜页（含对决、发行周期分析、榜单记录等 12 子 Tab）、全局音乐实体详情页（歌曲/专辑/艺人，含个人播放统计、Billboard 成绩、Genius 歌词、Spotify 元数据展示、Wikipedia 百科 AI 结构化数据）以及设置页面（含 LLM 配置档案持久化管理）。Streamlit 原有应用和后端 API 仍可并行运行。
+**架构演进**：已从 Streamlit 单体架构迁移到 FastAPI 后端 + React 前端。前端包含 Dashboard、stats.fm 风格播放统计、年度回顾页面（自定义总结 + 官方 Wrapped，双 Tab）、Billboard 周榜页（含对决、发行周期分析、榜单记录等 12 子 Tab）、全局音乐实体详情页（歌曲/专辑/艺人，含个人播放统计、Billboard 成绩、Genius 歌词、Spotify 元数据展示、Wikipedia 百科 AI 结构化数据）、账号中心页面（含数字身份、音乐人格、收藏分析、Spotify OAuth 连接数据）以及设置页面（含 LLM 配置档案持久化管理、Spotify OAuth 连接管理、数据同步）。Streamlit 原有应用和后端 API 仍可并行运行。
 
 **UI 主题**：「编辑风 × 液态玻璃」— 杂志式排版（Playfair Display 衬线标题 + Inter 无衬线正文）+ 毛玻璃卡片材质 + 日/夜双皮肤。详细风格指南见 `frontend/UI_STYLE_GUIDE.md`。
 
@@ -24,6 +24,9 @@ source .venv/bin/activate && SPOTIFY_STATS_WARMUP=0 uvicorn backend.main:app --r
 
 # 启动前端开发服务器（端口 5173，自动代理 /api → 后端 8000）
 cd frontend && npm run dev
+
+# 启动 ngrok HTTPS 隧道（Spotify OAuth 回调需要 HTTPS，静态域名配置在 .env 中）
+ngrok http --url=stuffing-nebula-tamer.ngrok-free.dev 5173
 
 # 构建前端生产版本
 cd frontend && npm run build
@@ -175,6 +178,14 @@ GET  /api/version-merge/*                版本合并管理（groups, detect, ap
 GET  /covers/{type}/{id}.jpg              封面图片服务（三级回退：本地缓存 → CDN 重定向 + 后台下载 → 404）
 POST /api/import/streaming               串流数据导入（异步任务）
 POST /api/import/account                 账号数据导入
+GET  /api/spotify/auth/login             Spotify OAuth PKCE 授权开始（返回 auth_url + state）
+GET  /api/spotify/auth/callback          Spotify OAuth 回调（换 token + 全量数据拉取 + RedirectResponse）
+GET  /api/spotify/auth/status            连接状态 + 已持久化数据摘要
+DELETE /api/spotify/auth/disconnect      断开连接，清除所有 Spotify 数据
+POST /api/spotify/auth/sync              同步收藏日期（user-library-read）
+GET  /api/spotify/auth/data              返回所有持久化数据（top artists/tracks × 3 窗口 + recently played + followed + playlists）
+GET  /api/spotify/auth/playing           实时播放状态（live from Spotify）
+POST /api/spotify/auth/sync-all          全量数据刷新（profile + top items × 6 + recently played + followed + playlists）
 ```
 
 #### 服务层 (services/)
@@ -192,6 +203,8 @@ POST /api/import/account                 账号数据导入
 - **`genius_service.py`** — Genius 歌词服务。懒加载 `GeniusClient` 单例（token 从 `.env` 读取），`get_track_lyrics()` 按需获取歌词并缓存到 `track_lyrics` 表，`get_track_genius_url()` 轻量 URL 查询。歌词清洗：去除 Genius 元数据（Contributors/Translations/Read More），提取嵌入式分段标题（`[Verse]`/`[Chorus]` 等），规范化分段间距（每段之间恰好一空行）
 - **`podcast_service.py`** / **`video_service.py`** / **`profile_service.py`** / **`wrapped_hub_service.py`** — 账号数据页面服务
 - **`wikipedia_service.py`** — Wikipedia 百科扩展服务。专辑/艺人/单曲页面搜索、全文提取、Infobox 解析、段落分割、SQLite 缓存（`wikipedia_cache` 表）、中文翻译（LLM 优先 → Google Translate 回退）、LLM 结构化数据生成（artist → key_facts + career_timeline + genres + stats + achievements，album → key_facts + genres + chart_performance + accolades + singles）
+- **`spotify_auth.py`** — Spotify OAuth PKCE 授权与数据同步服务。`begin_oauth_flow()` 生成 PKCE 挑战 + auth URL；`complete_oauth_flow()` 换 token 后自动拉取全量数据（profile、top artists/tracks × 3 窗口、recently played、followed artists、playlists）；`get_connection_status()` 返回连接状态 + 数据摘要；`fetch_saved_tracks()` 拉取收藏曲目回填 `added_date`；`get_live_playback()` 实时播放状态
+- **`account_service.py`** — 账号中心聚合服务。`get_account_summary()` 一次查询返回 identity / habits / collection 三大 Tab 的综合数据（profile、inferences、sound_capsule、wrapped_years、year_on_year、saved tracks collection analysis、library cross-reference）
 - **`llm_translator.py`** — LLM 翻译/结构化服务。多提供商（DeepSeek/OpenAI/Anthropic/自定义）、API Key 配置从 settings 模块懒加载、代理支持、`translate_with_llm()` 翻译 + `enrich_with_llm()` 结构化 JSON 提取、长文本自动分段（4000 字符/段）、含 3 次重试和速率限制退避
 
 #### 核心工具层 (core/)
@@ -204,6 +217,7 @@ POST /api/import/account                 账号数据导入
 - **`version_merge.py`** — 从 `app/version_merge.py` 完整迁移。`detect_release_groups()`, `apply_detected_groups()`, `create_group()`, `delete_group()` 等
 - **`import_data.py`** / **`import_account_data.py`** — 从 `app/` 迁移，progress_callback 改为 threading.Event + 共享字典
 - **`json_helpers.py`** — 消除 3 处重复定义的序列化工具。`py_val()` 将 numpy/pandas 类型转为 JSON 安全的原生 Python 类型；`df_to_json()` 将 DataFrame 转为 dict 列表
+- **`spotify_utils.py`** — Spotify Web API 核心工具（~500 行）。PKCE 辅助函数（`generate_pkce_pair`, `build_auth_url`）、OAuth token 交换与自动刷新（`exchange_code_for_tokens`, `get_user_access_token`, `_refresh_user_token`）、Token 持久化到 settings 表（`spotify_user_token` JSON blob）、用户档案拉取与持久化（`fetch_spotify_profile`, `save_user_profile`, `get_user_profile`）、10 个 scope 全覆盖数据拉取：top artists/tracks × 3 时间窗口（`fetch_top_artists/tracks`, `save/get_top_items`）、recently played（`fetch_recently_played`, `save/get_recently_played`）、followed artists（`fetch_followed_artists`, `save/get_followed_artists`）、playlists（`fetch_playlists`, `save/get_playlists`）、当前播放（`fetch_current_playback`, `fetch_currently_playing`，实时不持久化）、通用 API 调用（`spotify_api_get`, `spotify_api_get_all_pages`）、客户端凭据令牌 TTL 缓存（`get_client_credentials_token`）、全量同步（`sync_all_spotify_data`）。环境变量从 `.env` 文件手动读取（uvicorn 不自动加载）
 - **`cache.py`** — 从 `release_cycle_service.py` 提取。`ttl_cached(ttl_seconds)` 装饰器用于 Spotify API 等需要时间过期的外部调用缓存，支持 `cache_clear()`，且不缓存 `None` 失败值；`singleflight()` 用于序列化昂贵缓存函数的首次并发 miss
 - **`warmup.py`** — 后端缓存预热工具。`warm_common_caches()` 预热默认播放数据与 Billboard 全量数据；`start_warmup_thread()` 由 FastAPI lifespan 后台启动，避免阻塞服务启动
 - **`scripts/fetch_covers.py`** — 封面批量下载脚本。通过 Spotify API 批量拉取播放记录中所有专辑/艺人的封面，下载到 `data/covers/`，支持增量更新（已有 `image_path` 的记录自动跳过）。三级 ID 解析：`spotify_*_meta` 表 → Track API 反向查找 → Search API 模糊匹配
@@ -240,7 +254,7 @@ React + Vite + Tailwind CSS v4 + shadcn/ui（样式 `base-nova`，基础色 `neu
 - **样式**：Tailwind CSS v4（`@tailwindcss/vite` 插件），`tw-animate-css` 动画库
 - **主题**：CSS 变量 + `.dark` class 切换，`oklch()` 色彩空间。结构变量在 `@theme inline`，颜色在 `:root` / `.dark`。`useTheme()` hook 提供 localStorage 持久化 + 系统偏好回退
 - **组件**：shadcn/ui v4（base-nova 风格），源码在 `@/components/ui/`
-- **路由**：React Router v7。主导航包含 `/`、`/analysis`、`/yearly-review`、`/billboard`、`/settings`（顺序：总览 → 分析 → 年度回顾 → Billboard → 设置）；播放分析使用 `/analysis/stats`（总体统计）与 `/analysis/charts`（个人排行榜）；音乐实体详情使用全局 `/music/tracks/:trackId`、`/music/albums/:albumName`、`/music/artists/:artistName`，旧 `/billboard/track|album|artist/*` 仅做兼容跳转。页面组件均通过 `React.lazy()` 路由级分包，首屏只下载当前路由代码
+- **路由**：React Router v7。主导航包含 `/`、`/analysis`、`/yearly-review`、`/billboard`、`/account`、`/settings`（顺序：总览 → 分析 → 年度回顾 → Billboard → 账号 → 设置）；播放分析使用 `/analysis/stats`（总体统计）与 `/analysis/charts`（个人排行榜）；音乐实体详情使用全局 `/music/tracks/:trackId`、`/music/albums/:albumName`、`/music/artists/:artistName`，旧 `/billboard/track|album|artist/*` 仅做兼容跳转。页面组件均通过 `React.lazy()` 路由级分包，首屏只下载当前路由代码
 - **图表**：ECharts 6 + echarts-for-react（月度趋势图、排名趋势图、发行周期图）；图表库通过组件内动态 import 按需加载。平台分布使用纯 DOM 进度条
 - **字体**：Inter Variable（`@fontsource-variable/inter`）+ Playfair Display（Google Fonts CDN）
 - **国际化**：中文简繁转换（opencc-js），`displayName()` 覆盖所有页面的名称展示；OpenCC 转换器按需动态 import，默认「原文」模式不加载大字典包，切换简/繁后通过事件触发页面重渲染
@@ -266,13 +280,19 @@ frontend/src/
 │   ├── TrackDetailPage.tsx  ← 单曲详情（3 Tab：榜单表现/歌词/Wikipedia 百科，8 KPI + 排名趋势图 + 榜单历史表 + Genius 歌词分段渲染 + 百科扩展数据，艺人名和专辑名可点击跳转详情）
 │   ├── ArtistDetailPage.tsx ← 艺人详情（4 Tab：榜单表现/单曲成绩/专辑成绩/歌手生涯，6 KPI 卡片 + 封面 + Spotify 元数据 + Popularity 视觉进度条 + 走势点数/排名 + AI 百科结构化视图）
 │   ├── AlbumDetailPage.tsx  ← 专辑详情（3 Tab：榜单表现/曲目表现/专辑百科，6 KPI 卡片 + 封面 + Spotify 元数据 + 视觉播放条 + 走势点数/排名 + AI 百科结构化视图，艺人名可点击跳转详情）
-│   └── SettingsPage.tsx     ← 设置（5 区块：Data & Display / LLM Translation / Billboard Parameters / Version Merge / Data Import，含 LLM 配置档案管理）
+│   ├── SettingsPage.tsx     ← 设置（6 区块：Spotify 连接 / Data & Display / Billboard Parameters / Version Merge / Data Import / LLM Translation，含 Spotify OAuth 连接管理 + 账号数据展示 + LLM 配置档案管理）
+│   ├── AccountCenterPage.tsx ← 账号中心（3 Tab：数字身份 / 音乐人格 / 收藏分析，含 inferences 标签云、sound capsule 时间线、Spotify OAuth 增强数据）
+│   └── account/              ← 账号中心子组件
+│       ├── IdentityTab.tsx    ← 数字身份（DigitalFootprint 推断标签、SoundCapsuleBlock 高光时刻）
+│       ├── HabitsTab.tsx      ← 音乐人格（PersonalityHero 主题色听歌人格、年度回顾入口）
+│       └── CollectionTab.tsx  ← 收藏分析（SavedTracksBrowser 分页搜索、生命周期/化学反应/关键词变迁）
 ├── hooks/           ← 自定义 hooks
 │   ├── useTheme.tsx  ← 主题管理（Context + localStorage）
 │   ├── useDashboard.ts  ← Dashboard 数据获取 + 缓存
 │   ├── useBillboard.ts  ← Billboard 数据获取 + 缓存 + goToWeek 周导航
 │   ├── useYearlyReview.ts ← 年度总结数据获取（模块级 Map 缓存 + in-flight Promise 去重 + 序列化预取，避免 SQLite 并发锁）
-│   └── useSettings.ts   ← 设置 + 版本合并 API + LLM 档案 CRUD + 异步导入轮询
+│   ├── useSettings.ts   ← 设置 + 版本合并 API + LLM 档案 CRUD + 异步导入轮询 + Spotify OAuth 连接/同步/断开
+│   └── useAccount.ts     ← 账号中心数据获取 + 缓存
 ├── lib/             ← API 客户端、工具函数
 │   ├── api.ts       ← fetch 封装（GET/PUT/POST/DELETE），类型重导出
 │   ├── theme.ts     ← 图表色盘常量 + getChartColors(isDark)
@@ -284,7 +304,8 @@ frontend/src/
 ├── types/           ← TypeScript 类型定义
 │   ├── dashboard.ts ← Dashboard 响应类型
 │   ├── billboard.ts ← Billboard 响应类型（含 TrackSpotifyMeta / ArtistSpotifyMeta / AlbumSpotifyMeta / LyricsData / StructuredArtist / StructuredAlbum 等）
-│   ├── settings.ts  ← 设置（SettingsData / ImportJob / ReleaseGroup / DetectionResult / LLMProfile / LLMProfileDetail 等）
+│   ├── settings.ts  ← 设置（SettingsData / ImportJob / ReleaseGroup / DetectionResult / LLMProfile / LLMProfileDetail / SpotifyProfile 等）
+│   ├── account.ts   ← 账号中心（InferencesData / SoundCapsuleData / AccountSummary / SavedTracksBrowserItem 等）
 │   └── yearly-review.ts ← 年度总结完整类型（WrappedFullResponse / WrappedFullHero / PersonalityResult / TopLists / GenrePanorama / TimeStory / DiscoveryReturns / ListeningDepth / SpecialMoments / MonthlyDrilldown / YearComparison / LastYearComparison）
 └── UI_STYLE_GUIDE.md ← 详细 UI 风格指南（新增页面必读）
 ```
@@ -396,3 +417,5 @@ app/pages/billboard/
 - 缓存服务函数使用 `@lru_cache` 时，内部必须调用 `get_db()` 获取连接（连接对象不可哈希）；非缓存服务从 API 层接收 `conn` 参数
 - 对昂贵缓存函数，优先通过公开 wrapper 规范化参数后再进入内部 cached 函数，避免位置参数/关键字参数造成重复 cache key；并考虑 `singleflight()` 避免首次并发重复计算
 - `ttl_cached()` 不缓存 `None`，外部 API 瞬时失败应允许后续请求重试；测试中可调用包装函数的 `cache_clear()`
+- **Spotify OAuth**：开发环境需要 HTTPS 回调 URL。使用 ngrok 静态域名（`stuffing-nebula-tamer.ngrok-free.dev`）提供公网 HTTPS 隧道代理到 localhost:5173 Vite 开发服务器。Spotify API scope 变更后已有 token 不会自动升级，需断开重连。Redirect URI 在 `.env` 的 `SPOTIFY_REDIRECT_URI` 和 Spotify Developer Dashboard 中需同步更新
+- Vite 开发服务器需设置 `allowedHosts: true` 以允许 ngrok 域名的外部请求

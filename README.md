@@ -15,8 +15,9 @@
 - **年度回顾**（2 个子 Tab）— 自定义年度总结（Wrapped 风格渐变卡片叙事、听歌人格识别 6 型、Top 5 排行榜、曲风五大洲全景、24 小时时钟图高峰识别、发现与回归三分类、聆听深度金字塔、特殊时刻、月度钻取、年度对比变化率）+ 官方 Wrapped 2025（俱乐部、艺人竞速、收听年龄、排行榜、存档报告）
 - **Billboard 周榜**（12 个子 Tab）— 周榜（单曲/专辑/艺人，支持快速切周、截至当周滚动统计）、每周榜首、单曲历史（含升降列、断档 RE 标记）、艺人榜单、专辑榜单（含版本合并）、走势总榜（Power Score 三维度）、歌曲/艺人/专辑总榜、榜单记录（6 大展区 37 项记录，灵感来自 Billboard Chart Beat / Guinness World Records）、对决（歌曲/专辑/艺人）、发行周期分析（先行曲识别、单曲榜排名线、艺人总览/专辑下钻/多发行对比）
 - **全局音乐实体详情** — `/music/tracks/*`、`/music/albums/*`、`/music/artists/*` 独立于 Billboard，整合个人播放统计、Billboard 成绩、Genius 歌词、Wikipedia 百科、发行周期等内容；旧 `/billboard/track|album|artist/*` 自动跳转
-- **账号中心**（6 个子 Tab）— 音乐库（收藏曲目/专辑/艺人 vs 实际收听）、搜索编年史、音乐画像（粉丝层级分析 + Marquee 推广转化）、播客专区、视频分析（≥30s 有效观看）、个人档案
-- **设置** — 集中管理所有参数：数据过滤（最短播放时长/仅音乐/合并连续播放/中文简繁转换）、LLM 翻译与百科结构化（多提供商 API Key 配置 + 命名档案保存/切换）、Billboard 上榜数量与统计周期、专辑版本合并（自动检测/手动创建/已保存组管理）、数据导入（异步进度轮询）
+- **账号中心**（3 个子 Tab）— 数字身份（个人资料 + Spotify Profile + 兴趣推断标签云 + 声音胶囊高光时刻）、音乐人格（听歌人格 6 型 + 年度回顾入口）、收藏分析（收藏浏览器分页搜索 + 生命周期/化学反应/关键词变迁分析 + Spotify OAuth 收藏日期同步）
+- **设置** — 集中管理所有参数：Spotify OAuth 连接（10 个 scope 全覆盖：收藏、档案、top 排行、播放历史、关注艺人、播放列表、实时播放状态）+ 数据同步；数据过滤（最短播放时长/仅音乐/合并连续播放/中文简繁转换）、LLM 翻译与百科结构化（多提供商 API Key 配置 + 命名档案保存/切换）、Billboard 上榜数量与统计周期、专辑版本合并（自动检测/手动创建/已保存组管理）、数据导入（异步进度轮询）
+- **Spotify Web API 集成** — OAuth PKCE 授权获取用户数据回填和增强：收藏日期回填（`saved_tracks.added_date`）、个人档案（昵称/头像/邮箱/会员类型/国家/粉丝数）、Top 艺人/曲目 × 3 时间窗口（short/medium/long term，含 popularity 和 genres）、最近 50 首播放 + 精确时间戳、32 个播放列表、实时播放状态（当前播放曲目）
 
 ## 快速开始
 
@@ -53,6 +54,9 @@ cd frontend && npm run dev
 # 或启动 Streamlit 前端（端口 8501）
 streamlit run app/main.py
 
+# Spotify OAuth 功能需要 HTTPS 回调 URL，开发环境使用 ngrok 隧道
+ngrok http --url=stuffing-nebula-tamer.ngrok-free.dev 5173
+
 # 运行后端测试（使用 SQLite 数据库，只读模式）
 pytest backend/tests/ -v
 
@@ -85,7 +89,7 @@ pytest backend/tests/ --durations=20 -q
 
 ## 技术栈
 
-- **FastAPI** — 后端 API 框架（76 个端点，依赖注入，自动 Swagger 文档，lifespan 后台缓存预热，gzip 大响应压缩）
+- **FastAPI** — 后端 API 框架（85+ 个端点，依赖注入，自动 Swagger 文档，lifespan 后台缓存预热，gzip 大响应压缩）
 - **React 19** — 前端 UI 框架（TypeScript 6.0，Vite 8，React Router v7，路由级 lazy 分包）
 - **Tailwind CSS v4** — 原子化 CSS 框架（shadcn/ui v4 组件库，`tw-animate-css` 动画）
 - **ECharts 6** — 交互式图表（echarts-for-react，组件内动态加载）
@@ -93,7 +97,7 @@ pytest backend/tests/ --durations=20 -q
 - **SQLite** — 本地数据库（87,000+ 条记录，WAL 模式，查询毫秒级）
 - **Pandas** — 数据聚合处理
 - **Pydantic** — API 响应模型与数据校验
-- **Pytest** — 后端测试框架（168 个测试，覆盖 API 和 Service 层，session 级缓存预热减少重复冷算）
+- **Pytest** — 后端测试框架（183 个测试，覆盖 API 和 Service 层，session 级缓存预热减少重复冷算）
 
 ## 项目结构
 
@@ -122,6 +126,7 @@ SpotifyStats/
 │   │   ├── profile.py                  # GET /api/profile
 │   │   ├── settings.py                 # GET/PUT /api/settings
 │   │   ├── lyrics.py                   # GET /api/lyrics/{track_id}（Genius 歌词获取 + 缓存）
+│   │   ├── spotify_auth.py              # Spotify OAuth PKCE + 数据同步（login/callback/status/disconnect/sync/data/playing/sync-all，8 端点）
 │   │   ├── version_merge.py            # CRUD /api/version-merge/*
 │   │   ├── import_.py                  # POST /api/import/*（异步导入）
 │   │   └── billboard/
@@ -146,6 +151,8 @@ SpotifyStats/
 │   │   ├── genius_service.py           # Genius 歌词获取 + SQLite 缓存
 │   │   ├── wikipedia_service.py         # Wikipedia 百科扩展（搜索/提取/缓存/翻译/LLM 结构化）
 │   │   ├── llm_translator.py            # LLM 翻译与结构化服务（多提供商 + 代理支持）
+│   │   ├── spotify_auth.py              # Spotify OAuth PKCE 授权 + 全量数据同步
+│   │   ├── account_service.py           # 账号中心聚合服务（identity/habits/collection）
 │   │   └── wrapped_hub_service.py      # Wrapped 2025 官方数据
 │   ├── models/                         # Pydantic 响应模型
 │   │   ├── common.py                   # 通用模型
@@ -159,6 +166,7 @@ SpotifyStats/
 │   │   ├── utils.py                    # 时区转换 + 平台分类
 │   │   ├── json_helpers.py             # numpy/pandas → JSON 安全序列化
 │   │   ├── cache.py                    # TTL 缓存装饰器 + single-flight
+│   │   ├── spotify_utils.py             # Spotify Web API 核心工具（PKCE + Token 持久化 + 自动刷新 + 10 scope 全覆盖数据拉取 + 全量同步）
 │   │   ├── warmup.py                   # 后端启动缓存预热（Dashboard/Analysis/Billboard）
 │   │   ├── genius/                     # Genius API 客户端（lyricsgenius 封装 + 歌词清洗）
 │   │   ├── import_data.py              # 串流数据 ETL
@@ -215,11 +223,12 @@ SpotifyStats/
 │   │   │   ├── charts/                  # 图表组件（ECharts 动态加载，RankTrendChart, ReleaseTimelineChart 等）
 │   │   │   ├── layout/                  # 布局（AppLayout, Masthead, ThemeToggle）
 │   │   │   └── shared/                  # 共享组件（GlassCard, KpiCard, WeekSelector 含日历弹窗, ChangeCell, CoverCell, ArtistEnrichmentView, AlbumEnrichmentView, KeyFactsCard, StatsGrid, CareerTimeline, GenreTags, ChartBars, FormattedText）
-│   │   ├── pages/                       # 页面（Dashboard, YearlyReview, Billboard, NumberOnes, AllTimeCharts, Records, TrackDetail, ArtistDetail, AlbumDetail, Settings）
-│   │   │   └── yearly-review/           # 年度回顾子组件（HeroSection, PersonalityReveal, TopCharts, GenrePanorama, TimeStory, HourClock, MusicMap, DiscoveryReturns, ListeningDepth, SpecialMoments, MonthlyDrilldown, YearComparison, ShareButton, OfficialWrapped）
-│   │   ├── hooks/                       # 自定义 hooks（数据获取 + in-flight 缓存 + 周状态保持 + 导入轮询 + 年度总结序列化预取）
+│   │   ├── pages/                       # 页面（Dashboard, YearlyReview, Billboard, NumberOnes, AllTimeCharts, Records, TrackDetail, ArtistDetail, AlbumDetail, AccountCenter, Settings）
+│   │   │   ├── yearly-review/           # 年度回顾子组件
+│   │   │   └── account/                 # 账号中心子组件（IdentityTab, HabitsTab, CollectionTab）
+│   │   ├── hooks/                       # 自定义 hooks（数据获取 + in-flight 缓存 + Spotify OAuth 连接/同步 + 账号中心数据 + 异步导入轮询）
 │   │   ├── lib/                         # API 客户端、工具函数、主题配置、OpenCC 动态中文转换、听歌人格主题、曲风地理映射
-│   │   └── types/                       # TypeScript 类型定义（dashboard, billboard, settings, yearly-review）
+│   │   └── types/                       # TypeScript 类型定义（dashboard, billboard, settings, account, yearly-review）
 │   ├── UI_STYLE_GUIDE.md                # 详细 UI 风格指南
 │   ├── index.html
 │   └── package.json
@@ -246,7 +255,7 @@ artists ──< albums ──< tracks ──< plays
 - Billboard 专辑榜自动排除 `album_type = 'single'` 的发行（单曲不是专辑）
 - `albums` / `artists` 表新增 `image_url`（Spotify CDN URL）和 `image_path`（本地缓存路径）列，封面通过智能端点 `/covers/{type}/{id}.jpg` 三级回退（本地缓存 → CDN 重定向 + 后台下载 → 404）
 - `track_lyrics` 表缓存 Genius 歌词（`track_id` PRIMARY KEY，`lyrics_text` / `genius_url` / `genius_song_id`），按需获取、永久有效
-- `settings` 表（KV 存储）和 `llm_profiles` 表持久化用户设置与 LLM 配置档案，服务重启后自动恢复
+- `settings` 表（KV 存储）持久化应用设置、LLM 配置档案，以及 Spotify OAuth Token + 用户档案（`spotify_user_token` / `spotify_user_profile` JSON blob）+ Top 艺人/曲目 × 6（`spotify_top_*`）+ 最近播放（`spotify_recently_played`）+ 关注艺人（`spotify_followed_artists`）+ 播放列表（`spotify_playlists`），服务重启后自动恢复
 - `wikipedia_cache` 表缓存 Wikipedia 百科扩展数据，避免重复 API 调用
 - 账号数据独立存储于 `saved_tracks`/`saved_albums`/`saved_artists`/`playlists`/`search_queries`/`podcast_plays`/`user_profile` 等表中
 

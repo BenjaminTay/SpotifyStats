@@ -13,6 +13,7 @@ const NAV_ITEMS: NavItem[] = [
   { to: '/analysis', label: '分析' },
   { to: '/yearly-review', label: '年度回顾' },
   { to: '/billboard', label: 'Billboard' },
+  { to: '/account', label: '账户' },
   { to: '/settings', label: '设置' },
 ]
 

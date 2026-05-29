@@ -63,3 +63,60 @@ def get_profile(conn: sqlite3.Connection) -> dict:
         },
         "banned_items": banned_list,
     }
+
+
+def get_inferences(conn: sqlite3.Connection) -> dict:
+    """Get categorized inferences from the DB."""
+    try:
+        rows = conn.execute(
+            "SELECT inference_text, category FROM inferences ORDER BY category"
+        ).fetchall()
+    except Exception:
+        return {"available": False, "total": 0, "categories": {}}
+    if not rows:
+        return {"available": False, "total": 0, "categories": {}}
+    categories: dict[str, list[str]] = {}
+    for r in rows:
+        cat = r["category"] or "other"
+        if cat not in categories:
+            categories[cat] = []
+        categories[cat].append(r["inference_text"])
+    return {"available": True, "total": len(rows), "categories": categories}
+
+
+def get_sound_capsule(conn: sqlite3.Connection) -> dict:
+    """Get sound capsule highlights and daily stats."""
+    try:
+        highlights = conn.execute(
+            "SELECT highlight_date, highlight_type, entity_name, detail_json "
+            "FROM sound_capsule_highlights ORDER BY highlight_date DESC"
+        ).fetchall()
+        daily = conn.execute(
+            "SELECT date, stream_count, seconds_played, top_data_json "
+            "FROM sound_capsule_daily ORDER BY date DESC"
+        ).fetchall()
+    except Exception:
+        return {"available": False}
+    if not highlights and not daily:
+        return {"available": False}
+    return {
+        "available": True,
+        "highlights": [
+            {
+                "date": r["highlight_date"],
+                "type": r["highlight_type"],
+                "entity_name": r["entity_name"] or "",
+                "detail": r["detail_json"],
+            }
+            for r in highlights
+        ],
+        "daily": [
+            {
+                "date": r["date"],
+                "stream_count": r["stream_count"],
+                "seconds_played": r["seconds_played"],
+                "top_data": r["top_data_json"],
+            }
+            for r in daily
+        ],
+    }

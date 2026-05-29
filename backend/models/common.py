@@ -35,6 +35,9 @@ class SettingsResponse(BaseModel):
     bb_week_start_hour: int
     db_record_count: int
     account_data_imported: bool
+    # Spotify connection
+    spotify_connected: bool = False
+    spotify_profile: Optional[dict] = None
     # LLM translation
     llm_enabled: bool = False
     llm_provider: str = "deepseek"

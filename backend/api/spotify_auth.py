@@ -1,0 +1,122 @@
+"""Spotify OAuth PKCE API endpoints."""
+
+from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import RedirectResponse
+from sqlite3 import Connection
+
+from backend.dependencies import get_conn
+from backend.services.spotify_auth import (
+    begin_oauth_flow,
+    complete_oauth_flow,
+    get_connection_status,
+    fetch_saved_tracks,
+    get_live_playback,
+)
+from backend.core.spotify_utils import (
+    clear_user_tokens,
+    get_user_access_token,
+    get_top_items,
+    get_recently_played,
+    get_followed_artists,
+    get_playlists,
+    sync_all_spotify_data,
+)
+
+router = APIRouter(prefix="/spotify/auth", tags=["Spotify Auth"])
+
+
+def _get_frontend_origin() -> str:
+    import os
+    return os.environ.get("FRONTEND_ORIGIN", "http://localhost:5173")
+
+
+@router.get("/login")
+def spotify_login():
+    """Start OAuth PKCE flow. Returns the Spotify authorization URL."""
+    return begin_oauth_flow()
+
+
+@router.get("/callback")
+def spotify_callback(code: str, state: str):
+    """Handle Spotify OAuth redirect. Exchanges code for tokens, redirects to settings."""
+    from backend.core.db import get_db
+    write_conn = get_db(readonly=False)
+    try:
+        result = complete_oauth_flow(write_conn, code, state)
+        if not result["success"]:
+            return RedirectResponse(
+                url=f"{_get_frontend_origin()}/settings?spotify_error={result['error']}"
+            )
+        return RedirectResponse(
+            url=f"{_get_frontend_origin()}/settings?spotify_connected=true"
+        )
+    finally:
+        write_conn.close()
+
+
+@router.get("/status")
+def spotify_status(conn: Connection = Depends(get_conn)):
+    """Get current Spotify connection status."""
+    return get_connection_status(conn)
+
+
+@router.delete("/disconnect")
+def spotify_disconnect():
+    """Disconnect Spotify and remove stored tokens."""
+    from backend.core.db import get_db
+    write_conn = get_db(readonly=False)
+    try:
+        clear_user_tokens(write_conn)
+        return {"status": "disconnected"}
+    finally:
+        write_conn.close()
+
+
+@router.post("/sync")
+def spotify_sync():
+    """Fetch saved tracks from Spotify API and backfill added_date."""
+    from backend.core.db import get_db
+    write_conn = get_db(readonly=False)
+    try:
+        result = fetch_saved_tracks(write_conn)
+        if not result.get("success"):
+            raise HTTPException(status_code=400, detail=result.get("error", "sync_failed"))
+        return result
+    finally:
+        write_conn.close()
+
+
+@router.get("/data")
+def spotify_data(conn: Connection = Depends(get_conn)):
+    """Return all persisted Spotify data."""
+    result = {}
+    for item_type in ["artists", "tracks"]:
+        result[item_type] = {}
+        for tr in ["short_term", "medium_term", "long_term"]:
+            items = get_top_items(conn, item_type, tr)
+            result[item_type][tr] = items if items else []
+    result["recently_played"] = get_recently_played(conn) or []
+    result["followed_artists"] = get_followed_artists(conn) or []
+    result["playlists"] = get_playlists(conn) or []
+    return result
+
+
+@router.get("/playing")
+def spotify_playing(conn: Connection = Depends(get_conn)):
+    """Get current playback state (live from Spotify)."""
+    return get_live_playback(conn)
+
+
+@router.post("/sync-all")
+def spotify_sync_all():
+    """Fetch and persist all available Spotify data (profile, top items, recently played)."""
+    from backend.core.db import get_db
+    write_conn = get_db(readonly=False)
+    try:
+        token = get_user_access_token(write_conn)
+        if not token:
+            raise HTTPException(status_code=401, detail="not_connected")
+        result = sync_all_spotify_data(write_conn, token)
+        return result
+    finally:
+        write_conn.close()

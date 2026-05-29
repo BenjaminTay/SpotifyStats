@@ -1,6 +1,21 @@
+// ── Spotify Profile ──────────────────────────────────────────
+
+export interface SpotifyProfile {
+  id: string
+  display_name: string
+  email: string
+  country: string
+  product: string
+  followers: number
+  images: { url: string; height: number | null; width: number | null }[]
+  uri: string
+  external_urls: Record<string, string>
+}
+
 // ── Settings ────────────────────────────────────────────────
 
 export interface SettingsData {
+  spotify_profile: SpotifyProfile | null
   min_ms: number
   music_only: boolean
   merge_enabled: boolean
@@ -11,6 +26,7 @@ export interface SettingsData {
   bb_week_start_hour: number
   db_record_count: number
   account_data_imported: boolean
+  spotify_connected: boolean
   // LLM translation
   llm_enabled: boolean
   llm_provider: string

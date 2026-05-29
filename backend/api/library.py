@@ -6,7 +6,7 @@ from sqlite3 import Connection
 from backend.dependencies import get_conn
 from backend.services.library_service import (
     get_library_overview, get_playlists, get_playlist_tracks,
-    get_playlist_overlap_matrix,
+    get_playlist_overlap_matrix, get_saved_tracks_paginated,
 )
 
 router = APIRouter(prefix="/library", tags=["Library"])
@@ -25,6 +25,13 @@ def playlists(conn: Connection = Depends(get_conn)):
 @router.get("/playlists/{playlist_id}/tracks")
 def playlist_tracks(playlist_id: int, conn: Connection = Depends(get_conn)):
     return get_playlist_tracks(conn, playlist_id)
+
+
+@router.get("/saved-tracks")
+def saved_tracks(
+    page: int = 1, limit: int = 50, search: str = "", conn: Connection = Depends(get_conn)
+):
+    return get_saved_tracks_paginated(conn, page=page, limit=limit, search=search)
 
 
 @router.get("/playlist-overlap")

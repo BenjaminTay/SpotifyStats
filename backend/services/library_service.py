@@ -112,6 +112,39 @@ def get_playlist_tracks(conn: sqlite3.Connection, playlist_id: int) -> list[dict
     ]
 
 
+def get_saved_tracks_paginated(conn: sqlite3.Connection, page: int = 1,
+                                limit: int = 50, search: str = "") -> dict:
+    """Paginated saved tracks with optional search."""
+    offset = (page - 1) * limit
+    where = ""
+    params: list = []
+    if search:
+        where = "WHERE track_name LIKE ? OR artist_name LIKE ?"
+        params = [f"%{search}%", f"%{search}%"]
+
+    count_row = conn.execute(
+        f"SELECT COUNT(*) FROM saved_tracks {where}", params
+    ).fetchone()
+    total = count_row[0]
+
+    rows = conn.execute(
+        f"""SELECT track_uri, track_name, artist_name, album_name, added_date
+            FROM saved_tracks
+            {where}
+            ORDER BY added_date DESC, track_name
+            LIMIT ? OFFSET ?""",
+        params + [limit, offset],
+    ).fetchall()
+
+    return {
+        "page": page,
+        "limit": limit,
+        "total": total,
+        "total_pages": (total + limit - 1) // limit if total > 0 else 0,
+        "tracks": [dict(r) for r in rows],
+    }
+
+
 def get_playlist_overlap_matrix(conn: sqlite3.Connection) -> dict:
     """Compute playlist overlap matrix (shared tracks between playlists)."""
     rows = conn.execute(

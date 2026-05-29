@@ -23,6 +23,8 @@ from backend.api.version_merge import router as version_merge_router
 from backend.api.import_ import router as import_router
 from backend.api.lyrics import router as lyrics_router
 from backend.api.music import router as music_router
+from backend.api.account import router as account_router
+from backend.api.spotify_auth import router as spotify_auth_router
 
 api_router = APIRouter()
 
@@ -47,3 +49,5 @@ api_router.include_router(version_merge_router)
 api_router.include_router(import_router)
 api_router.include_router(lyrics_router, prefix="/lyrics", tags=["Lyrics"])
 api_router.include_router(music_router)
+api_router.include_router(account_router)
+api_router.include_router(spotify_auth_router)

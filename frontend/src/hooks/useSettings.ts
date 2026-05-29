@@ -12,6 +12,10 @@ interface ClearCacheResult {
   deleted_count: number
 }
 
+interface SpotifyAuthUrl { auth_url: string; state: string }
+interface SpotifyStatus { connected: boolean; scope?: string; connected_at?: string }
+interface SpotifySyncResult { success: boolean; total_in_spotify?: number; total_in_db?: number; matched?: number; new_dates?: number; error?: string }
+
 interface UseSettingsResult {
   settings: SettingsData | null
   loading: boolean
@@ -25,6 +29,11 @@ interface UseSettingsResult {
   startAccountImport: () => void
   streamingJob: ImportJob | null
   accountJob: ImportJob | null
+  // Spotify OAuth
+  spotifyConnect: () => Promise<SpotifyAuthUrl>
+  spotifyDisconnect: () => Promise<void>
+  spotifySync: () => Promise<SpotifySyncResult>
+  checkSpotifyStatus: () => Promise<SpotifyStatus>
   // LLM profiles
   fetchProfiles: () => Promise<LLMProfile[]>
   getProfileDetail: (profileId: number) => Promise<LLMProfileDetail>
@@ -105,6 +114,23 @@ export function useSettings(): UseSettingsResult {
     return api.del<{ status: string }>(`/settings/llm-profiles/${profileId}`)
   }, [])
 
+  const spotifyConnect = useCallback(() => {
+    return api.get<SpotifyAuthUrl>('/spotify/auth/login')
+  }, [])
+
+  const spotifyDisconnect = useCallback(async () => {
+    await api.del('/spotify/auth/disconnect')
+    await refetch()
+  }, [refetch])
+
+  const spotifySync = useCallback(() => {
+    return api.post<SpotifySyncResult>('/spotify/auth/sync')
+  }, [])
+
+  const checkSpotifyStatus = useCallback(() => {
+    return api.get<SpotifyStatus>('/spotify/auth/status')
+  }, [])
+
   const pollImport = useCallback((jobId: string, setter: React.Dispatch<React.SetStateAction<ImportJob | null>>) => {
     // Clear any existing poll for this setter's job
     const existing = pollRef.current.get('streaming')
@@ -152,6 +178,7 @@ export function useSettings(): UseSettingsResult {
   return {
     settings, loading, error, refetch, updateSettings, updateApiKey, clearTranslationCache, rebuildAgg,
     startStreamingImport, startAccountImport, streamingJob, accountJob,
+    spotifyConnect, spotifyDisconnect, spotifySync, checkSpotifyStatus,
     fetchProfiles, getProfileDetail, createProfile, updateProfile, deleteProfile,
   }
 }

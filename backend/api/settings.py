@@ -10,6 +10,7 @@ from backend.models.common import (
     LLMProfileResponse, LLMProfileDetailResponse,
     LLMProfileCreateRequest, LLMProfileUpdateRequest,
 )
+from backend.core.spotify_utils import is_user_connected, get_user_profile
 
 router = APIRouter(prefix="/settings", tags=["Settings"])
 
@@ -104,6 +105,8 @@ def get_settings(conn: Connection = Depends(get_conn)):
     except Exception:
         pass
     resp = {**_current, "db_record_count": db_record_count, "account_data_imported": account_data_imported}
+    resp["spotify_connected"] = is_user_connected(conn)
+    resp["spotify_profile"] = get_user_profile(conn) if resp["spotify_connected"] else None
     resp["has_llm_key"] = bool(_current.get("llm_api_key", "").strip())
     resp.pop("llm_api_key", None)
     resp.pop("llm_base_url", None)
