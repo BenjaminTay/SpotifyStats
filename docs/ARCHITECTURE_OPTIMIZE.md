@@ -1912,4 +1912,278 @@ frontend/src/
 24. 长期维护：继续细分 `records.py`、Provider 全量替换旧散落调用、补充更严格 typed repository。
 25. 长期维护：根据 benchmark 数据做大表虚拟化、chunk 策略与慢查询专项优化。
 
-当前节奏已完成“消除最高风险 + 搭测试护栏 + 根治核心大文件膨胀 + 产品化性能治理”。后续不再属于本轮白皮书四阶段改造主线，而是进入持续治理、专项优化和功能迭代阶段。
+当前节奏已完成”消除最高风险 + 搭测试护栏 + 根治核心大文件膨胀 + 产品化性能治理”。后续不再属于本轮白皮书四阶段改造主线，而是进入持续治理、专项优化和功能迭代阶段。
+
+---
+
+## 十、全周期 阶段一～阶段四 架构优化最终复盘与成果总结
+
+> 本章为项目架构优化白皮书的收束章节，记录四大阶段完成后的全量复盘、量化成果、遗留约束与长期开发规范。评估日期：2026-05-30。
+
+### 10.1 四大阶段整体演进路径
+
+```
+              ┌─────────────────────────────────────────────────┐
+ 阶段一        │ 紧急安全加固（6 项）                              │
+ 2026-05-30   │ 集中配置 · 密钥加密 · XSS · 鉴权 · 日志脱敏      │
+              └──────────────────┬──────────────────────────────┘
+                                 │ 安全基线建立
+              ┌──────────────────▼──────────────────────────────┐
+ 阶段二        │ 工程化与测试体系升级（6 项）                      │
+ 2026-05-30   │ 测试分层 · seed DB · lint/mypy · 前端测试        │
+              │ OpenAPI 类型生成 · API 错误模型                   │
+              └──────────────────┬──────────────────────────────┘
+                                 │ 质量护栏到位
+              ┌──────────────────▼──────────────────────────────┐
+ 阶段三        │ 核心架构解耦与大文件拆分（6 项）                  │
+ 2026-05-30   │ 超大文件拆解 · domain 分层 · Repository 落地      │
+              │ Provider 标准化 · Streamlit 冻结                 │
+              └──────────────────┬──────────────────────────────┘
+                                 │ 技术债务清偿
+              ┌──────────────────▼──────────────────────────────┐
+ 阶段四        │ 高级性能优化与产品化（6 项）                      │
+ 2026-05-30   │ SQLite 迁移化 · Cache Manager · Job Queue        │
+              │ Billboard 分接口 · TanStack Query · 性能基准     │
+              └──────────────────┬──────────────────────────────┘
+                                 │ 产品化基础就绪
+              ┌──────────────────▼──────────────────────────────┐
+              │   工业级全栈数据产品架构基线                       │
+              │   持续治理 · 专项优化 · 功能迭代                   │
+              └─────────────────────────────────────────────────┘
+```
+
+### 10.2 每阶段核心问题与关键产出
+
+#### 阶段一：紧急安全加固
+
+**解决的核心问题**：项目作为本地应用可运行，但通过 ngrok/局域网/公网暴露后存在密钥泄露、Token 裸存、XSS 攻击面、无鉴权、日志泄露等 6 项紧急安全风险。
+
+| 产出 | 验收证据 |
+|---|---|
+| 集中配置层 | `backend/core/config.py` 统一 `.env` 读取，后端全路径不再散落 `os.getenv` / `open('.env')` |
+| LLM API Key 掩码 | 所有 LLM Profile detail API 以 `has_llm_key: bool` 替代明文返回；新增 `apply` 端点服务端写入 |
+| Token 加密落库 | AES-256-GCM 对称加密 Spotify OAuth Token，旧明文自动迁移；`SPOTIFY_STATS_TOKEN_KEY` 可注入 |
+| XSS 彻底防护 | `FormattedText` 移除 `dangerouslySetInnerHTML`，改用 `react-markdown` + `rehype-sanitize` |
+| 远程鉴权 | `require_auth` 依赖 + `SPOTIFY_STATS_REQUIRE_AUTH` 开关控制写/敏感接口 Bearer Token 校验 |
+| 日志脱敏 | `SensitiveDataFilter` 自动脱敏 API Key / Token / Bearer / Authorization / client_secret；全局异常不泄露 stack trace |
+
+#### 阶段二：工程化与测试体系升级
+
+**解决的核心问题**：测试依赖真实生产数据库，无分层（全量跑完耗时长）、无 seed 隔离库、无前端组件测试、前后端类型手写漂移、无 lint/type/secret-scan 基础工程链。
+
+| 产出 | 验收证据 |
+|---|---|
+| 三层测试 | unit（59 个，纯函数，~6s）contract（13 个，seed DB，~0.3s）integration（173 个，真实数据，~70s） |
+| 可移植 seed DB | `backend/tests/fixtures/seed.db`（覆盖短播放、连续播放、single album_type 等边界）+ 构建脚本 |
+| 工程工具链 | `pyproject.toml` + `ruff` + `mypy` + `detect-secrets` + `.pre-commit-config.yaml` |
+| 前端测试基线 | vitest + React Testing Library，3 文件 20 用例，覆盖 FormattedText XSS、API 错误模型、cn() 工具 |
+| OpenAPI 类型同步 | `openapi-typescript` 生成 95 端点 TS 类型，`npm run generate-types` 可重建 |
+| 前端错误模型 | `ApiError` / `NetworkError` / `AuthRequiredError` / `TimeoutError` 类型化错误替代通用 `Error` |
+
+#### 阶段三：核心架构解耦与大文件拆分
+
+**解决的核心问题**：三个超大文件（billboard_service.py 3420 行、SettingsPage.tsx 1828 行、CollectionTab.tsx 1554 行）膨胀为子系统堆叠；Streamlit/FastAPI 双架构并行维护风险；第三方 API 调用散落各处；数据访问直接嵌入 API 层。
+
+| 产出 | 验收证据 |
+|---|---|
+| Billboard 领域拆分 | 3420 行 → 102 行 facade；7 个领域模块（chart_compute / data_loader / records / details / versus / entity_lists / version_merge）+ repository |
+| SettingsPage 拆分 | 1828 行 → 180 行容器；7 个 feature section 组件（SpotifyConnection / DataFiltering / BillboardParams / VersionMerge / DataImport / LLMTranslation / SettingsHelpers） |
+| CollectionTab 拆分 | 1554 行 → 48 行容器；11 个收藏分析独立业务组件 + formatDate 工具 |
+| Repository 落地 | SettingsRepository / BillboardRepository / PlaybackRepository / EnrichmentRepository 四大数据访问封装 |
+| Provider 标准化 | `BaseProvider` 抽象类 + ProviderConfig + 统一 HttpClient；Spotify / Genius / Wikipedia / LLM 四类 Provider 适配器 |
+| Streamlit 冻结 | `app/main.py` 头标记 `LEGACY MODULE — FROZEN`，CLAUDE.md 明确主线开发边界 |
+
+#### 阶段四：高级性能优化与产品化
+
+**解决的核心问题**：SQLite schema 演进靠散落 try/except ALTER TABLE；缓存体系无命名空间、无失效策略、无可观测性；外部 enrichment 同步阻塞请求；Billboard 5MB 巨型响应包含不需要的数据；前端请求无统一缓存/重试/去重。
+
+| 产出 | 验收证据 |
+|---|---|
+| SQLite 迁移工具化 | `MigrationRunner` + `schema_migrations` 表 + 10 个幂等迁移；杜绝散落 ALTER TABLE |
+| 统一 Cache Manager | 5 个命名空间（billboard/analysis/db/auth）+ `register_lru`/`register_ttl` + `invalidate` + hit/miss/currsize/maxsize 监控 |
+| 后台 Job Queue | 3 worker 线程 + `background_jobs` SQLite 状态表 + 去重 enqueue + 3 种 job handler |
+| Billboard 分接口 | 5 个新端点（weekly/records/power-scores/summaries/all-time），旧 `/api/billboard/data` 兼容保留 |
+| TanStack Query | 全局 QueryClientProvider + staleTime 5min/gcTime 30min/retry 2 + `useDashboard`/`useAccount` 已迁移 |
+| 性能可观测 | `scripts/benchmark_api.py`（冷/热响应、P50/P95、raw/gzip size）+ `npm run analyze`（bundle 可视化） |
+
+### 10.3 架构蜕变：从快速迭代版到工业级分层版
+
+#### 改造前架构特征
+
+```
+┌─ app/ ──────────────────────────────────────────────────┐
+│  Streamlit 单体应用                                      │
+│  · 页面/计算/数据访问/配置混在一起                        │
+│  · 超大页面文件（billboard 12 Tab ~9000 行）             │
+└──────────────────────────────────────────────────────────┘
+┌─ backend/ ───────────────────────────────────────────────┐
+│  · api/ → services/ → core/ 初步分层                    │
+│  · 但 billboard_service.py 3420 行                      │
+│  · 第三方 API 调用散落各 service                         │
+│  · 环境变量多模块重复解析                                │
+│  · LLM Key/Token 明文落库                               │
+│  · 无鉴权/脱敏/XSS 防护                                 │
+└──────────────────────────────────────────────────────────┘
+┌─ frontend/ ──────────────────────────────────────────────┐
+│  · 页面组件混入大量业务逻辑                              │
+│  · SettingsPage.tsx 1828 行                             │
+│  · CollectionTab.tsx 1554 行                            │
+│  · 无统一请求治理，错误处理原始                          │
+│  · 手写 TS 类型，前后端类型漂移                          │
+└──────────────────────────────────────────────────────────┘
+```
+
+#### 改造后架构特征
+
+```
+┌─ backend/ ───────────────────────────────────────────────┐
+│                                                          │
+│  api/          ← 路由层（薄：参数校验、鉴权、响应模型）    │
+│  services/     ← 服务层（计算编排、facade re-export）     │
+│  domains/      ← 领域层（playback/billboard/enrichment/   │
+│                  settings — 纯业务逻辑）                  │
+│  providers/    ← 第三方适配层（spotify/genius/wikipedia/  │
+│                  llm — 统一接口、timeout、retry、redact） │
+│  infrastructure/ ← 横切能力层（http client）              │
+│  core/         ← 核心工具层（db/cache/crypto/config/     │
+│                  migrations/job_queue/logging）           │
+│  models/       ← Pydantic 响应模型                       │
+│  tests/        ← unit / contract / integration 三层      │
+│                                                          │
+└──────────────────────────────────────────────────────────┘
+
+┌─ frontend/ ──────────────────────────────────────────────┐
+│                                                          │
+│  pages/        ← 容器/编排组件（均 <200 行）              │
+│  features/     ← feature-first 业务组件（settings/       │
+│                  account — 独立可测试）                   │
+│  api/          ← 统一请求层（client/errors/query-client/ │
+│                  query-keys/generated-types）            │
+│  hooks/        ← 业务 hooks（useQuery 标准化）            │
+│  components/   ← 跨页面共享组件（ui/shared/charts/layout）│
+│  lib/          ← 工具库（theme/utils/chinese/insights）   │
+│  tests/        ← vitest + RTL 组件/工具测试               │
+│                                                          │
+└──────────────────────────────────────────────────────────┘
+
+┌─ app/ ───────────────────────────────────────────────────┐
+│  LEGACY — FROZEN AS OF 2026-05-30                        │
+│  只修严重 bug，不新增功能                                 │
+└──────────────────────────────────────────────────────────┘
+```
+
+### 10.4 五大维度最终达成情况
+
+| 维度 | 优化前评分 | 优化后评分 | 关键变化 |
+|---|---|---|---|
+| 架构清晰度 | 7.0 | 9.0 | domain/provider/infrastructure/repository 四类边界建立；大文件全部拆解；双架构冻结 |
+| 安全性 | 5.5 | 8.5 | 6 项紧急安全修复全闭环：密钥加密、Token 加密、XSS 防护、鉴权、日志脱敏、配置治理 |
+| 可维护性 | 6.5 | 8.5 | 大文件降至门面/容器；Repository 统一数据访问；Provider 统一第三方调用；测试分层可快速反馈 |
+| 性能基础 | 7.5 | 8.5 | 缓存命名空间化+失效自动化；Billboard 分接口（5MB→200KB 按需）；Job Queue 异步化；TanStack Query 前端统一 |
+| 可扩展性 | 6.5 | 8.0 | Provider 适配器骨架；domain 领域分治；API version 预留；Billboard 子模块 registry |
+
+**综合评分**：5.5–7.5 区间 → 8.0–9.0 区间，整体从「功能型本地项目」升级为「工业级全栈数据产品」。
+
+### 10.5 量化成果汇总
+
+#### 测试体系
+
+| 指标 | 优化前 | 优化后 |
+|---|---|---|
+| 后端测试总数 | ~183 | 245 |
+| 纯函数单元测试 | 0 | 59（~6s） |
+| 可移植 contract 测试 | 0 | 13（~0.3s，seed DB） |
+| 前端测试 | 0 | 20（~0.75s） |
+| 测试分层 markers | 无 | unit/contract/integration/slow |
+| 最快反馈时间 | ~35s（全量） | ~6s（unit only） |
+
+#### 大文件拆解
+
+| 文件 | 优化前 | 优化后 | 缩减率 |
+|---|---|---|---|
+| `billboard_service.py` | 3,420 行 | 110 行（facade） | **96.8%** |
+| `SettingsPage.tsx` | 1,828 行 | 180 行（容器） | **90.2%** |
+| `CollectionTab.tsx` | 1,554 行 | 48 行（容器） | **96.9%** |
+
+#### 安全加固
+
+| 风险项 | 优化前 | 优化后 |
+|---|---|---|
+| LLM API Key 暴露 | 明文 API 返回 | `has_llm_key: bool` + 服务端 apply |
+| Spotify Token 存储 | 明文 JSON 落库 | AES-256-GCM 加密 + 旧明文自动迁移 |
+| XSS 攻击面 | `dangerouslySetInnerHTML` 渲染外部文本 | `react-markdown` + `rehype-sanitize` |
+| 远程鉴权 | 无 | Bearer Token + 环境变量开关 |
+| 日志泄露 | 无脱敏 | `SensitiveDataFilter` 自动 redact |
+| 配置散落 | 6+ 处手动 `open('.env')` | 统一 `config.py` |
+| `.env` 解析散乱 | 各模块各自 load | 仅在 `config.py` 单点 `load_dotenv` |
+
+#### 缓存与性能治理
+
+| 指标 | 优化前 | 优化后 |
+|---|---|---|
+| 缓存命名空间 | 无 | 5 个（billboard/analysis/db/auth） |
+| 缓存统计可观测 | 无 | `/api/admin/cache-stats` |
+| 缓存失效自动化 | 手动 | settings 变更/import/version merge 自动触发 |
+| Billboard 接口数 | 1（5MB 单体） | 6（5 个按需 + 1 兼容） |
+| 最轻 Billboard 端点 | ~5MB | ~200KB（power-scores） |
+| 前端请求治理 | 手动 fetch | TanStack Query（staleTime/gcTime/retry/去重） |
+| 外部请求阻塞 | 同步 | Job Queue 异步 + stale-cache+refresh 模式 |
+
+### 10.6 遗留规范与长期开发约束
+
+#### 目录规范（不可逆边界）
+
+1. 新增后端业务逻辑必须进入 `backend/domains/<domain>/`，禁止继续堆积到 `backend/services/billboard_service.py`。
+2. 新增 SQLite 查询优先进入对应 `Repository`，禁止 API 层散落复杂 SQL。
+3. 新增第三方 API 调用必须通过 `providers/` 发出，禁止在业务代码中裸调外部接口。
+4. 新增后端缓存函数必须通过 `CacheManager.register_lru()/register_ttl()` 注册到明确 namespace。
+5. 新增 SQLite schema 变更必须新增 migration，不得回到散落 `ALTER TABLE`。
+6. 新增前端页面能力优先进入 `frontend/src/features/<feature>/`，页面组件仅做容器编排。
+7. 新增前端 GET hook 必须使用 TanStack Query 与 `queryKeys`。
+
+#### 编码规范
+
+8. 环境变量统一通过 `backend/core/config.py` 读取，禁止在业务模块中 `open('.env')` 或 `os.getenv()`。
+9. API 绝不返回明文 `llm_api_key`、`access_token`、`refresh_token`。
+10. 外部文本（LLM 输出、Wikipedia、歌词、翻译结果）必须在 `FormattedText` 中通过 `react-markdown` + `rehype-sanitize` 渲染。
+11. 所有写/敏感接口必须挂载 `require_auth` 依赖（远程模式强制，本地模式允许跳过）。
+12. 后端 API schema 变更后必须运行 `npm run generate-types` 并提交生成文件。
+
+#### 测试规范
+
+13. 纯函数优先写 `pytest -m unit`，不得连接 DB 或网络。
+14. API 契约优先写 `pytest -m contract`，使用 seed DB。
+15. 新增影响缓存的测试必须显式清理相关 `lru_cache`/TTL cache。
+16. 提交前最低验证：`pytest -m unit -q` + `pytest -m contract -q` + `ruff check backend/` + `npm test` + `npm run build`。
+
+#### 兼容红线
+
+17. `/api/billboard/data` 兼容保留，不得删除；新页面优先使用按需端点。
+18. `backend/services/billboard_service.py` facade 保留兼容 re-export。
+19. Streamlit `app/` 仅做关键 bug 修复，不新增功能。
+20. 旧明文 Token/Key 兼容读取并自动迁移，不得强制用户重新授权。
+
+#### 安全底线
+
+21. 日志不得打印 Authorization、access_token、refresh_token、client_secret、LLM key。
+22. `data/`、`.env`、WAL/SHM、密钥文件不得提交 git。
+23. DB 备份视为包含个人数据和敏感密文，需安全处理。
+
+### 10.7 后续治理路线图
+
+本白皮书四阶段改造已全部完成。以下工作不属于本轮改造主线，但为后续持续治理的推荐方向：
+
+| 优先级 | 方向 | 描述 |
+|---|---|---|
+| 高 | 前端剩余 GET hooks 迁移到 TanStack Query | 当前仅 `useDashboard`/`useAccount` 完成迁移；Billboard hooks 仍为模块级缓存 |
+| 高 | Provider 全量替换旧散落调用 | 当前 Provider 为标准化骨架；部分旧调用路径仍直连底层 client |
+| 中 | `records.py` 二次拆分 | 55KB，6 大展区 37 项记录，可继续按 record family 子模块化 |
+| 中 | 大表虚拟化 | AllTimeCharts / Records / entity list 页面可接入 react-virtual |
+| 中 | 结构化日志与 Request ID | 当前日志为结构化 console 输出，后续可补充 request id 链路追踪 |
+| 低 | Streamlit 物理归档 | 当前仅冻结标记，后续可移至 `legacy/streamlit_app/` |
+| 低 | Redis/Disk 缓存层 | 当前全部基于进程内存；多进程/远程部署场景可扩展外部缓存 |
+| 低 | CI/CD 流水线 | 当前 pre-commit 为本地执行；后续可对接 GitHub Actions |
+
+---
+
+*白皮书版本：v2.0（全周期完成），最后更新：2026-05-30*
