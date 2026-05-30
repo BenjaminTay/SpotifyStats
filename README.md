@@ -4,7 +4,7 @@
 
 **UI 主题**：「编辑风 × 液态玻璃」— 杂志式排版（Playfair Display 衬线 + Inter 无衬线）+ 毛玻璃卡片材质 + 日/夜双皮肤。详细规范见 `frontend/UI_STYLE_GUIDE.md`。
 
-**架构**：FastAPI 后端 + React 前端（Dashboard、stats.fm 风格播放统计、Billboard 周榜、每周榜首、总榜、榜单记录、全局音乐实体详情页含个人播放统计 / Billboard 成绩 / Genius 歌词 / Wikipedia 百科、设置页面含 LLM 配置档案持久化管理）。Streamlit 原有应用仍可运行。
+**架构**：FastAPI 后端 + React 前端（Dashboard、stats.fm 风格播放统计、Billboard 周榜、每周榜首、总榜、榜单记录、全局音乐实体详情页含个人播放统计 / Billboard 成绩 / Genius 歌词 / Wikipedia 百科、账号中心含收藏分析与音乐习惯、设置页面含 LLM 配置档案持久化管理）。Streamlit 原有应用仍可运行。
 
 **性能优化**：后端启动后后台预热默认 Dashboard/Analysis/Billboard 缓存，大响应启用 gzip，Billboard 全量计算使用 normalized cache key + single-flight 避免重复冷算，播放统计使用参数化结果缓存。前端使用路由级 lazy 分包、共享 in-flight request、延迟预取常用数据；ECharts 与 OpenCC 按需动态加载，减少首次打开页面的静态下载量。
 
@@ -15,7 +15,7 @@
 - **年度回顾**（2 个子 Tab）— 自定义年度总结（Wrapped 风格渐变卡片叙事、听歌人格识别 6 型、Top 5 排行榜、曲风五大洲全景、24 小时时钟图高峰识别、发现与回归三分类、聆听深度金字塔、特殊时刻、月度钻取、年度对比变化率）+ 官方 Wrapped 2025（俱乐部、艺人竞速、收听年龄、排行榜、存档报告）
 - **Billboard 周榜**（12 个子 Tab）— 周榜（单曲/专辑/艺人，支持快速切周、截至当周滚动统计）、每周榜首、单曲历史（含升降列、断档 RE 标记）、艺人榜单、专辑榜单（含版本合并）、走势总榜（Power Score 三维度）、歌曲/艺人/专辑总榜、榜单记录（6 大展区 37 项记录，灵感来自 Billboard Chart Beat / Guinness World Records）、对决（歌曲/专辑/艺人）、发行周期分析（先行曲识别、单曲榜排名线、艺人总览/专辑下钻/多发行对比）
 - **全局音乐实体详情** — `/music/tracks/*`、`/music/albums/*`、`/music/artists/*` 独立于 Billboard，整合个人播放统计、Billboard 成绩、Genius 歌词、Wikipedia 百科、发行周期等内容；旧 `/billboard/track|album|artist/*` 自动跳转
-- **账号中心**（3 个子 Tab）— 数字身份（个人资料 + Spotify Profile + 兴趣推断标签云 + 声音胶囊高光时刻）、音乐人格（听歌人格 6 型 + 年度回顾入口）、收藏分析（收藏浏览器分页搜索 + 生命周期/化学反应/关键词变迁分析 + Spotify OAuth 收藏日期同步）
+- **账号中心**（2 个子 Tab）— 你的收藏（收藏纵览含生命周期趋势图 + 化学反应含封面轮播 + 品味迁徙含 jieba 分词 TF-IDF 关键词权重 + Flip Side 未收藏高频曲目 + 双厨时刻 + 排行榜含播放量）+ 你的习惯（听歌人格识别 + 搜索编年史含热度时段图 + 粉丝层级含超级粉丝卡片 + 播客聆听 + 推广转化含封面按转化率排序 + 视频分析含 Top 视频曲目）
 - **设置** — 集中管理所有参数：Spotify OAuth 连接（10 个 scope 全覆盖：收藏、档案、top 排行、播放历史、关注艺人、播放列表、实时播放状态）+ 数据同步；数据过滤（最短播放时长/仅音乐/合并连续播放/中文简繁转换）、LLM 翻译与百科结构化（多提供商 API Key 配置 + 命名档案保存/切换）、Billboard 上榜数量与统计周期、专辑版本合并（自动检测/手动创建/已保存组管理）、数据导入（异步进度轮询）
 - **Spotify Web API 集成** — OAuth PKCE 授权获取用户数据回填和增强：收藏日期回填（`saved_tracks.added_date`）、个人档案（昵称/头像/邮箱/会员类型/国家/粉丝数）、Top 艺人/曲目 × 3 时间窗口（short/medium/long term，含 popularity 和 genres）、最近 50 首播放 + 精确时间戳、32 个播放列表、实时播放状态（当前播放曲目）
 

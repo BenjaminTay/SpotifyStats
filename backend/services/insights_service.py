@@ -41,6 +41,15 @@ def get_artist_tiers(conn: sqlite3.Connection) -> dict:
     tier_hours = artist_df.groupby("tier")["hours"].sum().to_dict()
     tier_counts = artist_df.groupby("tier").size().to_dict()
 
+    # Resolve artist cover URLs
+    artists_with_covers = conn.execute(
+        "SELECT artist_name, artist_id, image_path, image_url FROM artists"
+    ).fetchall()
+    cover_map = {}
+    for r in artists_with_covers:
+        if r["image_path"] or r["image_url"]:
+            cover_map[r["artist_name"]] = f"/covers/artists/{int(r['artist_id'])}.jpg"
+
     return {
         "available": True,
         "empty": False,
@@ -50,7 +59,8 @@ def get_artist_tiers(conn: sqlite3.Connection) -> dict:
         "artists": [
             {"rank": int(r.rank), "artist_name": r.artist_name,
              "play_count": int(r.play_count), "hours": round(r.hours, 1),
-             "tier": r.tier}
+             "tier": r.tier,
+             "cover_url": cover_map.get(r.artist_name)}
             for r in artist_df.itertuples(index=False)
         ],
     }
@@ -78,14 +88,31 @@ def get_marquee_conversion(conn: sqlite3.Connection) -> dict:
     if df.empty:
         return {"available": True, "empty": True}
 
+    # Resolve artist cover URLs
+    artists_with_covers = conn.execute(
+        "SELECT artist_name, artist_id, image_path, image_url FROM artists"
+    ).fetchall()
+    cover_map = {}
+    for r in artists_with_covers:
+        if r["image_path"] or r["image_url"]:
+            cover_map[r["artist_name"]] = f"/covers/artists/{int(r['artist_id'])}.jpg"
+
+    conversions = []
+    for r in df.itertuples(index=False):
+        imp = int(r.impressions)
+        plays = int(r.actual_plays)
+        rate = plays / imp if imp > 0 else 0
+        conversions.append({
+            "artist_name": r.artist_name, "segment": r.segment or "",
+            "impressions": imp, "actual_plays": plays,
+            "actual_hours": round(r.actual_hours, 1),
+            "conversion_rate": round(rate, 4),
+            "cover_url": cover_map.get(r.artist_name),
+        })
+    conversions.sort(key=lambda x: -x["conversion_rate"])
+
     return {
         "available": True,
         "empty": False,
-        "conversions": [
-            {"artist_name": r.artist_name, "segment": r.segment or "",
-             "impressions": int(r.impressions),
-             "actual_plays": int(r.actual_plays),
-             "actual_hours": round(r.actual_hours, 1)}
-            for r in df.itertuples(index=False)
-        ],
+        "conversions": conversions,
     }

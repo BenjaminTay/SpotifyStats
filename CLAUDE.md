@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Spotify Extended Streaming History 数据分析 Web 应用。从 Spotify 官方导出的 JSON 播放记录中导入数据到 SQLite，通过 FastAPI + React 提供交互式多维度统计仪表盘。
 
-**架构演进**：已从 Streamlit 单体架构迁移到 FastAPI 后端 + React 前端。前端包含 Dashboard、stats.fm 风格播放统计、年度回顾页面（自定义总结 + 官方 Wrapped，双 Tab）、Billboard 周榜页（含对决、发行周期分析、榜单记录等 12 子 Tab）、全局音乐实体详情页（歌曲/专辑/艺人，含个人播放统计、Billboard 成绩、Genius 歌词、Spotify 元数据展示、Wikipedia 百科 AI 结构化数据）、账号中心页面（含数字身份、音乐人格、收藏分析、Spotify OAuth 连接数据）以及设置页面（含 LLM 配置档案持久化管理、Spotify OAuth 连接管理、数据同步）。Streamlit 原有应用和后端 API 仍可并行运行。
+**架构演进**：已从 Streamlit 单体架构迁移到 FastAPI 后端 + React 前端。前端包含 Dashboard、stats.fm 风格播放统计、年度回顾页面（自定义总结 + 官方 Wrapped，双 Tab）、Billboard 周榜页（含对决、发行周期分析、榜单记录等 12 子 Tab）、全局音乐实体详情页（歌曲/专辑/艺人，含个人播放统计、Billboard 成绩、Genius 歌词、Spotify 元数据展示、Wikipedia 百科 AI 结构化数据）、账号中心页面（含收藏分析、搜索编年史、粉丝层级、播客聆听、推广转化、视频分析、收听人格）以及设置页面（含 LLM 配置档案持久化管理、Spotify OAuth 连接管理、数据同步）。Streamlit 原有应用和后端 API 仍可并行运行。
 
 **UI 主题**：「编辑风 × 液态玻璃」— 杂志式排版（Playfair Display 衬线标题 + Inter 无衬线正文）+ 毛玻璃卡片材质 + 日/夜双皮肤。详细风格指南见 `frontend/UI_STYLE_GUIDE.md`。
 
@@ -197,14 +197,16 @@ POST /api/spotify/auth/sync-all          全量数据刷新（profile + top item
 - **`wrapped_service.py`** — 自定义年度总结服务。`get_wrapped_full()` 一次性构建年度总结的完整数据结构（英雄区 KPI + 去年对比变化率、听歌人格识别 Explorer/Loyalist/Binger/深度鉴赏家/午夜诗人/潮流捕手、Top 5 曲目/艺人/专辑含封面与占比、曲风全景五大洲地图映射、逐小时播放分布 + 高峰识别、发现与新欢/老歌回归/遗忘曲目三分类、聆听深度金字塔、特殊时刻识别、月度钻取 Top 3、年度对比变化率），通过 `get_available_years()` 提供可用年份列表。内部复用 `load_plays()` 缓存，单年查询约 1-3 秒
 - **`billboard_service.py`** — Billboard 计算管线。`compute_billboard_data()` 一次性计算 15+ 数据结构（周榜 ×3、总榜 ×3、走势总榜 ×3、榜单记录、每周榜首等），公开函数统一规范化参数后进入内部 cached 函数，避免位置参数/关键字参数造成 cache key 分裂；内部使用 `@lru_cache(maxsize=8)` + `singleflight`，同一组参数首次并发只计算一次。Power Score 只计算一次（原 Streamlit 代码重复计算 ~10 次）。详情和对比功能：`get_track_history()`（升降列 NEW/RE/▲n/▼n/─ + 断档 gap 检测 + 封面图 + 截至当周滚动指标 `running_peak`/`running_wks`/`running_peak_wks`）、`get_artist_chart_detail()`（艺人周榜历史 + 封面图 + 歌曲/专辑表现，含截至当周滚动指标，chart_summary 含 `latest_week`，tracks/albums 含 `cover_url` 与 `first_peak_week`）、`get_album_chart_detail()`（专辑周榜历史 + 封面图 + 收录曲表现，含截至当周滚动指标，chart_summary 含 `latest_week`，tracks 含 `cover_url`）、`get_versus_{track,album,artist}()`（双实体对决对比）、`get_billboard_entity_lists()`（对决搜索选择器，直接复用 `track_summary` / `album_power_scores` / `artist_power_scores`，避免从大 weekly JSON 重建 DataFrame）。`_compute_change_column()` 使用临时 `week_dt` 变量不修改原列以避免日期格式污染
 - **`release_cycle_service.py`** — 发行周期分析。艺人发行列表、单曲 Billboard 历史、专辑周期指标（首周排名、峰值、影响力得分、半衰期）、先行曲识别（三级查找：DB → Spotify API → 最早播放日期）、`compare_releases()` 多发行叠加对比。Spotify API 令牌通过 `@ttl_cached` 缓存（~58 分钟 TTL），网络/解析失败返回 `None` 进入离线回退路径且不会缓存失败值；对比接口支持通过合并子版本名解析到 canonical 专辑，并保留子版本发行日期用于周期对齐
-- **`library_service.py`** — 收藏交叉查询（收藏曲目/专辑/艺人与实际收听对比）
+- **`library_service.py`** — 收藏交叉查询（收藏曲目/专辑/艺人与实际收听对比），含封面 URL 解析
 - **`search_service.py`** — 搜索历史统计（日搜索量、意图分类、时段热力图）
-- **`insights_service.py`** — 粉丝层级分析 + Marquee 推广转化率
+- **`insights_service.py`** — 粉丝层级分析 + Marquee 推广转化率（按转化率降序排列，含艺人封面）
 - **`genius_service.py`** — Genius 歌词服务。懒加载 `GeniusClient` 单例（token 从 `.env` 读取），`get_track_lyrics()` 按需获取歌词并缓存到 `track_lyrics` 表，`get_track_genius_url()` 轻量 URL 查询。歌词清洗：去除 Genius 元数据（Contributors/Translations/Read More），提取嵌入式分段标题（`[Verse]`/`[Chorus]` 等），规范化分段间距（每段之间恰好一空行）
-- **`podcast_service.py`** / **`video_service.py`** / **`profile_service.py`** / **`wrapped_hub_service.py`** — 账号数据页面服务
+- **`podcast_service.py`** — 播客统计（含 `ms_played >= 30000` 过滤排除自动预览噪音，按收听时长降序排列）
+- **`video_service.py`** — 视频分析（含视频曲目封面解析）
+- **`profile_service.py`** / **`wrapped_hub_service.py`** — 账号数据页面服务
 - **`wikipedia_service.py`** — Wikipedia 百科扩展服务。专辑/艺人/单曲页面搜索、全文提取、Infobox 解析、段落分割、SQLite 缓存（`wikipedia_cache` 表）、中文翻译（LLM 优先 → Google Translate 回退）、LLM 结构化数据生成（artist → key_facts + career_timeline + genres + stats + achievements，album → key_facts + genres + chart_performance + accolades + singles）
 - **`spotify_auth.py`** — Spotify OAuth PKCE 授权与数据同步服务。`begin_oauth_flow()` 生成 PKCE 挑战 + auth URL；`complete_oauth_flow()` 换 token 后自动拉取全量数据（profile、top artists/tracks × 3 窗口、recently played、followed artists、playlists）；`get_connection_status()` 返回连接状态 + 数据摘要；`fetch_saved_tracks()` 拉取收藏曲目回填 `added_date`；`get_live_playback()` 实时播放状态
-- **`account_service.py`** — 账号中心聚合服务。`get_account_summary()` 一次查询返回 identity / habits / collection 三大 Tab 的综合数据（profile、inferences、sound_capsule、wrapped_years、year_on_year、saved tracks collection analysis、library cross-reference）
+- **`account_service.py`** — 账号中心聚合服务。`get_account_summary()` 返回收藏分析 + 搜索/习惯两大 Tab 综合数据。`get_collection_insights()` 性能重构：核心 saved_tracks×plays 交叉查询只执行一次，所有衍生计算（人格、生命周期、化学反应、关键词等）均在 Python 内存中完成。关键词提取使用 jieba 分词 + TF-IDF 加权（各年作为"文档"，IDF 惩罚跨年通用词）。新增封面图映射辅助函数 `_cover_url()` / `_artist_cover_map()` / `_track_album_cover_map()`，收藏曲目、生命周示例、化学反应示例、Flip Side 等均返回 `cover_url`
 - **`llm_translator.py`** — LLM 翻译/结构化服务。多提供商（DeepSeek/OpenAI/Anthropic/自定义）、API Key 配置从 settings 模块懒加载、代理支持、`translate_with_llm()` 翻译 + `enrich_with_llm()` 结构化 JSON 提取、长文本自动分段（4000 字符/段）、含 3 次重试和速率限制退避
 
 #### 核心工具层 (core/)
@@ -212,7 +214,7 @@ POST /api/spotify/auth/sync-all          全量数据刷新（profile + top item
 从 `app/` 目录原样迁移或提取的纯逻辑模块，不含任何 Web 框架依赖：
 
 - **`genius/`** — Genius API 客户端模块。`client.py`（`lyricsgenius` 封装：搜索、获取歌词/专辑/艺人/排行榜、封面下载、`_clean_lyrics()` 清洗）+ `models.py`（`Song`/`SearchResult`/`AlbumInfo` dataclass）
-- **`db.py`** — 从 `app/db.py` 完整迁移。`get_db()`, `base_filters()`, `load_plays()`（`@lru_cache(maxsize=16)` 按参数缓存 DataFrame，避免重复 SQL+merge 计算），`merge_consecutive_plays()`, `ensure_schema()`（含 `track_lyrics`, `settings`, `llm_profiles`, `wikipedia_cache` 表）, `build_aggregations()` 等所有函数
+- **`db.py`** — 从 `app/db.py` 完整迁移。`get_db()` 使用 `check_same_thread=False` 适配 Starlette 后台任务线程清理（每个请求独立连接，无并发风险），只读模式通过 `PRAGMA query_only = ON` 实现。`base_filters()`, `load_plays()`（`@lru_cache(maxsize=16)` 按参数缓存 DataFrame，避免重复 SQL+merge 计算），`merge_consecutive_plays()`, `ensure_schema()`（含 `track_lyrics`, `settings`, `llm_profiles`, `wikipedia_cache` 表）, `build_aggregations()` 等所有函数
 - **`utils.py`** — 从 `app/utils.py` 完整迁移。`convert_to_local_time()`, `classify_platform()`
 - **`version_merge.py`** — 从 `app/version_merge.py` 完整迁移。`detect_release_groups()`, `apply_detected_groups()`, `create_group()`, `delete_group()` 等
 - **`import_data.py`** / **`import_account_data.py`** — 从 `app/` 迁移，progress_callback 改为 threading.Event + 共享字典
@@ -281,11 +283,10 @@ frontend/src/
 │   ├── ArtistDetailPage.tsx ← 艺人详情（4 Tab：榜单表现/单曲成绩/专辑成绩/歌手生涯，6 KPI 卡片 + 封面 + Spotify 元数据 + Popularity 视觉进度条 + 走势点数/排名 + AI 百科结构化视图）
 │   ├── AlbumDetailPage.tsx  ← 专辑详情（3 Tab：榜单表现/曲目表现/专辑百科，6 KPI 卡片 + 封面 + Spotify 元数据 + 视觉播放条 + 走势点数/排名 + AI 百科结构化视图，艺人名可点击跳转详情）
 │   ├── SettingsPage.tsx     ← 设置（6 区块：Spotify 连接 / Data & Display / Billboard Parameters / Version Merge / Data Import / LLM Translation，含 Spotify OAuth 连接管理 + 账号数据展示 + LLM 配置档案管理）
-│   ├── AccountCenterPage.tsx ← 账号中心（3 Tab：数字身份 / 音乐人格 / 收藏分析，含 inferences 标签云、sound capsule 时间线、Spotify OAuth 增强数据）
+│   ├── AccountCenterPage.tsx ← 账号中心（2 Tab：你的收藏 / 你的习惯，统一编辑风 Hero 卡片含渐变背景+头像+人格徽章+统计条）
 │   └── account/              ← 账号中心子组件
-│       ├── IdentityTab.tsx    ← 数字身份（DigitalFootprint 推断标签、SoundCapsuleBlock 高光时刻）
-│       ├── HabitsTab.tsx      ← 音乐人格（PersonalityHero 主题色听歌人格、年度回顾入口）
-│       └── CollectionTab.tsx  ← 收藏分析（SavedTracksBrowser 分页搜索、生命周期/化学反应/关键词变迁）
+│       ├── HabitsTab.tsx      ← 你的习惯（听歌人格、搜索编年史、粉丝层级、播客聆听、推广转化含封面+转化率排序、视频分析）
+│       └── CollectionTab.tsx  ← 你的收藏（收藏纵览、生命周期含趋势图+Top曲目个体趋势、化学反应含封面、Flip Side 含封面、品味迁徙含 jieba+TF-IDF 关键词权重可视化、双厨时刻、排行榜含播放量、收藏档案）
 ├── hooks/           ← 自定义 hooks
 │   ├── useTheme.tsx  ← 主题管理（Context + localStorage）
 │   ├── useDashboard.ts  ← Dashboard 数据获取 + 缓存
@@ -400,7 +401,7 @@ app/pages/billboard/
 
 **特殊页面过滤策略：**
 - 行为分析（`04_behavior.py`）：使用全量数据（`filtered=False, music_only=False`），保证快进/隐身/随机播放等分析准确性
-- 视频分析（`15_video.py`）：额外过滤 `ms_played >= 30000`（30 秒），排除滑动时自动预览的噪音（约 87% 视频播放 < 5s）
+- 视频分析 + 播客聆听（`video_service.py` / `podcast_service.py`）：额外过滤 `ms_played >= 30000`（30 秒），排除滑动/自动预览的噪音
 - Billboard 专辑榜（`billboard/shared.py`）：通过 `_load_album_metadata()` 从 `spotify_album_meta` 获取类型和发行日期，排除 `album_type = 'single'` 的发行，以及专辑发行日之前的周数（同一专辑的单曲提前发行不计入专辑榜）
 - 播客专区、音乐画像等账号数据页面：直接查询各自独立的账号数据表，不经过 `base_filters()`
 

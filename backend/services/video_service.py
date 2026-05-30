@@ -58,6 +58,29 @@ def get_video_stats(conn: sqlite3.Connection) -> dict:
            ORDER BY video_plays DESC LIMIT 30"""
     ).fetchall()
 
+    # Resolve track cover URLs for top video tracks
+    track_names = [r["track_name"] for r in comparison]
+    artist_names = [r["artist_name"] for r in comparison]
+    if track_names:
+        pairs = list(zip(track_names, artist_names))
+        placeholders = ",".join("(?,?)" for _ in pairs)
+        flat_params = [v for pair in pairs for v in pair]
+        cover_rows = conn.execute(
+            f"""SELECT t.track_name, a.artist_name, al.album_id, al.image_path, al.image_url
+                FROM tracks t
+                JOIN artists a ON t.artist_id = a.artist_id
+                LEFT JOIN albums al ON t.album_id = al.album_id
+                WHERE (t.track_name, a.artist_name) IN ({placeholders})""",
+            flat_params,
+        ).fetchall()
+        cover_map = {}
+        for r in cover_rows:
+            key = (r["track_name"], r["artist_name"])
+            if key not in cover_map and r["album_id"] and (r["image_path"] or r["image_url"]):
+                cover_map[key] = f"/covers/albums/{int(r['album_id'])}.jpg"
+    else:
+        cover_map = {}
+
     return {
         "available": True,
         "empty": False,
@@ -71,7 +94,8 @@ def get_video_stats(conn: sqlite3.Connection) -> dict:
         ],
         "top_video_tracks": [
             {"track_name": r["track_name"], "artist_name": r["artist_name"],
-             "video_plays": int(r["video_plays"]), "audio_plays": int(r["audio_plays"])}
+             "video_plays": int(r["video_plays"]), "audio_plays": int(r["audio_plays"]),
+             "cover_url": cover_map.get((r["track_name"], r["artist_name"]))}
             for r in comparison
         ],
     }

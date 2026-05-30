@@ -17,15 +17,22 @@ def get_podcast_stats(conn: sqlite3.Connection) -> dict:
     if plays.empty:
         return {"available": True, "empty": True}
 
-    # Show rankings by listening time
+    # Filter out very short plays (previews / autoplay noise), same threshold as video
+    plays = plays[plays["ms_played"] >= 30000]
+
+    if plays.empty:
+        return {"available": True, "empty": True}
+
+    # Show rankings by listening time (descending)
     show_hours = (
         plays.groupby("podcast_name")["ms_played"].sum()
         .div(3_600_000)
-        .sort_values(ascending=True)
-        .tail(15)
+        .sort_values(ascending=False)
+        .head(15)
     )
 
     # Monthly trend
+    plays = plays.copy()
     plays["play_date"] = pd.to_datetime(plays["play_date"])
     monthly = (
         plays.groupby(plays["play_date"].dt.to_period("M"))["ms_played"]

@@ -391,16 +391,20 @@ CREATE TABLE IF NOT EXISTS user_prompts (
 
 
 def get_db(readonly: bool = True) -> sqlite3.Connection:
-    """Get a database connection. Thread-safe for Streamlit's execution model."""
-    uri = f"file:{DB_PATH}?mode=ro" if readonly else DB_PATH
-    conn = sqlite3.connect(uri, uri=True if readonly else False)
-    conn.row_factory = sqlite3.Row
+    """Get a database connection."""
+    # check_same_thread=False 是必需的：
+    # Starlette 的 generator 依赖在后台任务中执行 finally 清理代码，
+    # 该任务可能运行在不同于创建连接的线程中（即使只是 close() 也会报错）。
+    # 由于每个请求都创建独立的连接，不存在真正的跨线程并发使用同一连接，
+    # 因此禁用线程检查是安全的。
     if readonly:
+        conn = sqlite3.connect(DB_PATH, timeout=30, check_same_thread=False)
+        conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA query_only = ON")
-    try:
+    else:
+        conn = sqlite3.connect(DB_PATH, timeout=30, check_same_thread=False)
+        conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA journal_mode = WAL")
-    except sqlite3.OperationalError:
-        pass  # read-only connection may not be able to set journal mode
     return conn
 
 

@@ -4,25 +4,17 @@ import { KpiCard } from '@/components/shared/KpiCard'
 import { cn } from '@/lib/utils'
 import {
   Search,
-  Trophy,
-  Users,
   Mic,
   Video,
   Clock,
   Target,
-  TrendingUp,
-  Star,
   Crown,
   Medal,
   Zap,
   Compass,
   Heart,
-  Monitor,
   Megaphone,
-  Sparkles,
-  Music,
   Hash,
-  ChevronRight,
 } from 'lucide-react'
 import type {
   SearchData,
@@ -337,12 +329,6 @@ export function HabitsTab({
     return [...search.daily_volume].sort((a, b) => b.count - a.count)[0] ?? null
   }, [search])
 
-  /* marquee conversion rate */
-  const topMarquee = useMemo(() => {
-    if (!marquee.available || marquee.empty) return []
-    return marquee.conversions.slice(0, 5)
-  }, [marquee])
-
   /* ---- render ---- */
   return (
     <div className="space-y-8">
@@ -642,14 +628,22 @@ export function HabitsTab({
                       )}
                     >
                       <div className="flex items-start gap-3">
-                        <div
-                          className={cn(
-                            'flex h-7 w-7 shrink-0 items-center justify-center rounded-full',
-                            medalBadge[idx + 1] ?? 'bg-muted',
-                          )}
-                        >
-                          {medalIcon[idx + 1] ?? idx + 1}
-                        </div>
+                        {fan.cover_url ? (
+                          <img
+                            src={fan.cover_url}
+                            alt={fan.artist_name}
+                            className="h-12 w-12 shrink-0 rounded-full border border-border object-cover"
+                          />
+                        ) : (
+                          <div
+                            className={cn(
+                              'flex h-7 w-7 shrink-0 items-center justify-center rounded-full',
+                              medalBadge[idx + 1] ?? 'bg-muted',
+                            )}
+                          >
+                            {medalIcon[idx + 1] ?? idx + 1}
+                          </div>
+                        )}
                         <div className="min-w-0 flex-1">
                           <p className="truncate font-serif text-base font-semibold">
                             {fan.artist_name}
@@ -770,44 +764,53 @@ export function HabitsTab({
 
               <p className="font-sans text-xs leading-relaxed text-muted-foreground">
                 Spotify Marquee
-                是全屏推荐广告，以下为你看到推广后转化为实际收听的艺人排行。
+                是全屏推荐广告，以下为你看到推广后转化为实际收听的艺人排行（按转化率降序）。
               </p>
 
               <div className="space-y-3">
-                {topMarquee.map((c, idx) => {
-                  const rate = safeDiv(c.actual_plays, c.impressions) * 100
+                {marquee.conversions.slice(0, 5).map((c) => {
+                  const rate = c.conversion_rate * 100
                   return (
                     <div
                       key={`${c.artist_name}-${c.segment}`}
-                      className="rounded-lg border border-border bg-muted/20 p-3"
+                      className="flex items-center gap-3 rounded-lg border border-border bg-muted/20 p-3"
                     >
-                      <div className="flex items-center justify-between">
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate font-serif text-sm font-semibold">
-                            {c.artist_name}
-                          </p>
-                          <p className="font-sans text-[10px] text-muted-foreground">
-                            展示 {fmtInt(c.impressions)} 次 · 转化{' '}
-                            {fmtInt(c.actual_plays)} 次
-                          </p>
+                      {c.cover_url ? (
+                        <img
+                          src={c.cover_url}
+                          alt={c.artist_name}
+                          className="h-11 w-11 shrink-0 rounded-full border border-border object-cover"
+                        />
+                      ) : (
+                        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-muted">
+                          <Megaphone className="h-4 w-4 text-muted-foreground" />
                         </div>
-                        <div className="ml-3 shrink-0 text-right">
-                          <p
-                            className={cn(
-                              'font-serif text-lg font-bold',
-                              rate > 5
-                                ? 'text-emerald-500'
-                                : rate > 2
-                                  ? 'text-amber-500'
-                                  : 'text-muted-foreground',
-                            )}
-                          >
-                            {rate.toFixed(1)}%
-                          </p>
-                          <p className="font-sans text-[9px] uppercase tracking-[0.5px] text-muted-foreground">
-                            转化率
-                          </p>
-                        </div>
+                      )}
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate font-serif text-sm font-semibold">
+                          {c.artist_name}
+                        </p>
+                        <p className="font-sans text-[10px] text-muted-foreground">
+                          展示 {fmtInt(c.impressions)} 次 · 转化{' '}
+                          {fmtInt(c.actual_plays)} 次
+                        </p>
+                      </div>
+                      <div className="shrink-0 text-right">
+                        <p
+                          className={cn(
+                            'font-serif text-lg font-bold',
+                            rate > 5
+                              ? 'text-emerald-500'
+                              : rate > 2
+                                ? 'text-amber-500'
+                                : 'text-muted-foreground',
+                          )}
+                        >
+                          {rate.toFixed(1)}%
+                        </p>
+                        <p className="font-sans text-[9px] uppercase tracking-[0.5px] text-muted-foreground">
+                          转化率
+                        </p>
                       </div>
                     </div>
                   )
@@ -871,45 +874,6 @@ export function HabitsTab({
                     </p>
                   </div>
                 </div>
-
-                {/* platform distribution */}
-                {video.platform_dist &&
-                  Object.keys(video.platform_dist).length > 0 && (
-                    <div className="space-y-2">
-                      <p className="font-sans text-[11px] font-semibold uppercase tracking-[1px] text-muted-foreground">
-                        平台分布
-                      </p>
-                      <div className="space-y-1.5">
-                        {Object.entries(video.platform_dist)
-                          .sort(([, a], [, b]) => b - a)
-                          .map(([platform, count]) => {
-                            const total = Object.values(
-                              video.platform_dist,
-                            ).reduce((s, v) => s + v, 0)
-                            const pct = safeDiv(count, total) * 100
-                            return (
-                              <div
-                                key={platform}
-                                className="flex items-center gap-2"
-                              >
-                                <span className="w-16 shrink-0 text-right font-sans text-xs text-muted-foreground">
-                                  {platform}
-                                </span>
-                                <div className="h-2 flex-1 overflow-hidden rounded-full bg-muted">
-                                  <div
-                                    className="h-full rounded-full bg-rose-500/70"
-                                    style={{ width: `${pct}%` }}
-                                  />
-                                </div>
-                                <span className="w-10 shrink-0 font-sans text-xs tabular-nums text-muted-foreground">
-                                  {fmtPct(count, total)}
-                                </span>
-                              </div>
-                            )
-                          })}
-                      </div>
-                    </div>
-                  )}
               </div>
 
               {/* right: top video tracks */}
@@ -931,6 +895,13 @@ export function HabitsTab({
                         <span className="w-5 text-right font-sans text-xs tabular-nums text-muted-foreground">
                           {idx + 1}
                         </span>
+                        {t.cover_url && (
+                          <img
+                            src={t.cover_url}
+                            alt={t.track_name}
+                            className="h-10 w-10 shrink-0 rounded border border-border object-cover"
+                          />
+                        )}
                         <div className="min-w-0 flex-1">
                           <p className="truncate font-sans text-sm">
                             {t.track_name}
@@ -956,115 +927,6 @@ export function HabitsTab({
           </div>
         )}
       </GlassCard>
-
-      {/* ============================================================ */}
-      {/*  6. Habits Summary                                             */}
-      {/* ============================================================ */}
-      <GlassCard className="p-6">
-        <div className="space-y-6">
-          <div className="flex items-center gap-2.5">
-            <Sparkles className="h-5 w-5 text-amber-500" />
-            <h2 className="mb-5 font-serif text-xl font-semibold">习惯总结</h2>
-          </div>
-
-          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
-            {/* search profile */}
-            <SummaryCell
-              icon={<Search className="h-5 w-5" />}
-              label="搜索画像"
-              description={(() => {
-                if (!search.available || search.empty)
-                  return '搜索数据不可用'
-                const top = search.intent_dist.sort(
-                  (a, b) => b.count - a.count,
-                )[0]
-                const intentLabel =
-                  (getIntentLabels() as Record<string, string>)[
-                    top?.intent ?? ''
-                  ] ?? (top?.intent ?? '搜索')
-                return `你偏好${intentLabel}搜索，累计 ${fmtInt(search.total_searches)} 次查询`
-              })()}
-            />
-
-            {/* fan profile */}
-            <SummaryCell
-              icon={<Heart className="h-5 w-5" />}
-              label="粉丝画像"
-              description={(() => {
-                if (!tiers.available || tiers.empty) return '粉丝数据不可用'
-                if (superFans.length > 0)
-                  return `头号粉丝是「${superFans[0].artist_name}」，共 ${tiers.total_artists} 位细分层级艺人`
-                return `${tiers.total_artists} 位艺人按忠诚度分为 ${tierEntries.length} 个层级`
-              })()}
-            />
-
-            {/* media preference */}
-            <SummaryCell
-              icon={<Monitor className="h-5 w-5" />}
-              label="媒介偏好"
-              description={(() => {
-                if (!video.available || video.empty) return '视频数据不可用'
-                const total =
-                  video.total_video_plays + video.total_audio_plays
-                const vPct = safeDiv(video.total_video_plays, total) * 100
-                if (vPct > 40) return `你是重度视频用户，${vPct.toFixed(0)}% 的播放来自视频`
-                if (vPct > 15)
-                  return `适度使用视频，${vPct.toFixed(0)}% 为视频播放`
-                return `音频优先型听众，仅 ${vPct.toFixed(0)}% 为视频播放`
-              })()}
-            />
-
-            {/* influence index */}
-            <SummaryCell
-              icon={<Megaphone className="h-5 w-5" />}
-              label="被安利指数"
-              description={(() => {
-                if (!marquee.available || marquee.empty)
-                  return '推广数据不可用'
-                const totalConv = marquee.conversions.reduce(
-                  (s, c) => s + c.actual_plays,
-                  0,
-                )
-                const totalImp = marquee.conversions.reduce(
-                  (s, c) => s + c.impressions,
-                  0,
-                )
-                const overall = safeDiv(totalConv, totalImp) * 100
-                if (overall > 5) return `你很乐意接受推荐，综合转化率达 ${overall.toFixed(1)}%`
-                if (overall > 2)
-                  return `对推广保持适度开放，转化率 ${overall.toFixed(1)}%`
-                return `推广转化率 ${overall.toFixed(1)}%，你有独立的音乐判断力`
-              })()}
-            />
-          </div>
-        </div>
-      </GlassCard>
-    </div>
-  )
-}
-
-/* ------------------------------------------------------------------ */
-/*  Summary Cell (used in Section 6)                                   */
-/* ------------------------------------------------------------------ */
-
-function SummaryCell({
-  icon,
-  label,
-  description,
-}: {
-  icon: React.ReactNode
-  label: string
-  description: string
-}) {
-  return (
-    <div className="flex flex-col gap-2 rounded-xl border border-border bg-muted/30 p-4 transition-colors hover:bg-muted/50">
-      <div className="flex items-center gap-2 text-muted-foreground">
-        {icon}
-        <p className="font-sans text-[11px] font-semibold uppercase tracking-[1px]">
-          {label}
-        </p>
-      </div>
-      <p className="font-sans text-sm leading-relaxed">{description}</p>
     </div>
   )
 }

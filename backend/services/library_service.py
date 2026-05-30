@@ -104,12 +104,36 @@ def get_playlist_tracks(conn: sqlite3.Connection, playlist_id: int) -> list[dict
         "SELECT track_uri, track_name, artist_name, album_name, added_date FROM playlist_tracks WHERE playlist_id = ?",
         (playlist_id,),
     ).fetchall()
-    return [
+    tracks = [
         {"track_uri": r["track_uri"], "track_name": r["track_name"],
          "artist_name": r["artist_name"], "album_name": r["album_name"] or "",
          "added_date": r["added_date"] or ""}
         for r in rows
     ]
+
+    # Resolve cover URLs via tracks→albums join
+    if tracks:
+        pairs = [(t["track_name"], t["artist_name"]) for t in tracks]
+        placeholders = ",".join("(?,?)" for _ in pairs)
+        flat_params = [v for pair in pairs for v in pair]
+        cover_rows = conn.execute(
+            f"""SELECT t.track_name, a.artist_name, al.album_id, al.image_path, al.image_url
+                FROM tracks t
+                JOIN artists a ON t.artist_id = a.artist_id
+                LEFT JOIN albums al ON t.album_id = al.album_id
+                WHERE (t.track_name, a.artist_name) IN ({placeholders})""",
+            flat_params,
+        ).fetchall()
+        for r in cover_rows:
+            key = (r["track_name"], r["artist_name"])
+            entity_id = r["album_id"]
+            if entity_id and (r["image_path"] or r["image_url"]):
+                for t in tracks:
+                    if t["track_name"] == key[0] and t["artist_name"] == key[1]:
+                        t["cover_url"] = f"/covers/albums/{int(entity_id)}.jpg"
+                        break
+
+    return tracks
 
 
 def get_saved_tracks_paginated(conn: sqlite3.Connection, page: int = 1,
@@ -136,12 +160,36 @@ def get_saved_tracks_paginated(conn: sqlite3.Connection, page: int = 1,
         params + [limit, offset],
     ).fetchall()
 
+    # Resolve cover URLs via tracks→albums join for this page
+    tracks = [dict(r) for r in rows]
+    if tracks:
+        pairs = [(t["track_name"], t["artist_name"]) for t in tracks]
+        placeholders = ",".join("(?,?)" for _ in pairs)
+        flat_params = [v for pair in pairs for v in pair]
+        cover_rows = conn.execute(
+            f"""SELECT t.track_name, a.artist_name, al.album_id, al.image_path, al.image_url
+                FROM tracks t
+                JOIN artists a ON t.artist_id = a.artist_id
+                LEFT JOIN albums al ON t.album_id = al.album_id
+                WHERE (t.track_name, a.artist_name) IN ({placeholders})""",
+            flat_params,
+        ).fetchall()
+        cover_map: dict = {}
+        for r in cover_rows:
+            key = (r["track_name"], r["artist_name"])
+            if key not in cover_map:
+                entity_id = r["album_id"]
+                if entity_id and (r["image_path"] or r["image_url"]):
+                    cover_map[key] = f"/covers/albums/{int(entity_id)}.jpg"
+        for t in tracks:
+            t["cover_url"] = cover_map.get((t["track_name"], t["artist_name"]))
+
     return {
         "page": page,
         "limit": limit,
         "total": total,
         "total_pages": (total + limit - 1) // limit if total > 0 else 0,
-        "tracks": [dict(r) for r in rows],
+        "tracks": tracks,
     }
 
 

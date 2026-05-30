@@ -41,12 +41,20 @@ export interface FirstSaveStory {
   total_plays: number
   days_since: number
   avg_interval_days: number
+  cover_url?: string | null
+}
+
+export interface LifecycleExample {
+  track_name: string
+  artist_name: string
+  cover_url?: string | null
 }
 
 export interface LifecycleStage {
   label: string
   weeks: string
   avg_per_week: number
+  examples?: LifecycleExample[]
 }
 
 export interface LifecycleFate {
@@ -55,11 +63,32 @@ export interface LifecycleFate {
   forgotten_pct: number
 }
 
+export interface LifecycleTrendPoint {
+  week: number
+  avg_plays: number
+  track_count: number
+}
+
+export interface TopTrackTrendPoint {
+  week: number
+  plays: number
+}
+
+export interface TopTrackTrend {
+  track_name: string
+  artist_name: string
+  cover_url?: string | null
+  data: TopTrackTrendPoint[]
+}
+
 export interface SaveLifecycle {
   honeymoon: LifecycleStage
   cooling: LifecycleStage
   settling: LifecycleStage
   fate: LifecycleFate
+  honeymoon_examples?: LifecycleExample[]
+  cooling_examples?: LifecycleExample[]
+  settling_examples?: LifecycleExample[]
 }
 
 export interface ChemistryExample {
@@ -69,6 +98,7 @@ export interface ChemistryExample {
   before_save: number
   first_week: number
   days_since_play: number | null
+  cover_url?: string | null
 }
 
 export interface ChemistryType {
@@ -93,6 +123,7 @@ export interface FlipSideTrack {
   track_name: string
   artist_name: string
   play_count: number
+  cover_url?: string | null
 }
 
 export interface CoSavedPair {
@@ -105,17 +136,26 @@ export interface TopSavedArtist {
   artist_name: string
   saved_count: number
   total_plays: number
+  cover_url?: string | null
 }
 
-export interface MismatchArtists {
-  over_saved: TopSavedArtist[]
-  under_saved: TopSavedArtist[]
+export interface TopSavedAlbum {
+  album_name: string
+  artist_name: string
+  saved_count: number
+  total_plays: number
+  cover_url?: string | null
 }
 
 export interface ArchiveFacts {
   total_duration_hrs: number
   year_span: string | null
   oldest_track: { track_name: string; artist_name: string; year: number } | null
+}
+
+export interface KeywordItem {
+  word: string
+  weight: number
 }
 
 export interface CollectionInsights {
@@ -127,11 +167,14 @@ export interface CollectionInsights {
   lifecycle: SaveLifecycle
   chemistry: SavePlayChemistry
   flip_side: FlipSideTrack[]
-  keyword_migration: Record<string, string[]>
+  keyword_migration: Record<string, KeywordItem[]>
+  genre_migration: Record<string, string[]>
   co_saved_artists: CoSavedPair[]
   top_saved_artists: TopSavedArtist[]
-  mismatch: MismatchArtists
+  top_saved_albums: TopSavedAlbum[]
   archive_facts: ArchiveFacts
+  lifecycle_trend?: LifecycleTrendPoint[]
+  lifecycle_top_tracks?: TopTrackTrend[]
 }
 
 // --- Habits Tab ---
@@ -156,6 +199,7 @@ export interface ArtistTier {
   play_count: number
   hours: number
   tier: string
+  cover_url?: string | null
 }
 
 export interface ArtistTiersData {
@@ -173,6 +217,8 @@ export interface MarqueeConversion {
   impressions: number
   actual_plays: number
   actual_hours: number
+  conversion_rate: number
+  cover_url?: string | null
 }
 
 export interface MarqueeData {
@@ -207,6 +253,7 @@ export interface VideoTrack {
   artist_name: string
   video_plays: number
   audio_plays: number
+  cover_url?: string | null
 }
 
 export interface VideoYearlyPoint {
