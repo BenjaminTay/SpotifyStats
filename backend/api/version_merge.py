@@ -159,6 +159,9 @@ def apply_detection(detection_result: dict, auth: None = Depends(require_auth)):
         return {"status": "ok", "created_count": 0}
 
     result = apply_detected_groups(df)
+    from backend.core.cache_manager import invalidate
+
+    invalidate("billboard")
     # Convert numpy types
     return {
         "status": "ok",
@@ -179,15 +182,15 @@ def _serialize_detection(result: dict) -> dict:
                 _serialize_detection(item)
                 if isinstance(item, dict)
                 else int(item)
-                if isinstance(item, (np.integer,))
+                if isinstance(item, np.integer)
                 else float(item)
-                if isinstance(item, (np.floating,))
+                if isinstance(item, np.floating)
                 else item
                 for item in val
             ]
-        elif isinstance(val, (np.integer,)):
+        elif isinstance(val, np.integer):
             out[key] = int(val)
-        elif isinstance(val, (np.floating,)):
+        elif isinstance(val, np.floating):
             out[key] = float(val)
         elif isinstance(val, pd.DataFrame):
             out[key] = val.where(pd.notna(val), None).to_dict(orient="records")

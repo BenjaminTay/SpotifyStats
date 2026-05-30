@@ -391,6 +391,22 @@ CREATE TABLE IF NOT EXISTS user_prompts (
     message TEXT,
     created_timestamp TEXT
 );
+
+-- Background job queue (for async enrichment & cover downloads)
+CREATE TABLE IF NOT EXISTS background_jobs (
+    job_id TEXT PRIMARY KEY,
+    job_type TEXT NOT NULL,
+    entity_type TEXT,
+    entity_id TEXT,
+    payload_json TEXT,
+    status TEXT NOT NULL DEFAULT 'pending',
+    created_at TEXT,
+    updated_at TEXT,
+    attempts INTEGER DEFAULT 0,
+    error TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_bg_jobs_status ON background_jobs(status);
+CREATE INDEX IF NOT EXISTS idx_bg_jobs_entity ON background_jobs(job_type, entity_id);
 """
 
 
@@ -421,51 +437,15 @@ def init_db() -> None:
 
 
 def ensure_schema() -> None:
-    """Ensure all tables/indexes exist (safe to call repeatedly — uses IF NOT EXISTS)."""
-    if not os.path.exists(DB_PATH):
-        return
-    conn = get_db(readonly=False)
-    conn.executescript(SCHEMA)
-    # 增量添加新列（SQLite 不支持 ADD COLUMN IF NOT EXISTS）
-    _add_columns = [
-        # plays
-        ("plays", "content_type", "TEXT NOT NULL DEFAULT 'audio'"),
-        # spotify_album_meta — 存储专辑主艺人，用于发行归属验证
-        ("spotify_album_meta", "album_artists", "TEXT"),
-        # spotify_album_meta — 存储真实曲目列表，用于版本合并超集检测
-        ("spotify_album_meta", "total_tracks", "INTEGER"),
-        ("spotify_album_meta", "track_list", "TEXT"),
-        # albums / artists — 封面图片 URL 和本地路径
-        ("albums", "image_url", "TEXT"),
-        ("albums", "image_path", "TEXT"),
-        ("artists", "image_url", "TEXT"),
-        ("artists", "image_path", "TEXT"),
-    ]
-    for table, col, col_type in _add_columns:
-        try:
-            conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {col_type}")
-        except sqlite3.OperationalError:
-            pass
-    # Create UNIQUE indexes (safe after deduplication in import_data)
-    try:
-        conn.execute(
-            "CREATE UNIQUE INDEX IF NOT EXISTS idx_tracks_artist_name ON tracks(artist_id, track_name)"
-        )
-    except sqlite3.OperationalError:
-        pass
-    try:
-        conn.execute(
-            "CREATE UNIQUE INDEX IF NOT EXISTS idx_albums_name_artist ON albums(album_name, artist_id)"
-        )
-    except sqlite3.OperationalError:
-        pass
-    # content_type index (after ALTER TABLE ensures column exists)
-    try:
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_plays_content_type ON plays(content_type)")
-    except sqlite3.OperationalError:
-        pass
-    conn.commit()
-    conn.close()
+    """Ensure all tables/indexes exist (safe to call repeatedly).
+
+    Delegates to the versioned migration system. Kept for backward
+    compatibility with callers in import_data, scripts, and frozen
+    Streamlit app code.
+    """
+    from backend.core.migrations import run_migrations
+
+    run_migrations()
 
 
 def base_filters(
@@ -947,3 +927,9 @@ def load_agg_weekly_artists(conn: sqlite3.Connection) -> pd.DataFrame:
     )
     df["billboard_week"] = pd.to_datetime(df["billboard_week"]).dt.date
     return df
+
+
+# ── Cache registration ─────────────────────────────────────────────────
+from backend.core.cache_manager import register_lru  # noqa: E402
+
+register_lru("db", "plays", _load_plays_cached)

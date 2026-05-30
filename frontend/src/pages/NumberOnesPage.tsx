@@ -1,6 +1,6 @@
 import { lazy, Suspense, useState, useEffect, useMemo } from 'react'
 import { Link } from 'react-router-dom'
-import { useBillboard } from '@/hooks/useBillboard'
+import { useBillboardAllTime } from '@/hooks/useBillboard'
 import { GlassCard } from '@/components/shared/GlassCard'
 import { BillboardSubNav } from '@/components/shared/BillboardSubNav'
 import { useTheme } from '@/hooks/useTheme'
@@ -286,7 +286,7 @@ const SUB_TABS: { key: SubTabKey; label: string }[] = [
 ]
 
 export function NumberOnesPage() {
-  const { data, loading, error } = useBillboard()
+  const { data, loading, error } = useBillboardAllTime()
 
   // ── compute all #1 data ─────────────────────────────────
 

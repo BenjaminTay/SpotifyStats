@@ -1503,16 +1503,54 @@ frontend/src/
 
 ### 阶段四：高级性能优化与可扩展架构落地（产品化升级）
 
-#### 低优先级任务 19：拆分 Billboard 大响应接口
+#### 第四阶段 性能优化与产品化 完成复盘总结（2026-05-30）
+
+> **阶段状态**：第四阶段 4A / 4B / 4C 已完成并通过验收。项目已经从“结构性债务治理完成”推进到“可迁移、可观测、可按需加载、可统一缓存治理”的产品化基础状态。第四阶段没有改变核心业务口径，所有优化围绕性能、治理、观测和渐进式兼容展开。
+
+| 项目 | 完成结果 |
+|---|---|
+| 阶段四整体目标达成 | 已达成。SQLite migration、统一 Cache Manager、轻量 Job Queue、Billboard 分接口、TanStack Query 基线、Benchmark & Observability 均已落地。 |
+| 4A 基础设施 | 新增 `backend/core/migrations.py`、`backend/core/cache_manager.py`、`backend/core/job_queue.py` 与 `backend/jobs/handlers.py`；基础设施以本地优先、单进程可用、兼容旧逻辑为原则。 |
+| SQLite 迁移规范化 | 新增 `schema_migrations` 追踪表；当前注册 10 个迁移，其中包含 9 个历史 schema/索引迁移和 1 个 `background_jobs` 任务表迁移；runner 可重复执行，兼容旧库，不改动 legacy Streamlit 旧入口。 |
+| 统一缓存治理 | 新增 namespace 注册与失效能力，覆盖 `billboard`、`analysis`、`db`、`auth`；`/api/admin/cache-stats` 可查看 LRU/TTL 命中、miss、size、currsize、maxsize；settings 保存、import 完成、version merge apply 自动触发相关缓存失效。 |
+| 缓存兼容策略 | 保留原有 `@lru_cache`、`@ttl_cached`、`@singleflight`，通过 `register_lru()` / `register_ttl()` 纳入统一管理；本次验收修复 Billboard staged cache 注册 key 重复导致监控只保留最后一个函数的问题。 |
+| 后台任务队列异步化 | 新增轻量 `JobQueue`：线程池执行、SQLite `background_jobs` 状态表、`/api/jobs/{job_id}/status` 查询端点；封面下载已接入统一队列，Wikipedia enrichment、Genius 歌词拉取已有 handler 入口。 |
+| JobQueue 验收整改 | 本次验收修复 job 只进入内存队列、不写入 `background_jobs` 的问题；现在 enqueue 会先持久化 pending row，worker 再更新 running/done/failed，`enqueue_if_not_pending()` 可基于 DB 状态去重。 |
+| Billboard API 拆分 | 旧 `/api/billboard/data` 保留兼容；新增 `/api/billboard/weekly`、`/api/billboard/records`、`/api/billboard/power-scores`、`/api/billboard/summaries`、`/api/billboard/all-time`，按页面所需数据拆分响应体，避免默认加载全量 5MB 级数据。 |
+| API 性能收益 | Billboard 首页可只取 weekly；记录页只取 records；总榜/冠单页走 all-time 合并接口；各 staged 计算拥有独立 LRU cache，减少序列化、传输、前端解析和内存占用。 |
+| 前端 TanStack Query 现代化 | 新增 `frontend/src/api/query-client.ts` 与 `frontend/src/api/query-keys.ts`；全局 `QueryClientProvider` 已接入；`useDashboard`、`useAccount` 已迁移到 React Query，获得统一 staleTime、gcTime、retry、去重、loading/error 管理。 |
+| 渐进式迁移策略 | Billboard 仍保留模块级缓存与 split endpoint hooks 并行，避免一次性重写页面行为；后续新 GET hook 应优先使用 `queryKeys` 和 `useQuery`。 |
+| 性能基准与可观测 | 新增 `scripts/benchmark_api.py`，可测 `/api/billboard/*`、Dashboard、health 的冷/热响应、raw/gzip size；前端新增 `npm run analyze`，通过 `rollup-plugin-visualizer` 输出 bundle 分析。 |
+| 本次验收整改 | 修复 migration runner 过度吞掉 `OperationalError` 的问题，仅对“已存在/重复列/重复索引”等幂等错误记录 applied，其它 SQL 错误继续抛出；修复 Vite analyzer 配置类型错误；补充 JobQueue DB 状态断言。 |
+| 验证基线 | `pytest backend/tests -q`：245 passed，约 45.74s；`pytest -m unit -v`：59 passed，约 5.16s；`.venv/bin/ruff check backend/`：All checks passed；`npm run build`：通过；`npm test`：20 passed；`git diff --check`：通过。 |
+
+**后续开发规范**：
+
+1. 新增 SQLite schema 变更必须新增 migration，不允许回到散落 `ALTER TABLE`。
+2. 新增缓存函数必须注册到明确 namespace，并使用唯一 key；禁止重复 key 覆盖已有统计。
+3. settings、import、version merge、数据清空等 mutation 必须显式触发相关 namespace 失效。
+4. 新增外部慢请求优先走 JobQueue 或 stale-cache + refresh，不阻塞核心页面响应。
+5. 新增 Billboard 页面数据需求优先使用 staged endpoint，不得默认回退到 `/api/billboard/data` 巨型响应。
+6. 新增前端 GET hook 优先使用 TanStack Query 与 `queryKeys`；旧模块级缓存仅作为渐进迁移兼容层。
+7. 性能相关重构前后应运行 `scripts/benchmark_api.py` 或 `npm run analyze`，保留可对比数据。
+8. `scripts/benchmark_api.py` 和 seed 构建脚本中的 `print()` 属于 CLI 输出；业务后端和前端代码禁止调试 `print` / `console.log`。
+
+#### ✅ 低优先级任务 19：拆分 Billboard 大响应接口
 
 - **任务名称**：Billboard API 按需加载改造
 - **涉及文件范围**：
   - `backend/api/billboard/data.py`
-  - `backend/api/billboard/records.py`（新增）
-  - `backend/api/billboard/all_time.py`（新增）
-  - `backend/api/billboard/summary.py`（新增）
+  - `backend/domains/billboard/chart_compute.py`
+  - `backend/services/billboard_service.py`
   - `frontend/src/hooks/useBillboard.ts`
   - Billboard 页面相关文件
+- **状态**：已完成
+- **完成记录**：
+  - 旧 `/api/billboard/data` 保留完整兼容。
+  - 新增 `/api/billboard/weekly`、`/api/billboard/records`、`/api/billboard/power-scores`、`/api/billboard/summaries`、`/api/billboard/all-time`。
+  - `chart_compute.py` 新增 staged cached functions，按响应切片独立缓存。
+  - 前端 Billboard / NumberOnes / AllTime 页面已接入拆分后的加载路径。
+  - 验收：后端全量 245 passed，前端 build/test 通过。
 - **具体执行步骤**：
   1. 新增 v1 分接口。
   2. 旧 `/api/billboard/data` 保留兼容。
@@ -1527,16 +1565,21 @@ frontend/src/
 - **改造收益**：
   - 降低网络、序列化、内存和前端解析成本。
 
-#### 低优先级任务 20：统一 Cache Manager
+#### ✅ 低优先级任务 20：统一 Cache Manager
 
 - **任务名称**：缓存命名空间、失效和观测统一
 - **涉及文件范围**：
-  - `backend/infrastructure/cache/backend.py`
-  - `backend/infrastructure/cache/memory.py`
-  - `backend/infrastructure/cache/keys.py`
-  - `backend/infrastructure/cache/invalidation.py`
+  - `backend/core/cache_manager.py`
   - `backend/core/cache.py`
+  - `backend/api/admin.py`
   - 各 domain service
+- **状态**：已完成
+- **完成记录**：
+  - 新增 `register_lru()`、`register_ttl()`、`invalidate()`、`invalidate_all()`、`get_stats()`。
+  - 已注册 `billboard`、`analysis`、`db`、`auth` 等 namespace。
+  - settings 更新触发 `billboard` / `analysis` / `db` 失效；import 完成触发 `invalidate_all()`；version merge apply 触发 `billboard` 失效。
+  - 新增 `/api/admin/cache-stats`，受 `require_auth` 保护。
+  - 本次验收修复 staged Billboard cache key 重复覆盖问题。
 - **具体执行步骤**：
   1. 定义 cache namespace。
   2. 定义 cache key dataclass。
@@ -1547,18 +1590,27 @@ frontend/src/
 - **改造原则**：
   - 先包装现有缓存，不一次性重写所有缓存。
 - **完成标准**：
-  - 可以按 namespace 清理 playback、billboard、enrichment 缓存。
+  - 可以按 namespace 清理 billboard、analysis、db、auth 缓存。
 - **改造收益**：
   - 缓存行为可控、可观测。
 
-#### 低优先级任务 21：前端 Query Client 全面迁移
+#### ✅ 低优先级任务 21：前端 Query Client 全面迁移
 
 - **任务名称**：前端数据请求层产品化
 - **涉及文件范围**：
-  - `frontend/src/app/providers/QueryProvider.tsx`
-  - `frontend/src/api/queryKeys.ts`
-  - `frontend/src/hooks/*`
+  - `frontend/src/components/Providers.tsx`
+  - `frontend/src/api/query-client.ts`
+  - `frontend/src/api/query-keys.ts`
+  - `frontend/src/hooks/useDashboard.ts`
+  - `frontend/src/hooks/useAccount.ts`
   - 各 feature hooks
+- **状态**：已完成
+- **完成记录**：
+  - 新增全局 `QueryClient`，配置 `staleTime=5min`、`gcTime=30min`、`retry=2`、关闭本地应用不必要的 focus refetch。
+  - `Providers` 接入 `QueryClientProvider`。
+  - `useDashboard`、`useAccount` 已迁移到 `useQuery`，保留原 hook 返回形态以兼容页面。
+  - 新增集中 `queryKeys`，覆盖 dashboard、billboard、analysis、settings、account、yearlyReview。
+  - Billboard 仍为渐进式 split endpoint hooks，后续可继续迁移到 Query。
 - **具体执行步骤**：
   1. 引入 TanStack Query 或等价自研 query layer。
   2. 先迁移 dashboard。
@@ -1570,18 +1622,26 @@ frontend/src/
   - 每次迁移一个 feature。
   - 保留页面行为和 loading 状态。
 - **完成标准**：
-  - GET 数据统一由 query client 管理。
+  - 核心 GET hook 开始进入 query client，旧接口保持兼容。
 - **改造收益**：
   - 去重、重试、stale、prefetch、错误态统一。
 
-#### 低优先级任务 22：后台任务队列
+#### ✅ 低优先级任务 22：后台任务队列
 
 - **任务名称**：外部 enrichment 与封面缓存后台化
 - **涉及文件范围**：
-  - `backend/infrastructure/jobs/queue.py`
-  - `backend/infrastructure/jobs/cover_cache.py`
-  - `backend/domains/enrichment/*`
+  - `backend/core/job_queue.py`
+  - `backend/jobs/handlers.py`
+  - `backend/api/jobs.py`
   - `backend/main.py`
+  - `backend/domains/enrichment/*`
+- **状态**：已完成
+- **完成记录**：
+  - 新增本地轻量 `JobQueue`，使用 worker thread + SQLite `background_jobs` 表。
+  - FastAPI lifespan 注册 `cover_download`、`wikipedia_enrich`、`genius_lyrics` handler 并启动 worker。
+  - `/covers/{type}/{id}.jpg` 本地未命中时改为提交 `cover_download` job，继续立即重定向 CDN，不阻塞用户请求。
+  - 新增 `/api/jobs/{job_id}/status` 查询端点。
+  - 本次验收修复 job 持久化缺口，确保 pending/running/done/failed 可查询且去重可用。
 - **具体执行步骤**：
   1. 新增轻量本地 job queue。
   2. 封面下载迁移为 job。
@@ -1596,14 +1656,21 @@ frontend/src/
 - **改造收益**：
   - 页面响应更稳，外部服务失败影响可控。
 
-#### 低优先级任务 23：性能基准与观测
+#### ✅ 低优先级任务 23：性能基准与观测
 
 - **任务名称**：性能治理可量化
 - **涉及文件范围**：
   - `scripts/benchmark_api.py`
-  - `backend/infrastructure/observability/metrics.py`
+  - `backend/api/admin.py`
+  - `backend/core/cache_manager.py`
   - `frontend/package.json`
   - `frontend` bundle analyzer 配置
+- **状态**：已完成
+- **完成记录**：
+  - 新增 `scripts/benchmark_api.py`，输出 Markdown 性能报告，覆盖冷/热请求、P50/P95、raw/gzip size。
+  - 新增 `npm run analyze`，通过 `rollup-plugin-visualizer` 输出前端 bundle 分析。
+  - 新增 `/api/admin/cache-stats`，缓存命中率与体积可观测。
+  - 本次验收修复 `vite.config.ts` analyzer 配置类型错误，`npm run build` 已通过。
 - **具体执行步骤**：
   1. 编写 API benchmark 脚本。
   2. 记录 dashboard、analysis、billboard、entity detail P50/P95。
@@ -1617,14 +1684,20 @@ frontend/src/
 - **改造收益**：
   - 性能优化从体感变成数据驱动。
 
-#### 低优先级任务 24：SQLite migration 工具化
+#### ✅ 低优先级任务 24：SQLite migration 工具化
 
 - **任务名称**：数据库 schema 迁移治理
 - **涉及文件范围**：
-  - `backend/infrastructure/db/migrations.py`
-  - `backend/infrastructure/db/schema.py`
+  - `backend/core/migrations.py`
   - `backend/core/db.py`
-  - `backend/tests/contract/test_migrations.py`
+  - `backend/tests/unit/test_migrations.py`
+- **状态**：已完成
+- **完成记录**：
+  - 新增版本化 migration registry，所有迁移记录到 `schema_migrations`。
+  - 当前包含 10 个迁移：初始 schema、历史字段/索引补齐、`background_jobs` 表。
+  - `ensure_schema()` 改为调用 `run_migrations()`，兼容重复运行和旧库。
+  - 本次验收收紧 migration runner：仅幂等型已存在错误会被记录为 applied，真实 SQL 错误不再被吞掉。
+  - 新增 unit tests 覆盖迁移注册、幂等、核心表、background_jobs 表。
 - **具体执行步骤**：
   1. 新增 `schema_migrations` 表。
   2. 将现有 `ensure_schema()` 中的 ALTER 迁入 migration。
@@ -1811,7 +1884,7 @@ frontend/src/
 
 ## 附录：建议执行顺序
 
-阶段一、阶段二、阶段三已完成，后续进入第四阶段前推荐顺序：
+阶段一、阶段二、阶段三、阶段四已全部完成，后续进入长期维护与专项增强：
 
 1. 已完成：LLM Key masked response。
 2. 已完成：`FormattedText` 安全渲染。
@@ -1829,9 +1902,14 @@ frontend/src/
 14. 已完成：Repository 基线，覆盖 settings / playback / billboard / enrichment。
 15. 已完成：Provider 基线，覆盖 Spotify / Genius / Wikipedia / LLM 与共享 HttpClient。
 16. 已完成：冻结 Streamlit legacy 旧架构并补充文档说明。
-17. 下一步：Billboard 分接口与前端 Query Client。
-18. 下一步：缓存 manager、分层失效策略与性能基准。
-19. 下一步：大表虚拟化、bundle/chunk 深度优化。
-20. 下一步：Provider 全量迁移、fake/mock provider 与更严格的 typed repository。
+17. 已完成：Billboard 分接口与 staged cache。
+18. 已完成：Cache Manager、命名空间失效与 cache stats。
+19. 已完成：Job Queue、background_jobs 表与 job status 端点。
+20. 已完成：TanStack Query 基线与 dashboard/account 迁移。
+21. 已完成：API benchmark 与 bundle analyzer。
+22. 已完成：SQLite migrations 与 schema_migrations。
+23. 长期维护：继续将剩余 GET hooks 迁移到 Query Client。
+24. 长期维护：继续细分 `records.py`、Provider 全量替换旧散落调用、补充更严格 typed repository。
+25. 长期维护：根据 benchmark 数据做大表虚拟化、chunk 策略与慢查询专项优化。
 
-当前节奏已完成“消除最高风险 + 搭测试护栏 + 根治核心大文件膨胀”。第四阶段应聚焦高级性能优化与产品化可扩展架构，不应回头在已冻结 facade 和页面容器中继续堆业务逻辑。
+当前节奏已完成“消除最高风险 + 搭测试护栏 + 根治核心大文件膨胀 + 产品化性能治理”。后续不再属于本轮白皮书四阶段改造主线，而是进入持续治理、专项优化和功能迭代阶段。

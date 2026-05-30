@@ -3,6 +3,7 @@
 from fastapi import APIRouter
 
 from backend.api.account import router as account_router
+from backend.api.admin import router as admin_router
 from backend.api.analysis import router as analysis_router
 from backend.api.artist_deep import router as artist_deep_router
 from backend.api.behavior import router as behavior_router
@@ -10,6 +11,7 @@ from backend.api.billboard import router as billboard_router
 from backend.api.dashboard import router as dashboard_router
 from backend.api.import_ import router as import_router
 from backend.api.insights import router as insights_router
+from backend.api.jobs import router as jobs_router
 from backend.api.leaderboard import router as leaderboard_router
 from backend.api.library import router as library_router
 from backend.api.listening_hours import router as listening_hours_router
@@ -50,4 +52,6 @@ api_router.include_router(import_router)
 api_router.include_router(lyrics_router, prefix="/lyrics", tags=["Lyrics"])
 api_router.include_router(music_router)
 api_router.include_router(account_router)
+api_router.include_router(admin_router)
+api_router.include_router(jobs_router)
 api_router.include_router(spotify_auth_router)

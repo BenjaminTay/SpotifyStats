@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { useBillboard } from '@/hooks/useBillboard'
+import { useBillboardWeekly } from '@/hooks/useBillboard'
 import { GlassCard } from '@/components/shared/GlassCard'
 import { BillboardSubNav } from '@/components/shared/BillboardSubNav'
 import { WeekSelector } from '@/components/shared/WeekSelector'
@@ -123,7 +123,7 @@ export function BillboardPage() {
     goNext,
     goPrev,
     goToWeek,
-  } = useBillboard(initialWeek)
+  } = useBillboardWeekly(initialWeek)
 
   const [activeTab, setActiveTab] = useState<TabKey>(cachedTab)
 

@@ -43,7 +43,7 @@ def get_redirect_uri() -> str:
 # ---- Client Credentials (app-level) ----
 
 
-@ttl_cached(3500)
+@ttl_cached(3500, namespace="auth")
 def get_client_credentials_token() -> str | None:
     """Get Spotify client_credentials token, TTL-cached ~58 minutes."""
     if not SPOTIFY_CLIENT_ID or not SPOTIFY_CLIENT_SECRET:
@@ -530,3 +530,9 @@ def spotify_api_get_all_pages(url: str, access_token: str, limit: int = 50) -> l
         all_items.extend(data.get("items", []))
         page_url = data.get("next")
     return all_items
+
+
+# ── Cache registration ─────────────────────────────────────────────────
+from backend.core.cache_manager import register_ttl  # noqa: E402
+
+register_ttl("auth", "spotify_token", get_client_credentials_token)

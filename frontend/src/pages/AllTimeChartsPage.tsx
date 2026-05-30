@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { Link } from 'react-router-dom'
-import { useBillboard } from '@/hooks/useBillboard'
+import { useBillboardAllTime } from '@/hooks/useBillboard'
 import { GlassCard } from '@/components/shared/GlassCard'
 import { BillboardSubNav } from '@/components/shared/BillboardSubNav'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -350,7 +350,7 @@ function SortIcon({ active, dir }: { active: boolean; dir: 'asc' | 'desc' }) {
 // ── main component ───────────────────────────────────────────
 
 export function AllTimeChartsPage() {
-  const { data, loading, error, refetch } = useBillboard()
+  const { data, loading, error, refetch } = useBillboardAllTime()
 
   const PAGE_SIZE = 50
   const [activeTab, setActiveTab] = useState<EntityTab>(cachedEntityTab)
@@ -517,7 +517,7 @@ export function AllTimeChartsPage() {
     const rows: MergedTrackRow[] = []
     for (const ps of data.power_scores) {
       const ts = tsMap.get(ps.track_id)
-      const isDebutNo1 = ts ? (ts.peak_position === 1 && ts.first_week === (ts.first_peak_week ?? '')) : false
+      const isDebutNo1 = ts?.is_debut_no1 ?? false
       rows.push({
         track_id: ps.track_id,
         track_name: ps.track_name,
@@ -529,14 +529,11 @@ export function AllTimeChartsPage() {
         weeks_top5: ps.weeks_top5,
         weeks_top10: ps.weeks_top10,
         power_score: ps.power_score,
-        power_rank: 0, // filled below
+        power_rank: ps.power_rank,
         total_chart_plays: ts?.total_chart_plays ?? 0,
         is_debut_no1: isDebutNo1,
       })
     }
-    // Sort by power_score desc to assign power_rank
-    rows.sort((a, b) => b.power_score - a.power_score)
-    rows.forEach((r, i) => { r.power_rank = i + 1 })
     return rows
   }, [data])
 
@@ -570,14 +567,11 @@ export function AllTimeChartsPage() {
         top5_tracks: atc?.top5 ?? 0,
         top10_tracks: atc?.top10 ?? 0,
         power_score: aps.power_score,
-        power_rank: 0, // filled below
+        power_rank: aps.power_rank,
         total_plays: ws?.totalPlays ?? 0,
         is_debut_no1: isDebutNo1,
       })
     }
-    // Sort by power_score desc to assign power_rank
-    rows.sort((a, b) => b.power_score - a.power_score)
-    rows.forEach((r, i) => { r.power_rank = i + 1 })
     return rows
   }, [data, albumWeeklyStats, albumCoverMap])
 
@@ -613,14 +607,11 @@ export function AllTimeChartsPage() {
         top5_albums: aaStats?.top5Albums ?? 0,
         top10_albums: aaStats?.top10Albums ?? 0,
         power_score: aps.power_score,
-        power_rank: 0, // filled below
+        power_rank: aps.power_rank,
         total_plays: ws?.totalPlays ?? 0,
         is_debut_no1: isDebutNo1,
       })
     }
-    // Sort by power_score desc to assign power_rank
-    rows.sort((a, b) => b.power_score - a.power_score)
-    rows.forEach((r, i) => { r.power_rank = i + 1 })
     return rows
   }, [data, artistWeeklyStats, artistCoverMap, artistAlbumStats])
 

@@ -44,6 +44,9 @@ def start_streaming_import(auth: None = Depends(require_auth)):
     def _run():
         try:
             result = import_data(progress_callback=cb)
+            from backend.core.cache_manager import invalidate_all
+
+            invalidate_all()
             _jobs[job_id]["status"] = "done"
             _jobs[job_id]["progress_pct"] = 1.0
             _jobs[job_id]["message"] = "导入完成"
@@ -71,6 +74,9 @@ def start_account_import(auth: None = Depends(require_auth)):
     def _run():
         try:
             result = import_all(progress_callback=cb)
+            from backend.core.cache_manager import invalidate_all
+
+            invalidate_all()
             _jobs[job_id]["status"] = "done"
             _jobs[job_id]["progress_pct"] = 1.0
             _jobs[job_id]["message"] = "导入完成"

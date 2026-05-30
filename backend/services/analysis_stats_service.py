@@ -547,3 +547,10 @@ def entity_cover(conn: sqlite3.Connection, entity: str, row: dict) -> str | None
     if entity == "artist":
         return _artist_cover_lookup(conn).get(row.get("artist_name"))
     return None
+
+
+# ── Cache registration ─────────────────────────────────────────────────
+from backend.core.cache_manager import register_lru  # noqa: E402
+
+register_lru("analysis", "stats", _get_analysis_stats_cached)
+register_lru("analysis", "charts", _get_analysis_charts_cached)

@@ -4,10 +4,9 @@ from __future__ import annotations
 
 import logging
 import os
-import urllib.request
 from contextlib import asynccontextmanager
 
-from fastapi import BackgroundTasks, FastAPI, Request
+from fastapi import FastAPI, Request
 from fastapi.exceptions import HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
@@ -16,7 +15,9 @@ from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 
 from backend.api.router import api_router
 from backend.core.config import FRONTEND_ORIGIN
+from backend.core.db import DB_PATH
 from backend.core.logging_config import setup_logging
+from backend.core.migrations import run_migrations
 from backend.core.warmup import start_warmup_thread
 
 setup_logging()
@@ -25,12 +26,29 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
+    run_migrations()
+
+    # Start background job queue for async enrichment & cover downloads
+    from backend.core.job_queue import get_job_queue
+    from backend.jobs.handlers import (
+        handle_cover_download,
+        handle_genius_lyrics,
+        handle_wikipedia_enrich,
+    )
+
+    job_queue = get_job_queue()
+    job_queue.register("cover_download", handle_cover_download)
+    job_queue.register("wikipedia_enrich", handle_wikipedia_enrich)
+    job_queue.register("genius_lyrics", handle_genius_lyrics)
+    job_queue.start(DB_PATH)
+
     if (
         os.environ.get("SPOTIFY_STATS_WARMUP", "1") != "0"
         and "PYTEST_CURRENT_TEST" not in os.environ
     ):
         start_warmup_thread()
     yield
+    job_queue.stop()
 
 
 app = FastAPI(
@@ -108,36 +126,8 @@ def _get_cover_cdn_url(cover_type: str, entity_id: int) -> str | None:
     return row["image_url"] if row and row["image_url"] else None
 
 
-def _cache_cover_locally(cdn_url: str, filepath: str, cover_type: str, entity_id: int):
-    """后台任务：从 Spotify CDN 下载封面并写入本地缓存 + 更新 DB。"""
-    try:
-        req = urllib.request.Request(cdn_url, headers={"User-Agent": "SpotifyStats/1.0"})
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            data = resp.read()
-        os.makedirs(os.path.dirname(filepath), exist_ok=True)
-        with open(filepath, "wb") as f:
-            f.write(data)
-
-        from backend.core.db import get_db
-
-        conn = get_db(readonly=False)
-        rel_path = f"covers/{cover_type}/{entity_id}.jpg"
-        if cover_type == "albums":
-            conn.execute(
-                "UPDATE albums SET image_path = ? WHERE album_id = ?", [rel_path, entity_id]
-            )
-        elif cover_type == "artists":
-            conn.execute(
-                "UPDATE artists SET image_path = ? WHERE artist_id = ?", [rel_path, entity_id]
-            )
-        conn.commit()
-        conn.close()
-    except Exception:
-        pass  # 静默失败，CDN 重定向仍然可用
-
-
 @app.get("/covers/{cover_type}/{entity_id}.jpg")
-async def get_cover(cover_type: str, entity_id: int, background_tasks: BackgroundTasks):
+async def get_cover(cover_type: str, entity_id: int):
     """封面图片服务，三级回退链：
 
     1. 本地缓存命中 → 直接返回文件（最快）
@@ -156,8 +146,11 @@ async def get_cover(cover_type: str, entity_id: int, background_tasks: Backgroun
     # ② 本地缺失，尝试从 CDN 获取
     cdn_url = _get_cover_cdn_url(cover_type, entity_id)
     if cdn_url:
+        from backend.core.job_queue import Job, get_job_queue
+
         # 后台静默下载到本地，下次请求直接走缓存
-        background_tasks.add_task(_cache_cover_locally, cdn_url, filepath, cover_type, entity_id)
+        job = Job.create("cover_download", cover_type, str(entity_id), cdn_url=cdn_url)
+        get_job_queue().enqueue_if_not_pending(job)
         return RedirectResponse(url=cdn_url)
 
     # ③ 无数据

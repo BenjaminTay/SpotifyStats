@@ -208,3 +208,11 @@ def _get_album_canonical_map():
     )
     conn.close()
     return mapping
+
+
+# ── Cache registration ─────────────────────────────────────────────────
+from backend.core.cache_manager import register_lru  # noqa: E402
+
+register_lru("billboard", "raw_data", load_billboard_raw)
+register_lru("billboard", "canonical_map", load_track_album_map)
+register_lru("billboard", "album_meta", _load_album_metadata)

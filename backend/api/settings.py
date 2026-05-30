@@ -103,6 +103,13 @@ def update_settings(body: SettingsUpdateRequest, auth: None = Depends(require_au
         if key in updates:
             _current[key] = updates[key]
             _save_setting_to_db(key, updates[key])
+    # Invalidate caches affected by filter/settings changes
+    from backend.core.cache_manager import invalidate
+
+    invalidate("billboard")
+    invalidate("analysis")
+    invalidate("db")
+
     resp = dict(_current)
     resp["has_llm_key"] = bool(_current.get("llm_api_key", "").strip())
     resp.pop("llm_api_key", None)

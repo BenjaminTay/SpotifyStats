@@ -11,13 +11,15 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "generate-types": "bash scripts/generate-api-types.sh",
-    "check-types-fresh": "bash -c 'diff <(curl -sf http://localhost:8000/openapi.json) src/api/generated/openapi.json || echo WARNING: API types may be stale'"
+    "check-types-fresh": "bash -c 'diff <(curl -sf http://localhost:8000/openapi.json) src/api/generated/openapi.json || echo WARNING: API types may be stale'",
+    "analyze": "ANALYZE=true vite build"
   },
   "dependencies": {
     "@base-ui/react": "^1.5.0",
     "@fontsource-variable/inter": "^5.2.8",
     "@radix-ui/react-popover": "^1.1.15",
     "@tailwindcss/vite": "^4.3.0",
+    "@tanstack/react-query": "^5.100.14",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "date-fns": "^4.3.0",
@@ -53,6 +55,7 @@
     "globals": "^17.6.0",
     "jsdom": "^29.1.1",
     "openapi-typescript": "^7.13.0",
+    "rollup-plugin-visualizer": "^7.0.1",
     "typescript": "~6.0.2",
     "typescript-eslint": "^8.59.2",
     "vite": "^8.0.12",

@@ -71,6 +71,7 @@ export interface TrackSummary {
   total_plays: number
   weeks_at_no1: number
   first_peak_week: string | null
+  is_debut_no1: boolean
 }
 
 export interface ArtistSummary {
@@ -127,6 +128,7 @@ export interface PowerScoreEntry {
   weeks_top5: number
   weeks_top10: number
   weeks_at_no1: number
+  power_rank: number
 }
 
 export interface AlbumPowerScoreEntry {
@@ -136,6 +138,9 @@ export interface AlbumPowerScoreEntry {
   peak_position: number
   weeks_on_chart: number
   weeks_top1: number
+  weeks_top5: number
+  weeks_top10: number
+  power_rank: number
 }
 
 export interface ArtistPowerScoreEntry {
@@ -144,6 +149,9 @@ export interface ArtistPowerScoreEntry {
   peak_position: number
   weeks_on_chart: number
   weeks_top1: number
+  weeks_top5: number
+  weeks_top10: number
+  power_rank: number
 }
 
 export interface BillboardDataResponse {
@@ -159,6 +167,49 @@ export interface BillboardDataResponse {
   album_track_counts: AlbumTrackCounts[]
   artist_track_counts: ArtistTrackCounts[]
   records: BillboardRecords
+}
+
+/** Weekly-only response from GET /api/billboard/weekly */
+export interface BillboardWeeklyResponse {
+  meta: BillboardMeta
+  weekly: WeeklyTrackEntry[]
+  weekly_album: WeeklyAlbumEntry[]
+  weekly_artist: WeeklyArtistEntry[]
+}
+
+/** Records-only response from GET /api/billboard/records */
+export interface BillboardRecordsResponse {
+  records: BillboardRecords
+}
+
+/** Power scores response from GET /api/billboard/power-scores */
+export interface BillboardPowerScoresResponse {
+  power_scores: PowerScoreEntry[]
+  album_power_scores: AlbumPowerScoreEntry[]
+  artist_power_scores: ArtistPowerScoreEntry[]
+}
+
+/** Summaries response from GET /api/billboard/summaries */
+export interface BillboardSummariesResponse {
+  track_summary: TrackSummary[]
+  artist_summary: ArtistSummary[]
+  album_track_counts: AlbumTrackCounts[]
+  artist_track_counts: ArtistTrackCounts[]
+}
+
+/** Combined all-time response from GET /api/billboard/all-time */
+export interface BillboardAllTimeResponse {
+  meta: BillboardMeta
+  weekly: WeeklyTrackEntry[]
+  weekly_album: WeeklyAlbumEntry[]
+  weekly_artist: WeeklyArtistEntry[]
+  power_scores: PowerScoreEntry[]
+  album_power_scores: AlbumPowerScoreEntry[]
+  artist_power_scores: ArtistPowerScoreEntry[]
+  track_summary: TrackSummary[]
+  artist_summary: ArtistSummary[]
+  album_track_counts: AlbumTrackCounts[]
+  artist_track_counts: ArtistTrackCounts[]
 }
 
 // ── Billboard Records ──────────────────────────────────────────

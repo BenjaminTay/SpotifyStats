@@ -19,7 +19,7 @@ from backend.core.version_merge import normalize_album_name
 # ═══════════════════════════════════════════════════════════════════════════
 
 
-@ttl_cached(3500)
+@ttl_cached(3500, namespace="billboard")
 def _get_spotify_token():
     """Get Spotify client_credentials token, cached ~58 minutes."""
     from backend.core.config import SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET
@@ -200,7 +200,7 @@ def _save_album_meta_to_db(
         pass
 
 
-@ttl_cached(3600)
+@ttl_cached(3600, namespace="billboard")
 def _spotify_search_album(album_name, artist_name, skip_db_check=False):
     """Get album metadata — DB first, Spotify Search API fallback."""
     if not skip_db_check:
@@ -1512,3 +1512,11 @@ def get_chart_ranks_for_tracks(
         ranks = ranks.groupby(["week_offset", "track_id", "track_name"])["rank"].min().reset_index()
 
     return ranks
+
+
+# ── Cache registration ─────────────────────────────────────────────────
+from backend.core.cache_manager import register_lru, register_ttl  # noqa: E402
+
+register_lru("billboard", "release_cycle", load_artist_releases)
+register_ttl("billboard", "release_token", _get_spotify_token)
+register_ttl("billboard", "spotify_search", _spotify_search_album)

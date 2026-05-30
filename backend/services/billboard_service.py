@@ -12,6 +12,10 @@ from backend.domains.billboard.chart_compute import (
     compute_artist_weekly_rankings,
     compute_billboard_data,
     compute_power_scores,
+    compute_power_scores_staged,
+    compute_records_staged,
+    compute_summaries_staged,
+    compute_weekly_data,
     compute_weekly_rankings,
 )
 from backend.domains.billboard.data_loader import (
@@ -77,6 +81,10 @@ __all__ = [
     "compute_artist_weekly_rankings",
     "compute_billboard_data",
     "compute_power_scores",
+    "compute_power_scores_staged",
+    "compute_records_staged",
+    "compute_summaries_staged",
+    "compute_weekly_data",
     "compute_weekly_rankings",
     # records
     "_add_cover_urls",

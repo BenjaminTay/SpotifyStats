@@ -1,35 +1,54 @@
-"""Shared caching utilities: TTL cache, cache invalidation."""
+"""Shared caching utilities: TTL cache, singleflight dedup, global invalidation."""
+
+from __future__ import annotations
 
 import time
 from functools import wraps
 from threading import RLock
 
 
-def ttl_cached(ttl_seconds):
+def ttl_cached(ttl_seconds: float, namespace: str = "default"):
     """Decorator: cache function result for ttl_seconds using in-memory dict.
 
     Use for external API calls (Spotify token, album metadata) where
     lru_cache would hold stale data indefinitely. For DB-backed functions
     with stable results, prefer functools.lru_cache instead.
+
+    Args:
+        ttl_seconds: Cache expiry in seconds.
+        namespace: Cache namespace for invalidation (default "default").
     """
-    cache = {}
+    cache: dict = {}
+    _hits = 0
+    _misses = 0
+    _lock = RLock()
 
     def decorator(fn):
         @wraps(fn)
         def wrapper(*args, **kwargs):
+            nonlocal _hits, _misses
             key = (fn.__name__, args, tuple(sorted(kwargs.items())))
             now = time.time()
-            if key in cache:
-                cached_at, val = cache[key]
-                if now - cached_at < ttl_seconds:
-                    return val
+            with _lock:
+                if key in cache:
+                    cached_at, val = cache[key]
+                    if now - cached_at < ttl_seconds:
+                        _hits += 1
+                        return val
+                _misses += 1
             result = fn(*args, **kwargs)
             if result is None:
                 return result
-            cache[key] = (now, result)
+            with _lock:
+                cache[key] = (now, result)
             return result
 
+        def cache_stats():
+            with _lock:
+                return {"hits": _hits, "misses": _misses, "size": len(cache)}
+
         wrapper.cache_clear = cache.clear
+        wrapper.cache_stats = cache_stats
         return wrapper
 
     return decorator
@@ -52,7 +71,11 @@ def singleflight(fn):
 
 
 def clear_all_ttl():
-    """Clear all TTL caches. Call when settings change (e.g. filter params)."""
-    # TTL caches are self-expiring, but for immediate invalidation we
-    # can clear specific caches by name if needed.
-    pass
+    """Clear all registered caches across all namespaces.
+
+    Delegates to the CacheManager which tracks registered @lru_cache
+    and @ttl_cached functions by namespace. Safe to call at any time.
+    """
+    from backend.core.cache_manager import invalidate_all
+
+    invalidate_all()

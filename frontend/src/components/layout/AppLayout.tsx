@@ -2,7 +2,7 @@ import { useEffect } from 'react'
 import { Outlet } from 'react-router-dom'
 import { Masthead } from './Masthead'
 import { NoiseOverlay } from '@/components/shared/NoiseOverlay'
-import { preloadBillboardData } from '@/hooks/useBillboard'
+import { preloadWeeklyData, preloadAllTimeData } from '@/hooks/useBillboard'
 import { preloadDashboardData } from '@/hooks/useDashboard'
 import { useChineseTextVersion } from '@/lib/chinese'
 
@@ -12,7 +12,8 @@ export function AppLayout() {
   useEffect(() => {
     const timer = window.setTimeout(() => {
       preloadDashboardData()
-      preloadBillboardData()
+      preloadWeeklyData()
+      preloadAllTimeData()
     }, 600)
 
     return () => window.clearTimeout(timer)

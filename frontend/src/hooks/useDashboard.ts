@@ -1,5 +1,16 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { queryClient } from '@/api/query-client'
+import { queryKeys } from '@/api/query-keys'
 import { api, type DashboardFullResponse } from '@/lib/api'
+
+/** Prefetch dashboard data into the query cache. Safe to call multiple times. */
+export function preloadDashboardData(): void {
+  queryClient.prefetchQuery({
+    queryKey: queryKeys.dashboard.full(),
+    queryFn: () => api.get<DashboardFullResponse>('/dashboard/full'),
+    staleTime: 5 * 60 * 1000,
+  })
+}
 
 interface UseDashboardResult {
   data: DashboardFullResponse | null
@@ -8,52 +19,18 @@ interface UseDashboardResult {
   refetch: () => void
 }
 
-let cachedData: DashboardFullResponse | null = null
-let cachedRequest: Promise<DashboardFullResponse> | null = null
-let requestVersion = 0
-
-export function loadDashboardData(force = false): Promise<DashboardFullResponse> {
-  if (cachedRequest) return cachedRequest
-  if (cachedData && !force) return Promise.resolve(cachedData)
-
-  const version = ++requestVersion
-  const request = api
-    .get<DashboardFullResponse>('/dashboard/full')
-    .then((d) => {
-      if (version === requestVersion) cachedData = d
-      return d
-    })
-    .finally(() => {
-      if (cachedRequest === request) cachedRequest = null
-    })
-
-  cachedRequest = request
-  return cachedRequest
-}
-
-export function preloadDashboardData(): void {
-  void loadDashboardData().catch(() => {})
-}
-
 export function useDashboard(): UseDashboardResult {
-  const [data, setData] = useState<DashboardFullResponse | null>(cachedData)
-  const [loading, setLoading] = useState(!cachedData)
-  const [error, setError] = useState<string | null>(null)
+  const { data, isLoading, error, refetch } = useQuery({
+    queryKey: queryKeys.dashboard.full(),
+    queryFn: () => api.get<DashboardFullResponse>('/dashboard/full'),
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
+  })
 
-  const fetchData = useCallback((force = false) => {
-    setLoading(true)
-    setError(null)
-    loadDashboardData(force)
-      .then(setData)
-      .catch((e: Error) => setError(e.message))
-      .finally(() => setLoading(false))
-  }, [])
-
-  useEffect(() => {
-    if (!cachedData) {
-      fetchData()
-    }
-  }, [fetchData])
-
-  return { data, loading, error, refetch: () => fetchData(true) }
+  return {
+    data: data ?? null,
+    loading: isLoading,
+    error: error instanceof Error ? error.message : null,
+    refetch: () => refetch(),
+  }
 }

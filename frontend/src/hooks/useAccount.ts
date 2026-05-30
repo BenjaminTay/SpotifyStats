@@ -1,8 +1,7 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { queryClient } from '@/api/query-client'
+import { queryKeys } from '@/api/query-keys'
 import { api, type AccountSummary } from '@/lib/api'
-
-let cachedData: AccountSummary | null = null
-let inFlight: Promise<AccountSummary> | null = null
 
 interface UseAccountResult {
   data: AccountSummary | null
@@ -12,74 +11,26 @@ interface UseAccountResult {
 }
 
 export function useAccount(): UseAccountResult {
-  const [data, setData] = useState<AccountSummary | null>(cachedData)
-  const [loading, setLoading] = useState(!cachedData)
-  const [error, setError] = useState<string | null>(null)
+  const { data, isLoading, error, refetch } = useQuery({
+    queryKey: queryKeys.account.summary(),
+    queryFn: () => api.get<AccountSummary>('/account'),
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
+  })
 
-  const refetch = useCallback(() => {
-    setLoading(true)
-    setError(null)
-
-    if (inFlight) {
-      inFlight
-        .then((result) => {
-          cachedData = result
-          setData(result)
-          setLoading(false)
-        })
-        .catch((e: Error) => {
-          setError(e.message)
-          setLoading(false)
-        })
-      return
-    }
-
-    const promise = api.get<AccountSummary>('/account')
-    inFlight = promise
-
-    promise
-      .then((result) => {
-        cachedData = result
-        if (inFlight === promise) {
-          setData(result)
-          setError(null)
-        }
-      })
-      .catch((e: Error) => {
-        if (inFlight === promise) {
-          setError(e.message)
-        }
-      })
-      .finally(() => {
-        if (inFlight === promise) {
-          inFlight = null
-          setLoading(false)
-        }
-      })
-  }, [])
-
-  useEffect(() => {
-    if (!cachedData) {
-      refetch()
-    }
-  }, [refetch])
-
-  return { data, loading, error, refetch }
+  return {
+    data: data ?? null,
+    loading: isLoading,
+    error: error instanceof Error ? error.message : null,
+    refetch: () => refetch(),
+  }
 }
 
-/** Prefetch account data (for Masthead hover or layout preload). Does not trigger re-renders. */
+/** Prefetch account data into the query cache. Safe to call multiple times. */
 export function prefetchAccount(): void {
-  if (cachedData || inFlight) return
-  const promise = api.get<AccountSummary>('/account')
-  inFlight = promise
-  promise
-    .then((result) => {
-      cachedData = result
-    })
-    .catch(() => {
-      // prefetch failure is silent
-    })
-    .finally(() => {
-      inFlight = null
-    })
+  queryClient.prefetchQuery({
+    queryKey: queryKeys.account.summary(),
+    queryFn: () => api.get<AccountSummary>('/account'),
+    staleTime: 5 * 60 * 1000,
+  })
 }
