@@ -1481,7 +1481,7 @@ frontend/src/
   - `README.md`
   - `CLAUDE.md`
   - `AGENTS.md`
-  - `docs/streamlit-feature-inventory.md`
+  - `docs/2026-05-25-streamlit-feature-inventory.md`
 - **状态**：已完成
 - **完成记录**：
   - `app/main.py` 文件头已添加 `LEGACY MODULE — FROZEN AS OF 2026-05-30`，明确 Streamlit 旧应用仅维护、不承接新功能。

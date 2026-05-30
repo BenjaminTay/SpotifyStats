@@ -3,7 +3,7 @@
 > **文档性质**：正式归档 · 全周期验收  
 > **评估日期**：2026-05-30  
 > **评估范围**：阶段一（紧急安全加固）→ 阶段二（工程化与测试体系升级）→ 阶段三（核心架构解耦与大文件拆分）→ 阶段四（高级性能优化与产品化）  
-> **评估依据**：`docs/ARCHITECTURE_OPTIMIZE.md` 白皮书优化目标 × 全量自动化校验结果 × 代码架构深度审查
+> **评估依据**：`docs/2026-05-30-architecture-optimize.md` 白皮书优化目标 × 全量自动化校验结果 × 代码架构深度审查
 
 ---
 
@@ -17,7 +17,7 @@
 | 测试规模 | 后端 245 个测试（59 unit + 13 contract + 173 integration），前端 20 个测试 |
 | 优化周期 | 2026-05-30 当天四阶段全部完成（阶段一→二→三→四，顺序推进） |
 | 优化主线分支 | `codex/architecture-optimization-implementation` |
-| 白皮书版本 | `docs/ARCHITECTURE_OPTIMIZE.md` v2.0 |
+| 白皮书版本 | `docs/2026-05-30-architecture-optimize.md` v2.0 |
 
 ## 2. 四大阶段完成情况总览
 
@@ -326,7 +326,7 @@ Level 1: 原型脚本        Level 2: 功能型应用      Level 3: 架构化应
 
 ## 10. 后续长期开发规范与新增业务接入标准
 
-以下规范从四大阶段实践中提炼，已写入 `CLAUDE.md` 和 `ARCHITECTURE_OPTIMIZE.md` 第十章，供后续长期开发遵循。
+以下规范从四大阶段实践中提炼，已写入 `CLAUDE.md` 和 `2026-05-30-architecture-optimize.md` 第十章，供后续长期开发遵循。
 
 ### 目录规范（不可逆）
 

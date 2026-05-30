@@ -1,7 +1,7 @@
 # 新版前端页面架构规划
 
 > 本文档定义 React 前端的页面架构、导航结构和每个页面的功能清单。
-> 对照文档：`docs/streamlit-feature-inventory.md`（旧版 Streamlit 完整功能清单）。
+> 对照文档：`docs/2026-05-25-streamlit-feature-inventory.md`（旧版 Streamlit 完整功能清单）。
 
 ## 设计原则
 

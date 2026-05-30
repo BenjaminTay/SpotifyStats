@@ -2,387 +2,75 @@
 
 从 Spotify 官方导出的 Extended Streaming History 及账号数据中导入播放记录，提供多维度交互式统计分析仪表盘。
 
-**UI 主题**：「编辑风 × 液态玻璃」— 杂志式排版（Playfair Display 衬线 + Inter 无衬线）+ 毛玻璃卡片材质 + 日/夜双皮肤。详细规范见 `frontend/UI_STYLE_GUIDE.md`。
-
-**架构**：FastAPI 后端 + React 前端（Dashboard、stats.fm 风格播放统计、Billboard 周榜、每周榜首、总榜、榜单记录、全局音乐实体详情页含个人播放统计 / Billboard 成绩 / Genius 歌词 / Wikipedia 百科、账号中心含收藏分析与音乐习惯、设置页面含 LLM 配置档案持久化管理）。Streamlit 原有应用已进入冻结维护状态。
-
-**安全**：Spotify OAuth Token AES-256-GCM 加密存储（含旧明文自动迁移）、LLM API Key 服务端管理永不对前端返回明文、外部文本通过 react-markdown + rehype-sanitize 安全渲染消除 XSS 风险、远程模式支持 Bearer Token 接口鉴权、日志自动脱敏敏感字段、全局异常不泄露 stack trace。
-
-**性能优化**：后端启动后后台预热默认 Dashboard/Analysis/Billboard 缓存，统一 Cache Manager 管理 5 个命名空间（billboard/analysis/db/auth）的 LRU+TTL 缓存与自动失效；Billboard 拆分为 4 个独立缓存的分阶段计算函数（weekly/power-scores/summaries/records），`/api/billboard/data` 从 5MB 单体 JSON 拆为 6 个端点（最轻 200KB）；SQLite 版本化 Migration 系统替代 try/except ALTER TABLE；后台 Job Queue（3 worker 线程）异步处理封面下载、Wikipedia+LLM 百科数据 enrichment；轻量后台任务队列替代同步阻塞 enrichment（stale-cache + refresh 模式）。前端使用 TanStack React Query 统一数据获取（staleTime 5 分钟/gcTime 30 分钟/retry 2 次），路由级 lazy 分包、延迟预取常用数据；ECharts 与 OpenCC 按需动态加载。
+**架构**：FastAPI 后端 + React 前端。Streamlit 原有应用已冻结维护。
 
 ## 功能
 
-- **总览仪表盘** — 关键指标卡片、月度播放趋势、Top 10 曲目、平台分布、一周听歌热力图
-- **播放分析** — stats.fm 风格总体播放统计与个人排行榜：按钮式时间范围选择器（全部时间 / 最近6月 / 最近4周 / 年 / 月 / 周 / 天 / 自定义，年/月/周/天支持箭头导航，自定义支持日历弹窗选择起止日期），切换标签页自动保留时间范围；总体统计页含 8 KPI 卡片、每日/累计播放趋势图、极坐标听歌时钟图、星期/月度/年度分布图、最近播放记录（时间拆分显示、封面图、专辑/艺人可点击跳转）；个人排行榜可按播放次数 / 播放时长查看歌曲、专辑、艺人排行，播放列和时长列含 Billboard 风格视觉条，列宽固定切换实体不抖动
-- **年度回顾**（2 个子 Tab）— 自定义年度总结（Wrapped 风格渐变卡片叙事、听歌人格识别 6 型、Top 5 排行榜、曲风五大洲全景、24 小时时钟图高峰识别、发现与回归三分类、聆听深度金字塔、特殊时刻、月度钻取、年度对比变化率）+ 官方 Wrapped 2025（俱乐部、艺人竞速、收听年龄、排行榜、存档报告）
-- **Billboard 周榜**（12 个子 Tab）— 周榜（单曲/专辑/艺人，支持快速切周、截至当周滚动统计）、每周榜首、单曲历史（含升降列、断档 RE 标记）、艺人榜单、专辑榜单（含版本合并）、走势总榜（Power Score 三维度，含 `power_rank`/`weeks_top5`/`weeks_top10`）、歌曲/艺人/专辑总榜（含 `is_debut_no1` 服务端预计算）、榜单记录（6 大展区 37 项记录，灵感来自 Billboard Chart Beat / Guinness World Records）、对决（歌曲/专辑/艺人）、发行周期分析（先行曲识别、单曲榜排名线、艺人总览/专辑下钻/多发行对比）。后端分 6 端点按需响应（weekly/records/power-scores/summaries/all-time/data），避免单次 5MB 全量加载
-- **全局音乐实体详情** — `/music/tracks/*`、`/music/albums/*`、`/music/artists/*` 独立于 Billboard，整合个人播放统计、Billboard 成绩、Genius 歌词、Wikipedia 百科、发行周期等内容；旧 `/billboard/track|album|artist/*` 自动跳转
-- **账号中心**（2 个子 Tab）— 你的收藏（收藏纵览含生命周期趋势图 + 化学反应含封面轮播 + 品味迁徙含 jieba 分词 TF-IDF 关键词权重 + Flip Side 未收藏高频曲目 + 双厨时刻 + 排行榜含播放量）+ 你的习惯（听歌人格识别 + 搜索编年史含热度时段图 + 粉丝层级含超级粉丝卡片 + 播客聆听 + 推广转化含封面按转化率排序 + 视频分析含 Top 视频曲目）
-- **设置** — 集中管理所有参数：Spotify OAuth 连接（10 个 scope 全覆盖：收藏、档案、top 排行、播放历史、关注艺人、播放列表、实时播放状态）+ 数据同步；数据过滤（最短播放时长/仅音乐/合并连续播放/中文简繁转换）、LLM 翻译与百科结构化（多提供商 API Key 服务端管理 + 命名档案保存/一键应用，前端永不接触明文 Key）、Billboard 上榜数量与统计周期、专辑版本合并（自动检测/手动创建/已保存组管理）、数据导入（异步进度轮询）；远程模式支持 Bearer Token 接口鉴权
-- **Spotify Web API 集成** — OAuth PKCE 授权获取用户数据回填和增强：收藏日期回填（`saved_tracks.added_date`）、个人档案（昵称/头像/邮箱/会员类型/国家/粉丝数）、Top 艺人/曲目 × 3 时间窗口（short/medium/long term，含 popularity 和 genres）、最近 50 首播放 + 精确时间戳、32 个播放列表、实时播放状态（当前播放曲目）
+- **总览仪表盘** — KPI 卡片、月度趋势、平台分布、周热力图、动态数据洞察
+- **播放分析** — stats.fm 风格统计：8 KPI + 日历趋势 + 听歌时钟 + 个人排行榜（歌曲/专辑/艺人 × 次数/时长）+ 自定义时间范围
+- **年度回顾** — 自定义 Wrapped 总结（听歌人格识别 6 型、曲风五大洲全景、发现与回归、聆听深度金字塔、特殊时刻、年度对比）+ 官方 Wrapped 数据
+- **Billboard 周榜** — 12 子 Tab：周榜、每周榜首、单曲/艺人/专辑历史、走势总榜 Power Score、总榜、榜单记录、对决、发行周期分析
+- **音乐实体详情** — 歌曲/专辑/艺人全局页面，整合个人播放统计、Billboard 成绩、Genius 歌词、Wikipedia 百科
+- **账号中心** — 收藏分析（生命周期、化学反应、品味迁徙、Flip Side）+ 搜索编年史、粉丝层级、播客、视频分析
+- **设置** — Spotify OAuth 连接管理、LLM 翻译配置（多提供商 + 档案管理）、数据过滤、版本合并、数据导入
+- **Spotify Web API** — OAuth PKCE 授权，回填收藏日期、Top 排行、最近播放、播放列表、实时播放状态
 
 ## 快速开始
 
-### 前置条件
-
-- Python 3.9+
-- 从 Spotify 下载的 Extended Streaming History 数据（JSON 格式）
-
-> **获取数据**：登录 [Spotify 账户隐私页面](https://www.spotify.com/account/privacy/)，分别请求下载「Extended Streaming History」和「Account Data」数据包。解压后将串流数据放入 `data/streaming/`，账号数据放入 `data/account/`。详见 `data/README.md`。
-
-### 安装与运行
-
 ```bash
-# 创建虚拟环境
-python3 -m venv .venv
-source .venv/bin/activate
-
-# 安装后端依赖
+# 安装
+python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-
-# 安装前端依赖
 cd frontend && npm install && cd ..
 
-# 启动 FastAPI 后端（端口 8000，Swagger UI: http://localhost:8000/docs）
-# 开发时只监听 backend/，避免 --reload 扫描 .venv、frontend/node_modules、data 导致 CPU 持续偏高
+# 启动后端（端口 8000）
 uvicorn backend.main:app --reload --reload-dir backend
 
-# 调试冷启动或暂时不需要预热缓存时，可关闭启动预热
-SPOTIFY_STATS_WARMUP=0 uvicorn backend.main:app --reload --reload-dir backend
-
-# 启动 React 前端（端口 5173，自动代理 /api → 后端 8000）
+# 启动前端（端口 5173，自动代理 /api → 后端）
 cd frontend && npm run dev
 
-# 或启动 Streamlit 前端（端口 8501）
-streamlit run app/main.py
-
-# Spotify OAuth 功能需要 HTTPS 回调 URL，开发环境使用 ngrok 隧道
+# Spotify OAuth 需要 HTTPS，开发环境用 ngrok
 ngrok http --url=stuffing-nebula-tamer.ngrok-free.dev 5173
 
-# 运行后端测试（244 个测试，分三层：unit / contract / integration）
-pytest backend/tests/ -v
+# 测试
+pytest backend/tests/ -v          # 后端 244 个测试（unit/contract/integration）
+cd frontend && npm test           # 前端 20 个 vitest 单测
 
-# 分层运行
-pytest -m unit -v          # 纯函数单元测试，~5秒，无 DB
-pytest -m contract -v       # API 结构验证，~1秒，seed SQLite DB
-pytest -m integration -v    # 真实数据集成测试，~80秒
-
-# 快速验证测试耗时与慢点
-pytest backend/tests/ --durations=20 -q
-
-# 代码质量检查
-ruff check backend/
-ruff format --check backend/
+# 代码质量
+ruff check backend/ && ruff format --check backend/
 pre-commit run --all-files
-
-# 前端测试（20 个 vitest 单测）
-cd frontend && npm test
-
-# API 性能基准测试（需要后端运行中）
-source .venv/bin/activate && python scripts/benchmark_api.py
-
-# 前端 Bundle 分析（构建后输出 dist/stats.html）
-cd frontend && npm run analyze
-
-# 构建前端生产版本
-cd frontend && npm run build
 ```
 
-浏览器打开 `http://localhost:5173` 使用 React 界面，或 `http://localhost:8000/docs` 查看 API 文档。首次启动会自动将 JSON 数据导入 SQLite 数据库（约需 10-20 秒），后续启动直接读取。
-
-### 数据过滤
-
-所有过滤参数集中在「⚙️ 设置」页面管理，修改后自动清除全局缓存，保证各页面数据一致性：
-
-| 过滤项 | 默认值 | 说明 |
-|--------|--------|------|
-| 最短播放时长 | 30 秒 | 过滤误触和快速切歌 |
-| 仅音乐 | 开启 | 排除播客和有声书 |
-| 合并连续播放 | 开启 | 将连续同曲目播放拼接为逻辑播放次数，再按最短时长过滤 |
-
-行为分析页面使用全量数据以保证分析准确性。视频分析页面仅统计 ≥30s 的播放以排除滑动自动预览的噪音。
-
-## 性能与缓存
-
-### 后端缓存体系
-- **Cache Manager**（`backend/core/cache_manager.py`）：统一管理 5 个命名空间（`billboard`/`analysis`/`db`/`auth`），支持 hit/miss 统计与按命名空间批量失效。设置变更、数据导入、版本合并等操作自动触发对应命名空间失效。
-- **Billboard 分阶段计算**：`compute_billboard_data()` 拆为 4 个独立 `@lru_cache(maxsize=4)` 函数 — `compute_weekly_data()`、`compute_power_scores_staged()`、`compute_summaries_staged()`、`compute_records_staged()`，各自加载原始数据并缓存，避免 5MB 单体缓存膨胀。
-- **启动预热**：默认预热 `load_plays()`、播放统计默认页和 Billboard 全部 5 个缓存函数；可设置 `SPOTIFY_STATS_WARMUP=0` 关闭预热进行冷启动调试。
-- **single-flight**：昂贵缓存函数的首次并发 miss 只计算一次，避免冷启动时大量请求重复计算。
-- **TTL 缓存**：Spotify API Token 等外部调用使用 `@ttl_cached` 时间过期缓存，不缓存 `None` 失败值。
-- **后台任务队列**（`backend/core/job_queue.py`）：3 worker 线程池 + `background_jobs` 表持久化，enrichment 采用 stale-cache + refresh 模式，封面下载异步执行。
-
-### 前后端传输优化
-- `/api/billboard/data`（原 5MB）拆为 6 个端点：`/weekly`（~1.5MB）、`/records`（~800KB）、`/power-scores`（~200KB）、`/summaries`（~300KB）、`/all-time`（~2MB），旧 `/data` 保持兼容。各页面按需请求更轻端点。
-- FastAPI gzip 自动压缩 >500 字节响应。
-- 前端 TanStack React Query 统一数据获取：staleTime 5 分钟、gcTime 30 分钟、retry 2 次，替代手写模块级缓存。
-- 路由级 lazy 分包 + 布局层延迟预取常用数据。
-- ECharts 和 OpenCC 按需动态加载。
-
-### 数据库
-- SQLite 版本化 Migration 系统（`backend/core/migrations.py`）：`schema_migrations` 表追踪 9 个迁移版本，幂等执行，确保 Schema 演进可版本控制。Streamlit 旧 `app/db.py` 通过独立 `ensure_schema()` 保持兼容。
-- 开发模式使用 `uvicorn --reload --reload-dir backend`，只监听后端代码变更。
+首次启动自动导入 JSON 数据到 SQLite。浏览器打开 `http://localhost:5173` 使用 React 界面，`http://localhost:8000/docs` 查看 API 文档。
 
 ## 技术栈
 
-- **FastAPI** — 后端 API 框架（90+ 个端点，依赖注入，自动 Swagger 文档，lifespan 后台缓存预热/迁移/任务队列，gzip 大响应压缩）
-- **React 19** — 前端 UI 框架（TypeScript 6.0，Vite 8，React Router v7，路由级 lazy 分包）
-- **Tailwind CSS v4** — 原子化 CSS 框架（shadcn/ui v4 组件库，`tw-animate-css` 动画）
-- **ECharts 6** — 交互式图表（echarts-for-react，组件内动态加载）
-- **Streamlit** — 原有前端（逐步迁移中）
-- **SQLite** — 本地数据库（87,000+ 条记录，WAL 模式，查询毫秒级）
-- **Pandas** — 数据聚合处理
-- **Pydantic** — API 响应模型与数据校验
-- **Pytest** — 后端测试框架（244 个测试：60 unit + 13 contract + 171 integration，三层 markers 区分，session/module 级缓存预热减少重复冷算）
-- **Ruff** — 代码 lint 与格式化（替代 Flake8/isort/Black）
-- **Mypy** — 静态类型检查（宽松起步，存量 type error 后续治理）
-- **Pre-commit** — 提交前自动检查（ruff format+check + mypy + detect-secrets）
-- **Vitest** — 前端测试框架（React Testing Library + jsdom，20 个组件/工具单测）
-- **TanStack React Query** — 前端数据获取与缓存（staleTime/gcTime/retry 统一策略，逐步替代手写模块级缓存）
-- **rollup-plugin-visualizer** — Bundle 体积分析（`npm run analyze` 输出可视化报告）
-- **httpx** — API 性能基准测试（`scripts/benchmark_api.py`）
-- **openapi-typescript** — 从 OpenAPI spec 自动生成前端 TypeScript 类型
-- **cryptography** — AES-256-GCM 加密（Spotify OAuth Token 安全存储）
-- **python-dotenv** — 集中环境变量管理（消除多处重复 .env 解析）
+**后端**：FastAPI · Pandas · SQLite (WAL) · Pydantic v2 · pytest (244 tests) · Ruff · Mypy
+
+**前端**：React 19 · TypeScript 6.0 · Vite 8 · Tailwind CSS v4 · shadcn/ui · React Router v7 · TanStack React Query · ECharts 6 · Vitest
+
+**基础设施**：AES-256-GCM 加密 · OAuth PKCE · 统一 Cache Manager (LRU+TTL) · 版本化 Migration · 后台 Job Queue · OpenAPI 自动生成类型
 
 ## 项目结构
 
 ```
 SpotifyStats/
-├── backend/                            # FastAPI 后端（新架构）
-│   ├── main.py                         # FastAPI 入口 + CORS + gzip + lifespan 缓存预热
-│   ├── dependencies.py                 # Depends 依赖注入（PlayFilters / BillboardFilters + get_conn）
-│   ├── api/
-│   │   ├── router.py                   # 顶层路由组装
-│   │   ├── analysis.py                 # GET /api/analysis/{overview,stats,charts}
-│   │   ├── music.py                    # GET /api/music/{tracks,albums,artists}/*/stats|plays
-│   │   ├── dashboard.py                # GET /api/dashboard/*（6 端点）
-│   │   ├── timeline.py                 # GET /api/timeline/*
-│   │   ├── leaderboard.py              # GET /api/leaderboard
-│   │   ├── behavior.py                 # GET /api/behavior
-│   │   ├── listening_hours.py          # GET /api/listening-hours/*
-│   │   ├── artist_deep.py              # GET /api/artist/{name}/deep-dive
-│   │   ├── wrapped.py                  # GET /api/wrapped/{available-years,{year}/full}（自定义年度总结）
-│   │   ├── wrapped_hub.py              # GET /api/wrapped-hub/*
-│   │   ├── library.py                  # GET /api/library/*
-│   │   ├── search.py                   # GET /api/search-history/*
-│   │   ├── insights.py                 # GET /api/insights/*
-│   │   ├── podcast.py                  # GET /api/podcast/*
-│   │   ├── video.py                    # GET /api/video/*
-│   │   ├── profile.py                  # GET /api/profile
-│   │   ├── settings.py                 # GET/PUT /api/settings
-│   │   ├── lyrics.py                   # GET /api/lyrics/{track_id}（Genius 歌词获取 + 缓存）
-│   │   ├── spotify_auth.py              # Spotify OAuth PKCE + 数据同步（login/callback/status/disconnect/sync/data/playing/sync-all，8 端点）
-│   │   ├── version_merge.py            # CRUD /api/version-merge/*
-│   │   ├── import_.py                  # POST /api/import/*（异步导入）
-│   │   ├── admin.py                 # GET /api/admin/cache-stats（缓存统计，需认证）
-│   │   ├── jobs.py                  # GET /api/jobs/{id}/status（后台任务状态轮询）
-│   │   └── billboard/
-│   │       ├── __init__.py             # 路由组装 + /release-cycle + /enrichment 前缀
-│   │       ├── data.py                 # GET /api/billboard/{data,weekly,records,power-scores,summaries,all-time}（6 端点，分阶段计算 + 独立缓存）
-│   │       ├── details.py              # GET /api/billboard/{track,artist,album,versus}/*（10 端点）
-│   │       ├── release_cycle.py        # GET /api/billboard/release-cycle/*（4 端点）
-│   │       └── enrichment.py           # GET /api/billboard/enrichment/{album,artist,track}/*（3 端点）
-│   ├── services/                       # 计算逻辑层
-│   │   ├── analysis_stats_service.py   # 总体播放统计 + 个人排行榜 + 时间范围解析
-│   │   ├── entity_stats_service.py     # 歌曲/专辑/艺人个人播放统计
-│   │   ├── play_service.py             # 播放数据 + 周度时间线 + 听歌人格 + 工作日/平台×小时分析
-│   │   ├── wrapped_service.py          # 自定义年度总结完整数据构建（英雄区/Top榜/曲风全景/时间故事/发现回归/聆听深度/特殊时刻/月度钻取/年度对比）
-│   │   ├── billboard_service.py        # Billboard 计算管线 facade（~90行，实现已迁入 domains/billboard/）
-│   │   ├── release_cycle_service.py    # 发行周期分析 + Spotify API + 先行曲识别
-│   │   ├── library_service.py          # 收藏交叉查询
-│   │   ├── search_service.py           # 搜索历史 + 意图分类
-│   │   ├── insights_service.py         # 艺人分级 + Marquee 转化
-│   │   ├── podcast_service.py          # 播客统计
-│   │   ├── video_service.py            # 视频分析
-│   │   ├── profile_service.py          # 个人档案
-│   │   ├── genius_service.py           # Genius 歌词获取 + SQLite 缓存
-│   │   ├── wikipedia_service.py         # Wikipedia 百科扩展（搜索/提取/缓存/翻译/LLM 结构化）
-│   │   ├── llm_translator.py            # LLM 翻译与结构化服务（多提供商 + 代理支持）
-│   │   ├── spotify_auth.py              # Spotify OAuth PKCE 授权 + 全量数据同步
-│   │   ├── account_service.py           # 账号中心聚合服务（identity/habits/collection）
-│   │   └── wrapped_hub_service.py      # Wrapped 2025 官方数据
-│   ├── domains/                         # 领域模块（业务逻辑 + 数据访问）
-│   │   ├── billboard/
-│   │   │   ├── __init__.py              # 公开 API re-export
-│   │   │   ├── data_loader.py           # 原始数据加载 + 缓存（~200行）
-│   │   │   ├── version_merge.py         # 专辑版本合并规范化（~90行）
-│   │   │   ├── chart_compute.py         # Billboard 分阶段计算（4 个独立缓存函数 + shared helper，~900行）
-│   │   │   ├── records.py               # 榜单记录计算（~1,150行）
-│   │   │   ├── details.py               # 实体详情查询（~350行）
-│   │   │   ├── versus.py                # 对决对比逻辑（~300行）
-│   │   │   ├── entity_lists.py          # 实体列表选择器（~60行）
-│   │   │   └── repository.py            # Billboard 原始 SQL 查询封装
-│   │   ├── settings/
-│   │   │   └── repository.py            # Settings 表 CRUD 操作
-│   │   ├── playback/
-│   │   │   └── repository.py            # 播放数据查询封装
-│   │   └── enrichment/
-│   │       └── repository.py            # 歌词/Wikipedia/LLM 缓存表访问
-│   ├── models/                         # Pydantic 响应模型
-│   │   ├── common.py                   # 通用模型
-│   │   ├── dashboard.py                # 仪表盘
-│   │   ├── timeline.py                 # 时间线 + Wrapped
-│   │   ├── leaderboard.py              # 排行榜
-│   │   ├── behavior.py                 # 行为分析 + 听歌时段
-│   │   └── wrapped.py                  # 年度总结完整响应模型
-│   ├── core/                           # 核心工具（从 app/ 原样迁移）
-│   │   ├── config.py                   # 集中配置管理（python-dotenv 统一加载所有环境变量）
-│   │   ├── crypto.py                   # AES-256-GCM 加密模块（Spotify Token 落库加密 + 旧明文自动迁移）
-│   │   ├── auth.py                     # API 鉴权依赖（远程模式 Bearer Token 校验）
-│   │   ├── logging_config.py           # 统一日志配置（敏感字段正则脱敏 + 全局异常不泄露 stack trace）
-│   │   ├── db.py                       # SQLite 连接 + base_filters + load_plays + merge_consecutive_plays
-│   │   ├── utils.py                    # 时区转换 + 平台分类
-│   │   ├── json_helpers.py             # numpy/pandas → JSON 安全序列化
-│   │   ├── cache.py                    # TTL 缓存装饰器 + single-flight
-│   │   ├── cache_manager.py            # 统一缓存管理器（5 命名空间 + hit/miss 统计 + 批量失效）
-│   │   ├── migrations.py               # SQLite 版本化 Migration（schema_migrations 追踪 + 9 个迁移 + 幂等执行）
-│   │   ├── job_queue.py                # 后台任务队列（线程池 + SQLite 持久化 + enrichment/封面下载 stale-cache + refresh）
-│   │   ├── spotify_utils.py            # Spotify Web API 核心工具（PKCE + Token 加密持久化 + 自动刷新 + 10 scope 全覆盖数据拉取 + 全量同步）
-│   │   ├── warmup.py                   # 后端启动缓存预热（Dashboard/Analysis/Billboard 5 缓存函数）
-│   │   ├── genius/                     # Genius API 客户端（lyricsgenius 封装 + 歌词清洗）
-│   │   ├── import_data.py              # 串流数据 ETL
-│   │   ├── import_account_data.py      # 账号数据 ETL
-│   │   └── version_merge.py            # 专辑版本合并引擎
-│   ├── jobs/                              # 后台任务处理器（封面下载 + Wikipedia enrichment + Genius 歌词）
-│   │   ├── __init__.py
-│   │   ├── cover_download.py
-│   │   ├── wikipedia_enrich.py
-│   │   └── genius_lyrics.py
-│   ├── infrastructure/                   # 基础设施层
-│   │   └── http/
-│   │       └── client.py                 # 统一 HTTP 客户端（超时/重试/代理/编码/redaction）
-│   ├── providers/                        # 第三方服务适配器
-│   │   ├── base.py                       # BaseProvider 抽象类 + ProviderConfig dataclass
-│   │   ├── spotify/client.py            # Spotify API 适配器
-│   │   ├── genius/client.py             # Genius API 适配器（包装 GeniusClient）
-│   │   ├── wikipedia/client.py          # Wikipedia REST API 适配器
-│   │   └── llm/client.py                # LLM 多后端统一适配器（DeepSeek/OpenAI/Anthropic/自定义）
-│   └── tests/
-│       ├── __init__.py
-│       ├── conftest.py                   # 根 fixtures（client, default_params, warm_default_caches, billboard_data）
-│       ├── unit/                         # 纯函数单元测试（无 DB 连接，~5s）
-│       │   ├── conftest.py               # 空文件 — 阻断父级 DB fixture
-│       │   ├── test_json_helpers.py
-│       │   ├── test_utils.py
-│       │   ├── test_crypto.py
-│       │   ├── test_cache.py
-│       │   ├── test_logging.py
-│       │   ├── test_migrations.py
-│       │   ├── test_job_queue.py
-│       │   └── test_billboard_pure.py
-│       ├── contract/                     # API 结构验证（seed SQLite DB，~1s）
-│       │   ├── conftest.py               # monkeypatch DB_PATH → seed.db + 缓存清除
-│       │   └── test_api_contract.py
-│       ├── integration/                  # 真实数据集成测试（~80s）
-│       │   ├── conftest.py
-│       │   ├── test_api.py
-│       │   ├── test_services.py
-│       │   ├── test_analysis_api.py
-│       │   └── test_wrapped_full.py
-│       └── fixtures/
-│           ├── seed.db                  # 便携测试数据库（~4KB，含边界用例）
-│           └── build_seed_db.py         # 构建脚本（含 11 条 golden assertions）
-├── app/                                # Streamlit 前端（LEGACY — 已冻结维护，只修严重 bug，不新增功能）
-│   ├── main.py                         # 入口 + 总览仪表盘
-│   ├── db.py                           # 数据库层
-│   ├── utils.py                        # 工具函数
-│   ├── styles.py                       # 全局 CSS + Plotly 模板
-│   ├── import_data.py                  # 串流数据 ETL
-│   ├── import_account_data.py          # 账号数据 ETL
-│   ├── version_merge.py               # 版本合并引擎
-│   └── pages/
-│       ├── 02_playback.py              # 播放分析（5 Tab wrapper）
-│       ├── 03_yearly.py                # 年度回顾（2 Tab wrapper）
-│       ├── 04_account.py               # 账号中心（6 Tab wrapper）
-│       ├── 08_billboard.py             # Billboard 周榜（薄入口 → billboard/ 包）
-│       ├── 09_settings.py              # 设置
-│       └── billboard/                  # Billboard 模块化包（18 文件，~9,000 行）
-│           ├── __init__.py              # 主路由 + session_state
-│           ├── shared.py               # 公共计算 + 排名 + 版本合并
-│           ├── weekly.py               # Tab 1: 周榜
-│           ├── number_ones.py          # Tab 2: 每周榜首
-│           ├── track_history.py        # Tab 3: 单曲历史
-│           ├── artist_chart.py         # Tab 4: 艺人榜单
-│           ├── album_chart.py          # Tab 5: 专辑榜单
-│           ├── power_score.py          # Tab 6: 走势总榜
-│           ├── all_time_tracks.py     # Tab 7: 歌曲总榜
-│           ├── all_time_artists.py    # Tab 8: 艺人总榜
-│           ├── all_time_albums.py     # Tab 9: 专辑总榜
-│           ├── records.py             # Tab 10: 榜单记录
-│           ├── versus.py              # Tab 11: 对决
-│           └── release_cycle/          # Tab 12: 发行周期分析
-│               ├── __init__.py
-│               ├── shared.py
-│               ├── artist_view.py
-│               ├── album_view.py
-│               └── compare_view.py
-├── data/
-│   ├── spotify_stats.db                # SQLite 数据库
-│   ├── streaming/                      # 长期串流播放记录（JSON）
-│   └── account/                        # 账号数据（JSON）
-├── frontend/                            # React 前端（新架构）
-│   ├── src/
-│   │   ├── api/
-│   │   │   ├── client.ts                # 统一 API 客户端（30s 超时 + AbortController + 类型化错误）
-│   │   │   ├── errors.ts                # API 错误类（ApiError/NetworkError/AuthRequiredError/TimeoutError）
-│   │   │   ├── query-client.ts           # TanStack QueryClient 配置（staleTime 5min / gcTime 30min / retry 2）
-│   │   │   ├── query-keys.ts             # Query Key 工厂（6 个领域 namespace）
-│   │   │   └── generated/               # 从 OpenAPI spec 自动生成的 TypeScript 类型
-│   │   ├── features/                     # Feature-first 组件组织
-│   │   │   ├── settings/
-│   │   │   │   └── components/           # 设置页拆分子组件（7 个 Section）
-│   │   │   └── account/
-│   │   │       └── collection/
-│   │   │           ├── components/       # 收藏分析拆分子组件（11 个 Block）
-│   │   │           └── utils/            # 辅助函数
-│   │   ├── components/
-│   │   │   ├── ui/                      # shadcn/ui 组件（含 calendar, popover）
-│   │   │   ├── charts/                  # 图表组件（ECharts 动态加载，RankTrendChart, ReleaseTimelineChart 等）
-│   │   │   ├── layout/                  # 布局（AppLayout, Masthead, ThemeToggle）
-│   │   │   └── shared/                  # 共享组件（GlassCard, KpiCard, WeekSelector 含日历弹窗, ChangeCell, CoverCell, ArtistEnrichmentView, AlbumEnrichmentView, KeyFactsCard, StatsGrid, CareerTimeline, GenreTags, ChartBars, FormattedText）
-│   │   ├── pages/                       # 页面（Dashboard, YearlyReview, Billboard, NumberOnes, AllTimeCharts, Records, TrackDetail, ArtistDetail, AlbumDetail, AccountCenter, Settings）
-│   │   │   ├── yearly-review/           # 年度回顾子组件
-│   │   │   └── account/                 # 账号中心子组件（IdentityTab, HabitsTab, CollectionTab）
-│   │   ├── hooks/                       # 自定义 hooks（数据获取 + in-flight 缓存 + Spotify OAuth 连接/同步 + 账号中心数据 + 异步导入轮询）
-│   │   ├── lib/                         # API 客户端、工具函数、主题配置、OpenCC 动态中文转换、听歌人格主题、曲风地理映射
-│   │   ├── tests/                       # 前端测试（vitest + React Testing Library + jsdom，20 个单测）
-│   │   └── types/                       # TypeScript 类型定义（dashboard, billboard, settings, account, yearly-review）
-│   ├── scripts/
-│   │   └── generate-api-types.sh        # OpenAPI → TypeScript 类型生成脚本
-│   ├── vitest.config.ts                 # vitest 配置
-│   ├── UI_STYLE_GUIDE.md                # 详细 UI 风格指南
-│   ├── index.html
-│   └── package.json
-├── scripts/
-│   ├── analyze_weekly_tracks.py        # 每周独特曲目数分析
-│   ├── benchmark_api.py                # API 性能基准测试（冷/热 P50/P95 + 响应体大小 + Markdown 报告）
-│   └── fetch_covers.py                 # Spotify API 封面批量下载
-├── .streamlit/config.toml              # Streamlit 主题配置
-├── requirements.txt
-└── README.md
+├── backend/           # FastAPI 后端（api/ → services/ → domains/ → core/）
+├── frontend/          # React 前端（components/ | pages/ | hooks/ | lib/）
+├── app/               # Streamlit 旧应用（冻结维护）
+├── data/              # SQLite 数据库 + JSON 源数据
+├── docs/              # 架构文档
+├── scripts/           # 工具脚本（性能基准、封面下载等）
+└── requirements.txt
 ```
 
-## 数据库设计
+## 详细文档
 
-```
-artists ──< albums ──< tracks ──< plays
-```
-
-- 维度表仅保留核心识别字段（名称、URI），Spotify API 元数据（专辑类型、发行日期、热度、厂牌、曲风、封面图等）独立存储在 `spotify_album_meta` / `spotify_artist_meta` / `spotify_track_meta` 三张表中，通过 `spotify_track_uri` 链式关联。`spotify_album_meta` 还存储 `total_tracks` 和 `track_list`（JSON）用于版本合并超集检测。
-- `release_groups` / `release_group_members` 表管理专辑版本合并（豪华版、Acoustic版等合并为 canonical 名称统计）。
-- `plays` 表预计算了本地时间字段（year/month/week/dow/hour/date），避免每次查询解析 ISO 8601 时间戳
-- 时区固定使用北京时间 UTC+8（忽略 Spotify 上报的 `conn_country` 字段，避免 VPN/网络路由导致该字段不准确）
-- 布尔字段用 INTEGER 0/1 存储（SQLite 无原生 boolean）
-- `track_albums` 关联表处理同一歌曲出现在多张专辑的情况（以 `(artist_id, track_name)` 为唯一标识合并重复版本）
-- Billboard 专辑榜自动排除 `album_type = 'single'` 的发行（单曲不是专辑）
-- `albums` / `artists` 表新增 `image_url`（Spotify CDN URL）和 `image_path`（本地缓存路径）列，封面通过智能端点 `/covers/{type}/{id}.jpg` 三级回退（本地缓存 → CDN 重定向 + 后台下载 → 404）
-- `track_lyrics` 表缓存 Genius 歌词（`track_id` PRIMARY KEY，`lyrics_text` / `genius_url` / `genius_song_id`），按需获取、永久有效
-- `settings` 表（KV 存储）持久化应用设置、LLM 配置档案，以及 Spotify OAuth Token + 用户档案（AES-256-GCM 加密存储，旧明文自动迁移）+ Top 艺人/曲目 × 6（`spotify_top_*`）+ 最近播放（`spotify_recently_played`）+ 关注艺人（`spotify_followed_artists`）+ 播放列表（`spotify_playlists`），服务重启后自动恢复
-- `wikipedia_cache` 表缓存 Wikipedia 百科扩展数据，避免重复 API 调用
-- `schema_migrations` 表（`backend/core/migrations.py`）追踪数据库 Schema 变更版本历史，支持幂等迁移
-- `background_jobs` 表持久化后台任务队列状态（封面下载、Wikipedia enrichment、Genius 歌词）
-- 账号数据独立存储于 `saved_tracks`/`saved_albums`/`saved_artists`/`playlists`/`search_queries`/`podcast_plays`/`user_profile` 等表中
+- 后端架构细节见 [`backend/CLAUDE.md`](backend/CLAUDE.md)
+- 前端架构细节见 [`frontend/CLAUDE.md`](frontend/CLAUDE.md) 和 [`frontend/README.md`](frontend/README.md)
+- UI 风格指南见 [`frontend/UI_STYLE_GUIDE.md`](frontend/UI_STYLE_GUIDE.md)
+- 数据目录说明见 [`data/README.md`](data/README.md)
+- 架构优化文档见 [`docs/2026-05-30-architecture-optimize.md`](docs/2026-05-30-architecture-optimize.md)
 
 ## License
 
