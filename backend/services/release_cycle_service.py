@@ -1,6 +1,5 @@
 """Release cycle analysis service — migrated from app/pages/billboard/release_cycle/shared.py."""
 
-import os
 import json
 import base64
 import urllib.request
@@ -27,31 +26,12 @@ from backend.core.version_merge import get_album_group_mapping, normalize_album_
 @ttl_cached(3500)
 def _get_spotify_token():
     """Get Spotify client_credentials token, cached ~58 minutes."""
-    project_root = os.path.dirname(os.path.dirname(os.path.dirname(
-        os.path.dirname(os.path.abspath(__file__)))))
-    env_path = os.path.join(project_root, ".env")
+    from backend.core.config import SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET
 
-    client_id = os.environ.get("SPOTIFY_CLIENT_ID")
-    client_secret = os.environ.get("SPOTIFY_CLIENT_SECRET")
-
-    if (not client_id or not client_secret) and os.path.exists(env_path):
-        with open(env_path) as f:
-            for line in f:
-                line = line.strip()
-                if not line or line.startswith("#") or "=" not in line:
-                    continue
-                k, v = line.split("=", 1)
-                k = k.strip()
-                v = v.strip().strip('"').strip("'")
-                if k == "SPOTIFY_CLIENT_ID":
-                    client_id = v
-                elif k == "SPOTIFY_CLIENT_SECRET":
-                    client_secret = v
-
-    if not client_id or not client_secret:
+    if not SPOTIFY_CLIENT_ID or not SPOTIFY_CLIENT_SECRET:
         return None
 
-    auth_b64 = base64.b64encode(f"{client_id}:{client_secret}".encode()).decode()
+    auth_b64 = base64.b64encode(f"{SPOTIFY_CLIENT_ID}:{SPOTIFY_CLIENT_SECRET}".encode()).decode()
     req = urllib.request.Request(
         "https://accounts.spotify.com/api/token",
         data=urllib.parse.urlencode({"grant_type": "client_credentials"}).encode(),

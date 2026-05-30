@@ -3,7 +3,8 @@
 import uuid
 import threading
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Depends, Query
+from backend.core.auth import require_auth
 
 from backend.core.import_data import import_data
 from backend.core.import_account_data import import_all
@@ -34,7 +35,7 @@ def _progress_cb(job_id):
 
 
 @router.post("/streaming")
-def start_streaming_import():
+def start_streaming_import(auth: None = Depends(require_auth)):
     """Trigger streaming data import in the background."""
     job_id = _make_job()
     cb = _progress_cb(job_id)
@@ -61,7 +62,7 @@ def start_streaming_import():
 
 
 @router.post("/account")
-def start_account_import():
+def start_account_import(auth: None = Depends(require_auth)):
     """Trigger account data import in the background."""
     job_id = _make_job()
     cb = _progress_cb(job_id)

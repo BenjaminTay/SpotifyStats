@@ -106,7 +106,7 @@ JSON 文件 (账号数据)  ──→ import_account_data.py ──┘
                          st.cache_data 缓存查询结果
 ```
 
-后端生产入口 `backend/main.py` 通过 FastAPI lifespan 启动后台缓存预热线程（`backend/core/warmup.py`），默认预热 `load_plays()`、播放统计默认页与 `compute_billboard_data()`。启动后短时间 CPU 占用较高属于正常预热现象；设置 `SPOTIFY_STATS_WARMUP=0` 可关闭启动预热，测试环境通过 pytest fixture 控制预热节奏。开发模式下使用 `uvicorn --reload --reload-dir backend`，只监听后端代码变更；不要让 reloader 扫描整个仓库，否则 `.venv`、`frontend/node_modules`、`data` 等大目录会导致 CPU 持续偏高。
+后端生产入口 `backend/main.py` 通过 FastAPI lifespan 启动后台缓存预热线程（`backend/core/warmup.py`），启动时调用 `setup_logging()` 配置日志脱敏。默认预热 `load_plays()`、播放统计默认页与 `compute_billboard_data()`。启动后短时间 CPU 占用较高属于正常预热现象；设置 `SPOTIFY_STATS_WARMUP=0` 可关闭启动预热，测试环境通过 pytest fixture 控制预热节奏。全局 `@app.exception_handler(Exception)` 返回通用 500 而不泄露 stack trace（异常仍通过脱敏后的 logger 记录）。CORS 来源支持 `FRONTEND_ORIGIN` 配置值（适配 ngrok 等非 localhost 来源）。开发模式下使用 `uvicorn --reload --reload-dir backend`，只监听后端代码变更；不要让 reloader 扫描整个仓库，否则 `.venv`、`frontend/node_modules`、`data` 等大目录会导致 CPU 持续偏高。
 
 ### 后端架构 (backend/)
 
@@ -168,11 +168,12 @@ GET  /api/billboard/enrichment/artist/{name} Wikipedia 百科 + Genius 艺人扩
 GET  /api/billboard/enrichment/track/{name}  Wikipedia 百科 + Genius 单曲扩展
 GET  /api/lyrics/{track_id}               Genius 歌词获取（按需获取 + SQLite 缓存）
 GET  /api/lyrics/{track_id}/url           Genius 链接查询（轻量，仅返回 URL）
-GET  /api/settings                       设置（GET 读取 / PUT 更新，含 has_llm_key 状态）
+GET  /api/settings                       设置（GET 读取 / PUT 更新，llm_api_key 不返回明文，仅返回 has_llm_key: bool）
 GET  /api/settings/llm-profiles          LLM 配置档案列表（不含 key/base_url）
-GET  /api/settings/llm-profiles/{id}     LLM 配置档案详情（含完整 key/base_url）
+GET  /api/settings/llm-profiles/{id}     LLM 配置档案详情（不返回明文 key，仅 has_llm_key: bool）
 POST /api/settings/llm-profiles          创建 LLM 配置档案
 PUT  /api/settings/llm-profiles/{id}     更新 LLM 配置档案
+POST /api/settings/llm-profiles/{id}/apply  应用 LLM 配置档案（服务端读取 key 写入 settings，前端不接触明文）
 DELETE /api/settings/llm-profiles/{id}   删除 LLM 配置档案
 GET  /api/version-merge/*                版本合并管理（groups, detect, apply）
 GET  /covers/{type}/{id}.jpg              封面图片服务（三级回退：本地缓存 → CDN 重定向 + 后台下载 → 404）
@@ -200,7 +201,7 @@ POST /api/spotify/auth/sync-all          全量数据刷新（profile + top item
 - **`library_service.py`** — 收藏交叉查询（收藏曲目/专辑/艺人与实际收听对比），含封面 URL 解析
 - **`search_service.py`** — 搜索历史统计（日搜索量、意图分类、时段热力图）
 - **`insights_service.py`** — 粉丝层级分析 + Marquee 推广转化率（按转化率降序排列，含艺人封面）
-- **`genius_service.py`** — Genius 歌词服务。懒加载 `GeniusClient` 单例（token 从 `.env` 读取），`get_track_lyrics()` 按需获取歌词并缓存到 `track_lyrics` 表，`get_track_genius_url()` 轻量 URL 查询。歌词清洗：去除 Genius 元数据（Contributors/Translations/Read More），提取嵌入式分段标题（`[Verse]`/`[Chorus]` 等），规范化分段间距（每段之间恰好一空行）
+- **`genius_service.py`** — Genius 歌词服务。懒加载 `GeniusClient` 单例（token 从统一 config 模块读取），`get_track_lyrics()` 按需获取歌词并缓存到 `track_lyrics` 表，`get_track_genius_url()` 轻量 URL 查询。歌词清洗：去除 Genius 元数据（Contributors/Translations/Read More），提取嵌入式分段标题（`[Verse]`/`[Chorus]` 等），规范化分段间距（每段之间恰好一空行）
 - **`podcast_service.py`** — 播客统计（含 `ms_played >= 30000` 过滤排除自动预览噪音，按收听时长降序排列）
 - **`video_service.py`** — 视频分析（含视频曲目封面解析）
 - **`profile_service.py`** / **`wrapped_hub_service.py`** — 账号数据页面服务
@@ -213,13 +214,17 @@ POST /api/spotify/auth/sync-all          全量数据刷新（profile + top item
 
 从 `app/` 目录原样迁移或提取的纯逻辑模块，不含任何 Web 框架依赖：
 
+- **`config.py`** — 集中配置管理。通过 `python-dotenv` 在 import 时调用 `load_dotenv()`，替代所有手动 `.env` 解析。暴露所有配置项为模块级变量（`SPOTIFY_CLIENT_ID`, `SPOTIFY_CLIENT_SECRET`, `SPOTIFY_REDIRECT_URI`, `GENIUS_ACCESS_TOKEN`, `HTTPS_PROXY`, `HTTP_PROXY`, `FRONTEND_ORIGIN`, `SPOTIFY_STATS_WARMUP`, `SPOTIFY_STATS_REQUIRE_AUTH`, `SPOTIFY_STATS_API_TOKEN`, `SPOTIFY_STATS_TOKEN_KEY` 等），每个变量有合理默认值
+- **`crypto.py`** — AES-256-GCM 加解密模块。使用 `cryptography` 库的 `AESGCM` 进行加密；Key 来源优先级：`SPOTIFY_STATS_TOKEN_KEY` 环境变量 → 硬编码应用密钥（单用户本地场景可接受）；通过 PBKDF2（600,000 轮迭代）从密码派生 32 字节 AES 密钥。提供 `encrypt(plaintext) -> str` / `decrypt(ciphertext) -> str` / `is_encrypted(value) -> bool` 三个函数，`is_encrypted` 通过检测是否以 `{` 开头区分明文/密文
+- **`auth.py`** — API 鉴权依赖模块。使用 `fastapi.security.HTTPBearer` 提取 Authorization header；`require_auth()` 依赖函数在 `SPOTIFY_STATS_REQUIRE_AUTH != "1"` 时直接放行（本地模式），否则校验 Bearer token 是否等于 `SPOTIFY_STATS_API_TOKEN`（不匹配返回 403）。应用于所有写/敏感接口（settings 写操作、llm-profiles 变更、Spotify disconnect/sync、import、version-merge 变更）
+- **`logging_config.py`** — 统一日志配置。`SensitiveDataFilter`（`logging.Filter` 子类）基于正则表达式脱敏日志中的敏感数据（`llm_api_key`, `access_token`, `refresh_token`, `Bearer` token, `sk-...`, `deepseek-...`, `Authorization`, `x-api-key`, `client_secret`）；`setup_logging()` 配置 root logger，添加 `StreamHandler` + `SensitiveDataFilter`，抑制 urllib3/httpx 等噪声库日志
 - **`genius/`** — Genius API 客户端模块。`client.py`（`lyricsgenius` 封装：搜索、获取歌词/专辑/艺人/排行榜、封面下载、`_clean_lyrics()` 清洗）+ `models.py`（`Song`/`SearchResult`/`AlbumInfo` dataclass）
 - **`db.py`** — 从 `app/db.py` 完整迁移。`get_db()` 使用 `check_same_thread=False` 适配 Starlette 后台任务线程清理（每个请求独立连接，无并发风险），只读模式通过 `PRAGMA query_only = ON` 实现。`base_filters()`, `load_plays()`（`@lru_cache(maxsize=16)` 按参数缓存 DataFrame，避免重复 SQL+merge 计算），`merge_consecutive_plays()`, `ensure_schema()`（含 `track_lyrics`, `settings`, `llm_profiles`, `wikipedia_cache` 表）, `build_aggregations()` 等所有函数
 - **`utils.py`** — 从 `app/utils.py` 完整迁移。`convert_to_local_time()`, `classify_platform()`
 - **`version_merge.py`** — 从 `app/version_merge.py` 完整迁移。`detect_release_groups()`, `apply_detected_groups()`, `create_group()`, `delete_group()` 等
-- **`import_data.py`** / **`import_account_data.py`** — 从 `app/` 迁移，progress_callback 改为 threading.Event + 共享字典
+- **`import_data.py`** / **`import_account_data.py`** — 从 `app/` 迁移，progress_callback 改为 threading.Event + 共享字典。日志使用 `logger.warning()` 替代 `print("[WARN] ...")`，统一接入脱敏管道
 - **`json_helpers.py`** — 消除 3 处重复定义的序列化工具。`py_val()` 将 numpy/pandas 类型转为 JSON 安全的原生 Python 类型；`df_to_json()` 将 DataFrame 转为 dict 列表
-- **`spotify_utils.py`** — Spotify Web API 核心工具（~500 行）。PKCE 辅助函数（`generate_pkce_pair`, `build_auth_url`）、OAuth token 交换与自动刷新（`exchange_code_for_tokens`, `get_user_access_token`, `_refresh_user_token`）、Token 持久化到 settings 表（`spotify_user_token` JSON blob）、用户档案拉取与持久化（`fetch_spotify_profile`, `save_user_profile`, `get_user_profile`）、10 个 scope 全覆盖数据拉取：top artists/tracks × 3 时间窗口（`fetch_top_artists/tracks`, `save/get_top_items`）、recently played（`fetch_recently_played`, `save/get_recently_played`）、followed artists（`fetch_followed_artists`, `save/get_followed_artists`）、playlists（`fetch_playlists`, `save/get_playlists`）、当前播放（`fetch_current_playback`, `fetch_currently_playing`，实时不持久化）、通用 API 调用（`spotify_api_get`, `spotify_api_get_all_pages`）、客户端凭据令牌 TTL 缓存（`get_client_credentials_token`）、全量同步（`sync_all_spotify_data`）。环境变量从 `.env` 文件手动读取（uvicorn 不自动加载）
+- **`spotify_utils.py`** — Spotify Web API 核心工具（~500 行）。PKCE 辅助函数（`generate_pkce_pair`, `build_auth_url`）、OAuth token 交换与自动刷新（`exchange_code_for_tokens`, `get_user_access_token`, `_refresh_user_token`）、Token 加密持久化到 settings 表（AES-256-GCM 加密存储，`_load_user_token_json` 自动迁移旧明文数据）、用户档案拉取与持久化（`fetch_spotify_profile`, `save_user_profile`, `get_user_profile`）、10 个 scope 全覆盖数据拉取：top artists/tracks × 3 时间窗口（`fetch_top_artists/tracks`, `save/get_top_items`）、recently played（`fetch_recently_played`, `save/get_recently_played`）、followed artists（`fetch_followed_artists`, `save/get_followed_artists`）、playlists（`fetch_playlists`, `save/get_playlists`）、当前播放（`fetch_current_playback`, `fetch_currently_playing`，实时不持久化）、通用 API 调用（`spotify_api_get`, `spotify_api_get_all_pages`）、客户端凭据令牌 TTL 缓存（`get_client_credentials_token`）、全量同步（`sync_all_spotify_data`）。配置从 `backend.core.config` 统一读取
 - **`cache.py`** — 从 `release_cycle_service.py` 提取。`ttl_cached(ttl_seconds)` 装饰器用于 Spotify API 等需要时间过期的外部调用缓存，支持 `cache_clear()`，且不缓存 `None` 失败值；`singleflight()` 用于序列化昂贵缓存函数的首次并发 miss
 - **`warmup.py`** — 后端缓存预热工具。`warm_common_caches()` 预热默认播放数据与 Billboard 全量数据；`start_warmup_thread()` 由 FastAPI lifespan 后台启动，避免阻塞服务启动
 - **`scripts/fetch_covers.py`** — 封面批量下载脚本。通过 Spotify API 批量拉取播放记录中所有专辑/艺人的封面，下载到 `data/covers/`，支持增量更新（已有 `image_path` 的记录自动跳过）。三级 ID 解析：`spotify_*_meta` 表 → Track API 反向查找 → Search API 模糊匹配
@@ -420,3 +425,11 @@ app/pages/billboard/
 - `ttl_cached()` 不缓存 `None`，外部 API 瞬时失败应允许后续请求重试；测试中可调用包装函数的 `cache_clear()`
 - **Spotify OAuth**：开发环境需要 HTTPS 回调 URL。使用 ngrok 静态域名（`stuffing-nebula-tamer.ngrok-free.dev`）提供公网 HTTPS 隧道代理到 localhost:5173 Vite 开发服务器。Spotify API scope 变更后已有 token 不会自动升级，需断开重连。Redirect URI 在 `.env` 的 `SPOTIFY_REDIRECT_URI` 和 Spotify Developer Dashboard 中需同步更新
 - Vite 开发服务器需设置 `allowedHosts: true` 以允许 ngrok 域名的外部请求
+- **安全约束**：
+  - 所有环境变量统一通过 `backend/core/config.py` 读取，禁止在业务代码中直接 `open('.env')` 或 `os.getenv()`
+  - Spotify OAuth Token 在 SQLite 落库前必须经过 `crypto.encrypt()` 加密，读取时通过 `crypto.is_encrypted()` 自动判断并解密（兼容旧明文自动迁移）
+  - LLM API Key 永远不通过 API 返回给前端；`GET /api/settings/llm-profiles/{id}` 仅返回 `has_llm_key: bool`；前端通过 `POST /apply` 端点让服务端直接写入 settings
+  - 外部文本（LLM 输出、Wikipedia、翻译结果）在前端渲染必须经过 `react-markdown` + `rehype-sanitize`，禁止 `dangerouslySetInnerHTML`
+  - 远程模式（`SPOTIFY_STATS_REQUIRE_AUTH=1`）下所有写/敏感接口必须通过 `require_auth` 依赖校验 Bearer Token
+  - 日志系统通过 `SensitiveDataFilter` 自动脱敏 API Key、Token 等敏感字段；全局异常处理器返回通用 500 不泄露 stack trace
+  - Token 加密密钥优先级：`SPOTIFY_STATS_TOKEN_KEY` 环境变量 → 应用内置密钥。单用户本地场景可接受内置密钥，多用户/远程部署必须设置环境变量

@@ -1,9 +1,6 @@
 """Genius lyrics service — on-demand lyrics fetching with SQLite caching."""
 
-import os
-from dotenv import load_dotenv
-load_dotenv()
-
+from backend.core.config import GENIUS_ACCESS_TOKEN, GENIUS_PROXY, HTTPS_PROXY
 from backend.core.db import get_db
 from backend.core.genius.client import GeniusClient
 
@@ -14,12 +11,11 @@ def _get_client():
     """Lazy-load GeniusClient singleton."""
     global _client
     if _client is None:
-        token = os.getenv("GENIUS_ACCESS_TOKEN")
-        if not token:
+        if not GENIUS_ACCESS_TOKEN:
             return None
-        proxy_url = os.getenv("GENIUS_PROXY") or os.getenv("https_proxy") or os.getenv("HTTPS_PROXY")
+        proxy_url = GENIUS_PROXY or HTTPS_PROXY
         proxy = {"https": proxy_url} if proxy_url else None
-        _client = GeniusClient(access_token=token, proxy=proxy)
+        _client = GeniusClient(access_token=GENIUS_ACCESS_TOKEN, proxy=proxy)
     return _client
 
 

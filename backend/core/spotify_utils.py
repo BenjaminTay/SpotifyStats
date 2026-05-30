@@ -5,9 +5,9 @@ User token is persisted in the settings table as a JSON blob keyed
 'spotify_user_token'. Access token is auto-refreshed from refresh_token.
 """
 
-import os
 import json
 import base64
+import sqlite3
 import time
 import hashlib
 import secrets
@@ -16,57 +16,28 @@ import urllib.parse
 import urllib.error
 from typing import Optional
 
+import logging
+
 from backend.core.cache import ttl_cached
+from backend.core.config import (
+    SPOTIFY_CLIENT_ID,
+    SPOTIFY_CLIENT_SECRET,
+    SPOTIFY_REDIRECT_URI,
+)
+import backend.core.crypto as crypto
+
+logger = logging.getLogger(__name__)
 
 _TOKEN_KEY = "spotify_user_token"
 _PROFILE_KEY = "spotify_user_profile"
 
 
-# ---- Env helpers ----
-
-def _load_env_credentials() -> tuple[Optional[str], Optional[str]]:
-    client_id = os.environ.get("SPOTIFY_CLIENT_ID")
-    client_secret = os.environ.get("SPOTIFY_CLIENT_SECRET")
-    if client_id and client_secret:
-        return client_id, client_secret
-    project_root = os.path.dirname(os.path.dirname(os.path.dirname(
-        os.path.abspath(__file__))))
-    env_path = os.path.join(project_root, ".env")
-    if os.path.exists(env_path):
-        with open(env_path) as f:
-            for line in f:
-                line = line.strip()
-                if not line or line.startswith("#") or "=" not in line:
-                    continue
-                k, v = line.split("=", 1)
-                k, v = k.strip(), v.strip().strip('"').strip("'")
-                if k == "SPOTIFY_CLIENT_ID":
-                    client_id = v
-                elif k == "SPOTIFY_CLIENT_SECRET":
-                    client_secret = v
-    return client_id, client_secret
-
-
 def get_client_id() -> Optional[str]:
-    cid, _ = _load_env_credentials()
-    return cid
+    return SPOTIFY_CLIENT_ID or None
 
 
 def get_redirect_uri() -> str:
-    uri = os.environ.get("SPOTIFY_REDIRECT_URI")
-    if uri:
-        return uri
-    # Fallback: read from .env file (uvicorn doesn't auto-load .env into os.environ)
-    project_root = os.path.dirname(os.path.dirname(os.path.dirname(
-        os.path.abspath(__file__))))
-    env_path = os.path.join(project_root, ".env")
-    if os.path.exists(env_path):
-        with open(env_path) as f:
-            for line in f:
-                line = line.strip()
-                if line.startswith("SPOTIFY_REDIRECT_URI="):
-                    return line.split("=", 1)[1].strip().strip('"').strip("'")
-    return "http://localhost:5173/api/spotify/auth/callback"
+    return SPOTIFY_REDIRECT_URI
 
 
 # ---- Client Credentials (app-level) ----
@@ -74,10 +45,9 @@ def get_redirect_uri() -> str:
 @ttl_cached(3500)
 def get_client_credentials_token() -> Optional[str]:
     """Get Spotify client_credentials token, TTL-cached ~58 minutes."""
-    client_id, client_secret = _load_env_credentials()
-    if not client_id or not client_secret:
+    if not SPOTIFY_CLIENT_ID or not SPOTIFY_CLIENT_SECRET:
         return None
-    auth_b64 = base64.b64encode(f"{client_id}:{client_secret}".encode()).decode()
+    auth_b64 = base64.b64encode(f"{SPOTIFY_CLIENT_ID}:{SPOTIFY_CLIENT_SECRET}".encode()).decode()
     req = urllib.request.Request(
         "https://accounts.spotify.com/api/token",
         data=urllib.parse.urlencode({"grant_type": "client_credentials"}).encode(),
@@ -179,16 +149,29 @@ def _load_user_token_json(conn) -> Optional[dict]:
         return None
     if not row:
         return None
+    raw = row[0]
+    if crypto.is_encrypted(raw):
+        try:
+            return json.loads(crypto.decrypt(raw))
+        except (json.JSONDecodeError, Exception):
+            return None
+    # Legacy plaintext — auto-migrate to encrypted storage
     try:
-        return json.loads(row[0])
+        token_data = json.loads(raw)
+        try:
+            _save_user_token_json(conn, token_data)
+        except sqlite3.OperationalError:
+            pass  # Read-only connection (e.g., tests) — will migrate on next write
+        return token_data
     except json.JSONDecodeError:
         return None
 
 
 def _save_user_token_json(conn, token_data: dict) -> None:
+    encrypted = crypto.encrypt(json.dumps(token_data))
     conn.execute(
         "INSERT OR REPLACE INTO settings(key, value) VALUES (?, ?)",
-        (_TOKEN_KEY, json.dumps(token_data)),
+        (_TOKEN_KEY, encrypted),
     )
     conn.commit()
 
@@ -222,6 +205,7 @@ def get_user_access_token(conn) -> Optional[str]:
 
     refreshed = _refresh_user_token(data["refresh_token"])
     if not refreshed:
+        logger.warning("Spotify user token refresh failed")
         return None
 
     new_data = {

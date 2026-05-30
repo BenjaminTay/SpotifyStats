@@ -5,6 +5,7 @@ from fastapi.responses import RedirectResponse
 from sqlite3 import Connection
 
 from backend.dependencies import get_conn
+from backend.core.auth import require_auth
 from backend.services.spotify_auth import (
     begin_oauth_flow,
     complete_oauth_flow,
@@ -26,8 +27,8 @@ router = APIRouter(prefix="/spotify/auth", tags=["Spotify Auth"])
 
 
 def _get_frontend_origin() -> str:
-    import os
-    return os.environ.get("FRONTEND_ORIGIN", "http://localhost:5173")
+    from backend.core.config import FRONTEND_ORIGIN
+    return FRONTEND_ORIGIN
 
 
 @router.get("/login")
@@ -61,7 +62,7 @@ def spotify_status(conn: Connection = Depends(get_conn)):
 
 
 @router.delete("/disconnect")
-def spotify_disconnect():
+def spotify_disconnect(auth: None = Depends(require_auth)):
     """Disconnect Spotify and remove stored tokens."""
     from backend.core.db import get_db
     write_conn = get_db(readonly=False)
@@ -73,7 +74,7 @@ def spotify_disconnect():
 
 
 @router.post("/sync")
-def spotify_sync():
+def spotify_sync(auth: None = Depends(require_auth)):
     """Fetch saved tracks from Spotify API and backfill added_date."""
     from backend.core.db import get_db
     write_conn = get_db(readonly=False)
@@ -108,7 +109,7 @@ def spotify_playing(conn: Connection = Depends(get_conn)):
 
 
 @router.post("/sync-all")
-def spotify_sync_all():
+def spotify_sync_all(auth: None = Depends(require_auth)):
     """Fetch and persist all available Spotify data (profile, top items, recently played)."""
     from backend.core.db import get_db
     write_conn = get_db(readonly=False)

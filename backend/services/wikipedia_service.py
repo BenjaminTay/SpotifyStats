@@ -1,7 +1,6 @@
 """Wikipedia enrichment service — fetch album/artist/track info from Wikipedia."""
 
 import json
-import os
 import re
 import sqlite3
 import time
@@ -22,20 +21,9 @@ def _get_proxy():
     global PROXY
     if PROXY is not None:
         return PROXY
-    # Check environment first (runtime), then .env file
-    PROXY = os.environ.get("https_proxy") or os.environ.get("HTTPS_PROXY") or os.environ.get("http_proxy")
-    if PROXY:
-        return PROXY
-    env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
-        os.path.abspath(__file__)))), ".env")
-    if os.path.exists(env_path):
-        with open(env_path) as f:
-            for line in f:
-                line = line.strip()
-                if line.startswith("https_proxy=") or line.startswith("HTTPS_PROXY="):
-                    PROXY = line.split("=", 1)[1].strip().strip('"').strip("'")
-                    return PROXY
-    return None
+    from backend.core.config import HTTPS_PROXY, HTTP_PROXY
+    PROXY = HTTPS_PROXY or HTTP_PROXY
+    return PROXY or None
 
 
 def _urlopen(url, timeout=15, retries=3):

@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlite3 import Connection
 from pydantic import BaseModel
 
+from backend.core.auth import require_auth
 from backend.core.version_merge import (
     get_all_groups,
     get_group_members,
@@ -97,7 +98,7 @@ def album_types(album_ids: str = Query(..., description="Comma-separated album I
 # ── Mutation endpoints ────────────────────────────────────────────────────
 
 @router.post("/groups")
-def create_new_group(body: CreateGroupRequest):
+def create_new_group(body: CreateGroupRequest, auth: None = Depends(require_auth)):
     """Manually create a release group."""
     group_id = create_group(
         canonical_name=body.canonical_name,
@@ -111,21 +112,21 @@ def create_new_group(body: CreateGroupRequest):
 
 
 @router.put("/groups/{group_id}/members")
-def update_members(group_id: int, body: UpdateMembersRequest):
+def update_members(group_id: int, body: UpdateMembersRequest, auth: None = Depends(require_auth)):
     """Add or remove members from a release group."""
     ok = update_group_members(group_id, body.add_ids, body.remove_ids)
     return {"status": "ok" if ok else "error"}
 
 
 @router.put("/groups/{group_id}/primary")
-def set_primary_album(group_id: int, body: SetPrimaryRequest):
+def set_primary_album(group_id: int, body: SetPrimaryRequest, auth: None = Depends(require_auth)):
     """Change the primary album of a release group."""
     ok = set_primary(group_id, body.album_id)
     return {"status": "ok" if ok else "error"}
 
 
 @router.delete("/groups/{group_id}")
-def remove_group(group_id: int):
+def remove_group(group_id: int, auth: None = Depends(require_auth)):
     """Delete a release group and its member relationships."""
     ok = delete_group(group_id)
     return {"status": "ok" if ok else "error"}
@@ -136,6 +137,7 @@ def remove_group(group_id: int):
 @router.post("/detect")
 def run_detection(
     overlap_threshold: float = Query(default=0.4, ge=0.1, le=1.0),
+    auth: None = Depends(require_auth),
 ):
     """Auto-detect release groups by album name suffix + track overlap + superset."""
     result = detect_release_groups(overlap_threshold=overlap_threshold)
@@ -145,7 +147,7 @@ def run_detection(
 
 
 @router.post("/apply")
-def apply_detection(detection_result: dict):
+def apply_detection(detection_result: dict, auth: None = Depends(require_auth)):
     """Apply detected release groups to the database."""
     df = pd.DataFrame(detection_result.get("confirmed_groups", []))
     if df.empty:

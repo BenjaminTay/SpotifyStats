@@ -89,13 +89,13 @@ class LLMProfileResponse(BaseModel):
 
 
 class LLMProfileDetailResponse(BaseModel):
-    """A saved LLM profile with full details including API key."""
+    """A saved LLM profile with full details. API key is never returned — use has_llm_key instead."""
     id: int
     profile_name: str
     llm_provider: str = "deepseek"
     llm_model: str = ""
-    llm_api_key: str = ""
     llm_base_url: str = ""
+    has_llm_key: bool = False
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
 

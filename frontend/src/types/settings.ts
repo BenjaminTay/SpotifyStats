@@ -130,8 +130,8 @@ export interface LLMProfile {
 }
 
 export interface LLMProfileDetail extends LLMProfile {
-  llm_api_key: string
   llm_base_url: string
+  has_llm_key: boolean
 }
 
 export interface LLMProfileCreatePayload {

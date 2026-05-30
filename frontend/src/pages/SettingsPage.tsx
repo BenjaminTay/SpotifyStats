@@ -736,8 +736,10 @@ function LLMTranslationSection({
   profiles,
   onFetchProfiles,
   onGetProfileDetail,
+  onApplyProfile,
   onCreateProfile,
   onDeleteProfile,
+  onRefetch,
 }: {
   settings: { llm_enabled: boolean; llm_provider: string; llm_model: string }
   onUpdate: (p: SettingsUpdatePayload) => void
@@ -747,8 +749,10 @@ function LLMTranslationSection({
   profiles: LLMProfile[]
   onFetchProfiles: () => Promise<LLMProfile[]>
   onGetProfileDetail: (profileId: number) => Promise<LLMProfileDetail>
+  onApplyProfile: (profileId: number) => Promise<{ status: string; profile_id: number }>
   onCreateProfile: (payload: LLMProfileCreatePayload) => Promise<{ id: number; status: string }>
   onDeleteProfile: (profileId: number) => Promise<{ status: string }>
+  onRefetch: () => void
 }) {
   const [notice, setNotice] = useState(false)
   const [apiKeyInput, setApiKeyInput] = useState('')
@@ -800,10 +804,8 @@ function LLMTranslationSection({
         llm_provider: detail.llm_provider,
         llm_model: detail.llm_model,
       })
-      // Auto-save API key from profile to current settings
-      if (detail.llm_api_key) {
-        onUpdateApiKey(detail.llm_api_key, detail.llm_base_url || undefined)
-      }
+      // Apply profile config server-side — key never transits through frontend
+      onApplyProfile(profileId).then(() => onRefetch())
       setApiKeyInput('')
       setBaseUrlInput(detail.llm_base_url || '')
     })
@@ -1675,6 +1677,7 @@ export function SettingsPage() {
     spotifySync,
     fetchProfiles,
     getProfileDetail,
+    applyProfile,
     createProfile,
     deleteProfile,
   } = useSettings()
@@ -1816,8 +1819,10 @@ export function SettingsPage() {
         profiles={profiles}
         onFetchProfiles={fetchProfiles}
         onGetProfileDetail={getProfileDetail}
+        onApplyProfile={applyProfile}
         onCreateProfile={createProfile}
         onDeleteProfile={deleteProfile}
+        onRefetch={refetch}
       />
     </div>
   )

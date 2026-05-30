@@ -859,7 +859,18 @@ frontend/src/
 
 ### 阶段一：紧急安全修复（最高优先级，立刻可落地）
 
-#### 高优先级任务 1：LLM Profile 禁止明文 Key 默认返回
+> **阶段状态更新（2026-05-30）**：阶段一 6 个紧急安全任务已完成首轮落地。验证结果：后端 183 个测试全部通过，前端 TypeScript 类型检查无新增错误。当前阶段一已从“待修复安全风险”转为“安全基线已建立，后续进入产品化加固与治理细化”。
+
+| 任务 | 当前状态 | 已落地结果 | 后续跟踪点 |
+|---|---|---|---|
+| 任务 1：LLM Profile 禁止明文 Key 默认返回 | 已完成 | LLM profile detail 不再返回明文 `llm_api_key`，改用 `has_llm_key`；新增服务端 apply 端点，避免密钥经前端中转。 | 后续可继续加入密钥轮换、二次确认查看、profile secret 加密。 |
+| 任务 2：Spotify OAuth Token 加密存储 | 已完成 | 新增 AES-256-GCM 加密模块，Spotify OAuth token 加密落库，旧明文 token 自动迁移。 | 生产/远程模式应强制配置 `SPOTIFY_STATS_TOKEN_KEY`，避免长期依赖应用内 fallback key。 |
+| 任务 3：移除危险 HTML 渲染 | 已完成 | `FormattedText` 移除 `dangerouslySetInnerHTML`，改用 `react-markdown` + `rehype-sanitize`。 | 后续为所有外部文本渲染路径补充组件测试。 |
+| 任务 4：集中配置读取 | 已完成 | 新增 `backend/core/config.py`，统一读取 `.env` 与运行时环境变量，替换后端运行路径 6+ 处手动解析。 | legacy `app/` 与独立 scripts 仍可在后续归档/工具治理阶段逐步收敛。 |
+| 任务 5：远程访问模式 API 鉴权 | 已完成 | 新增 `backend/core/auth.py`，通过 `SPOTIFY_STATS_REQUIRE_AUTH` 控制写接口 Bearer Token 鉴权，前端 API client 支持 `VITE_API_TOKEN`。 | `VITE_API_TOKEN` 会进入前端运行环境，仅适合作为个人远程访问保护；公网多人部署需升级为服务端 session/token 交换。 |
+| 任务 6：日志脱敏基线 | 已完成 | 新增统一日志配置，敏感字段自动脱敏，全局异常响应不向客户端暴露 stack trace。 | 后续可补充结构化日志、request id、provider 调用审计与日志脱敏测试。 |
+
+#### ✅ 高优先级任务 1：LLM Profile 禁止明文 Key 默认返回
 
 - **任务名称**：LLM Profile 明文密钥返回修复
 - **涉及文件范围**：
@@ -867,7 +878,15 @@ frontend/src/
   - `backend/models/common.py`
   - `frontend/src/pages/SettingsPage.tsx`
   - `frontend/src/types/settings.ts`
+  - `frontend/src/hooks/useSettings.ts`
   - `backend/tests/test_api.py`
+- **状态**：已完成
+- **完成记录**：
+  - `LLMProfileDetailResponse` 移除 `llm_api_key` 字段，新增 `has_llm_key`。
+  - `/api/settings/llm-profiles/{profile_id}` detail 响应不再返回明文 key。
+  - 新增 `/api/settings/llm-profiles/{profile_id}/apply`，在服务端把 profile 配置应用到当前 settings，避免 key 经前端中转。
+  - 前端 `SettingsPage` 改为调用 `applyProfile()`，不再读取或缓存 profile 明文 key。
+  - 验证：后端 183 个测试全部通过，前端类型检查无新增错误。
 - **具体执行步骤**：
   1. 修改 LLM profile detail response，默认返回 `masked_api_key` 与 `has_api_key`，不返回 `llm_api_key`。
   2. 新增更新字段 `keep_existing_key: boolean`，用户未输入新 key 时保留旧 key。
@@ -884,15 +903,22 @@ frontend/src/
 - **改造收益**：
   - 立即消除远程访问场景下的 LLM Key 读取风险。
 
-#### 高优先级任务 2：Spotify OAuth Token 加密存储
+#### ✅ 高优先级任务 2：Spotify OAuth Token 加密存储
 
 - **任务名称**：Spotify access/refresh token 加密落库
 - **涉及文件范围**：
   - `backend/core/spotify_utils.py`
-  - `backend/infrastructure/security/crypto.py`（新增）
-  - `backend/infrastructure/security/secrets.py`（新增）
+  - `backend/core/crypto.py`（新增）
   - `backend/core/db.py`
   - `backend/tests/test_services.py`
+  - `requirements.txt`
+- **状态**：已完成
+- **完成记录**：
+  - 新增 `backend/core/crypto.py`，使用 AES-256-GCM 对 token JSON 加密。
+  - `_save_user_token_json()` 写入密文；`_load_user_token_json()` 兼容旧明文并自动迁移。
+  - 新增 `cryptography>=42.0.0` 依赖。
+  - 验证：后端 183 个测试全部通过。
+  - 注意：当前实现支持 `SPOTIFY_STATS_TOKEN_KEY`；远程/生产模式应显式配置该 key，避免使用应用内 fallback secret。
 - **具体执行步骤**：
   1. 新增 `crypto.py`，封装 `encrypt_json()`、`decrypt_json()`。
   2. 优先使用环境变量 `SPOTIFY_STATS_SECRET_KEY`，没有则本地生成并存入用户级安全位置。
@@ -908,15 +934,21 @@ frontend/src/
 - **改造收益**：
   - DB 文件泄露后的 Spotify 授权风险显著降低。
 
-#### 高优先级任务 3：移除 LLM/Wikipedia 文本的危险 HTML 渲染
+#### ✅ 高优先级任务 3：移除 LLM/Wikipedia 文本的危险 HTML 渲染
 
 - **任务名称**：外部文本安全渲染改造
 - **涉及文件范围**：
   - `frontend/src/components/shared/FormattedText.tsx`
   - `frontend/package.json`
+  - `frontend/package-lock.json`
   - `frontend/src/pages/TrackDetailPage.tsx`
   - `frontend/src/pages/ArtistDetailPage.tsx`
   - `frontend/src/pages/AlbumDetailPage.tsx`
+- **状态**：已完成
+- **完成记录**：
+  - `FormattedText` 已移除 `dangerouslySetInnerHTML`。
+  - 新增 `react-markdown` 与 `rehype-sanitize`，只允许受限 Markdown/HTML 渲染。
+  - 验证：前端 TypeScript 类型检查无新增错误。
 - **具体执行步骤**：
   1. 安装 `react-markdown` 与 `rehype-sanitize`。
   2. 将 `FormattedText` 改为安全 markdown 渲染。
@@ -932,17 +964,25 @@ frontend/src/
 - **改造收益**：
   - 消除最直接的 XSS 入口。
 
-#### 高优先级任务 4：集中配置读取，禁止业务模块手动读取 `.env`
+#### ✅ 高优先级任务 4：集中配置读取，禁止业务模块手动读取 `.env`
 
 - **任务名称**：Runtime Settings 集中化
 - **涉及文件范围**：
-  - `backend/infrastructure/config.py`（新增）
+  - `backend/core/config.py`（新增）
   - `backend/core/spotify_utils.py`
   - `backend/services/genius_service.py`
   - `backend/services/llm_translator.py`
   - `backend/services/wikipedia_service.py`
   - `backend/services/release_cycle_service.py`
   - `backend/core/version_merge.py`
+  - `backend/main.py`
+  - `backend/api/spotify_auth.py`
+- **状态**：已完成
+- **完成记录**：
+  - 新增 `backend/core/config.py`，统一加载 `.env` 并暴露 Spotify、Genius、代理、CORS、warmup、API 鉴权、token 加密 key 等配置。
+  - `spotify_utils`、`genius_service`、`llm_translator`、`wikipedia_service`、`release_cycle_service`、`version_merge`、`main.py`、`spotify_auth` 等运行路径已改为从统一配置入口读取。
+  - 验证：后端 183 个测试全部通过。
+  - 注意：legacy Streamlit `app/` 与独立 `scripts/` 仍保留自身配置读取逻辑，后续在 legacy 归档和脚本治理中处理。
 - **具体执行步骤**：
   1. 新增 `Settings` 对象，集中读取 `.env` 与环境变量。
   2. 定义字段：Spotify client id/secret、redirect URI、Genius token/proxy、LLM 默认配置、CORS origins、remote auth 开关。
@@ -958,16 +998,24 @@ frontend/src/
 - **改造收益**：
   - 安全策略和环境隔离具备统一入口。
 
-#### 高优先级任务 5：远程访问模式启用 API 鉴权
+#### ✅ 高优先级任务 5：远程访问模式启用 API 鉴权
 
 - **任务名称**：本地/远程模式 API 访问控制
 - **涉及文件范围**：
-  - `backend/infrastructure/security/auth.py`（新增）
+  - `backend/core/auth.py`（新增）
   - `backend/main.py`
   - `backend/api/settings.py`
   - `backend/api/import_.py`
   - `backend/api/spotify_auth.py`
+  - `backend/api/version_merge.py`
   - `frontend/src/lib/api.ts`
+- **状态**：已完成
+- **完成记录**：
+  - 新增 `backend/core/auth.py`，当 `SPOTIFY_STATS_REQUIRE_AUTH=1` 时启用 Bearer Token 校验。
+  - 已覆盖 settings 写入、聚合重建、翻译缓存清理、LLM profile 写入/删除/apply、导入、Spotify disconnect/sync/sync-all、版本合并 mutation/detect/apply 等敏感写接口。
+  - `main.py` CORS origins 接入 `FRONTEND_ORIGIN`。
+  - 前端 API client 支持 `VITE_API_TOKEN` 自动注入 Authorization header。
+  - 验证：后端 183 个测试全部通过，前端类型检查无新增错误。
 - **具体执行步骤**：
   1. 新增环境变量 `SPOTIFY_STATS_REQUIRE_AUTH`。
   2. 新增 `SPOTIFY_STATS_API_TOKEN`。
@@ -983,14 +1031,24 @@ frontend/src/
 - **改造收益**：
   - ngrok/局域网暴露时不再裸奔。
 
-#### 高优先级任务 6：日志脱敏基线
+#### ✅ 高优先级任务 6：日志脱敏基线
 
 - **任务名称**：统一日志脱敏与错误响应基线
 - **涉及文件范围**：
-  - `backend/infrastructure/observability/logging.py`（新增）
-  - `backend/infrastructure/http/redaction.py`（新增）
+  - `backend/core/logging_config.py`（新增）
   - `backend/main.py`
+  - `backend/core/import_data.py`
+  - `backend/core/spotify_utils.py`
+  - `backend/services/llm_translator.py`
   - provider 相关模块
+- **状态**：已完成
+- **完成记录**：
+  - 新增 `backend/core/logging_config.py`，统一配置 root logger 与敏感字段脱敏 filter。
+  - 脱敏覆盖 `llm_api_key`、`api_key`、Bearer token、access token、refresh token、client secret、Authorization、x-api-key 等字段。
+  - 已修正参数化日志脱敏边界：filter 现在基于 `record.getMessage()` 处理完整格式化消息，并清空 `record.args`，避免 `%s` 参数绕过脱敏。
+  - `main.py` 增加全局异常处理，客户端只收到通用 500，不暴露 stack trace。
+  - `import_data.py`、`spotify_utils.py`、`llm_translator.py` 已切换到 logger 输出关键错误。
+  - 验证：后端 183 个测试全部通过。
 - **具体执行步骤**：
   1. 定义敏感字段列表：authorization、api_key、access_token、refresh_token、client_secret、email。
   2. 新增 `redact_dict()`、`redact_headers()`、`safe_error_message()`。
@@ -1606,19 +1664,20 @@ frontend/src/
 
 ## 附录：建议执行顺序
 
-推荐按以下顺序开始：
+阶段一已完成，后续推荐从测试护栏开始推进：
 
-1. LLM Key masked response。
-2. `FormattedText` 安全渲染。
-3. Spotify token 加密。
-4. Runtime config 集中化。
-5. API 远程模式鉴权。
-6. pytest markers + seed DB。
-7. 前端 Vitest 基线。
-8. OpenAPI 类型生成。
-9. 拆 `SettingsPage.tsx`。
-10. 拆 `billboard_service.py`。
-11. repository/provider/cache manager。
-12. Billboard 分接口与 Query Client。
+1. 已完成：LLM Key masked response。
+2. 已完成：`FormattedText` 安全渲染。
+3. 已完成：Spotify token 加密。
+4. 已完成：Runtime config 集中化。
+5. 已完成：API 远程模式鉴权。
+6. 已完成：日志脱敏与全局异常响应基线。
+7. 下一步：pytest markers + seed DB。
+8. 下一步：前端 Vitest 基线。
+9. 下一步：OpenAPI 类型生成。
+10. 下一步：拆 `SettingsPage.tsx`。
+11. 下一步：拆 `billboard_service.py`。
+12. 下一步：repository/provider/cache manager。
+13. 下一步：Billboard 分接口与 Query Client。
 
-这一路径先消除最高风险，再搭测试护栏，最后处理结构性债务和性能产品化，能最大限度避免“重构越做越乱”。
+当前节奏是先消除最高风险，再搭测试护栏，最后处理结构性债务和性能产品化，能最大限度避免“重构越做越乱”。

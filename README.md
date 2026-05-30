@@ -6,6 +6,8 @@
 
 **架构**：FastAPI 后端 + React 前端（Dashboard、stats.fm 风格播放统计、Billboard 周榜、每周榜首、总榜、榜单记录、全局音乐实体详情页含个人播放统计 / Billboard 成绩 / Genius 歌词 / Wikipedia 百科、账号中心含收藏分析与音乐习惯、设置页面含 LLM 配置档案持久化管理）。Streamlit 原有应用仍可运行。
 
+**安全**：Spotify OAuth Token AES-256-GCM 加密存储（含旧明文自动迁移）、LLM API Key 服务端管理永不对前端返回明文、外部文本通过 react-markdown + rehype-sanitize 安全渲染消除 XSS 风险、远程模式支持 Bearer Token 接口鉴权、日志自动脱敏敏感字段、全局异常不泄露 stack trace。
+
 **性能优化**：后端启动后后台预热默认 Dashboard/Analysis/Billboard 缓存，大响应启用 gzip，Billboard 全量计算使用 normalized cache key + single-flight 避免重复冷算，播放统计使用参数化结果缓存。前端使用路由级 lazy 分包、共享 in-flight request、延迟预取常用数据；ECharts 与 OpenCC 按需动态加载，减少首次打开页面的静态下载量。
 
 ## 功能
@@ -16,7 +18,7 @@
 - **Billboard 周榜**（12 个子 Tab）— 周榜（单曲/专辑/艺人，支持快速切周、截至当周滚动统计）、每周榜首、单曲历史（含升降列、断档 RE 标记）、艺人榜单、专辑榜单（含版本合并）、走势总榜（Power Score 三维度）、歌曲/艺人/专辑总榜、榜单记录（6 大展区 37 项记录，灵感来自 Billboard Chart Beat / Guinness World Records）、对决（歌曲/专辑/艺人）、发行周期分析（先行曲识别、单曲榜排名线、艺人总览/专辑下钻/多发行对比）
 - **全局音乐实体详情** — `/music/tracks/*`、`/music/albums/*`、`/music/artists/*` 独立于 Billboard，整合个人播放统计、Billboard 成绩、Genius 歌词、Wikipedia 百科、发行周期等内容；旧 `/billboard/track|album|artist/*` 自动跳转
 - **账号中心**（2 个子 Tab）— 你的收藏（收藏纵览含生命周期趋势图 + 化学反应含封面轮播 + 品味迁徙含 jieba 分词 TF-IDF 关键词权重 + Flip Side 未收藏高频曲目 + 双厨时刻 + 排行榜含播放量）+ 你的习惯（听歌人格识别 + 搜索编年史含热度时段图 + 粉丝层级含超级粉丝卡片 + 播客聆听 + 推广转化含封面按转化率排序 + 视频分析含 Top 视频曲目）
-- **设置** — 集中管理所有参数：Spotify OAuth 连接（10 个 scope 全覆盖：收藏、档案、top 排行、播放历史、关注艺人、播放列表、实时播放状态）+ 数据同步；数据过滤（最短播放时长/仅音乐/合并连续播放/中文简繁转换）、LLM 翻译与百科结构化（多提供商 API Key 配置 + 命名档案保存/切换）、Billboard 上榜数量与统计周期、专辑版本合并（自动检测/手动创建/已保存组管理）、数据导入（异步进度轮询）
+- **设置** — 集中管理所有参数：Spotify OAuth 连接（10 个 scope 全覆盖：收藏、档案、top 排行、播放历史、关注艺人、播放列表、实时播放状态）+ 数据同步；数据过滤（最短播放时长/仅音乐/合并连续播放/中文简繁转换）、LLM 翻译与百科结构化（多提供商 API Key 服务端管理 + 命名档案保存/一键应用，前端永不接触明文 Key）、Billboard 上榜数量与统计周期、专辑版本合并（自动检测/手动创建/已保存组管理）、数据导入（异步进度轮询）；远程模式支持 Bearer Token 接口鉴权
 - **Spotify Web API 集成** — OAuth PKCE 授权获取用户数据回填和增强：收藏日期回填（`saved_tracks.added_date`）、个人档案（昵称/头像/邮箱/会员类型/国家/粉丝数）、Top 艺人/曲目 × 3 时间窗口（short/medium/long term，含 popularity 和 genres）、最近 50 首播放 + 精确时间戳、32 个播放列表、实时播放状态（当前播放曲目）
 
 ## 快速开始
@@ -98,6 +100,8 @@ pytest backend/tests/ --durations=20 -q
 - **Pandas** — 数据聚合处理
 - **Pydantic** — API 响应模型与数据校验
 - **Pytest** — 后端测试框架（183 个测试，覆盖 API 和 Service 层，session 级缓存预热减少重复冷算）
+- **cryptography** — AES-256-GCM 加密（Spotify OAuth Token 安全存储）
+- **python-dotenv** — 集中环境变量管理（消除多处重复 .env 解析）
 
 ## 项目结构
 
@@ -162,11 +166,15 @@ SpotifyStats/
 │   │   ├── behavior.py                 # 行为分析 + 听歌时段
 │   │   └── wrapped.py                  # 年度总结完整响应模型
 │   ├── core/                           # 核心工具（从 app/ 原样迁移）
+│   │   ├── config.py                   # 集中配置管理（python-dotenv 统一加载所有环境变量）
+│   │   ├── crypto.py                   # AES-256-GCM 加密模块（Spotify Token 落库加密 + 旧明文自动迁移）
+│   │   ├── auth.py                     # API 鉴权依赖（远程模式 Bearer Token 校验）
+│   │   ├── logging_config.py           # 统一日志配置（敏感字段正则脱敏 + 全局异常不泄露 stack trace）
 │   │   ├── db.py                       # SQLite 连接 + base_filters + load_plays + merge_consecutive_plays
 │   │   ├── utils.py                    # 时区转换 + 平台分类
 │   │   ├── json_helpers.py             # numpy/pandas → JSON 安全序列化
 │   │   ├── cache.py                    # TTL 缓存装饰器 + single-flight
-│   │   ├── spotify_utils.py             # Spotify Web API 核心工具（PKCE + Token 持久化 + 自动刷新 + 10 scope 全覆盖数据拉取 + 全量同步）
+│   │   ├── spotify_utils.py            # Spotify Web API 核心工具（PKCE + Token 加密持久化 + 自动刷新 + 10 scope 全覆盖数据拉取 + 全量同步）
 │   │   ├── warmup.py                   # 后端启动缓存预热（Dashboard/Analysis/Billboard）
 │   │   ├── genius/                     # Genius API 客户端（lyricsgenius 封装 + 歌词清洗）
 │   │   ├── import_data.py              # 串流数据 ETL
@@ -255,7 +263,7 @@ artists ──< albums ──< tracks ──< plays
 - Billboard 专辑榜自动排除 `album_type = 'single'` 的发行（单曲不是专辑）
 - `albums` / `artists` 表新增 `image_url`（Spotify CDN URL）和 `image_path`（本地缓存路径）列，封面通过智能端点 `/covers/{type}/{id}.jpg` 三级回退（本地缓存 → CDN 重定向 + 后台下载 → 404）
 - `track_lyrics` 表缓存 Genius 歌词（`track_id` PRIMARY KEY，`lyrics_text` / `genius_url` / `genius_song_id`），按需获取、永久有效
-- `settings` 表（KV 存储）持久化应用设置、LLM 配置档案，以及 Spotify OAuth Token + 用户档案（`spotify_user_token` / `spotify_user_profile` JSON blob）+ Top 艺人/曲目 × 6（`spotify_top_*`）+ 最近播放（`spotify_recently_played`）+ 关注艺人（`spotify_followed_artists`）+ 播放列表（`spotify_playlists`），服务重启后自动恢复
+- `settings` 表（KV 存储）持久化应用设置、LLM 配置档案，以及 Spotify OAuth Token + 用户档案（AES-256-GCM 加密存储，旧明文自动迁移）+ Top 艺人/曲目 × 6（`spotify_top_*`）+ 最近播放（`spotify_recently_played`）+ 关注艺人（`spotify_followed_artists`）+ 播放列表（`spotify_playlists`），服务重启后自动恢复
 - `wikipedia_cache` 表缓存 Wikipedia 百科扩展数据，避免重复 API 调用
 - 账号数据独立存储于 `saved_tracks`/`saved_albums`/`saved_artists`/`playlists`/`search_queries`/`podcast_plays`/`user_profile` 等表中
 

@@ -1,3 +1,6 @@
+import ReactMarkdown from "react-markdown"
+import rehypeSanitize from "rehype-sanitize"
+
 interface FormattedTextProps {
   text: string
   className?: string
@@ -5,22 +8,22 @@ interface FormattedTextProps {
 
 /**
  * Renders LLM-translated text with **bold** and *italic* markdown.
- * Safe to use — text comes from our own LLM translation pipeline, not user input.
+ * Uses react-markdown with rehype-sanitize to prevent XSS — no
+ * dangerouslySetInnerHTML. Only allows p/strong/em/br elements.
  */
 export function FormattedText({ text, className }: FormattedTextProps) {
   if (!text) return null
 
-  // Convert markdown to HTML
-  const html = text
-    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-    .replace(/\*(.+?)\*/g, '<em>$1</em>')
-    // Preserve paragraph breaks
-    .replace(/\n\n/g, '</p><p class="mt-3">')
-
   return (
-    <p
-      className={className}
-      dangerouslySetInnerHTML={{ __html: html }}
-    />
+    <ReactMarkdown
+      rehypePlugins={[rehypeSanitize]}
+      allowedElements={["p", "strong", "em", "br"]}
+      unwrapDisallowed={true}
+      components={{
+        p: ({ children }) => <p className={className}>{children}</p>,
+      }}
+    >
+      {text}
+    </ReactMarkdown>
   )
 }

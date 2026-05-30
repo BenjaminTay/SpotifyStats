@@ -6,6 +6,14 @@ interface RequestOptions {
   params?: Record<string, string | number | boolean>
 }
 
+function _headers(body: unknown): HeadersInit | undefined {
+  const headers: Record<string, string> = {}
+  const apiToken = import.meta.env.VITE_API_TOKEN
+  if (apiToken) headers['Authorization'] = `Bearer ${apiToken}`
+  if (body !== undefined) headers['Content-Type'] = 'application/json'
+  return Object.keys(headers).length > 0 ? headers : undefined
+}
+
 async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const url = new URL(`${BASE_URL}${path}`, window.location.origin)
   if (options.params) {
@@ -15,7 +23,7 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   }
   const res = await fetch(url, {
     method: options.method ?? 'GET',
-    headers: options.body !== undefined ? { 'Content-Type': 'application/json' } : undefined,
+    headers: _headers(options.body),
     body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
   })
   if (!res.ok) throw new Error(`API error: ${res.status} ${res.statusText}`)

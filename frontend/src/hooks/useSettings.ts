@@ -37,6 +37,7 @@ interface UseSettingsResult {
   // LLM profiles
   fetchProfiles: () => Promise<LLMProfile[]>
   getProfileDetail: (profileId: number) => Promise<LLMProfileDetail>
+  applyProfile: (profileId: number) => Promise<{ status: string; profile_id: number }>
   createProfile: (payload: LLMProfileCreatePayload) => Promise<LLMProfileCreateResult>
   updateProfile: (profileId: number, payload: LLMProfileUpdatePayload) => Promise<LLMProfileDetail>
   deleteProfile: (profileId: number) => Promise<{ status: string }>
@@ -114,6 +115,10 @@ export function useSettings(): UseSettingsResult {
     return api.del<{ status: string }>(`/settings/llm-profiles/${profileId}`)
   }, [])
 
+  const applyProfile = useCallback((profileId: number) => {
+    return api.post<{ status: string; profile_id: number }>(`/settings/llm-profiles/${profileId}/apply`)
+  }, [])
+
   const spotifyConnect = useCallback(() => {
     return api.get<SpotifyAuthUrl>('/spotify/auth/login')
   }, [])
@@ -179,6 +184,7 @@ export function useSettings(): UseSettingsResult {
     settings, loading, error, refetch, updateSettings, updateApiKey, clearTranslationCache, rebuildAgg,
     startStreamingImport, startAccountImport, streamingJob, accountJob,
     spotifyConnect, spotifyDisconnect, spotifySync, checkSpotifyStatus,
+    applyProfile,
     fetchProfiles, getProfileDetail, createProfile, updateProfile, deleteProfile,
   }
 }

@@ -11,6 +11,7 @@ from backend.models.common import (
     LLMProfileCreateRequest, LLMProfileUpdateRequest,
 )
 from backend.core.spotify_utils import is_user_connected, get_user_profile
+from backend.core.auth import require_auth
 
 router = APIRouter(prefix="/settings", tags=["Settings"])
 
@@ -114,7 +115,7 @@ def get_settings(conn: Connection = Depends(get_conn)):
 
 
 @router.put("")
-def update_settings(body: SettingsUpdateRequest):
+def update_settings(body: SettingsUpdateRequest, auth: None = Depends(require_auth)):
     """Update settings. Returns updated settings (API key and base_url excluded)."""
     _ensure_current()
     updates = body.dict(exclude_none=True)
@@ -132,7 +133,7 @@ def update_settings(body: SettingsUpdateRequest):
 
 
 @router.post("/rebuild-agg")
-def rebuild_aggregations(conn: Connection = Depends(get_conn)):
+def rebuild_aggregations(conn: Connection = Depends(get_conn), auth: None = Depends(require_auth)):
     """Rebuild pre-aggregated weekly Billboard tables."""
     _ensure_current()
     from backend.core.db import get_db, build_aggregations
@@ -150,7 +151,7 @@ def rebuild_aggregations(conn: Connection = Depends(get_conn)):
 
 
 @router.post("/clear-translation-cache")
-def clear_translation_cache():
+def clear_translation_cache(auth: None = Depends(require_auth)):
     """Clear all cached Wikipedia translations so they are re-translated on next visit."""
     from backend.core.db import get_db
     write_conn = get_db(readonly=False)
@@ -179,17 +180,21 @@ def list_llm_profiles(conn: Connection = Depends(get_conn)):
 
 @router.get("/llm-profiles/{profile_id}", response_model=LLMProfileDetailResponse)
 def get_llm_profile(profile_id: int, conn: Connection = Depends(get_conn)):
-    """Get a single LLM profile with full details including API key."""
+    """Get a single LLM profile. API key is never returned."""
     row = conn.execute(
-        "SELECT * FROM llm_profiles WHERE id = ?", (profile_id,)
+        "SELECT id, profile_name, llm_provider, llm_model, llm_base_url, "
+        "llm_api_key, created_at, updated_at FROM llm_profiles WHERE id = ?",
+        (profile_id,),
     ).fetchone()
     if not row:
         raise HTTPException(status_code=404, detail="Profile not found")
-    return dict(row)
+    result = dict(row)
+    result["has_llm_key"] = bool(result.pop("llm_api_key", "").strip())
+    return result
 
 
 @router.post("/llm-profiles")
-def create_llm_profile(body: LLMProfileCreateRequest):
+def create_llm_profile(body: LLMProfileCreateRequest, auth: None = Depends(require_auth)):
     """Create a new LLM profile."""
     from backend.core.db import get_db
     conn = get_db(readonly=False)
@@ -211,7 +216,7 @@ def create_llm_profile(body: LLMProfileCreateRequest):
 
 
 @router.put("/llm-profiles/{profile_id}", response_model=LLMProfileDetailResponse)
-def update_llm_profile(profile_id: int, body: LLMProfileUpdateRequest):
+def update_llm_profile(profile_id: int, body: LLMProfileUpdateRequest, auth: None = Depends(require_auth)):
     """Update an existing LLM profile."""
     from backend.core.db import get_db
     updates = body.dict(exclude_none=True)
@@ -236,17 +241,54 @@ def update_llm_profile(profile_id: int, body: LLMProfileUpdateRequest):
     read_conn = get_db()
     try:
         row = read_conn.execute(
-            "SELECT * FROM llm_profiles WHERE id = ?", (profile_id,)
+            "SELECT id, profile_name, llm_provider, llm_model, llm_base_url, "
+            "llm_api_key, created_at, updated_at FROM llm_profiles WHERE id = ?",
+            (profile_id,),
         ).fetchone()
         if not row:
             raise HTTPException(status_code=404, detail="Profile not found")
-        return dict(row)
+        result = dict(row)
+        result["has_llm_key"] = bool(result.pop("llm_api_key", "").strip())
+        return result
     finally:
         read_conn.close()
 
 
+@router.post("/llm-profiles/{profile_id}/apply")
+def apply_llm_profile(profile_id: int, auth: None = Depends(require_auth)):
+    """Apply a saved profile's configuration to current settings.
+
+    Reads provider, model, api_key, and base_url from the profile row
+    and writes them into the active settings — all server-side so the
+    API key never transits through the frontend.
+    """
+    _ensure_current()
+    from backend.core.db import get_db
+    conn = get_db()
+    try:
+        row = conn.execute(
+            "SELECT llm_provider, llm_model, llm_api_key, llm_base_url "
+            "FROM llm_profiles WHERE id = ?",
+            (profile_id,),
+        ).fetchone()
+    finally:
+        conn.close()
+    if not row:
+        raise HTTPException(status_code=404, detail="Profile not found")
+    updates = {
+        "llm_provider": row["llm_provider"],
+        "llm_model": row["llm_model"],
+        "llm_api_key": row["llm_api_key"],
+        "llm_base_url": row["llm_base_url"],
+    }
+    for key, value in updates.items():
+        _current[key] = value
+        _save_setting_to_db(key, value)
+    return {"status": "applied", "profile_id": profile_id}
+
+
 @router.delete("/llm-profiles/{profile_id}")
-def delete_llm_profile(profile_id: int):
+def delete_llm_profile(profile_id: int, auth: None = Depends(require_auth)):
     """Delete an LLM profile."""
     from backend.core.db import get_db
     conn = get_db(readonly=False)

@@ -362,8 +362,10 @@ def import_data(
             progress_callback=progress_callback,
         )
     except Exception as e:
+        import logging
         import traceback
-        print(f"[WARN] 预聚合表构建失败（Billboard 页面将使用实时计算）: {e}")
+        logger = logging.getLogger(__name__)
+        logger.warning("预聚合表构建失败（Billboard 页面将使用实时计算）: %s", e)
         traceback.print_exc()
         agg_results = {}
 

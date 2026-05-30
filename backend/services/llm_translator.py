@@ -1,7 +1,7 @@
 """LLM translation service — translate Wikipedia text using user-configured LLM."""
 
 import json
-import os
+import logging
 import re
 import time
 import urllib.error
@@ -114,24 +114,16 @@ ALBUM_ENRICH_PROMPT = """你是一位专业音乐百科编辑。请阅读以下�
 PROXY = None
 
 
+logger = logging.getLogger(__name__)
+
+
 def _get_proxy():
     global PROXY
     if PROXY is not None:
         return PROXY
-    PROXY = os.environ.get("https_proxy") or os.environ.get("HTTPS_PROXY") or os.environ.get("http_proxy")
-    if PROXY:
-        return PROXY
-    # Fall back to .env file (3 dirname from services/ to project root)
-    env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
-        os.path.abspath(__file__)))), ".env")
-    if os.path.exists(env_path):
-        with open(env_path) as f:
-            for line in f:
-                line = line.strip()
-                if line.startswith("https_proxy=") or line.startswith("HTTPS_PROXY="):
-                    PROXY = line.split("=", 1)[1].strip().strip('"').strip("'")
-                    return PROXY
-    return None
+    from backend.core.config import HTTPS_PROXY, HTTP_PROXY
+    PROXY = HTTPS_PROXY or HTTP_PROXY
+    return PROXY or None
 
 
 def _api_post(url, payload, headers, timeout=60):
@@ -287,6 +279,7 @@ def _translate_openai_compat(text, api_key, model, base_url, prompt=None):
                     results.append(content)
         except Exception:
             results.append("")
+            logger.warning("LLM translation chunk failed", exc_info=True)
 
     return "\n\n".join(results)
 
@@ -323,6 +316,7 @@ def _translate_anthropic(text, api_key, model, base_url, prompt=None):
                     results.append(content)
         except Exception:
             results.append("")
+            logger.warning("LLM translation chunk failed", exc_info=True)
 
     return "\n\n".join(results)
 
