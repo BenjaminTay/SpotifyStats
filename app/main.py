@@ -1,4 +1,15 @@
-"""Spotify Stats — Streamlit entry point and overview dashboard."""
+"""
+LEGACY MODULE — FROZEN AS OF 2026-05-30.
+
+This Streamlit application is in maintenance-only mode. No new features.
+All new development goes into FastAPI (backend/) + React (frontend/).
+
+This module reuses its own app/db, app/import_data, app/styles etc. and
+does NOT import from backend/. The two codebases share only the SQLite
+database file at data/spotify_stats.db.
+
+For migration rationale, see docs/ARCHITECTURE_OPTIMIZE.md.
+"""
 
 import os
 import sys
@@ -6,14 +17,14 @@ import sys
 # Make project root importable
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-import streamlit as st
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
+import streamlit as st
 
-from app.db import get_db, init_db, ensure_schema, base_filters, load_plays, db_exists
+from app.db import base_filters, db_exists, ensure_schema, get_db, load_plays
 from app.import_data import import_data
-from app.styles import inject_global_styles, page_header, kpi_row, PLOTLY_TEMPLATE, COLORS
+from app.styles import COLORS, PLOTLY_TEMPLATE, inject_global_styles, kpi_row, page_header
 
 st.set_page_config(
     page_title="Spotify Stats",
@@ -61,8 +72,8 @@ def render_sidebar():
             f"""
             <div style="display:flex;flex-wrap:wrap;gap:0.3rem;margin-bottom:0.75rem;">
                 <span class="sidebar-badge">⏱ {min_s}s</span>
-                <span class="sidebar-badge">{'🎶 音乐' if st.session_state.music_only else '📻 全部'}</span>
-                <span class="sidebar-badge">{'🔗 合并' if merge else '📋 独立'}</span>
+                <span class="sidebar-badge">{"🎶 音乐" if st.session_state.music_only else "📻 全部"}</span>
+                <span class="sidebar-badge">{"🔗 合并" if merge else "📋 独立"}</span>
             </div>
             """,
             unsafe_allow_html=True,
@@ -104,7 +115,7 @@ def render_sidebar():
             )
             if acct_count > 0:
                 st.markdown(
-                    f'<div style="font-size:0.75rem;color:#7D8C4E;font-weight:500;">● 账号数据已导入</div>',
+                    '<div style="font-size:0.75rem;color:#7D8C4E;font-weight:500;">● 账号数据已导入</div>',
                     unsafe_allow_html=True,
                 )
         else:
@@ -188,7 +199,6 @@ def dashboard():
     total_hours = df["ms_played"].sum() / 3_600_000
     total_tracks = df["track_id"].nunique()
     total_artists = df["artist_name"].dropna().nunique()
-    total_albums = df["album_name"].dropna().nunique()
     total_days = df["ts_date"].nunique()
     avg_daily_hours = total_hours / total_days if total_days > 0 else 0
     page_header("📊 总览仪表盘", description="全局播放数据概览")
@@ -214,12 +224,14 @@ def dashboard():
                 "SELECT COUNT(*) FROM plays WHERE content_type='video'"
             ).fetchone()[0]
             conn.close()
-            kpi_row([
-                {"label": "收藏曲目", "value": f"{stc:,}"},
-                {"label": "歌单数", "value": f"{plc}"},
-                {"label": "搜索次数", "value": f"{sc:,}"},
-                {"label": "视频播放", "value": f"{video_count:,}"},
-            ])
+            kpi_row(
+                [
+                    {"label": "收藏曲目", "value": f"{stc:,}"},
+                    {"label": "歌单数", "value": f"{plc}"},
+                    {"label": "搜索次数", "value": f"{sc:,}"},
+                    {"label": "视频播放", "value": f"{video_count:,}"},
+                ]
+            )
         else:
             conn.close()
     except Exception:
@@ -234,7 +246,9 @@ def dashboard():
         .agg(plays=("play_id", "count"), hours=("ms_played", lambda x: x.sum() / 3_600_000))
         .reset_index()
     )
-    monthly["period"] = monthly["ts_year"].astype(str) + "-" + monthly["ts_month"].astype(str).str.zfill(2)
+    monthly["period"] = (
+        monthly["ts_year"].astype(str) + "-" + monthly["ts_month"].astype(str).str.zfill(2)
+    )
     monthly = monthly.sort_values("period")
 
     fig_trend = go.Figure()
@@ -269,7 +283,12 @@ def dashboard():
         hoverlabel={"bgcolor": "#FFFFFF", "font": {"color": "#2C2416"}, "bordercolor": "#D4A84B"},
         xaxis={"gridcolor": "rgba(139,115,85,0.08)"},
         yaxis={"title": "播放次数", "gridcolor": "rgba(139,115,85,0.08)"},
-        yaxis2={"title": "小时", "overlaying": "y", "side": "right", "gridcolor": "rgba(139,115,85,0.04)"},
+        yaxis2={
+            "title": "小时",
+            "overlaying": "y",
+            "side": "right",
+            "gridcolor": "rgba(139,115,85,0.04)",
+        },
         legend={"orientation": "h", "yanchor": "bottom", "y": 1.02, "font": {"color": "#8B7355"}},
         margin={"l": 10, "r": 10, "t": 40, "b": 10},
     )
@@ -364,14 +383,18 @@ def dashboard():
 
         if random_track:
             album_name = random_track["album_name"]
-            album_line = f"<div style=\"font-size:0.8rem;color:#8B7355;\">收录于《{album_name or '未知专辑'}》</div>" if album_name else ""
+            album_line = (
+                f'<div style="font-size:0.8rem;color:#8B7355;">收录于《{album_name or "未知专辑"}》</div>'
+                if album_name
+                else ""
+            )
             st.markdown(
                 f"""<div style="background:var(--bg-card);border-left:3px solid var(--gold);padding:1rem 1.25rem;border-radius:0 8px 8px 0;">
                 <div style="font-size:0.7rem;text-transform:uppercase;letter-spacing:0.1em;color:var(--gold);margin-bottom:0.4rem;">随机推荐一首你听过的歌</div>
-                <div style="font-size:1.15rem;font-weight:700;color:#2C2416;">{random_track['track_name']}</div>
-                <div style="font-size:0.85rem;color:#8B7355;">{random_track['artist_name']}</div>
+                <div style="font-size:1.15rem;font-weight:700;color:#2C2416;">{random_track["track_name"]}</div>
+                <div style="font-size:0.85rem;color:#8B7355;">{random_track["artist_name"]}</div>
                 {album_line}
-                <div style="font-size:0.7rem;color:#A0937D;margin-top:0.5rem;">最近播放: {random_track['last_played']} · 播放 {random_track['total_plays']} 次</div>
+                <div style="font-size:0.7rem;color:#A0937D;margin-top:0.5rem;">最近播放: {random_track["last_played"]} · 播放 {random_track["total_plays"]} 次</div>
                 </div>""",
                 unsafe_allow_html=True,
             )

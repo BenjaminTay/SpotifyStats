@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from backend.core.auth import require_auth
 from backend.core.spotify_utils import get_user_profile, is_user_connected
 from backend.dependencies import get_conn
+from backend.domains.settings.repository import SettingsRepository
 from backend.models.common import (
     LLMProfileCreateRequest,
     LLMProfileDetailResponse,
@@ -20,36 +21,6 @@ from backend.models.common import (
 
 router = APIRouter(prefix="/settings", tags=["Settings"])
 
-# In-memory settings defaults (mirrors st.session_state)
-_defaults = {
-    "min_ms": 30000,
-    "music_only": True,
-    "merge_enabled": True,
-    "bb_top_n": 30,
-    "bb_album_top_n": 20,
-    "bb_artist_top_n": 20,
-    "bb_week_start_dow": 4,
-    "bb_week_start_hour": 0,
-    "llm_enabled": False,
-    "llm_provider": "deepseek",
-    "llm_model": "",
-    "llm_api_key": "",
-    "llm_base_url": "",
-}
-
-# Keys whose values need type coercion when loaded from DB (stored as strings)
-_SQLITE_TYPE_COERCION = [
-    "min_ms",
-    "music_only",
-    "merge_enabled",
-    "bb_top_n",
-    "bb_album_top_n",
-    "bb_artist_top_n",
-    "bb_week_start_dow",
-    "bb_week_start_hour",
-    "llm_enabled",
-]
-
 _current: dict | None = None
 
 
@@ -59,26 +30,8 @@ def _load_settings_from_db() -> dict:
 
     conn = get_db()
     try:
-        rows = conn.execute("SELECT key, value FROM settings").fetchall()
-        if not rows:
-            return dict(_defaults)
-        loaded = dict(_defaults)
-        for row in rows:
-            if row["key"] in loaded:
-                val = row["value"]
-                if row["key"] in _SQLITE_TYPE_COERCION:
-                    default = loaded[row["key"]]
-                    if isinstance(default, bool):
-                        val = val.lower() in ("true", "1", "yes")
-                    elif isinstance(default, int):
-                        try:
-                            val = int(val)
-                        except (ValueError, TypeError):
-                            val = default
-                loaded[row["key"]] = val
-        return loaded
-    except Exception:
-        return dict(_defaults)
+        repo = SettingsRepository(conn)
+        return repo.load_all()
     finally:
         conn.close()
 
@@ -89,11 +42,8 @@ def _save_setting_to_db(key: str, value) -> None:
 
     conn = get_db(readonly=False)
     try:
-        conn.execute(
-            "INSERT OR REPLACE INTO settings(key, value) VALUES (?, ?)",
-            (key, str(value)),
-        )
-        conn.commit()
+        repo = SettingsRepository(conn)
+        repo.update(key, value)
     finally:
         conn.close()
 

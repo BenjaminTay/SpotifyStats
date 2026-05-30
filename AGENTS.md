@@ -113,10 +113,13 @@ JSON 文件 (账号数据)  ──→ import_account_data.py ──┘
                     ┌───────────────────────────────────┘
                     │
                     ├──→ FastAPI backend (backend/)
-                    │    ├── api/      路由层 (Depends 依赖注入)
-                    │    ├── services/ 计算逻辑层 (lru_cache)
-                    │    ├── models/   Pydantic 响应模型
-                    │    └── core/     核心工具 (db, utils, cache, json_helpers)
+                    │    ├── api/           路由层 (Depends 依赖注入)
+                    │    ├── services/      计算逻辑层 (lru_cache)
+                    │    ├── domains/       领域模块 (billboard, playback, settings, enrichment)
+                    │    ├── providers/     第三方服务适配器 (spotify, genius, wikipedia, llm)
+                    │    ├── infrastructure/ 基础设施层 (http client)
+                    │    ├── models/        Pydantic 响应模型
+                    │    └── core/          核心工具 (db, utils, cache, json_helpers)
                     │
                     └──→ Streamlit app (app/)
                          st.cache_data 缓存查询结果
@@ -128,7 +131,7 @@ JSON 文件 (账号数据)  ──→ import_account_data.py ──┘
 
 ### 后端架构 (backend/)
 
-FastAPI 后端采用三层分离架构：**路由层 (api/)** → **服务层 (services/)** → **核心工具层 (core/)**。
+FastAPI 后端采用四层分离架构：**路由层 (api/)** → **服务层 (services/)** → **领域层 (domains/)** **核心工具层 (core/)**，并辅以 **基础设施层 (infrastructure/)** 和 **第三方适配层 (providers/)**。
 
 #### 路由层 (api/)
 
@@ -214,7 +217,7 @@ POST /api/spotify/auth/sync-all          全量数据刷新（profile + top item
 - **`analysis_stats_service.py` / `entity_stats_service.py`** — stats.fm 风格播放统计。前者负责统一时间范围解析、总体统计、个人排行榜、最近播放记录；后者负责歌曲/专辑/艺人个人播放统计、实体排名、Top 250 计数、实体内曲目/专辑拆解。两者继续复用 `load_plays()` 的标准过滤与合并口径
 - **`play_service.py`** — 核心播放数据服务。`load_plays()` 封装，通用 groupby 聚合（按年/月/周/小时/平台/艺术家等），仪表盘 KPI、时间线（年度/月度/周度+下钻）、排行榜、行为分析、听歌时段热力图、工作日vs周末对比、平台×小时分布等所有基于播放数据的旧端点均调用此服务。Dashboard 相关函数支持可选 `df` 参数，`/dashboard/full` 端点加载一次 plays 后传递给 5 个子函数复用，避免 6 次冗余 SQL 查询。`get_hourly_dist()` 提供逐小时播放量分布，用于前端动态洞察生成
 - **`wrapped_service.py`** — 自定义年度总结服务。`get_wrapped_full()` 一次性构建年度总结的完整数据结构（英雄区 KPI + 去年对比变化率、听歌人格识别 Explorer/Loyalist/Binger/深度鉴赏家/午夜诗人/潮流捕手、Top 5 曲目/艺人/专辑含封面与占比、曲风全景五大洲地图映射、逐小时播放分布 + 高峰识别、发现与新欢/老歌回归/遗忘曲目三分类、聆听深度金字塔、特殊时刻识别、月度钻取 Top 3、年度对比变化率），通过 `get_available_years()` 提供可用年份列表。内部复用 `load_plays()` 缓存，单年查询约 1-3 秒
-- **`billboard_service.py`** — Billboard 计算管线。`compute_billboard_data()` 一次性计算 15+ 数据结构（周榜 ×3、总榜 ×3、走势总榜 ×3、榜单记录、每周榜首等），公开函数统一规范化参数后进入内部 cached 函数，避免位置参数/关键字参数造成 cache key 分裂；内部使用 `@lru_cache(maxsize=8)` + `singleflight`，同一组参数首次并发只计算一次。Power Score 只计算一次（原 Streamlit 代码重复计算 ~10 次）。详情和对比功能：`get_track_history()`（升降列 NEW/RE/▲n/▼n/─ + 断档 gap 检测 + 封面图 + 截至当周滚动指标 `running_peak`/`running_wks`/`running_peak_wks`）、`get_artist_chart_detail()`（艺人周榜历史 + 封面图 + 歌曲/专辑表现，含截至当周滚动指标，chart_summary 含 `latest_week`，tracks/albums 含 `cover_url` 与 `first_peak_week`）、`get_album_chart_detail()`（专辑周榜历史 + 封面图 + 收录曲表现，含截至当周滚动指标，chart_summary 含 `latest_week`，tracks 含 `cover_url`）、`get_versus_{track,album,artist}()`（双实体对决对比）、`get_billboard_entity_lists()`（对决搜索选择器，直接复用 `track_summary` / `album_power_scores` / `artist_power_scores`，避免从大 weekly JSON 重建 DataFrame）。`_compute_change_column()` 使用临时 `week_dt` 变量不修改原列以避免日期格式污染
+- **`billboard_service.py`** — Billboard 计算管线 facade（~90行）。所有实现已迁入 `backend/domains/billboard/`（7 个领域模块：data_loader、version_merge、chart_compute、records、details、versus、entity_lists），原文件仅保留 re-export 以兼容旧 import 路径。`compute_billboard_data()` 一次性计算 15+ 数据结构（周榜 ×3、总榜 ×3、走势总榜 ×3、榜单记录、每周榜首等），内部使用 `@lru_cache(maxsize=8)` + `singleflight`，缓存装饰器通过 facade 重导出保持可用。详情和对比功能：`get_track_history()` / `get_artist_chart_detail()` / `get_album_chart_detail()` / `get_versus_{track,album,artist}()` / `get_billboard_entity_lists()` 均在领域模块中实现
 - **`release_cycle_service.py`** — 发行周期分析。艺人发行列表、单曲 Billboard 历史、专辑周期指标（首周排名、峰值、影响力得分、半衰期）、先行曲识别（三级查找：DB → Spotify API → 最早播放日期）、`compare_releases()` 多发行叠加对比。Spotify API 令牌通过 `@ttl_cached` 缓存（~58 分钟 TTL），网络/解析失败返回 `None` 进入离线回退路径且不会缓存失败值；对比接口支持通过合并子版本名解析到 canonical 专辑，并保留子版本发行日期用于周期对齐
 - **`library_service.py`** — 收藏交叉查询（收藏曲目/专辑/艺人与实际收听对比），含封面 URL 解析
 - **`search_service.py`** — 搜索历史统计（日搜索量、意图分类、时段热力图）
@@ -227,6 +230,31 @@ POST /api/spotify/auth/sync-all          全量数据刷新（profile + top item
 - **`spotify_auth.py`** — Spotify OAuth PKCE 授权与数据同步服务。`begin_oauth_flow()` 生成 PKCE 挑战 + auth URL；`complete_oauth_flow()` 换 token 后自动拉取全量数据（profile、top artists/tracks × 3 窗口、recently played、followed artists、playlists）；`get_connection_status()` 返回连接状态 + 数据摘要；`fetch_saved_tracks()` 拉取收藏曲目回填 `added_date`；`get_live_playback()` 实时播放状态
 - **`account_service.py`** — 账号中心聚合服务。`get_account_summary()` 返回收藏分析 + 搜索/习惯两大 Tab 综合数据。`get_collection_insights()` 性能重构：核心 saved_tracks×plays 交叉查询只执行一次，所有衍生计算（人格、生命周期、化学反应、关键词等）均在 Python 内存中完成。关键词提取使用 jieba 分词 + TF-IDF 加权（各年作为"文档"，IDF 惩罚跨年通用词）。新增封面图映射辅助函数 `_cover_url()` / `_artist_cover_map()` / `_track_album_cover_map()`，收藏曲目、生命周示例、化学反应示例、Flip Side 等均返回 `cover_url`
 - **`llm_translator.py`** — LLM 翻译/结构化服务。多提供商（DeepSeek/OpenAI/Anthropic/自定义）、API Key 配置从 settings 模块懒加载、代理支持、`translate_with_llm()` 翻译 + `enrich_with_llm()` 结构化 JSON 提取、长文本自动分段（4000 字符/段）、含 3 次重试和速率限制退避
+
+#### 领域层 (domains/)
+
+按业务领域拆分的计算逻辑与数据访问模块，从 `services/` 中提取以根治大文件膨胀：
+
+- **`domains/billboard/`** — Billboard 领域模块（7 个文件）。`data_loader.py`：原始播放数据加载、track/album map、album metadata（含 `@lru_cache` 缓存）；`version_merge.py`：专辑版本合并辅助函数（`_normalize_album_column`、`_resolve_album_members`、`_apply_album_release_groups`）；`chart_compute.py`：周榜/总榜/Power Score 计算与 `_compute_billboard_data_cached()`（`@singleflight` + `@lru_cache(maxsize=8)`）；`records.py`：榜单记录计算（6 大展区 37 项记录）；`details.py`：歌曲/艺人/专辑详情与周榜历史序列化；`versus.py`：双实体对决对比；`entity_lists.py`：对决搜索选择器实体列表；`repository.py`：Spotify metadata 与预聚合表 SQLite 查询封装
+- **`domains/settings/repository.py`** — Settings 表 CRUD（load_all / update / delete），`backend/api/settings.py` 通过此 repository 读写设置
+- **`domains/playback/repository.py`** — 播放数据查询封装（计数、年份、日期范围、实体播放次数、最近播放）
+- **`domains/enrichment/repository.py`** — 歌词缓存、Wikipedia 缓存、LLM 翻译缓存表的读写封装
+
+#### 基础设施层 (infrastructure/)
+
+横切能力，不反向依赖业务：
+
+- **`infrastructure/http/client.py`** — 统一 HTTP 客户端。支持 timeout、retry、proxy、JSON/表单编码自动识别、`redact()` 脱敏；Spotify/Wikipedia/LLM Provider 均通过此客户端发出 HTTP 请求
+
+#### 第三方适配层 (providers/)
+
+所有外部 API 调用统一通过 Provider 接口发出，禁止在业务代码中散落请求逻辑：
+
+- **`providers/base.py`** — `BaseProvider` 抽象类（`health_check()` / `redact()`）+ `ProviderConfig` dataclass（timeout、retries、rate_limit_rps、proxy）
+- **`providers/spotify/client.py`** — `SpotifyProvider`，包装现有 `spotify_utils` 函数（get_cc_token、get_profile、get_top_artists/tracks、get_recently_played、get_playback、get_followed_artists、get_playlists）
+- **`providers/genius/client.py`** — `GeniusProvider`，包装现有 `GeniusClient`（get_song、get_artist、search），懒加载 client 单例
+- **`providers/wikipedia/client.py`** — `WikipediaProvider`，通过共享 `HttpClient` 调用 Wikipedia REST API（get_page_summary、get_page_extract、search），支持多语言
+- **`providers/llm/client.py`** — `LLMProvider`，多后端支持（DeepSeek/OpenAI/Anthropic/自定义 OpenAI 兼容）、统一 chat/translate/extract_structured 接口、自动处理 Anthropic 不同 API 格式
 
 #### 核心工具层 (core/)
 
@@ -316,12 +344,15 @@ React + Vite + Tailwind CSS v4 + shadcn/ui（样式 `base-nova`，基础色 `neu
 **目录结构**：
 ```
 frontend/src/
-├── api/              ← API 客户端与错误模型（新增）
+├── api/              ← API 客户端与错误模型
 │   ├── client.ts     ← 类型化 API 客户端（30s 超时、AbortController、错误分类）
 │   ├── errors.ts     ← ApiError / NetworkError / AuthRequiredError / TimeoutError
 │   └── generated/    ← OpenAPI 自动生成的 TypeScript 类型（npm run generate-types）
 │       ├── api-types.ts   ← 全量 API DTO 类型（95 端点）
 │       └── openapi.json   ← OpenAPI spec 快照（离线对比用）
+├── features/         ← Feature-first 业务组件（新增）
+│   ├── settings/components/  ← 设置页 7 个 Section 组件（SpotifyConnection / DataFiltering / BillboardParams / VersionMerge / DataImport / LLMTranslation / SettingsHelpers）
+│   └── account/collection/   ← 收藏分析 11 个业务组件（PersonalityHero / CollectionOverview / FirstSaveStory / SaveLifecycle / Chemistry / FlipSideAndMigration / Leaderboard / SavedTracksBrowser / PlaylistsBrowser / NotAvailable + formatDate 工具）
 ├── components/
 │   ├── ui/          ← shadcn/ui 组件（可随意修改，含 calendar, popover）
 │   ├── charts/      ← ECharts 封装（动态 import）+ 纯 DOM 图表（RankTrendChart：时间线填充断档周、全貌/细节缩放切换+dataZoom滑块、峰值Pin标记+连续冠周markArea色带；ReleaseTimelineChart：发行周期排名趋势图）
@@ -338,9 +369,9 @@ frontend/src/
 │   ├── TrackDetailPage.tsx  ← 单曲详情（3 Tab：榜单表现/歌词/Wikipedia 百科）
 │   ├── ArtistDetailPage.tsx ← 艺人详情（4 Tab：榜单表现/单曲成绩/专辑成绩/歌手生涯）
 │   ├── AlbumDetailPage.tsx  ← 专辑详情（3 Tab：榜单表现/曲目表现/专辑百科）
-│   ├── SettingsPage.tsx     ← 设置（6 区块：Spotify 连接 / Data & Display / Billboard Parameters / Version Merge / Data Import / LLM Translation）
+│   ├── SettingsPage.tsx     ← 设置（容器组件：组合 7 个 feature section 组件）
 │   ├── AccountCenterPage.tsx ← 账号中心（2 Tab：你的收藏 / 你的习惯）
-│   └── account/              ← 账号中心子组件（HabitsTab, CollectionTab）
+│   └── account/              ← 账号中心子组件（HabitsTab, CollectionTab — CollectionTab 为 48 行容器，业务组件在 features/account/collection/）
 ├── hooks/           ← 自定义 hooks（useTheme, useDashboard, useBillboard, useYearlyReview, useSettings, useAccount）
 ├── lib/             ← API 客户端、工具函数
 │   ├── api.ts       ← 向后兼容重导出（→ @/api/client）
@@ -486,3 +517,13 @@ app/pages/billboard/
   - 远程模式（`SPOTIFY_STATS_REQUIRE_AUTH=1`）下所有写/敏感接口必须通过 `require_auth` 依赖校验 Bearer Token
   - 日志系统通过 `SensitiveDataFilter` 自动脱敏 API Key、Token 等敏感字段；全局异常处理器返回通用 500 不泄露 stack trace
   - Token 加密密钥优先级：`SPOTIFY_STATS_TOKEN_KEY` 环境变量 → 应用内置密钥。单用户本地场景可接受内置密钥，多用户/远程部署必须设置环境变量
+
+## Legacy 模块（Streamlit 旧应用）
+
+`app/` 目录下的 Streamlit 应用已于 2026-05-30 进入**冻结维护**状态：
+
+- **只修严重 bug，不新增功能**。所有新功能进入 FastAPI (backend/) + React (frontend/)。
+- Streamlit 仍可正常运行（`streamlit run app/main.py`），但不作为主要开发入口。
+- `app/` 与 `backend/` **无代码交叉依赖**，仅共享 `data/spotify_stats.db` 数据库文件。
+- 如需修改 Streamlit 页面，优先评估是否可在 FastAPI + React 中实现。
+- 迁移理由详见 `docs/ARCHITECTURE_OPTIMIZE.md`。

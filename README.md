@@ -162,7 +162,7 @@ SpotifyStats/
 │   │   ├── entity_stats_service.py     # 歌曲/专辑/艺人个人播放统计
 │   │   ├── play_service.py             # 播放数据 + 周度时间线 + 听歌人格 + 工作日/平台×小时分析
 │   │   ├── wrapped_service.py          # 自定义年度总结完整数据构建（英雄区/Top榜/曲风全景/时间故事/发现回归/聆听深度/特殊时刻/月度钻取/年度对比）
-│   │   ├── billboard_service.py        # Billboard 计算管线（排名/走势/记录/全时/详情/对决）
+│   │   ├── billboard_service.py        # Billboard 计算管线 facade（~90行，实现已迁入 domains/billboard/）
 │   │   ├── release_cycle_service.py    # 发行周期分析 + Spotify API + 先行曲识别
 │   │   ├── library_service.py          # 收藏交叉查询
 │   │   ├── search_service.py           # 搜索历史 + 意图分类
@@ -176,6 +176,23 @@ SpotifyStats/
 │   │   ├── spotify_auth.py              # Spotify OAuth PKCE 授权 + 全量数据同步
 │   │   ├── account_service.py           # 账号中心聚合服务（identity/habits/collection）
 │   │   └── wrapped_hub_service.py      # Wrapped 2025 官方数据
+│   ├── domains/                         # 领域模块（业务逻辑 + 数据访问）
+│   │   ├── billboard/
+│   │   │   ├── __init__.py              # 公开 API re-export
+│   │   │   ├── data_loader.py           # 原始数据加载 + 缓存（~200行）
+│   │   │   ├── version_merge.py         # 专辑版本合并规范化（~90行）
+│   │   │   ├── chart_compute.py         # Billboard 计算编排器（~800行）
+│   │   │   ├── records.py               # 榜单记录计算（~1,150行）
+│   │   │   ├── details.py               # 实体详情查询（~350行）
+│   │   │   ├── versus.py                # 对决对比逻辑（~300行）
+│   │   │   ├── entity_lists.py          # 实体列表选择器（~60行）
+│   │   │   └── repository.py            # Billboard 原始 SQL 查询封装
+│   │   ├── settings/
+│   │   │   └── repository.py            # Settings 表 CRUD 操作
+│   │   ├── playback/
+│   │   │   └── repository.py            # 播放数据查询封装
+│   │   └── enrichment/
+│   │       └── repository.py            # 歌词/Wikipedia/LLM 缓存表访问
 │   ├── models/                         # Pydantic 响应模型
 │   │   ├── common.py                   # 通用模型
 │   │   ├── dashboard.py                # 仪表盘
@@ -198,6 +215,15 @@ SpotifyStats/
 │   │   ├── import_data.py              # 串流数据 ETL
 │   │   ├── import_account_data.py      # 账号数据 ETL
 │   │   └── version_merge.py            # 专辑版本合并引擎
+│   ├── infrastructure/                   # 基础设施层
+│   │   └── http/
+│   │       └── client.py                 # 统一 HTTP 客户端（超时/重试/代理/编码/redaction）
+│   ├── providers/                        # 第三方服务适配器
+│   │   ├── base.py                       # BaseProvider 抽象类 + ProviderConfig dataclass
+│   │   ├── spotify/client.py            # Spotify API 适配器
+│   │   ├── genius/client.py             # Genius API 适配器（包装 GeniusClient）
+│   │   ├── wikipedia/client.py          # Wikipedia REST API 适配器
+│   │   └── llm/client.py                # LLM 多后端统一适配器（DeepSeek/OpenAI/Anthropic/自定义）
 │   └── tests/
 │       ├── __init__.py
 │       ├── conftest.py                   # 根 fixtures（client, default_params, warm_default_caches, billboard_data）
@@ -221,7 +247,7 @@ SpotifyStats/
 │       └── fixtures/
 │           ├── seed.db                  # 便携测试数据库（~4KB，含边界用例）
 │           └── build_seed_db.py         # 构建脚本（含 11 条 golden assertions）
-├── app/                                # Streamlit 前端（原架构，逐步替换）
+├── app/                                # Streamlit 前端（LEGACY — 已冻结维护，只修严重 bug，不新增功能）
 │   ├── main.py                         # 入口 + 总览仪表盘
 │   ├── db.py                           # 数据库层
 │   ├── utils.py                        # 工具函数
@@ -265,6 +291,13 @@ SpotifyStats/
 │   │   │   ├── client.ts                # 统一 API 客户端（30s 超时 + AbortController + 类型化错误）
 │   │   │   ├── errors.ts                # API 错误类（ApiError/NetworkError/AuthRequiredError/TimeoutError）
 │   │   │   └── generated/               # 从 OpenAPI spec 自动生成的 TypeScript 类型
+│   │   ├── features/                     # Feature-first 组件组织
+│   │   │   ├── settings/
+│   │   │   │   └── components/           # 设置页拆分子组件（7 个 Section）
+│   │   │   └── account/
+│   │   │       └── collection/
+│   │   │           ├── components/       # 收藏分析拆分子组件（11 个 Block）
+│   │   │           └── utils/            # 辅助函数
 │   │   ├── components/
 │   │   │   ├── ui/                      # shadcn/ui 组件（含 calendar, popover）
 │   │   │   ├── charts/                  # 图表组件（ECharts 动态加载，RankTrendChart, ReleaseTimelineChart 等）

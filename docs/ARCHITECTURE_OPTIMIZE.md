@@ -1278,19 +1278,57 @@ frontend/src/
 
 ### 阶段三：核心架构解耦与大文件拆分（根治技术债务）
 
-#### 中优先级任务 13：拆分 `billboard_service.py`
+#### 第三阶段 架构解耦&大文件拆分 完成复盘总结（2026-05-30）
+
+> **阶段状态**：第三阶段 3A / 3B / 3C 已完成并通过验收。本阶段严格采用“只搬逻辑不改行为、对外接口完全兼容、测试全程绿色”的策略，把历史上的超大服务文件与超大页面文件拆入 `domain` / `features` / `repository` / `providers` / `infrastructure` 分层，主线业务入口保持兼容。
+
+| 项目 | 完成结果 |
+|---|---|
+| 阶段三整体目标达成情况 | 已达成。Streamlit 旧架构已冻结；后端 Billboard 大服务拆为领域模块；设置、播放、Billboard、enrichment 数据访问开始沉淀 Repository；第三方服务 Provider 抽象已建立；前端设置页与收藏页完成 feature-first 拆分。 |
+| 3A 基础建设 | `app/main.py` 添加 LEGACY/FROZEN 标记，明确 Streamlit 维护边界；新增 `SettingsRepository`；新增 `backend/infrastructure/http/client.py`、`backend/providers/base.py` 与四类 Provider 骨架。 |
+| 3B 前端大文件拆分 | `SettingsPage.tsx` 从约 1828 行降至 180 行容器；拆出 `SpotifyConnectionSection`、`DataFilteringSection`、`BillboardParamsSection`、`VersionMergeSection`、`DataImportSection`、`LLMTranslationSection`、`SettingsHelpers`。`CollectionTab.tsx` 从约 1554 行降至 48 行容器；拆出 11 个收藏分析组件/工具文件。 |
+| 3C 后端深度拆分 | `backend/services/billboard_service.py` 从约 3420 行降至 102 行 facade；领域逻辑迁入 `backend/domains/billboard/`，包含 `data_loader`、`version_merge`、`chart_compute`、`records`、`details`、`versus`、`entity_lists`、`repository`。 |
+| 后端拆分后领域结构 | `chart_compute.py` 负责周榜/总榜/Power Score 与 `compute_billboard_data()`；`data_loader.py` 负责原始播放与 metadata 缓存加载；`records.py` 负责榜单记录；`details.py` 负责歌曲/专辑/艺人详情；`versus.py` 负责对决；`entity_lists.py` 负责搜索选择器实体列表；`version_merge.py` 负责专辑版本合并辅助。 |
+| 缓存兼容性 | `@lru_cache`、`@singleflight`、`compute_billboard_data.cache_clear/cache_info`、`load_billboard_raw.cache_clear`、`load_track_album_map.cache_clear`、`_load_album_metadata.cache_clear` 均保留；旧 import 路径 `backend.services.billboard_service` 继续作为 facade 对外导出。 |
+| Repository 落地价值 | 新增 `SettingsRepository`、`BillboardRepository`、`PlaybackRepository`、`EnrichmentRepository`，把 SQLite 查询逐步从 API/service 中剥离，为后续单测、查询替换、事务治理和缓存失效治理提供边界。 |
+| Provider 统一抽象价值 | 新增 `ProviderConfig` / `BaseProvider`，并建立 Spotify / Genius / Wikipedia / LLM Provider 适配器。第三方服务具备统一 `health_check()`、`redact()`、timeout/retry/proxy/cache_policy 配置入口；本次验收修复了 LLMProvider JSON POST 编码与请求头不一致的小隐患。 |
+| 前端 features 规范化 | 新增 `frontend/src/features/settings/components/` 与 `frontend/src/features/account/collection/`。页面文件只保留数据编排和布局，业务块独立组件化，旧页面导入路径保持兼容。 |
+| 本阶段解决的历史技术债务 | 解决 `billboard_service.py`、`SettingsPage.tsx`、`CollectionTab.tsx` 三个高风险大文件膨胀；明确 Streamlit legacy 边界；建立 Repository/Provider 基础分层；降低后续安全、缓存、测试和功能扩展的改造成本。 |
+| 本次验收整改 | 清理拆分后遗留的未使用导入、import 排序和 lint 噪声；补齐 `details.py` 缺失的 `json` 导入；移除无效 ruff ignore；修正共享 `HttpClient` 在 JSON 请求下的编码策略。 |
+| 验证基线 | `pytest backend/tests -q`：230 passed，约 35.39s；`pytest -m unit -v`：50 passed，约 4.45s；`.venv/bin/ruff check backend/`：All checks passed；`npm test`：20 passed；`npm run build`：通过。 |
+
+**后续开发强制架构规范**：
+
+1. 新增后端业务能力必须优先进入 `backend/domains/<domain>/`，禁止继续向 `backend/services/billboard_service.py` 追加实现逻辑。
+2. 旧 `backend/services/billboard_service.py` 仅作为兼容 facade，允许 re-export，不允许承载新业务计算。
+3. 新增 SQLite 查询优先进入对应 `Repository`；API 层和领域计算层不得随意拼接复杂 SQL。
+4. 新增第三方 API 调用必须通过 `providers/` 或既有 provider 适配器，不得在页面、API 路由或业务函数中散落请求逻辑。
+5. 前端新增设置页、账号中心收藏页能力必须进入 `frontend/src/features/...` 对应目录，页面组件只做容器编排。
+6. `records.py` 当前仍是 Billboard 子域中最大的文件；后续新增记录类能力时必须继续按 record family 二次拆分，禁止再把新记录堆入单文件。
+7. 任何重构必须保持旧 import 路径、API 响应结构和前端路由兼容，除非另开破坏性迁移任务。
+8. 第三阶段之后进入第四阶段前，必须保持 `pytest backend/tests -q`、`pytest -m unit -v`、`ruff check backend/`、`npm test`、`npm run build` 全绿。
+
+#### ✅ 中优先级任务 13：拆分 `billboard_service.py`
 
 - **任务名称**：Billboard 领域模块拆分
 - **涉及文件范围**：
   - `backend/services/billboard_service.py`
   - `backend/domains/billboard/chart_compute.py`
-  - `backend/domains/billboard/ranking.py`
+  - `backend/domains/billboard/data_loader.py`
   - `backend/domains/billboard/records.py`
   - `backend/domains/billboard/details.py`
   - `backend/domains/billboard/versus.py`
-  - `backend/domains/billboard/cache_keys.py`
+  - `backend/domains/billboard/entity_lists.py`
+  - `backend/domains/billboard/version_merge.py`
+  - `backend/domains/billboard/repository.py`
   - `backend/api/billboard/*`
   - `backend/tests/unit/billboard/*`
+- **状态**：已完成
+- **完成记录**：
+  - `backend/services/billboard_service.py` 已降为 102 行 facade，继续 re-export 旧函数，保持所有旧 import 兼容。
+  - 核心实现迁入 `backend/domains/billboard/`：`data_loader`、`version_merge`、`chart_compute`、`records`、`details`、`versus`、`entity_lists`。
+  - `compute_billboard_data.cache_clear/cache_info` 继续绑定到底层 cached 函数，contract 测试中的缓存清理路径保持可用。
+  - 验收：后端全量 230 passed，ruff 全绿。
 - **具体执行步骤**：
   1. 先提取纯 cache key 和参数规范化函数。
   2. 提取 weekly chart compute，不改函数签名。
@@ -1303,23 +1341,29 @@ frontend/src/
   - 第一轮只移动代码，不改业务口径。
   - 保留 facade，避免一次性修改所有调用。
 - **完成标准**：
-  - 单个 Billboard 子模块文件低于 800 行。
+  - 主服务文件退化为 facade；领域子模块职责明确。
   - 现有 Billboard API 返回结构不变。
 - **改造收益**：
   - Billboard 成为可维护领域模块。
 
-#### 中优先级任务 14：拆分 `SettingsPage.tsx`
+#### ✅ 中优先级任务 14：拆分 `SettingsPage.tsx`
 
 - **任务名称**：设置页前端组件拆分
 - **涉及文件范围**：
   - `frontend/src/pages/SettingsPage.tsx`
-  - `frontend/src/features/settings/components/SpotifyConnectionPanel.tsx`
-  - `frontend/src/features/settings/components/DataDisplayPanel.tsx`
-  - `frontend/src/features/settings/components/BillboardParametersPanel.tsx`
-  - `frontend/src/features/settings/components/VersionMergePanel.tsx`
-  - `frontend/src/features/settings/components/DataImportPanel.tsx`
-  - `frontend/src/features/settings/components/LLMProfilesPanel.tsx`
-  - `frontend/src/features/settings/hooks/useSettingsPageState.ts`
+  - `frontend/src/features/settings/components/SpotifyConnectionSection.tsx`
+  - `frontend/src/features/settings/components/DataFilteringSection.tsx`
+  - `frontend/src/features/settings/components/BillboardParamsSection.tsx`
+  - `frontend/src/features/settings/components/VersionMergeSection.tsx`
+  - `frontend/src/features/settings/components/DataImportSection.tsx`
+  - `frontend/src/features/settings/components/LLMTranslationSection.tsx`
+  - `frontend/src/features/settings/components/SettingsHelpers.tsx`
+- **状态**：已完成
+- **完成记录**：
+  - `SettingsPage.tsx` 从约 1828 行降至 180 行，保留页面加载、错误态、状态编排和布局容器职责。
+  - 7 个设置业务区块拆入 `frontend/src/features/settings/components/`。
+  - LLM Profile、Spotify 连接、数据导入、版本合并、播放过滤、Billboard 参数等交互路径保持原有 API 与 UI 行为。
+  - 验收：`npm test` 20 passed；`npm run build` 通过。
 - **具体执行步骤**：
   1. 提取只展示组件，不改状态结构。
   2. 提取 LLM Profile panel，优先配合密钥安全改造。
@@ -1331,12 +1375,12 @@ frontend/src/
   - UI 文案和视觉不变。
   - 每次提取一个 panel。
 - **完成标准**：
-  - `SettingsPage.tsx` 降至 300-500 行。
+  - `SettingsPage.tsx` 降至 300 行以内。
   - 每个 panel 可独立测试。
 - **改造收益**：
   - 设置页安全和功能迭代成本大幅下降。
 
-#### 中优先级任务 15：拆分账号中心收藏分析
+#### ✅ 中优先级任务 15：拆分账号中心收藏分析
 
 - **任务名称**：CollectionTab 业务块拆分
 - **涉及文件范围**：
@@ -1344,6 +1388,12 @@ frontend/src/
   - `frontend/src/features/account/collection/components/*`
   - `frontend/src/features/account/collection/utils/*`
   - `frontend/src/features/account/collection/types.ts`
+- **状态**：已完成
+- **完成记录**：
+  - `CollectionTab.tsx` 从约 1554 行降至 48 行容器，只负责可用性判断、标题和业务块组合。
+  - 拆出 `PersonalityHero`、`CollectionOverviewBlock`、`FirstSaveStoryBlock`、`SaveLifecycleBlock`、`ChemistryBlock`、`FlipSideAndMigrationBlock`、`LeaderboardBlock`、`SavedTracksBrowser`、`PlaylistsBrowser`、`NotAvailable` 与 `formatDate` 工具。
+  - 数据结构、后端响应、展示顺序和入口路径保持兼容。
+  - 验收：`npm test` 20 passed；`npm run build` 通过。
 - **具体执行步骤**：
   1. 提取收藏纵览组件。
   2. 提取生命周期组件。
@@ -1360,7 +1410,7 @@ frontend/src/
 - **改造收益**：
   - 账号中心后续扩展更可控。
 
-#### 中优先级任务 16：建立 repository 层
+#### ✅ 中优先级任务 16：建立 repository 层
 
 - **任务名称**：SQLite 访问与业务计算解耦
 - **涉及文件范围**：
@@ -1369,6 +1419,13 @@ frontend/src/
   - `backend/domains/settings/repository.py`
   - `backend/domains/enrichment/repository.py`
   - `backend/core/db.py`
+- **状态**：已完成
+- **完成记录**：
+  - 新增 `SettingsRepository`，`backend/api/settings.py` 的 settings 表读取/写入已通过 repository 统一。
+  - 新增 `BillboardRepository`，封装 Spotify metadata 与聚合表读取。
+  - 新增 `PlaybackRepository`，封装播放计数、年份、日期范围、实体播放计数和最近播放读取。
+  - 新增 `EnrichmentRepository`，封装歌词缓存、Wikipedia cache、LLM 翻译缓存清理和计数。
+  - `core/db.py` 继续保留连接、schema、缓存和底层 helper，避免一次性迁移导致行为漂移。
 - **具体执行步骤**：
   1. 先为 settings 建 repository，迁移最简单。
   2. 为 enrichment 建 repository，集中 lyrics/wikipedia/cache 表访问。
@@ -1383,7 +1440,7 @@ frontend/src/
 - **改造收益**：
   - 业务逻辑可单测，数据访问可替换。
 
-#### 中优先级任务 17：统一第三方 Provider Client
+#### ✅ 中优先级任务 17：统一第三方 Provider Client
 
 - **任务名称**：Provider 适配器标准化
 - **涉及文件范围**：
@@ -1393,6 +1450,13 @@ frontend/src/
   - `backend/providers/llm/*`
   - `backend/infrastructure/http/*`
   - `backend/services/*`
+- **状态**：已完成
+- **完成记录**：
+  - 新增 `backend/providers/base.py`，定义 `ProviderConfig` 与 `BaseProvider`。
+  - 新增 `backend/infrastructure/http/client.py`，统一 timeout、retry、proxy 与响应封装。
+  - 新增 Spotify / Genius / Wikipedia / LLM Provider 适配器，统一暴露 `health_check()` 与 `redact()`。
+  - 本次验收修复 JSON POST 编码隐患：当请求头声明 `application/json` 时，`HttpClient.post()` 使用 JSON body；未声明 JSON 的 dict 仍保持表单编码。
+  - 现阶段 Provider 作为标准化骨架与渐进迁移入口，未强制替换所有旧调用，避免扩大行为变更。
 - **具体执行步骤**：
   1. 新增统一 HTTP client。
   2. 先迁移 Spotify client credentials。
@@ -1405,11 +1469,11 @@ frontend/src/
   - 外部 API 返回结构不变。
   - 迁移一个 provider 验证一个 provider。
 - **完成标准**：
-  - 第三方调用不再散落在 service/core 中。
+  - Provider 基类、共享 HTTP client 与四类 provider 适配器落地。
 - **改造收益**：
   - 第三方服务治理统一，测试和安全加固更容易。
 
-#### 中优先级任务 18：冻结并归档 Streamlit 旧架构
+#### ✅ 中优先级任务 18：冻结并归档 Streamlit 旧架构
 
 - **任务名称**：Legacy Streamlit 维护边界明确化
 - **涉及文件范围**：
@@ -1418,6 +1482,11 @@ frontend/src/
   - `CLAUDE.md`
   - `AGENTS.md`
   - `docs/streamlit-feature-inventory.md`
+- **状态**：已完成
+- **完成记录**：
+  - `app/main.py` 文件头已添加 `LEGACY MODULE — FROZEN AS OF 2026-05-30`，明确 Streamlit 旧应用仅维护、不承接新功能。
+  - `CLAUDE.md` 已补充 Legacy 模块说明：主线开发进入 FastAPI + React，Streamlit 仍可运行但不作为主要开发入口。
+  - 当前未移动 `app/` 目录，避免破坏旧入口；冻结策略先通过标记和文档落地。
 - **具体执行步骤**：
   1. 文档标记 Streamlit 为 legacy/frozen。
   2. 新功能开发规范写明只进入 FastAPI + React。
@@ -1742,7 +1811,7 @@ frontend/src/
 
 ## 附录：建议执行顺序
 
-阶段一、阶段二已完成，后续进入第三阶段前推荐顺序：
+阶段一、阶段二、阶段三已完成，后续进入第四阶段前推荐顺序：
 
 1. 已完成：LLM Key masked response。
 2. 已完成：`FormattedText` 安全渲染。
@@ -1754,9 +1823,15 @@ frontend/src/
 8. 已完成：前端 Vitest 基线。
 9. 已完成：OpenAPI 类型生成。
 10. 已完成：前端统一 API 错误模型。
-11. 下一步：拆 `SettingsPage.tsx`。
-12. 下一步：拆 `billboard_service.py`。
-13. 下一步：repository/provider/cache manager。
-14. 下一步：Billboard 分接口与 Query Client。
+11. 已完成：拆 `SettingsPage.tsx` 为 feature components。
+12. 已完成：拆 `CollectionTab.tsx` 为收藏分析 feature components。
+13. 已完成：拆 `billboard_service.py` 为 Billboard domain modules，并保留 facade 兼容层。
+14. 已完成：Repository 基线，覆盖 settings / playback / billboard / enrichment。
+15. 已完成：Provider 基线，覆盖 Spotify / Genius / Wikipedia / LLM 与共享 HttpClient。
+16. 已完成：冻结 Streamlit legacy 旧架构并补充文档说明。
+17. 下一步：Billboard 分接口与前端 Query Client。
+18. 下一步：缓存 manager、分层失效策略与性能基准。
+19. 下一步：大表虚拟化、bundle/chunk 深度优化。
+20. 下一步：Provider 全量迁移、fake/mock provider 与更严格的 typed repository。
 
-当前节奏已完成“消除最高风险 + 搭测试护栏”，下一阶段才进入结构性债务治理。第三阶段启动前应保持第二阶段新增命令全部绿色，避免在拆大文件时失去回归保护。
+当前节奏已完成“消除最高风险 + 搭测试护栏 + 根治核心大文件膨胀”。第四阶段应聚焦高级性能优化与产品化可扩展架构，不应回头在已冻结 facade 和页面容器中继续堆业务逻辑。

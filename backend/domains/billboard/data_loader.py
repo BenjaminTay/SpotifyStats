@@ -1,0 +1,210 @@
+"""Billboard data loading functions — cached raw data retrieval."""
+
+from functools import lru_cache
+
+import pandas as pd
+
+from backend.core.db import base_filters, get_db, merge_consecutive_plays
+
+# Weekday labels
+DOW_NAMES = {0: "周一", 1: "周二", 2: "周三", 3: "周四", 4: "周五", 5: "周六", 6: "周日"}
+DOW_SHORT = {0: "Mon", 1: "Tue", 2: "Wed", 3: "Thu", 4: "Fri", 5: "Sat", 6: "Sun"}
+
+
+def _try_load_from_agg(min_ms, music_only, week_start_dow, week_start_hour):
+    """Try to load pre-aggregated weekly data from agg tables.
+
+    Returns (tracks_df, albums_df, artists_df) if valid agg data exists,
+    or (None, None, None) if parameters don't match or tables are empty.
+    Each DataFrame is pre-grouped (play_count + total_ms) but NOT ranked.
+    """
+    from backend.core.db import (
+        _agg_param_hash,
+        check_agg_valid,
+        load_agg_weekly_albums,
+        load_agg_weekly_artists,
+        load_agg_weekly_tracks,
+    )
+
+    param_hash = _agg_param_hash(min_ms, music_only, week_start_dow, week_start_hour)
+    conn = get_db()
+    if not check_agg_valid(conn, param_hash):
+        conn.close()
+        return None, None, None
+
+    try:
+        tracks = load_agg_weekly_tracks(conn)
+        albums = load_agg_weekly_albums(conn)
+        artists = load_agg_weekly_artists(conn)
+        conn.close()
+        if len(tracks) == 0:
+            return None, None, None
+        return tracks, albums, artists
+    except Exception:
+        conn.close()
+        return None, None, None
+
+
+@lru_cache(maxsize=8)
+def load_billboard_raw(min_ms, music_only, week_start_dow, week_start_hour):
+    """Load filtered plays and compute billboard_week with configurable boundary."""
+    conn = get_db()
+    _f, _fp = base_filters(min_ms=min_ms, music_only=music_only)
+    _w = f"WHERE {_f}" if _f else ""
+    df = pd.read_sql_query(
+        f"""SELECT p.ts, p.ts_date, p.ts_dow, p.ts_hour, p.ms_played, p.track_id,
+                   t.track_name, a.artist_name, al.album_name, stm.duration_ms
+            FROM plays p
+            LEFT JOIN tracks t ON p.track_id = t.track_id
+            LEFT JOIN artists a ON t.artist_id = a.artist_id
+            LEFT JOIN albums al ON t.album_id = al.album_id
+            LEFT JOIN spotify_track_meta stm
+              ON REPLACE(t.spotify_track_uri, 'spotify:track:', '') = stm.spotify_track_id
+            {_w}
+            ORDER BY p.ts""",
+        conn,
+        params=_fp,
+    )
+    conn.close()
+
+    # Billboard week: configurable boundary
+    df["days_back"] = (df["ts_dow"] - week_start_dow) % 7
+    mask_before = (df["ts_dow"] == week_start_dow) & (df["ts_hour"] < week_start_hour)
+    df.loc[mask_before, "days_back"] = 7
+    df["ts_date_dt"] = pd.to_datetime(df["ts_date"])
+    df["billboard_week"] = (df["ts_date_dt"] - pd.to_timedelta(df["days_back"], unit="D")).dt.date
+
+    # Merge consecutive same-track plays into logical play counts
+    df = merge_consecutive_plays(df, min_ms)
+
+    return df
+
+
+@lru_cache(maxsize=8)
+def load_track_album_map():
+    """Get all album names for each track_id (including track_albums junction)."""
+    conn = get_db()
+    rows = conn.execute(
+        """SELECT t.track_id, al.album_name
+           FROM tracks t
+           JOIN albums al ON t.album_id = al.album_id
+           UNION
+           SELECT ta.track_id, al.album_name
+           FROM track_albums ta
+           JOIN albums al ON ta.album_id = al.album_id"""
+    ).fetchall()
+    conn.close()
+
+    data = {}
+    for tid, album in rows:
+        data.setdefault(tid, []).append(album)
+
+    # Build DataFrame: track_id → list of album names
+    records = []
+    for tid, albums in data.items():
+        records.append({"track_id": tid, "album_list": sorted(set(albums))})
+    return pd.DataFrame(records)
+
+
+@lru_cache(maxsize=8)
+def _load_album_metadata():
+    conn = get_db()
+    df = pd.read_sql_query(
+        """SELECT DISTINCT al.album_name, a.artist_name, sam.album_type, sam.release_date
+           FROM track_albums ta
+           JOIN albums al ON ta.album_id = al.album_id
+           JOIN artists a ON al.artist_id = a.artist_id
+           JOIN tracks t ON ta.track_id = t.track_id
+           JOIN spotify_track_meta stm
+             ON REPLACE(t.spotify_track_uri, 'spotify:track:', '') = stm.spotify_track_id
+           JOIN spotify_album_meta sam ON stm.spotify_album_id = sam.spotify_album_id""",
+        conn,
+    )
+
+    base = df[["album_name", "artist_name", "album_type"]].copy()
+    priority = {"album": 0, "compilation": 1, "single": 2}
+    base["_pri"] = base["album_type"].map(priority)
+    type_df = (
+        base.sort_values("_pri")
+        .drop_duplicates(subset=["album_name", "artist_name"], keep="first")
+        .drop(columns=["_pri"])
+    )
+
+    date_df = df.dropna(subset=["release_date"])
+    date_df = date_df.groupby(["album_name", "artist_name"], as_index=False)["release_date"].min()
+
+    # 补充 release group canonical name 的元数据行
+    _add_canonical_metadata(type_df, date_df, conn)
+
+    conn.close()
+    return {"type": type_df, "release_date": date_df}
+
+
+def _add_canonical_metadata(type_df, date_df, conn):
+    """为 release group 的 canonical_name 补充 album_type 和 release_date 行。
+
+    将 canonical_name 映射到 primary_album 的 album_name，然后从现有 metadata
+    中复制对应行。这样 release_date 过滤和 album_type 过滤能正确作用于合并后的名称。
+    """
+    mapping = pd.read_sql_query(
+        """SELECT al.album_name, a.artist_name, rg.canonical_name,
+                  rg.primary_album_id, pa.album_name AS primary_album_name
+           FROM release_group_members rgm
+           JOIN release_groups rg ON rgm.group_id = rg.group_id
+           JOIN albums al ON rgm.album_id = al.album_id
+           JOIN artists a ON al.artist_id = a.artist_id
+           LEFT JOIN albums pa ON rg.primary_album_id = pa.album_id""",
+        conn,
+    )
+    if mapping.empty:
+        return
+
+    # album_type: 从 primary_album 的 metadata 复制
+    primary_types = type_df.merge(
+        mapping[["primary_album_name", "artist_name", "canonical_name"]].drop_duplicates(),
+        left_on=["album_name", "artist_name"],
+        right_on=["primary_album_name", "artist_name"],
+        how="inner",
+    )[["canonical_name", "artist_name", "album_type"]].rename(
+        columns={"canonical_name": "album_name"}
+    )
+    if not primary_types.empty:
+        existing = set(zip(type_df["album_name"], type_df["artist_name"]))
+        for _, row in primary_types.iterrows():
+            key = (row["album_name"], row["artist_name"])
+            if key not in existing:
+                type_df.loc[len(type_df)] = row
+
+    # release_date: 取 primary_album 的最早发行日期
+    primary_dates = (
+        date_df.merge(
+            mapping[["primary_album_name", "artist_name", "canonical_name"]].drop_duplicates(),
+            left_on=["album_name", "artist_name"],
+            right_on=["primary_album_name", "artist_name"],
+            how="inner",
+        )
+        .groupby(["canonical_name", "artist_name"], as_index=False)["release_date"]
+        .min()
+        .rename(columns={"canonical_name": "album_name"})
+    )
+    if not primary_dates.empty:
+        existing = set(zip(date_df["album_name"], date_df["artist_name"]))
+        for _, row in primary_dates.iterrows():
+            key = (row["album_name"], row["artist_name"])
+            if key not in existing:
+                date_df.loc[len(date_df)] = row
+
+
+def _get_album_canonical_map():
+    """获取所有 release group 成员的 (album_name, artist_name) → canonical_name 映射。"""
+    conn = get_db()
+    mapping = pd.read_sql_query(
+        """SELECT al.album_name, a.artist_name, rg.canonical_name
+           FROM release_group_members rgm
+           JOIN release_groups rg ON rgm.group_id = rg.group_id
+           JOIN albums al ON rgm.album_id = al.album_id
+           JOIN artists a ON al.artist_id = a.artist_id""",
+        conn,
+    )
+    conn.close()
+    return mapping
