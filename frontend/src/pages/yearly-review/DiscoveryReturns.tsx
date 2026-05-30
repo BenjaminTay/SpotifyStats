@@ -57,7 +57,7 @@ export function DiscoveryReturns({ discovery }: DiscoveryReturnsProps) {
             <h3 className="font-sans text-[12px] font-semibold uppercase tracking-[1.5px] text-muted-foreground mb-4">老歌回归</h3>
             <div className="space-y-3">
               {discovery.returning_tracks.map((t) => (
-                <Link key={t.name + t.artist_name} to={`/music/tracks/${encodeURIComponent(t.name)}`} className="flex items-center gap-3 group">
+                <Link key={t.name + t.artist_name} to={`/music/tracks/${t.track_id}`} className="flex items-center gap-3 group">
                   <CoverImage url={t.cover_url} alt={t.name} size="sm" />
                   <div className="min-w-0 flex-1">
                     <p className="font-sans text-[14px] font-semibold truncate group-hover:text-accent-foreground transition-colors">{t.name}</p>
@@ -76,7 +76,7 @@ export function DiscoveryReturns({ discovery }: DiscoveryReturnsProps) {
         {discovery.longest_love && (
           <GlassCard className="p-5">
             <h3 className="font-sans text-[12px] font-semibold uppercase tracking-[1.5px] text-muted-foreground mb-4">最长情的单曲</h3>
-            <Link to={`/music/tracks/${encodeURIComponent(discovery.longest_love.name)}`} className="flex flex-col items-center text-center group pt-2">
+            <Link to={`/music/tracks/${discovery.longest_love.track_id}`} className="flex flex-col items-center text-center group pt-2">
               <CoverImage url={discovery.longest_love.cover_url} alt={discovery.longest_love.name} />
               <p className="font-sans text-[16px] font-semibold mt-3 group-hover:text-accent-foreground transition-colors">{discovery.longest_love.name}</p>
               <p className="font-sans text-[13px] text-muted-foreground">{discovery.longest_love.artist_name}</p>

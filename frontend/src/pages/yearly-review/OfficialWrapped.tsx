@@ -7,8 +7,8 @@ interface OfficialWrappedData {
   available: boolean
   empty?: boolean
   top_artists?: { rank: number; name: string; ms_played: number; percentile: number | null; cover_url?: string }[]
-  top_tracks?: { rank: number; name: string; play_count: number; ms_played: number; cover_url?: string }[]
-  top_albums?: { rank: number; name: string; play_count: number; ms_played: number; cover_url?: string }[]
+  top_tracks?: { rank: number; track_id: number; name: string; play_count: number; ms_played: number; cover_url?: string }[]
+  top_albums?: { rank: number; name: string; artist_name: string; play_count: number; ms_played: number; cover_url?: string }[]
   top_genres?: { rank: number; name: string }[]
   top_podcasts?: { rank: number; name: string }[]
   artist_race?: { artist_name: string; month: number; rank: number; trail_size: string }[]
@@ -167,7 +167,7 @@ export function OfficialWrapped() {
             <h3 className="font-sans text-[12px] font-semibold uppercase tracking-[1.5px] text-muted-foreground mb-4">Top 曲目</h3>
             <div className="space-y-2">
               {data.top_tracks.slice(0, 5).map((t) => (
-                <Link key={t.rank} to={`/music/tracks/${encodeURIComponent(t.name)}`} className="flex items-center gap-3 group">
+                <Link key={t.rank} to={`/music/tracks/${t.track_id}`} className="flex items-center gap-3 group">
                   <span className="font-sans text-[12px] font-bold text-muted-foreground w-5 text-right">{t.rank}</span>
                   <MiniCover url={t.cover_url || ''} name={t.name} />
                   <div className="min-w-0 flex-1">
@@ -202,7 +202,7 @@ export function OfficialWrapped() {
             <h3 className="font-sans text-[12px] font-semibold uppercase tracking-[1.5px] text-muted-foreground mb-4">Top 专辑</h3>
             <div className="space-y-2">
               {data.top_albums.slice(0, 5).map((a) => (
-                <Link key={a.rank} to={`/music/albums/${encodeURIComponent(a.name)}`} className="flex items-center gap-3 group">
+                <Link key={a.rank} to={`/music/albums/${encodeURIComponent(a.name)}?artist=${encodeURIComponent(a.artist_name)}`} className="flex items-center gap-3 group">
                   <span className="font-sans text-[12px] font-bold text-muted-foreground w-5 text-right">{a.rank}</span>
                   <MiniCover url={a.cover_url || ''} name={a.name} />
                   <p className="font-sans text-[13px] font-semibold truncate group-hover:text-accent-foreground transition-colors min-w-0 flex-1">{a.name}</p>

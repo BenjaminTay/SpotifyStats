@@ -1,5 +1,6 @@
 import { AnalysisTrendChart, HorizontalBarChart } from '@/components/charts/AnalysisCharts'
-import { AnalysisPeriodControl, MetricToggle, useAnalysisQueryState } from '@/components/shared/AnalysisControls'
+import { MetricToggle, useAnalysisQueryState } from '@/components/shared/AnalysisControls'
+import { AnalysisTimeRangeSelector } from '@/components/shared/AnalysisTimeRangeSelector'
 import { GlassCard } from '@/components/shared/GlassCard'
 import { KpiCard } from '@/components/shared/KpiCard'
 import { PersonalRankTable, RecentPlaysTable } from '@/components/shared/StatsTables'
@@ -36,7 +37,7 @@ export function EntityStatsPanel({
   artistName?: string
 }) {
   const { filters, loading: filtersLoading } = useAnalysisFilters()
-  const { period, metric, startDate, endDate, setQuery, apiParams } = useAnalysisQueryState()
+  const { period, metric, periodValue, startDate, endDate, setQuery, apiParams } = useAnalysisQueryState()
   const { data, loading } = useApiData<EntityStatsResponse>(() => {
     if (kind === 'track' && trackId != null) return analysisApi.trackStats(filters, trackId, apiParams)
     if (kind === 'album' && albumName) return analysisApi.albumStats(filters, albumName, artistName, apiParams)
@@ -53,7 +54,7 @@ export function EntityStatsPanel({
   return (
     <div className="space-y-7">
       <div className="flex flex-wrap items-end justify-between gap-4">
-        <AnalysisPeriodControl period={period} startDate={startDate} endDate={endDate} onChange={setQuery} />
+        <AnalysisTimeRangeSelector period={period} periodValue={periodValue} startDate={startDate} endDate={endDate} onChange={setQuery} />
         <MetricToggle metric={metric} onChange={(next) => setQuery({ metric: next })} />
       </div>
 

@@ -5,6 +5,39 @@ import sqlite3
 import pandas as pd
 
 
+def _resolve_track_id(conn: sqlite3.Connection, track_uri: str) -> int:
+    """Resolve a Spotify track URI to internal track_id."""
+    if not track_uri:
+        return 0
+    spotify_id = track_uri.replace("spotify:track:", "")
+    if not spotify_id:
+        return 0
+    r = conn.execute(
+        "SELECT track_id FROM tracks WHERE spotify_track_uri = ? LIMIT 1",
+        (track_uri,),
+    ).fetchone()
+    if r:
+        return r[0]
+    r = conn.execute(
+        "SELECT track_id FROM tracks WHERE spotify_track_uri LIKE ? LIMIT 1",
+        (f"%{spotify_id}%",),
+    ).fetchone()
+    return r[0] if r else 0
+
+
+def _resolve_album_artist(conn: sqlite3.Connection, album_name: str) -> str:
+    """Look up artist name for an album by album name."""
+    if not album_name:
+        return ""
+    r = conn.execute(
+        "SELECT ar.artist_name FROM albums al "
+        "JOIN artists ar ON al.artist_id = ar.artist_id "
+        "WHERE al.album_name = ? LIMIT 1",
+        (album_name,),
+    ).fetchone()
+    return (r[0] or "") if r else ""
+
+
 def _get_cover_for_name(conn: sqlite3.Connection, name: str, kind: str) -> str:
     """Look up cover image URL by display name."""
     if not name:
@@ -134,6 +167,7 @@ def get_wrapped_hub(conn: sqlite3.Connection) -> dict:
             {
                 "rank": int(r.rank),
                 "name": r.display_name or r.track_uri,
+                "track_id": _resolve_track_id(conn, r.track_uri) if pd.notna(r.track_uri) else 0,
                 "play_count": int(r.play_count) if pd.notna(r.play_count) else 0,
                 "ms_played": int(r.ms_played) if pd.notna(r.ms_played) else 0,
                 "cover_url": _get_cover_for_name(conn, r.display_name, "track")
@@ -146,6 +180,9 @@ def get_wrapped_hub(conn: sqlite3.Connection) -> dict:
             {
                 "rank": int(r.rank),
                 "name": r.display_name or r.album_uri,
+                "artist_name": _resolve_album_artist(conn, r.display_name)
+                if pd.notna(r.display_name)
+                else "",
                 "play_count": int(r.play_count) if pd.notna(r.play_count) else 0,
                 "ms_played": int(r.ms_played) if pd.notna(r.ms_played) else 0,
                 "cover_url": _get_cover_for_name(conn, r.display_name, "album")

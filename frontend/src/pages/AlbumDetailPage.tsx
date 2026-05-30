@@ -78,13 +78,13 @@ function formatAlbumType(t: string): string {
 const enrichmentCache = new Map<string, AlbumEnrichmentResponse>()
 const releaseCycleCache = new Map<string, ReleaseCycleAlbumDetailResponse>()
 
-type TabKey = 'overview' | 'stats' | 'tracks' | 'era'
+type TabKey = 'stats' | 'era' | 'overview' | 'tracks'
 
 const TABS: { key: TabKey; label: string }[] = [
-  { key: 'overview', label: 'Billboard' },
   { key: 'stats', label: '播放统计' },
-  { key: 'tracks', label: '曲目表现' },
   { key: 'era', label: '发行档案' },
+  { key: 'overview', label: '榜单成绩' },
+  { key: 'tracks', label: '单曲成绩' },
 ]
 
 function AlbumDetailSkeleton() {
@@ -313,7 +313,7 @@ export function AlbumDetailPage() {
   const [data, setData] = useState<AlbumDetailResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [activeTab, setActiveTab] = useState<TabKey>('overview')
+  const [activeTab, setActiveTab] = useState<TabKey>('stats')
 
   // Enrichment (Wikipedia, Genius) — fetched on demand when user clicks 发行档案 tab
   const [enrichment, setEnrichment] = useState<AlbumEnrichmentResponse | null>(null)

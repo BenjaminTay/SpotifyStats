@@ -53,12 +53,12 @@ function parseChange(change: string | undefined): { type: 'up' | 'down' | 'same'
 // Module-level enrichment cache — survives navigation away and back
 const enrichmentCache = new Map<string, TrackEnrichmentResponse>()
 
-type TabKey = 'overview' | 'stats' | 'lyrics'
+type TabKey = 'stats' | 'lyrics' | 'overview'
 
 const TABS: { key: TabKey; label: string }[] = [
-  { key: 'overview', label: 'Billboard' },
   { key: 'stats', label: '播放统计' },
   { key: 'lyrics', label: '歌词' },
+  { key: 'overview', label: '榜单成绩' },
 ]
 
 function TrackDetailSkeleton() {
@@ -93,7 +93,7 @@ export function TrackDetailPage() {
   const [data, setData] = useState<TrackDetailResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [activeTab, setActiveTab] = useState<TabKey>('overview')
+  const [activeTab, setActiveTab] = useState<TabKey>('stats')
   const [lyrics, setLyrics] = useState<LyricsData | null>(null)
   const [lyricsLoading, setLyricsLoading] = useState(false)
 

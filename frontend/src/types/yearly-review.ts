@@ -30,6 +30,7 @@ export interface TopArtistEntry {
 
 export interface TopTrackEntry {
   rank: number
+  track_id: number
   name: string
   artist_name: string
   plays: number
@@ -78,6 +79,7 @@ export interface GenrePanorama {
 }
 
 export interface LateNightTrack {
+  track_id: number
   name: string
   artist_name: string
   plays: number
@@ -125,6 +127,7 @@ export interface NewArtist {
 }
 
 export interface ReturningTrack {
+  track_id: number
   name: string
   artist_name: string
   plays: number
@@ -133,6 +136,7 @@ export interface ReturningTrack {
 }
 
 export interface LongestLove {
+  track_id: number
   name: string
   artist_name: string
   span_days: number
@@ -191,7 +195,7 @@ export interface SpecialMoments {
 export interface MonthlyDrillItem {
   month: number
   total_hours: number
-  top_tracks: { name: string; artist_name: string; plays: number; cover_url: string }[]
+  top_tracks: { track_id: number; name: string; artist_name: string; plays: number; cover_url: string }[]
   top_artist: { name: string; cover_url: string } | null
 }
 

@@ -56,7 +56,7 @@ export function TopCharts({ topLists }: TopChartsProps) {
           <h3 className="font-sans text-[12px] font-semibold uppercase tracking-[1.5px] text-muted-foreground mb-4">Top 曲目</h3>
           <div className="space-y-3">
             {topLists.tracks.map((t) => (
-              <Link key={t.rank} to={`/music/tracks/${encodeURIComponent(t.name)}`} className="flex items-center gap-3 group">
+              <Link key={t.rank} to={`/music/tracks/${t.track_id}`} className="flex items-center gap-3 group">
                 <span className="font-sans text-[13px] font-bold tabular-nums text-muted-foreground w-5 text-right">{t.rank}</span>
                 <CoverImage url={t.cover_url} alt={t.name} />
                 <div className="min-w-0 flex-1">
@@ -74,7 +74,7 @@ export function TopCharts({ topLists }: TopChartsProps) {
           <h3 className="font-sans text-[12px] font-semibold uppercase tracking-[1.5px] text-muted-foreground mb-4">Top 专辑</h3>
           <div className="space-y-3">
             {topLists.albums.map((a) => (
-              <Link key={a.rank} to={`/music/albums/${encodeURIComponent(a.name)}`} className="flex items-center gap-3 group">
+              <Link key={a.rank} to={`/music/albums/${encodeURIComponent(a.name)}?artist=${encodeURIComponent(a.artist_name)}`} className="flex items-center gap-3 group">
                 <span className="font-sans text-[13px] font-bold tabular-nums text-muted-foreground w-5 text-right">{a.rank}</span>
                 <CoverImage url={a.cover_url} alt={a.name} />
                 <div className="min-w-0 flex-1">

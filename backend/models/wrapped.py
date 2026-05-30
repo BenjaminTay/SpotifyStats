@@ -37,6 +37,7 @@ class TopArtistEntry(BaseModel):
 
 class TopTrackEntry(BaseModel):
     rank: int
+    track_id: int
     name: str
     artist_name: str
     plays: int
@@ -85,6 +86,7 @@ class GenrePanorama(BaseModel):
 
 
 class LateNightTrack(BaseModel):
+    track_id: int
     name: str
     artist_name: str
     plays: int
@@ -132,6 +134,7 @@ class NewArtist(BaseModel):
 
 
 class ReturningTrack(BaseModel):
+    track_id: int
     name: str
     artist_name: str
     plays: int
@@ -140,6 +143,7 @@ class ReturningTrack(BaseModel):
 
 
 class LongestLove(BaseModel):
+    track_id: int
     name: str
     artist_name: str
     span_days: int
@@ -196,6 +200,7 @@ class SpecialMoments(BaseModel):
 
 
 class MonthlyDrillTrack(BaseModel):
+    track_id: int
     name: str
     artist_name: str
     plays: int

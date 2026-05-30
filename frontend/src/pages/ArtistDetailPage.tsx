@@ -83,15 +83,15 @@ function hasAnyReleaseCover(data: ReleaseCycleArtistOverviewResponse): boolean {
   )
 }
 
-type TabKey = 'overview' | 'stats' | 'tracks' | 'albums' | 'releases' | 'career'
+type TabKey = 'stats' | 'releases' | 'career' | 'overview' | 'tracks' | 'albums'
 
 const TABS: { key: TabKey; label: string }[] = [
-  { key: 'overview', label: 'Billboard' },
   { key: 'stats', label: '播放统计' },
-  { key: 'tracks', label: '单曲成绩' },
-  { key: 'albums', label: '专辑成绩' },
   { key: 'releases', label: '发行周期' },
   { key: 'career', label: '艺人生涯' },
+  { key: 'overview', label: '榜单成绩' },
+  { key: 'tracks', label: '单曲成绩' },
+  { key: 'albums', label: '专辑成绩' },
 ]
 
 function ArtistDetailSkeleton() {
@@ -206,7 +206,7 @@ export function ArtistDetailPage() {
   const [data, setData] = useState<ArtistDetailResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [activeTab, setActiveTab] = useState<TabKey>('overview')
+  const [activeTab, setActiveTab] = useState<TabKey>('stats')
 
   // Enrichment (Wikipedia, Spotify)
   const [enrichment, setEnrichment] = useState<ArtistEnrichmentResponse | null>(null)

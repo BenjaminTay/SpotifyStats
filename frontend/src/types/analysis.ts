@@ -1,7 +1,7 @@
 import type { DashboardSummary, MonthlyTrendPoint } from './dashboard'
 
 export type AnalysisTimeRange = 'all' | 'this_year' | 'this_month' | 'custom'
-export type AnalysisPeriod = 'lifetime' | 'today' | 'this_week' | 'this_year' | 'last_4_weeks' | 'last_6_months' | 'custom'
+export type AnalysisPeriod = 'lifetime' | 'last_6_months' | 'last_4_weeks' | 'year' | 'month' | 'week' | 'day' | 'custom'
 export type AnalysisMetric = 'plays' | 'hours'
 export type LeaderboardEntity = 'track' | 'artist' | 'album'
 

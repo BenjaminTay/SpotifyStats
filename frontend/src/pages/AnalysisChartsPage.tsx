@@ -1,4 +1,4 @@
-import { AnalysisPeriodControl, EntityTabs, MetricToggle, useAnalysisQueryState } from '@/components/shared/AnalysisControls'
+import { EntityTabs, MetricToggle, useAnalysisQueryState } from '@/components/shared/AnalysisControls'
 import { GlassCard } from '@/components/shared/GlassCard'
 import { PersonalRankTable } from '@/components/shared/StatsTables'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -12,7 +12,7 @@ const ENTITY_TITLE = {
 
 export function AnalysisChartsPage() {
   const { filters, loading: filtersLoading } = useAnalysisFilters()
-  const { period, metric, entity, startDate, endDate, setQuery, apiParams } = useAnalysisQueryState('track')
+  const { metric, entity, setQuery, apiParams } = useAnalysisQueryState('track')
   const { data, loading } = useApiData(
     () => analysisApi.charts(filters, { ...apiParams, entity, metric, limit: 250 }),
     [filters, apiParams, entity, metric],
@@ -25,12 +25,8 @@ export function AnalysisChartsPage() {
         <div>
           <p className="mb-2 font-sans text-[11px] font-bold uppercase tracking-[1.5px] text-accent-foreground">Personal Charts</p>
           <h2 className="font-serif text-[34px] font-bold leading-tight">个人排行榜</h2>
-          <p className="mt-2 max-w-[640px] text-[14px] leading-relaxed text-muted-foreground">
-            选择任意时间段后，在歌曲、专辑、艺人之间切换，查看同一段时间里的完整个人排行。
-          </p>
         </div>
         <div className="flex flex-wrap items-end gap-3">
-          <AnalysisPeriodControl period={period} startDate={startDate} endDate={endDate} onChange={setQuery} />
           <MetricToggle metric={metric} onChange={(next) => setQuery({ metric: next })} />
         </div>
       </div>

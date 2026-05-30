@@ -67,7 +67,7 @@ export function MonthlyDrilldown({ monthlyDrilldown }: MonthlyDrilldownProps) {
                       <p className="font-sans text-[11px] uppercase tracking-[1px] text-muted-foreground mb-2">最爱曲目</p>
                       <div className="space-y-2">
                         {m.top_tracks.map((t, i) => (
-                          <Link key={t.name + t.artist_name} to={`/music/tracks/${encodeURIComponent(t.name)}`} className="flex items-center gap-3 group">
+                          <Link key={t.name + t.artist_name} to={`/music/tracks/${t.track_id}`} className="flex items-center gap-3 group">
                             <span className="font-sans text-[11px] font-bold text-muted-foreground w-4">{i + 1}</span>
                             <MiniCover url={t.cover_url} name={t.name} />
                             <div className="min-w-0 flex-1">

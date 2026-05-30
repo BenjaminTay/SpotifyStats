@@ -64,7 +64,7 @@ export function ListeningDepth({ listeningDepth }: ListeningDepthProps) {
             </GlassCard>
           ) : (
             listeningDepth.album_completion.map((album) => (
-              <Link key={album.name + album.artist_name} to={`/music/albums/${encodeURIComponent(album.name)}`}>
+              <Link key={album.name + album.artist_name} to={`/music/albums/${encodeURIComponent(album.name)}?artist=${encodeURIComponent(album.artist_name)}`}>
                 <GlassCard className="p-4 flex items-center gap-3 group hover:border-accent-foreground/20 transition-colors">
                   <CoverImage url={album.cover_url} alt={album.name} />
                   <div className="min-w-0 flex-1">

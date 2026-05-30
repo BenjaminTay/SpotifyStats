@@ -505,12 +505,13 @@ def _build_top_lists(conn, artist_agg, track_agg, album_agg):
 
     # tracks (by plays) - track_agg already sorted by plays
     tracks = []
-    for i, r in enumerate(track_agg.head(5).itertuples(index=True)):
+    for i, r in enumerate(track_agg.head(5).itertuples(index=False)):
         name = r.track_name if pd.notna(r.track_name) else ""
         artist_name = r.artist_name if pd.notna(r.artist_name) else ""
         tracks.append(
             {
                 "rank": i + 1,
+                "track_id": int(r.track_id),
                 "name": name,
                 "artist_name": artist_name,
                 "plays": int(r.plays),
@@ -953,11 +954,11 @@ def _build_late_night(conn, year_df) -> dict:
 
     # Top 3 tracks during late night
     night_tracks = (
-        night_df.groupby(["track_name", "artist_name"])
-        .size()
-        .sort_values(ascending=False)
+        night_df.groupby(["track_name", "artist_name", "track_id"])
+        .agg(plays=("play_id", "count"))
+        .sort_values("plays", ascending=False)
         .head(3)
-        .reset_index(name="plays")
+        .reset_index()
     )
     top_tracks = []
     for _, r in night_tracks.iterrows():
@@ -965,6 +966,7 @@ def _build_late_night(conn, year_df) -> dict:
         art = r["artist_name"] if pd.notna(r["artist_name"]) else ""
         top_tracks.append(
             {
+                "track_id": int(r["track_id"]),
                 "name": name,
                 "artist_name": art,
                 "plays": int(r["plays"]),
@@ -1052,11 +1054,20 @@ def _build_returning_tracks(conn, year_df, year: int) -> list[dict]:
         if key in returning_pairs:
             track_plays[key] = track_plays.get(key, 0) + 1
 
+    # Build track_id lookup for the returning pairs
+    track_id_map = (
+        year_df[["track_name", "artist_name", "track_id"]]
+        .drop_duplicates(subset=["track_name", "artist_name"])
+        .set_index(["track_name", "artist_name"])["track_id"]
+        .to_dict()
+    )
+
     top5 = sorted(track_plays.items(), key=lambda x: x[1], reverse=True)[:5]
     results = []
     for (t_name, a_name), plays in top5:
         results.append(
             {
+                "track_id": int(track_id_map.get((t_name, a_name), 0)),
                 "name": t_name,
                 "artist_name": a_name,
                 "plays": plays,
@@ -1093,7 +1104,13 @@ def _build_longest_love(conn, df, year_df, year) -> dict | None:
     best = spans.loc[spans["span_days"].idxmax()]
     name = best["track_name"]
     art = best["artist_name"]
+
+    # Look up track_id for this track
+    track_id_match = year_df[(year_df["track_name"] == name) & (year_df["artist_name"] == art)]
+    track_id = int(track_id_match["track_id"].iloc[0]) if not track_id_match.empty else 0
+
     return {
+        "track_id": track_id,
         "name": name,
         "artist_name": art,
         "span_days": int(best["span_days"]),
@@ -1356,11 +1373,11 @@ def _build_monthly_drilldown(conn, year_df) -> list[dict]:
 
         # Top 3 tracks
         top_tracks_df = (
-            month_df.groupby(["track_name", "artist_name"])
-            .size()
-            .sort_values(ascending=False)
+            month_df.groupby(["track_name", "artist_name", "track_id"])
+            .agg(plays=("play_id", "count"))
+            .sort_values("plays", ascending=False)
             .head(3)
-            .reset_index(name="plays")
+            .reset_index()
         )
         top_tracks = []
         for _, r in top_tracks_df.iterrows():
@@ -1368,6 +1385,7 @@ def _build_monthly_drilldown(conn, year_df) -> list[dict]:
             a_name = r["artist_name"] if pd.notna(r["artist_name"]) else ""
             top_tracks.append(
                 {
+                    "track_id": int(r["track_id"]),
                     "name": t_name,
                     "artist_name": a_name,
                     "plays": int(r["plays"]),

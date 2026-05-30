@@ -226,7 +226,7 @@ export function TimeStory({ timeStory }: TimeStoryProps) {
               <div className="space-y-2">
                 <p className="font-sans text-[11px] uppercase tracking-[1px] text-muted-foreground">深夜最爱</p>
                 {timeStory.late_night.top_tracks.map((t) => (
-                  <Link key={t.name + t.artist_name} to={`/music/tracks/${encodeURIComponent(t.name)}`} className="flex items-center gap-2 group">
+                  <Link key={t.name + t.artist_name} to={`/music/tracks/${t.track_id}`} className="flex items-center gap-2 group">
                     <MiniCover url={t.cover_url} name={t.name} />
                     <div className="min-w-0 flex-1">
                       <p className="font-sans text-[13px] font-semibold truncate group-hover:text-accent-foreground transition-colors">{t.name}</p>

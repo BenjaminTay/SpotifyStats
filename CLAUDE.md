@@ -353,7 +353,7 @@ React + Vite + Tailwind CSS v4 + shadcn/ui（样式 `base-nova`，基础色 `neu
 - **样式**：Tailwind CSS v4（`@tailwindcss/vite` 插件），`tw-animate-css` 动画库
 - **主题**：CSS 变量 + `.dark` class 切换，`oklch()` 色彩空间。结构变量在 `@theme inline`，颜色在 `:root` / `.dark`。`useTheme()` hook 提供 localStorage 持久化 + 系统偏好回退
 - **组件**：shadcn/ui v4（base-nova 风格），源码在 `@/components/ui/`
-- **路由**：React Router v7。主导航包含 `/`、`/analysis`、`/yearly-review`、`/billboard`、`/account`、`/settings`（顺序：总览 → 分析 → 年度回顾 → Billboard → 账号 → 设置）；播放分析使用 `/analysis/stats`（总体统计）与 `/analysis/charts`（个人排行榜）；音乐实体详情使用全局 `/music/tracks/:trackId`、`/music/albums/:albumName`、`/music/artists/:artistName`，旧 `/billboard/track|album|artist/*` 仅做兼容跳转。页面组件均通过 `React.lazy()` 路由级分包，首屏只下载当前路由代码
+- **路由**：React Router v7。主导航包含 `/`、`/analysis`、`/yearly-review`、`/billboard`、`/account`、`/settings`（顺序：总览 → 分析 → 年度回顾 → Billboard → 账号 → 设置）；播放分析使用 `/analysis/stats`（总体统计）与 `/analysis/charts`（个人排行榜），两个子页面共享 `AnalysisLayout` 布局，时间范围选择器在 `AnalysisSubNav` 右侧，切换标签页通过 URL search params 自动保留 `period`/`period_value`/`start`/`end` 参数；音乐实体详情使用全局 `/music/tracks/:trackId`、`/music/albums/:albumName`、`/music/artists/:artistName`，旧 `/billboard/track|album|artist/*` 仅做兼容跳转。页面组件均通过 `React.lazy()` 路由级分包，首屏只下载当前路由代码
 - **图表**：ECharts 6 + echarts-for-react（月度趋势图、排名趋势图、发行周期图）；图表库通过组件内动态 import 按需加载。平台分布使用纯 DOM 进度条
 - **字体**：Inter Variable（`@fontsource-variable/inter`）+ Playfair Display（Google Fonts CDN）
 - **国际化**：中文简繁转换（opencc-js），`displayName()` 覆盖所有页面的名称展示；OpenCC 转换器按需动态 import，默认「原文」模式不加载大字典包，切换简/繁后通过事件触发页面重渲染
@@ -376,9 +376,9 @@ frontend/src/
 │   └── account/collection/   ← 收藏分析 11 个业务组件（PersonalityHero / CollectionOverview / FirstSaveStory / SaveLifecycle / Chemistry / FlipSideAndMigration / Leaderboard / SavedTracksBrowser / PlaylistsBrowser / NotAvailable + formatDate 工具）
 ├── components/
 │   ├── ui/          ← shadcn/ui 组件（可随意修改，含 calendar, popover）
-│   ├── charts/      ← ECharts 封装（动态 import）+ 纯 DOM 图表（RankTrendChart：时间线填充断档周、全貌/细节缩放切换+dataZoom滑块、峰值Pin标记+连续冠周markArea色带；ReleaseTimelineChart：发行周期排名趋势图）
+│   ├── charts/      ← ECharts 封装（动态 import）+ 纯 DOM 图表（RankTrendChart：时间线填充断档周、全貌/细节缩放切换+dataZoom滑块、峰值Pin标记+连续冠周markArea色带；ReleaseTimelineChart：发行周期排名趋势图；ListeningClock：极坐标时针式24小时听歌分布图，多彩扇区半径表示播放量，hover 弹窗详情）
 │   ├── layout/      ← 布局（AppLayout, Masthead, ThemeToggle）
-│   └── shared/      ← 共享组件（GlassCard, KpiCard, WeekSelector 含日历弹窗, NoiseOverlay, PageSwitcher, ChangeCell, CoverCell, ArtistEnrichmentView, AlbumEnrichmentView, KeyFactsCard, StatsGrid, CareerTimeline, GenreTags, ChartBars, FormattedText）
+│   └── shared/      ← 共享组件（GlassCard, KpiCard, WeekSelector 含日历弹窗, NoiseOverlay, PageSwitcher, ChangeCell, CoverCell, AnalysisTimeRangeSelector 按钮式时间范围选择器, StatsTables 含 Billboard 风格视觉条 + 最近播放记录表, ArtistEnrichmentView, AlbumEnrichmentView, KeyFactsCard, StatsGrid, CareerTimeline, GenreTags, ChartBars, FormattedText）
 ├── pages/           ← 页面组件
 │   ├── DashboardPage.tsx    ← 总览仪表盘（动态数据洞察：月度趋势 + 聆听高峰智能分析）
 │   ├── YearlyReviewPage.tsx ← 年度回顾（2 Tab：自定义年度总结 + 官方 Wrapped，年份选择器 + 序列化预取 + ErrorBoundary 容错）
