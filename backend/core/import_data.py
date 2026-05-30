@@ -1,31 +1,30 @@
 """ETL pipeline: import Spotify Extended Streaming History JSON into SQLite."""
 
-import json
-import glob
-import os
-from typing import Any, Optional
+from __future__ import annotations
 
-from .db import get_db, init_db, ensure_schema, DB_PATH, build_aggregations
-from .utils import convert_to_local_time, classify_platform
+import glob
+import json
+import os
+from typing import Any
+
+from .db import build_aggregations, ensure_schema, get_db, init_db
+from .utils import classify_platform, convert_to_local_time
 
 DATA_DIR = os.path.join(
     os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
-    "data", "streaming",
+    "data",
+    "streaming",
 )
 
 
 def _cache_artist(conn, name: str, cache: dict[str, int]) -> int:
     if name in cache:
         return cache[name]
-    row = conn.execute(
-        "SELECT artist_id FROM artists WHERE artist_name = ?", (name,)
-    ).fetchone()
+    row = conn.execute("SELECT artist_id FROM artists WHERE artist_name = ?", (name,)).fetchone()
     if row:
         cache[name] = row[0]
     else:
-        cur = conn.execute(
-            "INSERT INTO artists(artist_name) VALUES (?)", (name,)
-        )
+        cur = conn.execute("INSERT INTO artists(artist_name) VALUES (?)", (name,))
         cache[name] = cur.lastrowid
     return cache[name]
 
@@ -53,8 +52,8 @@ def _cache_track(
     conn,
     track_name: str,
     artist_id: int,
-    album_id: Optional[int],
-    spotify_uri: Optional[str],
+    album_id: int | None,
+    spotify_uri: str | None,
     cache: dict[tuple, int],
 ) -> int:
     # Use (artist_id, track_name) as canonical key to merge duplicate versions
@@ -88,7 +87,7 @@ def _cache_track(
 
 
 def import_data(
-    data_dir: Optional[str] = None,
+    data_dir: str | None = None,
     progress_callback=None,
     agg_min_ms: int = 30000,
     agg_music_only: bool = True,
@@ -176,7 +175,6 @@ def import_data(
             records = json.load(f)
 
         plays_batch: list[tuple] = []
-        records_in_file = len(records)
 
         for rec_idx, rec in enumerate(records):
             ts_raw = rec.get("ts", "")
@@ -205,26 +203,28 @@ def import_data(
                     conn, track_name, artist_id, album_id, spotify_uri, track_cache
                 )
 
-            plays_batch.append((
-                time_info["ts"],
-                time_info["ts_year"],
-                time_info["ts_month"],
-                time_info["ts_week"],
-                time_info["ts_dow"],
-                time_info["ts_hour"],
-                time_info["ts_date"],
-                platform,
-                ms_played,
-                country,
-                track_id,
-                rec.get("reason_start"),
-                rec.get("reason_end"),
-                1 if rec.get("shuffle") else 0,
-                skipped,
-                1 if rec.get("offline") else 0,
-                1 if rec.get("incognito_mode") else 0,
-                'audio',
-            ))
+            plays_batch.append(
+                (
+                    time_info["ts"],
+                    time_info["ts_year"],
+                    time_info["ts_month"],
+                    time_info["ts_week"],
+                    time_info["ts_dow"],
+                    time_info["ts_hour"],
+                    time_info["ts_date"],
+                    platform,
+                    ms_played,
+                    country,
+                    track_id,
+                    rec.get("reason_start"),
+                    rec.get("reason_end"),
+                    1 if rec.get("shuffle") else 0,
+                    skipped,
+                    1 if rec.get("offline") else 0,
+                    1 if rec.get("incognito_mode") else 0,
+                    "audio",
+                )
+            )
 
             # Batch insert every 5000 rows to keep memory in check
             if len(plays_batch) >= 5000:
@@ -295,26 +295,28 @@ def import_data(
                         conn, track_name, artist_id, album_id, spotify_uri, track_cache
                     )
 
-                plays_batch.append((
-                    time_info["ts"],
-                    time_info["ts_year"],
-                    time_info["ts_month"],
-                    time_info["ts_week"],
-                    time_info["ts_dow"],
-                    time_info["ts_hour"],
-                    time_info["ts_date"],
-                    platform,
-                    ms_played,
-                    country,
-                    track_id,
-                    rec.get("reason_start"),
-                    rec.get("reason_end"),
-                    1 if rec.get("shuffle") else 0,
-                    skipped,
-                    1 if rec.get("offline") else 0,
-                    1 if rec.get("incognito_mode") else 0,
-                    'video',
-                ))
+                plays_batch.append(
+                    (
+                        time_info["ts"],
+                        time_info["ts_year"],
+                        time_info["ts_month"],
+                        time_info["ts_week"],
+                        time_info["ts_dow"],
+                        time_info["ts_hour"],
+                        time_info["ts_date"],
+                        platform,
+                        ms_played,
+                        country,
+                        track_id,
+                        rec.get("reason_start"),
+                        rec.get("reason_end"),
+                        1 if rec.get("shuffle") else 0,
+                        skipped,
+                        1 if rec.get("offline") else 0,
+                        1 if rec.get("incognito_mode") else 0,
+                        "video",
+                    )
+                )
 
                 if len(plays_batch) >= 5000:
                     conn.executemany(
@@ -364,6 +366,7 @@ def import_data(
     except Exception as e:
         import logging
         import traceback
+
         logger = logging.getLogger(__name__)
         logger.warning("预聚合表构建失败（Billboard 页面将使用实时计算）: %s", e)
         traceback.print_exc()

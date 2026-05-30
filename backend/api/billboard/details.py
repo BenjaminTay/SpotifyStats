@@ -10,13 +10,16 @@ GET /billboard/versus/artist         — compare two artists
 """
 
 from fastapi import APIRouter, Depends, Query
-from typing import Optional
 
 from backend.dependencies import BillboardFilters
 from backend.services.billboard_service import (
-    get_track_history, get_artist_chart_detail, get_album_chart_detail,
-    get_versus_track, get_versus_album, get_versus_artist,
+    get_album_chart_detail,
+    get_artist_chart_detail,
     get_billboard_entity_lists,
+    get_track_history,
+    get_versus_album,
+    get_versus_artist,
+    get_versus_track,
 )
 
 router = APIRouter()
@@ -104,6 +107,7 @@ def entity_lists(
 
 # ── Versus ───────────────────────────────────────────────────────────────────
 
+
 @router.get("/versus/track")
 def versus_track(
     track_id_a: int = Query(..., description="Track A ID"),
@@ -112,7 +116,8 @@ def versus_track(
 ):
     """Compare two tracks side-by-side."""
     return get_versus_track(
-        tid_a=track_id_a, tid_b=track_id_b,
+        tid_a=track_id_a,
+        tid_b=track_id_b,
         min_ms=filters.min_ms,
         music_only=filters.music_only,
         bb_top_n=filters.bb_top_n,
@@ -135,8 +140,10 @@ def versus_album(
 ):
     """Compare two albums side-by-side."""
     return get_versus_album(
-        aname_a=album_a, aart_a=artist_a,
-        aname_b=album_b, aart_b=artist_b,
+        aname_a=album_a,
+        aart_a=artist_a,
+        aname_b=album_b,
+        aart_b=artist_b,
         min_ms=filters.min_ms,
         music_only=filters.music_only,
         bb_top_n=filters.bb_top_n,
@@ -157,7 +164,8 @@ def versus_artist(
 ):
     """Compare two artists side-by-side."""
     return get_versus_artist(
-        sel_a=artist_a, sel_b=artist_b,
+        sel_a=artist_a,
+        sel_b=artist_b,
         min_ms=filters.min_ms,
         music_only=filters.music_only,
         bb_top_n=filters.bb_top_n,

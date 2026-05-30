@@ -1,10 +1,12 @@
 """Playback analysis API endpoints."""
 
-from fastapi import APIRouter, Depends, Query
-from sqlite3 import Connection
-from typing import Optional
+from __future__ import annotations
 
-from backend.dependencies import get_conn, PlayFilters
+from sqlite3 import Connection
+
+from fastapi import APIRouter, Depends, Query
+
+from backend.dependencies import PlayFilters, get_conn
 from backend.services.analysis_service import get_analysis_overview
 from backend.services.analysis_stats_service import get_analysis_charts, get_analysis_stats
 
@@ -28,8 +30,8 @@ def analysis_overview(
 def analysis_stats(
     filters: PlayFilters = Depends(),
     period: str = Query(default="lifetime"),
-    start_date: Optional[str] = Query(default=None),
-    end_date: Optional[str] = Query(default=None),
+    start_date: str | None = Query(default=None),
+    end_date: str | None = Query(default=None),
     conn: Connection = Depends(get_conn),
 ):
     return get_analysis_stats(
@@ -47,8 +49,8 @@ def analysis_stats(
 def analysis_charts(
     filters: PlayFilters = Depends(),
     period: str = Query(default="lifetime"),
-    start_date: Optional[str] = Query(default=None),
-    end_date: Optional[str] = Query(default=None),
+    start_date: str | None = Query(default=None),
+    end_date: str | None = Query(default=None),
     entity: str = Query(default="track"),
     metric: str = Query(default="plays"),
     limit: int = Query(default=100, ge=1, le=5000),

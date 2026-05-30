@@ -4,16 +4,19 @@ Each JSON source has its own import function for modularity. import_all()
 aggregates all imports and returns summary statistics.
 """
 
+from __future__ import annotations
+
 import json
 import os
-from typing import Any, Optional
+from typing import Any
 
 from .db import get_db
 from .utils import convert_to_local_time
 
 ACCOUNT_DATA_DIR = os.path.join(
     os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
-    "data", "account",
+    "data",
+    "account",
 )
 
 
@@ -21,7 +24,8 @@ ACCOUNT_DATA_DIR = os.path.join(
 # Wrapped 2025
 # ═══════════════════════════════════════════════════════════════════════════
 
-def import_wrapped_2025(data_dir: Optional[str] = None, conn=None) -> dict:
+
+def import_wrapped_2025(data_dir: str | None = None, conn=None) -> dict:
     """Import Wrapped2025.json into wrapped_* tables."""
     if data_dir is None:
         data_dir = ACCOUNT_DATA_DIR
@@ -71,7 +75,12 @@ def import_wrapped_2025(data_dir: Optional[str] = None, conn=None) -> dict:
         for m in a.get("monthsStats", []):
             conn.execute(
                 "INSERT INTO wrapped_artist_race(artist_uri, month, rank, trail_size) VALUES (?, ?, ?, ?)",
-                (a.get("artistUri", ""), m.get("month", ""), m.get("rank", 0), m.get("trailSize", "")),
+                (
+                    a.get("artistUri", ""),
+                    m.get("month", ""),
+                    m.get("rank", 0),
+                    m.get("trailSize", ""),
+                ),
             )
 
     # clubs
@@ -87,11 +96,20 @@ def import_wrapped_2025(data_dir: Optional[str] = None, conn=None) -> dict:
     conn.execute("DELETE FROM wrapped_party")
     party = data.get("party", {})
     scalar_keys = [
-        "avgTrackPopularityScore", "numSharesAllContent", "numListenedAlbums",
-        "multilinguistRankingScore", "percentListenedExplicit", "absoluteChaosRankingScore",
-        "percentListenedNight", "totalNumListeningMinutes", "totalNumListeningDays",
-        "streakNumListeningDays", "numArtistsDiscovered", "percentHappyTracks",
-        "percentLoveTracks", "percentPartyTracks",
+        "avgTrackPopularityScore",
+        "numSharesAllContent",
+        "numListenedAlbums",
+        "multilinguistRankingScore",
+        "percentListenedExplicit",
+        "absoluteChaosRankingScore",
+        "percentListenedNight",
+        "totalNumListeningMinutes",
+        "totalNumListeningDays",
+        "streakNumListeningDays",
+        "numArtistsDiscovered",
+        "percentHappyTracks",
+        "percentLoveTracks",
+        "percentPartyTracks",
     ]
     for k in scalar_keys:
         if k in party and not isinstance(party[k], (list, dict)):
@@ -125,9 +143,14 @@ def import_wrapped_2025(data_dir: Optional[str] = None, conn=None) -> dict:
         conn.execute(
             """INSERT INTO wrapped_archive_reports(column_qualifier, title, description, reason, minutes_listened, filed_under_tags)
                VALUES (?, ?, ?, ?, ?, ?)""",
-            (r.get("columnQualifier", ""), r.get("title", ""), r.get("description", ""),
-             r.get("reason", ""), r.get("minutesListened", 0),
-             json.dumps(r.get("filedUnderTags", []), ensure_ascii=False)),
+            (
+                r.get("columnQualifier", ""),
+                r.get("title", ""),
+                r.get("description", ""),
+                r.get("reason", ""),
+                r.get("minutesListened", 0),
+                json.dumps(r.get("filedUnderTags", []), ensure_ascii=False),
+            ),
         )
 
     # topGenres
@@ -155,7 +178,8 @@ def import_wrapped_2025(data_dir: Optional[str] = None, conn=None) -> dict:
 # Your Library
 # ═══════════════════════════════════════════════════════════════════════════
 
-def import_your_library(data_dir: Optional[str] = None, conn=None) -> dict:
+
+def import_your_library(data_dir: str | None = None, conn=None) -> dict:
     """Import YourLibrary.json into saved_* and banned_items tables."""
     if data_dir is None:
         data_dir = ACCOUNT_DATA_DIR
@@ -176,7 +200,12 @@ def import_your_library(data_dir: Optional[str] = None, conn=None) -> dict:
     for item in data.get("tracks", []):
         conn.execute(
             "INSERT INTO saved_tracks(track_uri, track_name, artist_name, album_name) VALUES (?, ?, ?, ?)",
-            (item.get("uri", ""), item.get("track", ""), item.get("artist", ""), item.get("album", "")),
+            (
+                item.get("uri", ""),
+                item.get("track", ""),
+                item.get("artist", ""),
+                item.get("album", ""),
+            ),
         )
         count_tracks += 1
 
@@ -242,7 +271,8 @@ def import_your_library(data_dir: Optional[str] = None, conn=None) -> dict:
 # Playlists
 # ═══════════════════════════════════════════════════════════════════════════
 
-def import_playlists(data_dir: Optional[str] = None, conn=None) -> dict:
+
+def import_playlists(data_dir: str | None = None, conn=None) -> dict:
     """Import Playlist1.json into playlists + playlist_tracks tables."""
     if data_dir is None:
         data_dir = ACCOUNT_DATA_DIR
@@ -267,8 +297,12 @@ def import_playlists(data_dir: Optional[str] = None, conn=None) -> dict:
     for pl in playlists:
         conn.execute(
             "INSERT INTO playlists(playlist_name, last_modified_date, track_count, follower_count) VALUES (?, ?, ?, ?)",
-            (pl.get("name", ""), pl.get("lastModifiedDate", ""),
-             len(pl.get("items", [])), pl.get("numberOfFollowers", 0)),
+            (
+                pl.get("name", ""),
+                pl.get("lastModifiedDate", ""),
+                len(pl.get("items", [])),
+                pl.get("numberOfFollowers", 0),
+            ),
         )
         pid = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
 
@@ -277,9 +311,14 @@ def import_playlists(data_dir: Optional[str] = None, conn=None) -> dict:
             if t:
                 conn.execute(
                     "INSERT INTO playlist_tracks(playlist_id, track_uri, track_name, artist_name, album_name, added_date) VALUES (?, ?, ?, ?, ?, ?)",
-                    (pid, t.get("trackUri", ""), t.get("trackName", ""),
-                     t.get("artistName", ""), t.get("albumName", ""),
-                     item.get("addedDate", "")),
+                    (
+                        pid,
+                        t.get("trackUri", ""),
+                        t.get("trackName", ""),
+                        t.get("artistName", ""),
+                        t.get("albumName", ""),
+                        item.get("addedDate", ""),
+                    ),
                 )
                 track_count += 1
 
@@ -295,7 +334,8 @@ def import_playlists(data_dir: Optional[str] = None, conn=None) -> dict:
 # Search Queries
 # ═══════════════════════════════════════════════════════════════════════════
 
-def import_search_queries(data_dir: Optional[str] = None, conn=None) -> dict:
+
+def import_search_queries(data_dir: str | None = None, conn=None) -> dict:
     """Import SearchQueries.json into search_queries table."""
     if data_dir is None:
         data_dir = ACCOUNT_DATA_DIR
@@ -325,9 +365,15 @@ def import_search_queries(data_dir: Optional[str] = None, conn=None) -> dict:
         conn.execute(
             """INSERT INTO search_queries(query_text, search_time_utc, search_date, search_hour, search_dow, platform, interaction_uri)
                VALUES (?, ?, ?, ?, ?, ?, ?)""",
-            (rec.get("searchQuery", ""), raw_time, time_info.get("ts_date", ""),
-             time_info.get("ts_hour", 0), time_info.get("ts_dow", 0),
-             rec.get("platform", ""), interaction_uri),
+            (
+                rec.get("searchQuery", ""),
+                raw_time,
+                time_info.get("ts_date", ""),
+                time_info.get("ts_hour", 0),
+                time_info.get("ts_dow", 0),
+                rec.get("platform", ""),
+                interaction_uri,
+            ),
         )
 
     conn.commit()
@@ -339,6 +385,7 @@ def import_search_queries(data_dir: Optional[str] = None, conn=None) -> dict:
 # ═══════════════════════════════════════════════════════════════════════════
 # Inferences
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 def _classify_inference(text: str) -> str:
     """Classify an inference tag into a category."""
@@ -355,7 +402,7 @@ def _classify_inference(text: str) -> str:
     return "other"
 
 
-def import_inferences(data_dir: Optional[str] = None, conn=None) -> dict:
+def import_inferences(data_dir: str | None = None, conn=None) -> dict:
     """Import Inferences.json into inferences table."""
     if data_dir is None:
         data_dir = ACCOUNT_DATA_DIR
@@ -390,7 +437,8 @@ def import_inferences(data_dir: Optional[str] = None, conn=None) -> dict:
 # Sound Capsule
 # ═══════════════════════════════════════════════════════════════════════════
 
-def import_sound_capsule(data_dir: Optional[str] = None, conn=None) -> dict:
+
+def import_sound_capsule(data_dir: str | None = None, conn=None) -> dict:
     """Import YourSoundCapsule.json into sound_capsule_* tables."""
     if data_dir is None:
         data_dir = ACCOUNT_DATA_DIR
@@ -414,54 +462,76 @@ def import_sound_capsule(data_dir: Optional[str] = None, conn=None) -> dict:
         detail = {}
         if ht == "FIRST_TO_DISCOVER":
             ftd = h.get("firstToDiscoverHighlight", {})
-            detail = {"entity": ftd.get("entity", ""), "country": ftd.get("country", ""),
-                       "position": ftd.get("position", 0)}
+            detail = {
+                "entity": ftd.get("entity", ""),
+                "country": ftd.get("country", ""),
+                "position": ftd.get("position", 0),
+            }
         elif ht == "FANS_LIKE_YOU":
             fly = h.get("fansLikeYouHighlight", {})
-            detail = {"artist_name": fly.get("artistName", ""),
-                       "fans_percentile": fly.get("percentileFan", 0)}
+            detail = {
+                "artist_name": fly.get("artistName", ""),
+                "fans_percentile": fly.get("percentileFan", 0),
+            }
         elif ht == "STREAKS":
             s = h.get("streakHighlight", {})
-            detail = {"streak_days": s.get("streakDays", 0),
-                       "entity_name": s.get("entityName", "")}
+            detail = {"streak_days": s.get("streakDays", 0), "entity_name": s.get("entityName", "")}
         elif ht == "MILESTONE":
             m = h.get("milestoneHighlight", {})
-            detail = {"stream_count": m.get("streamCount", 0),
-                       "entity_name": m.get("entityName", "")}
+            detail = {
+                "stream_count": m.get("streamCount", 0),
+                "entity_name": m.get("entityName", ""),
+            }
         elif ht == "ON_REPEAT":
             r = h.get("onRepeatHighlight", {})
-            detail = {"track_name": r.get("trackName", ""),
-                       "artist_name": r.get("artistName", ""),
-                       "play_count": r.get("playCount", 0)}
+            detail = {
+                "track_name": r.get("trackName", ""),
+                "artist_name": r.get("artistName", ""),
+                "play_count": r.get("playCount", 0),
+            }
         elif ht == "YOU_STAND_OUT":
             yso = h.get("youStandOutHighlight", {})
-            detail = {"entity_name": yso.get("entityName", ""),
-                       "genre": yso.get("genre", ""),
-                       "percentile": yso.get("percentile", 0)}
+            detail = {
+                "entity_name": yso.get("entityName", ""),
+                "genre": yso.get("genre", ""),
+                "percentile": yso.get("percentile", 0),
+            }
         elif ht == "UNLIKE_COMBINATION":
             uc = h.get("unlikeCombinationHighlight", {})
-            detail = {"genre": uc.get("genre", ""),
-                       "entity_name": uc.get("entityName", "")}
+            detail = {"genre": uc.get("genre", ""), "entity_name": uc.get("entityName", "")}
         elif ht == "PROPORTION_LISTENING_ENTITY":
             ple = h.get("proportionListeningEntityHighlight", {})
-            detail = {"entity_name": ple.get("entityName", ""),
-                       "proportion": ple.get("proportion", 0)}
+            detail = {
+                "entity_name": ple.get("entityName", ""),
+                "proportion": ple.get("proportion", 0),
+            }
         conn.execute(
             "INSERT INTO sound_capsule_highlights(highlight_date, highlight_type, entity_name, detail_json) VALUES (?, ?, ?, ?)",
-            (h.get("date", ""), ht, str(detail.get("entity_name", detail.get("track_name", ""))),
-             json.dumps(detail, ensure_ascii=False)),
+            (
+                h.get("date", ""),
+                ht,
+                str(detail.get("entity_name", detail.get("track_name", ""))),
+                json.dumps(detail, ensure_ascii=False),
+            ),
         )
 
     stats = data.get("stats", [])
     for s in stats:
         conn.execute(
             "INSERT INTO sound_capsule_daily(date, stream_count, seconds_played, top_data_json) VALUES (?, ?, ?, ?)",
-            (s.get("date", ""), s.get("streamCount", 0), s.get("secondsPlayed", 0),
-             json.dumps({
-                 "topTracks": s.get("topTracks", []),
-                 "topArtists": s.get("topArtists", []),
-                 "topGenres": s.get("topGenres", []),
-             }, ensure_ascii=False)),
+            (
+                s.get("date", ""),
+                s.get("streamCount", 0),
+                s.get("secondsPlayed", 0),
+                json.dumps(
+                    {
+                        "topTracks": s.get("topTracks", []),
+                        "topArtists": s.get("topArtists", []),
+                        "topGenres": s.get("topGenres", []),
+                    },
+                    ensure_ascii=False,
+                ),
+            ),
         )
 
     conn.commit()
@@ -474,7 +544,8 @@ def import_sound_capsule(data_dir: Optional[str] = None, conn=None) -> dict:
 # Marquee
 # ═══════════════════════════════════════════════════════════════════════════
 
-def import_marquee(data_dir: Optional[str] = None, conn=None) -> dict:
+
+def import_marquee(data_dir: str | None = None, conn=None) -> dict:
     """Import Marquee.json into marquee_impressions table."""
     if data_dir is None:
         data_dir = ACCOUNT_DATA_DIR
@@ -507,7 +578,8 @@ def import_marquee(data_dir: Optional[str] = None, conn=None) -> dict:
 # Podcast Data
 # ═══════════════════════════════════════════════════════════════════════════
 
-def import_podcast_data(data_dir: Optional[str] = None, conn=None) -> dict:
+
+def import_podcast_data(data_dir: str | None = None, conn=None) -> dict:
     """Import all podcast-related Account Data JSONs."""
     if data_dir is None:
         data_dir = ACCOUNT_DATA_DIR
@@ -538,8 +610,14 @@ def import_podcast_data(data_dir: Optional[str] = None, conn=None) -> dict:
             conn.execute(
                 """INSERT INTO podcast_plays(end_time, podcast_name, episode_name, ms_played, play_date, play_hour)
                    VALUES (?, ?, ?, ?, ?, ?)""",
-                (end_time, rec.get("podcastName", ""), rec.get("episodeName", ""),
-                 rec.get("msPlayed", 0), date_part, hour),
+                (
+                    end_time,
+                    rec.get("podcastName", ""),
+                    rec.get("episodeName", ""),
+                    rec.get("msPlayed", 0),
+                    date_part,
+                    hour,
+                ),
             )
             podcast_play_count += 1
 
@@ -554,9 +632,12 @@ def import_podcast_data(data_dir: Optional[str] = None, conn=None) -> dict:
         for c in cdata.get("comments", []):
             conn.execute(
                 "INSERT INTO podcast_interactions(interaction_type, entity_uri, content_json, created_at) VALUES (?, ?, ?, ?)",
-                ("comment", c.get("entityUri", ""),
-                 json.dumps({"commentText": c.get("commentText", "")}, ensure_ascii=False),
-                 c.get("postedDate", "")),
+                (
+                    "comment",
+                    c.get("entityUri", ""),
+                    json.dumps({"commentText": c.get("commentText", "")}, ensure_ascii=False),
+                    c.get("postedDate", ""),
+                ),
             )
             interaction_count += 1
 
@@ -568,9 +649,12 @@ def import_podcast_data(data_dir: Optional[str] = None, conn=None) -> dict:
         for r in rdata.get("ratedShows", []):
             conn.execute(
                 "INSERT INTO podcast_interactions(interaction_type, entity_uri, content_json, created_at) VALUES (?, ?, ?, ?)",
-                ("rating", r.get("entityUri", ""),
-                 json.dumps({"rating": r.get("rating", "")}, ensure_ascii=False),
-                 r.get("ratedDate", "")),
+                (
+                    "rating",
+                    r.get("entityUri", ""),
+                    json.dumps({"rating": r.get("rating", "")}, ensure_ascii=False),
+                    r.get("ratedDate", ""),
+                ),
             )
             interaction_count += 1
 
@@ -582,9 +666,12 @@ def import_podcast_data(data_dir: Optional[str] = None, conn=None) -> dict:
         for p in pdata.get("votedPollOptionResponses", []):
             conn.execute(
                 "INSERT INTO podcast_interactions(interaction_type, entity_uri, content_json, created_at) VALUES (?, ?, ?, ?)",
-                ("poll", p.get("entityUri", ""),
-                 json.dumps({"response": p.get("response", {})}, ensure_ascii=False),
-                 p.get("postedDate", "")),
+                (
+                    "poll",
+                    p.get("entityUri", ""),
+                    json.dumps({"response": p.get("response", {})}, ensure_ascii=False),
+                    p.get("postedDate", ""),
+                ),
             )
             interaction_count += 1
 
@@ -598,7 +685,8 @@ def import_podcast_data(data_dir: Optional[str] = None, conn=None) -> dict:
 # Profile Data
 # ═══════════════════════════════════════════════════════════════════════════
 
-def import_profile_data(data_dir: Optional[str] = None, conn=None) -> dict:
+
+def import_profile_data(data_dir: str | None = None, conn=None) -> dict:
     """Import Identity.json, UserAttributes.json, Follow.json, UserPrompts.json,
     Payments.json, DuoNewFamily.json into user_* tables."""
     if data_dir is None:
@@ -619,11 +707,20 @@ def import_profile_data(data_dir: Optional[str] = None, conn=None) -> dict:
     if os.path.exists(fp):
         with open(fp, encoding="utf-8") as f:
             d = json.load(f)
-        for k in ["displayName", "firstName", "lastName", "imageUrl", "largeImageUrl",
-                   "tasteMaker", "verified"]:
+        for k in [
+            "displayName",
+            "firstName",
+            "lastName",
+            "imageUrl",
+            "largeImageUrl",
+            "tasteMaker",
+            "verified",
+        ]:
             if k in d:
-                conn.execute("INSERT INTO user_profile(key, value) VALUES (?, ?)",
-                             (f"identity_{k}", str(d[k])))
+                conn.execute(
+                    "INSERT INTO user_profile(key, value) VALUES (?, ?)",
+                    (f"identity_{k}", str(d[k])),
+                )
                 entries += 1
 
     # UserAttributes.json
@@ -634,13 +731,16 @@ def import_profile_data(data_dir: Optional[str] = None, conn=None) -> dict:
         safe_keys = ["username", "country", "birthdate", "gender", "postalCode"]
         for k in safe_keys:
             if k in d:
-                conn.execute("INSERT INTO user_profile(key, value) VALUES (?, ?)",
-                             (f"attr_{k}", str(d[k])))
+                conn.execute(
+                    "INSERT INTO user_profile(key, value) VALUES (?, ?)", (f"attr_{k}", str(d[k]))
+                )
                 entries += 1
         # createdFromFacebook
         if "createdFromFacebook" in d:
-            conn.execute("INSERT INTO user_profile(key, value) VALUES (?, ?)",
-                         ("attr_createdFromFacebook", str(d["createdFromFacebook"])))
+            conn.execute(
+                "INSERT INTO user_profile(key, value) VALUES (?, ?)",
+                ("attr_createdFromFacebook", str(d["createdFromFacebook"])),
+            )
             entries += 1
 
     # Follow.json
@@ -686,8 +786,10 @@ def import_profile_data(data_dir: Optional[str] = None, conn=None) -> dict:
         with open(fp, encoding="utf-8") as f:
             d = json.load(f)
         if "payment_method" in d:
-            conn.execute("INSERT INTO user_profile(key, value) VALUES (?, ?)",
-                         ("payment_method", d["payment_method"]))
+            conn.execute(
+                "INSERT INTO user_profile(key, value) VALUES (?, ?)",
+                ("payment_method", d["payment_method"]),
+            )
 
     # DuoNewFamily.json (only address for profile)
     fp = os.path.join(data_dir, "DuoNewFamily.json")
@@ -695,8 +797,10 @@ def import_profile_data(data_dir: Optional[str] = None, conn=None) -> dict:
         with open(fp, encoding="utf-8") as f:
             d = json.load(f)
         if "address" in d:
-            conn.execute("INSERT INTO user_profile(key, value) VALUES (?, ?)",
-                         ("family_address", d["address"]))
+            conn.execute(
+                "INSERT INTO user_profile(key, value) VALUES (?, ?)",
+                ("family_address", d["address"]),
+            )
 
     conn.commit()
     if close_conn:
@@ -708,8 +812,9 @@ def import_profile_data(data_dir: Optional[str] = None, conn=None) -> dict:
 # Master import
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 def import_all(
-    data_dir: Optional[str] = None,
+    data_dir: str | None = None,
     progress_callback=None,
 ) -> dict[str, Any]:
     """Import all Account Data files. Each import is idempotent (DELETE + INSERT).

@@ -3,6 +3,7 @@ __pycache__/
 *.db
 *.db-shm
 *.db-wal
+!backend/tests/fixtures/seed.db
 .venv/
 .streamlit/secrets.toml
 .DS_Store

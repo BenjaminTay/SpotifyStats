@@ -16,19 +16,15 @@ def get_profile(conn: sqlite3.Connection) -> dict:
             "SELECT relationship_type, display_name FROM user_follows"
         ).fetchall()
         follows_list = [
-            {"type": r["relationship_type"], "name": r["display_name"]}
-            for r in follows
+            {"type": r["relationship_type"], "name": r["display_name"]} for r in follows
         ]
     except Exception:
         follows_list = []
 
     try:
-        prompts = conn.execute(
-            "SELECT message, created_timestamp FROM user_prompts"
-        ).fetchall()
+        prompts = conn.execute("SELECT message, created_timestamp FROM user_prompts").fetchall()
         prompts_list = [
-            {"message": r["message"], "created": r["created_timestamp"] or ""}
-            for r in prompts
+            {"message": r["message"], "created": r["created_timestamp"] or ""} for r in prompts
         ]
     except Exception:
         prompts_list = []
@@ -43,13 +39,8 @@ def get_profile(conn: sqlite3.Connection) -> dict:
         audio_count = 0
 
     try:
-        banned = conn.execute(
-            "SELECT item_name, item_type FROM banned_items"
-        ).fetchall()
-        banned_list = [
-            {"name": r["item_name"], "type": r["item_type"]}
-            for r in banned
-        ]
+        banned = conn.execute("SELECT item_name, item_type FROM banned_items").fetchall()
+        banned_list = [{"name": r["item_name"], "type": r["item_type"]} for r in banned]
     except Exception:
         banned_list = []
 

@@ -1,5 +1,9 @@
 """Playback analysis API tests."""
 
+import pytest
+
+pytestmark = pytest.mark.integration
+
 
 class TestAnalysisOverview:
     def test_overview_structure(self, client, default_params):
@@ -8,8 +12,14 @@ class TestAnalysisOverview:
         data = r.json()
 
         for key in [
-            "summary", "monthly_trend", "trend_summary", "listening_summary",
-            "top_tracks", "top_artists", "top_albums", "behavior_summary",
+            "summary",
+            "monthly_trend",
+            "trend_summary",
+            "listening_summary",
+            "top_tracks",
+            "top_artists",
+            "top_albums",
+            "behavior_summary",
             "module_cards",
         ]:
             assert key in data, f"Missing key: {key}"
@@ -95,9 +105,16 @@ class TestAnalysisStats:
         data = r.json()
 
         for key in [
-            "summary", "daily_metrics", "hourly_distribution", "daily_trend",
-            "cumulative_trend", "weekday_distribution", "month_distribution",
-            "year_distribution", "behavior_summary", "recent_plays",
+            "summary",
+            "daily_metrics",
+            "hourly_distribution",
+            "daily_trend",
+            "cumulative_trend",
+            "weekday_distribution",
+            "month_distribution",
+            "year_distribution",
+            "behavior_summary",
+            "recent_plays",
         ]:
             assert key in data
 

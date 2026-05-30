@@ -93,9 +93,13 @@ def get_video_stats(conn: sqlite3.Connection) -> dict:
             for y, d in sorted(yearly_data.items())
         ],
         "top_video_tracks": [
-            {"track_name": r["track_name"], "artist_name": r["artist_name"],
-             "video_plays": int(r["video_plays"]), "audio_plays": int(r["audio_plays"]),
-             "cover_url": cover_map.get((r["track_name"], r["artist_name"]))}
+            {
+                "track_name": r["track_name"],
+                "artist_name": r["artist_name"],
+                "video_plays": int(r["video_plays"]),
+                "audio_plays": int(r["audio_plays"]),
+                "cover_url": cover_map.get((r["track_name"], r["artist_name"])),
+            }
             for r in comparison
         ],
     }

@@ -59,11 +59,24 @@ streamlit run app/main.py
 # Spotify OAuth 功能需要 HTTPS 回调 URL，开发环境使用 ngrok 隧道
 ngrok http --url=stuffing-nebula-tamer.ngrok-free.dev 5173
 
-# 运行后端测试（使用 SQLite 数据库，只读模式）
+# 运行后端测试（230 个测试，分三层：unit / contract / integration）
 pytest backend/tests/ -v
+
+# 分层运行
+pytest -m unit -v          # 纯函数单元测试，~5秒，无 DB
+pytest -m contract -v       # API 结构验证，~1秒，seed SQLite DB
+pytest -m integration -v    # 真实数据集成测试，~80秒
 
 # 快速验证测试耗时与慢点
 pytest backend/tests/ --durations=20 -q
+
+# 代码质量检查
+ruff check backend/
+ruff format --check backend/
+pre-commit run --all-files
+
+# 前端测试（20 个 vitest 单测）
+cd frontend && npm test
 ```
 
 浏览器打开 `http://localhost:5173` 使用 React 界面，或 `http://localhost:8000/docs` 查看 API 文档。首次启动会自动将 JSON 数据导入 SQLite 数据库（约需 10-20 秒），后续启动直接读取。
@@ -99,7 +112,12 @@ pytest backend/tests/ --durations=20 -q
 - **SQLite** — 本地数据库（87,000+ 条记录，WAL 模式，查询毫秒级）
 - **Pandas** — 数据聚合处理
 - **Pydantic** — API 响应模型与数据校验
-- **Pytest** — 后端测试框架（183 个测试，覆盖 API 和 Service 层，session 级缓存预热减少重复冷算）
+- **Pytest** — 后端测试框架（230 个测试：50 unit + 13 contract + 167 integration，三层 markers 区分，session/module 级缓存预热减少重复冷算）
+- **Ruff** — 代码 lint 与格式化（替代 Flake8/isort/Black）
+- **Mypy** — 静态类型检查（宽松起步，存量 type error 后续治理）
+- **Pre-commit** — 提交前自动检查（ruff format+check + mypy + detect-secrets）
+- **Vitest** — 前端测试框架（React Testing Library + jsdom，20 个组件/工具单测）
+- **openapi-typescript** — 从 OpenAPI spec 自动生成前端 TypeScript 类型
 - **cryptography** — AES-256-GCM 加密（Spotify OAuth Token 安全存储）
 - **python-dotenv** — 集中环境变量管理（消除多处重复 .env 解析）
 
@@ -182,10 +200,27 @@ SpotifyStats/
 │   │   └── version_merge.py            # 专辑版本合并引擎
 │   └── tests/
 │       ├── __init__.py
-│       ├── conftest.py                   # 共享 fixtures（TestClient, default_params, warm_default_caches）
-│       ├── test_api.py                   # API 层测试
-│       ├── test_services.py              # Service 层测试
-│       └── test_wrapped_full.py          # 年度总结服务专项测试
+│       ├── conftest.py                   # 根 fixtures（client, default_params, warm_default_caches, billboard_data）
+│       ├── unit/                         # 纯函数单元测试（无 DB 连接，~5s）
+│       │   ├── conftest.py               # 空文件 — 阻断父级 DB fixture
+│       │   ├── test_json_helpers.py
+│       │   ├── test_utils.py
+│       │   ├── test_crypto.py
+│       │   ├── test_cache.py
+│       │   ├── test_logging.py
+│       │   └── test_billboard_pure.py
+│       ├── contract/                     # API 结构验证（seed SQLite DB，~1s）
+│       │   ├── conftest.py               # monkeypatch DB_PATH → seed.db + 缓存清除
+│       │   └── test_api_contract.py
+│       ├── integration/                  # 真实数据集成测试（~80s）
+│       │   ├── conftest.py
+│       │   ├── test_api.py
+│       │   ├── test_services.py
+│       │   ├── test_analysis_api.py
+│       │   └── test_wrapped_full.py
+│       └── fixtures/
+│           ├── seed.db                  # 便携测试数据库（~4KB，含边界用例）
+│           └── build_seed_db.py         # 构建脚本（含 11 条 golden assertions）
 ├── app/                                # Streamlit 前端（原架构，逐步替换）
 │   ├── main.py                         # 入口 + 总览仪表盘
 │   ├── db.py                           # 数据库层
@@ -226,6 +261,10 @@ SpotifyStats/
 │   └── account/                        # 账号数据（JSON）
 ├── frontend/                            # React 前端（新架构）
 │   ├── src/
+│   │   ├── api/
+│   │   │   ├── client.ts                # 统一 API 客户端（30s 超时 + AbortController + 类型化错误）
+│   │   │   ├── errors.ts                # API 错误类（ApiError/NetworkError/AuthRequiredError/TimeoutError）
+│   │   │   └── generated/               # 从 OpenAPI spec 自动生成的 TypeScript 类型
 │   │   ├── components/
 │   │   │   ├── ui/                      # shadcn/ui 组件（含 calendar, popover）
 │   │   │   ├── charts/                  # 图表组件（ECharts 动态加载，RankTrendChart, ReleaseTimelineChart 等）
@@ -236,7 +275,11 @@ SpotifyStats/
 │   │   │   └── account/                 # 账号中心子组件（IdentityTab, HabitsTab, CollectionTab）
 │   │   ├── hooks/                       # 自定义 hooks（数据获取 + in-flight 缓存 + Spotify OAuth 连接/同步 + 账号中心数据 + 异步导入轮询）
 │   │   ├── lib/                         # API 客户端、工具函数、主题配置、OpenCC 动态中文转换、听歌人格主题、曲风地理映射
+│   │   ├── tests/                       # 前端测试（vitest + React Testing Library + jsdom，20 个单测）
 │   │   └── types/                       # TypeScript 类型定义（dashboard, billboard, settings, account, yearly-review）
+│   ├── scripts/
+│   │   └── generate-api-types.sh        # OpenAPI → TypeScript 类型生成脚本
+│   ├── vitest.config.ts                 # vitest 配置
 │   ├── UI_STYLE_GUIDE.md                # 详细 UI 风格指南
 │   ├── index.html
 │   └── package.json

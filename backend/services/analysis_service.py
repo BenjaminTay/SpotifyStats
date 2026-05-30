@@ -10,8 +10,8 @@ from backend.services.play_service import (
     _artist_cover_lookup,
     _track_cover_urls,
     get_dashboard_summary,
-    get_monthly_trend,
     get_hourly_dist,
+    get_monthly_trend,
 )
 
 
@@ -133,7 +133,9 @@ def _top_artists(conn: sqlite3.Connection, df: pd.DataFrame) -> list[dict]:
     cover_map = _artist_cover_lookup(conn)
     top = (
         df.groupby("artist_name")
-        .agg(plays=("play_id", "count"), hours=("ms_played", _hours), tracks=("track_id", "nunique"))
+        .agg(
+            plays=("play_id", "count"), hours=("ms_played", _hours), tracks=("track_id", "nunique")
+        )
         .sort_values("plays", ascending=False)
         .head(5)
         .reset_index()
@@ -202,54 +204,67 @@ def _module_cards(
 ) -> list[dict]:
     cards = []
     if trend["peak_period"]:
-        cards.append({
-            "key": "timeline",
-            "title": "总体统计",
-            "metric": trend["peak_period"],
-            "detail": f"峰值月份 {trend['peak_plays']:,} 次播放",
-            "to": "/analysis/stats",
-            "cover_url": None,
-        })
+        cards.append(
+            {
+                "key": "timeline",
+                "title": "总体统计",
+                "metric": trend["peak_period"],
+                "detail": f"峰值月份 {trend['peak_plays']:,} 次播放",
+                "to": "/analysis/stats",
+                "cover_url": None,
+            }
+        )
     if top_tracks:
-        cards.append({
-            "key": "leaderboard",
-            "title": "个人排行榜",
-            "metric": top_tracks[0]["track_name"],
-            "detail": f"{top_tracks[0]['artist_name']} · {top_tracks[0]['plays']:,} 次",
-            "to": "/analysis/charts?entity=track",
-            "cover_url": top_tracks[0].get("cover_url"),
-        })
-    cards.append({
-        "key": "behavior",
-        "title": "行为分析",
-        "metric": f"{behavior['forward_rate']:.1f}%",
-        "detail": "快进结束占比",
-        "to": "/analysis/stats",
-        "cover_url": None,
-    })
-    if listening["peak_hour"] is not None:
-        cards.append({
-            "key": "listening-hours",
-            "title": "听歌时段",
-            "metric": f"{listening['peak_hour']:02d}:00",
-            "detail": f"高峰时段 {listening['peak_hour_count']:,} 次",
+        cards.append(
+            {
+                "key": "leaderboard",
+                "title": "个人排行榜",
+                "metric": top_tracks[0]["track_name"],
+                "detail": f"{top_tracks[0]['artist_name']} · {top_tracks[0]['plays']:,} 次",
+                "to": "/analysis/charts?entity=track",
+                "cover_url": top_tracks[0].get("cover_url"),
+            }
+        )
+    cards.append(
+        {
+            "key": "behavior",
+            "title": "行为分析",
+            "metric": f"{behavior['forward_rate']:.1f}%",
+            "detail": "快进结束占比",
             "to": "/analysis/stats",
             "cover_url": None,
-        })
+        }
+    )
+    if listening["peak_hour"] is not None:
+        cards.append(
+            {
+                "key": "listening-hours",
+                "title": "听歌时段",
+                "metric": f"{listening['peak_hour']:02d}:00",
+                "detail": f"高峰时段 {listening['peak_hour_count']:,} 次",
+                "to": "/analysis/stats",
+                "cover_url": None,
+            }
+        )
     if top_artists:
-        cards.append({
-            "key": "artists",
-            "title": "艺人排行",
-            "metric": top_artists[0]["artist_name"],
-            "detail": f"{top_artists[0]['plays']:,} 次个人播放",
-            "to": "/analysis/charts?entity=artist",
-            "cover_url": top_artists[0].get("cover_url"),
-        })
+        cards.append(
+            {
+                "key": "artists",
+                "title": "艺人排行",
+                "metric": top_artists[0]["artist_name"],
+                "detail": f"{top_artists[0]['plays']:,} 次个人播放",
+                "to": "/analysis/charts?entity=artist",
+                "cover_url": top_artists[0].get("cover_url"),
+            }
+        )
     return cards
 
 
 def get_analysis_overview(
-    conn: sqlite3.Connection, min_ms: int, music_only: bool, merge_enabled: bool,
+    conn: sqlite3.Connection,
+    min_ms: int,
+    music_only: bool,
+    merge_enabled: bool,
 ) -> dict:
     """Build the playback analysis landing-page aggregate."""
     df = load_plays(

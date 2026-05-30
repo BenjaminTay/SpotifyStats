@@ -1,9 +1,10 @@
 """Playback behavior API endpoint."""
 
-from fastapi import APIRouter, Depends
 from sqlite3 import Connection
 
-from backend.dependencies import get_conn, PlayFilters
+from fastapi import APIRouter, Depends
+
+from backend.dependencies import PlayFilters, get_conn
 from backend.models.behavior import BehaviorResponse
 from backend.services.play_service import get_behavior_data
 

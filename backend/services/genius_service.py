@@ -25,7 +25,7 @@ def get_track_lyrics(track_id: int):
     conn = get_db()
     row = conn.execute(
         "SELECT lyrics_text, genius_url, genius_song_id FROM track_lyrics WHERE track_id = ?",
-        (track_id,)
+        (track_id,),
     ).fetchone()
 
     if row and row["lyrics_text"]:
@@ -41,7 +41,7 @@ def get_track_lyrics(track_id: int):
     # Get track info
     track = conn.execute(
         "SELECT t.track_name, a.artist_name FROM tracks t JOIN artists a ON t.artist_id = a.artist_id WHERE t.track_id = ?",
-        (track_id,)
+        (track_id,),
     ).fetchone()
     conn.close()
 
@@ -66,7 +66,7 @@ def get_track_lyrics(track_id: int):
     wconn.execute(
         """INSERT OR REPLACE INTO track_lyrics (track_id, genius_song_id, lyrics_text, genius_url, fetched_at)
            VALUES (?, ?, ?, ?, datetime('now'))""",
-        (track_id, song.id, song.lyrics, song.url)
+        (track_id, song.id, song.lyrics, song.url),
     )
     wconn.commit()
     wconn.close()
@@ -84,8 +84,7 @@ def get_track_genius_url(track_id: int):
     """Get just the Genius URL for a track (lightweight, no lyrics fetch if cached)."""
     conn = get_db()
     row = conn.execute(
-        "SELECT genius_url FROM track_lyrics WHERE track_id = ?",
-        (track_id,)
+        "SELECT genius_url FROM track_lyrics WHERE track_id = ?", (track_id,)
     ).fetchone()
 
     if row and row["genius_url"]:

@@ -1,45 +1,7 @@
-const BASE_URL = '/api'
+import { apiClient } from '@/api/client'
 
-interface RequestOptions {
-  method?: string
-  body?: unknown
-  params?: Record<string, string | number | boolean>
-}
-
-function _headers(body: unknown): HeadersInit | undefined {
-  const headers: Record<string, string> = {}
-  const apiToken = import.meta.env.VITE_API_TOKEN
-  if (apiToken) headers['Authorization'] = `Bearer ${apiToken}`
-  if (body !== undefined) headers['Content-Type'] = 'application/json'
-  return Object.keys(headers).length > 0 ? headers : undefined
-}
-
-async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
-  const url = new URL(`${BASE_URL}${path}`, window.location.origin)
-  if (options.params) {
-    Object.entries(options.params).forEach(([k, v]) => {
-      if (v !== undefined && v !== null) url.searchParams.set(k, String(v))
-    })
-  }
-  const res = await fetch(url, {
-    method: options.method ?? 'GET',
-    headers: _headers(options.body),
-    body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
-  })
-  if (!res.ok) throw new Error(`API error: ${res.status} ${res.statusText}`)
-  return res.json()
-}
-
-export const api = {
-  get: <T>(path: string, params?: Record<string, string | number | boolean>) =>
-    request<T>(path, { params }),
-  put: <T>(path: string, body?: unknown) =>
-    request<T>(path, { method: 'PUT', body }),
-  post: <T>(path: string, body?: unknown) =>
-    request<T>(path, { method: 'POST', body }),
-  del: <T>(path: string) =>
-    request<T>(path, { method: 'DELETE' }),
-}
+/** @deprecated Import from `@/api/client` or `@/api/errors` instead. Kept for backwards compatibility. */
+export const api = apiClient
 
 export type { DashboardSummary, DashboardFullResponse, MonthlyTrendPoint, PlatformDist, TopTrack, DowDist, RandomTrack, AccountKpi } from '@/types/dashboard'
 export type { AnalysisOverviewResponse, AnalysisFilters, AnalysisTimeRange, AnalysisPeriod, AnalysisMetric, LeaderboardEntity, AnalysisStatsResponse, AnalysisChartsResponse, EntityStatsResponse } from '@/types/analysis'

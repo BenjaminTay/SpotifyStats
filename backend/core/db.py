@@ -1,14 +1,18 @@
 """SQLite database layer: schema, connection, and common query helpers."""
 
+from __future__ import annotations
+
 import hashlib
 import json
-import sqlite3
 import os
+import sqlite3
 from functools import lru_cache
-from typing import Any, Optional
+from typing import Any
 
 # backend/core/ → os.path.dirname x3 = project root
-DB_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "data", "spotify_stats.db")
+DB_PATH = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "data", "spotify_stats.db"
+)
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS artists (
@@ -444,11 +448,15 @@ def ensure_schema() -> None:
             pass
     # Create UNIQUE indexes (safe after deduplication in import_data)
     try:
-        conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_tracks_artist_name ON tracks(artist_id, track_name)")
+        conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_tracks_artist_name ON tracks(artist_id, track_name)"
+        )
     except sqlite3.OperationalError:
         pass
     try:
-        conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_albums_name_artist ON albums(album_name, artist_id)")
+        conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_albums_name_artist ON albums(album_name, artist_id)"
+        )
     except sqlite3.OperationalError:
         pass
     # content_type index (after ALTER TABLE ensures column exists)
@@ -487,7 +495,7 @@ def base_filters(
     return " AND ".join(clauses), params
 
 
-def merge_consecutive_plays(df: "pd.DataFrame", min_ms: int) -> "pd.DataFrame":
+def merge_consecutive_plays(df: pd.DataFrame, min_ms: int) -> pd.DataFrame:
     """Merge consecutive plays of the same track into logical play counts.
 
     Consecutive rows with the same track_id are treated as one listening session.
@@ -554,7 +562,7 @@ def query_plays(
     conn: sqlite3.Connection,
     base_sql: str,
     extra_where: str = "",
-    extra_params: Optional[list[Any]] = None,
+    extra_params: list[Any] | None = None,
     min_ms: int = 30000,
     music_only: bool = True,
     filtered: bool = True,
@@ -569,9 +577,7 @@ def query_plays(
     params: list[Any] = []
 
     if filtered:
-        filters, filter_params = base_filters(
-            min_ms=min_ms, music_only=music_only
-        )
+        filters, filter_params = base_filters(min_ms=min_ms, music_only=music_only)
         if filters:
             parts.append(f"AND {filters}")
             params.extend(filter_params)
@@ -598,7 +604,7 @@ def _load_plays_cached(
     columns: str,
     extra_where: str,
     extra_params: tuple,
-) -> "pd.DataFrame":
+) -> pd.DataFrame:
     """Cacheable inner loader — connection is created internally so it
     doesn't appear in the LRU cache key."""
     import pandas as pd
@@ -667,7 +673,7 @@ def load_plays(
     conn: sqlite3.Connection,
     columns: str = "*",
     extra_where: str = "",
-    extra_params: Optional[list[Any]] = None,
+    extra_params: list[Any] | None = None,
     min_ms: int = 30000,
     music_only: bool = True,
     join_albums: bool = True,
@@ -696,6 +702,7 @@ def load_plays(
         extra_params=tuple(extra_params or ()),
     ).copy()
 
+
 def db_exists() -> bool:
     """Check if the database file already exists and has data."""
     if not os.path.exists(DB_PATH):
@@ -714,6 +721,7 @@ def db_exists() -> bool:
 # Pre-aggregated Billboard weekly data
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 def _agg_param_hash(
     min_ms: int,
     music_only: bool,
@@ -728,9 +736,7 @@ def _agg_param_hash(
 def check_agg_valid(conn: sqlite3.Connection, param_hash: str) -> bool:
     """Check if the stored aggregation matches the current parameter hash."""
     try:
-        row = conn.execute(
-            "SELECT value FROM agg_config WHERE key = 'param_hash'"
-        ).fetchone()
+        row = conn.execute("SELECT value FROM agg_config WHERE key = 'param_hash'").fetchone()
         return row is not None and row[0] == param_hash
     except sqlite3.OperationalError:
         return False
@@ -788,9 +794,7 @@ def build_aggregations(
     mask_before = (df["ts_dow"] == week_start_dow) & (df["ts_hour"] < week_start_hour)
     df.loc[mask_before, "days_back"] = 7
     df["ts_date_dt"] = pd.to_datetime(df["ts_date"])
-    df["billboard_week"] = (
-        df["ts_date_dt"] - pd.to_timedelta(df["days_back"], unit="D")
-    ).dt.date
+    df["billboard_week"] = (df["ts_date_dt"] - pd.to_timedelta(df["days_back"], unit="D")).dt.date
 
     # Merge consecutive same-track plays, then apply ms_played threshold
     df = merge_consecutive_plays(df, min_ms)
@@ -827,8 +831,9 @@ def build_aggregations(
         (str(r.billboard_week), int(r.track_id), int(r.play_count), int(r.total_ms))
         for r in tracks_agg.itertuples(index=False)
     ]
-    _write_agg_batch(conn, "agg_weekly_tracks", t_rows,
-                     ["billboard_week", "track_id", "play_count", "total_ms"])
+    _write_agg_batch(
+        conn, "agg_weekly_tracks", t_rows, ["billboard_week", "track_id", "play_count", "total_ms"]
+    )
     results["tracks"] = len(t_rows)
     if progress_callback:
         progress_callback("预聚合: 单曲完成", 0.33)
@@ -847,8 +852,12 @@ def build_aggregations(
             (str(r.billboard_week), int(r.album_id), int(r.play_count), int(r.total_ms))
             for r in albums_agg.itertuples(index=False)
         ]
-        _write_agg_batch(conn, "agg_weekly_albums", a_rows,
-                         ["billboard_week", "album_id", "play_count", "total_ms"])
+        _write_agg_batch(
+            conn,
+            "agg_weekly_albums",
+            a_rows,
+            ["billboard_week", "album_id", "play_count", "total_ms"],
+        )
         results["albums"] = len(a_rows)
     else:
         results["albums"] = 0
@@ -867,8 +876,12 @@ def build_aggregations(
         (str(r.billboard_week), int(r.artist_id), int(r.play_count), int(r.total_ms))
         for r in artists_agg.itertuples(index=False)
     ]
-    _write_agg_batch(conn, "agg_weekly_artists", ar_rows,
-                     ["billboard_week", "artist_id", "play_count", "total_ms"])
+    _write_agg_batch(
+        conn,
+        "agg_weekly_artists",
+        ar_rows,
+        ["billboard_week", "artist_id", "play_count", "total_ms"],
+    )
     results["artists"] = len(ar_rows)
     if progress_callback:
         progress_callback("预聚合: 艺人完成", 1.0)
@@ -885,9 +898,10 @@ def build_aggregations(
     return results
 
 
-def load_agg_weekly_tracks(conn: sqlite3.Connection) -> "pd.DataFrame":
+def load_agg_weekly_tracks(conn: sqlite3.Connection) -> pd.DataFrame:
     """Load pre-aggregated track-week data joined with dimension names."""
     import pandas as pd
+
     df = pd.read_sql_query(
         """SELECT awt.billboard_week, awt.track_id, t.track_name, a.artist_name,
                   al.album_name, awt.play_count, awt.total_ms
@@ -902,9 +916,10 @@ def load_agg_weekly_tracks(conn: sqlite3.Connection) -> "pd.DataFrame":
     return df
 
 
-def load_agg_weekly_albums(conn: sqlite3.Connection) -> "pd.DataFrame":
+def load_agg_weekly_albums(conn: sqlite3.Connection) -> pd.DataFrame:
     """Load pre-aggregated album-week data joined with dimension names."""
     import pandas as pd
+
     df = pd.read_sql_query(
         """SELECT awa.billboard_week, awa.album_id, al.album_name, a.artist_name,
                   awa.play_count, awa.total_ms
@@ -918,9 +933,10 @@ def load_agg_weekly_albums(conn: sqlite3.Connection) -> "pd.DataFrame":
     return df
 
 
-def load_agg_weekly_artists(conn: sqlite3.Connection) -> "pd.DataFrame":
+def load_agg_weekly_artists(conn: sqlite3.Connection) -> pd.DataFrame:
     """Load pre-aggregated artist-week data joined with dimension names."""
     import pandas as pd
+
     df = pd.read_sql_query(
         """SELECT awar.billboard_week, awar.artist_id, a.artist_name,
                   awar.play_count, awar.total_ms

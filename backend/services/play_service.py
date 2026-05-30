@@ -4,15 +4,13 @@ All play-history endpoints use this service for data loading and groupby operati
 Replaces the st.cache_data pattern from Streamlit with lru_cache for computation results.
 """
 
+from __future__ import annotations
+
 import sqlite3
-from functools import lru_cache
-from typing import Optional, Any
 
 import pandas as pd
-import numpy as np
 
-from backend.core.db import get_db, base_filters, load_plays
-from backend.core.json_helpers import py_val as _py
+from backend.core.db import base_filters, load_plays
 
 
 def _hour(x):
@@ -24,7 +22,7 @@ def _count(x):
     return int(x.count())
 
 
-def _cover_url(image_path, image_url, cover_type: str, entity_id) -> Optional[str]:
+def _cover_url(image_path, image_url, cover_type: str, entity_id) -> str | None:
     """Return the smart local cover endpoint when any cover source exists."""
     if entity_id is None:
         return None
@@ -33,7 +31,7 @@ def _cover_url(image_path, image_url, cover_type: str, entity_id) -> Optional[st
     return None
 
 
-def _track_cover_urls(conn: sqlite3.Connection, track_ids) -> dict[int, Optional[str]]:
+def _track_cover_urls(conn: sqlite3.Connection, track_ids) -> dict[int, str | None]:
     ids = [int(v) for v in pd.Series(track_ids).dropna().unique().tolist()]
     if not ids:
         return {}
@@ -51,7 +49,7 @@ def _track_cover_urls(conn: sqlite3.Connection, track_ids) -> dict[int, Optional
     }
 
 
-def _artist_cover_lookup(conn: sqlite3.Connection) -> dict[str, Optional[str]]:
+def _artist_cover_lookup(conn: sqlite3.Connection) -> dict[str, str | None]:
     rows = conn.execute(
         """SELECT artist_id, artist_name, image_path, image_url
            FROM artists"""
@@ -62,13 +60,13 @@ def _artist_cover_lookup(conn: sqlite3.Connection) -> dict[str, Optional[str]]:
     }
 
 
-def _album_cover_lookup(conn: sqlite3.Connection) -> dict[tuple[str, str], Optional[str]]:
+def _album_cover_lookup(conn: sqlite3.Connection) -> dict[tuple[str, str], str | None]:
     rows = conn.execute(
         """SELECT al.album_id, al.album_name, a.artist_name, al.image_path, al.image_url
            FROM albums al
            JOIN artists a ON al.artist_id = a.artist_id"""
     ).fetchall()
-    cover_map: dict[tuple[str, str], Optional[str]] = {}
+    cover_map: dict[tuple[str, str], str | None] = {}
     for r in rows:
         key = (r["album_name"], r["artist_name"])
         url = _cover_url(r["image_path"], r["image_url"], "albums", r["album_id"])
@@ -79,19 +77,30 @@ def _album_cover_lookup(conn: sqlite3.Connection) -> dict[tuple[str, str], Optio
 
 # ── Dashboard ──────────────────────────────────────────────────────────────
 
+
 def get_dashboard_summary(
-    conn: sqlite3.Connection, min_ms: int, music_only: bool, merge_enabled: bool,
-    df: Optional[pd.DataFrame] = None,
+    conn: sqlite3.Connection,
+    min_ms: int,
+    music_only: bool,
+    merge_enabled: bool,
+    df: pd.DataFrame | None = None,
 ) -> dict:
     """Compute dashboard KPIs from plays data."""
     if df is None:
         df = load_plays(
-            conn, min_ms=min_ms, music_only=music_only, merge_enabled=merge_enabled,
+            conn,
+            min_ms=min_ms,
+            music_only=music_only,
+            merge_enabled=merge_enabled,
         )
     if df.empty:
         return {
-            "total_plays": 0, "total_hours": 0.0, "total_tracks": 0,
-            "total_artists": 0, "total_albums": 0, "total_days": 0,
+            "total_plays": 0,
+            "total_hours": 0.0,
+            "total_tracks": 0,
+            "total_artists": 0,
+            "total_albums": 0,
+            "total_days": 0,
             "avg_daily_hours": 0.0,
         }
     total_plays = int(len(df))
@@ -102,14 +111,17 @@ def get_dashboard_summary(
     total_days = int(df["ts_date"].nunique())
     avg_daily_hours = float(total_hours / total_days) if total_days > 0 else 0.0
     return {
-        "total_plays": total_plays, "total_hours": round(total_hours, 1),
-        "total_tracks": total_tracks, "total_artists": total_artists,
-        "total_albums": total_albums, "total_days": total_days,
+        "total_plays": total_plays,
+        "total_hours": round(total_hours, 1),
+        "total_tracks": total_tracks,
+        "total_artists": total_artists,
+        "total_albums": total_albums,
+        "total_days": total_days,
         "avg_daily_hours": round(avg_daily_hours, 1),
     }
 
 
-def get_account_kpis(conn: sqlite3.Connection) -> Optional[dict]:
+def get_account_kpis(conn: sqlite3.Connection) -> dict | None:
     """Get account data KPIs if account data has been imported."""
     try:
         sc = conn.execute("SELECT COUNT(*) FROM search_queries").fetchone()[0]
@@ -121,21 +133,29 @@ def get_account_kpis(conn: sqlite3.Connection) -> Optional[dict]:
             "SELECT COUNT(*) FROM plays WHERE content_type='video'"
         ).fetchone()[0]
         return {
-            "saved_tracks": stc, "playlists": plc,
-            "search_queries": sc, "video_plays": video_count,
+            "saved_tracks": stc,
+            "playlists": plc,
+            "search_queries": sc,
+            "video_plays": video_count,
         }
     except Exception:
         return None
 
 
 def get_monthly_trend(
-    conn: sqlite3.Connection, min_ms: int, music_only: bool, merge_enabled: bool,
-    df: Optional[pd.DataFrame] = None,
+    conn: sqlite3.Connection,
+    min_ms: int,
+    music_only: bool,
+    merge_enabled: bool,
+    df: pd.DataFrame | None = None,
 ) -> list[dict]:
     """Get monthly plays/hours trend."""
     if df is None:
         df = load_plays(
-            conn, min_ms=min_ms, music_only=music_only, merge_enabled=merge_enabled,
+            conn,
+            min_ms=min_ms,
+            music_only=music_only,
+            merge_enabled=merge_enabled,
         )
     if df.empty:
         return []
@@ -144,7 +164,9 @@ def get_monthly_trend(
         .agg(plays=("play_id", "count"), hours=("ms_played", _hour))
         .reset_index()
     )
-    monthly["period"] = monthly["ts_year"].astype(str) + "-" + monthly["ts_month"].astype(str).str.zfill(2)
+    monthly["period"] = (
+        monthly["ts_year"].astype(str) + "-" + monthly["ts_month"].astype(str).str.zfill(2)
+    )
     monthly = monthly.sort_values("period")
     return [
         {"period": r.period, "plays": int(r.plays), "hours": round(float(r.hours), 1)}
@@ -153,32 +175,42 @@ def get_monthly_trend(
 
 
 def get_hourly_dist(
-    conn: sqlite3.Connection, min_ms: int, music_only: bool, merge_enabled: bool,
-    df: Optional[pd.DataFrame] = None,
+    conn: sqlite3.Connection,
+    min_ms: int,
+    music_only: bool,
+    merge_enabled: bool,
+    df: pd.DataFrame | None = None,
 ) -> list[dict]:
     """Get hourly play count distribution."""
     if df is None:
         df = load_plays(
-            conn, min_ms=min_ms, music_only=music_only, merge_enabled=merge_enabled,
+            conn,
+            min_ms=min_ms,
+            music_only=music_only,
+            merge_enabled=merge_enabled,
         )
     if df.empty:
         return []
     hourly = df.groupby("ts_hour").size().reset_index(name="count")
     hourly = hourly.sort_values("ts_hour")
-    return [
-        {"hour": int(r.ts_hour), "count": int(r.count)}
-        for r in hourly.itertuples(index=False)
-    ]
+    return [{"hour": int(r.ts_hour), "count": int(r.count)} for r in hourly.itertuples(index=False)]
 
 
 def get_top_tracks(
-    conn: sqlite3.Connection, min_ms: int, music_only: bool, merge_enabled: bool,
-    n: int = 10, df: Optional[pd.DataFrame] = None,
+    conn: sqlite3.Connection,
+    min_ms: int,
+    music_only: bool,
+    merge_enabled: bool,
+    n: int = 10,
+    df: pd.DataFrame | None = None,
 ) -> list[dict]:
     """Get top N most-played tracks."""
     if df is None:
         df = load_plays(
-            conn, min_ms=min_ms, music_only=music_only, merge_enabled=merge_enabled,
+            conn,
+            min_ms=min_ms,
+            music_only=music_only,
+            merge_enabled=merge_enabled,
         )
     if df.empty:
         return []
@@ -203,13 +235,19 @@ def get_top_tracks(
 
 
 def get_platform_dist(
-    conn: sqlite3.Connection, min_ms: int, music_only: bool, merge_enabled: bool,
-    df: Optional[pd.DataFrame] = None,
+    conn: sqlite3.Connection,
+    min_ms: int,
+    music_only: bool,
+    merge_enabled: bool,
+    df: pd.DataFrame | None = None,
 ) -> list[dict]:
     """Get platform distribution."""
     if df is None:
         df = load_plays(
-            conn, min_ms=min_ms, music_only=music_only, merge_enabled=merge_enabled,
+            conn,
+            min_ms=min_ms,
+            music_only=music_only,
+            merge_enabled=merge_enabled,
         )
     if df.empty:
         return []
@@ -219,14 +257,20 @@ def get_platform_dist(
 
 
 def get_dow_dist(
-    conn: sqlite3.Connection, min_ms: int, music_only: bool, merge_enabled: bool,
-    df: Optional[pd.DataFrame] = None,
+    conn: sqlite3.Connection,
+    min_ms: int,
+    music_only: bool,
+    merge_enabled: bool,
+    df: pd.DataFrame | None = None,
 ) -> list[dict]:
     """Get day-of-week distribution."""
     dow_names = {0: "周一", 1: "周二", 2: "周三", 3: "周四", 4: "周五", 5: "周六", 6: "周日"}
     if df is None:
         df = load_plays(
-            conn, min_ms=min_ms, music_only=music_only, merge_enabled=merge_enabled,
+            conn,
+            min_ms=min_ms,
+            music_only=music_only,
+            merge_enabled=merge_enabled,
         )
     if df.empty:
         return []
@@ -234,7 +278,7 @@ def get_dow_dist(
     return [{"day": dow_names.get(d, str(d)), "count": int(counts.get(d, 0))} for d in range(7)]
 
 
-def get_random_track(conn: sqlite3.Connection, min_ms: int, music_only: bool) -> Optional[dict]:
+def get_random_track(conn: sqlite3.Connection, min_ms: int, music_only: bool) -> dict | None:
     """Get a random track for nostalgic recommendation."""
     f, fp = base_filters(min_ms=min_ms, music_only=music_only)
     w = f"WHERE {f}" if f else ""
@@ -263,10 +307,16 @@ def get_random_track(conn: sqlite3.Connection, min_ms: int, music_only: bool) ->
 
 # ── Timeline ───────────────────────────────────────────────────────────────
 
-def get_annual_timeline(conn: sqlite3.Connection, min_ms: int, music_only: bool, merge_enabled: bool) -> list[dict]:
+
+def get_annual_timeline(
+    conn: sqlite3.Connection, min_ms: int, music_only: bool, merge_enabled: bool
+) -> list[dict]:
     """Annual breakdown: plays, hours, unique tracks/artists, and top track per year."""
     df = load_plays(
-        conn, min_ms=min_ms, music_only=music_only, merge_enabled=merge_enabled,
+        conn,
+        min_ms=min_ms,
+        music_only=music_only,
+        merge_enabled=merge_enabled,
     )
     if df.empty:
         return []
@@ -293,8 +343,10 @@ def get_annual_timeline(conn: sqlite3.Connection, min_ms: int, music_only: bool,
     annual = annual.sort_values("ts_year")
     return [
         {
-            "year": int(r.ts_year), "plays": int(r.plays),
-            "hours": round(float(r.hours), 1), "unique_tracks": int(r.unique_tracks),
+            "year": int(r.ts_year),
+            "plays": int(r.plays),
+            "hours": round(float(r.hours), 1),
+            "unique_tracks": int(r.unique_tracks),
             "unique_artists": int(r.unique_artists),
             "top_track": r.top_track or "",
             "top_artist": r.top_artist or "",
@@ -304,12 +356,18 @@ def get_annual_timeline(conn: sqlite3.Connection, min_ms: int, music_only: bool,
 
 
 def get_monthly_timeline_drilldown(
-    conn: sqlite3.Connection, min_ms: int, music_only: bool, merge_enabled: bool,
-    period: Optional[str] = None,
+    conn: sqlite3.Connection,
+    min_ms: int,
+    music_only: bool,
+    merge_enabled: bool,
+    period: str | None = None,
 ) -> dict:
     """Monthly timeline with optional top-5 drilldown for a specific period."""
     df = load_plays(
-        conn, min_ms=min_ms, music_only=music_only, merge_enabled=merge_enabled,
+        conn,
+        min_ms=min_ms,
+        music_only=music_only,
+        merge_enabled=merge_enabled,
     )
     if df.empty:
         return {"months": [], "drilldown": None}
@@ -320,7 +378,9 @@ def get_monthly_timeline_drilldown(
         .agg(plays=("play_id", "count"), hours=("ms_played", _hour))
         .reset_index()
     )
-    monthly["period"] = monthly["ts_year"].astype(str) + "-" + monthly["ts_month"].astype(str).str.zfill(2)
+    monthly["period"] = (
+        monthly["ts_year"].astype(str) + "-" + monthly["ts_month"].astype(str).str.zfill(2)
+    )
     monthly = monthly.sort_values("period")
 
     result = {
@@ -345,9 +405,14 @@ def get_monthly_timeline_drilldown(
                     .reset_index()
                 )
                 result["drilldown"] = [
-                    {"track_id": int(r.track_id), "track_name": r.track_name, "artist_name": r.artist_name,
-                     "plays": int(r.plays), "hours": round(float(r.hours), 1),
-                     "cover_url": cover_map.get(int(r.track_id))}
+                    {
+                        "track_id": int(r.track_id),
+                        "track_name": r.track_name,
+                        "artist_name": r.artist_name,
+                        "plays": int(r.plays),
+                        "hours": round(float(r.hours), 1),
+                        "cover_url": cover_map.get(int(r.track_id)),
+                    }
                     for r in top5.itertuples(index=False)
                 ]
         except (ValueError, TypeError):
@@ -356,12 +421,18 @@ def get_monthly_timeline_drilldown(
 
 
 def get_weekly_timeline(
-    conn: sqlite3.Connection, min_ms: int, music_only: bool, merge_enabled: bool,
-    week_label: Optional[str] = None,
+    conn: sqlite3.Connection,
+    min_ms: int,
+    music_only: bool,
+    merge_enabled: bool,
+    week_label: str | None = None,
 ) -> dict:
     """Weekly timeline with optional top-5 drilldown for a specific week."""
     df = load_plays(
-        conn, min_ms=min_ms, music_only=music_only, merge_enabled=merge_enabled,
+        conn,
+        min_ms=min_ms,
+        music_only=music_only,
+        merge_enabled=merge_enabled,
     )
     if df.empty:
         return {"weeks": [], "drilldown": None}
@@ -372,7 +443,9 @@ def get_weekly_timeline(
         .agg(plays=("play_id", "count"), hours=("ms_played", _hour))
         .reset_index()
     )
-    weekly["label"] = weekly["ts_year"].astype(str) + "-W" + weekly["ts_week"].astype(str).str.zfill(2)
+    weekly["label"] = (
+        weekly["ts_year"].astype(str) + "-W" + weekly["ts_week"].astype(str).str.zfill(2)
+    )
 
     result = {
         "weeks": [
@@ -396,9 +469,14 @@ def get_weekly_timeline(
                     .reset_index()
                 )
                 result["drilldown"] = [
-                    {"track_id": int(r.track_id), "track_name": r.track_name, "artist_name": r.artist_name,
-                     "plays": int(r.plays), "hours": round(float(r.hours), 1),
-                     "cover_url": cover_map.get(int(r.track_id))}
+                    {
+                        "track_id": int(r.track_id),
+                        "track_name": r.track_name,
+                        "artist_name": r.artist_name,
+                        "plays": int(r.plays),
+                        "hours": round(float(r.hours), 1),
+                        "cover_url": cover_map.get(int(r.track_id)),
+                    }
                     for r in top5.itertuples(index=False)
                 ]
         except (ValueError, TypeError):
@@ -408,15 +486,25 @@ def get_weekly_timeline(
 
 # ── Leaderboard ─────────────────────────────────────────────────────────────
 
+
 def get_leaderboard(
-    conn: sqlite3.Connection, min_ms: int, music_only: bool, merge_enabled: bool,
-    entity: str = "track", time_range: str = "all",
-    year: Optional[int] = None, month: Optional[str] = None,
-    metric: str = "plays", top_n: int = 30,
+    conn: sqlite3.Connection,
+    min_ms: int,
+    music_only: bool,
+    merge_enabled: bool,
+    entity: str = "track",
+    time_range: str = "all",
+    year: int | None = None,
+    month: str | None = None,
+    metric: str = "plays",
+    top_n: int = 30,
 ) -> dict:
     """Get top-N leaderboard for tracks/artists/albums."""
     df = load_plays(
-        conn, min_ms=min_ms, music_only=music_only, merge_enabled=merge_enabled,
+        conn,
+        min_ms=min_ms,
+        music_only=music_only,
+        merge_enabled=merge_enabled,
     )
     if df.empty:
         return {"time_label": "", "total_records": 0, "rows": []}
@@ -495,12 +583,20 @@ def get_leaderboard(
 
 # ── Wrapped ─────────────────────────────────────────────────────────────────
 
+
 def get_wrapped_data(
-    conn: sqlite3.Connection, min_ms: int, music_only: bool, merge_enabled: bool, year: int,
+    conn: sqlite3.Connection,
+    min_ms: int,
+    music_only: bool,
+    merge_enabled: bool,
+    year: int,
 ) -> dict:
     """Generate a custom yearly wrapped report for a given year."""
     df = load_plays(
-        conn, min_ms=min_ms, music_only=music_only, merge_enabled=merge_enabled,
+        conn,
+        min_ms=min_ms,
+        music_only=music_only,
+        merge_enabled=merge_enabled,
     )
     year_df = df[df["ts_year"] == year]
     if year_df.empty:
@@ -549,9 +645,7 @@ def get_wrapped_data(
         }
 
     # Platform distribution
-    platform_hours = (
-        year_df.groupby("platform")["ms_played"].sum() / 3_600_000
-    ).to_dict()
+    platform_hours = (year_df.groupby("platform")["ms_played"].sum() / 3_600_000).to_dict()
 
     # Peak hour
     peak_hour = int(year_df.groupby("ts_hour").size().idxmax()) if not year_df.empty else 0
@@ -562,7 +656,12 @@ def get_wrapped_data(
     last_track_row = sorted_df.iloc[-1]
 
     # Seasonal top tracks
-    season_months = {"spring": [3, 4, 5], "summer": [6, 7, 8], "autumn": [9, 10, 11], "winter": [12, 1, 2]}
+    season_months = {
+        "spring": [3, 4, 5],
+        "summer": [6, 7, 8],
+        "autumn": [9, 10, 11],
+        "winter": [12, 1, 2],
+    }
     season_tops = {}
     for season, months in season_months.items():
         season_df = year_df[year_df["ts_month"].isin(months)]
@@ -573,19 +672,29 @@ def get_wrapped_data(
             season_tops[season] = ""
 
     # Monthly pulse
-    monthly_pulse = (
-        year_df.groupby("ts_month")
-        .agg(hours=("ms_played", _hour))
-        .reset_index()
-    )
+    monthly_pulse = year_df.groupby("ts_month").agg(hours=("ms_played", _hour)).reset_index()
 
     # Personality scoring
     unique_ratio = unique_tracks / max(total_plays, 1) * 100
-    top_artist_share = (top_artists.iloc[0]["plays"] / max(total_plays, 1) * 100) if len(top_artists) > 0 else 0
+    top_artist_share = (
+        (top_artists.iloc[0]["plays"] / max(total_plays, 1) * 100) if len(top_artists) > 0 else 0
+    )
     personality = {
-        "explorer": {"label": "Explorer 探索者", "score": round(min(unique_ratio / 40 * 100, 100), 1), "desc": "广泛涉猎不同曲目，保持音乐品味多样化"},
-        "loyalist": {"label": "Loyalist 专一者", "score": round(min(top_artist_share / 20 * 100, 100), 1), "desc": "对喜爱的艺人从一而终，深入了解他们的作品"},
-        "binger": {"label": "Binger 狂听者", "score": round(min(avg_hours_per_day / 4 * 100, 100), 1), "desc": "音乐是日常必需品，每天大量时间沉浸在旋律中"},
+        "explorer": {
+            "label": "Explorer 探索者",
+            "score": round(min(unique_ratio / 40 * 100, 100), 1),
+            "desc": "广泛涉猎不同曲目，保持音乐品味多样化",
+        },
+        "loyalist": {
+            "label": "Loyalist 专一者",
+            "score": round(min(top_artist_share / 20 * 100, 100), 1),
+            "desc": "对喜爱的艺人从一而终，深入了解他们的作品",
+        },
+        "binger": {
+            "label": "Binger 狂听者",
+            "score": round(min(avg_hours_per_day / 4 * 100, 100), 1),
+            "desc": "音乐是日常必需品，每天大量时间沉浸在旋律中",
+        },
     }
     primary_personality = max(personality.items(), key=lambda x: x[1]["score"])
 
@@ -605,8 +714,12 @@ def get_wrapped_data(
             for r in top_artists.itertuples(index=False)
         ],
         "top_tracks": [
-            {"track_name": r.track_name, "artist_name": r.artist_name,
-             "plays": int(r.plays), "hours": round(float(r.hours), 1)}
+            {
+                "track_name": r.track_name,
+                "artist_name": r.artist_name,
+                "plays": int(r.plays),
+                "hours": round(float(r.hours), 1),
+            }
             for r in top_tracks.itertuples(index=False)
         ],
         "top_album": top_album,
@@ -628,7 +741,11 @@ def get_wrapped_data(
             for r in monthly_pulse.itertuples(index=False)
         ],
         "personality": {
-            "primary": {"label": primary_personality[1]["label"], "score": primary_personality[1]["score"], "desc": primary_personality[1]["desc"]},
+            "primary": {
+                "label": primary_personality[1]["label"],
+                "score": primary_personality[1]["score"],
+                "desc": primary_personality[1]["desc"],
+            },
             "explorer": personality["explorer"],
             "loyalist": personality["loyalist"],
             "binger": personality["binger"],
@@ -638,20 +755,31 @@ def get_wrapped_data(
 
 # ── Behavior ────────────────────────────────────────────────────────────────
 
+
 def get_behavior_data(
-    conn: sqlite3.Connection, min_ms: int, music_only: bool, merge_enabled: bool,
+    conn: sqlite3.Connection,
+    min_ms: int,
+    music_only: bool,
+    merge_enabled: bool,
 ) -> dict:
     """Playback behavior analysis (skip/forward/shuffle/platform usage)."""
     # Behavior analysis uses unfiltered data
     df = load_plays(
-        conn, filtered=False, music_only=music_only,
+        conn,
+        filtered=False,
+        music_only=music_only,
     )
 
     if df.empty:
         return {
-            "reason_end": [], "reason_start": [], "fwdbtn_by_hour": [],
-            "most_forwarded": [], "platform_monthly": [], "platform_hourly": {"z": [], "x": [], "y": []},
-            "shuffle_rate_by_platform": [], "shuffle_monthly": [],
+            "reason_end": [],
+            "reason_start": [],
+            "fwdbtn_by_hour": [],
+            "most_forwarded": [],
+            "platform_monthly": [],
+            "platform_hourly": {"z": [], "x": [], "y": []},
+            "shuffle_rate_by_platform": [],
+            "shuffle_monthly": [],
         }
 
     reason_end = df["reason_end"].value_counts().reset_index()
@@ -664,29 +792,34 @@ def get_behavior_data(
     fwdbtn_by_hour = fwdbtn.groupby("ts_hour").size().to_dict() if not fwdbtn.empty else {}
 
     most_forwarded = (
-        fwdbtn.groupby(["track_name", "artist_name"]).size()
-        .sort_values(ascending=False).head(15).reset_index(name="cnt")
-    ) if not fwdbtn.empty else pd.DataFrame(columns=["track_name", "artist_name", "cnt"])
+        (
+            fwdbtn.groupby(["track_name", "artist_name"])
+            .size()
+            .sort_values(ascending=False)
+            .head(15)
+            .reset_index(name="cnt")
+        )
+        if not fwdbtn.empty
+        else pd.DataFrame(columns=["track_name", "artist_name", "cnt"])
+    )
 
     # Platform monthly trend
     platform_monthly = (
-        df.groupby(["ts_year", "ts_month", "platform"])
-        .size().reset_index(name="cnt")
+        df.groupby(["ts_year", "ts_month", "platform"]).size().reset_index(name="cnt")
     )
     platform_monthly["period"] = (
-        platform_monthly["ts_year"].astype(str) + "-" + platform_monthly["ts_month"].astype(str).str.zfill(2)
+        platform_monthly["ts_year"].astype(str)
+        + "-"
+        + platform_monthly["ts_month"].astype(str).str.zfill(2)
     )
 
-    # Platform x Hour heatmap data for top platforms
-    top_platforms = df["platform"].value_counts().head(5).index.tolist()
+    # Platform × Hour heatmap data
     platform_hourly_pivot = df.groupby(["platform", "ts_hour"]).size().reset_index(name="cnt")
     # Return as raw data for frontend to pivot
     hrs = list(range(24))
 
     # Shuffle rate by platform
-    shuffle_by_platform = (
-        df.groupby("platform")["shuffle"].mean().mul(100).round(1).reset_index()
-    )
+    shuffle_by_platform = df.groupby("platform")["shuffle"].mean().mul(100).round(1).reset_index()
     shuffle_by_platform.columns = ["platform", "rate"]
 
     # Monthly shuffle rate
@@ -694,11 +827,19 @@ def get_behavior_data(
         df.groupby(["ts_year", "ts_month"])["shuffle"].mean().mul(100).round(1).reset_index()
     )
     shuffle_monthly.columns = ["ts_year", "ts_month", "rate"]
-    shuffle_monthly["period"] = shuffle_monthly["ts_year"].astype(str) + "-" + shuffle_monthly["ts_month"].astype(str).str.zfill(2)
+    shuffle_monthly["period"] = (
+        shuffle_monthly["ts_year"].astype(str)
+        + "-"
+        + shuffle_monthly["ts_month"].astype(str).str.zfill(2)
+    )
 
     return {
-        "reason_end": [{"reason": r.reason, "count": int(r.cnt)} for r in reason_end.itertuples(index=False)],
-        "reason_start": [{"reason": r.reason, "count": int(r.cnt)} for r in reason_start.itertuples(index=False)],
+        "reason_end": [
+            {"reason": r.reason, "count": int(r.cnt)} for r in reason_end.itertuples(index=False)
+        ],
+        "reason_start": [
+            {"reason": r.reason, "count": int(r.cnt)} for r in reason_start.itertuples(index=False)
+        ],
         "fwdbtn_by_hour": [{"hour": int(h), "count": int(fwdbtn_by_hour.get(h, 0))} for h in hrs],
         "most_forwarded": [
             {"track_name": r.track_name, "artist_name": r.artist_name, "count": int(r.cnt)}
@@ -711,7 +852,9 @@ def get_behavior_data(
         "platform_hourly": [
             {"platform": r.platform, "hour": int(r.ts_hour), "count": int(r.cnt)}
             for r in platform_hourly_pivot.itertuples(index=False)
-        ] if not platform_hourly_pivot.empty else [],
+        ]
+        if not platform_hourly_pivot.empty
+        else [],
         "shuffle_rate_by_platform": [
             {"platform": r.platform, "rate": float(r.rate)}
             for r in shuffle_by_platform.itertuples(index=False)
@@ -725,33 +868,53 @@ def get_behavior_data(
 
 # ── Listening Hours ─────────────────────────────────────────────────────────
 
+
 def get_listening_heatmap(
-    conn: sqlite3.Connection, min_ms: int, music_only: bool, merge_enabled: bool,
+    conn: sqlite3.Connection,
+    min_ms: int,
+    music_only: bool,
+    merge_enabled: bool,
 ) -> dict:
     """Day-of-week x Hour heatmap data."""
     df = load_plays(
-        conn, min_ms=min_ms, music_only=music_only, merge_enabled=merge_enabled,
+        conn,
+        min_ms=min_ms,
+        music_only=music_only,
+        merge_enabled=merge_enabled,
     )
     if df.empty:
-        return {"z": [], "x": list(range(24)), "y": ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]}
+        return {
+            "z": [],
+            "x": list(range(24)),
+            "y": ["周一", "周二", "周三", "周四", "周五", "周六", "周日"],
+        }
 
     dow_names_cn = {0: "周一", 1: "周二", 2: "周三", 3: "周四", 4: "周五", 5: "周六", 6: "周日"}
     pivot = df.groupby(["ts_dow", "ts_hour"]).size().unstack(fill_value=0)
     z = []
     y = []
     for d in range(7):
-        row = [int(pivot.loc[d, h]) if d in pivot.index and h in pivot.columns else 0 for h in range(24)]
+        row = [
+            int(pivot.loc[d, h]) if d in pivot.index and h in pivot.columns else 0
+            for h in range(24)
+        ]
         z.append(row)
         y.append(dow_names_cn[d])
     return {"z": z, "x": list(range(24)), "y": y}
 
 
 def get_yearly_heatmaps(
-    conn: sqlite3.Connection, min_ms: int, music_only: bool, merge_enabled: bool,
+    conn: sqlite3.Connection,
+    min_ms: int,
+    music_only: bool,
+    merge_enabled: bool,
 ) -> list[dict]:
     """Year-by-year listening heatmaps."""
     df = load_plays(
-        conn, min_ms=min_ms, music_only=music_only, merge_enabled=merge_enabled,
+        conn,
+        min_ms=min_ms,
+        music_only=music_only,
+        merge_enabled=merge_enabled,
     )
     if df.empty:
         return []
@@ -763,18 +926,27 @@ def get_yearly_heatmaps(
         pivot = ydf.groupby(["ts_dow", "ts_hour"]).size().unstack(fill_value=0)
         z = []
         for d in range(7):
-            row = [int(pivot.loc[d, h]) if d in pivot.index and h in pivot.columns else 0 for h in range(24)]
+            row = [
+                int(pivot.loc[d, h]) if d in pivot.index and h in pivot.columns else 0
+                for h in range(24)
+            ]
             z.append(row)
         result.append({"year": int(y), "z": z})
     return result
 
 
 def get_late_night_ratio(
-    conn: sqlite3.Connection, min_ms: int, music_only: bool, merge_enabled: bool,
+    conn: sqlite3.Connection,
+    min_ms: int,
+    music_only: bool,
+    merge_enabled: bool,
 ) -> list[dict]:
     """Late night (0-5) listening ratio by year."""
     df = load_plays(
-        conn, min_ms=min_ms, music_only=music_only, merge_enabled=merge_enabled,
+        conn,
+        min_ms=min_ms,
+        music_only=music_only,
+        merge_enabled=merge_enabled,
     )
     if df.empty:
         return []
@@ -787,11 +959,17 @@ def get_late_night_ratio(
 
 
 def get_weekday_weekend_comparison(
-    conn: sqlite3.Connection, min_ms: int, music_only: bool, merge_enabled: bool,
+    conn: sqlite3.Connection,
+    min_ms: int,
+    music_only: bool,
+    merge_enabled: bool,
 ) -> dict:
     """Weekend vs workday hourly listening comparison."""
     df = load_plays(
-        conn, min_ms=min_ms, music_only=music_only, merge_enabled=merge_enabled,
+        conn,
+        min_ms=min_ms,
+        music_only=music_only,
+        merge_enabled=merge_enabled,
     )
     if df.empty:
         return {"weekend": [], "weekday": [], "comparison": []}
@@ -813,21 +991,23 @@ def get_weekday_weekend_comparison(
 
 
 def get_platform_hourly_listening(
-    conn: sqlite3.Connection, min_ms: int, music_only: bool, merge_enabled: bool,
+    conn: sqlite3.Connection,
+    min_ms: int,
+    music_only: bool,
+    merge_enabled: bool,
 ) -> dict:
     """Platform × hour listening distribution (stacked area + normalized %)."""
     df = load_plays(
-        conn, min_ms=min_ms, music_only=music_only, merge_enabled=merge_enabled,
+        conn,
+        min_ms=min_ms,
+        music_only=music_only,
+        merge_enabled=merge_enabled,
     )
     if df.empty:
         return {"platform_hourly": [], "platform_pct": [], "platform_peaks": []}
 
     # Raw counts: platform × hour
-    platform_hourly = (
-        df.groupby(["platform", "ts_hour"])
-        .size()
-        .reset_index(name="count")
-    )
+    platform_hourly = df.groupby(["platform", "ts_hour"]).size().reset_index(name="count")
 
     # Normalized percentage per hour
     hourly_total = platform_hourly.groupby("ts_hour")["count"].sum().reset_index()
@@ -842,13 +1022,15 @@ def get_platform_hourly_listening(
             peak_row = plat_df.loc[plat_df["count"].idxmax()]
             total = int(plat_df["count"].sum())
             pct = round(total / max(int(platform_hourly["count"].sum()), 1) * 100, 1)
-            peaks.append({
-                "platform": plat,
-                "peak_hour": int(peak_row["ts_hour"]),
-                "peak_count": int(peak_row["count"]),
-                "total_count": total,
-                "total_pct": pct,
-            })
+            peaks.append(
+                {
+                    "platform": plat,
+                    "peak_hour": int(peak_row["ts_hour"]),
+                    "peak_count": int(peak_row["count"]),
+                    "total_count": total,
+                    "total_pct": pct,
+                }
+            )
 
     return {
         "platform_hourly": [
@@ -865,8 +1047,11 @@ def get_platform_hourly_listening(
 
 # ── Artist Deep Dive ────────────────────────────────────────────────────────
 
+
 def get_artist_list(
-    conn: sqlite3.Connection, min_ms: int, music_only: bool,
+    conn: sqlite3.Connection,
+    min_ms: int,
+    music_only: bool,
 ) -> list[dict]:
     """Get ranked list of artists for the selector."""
     f, fp = base_filters(min_ms=min_ms, music_only=music_only)
@@ -891,12 +1076,18 @@ def get_artist_list(
 
 
 def get_artist_deep_dive(
-    conn: sqlite3.Connection, min_ms: int, music_only: bool, merge_enabled: bool,
+    conn: sqlite3.Connection,
+    min_ms: int,
+    music_only: bool,
+    merge_enabled: bool,
     artist_name: str,
 ) -> dict:
     """In-depth analysis for a single artist."""
     df = load_plays(
-        conn, min_ms=min_ms, music_only=music_only, merge_enabled=merge_enabled,
+        conn,
+        min_ms=min_ms,
+        music_only=music_only,
+        merge_enabled=merge_enabled,
     )
     artist_df = df[df["artist_name"] == artist_name]
     if artist_df.empty:
@@ -911,7 +1102,10 @@ def get_artist_deep_dive(
     pivot = artist_df.groupby(["ts_dow", "ts_hour"]).size().unstack(fill_value=0)
     heatmap_z = []
     for d in range(7):
-        row = [int(pivot.loc[d, h]) if d in pivot.index and h in pivot.columns else 0 for h in range(24)]
+        row = [
+            int(pivot.loc[d, h]) if d in pivot.index and h in pivot.columns else 0
+            for h in range(24)
+        ]
         heatmap_z.append(row)
 
     # Top tracks
@@ -928,7 +1122,9 @@ def get_artist_deep_dive(
         .agg(plays=("play_id", "count"), hours=("ms_played", _hour))
         .reset_index()
     )
-    monthly["period"] = monthly["ts_year"].astype(str) + "-" + monthly["ts_month"].astype(str).str.zfill(2)
+    monthly["period"] = (
+        monthly["ts_year"].astype(str) + "-" + monthly["ts_month"].astype(str).str.zfill(2)
+    )
 
     # Album breakdown
     album_stats = (

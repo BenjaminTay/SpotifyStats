@@ -57,10 +57,14 @@ def get_artist_tiers(conn: sqlite3.Connection) -> dict:
         "tier_hours": {k: round(v, 1) for k, v in tier_hours.items()},
         "tier_counts": {k: int(v) for k, v in tier_counts.items()},
         "artists": [
-            {"rank": int(r.rank), "artist_name": r.artist_name,
-             "play_count": int(r.play_count), "hours": round(r.hours, 1),
-             "tier": r.tier,
-             "cover_url": cover_map.get(r.artist_name)}
+            {
+                "rank": int(r.rank),
+                "artist_name": r.artist_name,
+                "play_count": int(r.play_count),
+                "hours": round(r.hours, 1),
+                "tier": r.tier,
+                "cover_url": cover_map.get(r.artist_name),
+            }
             for r in artist_df.itertuples(index=False)
         ],
     }
@@ -102,13 +106,17 @@ def get_marquee_conversion(conn: sqlite3.Connection) -> dict:
         imp = int(r.impressions)
         plays = int(r.actual_plays)
         rate = plays / imp if imp > 0 else 0
-        conversions.append({
-            "artist_name": r.artist_name, "segment": r.segment or "",
-            "impressions": imp, "actual_plays": plays,
-            "actual_hours": round(r.actual_hours, 1),
-            "conversion_rate": round(rate, 4),
-            "cover_url": cover_map.get(r.artist_name),
-        })
+        conversions.append(
+            {
+                "artist_name": r.artist_name,
+                "segment": r.segment or "",
+                "impressions": imp,
+                "actual_plays": plays,
+                "actual_hours": round(r.actual_hours, 1),
+                "conversion_rate": round(rate, 4),
+                "cover_url": cover_map.get(r.artist_name),
+            }
+        )
     conversions.sort(key=lambda x: -x["conversion_rate"])
 
     return {

@@ -110,7 +110,6 @@ ALBUM_ENRICH_PROMPT = """你是一位专业音乐百科编辑。请阅读以下�
 - 如某字段无内容则返回空数组 []"""
 
 
-
 PROXY = None
 
 
@@ -121,7 +120,8 @@ def _get_proxy():
     global PROXY
     if PROXY is not None:
         return PROXY
-    from backend.core.config import HTTPS_PROXY, HTTP_PROXY
+    from backend.core.config import HTTP_PROXY, HTTPS_PROXY
+
     PROXY = HTTPS_PROXY or HTTP_PROXY
     return PROXY or None
 
@@ -140,10 +140,10 @@ def _api_post(url, payload, headers, timeout=60):
             return urllib.request.urlopen(req, timeout=timeout)
         except urllib.error.HTTPError as e:
             if e.code == 429 and attempt < 2:
-                time.sleep(2 ** attempt)
+                time.sleep(2**attempt)
                 continue
             raise
-        except urllib.error.URLError as e:
+        except urllib.error.URLError:
             if attempt < 2:
                 time.sleep(1)
                 continue
@@ -154,6 +154,7 @@ def _get_config():
     """Read LLM settings from the backend settings module."""
     try:
         import backend.api.settings as settings_mod
+
         if settings_mod._current is None:
             settings_mod._ensure_current()
         return settings_mod._current or {}
@@ -225,7 +226,8 @@ def _parse_enrich_json(raw):
     """Extract and parse JSON from LLM output. Returns dict or None."""
     # Try to extract ```json ... ``` block first
     import re as _re
-    m = _re.search(r'```(?:json)?\s*\n?(.+?)\n?```', raw, _re.DOTALL)
+
+    m = _re.search(r"```(?:json)?\s*\n?(.+?)\n?```", raw, _re.DOTALL)
     if m:
         try:
             return json.loads(m.group(1))
@@ -237,7 +239,7 @@ def _parse_enrich_json(raw):
     except (json.JSONDecodeError, ValueError):
         pass
     # Try to find a JSON object in the response
-    m = _re.search(r'\{[\s\S]*\}', raw)
+    m = _re.search(r"\{[\s\S]*\}", raw)
     if m:
         try:
             return json.loads(m.group(0))
@@ -323,7 +325,7 @@ def _translate_anthropic(text, api_key, model, base_url, prompt=None):
 
 def _chunk_text(text, max_len):
     """Split text at paragraph boundaries, respecting max_len."""
-    paragraphs = re.split(r'\n\n+', text)
+    paragraphs = re.split(r"\n\n+", text)
     chunks = []
     current = ""
     for para in paragraphs:

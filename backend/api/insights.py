@@ -1,7 +1,8 @@
 """Insights API endpoints."""
 
-from fastapi import APIRouter, Depends
 from sqlite3 import Connection
+
+from fastapi import APIRouter, Depends
 
 from backend.dependencies import get_conn
 from backend.services.insights_service import get_artist_tiers, get_marquee_conversion

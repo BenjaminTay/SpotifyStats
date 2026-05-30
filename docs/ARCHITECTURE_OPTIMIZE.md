@@ -1066,15 +1066,53 @@ frontend/src/
 
 ### 阶段二：工程化与测试体系升级（提效、稳质量）
 
-#### 中优先级任务 7：新增后端测试分层与 pytest markers
+#### 第二阶段完成复盘（2026-05-30）
+
+> **阶段状态**：第二阶段 6 个工程化与测试体系任务已完成并通过验收。当前项目已从“主要依赖真实库集成测试和人工检查”升级为“unit / contract / integration 分层测试 + seed DB 契约测试 + 后端 lint/type/security 工具链 + 前端 Vitest 基线 + OpenAPI 类型生成 + 标准化 API 错误模型”的工程化基线。
+
+| 项目 | 验收结果 |
+|---|---|
+| 阶段目标达成情况 | 已达成。测试分层、可移植 seed DB、后端工程工具链、前端测试、OpenAPI 类型生成、前端 API 错误模型均已落地。 |
+| 后端测试总量 | `pytest backend/tests/ -q`：230 passed，约 35.17s。 |
+| unit 单测 | `pytest -m unit -q`：50 passed，约 4.53s；定位为纯函数、无 DB、无网络、无 FastAPI TestClient。 |
+| contract 契约测试 | `pytest -m contract -q`：13 passed，约 0.31s；使用可移植 seed SQLite，不依赖生产数据。 |
+| integration 集成测试 | 167 个；继续使用真实生产 SQLite 只读验证真实数据口径。 |
+| seed 测试库 | 新增 `backend/tests/fixtures/seed.db` 与构建脚本，覆盖短播放、连续播放、跨周播放、无 duration、single album_type、Spotify metadata、Billboard 基础结构等边界；当前 `seed.db` 约 400KB，`seed.db-shm` / `seed.db-wal` 保持忽略。 |
+| 工程工具链 | 新增 `pyproject.toml`、`requirements-dev.txt`、`.pre-commit-config.yaml`、`.secrets.baseline`；`ruff check backend/` 已通过，`mypy backend` 经基线化配置后通过。 |
+| 前端测试 | `npm test`：3 个测试文件、20 个用例全部通过，覆盖 `FormattedText` XSS 安全渲染、API 错误类型、`cn()` 工具。 |
+| OpenAPI 类型生成 | 新增 `frontend/scripts/generate-api-types.sh`、`frontend/src/api/generated/openapi.json`、`frontend/src/api/generated/api-types.ts`；覆盖 95 个接口端点。 |
+| 前端构建 | `npm run build` 已通过；Vite 仍提示部分大 chunk 超过 500KB，这是后续性能阶段处理项，不阻塞第二阶段。 |
+| 缓存污染修复 | contract fixture 在 seed DB 使用后主动清理 7 个核心缓存函数，修复 contract 与 integration 之间 `@lru_cache` 交叉污染风险；`backend/main.py` warmup 判断已改为运行时读取环境变量，确保 `SPOTIFY_STATS_WARMUP=0` 与 pytest 环境变量能在测试期间稳定生效。 |
+| 本次验收整改 | 修复 `generate-types` 受代理影响访问本地 OpenAPI 失败的问题，脚本改为 `curl --noproxy "*"` 并同步更新 OpenAPI 快照；修复一个 ruff import 顺序问题；删除前端未使用组件/import，并修复 React 19 `useRef` 初始值类型问题；为 mypy 建立历史高噪声模块 ignore baseline；将后端 warmup 判断改为运行时读取环境变量，确保 contract 测试可稳定禁用预热；显式设置 pytest-asyncio fixture loop scope，移除未来版本行为变化 warning。 |
+
+**后续开发强制规范**：
+
+1. 纯业务函数优先写 `backend/tests/unit/`，不得连接 DB 或网络。
+2. API schema、响应结构、错误边界优先写 `backend/tests/contract/`，使用 seed DB，不读生产数据。
+3. 真实数据口径、跨端点一致性、慢路径保留在 `backend/tests/integration/`。
+4. 新增影响缓存的测试必须显式清理相关 `lru_cache` / TTL cache，避免 seed DB 与真实 DB 混用污染。
+5. 后端提交前至少运行：`pytest -m unit -q`、`pytest -m contract -q`、`ruff check backend/`。
+6. 前端提交前至少运行：`npm test` 与 `npm run build`。
+7. 后端 API schema 改动后必须运行 `npm run generate-types -- http://127.0.0.1:8000/openapi.json`，并提交生成的 `openapi.json` 与 `api-types.ts`。
+8. `frontend/src/lib/api.ts` 只保留兼容导出，新代码优先从 `frontend/src/api/client.ts` 与 `frontend/src/api/errors.ts` 引入。
+9. `.secrets.baseline` 是误报基线，不是放行真实密钥；新增 secret 告警必须逐项确认。
+
+#### ✅ 中优先级任务 7：新增后端测试分层与 pytest markers
 
 - **任务名称**：后端测试金字塔落地
 - **涉及文件范围**：
-  - `pytest.ini` 或 `pyproject.toml`
+  - `pyproject.toml`
   - `backend/tests/unit/`
   - `backend/tests/contract/`
   - `backend/tests/integration/`
   - `backend/tests/conftest.py`
+- **状态**：已完成
+- **完成记录**：
+  - 新增 pytest markers：`unit`、`contract`、`integration`、`slow`。
+  - 原真实库测试迁移到 `backend/tests/integration/` 并显式标记 `integration`。
+  - 新增 `backend/tests/unit/`，覆盖 cache、crypto、Genius 清洗、json helpers、logging、release cycle 降级、utils、warmup。
+  - 新增 `backend/tests/contract/`，覆盖基于 seed DB 的 API 契约。
+  - 验收：全量 230 passed；unit 50 passed；contract 13 passed。
 - **具体执行步骤**：
   1. 新增 pytest markers：unit、contract、integration、slow。
   2. 将纯函数测试迁入 unit。
@@ -1090,14 +1128,22 @@ frontend/src/
 - **改造收益**：
   - 日常开发反馈更快，重构更稳。
 
-#### 中优先级任务 8：构建小型 seed SQLite 测试库
+#### ✅ 中优先级任务 8：构建小型 seed SQLite 测试库
 
 - **任务名称**：可移植契约测试数据库
 - **涉及文件范围**：
-  - `backend/tests/fixtures/seed_spotify_stats.db`
+  - `backend/tests/fixtures/seed.db`
   - `backend/tests/fixtures/build_seed_db.py`
   - `backend/tests/contract/`
   - `backend/core/db.py`
+  - `.gitignore`
+- **状态**：已完成
+- **完成记录**：
+  - 新增可重建 seed SQLite 数据库与构建脚本。
+  - seed DB 包含 artists、albums、tracks、plays、track_albums、Spotify track/album/artist metadata 与预聚合数据。
+  - 覆盖短播放、连续播放、跨周播放、无 duration、single album_type、跨专辑曲目等边界。
+  - `.gitignore` 对 `*.db` 保持默认忽略，但显式放行 `backend/tests/fixtures/seed.db`；WAL/SHM 文件继续忽略。
+  - 验收：contract 13 passed，且 contract 后清理缓存，未污染 integration。
 - **具体执行步骤**：
   1. 编写 seed DB 构建脚本。
   2. 包含最小 artists、albums、tracks、plays、spotify metadata。
@@ -1112,13 +1158,21 @@ frontend/src/
 - **改造收益**：
   - 测试移植性和 CI 可行性提升。
 
-#### 中优先级任务 9：加入后端 lint/type/security 工具链
+#### ✅ 中优先级任务 9：加入后端 lint/type/security 工具链
 
 - **任务名称**：后端工程质量检查基线
 - **涉及文件范围**：
-  - `requirements-dev.txt` 或 `pyproject.toml`
+  - `requirements-dev.txt`
+  - `pyproject.toml`
   - `.pre-commit-config.yaml`
-  - README
+  - `.secrets.baseline`
+- **状态**：已完成
+- **完成记录**：
+  - 新增 `ruff` 配置并完成后端代码 ruff 基线，`ruff check backend/` 通过。
+  - 新增 `mypy` 配置与 dev 依赖；对历史 pandas/sqlite 高噪声模块建立显式 ignore baseline，`mypy backend` 通过。
+  - 新增 `detect-secrets` 与 `.secrets.baseline`。
+  - 新增 `.pre-commit-config.yaml`，包含 ruff、ruff-format、mypy、detect-secrets。
+  - 验收：`ruff check backend/` 通过；补充验证 `.venv/bin/mypy backend` 通过。
 - **具体执行步骤**：
   1. 引入 `ruff`。
   2. 引入 `mypy` 或 `pyright`，先从宽松模式开始。
@@ -1133,15 +1187,23 @@ frontend/src/
 - **改造收益**：
   - 降低低级错误和密钥误提交风险。
 
-#### 中优先级任务 10：前端测试与构建检查补齐
+#### ✅ 中优先级任务 10：前端测试与构建检查补齐
 
 - **任务名称**：前端 Vitest 与组件测试基线
 - **涉及文件范围**：
   - `frontend/package.json`
+  - `frontend/package-lock.json`
   - `frontend/vitest.config.ts`
-  - `frontend/src/tests/setup.ts`
-  - `frontend/src/components/shared/FormattedText.test.tsx`
-  - `frontend/src/features/settings/...`
+  - `frontend/src/test-setup.ts`
+  - `frontend/src/tests/FormattedText.test.tsx`
+  - `frontend/src/tests/api-errors.test.ts`
+  - `frontend/src/tests/utils.test.ts`
+- **状态**：已完成
+- **完成记录**：
+  - 新增 Vitest、React Testing Library、jsdom 与 test setup。
+  - 新增 3 个前端测试文件、20 个测试用例。
+  - 覆盖安全 Markdown 渲染、API 错误模型、`cn()` class 合并工具。
+  - 验收：`npm test` 20 passed；`npm run build` 通过。
 - **具体执行步骤**：
   1. 安装 Vitest、React Testing Library、jsdom。
   2. 增加 `npm run test`。
@@ -1156,14 +1218,23 @@ frontend/src/
 - **改造收益**：
   - 前端安全和交互重构有基础保障。
 
-#### 中优先级任务 11：OpenAPI 生成 TypeScript 类型
+#### ✅ 中优先级任务 11：OpenAPI 生成 TypeScript 类型
 
 - **任务名称**：前后端接口类型自动同步
 - **涉及文件范围**：
   - `frontend/package.json`
+  - `frontend/scripts/generate-api-types.sh`
+  - `frontend/src/api/generated/openapi.json`
   - `frontend/src/api/generated/api-types.ts`
   - `frontend/src/types/*`
   - `backend/main.py`
+- **状态**：已完成
+- **完成记录**：
+  - 新增 `openapi-typescript` dev dependency 与 `npm run generate-types`。
+  - 生成 `frontend/src/api/generated/api-types.ts`，覆盖 95 个接口端点。
+  - 同步保存 `frontend/src/api/generated/openapi.json` 快照，便于后续 diff 与类型新鲜度检查。
+  - 本次验收修复生成脚本：禁用本地 OpenAPI curl 代理，避免 `http_proxy` 干扰 `127.0.0.1`；同时避免 stdin 空 schema 问题，改为先保存快照再生成类型。
+  - 验收：`npm run generate-types -- http://127.0.0.1:8000/openapi.json` 通过。
 - **具体执行步骤**：
   1. 增加生成脚本：从 `http://localhost:8000/openapi.json` 或本地导出文件生成 TS 类型。
   2. 将新类型输出到 `frontend/src/api/generated/`。
@@ -1177,7 +1248,7 @@ frontend/src/
 - **改造收益**：
   - 接口字段漂移可被编译发现。
 
-#### 中优先级任务 12：统一前端 API 错误模型
+#### ✅ 中优先级任务 12：统一前端 API 错误模型
 
 - **任务名称**：前端请求错误治理
 - **涉及文件范围**：
@@ -1185,6 +1256,13 @@ frontend/src/
   - `frontend/src/api/errors.ts`
   - `frontend/src/lib/api.ts`
   - 现有 hooks
+- **状态**：已完成
+- **完成记录**：
+  - 新增 `ApiError`、`NetworkError`、`AuthRequiredError`、`TimeoutError`。
+  - 新 `apiClient` 支持统一 header、Bearer token 注入、JSON error detail 解析、timeout 与 AbortController。
+  - `frontend/src/lib/api.ts` 保留兼容导出，降低迁移成本。
+  - 新增 `api-errors.test.ts` 覆盖错误模型。
+  - 验收：`npm test` 与 `npm run build` 通过。
 - **具体执行步骤**：
   1. 新增错误类型：`ApiError`、`NetworkError`、`AuthRequiredError`。
   2. fetch 失败时解析 JSON error body。
@@ -1664,7 +1742,7 @@ frontend/src/
 
 ## 附录：建议执行顺序
 
-阶段一已完成，后续推荐从测试护栏开始推进：
+阶段一、阶段二已完成，后续进入第三阶段前推荐顺序：
 
 1. 已完成：LLM Key masked response。
 2. 已完成：`FormattedText` 安全渲染。
@@ -1672,12 +1750,13 @@ frontend/src/
 4. 已完成：Runtime config 集中化。
 5. 已完成：API 远程模式鉴权。
 6. 已完成：日志脱敏与全局异常响应基线。
-7. 下一步：pytest markers + seed DB。
-8. 下一步：前端 Vitest 基线。
-9. 下一步：OpenAPI 类型生成。
-10. 下一步：拆 `SettingsPage.tsx`。
-11. 下一步：拆 `billboard_service.py`。
-12. 下一步：repository/provider/cache manager。
-13. 下一步：Billboard 分接口与 Query Client。
+7. 已完成：pytest markers + seed DB。
+8. 已完成：前端 Vitest 基线。
+9. 已完成：OpenAPI 类型生成。
+10. 已完成：前端统一 API 错误模型。
+11. 下一步：拆 `SettingsPage.tsx`。
+12. 下一步：拆 `billboard_service.py`。
+13. 下一步：repository/provider/cache manager。
+14. 下一步：Billboard 分接口与 Query Client。
 
-当前节奏是先消除最高风险，再搭测试护栏，最后处理结构性债务和性能产品化，能最大限度避免“重构越做越乱”。
+当前节奏已完成“消除最高风险 + 搭测试护栏”，下一阶段才进入结构性债务治理。第三阶段启动前应保持第二阶段新增命令全部绿色，避免在拆大文件时失去回归保护。

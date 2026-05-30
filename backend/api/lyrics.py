@@ -1,7 +1,8 @@
 """Lyrics endpoints — Genius integration."""
 
 from fastapi import APIRouter
-from backend.services.genius_service import get_track_lyrics, get_track_genius_url
+
+from backend.services.genius_service import get_track_genius_url, get_track_lyrics
 
 router = APIRouter()
 

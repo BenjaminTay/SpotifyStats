@@ -1,6 +1,7 @@
 """Common Pydantic models shared across API endpoints."""
 
-from typing import Optional
+from __future__ import annotations
+
 from pydantic import BaseModel, Field
 
 
@@ -37,7 +38,7 @@ class SettingsResponse(BaseModel):
     account_data_imported: bool
     # Spotify connection
     spotify_connected: bool = False
-    spotify_profile: Optional[dict] = None
+    spotify_profile: dict | None = None
     # LLM translation
     llm_enabled: bool = False
     llm_provider: str = "deepseek"
@@ -48,20 +49,20 @@ class SettingsResponse(BaseModel):
 class SettingsUpdateRequest(BaseModel):
     """Partial update for settings."""
 
-    min_ms: Optional[int] = None
-    music_only: Optional[bool] = None
-    merge_enabled: Optional[bool] = None
-    bb_top_n: Optional[int] = None
-    bb_album_top_n: Optional[int] = None
-    bb_artist_top_n: Optional[int] = None
-    bb_week_start_dow: Optional[int] = None
-    bb_week_start_hour: Optional[int] = None
+    min_ms: int | None = None
+    music_only: bool | None = None
+    merge_enabled: bool | None = None
+    bb_top_n: int | None = None
+    bb_album_top_n: int | None = None
+    bb_artist_top_n: int | None = None
+    bb_week_start_dow: int | None = None
+    bb_week_start_hour: int | None = None
     # LLM translation
-    llm_enabled: Optional[bool] = None
-    llm_provider: Optional[str] = None
-    llm_model: Optional[str] = None
-    llm_api_key: Optional[str] = None
-    llm_base_url: Optional[str] = None
+    llm_enabled: bool | None = None
+    llm_provider: str | None = None
+    llm_model: str | None = None
+    llm_api_key: str | None = None
+    llm_base_url: str | None = None
 
 
 class ImportJobStatus(BaseModel):
@@ -71,33 +72,36 @@ class ImportJobStatus(BaseModel):
     status: str  # "running" | "done" | "error"
     progress_pct: float
     message: str
-    result: Optional[dict] = None
+    result: dict | None = None
 
 
 # ═══════════════════════════════════════════════════════════════════════════
 # LLM Profile models
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class LLMProfileResponse(BaseModel):
     """A saved LLM profile (without API key for list view)."""
+
     id: int
     profile_name: str
     llm_provider: str = "deepseek"
     llm_model: str = ""
-    created_at: Optional[str] = None
-    updated_at: Optional[str] = None
+    created_at: str | None = None
+    updated_at: str | None = None
 
 
 class LLMProfileDetailResponse(BaseModel):
     """A saved LLM profile with full details. API key is never returned — use has_llm_key instead."""
+
     id: int
     profile_name: str
     llm_provider: str = "deepseek"
     llm_model: str = ""
     llm_base_url: str = ""
     has_llm_key: bool = False
-    created_at: Optional[str] = None
-    updated_at: Optional[str] = None
+    created_at: str | None = None
+    updated_at: str | None = None
 
 
 class LLMProfileCreateRequest(BaseModel):
@@ -109,8 +113,8 @@ class LLMProfileCreateRequest(BaseModel):
 
 
 class LLMProfileUpdateRequest(BaseModel):
-    profile_name: Optional[str] = None
-    llm_provider: Optional[str] = None
-    llm_model: Optional[str] = None
-    llm_api_key: Optional[str] = None
-    llm_base_url: Optional[str] = None
+    profile_name: str | None = None
+    llm_provider: str | None = None
+    llm_model: str | None = None
+    llm_api_key: str | None = None
+    llm_base_url: str | None = None

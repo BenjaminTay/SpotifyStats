@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect } from 'react'
 import { GlassCard } from '@/components/shared/GlassCard'
 import { Slider } from '@/components/ui/slider'
 import {
@@ -26,7 +26,6 @@ import {
   ChevronDown,
   Link,
   Unlink,
-  Music,
 } from 'lucide-react'
 import { useSettings, useVersionMerge } from '@/hooks/useSettings'
 import { getChineseStyle, setChineseStyle, type ChineseStyle } from '@/lib/chinese'

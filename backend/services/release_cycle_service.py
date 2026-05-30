@@ -1,27 +1,23 @@
 """Release cycle analysis service — migrated from app/pages/billboard/release_cycle/shared.py."""
 
-import json
 import base64
-import urllib.request
-import urllib.parse
+import json
 import urllib.error
+import urllib.parse
+import urllib.request
 from functools import lru_cache
-import time
 
 import numpy as np
 import pandas as pd
 
-from backend.core.db import get_db
-from backend.core.json_helpers import py_val, df_to_json
 from backend.core.cache import ttl_cached
-from backend.core.version_merge import get_album_group_mapping, normalize_album_name
-
-
-
+from backend.core.db import get_db
+from backend.core.version_merge import normalize_album_name
 
 # ═══════════════════════════════════════════════════════════════════════════
 # Spotify token
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 @ttl_cached(3500)
 def _get_spotify_token():
@@ -50,6 +46,7 @@ def _get_spotify_token():
 # ═══════════════════════════════════════════════════════════════════════════
 # Spotify API helpers
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 def dedup_preserve_order(seq):
     """List deduplication preserving insertion order."""
@@ -118,7 +115,7 @@ def _fetch_album_artists_from_api(spotify_album_ids, artist_name):
     conn = get_db(readonly=False)
 
     for i in range(0, len(ids_list), 20):
-        batch = ids_list[i:i + 20]
+        batch = ids_list[i : i + 20]
         try:
             url = f"https://api.spotify.com/v1/albums?ids={','.join(batch)}"
             req = urllib.request.Request(url, headers={"Authorization": f"Bearer {token}"})
@@ -134,7 +131,11 @@ def _fetch_album_artists_from_api(spotify_album_ids, artist_name):
                 album_artists_lower = [n.lower() for n in artist_names]
 
                 try:
-                    genres = json.dumps(album.get("genres", []), ensure_ascii=False) if album.get("genres") else None
+                    genres = (
+                        json.dumps(album.get("genres", []), ensure_ascii=False)
+                        if album.get("genres")
+                        else None
+                    )
                     img_url = album["images"][0]["url"] if album.get("images") else None
                     conn.execute(
                         """INSERT INTO spotify_album_meta(
@@ -176,8 +177,9 @@ def _fetch_album_artists_from_api(spotify_album_ids, artist_name):
     return verified
 
 
-def _save_album_meta_to_db(spotify_album_id, album_name, album_type, release_date,
-                          album_artists=None):
+def _save_album_meta_to_db(
+    spotify_album_id, album_name, album_type, release_date, album_artists=None
+):
     """Persist Spotify album metadata to spotify_album_meta table."""
     try:
         conn = get_db(readonly=False)
@@ -246,8 +248,10 @@ def _spotify_search_album(album_name, artist_name, skip_db_check=False):
                     "spotify_album_id": album["id"],
                 }
                 _save_album_meta_to_db(
-                    album["id"], album["name"],
-                    album.get("album_type"), album.get("release_date"),
+                    album["id"],
+                    album["name"],
+                    album.get("album_type"),
+                    album.get("release_date"),
                     album_artists=album_artists,
                 )
                 return result
@@ -260,6 +264,7 @@ def _spotify_search_album(album_name, artist_name, skip_db_check=False):
 # ═══════════════════════════════════════════════════════════════════════════
 # Data loading
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 def load_artist_list(df_raw):
     """Extract sorted list of artists with track counts from play data."""
@@ -334,6 +339,7 @@ def load_artist_releases(artist_name):
 # ═══════════════════════════════════════════════════════════════════════════
 # Release group filtering (migrated from shared.py)
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 def _parse_sub_albums(raw):
     """Parse sub_albums JSON field."""
@@ -450,7 +456,9 @@ def _filter_release_group_duplicates(releases_df):
     if not non_primary_sids:
         for sid, canonical in primary_sid_to_canonical.items():
             releases_df.loc[releases_df["spotify_album_id"] == sid, "canonical_name"] = canonical
-        releases_df = releases_df.sort_values("release_date", ascending=False).reset_index(drop=True)
+        releases_df = releases_df.sort_values("release_date", ascending=False).reset_index(
+            drop=True
+        )
         return _ad_hoc_name_grouping(releases_df)
 
     # Collect sub-album metadata from non-primary rows
@@ -462,11 +470,15 @@ def _filter_release_group_duplicates(releases_df):
         canonical = sid_to_canonical.get(sid)
         if not canonical:
             continue
-        sub_albums_by_canonical.setdefault(canonical, []).append({
-            "album_name": rel["album_name"],
-            "release_date": rel["release_date"].strftime("%Y-%m-%d") if pd.notna(rel["release_date"]) else None,
-            "album_type": rel.get("album_type", "unknown"),
-        })
+        sub_albums_by_canonical.setdefault(canonical, []).append(
+            {
+                "album_name": rel["album_name"],
+                "release_date": rel["release_date"].strftime("%Y-%m-%d")
+                if pd.notna(rel["release_date"])
+                else None,
+                "album_type": rel.get("album_type", "unknown"),
+            }
+        )
 
     for canonical in sub_albums_by_canonical:
         deduped = []
@@ -545,12 +557,15 @@ def _ad_hoc_name_grouping(releases_df):
                 if row["album_name"] == primary_name:
                     to_drop.append(idx)
                     continue
-                sub_albums.append({
-                    "album_name": row["album_name"],
-                    "release_date": row["release_date"].strftime("%Y-%m-%d")
-                        if pd.notna(row["release_date"]) else None,
-                    "album_type": row.get("album_type", "unknown"),
-                })
+                sub_albums.append(
+                    {
+                        "album_name": row["album_name"],
+                        "release_date": row["release_date"].strftime("%Y-%m-%d")
+                        if pd.notna(row["release_date"])
+                        else None,
+                        "album_type": row.get("album_type", "unknown"),
+                    }
+                )
                 to_drop.append(idx)
 
             existing = _parse_sub_albums(releases_df.at[primary_idx, "sub_albums"])
@@ -580,6 +595,7 @@ def _ad_hoc_name_grouping(releases_df):
 # ═══════════════════════════════════════════════════════════════════════════
 # Play timelines
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 def compute_artist_play_timeline(df_raw, artist_name):
     """Compute weekly play counts and track counts for an artist (all-time, full data)."""
@@ -694,6 +710,7 @@ def compute_track_timelines(df_raw, artist_name, album_name):
 # Time alignment utilities
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 def align_to_release(weekly_df, release_date, weeks_before=12, weeks_after=24):
     """Align weekly data to release date, adding week_offset column."""
     if weekly_df.empty:
@@ -702,13 +719,12 @@ def align_to_release(weekly_df, release_date, weeks_before=12, weeks_after=24):
     release_date = pd.to_datetime(release_date)
     weekly_df = weekly_df.copy()
     weekly_df["bw_dt"] = pd.to_datetime(weekly_df["billboard_week"])
-    weekly_df["week_offset"] = (
-        (weekly_df["bw_dt"] - release_date).dt.days / 7.0
-    ).apply(lambda x: int(round(x)))
+    weekly_df["week_offset"] = ((weekly_df["bw_dt"] - release_date).dt.days / 7.0).apply(
+        lambda x: int(round(x))
+    )
 
     weekly_df = weekly_df[
-        (weekly_df["week_offset"] >= -weeks_before)
-        & (weekly_df["week_offset"] <= weeks_after)
+        (weekly_df["week_offset"] >= -weeks_before) & (weekly_df["week_offset"] <= weeks_after)
     ]
     return weekly_df.drop(columns=["bw_dt"])
 
@@ -727,9 +743,11 @@ def _group_by_release_week(df, release_date, weeks_before, weeks_after):
 
     weekly = (
         filtered.groupby(filtered_offsets)
-        .agg(play_count=("ms_played", "count"),
-             total_ms=("ms_played", "sum"),
-             tracks_count=("track_id", "nunique"))
+        .agg(
+            play_count=("ms_played", "count"),
+            total_ms=("ms_played", "sum"),
+            tracks_count=("track_id", "nunique"),
+        )
         .reset_index()
     )
     weekly.columns = ["week_offset", "play_count", "total_ms", "tracks_count"]
@@ -740,10 +758,20 @@ def _group_by_release_week(df, release_date, weeks_before, weeks_after):
 # Core: compute_release_cycle
 # ═══════════════════════════════════════════════════════════════════════════
 
-def compute_release_cycle(df_raw, artist_name, album_name, release_date,
-                          weekly_artist=None, weekly_album=None,
-                          weeks_before=12, weeks_after=24,
-                          artist_df=None, artist_median=None, total_daily=None):
+
+def compute_release_cycle(
+    df_raw,
+    artist_name,
+    album_name,
+    release_date,
+    weekly_artist=None,
+    weekly_album=None,
+    weeks_before=12,
+    weeks_after=24,
+    artist_df=None,
+    artist_median=None,
+    total_daily=None,
+):
     """Compute all data within a release cycle anchored to release date.
 
     Play counts use precise 7-day windows; rankings use Billboard weeks.
@@ -785,14 +813,20 @@ def compute_release_cycle(df_raw, artist_name, album_name, release_date,
     # Artist timeline (precise 7-day windows)
     if not artist_df.empty:
         result["artist_timeline"] = _group_by_release_week(
-            artist_df, release_date, weeks_before, weeks_after,
+            artist_df,
+            release_date,
+            weeks_before,
+            weeks_after,
         )
 
     # Album timeline
     album_all = artist_df[artist_df["album_name"].isin(album_names)]
     if not album_all.empty:
         result["album_timeline"] = _group_by_release_week(
-            album_all, release_date, weeks_before, weeks_after,
+            album_all,
+            release_date,
+            weeks_before,
+            weeks_after,
         )
 
     # Track timelines
@@ -807,7 +841,12 @@ def compute_release_cycle(df_raw, artist_name, album_name, release_date,
                 .agg(play_count=("ms_played", "count"))
                 .reset_index()
             )
-            result["track_timelines"].columns = ["week_offset", "track_id", "track_name", "play_count"]
+            result["track_timelines"].columns = [
+                "week_offset",
+                "track_id",
+                "track_name",
+                "play_count",
+            ]
             result["track_timelines"] = result["track_timelines"].sort_values(
                 ["week_offset", "play_count"], ascending=[True, False]
             )
@@ -824,7 +863,10 @@ def compute_release_cycle(df_raw, artist_name, album_name, release_date,
             result["total_timeline"] = weekly.sort_values("week_offset")
     else:
         result["total_timeline"] = _group_by_release_week(
-            df_raw, release_date, weeks_before, weeks_after,
+            df_raw,
+            release_date,
+            weeks_before,
+            weeks_after,
         )
 
     # Ranking data (Billboard week alignment)
@@ -832,12 +874,13 @@ def compute_release_cycle(df_raw, artist_name, album_name, release_date,
         art_ranks = weekly_artist[weekly_artist["artist_name"] == artist_name][
             ["billboard_week", "rank", "play_count"]
         ].copy()
-        result["artist_ranks"] = align_to_release(art_ranks, release_date, weeks_before, weeks_after)
+        result["artist_ranks"] = align_to_release(
+            art_ranks, release_date, weeks_before, weeks_after
+        )
 
     if weekly_album is not None:
         alb_ranks = weekly_album[
-            (weekly_album["artist_name"] == artist_name)
-            & (weekly_album["album_name"] == canonical)
+            (weekly_album["artist_name"] == artist_name) & (weekly_album["album_name"] == canonical)
         ][["billboard_week", "rank", "play_count"]].copy()
         result["album_ranks"] = align_to_release(alb_ranks, release_date, weeks_before, weeks_after)
 
@@ -857,6 +900,7 @@ def compute_release_cycle(df_raw, artist_name, album_name, release_date,
 # ═══════════════════════════════════════════════════════════════════════════
 # Impact scoring
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 def _compute_artist_impact(cycle_data):
     """Compute artist listening impact score (three-factor weighted)."""
@@ -884,13 +928,17 @@ def _compute_artist_impact(cycle_data):
 
     baseline_source = "发行前4周"
     pre_artist_rows = artist_tl[(artist_tl["week_offset"] >= -4) & (artist_tl["week_offset"] <= -1)]
-    pre_artist_avg = float(pre_artist_rows["play_count"].sum()) / 4 if not pre_artist_rows.empty else 0.0
+    pre_artist_avg = (
+        float(pre_artist_rows["play_count"].sum()) / 4 if not pre_artist_rows.empty else 0.0
+    )
 
     clean_artist_avg = 0.0
     used_clean = False
     if clean_start < -4:
         clean_end = clean_start + 4
-        clean_rows = artist_tl[(artist_tl["week_offset"] >= clean_start) & (artist_tl["week_offset"] < clean_end)]
+        clean_rows = artist_tl[
+            (artist_tl["week_offset"] >= clean_start) & (artist_tl["week_offset"] < clean_end)
+        ]
         if not clean_rows.empty:
             clean_artist_avg = float(clean_rows["play_count"].sum()) / 4
 
@@ -966,11 +1014,15 @@ def _compute_market_impact(cycle_data):
     album_delta = 0.0
     if not total_tl.empty:
         pre_total_rows = total_tl[(total_tl["week_offset"] >= -4) & (total_tl["week_offset"] <= -1)]
-        total_pre_for_shift = float(pre_total_rows["play_count"].sum()) / 4 if not pre_total_rows.empty else 0.0
+        total_pre_for_shift = (
+            float(pre_total_rows["play_count"].sum()) / 4 if not pre_total_rows.empty else 0.0
+        )
         total_pre_avg = total_pre_for_shift
 
         pre_album_rows = album_tl[(album_tl["week_offset"] >= -4) & (album_tl["week_offset"] <= -1)]
-        pre_album_avg = float(pre_album_rows["play_count"].sum()) / 4 if not pre_album_rows.empty else 0.0
+        pre_album_avg = (
+            float(pre_album_rows["play_count"].sum()) / 4 if not pre_album_rows.empty else 0.0
+        )
 
         album_delta = max(0.0, post_album_avg - pre_album_avg)
         market_shift = max(0.0, np.log2(1 + album_delta / max(total_pre_for_shift, _floor)))
@@ -1020,6 +1072,7 @@ def format_market_impact(score):
 # Release metrics
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 def compute_release_metrics(cycle_data, album_type="album"):
     """Extract metrics from a release cycle result dict."""
     metrics = {
@@ -1061,8 +1114,7 @@ def compute_release_metrics(cycle_data, album_type="album"):
     if peak_plays > 0 and not post_rows.empty:
         peak_offset = int(post_rows.loc[post_rows["play_count"].idxmax(), "week_offset"])
         decay_rows = atl[
-            (atl["week_offset"] > peak_offset)
-            & (atl["play_count"] <= peak_plays * 0.5)
+            (atl["week_offset"] > peak_offset) & (atl["play_count"] <= peak_plays * 0.5)
         ]
         if not decay_rows.empty:
             decay_offset = int(decay_rows["week_offset"].min())
@@ -1090,6 +1142,7 @@ def compute_release_metrics(cycle_data, album_type="album"):
 # ═══════════════════════════════════════════════════════════════════════════
 # Artist summary & helpers
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 def compute_artist_summary(artist_name, releases_df, weekly, weekly_artist, weekly_album):
     """Compute artist-level aggregate stats."""
@@ -1124,9 +1177,7 @@ def compute_artist_summary(artist_name, releases_df, weekly, weekly_artist, week
                 .first()
                 .reset_index()
             )
-            summary["single_debut_no1_count"] = int(
-                (first_track_appear["rank"] == 1).sum()
-            )
+            summary["single_debut_no1_count"] = int((first_track_appear["rank"] == 1).sum())
 
     # Album debut #1
     if weekly_album is not None:
@@ -1138,17 +1189,12 @@ def compute_artist_summary(artist_name, releases_df, weekly, weekly_artist, week
                 .first()
                 .reset_index()
             )
-            summary["album_debut_no1_count"] = int(
-                (first_album_appear["rank"] == 1).sum()
-            )
+            summary["album_debut_no1_count"] = int((first_album_appear["rank"] == 1).sum())
 
     # Double debut (track + album both #1 same week)
     if weekly is not None and weekly_album is not None:
         all_track_first = (
-            weekly.sort_values("billboard_week")
-            .groupby("track_id")
-            .first()
-            .reset_index()
+            weekly.sort_values("billboard_week").groupby("track_id").first().reset_index()
         )
         debut_tracks = all_track_first[all_track_first["rank"] == 1][
             ["track_id", "artist_name", "billboard_week"]
@@ -1168,16 +1214,14 @@ def compute_artist_summary(artist_name, releases_df, weekly, weekly_artist, week
             double = debut_tracks.merge(
                 debut_albums, on=["artist_name", "billboard_week"], how="inner"
             )
-            summary["double_debut_count"] = int(
-                (double["artist_name"] == artist_name).sum()
-            )
+            summary["double_debut_count"] = int((double["artist_name"] == artist_name).sum())
 
     return summary
 
 
 def fill_summary_from_cycles(summary, artist_name, releases_df, all_cycles, df_raw):
     """Fill impact highs and catalog reentry stats from precomputed cycles."""
-    import numpy as _np
+
     for _, rel in releases_df.iterrows():
         album_name = rel["album_name"]
         album_type = rel["album_type"]
@@ -1188,11 +1232,17 @@ def fill_summary_from_cycles(summary, artist_name, releases_df, all_cycles, df_r
         metrics = compute_release_metrics(cycle, album_type)
 
         if metrics["artist_impact"] is not None:
-            if summary["max_artist_impact"] is None or metrics["artist_impact"] > summary["max_artist_impact"]:
+            if (
+                summary["max_artist_impact"] is None
+                or metrics["artist_impact"] > summary["max_artist_impact"]
+            ):
                 summary["max_artist_impact"] = metrics["artist_impact"]
                 summary["max_artist_impact_album"] = album_name
         if metrics["market_impact"] is not None:
-            if summary["max_market_impact"] is None or metrics["market_impact"] > summary["max_market_impact"]:
+            if (
+                summary["max_market_impact"] is None
+                or metrics["market_impact"] > summary["max_market_impact"]
+            ):
                 summary["max_market_impact"] = metrics["market_impact"]
                 summary["max_market_impact_album"] = album_name
 
@@ -1207,6 +1257,7 @@ def fill_summary_from_cycles(summary, artist_name, releases_df, all_cycles, df_r
 # Advance singles & catalog reentries
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 def get_advance_singles(artist_name, album_name):
     """Find singles released before an album via three-tier strategy."""
     releases = load_artist_releases(artist_name)
@@ -1217,7 +1268,11 @@ def get_advance_singles(artist_name, album_name):
         return []
 
     album_release_date = album_row["release_date"].iloc[0]
-    db_name = album_row["db_album_name"].iloc[0] if "db_album_name" in album_row.columns and pd.notna(album_row["db_album_name"].iloc[0]) else album_name
+    db_name = (
+        album_row["db_album_name"].iloc[0]
+        if "db_album_name" in album_row.columns and pd.notna(album_row["db_album_name"].iloc[0])
+        else album_name
+    )
 
     conn = get_db()
     shared = pd.read_sql_query(
@@ -1263,7 +1318,8 @@ def get_advance_singles(artist_name, album_name):
         # Tier 2: Spotify API
         if release_date is None:
             spotify_meta = _spotify_search_album(
-                candidate_name, artist_name,
+                candidate_name,
+                artist_name,
                 skip_db_check=db_has_wrong_type,
             )
             if spotify_meta and spotify_meta.get("album_type") == "single":
@@ -1282,11 +1338,17 @@ def get_advance_singles(artist_name, album_name):
             if not earliest.empty and earliest["first_play"].iloc[0] is not None:
                 release_date = pd.to_datetime(earliest["first_play"].iloc[0])
 
-        if release_date is not None and pd.notna(release_date) and release_date < album_release_date:
-            results.append({
-                "single_name": candidate_name,
-                "release_date": release_date,
-            })
+        if (
+            release_date is not None
+            and pd.notna(release_date)
+            and release_date < album_release_date
+        ):
+            results.append(
+                {
+                    "single_name": candidate_name,
+                    "release_date": release_date,
+                }
+            )
 
     conn.close()
 
@@ -1297,8 +1359,9 @@ def get_advance_singles(artist_name, album_name):
     return results
 
 
-def detect_catalog_reentries(df_raw, artist_name, release_date, current_album_name,
-                              pre_window=4, post_window=24):
+def detect_catalog_reentries(
+    df_raw, artist_name, release_date, current_album_name, pre_window=4, post_window=24
+):
     """Detect old songs that re-enter listening after a new release."""
     release_date = pd.to_datetime(release_date)
     artist_df = df_raw[df_raw["artist_name"] == artist_name].copy()
@@ -1313,16 +1376,20 @@ def detect_catalog_reentries(df_raw, artist_name, release_date, current_album_na
 
     current_rel_date = pd.to_datetime(current_rel["release_date"].iloc[0])
     earlier = releases[pd.to_datetime(releases["release_date"]) < current_rel_date]
-    earlier_albums = earlier["db_album_name"].tolist() if "db_album_name" in earlier.columns else earlier["album_name"].tolist()
+    earlier_albums = (
+        earlier["db_album_name"].tolist()
+        if "db_album_name" in earlier.columns
+        else earlier["album_name"].tolist()
+    )
 
     old_songs = artist_df[artist_df["album_name"].isin(earlier_albums)].copy()
     if old_songs.empty:
         return []
 
     old_songs["bw_dt"] = pd.to_datetime(old_songs["billboard_week"])
-    old_songs["week_offset"] = (
-        (old_songs["bw_dt"] - release_date).dt.days / 7.0
-    ).apply(lambda x: int(round(x)))
+    old_songs["week_offset"] = ((old_songs["bw_dt"] - release_date).dt.days / 7.0).apply(
+        lambda x: int(round(x))
+    )
 
     pre_mask = (old_songs["week_offset"] >= -pre_window) & (old_songs["week_offset"] <= -1)
     pre_active_tracks = set(old_songs[pre_mask]["track_id"].unique())
@@ -1343,12 +1410,14 @@ def detect_catalog_reentries(df_raw, artist_name, release_date, current_album_na
         reentry_offset = int(group["week_offset"].min())
         weeks_in_chart = int(group["billboard_week"].nunique())
 
-        reentries.append({
-            "track_name": track_name,
-            "source_album": source_album,
-            "reentry_offset": reentry_offset,
-            "weeks_in_chart": weeks_in_chart,
-        })
+        reentries.append(
+            {
+                "track_name": track_name,
+                "source_album": source_album,
+                "reentry_offset": reentry_offset,
+                "weeks_in_chart": weeks_in_chart,
+            }
+        )
 
     return sorted(reentries, key=lambda x: x["reentry_offset"])
 
@@ -1382,18 +1451,26 @@ def get_bonus_tracks(df_raw, artist_name, group_albums, primary_name):
     result = []
     for name in bonus_names:
         bonus_df = df_raw[
-            (df_raw["artist_name"] == artist_name) &
-            (df_raw["track_name"] == name) &
-            (df_raw["album_name"].isin(group_albums))
+            (df_raw["artist_name"] == artist_name)
+            & (df_raw["track_name"] == name)
+            & (df_raw["album_name"].isin(group_albums))
         ]
         if not bonus_df.empty:
-            source = bonus_df["album_name"].mode().iloc[0] if not bonus_df["album_name"].mode().empty else "unknown"
-            result.append({
-                "track_name": name,
-                "play_count": int(len(bonus_df)),
-                "first_appearance": bonus_df["ts_date"].min().isoformat() if hasattr(bonus_df["ts_date"].min(), 'isoformat') else str(bonus_df["ts_date"].min()),
-                "source_album": source,
-            })
+            source = (
+                bonus_df["album_name"].mode().iloc[0]
+                if not bonus_df["album_name"].mode().empty
+                else "unknown"
+            )
+            result.append(
+                {
+                    "track_name": name,
+                    "play_count": int(len(bonus_df)),
+                    "first_appearance": bonus_df["ts_date"].min().isoformat()
+                    if hasattr(bonus_df["ts_date"].min(), "isoformat")
+                    else str(bonus_df["ts_date"].min()),
+                    "source_album": source,
+                }
+            )
 
     return sorted(result, key=lambda x: x["play_count"], reverse=True)
 
@@ -1414,16 +1491,16 @@ def get_single_track_ids(artist_name, single_name):
     return [r[0] for r in rows]
 
 
-def get_chart_ranks_for_tracks(weekly, artist_name, track_ids, release_date,
-                                weeks_before=12, weeks_after=24):
+def get_chart_ranks_for_tracks(
+    weekly, artist_name, track_ids, release_date, weeks_before=12, weeks_after=24
+):
     """Get Billboard chart ranks for specific tracks, aligned to release date."""
     if weekly is None or not track_ids:
         return pd.DataFrame()
 
-    ranks = weekly[
-        (weekly["artist_name"] == artist_name) &
-        (weekly["track_id"].isin(track_ids))
-    ][["billboard_week", "track_id", "track_name", "rank"]].copy()
+    ranks = weekly[(weekly["artist_name"] == artist_name) & (weekly["track_id"].isin(track_ids))][
+        ["billboard_week", "track_id", "track_name", "rank"]
+    ].copy()
 
     if ranks.empty:
         return ranks
@@ -1432,10 +1509,6 @@ def get_chart_ranks_for_tracks(weekly, artist_name, track_ids, release_date,
     ranks = align_to_release(ranks, release_date, weeks_before, weeks_after)
 
     if not ranks.empty:
-        ranks = (
-            ranks.groupby(["week_offset", "track_id", "track_name"])["rank"]
-            .min()
-            .reset_index()
-        )
+        ranks = ranks.groupby(["week_offset", "track_id", "track_name"])["rank"].min().reset_index()
 
     return ranks

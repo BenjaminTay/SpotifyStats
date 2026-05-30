@@ -5,26 +5,26 @@ User token is persisted in the settings table as a JSON blob keyed
 'spotify_user_token'. Access token is auto-refreshed from refresh_token.
 """
 
-import json
+from __future__ import annotations
+
 import base64
+import hashlib
+import json
+import logging
+import secrets
 import sqlite3
 import time
-import hashlib
-import secrets
-import urllib.request
-import urllib.parse
 import urllib.error
-from typing import Optional
+import urllib.parse
+import urllib.request
 
-import logging
-
+import backend.core.crypto as crypto
 from backend.core.cache import ttl_cached
 from backend.core.config import (
     SPOTIFY_CLIENT_ID,
     SPOTIFY_CLIENT_SECRET,
     SPOTIFY_REDIRECT_URI,
 )
-import backend.core.crypto as crypto
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +32,7 @@ _TOKEN_KEY = "spotify_user_token"
 _PROFILE_KEY = "spotify_user_profile"
 
 
-def get_client_id() -> Optional[str]:
+def get_client_id() -> str | None:
     return SPOTIFY_CLIENT_ID or None
 
 
@@ -42,8 +42,9 @@ def get_redirect_uri() -> str:
 
 # ---- Client Credentials (app-level) ----
 
+
 @ttl_cached(3500)
-def get_client_credentials_token() -> Optional[str]:
+def get_client_credentials_token() -> str | None:
     """Get Spotify client_credentials token, TTL-cached ~58 minutes."""
     if not SPOTIFY_CLIENT_ID or not SPOTIFY_CLIENT_SECRET:
         return None
@@ -64,6 +65,7 @@ def get_client_credentials_token() -> Optional[str]:
 
 
 # ---- PKCE helpers ----
+
 
 def generate_pkce_pair() -> tuple[str, str]:
     verifier = base64.urlsafe_b64encode(secrets.token_bytes(64)).rstrip(b"=").decode()
@@ -90,18 +92,21 @@ def build_auth_url(code_challenge: str, state: str) -> str:
 
 # ---- Token exchange & refresh ----
 
-def exchange_code_for_tokens(code: str, code_verifier: str) -> Optional[dict]:
+
+def exchange_code_for_tokens(code: str, code_verifier: str) -> dict | None:
     """Exchange authorization code for access + refresh tokens."""
     client_id = get_client_id()
     if not client_id:
         return None
-    body = urllib.parse.urlencode({
-        "grant_type": "authorization_code",
-        "code": code,
-        "redirect_uri": get_redirect_uri(),
-        "client_id": client_id,
-        "code_verifier": code_verifier,
-    }).encode()
+    body = urllib.parse.urlencode(
+        {
+            "grant_type": "authorization_code",
+            "code": code,
+            "redirect_uri": get_redirect_uri(),
+            "client_id": client_id,
+            "code_verifier": code_verifier,
+        }
+    ).encode()
     req = urllib.request.Request(
         "https://accounts.spotify.com/api/token",
         data=body,
@@ -115,16 +120,18 @@ def exchange_code_for_tokens(code: str, code_verifier: str) -> Optional[dict]:
         return None
 
 
-def _refresh_user_token(refresh_token: str) -> Optional[dict]:
+def _refresh_user_token(refresh_token: str) -> dict | None:
     """Refresh an expired access token using the refresh_token."""
     client_id = get_client_id()
     if not client_id:
         return None
-    body = urllib.parse.urlencode({
-        "grant_type": "refresh_token",
-        "refresh_token": refresh_token,
-        "client_id": client_id,
-    }).encode()
+    body = urllib.parse.urlencode(
+        {
+            "grant_type": "refresh_token",
+            "refresh_token": refresh_token,
+            "client_id": client_id,
+        }
+    ).encode()
     req = urllib.request.Request(
         "https://accounts.spotify.com/api/token",
         data=body,
@@ -140,11 +147,10 @@ def _refresh_user_token(refresh_token: str) -> Optional[dict]:
 
 # ---- Persistent token storage (settings table) ----
 
-def _load_user_token_json(conn) -> Optional[dict]:
+
+def _load_user_token_json(conn) -> dict | None:
     try:
-        row = conn.execute(
-            "SELECT value FROM settings WHERE key = ?", (_TOKEN_KEY,)
-        ).fetchone()
+        row = conn.execute("SELECT value FROM settings WHERE key = ?", (_TOKEN_KEY,)).fetchone()
     except Exception:
         return None
     if not row:
@@ -192,7 +198,7 @@ def clear_user_tokens(conn) -> None:
     conn.commit()
 
 
-def get_user_access_token(conn) -> Optional[str]:
+def get_user_access_token(conn) -> str | None:
     """Get a valid user access token. Auto-refreshes if expired. Returns None if not connected."""
     data = _load_user_token_json(conn)
     if not data or "refresh_token" not in data:
@@ -219,8 +225,9 @@ def get_user_access_token(conn) -> Optional[str]:
     return new_data["access_token"]
 
 
-def store_user_tokens(conn, access_token: str, refresh_token: str,
-                      expires_in: int, scope: str) -> None:
+def store_user_tokens(
+    conn, access_token: str, refresh_token: str, expires_in: int, scope: str
+) -> None:
     token_data = {
         "access_token": access_token,
         "refresh_token": refresh_token,
@@ -233,7 +240,8 @@ def store_user_tokens(conn, access_token: str, refresh_token: str,
 
 # ---- User Profile (Spotify /v1/me) ----
 
-def fetch_spotify_profile(access_token: str) -> Optional[dict]:
+
+def fetch_spotify_profile(access_token: str) -> dict | None:
     """Fetch Spotify user profile from /v1/me."""
     return spotify_api_get("https://api.spotify.com/v1/me", access_token)
 
@@ -258,12 +266,10 @@ def save_user_profile(conn, profile: dict) -> None:
     conn.commit()
 
 
-def get_user_profile(conn) -> Optional[dict]:
+def get_user_profile(conn) -> dict | None:
     """Load persisted Spotify profile."""
     try:
-        row = conn.execute(
-            "SELECT value FROM settings WHERE key = ?", (_PROFILE_KEY,)
-        ).fetchone()
+        row = conn.execute("SELECT value FROM settings WHERE key = ?", (_PROFILE_KEY,)).fetchone()
     except Exception:
         return None
     if not row:
@@ -281,22 +287,24 @@ _TOP_KEY = "spotify_top_{type}_{time_range}"
 TIME_RANGES = ["short_term", "medium_term", "long_term"]
 
 
-def fetch_top_artists(access_token: str, time_range: str = "medium_term",
-                      limit: int = 50) -> Optional[list[dict]]:
+def fetch_top_artists(
+    access_token: str, time_range: str = "medium_term", limit: int = 50
+) -> list[dict] | None:
     """Fetch user's top artists from Spotify. Returns list of artist dicts."""
     return _fetch_top_items(access_token, "artists", time_range, limit)
 
 
-def fetch_top_tracks(access_token: str, time_range: str = "medium_term",
-                     limit: int = 50) -> Optional[list[dict]]:
+def fetch_top_tracks(
+    access_token: str, time_range: str = "medium_term", limit: int = 50
+) -> list[dict] | None:
     """Fetch user's top tracks from Spotify. Returns list of track dicts."""
     return _fetch_top_items(access_token, "tracks", time_range, limit)
 
 
-def _fetch_top_items(access_token: str, item_type: str, time_range: str,
-                     limit: int) -> Optional[list[dict]]:
-    url = (f"https://api.spotify.com/v1/me/top/{item_type}"
-           f"?time_range={time_range}&limit={limit}")
+def _fetch_top_items(
+    access_token: str, item_type: str, time_range: str, limit: int
+) -> list[dict] | None:
+    url = f"https://api.spotify.com/v1/me/top/{item_type}?time_range={time_range}&limit={limit}"
     data = spotify_api_get(url, access_token)
     return data.get("items", []) if data else None
 
@@ -311,13 +319,11 @@ def save_top_items(conn, item_type: str, time_range: str, items: list[dict]) -> 
     conn.commit()
 
 
-def get_top_items(conn, item_type: str, time_range: str) -> Optional[list[dict]]:
+def get_top_items(conn, item_type: str, time_range: str) -> list[dict] | None:
     """Load persisted top artists/tracks from settings table."""
     key = _TOP_KEY.format(type=item_type, time_range=time_range)
     try:
-        row = conn.execute(
-            "SELECT value FROM settings WHERE key = ?", (key,)
-        ).fetchone()
+        row = conn.execute("SELECT value FROM settings WHERE key = ?", (key,)).fetchone()
     except Exception:
         return None
     if not row:
@@ -333,7 +339,7 @@ def get_top_items(conn, item_type: str, time_range: str) -> Optional[list[dict]]
 _RECENT_KEY = "spotify_recently_played"
 
 
-def fetch_recently_played(access_token: str, limit: int = 50) -> Optional[list[dict]]:
+def fetch_recently_played(access_token: str, limit: int = 50) -> list[dict] | None:
     """Fetch user's recently played tracks from Spotify."""
     url = f"https://api.spotify.com/v1/me/player/recently-played?limit={limit}"
     data = spotify_api_get(url, access_token)
@@ -349,12 +355,10 @@ def save_recently_played(conn, items: list[dict]) -> None:
     conn.commit()
 
 
-def get_recently_played(conn) -> Optional[list[dict]]:
+def get_recently_played(conn) -> list[dict] | None:
     """Load persisted recently played from settings table."""
     try:
-        row = conn.execute(
-            "SELECT value FROM settings WHERE key = ?", (_RECENT_KEY,)
-        ).fetchone()
+        row = conn.execute("SELECT value FROM settings WHERE key = ?", (_RECENT_KEY,)).fetchone()
     except Exception:
         return None
     if not row:
@@ -367,12 +371,13 @@ def get_recently_played(conn) -> Optional[list[dict]]:
 
 # ---- Current Playback (user-read-currently-playing / user-read-playback-state) ----
 
-def fetch_current_playback(access_token: str) -> Optional[dict]:
+
+def fetch_current_playback(access_token: str) -> dict | None:
     """Fetch user's current playback state (live, not persisted)."""
     return spotify_api_get("https://api.spotify.com/v1/me/player", access_token)
 
 
-def fetch_currently_playing(access_token: str) -> Optional[dict]:
+def fetch_currently_playing(access_token: str) -> dict | None:
     """Fetch user's currently playing track (live, not persisted)."""
     return spotify_api_get("https://api.spotify.com/v1/me/player/currently-playing", access_token)
 
@@ -382,7 +387,7 @@ def fetch_currently_playing(access_token: str) -> Optional[dict]:
 _FOLLOWS_KEY = "spotify_followed_artists"
 
 
-def fetch_followed_artists(access_token: str) -> Optional[list[dict]]:
+def fetch_followed_artists(access_token: str) -> list[dict] | None:
     """Fetch all followed artists from Spotify."""
     items = spotify_api_get_all_pages(
         "https://api.spotify.com/v1/me/following?type=artist", access_token
@@ -398,11 +403,9 @@ def save_followed_artists(conn, items: list[dict]) -> None:
     conn.commit()
 
 
-def get_followed_artists(conn) -> Optional[list[dict]]:
+def get_followed_artists(conn) -> list[dict] | None:
     try:
-        row = conn.execute(
-            "SELECT value FROM settings WHERE key = ?", (_FOLLOWS_KEY,)
-        ).fetchone()
+        row = conn.execute("SELECT value FROM settings WHERE key = ?", (_FOLLOWS_KEY,)).fetchone()
     except Exception:
         return None
     if not row:
@@ -418,11 +421,9 @@ def get_followed_artists(conn) -> Optional[list[dict]]:
 _PLAYLISTS_KEY = "spotify_playlists"
 
 
-def fetch_playlists(access_token: str) -> Optional[list[dict]]:
+def fetch_playlists(access_token: str) -> list[dict] | None:
     """Fetch all user playlists (owned + followed + collaborative)."""
-    items = spotify_api_get_all_pages(
-        "https://api.spotify.com/v1/me/playlists", access_token
-    )
+    items = spotify_api_get_all_pages("https://api.spotify.com/v1/me/playlists", access_token)
     return items if items else None
 
 
@@ -434,11 +435,9 @@ def save_playlists(conn, items: list[dict]) -> None:
     conn.commit()
 
 
-def get_playlists(conn) -> Optional[list[dict]]:
+def get_playlists(conn) -> list[dict] | None:
     try:
-        row = conn.execute(
-            "SELECT value FROM settings WHERE key = ?", (_PLAYLISTS_KEY,)
-        ).fetchone()
+        row = conn.execute("SELECT value FROM settings WHERE key = ?", (_PLAYLISTS_KEY,)).fetchone()
     except Exception:
         return None
     if not row:
@@ -450,6 +449,7 @@ def get_playlists(conn) -> Optional[list[dict]]:
 
 
 # ---- Bulk Sync ----
+
 
 def sync_all_spotify_data(conn, access_token: str) -> dict:
     """Fetch and persist all available Spotify data. Returns summary dict."""
@@ -505,7 +505,8 @@ def sync_all_spotify_data(conn, access_token: str) -> dict:
 
 # ---- Spotify API helpers ----
 
-def spotify_api_get(url: str, access_token: str) -> Optional[dict]:
+
+def spotify_api_get(url: str, access_token: str) -> dict | None:
     """GET request to Spotify Web API with Bearer token."""
     req = urllib.request.Request(
         url,

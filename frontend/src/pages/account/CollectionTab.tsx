@@ -7,7 +7,6 @@ import type {
   LifecycleTrendPoint,
   TopTrackTrend,
   SaveTimelinePoint,
-  TopSavedArtist,
 } from '@/types/account'
 import { GlassCard } from '@/components/shared/GlassCard'
 import { KpiCard } from '@/components/shared/KpiCard'
@@ -1103,44 +1102,6 @@ function LeaderboardBlock({ insights }: { insights: CollectionInsights }) {
   )
 }
 
-function _Unused_MismatchTable({ artists }: { artists: TopSavedArtist[] }) {
-  return (
-    <table className="w-full">
-      <thead>
-        <tr className="border-b border-border">
-          <th className="pb-1.5 text-left font-sans text-[10px] font-semibold uppercase text-muted-foreground">
-            艺人
-          </th>
-          <th className="pb-1.5 text-right font-sans text-[10px] font-semibold uppercase text-muted-foreground">
-            收藏
-          </th>
-          <th className="pb-1.5 text-right font-sans text-[10px] font-semibold uppercase text-muted-foreground">
-            播放
-          </th>
-        </tr>
-      </thead>
-      <tbody>
-        {artists.slice(0, 5).map((artist) => (
-          <tr
-            key={artist.artist_name}
-            className="border-b border-border/50 last:border-0"
-          >
-            <td className="py-1.5 font-sans text-xs font-medium truncate max-w-[130px]">
-              {artist.artist_name}
-            </td>
-            <td className="py-1.5 text-right font-sans text-xs tabular-nums">
-              {artist.saved_count}
-            </td>
-            <td className="py-1.5 text-right font-sans text-xs tabular-nums text-muted-foreground">
-              {artist.total_plays.toLocaleString()}
-            </td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  )
-}
-
 /* ------------------------------------------------------------------ */
 /*  8. Browser (placeholder)                                           */
 /* ------------------------------------------------------------------ */
@@ -1169,7 +1130,7 @@ function SavedTracksBrowser() {
   const [data, setData] = useState<SavedTracksPage | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const debounceRef = useRef<ReturnType<typeof setTimeout>>()
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Debounce search
   useEffect(() => {

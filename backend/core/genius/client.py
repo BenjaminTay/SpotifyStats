@@ -1,6 +1,7 @@
+from __future__ import annotations
+
 import re
 import time
-from typing import Optional
 
 import lyricsgenius
 
@@ -11,7 +12,7 @@ class GeniusClient:
     def __init__(
         self,
         access_token: str,
-        proxy: Optional[dict[str, str]] = None,
+        proxy: dict[str, str] | None = None,
         timeout: int = 30,
     ):
         self.genius = lyricsgenius.Genius(
@@ -87,14 +88,14 @@ class GeniusClient:
 
     # ── 单首歌曲 ──────────────────────────────────────────
 
-    def get_song(self, title: str, artist: str = "") -> Optional[Song]:
+    def get_song(self, title: str, artist: str = "") -> Song | None:
         """根据歌名和歌手获取完整歌词。"""
         gs = self.genius.search_song(title=title, artist=artist)
         if gs is None:
             return None
         return self._song_from_genius(gs)
 
-    def get_song_by_id(self, song_id: int) -> Optional[Song]:
+    def get_song_by_id(self, song_id: int) -> Song | None:
         """根据 Genius song ID 获取完整歌词。"""
         gs = self.genius.search_song(song_id=song_id)
         if gs is None:
@@ -114,11 +115,7 @@ class GeniusClient:
                 return album.get(key, default)
             return getattr(album, key, default)
 
-        cover = (
-            gs.song_art_image_url
-            or gs.header_image_url
-            or _alb("cover_art_url", "")
-        )
+        cover = gs.song_art_image_url or gs.header_image_url or _alb("cover_art_url", "")
         release = ""
         rdc = _alb("release_date_components", None)
         if rdc:
@@ -139,7 +136,7 @@ class GeniusClient:
 
     # ── 专辑 ──────────────────────────────────────────────
 
-    def search_album(self, name: str, artist: str = "") -> Optional[AlbumInfo]:
+    def search_album(self, name: str, artist: str = "") -> AlbumInfo | None:
         """搜索专辑并获取全部曲目歌词。"""
         album = self.genius.search_album(name=name, artist=artist)
         if album is None:
@@ -164,7 +161,7 @@ class GeniusClient:
     def get_artist_songs(
         self,
         artist_name: str,
-        max_songs: Optional[int] = None,
+        max_songs: int | None = None,
         sort: str = "popularity",
         include_features: bool = False,
     ) -> list[Song]:
@@ -206,13 +203,15 @@ class GeniusClient:
         for entry in entries:
             song_data = entry.get("song") or entry.get("item", {})
             artist = song_data.get("primary_artist") or song_data.get("artist", {})
-            results.append(SearchResult(
-                id=song_data.get("id", 0),
-                title=song_data.get("title", ""),
-                artist=artist.get("name", "") if isinstance(artist, dict) else "",
-                url=song_data.get("url", ""),
-                lyrics_state=song_data.get("lyrics_state", "complete"),
-            ))
+            results.append(
+                SearchResult(
+                    id=song_data.get("id", 0),
+                    title=song_data.get("title", ""),
+                    artist=artist.get("name", "") if isinstance(artist, dict) else "",
+                    url=song_data.get("url", ""),
+                    lyrics_state=song_data.get("lyrics_state", "complete"),
+                )
+            )
             if len(results) >= count:
                 break
         return results
@@ -234,7 +233,7 @@ class GeniusClient:
 
     # ── 清理 ──────────────────────────────────────────────
 
-    SECTION_RE = re.compile(r'\[([A-Z][^\]]*)\]')
+    SECTION_RE = re.compile(r"\[([A-Z][^\]]*)\]")
 
     def _clean_lyrics(self, lyrics: str) -> str:
         lines = lyrics.strip().split("\n")
@@ -253,7 +252,9 @@ class GeniusClient:
 
             # Metadata lines: skip but extract the last embedded section tag
             # (section header always appears after the description text)
-            if any(kw in stripped for kw in ("Contributors", "Translations", "You Might Also Like")):
+            if any(
+                kw in stripped for kw in ("Contributors", "Translations", "You Might Also Like")
+            ):
                 matches = self.SECTION_RE.findall(stripped)
                 if matches:
                     cleaned.append(f"[{matches[-1]}]")

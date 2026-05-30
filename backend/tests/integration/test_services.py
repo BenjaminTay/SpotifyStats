@@ -6,15 +6,17 @@ computation correctness with concrete data assertions.
 
 import pytest
 
+pytestmark = pytest.mark.integration
 
 # ═══════════════════════════════════════════════════════════════════════════
 # Play Service
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestPlayService:
     def test_dashboard_summary(self):
-        from backend.services.play_service import get_dashboard_summary
         from backend.core.db import get_db
+        from backend.services.play_service import get_dashboard_summary
 
         conn = get_db()
         try:
@@ -28,8 +30,8 @@ class TestPlayService:
             conn.close()
 
     def test_dashboard_summary_numeric_types(self):
-        from backend.services.play_service import get_dashboard_summary
         from backend.core.db import get_db
+        from backend.services.play_service import get_dashboard_summary
 
         conn = get_db()
         try:
@@ -40,8 +42,8 @@ class TestPlayService:
             conn.close()
 
     def test_dashboard_monthly_trend(self):
-        from backend.services.play_service import get_monthly_trend
         from backend.core.db import get_db
+        from backend.services.play_service import get_monthly_trend
 
         conn = get_db()
         try:
@@ -55,8 +57,8 @@ class TestPlayService:
             conn.close()
 
     def test_timeline_annual(self):
-        from backend.services.play_service import get_annual_timeline
         from backend.core.db import get_db
+        from backend.services.play_service import get_annual_timeline
 
         conn = get_db()
         try:
@@ -72,13 +74,20 @@ class TestPlayService:
             conn.close()
 
     def test_leaderboard_tracks(self):
-        from backend.services.play_service import get_leaderboard
         from backend.core.db import get_db
+        from backend.services.play_service import get_leaderboard
 
         conn = get_db()
         try:
-            data = get_leaderboard(conn, min_ms=30000, music_only=True, merge_enabled=True,
-                                   entity="track", metric="plays", top_n=10)
+            data = get_leaderboard(
+                conn,
+                min_ms=30000,
+                music_only=True,
+                merge_enabled=True,
+                entity="track",
+                metric="plays",
+                top_n=10,
+            )
             assert len(data["rows"]) == 10
             for row in data["rows"]:
                 assert row["rank"] >= 1
@@ -89,21 +98,28 @@ class TestPlayService:
             conn.close()
 
     def test_leaderboard_artists(self):
-        from backend.services.play_service import get_leaderboard
         from backend.core.db import get_db
+        from backend.services.play_service import get_leaderboard
 
         conn = get_db()
         try:
-            data = get_leaderboard(conn, min_ms=30000, music_only=True, merge_enabled=True,
-                                   entity="artist", metric="hours", top_n=10)
+            data = get_leaderboard(
+                conn,
+                min_ms=30000,
+                music_only=True,
+                merge_enabled=True,
+                entity="artist",
+                metric="hours",
+                top_n=10,
+            )
             assert len(data["rows"]) == 10
             assert data["rows"][0]["artist_name"] == "Taylor Swift"
         finally:
             conn.close()
 
     def test_behavior_data(self):
-        from backend.services.play_service import get_behavior_data
         from backend.core.db import get_db
+        from backend.services.play_service import get_behavior_data
 
         conn = get_db()
         try:
@@ -117,12 +133,14 @@ class TestPlayService:
             conn.close()
 
     def test_wrapped_2024(self):
-        from backend.services.play_service import get_wrapped_data
         from backend.core.db import get_db
+        from backend.services.play_service import get_wrapped_data
 
         conn = get_db()
         try:
-            data = get_wrapped_data(conn, min_ms=30000, music_only=True, merge_enabled=True, year=2024)
+            data = get_wrapped_data(
+                conn, min_ms=30000, music_only=True, merge_enabled=True, year=2024
+            )
             assert data["year"] == 2024
             assert data["empty"] is False
             assert data["hero"] is not None
@@ -133,24 +151,28 @@ class TestPlayService:
             conn.close()
 
     def test_wrapped_empty_year(self):
-        from backend.services.play_service import get_wrapped_data
         from backend.core.db import get_db
+        from backend.services.play_service import get_wrapped_data
 
         conn = get_db()
         try:
-            data = get_wrapped_data(conn, min_ms=30000, music_only=True, merge_enabled=True, year=2010)
+            data = get_wrapped_data(
+                conn, min_ms=30000, music_only=True, merge_enabled=True, year=2010
+            )
             assert data["year"] == 2010
             assert data["empty"] is True
         finally:
             conn.close()
 
     def test_wrapped_personality(self):
-        from backend.services.play_service import get_wrapped_data
         from backend.core.db import get_db
+        from backend.services.play_service import get_wrapped_data
 
         conn = get_db()
         try:
-            data = get_wrapped_data(conn, min_ms=30000, music_only=True, merge_enabled=True, year=2024)
+            data = get_wrapped_data(
+                conn, min_ms=30000, music_only=True, merge_enabled=True, year=2024
+            )
             p = data["personality"]
             assert "primary" in p
             assert "explorer" in p
@@ -166,8 +188,8 @@ class TestPlayService:
             conn.close()
 
     def test_listening_heatmap(self):
-        from backend.services.play_service import get_listening_heatmap
         from backend.core.db import get_db
+        from backend.services.play_service import get_listening_heatmap
 
         conn = get_db()
         try:
@@ -180,8 +202,8 @@ class TestPlayService:
             conn.close()
 
     def test_weekly_timeline(self):
-        from backend.services.play_service import get_weekly_timeline
         from backend.core.db import get_db
+        from backend.services.play_service import get_weekly_timeline
 
         conn = get_db()
         try:
@@ -197,12 +219,14 @@ class TestPlayService:
             conn.close()
 
     def test_weekly_timeline_drilldown(self):
-        from backend.services.play_service import get_weekly_timeline
         from backend.core.db import get_db
+        from backend.services.play_service import get_weekly_timeline
 
         conn = get_db()
         try:
-            data = get_weekly_timeline(conn, min_ms=30000, music_only=True, merge_enabled=True, week_label="2024-W01")
+            data = get_weekly_timeline(
+                conn, min_ms=30000, music_only=True, merge_enabled=True, week_label="2024-W01"
+            )
             drilldown = data["drilldown"]
             assert drilldown is not None
             assert len(drilldown) >= 1
@@ -214,12 +238,14 @@ class TestPlayService:
             conn.close()
 
     def test_weekday_weekend_comparison(self):
-        from backend.services.play_service import get_weekday_weekend_comparison
         from backend.core.db import get_db
+        from backend.services.play_service import get_weekday_weekend_comparison
 
         conn = get_db()
         try:
-            data = get_weekday_weekend_comparison(conn, min_ms=30000, music_only=True, merge_enabled=True)
+            data = get_weekday_weekend_comparison(
+                conn, min_ms=30000, music_only=True, merge_enabled=True
+            )
             assert len(data["hours"]) == 24
             assert len(data["weekend"]) == 24
             assert len(data["weekday"]) == 24
@@ -228,12 +254,14 @@ class TestPlayService:
             conn.close()
 
     def test_platform_hourly_listening(self):
-        from backend.services.play_service import get_platform_hourly_listening
         from backend.core.db import get_db
+        from backend.services.play_service import get_platform_hourly_listening
 
         conn = get_db()
         try:
-            data = get_platform_hourly_listening(conn, min_ms=30000, music_only=True, merge_enabled=True)
+            data = get_platform_hourly_listening(
+                conn, min_ms=30000, music_only=True, merge_enabled=True
+            )
             assert len(data["platform_hourly"]) > 0
             assert len(data["platform_pct"]) > 0
             assert len(data["platform_peaks"]) >= 1
@@ -249,6 +277,7 @@ class TestPlayService:
 # ═══════════════════════════════════════════════════════════════════════════
 # Billboard Service
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 class TestBillboardService:
     def test_compute_billboard_data_meta(self, billboard_data):
@@ -310,10 +339,20 @@ class TestBillboardService:
         assert len(r["fastest_to_no1"]) > 0
 
         # ── 持久传奇 ──
-        for key in ["longest_charting", "longest_charting_album", "longest_streak", "longest_streak_album",
-                     "longest_no_top5", "longest_no_top5_album", "most_weeks_no2_no_no1",
-                     "most_weeks_no2_no_no1_album", "most_reentries", "most_reentries_album",
-                     "longest_consecutive_same_rank", "longest_consecutive_same_rank_album"]:
+        for key in [
+            "longest_charting",
+            "longest_charting_album",
+            "longest_streak",
+            "longest_streak_album",
+            "longest_no_top5",
+            "longest_no_top5_album",
+            "most_weeks_no2_no_no1",
+            "most_weeks_no2_no_no1_album",
+            "most_reentries",
+            "most_reentries_album",
+            "longest_consecutive_same_rank",
+            "longest_consecutive_same_rank_album",
+        ]:
             assert len(r[key]) > 0, f"{key} should have data"
 
         assert len(r["longest_artist_span"]) > 0
@@ -360,16 +399,23 @@ class TestBillboardService:
         ner = r["new_entry_ratio"]
         # 验证按活跃度降序排列
         if len(ner) >= 2:
-            assert ner[0]["新歌占比"] >= ner[-1]["新歌占比"], "new_entry_ratio should be sorted by 新歌占比 descending"
+            assert ner[0]["新歌占比"] >= ner[-1]["新歌占比"], (
+                "new_entry_ratio should be sorted by 新歌占比 descending"
+            )
         assert "大盘播放" in ner[0]
 
     def test_compute_billboard_data_records_album_fields(self, billboard_data):
         """验证专辑维度记录的关键字段存在"""
         records = billboard_data["records"]
 
-        for key in ["longest_charting_album", "longest_streak_album",
-                     "longest_no_top5_album", "most_weeks_no2_no_no1_album",
-                     "most_reentries_album", "longest_consecutive_same_rank_album"]:
+        for key in [
+            "longest_charting_album",
+            "longest_streak_album",
+            "longest_no_top5_album",
+            "most_weeks_no2_no_no1_album",
+            "most_reentries_album",
+            "longest_consecutive_same_rank_album",
+        ]:
             data = records[key]
             assert len(data) > 0, f"{key} should have data"
             assert "album_name" in data[0], f"{key} missing album_name"
@@ -402,17 +448,27 @@ class TestBillboardService:
         from backend.services.billboard_service import get_track_history
 
         data = get_track_history(
-            track_id=157, min_ms=30000, music_only=True,
-            bb_top_n=30, bb_album_top_n=20, bb_artist_top_n=20,
-            bb_week_start_dow=4, bb_week_start_hour=0,
-            year_start=None, year_end=None,
+            track_id=157,
+            min_ms=30000,
+            music_only=True,
+            bb_top_n=30,
+            bb_album_top_n=20,
+            bb_artist_top_n=20,
+            bb_week_start_dow=4,
+            bb_week_start_hour=0,
+            year_start=None,
+            year_end=None,
         )
         assert data["found"] is True
         assert data["track_id"] == 157
         assert len(data["history"]) >= 1
         assert data["summary"]["weeks_on_chart"] >= 1
         for h in data["history"]:
-            assert h["change"] in ("NEW", "RE", "─") or h["change"].startswith("▲") or h["change"].startswith("▼")
+            assert (
+                h["change"] in ("NEW", "RE", "─")
+                or h["change"].startswith("▲")
+                or h["change"].startswith("▼")
+            )
         assert len(data["chart_data"]["x"]) >= len(data["history"])
         assert len(data["chart_data"]["y"]) >= len(data["history"])
 
@@ -420,10 +476,16 @@ class TestBillboardService:
         from backend.services.billboard_service import get_track_history
 
         data = get_track_history(
-            track_id=99999, min_ms=30000, music_only=True,
-            bb_top_n=30, bb_album_top_n=20, bb_artist_top_n=20,
-            bb_week_start_dow=4, bb_week_start_hour=0,
-            year_start=None, year_end=None,
+            track_id=99999,
+            min_ms=30000,
+            music_only=True,
+            bb_top_n=30,
+            bb_album_top_n=20,
+            bb_artist_top_n=20,
+            bb_week_start_dow=4,
+            bb_week_start_hour=0,
+            year_start=None,
+            year_end=None,
         )
         assert data["found"] is False
 
@@ -431,10 +493,16 @@ class TestBillboardService:
         from backend.services.billboard_service import get_artist_chart_detail
 
         data = get_artist_chart_detail(
-            artist_name="Taylor Swift", min_ms=30000, music_only=True,
-            bb_top_n=30, bb_album_top_n=20, bb_artist_top_n=20,
-            bb_week_start_dow=4, bb_week_start_hour=0,
-            year_start=None, year_end=None,
+            artist_name="Taylor Swift",
+            min_ms=30000,
+            music_only=True,
+            bb_top_n=30,
+            bb_album_top_n=20,
+            bb_artist_top_n=20,
+            bb_week_start_dow=4,
+            bb_week_start_hour=0,
+            year_start=None,
+            year_end=None,
         )
         assert data["found"] is True
         assert data["artist_name"] == "Taylor Swift"
@@ -447,11 +515,17 @@ class TestBillboardService:
         from backend.services.billboard_service import get_album_chart_detail
 
         data = get_album_chart_detail(
-            album_name="Midnights", artist_name="Taylor Swift",
-            min_ms=30000, music_only=True,
-            bb_top_n=30, bb_album_top_n=20, bb_artist_top_n=20,
-            bb_week_start_dow=4, bb_week_start_hour=0,
-            year_start=None, year_end=None,
+            album_name="Midnights",
+            artist_name="Taylor Swift",
+            min_ms=30000,
+            music_only=True,
+            bb_top_n=30,
+            bb_album_top_n=20,
+            bb_artist_top_n=20,
+            bb_week_start_dow=4,
+            bb_week_start_hour=0,
+            year_start=None,
+            year_end=None,
         )
         assert data["found"] is True
         assert data["album_name"] == "Midnights"
@@ -463,10 +537,15 @@ class TestBillboardService:
         from backend.services.billboard_service import get_billboard_entity_lists
 
         data = get_billboard_entity_lists(
-            min_ms=30000, music_only=True,
-            bb_top_n=30, bb_album_top_n=20, bb_artist_top_n=20,
-            bb_week_start_dow=4, bb_week_start_hour=0,
-            year_start=None, year_end=None,
+            min_ms=30000,
+            music_only=True,
+            bb_top_n=30,
+            bb_album_top_n=20,
+            bb_artist_top_n=20,
+            bb_week_start_dow=4,
+            bb_week_start_hour=0,
+            year_start=None,
+            year_end=None,
         )
         assert len(data["tracks"]) > 500
         assert len(data["albums"]) > 200
@@ -478,10 +557,17 @@ class TestBillboardService:
         from backend.services.billboard_service import get_versus_track
 
         data = get_versus_track(
-            tid_a=157, tid_b=149, min_ms=30000, music_only=True,
-            bb_top_n=30, bb_album_top_n=20, bb_artist_top_n=20,
-            bb_week_start_dow=4, bb_week_start_hour=0,
-            year_start=None, year_end=None,
+            tid_a=157,
+            tid_b=149,
+            min_ms=30000,
+            music_only=True,
+            bb_top_n=30,
+            bb_album_top_n=20,
+            bb_artist_top_n=20,
+            bb_week_start_dow=4,
+            bb_week_start_hour=0,
+            year_start=None,
+            year_end=None,
         )
         assert data["found"] is True
         for key in ["entity_a", "entity_b"]:
@@ -496,12 +582,19 @@ class TestBillboardService:
         from backend.services.billboard_service import get_versus_album
 
         data = get_versus_album(
-            aname_a="Midnights", aart_a="Taylor Swift",
-            aname_b="folklore", aart_b="Taylor Swift",
-            min_ms=30000, music_only=True,
-            bb_top_n=30, bb_album_top_n=20, bb_artist_top_n=20,
-            bb_week_start_dow=4, bb_week_start_hour=0,
-            year_start=None, year_end=None,
+            aname_a="Midnights",
+            aart_a="Taylor Swift",
+            aname_b="folklore",
+            aart_b="Taylor Swift",
+            min_ms=30000,
+            music_only=True,
+            bb_top_n=30,
+            bb_album_top_n=20,
+            bb_artist_top_n=20,
+            bb_week_start_dow=4,
+            bb_week_start_hour=0,
+            year_start=None,
+            year_end=None,
         )
         assert data["found"] is True
         assert "num_tracks" in data["entity_a"]["metrics"]
@@ -511,11 +604,17 @@ class TestBillboardService:
         from backend.services.billboard_service import get_versus_artist
 
         data = get_versus_artist(
-            sel_a="Taylor Swift", sel_b="Olivia Rodrigo",
-            min_ms=30000, music_only=True,
-            bb_top_n=30, bb_album_top_n=20, bb_artist_top_n=20,
-            bb_week_start_dow=4, bb_week_start_hour=0,
-            year_start=None, year_end=None,
+            sel_a="Taylor Swift",
+            sel_b="Olivia Rodrigo",
+            min_ms=30000,
+            music_only=True,
+            bb_top_n=30,
+            bb_album_top_n=20,
+            bb_artist_top_n=20,
+            bb_week_start_dow=4,
+            bb_week_start_hour=0,
+            year_start=None,
+            year_end=None,
         )
         assert data["found"] is True
         assert "num_tracks" in data["entity_a"]["metrics"]
@@ -527,10 +626,12 @@ class TestBillboardService:
 # Release Cycle Service
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestReleaseCycleService:
     @pytest.fixture(scope="class")
     def _df_raw(self):
         from backend.services.billboard_service import load_billboard_raw
+
         return load_billboard_raw(30000, True, 4, 0)
 
     def test_load_artist_list(self, _df_raw):
@@ -553,12 +654,15 @@ class TestReleaseCycleService:
             assert c in cols
 
     def test_compute_artist_summary(self):
-        from backend.services.release_cycle_service import (
-            load_artist_releases, compute_artist_summary,
-        )
         from backend.services.billboard_service import (
-            load_billboard_raw, compute_weekly_rankings,
-            compute_artist_weekly_rankings, compute_album_weekly_rankings,
+            compute_album_weekly_rankings,
+            compute_artist_weekly_rankings,
+            compute_weekly_rankings,
+            load_billboard_raw,
+        )
+        from backend.services.release_cycle_service import (
+            compute_artist_summary,
+            load_artist_releases,
         )
 
         df_raw = load_billboard_raw(30000, True, 4, 0)
@@ -568,186 +672,26 @@ class TestReleaseCycleService:
         weekly_album = compute_album_weekly_rankings(df_raw, 20)
 
         summary = compute_artist_summary(
-            "Taylor Swift", releases, weekly, weekly_artist, weekly_album,
+            "Taylor Swift",
+            releases,
+            weekly,
+            weekly_artist,
+            weekly_album,
         )
         assert summary["total_albums"] > 0
         assert summary["total_singles"] > 0
 
-    def test_spotify_token_network_failure_returns_none(self, monkeypatch):
-        import urllib.error
-
-        import backend.services.release_cycle_service as svc
-
-        monkeypatch.setenv("SPOTIFY_CLIENT_ID", "test-client-id")
-        monkeypatch.setenv("SPOTIFY_CLIENT_SECRET", "test-client-secret")
-
-        def raise_url_error(*_args, **_kwargs):
-            raise urllib.error.URLError("network disabled")
-
-        monkeypatch.setattr(svc.urllib.request, "urlopen", raise_url_error)
-        svc._get_spotify_token.cache_clear()
-
-        assert svc._get_spotify_token() is None
-
 
 # ═══════════════════════════════════════════════════════════════════════════
-# Core Utilities
+# Genius Service (integration — requires DB)
 # ═══════════════════════════════════════════════════════════════════════════
 
-class TestJsonHelpers:
-    def test_py_val_none(self):
-        from backend.core.json_helpers import py_val
-        assert py_val(None) is None
-
-    def test_py_val_int(self):
-        from backend.core.json_helpers import py_val
-        assert py_val(42) == 42
-        assert isinstance(py_val(42), int)
-
-    def test_py_val_float(self):
-        from backend.core.json_helpers import py_val
-        assert py_val(3.14) == 3.14
-
-    def test_py_val_numpy_int(self):
-        import numpy as np
-        from backend.core.json_helpers import py_val
-        v = py_val(np.int64(42))
-        assert v == 42
-        assert isinstance(v, int)
-
-    def test_py_val_numpy_float(self):
-        import numpy as np
-        from backend.core.json_helpers import py_val
-        v = py_val(np.float64(3.14))
-        assert isinstance(v, float)
-
-    def test_py_val_nan(self):
-        import numpy as np
-        from backend.core.json_helpers import py_val
-        assert py_val(np.nan) is None
-        assert py_val(float("nan")) is None
-
-    def test_df_to_json_empty(self):
-        from backend.core.json_helpers import df_to_json
-        assert df_to_json(None) == []
-
-    def test_df_to_json_basic(self):
-        import pandas as pd
-        from backend.core.json_helpers import df_to_json
-
-        df = pd.DataFrame({"a": [1, 2], "b": ["x", "y"]})
-        result = df_to_json(df)
-        assert len(result) == 2
-        assert result[0] == {"a": 1, "b": "x"}
-        assert result[1] == {"a": 2, "b": "y"}
-
-
-class TestCache:
-    def test_ttl_cached_returns_value(self):
-        from backend.core.cache import ttl_cached
-
-        call_count = 0
-
-        @ttl_cached(60)
-        def expensive():
-            nonlocal call_count
-            call_count += 1
-            return call_count
-
-        assert expensive() == 1
-        assert expensive() == 1  # cached
-        assert call_count == 1
-
-    def test_ttl_cached_expires(self):
-        import time
-        from backend.core.cache import ttl_cached
-
-        call_count = 0
-
-        @ttl_cached(0.05)
-        def expensive():
-            nonlocal call_count
-            call_count += 1
-            return call_count
-
-        assert expensive() == 1
-        time.sleep(0.1)
-        assert expensive() == 2  # cache expired
-        assert call_count == 2
-
-    def test_ttl_cached_different_args(self):
-        from backend.core.cache import ttl_cached
-
-        call_count = 0
-
-        @ttl_cached(60)
-        def expensive(x):
-            nonlocal call_count
-            call_count += 1
-            return f"{x}-{call_count}"
-
-        assert expensive(1) == "1-1"
-        assert expensive(2) == "2-2"
-        assert expensive(1) == "1-1"  # cached separately
-        assert call_count == 2
-
-    def test_ttl_cached_does_not_cache_none(self):
-        from backend.core.cache import ttl_cached
-
-        call_count = 0
-
-        @ttl_cached(60)
-        def maybe_missing():
-            nonlocal call_count
-            call_count += 1
-            return None
-
-        assert maybe_missing() is None
-        assert maybe_missing() is None
-        assert call_count == 2
-
-
-class TestWarmup:
-    def test_warm_common_caches_invokes_hot_paths(self, monkeypatch):
-        from backend.core import warmup
-
-        calls = []
-
-        def fake_load_plays(conn, **kwargs):
-            calls.append(("load_plays", kwargs))
-            return None
-
-        def fake_compute_billboard_data(**kwargs):
-            calls.append(("compute_billboard_data", kwargs))
-            return None
-
-        class FakeConn:
-            def close(self):
-                calls.append(("close", {}))
-
-        monkeypatch.setattr(warmup, "get_db", lambda: FakeConn())
-        monkeypatch.setattr(warmup, "load_plays", fake_load_plays)
-        monkeypatch.setattr(warmup, "compute_billboard_data", fake_compute_billboard_data)
-
-        warmup.warm_common_caches()
-
-        assert calls[0][0] == "load_plays"
-        assert calls[1][0] == "close"
-        assert calls[2][0] == "compute_billboard_data"
-        assert calls[0][1]["min_ms"] == 30000
-        assert calls[0][1]["merge_enabled"] is True
-        assert calls[2][1]["bb_top_n"] == 30
-
-
-# ═══════════════════════════════════════════════════════════════════════════
-# Genius Service
-# ═══════════════════════════════════════════════════════════════════════════
 
 class TestGeniusService:
     def test_get_track_lyrics_cached(self):
         """Fetching the same track twice returns cached=True on second call."""
-        from backend.services.genius_service import get_track_lyrics, _get_client
         from backend.core.db import get_db
+        from backend.services.genius_service import _get_client, get_track_lyrics
 
         # Ensure we have a cached entry for a known track
         client = _get_client()
@@ -759,7 +703,12 @@ class TestGeniusService:
         try:
             conn.execute(
                 "INSERT OR REPLACE INTO track_lyrics (track_id, genius_song_id, lyrics_text, genius_url) VALUES (?, ?, ?, ?)",
-                (9999, 12345, "[Verse]\nTest lyrics line 1\nTest lyrics line 2", "https://genius.com/test"),
+                (
+                    9999,
+                    12345,
+                    "[Verse]\nTest lyrics line 1\nTest lyrics line 2",
+                    "https://genius.com/test",
+                ),
             )
             conn.commit()
         finally:
@@ -788,8 +737,8 @@ class TestGeniusService:
 
     def test_get_track_genius_url_cached(self):
         """URL-only lookup returns genius_url from cache."""
-        from backend.services.genius_service import get_track_genius_url
         from backend.core.db import get_db
+        from backend.services.genius_service import get_track_genius_url
 
         # Seed cache
         conn = get_db(readonly=False)
@@ -820,36 +769,3 @@ class TestGeniusService:
 
         result = get_track_genius_url(-1)
         assert result["found"] is False
-
-    def test_lyrics_cleaning_removes_metadata(self):
-        """_clean_lyrics strips contributor/translation headers."""
-        from backend.services.genius_service import _get_client
-
-        client = _get_client()
-        if client is None:
-            pytest.skip("Genius client not available")
-
-        raw = "130 ContributorsTranslationsTest Song LyricsSome description text… Read More [Verse 1]\nLine one\nLine two\n\nYou Might Also Like"
-        cleaned = client._clean_lyrics(raw)
-        lines = cleaned.split("\n")
-        assert "[Verse 1]" == lines[0].strip()
-        assert "Line one" in cleaned
-        assert "Contributors" not in cleaned
-        assert "You Might Also Like" not in cleaned
-
-    def test_lyrics_cleaning_section_spacing(self):
-        """Sections are separated by exactly one blank line."""
-        from backend.services.genius_service import _get_client
-
-        client = _get_client()
-        if client is None:
-            pytest.skip("Genius client not available")
-
-        raw = "[Verse 1]\nLine one\nLine two\n\n\n[Chorus]\nChorus line"
-        cleaned = client._clean_lyrics(raw)
-        # No consecutive blank lines
-        assert "\n\n\n" not in cleaned
-        # One blank line before [Chorus]
-        assert "\n\n[Chorus]" in cleaned
-        # First section header preserved
-        assert cleaned.startswith("[Verse 1]")

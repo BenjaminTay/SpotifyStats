@@ -1,7 +1,9 @@
 """Utility functions for timezone conversion and platform classification."""
 
+from __future__ import annotations
+
 from datetime import datetime, timedelta
-from typing import Optional, Union
+from typing import Union
 
 # Time conversion constants
 MS_TO_HOURS = 3_600_000
@@ -23,7 +25,7 @@ COUNTRY_TZ_OFFSETS: dict[str, int] = {
 }
 
 
-def convert_to_local_time(iso_str: str, country: Optional[str]) -> dict[str, Union[int, str]]:
+def convert_to_local_time(iso_str: str, country: str | None) -> dict[str, Union[int, str]]:
     """Parse a UTC ISO 8601 timestamp and convert to local time for the given country.
 
     Returns a dict with precomputed time components:
@@ -48,7 +50,7 @@ def convert_to_local_time(iso_str: str, country: Optional[str]) -> dict[str, Uni
     }
 
 
-def classify_platform(raw: Optional[str]) -> str:
+def classify_platform(raw: str | None) -> str:
     """Normalize platform string to a short canonical form.
 
     'iOS 15.5 (iPhone14,5)' -> 'ios'

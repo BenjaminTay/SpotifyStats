@@ -1,12 +1,16 @@
 """Library / account data API endpoints."""
 
-from fastapi import APIRouter, Depends
 from sqlite3 import Connection
+
+from fastapi import APIRouter, Depends
 
 from backend.dependencies import get_conn
 from backend.services.library_service import (
-    get_library_overview, get_playlists, get_playlist_tracks,
-    get_playlist_overlap_matrix, get_saved_tracks_paginated,
+    get_library_overview,
+    get_playlist_overlap_matrix,
+    get_playlist_tracks,
+    get_playlists,
+    get_saved_tracks_paginated,
 )
 
 router = APIRouter(prefix="/library", tags=["Library"])

@@ -1,5 +1,7 @@
 """Wikipedia enrichment service — fetch album/artist/track info from Wikipedia."""
 
+from __future__ import annotations
+
 import json
 import re
 import sqlite3
@@ -17,11 +19,13 @@ USER_AGENT = "SpotifyStats/1.0 (personal analytics; contact@example.com)"
 
 PROXY = None
 
+
 def _get_proxy():
     global PROXY
     if PROXY is not None:
         return PROXY
-    from backend.core.config import HTTPS_PROXY, HTTP_PROXY
+    from backend.core.config import HTTP_PROXY, HTTPS_PROXY
+
     PROXY = HTTPS_PROXY or HTTP_PROXY
     return PROXY or None
 
@@ -40,10 +44,10 @@ def _urlopen(url, timeout=15, retries=3):
             return urllib.request.urlopen(req, timeout=timeout)
         except urllib.error.HTTPError as e:
             if e.code == 429 and attempt < retries - 1:
-                time.sleep(2 ** attempt)
+                time.sleep(2**attempt)
                 continue
             raise
-        except urllib.error.URLError as e:
+        except urllib.error.URLError:
             if attempt < retries - 1:
                 time.sleep(1)
                 continue
@@ -54,13 +58,19 @@ def _urlopen(url, timeout=15, retries=3):
 # Wikipedia page search
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 def _search_wiki(query, lang="en"):
     """Search Wikipedia for a page title. Returns (title, pageid) or None."""
     api = WIKI_API if lang == "en" else ZH_WIKI_API
-    params = urllib.parse.urlencode({
-        "action": "query", "list": "search", "srsearch": query,
-        "srlimit": 3, "format": "json",
-    })
+    params = urllib.parse.urlencode(
+        {
+            "action": "query",
+            "list": "search",
+            "srsearch": query,
+            "srlimit": 3,
+            "format": "json",
+        }
+    )
     try:
         with _urlopen(f"{api}?{params}", timeout=10) as resp:
             data = json.loads(resp.read().decode())
@@ -100,9 +110,23 @@ def find_artist_page(artist_name):
 
 def _is_valid_artist_page(title, artist_name):
     """Reject Wikipedia pages that are about controversies, disputes, etc. rather than the artist."""
-    bad_patterns = ['controversy', 'dispute', 'incident', 'deepfake', 'pornography',
-                    'sexual', 'death of', 'murder of', 'killing of', 'discography',
-                    'videography', 'filmography', 'albums', 'singles', 'tours']
+    bad_patterns = [
+        "controversy",
+        "dispute",
+        "incident",
+        "deepfake",
+        "pornography",
+        "sexual",
+        "death of",
+        "murder of",
+        "killing of",
+        "discography",
+        "videography",
+        "filmography",
+        "albums",
+        "singles",
+        "tours",
+    ]
     title_lower = title.lower()
     for pattern in bad_patterns:
         if pattern in title_lower:
@@ -114,15 +138,24 @@ def _is_valid_artist_page(title, artist_name):
 # Page content fetching
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 def _fetch_page_data(title, lang="en"):
     """Fetch page summary, description, and thumbnail in ONE combined API call."""
     api = WIKI_API if lang == "en" else ZH_WIKI_API
-    params = urllib.parse.urlencode({
-        "action": "query", "prop": "extracts|description|pageimages",
-        "exintro": "1", "explaintext": "1", "exsectionformat": "plain",
-        "piprop": "thumbnail", "pithumbsize": "400",
-        "titles": title, "redirects": "1", "format": "json",
-    })
+    params = urllib.parse.urlencode(
+        {
+            "action": "query",
+            "prop": "extracts|description|pageimages",
+            "exintro": "1",
+            "explaintext": "1",
+            "exsectionformat": "plain",
+            "piprop": "thumbnail",
+            "pithumbsize": "400",
+            "titles": title,
+            "redirects": "1",
+            "format": "json",
+        }
+    )
     try:
         with _urlopen(f"{api}?{params}", timeout=15) as resp:
             data = json.loads(resp.read().decode())
@@ -144,11 +177,17 @@ def _fetch_page_data(title, lang="en"):
 def _fetch_full_extract(title, lang="en"):
     """Fetch full page extract via MediaWiki API."""
     api = WIKI_API if lang == "en" else ZH_WIKI_API
-    params = urllib.parse.urlencode({
-        "action": "query", "prop": "extracts",
-        "explaintext": "1", "exsectionformat": "wiki",
-        "titles": title, "redirects": "1", "format": "json",
-    })
+    params = urllib.parse.urlencode(
+        {
+            "action": "query",
+            "prop": "extracts",
+            "explaintext": "1",
+            "exsectionformat": "wiki",
+            "titles": title,
+            "redirects": "1",
+            "format": "json",
+        }
+    )
     try:
         with _urlopen(f"{api}?{params}", timeout=15) as resp:
             data = json.loads(resp.read().decode())
@@ -163,10 +202,15 @@ def _fetch_full_extract(title, lang="en"):
 def _fetch_wikitext(title, lang="en"):
     """Fetch raw wikitext via action=parse API for infobox parsing."""
     api = WIKI_API if lang == "en" else ZH_WIKI_API
-    params = urllib.parse.urlencode({
-        "action": "parse", "page": title, "prop": "wikitext",
-        "format": "json", "redirects": "1",
-    })
+    params = urllib.parse.urlencode(
+        {
+            "action": "parse",
+            "page": title,
+            "prop": "wikitext",
+            "format": "json",
+            "redirects": "1",
+        }
+    )
     try:
         with _urlopen(f"{api}?{params}", timeout=10) as resp:
             data = json.loads(resp.read().decode())
@@ -179,15 +223,20 @@ def _fetch_wikitext(title, lang="en"):
 # Infobox parsing
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 def _parse_infobox(wikitext):
     """Parse infobox from wikitext. Returns dict of key-value pairs."""
     if not wikitext:
         return {}
 
     # Find the infobox block (album, single, or musical artist)
-    match = re.search(r'\{\{(Infobox (?:album|song|single|musical artist|[Mm]usical artist))\b.*?\n\}\}', wikitext, re.DOTALL)
+    match = re.search(
+        r"\{\{(Infobox (?:album|song|single|musical artist|[Mm]usical artist))\b.*?\n\}\}",
+        wikitext,
+        re.DOTALL,
+    )
     if not match:
-        match = re.search(r'\{\{(Infobox\s+album.*?)\n\s*\n', wikitext, re.DOTALL)
+        match = re.search(r"\{\{(Infobox\s+album.*?)\n\s*\n", wikitext, re.DOTALL)
     if not match:
         return {}
 
@@ -195,7 +244,9 @@ def _parse_infobox(wikitext):
     result = {}
 
     # Parse simple key-value pairs: | key = value
-    for m in re.finditer(r'^\s*\|\s*(\w+(?:\s+\w+)*)\s*=\s*(.+?)(?=\n\s*[\|\}])', infobox, re.MULTILINE | re.DOTALL):
+    for m in re.finditer(
+        r"^\s*\|\s*(\w+(?:\s+\w+)*)\s*=\s*(.+?)(?=\n\s*[\|\}])", infobox, re.MULTILINE | re.DOTALL
+    ):
         key = m.group(1).strip().lower().replace(" ", "_")
         value = _clean_wiki_value(m.group(2))
         if value:
@@ -213,7 +264,7 @@ def _parse_singles_template(wikitext):
     """Extract singles list with dates from {{Singles}} template."""
     singles = []
     # Find {{Singles ... }} block
-    match = re.search(r'\{\{Singles\s*\n(.*?)\n\s*\}\}', wikitext, re.DOTALL)
+    match = re.search(r"\{\{Singles\s*\n(.*?)\n\s*\}\}", wikitext, re.DOTALL)
     if not match:
         return singles
 
@@ -221,11 +272,11 @@ def _parse_singles_template(wikitext):
     # Parse singleN = name, singleNdate = date entries
     i = 1
     while True:
-        name_match = re.search(rf'\|\s*single{i}\s*=\s*(.+)', block)
+        name_match = re.search(rf"\|\s*single{i}\s*=\s*(.+)", block)
         if not name_match:
             break
         name = _clean_wiki_value(name_match.group(1))
-        date_match = re.search(rf'\|\s*single{i}date\s*=\s*(.+)', block)
+        date_match = re.search(rf"\|\s*single{i}date\s*=\s*(.+)", block)
         date = _clean_wiki_value(date_match.group(1)) if date_match else None
 
         if name:
@@ -234,7 +285,7 @@ def _parse_singles_template(wikitext):
 
     # Also try format: single1 = "Name" / "Date"
     if not singles:
-        for m in re.finditer(rf'\|\s*single(\d+)\s*=\s*(.+)', block):
+        for m in re.finditer(r"\|\s*single(\d+)\s*=\s*(.+)", block):
             parts = m.group(2).split("/")
             if len(parts) == 2:
                 name = _clean_wiki_value(parts[0])
@@ -249,32 +300,34 @@ def _clean_wiki_value(value):
     value = value.strip()
     # Extract dates from common templates before removing them
     # {{Start date|YYYY|MM|DD}} or {{Start date and age|YYYY|MM|DD}} (case-insensitive)
-    date_match = re.search(r'\{\{(?:[Ss]tart\s*date(?:\s*and\s*age)?)\|(\d{4})\|(\d{1,2})\|(\d{1,2})\}\}', value)
+    date_match = re.search(
+        r"\{\{(?:[Ss]tart\s*date(?:\s*and\s*age)?)\|(\d{4})\|(\d{1,2})\|(\d{1,2})\}\}", value
+    )
     if date_match:
         y, m, d = date_match.group(1), date_match.group(2), date_match.group(3)
         value = f"{y}年{m}月{d}日"
     # {{Plainlist|...}} → extract list items
-    plainlist_match = re.search(r'\{\{Plainlist\s*\|\s*(.*?)\}\}', value, re.DOTALL)
+    plainlist_match = re.search(r"\{\{Plainlist\s*\|\s*(.*?)\}\}", value, re.DOTALL)
     if plainlist_match:
-        items = re.findall(r'\*\s*(.+)', plainlist_match.group(1))
+        items = re.findall(r"\*\s*(.+)", plainlist_match.group(1))
         if items:
             value = " · ".join(_clean_wiki_value(item) for item in items)
     # Remove <ref>...</ref>
-    value = re.sub(r'<ref[^>]*>.*?</ref>', '', value, flags=re.DOTALL)
-    value = re.sub(r'<ref[^/]*?/>', '', value)
+    value = re.sub(r"<ref[^>]*>.*?</ref>", "", value, flags=re.DOTALL)
+    value = re.sub(r"<ref[^/]*?/>", "", value)
     # Remove {{...}} templates (nested - but not date templates which were handled above)
-    value = re.sub(r'\{\{.*?\}\}', '', value, flags=re.DOTALL)
+    value = re.sub(r"\{\{.*?\}\}", "", value, flags=re.DOTALL)
     # Remove [[...]] links, keep text
-    value = re.sub(r'\[\[(?:[^|\]]*\|)?([^\]]+?)\]\]', r'\1', value)
+    value = re.sub(r"\[\[(?:[^|\]]*\|)?([^\]]+?)\]\]", r"\1", value)
     # Remove '''bold''' and ''italic''
-    value = re.sub(r"'''(.+?)'''", r'\1', value)
-    value = re.sub(r"''(.+?)''", r'\1', value)
+    value = re.sub(r"'''(.+?)'''", r"\1", value)
+    value = re.sub(r"''(.+?)''", r"\1", value)
     # Remove HTML tags
-    value = re.sub(r'<[^>]+>', '', value)
+    value = re.sub(r"<[^>]+>", "", value)
     # Remove &nbsp;
-    value = value.replace('&nbsp;', ' ')
+    value = value.replace("&nbsp;", " ")
     # Collapse whitespace
-    value = re.sub(r'\s+', ' ', value).strip()
+    value = re.sub(r"\s+", " ", value).strip()
     return value
 
 
@@ -282,13 +335,14 @@ def _clean_wiki_value(value):
 # Section extraction
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 def _extract_section_from_text(text, title_pattern):
     """Find a section in plain text extracts by heading pattern and return its content."""
     if not text:
         return ""
     # Wikipedia plain text extracts use == Section == format
     # Match from a section heading through its content until the next heading or end
-    pattern = rf'==+\s*[^=]*?(?:{title_pattern})[^=]*?==+\s*\n+(.+?)(?=\n==+\s+|\Z)'
+    pattern = rf"==+\s*[^=]*?(?:{title_pattern})[^=]*?==+\s*\n+(.+?)(?=\n==+\s+|\Z)"
     match = re.search(pattern, text, re.DOTALL | re.IGNORECASE)
     if match:
         return match.group(1).strip()[:3000]
@@ -298,6 +352,7 @@ def _extract_section_from_text(text, title_pattern):
 # ═══════════════════════════════════════════════════════════════════════════
 # Database cache
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 def _ensure_cache_table():
     conn = get_db(readonly=False)
@@ -333,7 +388,7 @@ def _cache_set(key, data):
     conn = get_db(readonly=False)
     conn.execute(
         "INSERT OR REPLACE INTO wikipedia_cache (cache_key, data, fetched_at) VALUES (?, ?, ?)",
-        (key, json.dumps(data, ensure_ascii=False), time.time())
+        (key, json.dumps(data, ensure_ascii=False), time.time()),
     )
     conn.commit()
     conn.close()
@@ -343,13 +398,15 @@ def _cache_set(key, data):
 # Translation (Google Translate — free endpoint, uses existing proxy)
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 def _get_translator():
     """Get a GoogleTranslator instance with proxy support."""
     proxy = _get_proxy()
     proxies = {"https": proxy, "http": proxy} if proxy else None
     try:
         from deep_translator import GoogleTranslator
-        return GoogleTranslator(source='en', target='zh-CN', proxies=proxies)
+
+        return GoogleTranslator(source="en", target="zh-CN", proxies=proxies)
     except ImportError:
         return None
 
@@ -371,7 +428,7 @@ def _translate_text(text):
     # Split at sentence boundaries for long texts
     chunks = []
     current = ""
-    for sentence in re.split(r'(?<=[.!?])\s+', text):
+    for sentence in re.split(r"(?<=[.!?])\s+", text):
         if len(current) + len(sentence) < 4500:
             current += (" " + sentence) if current else sentence
         else:
@@ -413,6 +470,7 @@ def _add_translations(result):
     # Resolve translators
     try:
         from backend.services.llm_translator import translate_with_llm
+
         _llm_translate = translate_with_llm
     except Exception:
         _llm_translate = None
@@ -436,7 +494,7 @@ def _add_translations(result):
 
         if translated:
             if field_key.startswith("sections."):
-                section_key = field_key[len("sections."):]
+                section_key = field_key[len("sections.") :]
                 result.setdefault("sections_zh", {})[section_key] = translated
             else:
                 result[f"{field_key}_zh"] = translated
@@ -447,6 +505,7 @@ def _add_translations(result):
 # ═══════════════════════════════════════════════════════════════════════════
 # Public API
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 def get_album_wiki(album_name, artist_name):
     """Get Wikipedia enrichment for an album. Returns dict or None."""
@@ -485,8 +544,12 @@ def get_album_wiki(album_name, artist_name):
 
     infobox = _parse_infobox(wikitext)
     background = _extract_section_from_text(full_text, r"background|composition|recording|writing")
-    reception = _extract_section_from_text(full_text, r"critical\s*reception|reception|reviews|accolades")
-    commercial = _extract_section_from_text(full_text, r"commercial\s*performance|chart\s*performance|sales")
+    reception = _extract_section_from_text(
+        full_text, r"critical\s*reception|reception|reviews|accolades"
+    )
+    commercial = _extract_section_from_text(
+        full_text, r"commercial\s*performance|chart\s*performance|sales"
+    )
 
     result = {
         "title": title,
@@ -518,6 +581,7 @@ def get_album_wiki(album_name, artist_name):
     if full_text:
         try:
             from backend.services.llm_translator import enrich_with_llm
+
             structured = enrich_with_llm(full_text, "album")
             if structured:
                 result["structured"] = structured
@@ -558,7 +622,9 @@ def get_artist_wiki(artist_name):
             except Exception:
                 pass
 
-    early_life = _extract_section_from_text(full_text, r"early\s*life|biography|career|life\s*and\s*career")
+    early_life = _extract_section_from_text(
+        full_text, r"early\s*life|biography|career|life\s*and\s*career"
+    )
     discography_text = _extract_section_from_text(full_text, r"discography|albums|musical\s*style")
 
     result = {
@@ -580,6 +646,7 @@ def get_artist_wiki(artist_name):
     if full_text:
         try:
             from backend.services.llm_translator import enrich_with_llm
+
             structured = enrich_with_llm(full_text, "artist")
             if structured:
                 result["structured"] = structured
@@ -620,7 +687,9 @@ def get_track_wiki(track_name, artist_name):
                 except Exception:
                     pass
 
-        background = _extract_section_from_text(full_text, r"background|composition|release|recording")
+        background = _extract_section_from_text(
+            full_text, r"background|composition|release|recording"
+        )
 
         data = {
             "title": result,

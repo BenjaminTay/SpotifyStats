@@ -5,7 +5,7 @@ from __future__ import annotations
 import sqlite3
 from datetime import date, timedelta
 from functools import lru_cache
-from typing import Any, Optional
+from typing import Any
 
 import pandas as pd
 
@@ -13,10 +13,8 @@ from backend.core.db import get_db, load_plays
 from backend.services.play_service import (
     _album_cover_lookup,
     _artist_cover_lookup,
-    _cover_url,
     _track_cover_urls,
 )
-
 
 PERIOD_LABELS = {
     "lifetime": "全部时间",
@@ -33,7 +31,9 @@ def _hours(series) -> float:
     return float(series.sum() / 3_600_000)
 
 
-def resolve_period(df: pd.DataFrame, period: str, start_date: Optional[str], end_date: Optional[str]) -> dict:
+def resolve_period(
+    df: pd.DataFrame, period: str, start_date: str | None, end_date: str | None
+) -> dict:
     """Resolve a named period to inclusive local-date boundaries."""
     period = period if period in PERIOD_LABELS else "lifetime"
     today = date.today()
@@ -86,8 +86,8 @@ def load_period_plays(
     music_only: bool,
     merge_enabled: bool,
     period: str = "lifetime",
-    start_date: Optional[str] = None,
-    end_date: Optional[str] = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame, dict]:
     df = load_plays(conn, min_ms=min_ms, music_only=music_only, merge_enabled=merge_enabled)
     resolved = resolve_period(df, period, start_date, end_date)
@@ -163,27 +163,41 @@ def _cumulative_trend(daily: list[dict]) -> list[dict]:
     for item in daily:
         plays += item["plays"]
         hours += item["hours"]
-        rows.append({
-            "date": item["date"],
-            "cumulative_plays": int(plays),
-            "cumulative_hours": round(hours, 2),
-        })
+        rows.append(
+            {
+                "date": item["date"],
+                "cumulative_plays": int(plays),
+                "cumulative_hours": round(hours, 2),
+            }
+        )
     return rows
 
 
 def _weekday_distribution(df: pd.DataFrame) -> list[dict]:
     labels = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]
     counts = df.groupby("ts_dow").size() if not df.empty else pd.Series(dtype=int)
-    hours = df.groupby("ts_dow")["ms_played"].sum() / 3_600_000 if not df.empty else pd.Series(dtype=float)
+    hours = (
+        df.groupby("ts_dow")["ms_played"].sum() / 3_600_000
+        if not df.empty
+        else pd.Series(dtype=float)
+    )
     return [
-        {"day": labels[d], "plays": int(counts.get(d, 0)), "hours": round(float(hours.get(d, 0)), 2)}
+        {
+            "day": labels[d],
+            "plays": int(counts.get(d, 0)),
+            "hours": round(float(hours.get(d, 0)), 2),
+        }
         for d in range(7)
     ]
 
 
 def _month_distribution(df: pd.DataFrame) -> list[dict]:
     counts = df.groupby("ts_month").size() if not df.empty else pd.Series(dtype=int)
-    hours = df.groupby("ts_month")["ms_played"].sum() / 3_600_000 if not df.empty else pd.Series(dtype=float)
+    hours = (
+        df.groupby("ts_month")["ms_played"].sum() / 3_600_000
+        if not df.empty
+        else pd.Series(dtype=float)
+    )
     return [
         {"month": m, "plays": int(counts.get(m, 0)), "hours": round(float(hours.get(m, 0)), 2)}
         for m in range(1, 13)
@@ -238,19 +252,21 @@ def recent_plays(conn: sqlite3.Connection, df: pd.DataFrame, limit: int = 50) ->
     result = []
     for r in rows.itertuples(index=False):
         track_id = int(r.track_id) if pd.notna(r.track_id) else None
-        result.append({
-            "play_id": int(r.play_id),
-            "ts": str(r.ts),
-            "date": str(r.ts_date),
-            "track_id": track_id,
-            "track_name": r.track_name,
-            "artist_name": r.artist_name,
-            "album_name": getattr(r, "album_name", None),
-            "ms_played": int(r.ms_played),
-            "hours": round(float(r.ms_played) / 3_600_000, 3),
-            "platform": r.platform,
-            "cover_url": cover_map.get(track_id) if track_id is not None else None,
-        })
+        result.append(
+            {
+                "play_id": int(r.play_id),
+                "ts": str(r.ts),
+                "date": str(r.ts_date),
+                "track_id": track_id,
+                "track_name": r.track_name,
+                "artist_name": r.artist_name,
+                "album_name": getattr(r, "album_name", None),
+                "ms_played": int(r.ms_played),
+                "hours": round(float(r.ms_played) / 3_600_000, 3),
+                "platform": r.platform,
+                "cover_url": cover_map.get(track_id) if track_id is not None else None,
+            }
+        )
     return result
 
 
@@ -260,11 +276,13 @@ def get_analysis_stats(
     music_only: bool,
     merge_enabled: bool,
     period: str = "lifetime",
-    start_date: Optional[str] = None,
-    end_date: Optional[str] = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
 ) -> dict:
     if conn is not None:
-        return _get_analysis_stats_cached(min_ms, music_only, merge_enabled, period, start_date, end_date)
+        return _get_analysis_stats_cached(
+            min_ms, music_only, merge_enabled, period, start_date, end_date
+        )
 
 
 @lru_cache(maxsize=64)
@@ -273,12 +291,14 @@ def _get_analysis_stats_cached(
     music_only: bool,
     merge_enabled: bool,
     period: str = "lifetime",
-    start_date: Optional[str] = None,
-    end_date: Optional[str] = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
 ) -> dict:
     conn = get_db()
     try:
-        return _build_analysis_stats(conn, min_ms, music_only, merge_enabled, period, start_date, end_date)
+        return _build_analysis_stats(
+            conn, min_ms, music_only, merge_enabled, period, start_date, end_date
+        )
     finally:
         conn.close()
 
@@ -289,10 +309,12 @@ def _build_analysis_stats(
     music_only: bool,
     merge_enabled: bool,
     period: str = "lifetime",
-    start_date: Optional[str] = None,
-    end_date: Optional[str] = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
 ) -> dict:
-    _, df, resolved = load_period_plays(conn, min_ms, music_only, merge_enabled, period, start_date, end_date)
+    _, df, resolved = load_period_plays(
+        conn, min_ms, music_only, merge_enabled, period, start_date, end_date
+    )
     summary = _summary(df)
     daily = _daily_trend(df)
     return {
@@ -355,7 +377,7 @@ def chart_rows(
     df: pd.DataFrame,
     entity: str,
     metric: str,
-    limit: Optional[int] = None,
+    limit: int | None = None,
     offset: int = 0,
 ) -> tuple[int, list[dict]]:
     if df.empty:
@@ -371,9 +393,13 @@ def chart_rows(
     sort_col = "plays" if metric == "plays" else "hours"
     agg = agg.sort_values([sort_col, "plays"], ascending=False).reset_index(drop=True)
     total = int(len(agg))
-    sliced = agg.iloc[offset: offset + limit] if limit is not None else agg.iloc[offset:]
+    sliced = agg.iloc[offset : offset + limit] if limit is not None else agg.iloc[offset:]
 
-    track_covers = _track_cover_urls(conn, sliced["track_id"]) if entity == "track" and not sliced.empty else {}
+    track_covers = (
+        _track_cover_urls(conn, sliced["track_id"])
+        if entity == "track" and not sliced.empty
+        else {}
+    )
     album_covers = _album_cover_lookup(conn) if entity == "album" else {}
     artist_covers = _artist_cover_lookup(conn) if entity == "artist" else {}
     active_days = max(int(df["ts_date"].nunique()), 1)
@@ -388,30 +414,39 @@ def chart_rows(
             "last_played": str(r["last_played"]),
             "avg_daily_plays": round(float(r["plays"]) / active_days, 3),
             "avg_daily_hours": round(float(r["hours"]) / active_days, 3),
-            "share_pct": round((float(r[sort_col]) / (total_plays if sort_col == "plays" else total_hours)) * 100, 2),
+            "share_pct": round(
+                (float(r[sort_col]) / (total_plays if sort_col == "plays" else total_hours)) * 100,
+                2,
+            ),
         }
         if entity == "track":
-            row.update({
-                "track_id": int(r["track_id"]),
-                "track_name": r["track_name"],
-                "artist_name": r["artist_name"],
-                "album_name": r["album_name"],
-                "cover_url": track_covers.get(int(r["track_id"])),
-            })
+            row.update(
+                {
+                    "track_id": int(r["track_id"]),
+                    "track_name": r["track_name"],
+                    "artist_name": r["artist_name"],
+                    "album_name": r["album_name"],
+                    "cover_url": track_covers.get(int(r["track_id"])),
+                }
+            )
         elif entity == "album":
-            row.update({
-                "album_name": r["album_name"],
-                "artist_name": r["artist_name"],
-                "unique_tracks": int(r["unique_tracks"]),
-                "cover_url": album_covers.get((r["album_name"], r["artist_name"])),
-            })
+            row.update(
+                {
+                    "album_name": r["album_name"],
+                    "artist_name": r["artist_name"],
+                    "unique_tracks": int(r["unique_tracks"]),
+                    "cover_url": album_covers.get((r["album_name"], r["artist_name"])),
+                }
+            )
         else:
-            row.update({
-                "artist_name": r["artist_name"],
-                "unique_tracks": int(r["unique_tracks"]),
-                "unique_albums": int(r["unique_albums"]),
-                "cover_url": artist_covers.get(r["artist_name"]),
-            })
+            row.update(
+                {
+                    "artist_name": r["artist_name"],
+                    "unique_tracks": int(r["unique_tracks"]),
+                    "unique_albums": int(r["unique_albums"]),
+                    "cover_url": artist_covers.get(r["artist_name"]),
+                }
+            )
         rows.append(row)
     return total, rows
 
@@ -422,8 +457,8 @@ def get_analysis_charts(
     music_only: bool,
     merge_enabled: bool,
     period: str = "lifetime",
-    start_date: Optional[str] = None,
-    end_date: Optional[str] = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
     entity: str = "track",
     metric: str = "plays",
     limit: int = 100,
@@ -431,7 +466,16 @@ def get_analysis_charts(
 ) -> dict:
     if conn is not None:
         return _get_analysis_charts_cached(
-            min_ms, music_only, merge_enabled, period, start_date, end_date, entity, metric, limit, offset,
+            min_ms,
+            music_only,
+            merge_enabled,
+            period,
+            start_date,
+            end_date,
+            entity,
+            metric,
+            limit,
+            offset,
         )
 
 
@@ -441,8 +485,8 @@ def _get_analysis_charts_cached(
     music_only: bool,
     merge_enabled: bool,
     period: str = "lifetime",
-    start_date: Optional[str] = None,
-    end_date: Optional[str] = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
     entity: str = "track",
     metric: str = "plays",
     limit: int = 100,
@@ -451,7 +495,17 @@ def _get_analysis_charts_cached(
     conn = get_db()
     try:
         return _build_analysis_charts(
-            conn, min_ms, music_only, merge_enabled, period, start_date, end_date, entity, metric, limit, offset,
+            conn,
+            min_ms,
+            music_only,
+            merge_enabled,
+            period,
+            start_date,
+            end_date,
+            entity,
+            metric,
+            limit,
+            offset,
         )
     finally:
         conn.close()
@@ -463,14 +517,16 @@ def _build_analysis_charts(
     music_only: bool,
     merge_enabled: bool,
     period: str = "lifetime",
-    start_date: Optional[str] = None,
-    end_date: Optional[str] = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
     entity: str = "track",
     metric: str = "plays",
     limit: int = 100,
     offset: int = 0,
 ) -> dict:
-    _, df, resolved = load_period_plays(conn, min_ms, music_only, merge_enabled, period, start_date, end_date)
+    _, df, resolved = load_period_plays(
+        conn, min_ms, music_only, merge_enabled, period, start_date, end_date
+    )
     total, rows = chart_rows(conn, df, entity, metric, limit, offset)
     return {
         "period": resolved,
@@ -483,7 +539,7 @@ def _build_analysis_charts(
     }
 
 
-def entity_cover(conn: sqlite3.Connection, entity: str, row: dict) -> Optional[str]:
+def entity_cover(conn: sqlite3.Connection, entity: str, row: dict) -> str | None:
     if entity == "track" and row.get("track_id") is not None:
         return _track_cover_urls(conn, [row["track_id"]]).get(int(row["track_id"]))
     if entity == "album":

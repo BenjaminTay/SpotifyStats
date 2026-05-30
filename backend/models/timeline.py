@@ -1,6 +1,7 @@
 """Timeline & wrapped response models."""
 
-from typing import Optional
+from __future__ import annotations
+
 from pydantic import BaseModel
 
 
@@ -60,14 +61,14 @@ class WrappedMonthlyPulse(BaseModel):
 class YearlyWrapped(BaseModel):
     year: int
     empty: bool
-    hero: Optional[WrappedHero] = None
+    hero: WrappedHero | None = None
     top_artists: list[WrappedArtistEntry] = []
     top_tracks: list[WrappedTrackEntry] = []
-    top_album: Optional[WrappedAlbumEntry] = None
+    top_album: WrappedAlbumEntry | None = None
     platform_hours: dict[str, float] = {}
     peak_hour: int = 0
-    first_track: Optional[WrappedFirstLastTrack] = None
-    last_track: Optional[WrappedFirstLastTrack] = None
+    first_track: WrappedFirstLastTrack | None = None
+    last_track: WrappedFirstLastTrack | None = None
     season_tops: dict[str, str] = {}
     monthly_pulse: list[WrappedMonthlyPulse] = []
-    personality: Optional[dict] = None
+    personality: dict | None = None

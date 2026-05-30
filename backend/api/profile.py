@@ -1,10 +1,11 @@
 """Profile API endpoint."""
 
-from fastapi import APIRouter, Depends
 from sqlite3 import Connection
 
+from fastapi import APIRouter, Depends
+
 from backend.dependencies import get_conn
-from backend.services.profile_service import get_profile, get_inferences, get_sound_capsule
+from backend.services.profile_service import get_inferences, get_profile, get_sound_capsule
 
 router = APIRouter(prefix="/profile", tags=["Profile"])
 

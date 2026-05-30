@@ -1,45 +1,47 @@
 """Version merge API — CRUD for release groups."""
 
-from typing import Optional, List
+from __future__ import annotations
+
+from sqlite3 import Connection
 
 import numpy as np
 import pandas as pd
 from fastapi import APIRouter, Depends, Query
-from sqlite3 import Connection
 from pydantic import BaseModel
 
 from backend.core.auth import require_auth
+from backend.core.json_helpers import df_to_json
 from backend.core.version_merge import (
+    apply_detected_groups,
+    create_group,
+    delete_group,
+    detect_release_groups,
+    get_album_track_comparison,
+    get_album_types,
     get_all_groups,
     get_group_members,
-    create_group,
-    update_group_members,
-    set_primary,
-    delete_group,
-    get_album_track_comparison,
-    detect_release_groups,
-    apply_detected_groups,
-    get_ungrouped_albums,
     get_groups_for_artist,
-    get_album_types,
+    get_ungrouped_albums,
+    set_primary,
+    update_group_members,
 )
-from backend.core.json_helpers import df_to_json, py_val
 from backend.dependencies import get_conn
 
 router = APIRouter(prefix="/version-merge", tags=["Version Merge"])
 
 # ── Pydantic models ──────────────────────────────────────────────────────
 
+
 class CreateGroupRequest(BaseModel):
     canonical_name: str
     artist_id: int
     primary_album_id: int
-    member_ids: List[int]
+    member_ids: list[int]
 
 
 class UpdateMembersRequest(BaseModel):
-    add_ids: Optional[List[int]] = None
-    remove_ids: Optional[List[int]] = None
+    add_ids: list[int] | None = None
+    remove_ids: list[int] | None = None
 
 
 class SetPrimaryRequest(BaseModel):
@@ -47,6 +49,7 @@ class SetPrimaryRequest(BaseModel):
 
 
 # ── Query endpoints ──────────────────────────────────────────────────────
+
 
 @router.get("/groups")
 def list_groups(conn: Connection = Depends(get_conn)):
@@ -71,7 +74,7 @@ def artist_groups(artist_name: str, conn: Connection = Depends(get_conn)):
 
 @router.get("/ungrouped")
 def ungrouped_albums(
-    artist_name: Optional[str] = Query(default=None),
+    artist_name: str | None = Query(default=None),
     conn: Connection = Depends(get_conn),
 ):
     """Get albums not yet assigned to any release group."""
@@ -96,6 +99,7 @@ def album_types(album_ids: str = Query(..., description="Comma-separated album I
 
 
 # ── Mutation endpoints ────────────────────────────────────────────────────
+
 
 @router.post("/groups")
 def create_new_group(body: CreateGroupRequest, auth: None = Depends(require_auth)):
@@ -134,6 +138,7 @@ def remove_group(group_id: int, auth: None = Depends(require_auth)):
 
 # ── Detection & Apply ─────────────────────────────────────────────────────
 
+
 @router.post("/detect")
 def run_detection(
     overlap_threshold: float = Query(default=0.4, ge=0.1, le=1.0),
@@ -164,7 +169,6 @@ def apply_detection(detection_result: dict, auth: None = Depends(require_auth)):
 
 def _serialize_detection(result: dict) -> dict:
     """Convert detection result to JSON-safe dict."""
-    import numpy as np
 
     out = {}
     for key, val in result.items():
@@ -172,9 +176,12 @@ def _serialize_detection(result: dict) -> dict:
             out[key] = _serialize_detection(val)
         elif isinstance(val, list):
             out[key] = [
-                _serialize_detection(item) if isinstance(item, dict)
-                else int(item) if isinstance(item, (np.integer,))
-                else float(item) if isinstance(item, (np.floating,))
+                _serialize_detection(item)
+                if isinstance(item, dict)
+                else int(item)
+                if isinstance(item, (np.integer,))
+                else float(item)
+                if isinstance(item, (np.floating,))
                 else item
                 for item in val
             ]

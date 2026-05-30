@@ -10,17 +10,18 @@ Usage:
         ...
 """
 
-from typing import Optional
+from __future__ import annotations
 
 from fastapi import Depends, HTTPException, status
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from backend.core.config import SPOTIFY_STATS_REQUIRE_AUTH, SPOTIFY_STATS_API_TOKEN
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+
+from backend.core.config import SPOTIFY_STATS_API_TOKEN, SPOTIFY_STATS_REQUIRE_AUTH
 
 bearer_scheme = HTTPBearer(auto_error=False)
 
 
 def require_auth(
-    credentials: Optional[HTTPAuthorizationCredentials] = Depends(bearer_scheme),
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
 ) -> None:
     if SPOTIFY_STATS_REQUIRE_AUTH != "1":
         return

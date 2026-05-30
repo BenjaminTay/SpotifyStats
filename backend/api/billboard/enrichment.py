@@ -1,16 +1,16 @@
 """Enrichment API — external data enrichment for detail pages (Wikipedia, Spotify, Genius)."""
 
-from typing import Optional
+from __future__ import annotations
 
 from fastapi import APIRouter, Query
 from pydantic import BaseModel
 
+from backend.services.genius_service import _get_client as get_genius_client
 from backend.services.wikipedia_service import (
     get_album_wiki,
     get_artist_wiki,
     get_track_wiki,
 )
-from backend.services.genius_service import _get_client as get_genius_client
 
 router = APIRouter()
 
@@ -19,9 +19,11 @@ router = APIRouter()
 # Response models
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class WikiSinglesItem(BaseModel):
     name: str
-    date: Optional[str] = None
+    date: str | None = None
+
 
 class AlbumWikiInfobox(BaseModel):
     release_date: str = ""
@@ -33,31 +35,37 @@ class AlbumWikiInfobox(BaseModel):
     producer: str = ""
     singles: list[WikiSinglesItem] = []
 
+
 class AlbumWikiSections(BaseModel):
     background: str = ""
     reception: str = ""
     commercial: str = ""
 
+
 class AlbumEnrichmentResponse(BaseModel):
-    wiki: Optional[dict] = None
-    genius: Optional[dict] = None
+    wiki: dict | None = None
+    genius: dict | None = None
+
 
 class ArtistWikiSections(BaseModel):
     early_life: str = ""
     discography: str = ""
 
+
 class ArtistEnrichmentResponse(BaseModel):
-    wiki: Optional[dict] = None
-    genius: Optional[dict] = None
+    wiki: dict | None = None
+    genius: dict | None = None
+
 
 class TrackEnrichmentResponse(BaseModel):
-    wiki: Optional[dict] = None
-    genius: Optional[dict] = None
+    wiki: dict | None = None
+    genius: dict | None = None
 
 
 # ═══════════════════════════════════════════════════════════════════════════
 # Album enrichment
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 @router.get("/album/{album_name:path}", response_model=AlbumEnrichmentResponse)
 def get_album_enrichment(
@@ -107,6 +115,7 @@ def get_album_enrichment(
 # Artist enrichment
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 @router.get("/artist/{artist_name:path}", response_model=ArtistEnrichmentResponse)
 def get_artist_enrichment(
     artist_name: str,
@@ -148,6 +157,7 @@ def get_artist_enrichment(
 # ═══════════════════════════════════════════════════════════════════════════
 # Track enrichment
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 @router.get("/track/{track_name:path}", response_model=TrackEnrichmentResponse)
 def get_track_enrichment(

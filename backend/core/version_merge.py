@@ -12,34 +12,62 @@ from backend.core.db import get_db
 
 # 应被剥离的版本后缀（同一发行，不同包装）
 MERGE_KEYWORDS = [
-    "deluxe", "deluxe edition", "deluxe version",
-    "expanded edition", "expanded",
-    "bonus track version", "bonus edition", "bonus tracks",
-    "special edition", "special version",
-    "track by track", "track by track version",
-    "commentary", "commentary version",
-    "acoustic", "acoustic collection", "acoustic version",
-    "remastered", "remastered edition",
-    "anniversary", "anniversary edition",
-    "sessions", "studio sessions",
-    "radio release", "radio release special",
-    "collector", "collector's edition", "collectors edition",
-    "limited", "limited edition",
-    "extended", "extended version",
-    "clean", "clean version",
-    "explicit", "explicit version",
+    "deluxe",
+    "deluxe edition",
+    "deluxe version",
+    "expanded edition",
+    "expanded",
+    "bonus track version",
+    "bonus edition",
+    "bonus tracks",
+    "special edition",
+    "special version",
+    "track by track",
+    "track by track version",
+    "commentary",
+    "commentary version",
+    "acoustic",
+    "acoustic collection",
+    "acoustic version",
+    "remastered",
+    "remastered edition",
+    "anniversary",
+    "anniversary edition",
+    "sessions",
+    "studio sessions",
+    "radio release",
+    "radio release special",
+    "collector",
+    "collector's edition",
+    "collectors edition",
+    "limited",
+    "limited edition",
+    "extended",
+    "extended version",
+    "clean",
+    "clean version",
+    "explicit",
+    "explicit version",
 ]
 
 # 不应被剥离的关键词（不同录音/表演）
 EXCLUDE_KEYWORDS = [
     "taylor's version",
-    "live", "live version", "live at",
-    "remix", "remix version",
-    "radio edit", "radio mix",
-    "demo", "demo version",
-    "instrumental", "instrumental version",
-    "orchestral", "orchestral version",
-    "a cappella", "acapella",
+    "live",
+    "live version",
+    "live at",
+    "remix",
+    "remix version",
+    "radio edit",
+    "radio mix",
+    "demo",
+    "demo version",
+    "instrumental",
+    "instrumental version",
+    "orchestral",
+    "orchestral version",
+    "a cappella",
+    "acapella",
 ]
 
 
@@ -83,9 +111,9 @@ def normalize_album_name(name: str) -> str:
     name = name.strip()
 
     patterns = [
-        r'\s*\(([^)]+)\)\s*$',   # (Something) 结尾
-        r'\s*\[([^\]]+)\]\s*$',   # [Something] 结尾
-        r'\s*[-–:+]\s*(.+)\s*$',  # -/–/: Something 结尾
+        r"\s*\(([^)]+)\)\s*$",  # (Something) 结尾
+        r"\s*\[([^\]]+)\]\s*$",  # [Something] 结尾
+        r"\s*[-–:+]\s*(.+)\s*$",  # -/–/: Something 结尾
     ]
 
     changed = True
@@ -96,7 +124,7 @@ def normalize_album_name(name: str) -> str:
             if m:
                 suffix = m.group(1).strip()
                 if _is_merge_suffix(suffix):
-                    name = name[:m.start()].strip()
+                    name = name[: m.start()].strip()
                     changed = True
                     break
 
@@ -106,13 +134,14 @@ def normalize_album_name(name: str) -> str:
             for n in [3, 2, 1]:
                 if len(words) <= n:
                     continue
-                candidate = ' '.join(words[-n:])
+                candidate = " ".join(words[-n:])
                 # 跳过被 split() 破坏的括号/方括号内容（如 "Version)"）
-                if candidate.count('(') != candidate.count(')') \
-                   or candidate.count('[') != candidate.count(']'):
+                if candidate.count("(") != candidate.count(")") or candidate.count(
+                    "["
+                ) != candidate.count("]"):
                     continue
                 if _is_merge_suffix(candidate):
-                    name = ' '.join(words[:-n])
+                    name = " ".join(words[:-n])
                     changed = True
                     break
 
@@ -134,9 +163,9 @@ def normalize_track_name(name: str) -> str:
     name = name.strip()
 
     patterns = [
-        r'\s*\(([^)]+)\)\s*$',
-        r'\s*\[([^\]]+)\]\s*$',
-        r'\s*[-–:]\s*(.+)\s*$',
+        r"\s*\(([^)]+)\)\s*$",
+        r"\s*\[([^\]]+)\]\s*$",
+        r"\s*[-–:]\s*(.+)\s*$",
     ]
 
     changed = True
@@ -147,7 +176,7 @@ def normalize_track_name(name: str) -> str:
             if m:
                 suffix = m.group(1).strip()
                 if _is_merge_suffix(suffix):
-                    name = name[:m.start()].strip()
+                    name = name[: m.start()].strip()
                     changed = True
                     break
 
@@ -166,6 +195,7 @@ def _suffix_is_excluded(suffix: str) -> bool:
 # ═══════════════════════════════════════════════════════════════════════════
 # Group CRUD
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 def get_all_groups() -> pd.DataFrame:
     """获取所有已保存的 release group（含成员详情）。"""
@@ -283,8 +313,7 @@ def create_group(
         conn.close()
 
 
-def update_group_members(group_id: int, add_ids=None,
-                         remove_ids=None) -> bool:
+def update_group_members(group_id: int, add_ids=None, remove_ids=None) -> bool:
     """增删 group 成员。"""
     conn = get_db(readonly=False)
     try:
@@ -341,6 +370,7 @@ def delete_group(group_id: int) -> bool:
 # ═══════════════════════════════════════════════════════════════════════════
 # Auto-detection
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 def _compute_track_overlap(conn, album_id1: int, album_id2: int) -> float:
     """计算两张专辑的曲目重叠率（通过 track_albums）。"""
@@ -595,8 +625,10 @@ def get_album_track_comparison(album_id_a: int, album_id_b: int) -> dict:
                     raw_items.append(((d, t), tname, tartist, d, t))
 
         raw_items.sort(key=lambda x: x[0])
-        return [(tname, tartist, disc_num, track_num)
-                for _, tname, tartist, disc_num, track_num in raw_items]
+        return [
+            (tname, tartist, disc_num, track_num)
+            for _, tname, tartist, disc_num, track_num in raw_items
+        ]
 
     ordered_a = _get_ordered_tracks(album_id_a)
     ordered_b = _get_ordered_tracks(album_id_b)
@@ -621,14 +653,16 @@ def get_album_track_comparison(album_id_a: int, album_id_b: int) -> dict:
     conn.close()
 
     def _pairs(norm_set, norm_map):
-        result = [(tname, tartist, disc_num, track_num)
-                  for n, (tname, tartist, disc_num, track_num) in norm_map.items()
-                  if n in norm_set]
+        result = [
+            (tname, tartist, disc_num, track_num)
+            for n, (tname, tartist, disc_num, track_num) in norm_map.items()
+            if n in norm_set
+        ]
         result.sort(key=lambda x: (x[2] or 1, x[3] or 0))
         return result
 
     return {
-        "shared": _pairs(shared_names, norm_a),     # 用 album_a 的名称显示，按 A 顺序
+        "shared": _pairs(shared_names, norm_a),  # 用 album_a 的名称显示，按 A 顺序
         "only_in_a": _pairs(only_a_names, norm_a),  # 按 A 顺序
         "only_in_b": _pairs(only_b_names, norm_b),  # 按 B 顺序
     }
@@ -801,8 +835,9 @@ def _is_superset_of(superset_tracks, subset_tracks, threshold=0.8):
     return (shared / len(subset_tracks)) >= threshold
 
 
-def _detect_superset_groups(conn, albums_df, album_tracks, already_grouped_ids,
-                            threshold=0.8, group_type='album'):
+def _detect_superset_groups(
+    conn, albums_df, album_tracks, already_grouped_ids, threshold=0.8, group_type="album"
+):
     """对名称检测未覆盖的专辑，用超集关系发现候选组。
 
     通过 union-find 构建连通分量，每个分量形成一个候选组。
@@ -849,11 +884,13 @@ def _detect_superset_groups(conn, albums_df, album_tracks, already_grouped_ids,
             all_in_edges.add(b)
 
         parent = {aid: aid for aid in all_in_edges}
+
         def find(x):
             while parent[x] != x:
                 parent[x] = parent[parent[x]]
                 x = parent[x]
             return x
+
         def union(x, y):
             rx, ry = find(x), find(y)
             if rx != ry:
@@ -880,37 +917,46 @@ def _detect_superset_groups(conn, albums_df, album_tracks, already_grouped_ids,
                     continue
                 row = match.iloc[0]
                 rd = _get_release_date(conn, aid)
-                members.append({
-                    "album_id": aid,
-                    "album_name": row["local_name"],
-                    "release_date": rd,
-                })
+                members.append(
+                    {
+                        "album_id": aid,
+                        "album_name": row["local_name"],
+                        "release_date": rd,
+                    }
+                )
 
             # 主版本：最早发行日期 + 最短名称
-            members.sort(key=lambda m: (m["release_date"] or "9999",
-                                        len(m["album_name"])))
+            members.sort(key=lambda m: (m["release_date"] or "9999", len(m["album_name"])))
             primary = members[0]
 
-            results.append({
-                "artist_name": artist_name,
-                "artist_id": artist_id,
-                "canonical_name": primary["album_name"],
-                "primary_album_name": primary["album_name"],
-                "primary_album_id": primary["album_id"],
-                "member_count": len(members),
-                "confidence": "high",
-                "members": members,
-                "group_type": group_type,
-                "reason": f"曲目超集关系（Union-find 连通分量，阈值 {threshold:.0%}）",
-                "overlap_details": [],
-            })
+            results.append(
+                {
+                    "artist_name": artist_name,
+                    "artist_id": artist_id,
+                    "canonical_name": primary["album_name"],
+                    "primary_album_name": primary["album_name"],
+                    "primary_album_id": primary["album_id"],
+                    "member_count": len(members),
+                    "confidence": "high",
+                    "members": members,
+                    "group_type": group_type,
+                    "reason": f"曲目超集关系（Union-find 连通分量，阈值 {threshold:.0%}）",
+                    "overlap_details": [],
+                }
+            )
 
     return results
 
 
-def _detect_prefix_groups(conn, albums_df, album_tracks, already_grouped_ids,
-                           superset_threshold=0.8, overlap_threshold=0.95,
-                           group_type='album'):
+def _detect_prefix_groups(
+    conn,
+    albums_df,
+    album_tracks,
+    already_grouped_ids,
+    superset_threshold=0.8,
+    overlap_threshold=0.95,
+    group_type="album",
+):
     """Phase 1.5 — 前缀重合检测。
 
     对名称归一化未覆盖的专辑，检测同艺人下是否存在「名称前缀重合 + 曲目包含」
@@ -966,11 +1012,13 @@ def _detect_prefix_groups(conn, albums_df, album_tracks, already_grouped_ids,
             if aid_i in used_ids:
                 continue
 
-            members = [{
-                "album_id": aid_i,
-                "album_name": name_i,
-                "release_date": _get_release_date(conn, aid_i),
-            }]
+            members = [
+                {
+                    "album_id": aid_i,
+                    "album_name": name_i,
+                    "release_date": _get_release_date(conn, aid_i),
+                }
+            ]
 
             for j in range(len(rows_by_len)):
                 if i == j:
@@ -986,7 +1034,7 @@ def _detect_prefix_groups(conn, albums_df, album_tracks, already_grouped_ids,
                     continue
 
                 # 提取后缀，去除前导分隔符
-                suffix = name_j[len(name_i):].strip()
+                suffix = name_j[len(name_i) :].strip()
                 suffix = suffix.lstrip(":-–+[]() ").strip()
                 if not suffix:
                     continue
@@ -1016,38 +1064,41 @@ def _detect_prefix_groups(conn, albums_df, album_tracks, already_grouped_ids,
 
                 if include_ok:
                     rd = _get_release_date(conn, aid_j)
-                    members.append({
-                        "album_id": aid_j,
-                        "album_name": name_j,
-                        "release_date": rd,
-                    })
+                    members.append(
+                        {
+                            "album_id": aid_j,
+                            "album_name": name_j,
+                            "release_date": rd,
+                        }
+                    )
                     used_ids.add(aid_j)
 
             if len(members) < 2:
                 continue
 
             # 选主版本：最早发行日期，同日期选最短名称
-            members.sort(key=lambda m: (m["release_date"] or "9999",
-                                        len(m["album_name"])))
+            members.sort(key=lambda m: (m["release_date"] or "9999", len(m["album_name"])))
             primary = members[0]
 
             # canonical_name 使用 base 名（最短的那个）
             canonical = min(m["album_name"] for m in members if m["album_name"])
             canonical = normalize_album_name(canonical)
 
-            results.append({
-                "artist_name": artist_name,
-                "artist_id": artist_id,
-                "canonical_name": canonical,
-                "primary_album_name": primary["album_name"],
-                "primary_album_id": primary["album_id"],
-                "member_count": len(members),
-                "confidence": "high",
-                "members": members,
-                "group_type": group_type,
-                "reason": "前缀重合 + 曲目包含验证",
-                "overlap_details": [],
-            })
+            results.append(
+                {
+                    "artist_name": artist_name,
+                    "artist_id": artist_id,
+                    "canonical_name": canonical,
+                    "primary_album_name": primary["album_name"],
+                    "primary_album_id": primary["album_id"],
+                    "member_count": len(members),
+                    "confidence": "high",
+                    "members": members,
+                    "group_type": group_type,
+                    "reason": "前缀重合 + 曲目包含验证",
+                    "overlap_details": [],
+                }
+            )
             used_ids.add(primary["album_id"])
 
     return results
@@ -1063,11 +1114,11 @@ def _fetch_album_tracks_from_api(spotify_album_ids):
 
     Returns {spotify_album_id: [spotify_track_id, ...]}  # list 保留原始曲目顺序
     """
-    import json
     import base64
-    import urllib.request
-    import urllib.parse
+    import json
     import urllib.error
+    import urllib.parse
+    import urllib.request
 
     if not spotify_album_ids:
         return {}
@@ -1083,9 +1134,7 @@ def _fetch_album_tracks_from_api(spotify_album_ids):
         ).decode()
         req = urllib.request.Request(
             "https://accounts.spotify.com/api/token",
-            data=urllib.parse.urlencode(
-                {"grant_type": "client_credentials"}
-            ).encode(),
+            data=urllib.parse.urlencode({"grant_type": "client_credentials"}).encode(),
             headers={
                 "Authorization": f"Basic {auth_b64}",
                 "Content-Type": "application/x-www-form-urlencoded",
@@ -1103,12 +1152,10 @@ def _fetch_album_tracks_from_api(spotify_album_ids):
     ids_list = list(spotify_album_ids)
 
     for i in range(0, len(ids_list), 20):
-        batch = ids_list[i:i + 20]
+        batch = ids_list[i : i + 20]
         try:
             url = f"https://api.spotify.com/v1/albums?ids={','.join(batch)}"
-            req = urllib.request.Request(
-                url, headers={"Authorization": f"Bearer {token}"}
-            )
+            req = urllib.request.Request(url, headers={"Authorization": f"Bearer {token}"})
             with urllib.request.urlopen(req, timeout=15) as resp:
                 data = json.loads(resp.read().decode())
 
@@ -1118,7 +1165,9 @@ def _fetch_album_tracks_from_api(spotify_album_ids):
                 sid = album["id"]
 
                 # ── 专辑级元数据 ──
-                artist_names = [a.get("name", "") for a in album.get("artists", []) if a.get("name")]
+                artist_names = [
+                    a.get("name", "") for a in album.get("artists", []) if a.get("name")
+                ]
                 genres_list = album.get("genres", [])
                 album_meta_updates[sid] = {
                     "album_name": album.get("name", ""),
@@ -1138,17 +1187,21 @@ def _fetch_album_tracks_from_api(spotify_album_ids):
                     if not tid:
                         continue
                     tracks.append(tid)
-                    track_meta_rows.append((
-                        tid,
-                        t.get("name", ""),
-                        t.get("duration_ms"),
-                        t.get("popularity"),
-                        1 if t.get("explicit") else 0,
-                        t.get("disc_number", 1),
-                        t.get("track_number", 0),
-                        t.get("external_ids", {}).get("isrc") if t.get("external_ids") else None,
-                        sid,
-                    ))
+                    track_meta_rows.append(
+                        (
+                            tid,
+                            t.get("name", ""),
+                            t.get("duration_ms"),
+                            t.get("popularity"),
+                            1 if t.get("explicit") else 0,
+                            t.get("disc_number", 1),
+                            t.get("track_number", 0),
+                            t.get("external_ids", {}).get("isrc")
+                            if t.get("external_ids")
+                            else None,
+                            sid,
+                        )
+                    )
                 result[sid] = tracks  # 保留 list 顺序！
         except Exception:
             pass
@@ -1213,8 +1266,7 @@ def _fetch_album_tracks_from_api(spotify_album_ids):
     return result
 
 
-def _detect_groups_for_type(conn, album_type_filter, overlap_threshold,
-                             superset_threshold):
+def _detect_groups_for_type(conn, album_type_filter, overlap_threshold, superset_threshold):
     """对指定类型的专辑（album 或 single）运行完整检测管线。
 
     管线包含三个 Phase：
@@ -1230,7 +1282,7 @@ def _detect_groups_for_type(conn, album_type_filter, overlap_threshold,
     # 单曲检测时排除同时关联到 album 类型 Spotify 条目的本地专辑，
     # 防止同一本地专辑在 album 和 single 两个管线中都被检测导致跨类型合并。
     exclude_mixed_sql = ""
-    if album_type_filter == 'single':
+    if album_type_filter == "single":
         exclude_mixed_sql = """AND al.album_id NOT IN (
             SELECT DISTINCT ta2.album_id
             FROM track_albums ta2
@@ -1268,7 +1320,7 @@ def _detect_groups_for_type(conn, album_type_filter, overlap_threshold,
     # 单曲的曲目也出现在专辑中时，SQL 链式 JOIN 会错误地将单曲本地专辑
     # 关联到专辑的 spotify_album_meta。通过名称匹配排除仅以单曲类型
     # 存在于 spotify_album_meta 的本地专辑。
-    if album_type_filter == 'album':
+    if album_type_filter == "album":
         all_meta = pd.read_sql_query(
             "SELECT DISTINCT album_name, album_type FROM spotify_album_meta",
             conn,
@@ -1281,9 +1333,7 @@ def _detect_groups_for_type(conn, album_type_filter, overlap_threshold,
         )
         pure_single_names = single_names - album_names
         if pure_single_names:
-            albums_df = albums_df[
-                ~albums_df["local_name"].str.lower().isin(pure_single_names)
-            ]
+            albums_df = albums_df[~albums_df["local_name"].str.lower().isin(pure_single_names)]
 
     if albums_df.empty:
         return []
@@ -1314,15 +1364,19 @@ def _detect_groups_for_type(conn, album_type_filter, overlap_threshold,
             for _, row in group.iterrows():
                 aid = int(row["album_id"])
                 rd = _get_release_date(conn, aid)
-                members.append({
-                    "album_id": aid,
-                    "album_name": row["local_name"],
-                    "release_date": rd,
-                })
+                members.append(
+                    {
+                        "album_id": aid,
+                        "album_name": row["local_name"],
+                        "release_date": rd,
+                    }
+                )
                 name_len = len(row["local_name"])
-                if best_score[0] is None or (rd is not None and
-                   (best_score[0] is None or rd < best_score[0]) or
-                   (rd == best_score[0] and name_len < best_score[1])):
+                if best_score[0] is None or (
+                    rd is not None
+                    and (best_score[0] is None or rd < best_score[0])
+                    or (rd == best_score[0] and name_len < best_score[1])
+                ):
                     best_score = (rd, name_len)
                     best_candidate = {"album_id": aid, "album_name": row["local_name"]}
 
@@ -1361,11 +1415,13 @@ def _detect_groups_for_type(conn, album_type_filter, overlap_threshold,
                 else:
                     # 无 Spotify 数据时回退到本地播放记录
                     overlap = _compute_track_overlap(conn, m["album_id"], primary_id)
-                overlap_details.append({
-                    "album_name": m["album_name"],
-                    "album_id": m["album_id"],
-                    "overlap": round(overlap, 4),
-                })
+                overlap_details.append(
+                    {
+                        "album_name": m["album_name"],
+                        "album_id": m["album_id"],
+                        "overlap": round(overlap, 4),
+                    }
+                )
                 if overlap < overlap_threshold:
                     all_high_confidence = False
 
@@ -1384,14 +1440,17 @@ def _detect_groups_for_type(conn, album_type_filter, overlap_threshold,
                             all_superset = False
                             superset_failures.append(m["album_name"])
                             continue
-                        is_superset = _is_superset_of(m_tracks, primary_spotify_tracks,
-                                                      superset_threshold)
+                        is_superset = _is_superset_of(
+                            m_tracks, primary_spotify_tracks, superset_threshold
+                        )
                         if not is_superset:
                             all_superset = False
                             superset_failures.append(m["album_name"])
                     if all_superset:
                         confidence = "high"
-                        reason = f"名称归一化 + Spotify 曲目超集验证（阈值 {superset_threshold:.0%}）"
+                        reason = (
+                            f"名称归一化 + Spotify 曲目超集验证（阈值 {superset_threshold:.0%}）"
+                        )
                     else:
                         reason = (
                             f"曲目重叠率不足（< {overlap_threshold:.0%}），"
@@ -1408,19 +1467,21 @@ def _detect_groups_for_type(conn, album_type_filter, overlap_threshold,
             elif confidence == "high":
                 reason = f"名称归一化匹配 · Spotify 全量曲目重叠率 ≥ {overlap_threshold:.0%}"
 
-            results.append({
-                "artist_name": artist_name,
-                "artist_id": artist_id,
-                "canonical_name": norm_name,
-                "primary_album_name": best_candidate["album_name"],
-                "primary_album_id": best_candidate["album_id"],
-                "member_count": len(members),
-                "confidence": confidence,
-                "members": members,
-                "group_type": album_type_filter,
-                "reason": reason,
-                "overlap_details": overlap_details,
-            })
+            results.append(
+                {
+                    "artist_name": artist_name,
+                    "artist_id": artist_id,
+                    "canonical_name": norm_name,
+                    "primary_album_name": best_candidate["album_name"],
+                    "primary_album_id": best_candidate["album_id"],
+                    "member_count": len(members),
+                    "confidence": confidence,
+                    "members": members,
+                    "group_type": album_type_filter,
+                    "reason": reason,
+                    "overlap_details": overlap_details,
+                }
+            )
 
     # ── Phase 1.5: 前缀重合 ──────────────────────────────────────────
     already_grouped = set()
@@ -1429,8 +1490,13 @@ def _detect_groups_for_type(conn, album_type_filter, overlap_threshold,
             already_grouped.add(m["album_id"])
 
     prefix_results = _detect_prefix_groups(
-        conn, albums_df, album_tracks, already_grouped, superset_threshold,
-        overlap_threshold=overlap_threshold, group_type=album_type_filter,
+        conn,
+        albums_df,
+        album_tracks,
+        already_grouped,
+        superset_threshold,
+        overlap_threshold=overlap_threshold,
+        group_type=album_type_filter,
     )
     results.extend(prefix_results)
     for r in prefix_results:
@@ -1439,7 +1505,11 @@ def _detect_groups_for_type(conn, album_type_filter, overlap_threshold,
 
     # ── Phase 2: 纯超集检测 ──────────────────────────────────────────
     superset_results = _detect_superset_groups(
-        conn, albums_df, album_tracks, already_grouped, superset_threshold,
+        conn,
+        albums_df,
+        album_tracks,
+        already_grouped,
+        superset_threshold,
         group_type=album_type_filter,
     )
     results.extend(superset_results)
@@ -1447,8 +1517,9 @@ def _detect_groups_for_type(conn, album_type_filter, overlap_threshold,
     return results
 
 
-def detect_release_groups(overlap_threshold: float = 0.4,
-                          superset_threshold: float = 0.8) -> pd.DataFrame:
+def detect_release_groups(
+    overlap_threshold: float = 0.4, superset_threshold: float = 0.8
+) -> pd.DataFrame:
     """三阶段自动检测可合并的专辑版本组（album 和 single 分别检测）。
 
     Phase 1  — 名称归一化：normalize_album_name() 剥离版本后缀
@@ -1464,12 +1535,8 @@ def detect_release_groups(overlap_threshold: float = 0.4,
     conn = get_db()
 
     # 分别检测 album 和 single，防止跨类型合并
-    album_results = _detect_groups_for_type(
-        conn, 'album', overlap_threshold, superset_threshold
-    )
-    single_results = _detect_groups_for_type(
-        conn, 'single', overlap_threshold, superset_threshold
-    )
+    album_results = _detect_groups_for_type(conn, "album", overlap_threshold, superset_threshold)
+    single_results = _detect_groups_for_type(conn, "single", overlap_threshold, superset_threshold)
 
     conn.close()
 
@@ -1481,8 +1548,7 @@ def detect_release_groups(overlap_threshold: float = 0.4,
     return pd.DataFrame(results)
 
 
-def apply_detected_groups(detection_df: pd.DataFrame,
-                          only_high_confidence: bool = True) -> int:
+def apply_detected_groups(detection_df: pd.DataFrame, only_high_confidence: bool = True) -> int:
     """将自动检测结果写入 release_groups 表。
 
     Args:
@@ -1507,8 +1573,7 @@ def apply_detected_groups(detection_df: pd.DataFrame,
                 """INSERT OR IGNORE INTO release_groups
                    (canonical_name, artist_id, primary_album_id, is_manual)
                    VALUES (?, ?, ?, 0)""",
-                (row["canonical_name"], int(row["artist_id"]),
-                 int(row["primary_album_id"])),
+                (row["canonical_name"], int(row["artist_id"]), int(row["primary_album_id"])),
             )
             group_id = cur.lastrowid
             if group_id == 0:

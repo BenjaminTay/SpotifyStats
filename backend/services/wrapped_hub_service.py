@@ -43,36 +43,41 @@ def _resolve_uri_name(conn: sqlite3.Connection, uri: str, uri_type: str = "artis
         r = conn.execute(
             "SELECT artist_name FROM spotify_artist_meta WHERE spotify_artist_id = ?", (spotify_id,)
         ).fetchone()
-        if r: return r[0]
+        if r:
+            return r[0]
         # Check saved_artists
         r = conn.execute(
             "SELECT artist_name FROM saved_artists WHERE artist_uri = ?", (uri,)
         ).fetchone()
-        if r: return r[0]
+        if r:
+            return r[0]
     elif uri_type == "track":
         r = conn.execute(
             "SELECT track_name FROM spotify_track_meta WHERE spotify_track_id = ?", (spotify_id,)
         ).fetchone()
-        if r: return r[0]
+        if r:
+            return r[0]
         r = conn.execute(
             "SELECT t.track_name FROM tracks t WHERE REPLACE(t.spotify_track_uri, 'spotify:track:', '') = ?",
             (spotify_id,),
         ).fetchone()
-        if r: return r[0]
+        if r:
+            return r[0]
     elif uri_type == "album":
         r = conn.execute(
             "SELECT album_name FROM spotify_album_meta WHERE spotify_album_id = ?", (spotify_id,)
         ).fetchone()
-        if r: return r[0]
+        if r:
+            return r[0]
         r = conn.execute(
             "SELECT album_name FROM saved_albums WHERE album_uri = ?", (uri,)
         ).fetchone()
-        if r: return r[0]
+        if r:
+            return r[0]
     elif uri_type == "show":
-        r = conn.execute(
-            "SELECT show_name FROM saved_shows WHERE show_uri = ?", (uri,)
-        ).fetchone()
-        if r: return r[0]
+        r = conn.execute("SELECT show_name FROM saved_shows WHERE show_uri = ?", (uri,)).fetchone()
+        if r:
+            return r[0]
 
     return spotify_id or uri
 
@@ -114,44 +119,71 @@ def get_wrapped_hub(conn: sqlite3.Connection) -> dict:
         "available": True,
         "empty": False,
         "top_artists": [
-            {"rank": int(r.rank), "name": r.display_name or r.artist_uri,
-             "ms_played": int(r.ms_played) if pd.notna(r.ms_played) else 0,
-             "percentile": float(r.percentile) if pd.notna(r.percentile) else None,
-             "cover_url": _get_cover_for_name(conn, r.display_name, "artist") if pd.notna(r.display_name) else ""}
+            {
+                "rank": int(r.rank),
+                "name": r.display_name or r.artist_uri,
+                "ms_played": int(r.ms_played) if pd.notna(r.ms_played) else 0,
+                "percentile": float(r.percentile) if pd.notna(r.percentile) else None,
+                "cover_url": _get_cover_for_name(conn, r.display_name, "artist")
+                if pd.notna(r.display_name)
+                else "",
+            }
             for r in top_artists.itertuples(index=False)
         ],
         "top_tracks": [
-            {"rank": int(r.rank), "name": r.display_name or r.track_uri,
-             "play_count": int(r.play_count) if pd.notna(r.play_count) else 0,
-             "ms_played": int(r.ms_played) if pd.notna(r.ms_played) else 0,
-             "cover_url": _get_cover_for_name(conn, r.display_name, "track") if pd.notna(r.display_name) else ""}
+            {
+                "rank": int(r.rank),
+                "name": r.display_name or r.track_uri,
+                "play_count": int(r.play_count) if pd.notna(r.play_count) else 0,
+                "ms_played": int(r.ms_played) if pd.notna(r.ms_played) else 0,
+                "cover_url": _get_cover_for_name(conn, r.display_name, "track")
+                if pd.notna(r.display_name)
+                else "",
+            }
             for r in top_tracks.itertuples(index=False)
         ],
         "top_albums": [
-            {"rank": int(r.rank), "name": r.display_name or r.album_uri,
-             "play_count": int(r.play_count) if pd.notna(r.play_count) else 0,
-             "ms_played": int(r.ms_played) if pd.notna(r.ms_played) else 0,
-             "cover_url": _get_cover_for_name(conn, r.display_name, "album") if pd.notna(r.display_name) else ""}
+            {
+                "rank": int(r.rank),
+                "name": r.display_name or r.album_uri,
+                "play_count": int(r.play_count) if pd.notna(r.play_count) else 0,
+                "ms_played": int(r.ms_played) if pd.notna(r.ms_played) else 0,
+                "cover_url": _get_cover_for_name(conn, r.display_name, "album")
+                if pd.notna(r.display_name)
+                else "",
+            }
             for r in top_albums.itertuples(index=False)
         ],
         "top_genres": [
             {"rank": int(r.rank), "name": r.display_name or r.genre_uri}
             for r in top_genres.itertuples(index=False)
-        ] if not top_genres.empty else [],
+        ]
+        if not top_genres.empty
+        else [],
         "top_podcasts": [
             {"rank": int(r.rank), "name": r.display_name or r.podcast_uri}
             for r in top_podcasts.itertuples(index=False)
-        ] if not top_podcasts.empty else [],
+        ]
+        if not top_podcasts.empty
+        else [],
         "artist_race": [
-            {"artist_name": _resolve_uri_name(conn, r.artist_uri, "artist") if pd.notna(r.artist_uri) else r.artist_uri,
-             "month": r.month, "rank": int(r.rank) if pd.notna(r.rank) else 0,
-             "trail_size": r.trail_size or ""}
+            {
+                "artist_name": _resolve_uri_name(conn, r.artist_uri, "artist")
+                if pd.notna(r.artist_uri)
+                else r.artist_uri,
+                "month": r.month,
+                "rank": int(r.rank) if pd.notna(r.rank) else 0,
+                "trail_size": r.trail_size or "",
+            }
             for r in artist_race.itertuples(index=False)
         ],
         "clubs": [
-            {"club_name": r.club_name, "artist_name": r.display_name or r.artist_uri,
-             "percent_in_club": float(r.percent_in_club) if pd.notna(r.percent_in_club) else 0,
-             "role": r.role or ""}
+            {
+                "club_name": r.club_name,
+                "artist_name": r.display_name or r.artist_uri,
+                "percent_in_club": float(r.percent_in_club) if pd.notna(r.percent_in_club) else 0,
+                "role": r.role or "",
+            }
             for r in clubs.itertuples(index=False)
         ],
         "party_metrics": [
@@ -164,9 +196,13 @@ def get_wrapped_hub(conn: sqlite3.Connection) -> dict:
             "decade_phase": listening_age["decade_phase"] if listening_age else "",
         },
         "archive_reports": [
-            {"title": r.title, "description": r.description or "", "reason": r.reason or "",
-             "minutes_listened": int(r.minutes_listened) if pd.notna(r.minutes_listened) else 0,
-             "filed_under_tags": r.filed_under_tags or ""}
+            {
+                "title": r.title,
+                "description": r.description or "",
+                "reason": r.reason or "",
+                "minutes_listened": int(r.minutes_listened) if pd.notna(r.minutes_listened) else 0,
+                "filed_under_tags": r.filed_under_tags or "",
+            }
             for r in archive.itertuples(index=False)
         ],
     }

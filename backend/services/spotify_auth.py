@@ -1,26 +1,22 @@
 """Spotify OAuth PKCE service — auth flow, saved tracks sync."""
 
-import sqlite3
 import secrets
-from typing import Optional
+import sqlite3
 
 from backend.core.spotify_utils import (
-    generate_pkce_pair,
     build_auth_url,
     exchange_code_for_tokens,
-    store_user_tokens,
-    get_user_access_token,
-    is_user_connected,
-    clear_user_tokens,
-    get_redirect_uri,
-    spotify_api_get_all_pages,
-    get_user_profile,
-    get_top_items,
-    get_recently_played,
+    fetch_currently_playing,
+    generate_pkce_pair,
     get_followed_artists,
     get_playlists,
-    fetch_current_playback,
-    fetch_currently_playing,
+    get_recently_played,
+    get_top_items,
+    get_user_access_token,
+    get_user_profile,
+    is_user_connected,
+    spotify_api_get_all_pages,
+    store_user_tokens,
     sync_all_spotify_data,
 )
 
@@ -66,6 +62,7 @@ def get_connection_status(conn: sqlite3.Connection) -> dict:
     if not is_user_connected(conn):
         return {"connected": False}
     from backend.core.spotify_utils import _load_user_token_json
+
     data = _load_user_token_json(conn)
     profile = get_user_profile(conn)
 
@@ -121,9 +118,7 @@ def fetch_saved_tracks(conn: sqlite3.Connection) -> dict:
     if not access_token:
         return {"success": False, "error": "not_connected"}
 
-    items = spotify_api_get_all_pages(
-        "https://api.spotify.com/v1/me/tracks", access_token
-    )
+    items = spotify_api_get_all_pages("https://api.spotify.com/v1/me/tracks", access_token)
     if not items:
         return {"success": False, "error": "api_fetch_failed"}
 

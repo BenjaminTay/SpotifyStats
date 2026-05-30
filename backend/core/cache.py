@@ -28,8 +28,10 @@ def ttl_cached(ttl_seconds):
                 return result
             cache[key] = (now, result)
             return result
+
         wrapper.cache_clear = cache.clear
         return wrapper
+
     return decorator
 
 

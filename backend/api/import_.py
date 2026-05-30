@@ -1,13 +1,13 @@
 """Import API — async import jobs for streaming and account data."""
 
-import uuid
 import threading
+import uuid
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends
+
 from backend.core.auth import require_auth
-
-from backend.core.import_data import import_data
 from backend.core.import_account_data import import_all
+from backend.core.import_data import import_data
 
 router = APIRouter(prefix="/import", tags=["Import"])
 
@@ -31,6 +31,7 @@ def _progress_cb(job_id):
     def cb(message: str, pct: float):
         _jobs[job_id]["message"] = message
         _jobs[job_id]["progress_pct"] = pct
+
     return cb
 
 
@@ -96,5 +97,10 @@ def get_import_status(job_id: str):
     """Query the status of an import job."""
     job = _jobs.get(job_id)
     if not job:
-        return {"job_id": job_id, "status": "not_found", "progress_pct": 0, "message": "Job not found"}
+        return {
+            "job_id": job_id,
+            "status": "not_found",
+            "progress_pct": 0,
+            "message": "Job not found",
+        }
     return job

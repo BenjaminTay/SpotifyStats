@@ -1,6 +1,7 @@
 """Dashboard response models."""
 
-from typing import Optional
+from __future__ import annotations
+
 from pydantic import BaseModel
 
 
@@ -67,7 +68,7 @@ class RandomTrack(BaseModel):
 
     track_name: str
     artist_name: str
-    album_name: Optional[str]
+    album_name: str | None
     last_played: str
     total_plays: int
 
@@ -76,10 +77,10 @@ class DashboardFullResponse(BaseModel):
     """Complete dashboard data — all in one response to minimize round trips."""
 
     summary: DashboardSummary
-    account_kpis: Optional[AccountKpi]
+    account_kpis: AccountKpi | None
     monthly_trend: list[MonthlyTrendPoint]
     top_tracks: list[TopTrack]
     platform_dist: list[PlatformDist]
     dow_dist: list[DowDist]
     hourly_dist: list[HourlyDist]
-    random_track: Optional[RandomTrack]
+    random_track: RandomTrack | None

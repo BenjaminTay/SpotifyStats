@@ -34,9 +34,30 @@ def warm_common_caches() -> None:
     try:
         load_plays(conn, **DEFAULT_PLAY_FILTERS)
         get_analysis_stats(conn, **DEFAULT_PLAY_FILTERS, period="lifetime")
-        get_analysis_charts(conn, **DEFAULT_PLAY_FILTERS, period="lifetime", entity="track", metric="plays", limit=250)
-        get_analysis_charts(conn, **DEFAULT_PLAY_FILTERS, period="lifetime", entity="album", metric="plays", limit=250)
-        get_analysis_charts(conn, **DEFAULT_PLAY_FILTERS, period="lifetime", entity="artist", metric="plays", limit=250)
+        get_analysis_charts(
+            conn,
+            **DEFAULT_PLAY_FILTERS,
+            period="lifetime",
+            entity="track",
+            metric="plays",
+            limit=250,
+        )
+        get_analysis_charts(
+            conn,
+            **DEFAULT_PLAY_FILTERS,
+            period="lifetime",
+            entity="album",
+            metric="plays",
+            limit=250,
+        )
+        get_analysis_charts(
+            conn,
+            **DEFAULT_PLAY_FILTERS,
+            period="lifetime",
+            entity="artist",
+            metric="plays",
+            limit=250,
+        )
     finally:
         conn.close()
 

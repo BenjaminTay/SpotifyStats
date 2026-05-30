@@ -6,14 +6,14 @@ discovery & returns, listening depth, special moments, monthly drilldown,
 and year-over-year comparison.
 """
 
+from __future__ import annotations
+
 import json
 import sqlite3
-from typing import Optional
 
 import pandas as pd
 
 from backend.core.db import load_plays
-
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # helpers
@@ -46,9 +46,7 @@ def _get_album_cover(conn: sqlite3.Connection, album_name: str) -> str:
     return (row[0] or "") if row else ""
 
 
-def _get_track_cover(
-    conn: sqlite3.Connection, track_name: str, artist_name: str
-) -> str:
+def _get_track_cover(conn: sqlite3.Connection, track_name: str, artist_name: str) -> str:
     """Get album cover for a track — go through spotify_track_meta to spotify_album_meta.
 
     tracks.spotify_album_id is not reliably populated; the canonical path is
@@ -80,17 +78,13 @@ def _get_track_cover(
     return (row2[0] or "") if row2 else ""
 
 
-def _batch_query(
-    conn: sqlite3.Connection, sql_template: str, items: list, batch_size: int = 500
-):
+def _batch_query(conn: sqlite3.Connection, sql_template: str, items: list, batch_size: int = 500):
     """Execute a parameterised query in batches for large IN(...) lists."""
     results = []
     for i in range(0, len(items), batch_size):
         batch = items[i : i + batch_size]
         ph = ",".join(["?"] * len(batch))
-        results.extend(
-            conn.execute(sql_template.format(placeholders=ph), batch).fetchall()
-        )
+        results.extend(conn.execute(sql_template.format(placeholders=ph), batch).fetchall())
     return results
 
 
@@ -245,8 +239,12 @@ def get_wrapped_full(
     return {
         "year": year,
         "empty": False,
-        "hero": _build_hero(year_df, total_minutes, total_plays, unique_tracks, unique_artists, active_days),
-        "personality": _build_personality(conn, year_df, artist_agg, total_plays, avg_hours_per_day, unique_tracks),
+        "hero": _build_hero(
+            year_df, total_minutes, total_plays, unique_tracks, unique_artists, active_days
+        ),
+        "personality": _build_personality(
+            conn, year_df, artist_agg, total_plays, avg_hours_per_day, unique_tracks
+        ),
         "top_lists": _build_top_lists(conn, artist_agg, track_agg, album_agg),
         "genre_panorama": _build_genre_panorama(conn, year_df, artist_agg),
         "time_story": _build_time_story(conn, year_df),
@@ -328,7 +326,8 @@ def _calc_collector_score(conn: sqlite3.Connection, year_df) -> float:
         return 0.0
 
     placeholders = ",".join("?" * len(track_ids))
-    rows = conn.execute(f"""
+    rows = conn.execute(
+        f"""
         SELECT t.track_id, sam.spotify_album_id, sam.total_tracks
         FROM tracks t
         JOIN spotify_track_meta stm
@@ -336,7 +335,9 @@ def _calc_collector_score(conn: sqlite3.Connection, year_df) -> float:
         JOIN spotify_album_meta sam ON stm.spotify_album_id = sam.spotify_album_id
         WHERE t.track_id IN ({placeholders})
           AND sam.total_tracks IS NOT NULL AND sam.total_tracks > 2
-    """, track_ids).fetchall()
+    """,
+        track_ids,
+    ).fetchall()
 
     if not rows:
         return 0.0
@@ -350,10 +351,7 @@ def _calc_collector_score(conn: sqlite3.Connection, year_df) -> float:
             album_tt[aid] = int(ttotal)
         album_tracks[aid].add(tid)
 
-    completed = sum(
-        1 for aid, tracks in album_tracks.items()
-        if len(tracks) / album_tt[aid] >= 0.7
-    )
+    completed = sum(1 for aid, tracks in album_tracks.items() if len(tracks) / album_tt[aid] >= 0.7)
     total_albums = len(album_tt)
     return min(completed / max(total_albums, 1) * 100, 100.0)
 
@@ -424,9 +422,7 @@ def _fetch_track_release_years(
     return result
 
 
-def _calc_globetrotter_score(
-    conn: sqlite3.Connection, year_df, artist_agg
-) -> float:
+def _calc_globetrotter_score(conn: sqlite3.Connection, year_df, artist_agg) -> float:
     """Share of play time on non-Chinese-language music.
 
     An artist is considered "Chinese" if their genres contain any of:
@@ -445,8 +441,15 @@ def _calc_globetrotter_score(
     ).fetchall()
 
     chinese_keywords = {
-        "mandopop", "cantopop", "c-pop", "chinese", "taiwan", "hokkien",
-        "chinese pop", "taiwanese", "singaporean",
+        "mandopop",
+        "cantopop",
+        "c-pop",
+        "chinese",
+        "taiwan",
+        "hokkien",
+        "chinese pop",
+        "taiwanese",
+        "singaporean",
     }
     is_chinese = {}
     for r in rows:
@@ -490,41 +493,47 @@ def _build_top_lists(conn, artist_agg, track_agg, album_agg):
     # artists (by plays)
     artists = []
     for i, (artist_name, row) in enumerate(artist_agg.head(5).iterrows()):
-        artists.append({
-            "rank": i + 1,
-            "name": artist_name or "",
-            "plays": int(row["plays"]),
-            "hours": round(float(row["hours"]), 1),
-            "cover_url": _get_artist_cover(conn, artist_name),
-        })
+        artists.append(
+            {
+                "rank": i + 1,
+                "name": artist_name or "",
+                "plays": int(row["plays"]),
+                "hours": round(float(row["hours"]), 1),
+                "cover_url": _get_artist_cover(conn, artist_name),
+            }
+        )
 
     # tracks (by plays) - track_agg already sorted by plays
     tracks = []
     for i, r in enumerate(track_agg.head(5).itertuples(index=True)):
         name = r.track_name if pd.notna(r.track_name) else ""
         artist_name = r.artist_name if pd.notna(r.artist_name) else ""
-        tracks.append({
-            "rank": i + 1,
-            "name": name,
-            "artist_name": artist_name,
-            "plays": int(r.plays),
-            "hours": round(float(r.hours), 1),
-            "cover_url": _get_track_cover(conn, name, artist_name),
-        })
+        tracks.append(
+            {
+                "rank": i + 1,
+                "name": name,
+                "artist_name": artist_name,
+                "plays": int(r.plays),
+                "hours": round(float(r.hours), 1),
+                "cover_url": _get_track_cover(conn, name, artist_name),
+            }
+        )
 
     # albums (by plays)
     albums = []
     for i, r in enumerate(album_agg.head(5).itertuples(index=False)):
         name = r.album_name if pd.notna(r.album_name) else ""
         artist_name = r.artist_name if pd.notna(r.artist_name) else ""
-        albums.append({
-            "rank": i + 1,
-            "name": name,
-            "artist_name": artist_name,
-            "plays": int(r.plays),
-            "hours": round(float(r.hours), 1),
-            "cover_url": _get_album_cover(conn, name),
-        })
+        albums.append(
+            {
+                "rank": i + 1,
+                "name": name,
+                "artist_name": artist_name,
+                "plays": int(r.plays),
+                "hours": round(float(r.hours), 1),
+                "cover_url": _get_album_cover(conn, name),
+            }
+        )
 
     return {"artists": artists, "tracks": tracks, "albums": albums}
 
@@ -579,8 +588,7 @@ def _build_genre_panorama(conn, year_df, artist_agg):
     total_weight = sum(genre_weight.values()) or 1
     top_genres = sorted(genre_weight.items(), key=lambda x: x[1], reverse=True)[:10]
     top_genres_list = [
-        {"name": g, "play_share": round(w / total_weight * 100, 1)}
-        for g, w in top_genres
+        {"name": g, "play_share": round(w / total_weight * 100, 1)} for g, w in top_genres
     ]
 
     # Monthly genres: for each month, top 5 genres by play hours
@@ -618,10 +626,12 @@ def _build_monthly_genres(year_df, artist_genres: dict[str, list[str]]) -> list[
 
         top5 = sorted(genre_hours.items(), key=lambda x: x[1], reverse=True)[:5]
         total_m = sum(h for _, h in top5) or 1
-        monthly.append({
-            "month": m,
-            "genres": {g: round(h / total_m * 100, 1) for g, h in top5},
-        })
+        monthly.append(
+            {
+                "month": m,
+                "genres": {g: round(h / total_m * 100, 1) for g, h in top5},
+            }
+        )
     return monthly
 
 
@@ -863,11 +873,13 @@ def _build_music_map(conn, year_df, artist_agg) -> dict:
                 is_chinese = True
                 break
         if not is_chinese and genres:
-            overseas_artists.append({
-                "name": artist_name,
-                "region": _classify_genre_region(genres[0])[1],
-                "cover_url": _get_artist_cover(conn, artist_name),
-            })
+            overseas_artists.append(
+                {
+                    "name": artist_name,
+                    "region": _classify_genre_region(genres[0])[1],
+                    "cover_url": _get_artist_cover(conn, artist_name),
+                }
+            )
         if len(overseas_artists) >= 5:
             break
 
@@ -884,30 +896,20 @@ def _build_time_story(conn, year_df):
     daily_grid = _build_daily_grid(year_df)
 
     # monthly_pulse
-    monthly_pulse_df = (
-        year_df.groupby("ts_month")
-        .agg(hours=("ms_played", _hour))
-        .reset_index()
-    )
+    monthly_pulse_df = year_df.groupby("ts_month").agg(hours=("ms_played", _hour)).reset_index()
     month_hours = {
-        int(r.ts_month): round(float(r.hours), 1)
-        for r in monthly_pulse_df.itertuples(index=False)
+        int(r.ts_month): round(float(r.hours), 1) for r in monthly_pulse_df.itertuples(index=False)
     }
     monthly_pulse = [
-        {"month": month, "hours": month_hours.get(month, 0.0)}
-        for month in range(1, 13)
+        {"month": month, "hours": month_hours.get(month, 0.0)} for month in range(1, 13)
     ]
 
     # hourly_dist
     hourly = year_df.groupby("ts_hour").size().reset_index(name="plays")
     hour_plays = {
-        int(r.ts_hour): int(r.plays)
-        for r in hourly.sort_values("ts_hour").itertuples(index=False)
+        int(r.ts_hour): int(r.plays) for r in hourly.sort_values("ts_hour").itertuples(index=False)
     }
-    hourly_dist = [
-        {"hour": hour, "plays": hour_plays.get(hour, 0)}
-        for hour in range(24)
-    ]
+    hourly_dist = [{"hour": hour, "plays": hour_plays.get(hour, 0)} for hour in range(24)]
 
     # late_night
     late_night_info = _build_late_night(conn, year_df)
@@ -925,9 +927,7 @@ def _build_daily_grid(year_df) -> list[list[int]]:
     try:
         year_df = year_df.copy()
         year_df["_day"] = year_df["ts_date"].astype(str).str[-2:].astype(int)
-        daily_grouped = (
-            year_df.groupby(["ts_month", "_day"]).size()
-        )
+        daily_grouped = year_df.groupby(["ts_month", "_day"]).size()
     except (ValueError, KeyError):
         return [[0] * 31 for _ in range(12)]
 
@@ -963,12 +963,14 @@ def _build_late_night(conn, year_df) -> dict:
     for _, r in night_tracks.iterrows():
         name = r["track_name"] if pd.notna(r["track_name"]) else ""
         art = r["artist_name"] if pd.notna(r["artist_name"]) else ""
-        top_tracks.append({
-            "name": name,
-            "artist_name": art,
-            "plays": int(r["plays"]),
-            "cover_url": _get_track_cover(conn, name, art),
-        })
+        top_tracks.append(
+            {
+                "name": name,
+                "artist_name": art,
+                "plays": int(r["plays"]),
+                "cover_url": _get_track_cover(conn, name, art),
+            }
+        )
 
     return {"ratio": ratio, "top_tracks": top_tracks}
 
@@ -1010,23 +1012,21 @@ def _build_new_artists(conn, year_df, previous_artists: set) -> list[dict]:
     results = []
     for _, r in new.iterrows():
         name = r["artist_name"]
-        results.append({
-            "name": name,
-            "plays": int(r["plays"]),
-            "first_date": str(r["first_date"]),
-            "cover_url": _get_artist_cover(conn, name),
-        })
+        results.append(
+            {
+                "name": name,
+                "plays": int(r["plays"]),
+                "first_date": str(r["first_date"]),
+                "cover_url": _get_artist_cover(conn, name),
+            }
+        )
     return results
 
 
 def _build_returning_tracks(conn, year_df, year: int) -> list[dict]:
     """Tracks released >5 years before the target year, ranked by this year's plays."""
     # All (track_name, artist_name) played this year
-    pairs = list(
-        year_df[["track_name", "artist_name"]]
-        .drop_duplicates()
-        .itertuples(index=False)
-    )
+    pairs = list(year_df[["track_name", "artist_name"]].drop_duplicates().itertuples(index=False))
     pairs = [(t, a) for t, a in pairs if pd.notna(t) and pd.notna(a)]
     if not pairs:
         return []
@@ -1055,22 +1055,22 @@ def _build_returning_tracks(conn, year_df, year: int) -> list[dict]:
     top5 = sorted(track_plays.items(), key=lambda x: x[1], reverse=True)[:5]
     results = []
     for (t_name, a_name), plays in top5:
-        results.append({
-            "name": t_name,
-            "artist_name": a_name,
-            "plays": plays,
-            "release_year": release_year_map.get((t_name, a_name), 0),
-            "cover_url": _get_track_cover(conn, t_name, a_name),
-        })
+        results.append(
+            {
+                "name": t_name,
+                "artist_name": a_name,
+                "plays": plays,
+                "release_year": release_year_map.get((t_name, a_name), 0),
+                "cover_url": _get_track_cover(conn, t_name, a_name),
+            }
+        )
     return results
 
 
-def _build_longest_love(conn, df, year_df, year) -> Optional[dict]:
+def _build_longest_love(conn, df, year_df, year) -> dict | None:
     """Find the track with the longest span between first and last appearance."""
     year_pairs = set(
-        year_df[["track_name", "artist_name"]]
-        .dropna()
-        .itertuples(index=False, name=None)
+        year_df[["track_name", "artist_name"]].dropna().itertuples(index=False, name=None)
     )
     if not year_pairs:
         return None
@@ -1078,9 +1078,7 @@ def _build_longest_love(conn, df, year_df, year) -> Optional[dict]:
     # Consider the all-time span, but only for tracks heard in the target year.
     df_with_dates = df[["track_name", "artist_name", "ts_date"]].dropna()
     df_with_dates = df_with_dates[
-        df_with_dates[["track_name", "artist_name"]]
-        .apply(tuple, axis=1)
-        .isin(year_pairs)
+        df_with_dates[["track_name", "artist_name"]].apply(tuple, axis=1).isin(year_pairs)
     ]
     if df_with_dates.empty:
         return None
@@ -1090,9 +1088,7 @@ def _build_longest_love(conn, df, year_df, year) -> Optional[dict]:
         .agg(first=("ts_date", "min"), last=("ts_date", "max"))
         .reset_index()
     )
-    spans["span_days"] = (
-        pd.to_datetime(spans["last"]) - pd.to_datetime(spans["first"])
-    ).dt.days
+    spans["span_days"] = (pd.to_datetime(spans["last"]) - pd.to_datetime(spans["first"])).dt.days
 
     best = spans.loc[spans["span_days"].idxmax()]
     name = best["track_name"]
@@ -1119,9 +1115,7 @@ def _build_listening_depth(conn, year_df, track_agg, year):
 
     # deep_listen_ratio: plays with >= 3 min of ms_played
     deep_mask = year_df["ms_played"] >= 180_000
-    deep_listen_ratio = round(
-        deep_mask.sum() / max(len(year_df), 1) * 100, 1
-    )
+    deep_listen_ratio = round(deep_mask.sum() / max(len(year_df), 1) * 100, 1)
 
     return {
         "listening_age": listening_age,
@@ -1130,7 +1124,7 @@ def _build_listening_depth(conn, year_df, track_agg, year):
     }
 
 
-def _calc_listening_age(conn, track_agg, year: int) -> Optional[dict]:
+def _calc_listening_age(conn, track_agg, year: int) -> dict | None:
     """Average release year of top tracks → listening age."""
     if track_agg.empty:
         return None
@@ -1184,7 +1178,8 @@ def _calc_album_completion(conn, year_df) -> list[dict]:
         return []
 
     placeholders = ",".join("?" * len(track_ids))
-    rows = conn.execute(f"""
+    rows = conn.execute(
+        f"""
         SELECT t.track_id, sam.spotify_album_id, sam.album_name,
                sam.total_tracks, sam.image_url
         FROM tracks t
@@ -1193,7 +1188,9 @@ def _calc_album_completion(conn, year_df) -> list[dict]:
         JOIN spotify_album_meta sam ON stm.spotify_album_id = sam.spotify_album_id
         WHERE t.track_id IN ({placeholders})
           AND sam.total_tracks IS NOT NULL AND sam.total_tracks > 2
-    """, track_ids).fetchall()
+    """,
+        track_ids,
+    ).fetchall()
 
     if not rows:
         return []
@@ -1219,12 +1216,14 @@ def _calc_album_completion(conn, year_df) -> list[dict]:
         if pct >= 50:
             artist_series = year_df[year_df["track_id"].isin(tracks)]["artist_name"].mode()
             art = artist_series.iloc[0] if not artist_series.empty else ""
-            completions.append({
-                "name": info["album_name"],
-                "artist_name": art if pd.notna(art) else "",
-                "completion_pct": pct,
-                "cover_url": info["image_url"],
-            })
+            completions.append(
+                {
+                    "name": info["album_name"],
+                    "artist_name": art if pd.notna(art) else "",
+                    "completion_pct": pct,
+                    "cover_url": info["image_url"],
+                }
+            )
 
     completions.sort(key=lambda x: x["completion_pct"], reverse=True)
     return completions[:3]
@@ -1256,7 +1255,7 @@ def _build_special_moments(conn, year_df) -> dict:
     }
 
 
-def _find_most_active_day(conn, year_df) -> Optional[dict]:
+def _find_most_active_day(conn, year_df) -> dict | None:
     daily = year_df.groupby("ts_date").size().reset_index(name="plays")
     if daily.empty:
         return None
@@ -1284,7 +1283,7 @@ def _find_most_active_day(conn, year_df) -> Optional[dict]:
     }
 
 
-def _find_edge_listen(conn, year_df, mode: str = "min") -> Optional[dict]:
+def _find_edge_listen(conn, year_df, mode: str = "min") -> dict | None:
     """Earliest (min hour) or latest (max hour) listen of the year."""
     idx = year_df["ts_hour"].idxmin() if mode == "min" else year_df["ts_hour"].idxmax()
     row = year_df.loc[idx]
@@ -1302,7 +1301,7 @@ def _find_edge_listen(conn, year_df, mode: str = "min") -> Optional[dict]:
     }
 
 
-def _find_longest_streak(year_df) -> Optional[dict]:
+def _find_longest_streak(year_df) -> dict | None:
     """Longest consecutive-day listening streak."""
     dates = sorted(pd.to_datetime(year_df["ts_date"].unique()))
     if len(dates) < 1:
@@ -1343,12 +1342,14 @@ def _build_monthly_drilldown(conn, year_df) -> list[dict]:
     for m in range(1, 13):
         month_df = year_df[year_df["ts_month"] == m]
         if month_df.empty:
-            months.append({
-                "month": m,
-                "total_hours": 0.0,
-                "top_tracks": [],
-                "top_artist": None,
-            })
+            months.append(
+                {
+                    "month": m,
+                    "total_hours": 0.0,
+                    "top_tracks": [],
+                    "top_artist": None,
+                }
+            )
             continue
 
         total_hours = round(float(month_df["ms_played"].sum() / 3_600_000), 1)
@@ -1365,28 +1366,36 @@ def _build_monthly_drilldown(conn, year_df) -> list[dict]:
         for _, r in top_tracks_df.iterrows():
             t_name = r["track_name"] if pd.notna(r["track_name"]) else ""
             a_name = r["artist_name"] if pd.notna(r["artist_name"]) else ""
-            top_tracks.append({
-                "name": t_name,
-                "artist_name": a_name,
-                "plays": int(r["plays"]),
-                "cover_url": _get_track_cover(conn, t_name, a_name),
-            })
+            top_tracks.append(
+                {
+                    "name": t_name,
+                    "artist_name": a_name,
+                    "plays": int(r["plays"]),
+                    "cover_url": _get_track_cover(conn, t_name, a_name),
+                }
+            )
 
         # Top 1 artist
         top_artist_name = (
             month_df.groupby("artist_name").size().sort_values(ascending=False).index[0]
         )
-        top_artist = {
-            "name": top_artist_name,
-            "cover_url": _get_artist_cover(conn, top_artist_name),
-        } if top_artist_name else None
+        top_artist = (
+            {
+                "name": top_artist_name,
+                "cover_url": _get_artist_cover(conn, top_artist_name),
+            }
+            if top_artist_name
+            else None
+        )
 
-        months.append({
-            "month": m,
-            "total_hours": total_hours,
-            "top_tracks": top_tracks,
-            "top_artist": top_artist,
-        })
+        months.append(
+            {
+                "month": m,
+                "total_hours": total_hours,
+                "top_tracks": top_tracks,
+                "top_artist": top_artist,
+            }
+        )
     return months
 
 
@@ -1409,7 +1418,7 @@ def _build_comparison(df, year_df, year, track_agg, artist_agg):
         this_tracks = year_df["track_id"].nunique()
         last_tracks = last_year_df["track_id"].nunique()
 
-        def _pct_change(new_val, old_val) -> Optional[float]:
+        def _pct_change(new_val, old_val) -> float | None:
             if old_val == 0:
                 return None
             return round((new_val - old_val) / old_val * 100, 1)
@@ -1427,17 +1436,9 @@ def _build_comparison(df, year_df, year, track_agg, artist_agg):
 
     # top_vs_alltime: compare year's top 5 against all-time top 10
     alltime_tracks_df = (
-        df.groupby(["track_name", "artist_name"])
-        .size()
-        .sort_values(ascending=False)
-        .head(10)
+        df.groupby(["track_name", "artist_name"]).size().sort_values(ascending=False).head(10)
     )
-    alltime_artists_df = (
-        df.groupby("artist_name")
-        .size()
-        .sort_values(ascending=False)
-        .head(10)
-    )
+    alltime_artists_df = df.groupby("artist_name").size().sort_values(ascending=False).head(10)
 
     alltime_track_set = set(alltime_tracks_df.index.tolist())
     alltime_artist_set = set(alltime_artists_df.index.tolist())
@@ -1445,19 +1446,23 @@ def _build_comparison(df, year_df, year, track_agg, artist_agg):
     track_marks = []
     for _, r in track_agg.head(5).iterrows():
         key = (r["track_name"], r["artist_name"])
-        track_marks.append({
-            "name": f"{r['track_name']} - {r['artist_name']}",
-            "is_new": key not in alltime_track_set,
-            "is_classic": key in alltime_track_set,
-        })
+        track_marks.append(
+            {
+                "name": f"{r['track_name']} - {r['artist_name']}",
+                "is_new": key not in alltime_track_set,
+                "is_classic": key in alltime_track_set,
+            }
+        )
 
     artist_marks = []
     for artist_name in artist_agg.head(5).index:
-        artist_marks.append({
-            "name": artist_name,
-            "is_new": artist_name not in alltime_artist_set,
-            "is_classic": artist_name in alltime_artist_set,
-        })
+        artist_marks.append(
+            {
+                "name": artist_name,
+                "is_new": artist_name not in alltime_artist_set,
+                "is_classic": artist_name in alltime_artist_set,
+            }
+        )
 
     return {
         "last_year": last_year_cmp,

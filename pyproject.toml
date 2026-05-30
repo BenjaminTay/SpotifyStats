@@ -1,0 +1,73 @@
+[tool.pytest.ini_options]
+testpaths = ["backend/tests"]
+pythonpath = ["."]
+asyncio_default_fixture_loop_scope = "function"
+markers = [
+    "unit: Pure function tests — no DB, no network, no FastAPI TestClient",
+    "contract: Tests against seed SQLite test DB — minimal fast-running DB tests",
+    "integration: Tests against real production SQLite DB — full data reality",
+    "slow: Tests that take >2s each — optional in CI/pre-commit",
+]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+exclude = [".venv", "node_modules", "data", "frontend"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP"]
+ignore = ["E501", "UP007", "UP038"]  # UP007/UP038: X | Y syntax needs Python 3.10+
+
+[tool.ruff.lint.per-file-ignores]
+"backend/core/db.py" = ["F821"]  # pd.DataFrame used in string annotations
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.mypy]
+python_version = "3.12"
+ignore_missing_imports = true
+no_strict_optional = true
+warn_unused_ignores = false
+exclude = [
+    '^frontend/',
+    '^data/',
+    '^\.venv/',
+    '^app/',
+]
+[[tool.mypy.overrides]]
+module = [
+    "jieba.*",
+    "lyricsgenius.*",
+    "numpy.*",
+    "pandas.*",
+    "plotly.*",
+    "cryptography.*",
+    "dotenv.*",
+    "httpx.*",
+    "opencc.*",
+]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = [
+    "backend.api.spotify_auth",
+    "backend.api.version_merge",
+    "backend.core.db",
+    "backend.core.genius.client",
+    "backend.core.import_data",
+    "backend.core.spotify_utils",
+    "backend.core.warmup",
+    "backend.services.account_service",
+    "backend.services.analysis_service",
+    "backend.services.analysis_stats_service",
+    "backend.services.billboard_service",
+    "backend.services.insights_service",
+    "backend.services.library_service",
+    "backend.services.play_service",
+    "backend.services.search_service",
+    "backend.services.wrapped_hub_service",
+    "backend.services.wrapped_service",
+]
+ignore_errors = true

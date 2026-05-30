@@ -10,6 +10,8 @@ from fastapi.testclient import TestClient
 
 from backend.main import app
 
+pytestmark = pytest.mark.integration
+
 
 @pytest.fixture(scope="session")
 def warm_default_caches(default_params):
@@ -75,9 +77,15 @@ def billboard_data(warm_default_caches):
     cutting total test time by ~60%.
     """
     from backend.services.billboard_service import compute_billboard_data
+
     return compute_billboard_data(
-        min_ms=30000, music_only=True,
-        bb_top_n=30, bb_album_top_n=20, bb_artist_top_n=20,
-        bb_week_start_dow=4, bb_week_start_hour=0,
-        year_start=None, year_end=None,
+        min_ms=30000,
+        music_only=True,
+        bb_top_n=30,
+        bb_album_top_n=20,
+        bb_artist_top_n=20,
+        bb_week_start_dow=4,
+        bb_week_start_hour=0,
+        year_start=None,
+        year_end=None,
     )

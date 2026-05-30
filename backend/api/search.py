@@ -1,7 +1,8 @@
 """Search history API endpoint."""
 
-from fastapi import APIRouter, Depends
 from sqlite3 import Connection
+
+from fastapi import APIRouter, Depends
 
 from backend.dependencies import get_conn
 from backend.services.search_service import get_search_stats

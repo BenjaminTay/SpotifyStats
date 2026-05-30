@@ -16,12 +16,8 @@ def get_search_stats(conn: sqlite3.Connection) -> dict:
         return {"available": True, "empty": True}
 
     # Get artist/track names for intent classification
-    artist_names = set(
-        r[0] for r in conn.execute("SELECT artist_name FROM artists").fetchall()
-    )
-    track_names = set(
-        r[0] for r in conn.execute("SELECT track_name FROM tracks").fetchall()
-    )
+    artist_names = set(r[0] for r in conn.execute("SELECT artist_name FROM artists").fetchall())
+    track_names = set(r[0] for r in conn.execute("SELECT track_name FROM tracks").fetchall())
 
     # Simple intent classification
     def classify_intent(q, artists, tracks):
@@ -51,7 +47,10 @@ def get_search_stats(conn: sqlite3.Connection) -> dict:
     dow_names = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]
     z = []
     for d in range(7):
-        row = [int(pivot.loc[d, h]) if d in pivot.index and h in pivot.columns else 0 for h in range(24)]
+        row = [
+            int(pivot.loc[d, h]) if d in pivot.index and h in pivot.columns else 0
+            for h in range(24)
+        ]
         z.append(row)
 
     return {
@@ -59,16 +58,13 @@ def get_search_stats(conn: sqlite3.Connection) -> dict:
         "empty": False,
         "total_searches": len(df),
         "daily_volume": [
-            {"date": r.search_date, "count": int(r.cnt)}
-            for r in daily.itertuples(index=False)
+            {"date": r.search_date, "count": int(r.cnt)} for r in daily.itertuples(index=False)
         ],
         "top_queries": [
-            {"query": r.query, "count": int(r.cnt)}
-            for r in top_queries.itertuples(index=False)
+            {"query": r.query, "count": int(r.cnt)} for r in top_queries.itertuples(index=False)
         ],
         "intent_dist": [
-            {"intent": r.intent, "count": int(r.cnt)}
-            for r in intent_dist.itertuples(index=False)
+            {"intent": r.intent, "count": int(r.cnt)} for r in intent_dist.itertuples(index=False)
         ],
         "heatmap": {"z": z, "x": list(range(24)), "y": dow_names},
     }

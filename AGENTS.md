@@ -54,15 +54,31 @@ streamlit run app/main.py --server.clearCaches=true
 # 安装/更新依赖
 source .venv/bin/activate && pip install -r requirements.txt
 
-# 运行后端测试（使用生产 SQLite 数据库，只读模式）
+# 运行后端测试（230 个测试，分三层：unit / contract / integration）
 source .venv/bin/activate && pytest backend/tests/ -v
+
+# 分层运行测试
+source .venv/bin/activate && pytest -m unit -v          # 纯函数单元测试，~5秒，无 DB
+source .venv/bin/activate && pytest -m contract -v       # 结构验证，~1秒，seed SQLite DB
+source .venv/bin/activate && pytest -m integration -v    # 真实数据集成测试，~80秒
 
 # 快速验证后端测试耗时与慢点
 source .venv/bin/activate && pytest backend/tests/ --durations=20 -q
 
 # 运行单个测试文件
-source .venv/bin/activate && pytest backend/tests/test_api.py -v
-source .venv/bin/activate && pytest backend/tests/test_services.py -v
+source .venv/bin/activate && pytest backend/tests/unit/test_crypto.py -v
+source .venv/bin/activate && pytest backend/tests/integration/test_api.py -v
+
+# 前端测试（20 个 vitest 单测）
+cd frontend && npm test
+
+# 生成 OpenAPI TypeScript 类型（需后端运行中）
+cd frontend && npm run generate-types
+
+# 代码质量检查
+ruff check backend/                     # Lint 检查
+ruff format --check backend/            # 格式检查
+pre-commit run --all-files              # 全量预提交检查
 ```
 
 ## Git 提交说明规范
@@ -105,6 +121,8 @@ JSON 文件 (账号数据)  ──→ import_account_data.py ──┘
                     └──→ Streamlit app (app/)
                          st.cache_data 缓存查询结果
 ```
+
+**工程化工具链**：项目通过 `pyproject.toml` 统一配置 pytest / ruff / mypy。CI 前通过 `pre-commit`（ruff format+check + mypy + detect-secrets）自动检查。开发依赖见 `requirements-dev.txt`。
 
 后端生产入口 `backend/main.py` 通过 FastAPI lifespan 启动后台缓存预热线程（`backend/core/warmup.py`），启动时调用 `setup_logging()` 配置日志脱敏。默认预热 `load_plays()`、播放统计默认页与 `compute_billboard_data()`。启动后短时间 CPU 占用较高属于正常预热现象；设置 `SPOTIFY_STATS_WARMUP=0` 可关闭启动预热，测试环境通过 pytest fixture 控制预热节奏。全局 `@app.exception_handler(Exception)` 返回通用 500 而不泄露 stack trace（异常仍通过脱敏后的 logger 记录）。CORS 来源支持 `FRONTEND_ORIGIN` 配置值（适配 ngrok 等非 localhost 来源）。开发模式下使用 `uvicorn --reload --reload-dir backend`，只监听后端代码变更；不要让 reloader 扫描整个仓库，否则 `.venv`、`frontend/node_modules`、`data` 等大目录会导致 CPU 持续偏高。
 
@@ -241,14 +259,41 @@ Pydantic v2 模型定义 API 响应结构，按领域拆分：
 
 #### 测试 (tests/)
 
-测试套件使用生产 SQLite 数据库（只读模式），不创建独立测试数据库。旨在验证计算逻辑对真实数据的正确性。
+测试套件分为三层，通过 pytest markers（`unit` / `contract` / `integration` / `slow`）区分，配置在 `pyproject.toml` 中。
 
-- **`conftest.py`** — 共享 fixtures：`client`（FastAPI TestClient，module 级复用）、`default_params`（默认过滤参数 session 级共享）、`warm_default_caches`（session 级预热默认 `load_plays()` 与 `compute_billboard_data()`）、`billboard_data`（复用规范化 cache key，消除重复冷算）
-- **`test_api.py`** — API 层测试，覆盖所有主要端点：结构验证、数据自洽性、跨端点交叉校验、边界条件（空数据/不存在实体/参数约束）、过滤器变化影响、HTTP 响应格式、Genius 歌词缓存标记
-- **`test_services.py`** — Service 层测试，直接调用服务函数验证计算逻辑：数值断言、numpy 类型安全、JSON 序列化、TTL 缓存行为、Genius 歌词清洗、缓存预热、Spotify API 离线回退
-- **`test_wrapped_full.py`** — 年度总结服务测试，验证 `get_wrapped_full()` 各年数据结构完整性、听歌人格标签一致性、Top 榜排序正确性、曲风映射覆盖、高峰时段识别、特殊时刻检测、月度钻取与年度对比数据自洽
+**目录结构**：
+```
+backend/tests/
+├── conftest.py                # 根 fixtures（client, default_params, warm_default_caches, billboard_data）
+├── unit/                      # 纯函数单元测试（无 DB 连接）
+│   ├── conftest.py            # 空文件 — 阻断父级 DB fixture 加载
+│   ├── test_json_helpers.py   # numpy/pandas → JSON 类型转换
+│   ├── test_utils.py          # convert_to_local_time, classify_platform
+│   ├── test_crypto.py         # AES-256-GCM encrypt/decrypt 往返
+│   ├── test_cache.py          # TTL 缓存命中/过期/不缓存 None + singleflight
+│   ├── test_logging.py        # SensitiveDataFilter 脱敏 API Key/Token/Bearer/sk-
+│   └── test_billboard_pure.py # 纯 DataFrame 排名/评分/变化列/断档图计算
+├── contract/                  # API 结构验证（便携 seed SQLite DB）
+│   ├── conftest.py            # monkeypatch DB_PATH → fixtures/seed.db + use_seed_db fixture
+│   └── test_api_contract.py   # 13 个端点 JSON 结构/状态码验证
+├── integration/               # 真实数据集成测试（生产 SQLite DB，只读）
+│   ├── conftest.py            # 引用父级 fixtures
+│   ├── test_api.py            # API 层：结构验证、自洽性、交叉校验、边界条件、过滤器变化
+│   ├── test_services.py       # Service 层：数值断言、numpy 类型安全、JSON 序列化、TTL 缓存、缓存预热
+│   ├── test_analysis_api.py   # 分析端点专项测试
+│   └── test_wrapped_full.py   # 年度总结服务专项测试
+└── fixtures/
+    ├── seed.db                # 便携测试数据库（~4KB，可提交 git）
+    └── build_seed_db.py       # 构建脚本（含 11 条 golden assertions）
+```
 
-当前后端测试覆盖 API 层、Service 层及年度总结专项测试（`test_wrapped_full.py`），使用真实生产 SQLite 数据库只读验证；默认缓存预热和 cache key 规范化后，全量测试约 50 秒（本机环境可能有少量波动）。测试输出中若出现 urllib3/LibreSSL 警告，属于本机 Python SSL 编译环境提醒，不是项目逻辑问题。
+**测试分层统计**：230 个测试（50 unit + 13 contract + 167 integration）
+
+- **Unit**（pytest -m unit）：纯函数单元测试，~5 秒完成，不加载任何数据库。覆盖 JSON 序列化、时区转换、加密往返、缓存行为、日志脱敏、Billboard 纯计算。
+- **Contract**（pytest -m contract）：API 结构验证，~1 秒完成，使用便携 seed SQLite DB（3 艺人、15 曲目、85 条播放记录，覆盖短播放过滤、跨周边界、播客、skipped/offline 等边界）。验证 JSON 键名、HTTP 状态码和响应类型，不验证具体数据值。
+- **Integration**（pytest -m integration）：真实数据集成测试，~80 秒完成，使用生产 SQLite 数据库只读验证。Session 级 `warm_default_caches` 预热 `load_plays()` 与 `compute_billboard_data()`；`billboard_data` fixture module 级复用避免重复冷算。
+
+**跨测试缓存污染防护**：Contract 测试通过 `use_seed_db` fixture teardown 清除所有可能被种子数据污染的 `@lru_cache`：`_load_plays_cached`、`compute_billboard_data`、`_compute_billboard_data_cached`、`load_billboard_raw`、`load_track_album_map`、`_load_album_metadata`、`_get_analysis_stats_cached`、`_get_analysis_charts_cached`。`autouse` fixture `disable_warmup` 通过 monkeypatch `SPOTIFY_STATS_WARMUP=0` 阻止 contract 测试触发后台预热线程。
 
 测试设计模式：真实数据断言（如 `total_plays > 50000`）而非 mock 返回固定值；交叉校验（如 dashboard 的 total_plays 与 timeline 的 annual 求和一致）；边界条件（不存在的艺人返回空、空年份标记 `empty: true`）。
 
@@ -271,6 +316,12 @@ React + Vite + Tailwind CSS v4 + shadcn/ui（样式 `base-nova`，基础色 `neu
 **目录结构**：
 ```
 frontend/src/
+├── api/              ← API 客户端与错误模型（新增）
+│   ├── client.ts     ← 类型化 API 客户端（30s 超时、AbortController、错误分类）
+│   ├── errors.ts     ← ApiError / NetworkError / AuthRequiredError / TimeoutError
+│   └── generated/    ← OpenAPI 自动生成的 TypeScript 类型（npm run generate-types）
+│       ├── api-types.ts   ← 全量 API DTO 类型（95 端点）
+│       └── openapi.json   ← OpenAPI spec 快照（离线对比用）
 ├── components/
 │   ├── ui/          ← shadcn/ui 组件（可随意修改，含 calendar, popover）
 │   ├── charts/      ← ECharts 封装（动态 import）+ 纯 DOM 图表（RankTrendChart：时间线填充断档周、全貌/细节缩放切换+dataZoom滑块、峰值Pin标记+连续冠周markArea色带；ReleaseTimelineChart：发行周期排名趋势图）
@@ -279,42 +330,44 @@ frontend/src/
 ├── pages/           ← 页面组件
 │   ├── DashboardPage.tsx    ← 总览仪表盘（动态数据洞察：月度趋势 + 聆听高峰智能分析）
 │   ├── YearlyReviewPage.tsx ← 年度回顾（2 Tab：自定义年度总结 + 官方 Wrapped，年份选择器 + 序列化预取 + ErrorBoundary 容错）
-│   ├── yearly-review/       ← 年度回顾子组件（12 个：HeroSection 渐变英雄区、PersonalityReveal 听歌人格、TopCharts 排行榜、GenrePanorama 曲风全景、TimeStory 时间故事含 HourClock 时钟图、MusicMap 音乐地图、DiscoveryReturns 发现与回归、ListeningDepth 聆听深度、SpecialMoments 特殊时刻、MonthlyDrilldown 月度钻取、YearComparison 年度对比、ShareButton 分享按钮 + OfficialWrapped 官方 Wrapped）
+│   ├── yearly-review/       ← 年度回顾子组件（12 个）
 │   ├── BillboardPage.tsx    ← Billboard 周榜（3 Tab + 排名表 + CoverCell 封面 + 详情链接，Tab 记忆跨页面保持）
-│   ├── NumberOnesPage.tsx   ← 每周榜首（3 子 Tab：单曲/专辑/艺人，年度筛选 + Power Score 平局排序 + KPI 卡片 + 冠单表 + 排行 + 柱状图 + 空冠，子 Tab + 年份记忆保持）
-│   ├── AllTimeChartsPage.tsx ← Billboard 总榜（3 实体 Tab：歌曲/专辑/艺人，8 列头排序 + 排名峰值筛选 + 翻页，Tab/筛选/排序/翻页均记忆保持）
-│   ├── RecordsPage.tsx      ← 榜单记录（6 大展区 37 项记录：冠军圣殿/持久传奇/爆发时刻/名人堂/奇趣纪录/每周大盘，React Portal 分页控件）
-│   ├── TrackDetailPage.tsx  ← 单曲详情（3 Tab：榜单表现/歌词/Wikipedia 百科，8 KPI + 排名趋势图 + 榜单历史表 + Genius 歌词分段渲染 + 百科扩展数据，艺人名和专辑名可点击跳转详情）
-│   ├── ArtistDetailPage.tsx ← 艺人详情（4 Tab：榜单表现/单曲成绩/专辑成绩/歌手生涯，6 KPI 卡片 + 封面 + Spotify 元数据 + Popularity 视觉进度条 + 走势点数/排名 + AI 百科结构化视图）
-│   ├── AlbumDetailPage.tsx  ← 专辑详情（3 Tab：榜单表现/曲目表现/专辑百科，6 KPI 卡片 + 封面 + Spotify 元数据 + 视觉播放条 + 走势点数/排名 + AI 百科结构化视图，艺人名可点击跳转详情）
-│   ├── SettingsPage.tsx     ← 设置（6 区块：Spotify 连接 / Data & Display / Billboard Parameters / Version Merge / Data Import / LLM Translation，含 Spotify OAuth 连接管理 + 账号数据展示 + LLM 配置档案管理）
-│   ├── AccountCenterPage.tsx ← 账号中心（2 Tab：你的收藏 / 你的习惯，统一编辑风 Hero 卡片含渐变背景+头像+人格徽章+统计条）
-│   └── account/              ← 账号中心子组件
-│       ├── HabitsTab.tsx      ← 你的习惯（听歌人格、搜索编年史、粉丝层级、播客聆听、推广转化含封面+转化率排序、视频分析）
-│       └── CollectionTab.tsx  ← 你的收藏（收藏纵览、生命周期含趋势图+Top曲目个体趋势、化学反应含封面、Flip Side 含封面、品味迁徙含 jieba+TF-IDF 关键词权重可视化、双厨时刻、排行榜含播放量、收藏档案）
-├── hooks/           ← 自定义 hooks
-│   ├── useTheme.tsx  ← 主题管理（Context + localStorage）
-│   ├── useDashboard.ts  ← Dashboard 数据获取 + 缓存
-│   ├── useBillboard.ts  ← Billboard 数据获取 + 缓存 + goToWeek 周导航
-│   ├── useYearlyReview.ts ← 年度总结数据获取（模块级 Map 缓存 + in-flight Promise 去重 + 序列化预取，避免 SQLite 并发锁）
-│   ├── useSettings.ts   ← 设置 + 版本合并 API + LLM 档案 CRUD + 异步导入轮询 + Spotify OAuth 连接/同步/断开
-│   └── useAccount.ts     ← 账号中心数据获取 + 缓存
+│   ├── NumberOnesPage.tsx   ← 每周榜首（3 子 Tab，年度筛选 + KPI 卡片 + 冠单表 + 排行 + 柱状图）
+│   ├── AllTimeChartsPage.tsx ← Billboard 总榜（3 实体 Tab，8 列头排序 + 排名峰值筛选 + 翻页）
+│   ├── RecordsPage.tsx      ← 榜单记录（6 大展区 37 项记录）
+│   ├── TrackDetailPage.tsx  ← 单曲详情（3 Tab：榜单表现/歌词/Wikipedia 百科）
+│   ├── ArtistDetailPage.tsx ← 艺人详情（4 Tab：榜单表现/单曲成绩/专辑成绩/歌手生涯）
+│   ├── AlbumDetailPage.tsx  ← 专辑详情（3 Tab：榜单表现/曲目表现/专辑百科）
+│   ├── SettingsPage.tsx     ← 设置（6 区块：Spotify 连接 / Data & Display / Billboard Parameters / Version Merge / Data Import / LLM Translation）
+│   ├── AccountCenterPage.tsx ← 账号中心（2 Tab：你的收藏 / 你的习惯）
+│   └── account/              ← 账号中心子组件（HabitsTab, CollectionTab）
+├── hooks/           ← 自定义 hooks（useTheme, useDashboard, useBillboard, useYearlyReview, useSettings, useAccount）
 ├── lib/             ← API 客户端、工具函数
-│   ├── api.ts       ← fetch 封装（GET/PUT/POST/DELETE），类型重导出
+│   ├── api.ts       ← 向后兼容重导出（→ @/api/client）
 │   ├── theme.ts     ← 图表色盘常量 + getChartColors(isDark)
 │   ├── utils.ts     ← cn() 工具（tailwind-merge + clsx）
 │   ├── chinese.ts   ← 中文简繁转换（opencc-js 动态加载），displayName() 统一入口
 │   ├── insights.ts  ← 动态洞察生成（月度趋势季节分析 + 聆听高峰智能识别）
 │   ├── personality-themes.ts ← 听歌人格主题定义（6 种人格 × 渐变配色）
 │   └── genre-regions.ts ← 曲风五大洲地理映射
-├── types/           ← TypeScript 类型定义
+├── tests/           ← 前端测试（vitest + React Testing Library）
+│   ├── FormattedText.test.tsx  ← 纯文本/markdown 渲染/XSS 防护
+│   ├── api-errors.test.ts      ← ApiError/NetworkError/AuthRequiredError/TimeoutError
+│   └── utils.test.ts           ← cn() 工具函数
+├── types/           ← TypeScript 手写展示类型
 │   ├── dashboard.ts ← Dashboard 响应类型
-│   ├── billboard.ts ← Billboard 响应类型（含 TrackSpotifyMeta / ArtistSpotifyMeta / AlbumSpotifyMeta / LyricsData / StructuredArtist / StructuredAlbum 等）
-│   ├── settings.ts  ← 设置（SettingsData / ImportJob / ReleaseGroup / DetectionResult / LLMProfile / LLMProfileDetail / SpotifyProfile 等）
-│   ├── account.ts   ← 账号中心（InferencesData / SoundCapsuleData / AccountSummary / SavedTracksBrowserItem 等）
-│   └── yearly-review.ts ← 年度总结完整类型（WrappedFullResponse / WrappedFullHero / PersonalityResult / TopLists / GenrePanorama / TimeStory / DiscoveryReturns / ListeningDepth / SpecialMoments / MonthlyDrilldown / YearComparison / LastYearComparison）
+│   ├── billboard.ts ← Billboard 响应类型
+│   ├── settings.ts  ← 设置
+│   ├── account.ts   ← 账号中心
+│   └── yearly-review.ts ← 年度总结完整类型
 └── UI_STYLE_GUIDE.md ← 详细 UI 风格指南（新增页面必读）
 ```
+
+**前端 API 错误模型**（`@/api/errors.ts`）：类型化错误替代原有通用 `throw new Error('API error: ...')`。`ApiError` 基类（status + detail + cause + isAuthError/isNotFound/isServerError 属性）；`NetworkError`（status=0，fetch 失败）；`AuthRequiredError`（status=401）；`TimeoutError`（status=408，30s 默认超时可配置）。
+
+**前端测试**：vitest + React Testing Library（jsdom 环境），3 个测试文件共 20 个单测。`npm test`（vitest run）或 `npm run test:watch`（vitest 交互模式）。
+
+**OpenAPI 类型自动生成**：`npm run generate-types` 从运行中后端 `/openapi.json` 拉取 spec 并生成 `src/api/generated/api-types.ts`。`npm run check-types-fresh` 对比本地快照与后端 spec 检测漂移。
 
 **路径别名**：`@/` → `src/`（Vite resolve.alias + tsconfig paths）。
 

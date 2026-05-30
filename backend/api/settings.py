@@ -1,17 +1,22 @@
 """Settings API endpoints."""
 
-from fastapi import APIRouter, Depends, HTTPException
-from sqlite3 import Connection
-from typing import Optional
+from __future__ import annotations
 
+from sqlite3 import Connection
+
+from fastapi import APIRouter, Depends, HTTPException
+
+from backend.core.auth import require_auth
+from backend.core.spotify_utils import get_user_profile, is_user_connected
 from backend.dependencies import get_conn
 from backend.models.common import (
-    SettingsResponse, SettingsUpdateRequest,
-    LLMProfileResponse, LLMProfileDetailResponse,
-    LLMProfileCreateRequest, LLMProfileUpdateRequest,
+    LLMProfileCreateRequest,
+    LLMProfileDetailResponse,
+    LLMProfileResponse,
+    LLMProfileUpdateRequest,
+    SettingsResponse,
+    SettingsUpdateRequest,
 )
-from backend.core.spotify_utils import is_user_connected, get_user_profile
-from backend.core.auth import require_auth
 
 router = APIRouter(prefix="/settings", tags=["Settings"])
 
@@ -34,18 +39,24 @@ _defaults = {
 
 # Keys whose values need type coercion when loaded from DB (stored as strings)
 _SQLITE_TYPE_COERCION = [
-    "min_ms", "music_only", "merge_enabled",
-    "bb_top_n", "bb_album_top_n", "bb_artist_top_n",
-    "bb_week_start_dow", "bb_week_start_hour",
+    "min_ms",
+    "music_only",
+    "merge_enabled",
+    "bb_top_n",
+    "bb_album_top_n",
+    "bb_artist_top_n",
+    "bb_week_start_dow",
+    "bb_week_start_hour",
     "llm_enabled",
 ]
 
-_current: Optional[dict] = None
+_current: dict | None = None
 
 
 def _load_settings_from_db() -> dict:
     """Load settings from DB. Falls back to defaults if DB is empty or missing."""
     from backend.core.db import get_db
+
     conn = get_db()
     try:
         rows = conn.execute("SELECT key, value FROM settings").fetchall()
@@ -75,6 +86,7 @@ def _load_settings_from_db() -> dict:
 def _save_setting_to_db(key: str, value) -> None:
     """Persist a single setting to the DB."""
     from backend.core.db import get_db
+
     conn = get_db(readonly=False)
     try:
         conn.execute(
@@ -105,7 +117,11 @@ def get_settings(conn: Connection = Depends(get_conn)):
         account_data_imported = sc > 0
     except Exception:
         pass
-    resp = {**_current, "db_record_count": db_record_count, "account_data_imported": account_data_imported}
+    resp = {
+        **_current,
+        "db_record_count": db_record_count,
+        "account_data_imported": account_data_imported,
+    }
     resp["spotify_connected"] = is_user_connected(conn)
     resp["spotify_profile"] = get_user_profile(conn) if resp["spotify_connected"] else None
     resp["has_llm_key"] = bool(_current.get("llm_api_key", "").strip())
@@ -119,9 +135,21 @@ def update_settings(body: SettingsUpdateRequest, auth: None = Depends(require_au
     """Update settings. Returns updated settings (API key and base_url excluded)."""
     _ensure_current()
     updates = body.dict(exclude_none=True)
-    for key in ["min_ms", "music_only", "merge_enabled", "bb_top_n", "bb_album_top_n",
-                "bb_artist_top_n", "bb_week_start_dow", "bb_week_start_hour",
-                "llm_enabled", "llm_provider", "llm_model", "llm_api_key", "llm_base_url"]:
+    for key in [
+        "min_ms",
+        "music_only",
+        "merge_enabled",
+        "bb_top_n",
+        "bb_album_top_n",
+        "bb_artist_top_n",
+        "bb_week_start_dow",
+        "bb_week_start_hour",
+        "llm_enabled",
+        "llm_provider",
+        "llm_model",
+        "llm_api_key",
+        "llm_base_url",
+    ]:
         if key in updates:
             _current[key] = updates[key]
             _save_setting_to_db(key, updates[key])
@@ -136,7 +164,8 @@ def update_settings(body: SettingsUpdateRequest, auth: None = Depends(require_au
 def rebuild_aggregations(conn: Connection = Depends(get_conn), auth: None = Depends(require_auth)):
     """Rebuild pre-aggregated weekly Billboard tables."""
     _ensure_current()
-    from backend.core.db import get_db, build_aggregations
+    from backend.core.db import build_aggregations, get_db
+
     write_conn = get_db(readonly=False)
     try:
         result = build_aggregations(
@@ -154,6 +183,7 @@ def rebuild_aggregations(conn: Connection = Depends(get_conn), auth: None = Depe
 def clear_translation_cache(auth: None = Depends(require_auth)):
     """Clear all cached Wikipedia translations so they are re-translated on next visit."""
     from backend.core.db import get_db
+
     write_conn = get_db(readonly=False)
     try:
         count = write_conn.execute("SELECT COUNT(*) FROM wikipedia_cache").fetchone()[0]
@@ -167,6 +197,7 @@ def clear_translation_cache(auth: None = Depends(require_auth)):
 # ═══════════════════════════════════════════════════════════════════════════
 # LLM Profile endpoints
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 @router.get("/llm-profiles", response_model=list[LLMProfileResponse])
 def list_llm_profiles(conn: Connection = Depends(get_conn)):
@@ -197,13 +228,19 @@ def get_llm_profile(profile_id: int, conn: Connection = Depends(get_conn)):
 def create_llm_profile(body: LLMProfileCreateRequest, auth: None = Depends(require_auth)):
     """Create a new LLM profile."""
     from backend.core.db import get_db
+
     conn = get_db(readonly=False)
     try:
         cur = conn.execute(
             """INSERT INTO llm_profiles (profile_name, llm_provider, llm_model,
                llm_api_key, llm_base_url) VALUES (?, ?, ?, ?, ?)""",
-            (body.profile_name, body.llm_provider, body.llm_model,
-             body.llm_api_key, body.llm_base_url),
+            (
+                body.profile_name,
+                body.llm_provider,
+                body.llm_model,
+                body.llm_api_key,
+                body.llm_base_url,
+            ),
         )
         conn.commit()
         return {"id": cur.lastrowid, "status": "created"}
@@ -216,9 +253,12 @@ def create_llm_profile(body: LLMProfileCreateRequest, auth: None = Depends(requi
 
 
 @router.put("/llm-profiles/{profile_id}", response_model=LLMProfileDetailResponse)
-def update_llm_profile(profile_id: int, body: LLMProfileUpdateRequest, auth: None = Depends(require_auth)):
+def update_llm_profile(
+    profile_id: int, body: LLMProfileUpdateRequest, auth: None = Depends(require_auth)
+):
     """Update an existing LLM profile."""
     from backend.core.db import get_db
+
     updates = body.dict(exclude_none=True)
     if not updates:
         raise HTTPException(status_code=400, detail="No fields to update")
@@ -227,9 +267,7 @@ def update_llm_profile(profile_id: int, body: LLMProfileUpdateRequest, auth: Non
     params = list(updates.values()) + [profile_id]
     conn = get_db(readonly=False)
     try:
-        conn.execute(
-            f"UPDATE llm_profiles SET {', '.join(set_parts)} WHERE id = ?", params
-        )
+        conn.execute(f"UPDATE llm_profiles SET {', '.join(set_parts)} WHERE id = ?", params)
         conn.commit()
     except Exception as e:
         if "UNIQUE constraint" in str(e):
@@ -264,6 +302,7 @@ def apply_llm_profile(profile_id: int, auth: None = Depends(require_auth)):
     """
     _ensure_current()
     from backend.core.db import get_db
+
     conn = get_db()
     try:
         row = conn.execute(
@@ -291,6 +330,7 @@ def apply_llm_profile(profile_id: int, auth: None = Depends(require_auth)):
 def delete_llm_profile(profile_id: int, auth: None = Depends(require_auth)):
     """Delete an LLM profile."""
     from backend.core.db import get_db
+
     conn = get_db(readonly=False)
     try:
         conn.execute("DELETE FROM llm_profiles WHERE id = ?", (profile_id,))

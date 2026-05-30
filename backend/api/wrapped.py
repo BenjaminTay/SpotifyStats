@@ -1,9 +1,10 @@
 """Wrapped API endpoint."""
 
-from fastapi import APIRouter, Depends
 from sqlite3 import Connection
 
-from backend.dependencies import get_conn, PlayFilters
+from fastapi import APIRouter, Depends
+
+from backend.dependencies import PlayFilters, get_conn
 from backend.models.timeline import YearlyWrapped
 from backend.models.wrapped import WrappedFullResponse
 from backend.services.play_service import get_wrapped_data
@@ -15,9 +16,7 @@ router = APIRouter(prefix="/wrapped", tags=["Wrapped"])
 @router.get("/available-years")
 def available_years(conn: Connection = Depends(get_conn)):
     """Return years with play data for the yearly review."""
-    years = conn.execute(
-        "SELECT DISTINCT ts_year FROM plays ORDER BY ts_year"
-    ).fetchall()
+    years = conn.execute("SELECT DISTINCT ts_year FROM plays ORDER BY ts_year").fetchall()
     return {"years": [int(y[0]) for y in years]}
 
 

@@ -1,36 +1,35 @@
 """Release Cycle API — endpoints for the 发行周期分析 (Tab 12)."""
 
 import json
-from typing import Optional, List
 
 import pandas as pd
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
 
-from backend.core.json_helpers import py_val, df_to_json
+from backend.core.json_helpers import df_to_json, py_val
 from backend.dependencies import BillboardFilters
+from backend.services.billboard_service import (
+    compute_album_weekly_rankings,
+    compute_artist_weekly_rankings,
+    compute_weekly_rankings,
+    load_billboard_raw,
+)
 from backend.services.release_cycle_service import (
-    load_artist_list,
-    load_artist_releases,
+    _resolve_album_group,
     compute_artist_play_timeline,
+    compute_artist_summary,
     compute_release_cycle,
     compute_release_metrics,
-    compute_artist_summary,
+    detect_catalog_reentries,
     fill_summary_from_cycles,
     format_artist_impact,
     format_market_impact,
     get_advance_singles,
-    detect_catalog_reentries,
     get_bonus_tracks,
-    get_single_track_ids,
     get_chart_ranks_for_tracks,
-    _resolve_album_group,
-)
-from backend.services.billboard_service import (
-    load_billboard_raw,
-    compute_weekly_rankings,
-    compute_artist_weekly_rankings,
-    compute_album_weekly_rankings,
+    get_single_track_ids,
+    load_artist_list,
+    load_artist_releases,
 )
 
 router = APIRouter()
@@ -40,11 +39,14 @@ router = APIRouter()
 # Shared helpers
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 def _get_weekly_data(filters: BillboardFilters):
     """Load raw data and compute all weekly rankings (cached upstream)."""
     df_raw = load_billboard_raw(
-        filters.min_ms, filters.music_only,
-        filters.bb_week_start_dow, filters.bb_week_start_hour,
+        filters.min_ms,
+        filters.music_only,
+        filters.bb_week_start_dow,
+        filters.bb_week_start_hour,
     )
     if filters.year_start is not None or filters.year_end is not None:
         df_raw = df_raw.copy()
@@ -89,6 +91,7 @@ def _album_cover_url(album_id):
         return None
 
     from backend.core.db import get_db
+
     conn = get_db()
     row = conn.execute(
         """SELECT 1
@@ -154,12 +157,15 @@ def _find_release_row(releases: pd.DataFrame, album_name: str):
 # because both use :path params; the more specific route wins first.
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 @router.get("/artist-list")
 def get_artist_list(filters: BillboardFilters = Depends()):
     """Sorted list of artists with track counts from current filter."""
     df_raw = load_billboard_raw(
-        filters.min_ms, filters.music_only,
-        filters.bb_week_start_dow, filters.bb_week_start_hour,
+        filters.min_ms,
+        filters.music_only,
+        filters.bb_week_start_dow,
+        filters.bb_week_start_hour,
     )
     if filters.year_start is not None or filters.year_end is not None:
         if filters.year_start is not None:
@@ -197,9 +203,14 @@ def get_album_detail(
         advance_singles = get_advance_singles(artist_name, album_name)
 
     cycle = compute_release_cycle(
-        df_raw, artist_name, album_name, release_date,
-        weekly_artist=weekly_artist, weekly_album=weekly_album,
-        weeks_before=weeks_before, weeks_after=weeks_after,
+        df_raw,
+        artist_name,
+        album_name,
+        release_date,
+        weekly_artist=weekly_artist,
+        weekly_album=weekly_album,
+        weeks_before=weeks_before,
+        weeks_after=weeks_after,
     )
     metrics = compute_release_metrics(cycle, album_type)
 
@@ -210,28 +221,40 @@ def get_album_detail(
             track_ids = get_single_track_ids(artist_name, s["single_name"])
             advance_single_track_ids.update(track_ids)
             ranks = get_chart_ranks_for_tracks(
-                weekly, artist_name, track_ids, release_date,
-                weeks_before=weeks_before, weeks_after=weeks_after,
+                weekly,
+                artist_name,
+                track_ids,
+                release_date,
+                weeks_before=weeks_before,
+                weeks_after=weeks_after,
             )
             if not ranks.empty:
-                advance_single_ranks.append({
-                    "name": s["single_name"],
-                    "release_date": py_val(s.get("release_date")),
-                    "ranks": df_to_json(ranks),
-                })
+                advance_single_ranks.append(
+                    {
+                        "name": s["single_name"],
+                        "release_date": py_val(s.get("release_date")),
+                        "ranks": df_to_json(ranks),
+                    }
+                )
 
     best_track_ranks = None
     track_tl = cycle.get("track_timelines", pd.DataFrame())
     if not track_tl.empty and weekly is not None:
         track_totals = (
             track_tl.groupby(["track_id", "track_name"])["play_count"]
-            .sum().reset_index().sort_values("play_count", ascending=False)
+            .sum()
+            .reset_index()
+            .sort_values("play_count", ascending=False)
         )
         for _, tr in track_totals.iterrows():
             if tr["track_id"] not in advance_single_track_ids:
                 ranks = get_chart_ranks_for_tracks(
-                    weekly, artist_name, [tr["track_id"]], release_date,
-                    weeks_before=weeks_before, weeks_after=weeks_after,
+                    weekly,
+                    artist_name,
+                    [tr["track_id"]],
+                    release_date,
+                    weeks_before=weeks_before,
+                    weeks_after=weeks_after,
                 )
                 if not ranks.empty:
                     best_track_ranks = {"name": tr["track_name"], "ranks": df_to_json(ranks)}
@@ -247,13 +270,18 @@ def get_album_detail(
     if not track_tl.empty:
         top_tracks = (
             track_tl.groupby("track_name")["play_count"]
-            .sum().sort_values(ascending=False).head(20).index.tolist()
+            .sum()
+            .sort_values(ascending=False)
+            .head(20)
+            .index.tolist()
         )
         matrix_data = track_tl[track_tl["track_name"].isin(top_tracks)]
         if not matrix_data.empty:
             pivot = matrix_data.pivot_table(
-                index="track_name", columns="week_offset",
-                values="play_count", fill_value=0,
+                index="track_name",
+                columns="week_offset",
+                values="play_count",
+                fill_value=0,
             )
             if not pivot.empty and not pivot.columns.empty:
                 track_first_week = (pivot > 0).idxmax(axis=1)
@@ -272,7 +300,9 @@ def get_album_detail(
         "album_name": album_name,
         "artist_name": artist_name,
         "album_type": album_type,
-        "release_date": release_date.isoformat() if hasattr(release_date, "isoformat") else str(release_date),
+        "release_date": release_date.isoformat()
+        if hasattr(release_date, "isoformat")
+        else str(release_date),
         "canonical_name": canonical,
         "primary_name": primary_name,
         "group_albums": group_albums,
@@ -292,7 +322,9 @@ def get_album_detail(
         "catalog_reentries": catalog,
         "bonus_tracks": bonus_tracks,
         "track_matrix": track_matrix,
-        "release_date_iso": release_date.isoformat() if hasattr(release_date, "isoformat") else str(release_date),
+        "release_date_iso": release_date.isoformat()
+        if hasattr(release_date, "isoformat")
+        else str(release_date),
     }
 
 
@@ -308,8 +340,14 @@ def get_artist_overview(
 
     releases = load_artist_releases(artist_name)
     if releases.empty:
-        return {"artist_name": artist_name, "releases": [], "summary": None,
-                "rank_trend": [], "release_events": [], "cycles": []}
+        return {
+            "artist_name": artist_name,
+            "releases": [],
+            "summary": None,
+            "rank_trend": [],
+            "release_events": [],
+            "cycles": [],
+        }
 
     artist_df, artist_median, total_daily = _precompute_artist_context(df_raw, artist_name)
 
@@ -317,30 +355,41 @@ def get_artist_overview(
     all_cycles_map = {}
     for _, rel in releases.iterrows():
         cycle = compute_release_cycle(
-            df_raw, artist_name, rel["album_name"], rel["release_date"],
-            weekly_artist=weekly_artist, weekly_album=weekly_album,
-            weeks_before=weeks_before, weeks_after=weeks_after,
-            artist_df=artist_df, artist_median=artist_median, total_daily=total_daily,
+            df_raw,
+            artist_name,
+            rel["album_name"],
+            rel["release_date"],
+            weekly_artist=weekly_artist,
+            weekly_album=weekly_album,
+            weeks_before=weeks_before,
+            weeks_after=weeks_after,
+            artist_df=artist_df,
+            artist_median=artist_median,
+            total_daily=total_daily,
         )
         all_cycles_map[rel["album_name"]] = cycle
         metrics = compute_release_metrics(cycle, rel["album_type"])
-        cycles_out.append({
-            "album_name": rel["album_name"],
-            "album_type": rel["album_type"],
-            "release_date": rel["release_date"].isoformat() if hasattr(rel["release_date"], "isoformat") else str(rel["release_date"]),
-            "db_album_id": py_val(rel.get("db_album_id")),
-            "spotify_album_id": py_val(rel.get("spotify_album_id")),
-            "canonical_name": py_val(rel.get("canonical_name")),
-            "sub_albums": rel.get("sub_albums"),
-            "cover_url": _album_cover_url(rel.get("db_album_id")),
-            "metrics": metrics,
-            "artist_timeline": df_to_json(cycle.get("artist_timeline")),
-            "album_timeline": df_to_json(cycle.get("album_timeline")),
-            "artist_ranks": df_to_json(cycle.get("artist_ranks")),
-            "album_ranks": df_to_json(cycle.get("album_ranks")),
-            "total_timeline": df_to_json(cycle.get("total_timeline")),
-            "artist_all_time_median": py_val(cycle.get("artist_all_time_median")),
-        })
+        cycles_out.append(
+            {
+                "album_name": rel["album_name"],
+                "album_type": rel["album_type"],
+                "release_date": rel["release_date"].isoformat()
+                if hasattr(rel["release_date"], "isoformat")
+                else str(rel["release_date"]),
+                "db_album_id": py_val(rel.get("db_album_id")),
+                "spotify_album_id": py_val(rel.get("spotify_album_id")),
+                "canonical_name": py_val(rel.get("canonical_name")),
+                "sub_albums": rel.get("sub_albums"),
+                "cover_url": _album_cover_url(rel.get("db_album_id")),
+                "metrics": metrics,
+                "artist_timeline": df_to_json(cycle.get("artist_timeline")),
+                "album_timeline": df_to_json(cycle.get("album_timeline")),
+                "artist_ranks": df_to_json(cycle.get("artist_ranks")),
+                "album_ranks": df_to_json(cycle.get("album_ranks")),
+                "total_timeline": df_to_json(cycle.get("total_timeline")),
+                "artist_all_time_median": py_val(cycle.get("artist_all_time_median")),
+            }
+        )
 
     summary = compute_artist_summary(artist_name, releases, weekly, weekly_artist, weekly_album)
     fill_summary_from_cycles(summary, artist_name, releases, all_cycles_map, df_raw)
@@ -365,13 +414,15 @@ def get_artist_overview(
             rd = rel["release_date"]
             if rd < first_play - pd.Timedelta(weeks=4):
                 continue
-            release_events.append({
-                "album_name": rel["album_name"],
-                "album_type": rel["album_type"],
-                "release_date": rd.isoformat() if hasattr(rd, "isoformat") else str(rd),
-                "db_album_id": py_val(rel.get("db_album_id")),
-                "cover_url": _album_cover_url(rel.get("db_album_id")),
-            })
+            release_events.append(
+                {
+                    "album_name": rel["album_name"],
+                    "album_type": rel["album_type"],
+                    "release_date": rd.isoformat() if hasattr(rd, "isoformat") else str(rd),
+                    "db_album_id": py_val(rel.get("db_album_id")),
+                    "cover_url": _album_cover_url(rel.get("db_album_id")),
+                }
+            )
     else:
         release_events = []
 
@@ -388,8 +439,12 @@ def get_artist_overview(
         "releases": releases_out,
         "rank_trend": rank_trend,
         "release_events": release_events,
-        "first_play_week": artist_timeline["billboard_week"].min().isoformat() if not artist_timeline.empty else None,
-        "last_play_week": artist_timeline["billboard_week"].max().isoformat() if not artist_timeline.empty else None,
+        "first_play_week": artist_timeline["billboard_week"].min().isoformat()
+        if not artist_timeline.empty
+        else None,
+        "last_play_week": artist_timeline["billboard_week"].max().isoformat()
+        if not artist_timeline.empty
+        else None,
         "cycles": cycles_out,
     }
 
@@ -400,7 +455,7 @@ class CompareItem(BaseModel):
 
 
 class CompareRequest(BaseModel):
-    items: List[CompareItem]
+    items: list[CompareItem]
     weeks_before: int = 12
     weeks_after: int = 24
 
@@ -424,24 +479,33 @@ def compare_releases(
             continue
 
         cycle = compute_release_cycle(
-            df_raw, item.artist_name, cycle_album_name, release_date,
-            weekly_artist=weekly_artist, weekly_album=weekly_album,
-            weeks_before=body.weeks_before, weeks_after=body.weeks_after,
+            df_raw,
+            item.artist_name,
+            cycle_album_name,
+            release_date,
+            weekly_artist=weekly_artist,
+            weekly_album=weekly_album,
+            weeks_before=body.weeks_before,
+            weeks_after=body.weeks_after,
         )
         metrics = compute_release_metrics(cycle, "album")
 
-        result.append({
-            "artist_name": item.artist_name,
-            "album_name": item.album_name,
-            "release_date": release_date.isoformat() if hasattr(release_date, "isoformat") else str(release_date),
-            "label": f"{item.album_name} ({release_date.strftime('%Y') if hasattr(release_date, 'strftime') else ''})",
-            "metrics": {
-                **metrics,
-                "artist_impact_fmt": format_artist_impact(metrics["artist_impact"]),
-                "market_impact_fmt": format_market_impact(metrics["market_impact"]),
-            },
-            "album_timeline": df_to_json(cycle.get("album_timeline")),
-            "album_ranks": df_to_json(cycle.get("album_ranks")),
-        })
+        result.append(
+            {
+                "artist_name": item.artist_name,
+                "album_name": item.album_name,
+                "release_date": release_date.isoformat()
+                if hasattr(release_date, "isoformat")
+                else str(release_date),
+                "label": f"{item.album_name} ({release_date.strftime('%Y') if hasattr(release_date, 'strftime') else ''})",
+                "metrics": {
+                    **metrics,
+                    "artist_impact_fmt": format_artist_impact(metrics["artist_impact"]),
+                    "market_impact_fmt": format_market_impact(metrics["market_impact"]),
+                },
+                "album_timeline": df_to_json(cycle.get("album_timeline")),
+                "album_ranks": df_to_json(cycle.get("album_ranks")),
+            }
+        )
 
     return {"comparisons": result}

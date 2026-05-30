@@ -1,9 +1,11 @@
 """Account center API — aggregated endpoints for the /account page."""
-from fastapi import APIRouter, Depends
+
 from sqlite3 import Connection
 
+from fastapi import APIRouter, Depends
+
 from backend.dependencies import get_conn
-from backend.services.account_service import get_collection_insights, get_account_summary
+from backend.services.account_service import get_account_summary, get_collection_insights
 
 router = APIRouter(prefix="/account", tags=["Account"])
 

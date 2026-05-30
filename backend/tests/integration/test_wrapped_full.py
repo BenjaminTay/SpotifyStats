@@ -6,6 +6,8 @@ from backend.core.db import get_db
 from backend.models.wrapped import WrappedFullResponse
 from backend.services.wrapped_service import get_wrapped_full
 
+pytestmark = pytest.mark.integration
+
 
 @pytest.fixture(scope="module")
 def wrapped_2024_full(default_params):
@@ -75,7 +77,15 @@ class TestWrappedFull:
         assert "primary_desc" in p
         dims = p["dimensions"]
         assert len(dims) == 7
-        for key in ["explorer", "loyalist", "binger", "night_owl", "collector", "trend_chaser", "globetrotter"]:
+        for key in [
+            "explorer",
+            "loyalist",
+            "binger",
+            "night_owl",
+            "collector",
+            "trend_chaser",
+            "globetrotter",
+        ]:
             assert key in dims, f"Missing dimension: {key}"
             assert "label" in dims[key]
             assert "score" in dims[key]

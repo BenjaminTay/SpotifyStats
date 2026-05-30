@@ -39,14 +39,14 @@ def df_to_json(df, date_cols=None):
     """
     if df is None:
         return []
-    if hasattr(df, 'empty') and df.empty:
+    if hasattr(df, "empty") and df.empty:
         return []
     date_cols = date_cols or []
     records = []
     for _, row in df.iterrows():
         d = {}
         for k, v in row.items():
-            if k in date_cols and hasattr(v, 'isoformat'):
+            if k in date_cols and hasattr(v, "isoformat"):
                 d[k] = v.isoformat()
             else:
                 d[k] = py_val(v)

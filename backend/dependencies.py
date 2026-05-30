@@ -10,16 +10,16 @@ This is a pragmatic choice for a single-user local app with SQLite WAL mode,
 where concurrent reads are safe and connection overhead is negligible (~1ms).
 """
 
-from typing import Optional
+from __future__ import annotations
 
-from fastapi import Depends, Query
+from fastapi import Query
 
 from backend.core.db import get_db
-
 
 # ═══════════════════════════════════════════════════════════════════════════
 # Database connection
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 def get_conn(readonly: bool = True):
     """Yield a database connection. Use readonly=True for all GET endpoints."""
@@ -33,6 +33,7 @@ def get_conn(readonly: bool = True):
 # ═══════════════════════════════════════════════════════════════════════════
 # Shared query-parameter dependencies
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 class PlayFilters:
     """Standard play-data filters — used by dashboard, timeline, leaderboard,
@@ -62,8 +63,8 @@ class BillboardFilters:
         bb_artist_top_n: int = Query(default=20, ge=5, le=100, description="艺人榜 Top N"),
         bb_week_start_dow: int = Query(default=4, ge=0, le=6, description="周起始星期 (0=周一)"),
         bb_week_start_hour: int = Query(default=0, ge=0, le=23, description="周起始小时"),
-        year_start: Optional[int] = Query(default=None, description="起始年份 (含)"),
-        year_end: Optional[int] = Query(default=None, description="结束年份 (含)"),
+        year_start: int | None = Query(default=None, description="起始年份 (含)"),
+        year_end: int | None = Query(default=None, description="结束年份 (含)"),
     ):
         self.min_ms = min_ms
         self.music_only = music_only

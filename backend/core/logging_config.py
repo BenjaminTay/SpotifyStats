@@ -10,12 +10,12 @@ import sys
 _SENSITIVE_PATTERNS = [
     (re.compile(r'(llm_api_key["\s:=]+)([^\s"\',}]+)', re.IGNORECASE), r"\1[REDACTED]"),
     (re.compile(r'(api_key["\s:=]+)([^\s"\',}]+)', re.IGNORECASE), r"\1[REDACTED]"),
-    (re.compile(r'(Bearer\s+)([A-Za-z0-9._\-]+)'), r"\1[REDACTED]"),
+    (re.compile(r"(Bearer\s+)([A-Za-z0-9._\-]+)"), r"\1[REDACTED]"),
     (re.compile(r'(access_token["\s:=]+)([^\s"\',}]+)', re.IGNORECASE), r"\1[REDACTED]"),
     (re.compile(r'(refresh_token["\s:=]+)([^\s"\',}]+)', re.IGNORECASE), r"\1[REDACTED]"),
     (re.compile(r'(client_secret["\s:=]+)([^\s"\',}]+)', re.IGNORECASE), r"\1[REDACTED]"),
-    (re.compile(r'(sk-[A-Za-z0-9]{20,})'), r"[REDACTED_API_KEY]"),
-    (re.compile(r'(deepseek-[A-Za-z0-9]{20,})'), r"[REDACTED_API_KEY]"),
+    (re.compile(r"(sk-[A-Za-z0-9]{20,})"), r"[REDACTED_API_KEY]"),
+    (re.compile(r"(deepseek-[A-Za-z0-9]{20,})"), r"[REDACTED_API_KEY]"),
     (re.compile(r'(Authorization["\s:=]+)([^\s"\',}]+)', re.IGNORECASE), r"\1[REDACTED]"),
     (re.compile(r'(x-api-key["\s:=]+)([^\s"\',}]+)', re.IGNORECASE), r"\1[REDACTED]"),
 ]

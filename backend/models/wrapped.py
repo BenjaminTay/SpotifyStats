@@ -1,6 +1,7 @@
 """Yearly review full response models."""
 
-from typing import Optional
+from __future__ import annotations
+
 from pydantic import BaseModel
 
 
@@ -80,7 +81,7 @@ class LanguageDist(BaseModel):
 class GenrePanorama(BaseModel):
     top_genres: list[GenreItem] = []
     monthly_genres: list[MonthlyGenreItem] = []
-    language_dist: Optional[LanguageDist] = None
+    language_dist: LanguageDist | None = None
 
 
 class LateNightTrack(BaseModel):
@@ -109,7 +110,7 @@ class TimeStory(BaseModel):
     daily_grid: list[list[int]] = []
     monthly_pulse: list[MonthlyPulseItem] = []
     hourly_dist: list[HourlyDistItem] = []
-    late_night: Optional[LateNightInfo] = None
+    late_night: LateNightInfo | None = None
 
 
 class RegionDist(BaseModel):
@@ -148,7 +149,7 @@ class LongestLove(BaseModel):
 class DiscoveryReturns(BaseModel):
     new_artists: list[NewArtist] = []
     returning_tracks: list[ReturningTrack] = []
-    longest_love: Optional[LongestLove] = None
+    longest_love: LongestLove | None = None
 
 
 class ListeningAge(BaseModel):
@@ -165,7 +166,7 @@ class AlbumCompletion(BaseModel):
 
 
 class ListeningDepth(BaseModel):
-    listening_age: Optional[ListeningAge] = None
+    listening_age: ListeningAge | None = None
     album_completion: list[AlbumCompletion] = []
     deep_listen_ratio: float = 0.0
 
@@ -188,10 +189,10 @@ class LongestStreak(BaseModel):
 
 
 class SpecialMoments(BaseModel):
-    most_active_day: Optional[MostActiveDay] = None
-    earliest_listen: Optional[ListenMoment] = None
-    latest_listen: Optional[ListenMoment] = None
-    longest_streak: Optional[LongestStreak] = None
+    most_active_day: MostActiveDay | None = None
+    earliest_listen: ListenMoment | None = None
+    latest_listen: ListenMoment | None = None
+    longest_streak: LongestStreak | None = None
 
 
 class MonthlyDrillTrack(BaseModel):
@@ -210,15 +211,15 @@ class MonthlyDrillItem(BaseModel):
     month: int
     total_hours: float
     top_tracks: list[MonthlyDrillTrack] = []
-    top_artist: Optional[MonthlyDrillArtist] = None
+    top_artist: MonthlyDrillArtist | None = None
 
 
 class LastYearComparison(BaseModel):
-    total_hours_change: Optional[float] = None
-    plays_change: Optional[float] = None
-    tracks_change: Optional[float] = None
-    artists_change: Optional[float] = None
-    active_days_change: Optional[float] = None
+    total_hours_change: float | None = None
+    plays_change: float | None = None
+    tracks_change: float | None = None
+    artists_change: float | None = None
+    active_days_change: float | None = None
 
 
 class TopVsAlltimeMark(BaseModel):
@@ -228,21 +229,21 @@ class TopVsAlltimeMark(BaseModel):
 
 
 class YearComparison(BaseModel):
-    last_year: Optional[LastYearComparison] = None
+    last_year: LastYearComparison | None = None
     top_vs_alltime: dict[str, list[TopVsAlltimeMark]] = {}
 
 
 class WrappedFullResponse(BaseModel):
     year: int
     empty: bool
-    hero: Optional[WrappedFullHero] = None
-    personality: Optional[PersonalityResult] = None
-    top_lists: Optional[TopLists] = None
-    genre_panorama: Optional[GenrePanorama] = None
-    time_story: Optional[TimeStory] = None
-    music_map: Optional[MusicMap] = None
-    discovery_returns: Optional[DiscoveryReturns] = None
-    listening_depth: Optional[ListeningDepth] = None
-    special_moments: Optional[SpecialMoments] = None
+    hero: WrappedFullHero | None = None
+    personality: PersonalityResult | None = None
+    top_lists: TopLists | None = None
+    genre_panorama: GenrePanorama | None = None
+    time_story: TimeStory | None = None
+    music_map: MusicMap | None = None
+    discovery_returns: DiscoveryReturns | None = None
+    listening_depth: ListeningDepth | None = None
+    special_moments: SpecialMoments | None = None
     monthly_drilldown: list[MonthlyDrillItem] = []
-    comparison: Optional[YearComparison] = None
+    comparison: YearComparison | None = None

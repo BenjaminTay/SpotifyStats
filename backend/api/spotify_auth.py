@@ -1,26 +1,27 @@
 """Spotify OAuth PKCE API endpoints."""
 
-from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import RedirectResponse
 from sqlite3 import Connection
 
-from backend.dependencies import get_conn
+from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import RedirectResponse
+
 from backend.core.auth import require_auth
+from backend.core.spotify_utils import (
+    clear_user_tokens,
+    get_followed_artists,
+    get_playlists,
+    get_recently_played,
+    get_top_items,
+    get_user_access_token,
+    sync_all_spotify_data,
+)
+from backend.dependencies import get_conn
 from backend.services.spotify_auth import (
     begin_oauth_flow,
     complete_oauth_flow,
-    get_connection_status,
     fetch_saved_tracks,
+    get_connection_status,
     get_live_playback,
-)
-from backend.core.spotify_utils import (
-    clear_user_tokens,
-    get_user_access_token,
-    get_top_items,
-    get_recently_played,
-    get_followed_artists,
-    get_playlists,
-    sync_all_spotify_data,
 )
 
 router = APIRouter(prefix="/spotify/auth", tags=["Spotify Auth"])
@@ -28,6 +29,7 @@ router = APIRouter(prefix="/spotify/auth", tags=["Spotify Auth"])
 
 def _get_frontend_origin() -> str:
     from backend.core.config import FRONTEND_ORIGIN
+
     return FRONTEND_ORIGIN
 
 
@@ -41,6 +43,7 @@ def spotify_login():
 def spotify_callback(code: str, state: str):
     """Handle Spotify OAuth redirect. Exchanges code for tokens, redirects to settings."""
     from backend.core.db import get_db
+
     write_conn = get_db(readonly=False)
     try:
         result = complete_oauth_flow(write_conn, code, state)
@@ -48,9 +51,7 @@ def spotify_callback(code: str, state: str):
             return RedirectResponse(
                 url=f"{_get_frontend_origin()}/settings?spotify_error={result['error']}"
             )
-        return RedirectResponse(
-            url=f"{_get_frontend_origin()}/settings?spotify_connected=true"
-        )
+        return RedirectResponse(url=f"{_get_frontend_origin()}/settings?spotify_connected=true")
     finally:
         write_conn.close()
 
@@ -65,6 +66,7 @@ def spotify_status(conn: Connection = Depends(get_conn)):
 def spotify_disconnect(auth: None = Depends(require_auth)):
     """Disconnect Spotify and remove stored tokens."""
     from backend.core.db import get_db
+
     write_conn = get_db(readonly=False)
     try:
         clear_user_tokens(write_conn)
@@ -77,6 +79,7 @@ def spotify_disconnect(auth: None = Depends(require_auth)):
 def spotify_sync(auth: None = Depends(require_auth)):
     """Fetch saved tracks from Spotify API and backfill added_date."""
     from backend.core.db import get_db
+
     write_conn = get_db(readonly=False)
     try:
         result = fetch_saved_tracks(write_conn)
@@ -112,6 +115,7 @@ def spotify_playing(conn: Connection = Depends(get_conn)):
 def spotify_sync_all(auth: None = Depends(require_auth)):
     """Fetch and persist all available Spotify data (profile, top items, recently played)."""
     from backend.core.db import get_db
+
     write_conn = get_db(readonly=False)
     try:
         token = get_user_access_token(write_conn)

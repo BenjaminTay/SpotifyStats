@@ -1,10 +1,12 @@
 """Account center services — cross-analysis of saved tracks × play history."""
+
+from __future__ import annotations
+
 import sqlite3
 from collections import Counter
-from typing import Optional
 
 
-def _cover_url(image_path, image_url, cover_type: str, entity_id) -> Optional[str]:
+def _cover_url(image_path, image_url, cover_type: str, entity_id) -> str | None:
     """Return the smart local cover endpoint when any cover source exists."""
     if entity_id is None:
         return None
@@ -13,7 +15,7 @@ def _cover_url(image_path, image_url, cover_type: str, entity_id) -> Optional[st
     return None
 
 
-def _artist_cover_map(conn: sqlite3.Connection) -> dict[str, Optional[str]]:
+def _artist_cover_map(conn: sqlite3.Connection) -> dict[str, str | None]:
     """Returns {artist_name: cover_url} for all artists."""
     rows = conn.execute(
         "SELECT artist_name, artist_id, image_path, image_url FROM artists"
@@ -24,7 +26,7 @@ def _artist_cover_map(conn: sqlite3.Connection) -> dict[str, Optional[str]]:
     }
 
 
-def _track_album_cover_map(conn: sqlite3.Connection) -> dict[tuple[str, str], Optional[str]]:
+def _track_album_cover_map(conn: sqlite3.Connection) -> dict[tuple[str, str], str | None]:
     """Returns {(track_name, artist_name): cover_url} via tracks→albums join."""
     rows = conn.execute(
         """SELECT t.track_name, a.artist_name, al.album_id, al.image_path, al.image_url
@@ -33,7 +35,9 @@ def _track_album_cover_map(conn: sqlite3.Connection) -> dict[tuple[str, str], Op
            LEFT JOIN albums al ON t.album_id = al.album_id"""
     ).fetchall()
     return {
-        (r["track_name"], r["artist_name"]): _cover_url(r["image_path"], r["image_url"], "albums", r["album_id"])
+        (r["track_name"], r["artist_name"]): _cover_url(
+            r["image_path"], r["image_url"], "albums", r["album_id"]
+        )
         for r in rows
     }
 
@@ -44,9 +48,8 @@ def get_collection_insights(conn: sqlite3.Connection) -> dict:
     性能优化：核心 saved_tracks×plays 交叉查询只执行一次，
     所有衍生计算（人格、生命周期、化学反应等）均在 Python 内存中完成。
     """
-    import re
     import json
-    from collections import Counter
+    import re
 
     import jieba
 
@@ -96,17 +99,29 @@ def get_collection_insights(conn: sqlite3.Connection) -> dict:
     impulsive_pct = impulsive_count / total * 100 if total else 0
 
     if avg_before >= 10 and retention_pct >= 80:
-        personality = {"type": "深海淘金者", "icon": "⛏️",
-                       "description": "你不会轻易收藏，平均听完多次后才按下那颗 ❤️。但一旦收藏，就几乎不再放手。"}
+        personality = {
+            "type": "深海淘金者",
+            "icon": "⛏️",
+            "description": "你不会轻易收藏，平均听完多次后才按下那颗 ❤️。但一旦收藏，就几乎不再放手。",
+        }
     elif avg_before <= 3 and retention_pct >= 70:
-        personality = {"type": "冲动收藏家", "icon": "⚡",
-                       "description": "你相信第一感觉—绝大多数收藏都在 3 次播放内完成。"}
+        personality = {
+            "type": "冲动收藏家",
+            "icon": "⚡",
+            "description": "你相信第一感觉—绝大多数收藏都在 3 次播放内完成。",
+        }
     elif avg_before >= 8 and saved_count < 500:
-        personality = {"type": "精挑细选者", "icon": "💎",
-                       "description": "你的收藏夹小而精，每首歌都经过深思熟虑。"}
+        personality = {
+            "type": "精挑细选者",
+            "icon": "💎",
+            "description": "你的收藏夹小而精，每首歌都经过深思熟虑。",
+        }
     else:
-        personality = {"type": "均衡型收藏者", "icon": "🎵",
-                       "description": "你的收藏习惯介于冲动和谨慎之间，既有直觉选择也有深思熟虑。"}
+        personality = {
+            "type": "均衡型收藏者",
+            "icon": "🎵",
+            "description": "你的收藏习惯介于冲动和谨慎之间，既有直觉选择也有深思熟虑。",
+        }
     personality["metrics"] = {
         "avg_plays_before_save": round(avg_before, 1),
         "retention_pct": round(retention_pct, 1),
@@ -162,14 +177,18 @@ def get_collection_insights(conn: sqlite3.Connection) -> dict:
     first_save_story = None
     if first and first["added_date"]:
         import datetime as _dt
+
         save_dt = _dt.datetime.strptime(first["added_date"][:10], "%Y-%m-%d")
         days_since = (_dt.date.today() - save_dt.date()).days
         total_plays_f = first["total_plays"] or 0
         interval = round(days_since / max(total_plays_f, 1), 1)
         first_save_story = {
-            "track_name": first["track_name"], "artist_name": first["artist_name"],
-            "save_date": first["added_date"], "total_plays": total_plays_f,
-            "days_since": days_since, "avg_interval_days": interval,
+            "track_name": first["track_name"],
+            "artist_name": first["artist_name"],
+            "save_date": first["added_date"],
+            "total_plays": total_plays_f,
+            "days_since": days_since,
+            "avg_interval_days": interval,
             "cover_url": track_cover_map.get((first["track_name"], first["artist_name"])),
         }
 
@@ -182,8 +201,14 @@ def get_collection_insights(conn: sqlite3.Connection) -> dict:
     avg_settling = sum(s["mo3_12"] for s in stats) / (t * 39)  # 沉淀期 39 周，折算周均
 
     evergreen = sum(1 for s in stats if s["after_1yr"] > 0)
-    occasional = sum(1 for s in stats if s["after_1yr"] == 0 and (s["mo3_12"] > 0 or s["mo1_3"] > 0))
-    forgotten = sum(1 for s in stats if s["after_1yr"] == 0 and s["mo3_12"] == 0 and s["mo1_3"] == 0 and s["wk1"] == 0)
+    occasional = sum(
+        1 for s in stats if s["after_1yr"] == 0 and (s["mo3_12"] > 0 or s["mo1_3"] > 0)
+    )
+    forgotten = sum(
+        1
+        for s in stats
+        if s["after_1yr"] == 0 and s["mo3_12"] == 0 and s["mo1_3"] == 0 and s["wk1"] == 0
+    )
 
     lifecycle = {
         "honeymoon": {"label": "蜜月期", "weeks": "0-1", "avg_per_week": round(avg_wk1, 1)},
@@ -200,9 +225,14 @@ def get_collection_insights(conn: sqlite3.Connection) -> dict:
         """从内存 stats 中取指定指标最高的 n 首曲目。"""
         valid = [s for s in stats if s[key] > 0]
         valid.sort(key=lambda s: s[key], reverse=True)
-        return [{"track_name": s["track_name"], "artist_name": s["artist_name"],
-                 "cover_url": track_cover_map.get((s["track_name"], s["artist_name"]))}
-                for s in valid[:n]]
+        return [
+            {
+                "track_name": s["track_name"],
+                "artist_name": s["artist_name"],
+                "cover_url": track_cover_map.get((s["track_name"], s["artist_name"])),
+            }
+            for s in valid[:n]
+        ]
 
     lifecycle["honeymoon_examples"] = _top_examples("wk1")
     lifecycle["cooling_examples"] = _top_examples("mo1_3")
@@ -222,14 +252,17 @@ def get_collection_insights(conn: sqlite3.Connection) -> dict:
           AND CAST((julianday(p.ts_date) - julianday(st.added_date)) / 7 AS INTEGER) BETWEEN 0 AND 51
         GROUP BY wk ORDER BY wk
     """).fetchall()
-    lifecycle_trend = [{"week": r[0], "avg_plays": round(r[2] / max(r[1], 1), 2),
-                        "track_count": r[1]} for r in trend_rows]
+    lifecycle_trend = [
+        {"week": r[0], "avg_plays": round(r[2] / max(r[1], 1), 2), "track_count": r[1]}
+        for r in trend_rows
+    ]
 
     # Top 3 收藏曲目的个体周趋势
     top_tracks = sorted(stats, key=lambda s: s["total_plays"], reverse=True)[:3]
     lifecycle_top_tracks = []
     for tk in top_tracks:
-        rows = conn.execute("""
+        rows = conn.execute(
+            """
             SELECT
                 CAST((julianday(p.ts_date) - julianday(st.added_date)) / 7 AS INTEGER) as wk,
                 COUNT(*) as plays
@@ -241,12 +274,17 @@ def get_collection_insights(conn: sqlite3.Connection) -> dict:
               AND p.ts_date >= st.added_date
               AND CAST((julianday(p.ts_date) - julianday(st.added_date)) / 7 AS INTEGER) BETWEEN 0 AND 51
             GROUP BY wk ORDER BY wk
-        """, [tk["track_name"], tk["artist_name"]]).fetchall()
-        lifecycle_top_tracks.append({
-            "track_name": tk["track_name"], "artist_name": tk["artist_name"],
-            "cover_url": track_cover_map.get((tk["track_name"], tk["artist_name"])),
-            "data": [{"week": r[0], "plays": r[1]} for r in rows],
-        })
+        """,
+            [tk["track_name"], tk["artist_name"]],
+        ).fetchall()
+        lifecycle_top_tracks.append(
+            {
+                "track_name": tk["track_name"],
+                "artist_name": tk["artist_name"],
+                "cover_url": track_cover_map.get((tk["track_name"], tk["artist_name"])),
+                "data": [{"week": r[0], "plays": r[1]} for r in rows],
+            }
+        )
 
     # =====================================================================
     # 5. 收藏×播放 化学反应（6 种类型）—— 从内存 stats 计算
@@ -255,10 +293,21 @@ def get_collection_insights(conn: sqlite3.Connection) -> dict:
     chemistry_counts = {
         "love_at_first": sum(1 for s in stats if s["before_save"] <= 3),
         "slow_burn": sum(1 for s in stats if s["before_save"] >= 20),
-        "flash_pan": sum(1 for s in stats if s["wk1"] >= 10 and (s["last_play"] is None or s["last_play"] < three_months_ago)),
-        "late_bloomer": sum(1 for s in stats if s["after_6mo"] > s["first_6mo"] * 2 and s["first_6mo"] > 0),
-        "steady": sum(1 for s in stats if s["before_save"] > 0 and s["first_6mo"] > 0
-                      and abs(s["first_6mo"] / s["before_save"] - 1) < 0.5),
+        "flash_pan": sum(
+            1
+            for s in stats
+            if s["wk1"] >= 10 and (s["last_play"] is None or s["last_play"] < three_months_ago)
+        ),
+        "late_bloomer": sum(
+            1 for s in stats if s["after_6mo"] > s["first_6mo"] * 2 and s["first_6mo"] > 0
+        ),
+        "steady": sum(
+            1
+            for s in stats
+            if s["before_save"] > 0
+            and s["first_6mo"] > 0
+            and abs(s["first_6mo"] / s["before_save"] - 1) < 0.5
+        ),
         "shelf_sitter": sum(1 for s in stats if s["total_plays"] <= 3),
     }
     total_with_dates = total
@@ -267,45 +316,72 @@ def get_collection_insights(conn: sqlite3.Connection) -> dict:
         """从内存 stats 中筛选并返回全部匹配曲目（按 total_plays DESC），供前端轮播。"""
         matched = [s for s in stats if predicate(s)]
         matched.sort(key=lambda s: s["total_plays"], reverse=True)
-        return [{"track_name": s["track_name"], "artist_name": s["artist_name"],
-                 "total_plays": s["total_plays"], "before_save": s["before_save"],
-                 "first_week": s["wk1"], "days_since_play": None,
-                 "cover_url": track_cover_map.get((s["track_name"], s["artist_name"]))}
-                for s in matched]
+        return [
+            {
+                "track_name": s["track_name"],
+                "artist_name": s["artist_name"],
+                "total_plays": s["total_plays"],
+                "before_save": s["before_save"],
+                "first_week": s["wk1"],
+                "days_since_play": None,
+                "cover_url": track_cover_map.get((s["track_name"], s["artist_name"])),
+            }
+            for s in matched
+        ]
 
     chemistry = {
         "love_at_first_listen": {
             "count": chemistry_counts["love_at_first"],
-            "label": "一见钟情", "description": "收藏时播放次数 ≤ 3", "icon": "💘",
+            "label": "一见钟情",
+            "description": "收藏时播放次数 ≤ 3",
+            "icon": "💘",
             "examples": _chemistry_examples(lambda s: s["before_save"] <= 3),
         },
         "slow_burn": {
             "count": chemistry_counts["slow_burn"],
-            "label": "慢热型", "description": "收藏时已播放 ≥ 20 次", "icon": "🔥",
+            "label": "慢热型",
+            "description": "收藏时已播放 ≥ 20 次",
+            "icon": "🔥",
             "examples": _chemistry_examples(lambda s: s["before_save"] >= 20),
         },
         "flash_in_the_pan": {
             "count": chemistry_counts["flash_pan"],
-            "label": "昙花一现", "description": "收藏周播放 ≥ 10 次，现已 > 3 月未播", "icon": "🌠",
+            "label": "昙花一现",
+            "description": "收藏周播放 ≥ 10 次，现已 > 3 月未播",
+            "icon": "🌠",
             "examples": _chemistry_examples(
-                lambda s: s["wk1"] >= 10 and (s["last_play"] is None or s["last_play"] < three_months_ago)),
+                lambda s: (
+                    s["wk1"] >= 10 and (s["last_play"] is None or s["last_play"] < three_months_ago)
+                )
+            ),
         },
         "late_bloomer": {
             "count": chemistry_counts["late_bloomer"],
-            "label": "厚积薄发", "description": "收藏后 6 个月播放持续增长", "icon": "🌱",
+            "label": "厚积薄发",
+            "description": "收藏后 6 个月播放持续增长",
+            "icon": "🌱",
             "examples": _chemistry_examples(
-                lambda s: s["after_6mo"] > s["first_6mo"] * 2 and s["first_6mo"] > 0),
+                lambda s: s["after_6mo"] > s["first_6mo"] * 2 and s["first_6mo"] > 0
+            ),
         },
         "steady_favorite": {
             "count": chemistry_counts["steady"],
-            "label": "细水长流", "description": "收藏前后播放频率稳定", "icon": "💪",
+            "label": "细水长流",
+            "description": "收藏前后播放频率稳定",
+            "icon": "💪",
             "examples": _chemistry_examples(
-                lambda s: s["before_save"] > 0 and s["first_6mo"] > 0
-                and abs(s["first_6mo"] / s["before_save"] - 1) < 0.5),
+                lambda s: (
+                    s["before_save"] > 0
+                    and s["first_6mo"] > 0
+                    and abs(s["first_6mo"] / s["before_save"] - 1) < 0.5
+                )
+            ),
         },
         "shelf_sitter": {
             "count": chemistry_counts["shelf_sitter"],
-            "label": "收藏夹吃灰", "description": "收藏后总播放 ≤ 3 次", "icon": "📌",
+            "label": "收藏夹吃灰",
+            "description": "收藏后总播放 ≤ 3 次",
+            "icon": "📌",
             "examples": _chemistry_examples(lambda s: s["total_plays"] <= 3),
         },
         "total_with_dates": total_with_dates,
@@ -331,8 +407,15 @@ def get_collection_insights(conn: sqlite3.Connection) -> dict:
         ORDER BY p_agg.play_count DESC
         LIMIT 20
     """)
-    flip_side = [{"track_name": r[0], "artist_name": r[1], "play_count": r[2],
-                  "cover_url": track_cover_map.get((r[0], r[1]))} for r in cur.fetchall()]
+    flip_side = [
+        {
+            "track_name": r[0],
+            "artist_name": r[1],
+            "play_count": r[2],
+            "cover_url": track_cover_map.get((r[0], r[1])),
+        }
+        for r in cur.fetchall()
+    ]
 
     # =====================================================================
     # 7. 收藏关键词变迁（词频 + 播放量加权）
@@ -355,203 +438,640 @@ def get_collection_insights(conn: sqlite3.Connection) -> dict:
     # ── 歌名清洗 ────────────────────────────────────────────────────────
     def _clean_track_name(text: str) -> str:
         """去除歌名中常见的版本/合作/现场等元数据标记。"""
-        text = re.sub(r'\([^)]*?(feat\.?|ft\.|with|prod\.|remix|live|acoustic|'
-                       r'version|edit|mix|bonus|demo|extended|original|radio|'
-                       r'from\s|OST|soundtrack|theme|intro|outro|interlude|'
-                       r'taylor|anniversary|deluxe|explicit|clean|single|'
-                       r'special|reprise|cover|instrumental|orchestral|'
-                       r'alternate|demo|session|take|remastered|'
-                       r'g.e.m|重制版|伴奏|翻唱|现场|主题曲|片尾曲|插曲|'
-                       r'完整版|纯音乐|试听|首播|抢先|独家|最新|'
-                       r'高清|无损|原版)[^)]*\)',
-                       ' ', text, flags=re.IGNORECASE)
-        text = re.sub(r'\[[^\]]*?(feat\.?|ft\.|with|prod\.|remix|live|acoustic|'
-                       r'version|edit|mix|bonus|demo|extended|original|radio|'
-                       r'from\s|OST|soundtrack|intro|outro|interlude|'
-                       r'version|edit|mix|clean|explicit|single|special|'
-                       r'reprise|cover|instrumental|orchestral|'
-                       r'alternate|demo|session|take|remastered|'
-                       r'主题曲|片尾曲|插曲|伴奏|现场)[^\]]*\]',
-                       ' ', text, flags=re.IGNORECASE)
-        text = re.sub(r'\s[-–—]\s*('
-                       r'live(\s(at|in|from|on)\s.+?)?|'
-                       r'radio\s?edit|remix|remastered|remaster|'
-                       r'acoustic(\sversion)?|instrumental|orchestral|'
-                       r'extended(\smix)?|original(\smix)?|'
-                       r'bonus\strack|deluxe(\sedition)?|'
-                       r'single(\sversion|edit)?|album\sversion|'
-                       r'studio(\sversion)?|clean(\sversion)?|explicit(\sversion)?|'
-                       r'alternate(\sversion|take|mix)?|demo(\sversion)?|'
-                       r'(\d+st|nd|rd|th)?\s?anniversary(\sedition)?|'
-                       r'reprise|intro|outro|interlude|'
-                       r'from\s.+?(soundtrack|OST)|original\s soundtrack|'
-                       r'重制版|伴奏|翻唱|现场版|主题曲|片尾曲|插曲|'
-                       r'完整版|纯音乐|试听|首发|抢先|独家|最新|'
-                       r'高清|无损|原版|新版'
-                       r')$',
-                       '', text, flags=re.IGNORECASE)
-        return re.sub(r'\s+', ' ', text).strip()
+        text = re.sub(
+            r"\([^)]*?(feat\.?|ft\.|with|prod\.|remix|live|acoustic|"
+            r"version|edit|mix|bonus|demo|extended|original|radio|"
+            r"from\s|OST|soundtrack|theme|intro|outro|interlude|"
+            r"taylor|anniversary|deluxe|explicit|clean|single|"
+            r"special|reprise|cover|instrumental|orchestral|"
+            r"alternate|demo|session|take|remastered|"
+            r"g.e.m|重制版|伴奏|翻唱|现场|主题曲|片尾曲|插曲|"
+            r"完整版|纯音乐|试听|首播|抢先|独家|最新|"
+            r"高清|无损|原版)[^)]*\)",
+            " ",
+            text,
+            flags=re.IGNORECASE,
+        )
+        text = re.sub(
+            r"\[[^\]]*?(feat\.?|ft\.|with|prod\.|remix|live|acoustic|"
+            r"version|edit|mix|bonus|demo|extended|original|radio|"
+            r"from\s|OST|soundtrack|intro|outro|interlude|"
+            r"version|edit|mix|clean|explicit|single|special|"
+            r"reprise|cover|instrumental|orchestral|"
+            r"alternate|demo|session|take|remastered|"
+            r"主题曲|片尾曲|插曲|伴奏|现场)[^\]]*\]",
+            " ",
+            text,
+            flags=re.IGNORECASE,
+        )
+        text = re.sub(
+            r"\s[-–—]\s*("
+            r"live(\s(at|in|from|on)\s.+?)?|"
+            r"radio\s?edit|remix|remastered|remaster|"
+            r"acoustic(\sversion)?|instrumental|orchestral|"
+            r"extended(\smix)?|original(\smix)?|"
+            r"bonus\strack|deluxe(\sedition)?|"
+            r"single(\sversion|edit)?|album\sversion|"
+            r"studio(\sversion)?|clean(\sversion)?|explicit(\sversion)?|"
+            r"alternate(\sversion|take|mix)?|demo(\sversion)?|"
+            r"(\d+st|nd|rd|th)?\s?anniversary(\sedition)?|"
+            r"reprise|intro|outro|interlude|"
+            r"from\s.+?(soundtrack|OST)|original\s soundtrack|"
+            r"重制版|伴奏|翻唱|现场版|主题曲|片尾曲|插曲|"
+            r"完整版|纯音乐|试听|首发|抢先|独家|最新|"
+            r"高清|无损|原版|新版"
+            r")$",
+            "",
+            text,
+            flags=re.IGNORECASE,
+        )
+        return re.sub(r"\s+", " ", text).strip()
 
     # ── 停用词 ──────────────────────────────────────────────────────────
     cn_stop = {
         # 虚词
-        "的", "了", "在", "是", "我", "有", "和", "就", "不", "人", "都", "一",
-        "一个", "上", "也", "很", "到", "说", "要", "去", "你", "会", "着",
-        "没有", "看", "好", "自己", "这", "他", "她", "它", "们", "那", "些",
-        "什么", "怎么", "如何", "可以", "这个", "那个", "还是", "因为", "所以",
-        "但是", "如果", "虽然", "而且", "不过", "只", "把", "被", "让", "给",
-        "对", "从", "向", "跟", "与", "或", "之", "为", "以", "及",
-        "啊", "吧", "呢", "吗", "呀", "嘛", "哦", "嗯", "啦", "噢",
-        "能", "会", "可", "想", "来", "去", "做", "没", "有", "知道",
+        "的",
+        "了",
+        "在",
+        "是",
+        "我",
+        "有",
+        "和",
+        "就",
+        "不",
+        "人",
+        "都",
+        "一",
+        "一个",
+        "上",
+        "也",
+        "很",
+        "到",
+        "说",
+        "要",
+        "去",
+        "你",
+        "会",
+        "着",
+        "没有",
+        "看",
+        "好",
+        "自己",
+        "这",
+        "他",
+        "她",
+        "它",
+        "们",
+        "那",
+        "些",
+        "什么",
+        "怎么",
+        "如何",
+        "可以",
+        "这个",
+        "那个",
+        "还是",
+        "因为",
+        "所以",
+        "但是",
+        "如果",
+        "虽然",
+        "而且",
+        "不过",
+        "只",
+        "把",
+        "被",
+        "让",
+        "给",
+        "对",
+        "从",
+        "向",
+        "跟",
+        "与",
+        "或",
+        "之",
+        "为",
+        "以",
+        "及",
+        "啊",
+        "吧",
+        "呢",
+        "吗",
+        "呀",
+        "嘛",
+        "哦",
+        "嗯",
+        "啦",
+        "噢",
+        "能",
+        "会",
+        "可",
+        "想",
+        "来",
+        "去",
+        "做",
+        "没",
+        "有",
+        "知道",
         # 音乐元数据噪音
-        "版", "原版", "伴奏", "纯音乐", "翻唱", "现场", "版", "试听",
-        "专辑", "单曲", "主打", "首播", "主题曲", "片尾曲", "插曲",
-        "最新", "独家", "首发", "抢先", "完整", "高清", "无损",
+        "版",
+        "原版",
+        "伴奏",
+        "纯音乐",
+        "翻唱",
+        "现场",
+        "版",
+        "试听",
+        "专辑",
+        "单曲",
+        "主打",
+        "首播",
+        "主题曲",
+        "片尾曲",
+        "插曲",
+        "最新",
+        "独家",
+        "首发",
+        "抢先",
+        "完整",
+        "高清",
+        "无损",
     }
     en_stop = {
         # NLTK-level common English stopwords (~150 words)
-        "the", "a", "an", "is", "are", "was", "were", "be", "been", "being",
-        "have", "has", "had", "having", "do", "does", "did", "doing",
-        "will", "would", "could", "should", "shall", "can", "may", "might", "must",
-        "i", "me", "my", "myself", "we", "our", "ours", "ourselves",
-        "you", "your", "yours", "yourself", "yourselves",
-        "he", "him", "his", "himself", "she", "her", "hers", "herself",
-        "it", "its", "itself", "they", "them", "their", "theirs", "themselves",
-        "what", "which", "who", "whom", "this", "that", "these", "those",
-        "am", "is", "are", "was", "were", "be", "been", "being",
-        "have", "has", "had", "having", "do", "does", "did", "doing",
-        "a", "an", "the", "and", "but", "if", "or", "because", "as",
-        "until", "while", "of", "at", "by", "for", "with", "about",
-        "between", "into", "through", "during", "before", "after",
-        "above", "below", "to", "from", "up", "down", "in", "out",
-        "on", "off", "over", "under", "again", "further", "then",
-        "once", "here", "there", "when", "where", "why", "how",
-        "all", "both", "each", "few", "more", "most", "other",
-        "some", "such", "no", "nor", "not", "only", "own", "same",
-        "so", "than", "too", "very", "just", "now", "still",
-        "also", "any", "every", "really", "even", "already",
-        "always", "never", "sometimes", "often", "yet",
+        "the",
+        "a",
+        "an",
+        "is",
+        "are",
+        "was",
+        "were",
+        "be",
+        "been",
+        "being",
+        "have",
+        "has",
+        "had",
+        "having",
+        "do",
+        "does",
+        "did",
+        "doing",
+        "will",
+        "would",
+        "could",
+        "should",
+        "shall",
+        "can",
+        "may",
+        "might",
+        "must",
+        "i",
+        "me",
+        "my",
+        "myself",
+        "we",
+        "our",
+        "ours",
+        "ourselves",
+        "you",
+        "your",
+        "yours",
+        "yourself",
+        "yourselves",
+        "he",
+        "him",
+        "his",
+        "himself",
+        "she",
+        "her",
+        "hers",
+        "herself",
+        "it",
+        "its",
+        "itself",
+        "they",
+        "them",
+        "their",
+        "theirs",
+        "themselves",
+        "what",
+        "which",
+        "who",
+        "whom",
+        "this",
+        "that",
+        "these",
+        "those",
+        "am",
+        "is",
+        "are",
+        "was",
+        "were",
+        "be",
+        "been",
+        "being",
+        "have",
+        "has",
+        "had",
+        "having",
+        "do",
+        "does",
+        "did",
+        "doing",
+        "a",
+        "an",
+        "the",
+        "and",
+        "but",
+        "if",
+        "or",
+        "because",
+        "as",
+        "until",
+        "while",
+        "of",
+        "at",
+        "by",
+        "for",
+        "with",
+        "about",
+        "between",
+        "into",
+        "through",
+        "during",
+        "before",
+        "after",
+        "above",
+        "below",
+        "to",
+        "from",
+        "up",
+        "down",
+        "in",
+        "out",
+        "on",
+        "off",
+        "over",
+        "under",
+        "again",
+        "further",
+        "then",
+        "once",
+        "here",
+        "there",
+        "when",
+        "where",
+        "why",
+        "how",
+        "all",
+        "both",
+        "each",
+        "few",
+        "more",
+        "most",
+        "other",
+        "some",
+        "such",
+        "no",
+        "nor",
+        "not",
+        "only",
+        "own",
+        "same",
+        "so",
+        "than",
+        "too",
+        "very",
+        "just",
+        "now",
+        "still",
+        "also",
+        "any",
+        "every",
+        "really",
+        "even",
+        "already",
+        "always",
+        "never",
+        "sometimes",
+        "often",
+        "yet",
         # 口语/缩写碎片
-        "don", "re", "ve", "ll", "ain", "got", "get", "got",
-        "dont", "isnt", "wasnt", "cant", "wont", "doesnt",
-        "im", "ive", "youre", "theyre", "were",
+        "don",
+        "re",
+        "ve",
+        "ll",
+        "ain",
+        "got",
+        "get",
+        "got",
+        "dont",
+        "isnt",
+        "wasnt",
+        "cant",
+        "wont",
+        "doesnt",
+        "im",
+        "ive",
+        "youre",
+        "theyre",
+        "were",
         # 音乐制作噪音
-        "remix", "feat", "mix", "edit", "version", "original", "radio", "live",
-        "extended", "instrumental", "acoustic", "bonus", "track", "demo",
-        "feat.", "(feat.", "version)", "(taylor's",
-        "(from", "vault)", "(with", "(g.e.m.重生版)",
+        "remix",
+        "feat",
+        "mix",
+        "edit",
+        "version",
+        "original",
+        "radio",
+        "live",
+        "extended",
+        "instrumental",
+        "acoustic",
+        "bonus",
+        "track",
+        "demo",
+        "feat.",
+        "(feat.",
+        "version)",
+        "(taylor's",
+        "(from",
+        "vault)",
+        "(with",
+        "(g.e.m.重生版)",
         # 数字/年份
-        "2016", "2017", "2018", "2019", "2020", "2021", "2022", "2023", "2024", "2025", "2026",
+        "2016",
+        "2017",
+        "2018",
+        "2019",
+        "2020",
+        "2021",
+        "2022",
+        "2023",
+        "2024",
+        "2025",
+        "2026",
         # 无意义常见英文词（补充）
-        "well", "know", "say", "ever", "little", "hey", "man",
-        "good", "bad", "long", "like", "days", "remember",
-        "hero", "super", "brave", "sorry",
-        "gonna", "wanna", "girl", "call", "end", "last",
+        "well",
+        "know",
+        "say",
+        "ever",
+        "little",
+        "hey",
+        "man",
+        "good",
+        "bad",
+        "long",
+        "like",
+        "days",
+        "remember",
+        "hero",
+        "super",
+        "brave",
+        "sorry",
+        "gonna",
+        "wanna",
+        "girl",
+        "call",
+        "end",
+        "last",
         # 中文噪音补充
-        "主題", "主题", "2999", "2998", "2997",
-        "心地", "愛我別", "爱我别",
+        "主題",
+        "主题",
+        "2999",
+        "2998",
+        "2997",
+        "心地",
+        "愛我別",
+        "爱我别",
         # 无意义单音节/双音节常见词
-        "na", "la", "da", "ba", "ta", "ka", "ma", "pa", "sa", "ha",
-        "de", "en", "el", "le", "un", "il", "lo", "se", "si", "di",
-        "una", "que", "los", "las", "del", "con", "por", "para",
-        "como", "mas", "pero", "mis", "sus", "est", "les", "des",
-        "das", "das", "und", "die", "der", "ist", "ein", "von",
-        "chez", "sur", "dans", "avec", "pour",
+        "na",
+        "la",
+        "da",
+        "ba",
+        "ta",
+        "ka",
+        "ma",
+        "pa",
+        "sa",
+        "ha",
+        "de",
+        "en",
+        "el",
+        "le",
+        "un",
+        "il",
+        "lo",
+        "se",
+        "si",
+        "di",
+        "una",
+        "que",
+        "los",
+        "las",
+        "del",
+        "con",
+        "por",
+        "para",
+        "como",
+        "mas",
+        "pero",
+        "mis",
+        "sus",
+        "est",
+        "les",
+        "des",
+        "das",
+        "das",
+        "und",
+        "die",
+        "der",
+        "ist",
+        "ein",
+        "von",
+        "chez",
+        "sur",
+        "dans",
+        "avec",
+        "pour",
         # 日/韩语常见碎片
-        "no", "wa", "ga", "wo", "ni", "to", "de", "mo", "yo", "ne",
-        "desu", "masu", "imas", "suru", "koto", "mono",
+        "no",
+        "wa",
+        "ga",
+        "wo",
+        "ni",
+        "to",
+        "de",
+        "mo",
+        "yo",
+        "ne",
+        "desu",
+        "masu",
+        "imas",
+        "suru",
+        "koto",
+        "mono",
     }
 
     # ── 跨语言同义词归一化（统一到英文）────────────────────────────────
     synonym_map = {
         # Love / 爱
-        "love": "Love", "loved": "Love", "lover": "Love",
-        "爱": "Love", "爱情": "Love", "恋爱": "Love", "爱人": "Love",
+        "love": "Love",
+        "loved": "Love",
+        "lover": "Love",
+        "爱": "Love",
+        "爱情": "Love",
+        "恋爱": "Love",
+        "爱人": "Love",
         # Night / 夜
-        "night": "Night", "nights": "Night",
-        "夜": "Night", "夜晚": "Night", "深夜": "Night",
+        "night": "Night",
+        "nights": "Night",
+        "夜": "Night",
+        "夜晚": "Night",
+        "深夜": "Night",
         # Heart / 心
-        "heart": "Heart", "hearts": "Heart",
-        "心": "Heart", "内心": "Heart", "心跳": "Heart",
+        "heart": "Heart",
+        "hearts": "Heart",
+        "心": "Heart",
+        "内心": "Heart",
+        "心跳": "Heart",
         # Dream / 梦
-        "dream": "Dream", "dreams": "Dream", "dreaming": "Dream",
-        "梦": "Dream", "梦想": "Dream",
+        "dream": "Dream",
+        "dreams": "Dream",
+        "dreaming": "Dream",
+        "梦": "Dream",
+        "梦想": "Dream",
         # Time / 时光
-        "time": "Time", "时光": "Time", "时间": "Time",
+        "time": "Time",
+        "时光": "Time",
+        "时间": "Time",
         # Dance / 舞
-        "dance": "Dance", "dancing": "Dance",
-        "舞": "Dance", "跳舞": "Dance",
+        "dance": "Dance",
+        "dancing": "Dance",
+        "舞": "Dance",
+        "跳舞": "Dance",
         # Song / 歌
-        "song": "Song", "songs": "Song",
-        "歌": "Song", "歌曲": "Song", "首歌": "Song",
+        "song": "Song",
+        "songs": "Song",
+        "歌": "Song",
+        "歌曲": "Song",
+        "首歌": "Song",
         # Rain / 雨
-        "rain": "Rain", "raining": "Rain",
-        "雨": "Rain", "下雨": "Rain",
+        "rain": "Rain",
+        "raining": "Rain",
+        "雨": "Rain",
+        "下雨": "Rain",
         # Wind / 风
         "wind": "Wind",
         "风": "Wind",
         # Summer / 夏天
-        "summer": "Summer", "夏": "Summer", "夏日": "Summer",
+        "summer": "Summer",
+        "夏": "Summer",
+        "夏日": "Summer",
         # Winter / 冬天
-        "winter": "Winter", "冬": "Winter", "冬日": "Winter",
+        "winter": "Winter",
+        "冬": "Winter",
+        "冬日": "Winter",
         # Spring / 春天
-        "spring": "Spring", "春": "Spring", "春日": "Spring",
+        "spring": "Spring",
+        "春": "Spring",
+        "春日": "Spring",
         # Star / 星
-        "star": "Star", "stars": "Star",
-        "星": "Star", "星星": "Star",
+        "star": "Star",
+        "stars": "Star",
+        "星": "Star",
+        "星星": "Star",
         # Moon / 月
-        "moon": "Moon", "月光": "Moon",
+        "moon": "Moon",
+        "月光": "Moon",
         # Light / 光
-        "light": "Light", "lights": "Light",
-        "光": "Light", "光芒": "Light",
+        "light": "Light",
+        "lights": "Light",
+        "光": "Light",
+        "光芒": "Light",
         # Fire / 火
-        "fire": "Fire", "flame": "Fire",
-        "火": "Fire", "火焰": "Fire",
+        "fire": "Fire",
+        "flame": "Fire",
+        "火": "Fire",
+        "火焰": "Fire",
         # Flower / 花
-        "flower": "Flower", "flowers": "Flower",
+        "flower": "Flower",
+        "flowers": "Flower",
         "花": "Flower",
         # Sea / 海
-        "sea": "Sea", "ocean": "Sea",
-        "海": "Sea", "大海": "Sea",
+        "sea": "Sea",
+        "ocean": "Sea",
+        "海": "Sea",
+        "大海": "Sea",
         # Sky / 天空
-        "sky": "Sky", "天空": "Sky",
+        "sky": "Sky",
+        "天空": "Sky",
         # Road / 路
-        "road": "Road", "street": "Road", "path": "Road",
-        "路": "Road", "路上": "Road",
+        "road": "Road",
+        "street": "Road",
+        "path": "Road",
+        "路": "Road",
+        "路上": "Road",
         # World / 世界
-        "world": "World", "世界": "World",
+        "world": "World",
+        "世界": "World",
         # Life / 人生
-        "life": "Life", "人生": "Life",
+        "life": "Life",
+        "人生": "Life",
         # Tears / 泪
-        "tear": "Tears", "tears": "Tears", "cry": "Tears", "crying": "Tears",
-        "泪": "Tears", "眼泪": "Tears", "哭泣": "Tears",
+        "tear": "Tears",
+        "tears": "Tears",
+        "cry": "Tears",
+        "crying": "Tears",
+        "泪": "Tears",
+        "眼泪": "Tears",
+        "哭泣": "Tears",
         # Memory / 记忆
-        "memory": "Memory", "memories": "Memory",
-        "记忆": "Memory", "回忆": "Memory",
+        "memory": "Memory",
+        "memories": "Memory",
+        "记忆": "Memory",
+        "回忆": "Memory",
         # Alone / 孤独
-        "alone": "Alone", "lonely": "Alone", "loneliness": "Alone",
-        "孤独": "Alone", "寂寞": "Alone", "孤单": "Alone",
+        "alone": "Alone",
+        "lonely": "Alone",
+        "loneliness": "Alone",
+        "孤独": "Alone",
+        "寂寞": "Alone",
+        "孤单": "Alone",
         # Goodbye / 再见
-        "goodbye": "Goodbye", "farewell": "Goodbye",
-        "再见": "Goodbye", "告别": "Goodbye",
+        "goodbye": "Goodbye",
+        "farewell": "Goodbye",
+        "再见": "Goodbye",
+        "告别": "Goodbye",
         # Forever / 永远
-        "forever": "Forever", "eternal": "Forever",
-        "永远": "Forever", "永恒": "Forever",
+        "forever": "Forever",
+        "eternal": "Forever",
+        "永远": "Forever",
+        "永恒": "Forever",
         # Beautiful / 美丽
-        "beautiful": "Beautiful", "beauty": "Beautiful",
-        "美丽": "Beautiful", "美": "Beautiful",
+        "beautiful": "Beautiful",
+        "beauty": "Beautiful",
+        "美丽": "Beautiful",
+        "美": "Beautiful",
         # Happy / 快乐
-        "happy": "Happy", "happiness": "Happy",
-        "快乐": "Happy", "幸福": "Happy", "开心": "Happy",
+        "happy": "Happy",
+        "happiness": "Happy",
+        "快乐": "Happy",
+        "幸福": "Happy",
+        "开心": "Happy",
         # Sad / 悲伤
-        "sad": "Sad", "sadness": "Sad",
-        "悲伤": "Sad", "难过": "Sad", "伤心": "Sad",
+        "sad": "Sad",
+        "sadness": "Sad",
+        "悲伤": "Sad",
+        "难过": "Sad",
+        "伤心": "Sad",
     }
     all_stop = cn_stop | en_stop
 
     # ── 辅助函数 ────────────────────────────────────────────────────────
     def _contains_chinese(text: str) -> bool:
-        return any('一' <= ch <= '鿿' for ch in text)
+        return any("一" <= ch <= "鿿" for ch in text)
 
     def _normalize_word(w: str) -> str:
         """将同义词归一化到标准形式，去停用词，保留语义。"""
@@ -562,7 +1082,7 @@ def get_collection_insights(conn: sqlite3.Connection) -> dict:
         if w in synonym_map:
             return synonym_map[w]
         # 英文最小长度 3，中文最小长度 2（已在上方处理）
-        is_ascii = all(c < '一' for c in w)
+        is_ascii = all(c < "一" for c in w)
         if is_ascii and len(w) < 3:
             return ""
         return w
@@ -583,7 +1103,7 @@ def get_collection_insights(conn: sqlite3.Connection) -> dict:
                 nw = _normalize_word(w)
                 if nw:
                     words.append(nw)
-        for w in re.findall(r'[a-zA-Z]{3,}', cleaned.lower()):
+        for w in re.findall(r"[a-zA-Z]{3,}", cleaned.lower()):
             nw = _normalize_word(w)
             if nw:
                 words.append(nw)
@@ -602,7 +1122,6 @@ def get_collection_insights(conn: sqlite3.Connection) -> dict:
     keyword_migration: dict[str, list[dict[str, object]]] = {}
     for yr in sorted(per_year.keys()):
         word_stats = per_year[yr]
-        n_songs = year_song_counts.get(yr, 1)
         min_songs = 2
         candidates = {w: d for w, d in word_stats.items() if int(d["songs"]) >= min_songs}  # type: ignore[arg-type]
         if not candidates:
@@ -616,7 +1135,7 @@ def get_collection_insights(conn: sqlite3.Connection) -> dict:
             plays = int(d["plays"])  # type: ignore[arg-type]
             norm_freq = songs / max(max_songs, 1)
             norm_plays = plays / max(max_plays, 1)
-            score = norm_freq * 0.7 + (norm_plays ** 0.5) * 0.3
+            score = norm_freq * 0.7 + (norm_plays**0.5) * 0.3
             scored.append({"word": word, "weight": round(score, 4)})
         scored.sort(key=lambda x: -x["weight"])
         keyword_migration[yr] = scored[:10]
@@ -670,9 +1189,12 @@ def get_collection_insights(conn: sqlite3.Connection) -> dict:
         ORDER BY saved_cnt DESC LIMIT 15
     """)
     top_saved_artists = [
-        {"artist_name": r[0], "saved_count": r[1],
-         "total_plays": saved_artist_plays.get(r[0], 0),
-         "cover_url": artist_cover_map.get(r[0])}
+        {
+            "artist_name": r[0],
+            "saved_count": r[1],
+            "total_plays": saved_artist_plays.get(r[0], 0),
+            "cover_url": artist_cover_map.get(r[0]),
+        }
         for r in cur.fetchall()
     ]
 
@@ -709,9 +1231,13 @@ def get_collection_insights(conn: sqlite3.Connection) -> dict:
         if key not in album_cover_lookup:
             album_cover_lookup[key] = cover
     top_saved_albums = [
-        {"album_name": r[0], "artist_name": r[1], "saved_count": r[2],
-         "total_plays": album_plays.get((r[0], r[1]), 0),
-         "cover_url": album_cover_lookup.get((r[0], r[1]))}
+        {
+            "album_name": r[0],
+            "artist_name": r[1],
+            "saved_count": r[2],
+            "total_plays": album_plays.get((r[0], r[1]), 0),
+            "cover_url": album_cover_lookup.get((r[0], r[1])),
+        }
         for r in cur.fetchall()
     ]
 
@@ -755,7 +1281,11 @@ def get_collection_insights(conn: sqlite3.Connection) -> dict:
         """)
         oldest = cur.fetchone()
         if oldest:
-            archive_facts["oldest_track"] = {"track_name": oldest[0], "artist_name": oldest[1], "year": oldest[2]}
+            archive_facts["oldest_track"] = {
+                "track_name": oldest[0],
+                "artist_name": oldest[1],
+                "year": oldest[2],
+            }
 
     return {
         "available": True,
@@ -779,11 +1309,11 @@ def get_collection_insights(conn: sqlite3.Connection) -> dict:
 
 def get_account_summary(conn: sqlite3.Connection) -> dict:
     """聚合账号中心所有子服务的数据。"""
-    from backend.services.library_service import get_library_overview
-    from backend.services.profile_service import get_profile, get_inferences, get_sound_capsule
-    from backend.services.search_service import get_search_stats
     from backend.services.insights_service import get_artist_tiers, get_marquee_conversion
+    from backend.services.library_service import get_library_overview
     from backend.services.podcast_service import get_podcast_stats
+    from backend.services.profile_service import get_inferences, get_profile, get_sound_capsule
+    from backend.services.search_service import get_search_stats
     from backend.services.video_service import get_video_stats
 
     try:

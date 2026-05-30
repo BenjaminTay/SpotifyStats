@@ -1,7 +1,8 @@
 """Video API endpoint."""
 
-from fastapi import APIRouter, Depends
 from sqlite3 import Connection
+
+from fastapi import APIRouter, Depends
 
 from backend.dependencies import get_conn
 from backend.services.video_service import get_video_stats

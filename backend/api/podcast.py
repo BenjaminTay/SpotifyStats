@@ -1,11 +1,14 @@
 """Podcast API endpoint."""
 
-from fastapi import APIRouter, Depends
 from sqlite3 import Connection
+
+from fastapi import APIRouter, Depends
 
 from backend.dependencies import get_conn
 from backend.services.podcast_service import (
-    get_podcast_stats, get_podcast_interactions, get_saved_shows,
+    get_podcast_interactions,
+    get_podcast_stats,
+    get_saved_shows,
 )
 
 router = APIRouter(prefix="/podcast", tags=["Podcast"])

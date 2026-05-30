@@ -1,7 +1,6 @@
 """Library / account data services — direct SQL queries on account tables."""
 
 import sqlite3
-from typing import Optional
 
 import pandas as pd
 
@@ -31,9 +30,12 @@ def get_library_overview(conn: sqlite3.Connection) -> dict:
                     LEFT JOIN plays p ON t.track_id = p.track_id
                     WHERE REPLACE(t.spotify_track_uri, 'spotify:track:', '') IN ({placeholders})
                     GROUP BY 1""",
-                conn, params=track_ids,
+                conn,
+                params=track_ids,
             )
-            coverage_pct = (coverage_df["play_count"] > 0).mean() * 100 if not coverage_df.empty else 0
+            coverage_pct = (
+                (coverage_df["play_count"] > 0).mean() * 100 if not coverage_df.empty else 0
+            )
 
             # Forgotten treasures (saved but never played)
             forgotten = coverage_df[coverage_df["play_count"] == 0]
@@ -66,11 +68,13 @@ def get_library_overview(conn: sqlite3.Connection) -> dict:
                WHERE a.artist_name = ?""",
             (r["artist_name"],),
         ).fetchone()[0]
-        artist_comparison.append({
-            "artist_name": r["artist_name"],
-            "saved_count": r["saved_count"] or 0,
-            "play_count": play_count or 0,
-        })
+        artist_comparison.append(
+            {
+                "artist_name": r["artist_name"],
+                "saved_count": r["saved_count"] or 0,
+                "play_count": play_count or 0,
+            }
+        )
 
     return {
         "available": True,
@@ -92,8 +96,12 @@ def get_playlists(conn: sqlite3.Connection) -> list[dict]:
         "SELECT playlist_id, playlist_name, last_modified_date, track_count FROM playlists ORDER BY playlist_name"
     ).fetchall()
     return [
-        {"id": r["playlist_id"], "name": r["playlist_name"],
-         "last_modified": r["last_modified_date"] or "", "track_count": r["track_count"] or 0}
+        {
+            "id": r["playlist_id"],
+            "name": r["playlist_name"],
+            "last_modified": r["last_modified_date"] or "",
+            "track_count": r["track_count"] or 0,
+        }
         for r in rows
     ]
 
@@ -105,9 +113,13 @@ def get_playlist_tracks(conn: sqlite3.Connection, playlist_id: int) -> list[dict
         (playlist_id,),
     ).fetchall()
     tracks = [
-        {"track_uri": r["track_uri"], "track_name": r["track_name"],
-         "artist_name": r["artist_name"], "album_name": r["album_name"] or "",
-         "added_date": r["added_date"] or ""}
+        {
+            "track_uri": r["track_uri"],
+            "track_name": r["track_name"],
+            "artist_name": r["artist_name"],
+            "album_name": r["album_name"] or "",
+            "added_date": r["added_date"] or "",
+        }
         for r in rows
     ]
 
@@ -136,8 +148,9 @@ def get_playlist_tracks(conn: sqlite3.Connection, playlist_id: int) -> list[dict
     return tracks
 
 
-def get_saved_tracks_paginated(conn: sqlite3.Connection, page: int = 1,
-                                limit: int = 50, search: str = "") -> dict:
+def get_saved_tracks_paginated(
+    conn: sqlite3.Connection, page: int = 1, limit: int = 50, search: str = ""
+) -> dict:
     """Paginated saved tracks with optional search."""
     offset = (page - 1) * limit
     where = ""
@@ -146,9 +159,7 @@ def get_saved_tracks_paginated(conn: sqlite3.Connection, page: int = 1,
         where = "WHERE track_name LIKE ? OR artist_name LIKE ?"
         params = [f"%{search}%", f"%{search}%"]
 
-    count_row = conn.execute(
-        f"SELECT COUNT(*) FROM saved_tracks {where}", params
-    ).fetchone()
+    count_row = conn.execute(f"SELECT COUNT(*) FROM saved_tracks {where}", params).fetchone()
     total = count_row[0]
 
     rows = conn.execute(
@@ -205,7 +216,9 @@ def get_playlist_overlap_matrix(conn: sqlite3.Connection) -> dict:
     ids = sorted(playlists.keys())
     names = {}
     for pid in ids:
-        n = conn.execute("SELECT playlist_name FROM playlists WHERE playlist_id = ?", (pid,)).fetchone()
+        n = conn.execute(
+            "SELECT playlist_name FROM playlists WHERE playlist_id = ?", (pid,)
+        ).fetchone()
         names[pid] = n["playlist_name"] if n else str(pid)
 
     n = len(ids)

@@ -11,8 +11,8 @@ multi-tenant deployments).
 import base64
 import os
 
-from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 
 _SALT = b"spotify_stats_v1_salt"
@@ -22,11 +22,7 @@ _APP_SECRET = b"spotify-stats-internal-key-please-set-SPOTIFY_STATS_TOKEN_KEY"
 def _derive_key() -> bytes:
     from backend.core.config import SPOTIFY_STATS_TOKEN_KEY
 
-    secret = (
-        SPOTIFY_STATS_TOKEN_KEY.encode()
-        if SPOTIFY_STATS_TOKEN_KEY
-        else _APP_SECRET
-    )
+    secret = SPOTIFY_STATS_TOKEN_KEY.encode() if SPOTIFY_STATS_TOKEN_KEY else _APP_SECRET
     kdf = PBKDF2HMAC(
         algorithm=hashes.SHA256(),
         length=32,

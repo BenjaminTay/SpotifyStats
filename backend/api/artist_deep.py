@@ -1,10 +1,11 @@
 """Artist deep dive API endpoint."""
 
-from fastapi import APIRouter, Depends, Query
 from sqlite3 import Connection
 
-from backend.dependencies import get_conn, PlayFilters
-from backend.services.play_service import get_artist_list, get_artist_deep_dive
+from fastapi import APIRouter, Depends, Query
+
+from backend.dependencies import PlayFilters, get_conn
+from backend.services.play_service import get_artist_deep_dive, get_artist_list
 
 router = APIRouter(prefix="/artist", tags=["Artist"])
 
@@ -25,4 +26,6 @@ def artist_deep_dive(
     conn: Connection = Depends(get_conn),
 ):
     """In-depth analysis for a single artist: heatmap, top tracks, album breakdown, monthly trend."""
-    return get_artist_deep_dive(conn, filters.min_ms, filters.music_only, filters.merge_enabled, name)
+    return get_artist_deep_dive(
+        conn, filters.min_ms, filters.music_only, filters.merge_enabled, name
+    )

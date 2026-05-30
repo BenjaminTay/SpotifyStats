@@ -1,12 +1,13 @@
 """Spotify Stats — FastAPI backend entry point."""
 
+from __future__ import annotations
+
 import logging
 import os
 import urllib.request
 from contextlib import asynccontextmanager
-from typing import Optional
 
-from fastapi import FastAPI, BackgroundTasks, Request
+from fastapi import BackgroundTasks, FastAPI, Request
 from fastapi.exceptions import HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
@@ -14,7 +15,7 @@ from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 
 from backend.api.router import api_router
-from backend.core.config import SPOTIFY_STATS_WARMUP, PYTEST_CURRENT_TEST, FRONTEND_ORIGIN
+from backend.core.config import FRONTEND_ORIGIN
 from backend.core.logging_config import setup_logging
 from backend.core.warmup import start_warmup_thread
 
@@ -24,9 +25,13 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    if SPOTIFY_STATS_WARMUP != "0" and not PYTEST_CURRENT_TEST:
+    if (
+        os.environ.get("SPOTIFY_STATS_WARMUP", "1") != "0"
+        and "PYTEST_CURRENT_TEST" not in os.environ
+    ):
         start_warmup_thread()
     yield
+
 
 app = FastAPI(
     title="Spotify Stats API",
@@ -59,9 +64,11 @@ async def global_exception_handler(_request: Request, exc: Exception):
 
 # ── 智能封面端点 ───────────────────────────────────────────────────────
 
-def _get_cover_cdn_url(cover_type: str, entity_id: int) -> Optional[str]:
+
+def _get_cover_cdn_url(cover_type: str, entity_id: int) -> str | None:
     """从数据库查询 Spotify CDN URL 作为回退源。"""
     from backend.core.db import get_db
+
     conn = get_db()
     if cover_type == "albums":
         row = conn.execute(
@@ -112,12 +119,17 @@ def _cache_cover_locally(cdn_url: str, filepath: str, cover_type: str, entity_id
             f.write(data)
 
         from backend.core.db import get_db
+
         conn = get_db(readonly=False)
         rel_path = f"covers/{cover_type}/{entity_id}.jpg"
         if cover_type == "albums":
-            conn.execute("UPDATE albums SET image_path = ? WHERE album_id = ?", [rel_path, entity_id])
+            conn.execute(
+                "UPDATE albums SET image_path = ? WHERE album_id = ?", [rel_path, entity_id]
+            )
         elif cover_type == "artists":
-            conn.execute("UPDATE artists SET image_path = ? WHERE artist_id = ?", [rel_path, entity_id])
+            conn.execute(
+                "UPDATE artists SET image_path = ? WHERE artist_id = ?", [rel_path, entity_id]
+            )
         conn.commit()
         conn.close()
     except Exception:

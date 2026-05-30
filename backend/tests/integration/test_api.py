@@ -11,10 +11,12 @@ Run with:  pytest backend/tests/ -v
 
 import pytest
 
+pytestmark = pytest.mark.integration
 
 # ═══════════════════════════════════════════════════════════════════════════
 # Health & Infrastructure
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 class TestHealth:
     def test_health_ok(self, client):
@@ -34,13 +36,21 @@ class TestHealth:
 # Dashboard (6 endpoints)
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestDashboard:
     def test_summary_structure(self, client, default_params):
         r = client.get("/api/dashboard/summary", params=default_params)
         assert r.status_code == 200
         d = r.json()
-        for k in ["total_plays", "total_hours", "total_tracks", "total_artists",
-                   "total_albums", "total_days", "avg_daily_hours"]:
+        for k in [
+            "total_plays",
+            "total_hours",
+            "total_tracks",
+            "total_artists",
+            "total_albums",
+            "total_days",
+            "avg_daily_hours",
+        ]:
             assert k in d, f"Missing key: {k}"
         assert d["total_plays"] > 50000
         assert d["total_hours"] > 3000
@@ -99,13 +109,21 @@ class TestDashboard:
         r = client.get("/api/dashboard/full", params=default_params)
         assert r.status_code == 200
         d = r.json()
-        for k in ["summary", "top_tracks", "monthly_trend", "platform_dist", "dow_dist", "random_track"]:
+        for k in [
+            "summary",
+            "top_tracks",
+            "monthly_trend",
+            "platform_dist",
+            "dow_dist",
+            "random_track",
+        ]:
             assert k in d, f"Missing key: {k}"
 
 
 # ═══════════════════════════════════════════════════════════════════════════
 # Timeline (2 endpoints)
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 class TestTimeline:
     def test_annual_structure(self, client, default_params):
@@ -154,6 +172,7 @@ class TestTimeline:
 # Timeline Weekly
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestTimelineWeekly:
     def test_weekly_structure(self, client, default_params):
         r = client.get("/api/timeline/weekly", params=default_params)
@@ -201,12 +220,19 @@ class TestTimelineWeekly:
 # Leaderboard
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestLeaderboard:
     def test_track_leaderboard(self, client, default_params):
-        r = client.get("/api/leaderboard", params={
-            **default_params, "entity": "track", "metric": "plays",
-            "time_range": "all", "top_n": 10,
-        })
+        r = client.get(
+            "/api/leaderboard",
+            params={
+                **default_params,
+                "entity": "track",
+                "metric": "plays",
+                "time_range": "all",
+                "top_n": 10,
+            },
+        )
         assert r.status_code == 200
         d = r.json()
         assert "rows" in d
@@ -219,20 +245,32 @@ class TestLeaderboard:
             assert row["plays"] > 0
 
     def test_artist_leaderboard(self, client, default_params):
-        r = client.get("/api/leaderboard", params={
-            **default_params, "entity": "artist", "metric": "hours",
-            "time_range": "all", "top_n": 10,
-        })
+        r = client.get(
+            "/api/leaderboard",
+            params={
+                **default_params,
+                "entity": "artist",
+                "metric": "hours",
+                "time_range": "all",
+                "top_n": 10,
+            },
+        )
         assert r.status_code == 200
         d = r.json()
         assert len(d["rows"]) == 10
         assert d["rows"][0]["artist_name"] == "Taylor Swift"
 
     def test_album_leaderboard(self, client, default_params):
-        r = client.get("/api/leaderboard", params={
-            **default_params, "entity": "album", "metric": "plays",
-            "time_range": "all", "top_n": 10,
-        })
+        r = client.get(
+            "/api/leaderboard",
+            params={
+                **default_params,
+                "entity": "album",
+                "metric": "plays",
+                "time_range": "all",
+                "top_n": 10,
+            },
+        )
         assert r.status_code == 200
         d = r.json()
         assert len(d["rows"]) == 10
@@ -242,40 +280,66 @@ class TestLeaderboard:
 
     def test_top_artist_consistent_with_dashboard(self, client, default_params):
         """Top artist in leaderboard should appear in dashboard top tracks."""
-        dashboard_tracks = client.get("/api/dashboard/top-tracks", params={
-            **default_params, "top_n": 20,
-        }).json()
-        leaderboard = client.get("/api/leaderboard", params={
-            **default_params, "entity": "artist", "metric": "plays",
-            "time_range": "all", "top_n": 5,
-        }).json()
+        dashboard_tracks = client.get(
+            "/api/dashboard/top-tracks",
+            params={
+                **default_params,
+                "top_n": 20,
+            },
+        ).json()
+        leaderboard = client.get(
+            "/api/leaderboard",
+            params={
+                **default_params,
+                "entity": "artist",
+                "metric": "plays",
+                "time_range": "all",
+                "top_n": 5,
+            },
+        ).json()
         top_artist = leaderboard["rows"][0]["artist_name"]
-        artist_track_count = sum(
-            1 for t in dashboard_tracks if t["artist_name"] == top_artist
-        )
+        artist_track_count = sum(1 for t in dashboard_tracks if t["artist_name"] == top_artist)
         assert artist_track_count > 0, f"Top artist {top_artist} not in any top tracks"
 
     def test_leaderboard_ranks_sequential(self, client, default_params):
-        r = client.get("/api/leaderboard", params={
-            **default_params, "entity": "track", "metric": "plays",
-            "time_range": "all", "top_n": 20,
-        })
+        r = client.get(
+            "/api/leaderboard",
+            params={
+                **default_params,
+                "entity": "track",
+                "metric": "plays",
+                "time_range": "all",
+                "top_n": 20,
+            },
+        )
         ranks = [row["rank"] for row in r.json()["rows"]]
         assert ranks == list(range(1, len(ranks) + 1))
 
     def test_leaderboard_plays_descending(self, client, default_params):
-        r = client.get("/api/leaderboard", params={
-            **default_params, "entity": "track", "metric": "plays",
-            "time_range": "all", "top_n": 20,
-        })
+        r = client.get(
+            "/api/leaderboard",
+            params={
+                **default_params,
+                "entity": "track",
+                "metric": "plays",
+                "time_range": "all",
+                "top_n": 20,
+            },
+        )
         plays_vals = [row["plays"] for row in r.json()["rows"]]
         assert plays_vals == sorted(plays_vals, reverse=True)
 
     def test_invalid_entity_rejected(self, client, default_params):
-        r = client.get("/api/leaderboard", params={
-            **default_params, "entity": "invalid", "metric": "plays",
-            "time_range": "all", "top_n": 10,
-        })
+        r = client.get(
+            "/api/leaderboard",
+            params={
+                **default_params,
+                "entity": "invalid",
+                "metric": "plays",
+                "time_range": "all",
+                "top_n": 10,
+            },
+        )
         assert r.status_code in (200, 422)
 
 
@@ -283,14 +347,22 @@ class TestLeaderboard:
 # Behavior
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestBehavior:
     def test_behavior_structure(self, client, default_params):
         r = client.get("/api/behavior", params=default_params)
         assert r.status_code == 200
         d = r.json()
-        for k in ["reason_end", "reason_start", "fwdbtn_by_hour",
-                   "most_forwarded", "platform_monthly", "platform_hourly",
-                   "shuffle_rate_by_platform", "shuffle_monthly"]:
+        for k in [
+            "reason_end",
+            "reason_start",
+            "fwdbtn_by_hour",
+            "most_forwarded",
+            "platform_monthly",
+            "platform_hourly",
+            "shuffle_rate_by_platform",
+            "shuffle_monthly",
+        ]:
             assert k in d, f"Missing key: {k}"
 
     def test_reason_end_has_data(self, client, default_params):
@@ -311,6 +383,7 @@ class TestBehavior:
 # ═══════════════════════════════════════════════════════════════════════════
 # Listening Hours
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 class TestListeningHours:
     def test_heatmap_structure(self, client, default_params):
@@ -402,6 +475,7 @@ class TestListeningHoursPlatformHourly:
 # Artist Deep Dive
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestArtistDeep:
     def test_artist_list(self, client):
         r = client.get("/api/artist/list")
@@ -430,6 +504,7 @@ class TestArtistDeep:
 # ═══════════════════════════════════════════════════════════════════════════
 # Wrapped
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 class TestWrapped:
     def test_wrapped_available_years(self, client):
@@ -504,6 +579,7 @@ class TestWrapped:
 # Billboard Data
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestBillboard:
     def test_billboard_meta(self, client, default_params):
         r = client.get("/api/billboard/data", params=default_params)
@@ -530,8 +606,15 @@ class TestBillboard:
         ts = d["track_summary"]
         assert len(ts) > 500
         t = ts[0]
-        for k in ["track_name", "artist_name", "peak_position", "weeks_on_chart",
-                   "weeks_at_peak", "first_week", "last_week"]:
+        for k in [
+            "track_name",
+            "artist_name",
+            "peak_position",
+            "weeks_on_chart",
+            "weeks_at_peak",
+            "first_week",
+            "last_week",
+        ]:
             assert k in t, f"Missing key: {k}"
 
     def test_billboard_power_scores(self, client, default_params):
@@ -547,9 +630,14 @@ class TestBillboard:
         assert len(d["records"]) >= 12
 
     def test_billboard_year_filter(self, client, default_params):
-        r = client.get("/api/billboard/data", params={
-            **default_params, "year_start": 2024, "year_end": 2024,
-        })
+        r = client.get(
+            "/api/billboard/data",
+            params={
+                **default_params,
+                "year_start": 2024,
+                "year_end": 2024,
+            },
+        )
         assert r.status_code == 200
         d = r.json()
         assert d["meta"]["total_weeks"] == 52
@@ -564,6 +652,7 @@ class TestBillboard:
 # ═══════════════════════════════════════════════════════════════════════════
 # Release Cycle
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 class TestReleaseCycle:
     def test_artist_list_format(self, client, default_params):
@@ -595,10 +684,7 @@ class TestReleaseCycle:
         r = client.get("/api/billboard/release-cycle/artist/Taylor Swift", params=default_params)
         assert r.status_code == 200
         d = r.json()
-        target = next(
-            c for c in d["cycles"]
-            if c["album_name"] == "THE TORTURED POETS DEPARTMENT"
-        )
+        target = next(c for c in d["cycles"] if c["album_name"] == "THE TORTURED POETS DEPARTMENT")
         assert target["cover_url"].startswith("/covers/albums/")
 
         cover = client.get(target["cover_url"], follow_redirects=False)
@@ -658,6 +744,7 @@ class TestReleaseCycle:
 # Billboard Details & Versus
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestBillboardDetails:
     def test_entity_lists(self, client, default_params):
         r = client.get("/api/billboard/entity-lists", params=default_params)
@@ -691,7 +778,11 @@ class TestBillboardDetails:
         # Change column present in history
         for h in d["history"]:
             assert "change" in h
-            assert h["change"] in ("NEW", "RE", "─") or h["change"].startswith("▲") or h["change"].startswith("▼")
+            assert (
+                h["change"] in ("NEW", "RE", "─")
+                or h["change"].startswith("▲")
+                or h["change"].startswith("▼")
+            )
 
     def test_track_history_not_found(self, client, default_params):
         r = client.get("/api/billboard/track/99999", params=default_params)
@@ -762,9 +853,14 @@ class TestBillboardDetails:
 
 class TestBillboardVersus:
     def test_versus_track(self, client, default_params):
-        r = client.get("/api/billboard/versus/track", params={
-            **default_params, "track_id_a": 157, "track_id_b": 149,
-        })
+        r = client.get(
+            "/api/billboard/versus/track",
+            params={
+                **default_params,
+                "track_id_a": 157,
+                "track_id_b": 149,
+            },
+        )
         assert r.status_code == 200
         d = r.json()
         assert d["found"] is True
@@ -779,18 +875,28 @@ class TestBillboardVersus:
             assert len(e["rank_history"]) >= 1
 
     def test_versus_track_not_found(self, client, default_params):
-        r = client.get("/api/billboard/versus/track", params={
-            **default_params, "track_id_a": 99999, "track_id_b": 99998,
-        })
+        r = client.get(
+            "/api/billboard/versus/track",
+            params={
+                **default_params,
+                "track_id_a": 99999,
+                "track_id_b": 99998,
+            },
+        )
         assert r.status_code == 200
         assert r.json()["found"] is False
 
     def test_versus_album(self, client, default_params):
-        r = client.get("/api/billboard/versus/album", params={
-            **default_params,
-            "album_a": "Midnights", "artist_a": "Taylor Swift",
-            "album_b": "folklore", "artist_b": "Taylor Swift",
-        })
+        r = client.get(
+            "/api/billboard/versus/album",
+            params={
+                **default_params,
+                "album_a": "Midnights",
+                "artist_a": "Taylor Swift",
+                "album_b": "folklore",
+                "artist_b": "Taylor Swift",
+            },
+        )
         assert r.status_code == 200
         d = r.json()
         assert d["found"] is True
@@ -799,19 +905,28 @@ class TestBillboardVersus:
         assert "track_power_sum" in e["metrics"]
 
     def test_versus_album_not_found(self, client, default_params):
-        r = client.get("/api/billboard/versus/album", params={
-            **default_params,
-            "album_a": "FakeAlbum", "artist_a": "FakeArtist",
-            "album_b": "FakeAlbum2", "artist_b": "FakeArtist2",
-        })
+        r = client.get(
+            "/api/billboard/versus/album",
+            params={
+                **default_params,
+                "album_a": "FakeAlbum",
+                "artist_a": "FakeArtist",
+                "album_b": "FakeAlbum2",
+                "artist_b": "FakeArtist2",
+            },
+        )
         assert r.status_code == 200
         assert r.json()["found"] is False
 
     def test_versus_artist(self, client, default_params):
-        r = client.get("/api/billboard/versus/artist", params={
-            **default_params,
-            "artist_a": "Taylor Swift", "artist_b": "Olivia Rodrigo",
-        })
+        r = client.get(
+            "/api/billboard/versus/artist",
+            params={
+                **default_params,
+                "artist_a": "Taylor Swift",
+                "artist_b": "Olivia Rodrigo",
+            },
+        )
         assert r.status_code == 200
         d = r.json()
         assert d["found"] is True
@@ -822,10 +937,14 @@ class TestBillboardVersus:
         assert "album_power_sum" in e["metrics"]
 
     def test_versus_artist_not_found(self, client, default_params):
-        r = client.get("/api/billboard/versus/artist", params={
-            **default_params,
-            "artist_a": "FakeArtistAAA", "artist_b": "FakeArtistBBB",
-        })
+        r = client.get(
+            "/api/billboard/versus/artist",
+            params={
+                **default_params,
+                "artist_a": "FakeArtistAAA",
+                "artist_b": "FakeArtistBBB",
+            },
+        )
         assert r.status_code == 200
         assert r.json()["found"] is False
 
@@ -834,14 +953,20 @@ class TestBillboardVersus:
 # Account Data
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestLibrary:
     def test_library_structure(self, client):
         r = client.get("/api/library")
         assert r.status_code == 200
         d = r.json()
         assert "available" in d
-        for k in ["saved_tracks", "saved_albums", "saved_artists",
-                   "coverage_pct", "forgotten_count"]:
+        for k in [
+            "saved_tracks",
+            "saved_albums",
+            "saved_artists",
+            "coverage_pct",
+            "forgotten_count",
+        ]:
             assert k in d, f"Missing key: {k}"
 
     def test_library_playlists(self, client):
@@ -942,14 +1067,21 @@ class TestWrappedHub:
 # Settings, Version Merge, Import
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestSettings:
     def test_get_settings(self, client):
         r = client.get("/api/settings")
         assert r.status_code == 200
         d = r.json()
-        for k in ["min_ms", "music_only", "merge_enabled",
-                   "bb_top_n", "bb_album_top_n", "bb_artist_top_n",
-                   "db_record_count"]:
+        for k in [
+            "min_ms",
+            "music_only",
+            "merge_enabled",
+            "bb_top_n",
+            "bb_album_top_n",
+            "bb_artist_top_n",
+            "db_record_count",
+        ]:
             assert k in d, f"Missing key: {k}"
         assert d["db_record_count"] > 80000
 
@@ -991,46 +1123,83 @@ class TestImport:
 # Filter parameter variations
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestFilterVariations:
     def test_no_filter_all_plays(self, client):
-        r = client.get("/api/dashboard/summary", params={
-            "min_ms": 0, "music_only": True, "merge_enabled": False,
-        })
+        r = client.get(
+            "/api/dashboard/summary",
+            params={
+                "min_ms": 0,
+                "music_only": True,
+                "merge_enabled": False,
+            },
+        )
         assert r.status_code == 200
         d = r.json()
         assert d["total_plays"] > 80000
 
     def test_min_ms_effect(self, client):
-        low = client.get("/api/dashboard/summary", params={
-            "min_ms": 0, "music_only": True, "merge_enabled": False,
-        }).json()["total_plays"]
-        high = client.get("/api/dashboard/summary", params={
-            "min_ms": 60000, "music_only": True, "merge_enabled": False,
-        }).json()["total_plays"]
+        low = client.get(
+            "/api/dashboard/summary",
+            params={
+                "min_ms": 0,
+                "music_only": True,
+                "merge_enabled": False,
+            },
+        ).json()["total_plays"]
+        high = client.get(
+            "/api/dashboard/summary",
+            params={
+                "min_ms": 60000,
+                "music_only": True,
+                "merge_enabled": False,
+            },
+        ).json()["total_plays"]
         assert high <= low, f"higher min_ms returned more plays ({high} > {low})"
 
     def test_music_only_effect(self, client):
-        with_music = client.get("/api/dashboard/summary", params={
-            "min_ms": 30000, "music_only": True, "merge_enabled": False,
-        }).json()["total_plays"]
-        without = client.get("/api/dashboard/summary", params={
-            "min_ms": 30000, "music_only": False, "merge_enabled": False,
-        }).json()["total_plays"]
+        with_music = client.get(
+            "/api/dashboard/summary",
+            params={
+                "min_ms": 30000,
+                "music_only": True,
+                "merge_enabled": False,
+            },
+        ).json()["total_plays"]
+        without = client.get(
+            "/api/dashboard/summary",
+            params={
+                "min_ms": 30000,
+                "music_only": False,
+                "merge_enabled": False,
+            },
+        ).json()["total_plays"]
         assert with_music <= without
 
     def test_merge_effect(self, client):
-        merged = client.get("/api/dashboard/summary", params={
-            "min_ms": 30000, "music_only": True, "merge_enabled": True,
-        }).json()["total_plays"]
-        unmerged = client.get("/api/dashboard/summary", params={
-            "min_ms": 30000, "music_only": True, "merge_enabled": False,
-        }).json()["total_plays"]
+        merged = client.get(
+            "/api/dashboard/summary",
+            params={
+                "min_ms": 30000,
+                "music_only": True,
+                "merge_enabled": True,
+            },
+        ).json()["total_plays"]
+        unmerged = client.get(
+            "/api/dashboard/summary",
+            params={
+                "min_ms": 30000,
+                "music_only": True,
+                "merge_enabled": False,
+            },
+        ).json()["total_plays"]
         assert merged <= unmerged, f"merged ({merged}) > unmerged ({unmerged})"
 
 
 # ═══════════════════════════════════════════════════════════════════════════
 # Response format
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 class TestResponseFormat:
     def test_json_content_type(self, client, default_params):
@@ -1046,11 +1215,13 @@ class TestResponseFormat:
 # Lyrics API
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestLyrics:
     def test_lyrics_endpoint_structure(self, client):
         """GET /api/lyrics/{track_id} returns correct structure for a valid track."""
         # First, get a track_id from the database
         from backend.core.db import get_db
+
         conn = get_db()
         try:
             row = conn.execute("SELECT track_id FROM tracks LIMIT 1").fetchone()
@@ -1078,6 +1249,7 @@ class TestLyrics:
     def test_lyrics_url_endpoint_structure(self, client):
         """GET /api/lyrics/{track_id}/url returns correct structure."""
         from backend.core.db import get_db
+
         conn = get_db()
         try:
             row = conn.execute("SELECT track_id FROM tracks LIMIT 1").fetchone()
@@ -1104,6 +1276,7 @@ class TestLyrics:
     def test_lyrics_cached_on_repeat(self, client):
         """Second request for the same track returns cached=True."""
         from backend.core.db import get_db
+
         conn = get_db()
         try:
             row = conn.execute("SELECT track_id FROM tracks LIMIT 1").fetchone()
