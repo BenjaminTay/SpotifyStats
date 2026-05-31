@@ -1,5 +1,6 @@
 """Core Billboard computation pipeline."""
 
+import math
 from functools import lru_cache
 
 import numpy as np
@@ -19,6 +20,34 @@ from backend.domains.billboard.version_merge import (
     _apply_album_release_groups,
     _normalize_album_column,
 )
+
+# ── Power Score 参数 ────────────────────────────────────────────────────
+# 榜单统治力评分 = Σ(每周基础分 × 竞争权重) + peak_bonus + 周数奖励 + 持续性加成 + 空降加成
+#
+# 基础分: 指数衰减曲线，与 top_n 无关
+#   base = max(1, round(_RANK1_BASE × _BASE_DECAY^(rank-1)))
+#   示例: #1=200, #2=174, #3=151, #5=117, #10=59, #20=15, #30=4
+#
+# 竞争权重 = comp_factor × indiv_factor
+#   comp_factor = clamp(√(week_total_plays / global_baseline), 0.7, 1.5)  — 周竞争强度
+#     — sqrt 压缩极端值，冷热周自然收敛，夹率从 48%→17%
+#   indiv_factor（冠军）: 1 + clamp(0.5 × log2(plays / runner_up), 0, 1.0)
+#     — 用"与亚军差距"度量统治力
+#   indiv_factor（非冠军）: 1 + clamp(0.4 × log2(plays / week_median), 0, 0.8)
+#     — 度量高于当周平均水平的程度，4×中位数即达上限 1.8×
+# 持续性加成 = sqrt(weeks_on_chart) × LONGEVITY_FACTOR，奖励长期在榜的稳定表现
+
+_RANK1_BASE = 200  # 第 1 名基础分
+_BASE_DECAY = 0.87  # 基础分指数衰减因子（每降 1 名 ×0.87）
+_PEAK_BONUS = {1: 200, 2: 100, 3: 50}  # 最高排名一次性奖励
+_TOP5_BONUS = 30  # 每周 Top 5 奖励（仅单曲）
+_TOP10_BONUS = 10  # 每周 Top 10 奖励（仅单曲）
+_TOP1_BONUS = 40  # 每周 #1 奖励（专辑/艺人）
+_LONGEVITY_FACTOR = 45  # 持续性加成系数
+_DEBUT_NO1_BONUS = 50  # 空降 #1 奖励（首周即登顶）
+_COMP_RANGE = (0.7, 1.5)  # 竞争因子 clamp 范围
+_INDIV_RANGE = (0.0, 0.8)  # 个人统治因子 clamp 范围（非冠军，不含基准 1.0）
+_INDIV_GAP_RANGE = (0.0, 1.0)  # 冠军统治因子 clamp 范围（gap-to-runner-up，不含基准 1.0）
 
 
 def compute_weekly_rankings(_df, top_n, pre_agg=None):
@@ -143,17 +172,30 @@ def compute_artist_weekly_rankings(_df, top_n, pre_agg=None):
 def compute_power_scores(weekly, top_n):
     """Compute Power Score for each track — composite ranking metric.
 
-    Power Score = Σ(weekly_base_points × play_intensity_weight)
+    Power Score = Σ(weekly_base_points × competition_weight)
                   + peak_bonus + top5_bonus + top10_bonus
+                  + longevity_bonus + debut_bonus
+
+    competition_weight = comp_factor × indiv_factor
+      comp_factor = clamp(week_median / global_baseline, _COMP_RANGE)
+        — rewards performing in competitive weeks
+      indiv_factor = 1.0 + clamp(0.5 × log2(plays / week_median), _INDIV_RANGE)
+        — rewards dominating peers within the week
 
     Base points are normalized to rank/top_n so scores are comparable
     regardless of chart size top_n.
     """
-    tier1_count = int(top_n * 0.1)
-    tier2_count = int(top_n * 0.2)
-
-    # Week median plays (competition baseline)
     week_medians = weekly.groupby("billboard_week")["play_count"].median().to_dict()
+    week_totals = weekly.groupby("billboard_week")["play_count"].sum().to_dict()
+    week_total_values = list(week_totals.values())
+    global_baseline = float(np.median(week_total_values)) if week_total_values else 1.0
+    comp_lo, comp_hi = _COMP_RANGE
+    indiv_lo, indiv_hi = _INDIV_RANGE
+    gap_lo, gap_hi = _INDIV_GAP_RANGE
+
+    # Precompute #1 and #2 plays per week for gap-to-runner-up
+    _r2 = weekly[weekly["rank"] == 2][["billboard_week", "play_count"]]
+    week_r2 = dict(zip(_r2["billboard_week"], _r2["play_count"]))
 
     scores = []
     for (track_id, track_name, artist_name), group in weekly.groupby(
@@ -165,39 +207,51 @@ def compute_power_scores(weekly, top_n):
         weeks_top10 = int((group["rank"] <= 10).sum())
         weeks_at_no1 = int((group["rank"] == 1).sum())
 
+        # Debut #1: first charting week was rank 1
+        first_week_idx = group["billboard_week"].idxmin()
+        debut_rank = group.loc[first_week_idx, "rank"]
+        is_debut_no1 = 1 if debut_rank == 1 else 0
+
         total = 0.0
         for _, row in group.iterrows():
             rank = row["rank"]
             plays = row["play_count"]
             median = week_medians.get(row["billboard_week"], 1)
+            week_total = week_totals.get(row["billboard_week"], 1)
 
-            # 1. Base points (normalized by rank/top_n)
-            r_norm = rank / top_n if top_n > 0 else 0
-            if rank == 1:
-                base = 200
-            elif r_norm <= 0.1:
-                base = int(200 * (0.75 - 2.5 * r_norm))
-            elif r_norm <= 0.2:
-                rank_in_tier = rank - tier1_count
-                base = max(1, int(85 * (0.85**rank_in_tier)))
-            else:
-                start_val = int(85 * 0.85 ** (tier2_count - tier1_count))
-                base = max(1, int(start_val * (1 - (r_norm - 0.2) / 0.8)))
+            # 1. Base points — exponential decay, independent of top_n
+            base = max(1, round(_RANK1_BASE * _BASE_DECAY ** (rank - 1)))
 
-            # 2. Play intensity weight: log₂ ratio to week median
-            if median > 0 and plays > 0:
-                weight = 1 + min(3.0, max(0.0, np.log2(plays / median)))
+            # 2. Competition weight
+            #    comp_factor: 市场大盘越热 → 竞争越激烈 → 排名含金量越高
+            #    indiv_factor: #1 uses gap-to-runner-up, others use median ratio
+            if week_total > 0 and plays > 0 and global_baseline > 0:
+                comp_factor = max(comp_lo, min(comp_hi, math.sqrt(week_total / global_baseline)))
+                if rank == 1:
+                    runner_up = week_r2.get(row["billboard_week"], 0)
+                    if runner_up > 0:
+                        gap_ratio = plays / runner_up
+                        indiv_factor = 1.0 + max(gap_lo, min(gap_hi, 0.5 * np.log2(gap_ratio)))
+                    else:
+                        indiv_factor = 1.0 + gap_hi  # solo #1, max bonus
+                else:
+                    indiv_factor = 1.0 + max(indiv_lo, min(indiv_hi, 0.4 * np.log2(plays / median)))
+                weight = comp_factor * indiv_factor
             else:
                 weight = 1.0
 
             total += base * weight
 
         # 3. Bonuses
-        peak_bonus = {1: 100, 2: 50, 3: 30}.get(peak, 0)
-        top5_bonus = weeks_top5 * 20
-        top10_bonus = weeks_top10 * 5
+        peak_bonus = _PEAK_BONUS.get(peak, 0)
+        top5_bonus = weeks_top5 * _TOP5_BONUS
+        top10_bonus = weeks_top10 * _TOP10_BONUS
+        longevity_bonus = math.sqrt(weeks_total) * _LONGEVITY_FACTOR
+        debut_bonus = is_debut_no1 * _DEBUT_NO1_BONUS
 
-        power_score = round(total + peak_bonus + top5_bonus + top10_bonus)
+        power_score = round(
+            total + peak_bonus + top5_bonus + top10_bonus + longevity_bonus + debut_bonus
+        )
 
         scores.append(
             {
@@ -219,11 +273,21 @@ def compute_power_scores(weekly, top_n):
 
 
 def compute_album_power_scores(weekly_album, top_n):
-    """Compute Power Score for each album — composite ranking metric."""
-    tier1_count = int(top_n * 0.1)
-    tier2_count = int(top_n * 0.2)
+    """Compute Power Score for each album — composite ranking metric.
 
+    Power Score = Σ(weekly_base_points × competition_weight)
+                  + peak_bonus + top1_bonus + longevity_bonus + debut_bonus
+    """
     week_medians = weekly_album.groupby("billboard_week")["play_count"].median().to_dict()
+    week_totals = weekly_album.groupby("billboard_week")["play_count"].sum().to_dict()
+    week_total_values = list(week_totals.values())
+    global_baseline = float(np.median(week_total_values)) if week_total_values else 1.0
+    comp_lo, comp_hi = _COMP_RANGE
+    indiv_lo, indiv_hi = _INDIV_RANGE
+    gap_lo, gap_hi = _INDIV_GAP_RANGE
+
+    _r2 = weekly_album[weekly_album["rank"] == 2][["billboard_week", "play_count"]]
+    week_r2 = dict(zip(_r2["billboard_week"], _r2["play_count"]))
 
     scores = []
     for (album_name, artist_name), group in weekly_album.groupby(["album_name", "artist_name"]):
@@ -233,35 +297,42 @@ def compute_album_power_scores(weekly_album, top_n):
         weeks_top5 = int((group["rank"] <= 5).sum())
         weeks_top10 = int((group["rank"] <= 10).sum())
 
+        first_week_idx = group["billboard_week"].idxmin()
+        debut_rank = group.loc[first_week_idx, "rank"]
+        is_debut_no1 = 1 if debut_rank == 1 else 0
+
         total = 0.0
         for _, row in group.iterrows():
             rank = row["rank"]
             plays = row["play_count"]
             median = week_medians.get(row["billboard_week"], 1)
+            week_total = week_totals.get(row["billboard_week"], 1)
 
-            r_norm = rank / top_n if top_n > 0 else 0
-            if rank == 1:
-                base = 200
-            elif r_norm <= 0.1:
-                base = int(200 * (0.75 - 2.5 * r_norm))
-            elif r_norm <= 0.2:
-                rank_in_tier = rank - tier1_count
-                base = max(1, int(85 * (0.85**rank_in_tier)))
-            else:
-                start_val = int(85 * 0.85 ** (tier2_count - tier1_count))
-                base = max(1, int(start_val * (1 - (r_norm - 0.2) / 0.8)))
+            base = max(1, round(_RANK1_BASE * _BASE_DECAY ** (rank - 1)))
 
-            if median > 0 and plays > 0:
-                weight = 1 + min(3.0, max(0.0, np.log2(plays / median)))
+            if week_total > 0 and plays > 0 and global_baseline > 0:
+                comp_factor = max(comp_lo, min(comp_hi, math.sqrt(week_total / global_baseline)))
+                if rank == 1:
+                    runner_up = week_r2.get(row["billboard_week"], 0)
+                    if runner_up > 0:
+                        gap_ratio = plays / runner_up
+                        indiv_factor = 1.0 + max(gap_lo, min(gap_hi, 0.5 * np.log2(gap_ratio)))
+                    else:
+                        indiv_factor = 1.0 + gap_hi
+                else:
+                    indiv_factor = 1.0 + max(indiv_lo, min(indiv_hi, 0.4 * np.log2(plays / median)))
+                weight = comp_factor * indiv_factor
             else:
                 weight = 1.0
 
             total += base * weight
 
-        peak_bonus = {1: 100, 2: 50, 3: 30}.get(peak, 0)
-        top1_bonus = weeks_top1 * 20
+        peak_bonus = _PEAK_BONUS.get(peak, 0)
+        top1_bonus = weeks_top1 * _TOP1_BONUS
+        longevity_bonus = math.sqrt(weeks_total) * _LONGEVITY_FACTOR
+        debut_bonus = is_debut_no1 * _DEBUT_NO1_BONUS
 
-        power_score = round(total + peak_bonus + top1_bonus)
+        power_score = round(total + peak_bonus + top1_bonus + longevity_bonus + debut_bonus)
 
         scores.append(
             {
@@ -282,11 +353,22 @@ def compute_album_power_scores(weekly_album, top_n):
 
 
 def compute_artist_power_scores(weekly_artist, top_n):
-    """Compute Power Score for each artist — composite ranking metric."""
-    tier1_count = int(top_n * 0.1)
-    tier2_count = int(top_n * 0.2)
+    """Compute Power Score for each artist — composite ranking metric.
+
+    Power Score = Σ(weekly_base_points × competition_weight)
+                  + peak_bonus + top1_bonus + longevity_bonus + debut_bonus
+    """
 
     week_medians = weekly_artist.groupby("billboard_week")["play_count"].median().to_dict()
+    week_totals = weekly_artist.groupby("billboard_week")["play_count"].sum().to_dict()
+    week_total_values = list(week_totals.values())
+    global_baseline = float(np.median(week_total_values)) if week_total_values else 1.0
+    comp_lo, comp_hi = _COMP_RANGE
+    indiv_lo, indiv_hi = _INDIV_RANGE
+    gap_lo, gap_hi = _INDIV_GAP_RANGE
+
+    _r2 = weekly_artist[weekly_artist["rank"] == 2][["billboard_week", "play_count"]]
+    week_r2 = dict(zip(_r2["billboard_week"], _r2["play_count"]))
 
     scores = []
     for artist_name, group in weekly_artist.groupby("artist_name"):
@@ -296,35 +378,42 @@ def compute_artist_power_scores(weekly_artist, top_n):
         weeks_top5 = int((group["rank"] <= 5).sum())
         weeks_top10 = int((group["rank"] <= 10).sum())
 
+        first_week_idx = group["billboard_week"].idxmin()
+        debut_rank = group.loc[first_week_idx, "rank"]
+        is_debut_no1 = 1 if debut_rank == 1 else 0
+
         total = 0.0
         for _, row in group.iterrows():
             rank = row["rank"]
             plays = row["play_count"]
             median = week_medians.get(row["billboard_week"], 1)
+            week_total = week_totals.get(row["billboard_week"], 1)
 
-            r_norm = rank / top_n if top_n > 0 else 0
-            if rank == 1:
-                base = 200
-            elif r_norm <= 0.1:
-                base = int(200 * (0.75 - 2.5 * r_norm))
-            elif r_norm <= 0.2:
-                rank_in_tier = rank - tier1_count
-                base = max(1, int(85 * (0.85**rank_in_tier)))
-            else:
-                start_val = int(85 * 0.85 ** (tier2_count - tier1_count))
-                base = max(1, int(start_val * (1 - (r_norm - 0.2) / 0.8)))
+            base = max(1, round(_RANK1_BASE * _BASE_DECAY ** (rank - 1)))
 
-            if median > 0 and plays > 0:
-                weight = 1 + min(3.0, max(0.0, np.log2(plays / median)))
+            if week_total > 0 and plays > 0 and global_baseline > 0:
+                comp_factor = max(comp_lo, min(comp_hi, math.sqrt(week_total / global_baseline)))
+                if rank == 1:
+                    runner_up = week_r2.get(row["billboard_week"], 0)
+                    if runner_up > 0:
+                        gap_ratio = plays / runner_up
+                        indiv_factor = 1.0 + max(gap_lo, min(gap_hi, 0.5 * np.log2(gap_ratio)))
+                    else:
+                        indiv_factor = 1.0 + gap_hi
+                else:
+                    indiv_factor = 1.0 + max(indiv_lo, min(indiv_hi, 0.4 * np.log2(plays / median)))
+                weight = comp_factor * indiv_factor
             else:
                 weight = 1.0
 
             total += base * weight
 
-        peak_bonus = {1: 100, 2: 50, 3: 30}.get(peak, 0)
-        top1_bonus = weeks_top1 * 20
+        peak_bonus = _PEAK_BONUS.get(peak, 0)
+        top1_bonus = weeks_top1 * _TOP1_BONUS
+        longevity_bonus = math.sqrt(weeks_total) * _LONGEVITY_FACTOR
+        debut_bonus = is_debut_no1 * _DEBUT_NO1_BONUS
 
-        power_score = round(total + peak_bonus + top1_bonus)
+        power_score = round(total + peak_bonus + top1_bonus + longevity_bonus + debut_bonus)
 
         scores.append(
             {

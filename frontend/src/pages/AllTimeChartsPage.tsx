@@ -594,8 +594,8 @@ export function AllTimeChartsPage() {
       rows.push({
         artist_name: aps.artist_name,
         cover_url: artistCoverMap.get(aps.artist_name) ?? null,
-        weeks_on_chart: atc?.total_weeks ?? aps.weeks_on_chart,
-        peak_position: atc?.best_peak ?? aps.peak_position,
+        weeks_on_chart: aps.weeks_on_chart,
+        peak_position: aps.peak_position,
         weeks_at_peak: ws?.weeksAtPeak ?? 0,
         weeks_top5: ws?.weeksTop5 ?? 0,
         weeks_top10: ws?.weeksTop10 ?? 0,
