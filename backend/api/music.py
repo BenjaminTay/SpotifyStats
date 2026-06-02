@@ -7,7 +7,13 @@ from sqlite3 import Connection
 from fastapi import APIRouter, Depends, Query
 
 from backend.dependencies import PlayFilters, get_conn
-from backend.services.entity_stats_service import get_album_stats, get_artist_stats, get_track_stats
+from backend.services.entity_stats_service import (
+    get_album_stats,
+    get_artist_stats,
+    get_entity_play_dates,
+    get_entity_plays,
+    get_track_stats,
+)
 
 router = APIRouter(prefix="/music", tags=["Music"])
 
@@ -84,18 +90,26 @@ def track_plays(
     period: str = Query(default="lifetime"),
     start_date: str | None = Query(default=None),
     end_date: str | None = Query(default=None),
+    search: str | None = Query(default=None),
+    date: str | None = Query(default=None),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
     conn: Connection = Depends(get_conn),
 ):
-    return get_track_stats(
+    return get_entity_plays(
         conn,
-        track_id,
-        filters.min_ms,
-        filters.music_only,
-        filters.merge_enabled,
-        period,
-        start_date,
-        end_date,
-    ).get("recent_plays", [])
+        entity="track",
+        track_id=track_id,
+        min_ms=filters.min_ms,
+        music_only=filters.music_only,
+        period=period,
+        start_date=start_date,
+        end_date=end_date,
+        search=search,
+        date=date,
+        limit=limit,
+        offset=offset,
+    )
 
 
 @router.get("/albums/{album_name}/plays")
@@ -106,19 +120,27 @@ def album_plays(
     period: str = Query(default="lifetime"),
     start_date: str | None = Query(default=None),
     end_date: str | None = Query(default=None),
+    search: str | None = Query(default=None),
+    date: str | None = Query(default=None),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
     conn: Connection = Depends(get_conn),
 ):
-    return get_album_stats(
+    return get_entity_plays(
         conn,
-        album_name,
-        artist,
-        filters.min_ms,
-        filters.music_only,
-        filters.merge_enabled,
-        period,
-        start_date,
-        end_date,
-    ).get("recent_plays", [])
+        entity="album",
+        album_name=album_name,
+        artist_name=artist,
+        min_ms=filters.min_ms,
+        music_only=filters.music_only,
+        period=period,
+        start_date=start_date,
+        end_date=end_date,
+        search=search,
+        date=date,
+        limit=limit,
+        offset=offset,
+    )
 
 
 @router.get("/artists/{artist_name}/plays")
@@ -128,15 +150,88 @@ def artist_plays(
     period: str = Query(default="lifetime"),
     start_date: str | None = Query(default=None),
     end_date: str | None = Query(default=None),
+    search: str | None = Query(default=None),
+    date: str | None = Query(default=None),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
     conn: Connection = Depends(get_conn),
 ):
-    return get_artist_stats(
+    return get_entity_plays(
         conn,
-        artist_name,
-        filters.min_ms,
-        filters.music_only,
-        filters.merge_enabled,
-        period,
-        start_date,
-        end_date,
-    ).get("recent_plays", [])
+        entity="artist",
+        artist_name=artist_name,
+        min_ms=filters.min_ms,
+        music_only=filters.music_only,
+        period=period,
+        start_date=start_date,
+        end_date=end_date,
+        search=search,
+        date=date,
+        limit=limit,
+        offset=offset,
+    )
+
+
+@router.get("/tracks/{track_id}/play-dates")
+def track_play_dates(
+    track_id: int,
+    filters: PlayFilters = Depends(),
+    period: str = Query(default="lifetime"),
+    start_date: str | None = Query(default=None),
+    end_date: str | None = Query(default=None),
+    conn: Connection = Depends(get_conn),
+):
+    return get_entity_play_dates(
+        conn,
+        entity="track",
+        track_id=track_id,
+        min_ms=filters.min_ms,
+        music_only=filters.music_only,
+        period=period,
+        start_date=start_date,
+        end_date=end_date,
+    )
+
+
+@router.get("/albums/{album_name}/play-dates")
+def album_play_dates(
+    album_name: str,
+    artist: str | None = Query(default=None),
+    filters: PlayFilters = Depends(),
+    period: str = Query(default="lifetime"),
+    start_date: str | None = Query(default=None),
+    end_date: str | None = Query(default=None),
+    conn: Connection = Depends(get_conn),
+):
+    return get_entity_play_dates(
+        conn,
+        entity="album",
+        album_name=album_name,
+        artist_name=artist,
+        min_ms=filters.min_ms,
+        music_only=filters.music_only,
+        period=period,
+        start_date=start_date,
+        end_date=end_date,
+    )
+
+
+@router.get("/artists/{artist_name}/play-dates")
+def artist_play_dates(
+    artist_name: str,
+    filters: PlayFilters = Depends(),
+    period: str = Query(default="lifetime"),
+    start_date: str | None = Query(default=None),
+    end_date: str | None = Query(default=None),
+    conn: Connection = Depends(get_conn),
+):
+    return get_entity_play_dates(
+        conn,
+        entity="artist",
+        artist_name=artist_name,
+        min_ms=filters.min_ms,
+        music_only=filters.music_only,
+        period=period,
+        start_date=start_date,
+        end_date=end_date,
+    )

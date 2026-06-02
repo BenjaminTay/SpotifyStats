@@ -134,3 +134,17 @@
     @apply font-sans;
     }
 }
+
+/* Calendar: highlight dates with play records */
+.rdp-day_button.has-plays::after {
+  content: '';
+  position: absolute;
+  bottom: 3px;
+  left: 50%;
+  translate: -50% 0;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--color-accent-foreground);
+  opacity: 0.6;
+}

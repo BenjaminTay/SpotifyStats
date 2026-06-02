@@ -1,6 +1,8 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useCallback } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
+import { queryKeys } from '@/api/query-keys'
 import type { TrackDetailResponse, LyricsData, TrackEnrichmentResponse } from '@/types/billboard'
 import { GlassCard } from '@/components/shared/GlassCard'
 import { ChangeCell } from '@/components/shared/ChangeCell'
@@ -90,31 +92,19 @@ function TrackDetailSkeleton() {
 export function TrackDetailPage() {
   const { trackId } = useParams<{ trackId: string }>()
   const navigate = useNavigate()
-  const [data, setData] = useState<TrackDetailResponse | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<TabKey>('stats')
+
+  const { data, isPending, error, refetch } = useQuery({
+    queryKey: queryKeys.music.trackDetail(trackId ?? ''),
+    queryFn: () => api.get<TrackDetailResponse>('/billboard/track/' + trackId!),
+    enabled: !!trackId,
+  })
   const [lyrics, setLyrics] = useState<LyricsData | null>(null)
   const [lyricsLoading, setLyricsLoading] = useState(false)
 
   // Enrichment (Genius + Wikipedia)
   const [enrichment, setEnrichment] = useState<TrackEnrichmentResponse | null>(null)
   const [enrichmentLoading, setEnrichmentLoading] = useState(false)
-
-  const fetchData = useCallback(() => {
-    if (!trackId) return
-    setLoading(true)
-    setError(null)
-    api
-      .get<TrackDetailResponse>('/billboard/track/' + trackId)
-      .then(setData)
-      .catch((e: Error) => setError(e.message))
-      .finally(() => setLoading(false))
-  }, [trackId])
-
-  useEffect(() => {
-    fetchData()
-  }, [fetchData])
 
   const fetchLyrics = useCallback(() => {
     if (!trackId || lyrics) return
@@ -157,14 +147,14 @@ export function TrackDetailPage() {
 
   return (
     <>
-      {loading && <TrackDetailSkeleton />}
+      {isPending && <TrackDetailSkeleton />}
 
       {error && (
         <div className="flex flex-col items-center gap-4 py-20 text-center">
           <AlertCircle className="h-8 w-8 text-accent-foreground" />
-          <p className="text-muted-foreground">加载失败：{error}</p>
+          <p className="text-muted-foreground">加载失败：{error.message}</p>
           <button
-            onClick={fetchData}
+            onClick={() => refetch()}
             className="rounded-full bg-accent-foreground px-6 py-2 text-[13px] font-semibold text-primary-foreground transition-opacity hover:opacity-85"
           >
             重新加载
@@ -172,7 +162,7 @@ export function TrackDetailPage() {
         </div>
       )}
 
-      {data && !loading && (
+      {data && !isPending && (
         <>
           {!data.found ? (
             <div className="flex flex-col items-center gap-4 py-20 text-center">
@@ -417,9 +407,9 @@ export function TrackDetailPage() {
                 </>
               )}
 
-              {activeTab === 'stats' && (
+              <div className={activeTab === 'stats' ? '' : 'hidden'}>
                 <EntityStatsPanel kind="track" trackId={trackId} />
-              )}
+              </div>
 
               {/* ═══ Tab 2: 歌词 ═══ */}
               {activeTab === 'lyrics' && (

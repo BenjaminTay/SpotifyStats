@@ -8,7 +8,12 @@ from fastapi import APIRouter, Depends, Query
 
 from backend.dependencies import PlayFilters, get_conn
 from backend.services.analysis_service import get_analysis_overview
-from backend.services.analysis_stats_service import get_analysis_charts, get_analysis_stats
+from backend.services.analysis_stats_service import (
+    get_analysis_charts,
+    get_analysis_stats,
+    get_global_play_dates,
+    get_global_plays,
+)
 
 router = APIRouter(prefix="/analysis", tags=["Analysis"])
 
@@ -69,4 +74,48 @@ def analysis_charts(
         metric,
         limit,
         offset,
+    )
+
+
+@router.get("/plays")
+def analysis_plays(
+    filters: PlayFilters = Depends(),
+    period: str = Query(default="lifetime"),
+    start_date: str | None = Query(default=None),
+    end_date: str | None = Query(default=None),
+    search: str | None = Query(default=None),
+    date: str | None = Query(default=None),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    conn: Connection = Depends(get_conn),
+):
+    return get_global_plays(
+        conn,
+        min_ms=filters.min_ms,
+        music_only=filters.music_only,
+        period=period,
+        start_date=start_date,
+        end_date=end_date,
+        search=search,
+        date=date,
+        limit=limit,
+        offset=offset,
+    )
+
+
+@router.get("/play-dates")
+def analysis_play_dates(
+    filters: PlayFilters = Depends(),
+    period: str = Query(default="lifetime"),
+    start_date: str | None = Query(default=None),
+    end_date: str | None = Query(default=None),
+    conn: Connection = Depends(get_conn),
+):
+    return get_global_play_dates(
+        conn,
+        min_ms=filters.min_ms,
+        music_only=filters.music_only,
+        period=period,
+        start_date=start_date,
+        end_date=end_date,
     )

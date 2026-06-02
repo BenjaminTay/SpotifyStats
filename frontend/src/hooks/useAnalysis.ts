@@ -12,6 +12,7 @@ import type {
   ArtistDeepDiveResponse,
   ArtistListEntry,
   BehaviorResponse,
+  EntityPlaysResponse,
   EntityStatsResponse,
   HeatmapResponse,
   LeaderboardEntity,
@@ -210,4 +211,82 @@ export const analysisApi = {
     }),
   artistDeepDive: (filters: AnalysisFilters, name: string) =>
     api.get<ArtistDeepDiveResponse>(`/artist/${encodeURIComponent(name)}/deep-dive`, playParams(filters)),
+  entityPlays: (
+    kind: 'track' | 'album' | 'artist',
+    id: string,
+    filters: AnalysisFilters,
+    params: { period: AnalysisPeriod; start_date?: string; end_date?: string; limit?: number; offset?: number; search?: string; date?: string },
+    artistName?: string,
+  ) => {
+    const path =
+      kind === 'track'
+        ? `/music/tracks/${id}/plays`
+        : kind === 'album'
+          ? `/music/albums/${encodeURIComponent(id)}/plays`
+          : `/music/artists/${encodeURIComponent(id)}/plays`
+    const q: Record<string, string | number | boolean> = {
+      ...playParams(filters),
+      period: params.period,
+      start_date: params.start_date ?? '',
+      end_date: params.end_date ?? '',
+      limit: params.limit ?? 50,
+      offset: params.offset ?? 0,
+    }
+    if (params.search) q.search = params.search
+    if (params.date) q.date = params.date
+    // Remove empty strings that were defaulted
+    if (!q.start_date) delete q.start_date
+    if (!q.end_date) delete q.end_date
+    if (kind === 'album' && artistName) {
+      q.artist = artistName
+    }
+    return api.get<EntityPlaysResponse>(path, q)
+  },
+  plays: (
+    filters: AnalysisFilters,
+    params: { period: AnalysisPeriod; start_date?: string; end_date?: string; limit?: number; offset?: number; search?: string; date?: string },
+  ) => {
+    const q: Record<string, string | number | boolean> = {
+      ...playParams(filters),
+      period: params.period,
+      start_date: params.start_date ?? '',
+      end_date: params.end_date ?? '',
+      limit: params.limit ?? 50,
+      offset: params.offset ?? 0,
+    }
+    if (params.search) q.search = params.search
+    if (params.date) q.date = params.date
+    if (!q.start_date) delete q.start_date
+    if (!q.end_date) delete q.end_date
+    return api.get<EntityPlaysResponse>('/analysis/plays', q)
+  },
+
+  entityPlayDates: (
+    kind: 'track' | 'album' | 'artist',
+    id: string,
+    filters: AnalysisFilters,
+    params: { period: AnalysisPeriod; start_date?: string; end_date?: string },
+    artistName?: string,
+  ) => {
+    const path =
+      kind === 'track'
+        ? `/music/tracks/${id}/play-dates`
+        : kind === 'album'
+          ? `/music/albums/${encodeURIComponent(id)}/play-dates`
+          : `/music/artists/${encodeURIComponent(id)}/play-dates`
+    const queryParams: Record<string, string | number | boolean> = {
+      ...playParams(filters),
+      ...params,
+    }
+    if (kind === 'album' && artistName) {
+      queryParams.artist = artistName
+    }
+    return api.get<{ date: string; count: number }[]>(path, queryParams)
+  },
+
+  playDates: (
+    filters: AnalysisFilters,
+    params: { period: AnalysisPeriod; start_date?: string; end_date?: string },
+  ) =>
+    api.get<{ date: string; count: number }[]>('/analysis/play-dates', { ...playParams(filters), ...params }),
 }

@@ -67,6 +67,29 @@ def resolve_period(
     }
 
 
+def resolve_period_dates(
+    period: str, start_date: str | None, end_date: str | None
+) -> tuple[str | None, str | None]:
+    """Resolve a named period to (start_date, end_date) strings without a DataFrame."""
+    period = period if period in PERIOD_LABELS else "lifetime"
+    today = date.today()
+
+    if period == "lifetime":
+        return None, None
+    elif period == "today":
+        return today.isoformat(), today.isoformat()
+    elif period == "this_week":
+        return (today - timedelta(days=today.weekday())).isoformat(), today.isoformat()
+    elif period == "this_year":
+        return date(today.year, 1, 1).isoformat(), today.isoformat()
+    elif period == "last_4_weeks":
+        return (today - timedelta(days=27)).isoformat(), today.isoformat()
+    elif period == "last_6_months":
+        return (today - timedelta(days=182)).isoformat(), today.isoformat()
+    else:
+        return start_date, end_date
+
+
 def filter_period(df: pd.DataFrame, resolved: dict) -> pd.DataFrame:
     if df.empty:
         return df
@@ -547,6 +570,129 @@ def entity_cover(conn: sqlite3.Connection, entity: str, row: dict) -> str | None
     if entity == "artist":
         return _artist_cover_lookup(conn).get(row.get("artist_name"))
     return None
+
+
+def get_global_plays(
+    conn: sqlite3.Connection,
+    min_ms: int = 30000,
+    music_only: bool = True,
+    period: str = "lifetime",
+    start_date: str | None = None,
+    end_date: str | None = None,
+    search: str | None = None,
+    date: str | None = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> dict:
+    """Return paginated play records across all entities using direct SQL."""
+    from backend.core.db import base_filters
+
+    bf, bf_params = base_filters(min_ms=min_ms, music_only=music_only, table_alias="p")
+
+    period_start, period_end = resolve_period_dates(period, start_date, end_date)
+
+    where_parts = [bf] if bf else []
+    params: list[Any] = list(bf_params)
+
+    if period_start:
+        where_parts.append("p.ts_date >= ?")
+        params.append(period_start)
+    if period_end:
+        where_parts.append("p.ts_date <= ?")
+        params.append(period_end)
+
+    if date is not None:
+        where_parts.append("p.ts_date = ?")
+        params.append(date)
+
+    if search is not None:
+        search_term = f"%{search}%"
+        where_parts.append("(t.track_name LIKE ? OR a.artist_name LIKE ? OR al.album_name LIKE ?)")
+        params.extend([search_term, search_term, search_term])
+
+    where_clause = " AND ".join(where_parts) if where_parts else "1=1"
+
+    base_from = """
+        FROM plays p
+        LEFT JOIN tracks t ON p.track_id = t.track_id
+        LEFT JOIN artists a ON t.artist_id = a.artist_id
+        LEFT JOIN albums al ON t.album_id = al.album_id
+    """
+
+    count_sql = f"SELECT COUNT(*) {base_from} WHERE {where_clause}"
+    total = conn.execute(count_sql, params).fetchone()[0]
+
+    select_sql = f"""
+        SELECT p.play_id, p.ts, p.ts_date, p.track_id, t.track_name,
+               a.artist_name, al.album_name, p.ms_played, p.platform
+        {base_from}
+        WHERE {where_clause}
+        ORDER BY p.ts DESC
+        LIMIT ? OFFSET ?
+    """
+    rows = conn.execute(select_sql, params + [limit, offset]).fetchall()
+
+    track_ids = [int(r["track_id"]) for r in rows if r["track_id"] is not None]
+    cover_map = _track_cover_urls(conn, track_ids) if track_ids else {}
+
+    result = []
+    for r in rows:
+        tid = int(r["track_id"]) if r["track_id"] is not None else None
+        result.append(
+            {
+                "play_id": int(r["play_id"]),
+                "ts": str(r["ts"]),
+                "date": str(r["ts_date"]),
+                "track_id": tid,
+                "track_name": r["track_name"] or "",
+                "artist_name": r["artist_name"] or "",
+                "album_name": r["album_name"],
+                "ms_played": int(r["ms_played"]),
+                "hours": round(float(r["ms_played"]) / 3_600_000, 3),
+                "platform": r["platform"] or "",
+                "cover_url": cover_map.get(tid) if tid is not None else None,
+            }
+        )
+
+    return {"total": total, "limit": limit, "offset": offset, "rows": result}
+
+
+def get_global_play_dates(
+    conn: sqlite3.Connection,
+    min_ms: int = 30000,
+    music_only: bool = True,
+    period: str = "lifetime",
+    start_date: str | None = None,
+    end_date: str | None = None,
+) -> list[dict[str, Any]]:
+    """Return [{date, count}] for calendar highlighting across all entities."""
+    from backend.core.db import base_filters
+
+    bf, bf_params = base_filters(min_ms=min_ms, music_only=music_only, table_alias="p")
+
+    period_start, period_end = resolve_period_dates(period, start_date, end_date)
+
+    where_parts = [bf] if bf else []
+    params: list[Any] = list(bf_params)
+
+    if period_start:
+        where_parts.append("p.ts_date >= ?")
+        params.append(period_start)
+    if period_end:
+        where_parts.append("p.ts_date <= ?")
+        params.append(period_end)
+
+    where_clause = " AND ".join(where_parts) if where_parts else "1=1"
+
+    sql = f"""
+        SELECT p.ts_date AS date, COUNT(*) AS count
+        FROM plays p
+        WHERE {where_clause}
+        GROUP BY p.ts_date
+        ORDER BY p.ts_date
+    """
+    rows = conn.execute(sql, params).fetchall()
+    return [{"date": str(r["date"]), "count": int(r["count"])} for r in rows]
 
 
 # ── Cache registration ─────────────────────────────────────────────────

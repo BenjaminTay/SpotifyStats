@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom'
 import { CoverCell } from '@/components/shared/CoverCell'
-import type { AnalysisChartRow, RecentPlayRow } from '@/types/analysis'
+import type { AnalysisChartRow } from '@/types/analysis'
 import { cn } from '@/lib/utils'
 import { displayName } from '@/lib/chinese'
 
@@ -10,19 +10,6 @@ function formatNumber(n: number): string {
 
 function formatHours(n: number): string {
   return `${new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 1 }).format(n)}h`
-}
-
-function formatTs(value: string): { date: string; time: string } {
-  const tIdx = value.indexOf('T')
-  if (tIdx === -1) return { date: value.slice(0, 10), time: '' }
-  return { date: value.slice(0, tIdx), time: value.slice(tIdx + 1, tIdx + 6) }
-}
-
-function formatMinutes(n: number): string {
-  const totalSec = Math.round(n * 3600)
-  const m = Math.floor(totalSec / 60)
-  const s = totalSec % 60
-  return `${m}m${s}s`
 }
 
 function dateShort(value: string): string {
@@ -109,62 +96,4 @@ export function PersonalRankTable({ rows, entity, metric }: { rows: AnalysisChar
   )
 }
 
-export function RecentPlaysTable({ rows }: { rows: RecentPlayRow[] }) {
-  return (
-    <div className="overflow-x-auto">
-      <table className="w-full min-w-[660px] table-fixed border-collapse text-left font-sans text-[13px]">
-        <thead>
-          <tr className="border-b border-border text-[11px] uppercase tracking-[1px] text-muted-foreground">
-            <th className="w-[110px] py-3">播放时间</th>
-            <th className="w-[240px] py-3">歌曲</th>
-            <th className="w-[220px] py-3">专辑</th>
-            <th className="w-[60px] py-3 text-right">时长</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row, index) => {
-            const { date, time } = formatTs(row.ts)
-            return (
-              <tr key={row.play_id} className="border-b border-border/70">
-                <td className="py-3">
-                  <span className="block tabular-nums font-semibold text-muted-foreground">{date}</span>
-                  <span className="block text-[12px] text-muted-foreground/60">{time}</span>
-                </td>
-                <td className="py-3 pr-3">
-                  <span className="flex items-center gap-3 min-w-0">
-                    <Link to={row.track_id ? `/music/tracks/${row.track_id}` : '#'} className="shrink-0">
-                      <CoverCell index={index} coverUrl={row.cover_url} />
-                    </Link>
-                    <span className="min-w-0">
-                      <Link to={row.track_id ? `/music/tracks/${row.track_id}` : '#'} className="block truncate font-semibold transition-colors hover:text-accent-foreground">
-                        {displayName(row.track_name)}
-                      </Link>
-                      <Link to={row.artist_name ? `/music/artists/${encodeURIComponent(row.artist_name)}` : '#'} className="block truncate text-[12px] italic text-muted-foreground transition-colors hover:text-accent-foreground">
-                        {displayName(row.artist_name)}
-                      </Link>
-                    </span>
-                  </span>
-                </td>
-                <td className="py-3 pr-3">
-                  <span className="flex items-center gap-3 min-w-0">
-                    <CoverCell index={index} coverUrl={row.cover_url} />
-                    <span className="min-w-0">
-                      <Link to={row.album_name ? `/music/albums/${encodeURIComponent(row.album_name)}${row.artist_name ? `?artist=${encodeURIComponent(row.artist_name)}` : ''}` : '#'} className="block truncate font-semibold text-muted-foreground transition-colors hover:text-accent-foreground">
-                        {displayName(row.album_name || '—')}
-                      </Link>
-                      <Link to={row.artist_name ? `/music/artists/${encodeURIComponent(row.artist_name)}` : '#'} className="block truncate text-[12px] italic text-muted-foreground transition-colors hover:text-accent-foreground">
-                        {displayName(row.artist_name)}
-                      </Link>
-                    </span>
-                  </span>
-                </td>
-                <td className="py-3 text-right tabular-nums font-semibold">{formatMinutes(row.hours)}</td>
-              </tr>
-            )
-          })}
-        </tbody>
-      </table>
-    </div>
-  )
-}
 

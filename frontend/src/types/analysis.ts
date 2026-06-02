@@ -321,6 +321,13 @@ export interface RecentPlayRow {
   cover_url: string | null
 }
 
+export interface EntityPlaysResponse {
+  total: number
+  limit: number
+  offset: number
+  rows: RecentPlayRow[]
+}
+
 export interface AnalysisStatsResponse {
   period: AnalysisResolvedPeriod
   summary: AnalysisStatsSummary

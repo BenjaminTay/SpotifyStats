@@ -25,42 +25,65 @@ interface HeatmapDatum {
 function ChartShell({ option, height = 280 }: { option: Record<string, unknown>; height?: number }) {
   return (
     <Suspense fallback={<div className="animate-pulse rounded-lg bg-muted/40" style={{ height }} />}>
-      <ReactECharts option={option} style={{ height }} notMerge />
+      <ReactECharts option={option} style={{ height, isolation: 'isolate' } as React.CSSProperties} notMerge />
     </Suspense>
   )
 }
 
 export function AnalysisTrendChart({ data, mode = 'bar' }: { data: TrendDatum[]; mode?: 'bar' | 'line' }) {
   const { isDark } = useTheme()
-  const base = buildChartBase(isDark)
-  const colors = getChartColors(isDark)
+  const base = useMemo(() => buildChartBase(isDark), [isDark])
+  const colors = useMemo(() => getChartColors(isDark), [isDark])
+
   const option = useMemo(() => ({
     ...base,
     xAxis: { ...base.xAxis, data: data.map((d) => d.label) },
     yAxis: { ...base.yAxis },
-    tooltip: { ...base.tooltip, trigger: 'axis' },
+    tooltip: {
+      ...base.tooltip,
+      trigger: 'axis' as const,
+      axisPointer: {
+        type: 'line' as const,
+        lineStyle: {
+          color: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)',
+          width: 1,
+          type: 'dashed' as const,
+        },
+      },
+    },
     series: [
       {
         type: mode,
         data: data.map((d) => d.value),
         smooth: true,
         barMaxWidth: 34,
-        areaStyle: mode === 'line' ? { opacity: 0.08 } : undefined,
+        areaStyle: mode === 'line' ? { color: colors[0], opacity: 0.08 } : undefined,
         itemStyle: { color: colors[0], borderRadius: [3, 3, 0, 0] },
         lineStyle: { color: colors[0], width: 2 },
+        emphasis: {
+          focus: 'none' as const,
+          itemStyle: { color: colors[0] },
+          lineStyle: mode === 'line' ? { color: colors[0], width: 2 } : undefined,
+          areaStyle: mode === 'line' ? { color: colors[0], opacity: 0.14 } : undefined,
+        },
       },
       ...(data.some((d) => d.secondary !== undefined)
         ? [{
-            type: 'line',
+            type: 'line' as const,
             data: data.map((d) => d.secondary ?? null),
             smooth: true,
             symbolSize: 4,
             itemStyle: { color: colors[4] },
             lineStyle: { color: colors[4], width: 2 },
+            emphasis: {
+              focus: 'none' as const,
+              itemStyle: { color: colors[4] },
+              lineStyle: { color: colors[4], width: 3 },
+            },
           }]
         : []),
     ],
-  }), [base, colors, data, mode])
+  }), [base, colors, data, mode, isDark])
 
   return <ChartShell option={option} />
 }

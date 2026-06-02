@@ -3,7 +3,7 @@ import { ListeningClock } from '@/components/charts/ListeningClock'
 import { MetricToggle, useAnalysisQueryState } from '@/components/shared/AnalysisControls'
 import { GlassCard } from '@/components/shared/GlassCard'
 import { KpiCard } from '@/components/shared/KpiCard'
-import { RecentPlaysTable } from '@/components/shared/StatsTables'
+import { RecentPlaysSection } from '@/components/shared/RecentPlaysSection'
 import { Skeleton } from '@/components/ui/skeleton'
 import { analysisApi, useAnalysisFilters, useApiData } from '@/hooks/useAnalysis'
 
@@ -69,7 +69,6 @@ export function AnalysisStatsPage() {
       <div className="grid gap-6 xl:grid-cols-2">
         <GlassCard className="p-6">
           <h3 className="mb-3 font-serif text-2xl font-semibold">听歌时钟</h3>
-          <p className="mb-4 font-sans text-[12px] text-muted-foreground">扇形半径 = {metricLabel}数</p>
           <ListeningClock
             data={data.hourly_distribution.map((item) => ({
               hour: item.hour,
@@ -107,7 +106,17 @@ export function AnalysisStatsPage() {
 
       <GlassCard className="p-6">
         <h3 className="mb-5 font-serif text-2xl font-semibold">最近播放记录</h3>
-        <RecentPlaysTable rows={data.recent_plays} />
+        <RecentPlaysSection
+          kind="global"
+          filters={filters}
+          apiParams={apiParams}
+          fetchPage={async (page, limit, search, date) =>
+            analysisApi.plays(filters, { ...apiParams, limit, offset: (page - 1) * limit, search, date })
+          }
+          fetchPlayDates={async () =>
+            analysisApi.playDates(filters, apiParams)
+          }
+        />
       </GlassCard>
     </div>
   )

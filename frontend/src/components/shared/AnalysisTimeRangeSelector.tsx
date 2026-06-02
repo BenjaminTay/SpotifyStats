@@ -6,15 +6,8 @@ import {
   addWeeks,
   addMonths,
   addYears,
-  startOfWeek,
-  endOfWeek,
-  startOfMonth,
-  endOfMonth,
-  startOfYear,
-  endOfYear,
   getISOWeek,
   parseISO,
-
 } from 'date-fns'
 import { cn } from '@/lib/utils'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
@@ -80,20 +73,6 @@ function encodePeriodValue(period: AnalysisPeriod, anchor: Date): string {
   return ''
 }
 
-function computeDateRange(period: AnalysisPeriod, anchor: Date): { start: string; end: string } {
-  const fmt = (d: Date) => format(d, 'yyyy-MM-dd')
-  if (period === 'year') {
-    return { start: fmt(startOfYear(anchor)), end: fmt(endOfYear(anchor)) }
-  }
-  if (period === 'month') {
-    return { start: fmt(startOfMonth(anchor)), end: fmt(endOfMonth(anchor)) }
-  }
-  if (period === 'week') {
-    return { start: fmt(startOfWeek(anchor, { weekStartsOn: 1 })), end: fmt(endOfWeek(anchor, { weekStartsOn: 1 })) }
-  }
-  // day
-  return { start: fmt(anchor), end: fmt(anchor) }
-}
 
 function navigateAnchor(period: AnalysisPeriod, anchor: Date, direction: -1 | 1): Date {
   if (period === 'year') return addYears(anchor, direction)
@@ -108,12 +87,14 @@ export function AnalysisTimeRangeSelector({
   startDate,
   endDate,
   onChange,
+  quickFirst = false,
 }: {
   period: AnalysisPeriod
   periodValue: string | null
   startDate: string
   endDate: string
   onChange: (patch: Record<string, string | undefined>) => void
+  quickFirst?: boolean
 }) {
   const anchor = useMemo(() => parsePeriodValue(period, periodValue), [period, periodValue])
 
@@ -164,112 +145,125 @@ export function AnalysisTimeRangeSelector({
   const isAtToday =
     isNavigable && formatPeriodValue(period, anchor) === formatPeriodValue(period, today)
 
+  const navigatorBlock = isNavigable && (
+    <div className="flex items-center gap-1">
+      <button
+        type="button"
+        onClick={() => handleNavigate(-1)}
+        className="flex h-7 w-7 cursor-pointer items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+      >
+        <ChevronLeft className="h-3.5 w-3.5" />
+      </button>
+      <span className="min-w-[90px] text-center font-sans text-[13px] font-semibold text-foreground tabular-nums">
+        {formatPeriodValue(period, anchor)}
+      </span>
+      <button
+        type="button"
+        onClick={() => handleNavigate(1)}
+        disabled={isAtToday}
+        className={cn(
+          'flex h-7 w-7 items-center justify-center rounded-full text-muted-foreground transition-colors',
+          isAtToday
+            ? 'cursor-not-allowed opacity-25'
+            : 'cursor-pointer hover:bg-muted hover:text-foreground',
+        )}
+      >
+        <ChevronRight className="h-3.5 w-3.5" />
+      </button>
+    </div>
+  )
+
+  const customBlock = period === 'custom' && (
+    <div className="flex items-center gap-2">
+      <Popover open={startOpen} onOpenChange={setStartOpen}>
+        <PopoverTrigger asChild>
+          <button
+            className={cn(
+              'flex items-center gap-1.5 rounded-[6px] border border-border bg-background px-2.5 py-1 cursor-pointer transition-colors hover:border-foreground/20',
+              !startValid && 'text-muted-foreground',
+            )}
+          >
+            <CalendarIcon className="h-3.5 w-3.5 text-muted-foreground" />
+            <span className="font-sans text-[12px] tabular-nums">
+              {startValid ? format(startParsed!, 'yyyy-MM-dd') : '起始日'}
+            </span>
+          </button>
+        </PopoverTrigger>
+        <PopoverContent className="w-auto p-0 bg-card/80 backdrop-blur-xl border-border/60 shadow-xl" side="bottom" align="start" sideOffset={8}>
+          <Calendar
+            mode="single"
+            month={startParsed ?? undefined}
+            startMonth={endParsed ? new Date(2000, 0, 1) : undefined}
+            endMonth={endParsed ?? today}
+            onDayClick={handleStartDayClick}
+            footer="点击选择起始日期"
+          />
+        </PopoverContent>
+      </Popover>
+      <span className="text-[11px] text-muted-foreground">至</span>
+      <Popover open={endOpen} onOpenChange={setEndOpen}>
+        <PopoverTrigger asChild>
+          <button
+            className={cn(
+              'flex items-center gap-1.5 rounded-[6px] border border-border bg-background px-2.5 py-1 cursor-pointer transition-colors hover:border-foreground/20',
+              !endValid && 'text-muted-foreground',
+            )}
+          >
+            <CalendarIcon className="h-3.5 w-3.5 text-muted-foreground" />
+            <span className="font-sans text-[12px] tabular-nums">
+              {endValid ? format(endParsed!, 'yyyy-MM-dd') : '结束日'}
+            </span>
+          </button>
+        </PopoverTrigger>
+        <PopoverContent className="w-auto p-0 bg-card/80 backdrop-blur-xl border-border/60 shadow-xl" side="bottom" align="start" sideOffset={8}>
+          <Calendar
+            mode="single"
+            month={endParsed ?? undefined}
+            startMonth={startParsed ?? new Date(2000, 0, 1)}
+            endMonth={today}
+            onDayClick={handleEndDayClick}
+            footer="点击选择结束日期"
+          />
+        </PopoverContent>
+      </Popover>
+    </div>
+  )
+
+  const quickBlock = (
+    <div className="flex gap-1 rounded-[8px] border border-border bg-muted/30 p-1">
+      {QUICK_OPTIONS.map((opt) => (
+        <button
+          key={opt.value}
+          type="button"
+          onClick={() => handleQuickSelect(opt.value)}
+          className={cn(
+            'cursor-pointer rounded-[6px] px-2.5 py-1 font-sans text-[12px] font-medium transition-colors whitespace-nowrap',
+            period === opt.value
+              ? 'bg-background text-foreground shadow-sm'
+              : 'text-muted-foreground hover:text-foreground hover:bg-background/50',
+          )}
+        >
+          {opt.label}
+        </button>
+      ))}
+    </div>
+  )
+
   return (
     <div className="flex items-center gap-2.5">
-      {/* ── Navigation arrows + label for year/month/week/day ── */}
-      {isNavigable && (
-        <div className="flex items-center gap-1">
-          <button
-            type="button"
-            onClick={() => handleNavigate(-1)}
-            className="flex h-7 w-7 cursor-pointer items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-          >
-            <ChevronLeft className="h-3.5 w-3.5" />
-          </button>
-          <span className="min-w-[90px] text-center font-sans text-[13px] font-semibold text-foreground tabular-nums">
-            {formatPeriodValue(period, anchor)}
-          </span>
-          <button
-            type="button"
-            onClick={() => handleNavigate(1)}
-            disabled={isAtToday}
-            className={cn(
-              'flex h-7 w-7 items-center justify-center rounded-full text-muted-foreground transition-colors',
-              isAtToday
-                ? 'cursor-not-allowed opacity-25'
-                : 'cursor-pointer hover:bg-muted hover:text-foreground',
-            )}
-          >
-            <ChevronRight className="h-3.5 w-3.5" />
-          </button>
-        </div>
+      {quickFirst ? (
+        <>
+          {quickBlock}
+          {navigatorBlock}
+          {customBlock}
+        </>
+      ) : (
+        <>
+          {navigatorBlock}
+          {customBlock}
+          {quickBlock}
+        </>
       )}
-
-      {/* ── Custom date range ── */}
-      {period === 'custom' && (
-        <div className="flex items-center gap-2">
-          <Popover open={startOpen} onOpenChange={setStartOpen}>
-            <PopoverTrigger asChild>
-              <button
-                className={cn(
-                  'flex items-center gap-1.5 rounded-[6px] border border-border bg-background px-2.5 py-1 cursor-pointer transition-colors hover:border-foreground/20',
-                  !startValid && 'text-muted-foreground',
-                )}
-              >
-                <CalendarIcon className="h-3.5 w-3.5 text-muted-foreground" />
-                <span className="font-sans text-[12px] tabular-nums">
-                  {startValid ? format(startParsed!, 'yyyy-MM-dd') : '起始日'}
-                </span>
-              </button>
-            </PopoverTrigger>
-            <PopoverContent className="w-auto p-0 bg-card/80 backdrop-blur-xl border-border/60 shadow-xl" side="bottom" align="start" sideOffset={8}>
-              <Calendar
-                mode="single"
-                month={startParsed ?? undefined}
-                startMonth={endParsed ? new Date(2000, 0, 1) : undefined}
-                endMonth={endParsed ?? today}
-                onDayClick={handleStartDayClick}
-                footer="点击选择起始日期"
-              />
-            </PopoverContent>
-          </Popover>
-          <span className="text-[11px] text-muted-foreground">至</span>
-          <Popover open={endOpen} onOpenChange={setEndOpen}>
-            <PopoverTrigger asChild>
-              <button
-                className={cn(
-                  'flex items-center gap-1.5 rounded-[6px] border border-border bg-background px-2.5 py-1 cursor-pointer transition-colors hover:border-foreground/20',
-                  !endValid && 'text-muted-foreground',
-                )}
-              >
-                <CalendarIcon className="h-3.5 w-3.5 text-muted-foreground" />
-                <span className="font-sans text-[12px] tabular-nums">
-                  {endValid ? format(endParsed!, 'yyyy-MM-dd') : '结束日'}
-                </span>
-              </button>
-            </PopoverTrigger>
-            <PopoverContent className="w-auto p-0 bg-card/80 backdrop-blur-xl border-border/60 shadow-xl" side="bottom" align="start" sideOffset={8}>
-              <Calendar
-                mode="single"
-                month={endParsed ?? undefined}
-                startMonth={startParsed ?? new Date(2000, 0, 1)}
-                endMonth={today}
-                onDayClick={handleEndDayClick}
-                footer="点击选择结束日期"
-              />
-            </PopoverContent>
-          </Popover>
-        </div>
-      )}
-
-      {/* ── Quick buttons ── */}
-      <div className="flex gap-1 rounded-[8px] border border-border bg-muted/30 p-1">
-        {QUICK_OPTIONS.map((opt) => (
-          <button
-            key={opt.value}
-            type="button"
-            onClick={() => handleQuickSelect(opt.value)}
-            className={cn(
-              'cursor-pointer rounded-[6px] px-2.5 py-1 font-sans text-[12px] font-medium transition-colors whitespace-nowrap',
-              period === opt.value
-                ? 'bg-background text-foreground shadow-sm'
-                : 'text-muted-foreground hover:text-foreground hover:bg-background/50',
-            )}
-          >
-            {opt.label}
-          </button>
-        ))}
-      </div>
     </div>
   )
 }

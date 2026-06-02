@@ -58,12 +58,10 @@ export function ListeningClock({
     <div className="relative flex justify-center">
       <svg ref={svgRef} viewBox="0 0 200 200" className="w-full max-w-[280px]">
         {data.map((h) => {
-          const intensity = Math.max(h.plays / maxVal, 0.05)
+          const intensity = h.plays > 0 ? h.plays / maxVal : 0
           const isHovered = hoveredHour === h.hour
-          const baseOuterR = 30 + intensity * 50
+          const baseOuterR = innerR + intensity * (80 - innerR)
           const outerR = isHovered ? baseOuterR + 8 : baseOuterR
-          const colorIdx = h.hour % colors.length
-
           const startDeg = h.hour * 15 - 90
           const endDeg = (h.hour + 1) * 15 - 90
           const startAngle = (startDeg * Math.PI) / 180
@@ -73,8 +71,8 @@ export function ListeningClock({
             <path
               key={h.hour}
               d={arcPath(cx, cy, innerR, outerR, startAngle, endAngle)}
-              fill={colors[colorIdx]}
-              opacity={isHovered ? 0.95 : 0.65 + intensity * 0.3}
+              fill={colors[0]}
+              opacity={isHovered ? 0.95 : 0.12 + intensity * 0.78}
               className="cursor-pointer transition-all duration-150"
               onMouseEnter={(e) => handleMouseMove(e, h.hour)}
               onMouseMove={(e) => handleMouseMove(e, h.hour)}

@@ -1,6 +1,8 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect } from 'react'
 import { useParams, useSearchParams, Link, useNavigate } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
+import { queryKeys } from '@/api/query-keys'
 import type { AlbumDetailResponse, AlbumEnrichmentResponse, ReleaseCycleAlbumDetailResponse } from '@/types/billboard'
 import { GlassCard } from '@/components/shared/GlassCard'
 import { ChangeCell } from '@/components/shared/ChangeCell'
@@ -310,10 +312,13 @@ export function AlbumDetailPage() {
   const artistName = searchParams.get('artist') || ''
   const navigate = useNavigate()
 
-  const [data, setData] = useState<AlbumDetailResponse | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<TabKey>('stats')
+
+  const { data, isPending, error, refetch } = useQuery({
+    queryKey: queryKeys.music.albumDetail(albumName ?? '', artistName),
+    queryFn: () => api.get<AlbumDetailResponse>('/billboard/album/' + albumName!, { artist_name: artistName }),
+    enabled: !!albumName,
+  })
 
   // Enrichment (Wikipedia, Genius) — fetched on demand when user clicks 发行档案 tab
   const [enrichment, setEnrichment] = useState<AlbumEnrichmentResponse | null>(null)
@@ -321,23 +326,6 @@ export function AlbumDetailPage() {
   const [releaseCycle, setReleaseCycle] = useState<ReleaseCycleAlbumDetailResponse | null>(null)
   const [releaseCycleLoading, setReleaseCycleLoading] = useState(false)
   const [releaseCycleError, setReleaseCycleError] = useState<string | null>(null)
-
-  const fetchData = useCallback(() => {
-    if (!albumName) return
-    setLoading(true)
-    setError(null)
-    api
-      .get<AlbumDetailResponse>('/billboard/album/' + albumName, {
-        artist_name: artistName,
-      })
-      .then(setData)
-      .catch((e: Error) => setError(e.message))
-      .finally(() => setLoading(false))
-  }, [albumName, artistName])
-
-  useEffect(() => {
-    fetchData()
-  }, [fetchData])
 
   // Fetch enrichment when user switches to the 发行档案 tab (with module-level cache)
   useEffect(() => {
@@ -389,14 +377,14 @@ export function AlbumDetailPage() {
 
   return (
     <>
-      {loading && <AlbumDetailSkeleton />}
+      {isPending && <AlbumDetailSkeleton />}
 
       {error && (
         <div className="flex flex-col items-center gap-4 py-20 text-center">
           <AlertCircle className="h-8 w-8 text-accent-foreground" />
-          <p className="text-muted-foreground">加载失败：{error}</p>
+          <p className="text-muted-foreground">加载失败：{error.message}</p>
           <button
-            onClick={fetchData}
+            onClick={() => refetch()}
             className="rounded-full bg-accent-foreground px-6 py-2 text-[13px] font-semibold text-primary-foreground transition-opacity hover:opacity-85"
           >
             重新加载
@@ -404,7 +392,7 @@ export function AlbumDetailPage() {
         </div>
       )}
 
-      {data && !loading && (
+      {data && !isPending && (
         <>
           {!data.found ? (
             <div className="flex flex-col items-center gap-4 py-20 text-center">
@@ -663,9 +651,9 @@ export function AlbumDetailPage() {
               )}
 
               {/* ═══ Tab 2: 曲目表现 ═══ */}
-              {activeTab === 'stats' && (
-                <EntityStatsPanel kind="album" albumName={data.album_name} artistName={data.artist_name} />
-              )}
+              <div className={activeTab === 'stats' ? '' : 'hidden'}>
+                <EntityStatsPanel kind="album" albumName={data?.album_name} artistName={data?.artist_name} />
+              </div>
 
               {activeTab === 'tracks' && (
                 <div className="mb-8">

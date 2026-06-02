@@ -1,4 +1,4 @@
-import { lazy, Suspense } from 'react'
+import { lazy, Suspense, useMemo } from 'react'
 import { useTheme } from '@/hooks/useTheme'
 import { buildChartBase } from './EChartsTheme'
 import type { AdvanceSingleRank, ReleaseCycleRankEntry, ReleaseCycleTimelineEntry, WikiSingle } from '@/types/billboard'
@@ -110,7 +110,7 @@ export function ReleaseTimelineChart({
   bestTrackRanks = null,
 }: ReleaseTimelineChartProps) {
   const { isDark } = useTheme()
-  const base = buildChartBase(isDark)
+  const base = useMemo(() => buildChartBase(isDark), [isDark])
   const offsetMode = albumHistory.some((e) => typeof e.week_offset === 'number')
 
   const labels: string[] = []
@@ -332,7 +332,15 @@ export function ReleaseTimelineChart({
     ...base,
     tooltip: {
       ...base.tooltip,
-      trigger: 'axis',
+      trigger: 'axis' as const,
+      axisPointer: {
+        type: 'line' as const,
+        lineStyle: {
+          color: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)',
+          width: 1,
+          type: 'dashed' as const,
+        },
+      },
     },
     legend: {
       show: true,
@@ -382,7 +390,7 @@ export function ReleaseTimelineChart({
 
   return (
     <Suspense fallback={<div className="h-[380px] animate-pulse rounded-lg bg-muted/40" />}>
-      <ReactECharts option={option} style={{ height: 380 }} />
+      <ReactECharts option={option} style={{ height: 380, isolation: 'isolate' } as React.CSSProperties} />
     </Suspense>
   )
 }

@@ -19,6 +19,7 @@ export const queryKeys = {
   analysis: {
     all: ['analysis'] as const,
     overview: (filters: Record<string, unknown>) => ['analysis', 'overview', filters] as const,
+    plays: (params: Record<string, unknown>, page: number) => ['analysis', 'plays', params, page] as const,
   },
 
   settings: {
@@ -35,5 +36,14 @@ export const queryKeys = {
   yearlyReview: {
     all: ['yearly-review'] as const,
     full: (year: number) => ['yearly-review', 'full', year] as const,
+  },
+
+  music: {
+    all: ['music'] as const,
+    artistDetail: (artistName: string) => ['music', 'artist-detail', artistName] as const,
+    trackDetail: (trackId: string) => ['music', 'track-detail', trackId] as const,
+    albumDetail: (albumName: string, artistName: string) => ['music', 'album-detail', albumName, artistName] as const,
+    entityStats: (kind: string, id: string, params: Record<string, unknown>) => ['music', 'entity-stats', kind, id, params] as const,
+    entityPlays: (kind: string, id: string, params: Record<string, unknown>, page: number) => ['music', 'entity-plays', kind, id, params, page] as const,
   },
 } as const

@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState } from 'react'
+import { lazy, Suspense, useState, useMemo } from 'react'
 import { useTheme } from '@/hooks/useTheme'
 import { buildChartBase } from './EChartsTheme'
 
@@ -103,7 +103,7 @@ export function RankTrendChart({
   overlayLabel,
 }: RankTrendChartProps) {
   const { isDark } = useTheme()
-  const base = buildChartBase(isDark)
+  const base = useMemo(() => buildChartBase(isDark), [isDark])
 
   const { labels: rawLabels, values } = buildTimeline(data)
 
@@ -148,6 +148,7 @@ export function RankTrendChart({
       showAllSymbol: true,
       z: 10,
       emphasis: {
+        focus: 'none' as const,
         symbolSize: 13,
         itemStyle: {
           borderColor: rankColor,
@@ -251,6 +252,7 @@ export function RankTrendChart({
       showAllSymbol: true,
       z: 1,
       emphasis: {
+        focus: 'none' as const,
         symbolSize: 13,
         itemStyle: {
           borderColor: overlayColor,
@@ -321,7 +323,15 @@ export function RankTrendChart({
     series,
     tooltip: {
       ...base.tooltip,
-      trigger: 'axis',
+      trigger: 'axis' as const,
+      axisPointer: {
+        type: 'line' as const,
+        lineStyle: {
+          color: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)',
+          width: 1,
+          type: 'dashed' as const,
+        },
+      },
       padding: [10, 14],
       extraCssText: 'border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.12);',
       formatter: (params: any) => {
@@ -421,7 +431,7 @@ export function RankTrendChart({
         </div>
       )}
       <Suspense fallback={<div className="h-[360px] animate-pulse rounded-lg bg-muted/40" />}>
-        <ReactECharts option={option} style={{ height: 360 }} notMerge />
+        <ReactECharts option={option} style={{ height: 360, isolation: 'isolate' } as React.CSSProperties} notMerge />
       </Suspense>
     </div>
   )
