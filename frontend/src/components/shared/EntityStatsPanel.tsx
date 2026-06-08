@@ -11,6 +11,7 @@ import { RecentPlaysSection } from '@/components/shared/RecentPlaysSection'
 import { Skeleton } from '@/components/ui/skeleton'
 import { queryKeys } from '@/api/query-keys'
 import { analysisApi, useAnalysisFilters } from '@/hooks/useAnalysis'
+import { api } from '@/lib/api'
 import type { AnalysisMetric, EntityStatsResponse } from '@/types/analysis'
 
 function fmt(n: number | null | undefined): string {
@@ -44,16 +45,26 @@ export function EntityStatsPanel({
   const { filters, loading: filtersLoading } = useAnalysisFilters()
   const { period, metric, periodValue, startDate, endDate, setQuery, apiParams } = useAnalysisQueryState()
   const entityId = (trackId ?? albumName ?? artistName) != null ? String(trackId ?? albumName ?? artistName) : ''
-  const { data, isPending } = useQuery({
+  const { data, isPending, error } = useQuery({
     queryKey: queryKeys.music.entityStats(kind, entityId, { ...filters, ...apiParams }),
     queryFn: () => {
-      if (kind === 'track' && trackId != null) return analysisApi.trackStats(filters, trackId, apiParams)
-      if (kind === 'album' && albumName) return analysisApi.albumStats(filters, albumName, artistName, apiParams)
-      if (kind === 'artist' && artistName) return analysisApi.artistStats(filters, artistName, apiParams)
+      if (kind === 'track' && trackId != null) {
+        return api.get<EntityStatsResponse>(`/music/tracks/${trackId}/stats`, { ...filters, ...apiParams })
+      }
+      if (kind === 'album' && albumName) {
+        return api.get<EntityStatsResponse>(
+          `/music/albums/${encodeURIComponent(albumName)}/stats`,
+          { ...filters, ...apiParams, ...(artistName ? { artist: artistName } : {}) },
+        )
+      }
+      if (kind === 'artist' && artistName) {
+        return api.get<EntityStatsResponse>(`/music/artists/${encodeURIComponent(artistName)}/stats`, { ...filters, ...apiParams })
+      }
       return Promise.resolve({ found: false } as EntityStatsResponse)
     },
     enabled: !filtersLoading && entityId !== '',
   })
+  const queryError = error instanceof Error ? error.message : error ? String(error) : null
 
   const metricKey: AnalysisMetric = metric
   const distributionKey = metricKey === 'plays' ? 'plays' : 'hours'
@@ -101,6 +112,7 @@ export function EntityStatsPanel({
     return result
   }, [data?.cumulative_trend])
 
+  if (queryError) return <GlassCard className="p-8 text-center text-destructive">加载失败：{queryError}</GlassCard>
   if (isPending || !data) return <Skeleton className="h-[560px] rounded-[16px]" />
   if (!data.found) return <GlassCard className="p-8 text-muted-foreground">暂无个人播放统计。</GlassCard>
 

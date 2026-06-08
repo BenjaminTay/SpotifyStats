@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react'
-import { useParams, useNavigate, Link } from 'react-router-dom'
+import { useParams, useNavigate, useSearchParams, Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { queryKeys } from '@/api/query-keys'
@@ -89,7 +89,10 @@ function TrackDetailSkeleton() {
 export function TrackDetailPage() {
   const { trackId } = useParams<{ trackId: string }>()
   const navigate = useNavigate()
-  const [activeTab, setActiveTab] = useState<TabKey>('stats')
+  const [searchParams] = useSearchParams()
+  const [activeTab, setActiveTab] = useState<TabKey>(
+    (searchParams.get('tab') as TabKey | null) ?? 'stats',
+  )
 
   const { data, isPending, error, refetch } = useQuery({
     queryKey: queryKeys.music.trackDetail(trackId ?? ''),

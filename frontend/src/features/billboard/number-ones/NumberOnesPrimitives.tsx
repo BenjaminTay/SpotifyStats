@@ -8,6 +8,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { useTheme } from '@/hooks/useTheme'
 import { displayName } from '@/lib/chinese'
 import { getChartColors } from '@/lib/theme'
+import { billboardDetailLink } from '@/lib/navigation'
 import { formatNumber } from './numberOnesData'
 
 const ReactECharts = lazy(() => import('echarts-for-react'))
@@ -203,7 +204,7 @@ export function ArtistWithCover({
       <div className="min-w-0">
         <div className="flex items-center gap-2">
           <Link
-            to={`/music/artists/${encodeURIComponent(artistName)}`}
+            to={billboardDetailLink(`/music/artists/${encodeURIComponent(artistName)}`)}
             className="block truncate font-sans text-sm font-semibold transition-colors hover:text-accent-foreground"
           >
             {displayName(artistName)}

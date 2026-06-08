@@ -13,6 +13,7 @@ import {
 import { GlassCard } from '@/components/shared/GlassCard'
 import { displayName } from '@/lib/chinese'
 import { cn } from '@/lib/utils'
+import { billboardDetailLink } from '@/lib/navigation'
 import type {
   AllTimeRow,
   ColumnDef,
@@ -101,13 +102,13 @@ function renderTrackName(row: MergedTrackRow) {
       <CoverImg url={row.cover_url} />
       <div className="min-w-0">
         <Link
-          to={`/music/tracks/${row.track_id}`}
+          to={billboardDetailLink(`/music/tracks/${row.track_id}`)}
           className="block truncate font-sans text-[14px] font-semibold text-foreground transition-colors hover:text-accent-foreground"
         >
           {displayName(row.track_name)}
         </Link>
         <Link
-          to={`/music/artists/${encodeURIComponent(row.artist_name)}`}
+          to={billboardDetailLink(`/music/artists/${encodeURIComponent(row.artist_name)}`)}
           className="block truncate font-sans text-[12px] text-muted-foreground transition-colors hover:text-accent-foreground"
         >
           {displayName(row.artist_name)}
@@ -123,13 +124,13 @@ function renderAlbumName(row: MergedAlbumRow) {
       <CoverImg url={row.cover_url} />
       <div className="min-w-0">
         <Link
-          to={`/music/albums/${encodeURIComponent(row.album_name)}?artist=${encodeURIComponent(row.artist_name)}`}
+          to={billboardDetailLink(`/music/albums/${encodeURIComponent(row.album_name)}?artist=${encodeURIComponent(row.artist_name)}`)}
           className="block truncate font-sans text-[14px] font-semibold text-foreground transition-colors hover:text-accent-foreground"
         >
           {displayName(row.album_name)}
         </Link>
         <Link
-          to={`/music/artists/${encodeURIComponent(row.artist_name)}`}
+          to={billboardDetailLink(`/music/artists/${encodeURIComponent(row.artist_name)}`)}
           className="block truncate font-sans text-[12px] text-muted-foreground transition-colors hover:text-accent-foreground"
         >
           {displayName(row.artist_name)}
@@ -144,7 +145,7 @@ function renderArtistName(row: MergedArtistRow) {
     <div className="flex items-center gap-3">
       <CoverImg url={row.cover_url} />
       <Link
-        to={`/music/artists/${encodeURIComponent(row.artist_name)}`}
+        to={billboardDetailLink(`/music/artists/${encodeURIComponent(row.artist_name)}`)}
         className="font-sans text-[14px] font-semibold text-foreground transition-colors hover:text-accent-foreground"
       >
         {displayName(row.artist_name)}

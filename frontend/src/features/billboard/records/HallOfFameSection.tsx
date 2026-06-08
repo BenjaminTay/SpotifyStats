@@ -4,6 +4,7 @@ import { Crown } from 'lucide-react'
 
 import { cn } from '@/lib/utils'
 import { displayName } from '@/lib/chinese'
+import { billboardDetailLink } from '@/lib/navigation'
 import type { BillboardRecords, DecadeBestRecord } from '@/types/billboard'
 import type { CoverMaps } from './recordsData'
 import {
@@ -84,7 +85,7 @@ export function HallOfFameSection({ rec, covers }: { rec: BillboardRecords; cove
                 unit="走势评分"
                 caption={`${r.track_name} — ${r.artist_name}`}
                 coverUrl={covers.track.get(r.track_id)}
-                linkTo={`/music/tracks/${r.track_id}`}
+                linkTo={billboardDetailLink(`/music/tracks/${r.track_id}`)}
               />
             ))}
           </div>
@@ -109,7 +110,7 @@ export function HallOfFameSection({ rec, covers }: { rec: BillboardRecords; cove
                 unit="走势评分"
                 caption={`${r.album_name} — ${r.artist_name}`}
                 coverUrl={covers.album.get(r.album_name)}
-                linkTo={`/music/albums/${encodeURIComponent(r.album_name)}`}
+                linkTo={billboardDetailLink(`/music/albums/${encodeURIComponent(r.album_name)}`)}
               />
             ))}
           </div>
@@ -134,7 +135,7 @@ export function HallOfFameSection({ rec, covers }: { rec: BillboardRecords; cove
                 unit="走势评分"
                 caption={r.artist_name}
                 coverUrl={covers.artist.get(r.artist_name)}
-                linkTo={`/music/artists/${encodeURIComponent(r.artist_name)}`}
+                linkTo={billboardDetailLink(`/music/artists/${encodeURIComponent(r.artist_name)}`)}
               />
             ))}
           </div>
@@ -153,7 +154,7 @@ export function HallOfFameSection({ rec, covers }: { rec: BillboardRecords; cove
         {rec.year_end_no1.length > 0 ? (
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-5">
             {rec.year_end_no1.map((r) => (
-              <Link key={r.year} to={`/music/tracks/${r.track_id}`} className="group rounded-[10px] border border-border bg-muted/20 p-4 transition-colors hover:bg-muted/40">
+              <Link key={r.year} to={billboardDetailLink(`/music/tracks/${r.track_id}`)} className="group rounded-[10px] border border-border bg-muted/20 p-4 transition-colors hover:bg-muted/40">
                 <CoverImg url={covers.track.get(r.track_id)} />
                 <p className="mt-2 font-serif text-[28px] font-bold leading-none tracking-[-0.5px]">{r.year}</p>
                 <p className="mt-2 truncate font-sans text-[12px] font-semibold group-hover:text-accent-foreground">{displayName(r.track_name)}</p>

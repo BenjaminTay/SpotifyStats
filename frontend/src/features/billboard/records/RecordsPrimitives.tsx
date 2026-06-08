@@ -7,6 +7,7 @@ import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { GlassCard } from '@/components/shared/GlassCard'
 import { cn } from '@/lib/utils'
 import { displayName } from '@/lib/chinese'
+import { billboardDetailLink } from '@/lib/navigation'
 
 // ── helpers ──────────────────────────────────────────────────
 
@@ -197,14 +198,14 @@ export function PeakNum({ rank }: { rank: number }) {
 }
 
 export function TrackCell({ trackId, trackName, artistName, coverUrl }: { trackId?: number; trackName: string; artistName?: string; coverUrl?: string | null }) {
-  const link = trackId != null ? `/music/tracks/${trackId}` : '#'
+  const link = trackId != null ? billboardDetailLink(`/music/tracks/${trackId}`) : '#'
   return (
     <div className="flex items-center gap-3">
       <CoverImg url={coverUrl} />
       <div className="min-w-0">
         <Link to={link} className="block truncate font-sans text-[13px] font-semibold transition-colors hover:text-accent-foreground">{displayName(trackName)}</Link>
         {artistName && (
-          <Link to={`/music/artists/${encodeURIComponent(artistName)}`} className="block truncate font-sans text-[11px] italic text-muted-foreground transition-colors hover:text-accent-foreground">{displayName(artistName)}</Link>
+          <Link to={billboardDetailLink(`/music/artists/${encodeURIComponent(artistName)}`)} className="block truncate font-sans text-[11px] italic text-muted-foreground transition-colors hover:text-accent-foreground">{displayName(artistName)}</Link>
         )}
       </div>
     </div>
@@ -215,7 +216,7 @@ export function ArtistCell({ artistName, coverUrl }: { artistName: string; cover
   return (
     <div className="flex items-center gap-3">
       <ArtistCoverImg url={coverUrl} />
-      <Link to={`/music/artists/${encodeURIComponent(artistName)}`} className="font-sans text-[13px] font-semibold transition-colors hover:text-accent-foreground">{displayName(artistName)}</Link>
+      <Link to={billboardDetailLink(`/music/artists/${encodeURIComponent(artistName)}`)} className="font-sans text-[13px] font-semibold transition-colors hover:text-accent-foreground">{displayName(artistName)}</Link>
     </div>
   )
 }
@@ -225,8 +226,8 @@ export function AlbumCell({ albumName, artistName, coverUrl }: { albumName: stri
     <div className="flex items-center gap-3">
       <CoverImg url={coverUrl} />
       <div className="min-w-0">
-        <Link to={`/music/albums/${encodeURIComponent(albumName)}`} className="block truncate font-sans text-[13px] font-semibold transition-colors hover:text-accent-foreground">{displayName(albumName)}</Link>
-        <Link to={`/music/artists/${encodeURIComponent(artistName)}`} className="block truncate font-sans text-[11px] italic text-muted-foreground transition-colors hover:text-accent-foreground">{displayName(artistName)}</Link>
+        <Link to={billboardDetailLink(`/music/albums/${encodeURIComponent(albumName)}`)} className="block truncate font-sans text-[13px] font-semibold transition-colors hover:text-accent-foreground">{displayName(albumName)}</Link>
+        <Link to={billboardDetailLink(`/music/artists/${encodeURIComponent(artistName)}`)} className="block truncate font-sans text-[11px] italic text-muted-foreground transition-colors hover:text-accent-foreground">{displayName(artistName)}</Link>
       </div>
     </div>
   )

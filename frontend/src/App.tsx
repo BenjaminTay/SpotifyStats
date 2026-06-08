@@ -1,5 +1,5 @@
-import { lazy, Suspense } from 'react'
-import { BrowserRouter, Routes, Route, Navigate, useLocation, useParams } from 'react-router-dom'
+import { lazy, Suspense, useEffect } from 'react'
+import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigationType, useParams } from 'react-router-dom'
 import { AppLayout } from '@/components/layout/AppLayout'
 
 const DashboardPage = lazy(() => import('@/pages/DashboardPage').then((m) => ({ default: m.DashboardPage })))
@@ -39,9 +39,21 @@ function RouteFallback() {
   )
 }
 
+function ScrollToTop() {
+  const { pathname } = useLocation()
+  const navigationType = useNavigationType()
+  useEffect(() => {
+    if (navigationType !== 'POP') {
+      window.scrollTo(0, 0)
+    }
+  }, [pathname, navigationType])
+  return null
+}
+
 function App() {
   return (
     <BrowserRouter>
+      <ScrollToTop />
       <Routes>
         <Route element={<AppLayout />}>
           <Route path="/" element={<Suspense fallback={<RouteFallback />}><DashboardPage /></Suspense>} />

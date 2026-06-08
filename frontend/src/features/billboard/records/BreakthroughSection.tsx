@@ -1,5 +1,6 @@
 import { TrendingDown, TrendingUp, Zap } from 'lucide-react'
 
+import { billboardDetailLink } from '@/lib/navigation'
 import type { BillboardRecords } from '@/types/billboard'
 import type { CoverMaps } from './recordsData'
 import {
@@ -24,7 +25,7 @@ export function BreakthroughSection({ rec, covers }: { rec: BillboardRecords; co
       <RecordCard title="艺人霸榜 · Most Simultaneous Chart Entries" subtitle="单周同一艺人上榜歌曲数最多">
         {rec.artist_simul && (
           <div className="mb-4">
-            <FeaturedRecord label="艺人霸榜纪录" value={rec.artist_simul.count} unit="首歌曲同时在榜" caption={`${rec.artist_simul.artist} · ${fmtDate(rec.artist_simul.week)}`} coverUrl={covers.artist.get(rec.artist_simul.artist)} linkTo={`/music/artists/${encodeURIComponent(rec.artist_simul.artist || '')}`} />
+            <FeaturedRecord label="艺人霸榜纪录" value={rec.artist_simul.count} unit="首歌曲同时在榜" caption={`${rec.artist_simul.artist} · ${fmtDate(rec.artist_simul.week)}`} coverUrl={covers.artist.get(rec.artist_simul.artist)} linkTo={billboardDetailLink(`/music/artists/${encodeURIComponent(rec.artist_simul.artist || '')}`)} />
           </div>
         )}
         {rec.artist_simul_list?.length > 0 && (
@@ -40,7 +41,7 @@ export function BreakthroughSection({ rec, covers }: { rec: BillboardRecords; co
       <RecordCard title="专辑霸榜 · Most Simultaneous Album Entries" subtitle="单周同一专辑上榜歌曲数最多">
         {rec.album_simul && (
           <div className="mb-4">
-            <FeaturedRecord label="专辑霸榜纪录" value={rec.album_simul.count} unit="首歌曲同时在榜" caption={`${rec.album_simul.album} · ${rec.album_simul.artist} · ${fmtDate(rec.album_simul.week)}`} coverUrl={covers.album.get(rec.album_simul.album)} linkTo={`/music/albums/${encodeURIComponent(rec.album_simul.album || '')}`} />
+            <FeaturedRecord label="专辑霸榜纪录" value={rec.album_simul.count} unit="首歌曲同时在榜" caption={`${rec.album_simul.album} · ${rec.album_simul.artist} · ${fmtDate(rec.album_simul.week)}`} coverUrl={covers.album.get(rec.album_simul.album)} linkTo={billboardDetailLink(`/music/albums/${encodeURIComponent(rec.album_simul.album || '')}`)} />
           </div>
         )}
         {rec.album_simul_list?.length > 0 && (
@@ -55,7 +56,7 @@ export function BreakthroughSection({ rec, covers }: { rec: BillboardRecords; co
 
       <RecordCard title="Top 10 屠榜 · Most Simultaneous Top 10" subtitle="单周同一艺人 Top 10 歌曲数最多">
         {rec.most_top10_simul ? (
-          <FeaturedRecord label="Top 10 屠榜纪录" value={rec.most_top10_simul.count} unit="首进入 Top 10" caption={`${rec.most_top10_simul.artist} · ${fmtDate(rec.most_top10_simul.week)}`} coverUrl={covers.artist.get(rec.most_top10_simul.artist)} linkTo={`/music/artists/${encodeURIComponent(rec.most_top10_simul.artist || '')}`} />
+          <FeaturedRecord label="Top 10 屠榜纪录" value={rec.most_top10_simul.count} unit="首进入 Top 10" caption={`${rec.most_top10_simul.artist} · ${fmtDate(rec.most_top10_simul.week)}`} coverUrl={covers.artist.get(rec.most_top10_simul.artist)} linkTo={billboardDetailLink(`/music/artists/${encodeURIComponent(rec.most_top10_simul.artist || '')}`)} />
         ) : (
           <p className="py-4 text-center font-sans text-[12px] text-muted-foreground">暂无数据</p>
         )}

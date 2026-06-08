@@ -4,6 +4,7 @@ import { useBillboardWeekly } from '@/hooks/useBillboard'
 import { GlassCard } from '@/components/shared/GlassCard'
 import { BillboardSubNav } from '@/components/shared/BillboardSubNav'
 import { WeekSelector } from '@/components/shared/WeekSelector'
+import { billboardDetailLink } from '@/lib/navigation'
 
 import { Skeleton } from '@/components/ui/skeleton'
 import { AlertCircle } from 'lucide-react'
@@ -324,10 +325,10 @@ export function BillboardPage() {
                     // Navigation links
                     const detailLink =
                       activeTab === 'artists'
-                        ? `/music/artists/${encodeURIComponent((entry as WeeklyArtistEntry).artist_name)}`
+                        ? billboardDetailLink(`/music/artists/${encodeURIComponent((entry as WeeklyArtistEntry).artist_name)}`)
                         : activeTab === 'albums'
-                          ? `/music/albums/${encodeURIComponent((entry as WeeklyAlbumEntry).album_name)}?artist=${encodeURIComponent((entry as WeeklyAlbumEntry).artist_name)}`
-                          : `/music/tracks/${(entry as WeeklyTrackEntry).track_id}`
+                          ? billboardDetailLink(`/music/albums/${encodeURIComponent((entry as WeeklyAlbumEntry).album_name)}?artist=${encodeURIComponent((entry as WeeklyAlbumEntry).artist_name)}`)
+                          : billboardDetailLink(`/music/tracks/${(entry as WeeklyTrackEntry).track_id}`)
                     const chartName =
                       activeTab === 'artists'
                         ? (entry as WeeklyArtistEntry).artist_name
@@ -336,11 +337,11 @@ export function BillboardPage() {
                           : (entry as WeeklyTrackEntry).track_name
                     const artistLink =
                       activeTab !== 'artists'
-                        ? `/music/artists/${encodeURIComponent(
+                        ? billboardDetailLink(`/music/artists/${encodeURIComponent(
                             activeTab === 'tracks'
                               ? (entry as WeeklyTrackEntry).artist_name
                               : (entry as WeeklyAlbumEntry).artist_name,
-                          )}`
+                          )}`)
                         : null
                     const subLabel =
                       activeTab === 'artists'

@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { Sparkles } from 'lucide-react'
 
 import { displayName } from '@/lib/chinese'
+import { billboardDetailLink } from '@/lib/navigation'
 import type { ArtistTrackCounts, BillboardRecords, TrackSummary } from '@/types/billboard'
 import type { CoverMaps } from './recordsData'
 import {
@@ -43,7 +44,7 @@ export function CuriositiesSection({ rec, covers, trackSummary, artistTrackCount
           { header: '#', width: '48px', align: 'center', render: (_, idx) => <RankNum rank={idx + 1} /> },
           { header: '歌曲', render: (r) => <TrackCell trackId={r.debut_track_id} trackName={r.debut_track} artistName={r.debut_artist} coverUrl={covers.track.get(r.debut_track_id)} /> },
           { header: '空降日期', width: '110px', render: (r) => <span className="font-sans text-[12px] tabular-nums text-muted-foreground">{fmtDate(r.debut_week)}</span> },
-          { header: '所属专辑', render: (r) => <Link to={`/music/albums/${encodeURIComponent(r.debut_album)}`} className="font-sans text-[12px] transition-colors hover:text-accent-foreground">{displayName(r.debut_album)}</Link> },
+          { header: '所属专辑', render: (r) => <Link to={billboardDetailLink(`/music/albums/${encodeURIComponent(r.debut_album)}`)} className="font-sans text-[12px] transition-colors hover:text-accent-foreground">{displayName(r.debut_album)}</Link> },
         ]} />
       </RecordCard>
 
@@ -59,7 +60,7 @@ export function CuriositiesSection({ rec, covers, trackSummary, artistTrackCount
         {oneHitWonders.length > 0 ? (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3">
             {oneHitWonders.slice(0, 9).map((a) => (
-              <Link key={a.artist_name} to={`/music/artists/${encodeURIComponent(a.artist_name)}`} className="flex items-center gap-3 rounded-[10px] border border-border bg-muted/20 p-3 transition-colors hover:bg-muted/40">
+              <Link key={a.artist_name} to={billboardDetailLink(`/music/artists/${encodeURIComponent(a.artist_name)}`)} className="flex items-center gap-3 rounded-[10px] border border-border bg-muted/20 p-3 transition-colors hover:bg-muted/40">
                 <ArtistCoverImg url={covers.artist.get(a.artist_name)} />
                 <div className="min-w-0">
                   <p className="truncate font-sans text-[13px] font-semibold">{displayName(a.artist_name)}</p>
@@ -90,7 +91,7 @@ export function CuriositiesSection({ rec, covers, trackSummary, artistTrackCount
                 <p className="mb-2 font-sans text-[14px] font-bold">"{displayName(group[0].track_name)}"</p>
                 <div className="flex flex-wrap gap-2">
                   {group.map((t) => (
-                    <Link key={t.track_id} to={`/music/tracks/${t.track_id}`} className="inline-flex items-center gap-1.5 rounded-[6px] bg-background px-2.5 py-1 font-sans text-[12px] transition-colors hover:bg-muted">{displayName(t.artist_name)}<span className="text-[10px] text-muted-foreground">Peak #{t.peak_position}</span></Link>
+                    <Link key={t.track_id} to={billboardDetailLink(`/music/tracks/${t.track_id}`)} className="inline-flex items-center gap-1.5 rounded-[6px] bg-background px-2.5 py-1 font-sans text-[12px] transition-colors hover:bg-muted">{displayName(t.artist_name)}<span className="text-[10px] text-muted-foreground">Peak #{t.peak_position}</span></Link>
                   ))}
                 </div>
               </div>
@@ -101,19 +102,19 @@ export function CuriositiesSection({ rec, covers, trackSummary, artistTrackCount
 
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
         <RecordCard title="最早上榜 · Oldest Chart Entry">
-          {oldestTrack && <FeaturedRecord label="最早入榜" value={fmtDate(oldestTrack.first_week)} caption={`${oldestTrack.track_name} — ${oldestTrack.artist_name}`} linkTo={`/music/tracks/${oldestTrack.track_id}`} />}
+          {oldestTrack && <FeaturedRecord label="最早入榜" value={fmtDate(oldestTrack.first_week)} caption={`${oldestTrack.track_name} — ${oldestTrack.artist_name}`} linkTo={billboardDetailLink(`/music/tracks/${oldestTrack.track_id}`)} />}
         </RecordCard>
         <RecordCard title="最新上榜 · Newest Chart Entry">
-          {newestTrack && <FeaturedRecord label="最新入榜" value={fmtDate(newestTrack.first_week)} caption={`${newestTrack.track_name} — ${newestTrack.artist_name}`} linkTo={`/music/tracks/${newestTrack.track_id}`} />}
+          {newestTrack && <FeaturedRecord label="最新入榜" value={fmtDate(newestTrack.first_week)} caption={`${newestTrack.track_name} — ${newestTrack.artist_name}`} linkTo={billboardDetailLink(`/music/tracks/${newestTrack.track_id}`)} />}
         </RecordCard>
       </div>
 
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
         <RecordCard title="最长歌名 · Longest Track Name">
-          {longestName && <FeaturedRecord label="最长歌名" value={longestName.track_name.length} unit="字" caption={`${longestName.track_name} — ${longestName.artist_name}`} linkTo={`/music/tracks/${longestName.track_id}`} />}
+          {longestName && <FeaturedRecord label="最长歌名" value={longestName.track_name.length} unit="字" caption={`${longestName.track_name} — ${longestName.artist_name}`} linkTo={billboardDetailLink(`/music/tracks/${longestName.track_id}`)} />}
         </RecordCard>
         <RecordCard title="最短歌名 · Shortest Track Name">
-          {shortestName && <FeaturedRecord label="最短歌名" value={shortestName.track_name.length} unit="字" caption={`${shortestName.track_name} — ${shortestName.artist_name}`} linkTo={`/music/tracks/${shortestName.track_id}`} />}
+          {shortestName && <FeaturedRecord label="最短歌名" value={shortestName.track_name.length} unit="字" caption={`${shortestName.track_name} — ${shortestName.artist_name}`} linkTo={billboardDetailLink(`/music/tracks/${shortestName.track_id}`)} />}
         </RecordCard>
       </div>
     </div>

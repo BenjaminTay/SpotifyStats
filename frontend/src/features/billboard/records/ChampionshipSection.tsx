@@ -5,6 +5,7 @@ import { Trophy } from 'lucide-react'
 
 import { cn } from '@/lib/utils'
 import { displayName } from '@/lib/chinese'
+import { billboardDetailLink } from '@/lib/navigation'
 import type {
   BillboardRecords,
   BlockedAlbumInfo,
@@ -110,7 +111,7 @@ export function ChampionshipSection({ rec, covers, onWeekClick }: { rec: Billboa
                 unit={no1Type === 'album' ? '张冠军专辑' : '首冠军单曲'}
                 caption={`${r.artist_name} · 冠周 ${no1Type === 'album' ? r['专辑冠军周数'] : r['单曲冠军周数']}`}
                 coverUrl={covers.artist.get(r.artist_name)}
-                linkTo={`/music/artists/${encodeURIComponent(r.artist_name)}`}
+                linkTo={billboardDetailLink(`/music/artists/${encodeURIComponent(r.artist_name)}`)}
               />
             ))}
           </div>
@@ -219,7 +220,7 @@ export function ChampionshipSection({ rec, covers, onWeekClick }: { rec: Billboa
           <>
             {blockerKingSorted.length > 0 && (
               <div className="mb-4">
-                <FeaturedRecord label="最强阻挡" value={blockerKingSorted[0]['阻挡数']} unit="首 Peak #2 歌曲被挡" caption={`${blockerKingSorted[0].track_name} — ${blockerKingSorted[0].artist_name}`} coverUrl={covers.track.get(blockerKingSorted[0].track_id)} linkTo={`/music/tracks/${blockerKingSorted[0].track_id}`} />
+                <FeaturedRecord label="最强阻挡" value={blockerKingSorted[0]['阻挡数']} unit="首 Peak #2 歌曲被挡" caption={`${blockerKingSorted[0].track_name} — ${blockerKingSorted[0].artist_name}`} coverUrl={covers.track.get(blockerKingSorted[0].track_id)} linkTo={billboardDetailLink(`/music/tracks/${blockerKingSorted[0].track_id}`)} />
               </div>
             )}
             <MiniRankTable fixed rows={blockerKingSorted} columns={[
@@ -229,7 +230,7 @@ export function ChampionshipSection({ rec, covers, onWeekClick }: { rec: Billboa
               { header: <span className="pl-8">被阻挡歌曲</span>, render: (r) => {
                 const blocked: BlockedTrackInfo[] = rec.blocked_tracks_map?.[r.track_id] ?? []
                 if (blocked.length === 0) return <span className="text-[11px] text-muted-foreground">—</span>
-                return <div className="flex flex-wrap gap-1 pl-8">{blocked.map(b => <Link key={b.track_id} to={`/music/tracks/${b.track_id}`} className="inline-flex items-center gap-1 rounded-[4px] bg-muted/50 px-1.5 py-0.5 font-sans text-[11px] transition-colors hover:bg-muted hover:text-accent-foreground">{displayName(b.track_name)}</Link>)}</div>
+                return <div className="flex flex-wrap gap-1 pl-8">{blocked.map(b => <Link key={b.track_id} to={billboardDetailLink(`/music/tracks/${b.track_id}`)} className="inline-flex items-center gap-1 rounded-[4px] bg-muted/50 px-1.5 py-0.5 font-sans text-[11px] transition-colors hover:bg-muted hover:text-accent-foreground">{displayName(b.track_name)}</Link>)}</div>
               }},
             ]} />
           </>
@@ -237,7 +238,7 @@ export function ChampionshipSection({ rec, covers, onWeekClick }: { rec: Billboa
           <>
             {blockerKingAlbumSorted.length > 0 && (
               <div className="mb-4">
-                <FeaturedRecord label="最强阻挡" value={blockerKingAlbumSorted[0]['阻挡数']} unit="张 Peak #2 专辑被挡" caption={`${blockerKingAlbumSorted[0].album_name} — ${blockerKingAlbumSorted[0].artist_name}`} linkTo={`/music/albums/${encodeURIComponent(blockerKingAlbumSorted[0].album_name)}`} />
+                <FeaturedRecord label="最强阻挡" value={blockerKingAlbumSorted[0]['阻挡数']} unit="张 Peak #2 专辑被挡" caption={`${blockerKingAlbumSorted[0].album_name} — ${blockerKingAlbumSorted[0].artist_name}`} linkTo={billboardDetailLink(`/music/albums/${encodeURIComponent(blockerKingAlbumSorted[0].album_name)}`)} />
               </div>
             )}
             <MiniRankTable fixed rows={blockerKingAlbumSorted} columns={[
@@ -248,7 +249,7 @@ export function ChampionshipSection({ rec, covers, onWeekClick }: { rec: Billboa
                 const key = `${r.album_name}||${r.artist_name}`
                 const blocked: BlockedAlbumInfo[] = rec.blocked_albums_map?.[key] ?? []
                 if (blocked.length === 0) return <span className="text-[11px] text-muted-foreground">—</span>
-                return <div className="flex flex-wrap gap-1 pl-8">{blocked.map((b, i) => <Link key={i} to={`/music/albums/${encodeURIComponent(b.album_name)}`} className="inline-flex items-center gap-1 rounded-[4px] bg-muted/50 px-1.5 py-0.5 font-sans text-[11px] transition-colors hover:bg-muted hover:text-accent-foreground">{displayName(b.album_name)}</Link>)}</div>
+                return <div className="flex flex-wrap gap-1 pl-8">{blocked.map((b, i) => <Link key={i} to={billboardDetailLink(`/music/albums/${encodeURIComponent(b.album_name)}`)} className="inline-flex items-center gap-1 rounded-[4px] bg-muted/50 px-1.5 py-0.5 font-sans text-[11px] transition-colors hover:bg-muted hover:text-accent-foreground">{displayName(b.album_name)}</Link>)}</div>
               }},
             ]} />
           </>
@@ -258,10 +259,10 @@ export function ChampionshipSection({ rec, covers, onWeekClick }: { rec: Billboa
       {/* 最长/最快登顶 */}
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
         <RecordCard title="最长登顶路 · Longest Climb to #1">
-          {rec.longest_to_no1.length > 0 && <FeaturedRecord label="马拉松冠军" value={rec.longest_to_no1[0]['登顶周数']} unit="周登顶" caption={`${rec.longest_to_no1[0].track_name} — ${rec.longest_to_no1[0].artist_name}`} linkTo={`/music/tracks/${rec.longest_to_no1[0].track_id}`} />}
+          {rec.longest_to_no1.length > 0 && <FeaturedRecord label="马拉松冠军" value={rec.longest_to_no1[0]['登顶周数']} unit="周登顶" caption={`${rec.longest_to_no1[0].track_name} — ${rec.longest_to_no1[0].artist_name}`} linkTo={billboardDetailLink(`/music/tracks/${rec.longest_to_no1[0].track_id}`)} />}
         </RecordCard>
         <RecordCard title="最快登顶 · Fastest Climb to #1" subtitle="非空降歌曲（排除入榜即夺冠）">
-          {rec.fastest_to_no1.length > 0 && <FeaturedRecord label="闪电战冠军" value={rec.fastest_to_no1[0]['登顶周数']} unit="周登顶" caption={`${rec.fastest_to_no1[0].track_name} — ${rec.fastest_to_no1[0].artist_name}`} linkTo={`/music/tracks/${rec.fastest_to_no1[0].track_id}`} />}
+          {rec.fastest_to_no1.length > 0 && <FeaturedRecord label="闪电战冠军" value={rec.fastest_to_no1[0]['登顶周数']} unit="周登顶" caption={`${rec.fastest_to_no1[0].track_name} — ${rec.fastest_to_no1[0].artist_name}`} linkTo={billboardDetailLink(`/music/tracks/${rec.fastest_to_no1[0].track_id}`)} />}
         </RecordCard>
       </div>
     </div>

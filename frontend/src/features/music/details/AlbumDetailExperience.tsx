@@ -91,7 +91,9 @@ export function AlbumDetailExperience() {
   const artistName = searchParams.get('artist') || ''
   const navigate = useNavigate()
 
-  const [activeTab, setActiveTab] = useState<TabKey>('stats')
+  const [activeTab, setActiveTab] = useState<TabKey>(
+    (searchParams.get('tab') as TabKey | null) ?? 'stats',
+  )
 
   const { data, isPending, error, refetch } = useQuery({
     queryKey: queryKeys.music.albumDetail(albumName ?? '', artistName),

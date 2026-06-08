@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useParams, Link, useNavigate } from 'react-router-dom'
+import { useParams, useSearchParams, Link, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { queryKeys } from '@/api/query-keys'
@@ -89,7 +89,10 @@ function formatReleaseType(type: string): string {
 export function ArtistDetailExperience() {
   const { artistName } = useParams<{ artistName: string }>()
   const navigate = useNavigate()
-  const [activeTab, setActiveTab] = useState<TabKey>('stats')
+  const [searchParams] = useSearchParams()
+  const [activeTab, setActiveTab] = useState<TabKey>(
+    (searchParams.get('tab') as TabKey | null) ?? 'stats',
+  )
 
   const { data, isPending, error, refetch } = useQuery({
     queryKey: queryKeys.music.artistDetail(artistName ?? ''),

@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom'
 
 import { GlassCard } from '@/components/shared/GlassCard'
 import { displayName } from '@/lib/chinese'
+import { billboardDetailLink } from '@/lib/navigation'
 import {
   AnnualSection,
   NameWithCover,
@@ -45,8 +46,8 @@ export function TracksNumberOnesSection({
               coverUrl={computed.trackNo1List[0].cover_url}
               name={computed.trackNo1List[0].track_name}
               artistName={computed.trackNo1List[0].artist_name}
-              nameLink={`/music/tracks/${computed.trackNo1List[0].track_id}`}
-              artistLink={`/music/artists/${encodeURIComponent(computed.trackNo1List[0].artist_name)}`}
+              nameLink={billboardDetailLink(`/music/tracks/${computed.trackNo1List[0].track_id}`)}
+              artistLink={billboardDetailLink(`/music/artists/${encodeURIComponent(computed.trackNo1List[0].artist_name)}`)}
               badge="最新冠军"
             />
           )}
@@ -64,8 +65,8 @@ export function TracksNumberOnesSection({
               coverUrl={computed.trackNo1WeeksSorted[0].cover_url}
               name={computed.trackNo1WeeksSorted[0].track_name}
               artistName={computed.trackNo1WeeksSorted[0].artist_name}
-              nameLink={`/music/tracks/${computed.trackNo1WeeksSorted[0].track_id}`}
-              artistLink={`/music/artists/${encodeURIComponent(computed.trackNo1WeeksSorted[0].artist_name)}`}
+              nameLink={billboardDetailLink(`/music/tracks/${computed.trackNo1WeeksSorted[0].track_id}`)}
+              artistLink={billboardDetailLink(`/music/artists/${encodeURIComponent(computed.trackNo1WeeksSorted[0].artist_name)}`)}
             />
           )}
         </GlassCard>
@@ -81,8 +82,8 @@ export function TracksNumberOnesSection({
               coverUrl={longestTrack.cover_url}
               name={longestTrack.track_name}
               artistName={displayName(longestTrack.artist_name)}
-              nameLink={`/music/tracks/${longestTrack.track_id}`}
-              artistLink={`/music/artists/${encodeURIComponent(longestTrack.artist_name)}`}
+              nameLink={billboardDetailLink(`/music/tracks/${longestTrack.track_id}`)}
+              artistLink={billboardDetailLink(`/music/artists/${encodeURIComponent(longestTrack.artist_name)}`)}
             />
           )}
         </GlassCard>
@@ -122,8 +123,8 @@ export function TracksNumberOnesSection({
                       coverUrl={entry.cover_url}
                       name={entry.track_name}
                       artistName={displayName(entry.artist_name)}
-                      nameLink={`/music/tracks/${entry.track_id}`}
-                      artistLink={`/music/artists/${encodeURIComponent(entry.artist_name)}`}
+                      nameLink={billboardDetailLink(`/music/tracks/${entry.track_id}`)}
+                      artistLink={billboardDetailLink(`/music/artists/${encodeURIComponent(entry.artist_name)}`)}
                     />
                   </td>
                   <td className="py-3 text-right">
@@ -158,8 +159,8 @@ export function TracksNumberOnesSection({
                         coverUrl={entry.cover_url}
                         name={entry.track_name}
                         artistName={displayName(entry.artist_name)}
-                        nameLink={`/music/tracks/${entry.track_id}`}
-                        artistLink={`/music/artists/${encodeURIComponent(entry.artist_name)}`}
+                        nameLink={billboardDetailLink(`/music/tracks/${entry.track_id}`)}
+                        artistLink={billboardDetailLink(`/music/artists/${encodeURIComponent(entry.artist_name)}`)}
                       />
                     </td>
                     <td className="py-3 text-right font-sans text-[13px] font-semibold tabular-nums">{entry.weeks_at_no1}</td>
@@ -212,8 +213,8 @@ export function TracksNumberOnesSection({
                       coverUrl={entry.cover_url}
                       name={entry.track_name}
                       artistName={displayName(entry.artist_name)}
-                      nameLink={`/music/tracks/${entry.track_id}`}
-                      artistLink={`/music/artists/${encodeURIComponent(entry.artist_name)}`}
+                      nameLink={billboardDetailLink(`/music/tracks/${entry.track_id}`)}
+                      artistLink={billboardDetailLink(`/music/artists/${encodeURIComponent(entry.artist_name)}`)}
                     />
                   </td>
                   <td className="py-3 font-sans text-[13px]">
