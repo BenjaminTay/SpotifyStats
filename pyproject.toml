@@ -16,7 +16,7 @@ exclude = [".venv", "node_modules", "data", "frontend"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "W", "UP"]
-ignore = ["E501", "UP007", "UP017"]  # UP007: X|Y needs 3.10+; UP017: UTC needs 3.11+
+ignore = ["E501", "UP007", "UP017", "UP038"]  # UP007/UP038: | syntax needs 3.10+; UP017: UTC needs 3.11+
 
 [tool.ruff.lint.per-file-ignores]
 "backend/core/db.py" = ["F821"]  # pd.DataFrame used in string annotations

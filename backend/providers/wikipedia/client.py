@@ -5,7 +5,7 @@ Uses the shared HttpClient for HTTP transport.
 
 from __future__ import annotations
 
-from urllib.parse import quote
+from urllib.parse import quote, urlencode
 
 from backend.infrastructure.http.client import HttpClient
 from backend.providers.base import BaseProvider, ProviderConfig
@@ -45,6 +45,17 @@ class WikipediaProvider(BaseProvider):
         if resp.status == 200:
             return resp.json()
         return None
+
+    def query(self, params: dict, language: str = "en") -> dict | None:
+        """Run a MediaWiki action API query and return decoded JSON."""
+        url = f"https://{language}.wikipedia.org/w/api.php?{urlencode(params)}"
+        resp = self._http.get(url)
+        if resp.status == 200:
+            return resp.json()
+        return None
+
+    def page_url(self, title: str, language: str = "en") -> str:
+        return f"https://{language}.wikipedia.org/wiki/{quote(title.replace(' ', '_'))}"
 
     def get_page_extract(self, title: str, language: str = "en") -> str | None:
         """Get plain text extract of a Wikipedia page."""

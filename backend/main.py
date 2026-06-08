@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+import uuid
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
@@ -18,6 +19,7 @@ from backend.core.config import FRONTEND_ORIGIN
 from backend.core.db import DB_PATH
 from backend.core.logging_config import setup_logging
 from backend.core.migrations import run_migrations
+from backend.core.request_context import REQUEST_ID_HEADER, reset_request_id, set_request_id
 from backend.core.warmup import start_warmup_thread
 
 setup_logging()
@@ -68,6 +70,20 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def request_id_middleware(request: Request, call_next):
+    """Attach a request id to logs and responses for local observability."""
+    request_id = request.headers.get(REQUEST_ID_HEADER) or str(uuid.uuid4())
+    token = set_request_id(request_id)
+    try:
+        response = await call_next(request)
+        response.headers[REQUEST_ID_HEADER] = request_id
+        return response
+    finally:
+        reset_request_id(token)
+
 
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _COVERS_DIR = os.path.join(_PROJECT_ROOT, "data", "covers")

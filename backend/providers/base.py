@@ -9,6 +9,52 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
+from typing import Optional
+
+
+class ProviderError(RuntimeError):
+    """Base error for third-party provider failures."""
+
+    def __init__(self, provider: str, message: str, status: Optional[int] = None):  # noqa: UP045
+        super().__init__(message)
+        self.provider = provider
+        self.status = status
+
+
+class ProviderNetworkError(ProviderError):
+    """Network or transport-level provider failure."""
+
+
+class ProviderHTTPError(ProviderError):
+    """HTTP provider failure with a status code."""
+
+
+class ProviderAuthError(ProviderHTTPError):
+    """Provider authentication or authorization failed."""
+
+
+class ProviderRateLimitError(ProviderHTTPError):
+    """Provider rate limit was reached."""
+
+
+class ProviderServerError(ProviderHTTPError):
+    """Provider server-side failure."""
+
+
+class ProviderParseError(ProviderError):
+    """Provider returned an unreadable or unexpected payload."""
+
+
+def provider_error_from_status(provider: str, status: int, detail: str = "") -> ProviderHTTPError:
+    """Map an HTTP status to the canonical provider error subtype."""
+    message = detail or f"{provider} returned HTTP {status}"
+    if status in (401, 403):
+        return ProviderAuthError(provider, message, status)
+    if status == 429:
+        return ProviderRateLimitError(provider, message, status)
+    if status >= 500:
+        return ProviderServerError(provider, message, status)
+    return ProviderHTTPError(provider, message, status)
 
 
 @dataclass

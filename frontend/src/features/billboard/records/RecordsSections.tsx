@@ -1,0 +1,6 @@
+export { BreakthroughSection } from './BreakthroughSection'
+export { ChampionshipSection } from './ChampionshipSection'
+export { CuriositiesSection } from './CuriositiesSection'
+export { HallOfFameSection } from './HallOfFameSection'
+export { LongevitySection } from './LongevitySection'
+export { MarketSection } from './MarketSection'

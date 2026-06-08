@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
+import type { Dispatch, SetStateAction } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+
+import { queryKeys } from '@/api/query-keys'
 import { api, type SettingsData, type SettingsUpdatePayload, type ImportJob, type ReleaseGroup, type GroupMember, type UngroupedAlbum, type DetectionResult, type TrackComparison, type RebuildResult, type LLMProfile, type LLMProfileDetail, type LLMProfileCreatePayload, type LLMProfileUpdatePayload, type LLMProfileCreateResult } from '@/lib/api'
-
-// ── Module-level settings cache ─────────────────────────────
-
-let cachedSettings: SettingsData | null = null
 
 // ── useSettings ─────────────────────────────────────────────
 
@@ -44,28 +44,18 @@ interface UseSettingsResult {
 }
 
 export function useSettings(): UseSettingsResult {
-  const [settings, setSettings] = useState<SettingsData | null>(cachedSettings)
-  const [loading, setLoading] = useState(!cachedSettings)
-  const [error, setError] = useState<string | null>(null)
+  const queryClient = useQueryClient()
+  const settingsQuery = useQuery({
+    queryKey: queryKeys.settings.data(),
+    queryFn: () => api.get<SettingsData>('/settings'),
+  })
   const [streamingJob, setStreamingJob] = useState<ImportJob | null>(null)
   const [accountJob, setAccountJob] = useState<ImportJob | null>(null)
   const pollRef = useRef<Map<string, ReturnType<typeof setInterval>>>(new Map())
 
   const refetch = useCallback(() => {
-    setLoading(true)
-    api.get<SettingsData>('/settings')
-      .then((d) => {
-        cachedSettings = d
-        setSettings(d)
-        setError(null)
-      })
-      .catch((e: Error) => setError(e.message))
-      .finally(() => setLoading(false))
-  }, [])
-
-  useEffect(() => {
-    if (!cachedSettings) refetch()
-  }, [refetch])
+    void settingsQuery.refetch()
+  }, [settingsQuery])
 
   // Cleanup polling on unmount
   useEffect(() => {
@@ -77,15 +67,15 @@ export function useSettings(): UseSettingsResult {
 
   const updateSettings = useCallback(async (payload: SettingsUpdatePayload) => {
     const updated = await api.put<SettingsData>('/settings', payload)
-    cachedSettings = updated
-    setSettings(updated)
-  }, [])
+    queryClient.setQueryData(queryKeys.settings.data(), updated)
+  }, [queryClient])
 
   const updateApiKey = useCallback(async (apiKey: string, baseUrl?: string) => {
     const payload: Record<string, string> = { llm_api_key: apiKey }
     if (baseUrl !== undefined) payload.llm_base_url = baseUrl
     await api.put('/settings', payload)
-  }, [])
+    await settingsQuery.refetch()
+  }, [settingsQuery])
 
   const rebuildAgg = useCallback(() => {
     return api.post<RebuildResult>('/settings/rebuild-agg')
@@ -96,28 +86,44 @@ export function useSettings(): UseSettingsResult {
   }, [])
 
   const fetchProfiles = useCallback(() => {
-    return api.get<LLMProfile[]>('/settings/llm-profiles')
-  }, [])
+    return queryClient.fetchQuery({
+      queryKey: queryKeys.settings.llmProfiles(),
+      queryFn: () => api.get<LLMProfile[]>('/settings/llm-profiles'),
+    })
+  }, [queryClient])
 
   const getProfileDetail = useCallback((profileId: number) => {
-    return api.get<LLMProfileDetail>(`/settings/llm-profiles/${profileId}`)
-  }, [])
+    return queryClient.fetchQuery({
+      queryKey: queryKeys.settings.llmProfile(profileId),
+      queryFn: () => api.get<LLMProfileDetail>(`/settings/llm-profiles/${profileId}`),
+    })
+  }, [queryClient])
 
-  const createProfile = useCallback((payload: LLMProfileCreatePayload) => {
-    return api.post<LLMProfileCreateResult>('/settings/llm-profiles', payload)
-  }, [])
+  const createProfile = useCallback(async (payload: LLMProfileCreatePayload) => {
+    const result = await api.post<LLMProfileCreateResult>('/settings/llm-profiles', payload)
+    await queryClient.invalidateQueries({ queryKey: queryKeys.settings.llmProfiles() })
+    return result
+  }, [queryClient])
 
-  const updateProfile = useCallback((profileId: number, payload: LLMProfileUpdatePayload) => {
-    return api.put<LLMProfileDetail>(`/settings/llm-profiles/${profileId}`, payload)
-  }, [])
+  const updateProfile = useCallback(async (profileId: number, payload: LLMProfileUpdatePayload) => {
+    const result = await api.put<LLMProfileDetail>(`/settings/llm-profiles/${profileId}`, payload)
+    queryClient.setQueryData(queryKeys.settings.llmProfile(profileId), result)
+    await queryClient.invalidateQueries({ queryKey: queryKeys.settings.llmProfiles() })
+    return result
+  }, [queryClient])
 
-  const deleteProfile = useCallback((profileId: number) => {
-    return api.del<{ status: string }>(`/settings/llm-profiles/${profileId}`)
-  }, [])
+  const deleteProfile = useCallback(async (profileId: number) => {
+    const result = await api.del<{ status: string }>(`/settings/llm-profiles/${profileId}`)
+    queryClient.removeQueries({ queryKey: queryKeys.settings.llmProfile(profileId) })
+    await queryClient.invalidateQueries({ queryKey: queryKeys.settings.llmProfiles() })
+    return result
+  }, [queryClient])
 
-  const applyProfile = useCallback((profileId: number) => {
-    return api.post<{ status: string; profile_id: number }>(`/settings/llm-profiles/${profileId}/apply`)
-  }, [])
+  const applyProfile = useCallback(async (profileId: number) => {
+    const result = await api.post<{ status: string; profile_id: number }>(`/settings/llm-profiles/${profileId}/apply`)
+    await settingsQuery.refetch()
+    return result
+  }, [settingsQuery])
 
   const spotifyConnect = useCallback(() => {
     return api.get<SpotifyAuthUrl>('/spotify/auth/login')
@@ -125,18 +131,21 @@ export function useSettings(): UseSettingsResult {
 
   const spotifyDisconnect = useCallback(async () => {
     await api.del('/spotify/auth/disconnect')
-    await refetch()
-  }, [refetch])
+    await settingsQuery.refetch()
+  }, [settingsQuery])
 
   const spotifySync = useCallback(() => {
     return api.post<SpotifySyncResult>('/spotify/auth/sync')
   }, [])
 
   const checkSpotifyStatus = useCallback(() => {
-    return api.get<SpotifyStatus>('/spotify/auth/status')
-  }, [])
+    return queryClient.fetchQuery({
+      queryKey: queryKeys.settings.spotifyStatus(),
+      queryFn: () => api.get<SpotifyStatus>('/spotify/auth/status'),
+    })
+  }, [queryClient])
 
-  const pollImport = useCallback((jobId: string, setter: React.Dispatch<React.SetStateAction<ImportJob | null>>) => {
+  const pollImport = useCallback((jobId: string, setter: Dispatch<SetStateAction<ImportJob | null>>) => {
     // Clear any existing poll for this setter's job
     const existing = pollRef.current.get('streaming')
     if (existing) clearInterval(existing)
@@ -181,7 +190,14 @@ export function useSettings(): UseSettingsResult {
   }, [refetch])
 
   return {
-    settings, loading, error, refetch, updateSettings, updateApiKey, clearTranslationCache, rebuildAgg,
+    settings: settingsQuery.data ?? null,
+    loading: settingsQuery.isLoading,
+    error: settingsQuery.error instanceof Error ? settingsQuery.error.message : null,
+    refetch,
+    updateSettings,
+    updateApiKey,
+    clearTranslationCache,
+    rebuildAgg,
     startStreamingImport, startAccountImport, streamingJob, accountJob,
     spotifyConnect, spotifyDisconnect, spotifySync, checkSpotifyStatus,
     applyProfile,
@@ -208,15 +224,16 @@ interface UseVersionMergeResult {
 }
 
 export function useVersionMerge(): UseVersionMergeResult {
-  const [groups, setGroups] = useState<ReleaseGroup[]>([])
-  const [groupsLoading, setGroupsLoading] = useState(false)
+  const queryClient = useQueryClient()
+  const groupsQuery = useQuery({
+    queryKey: queryKeys.versionMerge.groups(),
+    queryFn: () => api.get<ReleaseGroup[]>('/version-merge/groups'),
+    enabled: false,
+  })
 
   const fetchGroups = useCallback(() => {
-    setGroupsLoading(true)
-    api.get<ReleaseGroup[]>('/version-merge/groups')
-      .then(setGroups)
-      .finally(() => setGroupsLoading(false))
-  }, [])
+    void groupsQuery.refetch()
+  }, [groupsQuery])
 
   const detectGroups = useCallback((overlapThreshold: number) => {
     return api.post<DetectionResult[]>(`/version-merge/detect?overlap_threshold=${overlapThreshold}`)
@@ -224,24 +241,40 @@ export function useVersionMerge(): UseVersionMergeResult {
 
   const applyDetected = useCallback((confirmedGroups: DetectionResult[]) => {
     return api.post<{ created_count: number; skipped_count: number }>('/version-merge/apply', { confirmed_groups: confirmedGroups })
-  }, [])
+      .then((result) => {
+        void queryClient.invalidateQueries({ queryKey: queryKeys.versionMerge.groups() })
+        return result
+      })
+  }, [queryClient])
 
   const getGroupMembers = useCallback((groupId: number) => {
-    return api.get<GroupMember[]>(`/version-merge/groups/${groupId}/members`)
-  }, [])
+    return queryClient.fetchQuery({
+      queryKey: queryKeys.versionMerge.members(groupId),
+      queryFn: () => api.get<GroupMember[]>(`/version-merge/groups/${groupId}/members`),
+    })
+  }, [queryClient])
 
   const getUngroupedAlbums = useCallback((artistName?: string) => {
     const params = artistName ? { artist_name: artistName } : undefined
-    return api.get<UngroupedAlbum[]>('/version-merge/ungrouped', params as Record<string, string | number | boolean>)
-  }, [])
+    return queryClient.fetchQuery({
+      queryKey: queryKeys.versionMerge.ungrouped(artistName),
+      queryFn: () => api.get<UngroupedAlbum[]>('/version-merge/ungrouped', params as Record<string, string | number | boolean>),
+    })
+  }, [queryClient])
 
   const compareAlbums = useCallback((aId: number, bId: number) => {
-    return api.get<TrackComparison>(`/version-merge/compare?album_id_a=${aId}&album_id_b=${bId}`)
-  }, [])
+    return queryClient.fetchQuery({
+      queryKey: queryKeys.versionMerge.comparison(aId, bId),
+      queryFn: () => api.get<TrackComparison>(`/version-merge/compare?album_id_a=${aId}&album_id_b=${bId}`),
+    })
+  }, [queryClient])
 
   const getAlbumTypes = useCallback((ids: number[]) => {
-    return api.get<Record<string, string>>(`/version-merge/album-types?album_ids=${ids.join(',')}`)
-  }, [])
+    return queryClient.fetchQuery({
+      queryKey: queryKeys.versionMerge.albumTypes(ids),
+      queryFn: () => api.get<Record<string, string>>(`/version-merge/album-types?album_ids=${ids.join(',')}`),
+    })
+  }, [queryClient])
 
   const createGroup = useCallback((canonicalName: string, artistId: number, primaryAlbumId: number, memberIds: number[]) => {
     return api.post<{ group_id: number }>('/version-merge/groups', {
@@ -249,26 +282,45 @@ export function useVersionMerge(): UseVersionMergeResult {
       artist_id: artistId,
       primary_album_id: primaryAlbumId,
       member_ids: memberIds,
+    }).then((result) => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.versionMerge.groups() })
+      return result
     })
-  }, [])
+  }, [queryClient])
 
   const updateMembers = useCallback((groupId: number, addIds?: number[], removeIds?: number[]) => {
     return api.put<{ status: string }>(`/version-merge/groups/${groupId}/members`, {
       add_ids: addIds ?? null,
       remove_ids: removeIds ?? null,
+    }).then((result) => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.versionMerge.groups() })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.versionMerge.members(groupId) })
+      return result
     })
-  }, [])
+  }, [queryClient])
 
   const setPrimary = useCallback((groupId: number, albumId: number) => {
     return api.put<{ status: string }>(`/version-merge/groups/${groupId}/primary`, { album_id: albumId })
-  }, [])
+      .then((result) => {
+        void queryClient.invalidateQueries({ queryKey: queryKeys.versionMerge.groups() })
+        void queryClient.invalidateQueries({ queryKey: queryKeys.versionMerge.members(groupId) })
+        return result
+      })
+  }, [queryClient])
 
   const deleteGroup = useCallback((groupId: number) => {
     return api.del<{ status: string }>(`/version-merge/groups/${groupId}`)
-  }, [])
+      .then((result) => {
+        void queryClient.invalidateQueries({ queryKey: queryKeys.versionMerge.groups() })
+        void queryClient.removeQueries({ queryKey: queryKeys.versionMerge.members(groupId) })
+        return result
+      })
+  }, [queryClient])
 
   return {
-    groups, groupsLoading, fetchGroups,
+    groups: groupsQuery.data ?? [],
+    groupsLoading: groupsQuery.isFetching,
+    fetchGroups,
     detectGroups, applyDetected, getGroupMembers, getUngroupedAlbums,
     compareAlbums, getAlbumTypes, createGroup, updateMembers, setPrimary, deleteGroup,
   }

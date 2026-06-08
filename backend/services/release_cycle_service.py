@@ -1,10 +1,6 @@
 """Release cycle analysis service — migrated from app/pages/billboard/release_cycle/shared.py."""
 
-import base64
 import json
-import urllib.error
-import urllib.parse
-import urllib.request
 from functools import lru_cache
 
 import numpy as np
@@ -13,6 +9,7 @@ import pandas as pd
 from backend.core.cache import ttl_cached
 from backend.core.db import get_db
 from backend.core.version_merge import normalize_album_name
+from backend.providers.spotify.client import SpotifyProvider
 
 # ═══════════════════════════════════════════════════════════════════════════
 # Spotify token
@@ -22,24 +19,9 @@ from backend.core.version_merge import normalize_album_name
 @ttl_cached(3500, namespace="billboard")
 def _get_spotify_token():
     """Get Spotify client_credentials token, cached ~58 minutes."""
-    from backend.core.config import SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET
-
-    if not SPOTIFY_CLIENT_ID or not SPOTIFY_CLIENT_SECRET:
-        return None
-
-    auth_b64 = base64.b64encode(f"{SPOTIFY_CLIENT_ID}:{SPOTIFY_CLIENT_SECRET}".encode()).decode()
-    req = urllib.request.Request(
-        "https://accounts.spotify.com/api/token",
-        data=urllib.parse.urlencode({"grant_type": "client_credentials"}).encode(),
-        headers={
-            "Authorization": f"Basic {auth_b64}",
-            "Content-Type": "application/x-www-form-urlencoded",
-        },
-    )
     try:
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            return json.loads(resp.read().decode())["access_token"]
-    except (OSError, urllib.error.URLError, TimeoutError, KeyError, json.JSONDecodeError):
+        return SpotifyProvider().get_cc_token()
+    except Exception:
         return None
 
 
@@ -117,10 +99,10 @@ def _fetch_album_artists_from_api(spotify_album_ids, artist_name):
     for i in range(0, len(ids_list), 20):
         batch = ids_list[i : i + 20]
         try:
-            url = f"https://api.spotify.com/v1/albums?ids={','.join(batch)}"
-            req = urllib.request.Request(url, headers={"Authorization": f"Bearer {token}"})
-            with urllib.request.urlopen(req, timeout=10) as resp:
-                data = json.loads(resp.read().decode())
+            data = SpotifyProvider().get_albums(batch, token)
+            if not data:
+                verified.update(batch)
+                continue
 
             for album in data.get("albums", []):
                 if album is None:
@@ -230,11 +212,9 @@ def _spotify_search_album(album_name, artist_name, skip_db_check=False):
         return None
 
     try:
-        q = urllib.parse.quote(f"album:{album_name} artist:{artist_name}")
-        url = f"https://api.spotify.com/v1/search?q={q}&type=album&limit=5"
-        req = urllib.request.Request(url, headers={"Authorization": f"Bearer {token}"})
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            data = json.loads(resp.read().decode())
+        data = SpotifyProvider().search_albums(album_name, artist_name, token, limit=5)
+        if not data:
+            return None
 
         for album in data.get("albums", {}).get("items", []):
             if album["name"].lower() == album_name.lower():

@@ -6,6 +6,9 @@ and uses the shared HttpClient for HTTP transport.
 
 from __future__ import annotations
 
+import base64
+from urllib.parse import quote
+
 from backend.core.config import SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET
 from backend.core.spotify_utils import (
     fetch_current_playback,
@@ -15,9 +18,8 @@ from backend.core.spotify_utils import (
     fetch_spotify_profile,
     fetch_top_artists,
     fetch_top_tracks,
-    get_client_credentials_token,
-    spotify_api_get,
 )
+from backend.infrastructure.http.client import HttpClient
 from backend.providers.base import BaseProvider, ProviderConfig
 
 
@@ -39,10 +41,11 @@ class SpotifyProvider(BaseProvider):
                 rate_limit_rps=10.0,
             )
         super().__init__(config)
+        self._http = HttpClient(timeout=config.timeout, retries=config.retries)
 
     def health_check(self) -> bool:
         try:
-            token = get_client_credentials_token()
+            token = self.get_cc_token()
             return token is not None
         except Exception:
             return False
@@ -55,10 +58,48 @@ class SpotifyProvider(BaseProvider):
         }
 
     def get_cc_token(self) -> str | None:
-        return get_client_credentials_token()
+        if not SPOTIFY_CLIENT_ID or not SPOTIFY_CLIENT_SECRET:
+            return None
+
+        auth_b64 = base64.b64encode(
+            f"{SPOTIFY_CLIENT_ID}:{SPOTIFY_CLIENT_SECRET}".encode()
+        ).decode()
+        resp = self._http.post(
+            "https://accounts.spotify.com/api/token",
+            data={"grant_type": "client_credentials"},
+            headers={
+                "Authorization": f"Basic {auth_b64}",
+                "Content-Type": "application/x-www-form-urlencoded",
+            },
+        )
+        if resp.status != 200:
+            return None
+        try:
+            return resp.json().get("access_token")
+        except Exception:
+            return None
 
     def api_get(self, url: str, access_token: str) -> dict | None:
-        return spotify_api_get(url, access_token)
+        resp = self._http.get(url, headers={"Authorization": f"Bearer {access_token}"})
+        if resp.status != 200:
+            return None
+        try:
+            return resp.json()
+        except Exception:
+            return None
+
+    def get_albums(self, album_ids: list[str], access_token: str) -> dict | None:
+        if not album_ids:
+            return {"albums": []}
+        url = f"{self.config.base_url}/albums?ids={','.join(album_ids)}"
+        return self.api_get(url, access_token)
+
+    def search_albums(
+        self, album_name: str, artist_name: str, access_token: str, limit: int = 5
+    ) -> dict | None:
+        query = quote(f"album:{album_name} artist:{artist_name}")
+        url = f"{self.config.base_url}/search?q={query}&type=album&limit={limit}"
+        return self.api_get(url, access_token)
 
     def get_profile(self, access_token: str) -> dict | None:
         return fetch_spotify_profile(access_token)

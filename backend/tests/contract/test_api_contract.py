@@ -18,10 +18,16 @@ class TestHealthEndpoint:
         assert r.status_code == 200
         data = r.json()
         assert data["status"] == "ok"
+        assert r.headers.get("X-Request-ID")
 
     def test_health_no_stack_trace(self, client):
         r = client.get("/api/health")
         assert r.status_code == 200
+
+    def test_request_id_header_is_preserved(self, client):
+        r = client.get("/api/health", headers={"X-Request-ID": "phase5-test-request"})
+        assert r.status_code == 200
+        assert r.headers["X-Request-ID"] == "phase5-test-request"
 
 
 class TestDashboardEndpoints:

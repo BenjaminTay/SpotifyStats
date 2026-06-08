@@ -14,9 +14,7 @@ import logging
 import secrets
 import sqlite3
 import time
-import urllib.error
 import urllib.parse
-import urllib.request
 
 import backend.core.crypto as crypto
 from backend.core.cache import ttl_cached
@@ -25,6 +23,7 @@ from backend.core.config import (
     SPOTIFY_CLIENT_SECRET,
     SPOTIFY_REDIRECT_URI,
 )
+from backend.infrastructure.http.client import HttpClient
 
 logger = logging.getLogger(__name__)
 
@@ -49,18 +48,19 @@ def get_client_credentials_token() -> str | None:
     if not SPOTIFY_CLIENT_ID or not SPOTIFY_CLIENT_SECRET:
         return None
     auth_b64 = base64.b64encode(f"{SPOTIFY_CLIENT_ID}:{SPOTIFY_CLIENT_SECRET}".encode()).decode()
-    req = urllib.request.Request(
-        "https://accounts.spotify.com/api/token",
-        data=urllib.parse.urlencode({"grant_type": "client_credentials"}).encode(),
-        headers={
-            "Authorization": f"Basic {auth_b64}",
-            "Content-Type": "application/x-www-form-urlencoded",
-        },
-    )
     try:
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            return json.loads(resp.read().decode())["access_token"]
-    except (OSError, urllib.error.URLError, TimeoutError, KeyError, json.JSONDecodeError):
+        resp = HttpClient(timeout=10, retries=2).post(
+            "https://accounts.spotify.com/api/token",
+            data={"grant_type": "client_credentials"},
+            headers={
+                "Authorization": f"Basic {auth_b64}",
+                "Content-Type": "application/x-www-form-urlencoded",
+            },
+        )
+        if resp.status != 200:
+            return None
+        return resp.json()["access_token"]
+    except (OSError, TimeoutError, KeyError, json.JSONDecodeError):
         return None
 
 
@@ -98,25 +98,22 @@ def exchange_code_for_tokens(code: str, code_verifier: str) -> dict | None:
     client_id = get_client_id()
     if not client_id:
         return None
-    body = urllib.parse.urlencode(
-        {
-            "grant_type": "authorization_code",
-            "code": code,
-            "redirect_uri": get_redirect_uri(),
-            "client_id": client_id,
-            "code_verifier": code_verifier,
-        }
-    ).encode()
-    req = urllib.request.Request(
-        "https://accounts.spotify.com/api/token",
-        data=body,
-        headers={"Content-Type": "application/x-www-form-urlencoded"},
-        method="POST",
-    )
     try:
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            return json.loads(resp.read().decode())
-    except (OSError, urllib.error.URLError, json.JSONDecodeError):
+        resp = HttpClient(timeout=10, retries=1).post(
+            "https://accounts.spotify.com/api/token",
+            data={
+                "grant_type": "authorization_code",
+                "code": code,
+                "redirect_uri": get_redirect_uri(),
+                "client_id": client_id,
+                "code_verifier": code_verifier,
+            },
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+        if resp.status != 200:
+            return None
+        return resp.json()
+    except (OSError, json.JSONDecodeError):
         return None
 
 
@@ -125,23 +122,20 @@ def _refresh_user_token(refresh_token: str) -> dict | None:
     client_id = get_client_id()
     if not client_id:
         return None
-    body = urllib.parse.urlencode(
-        {
-            "grant_type": "refresh_token",
-            "refresh_token": refresh_token,
-            "client_id": client_id,
-        }
-    ).encode()
-    req = urllib.request.Request(
-        "https://accounts.spotify.com/api/token",
-        data=body,
-        headers={"Content-Type": "application/x-www-form-urlencoded"},
-        method="POST",
-    )
     try:
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            return json.loads(resp.read().decode())
-    except (OSError, urllib.error.URLError, json.JSONDecodeError):
+        resp = HttpClient(timeout=10, retries=1).post(
+            "https://accounts.spotify.com/api/token",
+            data={
+                "grant_type": "refresh_token",
+                "refresh_token": refresh_token,
+                "client_id": client_id,
+            },
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+        if resp.status != 200:
+            return None
+        return resp.json()
+    except (OSError, json.JSONDecodeError):
         return None
 
 
@@ -508,14 +502,15 @@ def sync_all_spotify_data(conn, access_token: str) -> dict:
 
 def spotify_api_get(url: str, access_token: str) -> dict | None:
     """GET request to Spotify Web API with Bearer token."""
-    req = urllib.request.Request(
-        url,
-        headers={"Authorization": f"Bearer {access_token}"},
-    )
     try:
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            return json.loads(resp.read().decode())
-    except (OSError, urllib.error.URLError, json.JSONDecodeError):
+        resp = HttpClient(timeout=15, retries=2).get(
+            url,
+            headers={"Authorization": f"Bearer {access_token}"},
+        )
+        if resp.status != 200:
+            return None
+        return resp.json()
+    except (OSError, json.JSONDecodeError):
         return None
 
 

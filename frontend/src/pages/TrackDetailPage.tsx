@@ -52,9 +52,6 @@ function parseChange(change: string | undefined): { type: 'up' | 'down' | 'same'
   return { type: 'same' }
 }
 
-// Module-level enrichment cache — survives navigation away and back
-const enrichmentCache = new Map<string, TrackEnrichmentResponse>()
-
 type TabKey = 'stats' | 'lyrics' | 'overview'
 
 const TABS: { key: TabKey; label: string }[] = [
@@ -102,9 +99,15 @@ export function TrackDetailPage() {
   const [lyrics, setLyrics] = useState<LyricsData | null>(null)
   const [lyricsLoading, setLyricsLoading] = useState(false)
 
-  // Enrichment (Genius + Wikipedia)
-  const [enrichment, setEnrichment] = useState<TrackEnrichmentResponse | null>(null)
-  const [enrichmentLoading, setEnrichmentLoading] = useState(false)
+  const { data: enrichment = null } = useQuery({
+    queryKey: queryKeys.music.trackEnrichment(data?.track_name ?? '', data?.artist_name ?? ''),
+    queryFn: () =>
+      api.get<TrackEnrichmentResponse>(
+        '/billboard/enrichment/track/' + encodeURIComponent(data!.track_name),
+        { artist_name: data!.artist_name },
+      ),
+    enabled: activeTab === 'lyrics' && !!data?.found,
+  })
 
   const fetchLyrics = useCallback(() => {
     if (!trackId || lyrics) return
@@ -116,32 +119,10 @@ export function TrackDetailPage() {
       .finally(() => setLyricsLoading(false))
   }, [trackId, lyrics])
 
-  const fetchEnrichment = useCallback(() => {
-    if (!data?.found || enrichment || enrichmentLoading) return
-    const cacheKey = `${data.track_name}:${data.artist_name}`
-    const cached = enrichmentCache.get(cacheKey)
-    if (cached) {
-      setEnrichment(cached)
-      return
-    }
-    setEnrichmentLoading(true)
-    api
-      .get<TrackEnrichmentResponse>('/billboard/enrichment/track/' + encodeURIComponent(data.track_name), {
-        artist_name: data.artist_name,
-      })
-      .then((result) => {
-        enrichmentCache.set(cacheKey, result)
-        setEnrichment(result)
-      })
-      .catch(() => setEnrichment(null))
-      .finally(() => setEnrichmentLoading(false))
-  }, [data, enrichment, enrichmentLoading])
-
   const handleTabChange = (tab: TabKey) => {
     setActiveTab(tab)
     if (tab === 'lyrics') {
       fetchLyrics()
-      fetchEnrichment()
     }
   }
 

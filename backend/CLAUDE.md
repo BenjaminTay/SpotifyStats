@@ -1,5 +1,7 @@
 # Backend Architecture
 
+> 项目级上下文（Phase 5 基线、架构模式、提交规范）见根目录 `AGENTS.md`。
+
 FastAPI 后端采用四层分离：**api/**（路由 + Depends 依赖注入）→ **services/**（计算逻辑）→ **domains/**（领域模块）→ **core/**（工具层），辅以 **infrastructure/**（基础设施）和 **providers/**（第三方适配）。
 
 ## 路由层约定
@@ -35,6 +37,7 @@ FastAPI 后端采用四层分离：**api/**（路由 + Depends 依赖注入）�
 | `core/migrations.py` | 版本化 Migration，`IF NOT EXISTS` 幂等，`schema_migrations` 表追踪 |
 | `core/auth.py` | `require_auth()` 依赖，本地模式放行，远程模式校验 Bearer Token |
 | `core/logging_config.py` | `SensitiveDataFilter` 脱敏敏感字段，全局 500 不泄露 stack trace |
+| `core/request_context.py` | Request ID 上下文（`ContextVar`），响应返回 `X-Request-ID`，日志包含 request id |
 | `core/warmup.py` | 启动后台预热 Billboard + Dashboard 缓存，`SPOTIFY_STATS_WARMUP=0` 可关闭 |
 | `core/job_queue.py` | 3 worker 线程池 + `background_jobs` 表持久化，enrichment 用 stale-cache+refresh 模式 |
 | `core/spotify_utils.py` | OAuth PKCE + Token 加密持久化 + 自动刷新 + 10 scope 全量数据拉取 |
@@ -64,12 +67,16 @@ FastAPI 后端采用四层分离：**api/**（路由 + Depends 依赖注入）�
 
 ## 外部调用规范
 
-所有第三方 API 通过 `providers/` 发出，禁止业务代码散落请求：
+**Phase 5 强制约束**：所有第三方 API 通过 `providers/` 发出，禁止业务代码散落请求逻辑。
+
 - `providers/spotify/client.py` — Spotify API
 - `providers/genius/client.py` — Genius API
 - `providers/wikipedia/client.py` — Wikipedia REST API
 - `providers/llm/client.py` — 多后端 LLM（DeepSeek/OpenAI/Anthropic/自定义）
-- `infrastructure/http/client.py` — 统一 HTTP 客户端（timeout/retry/proxy/脱敏）
+- `providers/base.py` — Provider 错误分类：`ProviderError` → `ProviderNetworkError` / `ProviderHTTPError` → `ProviderAuthError` / `ProviderRateLimitError` / `ProviderServerError` + `ProviderParseError`
+- `infrastructure/http/client.py` — 统一 HTTP 客户端（timeout/retry/proxy/脱敏），网络失败映射为 `ProviderNetworkError`
+
+**业务 service 层和 core Spotify 路径不得直接新建 `urllib.request.Request`/`urlopen`**，必须经 `HttpClient` 或对应 Provider。
 
 ## 测试策略
 
@@ -86,4 +93,6 @@ Contract 测试 teardown 必须清除所有 `@lru_cache`，`autouse` fixture `di
 - 环境变量统一从 `core/config.py` 读取，禁止业务代码直接 `os.getenv()`
 - Token 加密密钥：`SPOTIFY_STATS_TOKEN_KEY` 环境变量 → 内置密钥（仅限单用户本地）
 - LLM API Key 永远不通过 API 返回前端
+- **新增外部 HTTP 调用必须走 Provider/HttpClient**；禁止业务 service 和 core 直接 `urllib.request.Request`/`urlopen`
+- 日志输出必须经 `SensitiveDataFilter` 脱敏，不打印 token/key/Authorization
 - 开发用 `--reload-dir backend`，避免 reloader 扫描 `.venv`/`node_modules`/`data`

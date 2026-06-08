@@ -1,5 +1,6 @@
 """发行版本合并 — 自动检测专辑版本家族并合并到主版本统计."""
 
+import json
 import re
 
 import pandas as pd
@@ -1114,35 +1115,18 @@ def _fetch_album_tracks_from_api(spotify_album_ids):
 
     Returns {spotify_album_id: [spotify_track_id, ...]}  # list 保留原始曲目顺序
     """
-    import base64
-    import json
-    import urllib.error
-    import urllib.parse
-    import urllib.request
-
     if not spotify_album_ids:
         return {}
 
-    from backend.core.config import SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET
+    try:
+        from backend.providers.spotify.client import SpotifyProvider
 
-    if not SPOTIFY_CLIENT_ID or not SPOTIFY_CLIENT_SECRET:
+        provider = SpotifyProvider()
+        token = provider.get_cc_token()
+    except Exception:
         return {}
 
-    try:
-        auth_b64 = base64.b64encode(
-            f"{SPOTIFY_CLIENT_ID}:{SPOTIFY_CLIENT_SECRET}".encode()
-        ).decode()
-        req = urllib.request.Request(
-            "https://accounts.spotify.com/api/token",
-            data=urllib.parse.urlencode({"grant_type": "client_credentials"}).encode(),
-            headers={
-                "Authorization": f"Basic {auth_b64}",
-                "Content-Type": "application/x-www-form-urlencoded",
-            },
-        )
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            token = json.loads(resp.read().decode())["access_token"]
-    except Exception:
+    if not token:
         return {}
 
     result = {}
@@ -1154,10 +1138,9 @@ def _fetch_album_tracks_from_api(spotify_album_ids):
     for i in range(0, len(ids_list), 20):
         batch = ids_list[i : i + 20]
         try:
-            url = f"https://api.spotify.com/v1/albums?ids={','.join(batch)}"
-            req = urllib.request.Request(url, headers={"Authorization": f"Bearer {token}"})
-            with urllib.request.urlopen(req, timeout=15) as resp:
-                data = json.loads(resp.read().decode())
+            data = provider.get_albums(batch, token)
+            if not data:
+                continue
 
             for album in data.get("albums", []):
                 if album is None:

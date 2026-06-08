@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from backend.core.config import HTTP_PROXY, HTTPS_PROXY
+from backend.providers.base import ProviderNetworkError
 
 logger = logging.getLogger(__name__)
 
@@ -144,7 +145,7 @@ class HttpClient:
                     time.sleep(delay)
                     last_error = e
                     continue
-                raise
+                raise ProviderNetworkError("http", str(e)) from e
 
         raise last_error  # type: ignore[misc]
 

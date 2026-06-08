@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import logging
 import os
-import urllib.request
 
 from backend.core.job_queue import Job
+from backend.infrastructure.http.client import HttpClient
 
 logger = logging.getLogger(__name__)
 
@@ -34,9 +34,16 @@ def handle_cover_download(job: Job):
         cdn_url = row["image_url"]
 
     try:
-        req = urllib.request.Request(cdn_url, headers={"User-Agent": "SpotifyStats/1.0"})
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            data = resp.read()
+        resp = HttpClient(timeout=15, retries=1).get(cdn_url)
+        if resp.status != 200:
+            logger.warning(
+                "Cover download returned HTTP %s: %s/%s",
+                resp.status,
+                cover_type,
+                entity_id,
+            )
+            return
+        data = resp.body
 
         # Determine cache path
         project_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))

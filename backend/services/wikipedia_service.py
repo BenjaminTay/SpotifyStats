@@ -6,18 +6,17 @@ import json
 import re
 import sqlite3
 import time
-import urllib.error
-import urllib.parse
-import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from backend.core.db import get_db
+from backend.providers.wikipedia.client import WikipediaProvider
 
 WIKI_API = "https://en.wikipedia.org/w/api.php"
 ZH_WIKI_API = "https://zh.wikipedia.org/w/api.php"
 USER_AGENT = "SpotifyStats/1.0 (personal analytics; contact@example.com)"
 
 PROXY = None
+WIKI_PROVIDER = None
 
 
 def _get_proxy():
@@ -30,28 +29,11 @@ def _get_proxy():
     return PROXY or None
 
 
-def _urlopen(url, timeout=15, retries=3):
-    """Open URL with optional proxy support and retry logic."""
-    proxy = _get_proxy()
-    for attempt in range(retries):
-        try:
-            if proxy:
-                proxy_handler = urllib.request.ProxyHandler({"https": proxy, "http": proxy})
-                opener = urllib.request.build_opener(proxy_handler)
-                req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
-                return opener.open(req, timeout=timeout)
-            req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
-            return urllib.request.urlopen(req, timeout=timeout)
-        except urllib.error.HTTPError as e:
-            if e.code == 429 and attempt < retries - 1:
-                time.sleep(2**attempt)
-                continue
-            raise
-        except urllib.error.URLError:
-            if attempt < retries - 1:
-                time.sleep(1)
-                continue
-            raise
+def _wiki_provider():
+    global WIKI_PROVIDER
+    if WIKI_PROVIDER is None:
+        WIKI_PROVIDER = WikipediaProvider()
+    return WIKI_PROVIDER
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -61,25 +43,98 @@ def _urlopen(url, timeout=15, retries=3):
 
 def _search_wiki(query, lang="en"):
     """Search Wikipedia for a page title. Returns (title, pageid) or None."""
-    api = WIKI_API if lang == "en" else ZH_WIKI_API
-    params = urllib.parse.urlencode(
-        {
-            "action": "query",
-            "list": "search",
-            "srsearch": query,
-            "srlimit": 3,
-            "format": "json",
-        }
-    )
+    params = {
+        "action": "query",
+        "list": "search",
+        "srsearch": query,
+        "srlimit": 3,
+        "format": "json",
+    }
     try:
-        with _urlopen(f"{api}?{params}", timeout=10) as resp:
-            data = json.loads(resp.read().decode())
-            results = data.get("query", {}).get("search", [])
-            if results:
-                return results[0]["title"]
+        data = _wiki_provider().query(params, lang)
+        results = data.get("query", {}).get("search", []) if data else []
+        if results:
+            return results[0]["title"]
     except Exception:
         pass
     return None
+
+
+def _wiki_page_url(title, lang="en"):
+    return _wiki_provider().page_url(title, lang)
+
+
+def _fetch_page_data(title, lang="en"):
+    """Fetch page summary, description, and thumbnail in ONE combined API call."""
+    params = {
+        "action": "query",
+        "prop": "extracts|description|pageimages",
+        "exintro": "1",
+        "explaintext": "1",
+        "exsectionformat": "plain",
+        "piprop": "thumbnail",
+        "pithumbsize": "400",
+        "titles": title,
+        "redirects": "1",
+        "format": "json",
+    }
+    try:
+        data = _wiki_provider().query(params, lang)
+        pages = data.get("query", {}).get("pages", {}) if data else {}
+        for page in pages.values():
+            thumb = page.get("thumbnail", {})
+            return {
+                "title": page.get("title", title),
+                "extract": page.get("extract", ""),
+                "pageid": page.get("pageid", 0),
+                "description": page.get("description", ""),
+                "thumbnail": thumb.get("source", ""),
+            }
+    except Exception:
+        pass
+    return None
+
+
+def _fetch_full_extract(title, lang="en"):
+    """Fetch full page extract via MediaWiki API."""
+    params = {
+        "action": "query",
+        "prop": "extracts",
+        "explaintext": "1",
+        "exsectionformat": "wiki",
+        "titles": title,
+        "redirects": "1",
+        "format": "json",
+    }
+    try:
+        data = _wiki_provider().query(params, lang)
+        pages = data.get("query", {}).get("pages", {}) if data else {}
+        for page in pages.values():
+            return page.get("extract", "")
+    except Exception:
+        pass
+    return ""
+
+
+def _fetch_wikitext(title, lang="en"):
+    """Fetch raw wikitext via action=parse API for infobox parsing."""
+    params = {
+        "action": "parse",
+        "page": title,
+        "prop": "wikitext",
+        "format": "json",
+        "redirects": "1",
+    }
+    try:
+        data = _wiki_provider().query(params, lang)
+        return data.get("parse", {}).get("wikitext", {}).get("*", "") if data else ""
+    except Exception:
+        return ""
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Wikipedia page search
+# ═══════════════════════════════════════════════════════════════════════════
 
 
 def find_album_page(album_name, artist_name):
@@ -132,91 +187,6 @@ def _is_valid_artist_page(title, artist_name):
         if pattern in title_lower:
             return False
     return True
-
-
-# ═══════════════════════════════════════════════════════════════════════════
-# Page content fetching
-# ═══════════════════════════════════════════════════════════════════════════
-
-
-def _fetch_page_data(title, lang="en"):
-    """Fetch page summary, description, and thumbnail in ONE combined API call."""
-    api = WIKI_API if lang == "en" else ZH_WIKI_API
-    params = urllib.parse.urlencode(
-        {
-            "action": "query",
-            "prop": "extracts|description|pageimages",
-            "exintro": "1",
-            "explaintext": "1",
-            "exsectionformat": "plain",
-            "piprop": "thumbnail",
-            "pithumbsize": "400",
-            "titles": title,
-            "redirects": "1",
-            "format": "json",
-        }
-    )
-    try:
-        with _urlopen(f"{api}?{params}", timeout=15) as resp:
-            data = json.loads(resp.read().decode())
-            pages = data.get("query", {}).get("pages", {})
-            for page in pages.values():
-                thumb = page.get("thumbnail", {})
-                return {
-                    "title": page.get("title", title),
-                    "extract": page.get("extract", ""),
-                    "pageid": page.get("pageid", 0),
-                    "description": page.get("description", ""),
-                    "thumbnail": thumb.get("source", ""),
-                }
-    except urllib.error.HTTPError:
-        pass
-    return None
-
-
-def _fetch_full_extract(title, lang="en"):
-    """Fetch full page extract via MediaWiki API."""
-    api = WIKI_API if lang == "en" else ZH_WIKI_API
-    params = urllib.parse.urlencode(
-        {
-            "action": "query",
-            "prop": "extracts",
-            "explaintext": "1",
-            "exsectionformat": "wiki",
-            "titles": title,
-            "redirects": "1",
-            "format": "json",
-        }
-    )
-    try:
-        with _urlopen(f"{api}?{params}", timeout=15) as resp:
-            data = json.loads(resp.read().decode())
-            pages = data.get("query", {}).get("pages", {})
-            for page in pages.values():
-                return page.get("extract", "")
-    except urllib.error.HTTPError:
-        pass
-    return ""
-
-
-def _fetch_wikitext(title, lang="en"):
-    """Fetch raw wikitext via action=parse API for infobox parsing."""
-    api = WIKI_API if lang == "en" else ZH_WIKI_API
-    params = urllib.parse.urlencode(
-        {
-            "action": "parse",
-            "page": title,
-            "prop": "wikitext",
-            "format": "json",
-            "redirects": "1",
-        }
-    )
-    try:
-        with _urlopen(f"{api}?{params}", timeout=10) as resp:
-            data = json.loads(resp.read().decode())
-            return data.get("parse", {}).get("wikitext", {}).get("*", "")
-    except Exception:
-        return ""
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -554,7 +524,7 @@ def get_album_wiki(album_name, artist_name):
     result = {
         "title": title,
         "lang": lang,
-        "url": f"https://{lang}.wikipedia.org/wiki/{urllib.parse.quote(title.replace(' ', '_'))}",
+        "url": _wiki_page_url(title, lang),
         "summary": page_data.get("extract", "") if page_data else "",
         "description": page_data.get("description", "") if page_data else "",
         "thumbnail": page_data.get("thumbnail", "") if page_data else "",
@@ -630,7 +600,7 @@ def get_artist_wiki(artist_name):
     result = {
         "title": title,
         "lang": lang,
-        "url": f"https://{lang}.wikipedia.org/wiki/{urllib.parse.quote(title.replace(' ', '_'))}",
+        "url": _wiki_page_url(title, lang),
         "summary": page_data.get("extract", "") if page_data else "",
         "description": page_data.get("description", "") if page_data else "",
         "thumbnail": page_data.get("thumbnail", "") if page_data else "",
@@ -694,7 +664,7 @@ def get_track_wiki(track_name, artist_name):
         data = {
             "title": result,
             "lang": lang,
-            "url": f"https://{lang}.wikipedia.org/wiki/{urllib.parse.quote(result.replace(' ', '_'))}",
+            "url": _wiki_page_url(result, lang),
             "summary": page_data.get("extract", "") if page_data else "",
             "description": page_data.get("description", "") if page_data else "",
             "sections": {"background": background},

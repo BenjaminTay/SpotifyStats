@@ -1,0 +1,18 @@
+#!/usr/bin/env sh
+set -eu
+
+ROOT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+cd "$ROOT_DIR"
+
+if [ -d ".venv" ]; then
+  # shellcheck disable=SC1091
+  . ".venv/bin/activate"
+fi
+
+pytest -m unit -q
+pytest -m contract -q
+ruff check backend/
+
+cd frontend
+npm test
+npm run build

@@ -4,6 +4,8 @@
 
 **架构**：FastAPI 后端 + React 前端。Streamlit 原有应用已冻结维护。
 
+**Phase 5 产品化收口**：前端 GET 统一 TanStack Query、页面容器 ≤192 行、业务 service urllib 清零、模块级 Map 缓存全部清除。详见 [`docs/2026-06-08-phase5-productization-baseline.md`](docs/2026-06-08-phase5-productization-baseline.md)。
+
 ## 功能
 
 - **总览仪表盘** — KPI 卡片、月度趋势、平台分布、周热力图、动态数据洞察
@@ -33,44 +35,58 @@ cd frontend && npm run dev
 ngrok http --url=stuffing-nebula-tamer.ngrok-free.dev 5173
 
 # 测试
-pytest backend/tests/ -v          # 后端 244 个测试（unit/contract/integration）
-cd frontend && npm test           # 前端 20 个 vitest 单测
+pytest backend/tests/ -v          # 后端测试（unit/contract/integration）
+pytest -m unit -q                 # 快速单元层
+pytest -m contract -q             # seed DB 契约层
+cd frontend && npm test           # 前端 vitest 单测 + 架构护栏测试
 
 # 代码质量
 ruff check backend/ && ruff format --check backend/
 pre-commit run --all-files
+
+# Phase 5 最低验证矩阵
+sh scripts/phase5_check.sh
 ```
 
 首次启动自动导入 JSON 数据到 SQLite。浏览器打开 `http://localhost:5173` 使用 React 界面，`http://localhost:8000/docs` 查看 API 文档。
 
 ## 技术栈
 
-**后端**：FastAPI · Pandas · SQLite (WAL) · Pydantic v2 · pytest (244 tests) · Ruff · Mypy
+**后端**：FastAPI · Pandas · SQLite (WAL) · Pydantic v2 · pytest · Ruff · Mypy
 
 **前端**：React 19 · TypeScript 6.0 · Vite 8 · Tailwind CSS v4 · shadcn/ui · React Router v7 · TanStack React Query · ECharts 6 · Vitest
 
-**基础设施**：AES-256-GCM 加密 · OAuth PKCE · 统一 Cache Manager (LRU+TTL) · 版本化 Migration · 后台 Job Queue · OpenAPI 自动生成类型
+**基础设施**：AES-256-GCM 加密 · OAuth PKCE · 统一 Cache Manager (LRU+TTL) · 版本化 Migration · 后台 Job Queue · OpenAPI 自动生成类型 · Request ID 链路追踪 · Provider 错误分类 · 架构护栏测试 · GitHub Actions CI
 
 ## 项目结构
 
 ```
 SpotifyStats/
-├── backend/           # FastAPI 后端（api/ → services/ → domains/ → core/）
-├── frontend/          # React 前端（components/ | pages/ | hooks/ | lib/）
-├── app/               # Streamlit 旧应用（冻结维护）
-├── data/              # SQLite 数据库 + JSON 源数据
-├── docs/              # 架构文档
-├── scripts/           # 工具脚本（性能基准、封面下载等）
+├── backend/               # FastAPI 后端（api/ → services/ → domains/ → core/）
+├── frontend/              # React 前端
+│   └── src/
+│       ├── features/      # Feature-first 业务组件（billboard/music/settings/account）
+│       ├── pages/         # 路由级页面容器（React.lazy 分包）
+│       ├── components/    # ui/charts/layout/shared
+│       ├── hooks/         # useDashboard, useBillboard, useYearlyReview...
+│       └── api/           # QueryClient + queryKeys + OpenAPI 类型
+├── app/                   # Streamlit 旧应用（冻结维护）
+├── data/                  # SQLite 数据库 + JSON 源数据
+├── docs/                  # 架构文档 + Phase 5 台账
+├── scripts/               # 工具脚本（phase5_check.sh, benchmark_api.py）
 └── requirements.txt
 ```
 
 ## 详细文档
 
+- 主项目提示词（多 Agent 协作）见 [`AGENTS.md`](AGENTS.md)
+- Claude Code 速查卡见 [`CLAUDE.md`](CLAUDE.md)
 - 后端架构细节见 [`backend/CLAUDE.md`](backend/CLAUDE.md)
-- 前端架构细节见 [`frontend/CLAUDE.md`](frontend/CLAUDE.md) 和 [`frontend/README.md`](frontend/README.md)
+- 前端架构细节见 [`frontend/CLAUDE.md`](frontend/CLAUDE.md)
 - UI 风格指南见 [`frontend/UI_STYLE_GUIDE.md`](frontend/UI_STYLE_GUIDE.md)
 - 数据目录说明见 [`data/README.md`](data/README.md)
 - 架构优化文档见 [`docs/2026-05-30-architecture-optimize.md`](docs/2026-05-30-architecture-optimize.md)
+- Phase 5 产品化收口台账见 [`docs/2026-06-08-phase5-productization-baseline.md`](docs/2026-06-08-phase5-productization-baseline.md)
 
 ## License
 

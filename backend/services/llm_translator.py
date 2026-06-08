@@ -3,10 +3,8 @@
 import json
 import logging
 import re
-import time
-import urllib.error
-import urllib.parse
-import urllib.request
+
+from backend.providers.llm.client import LLMProvider
 
 PROVIDERS = {
     "deepseek": {
@@ -30,8 +28,6 @@ PROVIDERS = {
         "default_model": "",
     },
 }
-
-USER_AGENT = "SpotifyStats/1.0"
 
 TRANSLATE_PROMPT = """你是一位专业翻译和文字排版师。将以下英文 Wikipedia 文本翻译成自然流畅的中文。
 
@@ -110,44 +106,7 @@ ALBUM_ENRICH_PROMPT = """你是一位专业音乐百科编辑。请阅读以下�
 - 如某字段无内容则返回空数组 []"""
 
 
-PROXY = None
-
-
 logger = logging.getLogger(__name__)
-
-
-def _get_proxy():
-    global PROXY
-    if PROXY is not None:
-        return PROXY
-    from backend.core.config import HTTP_PROXY, HTTPS_PROXY
-
-    PROXY = HTTPS_PROXY or HTTP_PROXY
-    return PROXY or None
-
-
-def _api_post(url, payload, headers, timeout=60):
-    """POST JSON to an API endpoint with proxy support."""
-    proxy = _get_proxy()
-    data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-    req = urllib.request.Request(url, data=data, headers=headers, method="POST")
-    for attempt in range(3):
-        try:
-            if proxy:
-                proxy_handler = urllib.request.ProxyHandler({"https": proxy, "http": proxy})
-                opener = urllib.request.build_opener(proxy_handler)
-                return opener.open(req, timeout=timeout)
-            return urllib.request.urlopen(req, timeout=timeout)
-        except urllib.error.HTTPError as e:
-            if e.code == 429 and attempt < 2:
-                time.sleep(2**attempt)
-                continue
-            raise
-        except urllib.error.URLError:
-            if attempt < 2:
-                time.sleep(1)
-                continue
-            raise
 
 
 def _get_config():
@@ -181,7 +140,7 @@ def translate_with_llm(text):
     else:
         if not base_url:
             return ""
-        return _translate_openai_compat(text, api_key, model, base_url)
+        return _translate_openai_compat(text, api_key, model, base_url, provider=provider)
 
 
 def enrich_with_llm(full_text, entity_type):
@@ -212,7 +171,14 @@ def enrich_with_llm(full_text, entity_type):
         else:
             if not base_url:
                 return None
-            raw = _translate_openai_compat(text, api_key, model, base_url, prompt=prompt)
+            raw = _translate_openai_compat(
+                text,
+                api_key,
+                model,
+                base_url,
+                prompt=prompt,
+                provider=provider,
+            )
     except Exception:
         return None
 
@@ -248,14 +214,9 @@ def _parse_enrich_json(raw):
     return None
 
 
-def _translate_openai_compat(text, api_key, model, base_url, prompt=None):
+def _translate_openai_compat(text, api_key, model, base_url, prompt=None, provider="openai"):
     """Translate via OpenAI-compatible chat/completions API."""
-    url = f"{base_url.rstrip('/')}/chat/completions"
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json",
-        "User-Agent": USER_AGENT,
-    }
+    llm = LLMProvider(provider=provider, api_key=api_key, model=model, base_url=base_url)
 
     if len(text) <= 4000:
         chunks = [text]
@@ -264,21 +225,18 @@ def _translate_openai_compat(text, api_key, model, base_url, prompt=None):
 
     results = []
     for chunk in chunks:
-        payload = {
-            "model": model,
-            "messages": [
-                {"role": "system", "content": prompt if prompt else TRANSLATE_PROMPT},
-                {"role": "user", "content": chunk},
-            ],
-            "temperature": 0.3,
-            "max_tokens": 4096,
-        }
         try:
-            with _api_post(url, payload, headers, timeout=90) as resp:
-                data = json.loads(resp.read().decode())
-                content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
-                if content:
-                    results.append(content)
+            data = llm.chat(
+                [
+                    {"role": "system", "content": prompt if prompt else TRANSLATE_PROMPT},
+                    {"role": "user", "content": chunk},
+                ],
+                temperature=0.3,
+                max_tokens=4096,
+            )
+            content = (data or {}).get("choices", [{}])[0].get("message", {}).get("content", "")
+            if content:
+                results.append(content)
         except Exception:
             results.append("")
             logger.warning("LLM translation chunk failed", exc_info=True)
@@ -288,13 +246,10 @@ def _translate_openai_compat(text, api_key, model, base_url, prompt=None):
 
 def _translate_anthropic(text, api_key, model, base_url, prompt=None):
     """Translate via Anthropic Messages API."""
-    url = f"{base_url.rstrip('/')}/v1/messages"
-    headers = {
-        "x-api-key": api_key,
-        "anthropic-version": "2023-06-01",
-        "Content-Type": "application/json",
-        "User-Agent": USER_AGENT,
-    }
+    base_url = base_url.rstrip("/")
+    if not base_url.endswith("/v1"):
+        base_url = f"{base_url}/v1"
+    llm = LLMProvider(provider="anthropic", api_key=api_key, model=model, base_url=base_url)
 
     if len(text) <= 4000:
         chunks = [text]
@@ -303,19 +258,18 @@ def _translate_anthropic(text, api_key, model, base_url, prompt=None):
 
     results = []
     for chunk in chunks:
-        payload = {
-            "model": model,
-            "max_tokens": 4096,
-            "temperature": 0.3,
-            "system": prompt if prompt else TRANSLATE_PROMPT,
-            "messages": [{"role": "user", "content": chunk}],
-        }
         try:
-            with _api_post(url, payload, headers, timeout=90) as resp:
-                data = json.loads(resp.read().decode())
-                content = data.get("content", [{}])[0].get("text", "")
-                if content:
-                    results.append(content)
+            data = llm.chat(
+                [
+                    {"role": "system", "content": prompt if prompt else TRANSLATE_PROMPT},
+                    {"role": "user", "content": chunk},
+                ],
+                temperature=0.3,
+                max_tokens=4096,
+            )
+            content = (data or {}).get("content", [{}])[0].get("text", "")
+            if content:
+                results.append(content)
         except Exception:
             results.append("")
             logger.warning("LLM translation chunk failed", exc_info=True)

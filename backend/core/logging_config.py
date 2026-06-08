@@ -7,6 +7,8 @@ import logging
 import re
 import sys
 
+from backend.core.request_context import get_request_id
+
 _SENSITIVE_PATTERNS = [
     (re.compile(r'(llm_api_key["\s:=]+)([^\s"\',}]+)', re.IGNORECASE), r"\1[REDACTED]"),
     (re.compile(r'(api_key["\s:=]+)([^\s"\',}]+)', re.IGNORECASE), r"\1[REDACTED]"),
@@ -30,6 +32,7 @@ class SensitiveDataFilter(logging.Filter):
             message = pattern.sub(replacement, message)
         record.msg = message
         record.args = ()
+        record.request_id = get_request_id()
         return True
 
 
@@ -42,7 +45,7 @@ def setup_logging(level: int = logging.INFO) -> None:
     handler = logging.StreamHandler(sys.stderr)
     handler.setFormatter(
         logging.Formatter(
-            "%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+            "%(asctime)s [%(levelname)s] [request_id=%(request_id)s] %(name)s: %(message)s",
             datefmt="%Y-%m-%dT%H:%M:%S",
         )
     )

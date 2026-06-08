@@ -1,5 +1,6 @@
-import { useState, useEffect } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
+import { queryKeys } from '@/api/query-keys'
 import { GlassCard } from '@/components/shared/GlassCard'
 import { api } from '@/lib/api'
 
@@ -17,9 +18,6 @@ interface OfficialWrappedData {
   listening_age?: { age: number; window_start_year: number; decade_phase: string } | null
   archive_reports?: { title: string; description: string; reason: string; minutes_listened: number; filed_under_tags: string }[]
 }
-
-// Module-level cache
-let cachedData: OfficialWrappedData | null = null
 
 function MiniCover({ url, name }: { url: string; name: string }) {
   return url ? (
@@ -54,23 +52,10 @@ const CLUB_NAMES: Record<string, { name: string; desc: string; emoji: string }> 
 }
 
 export function OfficialWrapped() {
-  const [data, setData] = useState<OfficialWrappedData | null>(cachedData)
-  const [loading, setLoading] = useState(!cachedData)
-
-  useEffect(() => {
-    if (cachedData) return
-    let cancelled = false
-    api.get<OfficialWrappedData>('/wrapped-hub').then(d => {
-      if (!cancelled) {
-        cachedData = d
-        setData(d)
-        setLoading(false)
-      }
-    }).catch(() => {
-      if (!cancelled) setLoading(false)
-    })
-    return () => { cancelled = true }
-  }, [])
+  const { data, isLoading: loading } = useQuery({
+    queryKey: queryKeys.yearlyReview.hub(),
+    queryFn: () => api.get<OfficialWrappedData>('/wrapped-hub'),
+  })
 
   if (loading) return <LoadingSkeleton />
 

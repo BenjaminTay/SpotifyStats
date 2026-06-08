@@ -1,5 +1,7 @@
 import { useState, useEffect, Suspense, lazy, Component } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { useSearchParams } from 'react-router-dom'
+import { queryKeys } from '@/api/query-keys'
 import { useYearlyReview } from '@/hooks/useYearlyReview'
 import { CustomSummary } from '@/pages/yearly-review/CustomSummary'
 import { ShareButton } from '@/pages/yearly-review/ShareButton'
@@ -66,43 +68,20 @@ type TabKey = 'custom' | 'official'
 
 export function YearlyReviewPage() {
   const [searchParams, setSearchParams] = useSearchParams()
-  const [playYears, setPlayYears] = useState<number[]>([])
-  const [wrappedYears, setWrappedYears] = useState<number[]>([])
   const [activeTab, setActiveTab] = useState<TabKey>('custom')
-  const [yearsLoading, setYearsLoading] = useState(true)
-  const [yearsError, setYearsError] = useState<string | null>(null)
+  const playYearsQuery = useQuery({
+    queryKey: queryKeys.yearlyReview.availableYears(),
+    queryFn: () => api.get<{ years: number[] }>('/wrapped/available-years'),
+  })
+  const wrappedYearsQuery = useQuery({
+    queryKey: queryKeys.yearlyReview.hubAvailableYears(),
+    queryFn: () => api.get<{ years: number[] }>('/wrapped-hub/available-years'),
+  })
 
-  // Fetch available years on mount.
-  useEffect(() => {
-    let cancelled = false
-    let loaded = 0
-
-    function checkDone() {
-      loaded++
-      if (loaded >= 2 && !cancelled) setYearsLoading(false)
-    }
-
-    api.get<{ years: number[] }>('/wrapped/available-years').then(d => {
-      if (cancelled) return
-      setPlayYears(d.years)
-      checkDone()
-    }).catch(err => {
-      if (cancelled) return
-      setYearsError(err instanceof Error ? err.message : 'Failed to load available years')
-      checkDone()
-    })
-
-    api.get<{ years: number[] }>('/wrapped-hub/available-years').then(d => {
-      if (cancelled) return
-      setWrappedYears(d.years)
-      checkDone()
-    }).catch(() => {
-      // Wrapped-hub is non-critical; silently ignore failures
-      if (!cancelled) checkDone()
-    })
-
-    return () => { cancelled = true }
-  }, [])
+  const playYears = playYearsQuery.data?.years ?? []
+  const wrappedYears = wrappedYearsQuery.data?.years ?? []
+  const yearsLoading = playYearsQuery.isLoading || wrappedYearsQuery.isLoading
+  const yearsError = playYearsQuery.error instanceof Error ? playYearsQuery.error.message : null
 
   // Per-tab available years
   const displayYears = activeTab === 'custom' ? playYears : wrappedYears
