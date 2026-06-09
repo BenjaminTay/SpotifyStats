@@ -9,8 +9,6 @@ pytestmark = pytest.mark.unit
 
 class TestWarmup:
     def test_warm_common_caches_invokes_hot_paths(self, monkeypatch):
-        from backend.core import warmup
-
         calls = []
 
         def fake_load_plays(conn, **kwargs):
@@ -21,19 +19,36 @@ class TestWarmup:
             calls.append(("compute_billboard_data", kwargs))
             return None
 
+        def fake_analysis_stats(conn, **kwargs):
+            calls.append(("get_analysis_stats", kwargs))
+            return {}
+
+        def fake_analysis_charts(conn, **kwargs):
+            calls.append(("get_analysis_charts", kwargs))
+            return {}
+
         class FakeConn:
             def close(self):
                 calls.append(("close", {}))
 
-        monkeypatch.setattr(warmup, "get_db", lambda: FakeConn())
-        monkeypatch.setattr(warmup, "load_plays", fake_load_plays)
-        monkeypatch.setattr(warmup, "compute_billboard_data", fake_compute_billboard_data)
+        # Patch before importing warmup — analysis functions discard the
+        # passed conn and internally call backend.core.db.get_db(), so
+        # failing to patch them causes a real DB open in CI (no DB file).
+        monkeypatch.setattr("backend.core.warmup.get_db", lambda: FakeConn())
+        monkeypatch.setattr("backend.core.warmup.load_plays", fake_load_plays)
+        monkeypatch.setattr("backend.core.warmup.get_analysis_stats", fake_analysis_stats)
+        monkeypatch.setattr("backend.core.warmup.get_analysis_charts", fake_analysis_charts)
+        monkeypatch.setattr(
+            "backend.core.warmup.compute_billboard_data", fake_compute_billboard_data
+        )
+
+        from backend.core import warmup
 
         warmup.warm_common_caches()
 
         assert calls[0][0] == "load_plays"
-        assert calls[1][0] == "close"
-        assert calls[2][0] == "compute_billboard_data"
+        assert calls[-2][0] == "close"
+        assert calls[-1][0] == "compute_billboard_data"
         assert calls[0][1]["min_ms"] == 30000
         assert calls[0][1]["merge_enabled"] is True
-        assert calls[2][1]["bb_top_n"] == 30
+        assert calls[-1][1]["bb_top_n"] == 30
