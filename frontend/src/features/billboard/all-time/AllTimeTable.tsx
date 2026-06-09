@@ -14,7 +14,7 @@ import { ArtistLinks } from '@/components/shared/ArtistLinks'
 import { GlassCard } from '@/components/shared/GlassCard'
 import { displayName } from '@/lib/chinese'
 import { cn } from '@/lib/utils'
-import { billboardDetailLink } from '@/lib/navigation'
+import { billboardDetailLink, primaryArtistName } from '@/lib/navigation'
 import type {
   AllTimeRow,
   ColumnDef,

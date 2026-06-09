@@ -60,7 +60,7 @@ FastAPI 后端采用四层分离：**api/**（路由 + Depends 依赖注入）�
 
 ## 领域层 (domains/)
 
-- `domains/billboard/` — 7 文件：`data_loader.py` / `chart_compute.py`（4 个独立 `@lru_cache(maxsize=4)` 函数：weekly/power-scores/summaries/records）+ `records.py` / `details.py` / `versus.py` / `entity_lists.py` / `repository.py`
+- `domains/billboard/` — 19 文件：`data_loader.py` / `chart_compute.py`（编排/caching/staged API）+ `chart_ranking.py`（周榜排名）+ `chart_power_score.py`（走势评分）+ `records.py`（facade）+ `records_*.py`（9 个 record 子模块）+ `details.py` / `versus.py` / `entity_lists.py` / `repository.py` / `version_merge.py`
 - `domains/settings/repository.py` — Settings 表 CRUD
 - `domains/playback/repository.py` — 播放数据查询封装
 - `domains/enrichment/repository.py` — 歌词/Wikipedia/LLM 缓存表访问

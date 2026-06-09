@@ -128,4 +128,12 @@ describe('Phase 5 architecture guardrails', () => {
     expect(albumEraSectionSource).not.toContain('收听展开')
     expect(albumEraSectionSource).not.toContain('外溢影响')
   })
+
+  it('keeps artist release archive outside ArtistDetailExperience', () => {
+    expect(artistDetailExperienceSource.split('\n').length).toBeLessThanOrEqual(300)
+    expect(artistDetailExperienceSource).not.toContain('RankTrendChart')
+    expect(artistDetailExperienceSource).not.toContain('发行事件与艺人走势')
+    expect(artistDetailExperienceSource).not.toContain('发行列表')
+    expect(artistDetailExperienceSource).not.toContain('formatReleaseType')
+  })
 })
