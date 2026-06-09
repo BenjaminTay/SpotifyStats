@@ -1,9 +1,13 @@
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react'
 import { ArtistLinks } from '@/components/shared/ArtistLinks'
 import { CoverCell } from '@/components/shared/CoverCell'
 import type { AnalysisChartRow } from '@/types/analysis'
 import { cn } from '@/lib/utils'
 import { displayName } from '@/lib/chinese'
+
+const PAGE_SIZE = 50
 
 function formatNumber(n: number): string {
   return new Intl.NumberFormat('zh-CN').format(n)
@@ -27,6 +31,13 @@ export function entityLink(row: Pick<AnalysisChartRow, 'track_id' | 'track_name'
 }
 
 export function PersonalRankTable({ rows, entity, metric }: { rows: AnalysisChartRow[]; entity: 'track' | 'album' | 'artist'; metric: 'plays' | 'hours' }) {
+  const [page, setPage] = useState(1)
+  const totalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE))
+  const safePage = Math.min(page, totalPages)
+
+  useEffect(() => { setPage(1) }, [rows])
+
+  const paged = rows.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE)
   const maxPlays = Math.max(1, ...rows.map((r) => r.plays))
   const maxHours = Math.max(1, ...rows.map((r) => r.hours))
 
@@ -46,7 +57,7 @@ export function PersonalRankTable({ rows, entity, metric }: { rows: AnalysisChar
           </tr>
         </thead>
         <tbody>
-          {rows.map((row, index) => {
+          {paged.map((row, index) => {
             const title = entity === 'track' ? row.track_name : entity === 'album' ? row.album_name : row.artist_name
             const isTrack = entity === 'track'
             const playsPct = (row.plays / maxPlays) * 100
@@ -107,6 +118,46 @@ export function PersonalRankTable({ rows, entity, metric }: { rows: AnalysisChar
           })}
         </tbody>
       </table>
+      {totalPages > 1 && (
+        <div className="mt-3 flex items-center justify-between">
+          <span className="font-sans text-[12px] text-muted-foreground tabular-nums">
+            显示 {(safePage - 1) * PAGE_SIZE + 1}-{Math.min(safePage * PAGE_SIZE, rows.length)} / 总数 {rows.length} 条
+          </span>
+          <div className="flex items-center gap-1">
+            <span className="mr-2 font-sans text-[12px] text-muted-foreground tabular-nums">
+              {safePage} / {totalPages}
+            </span>
+            <button
+              onClick={() => setPage(1)}
+              disabled={safePage <= 1}
+              className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:text-foreground disabled:opacity-30"
+            >
+              <ChevronsLeft className="h-4 w-4" />
+            </button>
+            <button
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={safePage <= 1}
+              className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:text-foreground disabled:opacity-30"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </button>
+            <button
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              disabled={safePage >= totalPages}
+              className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:text-foreground disabled:opacity-30"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </button>
+            <button
+              onClick={() => setPage(totalPages)}
+              disabled={safePage >= totalPages}
+              className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:text-foreground disabled:opacity-30"
+            >
+              <ChevronsRight className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
