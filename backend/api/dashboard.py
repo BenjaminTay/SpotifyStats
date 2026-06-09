@@ -6,6 +6,14 @@ from fastapi import APIRouter, Depends, Query
 
 from backend.core.db import load_plays
 from backend.dependencies import PlayFilters, get_conn
+from backend.models.dashboard import (
+    DashboardFullResponse,
+    DashboardSummary,
+    DowDist,
+    PlatformDist,
+    RandomTrack,
+    TopTrack,
+)
 from backend.services.play_service import (
     get_account_kpis,
     get_dashboard_summary,
@@ -20,7 +28,7 @@ from backend.services.play_service import (
 router = APIRouter(prefix="/dashboard", tags=["Dashboard"])
 
 
-@router.get("/summary")
+@router.get("/summary", response_model=DashboardSummary)
 def dashboard_summary(
     filters: PlayFilters = Depends(),
     conn: Connection = Depends(get_conn),
@@ -28,7 +36,7 @@ def dashboard_summary(
     return get_dashboard_summary(conn, filters.min_ms, filters.music_only, filters.merge_enabled)
 
 
-@router.get("/full")
+@router.get("/full", response_model=DashboardFullResponse)
 def dashboard_full(
     filters: PlayFilters = Depends(),
     conn: Connection = Depends(get_conn),
@@ -68,7 +76,7 @@ def dashboard_full(
     }
 
 
-@router.get("/top-tracks")
+@router.get("/top-tracks", response_model=list[TopTrack])
 def top_tracks_endpoint(
     filters: PlayFilters = Depends(),
     n: int = Query(10),
@@ -77,7 +85,7 @@ def top_tracks_endpoint(
     return get_top_tracks(conn, filters.min_ms, filters.music_only, filters.merge_enabled, n)
 
 
-@router.get("/platform-dist")
+@router.get("/platform-dist", response_model=list[PlatformDist])
 def platform_dist_endpoint(
     filters: PlayFilters = Depends(),
     conn: Connection = Depends(get_conn),
@@ -85,7 +93,7 @@ def platform_dist_endpoint(
     return get_platform_dist(conn, filters.min_ms, filters.music_only, filters.merge_enabled)
 
 
-@router.get("/dow-dist")
+@router.get("/dow-dist", response_model=list[DowDist])
 def dow_dist_endpoint(
     filters: PlayFilters = Depends(),
     conn: Connection = Depends(get_conn),
@@ -93,7 +101,7 @@ def dow_dist_endpoint(
     return get_dow_dist(conn, filters.min_ms, filters.music_only, filters.merge_enabled)
 
 
-@router.get("/random-track")
+@router.get("/random-track", response_model=RandomTrack)
 def random_track_endpoint(
     filters: PlayFilters = Depends(),
     conn: Connection = Depends(get_conn),

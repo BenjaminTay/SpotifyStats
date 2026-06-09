@@ -7,6 +7,7 @@ from sqlite3 import Connection
 from fastapi import APIRouter, Depends, Query
 
 from backend.dependencies import PlayFilters, get_conn
+from backend.models.timeline import AnnualTimelinePoint, MonthlyTimelinePoint
 from backend.services.play_service import (
     get_annual_timeline,
     get_monthly_timeline_drilldown,
@@ -16,7 +17,7 @@ from backend.services.play_service import (
 router = APIRouter(prefix="/timeline", tags=["Timeline"])
 
 
-@router.get("/annual")
+@router.get("/annual", response_model=list[AnnualTimelinePoint])
 def timeline_annual(
     filters: PlayFilters = Depends(),
     conn: Connection = Depends(get_conn),
@@ -24,15 +25,21 @@ def timeline_annual(
     return get_annual_timeline(conn, filters.min_ms, filters.music_only, filters.merge_enabled)
 
 
-@router.get("/monthly")
+@router.get("/monthly", response_model=list[MonthlyTimelinePoint])
 def timeline_monthly(
     filters: PlayFilters = Depends(),
     period: str | None = Query(None, description="YYYY-MM for drilldown top5"),
     conn: Connection = Depends(get_conn),
 ):
-    return get_monthly_timeline_drilldown(
+    """Returns flat list of MonthlyTimelinePoint. When period is provided, drilldown
+    dict is returned without response_model validation to support dynamic structure."""
+    result = get_monthly_timeline_drilldown(
         conn, filters.min_ms, filters.music_only, filters.merge_enabled, period
     )
+    # When drilldown dict is returned, bypass model validation
+    if isinstance(result, dict):
+        return result
+    return result
 
 
 @router.get("/weekly")

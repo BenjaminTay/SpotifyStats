@@ -5,6 +5,7 @@ from sqlite3 import Connection
 from fastapi import APIRouter, Depends
 
 from backend.dependencies import PlayFilters, get_conn
+from backend.models.behavior import HeatmapResponse, LateNightResponse, YearlyHeatmapEntry
 from backend.services.play_service import (
     get_late_night_ratio,
     get_listening_heatmap,
@@ -16,7 +17,7 @@ from backend.services.play_service import (
 router = APIRouter(prefix="/listening-hours", tags=["Listening Hours"])
 
 
-@router.get("/heatmap")
+@router.get("/heatmap", response_model=HeatmapResponse)
 def listening_heatmap(
     filters: PlayFilters = Depends(),
     conn: Connection = Depends(get_conn),
@@ -24,7 +25,7 @@ def listening_heatmap(
     return get_listening_heatmap(conn, filters.min_ms, filters.music_only, filters.merge_enabled)
 
 
-@router.get("/yearly")
+@router.get("/yearly", response_model=list[YearlyHeatmapEntry])
 def yearly_heatmaps(
     filters: PlayFilters = Depends(),
     conn: Connection = Depends(get_conn),
@@ -32,7 +33,7 @@ def yearly_heatmaps(
     return get_yearly_heatmaps(conn, filters.min_ms, filters.music_only, filters.merge_enabled)
 
 
-@router.get("/late-night")
+@router.get("/late-night", response_model=LateNightResponse)
 def late_night(
     filters: PlayFilters = Depends(),
     conn: Connection = Depends(get_conn),

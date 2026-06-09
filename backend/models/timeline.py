@@ -9,8 +9,10 @@ class AnnualTimelinePoint(BaseModel):
     year: int
     plays: int
     hours: float
-    tracks: int
-    artists: int
+    unique_tracks: int
+    unique_artists: int
+    top_track: str
+    top_artist: str
 
 
 class MonthlyTimelinePoint(BaseModel):

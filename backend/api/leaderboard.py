@@ -7,12 +7,13 @@ from sqlite3 import Connection
 from fastapi import APIRouter, Depends, Query
 
 from backend.dependencies import PlayFilters, get_conn
+from backend.models.leaderboard import LeaderboardResponse
 from backend.services.play_service import get_leaderboard
 
 router = APIRouter(prefix="/leaderboard", tags=["Leaderboard"])
 
 
-@router.get("")
+@router.get("", response_model=LeaderboardResponse)
 def leaderboard(
     entity: str = Query("track", pattern="^(track|artist|album)$"),
     time_range: str = Query("all", pattern="^(all|this_year|this_month|custom)$"),

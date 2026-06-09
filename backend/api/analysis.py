@@ -7,6 +7,13 @@ from sqlite3 import Connection
 from fastapi import APIRouter, Depends, Query
 
 from backend.dependencies import PlayFilters, get_conn
+from backend.models.analysis import (
+    AnalysisChartsResponse,
+    AnalysisOverviewResponse,
+    AnalysisPlayDateEntry,
+    AnalysisPlaysResponse,
+    AnalysisStatsResponse,
+)
 from backend.services.analysis_service import get_analysis_overview
 from backend.services.analysis_stats_service import (
     get_analysis_charts,
@@ -18,7 +25,7 @@ from backend.services.analysis_stats_service import (
 router = APIRouter(prefix="/analysis", tags=["Analysis"])
 
 
-@router.get("/overview")
+@router.get("/overview", response_model=AnalysisOverviewResponse)
 def analysis_overview(
     filters: PlayFilters = Depends(),
     conn: Connection = Depends(get_conn),
@@ -31,7 +38,7 @@ def analysis_overview(
     )
 
 
-@router.get("/stats")
+@router.get("/stats", response_model=AnalysisStatsResponse)
 def analysis_stats(
     filters: PlayFilters = Depends(),
     period: str = Query(default="lifetime"),
@@ -50,7 +57,7 @@ def analysis_stats(
     )
 
 
-@router.get("/charts")
+@router.get("/charts", response_model=AnalysisChartsResponse)
 def analysis_charts(
     filters: PlayFilters = Depends(),
     period: str = Query(default="lifetime"),
@@ -77,7 +84,7 @@ def analysis_charts(
     )
 
 
-@router.get("/plays")
+@router.get("/plays", response_model=AnalysisPlaysResponse)
 def analysis_plays(
     filters: PlayFilters = Depends(),
     period: str = Query(default="lifetime"),
@@ -103,7 +110,7 @@ def analysis_plays(
     )
 
 
-@router.get("/play-dates")
+@router.get("/play-dates", response_model=list[AnalysisPlayDateEntry])
 def analysis_play_dates(
     filters: PlayFilters = Depends(),
     period: str = Query(default="lifetime"),

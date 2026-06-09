@@ -1,19 +1,22 @@
 """Leaderboard response models."""
 
+from __future__ import annotations
+
 from pydantic import BaseModel
 
 
 class LeaderboardEntry(BaseModel):
     rank: int
-    entity_name: str  # track_name / artist_name / album_name
-    sub_label: str = ""  # artist_name for tracks, album_name for ...
-    plays: int = 0
-    hours: float = 0.0
+    plays: int
+    hours: float
+    track_id: int | None
+    track_name: str
+    artist_name: str
+    cover_url: str | None
+    artist_names: list[str] | None
 
 
 class LeaderboardResponse(BaseModel):
-    entity: str
-    top_n: int
-    metric: str
-    time_range: str
+    time_label: str
+    total_records: int
     rows: list[LeaderboardEntry]
