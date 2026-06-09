@@ -4,7 +4,7 @@
 
 **架构**：FastAPI 后端 + React 前端。Streamlit 原有应用已冻结维护。
 
-**Phase 5 产品化收口**：前端 GET 统一 TanStack Query、页面容器 ≤192 行、业务 service urllib 清零、模块级 Map 缓存全部清除。详见 [`docs/2026-06-08-phase5-productization-baseline.md`](docs/2026-06-08-phase5-productization-baseline.md)。
+**Phase 5 产品化收口**：前端 GET 统一 TanStack Query、页面容器 ≤192 行、音乐详情页持续拆分到 feature sections（已抽 header/tabs/skeleton/overview/tracks/albums/career/album-era 子 sections）、业务 service urllib 清零、模块级 Map 缓存全部清除。详见 [`docs/2026-06-08-phase5-productization-baseline.md`](docs/2026-06-08-phase5-productization-baseline.md)。
 
 ## 功能
 

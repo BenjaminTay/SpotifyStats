@@ -23,13 +23,14 @@ Phase 5 目标是收紧产品线到可持续迭代状态。当前进度：
 - Provider 错误分类体系（`ProviderError` → `ProviderNetworkError`/`ProviderHTTPError` → `ProviderAuthError`/`ProviderRateLimitError`/`ProviderServerError` + `ProviderParseError`）
 - 业务 service 层 urllib 调用清零；core Spotify HTTP 收敛到 `HttpClient`/`SpotifyProvider`
 - 所有页面容器 ≤ 192 行（Records 115 / AllTimeCharts 192 / NumberOnes 5 / ArtistDetail 5 / AlbumDetail 5）
+- 音乐详情页持续拆分到 feature sections；header/tabs/skeletons/overview/tracks/albums/career/album-era 子 sections 与共享 primitives 已从 Artist/Album Experience 中抽出
 - 模块级 API 响应 Map 缓存全部清除，迁移到 TanStack Query
 - Request ID（`X-Request-ID` 生成/透传/日志关联）
-- 架构护栏测试（`frontend/src/tests/phase5-architecture.test.ts`，10 个负面断言）
+- 架构护栏测试（`frontend/src/tests/phase5-architecture.test.ts`，15 个负面断言）
 - `scripts/phase5_check.sh` 最低验证矩阵 + GitHub Actions CI 基线（`.github/workflows/phase5-baseline.yml`）
 
 **持续治理**：
-- Provider 全量替换：`release_cycle_service.py` 和 `wikipedia_service.py` 已收敛；`spotify_utils.py` 和 `version_merge.py` 按触碰时迁移
+- Provider 全量替换：`release_cycle_service.py`、`wikipedia_service.py`、`spotify_utils.py` 和 `version_merge.py` 已收敛；后续按架构护栏防回归
 - 后端大文件（`records.py` 1261 行 / `chart_compute.py` 1465 行）按触碰拆分
 - 长列表优先服务端分页或虚拟化
 
@@ -150,7 +151,7 @@ frontend/src/
 │   │   ├── number-ones/   ← NumberOnesExperience + 3 Section（tracks/albums/artists）+ Primitives + Data
 │   │   ├── records/       ← RecordsSections + 6 Section（Championship/Longevity/Market/Breakthrough/HallOfFame/Curiosities）+ Primitives + Data
 │   │   └── all-time/      ← AllTimeTable + Data
-│   ├── music/details/     ← ArtistDetailExperience + AlbumDetailExperience + ArtistReleaseCycleSection + 3 Primitives
+│   ├── music/details/     ← Artist/Album Experience + Header/Tabs + Skeletons + Overview/Tracks/Albums/Career/AlbumEra 子 sections + ReleaseCycle sections + Primitives
 │   ├── settings/components/  ← 7 配置 Section 组件
 │   └── account/collection/   ← 收藏分析组件
 ├── components/
@@ -172,7 +173,7 @@ frontend/src/
 | 层级 | 位置 | 行数上限 | 职责 |
 |------|------|---------|------|
 | Route Container | `pages/` | ≤450 | 数据获取 + 组合 feature 组件，不含 `<table>`/`function KpiCard` 等实现细节 |
-| Experience | `features/*/XXXExperience.tsx` | ≤450 | 编排子组件，管布局和数据流 |
+| Experience | `features/*/XXXExperience.tsx` | 目标 ≤450 | 编排子组件，管布局和数据流；音乐详情仍在按 section 逐轮收敛 |
 | Section | `features/*/XXXSection.tsx` | ≤300 | 单个业务模块渲染 |
 | Primitives | `features/*/XXXPrimitives.tsx` | ≤350 | 跨 Section 共享的 UI 零件（KpiCard, CoverCell 等） |
 | Data | `features/*/xxxData.ts` | — | 纯函数，计算逻辑与 UI 完全分离 |

@@ -1,7 +1,7 @@
 # Phase 5：产品化收口与可持续迭代基线
 
 > 状态台账日期：2026-06-08  
-> 最近更新：Phase 5.2-E 音乐详情页 feature 二次拆分第一批
+> 最近更新：Phase 5.2-J 音乐详情页 Album era 子 section 拆分
 > 阶段定位：四阶段架构优化后的持续治理阶段  
 > 主线策略：不新增大型业务功能，优先收紧数据获取、外部调用、可观测、验证与文档台账
 
@@ -39,15 +39,15 @@ Phase 5 负责把现有 FastAPI + React 产品线收敛到可持续迭代状态�
 | NumberOnes 前端拆分 | 已完成 | `NumberOnesPage.tsx` 保持 5 行 route wrapper；`NumberOnesExperience.tsx` 压缩为 121 行 feature container；计算、primitives、tracks/albums/artists sections 拆入 `frontend/src/features/billboard/number-ones/` |
 | 音乐详情页 route container 化 | 已完成 | `ArtistDetailPage.tsx`、`AlbumDetailPage.tsx` 均压缩为 5 行 route wrapper；完整体验迁入 `frontend/src/features/music/details/` |
 | 音乐详情页共享 primitives | 已完成 | `KpiCard`、`KpiStrip`、`PlaysCell` 与日期/数字格式化抽入 `MusicDetailPrimitives.tsx`，减少 Artist/Album 详情页重复实现 |
-| 音乐详情页 feature 二次拆分 | 进行中 | `AlbumStoryCard`、`InfoRow`、`MiniStat`、`MatrixCell` 抽入 `AlbumDetailPrimitives.tsx`；Artist 发行周期列表抽入 `ArtistReleaseCycleSection.tsx` |
-| Phase 5 架构红线测试 | 已完成 | 新增后端 service/core urllib 静态测试与前端详情页模块级 API Map 缓存静态测试 |
+| 音乐详情页 feature 二次拆分 | 进行中 | `AlbumStoryCard`、`InfoRow`、`MiniStat`、`MatrixCell` 抽入 `AlbumDetailPrimitives.tsx`；Artist 发行周期列表抽入 `ArtistReleaseCycleSection.tsx`；Artist/Album hero、tabs 与 loading skeleton 抽入 `MusicDetailHeader.tsx`、`MusicDetailSkeletons.tsx`；榜单概览 KPI/趋势/周榜历史抽入 `MusicChartOverviewSection.tsx`；单曲/专辑表格与 Artist 生涯抽入 `MusicTracksSection.tsx`、`ArtistAlbumsSection.tsx`、`ArtistCareerSection.tsx`；Album 发行档案编排层抽入 `AlbumEraSection.tsx`，并继续拆出 overview/timeline/composition/matrix/overflow/enrichment/personal-story 子 section |
+| Phase 5 架构红线测试 | 已完成 | 新增后端 service/core urllib 静态测试与前端详情页模块级 API Map 缓存、hero/tabs、overview、tracks/albums/album era orchestration 静态测试 |
 | Phase 5 本地验证脚本 | 已完成 | `scripts/phase5_check.sh` 串联后端 unit/contract、ruff、前端 test/build |
 
 ## 仍需持续治理
 
 | 优先级 | 方向 | 后续标准 |
 |---|---|---|
-| 中 | 音乐详情 feature 细拆 | `ArtistDetailExperience.tsx`、`AlbumDetailExperience.tsx` 仍是 900 行左右 feature 模块，下一轮继续拆为 hero/tabs/stats/overview/tracks-albums sections |
+| 中 | 音乐详情 feature 细拆 | `ArtistDetailExperience.tsx` 约 317 行、`AlbumDetailExperience.tsx` 约 144 行、`AlbumEraSection.tsx` 约 56 行；Album 发行档案子 section 均小于 100 行，后续可继续把 Artist 生涯细节压到 300 行以内 |
 | 中 | 后端 Billboard 二次拆分 | `records.py`、`chart_compute.py` 后续按 record family、weekly compute、power score、all-time aggregation 继续拆子域 |
 | 中 | 长列表性能 | 超过 500 行 DOM 的表格必须使用服务端分页或虚拟化；默认不一次性渲染全量 |
 | 中 | API 契约硬化 | 高流量端点补 `response_model`，修改 schema 后运行 OpenAPI 类型生成 |

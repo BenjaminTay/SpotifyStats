@@ -8,7 +8,7 @@ Spotify Extended Streaming History 数据分析 Web 应用 — **FastAPI 后端 
 
 UI：「编辑风 × 液态玻璃」— Playfair Display + Inter，毛玻璃，日/夜双皮肤。
 
-**Phase 5 基线**：前端 GET 统一 TanStack Query（8 命名空间 queryKeys）；Provider 错误分层；业务 service 层 urllib 清零；页面容器全部 ≤192 行；模块级 Map 缓存清除；Request ID 链路；架构护栏测试 + CI 基线。详见 `AGENTS.md` 和 `docs/2026-06-08-phase5-productization-baseline.md`。
+**Phase 5 基线**：前端 GET 统一 TanStack Query（8 命名空间 queryKeys）；Provider 错误分层；业务 service 层 urllib 清零；页面容器全部 ≤192 行；音乐详情页持续拆分到 feature sections（已抽 header/tabs/skeleton/overview/tracks/albums/career/album-era 子 sections）；模块级 Map 缓存清除；Request ID 链路；架构护栏测试 + CI 基线。详见 `AGENTS.md` 和 `docs/2026-06-08-phase5-productization-baseline.md`。
 
 ## 常用命令
 
@@ -65,14 +65,14 @@ JSON → import → SQLite → FastAPI (backend/) → React (frontend/)
 
 **后端**：api/ → services/ → domains/（billboard/playback/settings/enrichment）→ core/，辅以 infrastructure/http/ + providers/（spotify/genius/wikipedia/llm）
 
-**前端**：pages/（route container，≤192 行）→ features/（billboard/records|number-ones|all-time、music/details、settings/components、account/collection）→ components/（ui/charts/layout/shared）
+**前端**：pages/（route container，≤192 行）→ features/（billboard/records|number-ones|all-time、music/details 的 header/primitives/skeletons/overview/tracks/albums/career/album-era 子 sections、settings/components、account/collection）→ components/（ui/charts/layout/shared）
 
 **Phase 5 架构模式**：
 
 | 层级 | 位置 | 行上限 | 禁含 |
 |------|------|--------|------|
 | Route Container | `pages/` | 450 | `<table>`, `function KpiCard` |
-| Experience | `features/*/XXXExperience.tsx` | 450 | shared primitives |
+| Experience | `features/*/XXXExperience.tsx` | 目标 450 | shared primitives；音乐详情仍在按 section 逐轮收敛 |
 | Section | `features/*/XXXSection.tsx` | 300 | — |
 | Primitives | `features/*/XXXPrimitives.tsx` | 350 | — |
 | Data | `features/*/xxxData.ts` | — | JSX |

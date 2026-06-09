@@ -9,6 +9,7 @@ import numberOnesPageSource from '../pages/NumberOnesPage.tsx?raw'
 import numberOnesExperienceSource from '../features/billboard/number-ones/NumberOnesExperience.tsx?raw'
 import artistDetailExperienceSource from '../features/music/details/ArtistDetailExperience.tsx?raw'
 import albumDetailExperienceSource from '../features/music/details/AlbumDetailExperience.tsx?raw'
+import albumEraSectionSource from '../features/music/details/AlbumEraSection.tsx?raw'
 
 describe('Phase 5 architecture guardrails', () => {
   it.each([
@@ -77,5 +78,54 @@ describe('Phase 5 architecture guardrails', () => {
     expect(albumDetailExperienceSource).not.toContain('function InfoRow')
     expect(albumDetailExperienceSource).not.toContain('function MiniStat')
     expect(albumDetailExperienceSource).not.toContain('function MatrixCell')
+  })
+
+  it('keeps music detail hero and tab chrome outside large experience files', () => {
+    expect(artistDetailExperienceSource.split('\n').length).toBeLessThanOrEqual(860)
+    expect(albumDetailExperienceSource.split('\n').length).toBeLessThanOrEqual(820)
+    expect(artistDetailExperienceSource).not.toContain('Music / 艺人详情')
+    expect(albumDetailExperienceSource).not.toContain('Music / 专辑详情')
+    expect(artistDetailExperienceSource).not.toContain('formatFollowers')
+    expect(albumDetailExperienceSource).not.toContain('formatReleaseDate')
+    expect(albumDetailExperienceSource).not.toContain('formatAlbumType')
+  })
+
+  it('keeps music detail overview chart and weekly table outside large experience files', () => {
+    expect(artistDetailExperienceSource.split('\n').length).toBeLessThanOrEqual(720)
+    expect(albumDetailExperienceSource.split('\n').length).toBeLessThanOrEqual(680)
+    expect(artistDetailExperienceSource).not.toContain('艺人排名趋势')
+    expect(albumDetailExperienceSource).not.toContain('专辑排名趋势')
+    expect(artistDetailExperienceSource).not.toContain('周榜历史')
+    expect(albumDetailExperienceSource).not.toContain('周榜历史')
+  })
+
+  it('keeps music detail tracks and albums tables outside large experience files', () => {
+    expect(artistDetailExperienceSource.split('\n').length).toBeLessThanOrEqual(380)
+    expect(albumDetailExperienceSource.split('\n').length).toBeLessThanOrEqual(500)
+    expect(artistDetailExperienceSource).not.toContain('入榜曲目')
+    expect(albumDetailExperienceSource).not.toContain('入榜曲目')
+    expect(artistDetailExperienceSource).not.toContain('暂无专辑入榜数据')
+    expect(artistDetailExperienceSource).not.toContain('上榜播放')
+    expect(albumDetailExperienceSource).not.toContain('上榜播放')
+  })
+
+  it('keeps album release era section outside AlbumDetailExperience', () => {
+    expect(albumDetailExperienceSource.split('\n').length).toBeLessThanOrEqual(340)
+    expect(albumDetailExperienceSource).not.toContain('发行概览')
+    expect(albumDetailExperienceSource).not.toContain('发行走势')
+    expect(albumDetailExperienceSource).not.toContain('发行构成')
+    expect(albumDetailExperienceSource).not.toContain('收听展开')
+    expect(albumDetailExperienceSource).not.toContain('外溢影响')
+    expect(albumDetailExperienceSource).not.toContain('你的收听故事')
+  })
+
+  it('keeps AlbumEraSection as orchestration instead of a monolithic release archive', () => {
+    expect(albumEraSectionSource.split('\n').length).toBeLessThanOrEqual(180)
+    expect(albumEraSectionSource).not.toContain('ReleaseTimelineChart')
+    expect(albumEraSectionSource).not.toContain('AlbumEnrichmentView')
+    expect(albumEraSectionSource).not.toContain('<table')
+    expect(albumEraSectionSource).not.toContain('发行构成')
+    expect(albumEraSectionSource).not.toContain('收听展开')
+    expect(albumEraSectionSource).not.toContain('外溢影响')
   })
 })
