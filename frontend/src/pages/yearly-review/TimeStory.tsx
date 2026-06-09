@@ -2,6 +2,7 @@ import { useState, useRef, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { GlassCard } from '@/components/shared/GlassCard'
 import { ArtistLinks } from '@/components/shared/ArtistLinks'
+import { displayName } from '@/lib/chinese'
 import type { TimeStory as TimeStoryType } from '@/types/yearly-review'
 import { HourClock } from './HourClock'
 
@@ -233,7 +234,7 @@ export function TimeStory({ timeStory }: TimeStoryProps) {
                     </Link>
                     <div className="min-w-0 flex-1">
                       <Link to={`/music/tracks/${t.track_id}`} className="font-sans text-[13px] font-semibold truncate transition-colors hover:text-accent-foreground block">
-                        {t.name}
+                        {displayName(t.name)}
                       </Link>
                       <span className="font-sans text-[11px] text-muted-foreground truncate">
                         <ArtistLinks

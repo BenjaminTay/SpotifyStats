@@ -1,4 +1,5 @@
 import { GlassCard } from '@/components/shared/GlassCard'
+import { displayName } from '@/lib/chinese'
 import type { CollectionInsights } from '@/types/account'
 
 export function LeaderboardBlock({ insights }: { insights: CollectionInsights }) {
@@ -52,7 +53,7 @@ export function LeaderboardBlock({ insights }: { insights: CollectionInsights })
                         <img src={artist.cover_url} alt={artist.artist_name}
                           className="h-8 w-8 flex-shrink-0 rounded-full object-cover" />
                       )}
-                      <span className="font-sans text-sm font-medium truncate">{artist.artist_name}</span>
+                      <span className="font-sans text-sm font-medium truncate">{displayName(artist.artist_name)}</span>
                     </td>
                     <td className="py-2.5 text-right font-sans text-sm tabular-nums">
                       {artist.saved_count}
@@ -107,8 +108,8 @@ export function LeaderboardBlock({ insights }: { insights: CollectionInsights })
                           className="h-8 w-8 flex-shrink-0 rounded object-cover" />
                       )}
                       <div className="min-w-0">
-                        <span className="font-sans text-sm font-medium">{album.album_name}</span>
-                        <span className="font-sans text-[11px] text-muted-foreground block">{album.artist_name}</span>
+                        <span className="font-sans text-sm font-medium">{displayName(album.album_name)}</span>
+                        <span className="font-sans text-[11px] text-muted-foreground block">{displayName(album.artist_name)}</span>
                       </div>
                     </td>
                     <td className="py-2.5 text-right font-sans text-sm tabular-nums">

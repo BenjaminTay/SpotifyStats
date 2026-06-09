@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import { GlassCard } from '@/components/shared/GlassCard'
 import { KpiCard } from '@/components/shared/KpiCard'
 import { cn } from '@/lib/utils'
+import { displayName } from '@/lib/chinese'
 import {
   Search,
   Mic,
@@ -646,7 +647,7 @@ export function HabitsTab({
                         )}
                         <div className="min-w-0 flex-1">
                           <p className="truncate font-serif text-base font-semibold">
-                            {fan.artist_name}
+                            {displayName(fan.artist_name)}
                           </p>
                           <div className="mt-2 flex gap-5 font-sans text-xs text-muted-foreground">
                             <span>
@@ -739,7 +740,7 @@ export function HabitsTab({
                       {idx + 1}
                     </span>
                     <span className="flex-1 truncate font-sans text-sm">
-                      {s.show_name}
+                      {displayName(s.show_name)}
                     </span>
                     <span className="shrink-0 font-sans text-xs tabular-nums text-muted-foreground">
                       {fmtHours(s.hours)}
@@ -788,7 +789,7 @@ export function HabitsTab({
                       )}
                       <div className="min-w-0 flex-1">
                         <p className="truncate font-serif text-sm font-semibold">
-                          {c.artist_name}
+                          {displayName(c.artist_name)}
                         </p>
                         <p className="font-sans text-[10px] text-muted-foreground">
                           展示 {fmtInt(c.impressions)} 次 · 转化{' '}
@@ -904,10 +905,10 @@ export function HabitsTab({
                         )}
                         <div className="min-w-0 flex-1">
                           <p className="truncate font-sans text-sm">
-                            {t.track_name}
+                            {displayName(t.track_name)}
                           </p>
                           <p className="truncate font-sans text-xs text-muted-foreground">
-                            {t.artist_name}
+                            {displayName(t.artist_name)}
                           </p>
                         </div>
                         <div className="shrink-0 text-right">

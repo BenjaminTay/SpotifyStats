@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { GlassCard } from '@/components/shared/GlassCard'
+import { displayName } from '@/lib/chinese'
 import { Slider } from '@/components/ui/slider'
 import {
   Select,
@@ -225,14 +226,14 @@ function DetectionCard({
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <span className="truncate font-sans text-[14px] font-semibold text-foreground">
-              {r.canonical_name}
+              {displayName(r.canonical_name)}
             </span>
             <Badge variant={r.confidence === 'high' ? 'default' : 'secondary'} className="text-[11px]">
               {r.confidence === 'high' ? '高置信' : '低置信'}
             </Badge>
           </div>
           <p className="text-[12.5px] text-muted-foreground">
-            {r.artist_name} · {r.member_count} 个版本 · {r.reason}
+            {displayName(r.artist_name)} · {r.member_count} 个版本 · {r.reason}
           </p>
 
           {/* Members */}
@@ -246,7 +247,7 @@ function DetectionCard({
                 )}
               >
                 {m.album_id === r.primary_album_id && <Star className="mr-1 size-3 text-accent-foreground" />}
-                {m.album_name}
+                {displayName(m.album_name)}
               </span>
             ))}
           </div>
@@ -333,18 +334,18 @@ function SavedGroupCard({ group: g, vm }: { group: ReleaseGroup; vm: ReturnType<
       <div className="flex items-start justify-between">
         <div>
           <div className="flex items-center gap-2">
-            <span className="font-sans text-[14px] font-semibold text-foreground">{g.canonical_name}</span>
+            <span className="font-sans text-[14px] font-semibold text-foreground">{displayName(g.canonical_name)}</span>
             {g.is_manual ? (
               <Badge variant="outline" className="text-[10px]">手动</Badge>
             ) : (
               <Badge variant="outline" className="text-[10px]">自动</Badge>
             )}
           </div>
-          <p className="text-[12.5px] text-muted-foreground">{g.artist_name}</p>
+          <p className="text-[12.5px] text-muted-foreground">{displayName(g.artist_name)}</p>
           {g.primary_album_name && (
             <p className="mt-1 flex items-center gap-1 text-[12.5px] text-muted-foreground">
               <Star className="size-3 text-accent-foreground" />
-              主版本：{g.primary_album_name}
+              主版本：{displayName(g.primary_album_name)}
             </p>
           )}
         </div>
@@ -381,7 +382,7 @@ function SavedGroupCard({ group: g, vm }: { group: ReleaseGroup; vm: ReturnType<
             <div key={m.album_id} className="flex items-center justify-between text-[13px]">
               <span className={cn(m.is_primary ? 'font-medium text-foreground' : 'text-muted-foreground')}>
                 {m.is_primary ? <Star className="mr-1 inline size-3 text-accent-foreground" /> : null}
-                {m.album_name}
+                {displayName(m.album_name)}
               </span>
               <div className="flex gap-1">
                 {!m.is_primary && (
@@ -506,8 +507,8 @@ function ManualCreateTab({ vm }: { vm: ReturnType<typeof useVersionMerge> }) {
                     onChange={() => toggleAlbum(a.album_id)}
                     className="size-3.5 accent-accent-foreground"
                   />
-                  <span className="flex-1 truncate">{a.album_name}</span>
-                  <span className="text-[12px] text-muted-foreground">{a.artist_name}</span>
+                  <span className="flex-1 truncate">{displayName(a.album_name)}</span>
+                  <span className="text-[12px] text-muted-foreground">{displayName(a.artist_name)}</span>
                 </label>
               ))}
             </div>

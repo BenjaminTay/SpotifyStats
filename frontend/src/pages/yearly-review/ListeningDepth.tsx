@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom'
 import { GlassCard } from '@/components/shared/GlassCard'
+import { displayName } from '@/lib/chinese'
 import type { ListeningDepth as ListeningDepthType } from '@/types/yearly-review'
 
 interface ListeningDepthProps {
@@ -68,9 +69,9 @@ export function ListeningDepth({ listeningDepth }: ListeningDepthProps) {
                 <GlassCard className="p-4 flex items-center gap-3 group hover:border-accent-foreground/20 transition-colors">
                   <CoverImage url={album.cover_url} alt={album.name} />
                   <div className="min-w-0 flex-1">
-                    <p className="font-sans text-[14px] font-semibold truncate group-hover:text-accent-foreground transition-colors">{album.name}</p>
+                    <p className="font-sans text-[14px] font-semibold truncate group-hover:text-accent-foreground transition-colors">{displayName(album.name)}</p>
                     <Link to={`/music/artists/${encodeURIComponent(album.artist_name)}`} className="font-sans text-[12px] text-muted-foreground truncate transition-colors hover:text-accent-foreground block">
-                      {album.artist_name}
+                      {displayName(album.artist_name)}
                     </Link>
                     <div className="mt-1.5 h-1.5 bg-muted rounded-full overflow-hidden">
                       <div

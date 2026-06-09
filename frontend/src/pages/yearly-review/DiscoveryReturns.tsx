@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import { GlassCard } from '@/components/shared/GlassCard'
 import { ArtistLinks } from '@/components/shared/ArtistLinks'
+import { displayName } from '@/lib/chinese'
 import type { DiscoveryReturns as DiscoveryReturnsType } from '@/types/yearly-review'
 
 interface DiscoveryReturnsProps {
@@ -43,7 +44,7 @@ export function DiscoveryReturns({ discovery }: DiscoveryReturnsProps) {
                 <Link key={a.name} to={`/music/artists/${encodeURIComponent(a.name)}`} className="flex items-center gap-3 group">
                   <CoverImage url={a.cover_url} alt={a.name} size="sm" />
                   <div className="min-w-0 flex-1">
-                    <p className="font-sans text-[14px] font-semibold truncate group-hover:text-accent-foreground transition-colors">{a.name}</p>
+                    <p className="font-sans text-[14px] font-semibold truncate group-hover:text-accent-foreground transition-colors">{displayName(a.name)}</p>
                     <p className="font-sans text-[12px] text-muted-foreground">{a.plays} 次播放 · {formatDate(a.first_date)} 首次听到</p>
                   </div>
                 </Link>
@@ -64,7 +65,7 @@ export function DiscoveryReturns({ discovery }: DiscoveryReturnsProps) {
                   </Link>
                   <div className="min-w-0 flex-1">
                     <Link to={`/music/tracks/${t.track_id}`} className="font-sans text-[14px] font-semibold truncate transition-colors hover:text-accent-foreground block">
-                      {t.name}
+                      {displayName(t.name)}
                     </Link>
                     <ArtistLinks
                       artistName={t.artist_name}
@@ -90,7 +91,7 @@ export function DiscoveryReturns({ discovery }: DiscoveryReturnsProps) {
                 <CoverImage url={discovery.longest_love.cover_url} alt={discovery.longest_love.name} />
               </Link>
               <Link to={`/music/tracks/${discovery.longest_love.track_id}`} className="font-sans text-[16px] font-semibold mt-3 transition-colors hover:text-accent-foreground">
-                {discovery.longest_love.name}
+                {displayName(discovery.longest_love.name)}
               </Link>
               <ArtistLinks
                 artistName={discovery.longest_love.artist_name}

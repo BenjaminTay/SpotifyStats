@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { GlassCard } from '@/components/shared/GlassCard'
+import { displayName } from '@/lib/chinese'
 import { api } from '@/lib/api'
 import { formatDate } from '@/features/account/collection/utils/formatDate'
 
@@ -90,7 +91,7 @@ export function PlaylistsBrowser() {
                 className="w-full flex items-center justify-between rounded-md px-3 py-2 text-left transition hover:bg-muted/50"
               >
                 <div className="min-w-0 flex-1">
-                  <p className="font-sans text-[13px] font-medium truncate">{pl.name}</p>
+                  <p className="font-sans text-[13px] font-medium truncate">{displayName(pl.name)}</p>
                   <p className="font-sans text-[11px] text-muted-foreground">
                     {pl.track_count} 首{pl.last_modified ? ` · ${formatDate(pl.last_modified)}` : ''}
                   </p>
@@ -140,12 +141,12 @@ export function PlaylistsBrowser() {
                                   to={`/music/tracks/${t.track_uri.replace('spotify:track:', '')}`}
                                   className="hover:text-accent-foreground hover:underline transition-colors"
                                 >
-                                  {t.track_name}
+                                  {displayName(t.track_name)}
                                 </Link>
                               </td>
-                              <td className="py-1 pr-2 text-muted-foreground">{t.artist_name}</td>
+                              <td className="py-1 pr-2 text-muted-foreground">{displayName(t.artist_name)}</td>
                               <td className="py-1 pr-2 text-muted-foreground hidden md:table-cell">
-                                {t.album_name}
+                                {displayName(t.album_name)}
                               </td>
                               <td className="py-1 text-right text-muted-foreground whitespace-nowrap">
                                 {t.added_date

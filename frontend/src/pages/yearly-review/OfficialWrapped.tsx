@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { queryKeys } from '@/api/query-keys'
 import { GlassCard } from '@/components/shared/GlassCard'
+import { displayName } from '@/lib/chinese'
 import { api } from '@/lib/api'
 
 interface OfficialWrappedData {
@@ -135,7 +136,7 @@ export function OfficialWrapped() {
             <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
               {data.clubs.map((c, i) => (
                 <span key={i} className="font-sans text-[14px] px-3 py-2 bg-muted/50 rounded-lg">
-                  {c.artist_name}
+                  {displayName(c.artist_name)}
                   <span className="text-[11px] text-muted-foreground ml-1">{c.role}</span>
                 </span>
               ))}
@@ -156,7 +157,7 @@ export function OfficialWrapped() {
                   <span className="font-sans text-[12px] font-bold text-muted-foreground w-5 text-right">{t.rank}</span>
                   <MiniCover url={t.cover_url || ''} name={t.name} />
                   <div className="min-w-0 flex-1">
-                    <p className="font-sans text-[13px] font-semibold truncate group-hover:text-accent-foreground transition-colors">{t.name}</p>
+                    <p className="font-sans text-[13px] font-semibold truncate group-hover:text-accent-foreground transition-colors">{displayName(t.name)}</p>
                     <p className="font-sans text-[11px] text-muted-foreground tabular-nums">{t.play_count} 次</p>
                   </div>
                 </Link>
@@ -174,7 +175,7 @@ export function OfficialWrapped() {
                 <Link key={a.rank} to={`/music/artists/${encodeURIComponent(a.name)}`} className="flex items-center gap-3 group">
                   <span className="font-sans text-[12px] font-bold text-muted-foreground w-5 text-right">{a.rank}</span>
                   <MiniCover url={a.cover_url || ''} name={a.name} />
-                  <p className="font-sans text-[13px] font-semibold truncate group-hover:text-accent-foreground transition-colors min-w-0 flex-1">{a.name}</p>
+                  <p className="font-sans text-[13px] font-semibold truncate group-hover:text-accent-foreground transition-colors min-w-0 flex-1">{displayName(a.name)}</p>
                 </Link>
               ))}
             </div>
@@ -190,7 +191,7 @@ export function OfficialWrapped() {
                 <Link key={a.rank} to={`/music/albums/${encodeURIComponent(a.name)}?artist=${encodeURIComponent(a.artist_name)}`} className="flex items-center gap-3 group">
                   <span className="font-sans text-[12px] font-bold text-muted-foreground w-5 text-right">{a.rank}</span>
                   <MiniCover url={a.cover_url || ''} name={a.name} />
-                  <p className="font-sans text-[13px] font-semibold truncate group-hover:text-accent-foreground transition-colors min-w-0 flex-1">{a.name}</p>
+                  <p className="font-sans text-[13px] font-semibold truncate group-hover:text-accent-foreground transition-colors min-w-0 flex-1">{displayName(a.name)}</p>
                 </Link>
               ))}
             </div>
@@ -216,7 +217,7 @@ export function OfficialWrapped() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {data.archive_reports.map((r, i) => (
               <div key={i} className="p-3 rounded-lg bg-muted/50">
-                <p className="font-sans text-[14px] font-semibold">{r.title}</p>
+                <p className="font-sans text-[14px] font-semibold">{displayName(r.title)}</p>
                 <p className="font-sans text-[12px] text-muted-foreground mt-1">{r.description}</p>
                 {r.minutes_listened > 0 && (
                   <p className="font-sans text-[11px] text-muted-foreground mt-1 tabular-nums">

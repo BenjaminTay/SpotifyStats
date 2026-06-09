@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import { GlassCard } from '@/components/shared/GlassCard'
+import { displayName } from '@/lib/chinese'
 import { api } from '@/lib/api'
 
 interface SavedTrackRow {
@@ -138,12 +139,12 @@ export function SavedTracksBrowser() {
                           to={`/music/tracks/${t.track_uri.replace('spotify:track:', '')}`}
                           className="hover:text-accent-foreground hover:underline transition-colors"
                         >
-                          {t.track_name}
+                          {displayName(t.track_name)}
                         </Link>
                       </td>
-                      <td className="py-2 pr-4 text-muted-foreground">{t.artist_name}</td>
+                      <td className="py-2 pr-4 text-muted-foreground">{displayName(t.artist_name)}</td>
                       <td className="py-2 pr-4 text-muted-foreground hidden md:table-cell">
-                        {t.album_name}
+                        {displayName(t.album_name)}
                       </td>
                       <td className="py-2 text-right text-muted-foreground whitespace-nowrap">
                         {t.added_date

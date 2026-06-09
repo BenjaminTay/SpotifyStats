@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { GlassCard } from '@/components/shared/GlassCard'
 import { ArtistLinks } from '@/components/shared/ArtistLinks'
+import { displayName } from '@/lib/chinese'
 import type { MonthlyDrillItem } from '@/types/yearly-review'
 
 interface MonthlyDrilldownProps {
@@ -75,7 +76,7 @@ export function MonthlyDrilldown({ monthlyDrilldown }: MonthlyDrilldownProps) {
                             </Link>
                             <div className="min-w-0 flex-1">
                               <Link to={`/music/tracks/${t.track_id}`} className="font-sans text-[13px] font-semibold truncate transition-colors hover:text-accent-foreground block">
-                                {t.name}
+                                {displayName(t.name)}
                               </Link>
                               <ArtistLinks
                                 artistName={t.artist_name}
@@ -95,7 +96,7 @@ export function MonthlyDrilldown({ monthlyDrilldown }: MonthlyDrilldownProps) {
                     <Link to={`/music/artists/${encodeURIComponent(m.top_artist.name)}`} className="flex items-center gap-3 mt-3 pt-3 border-t border-border group">
                       <span className="font-sans text-[11px] uppercase tracking-[1px] text-muted-foreground">本月艺人</span>
                       <MiniCover url={m.top_artist.cover_url} name={m.top_artist.name} />
-                      <span className="font-sans text-[14px] font-semibold group-hover:text-accent-foreground transition-colors">{m.top_artist.name}</span>
+                      <span className="font-sans text-[14px] font-semibold group-hover:text-accent-foreground transition-colors">{displayName(m.top_artist.name)}</span>
                     </Link>
                   )}
                 </div>

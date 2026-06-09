@@ -45,10 +45,10 @@ export function FlipSideAndMigrationBlock({
                   )}
                   <div className="min-w-0 flex-1">
                     <p className="font-sans text-sm font-medium truncate">
-                      {track.track_name}
+                      {displayName(track.track_name)}
                     </p>
                     <p className="font-sans text-xs text-muted-foreground truncate">
-                      {track.artist_name}
+                      {displayName(track.artist_name)}
                     </p>
                   </div>
                   <span className="ml-3 shrink-0 font-serif text-sm font-bold tabular-nums text-muted-foreground">
@@ -125,11 +125,11 @@ export function FlipSideAndMigrationBlock({
                     className="font-sans text-xs text-muted-foreground"
                   >
                     <span className="font-medium text-foreground">
-                      {pair.artist_a}
+                      {displayName(pair.artist_a)}
                     </span>{' '}
                     &times;{' '}
                     <span className="font-medium text-foreground">
-                      {pair.artist_b}
+                      {displayName(pair.artist_b)}
                     </span>
                     ：{pair.count} 首
                   </p>

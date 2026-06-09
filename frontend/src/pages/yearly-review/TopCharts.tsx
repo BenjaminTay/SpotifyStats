@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import { GlassCard } from '@/components/shared/GlassCard'
 import { ArtistLinks } from '@/components/shared/ArtistLinks'
+import { displayName } from '@/lib/chinese'
 import type { TopLists } from '@/types/yearly-review'
 
 interface TopChartsProps {
@@ -41,9 +42,9 @@ export function TopCharts({ topLists }: TopChartsProps) {
             {topLists.artists.map((a) => (
               <Link key={a.rank} to={`/music/artists/${encodeURIComponent(a.name)}`} className="flex items-center gap-3 group">
                 <span className="font-sans text-[13px] font-bold tabular-nums text-muted-foreground w-5 text-right">{a.rank}</span>
-                <CoverImage url={a.cover_url} alt={a.name} rounded />
+                <CoverImage url={a.cover_url} alt={displayName(a.name)} rounded />
                 <div className="min-w-0 flex-1">
-                  <p className="font-sans text-[14px] font-semibold truncate group-hover:text-accent-foreground transition-colors">{a.name}</p>
+                  <p className="font-sans text-[14px] font-semibold truncate group-hover:text-accent-foreground transition-colors">{displayName(a.name)}</p>
                   <p className="font-sans text-[12px] text-muted-foreground tabular-nums">{formatNumber(a.plays)} 次</p>
                   <p className="font-sans text-[12px] text-muted-foreground tabular-nums">{a.hours.toFixed(0)}h</p>
                 </div>
@@ -60,11 +61,11 @@ export function TopCharts({ topLists }: TopChartsProps) {
               <div key={t.rank} className="flex items-center gap-3 group">
                 <span className="font-sans text-[13px] font-bold tabular-nums text-muted-foreground w-5 text-right">{t.rank}</span>
                 <Link to={`/music/tracks/${t.track_id}`}>
-                  <CoverImage url={t.cover_url} alt={t.name} />
+                  <CoverImage url={t.cover_url} alt={displayName(t.name)} />
                 </Link>
                 <div className="min-w-0 flex-1">
                   <Link to={`/music/tracks/${t.track_id}`} className="font-sans text-[14px] font-semibold truncate transition-colors hover:text-accent-foreground block">
-                    {t.name}
+                    {displayName(t.name)}
                   </Link>
                   <ArtistLinks
                     artistName={t.artist_name}
@@ -86,14 +87,14 @@ export function TopCharts({ topLists }: TopChartsProps) {
               <div key={a.rank} className="flex items-center gap-3 group">
                 <span className="font-sans text-[13px] font-bold tabular-nums text-muted-foreground w-5 text-right">{a.rank}</span>
                 <Link to={`/music/albums/${encodeURIComponent(a.name)}?artist=${encodeURIComponent(a.artist_name)}`}>
-                  <CoverImage url={a.cover_url} alt={a.name} />
+                  <CoverImage url={a.cover_url} alt={displayName(a.name)} />
                 </Link>
                 <div className="min-w-0 flex-1">
                   <Link to={`/music/albums/${encodeURIComponent(a.name)}?artist=${encodeURIComponent(a.artist_name)}`} className="font-sans text-[14px] font-semibold truncate transition-colors hover:text-accent-foreground block">
-                    {a.name}
+                    {displayName(a.name)}
                   </Link>
                   <Link to={`/music/artists/${encodeURIComponent(a.artist_name)}`} className="font-sans text-[12px] text-muted-foreground truncate transition-colors hover:text-accent-foreground block">
-                    {a.artist_name}
+                    {displayName(a.artist_name)}
                   </Link>
                   <p className="font-sans text-[12px] text-muted-foreground tabular-nums">{formatNumber(a.plays)} 次 · {a.hours.toFixed(0)}h</p>
                 </div>

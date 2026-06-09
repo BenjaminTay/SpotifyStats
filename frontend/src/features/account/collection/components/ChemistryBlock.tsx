@@ -1,4 +1,5 @@
 import { GlassCard } from '@/components/shared/GlassCard'
+import { displayName } from '@/lib/chinese'
 import type { CollectionInsights, ChemistryType } from '@/types/account'
 
 function ChemistryCard({
@@ -73,10 +74,10 @@ function ChemistryCard({
                   )}
                   <div className="min-w-0 flex-1">
                     <p className="font-sans text-xs font-medium truncate">
-                      {ex.track_name}
+                      {displayName(ex.track_name)}
                     </p>
                     <p className="font-sans text-[11px] text-muted-foreground truncate">
-                      {ex.artist_name}
+                      {displayName(ex.artist_name)}
                     </p>
                   </div>
                   {ex.total_plays != null && (

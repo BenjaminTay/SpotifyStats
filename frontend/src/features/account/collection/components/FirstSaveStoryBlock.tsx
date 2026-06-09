@@ -1,4 +1,5 @@
 import { GlassCard } from '@/components/shared/GlassCard'
+import { displayName } from '@/lib/chinese'
 import type { CollectionInsights } from '@/types/account'
 import { formatDate } from '@/features/account/collection/utils/formatDate'
 
@@ -32,11 +33,11 @@ export function FirstSaveStoryBlock({
                     <p className="font-serif text-lg leading-relaxed mt-1">
                       你收藏了{' '}
                       <span className="font-semibold">
-                        {first_save_story.artist_name}
+                        {displayName(first_save_story.artist_name)}
                       </span>{' '}
                       的《
                       <span className="font-semibold">
-                        {first_save_story.track_name}
+                        {displayName(first_save_story.track_name)}
                       </span>
                   》，从此<span className="font-semibold">收藏夹</span>
                       的故事开始了。从那天算起，你一共播放了这首歌{' '}
@@ -114,10 +115,10 @@ export function FirstSaveStoryBlock({
               {archive_facts.oldest_track ? (
                 <>
                   <p className="font-serif text-xl font-semibold leading-tight">
-                    {archive_facts.oldest_track.track_name}
+                    {displayName(archive_facts.oldest_track.track_name)}
                   </p>
                   <p className="mt-0.5 font-sans text-sm text-muted-foreground">
-                    {archive_facts.oldest_track.artist_name} &middot;{' '}
+                    {displayName(archive_facts.oldest_track.artist_name)} &middot;{' '}
                     {archive_facts.oldest_track.year}
                   </p>
                 </>

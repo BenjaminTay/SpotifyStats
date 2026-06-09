@@ -1,6 +1,7 @@
 import { useMemo, lazy, Suspense } from 'react'
 import { GlassCard } from '@/components/shared/GlassCard'
 import { cn } from '@/lib/utils'
+import { displayName } from '@/lib/chinese'
 import { buildChartBase } from '@/components/charts/EChartsTheme'
 import { useTheme } from '@/hooks/useTheme'
 import type { CollectionInsights, LifecycleExample, LifecycleTrendPoint, TopTrackTrend } from '@/types/account'
@@ -56,7 +57,7 @@ function LifecycleTrendChart({
         const data: (number | null)[] = Array(52).fill(null)
         t.data.forEach(pt => { if (pt.week >= 0 && pt.week < 52) data[pt.week] = pt.plays })
         trackRaw.push({
-          name: t.track_name.length > 10 ? t.track_name.slice(0, 10) + '…' : t.track_name,
+          name: (() => { const c = displayName(t.track_name); return c.length > 10 ? c.slice(0, 10) + '…' : c; })(),
           data,
           color: TREND_COLORS[ti],
         })
@@ -219,8 +220,8 @@ export function SaveLifecycleBlock({
                       <img src={ex.cover_url} alt={ex.track_name}
                         className="h-6 w-6 rounded-full object-cover" />
                     )}
-                    <span className="font-sans text-xs font-medium">{ex.track_name}</span>
-                    <span className="font-sans text-[10px] text-muted-foreground">{ex.artist_name}</span>
+                    <span className="font-sans text-xs font-medium">{displayName(ex.track_name)}</span>
+                    <span className="font-sans text-[10px] text-muted-foreground">{displayName(ex.artist_name)}</span>
                   </div>
                 ))}
               </div>
