@@ -85,7 +85,7 @@ SpotifyStats/
 - 前端架构细节见 [`frontend/CLAUDE.md`](frontend/CLAUDE.md)
 - UI 风格指南见 [`frontend/UI_STYLE_GUIDE.md`](frontend/UI_STYLE_GUIDE.md)
 - 数据目录说明见 [`data/README.md`](data/README.md)
-- 架构优化文档见 [`docs/2026-05-30-architecture-optimize.md`](docs/2026-05-30-architecture-optimize.md)
+- 架构优化文档见 [`docs/phase4-architecture/2026-05-30-architecture-optimize.md`](docs/phase4-architecture/2026-05-30-architecture-optimize.md)
 - Phase 5 产品化收口台账见 [`docs/2026-06-08-phase5-productization-baseline.md`](docs/2026-06-08-phase5-productization-baseline.md)
 
 ## License
