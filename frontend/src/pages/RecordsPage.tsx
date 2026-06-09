@@ -1,5 +1,4 @@
 import { useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { AlertCircle } from 'lucide-react'
 
 import { BillboardSubNav } from '@/components/shared/BillboardSubNav'
@@ -40,8 +39,7 @@ function LoadingSkeleton() {
 }
 
 export function RecordsPage() {
-  const { data, loading, error, goToWeek } = useBillboard()
-  const navigate = useNavigate()
+  const { data, loading, error } = useBillboard()
   const [activeTab, setActiveTab] = useState<TabKey>('championship')
 
   const covers = useMemo(() => {
@@ -63,11 +61,6 @@ export function RecordsPage() {
   if (!data) return null
 
   const rec: BillboardRecords = data.records
-
-  const handleWeekClick = (week: string) => {
-    goToWeek(week)
-    navigate('/billboard')
-  }
 
   return (
     <div className="mx-auto max-w-[1200px]">
@@ -97,7 +90,7 @@ export function RecordsPage() {
         ))}
       </nav>
 
-      {activeTab === 'championship' && <ChampionshipSection rec={rec} covers={covers} onWeekClick={handleWeekClick} />}
+      {activeTab === 'championship' && <ChampionshipSection rec={rec} covers={covers} />}
       {activeTab === 'longevity' && <LongevitySection rec={rec} covers={covers} />}
       {activeTab === 'breakthrough' && <BreakthroughSection rec={rec} covers={covers} />}
       {activeTab === 'halloffame' && <HallOfFameSection rec={rec} covers={covers} />}
@@ -109,7 +102,7 @@ export function RecordsPage() {
           artistTrackCounts={data.artist_track_counts}
         />
       )}
-      {activeTab === 'market' && <MarketSection rec={rec} covers={covers} onWeekClick={handleWeekClick} />}
+      {activeTab === 'market' && <MarketSection rec={rec} covers={covers} />}
     </div>
   )
 }

@@ -246,6 +246,8 @@ export interface BillboardRecords {
   blocker_king_artist: BlockerKingArtistRecord[]
   blocked_artists_map: Record<string, BlockedArtistInfo[]>
   longest_to_no1: ClimbToNo1Record[]
+  longest_to_no1_album: ClimbToNo1AlbumRecord[]
+  longest_to_no1_artist: ClimbToNo1ArtistRecord[]
 
   // Section 2: 持久传奇
   longest_charting: LongestChartingRecord[]
@@ -403,8 +405,23 @@ export interface BlockedArtistInfo {
 }
 
 export interface ClimbToNo1Record {
-  [key: string]: any
+  track_id: number
   track_name: string
+  artist_name: string
+  first_week: string
+  first_peak_week: string
+  '登顶周数': number
+}
+
+export interface ClimbToNo1AlbumRecord {
+  album_name: string
+  artist_name: string
+  first_week: string
+  first_peak_week: string
+  '登顶周数': number
+}
+
+export interface ClimbToNo1ArtistRecord {
   artist_name: string
   first_week: string
   first_peak_week: string
@@ -676,7 +693,7 @@ export interface DecadeBestRecord {
 // ── Section 5: 奇趣纪录 ──────────────────────────────────────
 
 export interface DoubleDebutRecord {
-  [key: string]: any
+  debut_track_id: number
   debut_track: string
   debut_artist: string
   debut_week: string
@@ -684,8 +701,11 @@ export interface DoubleDebutRecord {
 }
 
 export interface TripleNo1Record {
-  [key: string]: any
+  billboard_week: string
   '艺人': string
+  track_id: number
+  '歌曲': string
+  '专辑': string
 }
 
 // ── Section 6: 每周大盘 ──────────────────────────────────────

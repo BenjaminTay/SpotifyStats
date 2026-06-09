@@ -19,6 +19,15 @@ export function fmtDate(iso: string): string {
   return `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}`
 }
 
+export function WeekLink({ date }: { date: string }) {
+  if (!date) return null
+  return (
+    <Link to={`/billboard?week=${date}`} className="font-sans text-[12px] tabular-nums text-muted-foreground transition-colors hover:text-accent-foreground">
+      {fmtDate(date)}
+    </Link>
+  )
+}
+
 // ── shared sub-components ────────────────────────────────────
 
 export function CoverImg({ url }: { url?: string | null }) {

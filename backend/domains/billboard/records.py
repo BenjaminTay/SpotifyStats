@@ -56,7 +56,7 @@ def compute_records(
     compute_championship_records(records, weekly, track_summary, weekly_album, weekly_artist)
     compute_longevity_records(records, weekly, track_summary, weekly_album, weekly_artist)
     compute_endurance_records(records, weekly, track_summary, weekly_album, weekly_artist)
-    compute_movement_records(records, weekly, track_summary, weekly_album)
+    compute_movement_records(records, weekly, track_summary, weekly_album, weekly_artist)
     compute_hall_of_fame_records(
         records,
         weekly,

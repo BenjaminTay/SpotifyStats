@@ -39,23 +39,23 @@ def compute_quirky_records(records, weekly, weekly_album=None, weekly_artist=Non
     # ── 28. Triple #1 (全榜单制霸) ──────────────────────────────────────
     if weekly_album is not None and weekly_artist is not None:
         track_no1_w = weekly[weekly["rank"] == 1][
-            ["billboard_week", "artist_name"]
-        ].drop_duplicates()
+            ["billboard_week", "artist_name", "track_id", "track_name"]
+        ].drop_duplicates(subset=["billboard_week", "artist_name"])
         album_no1_w = weekly_album[weekly_album["rank"] == 1][
-            ["billboard_week", "artist_name"]
-        ].drop_duplicates()
+            ["billboard_week", "artist_name", "album_name"]
+        ].drop_duplicates(subset=["billboard_week", "artist_name"])
         artist_no1_w = weekly_artist[weekly_artist["rank"] == 1][
             ["billboard_week", "artist_name"]
         ].drop_duplicates()
-        triple = track_no1_w.merge(
-            album_no1_w, on="billboard_week", suffixes=("_track", "_album")
-        ).merge(artist_no1_w, on="billboard_week")
-        triple = triple[
-            (triple["artist_name_track"] == triple["artist_name_album"])
-            & (triple["artist_name_album"] == triple["artist_name"])
-        ]
-        triple = triple.rename(columns={"artist_name": "艺人"}).drop(
-            columns=["artist_name_track", "artist_name_album"]
+        triple = track_no1_w.merge(album_no1_w, on=["billboard_week", "artist_name"]).merge(
+            artist_no1_w, on=["billboard_week", "artist_name"]
+        )
+        triple = triple.rename(
+            columns={
+                "artist_name": "艺人",
+                "track_name": "歌曲",
+                "album_name": "专辑",
+            }
         )
         triple["billboard_week"] = triple["billboard_week"].astype(str)
         records["triple_no1"] = triple.sort_values("billboard_week", ascending=False)

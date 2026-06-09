@@ -1,12 +1,14 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Sparkles } from 'lucide-react'
 
+import { cn } from '@/lib/utils'
 import { displayName } from '@/lib/chinese'
 import { billboardDetailLink } from '@/lib/navigation'
 import type { ArtistTrackCounts, BillboardRecords, TrackSummary } from '@/types/billboard'
 import type { CoverMaps } from './recordsData'
 import {
+  AlbumCell,
   ArtistCell,
   ArtistCoverImg,
   FeaturedRecord,
@@ -17,12 +19,85 @@ import {
   SectionHeader,
   TrackCell,
   ValueBar,
+  WeekLink,
   fmtDate,
 } from './RecordsPrimitives'
+
+type DebutSortMode = 'date' | 'market'
+
+function SortToggle({ mode, desc, onChange, dateLabel }: { mode: DebutSortMode; desc: boolean; onChange: (m: DebutSortMode) => void; dateLabel?: string }) {
+  const items: { key: DebutSortMode; label: string }[] = [
+    { key: 'date', label: dateLabel ?? '空降周' },
+    { key: 'market', label: '大盘播放' },
+  ]
+  return (
+    <div className="flex items-center gap-1.5">
+      <span className="font-sans text-[10px] text-muted-foreground">排序：</span>
+      <div className="flex items-center rounded-[6px] border border-border bg-muted/30 p-0.5">
+        {items.map((opt) => {
+          const active = mode === opt.key
+          const arrow = active ? (desc ? ' ↓' : ' ↑') : ''
+          return (
+            <button key={opt.key} onClick={() => onChange(opt.key)}
+              className={cn('rounded-[4px] px-2.5 py-1 font-sans text-[11px] font-medium transition-colors', active ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground')}>
+              {opt.label}{arrow}
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
 
 export function CuriositiesSection({ rec, covers, trackSummary, artistTrackCounts }: {
   rec: BillboardRecords; covers: CoverMaps; trackSummary: TrackSummary[]; artistTrackCounts: ArtistTrackCounts[]
 }) {
+  const weekPlays = useMemo(() => {
+    const map = new Map<string, number>()
+    for (const w of rec.week_total_plays) {
+      map.set(w.billboard_week, w.total_plays ?? 0)
+    }
+    return map
+  }, [rec.week_total_plays])
+
+  const [debutSort, setDebutSort] = useState<{ mode: DebutSortMode; desc: boolean }>({ mode: 'date', desc: true })
+
+  const handleDebutSort = (mode: DebutSortMode) => {
+    setDebutSort(prev => prev.mode === mode ? { mode, desc: !prev.desc } : { mode, desc: true })
+  }
+
+  const doubleDebutSorted = useMemo(() => {
+    const rows = [...rec.double_debut]
+    return rows.sort((a, b) => {
+      let cmp = 0
+      if (debutSort.mode === 'date') {
+        cmp = a.debut_week.localeCompare(b.debut_week)
+      } else {
+        cmp = (weekPlays.get(a.debut_week) ?? 0) - (weekPlays.get(b.debut_week) ?? 0)
+      }
+      return debutSort.desc ? -cmp : cmp
+    })
+  }, [rec.double_debut, debutSort, weekPlays])
+
+  const [tripleSort, setTripleSort] = useState<{ mode: DebutSortMode; desc: boolean }>({ mode: 'date', desc: true })
+
+  const handleTripleSort = (mode: DebutSortMode) => {
+    setTripleSort(prev => prev.mode === mode ? { mode, desc: !prev.desc } : { mode, desc: true })
+  }
+
+  const tripleSorted = useMemo(() => {
+    const rows = [...rec.triple_no1]
+    return rows.sort((a, b) => {
+      let cmp = 0
+      if (tripleSort.mode === 'date') {
+        cmp = a.billboard_week.localeCompare(b.billboard_week)
+      } else {
+        cmp = (weekPlays.get(a.billboard_week) ?? 0) - (weekPlays.get(b.billboard_week) ?? 0)
+      }
+      return tripleSort.desc ? -cmp : cmp
+    })
+  }, [rec.triple_no1, tripleSort, weekPlays])
+
   const oneHitWonders = useMemo(() => artistTrackCounts.filter(a => a.total_tracks === 1 && a.top1 >= 1).sort((a, b) => b.weeks_at_no1 - a.weeks_at_no1), [artistTrackCounts])
   const prolificArtists = useMemo(() => [...artistTrackCounts].sort((a, b) => b.total_tracks - a.total_tracks).slice(0, 20), [artistTrackCounts])
   const sameNameDiffArtist = useMemo(() => {
@@ -40,19 +115,27 @@ export function CuriositiesSection({ rec, covers, trackSummary, artistTrackCount
       <SectionHeader icon={Sparkles} title="奇趣纪录" subtitle="那些让人会心一笑的冷知识——数据里的彩蛋" />
 
       <RecordCard title="双空冠 · Double Debut" subtitle="同一张专辑有两首歌空降入榜">
-        <MiniRankTable rows={rec.double_debut} columns={[
+        <div className="mb-3">
+          <SortToggle mode={debutSort.mode} desc={debutSort.desc} onChange={handleDebutSort} />
+        </div>
+        <MiniRankTable rows={doubleDebutSorted} columns={[
           { header: '#', width: '48px', align: 'center', render: (_, idx) => <RankNum rank={idx + 1} /> },
+          { header: '空降周', width: '110px', render: (r) => <WeekLink date={r.debut_week} /> },
           { header: '歌曲', render: (r) => <TrackCell trackId={r.debut_track_id} trackName={r.debut_track} artistName={r.debut_artist} coverUrl={covers.track.get(r.debut_track_id)} /> },
-          { header: '空降日期', width: '110px', render: (r) => <span className="font-sans text-[12px] tabular-nums text-muted-foreground">{fmtDate(r.debut_week)}</span> },
-          { header: '所属专辑', render: (r) => <Link to={billboardDetailLink(`/music/albums/${encodeURIComponent(r.debut_album)}`)} className="font-sans text-[12px] transition-colors hover:text-accent-foreground">{displayName(r.debut_album)}</Link> },
+          { header: '专辑', render: (r) => <AlbumCell albumName={r.debut_album} artistName={r.debut_artist} coverUrl={covers.album.get(r.debut_album)} /> },
         ]} />
       </RecordCard>
 
       <RecordCard title="全榜单制霸 · Triple #1" subtitle="同一周单曲榜、专辑榜、艺人榜三榜 #1 同属一人">
-        <MiniRankTable rows={rec.triple_no1} columns={[
+        <div className="mb-3">
+          <SortToggle mode={tripleSort.mode} desc={tripleSort.desc} onChange={handleTripleSort} dateLabel="榜单周" />
+        </div>
+        <MiniRankTable rows={tripleSorted} columns={[
           { header: '#', width: '48px', align: 'center', render: (_, idx) => <RankNum rank={idx + 1} /> },
-          { header: '艺人', render: (r) => <ArtistCell artistName={r['艺人']} coverUrl={covers.artist.get(r['艺人'])} /> },
-          { header: '日期', width: '110px', render: (r) => <span className="font-sans text-[12px] tabular-nums text-muted-foreground">{fmtDate(r.billboard_week)}</span> },
+          { header: '榜单周', width: '110px', render: (r) => <WeekLink date={r.billboard_week} /> },
+          { header: '艺人', render: (r) => <ArtistCell artistName={r['艺人']} coverUrl={covers.artist.get(r['艺人'])} compact /> },
+          { header: '歌曲', render: (r) => <TrackCell trackId={r.track_id} trackName={r['歌曲']} artistName={r['艺人']} coverUrl={covers.track.get(r.track_id)} /> },
+          { header: '专辑', render: (r) => <AlbumCell albumName={r['专辑']} artistName={r['艺人']} coverUrl={covers.album.get(r['专辑'])} /> },
         ]} />
       </RecordCard>
 
