@@ -184,13 +184,51 @@ def test_chart_compute_ranking_and_power_score_are_split():
     compute_source = _read("backend/domains/billboard/chart_compute.py")
     ranking_source = _read("backend/domains/billboard/chart_ranking.py")
     power_score_source = _read("backend/domains/billboard/chart_power_score.py")
+    summaries_source = _read("backend/domains/billboard/chart_summaries.py")
 
-    assert len(compute_source.splitlines()) <= 1100
+    assert len(compute_source.splitlines()) <= 430
     assert "def compute_weekly_rankings" not in compute_source
     assert "_RANK1_BASE" not in compute_source
     assert "def compute_power_scores(" not in compute_source
+    assert "def compute_track_summary" not in compute_source
     assert "def _add_running_metrics" not in compute_source
     assert "def compute_weekly_rankings" in ranking_source
     assert "def _add_running_metrics" in ranking_source
     assert "def compute_power_scores(" in power_score_source
     assert "_RANK1_BASE" in power_score_source
+    assert "def compute_track_summary" in summaries_source
+
+
+def test_chart_staged_cache_is_split_from_chart_compute_facade():
+    compute_source = _read("backend/domains/billboard/chart_compute.py")
+    staged_cache_source = _read("backend/domains/billboard/chart_staged_cache.py")
+
+    assert "def _load_and_rank" not in compute_source
+    assert "def _compute_weekly_data_cached" not in compute_source
+    assert "def _compute_power_scores_cached" not in compute_source
+    assert "def _compute_summaries_cached" not in compute_source
+    assert "def _compute_records_cached" not in compute_source
+    assert "def _load_and_rank" in staged_cache_source
+    assert "def _compute_weekly_data_cached" in staged_cache_source
+    assert "def _compute_power_scores_cached" in staged_cache_source
+    assert "def _compute_summaries_cached" in staged_cache_source
+    assert "def _compute_records_cached" in staged_cache_source
+    assert len(staged_cache_source.splitlines()) <= 360
+
+
+def test_chart_staged_public_api_is_split_from_chart_compute_facade():
+    compute_source = _read("backend/domains/billboard/chart_compute.py")
+    staged_api_source = _read("backend/domains/billboard/chart_staged_api.py")
+
+    assert len(compute_source.splitlines()) <= 240
+    assert "def compute_weekly_data" not in compute_source
+    assert "def compute_power_scores_staged" not in compute_source
+    assert "def compute_summaries_staged" not in compute_source
+    assert "def compute_records_staged" not in compute_source
+    assert "def compute_billboard_data" in compute_source
+    assert "register_lru(" in compute_source
+    assert "def compute_weekly_data" in staged_api_source
+    assert "def compute_power_scores_staged" in staged_api_source
+    assert "def compute_summaries_staged" in staged_api_source
+    assert "def compute_records_staged" in staged_api_source
+    assert len(staged_api_source.splitlines()) <= 140

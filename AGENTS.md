@@ -26,16 +26,17 @@ Phase 5 目标是收紧产品线到可持续迭代状态。当前进度：
 - 音乐详情页持续拆分到 feature sections；header/tabs/skeletons/overview/tracks/albums/career/artist-releases/album-era 子 sections 与共享 primitives 已从 Artist/Album Experience 中抽出
 - 前端展示类型 `frontend/src/types/billboard.ts` 已补齐 Billboard、音乐详情、release-cycle 与 enrichment 常用展示字段，`npm run build` 作为硬验证
 - 模块级 API 响应 Map 缓存全部清除，迁移到 TanStack Query
+- Records/AllTime/RecentPlays/SavedTracks/PersonalRankTable 长列表已有分页基线，新增长表必须继续使用分页或虚拟化
 - Request ID（`X-Request-ID` 生成/透传/日志关联）
 - Billboard records 输出层已拆入 `backend/domains/billboard/records_output.py`，championship/no1 family 已拆入 `records_championship.py`，longevity/persistence family 已拆入 `records_longevity.py`，movement/breakthrough family 已拆入 `records_movement.py`，hall-of-fame/power ranking family 已拆入 `records_hall_of_fame.py`，endurance/rank-stability family 已拆入 `records_endurance.py`，self-replacement/blocker family 已拆入 `records_self_replacement_blocker.py`，market/market-intensity family 已拆入 `records_market.py`，quirky/special-feat family 已拆入 `records_quirky.py`，`records.py` 保留 88 行纯编排 facade
-- Billboard chart 周榜排名已拆入 `backend/domains/billboard/chart_ranking.py`，走势评分（Power Score）已拆入 `backend/domains/billboard/chart_power_score.py`，`chart_compute.py` 保留 1075 行编排/caching/staged API
-- 架构护栏测试（`frontend/src/tests/phase5-architecture.test.ts`，16 个负面断言）
+- Billboard chart 周榜排名已拆入 `backend/domains/billboard/chart_ranking.py`，走势评分（Power Score）已拆入 `backend/domains/billboard/chart_power_score.py`，summary/count helper 已拆入 `backend/domains/billboard/chart_summaries.py`，staged cache 已拆入 `backend/domains/billboard/chart_staged_cache.py`，staged public API 已拆入 `backend/domains/billboard/chart_staged_api.py`，`chart_compute.py` 保留 227 行兼容入口/re-export/cache registration facade
+- 架构护栏测试（`frontend/src/tests/phase5-architecture.test.ts`）与长列表分页渲染测试（`frontend/src/tests/long-list-pagination.test.tsx`）
 - `scripts/phase5_check.sh` 最低验证矩阵 + GitHub Actions CI 基线（`.github/workflows/phase5-baseline.yml`）
 
 **持续治理**：
 - Provider 全量替换：`release_cycle_service.py`、`wikipedia_service.py`、`spotify_utils.py` 和 `version_merge.py` 已收敛；后续按架构护栏防回归
-- 后端大文件（`records.py` 88 行 / `chart_compute.py` 1075 行 / `chart_ranking.py` 144 行 / `chart_power_score.py` 272 行）按触碰拆分
-- 长列表优先服务端分页或虚拟化
+- 后端 Billboard chart compute 已收口（`records.py` 88 行 / `chart_compute.py` 227 行 / `chart_staged_api.py` 114 行 / `chart_staged_cache.py` 336 行 / `chart_ranking.py` 142 行 / `chart_power_score.py` 272 行 / `chart_summaries.py` 220 行）；后续按触碰拆分其他大文件
+- 长列表已建立分页基线；后续新增超过 500 行 DOM 的表格必须使用服务端分页、分页组件或虚拟化
 
 详见 `docs/2026-06-08-phase5-productization-baseline.md`。
 
