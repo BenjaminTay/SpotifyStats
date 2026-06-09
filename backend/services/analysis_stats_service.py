@@ -9,7 +9,7 @@ from typing import Any
 
 import pandas as pd
 
-from backend.core.db import get_db, load_plays
+from backend.core.db import get_db, get_track_artist_names_map, load_plays, load_plays_for_artists
 from backend.services.play_service import (
     _album_cover_lookup,
     _artist_cover_lookup,
@@ -111,8 +111,10 @@ def load_period_plays(
     period: str = "lifetime",
     start_date: str | None = None,
     end_date: str | None = None,
+    _loader=None,
 ) -> tuple[pd.DataFrame, pd.DataFrame, dict]:
-    df = load_plays(conn, min_ms=min_ms, music_only=music_only, merge_enabled=merge_enabled)
+    loader = _loader or load_plays
+    df = loader(conn, min_ms=min_ms, music_only=music_only, merge_enabled=merge_enabled)
     resolved = resolve_period(df, period, start_date, end_date)
     return df, filter_period(df, resolved), resolved
 
@@ -271,25 +273,27 @@ def recent_plays(conn: sqlite3.Connection, df: pd.DataFrame, limit: int = 50) ->
     if df.empty:
         return []
     cover_map = _track_cover_urls(conn, df["track_id"])
+    names_map = get_track_artist_names_map()
     rows = df.sort_values("ts", ascending=False).head(limit)
     result = []
     for r in rows.itertuples(index=False):
         track_id = int(r.track_id) if pd.notna(r.track_id) else None
-        result.append(
-            {
-                "play_id": int(r.play_id),
-                "ts": str(r.ts),
-                "date": str(r.ts_date),
-                "track_id": track_id,
-                "track_name": r.track_name,
-                "artist_name": r.artist_name,
-                "album_name": getattr(r, "album_name", None),
-                "ms_played": int(r.ms_played),
-                "hours": round(float(r.ms_played) / 3_600_000, 3),
-                "platform": r.platform,
-                "cover_url": cover_map.get(track_id) if track_id is not None else None,
-            }
-        )
+        entry = {
+            "play_id": int(r.play_id),
+            "ts": str(r.ts),
+            "date": str(r.ts_date),
+            "track_id": track_id,
+            "track_name": r.track_name,
+            "artist_name": r.artist_name,
+            "album_name": getattr(r, "album_name", None),
+            "ms_played": int(r.ms_played),
+            "hours": round(float(r.ms_played) / 3_600_000, 3),
+            "platform": r.platform,
+            "cover_url": cover_map.get(track_id) if track_id is not None else None,
+        }
+        if track_id is not None and track_id in names_map:
+            entry["artist_names"] = names_map[track_id]
+        result.append(entry)
     return result
 
 
@@ -427,6 +431,8 @@ def chart_rows(
     artist_covers = _artist_cover_lookup(conn) if entity == "artist" else {}
     active_days = max(int(df["ts_date"].nunique()), 1)
 
+    track_names_map = get_track_artist_names_map() if entity == "track" else {}
+
     rows = []
     for idx, r in sliced.iterrows():
         row: dict[str, Any] = {
@@ -443,15 +449,18 @@ def chart_rows(
             ),
         }
         if entity == "track":
+            tid = int(r["track_id"])
             row.update(
                 {
-                    "track_id": int(r["track_id"]),
+                    "track_id": tid,
                     "track_name": r["track_name"],
                     "artist_name": r["artist_name"],
                     "album_name": r["album_name"],
-                    "cover_url": track_covers.get(int(r["track_id"])),
+                    "cover_url": track_covers.get(tid),
                 }
             )
+            if tid in track_names_map:
+                row["artist_names"] = track_names_map[tid]
         elif entity == "album":
             row.update(
                 {
@@ -550,7 +559,20 @@ def _build_analysis_charts(
     _, df, resolved = load_period_plays(
         conn, min_ms, music_only, merge_enabled, period, start_date, end_date
     )
-    total, rows = chart_rows(conn, df, entity, metric, limit, offset)
+    if entity == "artist":
+        _, df_artist, _ = load_period_plays(
+            conn,
+            min_ms,
+            music_only,
+            merge_enabled,
+            period,
+            start_date,
+            end_date,
+            _loader=load_plays_for_artists,
+        )
+        total, rows = chart_rows(conn, df_artist, entity, metric, limit, offset)
+    else:
+        total, rows = chart_rows(conn, df, entity, metric, limit, offset)
     return {
         "period": resolved,
         "entity": entity if entity in {"track", "album", "artist"} else "track",
@@ -634,25 +656,27 @@ def get_global_plays(
 
     track_ids = [int(r["track_id"]) for r in rows if r["track_id"] is not None]
     cover_map = _track_cover_urls(conn, track_ids) if track_ids else {}
+    names_map = get_track_artist_names_map()
 
     result = []
     for r in rows:
         tid = int(r["track_id"]) if r["track_id"] is not None else None
-        result.append(
-            {
-                "play_id": int(r["play_id"]),
-                "ts": str(r["ts"]),
-                "date": str(r["ts_date"]),
-                "track_id": tid,
-                "track_name": r["track_name"] or "",
-                "artist_name": r["artist_name"] or "",
-                "album_name": r["album_name"],
-                "ms_played": int(r["ms_played"]),
-                "hours": round(float(r["ms_played"]) / 3_600_000, 3),
-                "platform": r["platform"] or "",
-                "cover_url": cover_map.get(tid) if tid is not None else None,
-            }
-        )
+        entry = {
+            "play_id": int(r["play_id"]),
+            "ts": str(r["ts"]),
+            "date": str(r["ts_date"]),
+            "track_id": tid,
+            "track_name": r["track_name"] or "",
+            "artist_name": r["artist_name"] or "",
+            "album_name": r["album_name"],
+            "ms_played": int(r["ms_played"]),
+            "hours": round(float(r["ms_played"]) / 3_600_000, 3),
+            "platform": r["platform"] or "",
+            "cover_url": cover_map.get(tid) if tid is not None else None,
+        }
+        if tid is not None and tid in names_map:
+            entry["artist_names"] = names_map[tid]
+        result.append(entry)
 
     return {"total": total, "limit": limit, "offset": offset, "rows": result}
 

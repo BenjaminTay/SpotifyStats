@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom'
+import { ArtistLinks } from '@/components/shared/ArtistLinks'
 import { CoverCell } from '@/components/shared/CoverCell'
 import type { AnalysisChartRow } from '@/types/analysis'
 import { cn } from '@/lib/utils'
@@ -47,7 +48,7 @@ export function PersonalRankTable({ rows, entity, metric }: { rows: AnalysisChar
         <tbody>
           {rows.map((row, index) => {
             const title = entity === 'track' ? row.track_name : entity === 'album' ? row.album_name : row.artist_name
-            const sub = entity === 'artist' ? `${row.unique_tracks ?? 0} 首曲目` : row.artist_name
+            const isTrack = entity === 'track'
             const playsPct = (row.plays / maxPlays) * 100
             const hoursPct = (row.hours / maxHours) * 100
             const dailyText = metric === 'plays'
@@ -59,13 +60,27 @@ export function PersonalRankTable({ rows, entity, metric }: { rows: AnalysisChar
               <tr key={`${row.rank}-${title}`} className="border-b border-border/70">
                 <td className="py-3 font-semibold tabular-nums text-muted-foreground">{row.rank}</td>
                 <td className="py-3 pr-3">
-                  <Link to={entityLink(row, entity)} className="flex items-center gap-3 min-w-0 transition-colors hover:text-accent-foreground">
-                    <CoverCell index={index} coverUrl={row.cover_url} />
+                  <div className="flex items-center gap-3 min-w-0">
+                    <Link to={entityLink(row, entity)}>
+                      <CoverCell index={index} coverUrl={row.cover_url} />
+                    </Link>
                     <span className="min-w-0">
-                      <span className="block truncate font-semibold">{displayName(title || '未知')}</span>
-                      <span className="block truncate text-[12px] italic text-muted-foreground">{displayName(sub || '')}</span>
+                      <Link to={entityLink(row, entity)} className="block truncate font-semibold transition-colors hover:text-accent-foreground">
+                        {displayName(title || '未知')}
+                      </Link>
+                      {entity === 'artist' ? (
+                        <span className="block truncate text-[12px] italic text-muted-foreground">{row.unique_tracks ?? 0} 首曲目</span>
+                      ) : isTrack && row.artist_name ? (
+                        <ArtistLinks
+                          artistName={row.artist_name}
+                          artistNames={row.artist_names}
+                          className="block truncate text-[12px] italic text-muted-foreground"
+                        />
+                      ) : (
+                        <span className="block truncate text-[12px] italic text-muted-foreground">{displayName(row.artist_name || '')}</span>
+                      )}
                     </span>
-                  </Link>
+                  </div>
                 </td>
                 <td className="py-3 text-right tabular-nums">
                   <span className="inline-flex items-center gap-2 justify-end">

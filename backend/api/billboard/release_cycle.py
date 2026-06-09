@@ -13,6 +13,7 @@ from backend.services.billboard_service import (
     compute_artist_weekly_rankings,
     compute_weekly_rankings,
     load_billboard_raw,
+    load_billboard_raw_for_artists,
 )
 from backend.services.release_cycle_service import (
     _resolve_album_group,
@@ -161,7 +162,7 @@ def _find_release_row(releases: pd.DataFrame, album_name: str):
 @router.get("/artist-list")
 def get_artist_list(filters: BillboardFilters = Depends()):
     """Sorted list of artists with track counts from current filter."""
-    df_raw = load_billboard_raw(
+    df_raw = load_billboard_raw_for_artists(
         filters.min_ms,
         filters.music_only,
         filters.bb_week_start_dow,

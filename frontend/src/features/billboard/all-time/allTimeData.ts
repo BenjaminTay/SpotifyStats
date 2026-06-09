@@ -13,6 +13,7 @@ export interface MergedTrackRow {
   track_id: number
   track_name: string
   artist_name: string
+  artist_names?: string[]
   cover_url: string | null
   weeks_on_chart: number
   peak_position: number
@@ -269,6 +270,7 @@ export function buildAllTimeRows(data: BillboardAllTimeResponse): AllTimeRows {
       track_id: score.track_id,
       track_name: score.track_name,
       artist_name: score.artist_name,
+      artist_names: score.artist_names,
       cover_url: trackCoverMap.get(score.track_id) ?? null,
       weeks_on_chart: score.weeks_on_chart,
       peak_position: score.peak_position,

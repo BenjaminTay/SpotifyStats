@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom'
 import { GlassCard } from '@/components/shared/GlassCard'
+import { ArtistLinks } from '@/components/shared/ArtistLinks'
 import type { DiscoveryReturns as DiscoveryReturnsType } from '@/types/yearly-review'
 
 interface DiscoveryReturnsProps {
@@ -57,16 +58,24 @@ export function DiscoveryReturns({ discovery }: DiscoveryReturnsProps) {
             <h3 className="font-sans text-[12px] font-semibold uppercase tracking-[1.5px] text-muted-foreground mb-4">老歌回归</h3>
             <div className="space-y-3">
               {discovery.returning_tracks.map((t) => (
-                <Link key={t.name + t.artist_name} to={`/music/tracks/${t.track_id}`} className="flex items-center gap-3 group">
-                  <CoverImage url={t.cover_url} alt={t.name} size="sm" />
+                <div key={t.name + t.artist_name} className="flex items-center gap-3 group">
+                  <Link to={`/music/tracks/${t.track_id}`}>
+                    <CoverImage url={t.cover_url} alt={t.name} size="sm" />
+                  </Link>
                   <div className="min-w-0 flex-1">
-                    <p className="font-sans text-[14px] font-semibold truncate group-hover:text-accent-foreground transition-colors">{t.name}</p>
-                    <p className="font-sans text-[12px] text-muted-foreground truncate">{t.artist_name}</p>
+                    <Link to={`/music/tracks/${t.track_id}`} className="font-sans text-[14px] font-semibold truncate transition-colors hover:text-accent-foreground block">
+                      {t.name}
+                    </Link>
+                    <ArtistLinks
+                      artistName={t.artist_name}
+                      artistNames={t.artist_names}
+                      className="block text-[12px] text-muted-foreground truncate"
+                    />
                     <p className="font-sans text-[12px] text-muted-foreground">
                       {t.plays} 次 · <span className="inline-block px-1.5 py-0.5 rounded bg-muted text-[11px]">{t.release_year}</span>
                     </p>
                   </div>
-                </Link>
+                </div>
               ))}
             </div>
           </GlassCard>
@@ -76,13 +85,21 @@ export function DiscoveryReturns({ discovery }: DiscoveryReturnsProps) {
         {discovery.longest_love && (
           <GlassCard className="p-5">
             <h3 className="font-sans text-[12px] font-semibold uppercase tracking-[1.5px] text-muted-foreground mb-4">最长情的单曲</h3>
-            <Link to={`/music/tracks/${discovery.longest_love.track_id}`} className="flex flex-col items-center text-center group pt-2">
-              <CoverImage url={discovery.longest_love.cover_url} alt={discovery.longest_love.name} />
-              <p className="font-sans text-[16px] font-semibold mt-3 group-hover:text-accent-foreground transition-colors">{discovery.longest_love.name}</p>
-              <p className="font-sans text-[13px] text-muted-foreground">{discovery.longest_love.artist_name}</p>
+            <div className="flex flex-col items-center text-center group pt-2">
+              <Link to={`/music/tracks/${discovery.longest_love.track_id}`}>
+                <CoverImage url={discovery.longest_love.cover_url} alt={discovery.longest_love.name} />
+              </Link>
+              <Link to={`/music/tracks/${discovery.longest_love.track_id}`} className="font-sans text-[16px] font-semibold mt-3 transition-colors hover:text-accent-foreground">
+                {discovery.longest_love.name}
+              </Link>
+              <ArtistLinks
+                artistName={discovery.longest_love.artist_name}
+                artistNames={discovery.longest_love.artist_names}
+                className="text-[13px] text-muted-foreground"
+              />
               <p className="font-serif text-[36px] font-bold tabular-nums mt-2">{discovery.longest_love.span_days}<span className="font-sans text-[16px] font-normal text-muted-foreground ml-1">天</span></p>
               <p className="font-sans text-[12px] text-muted-foreground">持续循环</p>
-            </Link>
+            </div>
           </GlassCard>
         )}
       </div>

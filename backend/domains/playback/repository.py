@@ -45,7 +45,8 @@ class PlaybackRepository:
         row = self.conn.execute(
             """SELECT COUNT(*) AS cnt FROM plays p
                JOIN tracks t ON p.track_id = t.track_id
-               JOIN artists a ON t.artist_id = a.artist_id
+               JOIN track_artists ta ON t.track_id = ta.track_id
+               JOIN artists a ON ta.artist_id = a.artist_id
                WHERE a.artist_name = ?""",
             (artist_name,),
         ).fetchone()

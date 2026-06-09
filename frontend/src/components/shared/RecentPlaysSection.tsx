@@ -2,6 +2,7 @@ import { useState, useMemo, useRef, useEffect, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { ChevronDown, ChevronLeft, ChevronRight, Search, CalendarIcon, X } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
+import { ArtistLinks } from '@/components/shared/ArtistLinks'
 import { CoverCell } from '@/components/shared/CoverCell'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Calendar } from '@/components/ui/calendar'
@@ -317,12 +318,11 @@ export function RecentPlaysSection({
                                 >
                                   {displayName(row.track_name)}
                                 </Link>
-                                <Link
-                                  to={row.artist_name ? `/music/artists/${encodeURIComponent(row.artist_name)}` : '#'}
-                                  className="block truncate text-[12px] italic text-muted-foreground transition-colors hover:text-accent-foreground"
-                                >
-                                  {displayName(row.artist_name)}
-                                </Link>
+                                <ArtistLinks
+                                  artistName={row.artist_name}
+                                  artistNames={row.artist_names}
+                                  className="block truncate text-[12px] italic text-muted-foreground"
+                                />
                               </span>
                             </span>
                           </td>
@@ -339,10 +339,14 @@ export function RecentPlaysSection({
                                 {displayName(row.album_name || '—')}
                               </Link>
                               <Link
-                                to={row.artist_name ? `/music/artists/${encodeURIComponent(row.artist_name)}` : '#'}
+                                to={
+                                  row.artist_name
+                                    ? `/music/artists/${encodeURIComponent(row.artist_name)}`
+                                    : '#'
+                                }
                                 className="block truncate text-[12px] italic text-muted-foreground transition-colors hover:text-accent-foreground"
                               >
-                                {displayName(row.artist_name)}
+                                {displayName(row.artist_name || '')}
                               </Link>
                             </span>
                           </td>

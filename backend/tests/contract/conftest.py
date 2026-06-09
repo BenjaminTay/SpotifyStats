@@ -31,6 +31,16 @@ def use_seed_db():
     db_mod.DB_PATH = original
     # Clear all lru_caches that may have been polluted with seed data
     db_mod._load_plays_cached.cache_clear()
+    db_mod._load_plays_for_artists_cached.cache_clear()
+    db_mod.get_track_all_artists_map.cache_clear()
+    db_mod.get_track_artist_names_map.cache_clear()
+    from backend.domains.billboard.chart_compute import (
+        _compute_power_scores_cached,
+        _compute_records_cached,
+        _compute_summaries_cached,
+        _compute_weekly_data_cached,
+    )
+    from backend.domains.billboard.data_loader import load_billboard_raw_for_artists
     from backend.services.analysis_stats_service import (
         _get_analysis_charts_cached,
         _get_analysis_stats_cached,
@@ -45,7 +55,12 @@ def use_seed_db():
 
     compute_billboard_data.cache_clear()
     _compute_billboard_data_cached.cache_clear()
+    _compute_weekly_data_cached.cache_clear()
+    _compute_power_scores_cached.cache_clear()
+    _compute_summaries_cached.cache_clear()
+    _compute_records_cached.cache_clear()
     load_billboard_raw.cache_clear()
+    load_billboard_raw_for_artists.cache_clear()
     load_track_album_map.cache_clear()
     _load_album_metadata.cache_clear()
     _get_analysis_stats_cached.cache_clear()

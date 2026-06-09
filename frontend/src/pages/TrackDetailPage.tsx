@@ -183,12 +183,22 @@ export function TrackDetailPage() {
                       {displayName(data.track_name)}
                     </h1>
                     <p className="mt-2 font-sans text-[17px] text-muted-foreground">
-                      <Link
-                        to={`/music/artists/${encodeURIComponent(data.artist_name)}`}
-                        className="transition-colors hover:text-accent-foreground"
-                      >
-                        {displayName(data.artist_name)}
-                      </Link>
+                      {(data.artist_names && data.artist_names.length > 1
+                        ? data.artist_names
+                        : [data.artist_name]
+                      ).map((name, idx, arr) => (
+                        <span key={name}>
+                          <Link
+                            to={`/music/artists/${encodeURIComponent(name)}`}
+                            className="transition-colors hover:text-accent-foreground"
+                          >
+                            {displayName(name)}
+                          </Link>
+                          {idx < arr.length - 1 && (
+                            <span className="text-muted-foreground/40">{' · '}</span>
+                          )}
+                        </span>
+                      ))}
                     </p>
                     {data.meta && (
                       <p className="mt-1 font-sans text-[14px] text-muted-foreground">

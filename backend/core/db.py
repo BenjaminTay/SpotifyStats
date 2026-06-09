@@ -81,6 +81,15 @@ CREATE INDEX IF NOT EXISTS idx_albums_artist  ON albums(artist_id);
 CREATE INDEX IF NOT EXISTS idx_track_albums_track ON track_albums(track_id);
 CREATE INDEX IF NOT EXISTS idx_track_albums_album ON track_albums(album_id);
 
+CREATE TABLE IF NOT EXISTS track_artists (
+    track_id INTEGER NOT NULL REFERENCES tracks(track_id),
+    artist_id INTEGER NOT NULL REFERENCES artists(artist_id),
+    role TEXT NOT NULL DEFAULT 'primary',
+    UNIQUE(track_id, artist_id)
+);
+CREATE INDEX IF NOT EXISTS idx_track_artists_track ON track_artists(track_id);
+CREATE INDEX IF NOT EXISTS idx_track_artists_artist ON track_artists(artist_id);
+
 -- Pre-aggregated weekly Billboard data (built after import, invalidated on param change)
 CREATE TABLE IF NOT EXISTS agg_weekly_tracks (
     billboard_week TEXT NOT NULL,
@@ -683,6 +692,128 @@ def load_plays(
     ).copy()
 
 
+@lru_cache(maxsize=16)
+def _load_plays_for_artists_cached(
+    min_ms: int,
+    music_only: bool,
+    merge_enabled: bool,
+    filtered: bool,
+    join_albums: bool,
+    columns: str,
+    extra_where: str,
+    extra_params: tuple,
+) -> pd.DataFrame:
+    """Same as _load_plays_cached but fans out through track_artists after merge
+    so featured artists get their own rows. One play on a multi-artist track
+    produces one row per credited artist.
+
+    Merge happens BEFORE fan-out to keep merge_consecutive_plays correct.
+    Only use for artist-grouped statistics.
+    """
+    import pandas as pd
+
+    conn = get_db()
+    try:
+        params: list[Any] = []
+
+        if filtered:
+            if merge_enabled:
+                f, fp = base_filters(min_ms=0, music_only=music_only)
+            else:
+                f, fp = base_filters(min_ms=min_ms, music_only=music_only)
+            where = f"WHERE {f}" if f else ""
+        else:
+            where = "WHERE p.track_id IS NOT NULL" if music_only else ""
+            fp = []
+
+        if extra_where:
+            where += f" AND {extra_where}" if where else f"WHERE {extra_where}"
+        params = fp + list(extra_params)
+
+        if columns == "*":
+            if join_albums:
+                cols = "p.*, t.track_name, t.spotify_track_uri, a.artist_name, al.album_name"
+            else:
+                cols = "p.*, t.track_name, t.spotify_track_uri, a.artist_name"
+            if filtered:
+                cols += ", stm.duration_ms"
+        else:
+            cols = columns
+
+        # Step 1: Load single-artist data (same as _load_plays_cached)
+        if join_albums:
+            from_clause = (
+                "FROM plays p "
+                "LEFT JOIN tracks t ON p.track_id = t.track_id "
+                "LEFT JOIN artists a ON t.artist_id = a.artist_id "
+                "LEFT JOIN albums al ON t.album_id = al.album_id"
+            )
+        else:
+            from_clause = (
+                "FROM plays p "
+                "LEFT JOIN tracks t ON p.track_id = t.track_id "
+                "LEFT JOIN artists a ON t.artist_id = a.artist_id"
+            )
+        if filtered:
+            from_clause += (
+                " LEFT JOIN spotify_track_meta stm "
+                "ON REPLACE(t.spotify_track_uri, 'spotify:track:', '') = stm.spotify_track_id"
+            )
+
+        sql = f"SELECT {cols} {from_clause} {where} ORDER BY p.ts"
+        df = pd.read_sql_query(sql, conn, params=params)
+
+        if filtered and merge_enabled:
+            df = merge_consecutive_plays(df, min_ms)
+            if min_ms > 0:
+                df = df[df["ms_played"] >= min_ms]
+
+        # Step 2: Fan out through track_artists for multi-artist attribution
+        track_artists_df = pd.read_sql_query("SELECT track_id, artist_id FROM track_artists", conn)
+        # Drop the single-artist artist_name (will be replaced by fan-out join)
+        df = df.drop(columns=["artist_name"], errors="ignore")
+        df = df.merge(track_artists_df, on="track_id", how="inner")
+        # Re-join artist names from the fanned-out artist_ids
+        artists_df = pd.read_sql_query("SELECT artist_id, artist_name FROM artists", conn)
+        df = df.merge(artists_df, on="artist_id", how="left")
+
+        return df
+    finally:
+        conn.close()
+
+
+def load_plays_for_artists(
+    conn: sqlite3.Connection,
+    columns: str = "*",
+    extra_where: str = "",
+    extra_params: list[Any] | None = None,
+    min_ms: int = 30000,
+    music_only: bool = True,
+    join_albums: bool = True,
+    filtered: bool = True,
+    merge_enabled: bool = True,
+):
+    """Load plays with multi-artist fan-out for artist-statistics queries.
+
+    Identical to load_plays() but joins through track_artists so each play
+    produces one row per credited artist. artist_name comes from the
+    track_artists join, not from tracks.artist_id.
+
+    DO NOT USE for total play counts, track statistics, or album statistics
+    — it duplicates rows for multi-artist tracks.
+    """
+    return _load_plays_for_artists_cached(
+        min_ms=min_ms,
+        music_only=music_only,
+        merge_enabled=merge_enabled,
+        filtered=filtered,
+        join_albums=join_albums,
+        columns=columns,
+        extra_where=extra_where,
+        extra_params=tuple(extra_params or ()),
+    ).copy()
+
+
 def db_exists() -> bool:
     """Check if the database file already exists and has data."""
     if not os.path.exists(DB_PATH):
@@ -695,6 +826,109 @@ def db_exists() -> bool:
         return False
     finally:
         conn.close()
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Track artist display helpers
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+@lru_cache(maxsize=1)
+def get_track_all_artists_map() -> dict[int, str]:
+    """Return {track_id: 'Primary, Featured1, Featured2, ...'} for tracks with
+    multiple credited artists. Tracks with only a primary artist are excluded
+    from the dict so callers can use .get() with the existing artist_name as
+    fallback."""
+    conn = get_db()
+    rows = conn.execute(
+        """SELECT ta.track_id, a.artist_name
+           FROM track_artists ta
+           JOIN artists a ON ta.artist_id = a.artist_id
+           ORDER BY ta.track_id, CASE ta.role WHEN 'primary' THEN 0 ELSE 1 END"""
+    ).fetchall()
+    conn.close()
+
+    from collections import defaultdict
+
+    track_artists = defaultdict(list)
+    for track_id, artist_name in rows:
+        track_artists[track_id].append(artist_name)
+
+    return {tid: ", ".join(names) for tid, names in track_artists.items() if len(names) > 1}
+
+
+@lru_cache(maxsize=1)
+def get_track_artist_names_map() -> dict[int, list[str]]:
+    """Return {track_id: [artist_name, ...]} for ALL tracks that have
+    track_artists entries (at minimum the primary artist)."""
+    conn = get_db()
+    rows = conn.execute(
+        """SELECT ta.track_id, a.artist_name
+           FROM track_artists ta
+           JOIN artists a ON ta.artist_id = a.artist_id
+           ORDER BY ta.track_id, CASE ta.role WHEN 'primary' THEN 0 ELSE 1 END"""
+    ).fetchall()
+    conn.close()
+
+    from collections import defaultdict
+
+    track_artists = defaultdict(list)
+    for track_id, artist_name in rows:
+        track_artists[track_id].append(artist_name)
+
+    return dict(track_artists)
+
+
+def enrich_track_artist_names(df: pd.DataFrame) -> pd.DataFrame:
+    """Enrich the artist_name column with featured artists for display, and
+    add an artist_names list column for individual linking.
+
+    - artist_name → 'Primary, Featured1, Featured2, ...'  (for display)
+    - artist_names → ['Primary', 'Featured1', 'Featured2', ...]  (for linking)
+
+    Returns a new DataFrame — does not mutate the input.
+    """
+    if df.empty or "track_id" not in df.columns:
+        return df
+    artist_map = get_track_all_artists_map()
+    names_map = get_track_artist_names_map()
+    if not artist_map and not names_map:
+        return df
+    df = df.copy()
+    if artist_map:
+        df["artist_name"] = df["track_id"].map(artist_map).fillna(df["artist_name"])
+    if names_map:
+        df["artist_names"] = df["track_id"].map(names_map)
+        df["artist_names"] = df["artist_names"].apply(lambda x: x if isinstance(x, list) else [])
+    return df
+
+
+def fan_out_weekly_for_artists(weekly_df: pd.DataFrame) -> pd.DataFrame:
+    """Duplicate rows in weekly_df so every credited artist gets their own entry.
+
+    Each row is duplicated for each artist in track_artists (primary + featured).
+    The artist_name column is set to the individual artist's name.
+    Used for artist_summary and artist-level filtering.
+    """
+    if weekly_df.empty or "track_id" not in weekly_df.columns:
+        return weekly_df
+
+    names_map = get_track_artist_names_map()
+    if not names_map:
+        return weekly_df
+
+    import pandas as pd
+
+    rows = []
+    for _, row in weekly_df.iterrows():
+        tid = row["track_id"]
+        artists = names_map.get(tid, [row["artist_name"]])
+        for artist in artists:
+            new_row = row.to_dict()
+            new_row["artist_name"] = artist
+            rows.append(new_row)
+
+    return pd.DataFrame(rows)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -844,11 +1078,13 @@ def build_aggregations(
     if progress_callback:
         progress_callback("预聚合: 专辑完成", 0.66)
 
-    # 3. Artists
+    # 3. Artists — fan out through track_artists for multi-artist attribution
     if progress_callback:
         progress_callback("预聚合: 艺人...", 0.66)
+    track_artists_df = pd.read_sql_query("SELECT track_id, artist_id FROM track_artists", conn)
+    df_artists = df.merge(track_artists_df, on="track_id", how="inner", suffixes=("_primary", ""))
     artists_agg = (
-        df.groupby(["billboard_week", "artist_id"])
+        df_artists.groupby(["billboard_week", "artist_id"])
         .agg(play_count=("ms_played", "count"), total_ms=("ms_played", "sum"))
         .reset_index()
     )
@@ -933,3 +1169,5 @@ def load_agg_weekly_artists(conn: sqlite3.Connection) -> pd.DataFrame:
 from backend.core.cache_manager import register_lru  # noqa: E402
 
 register_lru("db", "plays", _load_plays_cached)
+register_lru("db", "track_all_artists_map", get_track_all_artists_map)
+register_lru("db", "track_artist_names_map", get_track_artist_names_map)

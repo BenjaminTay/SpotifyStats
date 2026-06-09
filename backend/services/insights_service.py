@@ -13,7 +13,8 @@ def get_artist_tiers(conn: sqlite3.Connection) -> dict:
                       SUM(p.ms_played) / 3600000.0 as hours
                FROM plays p
                JOIN tracks t ON p.track_id = t.track_id
-               JOIN artists a ON t.artist_id = a.artist_id
+               JOIN track_artists ta ON t.track_id = ta.track_id
+               JOIN artists a ON ta.artist_id = a.artist_id
                WHERE p.track_id IS NOT NULL
                GROUP BY a.artist_name
                ORDER BY hours DESC""",

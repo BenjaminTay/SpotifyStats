@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { GlassCard } from '@/components/shared/GlassCard'
+import { ArtistLinks } from '@/components/shared/ArtistLinks'
 import type { MonthlyDrillItem } from '@/types/yearly-review'
 
 interface MonthlyDrilldownProps {
@@ -67,15 +68,23 @@ export function MonthlyDrilldown({ monthlyDrilldown }: MonthlyDrilldownProps) {
                       <p className="font-sans text-[11px] uppercase tracking-[1px] text-muted-foreground mb-2">最爱曲目</p>
                       <div className="space-y-2">
                         {m.top_tracks.map((t, i) => (
-                          <Link key={t.name + t.artist_name} to={`/music/tracks/${t.track_id}`} className="flex items-center gap-3 group">
+                          <div key={t.name + t.artist_name} className="flex items-center gap-3 group">
                             <span className="font-sans text-[11px] font-bold text-muted-foreground w-4">{i + 1}</span>
-                            <MiniCover url={t.cover_url} name={t.name} />
+                            <Link to={`/music/tracks/${t.track_id}`}>
+                              <MiniCover url={t.cover_url} name={t.name} />
+                            </Link>
                             <div className="min-w-0 flex-1">
-                              <p className="font-sans text-[13px] font-semibold truncate group-hover:text-accent-foreground transition-colors">{t.name}</p>
-                              <p className="font-sans text-[11px] text-muted-foreground truncate">{t.artist_name}</p>
+                              <Link to={`/music/tracks/${t.track_id}`} className="font-sans text-[13px] font-semibold truncate transition-colors hover:text-accent-foreground block">
+                                {t.name}
+                              </Link>
+                              <ArtistLinks
+                                artistName={t.artist_name}
+                                artistNames={t.artist_names}
+                                className="block text-[11px] text-muted-foreground truncate"
+                              />
                             </div>
                             <span className="font-sans text-[12px] text-muted-foreground tabular-nums">{t.plays} 次</span>
-                          </Link>
+                          </div>
                         ))}
                       </div>
                     </div>

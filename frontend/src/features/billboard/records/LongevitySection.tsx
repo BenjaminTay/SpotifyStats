@@ -49,7 +49,7 @@ export function LongevitySection({ rec, covers }: { rec: BillboardRecords; cover
         {chartingType === 'track' ? (
           <MiniRankTable rows={rec.longest_charting as LongestChartingRecord[]} columns={[
             { header: '#', width: '48px', align: 'center', render: (_, idx) => <RankNum rank={idx + 1} /> },
-            { header: '歌曲', render: (r) => <TrackCell trackId={r.track_id} trackName={r.track_name} artistName={r.artist_name} coverUrl={covers.track.get(r.track_id)} /> },
+            { header: '歌曲', render: (r) => <TrackCell trackId={r.track_id} trackName={r.track_name} artistName={r.artist_name} artistNames={r.artist_names} coverUrl={covers.track.get(r.track_id)} /> },
             { header: '在榜周数', width: '145px', align: 'right', render: (r) => <ValueBar value={r.weeks_on_chart} max={(rec.longest_charting as LongestChartingRecord[])[0]?.weeks_on_chart ?? 1} suffix="周" /> },
             { header: 'Peak', width: '55px', align: 'center', render: (r) => <PeakNum rank={r.peak_position} /> },
             { header: '冠周', width: '110px', align: 'right', render: (r) => <span className="font-sans text-[13px] tabular-nums text-muted-foreground">{r.weeks_at_no1 > 0 ? `${r.weeks_at_no1} 周` : '—'}</span> },
@@ -69,7 +69,7 @@ export function LongevitySection({ rec, covers }: { rec: BillboardRecords; cover
         {streakType === 'track' ? (
           <MiniRankTable rows={rec.longest_streak as LongestStreakRecord[]} columns={[
             { header: '#', width: '48px', align: 'center', render: (_, idx) => <RankNum rank={idx + 1} /> },
-            { header: '歌曲', render: (r) => <TrackCell trackId={r.track_id} trackName={r.track_name} artistName={r.artist_name} coverUrl={covers.track.get(r.track_id)} /> },
+            { header: '歌曲', render: (r) => <TrackCell trackId={r.track_id} trackName={r.track_name} artistName={r.artist_name} artistNames={r.artist_names} coverUrl={covers.track.get(r.track_id)} /> },
             { header: '连续周数', width: '145px', align: 'right', render: (r) => <ValueBar value={r['连续周数']} max={(rec.longest_streak as LongestStreakRecord[])[0]?.['连续周数'] ?? 1} suffix="周" /> },
             { header: '时间区间', width: '190px', render: (r) => <span className="font-sans text-[12px] tabular-nums text-muted-foreground">{fmtDate(r['起始周'])} — {fmtDate(r['结束周'])}</span> },
           ]} />
@@ -87,7 +87,7 @@ export function LongevitySection({ rec, covers }: { rec: BillboardRecords; cover
         {noTop5Type === 'track' ? (
           <MiniRankTable rows={rec.longest_no_top5 as LongestNoTop5Record[]} columns={[
             { header: '#', width: '48px', align: 'center', render: (_, idx) => <RankNum rank={idx + 1} /> },
-            { header: '歌曲', render: (r) => <TrackCell trackId={r.track_id} trackName={r.track_name} artistName={r.artist_name} coverUrl={covers.track.get(r.track_id)} /> },
+            { header: '歌曲', render: (r) => <TrackCell trackId={r.track_id} trackName={r.track_name} artistName={r.artist_name} artistNames={r.artist_names} coverUrl={covers.track.get(r.track_id)} /> },
             { header: '在榜周数', width: '145px', align: 'right', render: (r) => <ValueBar value={r.weeks_on_chart} max={(rec.longest_no_top5 as LongestNoTop5Record[])[0]?.weeks_on_chart ?? 1} suffix="周" /> },
             { header: 'Peak', width: '55px', align: 'center', render: (r) => <PeakNum rank={r.peak_position} /> },
           ]} />
@@ -105,7 +105,7 @@ export function LongevitySection({ rec, covers }: { rec: BillboardRecords; cover
         {no2Type === 'track' ? (
           <MiniRankTable rows={rec.most_weeks_no2_no_no1 as MostWeeksNo2Record[]} columns={[
             { header: '#', width: '48px', align: 'center', render: (_, idx) => <RankNum rank={idx + 1} /> },
-            { header: '歌曲', render: (r) => <TrackCell trackId={r.track_id} trackName={r.track_name} artistName={r.artist_name} coverUrl={covers.track.get(r.track_id)} /> },
+            { header: '歌曲', render: (r) => <TrackCell trackId={r.track_id} trackName={r.track_name} artistName={r.artist_name} artistNames={r.artist_names} coverUrl={covers.track.get(r.track_id)} /> },
             { header: '#2 周数', width: '145px', align: 'right', render: (r) => <ValueBar value={r.weeks_at_no2} max={(rec.most_weeks_no2_no_no1 as MostWeeksNo2Record[])[0]?.weeks_at_no2 ?? 1} suffix="周" /> },
             { header: 'Peak', width: '55px', align: 'center', render: () => <PeakNum rank={2} /> },
           ]} />
@@ -123,7 +123,7 @@ export function LongevitySection({ rec, covers }: { rec: BillboardRecords; cover
         {reentryType === 'track' ? (
           <MiniRankTable rows={rec.most_reentries as MostReentriesRecord[]} columns={[
             { header: '#', width: '48px', align: 'center', render: (_, idx) => <RankNum rank={idx + 1} /> },
-            { header: '歌曲', render: (r) => <TrackCell trackId={r.track_id} trackName={r.track_name} artistName={r.artist_name} coverUrl={covers.track.get(r.track_id)} /> },
+            { header: '歌曲', render: (r) => <TrackCell trackId={r.track_id} trackName={r.track_name} artistName={r.artist_name} artistNames={r.artist_names} coverUrl={covers.track.get(r.track_id)} /> },
             { header: '回榜次数', width: '145px', align: 'right', render: (r) => <ValueBar value={r['回榜次数']} max={(rec.most_reentries as MostReentriesRecord[])[0]?.['回榜次数'] ?? 1} suffix="次" /> },
             { header: '在榜周数', width: '110px', align: 'right', render: (r) => <span className="font-sans text-[13px] tabular-nums text-muted-foreground">{r['在榜周数']} 周</span> },
           ]} />
@@ -141,7 +141,7 @@ export function LongevitySection({ rec, covers }: { rec: BillboardRecords; cover
         {sameRankType === 'track' ? (
           <MiniRankTable rows={rec.longest_consecutive_same_rank as LongestSameRankRecord[]} columns={[
             { header: '#', width: '48px', align: 'center', render: (_, idx) => <RankNum rank={idx + 1} /> },
-            { header: '歌曲', render: (r) => <TrackCell trackId={r.track_id} trackName={r.track_name} artistName={r.artist_name} coverUrl={covers.track.get(r.track_id)} /> },
+            { header: '歌曲', render: (r) => <TrackCell trackId={r.track_id} trackName={r.track_name} artistName={r.artist_name} artistNames={r.artist_names} coverUrl={covers.track.get(r.track_id)} /> },
             { header: '排名', width: '55px', align: 'center', render: (r) => <PeakNum rank={r['停留排名']} /> },
             { header: '连续周数', width: '145px', align: 'right', render: (r) => <ValueBar value={r['连续周数']} max={(rec.longest_consecutive_same_rank as LongestSameRankRecord[])[0]?.['连续周数'] ?? 1} suffix="周" /> },
             { header: '时间区间', width: '190px', render: (r) => <span className="font-sans text-[12px] tabular-nums text-muted-foreground">{fmtDate(r['起始周'])} — {fmtDate(r['结束周'])}</span> },

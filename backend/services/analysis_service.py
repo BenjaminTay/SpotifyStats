@@ -4,7 +4,7 @@ import sqlite3
 
 import pandas as pd
 
-from backend.core.db import load_plays
+from backend.core.db import load_plays, load_plays_for_artists
 from backend.services.play_service import (
     _album_cover_lookup,
     _artist_cover_lookup,
@@ -282,7 +282,13 @@ def get_analysis_overview(
     trend = _trend_summary(monthly)
     listening = _listening_summary(df, hourly)
     tracks = _top_tracks(conn, df)
-    artists = _top_artists(conn, df)
+    df_artists = load_plays_for_artists(
+        conn,
+        min_ms=min_ms,
+        music_only=music_only,
+        merge_enabled=merge_enabled,
+    )
+    artists = _top_artists(conn, df_artists)
     albums = _top_albums(conn, df)
     behavior = _behavior_summary(conn, music_only)
 

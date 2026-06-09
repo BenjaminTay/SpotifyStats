@@ -47,7 +47,7 @@ function DecadeBestCard({ covers, decadeGroups }: { covers: CoverMaps; decadeGro
       {tracks.length > 0 ? (
         <MiniRankTable rows={tracks} columns={[
           { header: '#', width: '48px', align: 'center', render: (_, idx) => <RankNum rank={idx + 1} /> },
-          { header: '歌曲', render: (r) => <TrackCell trackId={r.track_id} trackName={r.track_name} artistName={r.artist_name} coverUrl={covers.track.get(r.track_id)} /> },
+          { header: '歌曲', render: (r) => <TrackCell trackId={r.track_id} trackName={r.track_name} artistName={r.artist_name} artistNames={r.artist_names} coverUrl={covers.track.get(r.track_id)} /> },
           { header: '走势评分', width: '130px', align: 'right', render: (r) => <ValueBar value={r['走势评分']} max={tracks[0]?.['走势评分'] ?? 1} /> },
           { header: 'Peak', width: '55px', align: 'center', render: (r) => <PeakNum rank={r.peak} /> },
           { header: '在榜', width: '100px', align: 'right', render: (r) => <span className="font-sans text-[13px] tabular-nums text-muted-foreground">{r.weeks_on_chart} 周</span> },
@@ -92,7 +92,7 @@ export function HallOfFameSection({ rec, covers }: { rec: BillboardRecords; cove
         )}
         <MiniRankTable rows={rec.all_time_greatest} columns={[
           { header: '#', width: '48px', align: 'center', render: (_, idx) => <RankNum rank={idx + 1} /> },
-          { header: '歌曲', render: (r) => <TrackCell trackId={r.track_id} trackName={r.track_name} artistName={r.artist_name} coverUrl={covers.track.get(r.track_id)} /> },
+          { header: '歌曲', render: (r) => <TrackCell trackId={r.track_id} trackName={r.track_name} artistName={r.artist_name} artistNames={r.artist_names} coverUrl={covers.track.get(r.track_id)} /> },
           { header: '走势评分', width: '145px', align: 'right', render: (r) => <ValueBar value={r['走势评分']} max={songScoreMax} /> },
           { header: 'Peak', width: '55px', align: 'center', render: (r) => <PeakNum rank={r.peak_position} /> },
           { header: '在榜', width: '110px', align: 'right', render: (r) => <span className="font-sans text-[13px] tabular-nums text-muted-foreground">{r.weeks_on_chart} 周</span> },

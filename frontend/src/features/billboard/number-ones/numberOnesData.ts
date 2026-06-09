@@ -18,6 +18,7 @@ export interface TrackNo1Info {
   track_id: number
   track_name: string
   artist_name: string
+  artist_names?: string[]
   cover_url?: string | null
   weeks_at_no1: number
   power_score: number
@@ -49,6 +50,7 @@ export interface DebutNo1 {
   track_id: number
   track_name: string
   artist_name: string
+  artist_names?: string[]
   cover_url?: string | null
   billboard_week: string
   weeks_on_chart: number
@@ -196,6 +198,7 @@ export function buildNumberOnes(data: BillboardAllTimeResponse | null | undefine
       track_id: trackId,
       track_name: entries[0].track_name,
       artist_name: entries[0].artist_name,
+      artist_names: entries[0].artist_names,
       cover_url: entries[0].cover_url,
       weeks_at_no1: new Set(weeks).size,
       power_score: psByTrack.get(trackId) ?? 0,
@@ -323,6 +326,7 @@ function buildTrackDebuts(weekly: WeeklyTrackEntry[], trackSummary: TrackSummary
       track_id: trackId,
       track_name: entry.track_name,
       artist_name: entry.artist_name,
+      artist_names: entry.artist_names,
       cover_url: entry.cover_url,
       billboard_week: entry.billboard_week,
       weeks_on_chart: summary?.weeks_on_chart ?? 0,

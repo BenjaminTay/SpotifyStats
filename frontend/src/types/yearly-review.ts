@@ -33,6 +33,7 @@ export interface TopTrackEntry {
   track_id: number
   name: string
   artist_name: string
+  artist_names?: string[]
   plays: number
   hours: number
   cover_url: string
@@ -82,6 +83,7 @@ export interface LateNightTrack {
   track_id: number
   name: string
   artist_name: string
+  artist_names?: string[]
   plays: number
   cover_url: string
 }
@@ -130,6 +132,7 @@ export interface ReturningTrack {
   track_id: number
   name: string
   artist_name: string
+  artist_names?: string[]
   plays: number
   release_year: number
   cover_url: string
@@ -139,6 +142,7 @@ export interface LongestLove {
   track_id: number
   name: string
   artist_name: string
+  artist_names?: string[]
   span_days: number
   cover_url: string
 }
@@ -195,7 +199,7 @@ export interface SpecialMoments {
 export interface MonthlyDrillItem {
   month: number
   total_hours: number
-  top_tracks: { track_id: number; name: string; artist_name: string; plays: number; cover_url: string }[]
+  top_tracks: { track_id: number; name: string; artist_name: string; artist_names?: string[]; plays: number; cover_url: string }[]
   top_artist: { name: string; cover_url: string } | null
 }
 

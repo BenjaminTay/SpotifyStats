@@ -10,6 +10,7 @@ import {
   ChevronsRight,
 } from 'lucide-react'
 
+import { ArtistLinks } from '@/components/shared/ArtistLinks'
 import { GlassCard } from '@/components/shared/GlassCard'
 import { displayName } from '@/lib/chinese'
 import { cn } from '@/lib/utils'
@@ -107,12 +108,11 @@ function renderTrackName(row: MergedTrackRow) {
         >
           {displayName(row.track_name)}
         </Link>
-        <Link
-          to={billboardDetailLink(`/music/artists/${encodeURIComponent(row.artist_name)}`)}
-          className="block truncate font-sans text-[12px] text-muted-foreground transition-colors hover:text-accent-foreground"
-        >
-          {displayName(row.artist_name)}
-        </Link>
+        <ArtistLinks
+          artistName={row.artist_name}
+          artistNames={row.artist_names}
+          className="block truncate font-sans text-[12px] text-muted-foreground"
+        />
       </div>
     </div>
   )
@@ -130,7 +130,7 @@ function renderAlbumName(row: MergedAlbumRow) {
           {displayName(row.album_name)}
         </Link>
         <Link
-          to={billboardDetailLink(`/music/artists/${encodeURIComponent(row.artist_name)}`)}
+          to={billboardDetailLink(`/music/artists/${encodeURIComponent(primaryArtistName(row))}`)}
           className="block truncate font-sans text-[12px] text-muted-foreground transition-colors hover:text-accent-foreground"
         >
           {displayName(row.artist_name)}

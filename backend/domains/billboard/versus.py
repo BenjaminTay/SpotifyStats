@@ -2,7 +2,7 @@
 
 import pandas as pd
 
-from backend.core.db import get_db
+from backend.core.db import fan_out_weekly_for_artists, get_db
 from backend.domains.billboard.chart_compute import compute_billboard_data
 
 
@@ -233,8 +233,9 @@ def get_versus_artist(
             return None
         aps_val, aps_rank = _get_ps_rank(artist_power_scores, "artist_name", artist_name)
 
-        # Track-level stats
-        artist_tracks = weekly[weekly["artist_name"] == artist_name]
+        # Track-level stats — use fanned-out weekly for multi-artist matching
+        weekly_fanned = fan_out_weekly_for_artists(weekly)
+        artist_tracks = weekly_fanned[weekly_fanned["artist_name"] == artist_name]
         num_tracks = int(artist_tracks["track_id"].nunique())
         num_no1_tracks = int(artist_tracks[artist_tracks["rank"] == 1]["track_id"].nunique())
         total_no1_track_weeks = int((artist_tracks["rank"] == 1).sum())

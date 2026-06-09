@@ -127,6 +127,7 @@ export interface LeaderboardRow {
   track_id?: number
   track_name?: string
   artist_name?: string
+  artist_names?: string[]
   album_name?: string
   unique_tracks?: number
   cover_url?: string | null
@@ -314,6 +315,7 @@ export interface RecentPlayRow {
   track_id: number | null
   track_name: string
   artist_name: string
+  artist_names?: string[]
   album_name: string | null
   ms_played: number
   hours: number
@@ -355,6 +357,7 @@ export interface AnalysisChartRow {
   track_name?: string
   album_name?: string
   artist_name?: string
+  artist_names?: string[]
   unique_tracks?: number
   unique_albums?: number
   cover_url: string | null

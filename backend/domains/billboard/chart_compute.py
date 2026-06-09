@@ -7,6 +7,10 @@ import numpy as np
 import pandas as pd
 
 from backend.core.cache import singleflight
+from backend.core.db import (
+    enrich_track_artist_names,
+    fan_out_weekly_for_artists,
+)
 from backend.core.json_helpers import df_to_json as _df_to_json
 from backend.domains.billboard.data_loader import (
     DOW_NAMES,
@@ -14,6 +18,7 @@ from backend.domains.billboard.data_loader import (
     _load_album_metadata,
     _try_load_from_agg,
     load_billboard_raw,
+    load_billboard_raw_for_artists,
     load_track_album_map,
 )
 from backend.domains.billboard.version_merge import (
@@ -197,6 +202,8 @@ def compute_power_scores(weekly, top_n):
     _r2 = weekly[weekly["rank"] == 2][["billboard_week", "play_count"]]
     week_r2 = dict(zip(_r2["billboard_week"], _r2["play_count"]))
 
+    has_artist_names = "artist_names" in weekly.columns
+
     scores = []
     for (track_id, track_name, artist_name), group in weekly.groupby(
         ["track_id", "track_name", "artist_name"]
@@ -253,19 +260,22 @@ def compute_power_scores(weekly, top_n):
             total + peak_bonus + top5_bonus + top10_bonus + longevity_bonus + debut_bonus
         )
 
-        scores.append(
-            {
-                "track_id": track_id,
-                "track_name": track_name,
-                "artist_name": artist_name,
-                "power_score": power_score,
-                "peak_position": peak,
-                "weeks_on_chart": weeks_total,
-                "weeks_top5": weeks_top5,
-                "weeks_top10": weeks_top10,
-                "weeks_at_no1": weeks_at_no1,
-            }
-        )
+        entry = {
+            "track_id": track_id,
+            "track_name": track_name,
+            "artist_name": artist_name,
+            "power_score": power_score,
+            "peak_position": peak,
+            "weeks_on_chart": weeks_total,
+            "weeks_top5": weeks_top5,
+            "weeks_top10": weeks_top10,
+            "weeks_at_no1": weeks_at_no1,
+        }
+        if has_artist_names:
+            names_val = group.iloc[0].get("artist_names")
+            if isinstance(names_val, list):
+                entry["artist_names"] = names_val
+        scores.append(entry)
 
     df = pd.DataFrame(scores).sort_values("power_score", ascending=False).reset_index(drop=True)
     df["power_rank"] = df.index + 1
@@ -552,9 +562,22 @@ def _compute_billboard_data_cached(
     # ── Compute rankings ───────────────────────────────────────────────
     weekly = compute_weekly_rankings(df_filtered, bb_top_n, pre_agg=_agg_tracks)
     weekly_album = compute_album_weekly_rankings(df_filtered, bb_album_top_n, pre_agg=_agg_albums)
-    weekly_artist = compute_artist_weekly_rankings(
-        df_filtered, bb_artist_top_n, pre_agg=_agg_artists
-    )
+
+    if _agg_artists is not None:
+        weekly_artist = compute_artist_weekly_rankings(
+            df_filtered, bb_artist_top_n, pre_agg=_agg_artists
+        )
+    else:
+        df_artists = load_billboard_raw_for_artists(
+            min_ms, music_only, bb_week_start_dow, bb_week_start_hour
+        )
+        df_artists = df_artists.copy()
+        df_artists["_year"] = df_artists["billboard_week"].apply(lambda x: x.year)
+        if year_start is not None:
+            df_artists = df_artists[df_artists["_year"] >= year_start]
+        if year_end is not None:
+            df_artists = df_artists[df_artists["_year"] <= year_end]
+        weekly_artist = compute_artist_weekly_rankings(df_artists, bb_artist_top_n)
 
     # ── Patch tracks_count from weekly when using pre-agg ──────────────
     if _agg_tracks is not None:
@@ -644,8 +667,9 @@ def _compute_billboard_data_cached(
     weekly_artist = _add_running_metrics(weekly_artist, ["artist_name"])
 
     # ── Artist summary ─────────────────────────────────────────────────
+    weekly_fanned = fan_out_weekly_for_artists(weekly)
     artist_summary = (
-        weekly.groupby(["artist_name", "track_id", "track_name", "album_name"])
+        weekly_fanned.groupby(["artist_name", "track_id", "track_name", "album_name"])
         .agg(
             peak_position=("rank", "min"),
             weeks_on_chart=("billboard_week", "nunique"),
@@ -782,6 +806,10 @@ def _compute_billboard_data_cached(
     album_track_counts["album_chart_no1_weeks"] = (
         album_track_counts["album_chart_no1_weeks"].fillna(0).astype(int)
     )
+
+    # ── Enrich track artist_name with featured artists ────────────────────
+    weekly = enrich_track_artist_names(weekly)
+    track_summary = enrich_track_artist_names(track_summary)
 
     # ── Power scores (compute before records to avoid double work) ──────
     power_scores = compute_power_scores(weekly, bb_top_n)
@@ -931,9 +959,22 @@ def _load_and_rank(
 
     weekly = compute_weekly_rankings(df_filtered, bb_top_n, pre_agg=_agg_tracks)
     weekly_album = compute_album_weekly_rankings(df_filtered, bb_album_top_n, pre_agg=_agg_albums)
-    weekly_artist = compute_artist_weekly_rankings(
-        df_filtered, bb_artist_top_n, pre_agg=_agg_artists
-    )
+
+    if _agg_artists is not None:
+        weekly_artist = compute_artist_weekly_rankings(
+            df_filtered, bb_artist_top_n, pre_agg=_agg_artists
+        )
+    else:
+        df_artists = load_billboard_raw_for_artists(
+            min_ms, music_only, bb_week_start_dow, bb_week_start_hour
+        )
+        df_artists = df_artists.copy()
+        df_artists["_year"] = df_artists["billboard_week"].apply(lambda x: x.year)
+        if year_start is not None:
+            df_artists = df_artists[df_artists["_year"] >= year_start]
+        if year_end is not None:
+            df_artists = df_artists[df_artists["_year"] <= year_end]
+        weekly_artist = compute_artist_weekly_rankings(df_artists, bb_artist_top_n)
 
     # Patch tracks_count from weekly when using pre-agg
     if _agg_tracks is not None:
@@ -1014,6 +1055,7 @@ def _compute_weekly_data_cached(
     from backend.domains.billboard.records import _add_cover_urls  # noqa: E402
 
     weekly, weekly_album, weekly_artist = _add_cover_urls(weekly, weekly_album, weekly_artist)
+    weekly = enrich_track_artist_names(weekly)
 
     date_cols_week = ["billboard_week"]
     return {
@@ -1060,6 +1102,8 @@ def _compute_power_scores_cached(
         year_start,
         year_end,
     )
+
+    weekly = enrich_track_artist_names(weekly)
 
     power_scores = compute_power_scores(weekly, bb_top_n)
     album_power_scores = compute_album_power_scores(weekly_album, bb_album_top_n)
@@ -1138,8 +1182,9 @@ def _compute_summaries_cached(
     )
 
     # Artist summary
+    weekly_fanned = fan_out_weekly_for_artists(weekly)
     artist_summary = (
-        weekly.groupby(["artist_name", "track_id", "track_name", "album_name"])
+        weekly_fanned.groupby(["artist_name", "track_id", "track_name", "album_name"])
         .agg(
             peak_position=("rank", "min"),
             weeks_on_chart=("billboard_week", "nunique"),
@@ -1262,6 +1307,8 @@ def _compute_summaries_cached(
         album_track_counts["album_chart_no1_weeks"].fillna(0).astype(int)
     )
 
+    track_summary = enrich_track_artist_names(track_summary)
+
     return {
         "track_summary": _df_to_json(track_summary, date_cols_week),
         "artist_summary": _df_to_json(artist_summary, date_cols_week),
@@ -1330,6 +1377,9 @@ def _compute_records_cached(
     power_scores = compute_power_scores(weekly, bb_top_n)
     album_power_scores = compute_album_power_scores(weekly_album, bb_album_top_n)
     artist_power_scores = compute_artist_power_scores(weekly_artist, bb_artist_top_n)
+
+    weekly = enrich_track_artist_names(weekly)
+    track_summary = enrich_track_artist_names(track_summary)
 
     from backend.domains.billboard.records import _serialize_records, compute_records  # noqa: E402
 

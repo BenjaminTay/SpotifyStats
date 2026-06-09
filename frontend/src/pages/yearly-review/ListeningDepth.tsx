@@ -69,7 +69,9 @@ export function ListeningDepth({ listeningDepth }: ListeningDepthProps) {
                   <CoverImage url={album.cover_url} alt={album.name} />
                   <div className="min-w-0 flex-1">
                     <p className="font-sans text-[14px] font-semibold truncate group-hover:text-accent-foreground transition-colors">{album.name}</p>
-                    <p className="font-sans text-[12px] text-muted-foreground truncate">{album.artist_name}</p>
+                    <Link to={`/music/artists/${encodeURIComponent(album.artist_name)}`} className="font-sans text-[12px] text-muted-foreground truncate transition-colors hover:text-accent-foreground block">
+                      {album.artist_name}
+                    </Link>
                     <div className="mt-1.5 h-1.5 bg-muted rounded-full overflow-hidden">
                       <div
                         className="h-full rounded-full bg-green-500 dark:bg-green-400 transition-all duration-700"

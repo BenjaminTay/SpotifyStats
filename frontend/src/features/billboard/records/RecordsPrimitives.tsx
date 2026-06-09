@@ -4,6 +4,7 @@ import { createPortal } from 'react-dom'
 import { Link } from 'react-router-dom'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 
+import { ArtistLinks } from '@/components/shared/ArtistLinks'
 import { GlassCard } from '@/components/shared/GlassCard'
 import { cn } from '@/lib/utils'
 import { displayName } from '@/lib/chinese'
@@ -197,7 +198,7 @@ export function PeakNum({ rank }: { rank: number }) {
   return <span className={cn('font-serif text-[22px] font-semibold tabular-nums', colorCls)}>{String(rank).padStart(2, '0')}</span>
 }
 
-export function TrackCell({ trackId, trackName, artistName, coverUrl }: { trackId?: number; trackName: string; artistName?: string; coverUrl?: string | null }) {
+export function TrackCell({ trackId, trackName, artistName, artistNames, coverUrl }: { trackId?: number; trackName: string; artistName?: string; artistNames?: string[]; coverUrl?: string | null }) {
   const link = trackId != null ? billboardDetailLink(`/music/tracks/${trackId}`) : '#'
   return (
     <div className="flex items-center gap-3">
@@ -205,7 +206,11 @@ export function TrackCell({ trackId, trackName, artistName, coverUrl }: { trackI
       <div className="min-w-0">
         <Link to={link} className="block truncate font-sans text-[13px] font-semibold transition-colors hover:text-accent-foreground">{displayName(trackName)}</Link>
         {artistName && (
-          <Link to={billboardDetailLink(`/music/artists/${encodeURIComponent(artistName)}`)} className="block truncate font-sans text-[11px] italic text-muted-foreground transition-colors hover:text-accent-foreground">{displayName(artistName)}</Link>
+          <ArtistLinks
+            artistName={artistName}
+            artistNames={artistNames}
+            className="block truncate font-sans text-[11px] italic text-muted-foreground"
+          />
         )}
       </div>
     </div>
@@ -227,7 +232,10 @@ export function AlbumCell({ albumName, artistName, coverUrl }: { albumName: stri
       <CoverImg url={coverUrl} />
       <div className="min-w-0">
         <Link to={billboardDetailLink(`/music/albums/${encodeURIComponent(albumName)}`)} className="block truncate font-sans text-[13px] font-semibold transition-colors hover:text-accent-foreground">{displayName(albumName)}</Link>
-        <Link to={billboardDetailLink(`/music/artists/${encodeURIComponent(artistName)}`)} className="block truncate font-sans text-[11px] italic text-muted-foreground transition-colors hover:text-accent-foreground">{displayName(artistName)}</Link>
+        <ArtistLinks
+          artistName={artistName}
+          className="block truncate font-sans text-[11px] italic text-muted-foreground"
+        />
       </div>
     </div>
   )

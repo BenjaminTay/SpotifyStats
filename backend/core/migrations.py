@@ -116,6 +116,28 @@ def migrate_010(conn: sqlite3.Connection):
     )
 
 
+@migration(11, "track_artists_junction")
+def migrate_011(conn: sqlite3.Connection):
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS track_artists (
+            track_id INTEGER NOT NULL REFERENCES tracks(track_id),
+            artist_id INTEGER NOT NULL REFERENCES artists(artist_id),
+            role TEXT NOT NULL DEFAULT 'primary',
+            UNIQUE(track_id, artist_id)
+        )"""
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_track_artists_track ON track_artists(track_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_track_artists_artist ON track_artists(artist_id)")
+
+
+@migration(12, "track_artists_backfill_primary")
+def migrate_012(conn: sqlite3.Connection):
+    conn.execute(
+        "INSERT OR IGNORE INTO track_artists (track_id, artist_id, role) "
+        "SELECT track_id, artist_id, 'primary' FROM tracks"
+    )
+
+
 # ── Runner ────────────────────────────────────────────────────────────────
 
 

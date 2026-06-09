@@ -1,5 +1,4 @@
 export interface BillboardMeta {
-  total_weeks: number
   total_filtered_records: number
   all_weeks_asc: string[]
   all_weeks_desc: string[]
@@ -13,10 +12,10 @@ export interface BillboardMeta {
 }
 
 export interface WeeklyTrackEntry {
-  billboard_week: string
   track_id: number
   track_name: string
   artist_name: string
+  artist_names?: string[]
   album_name: string
   play_count: number
   total_ms: number
@@ -28,7 +27,6 @@ export interface WeeklyTrackEntry {
 }
 
 export interface WeeklyAlbumEntry {
-  billboard_week: string
   album_name: string
   artist_name: string
   play_count: number
@@ -44,7 +42,6 @@ export interface WeeklyAlbumEntry {
 }
 
 export interface WeeklyArtistEntry {
-  billboard_week: string
   artist_name: string
   play_count: number
   total_ms: number
@@ -58,9 +55,9 @@ export interface WeeklyArtistEntry {
 }
 
 export interface TrackSummary {
-  track_id: number
   track_name: string
   artist_name: string
+  artist_names?: string[]
   album_name: string
   peak_position: number
   weeks_on_chart: number
@@ -75,7 +72,6 @@ export interface TrackSummary {
 }
 
 export interface ArtistSummary {
-  artist_name: string
   track_id: number
   track_name: string
   album_name: string
@@ -88,7 +84,6 @@ export interface ArtistSummary {
 }
 
 export interface AlbumTrackCounts {
-  album_name: string
   artist_name: string
   total_tracks: number
   best_peak: number
@@ -103,7 +98,6 @@ export interface AlbumTrackCounts {
 }
 
 export interface ArtistTrackCounts {
-  artist_name: string
   total_tracks: number
   best_peak: number
   total_weeks: number
@@ -119,9 +113,9 @@ export interface ArtistTrackCounts {
 }
 
 export interface PowerScoreEntry {
-  track_id: number
   track_name: string
   artist_name: string
+  artist_names?: string[]
   power_score: number
   peak_position: number
   weeks_on_chart: number
@@ -132,7 +126,6 @@ export interface PowerScoreEntry {
 }
 
 export interface AlbumPowerScoreEntry {
-  album_name: string
   artist_name: string
   power_score: number
   peak_position: number
@@ -144,7 +137,6 @@ export interface AlbumPowerScoreEntry {
 }
 
 export interface ArtistPowerScoreEntry {
-  artist_name: string
   power_score: number
   peak_position: number
   weeks_on_chart: number
@@ -155,7 +147,6 @@ export interface ArtistPowerScoreEntry {
 }
 
 export interface BillboardDataResponse {
-  meta: BillboardMeta
   weekly: WeeklyTrackEntry[]
   weekly_album: WeeklyAlbumEntry[]
   weekly_artist: WeeklyArtistEntry[]
@@ -171,7 +162,6 @@ export interface BillboardDataResponse {
 
 /** Weekly-only response from GET /api/billboard/weekly */
 export interface BillboardWeeklyResponse {
-  meta: BillboardMeta
   weekly: WeeklyTrackEntry[]
   weekly_album: WeeklyAlbumEntry[]
   weekly_artist: WeeklyArtistEntry[]
@@ -179,19 +169,16 @@ export interface BillboardWeeklyResponse {
 
 /** Records-only response from GET /api/billboard/records */
 export interface BillboardRecordsResponse {
-  records: BillboardRecords
 }
 
 /** Power scores response from GET /api/billboard/power-scores */
 export interface BillboardPowerScoresResponse {
-  power_scores: PowerScoreEntry[]
   album_power_scores: AlbumPowerScoreEntry[]
   artist_power_scores: ArtistPowerScoreEntry[]
 }
 
 /** Summaries response from GET /api/billboard/summaries */
 export interface BillboardSummariesResponse {
-  track_summary: TrackSummary[]
   artist_summary: ArtistSummary[]
   album_track_counts: AlbumTrackCounts[]
   artist_track_counts: ArtistTrackCounts[]
@@ -199,7 +186,6 @@ export interface BillboardSummariesResponse {
 
 /** Combined all-time response from GET /api/billboard/all-time */
 export interface BillboardAllTimeResponse {
-  meta: BillboardMeta
   weekly: WeeklyTrackEntry[]
   weekly_album: WeeklyAlbumEntry[]
   weekly_artist: WeeklyArtistEntry[]
@@ -215,7 +201,6 @@ export interface BillboardAllTimeResponse {
 // ── Billboard Records ──────────────────────────────────────────
 
 export interface BillboardRecords {
-  // Section 1: 冠军圣殿
   artist_most_no1: ArtistMostNo1Record[]
   debut_no1: DebutNo1Record[]
   debut_no1_album: DebutNo1AlbumRecord[]
@@ -277,7 +262,6 @@ export interface BillboardRecords {
 // ── Section 1: 冠军圣殿 ──────────────────────────────────────
 
 export interface ArtistMostNo1Record {
-  artist_name: string
   '冠单数': number
   '单曲冠军周数': number
   '冠军专辑数': number
@@ -285,7 +269,6 @@ export interface ArtistMostNo1Record {
 }
 
 export interface DebutNo1Record {
-  track_id: number
   track_name: string
   artist_name: string
   first_week: string
@@ -294,7 +277,6 @@ export interface DebutNo1Record {
 }
 
 export interface DebutNo1AlbumRecord {
-  album_name: string
   artist_name: string
   first_week: string
   weeks_at_no1: number
@@ -302,7 +284,6 @@ export interface DebutNo1AlbumRecord {
 }
 
 export interface ReturnToNo1Record {
-  track_id: number
   track_name: string
   artist_name: string
   '首次冠单': string
@@ -311,7 +292,6 @@ export interface ReturnToNo1Record {
 }
 
 export interface ReturnToNo1AlbumRecord {
-  album_name: string
   artist_name: string
   '首次冠专': string
   '回冠日期': string
@@ -319,7 +299,6 @@ export interface ReturnToNo1AlbumRecord {
 }
 
 export interface SelfReplacementRecord {
-  '周次': string
   '艺人': string
   '前冠单_id': number
   '前冠单': string
@@ -328,14 +307,12 @@ export interface SelfReplacementRecord {
 }
 
 export interface SelfReplacementAlbumRecord {
-  '周次': string
   '艺人': string
   '前冠专': string
   '新冠专': string
 }
 
 export interface BlockerKingRecord {
-  track_id: number
   track_name: string
   artist_name: string
   '阻挡数': number
@@ -343,25 +320,21 @@ export interface BlockerKingRecord {
 }
 
 export interface BlockerKingAlbumRecord {
-  album_name: string
   artist_name: string
   '阻挡数': number
   '走势评分': number
 }
 
 export interface BlockedTrackInfo {
-  track_id: number
   track_name: string
   artist_name: string
 }
 
 export interface BlockedAlbumInfo {
-  album_name: string
   artist_name: string
 }
 
 export interface ClimbToNo1Record {
-  track_id: number
   track_name: string
   artist_name: string
   first_week: string
@@ -372,7 +345,6 @@ export interface ClimbToNo1Record {
 // ── Section 2: 持久传奇 ──────────────────────────────────────
 
 export interface LongestChartingRecord {
-  track_id: number
   track_name: string
   artist_name: string
   weeks_on_chart: number
@@ -381,7 +353,6 @@ export interface LongestChartingRecord {
 }
 
 export interface LongestStreakRecord {
-  track_id: number
   track_name: string
   artist_name: string
   '连续周数': number
@@ -390,7 +361,6 @@ export interface LongestStreakRecord {
 }
 
 export interface LongestChartingAlbumRecord {
-  album_name: string
   artist_name: string
   weeks_on_chart: number
   peak_position: number
@@ -398,7 +368,6 @@ export interface LongestChartingAlbumRecord {
 }
 
 export interface LongestStreakAlbumRecord {
-  album_name: string
   artist_name: string
   '连续周数': number
   '起始周': string
@@ -406,7 +375,6 @@ export interface LongestStreakAlbumRecord {
 }
 
 export interface LongestNoTop5Record {
-  track_id: number
   track_name: string
   artist_name: string
   weeks_on_chart: number
@@ -414,14 +382,12 @@ export interface LongestNoTop5Record {
 }
 
 export interface LongestNoTop5AlbumRecord {
-  album_name: string
   artist_name: string
   weeks_on_chart: number
   peak_position: number
 }
 
 export interface LongestNoTop10Record {
-  track_id: number
   track_name: string
   artist_name: string
   weeks_on_chart: number
@@ -429,7 +395,6 @@ export interface LongestNoTop10Record {
 }
 
 export interface MostWeeksNo2Record {
-  track_id: number
   track_name: string
   artist_name: string
   peak_position: number
@@ -437,14 +402,12 @@ export interface MostWeeksNo2Record {
 }
 
 export interface MostWeeksNo2AlbumRecord {
-  album_name: string
   artist_name: string
   peak_position: number
   weeks_at_no2: number
 }
 
 export interface MostReentriesRecord {
-  track_id: number
   track_name: string
   artist_name: string
   '回榜次数': number
@@ -452,14 +415,12 @@ export interface MostReentriesRecord {
 }
 
 export interface MostReentriesAlbumRecord {
-  album_name: string
   artist_name: string
   '回榜次数': number
   '在榜周数': number
 }
 
 export interface LongestSameRankRecord {
-  track_id: number
   track_name: string
   artist_name: string
   '停留排名': number
@@ -469,7 +430,6 @@ export interface LongestSameRankRecord {
 }
 
 export interface LongestSameRankAlbumRecord {
-  album_name: string
   artist_name: string
   '停留排名': number
   '连续周数': number
@@ -478,7 +438,6 @@ export interface LongestSameRankAlbumRecord {
 }
 
 export interface LongestArtistSpanRecord {
-  artist_name: string
   '首次上榜': string
   '最近上榜': string
   '上榜歌曲数': number
@@ -488,39 +447,33 @@ export interface LongestArtistSpanRecord {
 // ── Section 3: 爆发时刻 ──────────────────────────────────────
 
 export interface ArtistSimulHighlight {
-  artist: string
   week: string
   count: number
 }
 
 export interface ArtistSimulEntry {
-  billboard_week: string
   artist_name: string
   track_count: number
 }
 
 export interface AlbumSimulHighlight {
-  album: string
   artist: string
   week: string
   count: number
 }
 
 export interface AlbumSimulEntry {
-  billboard_week: string
   artist_name: string
   album_name: string
   track_count: number
 }
 
 export interface Top10SimulHighlight {
-  artist: string
   week: string
   count: number
 }
 
 export interface RankChangeRecord {
-  track_id: number
   track_name: string
   artist_name: string
   '日期': string
@@ -530,7 +483,6 @@ export interface RankChangeRecord {
 }
 
 export interface FastestExitRecord {
-  track_id: number
   track_name: string
   artist_name: string
   first_peak_week: string
@@ -539,7 +491,6 @@ export interface FastestExitRecord {
 }
 
 export interface StrongestWeekHighlight {
-  week: string
   total_plays: number
   tracks_count: number
 }
@@ -547,7 +498,6 @@ export interface StrongestWeekHighlight {
 // ── Section 4: 名人堂 ─────────────────────────────────────────
 
 export interface AllTimeGreatestRecord {
-  track_id: number
   track_name: string
   artist_name: string
   peak_position: number
@@ -557,7 +507,6 @@ export interface AllTimeGreatestRecord {
 }
 
 export interface AlbumPowerRankingRecord {
-  album_name: string
   artist_name: string
   peak_position: number
   weeks_on_chart: number
@@ -565,14 +514,12 @@ export interface AlbumPowerRankingRecord {
 }
 
 export interface ArtistPowerRankingRecord {
-  artist_name: string
   peak_position: number
   weeks_on_chart: number
   '走势评分': number
 }
 
 export interface YearEndNo1Record {
-  year: number
   track_id: number
   track_name: string
   artist_name: string
@@ -581,7 +528,6 @@ export interface YearEndNo1Record {
 }
 
 export interface DecadeBestRecord {
-  '年代': string
   track_id: number
   track_name: string
   artist_name: string
@@ -593,7 +539,6 @@ export interface DecadeBestRecord {
 // ── Section 5: 奇趣纪录 ──────────────────────────────────────
 
 export interface DoubleDebutRecord {
-  debut_track_id: number
   debut_track: string
   debut_artist: string
   debut_week: string
@@ -601,14 +546,12 @@ export interface DoubleDebutRecord {
 }
 
 export interface TripleNo1Record {
-  billboard_week: string
   '艺人': string
 }
 
 // ── Section 6: 每周大盘 ──────────────────────────────────────
 
 export interface WeekTotalPlaysRecord {
-  billboard_week: string
   total_plays: number
   tracks_count: number
   no1_track_id: number | null
@@ -623,7 +566,6 @@ export interface WeekTotalPlaysRecord {
 }
 
 export interface No1VsNo2Highlight {
-  week: string
   no1_track: string
   no1_artist: string
   no1_plays: number
@@ -635,7 +577,6 @@ export interface No1VsNo2Highlight {
 }
 
 export interface NewEntryRatioRecord {
-  billboard_week: string
   '总歌曲数': number
   '新入榜歌曲数': number
   '新歌占比': number
@@ -644,7 +585,6 @@ export interface NewEntryRatioRecord {
 // ── Track Detail ────────────────────────────────────────────
 
 export interface TrackHistoryEntry {
-  week: string
   rank: number
   play_count: number
   change: string
@@ -654,7 +594,6 @@ export interface TrackHistoryEntry {
 }
 
 export interface TrackChartData {
-  x: string[]
   y: (number | null)[]
   texts: string[]
   top_n: number
@@ -662,10 +601,10 @@ export interface TrackChartData {
 }
 
 export interface TrackDetailResponse {
-  found: boolean
   track_id: number
   track_name: string
   artist_name: string
+  artist_names?: string[]
   cover_url: string | null
   meta: TrackSpotifyMeta | null
   summary: {
@@ -688,7 +627,6 @@ export interface TrackDetailResponse {
 // ── Artist Detail ───────────────────────────────────────────
 
 export interface ArtistChartSummary {
-  peak_position: number
   weeks_on_chart: number
   first_week: string
   first_peak_week: string
@@ -700,7 +638,6 @@ export interface ArtistChartSummary {
 }
 
 export interface ArtistInfo {
-  total_tracks: number
   best_peak: number
   total_weeks: number
   avg_weeks: number
@@ -715,7 +652,6 @@ export interface ArtistInfo {
 }
 
 export interface ArtistWeeklyHistoryEntry {
-  week: string
   rank: number
   play_count: number
   tracks_count: number
@@ -727,14 +663,12 @@ export interface ArtistWeeklyHistoryEntry {
 }
 
 export interface ArtistNo1ByWeek {
-  week: string
   no1_track_names: string
   no1_track_id: number | null
   no1_count: number
 }
 
 export interface ArtistTrackEntry {
-  track_id: number
   track_name: string
   cover_url: string | null
   peak_position: number
@@ -749,7 +683,6 @@ export interface ArtistTrackEntry {
 }
 
 export interface ArtistAlbumEntry {
-  album_name: string
   cover_url: string | null
   peak: number
   weeks: number
@@ -763,7 +696,6 @@ export interface ArtistAlbumEntry {
 }
 
 export interface ArtistDetailResponse {
-  found: boolean
   artist_name: string
   cover_url: string | null
   meta: ArtistSpotifyMeta | null
@@ -780,7 +712,6 @@ export interface ArtistDetailResponse {
 // ── Album Detail ────────────────────────────────────────────
 
 export interface AlbumChartSummary {
-  peak_position: number
   weeks_on_chart: number
   first_week: string
   first_peak_week: string
@@ -792,7 +723,6 @@ export interface AlbumChartSummary {
 }
 
 export interface AlbumInfo {
-  total_tracks: number
   best_peak: number
   total_weeks: number
   avg_weeks: number
@@ -805,7 +735,6 @@ export interface AlbumInfo {
 }
 
 export interface AlbumWeeklyHistoryEntry {
-  week: string
   rank: number
   play_count: number
   tracks_count: number
@@ -816,7 +745,6 @@ export interface AlbumWeeklyHistoryEntry {
 }
 
 export interface AlbumTrackEntry {
-  track_id: number
   track_name: string
   cover_url: string | null
   peak_position: number
@@ -831,7 +759,6 @@ export interface AlbumTrackEntry {
 }
 
 export interface AlbumDetailResponse {
-  found: boolean
   album_name: string
   artist_name: string
   cover_url: string | null
@@ -847,7 +774,6 @@ export interface AlbumDetailResponse {
 // ── Release Cycle ──────────────────────────────────────────
 
 export interface ReleaseCycleMetrics {
-  debut_rank: number | null
   peak_rank: number | null
   weeks_to_peak: number | null
   weeks_on_chart: number
@@ -864,59 +790,50 @@ export interface ReleaseCycleMetrics {
 }
 
 export interface ReleaseCycleTimelineEntry {
-  week_offset: number
   play_count: number
   total_ms?: number
   tracks_count?: number
 }
 
 export interface ReleaseCycleRankEntry {
-  billboard_week?: string
   week_offset: number
   rank: number
   play_count?: number
 }
 
 export interface ReleaseCycleTrackTimelineEntry {
-  week_offset: number
   track_id: number
   track_name: string
   play_count: number
 }
 
 export interface AdvanceSingle {
-  single_name: string
   release_date: string
 }
 
 export interface AdvanceSingleRank {
-  name: string
   release_date?: string
   ranks: ReleaseCycleRankEntry[]
 }
 
 export interface CatalogReentry {
-  track_name: string
   source_album: string
   reentry_offset: number
   weeks_in_chart: number
 }
 
 export interface BonusTrack {
-  track_name: string
   play_count: number
   first_appearance: string
   source_album: string
 }
 
 export interface TrackMatrix {
-  tracks: string[]
   weeks: number[]
   data: number[][]
 }
 
 export interface ReleaseCycleAlbumDetailResponse {
-  error?: string
   album_name: string
   artist_name: string
   album_type: string
@@ -944,7 +861,6 @@ export interface ReleaseCycleAlbumDetailResponse {
 }
 
 export interface ReleaseCycleRelease {
-  album_name: string
   album_type: string
   release_date: string
   db_album_id?: number | null
@@ -955,7 +871,6 @@ export interface ReleaseCycleRelease {
 }
 
 export interface ReleaseCycleArtistSummary {
-  total_albums: number
   total_singles: number
   album_debut_no1_count: number
   single_debut_no1_count: number
@@ -970,7 +885,6 @@ export interface ReleaseCycleArtistSummary {
 }
 
 export interface ReleaseCycleArtistOverviewResponse {
-  artist_name: string
   summary: ReleaseCycleArtistSummary | null
   releases: ReleaseCycleRelease[]
   rank_trend: Array<{
@@ -1011,7 +925,6 @@ export interface ReleaseCycleArtistOverviewResponse {
 // ── Spotify Metadata ────────────────────────────────────────
 
 export interface TrackSpotifyMeta {
-  duration_ms?: number
   popularity?: number
   explicit: boolean
   track_number?: number
@@ -1020,13 +933,11 @@ export interface TrackSpotifyMeta {
 }
 
 export interface ArtistSpotifyMeta {
-  popularity?: number
   followers?: number
   genres?: string[]
 }
 
 export interface AlbumSpotifyMeta {
-  album_type?: string
   release_date?: string
   popularity?: number
   label?: string
@@ -1036,7 +947,6 @@ export interface AlbumSpotifyMeta {
 // ── Genius Lyrics ──────────────────────────────────────────
 
 export interface LyricsData {
-  found: boolean
   lyrics: string
   genius_url: string
   genius_song_id: number
@@ -1044,7 +954,6 @@ export interface LyricsData {
 }
 
 export interface GeniusUrlData {
-  found: boolean
   genius_url: string
 }
 
@@ -1053,29 +962,24 @@ export interface GeniusUrlData {
 // ── Structured Enrichment (LLM-generated JSON) ────────────
 
 export interface KeyFact {
-  label: string
   value: string
 }
 
 export interface StatItem {
-  label: string
   value: string
 }
 
 export interface CareerEvent {
-  year: number
   event: string
   detail?: string
 }
 
 export interface Achievement {
-  title: string
   year: number
   detail?: string
 }
 
 export interface StructuredArtist {
-  summary: string
   key_facts: KeyFact[]
   career_timeline: CareerEvent[]
   genres: string[]
@@ -1084,19 +988,16 @@ export interface StructuredArtist {
 }
 
 export interface ChartEntry {
-  region: string
   peak: number
   detail?: string
 }
 
 export interface AlbumSingle {
-  name: string
   peak: number
   certification?: string
 }
 
 export interface StructuredAlbum {
-  summary: string
   key_facts: KeyFact[]
   genres: string[]
   chart_performance: ChartEntry[]
@@ -1107,12 +1008,10 @@ export interface StructuredAlbum {
 // ── Wiki Data ──────────────────────────────────────────────
 
 export interface WikiSingle {
-  name: string
   date: string | null
 }
 
 export interface AlbumWikiInfobox {
-  release_date: string
   recorded: string
   studio: string
   genre: string
@@ -1123,13 +1022,11 @@ export interface AlbumWikiInfobox {
 }
 
 export interface AlbumWikiSections {
-  background: string
   reception: string
   commercial: string
 }
 
 export interface AlbumWikiData {
-  url: string
   lang: string
   summary: string
   summary_zh: string
@@ -1143,7 +1040,6 @@ export interface AlbumWikiData {
 }
 
 export interface AlbumEnrichmentResponse {
-  wiki: AlbumWikiData | null
   genius: {
     name: string
     artist: string
@@ -1154,7 +1050,6 @@ export interface AlbumEnrichmentResponse {
 }
 
 export interface ArtistWikiData {
-  url: string
   lang: string
   summary: string
   summary_zh: string
@@ -1173,21 +1068,10 @@ export interface ArtistWikiData {
 }
 
 export interface ArtistEnrichmentResponse {
-  wiki: ArtistWikiData | null
   genius: Record<string, unknown> | null
 }
 
 export interface TrackEnrichmentResponse {
-  wiki: {
-    url: string
-    lang: string
-    summary: string
-    summary_zh: string
-    description: string
-    description_zh: string
-    sections: { background: string }
-    sections_zh: { background: string }
-  } | null
   genius: {
     title: string
     artist: string

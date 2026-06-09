@@ -7,7 +7,11 @@ from typing import Any
 
 import pandas as pd
 
-from backend.core.db import base_filters
+from backend.core.db import (
+    base_filters,
+    get_track_artist_names_map,
+    load_plays_for_artists,
+)
 from backend.services.analysis_stats_service import (
     _cumulative_trend,
     _daily_metrics,
@@ -149,6 +153,10 @@ def get_track_stats(
     if entity_all.empty:
         return {"found": False}
     info = entity_all.iloc[0]
+    primary_artist = info["artist_name"]
+    all_artists = get_track_artist_names_map()
+    artist_names = all_artists.get(int(track_id), [primary_artist])
+    display_artist = ", ".join(artist_names) if len(artist_names) > 1 else primary_artist
     data = _entity_base(all_df, entity_df)
     data.update(
         {
@@ -157,7 +165,8 @@ def get_track_stats(
             "entity": {
                 "track_id": int(track_id),
                 "track_name": info["track_name"],
-                "artist_name": info["artist_name"],
+                "artist_name": display_artist,
+                "artist_names": artist_names,
                 "album_name": info["album_name"],
                 "cover_url": _track_cover_urls(conn, [track_id]).get(int(track_id)),
             },
@@ -234,7 +243,14 @@ def get_artist_stats(
     end_date: str | None = None,
 ) -> dict:
     all_df, current_df, resolved = load_period_plays(
-        conn, min_ms, music_only, merge_enabled, period, start_date, end_date
+        conn,
+        min_ms,
+        music_only,
+        merge_enabled,
+        period,
+        start_date,
+        end_date,
+        _loader=load_plays_for_artists,
     )
     entity_all = all_df[all_df["artist_name"] == artist_name]
     entity_df = current_df[current_df["artist_name"] == artist_name]
@@ -327,6 +343,15 @@ def get_entity_plays(
         LEFT JOIN albums al ON t.album_id = al.album_id
     """
 
+    if entity == "artist":
+        base_from = """
+            FROM plays p
+            LEFT JOIN tracks t ON p.track_id = t.track_id
+            LEFT JOIN track_artists ta ON t.track_id = ta.track_id
+            LEFT JOIN artists a ON ta.artist_id = a.artist_id
+            LEFT JOIN albums al ON t.album_id = al.album_id
+        """
+
     count_sql = f"SELECT COUNT(*) {base_from} WHERE {where_clause}"
     total = conn.execute(count_sql, params).fetchone()[0]
 
@@ -342,25 +367,29 @@ def get_entity_plays(
 
     track_ids = [int(r["track_id"]) for r in rows if r["track_id"] is not None]
     cover_map = _track_cover_urls(conn, track_ids) if track_ids else {}
+    from backend.core.db import get_track_artist_names_map
+
+    names_map = get_track_artist_names_map()
 
     result = []
     for r in rows:
         tid = int(r["track_id"]) if r["track_id"] is not None else None
-        result.append(
-            {
-                "play_id": int(r["play_id"]),
-                "ts": str(r["ts"]),
-                "date": str(r["ts_date"]),
-                "track_id": tid,
-                "track_name": r["track_name"] or "",
-                "artist_name": r["artist_name"] or "",
-                "album_name": r["album_name"],
-                "ms_played": int(r["ms_played"]),
-                "hours": round(float(r["ms_played"]) / 3_600_000, 3),
-                "platform": r["platform"] or "",
-                "cover_url": cover_map.get(tid) if tid is not None else None,
-            }
-        )
+        entry = {
+            "play_id": int(r["play_id"]),
+            "ts": str(r["ts"]),
+            "date": str(r["ts_date"]),
+            "track_id": tid,
+            "track_name": r["track_name"] or "",
+            "artist_name": r["artist_name"] or "",
+            "album_name": r["album_name"],
+            "ms_played": int(r["ms_played"]),
+            "hours": round(float(r["ms_played"]) / 3_600_000, 3),
+            "platform": r["platform"] or "",
+            "cover_url": cover_map.get(tid) if tid is not None else None,
+        }
+        if tid is not None and tid in names_map:
+            entry["artist_names"] = names_map[tid]
+        result.append(entry)
 
     return {"total": total, "limit": limit, "offset": offset, "rows": result}
 
@@ -407,15 +436,28 @@ def get_entity_play_dates(
 
     where_clause = " AND ".join(where_parts) if where_parts else "1=1"
 
-    sql = f"""
-        SELECT p.ts_date AS date, COUNT(*) AS count
-        FROM plays p
-        LEFT JOIN tracks t ON p.track_id = t.track_id
-        LEFT JOIN artists a ON t.artist_id = a.artist_id
-        LEFT JOIN albums al ON t.album_id = al.album_id
-        WHERE {where_clause}
-        GROUP BY p.ts_date
-        ORDER BY p.ts_date
-    """
+    if entity == "artist":
+        sql = f"""
+            SELECT p.ts_date AS date, COUNT(*) AS count
+            FROM plays p
+            LEFT JOIN tracks t ON p.track_id = t.track_id
+            LEFT JOIN track_artists ta ON t.track_id = ta.track_id
+            LEFT JOIN artists a ON ta.artist_id = a.artist_id
+            LEFT JOIN albums al ON t.album_id = al.album_id
+            WHERE {where_clause}
+            GROUP BY p.ts_date
+            ORDER BY p.ts_date
+        """
+    else:
+        sql = f"""
+            SELECT p.ts_date AS date, COUNT(*) AS count
+            FROM plays p
+            LEFT JOIN tracks t ON p.track_id = t.track_id
+            LEFT JOIN artists a ON t.artist_id = a.artist_id
+            LEFT JOIN albums al ON t.album_id = al.album_id
+            WHERE {where_clause}
+            GROUP BY p.ts_date
+            ORDER BY p.ts_date
+        """
     rows = conn.execute(sql, params).fetchall()
     return [{"date": str(r["date"]), "count": int(r["count"])} for r in rows]

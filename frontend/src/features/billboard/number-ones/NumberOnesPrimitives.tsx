@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { AlertCircle } from 'lucide-react'
 
 import { buildChartBase } from '@/components/charts/EChartsTheme'
+import { ArtistLinks } from '@/components/shared/ArtistLinks'
 import { GlassCard } from '@/components/shared/GlassCard'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useTheme } from '@/hooks/useTheme'
@@ -143,6 +144,7 @@ export function NameWithCover({
   coverUrl,
   name,
   artistName,
+  artistNames,
   nameLink,
   artistLink,
   badge,
@@ -150,6 +152,7 @@ export function NameWithCover({
   coverUrl?: string | null
   name: string
   artistName?: string
+  artistNames?: string[]
   nameLink: string
   artistLink?: string
   badge?: string
@@ -172,7 +175,13 @@ export function NameWithCover({
           )}
         </div>
         {artistName &&
-          (artistLink ? (
+          (artistNames && artistNames.length > 1 ? (
+            <ArtistLinks
+              artistName={artistName}
+              artistNames={artistNames}
+              className="mt-0.5 block font-sans text-[12px] italic text-muted-foreground"
+            />
+          ) : artistLink ? (
             <Link
               to={artistLink}
               className="mt-0.5 block font-sans text-[12px] italic text-muted-foreground transition-colors hover:text-accent-foreground"

@@ -4,7 +4,11 @@ import json
 
 import pandas as pd
 
-from backend.core.db import get_db
+from backend.core.db import (
+    fan_out_weekly_for_artists,
+    get_db,
+    get_track_artist_names_map,
+)
 from backend.domains.billboard.chart_compute import compute_billboard_data
 
 
@@ -233,11 +237,17 @@ def get_track_history(
 
     cover_url = track_hist.iloc[0].get("cover_url") if "cover_url" in track_hist.columns else None
 
+    primary_artist = str(track_hist.iloc[0]["artist_name"])
+    all_artists = get_track_artist_names_map()
+    artist_names = all_artists.get(track_id, [primary_artist])
+    display_artist = ", ".join(artist_names) if len(artist_names) > 1 else primary_artist
+
     return {
         "found": True,
         "track_id": track_id,
         "track_name": str(track_hist.iloc[0]["track_name"]),
-        "artist_name": str(track_hist.iloc[0]["artist_name"]),
+        "artist_name": display_artist,
+        "artist_names": artist_names,
         "cover_url": cover_url if pd.notna(cover_url) else None,
         "meta": _get_track_spotify_meta(track_id),
         "summary": {
@@ -321,9 +331,10 @@ def get_artist_chart_detail(
         return {"found": False, "meta": None}
     art_row = art_row.iloc[0]
 
-    # Artist weekly history
+    # Artist weekly history — use fanned-out weekly for multi-artist support
+    weekly_fanned = fan_out_weekly_for_artists(weekly)
     artist_chart_data = weekly_artist[weekly_artist["artist_name"] == artist_name]
-    artist_weekly = weekly[weekly["artist_name"] == artist_name]
+    artist_weekly = weekly_fanned[weekly_fanned["artist_name"] == artist_name]
 
     # Artist power score/rank
     aps_sorted = artist_power_scores.sort_values("power_score", ascending=False).reset_index(
@@ -333,10 +344,11 @@ def get_artist_chart_detail(
     artist_power_score = int(ap_row.iloc[0]["power_score"]) if not ap_row.empty else 0
     artist_power_rank = int(ap_row.iloc[0].name) + 1 if not ap_row.empty else None
 
-    # Track power scores for this artist
+    # Track power scores for this artist — match by track_id from fanned summary
+    artist_track_ids = set(artist_summary[artist_summary["artist_name"] == artist_name]["track_id"])
     track_power = power_scores.sort_values("power_score", ascending=False).reset_index(drop=True)
     track_power["power_rank"] = track_power.index + 1
-    artist_track_power = track_power[track_power["artist_name"] == artist_name]
+    artist_track_power = track_power[track_power["track_id"].isin(artist_track_ids)]
 
     # Album power scores for this artist
     album_power = album_power_scores.sort_values("power_score", ascending=False).reset_index(

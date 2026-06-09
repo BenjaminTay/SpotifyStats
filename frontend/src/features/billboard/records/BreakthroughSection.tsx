@@ -66,14 +66,14 @@ export function BreakthroughSection({ rec, covers }: { rec: BillboardRecords; co
         <RecordCard title="最大跃升 · Biggest Jump" subtitle="单周排名上升最多">
           <MiniRankTable rows={rec.biggest_jump} columns={[
             { header: '#', width: '48px', align: 'center', render: (_, idx) => <RankNum rank={idx + 1} /> },
-            { header: '歌曲', render: (r) => <TrackCell trackId={r.track_id} trackName={r.track_name} artistName={r.artist_name} coverUrl={covers.track.get(r.track_id)} /> },
+            { header: '歌曲', render: (r) => <TrackCell trackId={r.track_id} trackName={r.track_name} artistName={r.artist_name} artistNames={r.artist_names} coverUrl={covers.track.get(r.track_id)} /> },
             { header: '变化', width: '160px', align: 'right', render: (r) => <span className="inline-flex items-center gap-1 font-sans text-[14px] font-bold tabular-nums text-emerald-600 dark:text-emerald-400"><TrendingUp className="h-3.5 w-3.5" />▲{Math.abs(r['变化'])}</span> },
           ]} />
         </RecordCard>
         <RecordCard title="最大跌幅 · Biggest Drop" subtitle="单周排名下降最多">
           <MiniRankTable rows={rec.biggest_drop} columns={[
             { header: '#', width: '48px', align: 'center', render: (_, idx) => <RankNum rank={idx + 1} /> },
-            { header: '歌曲', render: (r) => <TrackCell trackId={r.track_id} trackName={r.track_name} artistName={r.artist_name} coverUrl={covers.track.get(r.track_id)} /> },
+            { header: '歌曲', render: (r) => <TrackCell trackId={r.track_id} trackName={r.track_name} artistName={r.artist_name} artistNames={r.artist_names} coverUrl={covers.track.get(r.track_id)} /> },
             { header: '变化', width: '160px', align: 'right', render: (r) => <span className="inline-flex items-center gap-1 font-sans text-[14px] font-bold tabular-nums text-red-600 dark:text-red-400"><TrendingDown className="h-3.5 w-3.5" />▼{Math.abs(r['变化'])}</span> },
           ]} />
         </RecordCard>
@@ -82,7 +82,7 @@ export function BreakthroughSection({ rec, covers }: { rec: BillboardRecords; co
       <RecordCard title="最快出榜 · Fastest Exit After #1" subtitle="夺冠后最快跌出榜单">
         <MiniRankTable rows={rec.fastest_exit_after_no1} columns={[
           { header: '#', width: '48px', align: 'center', render: (_, idx) => <RankNum rank={idx + 1} /> },
-          { header: '歌曲', render: (r) => <TrackCell trackId={r.track_id} trackName={r.track_name} artistName={r.artist_name} coverUrl={covers.track.get(r.track_id)} /> },
+          { header: '歌曲', render: (r) => <TrackCell trackId={r.track_id} trackName={r.track_name} artistName={r.artist_name} artistNames={r.artist_names} coverUrl={covers.track.get(r.track_id)} /> },
           { header: '夺冠日期', width: '110px', render: (r) => <span className="font-sans text-[12px] tabular-nums text-muted-foreground">{fmtDate(r.first_peak_week)}</span> },
           { header: '出榜日期', width: '110px', render: (r) => <span className="font-sans text-[12px] tabular-nums text-muted-foreground">{fmtDate(r.last_week)}</span> },
           { header: '巅后周数', width: '145px', align: 'right', render: (r) => <ValueBar value={r['巅峰后周数']} max={rec.fastest_exit_after_no1[0]?.['巅峰后周数'] ?? 1} suffix="周" /> },

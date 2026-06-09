@@ -4,7 +4,8 @@ import { useBillboardWeekly } from '@/hooks/useBillboard'
 import { GlassCard } from '@/components/shared/GlassCard'
 import { BillboardSubNav } from '@/components/shared/BillboardSubNav'
 import { WeekSelector } from '@/components/shared/WeekSelector'
-import { billboardDetailLink } from '@/lib/navigation'
+import { ArtistLinks } from '@/components/shared/ArtistLinks'
+import { billboardDetailLink, primaryArtistName } from '@/lib/navigation'
 
 import { Skeleton } from '@/components/ui/skeleton'
 import { AlertCircle } from 'lucide-react'
@@ -335,22 +336,12 @@ export function BillboardPage() {
                         : activeTab === 'albums'
                           ? (entry as WeeklyAlbumEntry).album_name
                           : (entry as WeeklyTrackEntry).track_name
-                    const artistLink =
-                      activeTab !== 'artists'
-                        ? billboardDetailLink(`/music/artists/${encodeURIComponent(
-                            activeTab === 'tracks'
-                              ? (entry as WeeklyTrackEntry).artist_name
-                              : (entry as WeeklyAlbumEntry).artist_name,
-                          )}`)
-                        : null
+                    const isTrackTab = activeTab === 'tracks'
+                    const trackEntry = isTrackTab ? (entry as WeeklyTrackEntry) : null
                     const subLabel =
                       activeTab === 'artists'
                         ? `${(entry as WeeklyArtistEntry).tracks_count} 首曲目`
-                        : displayName(
-                            activeTab === 'tracks'
-                              ? (entry as WeeklyTrackEntry).artist_name
-                              : (entry as WeeklyAlbumEntry).artist_name,
-                          )
+                        : displayName((entry as WeeklyTrackEntry).artist_name)
 
                     // As-of-week metrics from weekly entry (PK, Wks, PK Wks are
                     // computed up to and including the current week, not all-time)
@@ -384,17 +375,25 @@ export function BillboardPage() {
                           >
                             {displayName(chartName)}
                           </Link>
-                          {artistLink ? (
+                          {activeTab === 'artists' ? (
+                            <div className="mt-0.5 font-sans text-[12px] italic text-muted-foreground">
+                              {subLabel}
+                            </div>
+                          ) : isTrackTab && trackEntry ? (
+                            <ArtistLinks
+                              artistName={trackEntry.artist_name}
+                              artistNames={trackEntry.artist_names}
+                              className="mt-0.5 block font-sans text-[12px] italic text-muted-foreground"
+                            />
+                          ) : (
                             <Link
-                              to={artistLink}
+                              to={billboardDetailLink(
+                                `/music/artists/${encodeURIComponent(primaryArtistName(entry as WeeklyTrackEntry | WeeklyAlbumEntry))}`,
+                              )}
                               className="mt-0.5 block font-sans text-[12px] italic text-muted-foreground transition-colors hover:text-accent-foreground"
                             >
                               {subLabel}
                             </Link>
-                          ) : (
-                            <div className="mt-0.5 font-sans text-[12px] italic text-muted-foreground">
-                              {subLabel}
-                            </div>
                           )}
                         </td>
                         <td className="pb-3.5 pt-3.5 text-right font-sans text-[15px] font-semibold tabular-nums">

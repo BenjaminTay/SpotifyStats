@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { GlassCard } from '@/components/shared/GlassCard'
+import { ArtistLinks } from '@/components/shared/ArtistLinks'
 import type { TimeStory as TimeStoryType } from '@/types/yearly-review'
 import { HourClock } from './HourClock'
 
@@ -226,13 +227,23 @@ export function TimeStory({ timeStory }: TimeStoryProps) {
               <div className="space-y-2">
                 <p className="font-sans text-[11px] uppercase tracking-[1px] text-muted-foreground">深夜最爱</p>
                 {timeStory.late_night.top_tracks.map((t) => (
-                  <Link key={t.name + t.artist_name} to={`/music/tracks/${t.track_id}`} className="flex items-center gap-2 group">
-                    <MiniCover url={t.cover_url} name={t.name} />
+                  <div key={t.name + t.artist_name} className="flex items-center gap-2 group">
+                    <Link to={`/music/tracks/${t.track_id}`}>
+                      <MiniCover url={t.cover_url} name={t.name} />
+                    </Link>
                     <div className="min-w-0 flex-1">
-                      <p className="font-sans text-[13px] font-semibold truncate group-hover:text-accent-foreground transition-colors">{t.name}</p>
-                      <p className="font-sans text-[11px] text-muted-foreground truncate">{t.artist_name} · {t.plays} 次</p>
+                      <Link to={`/music/tracks/${t.track_id}`} className="font-sans text-[13px] font-semibold truncate transition-colors hover:text-accent-foreground block">
+                        {t.name}
+                      </Link>
+                      <span className="font-sans text-[11px] text-muted-foreground truncate">
+                        <ArtistLinks
+                          artistName={t.artist_name}
+                          artistNames={t.artist_names}
+                          className="inline"
+                        />{' · '}{t.plays} 次
+                      </span>
                     </div>
-                  </Link>
+                  </div>
                 ))}
               </div>
             )}

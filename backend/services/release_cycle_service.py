@@ -1478,7 +1478,7 @@ def get_chart_ranks_for_tracks(
     if weekly is None or not track_ids:
         return pd.DataFrame()
 
-    ranks = weekly[(weekly["artist_name"] == artist_name) & (weekly["track_id"].isin(track_ids))][
+    ranks = weekly[weekly["track_id"].isin(track_ids)][
         ["billboard_week", "track_id", "track_name", "rank"]
     ].copy()
 

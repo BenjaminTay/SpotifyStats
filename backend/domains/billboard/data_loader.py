@@ -81,6 +81,55 @@ def load_billboard_raw(min_ms, music_only, week_start_dow, week_start_hour):
 
 
 @lru_cache(maxsize=8)
+def load_billboard_raw_for_artists(min_ms, music_only, week_start_dow, week_start_hour):
+    """Same as load_billboard_raw but fans out through track_artists for multi-artist
+    attribution. Merge happens before fan-out to keep merge_consecutive_plays correct.
+
+    Only use for artist-grouped Billboard computations.
+    """
+    conn = get_db()
+    _f, _fp = base_filters(min_ms=min_ms, music_only=music_only)
+    _w = f"WHERE {_f}" if _f else ""
+
+    # Step 1: Load single-artist data (same as load_billboard_raw)
+    df = pd.read_sql_query(
+        f"""SELECT p.ts, p.ts_date, p.ts_dow, p.ts_hour, p.ms_played, p.track_id,
+                   t.track_name, a.artist_name, al.album_name, stm.duration_ms
+            FROM plays p
+            LEFT JOIN tracks t ON p.track_id = t.track_id
+            LEFT JOIN artists a ON t.artist_id = a.artist_id
+            LEFT JOIN albums al ON t.album_id = al.album_id
+            LEFT JOIN spotify_track_meta stm
+              ON REPLACE(t.spotify_track_uri, 'spotify:track:', '') = stm.spotify_track_id
+            {_w}
+            ORDER BY p.ts""",
+        conn,
+        params=_fp,
+    )
+
+    # Billboard week computation
+    df["days_back"] = (df["ts_dow"] - week_start_dow) % 7
+    mask_before = (df["ts_dow"] == week_start_dow) & (df["ts_hour"] < week_start_hour)
+    df.loc[mask_before, "days_back"] = 7
+    df["ts_date_dt"] = pd.to_datetime(df["ts_date"])
+    df["billboard_week"] = (df["ts_date_dt"] - pd.to_timedelta(df["days_back"], unit="D")).dt.date
+
+    # Merge before fan-out to keep merge_consecutive_plays correct
+    df = merge_consecutive_plays(df, min_ms)
+
+    # Step 2: Fan out through track_artists
+    track_artists_df = pd.read_sql_query("SELECT track_id, artist_id FROM track_artists", conn)
+    artists_df = pd.read_sql_query("SELECT artist_id, artist_name FROM artists", conn)
+    conn.close()
+
+    df = df.drop(columns=["artist_name"], errors="ignore")
+    df = df.merge(track_artists_df, on="track_id", how="inner")
+    df = df.merge(artists_df, on="artist_id", how="left")
+
+    return df
+
+
+@lru_cache(maxsize=8)
 def load_track_album_map():
     """Get all album names for each track_id (including track_albums junction)."""
     conn = get_db()
@@ -214,5 +263,6 @@ def _get_album_canonical_map():
 from backend.core.cache_manager import register_lru  # noqa: E402
 
 register_lru("billboard", "raw_data", load_billboard_raw)
+register_lru("billboard", "raw_data_artists", load_billboard_raw_for_artists)
 register_lru("billboard", "canonical_map", load_track_album_map)
 register_lru("billboard", "album_meta", _load_album_metadata)

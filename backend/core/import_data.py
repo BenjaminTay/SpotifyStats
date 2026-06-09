@@ -5,6 +5,7 @@ from __future__ import annotations
 import glob
 import json
 import os
+import re
 from typing import Any
 
 from .db import build_aggregations, ensure_schema, get_db, init_db
@@ -15,6 +16,56 @@ DATA_DIR = os.path.join(
     "data",
     "streaming",
 )
+
+# ── Featured artist parsing ──────────────────────────────────────────────
+
+# Patterns that should NOT be treated as featured artists
+_NON_ARTIST = re.compile(
+    r"(?:re)?mix|live|version|edit|acoustic|instrumental|demo|"
+    r"remaster(?:ed)?|radio\s*edit|single\s*edit|"
+    r"Taylor's\s*Version|From\s*The\s*Vault|bonus\s*track|"
+    r"deluxe|extended|original\s*mix|club\s*mix|"
+    r"cover|tribute|reprise|interlude|intro|outro|"
+    r"solo|stripped|acapella|a\s*cappella|"
+    r"orchestral|symphonic|unplugged",
+    re.IGNORECASE,
+)
+
+# Patterns to extract featured/with artists from track names
+_FEAT_PATTERNS = [
+    re.compile(r"\(feat\.?\s+([^)]+)\)", re.IGNORECASE),
+    re.compile(r"\(ft\.?\s+([^)]+)\)", re.IGNORECASE),
+    re.compile(r"\(with\s+([^)]+)\)", re.IGNORECASE),
+    re.compile(r"\[feat\.?\s+([^\]]+)\]", re.IGNORECASE),
+    re.compile(r"\[ft\.?\s+([^\]]+)\]", re.IGNORECASE),
+    re.compile(r"\[with\s+([^\]]+)\]", re.IGNORECASE),
+]
+
+
+def _parse_featured_artists(track_name: str) -> list[str]:
+    """Extract featured artist names from track name patterns like '(feat. X)'.
+
+    Returns empty list if no featured artists are found.
+    Handles multiple artists separated by ',' or '&'.
+    """
+    if not track_name:
+        return []
+
+    featured: list[str] = []
+    for pattern in _FEAT_PATTERNS:
+        for match in pattern.findall(track_name):
+            for part in re.split(r"\s*[,&]\s*", match):
+                part = part.strip()
+                if part and not _NON_ARTIST.fullmatch(part):
+                    featured.append(part)
+
+    seen: set[str] = set()
+    result: list[str] = []
+    for name in featured:
+        if name.lower() not in seen:
+            seen.add(name.lower())
+            result.append(name)
+    return result
 
 
 def _cache_artist(conn, name: str, cache: dict[str, int]) -> int:
@@ -203,6 +254,18 @@ def import_data(
                     conn, track_name, artist_id, album_id, spotify_uri, track_cache
                 )
 
+                # Insert track_artists junction: primary + featured artists
+                conn.execute(
+                    "INSERT OR IGNORE INTO track_artists(track_id, artist_id, role) VALUES (?, ?, 'primary')",
+                    (track_id, artist_id),
+                )
+                for feat_name in _parse_featured_artists(track_name):
+                    feat_id = _cache_artist(conn, feat_name, artist_cache)
+                    conn.execute(
+                        "INSERT OR IGNORE INTO track_artists(track_id, artist_id, role) VALUES (?, ?, 'featured')",
+                        (track_id, feat_id),
+                    )
+
             plays_batch.append(
                 (
                     time_info["ts"],
@@ -294,6 +357,17 @@ def import_data(
                     track_id = _cache_track(
                         conn, track_name, artist_id, album_id, spotify_uri, track_cache
                     )
+
+                    conn.execute(
+                        "INSERT OR IGNORE INTO track_artists(track_id, artist_id, role) VALUES (?, ?, 'primary')",
+                        (track_id, artist_id),
+                    )
+                    for feat_name in _parse_featured_artists(track_name):
+                        feat_id = _cache_artist(conn, feat_name, artist_cache)
+                        conn.execute(
+                            "INSERT OR IGNORE INTO track_artists(track_id, artist_id, role) VALUES (?, ?, 'featured')",
+                            (track_id, feat_id),
+                        )
 
                 plays_batch.append(
                     (

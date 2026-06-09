@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom'
 import { GlassCard } from '@/components/shared/GlassCard'
+import { ArtistLinks } from '@/components/shared/ArtistLinks'
 import type { TopLists } from '@/types/yearly-review'
 
 interface TopChartsProps {
@@ -56,15 +57,23 @@ export function TopCharts({ topLists }: TopChartsProps) {
           <h3 className="font-sans text-[12px] font-semibold uppercase tracking-[1.5px] text-muted-foreground mb-4">Top 曲目</h3>
           <div className="space-y-3">
             {topLists.tracks.map((t) => (
-              <Link key={t.rank} to={`/music/tracks/${t.track_id}`} className="flex items-center gap-3 group">
+              <div key={t.rank} className="flex items-center gap-3 group">
                 <span className="font-sans text-[13px] font-bold tabular-nums text-muted-foreground w-5 text-right">{t.rank}</span>
-                <CoverImage url={t.cover_url} alt={t.name} />
+                <Link to={`/music/tracks/${t.track_id}`}>
+                  <CoverImage url={t.cover_url} alt={t.name} />
+                </Link>
                 <div className="min-w-0 flex-1">
-                  <p className="font-sans text-[14px] font-semibold truncate group-hover:text-accent-foreground transition-colors">{t.name}</p>
-                  <p className="font-sans text-[12px] text-muted-foreground truncate">{t.artist_name}</p>
+                  <Link to={`/music/tracks/${t.track_id}`} className="font-sans text-[14px] font-semibold truncate transition-colors hover:text-accent-foreground block">
+                    {t.name}
+                  </Link>
+                  <ArtistLinks
+                    artistName={t.artist_name}
+                    artistNames={t.artist_names}
+                    className="block text-[12px] text-muted-foreground truncate"
+                  />
                   <p className="font-sans text-[12px] text-muted-foreground tabular-nums">{formatNumber(t.plays)} 次 · {t.hours.toFixed(0)}h</p>
                 </div>
-              </Link>
+              </div>
             ))}
           </div>
         </GlassCard>
@@ -74,15 +83,21 @@ export function TopCharts({ topLists }: TopChartsProps) {
           <h3 className="font-sans text-[12px] font-semibold uppercase tracking-[1.5px] text-muted-foreground mb-4">Top 专辑</h3>
           <div className="space-y-3">
             {topLists.albums.map((a) => (
-              <Link key={a.rank} to={`/music/albums/${encodeURIComponent(a.name)}?artist=${encodeURIComponent(a.artist_name)}`} className="flex items-center gap-3 group">
+              <div key={a.rank} className="flex items-center gap-3 group">
                 <span className="font-sans text-[13px] font-bold tabular-nums text-muted-foreground w-5 text-right">{a.rank}</span>
-                <CoverImage url={a.cover_url} alt={a.name} />
+                <Link to={`/music/albums/${encodeURIComponent(a.name)}?artist=${encodeURIComponent(a.artist_name)}`}>
+                  <CoverImage url={a.cover_url} alt={a.name} />
+                </Link>
                 <div className="min-w-0 flex-1">
-                  <p className="font-sans text-[14px] font-semibold truncate group-hover:text-accent-foreground transition-colors">{a.name}</p>
-                  <p className="font-sans text-[12px] text-muted-foreground truncate">{a.artist_name}</p>
+                  <Link to={`/music/albums/${encodeURIComponent(a.name)}?artist=${encodeURIComponent(a.artist_name)}`} className="font-sans text-[14px] font-semibold truncate transition-colors hover:text-accent-foreground block">
+                    {a.name}
+                  </Link>
+                  <Link to={`/music/artists/${encodeURIComponent(a.artist_name)}`} className="font-sans text-[12px] text-muted-foreground truncate transition-colors hover:text-accent-foreground block">
+                    {a.artist_name}
+                  </Link>
                   <p className="font-sans text-[12px] text-muted-foreground tabular-nums">{formatNumber(a.plays)} 次 · {a.hours.toFixed(0)}h</p>
                 </div>
-              </Link>
+              </div>
             ))}
           </div>
         </GlassCard>

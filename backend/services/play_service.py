@@ -10,7 +10,13 @@ import sqlite3
 
 import pandas as pd
 
-from backend.core.db import base_filters, load_plays
+from backend.core.db import (
+    base_filters,
+    get_track_all_artists_map,
+    get_track_artist_names_map,
+    load_plays,
+    load_plays_for_artists,
+)
 
 
 def _hour(x):
@@ -500,12 +506,20 @@ def get_leaderboard(
     top_n: int = 30,
 ) -> dict:
     """Get top-N leaderboard for tracks/artists/albums."""
-    df = load_plays(
-        conn,
-        min_ms=min_ms,
-        music_only=music_only,
-        merge_enabled=merge_enabled,
-    )
+    if entity == "artist":
+        df = load_plays_for_artists(
+            conn,
+            min_ms=min_ms,
+            music_only=music_only,
+            merge_enabled=merge_enabled,
+        )
+    else:
+        df = load_plays(
+            conn,
+            min_ms=min_ms,
+            music_only=music_only,
+            merge_enabled=merge_enabled,
+        )
     if df.empty:
         return {"time_label": "", "total_records": 0, "rows": []}
     track_cover_map = _track_cover_urls(conn, df["track_id"]) if "track_id" in df.columns else {}
@@ -577,6 +591,16 @@ def get_leaderboard(
             row["artist_name"] = r.artist_name
             row["cover_url"] = album_cover_map.get((r.album_name, r.artist_name))
         rows.append(row)
+
+    if entity == "track" and rows:
+        artist_map = get_track_all_artists_map()
+        names_map = get_track_artist_names_map()
+        for row in rows:
+            tid = row["track_id"]
+            if tid in artist_map:
+                row["artist_name"] = artist_map[tid]
+            if tid in names_map:
+                row["artist_names"] = names_map[tid]
 
     return {"time_label": time_label, "total_records": len(df), "rows": rows}
 
@@ -1059,7 +1083,8 @@ def get_artist_list(
     rows = conn.execute(
         f"""SELECT a.artist_id, a.artist_name, a.image_path, a.image_url, COUNT(*) as cnt
             FROM plays p JOIN tracks t ON p.track_id = t.track_id
-            JOIN artists a ON t.artist_id = a.artist_id
+            JOIN track_artists ta ON t.track_id = ta.track_id
+            JOIN artists a ON ta.artist_id = a.artist_id
             {w}
             GROUP BY a.artist_id ORDER BY cnt DESC""",
         fp,
@@ -1083,7 +1108,7 @@ def get_artist_deep_dive(
     artist_name: str,
 ) -> dict:
     """In-depth analysis for a single artist."""
-    df = load_plays(
+    df = load_plays_for_artists(
         conn,
         min_ms=min_ms,
         music_only=music_only,

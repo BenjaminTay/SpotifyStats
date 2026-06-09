@@ -2,7 +2,7 @@
 
 import pandas as pd
 
-from backend.core.db import get_db
+from backend.core.db import get_db, get_track_artist_names_map
 from backend.core.json_helpers import df_to_json as _df_to_json
 from backend.core.json_helpers import py_val as _py_val
 from backend.domains.billboard.chart_compute import (
@@ -1121,7 +1121,28 @@ def compute_records(
         ["新歌占比", "大盘播放"], ascending=[False, False]
     )
 
+    # Enrich DataFrames with artist_names for frontend multi-artist linking
+    _enrich_records_artist_names(records)
+
     return records
+
+
+def _enrich_records_artist_names(records: dict) -> None:
+    """Add artist_names column to DataFrames that have a track_id column."""
+    names_map = get_track_artist_names_map()
+    if not names_map:
+        return
+    names_df = pd.DataFrame(
+        [(tid, names) for tid, names in names_map.items()],
+        columns=["track_id", "artist_names"],
+    )
+    for key, val in records.items():
+        if isinstance(val, pd.DataFrame) and "track_id" in val.columns:
+            records[key] = val.merge(names_df, on="track_id", how="left")
+            # Drop NaN artist_names (tracks without multi-artist)
+            records[key]["artist_names"] = records[key]["artist_names"].apply(
+                lambda x: x if isinstance(x, list) else None
+            )
 
 
 # ═══════════════════════════════════════════════════════════════════════════

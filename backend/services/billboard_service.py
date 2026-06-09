@@ -26,6 +26,7 @@ from backend.domains.billboard.data_loader import (
     _load_album_metadata,
     _try_load_from_agg,
     load_billboard_raw,
+    load_billboard_raw_for_artists,  # noqa: F401 — re-exported for API layer
     load_track_album_map,
 )
 from backend.domains.billboard.details import (
