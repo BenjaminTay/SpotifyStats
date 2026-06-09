@@ -9,12 +9,15 @@ import { billboardDetailLink } from '@/lib/navigation'
 import type {
   BillboardRecords,
   BlockedAlbumInfo,
+  BlockedArtistInfo,
   BlockedTrackInfo,
   BlockerKingAlbumRecord,
+  BlockerKingArtistRecord,
   BlockerKingRecord,
   DebutNo1AlbumRecord,
   DebutNo1Record,
   ReturnToNo1AlbumRecord,
+  ReturnToNo1ArtistRecord,
   ReturnToNo1Record,
   SelfReplacementAlbumRecord,
   SelfReplacementRecord,
@@ -55,6 +58,13 @@ export function ChampionshipSection({ rec, covers, onWeekClick }: { rec: Billboa
       return (b['走势评分'] ?? 0) - (a['走势评分'] ?? 0)
     })
   }, [rec.blocker_king_album])
+
+  const blockerKingArtistSorted = useMemo(() => {
+    return [...(rec.blocker_king_artist as BlockerKingArtistRecord[])].sort((a, b) => {
+      if (b['阻挡数'] !== a['阻挡数']) return b['阻挡数'] - a['阻挡数']
+      return (b['走势评分'] ?? 0) - (a['走势评分'] ?? 0)
+    })
+  }, [rec.blocker_king_artist])
 
   type DebutSortMode = 'date' | 'no1weeks' | 'chartweeks'
   const [debutSort, setDebutSort] = useState<{ mode: DebutSortMode; desc: boolean }>({ mode: 'date', desc: true })
@@ -173,22 +183,30 @@ export function ChampionshipSection({ rec, covers, onWeekClick }: { rec: Billboa
       </RecordCard>
 
       {/* 回归冠军 */}
-      <RecordCard title="回归冠军 · Return to #1" subtitle="离开冠军位后又重新登顶" toggle={<TrackAlbumToggle value={returnType} onChange={setReturnType} />}>
+      <RecordCard title="回归冠军 · Return to #1" subtitle="离开冠军位后又重新登顶" toggle={<TrackAlbumToggle value={returnType} onChange={setReturnType} showArtist />}>
         {returnType === 'track' ? (
           <MiniRankTable rows={rec.return_to_no1 as ReturnToNo1Record[]} columns={[
             { header: '#', width: '48px', align: 'center', render: (_, idx) => <RankNum rank={idx + 1} /> },
             { header: '歌曲', render: (r) => <TrackCell trackId={r.track_id} trackName={r.track_name} artistName={r.artist_name} artistNames={r.artist_names} coverUrl={covers.track.get(r.track_id)} /> },
             { header: '首次夺冠', width: '105px', render: (r) => <span className="font-sans text-[12px] tabular-nums text-muted-foreground">{fmtDate(r['首次冠单'])}</span> },
-            { header: '回归日期', width: '105px', render: (r) => <span className="font-sans text-[12px] tabular-nums text-muted-foreground">{fmtDate(r['回冠日期'])}</span> },
+            { header: '回冠周', width: '105px', render: (r) => <span className="font-sans text-[12px] tabular-nums text-muted-foreground">{fmtDate(r['回冠日期'])}</span> },
             { header: '间隔', width: '140px', align: 'right', render: (r) => <ValueBar value={r['间隔周数']} max={(rec.return_to_no1 as ReturnToNo1Record[])[0]?.['间隔周数'] ?? 1} suffix="周" /> },
           ]} />
-        ) : (
+        ) : returnType === 'album' ? (
           <MiniRankTable rows={rec.return_to_no1_album as ReturnToNo1AlbumRecord[]} columns={[
             { header: '#', width: '48px', align: 'center', render: (_, idx) => <RankNum rank={idx + 1} /> },
             { header: '专辑', render: (r) => <AlbumCell albumName={r.album_name} artistName={r.artist_name} coverUrl={covers.album.get(r.album_name)} /> },
             { header: '首次夺冠', width: '105px', render: (r) => <span className="font-sans text-[12px] tabular-nums text-muted-foreground">{fmtDate(r['首次冠专'])}</span> },
-            { header: '回归日期', width: '105px', render: (r) => <span className="font-sans text-[12px] tabular-nums text-muted-foreground">{fmtDate(r['回冠日期'])}</span> },
+            { header: '回冠周', width: '105px', render: (r) => <span className="font-sans text-[12px] tabular-nums text-muted-foreground">{fmtDate(r['回冠日期'])}</span> },
             { header: '间隔', width: '140px', align: 'right', render: (r) => <ValueBar value={r['间隔周数']} max={(rec.return_to_no1_album as ReturnToNo1AlbumRecord[])[0]?.['间隔周数'] ?? 1} suffix="周" /> },
+          ]} />
+        ) : (
+          <MiniRankTable rows={rec.return_to_no1_artist as ReturnToNo1ArtistRecord[]} columns={[
+            { header: '#', width: '48px', align: 'center', render: (_, idx) => <RankNum rank={idx + 1} /> },
+            { header: '艺人', render: (r) => <ArtistCell artistName={r.artist_name} coverUrl={covers.artist.get(r.artist_name)} compact /> },
+            { header: '首次夺冠', width: '105px', render: (r) => <span className="font-sans text-[12px] tabular-nums text-muted-foreground">{fmtDate(r['首次夺艺冠'])}</span> },
+            { header: '回冠周', width: '105px', render: (r) => <span className="font-sans text-[12px] tabular-nums text-muted-foreground">{fmtDate(r['回冠日期'])}</span> },
+            { header: '间隔', width: '140px', align: 'right', render: (r) => <ValueBar value={r['间隔周数']} max={(rec.return_to_no1_artist as ReturnToNo1ArtistRecord[])[0]?.['间隔周数'] ?? 1} suffix="周" /> },
           ]} />
         )}
       </RecordCard>
@@ -215,7 +233,7 @@ export function ChampionshipSection({ rec, covers, onWeekClick }: { rec: Billboa
       </RecordCard>
 
       {/* 阻挡王 */}
-      <RecordCard title="阻挡王 · Blocker King" subtitle="在 #1 期间阻挡最多 Peak #2 作品" toggle={<TrackAlbumToggle value={blockerType} onChange={setBlockerType} />}>
+      <RecordCard title="阻挡王 · Blocker King" subtitle="在 #1 期间阻挡最多 Peak #2 作品" toggle={<TrackAlbumToggle value={blockerType} onChange={setBlockerType} showArtist />}>
         {blockerType === 'track' ? (
           <>
             {blockerKingSorted.length > 0 && (
@@ -234,11 +252,11 @@ export function ChampionshipSection({ rec, covers, onWeekClick }: { rec: Billboa
               }},
             ]} />
           </>
-        ) : (
+        ) : blockerType === 'album' ? (
           <>
             {blockerKingAlbumSorted.length > 0 && (
               <div className="mb-4">
-                <FeaturedRecord label="最强阻挡" value={blockerKingAlbumSorted[0]['阻挡数']} unit="张 Peak #2 专辑被挡" caption={`${blockerKingAlbumSorted[0].album_name} — ${blockerKingAlbumSorted[0].artist_name}`} linkTo={billboardDetailLink(`/music/albums/${encodeURIComponent(blockerKingAlbumSorted[0].album_name)}`)} />
+                <FeaturedRecord label="最强阻挡" value={blockerKingAlbumSorted[0]['阻挡数']} unit="张 Peak #2 专辑被挡" caption={`${blockerKingAlbumSorted[0].album_name} — ${blockerKingAlbumSorted[0].artist_name}`} coverUrl={covers.album.get(blockerKingAlbumSorted[0].album_name)} linkTo={billboardDetailLink(`/music/albums/${encodeURIComponent(blockerKingAlbumSorted[0].album_name)}?artist=${encodeURIComponent(blockerKingAlbumSorted[0].artist_name)}`)} />
               </div>
             )}
             <MiniRankTable fixed rows={blockerKingAlbumSorted} columns={[
@@ -253,18 +271,30 @@ export function ChampionshipSection({ rec, covers, onWeekClick }: { rec: Billboa
               }},
             ]} />
           </>
+        ) : (
+          <>
+            {blockerKingArtistSorted.length > 0 && (
+              <div className="mb-4">
+                <FeaturedRecord label="最强阻挡" value={blockerKingArtistSorted[0]['阻挡数']} unit="位 Peak #2 艺人被挡" caption={`${blockerKingArtistSorted[0].artist_name}`} coverUrl={covers.artist.get(blockerKingArtistSorted[0].artist_name)} coverRound linkTo={billboardDetailLink(`/music/artists/${encodeURIComponent(blockerKingArtistSorted[0].artist_name)}`)} />
+              </div>
+            )}
+            <MiniRankTable fixed rows={blockerKingArtistSorted} columns={[
+              { header: '#', width: '48px', align: 'center', render: (_, idx) => <RankNum rank={idx + 1} /> },
+              { header: '艺人', width: '280px', render: (r) => <ArtistCell artistName={r.artist_name} coverUrl={covers.artist.get(r.artist_name)} compact /> },
+              { header: '阻挡数', width: '130px', align: 'right', render: (r) => <ValueBar value={r['阻挡数']} max={blockerKingArtistSorted[0]?.['阻挡数'] ?? 1} /> },
+              { header: <span className="pl-8">被阻挡艺人</span>, render: (r) => {
+                const blocked: BlockedArtistInfo[] = rec.blocked_artists_map?.[r.artist_name] ?? []
+                if (blocked.length === 0) return <span className="text-[11px] text-muted-foreground">—</span>
+                return <div className="flex flex-wrap gap-1 pl-8">{blocked.map((b, i) => <Link key={i} to={billboardDetailLink(`/music/artists/${encodeURIComponent(b.artist_name)}`)} className="inline-flex items-center gap-1 rounded-[4px] bg-muted/50 px-1.5 py-0.5 font-sans text-[11px] transition-colors hover:bg-muted hover:text-accent-foreground">{displayName(b.artist_name)}</Link>)}</div>
+              }},
+            ]} />
+          </>
         )}
       </RecordCard>
 
-      {/* 最长/最快登顶 */}
-      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
-        <RecordCard title="最长登顶路 · Longest Climb to #1">
-          {rec.longest_to_no1.length > 0 && <FeaturedRecord label="马拉松冠军" value={rec.longest_to_no1[0]['登顶周数']} unit="周登顶" caption={`${rec.longest_to_no1[0].track_name} — ${rec.longest_to_no1[0].artist_name}`} linkTo={billboardDetailLink(`/music/tracks/${rec.longest_to_no1[0].track_id}`)} />}
-        </RecordCard>
-        <RecordCard title="最快登顶 · Fastest Climb to #1" subtitle="非空降歌曲（排除入榜即夺冠）">
-          {rec.fastest_to_no1.length > 0 && <FeaturedRecord label="闪电战冠军" value={rec.fastest_to_no1[0]['登顶周数']} unit="周登顶" caption={`${rec.fastest_to_no1[0].track_name} — ${rec.fastest_to_no1[0].artist_name}`} linkTo={billboardDetailLink(`/music/tracks/${rec.fastest_to_no1[0].track_id}`)} />}
-        </RecordCard>
-      </div>
+      <RecordCard title="最长登顶路 · Longest Climb to #1">
+        {rec.longest_to_no1.length > 0 && <FeaturedRecord label="马拉松冠军" value={rec.longest_to_no1[0]['登顶周数']} unit="周登顶" caption={`${rec.longest_to_no1[0].track_name} — ${rec.longest_to_no1[0].artist_name}`} linkTo={billboardDetailLink(`/music/tracks/${rec.longest_to_no1[0].track_id}`)} />}
+      </RecordCard>
     </div>
   )
 }

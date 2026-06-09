@@ -53,9 +53,9 @@ def compute_records(
     """
     records = {}
 
-    compute_championship_records(records, weekly, track_summary, weekly_album)
-    compute_longevity_records(records, weekly, track_summary, weekly_album)
-    compute_endurance_records(records, weekly, track_summary, weekly_album)
+    compute_championship_records(records, weekly, track_summary, weekly_album, weekly_artist)
+    compute_longevity_records(records, weekly, track_summary, weekly_album, weekly_artist)
+    compute_endurance_records(records, weekly, track_summary, weekly_album, weekly_artist)
     compute_movement_records(records, weekly, track_summary, weekly_album)
     compute_hall_of_fame_records(
         records,
@@ -73,8 +73,10 @@ def compute_records(
         weekly,
         track_summary,
         weekly_album,
+        weekly_artist,
         track_power_scores,
         album_power_scores,
+        artist_power_scores,
     )
 
     # Enrich DataFrames with artist_names for frontend multi-artist linking

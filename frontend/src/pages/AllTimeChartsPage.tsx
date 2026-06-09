@@ -3,7 +3,7 @@ import { AlertCircle } from 'lucide-react'
 
 import { BillboardSubNav } from '@/components/shared/BillboardSubNav'
 import { Skeleton } from '@/components/ui/skeleton'
-import { AllTimeTable } from '@/features/billboard/all-time/AllTimeTable'
+import { AllTimeTable, Pagination } from '@/features/billboard/all-time/AllTimeTable'
 import {
   ALL_TIME_PAGE_SIZE,
   EMPTY_ALL_TIME_ROWS,
@@ -149,29 +149,36 @@ export function AllTimeChartsPage() {
         ))}
       </div>
 
-      <div className="mb-5 flex items-center gap-3">
-        <span className="font-sans text-[12px] font-medium uppercase tracking-[1px] text-muted-foreground">
-          筛选
-        </span>
-        <div className="flex gap-1.5">
-          {PEAK_FILTER_OPTIONS.map((option) => (
-            <button
-              key={option.value}
-              onClick={() => {
-                setPeakFilter(option.value)
-                setPage(1)
-              }}
-              className={cn(
-                'rounded-full px-3.5 py-1.5 font-sans text-[12px] font-medium transition-colors',
-                peakFilter === option.value
-                  ? 'bg-accent-foreground text-primary-foreground'
-                  : 'bg-muted/60 text-muted-foreground hover:bg-muted hover:text-foreground',
-              )}
-            >
-              {option.label}
-            </button>
-          ))}
+      <div className="mb-5 flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <span className="font-sans text-[12px] font-medium uppercase tracking-[1px] text-muted-foreground">
+            筛选
+          </span>
+          <div className="flex gap-1.5">
+            {PEAK_FILTER_OPTIONS.map((option) => (
+              <button
+                key={option.value}
+                onClick={() => {
+                  setPeakFilter(option.value)
+                  setPage(1)
+                }}
+                className={cn(
+                  'rounded-full px-3.5 py-1.5 font-sans text-[12px] font-medium transition-colors',
+                  peakFilter === option.value
+                    ? 'bg-accent-foreground text-primary-foreground'
+                    : 'bg-muted/60 text-muted-foreground hover:bg-muted hover:text-foreground',
+                )}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
         </div>
+        <Pagination
+          page={Math.min(page, Math.max(1, Math.ceil(displayRows.rows.length / ALL_TIME_PAGE_SIZE)))}
+          totalPages={Math.max(1, Math.ceil(displayRows.rows.length / ALL_TIME_PAGE_SIZE))}
+          onPageChange={setPage}
+        />
       </div>
 
       <AllTimeTable

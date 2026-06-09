@@ -14,7 +14,6 @@ import {
   TrackCell,
   ValueBar,
   fmtDate,
-  fmtNum,
 } from './RecordsPrimitives'
 
 export function BreakthroughSection({ rec, covers }: { rec: BillboardRecords; covers: CoverMaps }) {
@@ -54,14 +53,6 @@ export function BreakthroughSection({ rec, covers }: { rec: BillboardRecords; co
         )}
       </RecordCard>
 
-      <RecordCard title="Top 10 屠榜 · Most Simultaneous Top 10" subtitle="单周同一艺人 Top 10 歌曲数最多">
-        {rec.most_top10_simul ? (
-          <FeaturedRecord label="Top 10 屠榜纪录" value={rec.most_top10_simul.count} unit="首进入 Top 10" caption={`${rec.most_top10_simul.artist} · ${fmtDate(rec.most_top10_simul.week)}`} coverUrl={covers.artist.get(rec.most_top10_simul.artist)} linkTo={billboardDetailLink(`/music/artists/${encodeURIComponent(rec.most_top10_simul.artist || '')}`)} />
-        ) : (
-          <p className="py-4 text-center font-sans text-[12px] text-muted-foreground">暂无数据</p>
-        )}
-      </RecordCard>
-
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
         <RecordCard title="最大跃升 · Biggest Jump" subtitle="单周排名上升最多">
           <MiniRankTable rows={rec.biggest_jump} columns={[
@@ -89,9 +80,6 @@ export function BreakthroughSection({ rec, covers }: { rec: BillboardRecords; co
         ]} />
       </RecordCard>
 
-      <RecordCard title="最强单周 · Strongest Week" subtitle="总播放量最高的单周">
-        {rec.strongest_week ? <FeaturedRecord label="最强单周" value={fmtNum(rec.strongest_week.total_plays)} unit="次播放" caption={fmtDate(rec.strongest_week.week)} /> : <p className="py-4 text-center font-sans text-[12px] text-muted-foreground">暂无数据</p>}
-      </RecordCard>
     </div>
   )
 }

@@ -3,11 +3,16 @@
 from __future__ import annotations
 
 from sqlite3 import Connection
+from typing import Union
 
 from fastapi import APIRouter, Depends, Query
 
 from backend.dependencies import PlayFilters, get_conn
-from backend.models.timeline import AnnualTimelinePoint, MonthlyTimelinePoint
+from backend.models.timeline import (
+    AnnualTimelinePoint,
+    MonthlyTimelinePoint,
+    TimelineMonthlyDrilldownResponse,
+)
 from backend.services.play_service import (
     get_annual_timeline,
     get_monthly_timeline_drilldown,
@@ -25,20 +30,17 @@ def timeline_annual(
     return get_annual_timeline(conn, filters.min_ms, filters.music_only, filters.merge_enabled)
 
 
-@router.get("/monthly", response_model=list[MonthlyTimelinePoint])
+@router.get(
+    "/monthly", response_model=Union[list[MonthlyTimelinePoint], TimelineMonthlyDrilldownResponse]
+)
 def timeline_monthly(
     filters: PlayFilters = Depends(),
     period: str | None = Query(None, description="YYYY-MM for drilldown top5"),
     conn: Connection = Depends(get_conn),
 ):
-    """Returns flat list of MonthlyTimelinePoint. When period is provided, drilldown
-    dict is returned without response_model validation to support dynamic structure."""
     result = get_monthly_timeline_drilldown(
         conn, filters.min_ms, filters.music_only, filters.merge_enabled, period
     )
-    # When drilldown dict is returned, bypass model validation
-    if isinstance(result, dict):
-        return result
     return result
 
 

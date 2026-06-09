@@ -90,6 +90,9 @@ def compute_power_scores(weekly, top_n):
             raw_score=("_weekly", "sum"),
             weeks_on_chart=("billboard_week", "nunique"),
             peak_position=("rank", "min"),
+            weeks_top5=("rank", lambda x: (x <= 5).sum()),
+            weeks_top10=("rank", lambda x: (x <= 10).sum()),
+            weeks_at_peak=("rank", lambda x: (x == x.min()).sum()),
             is_debut_no1=("rank", lambda x: (x.iloc[0] == 1) if len(x) > 0 else False),
         )
         .reset_index()
@@ -127,6 +130,9 @@ def compute_power_scores(weekly, top_n):
             "power_rank",
             "peak_position",
             "weeks_on_chart",
+            "weeks_top5",
+            "weeks_top10",
+            "weeks_at_peak",
         ]
     ]
 
@@ -163,6 +169,9 @@ def compute_album_power_scores(weekly_album, top_n):
             raw_score=("_weekly", "sum"),
             weeks_on_chart=("billboard_week", "nunique"),
             peak_position=("rank", "min"),
+            weeks_top5=("rank", lambda x: (x <= 5).sum()),
+            weeks_top10=("rank", lambda x: (x <= 10).sum()),
+            weeks_at_peak=("rank", lambda x: (x == x.min()).sum()),
         )
         .reset_index()
     )
@@ -204,6 +213,9 @@ def compute_album_power_scores(weekly_album, top_n):
             "power_rank",
             "peak_position",
             "weeks_on_chart",
+            "weeks_top5",
+            "weeks_top10",
+            "weeks_at_peak",
         ]
     ]
 
@@ -242,6 +254,9 @@ def compute_artist_power_scores(weekly_artist, top_n):
             raw_score=("_weekly", "sum"),
             weeks_on_chart=("billboard_week", "nunique"),
             peak_position=("rank", "min"),
+            weeks_top5=("rank", lambda x: (x <= 5).sum()),
+            weeks_top10=("rank", lambda x: (x <= 10).sum()),
+            weeks_at_peak=("rank", lambda x: (x == x.min()).sum()),
         )
         .reset_index()
     )
@@ -269,4 +284,15 @@ def compute_artist_power_scores(weekly_artist, top_n):
 
     result = weekly_scores.sort_values("power_score", ascending=False).reset_index(drop=True)
     result["power_rank"] = range(1, len(result) + 1)
-    return result[["artist_name", "power_score", "power_rank", "peak_position", "weeks_on_chart"]]
+    return result[
+        [
+            "artist_name",
+            "power_score",
+            "power_rank",
+            "peak_position",
+            "weeks_on_chart",
+            "weeks_top5",
+            "weeks_top10",
+            "weeks_at_peak",
+        ]
+    ]

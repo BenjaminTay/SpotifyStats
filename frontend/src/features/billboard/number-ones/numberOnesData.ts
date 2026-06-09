@@ -1,6 +1,5 @@
 import type {
   BillboardAllTimeResponse,
-  TrackSummary,
   WeeklyAlbumEntry,
   WeeklyArtistEntry,
   WeeklyTrackEntry,
@@ -46,26 +45,6 @@ export interface ArtistNo1Info {
   no1_weeks: string[]
 }
 
-export interface DebutNo1 {
-  track_id: number
-  track_name: string
-  artist_name: string
-  artist_names?: string[]
-  cover_url?: string | null
-  billboard_week: string
-  weeks_on_chart: number
-  weeks_at_no1: number
-}
-
-export interface AlbumDebutNo1 {
-  album_name: string
-  artist_name: string
-  cover_url?: string | null
-  billboard_week: string
-  weeks_on_chart: number
-  weeks_at_no1: number
-}
-
 export type AlbumNo1WithPkWks = WeeklyAlbumEntry & { album_pk_wks: number }
 export type ArtistNo1WithPkWks = WeeklyArtistEntry & { artist_pk_wks: number }
 
@@ -91,8 +70,6 @@ export interface NumberOnesComputed {
   trackNo1WeeksSorted: TrackNo1Info[]
   albumNo1WeeksSorted: AlbumNo1Info[]
   artistNo1WeeksSorted: ArtistNo1Info[]
-  debutNo1Tracks: DebutNo1[]
-  debutNo1Albums: AlbumDebutNo1[]
   trackAnnualNo1: AnnualTrackNo1[]
   albumAnnualNo1: AnnualAlbumNo1[]
   albumNo1WithPkWks: AlbumNo1WithPkWks[]
@@ -124,8 +101,6 @@ export const EMPTY_NUMBER_ONES: NumberOnesComputed = {
   trackNo1WeeksSorted: [],
   albumNo1WeeksSorted: [],
   artistNo1WeeksSorted: [],
-  debutNo1Tracks: [],
-  debutNo1Albums: [],
   trackAnnualNo1: [],
   albumAnnualNo1: [],
   albumNo1WithPkWks: [],
@@ -167,7 +142,7 @@ function longestStreak(weeks: string[]): number {
 export function buildNumberOnes(data: BillboardAllTimeResponse | null | undefined): NumberOnesComputed {
   if (!data) return EMPTY_NUMBER_ONES
 
-  const { weekly, weekly_album, weekly_artist, track_summary, power_scores, album_power_scores, artist_power_scores } = data
+  const { weekly, weekly_album, weekly_artist, power_scores, album_power_scores, artist_power_scores } = data
 
   const psByTrack = new Map<number, number>()
   for (const score of power_scores) psByTrack.set(score.track_id, score.power_score)
@@ -282,8 +257,6 @@ export function buildNumberOnes(data: BillboardAllTimeResponse | null | undefine
   }
   artistNo1Infos.sort((a, b) => b.weeks_at_no1 - a.weeks_at_no1 || b.power_score - a.power_score)
 
-  const debutNo1Tracks = buildTrackDebuts(weekly, track_summary)
-  const debutNo1Albums = buildAlbumDebuts(weekly_album)
   const trackAnnualNo1 = buildTrackAnnual(trackNo1s)
   const albumAnnualNo1 = buildAlbumAnnual(albumNo1s)
   const albumNo1WithPkWks = addAlbumPeakWeeks(albumNo1s)
@@ -299,8 +272,6 @@ export function buildNumberOnes(data: BillboardAllTimeResponse | null | undefine
     trackNo1WeeksSorted: trackNo1Infos,
     albumNo1WeeksSorted: albumNo1Infos,
     artistNo1WeeksSorted: artistNo1Infos,
-    debutNo1Tracks,
-    debutNo1Albums,
     trackAnnualNo1,
     albumAnnualNo1,
     albumNo1WithPkWks,
@@ -309,62 +280,6 @@ export function buildNumberOnes(data: BillboardAllTimeResponse | null | undefine
     albumMaxPlays,
     artistMaxPlays,
   }
-}
-
-function buildTrackDebuts(weekly: WeeklyTrackEntry[], trackSummary: TrackSummary[]): DebutNo1[] {
-  const summaryMap = new Map<number, TrackSummary>()
-  for (const summary of trackSummary) summaryMap.set(summary.track_id, summary)
-  const firstAppearMap = new Map<number, WeeklyTrackEntry>()
-  for (const entry of [...weekly].sort((a, b) => a.billboard_week.localeCompare(b.billboard_week))) {
-    if (!firstAppearMap.has(entry.track_id)) firstAppearMap.set(entry.track_id, entry)
-  }
-  const debuts: DebutNo1[] = []
-  for (const [trackId, entry] of firstAppearMap) {
-    if (entry.rank !== 1) continue
-    const summary = summaryMap.get(trackId)
-    debuts.push({
-      track_id: trackId,
-      track_name: entry.track_name,
-      artist_name: entry.artist_name,
-      artist_names: entry.artist_names,
-      cover_url: entry.cover_url,
-      billboard_week: entry.billboard_week,
-      weeks_on_chart: summary?.weeks_on_chart ?? 0,
-      weeks_at_no1: summary?.weeks_at_no1 ?? 0,
-    })
-  }
-  return debuts.sort((a, b) => b.billboard_week.localeCompare(a.billboard_week))
-}
-
-function buildAlbumDebuts(weeklyAlbum: WeeklyAlbumEntry[]): AlbumDebutNo1[] {
-  const albumSummaryMap = new Map<string, { weeks_on_chart: number; weeks_at_no1: number }>()
-  for (const entry of weeklyAlbum) {
-    const key = `${entry.album_name}|||${entry.artist_name}`
-    const cur = albumSummaryMap.get(key)
-    albumSummaryMap.set(key, {
-      weeks_on_chart: (cur?.weeks_on_chart ?? 0) + 1,
-      weeks_at_no1: (cur?.weeks_at_no1 ?? 0) + (entry.rank === 1 ? 1 : 0),
-    })
-  }
-  const firstAppearMap = new Map<string, WeeklyAlbumEntry>()
-  for (const entry of [...weeklyAlbum].sort((a, b) => a.billboard_week.localeCompare(b.billboard_week))) {
-    const key = `${entry.album_name}|||${entry.artist_name}`
-    if (!firstAppearMap.has(key)) firstAppearMap.set(key, entry)
-  }
-  const debuts: AlbumDebutNo1[] = []
-  for (const [key, entry] of firstAppearMap) {
-    if (entry.rank !== 1) continue
-    const summary = albumSummaryMap.get(key)
-    debuts.push({
-      album_name: entry.album_name,
-      artist_name: entry.artist_name,
-      cover_url: entry.cover_url,
-      billboard_week: entry.billboard_week,
-      weeks_on_chart: summary?.weeks_on_chart ?? 0,
-      weeks_at_no1: summary?.weeks_at_no1 ?? 0,
-    })
-  }
-  return debuts.sort((a, b) => b.billboard_week.localeCompare(a.billboard_week))
 }
 
 function buildTrackAnnual(trackNo1s: WeeklyTrackEntry[]): AnnualTrackNo1[] {

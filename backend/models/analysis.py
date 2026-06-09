@@ -18,11 +18,11 @@ class AnalysisOverviewSummary(BaseModel):
 
 
 class AnalysisTrendSummary(BaseModel):
-    peak_period: str
+    peak_period: str | None
     peak_plays: int
-    low_period: str
+    low_period: str | None
     low_plays: int
-    latest_period: str
+    latest_period: str | None
     latest_plays: int
     previous_period: str | None
     previous_plays: int
@@ -63,12 +63,12 @@ class AnalysisTopAlbum(BaseModel):
 
 
 class AnalysisModuleCard(BaseModel):
-    id: str
+    key: str
     title: str
-    subtitle: str
-    highlight: str | None
-    icon: str | None
-    trend: str | None
+    metric: str
+    detail: str
+    to: str
+    cover_url: str | None = None
 
 
 class AnalysisOverviewResponse(BaseModel):
@@ -93,68 +93,78 @@ class AnalysisResolvedPeriod(BaseModel):
     end_date: str | None
 
 
-class AnalysisSummary(BaseModel):
-    plays: int
-    hours: float
-    days: int
-    tracks: int
-    artists: int
-    albums: int
+class AnalysisStatsSummary(BaseModel):
+    total_plays: int
+    total_hours: float
+    unique_tracks: int
+    unique_albums: int
+    unique_artists: int
+    active_days: int
+
+
+class AnalysisDailyMetrics(BaseModel):
     avg_daily_plays: float
     avg_daily_hours: float
-    first_date: str | None
-    last_date: str | None
-
-
-class AnalysisDailyMetric(BaseModel):
-    date: str
-    plays: int
+    avg_active_day_plays: float
+    avg_active_day_hours: float
 
 
 class AnalysisHourlyPoint(BaseModel):
     hour: int
-    count: int
+    plays: int
+    hours: float
 
 
 class AnalysisDailyTrendPoint(BaseModel):
     date: str
     plays: int
-    cum_plays: int
+    hours: float
+
+
+class AnalysisCumulativeTrendPoint(BaseModel):
+    date: str
+    cumulative_plays: int
+    cumulative_hours: float
 
 
 class AnalysisWeekdayPoint(BaseModel):
-    dow: int
-    count: int
+    day: str
+    plays: int
+    hours: float
 
 
 class AnalysisMonthPoint(BaseModel):
     month: int
-    count: int
+    plays: int
+    hours: float
 
 
 class AnalysisYearPoint(BaseModel):
     year: int
-    count: int
+    plays: int
+    hours: float
 
 
 class AnalysisStatsBehaviorSummary(BaseModel):
-    total_plays: int
-    skip_rate: float | None
-    avg_ms: float
-    platforms: dict[str, int]
+    forward_rate: float
+    shuffle_rate: float
+    primary_platform: str
+    primary_platform_rate: float
+    top_start_reason: str
+    top_end_reason: str
 
 
 class AnalysisStatsResponse(BaseModel):
     period: AnalysisResolvedPeriod
-    summary: AnalysisSummary
-    daily_metrics: list[dict]
+    summary: AnalysisStatsSummary
+    daily_metrics: AnalysisDailyMetrics
     hourly_distribution: list[AnalysisHourlyPoint]
     daily_trend: list[AnalysisDailyTrendPoint]
-    cumulative_trend: list[dict]
+    cumulative_trend: list[AnalysisCumulativeTrendPoint]
     weekday_distribution: list[AnalysisWeekdayPoint]
-    month_distribution: list[dict]
-    year_distribution: list[dict]
-    behavior_summary: dict
+    month_distribution: list[AnalysisMonthPoint]
+    year_distribution: list[AnalysisYearPoint]
+    behavior_summary: AnalysisStatsBehaviorSummary
     recent_plays: list[dict]
 
 
@@ -163,20 +173,21 @@ class AnalysisStatsResponse(BaseModel):
 
 class AnalysisChartRow(BaseModel):
     rank: int
-    track_id: int | None
-    track_name: str | None
-    artist_name: str | None
-    album_name: str | None
+    track_id: int | None = None
+    track_name: str | None = None
+    artist_name: str | None = None
+    album_name: str | None = None
     plays: int
     hours: float
-    share_pct: str
-    first_played: str | None
-    last_played: str | None
+    share_pct: float
+    first_played: str | None = None
+    last_played: str | None = None
     avg_daily_plays: float
     avg_daily_hours: float
-    cover_url: str | None
-    unique_tracks: int | None
-    artist_names: list[str] | None
+    cover_url: str | None = None
+    unique_tracks: int | None = None
+    unique_albums: int | None = None
+    artist_names: list[str] | None = None
 
 
 class AnalysisChartsResponse(BaseModel):
@@ -196,15 +207,15 @@ class AnalysisPlayRow(BaseModel):
     play_id: int
     ts: str
     date: str
-    track_id: int | None
+    track_id: int | None = None
     track_name: str
     artist_name: str
-    album_name: str | None
+    album_name: str | None = None
     ms_played: int
     hours: float
     platform: str
-    cover_url: str | None
-    artist_names: list[str] | None
+    cover_url: str | None = None
+    artist_names: list[str] | None = None
 
 
 class AnalysisPlaysResponse(BaseModel):

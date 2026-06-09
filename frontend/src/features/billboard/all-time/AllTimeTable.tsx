@@ -173,7 +173,7 @@ function renderNameCell(activeTab: EntityTab, row: AllTimeRow) {
   return renderArtistName(row as MergedArtistRow)
 }
 
-function Pagination({
+export function Pagination({
   page,
   totalPages,
   onPageChange,
@@ -321,10 +321,6 @@ export function AllTimeTable({
 
   return (
     <>
-      <div className="mb-5 flex justify-end">
-        <Pagination page={safePage} totalPages={totalPages} onPageChange={onPageChange} />
-      </div>
-
       <GlassCard className="overflow-x-auto p-0">
         <table
           className="table-fixed border-collapse"

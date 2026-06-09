@@ -1,4 +1,5 @@
-import { Link } from 'react-router-dom'
+import { useCallback } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
 import { GlassCard } from '@/components/shared/GlassCard'
 import { displayName } from '@/lib/chinese'
 import type { ListeningDepth as ListeningDepthType } from '@/types/yearly-review'
@@ -14,6 +15,29 @@ function CoverImage({ url, alt }: { url: string; alt: string }) {
     <div className="w-14 h-14 bg-muted rounded-md flex items-center justify-center flex-shrink-0">
       <svg className="w-5 h-5 text-muted-foreground/40" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2z" /></svg>
     </div>
+  )
+}
+
+function ArtistLink({ artistName }: { artistName: string }) {
+  const navigate = useNavigate()
+  const handleClick = useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault()
+      e.stopPropagation()
+      navigate(`/music/artists/${encodeURIComponent(artistName)}`)
+    },
+    [artistName, navigate],
+  )
+  return (
+    <span
+      role="link"
+      tabIndex={0}
+      onClick={handleClick}
+      onKeyDown={(e) => { if (e.key === 'Enter') handleClick(e as unknown as React.MouseEvent) }}
+      className="font-sans text-[12px] text-muted-foreground truncate transition-colors hover:text-accent-foreground cursor-pointer block"
+    >
+      {displayName(artistName)}
+    </span>
   )
 }
 
@@ -70,9 +94,7 @@ export function ListeningDepth({ listeningDepth }: ListeningDepthProps) {
                   <CoverImage url={album.cover_url} alt={album.name} />
                   <div className="min-w-0 flex-1">
                     <p className="font-sans text-[14px] font-semibold truncate group-hover:text-accent-foreground transition-colors">{displayName(album.name)}</p>
-                    <Link to={`/music/artists/${encodeURIComponent(album.artist_name)}`} className="font-sans text-[12px] text-muted-foreground truncate transition-colors hover:text-accent-foreground block">
-                      {displayName(album.artist_name)}
-                    </Link>
+                    <ArtistLink artistName={album.artist_name} />
                     <div className="mt-1.5 h-1.5 bg-muted rounded-full overflow-hidden">
                       <div
                         className="h-full rounded-full bg-green-500 dark:bg-green-400 transition-all duration-700"

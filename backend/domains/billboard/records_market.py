@@ -53,17 +53,6 @@ def compute_market_records(records, weekly, weekly_album=None, weekly_artist=Non
     else:
         records["week_total_plays"] = pd.DataFrame()
 
-    # ── 24. Strongest Week (最强单周) ────────────────────────────────────
-    if not records["week_total_plays"].empty:
-        sw = records["week_total_plays"].iloc[0]
-        records["strongest_week"] = {
-            "week": str(sw["billboard_week"]),
-            "total_plays": int(sw["total_plays"]),
-            "tracks_count": int(sw["tracks_count"]),
-        }
-    else:
-        records["strongest_week"] = {}
-
     # ── 29. Closest / Largest #1 vs #2 (最激烈/最悬殊竞争) ──────────────
     no1_data = weekly[weekly["rank"] == 1][
         ["billboard_week", "track_name", "artist_name", "play_count"]

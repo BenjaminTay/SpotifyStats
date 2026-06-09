@@ -3,7 +3,9 @@
 import pandas as pd
 
 
-def compute_endurance_records(records, weekly, track_summary, weekly_album=None):
+def compute_endurance_records(
+    records, weekly, track_summary, weekly_album=None, weekly_artist=None
+):
     """Populate records about rank persistence, re-entries, and consecutive patterns."""
 
     # ── 18. Most Weeks at #2 Without #1 (万年老二) ──────────────────────
@@ -58,6 +60,33 @@ def compute_endurance_records(records, weekly, track_summary, weekly_album=None)
     else:
         records["most_weeks_no2_no_no1_album"] = pd.DataFrame()
 
+    if weekly_artist is not None:
+        art_at_no2 = (
+            weekly_artist[weekly_artist["rank"] == 2]
+            .groupby("artist_name")
+            .agg(weeks_at_no2=("billboard_week", "nunique"))
+            .reset_index()
+        )
+        if not art_at_no2.empty:
+            art_peak = (
+                weekly_artist.groupby("artist_name")
+                .agg(peak_position=("rank", "min"))
+                .reset_index()
+            )
+            art_no2_with_peak = art_at_no2.merge(art_peak, on="artist_name")
+            art_no2_no_no1 = (
+                art_no2_with_peak[art_no2_with_peak["peak_position"] > 1]
+                .sort_values("weeks_at_no2", ascending=False)
+                .head(20)
+            )
+            records["most_weeks_no2_no_no1_artist"] = art_no2_no_no1[
+                ["artist_name", "peak_position", "weeks_at_no2"]
+            ]
+        else:
+            records["most_weeks_no2_no_no1_artist"] = pd.DataFrame()
+    else:
+        records["most_weeks_no2_no_no1_artist"] = pd.DataFrame()
+
     # ── 19. Most Re-entries (回榜王) ─────────────────────────────────────
     reentries = []
     for tid, grp in weekly.sort_values(["track_id", "billboard_week"]).groupby("track_id"):
@@ -108,6 +137,32 @@ def compute_endurance_records(records, weekly, track_summary, weekly_album=None)
         )
     else:
         records["most_reentries_album"] = pd.DataFrame()
+
+    if weekly_artist is not None:
+        artist_reentries = []
+        for aname, grp in weekly_artist.sort_values(["artist_name", "billboard_week"]).groupby(
+            "artist_name"
+        ):
+            wks = grp["billboard_week"].tolist()
+            count = 0
+            for i in range(1, len(wks)):
+                if (wks[i] - wks[i - 1]).days > 8:
+                    count += 1
+            if count > 0:
+                artist_reentries.append(
+                    {
+                        "artist_name": aname,
+                        "回榜次数": count,
+                        "在榜周数": len(wks),
+                    }
+                )
+        records["most_reentries_artist"] = (
+            pd.DataFrame(artist_reentries).sort_values("回榜次数", ascending=False).head(20)
+            if artist_reentries
+            else pd.DataFrame()
+        )
+    else:
+        records["most_reentries_artist"] = pd.DataFrame()
 
     # ── 20. Longest Consecutive Same Rank (稳如磐石) ────────────────────
     same_rank_streaks = []
@@ -199,3 +254,49 @@ def compute_endurance_records(records, weekly, track_summary, weekly_album=None)
         )
     else:
         records["longest_consecutive_same_rank_album"] = pd.DataFrame()
+
+    if weekly_artist is not None:
+        art_same_rank = []
+        for aname, grp in weekly_artist.sort_values(["artist_name", "billboard_week"]).groupby(
+            "artist_name"
+        ):
+            wks = grp["billboard_week"].tolist()
+            ranks = grp["rank"].tolist()
+            cr = ranks[0]
+            cs = wks[0]
+            cl = 1
+            br_val = cr
+            bs = cs
+            be = cs
+            bl = 1
+            for i in range(1, len(wks)):
+                if ranks[i] == cr and (wks[i] - wks[i - 1]).days <= 8:
+                    cl += 1
+                else:
+                    if cl > bl:
+                        bl = cl
+                        br_val = cr
+                        bs = cs
+                        be = wks[i - 1]
+                    cr = ranks[i]
+                    cs = wks[i]
+                    cl = 1
+            if cl > bl:
+                bl = cl
+                br_val = cr
+                bs = cs
+                be = wks[-1]
+            art_same_rank.append(
+                {
+                    "artist_name": aname,
+                    "停留排名": br_val,
+                    "连续周数": bl,
+                    "起始周": bs,
+                    "结束周": be,
+                }
+            )
+        records["longest_consecutive_same_rank_artist"] = (
+            pd.DataFrame(art_same_rank).sort_values("连续周数", ascending=False).head(20)
+        )
+    else:
+        records["longest_consecutive_same_rank_artist"] = pd.DataFrame()

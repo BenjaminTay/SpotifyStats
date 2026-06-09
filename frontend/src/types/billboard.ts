@@ -236,28 +236,37 @@ export interface BillboardRecords {
   debut_no1_album: DebutNo1AlbumRecord[]
   return_to_no1: ReturnToNo1Record[]
   return_to_no1_album: ReturnToNo1AlbumRecord[]
+  return_to_no1_artist: ReturnToNo1ArtistRecord[]
   self_replacement_no1: SelfReplacementRecord[]
   self_replacement_no1_album: SelfReplacementAlbumRecord[]
   blocker_king: BlockerKingRecord[]
   blocked_tracks_map: Record<number, BlockedTrackInfo[]>
   blocker_king_album: BlockerKingAlbumRecord[]
   blocked_albums_map: Record<string, BlockedAlbumInfo[]>
+  blocker_king_artist: BlockerKingArtistRecord[]
+  blocked_artists_map: Record<string, BlockedArtistInfo[]>
   longest_to_no1: ClimbToNo1Record[]
-  fastest_to_no1: ClimbToNo1Record[]
 
   // Section 2: 持久传奇
   longest_charting: LongestChartingRecord[]
+  longest_charting: LongestChartingRecord[]
   longest_charting_album: LongestChartingAlbumRecord[]
+  longest_charting_artist: LongestChartingArtistRecord[]
   longest_streak: LongestStreakRecord[]
   longest_streak_album: LongestStreakAlbumRecord[]
+  longest_streak_artist: LongestStreakArtistRecord[]
   longest_no_top5: LongestNoTop5Record[]
   longest_no_top5_album: LongestNoTop5AlbumRecord[]
+  longest_no_top5_artist: LongestNoTop5ArtistRecord[]
   most_weeks_no2_no_no1: MostWeeksNo2Record[]
   most_weeks_no2_no_no1_album: MostWeeksNo2AlbumRecord[]
+  most_weeks_no2_no_no1_artist: MostWeeksNo2ArtistRecord[]
   most_reentries: MostReentriesRecord[]
   most_reentries_album: MostReentriesAlbumRecord[]
+  most_reentries_artist: MostReentriesArtistRecord[]
   longest_consecutive_same_rank: LongestSameRankRecord[]
   longest_consecutive_same_rank_album: LongestSameRankAlbumRecord[]
+  longest_consecutive_same_rank_artist: LongestSameRankArtistRecord[]
   longest_artist_span: LongestArtistSpanRecord[]
 
   // Section 3: 爆发时刻
@@ -265,11 +274,9 @@ export interface BillboardRecords {
   artist_simul_list: ArtistSimulEntry[]
   album_simul: AlbumSimulHighlight
   album_simul_list: AlbumSimulEntry[]
-  most_top10_simul: Top10SimulHighlight
   biggest_jump: RankChangeRecord[]
   biggest_drop: RankChangeRecord[]
   fastest_exit_after_no1: FastestExitRecord[]
-  strongest_week: StrongestWeekHighlight
 
   // Section 4: 名人堂
   all_time_greatest: AllTimeGreatestRecord[]
@@ -333,6 +340,14 @@ export interface ReturnToNo1AlbumRecord {
   '间隔周数': number
 }
 
+export interface ReturnToNo1ArtistRecord {
+  [key: string]: any
+  artist_name: string
+  '首次夺艺冠': string
+  '回冠日期': string
+  '间隔周数': number
+}
+
 export interface SelfReplacementRecord {
   [key: string]: any
   '艺人': string
@@ -364,6 +379,13 @@ export interface BlockerKingAlbumRecord {
   '走势评分': number
 }
 
+export interface BlockerKingArtistRecord {
+  [key: string]: any
+  artist_name: string
+  '阻挡数': number
+  '走势评分': number
+}
+
 export interface BlockedTrackInfo {
   [key: string]: any
   track_name: string
@@ -371,6 +393,11 @@ export interface BlockedTrackInfo {
 }
 
 export interface BlockedAlbumInfo {
+  [key: string]: any
+  artist_name: string
+}
+
+export interface BlockedArtistInfo {
   [key: string]: any
   artist_name: string
 }
@@ -412,7 +439,23 @@ export interface LongestChartingAlbumRecord {
   weeks_at_no1: number
 }
 
+export interface LongestChartingArtistRecord {
+  [key: string]: any
+  artist_name: string
+  weeks_on_chart: number
+  peak_position: number
+  weeks_at_no1: number
+}
+
 export interface LongestStreakAlbumRecord {
+  [key: string]: any
+  artist_name: string
+  '连续周数': number
+  '起始周': string
+  '结束周': string
+}
+
+export interface LongestStreakArtistRecord {
   [key: string]: any
   artist_name: string
   '连续周数': number
@@ -429,6 +472,13 @@ export interface LongestNoTop5Record {
 }
 
 export interface LongestNoTop5AlbumRecord {
+  [key: string]: any
+  artist_name: string
+  weeks_on_chart: number
+  peak_position: number
+}
+
+export interface LongestNoTop5ArtistRecord {
   [key: string]: any
   artist_name: string
   weeks_on_chart: number
@@ -458,6 +508,13 @@ export interface MostWeeksNo2AlbumRecord {
   weeks_at_no2: number
 }
 
+export interface MostWeeksNo2ArtistRecord {
+  [key: string]: any
+  artist_name: string
+  peak_position: number
+  weeks_at_no2: number
+}
+
 export interface MostReentriesRecord {
   [key: string]: any
   track_name: string
@@ -467,6 +524,13 @@ export interface MostReentriesRecord {
 }
 
 export interface MostReentriesAlbumRecord {
+  [key: string]: any
+  artist_name: string
+  '回榜次数': number
+  '在榜周数': number
+}
+
+export interface MostReentriesArtistRecord {
   [key: string]: any
   artist_name: string
   '回榜次数': number
@@ -486,6 +550,15 @@ export interface LongestSameRankRecord {
 export interface LongestSameRankAlbumRecord {
   [key: string]: any
   album_name: string
+  artist_name: string
+  '停留排名': number
+  '连续周数': number
+  '起始周': string
+  '结束周': string
+}
+
+export interface LongestSameRankArtistRecord {
+  [key: string]: any
   artist_name: string
   '停留排名': number
   '连续周数': number
@@ -534,12 +607,6 @@ export interface AlbumSimulEntry {
   track_count: number
 }
 
-export interface Top10SimulHighlight {
-  [key: string]: any
-  week: string
-  count: number
-}
-
 export interface RankChangeRecord {
   [key: string]: any
   track_name: string
@@ -559,11 +626,6 @@ export interface FastestExitRecord {
   '巅峰后周数': number
 }
 
-export interface StrongestWeekHighlight {
-  [key: string]: any
-  total_plays: number
-  tracks_count: number
-}
 
 // ── Section 4: 名人堂 ─────────────────────────────────────────
 

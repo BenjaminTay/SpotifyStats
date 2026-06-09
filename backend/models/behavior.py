@@ -63,5 +63,10 @@ class YearlyHeatmapEntry(BaseModel):
     z: list[list[int]]
 
 
+class LateNightEntry(BaseModel):
+    year: int
+    rate: float
+
+
 class LateNightResponse(BaseModel):
-    by_year: list[dict]
+    by_year: list[LateNightEntry]

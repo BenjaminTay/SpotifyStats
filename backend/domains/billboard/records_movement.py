@@ -66,26 +66,5 @@ def compute_movement_records(records, weekly, track_summary, weekly_album=None):
         records["longest_to_no1"] = to_no1.nlargest(20, "登顶周数")[
             ["track_id", "track_name", "artist_name", "first_week", "first_peak_week", "登顶周数"]
         ]
-        records["fastest_to_no1"] = to_no1[to_no1["登顶周数"] > 0].nsmallest(20, "登顶周数")[
-            ["track_id", "track_name", "artist_name", "first_week", "first_peak_week", "登顶周数"]
-        ]
     else:
         records["longest_to_no1"] = pd.DataFrame()
-        records["fastest_to_no1"] = pd.DataFrame()
-
-    # ── 22. Most Simultaneous Top 10 (Top 10 屠榜) ──────────────────────
-    top10_weekly = (
-        weekly[weekly["rank"] <= 10]
-        .groupby(["billboard_week", "artist_name"])
-        .agg(top10_count=("track_id", "nunique"))
-        .reset_index()
-    )
-    if not top10_weekly.empty:
-        best_top10 = top10_weekly.sort_values("top10_count", ascending=False).iloc[0]
-        records["most_top10_simul"] = {
-            "artist": best_top10["artist_name"],
-            "week": best_top10["billboard_week"],
-            "count": int(best_top10["top10_count"]),
-        }
-    else:
-        records["most_top10_simul"] = {}

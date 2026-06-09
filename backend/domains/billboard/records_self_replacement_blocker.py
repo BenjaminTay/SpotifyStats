@@ -8,8 +8,10 @@ def compute_self_replacement_blocker_records(
     weekly,
     track_summary,
     weekly_album=None,
+    weekly_artist=None,
     track_power_scores=None,
     album_power_scores=None,
+    artist_power_scores=None,
 ):
     """Populate self-replacement at #1 and blocker king records."""
 
@@ -215,3 +217,59 @@ def compute_self_replacement_blocker_records(
     else:
         records["blocker_king_album"] = pd.DataFrame()
         records["blocked_albums_map"] = {}
+
+    # ── 16c. Artist Blocker King — #1 artist that blocked most #2 artists ─
+    if weekly_artist is not None:
+        art_no1_weeks_all = weekly_artist[weekly_artist["rank"] == 1][
+            ["artist_name", "billboard_week"]
+        ].drop_duplicates()
+        art_no2_at_no1 = weekly_artist[weekly_artist["rank"] == 2][
+            ["artist_name", "billboard_week"]
+        ].drop_duplicates()
+        if not art_no1_weeks_all.empty and not art_no2_at_no1.empty:
+            art_merged = art_no1_weeks_all.merge(
+                art_no2_at_no1, on="billboard_week", suffixes=("_no1", "_no2")
+            )
+            # Only count blocked artists that peaked at #2
+            artist_peak_map = weekly_artist.groupby("artist_name")["rank"].min().to_dict()
+            art_merged["_peak_no2"] = art_merged["artist_name_no2"].map(artist_peak_map)
+            art_merged_true = art_merged[art_merged["_peak_no2"] == 2]
+            if not art_merged_true.empty:
+                art_blocker = (
+                    art_merged_true.groupby("artist_name_no1")
+                    .agg(阻挡数=("artist_name_no2", "nunique"))
+                    .reset_index()
+                    .sort_values("阻挡数", ascending=False)
+                )
+                records["blocker_king_artist"] = art_blocker.head(20).rename(
+                    columns={"artist_name_no1": "artist_name"}
+                )[["artist_name", "阻挡数"]]
+                if artist_power_scores is not None:
+                    records["blocker_king_artist"] = records["blocker_king_artist"].merge(
+                        artist_power_scores[["artist_name", "power_score"]].rename(
+                            columns={"power_score": "走势评分"}
+                        ),
+                        on="artist_name",
+                        how="left",
+                    )
+                    records["blocker_king_artist"]["走势评分"] = (
+                        records["blocker_king_artist"]["走势评分"].fillna(0).astype(int)
+                    )
+                else:
+                    records["blocker_king_artist"]["走势评分"] = 0
+                art_blocked_detail = {}
+                for aname, grp in art_merged_true.groupby("artist_name_no1"):
+                    art_blocked_detail[aname] = [
+                        {"artist_name": str(r["artist_name_no2"])}
+                        for r in grp.drop_duplicates(subset=["artist_name_no2"]).to_dict("records")
+                    ]
+                records["blocked_artists_map"] = art_blocked_detail
+            else:
+                records["blocker_king_artist"] = pd.DataFrame()
+                records["blocked_artists_map"] = {}
+        else:
+            records["blocker_king_artist"] = pd.DataFrame()
+            records["blocked_artists_map"] = {}
+    else:
+        records["blocker_king_artist"] = pd.DataFrame()
+        records["blocked_artists_map"] = {}

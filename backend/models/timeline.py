@@ -21,6 +21,20 @@ class MonthlyTimelinePoint(BaseModel):
     hours: float
 
 
+class TimelineDrilldownTrack(BaseModel):
+    track_id: int
+    track_name: str
+    artist_name: str
+    plays: int
+    hours: float
+    cover_url: str | None = None
+
+
+class TimelineMonthlyDrilldownResponse(BaseModel):
+    months: list[MonthlyTimelinePoint]
+    drilldown: list[TimelineDrilldownTrack] | None = None
+
+
 class WrappedHero(BaseModel):
     total_minutes: float
     total_plays: int

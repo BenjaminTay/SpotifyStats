@@ -193,49 +193,6 @@ export function TracksNumberOnesSection({
         <AnnualSection title="每年独特冠单统计" items={computed.trackAnnualNo1} />
       </div>
 
-      <GlassCard className="overflow-hidden p-6">
-        <h2 className="mb-1 font-serif text-[22px] font-bold tracking-[-0.3px]">空冠歌曲</h2>
-        <p className="mb-5 font-sans text-[13px] text-muted-foreground">
-          首次上榜即 #1 · 共 {computed.debutNo1Tracks.length} 首
-        </p>
-        {computed.debutNo1Tracks.length === 0 ? (
-          <p className="py-8 text-center font-sans text-[13px] text-muted-foreground">暂无空冠歌曲</p>
-        ) : (
-          <table className="w-full border-collapse">
-            <thead>
-              <tr className="border-b border-border text-left">
-                <th className="pb-3 font-sans text-[11px] font-semibold uppercase tracking-[1px] text-muted-foreground">曲目</th>
-                <th className="pb-3 font-sans text-[11px] font-semibold uppercase tracking-[1px] text-muted-foreground">首次上榜周</th>
-                <th className="pb-3 text-right font-sans text-[11px] font-semibold uppercase tracking-[1px] text-muted-foreground">在榜周数</th>
-                <th className="pb-3 text-right font-sans text-[11px] font-semibold uppercase tracking-[1px] text-muted-foreground">冠单周数</th>
-              </tr>
-            </thead>
-            <tbody>
-              {computed.debutNo1Tracks.map((entry) => (
-                <tr key={entry.track_id} className="border-b border-border transition-colors hover:bg-muted/30">
-                  <td className="py-3">
-                    <NameWithCover
-                      coverUrl={entry.cover_url}
-                      name={entry.track_name}
-                      artistName={displayName(entry.artist_name)}
-                      artistNames={entry.artist_names}
-                      nameLink={billboardDetailLink(`/music/tracks/${entry.track_id}`)}
-                      artistLink={billboardDetailLink(`/music/artists/${encodeURIComponent(primaryArtistName(entry))}`)}
-                    />
-                  </td>
-                  <td className="py-3 font-sans text-[13px]">
-                    <Link to={`/billboard?week=${entry.billboard_week}`} className="text-foreground transition-colors hover:text-accent-foreground">
-                      {formatWeekStart(entry.billboard_week)}
-                    </Link>
-                  </td>
-                  <td className="py-3 text-right font-sans text-[13px] tabular-nums">{entry.weeks_on_chart}</td>
-                  <td className="py-3 text-right font-sans text-[13px] tabular-nums">{entry.weeks_at_no1}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </GlassCard>
     </>
   )
 }

@@ -9,11 +9,13 @@ class LeaderboardEntry(BaseModel):
     rank: int
     plays: int
     hours: float
-    track_id: int | None
-    track_name: str
-    artist_name: str
-    cover_url: str | None
-    artist_names: list[str] | None
+    track_id: int | None = None
+    track_name: str | None = None
+    artist_name: str | None = None
+    album_name: str | None = None
+    cover_url: str | None = None
+    unique_tracks: int | None = None
+    artist_names: list[str] | None = None
 
 
 class LeaderboardResponse(BaseModel):

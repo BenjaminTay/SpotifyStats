@@ -62,13 +62,14 @@ export function SectionHeader({ icon: Icon, title, subtitle }: { icon: Component
   )
 }
 
-export type EntityType = 'track' | 'album'
+export type EntityType = 'track' | 'album' | 'artist'
 
-export function TrackAlbumToggle({ value, onChange }: { value: EntityType; onChange: (v: EntityType) => void }) {
+export function TrackAlbumToggle({ value, onChange, showArtist }: { value: EntityType; onChange: (v: EntityType) => void; showArtist?: boolean }) {
   return (
     <div className="flex items-center rounded-[6px] border border-border bg-muted/30 p-0.5">
       <button onClick={() => onChange('track')} className={cn('rounded-[4px] px-2.5 py-1 font-sans text-[11px] font-medium transition-colors', value === 'track' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground')}>单曲</button>
       <button onClick={() => onChange('album')} className={cn('rounded-[4px] px-2.5 py-1 font-sans text-[11px] font-medium transition-colors', value === 'album' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground')}>专辑</button>
+      {showArtist && <button onClick={() => onChange('artist')} className={cn('rounded-[4px] px-2.5 py-1 font-sans text-[11px] font-medium transition-colors', value === 'artist' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground')}>艺人</button>}
     </div>
   )
 }
@@ -96,13 +97,13 @@ export function RecordCard({ title, subtitle, toggle, children }: { title: strin
   )
 }
 
-export function FeaturedRecord({ label, value, unit, caption, linkTo, coverUrl }: {
-  label: string; value: string | number; unit?: string; caption?: string; linkTo?: string; coverUrl?: string | null
+export function FeaturedRecord({ label, value, unit, caption, linkTo, coverUrl, coverRound }: {
+  label: string; value: string | number; unit?: string; caption?: string; linkTo?: string; coverUrl?: string | null; coverRound?: boolean
 }) {
   const content = (
     <div className={cn('rounded-[12px] border border-border bg-muted/20 p-5', linkTo && 'transition-colors hover:bg-muted/40')}>
       <div className="flex items-start gap-4">
-        {coverUrl && <img src={coverUrl} alt="" className="h-14 w-14 shrink-0 rounded-[10px] object-cover" />}
+        {coverUrl && <img src={coverUrl} alt="" className={cn('h-14 w-14 shrink-0 object-cover', coverRound ? 'rounded-full' : 'rounded-[10px]')} />}
         <div className="min-w-0">
           <p className="mb-1 font-sans text-[11px] font-semibold uppercase tracking-[1.2px] text-muted-foreground">{label}</p>
           <p className="font-serif text-[40px] font-bold leading-[1.1] tracking-[-1px] tabular-nums">
@@ -217,10 +218,10 @@ export function TrackCell({ trackId, trackName, artistName, artistNames, coverUr
   )
 }
 
-export function ArtistCell({ artistName, coverUrl }: { artistName: string; coverUrl?: string | null }) {
+export function ArtistCell({ artistName, coverUrl, compact }: { artistName: string; coverUrl?: string | null; compact?: boolean }) {
   return (
     <div className="flex items-center gap-3">
-      <ArtistCoverImg url={coverUrl} />
+      <ArtistCoverImg url={coverUrl} size={compact ? 'sm' : undefined} />
       <Link to={billboardDetailLink(`/music/artists/${encodeURIComponent(artistName)}`)} className="font-sans text-[13px] font-semibold transition-colors hover:text-accent-foreground">{displayName(artistName)}</Link>
     </div>
   )

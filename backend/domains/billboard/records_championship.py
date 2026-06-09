@@ -3,7 +3,9 @@
 import pandas as pd
 
 
-def compute_championship_records(records, weekly, track_summary, weekly_album=None):
+def compute_championship_records(
+    records, weekly, track_summary, weekly_album=None, weekly_artist=None
+):
     """Populate championship records: artist simul, most #1, return to #1, debut #1."""
 
     # ── 1. Most simultaneous chart entries by artist (full chart) ──────
@@ -128,6 +130,35 @@ def compute_championship_records(records, weekly, track_summary, weekly_album=No
         )
     else:
         records["return_to_no1_album"] = pd.DataFrame()
+
+    if weekly_artist is not None:
+        artist_no1_weeks = (
+            weekly_artist[weekly_artist["rank"] == 1][["artist_name", "billboard_week"]]
+            .drop_duplicates()
+            .sort_values(["artist_name", "billboard_week"])
+        )
+        artist_returns = []
+        for aname, grp in artist_no1_weeks.groupby("artist_name"):
+            if len(grp) >= 2:
+                wks = grp["billboard_week"].tolist()
+                for i in range(1, len(wks)):
+                    gap = (wks[i] - wks[i - 1]).days
+                    if gap > 8:
+                        artist_returns.append(
+                            {
+                                "artist_name": aname,
+                                "首次夺艺冠": wks[i - 1],
+                                "回冠日期": wks[i],
+                                "间隔周数": gap // 7,
+                            }
+                        )
+        records["return_to_no1_artist"] = (
+            pd.DataFrame(artist_returns).sort_values("间隔周数", ascending=False)
+            if artist_returns
+            else pd.DataFrame()
+        )
+    else:
+        records["return_to_no1_artist"] = pd.DataFrame()
 
     # ── 5. Debut at #1 ─────────────────────────────────────────────────
     debut = track_summary[
