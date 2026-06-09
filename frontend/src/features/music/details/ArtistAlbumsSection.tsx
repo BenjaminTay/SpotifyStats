@@ -1,4 +1,6 @@
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react'
 import type { ArtistAlbumEntry, ArtistInfo } from '@/types/billboard'
 import { CoverCell } from '@/components/shared/CoverCell'
 import { GlassCard } from '@/components/shared/GlassCard'
@@ -10,6 +12,8 @@ import {
   formatNumber,
 } from './MusicDetailPrimitives'
 
+const PAGE_SIZE = 50
+
 export function ArtistAlbumsSection({
   artistName,
   info,
@@ -19,6 +23,13 @@ export function ArtistAlbumsSection({
   info: ArtistInfo
   albums: ArtistAlbumEntry[]
 }) {
+  const [page, setPage] = useState(1)
+  const totalPages = Math.max(1, Math.ceil(albums.length / PAGE_SIZE))
+  const safePage = Math.min(page, totalPages)
+
+  useEffect(() => { setPage(1) }, [albums])
+
+  const paged = albums.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE)
   return (
     <div className="mb-8">
       <KpiStrip
@@ -78,7 +89,7 @@ export function ArtistAlbumsSection({
             <tbody>
               {(() => {
                 const maxPlays = Math.max(...albums.map((album) => album.total_plays), 1)
-                return albums.map((album, index) => (
+                return paged.map((album, index) => (
                   <tr key={album.album_name} className="transition-colors hover:bg-muted/50">
                     <td className="py-3.5 pr-2">
                       <CoverCell index={index} coverUrl={album.cover_url} />
@@ -144,6 +155,46 @@ export function ArtistAlbumsSection({
               })()}
             </tbody>
           </table>
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between border-t border-border px-7 py-3">
+              <span className="font-sans text-[12px] text-muted-foreground tabular-nums">
+                显示 {(safePage - 1) * PAGE_SIZE + 1}-{Math.min(safePage * PAGE_SIZE, albums.length)} / 总数 {albums.length} 条
+              </span>
+              <div className="flex items-center gap-1">
+                <span className="mr-2 font-sans text-[12px] text-muted-foreground tabular-nums">
+                  {safePage} / {totalPages}
+                </span>
+                <button
+                  onClick={() => setPage(1)}
+                  disabled={safePage <= 1}
+                  className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:text-foreground disabled:opacity-30"
+                >
+                  <ChevronsLeft className="h-4 w-4" />
+                </button>
+                <button
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  disabled={safePage <= 1}
+                  className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:text-foreground disabled:opacity-30"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </button>
+                <button
+                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={safePage >= totalPages}
+                  className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:text-foreground disabled:opacity-30"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </button>
+                <button
+                  onClick={() => setPage(totalPages)}
+                  disabled={safePage >= totalPages}
+                  className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:text-foreground disabled:opacity-30"
+                >
+                  <ChevronsRight className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+          )}
         </GlassCard>
       ) : (
         <p className="py-12 text-center font-sans text-[13px] text-muted-foreground">

@@ -8,7 +8,10 @@ GET /api/billboard/summaries   — track_summary + artist_summary + counts (~300
 GET /api/billboard/all-time    — power-scores + summaries + weekly (~2MB)
 """
 
+from __future__ import annotations
+
 from fastapi import APIRouter, Depends
+from pydantic import BaseModel
 
 from backend.dependencies import BillboardFilters
 from backend.services.billboard_service import (
@@ -20,6 +23,67 @@ from backend.services.billboard_service import (
 )
 
 router = APIRouter()
+
+
+class BillboardMeta(BaseModel):
+    total_weeks: int
+    total_filtered_records: int
+    all_weeks_asc: list[str]
+    all_weeks_desc: list[str]
+    dow_name: str
+    dow_short: str
+    top_n: int
+    album_top_n: int
+    artist_top_n: int
+    week_start_dow: int
+    week_start_hour: int
+
+
+class BillboardDataResponse(BaseModel):
+    model_config = {"extra": "allow"}
+    meta: BillboardMeta
+    weekly: list[dict]
+    weekly_album: list[dict]
+    weekly_artist: list[dict]
+    track_summary: list[dict]
+    artist_summary: list[dict]
+    artist_track_counts: list[dict]
+    album_track_counts: list[dict]
+    track_per_album: list[dict]
+    records: dict
+    power_scores: list[dict]
+    album_power_scores: list[dict]
+    artist_power_scores: list[dict]
+
+
+class BillboardWeeklyResponse(BaseModel):
+    model_config = {"extra": "allow"}
+    meta: BillboardMeta
+    weekly: list[dict]
+    weekly_album: list[dict]
+    weekly_artist: list[dict]
+
+
+class BillboardRecordsResponse(BaseModel):
+    records: dict
+
+
+class BillboardPowerScoresResponse(BaseModel):
+    power_scores: list[dict]
+    album_power_scores: list[dict]
+    artist_power_scores: list[dict]
+
+
+class BillboardSummariesResponse(BaseModel):
+    model_config = {"extra": "allow"}
+    track_summary: list[dict]
+    artist_summary: list[dict]
+    album_track_counts: list[dict]
+    artist_track_counts: list[dict]
+
+
+class BillboardAllTimeResponse(BaseModel):
+    model_config = {"extra": "allow"}
 
 
 def _billboard_params(filters: BillboardFilters):
@@ -37,7 +101,7 @@ def _billboard_params(filters: BillboardFilters):
     )
 
 
-@router.get("/data")
+@router.get("/data", response_model=BillboardDataResponse)
 def get_billboard_data(filters: BillboardFilters = Depends()):
     """Compute all Billboard chart data in a single request.
 
@@ -47,7 +111,7 @@ def get_billboard_data(filters: BillboardFilters = Depends()):
     return compute_billboard_data(**_billboard_params(filters))
 
 
-@router.get("/weekly")
+@router.get("/weekly", response_model=BillboardWeeklyResponse)
 def get_billboard_weekly(filters: BillboardFilters = Depends()):
     """Weekly rankings + meta only — used by BillboardPage.
 
@@ -56,7 +120,7 @@ def get_billboard_weekly(filters: BillboardFilters = Depends()):
     return compute_weekly_data(**_billboard_params(filters))
 
 
-@router.get("/records")
+@router.get("/records", response_model=BillboardRecordsResponse)
 def get_billboard_records(filters: BillboardFilters = Depends()):
     """Billboard records only — used by RecordsPage.
 
@@ -65,7 +129,7 @@ def get_billboard_records(filters: BillboardFilters = Depends()):
     return compute_records_staged(**_billboard_params(filters))
 
 
-@router.get("/power-scores")
+@router.get("/power-scores", response_model=BillboardPowerScoresResponse)
 def get_billboard_power_scores(filters: BillboardFilters = Depends()):
     """Power scores for tracks, albums, and artists.
 
@@ -75,7 +139,7 @@ def get_billboard_power_scores(filters: BillboardFilters = Depends()):
     return compute_power_scores_staged(**_billboard_params(filters))
 
 
-@router.get("/summaries")
+@router.get("/summaries", response_model=BillboardSummariesResponse)
 def get_billboard_summaries(filters: BillboardFilters = Depends()):
     """Track/artist/album summaries and counts.
 
@@ -85,7 +149,7 @@ def get_billboard_summaries(filters: BillboardFilters = Depends()):
     return compute_summaries_staged(**_billboard_params(filters))
 
 
-@router.get("/all-time")
+@router.get("/all-time", response_model=BillboardAllTimeResponse)
 def get_billboard_all_time(filters: BillboardFilters = Depends()):
     """Combined data for all-time charts pages.
 

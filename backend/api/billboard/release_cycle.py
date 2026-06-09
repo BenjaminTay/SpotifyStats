@@ -1,5 +1,7 @@
 """Release Cycle API — endpoints for the 发行周期分析 (Tab 12)."""
 
+from __future__ import annotations
+
 import json
 
 import pandas as pd
@@ -159,7 +161,53 @@ def _find_release_row(releases: pd.DataFrame, album_name: str):
 # ═══════════════════════════════════════════════════════════════════════════
 
 
-@router.get("/artist-list")
+class ArtistListItem(BaseModel):
+    artist_name: str
+    track_count: int
+
+
+class ReleaseCycleAlbumDetailResponse(BaseModel):
+    model_config = {"extra": "allow"}
+    album_name: str | None = None
+    artist_name: str | None = None
+    error: str | None = None
+    album_type: str | None = None
+    release_date: str | None = None
+    release_date_iso: str | None = None
+    canonical_name: str | None = None
+    primary_name: str | None = None
+    group_albums: list[str] | None = None
+    is_grouped: bool | None = None
+    advance_singles: list[dict] | None = None
+    metrics: dict | None = None
+    artist_timeline: list[dict] | None = None
+    album_timeline: list[dict] | None = None
+    track_timelines: list[dict] | None = None
+    artist_ranks: list[dict] | None = None
+    album_ranks: list[dict] | None = None
+    total_timeline: list[dict] | None = None
+    artist_all_time_median: float | None = None
+    clean_baseline_start: float | None = None
+    advance_single_ranks: list[dict] | None = None
+    best_track_ranks: dict | None = None
+    catalog_reentries: list[dict] | None = None
+    bonus_tracks: list[dict] | None = None
+    track_matrix: dict | None = None
+
+
+class ReleaseCycleArtistOverviewResponse(BaseModel):
+    model_config = {"extra": "allow"}
+    artist_name: str | None = None
+    summary: dict | None = None
+    releases: list[dict] | None = None
+    rank_trend: list[dict] | None = None
+    release_events: list[dict] | None = None
+    first_play_week: str | None = None
+    last_play_week: str | None = None
+    cycles: list[dict] | None = None
+
+
+@router.get("/artist-list", response_model=list[ArtistListItem])
 def get_artist_list(filters: BillboardFilters = Depends()):
     """Sorted list of artists with track counts from current filter."""
     df_raw = load_billboard_raw_for_artists(
@@ -176,7 +224,10 @@ def get_artist_list(filters: BillboardFilters = Depends()):
     return load_artist_list(df_raw)
 
 
-@router.get("/artist/{artist_name:path}/album/{album_name:path}")
+@router.get(
+    "/artist/{artist_name:path}/album/{album_name:path}",
+    response_model=ReleaseCycleAlbumDetailResponse,
+)
 def get_album_detail(
     artist_name: str,
     album_name: str,
@@ -329,7 +380,7 @@ def get_album_detail(
     }
 
 
-@router.get("/artist/{artist_name:path}")
+@router.get("/artist/{artist_name:path}", response_model=ReleaseCycleArtistOverviewResponse)
 def get_artist_overview(
     artist_name: str,
     filters: BillboardFilters = Depends(),

@@ -5,6 +5,7 @@ from __future__ import annotations
 from sqlite3 import Connection
 
 from fastapi import APIRouter, Depends, Query
+from pydantic import BaseModel
 
 from backend.dependencies import PlayFilters, get_conn
 from backend.services.entity_stats_service import (
@@ -18,7 +19,43 @@ from backend.services.entity_stats_service import (
 router = APIRouter(prefix="/music", tags=["Music"])
 
 
-@router.get("/tracks/{track_id}/stats")
+class EntityStatsResponse(BaseModel):
+    model_config = {"extra": "allow"}
+    found: bool | None = None
+    period: dict | None = None
+    entity: dict | None = None
+    first_played: str | None = None
+    last_played: str | None = None
+    ranks: dict | None = None
+    recent_plays: list[dict] | None = None
+    summary: dict | None = None
+    daily_metrics: dict | None = None
+    hourly_distribution: list | None = None
+    daily_trend: list | None = None
+    cumulative_trend: list | None = None
+    weekday_distribution: list | None = None
+    month_distribution: list | None = None
+    year_distribution: list | None = None
+    top250_counts: dict | None = None
+    track_breakdown: list[dict] | None = None
+    top_tracks: list[dict] | None = None
+    top_albums: list[dict] | None = None
+    recent_50_count: int | None = None
+
+
+class EntityPlaysResponse(BaseModel):
+    total: int
+    limit: int
+    offset: int
+    rows: list[dict]
+
+
+class PlayDateEntry(BaseModel):
+    date: str
+    count: int
+
+
+@router.get("/tracks/{track_id}/stats", response_model=EntityStatsResponse)
 def track_stats(
     track_id: int,
     filters: PlayFilters = Depends(),
@@ -39,7 +76,7 @@ def track_stats(
     )
 
 
-@router.get("/albums/{album_name}/stats")
+@router.get("/albums/{album_name}/stats", response_model=EntityStatsResponse)
 def album_stats(
     album_name: str,
     artist: str | None = Query(default=None),
@@ -62,7 +99,7 @@ def album_stats(
     )
 
 
-@router.get("/artists/{artist_name}/stats")
+@router.get("/artists/{artist_name}/stats", response_model=EntityStatsResponse)
 def artist_stats(
     artist_name: str,
     filters: PlayFilters = Depends(),
@@ -83,7 +120,7 @@ def artist_stats(
     )
 
 
-@router.get("/tracks/{track_id}/plays")
+@router.get("/tracks/{track_id}/plays", response_model=EntityPlaysResponse)
 def track_plays(
     track_id: int,
     filters: PlayFilters = Depends(),
@@ -112,7 +149,7 @@ def track_plays(
     )
 
 
-@router.get("/albums/{album_name}/plays")
+@router.get("/albums/{album_name}/plays", response_model=EntityPlaysResponse)
 def album_plays(
     album_name: str,
     artist: str | None = Query(default=None),
@@ -143,7 +180,7 @@ def album_plays(
     )
 
 
-@router.get("/artists/{artist_name}/plays")
+@router.get("/artists/{artist_name}/plays", response_model=EntityPlaysResponse)
 def artist_plays(
     artist_name: str,
     filters: PlayFilters = Depends(),
@@ -172,7 +209,7 @@ def artist_plays(
     )
 
 
-@router.get("/tracks/{track_id}/play-dates")
+@router.get("/tracks/{track_id}/play-dates", response_model=list[PlayDateEntry])
 def track_play_dates(
     track_id: int,
     filters: PlayFilters = Depends(),
@@ -193,7 +230,7 @@ def track_play_dates(
     )
 
 
-@router.get("/albums/{album_name}/play-dates")
+@router.get("/albums/{album_name}/play-dates", response_model=list[PlayDateEntry])
 def album_play_dates(
     album_name: str,
     artist: str | None = Query(default=None),
@@ -216,7 +253,7 @@ def album_play_dates(
     )
 
 
-@router.get("/artists/{artist_name}/play-dates")
+@router.get("/artists/{artist_name}/play-dates", response_model=list[PlayDateEntry])
 def artist_play_dates(
     artist_name: str,
     filters: PlayFilters = Depends(),

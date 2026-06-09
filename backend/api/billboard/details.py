@@ -9,7 +9,10 @@ GET /billboard/versus/album          — compare two albums
 GET /billboard/versus/artist         — compare two artists
 """
 
+from __future__ import annotations
+
 from fastapi import APIRouter, Depends, Query
+from pydantic import BaseModel
 
 from backend.dependencies import BillboardFilters
 from backend.services.billboard_service import (
@@ -25,7 +28,73 @@ from backend.services.billboard_service import (
 router = APIRouter()
 
 
-@router.get("/track/{track_id}")
+class TrackHistoryResponse(BaseModel):
+    model_config = {"extra": "allow"}
+    found: bool
+    track_id: int | None = None
+    track_name: str | None = None
+    artist_name: str | None = None
+    artist_names: list[str] | None = None
+    cover_url: str | None = None
+    meta: dict | None = None
+    summary: dict | None = None
+    history: list[dict] | None = None
+    chart_data: dict | None = None
+
+
+class ArtistChartDetailResponse(BaseModel):
+    model_config = {"extra": "allow"}
+    found: bool
+    artist_name: str | None = None
+    cover_url: str | None = None
+    meta: dict | None = None
+    info: dict | None = None
+    chart_summary: dict | None = None
+    artist_weekly_history: list[dict] | None = None
+    artist_no1_by_week: list[dict] | None = None
+    week_no1_albums: list[dict] | None = None
+    best_singles_overlay: list[dict] | None = None
+    tracks: list[dict] | None = None
+    albums: list[dict] | None = None
+
+
+class AlbumChartDetailResponse(BaseModel):
+    model_config = {"extra": "allow"}
+    found: bool
+    album_name: str | None = None
+    artist_name: str | None = None
+    cover_url: str | None = None
+    meta: dict | None = None
+    info: dict | None = None
+    chart_summary: dict | None = None
+    album_weekly_history: list[dict] | None = None
+    album_no1_by_week: list[dict] | None = None
+    best_singles_overlay: list[dict] | None = None
+    tracks: list[dict] | None = None
+
+
+class EntityListsResponse(BaseModel):
+    tracks: list[dict]
+    albums: list[dict]
+    artists: list[dict]
+
+
+class VersusEntity(BaseModel):
+    model_config = {"extra": "allow"}
+    name: str | None = None
+    rank_history: list[dict] | None = None
+    metrics: dict | None = None
+
+
+class VersusResponse(BaseModel):
+    model_config = {"extra": "allow"}
+    found: bool
+    reason: str | None = None
+    entity_a: VersusEntity | None = None
+    entity_b: VersusEntity | None = None
+
+
+@router.get("/track/{track_id}", response_model=TrackHistoryResponse)
 def track_history(
     track_id: int,
     filters: BillboardFilters = Depends(),
@@ -45,7 +114,7 @@ def track_history(
     )
 
 
-@router.get("/artist/{artist_name:path}")
+@router.get("/artist/{artist_name:path}", response_model=ArtistChartDetailResponse)
 def artist_chart_detail(
     artist_name: str,
     filters: BillboardFilters = Depends(),
@@ -65,7 +134,7 @@ def artist_chart_detail(
     )
 
 
-@router.get("/album/{album_name:path}")
+@router.get("/album/{album_name:path}", response_model=AlbumChartDetailResponse)
 def album_chart_detail(
     album_name: str,
     artist_name: str = Query(..., description="Artist name for disambiguation"),
@@ -87,7 +156,7 @@ def album_chart_detail(
     )
 
 
-@router.get("/entity-lists")
+@router.get("/entity-lists", response_model=EntityListsResponse)
 def entity_lists(
     filters: BillboardFilters = Depends(),
 ):
@@ -108,7 +177,7 @@ def entity_lists(
 # ── Versus ───────────────────────────────────────────────────────────────────
 
 
-@router.get("/versus/track")
+@router.get("/versus/track", response_model=VersusResponse)
 def versus_track(
     track_id_a: int = Query(..., description="Track A ID"),
     track_id_b: int = Query(..., description="Track B ID"),
@@ -130,7 +199,7 @@ def versus_track(
     )
 
 
-@router.get("/versus/album")
+@router.get("/versus/album", response_model=VersusResponse)
 def versus_album(
     album_a: str = Query(..., description="Album A name"),
     artist_a: str = Query(..., description="Album A artist"),
@@ -156,7 +225,7 @@ def versus_album(
     )
 
 
-@router.get("/versus/artist")
+@router.get("/versus/artist", response_model=VersusResponse)
 def versus_artist(
     artist_a: str = Query(..., description="Artist A name"),
     artist_b: str = Query(..., description="Artist B name"),
