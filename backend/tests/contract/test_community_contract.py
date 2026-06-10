@@ -22,7 +22,7 @@ class TestCommunityFeedStructure:
     def test_meta_structure(self, client):
         r = client.get("/api/community/feed")
         meta = r.json()["meta"]
-        for key in ["total", "returned", "offset", "limit"]:
+        for key in ["total", "total_all", "returned", "offset", "limit"]:
             assert key in meta, f"Missing meta key: {key}"
         assert meta["returned"] <= meta["limit"]
 

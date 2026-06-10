@@ -155,7 +155,7 @@ frontend/src/
 │   │   ├── number-ones/   ← NumberOnesExperience + 3 Section（tracks/albums/artists）+ Primitives + Data
 │   │   ├── records/       ← RecordsSections + 6 Section（Championship/Longevity/Market/Breakthrough/HallOfFame/Curiosities）+ Primitives + Data
 │   │   └── all-time/      ← AllTimeTable + Data
-│   ├── community/         ← CommunityExperience/Account + FeedToggle + PostCard + Timeline + Sidebar + Data
+│   ├── community/         ← CommunityExperience/Account + FeedToggle + TimeFilter + PostCard + Timeline + Sidebar + Data
 │   ├── music/details/     ← Artist/Album Experience + Header/Tabs + Skeletons + Overview/Tracks/Albums/Career/ArtistReleases/AlbumEra 子 sections + ReleaseCycle sections + Primitives
 │   ├── settings/components/  ← 7 配置 Section 组件
 │   └── account/collection/   ← 收藏分析组件

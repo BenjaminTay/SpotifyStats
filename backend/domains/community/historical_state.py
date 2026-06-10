@@ -26,18 +26,23 @@ class HistoricalState:
     )  # track_id -> total weeks on chart
 
     # Artist-level (keyed by artist_name)
-    artist_no1_count: dict[str, int] = field(default_factory=dict)  # artist -> cumulative #1 songs
+    artist_no1_count: dict[str, int] = field(default_factory=dict)  # artist -> distinct #1 songs
     artist_top10_count: dict[str, int] = field(
         default_factory=dict
-    )  # artist -> songs that reached top 10
+    )  # artist -> distinct songs that reached top 10
     artist_top5_count: dict[str, int] = field(
         default_factory=dict
-    )  # artist -> songs that reached top 5
+    )  # artist -> distinct songs that reached top 5
     artist_career_weeks: dict[str, int] = field(default_factory=dict)  # artist -> total chart weeks
     artist_first_no1_date: dict[str, str] = field(default_factory=dict)  # artist -> first #1 date
     artist_no1_weeks: dict[str, int] = field(
         default_factory=dict
-    )  # artist -> cumulative weeks at #1
+    )  # artist -> cumulative weeks at #1 (every week counts)
+
+    # Internal: track which track_ids contributed to each counter (for dedup)
+    _artist_no1_track_ids: dict[str, set] = field(default_factory=dict)
+    _artist_top5_track_ids: dict[str, set] = field(default_factory=dict)
+    _artist_top10_track_ids: dict[str, set] = field(default_factory=dict)
 
     # Track history snapshots (for throwback posts)
     past_no1s: list[dict] = field(
@@ -85,6 +90,9 @@ class HistoricalState:
             self.artist_top5_count[artist_name] = 0
             self.artist_career_weeks[artist_name] = 0
             self.artist_no1_weeks[artist_name] = 0
+            self._artist_no1_track_ids[artist_name] = set()
+            self._artist_top5_track_ids[artist_name] = set()
+            self._artist_top10_track_ids[artist_name] = set()
 
     def update(
         self,
@@ -133,12 +141,16 @@ class HistoricalState:
             if rank == 1:
                 if self.artist_no1_count[artist] == 0:
                     self.artist_first_no1_date[artist] = str(week)
-                self.artist_no1_count[artist] += 1
                 self.artist_no1_weeks[artist] += 1
+                if tid not in self._artist_no1_track_ids[artist]:
+                    self._artist_no1_track_ids[artist].add(tid)
+                    self.artist_no1_count[artist] = len(self._artist_no1_track_ids[artist])
             if rank <= 5:
-                self.artist_top5_count[artist] = max(self.artist_top5_count.get(artist, 0), 1)
+                self._artist_top5_track_ids[artist].add(tid)
+                self.artist_top5_count[artist] = len(self._artist_top5_track_ids[artist])
             if rank <= 10:
-                self.artist_top10_count[artist] = max(self.artist_top10_count.get(artist, 0), 1)
+                self._artist_top10_track_ids[artist].add(tid)
+                self.artist_top10_count[artist] = len(self._artist_top10_track_ids[artist])
 
             # Update global records
             no1_wks = self.track_weeks_at_no1.get(tid, 0)

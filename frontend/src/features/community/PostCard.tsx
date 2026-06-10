@@ -29,7 +29,7 @@ export function PostCard({ post }: PostCardProps) {
   const [expanded, setExpanded] = useState(false)
 
   return (
-    <article className="flex gap-3 px-4 py-3 cursor-pointer hover:bg-white/[0.03] transition-colors border-b border-white/10">
+    <article className="flex gap-3 py-3 cursor-pointer hover:bg-white/[0.03] transition-colors border-b border-white/10">
       {/* Left: avatar — links to account profile */}
       <Link
         to={`/community/account/${encodeURIComponent(post.account_handle)}`}

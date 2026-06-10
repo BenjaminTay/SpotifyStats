@@ -10,7 +10,7 @@ interface FeedToggleProps {
 export function FeedToggle({ active, onChange, highlightsCount, allCount }: FeedToggleProps) {
   return (
     <div className="border-b border-white/10 bg-background">
-      <div className="flex items-center h-[53px] gap-2 px-4">
+      <div className="flex items-center h-[53px] gap-2">
         <button
           type="button"
           onClick={() => onChange('highlights')}

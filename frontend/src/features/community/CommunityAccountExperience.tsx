@@ -54,11 +54,11 @@ export function CommunityAccountExperience() {
       </section>
 
       {/* Two-column layout */}
-      <div className="flex gap-8 justify-center">
+      <div className="flex gap-8">
         {/* Main: profile + feed */}
-        <div className="flex-1 max-w-[720px] border-x border-white/10 min-h-[70vh]">
+        <div className="flex-1 max-w-[720px] min-h-[70vh]">
           {/* Back button */}
-          <div className="flex items-center gap-6 px-4 h-[53px] border-b border-white/10">
+          <div className="flex items-center gap-6 h-[53px] border-b border-white/10">
           <Link
             to="/community"
             className="flex items-center justify-center w-9 h-9 rounded-full hover:bg-white/10 transition-colors -ml-1"
@@ -125,7 +125,7 @@ export function CommunityAccountExperience() {
             return (
               <div>
                 {Array.from({ length: 3 }).map((_, i) => (
-                  <div key={i} className="flex gap-3 px-4 py-3 border-b border-white/10 animate-pulse">
+                  <div key={i} className="flex gap-3 py-3 border-b border-white/10 animate-pulse">
                     <div className="w-10 h-10 rounded-full bg-white/10 shrink-0" />
                     <div className="flex-1 space-y-2">
                       <div className="flex gap-2">

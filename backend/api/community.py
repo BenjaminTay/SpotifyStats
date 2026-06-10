@@ -9,12 +9,14 @@ from pydantic import BaseModel
 
 from backend.dependencies import PlayFilters, get_conn
 from backend.domains.community.feed_generator import generate_all_posts
+from backend.domains.community.post_types import HIGHLIGHT_POST_TYPES
 
 router = APIRouter(prefix="/community", tags=["Community"])
 
 
 class FeedMeta(BaseModel):
     total: int
+    total_all: int
     returned: int
     offset: int
     limit: int
@@ -30,6 +32,9 @@ class CommunityFeedResponse(BaseModel):
 def get_community_feed(
     accounts: str | None = Query(default=None, description="Comma-separated handles to filter by"),
     tags: str | None = Query(default=None, description="Comma-separated tags to filter by"),
+    highlights_only: bool = Query(
+        default=False, description="Show only newsworthy posts (no routine summaries)"
+    ),
     significance_min: float = Query(
         default=0.0, ge=0.0, le=1.0, description="Minimum significance threshold"
     ),
@@ -45,8 +50,8 @@ def get_community_feed(
     Posts are generated with historical accuracy: each post only references
     knowledge available at its point in time.
 
-    Filter by accounts (comma-separated handles), tags, significance threshold,
-    or date range. Use offset/limit for pagination.
+    Filter by accounts, tags, date range, significance threshold,
+    or use highlights_only for newsworthy posts only.
     """
     all_posts = generate_all_posts(
         conn=conn,
@@ -54,25 +59,27 @@ def get_community_feed(
         music_only=filters.music_only,
     )
 
-    # Apply filters
+    # Apply filters — track both totals (with and without highlights filter)
     account_set = set(a.strip() for a in accounts.split(",") if a.strip()) if accounts else None
     tag_set = set(t.strip() for t in tags.split(",") if t.strip()) if tags else None
 
     filtered = []
+    total_all = 0
     for p in all_posts:
         if account_set and p.account_handle not in account_set:
             continue
         if tag_set and not tag_set.intersection(p.tags):
             continue
-        if p.significance < significance_min:
-            continue
         if date_from and p.posted_at < date_from:
             continue
         if date_to and p.posted_at > date_to:
             continue
-        filtered.append(p)
+        if p.significance < significance_min:
+            continue
+        total_all += 1
+        if not highlights_only or p.post_type in HIGHLIGHT_POST_TYPES:
+            filtered.append(p)
 
-    total = len(filtered)
     page = filtered[offset : offset + limit]
 
     # Serialize to dicts (dataclass -> dict, handle nested objects)
@@ -99,6 +106,12 @@ def get_community_feed(
         posts_json.append(d)
 
     return CommunityFeedResponse(
-        meta=FeedMeta(total=total, returned=len(posts_json), offset=offset, limit=limit),
+        meta=FeedMeta(
+            total=len(filtered),
+            total_all=total_all,
+            returned=len(posts_json),
+            offset=offset,
+            limit=limit,
+        ),
         posts=posts_json,
     )

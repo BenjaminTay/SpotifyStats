@@ -75,17 +75,17 @@ class TestArtistLevelStats:
         from backend.domains.community.historical_state import HistoricalState
 
         state = HistoricalState()
-        # Week 1: first #1 occurrence
+        # Week 1: first #1 occurrence — 1st distinct #1 song
         state.update([_entry(1, 1, "Artist A", "Song A")])
         assert state.artist_no1_count_as_of("Artist A") == 1
 
-        # Week 2: same song stays at #1 (counts each week at #1)
+        # Week 2: same song stays at #1 — still 1 distinct #1 song
         state.update([_entry(1, 1, "Artist A", "Song A")])
-        assert state.artist_no1_count_as_of("Artist A") == 2
+        assert state.artist_no1_count_as_of("Artist A") == 1
 
-        # Week 3: new song debuts at #1
+        # Week 3: new song debuts at #1 — 2nd distinct #1 song
         state.update([_entry(2, 1, "Artist A", "Song B")])
-        assert state.artist_no1_count_as_of("Artist A") == 3
+        assert state.artist_no1_count_as_of("Artist A") == 2
 
     def test_artist_no1_count_zero_for_non_no1(self):
         from backend.domains.community.historical_state import HistoricalState

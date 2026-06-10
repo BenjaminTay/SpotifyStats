@@ -43,6 +43,7 @@ export interface AccountInfo {
 
 export interface FeedMeta {
   total: number
+  total_all: number
   returned: number
   offset: number
   limit: number

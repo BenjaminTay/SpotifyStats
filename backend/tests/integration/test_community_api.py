@@ -35,7 +35,7 @@ class TestCommunityFeedIntegration:
             for entity in p["linked_entities"]:
                 assert "type" in entity
                 assert "name" in entity
-                assert entity["type"] in ("artist", "track")
+                assert entity["type"] in ("artist", "track", "album")
 
     def test_posts_have_metrics(self, client):
         r = client.get("/api/community/feed", params={"limit": 10})

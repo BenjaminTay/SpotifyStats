@@ -80,6 +80,18 @@ POST_TAGS: dict[PostType, list[str]] = {
     PostType.FORGOTTEN_GEMS: ["collection", "insight"],
 }
 
+# Post types considered "newsworthy" for the highlights feed.
+# Routine weekly summaries, throwbacks, and personal recaps are excluded.
+HIGHLIGHT_POST_TYPES: set[str] = {
+    PostType.NO1_ANNOUNCEMENT.value,
+    PostType.RECORD_BROKEN.value,
+    PostType.RECORD_TIED.value,
+    PostType.RECORD_WATCH.value,
+    PostType.ARTIST_MILESTONE.value,
+    PostType.PLAYBACK_MILESTONE.value,
+    PostType.COLLECTION_MILESTONE.value,
+}
+
 
 @dataclass
 class PostMetrics:

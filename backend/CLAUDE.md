@@ -64,7 +64,7 @@ FastAPI 后端采用四层分离：**api/**（路由 + Depends 依赖注入）�
 - `domains/settings/repository.py` — Settings 表 CRUD
 - `domains/playback/repository.py` — 播放数据查询封装
 - `domains/enrichment/repository.py` — 歌词/Wikipedia/LLM 缓存表访问
-- `domains/community/` — 榜单社区模拟 X 时间线：`accounts.py`（10 个模拟资讯账号）+ `post_types.py`（18 种帖子类型/模板/评分）+ `historical_state.py`（逐周累计历史状态追踪器）+ `feed_generator.py`（帖子生成主引擎，11 个生成函数）
+- `domains/community/` — 榜单社区模拟 X 时间线：`accounts.py`（10 个模拟资讯账号）+ `post_types.py`（18 种帖子类型/7 种精选类型/模板/评分）+ `historical_state.py`（逐周累计历史状态追踪器，去重计数）+ `feed_generator.py`（帖子生成主引擎，14 个生成函数覆盖单曲/专辑/艺人三榜，核心 chart 迭代 `@ttl_cached` 600s 缓存）
 
 ## 外部调用规范
 

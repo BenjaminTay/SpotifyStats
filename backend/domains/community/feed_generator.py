@@ -9,6 +9,7 @@ from datetime import datetime, timedelta
 
 import pandas as pd
 
+from backend.core.cache import ttl_cached
 from backend.domains.billboard.chart_ranking import (
     compute_album_weekly_rankings,
     compute_artist_weekly_rankings,
@@ -88,6 +89,20 @@ def _row_to_dict(row) -> dict:
 def _entries_for_week(weekly_df, week_val) -> list[dict]:
     """Filter weekly DataFrame to rows matching the given week, sorted by rank."""
     subset = weekly_df[weekly_df["billboard_week"] == week_val]
+    subset = subset.sort_values("rank")
+    return [_row_to_dict(row) for _, row in subset.iterrows()]
+
+
+def _album_entries_for_week(weekly_album, week_val) -> list[dict]:
+    """Filter album weekly DataFrame to rows matching the given week, sorted by rank."""
+    subset = weekly_album[weekly_album["billboard_week"] == week_val]
+    subset = subset.sort_values("rank")
+    return [_row_to_dict(row) for _, row in subset.iterrows()]
+
+
+def _artist_entries_for_week(weekly_artist, week_val) -> list[dict]:
+    """Filter artist weekly DataFrame to rows matching the given week, sorted by rank."""
+    subset = weekly_artist[weekly_artist["billboard_week"] == week_val]
     subset = subset.sort_values("rank")
     return [_row_to_dict(row) for _, row in subset.iterrows()]
 
@@ -818,6 +833,57 @@ def _gen_playback_milestone(
     )
 
 
+def _gen_album_no1_post(
+    album_entries: list[dict], posted_at: str, week_label: str
+) -> CommunityPost | None:
+    """@billboardcharts: Billboard 200 #1 album announcement."""
+    no1 = next((e for e in album_entries if e.get("rank") == 1), None)
+    if not no1:
+        return None
+
+    album_name = no1.get("album_name", "")
+    artist_name = no1.get("artist_name", "")
+    content = f"Billboard 200: #1 {album_name} by {artist_name}."
+
+    return CommunityPost(
+        id=_make_id("album", "no1", week_label),
+        account_handle="@billboardcharts",
+        posted_at=posted_at,
+        content=content,
+        post_type=PostType.NO1_ANNOUNCEMENT.value,
+        linked_entities=[
+            {"type": "album", "name": album_name},
+            {"type": "artist", "name": artist_name},
+        ],
+        tags=["weekly", "album", "no1"],
+        significance=0.50,
+    )
+
+
+def _gen_artist_no1_post(
+    artist_entries: list[dict], posted_at: str, week_label: str
+) -> CommunityPost | None:
+    """@chartdata: Artist 100 #1 announcement."""
+    no1 = next((e for e in artist_entries if e.get("rank") == 1), None)
+    if not no1:
+        return None
+
+    artist_name = no1.get("artist_name", "")
+    play_count = no1.get("play_count", 0)
+    content = f"Artist 100: #1 {artist_name} ({play_count:,} plays this week)."
+
+    return CommunityPost(
+        id=_make_id("artist", "no1", week_label),
+        account_handle="@chartdata",
+        posted_at=posted_at,
+        content=content,
+        post_type=PostType.NO1_ANNOUNCEMENT.value,
+        linked_entities=[{"type": "artist", "name": artist_name}],
+        tags=["weekly", "artist", "no1"],
+        significance=0.45,
+    )
+
+
 def _gen_yearly_personal(
     year_label: str,
     state_snapshot: HistoricalState,
@@ -934,9 +1000,11 @@ def _load_cover_maps(conn) -> dict:
     Returns dict with:
       - track_to_album: {track_id: album_id}
       - artist_to_id: {artist_name: artist_id}
+      - album_name_to_id: {(album_name, artist_id): album_id}
     """
     track_to_album: dict[int, int] = {}
     artist_to_id: dict[str, int] = {}
+    album_name_to_id: dict[tuple[str, int], int] = {}
 
     try:
         rows = conn.execute(
@@ -952,25 +1020,55 @@ def _load_cover_maps(conn) -> dict:
     except Exception:
         pass
 
-    return {"track_to_album": track_to_album, "artist_to_id": artist_to_id}
+    try:
+        rows = conn.execute("SELECT album_id, album_name, artist_id FROM albums").fetchall()
+        album_name_to_id = {(r[1], r[2]): r[0] for r in rows}
+    except Exception:
+        pass
+
+    return {
+        "track_to_album": track_to_album,
+        "artist_to_id": artist_to_id,
+        "album_name_to_id": album_name_to_id,
+    }
 
 
 def _enrich_post_images(post: CommunityPost, cover_maps: dict) -> None:
     """Add cover/artist images to a post based on its linked entities."""
     track_to_album = cover_maps.get("track_to_album", {})
     artist_to_id = cover_maps.get("artist_to_id", {})
+    album_name_to_id = cover_maps.get("album_name_to_id", {})
+
+    # Gather artist names from this post's entities (needed for album lookup)
+    linked_artist_names = {e["name"] for e in post.linked_entities if e.get("type") == "artist"}
 
     images: list[str] = []
 
-    # Add image for first linked track (via album cover)
+    # Album cover (for album chart posts)
     for entity in post.linked_entities:
-        if entity.get("type") == "track":
-            tid = entity.get("id")
-            if tid and tid in track_to_album:
-                url = f"/covers/albums/{track_to_album[tid]}.jpg"
-                if url not in images:
-                    images.append(url)
-                    break
+        if entity.get("type") == "album":
+            album_name = entity.get("name", "")
+            # Try each linked artist to find the matching album
+            for artist_name in linked_artist_names:
+                aid = artist_to_id.get(artist_name)
+                if aid and (album_name, aid) in album_name_to_id:
+                    url = f"/covers/albums/{album_name_to_id[(album_name, aid)]}.jpg"
+                    if url not in images:
+                        images.append(url)
+                        break
+            if images:
+                break
+
+    # Add image for first linked track (via album cover)
+    if not images:
+        for entity in post.linked_entities:
+            if entity.get("type") == "track":
+                tid = entity.get("id")
+                if tid and tid in track_to_album:
+                    url = f"/covers/albums/{track_to_album[tid]}.jpg"
+                    if url not in images:
+                        images.append(url)
+                        break
 
     # Add image for linked artist
     for entity in post.linked_entities:
@@ -986,8 +1084,8 @@ def _enrich_post_images(post: CommunityPost, cover_maps: dict) -> None:
     post.images = images
 
 
-def generate_all_posts(
-    conn=None,
+@ttl_cached(ttl_seconds=600, namespace="community")
+def _generate_core_posts(
     min_ms: int = 30000,
     music_only: bool = True,
     bb_top_n: int = 30,
@@ -997,14 +1095,12 @@ def generate_all_posts(
     bb_week_start_hour: int = 0,
     year_start: int | None = None,
     year_end: int | None = None,
-) -> list[CommunityPost]:
-    """Main entry point: generate all community posts by iterating chart history.
+) -> tuple[list[CommunityPost], HistoricalState]:
+    """Cached core chart post generation — iterates full chart history.
 
-    Returns a list of CommunityPost objects sorted by posted_at descending (newest first).
-    Posts are generated using historical state tracking — each post only references
-    knowledge available at its point in time.
+    Returns (posts, state) where posts excludes collection/cover/metric enrichment
+    and state is the final HistoricalState after processing all weeks.
     """
-    # Load chart data
     df_raw, weekly, weekly_album, weekly_artist, all_weeks = _load_chart_data(
         min_ms,
         music_only,
@@ -1018,30 +1114,15 @@ def generate_all_posts(
     )
 
     if not all_weeks:
-        return []
+        return [], HistoricalState()
 
-    # Compute personal stats per week
     personal_weekly = _compute_personal_weekly(df_raw)
 
-    # Load collection data
-    if conn is not None:
-        collection_data = _load_collection_data(conn)
-    else:
-        collection_data = {
-            "total_saved": 0,
-            "first_save": None,
-            "forgotten": [],
-            "forgotten_count": 0,
-        }
-
-    # Initialize state and iterate
     state = HistoricalState()
     posts: list[CommunityPost] = []
     prev_week_entries: list[dict] | None = None
-    # Track monthly & yearly snapshots for periodic posts
     monthly_snapshots: list[tuple[str, str, HistoricalState]] = []
     yearly_snapshots: list[tuple[str, str, HistoricalState, HistoricalState | None]] = []
-    # Previous cumulative stats (for milestone detection)
     prev_cum_plays = 0
     prev_cum_hours = 0.0
     prev_cum_tracks = 0
@@ -1049,7 +1130,7 @@ def generate_all_posts(
     year_start_snapshot: HistoricalState | None = None
 
     for i, week_val in enumerate(all_weeks):
-        week_label = str(week_val)[:10]  # YYYY-MM-DD
+        week_label = str(week_val)[:10]
         entries = _entries_for_week(weekly, week_val)
         if not entries:
             continue
@@ -1057,60 +1138,55 @@ def generate_all_posts(
         posted_at = _week_end_date(week_val)
         personal = personal_weekly.get(week_val, {})
 
-        # Skip weeks with very few plays (likely incomplete data)
         if personal.get("plays", 0) < 3:
             state.update(entries, **personal) if personal else state.update(entries)
             prev_week_entries = entries
             continue
 
-        # ---- Generate posts for this week ----
-
-        # @chartdata: #1 announcement
         posts.extend(_gen_no1_posts(entries, state, posted_at, week_label))
 
-        # @billboardcharts: Top 10 summary
         top10 = _gen_top10_summary(entries, state, posted_at, week_label)
         if top10:
             posts.append(top10)
 
-        # @debutwatch: New entries
         posts.extend(_gen_debut_posts(entries, state, posted_at, week_label))
 
-        # @chartdata: Biggest jump
         jump = _gen_biggest_jump_post(entries, prev_week_entries, posted_at, week_label)
         if jump:
             posts.append(jump)
 
-        # @recordwatch: Record broken/tied
         posts.extend(_gen_record_posts(entries, state, posted_at, week_label))
-
-        # @popcrave: Artist milestones
         posts.extend(_gen_milestone_posts(entries, state, posted_at, week_label))
 
-        # @throwbackcharts: On this week (1 year ago)
         tb = _gen_throwback_post(state, all_weeks, posted_at, week_label)
         if tb:
             posts.append(tb)
 
-        # @spotifystats: Weekly personal
         wp = _gen_weekly_personal(week_label, personal, state, posted_at)
         if wp:
             posts.append(wp)
 
-        # @recordwatch: Record tied
         posts.extend(_gen_record_tied_posts(entries, state, posted_at, week_label))
-
-        # @recordwatch: Record watch (approaching)
         posts.extend(_gen_record_watch_posts(entries, state, posted_at, week_label))
 
-        # @spotifystats: Playback milestone (cross threshold this week)
         pm = _gen_playback_milestone(
             state, prev_cum_plays, prev_cum_hours, prev_cum_tracks, posted_at, week_label
         )
         if pm:
             posts.append(pm)
 
-        # ---- Update state ----
+        # Album chart #1
+        album_entries = _album_entries_for_week(weekly_album, week_val)
+        an1 = _gen_album_no1_post(album_entries, posted_at, week_label)
+        if an1:
+            posts.append(an1)
+
+        # Artist chart #1
+        artist_entries = _artist_entries_for_week(weekly_artist, week_val)
+        arn1 = _gen_artist_no1_post(artist_entries, posted_at, week_label)
+        if arn1:
+            posts.append(arn1)
+
         state.update(
             entries,
             personal_plays=personal.get("plays", 0),
@@ -1121,19 +1197,15 @@ def generate_all_posts(
             personal_top_artist_plays=personal.get("top_artist_plays", 0),
         )
 
-        # Track previous cumulative stats (for milestone detection)
         prev_cum_plays = state.cumulative_plays
         prev_cum_hours = state.cumulative_ms / 3600000
         prev_cum_tracks = len(state.cumulative_tracks)
 
-        # Monthly & yearly snapshots
         try:
             dt = pd.Timestamp(week_val)
             month_key = dt.strftime("%Y-%m")
-            # Only capture if this is the last week of the month we've seen
             existing = [s for s in monthly_snapshots if s[0] == month_key]
             if not existing:
-                # Create a lightweight snapshot copy
                 snapshot = HistoricalState()
                 snapshot.cumulative_plays = state.cumulative_plays
                 snapshot.cumulative_ms = state.cumulative_ms
@@ -1141,7 +1213,6 @@ def generate_all_posts(
                 snapshot.cumulative_artists = state.cumulative_artists.copy()
                 monthly_snapshots.append((month_key, posted_at, snapshot))
 
-            # Yearly snapshot at year boundary
             year = dt.year
             if year != prev_year:
                 if prev_year is not None and year_start_snapshot is not None:
@@ -1164,7 +1235,6 @@ def generate_all_posts(
 
         prev_week_entries = entries
 
-    # Catch final year snapshot
     if prev_year is not None and year_start_snapshot is not None:
         year_end_snapshot = HistoricalState()
         year_end_snapshot.cumulative_plays = state.cumulative_plays
@@ -1174,24 +1244,18 @@ def generate_all_posts(
         last_date = posts[-1].posted_at if posts else datetime.now().strftime("%Y-%m-%dT12:00:00")
         yearly_snapshots.append((str(prev_year), last_date, year_end_snapshot, year_start_snapshot))
 
-    # ---- Post-iteration: periodic & all-time posts ----
-
-    # Monthly personal summaries
     for month_key, last_posted_at, snap in monthly_snapshots:
         mp = _gen_monthly_personal(month_key, [], snap, last_posted_at)
         if mp:
             posts.append(mp)
 
-    # Yearly personal recaps
     for year_label, snap_posted_at, year_end_snap, year_start_snap in yearly_snapshots:
         yp = _gen_yearly_personal(year_label, year_end_snap, year_start_snap, snap_posted_at)
         if yp:
             posts.append(yp)
 
-    # All-time statistics
     posts.extend(_gen_alltime_stats(weekly, state))
 
-    # Decade / era comparison
     end_date = all_weeks[-1]
     try:
         end_dt = pd.Timestamp(end_date)
@@ -1202,22 +1266,64 @@ def generate_all_posts(
     if dc:
         posts.append(dc)
 
-    # Collection insights
-    posts.extend(_gen_collection_posts(collection_data, state))
+    return posts, state
 
-    # Collection milestones
+
+def generate_all_posts(
+    conn=None,
+    min_ms: int = 30000,
+    music_only: bool = True,
+    bb_top_n: int = 30,
+    bb_album_top_n: int = 20,
+    bb_artist_top_n: int = 20,
+    bb_week_start_dow: int = 4,
+    bb_week_start_hour: int = 0,
+    year_start: int | None = None,
+    year_end: int | None = None,
+) -> list[CommunityPost]:
+    """Main entry point: generate all community posts by iterating chart history.
+
+    Core chart iteration is cached (TTL 10 min). Collection posts, cover images,
+    and engagement metrics are enriched fresh on each call.
+    """
+    core_posts, state = _generate_core_posts(
+        min_ms=min_ms,
+        music_only=music_only,
+        bb_top_n=bb_top_n,
+        bb_album_top_n=bb_album_top_n,
+        bb_artist_top_n=bb_artist_top_n,
+        bb_week_start_dow=bb_week_start_dow,
+        bb_week_start_hour=bb_week_start_hour,
+        year_start=year_start,
+        year_end=year_end,
+    )
+
+    # Shallow copy so we can extend without mutating the cached list
+    posts: list[CommunityPost] = list(core_posts)
+
+    # Collection posts (need DB conn)
+    if conn is not None:
+        collection_data = _load_collection_data(conn)
+    else:
+        collection_data = {
+            "total_saved": 0,
+            "first_save": None,
+            "forgotten": [],
+            "forgotten_count": 0,
+        }
+
+    posts.extend(_gen_collection_posts(collection_data, state))
     posts.extend(_gen_collection_milestone(collection_data, state))
 
-    # ---- Enrich posts with cover images ----
+    # Cover images (need DB conn)
     cover_maps = _load_cover_maps(conn) if conn else {}
     for post in posts:
         _enrich_post_images(post, cover_maps)
 
-    # ---- Assign metrics ----
+    # Engagement metrics — always fresh (randomized)
     for post in posts:
         acct = ACCOUNT_BY_HANDLE.get(post.account_handle, {})
         post.metrics = _generate_metrics(post.significance, str(acct.get("follower_tier", "mid")))
 
-    # Sort newest first
     posts.sort(key=lambda p: p.posted_at, reverse=True)
     return posts

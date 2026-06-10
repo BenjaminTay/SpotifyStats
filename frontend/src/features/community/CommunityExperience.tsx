@@ -6,25 +6,36 @@ import { CommunitySidebar } from './CommunitySidebar'
 import { CommunityTimeline } from './CommunityTimeline'
 import { FeedToggle } from './FeedToggle'
 import type { FeedTab } from './FeedToggle'
+import { TimeFilter, ALL_PERIOD } from './TimeFilter'
+import type { TimePeriod } from './TimeFilter'
 
 // Module-level cache for UI state (permitted by Phase 5 rules)
 let cachedTab: FeedTab = 'highlights'
+let cachedPeriod: TimePeriod = ALL_PERIOD
 
 export function CommunityExperience() {
   const [activeTab, setActiveTab] = useState<FeedTab>(cachedTab)
+  const [period, setPeriod] = useState<TimePeriod>(cachedPeriod)
 
-  // 精选 = sig >= 0.3, 全部 = no filter
+  // 精选 = newsworthy post types only, 全部 = no filter
   const filters = useMemo(() => {
     const f: Record<string, string | number | boolean> = { limit: 50, offset: 0 }
-    if (activeTab === 'highlights') f.significance_min = 0.3
+    if (activeTab === 'highlights') f.highlights_only = true
+    if (period.date_from) f.date_from = period.date_from
+    if (period.date_to) f.date_to = period.date_to
     return f
-  }, [activeTab])
+  }, [activeTab, period])
 
   const { posts, meta, loading, loadingMore, error, refetch, hasMore, loadMore } = useCommunityFeed(filters)
 
   const handleTabChange = useCallback((tab: FeedTab) => {
     cachedTab = tab
     setActiveTab(tab)
+  }, [])
+
+  const handlePeriodChange = useCallback((p: TimePeriod) => {
+    cachedPeriod = p
+    setPeriod(p)
   }, [])
 
   return (
@@ -40,15 +51,19 @@ export function CommunityExperience() {
       </section>
 
       {/* Two-column layout: feed + sidebar (X/Weibo style) */}
-      <div className="flex gap-8 justify-center">
+      <div className="flex gap-8">
         {/* Main feed column */}
-        <div className="flex-1 max-w-[720px] border-x border-white/10 min-h-[70vh]">
+        <div className="flex-1 max-w-[720px] min-h-[70vh]">
           {/* Feed toggle — X "For You" / "Following" style */}
           <FeedToggle
-          active={activeTab}
-          onChange={handleTabChange}
-          allCount={meta?.total}
-        />
+            active={activeTab}
+            onChange={handleTabChange}
+            highlightsCount={activeTab === 'highlights' ? meta?.total : undefined}
+            allCount={meta?.total_all}
+          />
+
+          {/* Time period filter */}
+          <TimeFilter selected={period} onChange={handlePeriodChange} />
 
           {/* Timeline content */}
           {(() => {
@@ -56,7 +71,7 @@ export function CommunityExperience() {
               return (
                 <div>
                   {Array.from({ length: 5 }).map((_, i) => (
-                    <div key={i} className="flex gap-3 px-4 py-3 border-b border-white/10 animate-pulse">
+                    <div key={i} className="flex gap-3 py-3 border-b border-white/10 animate-pulse">
                       <div className="w-10 h-10 rounded-full bg-white/10 shrink-0" />
                       <div className="flex-1 space-y-2">
                         <div className="flex gap-2">
