@@ -809,6 +809,24 @@ def compute_release_cycle(
             weeks_after,
         )
 
+        # All-time cumulative half-life: weeks from release until cumulative
+        # plays reach 50% of total (computed from full history, not the
+        # weeks_after window).
+        album_all_copy = album_all.copy()
+        album_all_copy["week_offset"] = (album_all_copy["ts_date_dt"] - release_dt).dt.days // 7
+        weekly_all = (
+            album_all_copy.groupby("week_offset")
+            .size()
+            .reset_index(name="play_count")
+            .sort_values("week_offset")
+        )
+        total_all = int(weekly_all["play_count"].sum())
+        if total_all > 0:
+            cumsum = weekly_all["play_count"].cumsum()
+            half_mask = cumsum >= total_all / 2
+            if half_mask.any():
+                result["album_half_life"] = int(weekly_all.loc[half_mask.idxmax(), "week_offset"])
+
     # Track timelines
     if not album_all.empty:
         track_offsets = (album_all["ts_date_dt"] - release_dt).dt.days // 7
@@ -1090,15 +1108,10 @@ def compute_release_metrics(cycle_data, album_type="album"):
     metrics["artist_impact"], metrics["artist_impact_detail"] = _compute_artist_impact(cycle_data)
     metrics["market_impact"], metrics["market_impact_detail"] = _compute_market_impact(cycle_data)
 
-    peak_plays = metrics["peak_play_count"]
-    if peak_plays > 0 and not post_rows.empty:
-        peak_offset = int(post_rows.loc[post_rows["play_count"].idxmax(), "week_offset"])
-        decay_rows = atl[
-            (atl["week_offset"] > peak_offset) & (atl["play_count"] <= peak_plays * 0.5)
-        ]
-        if not decay_rows.empty:
-            decay_offset = int(decay_rows["week_offset"].min())
-            metrics["half_life"] = decay_offset - peak_offset
+    # Cumulative half-life: precomputed from all-time data in
+    # compute_release_cycle (not limited by weeks_after window).
+    if "album_half_life" in cycle_data:
+        metrics["half_life"] = cycle_data["album_half_life"]
 
     ar = cycle_data.get("album_ranks", pd.DataFrame())
     if not ar.empty:

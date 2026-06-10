@@ -6,7 +6,7 @@ import { queryKeys } from '@/api/query-keys'
 import { GlassCard } from '@/components/shared/GlassCard'
 import type { VersusEntityData, EntityListItem } from '@/types/billboard'
 import type { EntityStatsResponse } from '@/types/analysis'
-import { METRIC_DEFS, METRIC_GROUPS, bestIndex, ENTITY_COLORS, type VersusKind, type MetricGroup } from './versusData'
+import { METRIC_DEFS, METRIC_GROUPS, bestIndices, ENTITY_COLORS, type VersusKind, type MetricGroup } from './versusData'
 
 interface VersusScoreboardSectionProps {
   entities: VersusEntityData[] | null
@@ -82,8 +82,8 @@ export function VersusScoreboardSection({
   const wins = new Array(n).fill(0)
   for (const def of defs) {
     const values = allMetrics.map((m) => m[def.key])
-    const best = bestIndex(values, def.higherIsBetter)
-    if (best >= 0) wins[best]++
+    const winners = bestIndices(values, def.higherIsBetter)
+    if (winners.length === 1) wins[winners[0]]++
   }
 
   // ── Personal play metric definitions ──
@@ -91,7 +91,7 @@ export function VersusScoreboardSection({
     label: string
     higherIsBetter: boolean
     values: (unknown)[]
-    best: number
+    winners: number[]
     fmt: (v: unknown) => string
   }
 
@@ -104,9 +104,9 @@ export function VersusScoreboardSection({
       fmt: (v: unknown) => string,
     ) => {
       const values = personalResults.map((r) => r.data ? get(r.data) : null)
-      const best = bestIndex(values, higherIsBetter)
-      if (best >= 0) wins[best]++
-      rows.push({ label, higherIsBetter, values, best, fmt })
+      const w = bestIndices(values, higherIsBetter)
+      if (w.length === 1) wins[w[0]]++
+      rows.push({ label, higherIsBetter, values, winners: w, fmt })
     }
 
     define('个人总播放', true, (s) => s.summary?.total_plays, (v) => v != null ? String(v) : '—')
@@ -123,9 +123,9 @@ export function VersusScoreboardSection({
 
     // 单周最多播放 (from chart rank_history)
     if (chartWeekMaxes.some((v) => v != null)) {
-      const best = bestIndex(chartWeekMaxes, true)
-      if (best >= 0) wins[best]++
-      rows.push({ label: '单周最多播放', higherIsBetter: true, values: [...chartWeekMaxes], best, fmt: (v) => v != null ? String(v) : '—' })
+      const w = bestIndices(chartWeekMaxes, true)
+      if (w.length === 1) wins[w[0]]++
+      rows.push({ label: '单周最多播放', higherIsBetter: true, values: [...chartWeekMaxes], winners: w, fmt: (v) => v != null ? String(v) : '—' })
     }
 
     define('活跃天数', true, (s) => s.summary?.active_days, (v) => v != null ? String(v) : '—')
@@ -158,30 +158,43 @@ export function VersusScoreboardSection({
               <th className="w-[140px] py-2.5 pl-4 text-left text-[10px] font-bold uppercase tracking-[1.2px] text-muted-foreground sticky left-0 bg-card">
                 指标
               </th>
-              {entities.map((e, i) => (
-                <th
-                  key={i}
-                  className="py-3 pr-4 text-center align-top"
-                  style={{ color: ENTITY_COLORS[i % ENTITY_COLORS.length] }}
-                >
-                  {e.cover_url && (
-                    <img src={e.cover_url} alt="" className="h-10 w-10 mx-auto rounded-lg object-cover mb-1.5" />
-                  )}
-                  {detailLinks[i] ? (
-                    <Link
-                      to={detailLinks[i]}
-                      className="block truncate text-[13px] font-serif font-semibold transition-colors hover:underline"
-                      title={e.name ?? undefined}
-                    >
-                      {e.name}
-                    </Link>
-                  ) : (
-                    <span className="block truncate text-[13px] font-serif font-semibold" title={e.name ?? undefined}>
-                      {e.name}
-                    </span>
-                  )}
-                </th>
-              ))}
+              {entities.map((e, i) => {
+                // Split "Song — Artist" into parts for two-line display
+                const raw = e.name ?? ''
+                const sepIdx = raw.indexOf(' — ')
+                const titleName = sepIdx >= 0 ? raw.slice(0, sepIdx) : raw
+                const subtitle = sepIdx >= 0 ? raw.slice(sepIdx + 3) : null
+
+                return (
+                  <th
+                    key={i}
+                    className="py-3 pr-4 text-center align-top"
+                    style={{ color: ENTITY_COLORS[i % ENTITY_COLORS.length] }}
+                  >
+                    {e.cover_url && (
+                      <img src={e.cover_url} alt="" className="h-10 w-10 mx-auto rounded-lg object-cover mb-1.5" />
+                    )}
+                    {detailLinks[i] ? (
+                      <Link
+                        to={detailLinks[i]}
+                        className="block truncate text-[13px] font-serif font-semibold transition-colors hover:underline"
+                        title={titleName}
+                      >
+                        {titleName}
+                      </Link>
+                    ) : (
+                      <span className="block truncate text-[13px] font-serif font-semibold" title={titleName}>
+                        {titleName}
+                      </span>
+                    )}
+                    {subtitle && (
+                      <span className="mt-0.5 block font-sans text-[12px] italic">
+                        {subtitle}
+                      </span>
+                    )}
+                  </th>
+                )
+              })}
             </tr>
           </thead>
           <tbody>
@@ -190,21 +203,21 @@ export function VersusScoreboardSection({
                 <tr>
                   <td
                     colSpan={n + 1}
-                    className="py-1.5 pl-4 text-[10px] font-bold uppercase tracking-[1.4px] text-muted-foreground bg-muted/30 border-b border-border/30"
+                    className="py-2 pl-4 text-[11px] font-bold uppercase tracking-[1.4px] text-accent-foreground bg-accent/12 border-b border-border"
                   >
                     {group}
                   </td>
                 </tr>
                 {items.map((def) => {
                   const values = allMetrics.map((m) => m[def.key])
-                  const best = bestIndex(values, def.higherIsBetter)
+                  const winners = bestIndices(values, def.higherIsBetter)
                   return (
                     <tr key={def.key} className="border-b border-border/40 transition-colors hover:bg-muted/30">
                       <td className="py-2.5 pl-4 text-[13px] text-muted-foreground sticky left-0 bg-card w-[140px]">
                         {def.label}
                       </td>
                       {values.map((v, i) => {
-                        const isBest = best >= 0 && i === best
+                        const isBest = winners.includes(i)
                         return (
                           <td
                             key={i}
@@ -231,7 +244,7 @@ export function VersusScoreboardSection({
                 <tr>
                   <td
                     colSpan={n + 1}
-                    className="py-1.5 pl-4 text-[10px] font-bold uppercase tracking-[1.4px] text-muted-foreground bg-muted/30 border-b border-border/30"
+                    className="py-2 pl-4 text-[11px] font-bold uppercase tracking-[1.4px] text-accent-foreground bg-accent/12 border-b border-border"
                   >
                     个人播放
                   </td>
@@ -242,7 +255,7 @@ export function VersusScoreboardSection({
                       {row.label}
                     </td>
                     {row.values.map((v, i) => {
-                      const isBest = row.best >= 0 && i === row.best
+                      const isBest = row.winners.includes(i)
                       return (
                         <td
                           key={i}
@@ -265,12 +278,12 @@ export function VersusScoreboardSection({
               </>
             )}
 
-            {/* ── Total Score row ── */}
+            {/* ── Total Score row ──*/}
             <tr><td colSpan={n + 1} className="h-1.5" /></tr>
             <tr>
               <td
                 colSpan={n + 1}
-                className="py-1.5 pl-4 text-[10px] font-bold uppercase tracking-[1.4px] text-muted-foreground bg-muted/30 border-b border-border/30"
+                className="py-2 pl-4 text-[11px] font-bold uppercase tracking-[1.4px] text-accent-foreground bg-accent/12 border-b border-border"
               >
                 总分 (胜出指标数)
               </td>
@@ -293,6 +306,7 @@ export function VersusScoreboardSection({
                 )
               })}
             </tr>
+
           </tbody>
         </table>
       </GlassCard>

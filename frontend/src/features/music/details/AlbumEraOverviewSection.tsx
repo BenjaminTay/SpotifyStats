@@ -65,7 +65,7 @@ export function AlbumEraOverviewSection({ data, releaseCycle }: AlbumEraOverview
           accent={releaseCycle.metrics.peak_rank === 1}
         />
         <KpiCard
-          label="半衰期"
+          label="半数播放距"
           value={formatHalfLife(releaseCycle.metrics.half_life)}
           sub={`峰值播放 ${formatNumber(releaseCycle.metrics.peak_play_count)}`}
         />

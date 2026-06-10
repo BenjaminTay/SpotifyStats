@@ -65,7 +65,8 @@ export const METRIC_DEFS: VersusMetricDef[] = [
 ]
 
 /** Find the best (lowest or highest) value index among row values, or -1 if no winner */
-export function bestIndex(values: (unknown)[], higherIsBetter: boolean): number {
+/** Returns all winning indices. Empty = no valid data, [idx] = clear winner, [a,b,…] = tie. */
+export function bestIndices(values: (unknown)[], higherIsBetter: boolean): number[] {
   const nums: { idx: number; val: number }[] = []
   for (let i = 0; i < values.length; i++) {
     const v = values[i]
@@ -74,12 +75,11 @@ export function bestIndex(values: (unknown)[], higherIsBetter: boolean): number 
       if (!isNaN(n)) nums.push({ idx: i, val: n })
     }
   }
-  if (nums.length === 0) return -1
-  if (nums.length === 1) return nums[0].idx
+  if (nums.length === 0) return []
+  if (nums.length === 1) return [nums[0].idx]
   nums.sort((a, b) => higherIsBetter ? b.val - a.val : a.val - b.val)
-  // Check if the best is tied with the second best
-  if (Math.abs(nums[0].val - nums[1].val) < 1e-9) return -1
-  return nums[0].idx
+  const bestVal = nums[0].val
+  return nums.filter((n) => Math.abs(n.val - bestVal) < 1e-9).map((n) => n.idx)
 }
 
 export function toChartData(points: VersusRankPoint[]): { week: string; rank: number | null }[] {
