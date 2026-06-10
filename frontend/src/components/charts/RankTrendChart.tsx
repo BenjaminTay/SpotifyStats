@@ -7,14 +7,24 @@ const ReactECharts = lazy(() => import('echarts-for-react'))
 interface RankDataPoint {
   week: string
   rank: number | null
+  label?: string
 }
+
+interface OverlaySeries {
+  data: RankDataPoint[]
+  name: string
+}
+
+const OVERLAY_COLORS = [
+  { light: '#4A7C59', dark: '#7BA587' },  // green
+  { light: '#5B6EAD', dark: '#8B9FD4' },  // blue
+]
 
 interface RankTrendChartProps {
   data: RankDataPoint[]
   topN: number
   peakPosition?: number
-  overlayData?: RankDataPoint[]
-  overlayLabel?: string
+  overlays?: OverlaySeries[]
 }
 
 function parseWeek(str: string): Date | null {
@@ -99,8 +109,7 @@ export function RankTrendChart({
   data,
   topN,
   peakPosition,
-  overlayData,
-  overlayLabel,
+  overlays,
 }: RankTrendChartProps) {
   const { isDark } = useTheme()
   const base = useMemo(() => buildChartBase(isDark), [isDark])
@@ -127,7 +136,6 @@ export function RankTrendChart({
 
   const textColor = isDark ? '#A09888' : '#6B5E58'
   const rankColor = isDark ? '#D4836F' : '#C84C3D'
-  const overlayColor = isDark ? '#7BA587' : '#4A7C59'
 
   // ── Peak annotation ──
   const validRanks = values.filter((v): v is number => v !== null)
@@ -236,44 +244,68 @@ export function RankTrendChart({
     },
   ]
 
-  if (overlayData && overlayData.length > 0) {
-    const overlayMap = new Map(overlayData.map((d) => [d.week, d.rank]))
-    const overlayValues = rawLabels.map((week) => overlayMap.get(week) ?? null)
+  if (overlays && overlays.length > 0) {
+    overlays.forEach((overlay, idx) => {
+      const color = OVERLAY_COLORS[idx % OVERLAY_COLORS.length]
+      const seriesColor = isDark ? color.dark : color.light
 
-    series.push({
-      name: overlayLabel || '最佳单曲',
-      type: 'line',
-      data: overlayValues,
-      connectNulls: false,
-      smooth: false,
-      symbol: 'diamond',
-      symbolSize: 7,
-      showSymbol: true,
-      showAllSymbol: true,
-      z: 1,
-      emphasis: {
-        focus: 'none' as const,
-        symbolSize: 13,
+      const rankMap = new Map(overlay.data.map((d) => [d.week, d.rank]))
+      const labelMap = new Map(
+        overlay.data.filter((d) => d.label).map((d) => [d.week, d.label!])
+      )
+      const overlayValues = rawLabels.map((week) => {
+        const rank = rankMap.get(week)
+        if (rank === undefined) return null
+        const lbl = labelMap.get(week)
+        return lbl ? { value: rank, label: lbl } : rank
+      })
+
+      series.push({
+        name: overlay.name,
+        type: 'line',
+        data: overlayValues,
+        connectNulls: false,
+        smooth: false,
+        symbol: 'diamond',
+        symbolSize: 7,
+        showSymbol: true,
+        showAllSymbol: true,
+        z: 1,
+        emphasis: {
+          focus: 'none' as const,
+          symbolSize: 13,
+          itemStyle: {
+            borderColor: seriesColor,
+            borderWidth: 2,
+          },
+        },
+        blur: {
+          itemStyle: { opacity: 1 },
+          lineStyle: { opacity: 1 },
+        },
+        lineStyle: {
+          width: 1.5,
+          color: seriesColor,
+          type: 'dashed',
+          dashOffset: 2,
+        },
         itemStyle: {
-          borderColor: overlayColor,
+          color: seriesColor,
+          borderColor: isDark ? '#1C1C20' : '#FFFFFF',
           borderWidth: 2,
         },
-      },
-      blur: {
-        itemStyle: { opacity: 1 },
-        lineStyle: { opacity: 1 },
-      },
-      lineStyle: {
-        width: 1.5,
-        color: overlayColor,
-        type: 'dashed',
-        dashOffset: 2,
-      },
-      itemStyle: {
-        color: overlayColor,
-        borderColor: isDark ? '#1C1C20' : '#FFFFFF',
-        borderWidth: 2,
-      },
+        tooltip: {
+          formatter: (p: any) => {
+            const val = p.value
+            const lbl = p.data?.label
+            const display = val === null || val === undefined
+              ? '<span style="opacity:0.4">—</span>'
+              : `<span style="font-weight:600">#${val}</span>`
+            const labelPart = lbl ? ` <span style="opacity:0.6;font-size:10px">${lbl}</span>` : ''
+            return `${p.marker} ${p.seriesName}: ${display}${labelPart}`
+          },
+        },
+      })
     })
   }
 
@@ -341,15 +373,17 @@ export function RankTrendChart({
         let html = `<div style="font-weight:600;font-size:13px;margin-bottom:6px;font-family:'Inter Variable',sans-serif">${week}</div>`
         items.forEach((p: any) => {
           const val = p.value
+          const lbl = p.data?.label
           const display = val === null || val === undefined
             ? '<span style="opacity:0.4">—</span>'
             : `<span style="font-weight:600">#${val}</span>`
-          html += `<div style="font-size:11px;line-height:1.7;font-family:'Inter Variable',sans-serif">${p.marker} ${p.seriesName}: ${display}</div>`
+          const labelPart = lbl ? ` <span style="opacity:0.6;font-size:10px">${lbl}</span>` : ''
+          html += `<div style="font-size:11px;line-height:1.7;font-family:'Inter Variable',sans-serif">${p.marker} ${p.seriesName}: ${display}${labelPart}</div>`
         })
         return html
       },
     },
-    legend: overlayData && overlayData.length > 0
+    legend: overlays && overlays.length > 0
       ? {
           show: true,
           bottom: showZoomToggle && viewMode === 'detail' ? 24 : 0,
@@ -364,8 +398,8 @@ export function RankTrendChart({
       ? [
           {
             type: 'slider' as const,
-            start: 100 - (WINDOW_SIZE / totalPoints) * 100,
-            end: 100,
+            start: 0,
+            end: (WINDOW_SIZE / totalPoints) * 100,
             zoomLock: true,
             handleSize: '80%',
             showDetail: false,

@@ -14,6 +14,9 @@ export const queryKeys = {
     powerScores: (params: Record<string, unknown> = {}) => ['billboard', 'power-scores', params] as const,
     summaries: (params: Record<string, unknown> = {}) => ['billboard', 'summaries', params] as const,
     allTime: (params: Record<string, unknown> = {}) => ['billboard', 'all-time', params] as const,
+    entityLists: (params: Record<string, unknown> = {}) => ['billboard', 'entity-lists', params] as const,
+    versus: (kind: string, params: Record<string, unknown>) => ['billboard', 'versus', kind, params] as const,
+    releaseCycleCompare: (params: Record<string, unknown>) => ['billboard', 'release-cycle', 'compare', params] as const,
   },
 
   analysis: {

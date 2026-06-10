@@ -13,6 +13,7 @@ def get_billboard_entity_lists(
     bb_week_start_hour,
     year_start,
     year_end,
+    search=None,
 ):
     """Return entity lists for versus search pickers (tracks, albums, artists)."""
     data = compute_billboard_data(
@@ -57,5 +58,11 @@ def get_billboard_entity_lists(
         reverse=True,
     )
     artists = [{"display": r["artist_name"], "artist_name": r["artist_name"]} for r in artist_rows]
+
+    if search:
+        q = search.lower()
+        tracks = [t for t in tracks if q in t["display"].lower()]
+        albums = [a for a in albums if q in a["display"].lower()]
+        artists = [a for a in artists if q in a["display"].lower()]
 
     return {"tracks": tracks, "albums": albums, "artists": artists}

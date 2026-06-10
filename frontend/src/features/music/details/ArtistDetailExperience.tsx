@@ -107,7 +107,8 @@ export function ArtistDetailExperience() {
                   kind="artist"
                   chartSummary={data.chart_summary}
                   weeklyHistory={data.artist_weekly_history}
-                  overlayData={data.best_singles_overlay}
+                  bestSinglesOverlay={data.best_singles_overlay}
+                  bestAlbumsOverlay={data.best_albums_overlay}
                 />
               )}
 

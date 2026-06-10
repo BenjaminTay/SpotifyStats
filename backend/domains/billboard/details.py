@@ -380,11 +380,22 @@ def get_artist_chart_detail(
                 track_cover_map[int(r["track_id"])] = r["cover_url"]
 
     # Best singles rank per week (for overlay chart)
-    best_singles = (
-        artist_weekly.groupby("billboard_week")["rank"]
-        .min()
-        .reset_index()
-        .sort_values("billboard_week")
+    best_singles_idx = artist_weekly.groupby("billboard_week")["rank"].idxmin()
+    best_singles = artist_weekly.loc[
+        best_singles_idx, ["billboard_week", "rank", "track_name"]
+    ].sort_values("billboard_week")
+
+    # Best albums rank per week (for overlay chart)
+    artist_albums_weekly = weekly_album[weekly_album["artist_name"] == artist_name]
+    best_albums_idx = artist_albums_weekly.groupby("billboard_week")["rank"].idxmin()
+    best_albums = (
+        (
+            artist_albums_weekly.loc[
+                best_albums_idx, ["billboard_week", "rank", "album_name"]
+            ].sort_values("billboard_week")
+        )
+        if not artist_albums_weekly.empty
+        else pd.DataFrame()
     )
 
     # Artist weekly history with change column and #1 info
@@ -548,10 +559,24 @@ def get_artist_chart_detail(
             for _, r in week_no1_albums.iterrows()
         ],
         "best_singles_overlay": [
-            {"week": str(r["billboard_week"]), "rank": int(r["rank"])}
+            {
+                "week": str(r["billboard_week"]),
+                "rank": int(r["rank"]),
+                "track_name": r["track_name"],
+            }
             for _, r in best_singles.iterrows()
         ]
         if not best_singles.empty
+        else [],
+        "best_albums_overlay": [
+            {
+                "week": str(r["billboard_week"]),
+                "rank": int(r["rank"]),
+                "album_name": r["album_name"],
+            }
+            for _, r in best_albums.iterrows()
+        ]
+        if not best_albums.empty
         else [],
         "tracks": [
             {
@@ -668,12 +693,10 @@ def get_album_chart_detail(
 
     # Singles weekly for this album (for overlay chart)
     album_weekly = weekly[weekly["track_id"].isin(alb_track_ids)]
-    best_singles = (
-        album_weekly.groupby("billboard_week")["rank"]
-        .min()
-        .reset_index()
-        .sort_values("billboard_week")
-    )
+    best_singles_idx = album_weekly.groupby("billboard_week")["rank"].idxmin()
+    best_singles = album_weekly.loc[
+        best_singles_idx, ["billboard_week", "rank", "track_name"]
+    ].sort_values("billboard_week")
 
     # #1 track info per week
     album_no1 = (
@@ -761,7 +784,11 @@ def get_album_chart_detail(
             for _, r in album_no1.iterrows()
         ],
         "best_singles_overlay": [
-            {"week": str(r["billboard_week"]), "rank": int(r["rank"])}
+            {
+                "week": str(r["billboard_week"]),
+                "rank": int(r["rank"]),
+                "track_name": r["track_name"],
+            }
             for _, r in best_singles.iterrows()
         ]
         if not best_singles.empty

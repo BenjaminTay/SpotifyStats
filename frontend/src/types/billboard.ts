@@ -887,7 +887,8 @@ export interface ArtistDetailResponse {
   artist_weekly_history: ArtistWeeklyHistoryEntry[]
   artist_no1_by_week: ArtistNo1ByWeek[]
   week_no1_albums: { week: string; album_name: string; artist_name: string }[]
-  best_singles_overlay: { week: string; rank: number }[]
+  best_singles_overlay: { week: string; rank: number; track_name: string }[]
+  best_albums_overlay: { week: string; rank: number; album_name: string }[]
   tracks: ArtistTrackEntry[]
   albums: ArtistAlbumEntry[]
 }
@@ -960,7 +961,7 @@ export interface AlbumDetailResponse {
   chart_summary: AlbumChartSummary
   album_weekly_history: AlbumWeeklyHistoryEntry[]
   album_no1_by_week: { week: string; no1_track_names: string; no1_track_id: number | null; no1_count: number }[]
-  best_singles_overlay: { week: string; rank: number }[]
+  best_singles_overlay: { week: string; rank: number; track_name: string }[]
   tracks: AlbumTrackEntry[]
 }
 
@@ -1346,4 +1347,62 @@ export interface TrackEnrichmentResponse {
     cover_url: string
     release_date: string
   } | null
+}
+
+// ── Versus ──────────────────────────────────────────────────
+
+export interface VersusRankPoint {
+  [key: string]: any
+  week: string
+  rank: number
+  play_count: number
+}
+
+export interface VersusEntityData {
+  [key: string]: any
+  name: string | null
+  cover_url: string | null
+  popularity: number | null
+  genres?: string[] | null
+  rank_history: VersusRankPoint[] | null
+  metrics: Record<string, unknown> | null
+}
+
+export interface VersusResponse {
+  [key: string]: any
+  found: boolean
+  reason?: string | null
+  entities?: VersusEntityData[] | null
+}
+
+export interface EntityListItem {
+  [key: string]: any
+  display: string
+  track_id?: number
+  album_name?: string
+  artist_name?: string
+}
+
+export interface EntityListsResponse {
+  [key: string]: any
+  tracks: EntityListItem[]
+  albums: EntityListItem[]
+  artists: EntityListItem[]
+}
+
+export interface ReleaseCycleCompareItem {
+  [key: string]: any
+  artist_name: string
+  album_name: string
+  release_date: string
+  label: string
+  metrics: Record<string, unknown>
+  album_timeline: { week_offset: number; play_count: number }[]
+  album_ranks: { billboard_week: string; week_offset: number; rank: number }[]
+}
+
+export interface ReleaseCycleCompareResponse {
+  [key: string]: any
+  error?: string | null
+  comparisons: ReleaseCycleCompareItem[]
 }

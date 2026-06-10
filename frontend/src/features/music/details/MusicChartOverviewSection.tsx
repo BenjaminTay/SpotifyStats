@@ -61,12 +61,14 @@ export function MusicChartOverviewSection({
   kind,
   chartSummary,
   weeklyHistory,
-  overlayData,
+  bestSinglesOverlay,
+  bestAlbumsOverlay,
 }: {
   kind: 'artist' | 'album'
   chartSummary: ChartSummary
   weeklyHistory: WeeklyHistoryEntry[]
-  overlayData: { week: string; rank: number }[]
+  bestSinglesOverlay: { week: string; rank: number; track_name: string }[]
+  bestAlbumsOverlay?: { week: string; rank: number; album_name: string }[]
 }) {
   return (
     <>
@@ -108,8 +110,28 @@ export function MusicChartOverviewSection({
               }))}
               topN={30}
               peakPosition={chartSummary.peak_position}
-              overlayData={overlayData.length > 0 ? overlayData : undefined}
-              overlayLabel="最佳单曲"
+              overlays={[
+                ...(bestSinglesOverlay.length > 0
+                  ? [{
+                      name: '最佳单曲' as const,
+                      data: bestSinglesOverlay.map((d) => ({
+                        week: d.week,
+                        rank: d.rank,
+                        label: d.track_name,
+                      })),
+                    }]
+                  : []),
+                ...(bestAlbumsOverlay && bestAlbumsOverlay.length > 0
+                  ? [{
+                      name: '最佳专辑' as const,
+                      data: bestAlbumsOverlay.map((d) => ({
+                        week: d.week,
+                        rank: d.rank,
+                        label: d.album_name,
+                      })),
+                    }]
+                  : []),
+              ]}
             />
           </GlassCard>
         </div>

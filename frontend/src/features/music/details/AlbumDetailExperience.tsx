@@ -105,7 +105,7 @@ export function AlbumDetailExperience() {
                   kind="album"
                   chartSummary={data.chart_summary}
                   weeklyHistory={data.album_weekly_history}
-                  overlayData={data.best_singles_overlay}
+                  bestSinglesOverlay={data.best_singles_overlay}
                 />
               )}
 

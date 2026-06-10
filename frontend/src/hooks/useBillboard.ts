@@ -247,3 +247,71 @@ export function useBillboardAllTime() {
     refetch: () => void query.refetch(),
   }
 }
+
+export function preloadEntityLists(): void {
+  void queryClient.prefetchQuery({
+    queryKey: queryKeys.billboard.entityLists(),
+    queryFn: () => api.get<import('@/types/billboard').EntityListsResponse>('/billboard/entity-lists'),
+  })
+}
+
+export function useEntityLists(search?: string) {
+  const query = useQuery({
+    queryKey: queryKeys.billboard.entityLists(search ? { search } : {}),
+    queryFn: () =>
+      api.get<import('@/types/billboard').EntityListsResponse>(
+        '/billboard/entity-lists',
+        search ? { search } : undefined,
+      ),
+    staleTime: 1000 * 60 * 30,
+  })
+  return {
+    data: query.data ?? null,
+    loading: query.isLoading,
+    error: errorMessage(query.error),
+    refetch: () => void query.refetch(),
+  }
+}
+
+export function useVersus(
+  kind: 'track' | 'album' | 'artist',
+  body: Record<string, unknown> | null,
+) {
+  const enabled = body !== null
+  const query = useQuery({
+    queryKey: queryKeys.billboard.versus(kind, body ?? {}),
+    queryFn: () =>
+      api.post<import('@/types/billboard').VersusResponse>(
+        `/billboard/versus/${kind}`,
+        body,
+      ),
+    enabled,
+  })
+  return {
+    data: query.data ?? null,
+    loading: query.isLoading,
+    error: errorMessage(query.error),
+    refetch: () => void query.refetch(),
+  }
+}
+
+export function useReleaseCycleCompare(
+  items: { artist_name: string; album_name: string }[] | null,
+) {
+  const enabled = !!items && items.length >= 2
+  const query = useQuery({
+    queryKey: queryKeys.billboard.releaseCycleCompare(items ? { items } : {}),
+    queryFn: () =>
+      api.post<import('@/types/billboard').ReleaseCycleCompareResponse>(
+        '/billboard/release-cycle/compare',
+        { items, weeks_before: 12, weeks_after: 24 },
+      ),
+    enabled,
+  })
+  return {
+    data: query.data ?? null,
+    loading: query.isLoading,
+    error: errorMessage(query.error),
+    refetch: () => void query.refetch(),
+  }
+}

@@ -51,17 +51,23 @@ def _entity_base(df: pd.DataFrame, entity_df: pd.DataFrame) -> dict:
 
 
 def _rank_for(
-    rows: list[dict], entity: str, *, track_id=None, album_name=None, artist_name=None
+    rows: list[dict],
+    entity: str,
+    *,
+    track_id=None,
+    album_name=None,
+    album_names: list[str] | None = None,
+    artist_name=None,
 ) -> int | None:
     for row in rows:
         if entity == "track" and row.get("track_id") == track_id:
             return row["rank"]
-        if (
-            entity == "album"
-            and row.get("album_name") == album_name
-            and row.get("artist_name") == artist_name
-        ):
-            return row["rank"]
+        if entity == "album":
+            if album_names:
+                if row.get("album_name") in album_names and row.get("artist_name") == artist_name:
+                    return row["rank"]
+            elif row.get("album_name") == album_name and row.get("artist_name") == artist_name:
+                return row["rank"]
         if entity == "artist" and row.get("artist_name") == artist_name:
             return row["rank"]
     return None
@@ -74,6 +80,7 @@ def _ranks(
     entity: str,
     track_id=None,
     album_name=None,
+    album_names: list[str] | None = None,
     artist_name=None,
 ) -> dict:
     periods = {
@@ -85,11 +92,21 @@ def _ranks(
     for key, resolved in periods.items():
         _, rows = chart_rows(conn, filter_period(all_df, resolved), entity, "plays", None, 0)
         result[key] = _rank_for(
-            rows, entity, track_id=track_id, album_name=album_name, artist_name=artist_name
+            rows,
+            entity,
+            track_id=track_id,
+            album_name=album_name,
+            album_names=album_names,
+            artist_name=artist_name,
         )
     _, rows = chart_rows(conn, current_df, entity, "plays", None, 0)
     result["current_period"] = _rank_for(
-        rows, entity, track_id=track_id, album_name=album_name, artist_name=artist_name
+        rows,
+        entity,
+        track_id=track_id,
+        album_name=album_name,
+        album_names=album_names,
+        artist_name=artist_name,
     )
     return result
 
@@ -99,37 +116,49 @@ def _top250_count(
     df: pd.DataFrame,
     *,
     album_name: str | None = None,
+    album_names: list[str] | None = None,
     artist_name: str | None = None,
 ) -> int:
     _, rows = chart_rows(conn, df, "track", "plays", 250, 0)
     count = 0
     for row in rows:
-        if (
-            album_name is not None
-            and row.get("album_name") == album_name
-            and row.get("artist_name") == artist_name
-        ):
-            count += 1
-        elif album_name is None and row.get("artist_name") == artist_name:
+        row_album = row.get("album_name")
+        row_artist = row.get("artist_name")
+        if album_names is not None:
+            if row_album in album_names and row_artist == artist_name:
+                count += 1
+        elif album_name is not None:
+            if row_album == album_name and row_artist == artist_name:
+                count += 1
+        elif row_artist == artist_name:
             count += 1
     return count
 
 
 def _top250_counts(
-    conn: sqlite3.Connection, all_df: pd.DataFrame, *, album_name=None, artist_name=None
+    conn: sqlite3.Connection,
+    all_df: pd.DataFrame,
+    *,
+    album_name=None,
+    album_names: list[str] | None = None,
+    artist_name=None,
 ) -> dict:
     return {
-        "lifetime": _top250_count(conn, all_df, album_name=album_name, artist_name=artist_name),
+        "lifetime": _top250_count(
+            conn, all_df, album_name=album_name, album_names=album_names, artist_name=artist_name
+        ),
         "last_6_months": _top250_count(
             conn,
             filter_period(all_df, resolve_period(all_df, "last_6_months", None, None)),
             album_name=album_name,
+            album_names=album_names,
             artist_name=artist_name,
         ),
         "last_4_weeks": _top250_count(
             conn,
             filter_period(all_df, resolve_period(all_df, "last_4_weeks", None, None)),
             album_name=album_name,
+            album_names=album_names,
             artist_name=artist_name,
         ),
     }
@@ -179,6 +208,22 @@ def get_track_stats(
     return data
 
 
+def _resolve_album_names(conn: sqlite3.Connection, album_name: str, artist_name: str) -> list[str]:
+    """Return all album names in the same release group (including the input)."""
+    row = conn.execute(
+        """SELECT a.album_name FROM release_group_members rgm
+           JOIN release_groups rg ON rg.group_id = rgm.group_id
+           JOIN albums a ON a.album_id = rgm.album_id
+           JOIN artists ar ON a.artist_id = ar.artist_id
+           WHERE rg.canonical_name = ? AND ar.artist_name = ?
+           UNION SELECT ?""",
+        (album_name, artist_name, album_name),
+    ).fetchall()
+    if row:
+        return list({r["album_name"] for r in row})
+    return [album_name]
+
+
 def get_album_stats(
     conn: sqlite3.Connection,
     album_name: str,
@@ -198,11 +243,18 @@ def get_album_stats(
         matches = all_df[all_df["album_name"] == album_name]
         if not matches.empty:
             artist_name = str(matches.iloc[0]["artist_name"])
+
+    # Resolve release group aliases (e.g. standard vs deluxe edition)
+    if artist_name:
+        album_names = _resolve_album_names(conn, album_name, artist_name)
+    else:
+        album_names = [album_name]
+
     entity_all = all_df[
-        (all_df["album_name"] == album_name) & (all_df["artist_name"] == artist_name)
+        (all_df["album_name"].isin(album_names)) & (all_df["artist_name"] == artist_name)
     ]
     entity_df = current_df[
-        (current_df["album_name"] == album_name) & (current_df["artist_name"] == artist_name)
+        (current_df["album_name"].isin(album_names)) & (current_df["artist_name"] == artist_name)
     ]
     if entity_all.empty:
         return {"found": False}
@@ -220,10 +272,20 @@ def get_album_stats(
             "first_played": str(entity_all["ts"].min()),
             "last_played": str(entity_all["ts"].max()),
             "ranks": _ranks(
-                conn, all_df, current_df, "album", album_name=album_name, artist_name=artist_name
+                conn,
+                all_df,
+                current_df,
+                "album",
+                album_name=album_name,
+                album_names=album_names,
+                artist_name=artist_name,
             ),
             "top250_counts": _top250_counts(
-                conn, all_df, album_name=album_name, artist_name=artist_name
+                conn,
+                all_df,
+                album_name=album_name,
+                album_names=album_names,
+                artist_name=artist_name,
             ),
             "track_breakdown": breakdown,
             "recent_plays": recent_plays(conn, entity_df, 50),

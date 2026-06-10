@@ -10,6 +10,7 @@ const AlbumDetailPage = lazy(() => import('@/pages/AlbumDetailPage').then((m) =>
 const NumberOnesPage = lazy(() => import('@/pages/NumberOnesPage').then((m) => ({ default: m.NumberOnesPage })))
 const AllTimeChartsPage = lazy(() => import('@/pages/AllTimeChartsPage').then((m) => ({ default: m.AllTimeChartsPage })))
 const RecordsPage = lazy(() => import('@/pages/RecordsPage').then((m) => ({ default: m.RecordsPage })))
+const BillboardVersusPage = lazy(() => import('@/pages/BillboardVersusPage').then((m) => ({ default: m.BillboardVersusPage })))
 const SettingsPage = lazy(() => import('@/pages/SettingsPage').then((m) => ({ default: m.SettingsPage })))
 const YearlyReviewPage = lazy(() => import('@/pages/YearlyReviewPage').then((m) => ({ default: m.YearlyReviewPage })))
 const AccountCenterPage = lazy(() => import('@/pages/AccountCenterPage').then((m) => ({ default: m.AccountCenterPage })))
@@ -67,6 +68,7 @@ function App() {
           <Route path="/billboard/number-ones" element={<Suspense fallback={<RouteFallback />}><NumberOnesPage /></Suspense>} />
           <Route path="/billboard/all-time" element={<Suspense fallback={<RouteFallback />}><AllTimeChartsPage /></Suspense>} />
           <Route path="/billboard/records" element={<Suspense fallback={<RouteFallback />}><RecordsPage /></Suspense>} />
+          <Route path="/billboard/versus" element={<Suspense fallback={<RouteFallback />}><BillboardVersusPage /></Suspense>} />
           <Route path="/analysis" element={<Suspense fallback={<RouteFallback />}><AnalysisLayout /></Suspense>}>
             <Route index element={<Navigate to="/analysis/stats" replace />} />
             <Route path="stats" element={<Suspense fallback={<RouteFallback />}><AnalysisStatsPage /></Suspense>} />

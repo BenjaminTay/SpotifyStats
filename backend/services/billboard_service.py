@@ -56,8 +56,11 @@ from backend.domains.billboard.versus import (
     _get_ps_rank,
     _resolve_album_members_vs,
     get_versus_album,
+    get_versus_album_multi,
     get_versus_artist,
+    get_versus_artist_multi,
     get_versus_track,
+    get_versus_track_multi,
 )
 
 __all__ = [
@@ -104,8 +107,11 @@ __all__ = [
     "_get_ps_rank",
     "_resolve_album_members_vs",
     "get_versus_album",
+    "get_versus_album_multi",
     "get_versus_artist",
+    "get_versus_artist_multi",
     "get_versus_track",
+    "get_versus_track_multi",
     # entity_lists
     "get_billboard_entity_lists",
 ]

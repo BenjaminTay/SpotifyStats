@@ -6,10 +6,11 @@ const NAV_ITEMS = [
   { to: '/billboard/number-ones', label: '每周榜首', active: 'number-ones' as const },
   { to: '/billboard/all-time', label: '总榜', active: 'all-time' as const },
   { to: '/billboard/records', label: '榜单记录', active: 'records' as const },
+  { to: '/billboard/versus', label: '对决', active: 'versus' as const },
 ]
 
 interface BillboardSubNavProps {
-  active: 'weekly' | 'number-ones' | 'all-time' | 'records'
+  active: 'weekly' | 'number-ones' | 'all-time' | 'records' | 'versus'
 }
 
 export function BillboardSubNav({ active }: BillboardSubNavProps) {

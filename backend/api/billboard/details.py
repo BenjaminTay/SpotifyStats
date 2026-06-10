@@ -4,9 +4,12 @@ GET /billboard/track/{track_id}      — track chart history with change column
 GET /billboard/artist/{name}         — artist chart detail with tracks/albums
 GET /billboard/album/{name}          — album chart detail with tracks
 GET /billboard/entity-lists          — entity lists for versus search pickers
-GET /billboard/versus/track          — compare two tracks
-GET /billboard/versus/album          — compare two albums
-GET /billboard/versus/artist         — compare two artists
+GET /billboard/versus/track          — compare two tracks (legacy)
+GET /billboard/versus/album          — compare two albums (legacy)
+GET /billboard/versus/artist         — compare two artists (legacy)
+POST /billboard/versus/track         — compare multiple tracks (2–5)
+POST /billboard/versus/album         — compare multiple albums (2–5)
+POST /billboard/versus/artist        — compare multiple artists (2–5)
 """
 
 from __future__ import annotations
@@ -21,8 +24,11 @@ from backend.services.billboard_service import (
     get_billboard_entity_lists,
     get_track_history,
     get_versus_album,
+    get_versus_album_multi,
     get_versus_artist,
+    get_versus_artist_multi,
     get_versus_track,
+    get_versus_track_multi,
 )
 
 router = APIRouter()
@@ -54,6 +60,7 @@ class ArtistChartDetailResponse(BaseModel):
     artist_no1_by_week: list[dict] | None = None
     week_no1_albums: list[dict] | None = None
     best_singles_overlay: list[dict] | None = None
+    best_albums_overlay: list[dict] | None = None
     tracks: list[dict] | None = None
     albums: list[dict] | None = None
 
@@ -82,6 +89,9 @@ class EntityListsResponse(BaseModel):
 class VersusEntity(BaseModel):
     model_config = {"extra": "allow"}
     name: str | None = None
+    cover_url: str | None = None
+    popularity: int | None = None
+    genres: list[str] | None = None
     rank_history: list[dict] | None = None
     metrics: dict | None = None
 
@@ -92,6 +102,42 @@ class VersusResponse(BaseModel):
     reason: str | None = None
     entity_a: VersusEntity | None = None
     entity_b: VersusEntity | None = None
+    head_to_head: list[dict] | None = None
+
+
+# ── Multi-entity versus models ──
+
+
+class MultiVersusEntity(BaseModel):
+    model_config = {"extra": "allow"}
+    name: str | None = None
+    cover_url: str | None = None
+    popularity: int | None = None
+    genres: list[str] | None = None
+    rank_history: list[dict] | None = None
+    metrics: dict | None = None
+
+
+class MultiVersusResponse(BaseModel):
+    model_config = {"extra": "allow"}
+    found: bool
+    reason: str | None = None
+    entities: list[MultiVersusEntity] | None = None
+
+
+# ── Multi-entity request bodies ──
+
+
+class TrackMultiRequest(BaseModel):
+    track_ids: list[int]
+
+
+class AlbumMultiRequest(BaseModel):
+    albums: list[dict]
+
+
+class ArtistMultiRequest(BaseModel):
+    artist_names: list[str]
 
 
 @router.get("/track/{track_id}", response_model=TrackHistoryResponse)
@@ -158,6 +204,9 @@ def album_chart_detail(
 
 @router.get("/entity-lists", response_model=EntityListsResponse)
 def entity_lists(
+    search: str | None = Query(
+        default=None, description="Filter entities by name (case-insensitive)"
+    ),
     filters: BillboardFilters = Depends(),
 ):
     """Return track/album/artist lists for versus search pickers."""
@@ -171,6 +220,7 @@ def entity_lists(
         bb_week_start_hour=filters.bb_week_start_hour,
         year_start=filters.year_start,
         year_end=filters.year_end,
+        search=search,
     )
 
 
@@ -235,6 +285,69 @@ def versus_artist(
     return get_versus_artist(
         sel_a=artist_a,
         sel_b=artist_b,
+        min_ms=filters.min_ms,
+        music_only=filters.music_only,
+        bb_top_n=filters.bb_top_n,
+        bb_album_top_n=filters.bb_album_top_n,
+        bb_artist_top_n=filters.bb_artist_top_n,
+        bb_week_start_dow=filters.bb_week_start_dow,
+        bb_week_start_hour=filters.bb_week_start_hour,
+        year_start=filters.year_start,
+        year_end=filters.year_end,
+    )
+
+
+# ── Multi-entity versus (POST) ──
+
+
+@router.post("/versus/track", response_model=MultiVersusResponse)
+def versus_track_multi(
+    body: TrackMultiRequest,
+    filters: BillboardFilters = Depends(),
+):
+    """Compare multiple tracks side-by-side (2–5)."""
+    return get_versus_track_multi(
+        track_ids=body.track_ids,
+        min_ms=filters.min_ms,
+        music_only=filters.music_only,
+        bb_top_n=filters.bb_top_n,
+        bb_album_top_n=filters.bb_album_top_n,
+        bb_artist_top_n=filters.bb_artist_top_n,
+        bb_week_start_dow=filters.bb_week_start_dow,
+        bb_week_start_hour=filters.bb_week_start_hour,
+        year_start=filters.year_start,
+        year_end=filters.year_end,
+    )
+
+
+@router.post("/versus/album", response_model=MultiVersusResponse)
+def versus_album_multi(
+    body: AlbumMultiRequest,
+    filters: BillboardFilters = Depends(),
+):
+    """Compare multiple albums side-by-side (2–5)."""
+    return get_versus_album_multi(
+        albums=body.albums,
+        min_ms=filters.min_ms,
+        music_only=filters.music_only,
+        bb_top_n=filters.bb_top_n,
+        bb_album_top_n=filters.bb_album_top_n,
+        bb_artist_top_n=filters.bb_artist_top_n,
+        bb_week_start_dow=filters.bb_week_start_dow,
+        bb_week_start_hour=filters.bb_week_start_hour,
+        year_start=filters.year_start,
+        year_end=filters.year_end,
+    )
+
+
+@router.post("/versus/artist", response_model=MultiVersusResponse)
+def versus_artist_multi(
+    body: ArtistMultiRequest,
+    filters: BillboardFilters = Depends(),
+):
+    """Compare multiple artists side-by-side (2–5)."""
+    return get_versus_artist_multi(
+        artist_names=body.artist_names,
         min_ms=filters.min_ms,
         music_only=filters.music_only,
         bb_top_n=filters.bb_top_n,
