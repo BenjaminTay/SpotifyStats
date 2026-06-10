@@ -16,6 +16,7 @@ src/
 │   │   ├── number-ones/   ← NumberOnesExperience + 3 Section（tracks/albums/artists）+ Primitives + Data
 │   │   ├── records/       ← RecordsSections + 6 Section + Primitives + Data
 │   │   └── all-time/      ← AllTimeTable + Data
+│   ├── community/         ← CommunityExperience/Account + FeedToggle + PostCard + PostMetrics + Timeline + Sidebar + Skeleton + Data
 │   ├── music/details/     ← Artist/Album Experience + Header/Tabs + Skeletons + Overview/Tracks/Albums/Career/AlbumEra 子 sections + ReleaseCycle sections + Primitives
 │   ├── settings/components/  ← 7 配置 Section 组件
 │   └── account/collection/   ← 收藏分析组件
@@ -25,7 +26,7 @@ src/
 │   ├── layout/       ← AppLayout, Masthead, ThemeToggle
 │   └── shared/       ← GlassCard, KpiCard, WeekSelector, CoverCell, FormattedText 等
 ├── pages/            ← 路由级页面容器（React.lazy 分包，纯组合 feature 组件）
-├── hooks/            ← useDashboard, useBillboard, useYearlyReview, useSettings, useAccount
+├── hooks/            ← useDashboard, useBillboard, useYearlyReview, useSettings, useAccount, useCommunity
 ├── lib/              ← cn(), chinese, insights, theme, personality-themes, genre-regions
 ├── tests/            ← 含 phase5-architecture.test.ts 架构护栏测试
 └── types/            ← 手写 TypeScript 展示类型
@@ -42,6 +43,8 @@ src/
 /billboard/number-ones     → NumberOnesPage (5 行 route container)
 /billboard/all-time        → AllTimeChartsPage (192 行 route container)
 /billboard/records         → RecordsPage (115 行 route container)
+/community                 → CommunityPage (5 行 route container)
+/community/account/:handle → CommunityAccountPage (5 行 route container)
 /music/tracks/:trackId     → TrackDetailPage
 /music/albums/:albumName   → AlbumDetailPage (5 行 route wrapper)
 /music/artists/:artistName → ArtistDetailPage (5 行 route wrapper)

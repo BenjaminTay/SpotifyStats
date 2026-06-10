@@ -73,6 +73,11 @@ export const queryKeys = {
     savedTracks: (params: Record<string, unknown>) => ['library', 'saved-tracks', params] as const,
   },
 
+  community: {
+    all: ['community'] as const,
+    feed: (filters: Record<string, unknown> = {}) => ['community', 'feed', filters] as const,
+  },
+
   versionMerge: {
     all: ['version-merge'] as const,
     groups: () => ['version-merge', 'groups'] as const,

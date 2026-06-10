@@ -8,6 +8,7 @@ from backend.api.analysis import router as analysis_router
 from backend.api.artist_deep import router as artist_deep_router
 from backend.api.behavior import router as behavior_router
 from backend.api.billboard import router as billboard_router
+from backend.api.community import router as community_router
 from backend.api.dashboard import router as dashboard_router
 from backend.api.import_ import router as import_router
 from backend.api.insights import router as insights_router
@@ -47,6 +48,7 @@ api_router.include_router(profile_router)
 api_router.include_router(wrapped_hub_router)
 api_router.include_router(settings_router)
 api_router.include_router(billboard_router)
+api_router.include_router(community_router)
 api_router.include_router(version_merge_router)
 api_router.include_router(import_router)
 api_router.include_router(lyrics_router, prefix="/lyrics", tags=["Lyrics"])

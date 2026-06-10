@@ -19,7 +19,7 @@ Spotify Extended Streaming History 数据分析 Web 应用的主项目提示词�
 Phase 5 目标是收紧产品线到可持续迭代状态。当前进度：
 
 **已完成**：
-- 前端 GET 数据获取统一到 TanStack Query + `queryKeys`（8 命名空间：dashboard/account/billboard/analysis/settings/yearlyReview/music/library/versionMerge）
+- 前端 GET 数据获取统一到 TanStack Query + `queryKeys`（9 命名空间：dashboard/account/billboard/analysis/settings/yearlyReview/music/library/versionMerge/community）
 - Provider 错误分类体系（`ProviderError` → `ProviderNetworkError`/`ProviderHTTPError` → `ProviderAuthError`/`ProviderRateLimitError`/`ProviderServerError` + `ProviderParseError`）
 - 业务 service 层 urllib 调用清零；core Spotify HTTP 收敛到 `HttpClient`/`SpotifyProvider`
 - 所有页面容器 ≤ 192 行（Records 115 / AllTimeCharts 192 / NumberOnes 5 / ArtistDetail 5 / AlbumDetail 5）
@@ -106,7 +106,7 @@ JSON 导出 ──→ import_data.py ──→ SQLite (spotify_stats.db) ──�
 
 ### 后端架构 (backend/)
 
-四层分离：**api/**（路由 + Depends 依赖注入）→ **services/**（计算逻辑，`@lru_cache`）→ **domains/**（领域模块：billboard / playback / settings / enrichment）→ **core/**（db, utils, cache, config, crypto, json_helpers）
+四层分离：**api/**（路由 + Depends 依赖注入）→ **services/**（计算逻辑，`@lru_cache`）→ **domains/**（领域模块：billboard / playback / settings / enrichment / community）→ **core/**（db, utils, cache, config, crypto, json_helpers）
 
 **基础设施**：`infrastructure/http/` 统一 HTTP 客户端（timeout/retry/proxy/脱敏）；`providers/` 封装所有第三方 API（spotify / genius / wikipedia / llm），禁止业务代码散落请求逻辑。
 
@@ -155,6 +155,7 @@ frontend/src/
 │   │   ├── number-ones/   ← NumberOnesExperience + 3 Section（tracks/albums/artists）+ Primitives + Data
 │   │   ├── records/       ← RecordsSections + 6 Section（Championship/Longevity/Market/Breakthrough/HallOfFame/Curiosities）+ Primitives + Data
 │   │   └── all-time/      ← AllTimeTable + Data
+│   ├── community/         ← CommunityExperience/Account + FeedToggle + PostCard + Timeline + Sidebar + Data
 │   ├── music/details/     ← Artist/Album Experience + Header/Tabs + Skeletons + Overview/Tracks/Albums/Career/ArtistReleases/AlbumEra 子 sections + ReleaseCycle sections + Primitives
 │   ├── settings/components/  ← 7 配置 Section 组件
 │   └── account/collection/   ← 收藏分析组件
@@ -170,7 +171,7 @@ frontend/src/
 └── types/             ← 手写 TypeScript 展示类型
 ```
 
-**路由**：`/` → `/analysis/stats|charts` → `/yearly-review` → `/billboard` → `/account` → `/settings`；音乐实体详情 `/music/{tracks|albums|artists}/:id`；旧 `/billboard/track|album|artist/*` 仅兼容跳转。
+**路由**：`/` → `/analysis/stats|charts` → `/yearly-review` → `/billboard` → `/community` → `/account` → `/settings`；音乐实体详情 `/music/{tracks|albums|artists}/:id`；社区账号页 `/community/account/:handle`；旧 `/billboard/track|album|artist/*` 仅兼容跳转。
 
 **Phase 5 架构模式**（新增组件必须遵守）：
 
