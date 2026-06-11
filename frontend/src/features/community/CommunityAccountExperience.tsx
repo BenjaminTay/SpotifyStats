@@ -76,14 +76,48 @@ export function CommunityAccountExperience() {
 
         {/* Profile header — X style */}
         <div className="border-b border-white/10">
-          {/* Banner area (use avatar gradient as banner color) */}
+          {/* Banner area with real photo, CSS gradient fallback */}
           <div
-            className="h-32"
-            style={{ background: account.avatar.bg_gradient, opacity: 0.6 }}
-          />
+            className="relative h-48 overflow-hidden"
+            style={{ background: account.banner_bg ?? account.avatar.bg_gradient }}
+          >
+            {account.banner_url && (
+              <img
+                src={account.banner_url}
+                alt=""
+                className="absolute inset-0 w-full h-full object-cover"
+                onError={(e) => {
+                  (e.target as HTMLImageElement).style.display = 'none'
+                }}
+              />
+            )}
+            {/* Subtle dark overlay for text readability */}
+            <div className="absolute inset-0 bg-black/20" />
+            {/* Subtle vignette */}
+            <div
+              className="absolute inset-0"
+              style={{
+                background: 'radial-gradient(ellipse at center, transparent 40%, rgba(0,0,0,0.35) 100%)',
+              }}
+            />
+            {/* Large watermark initials */}
+            <div
+              className="absolute right-6 -bottom-4 select-none pointer-events-none"
+              style={{
+                fontFamily: "'Playfair Display', serif",
+                fontSize: '120px',
+                fontWeight: 900,
+                lineHeight: 1,
+                color: 'rgba(255,255,255,0.08)',
+                letterSpacing: '-4px',
+              }}
+            >
+              {account.avatar.initials}
+            </div>
+          </div>
 
           {/* Avatar + actions row */}
-          <div className="px-4 pb-3">
+          <div className="px-4 pb-3 relative z-10">
             <div className="flex justify-between items-end -mt-12 mb-3">
               <div className="rounded-full ring-4 ring-background">
                 <AccountAvatar handle={decodedHandle} size="xl" />
@@ -171,7 +205,7 @@ export function CommunityAccountExperience() {
 
         {/* Right sidebar */}
         <aside className="w-[340px] shrink-0 hidden lg:block">
-          <div className="sticky top-4">
+          <div className="sticky top-4 max-h-[calc(100vh-2rem)] overflow-y-auto scrollbar-thin">
             <CommunitySidebar posts={posts} meta={meta} />
           </div>
         </aside>

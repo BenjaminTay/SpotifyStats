@@ -37,6 +37,8 @@ export interface AccountInfo {
     icon: string
   }
   avatar_url?: string
+  banner_url?: string
+  banner_bg?: string
   follower_tier: 'megastar' | 'major' | 'mid' | 'niche'
   content_tags: string[]
 }

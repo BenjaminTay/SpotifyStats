@@ -27,6 +27,7 @@ class PostType(str, Enum):  # noqa: UP042
     # D. Personal playback insights
     WEEKLY_PERSONAL = "weekly_personal"
     MONTHLY_PERSONAL = "monthly_personal"
+    QUARTERLY_PERSONAL = "quarterly_personal"
     YEARLY_PERSONAL = "yearly_personal"
     PLAYBACK_MILESTONE = "playback_milestone"
 
@@ -51,6 +52,7 @@ POST_SIGNIFICANCE: dict[PostType, float] = {
     PostType.DECADE_COMPARISON: 0.25,
     PostType.WEEKLY_PERSONAL: 0.30,
     PostType.MONTHLY_PERSONAL: 0.45,
+    PostType.QUARTERLY_PERSONAL: 0.55,
     PostType.YEARLY_PERSONAL: 0.70,
     PostType.PLAYBACK_MILESTONE: 0.55,
     PostType.COLLECTION_MILESTONE: 0.40,
@@ -73,6 +75,7 @@ POST_TAGS: dict[PostType, list[str]] = {
     PostType.DECADE_COMPARISON: ["history", "stat"],
     PostType.WEEKLY_PERSONAL: ["personal", "weekly"],
     PostType.MONTHLY_PERSONAL: ["personal", "monthly"],
+    PostType.QUARTERLY_PERSONAL: ["personal", "quarterly"],
     PostType.YEARLY_PERSONAL: ["personal", "yearly"],
     PostType.PLAYBACK_MILESTONE: ["personal", "milestone"],
     PostType.COLLECTION_MILESTONE: ["collection", "milestone"],

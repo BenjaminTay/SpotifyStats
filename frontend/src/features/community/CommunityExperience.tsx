@@ -118,7 +118,7 @@ export function CommunityExperience() {
 
         {/* Right sidebar — sticky, hidden on narrow screens */}
         <aside className="w-[340px] shrink-0 hidden lg:block">
-          <div className="sticky top-4">
+          <div className="sticky top-4 max-h-[calc(100vh-2rem)] overflow-y-auto scrollbar-thin">
             <CommunitySidebar posts={posts} meta={meta} />
           </div>
         </aside>

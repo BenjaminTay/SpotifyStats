@@ -244,7 +244,6 @@ export function AllTimeTable({
   pageSize,
   maxBarValue,
   onColumnClick,
-  onPageChange,
 }: AllTimeTableProps) {
   const [columnWidths, setColumnWidths] = useState<Record<string, number>>(loadColumnWidths)
   const columnWidthsRef = useRef(columnWidths)

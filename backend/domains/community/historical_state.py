@@ -184,8 +184,11 @@ class HistoricalState:
         return self.artist_no1_count.get(artist_name, 0)
 
     def artist_ordinal_no1(self, artist_name: str) -> str:
-        """'7th' if the artist just got their 7th #1 this week."""
-        return self._ordinal(self.artist_no1_count.get(artist_name, 0))
+        """Return the ordinal for the artist's *next* #1 (current count + 1).
+
+        Called before state.update(), so the current track hasn't been counted yet.
+        """
+        return self._ordinal(self.artist_no1_count.get(artist_name, 0) + 1)
 
     def artist_top10_count_as_of(self, artist_name: str) -> int:
         return self.artist_top10_count.get(artist_name, 0)

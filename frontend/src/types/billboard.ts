@@ -251,7 +251,6 @@ export interface BillboardRecords {
 
   // Section 2: 持久传奇
   longest_charting: LongestChartingRecord[]
-  longest_charting: LongestChartingRecord[]
   longest_charting_album: LongestChartingAlbumRecord[]
   longest_charting_artist: LongestChartingArtistRecord[]
   longest_streak: LongestStreakRecord[]

@@ -237,11 +237,18 @@ class TestHelperMethods:
         from backend.domains.community.historical_state import HistoricalState
 
         state = HistoricalState()
+
+        # Before any update: artist not seen → ordinal = 1st (next #1)
+        assert state.artist_ordinal_no1("Artist A") == "1st"
+
+        # Simulate pre-update usage: call ordinal BEFORE update() for the current track
+        # After 2 updates, count = 2. ordinal returns 3rd — the upcoming 3rd #1.
         state.update([_entry(1, 1, "Artist A", "Song A")])
         state.update([_entry(2, 1, "Artist A", "Song B")])
-        state.update([_entry(3, 1, "Artist A", "Song C")])
-
         assert state.artist_ordinal_no1("Artist A") == "3rd"
+
+        state.update([_entry(3, 1, "Artist A", "Song C")])
+        assert state.artist_ordinal_no1("Artist A") == "4th"
 
     def test_get_past_no1_at_week(self):
         from backend.domains.community.historical_state import HistoricalState
