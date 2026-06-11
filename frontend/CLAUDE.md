@@ -17,7 +17,7 @@ src/
 │   │   ├── records/       ← RecordsSections + 6 Section + Primitives + Data
 │   │   └── all-time/      ← AllTimeTable + Data
 │   ├── community/         ← CommunityExperience/Account + FeedToggle + TimeFilter + PostCard + PostMetrics + Timeline + Sidebar + PostDetailExperience + MobileSidebarDrawer + Skeleton + Data
-│   ├── ai-insights/        ← AiInsightsExperience + ReportCard + ChatInterface + SuggestedQuestions + Primitives + Data
+│   ├── ai-insights/        ← AiInsightsExperience + ReportCard + ChatInterface + ChatSessionList + ChatSessionDrawer + SuggestedQuestions + Primitives + Data
 │   ├── music/details/     ← Artist/Album Experience + Header/Tabs + Skeletons + Overview/Tracks/Albums/Career/AlbumEra 子 sections + ReleaseCycle sections + Primitives
 │   ├── settings/components/  ← 7 配置 Section 组件
 │   └── account/collection/   ← 收藏分析组件

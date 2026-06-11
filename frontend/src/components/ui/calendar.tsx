@@ -19,6 +19,8 @@ interface CalendarProps extends Omit<React.ComponentProps<typeof DayPicker>, 'mo
   month?: Date
   startMonth?: Date
   endMonth?: Date
+  defaultView?: ViewMode
+  onMonthSelect?: (monthIndex: number, year: number) => void
 }
 
 function Calendar({
@@ -28,6 +30,8 @@ function Calendar({
   month: controlledMonth,
   startMonth,
   endMonth,
+  defaultView,
+  onMonthSelect,
   modifiers,
   modifiersClassNames,
   disabled,
@@ -35,7 +39,7 @@ function Calendar({
   footer,
   ...props
 }: CalendarProps) {
-  const [viewMode, setViewMode] = useState<ViewMode>("calendar")
+  const [viewMode, setViewMode] = useState<ViewMode>(defaultView || "calendar")
   const [viewYear, setViewYear] = useState<number>(0) // displayed year in months view
   const [localMonth, setLocalMonth] = useState<Date>(() => {
     if (controlledMonth) return controlledMonth
@@ -80,7 +84,8 @@ function Calendar({
   const handleMonthSelect = useCallback((monthIdx: number) => {
     setLocalMonth(new Date(viewYear, monthIdx, 1))
     setViewMode("calendar")
-  }, [viewYear])
+    onMonthSelect?.(monthIdx, viewYear)
+  }, [viewYear, onMonthSelect])
 
   const canGoPrev = (() => {
     if (!startMonth) return true

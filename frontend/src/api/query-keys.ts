@@ -90,6 +90,11 @@ export const queryKeys = {
       ['ai-insights', 'yearly-story', year] as const,
     suggestedQuestions: (context?: string) =>
       ['ai-insights', 'suggested-questions', context ?? ''] as const,
+    chat: {
+      all: ['ai-insights', 'chat'] as const,
+      sessions: () => ['ai-insights', 'chat', 'sessions'] as const,
+      session: (sessionId: number) => ['ai-insights', 'chat', 'session', sessionId] as const,
+    },
   },
 
   versionMerge: {

@@ -106,7 +106,7 @@ JSON 导出 ──→ import_data.py ──→ SQLite (spotify_stats.db) ──�
 
 ### 后端架构 (backend/)
 
-四层分离：**api/**（路由 + Depends 依赖注入）→ **services/**（计算逻辑，`@lru_cache`）→ **domains/**（领域模块：billboard / playback / settings / enrichment / community）→ **core/**（db, utils, cache, config, crypto, json_helpers）
+四层分离：**api/**（路由 + Depends 依赖注入）→ **services/**（计算逻辑，`@lru_cache`）→ **domains/**（领域模块：billboard / playback / settings / enrichment / community / chat）→ **core/**（db, utils, cache, config, crypto, json_helpers）
 
 **基础设施**：`infrastructure/http/` 统一 HTTP 客户端（timeout/retry/proxy/脱敏）；`providers/` 封装所有第三方 API（spotify / genius / wikipedia / llm），禁止业务代码散落请求逻辑。
 
@@ -135,6 +135,7 @@ JSON 导出 ──→ import_data.py ──→ SQLite (spotify_stats.db) ──�
 | `services/play_service.py` | 核心播放数据服务，所有基于 plays 的端点统一入口 |
 | `services/wrapped_service.py` | 自定义年度总结（听歌人格/Top榜/曲风全景/发现回归等） |
 | `services/billboard_service.py` | Billboard facade（~100行），实现已迁入 `domains/billboard/` |
+| `services/chat_service.py` | 对话历史管理：会话 CRUD + 消息持久化 + 自动标题 |
 | `services/spotify_auth.py` | OAuth PKCE 授权与数据同步 |
 
 详细后端架构见 `backend/CLAUDE.md`。
@@ -157,7 +158,7 @@ frontend/src/
 │   │   └── all-time/      ← AllTimeTable + Data
 │   ├── community/         ← CommunityExperience/Account + FeedToggle + TimeFilter + PostCard + Timeline + Sidebar + PostDetailExperience + MobileSidebarDrawer + Data
 │   ├── music/details/     ← Artist/Album Experience + Header/Tabs + Skeletons + Overview/Tracks/Albums/Career/ArtistReleases/AlbumEra 子 sections + ReleaseCycle sections + Primitives
-│   ├── ai-insights/        ← AiInsightsExperience + ReportCard + ChatInterface + SuggestedQuestions + Primitives + Data
+│   ├── ai-insights/        ← AiInsightsExperience + ReportCard + ChatInterface + ChatSessionList + ChatSessionDrawer + SuggestedQuestions + Primitives + Data
 │   ├── settings/components/  ← 7 配置 Section 组件
 │   └── account/collection/   ← 收藏分析组件
 ├── components/

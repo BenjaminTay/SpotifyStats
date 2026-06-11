@@ -49,3 +49,24 @@ export interface ChatMessage {
   /** Attached metadata for the message (e.g. time range info for assistant messages). */
   meta?: AskResponse
 }
+
+export interface ChatSession {
+  id: number
+  title: string
+  created_at: string
+  updated_at: string
+  message_count: number
+}
+
+export interface ChatMessageRecord {
+  id: number
+  session_id: number
+  role: 'user' | 'assistant' | 'error'
+  content: string
+  meta_json: string | null
+  created_at: string
+}
+
+export interface ChatSessionWithMessages extends ChatSession {
+  messages: ChatMessageRecord[]
+}

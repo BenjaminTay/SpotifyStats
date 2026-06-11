@@ -101,6 +101,8 @@ export const apiClient = {
     request<T>(path, { method: 'POST', body, timeout, signal }),
   del: <T>(path: string, timeout?: number) =>
     request<T>(path, { method: 'DELETE', timeout }),
+  patch: <T>(path: string, body?: unknown, timeout?: number) =>
+    request<T>(path, { method: 'PATCH', body, timeout }),
 }
 
 export { ApiError, AuthRequiredError, CancelError, NetworkError, TimeoutError }

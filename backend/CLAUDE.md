@@ -55,7 +55,8 @@ FastAPI 后端采用四层分离：**api/**（路由 + Depends 依赖注入）�
 | `services/genius_service.py` | Genius 歌词获取 + SQLite 缓存，懒加载单例 |
 | `services/wikipedia_service.py` | Wikipedia 搜索/提取/缓存/翻译/LLM 结构化 |
 | `services/llm_translator.py` | 多提供商 LLM 翻译与结构化（DeepSeek/OpenAI/Anthropic/自定义） |
-| `services/ai_insights_service.py` | AI 洞察：周报/月报/年度叙事 + 自然语言问答（复用 LLM 基建 + wikipedia_cache 表） |
+| `services/ai_insights_service.py` | AI 洞察：周报/月报/年度叙事 + 自然语言问答 + 推荐问题随机池（复用 LLM 基建 + wikipedia_cache 表） |
+| `services/chat_service.py` | 对话历史管理：会话 CRUD + 消息持久化 + 自动标题（取首条用户消息前 30 字符） |
 | `services/spotify_auth.py` | OAuth PKCE 授权与数据同步 |
 | `services/account_service.py` | 账号中心聚合（收藏分析 + 搜索/习惯） |
 
@@ -66,6 +67,7 @@ FastAPI 后端采用四层分离：**api/**（路由 + Depends 依赖注入）�
 - `domains/playback/repository.py` — 播放数据查询封装
 - `domains/enrichment/repository.py` — 歌词/Wikipedia/LLM 缓存表访问
 - `domains/community/` — 榜单社区模拟 X 时间线：`accounts.py`（10 个模拟资讯账号）+ `post_types.py`（18 种帖子类型/7 种精选类型/模板/评分）+ `historical_state.py`（逐周累计历史状态追踪器，去重计数）+ `feed_generator.py`（编排器，~600 行）+ `feed_helpers.py`（格式/ID/指标工具）+ `feed_data.py`（榜单数据加载）+ `feed_weekly.py`（每周速报）+ `feed_records.py`（纪录/里程碑）+ `feed_personal.py`（个人播放/收藏）+ `feed_talk.py`（深度分析）+ `feed_ranking.py`（全时期排名/Power Score）+ `feed_images.py`（封面匹配）
+- `domains/chat/repository.py` — 对话历史持久化：`ChatRepository` 类封装 `chat_sessions`/`chat_messages` 表 CRUD，`ON DELETE CASCADE` 删除会话自动清消息
 
 ## 外部调用规范
 

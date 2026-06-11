@@ -7,6 +7,8 @@ import type { AnalysisStatsResponse } from '@/types/analysis'
 import type {
   AskResponse,
   ChatMessage,
+  ChatSession,
+  ChatSessionWithMessages,
   MonthlyPersonalityResponse,
   WeeklyDigestResponse,
   YearlyStoryResponse,
@@ -207,11 +209,89 @@ export function useSuggestedQuestions(context?: string) {
     queryKey: queryKeys.aiInsights.suggestedQuestions(context),
     queryFn: () =>
       api.get<{ questions: string[] }>('/ai-insights/suggested-questions', context ? { context } : undefined),
-    staleTime: Infinity,
+    staleTime: 0,
   })
 
   return {
     questions: query.data?.questions ?? [],
     isLoading: query.isLoading,
   }
+}
+
+// ── Chat session hooks ──────────────────────────────────────────────────────
+
+export function useChatSessions() {
+  return useQuery({
+    queryKey: queryKeys.aiInsights.chat.sessions(),
+    queryFn: () => api.get<{ success: boolean; data: ChatSession[] }>('/chat/sessions', { limit: 100 }),
+    staleTime: 30_000,
+    select: (res) => (res.success ? res.data : []),
+  })
+}
+
+export function useChatSession(sessionId: number | null) {
+  return useQuery({
+    queryKey: queryKeys.aiInsights.chat.session(sessionId!),
+    queryFn: () =>
+      api.get<{ success: boolean; data: ChatSessionWithMessages }>(`/chat/sessions/${sessionId}`),
+    enabled: sessionId !== null,
+    staleTime: 5 * 60_000,
+    select: (res) => (res.success ? res.data : null),
+  })
+}
+
+export function useCreateSession() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (title?: string) =>
+      api.post<{ success: boolean; data: ChatSessionWithMessages }>('/chat/sessions', {
+        title: title || '新对话',
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.aiInsights.chat.sessions() })
+    },
+  })
+}
+
+export function useAddMessage() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (p: {
+      sessionId: number
+      role: string
+      content: string
+      metaJson?: string
+    }) =>
+      api.post(`/chat/sessions/${p.sessionId}/messages`, {
+        role: p.role,
+        content: p.content,
+        meta_json: p.metaJson,
+      }),
+    onSuccess: (_data, variables) => {
+      qc.invalidateQueries({ queryKey: queryKeys.aiInsights.chat.session(variables.sessionId) })
+      qc.invalidateQueries({ queryKey: queryKeys.aiInsights.chat.sessions() })
+    },
+  })
+}
+
+export function useDeleteSession() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (sessionId: number) => api.del(`/chat/sessions/${sessionId}`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.aiInsights.chat.sessions() })
+    },
+  })
+}
+
+export function useUpdateSessionTitle() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (p: { sessionId: number; title: string }) =>
+      api.patch(`/chat/sessions/${p.sessionId}`, { title: p.title }),
+    onSuccess: (_data, variables) => {
+      qc.invalidateQueries({ queryKey: queryKeys.aiInsights.chat.session(variables.sessionId) })
+      qc.invalidateQueries({ queryKey: queryKeys.aiInsights.chat.sessions() })
+    },
+  })
 }

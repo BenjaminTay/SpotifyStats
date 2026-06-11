@@ -9,6 +9,7 @@ from backend.api.analysis import router as analysis_router
 from backend.api.artist_deep import router as artist_deep_router
 from backend.api.behavior import router as behavior_router
 from backend.api.billboard import router as billboard_router
+from backend.api.chat import router as chat_router
 from backend.api.community import router as community_router
 from backend.api.dashboard import router as dashboard_router
 from backend.api.import_ import router as import_router
@@ -56,6 +57,7 @@ api_router.include_router(lyrics_router, prefix="/lyrics", tags=["Lyrics"])
 api_router.include_router(music_router)
 api_router.include_router(account_router)
 api_router.include_router(ai_insights_router)
+api_router.include_router(chat_router)
 api_router.include_router(admin_router)
 api_router.include_router(jobs_router)
 api_router.include_router(spotify_auth_router)

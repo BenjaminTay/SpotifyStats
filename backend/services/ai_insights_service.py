@@ -954,25 +954,39 @@ def answer_question(
 
 
 def get_suggested_questions(context: Optional[str] = None) -> list[str]:
-    """Return a list of suggested starter questions, optionally scoped to a report type."""
-    by_context: dict[str, list[str]] = {
+    """Return a random subset of suggested starter questions, optionally scoped to a report type."""
+    import random
+
+    pools: dict[str, list[str]] = {
         "weekly": [
             "这周我听歌时间最多的那天发生了什么？",
             "本周有发现什么新的宝藏艺人吗？",
             "和上周相比我的听歌量有什么变化？",
             "这周我最常听的曲风是什么？",
+            "这周我听得最久的单曲是哪首？",
+            "本周有没有特别晚还在听歌的日子？",
+            "这周我 shuffle 了吗？",
+            "本周我的 Top 5 艺人和上周重合了几个？",
         ],
         "monthly": [
             "这个月我的音乐人格有什么变化？",
             "本月我最上头的单曲是哪首？",
             "这个月深夜听歌的比例高吗？",
             "本月有没有特别值得关注的新发现？",
+            "这个月和我上个月的听歌风格有什么不同？",
+            "本月播放最多的专辑是什么？",
+            "这个月我有没有单曲循环过某首歌？",
+            "本月哪个艺人的播放时长最长？",
         ],
         "yearly": [
             "今年我的年度艺人前三是谁？",
             "今年我的听歌风格有什么变化？",
             "今年我发现了哪些新艺人？",
             "今年我最特别的听歌时刻是什么？",
+            "今年我听得最多的专辑是哪张？",
+            "今年哪个季节我听歌最多？",
+            "今年最让我上头的单曲是哪首？",
+            "今年有没有跨越多个曲风的听歌阶段？",
         ],
         "chat": [
             "我今年听最多的艺人是谁？",
@@ -981,6 +995,13 @@ def get_suggested_questions(context: Optional[str] = None) -> list[str]:
             "今年我发现了哪些新艺人？",
             "我的听歌习惯今年有什么变化？",
             "深夜我最爱听什么歌？",
+            "最近一个月我播放次数最多的歌是什么？",
+            "我通常一次听多久的歌？",
+            "周末和工作日的听歌习惯有什么不同？",
+            "今年哪个艺人让我单曲循环最多？",
+            "我最近在探索什么新的曲风吗？",
+            "和我听歌习惯最相似的月份是哪两个？",
         ],
     }
-    return by_context.get(context or "chat", by_context["chat"])
+    pool = pools.get(context or "chat", pools["chat"])
+    return random.sample(pool, min(4, len(pool)))

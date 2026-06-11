@@ -1,4 +1,6 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react'
+import { parseISO } from 'date-fns'
+import { Calendar as CalendarIcon, MessageSquare } from 'lucide-react'
 
 import { useSettings } from '@/hooks/useSettings'
 import {
@@ -6,12 +8,18 @@ import {
   useLatestListeningRange,
   useMonthlyPersonality,
   useYearlyStory,
+  useChatSessions,
+  useDeleteSession,
 } from '@/hooks/useAiInsights'
 
 import { ReportCard } from './ReportCard'
 import { ChatInterface } from './ChatInterface'
+import { ChatSessionList } from './ChatSessionList'
+import { ChatSessionDrawer } from './ChatSessionDrawer'
 import { REPORT_LABELS, REPORT_DESCRIPTIONS } from './aiInsightsData'
 import { LlmNotConfiguredState, EmptyState } from './AiInsightsPrimitives'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { Calendar } from '@/components/ui/calendar'
 import type { ReportType } from '@/types/ai-insights'
 
 // ── Date helpers ──────────────────────────────────────────────────────────
@@ -112,6 +120,17 @@ export function AiInsightsExperience() {
   // Yearly state
   const [year, setYear] = useState(now.getFullYear())
 
+  // Chat session management
+  const [activeSessionId, setActiveSessionId] = useState<number | null>(null)
+  const [sessionDrawerOpen, setSessionDrawerOpen] = useState(false)
+  const [chatResetKey, setChatResetKey] = useState(0)
+  const { data: sessions = [], isLoading: sessionsLoading } = useChatSessions()
+  const deleteSession = useDeleteSession()
+
+  // Date picker popovers
+  const [weekPickerOpen, setWeekPickerOpen] = useState(false)
+  const [monthPickerOpen, setMonthPickerOpen] = useState(false)
+
   useEffect(() => {
     if (!latestRange.latestDate || defaultRangeApplied.current || userChangedRange.current) return
 
@@ -145,6 +164,8 @@ export function AiInsightsExperience() {
   const yearly = useYearlyStory(year, yearlyActive)
 
   const handleFollowUp = useCallback((question: string, label: string) => {
+    setActiveSessionId(null)
+    setChatResetKey((k) => k + 1)
     setChatInitialQuestion(question)
     setChatContext(reportType)
     setChatContextLabel(label)
@@ -159,9 +180,32 @@ export function AiInsightsExperience() {
     setActiveTab('reports')
   }, [])
 
-  const handleClearChatContext = useCallback(() => {
+  // Session handlers
+  const handleSessionCreated = useCallback((id: number) => {
+    setActiveSessionId(id)
+  }, [])
+
+  const handleSessionSelect = useCallback((id: number) => {
+    setActiveSessionId(id)
+    // Clear report context when switching to a different session
     setChatContext(undefined)
     setChatContextLabel(undefined)
+    setChatInitialQuestion(null)
+  }, [])
+
+  const handleSessionDelete = useCallback((id: number) => {
+    deleteSession.mutate(id)
+    if (activeSessionId === id) {
+      setActiveSessionId(null)
+    }
+  }, [deleteSession, activeSessionId])
+
+  const handleSessionNew = useCallback(() => {
+    setActiveSessionId(null)
+    setChatInitialQuestion(null)
+    setChatContext(undefined)
+    setChatContextLabel(undefined)
+    setChatResetKey((k) => k + 1)
   }, [])
 
   // ── Quick-select handlers ───────────────────────────────────────────────
@@ -233,29 +277,31 @@ export function AiInsightsExperience() {
   return (
     <div className="space-y-6">
       {/* Page header */}
-      <div>
-        <h1 className="font-serif text-[32px] font-bold tracking-[-0.5px]">AI 洞察</h1>
-        <p className="mt-1 text-[13px] text-muted-foreground">
-          由 AI 驱动的听歌数据解读与自然语言问答
+      <section className="mb-8">
+        <p className="mb-4 font-sans text-[11px] font-bold uppercase tracking-[1.8px] text-accent-foreground">
+          AI / Insights
         </p>
-      </div>
+        <h1 className="font-serif text-[48px] font-bold leading-[1.06] tracking-[-1.2px]">
+          AI 洞察
+        </h1>
+      </section>
 
       {/* Tab switcher */}
-      <div className="flex gap-1 rounded-full border border-border bg-card/40 p-1 backdrop-blur-[8px] w-fit">
+      <nav className="mb-7 flex gap-x-6 border-b border-border">
         {(['reports', 'chat'] as const).map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
-            className={`rounded-full px-4 py-1.5 text-[12px] font-semibold uppercase tracking-[1px] transition-all ${
+            className={`pb-2.5 font-sans text-[13px] font-medium border-b-2 transition-colors -mb-[1px] ${
               activeTab === tab
-                ? 'bg-accent-foreground text-card'
-                : 'text-muted-foreground hover:text-foreground'
+                ? 'border-accent-foreground text-foreground font-semibold'
+                : 'border-transparent text-muted-foreground hover:text-foreground'
             }`}
           >
             {tab === 'reports' ? '报告' : '问答'}
           </button>
         ))}
-      </div>
+      </nav>
 
       {/* Content */}
       {!llmAvailable ? (
@@ -291,32 +337,36 @@ export function AiInsightsExperience() {
                       current={weeklyQuickValue}
                       onSelect={handleWeeklyQuick}
                     />
-                    <div className="flex min-w-0 flex-wrap items-center gap-2 text-[12px] text-muted-foreground">
-                      <input
-                        type="date"
-                        value={weekStart}
-                        max={weekEnd}
-                        onChange={(e) => {
-                          userChangedRange.current = true
-                          setWeekStart(e.target.value)
-                        }}
-                        className={dateInputClass}
-                      />
-                      <span>至</span>
-                      <input
-                        type="date"
-                        value={weekEnd}
-                        min={weekStart}
-                        onChange={(e) => {
-                          userChangedRange.current = true
-                          setWeekEnd(e.target.value)
-                        }}
-                        className={dateInputClass}
-                      />
-                      {weekStart > weekEnd && (
-                        <span className="text-[11px] text-red-500">起始日期不能晚于结束日期</span>
-                      )}
-                    </div>
+                    <Popover open={weekPickerOpen} onOpenChange={setWeekPickerOpen}>
+                      <PopoverTrigger asChild>
+                        <button className={`${dateInputClass} cursor-pointer flex items-center gap-1.5 hover:border-accent-foreground/20 transition-colors`}>
+                          <CalendarIcon className="h-3 w-3 text-muted-foreground/50 shrink-0" />
+                          <span className="truncate">{weekStart} ~ {weekEnd}</span>
+                        </button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0 bg-card/80 backdrop-blur-xl border-border/60 shadow-xl" align="start" sideOffset={8}>
+                        <Calendar
+                          mode="single"
+                          month={parseISO(weekStart)}
+                          endMonth={latestRange.latestDate ? parseISO(latestRange.latestDate) : undefined}
+                          modifiers={{
+                            selectedWeek: [{ from: parseISO(weekStart), to: parseISO(weekEnd) }]
+                          }}
+                          modifiersClassNames={{
+                            selectedWeek: '!bg-accent-foreground/12 !text-accent-foreground font-semibold rounded-none first:rounded-l-full last:rounded-r-full'
+                          }}
+                          onDayClick={(day) => {
+                            const start = day
+                            const end = new Date(start.getTime() + 6 * DAY_MS)
+                            userChangedRange.current = true
+                            setWeekStart(fmt(start))
+                            setWeekEnd(fmt(end))
+                            setWeekPickerOpen(false)
+                          }}
+                          footer="点击日期选择以该日开始的 7 天"
+                        />
+                      </PopoverContent>
+                    </Popover>
                   </>
                 )}
 
@@ -327,17 +377,29 @@ export function AiInsightsExperience() {
                       current={month}
                       onSelect={handleMonthlyQuick}
                     />
-                    <input
-                      type="month"
-                      value={month}
-                      onChange={(e) => {
-                        userChangedRange.current = true
-                        setMonth(e.target.value)
-                        const y = parseInt(e.target.value.split('-')[0], 10)
-                        if (!isNaN(y)) setYearForMonthly(y)
-                      }}
-                      className={dateInputClass}
-                    />
+                    <Popover open={monthPickerOpen} onOpenChange={setMonthPickerOpen}>
+                      <PopoverTrigger asChild>
+                        <button className={`${dateInputClass} cursor-pointer flex items-center gap-1.5 hover:border-accent-foreground/20 transition-colors`}>
+                          <CalendarIcon className="h-3 w-3 text-muted-foreground/50 shrink-0" />
+                          <span>{month}</span>
+                        </button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0 bg-card/80 backdrop-blur-xl border-border/60 shadow-xl" align="start" sideOffset={8}>
+                        <Calendar
+                          mode="single"
+                          defaultView="months"
+                          month={parseISO(`${month}-01`)}
+                          endMonth={latestRange.latestDate ? parseISO(latestRange.latestDate) : undefined}
+                          onMonthSelect={(monthIdx, year) => {
+                            userChangedRange.current = true
+                            const m = `${year}-${String(monthIdx + 1).padStart(2, '0')}`
+                            setMonth(m)
+                            setYearForMonthly(year)
+                            setMonthPickerOpen(false)
+                          }}
+                        />
+                      </PopoverContent>
+                    </Popover>
                   </>
                 )}
 
@@ -440,13 +502,55 @@ export function AiInsightsExperience() {
 
           {/* Chat tab — hidden instead of unmounted */}
           <div className={activeTab === 'chat' ? '' : 'hidden'}>
-            <ChatInterface
-              initialQuestion={chatInitialQuestion}
-              onQuestionConsumed={handleChatQuestionConsumed}
-              reportContext={chatContext}
-              reportContextLabel={chatContextLabel}
-              onBackToReport={handleBackToReport}
-              onClear={handleClearChatContext}
+            <div className="flex w-full min-w-0 gap-8">
+              {/* Main chat column */}
+              <div className="min-w-0 flex-1">
+                <ChatInterface
+                  key={chatResetKey}
+                  initialQuestion={chatInitialQuestion}
+                  onQuestionConsumed={handleChatQuestionConsumed}
+                  reportContext={chatContext}
+                  reportContextLabel={chatContextLabel}
+                  onBackToReport={handleBackToReport}
+                  sessionId={activeSessionId}
+                  onSessionCreated={handleSessionCreated}
+                />
+              </div>
+
+              {/* Desktop sidebar */}
+              <aside className="w-[340px] shrink-0 hidden lg:block">
+                <div className="sticky top-4 max-h-[calc(100vh-2rem)] overflow-y-auto scrollbar-thin rounded-[16px] border border-border bg-card/30 backdrop-blur-[12px]">
+                  <ChatSessionList
+                    sessions={sessions}
+                    activeId={activeSessionId}
+                    onSelect={handleSessionSelect}
+                    onDelete={handleSessionDelete}
+                    onNew={handleSessionNew}
+                    loading={sessionsLoading}
+                  />
+                </div>
+              </aside>
+            </div>
+
+            {/* Mobile floating button */}
+            <button
+              onClick={() => setSessionDrawerOpen(true)}
+              className="lg:hidden fixed bottom-6 right-6 z-30 flex h-11 w-11 items-center justify-center rounded-full border border-border bg-card/80 backdrop-blur-xl shadow-lg transition-colors hover:bg-card"
+              aria-label="对话历史"
+            >
+              <MessageSquare className="h-5 w-5 text-muted-foreground" />
+            </button>
+
+            {/* Mobile drawer */}
+            <ChatSessionDrawer
+              open={sessionDrawerOpen}
+              onClose={() => setSessionDrawerOpen(false)}
+              sessions={sessions}
+              activeId={activeSessionId}
+              onSelect={handleSessionSelect}
+              onDelete={handleSessionDelete}
+              onNew={handleSessionNew}
+              loading={sessionsLoading}
             />
           </div>
         </>
