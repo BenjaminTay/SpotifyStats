@@ -14,6 +14,7 @@ const NAV_ITEMS: NavItem[] = [
   { to: '/yearly-review', label: '年度回顾' },
   { to: '/billboard', label: 'Billboard' },
   { to: '/community', label: '社区' },
+  { to: '/ai-insights', label: 'AI 洞察' },
   { to: '/account', label: '账户' },
   { to: '/settings', label: '设置' },
 ]

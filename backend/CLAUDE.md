@@ -55,6 +55,7 @@ FastAPI 后端采用四层分离：**api/**（路由 + Depends 依赖注入）�
 | `services/genius_service.py` | Genius 歌词获取 + SQLite 缓存，懒加载单例 |
 | `services/wikipedia_service.py` | Wikipedia 搜索/提取/缓存/翻译/LLM 结构化 |
 | `services/llm_translator.py` | 多提供商 LLM 翻译与结构化（DeepSeek/OpenAI/Anthropic/自定义） |
+| `services/ai_insights_service.py` | AI 洞察：周报/月报/年度叙事 + 自然语言问答（复用 LLM 基建 + wikipedia_cache 表） |
 | `services/spotify_auth.py` | OAuth PKCE 授权与数据同步 |
 | `services/account_service.py` | 账号中心聚合（收藏分析 + 搜索/习惯） |
 

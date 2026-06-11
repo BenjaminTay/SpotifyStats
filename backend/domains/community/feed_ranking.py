@@ -392,7 +392,12 @@ def _gen_album_no1_post(
         content=content,
         post_type=PostType.NO1_ANNOUNCEMENT.value,
         linked_entities=[
-            {"type": "album", "name": album_name},
+            {
+                "type": "album",
+                "name": album_name,
+                "id": no1.get("album_id"),
+                "artist_name": artist_name,
+            },
             {"type": "artist", "name": artist_name},
         ],
         tags=["weekly", "album", "no1"],

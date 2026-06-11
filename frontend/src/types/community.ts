@@ -11,6 +11,7 @@ export interface LinkedEntity {
   type: 'track' | 'artist' | 'album'
   id?: string | number
   name: string
+  artist_name?: string
 }
 
 export interface CommunityPost {

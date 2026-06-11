@@ -1,6 +1,6 @@
 /** Community feed — constants, avatar configs, and utility functions. */
 
-import type { AccountInfo } from '@/types/community'
+import type { AccountInfo, LinkedEntity } from '@/types/community'
 
 export const ACCOUNT_CONFIG: Record<string, AccountInfo> = {
   '@chartdata': {
@@ -165,15 +165,19 @@ export function formatAbsoluteTime(isoStr: string): string {
   return then.toLocaleString('en-US', parts).replace(',', ' ·')
 }
 
-export function buildEntityLink(entity: { type: string; id?: string | number; name: string }): string | null {
+export function buildEntityLink(entity: LinkedEntity): string | null {
   switch (entity.type) {
     case 'track':
       if (entity.id) return `/music/tracks/${entity.id}`
       return null
     case 'artist':
       return `/music/artists/${encodeURIComponent(entity.name)}`
-    case 'album':
-      return `/music/albums/${encodeURIComponent(entity.name)}`
+    case 'album': {
+      if (!entity.id) return null
+      const href = `/music/albums/${encodeURIComponent(entity.name)}`
+      if (entity.artist_name) return `${href}?artist=${encodeURIComponent(entity.artist_name)}`
+      return href
+    }
     default:
       return null
   }

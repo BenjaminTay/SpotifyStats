@@ -17,6 +17,7 @@ src/
 │   │   ├── records/       ← RecordsSections + 6 Section + Primitives + Data
 │   │   └── all-time/      ← AllTimeTable + Data
 │   ├── community/         ← CommunityExperience/Account + FeedToggle + TimeFilter + PostCard + PostMetrics + Timeline + Sidebar + PostDetailExperience + MobileSidebarDrawer + Skeleton + Data
+│   ├── ai-insights/        ← AiInsightsExperience + ReportCard + ChatInterface + SuggestedQuestions + Primitives + Data
 │   ├── music/details/     ← Artist/Album Experience + Header/Tabs + Skeletons + Overview/Tracks/Albums/Career/AlbumEra 子 sections + ReleaseCycle sections + Primitives
 │   ├── settings/components/  ← 7 配置 Section 组件
 │   └── account/collection/   ← 收藏分析组件
@@ -26,7 +27,7 @@ src/
 │   ├── layout/       ← AppLayout, Masthead, ThemeToggle
 │   └── shared/       ← GlassCard, KpiCard, WeekSelector, CoverCell, FormattedText 等
 ├── pages/            ← 路由级页面容器（React.lazy 分包，纯组合 feature 组件）
-├── hooks/            ← useDashboard, useBillboard, useYearlyReview, useSettings, useAccount, useCommunity
+├── hooks/            ← useDashboard, useBillboard, useYearlyReview, useSettings, useAccount, useCommunity, useAiInsights
 ├── lib/              ← cn(), chinese, insights, theme, personality-themes, genre-regions
 ├── tests/            ← 含 phase5-architecture.test.ts 架构护栏测试
 └── types/            ← 手写 TypeScript 展示类型
@@ -44,8 +45,9 @@ src/
 /billboard/all-time        → AllTimeChartsPage (192 行 route container)
 /billboard/records         → RecordsPage (115 行 route container)
 /community                 → CommunityPage (5 行 route container)
-/community/post/:postId     → PostDetailPage (5 行 route container)
+/community/post/:postId      → PostDetailPage (5 行 route container)
 /community/account/:handle → CommunityAccountPage (5 行 route container)
+/ai-insights               → AiInsightsPage (4 行 route container)
 /music/tracks/:trackId     → TrackDetailPage
 /music/albums/:albumName   → AlbumDetailPage (5 行 route wrapper)
 /music/artists/:artistName → ArtistDetailPage (5 行 route wrapper)
@@ -61,7 +63,7 @@ src/
 
 统一配置：staleTime 5 分钟 / gcTime 30 分钟 / retry 2 次 / refetchOnWindowFocus false。
 
-Query Key 工厂在 `@/api/query-keys.ts`，按领域 namespace：dashboard / billboard / analysis / settings / account / yearlyReview / music / library / versionMerge。
+Query Key 工厂在 `@/api/query-keys.ts`，按领域 namespace：dashboard / billboard / analysis / settings / account / yearlyReview / music / library / versionMerge / community / aiInsights。
 
 AppLayout 首屏渲染后延迟预取常用数据。年度回顾使用序列化预取（`for...of` + `await`）避免并发请求触发 SQLite 锁竞争。
 

@@ -173,7 +173,12 @@ def _gen_album_record_posts(
                     content=content,
                     post_type=PostType.RECORD_BROKEN.value,
                     linked_entities=[
-                        {"type": "album", "name": album_name},
+                        {
+                            "type": "album",
+                            "name": album_name,
+                            "id": e.get("album_id"),
+                            "artist_name": artist_name,
+                        },
                         {"type": "artist", "name": artist_name},
                     ],
                     tags=POST_TAGS[PostType.RECORD_BROKEN],
@@ -519,7 +524,12 @@ def _gen_record_triple_no1(
                     "id": track_no1.get("track_id"),
                     "name": track_no1.get("track_name", ""),
                 },
-                {"type": "album", "name": album_no1.get("album_name", "")},
+                {
+                    "type": "album",
+                    "name": album_no1.get("album_name", ""),
+                    "id": album_no1.get("album_id"),
+                    "artist_name": album_no1.get("artist_name", ""),
+                },
                 {"type": "artist", "name": track_artist},
             ],
             tags=["record", "milestone"],

@@ -6,7 +6,7 @@ import { displayName } from '@/lib/chinese'
 
 import { AccountAvatar } from './AccountAvatar'
 import { CommunitySidebar } from './CommunitySidebar'
-import { PostCard } from './PostCard'
+import { PostCard, PostContent } from './PostCard'
 import { ACCOUNT_CONFIG, formatCount } from './communityData'
 
 function parsePost(apiPost: Record<string, unknown>): CommunityPost {
@@ -131,7 +131,9 @@ export function PostDetailExperience() {
           )}
 
           {/* Full content */}
-          <p className="text-[15px] text-foreground leading-6 whitespace-pre-wrap mb-5">{post.content}</p>
+          <div className="text-[15px] text-foreground leading-6 whitespace-pre-wrap mb-5">
+            <PostContent content={post.content} linkedEntities={post.linked_entities} />
+          </div>
 
           {/* Images — full size */}
           {post.images.length > 0 && (

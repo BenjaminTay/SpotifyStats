@@ -3,23 +3,25 @@ import { formatCount } from './communityData'
 
 interface PostMetricsBarProps {
   metrics: PostMetricsType
+  onNavigate?: () => void
 }
 
-export function PostMetricsBar({ metrics }: PostMetricsBarProps) {
+export function PostMetricsBar({ metrics, onNavigate }: PostMetricsBarProps) {
   return (
     <div className="mt-2 flex items-center gap-5 text-xs text-muted-foreground">
-      <MetricButton icon={ReplyIcon} label="replies" count={metrics.replies} />
-      <MetricButton icon={RetweetIcon} label="retweets" count={metrics.retweets} />
-      <MetricButton icon={HeartIcon} label="likes" count={metrics.likes} />
-      <MetricButton icon={ViewIcon} label="views" count={metrics.views} />
+      <MetricButton icon={ReplyIcon} label="replies" count={metrics.replies} onNavigate={onNavigate} />
+      <MetricButton icon={RetweetIcon} label="retweets" count={metrics.retweets} onNavigate={onNavigate} />
+      <MetricButton icon={HeartIcon} label="likes" count={metrics.likes} onNavigate={onNavigate} />
+      <MetricButton icon={ViewIcon} label="views" count={metrics.views} onNavigate={onNavigate} />
     </div>
   )
 }
 
-function MetricButton({ icon: Icon, label, count }: { icon: React.ComponentType<{ className?: string }>; label: string; count: number }) {
+function MetricButton({ icon: Icon, label, count, onNavigate }: { icon: React.ComponentType<{ className?: string }>; label: string; count: number; onNavigate?: () => void }) {
   return (
     <button
       type="button"
+      onClick={(e) => { e.stopPropagation(); onNavigate?.() }}
       className="group flex items-center gap-1 hover:text-foreground transition-colors"
       title={`${formatCount(count)} ${label}`}
       aria-label={`${formatCount(count)} ${label}`}

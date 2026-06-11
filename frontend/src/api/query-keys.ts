@@ -80,6 +80,18 @@ export const queryKeys = {
     post: (postId: string) => ['community', 'post', postId] as const,
   },
 
+  aiInsights: {
+    all: ['ai-insights'] as const,
+    weeklyDigest: (weekStart: string, weekEnd: string) =>
+      ['ai-insights', 'weekly-digest', weekStart, weekEnd] as const,
+    monthlyPersonality: (month: string, year: number) =>
+      ['ai-insights', 'monthly-personality', month, year] as const,
+    yearlyStory: (year: number) =>
+      ['ai-insights', 'yearly-story', year] as const,
+    suggestedQuestions: () =>
+      ['ai-insights', 'suggested-questions'] as const,
+  },
+
   versionMerge: {
     all: ['version-merge'] as const,
     groups: () => ['version-merge', 'groups'] as const,

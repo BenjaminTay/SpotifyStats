@@ -19,7 +19,7 @@ Spotify Extended Streaming History 数据分析 Web 应用的主项目提示词�
 Phase 5 目标是收紧产品线到可持续迭代状态。当前进度：
 
 **已完成**：
-- 前端 GET 数据获取统一到 TanStack Query + `queryKeys`（9 命名空间：dashboard/account/billboard/analysis/settings/yearlyReview/music/library/versionMerge/community）
+- 前端 GET 数据获取统一到 TanStack Query + `queryKeys`（11 命名空间：dashboard/account/billboard/analysis/settings/yearlyReview/music/library/versionMerge/community/aiInsights）
 - Provider 错误分类体系（`ProviderError` → `ProviderNetworkError`/`ProviderHTTPError` → `ProviderAuthError`/`ProviderRateLimitError`/`ProviderServerError` + `ProviderParseError`）
 - 业务 service 层 urllib 调用清零；core Spotify HTTP 收敛到 `HttpClient`/`SpotifyProvider`
 - 所有页面容器 ≤ 192 行（Records 115 / AllTimeCharts 192 / NumberOnes 5 / ArtistDetail 5 / AlbumDetail 5）
@@ -157,6 +157,7 @@ frontend/src/
 │   │   └── all-time/      ← AllTimeTable + Data
 │   ├── community/         ← CommunityExperience/Account + FeedToggle + TimeFilter + PostCard + Timeline + Sidebar + PostDetailExperience + MobileSidebarDrawer + Data
 │   ├── music/details/     ← Artist/Album Experience + Header/Tabs + Skeletons + Overview/Tracks/Albums/Career/ArtistReleases/AlbumEra 子 sections + ReleaseCycle sections + Primitives
+│   ├── ai-insights/        ← AiInsightsExperience + ReportCard + ChatInterface + SuggestedQuestions + Primitives + Data
 │   ├── settings/components/  ← 7 配置 Section 组件
 │   └── account/collection/   ← 收藏分析组件
 ├── components/
@@ -171,7 +172,7 @@ frontend/src/
 └── types/             ← 手写 TypeScript 展示类型
 ```
 
-**路由**：`/` → `/analysis/stats|charts` → `/yearly-review` → `/billboard` → `/community` → `/account` → `/settings`；音乐实体详情 `/music/{tracks|albums|artists}/:id`；社区 `/community/account/:handle`（账号页）+ `/community/post/:postId`（帖子详情）；旧 `/billboard/track|album|artist/*` 仅兼容跳转。
+**路由**：`/` → `/analysis/stats|charts` → `/yearly-review` → `/billboard` → `/community` → `/ai-insights` → `/account` → `/settings`；音乐实体详情 `/music/{tracks|albums|artists}/:id`；社区 `/community/account/:handle`（账号页）+ `/community/post/:postId`（帖子详情）；旧 `/billboard/track|album|artist/*` 仅兼容跳转。
 
 **Phase 5 架构模式**（新增组件必须遵守）：
 

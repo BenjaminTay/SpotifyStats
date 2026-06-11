@@ -14,6 +14,7 @@
 - **Billboard 周榜** — 12 子 Tab：周榜、每周榜首、单曲/艺人/专辑历史、走势总榜 Power Score、总榜、榜单记录、对决、发行周期分析
 - **音乐实体详情** — 歌曲/专辑/艺人全局页面，整合个人播放统计、Billboard 成绩、Genius 歌词、Wikipedia 百科
 - **账号中心** — 收藏分析（生命周期、化学反应、品味迁徙、Flip Side）+ 搜索编年史、粉丝层级、播客、视频分析
+- **AI 洞察** — 自然语言听歌周报/月报/年度叙事 + 自由问答，LLM 驱动数据解读
 - **设置** — Spotify OAuth 连接管理、LLM 翻译配置（多提供商 + 档案管理）、数据过滤、版本合并、数据导入
 - **Spotify Web API** — OAuth PKCE 授权，回填收藏日期、Top 排行、最近播放、播放列表、实时播放状态
 
@@ -65,10 +66,10 @@ SpotifyStats/
 ├── backend/               # FastAPI 后端（api/ → services/ → domains/ → core/）
 ├── frontend/              # React 前端
 │   └── src/
-│       ├── features/      # Feature-first 业务组件（billboard/music/settings/account）
+│       ├── features/      # Feature-first 业务组件（billboard/music/settings/account/ai-insights/community）
 │       ├── pages/         # 路由级页面容器（React.lazy 分包）
 │       ├── components/    # ui/charts/layout/shared
-│       ├── hooks/         # useDashboard, useBillboard, useYearlyReview...
+│       ├── hooks/         # useDashboard, useBillboard, useYearlyReview, useAiInsights...
 │       └── api/           # QueryClient + queryKeys + OpenAPI 类型
 ├── app/                   # Streamlit 旧应用（冻结维护）
 ├── data/                  # SQLite 数据库 + JSON 源数据

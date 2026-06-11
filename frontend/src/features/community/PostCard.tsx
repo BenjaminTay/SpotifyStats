@@ -34,14 +34,11 @@ export function PostCard({ post }: PostCardProps) {
   }, [navigate, post.id])
 
   return (
-    <article
-      onClick={goToDetail}
-      className="flex gap-3 py-3 cursor-pointer hover:bg-white/[0.03] transition-colors border-b border-white/10"
-    >
+    <article className="flex gap-3 py-3 border-b border-white/10">
       {/* Left: avatar — links to account profile */}
       <Link
         to={`/community/account/${encodeURIComponent(post.account_handle)}`}
-        className="shrink-0"
+        className="shrink-0 self-start"
       >
         <AccountAvatar handle={post.account_handle} />
       </Link>
@@ -130,14 +127,14 @@ export function PostCard({ post }: PostCardProps) {
         )}
 
         {/* Metrics bar */}
-        <PostMetricsBar metrics={post.metrics} />
+        <PostMetricsBar metrics={post.metrics} onNavigate={goToDetail} />
       </div>
     </article>
   )
 }
 
 /** Renders post content with linked entity names as clickable <Link> elements. */
-function PostContent({ content, linkedEntities }: { content: string; linkedEntities?: CommunityPost['linked_entities'] }) {
+export function PostContent({ content, linkedEntities }: { content: string; linkedEntities?: CommunityPost['linked_entities'] }) {
   if (!linkedEntities || linkedEntities.length === 0) {
     return <span>{displayName(content)}</span>
   }

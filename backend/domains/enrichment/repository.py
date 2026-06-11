@@ -4,7 +4,7 @@ Encapsulates lyrics, Wikipedia cache, and LLM translation cache table operations
 """
 
 import sqlite3
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 
 class EnrichmentRepository:
@@ -51,18 +51,18 @@ class EnrichmentRepository:
 
     def get_wikipedia_cache(self, cache_key: str) -> dict | None:
         row = self.conn.execute(
-            "SELECT content, fetched_at FROM wikipedia_cache WHERE cache_key = ?",
+            "SELECT data, fetched_at FROM wikipedia_cache WHERE cache_key = ?",
             (cache_key,),
         ).fetchone()
         if row:
-            return {"content": row["content"], "fetched_at": row["fetched_at"]}
+            return {"content": row["data"], "fetched_at": row["fetched_at"]}
         return None
 
     def set_wikipedia_cache(self, cache_key: str, content: str) -> None:
         self.conn.execute(
-            """INSERT OR REPLACE INTO wikipedia_cache (cache_key, content, fetched_at)
+            """INSERT OR REPLACE INTO wikipedia_cache (cache_key, data, fetched_at)
                VALUES (?, ?, ?)""",
-            (cache_key, content, datetime.now(UTC).isoformat()),
+            (cache_key, content, datetime.now(timezone.utc).isoformat()),
         )
         self.conn.commit()
 

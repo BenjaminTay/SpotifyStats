@@ -549,6 +549,9 @@ def generate_all_posts(
     Core chart iteration is cached (TTL 10 min). Collection posts, cover images,
     and engagement metrics are enriched fresh on each call.
     """
+    if conn is None:
+        return []
+
     core_posts, state = _generate_core_posts(
         min_ms=min_ms,
         music_only=music_only,
