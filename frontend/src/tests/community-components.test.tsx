@@ -50,7 +50,7 @@ describe('AccountAvatar', () => {
     const { container } = renderWithRouter(<AccountAvatar handle="@chartdata" />)
     const img = container.querySelector('img')
     expect(img).toBeInTheDocument()
-    expect(img!.getAttribute('src')).toContain('twimg.com')
+    expect(img!.getAttribute('src')).toContain('/avatars/chartdata.jpg')
   })
 
   it('renders fallback initials for account without avatar_url', () => {

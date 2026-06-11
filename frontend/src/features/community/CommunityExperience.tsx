@@ -1,9 +1,10 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
-import { useCommunityFeed } from '@/hooks/useCommunity'
+import { useCommunityFeed, useCommunityTrending } from '@/hooks/useCommunity'
 
 import { CommunitySidebar } from './CommunitySidebar'
 import { CommunityTimeline } from './CommunityTimeline'
+import { MobileSidebarDrawer } from './MobileSidebarDrawer'
 import { FeedToggle } from './FeedToggle'
 import type { FeedTab } from './FeedToggle'
 import { TimeFilter, ALL_PERIOD } from './TimeFilter'
@@ -16,6 +17,21 @@ let cachedPeriod: TimePeriod = ALL_PERIOD
 export function CommunityExperience() {
   const [activeTab, setActiveTab] = useState<FeedTab>(cachedTab)
   const [period, setPeriod] = useState<TimePeriod>(cachedPeriod)
+  const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [searchInput, setSearchInput] = useState('')
+  const [searchQuery, setSearchQuery] = useState('')
+  const searchTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
+
+  // Debounce search input → search query (300ms)
+  const handleSearchChange = useCallback((value: string) => {
+    setSearchInput(value)
+    clearTimeout(searchTimer.current)
+    searchTimer.current = setTimeout(() => setSearchQuery(value), 300)
+  }, [])
+
+  useEffect(() => {
+    return () => clearTimeout(searchTimer.current)
+  }, [])
 
   // 精选 = newsworthy post types only, 全部 = no filter
   const filters = useMemo(() => {
@@ -23,10 +39,17 @@ export function CommunityExperience() {
     if (activeTab === 'highlights') f.highlights_only = true
     if (period.date_from) f.date_from = period.date_from
     if (period.date_to) f.date_to = period.date_to
+    if (searchQuery) f.search = searchQuery
     return f
-  }, [activeTab, period])
+  }, [activeTab, period, searchQuery])
 
   const { posts, meta, loading, loadingMore, error, refetch, hasMore, loadMore } = useCommunityFeed(filters)
+
+  // Trending data from server — independent of pagination
+  const trendingParams: Record<string, string | number | boolean> = {}
+  if (period.date_from) trendingParams.date_from = period.date_from
+  if (period.date_to) trendingParams.date_to = period.date_to
+  const { trending } = useCommunityTrending(trendingParams)
 
   const handleTabChange = useCallback((tab: FeedTab) => {
     cachedTab = tab
@@ -54,12 +77,31 @@ export function CommunityExperience() {
       <div className="flex gap-8">
         {/* Main feed column */}
         <div className="flex-1 max-w-[720px] min-h-[70vh]">
-          {/* Feed toggle — X "For You" / "Following" style */}
+          {/* Feed toggle + search — X "For You" / "Following" style */}
           <FeedToggle
             active={activeTab}
             onChange={handleTabChange}
             highlightsCount={activeTab === 'highlights' ? meta?.total : undefined}
             allCount={meta?.total_all}
+            rightSlot={
+              <div className="relative w-[240px]">
+                <svg
+                  className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground"
+                  viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+                  strokeLinecap="round" strokeLinejoin="round"
+                >
+                  <circle cx="11" cy="11" r="8" />
+                  <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                </svg>
+                <input
+                  type="text"
+                  value={searchInput}
+                  onChange={(e) => handleSearchChange(e.target.value)}
+                  placeholder="搜索帖子、账号、艺人..."
+                  className="w-full pl-9 pr-3 py-1.5 bg-white/[0.04] border border-white/10 rounded-full text-[13px] text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-accent-foreground/40 focus:bg-white/[0.06] transition-colors"
+                />
+              </div>
+            }
           />
 
           {/* Time period filter */}
@@ -119,10 +161,43 @@ export function CommunityExperience() {
         {/* Right sidebar — sticky, hidden on narrow screens */}
         <aside className="w-[340px] shrink-0 hidden lg:block">
           <div className="sticky top-4 max-h-[calc(100vh-2rem)] overflow-y-auto scrollbar-thin">
-            <CommunitySidebar posts={posts} meta={meta} />
+            <CommunitySidebar
+              posts={posts}
+              meta={meta}
+              trendingArtists={trending?.artists}
+              trendingTracks={trending?.tracks}
+              latestNo1={trending?.latest_no1}
+              latestDebut={trending?.latest_debut}
+            />
           </div>
         </aside>
       </div>
+
+      {/* Mobile: floating button to open sidebar drawer */}
+      <button
+        type="button"
+        onClick={() => setSidebarOpen(true)}
+        className="lg:hidden fixed bottom-6 right-6 z-30 flex items-center justify-center w-12 h-12 rounded-full bg-accent-foreground text-primary-foreground shadow-lg hover:opacity-90 transition-opacity"
+        aria-label="Open sidebar"
+      >
+        <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <line x1="3" y1="12" x2="21" y2="12" />
+          <line x1="3" y1="6" x2="21" y2="6" />
+          <line x1="3" y1="18" x2="21" y2="18" />
+        </svg>
+      </button>
+
+      {/* Mobile sidebar drawer */}
+      <MobileSidebarDrawer
+        posts={posts}
+        meta={meta}
+        trendingArtists={trending?.artists}
+        trendingTracks={trending?.tracks}
+        latestNo1={trending?.latest_no1}
+        latestDebut={trending?.latest_debut}
+        open={sidebarOpen}
+        onClose={() => setSidebarOpen(false)}
+      />
     </>
   )
 }

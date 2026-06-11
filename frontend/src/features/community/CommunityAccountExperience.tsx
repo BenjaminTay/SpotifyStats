@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import { useParams, Link } from 'react-router-dom'
 
-import { useCommunityFeed } from '@/hooks/useCommunity'
+import { useCommunityFeed, useCommunityTrending } from '@/hooks/useCommunity'
 import { AccountAvatar } from './AccountAvatar'
 import { CommunitySidebar } from './CommunitySidebar'
 import { CommunityTimeline } from './CommunityTimeline'
@@ -19,6 +19,8 @@ export function CommunityAccountExperience() {
   }, [decodedHandle])
 
   const { posts, meta, loading, loadingMore, error, refetch, hasMore, loadMore } = useCommunityFeed(filters)
+
+  const { trending } = useCommunityTrending()
 
   if (!account) {
     return (
@@ -206,7 +208,14 @@ export function CommunityAccountExperience() {
         {/* Right sidebar */}
         <aside className="w-[340px] shrink-0 hidden lg:block">
           <div className="sticky top-4 max-h-[calc(100vh-2rem)] overflow-y-auto scrollbar-thin">
-            <CommunitySidebar posts={posts} meta={meta} />
+            <CommunitySidebar
+              posts={posts}
+              meta={meta}
+              trendingArtists={trending?.artists}
+              trendingTracks={trending?.tracks}
+              latestNo1={trending?.latest_no1}
+              latestDebut={trending?.latest_debut}
+            />
           </div>
         </aside>
       </div>

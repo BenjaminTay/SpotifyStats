@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { useCallback, useState } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
 
 import type { CommunityPost } from '@/types/community'
 import { displayName } from '@/lib/chinese'
@@ -20,6 +20,7 @@ interface PostCardProps {
 }
 
 export function PostCard({ post }: PostCardProps) {
+  const navigate = useNavigate()
   const account = ACCOUNT_CONFIG[post.account_handle]
   const relativeTime = formatRelativeTime(post.posted_at)
   const absoluteTime = formatAbsoluteTime(post.posted_at)
@@ -28,8 +29,15 @@ export function PostCard({ post }: PostCardProps) {
   const isLong = post.content.length > COLLAPSE_THRESHOLD
   const [expanded, setExpanded] = useState(false)
 
+  const goToDetail = useCallback(() => {
+    navigate(`/community/post/${post.id}`)
+  }, [navigate, post.id])
+
   return (
-    <article className="flex gap-3 py-3 cursor-pointer hover:bg-white/[0.03] transition-colors border-b border-white/10">
+    <article
+      onClick={goToDetail}
+      className="flex gap-3 py-3 cursor-pointer hover:bg-white/[0.03] transition-colors border-b border-white/10"
+    >
       {/* Left: avatar — links to account profile */}
       <Link
         to={`/community/account/${encodeURIComponent(post.account_handle)}`}

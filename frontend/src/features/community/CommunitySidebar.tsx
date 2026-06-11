@@ -1,53 +1,30 @@
 import { useMemo } from 'react'
 import { Link } from 'react-router-dom'
 
-import type { CommunityPost, FeedMeta } from '@/types/community'
+import type { FeedMeta } from '@/types/community'
+import type { TrendingEntity, TrendingData } from '@/hooks/useCommunity'
 import { displayName } from '@/lib/chinese'
 
 import { AccountAvatar } from './AccountAvatar'
 import { ACCOUNT_CONFIG, formatFollowerCount } from './communityData'
 
 interface CommunitySidebarProps {
-  posts: CommunityPost[]
+  posts: { posted_at: string }[]
   meta: FeedMeta | null
+  trendingArtists?: TrendingEntity[]
+  trendingTracks?: TrendingEntity[]
+  latestNo1?: TrendingData['latest_no1']
+  latestDebut?: TrendingData['latest_debut']
 }
 
-/** Extract trending entities from all loaded posts. */
-function useTrendingEntities(posts: CommunityPost[], type: 'artist' | 'track', limit: number) {
-  return useMemo(() => {
-    const counts = new Map<string, number>()
-    for (const post of posts) {
-      if (!post.linked_entities) continue
-      for (const entity of post.linked_entities) {
-        if (entity.type === type) {
-          counts.set(entity.name, (counts.get(entity.name) ?? 0) + 1)
-        }
-      }
-    }
-    return [...counts.entries()]
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, limit)
-  }, [posts, type, limit])
-}
-
-/** Extract the most recent post of a given type. */
-function useLatestPost(posts: CommunityPost[], postType: string) {
-  return useMemo(() => {
-    const match = posts.find(
-      p => p.post_type === postType && p.linked_entities?.some(e => e.type === 'track'),
-    )
-    if (!match) return null
-    const track = match.linked_entities?.find(e => e.type === 'track')
-    const artist = match.linked_entities?.find(e => e.type === 'artist')
-    return { track: track?.name, artist: artist?.name, postId: match.id }
-  }, [posts, postType])
-}
-
-export function CommunitySidebar({ posts, meta }: CommunitySidebarProps) {
-  const latestNo1 = useLatestPost(posts, 'no1_announcement')
-  const latestDebut = useLatestPost(posts, 'debut')
-  const trendingArtists = useTrendingEntities(posts, 'artist', 6)
-  const trendingTracks = useTrendingEntities(posts, 'track', 3)
+export function CommunitySidebar({
+  posts,
+  meta,
+  trendingArtists = [],
+  trendingTracks = [],
+  latestNo1,
+  latestDebut,
+}: CommunitySidebarProps) {
   const accounts = useMemo(() => Object.values(ACCOUNT_CONFIG), [])
 
   // Coverage period from oldest and newest post
@@ -97,8 +74,8 @@ export function CommunitySidebar({ posts, meta }: CommunitySidebarProps) {
         <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
           <h3 className="text-[17px] font-extrabold text-foreground mb-3">热议艺人</h3>
           <ol className="space-y-2">
-            {trendingArtists.map(([name, count], i) => (
-              <li key={name} className="flex items-center gap-2.5">
+            {trendingArtists.map((item, i) => (
+              <li key={item.name} className="flex items-center gap-2.5">
                 <span
                   className={`w-5 text-right shrink-0 tabular-nums text-[13px] font-bold ${
                     i === 0 ? 'text-accent-foreground' : 'text-muted-foreground'
@@ -107,13 +84,13 @@ export function CommunitySidebar({ posts, meta }: CommunitySidebarProps) {
                   {i + 1}
                 </span>
                 <Link
-                  to={`/music/artists/${encodeURIComponent(name)}`}
+                  to={`/music/artists/${encodeURIComponent(item.name)}`}
                   className="flex-1 min-w-0 text-[13px] font-medium text-foreground hover:text-accent-foreground hover:underline truncate transition-colors"
                 >
-                  {displayName(name)}
+                  {displayName(item.name)}
                 </Link>
                 <span className="text-[11px] text-muted-foreground shrink-0 tabular-nums">
-                  {count} 帖
+                  {item.count} 帖
                 </span>
               </li>
             ))}
@@ -126,13 +103,10 @@ export function CommunitySidebar({ posts, meta }: CommunitySidebarProps) {
         <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
           <h3 className="text-[17px] font-extrabold text-foreground mb-3">热议单曲</h3>
           <ol className="space-y-2">
-            {trendingTracks.map(([name, count], i) => {
-              const entity = posts
-                .flatMap(p => p.linked_entities ?? [])
-                .find(e => e.type === 'track' && e.name === name)
-              const link = entity?.id ? `/music/tracks/${entity.id}` : null
+            {trendingTracks.map((item, i) => {
+              const link = item.entity_id ? `/music/tracks/${item.entity_id}` : null
               return (
-                <li key={name} className="flex items-center gap-2.5">
+                <li key={item.name} className="flex items-center gap-2.5">
                   <span
                     className={`w-5 text-right shrink-0 tabular-nums text-[13px] font-bold ${
                       i === 0 ? 'text-accent-foreground' : 'text-muted-foreground'
@@ -146,14 +120,14 @@ export function CommunitySidebar({ posts, meta }: CommunitySidebarProps) {
                         to={link}
                         className="text-[13px] font-medium text-foreground hover:text-accent-foreground hover:underline truncate transition-colors"
                       >
-                        {displayName(name)}
+                        {displayName(item.name)}
                       </Link>
                     ) : (
-                      <span className="text-[13px] font-medium text-foreground truncate">{displayName(name)}</span>
+                      <span className="text-[13px] font-medium text-foreground truncate">{displayName(item.name)}</span>
                     )}
                   </span>
                   <span className="text-[11px] text-muted-foreground shrink-0 tabular-nums">
-                    {count}
+                    {item.count}
                   </span>
                 </li>
               )

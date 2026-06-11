@@ -13,6 +13,7 @@ const RecordsPage = lazy(() => import('@/pages/RecordsPage').then((m) => ({ defa
 const BillboardVersusPage = lazy(() => import('@/pages/BillboardVersusPage').then((m) => ({ default: m.BillboardVersusPage })))
 const CommunityPage = lazy(() => import('@/pages/CommunityPage').then((m) => ({ default: m.CommunityPage })))
 const CommunityAccountPage = lazy(() => import('@/pages/CommunityAccountPage').then((m) => ({ default: m.CommunityAccountPage })))
+const PostDetailPage = lazy(() => import('@/pages/PostDetailPage').then((m) => ({ default: m.PostDetailPage })))
 const SettingsPage = lazy(() => import('@/pages/SettingsPage').then((m) => ({ default: m.SettingsPage })))
 const YearlyReviewPage = lazy(() => import('@/pages/YearlyReviewPage').then((m) => ({ default: m.YearlyReviewPage })))
 const AccountCenterPage = lazy(() => import('@/pages/AccountCenterPage').then((m) => ({ default: m.AccountCenterPage })))
@@ -72,6 +73,7 @@ function App() {
           <Route path="/billboard/records" element={<Suspense fallback={<RouteFallback />}><RecordsPage /></Suspense>} />
           <Route path="/billboard/versus" element={<Suspense fallback={<RouteFallback />}><BillboardVersusPage /></Suspense>} />
           <Route path="/community" element={<Suspense fallback={<RouteFallback />}><CommunityPage /></Suspense>} />
+          <Route path="/community/post/:postId" element={<Suspense fallback={<RouteFallback />}><PostDetailPage /></Suspense>} />
           <Route path="/community/account/:handle" element={<Suspense fallback={<RouteFallback />}><CommunityAccountPage /></Suspense>} />
           <Route path="/analysis" element={<Suspense fallback={<RouteFallback />}><AnalysisLayout /></Suspense>}>
             <Route index element={<Navigate to="/analysis/stats" replace />} />

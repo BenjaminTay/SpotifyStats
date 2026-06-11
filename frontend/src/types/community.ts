@@ -62,6 +62,8 @@ export interface FeedFilters {
   significance_min?: number
   date_from?: string
   date_to?: string
+  search?: string
+  post_types?: string
   limit?: number
   offset?: number
 }

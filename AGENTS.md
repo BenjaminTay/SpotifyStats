@@ -155,7 +155,7 @@ frontend/src/
 │   │   ├── number-ones/   ← NumberOnesExperience + 3 Section（tracks/albums/artists）+ Primitives + Data
 │   │   ├── records/       ← RecordsSections + 6 Section（Championship/Longevity/Market/Breakthrough/HallOfFame/Curiosities）+ Primitives + Data
 │   │   └── all-time/      ← AllTimeTable + Data
-│   ├── community/         ← CommunityExperience/Account + FeedToggle + TimeFilter + PostCard + Timeline + Sidebar + Data
+│   ├── community/         ← CommunityExperience/Account + FeedToggle + TimeFilter + PostCard + Timeline + Sidebar + PostDetailExperience + MobileSidebarDrawer + Data
 │   ├── music/details/     ← Artist/Album Experience + Header/Tabs + Skeletons + Overview/Tracks/Albums/Career/ArtistReleases/AlbumEra 子 sections + ReleaseCycle sections + Primitives
 │   ├── settings/components/  ← 7 配置 Section 组件
 │   └── account/collection/   ← 收藏分析组件
@@ -164,14 +164,14 @@ frontend/src/
 │   ├── charts/        ← ECharts 封装（动态 import）+ 纯 DOM 图表
 │   ├── layout/        ← AppLayout, Masthead, ThemeToggle
 │   └── shared/        ← GlassCard, KpiCard, CoverCell, FormattedText 等
-├── pages/             ← 路由级页面容器（React.lazy 分包，≤192 行，纯组合 feature 组件）
-├── hooks/             ← useDashboard, useBillboard, useYearlyReview, useSettings, useAccount（均用 useQuery）
+├── pages/             ← 路由级页面容器（React.lazy 分包，≤450 行，纯组合 feature 组件）
+├── hooks/             ← useDashboard, useBillboard, useYearlyReview, useSettings, useAccount, useCommunity（均用 useQuery）
 ├── lib/               ← 工具函数（cn, chinese, insights, theme, personality-themes, genre-regions）
 ├── tests/             ← 含 phase5-architecture.test.ts 架构护栏测试
 └── types/             ← 手写 TypeScript 展示类型
 ```
 
-**路由**：`/` → `/analysis/stats|charts` → `/yearly-review` → `/billboard` → `/community` → `/account` → `/settings`；音乐实体详情 `/music/{tracks|albums|artists}/:id`；社区账号页 `/community/account/:handle`；旧 `/billboard/track|album|artist/*` 仅兼容跳转。
+**路由**：`/` → `/analysis/stats|charts` → `/yearly-review` → `/billboard` → `/community` → `/account` → `/settings`；音乐实体详情 `/music/{tracks|albums|artists}/:id`；社区 `/community/account/:handle`（账号页）+ `/community/post/:postId`（帖子详情）；旧 `/billboard/track|album|artist/*` 仅兼容跳转。
 
 **Phase 5 架构模式**（新增组件必须遵守）：
 

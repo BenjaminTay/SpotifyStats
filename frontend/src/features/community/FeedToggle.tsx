@@ -1,3 +1,5 @@
+import type { ReactNode } from 'react'
+
 export type FeedTab = 'highlights' | 'all'
 
 interface FeedToggleProps {
@@ -5,9 +7,10 @@ interface FeedToggleProps {
   onChange: (tab: FeedTab) => void
   highlightsCount?: number
   allCount?: number
+  rightSlot?: ReactNode
 }
 
-export function FeedToggle({ active, onChange, highlightsCount, allCount }: FeedToggleProps) {
+export function FeedToggle({ active, onChange, highlightsCount, allCount, rightSlot }: FeedToggleProps) {
   return (
     <div className="border-b border-white/10 bg-background">
       <div className="flex items-center h-[53px] gap-2">
@@ -50,6 +53,7 @@ export function FeedToggle({ active, onChange, highlightsCount, allCount }: Feed
             <span className="text-[11px] opacity-70 tabular-nums">{allCount}</span>
           )}
         </button>
+        {rightSlot && <div className="ml-auto">{rightSlot}</div>}
       </div>
     </div>
   )

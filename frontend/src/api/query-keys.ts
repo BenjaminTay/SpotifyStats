@@ -76,6 +76,8 @@ export const queryKeys = {
   community: {
     all: ['community'] as const,
     feed: (filters: Record<string, unknown> = {}) => ['community', 'feed', filters] as const,
+    trending: (filters: Record<string, unknown> = {}) => ['community', 'trending', filters] as const,
+    post: (postId: string) => ['community', 'post', postId] as const,
   },
 
   versionMerge: {

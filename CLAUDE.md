@@ -65,7 +65,7 @@ JSON → import → SQLite → FastAPI (backend/) → React (frontend/)
 
 **后端**：api/ → services/ → domains/（billboard/playback/settings/enrichment/community）→ core/，辅以 infrastructure/http/ + providers/（spotify/genius/wikipedia/llm）
 
-**前端**：pages/（route container，≤192 行）→ features/（billboard/records|number-ones|all-time、community/Experience|Account|FeedToggle|TimeFilter|PostCard|Timeline|Sidebar、music/details 的 header/primitives/skeletons/overview/tracks/albums/career/artist-releases/album-era 子 sections、settings/components、account/collection）→ components/（ui/charts/layout/shared）
+**前端**：pages/（route container，≤450 行）→ features/（billboard/records|number-ones|all-time、community/Experience|Account|FeedToggle|TimeFilter|PostCard|Timeline|Sidebar|PostDetailExperience|MobileSidebarDrawer|communityData、music/details 的 header/primitives/skeletons/overview/tracks/albums/career/artist-releases/album-era 子 sections、settings/components、account/collection）→ components/（ui/charts/layout/shared）
 
 **Phase 5 架构模式**：
 
