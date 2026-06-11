@@ -1,5 +1,5 @@
 import { fireEvent, render, screen } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, useLocation } from 'react-router-dom'
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 
 import type { CommunityPost } from '@/types/community'
@@ -42,6 +42,11 @@ function makePost(overrides: Partial<CommunityPost> = {}): CommunityPost {
 
 function renderWithRouter(ui: React.ReactElement) {
   return render(<MemoryRouter>{ui}</MemoryRouter>)
+}
+
+function LocationProbe() {
+  const location = useLocation()
+  return <div data-testid="location-path">{location.pathname}</div>
 }
 
 
@@ -177,6 +182,19 @@ describe('PostCard', () => {
     renderWithRouter(<PostCard post={makePost()} />)
     // Check that at least one formatted metric value is displayed
     expect(screen.getByText('1.2K')).toBeInTheDocument()
+  })
+
+  it('navigates to post detail when clicking the post body', () => {
+    render(
+      <MemoryRouter initialEntries={['/community']}>
+        <PostCard post={makePost()} />
+        <LocationProbe />
+      </MemoryRouter>,
+    )
+
+    fireEvent.click(screen.getByText(/Hot 100/))
+
+    expect(screen.getByTestId('location-path')).toHaveTextContent('/community/post/test-post-1')
   })
 })
 

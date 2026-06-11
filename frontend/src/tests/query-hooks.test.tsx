@@ -1,11 +1,12 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { renderHook, waitFor } from '@testing-library/react'
+import { act, renderHook, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { queryKeys } from '@/api/query-keys'
 import { api } from '@/lib/api'
 import { useBillboardWeekly } from '@/hooks/useBillboard'
+import { useWeeklyDigest } from '@/hooks/useAiInsights'
 import { useSettings } from '@/hooks/useSettings'
 
 function createClient() {
@@ -82,5 +83,31 @@ describe('Phase 5 query hook migration', () => {
     expect(api.get).toHaveBeenCalledWith('/settings')
     expect(client.getQueryData(queryKeys.settings.data())).toBe(settings)
     expect(result.current.settings?.min_ms).toBe(30000)
+  })
+
+  it('forces a fresh AI weekly report request on every manual refresh', async () => {
+    const client = createClient()
+    const response = {
+      success: true,
+      report: 'weekly report',
+      cached: false,
+      cached_at: null,
+      entities: null,
+      error: null,
+    }
+    vi.spyOn(api, 'get').mockResolvedValue(response)
+
+    const { result } = renderHook(() => useWeeklyDigest('2026-05-01', '2026-05-07'), {
+      wrapper: wrapperFor(client),
+    })
+
+    await waitFor(() => expect(result.current.loading).toBe(false))
+    expect(api.get).toHaveBeenCalledTimes(1)
+
+    act(() => result.current.refetch())
+    await waitFor(() => expect(api.get).toHaveBeenCalledTimes(2))
+
+    act(() => result.current.refetch())
+    await waitFor(() => expect(api.get).toHaveBeenCalledTimes(3))
   })
 })

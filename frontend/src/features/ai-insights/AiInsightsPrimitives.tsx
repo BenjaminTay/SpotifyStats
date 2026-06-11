@@ -22,10 +22,14 @@ export function LlmNotConfiguredState() {
 }
 
 export function EmptyState({ message }: { message: string }) {
+  const isNoData = message.includes("暂无听歌数据") || message.includes("暂无")
   return (
     <div className="flex flex-col items-center gap-3 py-16 text-center">
       <AlertCircle className="h-8 w-8 text-muted-foreground/50" />
       <p className="text-[14px] text-muted-foreground">{message}</p>
+      {isNoData && (
+        <p className="text-[12px] text-muted-foreground/50">请尝试选择其他时间范围</p>
+      )}
     </div>
   )
 }

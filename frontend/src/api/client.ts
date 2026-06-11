@@ -1,4 +1,4 @@
-import { ApiError, AuthRequiredError, NetworkError, TimeoutError } from './errors'
+import { ApiError, AuthRequiredError, CancelError, NetworkError, TimeoutError } from './errors'
 
 const BASE_URL = '/api'
 const DEFAULT_TIMEOUT = 30_000
@@ -70,11 +70,11 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
     if (err instanceof ApiError) throw err
 
     if (err instanceof DOMException && err.name === 'AbortError') {
-      if (timeoutId === null || controller.signal.aborted) {
-        // Timeout wasn't set (timeout=0) so this was cancelled externally
-        throw new TimeoutError(timeout, err)
+      // User-initiated cancel via external signal
+      if (externalSignal?.aborted) {
+        throw new CancelError(err)
       }
-      // Check if the abort was due to our timeout
+      // Timeout-initiated abort
       throw new TimeoutError(timeout, err)
     }
 
@@ -86,15 +86,21 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   }
 }
 
+export interface ApiClientOptions {
+  params?: Record<string, string | number | boolean>
+  timeout?: number
+  signal?: AbortSignal
+}
+
 export const apiClient = {
-  get: <T>(path: string, params?: Record<string, string | number | boolean>, timeout?: number) =>
-    request<T>(path, { params, timeout }),
+  get: <T>(path: string, params?: Record<string, string | number | boolean>, timeout?: number, signal?: AbortSignal) =>
+    request<T>(path, { params, timeout, signal }),
   put: <T>(path: string, body?: unknown, timeout?: number) =>
     request<T>(path, { method: 'PUT', body, timeout }),
-  post: <T>(path: string, body?: unknown, timeout?: number) =>
-    request<T>(path, { method: 'POST', body, timeout }),
+  post: <T>(path: string, body?: unknown, timeout?: number, signal?: AbortSignal) =>
+    request<T>(path, { method: 'POST', body, timeout, signal }),
   del: <T>(path: string, timeout?: number) =>
     request<T>(path, { method: 'DELETE', timeout }),
 }
 
-export { ApiError, AuthRequiredError, NetworkError, TimeoutError }
+export { ApiError, AuthRequiredError, CancelError, NetworkError, TimeoutError }

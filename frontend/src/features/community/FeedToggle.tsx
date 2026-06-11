@@ -13,7 +13,7 @@ interface FeedToggleProps {
 export function FeedToggle({ active, onChange, highlightsCount, allCount, rightSlot }: FeedToggleProps) {
   return (
     <div className="border-b border-white/10 bg-background">
-      <div className="flex items-center h-[53px] gap-2">
+      <div className="flex min-h-[53px] flex-wrap items-center gap-2 py-2 sm:flex-nowrap sm:py-0">
         <button
           type="button"
           onClick={() => onChange('highlights')}
@@ -53,7 +53,7 @@ export function FeedToggle({ active, onChange, highlightsCount, allCount, rightS
             <span className="text-[11px] opacity-70 tabular-nums">{allCount}</span>
           )}
         </button>
-        {rightSlot && <div className="ml-auto">{rightSlot}</div>}
+        {rightSlot && <div className="w-full sm:ml-auto sm:w-auto">{rightSlot}</div>}
       </div>
     </div>
   )

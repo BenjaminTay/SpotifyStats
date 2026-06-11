@@ -1,11 +1,14 @@
 """AI Insights API endpoints."""
 
+# ruff: noqa: UP045
+
 from __future__ import annotations
 
 from sqlite3 import Connection
+from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from backend.dependencies import PlayFilters, get_conn
 from backend.services.ai_insights_service import (
@@ -19,15 +22,41 @@ from backend.services.ai_insights_service import (
 router = APIRouter(prefix="/ai-insights", tags=["AI Insights"])
 
 
+class ChatMessage(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str = Field(..., min_length=1, max_length=2000)
+
+
 class AskRequest(BaseModel):
-    question: str
-    conversation_history: list[dict[str, str]] | None = None
+    question: str = Field(..., min_length=1, max_length=500)
+    conversation_history: Optional[list[ChatMessage]] = None
+
+
+def _raise_for_error(result: dict) -> None:
+    """Map service-layer error messages to appropriate HTTP status codes."""
+    error = result.get("error", "生成失败")
+
+    if "LLM 未配置" in error:
+        raise HTTPException(status_code=503, detail=error)
+
+    if "暂无听歌数据" in error:
+        return  # 200 OK — valid business result, not an error
+
+    if "LLM 调用失败" in error or "LLM 返回为空" in error:
+        raise HTTPException(status_code=502, detail=error)
+
+    if "数据获取失败" in error or "数据查询失败" in error:
+        raise HTTPException(status_code=500, detail=error)
+
+    # Unknown errors — 500
+    raise HTTPException(status_code=500, detail=error)
 
 
 @router.get("/weekly-digest")
 def weekly_digest(
     week_start: str = Query(..., description="YYYY-MM-DD"),
     week_end: str = Query(..., description="YYYY-MM-DD"),
+    force: bool = Query(False, description="Bypass server-side cache"),
     filters: PlayFilters = Depends(),
     conn: Connection = Depends(get_conn),
 ):
@@ -39,9 +68,10 @@ def weekly_digest(
         filters.merge_enabled,
         week_start,
         week_end,
+        force=force,
     )
     if not result["success"]:
-        raise HTTPException(status_code=503, detail=result.get("error", "生成失败"))
+        _raise_for_error(result)
     return result
 
 
@@ -49,6 +79,7 @@ def weekly_digest(
 def monthly_personality(
     month: str = Query(..., description="YYYY-MM"),
     year: int = Query(..., description="e.g. 2026"),
+    force: bool = Query(False, description="Bypass server-side cache"),
     filters: PlayFilters = Depends(),
     conn: Connection = Depends(get_conn),
 ):
@@ -60,15 +91,17 @@ def monthly_personality(
         filters.merge_enabled,
         month,
         year,
+        force=force,
     )
     if not result["success"]:
-        raise HTTPException(status_code=503, detail=result.get("error", "生成失败"))
+        _raise_for_error(result)
     return result
 
 
 @router.get("/yearly-story")
 def yearly_story(
     year: int = Query(...),
+    force: bool = Query(False, description="Bypass server-side cache"),
     filters: PlayFilters = Depends(),
     conn: Connection = Depends(get_conn),
 ):
@@ -79,9 +112,10 @@ def yearly_story(
         filters.music_only,
         filters.merge_enabled,
         year,
+        force=force,
     )
     if not result["success"]:
-        raise HTTPException(status_code=503, detail=result.get("error", "生成失败"))
+        _raise_for_error(result)
     return result
 
 
@@ -95,10 +129,9 @@ def ask(
     conn: Connection = Depends(get_conn),
 ):
     """Answer a natural-language question about listening history."""
-    if not body.question or not body.question.strip():
-        raise HTTPException(status_code=400, detail="问题不能为空")
-    if len(body.question) > 500:
-        raise HTTPException(status_code=400, detail="问题长度不能超过 500 字符")
+    history = None
+    if body.conversation_history:
+        history = [m.model_dump() for m in body.conversation_history]
 
     result = answer_question(
         conn,
@@ -106,14 +139,18 @@ def ask(
         filters.music_only,
         filters.merge_enabled,
         body.question,
-        body.conversation_history,
+        history,
     )
     if not result["success"]:
-        raise HTTPException(status_code=503, detail=result.get("error", "回答失败"))
+        _raise_for_error(result)
     return result
 
 
 @router.get("/suggested-questions")
-def suggested_questions():
+def suggested_questions(
+    context: Optional[str] = Query(
+        None, description="Report type context: weekly, monthly, yearly, chat"
+    ),
+):
     """Return a list of suggested starter questions."""
-    return {"questions": get_suggested_questions()}
+    return {"questions": get_suggested_questions(context)}

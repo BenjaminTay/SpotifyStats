@@ -4,7 +4,7 @@ const NOISE_SVG =
 export function NoiseOverlay() {
   return (
     <div
-      className="fixed inset-0 z-0 opacity-[0.035] pointer-events-none"
+      className="pointer-events-none fixed left-0 top-0 z-0 h-full w-full overflow-hidden opacity-[0.035]"
       style={{
         backgroundImage: `url("${NOISE_SVG}")`,
         backgroundSize: '256px 256px',

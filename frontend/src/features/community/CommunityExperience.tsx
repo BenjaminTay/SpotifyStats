@@ -74,9 +74,9 @@ export function CommunityExperience() {
       </section>
 
       {/* Two-column layout: feed + sidebar (X/Weibo style) */}
-      <div className="flex gap-8">
+      <div className="flex w-full min-w-0 gap-8">
         {/* Main feed column */}
-        <div className="flex-1 max-w-[720px] min-h-[70vh]">
+        <div className="min-h-[70vh] w-full min-w-0 max-w-[720px] flex-1">
           {/* Feed toggle + search — X "For You" / "Following" style */}
           <FeedToggle
             active={activeTab}
@@ -84,7 +84,7 @@ export function CommunityExperience() {
             highlightsCount={activeTab === 'highlights' ? meta?.total : undefined}
             allCount={meta?.total_all}
             rightSlot={
-              <div className="relative w-[240px]">
+              <div className="relative w-[calc(100vw-80px)] max-w-full sm:w-[240px]">
                 <svg
                   className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground"
                   viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"

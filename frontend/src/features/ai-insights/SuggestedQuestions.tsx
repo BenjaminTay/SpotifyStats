@@ -2,9 +2,27 @@ interface SuggestedQuestionsProps {
   questions: string[]
   onSelect: (q: string) => void
   disabled: boolean
+  isLoading?: boolean
 }
 
-export function SuggestedQuestions({ questions, onSelect, disabled }: SuggestedQuestionsProps) {
+function SkeletonPill() {
+  return (
+    <span className="inline-block h-8 w-24 animate-pulse rounded-full border border-border bg-card/40 backdrop-blur-[8px]" />
+  )
+}
+
+export function SuggestedQuestions({ questions, onSelect, disabled, isLoading }: SuggestedQuestionsProps) {
+  if (isLoading) {
+    return (
+      <div className="flex flex-wrap gap-2">
+        <SkeletonPill />
+        <SkeletonPill />
+        <SkeletonPill />
+        <span className="inline-block h-8 w-20 animate-pulse rounded-full border border-border bg-card/40 backdrop-blur-[8px]" />
+      </div>
+    )
+  }
+
   if (!questions.length) return null
 
   return (
@@ -14,7 +32,8 @@ export function SuggestedQuestions({ questions, onSelect, disabled }: SuggestedQ
           key={q}
           disabled={disabled}
           onClick={() => onSelect(q)}
-          className="rounded-full border border-border bg-card/40 px-3 py-1.5 text-[12px] font-medium text-muted-foreground backdrop-blur-[8px] transition-colors hover:border-accent-foreground/20 hover:text-foreground disabled:opacity-50"
+          title={disabled ? 'AI 回答中，请等待' : undefined}
+          className="rounded-full border border-border bg-card/40 px-3 py-1.5 text-[12px] font-medium text-muted-foreground backdrop-blur-[8px] transition-colors hover:border-accent-foreground/20 hover:text-foreground disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {q}
         </button>

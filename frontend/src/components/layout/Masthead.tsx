@@ -22,15 +22,15 @@ const NAV_ITEMS: NavItem[] = [
 export function Masthead() {
   return (
     <header className="sticky top-0 z-50 border-b border-border bg-card/45 backdrop-blur-[12px] transition-[background,border] duration-400">
-      <div className="flex items-center justify-between px-10 py-4">
-        <div className="flex items-center gap-8">
-          <div className="flex items-baseline gap-0.5 font-serif text-[22px] font-bold tracking-[-0.3px]">
+      <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-3 sm:flex-nowrap sm:px-10 sm:py-4">
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-3 sm:flex-nowrap sm:gap-8">
+          <div className="shrink-0 font-serif text-[22px] font-bold tracking-[-0.3px]">
             Spotify{' '}
             <span className="italic text-accent-foreground transition-colors duration-400">
               Stats
             </span>
           </div>
-          <nav className="flex gap-6">
+          <nav className="order-3 flex w-full min-w-0 gap-4 overflow-x-auto whitespace-nowrap pb-1 sm:order-none sm:w-auto sm:gap-6 sm:pb-0">
             {NAV_ITEMS.map((item) =>
               item.disabled ? (
                 <span
@@ -60,7 +60,9 @@ export function Masthead() {
             )}
           </nav>
         </div>
-        <ThemeToggle />
+        <div className="shrink-0">
+          <ThemeToggle />
+        </div>
       </div>
     </header>
   )

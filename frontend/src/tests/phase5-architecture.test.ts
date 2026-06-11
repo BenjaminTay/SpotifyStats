@@ -10,6 +10,8 @@ import numberOnesExperienceSource from '../features/billboard/number-ones/Number
 import artistDetailExperienceSource from '../features/music/details/ArtistDetailExperience.tsx?raw'
 import albumDetailExperienceSource from '../features/music/details/AlbumDetailExperience.tsx?raw'
 import albumEraSectionSource from '../features/music/details/AlbumEraSection.tsx?raw'
+import communityExperienceSource from '../features/community/CommunityExperience.tsx?raw'
+import mastheadSource from '../components/layout/Masthead.tsx?raw'
 
 describe('Phase 5 architecture guardrails', () => {
   it.each([
@@ -127,6 +129,15 @@ describe('Phase 5 architecture guardrails', () => {
     expect(albumEraSectionSource).not.toContain('发行构成')
     expect(albumEraSectionSource).not.toContain('收听展开')
     expect(albumEraSectionSource).not.toContain('外溢影响')
+  })
+
+  it('keeps community search responsive instead of fixed-width on mobile', () => {
+    expect(communityExperienceSource).not.toContain('relative w-[240px]')
+  })
+
+  it('keeps masthead navigation contained on mobile', () => {
+    expect(mastheadSource).toContain('overflow-x-auto')
+    expect(mastheadSource).toContain('whitespace-nowrap')
   })
 
   it('keeps artist release archive outside ArtistDetailExperience', () => {

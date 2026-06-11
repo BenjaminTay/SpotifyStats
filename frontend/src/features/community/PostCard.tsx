@@ -65,7 +65,10 @@ export function PostCard({ post }: PostCardProps) {
         </div>
 
         {/* Body text */}
-        <div className="mt-0.5 text-[15px] leading-5 text-foreground whitespace-pre-wrap break-words">
+        <div
+          className="mt-0.5 cursor-pointer text-[15px] leading-5 text-foreground whitespace-pre-wrap break-words"
+          onClick={goToDetail}
+        >
           {isLong && !expanded ? (
             <>
               <PostContent
@@ -102,7 +105,10 @@ export function PostCard({ post }: PostCardProps) {
 
         {/* Images — single cover or multi-cover grid */}
         {images.length > 0 && !multiImage && (
-          <div className="mt-3 rounded-2xl border border-white/15 overflow-hidden w-52 h-52">
+          <div
+            className="mt-3 rounded-2xl border border-white/15 overflow-hidden w-52 h-52 cursor-pointer"
+            onClick={goToDetail}
+          >
             <img
               src={images[0]}
               alt=""
@@ -112,7 +118,10 @@ export function PostCard({ post }: PostCardProps) {
           </div>
         )}
         {multiImage && (
-          <div className="mt-3 grid grid-cols-2 gap-0.5 rounded-2xl border border-white/15 overflow-hidden max-w-[424px]">
+          <div
+            className="mt-3 grid w-full max-w-[424px] grid-cols-2 gap-0.5 rounded-2xl border border-white/15 overflow-hidden cursor-pointer"
+            onClick={goToDetail}
+          >
             {images.slice(0, 4).map((url, i) => (
               <div key={i} className="aspect-square overflow-hidden">
                 <img
@@ -157,7 +166,12 @@ export function PostContent({ content, linkedEntities }: { content: string; link
         const href = linkMap.get(part)
         if (href) {
           return (
-            <Link key={i} to={href} className="text-accent-foreground hover:underline">
+            <Link
+              key={i}
+              to={href}
+              className="text-accent-foreground hover:underline"
+              onClick={(e) => e.stopPropagation()}
+            >
               {displayName(part)}
             </Link>
           )

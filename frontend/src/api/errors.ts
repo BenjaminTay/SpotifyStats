@@ -45,3 +45,13 @@ export class TimeoutError extends ApiError {
     this.name = 'TimeoutError'
   }
 }
+
+export class CancelError extends Error {
+  constructor(cause?: unknown) {
+    super('Request cancelled')
+    this.name = 'CancelError'
+    if (cause !== undefined) {
+      ;(this as { cause?: unknown }).cause = cause
+    }
+  }
+}

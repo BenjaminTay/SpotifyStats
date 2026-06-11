@@ -88,8 +88,8 @@ export const queryKeys = {
       ['ai-insights', 'monthly-personality', month, year] as const,
     yearlyStory: (year: number) =>
       ['ai-insights', 'yearly-story', year] as const,
-    suggestedQuestions: () =>
-      ['ai-insights', 'suggested-questions'] as const,
+    suggestedQuestions: (context?: string) =>
+      ['ai-insights', 'suggested-questions', context ?? ''] as const,
   },
 
   versionMerge: {
