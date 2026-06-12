@@ -1,8 +1,11 @@
 """Version merge API — CRUD for release groups."""
 
+# ruff: noqa: UP045
+
 from __future__ import annotations
 
 from sqlite3 import Connection
+from typing import Optional
 
 import numpy as np
 import pandas as pd
@@ -29,7 +32,7 @@ from backend.dependencies import get_conn
 
 router = APIRouter(prefix="/version-merge", tags=["Version Merge"])
 
-# ── Pydantic models ──────────────────────────────────────────────────────
+# ── Request models ───────────────────────────────────────────────────────────
 
 
 class CreateGroupRequest(BaseModel):
@@ -40,39 +43,112 @@ class CreateGroupRequest(BaseModel):
 
 
 class UpdateMembersRequest(BaseModel):
-    add_ids: list[int] | None = None
-    remove_ids: list[int] | None = None
+    add_ids: Optional[list[int]] = None
+    remove_ids: Optional[list[int]] = None
 
 
 class SetPrimaryRequest(BaseModel):
     album_id: int
 
 
+# ── Response models ──────────────────────────────────────────────────────────
+
+
+class ReleaseGroupResponse(BaseModel):
+    group_id: int
+    canonical_name: str
+    artist_name: str
+    primary_album_id: Optional[int] = None
+    primary_album_name: Optional[str] = None
+    is_manual: int
+    created_at: str
+
+
+class GroupMemberResponse(BaseModel):
+    album_id: int
+    album_name: str
+    is_primary: Optional[int] = None
+
+
+class UngroupedAlbumResponse(BaseModel):
+    album_id: int
+    album_name: str
+    artist_name: str
+
+
+class TrackComparisonResponse(BaseModel):
+    shared: list[list]
+    only_in_a: list[list]
+    only_in_b: list[list]
+
+
+class StatusResponse(BaseModel):
+    status: str
+
+
+class CreateGroupResponse(BaseModel):
+    status: str
+    group_id: Optional[int] = None
+    message: Optional[str] = None
+
+
+class ApplyDetectionResponse(BaseModel):
+    status: str
+    created_count: int
+    skipped_count: int
+
+
+class DetectionMemberResponse(BaseModel):
+    album_id: int
+    album_name: str
+    release_date: Optional[str] = None
+
+
+class OverlapDetailResponse(BaseModel):
+    album_name: str
+    album_id: int
+    overlap: float
+
+
+class DetectionResultResponse(BaseModel):
+    artist_name: str
+    artist_id: int
+    canonical_name: str
+    primary_album_name: str
+    primary_album_id: int
+    member_count: int
+    confidence: str
+    members: list[DetectionMemberResponse]
+    group_type: str
+    reason: str
+    overlap_details: list[OverlapDetailResponse]
+
+
 # ── Query endpoints ──────────────────────────────────────────────────────
 
 
-@router.get("/groups")
+@router.get("/groups", response_model=list[ReleaseGroupResponse])
 def list_groups(conn: Connection = Depends(get_conn)):
     """Get all saved release groups with member details."""
     df = get_all_groups()
     return df.where(pd.notna(df), None).to_dict(orient="records")
 
 
-@router.get("/groups/{group_id}/members")
+@router.get("/groups/{group_id}/members", response_model=list[GroupMemberResponse])
 def get_members(group_id: int, conn: Connection = Depends(get_conn)):
     """Get members of a specific release group."""
     df = get_group_members(group_id)
     return df.to_dict(orient="records")
 
 
-@router.get("/groups/artist/{artist_name}")
+@router.get("/groups/artist/{artist_name}", response_model=list[ReleaseGroupResponse])
 def artist_groups(artist_name: str, conn: Connection = Depends(get_conn)):
     """Get all release groups for an artist."""
     df = get_groups_for_artist(artist_name)
     return df.where(pd.notna(df), None).to_dict(orient="records")
 
 
-@router.get("/ungrouped")
+@router.get("/ungrouped", response_model=list[UngroupedAlbumResponse])
 def ungrouped_albums(
     artist_name: str | None = Query(default=None),
     conn: Connection = Depends(get_conn),
@@ -82,7 +158,7 @@ def ungrouped_albums(
     return df.where(pd.notna(df), None).to_dict(orient="records")
 
 
-@router.get("/compare")
+@router.get("/compare", response_model=TrackComparisonResponse)
 def compare_albums(
     album_id_a: int = Query(...),
     album_id_b: int = Query(...),
@@ -91,7 +167,7 @@ def compare_albums(
     return get_album_track_comparison(album_id_a, album_id_b)
 
 
-@router.get("/album-types")
+@router.get("/album-types", response_model=dict[str, str])
 def album_types(album_ids: str = Query(..., description="Comma-separated album IDs")):
     """Get album types (album/single/compilation) for a set of album IDs."""
     ids = [int(x.strip()) for x in album_ids.split(",") if x.strip()]
@@ -101,7 +177,7 @@ def album_types(album_ids: str = Query(..., description="Comma-separated album I
 # ── Mutation endpoints ────────────────────────────────────────────────────
 
 
-@router.post("/groups")
+@router.post("/groups", response_model=CreateGroupResponse)
 def create_new_group(body: CreateGroupRequest, auth: None = Depends(require_auth)):
     """Manually create a release group."""
     group_id = create_group(
@@ -115,21 +191,21 @@ def create_new_group(body: CreateGroupRequest, auth: None = Depends(require_auth
     return {"status": "ok", "group_id": group_id}
 
 
-@router.put("/groups/{group_id}/members")
+@router.put("/groups/{group_id}/members", response_model=StatusResponse)
 def update_members(group_id: int, body: UpdateMembersRequest, auth: None = Depends(require_auth)):
     """Add or remove members from a release group."""
     ok = update_group_members(group_id, body.add_ids, body.remove_ids)
     return {"status": "ok" if ok else "error"}
 
 
-@router.put("/groups/{group_id}/primary")
+@router.put("/groups/{group_id}/primary", response_model=StatusResponse)
 def set_primary_album(group_id: int, body: SetPrimaryRequest, auth: None = Depends(require_auth)):
     """Change the primary album of a release group."""
     ok = set_primary(group_id, body.album_id)
     return {"status": "ok" if ok else "error"}
 
 
-@router.delete("/groups/{group_id}")
+@router.delete("/groups/{group_id}", response_model=StatusResponse)
 def remove_group(group_id: int, auth: None = Depends(require_auth)):
     """Delete a release group and its member relationships."""
     ok = delete_group(group_id)
@@ -139,7 +215,7 @@ def remove_group(group_id: int, auth: None = Depends(require_auth)):
 # ── Detection & Apply ─────────────────────────────────────────────────────
 
 
-@router.post("/detect")
+@router.post("/detect", response_model=list[DetectionResultResponse])
 def run_detection(
     overlap_threshold: float = Query(default=0.4, ge=0.1, le=1.0),
     auth: None = Depends(require_auth),
@@ -151,7 +227,7 @@ def run_detection(
     return df_to_json(result)
 
 
-@router.post("/apply")
+@router.post("/apply", response_model=ApplyDetectionResponse)
 def apply_detection(detection_result: dict, auth: None = Depends(require_auth)):
     """Apply detected release groups to the database."""
     df = pd.DataFrame(detection_result.get("confirmed_groups", []))

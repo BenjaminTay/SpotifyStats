@@ -22,11 +22,11 @@ Phase 5 目标是收紧产品线到可持续迭代状态。当前进度：
 - 前端 GET 数据获取统一到 TanStack Query + `queryKeys`（11 命名空间：dashboard/account/billboard/analysis/settings/yearlyReview/music/library/versionMerge/community/aiInsights）
 - Provider 错误分类体系（`ProviderError` → `ProviderNetworkError`/`ProviderHTTPError` → `ProviderAuthError`/`ProviderRateLimitError`/`ProviderServerError` + `ProviderParseError`）
 - 业务 service 层 urllib 调用清零；core Spotify HTTP 收敛到 `HttpClient`/`SpotifyProvider`
-- 所有页面容器 ≤ 192 行（Records 115 / AllTimeCharts 192 / NumberOnes 5 / ArtistDetail 5 / AlbumDetail 5）
+- Billboard 与 Artist/Album 详情页完成 route container 化；新增页面遵守 route container ≤450 行，当前例外和后续治理见 Phase 5 台账
 - 音乐详情页持续拆分到 feature sections；header/tabs/skeletons/overview/tracks/albums/career/artist-releases/album-era 子 sections 与共享 primitives 已从 Artist/Album Experience 中抽出
 - 前端展示类型 `frontend/src/types/billboard.ts` 已补齐 Billboard、音乐详情、release-cycle 与 enrichment 常用展示字段，`npm run build` 作为硬验证
 - 模块级 API 响应 Map 缓存全部清除，迁移到 TanStack Query
-- Records/AllTime/RecentPlays/SavedTracks/PersonalRankTable 长列表已有分页基线，新增长表必须继续使用分页或虚拟化
+- Records/AllTime/Community Feed/RecentPlays/SavedTracks/PersonalRankTable 长列表已有分页或分段渲染基线，新增长表必须继续使用分页、infinite query 或虚拟化
 - Request ID（`X-Request-ID` 生成/透传/日志关联）
 - Billboard records 输出层已拆入 `backend/domains/billboard/records_output.py`，championship/no1 family 已拆入 `records_championship.py`，longevity/persistence family 已拆入 `records_longevity.py`，movement/breakthrough family 已拆入 `records_movement.py`，hall-of-fame/power ranking family 已拆入 `records_hall_of_fame.py`，endurance/rank-stability family 已拆入 `records_endurance.py`，self-replacement/blocker family 已拆入 `records_self_replacement_blocker.py`，market/market-intensity family 已拆入 `records_market.py`，quirky/special-feat family 已拆入 `records_quirky.py`，`records.py` 保留 88 行纯编排 facade
 - Billboard chart 周榜排名已拆入 `backend/domains/billboard/chart_ranking.py`，走势评分（Power Score）已拆入 `backend/domains/billboard/chart_power_score.py`，summary/count helper 已拆入 `backend/domains/billboard/chart_summaries.py`，staged cache 已拆入 `backend/domains/billboard/chart_staged_cache.py`，staged public API 已拆入 `backend/domains/billboard/chart_staged_api.py`，`chart_compute.py` 保留 227 行兼容入口/re-export/cache registration facade
@@ -35,8 +35,14 @@ Phase 5 目标是收紧产品线到可持续迭代状态。当前进度：
 
 **持续治理**：
 - Provider 全量替换：`release_cycle_service.py`、`wikipedia_service.py`、`spotify_utils.py` 和 `version_merge.py` 已收敛；后续按架构护栏防回归
-- 后端 Billboard chart compute 已收口（`records.py` 88 行 / `chart_compute.py` 227 行 / `chart_staged_api.py` 114 行 / `chart_staged_cache.py` 336 行 / `chart_ranking.py` 142 行 / `chart_power_score.py` 272 行 / `chart_summaries.py` 220 行）；后续按触碰拆分其他大文件
-- 长列表已建立分页基线；后续新增超过 500 行 DOM 的表格必须使用服务端分页、分页组件或虚拟化
+- 后端 Billboard chart compute 已收口（`records.py` 88 行 / `chart_compute.py` 227 行）
+- Phase 5.4-A 至 5.4-H 全系列完成（2026-06-12）：
+  - 架构护栏测试 17→105+ 用例，覆盖所有新增页面
+  - TrackDetailPage (574→5 行)、HabitsTab (933 行→9 文件 feature)、AiInsightsExperience/ChatInterface 拆分完毕
+  - API 契约硬化：AI Insights (5) + Chat (6) + Community post (1) + Version Merge (12) = 24 端点补 response_model
+  - Bundle 治理：SettingsPage -88%、RecordsPage -69%、AccountCenterPage -34%，合计首屏节省 ~178 kB
+	  - TrackDetail 歌词 Query 漏网修复：手动 `fetchLyrics` + `useState` 改为 `useQuery`（`queryKeys.music.trackLyrics`）
+- 长列表已建立分页基线；后续新增超过 500 行 DOM 的表格必须使用服务端分页、分页组件、infinite query 或虚拟化
 
 详见 `docs/2026-06-08-phase5-productization-baseline.md`。
 

@@ -4,7 +4,7 @@
 
 **架构**：FastAPI 后端 + React 前端。Streamlit 原有应用已冻结维护。
 
-**Phase 5 产品化收口**：前端 GET 统一 TanStack Query、页面容器 ≤192 行、音乐详情页持续拆分到 feature sections（已抽 header/tabs/skeleton/overview/tracks/albums/career/artist-releases/album-era 子 sections）、业务 service urllib 清零、模块级 Map 缓存全部清除，前端展示类型已补齐到 `npm run build` 可验证，Billboard records 输出层、championship/no1、longevity/persistence、movement/breakthrough、hall-of-fame/power ranking、endurance/rank-stability 与 self-replacement/blocker family 已拆分；chart 周榜排名、走势评分、summaries、staged cache 与 staged API 已拆出，`chart_compute.py` 已收口为兼容 facade；Records/AllTime/RecentPlays/PersonalRankTable 等长列表已有分页基线。详见 [`docs/2026-06-08-phase5-productization-baseline.md`](docs/2026-06-08-phase5-productization-baseline.md)。
+**Phase 5 产品化收口**：前端 GET 统一 TanStack Query（11 命名空间 queryKeys）、Provider 错误分层、业务 service urllib 清零、模块级 API Map 缓存清除；Billboard records 88 行 facade + chart_compute 227 行 facade；Records/AllTime/Community Feed/RecentPlays/SavedTracks/PersonalRankTable 长列表分页基线。Phase 5.4 八阶段（A-H）全系列完成（2026-06-12）：架构护栏 105+ 测试、TrackDetail 574→5 行、HabitsTab 933 行→9 文件 feature、AI Insights 拆分、24 端点 response_model 硬化、Bundle 懒加载治理（Settings -88%/Records -69%/Account -34%）、TrackDetail 歌词 Query 漏网修复。剩余为低优先级持续治理项。详见 [`docs/2026-06-08-phase5-productization-baseline.md`](docs/2026-06-08-phase5-productization-baseline.md)。
 
 ## 功能
 

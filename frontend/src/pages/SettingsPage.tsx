@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { lazy, Suspense, useState } from 'react'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Button } from '@/components/ui/button'
 import { AlertCircle, CheckCircle2 } from 'lucide-react'
@@ -8,9 +8,18 @@ import type { LLMProfile } from '@/types/settings'
 import { SpotifyConnectionSection } from '@/features/settings/components/SpotifyConnectionSection'
 import { DataFilteringSection } from '@/features/settings/components/DataFilteringSection'
 import { BillboardParamsSection } from '@/features/settings/components/BillboardParamsSection'
-import { LLMTranslationSection } from '@/features/settings/components/LLMTranslationSection'
-import { VersionMergeSection } from '@/features/settings/components/VersionMergeSection'
 import { DataImportSection } from '@/features/settings/components/DataImportSection'
+
+const VersionMergeSection = lazy(() =>
+  import('@/features/settings/components/VersionMergeSection').then(
+    (m) => ({ default: m.VersionMergeSection }),
+  ),
+)
+const LLMTranslationSection = lazy(() =>
+  import('@/features/settings/components/LLMTranslationSection').then(
+    (m) => ({ default: m.LLMTranslationSection }),
+  ),
+)
 
 export function SettingsPage() {
   const {
@@ -144,7 +153,17 @@ export function SettingsPage() {
       )}
 
       {/* Section 3: Version Merge */}
-      <VersionMergeSection />
+      <Suspense
+        fallback={
+          <div className="rounded-[16px] border border-border bg-card p-6">
+            <Skeleton className="mb-4 h-3 w-36" />
+            <Skeleton className="mb-1 h-3 w-64" />
+            <Skeleton className="h-24 w-full" />
+          </div>
+        }
+      >
+        <VersionMergeSection />
+      </Suspense>
 
       {/* Section 4: Data Import */}
       <DataImportSection
@@ -157,7 +176,16 @@ export function SettingsPage() {
       />
 
       {/* Section 5: LLM Translation */}
-      <LLMTranslationSection
+      <Suspense
+        fallback={
+          <div className="rounded-[16px] border border-border bg-card p-6">
+            <Skeleton className="mb-4 h-3 w-36" />
+            <Skeleton className="mb-1 h-3 w-64" />
+            <Skeleton className="h-24 w-full" />
+          </div>
+        }
+      >
+        <LLMTranslationSection
         settings={{
           llm_enabled: settings.llm_enabled,
           llm_provider: settings.llm_provider,
@@ -175,6 +203,7 @@ export function SettingsPage() {
         onDeleteProfile={deleteProfile}
         onRefetch={refetch}
       />
+      </Suspense>
     </div>
   )
 }

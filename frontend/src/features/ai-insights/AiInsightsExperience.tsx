@@ -1,6 +1,5 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react'
-import { parseISO } from 'date-fns'
-import { Calendar as CalendarIcon, MessageSquare } from 'lucide-react'
+import { MessageSquare } from 'lucide-react'
 
 import { useSettings } from '@/hooks/useSettings'
 import {
@@ -18,82 +17,14 @@ import { ChatSessionList } from './ChatSessionList'
 import { ChatSessionDrawer } from './ChatSessionDrawer'
 import { REPORT_LABELS, REPORT_DESCRIPTIONS } from './aiInsightsData'
 import { LlmNotConfiguredState, EmptyState } from './AiInsightsPrimitives'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { Calendar } from '@/components/ui/calendar'
+import {
+  AiInsightsTimeSelectors,
+  weekRangeEndingAt,
+  monthValueFrom,
+  currentWeekRange,
+  currentMonthValue,
+} from './AiInsightsTimeSelectors'
 import type { ReportType } from '@/types/ai-insights'
-
-// ── Date helpers ──────────────────────────────────────────────────────────
-
-const DAY_MS = 86400000
-
-const fmt = (d: Date) => {
-  const year = d.getFullYear()
-  const month = String(d.getMonth() + 1).padStart(2, '0')
-  const day = String(d.getDate()).padStart(2, '0')
-  return `${year}-${month}-${day}`
-}
-
-function parseLocalDate(value: string) {
-  return new Date(`${value}T00:00:00`)
-}
-
-function weekRange(offset: number) {
-  const now = new Date()
-  const end = new Date(now.getTime() + offset * 7 * DAY_MS)
-  const start = new Date(end.getTime() - 6 * DAY_MS)
-  return { start: fmt(start), end: fmt(end) }
-}
-
-function weekRangeEndingAt(endDate: string, offsetWeeks = 0) {
-  const end = parseLocalDate(endDate)
-  end.setDate(end.getDate() + offsetWeeks * 7)
-  const start = new Date(end.getTime() - 6 * DAY_MS)
-  return { start: fmt(start), end: fmt(end) }
-}
-
-function monthValue(offset: number) {
-  const now = new Date()
-  const d = new Date(now.getFullYear(), now.getMonth() + offset, 1)
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
-}
-
-function monthValueFrom(dateString: string, offset: number) {
-  const anchor = parseLocalDate(dateString)
-  const d = new Date(anchor.getFullYear(), anchor.getMonth() + offset, 1)
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
-}
-
-// ── Quick-select pills ────────────────────────────────────────────────────
-
-function QuickPills({
-  options,
-  current,
-  onSelect,
-}: {
-  options: { label: string; value: string }[]
-  current: string
-  onSelect: (v: string) => void
-}) {
-  return (
-    <div className="flex flex-wrap gap-1">
-      {options.map((opt) => (
-        <button
-          key={opt.value}
-          onClick={() => onSelect(opt.value)}
-          className={`rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.6px] transition-all ${
-            current === opt.value
-              ? 'bg-accent-foreground/10 text-accent-foreground'
-              : 'text-muted-foreground/50 hover:text-muted-foreground'
-          }`}
-        >
-          {opt.label}
-        </button>
-      ))}
-    </div>
-  )
-}
-
-// ── Main experience ───────────────────────────────────────────────────────
 
 export function AiInsightsExperience() {
   const { settings } = useSettings()
@@ -107,13 +38,13 @@ export function AiInsightsExperience() {
 
   // Weekly state
   const now = new Date()
-  const currentWeek = useMemo(() => weekRange(0), [])
+  const currentWeek = useMemo(() => currentWeekRange(), [])
   const [weekStart, setWeekStart] = useState(currentWeek.start)
   const [weekEnd, setWeekEnd] = useState(currentWeek.end)
   const weeklyQuickValue = `${weekStart}_${weekEnd}`
 
   // Monthly state
-  const currentMonth = useMemo(() => monthValue(0), [])
+  const currentMonth = useMemo(() => currentMonthValue(), [])
   const [month, setMonth] = useState(currentMonth)
   const [yearForMonthly, setYearForMonthly] = useState(now.getFullYear())
 
@@ -187,7 +118,6 @@ export function AiInsightsExperience() {
 
   const handleSessionSelect = useCallback((id: number) => {
     setActiveSessionId(id)
-    // Clear report context when switching to a different session
     setChatContext(undefined)
     setChatContextLabel(undefined)
     setChatInitialQuestion(null)
@@ -216,16 +146,16 @@ export function AiInsightsExperience() {
         label: '前 7 天',
         value: latestRange.latestDate
           ? `${weekRangeEndingAt(latestRange.latestDate, -1).start}_${weekRangeEndingAt(latestRange.latestDate, -1).end}`
-          : `${weekRange(-1).start}_${weekRange(-1).end}`,
+          : `${currentWeek.start}_${currentWeek.end}`,
       },
       {
         label: '近 7 天',
         value: latestRange.latestDate
           ? `${weekRangeEndingAt(latestRange.latestDate).start}_${weekRangeEndingAt(latestRange.latestDate).end}`
-          : `${weekRange(0).start}_${weekRange(0).end}`,
+          : `${currentWeek.start}_${currentWeek.end}`,
       },
     ],
-    [latestRange.latestDate],
+    [latestRange.latestDate, currentWeek],
   )
 
   const monthlyQuickOptions = useMemo(
@@ -234,14 +164,14 @@ export function AiInsightsExperience() {
         label: '上月',
         value: latestRange.latestDate
           ? monthValueFrom(latestRange.latestDate, -1)
-          : monthValue(-1),
+          : currentMonth,
       },
       {
         label: '最新月',
-        value: latestRange.latestDate ? latestRange.latestDate.slice(0, 7) : monthValue(0),
+        value: latestRange.latestDate ? latestRange.latestDate.slice(0, 7) : currentMonth,
       },
     ],
-    [latestRange.latestDate],
+    [latestRange.latestDate, currentMonth],
   )
 
   const yearlyQuickOptions = useMemo(
@@ -259,6 +189,12 @@ export function AiInsightsExperience() {
     setWeekEnd(e)
   }
 
+  const handleWeeklyChange = (start: string, end: string) => {
+    userChangedRange.current = true
+    setWeekStart(start)
+    setWeekEnd(end)
+  }
+
   const handleMonthlyQuick = (v: string) => {
     userChangedRange.current = true
     setMonth(v)
@@ -266,13 +202,21 @@ export function AiInsightsExperience() {
     if (!isNaN(y)) setYearForMonthly(y)
   }
 
+  const handleMonthlyChange = (m: string, y: number) => {
+    userChangedRange.current = true
+    setMonth(m)
+    setYearForMonthly(y)
+  }
+
   const handleYearlyQuick = (v: string) => {
     userChangedRange.current = true
     setYear(parseInt(v, 10) || now.getFullYear())
   }
 
-  const dateInputClass =
-    'w-[132px] rounded-full border border-border bg-card/40 px-3 py-1.5 text-[12px] backdrop-blur-[8px] outline-none sm:w-auto'
+  const handleYearlyChange = (y: number) => {
+    userChangedRange.current = true
+    setYear(y)
+  }
 
   return (
     <div className="space-y-6">
@@ -308,7 +252,7 @@ export function AiInsightsExperience() {
         <LlmNotConfiguredState />
       ) : (
         <>
-          {/* Reports tab — hidden instead of unmounted */}
+          {/* Reports tab */}
           <div className={`space-y-6 ${activeTab === 'reports' ? '' : 'hidden'}`}>
             {/* Report type selector */}
             <div className="flex flex-wrap items-center gap-4">
@@ -329,106 +273,29 @@ export function AiInsightsExperience() {
               </div>
 
               {/* Time selectors */}
-              <div className="flex min-w-0 flex-wrap items-center gap-3 text-[13px]">
-                {reportType === 'weekly' && (
-                  <>
-                    <QuickPills
-                      options={weeklyQuickOptions}
-                      current={weeklyQuickValue}
-                      onSelect={handleWeeklyQuick}
-                    />
-                    <Popover open={weekPickerOpen} onOpenChange={setWeekPickerOpen}>
-                      <PopoverTrigger asChild>
-                        <button className={`${dateInputClass} cursor-pointer flex items-center gap-1.5 hover:border-accent-foreground/20 transition-colors`}>
-                          <CalendarIcon className="h-3 w-3 text-muted-foreground/50 shrink-0" />
-                          <span className="truncate">{weekStart} ~ {weekEnd}</span>
-                        </button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0 bg-card/80 backdrop-blur-xl border-border/60 shadow-xl" align="start" sideOffset={8}>
-                        <Calendar
-                          mode="single"
-                          month={parseISO(weekStart)}
-                          endMonth={latestRange.latestDate ? parseISO(latestRange.latestDate) : undefined}
-                          modifiers={{
-                            selectedWeek: [{ from: parseISO(weekStart), to: parseISO(weekEnd) }]
-                          }}
-                          modifiersClassNames={{
-                            selectedWeek: '!bg-accent-foreground/12 !text-accent-foreground font-semibold rounded-none first:rounded-l-full last:rounded-r-full'
-                          }}
-                          onDayClick={(day) => {
-                            const start = day
-                            const end = new Date(start.getTime() + 6 * DAY_MS)
-                            userChangedRange.current = true
-                            setWeekStart(fmt(start))
-                            setWeekEnd(fmt(end))
-                            setWeekPickerOpen(false)
-                          }}
-                          footer="点击日期选择以该日开始的 7 天"
-                        />
-                      </PopoverContent>
-                    </Popover>
-                  </>
-                )}
-
-                {reportType === 'monthly' && (
-                  <>
-                    <QuickPills
-                      options={monthlyQuickOptions}
-                      current={month}
-                      onSelect={handleMonthlyQuick}
-                    />
-                    <Popover open={monthPickerOpen} onOpenChange={setMonthPickerOpen}>
-                      <PopoverTrigger asChild>
-                        <button className={`${dateInputClass} cursor-pointer flex items-center gap-1.5 hover:border-accent-foreground/20 transition-colors`}>
-                          <CalendarIcon className="h-3 w-3 text-muted-foreground/50 shrink-0" />
-                          <span>{month}</span>
-                        </button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0 bg-card/80 backdrop-blur-xl border-border/60 shadow-xl" align="start" sideOffset={8}>
-                        <Calendar
-                          mode="single"
-                          defaultView="months"
-                          month={parseISO(`${month}-01`)}
-                          endMonth={latestRange.latestDate ? parseISO(latestRange.latestDate) : undefined}
-                          onMonthSelect={(monthIdx, year) => {
-                            userChangedRange.current = true
-                            const m = `${year}-${String(monthIdx + 1).padStart(2, '0')}`
-                            setMonth(m)
-                            setYearForMonthly(year)
-                            setMonthPickerOpen(false)
-                          }}
-                        />
-                      </PopoverContent>
-                    </Popover>
-                  </>
-                )}
-
-                {reportType === 'yearly' && (
-                  <>
-                    <QuickPills
-                      options={yearlyQuickOptions}
-                      current={String(year)}
-                      onSelect={handleYearlyQuick}
-                    />
-                    <select
-                      value={year}
-                      onChange={(e) => {
-                        userChangedRange.current = true
-                        setYear(parseInt(e.target.value, 10))
-                      }}
-                      className={`${dateInputClass} cursor-pointer appearance-none`}
-                    >
-                      {Array.from({ length: now.getFullYear() - 2009 }, (_, i) => now.getFullYear() - i).map(
-                        (y) => (
-                          <option key={y} value={y}>
-                            {y}
-                          </option>
-                        ),
-                      )}
-                    </select>
-                  </>
-                )}
-              </div>
+              <AiInsightsTimeSelectors
+                reportType={reportType}
+                weekStart={weekStart}
+                weekEnd={weekEnd}
+                onWeekChange={handleWeeklyChange}
+                weekPickerOpen={weekPickerOpen}
+                onWeekPickerOpenChange={setWeekPickerOpen}
+                latestDate={latestRange.latestDate}
+                weeklyQuickOptions={weeklyQuickOptions}
+                weeklyQuickValue={weeklyQuickValue}
+                onWeeklyQuick={handleWeeklyQuick}
+                month={month}
+                onMonthChange={handleMonthlyChange}
+                monthPickerOpen={monthPickerOpen}
+                onMonthPickerOpenChange={setMonthPickerOpen}
+                monthlyQuickOptions={monthlyQuickOptions}
+                onMonthlyQuick={handleMonthlyQuick}
+                year={year}
+                onYearChange={handleYearlyChange}
+                nowYear={now.getFullYear()}
+                yearlyQuickOptions={yearlyQuickOptions}
+                onYearlyQuick={handleYearlyQuick}
+              />
             </div>
 
             <p className="text-[12px] text-muted-foreground/60">
@@ -500,7 +367,7 @@ export function AiInsightsExperience() {
             </div>
           </div>
 
-          {/* Chat tab — hidden instead of unmounted */}
+          {/* Chat tab */}
           <div className={activeTab === 'chat' ? '' : 'hidden'}>
             <div className="flex w-full min-w-0 gap-8">
               {/* Main chat column */}

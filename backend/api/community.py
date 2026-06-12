@@ -1,8 +1,11 @@
 """Community feed API endpoint."""
 
+# ruff: noqa: UP045
+
 from __future__ import annotations
 
 from sqlite3 import Connection
+from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
@@ -31,14 +34,44 @@ class CommunityFeedResponse(BaseModel):
 class TrendingItem(BaseModel):
     name: str
     count: int
-    entity_id: str | int | None = None
+    entity_id: Optional[str | int] = None
 
 
 class TrendingResponse(BaseModel):
     artists: list[TrendingItem]
     tracks: list[TrendingItem]
-    latest_no1: dict | None = None
-    latest_debut: dict | None = None
+    latest_no1: Optional[dict] = None
+    latest_debut: Optional[dict] = None
+
+
+# ── Post Detail response models ──────────────────────────────────────────────
+
+
+class PostMetrics(BaseModel):
+    likes: int = 0
+    retweets: int = 0
+    replies: int = 0
+    views: int = 0
+
+
+class PostItem(BaseModel):
+    model_config = {"extra": "allow"}
+    id: str
+    account_handle: str
+    posted_at: str
+    content: str
+    post_type: str
+    metrics: PostMetrics
+    tags: list[str] = []
+    significance: float = 0.0
+    attached_list: Optional[list] = None
+    linked_entities: Optional[list] = None
+    images: Optional[list] = None
+
+
+class PostDetailResponse(BaseModel):
+    post: PostItem
+    replies: list[PostItem]
 
 
 @router.get("/feed", response_model=CommunityFeedResponse)
@@ -251,7 +284,7 @@ def get_community_trending(
     )
 
 
-@router.get("/post/{post_id}")
+@router.get("/post/{post_id}", response_model=PostDetailResponse)
 def get_community_post(
     post_id: str,
     filters: PlayFilters = Depends(),

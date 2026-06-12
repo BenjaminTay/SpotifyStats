@@ -32,6 +32,36 @@ class AskRequest(BaseModel):
     conversation_history: Optional[list[ChatMessage]] = None
 
 
+# ── Response models ──────────────────────────────────────────────────────────
+
+
+class ReportEntities(BaseModel):
+    artists: list[str] = []
+    tracks: list[str] = []
+
+
+class DigestResponse(BaseModel):
+    success: bool
+    report: Optional[str] = None
+    cached: bool = False
+    cached_at: Optional[str] = None
+    entities: Optional[ReportEntities] = None
+    error: Optional[str] = None
+
+
+class AskResponseBody(BaseModel):
+    success: bool
+    answer: str = ""
+    period_info: Optional[str] = None
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
+    error: Optional[str] = None
+
+
+class SuggestedQuestionsResponse(BaseModel):
+    questions: list[str]
+
+
 def _raise_for_error(result: dict) -> None:
     """Map service-layer error messages to appropriate HTTP status codes."""
     error = result.get("error", "生成失败")
@@ -52,7 +82,7 @@ def _raise_for_error(result: dict) -> None:
     raise HTTPException(status_code=500, detail=error)
 
 
-@router.get("/weekly-digest")
+@router.get("/weekly-digest", response_model=DigestResponse)
 def weekly_digest(
     week_start: str = Query(..., description="YYYY-MM-DD"),
     week_end: str = Query(..., description="YYYY-MM-DD"),
@@ -75,7 +105,7 @@ def weekly_digest(
     return result
 
 
-@router.get("/monthly-personality")
+@router.get("/monthly-personality", response_model=DigestResponse)
 def monthly_personality(
     month: str = Query(..., description="YYYY-MM"),
     year: int = Query(..., description="e.g. 2026"),
@@ -98,7 +128,7 @@ def monthly_personality(
     return result
 
 
-@router.get("/yearly-story")
+@router.get("/yearly-story", response_model=DigestResponse)
 def yearly_story(
     year: int = Query(...),
     force: bool = Query(False, description="Bypass server-side cache"),
@@ -122,7 +152,7 @@ def yearly_story(
 # ── Phase 2 endpoints ───────────────────────────────────────────────────────
 
 
-@router.post("/ask")
+@router.post("/ask", response_model=AskResponseBody)
 def ask(
     body: AskRequest,
     filters: PlayFilters = Depends(),
@@ -146,7 +176,7 @@ def ask(
     return result
 
 
-@router.get("/suggested-questions")
+@router.get("/suggested-questions", response_model=SuggestedQuestionsResponse)
 def suggested_questions(
     context: Optional[str] = Query(
         None, description="Report type context: weekly, monthly, yearly, chat"

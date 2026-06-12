@@ -58,6 +58,7 @@ export const queryKeys = {
     trackDetail: (trackId: string) => ['music', 'track-detail', trackId] as const,
     albumDetail: (albumName: string, artistName: string) => ['music', 'album-detail', albumName, artistName] as const,
     trackEnrichment: (trackName: string, artistName: string) => ['music', 'track-enrichment', trackName, artistName] as const,
+    trackLyrics: (trackId: string) => ['music', 'track-lyrics', trackId] as const,
     albumEnrichment: (albumName: string, artistName: string) => ['music', 'album-enrichment', albumName, artistName] as const,
     artistEnrichment: (artistName: string) => ['music', 'artist-enrichment', artistName] as const,
     albumReleaseCycle: (albumName: string, artistName: string, params: Record<string, unknown>) => ['music', 'album-release-cycle', albumName, artistName, params] as const,

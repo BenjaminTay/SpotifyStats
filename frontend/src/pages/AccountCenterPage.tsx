@@ -1,11 +1,14 @@
-import { useState } from 'react'
+import { lazy, Suspense, useState } from 'react'
 import { cn } from '@/lib/utils'
 import { useAccount } from '@/hooks/useAccount'
 import { CollectionTab } from '@/pages/account/CollectionTab'
-import { HabitsTab } from '@/pages/account/HabitsTab'
 import { GlassCard } from '@/components/shared/GlassCard'
 import { AlertCircle } from 'lucide-react'
 import type { AccountSummary } from '@/types/account'
+
+const HabitsTab = lazy(() =>
+  import('@/features/account/habits/HabitsTab').then((m) => ({ default: m.HabitsTab })),
+)
 
 type TabKey = 'collection' | 'habits'
 
@@ -236,17 +239,20 @@ export function AccountCenterPage() {
           <div className="py-12 text-center text-muted-foreground">收藏数据不可用</div>
         )}
 
-        {activeTab === 'habits' && data.search?.available && (
-          <HabitsTab
-            search={data.search}
-            tiers={data.insights_tiers}
-            marquee={data.insights_marquee}
-            podcast={data.podcast}
-            video={data.video}
-          />
-        )}
-        {activeTab === 'habits' && !data.search?.available && (
-          <div className="py-12 text-center text-muted-foreground">搜索/习惯数据不可用</div>
+        {activeTab === 'habits' && (
+          <Suspense fallback={<div className="space-y-4 py-6">{Array.from({ length: 3 }).map((_, i) => (<div key={i} className="h-48 animate-pulse rounded-xl bg-muted" />))}</div>}>
+            {data.search?.available ? (
+              <HabitsTab
+                search={data.search}
+                tiers={data.insights_tiers}
+                marquee={data.insights_marquee}
+                podcast={data.podcast}
+                video={data.video}
+              />
+            ) : (
+              <div className="py-12 text-center text-muted-foreground">搜索/习惯数据不可用</div>
+            )}
+          </Suspense>
         )}
       </div>
     </div>

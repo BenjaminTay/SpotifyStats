@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { lazy, Suspense, useMemo, useState } from 'react'
 import { AlertCircle } from 'lucide-react'
 
 import { BillboardSubNav } from '@/components/shared/BillboardSubNav'
@@ -7,14 +7,33 @@ import { useBillboard } from '@/hooks/useBillboard'
 import { cn } from '@/lib/utils'
 import type { BillboardRecords } from '@/types/billboard'
 import { buildCoverMaps } from '@/features/billboard/records/recordsData'
-import {
-  BreakthroughSection,
-  ChampionshipSection,
-  CuriositiesSection,
-  HallOfFameSection,
-  LongevitySection,
-  MarketSection,
-} from '@/features/billboard/records/RecordsSections'
+import { ChampionshipSection } from '@/features/billboard/records/ChampionshipSection'
+
+const LongevitySection = lazy(() =>
+  import('@/features/billboard/records/LongevitySection').then((m) => ({
+    default: m.LongevitySection,
+  })),
+)
+const BreakthroughSection = lazy(() =>
+  import('@/features/billboard/records/BreakthroughSection').then((m) => ({
+    default: m.BreakthroughSection,
+  })),
+)
+const HallOfFameSection = lazy(() =>
+  import('@/features/billboard/records/HallOfFameSection').then((m) => ({
+    default: m.HallOfFameSection,
+  })),
+)
+const CuriositiesSection = lazy(() =>
+  import('@/features/billboard/records/CuriositiesSection').then((m) => ({
+    default: m.CuriositiesSection,
+  })),
+)
+const MarketSection = lazy(() =>
+  import('@/features/billboard/records/MarketSection').then((m) => ({
+    default: m.MarketSection,
+  })),
+)
 
 const RECORD_TABS = [
   { key: 'championship', label: '冠军圣殿' },
@@ -34,6 +53,16 @@ function LoadingSkeleton() {
       <Skeleton className="mb-8 h-[44px] w-48" />
       <Skeleton className="mb-6 h-[40px] w-full rounded-[12px]" />
       {[1, 2, 3].map((i) => <Skeleton key={i} className="mb-5 h-[200px] w-full rounded-[16px]" />)}
+    </div>
+  )
+}
+
+function SectionFallback() {
+  return (
+    <div className="space-y-4">
+      {[1, 2, 3].map((i) => (
+        <Skeleton key={i} className="h-[200px] w-full rounded-[16px]" />
+      ))}
     </div>
   )
 }
@@ -90,19 +119,21 @@ export function RecordsPage() {
         ))}
       </nav>
 
-      {activeTab === 'championship' && <ChampionshipSection rec={rec} covers={covers} />}
-      {activeTab === 'longevity' && <LongevitySection rec={rec} covers={covers} />}
-      {activeTab === 'breakthrough' && <BreakthroughSection rec={rec} covers={covers} />}
-      {activeTab === 'halloffame' && <HallOfFameSection rec={rec} covers={covers} />}
-      {activeTab === 'curiosities' && (
-        <CuriositiesSection
-          rec={rec}
-          covers={covers}
-          trackSummary={data.track_summary}
-          artistTrackCounts={data.artist_track_counts}
-        />
-      )}
-      {activeTab === 'market' && <MarketSection rec={rec} covers={covers} />}
+      <Suspense fallback={<SectionFallback />}>
+        {activeTab === 'championship' && <ChampionshipSection rec={rec} covers={covers} />}
+        {activeTab === 'longevity' && <LongevitySection rec={rec} covers={covers} />}
+        {activeTab === 'breakthrough' && <BreakthroughSection rec={rec} covers={covers} />}
+        {activeTab === 'halloffame' && <HallOfFameSection rec={rec} covers={covers} />}
+        {activeTab === 'curiosities' && (
+          <CuriositiesSection
+            rec={rec}
+            covers={covers}
+            trackSummary={data.track_summary}
+            artistTrackCounts={data.artist_track_counts}
+          />
+        )}
+        {activeTab === 'market' && <MarketSection rec={rec} covers={covers} />}
+      </Suspense>
     </div>
   )
 }

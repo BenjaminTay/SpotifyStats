@@ -6,7 +6,14 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { queryKeys } from '@/api/query-keys'
 import { api } from '@/lib/api'
 import { useBillboardWeekly } from '@/hooks/useBillboard'
-import { useWeeklyDigest } from '@/hooks/useAiInsights'
+import {
+  useWeeklyDigest,
+  useMonthlyPersonality,
+  useYearlyStory,
+  useChatSessions,
+  useCreateSession,
+  useDeleteSession,
+} from '@/hooks/useAiInsights'
 import { useSettings } from '@/hooks/useSettings'
 
 function createClient() {
@@ -109,5 +116,126 @@ describe('Phase 5 query hook migration', () => {
 
     act(() => result.current.refetch())
     await waitFor(() => expect(api.get).toHaveBeenCalledTimes(3))
+  })
+})
+
+describe('AI Insights query hooks', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  const makeClient = () =>
+    new QueryClient({
+      defaultOptions: {
+        queries: { retry: false, gcTime: Infinity },
+        mutations: { retry: false },
+      },
+    })
+
+  function wrapperFor(client: QueryClient) {
+    return function Wrapper({ children }: { children: ReactNode }) {
+      return <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    }
+  }
+
+  it('weekly digest is disabled when enabled=false', async () => {
+    const client = makeClient()
+    vi.spyOn(api, 'get').mockResolvedValue({ success: true, report: null, cached: false })
+
+    renderHook(() => useWeeklyDigest('2026-01-01', '2026-01-07', false), {
+      wrapper: wrapperFor(client),
+    })
+
+    // Give it a tick to settle — should never fire
+    await new Promise((r) => setTimeout(r, 50))
+    expect(api.get).not.toHaveBeenCalled()
+  })
+
+  it('monthly personality stores response in cache', async () => {
+    const client = makeClient()
+    const response = {
+      success: true,
+      report: 'month report',
+      cached: false,
+      cached_at: null,
+      entities: { artists: ['A'], tracks: [] },
+      error: null,
+    }
+    vi.spyOn(api, 'get').mockResolvedValue(response)
+
+    const { result } = renderHook(() => useMonthlyPersonality('2026-01', 2026), {
+      wrapper: wrapperFor(client),
+    })
+
+    await waitFor(() => expect(result.current.loading).toBe(false))
+    expect(result.current.data).toEqual(response)
+    expect(api.get).toHaveBeenCalledWith(
+      '/ai-insights/monthly-personality',
+      { month: '2026-01', year: 2026 },
+      120_000,
+      expect.any(AbortSignal),
+    )
+  })
+
+  it('yearly story maps error to friendly message', async () => {
+    const client = makeClient()
+    vi.spyOn(api, 'get').mockRejectedValue(new Error('503'))
+
+    const { result } = renderHook(() => useYearlyStory(2026), {
+      wrapper: wrapperFor(client),
+    })
+
+    await waitFor(() => expect(result.current.loading).toBe(false))
+    expect(result.current.error).toBe('AI 功能未配置，请在设置中配置 LLM')
+  })
+
+  it('yearly story is disabled when year is invalid', async () => {
+    const client = makeClient()
+    vi.spyOn(api, 'get').mockResolvedValue({})
+
+    renderHook(() => useYearlyStory(0), {
+      wrapper: wrapperFor(client),
+    })
+
+    await new Promise((r) => setTimeout(r, 50))
+    expect(api.get).not.toHaveBeenCalled()
+  })
+
+  it('chat sessions query returns an empty array when no sessions exist', async () => {
+    const client = makeClient()
+    vi.spyOn(api, 'get').mockResolvedValue({ success: true, data: [] })
+
+    const { result } = renderHook(() => useChatSessions(), {
+      wrapper: wrapperFor(client),
+    })
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    expect(result.current.data).toEqual([])
+  })
+
+  it('create session calls API and returns session data', async () => {
+    const client = makeClient()
+    const sessionResponse = { success: true, data: { id: 1, title: 'test', created_at: '', updated_at: '', messages: [] } }
+    vi.spyOn(api, 'post').mockResolvedValue(sessionResponse)
+
+    const { result } = renderHook(() => useCreateSession(), {
+      wrapper: wrapperFor(client),
+    })
+
+    const data = await act(() => result.current.mutateAsync('new session'))
+    expect(api.post).toHaveBeenCalledWith('/chat/sessions', { title: 'new session' })
+    expect(data).toEqual(sessionResponse)
+  })
+
+  it('delete session calls API with correct session id', async () => {
+    const client = makeClient()
+    vi.spyOn(api, 'del').mockResolvedValue({ success: true, data: null })
+
+    const { result } = renderHook(() => useDeleteSession(), {
+      wrapper: wrapperFor(client),
+    })
+
+    await act(() => result.current.mutateAsync(1))
+    expect(api.del).toHaveBeenCalledWith('/chat/sessions/1')
   })
 })
