@@ -286,6 +286,7 @@ def import_data(
                     1 if rec.get("offline") else 0,
                     1 if rec.get("incognito_mode") else 0,
                     "audio",
+                    album_id,  # source_album_id from playback-time album
                 )
             )
 
@@ -294,8 +295,8 @@ def import_data(
                 conn.executemany(
                     """INSERT INTO plays(ts, ts_year, ts_month, ts_week, ts_dow, ts_hour,
                        ts_date, platform, ms_played, conn_country, track_id,
-                       reason_start, reason_end, shuffle, skipped, offline, incognito_mode, content_type)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                       reason_start, reason_end, shuffle, skipped, offline, incognito_mode, content_type, source_album_id)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     plays_batch,
                 )
                 conn.commit()
@@ -317,8 +318,8 @@ def import_data(
             conn.executemany(
                 """INSERT INTO plays(ts, ts_year, ts_month, ts_week, ts_dow, ts_hour,
                    ts_date, platform, ms_played, conn_country, track_id,
-                   reason_start, reason_end, shuffle, skipped, offline, incognito_mode, content_type)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                   reason_start, reason_end, shuffle, skipped, offline, incognito_mode, content_type, source_album_id)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 plays_batch,
             )
             conn.commit()
@@ -389,6 +390,7 @@ def import_data(
                         1 if rec.get("offline") else 0,
                         1 if rec.get("incognito_mode") else 0,
                         "video",
+                        album_id,
                     )
                 )
 
@@ -396,8 +398,8 @@ def import_data(
                     conn.executemany(
                         """INSERT INTO plays(ts, ts_year, ts_month, ts_week, ts_dow, ts_hour,
                            ts_date, platform, ms_played, conn_country, track_id,
-                           reason_start, reason_end, shuffle, skipped, offline, incognito_mode, content_type)
-                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                           reason_start, reason_end, shuffle, skipped, offline, incognito_mode, content_type, source_album_id)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                         plays_batch,
                     )
                     conn.commit()
@@ -417,8 +419,8 @@ def import_data(
                 conn.executemany(
                     """INSERT INTO plays(ts, ts_year, ts_month, ts_week, ts_dow, ts_hour,
                        ts_date, platform, ms_played, conn_country, track_id,
-                       reason_start, reason_end, shuffle, skipped, offline, incognito_mode, content_type)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                       reason_start, reason_end, shuffle, skipped, offline, incognito_mode, content_type, source_album_id)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     plays_batch,
                 )
                 conn.commit()

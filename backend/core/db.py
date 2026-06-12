@@ -55,7 +55,8 @@ CREATE TABLE IF NOT EXISTS plays (
     skipped          INTEGER NOT NULL DEFAULT 0,
     offline          INTEGER NOT NULL DEFAULT 0,
     incognito_mode   INTEGER NOT NULL DEFAULT 0,
-    content_type     TEXT NOT NULL DEFAULT 'audio'
+    content_type     TEXT NOT NULL DEFAULT 'audio',
+    source_album_id  INTEGER REFERENCES albums(album_id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_plays_year     ON plays(ts_year);
@@ -67,6 +68,7 @@ CREATE INDEX IF NOT EXISTS idx_plays_skipped  ON plays(skipped);
 CREATE INDEX IF NOT EXISTS idx_plays_dow_hour ON plays(ts_dow, ts_hour);
 CREATE INDEX IF NOT EXISTS idx_plays_year_skipped_track ON plays(ts_year, skipped, track_id, ms_played);
 CREATE INDEX IF NOT EXISTS idx_plays_ts ON plays(ts);
+CREATE INDEX IF NOT EXISTS idx_plays_source_album ON plays(source_album_id);
 CREATE INDEX IF NOT EXISTS idx_tracks_name ON tracks(track_name);
 CREATE INDEX IF NOT EXISTS idx_albums_name ON albums(album_name);
 CREATE TABLE IF NOT EXISTS track_albums (
@@ -135,9 +137,11 @@ CREATE TABLE IF NOT EXISTS release_groups (
     canonical_name    TEXT NOT NULL,
     artist_id         INTEGER NOT NULL REFERENCES artists(artist_id),
     primary_album_id  INTEGER REFERENCES albums(album_id),
+    scope             TEXT NOT NULL DEFAULT 'release' CHECK(scope IN ('release', 'composition')),
+    parent_group_id   INTEGER REFERENCES release_groups(group_id),
     is_manual         INTEGER NOT NULL DEFAULT 0,
     created_at        TEXT DEFAULT (datetime('now')),
-    UNIQUE(canonical_name, artist_id)
+    UNIQUE(canonical_name, artist_id, scope)
 );
 
 CREATE TABLE IF NOT EXISTS release_group_members (
@@ -148,6 +152,30 @@ CREATE TABLE IF NOT EXISTS release_group_members (
 
 CREATE INDEX IF NOT EXISTS idx_rgm_album ON release_group_members(album_id);
 CREATE INDEX IF NOT EXISTS idx_rg_artist ON release_groups(artist_id);
+CREATE INDEX IF NOT EXISTS idx_rg_scope ON release_groups(scope);
+CREATE INDEX IF NOT EXISTS idx_rg_parent ON release_groups(parent_group_id);
+
+-- Track version groups (L1/L2/L3 merge)
+CREATE TABLE IF NOT EXISTS track_groups (
+    group_id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    canonical_name    TEXT NOT NULL,
+    primary_track_id  INTEGER REFERENCES tracks(track_id),
+    scope             TEXT NOT NULL DEFAULT 'recording' CHECK(scope IN ('recording', 'composition')),
+    parent_group_id   INTEGER REFERENCES track_groups(group_id),
+    is_manual         INTEGER NOT NULL DEFAULT 0,
+    created_at        TEXT DEFAULT (datetime('now')),
+    UNIQUE(canonical_name, scope)
+);
+
+CREATE TABLE IF NOT EXISTS track_group_members (
+    group_id   INTEGER REFERENCES track_groups(group_id),
+    track_id   INTEGER REFERENCES tracks(track_id),
+    UNIQUE(group_id, track_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_track_groups_scope ON track_groups(scope);
+CREATE INDEX IF NOT EXISTS idx_track_groups_parent ON track_groups(parent_group_id);
+CREATE INDEX IF NOT EXISTS idx_track_group_members_track ON track_group_members(track_id);
 
 -- Spotify metadata tables (independent from import cycle, survive data re-imports)
 CREATE TABLE IF NOT EXISTS spotify_track_meta (
@@ -503,11 +531,21 @@ def base_filters(
     return " AND ".join(clauses), params
 
 
-def merge_consecutive_plays(df: pd.DataFrame, min_ms: int) -> pd.DataFrame:
+def merge_consecutive_plays(
+    df: pd.DataFrame,
+    min_ms: int,
+    max_gap_minutes: int | None = None,
+    boundary_column: str | None = None,
+) -> pd.DataFrame:
     """Merge consecutive plays of the same track into logical play counts.
 
     Consecutive rows with the same track_id are treated as one listening session.
     Logical play count = total_ms // duration_ms + (1 if remainder >= min_ms else 0).
+
+    Group boundaries are introduced by:
+    - track_id change (always)
+    - timestamp gap > max_gap_minutes (when provided)
+    - boundary_column value change (when provided, e.g. source_album_id)
 
     Rows with NULL/0 duration_ms are passed through unchanged (can't merge).
     Requires DataFrame sorted by ts, with columns: track_id, ms_played, duration_ms.
@@ -518,7 +556,19 @@ def merge_consecutive_plays(df: pd.DataFrame, min_ms: int) -> pd.DataFrame:
         return df
 
     df = df.copy()
-    df["_merge_group"] = (df["track_id"] != df["track_id"].shift(1)).cumsum()
+
+    track_changed = df["track_id"] != df["track_id"].shift(1)
+
+    gap_changed = pd.Series(False, index=df.index)
+    if max_gap_minutes is not None and "ts" in df.columns:
+        ts = pd.to_datetime(df["ts"])
+        gap_changed = ts.diff().dt.total_seconds().gt(max_gap_minutes * 60).fillna(False)
+
+    boundary_changed = pd.Series(False, index=df.index)
+    if boundary_column and boundary_column in df.columns:
+        boundary_changed = df[boundary_column] != df[boundary_column].shift(1)
+
+    df["_merge_group"] = (track_changed | gap_changed | boundary_changed).cumsum()
 
     result_rows = []
     for _gid, group in df.groupby("_merge_group", sort=False):
@@ -612,6 +662,8 @@ def _load_plays_cached(
     columns: str,
     extra_where: str,
     extra_params: tuple,
+    dynamic_threshold: bool = False,
+    max_merge_gap_minutes: int | None = None,
 ) -> pd.DataFrame:
     """Cacheable inner loader — connection is created internally so it
     doesn't appear in the LRU cache key."""
@@ -637,7 +689,7 @@ def _load_plays_cached(
 
         if columns == "*":
             if join_albums:
-                cols = "p.*, t.track_name, t.spotify_track_uri, a.artist_name, al.album_name"
+                cols = "p.*, t.track_name, t.spotify_track_uri, t.album_id AS track_album_id, a.artist_name, al.album_name, al_src.album_name AS source_album_name"
             else:
                 cols = "p.*, t.track_name, t.spotify_track_uri, a.artist_name"
             if filtered:
@@ -650,7 +702,8 @@ def _load_plays_cached(
                 "FROM plays p "
                 "LEFT JOIN tracks t ON p.track_id = t.track_id "
                 "LEFT JOIN artists a ON t.artist_id = a.artist_id "
-                "LEFT JOIN albums al ON t.album_id = al.album_id"
+                "LEFT JOIN albums al ON t.album_id = al.album_id "
+                "LEFT JOIN albums al_src ON p.source_album_id = al_src.album_id"
             )
         else:
             from_clause = (
@@ -668,9 +721,11 @@ def _load_plays_cached(
         df = pd.read_sql_query(sql, conn, params=params)
 
         if filtered and merge_enabled:
-            df = merge_consecutive_plays(df, min_ms)
+            df = merge_consecutive_plays(df, min_ms, max_gap_minutes=max_merge_gap_minutes)
             if min_ms > 0:
-                df = df[df["ms_played"] >= min_ms]
+                from backend.domains.playback.counting import filter_effective_plays
+
+                df = filter_effective_plays(df, min_ms=min_ms, dynamic_threshold=dynamic_threshold)
 
         return df
     finally:
@@ -687,6 +742,8 @@ def load_plays(
     join_albums: bool = True,
     filtered: bool = True,
     merge_enabled: bool = True,
+    dynamic_threshold: bool = False,
+    max_merge_gap_minutes: int | None = None,
 ):
     """统一的播放数据加载函数，所有统计页面复用。
 
@@ -698,6 +755,9 @@ def load_plays(
 
     当 merge_enabled=True 时，先合并连续同曲目播放再过滤 ms_played，
     避免碎片化播放片段被误丢弃。
+
+    dynamic_threshold=True 启用动态有效播放阈值（长曲目需更高播放比例）。
+    max_merge_gap_minutes 设置连续播放合并的最大间隔，超时则视为不同 session。
     """
     return _load_plays_cached(
         min_ms=min_ms,
@@ -708,6 +768,8 @@ def load_plays(
         columns=columns,
         extra_where=extra_where,
         extra_params=tuple(extra_params or ()),
+        dynamic_threshold=dynamic_threshold,
+        max_merge_gap_minutes=max_merge_gap_minutes,
     ).copy()
 
 
@@ -721,6 +783,8 @@ def _load_plays_for_artists_cached(
     columns: str,
     extra_where: str,
     extra_params: tuple,
+    dynamic_threshold: bool = False,
+    max_merge_gap_minutes: int | None = None,
 ) -> pd.DataFrame:
     """Same as _load_plays_cached but fans out through track_artists after merge
     so featured artists get their own rows. One play on a multi-artist track
@@ -783,9 +847,11 @@ def _load_plays_for_artists_cached(
         df = pd.read_sql_query(sql, conn, params=params)
 
         if filtered and merge_enabled:
-            df = merge_consecutive_plays(df, min_ms)
+            df = merge_consecutive_plays(df, min_ms, max_gap_minutes=max_merge_gap_minutes)
             if min_ms > 0:
-                df = df[df["ms_played"] >= min_ms]
+                from backend.domains.playback.counting import filter_effective_plays
+
+                df = filter_effective_plays(df, min_ms=min_ms, dynamic_threshold=dynamic_threshold)
 
         # Step 2: Fan out through track_artists for multi-artist attribution
         track_artists_df = pd.read_sql_query("SELECT track_id, artist_id FROM track_artists", conn)
@@ -811,6 +877,8 @@ def load_plays_for_artists(
     join_albums: bool = True,
     filtered: bool = True,
     merge_enabled: bool = True,
+    dynamic_threshold: bool = False,
+    max_merge_gap_minutes: int | None = None,
 ):
     """Load plays with multi-artist fan-out for artist-statistics queries.
 
@@ -830,6 +898,8 @@ def load_plays_for_artists(
         columns=columns,
         extra_where=extra_where,
         extra_params=tuple(extra_params or ()),
+        dynamic_threshold=dynamic_threshold,
+        max_merge_gap_minutes=max_merge_gap_minutes,
     ).copy()
 
 
@@ -1032,7 +1102,9 @@ def build_aggregations(
     # Merge consecutive same-track plays, then apply ms_played threshold
     df = merge_consecutive_plays(df, min_ms)
     if min_ms > 0:
-        df = df[df["ms_played"] >= min_ms]
+        from backend.domains.playback.counting import filter_effective_plays
+
+        df = filter_effective_plays(df, min_ms=min_ms, dynamic_threshold=False)
 
     if df.empty:
         conn.execute("DELETE FROM agg_weekly_tracks")

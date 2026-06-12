@@ -61,6 +61,7 @@ def _compute_billboard_data_cached(
     bb_week_start_hour=0,
     year_start=None,
     year_end=None,
+    merge_level=2,
 ):
     """Compute all Billboard data in one call.
 
@@ -109,6 +110,7 @@ def _compute_billboard_data_cached(
             bb_week_start_hour,
             year_start,
             year_end,
+            merge_level,
         )
     )
 
@@ -198,6 +200,7 @@ def compute_billboard_data(
     bb_week_start_hour=0,
     year_start=None,
     year_end=None,
+    merge_level=2,
 ):
     """Compute all Billboard data with normalized cache keys."""
     return _compute_billboard_data_cached(
@@ -210,6 +213,7 @@ def compute_billboard_data(
         bb_week_start_hour,
         year_start,
         year_end,
+        merge_level,
     )
 
 

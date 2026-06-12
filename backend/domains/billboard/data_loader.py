@@ -49,7 +49,8 @@ def _try_load_from_agg(min_ms, music_only, week_start_dow, week_start_hour):
 def load_billboard_raw(min_ms, music_only, week_start_dow, week_start_hour):
     """Load filtered plays and compute billboard_week with configurable boundary."""
     conn = get_db()
-    _f, _fp = base_filters(min_ms=min_ms, music_only=music_only)
+    # Load with min_ms=0 to preserve short fragments for merge-then-filter
+    _f, _fp = base_filters(min_ms=0, music_only=music_only)
     _w = f"WHERE {_f}" if _f else ""
     df = pd.read_sql_query(
         f"""SELECT p.ts, p.ts_date, p.ts_dow, p.ts_hour, p.ms_played, p.track_id,
@@ -74,8 +75,12 @@ def load_billboard_raw(min_ms, music_only, week_start_dow, week_start_hour):
     df["ts_date_dt"] = pd.to_datetime(df["ts_date"])
     df["billboard_week"] = (df["ts_date_dt"] - pd.to_timedelta(df["days_back"], unit="D")).dt.date
 
-    # Merge consecutive same-track plays into logical play counts
+    # Merge consecutive same-track plays, then apply ms_played threshold
     df = merge_consecutive_plays(df, min_ms)
+    if min_ms > 0:
+        from backend.domains.playback.counting import filter_effective_plays
+
+        df = filter_effective_plays(df, min_ms=min_ms, dynamic_threshold=False)
 
     return df
 
@@ -88,7 +93,8 @@ def load_billboard_raw_for_artists(min_ms, music_only, week_start_dow, week_star
     Only use for artist-grouped Billboard computations.
     """
     conn = get_db()
-    _f, _fp = base_filters(min_ms=min_ms, music_only=music_only)
+    # Load with min_ms=0 to preserve short fragments for merge-then-filter
+    _f, _fp = base_filters(min_ms=0, music_only=music_only)
     _w = f"WHERE {_f}" if _f else ""
 
     # Step 1: Load single-artist data (same as load_billboard_raw)
@@ -114,8 +120,12 @@ def load_billboard_raw_for_artists(min_ms, music_only, week_start_dow, week_star
     df["ts_date_dt"] = pd.to_datetime(df["ts_date"])
     df["billboard_week"] = (df["ts_date_dt"] - pd.to_timedelta(df["days_back"], unit="D")).dt.date
 
-    # Merge before fan-out to keep merge_consecutive_plays correct
+    # Merge before fan-out, then filter to align with pre-aggregation path
     df = merge_consecutive_plays(df, min_ms)
+    if min_ms > 0:
+        from backend.domains.playback.counting import filter_effective_plays
+
+        df = filter_effective_plays(df, min_ms=min_ms, dynamic_threshold=False)
 
     # Step 2: Fan out through track_artists
     track_artists_df = pd.read_sql_query("SELECT track_id, artist_id FROM track_artists", conn)

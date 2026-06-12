@@ -151,11 +151,12 @@ export function preloadWeeklyData(): void {
   })
 }
 
-export function useBillboardWeekly(initialWeek?: string | null) {
+export function useBillboardWeekly(initialWeek?: string | null, mergeLevel = 2) {
   const [weekIndex, setWeekIndexState] = useState(cachedWeeklyIndex)
+  const params = { merge_level: mergeLevel }
   const query = useQuery({
-    queryKey: queryKeys.billboard.weekly(),
-    queryFn: () => api.get<BillboardWeeklyResponse>('/billboard/weekly'),
+    queryKey: queryKeys.billboard.weekly(params),
+    queryFn: () => api.get<BillboardWeeklyResponse>('/billboard/weekly', params),
   })
 
   const setWeekIndex = useCallback((idx: number) => {

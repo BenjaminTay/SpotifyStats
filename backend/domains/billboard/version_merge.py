@@ -1,5 +1,7 @@
 """Album version merge utilities for Billboard computation."""
 
+import pandas as pd
+
 from backend.core.db import get_db
 from backend.domains.billboard.data_loader import _get_album_canonical_map
 
@@ -70,13 +72,36 @@ def _resolve_album_members(album_name, artist_name):
     return [m[0] for m in members], canonical
 
 
-def _apply_album_release_groups(df):
+def _apply_album_release_groups(df, merge_level: int = 2):
     """将 release_group 成员的 album_name 替换为 canonical_name 并重新聚合。
 
     多版本专辑（豪华版、Acoustic版等）的周播放量被合并到 canonical name 下，
     使榜单排名反映合并后的成绩。
+
+    merge_level=1: 不合并（原样返回）
+    merge_level=2: scope='release' groups（默认）
+    merge_level=3: scope='composition' groups
     """
-    mapping = _get_album_canonical_map()
+    if merge_level <= 1:
+        return df
+
+    # Load mapping with scope filter
+    from backend.core.db import get_db
+
+    conn = get_db()
+    scope = "composition" if merge_level >= 3 else "release"
+    mapping = pd.read_sql_query(
+        """SELECT al.album_name, a.artist_name, rg.canonical_name
+           FROM release_group_members rgm
+           JOIN release_groups rg ON rgm.group_id = rg.group_id
+           JOIN albums al ON rgm.album_id = al.album_id
+           JOIN artists a ON al.artist_id = a.artist_id
+           WHERE rg.scope = ?""",
+        conn,
+        params=(scope,),
+    )
+    conn.close()
+
     if mapping.empty:
         return df
 

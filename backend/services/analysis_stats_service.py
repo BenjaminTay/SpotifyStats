@@ -31,6 +31,53 @@ def _hours(series) -> float:
     return float(series.sum() / 3_600_000)
 
 
+def _resolve_album_category(conn: sqlite3.Connection, album_name: str, artist_name: str) -> str:
+    """Look up album category from metadata. Returns 'lp', 'ep', 'compilation', 'single', or 'unknown'."""
+    from backend.domains.playback.album_type import classify_album
+
+    row = conn.execute(
+        """SELECT sam.album_type, sam.total_tracks
+           FROM albums al
+           JOIN artists a ON al.artist_id = a.artist_id
+           LEFT JOIN tracks t ON t.album_id = al.album_id
+           LEFT JOIN spotify_track_meta stm
+             ON REPLACE(t.spotify_track_uri, 'spotify:track:', '') = stm.spotify_track_id
+           LEFT JOIN spotify_album_meta sam ON (
+             stm.spotify_album_id = sam.spotify_album_id
+             OR 'spotify:album:' || stm.spotify_album_id = sam.spotify_album_id
+           )
+           WHERE al.album_name = ? AND a.artist_name = ?
+           LIMIT 1""",
+        (album_name, artist_name),
+    ).fetchone()
+    if row is None:
+        # Check if this is a release group canonical name — resolve from a member album
+        row = conn.execute(
+            """SELECT sam.album_type, sam.total_tracks
+               FROM release_groups rg
+               JOIN release_group_members rgm ON rg.group_id = rgm.group_id
+               JOIN albums al ON rgm.album_id = al.album_id
+               LEFT JOIN tracks t ON t.album_id = al.album_id
+               LEFT JOIN spotify_track_meta stm
+                 ON REPLACE(t.spotify_track_uri, 'spotify:track:', '') = stm.spotify_track_id
+               LEFT JOIN spotify_album_meta sam ON (
+                 stm.spotify_album_id = sam.spotify_album_id
+                 OR 'spotify:album:' || stm.spotify_album_id = sam.spotify_album_id
+               )
+               WHERE rg.canonical_name = ? AND rg.scope = 'release'
+               LIMIT 1""",
+            (album_name,),
+        ).fetchone()
+    if row is None:
+        return "unknown"
+    album_type, total_tracks = row
+    # Estimate total duration from album tracks if available
+    total_ms = None
+    if total_tracks:
+        total_ms = total_tracks * 210_000  # rough estimate: ~3.5 min avg track
+    return classify_album(album_type, total_tracks=total_tracks, total_ms=total_ms)
+
+
 def resolve_period(
     df: pd.DataFrame, period: str, start_date: str | None, end_date: str | None
 ) -> dict:
@@ -359,10 +406,31 @@ def _build_analysis_stats(
     }
 
 
-def _chart_agg(df: pd.DataFrame, entity: str) -> pd.DataFrame:
+def _chart_agg(
+    df: pd.DataFrame, entity: str, conn: sqlite3.Connection | None = None, merge_level: int = 2
+) -> pd.DataFrame:
     if entity == "track":
+        df_agg = df.copy()
+        group_cols = ["track_id", "track_name", "artist_name", "album_name"]
+
+        # Apply track group canonicalization before grouping
+        if merge_level > 1 and conn is not None:
+            from backend.domains.playback.track_groups import load_track_group_keys
+
+            keys = load_track_group_keys(conn, merge_level=merge_level)
+            if not keys.empty:
+                key_map = keys.set_index("track_id")
+                df_agg["_track_agg_id"] = df_agg["track_id"].map(key_map["track_agg_id"])
+                df_agg["_track_agg_name"] = df_agg["track_id"].map(key_map["track_agg_name"])
+                mask = df_agg["_track_agg_id"].notna()
+                df_agg.loc[mask, "track_id"] = df_agg.loc[mask, "_track_agg_id"].astype(int)
+                df_agg.loc[mask, "track_name"] = df_agg.loc[mask, "_track_agg_name"]
+                df_agg = df_agg.drop(columns=["_track_agg_id", "_track_agg_name"])
+                # Drop album_name from groupby — canonical tracks span albums
+                group_cols = ["track_id", "track_name", "artist_name"]
+
         return (
-            df.groupby(["track_id", "track_name", "artist_name", "album_name"])
+            df_agg.groupby(group_cols)
             .agg(
                 plays=("play_id", "count"),
                 hours=("ms_played", _hours),
@@ -372,8 +440,36 @@ def _chart_agg(df: pd.DataFrame, entity: str) -> pd.DataFrame:
             .reset_index()
         )
     if entity == "album":
+        df_agg = df.copy()
+        # Use source album name for grouping when available (playback-time attribution)
+        if "source_album_name" in df_agg.columns:
+            src_mask = df_agg["source_album_name"].notna()
+            df_agg.loc[src_mask, "album_name"] = df_agg.loc[src_mask, "source_album_name"]
+
+        # Apply release group canonicalization before grouping
+        if merge_level > 1 and "source_album_id" in df_agg.columns and conn is not None:
+            from backend.domains.playback.release_groups import load_album_release_group_map
+
+            mapping = load_album_release_group_map(conn, merge_level=merge_level)
+            if not mapping.empty:
+                # Use source_album_id, fall back to track_album_id for NULL cases
+                track_aid = df_agg.get("track_album_id")
+                if track_aid is not None:
+                    df_agg["_album_id_for_rg"] = df_agg["source_album_id"].fillna(track_aid)
+                else:
+                    df_agg["_album_id_for_rg"] = df_agg["source_album_id"]
+                album_to_canonical = (
+                    mapping[["album_id", "canonical_name"]]
+                    .drop_duplicates(subset=["album_id"])
+                    .set_index("album_id")["canonical_name"]
+                )
+                df_agg["_canonical"] = df_agg["_album_id_for_rg"].map(album_to_canonical)
+                mask = df_agg["_canonical"].notna()
+                df_agg.loc[mask, "album_name"] = df_agg.loc[mask, "_canonical"]
+                df_agg = df_agg.drop(columns=["_canonical", "_album_id_for_rg"])
+
         return (
-            df.groupby(["album_name", "artist_name"])
+            df_agg.groupby(["album_name", "artist_name"])
             .agg(
                 plays=("play_id", "count"),
                 hours=("ms_played", _hours),
@@ -406,12 +502,26 @@ def chart_rows(
     metric: str,
     limit: int | None = None,
     offset: int = 0,
+    merge_level: int = 2,
 ) -> tuple[int, list[dict]]:
     if df.empty:
         return 0, []
     entity = entity if entity in {"track", "album", "artist"} else "track"
     metric = metric if metric in {"plays", "hours"} else "plays"
-    agg = _chart_agg(df, entity)
+    agg = _chart_agg(df, entity, conn=conn, merge_level=merge_level)
+    if agg.empty:
+        return 0, []
+
+    # Filter singles from default album chart (R13)
+    if entity == "album" and conn is not None:
+        from backend.domains.playback.album_type import is_album_chart_eligible
+
+        agg["_category"] = agg.apply(
+            lambda r: _resolve_album_category(conn, r["album_name"], r["artist_name"]), axis=1
+        )
+        agg = agg[agg["_category"].apply(is_album_chart_eligible)].drop(columns=["_category"])
+    # end filter
+
     if agg.empty:
         return 0, []
 
@@ -455,19 +565,25 @@ def chart_rows(
                     "track_id": tid,
                     "track_name": r["track_name"],
                     "artist_name": r["artist_name"],
-                    "album_name": r["album_name"],
+                    "album_name": r.get("album_name", ""),
                     "cover_url": track_covers.get(tid),
                 }
             )
             if tid in track_names_map:
                 row["artist_names"] = track_names_map[tid]
         elif entity == "album":
+            category = (
+                _resolve_album_category(conn, r["album_name"], r["artist_name"])
+                if conn is not None
+                else "unknown"
+            )
             row.update(
                 {
                     "album_name": r["album_name"],
                     "artist_name": r["artist_name"],
                     "unique_tracks": int(r["unique_tracks"]),
                     "cover_url": album_covers.get((r["album_name"], r["artist_name"])),
+                    "album_category": category,
                 }
             )
         else:
@@ -495,6 +611,7 @@ def get_analysis_charts(
     metric: str = "plays",
     limit: int = 100,
     offset: int = 0,
+    merge_level: int = 2,
 ) -> dict:
     if conn is not None:
         return _get_analysis_charts_cached(
@@ -508,6 +625,7 @@ def get_analysis_charts(
             metric,
             limit,
             offset,
+            merge_level,
         )
 
 
@@ -523,6 +641,7 @@ def _get_analysis_charts_cached(
     metric: str = "plays",
     limit: int = 100,
     offset: int = 0,
+    merge_level: int = 2,
 ) -> dict:
     conn = get_db()
     try:
@@ -538,6 +657,7 @@ def _get_analysis_charts_cached(
             metric,
             limit,
             offset,
+            merge_level,
         )
     finally:
         conn.close()
@@ -555,6 +675,7 @@ def _build_analysis_charts(
     metric: str = "plays",
     limit: int = 100,
     offset: int = 0,
+    merge_level: int = 2,
 ) -> dict:
     _, df, resolved = load_period_plays(
         conn, min_ms, music_only, merge_enabled, period, start_date, end_date
@@ -570,9 +691,9 @@ def _build_analysis_charts(
             end_date,
             _loader=load_plays_for_artists,
         )
-        total, rows = chart_rows(conn, df_artist, entity, metric, limit, offset)
+        total, rows = chart_rows(conn, df_artist, entity, metric, limit, offset, merge_level)
     else:
-        total, rows = chart_rows(conn, df, entity, metric, limit, offset)
+        total, rows = chart_rows(conn, df, entity, metric, limit, offset, merge_level)
     return {
         "period": resolved,
         "entity": entity if entity in {"track", "album", "artist"} else "track",

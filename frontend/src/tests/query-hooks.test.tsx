@@ -55,7 +55,7 @@ describe('Phase 5 query hook migration', () => {
     await waitFor(() => expect(result.current.loading).toBe(false))
 
     expect(api.get).toHaveBeenCalledTimes(1)
-    expect(client.getQueryData(queryKeys.billboard.weekly({}))).toBe(weekly)
+    expect(client.getQueryData(queryKeys.billboard.weekly({ merge_level: 2 }))).toBe(weekly)
     expect(result.current.selectedWeek).toBe('2026-05-24')
   })
 

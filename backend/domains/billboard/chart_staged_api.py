@@ -18,6 +18,7 @@ def compute_weekly_data(
     bb_week_start_hour=0,
     year_start=None,
     year_end=None,
+    merge_level=2,
 ):
     """Compute weekly rankings + meta only (no summaries, no records)."""
     return _compute_weekly_data_cached(
@@ -30,6 +31,7 @@ def compute_weekly_data(
         bb_week_start_hour,
         year_start,
         year_end,
+        merge_level,
     )
 
 

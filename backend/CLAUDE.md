@@ -8,8 +8,9 @@ FastAPI 后端采用四层分离：**api/**（路由 + Depends 依赖注入）�
 
 ### 依赖注入 (`backend/dependencies.py`)
 
-- `PlayFilters` — 标准播放过滤（`min_ms`, `music_only`, `merge_enabled`）
+- `PlayFilters` — 标准播放过滤（`min_ms`, `music_only`, `merge_enabled`, `dynamic_threshold`, `max_merge_gap_minutes`）
 - `BillboardFilters` — 继承播放过滤 + Billboard 参数（`bb_top_n`, `bb_week_start_dow`, `year_start/end`）
+- `MergeConfig` — 版本合并严格度（`merge_level`: 1=不合并, 2=recording scope, 3=composition+recording scope）
 - `get_conn()` — 数据库只读连接注入
 
 ### 连接管理
@@ -64,7 +65,7 @@ FastAPI 后端采用四层分离：**api/**（路由 + Depends 依赖注入）�
 
 - `domains/billboard/` — 19 文件：`data_loader.py` / `chart_compute.py`（编排/caching/staged API）+ `chart_ranking.py`（周榜排名）+ `chart_power_score.py`（走势评分）+ `records.py`（facade）+ `records_*.py`（9 个 record 子模块）+ `details.py` / `versus.py` / `entity_lists.py` / `repository.py` / `version_merge.py`
 - `domains/settings/repository.py` — Settings 表 CRUD
-- `domains/playback/repository.py` — 播放数据查询封装
+- `domains/playback/` — `repository.py`（播放数据查询封装）/ `counting.py`（有效播放判定）/ `merge_levels.py`（L1/L2/L3 规范化）/ `track_groups.py`（track group 聚合键加载）/ `release_groups.py`（发行版本合并键）/ `album_type.py`（专辑类型分类）
 - `domains/enrichment/repository.py` — 歌词/Wikipedia/LLM 缓存表访问
 - `domains/community/` — 榜单社区模拟 X 时间线：`accounts.py`（10 个模拟资讯账号）+ `post_types.py`（18 种帖子类型/7 种精选类型/模板/评分）+ `historical_state.py`（逐周累计历史状态追踪器，去重计数）+ `feed_generator.py`（编排器，~600 行）+ `feed_helpers.py`（格式/ID/指标工具）+ `feed_data.py`（榜单数据加载）+ `feed_weekly.py`（每周速报）+ `feed_records.py`（纪录/里程碑）+ `feed_personal.py`（个人播放/收藏）+ `feed_talk.py`（深度分析）+ `feed_ranking.py`（全时期排名/Power Score）+ `feed_images.py`（封面匹配）
 - `domains/chat/repository.py` — 对话历史持久化：`ChatRepository` 类封装 `chat_sessions`/`chat_messages` 表 CRUD，`ON DELETE CASCADE` 删除会话自动清消息

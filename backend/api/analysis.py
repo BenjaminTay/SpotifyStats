@@ -6,7 +6,7 @@ from sqlite3 import Connection
 
 from fastapi import APIRouter, Depends, Query
 
-from backend.dependencies import PlayFilters, get_conn
+from backend.dependencies import MergeConfig, PlayFilters, get_conn
 from backend.models.analysis import (
     AnalysisChartsResponse,
     AnalysisOverviewResponse,
@@ -60,6 +60,7 @@ def analysis_stats(
 @router.get("/charts", response_model=AnalysisChartsResponse)
 def analysis_charts(
     filters: PlayFilters = Depends(),
+    merge_cfg: MergeConfig = Depends(),
     period: str = Query(default="lifetime"),
     start_date: str | None = Query(default=None),
     end_date: str | None = Query(default=None),
@@ -81,6 +82,7 @@ def analysis_charts(
         metric,
         limit,
         offset,
+        merge_level=merge_cfg.merge_level,
     )
 
 

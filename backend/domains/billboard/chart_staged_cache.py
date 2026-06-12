@@ -48,6 +48,7 @@ def _load_and_rank(
     bb_week_start_hour=0,
     year_start=None,
     year_end=None,
+    merge_level=2,
 ):
     """Load raw data, apply filters, and compute weekly rankings."""
     df_raw = load_billboard_raw(min_ms, music_only, bb_week_start_dow, bb_week_start_hour)
@@ -84,8 +85,12 @@ def _load_and_rank(
             )
         ]
 
-    weekly = compute_weekly_rankings(df_filtered, bb_top_n, pre_agg=_agg_tracks)
-    weekly_album = compute_album_weekly_rankings(df_filtered, bb_album_top_n, pre_agg=_agg_albums)
+    weekly = compute_weekly_rankings(
+        df_filtered, bb_top_n, pre_agg=_agg_tracks, merge_level=merge_level
+    )
+    weekly_album = compute_album_weekly_rankings(
+        df_filtered, bb_album_top_n, pre_agg=_agg_albums, merge_level=merge_level
+    )
 
     if _agg_artists is not None:
         weekly_artist = compute_artist_weekly_rankings(
@@ -160,6 +165,7 @@ def _compute_weekly_data_cached(
     bb_week_start_hour=0,
     year_start=None,
     year_end=None,
+    merge_level=2,
 ):
     """Compute weekly rankings + meta. Returns JSON-safe dict."""
     weekly, weekly_album, weekly_artist, all_weeks_asc, all_weeks_desc, df_filtered = (
@@ -173,6 +179,7 @@ def _compute_weekly_data_cached(
             bb_week_start_hour,
             year_start,
             year_end,
+            merge_level,
         )
     )
 

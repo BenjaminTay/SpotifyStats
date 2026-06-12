@@ -112,6 +112,7 @@ function BillboardSkeleton() {
 export function BillboardPage() {
   const [searchParams] = useSearchParams()
   const initialWeek = searchParams.get('week')
+  const mergeLevel = Number(searchParams.get('merge_level') ?? '2')
 
   const {
     data,
@@ -125,7 +126,7 @@ export function BillboardPage() {
     goNext,
     goPrev,
     goToWeek,
-  } = useBillboardWeekly(initialWeek)
+  } = useBillboardWeekly(initialWeek, mergeLevel)
 
   const [activeTab, setActiveTab] = useState<TabKey>(cachedTab)
 

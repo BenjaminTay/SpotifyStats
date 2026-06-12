@@ -116,3 +116,32 @@ def test_background_jobs_table_exists(empty_db):
         for r in empty_db.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
     }
     assert "background_jobs" in tables
+
+
+def test_plays_has_source_album_id_after_migrations(empty_db):
+    """Migration 13 adds source_album_id column and index."""
+    _ensure_migrations_table(empty_db)
+    sorted_migrations = sorted(MIGRATIONS, key=lambda m: m[0])
+    for _, _, fn in sorted_migrations:
+        try:
+            fn(empty_db)
+        except sqlite3.OperationalError:
+            pass
+    cols = {row[1] for row in empty_db.execute("PRAGMA table_info(plays)").fetchall()}
+    assert "source_album_id" in cols
+
+    indexes = {row[1] for row in empty_db.execute("PRAGMA index_list(plays)").fetchall()}
+    assert "idx_plays_source_album" in indexes
+
+
+def test_release_groups_support_scope_and_parent(empty_db):
+    """Migration 14 adds scope and parent_group_id to release_groups."""
+    _ensure_migrations_table(empty_db)
+    sorted_migrations = sorted(MIGRATIONS, key=lambda m: m[0])
+    for _, _, fn in sorted_migrations:
+        try:
+            fn(empty_db)
+        except sqlite3.OperationalError:
+            pass
+    cols = {row[1] for row in empty_db.execute("PRAGMA table_info(release_groups)").fetchall()}
+    assert {"scope", "parent_group_id"} <= cols

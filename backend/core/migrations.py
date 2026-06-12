@@ -138,6 +138,83 @@ def migrate_012(conn: sqlite3.Connection):
     )
 
 
+@migration(13, "plays_source_album_id")
+def migrate_013(conn: sqlite3.Connection):
+    conn.execute("ALTER TABLE plays ADD COLUMN source_album_id INTEGER REFERENCES albums(album_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_plays_source_album ON plays(source_album_id)")
+    # Backfill: use tracks.album_id for historical data where track_id is not null
+    conn.execute(
+        "UPDATE plays SET source_album_id = ("
+        "SELECT album_id FROM tracks WHERE tracks.track_id = plays.track_id"
+        ") WHERE source_album_id IS NULL AND track_id IS NOT NULL"
+    )
+
+
+@migration(14, "release_groups_scope_parent")
+def migrate_014(conn: sqlite3.Connection):
+    """Rebuild release_groups with scope and parent_group_id columns.
+
+    SQLite cannot alter UNIQUE constraints in place, so we rebuild the table.
+    """
+    conn.execute("PRAGMA foreign_keys=OFF")
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS release_groups_new (
+            group_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            canonical_name TEXT NOT NULL,
+            artist_id INTEGER REFERENCES artists(artist_id),
+            primary_album_id INTEGER REFERENCES albums(album_id),
+            scope TEXT NOT NULL DEFAULT 'release' CHECK(scope IN ('release', 'composition')),
+            parent_group_id INTEGER REFERENCES release_groups_new(group_id),
+            is_manual BOOLEAN DEFAULT 0,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(canonical_name, artist_id, scope)
+        )"""
+    )
+    conn.execute(
+        """INSERT OR IGNORE INTO release_groups_new
+           (group_id, canonical_name, artist_id, primary_album_id, scope, parent_group_id, is_manual, created_at)
+           SELECT group_id, canonical_name, artist_id, primary_album_id, 'release', NULL, is_manual, created_at
+           FROM release_groups"""
+    )
+    conn.execute("DROP TABLE release_groups")
+    conn.execute("ALTER TABLE release_groups_new RENAME TO release_groups")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_rg_artist ON release_groups(artist_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_rg_scope ON release_groups(scope)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_rg_parent ON release_groups(parent_group_id)")
+    conn.execute("PRAGMA foreign_keys=ON")
+
+
+@migration(15, "track_groups")
+def migrate_015(conn: sqlite3.Connection):
+    """Create track_groups and track_group_members tables for L1/L2/L3 merge."""
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS track_groups (
+            group_id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            canonical_name    TEXT NOT NULL,
+            primary_track_id  INTEGER REFERENCES tracks(track_id),
+            scope             TEXT NOT NULL DEFAULT 'recording' CHECK(scope IN ('recording', 'composition')),
+            parent_group_id   INTEGER REFERENCES track_groups(group_id),
+            is_manual         INTEGER NOT NULL DEFAULT 0,
+            created_at        TEXT DEFAULT (datetime('now')),
+            UNIQUE(canonical_name, scope)
+        )"""
+    )
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS track_group_members (
+            group_id   INTEGER REFERENCES track_groups(group_id),
+            track_id   INTEGER REFERENCES tracks(track_id),
+            UNIQUE(group_id, track_id)
+        )"""
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_track_groups_scope ON track_groups(scope)")
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_track_groups_parent ON track_groups(parent_group_id)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_track_group_members_track ON track_group_members(track_id)"
+    )
+
+
 # ── Runner ────────────────────────────────────────────────────────────────
 
 

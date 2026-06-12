@@ -68,6 +68,16 @@ def use_seed_db():
 
 
 @pytest.fixture(scope="function")
+def seed_conn(use_seed_db):
+    """Return a read-only connection to the seed database for direct query tests."""
+    from backend.core.db import get_db
+
+    conn = get_db(readonly=True)
+    yield conn
+    conn.close()
+
+
+@pytest.fixture(scope="function")
 def client(use_seed_db):  # noqa: ARG001 — must activate before client
     """Lightweight TestClient — warmup disabled, no cache pollution."""
     from fastapi.testclient import TestClient

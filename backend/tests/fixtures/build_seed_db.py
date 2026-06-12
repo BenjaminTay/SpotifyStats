@@ -220,6 +220,168 @@ def build() -> str:
         artist_meta,
     )
 
+    # ── Playback Rule Fixture Data (IDs >= 900) ───────────────────────────────
+
+    # Fixture Artists
+    conn.execute("INSERT INTO artists(artist_id, artist_name) VALUES (901, 'Fixture Artist Alpha')")
+    conn.execute("INSERT INTO artists(artist_id, artist_name) VALUES (902, 'Fixture Artist Beta')")
+
+    # Fixture Albums
+    fixture_albums = [
+        (901, "Fixture Single", 901),
+        (902, "Fixture LP", 901),
+        (903, "Fixture Release Album", 901),
+        (904, "Fixture Release Album (Deluxe)", 901),
+    ]
+    conn.executemany(
+        "INSERT INTO albums(album_id, album_name, artist_id) VALUES (?, ?, ?)", fixture_albums
+    )
+
+    # Fixture Spotify Album Metadata
+    fixture_album_meta = [
+        (
+            "spotify:album:fix1",
+            "Fixture Single",
+            "single",
+            "2026-03-01",
+            50,
+            "Fixture Records",
+            "pop",
+            "",
+            "Fixture Artist Alpha",
+            1,
+            '["spotify:track:fix004"]',
+        ),
+        (
+            "spotify:album:fix2",
+            "Fixture LP",
+            "album",
+            "2026-01-15",
+            70,
+            "Fixture Records",
+            "pop;rock",
+            "",
+            "Fixture Artist Alpha",
+            10,
+            '["spotify:track:fix001","spotify:track:fix002","spotify:track:fix003","spotify:track:fix005","spotify:track:fix007"]',
+        ),
+        (
+            "spotify:album:fix3",
+            "Fixture Release Album",
+            "album",
+            "2026-02-01",
+            65,
+            "Fixture Records",
+            "pop",
+            "",
+            "Fixture Artist Alpha",
+            8,
+            '["spotify:track:fix006","spotify:track:fix008","spotify:track:fix009"]',
+        ),
+        (
+            "spotify:album:fix4",
+            "Fixture Release Album (Deluxe)",
+            "album",
+            "2026-02-15",
+            60,
+            "Fixture Records",
+            "pop",
+            "",
+            "Fixture Artist Alpha",
+            12,
+            '["spotify:track:fix006","spotify:track:fix008","spotify:track:fix009"]',
+        ),
+    ]
+    conn.executemany(
+        """INSERT INTO spotify_album_meta(spotify_album_id, album_name, album_type,
+           release_date, popularity, label, genres, image_url, album_artists,
+           total_tracks, track_list) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        fixture_album_meta,
+    )
+
+    # Fixture artist metadata
+    fixture_artist_meta = [
+        ("spotify:artist:fixalpha", "Fixture Artist Alpha", 60, 100000, "pop", ""),
+        ("spotify:artist:fixbeta", "Fixture Artist Beta", 55, 80000, "rock", ""),
+    ]
+    conn.executemany(
+        "INSERT INTO spotify_artist_meta(spotify_artist_id, artist_name, popularity, followers, genres, image_url) VALUES (?, ?, ?, ?, ?, ?)",
+        fixture_artist_meta,
+    )
+
+    # Fixture Tracks
+    fixture_tracks = [
+        # scenario 1: short_fragments_same_track — 40s track
+        (901, "Fixture Fragment Song", 901, 902, "spotify:track:fix001"),
+        # scenario 2: long_track_dynamic_threshold — 10min track
+        (902, "Fixture Long Track", 901, 902, "spotify:track:fix002"),
+        # scenario 3: multi_artist_fanout
+        (903, "Fixture Shared Credit", 901, 902, "spotify:track:fix003"),
+        # scenario 4: source_album_single_then_album
+        (904, "Fixture Source Album Song", 901, 901, "spotify:track:fix004"),
+        # scenario 6: track_group_recording (standard + remastered)
+        (905, "Fixture Recording Song", 901, 902, "spotify:track:fix005"),
+        (906, "Fixture Recording Song - Remastered", 901, 903, "spotify:track:fix006"),
+        # scenario 7: track_group_composition (original + acoustic + demo)
+        (907, "Fixture Composition Song", 901, 902, "spotify:track:fix007"),
+        (908, "Fixture Composition Song - Acoustic", 901, 903, "spotify:track:fix008"),
+        (909, "Fixture Composition Song - Demo", 901, 903, "spotify:track:fix009"),
+    ]
+    conn.executemany(
+        "INSERT INTO tracks(track_id, track_name, artist_id, album_id, spotify_track_uri) VALUES (?, ?, ?, ?, ?)",
+        fixture_tracks,
+    )
+
+    # Fixture Track-Album associations (scenario 4: same track on single + LP)
+    conn.execute("INSERT INTO track_albums(track_id, album_id) VALUES (904, 902)")
+
+    # Fixture Track-Artist associations (scenario 3: multi-artist)
+    conn.execute(
+        "INSERT INTO track_artists(track_id, artist_id, role) VALUES (903, 901, 'primary')"
+    )
+    conn.execute(
+        "INSERT INTO track_artists(track_id, artist_id, role) VALUES (903, 902, 'featured')"
+    )
+
+    # Fixture Spotify Track Metadata
+    fixture_track_meta = [
+        ("fix001", "Fixture Fragment Song", 40000, 50, 0, 1, 1, "ISRC-FIX-001", "fix2"),
+        ("fix002", "Fixture Long Track", 600000, 60, 0, 1, 1, "ISRC-FIX-002", "fix2"),
+        ("fix003", "Fixture Shared Credit", 210000, 70, 0, 1, 1, "ISRC-FIX-003", "fix2"),
+        ("fix004", "Fixture Source Album Song", 200000, 55, 0, 1, 1, "ISRC-FIX-004", "fix1"),
+        ("fix005", "Fixture Recording Song", 200000, 65, 0, 1, 1, "ISRC-FIX-005", "fix2"),
+        (
+            "fix006",
+            "Fixture Recording Song - Remastered",
+            205000,
+            60,
+            0,
+            1,
+            1,
+            "ISRC-FIX-006",
+            "fix3",
+        ),
+        ("fix007", "Fixture Composition Song", 210000, 55, 0, 1, 1, "ISRC-FIX-007", "fix2"),
+        (
+            "fix008",
+            "Fixture Composition Song - Acoustic",
+            220000,
+            45,
+            0,
+            1,
+            1,
+            "ISRC-FIX-008",
+            "fix3",
+        ),
+        ("fix009", "Fixture Composition Song - Demo", 180000, 30, 0, 1, 1, "ISRC-FIX-009", "fix3"),
+    ]
+    conn.executemany(
+        """INSERT INTO spotify_track_meta(spotify_track_id, track_name, duration_ms,
+           popularity, explicit, track_number, disc_number, isrc, spotify_album_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        fixture_track_meta,
+    )
+
     conn.commit()
 
     # ── Play Data (~85 records, 6 weeks: 2026-W17 through W22) ────────────
@@ -238,6 +400,7 @@ def build() -> str:
         offline: int = 0,
         incognito_mode: int = 0,
         content_type: str = "audio",
+        source_album_id: int | None = None,
     ) -> tuple:
         """Convert UTC ISO timestamp to Beijing time components and return a play tuple."""
         dt_utc = datetime.fromisoformat(ts_utc.replace("Z", "+00:00"))
@@ -261,6 +424,7 @@ def build() -> str:
             offline,
             incognito_mode,
             content_type,
+            source_album_id,
         )
 
     plays: list[tuple] = []
@@ -401,12 +565,54 @@ def build() -> str:
     plays.append(make_play("2026-05-30T02:00:00Z", "android", 180000, 12))
     plays.append(make_play("2026-05-31T02:00:00Z", "windows", 190000, 13))
 
+    # ── Fixture scenario plays ─────────────────────────────────────────────
+
+    # Scenario 1: short_fragments_same_track — two adjacent 20s plays of a 40s track
+    # Merge: total_ms=40000, full_plays=1, remainder=0 → 1 valid event at 40000ms
+    plays.append(make_play("2026-06-01T02:00:00Z", "ios", 20000, 901))
+    plays.append(make_play("2026-06-01T02:03:00Z", "ios", 20000, 901))
+
+    # Scenario 2: long_track_dynamic_threshold — 30s of a 10min track
+    # Static threshold (30s): valid. Dynamic (10% of 600000=60000): invalid.
+    plays.append(make_play("2026-06-01T03:00:00Z", "ios", 30000, 902))
+
+    # Scenario 3: multi_artist_fanout — one play credits two artists via track_artists
+    plays.append(make_play("2026-06-01T04:00:00Z", "ios", 210000, 903))
+
+    # Scenario 4: source_album_single_then_album — same track under single then LP
+    plays.append(make_play("2026-06-01T05:00:00Z", "ios", 200000, 904, source_album_id=901))
+    plays.append(make_play("2026-06-02T05:00:00Z", "ios", 200000, 904, source_album_id=902))
+
+    # Scenario 5: release_group_deluxe — plays on standard + deluxe albums
+    # Track 905 on album 902 (Fixture LP); track 906 on album 903 (Fixture Release Album)
+    # Track 908 on album 903; track 909 on album 904 (Fixture Release Album (Deluxe))
+    plays.append(make_play("2026-06-03T02:00:00Z", "ios", 210000, 905, source_album_id=902))
+    plays.append(make_play("2026-06-03T03:00:00Z", "ios", 210000, 906, source_album_id=903))
+
+    # Scenario 6: track_group_recording — standard + remastered (L2 merge)
+    plays.append(make_play("2026-06-04T02:00:00Z", "ios", 200000, 905))
+    plays.append(make_play("2026-06-04T03:00:00Z", "ios", 205000, 906))
+
+    # Scenario 7: track_group_composition — original + acoustic + demo (all merged at L3)
+    plays.append(make_play("2026-06-05T02:00:00Z", "ios", 210000, 907))
+    plays.append(make_play("2026-06-05T03:00:00Z", "ios", 220000, 908))
+    plays.append(make_play("2026-06-05T04:00:00Z", "ios", 180000, 909))
+
+    # Scenario 8: billboard_fragment_boundary — short fragments around a week boundary
+    # Week boundary: Thu 00:00 (DOW=3). Use Thu May 28 2026 (DOW=3).
+    # Play at Wed May 27 23:55 Beijing → Wed 23:55 → DOW=2, W21 or W22
+    # Use UTC timestamps that produce local Beijing time near boundary
+    # 2026-05-27T15:55:00Z → Beijing Wed May 27 23:55 (before Thu boundary)
+    # 2026-05-27T16:05:00Z → Beijing Thu May 28 00:05 (after Thu boundary)
+    plays.append(make_play("2026-05-27T15:55:00Z", "ios", 20000, 901))
+    plays.append(make_play("2026-05-27T16:05:00Z", "ios", 20000, 901))
+
     # ── Insert plays in batches ──
     conn.executemany(
         """INSERT INTO plays(ts, ts_year, ts_month, ts_week, ts_dow, ts_hour,
            ts_date, platform, ms_played, conn_country, track_id,
-           reason_start, reason_end, shuffle, skipped, offline, incognito_mode, content_type)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+           reason_start, reason_end, shuffle, skipped, offline, incognito_mode, content_type, source_album_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         plays,
     )
     conn.commit()
@@ -504,6 +710,29 @@ def build() -> str:
     conn.execute("INSERT INTO release_group_members(group_id, album_id) VALUES (1, 1)")
     conn.execute("INSERT INTO release_group_members(group_id, album_id) VALUES (1, 2)")
 
+    # Fixture release group: albums 903 + 904 → canonical
+    conn.execute(
+        "INSERT INTO release_groups(group_id, canonical_name, artist_id, primary_album_id, scope, is_manual) VALUES (2, 'Fixture Release Album (Combined)', 901, 903, 'release', 0)"
+    )
+    conn.execute("INSERT INTO release_group_members(group_id, album_id) VALUES (2, 903)")
+    conn.execute("INSERT INTO release_group_members(group_id, album_id) VALUES (2, 904)")
+
+    # Fixture track groups: recording scope (L2 merges 905 + 906)
+    conn.execute(
+        """INSERT INTO track_groups(group_id, canonical_name, primary_track_id, scope, is_manual)
+           VALUES (1, 'Fixture Recording Song', 905, 'recording', 0)"""
+    )
+    conn.execute("INSERT INTO track_group_members(group_id, track_id) VALUES (1, 905)")
+    conn.execute("INSERT INTO track_group_members(group_id, track_id) VALUES (1, 906)")
+
+    # Fixture track groups: composition scope (L3 merges 907 + 908)
+    conn.execute(
+        """INSERT INTO track_groups(group_id, canonical_name, primary_track_id, scope, is_manual)
+           VALUES (2, 'Fixture Composition Song', 907, 'composition', 0)"""
+    )
+    conn.execute("INSERT INTO track_group_members(group_id, track_id) VALUES (2, 907)")
+    conn.execute("INSERT INTO track_group_members(group_id, track_id) VALUES (2, 908)")
+
     # ── Settings ───────────────────────────────────────────────────────────
     conn.execute("INSERT INTO settings(key, value) VALUES ('min_ms', '30000')")
     conn.execute("INSERT INTO settings(key, value) VALUES ('music_only', '1')")
@@ -520,9 +749,9 @@ def build() -> str:
     album_count = conn.execute("SELECT COUNT(*) FROM albums").fetchone()[0]
     track_count = conn.execute("SELECT COUNT(*) FROM tracks").fetchone()[0]
     play_count = conn.execute("SELECT COUNT(*) FROM plays").fetchone()[0]
-    assert artist_count == 3, f"Expected 3 artists, got {artist_count}"
-    assert album_count == 6, f"Expected 6 albums, got {album_count}"
-    assert track_count == 15, f"Expected 15 tracks, got {track_count}"
+    assert artist_count == 5, f"Expected 5 artists, got {artist_count}"
+    assert album_count == 10, f"Expected 10 albums, got {album_count}"
+    assert track_count == 24, f"Expected 24 tracks, got {track_count}"
     assert play_count == len(plays), f"Expected {len(plays)} plays, got {play_count}"
     print(
         f"  A1 PASS: {artist_count} artists, {album_count} albums, {track_count} tracks, {play_count} plays"
@@ -536,7 +765,7 @@ def build() -> str:
         conn.execute("SELECT COUNT(*) FROM plays WHERE ms_played = 29999").fetchone()[0] == 1
     )
     has_30000 = (
-        conn.execute("SELECT COUNT(*) FROM plays WHERE ms_played = 30000").fetchone()[0] == 1
+        conn.execute("SELECT COUNT(*) FROM plays WHERE ms_played = 30000").fetchone()[0] >= 1
     )
     assert has_29999, "Missing 29,999ms boundary test record"
     assert has_30000, "Missing 30,000ms boundary test record"
@@ -621,17 +850,28 @@ def build() -> str:
     # A9: Version merge group exists
     group_count = conn.execute("SELECT COUNT(*) FROM release_groups").fetchone()[0]
     member_count = conn.execute("SELECT COUNT(*) FROM release_group_members").fetchone()[0]
-    assert group_count == 1, f"Expected 1 release group, got {group_count}"
-    assert member_count == 2, f"Expected 2 release group members, got {member_count}"
+    assert group_count == 2, f"Expected 2 release groups, got {group_count}"
+    assert member_count == 4, f"Expected 4 release group members, got {member_count}"
     print(f"  A9 PASS: release group created with {member_count} members")
+
+    # A10: Track version groups
+    track_group_count = conn.execute("SELECT COUNT(*) FROM track_groups").fetchone()[0]
+    track_group_member_count = conn.execute("SELECT COUNT(*) FROM track_group_members").fetchone()[
+        0
+    ]
+    assert track_group_count == 2, f"Expected 2 track groups, got {track_group_count}"
+    assert track_group_member_count == 4, (
+        f"Expected 4 track group members, got {track_group_member_count}"
+    )
+    print(f"  A10 PASS: track groups created with {track_group_member_count} members")
 
     # A10: Spotify metadata
     track_meta_count = conn.execute("SELECT COUNT(*) FROM spotify_track_meta").fetchone()[0]
     album_meta_count = conn.execute("SELECT COUNT(*) FROM spotify_album_meta").fetchone()[0]
     artist_meta_count = conn.execute("SELECT COUNT(*) FROM spotify_artist_meta").fetchone()[0]
-    assert track_meta_count == 15, f"Expected 15 track metas, got {track_meta_count}"
-    assert album_meta_count == 6, f"Expected 6 album metas, got {album_meta_count}"
-    assert artist_meta_count == 2, f"Expected 2 artist metas, got {artist_meta_count}"
+    assert track_meta_count == 24, f"Expected 24 track metas, got {track_meta_count}"
+    assert album_meta_count == 10, f"Expected 10 album metas, got {album_meta_count}"
+    assert artist_meta_count == 4, f"Expected 4 artist metas, got {artist_meta_count}"
     print("  A10 PASS: Spotify metadata present")
 
     # A11: File size < 1MB

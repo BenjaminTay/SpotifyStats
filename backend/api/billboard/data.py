@@ -13,7 +13,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
-from backend.dependencies import BillboardFilters
+from backend.dependencies import BillboardFilters, MergeConfig
 from backend.services.billboard_service import (
     compute_billboard_data,
     compute_power_scores_staged,
@@ -102,22 +102,28 @@ def _billboard_params(filters: BillboardFilters):
 
 
 @router.get("/data", response_model=BillboardDataResponse)
-def get_billboard_data(filters: BillboardFilters = Depends()):
+def get_billboard_data(
+    filters: BillboardFilters = Depends(),
+    merge_cfg: MergeConfig = Depends(),
+):
     """Compute all Billboard chart data in a single request.
 
     Returns weekly rankings, track/artist/album summaries, records,
     and power scores. Kept for backward compatibility.
     """
-    return compute_billboard_data(**_billboard_params(filters))
+    return compute_billboard_data(**_billboard_params(filters), merge_level=merge_cfg.merge_level)
 
 
 @router.get("/weekly", response_model=BillboardWeeklyResponse)
-def get_billboard_weekly(filters: BillboardFilters = Depends()):
+def get_billboard_weekly(
+    filters: BillboardFilters = Depends(),
+    merge_cfg: MergeConfig = Depends(),
+):
     """Weekly rankings + meta only — used by BillboardPage.
 
     Returns meta, weekly (tracks), weekly_album, weekly_artist.
     """
-    return compute_weekly_data(**_billboard_params(filters))
+    return compute_weekly_data(**_billboard_params(filters), merge_level=merge_cfg.merge_level)
 
 
 @router.get("/records", response_model=BillboardRecordsResponse)
