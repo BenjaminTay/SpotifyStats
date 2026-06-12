@@ -1,7 +1,7 @@
 # 播放数据统计规则：现状分析、目标定义与优化规划
 
 > 创建日期：2026-06-12
-> 状态：规划阶段
+> 状态：实施中（Phase C+D 完成，Task 9/部分 Task 10 待完成）
 
 ---
 
@@ -761,6 +761,30 @@ Billboard 周榜的聚合管线应完整应用：
 5. 长曲目 30 秒片段在动态阈值启用后是否被过滤，而普通 3 分钟流行歌仍保持 30 秒阈值？
 6. 连续播放合并是否不会跨 Billboard 周边界改变周榜归属？
 7. 曲目版本候选是否能区分"可合并版本"和"用户有意选择的不同录音体验"？
+
+---
+
+## 6. 实现状态
+
+> 详细实现计划见 `docs/2026-06-12-playback-stats-implementation-plan.md`。
+
+| Phase | 名称 | 状态 | 测试验证 |
+|:---|---|:---:|:---|
+| A (Task 0-2) | 计数边界提取 + Billboard raw/agg 一致性 | ✅ | `pytest -m contract test_playback_rules_baseline.py test_billboard_counting_consistency.py` |
+| B (Task 3,4,6) | source_album_id + Release Groups + Album Type | ✅ | `pytest -m contract test_source_album_attribution.py test_album_release_groups.py` + `-m unit test_album_type_taxonomy.py` |
+| C (Task 5) | 动态阈值 + Session 边界 | ✅ | `pytest -m unit test_playback_counting.py` |
+| D (Task 7,8) | Track Groups + Merge Level API + 前端 | ✅ | `pytest -m unit test_track_groups.py` + `-m contract test_merge_level_aggregation.py` + `npm test query-hooks.test.tsx` |
+| E (Task 9) | 版本详情展示 | ⏸️ 延后 | 需 track_groups 有真实数据 |
+| F (Task 10) | 不变式测试 + 文档同步 | ✅ | `pytest -m contract test_playback_invariants.py` |
+
+**测试基线**（2026-06-12）：
+- backend unit: 223 passed
+- backend contract: 67 passed（含新增 6 invariant + 14 merge_level aggregation + 6 load_track_group_keys）
+- frontend vitest: 112 passed（含新增 6 merge_level query key）
+
+**已知局限**：
+- Issue 2 已修复：`_apply_track_groups()` 同步 canonicalize `album_name`，pre_agg 路径 groupby 移除 `album_name` 不再产生重复行
+- `_load_plays_for_artists_cached` SQL 列选择未包含 `source_album_id`，artist fan-out 路径 `boundary_column` 静默跳过
 
 ---
 

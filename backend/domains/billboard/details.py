@@ -76,9 +76,9 @@ def _get_track_spotify_meta(track_id):
            LIMIT 1""",
         (track_id,),
     ).fetchone()
-    conn.close()
 
     if not row:
+        conn.close()
         return None
 
     meta = {}
@@ -94,7 +94,60 @@ def _get_track_spotify_meta(track_id):
     if row["spotify_album_name"]:
         meta["spotify_album_name"] = row["spotify_album_name"]
 
+    # Version group: if this track belongs to a track_group, include all versions
+    _attach_track_version_group(conn, track_id, meta)
+
+    conn.close()
     return meta if meta else None
+
+
+def _attach_track_version_group(conn, track_id, meta):
+    """If the track belongs to a track_group, attach version_group to meta."""
+    group_row = conn.execute(
+        """SELECT tg.group_id, tg.canonical_name, tg.scope, tg.primary_track_id
+           FROM track_group_members tgm
+           JOIN track_groups tg ON tgm.group_id = tg.group_id
+           WHERE tgm.track_id = ?
+           LIMIT 1""",
+        (track_id,),
+    ).fetchone()
+
+    if not group_row:
+        return
+
+    versions = conn.execute(
+        """SELECT t.track_id, t.track_name, al.album_name,
+                  COUNT(p.play_id) AS plays,
+                  COALESCE(SUM(p.ms_played), 0) AS total_ms
+           FROM track_group_members tgm
+           JOIN tracks t ON tgm.track_id = t.track_id
+           LEFT JOIN albums al ON t.album_id = al.album_id
+           LEFT JOIN plays p ON p.track_id = t.track_id AND p.ms_played >= 30000
+           WHERE tgm.group_id = ?
+           GROUP BY t.track_id
+           ORDER BY plays DESC""",
+        (group_row["group_id"],),
+    ).fetchall()
+
+    if len(versions) < 2:
+        return
+
+    meta["version_group"] = {
+        "group_id": group_row["group_id"],
+        "canonical_name": group_row["canonical_name"],
+        "scope": group_row["scope"],
+        "versions": [
+            {
+                "track_id": v["track_id"],
+                "track_name": v["track_name"],
+                "album_name": v["album_name"],
+                "plays": v["plays"],
+                "total_ms": v["total_ms"],
+                "is_primary": v["track_id"] == group_row["primary_track_id"],
+            }
+            for v in versions
+        ],
+    }
 
 
 def _get_artist_spotify_meta(artist_name):
@@ -141,16 +194,13 @@ def _get_album_spotify_meta(album_name, artist_name):
            JOIN spotify_track_meta stm
              ON REPLACE(t.spotify_track_uri, 'spotify:track:', '') = stm.spotify_track_id
            JOIN spotify_album_meta sam ON stm.spotify_album_id = sam.spotify_album_id
-           LEFT JOIN release_group_members rgm ON al.album_id = rgm.album_id
-           LEFT JOIN release_groups rg ON rgm.group_id = rg.group_id
-           WHERE (al.album_name = ? OR rg.canonical_name = ?)
-             AND a.artist_name = ?
+           WHERE al.album_name = ? AND a.artist_name = ?
            LIMIT 1""",
-        (album_name, album_name, artist_name),
+        (album_name, artist_name),
     ).fetchone()
-    conn.close()
 
     if not row:
+        conn.close()
         return None
 
     meta = {}
@@ -179,7 +229,65 @@ def _get_album_spotify_meta(album_name, artist_name):
         if tc and tc["cnt"] > 0:
             meta["total_tracks"] = tc["cnt"]
 
+    # Release group: if this album belongs to a release_group, include all versions
+    _attach_album_release_group(conn, album_name, artist_name, meta)
+
+    conn.close()
     return meta if meta else None
+
+
+def _attach_album_release_group(conn, album_name, artist_name, meta):
+    """If the album belongs to a release_group, attach release_group to meta."""
+    group_row = conn.execute(
+        """SELECT rg.group_id, rg.canonical_name, rg.scope, rg.primary_album_id
+           FROM release_group_members rgm
+           JOIN release_groups rg ON rgm.group_id = rg.group_id
+           JOIN albums al ON rgm.album_id = al.album_id
+           JOIN artists a ON al.artist_id = a.artist_id
+           WHERE al.album_name = ? AND a.artist_name = ?
+           LIMIT 1""",
+        (album_name, artist_name),
+    ).fetchone()
+
+    if not group_row:
+        return
+
+    versions = conn.execute(
+        """SELECT al.album_id, al.album_name, ar.artist_name,
+                  COUNT(DISTINCT p.track_id) AS unique_tracks,
+                  COUNT(p.play_id) AS plays,
+                  COALESCE(SUM(p.ms_played), 0) AS total_ms
+           FROM release_group_members rgm
+           JOIN albums al ON rgm.album_id = al.album_id
+           JOIN artists ar ON al.artist_id = ar.artist_id
+           LEFT JOIN tracks t ON t.album_id = al.album_id
+           LEFT JOIN plays p ON p.track_id = t.track_id AND p.ms_played >= 30000
+           WHERE rgm.group_id = ?
+           GROUP BY al.album_id
+           ORDER BY plays DESC""",
+        (group_row["group_id"],),
+    ).fetchall()
+
+    if len(versions) < 2:
+        return
+
+    meta["release_group"] = {
+        "group_id": group_row["group_id"],
+        "canonical_name": group_row["canonical_name"],
+        "scope": group_row["scope"],
+        "versions": [
+            {
+                "album_id": v["album_id"],
+                "album_name": v["album_name"],
+                "artist_name": v["artist_name"],
+                "plays": v["plays"],
+                "unique_tracks": v["unique_tracks"],
+                "total_ms": v["total_ms"],
+                "is_primary": v["album_id"] == group_row["primary_album_id"],
+            }
+            for v in versions
+        ],
+    }
 
 
 def get_track_history(
@@ -637,25 +745,28 @@ def get_album_chart_detail(
     album_power_scores = pd.DataFrame(data["album_power_scores"])
 
     # Find matching album
-    alb_row = album_track_counts[
-        (album_track_counts["album_name"] == album_name)
-        & (album_track_counts["artist_name"] == artist_name)
-    ]
+    mask = album_track_counts["album_name"] == album_name
+    if artist_name:
+        mask &= album_track_counts["artist_name"] == artist_name
+    alb_row = album_track_counts[mask]
     if alb_row.empty:
         return {"found": False, "meta": None}
-    alb_row = alb_row.iloc[0]
+    # When multiple artists have the same album name, pick the one with most tracks
+    alb_row = alb_row.sort_values("total_tracks", ascending=False).iloc[0]
+    resolved_artist = alb_row["artist_name"]
 
     # Album chart data
-    album_chart_data = weekly_album[
-        (weekly_album["album_name"] == album_name) & (weekly_album["artist_name"] == artist_name)
-    ]
+    album_mask = weekly_album["album_name"] == album_name
+    if resolved_artist:
+        album_mask &= weekly_album["artist_name"] == resolved_artist
+    album_chart_data = weekly_album[album_mask]
 
     # Album power score/rank
     aps_sorted = album_power_scores.sort_values("power_score", ascending=False).reset_index(
         drop=True
     )
     ap_row = aps_sorted[
-        (aps_sorted["album_name"] == album_name) & (aps_sorted["artist_name"] == artist_name)
+        (aps_sorted["album_name"] == album_name) & (aps_sorted["artist_name"] == resolved_artist)
     ]
     album_power_score = int(ap_row.iloc[0]["power_score"]) if not ap_row.empty else 0
     album_power_rank = int(ap_row.iloc[0].name) + 1 if not ap_row.empty else None
@@ -664,7 +775,7 @@ def get_album_chart_detail(
     alb_track_ids = set(
         track_per_album[
             (track_per_album["album_name"] == album_name)
-            & (track_per_album["artist_name"] == artist_name)
+            & (track_per_album["artist_name"] == resolved_artist)
         ]["track_id"].tolist()
     )
     track_power = power_scores.sort_values("power_score", ascending=False).reset_index(drop=True)
@@ -673,7 +784,7 @@ def get_album_chart_detail(
 
     alb_tracks = track_per_album[
         (track_per_album["album_name"] == album_name)
-        & (track_per_album["artist_name"] == artist_name)
+        & (track_per_album["artist_name"] == resolved_artist)
     ].copy()
     alb_tracks = alb_tracks.merge(
         album_track_power[["track_id", "power_score", "power_rank"]], on="track_id", how="left"
@@ -743,9 +854,9 @@ def get_album_chart_detail(
     return {
         "found": True,
         "album_name": album_name,
-        "artist_name": artist_name,
+        "artist_name": resolved_artist,
         "cover_url": album_cover_url,
-        "meta": _get_album_spotify_meta(album_name, artist_name),
+        "meta": _get_album_spotify_meta(album_name, resolved_artist),
         "info": {
             "total_tracks": int(alb_row["total_tracks"]),
             "best_peak": int(alb_row["best_peak"]),

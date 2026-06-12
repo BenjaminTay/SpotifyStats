@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
+import { getDefaultMergeLevel } from '@/lib/merge-level'
 import { useBillboardWeekly } from '@/hooks/useBillboard'
 import { GlassCard } from '@/components/shared/GlassCard'
 import { BillboardSubNav } from '@/components/shared/BillboardSubNav'
@@ -112,7 +113,7 @@ function BillboardSkeleton() {
 export function BillboardPage() {
   const [searchParams] = useSearchParams()
   const initialWeek = searchParams.get('week')
-  const mergeLevel = Number(searchParams.get('merge_level') ?? '2')
+  const mergeLevel = Number(searchParams.get('merge_level') ?? getDefaultMergeLevel())
 
   const {
     data,

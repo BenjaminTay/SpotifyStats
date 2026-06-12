@@ -19,12 +19,14 @@ def compute_weekly_rankings(_df, top_n, pre_agg=None, merge_level: int = 2):
         weekly = pre_agg.copy()
         _apply_track_groups(weekly, merge_level=merge_level)
         # After canonicalization, re-aggregate: sum play_count/total_ms per group.
-        # album_name is kept as the first (alphabetical) representative.
+        # album_name is canonicalized by _apply_track_groups, so "first" is safe.
         weekly = (
-            weekly.groupby(
-                ["billboard_week", "track_id", "track_name", "artist_name", "album_name"]
+            weekly.groupby(["billboard_week", "track_id", "track_name", "artist_name"])
+            .agg(
+                play_count=("play_count", "sum"),
+                total_ms=("total_ms", "sum"),
+                album_name=("album_name", "first"),
             )
-            .agg(play_count=("play_count", "sum"), total_ms=("total_ms", "sum"))
             .reset_index()
         )
     else:
@@ -51,6 +53,8 @@ def _apply_track_groups(df: pd.DataFrame, merge_level: int = 2) -> None:
     """Apply track version group canonicalization in-place on df.
 
     Maps track_id → canonical track_id/name for rows in a track group.
+    Also canonicalizes album_name to the primary track's album so that
+    downstream groupby (without album_name) still produces consistent results.
     """
     if merge_level <= 1 or df.empty:
         return
@@ -69,9 +73,42 @@ def _apply_track_groups(df: pd.DataFrame, merge_level: int = 2) -> None:
         mask = df["_track_agg_id"].notna()
         df.loc[mask, "track_id"] = df.loc[mask, "_track_agg_id"].astype(int)
         df.loc[mask, "track_name"] = df.loc[mask, "_track_agg_name"]
+
+        # Canonicalize album_name to primary track's album for merged rows.
+        # This prevents cross-album splits in downstream groupby aggregations.
+        if "album_name" in df.columns:
+            _canonicalize_album_name(df, mask, key_map, conn)
+
         df.drop(columns=["_track_agg_id", "_track_agg_name"], inplace=True)
     finally:
         conn.close()
+
+
+def _canonicalize_album_name(df, mask, key_map, conn):
+    """For rows mapped to a track group, set album_name to the
+    primary track's album so all versions share the same album.
+    """
+    group_ids = key_map.loc[
+        key_map.index.isin(df.loc[mask, "track_id"].unique()), "track_agg_id"
+    ].unique()
+    if len(group_ids) == 0:
+        return
+
+    placeholders = ",".join("?" for _ in group_ids)
+    rows = conn.execute(
+        f"""SELECT tg.group_id, a.album_name
+            FROM track_groups tg
+            JOIN tracks t ON tg.primary_track_id = t.track_id
+            JOIN albums a ON t.album_id = a.album_id
+            WHERE tg.group_id IN ({placeholders})""",
+        tuple(int(g) for g in group_ids),
+    ).fetchall()
+
+    album_map = {row[0]: row[1] for row in rows}
+    # _track_agg_id is the group_id; map to canonical album_name
+    df.loc[mask, "album_name"] = (
+        df.loc[mask, "_track_agg_id"].map(album_map).fillna(df.loc[mask, "album_name"])
+    )
 
 
 def compute_album_weekly_rankings(_df, top_n, pre_agg=None, merge_level: int = 2):

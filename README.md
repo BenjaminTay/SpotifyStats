@@ -4,7 +4,7 @@
 
 **架构**：FastAPI 后端 + React 前端。Streamlit 原有应用已冻结维护。
 
-**Phase 5 产品化收口**：前端 GET 统一 TanStack Query（11 命名空间 queryKeys）、Provider 错误分层、业务 service urllib 清零、模块级 API Map 缓存清除；Billboard records 88 行 facade + chart_compute 227 行 facade；Records/AllTime/Community Feed/RecentPlays/SavedTracks/PersonalRankTable 长列表分页基线。Phase 5.4 八阶段（A-H）全系列完成（2026-06-12）：架构护栏 105+ 测试、TrackDetail 574→5 行、HabitsTab 933 行→9 文件 feature、AI Insights 拆分、24 端点 response_model 硬化、Bundle 懒加载治理（Settings -88%/Records -69%/Account -34%）、TrackDetail 歌词 Query 漏网修复。剩余为低优先级持续治理项。详见 [`docs/2026-06-08-phase5-productization-baseline.md`](docs/2026-06-08-phase5-productization-baseline.md)。
+**Phase 5 产品化收口**：前端 GET 统一 TanStack Query（11 命名空间 queryKeys）、Provider 错误分层、业务 service urllib 清零、模块级 API Map 缓存清除；Billboard records 88 行 facade + chart_compute 227 行 facade；Records/AllTime/Community Feed/RecentPlays/SavedTracks/PersonalRankTable 长列表分页基线。Phase 5.4 八阶段（A-H）全系列完成（2026-06-12）：架构护栏 105+ 测试、TrackDetail 574→5 行、HabitsTab 933 行→9 文件 feature、AI Insights 拆分、24 端点 response_model 硬化、Bundle 懒加载治理（Settings -88%/Records -69%/Account -34%）、TrackDetail 歌词 Query 漏网修复。播放统计规则引擎（Phase C+D）：动态阈值、Session 边界检测、（`max_gap_minutes` + `boundary_column`）、Track Groups 三级合并（L1/L2/L3 recording/composition scope）、6 个 Billboard 端点 `merge_level` 查询参数、R24b 不变式合约测试（67 case），设置页 L1/L2/L3 合并严格度选择器。详见 [`docs/2026-06-08-phase5-productization-baseline.md`](docs/2026-06-08-phase5-productization-baseline.md) 和 [`docs/2026-06-12-playback-stats-rules.md`](docs/2026-06-12-playback-stats-rules.md)。
 
 ## 功能
 
@@ -88,6 +88,8 @@ SpotifyStats/
 - 数据目录说明见 [`data/README.md`](data/README.md)
 - 架构优化文档见 [`docs/phase4-architecture/2026-05-30-architecture-optimize.md`](docs/phase4-architecture/2026-05-30-architecture-optimize.md)
 - Phase 5 产品化收口台账见 [`docs/2026-06-08-phase5-productization-baseline.md`](docs/2026-06-08-phase5-productization-baseline.md)
+- 播放统计规则定义与实现状态见 [`docs/2026-06-12-playback-stats-rules.md`](docs/2026-06-12-playback-stats-rules.md)
+- 播放统计实现计划见 [`docs/2026-06-12-playback-stats-implementation-plan.md`](docs/2026-06-12-playback-stats-implementation-plan.md)
 
 ## License
 

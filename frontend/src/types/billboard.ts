@@ -1147,6 +1147,7 @@ export interface TrackSpotifyMeta {
   track_number?: number
   disc_number?: number
   spotify_album_name?: string
+  version_group?: TrackVersionGroup
 }
 
 export interface ArtistSpotifyMeta {
@@ -1163,6 +1164,35 @@ export interface AlbumSpotifyMeta {
   popularity?: number
   label?: string
   total_tracks?: number
+  release_group?: AlbumVersionGroup
+}
+
+// ── Version Group (Track & Album) ──────────────────────────
+
+export interface VersionGroupItem {
+  track_id?: number
+  track_name?: string
+  album_id?: number
+  album_name?: string
+  artist_name?: string
+  plays: number
+  total_ms?: number
+  unique_tracks?: number
+  is_primary: boolean
+}
+
+export interface TrackVersionGroup {
+  group_id: number
+  canonical_name: string
+  scope: 'recording' | 'composition'
+  versions: VersionGroupItem[]
+}
+
+export interface AlbumVersionGroup {
+  group_id: number
+  canonical_name: string
+  scope: 'release' | 'composition'
+  versions: VersionGroupItem[]
 }
 
 // ── Genius Lyrics ──────────────────────────────────────────

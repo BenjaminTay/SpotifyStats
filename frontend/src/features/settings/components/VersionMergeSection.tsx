@@ -17,6 +17,7 @@ import { Star, Trash2, Plus, X, Search, ChevronDown, CheckCircle2, RefreshCw } f
 import { useVersionMerge } from '@/hooks/useSettings'
 import type { DetectionResult, DetectionMember, ReleaseGroup, GroupMember, UngroupedAlbum, TrackComparison } from '@/types/settings'
 import { SectionHeader, FieldLabel, TrackComparePanel } from '@/features/settings/components/SettingsHelpers'
+import { getDefaultMergeLevel, setDefaultMergeLevel } from '@/lib/merge-level'
 
 type MergeTabKey = 'detect' | 'saved' | 'create'
 const MERGE_TABS: { key: MergeTabKey; label: string }[] = [
@@ -25,17 +26,59 @@ const MERGE_TABS: { key: MergeTabKey; label: string }[] = [
   { key: 'create', label: '手动创建' },
 ]
 
+const MERGE_LEVELS = [
+  { value: 1, label: 'L1', desc: '不合并' },
+  { value: 2, label: 'L2', desc: 'Recording' },
+  { value: 3, label: 'L3', desc: 'Composition' },
+] as const
+
 export function VersionMergeSection() {
   const [activeTab, setActiveTab] = useState<MergeTabKey>('detect')
+  const [mergeLevel, setMergeLevel] = useState(getDefaultMergeLevel)
   const vm = useVersionMerge()
 
   useEffect(() => {
     if (activeTab === 'saved') vm.fetchGroups()
   }, [activeTab, vm.fetchGroups])
 
+  const handleMergeLevelChange = (v: number) => {
+    setMergeLevel(v)
+    setDefaultMergeLevel(v)
+  }
+
   return (
     <GlassCard className="p-6">
       <SectionHeader num={3} title="Version Merge" desc="管理专辑版本合并规则，将同一专辑的不同版本（豪华版、Acoustic版等）合并为统一条目。" />
+
+      {/* Merge Level selector */}
+      <div className="mb-5 rounded-xl border border-border bg-muted/30 p-4">
+        <FieldLabel label="默认合并严格度" badge={MERGE_LEVELS.find(l => l.value === mergeLevel)?.label} />
+        <p className="mt-1 text-[12px] text-muted-foreground">
+          控制所有榜单和统计中曲目/专辑版本合并的默认级别。各 Billboard 页面可通过 URL 参数临时覆盖。
+        </p>
+        <div className="mt-3 flex gap-2">
+          {MERGE_LEVELS.map((l) => (
+            <button
+              key={l.value}
+              type="button"
+              onClick={() => handleMergeLevelChange(l.value)}
+              className={cn(
+                'flex-1 rounded-lg border px-3 py-2 text-center transition-all duration-200',
+                mergeLevel === l.value
+                  ? 'border-accent-foreground bg-accent-foreground text-primary-foreground shadow-sm'
+                  : 'border-border bg-card hover:border-muted-foreground/30 hover:bg-muted/50',
+              )}
+            >
+              <div className={cn('font-sans text-[13px] font-semibold', mergeLevel === l.value ? 'text-primary-foreground' : 'text-foreground')}>
+                {l.label}
+              </div>
+              <div className={cn('font-sans text-[11px]', mergeLevel === l.value ? 'text-primary-foreground/70' : 'text-muted-foreground')}>
+                {l.desc}
+              </div>
+            </button>
+          ))}
+        </div>
+      </div>
 
       {/* Sub-tabs */}
       <div className="mb-5 flex gap-7 border-b border-border">

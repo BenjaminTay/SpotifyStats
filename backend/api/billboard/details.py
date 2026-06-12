@@ -183,7 +183,7 @@ def artist_chart_detail(
 @router.get("/album/{album_name:path}", response_model=AlbumChartDetailResponse)
 def album_chart_detail(
     album_name: str,
-    artist_name: str = Query(..., description="Artist name for disambiguation"),
+    artist_name: str = Query(default="", description="Artist name for disambiguation"),
     filters: BillboardFilters = Depends(),
 ):
     """Get detailed album chart data: weekly history, track performances, trend overlay."""

@@ -2,6 +2,7 @@ import { lazy, Suspense, useMemo, useState } from 'react'
 import { AlertCircle } from 'lucide-react'
 import { useSearchParams } from 'react-router-dom'
 
+import { getDefaultMergeLevel } from '@/lib/merge-level'
 import { BillboardSubNav } from '@/components/shared/BillboardSubNav'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useBillboard } from '@/hooks/useBillboard'
@@ -70,7 +71,7 @@ function SectionFallback() {
 
 export function RecordsPage() {
   const [searchParams] = useSearchParams()
-  const mergeLevel = Number(searchParams.get('merge_level') ?? '2')
+  const mergeLevel = Number(searchParams.get('merge_level') ?? getDefaultMergeLevel())
   const { data, loading, error } = useBillboard(undefined, mergeLevel)
   const [activeTab, setActiveTab] = useState<TabKey>('championship')
 

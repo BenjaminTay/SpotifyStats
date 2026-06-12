@@ -11,6 +11,7 @@ import { AlertCircle, ArrowLeft } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { TrackOverviewSection } from './track/TrackOverviewSection'
 import { TrackLyricsSection } from './track/TrackLyricsSection'
+import { VersionGroupSection } from './VersionGroupSection'
 
 function formatDuration(ms: number): string {
   const totalSec = Math.floor(ms / 1000)
@@ -177,6 +178,14 @@ export function TrackDetailExperience() {
                   </div>
                 </div>
               </section>
+
+              {/* Version Group */}
+              {data.meta?.version_group && (
+                <VersionGroupSection
+                  kind="track"
+                  data={data.meta.version_group}
+                />
+              )}
 
               {/* Tabs */}
               <div className="mb-6 flex gap-7 border-b border-border">

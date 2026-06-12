@@ -239,3 +239,41 @@ describe('AI Insights query hooks', () => {
     expect(api.del).toHaveBeenCalledWith('/chat/sessions/1')
   })
 })
+
+describe('Merge level query key differentiation', () => {
+  it('different merge levels produce different Billboard weekly query keys', () => {
+    expect(queryKeys.billboard.weekly({ merge_level: 1 })).not.toEqual(
+      queryKeys.billboard.weekly({ merge_level: 2 })
+    )
+  })
+
+  it('different merge levels produce different Billboard data query keys', () => {
+    expect(queryKeys.billboard.data({ merge_level: 1 })).not.toEqual(
+      queryKeys.billboard.data({ merge_level: 2 })
+    )
+  })
+
+  it('different merge levels produce different Billboard records query keys', () => {
+    expect(queryKeys.billboard.records({ merge_level: 1 })).not.toEqual(
+      queryKeys.billboard.records({ merge_level: 3 })
+    )
+  })
+
+  it('different merge levels produce different Billboard allTime query keys', () => {
+    expect(queryKeys.billboard.allTime({ merge_level: 1 })).not.toEqual(
+      queryKeys.billboard.allTime({ merge_level: 2 })
+    )
+  })
+
+  it('same merge level produces identical query keys', () => {
+    expect(queryKeys.billboard.weekly({ merge_level: 2 })).toEqual(
+      queryKeys.billboard.weekly({ merge_level: 2 })
+    )
+  })
+
+  it('merge level query keys are distinct from no-params keys', () => {
+    expect(queryKeys.billboard.weekly()).not.toEqual(
+      queryKeys.billboard.weekly({ merge_level: 2 })
+    )
+  })
+})

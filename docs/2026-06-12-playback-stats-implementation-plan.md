@@ -719,7 +719,7 @@ git commit -m "feat: canonicalize album charts with release groups"
 - Test: `backend/tests/unit/test_playback_counting.py`
 - Test: `backend/tests/contract/test_playback_rules_baseline.py`
 
-- [ ] **Step 5.1: Add tests for dynamic threshold**
+- [x] **Step 5.1: Add tests for dynamic threshold**
 
 ```python
 def test_filter_effective_plays_dynamic_threshold_filters_long_track_snippet():
@@ -734,7 +734,7 @@ def test_filter_effective_plays_dynamic_threshold_keeps_typical_30s_play():
     assert len(result) == 1
 ```
 
-- [ ] **Step 5.2: Add session boundary tests**
+- [x] **Step 5.2: Add session boundary tests**
 
 ```python
 from backend.core.db import merge_consecutive_plays
@@ -751,7 +751,7 @@ def test_merge_consecutive_plays_does_not_merge_across_large_gap():
     assert result.empty
 ```
 
-- [ ] **Step 5.3: Extend `merge_consecutive_plays()` signature**
+- [x] **Step 5.3: Extend `merge_consecutive_plays()` signature**
 
 In `backend/core/db.py`:
 
@@ -778,7 +778,7 @@ if boundary_column and boundary_column in df.columns:
 df["_merge_group"] = (track_changed | gap_changed | boundary_changed).cumsum()
 ```
 
-- [ ] **Step 5.4: Add query parameters with conservative defaults**
+- [x] **Step 5.4: Add query parameters with conservative defaults**
 
 In `backend/dependencies.py`, add:
 
@@ -789,11 +789,11 @@ max_merge_gap_minutes: int | None = Query(default=None, ge=1, le=240, descriptio
 
 Store them on `PlayFilters` and `BillboardFilters`.
 
-- [ ] **Step 5.5: Wire dynamic threshold in loaders**
+- [x] **Step 5.5: Wire dynamic threshold in loaders**
 
 Pass `dynamic_threshold` and `max_merge_gap_minutes` to affected service calls in a follow-up mechanical change. Keep default `False` until UI/doc release is ready.
 
-- [ ] **Step 5.6: Run tests**
+- [x] **Step 5.6: Run tests**
 
 ```bash
 source .venv/bin/activate && pytest backend/tests/unit/test_playback_counting.py backend/tests/contract/test_playback_rules_baseline.py -v
@@ -801,7 +801,7 @@ source .venv/bin/activate && pytest backend/tests/unit/test_playback_counting.py
 
 Expected: pass.
 
-- [ ] **Step 5.7: Commit**
+- [x] **Step 5.7: Commit**
 
 ```bash
 git add backend/domains/playback/counting.py backend/core/db.py backend/dependencies.py backend/tests/unit/test_playback_counting.py backend/tests/contract/test_playback_rules_baseline.py
@@ -910,7 +910,7 @@ git commit -m "feat: classify album chart release types"
 - Test: `backend/tests/unit/test_track_groups.py`
 - Test: `backend/tests/contract/test_merge_level_aggregation.py`
 
-- [ ] **Step 7.1: Add migration for track group tables**
+- [x] **Step 7.1: Add migration for track group tables**
 
 Add to `backend/core/db.py` `SCHEMA` and `backend/core/migrations.py`:
 
@@ -940,7 +940,7 @@ CREATE INDEX IF NOT EXISTS idx_track_groups_parent ON track_groups(parent_group_
 CREATE INDEX IF NOT EXISTS idx_track_group_members_track ON track_group_members(track_id);
 ```
 
-- [ ] **Step 7.2: Implement merge level normalization**
+- [x] **Step 7.2: Implement merge level normalization**
 
 `backend/domains/playback/merge_levels.py`:
 
@@ -956,7 +956,7 @@ def normalize_merge_level(value: int | str | None) -> int:
     return level if level in {1, 2, 3} else 2
 ```
 
-- [ ] **Step 7.3: Implement track aggregation key resolver**
+- [x] **Step 7.3: Implement track aggregation key resolver**
 
 `backend/domains/playback/track_groups.py`:
 
@@ -985,7 +985,7 @@ def load_track_group_keys(conn: sqlite3.Connection, merge_level: int) -> pd.Data
     )
 ```
 
-- [ ] **Step 7.4: Apply resolver only in aggregation layer**
+- [x] **Step 7.4: Apply resolver only in aggregation layer**
 
 In `backend/services/analysis_stats_service.py`, update `_chart_agg(entity="track")` to use `load_track_group_keys()` and derive:
 
@@ -1010,7 +1010,7 @@ def compute_weekly_rankings(_df, top_n, pre_agg=None, merge_level: int = 2):
 
 When `pre_agg is None`, apply track group keys before the weekly groupby. When `pre_agg` is present, build separate pre-aggregation rows per `merge_level` as described in Task 8 instead of re-grouping already-ranked rows.
 
-- [ ] **Step 7.5: Add tests**
+- [x] **Step 7.5: Add tests**
 
 `backend/tests/contract/test_merge_level_aggregation.py` should assert:
 
@@ -1063,7 +1063,7 @@ def test_l3_merges_acoustic_but_not_demo(seed_conn):
     assert names["Fixture Composition Song - Demo"] == 1
 ```
 
-- [ ] **Step 7.6: Run tests**
+- [x] **Step 7.6: Run tests**
 
 ```bash
 source .venv/bin/activate && pytest backend/tests/unit/test_track_groups.py backend/tests/contract/test_merge_level_aggregation.py -v
@@ -1071,7 +1071,7 @@ source .venv/bin/activate && pytest backend/tests/unit/test_track_groups.py back
 
 Expected: pass.
 
-- [ ] **Step 7.7: Commit**
+- [x] **Step 7.7: Commit**
 
 ```bash
 git add backend/core/db.py backend/core/migrations.py backend/domains/playback/merge_levels.py backend/domains/playback/track_groups.py backend/services/analysis_stats_service.py backend/domains/billboard/chart_ranking.py backend/tests/unit/test_track_groups.py backend/tests/contract/test_merge_level_aggregation.py
@@ -1095,7 +1095,7 @@ git commit -m "feat: add track version aggregation levels"
 - Test: `frontend/src/tests/query-hooks.test.tsx`
 - Test: `frontend/src/tests/phase5-architecture.test.ts`
 
-- [ ] **Step 8.1: Add backend dependency**
+- [x] **Step 8.1: Add backend dependency**
 
 In `backend/dependencies.py`:
 
@@ -1110,7 +1110,7 @@ class MergeConfig:
 
 Use it only in endpoints that return affected track/album/Billboard aggregations.
 
-- [ ] **Step 8.2: Add frontend query key parameter**
+- [x] **Step 8.2: Add frontend query key parameter**
 
 In `frontend/src/api/query-keys.ts`, keep the existing object parameter pattern:
 
@@ -1124,7 +1124,7 @@ Ensure callers include:
 { merge_level: mergeLevel }
 ```
 
-- [ ] **Step 8.3: Add URL state to Billboard page**
+- [x] **Step 8.3: Add URL state to Billboard page**
 
 In `frontend/src/pages/BillboardPage.tsx`, read:
 
@@ -1141,7 +1141,7 @@ setSearchParams((next) => {
 })
 ```
 
-- [ ] **Step 8.4: Add tests**
+- [x] **Step 8.4: Add tests**
 
 In `frontend/src/tests/query-hooks.test.tsx`, assert the query key differs for L1/L2:
 
@@ -1151,7 +1151,7 @@ expect(queryKeys.billboard.weekly({ merge_level: 1 })).not.toEqual(
 )
 ```
 
-- [ ] **Step 8.5: Run frontend tests**
+- [x] **Step 8.5: Run frontend tests**
 
 ```bash
 cd frontend && npm test -- query-hooks.test.tsx phase5-architecture.test.ts
@@ -1159,7 +1159,7 @@ cd frontend && npm test -- query-hooks.test.tsx phase5-architecture.test.ts
 
 Expected: pass.
 
-- [ ] **Step 8.6: Commit**
+- [x] **Step 8.6: Commit**
 
 ```bash
 git add backend/dependencies.py backend/api/analysis.py backend/api/billboard/data.py frontend/src/api/query-keys.ts frontend/src/hooks/useBillboard.ts frontend/src/pages/BillboardPage.tsx frontend/src/pages/SettingsPage.tsx frontend/src/tests/query-hooks.test.tsx frontend/src/tests/phase5-architecture.test.ts
@@ -1181,7 +1181,7 @@ git commit -m "feat: expose playback merge strictness"
 - Create: `frontend/src/features/music/details/VersionGroupSection.tsx`
 - Test: `frontend/src/tests/phase5-architecture.test.ts`
 
-- [ ] **Step 9.1: Add backend response fields**
+- [x] **Step 9.1: Add backend response fields**
 
 Track detail responses should include:
 
@@ -1207,15 +1207,15 @@ Album detail responses should include:
 }
 ```
 
-- [ ] **Step 9.2: Add shared frontend section**
+- [x] **Step 9.2: Add shared frontend section**
 
 Create `frontend/src/features/music/details/VersionGroupSection.tsx` as a presentational component. It receives normalized rows and renders a compact table/list. It must not fetch data.
 
-- [ ] **Step 9.3: Wire into detail experiences**
+- [x] **Step 9.3: Wire into detail experiences**
 
 In track and album detail experiences, render the section only when group data exists and has at least two versions.
 
-- [ ] **Step 9.4: Run build/tests**
+- [x] **Step 9.4: Run build/tests**
 
 ```bash
 cd frontend && npm run build
@@ -1224,7 +1224,7 @@ cd frontend && npm test -- phase5-architecture.test.ts
 
 Expected: pass.
 
-- [ ] **Step 9.5: Commit**
+- [x] **Step 9.5: Commit**
 
 ```bash
 git add backend/domains/billboard/details.py backend/api/billboard/details.py frontend/src/types/billboard.ts frontend/src/features/music/details/TrackDetailExperience.tsx frontend/src/features/music/details/AlbumDetailExperience.tsx frontend/src/features/music/details/VersionGroupSection.tsx frontend/src/tests/phase5-architecture.test.ts
@@ -1245,7 +1245,7 @@ git commit -m "feat: show merged entity version details"
 - Modify: `AGENTS.md`
 - Modify: `CLAUDE.md`
 
-- [ ] **Step 10.1: Add invariant tests**
+- [x] **Step 10.1: Add invariant tests**
 
 Create `backend/tests/contract/test_playback_invariants.py`:
 
@@ -1289,7 +1289,7 @@ def test_unmerged_tracks_still_count_under_track_group_aggregation(seed_conn):
     assert sum(row["plays"] for row in rows) == len(valid)
 ```
 
-- [ ] **Step 10.2: Run minimum backend matrix**
+- [x] **Step 10.2: Run minimum backend matrix**
 
 ```bash
 source .venv/bin/activate && pytest -m unit -v
@@ -1298,7 +1298,7 @@ source .venv/bin/activate && pytest -m contract -v
 
 Expected: pass.
 
-- [ ] **Step 10.3: Run frontend matrix**
+- [x] **Step 10.3: Run frontend matrix**
 
 ```bash
 cd frontend && npm test
@@ -1307,7 +1307,7 @@ cd frontend && npm run build
 
 Expected: pass.
 
-- [ ] **Step 10.4: Update docs**
+- [x] **Step 10.4: Update docs**
 
 Add an implementation-status table to `docs/2026-06-12-playback-stats-rules.md`:
 
@@ -1323,7 +1323,7 @@ Add an implementation-status table to `docs/2026-06-12-playback-stats-rules.md`:
 
 Only mark phases as `Done` after tests pass.
 
-- [ ] **Step 10.5: Keep AGENTS and CLAUDE synchronized**
+- [x] **Step 10.5: Keep AGENTS and CLAUDE synchronized**
 
 After editing `AGENTS.md`, copy the same playback-statistics guidance into `CLAUDE.md` and run:
 
@@ -1333,7 +1333,7 @@ cmp -s AGENTS.md CLAUDE.md
 
 Expected: exit code 0.
 
-- [ ] **Step 10.6: Commit**
+- [x] **Step 10.6: Commit**
 
 ```bash
 git add backend/tests/contract/test_playback_invariants.py docs/2026-06-12-playback-stats-rules.md docs/2026-06-08-phase5-productization-baseline.md README.md AGENTS.md CLAUDE.md
@@ -1424,8 +1424,8 @@ sh scripts/phase5_check.sh
 - [x] Source album is persisted on new imports and backfilled for historical data.
 - [x] Personal album chart, album detail, and Billboard album chart use the same release group resolver.
 - [x] Album type taxonomy is shared between personal and Billboard album charts.
-- [ ] `merge_level` affects only version-sensitive entity aggregations.
-- [ ] Track group L2/L3 aggregation does not alter valid play events.
-- [ ] Version detail sections explain what was merged.
-- [ ] Contract tests cover the invariants from R24b.
-- [ ] README, AGENTS, CLAUDE, and phase baseline docs are synchronized.
+- [x] `merge_level` affects only version-sensitive entity aggregations.
+- [x] Track group L2/L3 aggregation does not alter valid play events.
+- [x] Version detail sections explain what was merged.
+- [x] Contract tests cover the invariants from R24b.
+- [x] README, AGENTS, CLAUDE, and phase baseline docs are synchronized.

@@ -43,8 +43,14 @@ Phase 5 目标是收紧产品线到可持续迭代状态。当前进度：
   - Bundle 治理：SettingsPage -88%、RecordsPage -69%、AccountCenterPage -34%，合计首屏节省 ~178 kB
 	  - TrackDetail 歌词 Query 漏网修复：手动 `fetchLyrics` + `useState` 改为 `useQuery`（`queryKeys.music.trackLyrics`）
 - 长列表已建立分页基线；后续新增超过 500 行 DOM 的表格必须使用服务端分页、分页组件、infinite query 或虚拟化
+- 播放统计规则引擎 Phase C+D（2026-06-12）：
+  - P2 动态阈值 + Session 边界检测：`effective_threshold()` / `filter_effective_plays()`（`backend/domains/playback/counting.py`），`merge_consecutive_plays()` 支持 `max_gap_minutes` + `boundary_column`，`PlayFilters` 新增 `dynamic_threshold` / `max_merge_gap_minutes`
+  - P4 Track Groups 三级合并：`track_groups` + `track_group_members` 表（scope: recording/composition），`backend/domains/playback/track_groups.py` 聚合键解析，`_apply_track_groups()` 在 Billboard 和个人榜聚合层生效
+  - P4 Merge Level API：`MergeConfig` FastAPI 依赖，`/billboard/*` + `/analysis/charts` 端点 `merge_level` 查询参数，Settings 页面 L1/L2/L3 选择器持久化至 localStorage，4 个 Billboard 页面 URL 优先/localStorage 回退
+  - R24b 不变式合约测试：`test_playback_invariants.py`（6 条断言）+ `test_merge_level_aggregation.py`（14 条断言）
+  - 测试基线：backend unit 223 / contract 67 / frontend 112
 
-详见 `docs/2026-06-08-phase5-productization-baseline.md`。
+详见 `docs/2026-06-12-playback-stats-rules.md` 和 `docs/2026-06-08-phase5-productization-baseline.md`。
 
 ## 常用命令
 

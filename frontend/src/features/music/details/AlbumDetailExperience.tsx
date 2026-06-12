@@ -12,6 +12,7 @@ import { AlbumDetailSkeleton } from './MusicDetailSkeletons'
 import { MusicChartOverviewSection } from './MusicChartOverviewSection'
 import { MusicTracksSection } from './MusicTracksSection'
 import { AlbumEraSection } from './AlbumEraSection'
+import { VersionGroupSection } from './VersionGroupSection'
 
 type TabKey = 'stats' | 'era' | 'overview' | 'tracks'
 
@@ -98,6 +99,14 @@ export function AlbumDetailExperience() {
           ) : (
             <>
               <AlbumDetailHero data={data} onBack={() => navigate(-1)} />
+
+              {data.meta?.release_group && (
+                <VersionGroupSection
+                  kind="album"
+                  data={data.meta.release_group}
+                />
+              )}
+
               <DetailTabs tabs={TABS} activeTab={activeTab} onChange={setActiveTab} />
 
               {activeTab === 'overview' && (
