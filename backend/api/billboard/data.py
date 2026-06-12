@@ -127,43 +127,58 @@ def get_billboard_weekly(
 
 
 @router.get("/records", response_model=BillboardRecordsResponse)
-def get_billboard_records(filters: BillboardFilters = Depends()):
+def get_billboard_records(
+    filters: BillboardFilters = Depends(),
+    merge_cfg: MergeConfig = Depends(),
+):
     """Billboard records only — used by RecordsPage.
 
     Returns all 37 records across 6 sections.
     """
-    return compute_records_staged(**_billboard_params(filters))
+    return compute_records_staged(**_billboard_params(filters), merge_level=merge_cfg.merge_level)
 
 
 @router.get("/power-scores", response_model=BillboardPowerScoresResponse)
-def get_billboard_power_scores(filters: BillboardFilters = Depends()):
+def get_billboard_power_scores(
+    filters: BillboardFilters = Depends(),
+    merge_cfg: MergeConfig = Depends(),
+):
     """Power scores for tracks, albums, and artists.
 
     Returns power_scores, album_power_scores, artist_power_scores
     each with power_rank, weeks_top5, weeks_top10.
     """
-    return compute_power_scores_staged(**_billboard_params(filters))
+    return compute_power_scores_staged(
+        **_billboard_params(filters), merge_level=merge_cfg.merge_level
+    )
 
 
 @router.get("/summaries", response_model=BillboardSummariesResponse)
-def get_billboard_summaries(filters: BillboardFilters = Depends()):
+def get_billboard_summaries(
+    filters: BillboardFilters = Depends(),
+    merge_cfg: MergeConfig = Depends(),
+):
     """Track/artist/album summaries and counts.
 
     Returns track_summary, artist_summary, album_track_counts,
     artist_track_counts.
     """
-    return compute_summaries_staged(**_billboard_params(filters))
+    return compute_summaries_staged(**_billboard_params(filters), merge_level=merge_cfg.merge_level)
 
 
 @router.get("/all-time", response_model=BillboardAllTimeResponse)
-def get_billboard_all_time(filters: BillboardFilters = Depends()):
+def get_billboard_all_time(
+    filters: BillboardFilters = Depends(),
+    merge_cfg: MergeConfig = Depends(),
+):
     """Combined data for all-time charts pages.
 
     Returns power-scores + summaries + weekly data.
     Used by NumberOnesPage and AllTimeChartsPage.
     """
     params = _billboard_params(filters)
-    weekly = compute_weekly_data(**params)
-    power = compute_power_scores_staged(**params)
-    summaries = compute_summaries_staged(**params)
+    ml = merge_cfg.merge_level
+    weekly = compute_weekly_data(**params, merge_level=ml)
+    power = compute_power_scores_staged(**params, merge_level=ml)
+    summaries = compute_summaries_staged(**params, merge_level=ml)
     return {**weekly, **power, **summaries}

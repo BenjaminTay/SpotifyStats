@@ -158,10 +158,19 @@ def load_period_plays(
     period: str = "lifetime",
     start_date: str | None = None,
     end_date: str | None = None,
+    dynamic_threshold: bool = False,
+    max_merge_gap_minutes: int | None = None,
     _loader=None,
 ) -> tuple[pd.DataFrame, pd.DataFrame, dict]:
     loader = _loader or load_plays
-    df = loader(conn, min_ms=min_ms, music_only=music_only, merge_enabled=merge_enabled)
+    df = loader(
+        conn,
+        min_ms=min_ms,
+        music_only=music_only,
+        merge_enabled=merge_enabled,
+        dynamic_threshold=dynamic_threshold,
+        max_merge_gap_minutes=max_merge_gap_minutes,
+    )
     resolved = resolve_period(df, period, start_date, end_date)
     return df, filter_period(df, resolved), resolved
 
@@ -352,10 +361,19 @@ def get_analysis_stats(
     period: str = "lifetime",
     start_date: str | None = None,
     end_date: str | None = None,
+    dynamic_threshold: bool = False,
+    max_merge_gap_minutes: int | None = None,
 ) -> dict:
     if conn is not None:
         return _get_analysis_stats_cached(
-            min_ms, music_only, merge_enabled, period, start_date, end_date
+            min_ms,
+            music_only,
+            merge_enabled,
+            period,
+            start_date,
+            end_date,
+            dynamic_threshold,
+            max_merge_gap_minutes,
         )
 
 
@@ -367,11 +385,21 @@ def _get_analysis_stats_cached(
     period: str = "lifetime",
     start_date: str | None = None,
     end_date: str | None = None,
+    dynamic_threshold: bool = False,
+    max_merge_gap_minutes: int | None = None,
 ) -> dict:
     conn = get_db()
     try:
         return _build_analysis_stats(
-            conn, min_ms, music_only, merge_enabled, period, start_date, end_date
+            conn,
+            min_ms,
+            music_only,
+            merge_enabled,
+            period,
+            start_date,
+            end_date,
+            dynamic_threshold,
+            max_merge_gap_minutes,
         )
     finally:
         conn.close()
@@ -385,9 +413,19 @@ def _build_analysis_stats(
     period: str = "lifetime",
     start_date: str | None = None,
     end_date: str | None = None,
+    dynamic_threshold: bool = False,
+    max_merge_gap_minutes: int | None = None,
 ) -> dict:
     _, df, resolved = load_period_plays(
-        conn, min_ms, music_only, merge_enabled, period, start_date, end_date
+        conn,
+        min_ms,
+        music_only,
+        merge_enabled,
+        period,
+        start_date,
+        end_date,
+        dynamic_threshold=dynamic_threshold,
+        max_merge_gap_minutes=max_merge_gap_minutes,
     )
     summary = _summary(df)
     daily = _daily_trend(df)
@@ -612,6 +650,8 @@ def get_analysis_charts(
     limit: int = 100,
     offset: int = 0,
     merge_level: int = 2,
+    dynamic_threshold: bool = False,
+    max_merge_gap_minutes: int | None = None,
 ) -> dict:
     if conn is not None:
         return _get_analysis_charts_cached(
@@ -626,6 +666,8 @@ def get_analysis_charts(
             limit,
             offset,
             merge_level,
+            dynamic_threshold,
+            max_merge_gap_minutes,
         )
 
 
@@ -642,6 +684,8 @@ def _get_analysis_charts_cached(
     limit: int = 100,
     offset: int = 0,
     merge_level: int = 2,
+    dynamic_threshold: bool = False,
+    max_merge_gap_minutes: int | None = None,
 ) -> dict:
     conn = get_db()
     try:
@@ -658,6 +702,8 @@ def _get_analysis_charts_cached(
             limit,
             offset,
             merge_level,
+            dynamic_threshold,
+            max_merge_gap_minutes,
         )
     finally:
         conn.close()
@@ -676,9 +722,19 @@ def _build_analysis_charts(
     limit: int = 100,
     offset: int = 0,
     merge_level: int = 2,
+    dynamic_threshold: bool = False,
+    max_merge_gap_minutes: int | None = None,
 ) -> dict:
     _, df, resolved = load_period_plays(
-        conn, min_ms, music_only, merge_enabled, period, start_date, end_date
+        conn,
+        min_ms,
+        music_only,
+        merge_enabled,
+        period,
+        start_date,
+        end_date,
+        dynamic_threshold=dynamic_threshold,
+        max_merge_gap_minutes=max_merge_gap_minutes,
     )
     if entity == "artist":
         _, df_artist, _ = load_period_plays(

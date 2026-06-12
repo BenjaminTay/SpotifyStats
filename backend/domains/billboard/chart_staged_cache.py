@@ -220,6 +220,7 @@ def _compute_power_scores_cached(
     bb_week_start_hour=0,
     year_start=None,
     year_end=None,
+    merge_level=2,
 ):
     """Compute power scores for tracks, albums, and artists. Returns JSON-safe dict."""
     weekly, weekly_album, weekly_artist, *_ = _load_and_rank(
@@ -232,6 +233,7 @@ def _compute_power_scores_cached(
         bb_week_start_hour,
         year_start,
         year_end,
+        merge_level,
     )
 
     weekly = enrich_track_artist_names(weekly)
@@ -258,6 +260,7 @@ def _compute_summaries_cached(
     bb_week_start_hour=0,
     year_start=None,
     year_end=None,
+    merge_level=2,
 ):
     """Compute track/artist/album summaries. Returns JSON-safe dict."""
     weekly, weekly_album, weekly_artist, *_all_weeks, df_filtered = _load_and_rank(
@@ -270,6 +273,7 @@ def _compute_summaries_cached(
         bb_week_start_hour,
         year_start,
         year_end,
+        merge_level,
     )
 
     album_map = load_track_album_map()
@@ -305,6 +309,7 @@ def _compute_records_cached(
     bb_week_start_hour=0,
     year_start=None,
     year_end=None,
+    merge_level=2,
 ):
     """Compute Billboard records. Returns JSON-safe dict."""
     weekly, weekly_album, weekly_artist, *_all_weeks, df_filtered = _load_and_rank(
@@ -317,6 +322,7 @@ def _compute_records_cached(
         bb_week_start_hour,
         year_start,
         year_end,
+        merge_level,
     )
 
     track_summary = compute_track_summary(weekly, df_filtered)

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { AlertCircle } from 'lucide-react'
+import { useSearchParams } from 'react-router-dom'
 
 import { BillboardSubNav } from '@/components/shared/BillboardSubNav'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -62,7 +63,9 @@ function ErrorState({ error, refetch }: { error: string; refetch: () => void }) 
 }
 
 export function AllTimeChartsPage() {
-  const { data, loading, error, refetch } = useBillboardAllTime()
+  const [searchParams] = useSearchParams()
+  const mergeLevel = Number(searchParams.get('merge_level') ?? '2')
+  const { data, loading, error, refetch } = useBillboardAllTime(mergeLevel)
   const [activeTab, setActiveTab] = useState<EntityTab>(cachedEntityTab)
   const [peakFilter, setPeakFilter] = useState<PeakFilter>(cachedPeakFilter)
   const [page, setPage] = useState(cachedPage)

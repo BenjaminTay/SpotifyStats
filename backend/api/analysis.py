@@ -35,6 +35,8 @@ def analysis_overview(
         filters.min_ms,
         filters.music_only,
         filters.merge_enabled,
+        dynamic_threshold=filters.dynamic_threshold,
+        max_merge_gap_minutes=filters.max_merge_gap_minutes,
     )
 
 
@@ -54,6 +56,8 @@ def analysis_stats(
         period,
         start_date,
         end_date,
+        dynamic_threshold=filters.dynamic_threshold,
+        max_merge_gap_minutes=filters.max_merge_gap_minutes,
     )
 
 
@@ -83,6 +87,8 @@ def analysis_charts(
         limit,
         offset,
         merge_level=merge_cfg.merge_level,
+        dynamic_threshold=filters.dynamic_threshold,
+        max_merge_gap_minutes=filters.max_merge_gap_minutes,
     )
 
 

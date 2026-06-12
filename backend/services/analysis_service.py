@@ -1,5 +1,7 @@
 """Playback analysis overview service."""
 
+from __future__ import annotations
+
 import sqlite3
 
 import pandas as pd
@@ -265,6 +267,8 @@ def get_analysis_overview(
     min_ms: int,
     music_only: bool,
     merge_enabled: bool,
+    dynamic_threshold: bool = False,
+    max_merge_gap_minutes: int | None = None,
 ) -> dict:
     """Build the playback analysis landing-page aggregate."""
     df = load_plays(
@@ -272,6 +276,8 @@ def get_analysis_overview(
         min_ms=min_ms,
         music_only=music_only,
         merge_enabled=merge_enabled,
+        dynamic_threshold=dynamic_threshold,
+        max_merge_gap_minutes=max_merge_gap_minutes,
     )
     if df.empty:
         return _empty_overview()
@@ -287,6 +293,8 @@ def get_analysis_overview(
         min_ms=min_ms,
         music_only=music_only,
         merge_enabled=merge_enabled,
+        dynamic_threshold=dynamic_threshold,
+        max_merge_gap_minutes=max_merge_gap_minutes,
     )
     artists = _top_artists(conn, df_artists)
     albums = _top_albums(conn, df)

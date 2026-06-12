@@ -45,6 +45,7 @@ def compute_power_scores_staged(
     bb_week_start_hour=0,
     year_start=None,
     year_end=None,
+    merge_level=2,
 ):
     """Compute power scores only (track, album, artist)."""
     return _compute_power_scores_cached(
@@ -57,6 +58,7 @@ def compute_power_scores_staged(
         bb_week_start_hour,
         year_start,
         year_end,
+        merge_level,
     )
 
 
@@ -70,6 +72,7 @@ def compute_summaries_staged(
     bb_week_start_hour=0,
     year_start=None,
     year_end=None,
+    merge_level=2,
 ):
     """Compute summaries only."""
     return _compute_summaries_cached(
@@ -82,6 +85,7 @@ def compute_summaries_staged(
         bb_week_start_hour,
         year_start,
         year_end,
+        merge_level,
     )
 
 
@@ -95,6 +99,7 @@ def compute_records_staged(
     bb_week_start_hour=0,
     year_start=None,
     year_end=None,
+    merge_level=2,
 ):
     """Compute records only."""
     return _compute_records_cached(
@@ -107,6 +112,7 @@ def compute_records_staged(
         bb_week_start_hour,
         year_start,
         year_end,
+        merge_level,
     )
 
 

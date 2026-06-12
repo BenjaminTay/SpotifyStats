@@ -24,7 +24,13 @@ class TestMergeBeforeFilter:
         one at the week boundary and one in the dedicated scenario — each session
         has two 20s fragments that merge to one 40s valid event.
         """
-        df = load_plays(seed_conn, min_ms=30000, music_only=True, merge_enabled=True)
+        df = load_plays(
+            seed_conn,
+            min_ms=30000,
+            music_only=True,
+            merge_enabled=True,
+            boundary_column=None,
+        )
         row = df[df["track_name"] == "Fixture Fragment Song"]
         assert len(row) == 2, f"Expected 2 merged rows (two sessions), got {len(row)}"
         assert (row["ms_played"] == 40000).all()

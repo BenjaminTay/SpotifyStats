@@ -664,6 +664,7 @@ def _load_plays_cached(
     extra_params: tuple,
     dynamic_threshold: bool = False,
     max_merge_gap_minutes: int | None = None,
+    boundary_column: str | None = None,
 ) -> pd.DataFrame:
     """Cacheable inner loader — connection is created internally so it
     doesn't appear in the LRU cache key."""
@@ -721,7 +722,12 @@ def _load_plays_cached(
         df = pd.read_sql_query(sql, conn, params=params)
 
         if filtered and merge_enabled:
-            df = merge_consecutive_plays(df, min_ms, max_gap_minutes=max_merge_gap_minutes)
+            df = merge_consecutive_plays(
+                df,
+                min_ms,
+                max_gap_minutes=max_merge_gap_minutes,
+                boundary_column=boundary_column,
+            )
             if min_ms > 0:
                 from backend.domains.playback.counting import filter_effective_plays
 
@@ -744,6 +750,7 @@ def load_plays(
     merge_enabled: bool = True,
     dynamic_threshold: bool = False,
     max_merge_gap_minutes: int | None = None,
+    boundary_column: str | None = "source_album_id",
 ):
     """统一的播放数据加载函数，所有统计页面复用。
 
@@ -758,6 +765,8 @@ def load_plays(
 
     dynamic_threshold=True 启用动态有效播放阈值（长曲目需更高播放比例）。
     max_merge_gap_minutes 设置连续播放合并的最大间隔，超时则视为不同 session。
+    boundary_column 默认 "source_album_id"，跨 source album 的连续同曲不合并；
+    列不存在时自动忽略。
     """
     return _load_plays_cached(
         min_ms=min_ms,
@@ -770,6 +779,7 @@ def load_plays(
         extra_params=tuple(extra_params or ()),
         dynamic_threshold=dynamic_threshold,
         max_merge_gap_minutes=max_merge_gap_minutes,
+        boundary_column=boundary_column,
     ).copy()
 
 
@@ -785,6 +795,7 @@ def _load_plays_for_artists_cached(
     extra_params: tuple,
     dynamic_threshold: bool = False,
     max_merge_gap_minutes: int | None = None,
+    boundary_column: str | None = None,
 ) -> pd.DataFrame:
     """Same as _load_plays_cached but fans out through track_artists after merge
     so featured artists get their own rows. One play on a multi-artist track
@@ -847,7 +858,12 @@ def _load_plays_for_artists_cached(
         df = pd.read_sql_query(sql, conn, params=params)
 
         if filtered and merge_enabled:
-            df = merge_consecutive_plays(df, min_ms, max_gap_minutes=max_merge_gap_minutes)
+            df = merge_consecutive_plays(
+                df,
+                min_ms,
+                max_gap_minutes=max_merge_gap_minutes,
+                boundary_column=boundary_column,
+            )
             if min_ms > 0:
                 from backend.domains.playback.counting import filter_effective_plays
 
@@ -879,6 +895,7 @@ def load_plays_for_artists(
     merge_enabled: bool = True,
     dynamic_threshold: bool = False,
     max_merge_gap_minutes: int | None = None,
+    boundary_column: str | None = "source_album_id",
 ):
     """Load plays with multi-artist fan-out for artist-statistics queries.
 
@@ -900,6 +917,7 @@ def load_plays_for_artists(
         extra_params=tuple(extra_params or ()),
         dynamic_threshold=dynamic_threshold,
         max_merge_gap_minutes=max_merge_gap_minutes,
+        boundary_column=boundary_column,
     ).copy()
 
 

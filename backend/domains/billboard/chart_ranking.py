@@ -17,8 +17,16 @@ def compute_weekly_rankings(_df, top_n, pre_agg=None, merge_level: int = 2):
     """
     if pre_agg is not None and not pre_agg.empty:
         weekly = pre_agg.copy()
-        # pre_agg already has: billboard_week, track_id, track_name,
-        # artist_name, album_name, play_count, total_ms
+        _apply_track_groups(weekly, merge_level=merge_level)
+        # After canonicalization, re-aggregate: sum play_count/total_ms per group.
+        # album_name is kept as the first (alphabetical) representative.
+        weekly = (
+            weekly.groupby(
+                ["billboard_week", "track_id", "track_name", "artist_name", "album_name"]
+            )
+            .agg(play_count=("play_count", "sum"), total_ms=("total_ms", "sum"))
+            .reset_index()
+        )
     else:
         df = _df.copy()
         _apply_track_groups(df, merge_level=merge_level)

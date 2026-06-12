@@ -88,12 +88,13 @@ function selectCurrentWeekData(
   }
 }
 
-export function useBillboard(initialWeek?: string | null): UseBillboardResult {
+export function useBillboard(initialWeek?: string | null, mergeLevel = 2): UseBillboardResult {
   const queryClientForHook = useQueryClient()
   const [weekIndex, setWeekIndexState] = useState(cachedWeekIndex)
+  const params = { merge_level: mergeLevel }
   const query = useQuery({
-    queryKey: queryKeys.billboard.data(),
-    queryFn: () => api.get<BillboardDataResponse>('/billboard/data'),
+    queryKey: queryKeys.billboard.data(params),
+    queryFn: () => api.get<BillboardDataResponse>('/billboard/data', params),
   })
 
   const setWeekIndex = useCallback((idx: number) => {
@@ -209,15 +210,16 @@ export function useBillboardWeekly(initialWeek?: string | null, mergeLevel = 2) 
 
 export function preloadRecordsData(): void {
   void queryClient.prefetchQuery({
-    queryKey: queryKeys.billboard.records(),
-    queryFn: () => api.get<BillboardRecordsResponse>('/billboard/records'),
+    queryKey: queryKeys.billboard.records({ merge_level: 2 }),
+    queryFn: () => api.get<BillboardRecordsResponse>('/billboard/records', { merge_level: 2 }),
   })
 }
 
-export function useBillboardRecords() {
+export function useBillboardRecords(mergeLevel = 2) {
+  const params = { merge_level: mergeLevel }
   const query = useQuery({
-    queryKey: queryKeys.billboard.records(),
-    queryFn: () => api.get<BillboardRecordsResponse>('/billboard/records'),
+    queryKey: queryKeys.billboard.records(params),
+    queryFn: () => api.get<BillboardRecordsResponse>('/billboard/records', params),
   })
 
   return {
@@ -230,15 +232,16 @@ export function useBillboardRecords() {
 
 export function preloadAllTimeData(): void {
   void queryClient.prefetchQuery({
-    queryKey: queryKeys.billboard.allTime(),
-    queryFn: () => api.get<BillboardAllTimeResponse>('/billboard/all-time'),
+    queryKey: queryKeys.billboard.allTime({ merge_level: 2 }),
+    queryFn: () => api.get<BillboardAllTimeResponse>('/billboard/all-time', { merge_level: 2 }),
   })
 }
 
-export function useBillboardAllTime() {
+export function useBillboardAllTime(mergeLevel = 2) {
+  const params = { merge_level: mergeLevel }
   const query = useQuery({
-    queryKey: queryKeys.billboard.allTime(),
-    queryFn: () => api.get<BillboardAllTimeResponse>('/billboard/all-time'),
+    queryKey: queryKeys.billboard.allTime(params),
+    queryFn: () => api.get<BillboardAllTimeResponse>('/billboard/all-time', params),
   })
 
   return {

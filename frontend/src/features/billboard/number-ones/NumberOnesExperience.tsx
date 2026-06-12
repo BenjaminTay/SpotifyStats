@@ -18,8 +18,8 @@ import {
 let cachedSubTab: SubTabKey = 'tracks'
 let cachedYear = 0
 
-export function NumberOnesExperience() {
-  const { data, loading, error } = useBillboardAllTime()
+export function NumberOnesExperience({ mergeLevel = 2 }: { mergeLevel?: number }) {
+  const { data, loading, error } = useBillboardAllTime(mergeLevel)
   const [activeTab, setActiveTab] = useState<SubTabKey>(cachedSubTab)
   const [selectedYear, setSelectedYear] = useState(cachedYear)
 
