@@ -67,7 +67,6 @@ def _compute_billboard_data_cached(
     include_compilations=False,
 ):
     """Compute all Billboard data in one call.
-
     Returns a dict with all DataFrames converted to JSON-safe lists of dicts.
     This single function replaces the 15+ DataFrame computation pipeline
     previously done in Streamlit's billboard/__init__.py:run().
@@ -95,11 +94,10 @@ def _compute_billboard_data_cached(
 
     Returns
     -------
-    dict with keys:
-        meta, weekly, weekly_album, weekly_artist,
-        track_summary, artist_summary, artist_track_counts,
-        album_track_counts, track_per_album,
-        records, power_scores, album_power_scores, artist_power_scores
+    dict with keys: meta, weekly, weekly_album, weekly_artist,
+    track_summary, artist_summary, artist_track_counts,
+    album_track_counts, track_per_album, records, power_scores,
+    album_power_scores, artist_power_scores
     """
     # ── Load, filter, rank (shared with staged functions) ─────────────
     weekly, weekly_album, weekly_artist, all_weeks_asc, all_weeks_desc, df_filtered = (

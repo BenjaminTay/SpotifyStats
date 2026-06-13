@@ -1,8 +1,4 @@
-"""Staged Billboard chart cache helpers.
-
-This module owns the per-slice cached computations used by the staged
-Billboard API. The legacy full-data facade remains in chart_compute.py.
-"""
+"""Staged Billboard cached computations — _load_and_rank, weekly/power/summaries/records."""
 
 from functools import lru_cache
 
@@ -53,7 +49,6 @@ def _load_and_rank(
     max_merge_gap_minutes=None,
     include_compilations=False,
 ):
-    """Load raw data, apply filters, and compute weekly rankings."""
     df_raw = load_billboard_raw(
         min_ms,
         music_only,
@@ -84,20 +79,15 @@ def _load_and_rank(
     )
 
     if _agg_tracks is not None:
+        y0, y1 = year_start or 1900, year_end or 2100
         _agg_tracks = _agg_tracks[
-            pd.to_datetime(_agg_tracks["billboard_week"]).dt.year.between(
-                year_start or 1900, year_end or 2100
-            )
+            pd.to_datetime(_agg_tracks["billboard_week"]).dt.year.between(y0, y1)
         ]
         _agg_albums = _agg_albums[
-            pd.to_datetime(_agg_albums["billboard_week"]).dt.year.between(
-                year_start or 1900, year_end or 2100
-            )
+            pd.to_datetime(_agg_albums["billboard_week"]).dt.year.between(y0, y1)
         ]
         _agg_artists = _agg_artists[
-            pd.to_datetime(_agg_artists["billboard_week"]).dt.year.between(
-                year_start or 1900, year_end or 2100
-            )
+            pd.to_datetime(_agg_artists["billboard_week"]).dt.year.between(y0, y1)
         ]
 
     weekly = compute_weekly_rankings(
@@ -194,7 +184,6 @@ def _compute_weekly_data_cached(
     max_merge_gap_minutes=None,
     include_compilations=False,
 ):
-    """Compute weekly rankings + meta. Returns JSON-safe dict."""
     weekly, weekly_album, weekly_artist, all_weeks_asc, all_weeks_desc, df_filtered = (
         _load_and_rank(
             min_ms,
@@ -254,7 +243,6 @@ def _compute_power_scores_cached(
     dynamic_threshold=False,
     max_merge_gap_minutes=None,
 ):
-    """Compute power scores for tracks, albums, and artists. Returns JSON-safe dict."""
     weekly, weekly_album, weekly_artist, *_ = _load_and_rank(
         min_ms,
         music_only,
@@ -298,7 +286,6 @@ def _compute_summaries_cached(
     dynamic_threshold=False,
     max_merge_gap_minutes=None,
 ):
-    """Compute track/artist/album summaries. Returns JSON-safe dict."""
     weekly, weekly_album, weekly_artist, *_all_weeks, df_filtered = _load_and_rank(
         min_ms,
         music_only,
@@ -351,7 +338,6 @@ def _compute_records_cached(
     dynamic_threshold=False,
     max_merge_gap_minutes=None,
 ):
-    """Compute Billboard records. Returns JSON-safe dict."""
     weekly, weekly_album, weekly_artist, *_all_weeks, df_filtered = _load_and_rank(
         min_ms,
         music_only,
