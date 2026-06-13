@@ -10,8 +10,31 @@ import pytest
 
 from backend.core.db import load_plays, load_plays_for_artists
 from backend.services.analysis_stats_service import chart_rows
+from backend.services.billboard_service import compute_billboard_data
 
 pytestmark = pytest.mark.contract
+
+
+class TestValidEventsVsRawRows:
+    def test_filtering_changes_row_count_from_raw(self, seed_conn):
+        """R24b.1: Valid play events != raw play rows. Filtering reduces count
+        (short plays removed), but merge _can_ expand (long sessions split into
+        logical plays). The count is never identical in practice."""
+        raw = load_plays(seed_conn, min_ms=0, music_only=True, merge_enabled=False, filtered=False)
+        valid = load_plays(seed_conn, min_ms=30000, music_only=True, merge_enabled=True)
+        # They should differ — filtering + merge changes the picture
+        assert len(valid) != len(raw), (
+            f"Expected valid ({len(valid)}) != raw ({len(raw)}) after filter+merge"
+        )
+
+    def test_raw_rows_include_short_plays_filtered_out(self, seed_conn):
+        """R24b.1: Short plays (< 30s) exist in raw but are removed in valid."""
+        raw = load_plays(seed_conn, min_ms=0, music_only=True, merge_enabled=False, filtered=False)
+        valid = load_plays(seed_conn, min_ms=30000, music_only=True, merge_enabled=True)
+        raw_short = int((raw["ms_played"] < 30000).sum())
+        valid_short = int((valid["ms_played"] < 30000).sum())
+        assert raw_short > 0, "Seed data should have sub-30s plays"
+        assert valid_short == 0, f"Valid events should have 0 sub-30s, got {valid_short}"
 
 
 class TestArtistFanOutInvariant:
@@ -66,6 +89,22 @@ class TestSourceAlbumAttribution:
             f"Expected source_album_id {{901, 902}}, got {set(rows['source_album_id'])}"
         )
 
+    def test_source_album_id_present_on_fixture_tracks(self, seed_conn):
+        """R24b.3: Tracks with known source albums retain attribution through pipeline."""
+        valid = load_plays(seed_conn, min_ms=30000, music_only=True, merge_enabled=True)
+        # Fixture Source Album Song (track 904) has explicit source_album_id values
+        fixture_rows = valid[valid["track_name"] == "Fixture Source Album Song"]
+        assert len(fixture_rows) > 0, "Expected fixture track 904 in valid plays"
+        # All rows for this track should have source_album_id set
+        null_count = int(fixture_rows["source_album_id"].isna().sum())
+        assert null_count == 0, (
+            f"Fixture track 904 should have source_album_id, got {null_count} NULLs"
+        )
+        source_ids = set(fixture_rows["source_album_id"].dropna().astype(int))
+        assert source_ids.issubset({901, 902}), (
+            f"Expected source_album_id subset of {{901,902}}, got {source_ids}"
+        )
+
 
 class TestMergeLevelInvariant:
     def test_track_aggregation_sum_equals_valid_events_at_all_levels(self, seed_conn):
@@ -85,3 +124,33 @@ class TestMergeLevelInvariant:
             )
             msg = f"L{level}: sum(plays)={sum(r['plays'] for r in rows)} != events={total_events}"
             assert sum(r["plays"] for r in rows) == total_events, msg
+
+
+class TestBillboardPersonalConsistency:
+    def test_billboard_album_merge_consistent_with_analysis(self, seed_conn):
+        """R24b.6: Album merge level gives consistent rankings across Billboard
+        and personal chart when same merge_level is used."""
+        # Compute Billboard data at L2 (default)
+        bb = compute_billboard_data(merge_level=2)
+        weekly_album = bb.get("weekly_album", [])
+
+        # Compute personal album chart at L2
+        valid = load_plays(seed_conn, min_ms=30000, music_only=True, merge_enabled=True)
+        total, rows = chart_rows(
+            seed_conn, valid, entity="album", metric="plays", limit=100, offset=0, merge_level=2
+        )
+
+        # Both pipelines should have at least one album
+        assert len(rows) > 0, "Personal album chart should have results"
+        assert len(weekly_album) > 0, "Billboard album chart should have results"
+
+        # For albums that appear in both, the merge (canonicalization) should be
+        # consistent: same album_name in Billboard and personal after merge
+        personal_names = {r["album_name"] for r in rows}
+        bb_names = {e["album_name"] for e in weekly_album}
+        common = personal_names & bb_names
+        # At least one canonical album name should appear in both
+        assert len(common) > 0, (
+            f"No common canonical album names between Billboard ({len(bb_names)})"
+            f" and personal ({len(personal_names)}) charts"
+        )

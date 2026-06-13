@@ -26,9 +26,18 @@ def _load_chart_data(
     bb_week_start_hour,
     year_start,
     year_end,
+    dynamic_threshold=False,
+    max_merge_gap_minutes=None,
 ):
     """Load raw data and compute all three weekly rankings. Returns a 5-tuple."""
-    df_raw = load_billboard_raw(min_ms, music_only, bb_week_start_dow, bb_week_start_hour)
+    df_raw = load_billboard_raw(
+        min_ms,
+        music_only,
+        bb_week_start_dow,
+        bb_week_start_hour,
+        dynamic_threshold=dynamic_threshold,
+        max_merge_gap_minutes=max_merge_gap_minutes,
+    )
     df_raw = df_raw.copy()
     df_raw["_year"] = df_raw["billboard_week"].apply(lambda x: x.year)
     if year_start is not None:
@@ -66,7 +75,12 @@ def _load_chart_data(
         )
     else:
         df_artists = load_billboard_raw_for_artists(
-            min_ms, music_only, bb_week_start_dow, bb_week_start_hour
+            min_ms,
+            music_only,
+            bb_week_start_dow,
+            bb_week_start_hour,
+            dynamic_threshold=dynamic_threshold,
+            max_merge_gap_minutes=max_merge_gap_minutes,
         )
         weekly_artist = compute_artist_weekly_rankings(df_artists, bb_artist_top_n)
 

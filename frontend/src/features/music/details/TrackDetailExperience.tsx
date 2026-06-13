@@ -9,6 +9,7 @@ import { displayName } from '@/lib/chinese'
 import { Skeleton } from '@/components/ui/skeleton'
 import { AlertCircle, ArrowLeft } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { getDefaultMergeLevel } from '@/lib/merge-level'
 import { TrackOverviewSection } from './track/TrackOverviewSection'
 import { TrackLyricsSection } from './track/TrackLyricsSection'
 import { VersionGroupSection } from './VersionGroupSection'
@@ -61,10 +62,11 @@ export function TrackDetailExperience() {
   const [activeTab, setActiveTab] = useState<TabKey>(
     (searchParams.get('tab') as TabKey | null) ?? 'stats',
   )
+  const mergeLevel = Number(searchParams.get('merge_level') ?? getDefaultMergeLevel())
 
   const { data, isPending, error, refetch } = useQuery({
-    queryKey: queryKeys.music.trackDetail(trackId ?? ''),
-    queryFn: () => api.get<TrackDetailResponse>('/billboard/track/' + trackId!),
+    queryKey: queryKeys.music.trackDetail(trackId ?? '', mergeLevel),
+    queryFn: () => api.get<TrackDetailResponse>('/billboard/track/' + trackId!, { merge_level: mergeLevel }),
     enabled: !!trackId,
   })
   const { data: enrichment = null } = useQuery({

@@ -1179,20 +1179,35 @@ export interface VersionGroupItem {
   total_ms?: number
   unique_tracks?: number
   is_primary: boolean
+  recording_kind?: string | null
+  album_cover_url?: string | null
+  release_date?: string | null
+  album_type?: string | null
+  total_tracks?: number | null
 }
 
 export interface TrackVersionGroup {
   group_id: number
   canonical_name: string
   scope: 'recording' | 'composition'
+  total_plays: number
   versions: VersionGroupItem[]
+}
+
+export interface TrackCoverageItem {
+  track_id: number
+  track_name: string
+  album_ids: number[]
+  is_exclusive: boolean
 }
 
 export interface AlbumVersionGroup {
   group_id: number
   canonical_name: string
   scope: 'release' | 'composition'
+  total_plays: number
   versions: VersionGroupItem[]
+  track_coverage?: TrackCoverageItem[]
 }
 
 // ── Genius Lyrics ──────────────────────────────────────────

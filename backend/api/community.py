@@ -109,6 +109,8 @@ def get_community_feed(
         conn=conn,
         min_ms=filters.min_ms,
         music_only=filters.music_only,
+        dynamic_threshold=filters.dynamic_threshold,
+        max_merge_gap_minutes=filters.max_merge_gap_minutes,
     )
 
     # Apply filters — track both totals (with and without highlights filter)
@@ -200,6 +202,8 @@ def get_community_trending(
         conn=conn,
         min_ms=filters.min_ms,
         music_only=filters.music_only,
+        dynamic_threshold=filters.dynamic_threshold,
+        max_merge_gap_minutes=filters.max_merge_gap_minutes,
     )
 
     # Date filter
@@ -296,6 +300,8 @@ def get_community_post(
         conn=conn,
         min_ms=filters.min_ms,
         music_only=filters.music_only,
+        dynamic_threshold=filters.dynamic_threshold,
+        max_merge_gap_minutes=filters.max_merge_gap_minutes,
     )
 
     target = None

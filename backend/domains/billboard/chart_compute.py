@@ -62,6 +62,9 @@ def _compute_billboard_data_cached(
     year_start=None,
     year_end=None,
     merge_level=2,
+    dynamic_threshold=False,
+    max_merge_gap_minutes=None,
+    include_compilations=False,
 ):
     """Compute all Billboard data in one call.
 
@@ -111,6 +114,9 @@ def _compute_billboard_data_cached(
             year_start,
             year_end,
             merge_level,
+            dynamic_threshold=dynamic_threshold,
+            max_merge_gap_minutes=max_merge_gap_minutes,
+            include_compilations=include_compilations,
         )
     )
 
@@ -201,6 +207,9 @@ def compute_billboard_data(
     year_start=None,
     year_end=None,
     merge_level=2,
+    dynamic_threshold=False,
+    max_merge_gap_minutes=None,
+    include_compilations=False,
 ):
     """Compute all Billboard data with normalized cache keys."""
     return _compute_billboard_data_cached(
@@ -214,12 +223,14 @@ def compute_billboard_data(
         year_start,
         year_end,
         merge_level,
+        dynamic_threshold=dynamic_threshold,
+        max_merge_gap_minutes=max_merge_gap_minutes,
+        include_compilations=include_compilations,
     )
 
 
 compute_billboard_data.cache_clear = _compute_billboard_data_cached.cache_clear  # type: ignore[attr-defined]
 compute_billboard_data.cache_info = _compute_billboard_data_cached.cache_info  # type: ignore[attr-defined]
-
 
 # ── Cache registration ─────────────────────────────────────────────────
 from backend.core.cache_manager import register_lru  # noqa: E402

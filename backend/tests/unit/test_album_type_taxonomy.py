@@ -39,8 +39,9 @@ class TestClassifyAlbum:
     def test_unknown_when_no_data(self):
         assert classify_album(None, total_tracks=0, total_ms=0) == "unknown"
 
-    def test_unknown_when_single_without_track_info(self):
-        assert classify_album("single", total_tracks=0, total_ms=0) == "unknown"
+    def test_single_without_track_info_defaults_to_single(self):
+        # Fallback: when we lack track/duration data, trust Spotify's label
+        assert classify_album("single", total_tracks=0, total_ms=0) == "single"
 
 
 class TestIsAlbumChartEligible:
@@ -56,5 +57,6 @@ class TestIsAlbumChartEligible:
     def test_single_is_not_eligible(self):
         assert is_album_chart_eligible("single") is False
 
-    def test_unknown_is_not_eligible(self):
-        assert is_album_chart_eligible("unknown") is False
+    def test_unknown_is_eligible_for_safety(self):
+        # Unclassified albums pass through to avoid excluding albums without metadata
+        assert is_album_chart_eligible("unknown") is True

@@ -79,6 +79,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/analysis/plays": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Analysis Plays */
+        get: operations["analysis_plays_api_analysis_plays_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/analysis/play-dates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Analysis Play Dates */
+        get: operations["analysis_play_dates_api_analysis_play_dates_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/dashboard/summary": {
         parameters: {
             query?: never;
@@ -892,10 +926,122 @@ export interface paths {
          * @description Compute all Billboard chart data in a single request.
          *
          *     Returns weekly rankings, track/artist/album summaries, records,
-         *     and power scores. The frontend caches this response and 12 tabs
-         *     read from it without additional requests.
+         *     and power scores. Kept for backward compatibility.
          */
         get: operations["get_billboard_data_api_billboard_data_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/billboard/weekly": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Billboard Weekly
+         * @description Weekly rankings + meta only — used by BillboardPage.
+         *
+         *     Returns meta, weekly (tracks), weekly_album, weekly_artist.
+         */
+        get: operations["get_billboard_weekly_api_billboard_weekly_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/billboard/records": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Billboard Records
+         * @description Billboard records only — used by RecordsPage.
+         *
+         *     Returns all 37 records across 6 sections.
+         */
+        get: operations["get_billboard_records_api_billboard_records_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/billboard/power-scores": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Billboard Power Scores
+         * @description Power scores for tracks, albums, and artists.
+         *
+         *     Returns power_scores, album_power_scores, artist_power_scores
+         *     each with power_rank, weeks_top5, weeks_top10.
+         */
+        get: operations["get_billboard_power_scores_api_billboard_power_scores_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/billboard/summaries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Billboard Summaries
+         * @description Track/artist/album summaries and counts.
+         *
+         *     Returns track_summary, artist_summary, album_track_counts,
+         *     artist_track_counts.
+         */
+        get: operations["get_billboard_summaries_api_billboard_summaries_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/billboard/all-time": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Billboard All Time
+         * @description Combined data for all-time charts pages.
+         *
+         *     Returns power-scores + summaries + weekly data.
+         *     Used by NumberOnesPage and AllTimeChartsPage.
+         */
+        get: operations["get_billboard_all_time_api_billboard_all_time_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1077,7 +1223,11 @@ export interface paths {
          */
         get: operations["versus_track_api_billboard_versus_track_get"];
         put?: never;
-        post?: never;
+        /**
+         * Versus Track Multi
+         * @description Compare multiple tracks side-by-side (2–5).
+         */
+        post: operations["versus_track_multi_api_billboard_versus_track_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1097,7 +1247,11 @@ export interface paths {
          */
         get: operations["versus_album_api_billboard_versus_album_get"];
         put?: never;
-        post?: never;
+        /**
+         * Versus Album Multi
+         * @description Compare multiple albums side-by-side (2–5).
+         */
+        post: operations["versus_album_multi_api_billboard_versus_album_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1117,7 +1271,11 @@ export interface paths {
          */
         get: operations["versus_artist_api_billboard_versus_artist_get"];
         put?: never;
-        post?: never;
+        /**
+         * Versus Artist Multi
+         * @description Compare multiple artists side-by-side (2–5).
+         */
+        post: operations["versus_artist_multi_api_billboard_versus_artist_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1176,6 +1334,74 @@ export interface paths {
          * @description Get Wikipedia and optionally Genius enrichment data for a track.
          */
         get: operations["get_track_enrichment_api_billboard_enrichment_track__track_name__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/community/feed": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Community Feed
+         * @description Get the community feed — simulated X-style posts from chart data.
+         *
+         *     Posts are generated with historical accuracy: each post only references
+         *     knowledge available at its point in time.
+         *
+         *     Filter by accounts, tags, date range, significance threshold, search keywords,
+         *     post types, or use highlights_only for newsworthy posts only.
+         */
+        get: operations["get_community_feed_api_community_feed_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/community/trending": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Community Trending
+         * @description Get trending entities computed over ALL community posts (not just current page).
+         *
+         *     Returns top mentioned artists, tracks, latest #1, and latest debut.
+         */
+        get: operations["get_community_trending_api_community_trending_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/community/post/{post_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Community Post
+         * @description Get a single community post by ID, with simulated related replies.
+         */
+        get: operations["get_community_post_api_community_post__post_id__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1594,6 +1820,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/music/tracks/{track_id}/play-dates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Track Play Dates */
+        get: operations["track_play_dates_api_music_tracks__track_id__play_dates_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/music/albums/{album_name}/play-dates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Album Play Dates */
+        get: operations["album_play_dates_api_music_albums__album_name__play_dates_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/music/artists/{artist_name}/play-dates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Artist Play Dates */
+        get: operations["artist_play_dates_api_music_artists__artist_name__play_dates_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/account": {
         parameters: {
             query?: never;
@@ -1626,6 +1903,200 @@ export interface paths {
          * @description 收藏×播放交叉分析洞察。
          */
         get: operations["collection_insights_api_account_collection_insights_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ai-insights/weekly-digest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Weekly Digest
+         * @description Generate a natural-language weekly listening digest.
+         */
+        get: operations["weekly_digest_api_ai_insights_weekly_digest_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ai-insights/monthly-personality": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Monthly Personality
+         * @description Generate a monthly personality report.
+         */
+        get: operations["monthly_personality_api_ai_insights_monthly_personality_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ai-insights/yearly-story": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Yearly Story
+         * @description Generate a narrative story from full Wrapped data.
+         */
+        get: operations["yearly_story_api_ai_insights_yearly_story_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ai-insights/ask": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ask
+         * @description Answer a natural-language question about listening history.
+         */
+        post: operations["ask_api_ai_insights_ask_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ai-insights/suggested-questions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Suggested Questions
+         * @description Return a list of suggested starter questions.
+         */
+        get: operations["suggested_questions_api_ai_insights_suggested_questions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/chat/sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Sessions */
+        get: operations["list_sessions_api_chat_sessions_get"];
+        put?: never;
+        /** Create Session */
+        post: operations["create_session_api_chat_sessions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/chat/sessions/{session_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Session */
+        get: operations["get_session_api_chat_sessions__session_id__get"];
+        put?: never;
+        post?: never;
+        /** Delete Session */
+        delete: operations["delete_session_api_chat_sessions__session_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Title */
+        patch: operations["update_title_api_chat_sessions__session_id__patch"];
+        trace?: never;
+    };
+    "/api/chat/sessions/{session_id}/messages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Add Message */
+        post: operations["add_message_api_chat_sessions__session_id__messages_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/cache-stats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Cache Stats
+         * @description Return cache hit/miss/size metrics grouped by namespace.
+         */
+        get: operations["cache_stats_api_admin_cache_stats_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/jobs/{job_id}/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Job Status
+         * @description Return the status of a background job.
+         */
+        get: operations["get_job_status_api_jobs__job_id__status_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1815,6 +2286,80 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * AccountKpi
+         * @description Account data KPIs (if account data is imported).
+         */
+        AccountKpi: {
+            /** Saved Tracks */
+            saved_tracks: number;
+            /** Playlists */
+            playlists: number;
+            /** Search Queries */
+            search_queries: number;
+            /** Video Plays */
+            video_plays: number;
+        };
+        /** AccountSummaryResponse */
+        AccountSummaryResponse: {
+            /** Has Account Data */
+            has_account_data?: boolean | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** AddMessageRequest */
+        AddMessageRequest: {
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "user" | "assistant" | "error";
+            /** Content */
+            content: string;
+            /** Meta Json */
+            meta_json?: string | null;
+        };
+        /** AlbumChartDetailResponse */
+        AlbumChartDetailResponse: {
+            /** Found */
+            found: boolean;
+            /** Album Name */
+            album_name?: string | null;
+            /** Artist Name */
+            artist_name?: string | null;
+            /** Cover Url */
+            cover_url?: string | null;
+            /** Meta */
+            meta?: {
+                [key: string]: unknown;
+            } | null;
+            /** Info */
+            info?: {
+                [key: string]: unknown;
+            } | null;
+            /** Chart Summary */
+            chart_summary?: {
+                [key: string]: unknown;
+            } | null;
+            /** Album Weekly History */
+            album_weekly_history?: {
+                [key: string]: unknown;
+            }[] | null;
+            /** Album No1 By Week */
+            album_no1_by_week?: {
+                [key: string]: unknown;
+            }[] | null;
+            /** Best Singles Overlay */
+            best_singles_overlay?: {
+                [key: string]: unknown;
+            }[] | null;
+            /** Tracks */
+            tracks?: {
+                [key: string]: unknown;
+            }[] | null;
+        } & {
+            [key: string]: unknown;
+        };
         /** AlbumCompletion */
         AlbumCompletion: {
             /** Name */
@@ -1837,6 +2382,444 @@ export interface components {
                 [key: string]: unknown;
             } | null;
         };
+        /** AlbumMultiRequest */
+        AlbumMultiRequest: {
+            /** Albums */
+            albums: {
+                [key: string]: unknown;
+            }[];
+        };
+        /** AnalysisChartRow */
+        AnalysisChartRow: {
+            /** Rank */
+            rank: number;
+            /** Track Id */
+            track_id?: number | null;
+            /** Track Name */
+            track_name?: string | null;
+            /** Artist Name */
+            artist_name?: string | null;
+            /** Album Name */
+            album_name?: string | null;
+            /** Plays */
+            plays: number;
+            /** Hours */
+            hours: number;
+            /** Share Pct */
+            share_pct: number;
+            /** First Played */
+            first_played?: string | null;
+            /** Last Played */
+            last_played?: string | null;
+            /** Avg Daily Plays */
+            avg_daily_plays: number;
+            /** Avg Daily Hours */
+            avg_daily_hours: number;
+            /** Cover Url */
+            cover_url?: string | null;
+            /** Unique Tracks */
+            unique_tracks?: number | null;
+            /** Unique Albums */
+            unique_albums?: number | null;
+            /** Artist Names */
+            artist_names?: string[] | null;
+        };
+        /** AnalysisChartsResponse */
+        AnalysisChartsResponse: {
+            period: components["schemas"]["AnalysisResolvedPeriod"];
+            /** Entity */
+            entity: string;
+            /** Metric */
+            metric: string;
+            /** Total */
+            total: number;
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Rows */
+            rows: components["schemas"]["AnalysisChartRow"][];
+        };
+        /** AnalysisCumulativeTrendPoint */
+        AnalysisCumulativeTrendPoint: {
+            /** Date */
+            date: string;
+            /** Cumulative Plays */
+            cumulative_plays: number;
+            /** Cumulative Hours */
+            cumulative_hours: number;
+        };
+        /** AnalysisDailyMetrics */
+        AnalysisDailyMetrics: {
+            /** Avg Daily Plays */
+            avg_daily_plays: number;
+            /** Avg Daily Hours */
+            avg_daily_hours: number;
+            /** Avg Active Day Plays */
+            avg_active_day_plays: number;
+            /** Avg Active Day Hours */
+            avg_active_day_hours: number;
+        };
+        /** AnalysisDailyTrendPoint */
+        AnalysisDailyTrendPoint: {
+            /** Date */
+            date: string;
+            /** Plays */
+            plays: number;
+            /** Hours */
+            hours: number;
+        };
+        /** AnalysisHourlyPoint */
+        AnalysisHourlyPoint: {
+            /** Hour */
+            hour: number;
+            /** Plays */
+            plays: number;
+            /** Hours */
+            hours: number;
+        };
+        /** AnalysisListeningSummary */
+        AnalysisListeningSummary: {
+            /** Peak Hour */
+            peak_hour: number | null;
+            /** Peak Hour Count */
+            peak_hour_count: number;
+            /** Late Night Rate */
+            late_night_rate: number;
+            /** Weekend Rate */
+            weekend_rate: number;
+            /** Day Type Preference */
+            day_type_preference: string;
+        };
+        /** AnalysisModuleCard */
+        AnalysisModuleCard: {
+            /** Key */
+            key: string;
+            /** Title */
+            title: string;
+            /** Metric */
+            metric: string;
+            /** Detail */
+            detail: string;
+            /** To */
+            to: string;
+            /** Cover Url */
+            cover_url?: string | null;
+        };
+        /** AnalysisMonthPoint */
+        AnalysisMonthPoint: {
+            /** Month */
+            month: number;
+            /** Plays */
+            plays: number;
+            /** Hours */
+            hours: number;
+        };
+        /** AnalysisOverviewResponse */
+        AnalysisOverviewResponse: {
+            summary: components["schemas"]["AnalysisOverviewSummary"];
+            /** Monthly Trend */
+            monthly_trend: {
+                [key: string]: unknown;
+            }[];
+            trend_summary: components["schemas"]["AnalysisTrendSummary"];
+            listening_summary: components["schemas"]["AnalysisListeningSummary"];
+            /** Top Tracks */
+            top_tracks: components["schemas"]["AnalysisTopTrack"][];
+            /** Top Artists */
+            top_artists: components["schemas"]["AnalysisTopArtist"][];
+            /** Top Albums */
+            top_albums: components["schemas"]["AnalysisTopAlbum"][];
+            /** Behavior Summary */
+            behavior_summary: {
+                [key: string]: unknown;
+            };
+            /** Module Cards */
+            module_cards: components["schemas"]["AnalysisModuleCard"][];
+        };
+        /** AnalysisOverviewSummary */
+        AnalysisOverviewSummary: {
+            /** Total Plays */
+            total_plays: number;
+            /** Total Hours */
+            total_hours: number;
+            /** Total Tracks */
+            total_tracks: number;
+            /** Total Artists */
+            total_artists: number;
+            /** Total Albums */
+            total_albums: number;
+            /** Total Days */
+            total_days: number;
+            /** Avg Daily Hours */
+            avg_daily_hours: number;
+        };
+        /** AnalysisPlayDateEntry */
+        AnalysisPlayDateEntry: {
+            /** Date */
+            date: string;
+            /** Count */
+            count: number;
+        };
+        /** AnalysisPlayRow */
+        AnalysisPlayRow: {
+            /** Play Id */
+            play_id: number;
+            /** Ts */
+            ts: string;
+            /** Date */
+            date: string;
+            /** Track Id */
+            track_id?: number | null;
+            /** Track Name */
+            track_name: string;
+            /** Artist Name */
+            artist_name: string;
+            /** Album Name */
+            album_name?: string | null;
+            /** Ms Played */
+            ms_played: number;
+            /** Hours */
+            hours: number;
+            /** Platform */
+            platform: string;
+            /** Cover Url */
+            cover_url?: string | null;
+            /** Artist Names */
+            artist_names?: string[] | null;
+        };
+        /** AnalysisPlaysResponse */
+        AnalysisPlaysResponse: {
+            /** Total */
+            total: number;
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Rows */
+            rows: components["schemas"]["AnalysisPlayRow"][];
+        };
+        /** AnalysisResolvedPeriod */
+        AnalysisResolvedPeriod: {
+            /** Period */
+            period: string;
+            /** Label */
+            label: string;
+            /** Start Date */
+            start_date: string | null;
+            /** End Date */
+            end_date: string | null;
+        };
+        /** AnalysisStatsBehaviorSummary */
+        AnalysisStatsBehaviorSummary: {
+            /** Forward Rate */
+            forward_rate: number;
+            /** Shuffle Rate */
+            shuffle_rate: number;
+            /** Primary Platform */
+            primary_platform: string;
+            /** Primary Platform Rate */
+            primary_platform_rate: number;
+            /** Top Start Reason */
+            top_start_reason: string;
+            /** Top End Reason */
+            top_end_reason: string;
+        };
+        /** AnalysisStatsResponse */
+        AnalysisStatsResponse: {
+            period: components["schemas"]["AnalysisResolvedPeriod"];
+            summary: components["schemas"]["AnalysisStatsSummary"];
+            daily_metrics: components["schemas"]["AnalysisDailyMetrics"];
+            /** Hourly Distribution */
+            hourly_distribution: components["schemas"]["AnalysisHourlyPoint"][];
+            /** Daily Trend */
+            daily_trend: components["schemas"]["AnalysisDailyTrendPoint"][];
+            /** Cumulative Trend */
+            cumulative_trend: components["schemas"]["AnalysisCumulativeTrendPoint"][];
+            /** Weekday Distribution */
+            weekday_distribution: components["schemas"]["AnalysisWeekdayPoint"][];
+            /** Month Distribution */
+            month_distribution: components["schemas"]["AnalysisMonthPoint"][];
+            /** Year Distribution */
+            year_distribution: components["schemas"]["AnalysisYearPoint"][];
+            behavior_summary: components["schemas"]["AnalysisStatsBehaviorSummary"];
+            /** Recent Plays */
+            recent_plays: {
+                [key: string]: unknown;
+            }[];
+        };
+        /** AnalysisStatsSummary */
+        AnalysisStatsSummary: {
+            /** Total Plays */
+            total_plays: number;
+            /** Total Hours */
+            total_hours: number;
+            /** Unique Tracks */
+            unique_tracks: number;
+            /** Unique Albums */
+            unique_albums: number;
+            /** Unique Artists */
+            unique_artists: number;
+            /** Active Days */
+            active_days: number;
+        };
+        /** AnalysisTopAlbum */
+        AnalysisTopAlbum: {
+            /** Album Name */
+            album_name: string;
+            /** Artist Name */
+            artist_name: string;
+            /** Plays */
+            plays: number;
+            /** Hours */
+            hours: number;
+            /** Cover Url */
+            cover_url: string | null;
+        };
+        /** AnalysisTopArtist */
+        AnalysisTopArtist: {
+            /** Artist Name */
+            artist_name: string;
+            /** Plays */
+            plays: number;
+            /** Hours */
+            hours: number;
+            /** Tracks */
+            tracks: number;
+            /** Cover Url */
+            cover_url: string | null;
+        };
+        /** AnalysisTopTrack */
+        AnalysisTopTrack: {
+            /** Track Id */
+            track_id: number;
+            /** Track Name */
+            track_name: string;
+            /** Artist Name */
+            artist_name: string;
+            /** Plays */
+            plays: number;
+            /** Hours */
+            hours: number;
+            /** Cover Url */
+            cover_url: string | null;
+        };
+        /** AnalysisTrendSummary */
+        AnalysisTrendSummary: {
+            /** Peak Period */
+            peak_period: string | null;
+            /** Peak Plays */
+            peak_plays: number;
+            /** Low Period */
+            low_period: string | null;
+            /** Low Plays */
+            low_plays: number;
+            /** Latest Period */
+            latest_period: string | null;
+            /** Latest Plays */
+            latest_plays: number;
+            /** Previous Period */
+            previous_period: string | null;
+            /** Previous Plays */
+            previous_plays: number;
+            /** Month Delta Pct */
+            month_delta_pct: number | null;
+        };
+        /** AnalysisWeekdayPoint */
+        AnalysisWeekdayPoint: {
+            /** Day */
+            day: string;
+            /** Plays */
+            plays: number;
+            /** Hours */
+            hours: number;
+        };
+        /** AnalysisYearPoint */
+        AnalysisYearPoint: {
+            /** Year */
+            year: number;
+            /** Plays */
+            plays: number;
+            /** Hours */
+            hours: number;
+        };
+        /** AnnualTimelinePoint */
+        AnnualTimelinePoint: {
+            /** Year */
+            year: number;
+            /** Plays */
+            plays: number;
+            /** Hours */
+            hours: number;
+            /** Unique Tracks */
+            unique_tracks: number;
+            /** Unique Artists */
+            unique_artists: number;
+            /** Top Track */
+            top_track: string;
+            /** Top Artist */
+            top_artist: string;
+        };
+        /** ApplyDetectionResponse */
+        ApplyDetectionResponse: {
+            /** Status */
+            status: string;
+            /** Created Count */
+            created_count: number;
+            /** Skipped Count */
+            skipped_count: number;
+        };
+        /** ArtistChartDetailResponse */
+        ArtistChartDetailResponse: {
+            /** Found */
+            found: boolean;
+            /** Artist Name */
+            artist_name?: string | null;
+            /** Cover Url */
+            cover_url?: string | null;
+            /** Meta */
+            meta?: {
+                [key: string]: unknown;
+            } | null;
+            /** Info */
+            info?: {
+                [key: string]: unknown;
+            } | null;
+            /** Chart Summary */
+            chart_summary?: {
+                [key: string]: unknown;
+            } | null;
+            /** Artist Weekly History */
+            artist_weekly_history?: {
+                [key: string]: unknown;
+            }[] | null;
+            /** Artist No1 By Week */
+            artist_no1_by_week?: {
+                [key: string]: unknown;
+            }[] | null;
+            /** Week No1 Albums */
+            week_no1_albums?: {
+                [key: string]: unknown;
+            }[] | null;
+            /** Best Singles Overlay */
+            best_singles_overlay?: {
+                [key: string]: unknown;
+            }[] | null;
+            /** Best Albums Overlay */
+            best_albums_overlay?: {
+                [key: string]: unknown;
+            }[] | null;
+            /** Tracks */
+            tracks?: {
+                [key: string]: unknown;
+            }[] | null;
+            /** Albums */
+            albums?: {
+                [key: string]: unknown;
+            }[] | null;
+        } & {
+            [key: string]: unknown;
+        };
         /** ArtistEnrichmentResponse */
         ArtistEnrichmentResponse: {
             /** Wiki */
@@ -1847,6 +2830,43 @@ export interface components {
             genius?: {
                 [key: string]: unknown;
             } | null;
+        };
+        /** ArtistListItem */
+        ArtistListItem: {
+            /** Artist Name */
+            artist_name: string;
+            /** Track Count */
+            track_count: number;
+        };
+        /** ArtistMultiRequest */
+        ArtistMultiRequest: {
+            /** Artist Names */
+            artist_names: string[];
+        };
+        /** AskRequest */
+        AskRequest: {
+            /** Question */
+            question: string;
+            /** Conversation History */
+            conversation_history?: components["schemas"]["ChatMessage"][] | null;
+        };
+        /** AskResponseBody */
+        AskResponseBody: {
+            /** Success */
+            success: boolean;
+            /**
+             * Answer
+             * @default
+             */
+            answer: string;
+            /** Period Info */
+            period_info?: string | null;
+            /** Start Date */
+            start_date?: string | null;
+            /** End Date */
+            end_date?: string | null;
+            /** Error */
+            error?: string | null;
         };
         /** BehaviorResponse */
         BehaviorResponse: {
@@ -1866,6 +2886,225 @@ export interface components {
             shuffle_rate_by_platform: components["schemas"]["ShufflePlatformRate"][];
             /** Shuffle Monthly */
             shuffle_monthly: components["schemas"]["ShuffleMonthly"][];
+        };
+        /** BillboardAllTimeResponse */
+        BillboardAllTimeResponse: {
+            [key: string]: unknown;
+        };
+        /** BillboardDataResponse */
+        BillboardDataResponse: {
+            meta: components["schemas"]["BillboardMeta"];
+            /** Weekly */
+            weekly: {
+                [key: string]: unknown;
+            }[];
+            /** Weekly Album */
+            weekly_album: {
+                [key: string]: unknown;
+            }[];
+            /** Weekly Artist */
+            weekly_artist: {
+                [key: string]: unknown;
+            }[];
+            /** Track Summary */
+            track_summary: {
+                [key: string]: unknown;
+            }[];
+            /** Artist Summary */
+            artist_summary: {
+                [key: string]: unknown;
+            }[];
+            /** Artist Track Counts */
+            artist_track_counts: {
+                [key: string]: unknown;
+            }[];
+            /** Album Track Counts */
+            album_track_counts: {
+                [key: string]: unknown;
+            }[];
+            /** Track Per Album */
+            track_per_album: {
+                [key: string]: unknown;
+            }[];
+            /** Records */
+            records: {
+                [key: string]: unknown;
+            };
+            /** Power Scores */
+            power_scores: {
+                [key: string]: unknown;
+            }[];
+            /** Album Power Scores */
+            album_power_scores: {
+                [key: string]: unknown;
+            }[];
+            /** Artist Power Scores */
+            artist_power_scores: {
+                [key: string]: unknown;
+            }[];
+        } & {
+            [key: string]: unknown;
+        };
+        /** BillboardMeta */
+        BillboardMeta: {
+            /** Total Weeks */
+            total_weeks: number;
+            /** Total Filtered Records */
+            total_filtered_records: number;
+            /** All Weeks Asc */
+            all_weeks_asc: string[];
+            /** All Weeks Desc */
+            all_weeks_desc: string[];
+            /** Dow Name */
+            dow_name: string;
+            /** Dow Short */
+            dow_short: string;
+            /** Top N */
+            top_n: number;
+            /** Album Top N */
+            album_top_n: number;
+            /** Artist Top N */
+            artist_top_n: number;
+            /** Week Start Dow */
+            week_start_dow: number;
+            /** Week Start Hour */
+            week_start_hour: number;
+        };
+        /** BillboardPowerScoresResponse */
+        BillboardPowerScoresResponse: {
+            /** Power Scores */
+            power_scores: {
+                [key: string]: unknown;
+            }[];
+            /** Album Power Scores */
+            album_power_scores: {
+                [key: string]: unknown;
+            }[];
+            /** Artist Power Scores */
+            artist_power_scores: {
+                [key: string]: unknown;
+            }[];
+        };
+        /** BillboardRecordsResponse */
+        BillboardRecordsResponse: {
+            /** Records */
+            records: {
+                [key: string]: unknown;
+            };
+        };
+        /** BillboardSummariesResponse */
+        BillboardSummariesResponse: {
+            /** Track Summary */
+            track_summary: {
+                [key: string]: unknown;
+            }[];
+            /** Artist Summary */
+            artist_summary: {
+                [key: string]: unknown;
+            }[];
+            /** Album Track Counts */
+            album_track_counts: {
+                [key: string]: unknown;
+            }[];
+            /** Artist Track Counts */
+            artist_track_counts: {
+                [key: string]: unknown;
+            }[];
+        } & {
+            [key: string]: unknown;
+        };
+        /** BillboardWeeklyResponse */
+        BillboardWeeklyResponse: {
+            meta: components["schemas"]["BillboardMeta"];
+            /** Weekly */
+            weekly: {
+                [key: string]: unknown;
+            }[];
+            /** Weekly Album */
+            weekly_album: {
+                [key: string]: unknown;
+            }[];
+            /** Weekly Artist */
+            weekly_artist: {
+                [key: string]: unknown;
+            }[];
+        } & {
+            [key: string]: unknown;
+        };
+        /** ChatMessage */
+        ChatMessage: {
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "user" | "assistant";
+            /** Content */
+            content: string;
+        };
+        /** ChatMessageRecord */
+        ChatMessageRecord: {
+            /** Id */
+            id: number;
+            /** Session Id */
+            session_id: number;
+            /** Role */
+            role: string;
+            /** Content */
+            content: string;
+            /** Meta Json */
+            meta_json?: string | null;
+            /** Created At */
+            created_at: string;
+        };
+        /** ChatSessionData */
+        ChatSessionData: {
+            /** Id */
+            id: number;
+            /** Title */
+            title: string;
+            /** Created At */
+            created_at: string;
+            /** Updated At */
+            updated_at: string;
+            /** Message Count */
+            message_count: number;
+            /** Last Message */
+            last_message?: string | null;
+        };
+        /** ChatSessionWithMessages */
+        ChatSessionWithMessages: {
+            /** Id */
+            id: number;
+            /** Title */
+            title: string;
+            /** Created At */
+            created_at: string;
+            /** Updated At */
+            updated_at: string;
+            /**
+             * Messages
+             * @default []
+             */
+            messages: components["schemas"]["ChatMessageRecord"][];
+        };
+        /** CollectionInsightsResponse */
+        CollectionInsightsResponse: {
+            /** Available */
+            available?: boolean | null;
+            /** Empty */
+            empty?: boolean | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** CommunityFeedResponse */
+        CommunityFeedResponse: {
+            meta: components["schemas"]["FeedMeta"];
+            /** Posts */
+            posts: {
+                [key: string]: unknown;
+            }[];
+        } & {
+            [key: string]: unknown;
         };
         /** CompareItem */
         CompareItem: {
@@ -1900,6 +3139,113 @@ export interface components {
             /** Member Ids */
             member_ids: number[];
         };
+        /** CreateGroupResponse */
+        CreateGroupResponse: {
+            /** Status */
+            status: string;
+            /** Group Id */
+            group_id?: number | null;
+            /** Message */
+            message?: string | null;
+        };
+        /** CreateSessionRequest */
+        CreateSessionRequest: {
+            /**
+             * Title
+             * @default 新对话
+             */
+            title: string;
+        };
+        /**
+         * DashboardFullResponse
+         * @description Complete dashboard data — all in one response to minimize round trips.
+         */
+        DashboardFullResponse: {
+            summary: components["schemas"]["DashboardSummary"];
+            account_kpis: components["schemas"]["AccountKpi"] | null;
+            /** Monthly Trend */
+            monthly_trend: components["schemas"]["MonthlyTrendPoint"][];
+            /** Top Tracks */
+            top_tracks: components["schemas"]["TopTrack"][];
+            /** Platform Dist */
+            platform_dist: components["schemas"]["PlatformDist"][];
+            /** Dow Dist */
+            dow_dist: components["schemas"]["DowDist"][];
+            /** Hourly Dist */
+            hourly_dist: components["schemas"]["HourlyDist"][];
+            random_track: components["schemas"]["RandomTrack"] | null;
+        };
+        /**
+         * DashboardSummary
+         * @description Overview KPIs.
+         */
+        DashboardSummary: {
+            /** Total Plays */
+            total_plays: number;
+            /** Total Hours */
+            total_hours: number;
+            /** Total Tracks */
+            total_tracks: number;
+            /** Total Artists */
+            total_artists: number;
+            /** Total Albums */
+            total_albums: number;
+            /** Total Days */
+            total_days: number;
+            /** Avg Daily Hours */
+            avg_daily_hours: number;
+        };
+        /** DetectionMemberResponse */
+        DetectionMemberResponse: {
+            /** Album Id */
+            album_id: number;
+            /** Album Name */
+            album_name: string;
+            /** Release Date */
+            release_date?: string | null;
+        };
+        /** DetectionResultResponse */
+        DetectionResultResponse: {
+            /** Artist Name */
+            artist_name: string;
+            /** Artist Id */
+            artist_id: number;
+            /** Canonical Name */
+            canonical_name: string;
+            /** Primary Album Name */
+            primary_album_name: string;
+            /** Primary Album Id */
+            primary_album_id: number;
+            /** Member Count */
+            member_count: number;
+            /** Confidence */
+            confidence: string;
+            /** Members */
+            members: components["schemas"]["DetectionMemberResponse"][];
+            /** Group Type */
+            group_type: string;
+            /** Reason */
+            reason: string;
+            /** Overlap Details */
+            overlap_details: components["schemas"]["OverlapDetailResponse"][];
+        };
+        /** DigestResponse */
+        DigestResponse: {
+            /** Success */
+            success: boolean;
+            /** Report */
+            report?: string | null;
+            /**
+             * Cached
+             * @default false
+             */
+            cached: boolean;
+            /** Cached At */
+            cached_at?: string | null;
+            entities?: components["schemas"]["ReportEntities"] | null;
+            /** Error */
+            error?: string | null;
+        };
         /** DiscoveryReturns */
         DiscoveryReturns: {
             /**
@@ -1913,6 +3259,122 @@ export interface components {
              */
             returning_tracks: components["schemas"]["ReturningTrack"][];
             longest_love?: components["schemas"]["LongestLove"] | null;
+        };
+        /**
+         * DowDist
+         * @description Day-of-week distribution row.
+         */
+        DowDist: {
+            /** Day */
+            day: string;
+            /** Count */
+            count: number;
+        };
+        /** EntityListsResponse */
+        EntityListsResponse: {
+            /** Tracks */
+            tracks: {
+                [key: string]: unknown;
+            }[];
+            /** Albums */
+            albums: {
+                [key: string]: unknown;
+            }[];
+            /** Artists */
+            artists: {
+                [key: string]: unknown;
+            }[];
+        };
+        /** EntityPlaysResponse */
+        EntityPlaysResponse: {
+            /** Total */
+            total: number;
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Rows */
+            rows: {
+                [key: string]: unknown;
+            }[];
+        };
+        /** EntityStatsResponse */
+        EntityStatsResponse: {
+            /** Found */
+            found?: boolean | null;
+            /** Period */
+            period?: {
+                [key: string]: unknown;
+            } | null;
+            /** Entity */
+            entity?: {
+                [key: string]: unknown;
+            } | null;
+            /** First Played */
+            first_played?: string | null;
+            /** Last Played */
+            last_played?: string | null;
+            /** Ranks */
+            ranks?: {
+                [key: string]: unknown;
+            } | null;
+            /** Recent Plays */
+            recent_plays?: {
+                [key: string]: unknown;
+            }[] | null;
+            /** Summary */
+            summary?: {
+                [key: string]: unknown;
+            } | null;
+            /** Daily Metrics */
+            daily_metrics?: {
+                [key: string]: unknown;
+            } | null;
+            /** Hourly Distribution */
+            hourly_distribution?: unknown[] | null;
+            /** Daily Trend */
+            daily_trend?: unknown[] | null;
+            /** Cumulative Trend */
+            cumulative_trend?: unknown[] | null;
+            /** Weekday Distribution */
+            weekday_distribution?: unknown[] | null;
+            /** Month Distribution */
+            month_distribution?: unknown[] | null;
+            /** Year Distribution */
+            year_distribution?: unknown[] | null;
+            /** Top250 Counts */
+            top250_counts?: {
+                [key: string]: unknown;
+            } | null;
+            /** Track Breakdown */
+            track_breakdown?: {
+                [key: string]: unknown;
+            }[] | null;
+            /** Top Tracks */
+            top_tracks?: {
+                [key: string]: unknown;
+            }[] | null;
+            /** Top Albums */
+            top_albums?: {
+                [key: string]: unknown;
+            }[] | null;
+            /** Recent 50 Count */
+            recent_50_count?: number | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** FeedMeta */
+        FeedMeta: {
+            /** Total */
+            total: number;
+            /** Total All */
+            total_all: number;
+            /** Returned */
+            returned: number;
+            /** Offset */
+            offset: number;
+            /** Limit */
+            limit: number;
         };
         /** FwdbtnByHour */
         FwdbtnByHour: {
@@ -1942,10 +3404,38 @@ export interface components {
             monthly_genres: components["schemas"]["MonthlyGenreItem"][];
             language_dist?: components["schemas"]["LanguageDist"] | null;
         };
+        /** GroupMemberResponse */
+        GroupMemberResponse: {
+            /** Album Id */
+            album_id: number;
+            /** Album Name */
+            album_name: string;
+            /** Is Primary */
+            is_primary?: number | null;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
+        };
+        /** HeatmapResponse */
+        HeatmapResponse: {
+            /** Z */
+            z: number[][];
+            /** X */
+            x: number[];
+            /** Y */
+            y: string[];
+        };
+        /**
+         * HourlyDist
+         * @description Hourly play count distribution.
+         */
+        HourlyDist: {
+            /** Hour */
+            hour: number;
+            /** Count */
+            count: number;
         };
         /** HourlyDistItem */
         HourlyDistItem: {
@@ -2096,6 +3586,13 @@ export interface components {
             /** Active Days Change */
             active_days_change?: number | null;
         };
+        /** LateNightEntry */
+        LateNightEntry: {
+            /** Year */
+            year: number;
+            /** Rate */
+            rate: number;
+        };
         /** LateNightInfo */
         LateNightInfo: {
             /** Ratio */
@@ -2108,6 +3605,8 @@ export interface components {
         };
         /** LateNightTrack */
         LateNightTrack: {
+            /** Track Id */
+            track_id: number;
             /** Name */
             name: string;
             /** Artist Name */
@@ -2116,6 +3615,67 @@ export interface components {
             plays: number;
             /** Cover Url */
             cover_url: string;
+        };
+        /** LeaderboardEntry */
+        LeaderboardEntry: {
+            /** Rank */
+            rank: number;
+            /** Plays */
+            plays: number;
+            /** Hours */
+            hours: number;
+            /** Track Id */
+            track_id?: number | null;
+            /** Track Name */
+            track_name?: string | null;
+            /** Artist Name */
+            artist_name?: string | null;
+            /** Album Name */
+            album_name?: string | null;
+            /** Cover Url */
+            cover_url?: string | null;
+            /** Unique Tracks */
+            unique_tracks?: number | null;
+            /** Artist Names */
+            artist_names?: string[] | null;
+        };
+        /** LeaderboardResponse */
+        LeaderboardResponse: {
+            /** Time Label */
+            time_label: string;
+            /** Total Records */
+            total_records: number;
+            /** Rows */
+            rows: components["schemas"]["LeaderboardEntry"][];
+        };
+        /** LibraryOverviewResponse */
+        LibraryOverviewResponse: {
+            /** Available */
+            available?: boolean | null;
+            /** Saved Tracks */
+            saved_tracks?: number | null;
+            /** Saved Albums */
+            saved_albums?: number | null;
+            /** Saved Artists */
+            saved_artists?: number | null;
+            /** Playlists */
+            playlists?: number | null;
+            /** Banned Items */
+            banned_items?: number | null;
+            /** Coverage Pct */
+            coverage_pct?: number | null;
+            /** Forgotten Count */
+            forgotten_count?: number | null;
+            /** Forgotten Tracks */
+            forgotten_tracks?: {
+                [key: string]: unknown;
+            }[] | null;
+            /** Artist Comparison */
+            artist_comparison?: {
+                [key: string]: unknown;
+            }[] | null;
+        } & {
+            [key: string]: unknown;
         };
         /** ListenMoment */
         ListenMoment: {
@@ -2151,6 +3711,8 @@ export interface components {
         };
         /** LongestLove */
         LongestLove: {
+            /** Track Id */
+            track_id: number;
             /** Name */
             name: string;
             /** Artist Name */
@@ -2168,6 +3730,15 @@ export interface components {
             start: string;
             /** End */
             end: string;
+        };
+        /** MessageAddResponse */
+        MessageAddResponse: {
+            /** Success */
+            success: boolean;
+            /** Data */
+            data?: null;
+            /** Error */
+            error?: string | null;
         };
         /** MonthlyDrillArtist */
         MonthlyDrillArtist: {
@@ -2191,6 +3762,8 @@ export interface components {
         };
         /** MonthlyDrillTrack */
         MonthlyDrillTrack: {
+            /** Track Id */
+            track_id: number;
             /** Name */
             name: string;
             /** Artist Name */
@@ -2216,6 +3789,27 @@ export interface components {
             /** Hours */
             hours: number;
         };
+        /** MonthlyTimelinePoint */
+        MonthlyTimelinePoint: {
+            /** Period */
+            period: string;
+            /** Plays */
+            plays: number;
+            /** Hours */
+            hours: number;
+        };
+        /**
+         * MonthlyTrendPoint
+         * @description Single period in the monthly trend chart.
+         */
+        MonthlyTrendPoint: {
+            /** Period */
+            period: string;
+            /** Plays */
+            plays: number;
+            /** Hours */
+            hours: number;
+        };
         /** MostActiveDay */
         MostActiveDay: {
             /** Date */
@@ -2235,6 +3829,38 @@ export interface components {
             artist_name: string;
             /** Count */
             count: number;
+        };
+        /** MultiVersusEntity */
+        MultiVersusEntity: {
+            /** Name */
+            name?: string | null;
+            /** Cover Url */
+            cover_url?: string | null;
+            /** Popularity */
+            popularity?: number | null;
+            /** Genres */
+            genres?: string[] | null;
+            /** Rank History */
+            rank_history?: {
+                [key: string]: unknown;
+            }[] | null;
+            /** Metrics */
+            metrics?: {
+                [key: string]: unknown;
+            } | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** MultiVersusResponse */
+        MultiVersusResponse: {
+            /** Found */
+            found: boolean;
+            /** Reason */
+            reason?: string | null;
+            /** Entities */
+            entities?: components["schemas"]["MultiVersusEntity"][] | null;
+        } & {
+            [key: string]: unknown;
         };
         /** MusicMap */
         MusicMap: {
@@ -2262,6 +3888,15 @@ export interface components {
             /** Cover Url */
             cover_url: string;
         };
+        /** OverlapDetailResponse */
+        OverlapDetailResponse: {
+            /** Album Name */
+            album_name: string;
+            /** Album Id */
+            album_id: number;
+            /** Overlap */
+            overlap: number;
+        };
         /** PersonalityDimension */
         PersonalityDimension: {
             /** Label */
@@ -2284,6 +3919,16 @@ export interface components {
                 [key: string]: components["schemas"]["PersonalityDimension"];
             };
         };
+        /**
+         * PlatformDist
+         * @description Platform distribution row.
+         */
+        PlatformDist: {
+            /** Platform */
+            platform: string;
+            /** Count */
+            count: number;
+        };
         /** PlatformHourly */
         PlatformHourly: {
             /** Platform */
@@ -2302,6 +3947,129 @@ export interface components {
             /** Count */
             count: number;
         };
+        /** PlayDateEntry */
+        PlayDateEntry: {
+            /** Date */
+            date: string;
+            /** Count */
+            count: number;
+        };
+        /** PlaylistEntry */
+        PlaylistEntry: {
+            /** Id */
+            id: number;
+            /** Name */
+            name: string;
+            /** Last Modified */
+            last_modified?: string | null;
+            /** Track Count */
+            track_count?: number | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** PlaylistOverlapResponse */
+        PlaylistOverlapResponse: {
+            /** Playlist Ids */
+            playlist_ids: number[];
+            /** Playlist Names */
+            playlist_names: string[];
+            /** Matrix */
+            matrix: number[][];
+        };
+        /** PlaylistTrackEntry */
+        PlaylistTrackEntry: {
+            /** Track Uri */
+            track_uri: string;
+            /** Track Name */
+            track_name: string;
+            /** Artist Name */
+            artist_name: string;
+            /** Album Name */
+            album_name?: string | null;
+            /** Added Date */
+            added_date?: string | null;
+            /** Cover Url */
+            cover_url?: string | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** PostDetailResponse */
+        PostDetailResponse: {
+            post: components["schemas"]["PostItem"];
+            /** Replies */
+            replies: components["schemas"]["PostItem"][];
+        };
+        /** PostItem */
+        PostItem: {
+            /** Id */
+            id: string;
+            /** Account Handle */
+            account_handle: string;
+            /** Posted At */
+            posted_at: string;
+            /** Content */
+            content: string;
+            /** Post Type */
+            post_type: string;
+            metrics: components["schemas"]["PostMetrics"];
+            /**
+             * Tags
+             * @default []
+             */
+            tags: string[];
+            /**
+             * Significance
+             * @default 0
+             */
+            significance: number;
+            /** Attached List */
+            attached_list?: unknown[] | null;
+            /** Linked Entities */
+            linked_entities?: unknown[] | null;
+            /** Images */
+            images?: unknown[] | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** PostMetrics */
+        PostMetrics: {
+            /**
+             * Likes
+             * @default 0
+             */
+            likes: number;
+            /**
+             * Retweets
+             * @default 0
+             */
+            retweets: number;
+            /**
+             * Replies
+             * @default 0
+             */
+            replies: number;
+            /**
+             * Views
+             * @default 0
+             */
+            views: number;
+        };
+        /**
+         * RandomTrack
+         * @description Random nostalgic track recommendation.
+         */
+        RandomTrack: {
+            /** Track Name */
+            track_name: string;
+            /** Artist Name */
+            artist_name: string;
+            /** Album Name */
+            album_name: string | null;
+            /** Last Played */
+            last_played: string;
+            /** Total Plays */
+            total_plays: number;
+        };
         /** ReasonDist */
         ReasonDist: {
             /** Reason */
@@ -2318,8 +4086,152 @@ export interface components {
             /** Play Share */
             play_share: number;
         };
+        /** ReleaseCycleAlbumDetailResponse */
+        ReleaseCycleAlbumDetailResponse: {
+            /** Album Name */
+            album_name?: string | null;
+            /** Artist Name */
+            artist_name?: string | null;
+            /** Error */
+            error?: string | null;
+            /** Album Type */
+            album_type?: string | null;
+            /** Release Date */
+            release_date?: string | null;
+            /** Release Date Iso */
+            release_date_iso?: string | null;
+            /** Canonical Name */
+            canonical_name?: string | null;
+            /** Primary Name */
+            primary_name?: string | null;
+            /** Group Albums */
+            group_albums?: string[] | null;
+            /** Is Grouped */
+            is_grouped?: boolean | null;
+            /** Advance Singles */
+            advance_singles?: {
+                [key: string]: unknown;
+            }[] | null;
+            /** Metrics */
+            metrics?: {
+                [key: string]: unknown;
+            } | null;
+            /** Artist Timeline */
+            artist_timeline?: {
+                [key: string]: unknown;
+            }[] | null;
+            /** Album Timeline */
+            album_timeline?: {
+                [key: string]: unknown;
+            }[] | null;
+            /** Track Timelines */
+            track_timelines?: {
+                [key: string]: unknown;
+            }[] | null;
+            /** Artist Ranks */
+            artist_ranks?: {
+                [key: string]: unknown;
+            }[] | null;
+            /** Album Ranks */
+            album_ranks?: {
+                [key: string]: unknown;
+            }[] | null;
+            /** Total Timeline */
+            total_timeline?: {
+                [key: string]: unknown;
+            }[] | null;
+            /** Artist All Time Median */
+            artist_all_time_median?: number | null;
+            /** Clean Baseline Start */
+            clean_baseline_start?: number | null;
+            /** Advance Single Ranks */
+            advance_single_ranks?: {
+                [key: string]: unknown;
+            }[] | null;
+            /** Best Track Ranks */
+            best_track_ranks?: {
+                [key: string]: unknown;
+            } | null;
+            /** Catalog Reentries */
+            catalog_reentries?: {
+                [key: string]: unknown;
+            }[] | null;
+            /** Bonus Tracks */
+            bonus_tracks?: {
+                [key: string]: unknown;
+            }[] | null;
+            /** Track Matrix */
+            track_matrix?: {
+                [key: string]: unknown;
+            } | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** ReleaseCycleArtistOverviewResponse */
+        ReleaseCycleArtistOverviewResponse: {
+            /** Artist Name */
+            artist_name?: string | null;
+            /** Summary */
+            summary?: {
+                [key: string]: unknown;
+            } | null;
+            /** Releases */
+            releases?: {
+                [key: string]: unknown;
+            }[] | null;
+            /** Rank Trend */
+            rank_trend?: {
+                [key: string]: unknown;
+            }[] | null;
+            /** Release Events */
+            release_events?: {
+                [key: string]: unknown;
+            }[] | null;
+            /** First Play Week */
+            first_play_week?: string | null;
+            /** Last Play Week */
+            last_play_week?: string | null;
+            /** Cycles */
+            cycles?: {
+                [key: string]: unknown;
+            }[] | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** ReleaseGroupResponse */
+        ReleaseGroupResponse: {
+            /** Group Id */
+            group_id: number;
+            /** Canonical Name */
+            canonical_name: string;
+            /** Artist Name */
+            artist_name: string;
+            /** Primary Album Id */
+            primary_album_id?: number | null;
+            /** Primary Album Name */
+            primary_album_name?: string | null;
+            /** Is Manual */
+            is_manual: number;
+            /** Created At */
+            created_at: string;
+        };
+        /** ReportEntities */
+        ReportEntities: {
+            /**
+             * Artists
+             * @default []
+             */
+            artists: string[];
+            /**
+             * Tracks
+             * @default []
+             */
+            tracks: string[];
+        };
         /** ReturningTrack */
         ReturningTrack: {
+            /** Track Id */
+            track_id: number;
             /** Name */
             name: string;
             /** Artist Name */
@@ -2330,6 +4242,64 @@ export interface components {
             release_year: number;
             /** Cover Url */
             cover_url: string;
+        };
+        /** SavedTracksResponse */
+        SavedTracksResponse: {
+            /** Page */
+            page: number;
+            /** Limit */
+            limit: number;
+            /** Total */
+            total: number;
+            /** Total Pages */
+            total_pages: number;
+            /** Tracks */
+            tracks: {
+                [key: string]: unknown;
+            }[];
+        };
+        /** SessionCreateResponse */
+        SessionCreateResponse: {
+            /** Success */
+            success: boolean;
+            data?: components["schemas"]["ChatSessionWithMessages"] | null;
+            /** Error */
+            error?: string | null;
+        };
+        /** SessionDeleteResponse */
+        SessionDeleteResponse: {
+            /** Success */
+            success: boolean;
+            /** Data */
+            data?: null;
+            /** Error */
+            error?: string | null;
+        };
+        /** SessionDetailResponse */
+        SessionDetailResponse: {
+            /** Success */
+            success: boolean;
+            data?: components["schemas"]["ChatSessionWithMessages"] | null;
+            /** Error */
+            error?: string | null;
+        };
+        /** SessionListResponse */
+        SessionListResponse: {
+            /** Success */
+            success: boolean;
+            /** Data */
+            data: components["schemas"]["ChatSessionData"][];
+            /** Error */
+            error?: string | null;
+        };
+        /** SessionUpdateResponse */
+        SessionUpdateResponse: {
+            /** Success */
+            success: boolean;
+            /** Data */
+            data?: null;
+            /** Error */
+            error?: string | null;
         };
         /** SetPrimaryRequest */
         SetPrimaryRequest: {
@@ -2444,6 +4414,16 @@ export interface components {
             latest_listen?: components["schemas"]["ListenMoment"] | null;
             longest_streak?: components["schemas"]["LongestStreak"] | null;
         };
+        /** StatusResponse */
+        StatusResponse: {
+            /** Status */
+            status: string;
+        };
+        /** SuggestedQuestionsResponse */
+        SuggestedQuestionsResponse: {
+            /** Questions */
+            questions: string[];
+        };
         /** TimeStory */
         TimeStory: {
             /**
@@ -2462,6 +4442,28 @@ export interface components {
              */
             hourly_dist: components["schemas"]["HourlyDistItem"][];
             late_night?: components["schemas"]["LateNightInfo"] | null;
+        };
+        /** TimelineDrilldownTrack */
+        TimelineDrilldownTrack: {
+            /** Track Id */
+            track_id: number;
+            /** Track Name */
+            track_name: string;
+            /** Artist Name */
+            artist_name: string;
+            /** Plays */
+            plays: number;
+            /** Hours */
+            hours: number;
+            /** Cover Url */
+            cover_url?: string | null;
+        };
+        /** TimelineMonthlyDrilldownResponse */
+        TimelineMonthlyDrilldownResponse: {
+            /** Months */
+            months: components["schemas"]["MonthlyTimelinePoint"][];
+            /** Drilldown */
+            drilldown?: components["schemas"]["TimelineDrilldownTrack"][] | null;
         };
         /** TopAlbumEntry */
         TopAlbumEntry: {
@@ -2500,10 +4502,24 @@ export interface components {
             /** Albums */
             albums: components["schemas"]["TopAlbumEntry"][];
         };
+        /**
+         * TopTrack
+         * @description Top 10 track row.
+         */
+        TopTrack: {
+            /** Track Name */
+            track_name: string;
+            /** Artist Name */
+            artist_name: string;
+            /** Plays */
+            plays: number;
+        };
         /** TopTrackEntry */
         TopTrackEntry: {
             /** Rank */
             rank: number;
+            /** Track Id */
+            track_id: number;
             /** Name */
             name: string;
             /** Artist Name */
@@ -2530,6 +4546,15 @@ export interface components {
              */
             is_classic: boolean;
         };
+        /** TrackComparisonResponse */
+        TrackComparisonResponse: {
+            /** Shared */
+            shared: unknown[][];
+            /** Only In A */
+            only_in_a: unknown[][];
+            /** Only In B */
+            only_in_b: unknown[][];
+        };
         /** TrackEnrichmentResponse */
         TrackEnrichmentResponse: {
             /** Wiki */
@@ -2541,12 +4566,88 @@ export interface components {
                 [key: string]: unknown;
             } | null;
         };
+        /** TrackHistoryResponse */
+        TrackHistoryResponse: {
+            /** Found */
+            found: boolean;
+            /** Track Id */
+            track_id?: number | null;
+            /** Track Name */
+            track_name?: string | null;
+            /** Artist Name */
+            artist_name?: string | null;
+            /** Artist Names */
+            artist_names?: string[] | null;
+            /** Cover Url */
+            cover_url?: string | null;
+            /** Meta */
+            meta?: {
+                [key: string]: unknown;
+            } | null;
+            /** Summary */
+            summary?: {
+                [key: string]: unknown;
+            } | null;
+            /** History */
+            history?: {
+                [key: string]: unknown;
+            }[] | null;
+            /** Chart Data */
+            chart_data?: {
+                [key: string]: unknown;
+            } | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** TrackMultiRequest */
+        TrackMultiRequest: {
+            /** Track Ids */
+            track_ids: number[];
+        };
+        /** TrendingItem */
+        TrendingItem: {
+            /** Name */
+            name: string;
+            /** Count */
+            count: number;
+            /** Entity Id */
+            entity_id?: string | number | null;
+        };
+        /** TrendingResponse */
+        TrendingResponse: {
+            /** Artists */
+            artists: components["schemas"]["TrendingItem"][];
+            /** Tracks */
+            tracks: components["schemas"]["TrendingItem"][];
+            /** Latest No1 */
+            latest_no1?: {
+                [key: string]: unknown;
+            } | null;
+            /** Latest Debut */
+            latest_debut?: {
+                [key: string]: unknown;
+            } | null;
+        };
+        /** UngroupedAlbumResponse */
+        UngroupedAlbumResponse: {
+            /** Album Id */
+            album_id: number;
+            /** Album Name */
+            album_name: string;
+            /** Artist Name */
+            artist_name: string;
+        };
         /** UpdateMembersRequest */
         UpdateMembersRequest: {
             /** Add Ids */
             add_ids?: number[] | null;
             /** Remove Ids */
             remove_ids?: number[] | null;
+        };
+        /** UpdateTitleRequest */
+        UpdateTitleRequest: {
+            /** Title */
+            title: string;
         };
         /** ValidationError */
         ValidationError: {
@@ -2560,6 +4661,42 @@ export interface components {
             input?: unknown;
             /** Context */
             ctx?: Record<string, never>;
+        };
+        /** VersusEntity */
+        VersusEntity: {
+            /** Name */
+            name?: string | null;
+            /** Cover Url */
+            cover_url?: string | null;
+            /** Popularity */
+            popularity?: number | null;
+            /** Genres */
+            genres?: string[] | null;
+            /** Rank History */
+            rank_history?: {
+                [key: string]: unknown;
+            }[] | null;
+            /** Metrics */
+            metrics?: {
+                [key: string]: unknown;
+            } | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** VersusResponse */
+        VersusResponse: {
+            /** Found */
+            found: boolean;
+            /** Reason */
+            reason?: string | null;
+            entity_a?: components["schemas"]["VersusEntity"] | null;
+            entity_b?: components["schemas"]["VersusEntity"] | null;
+            /** Head To Head */
+            head_to_head?: {
+                [key: string]: unknown;
+            }[] | null;
+        } & {
+            [key: string]: unknown;
         };
         /** WrappedAlbumEntry */
         WrappedAlbumEntry: {
@@ -2669,6 +4806,13 @@ export interface components {
                 [key: string]: components["schemas"]["TopVsAlltimeMark"][];
             };
         };
+        /** YearlyHeatmapEntry */
+        YearlyHeatmapEntry: {
+            /** Year */
+            year: number;
+            /** Z */
+            z: number[][];
+        };
         /** YearlyWrapped */
         YearlyWrapped: {
             /** Year */
@@ -2768,6 +4912,10 @@ export interface operations {
                 music_only?: boolean;
                 /** @description 合并连续播放 */
                 merge_enabled?: boolean;
+                /** @description 使用动态有效播放阈值 */
+                dynamic_threshold?: boolean;
+                /** @description 连续播放最大合并间隔 (分钟) */
+                max_merge_gap_minutes?: number | null;
                 readonly?: boolean;
             };
             header?: never;
@@ -2782,7 +4930,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["AnalysisOverviewResponse"];
                 };
             };
             /** @description Validation Error */
@@ -2808,6 +4956,10 @@ export interface operations {
                 music_only?: boolean;
                 /** @description 合并连续播放 */
                 merge_enabled?: boolean;
+                /** @description 使用动态有效播放阈值 */
+                dynamic_threshold?: boolean;
+                /** @description 连续播放最大合并间隔 (分钟) */
+                max_merge_gap_minutes?: number | null;
                 readonly?: boolean;
             };
             header?: never;
@@ -2822,7 +4974,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["AnalysisStatsResponse"];
                 };
             };
             /** @description Validation Error */
@@ -2846,12 +4998,20 @@ export interface operations {
                 metric?: string;
                 limit?: number;
                 offset?: number;
+                /** @description 专辑榜是否包含精选集 */
+                include_compilations?: boolean;
                 /** @description 最短播放时长 (毫秒) */
                 min_ms?: number;
                 /** @description 仅音乐 */
                 music_only?: boolean;
                 /** @description 合并连续播放 */
                 merge_enabled?: boolean;
+                /** @description 使用动态有效播放阈值 */
+                dynamic_threshold?: boolean;
+                /** @description 连续播放最大合并间隔 (分钟) */
+                max_merge_gap_minutes?: number | null;
+                /** @description 版本合并严格度 */
+                merge_level?: number;
                 readonly?: boolean;
             };
             header?: never;
@@ -2866,7 +5026,99 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["AnalysisChartsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    analysis_plays_api_analysis_plays_get: {
+        parameters: {
+            query?: {
+                period?: string;
+                start_date?: string | null;
+                end_date?: string | null;
+                search?: string | null;
+                date?: string | null;
+                limit?: number;
+                offset?: number;
+                /** @description 最短播放时长 (毫秒) */
+                min_ms?: number;
+                /** @description 仅音乐 */
+                music_only?: boolean;
+                /** @description 合并连续播放 */
+                merge_enabled?: boolean;
+                /** @description 使用动态有效播放阈值 */
+                dynamic_threshold?: boolean;
+                /** @description 连续播放最大合并间隔 (分钟) */
+                max_merge_gap_minutes?: number | null;
+                readonly?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnalysisPlaysResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    analysis_play_dates_api_analysis_play_dates_get: {
+        parameters: {
+            query?: {
+                period?: string;
+                start_date?: string | null;
+                end_date?: string | null;
+                /** @description 最短播放时长 (毫秒) */
+                min_ms?: number;
+                /** @description 仅音乐 */
+                music_only?: boolean;
+                /** @description 合并连续播放 */
+                merge_enabled?: boolean;
+                /** @description 使用动态有效播放阈值 */
+                dynamic_threshold?: boolean;
+                /** @description 连续播放最大合并间隔 (分钟) */
+                max_merge_gap_minutes?: number | null;
+                readonly?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnalysisPlayDateEntry"][];
                 };
             };
             /** @description Validation Error */
@@ -2889,6 +5141,10 @@ export interface operations {
                 music_only?: boolean;
                 /** @description 合并连续播放 */
                 merge_enabled?: boolean;
+                /** @description 使用动态有效播放阈值 */
+                dynamic_threshold?: boolean;
+                /** @description 连续播放最大合并间隔 (分钟) */
+                max_merge_gap_minutes?: number | null;
                 readonly?: boolean;
             };
             header?: never;
@@ -2903,7 +5159,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["DashboardSummary"];
                 };
             };
             /** @description Validation Error */
@@ -2926,6 +5182,10 @@ export interface operations {
                 music_only?: boolean;
                 /** @description 合并连续播放 */
                 merge_enabled?: boolean;
+                /** @description 使用动态有效播放阈值 */
+                dynamic_threshold?: boolean;
+                /** @description 连续播放最大合并间隔 (分钟) */
+                max_merge_gap_minutes?: number | null;
                 readonly?: boolean;
             };
             header?: never;
@@ -2940,7 +5200,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["DashboardFullResponse"];
                 };
             };
             /** @description Validation Error */
@@ -2964,6 +5224,10 @@ export interface operations {
                 music_only?: boolean;
                 /** @description 合并连续播放 */
                 merge_enabled?: boolean;
+                /** @description 使用动态有效播放阈值 */
+                dynamic_threshold?: boolean;
+                /** @description 连续播放最大合并间隔 (分钟) */
+                max_merge_gap_minutes?: number | null;
                 readonly?: boolean;
             };
             header?: never;
@@ -2978,7 +5242,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["TopTrack"][];
                 };
             };
             /** @description Validation Error */
@@ -3001,6 +5265,10 @@ export interface operations {
                 music_only?: boolean;
                 /** @description 合并连续播放 */
                 merge_enabled?: boolean;
+                /** @description 使用动态有效播放阈值 */
+                dynamic_threshold?: boolean;
+                /** @description 连续播放最大合并间隔 (分钟) */
+                max_merge_gap_minutes?: number | null;
                 readonly?: boolean;
             };
             header?: never;
@@ -3015,7 +5283,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["PlatformDist"][];
                 };
             };
             /** @description Validation Error */
@@ -3038,6 +5306,10 @@ export interface operations {
                 music_only?: boolean;
                 /** @description 合并连续播放 */
                 merge_enabled?: boolean;
+                /** @description 使用动态有效播放阈值 */
+                dynamic_threshold?: boolean;
+                /** @description 连续播放最大合并间隔 (分钟) */
+                max_merge_gap_minutes?: number | null;
                 readonly?: boolean;
             };
             header?: never;
@@ -3052,7 +5324,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["DowDist"][];
                 };
             };
             /** @description Validation Error */
@@ -3075,6 +5347,10 @@ export interface operations {
                 music_only?: boolean;
                 /** @description 合并连续播放 */
                 merge_enabled?: boolean;
+                /** @description 使用动态有效播放阈值 */
+                dynamic_threshold?: boolean;
+                /** @description 连续播放最大合并间隔 (分钟) */
+                max_merge_gap_minutes?: number | null;
                 readonly?: boolean;
             };
             header?: never;
@@ -3089,7 +5365,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["RandomTrack"];
                 };
             };
             /** @description Validation Error */
@@ -3112,6 +5388,10 @@ export interface operations {
                 music_only?: boolean;
                 /** @description 合并连续播放 */
                 merge_enabled?: boolean;
+                /** @description 使用动态有效播放阈值 */
+                dynamic_threshold?: boolean;
+                /** @description 连续播放最大合并间隔 (分钟) */
+                max_merge_gap_minutes?: number | null;
                 readonly?: boolean;
             };
             header?: never;
@@ -3126,7 +5406,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["AnnualTimelinePoint"][];
                 };
             };
             /** @description Validation Error */
@@ -3151,6 +5431,10 @@ export interface operations {
                 music_only?: boolean;
                 /** @description 合并连续播放 */
                 merge_enabled?: boolean;
+                /** @description 使用动态有效播放阈值 */
+                dynamic_threshold?: boolean;
+                /** @description 连续播放最大合并间隔 (分钟) */
+                max_merge_gap_minutes?: number | null;
                 readonly?: boolean;
             };
             header?: never;
@@ -3165,7 +5449,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["MonthlyTimelinePoint"][] | components["schemas"]["TimelineMonthlyDrilldownResponse"];
                 };
             };
             /** @description Validation Error */
@@ -3190,6 +5474,10 @@ export interface operations {
                 music_only?: boolean;
                 /** @description 合并连续播放 */
                 merge_enabled?: boolean;
+                /** @description 使用动态有效播放阈值 */
+                dynamic_threshold?: boolean;
+                /** @description 连续播放最大合并间隔 (分钟) */
+                max_merge_gap_minutes?: number | null;
                 readonly?: boolean;
             };
             header?: never;
@@ -3228,12 +5516,18 @@ export interface operations {
                 month?: string | null;
                 metric?: string;
                 top_n?: number;
+                /** @description 专辑榜是否包含精选集 */
+                include_compilations?: boolean;
                 /** @description 最短播放时长 (毫秒) */
                 min_ms?: number;
                 /** @description 仅音乐 */
                 music_only?: boolean;
                 /** @description 合并连续播放 */
                 merge_enabled?: boolean;
+                /** @description 使用动态有效播放阈值 */
+                dynamic_threshold?: boolean;
+                /** @description 连续播放最大合并间隔 (分钟) */
+                max_merge_gap_minutes?: number | null;
                 readonly?: boolean;
             };
             header?: never;
@@ -3248,7 +5542,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["LeaderboardResponse"];
                 };
             };
             /** @description Validation Error */
@@ -3271,6 +5565,10 @@ export interface operations {
                 music_only?: boolean;
                 /** @description 合并连续播放 */
                 merge_enabled?: boolean;
+                /** @description 使用动态有效播放阈值 */
+                dynamic_threshold?: boolean;
+                /** @description 连续播放最大合并间隔 (分钟) */
+                max_merge_gap_minutes?: number | null;
                 readonly?: boolean;
             };
             header?: never;
@@ -3308,6 +5606,10 @@ export interface operations {
                 music_only?: boolean;
                 /** @description 合并连续播放 */
                 merge_enabled?: boolean;
+                /** @description 使用动态有效播放阈值 */
+                dynamic_threshold?: boolean;
+                /** @description 连续播放最大合并间隔 (分钟) */
+                max_merge_gap_minutes?: number | null;
                 readonly?: boolean;
             };
             header?: never;
@@ -3322,7 +5624,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["HeatmapResponse"];
                 };
             };
             /** @description Validation Error */
@@ -3345,6 +5647,10 @@ export interface operations {
                 music_only?: boolean;
                 /** @description 合并连续播放 */
                 merge_enabled?: boolean;
+                /** @description 使用动态有效播放阈值 */
+                dynamic_threshold?: boolean;
+                /** @description 连续播放最大合并间隔 (分钟) */
+                max_merge_gap_minutes?: number | null;
                 readonly?: boolean;
             };
             header?: never;
@@ -3359,7 +5665,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["YearlyHeatmapEntry"][];
                 };
             };
             /** @description Validation Error */
@@ -3382,6 +5688,10 @@ export interface operations {
                 music_only?: boolean;
                 /** @description 合并连续播放 */
                 merge_enabled?: boolean;
+                /** @description 使用动态有效播放阈值 */
+                dynamic_threshold?: boolean;
+                /** @description 连续播放最大合并间隔 (分钟) */
+                max_merge_gap_minutes?: number | null;
                 readonly?: boolean;
             };
             header?: never;
@@ -3396,7 +5706,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["LateNightEntry"][];
                 };
             };
             /** @description Validation Error */
@@ -3419,6 +5729,10 @@ export interface operations {
                 music_only?: boolean;
                 /** @description 合并连续播放 */
                 merge_enabled?: boolean;
+                /** @description 使用动态有效播放阈值 */
+                dynamic_threshold?: boolean;
+                /** @description 连续播放最大合并间隔 (分钟) */
+                max_merge_gap_minutes?: number | null;
                 readonly?: boolean;
             };
             header?: never;
@@ -3456,6 +5770,10 @@ export interface operations {
                 music_only?: boolean;
                 /** @description 合并连续播放 */
                 merge_enabled?: boolean;
+                /** @description 使用动态有效播放阈值 */
+                dynamic_threshold?: boolean;
+                /** @description 连续播放最大合并间隔 (分钟) */
+                max_merge_gap_minutes?: number | null;
                 readonly?: boolean;
             };
             header?: never;
@@ -3526,6 +5844,10 @@ export interface operations {
                 music_only?: boolean;
                 /** @description 合并连续播放 */
                 merge_enabled?: boolean;
+                /** @description 使用动态有效播放阈值 */
+                dynamic_threshold?: boolean;
+                /** @description 连续播放最大合并间隔 (分钟) */
+                max_merge_gap_minutes?: number | null;
                 readonly?: boolean;
             };
             header?: never;
@@ -3596,6 +5918,10 @@ export interface operations {
                 music_only?: boolean;
                 /** @description 合并连续播放 */
                 merge_enabled?: boolean;
+                /** @description 使用动态有效播放阈值 */
+                dynamic_threshold?: boolean;
+                /** @description 连续播放最大合并间隔 (分钟) */
+                max_merge_gap_minutes?: number | null;
                 readonly?: boolean;
             };
             header?: never;
@@ -3635,6 +5961,10 @@ export interface operations {
                 music_only?: boolean;
                 /** @description 合并连续播放 */
                 merge_enabled?: boolean;
+                /** @description 使用动态有效播放阈值 */
+                dynamic_threshold?: boolean;
+                /** @description 连续播放最大合并间隔 (分钟) */
+                max_merge_gap_minutes?: number | null;
                 readonly?: boolean;
             };
             header?: never;
@@ -3682,7 +6012,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["LibraryOverviewResponse"];
                 };
             };
             /** @description Validation Error */
@@ -3713,7 +6043,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["PlaylistEntry"][];
                 };
             };
             /** @description Validation Error */
@@ -3746,7 +6076,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["PlaylistTrackEntry"][];
                 };
             };
             /** @description Validation Error */
@@ -3780,7 +6110,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["SavedTracksResponse"];
                 };
             };
             /** @description Validation Error */
@@ -3811,7 +6141,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["PlaylistOverlapResponse"];
                 };
             };
             /** @description Validation Error */
@@ -4527,6 +6857,12 @@ export interface operations {
                 year_start?: number | null;
                 /** @description 结束年份 (含) */
                 year_end?: number | null;
+                /** @description 使用动态有效播放阈值 */
+                dynamic_threshold?: boolean;
+                /** @description 连续播放最大合并间隔 (分钟) */
+                max_merge_gap_minutes?: number | null;
+                /** @description 版本合并严格度 */
+                merge_level?: number;
             };
             header?: never;
             path?: never;
@@ -4540,7 +6876,277 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["BillboardDataResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_billboard_weekly_api_billboard_weekly_get: {
+        parameters: {
+            query?: {
+                /** @description 最短播放时长 (毫秒) */
+                min_ms?: number;
+                /** @description 仅音乐 */
+                music_only?: boolean;
+                /** @description 单曲榜 Top N */
+                bb_top_n?: number;
+                /** @description 专辑榜 Top N */
+                bb_album_top_n?: number;
+                /** @description 艺人榜 Top N */
+                bb_artist_top_n?: number;
+                /** @description 周起始星期 (0=周一) */
+                bb_week_start_dow?: number;
+                /** @description 周起始小时 */
+                bb_week_start_hour?: number;
+                /** @description 起始年份 (含) */
+                year_start?: number | null;
+                /** @description 结束年份 (含) */
+                year_end?: number | null;
+                /** @description 使用动态有效播放阈值 */
+                dynamic_threshold?: boolean;
+                /** @description 连续播放最大合并间隔 (分钟) */
+                max_merge_gap_minutes?: number | null;
+                /** @description 版本合并严格度 */
+                merge_level?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BillboardWeeklyResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_billboard_records_api_billboard_records_get: {
+        parameters: {
+            query?: {
+                /** @description 最短播放时长 (毫秒) */
+                min_ms?: number;
+                /** @description 仅音乐 */
+                music_only?: boolean;
+                /** @description 单曲榜 Top N */
+                bb_top_n?: number;
+                /** @description 专辑榜 Top N */
+                bb_album_top_n?: number;
+                /** @description 艺人榜 Top N */
+                bb_artist_top_n?: number;
+                /** @description 周起始星期 (0=周一) */
+                bb_week_start_dow?: number;
+                /** @description 周起始小时 */
+                bb_week_start_hour?: number;
+                /** @description 起始年份 (含) */
+                year_start?: number | null;
+                /** @description 结束年份 (含) */
+                year_end?: number | null;
+                /** @description 使用动态有效播放阈值 */
+                dynamic_threshold?: boolean;
+                /** @description 连续播放最大合并间隔 (分钟) */
+                max_merge_gap_minutes?: number | null;
+                /** @description 版本合并严格度 */
+                merge_level?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BillboardRecordsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_billboard_power_scores_api_billboard_power_scores_get: {
+        parameters: {
+            query?: {
+                /** @description 最短播放时长 (毫秒) */
+                min_ms?: number;
+                /** @description 仅音乐 */
+                music_only?: boolean;
+                /** @description 单曲榜 Top N */
+                bb_top_n?: number;
+                /** @description 专辑榜 Top N */
+                bb_album_top_n?: number;
+                /** @description 艺人榜 Top N */
+                bb_artist_top_n?: number;
+                /** @description 周起始星期 (0=周一) */
+                bb_week_start_dow?: number;
+                /** @description 周起始小时 */
+                bb_week_start_hour?: number;
+                /** @description 起始年份 (含) */
+                year_start?: number | null;
+                /** @description 结束年份 (含) */
+                year_end?: number | null;
+                /** @description 使用动态有效播放阈值 */
+                dynamic_threshold?: boolean;
+                /** @description 连续播放最大合并间隔 (分钟) */
+                max_merge_gap_minutes?: number | null;
+                /** @description 版本合并严格度 */
+                merge_level?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BillboardPowerScoresResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_billboard_summaries_api_billboard_summaries_get: {
+        parameters: {
+            query?: {
+                /** @description 最短播放时长 (毫秒) */
+                min_ms?: number;
+                /** @description 仅音乐 */
+                music_only?: boolean;
+                /** @description 单曲榜 Top N */
+                bb_top_n?: number;
+                /** @description 专辑榜 Top N */
+                bb_album_top_n?: number;
+                /** @description 艺人榜 Top N */
+                bb_artist_top_n?: number;
+                /** @description 周起始星期 (0=周一) */
+                bb_week_start_dow?: number;
+                /** @description 周起始小时 */
+                bb_week_start_hour?: number;
+                /** @description 起始年份 (含) */
+                year_start?: number | null;
+                /** @description 结束年份 (含) */
+                year_end?: number | null;
+                /** @description 使用动态有效播放阈值 */
+                dynamic_threshold?: boolean;
+                /** @description 连续播放最大合并间隔 (分钟) */
+                max_merge_gap_minutes?: number | null;
+                /** @description 版本合并严格度 */
+                merge_level?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BillboardSummariesResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_billboard_all_time_api_billboard_all_time_get: {
+        parameters: {
+            query?: {
+                /** @description 最短播放时长 (毫秒) */
+                min_ms?: number;
+                /** @description 仅音乐 */
+                music_only?: boolean;
+                /** @description 单曲榜 Top N */
+                bb_top_n?: number;
+                /** @description 专辑榜 Top N */
+                bb_album_top_n?: number;
+                /** @description 艺人榜 Top N */
+                bb_artist_top_n?: number;
+                /** @description 周起始星期 (0=周一) */
+                bb_week_start_dow?: number;
+                /** @description 周起始小时 */
+                bb_week_start_hour?: number;
+                /** @description 起始年份 (含) */
+                year_start?: number | null;
+                /** @description 结束年份 (含) */
+                year_end?: number | null;
+                /** @description 使用动态有效播放阈值 */
+                dynamic_threshold?: boolean;
+                /** @description 连续播放最大合并间隔 (分钟) */
+                max_merge_gap_minutes?: number | null;
+                /** @description 版本合并严格度 */
+                merge_level?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BillboardAllTimeResponse"];
                 };
             };
             /** @description Validation Error */
@@ -4575,6 +7181,10 @@ export interface operations {
                 year_start?: number | null;
                 /** @description 结束年份 (含) */
                 year_end?: number | null;
+                /** @description 使用动态有效播放阈值 */
+                dynamic_threshold?: boolean;
+                /** @description 连续播放最大合并间隔 (分钟) */
+                max_merge_gap_minutes?: number | null;
             };
             header?: never;
             path?: never;
@@ -4588,7 +7198,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["ArtistListItem"][];
                 };
             };
             /** @description Validation Error */
@@ -4625,6 +7235,10 @@ export interface operations {
                 year_start?: number | null;
                 /** @description 结束年份 (含) */
                 year_end?: number | null;
+                /** @description 使用动态有效播放阈值 */
+                dynamic_threshold?: boolean;
+                /** @description 连续播放最大合并间隔 (分钟) */
+                max_merge_gap_minutes?: number | null;
             };
             header?: never;
             path: {
@@ -4641,7 +7255,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["ReleaseCycleAlbumDetailResponse"];
                 };
             };
             /** @description Validation Error */
@@ -4678,6 +7292,10 @@ export interface operations {
                 year_start?: number | null;
                 /** @description 结束年份 (含) */
                 year_end?: number | null;
+                /** @description 使用动态有效播放阈值 */
+                dynamic_threshold?: boolean;
+                /** @description 连续播放最大合并间隔 (分钟) */
+                max_merge_gap_minutes?: number | null;
             };
             header?: never;
             path: {
@@ -4693,7 +7311,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["ReleaseCycleArtistOverviewResponse"];
                 };
             };
             /** @description Validation Error */
@@ -4728,6 +7346,10 @@ export interface operations {
                 year_start?: number | null;
                 /** @description 结束年份 (含) */
                 year_end?: number | null;
+                /** @description 使用动态有效播放阈值 */
+                dynamic_threshold?: boolean;
+                /** @description 连续播放最大合并间隔 (分钟) */
+                max_merge_gap_minutes?: number | null;
             };
             header?: never;
             path?: never;
@@ -4780,6 +7402,10 @@ export interface operations {
                 year_start?: number | null;
                 /** @description 结束年份 (含) */
                 year_end?: number | null;
+                /** @description 使用动态有效播放阈值 */
+                dynamic_threshold?: boolean;
+                /** @description 连续播放最大合并间隔 (分钟) */
+                max_merge_gap_minutes?: number | null;
             };
             header?: never;
             path: {
@@ -4795,7 +7421,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["TrackHistoryResponse"];
                 };
             };
             /** @description Validation Error */
@@ -4830,6 +7456,10 @@ export interface operations {
                 year_start?: number | null;
                 /** @description 结束年份 (含) */
                 year_end?: number | null;
+                /** @description 使用动态有效播放阈值 */
+                dynamic_threshold?: boolean;
+                /** @description 连续播放最大合并间隔 (分钟) */
+                max_merge_gap_minutes?: number | null;
             };
             header?: never;
             path: {
@@ -4845,7 +7475,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["ArtistChartDetailResponse"];
                 };
             };
             /** @description Validation Error */
@@ -4861,9 +7491,9 @@ export interface operations {
     };
     album_chart_detail_api_billboard_album__album_name__get: {
         parameters: {
-            query: {
+            query?: {
                 /** @description Artist name for disambiguation */
-                artist_name: string;
+                artist_name?: string;
                 /** @description 最短播放时长 (毫秒) */
                 min_ms?: number;
                 /** @description 仅音乐 */
@@ -4882,6 +7512,10 @@ export interface operations {
                 year_start?: number | null;
                 /** @description 结束年份 (含) */
                 year_end?: number | null;
+                /** @description 使用动态有效播放阈值 */
+                dynamic_threshold?: boolean;
+                /** @description 连续播放最大合并间隔 (分钟) */
+                max_merge_gap_minutes?: number | null;
             };
             header?: never;
             path: {
@@ -4897,7 +7531,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["AlbumChartDetailResponse"];
                 };
             };
             /** @description Validation Error */
@@ -4914,6 +7548,8 @@ export interface operations {
     entity_lists_api_billboard_entity_lists_get: {
         parameters: {
             query?: {
+                /** @description Filter entities by name (case-insensitive) */
+                search?: string | null;
                 /** @description 最短播放时长 (毫秒) */
                 min_ms?: number;
                 /** @description 仅音乐 */
@@ -4932,6 +7568,10 @@ export interface operations {
                 year_start?: number | null;
                 /** @description 结束年份 (含) */
                 year_end?: number | null;
+                /** @description 使用动态有效播放阈值 */
+                dynamic_threshold?: boolean;
+                /** @description 连续播放最大合并间隔 (分钟) */
+                max_merge_gap_minutes?: number | null;
             };
             header?: never;
             path?: never;
@@ -4945,7 +7585,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["EntityListsResponse"];
                 };
             };
             /** @description Validation Error */
@@ -4984,6 +7624,10 @@ export interface operations {
                 year_start?: number | null;
                 /** @description 结束年份 (含) */
                 year_end?: number | null;
+                /** @description 使用动态有效播放阈值 */
+                dynamic_threshold?: boolean;
+                /** @description 连续播放最大合并间隔 (分钟) */
+                max_merge_gap_minutes?: number | null;
             };
             header?: never;
             path?: never;
@@ -4997,7 +7641,63 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["VersusResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    versus_track_multi_api_billboard_versus_track_post: {
+        parameters: {
+            query?: {
+                /** @description 最短播放时长 (毫秒) */
+                min_ms?: number;
+                /** @description 仅音乐 */
+                music_only?: boolean;
+                /** @description 单曲榜 Top N */
+                bb_top_n?: number;
+                /** @description 专辑榜 Top N */
+                bb_album_top_n?: number;
+                /** @description 艺人榜 Top N */
+                bb_artist_top_n?: number;
+                /** @description 周起始星期 (0=周一) */
+                bb_week_start_dow?: number;
+                /** @description 周起始小时 */
+                bb_week_start_hour?: number;
+                /** @description 起始年份 (含) */
+                year_start?: number | null;
+                /** @description 结束年份 (含) */
+                year_end?: number | null;
+                /** @description 使用动态有效播放阈值 */
+                dynamic_threshold?: boolean;
+                /** @description 连续播放最大合并间隔 (分钟) */
+                max_merge_gap_minutes?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TrackMultiRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MultiVersusResponse"];
                 };
             };
             /** @description Validation Error */
@@ -5040,6 +7740,10 @@ export interface operations {
                 year_start?: number | null;
                 /** @description 结束年份 (含) */
                 year_end?: number | null;
+                /** @description 使用动态有效播放阈值 */
+                dynamic_threshold?: boolean;
+                /** @description 连续播放最大合并间隔 (分钟) */
+                max_merge_gap_minutes?: number | null;
             };
             header?: never;
             path?: never;
@@ -5053,7 +7757,63 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["VersusResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    versus_album_multi_api_billboard_versus_album_post: {
+        parameters: {
+            query?: {
+                /** @description 最短播放时长 (毫秒) */
+                min_ms?: number;
+                /** @description 仅音乐 */
+                music_only?: boolean;
+                /** @description 单曲榜 Top N */
+                bb_top_n?: number;
+                /** @description 专辑榜 Top N */
+                bb_album_top_n?: number;
+                /** @description 艺人榜 Top N */
+                bb_artist_top_n?: number;
+                /** @description 周起始星期 (0=周一) */
+                bb_week_start_dow?: number;
+                /** @description 周起始小时 */
+                bb_week_start_hour?: number;
+                /** @description 起始年份 (含) */
+                year_start?: number | null;
+                /** @description 结束年份 (含) */
+                year_end?: number | null;
+                /** @description 使用动态有效播放阈值 */
+                dynamic_threshold?: boolean;
+                /** @description 连续播放最大合并间隔 (分钟) */
+                max_merge_gap_minutes?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AlbumMultiRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MultiVersusResponse"];
                 };
             };
             /** @description Validation Error */
@@ -5092,6 +7852,10 @@ export interface operations {
                 year_start?: number | null;
                 /** @description 结束年份 (含) */
                 year_end?: number | null;
+                /** @description 使用动态有效播放阈值 */
+                dynamic_threshold?: boolean;
+                /** @description 连续播放最大合并间隔 (分钟) */
+                max_merge_gap_minutes?: number | null;
             };
             header?: never;
             path?: never;
@@ -5105,7 +7869,63 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["VersusResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    versus_artist_multi_api_billboard_versus_artist_post: {
+        parameters: {
+            query?: {
+                /** @description 最短播放时长 (毫秒) */
+                min_ms?: number;
+                /** @description 仅音乐 */
+                music_only?: boolean;
+                /** @description 单曲榜 Top N */
+                bb_top_n?: number;
+                /** @description 专辑榜 Top N */
+                bb_album_top_n?: number;
+                /** @description 艺人榜 Top N */
+                bb_artist_top_n?: number;
+                /** @description 周起始星期 (0=周一) */
+                bb_week_start_dow?: number;
+                /** @description 周起始小时 */
+                bb_week_start_hour?: number;
+                /** @description 起始年份 (含) */
+                year_start?: number | null;
+                /** @description 结束年份 (含) */
+                year_end?: number | null;
+                /** @description 使用动态有效播放阈值 */
+                dynamic_threshold?: boolean;
+                /** @description 连续播放最大合并间隔 (分钟) */
+                max_merge_gap_minutes?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ArtistMultiRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MultiVersusResponse"];
                 };
             };
             /** @description Validation Error */
@@ -5225,6 +8045,155 @@ export interface operations {
             };
         };
     };
+    get_community_feed_api_community_feed_get: {
+        parameters: {
+            query?: {
+                /** @description Comma-separated handles to filter by */
+                accounts?: string | null;
+                /** @description Comma-separated tags to filter by */
+                tags?: string | null;
+                /** @description Show only newsworthy posts (no routine summaries) */
+                highlights_only?: boolean;
+                /** @description Minimum significance threshold */
+                significance_min?: number;
+                /** @description ISO date lower bound */
+                date_from?: string | null;
+                /** @description ISO date upper bound */
+                date_to?: string | null;
+                /** @description Search post content, handles, and linked entity names */
+                search?: string | null;
+                /** @description Comma-separated post type values to filter by */
+                post_types?: string | null;
+                limit?: number;
+                offset?: number;
+                /** @description 最短播放时长 (毫秒) */
+                min_ms?: number;
+                /** @description 仅音乐 */
+                music_only?: boolean;
+                /** @description 合并连续播放 */
+                merge_enabled?: boolean;
+                /** @description 使用动态有效播放阈值 */
+                dynamic_threshold?: boolean;
+                /** @description 连续播放最大合并间隔 (分钟) */
+                max_merge_gap_minutes?: number | null;
+                readonly?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommunityFeedResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_community_trending_api_community_trending_get: {
+        parameters: {
+            query?: {
+                /** @description ISO date lower bound */
+                date_from?: string | null;
+                /** @description ISO date upper bound */
+                date_to?: string | null;
+                artist_limit?: number;
+                track_limit?: number;
+                /** @description 最短播放时长 (毫秒) */
+                min_ms?: number;
+                /** @description 仅音乐 */
+                music_only?: boolean;
+                /** @description 合并连续播放 */
+                merge_enabled?: boolean;
+                /** @description 使用动态有效播放阈值 */
+                dynamic_threshold?: boolean;
+                /** @description 连续播放最大合并间隔 (分钟) */
+                max_merge_gap_minutes?: number | null;
+                readonly?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TrendingResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_community_post_api_community_post__post_id__get: {
+        parameters: {
+            query?: {
+                /** @description 最短播放时长 (毫秒) */
+                min_ms?: number;
+                /** @description 仅音乐 */
+                music_only?: boolean;
+                /** @description 合并连续播放 */
+                merge_enabled?: boolean;
+                /** @description 使用动态有效播放阈值 */
+                dynamic_threshold?: boolean;
+                /** @description 连续播放最大合并间隔 (分钟) */
+                max_merge_gap_minutes?: number | null;
+                readonly?: boolean;
+            };
+            header?: never;
+            path: {
+                post_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PostDetailResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_groups_api_version_merge_groups_get: {
         parameters: {
             query?: {
@@ -5242,7 +8211,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["ReleaseGroupResponse"][];
                 };
             };
             /** @description Validation Error */
@@ -5275,7 +8244,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["CreateGroupResponse"];
                 };
             };
             /** @description Validation Error */
@@ -5308,7 +8277,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["GroupMemberResponse"][];
                 };
             };
             /** @description Validation Error */
@@ -5343,7 +8312,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["StatusResponse"];
                 };
             };
             /** @description Validation Error */
@@ -5376,7 +8345,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["ReleaseGroupResponse"][];
                 };
             };
             /** @description Validation Error */
@@ -5408,7 +8377,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["UngroupedAlbumResponse"][];
                 };
             };
             /** @description Validation Error */
@@ -5440,7 +8409,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["TrackComparisonResponse"];
                 };
             };
             /** @description Validation Error */
@@ -5472,7 +8441,9 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": {
+                        [key: string]: string;
+                    };
                 };
             };
             /** @description Validation Error */
@@ -5507,7 +8478,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["StatusResponse"];
                 };
             };
             /** @description Validation Error */
@@ -5538,7 +8509,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["StatusResponse"];
                 };
             };
             /** @description Validation Error */
@@ -5569,7 +8540,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["DetectionResultResponse"][];
                 };
             };
             /** @description Validation Error */
@@ -5604,7 +8575,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["ApplyDetectionResponse"];
                 };
             };
             /** @description Validation Error */
@@ -5763,6 +8734,10 @@ export interface operations {
                 music_only?: boolean;
                 /** @description 合并连续播放 */
                 merge_enabled?: boolean;
+                /** @description 使用动态有效播放阈值 */
+                dynamic_threshold?: boolean;
+                /** @description 连续播放最大合并间隔 (分钟) */
+                max_merge_gap_minutes?: number | null;
                 readonly?: boolean;
             };
             header?: never;
@@ -5779,7 +8754,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["EntityStatsResponse"];
                 };
             };
             /** @description Validation Error */
@@ -5806,6 +8781,10 @@ export interface operations {
                 music_only?: boolean;
                 /** @description 合并连续播放 */
                 merge_enabled?: boolean;
+                /** @description 使用动态有效播放阈值 */
+                dynamic_threshold?: boolean;
+                /** @description 连续播放最大合并间隔 (分钟) */
+                max_merge_gap_minutes?: number | null;
                 readonly?: boolean;
             };
             header?: never;
@@ -5822,7 +8801,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["EntityStatsResponse"];
                 };
             };
             /** @description Validation Error */
@@ -5848,6 +8827,10 @@ export interface operations {
                 music_only?: boolean;
                 /** @description 合并连续播放 */
                 merge_enabled?: boolean;
+                /** @description 使用动态有效播放阈值 */
+                dynamic_threshold?: boolean;
+                /** @description 连续播放最大合并间隔 (分钟) */
+                max_merge_gap_minutes?: number | null;
                 readonly?: boolean;
             };
             header?: never;
@@ -5864,7 +8847,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["EntityStatsResponse"];
                 };
             };
             /** @description Validation Error */
@@ -5884,12 +8867,20 @@ export interface operations {
                 period?: string;
                 start_date?: string | null;
                 end_date?: string | null;
+                search?: string | null;
+                date?: string | null;
+                limit?: number;
+                offset?: number;
                 /** @description 最短播放时长 (毫秒) */
                 min_ms?: number;
                 /** @description 仅音乐 */
                 music_only?: boolean;
                 /** @description 合并连续播放 */
                 merge_enabled?: boolean;
+                /** @description 使用动态有效播放阈值 */
+                dynamic_threshold?: boolean;
+                /** @description 连续播放最大合并间隔 (分钟) */
+                max_merge_gap_minutes?: number | null;
                 readonly?: boolean;
             };
             header?: never;
@@ -5906,7 +8897,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["EntityPlaysResponse"];
                 };
             };
             /** @description Validation Error */
@@ -5927,12 +8918,20 @@ export interface operations {
                 period?: string;
                 start_date?: string | null;
                 end_date?: string | null;
+                search?: string | null;
+                date?: string | null;
+                limit?: number;
+                offset?: number;
                 /** @description 最短播放时长 (毫秒) */
                 min_ms?: number;
                 /** @description 仅音乐 */
                 music_only?: boolean;
                 /** @description 合并连续播放 */
                 merge_enabled?: boolean;
+                /** @description 使用动态有效播放阈值 */
+                dynamic_threshold?: boolean;
+                /** @description 连续播放最大合并间隔 (分钟) */
+                max_merge_gap_minutes?: number | null;
                 readonly?: boolean;
             };
             header?: never;
@@ -5949,7 +8948,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["EntityPlaysResponse"];
                 };
             };
             /** @description Validation Error */
@@ -5969,12 +8968,20 @@ export interface operations {
                 period?: string;
                 start_date?: string | null;
                 end_date?: string | null;
+                search?: string | null;
+                date?: string | null;
+                limit?: number;
+                offset?: number;
                 /** @description 最短播放时长 (毫秒) */
                 min_ms?: number;
                 /** @description 仅音乐 */
                 music_only?: boolean;
                 /** @description 合并连续播放 */
                 merge_enabled?: boolean;
+                /** @description 使用动态有效播放阈值 */
+                dynamic_threshold?: boolean;
+                /** @description 连续播放最大合并间隔 (分钟) */
+                max_merge_gap_minutes?: number | null;
                 readonly?: boolean;
             };
             header?: never;
@@ -5991,7 +8998,146 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["EntityPlaysResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    track_play_dates_api_music_tracks__track_id__play_dates_get: {
+        parameters: {
+            query?: {
+                period?: string;
+                start_date?: string | null;
+                end_date?: string | null;
+                /** @description 最短播放时长 (毫秒) */
+                min_ms?: number;
+                /** @description 仅音乐 */
+                music_only?: boolean;
+                /** @description 合并连续播放 */
+                merge_enabled?: boolean;
+                /** @description 使用动态有效播放阈值 */
+                dynamic_threshold?: boolean;
+                /** @description 连续播放最大合并间隔 (分钟) */
+                max_merge_gap_minutes?: number | null;
+                readonly?: boolean;
+            };
+            header?: never;
+            path: {
+                track_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlayDateEntry"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    album_play_dates_api_music_albums__album_name__play_dates_get: {
+        parameters: {
+            query?: {
+                artist?: string | null;
+                period?: string;
+                start_date?: string | null;
+                end_date?: string | null;
+                /** @description 最短播放时长 (毫秒) */
+                min_ms?: number;
+                /** @description 仅音乐 */
+                music_only?: boolean;
+                /** @description 合并连续播放 */
+                merge_enabled?: boolean;
+                /** @description 使用动态有效播放阈值 */
+                dynamic_threshold?: boolean;
+                /** @description 连续播放最大合并间隔 (分钟) */
+                max_merge_gap_minutes?: number | null;
+                readonly?: boolean;
+            };
+            header?: never;
+            path: {
+                album_name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlayDateEntry"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    artist_play_dates_api_music_artists__artist_name__play_dates_get: {
+        parameters: {
+            query?: {
+                period?: string;
+                start_date?: string | null;
+                end_date?: string | null;
+                /** @description 最短播放时长 (毫秒) */
+                min_ms?: number;
+                /** @description 仅音乐 */
+                music_only?: boolean;
+                /** @description 合并连续播放 */
+                merge_enabled?: boolean;
+                /** @description 使用动态有效播放阈值 */
+                dynamic_threshold?: boolean;
+                /** @description 连续播放最大合并间隔 (分钟) */
+                max_merge_gap_minutes?: number | null;
+                readonly?: boolean;
+            };
+            header?: never;
+            path: {
+                artist_name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlayDateEntry"][];
                 };
             };
             /** @description Validation Error */
@@ -6022,7 +9168,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["AccountSummaryResponse"];
                 };
             };
             /** @description Validation Error */
@@ -6043,6 +9189,472 @@ export interface operations {
             };
             header?: never;
             path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CollectionInsightsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    weekly_digest_api_ai_insights_weekly_digest_get: {
+        parameters: {
+            query: {
+                /** @description YYYY-MM-DD */
+                week_start: string;
+                /** @description YYYY-MM-DD */
+                week_end: string;
+                /** @description Bypass server-side cache */
+                force?: boolean;
+                /** @description 最短播放时长 (毫秒) */
+                min_ms?: number;
+                /** @description 仅音乐 */
+                music_only?: boolean;
+                /** @description 合并连续播放 */
+                merge_enabled?: boolean;
+                /** @description 使用动态有效播放阈值 */
+                dynamic_threshold?: boolean;
+                /** @description 连续播放最大合并间隔 (分钟) */
+                max_merge_gap_minutes?: number | null;
+                readonly?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DigestResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    monthly_personality_api_ai_insights_monthly_personality_get: {
+        parameters: {
+            query: {
+                /** @description YYYY-MM */
+                month: string;
+                /** @description e.g. 2026 */
+                year: number;
+                /** @description Bypass server-side cache */
+                force?: boolean;
+                /** @description 最短播放时长 (毫秒) */
+                min_ms?: number;
+                /** @description 仅音乐 */
+                music_only?: boolean;
+                /** @description 合并连续播放 */
+                merge_enabled?: boolean;
+                /** @description 使用动态有效播放阈值 */
+                dynamic_threshold?: boolean;
+                /** @description 连续播放最大合并间隔 (分钟) */
+                max_merge_gap_minutes?: number | null;
+                readonly?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DigestResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    yearly_story_api_ai_insights_yearly_story_get: {
+        parameters: {
+            query: {
+                year: number;
+                /** @description Bypass server-side cache */
+                force?: boolean;
+                /** @description 最短播放时长 (毫秒) */
+                min_ms?: number;
+                /** @description 仅音乐 */
+                music_only?: boolean;
+                /** @description 合并连续播放 */
+                merge_enabled?: boolean;
+                /** @description 使用动态有效播放阈值 */
+                dynamic_threshold?: boolean;
+                /** @description 连续播放最大合并间隔 (分钟) */
+                max_merge_gap_minutes?: number | null;
+                readonly?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DigestResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ask_api_ai_insights_ask_post: {
+        parameters: {
+            query?: {
+                /** @description 最短播放时长 (毫秒) */
+                min_ms?: number;
+                /** @description 仅音乐 */
+                music_only?: boolean;
+                /** @description 合并连续播放 */
+                merge_enabled?: boolean;
+                /** @description 使用动态有效播放阈值 */
+                dynamic_threshold?: boolean;
+                /** @description 连续播放最大合并间隔 (分钟) */
+                max_merge_gap_minutes?: number | null;
+                readonly?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AskRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AskResponseBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    suggested_questions_api_ai_insights_suggested_questions_get: {
+        parameters: {
+            query?: {
+                /** @description Report type context: weekly, monthly, yearly, chat */
+                context?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuggestedQuestionsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_sessions_api_chat_sessions_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+                readonly?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_session_api_chat_sessions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["CreateSessionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionCreateResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_session_api_chat_sessions__session_id__get: {
+        parameters: {
+            query?: {
+                readonly?: boolean;
+            };
+            header?: never;
+            path: {
+                session_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionDetailResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_session_api_chat_sessions__session_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionDeleteResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_title_api_chat_sessions__session_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateTitleRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionUpdateResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_message_api_chat_sessions__session_id__messages_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AddMessageRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageAddResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cache_stats_api_admin_cache_stats_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    get_job_status_api_jobs__job_id__status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
             cookie?: never;
         };
         requestBody?: never;

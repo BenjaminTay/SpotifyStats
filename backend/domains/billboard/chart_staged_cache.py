@@ -49,9 +49,19 @@ def _load_and_rank(
     year_start=None,
     year_end=None,
     merge_level=2,
+    dynamic_threshold=False,
+    max_merge_gap_minutes=None,
+    include_compilations=False,
 ):
     """Load raw data, apply filters, and compute weekly rankings."""
-    df_raw = load_billboard_raw(min_ms, music_only, bb_week_start_dow, bb_week_start_hour)
+    df_raw = load_billboard_raw(
+        min_ms,
+        music_only,
+        bb_week_start_dow,
+        bb_week_start_hour,
+        dynamic_threshold=dynamic_threshold,
+        max_merge_gap_minutes=max_merge_gap_minutes,
+    )
 
     df_raw = df_raw.copy()
     df_raw["_year"] = df_raw["billboard_week"].apply(lambda x: x.year)
@@ -65,7 +75,12 @@ def _load_and_rank(
     all_weeks_desc = sorted(all_weeks_asc, reverse=True)
 
     _agg_tracks, _agg_albums, _agg_artists = _try_load_from_agg(
-        min_ms, music_only, bb_week_start_dow, bb_week_start_hour
+        min_ms,
+        music_only,
+        bb_week_start_dow,
+        bb_week_start_hour,
+        dynamic_threshold=dynamic_threshold,
+        max_merge_gap_minutes=max_merge_gap_minutes,
     )
 
     if _agg_tracks is not None:
@@ -89,7 +104,11 @@ def _load_and_rank(
         df_filtered, bb_top_n, pre_agg=_agg_tracks, merge_level=merge_level
     )
     weekly_album = compute_album_weekly_rankings(
-        df_filtered, bb_album_top_n, pre_agg=_agg_albums, merge_level=merge_level
+        df_filtered,
+        bb_album_top_n,
+        pre_agg=_agg_albums,
+        merge_level=merge_level,
+        include_compilations=include_compilations,
     )
 
     if _agg_artists is not None:
@@ -98,7 +117,12 @@ def _load_and_rank(
         )
     else:
         df_artists = load_billboard_raw_for_artists(
-            min_ms, music_only, bb_week_start_dow, bb_week_start_hour
+            min_ms,
+            music_only,
+            bb_week_start_dow,
+            bb_week_start_hour,
+            dynamic_threshold=dynamic_threshold,
+            max_merge_gap_minutes=max_merge_gap_minutes,
         )
         df_artists = df_artists.copy()
         df_artists["_year"] = df_artists["billboard_week"].apply(lambda x: x.year)
@@ -166,6 +190,9 @@ def _compute_weekly_data_cached(
     year_start=None,
     year_end=None,
     merge_level=2,
+    dynamic_threshold=False,
+    max_merge_gap_minutes=None,
+    include_compilations=False,
 ):
     """Compute weekly rankings + meta. Returns JSON-safe dict."""
     weekly, weekly_album, weekly_artist, all_weeks_asc, all_weeks_desc, df_filtered = (
@@ -180,6 +207,9 @@ def _compute_weekly_data_cached(
             year_start,
             year_end,
             merge_level,
+            dynamic_threshold=dynamic_threshold,
+            max_merge_gap_minutes=max_merge_gap_minutes,
+            include_compilations=include_compilations,
         )
     )
 
@@ -221,6 +251,8 @@ def _compute_power_scores_cached(
     year_start=None,
     year_end=None,
     merge_level=2,
+    dynamic_threshold=False,
+    max_merge_gap_minutes=None,
 ):
     """Compute power scores for tracks, albums, and artists. Returns JSON-safe dict."""
     weekly, weekly_album, weekly_artist, *_ = _load_and_rank(
@@ -234,6 +266,8 @@ def _compute_power_scores_cached(
         year_start,
         year_end,
         merge_level,
+        dynamic_threshold=dynamic_threshold,
+        max_merge_gap_minutes=max_merge_gap_minutes,
     )
 
     weekly = enrich_track_artist_names(weekly)
@@ -261,6 +295,8 @@ def _compute_summaries_cached(
     year_start=None,
     year_end=None,
     merge_level=2,
+    dynamic_threshold=False,
+    max_merge_gap_minutes=None,
 ):
     """Compute track/artist/album summaries. Returns JSON-safe dict."""
     weekly, weekly_album, weekly_artist, *_all_weeks, df_filtered = _load_and_rank(
@@ -274,6 +310,8 @@ def _compute_summaries_cached(
         year_start,
         year_end,
         merge_level,
+        dynamic_threshold=dynamic_threshold,
+        max_merge_gap_minutes=max_merge_gap_minutes,
     )
 
     album_map = load_track_album_map()
@@ -310,6 +348,8 @@ def _compute_records_cached(
     year_start=None,
     year_end=None,
     merge_level=2,
+    dynamic_threshold=False,
+    max_merge_gap_minutes=None,
 ):
     """Compute Billboard records. Returns JSON-safe dict."""
     weekly, weekly_album, weekly_artist, *_all_weeks, df_filtered = _load_and_rank(
@@ -323,6 +363,8 @@ def _compute_records_cached(
         year_start,
         year_end,
         merge_level,
+        dynamic_threshold=dynamic_threshold,
+        max_merge_gap_minutes=max_merge_gap_minutes,
     )
 
     track_summary = compute_track_summary(weekly, df_filtered)

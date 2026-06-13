@@ -7,6 +7,7 @@ import type { AlbumDetailResponse, AlbumEnrichmentResponse, ReleaseCycleAlbumDet
 import { EntityStatsPanel } from '@/components/shared/EntityStatsPanel'
 import { displayName } from '@/lib/chinese'
 import { AlertCircle } from 'lucide-react'
+import { getDefaultMergeLevel } from '@/lib/merge-level'
 import { AlbumDetailHero, DetailTabs } from './MusicDetailHeader'
 import { AlbumDetailSkeleton } from './MusicDetailSkeletons'
 import { MusicChartOverviewSection } from './MusicChartOverviewSection'
@@ -28,12 +29,13 @@ export function AlbumDetailExperience() {
   const [searchParams] = useSearchParams()
   const artistName = searchParams.get('artist') || ''
   const navigate = useNavigate()
+  const mergeLevel = Number(searchParams.get('merge_level') ?? getDefaultMergeLevel())
 
   const [activeTab, setActiveTab] = useState<TabKey>((searchParams.get('tab') as TabKey | null) ?? 'stats')
 
   const { data, isPending, error, refetch } = useQuery({
-    queryKey: queryKeys.music.albumDetail(albumName ?? '', artistName),
-    queryFn: () => api.get<AlbumDetailResponse>('/billboard/album/' + albumName!, { artist_name: artistName }),
+    queryKey: queryKeys.music.albumDetail(albumName ?? '', artistName, mergeLevel),
+    queryFn: () => api.get<AlbumDetailResponse>('/billboard/album/' + albumName!, { artist_name: artistName, merge_level: mergeLevel }),
     enabled: !!albumName,
   })
 

@@ -1,9 +1,10 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { GlassCard } from '@/components/shared/GlassCard'
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
 import { type ChineseStyle } from '@/lib/chinese'
 import type { SettingsUpdatePayload } from '@/types/settings'
+import { setDynamicThreshold } from '@/hooks/useAnalysis'
 import { SectionHeader, Toggle, FieldLabel, InlineNotice } from '@/features/settings/components/SettingsHelpers'
 
 const MIN_MS_OPTIONS = [
@@ -26,6 +27,13 @@ export function DataFilteringSection({
   onChangeChineseStyle: (s: string | null) => void
 }) {
   const [notice, setNotice] = useState(false)
+  const [dynamicThreshold, setDynamicThresholdLocal] = useState(() => {
+    try { return localStorage.getItem('spotify_stats_dynamic_threshold') !== 'false' } catch { return true }
+  })
+
+  useEffect(() => {
+    setDynamicThreshold(dynamicThreshold)
+  }, [dynamicThreshold])
 
   const update = (p: SettingsUpdatePayload) => {
     onUpdate(p)
@@ -82,6 +90,24 @@ export function DataFilteringSection({
               checked={settings.merge_enabled}
               onChange={(v) => update({ merge_enabled: v })}
               label="合并连续播放"
+            />
+          </div>
+        </div>
+      </div>
+
+      <Separator className="my-5" />
+
+      <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+        <div className="space-y-1.5">
+          <FieldLabel label="动态有效播放阈值" badge="dynamic_threshold" />
+          <p className="text-[12px] text-muted-foreground">
+            根据曲目时长动态计算有效播放阈值（R2），关闭则使用固定 min_ms 阈值
+          </p>
+          <div className="mt-2">
+            <Toggle
+              checked={dynamicThreshold}
+              onChange={(v) => setDynamicThresholdLocal(v)}
+              label="动态阈值"
             />
           </div>
         </div>

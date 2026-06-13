@@ -181,6 +181,52 @@ class TestLoadTrackGroupKeys:
         assert 909 not in set(keys["track_id"])
 
 
+class TestParentChildGroupResolution:
+    """L3 parent_group_id chain resolves child recording groups to composition."""
+
+    def test_child_recording_group_resolves_to_composition_parent(self, seed_conn):
+        """Track 908 is in recording group 3 (child of composition group 2).
+        At L3 it must resolve to the composition canonical name (R6)."""
+        keys = load_track_group_keys(seed_conn, merge_level=3)
+        key_map = keys.set_index("track_id")
+        # 907: direct member of composition group 2
+        assert key_map.loc[907, "track_agg_name"] == "Fixture Composition Song"
+        assert key_map.loc[907, "track_agg_id"] == 2
+        assert key_map.loc[907, "track_group_scope"] == "composition"
+        # 908: member of recording group 3 → parent composition group 2
+        assert key_map.loc[908, "track_agg_name"] == "Fixture Composition Song"
+        assert key_map.loc[908, "track_agg_id"] == 2  # resolved to parent
+        assert key_map.loc[908, "track_group_scope"] == "composition"
+
+    def test_child_recording_group_keeps_own_canonical_at_l2(self, seed_conn):
+        """At L2, child recording group members resolve to the recording
+        group's own canonical name (no parent resolution)."""
+        keys = load_track_group_keys(seed_conn, merge_level=2)
+        key_map = keys.set_index("track_id")
+        # 908 at L2: recording group 3's own canonical, NOT composition parent
+        assert key_map.loc[908, "track_agg_name"] == "Fixture Composition Song - Acoustic"
+        assert key_map.loc[908, "track_group_scope"] == "recording"
+
+    def test_l3_merge_includes_child_group_members(self, seed_conn):
+        """At L3, the composition group aggregate must include members from
+        child recording groups — track 908 contributes its plays."""
+        df = load_plays(seed_conn, min_ms=30000, music_only=True, merge_enabled=True)
+        _total, rows = chart_rows(
+            seed_conn,
+            df,
+            entity="track",
+            metric="plays",
+            limit=500,
+            offset=0,
+            merge_level=3,
+        )
+        names = {row["track_name"]: row["plays"] for row in rows}
+        # 907 (1 dir) + 908 (1 via child group) = 2 plays under composition canonical
+        assert names.get("Fixture Composition Song") == 2, (
+            f"L3 should include child group member 908, got {names}"
+        )
+
+
 class TestPreAggCrossAlbumMerge:
     """Issue 2: pre_agg path merges canonical tracks across different albums."""
 
@@ -250,3 +296,35 @@ class TestPreAggCrossAlbumMerge:
             assert canonical_count <= 1, (
                 f"Week {week}: canonical track appears {canonical_count} times (expected ≤1)"
             )
+
+
+class TestVersionGroupDetailSQL:
+    """P0 regression: _attach_track_version_group and _attach_album_release_group
+    must not reference non-existent tables/columns."""
+
+    def test_track_version_group_sql_does_not_crash(self, seed_conn):
+        """Track 905 is in track_group 1 — version group SQL must succeed."""
+        from backend.domains.billboard.details import _get_track_spotify_meta
+
+        meta = _get_track_spotify_meta(905)
+        assert meta is not None, "Track 905 should have spotify meta"
+        assert "version_group" in meta, "Track 905 should have version_group"
+        vg = meta["version_group"]
+        assert vg["group_id"] == 1
+        assert len(vg["versions"]) == 2
+        names = {v["track_name"] for v in vg["versions"]}
+        assert "Fixture Recording Song" in names
+        assert "Fixture Recording Song - Remastered" in names
+
+    def test_album_release_group_sql_does_not_crash(self, seed_conn):
+        """Directly test _attach_album_release_group with seed release group data."""
+        from backend.domains.billboard.details import _attach_album_release_group
+
+        meta = {}
+        _attach_album_release_group(seed_conn, "Alpha Debut", "Alpha", meta)
+        # Even without spotify_album_meta match, it must not throw
+        # If spotify metadata exists, it should attach the release_group
+        if "release_group" in meta:
+            rg = meta["release_group"]
+            assert rg["group_id"] == 1
+            assert len(rg["versions"]) >= 2

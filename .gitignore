@@ -21,6 +21,9 @@ docs/superpowers/
 # Environment secrets (Spotify API credentials, etc.)
 .env
 
+# Node dependencies
+node_modules/
+
 # Python tooling caches
 .pytest_cache/
 .ruff_cache/

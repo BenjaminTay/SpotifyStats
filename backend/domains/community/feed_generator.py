@@ -83,6 +83,8 @@ def _generate_core_posts(
     bb_week_start_hour: int = 0,
     year_start: int | None = None,
     year_end: int | None = None,
+    dynamic_threshold: bool = False,
+    max_merge_gap_minutes: int | None = None,
 ) -> tuple[list[CommunityPost], HistoricalState]:
     """Cached core chart post generation — iterates full chart history.
 
@@ -99,6 +101,8 @@ def _generate_core_posts(
         bb_week_start_hour,
         year_start,
         year_end,
+        dynamic_threshold=dynamic_threshold,
+        max_merge_gap_minutes=max_merge_gap_minutes,
     )
 
     if not all_weeks:
@@ -543,6 +547,8 @@ def generate_all_posts(
     bb_week_start_hour: int = 0,
     year_start: int | None = None,
     year_end: int | None = None,
+    dynamic_threshold: bool = False,
+    max_merge_gap_minutes: int | None = None,
 ) -> list[CommunityPost]:
     """Main entry point: generate all community posts by iterating chart history.
 
@@ -562,6 +568,8 @@ def generate_all_posts(
         bb_week_start_hour=bb_week_start_hour,
         year_start=year_start,
         year_end=year_end,
+        dynamic_threshold=dynamic_threshold,
+        max_merge_gap_minutes=max_merge_gap_minutes,
     )
 
     # Shallow copy so we can extend without mutating the cached list

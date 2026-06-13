@@ -6,6 +6,7 @@ import { queryClient } from '@/api/query-client'
 import { queryKeys } from '@/api/query-keys'
 import { api } from '@/lib/api'
 import { useSettings } from '@/hooks/useSettings'
+import { getDefaultMergeLevel } from '@/lib/merge-level'
 import type {
   AnalysisFilters,
   AnalysisChartsResponse,
@@ -31,25 +32,66 @@ import type {
 } from '@/types/analysis'
 
 function playParams(filters: AnalysisFilters): Record<string, string | number | boolean> {
-  return {
+  const p: Record<string, string | number | boolean> = {
     min_ms: filters.min_ms,
     music_only: filters.music_only,
     merge_enabled: filters.merge_enabled,
+    dynamic_threshold: filters.dynamic_threshold,
   }
+  if (filters.max_merge_gap_minutes != null && filters.max_merge_gap_minutes !== undefined) {
+    p.max_merge_gap_minutes = filters.max_merge_gap_minutes
+  }
+  return p
 }
 
 export function useAnalysisFilters() {
   const { settings, loading } = useSettings()
 
   const filters = useMemo<AnalysisFilters>(() => {
+    const storedThreshold = getStoredBool('spotify_stats_dynamic_threshold', true)
+    const storedGap = getStoredNumber('spotify_stats_max_merge_gap_minutes')
     return {
       min_ms: settings?.min_ms ?? 30000,
       music_only: settings?.music_only ?? true,
       merge_enabled: settings?.merge_enabled ?? true,
+      dynamic_threshold: storedThreshold,
+      max_merge_gap_minutes: storedGap,
+      merge_level: getDefaultMergeLevel(),
     }
   }, [settings])
 
   return { filters, loading }
+}
+
+function getStoredBool(key: string, fallback: boolean): boolean {
+  try {
+    const v = localStorage.getItem(key)
+    if (v === 'true') return true
+    if (v === 'false') return false
+  } catch { /* localStorage unavailable */ }
+  return fallback
+}
+
+function getStoredNumber(key: string): number | undefined {
+  try {
+    const v = localStorage.getItem(key)
+    if (v != null) {
+      const n = parseInt(v, 10)
+      if (!isNaN(n) && n >= 1 && n <= 240) return n
+    }
+  } catch { /* localStorage unavailable */ }
+  return undefined
+}
+
+export function setDynamicThreshold(value: boolean) {
+  try { localStorage.setItem('spotify_stats_dynamic_threshold', String(value)) } catch { /* */ }
+}
+
+export function setMaxMergeGapMinutes(value: number | undefined) {
+  try {
+    if (value == null) localStorage.removeItem('spotify_stats_max_merge_gap_minutes')
+    else localStorage.setItem('spotify_stats_max_merge_gap_minutes', String(value))
+  } catch { /* */ }
 }
 
 export function loadAnalysisOverview(filters: AnalysisFilters, force = false): Promise<AnalysisOverviewResponse> {
@@ -62,10 +104,11 @@ export function loadAnalysisOverview(filters: AnalysisFilters, force = false): P
 }
 
 export function preloadAnalysisOverview(): void {
-  const filters = {
+  const filters: Record<string, string | number | boolean> = {
     min_ms: 30000,
     music_only: true,
     merge_enabled: true,
+    dynamic_threshold: true,
   }
   void queryClient.prefetchQuery({
     queryKey: queryKeys.analysis.overview(filters),
@@ -145,9 +188,10 @@ export const analysisApi = {
       metric: AnalysisMetric
       limit?: number
       offset?: number
+      include_compilations?: boolean
     },
   ) => {
-    const q = analysisParams(filters, params)
+    const q = analysisParams(filters, { ...params, merge_level: filters.merge_level })
     return fetchQuery(
       queryKeys.analysis.charts(q),
       () => api.get<AnalysisChartsResponse>('/analysis/charts', q),
@@ -208,13 +252,19 @@ export const analysisApi = {
       () => api.get<TimelineWeeklyResponse>('/timeline/weekly', q),
     )
   },
-  leaderboard: (filters: AnalysisFilters, entity: LeaderboardEntity) => {
+  leaderboard: (
+    filters: AnalysisFilters,
+    entity: LeaderboardEntity,
+    includeCompilations: boolean = false,
+  ) => {
     const q = {
       ...playParams(filters),
       entity,
       metric: 'plays',
       time_range: 'all',
       top_n: 30,
+      merge_level: filters.merge_level,
+      include_compilations: includeCompilations,
     }
     return fetchQuery(
       queryKeys.analysis.leaderboard(q),

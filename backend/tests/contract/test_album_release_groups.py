@@ -26,10 +26,14 @@ class TestReleaseGroupScope:
         mapping = load_album_release_group_map(seed_conn, merge_level=1)
         assert mapping.empty
 
-    def test_load_map_level3_returns_composition_scope(self, seed_conn):
-        """L3 returns composition scope groups (empty unless populated)."""
+    def test_load_map_level3_returns_all_scopes(self, seed_conn):
+        """L3 returns release groups with scope resolved through parent chain.
+        Standalone release groups keep scope='release'; child release groups
+        under a composition parent get scope='composition' (R10)."""
         mapping = load_album_release_group_map(seed_conn, merge_level=3)
-        assert mapping.empty or set(mapping["scope"]) == {"composition"}
+        # Seed has no composition groups, so all are standalone release groups
+        assert not mapping.empty
+        assert set(mapping["scope"]) == {"release"}
 
 
 class TestPersonalAlbumChartCanonical:
@@ -53,3 +57,73 @@ class TestPersonalAlbumChartCanonical:
         )
         album_names = {row["album_name"] for row in rows}
         assert "Fixture Single" not in album_names
+
+
+class TestBillboardApplyAlbumReleaseGroups:
+    """Verify Billboard _apply_album_release_groups matches playback resolver behavior."""
+
+    def test_apply_l2_returns_release_only(self, seed_conn):
+        """L2: only scope='release' groups are applied (unchanged from old behavior)."""
+        import pandas as pd
+
+        from backend.domains.billboard.version_merge import _apply_album_release_groups
+
+        df = pd.DataFrame(
+            {
+                "billboard_week": ["2026-01-01", "2026-01-01"],
+                "album_name": ["Alpha Debut", "Alpha Debut Deluxe"],
+                "artist_name": ["Alpha", "Alpha"],
+                "play_count": [10, 5],
+                "total_ms": [2000000, 1000000],
+                "tracks_count": [4, 3],
+            }
+        )
+        result = _apply_album_release_groups(df, merge_level=2)
+        names = set(result["album_name"])
+        assert "Alpha Debut (Combined)" in names
+        assert "Alpha Debut" not in names
+        assert "Alpha Debut Deluxe" not in names
+        # Both rows merged into one
+        assert len(result) == 1
+
+    def test_apply_l3_includes_all_scopes_and_does_not_crash(self, seed_conn):
+        """L3: all scope IN ('composition','release') groups returned via COALESCE
+        parent resolution (R10). With seed data having no composition parents, this
+        is equivalent to L2 — but the query structure is verified."""
+        import pandas as pd
+
+        from backend.domains.billboard.version_merge import _apply_album_release_groups
+
+        df = pd.DataFrame(
+            {
+                "billboard_week": ["2026-01-01", "2026-01-01"],
+                "album_name": ["Alpha Debut", "Alpha Debut Deluxe"],
+                "artist_name": ["Alpha", "Alpha"],
+                "play_count": [10, 5],
+                "total_ms": [2000000, 1000000],
+                "tracks_count": [4, 3],
+            }
+        )
+        result = _apply_album_release_groups(df, merge_level=3)
+        assert len(result) == 1
+        assert result.iloc[0]["album_name"] == "Alpha Debut (Combined)"
+
+    def test_apply_l1_no_merge(self, seed_conn):
+        """L1: no merge, albums keep original names."""
+        import pandas as pd
+
+        from backend.domains.billboard.version_merge import _apply_album_release_groups
+
+        df = pd.DataFrame(
+            {
+                "billboard_week": ["2026-01-01", "2026-01-01"],
+                "album_name": ["Alpha Debut", "Alpha Debut Deluxe"],
+                "artist_name": ["Alpha", "Alpha"],
+                "play_count": [10, 5],
+                "total_ms": [2000000, 1000000],
+                "tracks_count": [4, 3],
+            }
+        )
+        result = _apply_album_release_groups(df, merge_level=1)
+        assert len(result) == 2
+        assert set(result["album_name"]) == {"Alpha Debut", "Alpha Debut Deluxe"}

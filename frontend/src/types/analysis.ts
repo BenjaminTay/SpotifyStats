@@ -9,6 +9,9 @@ export interface AnalysisFilters {
   min_ms: number
   music_only: boolean
   merge_enabled: boolean
+  dynamic_threshold: boolean
+  max_merge_gap_minutes?: number
+  merge_level: number
 }
 
 export interface AnalysisTrendSummary {

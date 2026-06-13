@@ -535,7 +535,7 @@ def merge_consecutive_plays(
     df: pd.DataFrame,
     min_ms: int,
     max_gap_minutes: int | None = None,
-    boundary_column: str | None = None,
+    boundary_column: str | list[str] | None = None,
 ) -> pd.DataFrame:
     """Merge consecutive plays of the same track into logical play counts.
 
@@ -545,7 +545,9 @@ def merge_consecutive_plays(
     Group boundaries are introduced by:
     - track_id change (always)
     - timestamp gap > max_gap_minutes (when provided)
-    - boundary_column value change (when provided, e.g. source_album_id)
+    - boundary_column value change (when provided, e.g. source_album_id).
+      Accepts a single column name or a list of column names; when a list is
+      given, a change in ANY column starts a new merge group (OR semantics).
 
     Rows with NULL/0 duration_ms are passed through unchanged (can't merge).
     Requires DataFrame sorted by ts, with columns: track_id, ms_played, duration_ms.
@@ -565,8 +567,12 @@ def merge_consecutive_plays(
         gap_changed = ts.diff().dt.total_seconds().gt(max_gap_minutes * 60).fillna(False)
 
     boundary_changed = pd.Series(False, index=df.index)
-    if boundary_column and boundary_column in df.columns:
-        boundary_changed = df[boundary_column] != df[boundary_column].shift(1)
+    if boundary_column:
+        columns = [boundary_column] if isinstance(boundary_column, str) else boundary_column
+        for col in columns:
+            if col in df.columns:
+                col_vals = df[col].fillna(-1)
+                boundary_changed = boundary_changed | (col_vals != col_vals.shift(1))
 
     df["_merge_group"] = (track_changed | gap_changed | boundary_changed).cumsum()
 
@@ -1048,9 +1054,21 @@ def _agg_param_hash(
     music_only: bool,
     week_start_dow: int,
     week_start_hour: int,
+    dynamic_threshold: bool = False,
+    max_merge_gap_minutes: int | None = None,
 ) -> str:
     """Compute a content-hash of the parameters that affect aggregation results."""
-    payload = json.dumps([min_ms, music_only, week_start_dow, week_start_hour], sort_keys=True)
+    payload = json.dumps(
+        [
+            min_ms,
+            music_only,
+            week_start_dow,
+            week_start_hour,
+            dynamic_threshold,
+            max_merge_gap_minutes,
+        ],
+        sort_keys=True,
+    )
     return hashlib.sha256(payload.encode()).hexdigest()[:16]
 
 
@@ -1069,6 +1087,8 @@ def build_aggregations(
     week_start_dow: int = 4,
     week_start_hour: int = 0,
     progress_callback=None,
+    dynamic_threshold: bool = False,
+    max_merge_gap_minutes: int | None = None,
 ) -> dict[str, int]:
     """Build all 3 pre-aggregated weekly Billboard tables from the plays table.
 
@@ -1087,7 +1107,7 @@ def build_aggregations(
     # (ms_played filter is applied AFTER merge to preserve short fragments)
     df = pd.read_sql_query(
         f"""SELECT p.ts, p.ts_date, p.ts_dow, p.ts_hour, p.ms_played, p.track_id,
-                   t.album_id, t.artist_id, stm.duration_ms
+                   p.source_album_id, t.album_id, t.artist_id, stm.duration_ms
             FROM plays p
             JOIN tracks t ON p.track_id = t.track_id
             LEFT JOIN spotify_track_meta stm
@@ -1117,12 +1137,20 @@ def build_aggregations(
     df["ts_date_dt"] = pd.to_datetime(df["ts_date"])
     df["billboard_week"] = (df["ts_date_dt"] - pd.to_timedelta(df["days_back"], unit="D")).dt.date
 
+    # Store source_album_id for album-level aggregation before dropping
+    df["_source_album_id"] = df["source_album_id"].fillna(0).astype(int)
+
     # Merge consecutive same-track plays, then apply ms_played threshold
-    df = merge_consecutive_plays(df, min_ms)
+    df = merge_consecutive_plays(
+        df,
+        min_ms,
+        max_gap_minutes=max_merge_gap_minutes,
+        boundary_column=["source_album_id", "billboard_week"],
+    )
     if min_ms > 0:
         from backend.domains.playback.counting import filter_effective_plays
 
-        df = filter_effective_plays(df, min_ms=min_ms, dynamic_threshold=False)
+        df = filter_effective_plays(df, min_ms=min_ms, dynamic_threshold=dynamic_threshold)
 
     if df.empty:
         conn.execute("DELETE FROM agg_weekly_tracks")
@@ -1161,15 +1189,18 @@ def build_aggregations(
     if progress_callback:
         progress_callback("预聚合: 单曲完成", 0.33)
 
-    # 2. Albums
+    # 2. Albums — use source_album_id (fallback to track album_id) for attribution
     if progress_callback:
         progress_callback("预聚合: 专辑...", 0.33)
-    df_album = df[df["album_id"].notna()]
+    has_source = df["_source_album_id"].notna() & (df["_source_album_id"] != 0)
+    df["_album_id_for_agg"] = df["_source_album_id"].where(has_source, df["album_id"]).astype(int)
+    df_album = df[df["_album_id_for_agg"].notna()]
     if not df_album.empty:
         albums_agg = (
-            df_album.groupby(["billboard_week", "album_id"])
+            df_album.groupby(["billboard_week", "_album_id_for_agg"])
             .agg(play_count=("ms_played", "count"), total_ms=("ms_played", "sum"))
             .reset_index()
+            .rename(columns={"_album_id_for_agg": "album_id"})
         )
         a_rows = [
             (str(r.billboard_week), int(r.album_id), int(r.play_count), int(r.total_ms))
@@ -1212,7 +1243,14 @@ def build_aggregations(
         progress_callback("预聚合: 艺人完成", 1.0)
 
     # Store param hash
-    param_hash = _agg_param_hash(min_ms, music_only, week_start_dow, week_start_hour)
+    param_hash = _agg_param_hash(
+        min_ms,
+        music_only,
+        week_start_dow,
+        week_start_hour,
+        dynamic_threshold=dynamic_threshold,
+        max_merge_gap_minutes=max_merge_gap_minutes,
+    )
     conn.execute(
         "INSERT OR REPLACE INTO agg_config(key, value) VALUES ('param_hash', ?)",
         (param_hash,),

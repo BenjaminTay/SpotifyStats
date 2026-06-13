@@ -114,6 +114,7 @@ export function BillboardPage() {
   const [searchParams] = useSearchParams()
   const initialWeek = searchParams.get('week')
   const mergeLevel = Number(searchParams.get('merge_level') ?? getDefaultMergeLevel())
+  const [includeCompilations, setIncludeCompilations] = useState(false)
 
   const {
     data,
@@ -127,7 +128,7 @@ export function BillboardPage() {
     goNext,
     goPrev,
     goToWeek,
-  } = useBillboardWeekly(initialWeek, mergeLevel)
+  } = useBillboardWeekly(initialWeek, mergeLevel, includeCompilations)
 
   const [activeTab, setActiveTab] = useState<TabKey>(cachedTab)
 
@@ -210,22 +211,30 @@ export function BillboardPage() {
           </section>
 
           {/* Tabs */}
-          <div className="mb-5 flex gap-7 border-b border-border">
-            {TABS.map((tab) => (
-              <button
-                key={tab.key}
-                onClick={() => { cachedTab = tab.key; setActiveTab(tab.key) }}
-                className={cn(
-                  '-mb-px cursor-pointer border-none bg-transparent px-0 pb-2.5 font-sans text-[13px] font-medium transition-[color,border] duration-200',
-                  'border-b-2',
-                  activeTab === tab.key
-                    ? 'border-accent-foreground font-semibold text-foreground'
-                    : 'border-transparent text-muted-foreground hover:text-foreground',
-                )}
-              >
-                {tab.label}
-              </button>
-            ))}
+          <div className="mb-5 flex items-end justify-between border-b border-border">
+            <div className="flex gap-7">
+              {TABS.map((tab) => (
+                <button
+                  key={tab.key}
+                  onClick={() => { cachedTab = tab.key; setActiveTab(tab.key) }}
+                  className={cn(
+                    '-mb-px cursor-pointer border-none bg-transparent px-0 pb-2.5 font-sans text-[13px] font-medium transition-[color,border] duration-200',
+                    'border-b-2',
+                    activeTab === tab.key
+                      ? 'border-accent-foreground font-semibold text-foreground'
+                      : 'border-transparent text-muted-foreground hover:text-foreground',
+                  )}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+            {activeTab === 'albums' && (
+              <label className="-mb-px flex cursor-pointer items-center gap-1.5 pb-2.5 font-sans text-[11px] text-muted-foreground transition-colors hover:text-foreground">
+                <input type="checkbox" checked={includeCompilations} onChange={(e) => setIncludeCompilations(e.target.checked)} className="h-3.5 w-3.5 cursor-pointer rounded border-border accent-accent-foreground" />
+                含精选集
+              </label>
+            )}
           </div>
 
           {/* Week Selector */}
@@ -244,36 +253,20 @@ export function BillboardPage() {
           {/* Summary Strip */}
           <div className="mb-6 flex gap-9 border-b border-border py-4">
             <div>
-              <span className="font-serif text-2xl font-semibold text-[#3B5998] dark:text-[#7B9CC8]">
-                {summary.newCount}
-              </span>
-              <span className="ml-2 font-sans text-[10px] font-bold uppercase tracking-[1px] text-muted-foreground">
-                新入榜
-              </span>
+              <span className="font-serif text-2xl font-semibold text-[#3B5998] dark:text-[#7B9CC8]">{summary.newCount}</span>
+              <span className="ml-2 font-sans text-[10px] font-bold uppercase tracking-[1px] text-muted-foreground">新入榜</span>
             </div>
             <div>
-              <span className="font-serif text-2xl font-semibold text-[#B8860B] dark:text-[#D4A24E]">
-                {summary.reCount}
-              </span>
-              <span className="ml-2 font-sans text-[10px] font-bold uppercase tracking-[1px] text-muted-foreground">
-                重回榜
-              </span>
+              <span className="font-serif text-2xl font-semibold text-[#B8860B] dark:text-[#D4A24E]">{summary.reCount}</span>
+              <span className="ml-2 font-sans text-[10px] font-bold uppercase tracking-[1px] text-muted-foreground">重回榜</span>
             </div>
             <div>
-              <span className="font-serif text-2xl font-semibold">
-                {formatNumber(summary.maxPlays)}
-              </span>
-              <span className="ml-2 font-sans text-[10px] font-bold uppercase tracking-[1px] text-muted-foreground">
-                当周最高播放
-              </span>
+              <span className="font-serif text-2xl font-semibold">{formatNumber(summary.maxPlays)}</span>
+              <span className="ml-2 font-sans text-[10px] font-bold uppercase tracking-[1px] text-muted-foreground">当周最高播放</span>
             </div>
             <div>
-              <span className="font-serif text-2xl font-semibold">
-                {formatNumber(summary.totalPlays)}
-              </span>
-              <span className="ml-2 font-sans text-[10px] font-bold uppercase tracking-[1px] text-muted-foreground">
-                当周总播放
-              </span>
+              <span className="font-serif text-2xl font-semibold">{formatNumber(summary.totalPlays)}</span>
+              <span className="ml-2 font-sans text-[10px] font-bold uppercase tracking-[1px] text-muted-foreground">当周总播放</span>
             </div>
           </div>
 

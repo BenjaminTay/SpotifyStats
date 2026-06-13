@@ -11,7 +11,14 @@ DOW_NAMES = {0: "周一", 1: "周二", 2: "周三", 3: "周四", 4: "周五", 5:
 DOW_SHORT = {0: "Mon", 1: "Tue", 2: "Wed", 3: "Thu", 4: "Fri", 5: "Sat", 6: "Sun"}
 
 
-def _try_load_from_agg(min_ms, music_only, week_start_dow, week_start_hour):
+def _try_load_from_agg(
+    min_ms,
+    music_only,
+    week_start_dow,
+    week_start_hour,
+    dynamic_threshold=False,
+    max_merge_gap_minutes=None,
+):
     """Try to load pre-aggregated weekly data from agg tables.
 
     Returns (tracks_df, albums_df, artists_df) if valid agg data exists,
@@ -26,7 +33,14 @@ def _try_load_from_agg(min_ms, music_only, week_start_dow, week_start_hour):
         load_agg_weekly_tracks,
     )
 
-    param_hash = _agg_param_hash(min_ms, music_only, week_start_dow, week_start_hour)
+    param_hash = _agg_param_hash(
+        min_ms,
+        music_only,
+        week_start_dow,
+        week_start_hour,
+        dynamic_threshold=dynamic_threshold,
+        max_merge_gap_minutes=max_merge_gap_minutes,
+    )
     conn = get_db()
     if not check_agg_valid(conn, param_hash):
         conn.close()
@@ -46,7 +60,14 @@ def _try_load_from_agg(min_ms, music_only, week_start_dow, week_start_hour):
 
 
 @lru_cache(maxsize=8)
-def load_billboard_raw(min_ms, music_only, week_start_dow, week_start_hour):
+def load_billboard_raw(
+    min_ms,
+    music_only,
+    week_start_dow,
+    week_start_hour,
+    dynamic_threshold=False,
+    max_merge_gap_minutes=None,
+):
     """Load filtered plays and compute billboard_week with configurable boundary."""
     conn = get_db()
     # Load with min_ms=0 to preserve short fragments for merge-then-filter
@@ -54,11 +75,15 @@ def load_billboard_raw(min_ms, music_only, week_start_dow, week_start_hour):
     _w = f"WHERE {_f}" if _f else ""
     df = pd.read_sql_query(
         f"""SELECT p.ts, p.ts_date, p.ts_dow, p.ts_hour, p.ms_played, p.track_id,
-                   t.track_name, a.artist_name, al.album_name, stm.duration_ms
+                   p.source_album_id,
+                   t.track_name, a.artist_name,
+                   COALESCE(al_src.album_name, al.album_name) AS album_name,
+                   stm.duration_ms
             FROM plays p
             LEFT JOIN tracks t ON p.track_id = t.track_id
             LEFT JOIN artists a ON t.artist_id = a.artist_id
             LEFT JOIN albums al ON t.album_id = al.album_id
+            LEFT JOIN albums al_src ON p.source_album_id = al_src.album_id
             LEFT JOIN spotify_track_meta stm
               ON REPLACE(t.spotify_track_uri, 'spotify:track:', '') = stm.spotify_track_id
             {_w}
@@ -75,18 +100,31 @@ def load_billboard_raw(min_ms, music_only, week_start_dow, week_start_hour):
     df["ts_date_dt"] = pd.to_datetime(df["ts_date"])
     df["billboard_week"] = (df["ts_date_dt"] - pd.to_timedelta(df["days_back"], unit="D")).dt.date
 
-    # Merge consecutive same-track plays, then apply ms_played threshold
-    df = merge_consecutive_plays(df, min_ms)
+    # Merge consecutive same-track plays (with source_album + billboard_week boundary),
+    # then apply ms_played threshold.  billboard_week prevents cross-week fragment merging (R23).
+    df = merge_consecutive_plays(
+        df,
+        min_ms,
+        max_gap_minutes=max_merge_gap_minutes,
+        boundary_column=["source_album_id", "billboard_week"],
+    )
     if min_ms > 0:
         from backend.domains.playback.counting import filter_effective_plays
 
-        df = filter_effective_plays(df, min_ms=min_ms, dynamic_threshold=False)
+        df = filter_effective_plays(df, min_ms=min_ms, dynamic_threshold=dynamic_threshold)
 
     return df
 
 
 @lru_cache(maxsize=8)
-def load_billboard_raw_for_artists(min_ms, music_only, week_start_dow, week_start_hour):
+def load_billboard_raw_for_artists(
+    min_ms,
+    music_only,
+    week_start_dow,
+    week_start_hour,
+    dynamic_threshold=False,
+    max_merge_gap_minutes=None,
+):
     """Same as load_billboard_raw but fans out through track_artists for multi-artist
     attribution. Merge happens before fan-out to keep merge_consecutive_plays correct.
 
@@ -100,11 +138,15 @@ def load_billboard_raw_for_artists(min_ms, music_only, week_start_dow, week_star
     # Step 1: Load single-artist data (same as load_billboard_raw)
     df = pd.read_sql_query(
         f"""SELECT p.ts, p.ts_date, p.ts_dow, p.ts_hour, p.ms_played, p.track_id,
-                   t.track_name, a.artist_name, al.album_name, stm.duration_ms
+                   p.source_album_id,
+                   t.track_name, a.artist_name,
+                   COALESCE(al_src.album_name, al.album_name) AS album_name,
+                   stm.duration_ms
             FROM plays p
             LEFT JOIN tracks t ON p.track_id = t.track_id
             LEFT JOIN artists a ON t.artist_id = a.artist_id
             LEFT JOIN albums al ON t.album_id = al.album_id
+            LEFT JOIN albums al_src ON p.source_album_id = al_src.album_id
             LEFT JOIN spotify_track_meta stm
               ON REPLACE(t.spotify_track_uri, 'spotify:track:', '') = stm.spotify_track_id
             {_w}
@@ -121,11 +163,16 @@ def load_billboard_raw_for_artists(min_ms, music_only, week_start_dow, week_star
     df["billboard_week"] = (df["ts_date_dt"] - pd.to_timedelta(df["days_back"], unit="D")).dt.date
 
     # Merge before fan-out, then filter to align with pre-aggregation path
-    df = merge_consecutive_plays(df, min_ms)
+    df = merge_consecutive_plays(
+        df,
+        min_ms,
+        max_gap_minutes=max_merge_gap_minutes,
+        boundary_column=["source_album_id", "billboard_week"],
+    )
     if min_ms > 0:
         from backend.domains.playback.counting import filter_effective_plays
 
-        df = filter_effective_plays(df, min_ms=min_ms, dynamic_threshold=False)
+        df = filter_effective_plays(df, min_ms=min_ms, dynamic_threshold=dynamic_threshold)
 
     # Step 2: Fan out through track_artists
     track_artists_df = pd.read_sql_query("SELECT track_id, artist_id FROM track_artists", conn)
@@ -165,22 +212,67 @@ def load_track_album_map():
     return pd.DataFrame(records)
 
 
+def _match_album_artist(artist_name, album_artists):
+    """Check if artist_name appears in album_artists.
+
+    album_artists may be a plain string (single artist), comma-separated
+    ("Lady Gaga, Ariana Grande"), or a JSON array ('["Taylor Swift"]').
+    NULL/empty album_artists matches all (safety: lack of artist info
+    should not prevent metadata lookup).
+
+    Matching is case-insensitive and diacritic-tolerant via NFKD
+    normalization + combining-character stripping.
+    """
+    import json
+    import unicodedata
+
+    if album_artists is None:
+        return True
+    s = str(album_artists).strip()
+    if not s:
+        return True
+    if artist_name is None:
+        return False
+
+    def _norm(name: str) -> str:
+        nkd = unicodedata.normalize("NFKD", str(name))
+        # Strip combining diacritical marks, then casefold
+        return "".join(c for c in nkd if not unicodedata.combining(c)).casefold()
+
+    target = _norm(artist_name)
+
+    # JSON array: ["Artist A", "Artist B"]
+    if s.startswith("["):
+        try:
+            arr = json.loads(s)
+            if isinstance(arr, list):
+                return any(_norm(n) == target for n in arr)
+        except (json.JSONDecodeError, TypeError):
+            pass
+
+    # Comma-separated (or single artist)
+    names = [n.strip() for n in s.split(",")]
+    return any(_norm(n) == target for n in names)
+
+
 @lru_cache(maxsize=8)
 def _load_album_metadata():
     conn = get_db()
+    # Join by album_name only; filter by artist in pandas to handle
+    # multi-artist formats (comma-separated, JSON array).
     df = pd.read_sql_query(
-        """SELECT DISTINCT al.album_name, a.artist_name, sam.album_type, sam.release_date
-           FROM track_albums ta
-           JOIN albums al ON ta.album_id = al.album_id
+        """SELECT DISTINCT al.album_name, a.artist_name, sam.album_artists,
+               sam.album_type, sam.release_date, sam.total_tracks
+           FROM albums al
            JOIN artists a ON al.artist_id = a.artist_id
-           JOIN tracks t ON ta.track_id = t.track_id
-           JOIN spotify_track_meta stm
-             ON REPLACE(t.spotify_track_uri, 'spotify:track:', '') = stm.spotify_track_id
-           JOIN spotify_album_meta sam ON stm.spotify_album_id = sam.spotify_album_id""",
+           JOIN spotify_album_meta sam ON sam.album_name = al.album_name""",
         conn,
     )
 
-    base = df[["album_name", "artist_name", "album_type"]].copy()
+    mask = df.apply(lambda r: _match_album_artist(r["artist_name"], r["album_artists"]), axis=1)
+    df = df[mask]
+
+    base = df[["album_name", "artist_name", "album_type", "total_tracks"]].copy()
     priority = {"album": 0, "compilation": 1, "single": 2}
     base["_pri"] = base["album_type"].map(priority)
     type_df = (
@@ -224,7 +316,7 @@ def _add_canonical_metadata(type_df, date_df, conn):
         left_on=["album_name", "artist_name"],
         right_on=["primary_album_name", "artist_name"],
         how="inner",
-    )[["canonical_name", "artist_name", "album_type"]].rename(
+    )[["canonical_name", "artist_name", "album_type", "total_tracks"]].rename(
         columns={"canonical_name": "album_name"}
     )
     if not primary_types.empty:

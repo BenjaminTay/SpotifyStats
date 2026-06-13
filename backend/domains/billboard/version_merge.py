@@ -85,21 +85,38 @@ def _apply_album_release_groups(df, merge_level: int = 2):
     if merge_level <= 1:
         return df
 
-    # Load mapping with scope filter
+    # Load mapping with scope filter.  At L3, child release groups resolve to
+    # their composition parent via LEFT JOIN (R10 child-group expansion), matching
+    # the playback/release_groups.py resolver.
     from backend.core.db import get_db
 
     conn = get_db()
-    scope = "composition" if merge_level >= 3 else "release"
-    mapping = pd.read_sql_query(
-        """SELECT al.album_name, a.artist_name, rg.canonical_name
-           FROM release_group_members rgm
-           JOIN release_groups rg ON rgm.group_id = rg.group_id
-           JOIN albums al ON rgm.album_id = al.album_id
-           JOIN artists a ON al.artist_id = a.artist_id
-           WHERE rg.scope = ?""",
-        conn,
-        params=(scope,),
-    )
+    if merge_level >= 3:
+        mapping = pd.read_sql_query(
+            """SELECT al.album_name, a.artist_name,
+                      COALESCE(parent_rg.canonical_name, rg.canonical_name) AS canonical_name
+               FROM release_group_members rgm
+               JOIN release_groups rg ON rgm.group_id = rg.group_id
+               JOIN albums al ON rgm.album_id = al.album_id
+               JOIN artists a ON al.artist_id = a.artist_id
+               LEFT JOIN release_groups parent_rg
+                 ON rg.parent_group_id = parent_rg.group_id
+                AND parent_rg.scope = 'composition'
+               WHERE rg.scope IN ('composition', 'release')""",
+            conn,
+        )
+    else:
+        scope = "release"
+        mapping = pd.read_sql_query(
+            """SELECT al.album_name, a.artist_name, rg.canonical_name
+               FROM release_group_members rgm
+               JOIN release_groups rg ON rgm.group_id = rg.group_id
+               JOIN albums al ON rgm.album_id = al.album_id
+               JOIN artists a ON al.artist_id = a.artist_id
+               WHERE rg.scope = ?""",
+            conn,
+            params=(scope,),
+        )
     conn.close()
 
     if mapping.empty:

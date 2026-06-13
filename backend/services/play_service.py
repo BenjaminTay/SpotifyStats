@@ -504,6 +504,8 @@ def get_leaderboard(
     month: str | None = None,
     metric: str = "plays",
     top_n: int = 30,
+    include_compilations: bool = False,
+    merge_level: int = 2,
 ) -> dict:
     """Get top-N leaderboard for tracks/artists/albums."""
     if entity == "artist":
@@ -547,8 +549,23 @@ def get_leaderboard(
     time_label = " · ".join(label_parts) if label_parts else "全部时间"
 
     if entity == "track":
+        df_agg = df.copy()
+        # Apply track group canonicalization before grouping (R28 L2/L3)
+        if merge_level > 1:
+            from backend.domains.playback.track_groups import load_track_group_keys
+
+            keys = load_track_group_keys(conn, merge_level=merge_level)
+            if not keys.empty:
+                key_map = keys.set_index("track_id")
+                df_agg["_agg_id"] = df_agg["track_id"].map(key_map["track_agg_id"])
+                df_agg["_agg_name"] = df_agg["track_id"].map(key_map["track_agg_name"])
+                mask = df_agg["_agg_id"].notna()
+                df_agg.loc[mask, "track_id"] = df_agg.loc[mask, "_agg_id"].astype(int)
+                df_agg.loc[mask, "track_name"] = df_agg.loc[mask, "_agg_name"]
+                df_agg = df_agg.drop(columns=["_agg_id", "_agg_name"])
+
         agg = (
-            df.groupby(["track_id", "track_name", "artist_name"])
+            df_agg.groupby(["track_id", "track_name", "artist_name"])
             .agg(plays=("play_id", "count"), hours=("ms_played", _hour))
             .reset_index()
         )
@@ -563,11 +580,39 @@ def get_leaderboard(
             .reset_index()
         )
     elif entity == "album":
+        df_agg = df.copy()
+        # Apply release group canonicalization before grouping (R28 L2/L3)
+        if merge_level > 1 and "source_album_id" in df_agg.columns:
+            from backend.domains.playback.release_groups import load_album_release_group_map
+
+            mapping = load_album_release_group_map(conn, merge_level=merge_level)
+            if not mapping.empty:
+                album_to_canonical = (
+                    mapping[["album_id", "canonical_name"]]
+                    .drop_duplicates(subset=["album_id"])
+                    .set_index("album_id")["canonical_name"]
+                )
+                df_agg["_canonical"] = df_agg["source_album_id"].map(album_to_canonical)
+                c_mask = df_agg["_canonical"].notna()
+                df_agg.loc[c_mask, "album_name"] = df_agg.loc[c_mask, "_canonical"]
+                df_agg = df_agg.drop(columns=["_canonical"])
+
         agg = (
-            df.groupby(["album_name", "artist_name"])
+            df_agg.groupby(["album_name", "artist_name"])
             .agg(plays=("play_id", "count"), hours=("ms_played", _hour))
             .reset_index()
         )
+        # R13/R14: filter singles (always excluded) + compilations (toggleable)
+        from backend.domains.playback.album_type import is_album_chart_eligible
+        from backend.services.analysis_stats_service import _resolve_album_category
+
+        agg["_category"] = agg.apply(
+            lambda r: _resolve_album_category(conn, r["album_name"], r["artist_name"]), axis=1
+        )
+        agg = agg[agg["_category"].apply(is_album_chart_eligible)]
+        if not include_compilations:
+            agg = agg[agg["_category"] != "compilation"]
+        agg = agg.drop(columns=["_category"])
     else:
         return {"time_label": time_label, "total_records": 0, "rows": []}
 

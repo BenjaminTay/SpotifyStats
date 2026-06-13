@@ -22,17 +22,32 @@ def load_track_group_keys(conn: sqlite3.Connection, merge_level: int) -> pd.Data
             columns=["track_id", "track_agg_id", "track_agg_name", "track_group_scope"]
         )
 
-    scopes: tuple[str, ...] = ("composition", "recording") if merge_level >= 3 else ("recording",)
+    if merge_level >= 3:
+        # L3: all recording + composition members, with parent resolution.
+        # Recording groups that have parent_group_id → composition group are
+        # resolved to the composition canonical name (R6 child-group expansion).
+        return pd.read_sql_query(
+            """SELECT tgm.track_id,
+                      COALESCE(parent_tg.group_id, tg.group_id) AS track_agg_id,
+                      COALESCE(parent_tg.canonical_name, tg.canonical_name) AS track_agg_name,
+                      CASE WHEN parent_tg.group_id IS NOT NULL THEN 'composition'
+                           ELSE tg.scope END AS track_group_scope
+               FROM track_group_members tgm
+               JOIN track_groups tg ON tgm.group_id = tg.group_id
+               LEFT JOIN track_groups parent_tg
+                 ON tg.parent_group_id = parent_tg.group_id
+                AND parent_tg.scope = 'composition'
+               WHERE tg.scope IN ('composition', 'recording')""",
+            conn,
+        )
 
-    placeholders = ",".join("?" for _ in scopes)
     return pd.read_sql_query(
-        f"""SELECT tgm.track_id,
+        """SELECT tgm.track_id,
                   tg.group_id AS track_agg_id,
                   tg.canonical_name AS track_agg_name,
                   tg.scope AS track_group_scope
            FROM track_group_members tgm
            JOIN track_groups tg ON tgm.group_id = tg.group_id
-           WHERE tg.scope IN ({placeholders})""",
+           WHERE tg.scope = 'recording'""",
         conn,
-        params=scopes,
     )

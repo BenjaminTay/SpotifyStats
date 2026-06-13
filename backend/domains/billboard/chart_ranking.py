@@ -111,7 +111,9 @@ def _canonicalize_album_name(df, mask, key_map, conn):
     )
 
 
-def compute_album_weekly_rankings(_df, top_n, pre_agg=None, merge_level: int = 2):
+def compute_album_weekly_rankings(
+    _df, top_n, pre_agg=None, merge_level: int = 2, include_compilations: bool = False
+):
     """Aggregate per-week album rankings from ALL plays (not just charting tracks).
 
     If pre_agg DataFrame is provided (from agg_weekly_albums), skips the
@@ -120,6 +122,7 @@ def compute_album_weekly_rankings(_df, top_n, pre_agg=None, merge_level: int = 2
     Release groups are applied to merge different album versions (deluxe,
     acoustic, etc.) into canonical names before ranking.
     merge_level=1: no merge, 2: scope='release' (default), 3: scope='composition'.
+    include_compilations: if False (default), compilation albums are excluded (R14).
     """
     if pre_agg is not None and not pre_agg.empty:
         weekly_album = pre_agg.copy()
@@ -147,12 +150,25 @@ def compute_album_weekly_rankings(_df, top_n, pre_agg=None, merge_level: int = 2
         ["billboard_week", "play_count", "total_ms"],
         ascending=[True, False, False],
     )
-    # 排除 single 类型 + 排除专辑发行前的周数
+    # 使用 album taxonomy 排除 single + 排除专辑发行前的周数
     album_meta = _load_album_metadata()
     weekly_album = weekly_album.merge(
         album_meta["type"], on=["album_name", "artist_name"], how="left"
     )
-    weekly_album = weekly_album[weekly_album["album_type"] != "single"]
+    # R13: apply album taxonomy (LP/EP/compilation/single) instead of raw album_type string
+    from backend.domains.playback.album_type import classify_album  # noqa: E402
+
+    weekly_album["_category"] = weekly_album.apply(
+        lambda r: classify_album(
+            r["album_type"] if pd.notna(r["album_type"]) else None,
+            total_tracks=int(r["total_tracks"]) if pd.notna(r.get("total_tracks")) else None,
+        ),
+        axis=1,
+    )
+    weekly_album = weekly_album[weekly_album["_category"] != "single"]
+    if not include_compilations:
+        weekly_album = weekly_album[weekly_album["_category"] != "compilation"]
+    weekly_album = weekly_album.drop(columns=["_category"])
     weekly_album = weekly_album.merge(
         album_meta["release_date"], on=["album_name", "artist_name"], how="left"
     )

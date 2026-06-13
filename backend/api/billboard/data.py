@@ -10,7 +10,7 @@ GET /api/billboard/all-time    — power-scores + summaries + weekly (~2MB)
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
 
 from backend.dependencies import BillboardFilters, MergeConfig
@@ -98,6 +98,8 @@ def _billboard_params(filters: BillboardFilters):
         bb_week_start_hour=filters.bb_week_start_hour,
         year_start=filters.year_start,
         year_end=filters.year_end,
+        dynamic_threshold=filters.dynamic_threshold,
+        max_merge_gap_minutes=filters.max_merge_gap_minutes,
     )
 
 
@@ -105,25 +107,39 @@ def _billboard_params(filters: BillboardFilters):
 def get_billboard_data(
     filters: BillboardFilters = Depends(),
     merge_cfg: MergeConfig = Depends(),
+    include_compilations: bool = Query(
+        default=False, description="Include compilation albums in album chart (R14)"
+    ),
 ):
     """Compute all Billboard chart data in a single request.
 
     Returns weekly rankings, track/artist/album summaries, records,
     and power scores. Kept for backward compatibility.
     """
-    return compute_billboard_data(**_billboard_params(filters), merge_level=merge_cfg.merge_level)
+    return compute_billboard_data(
+        **_billboard_params(filters),
+        merge_level=merge_cfg.merge_level,
+        include_compilations=include_compilations,
+    )
 
 
 @router.get("/weekly", response_model=BillboardWeeklyResponse)
 def get_billboard_weekly(
     filters: BillboardFilters = Depends(),
     merge_cfg: MergeConfig = Depends(),
+    include_compilations: bool = Query(
+        default=False, description="Include compilation albums in album chart (R14)"
+    ),
 ):
     """Weekly rankings + meta only — used by BillboardPage.
 
     Returns meta, weekly (tracks), weekly_album, weekly_artist.
     """
-    return compute_weekly_data(**_billboard_params(filters), merge_level=merge_cfg.merge_level)
+    return compute_weekly_data(
+        **_billboard_params(filters),
+        merge_level=merge_cfg.merge_level,
+        include_compilations=include_compilations,
+    )
 
 
 @router.get("/records", response_model=BillboardRecordsResponse)
@@ -170,6 +186,9 @@ def get_billboard_summaries(
 def get_billboard_all_time(
     filters: BillboardFilters = Depends(),
     merge_cfg: MergeConfig = Depends(),
+    include_compilations: bool = Query(
+        default=False, description="Include compilation albums in album chart (R14)"
+    ),
 ):
     """Combined data for all-time charts pages.
 
@@ -178,7 +197,11 @@ def get_billboard_all_time(
     """
     params = _billboard_params(filters)
     ml = merge_cfg.merge_level
-    weekly = compute_weekly_data(**params, merge_level=ml)
+    weekly = compute_weekly_data(
+        **params,
+        merge_level=ml,
+        include_compilations=include_compilations,
+    )
     power = compute_power_scores_staged(**params, merge_level=ml)
     summaries = compute_summaries_staged(**params, merge_level=ml)
     return {**weekly, **power, **summaries}

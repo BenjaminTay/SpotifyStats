@@ -17,7 +17,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
 
-from backend.dependencies import BillboardFilters
+from backend.dependencies import BillboardFilters, MergeConfig
 from backend.services.billboard_service import (
     get_album_chart_detail,
     get_artist_chart_detail,
@@ -144,6 +144,7 @@ class ArtistMultiRequest(BaseModel):
 def track_history(
     track_id: int,
     filters: BillboardFilters = Depends(),
+    merge: MergeConfig = Depends(),
 ):
     """Get detailed track chart history with change column and gapped chart data."""
     return get_track_history(
@@ -157,6 +158,9 @@ def track_history(
         bb_week_start_hour=filters.bb_week_start_hour,
         year_start=filters.year_start,
         year_end=filters.year_end,
+        dynamic_threshold=filters.dynamic_threshold,
+        max_merge_gap_minutes=filters.max_merge_gap_minutes,
+        merge_level=merge.merge_level,
     )
 
 
@@ -177,6 +181,8 @@ def artist_chart_detail(
         bb_week_start_hour=filters.bb_week_start_hour,
         year_start=filters.year_start,
         year_end=filters.year_end,
+        dynamic_threshold=filters.dynamic_threshold,
+        max_merge_gap_minutes=filters.max_merge_gap_minutes,
     )
 
 
@@ -185,6 +191,7 @@ def album_chart_detail(
     album_name: str,
     artist_name: str = Query(default="", description="Artist name for disambiguation"),
     filters: BillboardFilters = Depends(),
+    merge: MergeConfig = Depends(),
 ):
     """Get detailed album chart data: weekly history, track performances, trend overlay."""
     return get_album_chart_detail(
@@ -199,6 +206,9 @@ def album_chart_detail(
         bb_week_start_hour=filters.bb_week_start_hour,
         year_start=filters.year_start,
         year_end=filters.year_end,
+        dynamic_threshold=filters.dynamic_threshold,
+        max_merge_gap_minutes=filters.max_merge_gap_minutes,
+        merge_level=merge.merge_level,
     )
 
 

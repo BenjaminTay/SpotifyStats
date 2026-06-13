@@ -47,12 +47,21 @@ def classify_album(
     if tracks >= 7:
         return "lp"
 
+    # Fallback: trust Spotify's own label when we lack data to override it
+    if album_type == "single":
+        return "single"
+    if album_type == "album":
+        return "lp"
+    if album_type == "ep":
+        return "ep"
+
     return "unknown"
 
 
 def is_album_chart_eligible(category: str) -> bool:
     """Whether this album category should appear in default album charts.
 
-    Singles are excluded (per R13); LP, EP, and compilations are included.
+    Singles are excluded (per R13); LP, EP, compilations, and unclassified
+    albums are included (safety: lack of metadata should not exclude).
     """
-    return category not in ("single", "unknown")
+    return category != "single"

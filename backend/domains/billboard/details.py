@@ -1,5 +1,7 @@
 """Billboard track/artist/album detail endpoints."""
 
+from __future__ import annotations
+
 import json
 
 import pandas as pd
@@ -61,7 +63,7 @@ def _build_gapped_chart_data(hist_df):
     return x_vals, y_vals, texts
 
 
-def _get_track_spotify_meta(track_id):
+def _get_track_spotify_meta(track_id, merge_level=2):
     """Fetch Spotify metadata for a track by local track_id."""
     conn = get_db()
     row = conn.execute(
@@ -95,47 +97,139 @@ def _get_track_spotify_meta(track_id):
         meta["spotify_album_name"] = row["spotify_album_name"]
 
     # Version group: if this track belongs to a track_group, include all versions
-    _attach_track_version_group(conn, track_id, meta)
+    _attach_track_version_group(conn, track_id, meta, merge_level)
 
     conn.close()
     return meta if meta else None
 
 
-def _attach_track_version_group(conn, track_id, meta):
-    """If the track belongs to a track_group, attach version_group to meta."""
-    group_row = conn.execute(
-        """SELECT tg.group_id, tg.canonical_name, tg.scope, tg.primary_track_id
-           FROM track_group_members tgm
-           JOIN track_groups tg ON tgm.group_id = tg.group_id
-           WHERE tgm.track_id = ?
-           LIMIT 1""",
-        (track_id,),
-    ).fetchone()
+def _classify_recording_kind(track_name: str) -> str | None:
+    """Classify a track version's recording type from its name suffix (R30)."""
+    import re
+
+    name = track_name.lower()
+    # Order matters: more specific patterns first
+    if re.search(r"\bremaster(ed)?\b", name):
+        return "remastered"
+    if re.search(r"\bacoustic\b", name):
+        return "acoustic"
+    if re.search(r"\blive\b", name):
+        return "live"
+    if re.search(r"\bremix\b", name):
+        return "remix"
+    if re.search(r"\binstrumental\b", name):
+        return "instrumental"
+    if re.search(r"\bradio.?edit\b", name, re.IGNORECASE):
+        return "radio_edit"
+    if re.search(r"\bdemo\b", name):
+        return "demo"
+    if re.search(r"\bclean\b", name) or re.search(r"\bexplicit\b", name):
+        return "clean_explicit"
+    if re.search(r"\bdeluxe\b", name) or re.search(r"\bexpanded\b", name):
+        return "deluxe"
+    return None
+
+
+def _attach_track_version_group(conn, track_id, meta, merge_level=2):
+    """If the track belongs to a track_group, attach version_group to meta.
+
+    merge_level=1: no version group (R31 L1)
+    merge_level=2: recording scope only (R31 L2, default)
+    merge_level=3: composition scope with parent-child expansion (R31 L3, R6)
+    """
+    if merge_level <= 1:
+        return
+
+    if merge_level >= 3:
+        # L3: resolve effective group via parent_group_id → composition parent,
+        # matching load_track_group_keys() resolution (R6 child-group expansion).
+        group_row = conn.execute(
+            """SELECT COALESCE(parent_tg.group_id, tg.group_id) AS effective_group_id,
+                      COALESCE(parent_tg.canonical_name, tg.canonical_name) AS canonical_name,
+                      CASE WHEN parent_tg.group_id IS NOT NULL THEN 'composition'
+                           ELSE tg.scope END AS scope,
+                      COALESCE(parent_tg.primary_track_id, tg.primary_track_id) AS primary_track_id
+               FROM track_group_members tgm
+               JOIN track_groups tg ON tgm.group_id = tg.group_id
+               LEFT JOIN track_groups parent_tg
+                 ON tg.parent_group_id = parent_tg.group_id
+                AND parent_tg.scope = 'composition'
+               WHERE tgm.track_id = ? AND tg.scope IN ('composition', 'recording')
+               LIMIT 1""",
+            (track_id,),
+        ).fetchone()
+    else:
+        group_row = conn.execute(
+            """SELECT tg.group_id AS effective_group_id, tg.canonical_name, tg.scope,
+                      tg.primary_track_id
+               FROM track_group_members tgm
+               JOIN track_groups tg ON tgm.group_id = tg.group_id
+               WHERE tgm.track_id = ? AND tg.scope = 'recording'
+               LIMIT 1""",
+            (track_id,),
+        ).fetchone()
 
     if not group_row:
         return
 
-    versions = conn.execute(
-        """SELECT t.track_id, t.track_name, al.album_name,
-                  COUNT(p.play_id) AS plays,
-                  COALESCE(SUM(p.ms_played), 0) AS total_ms
-           FROM track_group_members tgm
-           JOIN tracks t ON tgm.track_id = t.track_id
-           LEFT JOIN albums al ON t.album_id = al.album_id
-           LEFT JOIN plays p ON p.track_id = t.track_id AND p.ms_played >= 30000
-           WHERE tgm.group_id = ?
-           GROUP BY t.track_id
-           ORDER BY plays DESC""",
-        (group_row["group_id"],),
-    ).fetchall()
+    effective_group_id = group_row["effective_group_id"]
+
+    # NOTE: Version-level play counts use a simplified SQL filter (ms_played >= 30000
+    # without merge-before-filter or dynamic threshold). These counts serve as
+    # version distribution metadata — they may differ from the aggregate counts
+    # shown in charts which go through the full counting pipeline (merge →
+    # effective_threshold → track_group aggregation). This is an intentional
+    # trade-off: per-version detail is display-only and doesn't need full-counting
+    # precision.
+    if merge_level >= 3:
+        versions = conn.execute(
+            """SELECT t.track_id, t.track_name, al.album_name,
+                      COUNT(p.play_id) AS plays,
+                      COALESCE(SUM(p.ms_played), 0) AS total_ms,
+                      sam.album_type, sam.release_date,
+                      sam.image_url AS album_cover_url
+               FROM track_group_members tgm
+               JOIN track_groups tg ON tgm.group_id = tg.group_id
+               LEFT JOIN track_groups parent_tg
+                 ON tg.parent_group_id = parent_tg.group_id
+                AND parent_tg.scope = 'composition'
+               JOIN tracks t ON tgm.track_id = t.track_id
+               LEFT JOIN albums al ON t.album_id = al.album_id
+               LEFT JOIN spotify_album_meta sam ON sam.album_name = al.album_name
+               LEFT JOIN plays p ON p.track_id = t.track_id AND p.ms_played >= 30000
+               WHERE COALESCE(parent_tg.group_id, tg.group_id) = ?
+                 AND tg.scope IN ('composition', 'recording')
+               GROUP BY t.track_id
+               ORDER BY plays DESC""",
+            (effective_group_id,),
+        ).fetchall()
+    else:
+        versions = conn.execute(
+            """SELECT t.track_id, t.track_name, al.album_name,
+                      COUNT(p.play_id) AS plays,
+                      COALESCE(SUM(p.ms_played), 0) AS total_ms,
+                      sam.album_type, sam.release_date,
+                      sam.image_url AS album_cover_url
+               FROM track_group_members tgm
+               JOIN tracks t ON tgm.track_id = t.track_id
+               LEFT JOIN albums al ON t.album_id = al.album_id
+               LEFT JOIN spotify_album_meta sam ON sam.album_name = al.album_name
+               LEFT JOIN plays p ON p.track_id = t.track_id AND p.ms_played >= 30000
+               WHERE tgm.group_id = ?
+               GROUP BY t.track_id
+               ORDER BY plays DESC""",
+            (effective_group_id,),
+        ).fetchall()
 
     if len(versions) < 2:
         return
 
+    total_plays = sum(v["plays"] for v in versions)
     meta["version_group"] = {
-        "group_id": group_row["group_id"],
+        "group_id": effective_group_id,
         "canonical_name": group_row["canonical_name"],
         "scope": group_row["scope"],
+        "total_plays": total_plays,
         "versions": [
             {
                 "track_id": v["track_id"],
@@ -144,6 +238,9 @@ def _attach_track_version_group(conn, track_id, meta):
                 "plays": v["plays"],
                 "total_ms": v["total_ms"],
                 "is_primary": v["track_id"] == group_row["primary_track_id"],
+                "recording_kind": _classify_recording_kind(v["track_name"]),
+                "album_cover_url": v["album_cover_url"],
+                "release_date": v["release_date"],
             }
             for v in versions
         ],
@@ -181,7 +278,7 @@ def _get_artist_spotify_meta(artist_name):
     return meta if meta else None
 
 
-def _get_album_spotify_meta(album_name, artist_name):
+def _get_album_spotify_meta(album_name, artist_name, merge_level=2):
     """Fetch Spotify metadata for an album by name + artist."""
     conn = get_db()
     row = conn.execute(
@@ -230,51 +327,146 @@ def _get_album_spotify_meta(album_name, artist_name):
             meta["total_tracks"] = tc["cnt"]
 
     # Release group: if this album belongs to a release_group, include all versions
-    _attach_album_release_group(conn, album_name, artist_name, meta)
+    _attach_album_release_group(conn, album_name, artist_name, meta, merge_level)
 
     conn.close()
     return meta if meta else None
 
 
-def _attach_album_release_group(conn, album_name, artist_name, meta):
-    """If the album belongs to a release_group, attach release_group to meta."""
-    group_row = conn.execute(
-        """SELECT rg.group_id, rg.canonical_name, rg.scope, rg.primary_album_id
-           FROM release_group_members rgm
-           JOIN release_groups rg ON rgm.group_id = rg.group_id
-           JOIN albums al ON rgm.album_id = al.album_id
-           JOIN artists a ON al.artist_id = a.artist_id
-           WHERE al.album_name = ? AND a.artist_name = ?
-           LIMIT 1""",
-        (album_name, artist_name),
-    ).fetchone()
+def _attach_album_release_group(conn, album_name, artist_name, meta, merge_level=2):
+    """If the album belongs to a release_group, attach release_group to meta.
+
+    merge_level=1: no release group (R31 L1)
+    merge_level=2: release scope only (R31 L2, default)
+    merge_level=3: composition scope with parent-child expansion (R31 L3, R10)
+    """
+    if merge_level <= 1:
+        return
+
+    if merge_level >= 3:
+        group_row = conn.execute(
+            """SELECT COALESCE(parent_rg.group_id, rg.group_id) AS effective_group_id,
+                      COALESCE(parent_rg.canonical_name, rg.canonical_name) AS canonical_name,
+                      CASE WHEN parent_rg.group_id IS NOT NULL THEN 'composition'
+                           ELSE rg.scope END AS scope,
+                      COALESCE(parent_rg.primary_album_id, rg.primary_album_id) AS primary_album_id
+               FROM release_group_members rgm
+               JOIN release_groups rg ON rgm.group_id = rg.group_id
+               JOIN albums al ON rgm.album_id = al.album_id
+               JOIN artists a ON al.artist_id = a.artist_id
+               LEFT JOIN release_groups parent_rg
+                 ON rg.parent_group_id = parent_rg.group_id
+                AND parent_rg.scope = 'composition'
+               WHERE al.album_name = ? AND a.artist_name = ?
+                 AND rg.scope IN ('composition', 'release')
+               LIMIT 1""",
+            (album_name, artist_name),
+        ).fetchone()
+    else:
+        group_row = conn.execute(
+            """SELECT rg.group_id AS effective_group_id, rg.canonical_name, rg.scope,
+                      rg.primary_album_id
+               FROM release_group_members rgm
+               JOIN release_groups rg ON rgm.group_id = rg.group_id
+               JOIN albums al ON rgm.album_id = al.album_id
+               JOIN artists a ON al.artist_id = a.artist_id
+               WHERE al.album_name = ? AND a.artist_name = ?
+                 AND rg.scope = 'release'
+               LIMIT 1""",
+            (album_name, artist_name),
+        ).fetchone()
 
     if not group_row:
         return
 
-    versions = conn.execute(
-        """SELECT al.album_id, al.album_name, ar.artist_name,
-                  COUNT(DISTINCT p.track_id) AS unique_tracks,
-                  COUNT(p.play_id) AS plays,
-                  COALESCE(SUM(p.ms_played), 0) AS total_ms
-           FROM release_group_members rgm
-           JOIN albums al ON rgm.album_id = al.album_id
-           JOIN artists ar ON al.artist_id = ar.artist_id
-           LEFT JOIN tracks t ON t.album_id = al.album_id
-           LEFT JOIN plays p ON p.track_id = t.track_id AND p.ms_played >= 30000
-           WHERE rgm.group_id = ?
-           GROUP BY al.album_id
-           ORDER BY plays DESC""",
-        (group_row["group_id"],),
-    ).fetchall()
+    effective_group_id = group_row["effective_group_id"]
+
+    # NOTE: Same simplified counting caveat as _attach_track_version_group above.
+    if merge_level >= 3:
+        versions = conn.execute(
+            """SELECT al.album_id, al.album_name, ar.artist_name,
+                      COUNT(DISTINCT p.track_id) AS unique_tracks,
+                      COUNT(p.play_id) AS plays,
+                      COALESCE(SUM(p.ms_played), 0) AS total_ms,
+                      sam.album_type, sam.release_date, sam.total_tracks,
+                      sam.image_url AS album_cover_url
+               FROM release_group_members rgm
+               JOIN release_groups rg ON rgm.group_id = rg.group_id
+               LEFT JOIN release_groups parent_rg
+                 ON rg.parent_group_id = parent_rg.group_id
+                AND parent_rg.scope = 'composition'
+               JOIN albums al ON rgm.album_id = al.album_id
+               JOIN artists ar ON al.artist_id = ar.artist_id
+               LEFT JOIN spotify_album_meta sam ON sam.album_name = al.album_name
+               LEFT JOIN tracks t ON t.album_id = al.album_id
+               LEFT JOIN plays p ON p.track_id = t.track_id AND p.ms_played >= 30000
+               WHERE COALESCE(parent_rg.group_id, rg.group_id) = ?
+                 AND rg.scope IN ('composition', 'release')
+               GROUP BY al.album_id
+               ORDER BY plays DESC""",
+            (effective_group_id,),
+        ).fetchall()
+    else:
+        versions = conn.execute(
+            """SELECT al.album_id, al.album_name, ar.artist_name,
+                      COUNT(DISTINCT p.track_id) AS unique_tracks,
+                      COUNT(p.play_id) AS plays,
+                      COALESCE(SUM(p.ms_played), 0) AS total_ms,
+                      sam.album_type, sam.release_date, sam.total_tracks,
+                      sam.image_url AS album_cover_url
+               FROM release_group_members rgm
+               JOIN albums al ON rgm.album_id = al.album_id
+               JOIN artists ar ON al.artist_id = ar.artist_id
+               LEFT JOIN spotify_album_meta sam ON sam.album_name = al.album_name
+               LEFT JOIN tracks t ON t.album_id = al.album_id
+               LEFT JOIN plays p ON p.track_id = t.track_id AND p.ms_played >= 30000
+               WHERE rgm.group_id = ?
+               GROUP BY al.album_id
+               ORDER BY plays DESC""",
+            (effective_group_id,),
+        ).fetchall()
 
     if len(versions) < 2:
         return
 
+    # Track coverage matrix: which tracks appear in which version (R30.3/R30.4)
+    album_ids = [v["album_id"] for v in versions]
+    placeholders = ",".join("?" for _ in album_ids)
+    track_rows = conn.execute(
+        f"""SELECT ta.album_id, t.track_id, t.track_name
+            FROM track_albums ta
+            JOIN tracks t ON ta.track_id = t.track_id
+            WHERE ta.album_id IN ({placeholders})
+            ORDER BY t.track_name""",
+        [int(aid) for aid in album_ids],
+    ).fetchall()
+
+    # Build track → set of album_ids for coverage computation
+    track_albums_map: dict[str, set[int]] = {}
+    track_id_to_name: dict[int, str] = {}
+    for tr in track_rows:
+        tid = tr["track_id"]
+        track_id_to_name[tid] = tr["track_name"]
+        track_albums_map.setdefault(tid, set()).add(tr["album_id"])
+
+    # Coverage matrix: each row = one track, columns = per-version presence
+    track_coverage = []
+    for tid, albums in sorted(track_albums_map.items(), key=lambda x: x[0]):
+        track_coverage.append(
+            {
+                "track_id": tid,
+                "track_name": track_id_to_name[tid],
+                "album_ids": sorted(albums),
+                "is_exclusive": len(albums) == 1,
+            }
+        )
+
+    total_plays = sum(v["plays"] for v in versions)
     meta["release_group"] = {
-        "group_id": group_row["group_id"],
+        "group_id": effective_group_id,
         "canonical_name": group_row["canonical_name"],
         "scope": group_row["scope"],
+        "total_plays": total_plays,
         "versions": [
             {
                 "album_id": v["album_id"],
@@ -284,9 +476,14 @@ def _attach_album_release_group(conn, album_name, artist_name, meta):
                 "unique_tracks": v["unique_tracks"],
                 "total_ms": v["total_ms"],
                 "is_primary": v["album_id"] == group_row["primary_album_id"],
+                "album_cover_url": v["album_cover_url"],
+                "release_date": v["release_date"],
+                "album_type": v["album_type"],
+                "total_tracks": v["total_tracks"],
             }
             for v in versions
         ],
+        "track_coverage": track_coverage,
     }
 
 
@@ -301,6 +498,9 @@ def get_track_history(
     bb_week_start_hour,
     year_start,
     year_end,
+    dynamic_threshold=False,
+    max_merge_gap_minutes=None,
+    merge_level=2,
 ):
     """Get detailed track chart history with change column and gapped chart data."""
     data = compute_billboard_data(
@@ -313,6 +513,8 @@ def get_track_history(
         bb_week_start_hour,
         year_start,
         year_end,
+        dynamic_threshold=dynamic_threshold,
+        max_merge_gap_minutes=max_merge_gap_minutes,
     )
     weekly = pd.DataFrame(data["weekly"])
     track_summary = pd.DataFrame(data["track_summary"])
@@ -357,7 +559,7 @@ def get_track_history(
         "artist_name": display_artist,
         "artist_names": artist_names,
         "cover_url": cover_url if pd.notna(cover_url) else None,
-        "meta": _get_track_spotify_meta(track_id),
+        "meta": _get_track_spotify_meta(track_id, merge_level),
         "summary": {
             "peak_position": int(info.get("peak_position", 0)),
             "weeks_on_chart": int(info.get("weeks_on_chart", 0)),
@@ -411,6 +613,8 @@ def get_artist_chart_detail(
     bb_week_start_hour,
     year_start,
     year_end,
+    dynamic_threshold=False,
+    max_merge_gap_minutes=None,
 ):
     """Get detailed artist chart data: history, track/album performances, trend."""
     data = compute_billboard_data(
@@ -423,6 +627,8 @@ def get_artist_chart_detail(
         bb_week_start_hour,
         year_start,
         year_end,
+        dynamic_threshold=dynamic_threshold,
+        max_merge_gap_minutes=max_merge_gap_minutes,
     )
     weekly = pd.DataFrame(data["weekly"])
     weekly_artist = pd.DataFrame(data["weekly_artist"])
@@ -724,6 +930,9 @@ def get_album_chart_detail(
     bb_week_start_hour,
     year_start,
     year_end,
+    dynamic_threshold=False,
+    max_merge_gap_minutes=None,
+    merge_level=2,
 ):
     """Get detailed album chart data: history, track performances, trend."""
     data = compute_billboard_data(
@@ -736,6 +945,8 @@ def get_album_chart_detail(
         bb_week_start_hour,
         year_start,
         year_end,
+        dynamic_threshold=dynamic_threshold,
+        max_merge_gap_minutes=max_merge_gap_minutes,
     )
     weekly = pd.DataFrame(data["weekly"])
     weekly_album = pd.DataFrame(data["weekly_album"])
@@ -856,7 +1067,7 @@ def get_album_chart_detail(
         "album_name": album_name,
         "artist_name": resolved_artist,
         "cover_url": album_cover_url,
-        "meta": _get_album_spotify_meta(album_name, resolved_artist),
+        "meta": _get_album_spotify_meta(album_name, resolved_artist, merge_level),
         "info": {
             "total_tracks": int(alb_row["total_tracks"]),
             "best_peak": int(alb_row["best_peak"]),

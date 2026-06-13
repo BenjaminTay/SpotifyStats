@@ -232,6 +232,7 @@ def build() -> str:
         (902, "Fixture LP", 901),
         (903, "Fixture Release Album", 901),
         (904, "Fixture Release Album (Deluxe)", 901),
+        (905, "Fixture Collab Single", 901),
     ]
     conn.executemany(
         "INSERT INTO albums(album_id, album_name, artist_id) VALUES (?, ?, ?)", fixture_albums
@@ -291,6 +292,19 @@ def build() -> str:
             12,
             '["spotify:track:fix006","spotify:track:fix008","spotify:track:fix009"]',
         ),
+        (
+            "spotify:album:fix5",
+            "Fixture Collab Single",
+            "single",
+            "2026-04-01",
+            55,
+            "Fixture Records",
+            "pop",
+            "",
+            "Fixture Artist Alpha, Fixture Artist Beta",
+            1,
+            '["spotify:track:fix010"]',
+        ),
     ]
     conn.executemany(
         """INSERT INTO spotify_album_meta(spotify_album_id, album_name, album_type,
@@ -326,6 +340,8 @@ def build() -> str:
         (907, "Fixture Composition Song", 901, 902, "spotify:track:fix007"),
         (908, "Fixture Composition Song - Acoustic", 901, 903, "spotify:track:fix008"),
         (909, "Fixture Composition Song - Demo", 901, 903, "spotify:track:fix009"),
+        # scenario 10: collab single with multi-artist album_artists (comma-separated)
+        (910, "Fixture Collab Track", 901, 905, "spotify:track:fix010"),
     ]
     conn.executemany(
         "INSERT INTO tracks(track_id, track_name, artist_id, album_id, spotify_track_uri) VALUES (?, ?, ?, ?, ?)",
@@ -333,6 +349,7 @@ def build() -> str:
     )
 
     # Fixture Track-Album associations (scenario 4: same track on single + LP)
+    conn.execute("INSERT INTO track_albums(track_id, album_id) VALUES (904, 901)")
     conn.execute("INSERT INTO track_albums(track_id, album_id) VALUES (904, 902)")
 
     # Fixture Track-Artist associations (scenario 3: multi-artist)
@@ -344,12 +361,53 @@ def build() -> str:
     )
 
     # Fixture Spotify Track Metadata
+    # spotify_album_id must match spotify_album_meta.spotify_album_id (full URI format).
     fixture_track_meta = [
-        ("fix001", "Fixture Fragment Song", 40000, 50, 0, 1, 1, "ISRC-FIX-001", "fix2"),
-        ("fix002", "Fixture Long Track", 600000, 60, 0, 1, 1, "ISRC-FIX-002", "fix2"),
-        ("fix003", "Fixture Shared Credit", 210000, 70, 0, 1, 1, "ISRC-FIX-003", "fix2"),
-        ("fix004", "Fixture Source Album Song", 200000, 55, 0, 1, 1, "ISRC-FIX-004", "fix1"),
-        ("fix005", "Fixture Recording Song", 200000, 65, 0, 1, 1, "ISRC-FIX-005", "fix2"),
+        (
+            "fix001",
+            "Fixture Fragment Song",
+            40000,
+            50,
+            0,
+            1,
+            1,
+            "ISRC-FIX-001",
+            "spotify:album:fix2",
+        ),
+        ("fix002", "Fixture Long Track", 600000, 60, 0, 1, 1, "ISRC-FIX-002", "spotify:album:fix2"),
+        (
+            "fix003",
+            "Fixture Shared Credit",
+            210000,
+            70,
+            0,
+            1,
+            1,
+            "ISRC-FIX-003",
+            "spotify:album:fix2",
+        ),
+        (
+            "fix004",
+            "Fixture Source Album Song",
+            200000,
+            55,
+            0,
+            1,
+            1,
+            "ISRC-FIX-004",
+            "spotify:album:fix1",
+        ),
+        (
+            "fix005",
+            "Fixture Recording Song",
+            200000,
+            65,
+            0,
+            1,
+            1,
+            "ISRC-FIX-005",
+            "spotify:album:fix2",
+        ),
         (
             "fix006",
             "Fixture Recording Song - Remastered",
@@ -359,9 +417,19 @@ def build() -> str:
             1,
             1,
             "ISRC-FIX-006",
-            "fix3",
+            "spotify:album:fix3",
         ),
-        ("fix007", "Fixture Composition Song", 210000, 55, 0, 1, 1, "ISRC-FIX-007", "fix2"),
+        (
+            "fix007",
+            "Fixture Composition Song",
+            210000,
+            55,
+            0,
+            1,
+            1,
+            "ISRC-FIX-007",
+            "spotify:album:fix2",
+        ),
         (
             "fix008",
             "Fixture Composition Song - Acoustic",
@@ -371,9 +439,30 @@ def build() -> str:
             1,
             1,
             "ISRC-FIX-008",
-            "fix3",
+            "spotify:album:fix3",
         ),
-        ("fix009", "Fixture Composition Song - Demo", 180000, 30, 0, 1, 1, "ISRC-FIX-009", "fix3"),
+        (
+            "fix009",
+            "Fixture Composition Song - Demo",
+            180000,
+            30,
+            0,
+            1,
+            1,
+            "ISRC-FIX-009",
+            "spotify:album:fix3",
+        ),
+        (
+            "fix010",
+            "Fixture Collab Track",
+            200000,
+            55,
+            0,
+            1,
+            1,
+            "ISRC-FIX-010",
+            "spotify:album:fix5",
+        ),
     ]
     conn.executemany(
         """INSERT INTO spotify_track_meta(spotify_track_id, track_name, duration_ms,
@@ -598,6 +687,9 @@ def build() -> str:
     plays.append(make_play("2026-06-05T03:00:00Z", "ios", 220000, 908))
     plays.append(make_play("2026-06-05T04:00:00Z", "ios", 180000, 909))
 
+    # Scenario 10: collab single — multi-artist album_artists (comma-separated)
+    plays.append(make_play("2026-06-06T02:00:00Z", "ios", 200000, 910, source_album_id=905))
+
     # Scenario 8: billboard_fragment_boundary — short fragments around a week boundary
     # Week boundary: Thu 00:00 (DOW=3). Use Thu May 28 2026 (DOW=3).
     # Play at Wed May 27 23:55 Beijing → Wed 23:55 → DOW=2, W21 or W22
@@ -688,18 +780,16 @@ def build() -> str:
             (str(r.billboard_week), int(r.artist_id), int(r.play_count), int(r.total_ms)),
         )
 
-    # Agg config
+    # Agg config — use a sentinel hash that will never match any
+    # _agg_param_hash() output.  The seed's manually-built pre-agg tables
+    # are NOT semantically equivalent to build_aggregations():
+    #   - Album agg uses t.album_id, not source_album_id
+    #   - Artist agg uses t.artist_id (primary), not track_artists fanout
+    #   - Merge uses plain consecutive-play, not boundary_column="source_album_id"
+    # Contract tests must always take the raw path.
     conn.execute(
         "INSERT INTO agg_config(key, value) VALUES (?, ?)",
-        ("params_hash", "seed_db_v1"),
-    )
-    conn.execute(
-        "INSERT INTO agg_config(key, value) VALUES (?, ?)",
-        ("min_ms", str(min_ms_agg)),
-    )
-    conn.execute(
-        "INSERT INTO agg_config(key, value) VALUES (?, ?)",
-        ("week_start_dow", str(week_start_dow)),
+        ("param_hash", "seed_db_legacy_do_not_match"),
     )
     conn.commit()
 
@@ -725,13 +815,23 @@ def build() -> str:
     conn.execute("INSERT INTO track_group_members(group_id, track_id) VALUES (1, 905)")
     conn.execute("INSERT INTO track_group_members(group_id, track_id) VALUES (1, 906)")
 
-    # Fixture track groups: composition scope (L3 merges 907 + 908)
+    # Fixture track groups: composition scope (L3 merges 907 + 908 + 909)
+    # Demonstrates parent-child structure: recording group 3 sits under
+    # composition group 2 so that track 908 is resolved to the composition
+    # canonical at L3 via the parent_group_id chain (R6).
     conn.execute(
         """INSERT INTO track_groups(group_id, canonical_name, primary_track_id, scope, is_manual)
            VALUES (2, 'Fixture Composition Song', 907, 'composition', 0)"""
     )
     conn.execute("INSERT INTO track_group_members(group_id, track_id) VALUES (2, 907)")
-    conn.execute("INSERT INTO track_group_members(group_id, track_id) VALUES (2, 908)")
+    # Recording group 3 is a child of composition group 2
+    conn.execute(
+        """INSERT INTO track_groups(group_id, canonical_name, primary_track_id,
+           scope, parent_group_id, is_manual)
+           VALUES (3, 'Fixture Composition Song - Acoustic', 908,
+           'recording', 2, 0)"""
+    )
+    conn.execute("INSERT INTO track_group_members(group_id, track_id) VALUES (3, 908)")
 
     # ── Settings ───────────────────────────────────────────────────────────
     conn.execute("INSERT INTO settings(key, value) VALUES ('min_ms', '30000')")
@@ -750,8 +850,8 @@ def build() -> str:
     track_count = conn.execute("SELECT COUNT(*) FROM tracks").fetchone()[0]
     play_count = conn.execute("SELECT COUNT(*) FROM plays").fetchone()[0]
     assert artist_count == 5, f"Expected 5 artists, got {artist_count}"
-    assert album_count == 10, f"Expected 10 albums, got {album_count}"
-    assert track_count == 24, f"Expected 24 tracks, got {track_count}"
+    assert album_count == 11, f"Expected 11 albums, got {album_count}"
+    assert track_count == 25, f"Expected 25 tracks, got {track_count}"
     assert play_count == len(plays), f"Expected {len(plays)} plays, got {play_count}"
     print(
         f"  A1 PASS: {artist_count} artists, {album_count} albums, {track_count} tracks, {play_count} plays"
@@ -859,7 +959,7 @@ def build() -> str:
     track_group_member_count = conn.execute("SELECT COUNT(*) FROM track_group_members").fetchone()[
         0
     ]
-    assert track_group_count == 2, f"Expected 2 track groups, got {track_group_count}"
+    assert track_group_count == 3, f"Expected 3 track groups, got {track_group_count}"
     assert track_group_member_count == 4, (
         f"Expected 4 track group members, got {track_group_member_count}"
     )
@@ -869,8 +969,8 @@ def build() -> str:
     track_meta_count = conn.execute("SELECT COUNT(*) FROM spotify_track_meta").fetchone()[0]
     album_meta_count = conn.execute("SELECT COUNT(*) FROM spotify_album_meta").fetchone()[0]
     artist_meta_count = conn.execute("SELECT COUNT(*) FROM spotify_artist_meta").fetchone()[0]
-    assert track_meta_count == 24, f"Expected 24 track metas, got {track_meta_count}"
-    assert album_meta_count == 10, f"Expected 10 album metas, got {album_meta_count}"
+    assert track_meta_count == 25, f"Expected 25 track metas, got {track_meta_count}"
+    assert album_meta_count == 11, f"Expected 11 album metas, got {album_meta_count}"
     assert artist_meta_count == 4, f"Expected 4 artist metas, got {artist_meta_count}"
     print("  A10 PASS: Spotify metadata present")
 

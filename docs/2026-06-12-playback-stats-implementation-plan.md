@@ -1368,9 +1368,9 @@ Verification:
 source .venv/bin/activate && pytest backend/tests/unit/test_migrations.py backend/tests/contract/test_source_album_attribution.py backend/tests/contract/test_album_release_groups.py backend/tests/unit/test_album_type_taxonomy.py -v
 ```
 
-### Phase C: Dynamic Counting Policy
+### Phase C: Dynamic Counting Policy ✅
 
-Tasks: 5
+Tasks: 5 — **已完成 2026-06-12**
 
 Expected behavior change: long-track snippets below 10% duration no longer count when dynamic threshold is enabled. Keep default disabled until UI and release note are ready; enable default in a separate commit after reviewing visible metric deltas.
 
@@ -1380,9 +1380,9 @@ Verification:
 source .venv/bin/activate && pytest backend/tests/unit/test_playback_counting.py backend/tests/contract/test_playback_rules_baseline.py -v
 ```
 
-### Phase D: Track Version Merge
+### Phase D: Track Version Merge ✅
 
-Tasks: 7, 8, 9
+Tasks: 7, 8, 9 — **已完成 2026-06-12**
 
 Expected behavior change: track and album rankings can switch L1/L2/L3 merge levels; valid play events remain unchanged.
 
@@ -1394,9 +1394,9 @@ cd frontend && npm test -- query-hooks.test.tsx phase5-architecture.test.ts
 cd frontend && npm run build
 ```
 
-### Phase E: Final Guardrails
+### Phase E: Final Guardrails ✅
 
-Tasks: 10
+Tasks: 10 — **已完成 2026-06-12**
 
 Expected behavior change: none; this phase locks documentation and regression checks.
 

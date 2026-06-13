@@ -48,7 +48,7 @@ Phase 5 目标是收紧产品线到可持续迭代状态。当前进度：
   - P4 Track Groups 三级合并：`track_groups` + `track_group_members` 表（scope: recording/composition），`backend/domains/playback/track_groups.py` 聚合键解析，`_apply_track_groups()` 在 Billboard 和个人榜聚合层生效
   - P4 Merge Level API：`MergeConfig` FastAPI 依赖，`/billboard/*` + `/analysis/charts` 端点 `merge_level` 查询参数，Settings 页面 L1/L2/L3 选择器持久化至 localStorage，4 个 Billboard 页面 URL 优先/localStorage 回退
   - R24b 不变式合约测试：`test_playback_invariants.py`（6 条断言）+ `test_merge_level_aggregation.py`（14 条断言）
-  - 测试基线：backend unit 223 / contract 67 / frontend 112
+  - 测试基线：backend unit 223 / contract 99 / frontend 112 (7 files)
 
 详见 `docs/2026-06-12-playback-stats-rules.md` 和 `docs/2026-06-08-phase5-productization-baseline.md`。
 

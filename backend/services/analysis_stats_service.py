@@ -541,6 +541,7 @@ def chart_rows(
     limit: int | None = None,
     offset: int = 0,
     merge_level: int = 2,
+    include_compilations: bool = False,
 ) -> tuple[int, list[dict]]:
     if df.empty:
         return 0, []
@@ -550,14 +551,17 @@ def chart_rows(
     if agg.empty:
         return 0, []
 
-    # Filter singles from default album chart (R13)
+    # Filter singles + compilations from default album chart (R13/R14)
     if entity == "album" and conn is not None:
         from backend.domains.playback.album_type import is_album_chart_eligible
 
         agg["_category"] = agg.apply(
             lambda r: _resolve_album_category(conn, r["album_name"], r["artist_name"]), axis=1
         )
-        agg = agg[agg["_category"].apply(is_album_chart_eligible)].drop(columns=["_category"])
+        agg = agg[agg["_category"].apply(is_album_chart_eligible)]
+        if not include_compilations:
+            agg = agg[agg["_category"] != "compilation"]
+        agg = agg.drop(columns=["_category"])
     # end filter
 
     if agg.empty:
@@ -652,6 +656,7 @@ def get_analysis_charts(
     merge_level: int = 2,
     dynamic_threshold: bool = False,
     max_merge_gap_minutes: int | None = None,
+    include_compilations: bool = False,
 ) -> dict:
     if conn is not None:
         return _get_analysis_charts_cached(
@@ -668,6 +673,7 @@ def get_analysis_charts(
             merge_level,
             dynamic_threshold,
             max_merge_gap_minutes,
+            include_compilations,
         )
 
 
@@ -686,6 +692,7 @@ def _get_analysis_charts_cached(
     merge_level: int = 2,
     dynamic_threshold: bool = False,
     max_merge_gap_minutes: int | None = None,
+    include_compilations: bool = False,
 ) -> dict:
     conn = get_db()
     try:
@@ -704,6 +711,7 @@ def _get_analysis_charts_cached(
             merge_level,
             dynamic_threshold,
             max_merge_gap_minutes,
+            include_compilations,
         )
     finally:
         conn.close()
@@ -724,6 +732,7 @@ def _build_analysis_charts(
     merge_level: int = 2,
     dynamic_threshold: bool = False,
     max_merge_gap_minutes: int | None = None,
+    include_compilations: bool = False,
 ) -> dict:
     _, df, resolved = load_period_plays(
         conn,
@@ -745,11 +754,22 @@ def _build_analysis_charts(
             period,
             start_date,
             end_date,
+            dynamic_threshold=dynamic_threshold,
+            max_merge_gap_minutes=max_merge_gap_minutes,
             _loader=load_plays_for_artists,
         )
         total, rows = chart_rows(conn, df_artist, entity, metric, limit, offset, merge_level)
     else:
-        total, rows = chart_rows(conn, df, entity, metric, limit, offset, merge_level)
+        total, rows = chart_rows(
+            conn,
+            df,
+            entity,
+            metric,
+            limit,
+            offset,
+            merge_level,
+            include_compilations=include_compilations,
+        )
     return {
         "period": resolved,
         "entity": entity if entity in {"track", "album", "artist"} else "track",

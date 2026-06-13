@@ -88,10 +88,10 @@ function selectCurrentWeekData(
   }
 }
 
-export function useBillboard(initialWeek?: string | null, mergeLevel = 2): UseBillboardResult {
+export function useBillboard(initialWeek?: string | null, mergeLevel = 2, includeCompilations = false): UseBillboardResult {
   const queryClientForHook = useQueryClient()
   const [weekIndex, setWeekIndexState] = useState(cachedWeekIndex)
-  const params = { merge_level: mergeLevel }
+  const params = { merge_level: mergeLevel, include_compilations: includeCompilations }
   const query = useQuery({
     queryKey: queryKeys.billboard.data(params),
     queryFn: () => api.get<BillboardDataResponse>('/billboard/data', params),
@@ -152,9 +152,9 @@ export function preloadWeeklyData(): void {
   })
 }
 
-export function useBillboardWeekly(initialWeek?: string | null, mergeLevel = 2) {
+export function useBillboardWeekly(initialWeek?: string | null, mergeLevel = 2, includeCompilations = false) {
   const [weekIndex, setWeekIndexState] = useState(cachedWeeklyIndex)
-  const params = { merge_level: mergeLevel }
+  const params = { merge_level: mergeLevel, include_compilations: includeCompilations }
   const query = useQuery({
     queryKey: queryKeys.billboard.weekly(params),
     queryFn: () => api.get<BillboardWeeklyResponse>('/billboard/weekly', params),
@@ -237,8 +237,8 @@ export function preloadAllTimeData(): void {
   })
 }
 
-export function useBillboardAllTime(mergeLevel = 2) {
-  const params = { merge_level: mergeLevel }
+export function useBillboardAllTime(mergeLevel = 2, includeCompilations = false) {
+  const params = { merge_level: mergeLevel, include_compilations: includeCompilations }
   const query = useQuery({
     queryKey: queryKeys.billboard.allTime(params),
     queryFn: () => api.get<BillboardAllTimeResponse>('/billboard/all-time', params),

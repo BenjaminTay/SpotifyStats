@@ -44,7 +44,7 @@ class PlayFilters:
         min_ms: int = Query(default=30000, ge=0, description="最短播放时长 (毫秒)"),
         music_only: bool = Query(default=True, description="仅音乐"),
         merge_enabled: bool = Query(default=True, description="合并连续播放"),
-        dynamic_threshold: bool = Query(default=False, description="使用动态有效播放阈值"),
+        dynamic_threshold: bool = Query(default=True, description="使用动态有效播放阈值"),
         max_merge_gap_minutes: int | None = Query(
             default=None, ge=1, le=240, description="连续播放最大合并间隔 (分钟)"
         ),
@@ -71,6 +71,10 @@ class BillboardFilters:
         bb_week_start_hour: int = Query(default=0, ge=0, le=23, description="周起始小时"),
         year_start: int | None = Query(default=None, description="起始年份 (含)"),
         year_end: int | None = Query(default=None, description="结束年份 (含)"),
+        dynamic_threshold: bool = Query(default=True, description="使用动态有效播放阈值"),
+        max_merge_gap_minutes: int | None = Query(
+            default=None, ge=1, le=240, description="连续播放最大合并间隔 (分钟)"
+        ),
     ):
         self.min_ms = min_ms
         self.music_only = music_only
@@ -81,6 +85,8 @@ class BillboardFilters:
         self.bb_week_start_hour = bb_week_start_hour
         self.year_start = year_start
         self.year_end = year_end
+        self.dynamic_threshold = dynamic_threshold
+        self.max_merge_gap_minutes = max_merge_gap_minutes
 
 
 class MergeConfig:

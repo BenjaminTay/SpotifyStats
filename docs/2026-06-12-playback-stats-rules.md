@@ -1,7 +1,7 @@
 # 播放数据统计规则：现状分析、目标定义与优化规划
 
 > 创建日期：2026-06-12
-> 状态：实施中（Phase C+D 完成，Task 9/部分 Task 10 待完成）
+> 状态：实施中（Phase A-F 完成，P0-P1 修复完成 2026-06-13）
 
 ---
 
@@ -477,8 +477,8 @@ Billboard 周榜的聚合管线应完整应用：
 |------|------|------|
 | API Query 参数 | 所有排行榜端点新增 `merge_level` 参数（`1`/`2`/`3`，默认 `2`） | `PlayFilters` 或新增 `MergeConfig` 依赖注入 |
 | TanStack Query keys | `queryKeys` 中纳入 `mergeLevel` | 切换级别自动触发 refetch，无需手动 invalidate |
-| 后端 `@lru_cache` keys | 实体聚合缓存、排行榜缓存、`agg_weekly_*` param_hash 纳入 `merge_level` | 不同级别的聚合结果各自缓存；基础有效播放事件缓存（`_load_plays_cached()`）不纳入 `merge_level` — 路径 A 下 valid play events 不随 merge_level 变化 |
-| `agg_weekly_*` 预聚合 | `agg_config.param_hash` 纳入 `merge_level` | 不同级别各自预聚合 Billboard 实体榜结果 |
+| 后端 `@lru_cache` keys | 实体聚合缓存、排行榜缓存纳入 `merge_level` | 不同级别的聚合结果各自缓存；基础有效播放事件缓存（`_load_plays_cached()`）不纳入 `merge_level` — 路径 A 下 valid play events 不随 merge_level 变化 |
+| `agg_weekly_*` 预聚合 | `agg_config.param_hash` **不纳入** `merge_level` | 预聚合表存储 base-grain（per track_id/album_id/artist_id × billboard_week），merge_level 在排名层应用。不同 merge_level 共享同一份预聚合数据，避免为 L1/L2/L3 各自重建 |
 | 前端 URL / 路由状态 | `merge_level` 写入 URL search params 或持久化到 localStorage | 刷新页面保持级别选择 |
 
 **R28 — 合并严格度对各项统计的影响范围**
@@ -774,17 +774,18 @@ Billboard 周榜的聚合管线应完整应用：
 | B (Task 3,4,6) | source_album_id + Release Groups + Album Type | ✅ | `pytest -m contract test_source_album_attribution.py test_album_release_groups.py` + `-m unit test_album_type_taxonomy.py` |
 | C (Task 5) | 动态阈值 + Session 边界 | ✅ | `pytest -m unit test_playback_counting.py` |
 | D (Task 7,8) | Track Groups + Merge Level API + 前端 | ✅ | `pytest -m unit test_track_groups.py` + `-m contract test_merge_level_aggregation.py` + `npm test query-hooks.test.tsx` |
-| E (Task 9) | 版本详情展示 | ⏸️ 延后 | 需 track_groups 有真实数据 |
+| E (Task 9) | 版本详情展示 | ✅ | `pytest -m contract test_merge_level_aggregation.py` + `npm run build` |
 | F (Task 10) | 不变式测试 + 文档同步 | ✅ | `pytest -m contract test_playback_invariants.py` |
 
-**测试基线**（2026-06-12）：
+**测试基线**（2026-06-13）：
 - backend unit: 223 passed
-- backend contract: 67 passed（含新增 6 invariant + 14 merge_level aggregation + 6 load_track_group_keys）
-- frontend vitest: 112 passed（含新增 6 merge_level query key）
+- backend contract: 99 passed（覆盖 R23 跨周边界、L3 父子组、R24b 全部 6 条不变量中的 5 条、Session 边界、source_album 归属、pre_agg 一致性、Leaderboard merge_level 传播、TrackDetail 版本组 SQL）
+- frontend vitest: 112 passed (7 files)
 
 **已知局限**：
 - Issue 2 已修复：`_apply_track_groups()` 同步 canonicalize `album_name`，pre_agg 路径 groupby 移除 `album_name` 不再产生重复行
-- `_load_plays_for_artists_cached` SQL 列选择未包含 `source_album_id`，artist fan-out 路径 `boundary_column` 静默跳过
+- P5: R19 catalog membership 可选视图未实现（远期，R24b.4 对应不变式测试随此功能延后）
+- 远期：R29.4 各版本播放趋势折线图（规则标注为可选，非硬性需求）
 
 ---
 

@@ -23,7 +23,27 @@ def load_album_release_group_map(conn: sqlite3.Connection, merge_level: int = 2)
             columns=["album_id", "release_group_id", "canonical_name", "primary_album_id", "scope"]
         )
 
-    scope = "composition" if merge_level >= 3 else "release"
+    if merge_level >= 3:
+        # L3: composition scope members with child release group resolution.
+        # Release groups that have parent_group_id → composition group are
+        # resolved to the composition canonical name (R10 child-group expansion).
+        return pd.read_sql_query(
+            """SELECT rgm.album_id,
+                      COALESCE(parent_rg.group_id, rg.group_id) AS release_group_id,
+                      COALESCE(parent_rg.canonical_name, rg.canonical_name) AS canonical_name,
+                      COALESCE(parent_rg.primary_album_id, rg.primary_album_id) AS primary_album_id,
+                      CASE WHEN parent_rg.group_id IS NOT NULL THEN 'composition'
+                           ELSE rg.scope END AS scope
+               FROM release_group_members rgm
+               JOIN release_groups rg ON rgm.group_id = rg.group_id
+               LEFT JOIN release_groups parent_rg
+                 ON rg.parent_group_id = parent_rg.group_id
+                AND parent_rg.scope = 'composition'
+               WHERE rg.scope IN ('composition', 'release')""",
+            conn,
+        )
+
+    scope = "release"
     return pd.read_sql_query(
         """SELECT rgm.album_id,
                   rg.group_id AS release_group_id,

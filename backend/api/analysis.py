@@ -72,6 +72,7 @@ def analysis_charts(
     metric: str = Query(default="plays"),
     limit: int = Query(default=100, ge=1, le=5000),
     offset: int = Query(default=0, ge=0),
+    include_compilations: bool = Query(False, description="专辑榜是否包含精选集"),
     conn: Connection = Depends(get_conn),
 ):
     return get_analysis_charts(
@@ -89,6 +90,7 @@ def analysis_charts(
         merge_level=merge_cfg.merge_level,
         dynamic_threshold=filters.dynamic_threshold,
         max_merge_gap_minutes=filters.max_merge_gap_minutes,
+        include_compilations=include_compilations,
     )
 
 

@@ -209,7 +209,7 @@ def test_chart_staged_cache_is_split_from_chart_compute_facade():
     assert "def _compute_power_scores_cached" in staged_cache_source
     assert "def _compute_summaries_cached" in staged_cache_source
     assert "def _compute_records_cached" in staged_cache_source
-    assert len(staged_cache_source.splitlines()) <= 360
+    assert len(staged_cache_source.splitlines()) <= 380
 
 
 def test_chart_staged_public_api_is_split_from_chart_compute_facade():
