@@ -1,12 +1,11 @@
-import { useMemo, lazy, Suspense } from 'react'
+import { useMemo } from 'react'
+import { LazyEChart } from '@/components/charts/LazyEChart'
 import { GlassCard } from '@/components/shared/GlassCard'
 import { cn } from '@/lib/utils'
 import { displayName } from '@/lib/chinese'
 import { buildChartBase } from '@/components/charts/EChartsTheme'
 import { useTheme } from '@/hooks/useTheme'
 import type { CollectionInsights, LifecycleExample, LifecycleTrendPoint, TopTrackTrend } from '@/types/account'
-
-const ReactECharts = lazy(() => import('echarts-for-react'))
 
 function FateBar({
   label,
@@ -124,9 +123,7 @@ function LifecycleTrendChart({
       <p className="mb-3 font-sans text-[11px] font-semibold uppercase tracking-[1px] text-muted-foreground">
         收藏后周均播放趋势（52 周）
       </p>
-      <Suspense fallback={<div className="animate-pulse rounded-lg bg-muted/40" style={{ height: 260 }} />}>
-        <ReactECharts option={option} style={{ height: 280 }} notMerge />
-      </Suspense>
+      <LazyEChart option={option} style={{ height: 280 }} fallbackHeight={260} notMerge />
     </GlassCard>
   )
 }

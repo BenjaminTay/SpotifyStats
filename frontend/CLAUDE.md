@@ -23,7 +23,7 @@ src/
 │   └── account/collection/   ← 收藏分析组件
 ├── components/
 │   ├── ui/           ← shadcn/ui 组件（可随意修改）
-│   ├── charts/       ← ECharts 封装（动态 import）+ 纯 DOM 图表
+│   ├── charts/       ← LazyEChart 按需 ECharts 封装 + 纯 DOM 图表
 │   ├── layout/       ← AppLayout, Masthead, ThemeToggle
 │   └── shared/       ← GlassCard, KpiCard, WeekSelector, CoverCell, FormattedText 等
 ├── pages/            ← 路由级页面容器（React.lazy 分包，纯组合 feature 组件）
@@ -98,7 +98,9 @@ AppLayout 首屏渲染后延迟预取常用数据。年度回顾使用序列化�
 
 ## 图表
 
-- ECharts 通过组件内动态 `import()` 按需加载
+- ECharts 统一通过 `components/charts/LazyEChart.tsx` 动态加载 `echarts-for-react/esm/core`
+- 新增 ECharts 图表必须复用 `LazyEChart`，禁止直接 `import('echarts-for-react')` 默认入口
+- 当前只注册 bar/line/pie/heatmap、tooltip、legend、dataZoom、visualMap、markLine、markPoint、markArea 和 CanvasRenderer；新增系列或组件时先扩展 `LazyEChart`
 - `RankTrendChart`：排名趋势图（断档填充、全貌/细节缩放、dataZoom 滑块、峰值 Pin 标记、连续冠周 markArea 色带）
 - `ReleaseTimelineChart`：发行周期排名趋势
 - `ListeningClock`：极坐标时针式 24 小时听歌分布
@@ -109,7 +111,7 @@ AppLayout 首屏渲染后延迟预取常用数据。年度回顾使用序列化�
 - LLM API Key 永不对前端返回明文，通过 `POST /apply` 端点让服务端直接写入
 - 图表组件不能 SSR，必须 lazy load
 - 新增页面务必参考 `UI_STYLE_GUIDE.md`
-- 简繁转换用 `displayName()` 统一入口，OpenCC 按需动态 import
+- 简繁转换用 `displayName()` 统一入口，OpenCC 按需动态 import `opencc-js/t2cn` 或 `opencc-js/cn2t`，禁止回退到默认 `opencc-js` full 包
 - **新增 GET hook → TanStack Query + `queryKeys`**；禁止模块级 `new Map()` 数据缓存
 - **页面容器只做路由入口**，实现细节在 `features/`
 

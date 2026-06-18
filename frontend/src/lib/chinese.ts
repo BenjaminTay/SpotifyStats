@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import type { ConverterFunction } from 'opencc-js'
+import type { ConverterFunction } from 'opencc-js/core'
 
 export type ChineseStyle = 'original' | 'simplified' | 'traditional'
 
@@ -9,29 +9,44 @@ const STORAGE_KEY = 'chineseStyle'
 
 let s2tConverter: ConverterFunction | null = null
 let t2sConverter: ConverterFunction | null = null
-let convertersLoading: Promise<void> | null = null
+let s2tLoading: Promise<void> | null = null
+let t2sLoading: Promise<void> | null = null
 
 function notifyChange() {
   window.dispatchEvent(new Event('chinese-style-change'))
 }
 
-async function loadConverters() {
-  if (s2tConverter && t2sConverter) return
-  if (convertersLoading) return convertersLoading
+async function loadSimplifiedConverter() {
+  if (t2sConverter) return
+  if (t2sLoading) return t2sLoading
 
-  convertersLoading = import('opencc-js').then(({ Converter }) => {
-    s2tConverter = Converter({ from: 'cn', to: 'twp' })
+  t2sLoading = import('opencc-js/t2cn').then(({ Converter }) => {
     t2sConverter = Converter({ from: 'twp', to: 'cn' })
     notifyChange()
   }).finally(() => {
-    convertersLoading = null
+    t2sLoading = null
   })
 
-  return convertersLoading
+  return t2sLoading
 }
 
-function ensureConverters() {
-  void loadConverters()
+async function loadTraditionalConverter() {
+  if (s2tConverter) return
+  if (s2tLoading) return s2tLoading
+
+  s2tLoading = import('opencc-js/cn2t').then(({ Converter }) => {
+    s2tConverter = Converter({ from: 'cn', to: 'twp' })
+    notifyChange()
+  }).finally(() => {
+    s2tLoading = null
+  })
+
+  return s2tLoading
+}
+
+function ensureConverter(style: ChineseStyle) {
+  if (style === 'simplified') void loadSimplifiedConverter()
+  if (style === 'traditional') void loadTraditionalConverter()
 }
 
 // ── Public API ──────────────────────────────────────────────
@@ -45,7 +60,7 @@ export function getChineseStyle(): ChineseStyle {
 export function setChineseStyle(style: ChineseStyle) {
   localStorage.setItem(STORAGE_KEY, style)
   notifyChange()
-  if (style !== 'original') ensureConverters()
+  ensureConverter(style)
 }
 
 export function displayName(name: string): string {
@@ -54,11 +69,11 @@ export function displayName(name: string): string {
   if (style === 'original') return name
 
   if (style === 'simplified') {
-    if (!t2sConverter) ensureConverters()
+    if (!t2sConverter) ensureConverter(style)
     return t2sConverter ? t2sConverter(name) : name
   }
   // traditional
-  if (!s2tConverter) ensureConverters()
+  if (!s2tConverter) ensureConverter(style)
   return s2tConverter ? s2tConverter(name) : name
 }
 
@@ -76,5 +91,5 @@ export function useChineseTextVersion(): number {
 
 // Eager init if a preference is already saved
 if (getChineseStyle() !== 'original') {
-  ensureConverters()
+  ensureConverter(getChineseStyle())
 }

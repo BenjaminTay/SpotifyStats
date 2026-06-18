@@ -12,7 +12,7 @@ Spotify Extended Streaming History 数据分析 Web 应用的主项目提示词�
 
 **UI 主题**：「编辑风 × 液态玻璃」— 杂志式排版（Playfair Display 衬线 + Inter 无衬线）+ 毛玻璃材质 + 日/夜双皮肤。详见 `frontend/UI_STYLE_GUIDE.md`。
 
-**性能策略**：Cache Manager 管理 5 命名空间（billboard/analysis/db/auth）LRU+TTL 缓存；Billboard 拆为 4 个独立 `@lru_cache` 函数，并通过共享 `_load_and_rank_cached` + `singleflight()` 避免 weekly/power/summaries/all-time 冷启动重复计算；Power Score 计算使用列级向量化，避免逐行 `DataFrame.apply(axis=1)`；`agg_weekly_track_sources` 支撑 album project 专辑榜和详情来源拆分；启动 warmup 使用当前默认动态阈值口径并预热 artist fan-out；SQLite 版本化 Migration；后台 Job Queue（3 worker）异步处理封面下载与 Wikipedia+LLM enrichment；前端 GET 数据统一进入 TanStack React Query（staleTime 5min/gcTime 30min/retry 2），路由级 lazy 分包。
+**性能策略**：Cache Manager 管理 5 命名空间（billboard/analysis/db/auth）LRU+TTL 缓存；Billboard 拆为 4 个独立 `@lru_cache` 函数，并通过共享 `_load_and_rank_cached` + `singleflight()` 避免 weekly/power/summaries/all-time 冷启动重复计算；Power Score 计算使用列级向量化，避免逐行 `DataFrame.apply(axis=1)`；`agg_weekly_track_sources` 支撑 album project 专辑榜和详情来源拆分；启动 warmup 使用当前默认动态阈值口径并预热 artist fan-out；SQLite 版本化 Migration；后台 Job Queue（3 worker）异步处理封面下载与 Wikipedia+LLM enrichment；前端 GET 数据统一进入 TanStack React Query（staleTime 5min/gcTime 30min/retry 2），路由级 lazy 分包；ECharts 统一走 `LazyEChart` + `echarts-for-react/esm/core` 按需注册，OpenCC 简繁转换只动态加载 `opencc-js/t2cn` 或 `opencc-js/cn2t` 子包。
 
 ## Phase 5 产品化收口基线
 
@@ -49,9 +49,9 @@ Phase 5 目标是收紧产品线到可持续迭代状态。当前进度：
   - P4 Merge Level API：`MergeConfig` FastAPI 依赖，`/billboard/*` + `/analysis/charts` 端点 `merge_level` 查询参数，Settings 页面 L1/L2/L3 选择器持久化至 localStorage，4 个 Billboard 页面 URL 优先/localStorage 回退
   - 2026-06-18 贯穿修复：Dashboard/Leaderboard/Timeline/Wrapped/Listening Hours/Music Entity/Artist Deep Dive/Release Cycle 全部传递 `dynamic_threshold` 与 `max_merge_gap_minutes`；Release Cycle 按 `billboard_week` 年份过滤，并接入 `merge_level` / `include_compilations`
   - 2026-06-18 Album Project 统计收口：新增 `album_projects` / `album_project_albums` / `album_project_tracks` + `agg_weekly_track_sources`；L2/L3 专辑统计改为 album project track membership，source album attribution 仅作为来源拆分解释；Billboard 专辑榜按 `album_project.release_date` 排除发行前播放；release groups 只描述版本关系，不再作为最终专辑播放量聚合层
-  - 2026-06-19 全栈验证与性能收口：Billboard 分段接口共享基础排名缓存，Power Score 和 `_add_running_metrics()` 向量化；专辑详情 source breakdown 批量查 album metadata；`load_plays()` / `load_plays_for_artists()` 缓存 miss 用 `singleflight()` 去重；warmup 改为 `dynamic_threshold=True` 默认口径；390px 移动端页面级横向滚动归零；pre-commit ruff/format 收敛到 `backend/`
+  - 2026-06-19 全栈验证与性能收口：Billboard 分段接口共享基础排名缓存，Power Score 和 `_add_running_metrics()` 向量化；专辑详情 source breakdown 批量查 album metadata；`load_plays()` / `load_plays_for_artists()` 缓存 miss 用 `singleflight()` 去重；warmup 改为 `dynamic_threshold=True` 默认口径；390px 移动端页面级横向滚动归零；pre-commit ruff/format 收敛到 `backend/`；前端 OpenCC full 包拆为 t2cn/cn2t 子包，ECharts 默认入口改为 `LazyEChart` 按需 core 入口
   - R24b 不变式合约测试：`test_playback_invariants.py`（6 条断言）+ `test_merge_level_aggregation.py`（14 条断言）+ `test_playback_filter_parameter_propagation.py`（过滤参数传播）
-  - 测试基线：backend full 552 / unit 226 / contract 126；frontend 115；`npm run build`、`sh scripts/phase5_check.sh`、`.venv/bin/pre-commit run --all-files` 通过
+  - 测试基线：backend full 552 / unit 226 / contract 126；frontend 124；`npm run build`、`sh scripts/phase5_check.sh`、`.venv/bin/pre-commit run --all-files` 通过
 
 详见 `docs/2026-06-18-playback-stats-rules-latest.md`、`docs/2026-06-08-phase5-productization-baseline.md` 和 `docs/2026-06-19-fullstack-verification-performance-report.md`。
 
@@ -179,7 +179,7 @@ frontend/src/
 │   └── account/collection/   ← 收藏分析组件
 ├── components/
 │   ├── ui/            ← shadcn/ui 组件
-│   ├── charts/        ← ECharts 封装（动态 import）+ 纯 DOM 图表
+│   ├── charts/        ← LazyEChart 按需 ECharts 封装 + 纯 DOM 图表
 │   ├── layout/        ← AppLayout, Masthead, ThemeToggle
 │   └── shared/        ← GlassCard, KpiCard, CoverCell, FormattedText 等
 ├── pages/             ← 路由级页面容器（React.lazy 分包，≤450 行，纯组合 feature 组件）
@@ -205,6 +205,8 @@ frontend/src/
 - 外部文本渲染必须经 `react-markdown` + `rehype-sanitize`，禁止 `dangerouslySetInnerHTML`
 - LLM API Key 永远不通过 API 返回前端，仅返回 `has_llm_key: bool`
 - OpenAPI 类型通过 `npm run generate-types` 从后端自动生成
+- ECharts 图表必须复用 `LazyEChart`，禁止直接 `import('echarts-for-react')` 默认入口；新增图表能力先扩展共享 wrapper
+- 简繁转换必须通过 `displayName()` / `chinese.ts`，禁止直接导入默认 `opencc-js` full 包
 - **新增 GET hook 必须使用 `queryKeys` + TanStack Query**，禁止新增模块级数据缓存
 - 模块级变量只允许保存 tab/排序/页码等 UI 状态（如 `let cachedTab`、`let cachedSortKey`）
 - **禁止模块级 `new Map()` 缓存 API 响应**，详情页 enrichment/release-cycle 数据必须走 Query Client

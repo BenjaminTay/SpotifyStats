@@ -1,9 +1,8 @@
-import { lazy, Suspense, useMemo } from 'react'
+import { useMemo, type CSSProperties } from 'react'
 import { useTheme } from '@/hooks/useTheme'
 import { buildChartBase } from './EChartsTheme'
+import { LazyEChart } from './LazyEChart'
 import { getChartColors } from '@/lib/theme'
-
-const ReactECharts = lazy(() => import('echarts-for-react'))
 
 interface TrendDatum {
   label: string
@@ -23,11 +22,7 @@ interface HeatmapDatum {
 }
 
 function ChartShell({ option, height = 280 }: { option: Record<string, unknown>; height?: number }) {
-  return (
-    <Suspense fallback={<div className="animate-pulse rounded-lg bg-muted/40" style={{ height }} />}>
-      <ReactECharts option={option} style={{ height, isolation: 'isolate' } as React.CSSProperties} notMerge />
-    </Suspense>
-  )
+  return <LazyEChart option={option} style={{ height, isolation: 'isolate' } as CSSProperties} notMerge />
 }
 
 export function AnalysisTrendChart({ data, mode = 'bar' }: { data: TrendDatum[]; mode?: 'bar' | 'line' }) {

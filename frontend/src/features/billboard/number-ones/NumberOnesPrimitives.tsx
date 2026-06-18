@@ -1,8 +1,9 @@
-import { lazy, Suspense, useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { AlertCircle } from 'lucide-react'
 
 import { buildChartBase } from '@/components/charts/EChartsTheme'
+import { LazyEChart } from '@/components/charts/LazyEChart'
 import { ArtistLinks } from '@/components/shared/ArtistLinks'
 import { GlassCard } from '@/components/shared/GlassCard'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -11,8 +12,6 @@ import { displayName } from '@/lib/chinese'
 import { getChartColors } from '@/lib/theme'
 import { billboardDetailLink } from '@/lib/navigation'
 import { formatNumber } from './numberOnesData'
-
-const ReactECharts = lazy(() => import('echarts-for-react'))
 
 export function CoverImg({ url }: { url?: string | null }) {
   const [imgError, setImgError] = useState(false)
@@ -104,11 +103,7 @@ export function No1BarChart({
     grid: { left: 8, right: 56, top: 8, bottom: 8, containLabel: true },
   }
 
-  return (
-    <Suspense fallback={<div className="h-[460px] animate-pulse rounded-lg bg-muted/40" />}>
-      <ReactECharts option={option} style={{ height: 460 }} notMerge />
-    </Suspense>
-  )
+  return <LazyEChart option={option} style={{ height: 460 }} notMerge />
 }
 
 export function SkeletonBlock() {

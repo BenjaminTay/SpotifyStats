@@ -1,12 +1,11 @@
-import { useMemo, lazy, Suspense } from 'react'
+import { useMemo } from 'react'
+import { LazyEChart } from '@/components/charts/LazyEChart'
 import { GlassCard } from '@/components/shared/GlassCard'
 import { KpiCard } from '@/components/shared/KpiCard'
 import { buildChartBase } from '@/components/charts/EChartsTheme'
 import { useTheme } from '@/hooks/useTheme'
 import type { CollectionInsights, SaveTimelinePoint } from '@/types/account'
 import { formatDate } from '@/features/account/collection/utils/formatDate'
-
-const ReactECharts = lazy(() => import('echarts-for-react'))
 
 function SaveTimelineChart({
   timeline,
@@ -82,11 +81,7 @@ function SaveTimelineChart({
     ],
   }), [base, years, barData, cumData])
 
-  return (
-    <Suspense fallback={<div className="animate-pulse rounded-lg bg-muted/40" style={{ height: 240 }} />}>
-      <ReactECharts option={option} style={{ height: 240 }} notMerge />
-    </Suspense>
-  )
+  return <LazyEChart option={option} style={{ height: 240 }} notMerge />
 }
 
 export function CollectionOverviewBlock({

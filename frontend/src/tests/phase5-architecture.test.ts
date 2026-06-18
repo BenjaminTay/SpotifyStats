@@ -42,6 +42,15 @@ import trackLyricsSectionSource from '../features/music/details/track/TrackLyric
 
 import mastheadSource from '../components/layout/Masthead.tsx?raw'
 import appLayoutSource from '../components/layout/AppLayout.tsx?raw'
+import chineseSource from '../lib/chinese.ts?raw'
+import monthlyTrendChartSource from '../components/charts/MonthlyTrendChart.tsx?raw'
+import analysisChartsSource from '../components/charts/AnalysisCharts.tsx?raw'
+import rankTrendChartSource from '../components/charts/RankTrendChart.tsx?raw'
+import releaseTimelineChartSource from '../components/charts/ReleaseTimelineChart.tsx?raw'
+import versusRankChartSource from '../components/charts/VersusRankChart.tsx?raw'
+import numberOnesPrimitivesChartSource from '../features/billboard/number-ones/NumberOnesPrimitives.tsx?raw'
+import collectionOverviewBlockSource from '../features/account/collection/components/CollectionOverviewBlock.tsx?raw'
+import saveLifecycleBlockSource from '../features/account/collection/components/SaveLifecycleBlock.tsx?raw'
 
 describe('Phase 5 architecture guardrails', () => {
   it.each([
@@ -186,6 +195,27 @@ describe('Phase 5 architecture guardrails', () => {
   it('keeps dashboard loading skeletons within the mobile content column', () => {
     expect(dashboardPageSource).not.toContain('h-5 w-96')
     expect(dashboardPageSource).toContain('w-full max-w-96')
+  })
+
+  it('keeps Chinese conversion from loading the full OpenCC bundle', () => {
+    expect(chineseSource).not.toContain("from 'opencc-js'")
+    expect(chineseSource).not.toContain('import(\'opencc-js\')')
+    expect(chineseSource).toContain("import('opencc-js/cn2t')")
+    expect(chineseSource).toContain("import('opencc-js/t2cn')")
+  })
+
+  it.each([
+    ['MonthlyTrendChart.tsx', monthlyTrendChartSource],
+    ['AnalysisCharts.tsx', analysisChartsSource],
+    ['RankTrendChart.tsx', rankTrendChartSource],
+    ['ReleaseTimelineChart.tsx', releaseTimelineChartSource],
+    ['VersusRankChart.tsx', versusRankChartSource],
+    ['NumberOnesPrimitives.tsx', numberOnesPrimitivesChartSource],
+    ['CollectionOverviewBlock.tsx', collectionOverviewBlockSource],
+    ['SaveLifecycleBlock.tsx', saveLifecycleBlockSource],
+  ])('%s uses the shared lightweight ECharts wrapper', (_path, content) => {
+    expect(content).not.toContain("import('echarts-for-react')")
+    expect(content).toContain('LazyEChart')
   })
 
   it('keeps artist release archive outside ArtistDetailExperience', () => {

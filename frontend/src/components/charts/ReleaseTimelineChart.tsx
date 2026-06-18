@@ -1,9 +1,8 @@
-import { lazy, Suspense, useMemo } from 'react'
+import { useMemo, type CSSProperties } from 'react'
 import { useTheme } from '@/hooks/useTheme'
 import { buildChartBase } from './EChartsTheme'
+import { LazyEChart } from './LazyEChart'
 import type { AdvanceSingleRank, ReleaseCycleRankEntry, ReleaseCycleTimelineEntry, WikiSingle } from '@/types/billboard'
-
-const ReactECharts = lazy(() => import('echarts-for-react'))
 
 interface AlbumHistoryEntry {
   week?: string
@@ -388,9 +387,5 @@ export function ReleaseTimelineChart({
     series: chartSeries,
   }
 
-  return (
-    <Suspense fallback={<div className="h-[380px] animate-pulse rounded-lg bg-muted/40" />}>
-      <ReactECharts option={option} style={{ height: 380, isolation: 'isolate' } as React.CSSProperties} />
-    </Suspense>
-  )
+  return <LazyEChart option={option} style={{ height: 380, isolation: 'isolate' } as CSSProperties} />
 }

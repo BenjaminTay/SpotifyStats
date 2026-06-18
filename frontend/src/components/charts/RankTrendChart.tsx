@@ -1,8 +1,7 @@
-import { lazy, Suspense, useState, useMemo } from 'react'
+import { useState, useMemo, type CSSProperties } from 'react'
 import { useTheme } from '@/hooks/useTheme'
 import { buildChartBase } from './EChartsTheme'
-
-const ReactECharts = lazy(() => import('echarts-for-react'))
+import { LazyEChart } from './LazyEChart'
 
 interface RankDataPoint {
   week: string
@@ -464,9 +463,7 @@ export function RankTrendChart({
           </div>
         </div>
       )}
-      <Suspense fallback={<div className="h-[360px] animate-pulse rounded-lg bg-muted/40" />}>
-        <ReactECharts option={option} style={{ height: 360, isolation: 'isolate' } as React.CSSProperties} notMerge />
-      </Suspense>
+      <LazyEChart option={option} style={{ height: 360, isolation: 'isolate' } as CSSProperties} notMerge />
     </div>
   )
 }

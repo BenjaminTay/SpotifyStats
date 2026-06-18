@@ -5,7 +5,7 @@
 ## 结论
 
 - 后端全量测试通过：`552 passed, 2 warnings in 109.70s`
-- 前端测试与构建通过：`115 passed`，`npm run build` 通过
+- 前端测试与构建通过：`124 passed`，`npm run build` 通过
 - Phase 5 最低验证矩阵通过：unit `226 passed`，contract `126 passed`，前端 test/build 通过
 - pre-commit 通过：ruff、ruff format、mypy、detect-secrets 全部通过
 - 浏览器路由冒烟通过：12 个核心路由在 1280px 桌面与 390px 移动端均无错误 overlay、无页面级横向滚动；补充 Playwright CLI 采样 24 个路由/视口组合，控制台 error 为 0
@@ -30,13 +30,17 @@
 | records 直接 profile 冷算 | 4.791s / 19,188,063 calls | 3.090s / 10,941,286 calls | 时间 -35.5%，调用数 -43.0% |
 | `/api/billboard/records` 冷请求 | 2.19s | 1.871s | -14.6% |
 | `/api/billboard/records` 热请求 | 0.01-0.02s | 0.012-0.013s | 持平 |
+| OpenCC 默认懒加载包 | `full-yTi_27TG.js` 1,121.76KB / gzip 494.12KB | 简体路径 `t2cn-g7W6-1pz.js` 64.27KB / gzip 38.78KB；繁体路径 `cn2t-DJnOUolw.js` 1,059.13KB / gzip 457.19KB | 默认完整包消除；简体路径 gzip -455.34KB，繁体路径 gzip -36.93KB |
+| ECharts 图表懒加载包 | `esm-CBcusPEn.js` 1,134.42KB / gzip 376.65KB | `EChartsTheme-2vXjbeD-.js` 673.19KB / gzip 225.67KB | 原始体积 -461.23KB，gzip -150.98KB |
 
 实现：`chart_power_score.py` 将 track/album/artist Power Score 的逐行 `DataFrame.apply(axis=1)` 和 Python lambda 聚合改为列级向量化计算，并新增语义测试保证冠军差距、非冠军中位数、debut bonus、#1 bonus、peak/week 统计不漂移。
+
+前端补充实现：`displayName()` 将 OpenCC 默认 `full` 包拆为 `opencc-js/t2cn` 与 `opencc-js/cn2t` 两条按需路径；ECharts 统一通过 `LazyEChart` 动态加载 `echarts-for-react/esm/core` 并只注册当前用到的 bar/line/pie/heatmap、tooltip、legend、dataZoom、visualMap 与 mark 组件，避免 `echarts-for-react` 默认入口静态拉入完整 ECharts runtime。
 
 ## 基准与探针
 
 - 后端 import 基准：`1.48s real`，max RSS `140,410,880`
-- 前端 build 基准：`5.51s real`，max RSS `712,327,168`
+- 前端 build 基准：`4.97s real`，max RSS `667,516,928`
 - 8001 临时冷启动 API 测量：
   - `/api/billboard/records?dynamic_threshold=true&merge_level=2`：`1.871, 0.013, 0.012s`
   - `/api/billboard/power-scores?dynamic_threshold=true&merge_level=2`：`0.105, 0.021, 0.021s`
@@ -57,7 +61,7 @@
 | 多版本与 Billboard 语义 | contract/full tests 覆盖 Version Merge、Album Project、Power Score、播放过滤参数传播与 Billboard invariants | 已自动验证 |
 | SQLite WAL 并发读写 | 新增临时 DB WAL reader snapshot + writer commit 测试 | 已自动验证 |
 | OAuth/加密/缓存/Job Queue/Request ID | AES、cache manager、job queue 单测；API smoke 验证 `X-Request-ID`；Spotify status 只读 200 | 自动验证基础设施；真实 OAuth 外部授权未闭环 |
-| 前端路由与响应式 | Playwright CLI 12 路由 × 桌面/390px 移动端，无错误文案、无横向溢出、控制台 error 为 0 | 已自动验证主路径 |
+| 前端路由与响应式 | Playwright CLI 12 路由 × 桌面/390px 移动端，无错误文案、无横向溢出、控制台 error 为 0；图表入口由架构护栏防止回退到完整 ECharts/OpenCC 默认包 | 已自动验证主路径 |
 | 前端交互 | 分析页 Tab、Billboard 前进/后退路由、长列表可见分页按钮采样 | 部分自动验证；所有按钮/表单/ECharts 细交互未逐项人工穷尽 |
 | 性能优化 | records profile 与 API 冷/热请求有前后对比；build/import 基准已记录 | 已量化关键瓶颈；LCP/FID/CLS 未采集 |
 
@@ -79,12 +83,15 @@ sh scripts/phase5_check.sh
 .venv/bin/pytest backend/tests/unit/test_chart_power_score.py -q
 .venv/bin/pytest backend/tests/unit/test_import_data_flow.py -q
 .venv/bin/pytest backend/tests/unit/test_phase5_architecture.py::test_chart_power_score_avoids_row_wise_dataframe_apply -q
+cd frontend && npm test -- src/tests/phase5-architecture.test.ts -t "Chinese conversion"
+cd frontend && npm test -- src/tests/phase5-architecture.test.ts -t "lightweight ECharts"
+cd frontend && ANALYZE=true npm run build
 git diff --check
 ```
 
 ## 已知限制
 
-- 生产构建仍提示两个大懒加载 chunk：`full-yTi_27TG.js` gzip 494.12KB、`esm-CBcusPEn.js` gzip 376.65KB。当前未强行拆分，避免在本轮引入可见行为风险。
+- 生产构建仍提示两个大懒加载 chunk：`cn2t-DJnOUolw.js` gzip 457.19KB、`EChartsTheme-2vXjbeD-.js` gzip 225.67KB。旧 `full-yTi_27TG.js` 与 `esm-CBcusPEn.js` 已消除；剩余体积分别来自繁体词典和当前图表能力集合，未牺牲简繁转换语义或图表功能继续强拆。
 - 未执行真实 ngrok + Spotify OAuth 浏览器授权闭环；已验证 `/api/spotify/auth/status` 只读状态端点返回 200 和 request id。
 - 未在 Firefox/Safari 真机浏览器中执行同等交互；当前浏览器自动化证据来自本地 Chromium/Playwright CLI 与前端测试。
 - 未逐一实打所有 mutation/破坏性端点，例如断开 Spotify、清空缓存、导入生产数据、同步远程账号数据等，避免污染本地真实状态。
