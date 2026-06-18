@@ -86,7 +86,7 @@ FastAPI 后端采用四层分离：**api/**（路由 + Depends 依赖注入）�
 
 ## 测试策略
 
-三层 pytest markers：`unit`（纯函数，无 DB，~5s）→ `contract`（seed DB 结构验证，~1s）→ `integration`（真实数据只读，~80s）。当前基线：unit 224 / contract 126 / backend full 550。
+三层 pytest markers：`unit`（纯函数，无 DB，~5s）→ `contract`（seed DB 结构验证，~1s）→ `integration`（真实数据只读，~80s）。当前基线：unit 226 / contract 126 / backend full 552。
 
 Contract 测试使用 canonical `backend/tests/fixtures/seed.db` 的临时副本，teardown 必须清除所有 `@lru_cache` 并删除临时 WAL/SHM sidecar；`autouse` fixture `disable_warmup` 通过 monkeypatch `SPOTIFY_STATS_WARMUP=0` 阻止后台预热。
 

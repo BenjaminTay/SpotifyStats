@@ -4,11 +4,11 @@
 
 ## 结论
 
-- 后端全量测试通过：`550 passed, 2 warnings in 117.88s`
+- 后端全量测试通过：`552 passed, 2 warnings in 109.70s`
 - 前端测试与构建通过：`115 passed`，`npm run build` 通过
-- Phase 5 最低验证矩阵通过：unit `224 passed`，contract `126 passed`，前端 test/build 通过
+- Phase 5 最低验证矩阵通过：unit `226 passed`，contract `126 passed`，前端 test/build 通过
 - pre-commit 通过：ruff、ruff format、mypy、detect-secrets 全部通过
-- 浏览器路由冒烟通过：12 个核心路由在 1280px 桌面与 390px 移动端均无错误 overlay、无页面级横向滚动
+- 浏览器路由冒烟通过：12 个核心路由在 1280px 桌面与 390px 移动端均无错误 overlay、无页面级横向滚动；补充 Playwright CLI 采样 24 个路由/视口组合，控制台 error 为 0
 - 只读 API 探针通过：66 个高风险只读请求覆盖核心域，修正必填参数后全部返回预期状态并带 `X-Request-ID`
 
 ## 修复项
@@ -19,6 +19,7 @@
 | P1 | contract 测试直接写 canonical `seed.db` | 只读/写入路径会污染后续测试，造成测试顺序依赖 | `backend/tests/contract/conftest.py` 改为每次复制临时 seed DB，teardown 删除临时 WAL/SHM |
 | P1 | Billboard records 测试清缓存不完整 | `_load_and_rank_cached` / `_compute_records_cached` 污染导致 L2 bootstrap 测试全量失败 | 补齐 `_clear_billboard_runtime_caches()` 的缓存清理范围 |
 | P2 | `chart_compute.py` / `chart_staged_cache.py` 超过架构护栏行数 | Phase 5 facade 约束回归 | 新增 `chart_load_rank.py` 承接共享 load/rank cache，facade 回到护栏内 |
+| P2 | `import_data()` 遇到缺音频元数据的播放/视频记录可能引用未初始化 `album_id` | Extended Streaming History 中播客、视频或缺元数据条目会中断完整导入流程 | 每条记录先将 `album_id` 初始化为 `None`，新增临时 SQLite 导入测试覆盖音频、视频、featured artist、空 `source_album_id` 与预聚合表 |
 | P2 | 390px 移动端页面可横向滚动 47.5px | `/analysis/stats`、`/analysis/charts` 等页面移动端体验不稳 | `AppLayout` 增加页面级 `overflow-x-clip`，Masthead nav 增加 `basis-full/max-w-full`，Dashboard skeleton 改为 `w-full max-w-*` |
 | P2 | pre-commit ruff hook 扫描冻结 Streamlit `app/` 与旧脚本 | `pre-commit run --all-files` 因历史页名/未用变量失败 | `.pre-commit-config.yaml` 将 ruff 与 ruff-format 限定到 `backend/`，与项目日常质量命令一致 |
 
@@ -42,7 +43,23 @@
   - `/api/billboard/weekly?dynamic_threshold=true&merge_level=2`：`0.481, 0.125, 0.122s`
   - `/api/dashboard/full?dynamic_threshold=true`：`5.393, 0.177, 0.167s`
 - API smoke：66 个只读请求；`/api/version-merge/album-types` 空请求返回 422 为正确边界，带 `album_ids=1,2,3` 后 200。
+- 导入/WAL probe：临时 JSON + 临时 SQLite 验证音频/视频缺元数据记录不会中断导入，featured artist 写入 `track_artists`，空来源写入 `source_album_id IS NULL`；临时 DB 验证 WAL 下读事务快照不阻塞独立写提交，新读连接可见提交后数据。
+- 前端交互 probe：Playwright CLI 覆盖 12 路由 × 2 视口；`/analysis/stats` 与 `/analysis/charts` 的 `role=tab` 切换后无错误；Billboard 路由执行 `/billboard` → `/number-ones` → `/all-time` → `/records` 并通过浏览器后退/前进验证路由状态，控制台 error 为 0。
 - 文档同步：README、AGENTS、CLAUDE、backend/CLAUDE、frontend/CLAUDE 已更新 2026-06-19 验证报告、Power Score 向量化、移动端横向滚动护栏、pre-commit 范围与最新测试基线。
+
+## 覆盖矩阵
+
+| 目标项 | 当前证据 | 状态 |
+| --- | --- | --- |
+| 后端现有测试全量通过 | `pytest backend/tests/ -v`：`552 passed, 2 warnings in 109.70s` | 已自动验证 |
+| OpenAPI/核心 API 只读覆盖 | 122 paths / 134 operations schema 存在；66 个高风险只读请求覆盖 Dashboard、Billboard、Analysis、Community、AI Insights、Account、Settings、Spotify status | 已覆盖只读核心路径；mutation/破坏性端点未逐一实打 |
+| Extended Streaming History 完整导入 | 新增临时 JSON 导入测试覆盖音频、视频、缺元数据、featured artist、预聚合 | 已自动验证最小完整流程 |
+| 多版本与 Billboard 语义 | contract/full tests 覆盖 Version Merge、Album Project、Power Score、播放过滤参数传播与 Billboard invariants | 已自动验证 |
+| SQLite WAL 并发读写 | 新增临时 DB WAL reader snapshot + writer commit 测试 | 已自动验证 |
+| OAuth/加密/缓存/Job Queue/Request ID | AES、cache manager、job queue 单测；API smoke 验证 `X-Request-ID`；Spotify status 只读 200 | 自动验证基础设施；真实 OAuth 外部授权未闭环 |
+| 前端路由与响应式 | Playwright CLI 12 路由 × 桌面/390px 移动端，无错误文案、无横向溢出、控制台 error 为 0 | 已自动验证主路径 |
+| 前端交互 | 分析页 Tab、Billboard 前进/后退路由、长列表可见分页按钮采样 | 部分自动验证；所有按钮/表单/ECharts 细交互未逐项人工穷尽 |
+| 性能优化 | records profile 与 API 冷/热请求有前后对比；build/import 基准已记录 | 已量化关键瓶颈；LCP/FID/CLS 未采集 |
 
 ## 验证命令
 
@@ -60,6 +77,7 @@ sh scripts/phase5_check.sh
 
 ```bash
 .venv/bin/pytest backend/tests/unit/test_chart_power_score.py -q
+.venv/bin/pytest backend/tests/unit/test_import_data_flow.py -q
 .venv/bin/pytest backend/tests/unit/test_phase5_architecture.py::test_chart_power_score_avoids_row_wise_dataframe_apply -q
 git diff --check
 ```
@@ -68,6 +86,9 @@ git diff --check
 
 - 生产构建仍提示两个大懒加载 chunk：`full-yTi_27TG.js` gzip 494.12KB、`esm-CBcusPEn.js` gzip 376.65KB。当前未强行拆分，避免在本轮引入可见行为风险。
 - 未执行真实 ngrok + Spotify OAuth 浏览器授权闭环；已验证 `/api/spotify/auth/status` 只读状态端点返回 200 和 request id。
+- 未在 Firefox/Safari 真机浏览器中执行同等交互；当前浏览器自动化证据来自本地 Chromium/Playwright CLI 与前端测试。
+- 未逐一实打所有 mutation/破坏性端点，例如断开 Spotify、清空缓存、导入生产数据、同步远程账号数据等，避免污染本地真实状态。
+- 本轮未采集 Chrome DevTools LCP/FID/CLS 指标；现有性能数据覆盖后端 profile/API 响应、前端 build 和页面 smoke，不等同完整 Web Vitals 审计。
 
 ## 10 分钟快速验证
 

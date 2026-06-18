@@ -248,9 +248,9 @@ def import_data(
 
             # Resolve or create dimension rows
             track_id = None
+            album_id = None
             if track_name and artist_name:
                 artist_id = _cache_artist(conn, artist_name, artist_cache)
-                album_id = None
                 if album_name:
                     album_id = _cache_album(conn, album_name, artist_id, album_cache)
                 track_id = _cache_track(
@@ -353,9 +353,9 @@ def import_data(
                 spotify_uri = rec.get("spotify_track_uri")
 
                 track_id = None
+                album_id = None
                 if track_name and artist_name:
                     artist_id = _cache_artist(conn, artist_name, artist_cache)
-                    album_id = None
                     if album_name:
                         album_id = _cache_album(conn, album_name, artist_id, album_cache)
                     track_id = _cache_track(

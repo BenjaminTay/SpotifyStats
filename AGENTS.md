@@ -51,7 +51,7 @@ Phase 5 目标是收紧产品线到可持续迭代状态。当前进度：
   - 2026-06-18 Album Project 统计收口：新增 `album_projects` / `album_project_albums` / `album_project_tracks` + `agg_weekly_track_sources`；L2/L3 专辑统计改为 album project track membership，source album attribution 仅作为来源拆分解释；Billboard 专辑榜按 `album_project.release_date` 排除发行前播放；release groups 只描述版本关系，不再作为最终专辑播放量聚合层
   - 2026-06-19 全栈验证与性能收口：Billboard 分段接口共享基础排名缓存，Power Score 和 `_add_running_metrics()` 向量化；专辑详情 source breakdown 批量查 album metadata；`load_plays()` / `load_plays_for_artists()` 缓存 miss 用 `singleflight()` 去重；warmup 改为 `dynamic_threshold=True` 默认口径；390px 移动端页面级横向滚动归零；pre-commit ruff/format 收敛到 `backend/`
   - R24b 不变式合约测试：`test_playback_invariants.py`（6 条断言）+ `test_merge_level_aggregation.py`（14 条断言）+ `test_playback_filter_parameter_propagation.py`（过滤参数传播）
-  - 测试基线：backend full 550 / unit 224 / contract 126；frontend 115；`npm run build`、`sh scripts/phase5_check.sh`、`.venv/bin/pre-commit run --all-files` 通过
+  - 测试基线：backend full 552 / unit 226 / contract 126；frontend 115；`npm run build`、`sh scripts/phase5_check.sh`、`.venv/bin/pre-commit run --all-files` 通过
 
 详见 `docs/2026-06-18-playback-stats-rules-latest.md`、`docs/2026-06-08-phase5-productization-baseline.md` 和 `docs/2026-06-19-fullstack-verification-performance-report.md`。
 
