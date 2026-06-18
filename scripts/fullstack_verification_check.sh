@@ -14,6 +14,22 @@ BENCHMARK_JSON=${BENCHMARK_JSON:-/tmp/spotify_api_benchmark.json}
 RUN_CROSS_BROWSER=${RUN_CROSS_BROWSER:-1}
 RUN_WEB_VITALS=${RUN_WEB_VITALS:-0}
 
+detect_playwright_python() {
+  for candidate in "${PYTHON_PLAYWRIGHT:-}" python3 python "$ROOT_DIR/.venv/bin/python"; do
+    [ -n "$candidate" ] || continue
+    resolved=$(command -v "$candidate" 2>/dev/null || true)
+    [ -n "$resolved" ] || continue
+    if "$resolved" - <<'PY' >/dev/null 2>&1
+import playwright.sync_api
+PY
+    then
+      printf '%s\n' "$resolved"
+      return 0
+    fi
+  done
+  return 1
+}
+
 usage() {
   cat <<'EOF'
 Usage:
@@ -39,6 +55,9 @@ Options:
 Environment variables with the same uppercase names can also configure the
 defaults: BACKEND_URL, FRONTEND_URL, PREVIEW_URL, PREVIEW_API_URL,
 BENCHMARK_RUNS, SLOW_MS, BENCHMARK_JSON, RUN_CROSS_BROWSER, RUN_WEB_VITALS.
+When cross-browser smoke is enabled, PYTHON_PLAYWRIGHT may point to a Python
+that can import playwright.sync_api; otherwise the script auto-detects one
+before activating .venv.
 EOF
 }
 
@@ -91,6 +110,15 @@ while [ "$#" -gt 0 ]; do
   shift
 done
 
+if [ "$RUN_CROSS_BROWSER" = "1" ]; then
+  PYTHON_PLAYWRIGHT=$(detect_playwright_python || true)
+  if [ -z "$PYTHON_PLAYWRIGHT" ]; then
+    echo "No Python executable can import playwright.sync_api; set PYTHON_PLAYWRIGHT or pass --skip-cross-browser." >&2
+    exit 1
+  fi
+  export PYTHON_PLAYWRIGHT
+fi
+
 if [ -d ".venv" ]; then
   # shellcheck disable=SC1091
   . ".venv/bin/activate"
@@ -115,7 +143,7 @@ run node scripts/frontend_chart_interaction_smoke.mjs --base-url "$FRONTEND_URL"
 run node scripts/frontend_long_list_smoke.mjs --base-url "$FRONTEND_URL"
 
 if [ "$RUN_CROSS_BROWSER" = "1" ]; then
-  run node scripts/frontend_cross_browser_smoke.mjs --base-url "$FRONTEND_URL"
+  run node scripts/frontend_cross_browser_smoke.mjs --base-url "$FRONTEND_URL" --python "$PYTHON_PLAYWRIGHT"
 fi
 
 if [ "$RUN_WEB_VITALS" = "1" ]; then
@@ -128,7 +156,7 @@ if [ -n "$PREVIEW_URL" ]; then
   run node scripts/frontend_chart_interaction_smoke.mjs --base-url "$PREVIEW_URL" --api-base-url "$PREVIEW_API_URL"
   run node scripts/frontend_long_list_smoke.mjs --base-url "$PREVIEW_URL" --api-base-url "$PREVIEW_API_URL"
   if [ "$RUN_CROSS_BROWSER" = "1" ]; then
-    run node scripts/frontend_cross_browser_smoke.mjs --base-url "$PREVIEW_URL"
+    run node scripts/frontend_cross_browser_smoke.mjs --base-url "$PREVIEW_URL" --python "$PYTHON_PLAYWRIGHT"
   fi
   if [ "$RUN_WEB_VITALS" = "1" ]; then
     run node scripts/frontend_web_vitals_probe.mjs --base-url "$PREVIEW_URL" --routes /,/analysis/stats,/analysis/charts,/billboard/number-ones,/account,/settings --viewport both --wait-ms 5000

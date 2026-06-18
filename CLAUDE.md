@@ -39,6 +39,7 @@ sh scripts/phase5_check.sh
 .venv/bin/python scripts/ci_baseline_parity.py
 
 # 全栈非破坏性验收矩阵（需后端 8000 + 前端 5173；可选 --preview-url/--web-vitals）
+# 跨浏览器 smoke 会自动检测可 import playwright.sync_api 的 Python，也可显式设置 PYTHON_PLAYWRIGHT
 sh scripts/fullstack_verification_check.sh --backend-url http://127.0.0.1:8000 --frontend-url http://127.0.0.1:5173
 
 # 本地只读 API smoke（91 个 GET + OpenAPI GET 核算）

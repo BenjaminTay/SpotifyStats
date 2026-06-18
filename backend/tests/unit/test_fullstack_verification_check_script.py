@@ -46,3 +46,15 @@ def test_fullstack_verification_check_script_covers_delivery_matrix():
     assert "scripts/frontend_long_list_smoke.mjs" in source
     assert "scripts/frontend_cross_browser_smoke.mjs" in source
     assert "scripts/frontend_web_vitals_probe.mjs" in source
+
+
+def test_fullstack_verification_check_preserves_python_with_playwright_across_venv_activation():
+    source = (ROOT / "scripts" / "fullstack_verification_check.sh").read_text(encoding="utf-8")
+
+    assert "detect_playwright_python()" in source
+    assert "import playwright.sync_api" in source
+    assert "export PYTHON_PLAYWRIGHT" in source
+    assert (
+        'scripts/frontend_cross_browser_smoke.mjs --base-url "$FRONTEND_URL" --python "$PYTHON_PLAYWRIGHT"'
+        in source
+    )
