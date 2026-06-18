@@ -136,7 +136,7 @@ node scripts/frontend_web_vitals_probe.mjs --routes /,/analysis/stats,/analysis/
 
 `frontend_route_smoke.mjs` 默认等待 5 秒，并对 13 个核心路由检查业务内容 marker；自定义临时路由可用 `--disable-route-markers` 关闭 marker 检查。
 `fullstack_verification_check.sh` 是非破坏性全栈聚合入口，会串起 backend full、pre-commit、Phase 5、API smoke/boundary、benchmark 和前端 smoke；需先启动后端 8000 与前端 5173，生产 preview 可用 `--preview-url http://127.0.0.1:4173 --preview-api-url http://127.0.0.1:8000`。脚本会在激活 `.venv` 前自动检测可导入 `playwright.sync_api` 的 Python，必要时也可显式设置 `PYTHON_PLAYWRIGHT`。
-`frontend_interaction_smoke.mjs` 覆盖分析页 tab、Billboard 子路由/前进后退、AI Insights 报告/问答 tab（含未配置 LLM 空状态）与主题切换，dev server 和生产 preview 都应保持 0 console error、0 page error、0 横向溢出。
+`frontend_interaction_smoke.mjs` 覆盖分析页 tab、Billboard 子路由/前进后退、AI Insights 报告/问答 tab（含未配置 LLM 空状态）、Settings 过滤/显示偏好控件与主题切换，dev server 和生产 preview 都应保持 0 console error、0 page error、0 横向溢出。
 `frontend_chart_interaction_smoke.mjs` 覆盖 ECharts tooltip hover、legend toggle 与 dataZoom drag，默认从真实 `/api/billboard/all-time` 响应动态选择长榜艺人；生产 preview 用 `--api-base-url http://127.0.0.1:8000` 分离静态页面与后端 API。dev server 和生产 preview 都应保持 0 console error/warning、0 page error、0 横向溢出。
 `frontend_long_list_smoke.mjs` 覆盖 Records mini-rank、Billboard All-Time、Community Feed infinite load、RecentPlays、SavedTracks、PersonalRankTable 6 个长列表分页/分段渲染场景，要求点击或滚动后可见窗口变化，并保持 0 console error/warning、0 page error、0 横向溢出；生产 preview 用 `--api-base-url http://127.0.0.1:8000` 将 `/api` 与 `/covers` 请求转发到后端。
 `frontend_cross_browser_smoke.mjs` 使用 Python Playwright API 跑 Chromium、Firefox、WebKit（Safari-family）三引擎；若默认 `python` 不能 `import playwright.sync_api`，用 `PYTHON_PLAYWRIGHT=/path/to/python` 或 `--python` 指定。

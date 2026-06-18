@@ -9,7 +9,7 @@ import net from 'node:net'
 
 const DEFAULT_BASE_URL = 'http://127.0.0.1:5173'
 const DEFAULT_WAIT_MS = 5000
-const DEFAULT_SCENARIOS = ['analysis-tabs', 'billboard-routing', 'ai-insights-tabs', 'theme-toggle']
+const DEFAULT_SCENARIOS = ['analysis-tabs', 'billboard-routing', 'ai-insights-tabs', 'settings-controls', 'theme-toggle']
 
 const VIEWPORT = {
   width: 1280,
@@ -69,6 +69,7 @@ Scenarios:
   analysis-tabs           Click Analysis subnav between stats and personal charts
   billboard-routing       Click Billboard subnav and browser back/forward
   ai-insights-tabs        Click AI Insights report/chat tabs and report type pills
+  settings-controls       Toggle non-destructive settings controls and verify local display preference
   theme-toggle            Toggle light/dark theme buttons
 `)
 }
@@ -242,7 +243,7 @@ async function clickText(client, text, waitMs) {
   const clicked = await evaluate(client, `
     (() => {
       const targetText = ${JSON.stringify(text)};
-      const candidates = Array.from(document.querySelectorAll('button, a, [role="button"], [role="tab"]'))
+      const candidates = Array.from(document.querySelectorAll('button, a, [role="button"], [role="tab"], [role="option"]'))
         .filter((el) => (el.innerText || el.textContent || '').trim().includes(targetText));
       const el = candidates[0];
       if (!el) return false;
@@ -255,6 +256,40 @@ async function clickText(client, text, waitMs) {
   await sleep(Math.min(250, waitMs))
 }
 
+async function clickSwitchByLabel(client, label, waitMs) {
+  const changed = await evaluate(client, `
+    (() => {
+      const targetText = ${JSON.stringify(label)};
+      const candidates = Array.from(document.querySelectorAll('[role="switch"]'))
+        .filter((el) => (el.getAttribute('aria-label') || el.innerText || el.textContent || '').trim().includes(targetText));
+      const el = candidates[0];
+      if (!el) return { found: false };
+      const before = el.getAttribute('aria-checked');
+      el.scrollIntoView({ block: 'center', inline: 'center' });
+      el.click();
+      return { found: true, before };
+    })();
+  `)
+  if (!changed.found) throw new Error(`Switch not found: ${label}`)
+  return waitForCondition(
+    async () => {
+      const state = await evaluate(client, `
+        (() => {
+          const targetText = ${JSON.stringify(label)};
+          const el = Array.from(document.querySelectorAll('[role="switch"]'))
+            .find((item) => (item.getAttribute('aria-label') || item.innerText || item.textContent || '').trim().includes(targetText));
+          if (!el) return null;
+          const after = el.getAttribute('aria-checked');
+          return { found: true, before: ${JSON.stringify(changed.before)}, after };
+        })();
+      `)
+      return state && state.after !== changed.before ? state : null
+    },
+    waitMs,
+    `Switch did not toggle: ${label}`,
+  )
+}
+
 async function pageState(client) {
   return evaluate(client, `
     (() => ({
@@ -263,6 +298,7 @@ async function pageState(client) {
       bodyText: document.body ? document.body.innerText : '',
       isDark: document.documentElement.classList.contains('dark'),
       theme: localStorage.getItem('theme'),
+      chineseStyle: localStorage.getItem('chineseStyle'),
       scrollWidth: Math.max(document.body ? document.body.scrollWidth : 0, document.documentElement ? document.documentElement.scrollWidth : 0),
       viewportWidth: innerWidth,
     }))();
@@ -382,6 +418,46 @@ const SCENARIOS = {
     await waitForText(client, '对话历史', waitMs)
     await clickText(client, '报告', waitMs)
     await waitForText(client, 'AI 洞察', waitMs)
+  },
+
+  'settings-controls': async ({ client, baseUrl, waitMs }) => {
+    await navigate(client, baseUrl, '/settings', waitMs)
+    await waitForText(client, '参数与配置', waitMs)
+    await waitForText(client, 'SPOTIFY 连接', waitMs)
+    await waitForText(client, 'DATA & DISPLAY', waitMs)
+    await waitForText(client, 'BILLBOARD PARAMETERS', waitMs)
+    await waitForText(client, 'VERSION MERGE', waitMs)
+    await waitForText(client, 'DATA IMPORT', waitMs)
+
+    await clickSwitchByLabel(client, '动态阈值', waitMs)
+    await clickSwitchByLabel(client, '动态阈值', waitMs)
+    await clickSwitchByLabel(client, '仅音乐', waitMs)
+    await waitForText(client, '过滤参数已更新', waitMs)
+    await clickSwitchByLabel(client, '仅音乐', waitMs)
+    await waitForText(client, '过滤参数已更新', waitMs)
+
+    await clickText(client, '原样显示', waitMs)
+    await clickText(client, '简体中文', waitMs)
+    await waitForCondition(
+      async () => {
+        const state = await pageState(client)
+        return state.chineseStyle === 'simplified' ? state : null
+      },
+      waitMs,
+      'Chinese display preference did not update to simplified',
+    )
+    await clickText(client, '简体中文', waitMs)
+    await clickText(client, '原样显示', waitMs)
+    await waitForCondition(
+      async () => {
+        const state = await pageState(client)
+        return state.chineseStyle === 'original' ? state : null
+      },
+      waitMs,
+      'Chinese display preference did not reset to original',
+    )
+
+    await waitForAnyText(client, ['连接 Spotify', '同步收藏时间'], waitMs)
   },
 
   'theme-toggle': async ({ client, baseUrl, waitMs }) => {
