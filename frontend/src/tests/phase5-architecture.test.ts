@@ -51,6 +51,7 @@ import versusRankChartSource from '../components/charts/VersusRankChart.tsx?raw'
 import numberOnesPrimitivesChartSource from '../features/billboard/number-ones/NumberOnesPrimitives.tsx?raw'
 import collectionOverviewBlockSource from '../features/account/collection/components/CollectionOverviewBlock.tsx?raw'
 import saveLifecycleBlockSource from '../features/account/collection/components/SaveLifecycleBlock.tsx?raw'
+import chemistryBlockSource from '../features/account/collection/components/ChemistryBlock.tsx?raw'
 
 describe('Phase 5 architecture guardrails', () => {
   it.each([
@@ -216,6 +217,11 @@ describe('Phase 5 architecture guardrails', () => {
   ])('%s uses the shared lightweight ECharts wrapper', (_path, content) => {
     expect(content).not.toContain("import('echarts-for-react')")
     expect(content).toContain('LazyEChart')
+  })
+
+  it('keeps account chemistry examples capped for initial render', () => {
+    expect(chemistryBlockSource).toContain('MAX_CHEMISTRY_EXAMPLES')
+    expect(chemistryBlockSource).toMatch(/\.slice\(0,\s*MAX_CHEMISTRY_EXAMPLES\)/)
   })
 
   it('keeps artist release archive outside ArtistDetailExperience', () => {

@@ -94,6 +94,7 @@ AppLayout 首屏渲染后延迟预取常用数据。年度回顾使用序列化�
 - `useTheme()` hook：localStorage 持久化 + 系统偏好回退
 - GlassCard 是所有卡片的默认容器
 - 移动端不得产生页面级横向滚动；全局 chrome（AppLayout/Masthead）和 loading skeleton 必须用 `min-w-0`、`max-w-full`、`basis-full` 或 `overflow-x-clip` 约束，宽表只允许在局部容器内横向滚动
+- 账号页、收藏页和长列表里的封面图必须使用 `loading="lazy"` / `decoding="async"`；滚动预览类组件必须限制首屏示例数量
 - 详细风格指南见 `UI_STYLE_GUIDE.md`
 
 ## 图表
@@ -118,3 +119,9 @@ AppLayout 首屏渲染后延迟预取常用数据。年度回顾使用序列化�
 ## 测试
 
 vitest + React Testing Library (jsdom)，`npm test` 运行。含 `phase5-architecture.test.ts` 架构护栏测试。
+
+Web Vitals lab 采样使用根目录脚本：
+
+```bash
+node scripts/frontend_web_vitals_probe.mjs --routes /,/analysis/stats,/analysis/charts,/billboard/number-ones,/account,/settings --viewport both --wait-ms 5000
+```

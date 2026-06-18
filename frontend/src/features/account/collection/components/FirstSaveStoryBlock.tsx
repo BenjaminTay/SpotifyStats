@@ -24,7 +24,9 @@ export function FirstSaveStoryBlock({
                 <div className="flex items-start gap-4">
                   {first_save_story.cover_url && (
                     <img src={first_save_story.cover_url} alt={first_save_story.track_name}
-                      className="h-16 w-16 flex-shrink-0 rounded-lg object-cover shadow-sm" />
+                      className="h-16 w-16 flex-shrink-0 rounded-lg object-cover shadow-sm"
+                      loading="lazy"
+                      decoding="async" />
                   )}
                   <div>
                     <p className="font-sans text-xs font-semibold uppercase tracking-[1px] text-muted-foreground">

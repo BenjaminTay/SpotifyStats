@@ -41,7 +41,9 @@ export function FlipSideAndMigrationBlock({
                 >
                   {track.cover_url && (
                     <img src={track.cover_url} alt={track.track_name}
-                      className="h-9 w-9 flex-shrink-0 rounded object-cover" />
+                      className="h-9 w-9 flex-shrink-0 rounded object-cover"
+                      loading="lazy"
+                      decoding="async" />
                   )}
                   <div className="min-w-0 flex-1">
                     <p className="font-sans text-sm font-medium truncate">

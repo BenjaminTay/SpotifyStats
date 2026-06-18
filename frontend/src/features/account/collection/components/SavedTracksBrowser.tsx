@@ -129,7 +129,9 @@ export function SavedTracksBrowser() {
                       <td className="py-2 pr-1">
                         {t.cover_url ? (
                           <img src={t.cover_url} alt={t.track_name}
-                            className="h-8 w-8 rounded object-cover" />
+                            className="h-8 w-8 rounded object-cover"
+                            loading="lazy"
+                            decoding="async" />
                         ) : (
                           <div className="h-8 w-8 rounded bg-muted" />
                         )}

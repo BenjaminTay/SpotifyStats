@@ -51,7 +51,9 @@ export function LeaderboardBlock({ insights }: { insights: CollectionInsights })
                     <td className="py-2.5 flex items-center gap-2.5 min-w-0">
                       {artist.cover_url && (
                         <img src={artist.cover_url} alt={artist.artist_name}
-                          className="h-8 w-8 flex-shrink-0 rounded-full object-cover" />
+                          className="h-8 w-8 flex-shrink-0 rounded-full object-cover"
+                          loading="lazy"
+                          decoding="async" />
                       )}
                       <span className="font-sans text-sm font-medium truncate">{displayName(artist.artist_name)}</span>
                     </td>
@@ -105,7 +107,9 @@ export function LeaderboardBlock({ insights }: { insights: CollectionInsights })
                     <td className="py-2.5 flex items-center gap-2.5 min-w-0">
                       {album.cover_url && (
                         <img src={album.cover_url} alt={album.album_name}
-                          className="h-8 w-8 flex-shrink-0 rounded object-cover" />
+                          className="h-8 w-8 flex-shrink-0 rounded object-cover"
+                          loading="lazy"
+                          decoding="async" />
                       )}
                       <div className="min-w-0">
                         <span className="font-sans text-sm font-medium">{displayName(album.album_name)}</span>

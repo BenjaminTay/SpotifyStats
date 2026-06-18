@@ -215,7 +215,9 @@ export function SaveLifecycleBlock({
                     className="flex items-center gap-2 rounded-full border border-border bg-muted/30 px-3 py-1.5">
                     {ex.cover_url && (
                       <img src={ex.cover_url} alt={ex.track_name}
-                        className="h-6 w-6 rounded-full object-cover" />
+                        className="h-6 w-6 rounded-full object-cover"
+                        loading="lazy"
+                        decoding="async" />
                     )}
                     <span className="font-sans text-xs font-medium">{displayName(ex.track_name)}</span>
                     <span className="font-sans text-[10px] text-muted-foreground">{displayName(ex.artist_name)}</span>

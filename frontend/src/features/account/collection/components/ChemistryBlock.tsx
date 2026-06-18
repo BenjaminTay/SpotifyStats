@@ -2,6 +2,8 @@ import { GlassCard } from '@/components/shared/GlassCard'
 import { displayName } from '@/lib/chinese'
 import type { CollectionInsights, ChemistryType } from '@/types/account'
 
+const MAX_CHEMISTRY_EXAMPLES = 8
+
 function ChemistryCard({
   chem,
   total,
@@ -9,7 +11,8 @@ function ChemistryCard({
   chem: ChemistryType
   total: number
 }) {
-  const examples = chem.examples || []
+  const rawExamples = chem.examples || []
+  const examples = rawExamples.slice(0, MAX_CHEMISTRY_EXAMPLES)
   const pct = total > 0 ? (chem.count / total) * 100 : 0
   const ITEM_H = 44
   const VISIBLE_H = ITEM_H * 2
@@ -68,7 +71,9 @@ function ChemistryCard({
                 >
                   {ex.cover_url ? (
                     <img src={ex.cover_url} alt={ex.track_name}
-                      className="h-8 w-8 flex-shrink-0 rounded object-cover" />
+                      className="h-8 w-8 flex-shrink-0 rounded object-cover"
+                      loading="lazy"
+                      decoding="async" />
                   ) : (
                     <div className="h-8 w-8 flex-shrink-0 rounded bg-muted" />
                   )}
