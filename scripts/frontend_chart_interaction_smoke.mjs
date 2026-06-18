@@ -9,6 +9,8 @@ import net from 'node:net'
 
 const DEFAULT_BASE_URL = 'http://127.0.0.1:5173'
 const DEFAULT_WAIT_MS = 5000
+const DEFAULT_ACCOUNT_CHART_WAIT_MS = 12000
+const DEFAULT_DATAZOOM_WAIT_MS = 12000
 const DEFAULT_SCENARIOS = ['chart-hover-tooltip', 'legend-toggle', 'datazoom-drag']
 const LEGEND_EVENT_NAME = 'legendselectchanged'
 const DEFAULT_BILLBOARD_PARAMS = {
@@ -40,6 +42,7 @@ const VIEWPORT = {
 function parseArgs(argv) {
   const args = {
     baseUrl: DEFAULT_BASE_URL,
+    apiBaseUrl: null,
     scenarios: DEFAULT_SCENARIOS,
     waitMs: DEFAULT_WAIT_MS,
     output: null,
@@ -49,6 +52,7 @@ function parseArgs(argv) {
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i]
     if (arg === '--base-url') args.baseUrl = argv[++i]
+    else if (arg === '--api-base-url') args.apiBaseUrl = argv[++i]
     else if (arg === '--scenario' || arg === '--scenarios') {
       args.scenarios = argv[++i].split(',').map((scenario) => scenario.trim()).filter(Boolean)
     } else if (arg === '--wait-ms') args.waitMs = Number(argv[++i])
@@ -77,6 +81,7 @@ function printHelp() {
 
 Options:
   --base-url <url>        Frontend URL, default ${DEFAULT_BASE_URL}
+  --api-base-url <url>    API URL for dynamic fixture discovery, defaults to --base-url
   --scenario <a,b,c>      Comma-separated scenarios, default ${DEFAULT_SCENARIOS.join(',')}
   --wait-ms <ms>          Max wait for route/text assertions, default ${DEFAULT_WAIT_MS}
   --output <path>         Write JSON results to a file
@@ -530,31 +535,33 @@ const SCENARIOS = {
   },
 
   'legend-toggle': async ({ client, baseUrl, waitMs }) => {
+    const scenarioWaitMs = Math.max(waitMs, DEFAULT_ACCOUNT_CHART_WAIT_MS)
     await navigate(client, baseUrl, '/account')
-    await waitForText(client, '收藏生命周期', waitMs)
-    await waitForCanvasCount(client, 2, waitMs)
-    return clickLegendUntilCanvasDelta(client, 1, waitMs)
+    await waitForText(client, '收藏生命周期', scenarioWaitMs)
+    await waitForCanvasCount(client, 2, scenarioWaitMs)
+    return clickLegendUntilCanvasDelta(client, 1, scenarioWaitMs)
   },
 
-  'datazoom-drag': async ({ client, baseUrl, waitMs }) => {
-    const target = await resolveDataZoomPath(baseUrl)
+  'datazoom-drag': async ({ client, baseUrl, apiBaseUrl, waitMs }) => {
+    const scenarioWaitMs = Math.max(waitMs, DEFAULT_DATAZOOM_WAIT_MS)
+    const target = await resolveDataZoomPath(apiBaseUrl)
     await navigate(client, baseUrl, target.path)
-    await waitForText(client, target.readyText, waitMs)
-    await clickText(client, '榜单成绩', waitMs)
-    await waitForText(client, target.marker, waitMs)
-    await clickText(client, '细节', waitMs)
-    await waitForCanvasCount(client, 1, waitMs)
-    return { ...(await dragDataZoomUntilCanvasDelta(client, 0, waitMs)), target: target.label }
+    await waitForText(client, target.readyText, scenarioWaitMs)
+    await clickText(client, '榜单成绩', scenarioWaitMs)
+    await waitForText(client, target.marker, scenarioWaitMs)
+    await clickText(client, '细节', scenarioWaitMs)
+    await waitForCanvasCount(client, 1, scenarioWaitMs)
+    return { ...(await dragDataZoomUntilCanvasDelta(client, 0, scenarioWaitMs)), target: target.label }
   },
 }
 
-async function runScenario({ port, baseUrl, scenario, waitMs }) {
+async function runScenario({ port, baseUrl, apiBaseUrl, scenario, waitMs }) {
   const client = await makeClient(port)
   const { consoleEntries, pageErrors } = collectConsole(client)
 
   try {
     await setupPage(client)
-    const evidence = await SCENARIOS[scenario]({ client, baseUrl, waitMs })
+    const evidence = await SCENARIOS[scenario]({ client, baseUrl, apiBaseUrl, waitMs })
     const consoleErrors = consoleEntries.filter((entry) => ['error', 'assert'].includes(entry.level))
     const consoleWarnings = consoleEntries.filter((entry) => ['warning', 'warn'].includes(entry.level))
     const finalState = await pageState(client)
@@ -681,6 +688,7 @@ async function main() {
       const result = await runScenario({
         port,
         baseUrl: args.baseUrl,
+        apiBaseUrl: args.apiBaseUrl || args.baseUrl,
         scenario,
         waitMs: args.waitMs,
       })

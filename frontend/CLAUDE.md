@@ -126,11 +126,12 @@ Web Vitals lab 采样使用根目录脚本：
 node scripts/frontend_route_smoke.mjs --viewport both --max-scroll-overflow 0
 node scripts/frontend_interaction_smoke.mjs --base-url http://127.0.0.1:5173
 node scripts/frontend_chart_interaction_smoke.mjs --base-url http://127.0.0.1:5173
+node scripts/frontend_chart_interaction_smoke.mjs --base-url http://127.0.0.1:4173 --api-base-url http://127.0.0.1:8000
 node scripts/frontend_cross_browser_smoke.mjs --base-url http://127.0.0.1:5173
 node scripts/frontend_web_vitals_probe.mjs --routes /,/analysis/stats,/analysis/charts,/billboard/number-ones,/account,/settings --viewport both --wait-ms 5000
 ```
 
 `frontend_route_smoke.mjs` 默认等待 5 秒，并对 13 个核心路由检查业务内容 marker；自定义临时路由可用 `--disable-route-markers` 关闭 marker 检查。
 `frontend_interaction_smoke.mjs` 覆盖分析页 tab、Billboard 子路由/前进后退、AI Insights 报告/问答 tab（含未配置 LLM 空状态）与主题切换，dev server 和生产 preview 都应保持 0 console error、0 page error、0 横向溢出。
-`frontend_chart_interaction_smoke.mjs` 覆盖 ECharts tooltip hover、legend toggle 与 dataZoom drag，默认从真实 `/api/billboard/all-time` 响应动态选择长榜艺人；dev server 应保持 0 console error/warning、0 page error、0 横向溢出。
+`frontend_chart_interaction_smoke.mjs` 覆盖 ECharts tooltip hover、legend toggle 与 dataZoom drag，默认从真实 `/api/billboard/all-time` 响应动态选择长榜艺人；生产 preview 用 `--api-base-url http://127.0.0.1:8000` 分离静态页面与后端 API。dev server 和生产 preview 都应保持 0 console error/warning、0 page error、0 横向溢出。
 `frontend_cross_browser_smoke.mjs` 使用 Python Playwright API 跑 Chromium、Firefox、WebKit（Safari-family）三引擎；若默认 `python` 不能 `import playwright.sync_api`，用 `PYTHON_PLAYWRIGHT=/path/to/python` 或 `--python` 指定。
