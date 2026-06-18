@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import RedirectResponse
 
 from backend.core.auth import require_auth
+from backend.core.db import get_db
 from backend.core.spotify_utils import (
     clear_user_tokens,
     get_followed_artists,
@@ -106,9 +107,13 @@ def spotify_data(conn: Connection = Depends(get_conn)):
 
 
 @router.get("/playing")
-def spotify_playing(conn: Connection = Depends(get_conn)):
+def spotify_playing():
     """Get current playback state (live from Spotify)."""
-    return get_live_playback(conn)
+    write_conn = get_db(readonly=False)
+    try:
+        return get_live_playback(write_conn)
+    finally:
+        write_conn.close()
 
 
 @router.post("/sync-all")
