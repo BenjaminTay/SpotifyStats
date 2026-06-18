@@ -123,7 +123,7 @@ class TestPlayService:
 
         conn = get_db()
         try:
-            data = get_behavior_data(conn, min_ms=30000, music_only=True, merge_enabled=True)
+            data = get_behavior_data(conn, music_only=True)
             assert len(data["reason_end"]) >= 5
             assert len(data["reason_start"]) >= 5
             assert len(data["fwdbtn_by_hour"]) == 24

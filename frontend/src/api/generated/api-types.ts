@@ -5781,16 +5781,8 @@ export interface operations {
     behavior_analysis_api_behavior_get: {
         parameters: {
             query?: {
-                /** @description 最短播放时长 (毫秒) */
-                min_ms?: number;
                 /** @description 仅音乐 */
                 music_only?: boolean;
-                /** @description 合并连续播放 */
-                merge_enabled?: boolean;
-                /** @description 使用动态有效播放阈值 */
-                dynamic_threshold?: boolean;
-                /** @description 连续播放最大合并间隔 (分钟) */
-                max_merge_gap_minutes?: number | null;
                 readonly?: boolean;
             };
             header?: never;
@@ -6816,6 +6808,8 @@ export interface operations {
     rebuild_aggregations_api_settings_rebuild_agg_post: {
         parameters: {
             query?: {
+                dynamic_threshold?: boolean;
+                max_merge_gap_minutes?: number | null;
                 readonly?: boolean;
             };
             header?: never;
@@ -10185,9 +10179,7 @@ export interface operations {
     };
     spotify_playing_api_spotify_auth_playing_get: {
         parameters: {
-            query?: {
-                readonly?: boolean;
-            };
+            query?: never;
             header?: never;
             path?: never;
             cookie?: never;
@@ -10201,15 +10193,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

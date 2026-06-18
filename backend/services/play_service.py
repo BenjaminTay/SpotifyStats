@@ -856,9 +856,7 @@ def get_wrapped_data(
 
 def get_behavior_data(
     conn: sqlite3.Connection,
-    min_ms: int,
-    music_only: bool,
-    merge_enabled: bool,
+    music_only: bool = True,
 ) -> dict:
     """Playback behavior analysis (skip/forward/shuffle/platform usage)."""
     # Behavior analysis uses unfiltered data

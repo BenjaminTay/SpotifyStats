@@ -272,7 +272,7 @@ export const analysisApi = {
     )
   },
   behavior: (filters: AnalysisFilters) => {
-    const q = playParams(filters)
+    const q = { music_only: filters.music_only }
     return fetchQuery(
       queryKeys.analysis.timeline('behavior', q),
       () => api.get<BehaviorResponse>('/behavior', q),

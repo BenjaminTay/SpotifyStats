@@ -15,6 +15,8 @@ import {
   useDeleteSession,
 } from '@/hooks/useAiInsights'
 import { useSettings } from '@/hooks/useSettings'
+import { analysisApi } from '@/hooks/useAnalysis'
+import { queryClient } from '@/api/query-client'
 
 function createClient() {
   return new QueryClient({
@@ -116,6 +118,31 @@ describe('Phase 5 query hook migration', () => {
 
     act(() => result.current.refetch())
     await waitFor(() => expect(api.get).toHaveBeenCalledTimes(3))
+  })
+
+  it('requests behavior data with only effective behavior filters', async () => {
+    queryClient.clear()
+    vi.spyOn(api, 'get').mockResolvedValue({
+      reason_end: [],
+      reason_start: [],
+      fwdbtn_by_hour: [],
+      most_forwarded: [],
+      platform_monthly: [],
+      platform_hourly: [],
+      shuffle_rate_by_platform: [],
+      shuffle_monthly: [],
+    })
+
+    await analysisApi.behavior({
+      min_ms: 1000,
+      music_only: false,
+      merge_enabled: false,
+      dynamic_threshold: true,
+      max_merge_gap_minutes: 30,
+      merge_level: 3,
+    })
+
+    expect(api.get).toHaveBeenCalledWith('/behavior', { music_only: false })
   })
 })
 

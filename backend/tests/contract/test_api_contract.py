@@ -70,6 +70,16 @@ class TestBehaviorEndpoints:
         for key in ["reason_end", "reason_start", "fwdbtn_by_hour"]:
             assert key in data
 
+    def test_behavior_openapi_only_exposes_effective_filters(self):
+        from backend.main import app
+
+        operation = app.openapi()["paths"]["/api/behavior"]["get"]
+        query_params = {
+            param["name"] for param in operation.get("parameters", []) if param["in"] == "query"
+        }
+
+        assert query_params == {"music_only", "readonly"}
+
 
 class TestListeningHoursEndpoints:
     def test_heatmap_structure(self, client):

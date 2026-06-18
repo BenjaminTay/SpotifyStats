@@ -111,7 +111,7 @@ DEFAULT_SAFE_GET_CASES: tuple[SmokeCase, ...] = (
         "/api/leaderboard",
         {**DEFAULT_FILTERS, "entity": "track", "metric": "plays", "top_n": 10},
     ),
-    SmokeCase("behavior", "/api/behavior", DEFAULT_FILTERS),
+    SmokeCase("behavior", "/api/behavior", {"music_only": True}),
     SmokeCase("listening_heatmap", "/api/listening-hours/heatmap", DEFAULT_FILTERS),
     SmokeCase("listening_yearly", "/api/listening-hours/yearly", DEFAULT_FILTERS),
     SmokeCase("listening_late_night", "/api/listening-hours/late-night", DEFAULT_FILTERS),
