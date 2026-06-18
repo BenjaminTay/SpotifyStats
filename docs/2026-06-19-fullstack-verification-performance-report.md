@@ -4,9 +4,9 @@
 
 ## 结论
 
-- 后端全量测试通过：`572 passed, 2 warnings in 60.43s`
+- 后端全量测试通过：`575 passed, 2 warnings in 63.17s`
 - 前端测试与构建通过：`125 passed`，`npm run build` 通过
-- Phase 5 最低验证矩阵通过：unit `234 passed`，contract `138 passed`，前端 test/build 通过
+- Phase 5 最低验证矩阵通过：unit `234 passed`，contract `141 passed`，前端 test/build 通过
 - pre-commit 通过：ruff、ruff format、mypy、detect-secrets 全部通过
 - 浏览器路由冒烟通过：12 个核心路由在 1280px 桌面与 390px 移动端均无错误 overlay、无页面级横向滚动；补充 Playwright CLI 采样 24 个路由/视口组合，控制台 error 为 0
 - 可复跑只读 API smoke 通过：`scripts/api_smoke_probe.py` 覆盖 91 个本地只读 GET 请求，全部返回预期状态并带 `X-Request-ID`；OpenAPI GET 核算 `90/104 covered, 14 excluded, 0 unaccounted`
@@ -65,6 +65,7 @@ Billboard summaries 补充实现：`compute_artist_track_counts()` 与 `compute_
 - API smoke：`scripts/api_smoke_probe.py` 在真实本地库通过 91/91 个本地只读 GET 请求，覆盖 Dashboard、Analysis、Timeline、Leaderboard、Billboard、Release Cycle、Music Entity、Community、Version Merge、Account、AI Insights、Chat、Admin、Job、Spotify status/data，并逐项验证 `X-Request-ID`；OpenAPI GET 核算 `90/104 covered, 14 excluded, 0 unaccounted`，默认列表排除歌词检索、AI 生成、enrichment、OAuth callback/login、live playback 与静态封面等会触发外部网络、浏览器态或非稳定本地 artifact 的路径。
 - Chat mutation probe：contract 临时 DB 覆盖 `/api/chat/sessions` 创建、消息写入、详情读取、标题更新、列表读取、删除后读取，以及非法 role 422 边界。
 - Settings mutation probe：contract 临时 DB 覆盖设置更新持久化与密钥脱敏、越界设置 422、LLM profile 创建/重复名/读取/列表/更新/应用/删除，以及缺表场景下清翻译缓存幂等返回。
+- Import job probe：contract 测试用同步 fake thread 验证 `/api/import/streaming` 与 `/api/import/account` 的 job_id 返回、进度回调、完成状态、account 嵌套结果摘要，以及 streaming 导入异常时的 error 状态。
 - 导入/WAL probe：临时 JSON + 临时 SQLite 验证音频/视频缺元数据记录不会中断导入，featured artist 写入 `track_artists`，空来源写入 `source_album_id IS NULL`；临时 DB 验证 WAL 下读事务快照不阻塞独立写提交，新读连接可见提交后数据。
 - 前端交互 probe：Playwright CLI 覆盖 12 路由 × 2 视口；`/analysis/stats` 与 `/analysis/charts` 的 `role=tab` 切换后无错误；Billboard 路由执行 `/billboard` → `/number-ones` → `/all-time` → `/records` 并通过浏览器后退/前进验证路由状态，控制台 error 为 0。
 - Web Vitals lab probe（Vite dev server + headless Chrome + CDP）：6 路由 × 桌面/390px 移动端；最终采样 CLS 全部 0，合成点击 FID 0.7-3.6ms，TBT 全部 0ms，非账号页 LCP 416-896ms，账号页 LCP 2,132ms（桌面）/ 2,320ms（移动）。
@@ -94,14 +95,14 @@ Billboard summaries 补充实现：`compute_artist_track_counts()` 与 `compute_
 
 | 目标项 | 当前证据 | 状态 |
 | --- | --- | --- |
-| 后端现有测试全量通过 | `pytest backend/tests/ -q`：`572 passed, 2 warnings in 60.43s` | 已自动验证 |
+| 后端现有测试全量通过 | `pytest backend/tests/ -q`：`575 passed, 2 warnings in 63.17s` | 已自动验证 |
 | OpenAPI/核心 API 只读覆盖 | 122 paths / 134 operations schema 存在；91 个可复跑只读请求覆盖 Dashboard、Billboard、Analysis、Community、AI Insights、Account、Settings、Spotify status/data；OpenAPI GET 核算 0 unaccounted | 已覆盖只读核心路径；mutation/破坏性端点未逐一实打 |
 | Extended Streaming History 完整导入 | 新增临时 JSON 导入测试覆盖音频、视频、缺元数据、featured artist、预聚合 | 已自动验证最小完整流程 |
 | 多版本与 Billboard 语义 | contract/full tests 覆盖 Version Merge、Album Project、Power Score、播放过滤参数传播与 Billboard invariants | 已自动验证 |
 | SQLite WAL 并发读写 | 新增临时 DB WAL reader snapshot + writer commit 测试 | 已自动验证 |
 | OAuth/加密/缓存/Job Queue/Request ID | AES、cache manager、job queue 单测；API smoke 验证 `X-Request-ID`；Spotify status/data 只读 200；当前播放端点 token refresh 写入边界有 unit test | 自动验证基础设施；真实 OAuth 外部授权未闭环 |
 | 前端路由与响应式 | Playwright CLI 12 路由 × 桌面/390px 移动端，无错误文案、无横向溢出、控制台 error 为 0；图表入口由架构护栏防止回退到完整 ECharts/OpenCC 默认包；Web Vitals lab 覆盖 6 路由 × 2 视口 | 已自动验证主路径 |
-| 前端交互 / 本地 mutation | 分析页 Tab、Billboard 前进/后退路由、长列表可见分页按钮采样；Chat CRUD、Settings 更新、LLM profile CRUD/apply、清翻译缓存在 contract 临时 DB 自动验证 | 部分自动验证；所有按钮/表单/ECharts 细交互未逐项人工穷尽 |
+| 前端交互 / 本地 mutation | 分析页 Tab、Billboard 前进/后退路由、长列表可见分页按钮采样；Chat CRUD、Settings 更新、LLM profile CRUD/apply、清翻译缓存、Import job 启动/状态在 contract 临时环境自动验证 | 部分自动验证；所有按钮/表单/ECharts 细交互未逐项人工穷尽 |
 | 性能优化 | records profile、API 冷/热请求、build/import、bundle chunk、Web Vitals lab 与账号页资源/TBT 均有前后对比 | 已量化关键瓶颈；仍缺真实 RUM 与生产静态托管 Lighthouse |
 
 ## 验证命令
@@ -128,6 +129,7 @@ sh scripts/phase5_check.sh
 .venv/bin/pytest backend/tests/unit/test_api_smoke_probe_script.py backend/tests/unit/test_spotify_auth_api.py backend/tests/contract/test_api_smoke_probe.py -q
 .venv/bin/pytest backend/tests/contract/test_chat_api_crud.py -q
 .venv/bin/pytest backend/tests/contract/test_settings_api_mutations.py -q
+.venv/bin/pytest backend/tests/contract/test_import_api_jobs.py -q
 cd frontend && npm test -- src/tests/phase5-architecture.test.ts -t "Chinese conversion"
 cd frontend && npm test -- src/tests/phase5-architecture.test.ts -t "lightweight ECharts"
 cd frontend && npm test -- src/tests/phase5-architecture.test.ts -t "account chemistry"
@@ -141,7 +143,7 @@ git diff --check
 - 生产构建仍提示两个大懒加载 chunk：`cn2t-DJnOUolw.js` gzip 457.19KB、`EChartsTheme-*.js` gzip 225.67KB。旧 `full-yTi_27TG.js` 与 `esm-CBcusPEn.js` 已消除；剩余体积分别来自繁体词典和当前图表能力集合，未牺牲简繁转换语义或图表功能继续强拆。
 - 未执行真实 ngrok + Spotify OAuth 浏览器授权闭环；已验证 `/api/spotify/auth/status` 与 `/api/spotify/auth/data` 只读端点返回 200 和 request id，并修复 `/api/spotify/auth/playing` token refresh 写连接问题。
 - 未在 Firefox/Safari 真机浏览器中执行同等交互；当前浏览器自动化证据来自本地 Chromium/Playwright CLI 与前端测试。
-- 未逐一实打所有破坏性或外部依赖端点，例如断开 Spotify、导入生产数据、同步远程账号数据等，避免污染本地真实状态；本地 Settings/Chat mutation 已通过 contract 临时 DB 覆盖。
+- 未逐一实打所有破坏性或外部依赖端点，例如断开 Spotify、导入生产数据、同步远程账号数据等，避免污染本地真实状态；本地 Settings/Chat mutation 与 Import job 调度已通过 contract 临时环境覆盖。
 - Web Vitals 已用 headless Chrome lab probe 采集 LCP/CLS/合成 FID/TBT；仍未采集真实用户 RUM、Firefox/Safari Web Vitals，也未在生产静态托管环境跑 Lighthouse。
 
 ## 10 分钟快速验证

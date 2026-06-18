@@ -87,7 +87,7 @@ FastAPI 后端采用四层分离：**api/**（路由 + Depends 依赖注入）�
 
 ## 测试策略
 
-三层 pytest markers：`unit`（纯函数，无 DB，~5s）→ `contract`（seed DB 结构验证，~1s）→ `integration`（真实数据只读，~80s）。当前基线：unit 234 / contract 138 / backend full 572。补充只读 API smoke 使用 `.venv/bin/python scripts/api_smoke_probe.py`，覆盖 91 个本地 GET、验证 `X-Request-ID`，并核算 OpenAPI GET 覆盖（未核算路径必须为 0）。本地 mutation 优先在 contract 临时 DB 里验证，例如 Chat CRUD、Settings 更新与 LLM profile CRUD/apply。
+三层 pytest markers：`unit`（纯函数，无 DB，~5s）→ `contract`（seed DB 结构验证，~1s）→ `integration`（真实数据只读，~80s）。当前基线：unit 234 / contract 141 / backend full 575。补充只读 API smoke 使用 `.venv/bin/python scripts/api_smoke_probe.py`，覆盖 91 个本地 GET、验证 `X-Request-ID`，并核算 OpenAPI GET 覆盖（未核算路径必须为 0）。本地 mutation 优先在 contract 临时 DB 里验证，例如 Chat CRUD、Settings 更新、LLM profile CRUD/apply 与 Import job 调度。
 
 Contract 测试使用 canonical `backend/tests/fixtures/seed.db` 的临时副本，teardown 必须清除所有 `@lru_cache` 并删除临时 WAL/SHM sidecar；`autouse` fixture `disable_warmup` 通过 monkeypatch `SPOTIFY_STATS_WARMUP=0` 阻止后台预热。
 
