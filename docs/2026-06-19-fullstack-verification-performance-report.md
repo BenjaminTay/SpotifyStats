@@ -5,7 +5,7 @@
 ## 结论
 
 - 后端全量测试通过：`586 passed, 2 warnings in 62.86s`
-- 前端测试与构建通过：`128 passed`，`npm run build` 通过
+- 前端测试与构建通过：`129 passed`，`npm run build` 通过
 - Phase 5 最低验证矩阵通过：unit `239 passed`，contract `147 passed`，前端 test/build 通过
 - pre-commit 通过：ruff、ruff format、mypy、detect-secrets 全部通过
 - 浏览器路由冒烟通过：`scripts/frontend_route_smoke.mjs` 覆盖 13 个核心路由 × 1280px 桌面/390px 移动端共 26 个组合，console error/warning、page error 与页面级横向滚动均为 0
@@ -24,8 +24,10 @@
 | P2 | `PUT /api/settings` 接受越界统计配置 | 负数 `min_ms`、过小/过大的 Billboard Top N、非法周起始日/小时会被写入设置并污染后续统计 | `SettingsUpdateRequest` 补齐与查询参数一致的 `ge/le` 约束，新增 422 边界 contract 测试 |
 | P2 | `/api/settings/clear-translation-cache` 在新库或 seed 库缺少 `wikipedia_cache` 表时 500 | 首次使用设置页清缓存可能返回内部错误，无法作为幂等维护操作 | 清理前 `CREATE TABLE IF NOT EXISTS wikipedia_cache`，新增 contract 测试验证缺表时返回 `deleted_count` |
 | P2 | AI Insights 周报/月报/年度叙事/自由问答暴露 `dynamic_threshold` 与 `max_merge_gap_minutes` 但未传入最终计数管线 | 用户在设置页启用动态阈值或 Session 合并边界后，AI 报告可能继续按旧播放口径解读数据；不同过滤口径还可能撞到同一份报告缓存 | `backend/api/ai_insights.py` 透传 `PlayFilters` 新字段，`ai_insights_service.py` 将参数传入 `load_period_plays()` 与 `get_wrapped_full()`，并把过滤指纹纳入报告 cache key；新增离线 unit/contract 测试覆盖 5 个 AI Insights 端点、服务链路和 cache key 分流 |
+| P3 | AI Insights 报告生成后用 readonly 请求连接写报告缓存 | 页面/API 返回 200，但后端日志出现 `AI report cache write failed` warning + traceback，且新报告无法写入缓存 | `_set_cache()` 遇到 readonly 连接时用短生命周期 `get_db(readonly=False)` 重试缓存写入；保留其它 SQLite 写入错误的 warning，新增 unit 测试锁定不再记录 readonly warning |
 | P3 | `/api/behavior` 复用 `PlayFilters`，OpenAPI 暴露 `min_ms`、`merge_enabled`、`dynamic_threshold`、`max_merge_gap_minutes` 等无效参数 | 行为分析按设计使用全量事件；这些参数不会改变结果，却会误导 API 使用者并让前端过滤变化触发无效 refetch | 后端只声明有效的 `music_only` 参数，前端 behavior 请求/query key 收窄到 `music_only`，同步 OpenAPI snapshot/types；新增 contract 与前端 hook 测试 |
 | P3 | AI Insights 会话列表把整行选择按钮包住删除按钮 | React 19 在 `/ai-insights` 输出 invalid DOM nesting console error，浏览器路由冒烟无法做到 0 console error，且嵌套交互对辅助技术不友好 | `ChatSessionList` 改为非交互行容器，左侧会话选择按钮与右侧删除/确认按钮做兄弟节点，并补充组件测试锁定无 `button button` 嵌套和删除交互 |
+| P3 | AI Insights 周快捷选项在 latest listening range 加载前可能生成相同 value key | `/ai-insights` 桌面首屏偶发 React duplicate key console error，route smoke 可能失败 | `QuickPills` 改用 `label:value` 复合 key，保留两个语义不同的快捷按钮；新增组件测试覆盖重复 value 不应产生 console error |
 | P2 | 390px 移动端页面可横向滚动 47.5px | `/analysis/stats`、`/analysis/charts` 等页面移动端体验不稳 | `AppLayout` 增加页面级 `overflow-x-clip`，Masthead nav 增加 `basis-full/max-w-full`，Dashboard skeleton 改为 `w-full max-w-*` |
 | P2 | pre-commit ruff hook 扫描冻结 Streamlit `app/` 与旧脚本 | `pre-commit run --all-files` 因历史页名/未用变量失败 | `.pre-commit-config.yaml` 将 ruff 与 ruff-format 限定到 `backend/`，与项目日常质量命令一致 |
 
@@ -69,10 +71,10 @@ Billboard summaries 补充实现：`compute_artist_track_counts()` 与 `compute_
 - Chat mutation probe：contract 临时 DB 覆盖 `/api/chat/sessions` 创建、消息写入、详情读取、标题更新、列表读取、删除后读取，以及非法 role 422 边界。
 - Settings mutation probe：contract 临时 DB 覆盖设置更新持久化与密钥脱敏、越界设置 422、LLM profile 创建/重复名/读取/列表/更新/应用/删除，以及缺表场景下清翻译缓存幂等返回。
 - Import job probe：contract 测试用同步 fake thread 验证 `/api/import/streaming` 与 `/api/import/account` 的 job_id 返回、进度回调、完成状态、account 嵌套结果摘要，以及 streaming 导入异常时的 error 状态。
-- AI Insights contract probe：离线 monkeypatch 服务层，覆盖周报/月报/年度叙事/自由问答对 `min_ms`、`music_only`、`merge_enabled`、`dynamic_threshold`、`max_merge_gap_minutes` 的透传，并验证 `LLM 未配置` 映射为 503；unit 层覆盖生成报告与自由问答继续把过滤参数传入数据抓取链路，且报告缓存 key 会随过滤口径变化。
+- AI Insights contract probe：离线 monkeypatch 服务层，覆盖周报/月报/年度叙事/自由问答对 `min_ms`、`music_only`、`merge_enabled`、`dynamic_threshold`、`max_merge_gap_minutes` 的透传，并验证 `LLM 未配置` 映射为 503；unit 层覆盖生成报告与自由问答继续把过滤参数传入数据抓取链路、报告缓存 key 会随过滤口径变化，且 readonly 请求连接会用可写连接完成报告缓存写入。
 - Behavior API probe：contract 测试锁定 `/api/behavior` OpenAPI 只暴露 `music_only` 和连接依赖的 `readonly`；前端 query hook 测试锁定 behavior 请求只发送 `music_only`，避免全局播放过滤变化导致无意义 refetch。
 - 导入/WAL probe：临时 JSON + 临时 SQLite 验证音频/视频缺元数据记录不会中断导入，featured artist 写入 `track_artists`，空来源写入 `source_album_id IS NULL`；临时 DB 验证 WAL 下读事务快照不阻塞独立写提交，新读连接可见提交后数据。
-- 前端 route smoke probe：新增 `scripts/frontend_route_smoke.mjs`，通过 headless Chrome CDP 覆盖 `/`、Analysis、Yearly Review、Billboard 4 页、Community、AI Insights、Account、Settings 共 13 路由 × 桌面/移动 26 个组合；最终采样 PASS 26/26，console error/warning/page error 全 0，scroll overflow 全 0px。首轮探针先暴露 AI Insights 嵌套按钮 console error，修复后复跑全绿。
+- 前端 route smoke probe：新增 `scripts/frontend_route_smoke.mjs`，通过 headless Chrome CDP 覆盖 `/`、Analysis、Yearly Review、Billboard 4 页、Community、AI Insights、Account、Settings 共 13 路由 × 桌面/移动 26 个组合；最终采样 PASS 26/26，console error/warning/page error 全 0，scroll overflow 全 0px。首轮探针暴露 AI Insights 嵌套按钮与重复 key console error，修复后复跑全绿。
 - 前端交互 probe：`/analysis/stats` 与 `/analysis/charts` 的 `role=tab` 切换后无错误；Billboard 路由执行 `/billboard` → `/number-ones` → `/all-time` → `/records` 并通过浏览器后退/前进验证路由状态，控制台 error 为 0。
 - Web Vitals lab probe（Vite dev server + headless Chrome + CDP）：6 路由 × 桌面/390px 移动端；最终采样 CLS 全部 0，合成点击 FID 0.7-3.6ms，TBT 全部 0ms，非账号页 LCP 416-896ms，账号页 LCP 2,132ms（桌面）/ 2,320ms（移动）。
 - 文档同步：README、AGENTS、CLAUDE、backend/CLAUDE、frontend/CLAUDE 已更新 2026-06-19 验证报告、API smoke / route smoke 探针、Power Score 向量化、Behavior API 参数收窄、移动端横向滚动护栏、pre-commit 范围与最新测试基线。

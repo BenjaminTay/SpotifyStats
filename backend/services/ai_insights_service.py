@@ -15,6 +15,7 @@ import sqlite3
 from datetime import date, datetime, timedelta, timezone
 from typing import Any, Optional
 
+from backend.core.db import get_db
 from backend.providers.llm.client import LLMProvider
 from backend.services.llm_translator import PROVIDERS, _get_config
 
@@ -234,14 +235,34 @@ def _get_cached(
     return row["data"], fetched_at
 
 
+def _write_cache(conn: sqlite3.Connection, cache_key: str, content: str) -> None:
+    conn.execute(
+        "INSERT OR REPLACE INTO wikipedia_cache (cache_key, data, fetched_at) VALUES (?, ?, datetime('now'))",
+        (cache_key, content),
+    )
+    conn.commit()
+
+
+def _is_readonly_error(exc: sqlite3.Error) -> bool:
+    message = str(exc).lower()
+    return "readonly" in message or "read-only" in message
+
+
 def _set_cache(conn: sqlite3.Connection, cache_key: str, content: str) -> None:
     try:
-        conn.execute(
-            "INSERT OR REPLACE INTO wikipedia_cache (cache_key, data, fetched_at) VALUES (?, ?, datetime('now'))",
-            (cache_key, content),
-        )
-        conn.commit()
-    except sqlite3.Error:
+        _write_cache(conn, cache_key, content)
+    except sqlite3.Error as exc:
+        if _is_readonly_error(exc):
+            write_conn = None
+            try:
+                write_conn = get_db(readonly=False)
+                _write_cache(write_conn, cache_key, content)
+            except sqlite3.Error:
+                logger.warning("AI report cache write failed", exc_info=True)
+            finally:
+                if write_conn is not None:
+                    write_conn.close()
+            return
         logger.warning("AI report cache write failed", exc_info=True)
 
 

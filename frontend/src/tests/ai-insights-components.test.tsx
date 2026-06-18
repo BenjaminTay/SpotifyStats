@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 
+import { AiInsightsTimeSelectors } from '@/features/ai-insights/AiInsightsTimeSelectors'
 import { ChatSessionList } from '@/features/ai-insights/ChatSessionList'
 import type { ChatSession } from '@/types/ai-insights'
 
@@ -54,5 +55,46 @@ describe('ChatSessionList', () => {
 
     fireEvent.click(screen.getByText('删除'))
     expect(onDelete).toHaveBeenCalledWith(1)
+  })
+})
+
+describe('AiInsightsTimeSelectors', () => {
+  it('does not emit duplicate key errors when quick options share a date range', () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    render(
+      <AiInsightsTimeSelectors
+        reportType="weekly"
+        weekStart="2026-06-13"
+        weekEnd="2026-06-19"
+        onWeekChange={() => {}}
+        weekPickerOpen={false}
+        onWeekPickerOpenChange={() => {}}
+        latestDate={null}
+        weeklyQuickOptions={[
+          { label: '前 7 天', value: '2026-06-13_2026-06-19' },
+          { label: '近 7 天', value: '2026-06-13_2026-06-19' },
+        ]}
+        weeklyQuickValue="2026-06-13_2026-06-19"
+        onWeeklyQuick={() => {}}
+        month="2026-06"
+        onMonthChange={() => {}}
+        monthPickerOpen={false}
+        onMonthPickerOpenChange={() => {}}
+        monthlyQuickOptions={[]}
+        onMonthlyQuick={() => {}}
+        year={2026}
+        onYearChange={() => {}}
+        nowYear={2026}
+        yearlyQuickOptions={[]}
+        onYearlyQuick={() => {}}
+      />,
+    )
+
+    expect(consoleError).not.toHaveBeenCalledWith(
+      expect.stringContaining('Encountered two children with the same key'),
+      expect.anything(),
+    )
+    consoleError.mockRestore()
   })
 })

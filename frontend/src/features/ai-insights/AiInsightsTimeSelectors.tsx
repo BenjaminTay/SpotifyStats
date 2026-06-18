@@ -68,7 +68,7 @@ function QuickPills({
     <div className="flex flex-wrap gap-1">
       {options.map((opt) => (
         <button
-          key={opt.value}
+          key={`${opt.label}:${opt.value}`}
           onClick={() => onSelect(opt.value)}
           className={`rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.6px] transition-all ${
             current === opt.value

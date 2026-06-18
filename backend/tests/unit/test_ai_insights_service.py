@@ -75,10 +75,12 @@ class TestAiInsightsCachedReports:
             "tracks": ["Song A - Artist A"],
         }
 
-    def test_cache_write_failure_does_not_drop_generated_report(self):
+    def test_cache_write_uses_write_connection_when_request_connection_is_readonly(
+        self, monkeypatch, caplog
+    ):
         import sqlite3
 
-        from backend.services.ai_insights_service import _set_cache
+        from backend.services import ai_insights_service as svc
 
         class ReadonlyConn:
             def execute(self, *args, **kwargs):
@@ -87,7 +89,40 @@ class TestAiInsightsCachedReports:
             def commit(self):
                 raise AssertionError("commit should not run after failed execute")
 
-        _set_cache(ReadonlyConn(), "ai:report:weekly:test", "generated report")
+        class WriteConn:
+            def __init__(self):
+                self.executed = []
+                self.committed = False
+                self.closed = False
+
+            def execute(self, sql, params):
+                self.executed.append((sql, params))
+
+            def commit(self):
+                self.committed = True
+
+            def close(self):
+                self.closed = True
+
+        write_conn = WriteConn()
+
+        def fake_get_db(readonly=True):
+            assert readonly is False
+            return write_conn
+
+        monkeypatch.setattr(svc, "get_db", fake_get_db, raising=False)
+
+        svc._set_cache(ReadonlyConn(), "ai:report:weekly:test", "generated report")
+
+        assert write_conn.executed == [
+            (
+                "INSERT OR REPLACE INTO wikipedia_cache (cache_key, data, fetched_at) VALUES (?, ?, datetime('now'))",
+                ("ai:report:weekly:test", "generated report"),
+            )
+        ]
+        assert write_conn.committed is True
+        assert write_conn.closed is True
+        assert "AI report cache write failed" not in caplog.text
 
     def test_cache_read_failure_falls_back_to_uncached_generation(self):
         import sqlite3
