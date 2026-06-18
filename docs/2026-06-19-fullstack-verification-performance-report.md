@@ -4,11 +4,11 @@
 
 ## 结论
 
-- 后端全量测试通过：`584 passed, 2 warnings in 62.72s`
-- 前端测试与构建通过：`126 passed`，`npm run build` 通过
-- Phase 5 最低验证矩阵通过：unit `237 passed`，contract `147 passed`，前端 test/build 通过
+- 后端全量测试通过：`586 passed, 2 warnings in 62.86s`
+- 前端测试与构建通过：`128 passed`，`npm run build` 通过
+- Phase 5 最低验证矩阵通过：unit `239 passed`，contract `147 passed`，前端 test/build 通过
 - pre-commit 通过：ruff、ruff format、mypy、detect-secrets 全部通过
-- 浏览器路由冒烟通过：12 个核心路由在 1280px 桌面与 390px 移动端均无错误 overlay、无页面级横向滚动；补充 Playwright CLI 采样 24 个路由/视口组合，控制台 error 为 0
+- 浏览器路由冒烟通过：`scripts/frontend_route_smoke.mjs` 覆盖 13 个核心路由 × 1280px 桌面/390px 移动端共 26 个组合，console error/warning、page error 与页面级横向滚动均为 0
 - 可复跑只读 API smoke 通过：`scripts/api_smoke_probe.py` 覆盖 91 个本地只读 GET 请求，全部返回预期状态并带 `X-Request-ID`；OpenAPI GET 核算 `90/104 covered, 14 excluded, 0 unaccounted`
 
 ## 修复项
@@ -25,6 +25,7 @@
 | P2 | `/api/settings/clear-translation-cache` 在新库或 seed 库缺少 `wikipedia_cache` 表时 500 | 首次使用设置页清缓存可能返回内部错误，无法作为幂等维护操作 | 清理前 `CREATE TABLE IF NOT EXISTS wikipedia_cache`，新增 contract 测试验证缺表时返回 `deleted_count` |
 | P2 | AI Insights 周报/月报/年度叙事/自由问答暴露 `dynamic_threshold` 与 `max_merge_gap_minutes` 但未传入最终计数管线 | 用户在设置页启用动态阈值或 Session 合并边界后，AI 报告可能继续按旧播放口径解读数据；不同过滤口径还可能撞到同一份报告缓存 | `backend/api/ai_insights.py` 透传 `PlayFilters` 新字段，`ai_insights_service.py` 将参数传入 `load_period_plays()` 与 `get_wrapped_full()`，并把过滤指纹纳入报告 cache key；新增离线 unit/contract 测试覆盖 5 个 AI Insights 端点、服务链路和 cache key 分流 |
 | P3 | `/api/behavior` 复用 `PlayFilters`，OpenAPI 暴露 `min_ms`、`merge_enabled`、`dynamic_threshold`、`max_merge_gap_minutes` 等无效参数 | 行为分析按设计使用全量事件；这些参数不会改变结果，却会误导 API 使用者并让前端过滤变化触发无效 refetch | 后端只声明有效的 `music_only` 参数，前端 behavior 请求/query key 收窄到 `music_only`，同步 OpenAPI snapshot/types；新增 contract 与前端 hook 测试 |
+| P3 | AI Insights 会话列表把整行选择按钮包住删除按钮 | React 19 在 `/ai-insights` 输出 invalid DOM nesting console error，浏览器路由冒烟无法做到 0 console error，且嵌套交互对辅助技术不友好 | `ChatSessionList` 改为非交互行容器，左侧会话选择按钮与右侧删除/确认按钮做兄弟节点，并补充组件测试锁定无 `button button` 嵌套和删除交互 |
 | P2 | 390px 移动端页面可横向滚动 47.5px | `/analysis/stats`、`/analysis/charts` 等页面移动端体验不稳 | `AppLayout` 增加页面级 `overflow-x-clip`，Masthead nav 增加 `basis-full/max-w-full`，Dashboard skeleton 改为 `w-full max-w-*` |
 | P2 | pre-commit ruff hook 扫描冻结 Streamlit `app/` 与旧脚本 | `pre-commit run --all-files` 因历史页名/未用变量失败 | `.pre-commit-config.yaml` 将 ruff 与 ruff-format 限定到 `backend/`，与项目日常质量命令一致 |
 
@@ -71,9 +72,10 @@ Billboard summaries 补充实现：`compute_artist_track_counts()` 与 `compute_
 - AI Insights contract probe：离线 monkeypatch 服务层，覆盖周报/月报/年度叙事/自由问答对 `min_ms`、`music_only`、`merge_enabled`、`dynamic_threshold`、`max_merge_gap_minutes` 的透传，并验证 `LLM 未配置` 映射为 503；unit 层覆盖生成报告与自由问答继续把过滤参数传入数据抓取链路，且报告缓存 key 会随过滤口径变化。
 - Behavior API probe：contract 测试锁定 `/api/behavior` OpenAPI 只暴露 `music_only` 和连接依赖的 `readonly`；前端 query hook 测试锁定 behavior 请求只发送 `music_only`，避免全局播放过滤变化导致无意义 refetch。
 - 导入/WAL probe：临时 JSON + 临时 SQLite 验证音频/视频缺元数据记录不会中断导入，featured artist 写入 `track_artists`，空来源写入 `source_album_id IS NULL`；临时 DB 验证 WAL 下读事务快照不阻塞独立写提交，新读连接可见提交后数据。
-- 前端交互 probe：Playwright CLI 覆盖 12 路由 × 2 视口；`/analysis/stats` 与 `/analysis/charts` 的 `role=tab` 切换后无错误；Billboard 路由执行 `/billboard` → `/number-ones` → `/all-time` → `/records` 并通过浏览器后退/前进验证路由状态，控制台 error 为 0。
+- 前端 route smoke probe：新增 `scripts/frontend_route_smoke.mjs`，通过 headless Chrome CDP 覆盖 `/`、Analysis、Yearly Review、Billboard 4 页、Community、AI Insights、Account、Settings 共 13 路由 × 桌面/移动 26 个组合；最终采样 PASS 26/26，console error/warning/page error 全 0，scroll overflow 全 0px。首轮探针先暴露 AI Insights 嵌套按钮 console error，修复后复跑全绿。
+- 前端交互 probe：`/analysis/stats` 与 `/analysis/charts` 的 `role=tab` 切换后无错误；Billboard 路由执行 `/billboard` → `/number-ones` → `/all-time` → `/records` 并通过浏览器后退/前进验证路由状态，控制台 error 为 0。
 - Web Vitals lab probe（Vite dev server + headless Chrome + CDP）：6 路由 × 桌面/390px 移动端；最终采样 CLS 全部 0，合成点击 FID 0.7-3.6ms，TBT 全部 0ms，非账号页 LCP 416-896ms，账号页 LCP 2,132ms（桌面）/ 2,320ms（移动）。
-- 文档同步：README、AGENTS、CLAUDE、backend/CLAUDE、frontend/CLAUDE 已更新 2026-06-19 验证报告、API smoke 探针、Power Score 向量化、Behavior API 参数收窄、移动端横向滚动护栏、pre-commit 范围与最新测试基线。
+- 文档同步：README、AGENTS、CLAUDE、backend/CLAUDE、frontend/CLAUDE 已更新 2026-06-19 验证报告、API smoke / route smoke 探针、Power Score 向量化、Behavior API 参数收窄、移动端横向滚动护栏、pre-commit 范围与最新测试基线。
 
 ### Web Vitals Lab 采样
 
@@ -99,13 +101,13 @@ Billboard summaries 补充实现：`compute_artist_track_counts()` 与 `compute_
 
 | 目标项 | 当前证据 | 状态 |
 | --- | --- | --- |
-| 后端现有测试全量通过 | `pytest backend/tests/ -q`：`584 passed, 2 warnings in 62.72s` | 已自动验证 |
+| 后端现有测试全量通过 | `pytest backend/tests/ -q`：`586 passed, 2 warnings in 62.86s` | 已自动验证 |
 | OpenAPI/核心 API 只读覆盖 | 122 paths / 134 operations schema 存在；91 个可复跑只读请求覆盖 Dashboard、Billboard、Analysis、Community、AI Insights、Account、Settings、Spotify status/data；OpenAPI GET 核算 0 unaccounted | 已覆盖只读核心路径；mutation/破坏性端点未逐一实打 |
 | Extended Streaming History 完整导入 | 新增临时 JSON 导入测试覆盖音频、视频、缺元数据、featured artist、预聚合 | 已自动验证最小完整流程 |
 | 多版本与统计过滤语义 | contract/full tests 覆盖 Version Merge、Album Project、Power Score、AI Insights 播放过滤传播、Behavior 全量事件例外参数收窄、播放过滤参数传播与 Billboard invariants | 已自动验证 |
 | SQLite WAL 并发读写 | 新增临时 DB WAL reader snapshot + writer commit 测试 | 已自动验证 |
 | OAuth/加密/缓存/Job Queue/Request ID | AES、cache manager、job queue 单测；API smoke 验证 `X-Request-ID`；Spotify status/data 只读 200；当前播放端点 token refresh 写入边界有 unit test | 自动验证基础设施；真实 OAuth 外部授权未闭环 |
-| 前端路由与响应式 | Playwright CLI 12 路由 × 桌面/390px 移动端，无错误文案、无横向溢出、控制台 error 为 0；图表入口由架构护栏防止回退到完整 ECharts/OpenCC 默认包；Web Vitals lab 覆盖 6 路由 × 2 视口 | 已自动验证主路径 |
+| 前端路由与响应式 | `scripts/frontend_route_smoke.mjs` 覆盖 13 路由 × 桌面/390px 移动端，无页面错误、无 console error/warning、无横向溢出；图表入口由架构护栏防止回退到完整 ECharts/OpenCC 默认包；Web Vitals lab 覆盖 6 路由 × 2 视口 | 已自动验证主路径 |
 | 前端交互 / 本地 mutation | 分析页 Tab、Billboard 前进/后退路由、长列表可见分页按钮采样；Chat CRUD、Settings 更新、LLM profile CRUD/apply、清翻译缓存、Import job 启动/状态在 contract 临时环境自动验证 | 部分自动验证；所有按钮/表单/ECharts 细交互未逐项人工穷尽 |
 | 性能优化 | records profile、API 冷/热请求、build/import、bundle chunk、Web Vitals lab 与账号页资源/TBT 均有前后对比 | 已量化关键瓶颈；仍缺真实 RUM 与生产静态托管 Lighthouse |
 
@@ -136,11 +138,14 @@ sh scripts/phase5_check.sh
 .venv/bin/pytest backend/tests/contract/test_import_api_jobs.py -q
 .venv/bin/pytest backend/tests/unit/test_ai_insights_service.py backend/tests/unit/test_ai_insights_filter_propagation.py backend/tests/contract/test_ai_insights_contract.py -q
 .venv/bin/pytest backend/tests/contract/test_api_contract.py::TestBehaviorEndpoints -q
+.venv/bin/pytest backend/tests/unit/test_frontend_route_smoke_script.py -q
 cd frontend && npm test -- src/tests/query-hooks.test.tsx -t "requests behavior data"
+cd frontend && npm test -- src/tests/ai-insights-components.test.tsx
 cd frontend && npm test -- src/tests/phase5-architecture.test.ts -t "Chinese conversion"
 cd frontend && npm test -- src/tests/phase5-architecture.test.ts -t "lightweight ECharts"
 cd frontend && npm test -- src/tests/phase5-architecture.test.ts -t "account chemistry"
 cd frontend && ANALYZE=true npm run build
+node scripts/frontend_route_smoke.mjs --viewport both --wait-ms 2500 --max-scroll-overflow 0
 node scripts/frontend_web_vitals_probe.mjs --routes /,/analysis/stats,/analysis/charts,/billboard/number-ones,/account,/settings --viewport both --wait-ms 5000
 git diff --check
 ```
@@ -149,7 +154,7 @@ git diff --check
 
 - 生产构建仍提示两个大懒加载 chunk：`cn2t-DJnOUolw.js` gzip 457.19KB、`EChartsTheme-*.js` gzip 225.67KB。旧 `full-yTi_27TG.js` 与 `esm-CBcusPEn.js` 已消除；剩余体积分别来自繁体词典和当前图表能力集合，未牺牲简繁转换语义或图表功能继续强拆。
 - 未执行真实 ngrok + Spotify OAuth 浏览器授权闭环；已验证 `/api/spotify/auth/status` 与 `/api/spotify/auth/data` 只读端点返回 200 和 request id，并修复 `/api/spotify/auth/playing` token refresh 写连接问题。
-- 未在 Firefox/Safari 真机浏览器中执行同等交互；当前浏览器自动化证据来自本地 Chromium/Playwright CLI 与前端测试。
+- 未在 Firefox/Safari 真机浏览器中执行同等交互；当前浏览器自动化证据来自本地 headless Chromium CDP route smoke / Web Vitals lab 与前端测试。
 - 未逐一实打所有破坏性或外部依赖端点，例如断开 Spotify、导入生产数据、同步远程账号数据等，避免污染本地真实状态；本地 Settings/Chat mutation 与 Import job 调度已通过 contract 临时环境覆盖。
 - Web Vitals 已用 headless Chrome lab probe 采集 LCP/CLS/合成 FID/TBT；仍未采集真实用户 RUM、Firefox/Safari Web Vitals，也未在生产静态托管环境跑 Lighthouse。
 
@@ -163,4 +168,5 @@ git diff --check
 6. 访问 `/account`、`/settings`，确认账户数据和设置区块能渲染。
 7. 打开 `http://127.0.0.1:8000/docs`，快速试 `/api/health`、`/api/billboard/records`、`/api/spotify/auth/status`。
 8. 运行 `.venv/bin/python scripts/api_smoke_probe.py`，确认 91 个只读 GET 请求全绿。
-9. 运行 `sh scripts/phase5_check.sh`，确认最低矩阵仍全绿。
+9. 运行 `node scripts/frontend_route_smoke.mjs --viewport both --wait-ms 2500 --max-scroll-overflow 0`，确认 26 个路由/视口组合全绿。
+10. 运行 `sh scripts/phase5_check.sh`，确认最低矩阵仍全绿。

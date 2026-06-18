@@ -89,8 +89,7 @@ function SessionItem({
   const [confirming, setConfirming] = useState(false)
 
   return (
-    <button
-      onClick={onSelect}
+    <div
       className={`group w-full text-left px-2.5 py-2 rounded-lg transition-colors ${
         isActive
           ? 'bg-accent-foreground/8 border border-accent-foreground/15'
@@ -98,7 +97,7 @@ function SessionItem({
       }`}
     >
       <div className="flex items-start justify-between gap-1">
-        <div className="min-w-0 flex-1">
+        <button type="button" onClick={onSelect} className="min-w-0 flex-1 text-left">
           <p className="truncate text-[13px] font-medium text-foreground/85">
             {session.title}
           </p>
@@ -107,17 +106,20 @@ function SessionItem({
             <span>·</span>
             <span>{relativeTime(session.updated_at)}</span>
           </div>
-        </div>
+        </button>
 
         {confirming ? (
-          <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+          <div className="flex items-center gap-1 shrink-0">
             <button
+              type="button"
               onClick={() => { onDelete(); setConfirming(false) }}
               className="rounded px-1.5 py-0.5 text-[10px] font-semibold text-destructive hover:bg-destructive/10"
             >
               删除
             </button>
             <button
+              type="button"
+              aria-label="取消删除对话"
               onClick={() => setConfirming(false)}
               className="rounded p-0.5 text-muted-foreground/40 hover:text-foreground"
             >
@@ -126,13 +128,15 @@ function SessionItem({
           </div>
         ) : (
           <button
-            onClick={(e) => { e.stopPropagation(); setConfirming(true) }}
+            type="button"
+            aria-label="删除对话"
+            onClick={() => setConfirming(true)}
             className="opacity-0 group-hover:opacity-100 rounded p-0.5 text-muted-foreground/30 hover:text-destructive transition-opacity shrink-0"
           >
             <Trash2 className="h-3 w-3" />
           </button>
         )}
       </div>
-    </button>
+    </div>
   )
 }
