@@ -49,14 +49,14 @@ class SettingsResponse(BaseModel):
 class SettingsUpdateRequest(BaseModel):
     """Partial update for settings."""
 
-    min_ms: int | None = None
+    min_ms: int | None = Field(default=None, ge=0)
     music_only: bool | None = None
     merge_enabled: bool | None = None
-    bb_top_n: int | None = None
-    bb_album_top_n: int | None = None
-    bb_artist_top_n: int | None = None
-    bb_week_start_dow: int | None = None
-    bb_week_start_hour: int | None = None
+    bb_top_n: int | None = Field(default=None, ge=5, le=100)
+    bb_album_top_n: int | None = Field(default=None, ge=5, le=100)
+    bb_artist_top_n: int | None = Field(default=None, ge=5, le=100)
+    bb_week_start_dow: int | None = Field(default=None, ge=0, le=6)
+    bb_week_start_hour: int | None = Field(default=None, ge=0, le=23)
     # LLM translation
     llm_enabled: bool | None = None
     llm_provider: str | None = None

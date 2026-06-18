@@ -84,7 +84,7 @@ def get_settings(conn: Connection = Depends(get_conn)):
 def update_settings(body: SettingsUpdateRequest, auth: None = Depends(require_auth)):
     """Update settings. Returns updated settings (API key and base_url excluded)."""
     _ensure_current()
-    updates = body.dict(exclude_none=True)
+    updates = body.model_dump(exclude_none=True)
     for key in [
         "min_ms",
         "music_only",
@@ -155,6 +155,13 @@ def clear_translation_cache(auth: None = Depends(require_auth)):
 
     write_conn = get_db(readonly=False)
     try:
+        write_conn.execute("""
+            CREATE TABLE IF NOT EXISTS wikipedia_cache (
+                cache_key TEXT PRIMARY KEY,
+                data TEXT NOT NULL,
+                fetched_at REAL NOT NULL
+            )
+        """)
         count = write_conn.execute("SELECT COUNT(*) FROM wikipedia_cache").fetchone()[0]
         write_conn.execute("DELETE FROM wikipedia_cache")
         write_conn.commit()
@@ -228,7 +235,7 @@ def update_llm_profile(
     """Update an existing LLM profile."""
     from backend.core.db import get_db
 
-    updates = body.dict(exclude_none=True)
+    updates = body.model_dump(exclude_none=True)
     if not updates:
         raise HTTPException(status_code=400, detail="No fields to update")
     set_parts = [f"{k} = ?" for k in updates]
