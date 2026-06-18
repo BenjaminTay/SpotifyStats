@@ -37,7 +37,15 @@ def _get_frontend_origin() -> str:
 @router.get("/login")
 def spotify_login():
     """Start OAuth PKCE flow. Returns the Spotify authorization URL."""
-    return begin_oauth_flow()
+    try:
+        return begin_oauth_flow()
+    except RuntimeError as exc:
+        if str(exc) == "SPOTIFY_CLIENT_ID not configured":
+            raise HTTPException(
+                status_code=503,
+                detail="spotify_client_not_configured",
+            ) from exc
+        raise
 
 
 @router.get("/callback")
