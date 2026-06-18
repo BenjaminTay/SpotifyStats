@@ -4,12 +4,13 @@
 
 ## 结论
 
-- 后端全量测试通过：`590 passed, 2 warnings in 62.26s`
+- 后端全量测试通过：`592 passed, 2 warnings in 62.74s`
 - 前端测试与构建通过：`129 passed`，`npm run build` 通过
-- Phase 5 最低验证矩阵通过：unit `243 passed`，contract `147 passed`，前端 test/build 通过
+- Phase 5 最低验证矩阵通过：unit `245 passed`，contract `147 passed`，前端 test/build 通过
 - pre-commit 通过：ruff、ruff format、mypy、detect-secrets 全部通过
 - 浏览器路由冒烟通过：`scripts/frontend_route_smoke.mjs` 覆盖 13 个核心路由 × 1280px 桌面/390px 移动端共 26 个组合，console error/warning、page error 与页面级横向滚动均为 0；生产 `vite preview` 产物同样 PASS 26/26，并通过路由业务内容 marker 防止只加载导航壳的误判
 - 浏览器交互冒烟通过：`scripts/frontend_interaction_smoke.mjs` 覆盖分析页 tab、Billboard 子路由/浏览器前进后退、AI Insights 报告/问答 tab（含未配置 LLM 空状态）与主题切换共 4 个非破坏性场景；dev server 与生产 `vite preview` 产物均 PASS 4/4，console error/warning、page error 与页面级横向滚动均为 0
+- 跨浏览器冒烟通过：`scripts/frontend_cross_browser_smoke.mjs` 使用 Playwright Chromium / Firefox / WebKit（Safari-family）覆盖 6 个核心路由 × 桌面/390px 移动端 + 4 个非破坏性交互场景；dev server 与生产 `vite preview` 产物均 PASS 3/3 浏览器引擎
 - 可复跑只读 API smoke 通过：`scripts/api_smoke_probe.py` 覆盖 91 个本地只读 GET 请求，全部返回预期状态并带 `X-Request-ID`；OpenAPI GET 核算 `90/104 covered, 14 excluded, 0 unaccounted`
 
 ## 修复项
@@ -31,6 +32,7 @@
 | P3 | AI Insights 周快捷选项在 latest listening range 加载前可能生成相同 value key | `/ai-insights` 桌面首屏偶发 React duplicate key console error，route smoke 可能失败 | `QuickPills` 改用 `label:value` 复合 key，保留两个语义不同的快捷按钮；新增组件测试覆盖重复 value 不应产生 console error |
 | P3 | 前端 route smoke 只检查 root 文本长度，可能把“只有导航壳、业务内容尚未渲染”的页面误判为通过 | 生产 preview 冷跑时 `/billboard/records` 桌面在 2.5s 采样点曾只有导航文本，但旧探针仍 PASS；这会削弱前端零缺陷验证证据 | 为 13 个默认路由增加业务内容 marker，默认等待提高到 5s，并提供 `--disable-route-markers` 作为自定义路由逃生口；生产 preview marker smoke 复跑 PASS 26/26，Records 桌面 root text 从导航壳 45 提升到 3141 |
 | P3 | 前端缺少可复跑的非破坏性交互 smoke，部分 tab/路由/history/主题切换只能靠人工抽检 | route smoke 能证明页面渲染，但不能证明关键按钮可点击、路由历史状态正确或主题切换状态落入 DOM/localStorage；AI Insights 未配置 LLM 时还可能误判成报告按钮缺失 | 新增 `scripts/frontend_interaction_smoke.mjs`，通过 headless Chrome CDP 覆盖分析页 tab、Billboard 子路由/前进后退、AI Insights 报告/问答 tab（自适应未配置 LLM 空状态）与主题切换；新增 unit 护栏锁定 CLI、默认 5s 轮询、核心场景和 console/page error 采集 |
+| P3 | Firefox/Safari-family 兼容性缺少可复跑自动证据 | 之前的浏览器证据主要来自 Chromium CDP；“确保 Chrome、Firefox、Safari 正常”的要求只能算部分覆盖 | 新增 `scripts/frontend_cross_browser_smoke.mjs`，用 Python Playwright API 跑 Chromium、Firefox、WebKit（Safari-family），覆盖 6 个核心路由 × 桌面/390px 移动端、横向溢出、console/page error、分析/Billboard/AI Insights/主题切换；dev server 与生产 preview 均 PASS |
 | P2 | 390px 移动端页面可横向滚动 47.5px | `/analysis/stats`、`/analysis/charts` 等页面移动端体验不稳 | `AppLayout` 增加页面级 `overflow-x-clip`，Masthead nav 增加 `basis-full/max-w-full`，Dashboard skeleton 改为 `w-full max-w-*` |
 | P2 | pre-commit ruff hook 扫描冻结 Streamlit `app/` 与旧脚本 | `pre-commit run --all-files` 因历史页名/未用变量失败 | `.pre-commit-config.yaml` 将 ruff 与 ruff-format 限定到 `backend/`，与项目日常质量命令一致 |
 
@@ -79,8 +81,9 @@ Billboard summaries 补充实现：`compute_artist_track_counts()` 与 `compute_
 - 导入/WAL probe：临时 JSON + 临时 SQLite 验证音频/视频缺元数据记录不会中断导入，featured artist 写入 `track_artists`，空来源写入 `source_album_id IS NULL`；临时 DB 验证 WAL 下读事务快照不阻塞独立写提交，新读连接可见提交后数据。
 - 前端 route smoke probe：新增 `scripts/frontend_route_smoke.mjs`，通过 headless Chrome CDP 覆盖 `/`、Analysis、Yearly Review、Billboard 4 页、Community、AI Insights、Account、Settings 共 13 路由 × 桌面/移动 26 个组合；默认 5s 等待并检查每个默认路由的业务内容 marker，避免只加载导航壳就通过。dev server 与生产 `vite preview` 产物均 PASS 26/26，console error/warning/page error 全 0，scroll overflow 全 0px。首轮探针暴露 AI Insights 嵌套按钮与重复 key console error；生产 preview 补充探针暴露 `/billboard/records` 桌面 2.5s 导航壳误判风险，增强 marker 后复跑全绿。
 - 前端交互 probe：新增 `scripts/frontend_interaction_smoke.mjs`，通过 headless Chrome CDP 执行 4 个非破坏性交互场景：`analysis-tabs` 在 `/analysis/stats` 与 `/analysis/charts` 间点击切换；`billboard-routing` 执行 `/billboard` → `/billboard/number-ones` → `/billboard/all-time` → `/billboard/records` 并验证浏览器后退/前进；`ai-insights-tabs` 点击报告/问答 tab，配置 LLM 时继续覆盖月报/年度叙事，未配置时验证空状态；`theme-toggle` 验证白日/夜晚按钮同步 DOM class 与 `localStorage.theme`。dev server 与生产 `vite preview` 产物均 PASS 4/4，console error/warning/page error 全 0，scroll overflow 全 0px。
+- 跨浏览器 probe：新增 `scripts/frontend_cross_browser_smoke.mjs`，通过 Python Playwright API 覆盖 Chromium、Firefox、WebKit（Safari-family）。每个浏览器引擎执行 6 个核心路由 × 桌面/390px 移动端 marker 检查，以及 `analysis-tabs`、`billboard-routing`、`ai-insights-tabs`、`theme-toggle` 4 个非破坏性交互；dev server 与生产 `vite preview` 产物均 PASS 3/3 浏览器引擎。该探针需要可导入 `playwright.sync_api` 的 Python，可用 `PYTHON_PLAYWRIGHT=/path/to/python` 或 `--python` 指定。
 - Web Vitals lab probe（Vite dev server + headless Chrome + CDP）：6 路由 × 桌面/390px 移动端；最终采样 CLS 全部 0，合成点击 FID 0.7-3.6ms，TBT 全部 0ms，非账号页 LCP 416-896ms，账号页 LCP 2,132ms（桌面）/ 2,320ms（移动）。生产 `vite preview` 补充采样资源体积更接近交付产物：非账号页 LCP 380-848ms，账号页 LCP 2,080ms（桌面）/ 2,168ms（移动），CLS/TBT 全部 0。
-- 文档同步：README、AGENTS、CLAUDE、backend/CLAUDE、frontend/CLAUDE 已更新 2026-06-19 验证报告、API smoke / route smoke / interaction smoke 探针、Power Score 向量化、Behavior API 参数收窄、移动端横向滚动护栏、pre-commit 范围与最新测试基线。
+- 文档同步：README、AGENTS、CLAUDE、backend/CLAUDE、frontend/CLAUDE 已更新 2026-06-19 验证报告、API smoke / route smoke / interaction smoke / cross-browser smoke 探针、Power Score 向量化、Behavior API 参数收窄、移动端横向滚动护栏、pre-commit 范围与最新测试基线。
 
 ### Web Vitals Lab 采样
 
@@ -126,14 +129,14 @@ Billboard summaries 补充实现：`compute_artist_track_counts()` 与 `compute_
 
 | 目标项 | 当前证据 | 状态 |
 | --- | --- | --- |
-| 后端现有测试全量通过 | `pytest backend/tests/ -q`：`590 passed, 2 warnings in 62.26s` | 已自动验证 |
+| 后端现有测试全量通过 | `pytest backend/tests/ -q`：`592 passed, 2 warnings in 62.74s` | 已自动验证 |
 | OpenAPI/核心 API 只读覆盖 | 122 paths / 134 operations schema 存在；91 个可复跑只读请求覆盖 Dashboard、Billboard、Analysis、Community、AI Insights、Account、Settings、Spotify status/data；OpenAPI GET 核算 0 unaccounted | 已覆盖只读核心路径；mutation/破坏性端点未逐一实打 |
 | Extended Streaming History 完整导入 | 新增临时 JSON 导入测试覆盖音频、视频、缺元数据、featured artist、预聚合 | 已自动验证最小完整流程 |
 | 多版本与统计过滤语义 | contract/full tests 覆盖 Version Merge、Album Project、Power Score、AI Insights 播放过滤传播、Behavior 全量事件例外参数收窄、播放过滤参数传播与 Billboard invariants | 已自动验证 |
 | SQLite WAL 并发读写 | 新增临时 DB WAL reader snapshot + writer commit 测试 | 已自动验证 |
 | OAuth/加密/缓存/Job Queue/Request ID | AES、cache manager、job queue 单测；API smoke 验证 `X-Request-ID`；Spotify status/data 只读 200；当前播放端点 token refresh 写入边界有 unit test | 自动验证基础设施；真实 OAuth 外部授权未闭环 |
-| 前端路由与响应式 | `scripts/frontend_route_smoke.mjs` 覆盖 13 路由 × 桌面/390px 移动端，无页面错误、无 console error/warning、无横向溢出，并检查业务内容 marker；dev server 与生产 `vite preview` 均 PASS 26/26；图表入口由架构护栏防止回退到完整 ECharts/OpenCC 默认包；Web Vitals lab 覆盖 6 路由 × 2 视口 | 已自动验证主路径 |
-| 前端交互 / 本地 mutation | `scripts/frontend_interaction_smoke.mjs` 覆盖分析页 tab、Billboard 子路由/前进后退、AI Insights 报告/问答 tab 与主题切换，dev/prod preview 均 PASS 4/4；长列表可见分页按钮采样；Chat CRUD、Settings 更新、LLM profile CRUD/apply、清翻译缓存、Import job 启动/状态在 contract 临时环境自动验证 | 已自动验证非破坏性主交互；所有按钮/表单/ECharts 细交互未逐项人工穷尽 |
+| 前端路由与响应式 | `scripts/frontend_route_smoke.mjs` 覆盖 13 路由 × 桌面/390px 移动端，无页面错误、无 console error/warning、无横向溢出，并检查业务内容 marker；dev server 与生产 `vite preview` 均 PASS 26/26；`scripts/frontend_cross_browser_smoke.mjs` 额外覆盖 Chromium/Firefox/WebKit 的 6 路由 × 2 视口；图表入口由架构护栏防止回退到完整 ECharts/OpenCC 默认包；Web Vitals lab 覆盖 6 路由 × 2 视口 | 已自动验证主路径与三浏览器引擎 smoke |
+| 前端交互 / 本地 mutation | `scripts/frontend_interaction_smoke.mjs` 覆盖分析页 tab、Billboard 子路由/前进后退、AI Insights 报告/问答 tab 与主题切换，dev/prod preview 均 PASS 4/4；`scripts/frontend_cross_browser_smoke.mjs` 在 Chromium/Firefox/WebKit 复跑同类核心交互；长列表可见分页按钮采样；Chat CRUD、Settings 更新、LLM profile CRUD/apply、清翻译缓存、Import job 启动/状态在 contract 临时环境自动验证 | 已自动验证非破坏性主交互；所有按钮/表单/ECharts 细交互未逐项人工穷尽 |
 | 性能优化 | records profile、API 冷/热请求、build/import、bundle chunk、dev/prod-preview Web Vitals lab 与账号页资源/TBT 均有前后对比 | 已量化关键瓶颈；仍缺真实 RUM 与生产静态托管 Lighthouse |
 
 ## 验证命令
@@ -165,6 +168,7 @@ sh scripts/phase5_check.sh
 .venv/bin/pytest backend/tests/contract/test_api_contract.py::TestBehaviorEndpoints -q
 .venv/bin/pytest backend/tests/unit/test_frontend_route_smoke_script.py -q
 .venv/bin/pytest backend/tests/unit/test_frontend_interaction_smoke_script.py -q
+.venv/bin/pytest backend/tests/unit/test_frontend_cross_browser_smoke_script.py -q
 cd frontend && npm test -- src/tests/query-hooks.test.tsx -t "requests behavior data"
 cd frontend && npm test -- src/tests/ai-insights-components.test.tsx
 cd frontend && npm test -- src/tests/phase5-architecture.test.ts -t "Chinese conversion"
@@ -175,6 +179,8 @@ node scripts/frontend_route_smoke.mjs --viewport both --max-scroll-overflow 0
 node scripts/frontend_route_smoke.mjs --base-url http://127.0.0.1:4173 --viewport both --max-scroll-overflow 0
 node scripts/frontend_interaction_smoke.mjs --base-url http://127.0.0.1:5173
 node scripts/frontend_interaction_smoke.mjs --base-url http://127.0.0.1:4173
+node scripts/frontend_cross_browser_smoke.mjs --base-url http://127.0.0.1:5173
+node scripts/frontend_cross_browser_smoke.mjs --base-url http://127.0.0.1:4173
 node scripts/frontend_web_vitals_probe.mjs --routes /,/analysis/stats,/analysis/charts,/billboard/number-ones,/account,/settings --viewport both --wait-ms 5000
 node scripts/frontend_web_vitals_probe.mjs --base-url http://127.0.0.1:4173 --routes /,/analysis/stats,/analysis/charts,/billboard/number-ones,/account,/settings --viewport both --wait-ms 5000
 git diff --check
@@ -184,9 +190,9 @@ git diff --check
 
 - 生产构建仍提示两个大懒加载 chunk：`cn2t-DJnOUolw.js` gzip 457.19KB、`EChartsTheme-*.js` gzip 225.67KB。旧 `full-yTi_27TG.js` 与 `esm-CBcusPEn.js` 已消除；剩余体积分别来自繁体词典和当前图表能力集合，未牺牲简繁转换语义或图表功能继续强拆。
 - 未执行真实 ngrok + Spotify OAuth 浏览器授权闭环；已验证 `/api/spotify/auth/status` 与 `/api/spotify/auth/data` 只读端点返回 200 和 request id，并修复 `/api/spotify/auth/playing` token refresh 写连接问题。
-- 未在 Firefox/Safari 真机浏览器中执行同等交互；当前浏览器自动化证据来自本地 headless Chromium CDP route smoke / interaction smoke / Web Vitals lab 与前端测试。
+- 未在用户真实 Firefox.app / Safari.app 有界面会话中人工执行同等交互；当前跨浏览器自动化证据来自 Playwright Chromium / Firefox / WebKit（Safari-family），其中 WebKit 是 Safari-family 引擎 smoke，不等同用户 Safari.app 会话。
 - 未逐一实打所有破坏性或外部依赖端点，例如断开 Spotify、导入生产数据、同步远程账号数据等，避免污染本地真实状态；本地 Settings/Chat mutation 与 Import job 调度已通过 contract 临时环境覆盖。
-- Web Vitals 已用 headless Chrome lab probe 采集 Vite dev server 与本地 `vite preview` 生产构建的 LCP/CLS/合成 FID/TBT；仍未采集真实用户 RUM、Firefox/Safari Web Vitals，也未在生产静态托管/CDN/HTTPS 环境跑 Lighthouse。
+- Web Vitals 已用 headless Chrome lab probe 采集 Vite dev server 与本地 `vite preview` 生产构建的 LCP/CLS/合成 FID/TBT；仍未采集真实用户 RUM、Firefox/WebKit Web Vitals，也未在生产静态托管/CDN/HTTPS 环境跑 Lighthouse。
 
 ## 10 分钟快速验证
 
@@ -198,5 +204,5 @@ git diff --check
 6. 访问 `/account`、`/settings`，确认账户数据和设置区块能渲染。
 7. 打开 `http://127.0.0.1:8000/docs`，快速试 `/api/health`、`/api/billboard/records`、`/api/spotify/auth/status`。
 8. 运行 `.venv/bin/python scripts/api_smoke_probe.py`，确认 91 个只读 GET 请求全绿。
-9. 运行 `node scripts/frontend_route_smoke.mjs --viewport both --max-scroll-overflow 0` 和 `node scripts/frontend_interaction_smoke.mjs --base-url http://127.0.0.1:5173`，确认 26 个路由/视口组合与 4 个非破坏性交互场景全绿。
+9. 运行 `node scripts/frontend_route_smoke.mjs --viewport both --max-scroll-overflow 0`、`node scripts/frontend_interaction_smoke.mjs --base-url http://127.0.0.1:5173` 和 `node scripts/frontend_cross_browser_smoke.mjs --base-url http://127.0.0.1:5173`，确认路由、交互与三浏览器引擎 smoke 全绿。
 10. 运行 `sh scripts/phase5_check.sh`，确认最低矩阵仍全绿。
