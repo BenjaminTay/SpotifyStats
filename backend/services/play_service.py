@@ -576,6 +576,13 @@ def get_leaderboard(
 
             keys = load_track_group_keys(conn, merge_level=merge_level)
             if not keys.empty:
+                keys = keys.copy()
+                keys["_scope_rank"] = keys["track_group_scope"].map(
+                    {"composition": 0, "recording": 1} if merge_level >= 3 else {"recording": 0}
+                )
+                keys = keys.sort_values(
+                    ["track_id", "_scope_rank", "track_agg_id"]
+                ).drop_duplicates("track_id")
                 key_map = keys.set_index("track_id")
                 df_agg["_agg_id"] = df_agg["track_id"].map(key_map["track_agg_id"])
                 df_agg["_agg_name"] = df_agg["track_id"].map(key_map["track_agg_name"])
@@ -600,39 +607,40 @@ def get_leaderboard(
             .reset_index()
         )
     elif entity == "album":
-        df_agg = df.copy()
-        # Apply release group canonicalization before grouping (R28 L2/L3)
-        if merge_level > 1 and "source_album_id" in df_agg.columns:
-            from backend.domains.playback.release_groups import load_album_release_group_map
+        if merge_level > 1:
+            from backend.domains.playback.album_projects import compute_album_project_plays
 
-            mapping = load_album_release_group_map(conn, merge_level=merge_level)
-            if not mapping.empty:
-                album_to_canonical = (
-                    mapping[["album_id", "canonical_name"]]
-                    .drop_duplicates(subset=["album_id"])
-                    .set_index("album_id")["canonical_name"]
-                )
-                df_agg["_canonical"] = df_agg["source_album_id"].map(album_to_canonical)
-                c_mask = df_agg["_canonical"].notna()
-                df_agg.loc[c_mask, "album_name"] = df_agg.loc[c_mask, "_canonical"]
-                df_agg = df_agg.drop(columns=["_canonical"])
+            agg = compute_album_project_plays(
+                df,
+                conn,
+                merge_level=merge_level,
+                include_compilations=include_compilations,
+                billboard_mode=False,
+            ).rename(
+                columns={
+                    "album_project_name": "album_name",
+                    "play_count": "plays",
+                }
+            )
+            if not agg.empty:
+                agg["hours"] = agg["total_ms"] / 3_600_000
+        else:
+            agg = (
+                df.groupby(["album_name", "artist_name"])
+                .agg(plays=("play_id", "count"), hours=("ms_played", _hour))
+                .reset_index()
+            )
+            # R13/R14: filter singles (always excluded) + compilations (toggleable)
+            from backend.domains.playback.album_type import is_album_chart_eligible
+            from backend.services.analysis_stats_service import _resolve_album_category
 
-        agg = (
-            df_agg.groupby(["album_name", "artist_name"])
-            .agg(plays=("play_id", "count"), hours=("ms_played", _hour))
-            .reset_index()
-        )
-        # R13/R14: filter singles (always excluded) + compilations (toggleable)
-        from backend.domains.playback.album_type import is_album_chart_eligible
-        from backend.services.analysis_stats_service import _resolve_album_category
-
-        agg["_category"] = agg.apply(
-            lambda r: _resolve_album_category(conn, r["album_name"], r["artist_name"]), axis=1
-        )
-        agg = agg[agg["_category"].apply(is_album_chart_eligible)]
-        if not include_compilations:
-            agg = agg[agg["_category"] != "compilation"]
-        agg = agg.drop(columns=["_category"])
+            agg["_category"] = agg.apply(
+                lambda r: _resolve_album_category(conn, r["album_name"], r["artist_name"]), axis=1
+            )
+            agg = agg[agg["_category"].apply(is_album_chart_eligible)]
+            if not include_compilations:
+                agg = agg[agg["_category"] != "compilation"]
+            agg = agg.drop(columns=["_category"])
     else:
         return {"time_label": time_label, "total_records": 0, "rows": []}
 

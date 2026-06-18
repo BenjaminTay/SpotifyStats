@@ -364,6 +364,68 @@ Phase 5.4-A 至 5.4-H 全部完成。以下为各阶段摘要：
 - Billboard contract 测试继续通过 ✓
 - `sh scripts/phase5_check.sh` 全部通过 ✓
 
+## 2026-06-18 Album Project Playback Stats
+
+本轮把非 L1 专辑统计从 release/source album 行聚合收口到 album project 语义：
+
+- 新增 `album_projects`、`album_project_albums`、`album_project_tracks`，并通过 migration 16 持久化；新增 `agg_weekly_track_sources` 和 migration 17，保证 Billboard album raw/pre-agg 在项目口径下一致。
+- `backend/domains/playback/album_projects.py` 负责 project bootstrap、canonical song ownership、source breakdown、Billboard release-date eligibility 和 inferred project rebuild。
+- `/analysis/charts?entity=album`、leaderboard album rows、Billboard album chart 均改为 L2/L3 album project track membership；source album attribution 只作为解释性 breakdown。
+- Album detail API 返回 `album_project` payload，前端 `AlbumProjectSection` 展示项目播放、发行日、项目曲目和来源拆分。
+- Version Merge 设置页新增 album project rebuild 与 collaboration track-group candidate 查询；候选检测只读，不自动改变统计。
+
+已执行的聚焦验证：
+
+```bash
+source .venv/bin/activate && python backend/tests/fixtures/build_seed_db.py
+source .venv/bin/activate && pytest backend/tests/unit/test_album_project_resolver.py -v
+source .venv/bin/activate && pytest backend/tests/contract/test_album_project_rules.py backend/tests/contract/test_billboard_counting_consistency.py -q
+source .venv/bin/activate && pytest backend/tests/contract/test_album_project_rules.py backend/tests/contract/test_merge_level_aggregation.py -q
+source .venv/bin/activate && pytest -m unit -q
+source .venv/bin/activate && pytest -m contract -q
+source .venv/bin/activate && ruff check backend/
+cd frontend && npm test -- --run phase5-architecture
+cd frontend && npm test
+cd frontend && npm run build
+```
+
+## 2026-06-19 Billboard And Detail Performance Closeout
+
+本轮排查并修复 Billboard、歌曲/专辑/艺人详情页首次加载长时间转圈的问题。根因不是前端页面失效，而是后端在默认 `dynamic_threshold=True` 口径下没有命中旧预聚合、并且多个分段接口冷启动时重复计算同一份 Billboard 基础排名；专辑详情还存在逐行 SQLite 查询 source album bucket 的热点。
+
+已完成收口：
+
+- 当前本地 DB 的 Billboard 预聚合已按 `dynamic_threshold=True` 重建，`agg_config.param_hash` 与 API 默认过滤口径一致。
+- `_load_and_rank()` 拆出共享 `_load_and_rank_cached`，配合 `singleflight()` 和 Cache Manager，避免 weekly / power-scores / summaries / all-time 冷启动重复计算。
+- `_add_running_metrics()` 从逐组 Python loop 改为 pandas 向量化。
+- `load_plays()` / `load_plays_for_artists()` 的底层 LRU cache miss 加 `singleflight()`，避免详情页并发首次打开时重复扫播放表。
+- `core/warmup.py` 改为当前默认过滤口径（`dynamic_threshold=True` / `max_merge_gap_minutes=None`），并预热 artist fan-out 播放表。
+- Album detail source breakdown 改为批量读取 album metadata 后映射 bucket，避免对 4.7 万行逐行查 SQLite。
+
+实测验证：
+
+```text
+FastAPI TestClient + warmup:
+- /api/billboard/weekly: 0.439s
+- /api/billboard/all-time: 1.518s
+- /api/billboard/track/1503: 0.020s
+- /api/billboard/album/GUTS?artist_name=Olivia Rodrigo: 0.857s
+- /api/billboard/artist/Olivia Rodrigo: 0.209s
+- /api/music/tracks/1503/stats: 0.938s
+- /api/music/albums/GUTS/stats?artist=Olivia Rodrigo: 0.799s
+- /api/music/artists/Olivia Rodrigo/stats: 0.739s
+
+真实 8000 端口 smoke:
+- /api/health: 0.005s
+- /api/billboard/weekly: 0.467s
+- /api/billboard/album/GUTS: 1.141s
+
+验证命令:
+- .venv/bin/ruff check backend/core/db.py backend/core/warmup.py backend/domains/billboard/details.py backend/domains/billboard/chart_staged_cache.py backend/domains/billboard/chart_compute.py backend/domains/billboard/chart_ranking.py backend/domains/playback/album_projects.py backend/tests/unit/test_warmup.py backend/tests/unit/test_billboard_running_metrics.py
+- .venv/bin/python -m pytest backend/tests/unit/test_warmup.py backend/tests/unit/test_billboard_running_metrics.py backend/tests/unit/test_album_project_resolver.py backend/tests/contract/test_billboard_counting_consistency.py backend/tests/contract/test_album_project_rules.py -q
+- cd frontend && npm run build
+```
+
 ## 验证矩阵
 
 Phase 5 最低验证命令：

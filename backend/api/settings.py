@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from sqlite3 import Connection
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from backend.core.auth import require_auth
 from backend.core.spotify_utils import get_user_profile, is_user_connected
@@ -118,7 +118,12 @@ def update_settings(body: SettingsUpdateRequest, auth: None = Depends(require_au
 
 
 @router.post("/rebuild-agg")
-def rebuild_aggregations(conn: Connection = Depends(get_conn), auth: None = Depends(require_auth)):
+def rebuild_aggregations(
+    conn: Connection = Depends(get_conn),
+    auth: None = Depends(require_auth),
+    dynamic_threshold: bool = Query(default=True),
+    max_merge_gap_minutes: int | None = Query(default=None, ge=1, le=240),
+):
     """Rebuild pre-aggregated weekly Billboard tables."""
     _ensure_current()
     from backend.core.db import build_aggregations, get_db
@@ -130,8 +135,15 @@ def rebuild_aggregations(conn: Connection = Depends(get_conn), auth: None = Depe
             music_only=_current["music_only"],
             week_start_dow=_current["bb_week_start_dow"],
             week_start_hour=_current["bb_week_start_hour"],
+            dynamic_threshold=dynamic_threshold,
+            max_merge_gap_minutes=max_merge_gap_minutes,
         )
-        return {"status": "done", **result}
+        return {
+            "status": "done",
+            "dynamic_threshold": dynamic_threshold,
+            "max_merge_gap_minutes": max_merge_gap_minutes,
+            **result,
+        }
     finally:
         write_conn.close()
 

@@ -7,6 +7,7 @@ Caching happens at the caller level in chart_compute.py.
 import pandas as pd
 
 from backend.core.db import fan_out_weekly_for_artists
+from backend.domains.billboard.album_display import choose_representative_album
 from backend.domains.billboard.version_merge import _normalize_album_column
 
 
@@ -17,8 +18,11 @@ def compute_track_summary(weekly: pd.DataFrame, df_filtered: pd.DataFrame) -> pd
     peak_position, weeks_on_chart, weeks_at_peak, first_week, last_week,
     total_chart_plays, total_plays, weeks_at_no1, first_peak_week, is_debut_no1.
     """
+    group_cols = ["track_id", "track_name", "artist_name"]
+    album_choice = choose_representative_album(weekly, group_cols)
+
     track_summary = (
-        weekly.groupby(["track_id", "track_name", "artist_name", "album_name"])
+        weekly.groupby(group_cols)
         .agg(
             peak_position=("rank", "min"),
             weeks_on_chart=("billboard_week", "nunique"),
@@ -29,10 +33,16 @@ def compute_track_summary(weekly: pd.DataFrame, df_filtered: pd.DataFrame) -> pd
         )
         .reset_index()
     )
+    track_summary = track_summary.merge(album_choice, on=group_cols, how="left")
 
-    track_total_plays = (
-        df_filtered.groupby("track_id").agg(total_plays=("ms_played", "count")).reset_index()
-    )
+    if "play_count" in df_filtered.columns:
+        track_total_plays = (
+            df_filtered.groupby("track_id").agg(total_plays=("play_count", "sum")).reset_index()
+        )
+    else:
+        track_total_plays = (
+            df_filtered.groupby("track_id").agg(total_plays=("ms_played", "count")).reset_index()
+        )
     track_summary = track_summary.merge(track_total_plays, on="track_id", how="left")
 
     weeks_at_no1 = (
@@ -44,15 +54,33 @@ def compute_track_summary(weekly: pd.DataFrame, df_filtered: pd.DataFrame) -> pd
     track_summary = track_summary.merge(weeks_at_no1, on="track_id", how="left")
     track_summary["weeks_at_no1"] = track_summary["weeks_at_no1"].fillna(0).astype(int)
 
-    first_peak = weekly.merge(track_summary[["track_id", "peak_position"]], on="track_id")
+    first_peak = weekly.merge(track_summary[group_cols + ["peak_position"]], on=group_cols)
     first_peak = first_peak[first_peak["rank"] == first_peak["peak_position"]]
-    first_peak = first_peak.groupby("track_id")["billboard_week"].min().reset_index()
-    first_peak.columns = ["track_id", "first_peak_week"]
-    track_summary = track_summary.merge(first_peak, on="track_id", how="left")
+    first_peak = first_peak.groupby(group_cols)["billboard_week"].min().reset_index()
+    first_peak = first_peak.rename(columns={"billboard_week": "first_peak_week"})
+    track_summary = track_summary.merge(first_peak, on=group_cols, how="left")
 
     track_summary["is_debut_no1"] = (track_summary["peak_position"] == 1) & (
         track_summary["first_week"] == track_summary["first_peak_week"]
     )
+
+    ordered = [
+        "track_id",
+        "track_name",
+        "artist_name",
+        "album_name",
+        "peak_position",
+        "weeks_on_chart",
+        "weeks_at_peak",
+        "first_week",
+        "last_week",
+        "total_chart_plays",
+        "total_plays",
+        "weeks_at_no1",
+        "first_peak_week",
+        "is_debut_no1",
+    ]
+    track_summary = track_summary[[col for col in ordered if col in track_summary.columns]]
 
     return track_summary
 

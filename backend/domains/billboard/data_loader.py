@@ -30,6 +30,7 @@ def _try_load_from_agg(
         check_agg_valid,
         load_agg_weekly_albums,
         load_agg_weekly_artists,
+        load_agg_weekly_track_sources,
         load_agg_weekly_tracks,
     )
 
@@ -48,7 +49,8 @@ def _try_load_from_agg(
 
     try:
         tracks = load_agg_weekly_tracks(conn)
-        albums = load_agg_weekly_albums(conn)
+        album_sources = load_agg_weekly_track_sources(conn)
+        albums = album_sources if len(album_sources) > 0 else load_agg_weekly_albums(conn)
         artists = load_agg_weekly_artists(conn)
         conn.close()
         if len(tracks) == 0:

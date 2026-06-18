@@ -12,7 +12,7 @@ Spotify Extended Streaming History 数据分析 Web 应用的主项目提示词�
 
 **UI 主题**：「编辑风 × 液态玻璃」— 杂志式排版（Playfair Display 衬线 + Inter 无衬线）+ 毛玻璃材质 + 日/夜双皮肤。详见 `frontend/UI_STYLE_GUIDE.md`。
 
-**性能策略**：Cache Manager 管理 5 命名空间（billboard/analysis/db/auth）LRU+TTL 缓存；Billboard 拆为 4 个独立 `@lru_cache` 函数；SQLite 版本化 Migration；后台 Job Queue（3 worker）异步处理封面下载与 Wikipedia+LLM enrichment；前端 GET 数据统一进入 TanStack React Query（staleTime 5min/gcTime 30min/retry 2），路由级 lazy 分包。
+**性能策略**：Cache Manager 管理 5 命名空间（billboard/analysis/db/auth）LRU+TTL 缓存；Billboard 拆为 4 个独立 `@lru_cache` 函数，并通过共享 `_load_and_rank_cached` + `singleflight()` 避免 weekly/power/summaries/all-time 冷启动重复计算；`agg_weekly_track_sources` 支撑 album project 专辑榜和详情来源拆分；启动 warmup 使用当前默认动态阈值口径并预热 artist fan-out；SQLite 版本化 Migration；后台 Job Queue（3 worker）异步处理封面下载与 Wikipedia+LLM enrichment；前端 GET 数据统一进入 TanStack React Query（staleTime 5min/gcTime 30min/retry 2），路由级 lazy 分包。
 
 ## Phase 5 产品化收口基线
 
@@ -48,10 +48,12 @@ Phase 5 目标是收紧产品线到可持续迭代状态。当前进度：
   - P4 Track Groups 三级合并：`track_groups` + `track_group_members` 表（scope: recording/composition），`backend/domains/playback/track_groups.py` 聚合键解析，`_apply_track_groups()` 在 Billboard 和个人榜聚合层生效
   - P4 Merge Level API：`MergeConfig` FastAPI 依赖，`/billboard/*` + `/analysis/charts` 端点 `merge_level` 查询参数，Settings 页面 L1/L2/L3 选择器持久化至 localStorage，4 个 Billboard 页面 URL 优先/localStorage 回退
   - 2026-06-18 贯穿修复：Dashboard/Leaderboard/Timeline/Wrapped/Listening Hours/Music Entity/Artist Deep Dive/Release Cycle 全部传递 `dynamic_threshold` 与 `max_merge_gap_minutes`；Release Cycle 按 `billboard_week` 年份过滤，并接入 `merge_level` / `include_compilations`
+  - 2026-06-18 Album Project 统计收口：新增 `album_projects` / `album_project_albums` / `album_project_tracks` + `agg_weekly_track_sources`；L2/L3 专辑统计改为 album project track membership，source album attribution 仅作为来源拆分解释；Billboard 专辑榜按 `album_project.release_date` 排除发行前播放；release groups 只描述版本关系，不再作为最终专辑播放量聚合层
+  - 2026-06-19 性能收口：Billboard 分段接口共享基础排名缓存，`_add_running_metrics()` 向量化；专辑详情 source breakdown 批量查 album metadata；`load_plays()` / `load_plays_for_artists()` 缓存 miss 用 `singleflight()` 去重；warmup 改为 `dynamic_threshold=True` 默认口径
   - R24b 不变式合约测试：`test_playback_invariants.py`（6 条断言）+ `test_merge_level_aggregation.py`（14 条断言）+ `test_playback_filter_parameter_propagation.py`（过滤参数传播）
   - 测试基线：backend full 520 / unit 223 / contract 104；`npm run build` 通过
 
-详见 `docs/2026-06-12-playback-stats-rules.md` 和 `docs/2026-06-08-phase5-productization-baseline.md`。
+详见 `docs/2026-06-18-playback-stats-rules-latest.md` 和 `docs/2026-06-08-phase5-productization-baseline.md`。
 
 ## 常用命令
 
@@ -135,7 +137,7 @@ JSON 导出 ──→ import_data.py ──→ SQLite (spotify_stats.db) ──�
 
 | 文件 | 职责 |
 |------|------|
-| `core/db.py` | `get_db()`, `load_plays()` (@lru_cache), `base_filters()`, `merge_consecutive_plays()` |
+| `core/db.py` | `get_db()`, `load_plays()` / `load_plays_for_artists()` (`@lru_cache` + `singleflight`), `base_filters()`, `merge_consecutive_plays()`, `build_aggregations()` |
 | `core/config.py` | 所有环境变量集中管理（`python-dotenv`），禁止业务代码直接 `os.getenv()` |
 | `core/crypto.py` | AES-256-GCM 加解密，Token 落库前必须加密 |
 | `core/json_helpers.py` | numpy/pandas → JSON 唯一入口，禁止 service 层重复定义 |
@@ -222,7 +224,7 @@ frontend/src/
 
 `base_filters()` 是 SQL 粗过滤入口：`music_only` 排除播客；未合并路径直接应用 `ms_played >= min_ms`。合并连续播放（`merge_enabled`，默认开启）使用 `min_ms=0` 先保留短片段，按 `track_id` + `source_album_id` + 可选 `max_merge_gap_minutes` 合并，再由 `filter_effective_plays()` 应用固定阈值或动态阈值。已移除不可靠的 `skipped` 过滤。
 
-特殊页面例外：行为分析使用全量数据；播客/视频额外 `>= 30000ms`；Billboard 专辑榜排除 singles 和发前周。
+特殊页面例外：行为分析使用全量数据；播客/视频额外 `>= 30000ms`；Billboard 专辑榜排除 singles 和发前周。L2/L3 album statistics 必须使用 album project track membership，不得回退到 source album 行聚合；source album attribution 只通过 source breakdown 解释统计来源。
 
 ---
 

@@ -949,6 +949,43 @@ export interface AlbumTrackEntry {
   power_rank: number | null
 }
 
+export interface AlbumProjectTrack {
+  [key: string]: any
+  project_id: number
+  album_project_name: string
+  canonical_song_key: string
+  canonical_song_name: string
+  track_id: number
+  track_name: string
+  membership_role: string
+  source_bucket: string | null
+  is_exclusive: number
+}
+
+export interface AlbumSourceBreakdownItem {
+  [key: string]: any
+  album_project_id: number
+  album_project_name: string
+  source_album_id: number | null
+  source_album_name: string | null
+  source_bucket: string
+  play_count: number
+  total_ms: number
+}
+
+export interface AlbumProject {
+  [key: string]: any
+  album_project_id: number
+  album_project_name: string
+  artist_name: string
+  release_date: string
+  play_count: number
+  total_ms: number
+  unique_canonical_songs: number
+  tracks: AlbumProjectTrack[]
+  source_breakdown: AlbumSourceBreakdownItem[]
+}
+
 export interface AlbumDetailResponse {
   [key: string]: any
   found: boolean
@@ -958,6 +995,7 @@ export interface AlbumDetailResponse {
   meta: AlbumSpotifyMeta | null
   info: AlbumInfo
   chart_summary: AlbumChartSummary
+  album_project?: AlbumProject | null
   album_weekly_history: AlbumWeeklyHistoryEntry[]
   album_no1_by_week: { week: string; no1_track_names: string; no1_track_id: number | null; no1_count: number }[]
   best_singles_overlay: { week: string; rank: number; track_name: string }[]

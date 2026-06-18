@@ -9,6 +9,8 @@ import sqlite3
 from functools import lru_cache
 from typing import Any
 
+from backend.core.cache import singleflight
+
 # backend/core/ → os.path.dirname x3 = project root
 DB_PATH = os.path.join(
     os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "data", "spotify_stats.db"
@@ -109,6 +111,16 @@ CREATE TABLE IF NOT EXISTS agg_weekly_albums (
     PRIMARY KEY (billboard_week, album_id)
 );
 
+CREATE TABLE IF NOT EXISTS agg_weekly_track_sources (
+    billboard_week TEXT NOT NULL,
+    play_date TEXT NOT NULL,
+    track_id INTEGER NOT NULL,
+    source_album_id INTEGER NOT NULL DEFAULT 0,
+    play_count INTEGER NOT NULL,
+    total_ms INTEGER NOT NULL,
+    PRIMARY KEY (billboard_week, play_date, track_id, source_album_id)
+);
+
 CREATE TABLE IF NOT EXISTS agg_weekly_artists (
     billboard_week TEXT NOT NULL,
     artist_id INTEGER NOT NULL,
@@ -129,6 +141,8 @@ CREATE TABLE IF NOT EXISTS settings (
 
 CREATE INDEX IF NOT EXISTS idx_agg_wt_week ON agg_weekly_tracks(billboard_week);
 CREATE INDEX IF NOT EXISTS idx_agg_wa_week ON agg_weekly_albums(billboard_week);
+CREATE INDEX IF NOT EXISTS idx_agg_wts_week ON agg_weekly_track_sources(billboard_week);
+CREATE INDEX IF NOT EXISTS idx_agg_wts_track ON agg_weekly_track_sources(track_id);
 CREATE INDEX IF NOT EXISTS idx_agg_war_week ON agg_weekly_artists(billboard_week);
 
 -- Version merging: group different album/track releases into canonical entities
@@ -176,6 +190,46 @@ CREATE TABLE IF NOT EXISTS track_group_members (
 CREATE INDEX IF NOT EXISTS idx_track_groups_scope ON track_groups(scope);
 CREATE INDEX IF NOT EXISTS idx_track_groups_parent ON track_groups(parent_group_id);
 CREATE INDEX IF NOT EXISTS idx_track_group_members_track ON track_group_members(track_id);
+
+-- Album projects (statistics-level album membership)
+CREATE TABLE IF NOT EXISTS album_projects (
+    project_id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    canonical_name    TEXT NOT NULL,
+    artist_id         INTEGER REFERENCES artists(artist_id),
+    primary_album_id  INTEGER REFERENCES albums(album_id),
+    release_date      TEXT,
+    scope             TEXT NOT NULL DEFAULT 'release',
+    project_type      TEXT NOT NULL DEFAULT 'album',
+    include_in_charts INTEGER NOT NULL DEFAULT 1,
+    is_manual         INTEGER NOT NULL DEFAULT 0,
+    created_at        TEXT DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(canonical_name, artist_id, scope)
+);
+
+CREATE TABLE IF NOT EXISTS album_project_albums (
+    project_id    INTEGER NOT NULL REFERENCES album_projects(project_id),
+    album_id      INTEGER NOT NULL REFERENCES albums(album_id),
+    role          TEXT NOT NULL DEFAULT 'member',
+    source_bucket TEXT NOT NULL DEFAULT 'other',
+    inferred      INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY(project_id, album_id)
+);
+
+CREATE TABLE IF NOT EXISTS album_project_tracks (
+    project_id       INTEGER NOT NULL REFERENCES album_projects(project_id),
+    track_id         INTEGER NOT NULL REFERENCES tracks(track_id),
+    membership_role  TEXT NOT NULL DEFAULT 'standard',
+    min_merge_level  INTEGER NOT NULL DEFAULT 2,
+    source_album_id  INTEGER REFERENCES albums(album_id),
+    is_exclusive     INTEGER NOT NULL DEFAULT 0,
+    inferred         INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY(project_id, track_id, min_merge_level)
+);
+
+CREATE INDEX IF NOT EXISTS idx_album_projects_artist ON album_projects(artist_id);
+CREATE INDEX IF NOT EXISTS idx_album_projects_primary_album ON album_projects(primary_album_id);
+CREATE INDEX IF NOT EXISTS idx_album_project_albums_album ON album_project_albums(album_id);
+CREATE INDEX IF NOT EXISTS idx_album_project_tracks_track ON album_project_tracks(track_id);
 
 -- Spotify metadata tables (independent from import cycle, survive data re-imports)
 CREATE TABLE IF NOT EXISTS spotify_track_meta (
@@ -658,6 +712,7 @@ def query_plays(
     return conn.execute(sql, params).fetchall()
 
 
+@singleflight
 @lru_cache(maxsize=16)
 def _load_plays_cached(
     min_ms: int,
@@ -789,6 +844,7 @@ def load_plays(
     ).copy()
 
 
+@singleflight
 @lru_cache(maxsize=16)
 def _load_plays_for_artists_cached(
     min_ms: int,
@@ -1121,11 +1177,12 @@ def build_aggregations(
     if df.empty:
         conn.execute("DELETE FROM agg_weekly_tracks")
         conn.execute("DELETE FROM agg_weekly_albums")
+        conn.execute("DELETE FROM agg_weekly_track_sources")
         conn.execute("DELETE FROM agg_weekly_artists")
         conn.execute("DELETE FROM agg_config")
         conn.commit()
         conn.close()
-        return {"tracks": 0, "albums": 0, "artists": 0}
+        return {"tracks": 0, "albums": 0, "track_sources": 0, "artists": 0}
 
     if progress_callback:
         progress_callback("合并连续播放...", 0.0)
@@ -1155,15 +1212,17 @@ def build_aggregations(
     if df.empty:
         conn.execute("DELETE FROM agg_weekly_tracks")
         conn.execute("DELETE FROM agg_weekly_albums")
+        conn.execute("DELETE FROM agg_weekly_track_sources")
         conn.execute("DELETE FROM agg_weekly_artists")
         conn.execute("DELETE FROM agg_config")
         conn.commit()
         conn.close()
-        return {"tracks": 0, "albums": 0, "artists": 0}
+        return {"tracks": 0, "albums": 0, "track_sources": 0, "artists": 0}
 
     # Clear old aggregations
     conn.execute("DELETE FROM agg_weekly_tracks")
     conn.execute("DELETE FROM agg_weekly_albums")
+    conn.execute("DELETE FROM agg_weekly_track_sources")
     conn.execute("DELETE FROM agg_weekly_artists")
     conn.execute("DELETE FROM agg_config")
     conn.commit()
@@ -1189,9 +1248,40 @@ def build_aggregations(
     if progress_callback:
         progress_callback("预聚合: 单曲完成", 0.33)
 
-    # 2. Albums — use source_album_id (fallback to track album_id) for attribution
+    # 2. Track-source rows — preserves album project attribution inputs.
     if progress_callback:
-        progress_callback("预聚合: 专辑...", 0.33)
+        progress_callback("预聚合: 单曲来源...", 0.33)
+    if "_source_album_id" not in df.columns:
+        df["_source_album_id"] = df.get("source_album_id", 0)
+    df["_source_album_id"] = df["_source_album_id"].fillna(0).astype(int)
+    track_sources_agg = (
+        df.groupby(["billboard_week", "ts_date", "track_id", "_source_album_id"])
+        .agg(play_count=("ms_played", "count"), total_ms=("ms_played", "sum"))
+        .reset_index()
+        .rename(columns={"ts_date": "play_date", "_source_album_id": "source_album_id"})
+    )
+    ts_rows = [
+        (
+            str(r.billboard_week),
+            str(r.play_date),
+            int(r.track_id),
+            int(r.source_album_id),
+            int(r.play_count),
+            int(r.total_ms),
+        )
+        for r in track_sources_agg.itertuples(index=False)
+    ]
+    _write_agg_batch(
+        conn,
+        "agg_weekly_track_sources",
+        ts_rows,
+        ["billboard_week", "play_date", "track_id", "source_album_id", "play_count", "total_ms"],
+    )
+    results["track_sources"] = len(ts_rows)
+
+    # 3. Albums — legacy container pre-agg kept for compatibility.
+    if progress_callback:
+        progress_callback("预聚合: 专辑...", 0.45)
     has_source = df["_source_album_id"].notna() & (df["_source_album_id"] != 0)
     df["_album_id_for_agg"] = df["_source_album_id"].where(has_source, df["album_id"]).astype(int)
     df_album = df[df["_album_id_for_agg"].notna()]
@@ -1218,7 +1308,7 @@ def build_aggregations(
     if progress_callback:
         progress_callback("预聚合: 专辑完成", 0.66)
 
-    # 3. Artists — fan out through track_artists for multi-artist attribution
+    # 4. Artists — fan out through track_artists for multi-artist attribution
     if progress_callback:
         progress_callback("预聚合: 艺人...", 0.66)
     track_artists_df = pd.read_sql_query("SELECT track_id, artist_id FROM track_artists", conn)
@@ -1290,6 +1380,35 @@ def load_agg_weekly_albums(conn: sqlite3.Connection) -> pd.DataFrame:
            JOIN albums al ON awa.album_id = al.album_id
            JOIN artists a ON al.artist_id = a.artist_id
            ORDER BY awa.billboard_week""",
+        conn,
+    )
+    df["billboard_week"] = pd.to_datetime(df["billboard_week"]).dt.date
+    return df
+
+
+def load_agg_weekly_track_sources(conn: sqlite3.Connection) -> pd.DataFrame:
+    """Load track-source pre-aggregates for album project weekly rankings."""
+    import pandas as pd
+
+    df = pd.read_sql_query(
+        """SELECT awts.billboard_week,
+                  awts.play_date,
+                  awts.track_id,
+                  t.track_name,
+                  a.artist_name,
+                  t.album_id AS track_album_id,
+                  COALESCE(al_src.album_name, al.album_name) AS album_name,
+                  NULLIF(awts.source_album_id, 0) AS source_album_id,
+                  awts.play_count,
+                  awts.total_ms,
+                  awts.play_date AS ts,
+                  awts.play_date AS ts_date
+           FROM agg_weekly_track_sources awts
+           JOIN tracks t ON awts.track_id = t.track_id
+           JOIN artists a ON t.artist_id = a.artist_id
+           LEFT JOIN albums al ON t.album_id = al.album_id
+           LEFT JOIN albums al_src ON awts.source_album_id = al_src.album_id
+           ORDER BY awts.billboard_week, awts.play_date""",
         conn,
     )
     df["billboard_week"] = pd.to_datetime(df["billboard_week"]).dt.date

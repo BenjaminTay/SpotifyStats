@@ -3,7 +3,7 @@
 import logging
 import threading
 
-from backend.core.db import get_db, load_plays
+from backend.core.db import get_db, load_plays, load_plays_for_artists
 from backend.services.analysis_stats_service import get_analysis_charts, get_analysis_stats
 from backend.services.billboard_service import compute_billboard_data
 
@@ -13,6 +13,8 @@ DEFAULT_PLAY_FILTERS = {
     "min_ms": 30000,
     "music_only": True,
     "merge_enabled": True,
+    "dynamic_threshold": True,
+    "max_merge_gap_minutes": None,
 }
 
 DEFAULT_BILLBOARD_FILTERS = {
@@ -25,6 +27,9 @@ DEFAULT_BILLBOARD_FILTERS = {
     "bb_week_start_hour": 0,
     "year_start": None,
     "year_end": None,
+    "dynamic_threshold": True,
+    "max_merge_gap_minutes": None,
+    "merge_level": 2,
 }
 
 
@@ -33,6 +38,7 @@ def warm_common_caches() -> None:
     conn = get_db()
     try:
         load_plays(conn, **DEFAULT_PLAY_FILTERS)
+        load_plays_for_artists(conn, **DEFAULT_PLAY_FILTERS)
         get_analysis_stats(conn, **DEFAULT_PLAY_FILTERS, period="lifetime")
         get_analysis_charts(
             conn,

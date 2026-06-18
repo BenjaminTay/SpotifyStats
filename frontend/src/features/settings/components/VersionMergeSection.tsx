@@ -13,9 +13,9 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
-import { Star, Trash2, Plus, X, Search, ChevronDown, CheckCircle2, RefreshCw } from 'lucide-react'
+import { Star, Trash2, Plus, X, Search, ChevronDown, CheckCircle2, RefreshCw, GitMerge } from 'lucide-react'
 import { useVersionMerge } from '@/hooks/useSettings'
-import type { DetectionResult, DetectionMember, ReleaseGroup, GroupMember, UngroupedAlbum, TrackComparison } from '@/types/settings'
+import type { DetectionResult, DetectionMember, ReleaseGroup, GroupMember, UngroupedAlbum, TrackComparison, TrackGroupCandidate } from '@/types/settings'
 import { SectionHeader, FieldLabel, TrackComparePanel } from '@/features/settings/components/SettingsHelpers'
 import { getDefaultMergeLevel, setDefaultMergeLevel } from '@/lib/merge-level'
 
@@ -113,6 +113,17 @@ function AutoDetectionTab({ vm }: { vm: ReturnType<typeof useVersionMerge> }) {
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [applying, setApplying] = useState(false)
   const [applyMsg, setApplyMsg] = useState('')
+  const [candidates, setCandidates] = useState<TrackGroupCandidate[] | null>(null)
+  const [candidateLoading, setCandidateLoading] = useState(false)
+  const [candidateMsg, setCandidateMsg] = useState('')
+  const [candidateMsgTone, setCandidateMsgTone] = useState<'success' | 'error'>('success')
+  const [confirmingCandidateKey, setConfirmingCandidateKey] = useState<string | null>(null)
+  const [ignoredCandidateKeys, setIgnoredCandidateKeys] = useState<Set<string>>(new Set())
+  const [rebuildLoading, setRebuildLoading] = useState(false)
+  const [maintenanceMsg, setMaintenanceMsg] = useState('')
+
+  const candidateKey = (item: TrackGroupCandidate) => `${item.original_track_id}-${item.candidate_track_id}`
+  const visibleCandidates = candidates?.filter((item) => !ignoredCandidateKeys.has(candidateKey(item))) ?? []
 
   const handleDetect = () => {
     setLoading(true)
@@ -150,6 +161,55 @@ function AutoDetectionTab({ vm }: { vm: ReturnType<typeof useVersionMerge> }) {
     })
   }
 
+  const handleFetchCandidates = () => {
+    setCandidateLoading(true)
+    setCandidateMsg('')
+    setCandidateMsgTone('success')
+    setIgnoredCandidateKeys(new Set())
+    vm.fetchCollaborationCandidates()
+      .then(setCandidates)
+      .finally(() => setCandidateLoading(false))
+  }
+
+  const handleConfirmCandidate = (item: TrackGroupCandidate) => {
+    const key = candidateKey(item)
+    setConfirmingCandidateKey(key)
+    setCandidateMsg('')
+    setCandidateMsgTone('success')
+    vm.confirmTrackCandidate(item.original_track_id, item.candidate_track_id, 'composition')
+      .then((res) => {
+        if (res.status === 'ok') {
+          setCandidateMsg(`已确认 L3 合并：${displayName(item.candidate_track_name)}`)
+          setCandidates((prev) => prev?.filter((candidate) => candidateKey(candidate) !== key) ?? null)
+          return
+        }
+        setCandidateMsgTone('error')
+        setCandidateMsg(res.message ?? '确认失败')
+      })
+      .catch(() => {
+        setCandidateMsgTone('error')
+        setCandidateMsg('确认失败')
+      })
+      .finally(() => setConfirmingCandidateKey(null))
+  }
+
+  const handleIgnoreCandidate = (item: TrackGroupCandidate) => {
+    const key = candidateKey(item)
+    setIgnoredCandidateKeys((prev) => {
+      const next = new Set(prev)
+      next.add(key)
+      return next
+    })
+  }
+
+  const handleRebuildProjects = () => {
+    setRebuildLoading(true)
+    setMaintenanceMsg('')
+    vm.rebuildAlbumProjects()
+      .then((res) => setMaintenanceMsg(res.status === 'ok' ? '专辑项目已重建' : '重建失败'))
+      .finally(() => setRebuildLoading(false))
+  }
+
   return (
     <div className="space-y-4">
       {/* Controls */}
@@ -172,6 +232,95 @@ function AutoDetectionTab({ vm }: { vm: ReturnType<typeof useVersionMerge> }) {
           {loading ? '检测中...' : '开始检测'}
         </Button>
       </div>
+
+      <div className="grid gap-3 lg:grid-cols-2">
+        <div className="rounded-xl border border-border p-4">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <FieldLabel label="Album Projects" />
+              <p className="mt-1 text-[12px] text-muted-foreground">按当前版本分组重新生成专辑项目归属。</p>
+            </div>
+            <Button size="sm" variant="outline" onClick={handleRebuildProjects} disabled={rebuildLoading} className="gap-1.5">
+              {rebuildLoading ? <RefreshCw className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />}
+              重建
+            </Button>
+          </div>
+          {maintenanceMsg && (
+            <div className="mt-3 flex items-center gap-2 text-[13px] text-green-600 dark:text-green-400">
+              <CheckCircle2 className="size-3.5" />
+              {maintenanceMsg}
+            </div>
+          )}
+        </div>
+
+        <div className="rounded-xl border border-border p-4">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <FieldLabel label="合作版候选" />
+              <p className="mt-1 text-[12px] text-muted-foreground">查找包含原主艺人的 remix / feat. 候选。</p>
+            </div>
+            <Button size="sm" variant="outline" onClick={handleFetchCandidates} disabled={candidateLoading} className="gap-1.5">
+              {candidateLoading ? <RefreshCw className="size-3.5 animate-spin" /> : <GitMerge className="size-3.5" />}
+              查询
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      {candidates !== null && (
+        <div className="max-h-[220px] space-y-2 overflow-y-auto rounded-xl border border-border p-3">
+          {visibleCandidates.length === 0 ? (
+            <p className="py-4 text-center text-[13px] text-muted-foreground">暂无合作版候选。</p>
+          ) : (
+            visibleCandidates.map((item) => {
+              const key = candidateKey(item)
+              const confirming = confirmingCandidateKey === key
+              return (
+                <div key={key} className="flex items-center gap-3 rounded-lg bg-muted/30 px-3 py-2">
+                  <GitMerge className="size-3.5 shrink-0 text-accent-foreground" />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-[13px] font-medium">{displayName(item.original_track_name)}</p>
+                    <p className="truncate text-[12px] text-muted-foreground">{displayName(item.candidate_track_name)}</p>
+                  </div>
+                  <Badge variant="outline" className="shrink-0 text-[10px]">#{item.primary_artist_id}</Badge>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => handleConfirmCandidate(item)}
+                    disabled={confirmingCandidateKey !== null}
+                    className="h-7 shrink-0 gap-1 text-[12px]"
+                  >
+                    {confirming ? <RefreshCw className="size-3 animate-spin" /> : <CheckCircle2 className="size-3" />}
+                    确认 L3
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => handleIgnoreCandidate(item)}
+                    disabled={confirmingCandidateKey !== null}
+                    className="h-7 shrink-0 text-[12px]"
+                  >
+                    <X className="size-3" />
+                  </Button>
+                </div>
+              )
+            })
+          )}
+          {candidateMsg && (
+            <div
+              className={cn(
+                'flex items-center gap-2 pt-1 text-[13px]',
+                candidateMsgTone === 'success'
+                  ? 'text-green-600 dark:text-green-400'
+                  : 'text-destructive',
+              )}
+            >
+              {candidateMsgTone === 'success' ? <CheckCircle2 className="size-3.5" /> : <X className="size-3.5" />}
+              {candidateMsg}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Results */}
       {results !== null && results.length === 0 && !loading && (
@@ -383,6 +532,9 @@ function SavedGroupCard({ group: g, vm }: { group: ReleaseGroup; vm: ReturnType<
             ) : (
               <Badge variant="outline" className="text-[10px]">自动</Badge>
             )}
+            <Badge variant="secondary" className="text-[10px]">
+              {g.scope === 'composition' ? 'L3 作品' : 'L2 发行'}
+            </Badge>
           </div>
           <p className="text-[12.5px] text-muted-foreground">{displayName(g.artist_name)}</p>
           {g.primary_album_name && (
@@ -461,6 +613,7 @@ function ManualCreateTab({ vm }: { vm: ReturnType<typeof useVersionMerge> }) {
   const [albums, setAlbums] = useState<UngroupedAlbum[]>([])
   const [artistFilter, setArtistFilter] = useState('')
   const [canonicalName, setCanonicalName] = useState('')
+  const [scope, setScope] = useState<'release' | 'composition'>('release')
   const [selectedAlbums, setSelectedAlbums] = useState<Set<number>>(new Set())
   const [primaryId, setPrimaryId] = useState<number | null>(null)
   const [creating, setCreating] = useState(false)
@@ -489,26 +642,49 @@ function ManualCreateTab({ vm }: { vm: ReturnType<typeof useVersionMerge> }) {
     const firstAlbum = albums.find((a) => a.album_id === primaryId)
     if (!firstAlbum) return
 
-    // Find artist_id from the first selected album
     setCreating(true)
-    // Extract artist_id from album data; the backend expects artist_id as int
-    // We don't have artist_id directly from ungrouped albums, so we use a workaround
-    vm.createGroup(
-      canonicalName || firstAlbum.album_name,
-      0, // artist_id will be resolved from members by the backend
-      primaryId,
-      Array.from(selectedAlbums),
-    ).then((res) => {
-      if (res.group_id) {
-        setMsg(`分组创建成功 (ID: ${res.group_id})`)
+    const name = canonicalName || firstAlbum.album_name
+    const selectedIds = Array.from(selectedAlbums)
+    const request = scope === 'composition'
+      ? vm.confirmAlbumRelation(
+        name,
+        primaryId,
+        selectedIds.filter((id) => id !== primaryId),
+        'composition',
+        'rerecord',
+        true,
+      ).then((res) => {
+        if (res.status !== 'ok') return { ok: false, message: res.message ?? '创建失败' }
+        return {
+          ok: true,
+          message: `分组创建成功 (ID: ${res.release_group_id}) · 歌曲 ${res.confirmed_track_pair_count} 组 · 独有 ${res.exclusive_track_count} 首`,
+        }
+      })
+      : vm.createGroup(
+        name,
+        0,
+        primaryId,
+        selectedIds,
+        scope,
+      ).then((res) => ({
+        ok: Boolean(res.group_id),
+        message: res.group_id ? `分组创建成功 (ID: ${res.group_id})` : '创建失败',
+      }))
+
+    request
+      .then((res) => {
+      if (res.ok) {
+        setMsg(res.message)
         setSelectedAlbums(new Set())
         setPrimaryId(null)
         setCanonicalName('')
+        setScope('release')
       } else {
-        setMsg('创建失败')
+        setMsg(res.message)
       }
-      setCreating(false)
-    })
+      })
+      .catch(() => setMsg('创建失败'))
+      .finally(() => setCreating(false))
   }
 
   return (
@@ -587,6 +763,22 @@ function ManualCreateTab({ vm }: { vm: ReturnType<typeof useVersionMerge> }) {
                           {a.album_name}
                         </SelectItem>
                       ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-1.5">
+                <FieldLabel label="合并语义" badge={scope === 'composition' ? 'L3' : 'L2'} />
+                <Select
+                  value={scope}
+                  onValueChange={(v) => setScope(v as 'release' | 'composition')}
+                >
+                  <SelectTrigger className="w-[280px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="release">L2 发行版本</SelectItem>
+                    <SelectItem value="composition">L3 作品版本</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

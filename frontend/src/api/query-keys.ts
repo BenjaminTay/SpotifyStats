@@ -105,5 +105,6 @@ export const queryKeys = {
     ungrouped: (artistName?: string) => ['version-merge', 'ungrouped', artistName ?? ''] as const,
     comparison: (aId: number, bId: number) => ['version-merge', 'comparison', aId, bId] as const,
     albumTypes: (ids: number[]) => ['version-merge', 'album-types', ids.join(',')] as const,
+    collaborationCandidates: () => ['version-merge', 'collaboration-candidates'] as const,
   },
 } as const

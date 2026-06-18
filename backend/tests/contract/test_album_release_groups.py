@@ -31,12 +31,36 @@ class TestReleaseGroupScope:
         Standalone release groups keep scope='release'; child release groups
         under a composition parent get scope='composition' (R10)."""
         mapping = load_album_release_group_map(seed_conn, merge_level=3)
-        # Seed has no composition groups, so all are standalone release groups
         assert not mapping.empty
-        assert set(mapping["scope"]) == {"release"}
+        assert {"release", "composition"} <= set(mapping["scope"])
 
 
 class TestPersonalAlbumChartCanonical:
+    def test_l1_personal_album_chart_uses_source_album_container(self, seed_conn):
+        """L1 album chart keeps physical source albums separate.
+
+        Fixture Lead Single has one valid play whose default track album is
+        "Fixture Future Single" but whose source_album_id is the LP
+        "Fixture Future LP". L1 must count that play toward the LP container.
+        """
+        df = load_plays(seed_conn, min_ms=30000, music_only=True, merge_enabled=True)
+        expected_lp_plays = int(df[df["source_album_name"] == "Fixture Future LP"].shape[0])
+
+        _total, rows = chart_rows(
+            seed_conn,
+            df,
+            entity="album",
+            metric="plays",
+            limit=100,
+            offset=0,
+            merge_level=1,
+            include_compilations=True,
+        )
+        fixture_lp = next(row for row in rows if row["album_name"] == "Fixture Future LP")
+
+        assert expected_lp_plays == 4
+        assert fixture_lp["plays"] == expected_lp_plays
+
     def test_alpha_debut_merged_in_personal_chart(self, seed_conn):
         """Personal album chart merges Alpha Debut + Alpha Debut Deluxe → canonical."""
         df = load_plays(seed_conn, min_ms=30000, music_only=True, merge_enabled=True)

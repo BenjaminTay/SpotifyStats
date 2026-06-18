@@ -28,6 +28,7 @@ def build() -> str:
         os.remove(SEED_PATH)
 
     conn = sqlite3.connect(SEED_PATH)
+    conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     conn.executescript(SCHEMA)
     # Add columns that are created by ensure_schema() via ALTER TABLE
@@ -233,6 +234,13 @@ def build() -> str:
         (903, "Fixture Release Album", 901),
         (904, "Fixture Release Album (Deluxe)", 901),
         (905, "Fixture Collab Single", 901),
+        (920, "Fixture Future Single", 901),
+        (921, "Fixture Future LP", 901),
+        (922, "Fixture Future LP Deluxe", 901),
+        (923, "Fixture Pure Compilation", 901),
+        (924, "Fixture Compilation Plus", 901),
+        (925, "Fixture Future LP (Rerecorded)", 901),
+        (926, "Fixture Collab Remix", 901),
     ]
     conn.executemany(
         "INSERT INTO albums(album_id, album_name, artist_id) VALUES (?, ?, ?)", fixture_albums
@@ -305,6 +313,97 @@ def build() -> str:
             1,
             '["spotify:track:fix010"]',
         ),
+        (
+            "spotify:album:proj920",
+            "Fixture Future Single",
+            "single",
+            "2026-01-05",
+            50,
+            "Fixture Records",
+            "pop",
+            "",
+            "Fixture Artist Alpha",
+            1,
+            '["spotify:track:proj920"]',
+        ),
+        (
+            "spotify:album:proj921",
+            "Fixture Future LP",
+            "album",
+            "2026-02-01",
+            70,
+            "Fixture Records",
+            "pop",
+            "",
+            "Fixture Artist Alpha",
+            10,
+            '["spotify:track:proj920","spotify:track:proj921"]',
+        ),
+        (
+            "spotify:album:proj922",
+            "Fixture Future LP Deluxe",
+            "album",
+            "2026-02-15",
+            65,
+            "Fixture Records",
+            "pop",
+            "",
+            "Fixture Artist Alpha",
+            12,
+            '["spotify:track:proj920","spotify:track:proj921","spotify:track:proj922"]',
+        ),
+        (
+            "spotify:album:proj923",
+            "Fixture Pure Compilation",
+            "compilation",
+            "2026-03-01",
+            40,
+            "Fixture Records",
+            "pop",
+            "",
+            "Fixture Artist Alpha",
+            12,
+            '["spotify:track:proj920"]',
+        ),
+        (
+            "spotify:album:proj924",
+            "Fixture Compilation Plus",
+            "compilation",
+            "2026-03-05",
+            42,
+            "Fixture Records",
+            "pop",
+            "",
+            "Fixture Artist Alpha",
+            14,
+            '["spotify:track:proj920","spotify:track:proj923"]',
+        ),
+        (
+            "spotify:album:proj925",
+            "Fixture Future LP (Rerecorded)",
+            "album",
+            "2026-04-01",
+            60,
+            "Fixture Records",
+            "pop",
+            "",
+            "Fixture Artist Alpha",
+            10,
+            '["spotify:track:proj925","spotify:track:proj927"]',
+        ),
+        (
+            "spotify:album:proj926",
+            "Fixture Collab Remix",
+            "single",
+            "2026-04-15",
+            45,
+            "Fixture Records",
+            "pop",
+            "",
+            "Fixture Artist Alpha, Fixture Artist Beta",
+            1,
+            '["spotify:track:proj926"]',
+        ),
     ]
     conn.executemany(
         """INSERT INTO spotify_album_meta(spotify_album_id, album_name, album_type,
@@ -342,6 +441,14 @@ def build() -> str:
         (909, "Fixture Composition Song - Demo", 901, 903, "spotify:track:fix009"),
         # scenario 10: collab single with multi-artist album_artists (comma-separated)
         (910, "Fixture Collab Track", 901, 905, "spotify:track:fix010"),
+        # album project scenarios
+        (920, "Fixture Lead Single", 901, 920, "spotify:track:proj920"),
+        (921, "Fixture Album Cut", 901, 921, "spotify:track:proj921"),
+        (922, "Fixture Deluxe Bonus", 901, 922, "spotify:track:proj922"),
+        (923, "Fixture Compilation Exclusive", 901, 924, "spotify:track:proj923"),
+        (925, "Fixture Lead Single (Rerecorded)", 901, 925, "spotify:track:proj925"),
+        (926, "Fixture Lead Single Remix", 901, 926, "spotify:track:proj926"),
+        (927, "Fixture Rerecord Vault", 901, 925, "spotify:track:proj927"),
     ]
     conn.executemany(
         "INSERT INTO tracks(track_id, track_name, artist_id, album_id, spotify_track_uri) VALUES (?, ?, ?, ?, ?)",
@@ -351,13 +458,35 @@ def build() -> str:
     # Fixture Track-Album associations (scenario 4: same track on single + LP)
     conn.execute("INSERT INTO track_albums(track_id, album_id) VALUES (904, 901)")
     conn.execute("INSERT INTO track_albums(track_id, album_id) VALUES (904, 902)")
+    fixture_project_track_albums = [
+        (920, 920),
+        (920, 921),
+        (920, 922),
+        (920, 923),
+        (920, 924),
+        (921, 921),
+        (921, 922),
+        (922, 922),
+        (923, 924),
+        (925, 925),
+        (926, 926),
+        (927, 925),
+    ]
+    conn.executemany(
+        "INSERT OR IGNORE INTO track_albums(track_id, album_id) VALUES (?, ?)",
+        fixture_project_track_albums,
+    )
 
-    # Fixture Track-Artist associations (scenario 3: multi-artist)
+    # Backfill primary credits, then add featured credits for multi-artist fixtures.
     conn.execute(
-        "INSERT INTO track_artists(track_id, artist_id, role) VALUES (903, 901, 'primary')"
+        "INSERT OR IGNORE INTO track_artists(track_id, artist_id, role) "
+        "SELECT track_id, artist_id, 'primary' FROM tracks"
     )
     conn.execute(
-        "INSERT INTO track_artists(track_id, artist_id, role) VALUES (903, 902, 'featured')"
+        "INSERT OR IGNORE INTO track_artists(track_id, artist_id, role) VALUES (903, 902, 'featured')"
+    )
+    conn.execute(
+        "INSERT OR IGNORE INTO track_artists(track_id, artist_id, role) VALUES (926, 902, 'featured')"
     )
 
     # Fixture Spotify Track Metadata
@@ -462,6 +591,83 @@ def build() -> str:
             1,
             "ISRC-FIX-010",
             "spotify:album:fix5",
+        ),
+        (
+            "proj920",
+            "Fixture Lead Single",
+            200000,
+            65,
+            0,
+            1,
+            1,
+            "ISRC-PROJ-920",
+            "spotify:album:proj920",
+        ),
+        (
+            "proj921",
+            "Fixture Album Cut",
+            210000,
+            60,
+            0,
+            2,
+            1,
+            "ISRC-PROJ-921",
+            "spotify:album:proj921",
+        ),
+        (
+            "proj922",
+            "Fixture Deluxe Bonus",
+            190000,
+            55,
+            0,
+            11,
+            1,
+            "ISRC-PROJ-922",
+            "spotify:album:proj922",
+        ),
+        (
+            "proj923",
+            "Fixture Compilation Exclusive",
+            180000,
+            50,
+            0,
+            1,
+            1,
+            "ISRC-PROJ-923",
+            "spotify:album:proj924",
+        ),
+        (
+            "proj925",
+            "Fixture Lead Single (Rerecorded)",
+            205000,
+            52,
+            0,
+            1,
+            1,
+            "ISRC-PROJ-925",
+            "spotify:album:proj925",
+        ),
+        (
+            "proj926",
+            "Fixture Lead Single Remix",
+            215000,
+            50,
+            0,
+            1,
+            1,
+            "ISRC-PROJ-926",
+            "spotify:album:proj926",
+        ),
+        (
+            "proj927",
+            "Fixture Rerecord Vault",
+            195000,
+            50,
+            0,
+            9,
+            1,
+            "ISRC-PROJ-927",
+            "spotify:album:proj925",
         ),
     ]
     conn.executemany(
@@ -690,6 +896,33 @@ def build() -> str:
     # Scenario 10: collab single — multi-artist album_artists (comma-separated)
     plays.append(make_play("2026-06-06T02:00:00Z", "ios", 200000, 910, source_album_id=905))
 
+    # Album project fixtures.
+    # Expected L2 all-time "Fixture Future LP" total:
+    # lead single 4 plays: 2 single source before LP + 1 LP source after release + 1 compilation source
+    # album cut 3 plays: 3 LP source
+    # deluxe bonus 2 plays: 2 deluxe source
+    # total = 9
+    plays.extend(
+        [
+            make_play("2026-01-10T02:00:00Z", "ios", 200000, 920, source_album_id=920),
+            make_play("2026-01-12T02:00:00Z", "ios", 200000, 920, source_album_id=920),
+            make_play("2026-02-02T02:00:00Z", "ios", 200000, 920, source_album_id=921),
+            make_play("2026-02-03T02:00:00Z", "ios", 210000, 921, source_album_id=921),
+            make_play("2026-02-04T02:00:00Z", "ios", 210000, 921, source_album_id=921),
+            make_play("2026-02-05T02:00:00Z", "ios", 210000, 921, source_album_id=921),
+            make_play("2026-02-16T02:00:00Z", "ios", 190000, 922, source_album_id=922),
+            make_play("2026-02-17T02:00:00Z", "ios", 190000, 922, source_album_id=922),
+            make_play("2026-03-02T02:00:00Z", "ios", 200000, 920, source_album_id=923),
+            make_play("2026-03-06T02:00:00Z", "ios", 180000, 923, source_album_id=924),
+            make_play("2026-03-07T02:00:00Z", "ios", 180000, 923, source_album_id=924),
+            make_play("2026-03-08T02:00:00Z", "ios", 180000, 923, source_album_id=924),
+            make_play("2026-03-09T02:00:00Z", "ios", 180000, 923, source_album_id=924),
+            make_play("2026-04-02T02:00:00Z", "ios", 205000, 925, source_album_id=925),
+            make_play("2026-04-03T02:00:00Z", "ios", 195000, 927, source_album_id=925),
+            make_play("2026-04-16T02:00:00Z", "ios", 215000, 926, source_album_id=926),
+        ]
+    )
+
     # Scenario 8: billboard_fragment_boundary — short fragments around a week boundary
     # Week boundary: Thu 00:00 (DOW=3). Use Thu May 28 2026 (DOW=3).
     # Play at Wed May 27 23:55 Beijing → Wed 23:55 → DOW=2, W21 or W22
@@ -807,6 +1040,22 @@ def build() -> str:
     conn.execute("INSERT INTO release_group_members(group_id, album_id) VALUES (2, 903)")
     conn.execute("INSERT INTO release_group_members(group_id, album_id) VALUES (2, 904)")
 
+    conn.execute(
+        """INSERT INTO release_groups(group_id, canonical_name, artist_id, primary_album_id,
+           scope, is_manual)
+           VALUES (920, 'Fixture Future LP', 901, 921, 'release', 1)"""
+    )
+    conn.execute("INSERT INTO release_group_members(group_id, album_id) VALUES (920, 921)")
+    conn.execute("INSERT INTO release_group_members(group_id, album_id) VALUES (920, 922)")
+    conn.execute(
+        """INSERT INTO release_groups(group_id, canonical_name, artist_id, primary_album_id,
+           scope, is_manual)
+           VALUES (921, 'Fixture Future LP', 901, 921, 'composition', 1)"""
+    )
+    conn.execute("INSERT INTO release_group_members(group_id, album_id) VALUES (921, 921)")
+    conn.execute("INSERT INTO release_group_members(group_id, album_id) VALUES (921, 922)")
+    conn.execute("INSERT INTO release_group_members(group_id, album_id) VALUES (921, 925)")
+
     # Fixture track groups: recording scope (L2 merges 905 + 906)
     conn.execute(
         """INSERT INTO track_groups(group_id, canonical_name, primary_track_id, scope, is_manual)
@@ -833,10 +1082,27 @@ def build() -> str:
     )
     conn.execute("INSERT INTO track_group_members(group_id, track_id) VALUES (3, 908)")
 
+    conn.execute(
+        """INSERT INTO track_groups(group_id, canonical_name, primary_track_id, scope, is_manual)
+           VALUES (920, 'Fixture Lead Single', 920, 'recording', 1)"""
+    )
+    conn.execute("INSERT INTO track_group_members(group_id, track_id) VALUES (920, 920)")
+    conn.execute(
+        """INSERT INTO track_groups(group_id, canonical_name, primary_track_id, scope, is_manual)
+           VALUES (921, 'Fixture Lead Single', 920, 'composition', 1)"""
+    )
+    conn.execute("INSERT INTO track_group_members(group_id, track_id) VALUES (921, 920)")
+    conn.execute("INSERT INTO track_group_members(group_id, track_id) VALUES (921, 925)")
+    conn.execute("INSERT INTO track_group_members(group_id, track_id) VALUES (921, 926)")
+
     # ── Settings ───────────────────────────────────────────────────────────
     conn.execute("INSERT INTO settings(key, value) VALUES ('min_ms', '30000')")
     conn.execute("INSERT INTO settings(key, value) VALUES ('music_only', '1')")
     conn.execute("INSERT INTO settings(key, value) VALUES ('merge_enabled', '1')")
+
+    from backend.domains.playback.album_projects import ensure_album_projects
+
+    ensure_album_projects(conn)
 
     conn.commit()
 
@@ -850,8 +1116,8 @@ def build() -> str:
     track_count = conn.execute("SELECT COUNT(*) FROM tracks").fetchone()[0]
     play_count = conn.execute("SELECT COUNT(*) FROM plays").fetchone()[0]
     assert artist_count == 5, f"Expected 5 artists, got {artist_count}"
-    assert album_count == 11, f"Expected 11 albums, got {album_count}"
-    assert track_count == 25, f"Expected 25 tracks, got {track_count}"
+    assert album_count == 18, f"Expected 18 albums, got {album_count}"
+    assert track_count == 32, f"Expected 32 tracks, got {track_count}"
     assert play_count == len(plays), f"Expected {len(plays)} plays, got {play_count}"
     print(
         f"  A1 PASS: {artist_count} artists, {album_count} albums, {track_count} tracks, {play_count} plays"
@@ -950,8 +1216,8 @@ def build() -> str:
     # A9: Version merge group exists
     group_count = conn.execute("SELECT COUNT(*) FROM release_groups").fetchone()[0]
     member_count = conn.execute("SELECT COUNT(*) FROM release_group_members").fetchone()[0]
-    assert group_count == 2, f"Expected 2 release groups, got {group_count}"
-    assert member_count == 4, f"Expected 4 release group members, got {member_count}"
+    assert group_count == 4, f"Expected 4 release groups, got {group_count}"
+    assert member_count == 9, f"Expected 9 release group members, got {member_count}"
     print(f"  A9 PASS: release group created with {member_count} members")
 
     # A10: Track version groups
@@ -959,9 +1225,9 @@ def build() -> str:
     track_group_member_count = conn.execute("SELECT COUNT(*) FROM track_group_members").fetchone()[
         0
     ]
-    assert track_group_count == 3, f"Expected 3 track groups, got {track_group_count}"
-    assert track_group_member_count == 4, (
-        f"Expected 4 track group members, got {track_group_member_count}"
+    assert track_group_count == 5, f"Expected 5 track groups, got {track_group_count}"
+    assert track_group_member_count == 8, (
+        f"Expected 8 track group members, got {track_group_member_count}"
     )
     print(f"  A10 PASS: track groups created with {track_group_member_count} members")
 
@@ -969,8 +1235,8 @@ def build() -> str:
     track_meta_count = conn.execute("SELECT COUNT(*) FROM spotify_track_meta").fetchone()[0]
     album_meta_count = conn.execute("SELECT COUNT(*) FROM spotify_album_meta").fetchone()[0]
     artist_meta_count = conn.execute("SELECT COUNT(*) FROM spotify_artist_meta").fetchone()[0]
-    assert track_meta_count == 25, f"Expected 25 track metas, got {track_meta_count}"
-    assert album_meta_count == 11, f"Expected 11 album metas, got {album_meta_count}"
+    assert track_meta_count == 32, f"Expected 32 track metas, got {track_meta_count}"
+    assert album_meta_count == 18, f"Expected 18 album metas, got {album_meta_count}"
     assert artist_meta_count == 4, f"Expected 4 artist metas, got {artist_meta_count}"
     print("  A10 PASS: Spotify metadata present")
 

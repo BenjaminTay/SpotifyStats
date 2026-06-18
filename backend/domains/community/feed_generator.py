@@ -165,7 +165,15 @@ def _generate_core_posts(
         personal = personal_weekly.get(week_val, {})
 
         if personal.get("plays", 0) < 3:
-            state.update(entries, **personal) if personal else state.update(entries)
+            state.update(
+                entries,
+                personal_plays=personal.get("plays", 0),
+                personal_ms=personal.get("ms", 0),
+                personal_track_ids=personal.get("track_ids", set()),
+                personal_artist_names=personal.get("artist_names", set()),
+                personal_top_artist=personal.get("top_artist", ""),
+                personal_top_artist_plays=personal.get("top_artist_plays", 0),
+            )
             prev_week_entries = entries
             continue
 

@@ -35,7 +35,9 @@ from backend.domains.billboard.chart_staged_cache import (
     _compute_records_cached,
     _compute_summaries_cached,
     _compute_weekly_data_cached,
+    _filtered_record_count,
     _load_and_rank,
+    _load_and_rank_cached,
 )
 from backend.domains.billboard.chart_summaries import (
     compute_album_track_counts,
@@ -166,7 +168,7 @@ def _compute_billboard_data_cached(
     result = {
         "meta": {
             "total_weeks": len(all_weeks_asc),
-            "total_filtered_records": int(len(df_filtered)),
+            "total_filtered_records": _filtered_record_count(df_filtered),
             "all_weeks_asc": [w.isoformat() for w in all_weeks_asc],
             "all_weeks_desc": [w.isoformat() for w in all_weeks_desc],
             "dow_name": DOW_NAMES[bb_week_start_dow],
@@ -238,3 +240,4 @@ register_lru("billboard", "weekly", _compute_weekly_data_cached)
 register_lru("billboard", "power_scores", _compute_power_scores_cached)
 register_lru("billboard", "summaries", _compute_summaries_cached)
 register_lru("billboard", "records", _compute_records_cached)
+register_lru("billboard", "load_and_rank", _load_and_rank_cached)

@@ -10,14 +10,17 @@ from typing import Optional
 import numpy as np
 import pandas as pd
 from fastapi import APIRouter, Depends, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from backend.core.auth import require_auth
 from backend.core.json_helpers import df_to_json
 from backend.core.version_merge import (
     apply_detected_groups,
+    confirm_album_relation_bundle,
+    confirm_track_group_candidate,
     create_group,
     delete_group,
+    detect_collaboration_track_group_candidates,
     detect_release_groups,
     get_album_track_comparison,
     get_album_types,
@@ -40,6 +43,7 @@ class CreateGroupRequest(BaseModel):
     artist_id: int
     primary_album_id: int
     member_ids: list[int]
+    scope: str = "release"
 
 
 class UpdateMembersRequest(BaseModel):
@@ -60,6 +64,7 @@ class ReleaseGroupResponse(BaseModel):
     artist_name: str
     primary_album_id: Optional[int] = None
     primary_album_name: Optional[str] = None
+    scope: str = "release"
     is_manual: int
     created_at: str
 
@@ -124,6 +129,66 @@ class DetectionResultResponse(BaseModel):
     overlap_details: list[OverlapDetailResponse]
 
 
+class TrackGroupCandidateResponse(BaseModel):
+    original_track_id: int
+    original_track_name: str
+    candidate_track_id: int
+    candidate_track_name: str
+    primary_artist_id: int
+
+
+class TrackGroupConfirmRequest(BaseModel):
+    original_track_id: int
+    candidate_track_id: int
+    scope: str = "composition"
+
+
+class TrackGroupConfirmResponse(BaseModel):
+    status: str
+    group_id: Optional[int] = None
+    scope: Optional[str] = None
+    member_count: Optional[int] = None
+    album_projects_rebuilt: bool = False
+    message: Optional[str] = None
+
+
+class AlbumRelationConfirmRequest(BaseModel):
+    canonical_name: str
+    primary_album_id: int
+    member_album_ids: list[int]
+    scope: str = "composition"
+    relation_type: str = "rerecord"
+    confirm_track_pairs: bool = True
+
+
+class AlbumRelationTrackPairResponse(BaseModel):
+    original_track_id: int
+    original_track_name: str
+    candidate_track_id: int
+    candidate_track_name: str
+    candidate_album_id: int
+
+
+class AlbumRelationExclusiveTrackResponse(BaseModel):
+    track_id: int
+    track_name: str
+    source_album_id: int
+
+
+class AlbumRelationConfirmResponse(BaseModel):
+    status: str
+    release_group_id: Optional[int] = None
+    scope: Optional[str] = None
+    relation_type: Optional[str] = None
+    candidate_track_pair_count: int = 0
+    confirmed_track_pair_count: int = 0
+    exclusive_track_count: int = 0
+    track_pairs: list[AlbumRelationTrackPairResponse] = Field(default_factory=list)
+    exclusive_tracks: list[AlbumRelationExclusiveTrackResponse] = Field(default_factory=list)
+    album_projects_rebuilt: bool = False
+    message: Optional[str] = None
+
+
 # ── Query endpoints ──────────────────────────────────────────────────────
 
 
@@ -174,6 +239,18 @@ def album_types(album_ids: str = Query(..., description="Comma-separated album I
     return {str(album_id): album_type for album_id, album_type in get_album_types(ids).items()}
 
 
+@router.get(
+    "/track-group-candidates/collaboration",
+    response_model=list[TrackGroupCandidateResponse],
+)
+def collaboration_candidates(auth: None = Depends(require_auth)):
+    """Find collaboration/remix track-group candidates for user confirmation."""
+    df = detect_collaboration_track_group_candidates()
+    if df.empty:
+        return []
+    return df.where(pd.notna(df), None).to_dict(orient="records")
+
+
 # ── Mutation endpoints ────────────────────────────────────────────────────
 
 
@@ -185,10 +262,37 @@ def create_new_group(body: CreateGroupRequest, auth: None = Depends(require_auth
         artist_id=body.artist_id,
         primary_album_id=body.primary_album_id,
         member_ids=body.member_ids,
+        scope=body.scope,
     )
     if group_id is None:
         return {"status": "error", "message": "Failed to create group"}
     return {"status": "ok", "group_id": group_id}
+
+
+@router.post("/track-groups/confirm", response_model=TrackGroupConfirmResponse)
+def confirm_track_group(body: TrackGroupConfirmRequest, auth: None = Depends(require_auth)):
+    """Confirm a track candidate and rebuild album project rows."""
+    return confirm_track_group_candidate(
+        original_track_id=body.original_track_id,
+        candidate_track_id=body.candidate_track_id,
+        scope=body.scope,
+    )
+
+
+@router.post("/album-relations/confirm", response_model=AlbumRelationConfirmResponse)
+def confirm_album_relation(
+    body: AlbumRelationConfirmRequest,
+    auth: None = Depends(require_auth),
+):
+    """Confirm an album-level relation and derive matching track relations."""
+    return confirm_album_relation_bundle(
+        canonical_name=body.canonical_name,
+        primary_album_id=body.primary_album_id,
+        member_album_ids=body.member_album_ids,
+        scope=body.scope,
+        relation_type=body.relation_type,
+        confirm_track_pairs=body.confirm_track_pairs,
+    )
 
 
 @router.put("/groups/{group_id}/members", response_model=StatusResponse)
@@ -210,6 +314,23 @@ def remove_group(group_id: int, auth: None = Depends(require_auth)):
     """Delete a release group and its member relationships."""
     ok = delete_group(group_id)
     return {"status": "ok" if ok else "error"}
+
+
+@router.post("/album-projects/rebuild", response_model=StatusResponse)
+def rebuild_album_project_rows(auth: None = Depends(require_auth)):
+    """Rebuild inferred album project rows from current version metadata."""
+    from backend.core.cache_manager import invalidate
+    from backend.core.db import get_db
+    from backend.domains.playback.album_projects import rebuild_album_projects
+
+    conn = get_db(readonly=False)
+    try:
+        rebuild_album_projects(conn)
+    finally:
+        conn.close()
+    invalidate("analysis")
+    invalidate("billboard")
+    return {"status": "ok"}
 
 
 # ── Detection & Apply ─────────────────────────────────────────────────────
@@ -234,15 +355,12 @@ def apply_detection(detection_result: dict, auth: None = Depends(require_auth)):
     if df.empty:
         return {"status": "ok", "created_count": 0}
 
-    result = apply_detected_groups(df)
-    from backend.core.cache_manager import invalidate
-
-    invalidate("billboard")
+    created_count = apply_detected_groups(df)
     # Convert numpy types
     return {
         "status": "ok",
-        "created_count": int(result.get("created_count", 0)),
-        "skipped_count": int(result.get("skipped_count", 0)),
+        "created_count": int(created_count),
+        "skipped_count": max(int(len(df)) - int(created_count), 0),
     }
 
 

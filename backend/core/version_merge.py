@@ -7,6 +7,46 @@ import pandas as pd
 
 from backend.core.db import get_db
 
+
+def detect_collaboration_track_group_candidates() -> pd.DataFrame:
+    """Find L3 collaboration/remix candidates that include the original primary artist."""
+    conn = get_db()
+    try:
+        return pd.read_sql_query(
+            """WITH primary_tracks AS (
+                   SELECT t.track_id,
+                          t.track_name,
+                          ta.artist_id AS primary_artist_id
+                     FROM tracks t
+                     JOIN track_artists ta ON ta.track_id = t.track_id
+                    WHERE ta.role = 'primary'
+               ),
+               candidate_tracks AS (
+                   SELECT t.track_id,
+                          t.track_name,
+                          ta.artist_id
+                     FROM tracks t
+                     JOIN track_artists ta ON ta.track_id = t.track_id
+               )
+               SELECT DISTINCT
+                      p.track_id AS original_track_id,
+                      p.track_name AS original_track_name,
+                      c.track_id AS candidate_track_id,
+                      c.track_name AS candidate_track_name,
+                      p.primary_artist_id
+                 FROM primary_tracks p
+                 JOIN candidate_tracks c
+                   ON c.artist_id = p.primary_artist_id
+                  AND c.track_id != p.track_id
+                WHERE lower(c.track_name) LIKE '%' || lower(p.track_name) || '%'
+                   OR lower(c.track_name) LIKE '%' || lower(replace(p.track_name, ' - ', ' ')) || '%'
+                ORDER BY p.track_name, c.track_name""",
+            conn,
+        )
+    finally:
+        conn.close()
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # Suffix patterns
 # ═══════════════════════════════════════════════════════════════════════════
@@ -198,13 +238,30 @@ def _suffix_is_excluded(suffix: str) -> bool:
 # ═══════════════════════════════════════════════════════════════════════════
 
 
+def _refresh_version_merge_dependents(conn=None) -> None:
+    """Rebuild album projects and clear cached statistics after relation changes."""
+    from backend.core.cache_manager import invalidate
+    from backend.domains.playback.album_projects import rebuild_album_projects
+
+    owns_conn = conn is None
+    if owns_conn:
+        conn = get_db(readonly=False)
+    try:
+        rebuild_album_projects(conn)
+    finally:
+        if owns_conn:
+            conn.close()
+    invalidate("analysis")
+    invalidate("billboard")
+
+
 def get_all_groups() -> pd.DataFrame:
     """获取所有已保存的 release group（含成员详情）。"""
     conn = get_db()
     df = pd.read_sql_query(
         """SELECT rg.group_id, rg.canonical_name, a.artist_name,
                   rg.primary_album_id, pa.album_name AS primary_album_name,
-                  rg.is_manual, rg.created_at
+                  rg.scope, rg.is_manual, rg.created_at
            FROM release_groups rg
            JOIN artists a ON rg.artist_id = a.artist_id
            LEFT JOIN albums pa ON rg.primary_album_id = pa.album_id
@@ -277,15 +334,27 @@ def create_group(
     artist_id: int,
     primary_album_id: int,
     member_ids: list[int],
+    scope: str = "release",
 ):
     """手动创建 release group。返回 group_id，失败返回 None。"""
+    if scope not in {"release", "composition"}:
+        return None
     conn = get_db(readonly=False)
     try:
+        if artist_id <= 0:
+            row = conn.execute(
+                "SELECT artist_id FROM albums WHERE album_id = ?",
+                (primary_album_id,),
+            ).fetchone()
+            if row is None:
+                return None
+            artist_id = int(row["artist_id"])
+
         cur = conn.execute(
             """INSERT OR IGNORE INTO release_groups
-               (canonical_name, artist_id, primary_album_id, is_manual)
-               VALUES (?, ?, ?, 1)""",
-            (canonical_name, artist_id, primary_album_id),
+               (canonical_name, artist_id, primary_album_id, scope, is_manual)
+               VALUES (?, ?, ?, ?, 1)""",
+            (canonical_name, artist_id, primary_album_id, scope),
         )
         conn.commit()
         group_id = cur.lastrowid
@@ -294,8 +363,8 @@ def create_group(
             # 已存在，查出现有 group_id
             row = conn.execute(
                 """SELECT group_id FROM release_groups
-                   WHERE canonical_name = ? AND artist_id = ?""",
-                (canonical_name, artist_id),
+                   WHERE canonical_name = ? AND artist_id = ? AND scope = ?""",
+                (canonical_name, artist_id, scope),
             ).fetchone()
             group_id = row[0] if row else None
 
@@ -306,12 +375,326 @@ def create_group(
                     (group_id, aid),
                 )
             conn.commit()
+            _refresh_version_merge_dependents(conn)
 
         return group_id
     except Exception:
         return None
     finally:
         conn.close()
+
+
+def confirm_track_group_candidate(
+    original_track_id: int,
+    candidate_track_id: int,
+    scope: str = "composition",
+) -> dict:
+    """Confirm a track candidate by writing it into a track group.
+
+    Composition is the default so accepted feat/remix/acoustic/rerecord
+    candidates only affect L3 aggregation.
+    """
+    if scope not in {"recording", "composition"}:
+        return {"status": "error", "message": "Invalid scope"}
+    if original_track_id == candidate_track_id:
+        return {"status": "error", "message": "Tracks must differ"}
+
+    conn = get_db(readonly=False)
+    try:
+        original = conn.execute(
+            "SELECT track_id, track_name FROM tracks WHERE track_id = ?",
+            (original_track_id,),
+        ).fetchone()
+        candidate = conn.execute(
+            "SELECT track_id FROM tracks WHERE track_id = ?",
+            (candidate_track_id,),
+        ).fetchone()
+        if original is None or candidate is None:
+            return {"status": "error", "message": "Track not found"}
+
+        group = conn.execute(
+            """SELECT tg.group_id
+               FROM track_groups tg
+               JOIN track_group_members tgm ON tgm.group_id = tg.group_id
+               WHERE tgm.track_id = ? AND tg.scope = ?
+               ORDER BY tg.is_manual DESC, tg.group_id
+               LIMIT 1""",
+            (original_track_id, scope),
+        ).fetchone()
+        group_id = int(group["group_id"]) if group is not None else None
+
+        if group_id is None:
+            cur = conn.execute(
+                """INSERT OR IGNORE INTO track_groups
+                   (canonical_name, primary_track_id, scope, is_manual)
+                   VALUES (?, ?, ?, 1)""",
+                (original["track_name"], original_track_id, scope),
+            )
+            group_id = int(cur.lastrowid)
+            if group_id == 0:
+                row = conn.execute(
+                    """SELECT group_id FROM track_groups
+                       WHERE canonical_name = ? AND scope = ?""",
+                    (original["track_name"], scope),
+                ).fetchone()
+                group_id = int(row["group_id"]) if row is not None else None
+
+        if group_id is None:
+            return {"status": "error", "message": "Failed to create track group"}
+
+        for track_id in (original_track_id, candidate_track_id):
+            conn.execute(
+                "INSERT OR IGNORE INTO track_group_members(group_id, track_id) VALUES (?, ?)",
+                (group_id, track_id),
+            )
+        conn.commit()
+        _refresh_version_merge_dependents(conn)
+
+        member_count = conn.execute(
+            "SELECT COUNT(*) FROM track_group_members WHERE group_id = ?",
+            (group_id,),
+        ).fetchone()[0]
+        return {
+            "status": "ok",
+            "group_id": group_id,
+            "scope": scope,
+            "member_count": int(member_count),
+            "album_projects_rebuilt": True,
+        }
+    except Exception as exc:
+        return {"status": "error", "message": str(exc)}
+    finally:
+        conn.close()
+
+
+_RELATION_TRACK_VERSION_PATTERNS = (
+    r"\([^)]*(?:taylor'?s version|rerecorded|re-recorded|re recorded|from the vault)[^)]*\)",
+    r"\[[^\]]*(?:taylor'?s version|rerecorded|re-recorded|re recorded|from the vault)[^\]]*\]",
+)
+
+_RELATION_TRACK_VERSION_PHRASES = (
+    "taylor's version",
+    "taylors version",
+    "rerecorded",
+    "re-recorded",
+    "re recorded",
+    "from the vault",
+)
+
+
+def _normalize_relation_track_name(name: str) -> str:
+    text = (name or "").lower().replace("’", "'").replace("‘", "'")
+    for pattern in _RELATION_TRACK_VERSION_PATTERNS:
+        text = re.sub(pattern, " ", text)
+    for phrase in _RELATION_TRACK_VERSION_PHRASES:
+        text = text.replace(phrase, " ")
+    text = re.sub(r"[^a-z0-9]+", " ", text)
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def _tracks_for_relation_album(conn, album_id: int) -> list[dict]:
+    rows = conn.execute(
+        """SELECT DISTINCT t.track_id, t.track_name
+           FROM (
+               SELECT track_id FROM tracks WHERE album_id = ?
+               UNION
+               SELECT track_id FROM track_albums WHERE album_id = ?
+           ) album_tracks
+           JOIN tracks t ON t.track_id = album_tracks.track_id
+           ORDER BY t.track_id""",
+        (album_id, album_id),
+    ).fetchall()
+    return [{"track_id": int(row["track_id"]), "track_name": row["track_name"]} for row in rows]
+
+
+def derive_album_relation_track_pairs(
+    primary_album_id: int,
+    member_album_ids: list[int],
+) -> dict:
+    """Derive same-composition track pairs from an album-level relation."""
+    conn = get_db()
+    try:
+        primary_tracks = _tracks_for_relation_album(conn, primary_album_id)
+        primary_by_key = {}
+        for track in primary_tracks:
+            key = _normalize_relation_track_name(track["track_name"])
+            if key and key not in primary_by_key:
+                primary_by_key[key] = track
+
+        pairs = []
+        exclusive_tracks = []
+        for album_id in member_album_ids:
+            for candidate in _tracks_for_relation_album(conn, album_id):
+                key = _normalize_relation_track_name(candidate["track_name"])
+                original = primary_by_key.get(key)
+                if original and original["track_id"] != candidate["track_id"]:
+                    pairs.append(
+                        {
+                            "original_track_id": original["track_id"],
+                            "original_track_name": original["track_name"],
+                            "candidate_track_id": candidate["track_id"],
+                            "candidate_track_name": candidate["track_name"],
+                            "candidate_album_id": album_id,
+                        }
+                    )
+                else:
+                    exclusive_tracks.append(
+                        {
+                            "track_id": candidate["track_id"],
+                            "track_name": candidate["track_name"],
+                            "source_album_id": album_id,
+                        }
+                    )
+
+        deduped_pairs = []
+        seen_pairs = set()
+        for pair in pairs:
+            pair_key = (pair["original_track_id"], pair["candidate_track_id"])
+            if pair_key in seen_pairs:
+                continue
+            seen_pairs.add(pair_key)
+            deduped_pairs.append(pair)
+
+        deduped_exclusive = []
+        seen_exclusive = set()
+        for track in exclusive_tracks:
+            if track["track_id"] in seen_exclusive:
+                continue
+            seen_exclusive.add(track["track_id"])
+            deduped_exclusive.append(track)
+
+        return {"track_pairs": deduped_pairs, "exclusive_tracks": deduped_exclusive}
+    finally:
+        conn.close()
+
+
+def _expand_album_relation_member_ids(album_ids: list[int]) -> list[int]:
+    conn = get_db()
+    try:
+        expanded = list(dict.fromkeys(int(album_id) for album_id in album_ids))
+        if not expanded:
+            return []
+        placeholders = ",".join("?" for _ in expanded)
+        rows = conn.execute(
+            f"""SELECT DISTINCT rgm_member.album_id
+                FROM release_group_members rgm_seed
+                JOIN release_groups rg
+                  ON rg.group_id = rgm_seed.group_id
+                 AND rg.scope = 'release'
+                JOIN release_group_members rgm_member
+                  ON rgm_member.group_id = rg.group_id
+               WHERE rgm_seed.album_id IN ({placeholders})
+               ORDER BY rgm_member.album_id""",
+            tuple(expanded),
+        ).fetchall()
+        for row in rows:
+            album_id = int(row["album_id"])
+            if album_id not in expanded:
+                expanded.append(album_id)
+        return expanded
+    finally:
+        conn.close()
+
+
+def _attach_release_groups_to_composition_parent(
+    composition_group_id: int,
+    album_ids: list[int],
+) -> None:
+    if not album_ids:
+        return
+    conn = get_db(readonly=False)
+    try:
+        placeholders = ",".join("?" for _ in album_ids)
+        conn.execute(
+            f"""UPDATE release_groups
+                   SET parent_group_id = ?
+                 WHERE scope = 'release'
+                   AND group_id IN (
+                       SELECT DISTINCT group_id
+                         FROM release_group_members
+                        WHERE album_id IN ({placeholders})
+                   )""",
+            (composition_group_id, *album_ids),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def confirm_album_relation_bundle(
+    canonical_name: str,
+    primary_album_id: int,
+    member_album_ids: list[int],
+    scope: str = "composition",
+    relation_type: str = "rerecord",
+    confirm_track_pairs: bool = True,
+) -> dict:
+    """Confirm an album relation and optionally materialize matching track relations."""
+    if scope not in {"release", "composition"}:
+        return {"status": "error", "message": "Invalid scope"}
+
+    seed_member_ids = []
+    for album_id in [primary_album_id] + list(member_album_ids or []):
+        album_id = int(album_id)
+        if album_id not in seed_member_ids:
+            seed_member_ids.append(album_id)
+    if len(seed_member_ids) < 2:
+        return {"status": "error", "message": "At least two albums are required"}
+    member_ids = _expand_album_relation_member_ids(seed_member_ids)
+
+    conn = get_db()
+    try:
+        primary = conn.execute(
+            "SELECT album_id, album_name, artist_id FROM albums WHERE album_id = ?",
+            (primary_album_id,),
+        ).fetchone()
+        if primary is None:
+            return {"status": "error", "message": "Primary album not found"}
+        artist_id = int(primary["artist_id"])
+    finally:
+        conn.close()
+
+    group_id = create_group(
+        canonical_name=canonical_name or primary["album_name"],
+        artist_id=artist_id,
+        primary_album_id=primary_album_id,
+        member_ids=member_ids,
+        scope=scope,
+    )
+    if group_id is None:
+        return {"status": "error", "message": "Failed to create album relation"}
+    if scope == "composition":
+        _attach_release_groups_to_composition_parent(group_id, member_ids)
+
+    derived = derive_album_relation_track_pairs(
+        primary_album_id=primary_album_id,
+        member_album_ids=[album_id for album_id in seed_member_ids if album_id != primary_album_id],
+    )
+    track_scope = "composition" if scope == "composition" else "recording"
+    confirmed_count = 0
+    if confirm_track_pairs:
+        for pair in derived["track_pairs"]:
+            result = confirm_track_group_candidate(
+                original_track_id=pair["original_track_id"],
+                candidate_track_id=pair["candidate_track_id"],
+                scope=track_scope,
+            )
+            if result.get("status") == "ok":
+                confirmed_count += 1
+
+    _refresh_version_merge_dependents()
+    return {
+        "status": "ok",
+        "release_group_id": group_id,
+        "scope": scope,
+        "relation_type": relation_type,
+        "candidate_track_pair_count": len(derived["track_pairs"]),
+        "confirmed_track_pair_count": confirmed_count,
+        "exclusive_track_count": len(derived["exclusive_tracks"]),
+        "track_pairs": derived["track_pairs"],
+        "exclusive_tracks": derived["exclusive_tracks"],
+        "album_projects_rebuilt": True,
+    }
 
 
 def update_group_members(group_id: int, add_ids=None, remove_ids=None) -> bool:
@@ -331,6 +714,7 @@ def update_group_members(group_id: int, add_ids=None, remove_ids=None) -> bool:
                     (group_id, aid),
                 )
         conn.commit()
+        _refresh_version_merge_dependents(conn)
         return True
     except Exception:
         return False
@@ -347,6 +731,7 @@ def set_primary(group_id: int, album_id: int) -> bool:
             (album_id, group_id),
         )
         conn.commit()
+        _refresh_version_merge_dependents(conn)
         return True
     except Exception:
         return False
@@ -361,6 +746,7 @@ def delete_group(group_id: int) -> bool:
         conn.execute("DELETE FROM release_group_members WHERE group_id = ?", (group_id,))
         conn.execute("DELETE FROM release_groups WHERE group_id = ?", (group_id,))
         conn.commit()
+        _refresh_version_merge_dependents(conn)
         return True
     except Exception:
         return False
@@ -1558,15 +1944,15 @@ def apply_detected_groups(detection_df: pd.DataFrame, only_high_confidence: bool
         try:
             cur = conn.execute(
                 """INSERT OR IGNORE INTO release_groups
-                   (canonical_name, artist_id, primary_album_id, is_manual)
-                   VALUES (?, ?, ?, 0)""",
+                   (canonical_name, artist_id, primary_album_id, scope, is_manual)
+                   VALUES (?, ?, ?, 'release', 0)""",
                 (row["canonical_name"], int(row["artist_id"]), int(row["primary_album_id"])),
             )
             group_id = cur.lastrowid
             if group_id == 0:
                 row_existing = conn.execute(
                     """SELECT group_id FROM release_groups
-                       WHERE canonical_name = ? AND artist_id = ?""",
+                       WHERE canonical_name = ? AND artist_id = ? AND scope = 'release'""",
                     (row["canonical_name"], int(row["artist_id"])),
                 ).fetchone()
                 group_id = row_existing[0] if row_existing else None
@@ -1582,6 +1968,8 @@ def apply_detected_groups(detection_df: pd.DataFrame, only_high_confidence: bool
             pass
 
     conn.commit()
+    if applied:
+        _refresh_version_merge_dependents(conn)
     conn.close()
     return applied
 
@@ -1621,8 +2009,8 @@ def get_groups_for_artist(artist_name: str) -> pd.DataFrame:
     """获取指定艺人的所有 release groups。"""
     conn = get_db()
     df = pd.read_sql_query(
-        """SELECT rg.group_id, rg.canonical_name, rg.primary_album_id,
-                  pa.album_name AS primary_album_name, rg.is_manual
+        """SELECT rg.group_id, rg.canonical_name, a.artist_name, rg.primary_album_id,
+                  pa.album_name AS primary_album_name, rg.scope, rg.is_manual, rg.created_at
            FROM release_groups rg
            JOIN artists a ON rg.artist_id = a.artist_id
            LEFT JOIN albums pa ON rg.primary_album_id = pa.album_id

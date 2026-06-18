@@ -144,6 +144,8 @@ def import_data(
     agg_music_only: bool = True,
     agg_week_start_dow: int = 4,
     agg_week_start_hour: int = 0,
+    agg_dynamic_threshold: bool = True,
+    agg_max_merge_gap_minutes: int | None = None,
 ) -> dict[str, Any]:
     """Import all JSON streaming history files into the SQLite database.
 
@@ -189,6 +191,7 @@ def import_data(
     conn.execute("DELETE FROM plays")
     conn.execute("DELETE FROM agg_weekly_tracks")
     conn.execute("DELETE FROM agg_weekly_albums")
+    conn.execute("DELETE FROM agg_weekly_track_sources")
     conn.execute("DELETE FROM agg_weekly_artists")
     conn.execute("DELETE FROM agg_config")
     conn.execute("DELETE FROM track_albums")
@@ -437,6 +440,8 @@ def import_data(
             music_only=agg_music_only,
             week_start_dow=agg_week_start_dow,
             week_start_hour=agg_week_start_hour,
+            dynamic_threshold=agg_dynamic_threshold,
+            max_merge_gap_minutes=agg_max_merge_gap_minutes,
             progress_callback=progress_callback,
         )
     except Exception as e:

@@ -78,6 +78,33 @@ def _resolve_album_category(conn: sqlite3.Connection, album_name: str, artist_na
     return classify_album(album_type, total_tracks=total_tracks, total_ms=total_ms)
 
 
+def _album_identity_lookup(conn: sqlite3.Connection) -> pd.DataFrame:
+    """Return album_id -> display album/artist names for source-album grouping."""
+    return pd.read_sql_query(
+        """SELECT al.album_id AS _album_container_id,
+                  al.album_name AS _album_container_name,
+                  ar.artist_name AS _album_container_artist
+           FROM albums al
+           LEFT JOIN artists ar ON ar.artist_id = al.artist_id""",
+        conn,
+    )
+
+
+def _album_container_ids(df: pd.DataFrame) -> pd.Series:
+    source_ids = (
+        pd.to_numeric(df["source_album_id"], errors="coerce")
+        if "source_album_id" in df.columns
+        else pd.Series(pd.NA, index=df.index, dtype="Float64")
+    )
+    fallback_column = "track_album_id" if "track_album_id" in df.columns else "album_id"
+    fallback_ids = (
+        pd.to_numeric(df[fallback_column], errors="coerce")
+        if fallback_column in df.columns
+        else pd.Series(pd.NA, index=df.index, dtype="Float64")
+    )
+    return source_ids.fillna(fallback_ids).astype("Int64")
+
+
 def resolve_period(
     df: pd.DataFrame, period: str, start_date: str | None, end_date: str | None
 ) -> dict:
@@ -445,7 +472,11 @@ def _build_analysis_stats(
 
 
 def _chart_agg(
-    df: pd.DataFrame, entity: str, conn: sqlite3.Connection | None = None, merge_level: int = 2
+    df: pd.DataFrame,
+    entity: str,
+    conn: sqlite3.Connection | None = None,
+    merge_level: int = 2,
+    include_compilations: bool = False,
 ) -> pd.DataFrame:
     if entity == "track":
         df_agg = df.copy()
@@ -457,6 +488,13 @@ def _chart_agg(
 
             keys = load_track_group_keys(conn, merge_level=merge_level)
             if not keys.empty:
+                keys = keys.copy()
+                keys["_scope_rank"] = keys["track_group_scope"].map(
+                    {"composition": 0, "recording": 1} if merge_level >= 3 else {"recording": 0}
+                )
+                keys = keys.sort_values(
+                    ["track_id", "_scope_rank", "track_agg_id"]
+                ).drop_duplicates("track_id")
                 key_map = keys.set_index("track_id")
                 df_agg["_track_agg_id"] = df_agg["track_id"].map(key_map["track_agg_id"])
                 df_agg["_track_agg_name"] = df_agg["track_id"].map(key_map["track_agg_name"])
@@ -478,34 +516,71 @@ def _chart_agg(
             .reset_index()
         )
     if entity == "album":
+        if conn is not None and merge_level > 1:
+            from backend.domains.playback.album_projects import compute_album_project_plays
+
+            project_rows = compute_album_project_plays(
+                df,
+                conn,
+                merge_level=merge_level,
+                include_compilations=include_compilations,
+                billboard_mode=False,
+            )
+            if project_rows.empty:
+                return project_rows
+            return project_rows.rename(
+                columns={
+                    "album_project_id": "album_project_id",
+                    "album_project_name": "album_name",
+                    "play_count": "plays",
+                }
+            ).assign(
+                hours=lambda x: x["total_ms"] / 3_600_000,
+                unique_tracks=lambda x: x["unique_canonical_songs"],
+                unique_albums=1,
+                first_played=df["ts"].min(),
+                last_played=df["ts"].max(),
+            )
+
         df_agg = df.copy()
-        # Use source album name for grouping when available (playback-time attribution)
-        if "source_album_name" in df_agg.columns:
-            src_mask = df_agg["source_album_name"].notna()
-            df_agg.loc[src_mask, "album_name"] = df_agg.loc[src_mask, "source_album_name"]
-
-        # Apply release group canonicalization before grouping
-        if merge_level > 1 and "source_album_id" in df_agg.columns and conn is not None:
-            from backend.domains.playback.release_groups import load_album_release_group_map
-
-            mapping = load_album_release_group_map(conn, merge_level=merge_level)
-            if not mapping.empty:
-                # Use source_album_id, fall back to track_album_id for NULL cases
-                track_aid = df_agg.get("track_album_id")
-                if track_aid is not None:
-                    df_agg["_album_id_for_rg"] = df_agg["source_album_id"].fillna(track_aid)
-                else:
-                    df_agg["_album_id_for_rg"] = df_agg["source_album_id"]
-                album_to_canonical = (
-                    mapping[["album_id", "canonical_name"]]
-                    .drop_duplicates(subset=["album_id"])
-                    .set_index("album_id")["canonical_name"]
+        if conn is not None:
+            df_agg["_album_container_id"] = _album_container_ids(df_agg)
+            identity = _album_identity_lookup(conn)
+            identity["_album_container_id"] = identity["_album_container_id"].astype("Int64")
+            df_agg = df_agg.merge(identity, on="_album_container_id", how="left")
+            df_agg["_album_container_name"] = (
+                df_agg["_album_container_name"]
+                .fillna(df_agg.get("source_album_name"))
+                .fillna(df_agg.get("album_name"))
+            )
+            df_agg["_album_container_artist"] = df_agg["_album_container_artist"].fillna(
+                df_agg["artist_name"]
+            )
+            return (
+                df_agg.groupby(
+                    [
+                        "_album_container_id",
+                        "_album_container_name",
+                        "_album_container_artist",
+                    ],
+                    dropna=False,
                 )
-                df_agg["_canonical"] = df_agg["_album_id_for_rg"].map(album_to_canonical)
-                mask = df_agg["_canonical"].notna()
-                df_agg.loc[mask, "album_name"] = df_agg.loc[mask, "_canonical"]
-                df_agg = df_agg.drop(columns=["_canonical", "_album_id_for_rg"])
-
+                .agg(
+                    plays=("play_id", "count"),
+                    hours=("ms_played", _hours),
+                    unique_tracks=("track_id", "nunique"),
+                    first_played=("ts", "min"),
+                    last_played=("ts", "max"),
+                )
+                .reset_index()
+                .rename(
+                    columns={
+                        "_album_container_id": "album_id",
+                        "_album_container_name": "album_name",
+                        "_album_container_artist": "artist_name",
+                    }
+                )
+            )
         return (
             df_agg.groupby(["album_name", "artist_name"])
             .agg(
@@ -547,12 +622,18 @@ def chart_rows(
         return 0, []
     entity = entity if entity in {"track", "album", "artist"} else "track"
     metric = metric if metric in {"plays", "hours"} else "plays"
-    agg = _chart_agg(df, entity, conn=conn, merge_level=merge_level)
+    agg = _chart_agg(
+        df,
+        entity,
+        conn=conn,
+        merge_level=merge_level,
+        include_compilations=include_compilations,
+    )
     if agg.empty:
         return 0, []
 
     # Filter singles + compilations from default album chart (R13/R14)
-    if entity == "album" and conn is not None:
+    if entity == "album" and conn is not None and merge_level <= 1:
         from backend.domains.playback.album_type import is_album_chart_eligible
 
         agg["_category"] = agg.apply(
@@ -621,9 +702,15 @@ def chart_rows(
             )
             row.update(
                 {
+                    "album_project_id": int(r["album_project_id"])
+                    if "album_project_id" in r and pd.notna(r["album_project_id"])
+                    else None,
                     "album_name": r["album_name"],
                     "artist_name": r["artist_name"],
                     "unique_tracks": int(r["unique_tracks"]),
+                    "unique_albums": int(r["unique_albums"])
+                    if "unique_albums" in r and pd.notna(r["unique_albums"])
+                    else 1,
                     "cover_url": album_covers.get((r["album_name"], r["artist_name"])),
                     "album_category": category,
                 }

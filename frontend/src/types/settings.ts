@@ -51,12 +51,16 @@ export interface ImportJob {
 
 // ── Version Merge — Query ───────────────────────────────────
 
+export type VersionMergeScope = 'release' | 'composition'
+export type TrackGroupScope = 'recording' | 'composition'
+
 export interface ReleaseGroup {
   group_id: number
   canonical_name: string
   artist_name: string
   primary_album_id: number | null
   primary_album_name: string | null
+  scope: VersionMergeScope
   is_manual: number
   created_at: string
 }
@@ -99,6 +103,51 @@ export interface DetectionResult {
   group_type: string
   reason: string
   overlap_details: OverlapDetail[]
+}
+
+export interface TrackGroupCandidate {
+  original_track_id: number
+  original_track_name: string
+  candidate_track_id: number
+  candidate_track_name: string
+  primary_artist_id: number
+}
+
+export interface TrackGroupConfirmResult {
+  status: string
+  group_id?: number | null
+  scope?: TrackGroupScope | null
+  member_count?: number | null
+  album_projects_rebuilt: boolean
+  message?: string | null
+}
+
+export interface AlbumRelationTrackPair {
+  original_track_id: number
+  original_track_name: string
+  candidate_track_id: number
+  candidate_track_name: string
+  candidate_album_id: number
+}
+
+export interface AlbumRelationExclusiveTrack {
+  track_id: number
+  track_name: string
+  source_album_id: number
+}
+
+export interface AlbumRelationConfirmResult {
+  status: string
+  release_group_id?: number | null
+  scope?: VersionMergeScope | null
+  relation_type?: string | null
+  candidate_track_pair_count: number
+  confirmed_track_pair_count: number
+  exclusive_track_count: number
+  track_pairs: AlbumRelationTrackPair[]
+  exclusive_tracks: AlbumRelationExclusiveTrack[]
+  album_projects_rebuilt: boolean
+  message?: string | null
 }
 
 // ── Version Merge — Track Comparison ────────────────────────

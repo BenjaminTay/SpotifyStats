@@ -4,12 +4,13 @@
 
 **架构**：FastAPI 后端 + React 前端。Streamlit 原有应用已冻结维护。
 
-**Phase 5 产品化收口**：前端 GET 统一 TanStack Query（11 命名空间 queryKeys）、Provider 错误分层、业务 service urllib 清零、模块级 API Map 缓存清除；Billboard records 88 行 facade + chart_compute 227 行 facade；Records/AllTime/Community Feed/RecentPlays/SavedTracks/PersonalRankTable 长列表分页基线。Phase 5.4 八阶段（A-H）全系列完成（2026-06-12）：架构护栏 105+ 测试、TrackDetail 574→5 行、HabitsTab 933 行→9 文件 feature、AI Insights 拆分、24 端点 response_model 硬化、Bundle 懒加载治理（Settings -88%/Records -69%/Account -34%）、TrackDetail 歌词 Query 漏网修复。播放统计规则引擎（Phase C+D，2026-06-18 贯穿修复）：动态阈值、Session 边界检测（`max_gap_minutes` + `boundary_column`）、Track Groups 三级合并（L1/L2/L3 recording/composition scope）、`merge_level` 查询参数、Dashboard/Leaderboard/Timeline/Wrapped/Listening Hours/Music Entity/Release Cycle 统一传递 `dynamic_threshold` 与 `max_merge_gap_minutes`，设置页 L1/L2/L3 合并严格度选择器。详见 [`docs/2026-06-08-phase5-productization-baseline.md`](docs/2026-06-08-phase5-productization-baseline.md) 和 [`docs/2026-06-12-playback-stats-rules.md`](docs/2026-06-12-playback-stats-rules.md)。
+**Phase 5 产品化收口**：前端 GET 统一 TanStack Query（11 命名空间 queryKeys）、Provider 错误分层、业务 service urllib 清零、模块级 API Map 缓存清除；Billboard records 88 行 facade + chart_compute 227 行 facade；Records/AllTime/Community Feed/RecentPlays/SavedTracks/PersonalRankTable 长列表分页基线。Phase 5.4 八阶段（A-H）全系列完成（2026-06-12）：架构护栏 105+ 测试、TrackDetail 574→5 行、HabitsTab 933 行→9 文件 feature、AI Insights 拆分、24 端点 response_model 硬化、Bundle 懒加载治理（Settings -88%/Records -69%/Account -34%）、TrackDetail 歌词 Query 漏网修复。播放统计规则引擎（Phase C+D，2026-06-18 贯穿修复）：动态阈值、Session 边界检测（`max_gap_minutes` + `boundary_column`）、Track Groups 三级合并（L1/L2/L3 recording/composition scope）、Album Projects 专辑项目统计、`merge_level` 查询参数、Dashboard/Leaderboard/Timeline/Wrapped/Listening Hours/Music Entity/Release Cycle 统一传递 `dynamic_threshold` 与 `max_merge_gap_minutes`，设置页 L1/L2/L3 合并严格度选择器。2026-06-19 补齐 Billboard/详情页性能收口：默认预热改用当前动态阈值口径，Billboard 基础排名共享缓存，专辑详情来源拆分改为批量映射。详见 [`docs/2026-06-08-phase5-productization-baseline.md`](docs/2026-06-08-phase5-productization-baseline.md) 和 [`docs/2026-06-18-playback-stats-rules-latest.md`](docs/2026-06-18-playback-stats-rules-latest.md)。
 
 ## 功能
 
 - **总览仪表盘** — KPI 卡片、月度趋势、平台分布、周热力图、动态数据洞察
 - **播放分析** — stats.fm 风格统计：8 KPI + 日历趋势 + 听歌时钟 + 个人排行榜（歌曲/专辑/艺人 × 次数/时长）+ 自定义时间范围
+- **专辑项目统计** — 标准版/豪华版、先行单曲和确认项目版本按合并级别计入同一 album project；专辑详情页提供原版、豪华版、单曲、精选集等来源拆分
 - **年度回顾** — 自定义 Wrapped 总结（听歌人格识别 6 型、曲风五大洲全景、发现与回归、聆听深度金字塔、特殊时刻、年度对比）+ 官方 Wrapped 数据
 - **Billboard 周榜** — 12 子 Tab：周榜、每周榜首、单曲/艺人/专辑历史、走势总榜 Power Score、总榜、榜单记录、对决、发行周期分析
 - **音乐实体详情** — 歌曲/专辑/艺人全局页面，整合个人播放统计、Billboard 成绩、Genius 歌词、Wikipedia 百科
@@ -88,7 +89,7 @@ SpotifyStats/
 - 数据目录说明见 [`data/README.md`](data/README.md)
 - 架构优化文档见 [`docs/phase4-architecture/2026-05-30-architecture-optimize.md`](docs/phase4-architecture/2026-05-30-architecture-optimize.md)
 - Phase 5 产品化收口台账见 [`docs/2026-06-08-phase5-productization-baseline.md`](docs/2026-06-08-phase5-productization-baseline.md)
-- 播放统计规则定义与实现状态见 [`docs/2026-06-12-playback-stats-rules.md`](docs/2026-06-12-playback-stats-rules.md)
+- 播放统计规则定义与实现状态见 [`docs/2026-06-18-playback-stats-rules-latest.md`](docs/2026-06-18-playback-stats-rules-latest.md)
 - 播放统计实现计划见 [`docs/2026-06-12-playback-stats-implementation-plan.md`](docs/2026-06-12-playback-stats-implementation-plan.md)
 
 ## License

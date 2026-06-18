@@ -2,6 +2,7 @@
 
 import pandas as pd
 
+from backend.domains.billboard.album_display import choose_representative_album
 from backend.domains.billboard.data_loader import _load_album_metadata
 from backend.domains.billboard.version_merge import _apply_album_release_groups
 
@@ -18,25 +19,29 @@ def compute_weekly_rankings(_df, top_n, pre_agg=None, merge_level: int = 2):
     if pre_agg is not None and not pre_agg.empty:
         weekly = pre_agg.copy()
         _apply_track_groups(weekly, merge_level=merge_level)
+        group_cols = ["billboard_week", "track_id", "track_name", "artist_name"]
+        album_choice = choose_representative_album(weekly, group_cols)
         # After canonicalization, re-aggregate: sum play_count/total_ms per group.
-        # album_name is canonicalized by _apply_track_groups, so "first" is safe.
         weekly = (
-            weekly.groupby(["billboard_week", "track_id", "track_name", "artist_name"])
+            weekly.groupby(group_cols)
             .agg(
                 play_count=("play_count", "sum"),
                 total_ms=("total_ms", "sum"),
-                album_name=("album_name", "first"),
             )
             .reset_index()
         )
+        weekly = weekly.merge(album_choice, on=group_cols, how="left")
     else:
         df = _df.copy()
         _apply_track_groups(df, merge_level=merge_level)
+        group_cols = ["billboard_week", "track_id", "track_name", "artist_name"]
+        album_choice = choose_representative_album(df, group_cols)
         weekly = (
-            df.groupby(["billboard_week", "track_id", "track_name", "artist_name", "album_name"])
+            df.groupby(group_cols)
             .agg(play_count=("ms_played", "count"), total_ms=("ms_played", "sum"))
             .reset_index()
         )
+        weekly = weekly.merge(album_choice, on=group_cols, how="left")
 
     # Tiebreaker: sort by play_count DESC, then total_ms DESC
     weekly = weekly.sort_values(
@@ -67,6 +72,13 @@ def _apply_track_groups(df: pd.DataFrame, merge_level: int = 2) -> None:
         keys = load_track_group_keys(conn, merge_level=merge_level)
         if keys.empty:
             return
+        keys = keys.copy()
+        keys["_scope_rank"] = keys["track_group_scope"].map(
+            {"composition": 0, "recording": 1} if merge_level >= 3 else {"recording": 0}
+        )
+        keys = keys.sort_values(["track_id", "_scope_rank", "track_agg_id"]).drop_duplicates(
+            "track_id"
+        )
         key_map = keys.set_index("track_id")
         df["_track_agg_id"] = df["track_id"].map(key_map["track_agg_id"])
         df["_track_agg_name"] = df["track_id"].map(key_map["track_agg_name"])
@@ -77,20 +89,18 @@ def _apply_track_groups(df: pd.DataFrame, merge_level: int = 2) -> None:
         # Canonicalize album_name to primary track's album for merged rows.
         # This prevents cross-album splits in downstream groupby aggregations.
         if "album_name" in df.columns:
-            _canonicalize_album_name(df, mask, key_map, conn)
+            _canonicalize_album_name(df, mask, conn)
 
         df.drop(columns=["_track_agg_id", "_track_agg_name"], inplace=True)
     finally:
         conn.close()
 
 
-def _canonicalize_album_name(df, mask, key_map, conn):
+def _canonicalize_album_name(df, mask, conn):
     """For rows mapped to a track group, set album_name to the
     primary track's album so all versions share the same album.
     """
-    group_ids = key_map.loc[
-        key_map.index.isin(df.loc[mask, "track_id"].unique()), "track_agg_id"
-    ].unique()
+    group_ids = df.loc[mask, "_track_agg_id"].dropna().astype(int).unique()
     if len(group_ids) == 0:
         return
 
@@ -114,49 +124,76 @@ def _canonicalize_album_name(df, mask, key_map, conn):
 def compute_album_weekly_rankings(
     _df, top_n, pre_agg=None, merge_level: int = 2, include_compilations: bool = False
 ):
-    """Aggregate per-week album rankings from ALL plays (not just charting tracks).
+    """Aggregate per-week album project rankings from all valid plays."""
+    from backend.core.db import get_db
+    from backend.domains.playback.album_projects import compute_album_project_weekly_plays
 
-    If pre_agg DataFrame is provided (from agg_weekly_albums), skips the
-    expensive groupby step.
-
-    Release groups are applied to merge different album versions (deluxe,
-    acoustic, etc.) into canonical names before ranking.
-    merge_level=1: no merge, 2: scope='release' (default), 3: scope='composition'.
-    include_compilations: if False (default), compilation albums are excluded (R14).
-    """
-    if pre_agg is not None and not pre_agg.empty:
-        weekly_album = pre_agg.copy()
-        # pre_agg already has: billboard_week, album_id, album_name,
-        # artist_name, play_count, total_ms
-        # Estimate tracks_count from the album-tracks relationship
-        weekly_album["tracks_count"] = 0
+    if pre_agg is not None and not pre_agg.empty and "track_id" in pre_agg.columns:
+        df = pre_agg.copy()
+    elif pre_agg is not None and not pre_agg.empty:
+        return _legacy_album_weekly_rankings_from_album_preagg(
+            pre_agg,
+            top_n=top_n,
+            merge_level=merge_level,
+            include_compilations=include_compilations,
+        )
     else:
         df = _df.copy()
-        df = df.dropna(subset=["album_name"])
-        weekly_album = (
-            df.groupby(["billboard_week", "album_name", "artist_name"])
-            .agg(
-                play_count=("ms_played", "count"),
-                total_ms=("ms_played", "sum"),
-                tracks_count=("track_id", "nunique"),
-            )
-            .reset_index()
+
+    if df.empty:
+        return pd.DataFrame()
+    if "billboard_week" not in df.columns:
+        df["billboard_week"] = df["ts_date"] if "ts_date" in df.columns else df["ts"]
+
+    # L2/L3 album project membership may be bootstrapped lazily on cold DBs.
+    conn = get_db(readonly=merge_level <= 1)
+    try:
+        ranked = compute_album_project_weekly_plays(
+            df,
+            conn,
+            merge_level=merge_level,
+            include_compilations=include_compilations,
+            billboard_mode=True,
         )
+    finally:
+        conn.close()
 
-    # 应用发行版本合并：将组内成员的 album_name 替换为 canonical_name 并重新聚合
-    weekly_album = _apply_album_release_groups(weekly_album, merge_level=merge_level)
+    if ranked.empty:
+        return pd.DataFrame()
 
+    weekly_album = ranked.rename(
+        columns={
+            "album_project_name": "album_name",
+            "unique_canonical_songs": "tracks_count",
+        }
+    )
     weekly_album = weekly_album.sort_values(
         ["billboard_week", "play_count", "total_ms"],
         ascending=[True, False, False],
     )
-    # 使用 album taxonomy 排除 single + 排除专辑发行前的周数
+    weekly_album["rank"] = weekly_album.groupby("billboard_week").cumcount() + 1
+    return weekly_album[weekly_album["rank"] <= top_n]
+
+
+def _legacy_album_weekly_rankings_from_album_preagg(
+    pre_agg: pd.DataFrame,
+    top_n: int,
+    merge_level: int,
+    include_compilations: bool,
+) -> pd.DataFrame:
+    """Compatibility path for old agg_weekly_albums until track-source preagg is built."""
+    weekly_album = pre_agg.copy()
+    weekly_album["tracks_count"] = 0
+    weekly_album = _apply_album_release_groups(weekly_album, merge_level=merge_level)
+    weekly_album = weekly_album.sort_values(
+        ["billboard_week", "play_count", "total_ms"],
+        ascending=[True, False, False],
+    )
     album_meta = _load_album_metadata()
     weekly_album = weekly_album.merge(
         album_meta["type"], on=["album_name", "artist_name"], how="left"
     )
-    # R13: apply album taxonomy (LP/EP/compilation/single) instead of raw album_type string
-    from backend.domains.playback.album_type import classify_album  # noqa: E402
+    from backend.domains.playback.album_type import classify_album
 
     weekly_album["_category"] = weekly_album.apply(
         lambda r: classify_album(
@@ -169,20 +206,31 @@ def compute_album_weekly_rankings(
     if not include_compilations:
         weekly_album = weekly_album[weekly_album["_category"] != "compilation"]
     weekly_album = weekly_album.drop(columns=["_category"])
-    weekly_album = weekly_album.merge(
-        album_meta["release_date"], on=["album_name", "artist_name"], how="left"
-    )
-    if not weekly_album.empty:
-        weekly_album["_bb_week"] = pd.to_datetime(weekly_album["billboard_week"])
-        weekly_album["_rel_date"] = pd.to_datetime(weekly_album["release_date"], errors="coerce")
-        weekly_album = weekly_album[
-            weekly_album["_rel_date"].isna()
-            | (weekly_album["_bb_week"] + pd.Timedelta(days=6) >= weekly_album["_rel_date"])
-        ].drop(columns=["_bb_week", "_rel_date"])
-
     weekly_album["rank"] = weekly_album.groupby("billboard_week").cumcount() + 1
-    weekly_album = weekly_album[weekly_album["rank"] <= top_n]
-    return weekly_album
+    return weekly_album[weekly_album["rank"] <= top_n]
+
+
+def _expand_track_source_preagg(pre_agg: pd.DataFrame) -> pd.DataFrame:
+    rows = []
+    for r in pre_agg.itertuples(index=False):
+        play_count = int(getattr(r, "play_count"))
+        total_ms = int(getattr(r, "total_ms"))
+        per_play_ms = total_ms // play_count if play_count else 0
+        for _ in range(play_count):
+            rows.append(
+                {
+                    "billboard_week": getattr(r, "billboard_week"),
+                    "track_id": getattr(r, "track_id"),
+                    "track_name": getattr(r, "track_name", ""),
+                    "artist_name": getattr(r, "artist_name", ""),
+                    "album_name": getattr(r, "album_name", ""),
+                    "source_album_id": getattr(r, "source_album_id", None),
+                    "ms_played": per_play_ms,
+                    "ts": getattr(r, "ts", getattr(r, "play_date", None)),
+                    "ts_date": getattr(r, "play_date", getattr(r, "ts", None)),
+                }
+            )
+    return pd.DataFrame(rows)
 
 
 def compute_artist_weekly_rankings(_df, top_n, pre_agg=None):
@@ -221,15 +269,25 @@ def compute_artist_weekly_rankings(_df, top_n, pre_agg=None):
 def _add_running_metrics(df, group_cols):
     """Add running rank/peak/weeks columns for each group in weekly data."""
     cols = list(group_cols)
+    if df.empty:
+        return df.copy()
+
     df = df.sort_values(cols + ["billboard_week"]).reset_index(drop=True)
 
-    running = []
-    for _, grp in df.groupby(cols):
-        grp = grp.copy()
-        grp["running_peak"] = grp["rank"].cummin()
-        grp["running_wks"] = range(1, len(grp) + 1)
-        pk_idx = grp["rank"].idxmin()
-        pk_wk = pd.to_datetime(grp.loc[pk_idx, "billboard_week"])
-        grp["running_peak_wks"] = (pd.to_datetime(grp["billboard_week"]) - pk_wk).dt.days // 7 + 1
-        running.append(grp)
-    return pd.concat(running, ignore_index=True)
+    groups = df.groupby(cols, sort=False)
+    df["running_peak"] = groups["rank"].cummin()
+    df["running_wks"] = groups.cumcount() + 1
+
+    peak_rank = groups["rank"].transform("min")
+    peak_weeks = (
+        df.loc[df["rank"].eq(peak_rank), cols + ["billboard_week"]]
+        .groupby(cols, sort=False)["billboard_week"]
+        .min()
+        .reset_index()
+        .rename(columns={"billboard_week": "_peak_week"})
+    )
+    df = df.merge(peak_weeks, on=cols, how="left")
+    df["running_peak_wks"] = (
+        (pd.to_datetime(df["billboard_week"]) - pd.to_datetime(df["_peak_week"])).dt.days // 7
+    ) + 1
+    return df.drop(columns=["_peak_week"])

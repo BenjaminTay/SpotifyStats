@@ -74,6 +74,7 @@ class AlbumChartDetailResponse(BaseModel):
     meta: dict | None = None
     info: dict | None = None
     chart_summary: dict | None = None
+    album_project: dict | None = None
     album_weekly_history: list[dict] | None = None
     album_no1_by_week: list[dict] | None = None
     best_singles_overlay: list[dict] | None = None

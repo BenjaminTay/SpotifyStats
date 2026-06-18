@@ -1,9 +1,12 @@
 """Staged Billboard cached computations — _load_and_rank, weekly/power/summaries/records."""
 
+from __future__ import annotations
+
 from functools import lru_cache
 
 import pandas as pd
 
+from backend.core.cache import singleflight
 from backend.core.db import enrich_track_artist_names
 from backend.core.json_helpers import df_to_json as _df_to_json
 from backend.domains.billboard.chart_power_score import (
@@ -49,26 +52,86 @@ def _load_and_rank(
     max_merge_gap_minutes=None,
     include_compilations=False,
 ):
-    df_raw = load_billboard_raw(
-        min_ms,
-        music_only,
-        bb_week_start_dow,
-        bb_week_start_hour,
-        dynamic_threshold=dynamic_threshold,
-        max_merge_gap_minutes=max_merge_gap_minutes,
+    return _copy_load_and_rank_result(
+        _load_and_rank_cached(
+            min_ms,
+            music_only,
+            bb_top_n,
+            bb_album_top_n,
+            bb_artist_top_n,
+            bb_week_start_dow,
+            bb_week_start_hour,
+            year_start,
+            year_end,
+            merge_level,
+            dynamic_threshold,
+            max_merge_gap_minutes,
+            include_compilations,
+        )
     )
 
-    df_raw = df_raw.copy()
-    df_raw["_year"] = df_raw["billboard_week"].apply(lambda x: x.year)
-    if year_start is not None:
-        df_raw = df_raw[df_raw["_year"] >= year_start]
-    if year_end is not None:
-        df_raw = df_raw[df_raw["_year"] <= year_end]
-    df_filtered = df_raw.copy()
 
-    all_weeks_asc = sorted(df_filtered["billboard_week"].unique().tolist())
-    all_weeks_desc = sorted(all_weeks_asc, reverse=True)
+@singleflight
+@lru_cache(maxsize=8)
+def _load_and_rank_cached(
+    min_ms=30000,
+    music_only=True,
+    bb_top_n=30,
+    bb_album_top_n=20,
+    bb_artist_top_n=20,
+    bb_week_start_dow=4,
+    bb_week_start_hour=0,
+    year_start=None,
+    year_end=None,
+    merge_level=2,
+    dynamic_threshold=False,
+    max_merge_gap_minutes=None,
+    include_compilations=False,
+):
+    return _load_and_rank_uncached(
+        min_ms,
+        music_only,
+        bb_top_n,
+        bb_album_top_n,
+        bb_artist_top_n,
+        bb_week_start_dow,
+        bb_week_start_hour,
+        year_start,
+        year_end,
+        merge_level,
+        dynamic_threshold,
+        max_merge_gap_minutes,
+        include_compilations,
+    )
 
+
+def _copy_load_and_rank_result(result):
+    weekly, weekly_album, weekly_artist, all_weeks_asc, all_weeks_desc, df_filtered = result
+    return (
+        weekly.copy(),
+        weekly_album.copy(),
+        weekly_artist.copy(),
+        list(all_weeks_asc),
+        list(all_weeks_desc),
+        df_filtered.copy(),
+    )
+
+
+def _load_and_rank_uncached(
+    min_ms=30000,
+    music_only=True,
+    bb_top_n=30,
+    bb_album_top_n=20,
+    bb_artist_top_n=20,
+    bb_week_start_dow=4,
+    bb_week_start_hour=0,
+    year_start=None,
+    year_end=None,
+    merge_level=2,
+    dynamic_threshold=False,
+    max_merge_gap_minutes=None,
+    include_compilations=False,
+):
     _agg_tracks, _agg_albums, _agg_artists = _try_load_from_agg(
         min_ms,
         music_only,
@@ -79,16 +142,24 @@ def _load_and_rank(
     )
 
     if _agg_tracks is not None:
-        y0, y1 = year_start or 1900, year_end or 2100
-        _agg_tracks = _agg_tracks[
-            pd.to_datetime(_agg_tracks["billboard_week"]).dt.year.between(y0, y1)
-        ]
-        _agg_albums = _agg_albums[
-            pd.to_datetime(_agg_albums["billboard_week"]).dt.year.between(y0, y1)
-        ]
-        _agg_artists = _agg_artists[
-            pd.to_datetime(_agg_artists["billboard_week"]).dt.year.between(y0, y1)
-        ]
+        _agg_tracks = _filter_billboard_years(_agg_tracks, year_start, year_end)
+        _agg_albums = _filter_billboard_years(_agg_albums, year_start, year_end)
+        _agg_artists = _filter_billboard_years(_agg_artists, year_start, year_end)
+        df_filtered = _agg_tracks.copy()
+    else:
+        df_raw = load_billboard_raw(
+            min_ms,
+            music_only,
+            bb_week_start_dow,
+            bb_week_start_hour,
+            dynamic_threshold=dynamic_threshold,
+            max_merge_gap_minutes=max_merge_gap_minutes,
+        )
+
+        df_filtered = _filter_billboard_years(df_raw.copy(), year_start, year_end)
+
+    all_weeks_asc = sorted(df_filtered["billboard_week"].unique().tolist())
+    all_weeks_desc = sorted(all_weeks_asc, reverse=True)
 
     weekly = compute_weekly_rankings(
         df_filtered, bb_top_n, pre_agg=_agg_tracks, merge_level=merge_level
@@ -168,6 +239,29 @@ def _load_and_rank(
     return weekly, weekly_album, weekly_artist, all_weeks_asc, all_weeks_desc, df_filtered
 
 
+def _filter_billboard_years(
+    df: pd.DataFrame,
+    year_start: int | None,
+    year_end: int | None,
+) -> pd.DataFrame:
+    if df.empty:
+        return df.copy()
+    out = df.copy()
+    years = pd.to_datetime(out["billboard_week"]).dt.year
+    if year_start is not None:
+        out = out[years >= year_start]
+        years = years.loc[out.index]
+    if year_end is not None:
+        out = out[years <= year_end]
+    return out
+
+
+def _filtered_record_count(df: pd.DataFrame) -> int:
+    if "play_count" in df.columns:
+        return int(pd.to_numeric(df["play_count"], errors="coerce").fillna(0).sum())
+    return int(len(df))
+
+
 @lru_cache(maxsize=4)
 def _compute_weekly_data_cached(
     min_ms=30000,
@@ -211,7 +305,7 @@ def _compute_weekly_data_cached(
     return {
         "meta": {
             "total_weeks": len(all_weeks_asc),
-            "total_filtered_records": int(len(df_filtered)),
+            "total_filtered_records": _filtered_record_count(df_filtered),
             "all_weeks_asc": [w.isoformat() for w in all_weeks_asc],
             "all_weeks_desc": [w.isoformat() for w in all_weeks_desc],
             "dow_name": DOW_NAMES[bb_week_start_dow],

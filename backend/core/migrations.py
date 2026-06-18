@@ -215,6 +215,82 @@ def migrate_015(conn: sqlite3.Connection):
     )
 
 
+@migration(16, "album_projects")
+def migrate_016(conn: sqlite3.Connection):
+    """Create album project tables for statistics-level album membership."""
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS album_projects (
+            project_id        INTEGER PRIMARY KEY AUTOINCREMENT,
+            canonical_name    TEXT NOT NULL,
+            artist_id         INTEGER REFERENCES artists(artist_id),
+            primary_album_id  INTEGER REFERENCES albums(album_id),
+            release_date      TEXT,
+            scope             TEXT NOT NULL DEFAULT 'release',
+            project_type      TEXT NOT NULL DEFAULT 'album',
+            include_in_charts INTEGER NOT NULL DEFAULT 1,
+            is_manual         INTEGER NOT NULL DEFAULT 0,
+            created_at        TEXT DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(canonical_name, artist_id, scope)
+        )"""
+    )
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS album_project_albums (
+            project_id    INTEGER NOT NULL REFERENCES album_projects(project_id),
+            album_id      INTEGER NOT NULL REFERENCES albums(album_id),
+            role          TEXT NOT NULL DEFAULT 'member',
+            source_bucket TEXT NOT NULL DEFAULT 'other',
+            inferred      INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY(project_id, album_id)
+        )"""
+    )
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS album_project_tracks (
+            project_id       INTEGER NOT NULL REFERENCES album_projects(project_id),
+            track_id         INTEGER NOT NULL REFERENCES tracks(track_id),
+            membership_role  TEXT NOT NULL DEFAULT 'standard',
+            min_merge_level  INTEGER NOT NULL DEFAULT 2,
+            source_album_id  INTEGER REFERENCES albums(album_id),
+            is_exclusive     INTEGER NOT NULL DEFAULT 0,
+            inferred         INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY(project_id, track_id, min_merge_level)
+        )"""
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_album_projects_artist ON album_projects(artist_id)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_album_projects_primary_album ON album_projects(primary_album_id)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_album_project_albums_album ON album_project_albums(album_id)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_album_project_tracks_track ON album_project_tracks(track_id)"
+    )
+
+
+@migration(17, "agg_weekly_track_sources")
+def migrate_017(conn: sqlite3.Connection):
+    """Create track-source weekly aggregation for album project charts."""
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS agg_weekly_track_sources (
+            billboard_week TEXT NOT NULL,
+            play_date TEXT NOT NULL,
+            track_id INTEGER NOT NULL,
+            source_album_id INTEGER NOT NULL DEFAULT 0,
+            play_count INTEGER NOT NULL,
+            total_ms INTEGER NOT NULL,
+            PRIMARY KEY (billboard_week, play_date, track_id, source_album_id)
+        )"""
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_agg_wts_week ON agg_weekly_track_sources(billboard_week)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_agg_wts_track ON agg_weekly_track_sources(track_id)"
+    )
+
+
 # ── Runner ────────────────────────────────────────────────────────────────
 
 

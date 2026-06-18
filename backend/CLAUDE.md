@@ -31,7 +31,7 @@ FastAPI 后端采用四层分离：**api/**（路由 + Depends 依赖注入）�
 | 文件 | 职责 |
 |------|------|
 | `core/config.py` | 集中配置管理（`python-dotenv`），禁止业务代码直接 `os.getenv()` |
-| `core/db.py` | `get_db()`, `load_plays()` (`@lru_cache(maxsize=16)`), `base_filters()`, `merge_consecutive_plays()` |
+| `core/db.py` | `get_db()`, `load_plays()` / `load_plays_for_artists()` (`@lru_cache(maxsize=16)` + `singleflight()`), `base_filters()`, `merge_consecutive_plays()`, `build_aggregations()` |
 | `core/crypto.py` | AES-256-GCM 加解密，Token 落库前必须加密，`is_encrypted()` 自动区分明文/密文 |
 | `core/json_helpers.py` | numpy/pandas → JSON 唯一入口（`py_val()` / `df_to_json()`），禁止 service 层重复定义 |
 | `core/cache.py` | `ttl_cached()` 装饰器（不缓存 None）+ `singleflight()` 避免并发重复计算 |
@@ -40,7 +40,7 @@ FastAPI 后端采用四层分离：**api/**（路由 + Depends 依赖注入）�
 | `core/auth.py` | `require_auth()` 依赖，本地模式放行，远程模式校验 Bearer Token |
 | `core/logging_config.py` | `SensitiveDataFilter` 脱敏敏感字段，全局 500 不泄露 stack trace |
 | `core/request_context.py` | Request ID 上下文（`ContextVar`），响应返回 `X-Request-ID`，日志包含 request id |
-| `core/warmup.py` | 启动后台预热 Billboard + Dashboard 缓存，`SPOTIFY_STATS_WARMUP=0` 可关闭 |
+| `core/warmup.py` | 启动后台预热 Billboard + Dashboard + artist fan-out 缓存；默认使用当前前端过滤口径（`dynamic_threshold=True`），`SPOTIFY_STATS_WARMUP=0` 可关闭 |
 | `core/job_queue.py` | 3 worker 线程池 + `background_jobs` 表持久化，enrichment 用 stale-cache+refresh 模式 |
 | `core/spotify_utils.py` | OAuth PKCE + Token 加密持久化 + 自动刷新 + 10 scope 全量数据拉取 |
 
@@ -64,9 +64,9 @@ FastAPI 后端采用四层分离：**api/**（路由 + Depends 依赖注入）�
 
 ## 领域层 (domains/)
 
-- `domains/billboard/` — 19 文件：`data_loader.py` / `chart_compute.py`（编排/caching/staged API）+ `chart_ranking.py`（周榜排名）+ `chart_power_score.py`（走势评分）+ `records.py`（facade）+ `records_*.py`（9 个 record 子模块）+ `details.py` / `versus.py` / `entity_lists.py` / `repository.py` / `version_merge.py`
+- `domains/billboard/` — `data_loader.py` / `chart_compute.py`（编排/caching/staged API）+ `chart_ranking.py`（周榜排名）+ `chart_power_score.py`（走势评分）+ `chart_staged_cache.py`（共享 `_load_and_rank_cached`）+ `records.py`（facade）+ `records_*.py`（record 子模块）+ `details.py` / `versus.py` / `entity_lists.py` / `repository.py` / `version_merge.py`
 - `domains/settings/repository.py` — Settings 表 CRUD
-- `domains/playback/` — `repository.py`（播放数据查询封装）/ `counting.py`（有效播放判定）/ `merge_levels.py`（L1/L2/L3 规范化）/ `track_groups.py`（track group 聚合键加载）/ `release_groups.py`（发行版本合并键）/ `album_type.py`（专辑类型分类）
+- `domains/playback/` — `repository.py`（播放数据查询封装）/ `counting.py`（有效播放判定）/ `merge_levels.py`（L1/L2/L3 规范化）/ `track_groups.py`（track group 聚合键加载）/ `release_groups.py`（发行版本关系）/ `album_projects.py`（L2/L3 专辑项目 membership、source breakdown、Billboard release-date eligibility）/ `album_type.py`（专辑类型分类）
 - `domains/enrichment/repository.py` — 歌词/Wikipedia/LLM 缓存表访问
 - `domains/community/` — 榜单社区模拟 X 时间线：`accounts.py`（10 个模拟资讯账号）+ `post_types.py`（18 种帖子类型/7 种精选类型/模板/评分）+ `historical_state.py`（逐周累计历史状态追踪器，去重计数）+ `feed_generator.py`（编排器，~600 行）+ `feed_helpers.py`（格式/ID/指标工具）+ `feed_data.py`（榜单数据加载）+ `feed_weekly.py`（每周速报）+ `feed_records.py`（纪录/里程碑）+ `feed_personal.py`（个人播放/收藏）+ `feed_talk.py`（深度分析）+ `feed_ranking.py`（全时期排名/Power Score）+ `feed_images.py`（封面匹配）
 - `domains/chat/repository.py` — 对话历史持久化：`ChatRepository` 类封装 `chat_sessions`/`chat_messages` 表 CRUD，`ON DELETE CASCADE` 删除会话自动清消息
@@ -95,6 +95,7 @@ Contract 测试 teardown 必须清除所有 `@lru_cache`，`autouse` fixture `di
 - Python 3.9：使用 `Optional[X]` 而非 `X | None`
 - 后端绝对导入：`from backend.core.db import get_db`
 - 昂贵缓存优先通过公开 wrapper 规范化参数 + `singleflight()` 避免并发重复
+- L2/L3 专辑统计必须走 album project track membership；source album 只作为来源拆分解释，不得重新作为专辑播放量聚合口径
 - `ttl_cached()` 不缓存 `None`，测试可调 `cache_clear()`
 - 环境变量统一从 `core/config.py` 读取，禁止业务代码直接 `os.getenv()`
 - Token 加密密钥：`SPOTIFY_STATS_TOKEN_KEY` 环境变量 → 内置密钥（仅限单用户本地）

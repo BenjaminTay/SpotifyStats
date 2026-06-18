@@ -14,6 +14,7 @@ import { MusicChartOverviewSection } from './MusicChartOverviewSection'
 import { MusicTracksSection } from './MusicTracksSection'
 import { AlbumEraSection } from './AlbumEraSection'
 import { VersionGroupSection } from './VersionGroupSection'
+import { AlbumProjectSection } from './AlbumProjectSection'
 
 type TabKey = 'stats' | 'era' | 'overview' | 'tracks'
 
@@ -108,6 +109,8 @@ export function AlbumDetailExperience() {
                   data={data.meta.release_group}
                 />
               )}
+
+              {data.album_project && <AlbumProjectSection project={data.album_project} />}
 
               <DetailTabs tabs={TABS} activeTab={activeTab} onChange={setActiveTab} />
 

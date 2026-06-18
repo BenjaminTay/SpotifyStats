@@ -15,6 +15,10 @@ class TestWarmup:
             calls.append(("load_plays", kwargs))
             return None
 
+        def fake_load_plays_for_artists(conn, **kwargs):
+            calls.append(("load_plays_for_artists", kwargs))
+            return None
+
         def fake_compute_billboard_data(**kwargs):
             calls.append(("compute_billboard_data", kwargs))
             return None
@@ -36,6 +40,9 @@ class TestWarmup:
         # failing to patch them causes a real DB open in CI (no DB file).
         monkeypatch.setattr("backend.core.warmup.get_db", lambda: FakeConn())
         monkeypatch.setattr("backend.core.warmup.load_plays", fake_load_plays)
+        monkeypatch.setattr(
+            "backend.core.warmup.load_plays_for_artists", fake_load_plays_for_artists
+        )
         monkeypatch.setattr("backend.core.warmup.get_analysis_stats", fake_analysis_stats)
         monkeypatch.setattr("backend.core.warmup.get_analysis_charts", fake_analysis_charts)
         monkeypatch.setattr(
@@ -47,8 +54,13 @@ class TestWarmup:
         warmup.warm_common_caches()
 
         assert calls[0][0] == "load_plays"
+        assert calls[1][0] == "load_plays_for_artists"
         assert calls[-2][0] == "close"
         assert calls[-1][0] == "compute_billboard_data"
         assert calls[0][1]["min_ms"] == 30000
         assert calls[0][1]["merge_enabled"] is True
+        assert calls[0][1]["dynamic_threshold"] is True
+        assert calls[1][1]["dynamic_threshold"] is True
         assert calls[-1][1]["bb_top_n"] == 30
+        assert calls[-1][1]["dynamic_threshold"] is True
+        assert calls[-1][1]["merge_level"] == 2

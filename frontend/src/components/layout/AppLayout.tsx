@@ -31,7 +31,7 @@ export function AppLayout() {
 
       <Masthead />
 
-      <main className="relative z-1 mx-auto w-full max-w-[1200px] flex-1 px-10 py-10">
+      <main className="relative z-1 mx-auto w-full max-w-[1200px] flex-1 px-5 py-8 sm:px-10 sm:py-10">
         <Outlet />
       </main>
     </div>

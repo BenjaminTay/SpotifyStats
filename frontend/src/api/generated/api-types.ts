@@ -1538,6 +1538,66 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/version-merge/track-group-candidates/collaboration": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Collaboration Candidates
+         * @description Find collaboration/remix track-group candidates for user confirmation.
+         */
+        get: operations["collaboration_candidates_api_version_merge_track_group_candidates_collaboration_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/version-merge/track-groups/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Confirm Track Group
+         * @description Confirm a track candidate and rebuild album project rows.
+         */
+        post: operations["confirm_track_group_api_version_merge_track_groups_confirm_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/version-merge/album-relations/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Confirm Album Relation
+         * @description Confirm an album-level relation and derive matching track relations.
+         */
+        post: operations["confirm_album_relation_api_version_merge_album_relations_confirm_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/version-merge/groups/{group_id}/primary": {
         parameters: {
             query?: never;
@@ -1573,6 +1633,26 @@ export interface paths {
          * @description Delete a release group and its member relationships.
          */
         delete: operations["remove_group_api_version_merge_groups__group_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/version-merge/album-projects/rebuild": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Rebuild Album Project Rows
+         * @description Rebuild inferred album project rows from current version metadata.
+         */
+        post: operations["rebuild_album_project_rows_api_version_merge_album_projects_rebuild_post"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -2341,6 +2421,10 @@ export interface components {
             chart_summary?: {
                 [key: string]: unknown;
             } | null;
+            /** Album Project */
+            album_project?: {
+                [key: string]: unknown;
+            } | null;
             /** Album Weekly History */
             album_weekly_history?: {
                 [key: string]: unknown;
@@ -2388,6 +2472,89 @@ export interface components {
             albums: {
                 [key: string]: unknown;
             }[];
+        };
+        /** AlbumRelationConfirmRequest */
+        AlbumRelationConfirmRequest: {
+            /** Canonical Name */
+            canonical_name: string;
+            /** Primary Album Id */
+            primary_album_id: number;
+            /** Member Album Ids */
+            member_album_ids: number[];
+            /**
+             * Scope
+             * @default composition
+             */
+            scope: string;
+            /**
+             * Relation Type
+             * @default rerecord
+             */
+            relation_type: string;
+            /**
+             * Confirm Track Pairs
+             * @default true
+             */
+            confirm_track_pairs: boolean;
+        };
+        /** AlbumRelationConfirmResponse */
+        AlbumRelationConfirmResponse: {
+            /** Status */
+            status: string;
+            /** Release Group Id */
+            release_group_id?: number | null;
+            /** Scope */
+            scope?: string | null;
+            /** Relation Type */
+            relation_type?: string | null;
+            /**
+             * Candidate Track Pair Count
+             * @default 0
+             */
+            candidate_track_pair_count: number;
+            /**
+             * Confirmed Track Pair Count
+             * @default 0
+             */
+            confirmed_track_pair_count: number;
+            /**
+             * Exclusive Track Count
+             * @default 0
+             */
+            exclusive_track_count: number;
+            /** Track Pairs */
+            track_pairs?: components["schemas"]["AlbumRelationTrackPairResponse"][];
+            /** Exclusive Tracks */
+            exclusive_tracks?: components["schemas"]["AlbumRelationExclusiveTrackResponse"][];
+            /**
+             * Album Projects Rebuilt
+             * @default false
+             */
+            album_projects_rebuilt: boolean;
+            /** Message */
+            message?: string | null;
+        };
+        /** AlbumRelationExclusiveTrackResponse */
+        AlbumRelationExclusiveTrackResponse: {
+            /** Track Id */
+            track_id: number;
+            /** Track Name */
+            track_name: string;
+            /** Source Album Id */
+            source_album_id: number;
+        };
+        /** AlbumRelationTrackPairResponse */
+        AlbumRelationTrackPairResponse: {
+            /** Original Track Id */
+            original_track_id: number;
+            /** Original Track Name */
+            original_track_name: string;
+            /** Candidate Track Id */
+            candidate_track_id: number;
+            /** Candidate Track Name */
+            candidate_track_name: string;
+            /** Candidate Album Id */
+            candidate_album_id: number;
         };
         /** AnalysisChartRow */
         AnalysisChartRow: {
@@ -3138,6 +3305,11 @@ export interface components {
             primary_album_id: number;
             /** Member Ids */
             member_ids: number[];
+            /**
+             * Scope
+             * @default release
+             */
+            scope: string;
         };
         /** CreateGroupResponse */
         CreateGroupResponse: {
@@ -4210,6 +4382,11 @@ export interface components {
             primary_album_id?: number | null;
             /** Primary Album Name */
             primary_album_name?: string | null;
+            /**
+             * Scope
+             * @default release
+             */
+            scope: string;
             /** Is Manual */
             is_manual: number;
             /** Created At */
@@ -4565,6 +4742,49 @@ export interface components {
             genius?: {
                 [key: string]: unknown;
             } | null;
+        };
+        /** TrackGroupCandidateResponse */
+        TrackGroupCandidateResponse: {
+            /** Original Track Id */
+            original_track_id: number;
+            /** Original Track Name */
+            original_track_name: string;
+            /** Candidate Track Id */
+            candidate_track_id: number;
+            /** Candidate Track Name */
+            candidate_track_name: string;
+            /** Primary Artist Id */
+            primary_artist_id: number;
+        };
+        /** TrackGroupConfirmRequest */
+        TrackGroupConfirmRequest: {
+            /** Original Track Id */
+            original_track_id: number;
+            /** Candidate Track Id */
+            candidate_track_id: number;
+            /**
+             * Scope
+             * @default composition
+             */
+            scope: string;
+        };
+        /** TrackGroupConfirmResponse */
+        TrackGroupConfirmResponse: {
+            /** Status */
+            status: string;
+            /** Group Id */
+            group_id?: number | null;
+            /** Scope */
+            scope?: string | null;
+            /** Member Count */
+            member_count?: number | null;
+            /**
+             * Album Projects Rebuilt
+             * @default false
+             */
+            album_projects_rebuilt: boolean;
+            /** Message */
+            message?: string | null;
         };
         /** TrackHistoryResponse */
         TrackHistoryResponse: {
@@ -8481,6 +8701,92 @@ export interface operations {
             };
         };
     };
+    collaboration_candidates_api_version_merge_track_group_candidates_collaboration_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TrackGroupCandidateResponse"][];
+                };
+            };
+        };
+    };
+    confirm_track_group_api_version_merge_track_groups_confirm_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TrackGroupConfirmRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TrackGroupConfirmResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    confirm_album_relation_api_version_merge_album_relations_confirm_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AlbumRelationConfirmRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AlbumRelationConfirmResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     set_primary_album_api_version_merge_groups__group_id__primary_put: {
         parameters: {
             query?: never;
@@ -8543,6 +8849,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    rebuild_album_project_rows_api_version_merge_album_projects_rebuild_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatusResponse"];
                 };
             };
         };

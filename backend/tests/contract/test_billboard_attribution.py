@@ -24,6 +24,47 @@ class TestBillboardSourceAlbum:
         assert "Fixture Single" in album_names
         assert "Fixture LP" in album_names
 
+    def test_track_chart_merges_same_track_across_source_albums(self, seed_conn):
+        """Single chart rankings are keyed by track entity, not source album."""
+        from backend.domains.billboard.chart_ranking import compute_weekly_rankings
+
+        raw = load_billboard_raw(30_000, True, 4, 0)
+        weekly = compute_weekly_rankings(raw, top_n=100, merge_level=1)
+        rows = weekly[weekly["track_id"] == 904]
+
+        assert len(rows) == 1
+        assert int(rows.iloc[0]["play_count"]) == 2
+        assert rows.iloc[0]["album_name"] == "Fixture LP"
+
+    def test_track_summary_uses_full_history_across_source_albums(self, seed_conn):
+        """Track summaries must match the full track history, not one album slice."""
+        from backend.domains.billboard.chart_ranking import compute_weekly_rankings
+        from backend.domains.billboard.chart_summaries import compute_track_summary
+
+        raw = load_billboard_raw(30_000, True, 4, 0)
+        weekly = compute_weekly_rankings(raw, top_n=100, merge_level=1)
+        summary = compute_track_summary(weekly, raw)
+        rows = summary[summary["track_id"] == 904]
+
+        assert len(rows) == 1
+        assert int(rows.iloc[0]["total_chart_plays"]) == 2
+        assert int(rows.iloc[0]["total_plays"]) == 2
+        assert int(rows.iloc[0]["peak_position"]) == int(
+            weekly[weekly["track_id"] == 904]["rank"].min()
+        )
+
+    def test_track_detail_summary_peak_matches_history_peak(self, client):
+        """Detail KPI peak must not ignore pre-album/source-single chart weeks."""
+        response = client.get(
+            "/api/billboard/track/904",
+            params={"bb_top_n": 100, "merge_level": 1},
+        )
+
+        assert response.status_code == 200, response.text
+        data = response.json()
+        history_peak = min(row["rank"] for row in data["history"])
+        assert data["summary"]["peak_position"] == history_peak
+
 
 class TestBillboardSingleFiltering:
     def test_billboard_album_chart_excludes_singles(self, seed_conn):

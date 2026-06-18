@@ -25,7 +25,7 @@ function DashboardSkeleton() {
         <Skeleton className="mb-3 h-[52px] w-80" />
         <Skeleton className="h-5 w-96" />
       </div>
-      <div className="mb-10 grid grid-cols-4 gap-10 border-b border-border pb-10">
+      <div className="mb-10 grid grid-cols-2 gap-6 border-b border-border pb-10 md:grid-cols-4 md:gap-10">
         {Array.from({ length: 4 }).map((_, i) => (
           <div key={i}>
             <Skeleton className="mb-2 h-3 w-16" />
@@ -34,7 +34,7 @@ function DashboardSkeleton() {
           </div>
         ))}
       </div>
-      <div className="grid grid-cols-[1fr_380px] gap-10">
+      <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_380px] lg:gap-10">
         <Skeleton className="h-[280px] w-full rounded-[16px]" />
         <div className="space-y-6">
           <Skeleton className="h-[200px] w-full rounded-[16px]" />
@@ -81,7 +81,7 @@ export function DashboardPage() {
             <p className="mb-4 font-sans text-[11px] font-bold uppercase tracking-[1.8px] text-accent-foreground">
               Dashboard / 2026 Mid-Year
             </p>
-            <h1 className="mb-3 font-serif text-[52px] font-bold leading-[1.06] tracking-[-1.2px]">
+            <h1 className="mb-3 font-serif text-[42px] font-bold leading-[1.06] sm:text-[52px]">
               聆听的
               <br />
               形状与轨迹
@@ -93,7 +93,7 @@ export function DashboardPage() {
           </section>
 
           {/* KPI Row */}
-          <div className="mb-10 grid grid-cols-4 gap-10 border-b border-border pb-10">
+          <div className="mb-10 grid grid-cols-2 gap-6 border-b border-border pb-10 md:grid-cols-4 md:gap-10">
             <KpiCard
               label="总播放次数"
               value={formatNumber(data.summary.total_plays)}
@@ -121,7 +121,7 @@ export function DashboardPage() {
           </div>
 
           {/* Content Grid */}
-          <div className="mb-12 grid grid-cols-[1fr_380px] gap-10">
+          <div className="mb-12 grid gap-8 lg:grid-cols-[minmax(0,1fr)_380px] lg:gap-10">
             {/* Left: Monthly Trend Chart */}
             <div>
               <h2 className="mb-5 font-serif text-xl font-semibold">月度播放趋势</h2>

@@ -11,6 +11,7 @@ from backend.core.db import (
     get_db,
     get_track_artist_names_map,
 )
+from backend.core.json_helpers import df_to_json
 from backend.domains.billboard.chart_compute import compute_billboard_data
 
 
@@ -486,6 +487,149 @@ def _attach_album_release_group(conn, album_name, artist_name, meta, merge_level
     }
 
 
+def _get_album_project_payload(
+    album_name: str,
+    artist_name: str,
+    df: pd.DataFrame,
+    merge_level: int,
+) -> dict | None:
+    """Build the album-project explanation payload for album details."""
+    if merge_level <= 1 or df.empty:
+        return None
+
+    from backend.domains.playback.album_projects import (
+        SOURCE_BUCKET_ORDER,
+        compute_album_project_plays,
+        compute_album_source_breakdown,
+        ensure_album_projects,
+        load_album_project_membership,
+    )
+
+    conn = get_db()
+    try:
+        ensure_album_projects(conn)
+        totals = compute_album_project_plays(
+            df,
+            conn,
+            merge_level=merge_level,
+            include_compilations=True,
+        )
+        if totals.empty:
+            return None
+
+        match = totals[
+            (totals["album_project_name"] == album_name) & (totals["artist_name"] == artist_name)
+        ]
+        if match.empty:
+            project_ids = _resolve_album_project_ids(conn, album_name, artist_name)
+            if project_ids:
+                match = totals[totals["album_project_id"].isin(project_ids)]
+        if match.empty:
+            return None
+
+        match = match.sort_values(["play_count", "total_ms"], ascending=[False, False])
+        row = match.iloc[0]
+        project_id = int(row["album_project_id"])
+
+        membership = load_album_project_membership(
+            conn,
+            merge_level=merge_level,
+            include_compilations=True,
+        )
+        project_tracks = membership[membership["project_id"] == project_id].copy()
+        if not project_tracks.empty:
+            project_tracks["_bucket_rank"] = (
+                project_tracks["source_bucket"].map(SOURCE_BUCKET_ORDER).fillna(99)
+            )
+            project_tracks = project_tracks.sort_values(
+                ["_bucket_rank", "track_id"], ascending=[True, True]
+            ).drop(columns=["_bucket_rank"])
+
+        breakdown = compute_album_source_breakdown(df, conn, merge_level=merge_level)
+        project_breakdown = breakdown[breakdown["album_project_id"] == project_id].copy()
+        if not project_breakdown.empty:
+            project_breakdown["_bucket_rank"] = (
+                project_breakdown["source_bucket"].map(SOURCE_BUCKET_ORDER).fillna(99)
+            )
+            project_breakdown = project_breakdown.sort_values(
+                ["_bucket_rank", "source_album_name"], ascending=[True, True]
+            ).drop(columns=["_bucket_rank"])
+
+        return {
+            "album_project_id": project_id,
+            "album_project_name": str(row["album_project_name"]),
+            "artist_name": str(row["artist_name"]),
+            "release_date": str(row.get("release_date") or ""),
+            "play_count": int(row["play_count"]),
+            "total_ms": int(row["total_ms"]),
+            "unique_canonical_songs": int(row["unique_canonical_songs"]),
+            "tracks": df_to_json(project_tracks),
+            "source_breakdown": df_to_json(project_breakdown),
+        }
+    finally:
+        conn.close()
+
+
+def _resolve_album_project_ids(
+    conn,
+    album_name: str,
+    artist_name: str,
+) -> set[int]:
+    rows = conn.execute(
+        """SELECT DISTINCT ap.project_id
+           FROM album_projects ap
+           JOIN album_project_albums apa ON apa.project_id = ap.project_id
+           JOIN albums al ON al.album_id = apa.album_id
+           JOIN artists ar ON ar.artist_id = al.artist_id
+          WHERE al.album_name = ?
+            AND ar.artist_name = ?""",
+        (album_name, artist_name),
+    ).fetchall()
+    return {int(row["project_id"]) for row in rows}
+
+
+def _load_album_project_detail_events(
+    min_ms,
+    music_only,
+    bb_week_start_dow,
+    bb_week_start_hour,
+    year_start,
+    year_end,
+    dynamic_threshold=False,
+    max_merge_gap_minutes=None,
+) -> pd.DataFrame:
+    from backend.domains.billboard.data_loader import _try_load_from_agg, load_billboard_raw
+
+    _, album_sources, _ = _try_load_from_agg(
+        min_ms,
+        music_only,
+        bb_week_start_dow,
+        bb_week_start_hour,
+        dynamic_threshold=dynamic_threshold,
+        max_merge_gap_minutes=max_merge_gap_minutes,
+    )
+    if album_sources is not None and "track_id" in album_sources.columns:
+        df = album_sources.copy()
+    else:
+        df = load_billboard_raw(
+            min_ms,
+            music_only,
+            bb_week_start_dow,
+            bb_week_start_hour,
+            dynamic_threshold=dynamic_threshold,
+            max_merge_gap_minutes=max_merge_gap_minutes,
+        )
+    if df.empty:
+        return df
+    out = df.copy()
+    out["_year"] = out["billboard_week"].apply(lambda x: x.year)
+    if year_start is not None:
+        out = out[out["_year"] >= year_start]
+    if year_end is not None:
+        out = out[out["_year"] <= year_end]
+    return out
+
+
 def get_track_history(
     track_id,
     min_ms,
@@ -512,6 +656,7 @@ def get_track_history(
         bb_week_start_hour,
         year_start,
         year_end,
+        merge_level=merge_level,
         dynamic_threshold=dynamic_threshold,
         max_merge_gap_minutes=max_merge_gap_minutes,
     )
@@ -1061,6 +1206,23 @@ def get_album_chart_detail(
         if pd.notna(first_cover):
             album_cover_url = first_cover
 
+    album_project_events = _load_album_project_detail_events(
+        min_ms,
+        music_only,
+        bb_week_start_dow,
+        bb_week_start_hour,
+        year_start,
+        year_end,
+        dynamic_threshold=dynamic_threshold,
+        max_merge_gap_minutes=max_merge_gap_minutes,
+    )
+    album_project = _get_album_project_payload(
+        album_name,
+        resolved_artist,
+        album_project_events,
+        merge_level,
+    )
+
     return {
         "found": True,
         "album_name": album_name,
@@ -1080,6 +1242,7 @@ def get_album_chart_detail(
             "total_track_power": int(album_track_power["power_score"].sum()),
         },
         "chart_summary": chart_summary,
+        "album_project": album_project,
         "album_weekly_history": [
             {
                 "week": str(r["billboard_week"]),

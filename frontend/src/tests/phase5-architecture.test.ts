@@ -28,6 +28,7 @@ import versusExperienceSource from '../features/billboard/versus/VersusExperienc
 import artistDetailExperienceSource from '../features/music/details/ArtistDetailExperience.tsx?raw'
 import albumDetailExperienceSource from '../features/music/details/AlbumDetailExperience.tsx?raw'
 import albumEraSectionSource from '../features/music/details/AlbumEraSection.tsx?raw'
+import albumProjectSectionSource from '../features/music/details/AlbumProjectSection.tsx?raw'
 import communityExperienceSource from '../features/community/CommunityExperience.tsx?raw'
 import communityAccountExperienceSource from '../features/community/CommunityAccountExperience.tsx?raw'
 import postDetailExperienceSource from '../features/community/PostDetailExperience.tsx?raw'
@@ -146,6 +147,13 @@ describe('Phase 5 architecture guardrails', () => {
     expect(albumDetailExperienceSource).not.toContain('收听展开')
     expect(albumDetailExperienceSource).not.toContain('外溢影响')
     expect(albumDetailExperienceSource).not.toContain('你的收听故事')
+  })
+
+  it('keeps album project explanation in a feature section', () => {
+    expect(albumProjectSectionSource.split('\n').length).toBeLessThanOrEqual(300)
+    expect(albumDetailExperienceSource).toContain('AlbumProjectSection')
+    expect(albumDetailExperienceSource).not.toContain('source_breakdown')
+    expect(albumProjectSectionSource).toContain('source_breakdown')
   })
 
   it('keeps AlbumEraSection as orchestration instead of a monolithic release archive', () => {
