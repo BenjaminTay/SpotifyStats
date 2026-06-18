@@ -8,9 +8,11 @@ seed database or a local development database.
 
 from __future__ import annotations
 
+import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+from re import Pattern
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -35,6 +37,14 @@ class SmokeResult:
     detail: str
 
 
+@dataclass(frozen=True)
+class CoverageSummary:
+    get_path_count: int
+    covered_paths: frozenset[str]
+    excluded_paths: frozenset[str]
+    unaccounted_paths: tuple[str, ...]
+
+
 DEFAULT_FILTERS = {
     "min_ms": 30000,
     "music_only": True,
@@ -49,6 +59,31 @@ DEFAULT_BILLBOARD = {
     "bb_artist_top_n": 20,
     "merge_level": 2,
 }
+
+DEFAULT_EXCLUDED_GET_PATHS: frozenset[str] = frozenset(
+    {
+        # LLM or external enrichment calls are intentionally outside the
+        # default local-only smoke probe.
+        "/api/ai-insights/monthly-personality",
+        "/api/ai-insights/weekly-digest",
+        "/api/ai-insights/yearly-story",
+        "/api/billboard/enrichment/album/{album_name}",
+        "/api/billboard/enrichment/artist/{artist_name}",
+        "/api/billboard/enrichment/track/{track_name}",
+        "/api/lyrics/{track_id}",
+        "/api/lyrics/{track_id}/url",
+        # OAuth and live playback depend on a real browser/session or Spotify's
+        # live API; they are covered by dedicated targeted tests where possible.
+        "/api/spotify/auth/callback",
+        "/api/spotify/auth/login",
+        "/api/spotify/auth/playing",
+        # These need stable object ids or filesystem artifacts not guaranteed by
+        # every local DB snapshot.
+        "/api/community/post/{post_id}",
+        "/api/settings/llm-profiles/{profile_id}",
+        "/covers/{cover_type}/{entity_id}.jpg",
+    }
+)
 
 DEFAULT_SAFE_GET_CASES: tuple[SmokeCase, ...] = (
     SmokeCase("health", "/api/health"),
@@ -221,6 +256,53 @@ def assert_results(results: list[SmokeResult]) -> None:
         raise AssertionError("API smoke failures:\n" + "\n".join(lines))
 
 
+def _compile_openapi_path_template(path: str) -> Pattern[str]:
+    parts = path.strip("/").split("/")
+    pattern_parts = [
+        r"[^/]+" if part.startswith("{") and part.endswith("}") else re.escape(part)
+        for part in parts
+    ]
+    return re.compile(r"^/" + "/".join(pattern_parts) + r"$")
+
+
+def _covered_openapi_get_paths(cases: tuple[SmokeCase, ...], get_paths: set[str]) -> set[str]:
+    template_patterns = {
+        path: _compile_openapi_path_template(path) for path in get_paths if "{" in path
+    }
+    covered = set()
+    for case in cases:
+        if case.path in get_paths:
+            covered.add(case.path)
+            continue
+        for template_path, pattern in template_patterns.items():
+            if pattern.match(case.path):
+                covered.add(template_path)
+                break
+    return covered
+
+
+def get_openapi_get_coverage(
+    app, cases: tuple[SmokeCase, ...] = DEFAULT_SAFE_GET_CASES
+) -> CoverageSummary:
+    schema = app.openapi()
+    get_paths = {path for path, operations in schema["paths"].items() if "get" in operations}
+    covered_paths = _covered_openapi_get_paths(cases, get_paths)
+    excluded_paths = DEFAULT_EXCLUDED_GET_PATHS & get_paths
+    unaccounted_paths = tuple(sorted(get_paths - covered_paths - excluded_paths))
+    return CoverageSummary(
+        get_path_count=len(get_paths),
+        covered_paths=frozenset(covered_paths),
+        excluded_paths=frozenset(excluded_paths),
+        unaccounted_paths=unaccounted_paths,
+    )
+
+
+def assert_openapi_get_coverage(coverage: CoverageSummary) -> None:
+    if coverage.unaccounted_paths:
+        lines = [f"- {path}" for path in coverage.unaccounted_paths]
+        raise AssertionError("Unaccounted OpenAPI GET paths:\n" + "\n".join(lines))
+
+
 def main() -> int:
     from fastapi.testclient import TestClient
 
@@ -228,13 +310,21 @@ def main() -> int:
 
     with TestClient(app) as client:
         results = run_cases(client)
+    coverage = get_openapi_get_coverage(app)
     passed = sum(1 for result in results if result.ok)
     failed = len(results) - passed
     print(f"API smoke: {passed}/{len(results)} passed")
+    print(
+        "OpenAPI GET coverage: "
+        f"{len(coverage.covered_paths)}/{coverage.get_path_count} covered, "
+        f"{len(coverage.excluded_paths)} excluded, "
+        f"{len(coverage.unaccounted_paths)} unaccounted"
+    )
     for result in results:
         status = "PASS" if result.ok else "FAIL"
         print(f"{status} {result.case.name} {result.status_code} {result.case.path}")
     assert_results(results)
+    assert_openapi_get_coverage(coverage)
     return 0 if failed == 0 else 1
 
 

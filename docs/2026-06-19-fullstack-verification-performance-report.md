@@ -4,12 +4,12 @@
 
 ## 结论
 
-- 后端全量测试通过：`560 passed, 2 warnings in 61.68s`
+- 后端全量测试通过：`561 passed, 2 warnings in 60.14s`
 - 前端测试与构建通过：`125 passed`，`npm run build` 通过
-- Phase 5 最低验证矩阵通过：unit `233 passed`，contract `127 passed`，前端 test/build 通过
+- Phase 5 最低验证矩阵通过：unit `234 passed`，contract `127 passed`，前端 test/build 通过
 - pre-commit 通过：ruff、ruff format、mypy、detect-secrets 全部通过
 - 浏览器路由冒烟通过：12 个核心路由在 1280px 桌面与 390px 移动端均无错误 overlay、无页面级横向滚动；补充 Playwright CLI 采样 24 个路由/视口组合，控制台 error 为 0
-- 可复跑只读 API smoke 通过：`scripts/api_smoke_probe.py` 覆盖 91 个本地只读 GET 请求，全部返回预期状态并带 `X-Request-ID`
+- 可复跑只读 API smoke 通过：`scripts/api_smoke_probe.py` 覆盖 91 个本地只读 GET 请求，全部返回预期状态并带 `X-Request-ID`；OpenAPI GET 核算 `90/104 covered, 14 excluded, 0 unaccounted`
 
 ## 修复项
 
@@ -60,7 +60,7 @@ Billboard summaries 补充实现：`compute_artist_track_counts()` 与 `compute_
 - dashboard/full HTTP benchmark（当前后台服务热身状态）：`cold=0.20s, hot=0.16s, 4.2KB/1.2KB gzip`。
 - Billboard summaries 直接 profile（清 `compute_summaries_staged` cache，`dynamic_threshold=true&merge_level=2`）：优化前 `2.0980s / 7,114,904 calls`；优化后 `1.5549s / 5,764,912 calls`。
 - Billboard summaries HTTP benchmark（临时 8000 后端，`SPOTIFY_STATS_WARMUP=0`）：`cold=1.19s, hot=0.04s, 1295.7KB/162.4KB gzip`。
-- API smoke：`scripts/api_smoke_probe.py` 在真实本地库通过 91/91 个本地只读 GET 请求，覆盖 Dashboard、Analysis、Timeline、Leaderboard、Billboard、Release Cycle、Music Entity、Community、Version Merge、Account、AI Insights、Chat、Admin、Job、Spotify status/data，并逐项验证 `X-Request-ID`；默认列表排除歌词检索与 live playback 等会触发外部网络的端点。
+- API smoke：`scripts/api_smoke_probe.py` 在真实本地库通过 91/91 个本地只读 GET 请求，覆盖 Dashboard、Analysis、Timeline、Leaderboard、Billboard、Release Cycle、Music Entity、Community、Version Merge、Account、AI Insights、Chat、Admin、Job、Spotify status/data，并逐项验证 `X-Request-ID`；OpenAPI GET 核算 `90/104 covered, 14 excluded, 0 unaccounted`，默认列表排除歌词检索、AI 生成、enrichment、OAuth callback/login、live playback 与静态封面等会触发外部网络、浏览器态或非稳定本地 artifact 的路径。
 - 导入/WAL probe：临时 JSON + 临时 SQLite 验证音频/视频缺元数据记录不会中断导入，featured artist 写入 `track_artists`，空来源写入 `source_album_id IS NULL`；临时 DB 验证 WAL 下读事务快照不阻塞独立写提交，新读连接可见提交后数据。
 - 前端交互 probe：Playwright CLI 覆盖 12 路由 × 2 视口；`/analysis/stats` 与 `/analysis/charts` 的 `role=tab` 切换后无错误；Billboard 路由执行 `/billboard` → `/number-ones` → `/all-time` → `/records` 并通过浏览器后退/前进验证路由状态，控制台 error 为 0。
 - Web Vitals lab probe（Vite dev server + headless Chrome + CDP）：6 路由 × 桌面/390px 移动端；最终采样 CLS 全部 0，合成点击 FID 0.7-3.6ms，TBT 全部 0ms，非账号页 LCP 416-896ms，账号页 LCP 2,132ms（桌面）/ 2,320ms（移动）。
@@ -90,8 +90,8 @@ Billboard summaries 补充实现：`compute_artist_track_counts()` 与 `compute_
 
 | 目标项 | 当前证据 | 状态 |
 | --- | --- | --- |
-| 后端现有测试全量通过 | `pytest backend/tests/ -q`：`560 passed, 2 warnings in 61.68s` | 已自动验证 |
-| OpenAPI/核心 API 只读覆盖 | 122 paths / 134 operations schema 存在；91 个可复跑只读请求覆盖 Dashboard、Billboard、Analysis、Community、AI Insights、Account、Settings、Spotify status/data | 已覆盖只读核心路径；mutation/破坏性端点未逐一实打 |
+| 后端现有测试全量通过 | `pytest backend/tests/ -q`：`561 passed, 2 warnings in 60.14s` | 已自动验证 |
+| OpenAPI/核心 API 只读覆盖 | 122 paths / 134 operations schema 存在；91 个可复跑只读请求覆盖 Dashboard、Billboard、Analysis、Community、AI Insights、Account、Settings、Spotify status/data；OpenAPI GET 核算 0 unaccounted | 已覆盖只读核心路径；mutation/破坏性端点未逐一实打 |
 | Extended Streaming History 完整导入 | 新增临时 JSON 导入测试覆盖音频、视频、缺元数据、featured artist、预聚合 | 已自动验证最小完整流程 |
 | 多版本与 Billboard 语义 | contract/full tests 覆盖 Version Merge、Album Project、Power Score、播放过滤参数传播与 Billboard invariants | 已自动验证 |
 | SQLite WAL 并发读写 | 新增临时 DB WAL reader snapshot + writer commit 测试 | 已自动验证 |
