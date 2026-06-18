@@ -141,6 +141,16 @@ describe('Phase 5 architecture guardrails', () => {
     expect(albumDetailExperienceSource).not.toContain('周榜历史')
   })
 
+  it('does not mount entity stats charts inside hidden music detail tabs', () => {
+    for (const source of [
+      trackDetailExperienceSource,
+      artistDetailExperienceSource,
+      albumDetailExperienceSource,
+    ]) {
+      expect(source).not.toMatch(/className=\{activeTab === 'stats' \? '' : 'hidden'\}[\s\S]*?<EntityStatsPanel/)
+    }
+  })
+
   it('keeps music detail tracks and albums tables outside large experience files', () => {
     expect(artistDetailExperienceSource.split('\n').length).toBeLessThanOrEqual(380)
     expect(albumDetailExperienceSource.split('\n').length).toBeLessThanOrEqual(500)

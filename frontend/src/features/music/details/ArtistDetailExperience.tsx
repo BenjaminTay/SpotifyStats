@@ -113,9 +113,9 @@ export function ArtistDetailExperience() {
               )}
 
               {/* ═══ Tab 2: 单曲成绩 ═══ */}
-              <div className={activeTab === 'stats' ? '' : 'hidden'}>
+              {activeTab === 'stats' && (
                 <EntityStatsPanel kind="artist" artistName={data?.artist_name} />
-              </div>
+              )}
 
               {activeTab === 'tracks' && (
                 <MusicTracksSection

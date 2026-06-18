@@ -123,9 +123,9 @@ export function AlbumDetailExperience() {
                 />
               )}
 
-              <div className={activeTab === 'stats' ? '' : 'hidden'}>
+              {activeTab === 'stats' && (
                 <EntityStatsPanel kind="album" albumName={data.album_name} artistName={data.artist_name} />
-              </div>
+              )}
 
               {activeTab === 'tracks' && (
                 <MusicTracksSection

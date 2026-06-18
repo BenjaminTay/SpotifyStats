@@ -87,7 +87,7 @@ FastAPI 后端采用四层分离：**api/**（路由 + Depends 依赖注入）�
 
 ## 测试策略
 
-三层 pytest markers：`unit`（纯函数，无 DB，~5s）→ `contract`（seed DB 结构验证，~1s）→ `integration`（真实数据只读，~80s）。当前基线：unit 245 / contract 151 / backend full 596。补充只读 API smoke 使用 `.venv/bin/python scripts/api_smoke_probe.py`，覆盖 91 个本地 GET、验证 `X-Request-ID`，并核算 OpenAPI GET 覆盖（未核算路径必须为 0）；前端非破坏性交互 smoke 使用 `node scripts/frontend_interaction_smoke.mjs` 覆盖分析 tab、Billboard 子路由/历史导航、AI Insights tab/空状态与主题切换；跨浏览器 smoke 使用 `node scripts/frontend_cross_browser_smoke.mjs` 覆盖 Chromium/Firefox/WebKit 三引擎。本地 mutation/基础设施优先在 contract 临时 DB 里验证，例如 Chat CRUD、Settings 更新、LLM profile CRUD/apply、AI Insights 生成端点、Import job 调度，以及 Spotify OAuth PKCE login/callback 加密落库与 invalid state。
+三层 pytest markers：`unit`（纯函数，无 DB，~5s）→ `contract`（seed DB 结构验证，~1s）→ `integration`（真实数据只读，~80s）。当前基线：unit 247 / contract 151 / backend full 598。补充只读 API smoke 使用 `.venv/bin/python scripts/api_smoke_probe.py`，覆盖 91 个本地 GET、验证 `X-Request-ID`，并核算 OpenAPI GET 覆盖（未核算路径必须为 0）；前端非破坏性交互 smoke 使用 `node scripts/frontend_interaction_smoke.mjs` 覆盖分析 tab、Billboard 子路由/历史导航、AI Insights tab/空状态与主题切换；图表交互 smoke 使用 `node scripts/frontend_chart_interaction_smoke.mjs` 覆盖 ECharts tooltip hover、legend toggle 与 dataZoom drag；跨浏览器 smoke 使用 `node scripts/frontend_cross_browser_smoke.mjs` 覆盖 Chromium/Firefox/WebKit 三引擎。本地 mutation/基础设施优先在 contract 临时 DB 里验证，例如 Chat CRUD、Settings 更新、LLM profile CRUD/apply、AI Insights 生成端点、Import job 调度，以及 Spotify OAuth PKCE login/callback 加密落库与 invalid state。
 
 Contract 测试使用 canonical `backend/tests/fixtures/seed.db` 的临时副本，teardown 必须清除所有 `@lru_cache` 并删除临时 WAL/SHM sidecar；`autouse` fixture `disable_warmup` 通过 monkeypatch `SPOTIFY_STATS_WARMUP=0` 阻止后台预热。
 

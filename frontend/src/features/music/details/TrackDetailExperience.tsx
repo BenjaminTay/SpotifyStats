@@ -212,9 +212,7 @@ export function TrackDetailExperience() {
               {activeTab === 'overview' && <TrackOverviewSection data={data} />}
 
               {/* Tab: 播放统计 */}
-              <div className={activeTab === 'stats' ? '' : 'hidden'}>
-                <EntityStatsPanel kind="track" trackId={trackId} />
-              </div>
+              {activeTab === 'stats' && <EntityStatsPanel kind="track" trackId={trackId} />}
 
               {/* Tab: 歌词 */}
               {activeTab === 'lyrics' && (
