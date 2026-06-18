@@ -606,6 +606,7 @@ def merge_consecutive_plays(
     Rows with NULL/0 duration_ms are passed through unchanged (can't merge).
     Requires DataFrame sorted by ts, with columns: track_id, ms_played, duration_ms.
     """
+    import numpy as np
     import pandas as pd
 
     if df.empty:
@@ -630,36 +631,60 @@ def merge_consecutive_plays(
 
     df["_merge_group"] = (track_changed | gap_changed | boundary_changed).cumsum()
 
-    result_rows = []
-    for _gid, group in df.groupby("_merge_group", sort=False):
-        duration = group["duration_ms"].iloc[0]
-        total_ms_val = int(group["ms_played"].sum())
+    grouped = df.groupby("_merge_group", sort=False)
+    first_rows = grouped.head(1).set_index("_merge_group", drop=False)
+    group_totals = grouped["ms_played"].sum()
+    group_durations = first_rows["duration_ms"]
 
-        if pd.isna(duration) or duration == 0:
-            for _, row in group.iterrows():
-                result_rows.append(row.to_dict())
-            continue
+    valid_duration = group_durations.notna() & group_durations.ne(0)
+    result_frames = []
 
-        duration = int(duration)
-        full_plays = total_ms_val // duration
-        remainder = total_ms_val % duration
+    valid_group_ids = group_durations.index[valid_duration]
+    if len(valid_group_ids) > 0:
+        totals = group_totals.loc[valid_group_ids].astype("int64")
+        durations = group_durations.loc[valid_group_ids].astype("int64")
+        full_plays = totals // durations
+        remainders = totals % durations
+        output_counts = full_plays + remainders.ge(min_ms).astype("int64")
+        output_counts = output_counts[output_counts > 0]
 
-        count = full_plays
-        if remainder >= min_ms:
-            count += 1
+        if not output_counts.empty:
+            repeated_group_ids = np.repeat(output_counts.index.to_numpy(), output_counts.to_numpy())
+            output_seq = np.concatenate(
+                [np.arange(count, dtype="int64") for count in output_counts.to_numpy()]
+            )
+            repeated_rows = first_rows.loc[repeated_group_ids].copy()
+            repeated_rows["_merge_seq"] = output_seq
 
-        if count == 0:
-            continue
+            repeated_full_plays = np.repeat(
+                full_plays.loc[output_counts.index].to_numpy(), output_counts.to_numpy()
+            )
+            repeated_durations = np.repeat(
+                durations.loc[output_counts.index].to_numpy(), output_counts.to_numpy()
+            )
+            repeated_remainders = np.repeat(
+                remainders.loc[output_counts.index].to_numpy(), output_counts.to_numpy()
+            )
+            repeated_rows["ms_played"] = np.where(
+                output_seq < repeated_full_plays,
+                repeated_durations,
+                repeated_remainders,
+            )
+            result_frames.append(repeated_rows)
 
-        base_row = group.iloc[0].to_dict()
-        for i in range(count):
-            new_row = base_row.copy()
-            new_row["ms_played"] = duration if i < full_plays else remainder
-            result_rows.append(new_row)
+    invalid_group_ids = group_durations.index[~valid_duration]
+    if len(invalid_group_ids) > 0:
+        invalid_rows = df[df["_merge_group"].isin(invalid_group_ids)].copy()
+        invalid_rows["_merge_seq"] = invalid_rows.groupby("_merge_group", sort=False).cumcount()
+        result_frames.append(invalid_rows)
 
-    result = pd.DataFrame(result_rows)
-    result = result.drop(columns=["_merge_group"], errors="ignore")
-    return result
+    if not result_frames:
+        return df.iloc[0:0].drop(columns=["_merge_group"], errors="ignore")
+
+    result = pd.concat(result_frames, axis=0, ignore_index=True, sort=False)
+    result = result.sort_values(["_merge_group", "_merge_seq"], kind="stable")
+    result = result.drop(columns=["_merge_group", "_merge_seq"], errors="ignore")
+    return result.reset_index(drop=True)
 
 
 def _write_agg_batch(

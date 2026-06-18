@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import time
+
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -230,3 +233,27 @@ class TestMergeSessionBoundaries:
         # Third row: same source+track but 55min gap > 30 → separate group → 20s → dropped
         assert len(result) == 1
         assert int(result.iloc[0]["ms_played"]) == 40_000
+
+    def test_large_fragmented_sessions_merge_within_performance_guard(self):
+        from backend.core.db import merge_consecutive_plays
+
+        group_count = 40_000
+        row_count = group_count * 2
+        df = pd.DataFrame(
+            {
+                "ts": pd.Timestamp("2026-01-01")
+                + pd.to_timedelta(np.arange(row_count), unit="min"),
+                "track_id": np.repeat(np.arange(group_count), 2),
+                "ms_played": np.full(row_count, 20_000),
+                "duration_ms": np.full(row_count, 40_000),
+                "source_album_id": np.repeat(np.arange(group_count), 2),
+            }
+        )
+
+        start = time.perf_counter()
+        result = merge_consecutive_plays(df, min_ms=30_000, boundary_column="source_album_id")
+        elapsed = time.perf_counter() - start
+
+        assert len(result) == group_count
+        assert result["ms_played"].unique().tolist() == [40_000]
+        assert elapsed < 1.5

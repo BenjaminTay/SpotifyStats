@@ -31,7 +31,7 @@ FastAPI 后端采用四层分离：**api/**（路由 + Depends 依赖注入）�
 | 文件 | 职责 |
 |------|------|
 | `core/config.py` | 集中配置管理（`python-dotenv`），禁止业务代码直接 `os.getenv()` |
-| `core/db.py` | `get_db()`, `load_plays()` / `load_plays_for_artists()` (`@lru_cache(maxsize=16)` + `singleflight()`), `base_filters()`, `merge_consecutive_plays()`, `build_aggregations()` |
+| `core/db.py` | `get_db()`, `load_plays()` / `load_plays_for_artists()` (`@lru_cache(maxsize=16)` + `singleflight()`), `base_filters()`, 向量化 `merge_consecutive_plays()`, `build_aggregations()` |
 | `core/crypto.py` | AES-256-GCM 加解密，Token 落库前必须加密，`is_encrypted()` 自动区分明文/密文 |
 | `core/json_helpers.py` | numpy/pandas → JSON 唯一入口（`py_val()` / `df_to_json()`），禁止 service 层重复定义 |
 | `core/cache.py` | `ttl_cached()` 装饰器（不缓存 None）+ `singleflight()` 避免并发重复计算 |
@@ -86,7 +86,7 @@ FastAPI 后端采用四层分离：**api/**（路由 + Depends 依赖注入）�
 
 ## 测试策略
 
-三层 pytest markers：`unit`（纯函数，无 DB，~5s）→ `contract`（seed DB 结构验证，~1s）→ `integration`（真实数据只读，~80s）。当前基线：unit 226 / contract 126 / backend full 552。
+三层 pytest markers：`unit`（纯函数，无 DB，~5s）→ `contract`（seed DB 结构验证，~1s）→ `integration`（真实数据只读，~80s）。当前基线：unit 228 / contract 126 / backend full 554。
 
 Contract 测试使用 canonical `backend/tests/fixtures/seed.db` 的临时副本，teardown 必须清除所有 `@lru_cache` 并删除临时 WAL/SHM sidecar；`autouse` fixture `disable_warmup` 通过 monkeypatch `SPOTIFY_STATS_WARMUP=0` 阻止后台预热。
 

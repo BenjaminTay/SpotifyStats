@@ -88,6 +88,7 @@ def dashboard_full(
             filters.merge_enabled,
             filters.dynamic_threshold,
             filters.max_merge_gap_minutes,
+            df=df,
         ),
     }
 

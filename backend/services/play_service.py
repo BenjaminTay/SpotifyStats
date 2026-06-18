@@ -306,11 +306,13 @@ def get_random_track(
     merge_enabled: bool,
     dynamic_threshold: bool = False,
     max_merge_gap_minutes: int | None = None,
+    df: pd.DataFrame | None = None,
 ) -> dict | None:
     """Get a random track for nostalgic recommendation."""
-    df = _load_filtered_plays(
-        conn, min_ms, music_only, merge_enabled, dynamic_threshold, max_merge_gap_minutes
-    )
+    if df is None:
+        df = _load_filtered_plays(
+            conn, min_ms, music_only, merge_enabled, dynamic_threshold, max_merge_gap_minutes
+        )
     if df.empty:
         return None
     row = (
