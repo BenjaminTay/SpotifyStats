@@ -4,9 +4,9 @@
 
 ## 结论
 
-- 后端全量测试通过：`613 passed, 2 warnings`
+- 后端全量测试通过：`614 passed, 2 warnings`
 - 前端测试与构建通过：`130 passed`，`npm run build` 通过
-- Phase 5 最低验证矩阵通过：unit `261 passed`，contract `152 passed`，前端 test/build 通过
+- Phase 5 最低验证矩阵通过：unit `261 passed`，contract `153 passed`，前端 test/build 通过
 - 本地 CI parity 护栏通过：`scripts/ci_baseline_parity.py` 确认 `.github/workflows/phase5-baseline.yml` 的 unit/contract/ruff/frontend test/build 检查均被 `scripts/phase5_check.sh` 覆盖
 - API 性能 benchmark 通过：`scripts/benchmark_api.py` 覆盖 8 个核心 API 冷/热响应、raw/gzip 体积、JSON 输出与 hot P95 慢端点汇总；本地增强矩阵复跑 `slow_count=0`，最大 hot P95 约 `260ms`（阈值 500ms）
 - 全栈非破坏性验收矩阵通过：`scripts/fullstack_verification_check.sh` 在本地 dev server 串起 backend full、pre-commit、Phase 5、API smoke/boundary、benchmark、前端 route/interaction/chart/long-list/cross-browser smoke 并完整 PASS；2026-06-19 追加复跑 `--preview-url http://127.0.0.1:4173 --preview-api-url http://127.0.0.1:8000 --web-vitals`，生产 `vite preview` smoke 与 dev/prod Web Vitals 也完整 PASS；脚本会在激活 `.venv` 前自动检测可导入 `playwright.sync_api` 的 Python，避免跨浏览器 smoke 误用无 Playwright 的 venv Python
@@ -18,6 +18,7 @@
 - 长列表分页/分段渲染冒烟通过：`scripts/frontend_long_list_smoke.mjs` 覆盖 Records mini-rank、Billboard All-Time、Community Feed infinite load、RecentPlays、SavedTracks、PersonalRankTable 共 6 个场景；dev server 与生产 `vite preview` 均 PASS 6/6，console error/warning、page error 与页面级横向滚动均为 0
 - 可复跑只读 API smoke 通过：`scripts/api_smoke_probe.py` 覆盖 91 个本地只读 GET 请求，全部返回预期状态并带 `X-Request-ID`；OpenAPI GET 核算 `90/104 covered, 14 excluded, 0 unaccounted`
 - 可复跑 API 边界 probe 通过：`scripts/api_boundary_probe.py` 覆盖 19 个非破坏性 GET 边界，包含越界参数、非法 path/entity、特殊字符查询，验证预期 422/200、`X-Request-ID`、无 500，且 422 响应带 FastAPI validation detail
+- Provider 错误响应分层通过：新增 contract probe 覆盖 Network/Auth/RateLimit/Server/Parse/HTTP 六类 Provider 异常，验证响应映射为结构化 503/502/429、保留 `X-Request-ID`，且不向前端泄露原始上游错误文案
 
 ## 修复项
 
@@ -32,6 +33,7 @@
 | P2 | `/api/spotify/auth/login` 在未配置 `SPOTIFY_CLIENT_ID` 时抛出未处理异常 | 设置页点击连接 Spotify 时，本地未配 OAuth Client ID 会返回 500 并记录全局未处理异常 | API 边界将已知配置缺失收敛为 503 `spotify_client_not_configured`；新增 contract 测试覆盖无配置、PKCE state、callback 加密落库和 invalid state |
 | P2 | `PUT /api/settings` 接受越界统计配置 | 负数 `min_ms`、过小/过大的 Billboard Top N、非法周起始日/小时会被写入设置并污染后续统计 | `SettingsUpdateRequest` 补齐与查询参数一致的 `ge/le` 约束，新增 422 边界 contract 测试 |
 | P2 | `/api/settings/clear-translation-cache` 在新库或 seed 库缺少 `wikipedia_cache` 表时 500 | 首次使用设置页清缓存可能返回内部错误，无法作为幂等维护操作 | 清理前 `CREATE TABLE IF NOT EXISTS wikipedia_cache`，新增 contract 测试验证缺表时返回 `deleted_count` |
+| P2 | 未被路由层显式捕获的 `ProviderError` 会落入全局泛化 500 | Spotify/Genius/Wikipedia/LLM 等上游失败可能被包装成不透明内部错误，无法满足 Provider 错误分层与前端可恢复状态判断 | 新增 `ProviderError` 全局异常处理器，将 rate limit/network/auth/server/parse/http 分别映射为结构化 429/503/502 响应；新增 contract 测试覆盖 request id 透传和原始上游消息不外泄 |
 | P2 | AI Insights 周报/月报/年度叙事/自由问答暴露 `dynamic_threshold` 与 `max_merge_gap_minutes` 但未传入最终计数管线 | 用户在设置页启用动态阈值或 Session 合并边界后，AI 报告可能继续按旧播放口径解读数据；不同过滤口径还可能撞到同一份报告缓存 | `backend/api/ai_insights.py` 透传 `PlayFilters` 新字段，`ai_insights_service.py` 将参数传入 `load_period_plays()` 与 `get_wrapped_full()`，并把过滤指纹纳入报告 cache key；新增离线 unit/contract 测试覆盖 5 个 AI Insights 端点、服务链路和 cache key 分流 |
 | P3 | AI Insights 报告生成后用 readonly 请求连接写报告缓存 | 页面/API 返回 200，但后端日志出现 `AI report cache write failed` warning + traceback，且新报告无法写入缓存 | `_set_cache()` 遇到 readonly 连接时用短生命周期 `get_db(readonly=False)` 重试缓存写入；保留其它 SQLite 写入错误的 warning，新增 unit 测试锁定不再记录 readonly warning |
 | P3 | `/api/behavior` 复用 `PlayFilters`，OpenAPI 暴露 `min_ms`、`merge_enabled`、`dynamic_threshold`、`max_merge_gap_minutes` 等无效参数 | 行为分析按设计使用全量事件；这些参数不会改变结果，却会误导 API 使用者并让前端过滤变化触发无效 refetch | 后端只声明有效的 `music_only` 参数，前端 behavior 请求/query key 收窄到 `music_only`，同步 OpenAPI snapshot/types；新增 contract 与前端 hook 测试 |
@@ -90,6 +92,7 @@ Billboard summaries 补充实现：`compute_artist_track_counts()` 与 `compute_
 - API benchmark probe：增强 `scripts/benchmark_api.py` 后，在无 reload 后端（`SPOTIFY_STATS_WARMUP=0`）采样 8 个核心端点，全部 200；hot P95 均低于 500ms；2026-06-19 增强 fullstack matrix 复跑时最大 `/api/billboard/data` hot P95 `0.26s`，`slow_count=0`；JSON 输出 `/tmp/spotify_api_benchmark.json` 记录 `result_count=8`、`slow_ms=500.0`。
 - API smoke：`scripts/api_smoke_probe.py` 在真实本地库通过 91/91 个本地只读 GET 请求，覆盖 Dashboard、Analysis、Timeline、Leaderboard、Billboard、Release Cycle、Music Entity、Community、Version Merge、Account、AI Insights、Chat、Admin、Job、Spotify status/data，并逐项验证 `X-Request-ID`；OpenAPI GET 核算 `90/104 covered, 14 excluded, 0 unaccounted`，默认列表排除歌词检索、AI 生成、enrichment、OAuth callback/login、live playback 与静态封面等会触发外部网络、浏览器态或非稳定本地 artifact 的路径。
 - API boundary probe：`scripts/api_boundary_probe.py` 在 TestClient 本地应用实例通过 19/19 个非破坏性 GET 边界，覆盖 Analysis/Leaderboard/Community/Music Entity/Billboard/Release Cycle/Lyrics/Chat 的越界查询参数、非法 path/entity 与特殊字符搜索；每个响应均验证预期状态、`X-Request-ID`、无 500，422 响应验证 FastAPI validation detail。
+- Provider error contract probe：`backend/tests/contract/test_provider_error_responses.py` 覆盖 `ProviderNetworkError`、`ProviderAuthError`、`ProviderRateLimitError`、`ProviderServerError`、`ProviderParseError`、`ProviderHTTPError`，验证 API 层返回稳定 `detail.error/provider/status`、503/502/429 状态码、`X-Request-ID`，且不会泄露原始上游错误文案。
 - Chat mutation probe：contract 临时 DB 覆盖 `/api/chat/sessions` 创建、消息写入、详情读取、标题更新、列表读取、删除后读取，以及非法 role 422 边界。
 - Settings mutation probe：contract 临时 DB 覆盖设置更新持久化与密钥脱敏、越界设置 422、LLM profile 创建/重复名/读取/列表/更新/应用/删除，以及缺表场景下清翻译缓存幂等返回。
 - Import job probe：contract 测试用同步 fake thread 验证 `/api/import/streaming` 与 `/api/import/account` 的 job_id 返回、进度回调、完成状态、account 嵌套结果摘要，以及 streaming 导入异常时的 error 状态。
@@ -102,10 +105,10 @@ Billboard summaries 补充实现：`compute_artist_track_counts()` 与 `compute_
 - 前端图表交互 probe：新增 `scripts/frontend_chart_interaction_smoke.mjs`，通过 headless Chrome CDP 执行 3 个 ECharts 交互场景：`chart-hover-tooltip` 在 `/analysis/stats` 悬停 canvas 并要求 tooltip 可见；`legend-toggle` 在 `/account` 点击图例区并要求 canvas 内容变化；`datazoom-drag` 从 `/api/billboard/all-time` 动态选择真实长榜艺人，进入音乐实体页 Billboard 成绩趋势图并拖拽 dataZoom。脚本支持 `--api-base-url`，用于生产 `vite preview` 页面 + 8000 后端 API 的分离验证；account legend 与 dataZoom 场景带 12s 冷启动等待下限。dev server 与生产 `vite preview` 均 PASS 3/3，console error/warning/page error 全 0，scroll overflow 全 0px；首轮探针暴露音乐详情隐藏 tab 图表 0 尺寸初始化 warning，后续又暴露冷启动等待假阴性，修复后复跑全绿。
 - 跨浏览器 probe：新增 `scripts/frontend_cross_browser_smoke.mjs`，通过 Python Playwright API 覆盖 Chromium、Firefox、WebKit（Safari-family）。每个浏览器引擎执行 6 个核心路由 × 桌面/390px 移动端 marker 检查，以及 `analysis-tabs`、`billboard-routing`、`ai-insights-tabs`、`theme-toggle` 4 个非破坏性交互；dev server 与生产 `vite preview` 产物均 PASS 3/3 浏览器引擎。该探针需要可导入 `playwright.sync_api` 的 Python，可用 `PYTHON_PLAYWRIGHT=/path/to/python` 或 `--python` 指定。
 - 前端长列表 probe：新增 `scripts/frontend_long_list_smoke.mjs`，通过 headless Chrome CDP 覆盖 `records-mini-rank`、`all-time-table`、`community-feed`、`recent-plays`、`saved-tracks`、`personal-rank-table` 6 个场景，并支持 `--api-base-url` 将生产 preview 页面的 `/api` 与 `/covers` 请求重写到 8000 后端。当前 dev server 与生产 `vite preview` 结果均 PASS 6/6：Records `1—10 / 89` → `11—20 / 89`，All-Time `1 / 35` → `2 / 35`，Community Feed `50 posts` → `100 posts`，RecentPlays `第 1/1236 页` → `第 2/1236 页`，SavedTracks `第 1/40 页` → `第 2/40 页`，PersonalRankTable `显示 1-50 / 总数 250 条` → `显示 51-100 / 总数 250 条`；console error/warning/page error 全 0，scroll overflow 全 0px。
-- 全栈聚合 probe：`sh scripts/fullstack_verification_check.sh --backend-url http://127.0.0.1:8000 --frontend-url http://127.0.0.1:5173 --preview-url http://127.0.0.1:4173 --preview-api-url http://127.0.0.1:8000 --web-vitals` 在本地后端 8000 + Vite dev 5173 + `vite preview` 4173 环境完整通过，覆盖 backend full `613 passed`、pre-commit、Phase 5 unit `261` / contract `152` / frontend `130` / build、API smoke `91/91`、API boundary `19/19`、benchmark `slow_count=0`、dev/prod route smoke `26/26`、interaction `5/5`、chart `3/3`、long-list `6/6`、cross-browser Chromium/Firefox/WebKit `PASS`，以及 dev/prod Web Vitals lab。
+- 全栈聚合 probe：`sh scripts/fullstack_verification_check.sh --backend-url http://127.0.0.1:8000 --frontend-url http://127.0.0.1:5173 --preview-url http://127.0.0.1:4173 --preview-api-url http://127.0.0.1:8000 --web-vitals` 在本地后端 8000 + Vite dev 5173 + `vite preview` 4173 环境完整通过，覆盖 backend full `614 passed`、pre-commit、Phase 5 unit `261` / contract `153` / frontend `130` / build、API smoke `91/91`、API boundary `19/19`、Provider error contract、benchmark `slow_count=0`、dev/prod route smoke `26/26`、interaction `5/5`、chart `3/3`、long-list `6/6`、cross-browser Chromium/Firefox/WebKit `PASS`，以及 dev/prod Web Vitals lab。
 - Web Vitals lab probe（Vite dev server + headless Chrome + CDP）：6 路由 × 桌面/390px 移动端；增强矩阵复跑采样 CLS 全部 0，合成点击 FID 0.8-4.0ms，TBT 全部 0ms，非账号页 LCP 416-868ms，账号页 LCP 2,188ms（桌面）/ 2,264ms（移动）。生产 `vite preview` 补充采样资源体积更接近交付产物：非账号页 LCP 376-864ms，账号页 LCP 2,140ms（桌面）/ 2,168ms（移动），CLS/TBT 全部 0。
 - 本地 CI parity probe：新增 `scripts/ci_baseline_parity.py`，提取 `.github/workflows/phase5-baseline.yml` 的核心检查命令，并与 `scripts/phase5_check.sh` 对比。当前输出确认 workflow checks 与 local checks 均为 `pytest -m unit -q`、`pytest -m contract -q`、`ruff check backend/`、`npm test`、`npm run build`；`phase5_check.sh` 开头已接入该护栏。
-- 文档同步：README、AGENTS、CLAUDE、backend/CLAUDE、frontend/CLAUDE 已更新 2026-06-19 验证报告、API smoke / API boundary / API benchmark / fullstack verification / route smoke / interaction smoke / chart interaction smoke / cross-browser smoke / long-list smoke / CI parity 探针、Power Score 向量化、Behavior API 参数收窄、OAuth PKCE 本地合同验证、移动端横向滚动护栏、pre-commit 范围与最新测试基线。
+- 文档同步：README、AGENTS、CLAUDE、backend/CLAUDE、frontend/CLAUDE 已更新 2026-06-19 验证报告、API smoke / API boundary / Provider error / API benchmark / fullstack verification / route smoke / interaction smoke / chart interaction smoke / cross-browser smoke / long-list smoke / CI parity 探针、Power Score 向量化、Behavior API 参数收窄、OAuth PKCE 本地合同验证、移动端横向滚动护栏、pre-commit 范围与最新测试基线。
 
 ### Web Vitals Lab 采样
 
@@ -151,8 +154,8 @@ Billboard summaries 补充实现：`compute_artist_track_counts()` 与 `compute_
 
 | 目标项 | 当前证据 | 状态 |
 | --- | --- | --- |
-| 后端现有测试全量通过 | `pytest backend/tests/ -q`：`613 passed, 2 warnings` | 已自动验证 |
-| OpenAPI/核心 API 只读覆盖 | 122 paths / 134 operations schema 存在；91 个可复跑只读请求覆盖 Dashboard、Billboard、Analysis、Community、AI Insights、Account、Settings、Spotify status/data；OpenAPI GET 核算 0 unaccounted；19 个 API boundary GET 覆盖代表性越界参数、非法 path/entity 与特殊字符查询 | 已覆盖只读核心路径与代表性参数边界；mutation/破坏性端点未逐一实打 |
+| 后端现有测试全量通过 | `pytest backend/tests/ -q`：`614 passed, 2 warnings` | 已自动验证 |
+| OpenAPI/核心 API 只读覆盖 | 122 paths / 134 operations schema 存在；91 个可复跑只读请求覆盖 Dashboard、Billboard、Analysis、Community、AI Insights、Account、Settings、Spotify status/data；OpenAPI GET 核算 0 unaccounted；19 个 API boundary GET 覆盖代表性越界参数、非法 path/entity 与特殊字符查询；Provider error contract 覆盖六类上游失败的结构化响应分层 | 已覆盖只读核心路径、代表性参数边界与 Provider 失败响应；mutation/破坏性端点未逐一实打 |
 | Extended Streaming History 完整导入 | 新增临时 JSON 导入测试覆盖音频、视频、缺元数据、featured artist、预聚合 | 已自动验证最小完整流程 |
 | 多版本与统计过滤语义 | contract/full tests 覆盖 Version Merge、Album Project、Power Score、AI Insights 播放过滤传播、Behavior 全量事件例外参数收窄、播放过滤参数传播与 Billboard invariants | 已自动验证 |
 | SQLite WAL 并发读写 | 新增临时 DB WAL reader snapshot + writer commit 测试 | 已自动验证 |
@@ -188,6 +191,7 @@ sh scripts/fullstack_verification_check.sh --backend-url http://127.0.0.1:8000 -
 .venv/bin/pytest backend/tests/unit/test_phase5_architecture.py::test_chart_power_score_avoids_row_wise_dataframe_apply -q
 .venv/bin/pytest backend/tests/unit/test_playback_counting.py backend/tests/unit/test_play_service_dashboard.py -q
 .venv/bin/pytest backend/tests/unit/test_billboard_chart_summaries.py backend/tests/unit/test_phase5_architecture.py::test_chart_summaries_avoid_row_wise_dataframe_apply -q
+.venv/bin/pytest backend/tests/unit/test_providers.py backend/tests/contract/test_provider_error_responses.py -q
 .venv/bin/pytest backend/tests/unit/test_api_smoke_probe_script.py backend/tests/unit/test_spotify_auth_api.py backend/tests/contract/test_api_smoke_probe.py -q
 .venv/bin/pytest backend/tests/unit/test_api_boundary_probe_script.py backend/tests/contract/test_api_boundary_probe.py -q
 .venv/bin/python scripts/api_boundary_probe.py

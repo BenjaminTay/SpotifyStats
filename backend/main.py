@@ -21,6 +21,15 @@ from backend.core.logging_config import setup_logging
 from backend.core.migrations import run_migrations
 from backend.core.request_context import REQUEST_ID_HEADER, reset_request_id, set_request_id
 from backend.core.warmup import start_warmup_thread
+from backend.providers.base import (
+    ProviderAuthError,
+    ProviderError,
+    ProviderHTTPError,
+    ProviderNetworkError,
+    ProviderParseError,
+    ProviderRateLimitError,
+    ProviderServerError,
+)
 
 setup_logging()
 logger = logging.getLogger(__name__)
@@ -87,6 +96,45 @@ async def request_id_middleware(request: Request, call_next):
 
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _COVERS_DIR = os.path.join(_PROJECT_ROOT, "data", "covers")
+
+
+def _provider_error_response(exc: ProviderError) -> tuple[int, str]:
+    """Map provider failures to stable API error classes."""
+    if isinstance(exc, ProviderRateLimitError):
+        return 429, "provider_rate_limited"
+    if isinstance(exc, ProviderNetworkError):
+        return 503, "provider_network_error"
+    if isinstance(exc, ProviderAuthError):
+        return 502, "provider_auth_error"
+    if isinstance(exc, ProviderServerError):
+        return 502, "provider_server_error"
+    if isinstance(exc, ProviderParseError):
+        return 502, "provider_parse_error"
+    if isinstance(exc, ProviderHTTPError):
+        return 502, "provider_http_error"
+    return 502, "provider_error"
+
+
+@app.exception_handler(ProviderError)
+async def provider_exception_handler(_request: Request, exc: ProviderError):
+    """Return structured upstream-provider errors without exposing raw secrets."""
+    status_code, error_code = _provider_error_response(exc)
+    logger.warning(
+        "Provider error handled: provider=%s error=%s upstream_status=%s",
+        exc.provider,
+        error_code,
+        exc.status,
+    )
+    return JSONResponse(
+        status_code=status_code,
+        content={
+            "detail": {
+                "error": error_code,
+                "provider": exc.provider,
+                "status": exc.status,
+            }
+        },
+    )
 
 
 @app.exception_handler(Exception)
