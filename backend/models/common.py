@@ -48,6 +48,25 @@ class SettingsResponse(BaseModel):
     has_llm_key: bool = False
 
 
+class RebuildAggregationsResponse(BaseModel):
+    """Result returned after rebuilding pre-aggregated Billboard tables."""
+
+    status: str
+    dynamic_threshold: bool
+    max_merge_gap_minutes: int | None = None
+    tracks: int
+    albums: int
+    track_sources: int
+    artists: int
+
+
+class ClearTranslationCacheResponse(BaseModel):
+    """Result returned after clearing cached Wikipedia translations."""
+
+    status: str
+    deleted_count: int
+
+
 class SettingsUpdateRequest(BaseModel):
     """Partial update for settings."""
 
@@ -136,6 +155,26 @@ class LLMProfileDetailResponse(BaseModel):
     has_llm_key: bool = False
     created_at: str | None = None
     updated_at: str | None = None
+
+
+class LLMProfileCreateResponse(BaseModel):
+    """Result returned when an LLM profile is created."""
+
+    id: int
+    status: str
+
+
+class LLMProfileApplyResponse(BaseModel):
+    """Result returned when a saved LLM profile is applied."""
+
+    status: str
+    profile_id: int
+
+
+class LLMProfileDeleteResponse(BaseModel):
+    """Result returned when an LLM profile is deleted."""
+
+    status: str
 
 
 class LLMProfileCreateRequest(BaseModel):

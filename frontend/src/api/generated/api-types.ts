@@ -3198,6 +3198,18 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
+        /**
+         * CacheStatsResponse
+         * @description Cache manager metrics grouped by namespace.
+         */
+        CacheStatsResponse: {
+            /** Cache Stats */
+            cache_stats: {
+                [key: string]: {
+                    [key: string]: unknown;
+                };
+            };
+        };
         /** ChatMessage */
         ChatMessage: {
             /**
@@ -3253,6 +3265,16 @@ export interface components {
              * @default []
              */
             messages: components["schemas"]["ChatMessageRecord"][];
+        };
+        /**
+         * ClearTranslationCacheResponse
+         * @description Result returned after clearing cached Wikipedia translations.
+         */
+        ClearTranslationCacheResponse: {
+            /** Status */
+            status: string;
+            /** Deleted Count */
+            deleted_count: number;
         };
         /** CollectionInsightsResponse */
         CollectionInsightsResponse: {
@@ -3590,6 +3612,14 @@ export interface components {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
         };
+        /**
+         * HealthResponse
+         * @description Lightweight app health response.
+         */
+        HealthResponse: {
+            /** Status */
+            status: string;
+        };
         /** HeatmapResponse */
         HeatmapResponse: {
             /** Z */
@@ -3616,6 +3646,66 @@ export interface components {
             /** Plays */
             plays: number;
         };
+        /**
+         * ImportJobCreateResponse
+         * @description Response returned when an import job is scheduled.
+         */
+        ImportJobCreateResponse: {
+            /** Job Id */
+            job_id: string;
+        };
+        /**
+         * ImportJobStatus
+         * @description Import job progress.
+         */
+        ImportJobStatus: {
+            /** Job Id */
+            job_id: string;
+            /** Status */
+            status: string;
+            /** Progress Pct */
+            progress_pct: number;
+            /** Message */
+            message: string;
+            /** Result */
+            result?: {
+                [key: string]: unknown;
+            } | null;
+        };
+        /**
+         * JobStatusResponse
+         * @description Background job status persisted by the job queue.
+         */
+        JobStatusResponse: {
+            /** Found */
+            found: boolean;
+            /** Job Id */
+            job_id?: string | null;
+            /** Job Type */
+            job_type?: string | null;
+            /** Entity Type */
+            entity_type?: string | null;
+            /** Entity Id */
+            entity_id?: string | null;
+            /** Status */
+            status?: string | null;
+            /** Created At */
+            created_at?: string | null;
+            /** Updated At */
+            updated_at?: string | null;
+            /** Error */
+            error?: string | null;
+        };
+        /**
+         * LLMProfileApplyResponse
+         * @description Result returned when a saved LLM profile is applied.
+         */
+        LLMProfileApplyResponse: {
+            /** Status */
+            status: string;
+            /** Profile Id */
+            profile_id: number;
+        };
         /** LLMProfileCreateRequest */
         LLMProfileCreateRequest: {
             /** Profile Name */
@@ -3640,6 +3730,24 @@ export interface components {
              * @default
              */
             llm_base_url: string;
+        };
+        /**
+         * LLMProfileCreateResponse
+         * @description Result returned when an LLM profile is created.
+         */
+        LLMProfileCreateResponse: {
+            /** Id */
+            id: number;
+            /** Status */
+            status: string;
+        };
+        /**
+         * LLMProfileDeleteResponse
+         * @description Result returned when an LLM profile is deleted.
+         */
+        LLMProfileDeleteResponse: {
+            /** Status */
+            status: string;
         };
         /**
          * LLMProfileDetailResponse
@@ -4248,6 +4356,26 @@ export interface components {
             reason: string;
             /** Count */
             count: number;
+        };
+        /**
+         * RebuildAggregationsResponse
+         * @description Result returned after rebuilding pre-aggregated Billboard tables.
+         */
+        RebuildAggregationsResponse: {
+            /** Status */
+            status: string;
+            /** Dynamic Threshold */
+            dynamic_threshold: boolean;
+            /** Max Merge Gap Minutes */
+            max_merge_gap_minutes?: number | null;
+            /** Tracks */
+            tracks: number;
+            /** Albums */
+            albums: number;
+            /** Track Sources */
+            track_sources: number;
+            /** Artists */
+            artists: number;
         };
         /** RegionDist */
         RegionDist: {
@@ -6774,7 +6902,9 @@ export interface operations {
     };
     update_settings_api_settings_put: {
         parameters: {
-            query?: never;
+            query?: {
+                readonly?: boolean;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -6791,7 +6921,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["SettingsResponse"];
                 };
             };
             /** @description Validation Error */
@@ -6824,7 +6954,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["RebuildAggregationsResponse"];
                 };
             };
             /** @description Validation Error */
@@ -6853,7 +6983,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["ClearTranslationCacheResponse"];
                 };
             };
         };
@@ -6908,7 +7038,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["LLMProfileCreateResponse"];
                 };
             };
             /** @description Validation Error */
@@ -7007,7 +7137,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["LLMProfileDeleteResponse"];
                 };
             };
             /** @description Validation Error */
@@ -7038,7 +7168,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["LLMProfileApplyResponse"];
                 };
             };
             /** @description Validation Error */
@@ -8948,7 +9078,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["ImportJobCreateResponse"];
                 };
             };
         };
@@ -8968,7 +9098,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["ImportJobCreateResponse"];
                 };
             };
         };
@@ -8990,7 +9120,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["ImportJobStatus"];
                 };
             };
             /** @description Validation Error */
@@ -9987,7 +10117,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["CacheStatsResponse"];
                 };
             };
         };
@@ -10009,7 +10139,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["JobStatusResponse"];
                 };
             };
             /** @description Validation Error */
@@ -10232,7 +10362,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["HealthResponse"];
                 };
             };
         };

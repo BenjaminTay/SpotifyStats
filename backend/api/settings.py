@@ -11,10 +11,15 @@ from backend.core.spotify_utils import get_user_profile, is_user_connected
 from backend.dependencies import get_conn
 from backend.domains.settings.repository import SettingsRepository
 from backend.models.common import (
+    ClearTranslationCacheResponse,
+    LLMProfileApplyResponse,
     LLMProfileCreateRequest,
+    LLMProfileCreateResponse,
+    LLMProfileDeleteResponse,
     LLMProfileDetailResponse,
     LLMProfileResponse,
     LLMProfileUpdateRequest,
+    RebuildAggregationsResponse,
     SettingsResponse,
     SettingsUpdateRequest,
 )
@@ -55,9 +60,7 @@ def _ensure_current():
         _current = _load_settings_from_db()
 
 
-@router.get("", response_model=SettingsResponse)
-def get_settings(conn: Connection = Depends(get_conn)):
-    """Get current settings and database status. API key is never returned."""
+def _build_settings_response(conn: Connection) -> dict:
     _ensure_current()
     db_record_count = 0
     account_data_imported = False
@@ -80,8 +83,18 @@ def get_settings(conn: Connection = Depends(get_conn)):
     return resp
 
 
-@router.put("")
-def update_settings(body: SettingsUpdateRequest, auth: None = Depends(require_auth)):
+@router.get("", response_model=SettingsResponse)
+def get_settings(conn: Connection = Depends(get_conn)):
+    """Get current settings and database status. API key is never returned."""
+    return _build_settings_response(conn)
+
+
+@router.put("", response_model=SettingsResponse)
+def update_settings(
+    body: SettingsUpdateRequest,
+    conn: Connection = Depends(get_conn),
+    auth: None = Depends(require_auth),
+):
     """Update settings. Returns updated settings (API key and base_url excluded)."""
     _ensure_current()
     updates = body.model_dump(exclude_none=True)
@@ -110,14 +123,10 @@ def update_settings(body: SettingsUpdateRequest, auth: None = Depends(require_au
     invalidate("analysis")
     invalidate("db")
 
-    resp = dict(_current)
-    resp["has_llm_key"] = bool(_current.get("llm_api_key", "").strip())
-    resp.pop("llm_api_key", None)
-    resp.pop("llm_base_url", None)
-    return resp
+    return _build_settings_response(conn)
 
 
-@router.post("/rebuild-agg")
+@router.post("/rebuild-agg", response_model=RebuildAggregationsResponse)
 def rebuild_aggregations(
     conn: Connection = Depends(get_conn),
     auth: None = Depends(require_auth),
@@ -148,7 +157,7 @@ def rebuild_aggregations(
         write_conn.close()
 
 
-@router.post("/clear-translation-cache")
+@router.post("/clear-translation-cache", response_model=ClearTranslationCacheResponse)
 def clear_translation_cache(auth: None = Depends(require_auth)):
     """Clear all cached Wikipedia translations so they are re-translated on next visit."""
     from backend.core.db import get_db
@@ -200,7 +209,7 @@ def get_llm_profile(profile_id: int, conn: Connection = Depends(get_conn)):
     return result
 
 
-@router.post("/llm-profiles")
+@router.post("/llm-profiles", response_model=LLMProfileCreateResponse)
 def create_llm_profile(body: LLMProfileCreateRequest, auth: None = Depends(require_auth)):
     """Create a new LLM profile."""
     from backend.core.db import get_db
@@ -268,7 +277,7 @@ def update_llm_profile(
         read_conn.close()
 
 
-@router.post("/llm-profiles/{profile_id}/apply")
+@router.post("/llm-profiles/{profile_id}/apply", response_model=LLMProfileApplyResponse)
 def apply_llm_profile(profile_id: int, auth: None = Depends(require_auth)):
     """Apply a saved profile's configuration to current settings.
 
@@ -302,7 +311,7 @@ def apply_llm_profile(profile_id: int, auth: None = Depends(require_auth)):
     return {"status": "applied", "profile_id": profile_id}
 
 
-@router.delete("/llm-profiles/{profile_id}")
+@router.delete("/llm-profiles/{profile_id}", response_model=LLMProfileDeleteResponse)
 def delete_llm_profile(profile_id: int, auth: None = Depends(require_auth)):
     """Delete an LLM profile."""
     from backend.core.db import get_db
