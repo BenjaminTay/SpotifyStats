@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import os
+import shutil
+import tempfile
 
 import pytest
 
@@ -23,12 +25,19 @@ def use_seed_db():
 
     import backend.core.db as db_mod
 
-    original = db_mod.DB_PATH
-    db_mod.DB_PATH = seed_path
+    fd, test_db_path = tempfile.mkstemp(suffix=".db")
+    os.close(fd)
+    shutil.copy2(seed_path, test_db_path)
 
-    yield seed_path
+    original = db_mod.DB_PATH
+    db_mod.DB_PATH = test_db_path
+
+    yield test_db_path
 
     db_mod.DB_PATH = original
+    for path in (test_db_path, f"{test_db_path}-wal", f"{test_db_path}-shm"):
+        if os.path.exists(path):
+            os.unlink(path)
     # Clear all lru_caches that may have been polluted with seed data
     db_mod._load_plays_cached.cache_clear()
     db_mod._load_plays_for_artists_cached.cache_clear()

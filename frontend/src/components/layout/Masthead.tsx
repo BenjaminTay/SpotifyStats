@@ -30,7 +30,7 @@ export function Masthead() {
               Stats
             </span>
           </div>
-          <nav className="order-3 flex w-full min-w-0 gap-4 overflow-x-auto whitespace-nowrap pb-1 sm:order-none sm:w-auto sm:gap-6 sm:pb-0">
+          <nav className="order-3 flex w-full min-w-0 max-w-full basis-full gap-4 overflow-x-auto whitespace-nowrap pb-1 sm:order-none sm:w-auto sm:max-w-none sm:basis-auto sm:gap-6 sm:pb-0">
             {NAV_ITEMS.map((item) =>
               item.disabled ? (
                 <span

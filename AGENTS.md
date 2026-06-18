@@ -12,7 +12,7 @@ Spotify Extended Streaming History 数据分析 Web 应用的主项目提示词�
 
 **UI 主题**：「编辑风 × 液态玻璃」— 杂志式排版（Playfair Display 衬线 + Inter 无衬线）+ 毛玻璃材质 + 日/夜双皮肤。详见 `frontend/UI_STYLE_GUIDE.md`。
 
-**性能策略**：Cache Manager 管理 5 命名空间（billboard/analysis/db/auth）LRU+TTL 缓存；Billboard 拆为 4 个独立 `@lru_cache` 函数，并通过共享 `_load_and_rank_cached` + `singleflight()` 避免 weekly/power/summaries/all-time 冷启动重复计算；`agg_weekly_track_sources` 支撑 album project 专辑榜和详情来源拆分；启动 warmup 使用当前默认动态阈值口径并预热 artist fan-out；SQLite 版本化 Migration；后台 Job Queue（3 worker）异步处理封面下载与 Wikipedia+LLM enrichment；前端 GET 数据统一进入 TanStack React Query（staleTime 5min/gcTime 30min/retry 2），路由级 lazy 分包。
+**性能策略**：Cache Manager 管理 5 命名空间（billboard/analysis/db/auth）LRU+TTL 缓存；Billboard 拆为 4 个独立 `@lru_cache` 函数，并通过共享 `_load_and_rank_cached` + `singleflight()` 避免 weekly/power/summaries/all-time 冷启动重复计算；Power Score 计算使用列级向量化，避免逐行 `DataFrame.apply(axis=1)`；`agg_weekly_track_sources` 支撑 album project 专辑榜和详情来源拆分；启动 warmup 使用当前默认动态阈值口径并预热 artist fan-out；SQLite 版本化 Migration；后台 Job Queue（3 worker）异步处理封面下载与 Wikipedia+LLM enrichment；前端 GET 数据统一进入 TanStack React Query（staleTime 5min/gcTime 30min/retry 2），路由级 lazy 分包。
 
 ## Phase 5 产品化收口基线
 
@@ -29,13 +29,13 @@ Phase 5 目标是收紧产品线到可持续迭代状态。当前进度：
 - Records/AllTime/Community Feed/RecentPlays/SavedTracks/PersonalRankTable 长列表已有分页或分段渲染基线，新增长表必须继续使用分页、infinite query 或虚拟化
 - Request ID（`X-Request-ID` 生成/透传/日志关联）
 - Billboard records 输出层已拆入 `backend/domains/billboard/records_output.py`，championship/no1 family 已拆入 `records_championship.py`，longevity/persistence family 已拆入 `records_longevity.py`，movement/breakthrough family 已拆入 `records_movement.py`，hall-of-fame/power ranking family 已拆入 `records_hall_of_fame.py`，endurance/rank-stability family 已拆入 `records_endurance.py`，self-replacement/blocker family 已拆入 `records_self_replacement_blocker.py`，market/market-intensity family 已拆入 `records_market.py`，quirky/special-feat family 已拆入 `records_quirky.py`，`records.py` 保留 88 行纯编排 facade
-- Billboard chart 周榜排名已拆入 `backend/domains/billboard/chart_ranking.py`，走势评分（Power Score）已拆入 `backend/domains/billboard/chart_power_score.py`，summary/count helper 已拆入 `backend/domains/billboard/chart_summaries.py`，staged cache 已拆入 `backend/domains/billboard/chart_staged_cache.py`，staged public API 已拆入 `backend/domains/billboard/chart_staged_api.py`，`chart_compute.py` 保留 227 行兼容入口/re-export/cache registration facade
+- Billboard chart 周榜排名已拆入 `backend/domains/billboard/chart_ranking.py`，走势评分（Power Score）已拆入 `backend/domains/billboard/chart_power_score.py`，summary/count helper 已拆入 `backend/domains/billboard/chart_summaries.py`，共享 load/rank cache 已拆入 `backend/domains/billboard/chart_load_rank.py`，staged cache 已拆入 `backend/domains/billboard/chart_staged_cache.py`，staged public API 已拆入 `backend/domains/billboard/chart_staged_api.py`，`chart_compute.py` 保留 211 行兼容入口/re-export/cache registration facade
 - 架构护栏测试（`frontend/src/tests/phase5-architecture.test.ts`）与长列表分页渲染测试（`frontend/src/tests/long-list-pagination.test.tsx`）
 - `scripts/phase5_check.sh` 最低验证矩阵 + GitHub Actions CI 基线（`.github/workflows/phase5-baseline.yml`）
 
 **持续治理**：
 - Provider 全量替换：`release_cycle_service.py`、`wikipedia_service.py`、`spotify_utils.py` 和 `version_merge.py` 已收敛；后续按架构护栏防回归
-- 后端 Billboard chart compute 已收口（`records.py` 88 行 / `chart_compute.py` 227 行）
+- 后端 Billboard chart compute 已收口（`records.py` 88 行 / `chart_compute.py` 211 行）
 - Phase 5.4-A 至 5.4-H 全系列完成（2026-06-12）：
   - 架构护栏测试 17→105+ 用例，覆盖所有新增页面
   - TrackDetailPage (574→5 行)、HabitsTab (933 行→9 文件 feature)、AiInsightsExperience/ChatInterface 拆分完毕
@@ -49,11 +49,11 @@ Phase 5 目标是收紧产品线到可持续迭代状态。当前进度：
   - P4 Merge Level API：`MergeConfig` FastAPI 依赖，`/billboard/*` + `/analysis/charts` 端点 `merge_level` 查询参数，Settings 页面 L1/L2/L3 选择器持久化至 localStorage，4 个 Billboard 页面 URL 优先/localStorage 回退
   - 2026-06-18 贯穿修复：Dashboard/Leaderboard/Timeline/Wrapped/Listening Hours/Music Entity/Artist Deep Dive/Release Cycle 全部传递 `dynamic_threshold` 与 `max_merge_gap_minutes`；Release Cycle 按 `billboard_week` 年份过滤，并接入 `merge_level` / `include_compilations`
   - 2026-06-18 Album Project 统计收口：新增 `album_projects` / `album_project_albums` / `album_project_tracks` + `agg_weekly_track_sources`；L2/L3 专辑统计改为 album project track membership，source album attribution 仅作为来源拆分解释；Billboard 专辑榜按 `album_project.release_date` 排除发行前播放；release groups 只描述版本关系，不再作为最终专辑播放量聚合层
-  - 2026-06-19 性能收口：Billboard 分段接口共享基础排名缓存，`_add_running_metrics()` 向量化；专辑详情 source breakdown 批量查 album metadata；`load_plays()` / `load_plays_for_artists()` 缓存 miss 用 `singleflight()` 去重；warmup 改为 `dynamic_threshold=True` 默认口径
+  - 2026-06-19 全栈验证与性能收口：Billboard 分段接口共享基础排名缓存，Power Score 和 `_add_running_metrics()` 向量化；专辑详情 source breakdown 批量查 album metadata；`load_plays()` / `load_plays_for_artists()` 缓存 miss 用 `singleflight()` 去重；warmup 改为 `dynamic_threshold=True` 默认口径；390px 移动端页面级横向滚动归零；pre-commit ruff/format 收敛到 `backend/`
   - R24b 不变式合约测试：`test_playback_invariants.py`（6 条断言）+ `test_merge_level_aggregation.py`（14 条断言）+ `test_playback_filter_parameter_propagation.py`（过滤参数传播）
-  - 测试基线：backend full 520 / unit 223 / contract 104；`npm run build` 通过
+  - 测试基线：backend full 550 / unit 224 / contract 126；frontend 115；`npm run build`、`sh scripts/phase5_check.sh`、`.venv/bin/pre-commit run --all-files` 通过
 
-详见 `docs/2026-06-18-playback-stats-rules-latest.md` 和 `docs/2026-06-08-phase5-productization-baseline.md`。
+详见 `docs/2026-06-18-playback-stats-rules-latest.md`、`docs/2026-06-08-phase5-productization-baseline.md` 和 `docs/2026-06-19-fullstack-verification-performance-report.md`。
 
 ## 常用命令
 

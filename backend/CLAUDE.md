@@ -64,7 +64,7 @@ FastAPI 后端采用四层分离：**api/**（路由 + Depends 依赖注入）�
 
 ## 领域层 (domains/)
 
-- `domains/billboard/` — `data_loader.py` / `chart_compute.py`（编排/caching/staged API）+ `chart_ranking.py`（周榜排名）+ `chart_power_score.py`（走势评分）+ `chart_staged_cache.py`（共享 `_load_and_rank_cached`）+ `records.py`（facade）+ `records_*.py`（record 子模块）+ `details.py` / `versus.py` / `entity_lists.py` / `repository.py` / `version_merge.py`
+- `domains/billboard/` — `data_loader.py` / `chart_compute.py`（编排/re-export/cache registration facade）+ `chart_load_rank.py`（共享 `_load_and_rank_cached`）+ `chart_ranking.py`（周榜排名）+ `chart_power_score.py`（走势评分，列级向量化）+ `chart_staged_cache.py`（weekly/power/summaries/records 分段缓存）+ `chart_staged_api.py`（公开 staged wrapper）+ `records.py`（facade）+ `records_*.py`（record 子模块）+ `details.py` / `versus.py` / `entity_lists.py` / `repository.py` / `version_merge.py`
 - `domains/settings/repository.py` — Settings 表 CRUD
 - `domains/playback/` — `repository.py`（播放数据查询封装）/ `counting.py`（有效播放判定）/ `merge_levels.py`（L1/L2/L3 规范化）/ `track_groups.py`（track group 聚合键加载）/ `release_groups.py`（发行版本关系）/ `album_projects.py`（L2/L3 专辑项目 membership、source breakdown、Billboard release-date eligibility）/ `album_type.py`（专辑类型分类）
 - `domains/enrichment/repository.py` — 歌词/Wikipedia/LLM 缓存表访问
@@ -86,9 +86,9 @@ FastAPI 后端采用四层分离：**api/**（路由 + Depends 依赖注入）�
 
 ## 测试策略
 
-三层 pytest markers：`unit`（纯函数，无 DB，~5s）→ `contract`（seed DB 结构验证，~1s）→ `integration`（真实数据只读，~80s）。当前基线：unit 223 / contract 104 / backend full 520。
+三层 pytest markers：`unit`（纯函数，无 DB，~5s）→ `contract`（seed DB 结构验证，~1s）→ `integration`（真实数据只读，~80s）。当前基线：unit 224 / contract 126 / backend full 550。
 
-Contract 测试 teardown 必须清除所有 `@lru_cache`，`autouse` fixture `disable_warmup` 通过 monkeypatch `SPOTIFY_STATS_WARMUP=0` 阻止后台预热。
+Contract 测试使用 canonical `backend/tests/fixtures/seed.db` 的临时副本，teardown 必须清除所有 `@lru_cache` 并删除临时 WAL/SHM sidecar；`autouse` fixture `disable_warmup` 通过 monkeypatch `SPOTIFY_STATS_WARMUP=0` 阻止后台预热。
 
 ## 关键约束
 

@@ -22,6 +22,7 @@ import aiInsightsPageSource from '../pages/AiInsightsPage.tsx?raw'
 import communityPageSource from '../pages/CommunityPage.tsx?raw'
 import communityAccountPageSource from '../pages/CommunityAccountPage.tsx?raw'
 import postDetailPageSource from '../pages/PostDetailPage.tsx?raw'
+import dashboardPageSource from '../pages/DashboardPage.tsx?raw'
 
 import numberOnesExperienceSource from '../features/billboard/number-ones/NumberOnesExperience.tsx?raw'
 import versusExperienceSource from '../features/billboard/versus/VersusExperience.tsx?raw'
@@ -40,6 +41,7 @@ import trackOverviewSectionSource from '../features/music/details/track/TrackOve
 import trackLyricsSectionSource from '../features/music/details/track/TrackLyricsSection.tsx?raw'
 
 import mastheadSource from '../components/layout/Masthead.tsx?raw'
+import appLayoutSource from '../components/layout/AppLayout.tsx?raw'
 
 describe('Phase 5 architecture guardrails', () => {
   it.each([
@@ -173,6 +175,17 @@ describe('Phase 5 architecture guardrails', () => {
   it('keeps masthead navigation contained on mobile', () => {
     expect(mastheadSource).toContain('overflow-x-auto')
     expect(mastheadSource).toContain('whitespace-nowrap')
+    expect(mastheadSource).toContain('basis-full')
+    expect(mastheadSource).toContain('max-w-full')
+  })
+
+  it('keeps the app shell from allowing page-level horizontal scroll on mobile', () => {
+    expect(appLayoutSource).toContain('overflow-x-clip')
+  })
+
+  it('keeps dashboard loading skeletons within the mobile content column', () => {
+    expect(dashboardPageSource).not.toContain('h-5 w-96')
+    expect(dashboardPageSource).toContain('w-full max-w-96')
   })
 
   it('keeps artist release archive outside ArtistDetailExperience', () => {

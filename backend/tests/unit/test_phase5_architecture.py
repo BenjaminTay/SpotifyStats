@@ -195,6 +195,13 @@ def test_chart_compute_ranking_and_power_score_are_split():
     assert "def compute_track_summary" in summaries_source
 
 
+def test_chart_power_score_avoids_row_wise_dataframe_apply():
+    power_score_source = _read("backend/domains/billboard/chart_power_score.py")
+
+    assert ".apply(lambda r:" not in power_score_source
+    assert "axis=1" not in power_score_source
+
+
 def test_chart_staged_cache_is_split_from_chart_compute_facade():
     compute_source = _read("backend/domains/billboard/chart_compute.py")
     staged_cache_source = _read("backend/domains/billboard/chart_staged_cache.py")

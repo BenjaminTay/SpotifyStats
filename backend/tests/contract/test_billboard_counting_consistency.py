@@ -23,8 +23,10 @@ def _clear_billboard_runtime_caches():
     import backend.core.db as db_mod
     from backend.domains.billboard.chart_compute import (
         _compute_power_scores_cached,
+        _compute_records_cached,
         _compute_summaries_cached,
         _compute_weekly_data_cached,
+        _load_and_rank_cached,
     )
     from backend.domains.billboard.data_loader import (
         load_billboard_raw,
@@ -38,6 +40,8 @@ def _clear_billboard_runtime_caches():
     _compute_weekly_data_cached.cache_clear()
     _compute_power_scores_cached.cache_clear()
     _compute_summaries_cached.cache_clear()
+    _compute_records_cached.cache_clear()
+    _load_and_rank_cached.cache_clear()
 
 
 @pytest.fixture(scope="function")

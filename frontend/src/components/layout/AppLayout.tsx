@@ -20,7 +20,7 @@ export function AppLayout() {
   }, [])
 
   return (
-    <div className="relative flex min-h-screen flex-col">
+    <div className="relative flex min-h-screen flex-col overflow-x-clip">
       <NoiseOverlay />
 
       {/* Dark mode ambient gradients */}

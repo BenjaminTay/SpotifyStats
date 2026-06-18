@@ -21,11 +21,19 @@ from backend.core.db import SCHEMA
 SEED_PATH = os.path.join(os.path.dirname(__file__), "seed.db")
 
 
+def _remove_seed_files(include_main: bool = False) -> None:
+    """Remove seed DB sidecars, and optionally the main DB, before rebuild."""
+    paths = [f"{SEED_PATH}-wal", f"{SEED_PATH}-shm"]
+    if include_main:
+        paths.append(SEED_PATH)
+    for path in paths:
+        if os.path.exists(path):
+            os.remove(path)
+
+
 def build() -> str:
     """Create the seed database and return its path."""
-    # Remove old seed DB if it exists
-    if os.path.exists(SEED_PATH):
-        os.remove(SEED_PATH)
+    _remove_seed_files(include_main=True)
 
     conn = sqlite3.connect(SEED_PATH)
     conn.row_factory = sqlite3.Row
@@ -1246,6 +1254,7 @@ def build() -> str:
     print(f"  A11 PASS: file size {file_size:,} bytes (< 1MB)")
 
     conn.close()
+    _remove_seed_files()
 
     if errors:
         print("\n  GOLDEN ASSERTIONS FAILED:")

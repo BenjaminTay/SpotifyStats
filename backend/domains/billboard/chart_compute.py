@@ -68,39 +68,7 @@ def _compute_billboard_data_cached(
     max_merge_gap_minutes=None,
     include_compilations=False,
 ):
-    """Compute all Billboard data in one call.
-    Returns a dict with all DataFrames converted to JSON-safe lists of dicts.
-    This single function replaces the 15+ DataFrame computation pipeline
-    previously done in Streamlit's billboard/__init__.py:run().
-
-    Parameters
-    ----------
-    min_ms : int
-        Minimum play duration in milliseconds.
-    music_only : bool
-        Exclude podcasts/audiobooks.
-    bb_top_n : int
-        Number of tracks per week in the singles chart.
-    bb_album_top_n : int
-        Number of albums per week in the albums chart.
-    bb_artist_top_n : int
-        Number of artists per week in the artists chart.
-    bb_week_start_dow : int
-        Day of week (0=Mon, 6=Sun) that starts a Billboard week.
-    bb_week_start_hour : int
-        Hour (0-23) that starts a Billboard week.
-    year_start : int or None
-        Filter to this year and later (inclusive).
-    year_end : int or None
-        Filter to this year and earlier (inclusive).
-
-    Returns
-    -------
-    dict with keys: meta, weekly, weekly_album, weekly_artist,
-    track_summary, artist_summary, artist_track_counts,
-    album_track_counts, track_per_album, records, power_scores,
-    album_power_scores, artist_power_scores
-    """
+    """Compute full Billboard payload with normalized staged load/rank cache."""
     # ── Load, filter, rank (shared with staged functions) ─────────────
     weekly, weekly_album, weekly_artist, all_weeks_asc, all_weeks_desc, df_filtered = (
         _load_and_rank(

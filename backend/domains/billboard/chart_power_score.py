@@ -58,53 +58,87 @@ def _indiv_factor_non_no1(plays, week_median):
     return 1.0 + max(_INDIV_RANGE[0], min(_INDIV_RANGE[1], bonus))
 
 
-def compute_power_scores(weekly, top_n):
-    """Compute comprehensive power scores for all tracks."""
-    w = weekly.copy()
+def _score_ranked_rows(df):
+    scored = df.copy()
 
     week_stats = (
-        w.groupby("billboard_week")
+        scored.groupby("billboard_week")
         .agg(week_total=("play_count", "sum"), week_median=("play_count", "median"))
         .reset_index()
     )
     global_baseline = week_stats["week_total"].median() if not week_stats.empty else 1
+    runner_up_map = scored[scored["rank"] == 2].set_index("billboard_week")["play_count"].to_dict()
 
-    runner_up_map = w[w["rank"] == 2].set_index("billboard_week")["play_count"].to_dict()
+    scored = scored.merge(week_stats, on="billboard_week", how="left")
 
-    w = w.merge(week_stats, on="billboard_week", how="left")
-    w["_base"] = w["rank"].apply(_base_score)
-    w["_comp"] = w.apply(lambda r: _competition_factor(r["week_total"], global_baseline), axis=1)
-    w["_indiv"] = w.apply(
-        lambda r: (
-            _indiv_factor_no1(r["play_count"], runner_up_map.get(r["billboard_week"]))
-            if r["rank"] == 1
-            else _indiv_factor_non_no1(r["play_count"], r["week_median"])
-        ),
-        axis=1,
-    )
-    w["_weekly"] = w["_base"] * w["_comp"] * w["_indiv"]
+    ranks = scored["rank"].astype(float).to_numpy()
+    plays = scored["play_count"].astype(float).to_numpy()
+    week_total = scored["week_total"].astype(float).to_numpy()
+    week_median = scored["week_median"].astype(float).to_numpy()
+    runner_up = scored["billboard_week"].map(runner_up_map).astype(float).to_numpy()
 
-    weekly_scores = (
-        w.groupby("track_id")
+    scored["_base"] = np.maximum(1, np.rint(_RANK1_BASE * np.power(_BASE_DECAY, ranks - 1)))
+
+    if global_baseline:
+        scored["_comp"] = np.clip(np.sqrt(week_total / global_baseline), *_COMP_RANGE)
+    else:
+        scored["_comp"] = 1.0
+
+    indiv = np.ones(len(scored))
+    is_no1 = ranks == 1
+    valid_runner = is_no1 & np.isfinite(runner_up) & (runner_up > 0) & (plays > 0)
+    indiv[is_no1] = 1.0 + _INDIV_GAP_RANGE[1]
+    if valid_runner.any():
+        no1_bonus = 0.5 * np.log2(plays[valid_runner] / runner_up[valid_runner])
+        indiv[valid_runner] = 1.0 + np.clip(no1_bonus, *_INDIV_GAP_RANGE)
+
+    valid_median = (~is_no1) & np.isfinite(week_median) & (week_median > 0) & (plays > 0)
+    if valid_median.any():
+        non_no1_bonus = 0.4 * np.log2(plays[valid_median] / week_median[valid_median])
+        indiv[valid_median] = 1.0 + np.clip(non_no1_bonus, *_INDIV_RANGE)
+
+    scored["_indiv"] = indiv
+    scored["_weekly"] = scored["_base"] * scored["_comp"] * scored["_indiv"]
+    scored["_top5"] = (scored["rank"] <= 5).astype(int)
+    scored["_top10"] = (scored["rank"] <= 10).astype(int)
+    scored["_is_no1"] = is_no1.astype(int)
+    return scored
+
+
+def _normalize_group_cols(group_cols):
+    return [group_cols] if isinstance(group_cols, str) else list(group_cols)
+
+
+def _aggregate_scored_rows(scored, group_cols):
+    keys = _normalize_group_cols(group_cols)
+    scored = scored.copy()
+    scored["_at_peak"] = scored["rank"].eq(scored.groupby(keys)["rank"].transform("min"))
+    return (
+        scored.groupby(keys, sort=False)
         .agg(
             raw_score=("_weekly", "sum"),
             weeks_on_chart=("billboard_week", "nunique"),
             peak_position=("rank", "min"),
-            weeks_top5=("rank", lambda x: (x <= 5).sum()),
-            weeks_top10=("rank", lambda x: (x <= 10).sum()),
-            weeks_at_peak=("rank", lambda x: (x == x.min()).sum()),
-            is_debut_no1=("rank", lambda x: (x.iloc[0] == 1) if len(x) > 0 else False),
+            weeks_top5=("_top5", "sum"),
+            weeks_top10=("_top10", "sum"),
+            weeks_at_peak=("_at_peak", "sum"),
         )
         .reset_index()
     )
 
+
+def compute_power_scores(weekly, top_n):
+    """Compute comprehensive power scores for all tracks."""
+    w = _score_ranked_rows(weekly)
+    weekly_scores = _aggregate_scored_rows(w, "track_id")
+    first_rank = w.groupby("track_id", sort=False)["rank"].first().reset_index(name="_first_rank")
+    weekly_scores = weekly_scores.merge(first_rank, on="track_id", how="left")
+
     weekly_scores["longevity_bonus"] = (
         np.sqrt(weekly_scores["weeks_on_chart"].clip(lower=1)) * _LONGEVITY_FACTOR
     )
-    weekly_scores["peak_bonus"] = weekly_scores["peak_position"].map(
-        lambda p: _PEAK_BONUS.get(p, 0)
-    )
-    weekly_scores["debut_bonus"] = weekly_scores["is_debut_no1"].astype(int) * _DEBUT_NO1_BONUS
+    weekly_scores["peak_bonus"] = weekly_scores["peak_position"].map(_PEAK_BONUS).fillna(0)
+    weekly_scores["debut_bonus"] = weekly_scores["_first_rank"].eq(1).astype(int) * _DEBUT_NO1_BONUS
     weekly_scores["power_score"] = (
         (
             weekly_scores["raw_score"]
@@ -139,58 +173,17 @@ def compute_power_scores(weekly, top_n):
 
 def compute_album_power_scores(weekly_album, top_n):
     """Compute power scores for albums (no Top 5/10 bonuses, uses #1 bonus)."""
-    wa = weekly_album.copy()
-
-    week_stats = (
-        wa.groupby("billboard_week")
-        .agg(week_total=("play_count", "sum"), week_median=("play_count", "median"))
-        .reset_index()
-    )
-    global_baseline = week_stats["week_total"].median() if not week_stats.empty else 1
-
-    runner_up_map = wa[wa["rank"] == 2].set_index("billboard_week")["play_count"].to_dict()
-
-    wa = wa.merge(week_stats, on="billboard_week", how="left")
-    wa["_base"] = wa["rank"].apply(_base_score)
-    wa["_comp"] = wa.apply(lambda r: _competition_factor(r["week_total"], global_baseline), axis=1)
-    wa["_indiv"] = wa.apply(
-        lambda r: (
-            _indiv_factor_no1(r["play_count"], runner_up_map.get(r["billboard_week"]))
-            if r["rank"] == 1
-            else _indiv_factor_non_no1(r["play_count"], r["week_median"])
-        ),
-        axis=1,
-    )
-    wa["_weekly"] = wa["_base"] * wa["_comp"] * wa["_indiv"]
-
-    weekly_scores = (
-        wa.groupby(["album_name", "artist_name"])
-        .agg(
-            raw_score=("_weekly", "sum"),
-            weeks_on_chart=("billboard_week", "nunique"),
-            peak_position=("rank", "min"),
-            weeks_top5=("rank", lambda x: (x <= 5).sum()),
-            weeks_top10=("rank", lambda x: (x <= 10).sum()),
-            weeks_at_peak=("rank", lambda x: (x == x.min()).sum()),
-        )
-        .reset_index()
-    )
+    wa = _score_ranked_rows(weekly_album)
+    group_cols = ["album_name", "artist_name"]
+    weekly_scores = _aggregate_scored_rows(wa, group_cols)
 
     weekly_scores["longevity_bonus"] = (
         np.sqrt(weekly_scores["weeks_on_chart"].clip(lower=1)) * _LONGEVITY_FACTOR
     )
-    weekly_scores["peak_bonus"] = weekly_scores["peak_position"].map(
-        lambda p: _PEAK_BONUS.get(p, 0)
-    )
+    weekly_scores["peak_bonus"] = weekly_scores["peak_position"].map(_PEAK_BONUS).fillna(0)
     # Album #1 weekly bonus
-    no1_weeks = (
-        wa[wa["rank"] == 1]
-        .groupby(["album_name", "artist_name"])
-        .size()
-        .reset_index(name="no1_weeks")
-    )
-    weekly_scores = weekly_scores.merge(no1_weeks, on=["album_name", "artist_name"], how="left")
-    weekly_scores["no1_weeks"] = weekly_scores["no1_weeks"].fillna(0).astype(int)
+    no1_weeks = wa.groupby(group_cols, sort=False)["_is_no1"].sum().reset_index(name="no1_weeks")
+    weekly_scores = weekly_scores.merge(no1_weeks, on=group_cols, how="left")
     weekly_scores["no1_bonus"] = weekly_scores["no1_weeks"] * _TOP1_BONUS
     weekly_scores["power_score"] = (
         (
@@ -222,54 +215,17 @@ def compute_album_power_scores(weekly_album, top_n):
 
 def compute_artist_power_scores(weekly_artist, top_n):
     """Compute power scores for artists."""
-    war = weekly_artist.copy()
-
-    week_stats = (
-        war.groupby("billboard_week")
-        .agg(week_total=("play_count", "sum"), week_median=("play_count", "median"))
-        .reset_index()
-    )
-    global_baseline = week_stats["week_total"].median() if not week_stats.empty else 1
-
-    runner_up_map = war[war["rank"] == 2].set_index("billboard_week")["play_count"].to_dict()
-
-    war = war.merge(week_stats, on="billboard_week", how="left")
-    war["_base"] = war["rank"].apply(_base_score)
-    war["_comp"] = war.apply(
-        lambda r: _competition_factor(r["week_total"], global_baseline), axis=1
-    )
-    war["_indiv"] = war.apply(
-        lambda r: (
-            _indiv_factor_no1(r["play_count"], runner_up_map.get(r["billboard_week"]))
-            if r["rank"] == 1
-            else _indiv_factor_non_no1(r["play_count"], r["week_median"])
-        ),
-        axis=1,
-    )
-    war["_weekly"] = war["_base"] * war["_comp"] * war["_indiv"]
-
-    weekly_scores = (
-        war.groupby("artist_name")
-        .agg(
-            raw_score=("_weekly", "sum"),
-            weeks_on_chart=("billboard_week", "nunique"),
-            peak_position=("rank", "min"),
-            weeks_top5=("rank", lambda x: (x <= 5).sum()),
-            weeks_top10=("rank", lambda x: (x <= 10).sum()),
-            weeks_at_peak=("rank", lambda x: (x == x.min()).sum()),
-        )
-        .reset_index()
-    )
+    war = _score_ranked_rows(weekly_artist)
+    weekly_scores = _aggregate_scored_rows(war, "artist_name")
 
     weekly_scores["longevity_bonus"] = (
         np.sqrt(weekly_scores["weeks_on_chart"].clip(lower=1)) * _LONGEVITY_FACTOR
     )
-    weekly_scores["peak_bonus"] = weekly_scores["peak_position"].map(
-        lambda p: _PEAK_BONUS.get(p, 0)
+    weekly_scores["peak_bonus"] = weekly_scores["peak_position"].map(_PEAK_BONUS).fillna(0)
+    no1_weeks = (
+        war.groupby("artist_name", sort=False)["_is_no1"].sum().reset_index(name="no1_weeks")
     )
-    no1_weeks = war[war["rank"] == 1].groupby("artist_name").size().reset_index(name="no1_weeks")
     weekly_scores = weekly_scores.merge(no1_weeks, on="artist_name", how="left")
-    weekly_scores["no1_weeks"] = weekly_scores["no1_weeks"].fillna(0).astype(int)
     weekly_scores["no1_bonus"] = weekly_scores["no1_weeks"] * _TOP1_BONUS
     weekly_scores["power_score"] = (
         (

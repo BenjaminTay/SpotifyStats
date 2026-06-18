@@ -22,8 +22,8 @@ function DashboardSkeleton() {
     <>
       <div className="mb-12">
         <Skeleton className="mb-4 h-3 w-32" />
-        <Skeleton className="mb-3 h-[52px] w-80" />
-        <Skeleton className="h-5 w-96" />
+        <Skeleton className="mb-3 h-[52px] w-full max-w-80" />
+        <Skeleton className="h-5 w-full max-w-96" />
       </div>
       <div className="mb-10 grid grid-cols-2 gap-6 border-b border-border pb-10 md:grid-cols-4 md:gap-10">
         {Array.from({ length: 4 }).map((_, i) => (
