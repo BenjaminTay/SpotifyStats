@@ -28,6 +28,27 @@ def _count(x):
     return int(x.count())
 
 
+def _load_filtered_plays(
+    conn: sqlite3.Connection,
+    min_ms: int,
+    music_only: bool,
+    merge_enabled: bool,
+    dynamic_threshold: bool = False,
+    max_merge_gap_minutes: int | None = None,
+    *,
+    artist_fanout: bool = False,
+) -> pd.DataFrame:
+    loader = load_plays_for_artists if artist_fanout else load_plays
+    return loader(
+        conn,
+        min_ms=min_ms,
+        music_only=music_only,
+        merge_enabled=merge_enabled,
+        dynamic_threshold=dynamic_threshold,
+        max_merge_gap_minutes=max_merge_gap_minutes,
+    )
+
+
 def _cover_url(image_path, image_url, cover_type: str, entity_id) -> str | None:
     """Return the smart local cover endpoint when any cover source exists."""
     if entity_id is None:
@@ -89,15 +110,14 @@ def get_dashboard_summary(
     min_ms: int,
     music_only: bool,
     merge_enabled: bool,
+    dynamic_threshold: bool = False,
+    max_merge_gap_minutes: int | None = None,
     df: pd.DataFrame | None = None,
 ) -> dict:
     """Compute dashboard KPIs from plays data."""
     if df is None:
-        df = load_plays(
-            conn,
-            min_ms=min_ms,
-            music_only=music_only,
-            merge_enabled=merge_enabled,
+        df = _load_filtered_plays(
+            conn, min_ms, music_only, merge_enabled, dynamic_threshold, max_merge_gap_minutes
         )
     if df.empty:
         return {
@@ -153,15 +173,14 @@ def get_monthly_trend(
     min_ms: int,
     music_only: bool,
     merge_enabled: bool,
+    dynamic_threshold: bool = False,
+    max_merge_gap_minutes: int | None = None,
     df: pd.DataFrame | None = None,
 ) -> list[dict]:
     """Get monthly plays/hours trend."""
     if df is None:
-        df = load_plays(
-            conn,
-            min_ms=min_ms,
-            music_only=music_only,
-            merge_enabled=merge_enabled,
+        df = _load_filtered_plays(
+            conn, min_ms, music_only, merge_enabled, dynamic_threshold, max_merge_gap_minutes
         )
     if df.empty:
         return []
@@ -185,15 +204,14 @@ def get_hourly_dist(
     min_ms: int,
     music_only: bool,
     merge_enabled: bool,
+    dynamic_threshold: bool = False,
+    max_merge_gap_minutes: int | None = None,
     df: pd.DataFrame | None = None,
 ) -> list[dict]:
     """Get hourly play count distribution."""
     if df is None:
-        df = load_plays(
-            conn,
-            min_ms=min_ms,
-            music_only=music_only,
-            merge_enabled=merge_enabled,
+        df = _load_filtered_plays(
+            conn, min_ms, music_only, merge_enabled, dynamic_threshold, max_merge_gap_minutes
         )
     if df.empty:
         return []
@@ -208,15 +226,14 @@ def get_top_tracks(
     music_only: bool,
     merge_enabled: bool,
     n: int = 10,
+    dynamic_threshold: bool = False,
+    max_merge_gap_minutes: int | None = None,
     df: pd.DataFrame | None = None,
 ) -> list[dict]:
     """Get top N most-played tracks."""
     if df is None:
-        df = load_plays(
-            conn,
-            min_ms=min_ms,
-            music_only=music_only,
-            merge_enabled=merge_enabled,
+        df = _load_filtered_plays(
+            conn, min_ms, music_only, merge_enabled, dynamic_threshold, max_merge_gap_minutes
         )
     if df.empty:
         return []
@@ -245,15 +262,14 @@ def get_platform_dist(
     min_ms: int,
     music_only: bool,
     merge_enabled: bool,
+    dynamic_threshold: bool = False,
+    max_merge_gap_minutes: int | None = None,
     df: pd.DataFrame | None = None,
 ) -> list[dict]:
     """Get platform distribution."""
     if df is None:
-        df = load_plays(
-            conn,
-            min_ms=min_ms,
-            music_only=music_only,
-            merge_enabled=merge_enabled,
+        df = _load_filtered_plays(
+            conn, min_ms, music_only, merge_enabled, dynamic_threshold, max_merge_gap_minutes
         )
     if df.empty:
         return []
@@ -267,16 +283,15 @@ def get_dow_dist(
     min_ms: int,
     music_only: bool,
     merge_enabled: bool,
+    dynamic_threshold: bool = False,
+    max_merge_gap_minutes: int | None = None,
     df: pd.DataFrame | None = None,
 ) -> list[dict]:
     """Get day-of-week distribution."""
     dow_names = {0: "周一", 1: "周二", 2: "周三", 3: "周四", 4: "周五", 5: "周六", 6: "周日"}
     if df is None:
-        df = load_plays(
-            conn,
-            min_ms=min_ms,
-            music_only=music_only,
-            merge_enabled=merge_enabled,
+        df = _load_filtered_plays(
+            conn, min_ms, music_only, merge_enabled, dynamic_threshold, max_merge_gap_minutes
         )
     if df.empty:
         return []
@@ -284,24 +299,27 @@ def get_dow_dist(
     return [{"day": dow_names.get(d, str(d)), "count": int(counts.get(d, 0))} for d in range(7)]
 
 
-def get_random_track(conn: sqlite3.Connection, min_ms: int, music_only: bool) -> dict | None:
+def get_random_track(
+    conn: sqlite3.Connection,
+    min_ms: int,
+    music_only: bool,
+    merge_enabled: bool,
+    dynamic_threshold: bool = False,
+    max_merge_gap_minutes: int | None = None,
+) -> dict | None:
     """Get a random track for nostalgic recommendation."""
-    f, fp = base_filters(min_ms=min_ms, music_only=music_only)
-    w = f"WHERE {f}" if f else ""
-    row = conn.execute(
-        f"""SELECT t.track_name, a.artist_name, al.album_name,
-                   MAX(p.ts_date) as last_played, COUNT(*) as total_plays
-            FROM plays p
-            LEFT JOIN tracks t ON p.track_id = t.track_id
-            LEFT JOIN artists a ON t.artist_id = a.artist_id
-            LEFT JOIN albums al ON t.album_id = al.album_id
-            {w}
-            GROUP BY p.track_id
-            ORDER BY RANDOM() LIMIT 1""",
-        fp,
-    ).fetchone()
-    if not row:
+    df = _load_filtered_plays(
+        conn, min_ms, music_only, merge_enabled, dynamic_threshold, max_merge_gap_minutes
+    )
+    if df.empty:
         return None
+    row = (
+        df.groupby(["track_id", "track_name", "artist_name", "album_name"], dropna=False)
+        .agg(last_played=("ts_date", "max"), total_plays=("play_id", "count"))
+        .reset_index()
+        .sample(n=1)
+        .iloc[0]
+    )
     return {
         "track_name": row["track_name"],
         "artist_name": row["artist_name"],
@@ -315,14 +333,16 @@ def get_random_track(conn: sqlite3.Connection, min_ms: int, music_only: bool) ->
 
 
 def get_annual_timeline(
-    conn: sqlite3.Connection, min_ms: int, music_only: bool, merge_enabled: bool
+    conn: sqlite3.Connection,
+    min_ms: int,
+    music_only: bool,
+    merge_enabled: bool,
+    dynamic_threshold: bool = False,
+    max_merge_gap_minutes: int | None = None,
 ) -> list[dict]:
     """Annual breakdown: plays, hours, unique tracks/artists, and top track per year."""
-    df = load_plays(
-        conn,
-        min_ms=min_ms,
-        music_only=music_only,
-        merge_enabled=merge_enabled,
+    df = _load_filtered_plays(
+        conn, min_ms, music_only, merge_enabled, dynamic_threshold, max_merge_gap_minutes
     )
     if df.empty:
         return []
@@ -367,13 +387,12 @@ def get_monthly_timeline_drilldown(
     music_only: bool,
     merge_enabled: bool,
     period: str | None = None,
+    dynamic_threshold: bool = False,
+    max_merge_gap_minutes: int | None = None,
 ) -> dict:
     """Monthly timeline with optional top-5 drilldown for a specific period."""
-    df = load_plays(
-        conn,
-        min_ms=min_ms,
-        music_only=music_only,
-        merge_enabled=merge_enabled,
+    df = _load_filtered_plays(
+        conn, min_ms, music_only, merge_enabled, dynamic_threshold, max_merge_gap_minutes
     )
     if df.empty:
         return {"months": [], "drilldown": None}
@@ -432,13 +451,12 @@ def get_weekly_timeline(
     music_only: bool,
     merge_enabled: bool,
     week_label: str | None = None,
+    dynamic_threshold: bool = False,
+    max_merge_gap_minutes: int | None = None,
 ) -> dict:
     """Weekly timeline with optional top-5 drilldown for a specific week."""
-    df = load_plays(
-        conn,
-        min_ms=min_ms,
-        music_only=music_only,
-        merge_enabled=merge_enabled,
+    df = _load_filtered_plays(
+        conn, min_ms, music_only, merge_enabled, dynamic_threshold, max_merge_gap_minutes
     )
     if df.empty:
         return {"weeks": [], "drilldown": None}
@@ -506,21 +524,23 @@ def get_leaderboard(
     top_n: int = 30,
     include_compilations: bool = False,
     merge_level: int = 2,
+    dynamic_threshold: bool = False,
+    max_merge_gap_minutes: int | None = None,
 ) -> dict:
     """Get top-N leaderboard for tracks/artists/albums."""
     if entity == "artist":
-        df = load_plays_for_artists(
+        df = _load_filtered_plays(
             conn,
-            min_ms=min_ms,
-            music_only=music_only,
-            merge_enabled=merge_enabled,
+            min_ms,
+            music_only,
+            merge_enabled,
+            dynamic_threshold,
+            max_merge_gap_minutes,
+            artist_fanout=True,
         )
     else:
-        df = load_plays(
-            conn,
-            min_ms=min_ms,
-            music_only=music_only,
-            merge_enabled=merge_enabled,
+        df = _load_filtered_plays(
+            conn, min_ms, music_only, merge_enabled, dynamic_threshold, max_merge_gap_minutes
         )
     if df.empty:
         return {"time_label": "", "total_records": 0, "rows": []}
@@ -659,13 +679,12 @@ def get_wrapped_data(
     music_only: bool,
     merge_enabled: bool,
     year: int,
+    dynamic_threshold: bool = False,
+    max_merge_gap_minutes: int | None = None,
 ) -> dict:
     """Generate a custom yearly wrapped report for a given year."""
-    df = load_plays(
-        conn,
-        min_ms=min_ms,
-        music_only=music_only,
-        merge_enabled=merge_enabled,
+    df = _load_filtered_plays(
+        conn, min_ms, music_only, merge_enabled, dynamic_threshold, max_merge_gap_minutes
     )
     year_df = df[df["ts_year"] == year]
     if year_df.empty:
@@ -943,13 +962,12 @@ def get_listening_heatmap(
     min_ms: int,
     music_only: bool,
     merge_enabled: bool,
+    dynamic_threshold: bool = False,
+    max_merge_gap_minutes: int | None = None,
 ) -> dict:
     """Day-of-week x Hour heatmap data."""
-    df = load_plays(
-        conn,
-        min_ms=min_ms,
-        music_only=music_only,
-        merge_enabled=merge_enabled,
+    df = _load_filtered_plays(
+        conn, min_ms, music_only, merge_enabled, dynamic_threshold, max_merge_gap_minutes
     )
     if df.empty:
         return {
@@ -977,13 +995,12 @@ def get_yearly_heatmaps(
     min_ms: int,
     music_only: bool,
     merge_enabled: bool,
+    dynamic_threshold: bool = False,
+    max_merge_gap_minutes: int | None = None,
 ) -> list[dict]:
     """Year-by-year listening heatmaps."""
-    df = load_plays(
-        conn,
-        min_ms=min_ms,
-        music_only=music_only,
-        merge_enabled=merge_enabled,
+    df = _load_filtered_plays(
+        conn, min_ms, music_only, merge_enabled, dynamic_threshold, max_merge_gap_minutes
     )
     if df.empty:
         return []
@@ -1009,13 +1026,12 @@ def get_late_night_ratio(
     min_ms: int,
     music_only: bool,
     merge_enabled: bool,
+    dynamic_threshold: bool = False,
+    max_merge_gap_minutes: int | None = None,
 ) -> list[dict]:
     """Late night (0-5) listening ratio by year."""
-    df = load_plays(
-        conn,
-        min_ms=min_ms,
-        music_only=music_only,
-        merge_enabled=merge_enabled,
+    df = _load_filtered_plays(
+        conn, min_ms, music_only, merge_enabled, dynamic_threshold, max_merge_gap_minutes
     )
     if df.empty:
         return []
@@ -1032,13 +1048,12 @@ def get_weekday_weekend_comparison(
     min_ms: int,
     music_only: bool,
     merge_enabled: bool,
+    dynamic_threshold: bool = False,
+    max_merge_gap_minutes: int | None = None,
 ) -> dict:
     """Weekend vs workday hourly listening comparison."""
-    df = load_plays(
-        conn,
-        min_ms=min_ms,
-        music_only=music_only,
-        merge_enabled=merge_enabled,
+    df = _load_filtered_plays(
+        conn, min_ms, music_only, merge_enabled, dynamic_threshold, max_merge_gap_minutes
     )
     if df.empty:
         return {"weekend": [], "weekday": [], "comparison": []}
@@ -1064,13 +1079,12 @@ def get_platform_hourly_listening(
     min_ms: int,
     music_only: bool,
     merge_enabled: bool,
+    dynamic_threshold: bool = False,
+    max_merge_gap_minutes: int | None = None,
 ) -> dict:
     """Platform × hour listening distribution (stacked area + normalized %)."""
-    df = load_plays(
-        conn,
-        min_ms=min_ms,
-        music_only=music_only,
-        merge_enabled=merge_enabled,
+    df = _load_filtered_plays(
+        conn, min_ms, music_only, merge_enabled, dynamic_threshold, max_merge_gap_minutes
     )
     if df.empty:
         return {"platform_hourly": [], "platform_pct": [], "platform_peaks": []}
@@ -1151,13 +1165,18 @@ def get_artist_deep_dive(
     music_only: bool,
     merge_enabled: bool,
     artist_name: str,
+    dynamic_threshold: bool = False,
+    max_merge_gap_minutes: int | None = None,
 ) -> dict:
     """In-depth analysis for a single artist."""
-    df = load_plays_for_artists(
+    df = _load_filtered_plays(
         conn,
-        min_ms=min_ms,
-        music_only=music_only,
-        merge_enabled=merge_enabled,
+        min_ms,
+        music_only,
+        merge_enabled,
+        dynamic_threshold,
+        max_merge_gap_minutes,
+        artist_fanout=True,
     )
     artist_df = df[df["artist_name"] == artist_name]
     if artist_df.empty:

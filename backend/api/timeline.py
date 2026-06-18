@@ -27,7 +27,14 @@ def timeline_annual(
     filters: PlayFilters = Depends(),
     conn: Connection = Depends(get_conn),
 ):
-    return get_annual_timeline(conn, filters.min_ms, filters.music_only, filters.merge_enabled)
+    return get_annual_timeline(
+        conn,
+        filters.min_ms,
+        filters.music_only,
+        filters.merge_enabled,
+        filters.dynamic_threshold,
+        filters.max_merge_gap_minutes,
+    )
 
 
 @router.get(
@@ -39,7 +46,13 @@ def timeline_monthly(
     conn: Connection = Depends(get_conn),
 ):
     result = get_monthly_timeline_drilldown(
-        conn, filters.min_ms, filters.music_only, filters.merge_enabled, period
+        conn,
+        filters.min_ms,
+        filters.music_only,
+        filters.merge_enabled,
+        period,
+        filters.dynamic_threshold,
+        filters.max_merge_gap_minutes,
     )
     return result
 
@@ -51,5 +64,11 @@ def timeline_weekly(
     conn: Connection = Depends(get_conn),
 ):
     return get_weekly_timeline(
-        conn, filters.min_ms, filters.music_only, filters.merge_enabled, week
+        conn,
+        filters.min_ms,
+        filters.music_only,
+        filters.merge_enabled,
+        week,
+        filters.dynamic_threshold,
+        filters.max_merge_gap_minutes,
     )

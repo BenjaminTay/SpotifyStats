@@ -776,14 +776,17 @@ Billboard 周榜的聚合管线应完整应用：
 | D (Task 7,8) | Track Groups + Merge Level API + 前端 | ✅ | `pytest -m unit test_track_groups.py` + `-m contract test_merge_level_aggregation.py` + `npm test query-hooks.test.tsx` |
 | E (Task 9) | 版本详情展示 | ✅ | `pytest -m contract test_merge_level_aggregation.py` + `npm run build` |
 | F (Task 10) | 不变式测试 + 文档同步 | ✅ | `pytest -m contract test_playback_invariants.py` |
+| G (2026-06-18) | 过滤参数全入口贯穿 + Release Cycle 对齐 | ✅ | `pytest -m contract test_playback_filter_parameter_propagation.py` + 真实数据 API 对账 |
 
-**测试基线**（2026-06-13）：
+**测试基线**（2026-06-18）：
 - backend unit: 223 passed
-- backend contract: 99 passed（覆盖 R23 跨周边界、L3 父子组、R24b 全部 6 条不变量中的 5 条、Session 边界、source_album 归属、pre_agg 一致性、Leaderboard merge_level 传播、TrackDetail 版本组 SQL）
-- frontend vitest: 112 passed (7 files)
+- backend contract: 104 passed（覆盖 R23 跨周边界、L3 父子组、R24b 不变量、Session 边界、source_album 归属、pre_agg 一致性、Leaderboard merge_level 传播、PlayFilters/BillboardFilters 过滤参数传播、TrackDetail 版本组 SQL）
+- backend full: 520 passed
+- frontend build: `npm run build` passed
 
 **已知局限**：
 - Issue 2 已修复：`_apply_track_groups()` 同步 canonicalize `album_name`，pre_agg 路径 groupby 移除 `album_name` 不再产生重复行
+- 2026-06-18 已修复：Dashboard/Leaderboard/Timeline/Wrapped/Listening Hours/Music Entity/Artist Deep Dive/Release Cycle 统一传递 `dynamic_threshold` 与 `max_merge_gap_minutes`，Release Cycle 改按 `billboard_week` 年份过滤并接入 `merge_level` / `include_compilations`
 - P5: R19 catalog membership 可选视图未实现（远期，R24b.4 对应不变式测试随此功能延后）
 - 远期：R29.4 各版本播放趋势折线图（规则标注为可选，非硬性需求）
 
@@ -801,3 +804,4 @@ Billboard 周榜的聚合管线应完整应用：
 | `backend/services/analysis_stats_service.py` — 个人分析统计 | R10, R13 |
 | `backend/services/entity_stats_service.py` — 实体统计 | R10, R15 |
 | `backend/dependencies.py` — `PlayFilters` | R1, R2 |
+| `backend/tests/contract/test_playback_filter_parameter_propagation.py` — 过滤参数传播合约 | R1, R2, R10, R15 |

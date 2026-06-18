@@ -118,6 +118,17 @@ def _get_cover_cdn_url(cover_type: str, entity_id: int) -> str | None:
 
                    SELECT sam.image_url, 1 AS priority
                    FROM albums al
+                   JOIN spotify_album_meta sam
+                     ON sam.spotify_album_id = al.spotify_album_id
+                   WHERE al.album_id = ?
+                     AND al.spotify_album_id IS NOT NULL
+                     AND sam.image_url IS NOT NULL
+                     AND sam.image_url != ''
+
+                   UNION ALL
+
+                   SELECT sam.image_url, 2 AS priority
+                   FROM albums al
                    JOIN track_albums ta ON ta.album_id = al.album_id
                    JOIN tracks t ON t.track_id = ta.track_id
                    JOIN spotify_track_meta stm
@@ -130,7 +141,7 @@ def _get_cover_cdn_url(cover_type: str, entity_id: int) -> str | None:
                )
                ORDER BY priority
                LIMIT 1""",
-            [entity_id, entity_id],
+            [entity_id, entity_id, entity_id],
         ).fetchone()
     elif cover_type == "artists":
         row = conn.execute(

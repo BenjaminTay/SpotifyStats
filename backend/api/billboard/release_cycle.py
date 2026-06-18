@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
 
 from backend.core.json_helpers import df_to_json, py_val
-from backend.dependencies import BillboardFilters
+from backend.dependencies import BillboardFilters, MergeConfig
 from backend.services.billboard_service import (
     compute_album_weekly_rankings,
     compute_artist_weekly_rankings,
@@ -43,24 +43,53 @@ router = APIRouter()
 # ═══════════════════════════════════════════════════════════════════════════
 
 
-def _get_weekly_data(filters: BillboardFilters):
+def _filter_billboard_years(df: pd.DataFrame, filters: BillboardFilters) -> pd.DataFrame:
+    if df.empty or (filters.year_start is None and filters.year_end is None):
+        return df
+    out = df.copy()
+    years = pd.to_datetime(out["billboard_week"]).dt.year
+    mask = pd.Series(True, index=out.index)
+    if filters.year_start is not None:
+        mask = mask & (years >= filters.year_start)
+    if filters.year_end is not None:
+        mask = mask & (years <= filters.year_end)
+    return out.loc[mask]
+
+
+def _get_weekly_data(
+    filters: BillboardFilters,
+    merge_level: int = 2,
+    include_compilations: bool = False,
+):
     """Load raw data and compute all weekly rankings (cached upstream)."""
     df_raw = load_billboard_raw(
         filters.min_ms,
         filters.music_only,
         filters.bb_week_start_dow,
         filters.bb_week_start_hour,
+        dynamic_threshold=filters.dynamic_threshold,
+        max_merge_gap_minutes=filters.max_merge_gap_minutes,
     )
-    if filters.year_start is not None or filters.year_end is not None:
-        df_raw = df_raw.copy()
-        if filters.year_start is not None:
-            df_raw = df_raw[df_raw["ts_year"] >= filters.year_start]
-        if filters.year_end is not None:
-            df_raw = df_raw[df_raw["ts_year"] <= filters.year_end]
+    df_raw = _filter_billboard_years(df_raw, filters)
 
-    weekly = compute_weekly_rankings(df_raw, filters.bb_top_n)
-    weekly_artist = compute_artist_weekly_rankings(df_raw, filters.bb_artist_top_n)
-    weekly_album = compute_album_weekly_rankings(df_raw, filters.bb_album_top_n)
+    df_artists = load_billboard_raw_for_artists(
+        filters.min_ms,
+        filters.music_only,
+        filters.bb_week_start_dow,
+        filters.bb_week_start_hour,
+        dynamic_threshold=filters.dynamic_threshold,
+        max_merge_gap_minutes=filters.max_merge_gap_minutes,
+    )
+    df_artists = _filter_billboard_years(df_artists, filters)
+
+    weekly = compute_weekly_rankings(df_raw, filters.bb_top_n, merge_level=merge_level)
+    weekly_artist = compute_artist_weekly_rankings(df_artists, filters.bb_artist_top_n)
+    weekly_album = compute_album_weekly_rankings(
+        df_raw,
+        filters.bb_album_top_n,
+        merge_level=merge_level,
+        include_compilations=include_compilations,
+    )
 
     return df_raw, weekly, weekly_artist, weekly_album
 
@@ -215,12 +244,10 @@ def get_artist_list(filters: BillboardFilters = Depends()):
         filters.music_only,
         filters.bb_week_start_dow,
         filters.bb_week_start_hour,
+        dynamic_threshold=filters.dynamic_threshold,
+        max_merge_gap_minutes=filters.max_merge_gap_minutes,
     )
-    if filters.year_start is not None or filters.year_end is not None:
-        if filters.year_start is not None:
-            df_raw = df_raw[df_raw["ts_year"] >= filters.year_start]
-        if filters.year_end is not None:
-            df_raw = df_raw[df_raw["ts_year"] <= filters.year_end]
+    df_raw = _filter_billboard_years(df_raw, filters)
     return load_artist_list(df_raw)
 
 
@@ -232,11 +259,17 @@ def get_album_detail(
     artist_name: str,
     album_name: str,
     filters: BillboardFilters = Depends(),
+    merge_cfg: MergeConfig = Depends(),
+    include_compilations: bool = Query(default=False, description="专辑榜是否包含精选集"),
     weeks_before: int = Query(default=12, ge=1, le=52),
     weeks_after: int = Query(default=24, ge=4, le=104),
 ):
     """Album detail: cycle chart data, advance singles, track matrix, reentries, bonus tracks."""
-    df_raw, weekly, weekly_artist, weekly_album = _get_weekly_data(filters)
+    df_raw, weekly, weekly_artist, weekly_album = _get_weekly_data(
+        filters,
+        merge_level=merge_cfg.merge_level,
+        include_compilations=include_compilations,
+    )
 
     releases = load_artist_releases(artist_name)
     album_releases = releases[releases["album_name"] == album_name]
@@ -384,11 +417,17 @@ def get_album_detail(
 def get_artist_overview(
     artist_name: str,
     filters: BillboardFilters = Depends(),
+    merge_cfg: MergeConfig = Depends(),
+    include_compilations: bool = Query(default=False, description="专辑榜是否包含精选集"),
     weeks_before: int = Query(default=4, ge=1, le=24),
     weeks_after: int = Query(default=24, ge=4, le=52),
 ):
     """Full artist overview: KPIs, releases, cycles, metrics, rank trend data."""
-    df_raw, weekly, weekly_artist, weekly_album = _get_weekly_data(filters)
+    df_raw, weekly, weekly_artist, weekly_album = _get_weekly_data(
+        filters,
+        merge_level=merge_cfg.merge_level,
+        include_compilations=include_compilations,
+    )
 
     releases = load_artist_releases(artist_name)
     if releases.empty:
@@ -516,12 +555,18 @@ class CompareRequest(BaseModel):
 def compare_releases(
     body: CompareRequest,
     filters: BillboardFilters = Depends(),
+    merge_cfg: MergeConfig = Depends(),
+    include_compilations: bool = Query(default=False, description="专辑榜是否包含精选集"),
 ):
     """Compare multiple releases: rank/play curves + metrics table."""
     if len(body.items) < 2:
         return {"error": "至少需要 2 张发行进行对比"}
 
-    df_raw, weekly, weekly_artist, weekly_album = _get_weekly_data(filters)
+    df_raw, weekly, weekly_artist, weekly_album = _get_weekly_data(
+        filters,
+        merge_level=merge_cfg.merge_level,
+        include_compilations=include_compilations,
+    )
 
     result = []
     for item in body.items:

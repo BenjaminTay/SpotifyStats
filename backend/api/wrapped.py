@@ -26,7 +26,15 @@ def yearly_wrapped(
     filters: PlayFilters = Depends(),
     conn: Connection = Depends(get_conn),
 ):
-    return get_wrapped_data(conn, filters.min_ms, filters.music_only, filters.merge_enabled, year)
+    return get_wrapped_data(
+        conn,
+        filters.min_ms,
+        filters.music_only,
+        filters.merge_enabled,
+        year,
+        filters.dynamic_threshold,
+        filters.max_merge_gap_minutes,
+    )
 
 
 @router.get("/{year}/full", response_model=WrappedFullResponse)
@@ -35,4 +43,12 @@ def yearly_wrapped_full(
     filters: PlayFilters = Depends(),
     conn: Connection = Depends(get_conn),
 ):
-    return get_wrapped_full(conn, filters.min_ms, filters.music_only, filters.merge_enabled, year)
+    return get_wrapped_full(
+        conn,
+        filters.min_ms,
+        filters.music_only,
+        filters.merge_enabled,
+        year,
+        filters.dynamic_threshold,
+        filters.max_merge_gap_minutes,
+    )

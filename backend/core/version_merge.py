@@ -1152,6 +1152,7 @@ def _fetch_album_tracks_from_api(spotify_album_ids):
                     a.get("name", "") for a in album.get("artists", []) if a.get("name")
                 ]
                 genres_list = album.get("genres", [])
+                images = album.get("images", [])
                 album_meta_updates[sid] = {
                     "album_name": album.get("name", ""),
                     "popularity": album.get("popularity"),
@@ -1161,6 +1162,7 @@ def _fetch_album_tracks_from_api(spotify_album_ids):
                     "total_tracks": album.get("total_tracks"),
                     "release_date": album.get("release_date"),
                     "album_type": album.get("album_type"),
+                    "image_url": images[0]["url"] if images else None,
                 }
 
                 # ── 曲目级元数据（保留原始顺序） ──
@@ -1218,8 +1220,8 @@ def _fetch_album_tracks_from_api(spotify_album_ids):
                 wconn.execute(
                     """INSERT INTO spotify_album_meta
                        (spotify_album_id, album_name, album_type, release_date,
-                        popularity, label, genres, album_artists, total_tracks)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        popularity, label, genres, album_artists, total_tracks, image_url)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                        ON CONFLICT(spotify_album_id) DO UPDATE SET
                            album_name = excluded.album_name,
                            album_type = COALESCE(excluded.album_type, spotify_album_meta.album_type),
@@ -1228,7 +1230,8 @@ def _fetch_album_tracks_from_api(spotify_album_ids):
                            label = COALESCE(excluded.label, spotify_album_meta.label),
                            genres = COALESCE(excluded.genres, spotify_album_meta.genres),
                            album_artists = COALESCE(excluded.album_artists, spotify_album_meta.album_artists),
-                           total_tracks = COALESCE(excluded.total_tracks, spotify_album_meta.total_tracks)""",
+                           total_tracks = COALESCE(excluded.total_tracks, spotify_album_meta.total_tracks),
+                           image_url = COALESCE(excluded.image_url, spotify_album_meta.image_url)""",
                     (
                         sid,
                         meta["album_name"],
@@ -1239,6 +1242,7 @@ def _fetch_album_tracks_from_api(spotify_album_ids):
                         meta.get("genres"),
                         meta.get("album_artists"),
                         meta.get("total_tracks"),
+                        meta.get("image_url"),
                     ),
                 )
             wconn.commit()

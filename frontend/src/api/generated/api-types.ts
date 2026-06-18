@@ -5518,6 +5518,8 @@ export interface operations {
                 top_n?: number;
                 /** @description 专辑榜是否包含精选集 */
                 include_compilations?: boolean;
+                /** @description 版本合并严格度 */
+                merge_level?: number;
                 /** @description 最短播放时长 (毫秒) */
                 min_ms?: number;
                 /** @description 仅音乐 */
@@ -6839,6 +6841,8 @@ export interface operations {
     get_billboard_data_api_billboard_data_get: {
         parameters: {
             query?: {
+                /** @description Include compilation albums in album chart (R14) */
+                include_compilations?: boolean;
                 /** @description 最短播放时长 (毫秒) */
                 min_ms?: number;
                 /** @description 仅音乐 */
@@ -6893,6 +6897,8 @@ export interface operations {
     get_billboard_weekly_api_billboard_weekly_get: {
         parameters: {
             query?: {
+                /** @description Include compilation albums in album chart (R14) */
+                include_compilations?: boolean;
                 /** @description 最短播放时长 (毫秒) */
                 min_ms?: number;
                 /** @description 仅音乐 */
@@ -7109,6 +7115,8 @@ export interface operations {
     get_billboard_all_time_api_billboard_all_time_get: {
         parameters: {
             query?: {
+                /** @description Include compilation albums in album chart (R14) */
+                include_compilations?: boolean;
                 /** @description 最短播放时长 (毫秒) */
                 min_ms?: number;
                 /** @description 仅音乐 */
@@ -7215,6 +7223,8 @@ export interface operations {
     get_album_detail_api_billboard_release_cycle_artist__artist_name__album__album_name__get: {
         parameters: {
             query?: {
+                /** @description 专辑榜是否包含精选集 */
+                include_compilations?: boolean;
                 weeks_before?: number;
                 weeks_after?: number;
                 /** @description 最短播放时长 (毫秒) */
@@ -7239,6 +7249,8 @@ export interface operations {
                 dynamic_threshold?: boolean;
                 /** @description 连续播放最大合并间隔 (分钟) */
                 max_merge_gap_minutes?: number | null;
+                /** @description 版本合并严格度 */
+                merge_level?: number;
             };
             header?: never;
             path: {
@@ -7272,6 +7284,8 @@ export interface operations {
     get_artist_overview_api_billboard_release_cycle_artist__artist_name__get: {
         parameters: {
             query?: {
+                /** @description 专辑榜是否包含精选集 */
+                include_compilations?: boolean;
                 weeks_before?: number;
                 weeks_after?: number;
                 /** @description 最短播放时长 (毫秒) */
@@ -7296,6 +7310,8 @@ export interface operations {
                 dynamic_threshold?: boolean;
                 /** @description 连续播放最大合并间隔 (分钟) */
                 max_merge_gap_minutes?: number | null;
+                /** @description 版本合并严格度 */
+                merge_level?: number;
             };
             header?: never;
             path: {
@@ -7328,6 +7344,8 @@ export interface operations {
     compare_releases_api_billboard_release_cycle_compare_post: {
         parameters: {
             query?: {
+                /** @description 专辑榜是否包含精选集 */
+                include_compilations?: boolean;
                 /** @description 最短播放时长 (毫秒) */
                 min_ms?: number;
                 /** @description 仅音乐 */
@@ -7350,6 +7368,8 @@ export interface operations {
                 dynamic_threshold?: boolean;
                 /** @description 连续播放最大合并间隔 (分钟) */
                 max_merge_gap_minutes?: number | null;
+                /** @description 版本合并严格度 */
+                merge_level?: number;
             };
             header?: never;
             path?: never;
@@ -7406,6 +7426,8 @@ export interface operations {
                 dynamic_threshold?: boolean;
                 /** @description 连续播放最大合并间隔 (分钟) */
                 max_merge_gap_minutes?: number | null;
+                /** @description 版本合并严格度 */
+                merge_level?: number;
             };
             header?: never;
             path: {
@@ -7516,6 +7538,8 @@ export interface operations {
                 dynamic_threshold?: boolean;
                 /** @description 连续播放最大合并间隔 (分钟) */
                 max_merge_gap_minutes?: number | null;
+                /** @description 版本合并严格度 */
+                merge_level?: number;
             };
             header?: never;
             path: {

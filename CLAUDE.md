@@ -8,7 +8,7 @@ Spotify Extended Streaming History 数据分析 Web 应用 — **FastAPI 后端 
 
 UI：「编辑风 × 液态玻璃」— Playfair Display + Inter，毛玻璃，日/夜双皮肤。
 
-**Phase 5 基线**：前端 GET 统一 TanStack Query（11 命名空间 queryKeys）；Provider 错误分层；业务 service 层 urllib 清零；模块级 API Map 缓存清除；Records/AllTime/Community Feed/RecentPlays/SavedTracks/PersonalRankTable 长列表已有分页或分段渲染基线；`records.py` 88 行 facade；`chart_compute.py` 227 行 facade；Request ID 链路；架构护栏 105+ 测试 + CI 基线。2026-06-12 Phase 5.4-A~H 全系列完成：TrackDetail (574→5 行)、HabitsTab (933 行→9 文件 feature)、AI Insights 拆分、24 端点 response_model 硬化、Bundle 懒加载治理（Settings -88%、Records -69%、Account -34%）、TrackDetail 歌词 Query 漏网修复。播放统计规则引擎（Phase C+D）：Session 边界检测（`max_gap_minutes` + `boundary_column`）、Track Groups 三级合并（L1/L2/L3 recording/composition scope）、`MergeConfig` FastAPI 依赖、`/analysis/charts` 与 `/billboard/*` 端点 `merge_level` 查询参数、R24b 不变式合约测试（`test_playback_invariants.py`，6 条断言）。详见 `AGENTS.md` 和 `docs/2026-06-12-playback-stats-rules.md`。
+**Phase 5 基线**：前端 GET 统一 TanStack Query（11 命名空间 queryKeys）；Provider 错误分层；业务 service 层 urllib 清零；模块级 API Map 缓存清除；Records/AllTime/Community Feed/RecentPlays/SavedTracks/PersonalRankTable 长列表已有分页或分段渲染基线；`records.py` 88 行 facade；`chart_compute.py` 227 行 facade；Request ID 链路；架构护栏 105+ 测试 + CI 基线。2026-06-12 Phase 5.4-A~H 全系列完成：TrackDetail (574→5 行)、HabitsTab (933 行→9 文件 feature)、AI Insights 拆分、24 端点 response_model 硬化、Bundle 懒加载治理（Settings -88%、Records -69%、Account -34%）、TrackDetail 歌词 Query 漏网修复。播放统计规则引擎（Phase C+D，2026-06-18 贯穿修复）：Session 边界检测（`max_gap_minutes` + `boundary_column`）、动态阈值、Track Groups 三级合并（L1/L2/L3 recording/composition scope）、`MergeConfig` FastAPI 依赖、Dashboard/Leaderboard/Timeline/Wrapped/Listening Hours/Music Entity/Release Cycle 统一传递过滤参数、R24b + 过滤传播合约测试。详见 `AGENTS.md` 和 `docs/2026-06-12-playback-stats-rules.md`。
 
 ## 常用命令
 
@@ -88,5 +88,6 @@ JSON → import → SQLite → FastAPI (backend/) → React (frontend/)
 - **新增外部 HTTP 调用 → Provider/HttpClient；禁止直接 `urllib.request.Request`/`urlopen`**
 - **页面容器只做路由入口；业务逻辑在 `features/`**
 - 架构护栏测试 `phase5-architecture.test.ts` 对上述约定做负面断言强制执行
+- 使用 `PlayFilters` / `BillboardFilters` 的统计端点必须透传 `dynamic_threshold` 与 `max_merge_gap_minutes` 到最终计数管线；新增入口要补传播测试或复用已有 service
 
 完整架构、模块表、数据库结构、过滤策略见 `AGENTS.md`；后端细节见 `backend/CLAUDE.md`；前端细节见 `frontend/CLAUDE.md`。

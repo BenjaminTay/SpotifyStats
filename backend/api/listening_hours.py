@@ -22,7 +22,14 @@ def listening_heatmap(
     filters: PlayFilters = Depends(),
     conn: Connection = Depends(get_conn),
 ):
-    return get_listening_heatmap(conn, filters.min_ms, filters.music_only, filters.merge_enabled)
+    return get_listening_heatmap(
+        conn,
+        filters.min_ms,
+        filters.music_only,
+        filters.merge_enabled,
+        filters.dynamic_threshold,
+        filters.max_merge_gap_minutes,
+    )
 
 
 @router.get("/yearly", response_model=list[YearlyHeatmapEntry])
@@ -30,7 +37,14 @@ def yearly_heatmaps(
     filters: PlayFilters = Depends(),
     conn: Connection = Depends(get_conn),
 ):
-    return get_yearly_heatmaps(conn, filters.min_ms, filters.music_only, filters.merge_enabled)
+    return get_yearly_heatmaps(
+        conn,
+        filters.min_ms,
+        filters.music_only,
+        filters.merge_enabled,
+        filters.dynamic_threshold,
+        filters.max_merge_gap_minutes,
+    )
 
 
 @router.get("/late-night", response_model=list[LateNightEntry])
@@ -38,7 +52,14 @@ def late_night(
     filters: PlayFilters = Depends(),
     conn: Connection = Depends(get_conn),
 ):
-    return get_late_night_ratio(conn, filters.min_ms, filters.music_only, filters.merge_enabled)
+    return get_late_night_ratio(
+        conn,
+        filters.min_ms,
+        filters.music_only,
+        filters.merge_enabled,
+        filters.dynamic_threshold,
+        filters.max_merge_gap_minutes,
+    )
 
 
 @router.get("/weekday-weekend")
@@ -47,7 +68,12 @@ def weekday_weekend(
     conn: Connection = Depends(get_conn),
 ):
     return get_weekday_weekend_comparison(
-        conn, filters.min_ms, filters.music_only, filters.merge_enabled
+        conn,
+        filters.min_ms,
+        filters.music_only,
+        filters.merge_enabled,
+        filters.dynamic_threshold,
+        filters.max_merge_gap_minutes,
     )
 
 
@@ -57,5 +83,10 @@ def platform_hourly(
     conn: Connection = Depends(get_conn),
 ):
     return get_platform_hourly_listening(
-        conn, filters.min_ms, filters.music_only, filters.merge_enabled
+        conn,
+        filters.min_ms,
+        filters.music_only,
+        filters.merge_enabled,
+        filters.dynamic_threshold,
+        filters.max_merge_gap_minutes,
     )

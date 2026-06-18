@@ -39,4 +39,6 @@ def leaderboard(
         top_n=top_n,
         include_compilations=include_compilations,
         merge_level=merge_cfg.merge_level,
+        dynamic_threshold=filters.dynamic_threshold,
+        max_merge_gap_minutes=filters.max_merge_gap_minutes,
     )

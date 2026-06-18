@@ -55,6 +55,32 @@ def compute_movement_records(records, weekly, track_summary, weekly_album=None, 
             15
         )
 
+    top10_weekly = (
+        weekly[weekly["rank"] <= 10]
+        .groupby(["billboard_week", "artist_name"])
+        .size()
+        .reset_index(name="track_count")
+    )
+    if not top10_weekly.empty:
+        best_top10 = top10_weekly.sort_values("track_count", ascending=False).iloc[0]
+        records["most_top10_simul"] = {
+            "artist": best_top10["artist_name"],
+            "week": best_top10["billboard_week"],
+            "count": int(best_top10["track_count"]),
+        }
+    else:
+        records["most_top10_simul"] = {}
+
+    week_strength = weekly.groupby("billboard_week")["play_count"].sum().reset_index()
+    if not week_strength.empty:
+        best_week = week_strength.sort_values("play_count", ascending=False).iloc[0]
+        records["strongest_week"] = {
+            "week": best_week["billboard_week"],
+            "play_count": int(best_week["play_count"]),
+        }
+    else:
+        records["strongest_week"] = {}
+
     # ── 17. Longest / Fastest Climb to #1 (登顶路) ─────────────────────
     to_no1 = track_summary[
         (track_summary["peak_position"] == 1) & (track_summary["first_peak_week"].notna())
@@ -76,8 +102,12 @@ def compute_movement_records(records, weekly, track_summary, weekly_album=None, 
         records["longest_to_no1"] = to_no1.nlargest(20, "登顶周数")[
             ["track_id", "track_name", "artist_name", "first_week", "first_peak_week", "登顶周数"]
         ]
+        records["fastest_to_no1"] = to_no1.nsmallest(20, "登顶周数")[
+            ["track_id", "track_name", "artist_name", "first_week", "first_peak_week", "登顶周数"]
+        ]
     else:
         records["longest_to_no1"] = pd.DataFrame()
+        records["fastest_to_no1"] = pd.DataFrame()
 
     # ── 17b. Longest Climb to #1 — Album ──────────────────────────────
     if weekly_album is not None:
@@ -124,10 +154,15 @@ def compute_movement_records(records, weekly, track_summary, weekly_album=None, 
             records["longest_to_no1_album"] = to_no1_alb.nlargest(20, "登顶周数")[
                 ["album_name", "artist_name", "first_week", "first_peak_week", "登顶周数"]
             ]
+            records["fastest_to_no1_album"] = to_no1_alb.nsmallest(20, "登顶周数")[
+                ["album_name", "artist_name", "first_week", "first_peak_week", "登顶周数"]
+            ]
         else:
             records["longest_to_no1_album"] = pd.DataFrame()
+            records["fastest_to_no1_album"] = pd.DataFrame()
     else:
         records["longest_to_no1_album"] = pd.DataFrame()
+        records["fastest_to_no1_album"] = pd.DataFrame()
 
     # ── 17c. Longest Climb to #1 — Artist ─────────────────────────────
     if weekly_artist is not None:
@@ -168,7 +203,12 @@ def compute_movement_records(records, weekly, track_summary, weekly_album=None, 
             records["longest_to_no1_artist"] = to_no1_art.nlargest(20, "登顶周数")[
                 ["artist_name", "first_week", "first_peak_week", "登顶周数"]
             ]
+            records["fastest_to_no1_artist"] = to_no1_art.nsmallest(20, "登顶周数")[
+                ["artist_name", "first_week", "first_peak_week", "登顶周数"]
+            ]
         else:
             records["longest_to_no1_artist"] = pd.DataFrame()
+            records["fastest_to_no1_artist"] = pd.DataFrame()
     else:
         records["longest_to_no1_artist"] = pd.DataFrame()
+        records["fastest_to_no1_artist"] = pd.DataFrame()

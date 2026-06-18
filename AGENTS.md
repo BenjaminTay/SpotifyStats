@@ -47,8 +47,9 @@ Phase 5 目标是收紧产品线到可持续迭代状态。当前进度：
   - P2 动态阈值 + Session 边界检测：`effective_threshold()` / `filter_effective_plays()`（`backend/domains/playback/counting.py`），`merge_consecutive_plays()` 支持 `max_gap_minutes` + `boundary_column`，`PlayFilters` 新增 `dynamic_threshold` / `max_merge_gap_minutes`
   - P4 Track Groups 三级合并：`track_groups` + `track_group_members` 表（scope: recording/composition），`backend/domains/playback/track_groups.py` 聚合键解析，`_apply_track_groups()` 在 Billboard 和个人榜聚合层生效
   - P4 Merge Level API：`MergeConfig` FastAPI 依赖，`/billboard/*` + `/analysis/charts` 端点 `merge_level` 查询参数，Settings 页面 L1/L2/L3 选择器持久化至 localStorage，4 个 Billboard 页面 URL 优先/localStorage 回退
-  - R24b 不变式合约测试：`test_playback_invariants.py`（6 条断言）+ `test_merge_level_aggregation.py`（14 条断言）
-  - 测试基线：backend unit 223 / contract 99 / frontend 112 (7 files)
+  - 2026-06-18 贯穿修复：Dashboard/Leaderboard/Timeline/Wrapped/Listening Hours/Music Entity/Artist Deep Dive/Release Cycle 全部传递 `dynamic_threshold` 与 `max_merge_gap_minutes`；Release Cycle 按 `billboard_week` 年份过滤，并接入 `merge_level` / `include_compilations`
+  - R24b 不变式合约测试：`test_playback_invariants.py`（6 条断言）+ `test_merge_level_aggregation.py`（14 条断言）+ `test_playback_filter_parameter_propagation.py`（过滤参数传播）
+  - 测试基线：backend full 520 / unit 223 / contract 104；`npm run build` 通过
 
 详见 `docs/2026-06-12-playback-stats-rules.md` 和 `docs/2026-06-08-phase5-productization-baseline.md`。
 
@@ -124,6 +125,7 @@ JSON 导出 ──→ import_data.py ──→ SQLite (spotify_stats.db) ──�
 
 **路由层关键约定**：
 - `backend/dependencies.py`：`PlayFilters`（标准播放过滤）、`BillboardFilters`（继承 + Billboard 参数）、`get_conn()`（数据库连接注入）
+- 使用 `PlayFilters` / `BillboardFilters` 的端点必须把 `dynamic_threshold` 与 `max_merge_gap_minutes` 传入最终 `load_plays()` / `load_billboard_raw()` 路径；新增统计端点必须补传播测试或复用已有管线
 - API 层通过 `Depends(get_conn)` 注入连接，请求结束自动关闭
 - 非缓存服务接收 `conn` 参数从 API 层传入
 - 缓存服务（`@lru_cache` / `@ttl_cached`）内部调用 `get_db()`（连接不可哈希）
@@ -218,7 +220,7 @@ frontend/src/
 
 ### 数据过滤策略
 
-`base_filters()` 是唯一过滤入口：`ms_played >= min_ms`（默认 30s）+ `music_only`（排除播客）。合并连续播放（`merge_enabled`，默认开启）先合并再过滤。已移除不可靠的 `skipped` 过滤。
+`base_filters()` 是 SQL 粗过滤入口：`music_only` 排除播客；未合并路径直接应用 `ms_played >= min_ms`。合并连续播放（`merge_enabled`，默认开启）使用 `min_ms=0` 先保留短片段，按 `track_id` + `source_album_id` + 可选 `max_merge_gap_minutes` 合并，再由 `filter_effective_plays()` 应用固定阈值或动态阈值。已移除不可靠的 `skipped` 过滤。
 
 特殊页面例外：行为分析使用全量数据；播客/视频额外 `>= 30000ms`；Billboard 专辑榜排除 singles 和发前周。
 

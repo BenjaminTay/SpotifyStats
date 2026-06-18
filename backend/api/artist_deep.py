@@ -27,5 +27,11 @@ def artist_deep_dive(
 ):
     """In-depth analysis for a single artist: heatmap, top tracks, album breakdown, monthly trend."""
     return get_artist_deep_dive(
-        conn, filters.min_ms, filters.music_only, filters.merge_enabled, name
+        conn,
+        filters.min_ms,
+        filters.music_only,
+        filters.merge_enabled,
+        name,
+        filters.dynamic_threshold,
+        filters.max_merge_gap_minutes,
     )

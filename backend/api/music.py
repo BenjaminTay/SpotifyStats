@@ -73,6 +73,8 @@ def track_stats(
         period,
         start_date,
         end_date,
+        filters.dynamic_threshold,
+        filters.max_merge_gap_minutes,
     )
 
 
@@ -96,6 +98,8 @@ def album_stats(
         period,
         start_date,
         end_date,
+        filters.dynamic_threshold,
+        filters.max_merge_gap_minutes,
     )
 
 
@@ -117,6 +121,8 @@ def artist_stats(
         period,
         start_date,
         end_date,
+        filters.dynamic_threshold,
+        filters.max_merge_gap_minutes,
     )
 
 
@@ -139,9 +145,12 @@ def track_plays(
         track_id=track_id,
         min_ms=filters.min_ms,
         music_only=filters.music_only,
+        merge_enabled=filters.merge_enabled,
         period=period,
         start_date=start_date,
         end_date=end_date,
+        dynamic_threshold=filters.dynamic_threshold,
+        max_merge_gap_minutes=filters.max_merge_gap_minutes,
         search=search,
         date=date,
         limit=limit,
@@ -170,9 +179,12 @@ def album_plays(
         artist_name=artist,
         min_ms=filters.min_ms,
         music_only=filters.music_only,
+        merge_enabled=filters.merge_enabled,
         period=period,
         start_date=start_date,
         end_date=end_date,
+        dynamic_threshold=filters.dynamic_threshold,
+        max_merge_gap_minutes=filters.max_merge_gap_minutes,
         search=search,
         date=date,
         limit=limit,
@@ -199,9 +211,12 @@ def artist_plays(
         artist_name=artist_name,
         min_ms=filters.min_ms,
         music_only=filters.music_only,
+        merge_enabled=filters.merge_enabled,
         period=period,
         start_date=start_date,
         end_date=end_date,
+        dynamic_threshold=filters.dynamic_threshold,
+        max_merge_gap_minutes=filters.max_merge_gap_minutes,
         search=search,
         date=date,
         limit=limit,
@@ -224,9 +239,12 @@ def track_play_dates(
         track_id=track_id,
         min_ms=filters.min_ms,
         music_only=filters.music_only,
+        merge_enabled=filters.merge_enabled,
         period=period,
         start_date=start_date,
         end_date=end_date,
+        dynamic_threshold=filters.dynamic_threshold,
+        max_merge_gap_minutes=filters.max_merge_gap_minutes,
     )
 
 
@@ -247,9 +265,12 @@ def album_play_dates(
         artist_name=artist,
         min_ms=filters.min_ms,
         music_only=filters.music_only,
+        merge_enabled=filters.merge_enabled,
         period=period,
         start_date=start_date,
         end_date=end_date,
+        dynamic_threshold=filters.dynamic_threshold,
+        max_merge_gap_minutes=filters.max_merge_gap_minutes,
     )
 
 
@@ -268,7 +289,10 @@ def artist_play_dates(
         artist_name=artist_name,
         min_ms=filters.min_ms,
         music_only=filters.music_only,
+        merge_enabled=filters.merge_enabled,
         period=period,
         start_date=start_date,
         end_date=end_date,
+        dynamic_threshold=filters.dynamic_threshold,
+        max_merge_gap_minutes=filters.max_merge_gap_minutes,
     )

@@ -33,7 +33,14 @@ def dashboard_summary(
     filters: PlayFilters = Depends(),
     conn: Connection = Depends(get_conn),
 ):
-    return get_dashboard_summary(conn, filters.min_ms, filters.music_only, filters.merge_enabled)
+    return get_dashboard_summary(
+        conn,
+        filters.min_ms,
+        filters.music_only,
+        filters.merge_enabled,
+        filters.dynamic_threshold,
+        filters.max_merge_gap_minutes,
+    )
 
 
 @router.get("/full", response_model=DashboardFullResponse)
@@ -51,6 +58,8 @@ def dashboard_full(
         min_ms=filters.min_ms,
         music_only=filters.music_only,
         merge_enabled=filters.merge_enabled,
+        dynamic_threshold=filters.dynamic_threshold,
+        max_merge_gap_minutes=filters.max_merge_gap_minutes,
     )
     return {
         "summary": get_dashboard_summary(
@@ -72,7 +81,14 @@ def dashboard_full(
         "hourly_dist": get_hourly_dist(
             conn, filters.min_ms, filters.music_only, filters.merge_enabled, df=df
         ),
-        "random_track": get_random_track(conn, filters.min_ms, filters.music_only),
+        "random_track": get_random_track(
+            conn,
+            filters.min_ms,
+            filters.music_only,
+            filters.merge_enabled,
+            filters.dynamic_threshold,
+            filters.max_merge_gap_minutes,
+        ),
     }
 
 
@@ -82,7 +98,15 @@ def top_tracks_endpoint(
     n: int = Query(10),
     conn: Connection = Depends(get_conn),
 ):
-    return get_top_tracks(conn, filters.min_ms, filters.music_only, filters.merge_enabled, n)
+    return get_top_tracks(
+        conn,
+        filters.min_ms,
+        filters.music_only,
+        filters.merge_enabled,
+        n,
+        filters.dynamic_threshold,
+        filters.max_merge_gap_minutes,
+    )
 
 
 @router.get("/platform-dist", response_model=list[PlatformDist])
@@ -90,7 +114,14 @@ def platform_dist_endpoint(
     filters: PlayFilters = Depends(),
     conn: Connection = Depends(get_conn),
 ):
-    return get_platform_dist(conn, filters.min_ms, filters.music_only, filters.merge_enabled)
+    return get_platform_dist(
+        conn,
+        filters.min_ms,
+        filters.music_only,
+        filters.merge_enabled,
+        filters.dynamic_threshold,
+        filters.max_merge_gap_minutes,
+    )
 
 
 @router.get("/dow-dist", response_model=list[DowDist])
@@ -98,7 +129,14 @@ def dow_dist_endpoint(
     filters: PlayFilters = Depends(),
     conn: Connection = Depends(get_conn),
 ):
-    return get_dow_dist(conn, filters.min_ms, filters.music_only, filters.merge_enabled)
+    return get_dow_dist(
+        conn,
+        filters.min_ms,
+        filters.music_only,
+        filters.merge_enabled,
+        filters.dynamic_threshold,
+        filters.max_merge_gap_minutes,
+    )
 
 
 @router.get("/random-track", response_model=RandomTrack)
@@ -106,4 +144,11 @@ def random_track_endpoint(
     filters: PlayFilters = Depends(),
     conn: Connection = Depends(get_conn),
 ):
-    return get_random_track(conn, filters.min_ms, filters.music_only)
+    return get_random_track(
+        conn,
+        filters.min_ms,
+        filters.music_only,
+        filters.merge_enabled,
+        filters.dynamic_threshold,
+        filters.max_merge_gap_minutes,
+    )

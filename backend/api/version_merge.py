@@ -171,7 +171,7 @@ def compare_albums(
 def album_types(album_ids: str = Query(..., description="Comma-separated album IDs")):
     """Get album types (album/single/compilation) for a set of album IDs."""
     ids = [int(x.strip()) for x in album_ids.split(",") if x.strip()]
-    return get_album_types(ids)
+    return {str(album_id): album_type for album_id, album_type in get_album_types(ids).items()}
 
 
 # ── Mutation endpoints ────────────────────────────────────────────────────

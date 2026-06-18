@@ -183,7 +183,7 @@ def _attach_track_version_group(conn, track_id, meta, merge_level=2):
     # precision.
     if merge_level >= 3:
         versions = conn.execute(
-            """SELECT t.track_id, t.track_name, al.album_name,
+            """SELECT t.track_id, t.track_name, al.album_name, al.album_id,
                       COUNT(p.play_id) AS plays,
                       COALESCE(SUM(p.ms_played), 0) AS total_ms,
                       sam.album_type, sam.release_date,
@@ -205,7 +205,7 @@ def _attach_track_version_group(conn, track_id, meta, merge_level=2):
         ).fetchall()
     else:
         versions = conn.execute(
-            """SELECT t.track_id, t.track_name, al.album_name,
+            """SELECT t.track_id, t.track_name, al.album_name, al.album_id,
                       COUNT(p.play_id) AS plays,
                       COALESCE(SUM(p.ms_played), 0) AS total_ms,
                       sam.album_type, sam.release_date,
@@ -239,7 +239,8 @@ def _attach_track_version_group(conn, track_id, meta, merge_level=2):
                 "total_ms": v["total_ms"],
                 "is_primary": v["track_id"] == group_row["primary_track_id"],
                 "recording_kind": _classify_recording_kind(v["track_name"]),
-                "album_cover_url": v["album_cover_url"],
+                "album_cover_url": v["album_cover_url"]
+                or (f"/covers/albums/{v['album_id']}.jpg" if v["album_id"] else None),
                 "release_date": v["release_date"],
             }
             for v in versions
@@ -398,8 +399,7 @@ def _attach_album_release_group(conn, album_name, artist_name, meta, merge_level
                JOIN albums al ON rgm.album_id = al.album_id
                JOIN artists ar ON al.artist_id = ar.artist_id
                LEFT JOIN spotify_album_meta sam ON sam.album_name = al.album_name
-               LEFT JOIN tracks t ON t.album_id = al.album_id
-               LEFT JOIN plays p ON p.track_id = t.track_id AND p.ms_played >= 30000
+               LEFT JOIN plays p ON p.source_album_id = al.album_id AND p.ms_played >= 30000
                WHERE COALESCE(parent_rg.group_id, rg.group_id) = ?
                  AND rg.scope IN ('composition', 'release')
                GROUP BY al.album_id
@@ -418,8 +418,7 @@ def _attach_album_release_group(conn, album_name, artist_name, meta, merge_level
                JOIN albums al ON rgm.album_id = al.album_id
                JOIN artists ar ON al.artist_id = ar.artist_id
                LEFT JOIN spotify_album_meta sam ON sam.album_name = al.album_name
-               LEFT JOIN tracks t ON t.album_id = al.album_id
-               LEFT JOIN plays p ON p.track_id = t.track_id AND p.ms_played >= 30000
+               LEFT JOIN plays p ON p.source_album_id = al.album_id AND p.ms_played >= 30000
                WHERE rgm.group_id = ?
                GROUP BY al.album_id
                ORDER BY plays DESC""",
@@ -476,7 +475,7 @@ def _attach_album_release_group(conn, album_name, artist_name, meta, merge_level
                 "unique_tracks": v["unique_tracks"],
                 "total_ms": v["total_ms"],
                 "is_primary": v["album_id"] == group_row["primary_album_id"],
-                "album_cover_url": v["album_cover_url"],
+                "album_cover_url": v["album_cover_url"] or f"/covers/albums/{v['album_id']}.jpg",
                 "release_date": v["release_date"],
                 "album_type": v["album_type"],
                 "total_tracks": v["total_tracks"],

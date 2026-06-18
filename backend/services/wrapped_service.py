@@ -181,6 +181,8 @@ def get_wrapped_full(
     music_only: bool,
     merge_enabled: bool,
     year: int,
+    dynamic_threshold: bool = False,
+    max_merge_gap_minutes: int | None = None,
 ) -> dict:
     """Generate the full multi-module yearly Wrapped report.
 
@@ -191,6 +193,8 @@ def get_wrapped_full(
         min_ms=min_ms,
         music_only=music_only,
         merge_enabled=merge_enabled,
+        dynamic_threshold=dynamic_threshold,
+        max_merge_gap_minutes=max_merge_gap_minutes,
     )
     # Multi-artist data for artist-level aggregations only
     df_artists = load_plays_for_artists(
@@ -198,6 +202,8 @@ def get_wrapped_full(
         min_ms=min_ms,
         music_only=music_only,
         merge_enabled=merge_enabled,
+        dynamic_threshold=dynamic_threshold,
+        max_merge_gap_minutes=max_merge_gap_minutes,
     )
     year_df = df[df["ts_year"] == year]
     year_df_artists = df_artists[df_artists["ts_year"] == year]

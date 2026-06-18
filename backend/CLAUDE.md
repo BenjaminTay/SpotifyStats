@@ -12,6 +12,7 @@ FastAPI 后端采用四层分离：**api/**（路由 + Depends 依赖注入）�
 - `BillboardFilters` — 继承播放过滤 + Billboard 参数（`bb_top_n`, `bb_week_start_dow`, `year_start/end`）
 - `MergeConfig` — 版本合并严格度（`merge_level`: 1=不合并, 2=recording scope, 3=composition+recording scope）
 - `get_conn()` — 数据库只读连接注入
+- 暴露 `PlayFilters` / `BillboardFilters` 的统计路由必须把 `dynamic_threshold` 与 `max_merge_gap_minutes` 传到最终 `load_plays()` / `load_billboard_raw()` 路径；新增入口应补传播契约测试或复用已有 service 管线
 
 ### 连接管理
 
@@ -47,7 +48,7 @@ FastAPI 后端采用四层分离：**api/**（路由 + Depends 依赖注入）�
 
 | 文件 | 职责 |
 |------|------|
-| `services/play_service.py` | 核心播放数据服务，所有基于 plays 的端点统一入口 |
+| `services/play_service.py` | 核心播放数据服务，所有基于 plays 的端点统一入口；负责播放过滤参数贯穿 |
 | `services/analysis_stats_service.py` | 总体统计 + 个人排行榜 + 时间范围解析 |
 | `services/entity_stats_service.py` | 歌曲/专辑/艺人个人播放统计 |
 | `services/wrapped_service.py` | 自定义年度总结（听歌人格/Top榜/曲风全景/发现回归等） |
@@ -85,7 +86,7 @@ FastAPI 后端采用四层分离：**api/**（路由 + Depends 依赖注入）�
 
 ## 测试策略
 
-三层 pytest markers：`unit`（纯函数，无 DB，~5s）→ `contract`（seed DB 结构验证，~1s）→ `integration`（真实数据只读，~80s）。
+三层 pytest markers：`unit`（纯函数，无 DB，~5s）→ `contract`（seed DB 结构验证，~1s）→ `integration`（真实数据只读，~80s）。当前基线：unit 223 / contract 104 / backend full 520。
 
 Contract 测试 teardown 必须清除所有 `@lru_cache`，`autouse` fixture `disable_warmup` 通过 monkeypatch `SPOTIFY_STATS_WARMUP=0` 阻止后台预热。
 

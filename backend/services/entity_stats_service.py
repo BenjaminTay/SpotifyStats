@@ -8,7 +8,6 @@ from typing import Any
 import pandas as pd
 
 from backend.core.db import (
-    base_filters,
     get_track_artist_names_map,
     load_plays_for_artists,
 )
@@ -26,7 +25,6 @@ from backend.services.analysis_stats_service import (
     load_period_plays,
     recent_plays,
     resolve_period,
-    resolve_period_dates,
 )
 from backend.services.play_service import (
     _album_cover_lookup,
@@ -173,9 +171,19 @@ def get_track_stats(
     period: str = "lifetime",
     start_date: str | None = None,
     end_date: str | None = None,
+    dynamic_threshold: bool = False,
+    max_merge_gap_minutes: int | None = None,
 ) -> dict:
     all_df, current_df, resolved = load_period_plays(
-        conn, min_ms, music_only, merge_enabled, period, start_date, end_date
+        conn,
+        min_ms,
+        music_only,
+        merge_enabled,
+        period,
+        start_date,
+        end_date,
+        dynamic_threshold=dynamic_threshold,
+        max_merge_gap_minutes=max_merge_gap_minutes,
     )
     entity_all = all_df[all_df["track_id"] == track_id]
     entity_df = current_df[current_df["track_id"] == track_id]
@@ -234,9 +242,19 @@ def get_album_stats(
     period: str = "lifetime",
     start_date: str | None = None,
     end_date: str | None = None,
+    dynamic_threshold: bool = False,
+    max_merge_gap_minutes: int | None = None,
 ) -> dict:
     all_df, current_df, resolved = load_period_plays(
-        conn, min_ms, music_only, merge_enabled, period, start_date, end_date
+        conn,
+        min_ms,
+        music_only,
+        merge_enabled,
+        period,
+        start_date,
+        end_date,
+        dynamic_threshold=dynamic_threshold,
+        max_merge_gap_minutes=max_merge_gap_minutes,
     )
     artist_name = artist
     if not artist_name:
@@ -303,6 +321,8 @@ def get_artist_stats(
     period: str = "lifetime",
     start_date: str | None = None,
     end_date: str | None = None,
+    dynamic_threshold: bool = False,
+    max_merge_gap_minutes: int | None = None,
 ) -> dict:
     all_df, current_df, resolved = load_period_plays(
         conn,
@@ -312,6 +332,8 @@ def get_artist_stats(
         period,
         start_date,
         end_date,
+        dynamic_threshold=dynamic_threshold,
+        max_merge_gap_minutes=max_merge_gap_minutes,
         _loader=load_plays_for_artists,
     )
     entity_all = all_df[all_df["artist_name"] == artist_name]
@@ -351,102 +373,80 @@ def get_entity_plays(
     artist_name: str | None = None,
     min_ms: int = 30000,
     music_only: bool = True,
+    merge_enabled: bool = True,
     period: str = "lifetime",
     start_date: str | None = None,
     end_date: str | None = None,
+    dynamic_threshold: bool = False,
+    max_merge_gap_minutes: int | None = None,
     search: str | None = None,
     date: str | None = None,
     limit: int = 50,
     offset: int = 0,
 ) -> dict:
-    """Return paginated play records for a specific entity using direct SQL."""
-    bf, bf_params = base_filters(min_ms=min_ms, music_only=music_only, table_alias="p")
+    """Return paginated play records for a specific entity using the shared rules pipeline."""
+    _, df, _ = load_period_plays(
+        conn,
+        min_ms,
+        music_only,
+        merge_enabled,
+        period,
+        start_date,
+        end_date,
+        dynamic_threshold=dynamic_threshold,
+        max_merge_gap_minutes=max_merge_gap_minutes,
+        _loader=load_plays_for_artists if entity == "artist" else None,
+    )
+    df = _filter_entity_rows(df, entity, track_id, album_name, artist_name)
 
-    period_start, period_end = resolve_period_dates(period, start_date, end_date)
+    if date is not None and not df.empty:
+        df = df[df["ts_date"].astype(str) == date]
 
-    where_parts = [bf] if bf else []
-    params: list[Any] = list(bf_params)
+    if search is not None and not df.empty:
+        search_lower = search.casefold()
+        mask = (
+            df["track_name"]
+            .fillna("")
+            .astype(str)
+            .str.casefold()
+            .str.contains(search_lower, regex=False)
+            | df["artist_name"]
+            .fillna("")
+            .astype(str)
+            .str.casefold()
+            .str.contains(search_lower, regex=False)
+            | df["album_name"]
+            .fillna("")
+            .astype(str)
+            .str.casefold()
+            .str.contains(search_lower, regex=False)
+        )
+        df = df[mask]
 
-    if entity == "track" and track_id is not None:
-        where_parts.append("t.track_id = ?")
-        params.append(track_id)
-    elif entity == "album" and album_name is not None:
-        where_parts.append("al.album_name = ?")
-        params.append(album_name)
-        if artist_name is not None:
-            where_parts.append("a.artist_name = ?")
-            params.append(artist_name)
-    elif entity == "artist" and artist_name is not None:
-        where_parts.append("a.artist_name = ?")
-        params.append(artist_name)
+    df = df.sort_values("ts", ascending=False)
+    total = int(len(df))
+    page = df.iloc[offset : offset + limit]
 
-    if period_start:
-        where_parts.append("p.ts_date >= ?")
-        params.append(period_start)
-    if period_end:
-        where_parts.append("p.ts_date <= ?")
-        params.append(period_end)
-
-    if date is not None:
-        where_parts.append("p.ts_date = ?")
-        params.append(date)
-
-    if search is not None:
-        search_term = f"%{search}%"
-        where_parts.append("(t.track_name LIKE ? OR a.artist_name LIKE ? OR al.album_name LIKE ?)")
-        params.extend([search_term, search_term, search_term])
-
-    where_clause = " AND ".join(where_parts) if where_parts else "1=1"
-
-    base_from = """
-        FROM plays p
-        LEFT JOIN tracks t ON p.track_id = t.track_id
-        LEFT JOIN artists a ON t.artist_id = a.artist_id
-        LEFT JOIN albums al ON t.album_id = al.album_id
-    """
-
-    if entity == "artist":
-        base_from = """
-            FROM plays p
-            LEFT JOIN tracks t ON p.track_id = t.track_id
-            LEFT JOIN track_artists ta ON t.track_id = ta.track_id
-            LEFT JOIN artists a ON ta.artist_id = a.artist_id
-            LEFT JOIN albums al ON t.album_id = al.album_id
-        """
-
-    count_sql = f"SELECT COUNT(*) {base_from} WHERE {where_clause}"
-    total = conn.execute(count_sql, params).fetchone()[0]
-
-    select_sql = f"""
-        SELECT p.play_id, p.ts, p.ts_date, p.track_id, t.track_name,
-               a.artist_name, al.album_name, p.ms_played, p.platform
-        {base_from}
-        WHERE {where_clause}
-        ORDER BY p.ts DESC
-        LIMIT ? OFFSET ?
-    """
-    rows = conn.execute(select_sql, params + [limit, offset]).fetchall()
-
-    track_ids = [int(r["track_id"]) for r in rows if r["track_id"] is not None]
+    track_ids = [int(v) for v in page["track_id"].dropna().unique().tolist()]
     cover_map = _track_cover_urls(conn, track_ids) if track_ids else {}
     from backend.core.db import get_track_artist_names_map
 
     names_map = get_track_artist_names_map()
 
     result = []
-    for r in rows:
-        tid = int(r["track_id"]) if r["track_id"] is not None else None
+    for r in page.itertuples(index=False):
+        tid = int(r.track_id) if pd.notna(r.track_id) else None
         entry = {
-            "play_id": int(r["play_id"]),
-            "ts": str(r["ts"]),
-            "date": str(r["ts_date"]),
+            "play_id": int(r.play_id),
+            "ts": str(r.ts),
+            "date": str(r.ts_date),
             "track_id": tid,
-            "track_name": r["track_name"] or "",
-            "artist_name": r["artist_name"] or "",
-            "album_name": r["album_name"],
-            "ms_played": int(r["ms_played"]),
-            "hours": round(float(r["ms_played"]) / 3_600_000, 3),
-            "platform": r["platform"] or "",
+            "track_name": "" if pd.isna(r.track_name) else r.track_name,
+            "artist_name": "" if pd.isna(r.artist_name) else r.artist_name,
+            "album_name": None if pd.isna(r.album_name) else r.album_name,
+            "ms_played": int(r.ms_played),
+            "hours": round(float(r.ms_played) / 3_600_000, 3),
+            "platform": "" if pd.isna(r.platform) else r.platform,
             "cover_url": cover_map.get(tid) if tid is not None else None,
         }
         if tid is not None and tid in names_map:
@@ -454,6 +454,27 @@ def get_entity_plays(
         result.append(entry)
 
     return {"total": total, "limit": limit, "offset": offset, "rows": result}
+
+
+def _filter_entity_rows(
+    df: pd.DataFrame,
+    entity: str,
+    track_id: int | None,
+    album_name: str | None,
+    artist_name: str | None,
+) -> pd.DataFrame:
+    if df.empty:
+        return df
+    if entity == "track" and track_id is not None:
+        return df[df["track_id"] == track_id]
+    if entity == "album" and album_name is not None:
+        out = df[df["album_name"] == album_name]
+        if artist_name is not None:
+            out = out[out["artist_name"] == artist_name]
+        return out
+    if entity == "artist" and artist_name is not None:
+        return df[df["artist_name"] == artist_name]
+    return df.iloc[0:0]
 
 
 def get_entity_play_dates(
@@ -464,62 +485,28 @@ def get_entity_play_dates(
     artist_name: str | None = None,
     min_ms: int = 30000,
     music_only: bool = True,
+    merge_enabled: bool = True,
     period: str = "lifetime",
     start_date: str | None = None,
     end_date: str | None = None,
+    dynamic_threshold: bool = False,
+    max_merge_gap_minutes: int | None = None,
 ) -> list[dict[str, Any]]:
     """Return [{date, count}] for calendar highlighting."""
-    bf, bf_params = base_filters(min_ms=min_ms, music_only=music_only, table_alias="p")
-
-    period_start, period_end = resolve_period_dates(period, start_date, end_date)
-
-    where_parts = [bf] if bf else []
-    params: list[Any] = list(bf_params)
-
-    if entity == "track" and track_id is not None:
-        where_parts.append("t.track_id = ?")
-        params.append(track_id)
-    elif entity == "album" and album_name is not None:
-        where_parts.append("al.album_name = ?")
-        params.append(album_name)
-        if artist_name is not None:
-            where_parts.append("a.artist_name = ?")
-            params.append(artist_name)
-    elif entity == "artist" and artist_name is not None:
-        where_parts.append("a.artist_name = ?")
-        params.append(artist_name)
-
-    if period_start:
-        where_parts.append("p.ts_date >= ?")
-        params.append(period_start)
-    if period_end:
-        where_parts.append("p.ts_date <= ?")
-        params.append(period_end)
-
-    where_clause = " AND ".join(where_parts) if where_parts else "1=1"
-
-    if entity == "artist":
-        sql = f"""
-            SELECT p.ts_date AS date, COUNT(*) AS count
-            FROM plays p
-            LEFT JOIN tracks t ON p.track_id = t.track_id
-            LEFT JOIN track_artists ta ON t.track_id = ta.track_id
-            LEFT JOIN artists a ON ta.artist_id = a.artist_id
-            LEFT JOIN albums al ON t.album_id = al.album_id
-            WHERE {where_clause}
-            GROUP BY p.ts_date
-            ORDER BY p.ts_date
-        """
-    else:
-        sql = f"""
-            SELECT p.ts_date AS date, COUNT(*) AS count
-            FROM plays p
-            LEFT JOIN tracks t ON p.track_id = t.track_id
-            LEFT JOIN artists a ON t.artist_id = a.artist_id
-            LEFT JOIN albums al ON t.album_id = al.album_id
-            WHERE {where_clause}
-            GROUP BY p.ts_date
-            ORDER BY p.ts_date
-        """
-    rows = conn.execute(sql, params).fetchall()
-    return [{"date": str(r["date"]), "count": int(r["count"])} for r in rows]
+    _, df, _ = load_period_plays(
+        conn,
+        min_ms,
+        music_only,
+        merge_enabled,
+        period,
+        start_date,
+        end_date,
+        dynamic_threshold=dynamic_threshold,
+        max_merge_gap_minutes=max_merge_gap_minutes,
+        _loader=load_plays_for_artists if entity == "artist" else None,
+    )
+    df = _filter_entity_rows(df, entity, track_id, album_name, artist_name)
+    if df.empty:
+        return []
+    counts = df.groupby("ts_date").size().reset_index(name="count").sort_values("ts_date")
+    return [{"date": str(r.ts_date), "count": int(r.count)} for r in counts.itertuples(index=False)]
