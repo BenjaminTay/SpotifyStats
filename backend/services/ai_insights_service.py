@@ -195,6 +195,20 @@ def _cache_key(report_type: str, *args: str) -> str:
     return f"ai:report:{report_type}:{':'.join(args)}"
 
 
+def _filter_cache_part(
+    min_ms: int,
+    music_only: bool,
+    merge_enabled: bool,
+    dynamic_threshold: bool,
+    max_merge_gap_minutes: Optional[int],
+) -> str:
+    gap = "none" if max_merge_gap_minutes is None else str(max_merge_gap_minutes)
+    return (
+        f"filters:min_ms={min_ms}:music={int(music_only)}:merge={int(merge_enabled)}:"
+        f"dynamic={int(dynamic_threshold)}:gap={gap}"
+    )
+
+
 def _get_cached(
     conn: sqlite3.Connection, cache_key: str, ttl_hours: int = 0
 ) -> Optional[tuple[str, str]]:
@@ -323,6 +337,8 @@ def _gather_weekly_data(
     merge_enabled: bool,
     week_start: str,
     week_end: str,
+    dynamic_threshold: bool = False,
+    max_merge_gap_minutes: Optional[int] = None,
 ) -> dict:
     """Gather structured data for a weekly digest."""
     from backend.services.analysis_stats_service import (
@@ -334,7 +350,15 @@ def _gather_weekly_data(
     )
 
     _, curr_df, _ = load_period_plays(
-        conn, min_ms, music_only, merge_enabled, "custom", week_start, week_end
+        conn,
+        min_ms,
+        music_only,
+        merge_enabled,
+        "custom",
+        week_start,
+        week_end,
+        dynamic_threshold=dynamic_threshold,
+        max_merge_gap_minutes=max_merge_gap_minutes,
     )
 
     # Previous week
@@ -347,7 +371,15 @@ def _gather_weekly_data(
         prev_df = None
     else:
         _, prev_df, _ = load_period_plays(
-            conn, min_ms, music_only, merge_enabled, "custom", prev_start, prev_end
+            conn,
+            min_ms,
+            music_only,
+            merge_enabled,
+            "custom",
+            prev_start,
+            prev_end,
+            dynamic_threshold=dynamic_threshold,
+            max_merge_gap_minutes=max_merge_gap_minutes,
         )
 
     summary = _summary(curr_df)
@@ -403,6 +435,8 @@ def _gather_monthly_data(
     merge_enabled: bool,
     month: str,  # YYYY-MM
     year: int,
+    dynamic_threshold: bool = False,
+    max_merge_gap_minutes: Optional[int] = None,
 ) -> dict:
     """Gather structured data for a monthly personality report."""
     from backend.services.analysis_stats_service import (
@@ -425,11 +459,27 @@ def _gather_monthly_data(
         return {"error": f"Invalid month format: {month}"}
 
     _, month_df, _ = load_period_plays(
-        conn, min_ms, music_only, merge_enabled, "custom", start.isoformat(), end.isoformat()
+        conn,
+        min_ms,
+        music_only,
+        merge_enabled,
+        "custom",
+        start.isoformat(),
+        end.isoformat(),
+        dynamic_threshold=dynamic_threshold,
+        max_merge_gap_minutes=max_merge_gap_minutes,
     )
 
     # Get personality from Wrapped (cached internally)
-    wrapped = get_wrapped_full(conn, min_ms, music_only, merge_enabled, year)
+    wrapped = get_wrapped_full(
+        conn,
+        min_ms,
+        music_only,
+        merge_enabled,
+        year,
+        dynamic_threshold=dynamic_threshold,
+        max_merge_gap_minutes=max_merge_gap_minutes,
+    )
     personality = wrapped.get("personality") if wrapped else None
 
     summary = _summary(month_df)
@@ -459,11 +509,21 @@ def _gather_yearly_data(
     music_only: bool,
     merge_enabled: bool,
     year: int,
+    dynamic_threshold: bool = False,
+    max_merge_gap_minutes: Optional[int] = None,
 ) -> dict:
     """Gather structured data for a yearly story."""
     from backend.services.wrapped_service import get_wrapped_full
 
-    wrapped = get_wrapped_full(conn, min_ms, music_only, merge_enabled, year)
+    wrapped = get_wrapped_full(
+        conn,
+        min_ms,
+        music_only,
+        merge_enabled,
+        year,
+        dynamic_threshold=dynamic_threshold,
+        max_merge_gap_minutes=max_merge_gap_minutes,
+    )
 
     if wrapped.get("empty"):
         return {"empty": True, "year": year}
@@ -520,10 +580,10 @@ def _extract_entities(data: dict) -> dict:
     return {"artists": artists[:5], "tracks": tracks[:5]}
 
 
-def _safe_extract_entities(gather_fn, *args) -> dict:
+def _safe_extract_entities(gather_fn, *args, **kwargs) -> dict:
     """Best-effort entity extraction for cached report responses."""
     try:
-        data = gather_fn(*args)
+        data = gather_fn(*args, **kwargs)
     except Exception:
         logger.warning("Failed to gather cached report entities", exc_info=True)
         return {"artists": [], "tracks": []}
@@ -543,17 +603,34 @@ def generate_weekly_digest(
     week_start: str,
     week_end: str,
     force: bool = False,
+    dynamic_threshold: bool = False,
+    max_merge_gap_minutes: Optional[int] = None,
 ) -> dict:
     """Generate a natural-language weekly listening digest.
 
     Returns:
         {'success': bool, 'report': str|None, 'error': str|None, 'cached': bool}
     """
-    key = _cache_key("weekly", week_start, week_end)
+    key = _cache_key(
+        "weekly",
+        week_start,
+        week_end,
+        _filter_cache_part(
+            min_ms, music_only, merge_enabled, dynamic_threshold, max_merge_gap_minutes
+        ),
+    )
     cached = None if force else _get_cached(conn, key, _CACHE_TTL["weekly"])
     if cached:
         entities = _safe_extract_entities(
-            _gather_weekly_data, conn, min_ms, music_only, merge_enabled, week_start, week_end
+            _gather_weekly_data,
+            conn,
+            min_ms,
+            music_only,
+            merge_enabled,
+            week_start,
+            week_end,
+            dynamic_threshold=dynamic_threshold,
+            max_merge_gap_minutes=max_merge_gap_minutes,
         )
         return {
             "success": True,
@@ -569,7 +646,16 @@ def generate_weekly_digest(
         return {"success": False, "report": None, "cached": False, "error": "LLM 未配置"}
 
     try:
-        data = _gather_weekly_data(conn, min_ms, music_only, merge_enabled, week_start, week_end)
+        data = _gather_weekly_data(
+            conn,
+            min_ms,
+            music_only,
+            merge_enabled,
+            week_start,
+            week_end,
+            dynamic_threshold=dynamic_threshold,
+            max_merge_gap_minutes=max_merge_gap_minutes,
+        )
     except Exception:
         logger.warning("Failed to gather weekly data", exc_info=True)
         return {"success": False, "report": None, "cached": False, "error": "数据获取失败"}
@@ -612,17 +698,34 @@ def generate_monthly_personality(
     month: str,
     year: int,
     force: bool = False,
+    dynamic_threshold: bool = False,
+    max_merge_gap_minutes: Optional[int] = None,
 ) -> dict:
     """Generate a monthly personality report.
 
     Returns:
         {'success': bool, 'report': str|None, 'error': str|None, 'cached': bool}
     """
-    key = _cache_key("monthly", month, str(year))
+    key = _cache_key(
+        "monthly",
+        month,
+        str(year),
+        _filter_cache_part(
+            min_ms, music_only, merge_enabled, dynamic_threshold, max_merge_gap_minutes
+        ),
+    )
     cached = None if force else _get_cached(conn, key, _CACHE_TTL["monthly"])
     if cached:
         entities = _safe_extract_entities(
-            _gather_monthly_data, conn, min_ms, music_only, merge_enabled, month, year
+            _gather_monthly_data,
+            conn,
+            min_ms,
+            music_only,
+            merge_enabled,
+            month,
+            year,
+            dynamic_threshold=dynamic_threshold,
+            max_merge_gap_minutes=max_merge_gap_minutes,
         )
         return {
             "success": True,
@@ -638,7 +741,16 @@ def generate_monthly_personality(
         return {"success": False, "report": None, "cached": False, "error": "LLM 未配置"}
 
     try:
-        data = _gather_monthly_data(conn, min_ms, music_only, merge_enabled, month, year)
+        data = _gather_monthly_data(
+            conn,
+            min_ms,
+            music_only,
+            merge_enabled,
+            month,
+            year,
+            dynamic_threshold=dynamic_threshold,
+            max_merge_gap_minutes=max_merge_gap_minutes,
+        )
     except Exception:
         logger.warning("Failed to gather monthly data", exc_info=True)
         return {"success": False, "report": None, "cached": False, "error": "数据获取失败"}
@@ -676,17 +788,32 @@ def generate_yearly_story(
     merge_enabled: bool,
     year: int,
     force: bool = False,
+    dynamic_threshold: bool = False,
+    max_merge_gap_minutes: Optional[int] = None,
 ) -> dict:
     """Generate a narrative story from full Wrapped data.
 
     Returns:
         {'success': bool, 'report': str|None, 'error': str|None, 'cached': bool}
     """
-    key = _cache_key("yearly", str(year))
+    key = _cache_key(
+        "yearly",
+        str(year),
+        _filter_cache_part(
+            min_ms, music_only, merge_enabled, dynamic_threshold, max_merge_gap_minutes
+        ),
+    )
     cached = None if force else _get_cached(conn, key, _CACHE_TTL["yearly"])
     if cached:
         entities = _safe_extract_entities(
-            _gather_yearly_data, conn, min_ms, music_only, merge_enabled, year
+            _gather_yearly_data,
+            conn,
+            min_ms,
+            music_only,
+            merge_enabled,
+            year,
+            dynamic_threshold=dynamic_threshold,
+            max_merge_gap_minutes=max_merge_gap_minutes,
         )
         return {
             "success": True,
@@ -702,7 +829,15 @@ def generate_yearly_story(
         return {"success": False, "report": None, "cached": False, "error": "LLM 未配置"}
 
     try:
-        data = _gather_yearly_data(conn, min_ms, music_only, merge_enabled, year)
+        data = _gather_yearly_data(
+            conn,
+            min_ms,
+            music_only,
+            merge_enabled,
+            year,
+            dynamic_threshold=dynamic_threshold,
+            max_merge_gap_minutes=max_merge_gap_minutes,
+        )
     except Exception:
         logger.warning("Failed to gather yearly data", exc_info=True)
         return {"success": False, "report": None, "cached": False, "error": "数据获取失败"}
@@ -805,6 +940,8 @@ def _fetch_data_for_intent(
     music_only: bool,
     merge_enabled: bool,
     intent_result: dict,
+    dynamic_threshold: bool = False,
+    max_merge_gap_minutes: Optional[int] = None,
 ) -> dict:
     """Fetch relevant data based on parsed intent. Returns a dict to feed the LLM."""
     from backend.services.analysis_stats_service import (
@@ -827,6 +964,8 @@ def _fetch_data_for_intent(
         "custom" if period == "custom" else period,
         start_date,
         end_date,
+        dynamic_threshold=dynamic_threshold,
+        max_merge_gap_minutes=max_merge_gap_minutes,
     )
 
     data: dict[str, Any] = {
@@ -878,6 +1017,8 @@ def _fetch_data_for_intent(
             "custom" if cmp_period == "custom" else cmp_period,
             cmp_start,
             cmp_end,
+            dynamic_threshold=dynamic_threshold,
+            max_merge_gap_minutes=max_merge_gap_minutes,
         )
         data["comparison_summary"] = _summary(cmp_df)
         if not df.empty and not cmp_df.empty:
@@ -885,7 +1026,15 @@ def _fetch_data_for_intent(
 
     elif intent == "genre_analysis":
         year = tr.get("year") or date.today().year
-        wrapped = get_wrapped_full(conn, min_ms, music_only, merge_enabled, year)
+        wrapped = get_wrapped_full(
+            conn,
+            min_ms,
+            music_only,
+            merge_enabled,
+            year,
+            dynamic_threshold=dynamic_threshold,
+            max_merge_gap_minutes=max_merge_gap_minutes,
+        )
         gp = (wrapped or {}).get("genre_panorama") or {}
         data["top_genres"] = [
             {"name": g.get("name", ""), "share": g.get("play_share", 0)}
@@ -903,6 +1052,8 @@ def answer_question(
     merge_enabled: bool,
     question: str,
     conversation_history: Optional[list[dict[str, str]]] = None,
+    dynamic_threshold: bool = False,
+    max_merge_gap_minutes: Optional[int] = None,
 ) -> dict:
     """Answer a natural-language question about the user's listening history.
 
@@ -922,7 +1073,15 @@ def answer_question(
 
     # Step 2: Fetch data
     try:
-        data = _fetch_data_for_intent(conn, min_ms, music_only, merge_enabled, intent_result)
+        data = _fetch_data_for_intent(
+            conn,
+            min_ms,
+            music_only,
+            merge_enabled,
+            intent_result,
+            dynamic_threshold=dynamic_threshold,
+            max_merge_gap_minutes=max_merge_gap_minutes,
+        )
     except Exception:
         logger.warning("Failed to fetch data for Q&A", exc_info=True)
         return {"success": False, "answer": "", "error": "数据查询失败"}

@@ -99,6 +99,8 @@ def weekly_digest(
         week_start,
         week_end,
         force=force,
+        dynamic_threshold=filters.dynamic_threshold,
+        max_merge_gap_minutes=filters.max_merge_gap_minutes,
     )
     if not result["success"]:
         _raise_for_error(result)
@@ -122,6 +124,8 @@ def monthly_personality(
         month,
         year,
         force=force,
+        dynamic_threshold=filters.dynamic_threshold,
+        max_merge_gap_minutes=filters.max_merge_gap_minutes,
     )
     if not result["success"]:
         _raise_for_error(result)
@@ -143,6 +147,8 @@ def yearly_story(
         filters.merge_enabled,
         year,
         force=force,
+        dynamic_threshold=filters.dynamic_threshold,
+        max_merge_gap_minutes=filters.max_merge_gap_minutes,
     )
     if not result["success"]:
         _raise_for_error(result)
@@ -170,6 +176,8 @@ def ask(
         filters.merge_enabled,
         body.question,
         history,
+        dynamic_threshold=filters.dynamic_threshold,
+        max_merge_gap_minutes=filters.max_merge_gap_minutes,
     )
     if not result["success"]:
         _raise_for_error(result)
