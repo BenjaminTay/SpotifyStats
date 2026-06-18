@@ -8,8 +8,8 @@
 - 前端测试与构建通过：`130 passed`，`npm run build` 通过
 - Phase 5 最低验证矩阵通过：unit `261 passed`，contract `152 passed`，前端 test/build 通过
 - 本地 CI parity 护栏通过：`scripts/ci_baseline_parity.py` 确认 `.github/workflows/phase5-baseline.yml` 的 unit/contract/ruff/frontend test/build 检查均被 `scripts/phase5_check.sh` 覆盖
-- API 性能 benchmark 通过：`scripts/benchmark_api.py` 覆盖 8 个核心 API 冷/热响应、raw/gzip 体积、JSON 输出与 hot P95 慢端点汇总；本地采样 `slow_count=0`，最大 hot P95 `236.8ms`（阈值 500ms）
-- 全栈非破坏性验收矩阵通过：`scripts/fullstack_verification_check.sh` 在本地 dev server 串起 backend full、pre-commit、Phase 5、API smoke/boundary、benchmark、前端 route/interaction/chart/long-list/cross-browser smoke 并完整 PASS；脚本会在激活 `.venv` 前自动检测可导入 `playwright.sync_api` 的 Python，避免跨浏览器 smoke 误用无 Playwright 的 venv Python
+- API 性能 benchmark 通过：`scripts/benchmark_api.py` 覆盖 8 个核心 API 冷/热响应、raw/gzip 体积、JSON 输出与 hot P95 慢端点汇总；本地增强矩阵复跑 `slow_count=0`，最大 hot P95 约 `260ms`（阈值 500ms）
+- 全栈非破坏性验收矩阵通过：`scripts/fullstack_verification_check.sh` 在本地 dev server 串起 backend full、pre-commit、Phase 5、API smoke/boundary、benchmark、前端 route/interaction/chart/long-list/cross-browser smoke 并完整 PASS；2026-06-19 追加复跑 `--preview-url http://127.0.0.1:4173 --preview-api-url http://127.0.0.1:8000 --web-vitals`，生产 `vite preview` smoke 与 dev/prod Web Vitals 也完整 PASS；脚本会在激活 `.venv` 前自动检测可导入 `playwright.sync_api` 的 Python，避免跨浏览器 smoke 误用无 Playwright 的 venv Python
 - pre-commit 通过：ruff、ruff format、mypy、detect-secrets 全部通过
 - 浏览器路由冒烟通过：`scripts/frontend_route_smoke.mjs` 覆盖 13 个核心路由 × 1280px 桌面/390px 移动端共 26 个组合，console error/warning、page error 与页面级横向滚动均为 0；生产 `vite preview` 产物同样 PASS 26/26，并通过路由业务内容 marker 防止只加载导航壳的误判
 - 浏览器交互冒烟通过：`scripts/frontend_interaction_smoke.mjs` 覆盖分析页 tab、Billboard 子路由/浏览器前进后退、AI Insights 报告/问答 tab（含未配置 LLM 空状态）与主题切换共 4 个非破坏性场景；dev server 与生产 `vite preview` 产物均 PASS 4/4，console error/warning、page error 与页面级横向滚动均为 0
@@ -62,7 +62,7 @@
 | `/account` 前端资源加载 | 桌面 250 requests / 24,632.6KB / TBT 132ms / LCP 2,480ms；移动 250 requests / 25,488.7KB / TBT 132ms / LCP 2,412ms | 桌面 92 requests / 7,565.5KB / TBT 0ms / LCP 2,132ms；移动 91 requests / 7,455.4KB / TBT 0ms / LCP 2,320ms | requests -63%，资源体积 -69%~-71%，TBT -132ms，LCP 小幅改善 |
 | `merge_consecutive_plays()` 大批量片段合并 | 80k 行合成片段 2.58s；`/api/dashboard/full` 冷 profile 8.26s，`merge_consecutive_plays` 7.59s，`load_plays` 2 次 | 80k 行合成片段 0.06s 级；`/api/dashboard/full` 冷 profile 1.02s，`merge_consecutive_plays` 0.19s，`load_plays` 1 次 | 合成护栏约 -97%；真实冷 profile -87.7%，核心合并 -97.5% |
 | Billboard summaries 直接 profile | 2.098s / 7,114,904 calls | 1.555s / 5,764,912 calls | 时间 -25.9%，调用数 -19.0% |
-| 8 核心 API hot P95 慢端点 | benchmark 脚本无阈值/JSON 门禁 | `slow_count=0`，最大 hot P95 `236.8ms`（`/api/billboard/data`，阈值 500ms） | 新增可复跑慢端点门禁与机器可读报告 |
+| 8 核心 API hot P95 慢端点 | benchmark 脚本无阈值/JSON 门禁 | `slow_count=0`，增强矩阵复跑最大 hot P95 约 `260ms`（`/api/billboard/data`，阈值 500ms） | 新增可复跑慢端点门禁与机器可读报告 |
 
 实现：`chart_power_score.py` 将 track/album/artist Power Score 的逐行 `DataFrame.apply(axis=1)` 和 Python lambda 聚合改为列级向量化计算，并新增语义测试保证冠军差距、非冠军中位数、debut bonus、#1 bonus、peak/week 统计不漂移。
 
@@ -87,7 +87,7 @@ Billboard summaries 补充实现：`compute_artist_track_counts()` 与 `compute_
 - dashboard/full HTTP benchmark（当前后台服务热身状态）：`cold=0.20s, hot=0.16s, 4.2KB/1.2KB gzip`。
 - Billboard summaries 直接 profile（清 `compute_summaries_staged` cache，`dynamic_threshold=true&merge_level=2`）：优化前 `2.0980s / 7,114,904 calls`；优化后 `1.5549s / 5,764,912 calls`。
 - Billboard summaries HTTP benchmark（临时 8000 后端，`SPOTIFY_STATS_WARMUP=0`）：`cold=1.19s, hot=0.04s, 1295.7KB/162.4KB gzip`。
-- API benchmark probe：增强 `scripts/benchmark_api.py` 后，在无 reload 后端（`SPOTIFY_STATS_WARMUP=0`）采样 8 个核心端点，全部 200；hot P95 均低于 500ms，最大 `/api/billboard/data` `236.8ms`，`slow_count=0`；完整 fullstack matrix 复跑时最大 hot P95 约 `0.22s`，仍低于 500ms；JSON 输出 `/tmp/spotify_api_benchmark.json` 记录 `result_count=8`、`slow_ms=500.0`。
+- API benchmark probe：增强 `scripts/benchmark_api.py` 后，在无 reload 后端（`SPOTIFY_STATS_WARMUP=0`）采样 8 个核心端点，全部 200；hot P95 均低于 500ms；2026-06-19 增强 fullstack matrix 复跑时最大 `/api/billboard/data` hot P95 `0.26s`，`slow_count=0`；JSON 输出 `/tmp/spotify_api_benchmark.json` 记录 `result_count=8`、`slow_ms=500.0`。
 - API smoke：`scripts/api_smoke_probe.py` 在真实本地库通过 91/91 个本地只读 GET 请求，覆盖 Dashboard、Analysis、Timeline、Leaderboard、Billboard、Release Cycle、Music Entity、Community、Version Merge、Account、AI Insights、Chat、Admin、Job、Spotify status/data，并逐项验证 `X-Request-ID`；OpenAPI GET 核算 `90/104 covered, 14 excluded, 0 unaccounted`，默认列表排除歌词检索、AI 生成、enrichment、OAuth callback/login、live playback 与静态封面等会触发外部网络、浏览器态或非稳定本地 artifact 的路径。
 - API boundary probe：`scripts/api_boundary_probe.py` 在 TestClient 本地应用实例通过 19/19 个非破坏性 GET 边界，覆盖 Analysis/Leaderboard/Community/Music Entity/Billboard/Release Cycle/Lyrics/Chat 的越界查询参数、非法 path/entity 与特殊字符搜索；每个响应均验证预期状态、`X-Request-ID`、无 500，422 响应验证 FastAPI validation detail。
 - Chat mutation probe：contract 临时 DB 覆盖 `/api/chat/sessions` 创建、消息写入、详情读取、标题更新、列表读取、删除后读取，以及非法 role 422 边界。
@@ -102,8 +102,8 @@ Billboard summaries 补充实现：`compute_artist_track_counts()` 与 `compute_
 - 前端图表交互 probe：新增 `scripts/frontend_chart_interaction_smoke.mjs`，通过 headless Chrome CDP 执行 3 个 ECharts 交互场景：`chart-hover-tooltip` 在 `/analysis/stats` 悬停 canvas 并要求 tooltip 可见；`legend-toggle` 在 `/account` 点击图例区并要求 canvas 内容变化；`datazoom-drag` 从 `/api/billboard/all-time` 动态选择真实长榜艺人，进入音乐实体页 Billboard 成绩趋势图并拖拽 dataZoom。脚本支持 `--api-base-url`，用于生产 `vite preview` 页面 + 8000 后端 API 的分离验证；account legend 与 dataZoom 场景带 12s 冷启动等待下限。dev server 与生产 `vite preview` 均 PASS 3/3，console error/warning/page error 全 0，scroll overflow 全 0px；首轮探针暴露音乐详情隐藏 tab 图表 0 尺寸初始化 warning，后续又暴露冷启动等待假阴性，修复后复跑全绿。
 - 跨浏览器 probe：新增 `scripts/frontend_cross_browser_smoke.mjs`，通过 Python Playwright API 覆盖 Chromium、Firefox、WebKit（Safari-family）。每个浏览器引擎执行 6 个核心路由 × 桌面/390px 移动端 marker 检查，以及 `analysis-tabs`、`billboard-routing`、`ai-insights-tabs`、`theme-toggle` 4 个非破坏性交互；dev server 与生产 `vite preview` 产物均 PASS 3/3 浏览器引擎。该探针需要可导入 `playwright.sync_api` 的 Python，可用 `PYTHON_PLAYWRIGHT=/path/to/python` 或 `--python` 指定。
 - 前端长列表 probe：新增 `scripts/frontend_long_list_smoke.mjs`，通过 headless Chrome CDP 覆盖 `records-mini-rank`、`all-time-table`、`community-feed`、`recent-plays`、`saved-tracks`、`personal-rank-table` 6 个场景，并支持 `--api-base-url` 将生产 preview 页面的 `/api` 与 `/covers` 请求重写到 8000 后端。当前 dev server 与生产 `vite preview` 结果均 PASS 6/6：Records `1—10 / 89` → `11—20 / 89`，All-Time `1 / 35` → `2 / 35`，Community Feed `50 posts` → `100 posts`，RecentPlays `第 1/1236 页` → `第 2/1236 页`，SavedTracks `第 1/40 页` → `第 2/40 页`，PersonalRankTable `显示 1-50 / 总数 250 条` → `显示 51-100 / 总数 250 条`；console error/warning/page error 全 0，scroll overflow 全 0px。
-- 全栈聚合 probe：`sh scripts/fullstack_verification_check.sh --backend-url http://127.0.0.1:8000 --frontend-url http://127.0.0.1:5173` 在本地后端 8000 + Vite dev 5173 环境完整通过，覆盖 backend full `613 passed`、pre-commit、Phase 5 unit `261` / contract `152` / frontend `130` / build、API smoke `91/91`、API boundary `19/19`、benchmark `slow_count=0`、route smoke `26/26`、interaction `4/4`、chart `3/3`、long-list `6/6`、cross-browser Chromium/Firefox/WebKit `PASS`。
-- Web Vitals lab probe（Vite dev server + headless Chrome + CDP）：6 路由 × 桌面/390px 移动端；最终采样 CLS 全部 0，合成点击 FID 0.7-3.6ms，TBT 全部 0ms，非账号页 LCP 416-896ms，账号页 LCP 2,132ms（桌面）/ 2,320ms（移动）。生产 `vite preview` 补充采样资源体积更接近交付产物：非账号页 LCP 380-848ms，账号页 LCP 2,080ms（桌面）/ 2,168ms（移动），CLS/TBT 全部 0。
+- 全栈聚合 probe：`sh scripts/fullstack_verification_check.sh --backend-url http://127.0.0.1:8000 --frontend-url http://127.0.0.1:5173 --preview-url http://127.0.0.1:4173 --preview-api-url http://127.0.0.1:8000 --web-vitals` 在本地后端 8000 + Vite dev 5173 + `vite preview` 4173 环境完整通过，覆盖 backend full `613 passed`、pre-commit、Phase 5 unit `261` / contract `152` / frontend `130` / build、API smoke `91/91`、API boundary `19/19`、benchmark `slow_count=0`、dev/prod route smoke `26/26`、interaction `4/4`、chart `3/3`、long-list `6/6`、cross-browser Chromium/Firefox/WebKit `PASS`，以及 dev/prod Web Vitals lab。
+- Web Vitals lab probe（Vite dev server + headless Chrome + CDP）：6 路由 × 桌面/390px 移动端；增强矩阵复跑采样 CLS 全部 0，合成点击 FID 0.8-4.0ms，TBT 全部 0ms，非账号页 LCP 416-868ms，账号页 LCP 2,188ms（桌面）/ 2,264ms（移动）。生产 `vite preview` 补充采样资源体积更接近交付产物：非账号页 LCP 376-864ms，账号页 LCP 2,140ms（桌面）/ 2,168ms（移动），CLS/TBT 全部 0。
 - 本地 CI parity probe：新增 `scripts/ci_baseline_parity.py`，提取 `.github/workflows/phase5-baseline.yml` 的核心检查命令，并与 `scripts/phase5_check.sh` 对比。当前输出确认 workflow checks 与 local checks 均为 `pytest -m unit -q`、`pytest -m contract -q`、`ruff check backend/`、`npm test`、`npm run build`；`phase5_check.sh` 开头已接入该护栏。
 - 文档同步：README、AGENTS、CLAUDE、backend/CLAUDE、frontend/CLAUDE 已更新 2026-06-19 验证报告、API smoke / API boundary / API benchmark / fullstack verification / route smoke / interaction smoke / chart interaction smoke / cross-browser smoke / long-list smoke / CI parity 探针、Power Score 向量化、Behavior API 参数收窄、OAuth PKCE 本地合同验证、移动端横向滚动护栏、pre-commit 范围与最新测试基线。
 
@@ -114,18 +114,18 @@ Billboard summaries 补充实现：`compute_artist_track_counts()` 与 `compute_
 
 | Route | Viewport | LCP | CLS | FID | TBT approx | Resources | Encoded resources | Scroll width |
 | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| `/` | desktop | 896ms | 0 | 1.9ms | 0ms | 77 | 7,185.7KB | 1280 / 1280 |
-| `/` | mobile | 616ms | 0 | 2.3ms | 0ms | 76 | 7,176.4KB | 390 / 390 |
-| `/analysis/stats` | desktop | 416ms | 0 | 0.7ms | 0ms | 106 | 8,265.2KB | 1280 / 1280 |
-| `/analysis/stats` | mobile | 420ms | 0 | 2.6ms | 0ms | 106 | 8,265.2KB | 390 / 390 |
-| `/analysis/charts` | desktop | 416ms | 0 | 1.3ms | 0ms | 99 | 6,960.8KB | 1280 / 1280 |
-| `/analysis/charts` | mobile | 428ms | 0 | 3.5ms | 0ms | 97 | 6,785.9KB | 390 / 390 |
-| `/billboard/number-ones` | desktop | 704ms | 0 | 2.7ms | 0ms | 104 | 9,808.3KB | 1280 / 1280 |
-| `/billboard/number-ones` | mobile | 668ms | 0 | 3.0ms | 0ms | 99 | 9,399.9KB | 390 / 390 |
-| `/account` | desktop | 2,132ms | 0 | 3.6ms | 0ms | 92 | 7,565.5KB | 1280 / 1280 |
-| `/account` | mobile | 2,320ms | 0 | 0.8ms | 0ms | 91 | 7,455.4KB | 390 / 390 |
-| `/settings` | desktop | 484ms | 0 | 2.5ms | 0ms | 85 | 5,159.4KB | 1280 / 1280 |
-| `/settings` | mobile | 480ms | 0 | 2.8ms | 0ms | 85 | 5,159.4KB | 390 / 390 |
+| `/` | desktop | 868ms | 0 | 2.2ms | 0ms | 77 | 7,185.3KB | 1280 / 1280 |
+| `/` | mobile | 616ms | 0 | 2.3ms | 0ms | 76 | 7,176.0KB | 390 / 390 |
+| `/analysis/stats` | desktop | 416ms | 0 | 0.8ms | 0ms | 106 | 8,264.8KB | 1280 / 1280 |
+| `/analysis/stats` | mobile | 424ms | 0 | 2.7ms | 0ms | 106 | 8,264.8KB | 390 / 390 |
+| `/analysis/charts` | desktop | 428ms | 0 | 2.7ms | 0ms | 99 | 6,960.4KB | 1280 / 1280 |
+| `/analysis/charts` | mobile | 428ms | 0 | 3.4ms | 0ms | 97 | 6,785.5KB | 390 / 390 |
+| `/billboard/number-ones` | desktop | 664ms | 0 | 2.5ms | 0ms | 104 | 9,807.7KB | 1280 / 1280 |
+| `/billboard/number-ones` | mobile | 684ms | 0 | 2.9ms | 0ms | 99 | 9,399.3KB | 390 / 390 |
+| `/account` | desktop | 2,188ms | 0 | 3.3ms | 0ms | 92 | 7,564.7KB | 1280 / 1280 |
+| `/account` | mobile | 2,264ms | 0 | 3.4ms | 0ms | 91 | 7,454.7KB | 390 / 390 |
+| `/settings` | desktop | 464ms | 0 | 3.0ms | 0ms | 85 | 5,159.0KB | 1280 / 1280 |
+| `/settings` | mobile | 472ms | 0 | 4.0ms | 0ms | 85 | 5,159.0KB | 390 / 390 |
 
 ### Production Preview Web Vitals Lab 采样
 
@@ -134,18 +134,18 @@ Billboard summaries 补充实现：`compute_artist_track_counts()` 与 `compute_
 
 | Route | Viewport | LCP | CLS | FID | TBT approx | Resources | Encoded resources | Scroll width |
 | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| `/` | desktop | 848ms | 0 | 1.9ms | 0ms | 17 | 1,282.1KB | 1280 / 1280 |
-| `/` | mobile | 556ms | 0 | 0.9ms | 0ms | 16 | 1,280.6KB | 390 / 390 |
-| `/analysis/stats` | desktop | 396ms | 0 | 1.9ms | 0ms | 39 | 1,385.6KB | 1280 / 1280 |
-| `/analysis/stats` | mobile | 384ms | 0 | 2.8ms | 0ms | 39 | 1,385.6KB | 390 / 390 |
-| `/analysis/charts` | desktop | 384ms | 0 | 2.1ms | 0ms | 46 | 2,570.1KB | 1280 / 1280 |
-| `/analysis/charts` | mobile | 380ms | 0 | 3.4ms | 0ms | 44 | 2,395.1KB | 390 / 390 |
-| `/billboard/number-ones` | desktop | 660ms | 0 | 2.5ms | 0ms | 39 | 3,757.3KB | 1280 / 1280 |
-| `/billboard/number-ones` | mobile | 620ms | 0 | 2.5ms | 0ms | 34 | 3,348.9KB | 390 / 390 |
-| `/account` | desktop | 2,080ms | 0 | 3.0ms | 0ms | 20 | 1,462.4KB | 1280 / 1280 |
-| `/account` | mobile | 2,168ms | 0 | 3.4ms | 0ms | 19 | 1,352.4KB | 390 / 390 |
-| `/settings` | desktop | 400ms | 0 | 1.9ms | 0ms | 32 | 1,158.4KB | 1280 / 1280 |
-| `/settings` | mobile | 420ms | 0 | 3.1ms | 0ms | 32 | 1,158.4KB | 390 / 390 |
+| `/` | desktop | 864ms | 0 | 2.2ms | 0ms | 17 | 1,282.1KB | 1280 / 1280 |
+| `/` | mobile | 588ms | 0 | 2.2ms | 0ms | 16 | 1,280.6KB | 390 / 390 |
+| `/analysis/stats` | desktop | 376ms | 0 | 2.4ms | 0ms | 39 | 1,385.5KB | 1280 / 1280 |
+| `/analysis/stats` | mobile | 392ms | 0 | 2.4ms | 0ms | 39 | 1,385.6KB | 390 / 390 |
+| `/analysis/charts` | desktop | 384ms | 0 | 2.5ms | 0ms | 46 | 2,570.0KB | 1280 / 1280 |
+| `/analysis/charts` | mobile | 388ms | 0 | 2.7ms | 0ms | 44 | 2,395.1KB | 390 / 390 |
+| `/billboard/number-ones` | desktop | 612ms | 0 | 2.6ms | 0ms | 39 | 3,757.3KB | 1280 / 1280 |
+| `/billboard/number-ones` | mobile | 624ms | 0 | 2.7ms | 0ms | 34 | 3,348.9KB | 390 / 390 |
+| `/account` | desktop | 2,140ms | 0 | 2.8ms | 0ms | 20 | 1,462.4KB | 1280 / 1280 |
+| `/account` | mobile | 2,168ms | 0 | 3.0ms | 0ms | 19 | 1,352.4KB | 390 / 390 |
+| `/settings` | desktop | 428ms | 0 | 2.6ms | 0ms | 32 | 1,158.3KB | 1280 / 1280 |
+| `/settings` | mobile | 428ms | 0 | 2.8ms | 0ms | 32 | 1,158.3KB | 390 / 390 |
 
 ## 覆盖矩阵
 
@@ -159,7 +159,7 @@ Billboard summaries 补充实现：`compute_artist_track_counts()` 与 `compute_
 | OAuth/加密/缓存/Job Queue/Request ID | AES、cache manager、job queue 单测；API smoke 验证 `X-Request-ID`；Spotify status/data 只读 200；当前播放端点 token refresh 写入边界有 unit test；OAuth PKCE contract 覆盖 login 503、state/verifier、callback token exchange、AES 加密落库和 invalid state | 自动验证基础设施与本地 OAuth 回调语义；真实 OAuth 外部授权未闭环 |
 | 前端路由与响应式 | `scripts/frontend_route_smoke.mjs` 覆盖 13 路由 × 桌面/390px 移动端，无页面错误、无 console error/warning、无横向溢出，并检查业务内容 marker；dev server 与生产 `vite preview` 均 PASS 26/26；`scripts/frontend_cross_browser_smoke.mjs` 额外覆盖 Chromium/Firefox/WebKit 的 6 路由 × 2 视口；图表入口由架构护栏防止回退到完整 ECharts/OpenCC 默认包；Web Vitals lab 覆盖 6 路由 × 2 视口；音乐详情隐藏 tab 图表挂载由架构护栏防回归 | 已自动验证主路径与三浏览器引擎 smoke |
 | 前端交互 / 本地 mutation | `scripts/frontend_interaction_smoke.mjs` 覆盖分析页 tab、Billboard 子路由/前进后退、AI Insights 报告/问答 tab 与主题切换，dev/prod preview 均 PASS 4/4；`scripts/frontend_chart_interaction_smoke.mjs` 覆盖 ECharts hover tooltip、legend toggle、dataZoom drag，dev/prod preview 均 PASS 3/3；`scripts/frontend_cross_browser_smoke.mjs` 在 Chromium/Firefox/WebKit 复跑同类核心交互；`scripts/frontend_long_list_smoke.mjs` 覆盖 Records/AllTime/Community Feed/RecentPlays/SavedTracks/PersonalRankTable 长列表分页或分段渲染，dev/prod preview 均 PASS 6/6；Chat CRUD、Settings 更新、LLM profile CRUD/apply、清翻译缓存、Import job 启动/状态在 contract 临时环境自动验证 | 已自动验证非破坏性主交互、代表性图表交互和 6 个长列表窗口变化；所有按钮/表单/全部图表实例仍未逐项人工穷尽 |
-| 本地 CI / 全栈验收流程 | `scripts/ci_baseline_parity.py` 提取 GitHub Actions baseline 并确认 `scripts/phase5_check.sh` 覆盖 unit、contract、ruff、frontend test、frontend build；`phase5_check.sh` 已内置该 parity 护栏；`scripts/fullstack_verification_check.sh` 已在 dev server 环境完整串起 backend full、pre-commit、Phase 5、API probes、benchmark 与前端 smoke | 已自动验证本地最低矩阵与 CI baseline 不漂移；全栈非破坏性验收入口已实跑通过 |
+| 本地 CI / 全栈验收流程 | `scripts/ci_baseline_parity.py` 提取 GitHub Actions baseline 并确认 `scripts/phase5_check.sh` 覆盖 unit、contract、ruff、frontend test、frontend build；`phase5_check.sh` 已内置该 parity 护栏；`scripts/fullstack_verification_check.sh` 已在 dev server + 生产 `vite preview` + Web Vitals 模式完整串起 backend full、pre-commit、Phase 5、API probes、benchmark 与前端 smoke | 已自动验证本地最低矩阵与 CI baseline 不漂移；全栈非破坏性验收入口已实跑通过 |
 | 性能优化 | records profile、API 冷/热请求、`benchmark_api.py` slow endpoint summary/JSON report、build/import、bundle chunk、dev/prod-preview Web Vitals lab 与账号页资源/TBT 均有前后对比 | 已量化关键瓶颈；仍缺真实 RUM 与生产静态托管 Lighthouse |
 
 ## 验证命令
@@ -175,6 +175,7 @@ cd frontend && npm test
 cd frontend && npm run build
 sh scripts/phase5_check.sh
 sh scripts/fullstack_verification_check.sh --backend-url http://127.0.0.1:8000 --frontend-url http://127.0.0.1:5173
+sh scripts/fullstack_verification_check.sh --backend-url http://127.0.0.1:8000 --frontend-url http://127.0.0.1:5173 --preview-url http://127.0.0.1:4173 --preview-api-url http://127.0.0.1:8000 --web-vitals
 .venv/bin/python scripts/ci_baseline_parity.py
 .venv/bin/pre-commit run --all-files
 ```
