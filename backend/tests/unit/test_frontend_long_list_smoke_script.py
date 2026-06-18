@@ -25,6 +25,7 @@ def test_frontend_long_list_smoke_script_exposes_reusable_cli():
     assert result.returncode == 0, result.stderr
     assert "frontend_long_list_smoke.mjs" in result.stdout
     assert "--base-url" in result.stdout
+    assert "--api-base-url" in result.stdout
     assert "--scenario" in result.stdout
     assert "--output" in result.stdout
 
@@ -41,3 +42,14 @@ def test_frontend_long_list_smoke_script_covers_named_long_lists():
     assert "detectPageText" in source
     assert "assertRowWindowChange" in source
     assert "Runtime.consoleAPICalled" in source
+
+
+def test_frontend_long_list_smoke_script_can_rewrite_preview_api_requests():
+    source = (ROOT / "scripts" / "frontend_long_list_smoke.mjs").read_text(encoding="utf-8")
+
+    assert "apiBaseUrl" in source
+    assert "setupApiRequestRewrite" in source
+    assert "Fetch.requestPaused" in source
+    assert "Fetch.continueRequest" in source
+    assert "'/api'" in source
+    assert "'/covers'" in source
