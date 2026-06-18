@@ -21,6 +21,7 @@ from backend.core.logging_config import setup_logging
 from backend.core.migrations import run_migrations
 from backend.core.request_context import REQUEST_ID_HEADER, reset_request_id, set_request_id
 from backend.core.warmup import start_warmup_thread
+from backend.models.common import HealthResponse
 from backend.providers.base import (
     ProviderAuthError,
     ProviderError,
@@ -245,6 +246,6 @@ async def custom_swagger_ui():
     )
 
 
-@app.get("/api/health")
+@app.get("/api/health", response_model=HealthResponse)
 async def health():
     return {"status": "ok"}

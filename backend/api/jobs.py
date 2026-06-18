@@ -5,11 +5,12 @@ from __future__ import annotations
 from fastapi import APIRouter
 
 from backend.core.db import get_db
+from backend.models.common import JobStatusResponse
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
 
 
-@router.get("/{job_id}/status")
+@router.get("/{job_id}/status", response_model=JobStatusResponse)
 def get_job_status(job_id: str):
     """Return the status of a background job."""
     conn = get_db()

@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends
 from backend.core.auth import require_auth
 from backend.core.import_account_data import import_all
 from backend.core.import_data import import_data
+from backend.models.common import ImportJobCreateResponse, ImportJobStatus
 
 router = APIRouter(prefix="/import", tags=["Import"])
 
@@ -35,7 +36,7 @@ def _progress_cb(job_id):
     return cb
 
 
-@router.post("/streaming")
+@router.post("/streaming", response_model=ImportJobCreateResponse)
 def start_streaming_import(auth: None = Depends(require_auth)):
     """Trigger streaming data import in the background."""
     job_id = _make_job()
@@ -65,7 +66,7 @@ def start_streaming_import(auth: None = Depends(require_auth)):
     return {"job_id": job_id}
 
 
-@router.post("/account")
+@router.post("/account", response_model=ImportJobCreateResponse)
 def start_account_import(auth: None = Depends(require_auth)):
     """Trigger account data import in the background."""
     job_id = _make_job()
@@ -98,7 +99,7 @@ def start_account_import(auth: None = Depends(require_auth)):
     return {"job_id": job_id}
 
 
-@router.get("/status/{job_id}")
+@router.get("/status/{job_id}", response_model=ImportJobStatus)
 def get_import_status(job_id: str):
     """Query the status of an import job."""
     job = _jobs.get(job_id)

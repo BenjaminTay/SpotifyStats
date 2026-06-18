@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from pydantic import BaseModel, Field
 
 
@@ -73,6 +75,38 @@ class ImportJobStatus(BaseModel):
     progress_pct: float
     message: str
     result: dict | None = None
+
+
+class ImportJobCreateResponse(BaseModel):
+    """Response returned when an import job is scheduled."""
+
+    job_id: str
+
+
+class JobStatusResponse(BaseModel):
+    """Background job status persisted by the job queue."""
+
+    found: bool
+    job_id: str | None = None
+    job_type: str | None = None
+    entity_type: str | None = None
+    entity_id: str | None = None
+    status: str | None = None
+    created_at: str | None = None
+    updated_at: str | None = None
+    error: str | None = None
+
+
+class CacheStatsResponse(BaseModel):
+    """Cache manager metrics grouped by namespace."""
+
+    cache_stats: dict[str, dict[str, Any]]
+
+
+class HealthResponse(BaseModel):
+    """Lightweight app health response."""
+
+    status: str
 
 
 # ═══════════════════════════════════════════════════════════════════════════
