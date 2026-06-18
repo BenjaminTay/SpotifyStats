@@ -123,5 +123,8 @@ vitest + React Testing Library (jsdom)，`npm test` 运行。含 `phase5-archite
 Web Vitals lab 采样使用根目录脚本：
 
 ```bash
+node scripts/frontend_route_smoke.mjs --viewport both --max-scroll-overflow 0
 node scripts/frontend_web_vitals_probe.mjs --routes /,/analysis/stats,/analysis/charts,/billboard/number-ones,/account,/settings --viewport both --wait-ms 5000
 ```
+
+`frontend_route_smoke.mjs` 默认等待 5 秒，并对 13 个核心路由检查业务内容 marker；自定义临时路由可用 `--disable-route-markers` 关闭 marker 检查。

@@ -8,7 +8,7 @@ import { join } from 'node:path'
 import net from 'node:net'
 
 const DEFAULT_BASE_URL = 'http://127.0.0.1:5173'
-const DEFAULT_WAIT_MS = 2500
+const DEFAULT_WAIT_MS = 5000
 const DEFAULT_MAX_SCROLL_OVERFLOW = 0
 const DEFAULT_ROUTES = [
   '/',
@@ -25,6 +25,22 @@ const DEFAULT_ROUTES = [
   '/account',
   '/settings',
 ]
+
+const ROUTE_READY_MARKERS = {
+  '/': ['DASHBOARD /', '总播放次数'],
+  '/analysis/stats': ['PLAYBACK / ANALYSIS', '总体播放统计'],
+  '/analysis/charts': ['PERSONAL CHARTS', '个人排行榜'],
+  '/yearly-review': ['YEARLY / REVIEW', '听歌人格'],
+  '/billboard': ['CHART / WEEKLY', 'Billboard 周榜'],
+  '/billboard/number-ones': ['CHART / NUMBER ONES', '每周冠军歌曲'],
+  '/billboard/all-time': ['CHART / ALL-TIME', 'Billboard 总榜'],
+  '/billboard/records': ['CHART / HALL OF FAME', '冠军圣殿'],
+  '/billboard/versus': ['CHART / VERSUS', '请搜索并添加歌曲开始对决'],
+  '/community': ['COMMUNITY / FEED', '榜单社区'],
+  '/ai-insights': ['AI / INSIGHTS', 'AI 洞察'],
+  '/account': ['ACCOUNT / CENTER', '你的收藏'],
+  '/settings': ['SETTINGS / CONFIGURATION', '00 · SPOTIFY 连接'],
+}
 
 const VIEWPORTS = {
   desktop: {
@@ -60,6 +76,7 @@ const PAGE_STATE_EXPRESSION = `
   return {
     title: document.title,
     readyState: document.readyState,
+    bodyText,
     bodyTextSample: bodyText.slice(0, 800),
     rootTextLength: rootText.trim().length,
     bodyScrollWidth,
@@ -81,6 +98,7 @@ function parseArgs(argv) {
     chrome: null,
     maxScrollOverflow: DEFAULT_MAX_SCROLL_OVERFLOW,
     failOnConsoleWarning: false,
+    enforceRouteMarkers: true,
   }
 
   for (let i = 0; i < argv.length; i += 1) {
@@ -95,6 +113,7 @@ function parseArgs(argv) {
     else if (arg === '--chrome') args.chrome = argv[++i]
     else if (arg === '--max-scroll-overflow') args.maxScrollOverflow = Number(argv[++i])
     else if (arg === '--fail-on-console-warning') args.failOnConsoleWarning = true
+    else if (arg === '--disable-route-markers') args.enforceRouteMarkers = false
     else if (arg === '--help' || arg === '-h') {
       printHelp()
       process.exit(0)
@@ -126,6 +145,7 @@ Options:
   --wait-ms <ms>                Wait after load before reading page state, default ${DEFAULT_WAIT_MS}
   --max-scroll-overflow <px>    Allowed horizontal overflow over viewport width, default ${DEFAULT_MAX_SCROLL_OVERFLOW}
   --fail-on-console-warning     Treat console warnings as failures
+  --disable-route-markers       Do not require built-in route content markers for default routes
   --output <path>               Write JSON results to a file
   --chrome <path>               Chrome/Chromium executable path
 `)
@@ -185,6 +205,16 @@ async function createTarget(port) {
   const list = await waitForJson(`${base}/json/list`)
   if (list[0]) return list[0]
   throw new Error('Could not create or find a Chrome target')
+}
+
+function normalizeRoute(route) {
+  const parsed = new URL(route, 'http://127.0.0.1')
+  const path = parsed.pathname || '/'
+  return path !== '/' && path.endsWith('/') ? path.slice(0, -1) : path
+}
+
+function getRouteReadyMarkers(route) {
+  return ROUTE_READY_MARKERS[normalizeRoute(route)] || []
 }
 
 class CdpClient {
@@ -260,7 +290,16 @@ class CdpClient {
   }
 }
 
-async function smokeRoute({ port, baseUrl, route, viewportName, waitMs, maxScrollOverflow, failOnConsoleWarning }) {
+async function smokeRoute({
+  port,
+  baseUrl,
+  route,
+  viewportName,
+  waitMs,
+  maxScrollOverflow,
+  failOnConsoleWarning,
+  enforceRouteMarkers,
+}) {
   const viewport = VIEWPORTS[viewportName]
   const target = await createTarget(port)
   const client = await new CdpClient(target.webSocketDebuggerUrl).connect()
@@ -314,6 +353,8 @@ async function smokeRoute({ port, baseUrl, route, viewportName, waitMs, maxScrol
     const scrollOverflow = Math.max(0, scrollWidth - (state.viewportWidth || viewport.width))
     const consoleErrors = consoleEntries.filter((entry) => ['error', 'assert'].includes(entry.level))
     const consoleWarnings = consoleEntries.filter((entry) => ['warning', 'warn'].includes(entry.level))
+    const routeMarkers = enforceRouteMarkers ? getRouteReadyMarkers(route) : []
+    const missingRouteMarkers = routeMarkers.filter((marker) => !state.bodyText.includes(marker))
 
     const failures = []
     if (pageErrors.length > 0) failures.push(`${pageErrors.length} runtime exception(s)`)
@@ -322,6 +363,9 @@ async function smokeRoute({ port, baseUrl, route, viewportName, waitMs, maxScrol
     if (state.hasDevOverlay) failures.push('dev error overlay detected')
     if (state.hasFatalText) failures.push('fatal error text detected')
     if (state.rootTextLength < 20) failures.push(`root text too short (${state.rootTextLength})`)
+    if (missingRouteMarkers.length > 0) {
+      failures.push(`missing route content marker(s): ${missingRouteMarkers.join(', ')}`)
+    }
     if (scrollOverflow > maxScrollOverflow) {
       failures.push(`horizontal overflow ${scrollOverflow}px > ${maxScrollOverflow}px`)
     }
@@ -345,6 +389,7 @@ async function smokeRoute({ port, baseUrl, route, viewportName, waitMs, maxScrol
       consoleErrors: consoleErrors.slice(0, 5),
       consoleWarnings: consoleWarnings.slice(0, 5),
       pageErrors: pageErrors.slice(0, 5),
+      missingRouteMarkers,
       bodyTextSample: state.bodyTextSample,
     }
   } finally {
@@ -440,6 +485,7 @@ async function main() {
           waitMs: args.waitMs,
           maxScrollOverflow: args.maxScrollOverflow,
           failOnConsoleWarning: args.failOnConsoleWarning,
+          enforceRouteMarkers: args.enforceRouteMarkers,
         })
         results.push(result)
         process.stderr.write(`${result.ok ? 'PASS' : 'FAIL'}\n`)
