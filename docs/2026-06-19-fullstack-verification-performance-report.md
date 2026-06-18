@@ -4,11 +4,12 @@
 
 ## 结论
 
-- 后端全量测试通过：`610 passed, 2 warnings`
+- 后端全量测试通过：`612 passed, 2 warnings`
 - 前端测试与构建通过：`130 passed`，`npm run build` 通过
-- Phase 5 最低验证矩阵通过：unit `258 passed`，contract `152 passed`，前端 test/build 通过
+- Phase 5 最低验证矩阵通过：unit `260 passed`，contract `152 passed`，前端 test/build 通过
 - 本地 CI parity 护栏通过：`scripts/ci_baseline_parity.py` 确认 `.github/workflows/phase5-baseline.yml` 的 unit/contract/ruff/frontend test/build 检查均被 `scripts/phase5_check.sh` 覆盖
 - API 性能 benchmark 通过：`scripts/benchmark_api.py` 覆盖 8 个核心 API 冷/热响应、raw/gzip 体积、JSON 输出与 hot P95 慢端点汇总；本地采样 `slow_count=0`，最大 hot P95 `236.8ms`（阈值 500ms）
+- 全栈非破坏性验收矩阵入口已补齐：`scripts/fullstack_verification_check.sh` 串起 backend full、pre-commit、Phase 5、API smoke/boundary、benchmark、前端 route/interaction/chart/long-list/cross-browser smoke，并提供 preview 与 Web Vitals 可选开关；本轮用脚本单测与 shell 语法检查锁定命令矩阵
 - pre-commit 通过：ruff、ruff format、mypy、detect-secrets 全部通过
 - 浏览器路由冒烟通过：`scripts/frontend_route_smoke.mjs` 覆盖 13 个核心路由 × 1280px 桌面/390px 移动端共 26 个组合，console error/warning、page error 与页面级横向滚动均为 0；生产 `vite preview` 产物同样 PASS 26/26，并通过路由业务内容 marker 防止只加载导航壳的误判
 - 浏览器交互冒烟通过：`scripts/frontend_interaction_smoke.mjs` 覆盖分析页 tab、Billboard 子路由/浏览器前进后退、AI Insights 报告/问答 tab（含未配置 LLM 空状态）与主题切换共 4 个非破坏性场景；dev server 与生产 `vite preview` 产物均 PASS 4/4，console error/warning、page error 与页面级横向滚动均为 0
@@ -44,6 +45,7 @@
 | P3 | 长列表分页/分段渲染缺少端到端可复跑证据 | 组件单测能证明分页组件局部渲染，route/interaction smoke 只能覆盖页面加载和代表性交互，无法直接证明 Records、AllTime、Community Feed、RecentPlays、SavedTracks、PersonalRankTable 这些长列表的下一页/无限加载在真实页面中都能改变可见窗口；生产 preview 还需要静态页面到后端 API 的显式分流 | 新增 `scripts/frontend_long_list_smoke.mjs`，通过 headless Chrome CDP 点击分页或滚动 sentinel，验证可见行窗口变化、Community feed append、0 console error/warning、0 page error、0 横向溢出；新增 `--api-base-url` 用 CDP Fetch 将 preview 页面的 `/api` 和 `/covers` 请求重写到 8000 后端；新增 unit 护栏锁定 CLI、请求重写和 6 个命名场景 |
 | P3 | API 参数边界覆盖仍分散在少量 contract 测试中 | “空值、超长值、非法值、特殊字符”边界要求缺少一条可独立复跑的只读探针；happy-path API smoke 无法证明代表性 422 响应都带 request id 与 validation detail | 新增 `scripts/api_boundary_probe.py`，覆盖 19 个非破坏性 GET 边界：limit/offset/top_n/weeks_before/weeks_after/significance_min 越界、invalid/empty entity、非 int path、特殊字符搜索；新增 unit/contract 护栏，锁定预期 422/200、`X-Request-ID`、无 500 和 FastAPI validation detail |
 | P3 | API benchmark 只能人工读 Markdown，缺少慢端点阈值和机器可读报告 | “响应时间分布、慢 API >500ms”要求缺少可门禁的输出；旧脚本也会在极小响应上显示负 gzip ratio，影响报告可读性 | `scripts/benchmark_api.py` 新增 `--base-url`、`--slow-ms`、`--fail-on-slow`、`--json-output`，生成 slow endpoint summary 与 JSON 报告；压缩率下限钳为 0%；新增 unit 护栏锁定 CLI、慢端点筛选、JSON 输出和 tiny payload ratio |
+| P3 | 全栈验证命令分散，容易漏跑 API、browser、benchmark 或 pre-commit 中的一类 | 交付要求需要后端、API、前端、浏览器、性能和质量检查都有明确入口；旧状态只能依赖报告中的长命令清单，复跑成本高 | 新增 `scripts/fullstack_verification_check.sh` 聚合非破坏性验收矩阵：backend full、pre-commit、Phase 5、API smoke/boundary、benchmark fail-on-slow、前端 route/interaction/chart/long-list/cross-browser smoke；preview 和 Web Vitals 通过 `--preview-url` / `--web-vitals` 显式启用；新增 unit 护栏和 `sh -n` 语法验证 |
 | P2 | 390px 移动端页面可横向滚动 47.5px | `/analysis/stats`、`/analysis/charts` 等页面移动端体验不稳 | `AppLayout` 增加页面级 `overflow-x-clip`，Masthead nav 增加 `basis-full/max-w-full`，Dashboard skeleton 改为 `w-full max-w-*` |
 | P2 | pre-commit ruff hook 扫描冻结 Streamlit `app/` 与旧脚本 | `pre-commit run --all-files` 因历史页名/未用变量失败 | `.pre-commit-config.yaml` 将 ruff 与 ruff-format 限定到 `backend/`，与项目日常质量命令一致 |
 
@@ -101,7 +103,7 @@ Billboard summaries 补充实现：`compute_artist_track_counts()` 与 `compute_
 - 前端长列表 probe：新增 `scripts/frontend_long_list_smoke.mjs`，通过 headless Chrome CDP 覆盖 `records-mini-rank`、`all-time-table`、`community-feed`、`recent-plays`、`saved-tracks`、`personal-rank-table` 6 个场景，并支持 `--api-base-url` 将生产 preview 页面的 `/api` 与 `/covers` 请求重写到 8000 后端。当前 dev server 与生产 `vite preview` 结果均 PASS 6/6：Records `1—10 / 89` → `11—20 / 89`，All-Time `1 / 35` → `2 / 35`，Community Feed `50 posts` → `100 posts`，RecentPlays `第 1/1236 页` → `第 2/1236 页`，SavedTracks `第 1/40 页` → `第 2/40 页`，PersonalRankTable `显示 1-50 / 总数 250 条` → `显示 51-100 / 总数 250 条`；console error/warning/page error 全 0，scroll overflow 全 0px。
 - Web Vitals lab probe（Vite dev server + headless Chrome + CDP）：6 路由 × 桌面/390px 移动端；最终采样 CLS 全部 0，合成点击 FID 0.7-3.6ms，TBT 全部 0ms，非账号页 LCP 416-896ms，账号页 LCP 2,132ms（桌面）/ 2,320ms（移动）。生产 `vite preview` 补充采样资源体积更接近交付产物：非账号页 LCP 380-848ms，账号页 LCP 2,080ms（桌面）/ 2,168ms（移动），CLS/TBT 全部 0。
 - 本地 CI parity probe：新增 `scripts/ci_baseline_parity.py`，提取 `.github/workflows/phase5-baseline.yml` 的核心检查命令，并与 `scripts/phase5_check.sh` 对比。当前输出确认 workflow checks 与 local checks 均为 `pytest -m unit -q`、`pytest -m contract -q`、`ruff check backend/`、`npm test`、`npm run build`；`phase5_check.sh` 开头已接入该护栏。
-- 文档同步：README、AGENTS、CLAUDE、backend/CLAUDE、frontend/CLAUDE 已更新 2026-06-19 验证报告、API smoke / API boundary / API benchmark / route smoke / interaction smoke / chart interaction smoke / cross-browser smoke / long-list smoke / CI parity 探针、Power Score 向量化、Behavior API 参数收窄、OAuth PKCE 本地合同验证、移动端横向滚动护栏、pre-commit 范围与最新测试基线。
+- 文档同步：README、AGENTS、CLAUDE、backend/CLAUDE、frontend/CLAUDE 已更新 2026-06-19 验证报告、API smoke / API boundary / API benchmark / fullstack verification / route smoke / interaction smoke / chart interaction smoke / cross-browser smoke / long-list smoke / CI parity 探针、Power Score 向量化、Behavior API 参数收窄、OAuth PKCE 本地合同验证、移动端横向滚动护栏、pre-commit 范围与最新测试基线。
 
 ### Web Vitals Lab 采样
 
@@ -147,7 +149,7 @@ Billboard summaries 补充实现：`compute_artist_track_counts()` 与 `compute_
 
 | 目标项 | 当前证据 | 状态 |
 | --- | --- | --- |
-| 后端现有测试全量通过 | `pytest backend/tests/ -q`：`610 passed, 2 warnings` | 已自动验证 |
+| 后端现有测试全量通过 | `pytest backend/tests/ -q`：`612 passed, 2 warnings` | 已自动验证 |
 | OpenAPI/核心 API 只读覆盖 | 122 paths / 134 operations schema 存在；91 个可复跑只读请求覆盖 Dashboard、Billboard、Analysis、Community、AI Insights、Account、Settings、Spotify status/data；OpenAPI GET 核算 0 unaccounted；19 个 API boundary GET 覆盖代表性越界参数、非法 path/entity 与特殊字符查询 | 已覆盖只读核心路径与代表性参数边界；mutation/破坏性端点未逐一实打 |
 | Extended Streaming History 完整导入 | 新增临时 JSON 导入测试覆盖音频、视频、缺元数据、featured artist、预聚合 | 已自动验证最小完整流程 |
 | 多版本与统计过滤语义 | contract/full tests 覆盖 Version Merge、Album Project、Power Score、AI Insights 播放过滤传播、Behavior 全量事件例外参数收窄、播放过滤参数传播与 Billboard invariants | 已自动验证 |
@@ -170,6 +172,7 @@ Billboard summaries 补充实现：`compute_artist_track_counts()` 与 `compute_
 cd frontend && npm test
 cd frontend && npm run build
 sh scripts/phase5_check.sh
+sh scripts/fullstack_verification_check.sh --backend-url http://127.0.0.1:8000 --frontend-url http://127.0.0.1:5173
 .venv/bin/python scripts/ci_baseline_parity.py
 .venv/bin/pre-commit run --all-files
 ```
@@ -197,6 +200,7 @@ sh scripts/phase5_check.sh
 .venv/bin/pytest backend/tests/unit/test_frontend_cross_browser_smoke_script.py -q
 .venv/bin/pytest backend/tests/unit/test_frontend_long_list_smoke_script.py -q
 .venv/bin/pytest backend/tests/unit/test_benchmark_api_script.py -q
+.venv/bin/pytest backend/tests/unit/test_fullstack_verification_check_script.py -q
 cd frontend && npm test -- src/tests/query-hooks.test.tsx -t "requests behavior data"
 cd frontend && npm test -- src/tests/ai-insights-components.test.tsx
 cd frontend && npm test -- src/tests/phase5-architecture.test.ts -t "Chinese conversion"
@@ -216,6 +220,7 @@ node scripts/frontend_long_list_smoke.mjs --base-url http://127.0.0.1:5173
 node scripts/frontend_long_list_smoke.mjs --base-url http://127.0.0.1:4173 --api-base-url http://127.0.0.1:8000
 node scripts/frontend_web_vitals_probe.mjs --routes /,/analysis/stats,/analysis/charts,/billboard/number-ones,/account,/settings --viewport both --wait-ms 5000
 node scripts/frontend_web_vitals_probe.mjs --base-url http://127.0.0.1:4173 --routes /,/analysis/stats,/analysis/charts,/billboard/number-ones,/account,/settings --viewport both --wait-ms 5000
+sh -n scripts/fullstack_verification_check.sh
 git diff --check
 ```
 
@@ -238,4 +243,4 @@ git diff --check
 7. 打开 `http://127.0.0.1:8000/docs`，快速试 `/api/health`、`/api/billboard/records`、`/api/spotify/auth/status` 和 `/api/spotify/auth/login`（按本机配置返回 `auth_url` 或受控 503）。
 8. 运行 `.venv/bin/python scripts/api_smoke_probe.py` 和 `.venv/bin/python scripts/api_boundary_probe.py`，确认 91 个只读 GET 与 19 个边界 GET 全绿。
 9. 运行 `node scripts/frontend_route_smoke.mjs --viewport both --max-scroll-overflow 0`、`node scripts/frontend_interaction_smoke.mjs --base-url http://127.0.0.1:5173`、`node scripts/frontend_chart_interaction_smoke.mjs --base-url http://127.0.0.1:5173`、`node scripts/frontend_long_list_smoke.mjs --base-url http://127.0.0.1:5173`、`node scripts/frontend_long_list_smoke.mjs --base-url http://127.0.0.1:4173 --api-base-url http://127.0.0.1:8000` 和 `node scripts/frontend_cross_browser_smoke.mjs --base-url http://127.0.0.1:5173`，确认路由、交互、图表交互、长列表分页/分段加载与三浏览器引擎 smoke 全绿。
-10. 运行 `sh scripts/phase5_check.sh`，确认最低矩阵仍全绿。
+10. 运行 `sh scripts/phase5_check.sh`，确认最低矩阵仍全绿；需要完整非破坏性矩阵时，运行 `sh scripts/fullstack_verification_check.sh --backend-url http://127.0.0.1:8000 --frontend-url http://127.0.0.1:5173`。
