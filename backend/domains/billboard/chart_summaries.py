@@ -133,12 +133,15 @@ def compute_artist_track_counts(
         .reset_index()
         .sort_values("total_tracks", ascending=False)
     )
-    artist_track_counts["best_peak_track"] = artist_track_counts["artist_name"].apply(
-        lambda a: (
-            artist_summary[artist_summary["artist_name"] == a]
-            .sort_values("peak_position")
-            .iloc[0]["track_name"]
-        )
+    best_peak_tracks = (
+        artist_summary.sort_values(["artist_name", "peak_position"], kind="stable")
+        .drop_duplicates("artist_name")[["artist_name", "track_name"]]
+        .rename(columns={"track_name": "best_peak_track"})
+    )
+    artist_track_counts = artist_track_counts.merge(
+        best_peak_tracks,
+        on="artist_name",
+        how="left",
     )
 
     artist_weeks_no1 = track_summary.groupby("artist_name")["weeks_at_no1"].sum().reset_index()
@@ -189,9 +192,9 @@ def compute_album_track_counts(
     """
     ts_for_album = track_summary.drop(columns=["album_name"])
     track_albums_expanded = ts_for_album.merge(album_map, on="track_id", how="left")
-    track_albums_expanded["album_list"] = track_albums_expanded["album_list"].apply(
-        lambda x: x if isinstance(x, list) else []
-    )
+    track_albums_expanded["album_list"] = [
+        value if isinstance(value, list) else [] for value in track_albums_expanded["album_list"]
+    ]
     track_per_album = track_albums_expanded.explode("album_list")
     track_per_album = track_per_album.dropna(subset=["album_list"])
     track_per_album = track_per_album.rename(columns={"album_list": "album_name"})
@@ -213,16 +216,18 @@ def compute_album_track_counts(
         .reset_index()
         .sort_values("total_tracks", ascending=False)
     )
-    album_track_counts["best_peak_track"] = album_track_counts.apply(
-        lambda r: (
-            track_per_album[
-                (track_per_album["album_name"] == r["album_name"])
-                & (track_per_album["artist_name"] == r["artist_name"])
-            ]
-            .sort_values("peak_position")
-            .iloc[0]["track_name"]
-        ),
-        axis=1,
+    best_album_tracks = (
+        track_per_album.sort_values(
+            ["album_name", "artist_name", "peak_position"],
+            kind="stable",
+        )
+        .drop_duplicates(["album_name", "artist_name"])[["album_name", "artist_name", "track_name"]]
+        .rename(columns={"track_name": "best_peak_track"})
+    )
+    album_track_counts = album_track_counts.merge(
+        best_album_tracks,
+        on=["album_name", "artist_name"],
+        how="left",
     )
 
     album_weeks_no1 = (

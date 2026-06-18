@@ -4,9 +4,9 @@
 
 ## 结论
 
-- 后端全量测试通过：`554 passed, 2 warnings in 55.76s`
+- 后端全量测试通过：`557 passed, 2 warnings in 55.61s`
 - 前端测试与构建通过：`125 passed`，`npm run build` 通过
-- Phase 5 最低验证矩阵通过：unit `228 passed`，contract `126 passed`，前端 test/build 通过
+- Phase 5 最低验证矩阵通过：unit `231 passed`，contract `126 passed`，前端 test/build 通过
 - pre-commit 通过：ruff、ruff format、mypy、detect-secrets 全部通过
 - 浏览器路由冒烟通过：12 个核心路由在 1280px 桌面与 390px 移动端均无错误 overlay、无页面级横向滚动；补充 Playwright CLI 采样 24 个路由/视口组合，控制台 error 为 0
 - 只读 API 探针通过：66 个高风险只读请求覆盖核心域，修正必填参数后全部返回预期状态并带 `X-Request-ID`
@@ -34,10 +34,13 @@
 | ECharts 图表懒加载包 | `esm-CBcusPEn.js` 1,134.42KB / gzip 376.65KB | `EChartsTheme-*.js` 673.19KB / gzip 225.67KB | 原始体积 -461.23KB，gzip -150.98KB |
 | `/account` 前端资源加载 | 桌面 250 requests / 24,632.6KB / TBT 132ms / LCP 2,480ms；移动 250 requests / 25,488.7KB / TBT 132ms / LCP 2,412ms | 桌面 92 requests / 7,565.5KB / TBT 0ms / LCP 2,132ms；移动 91 requests / 7,455.4KB / TBT 0ms / LCP 2,320ms | requests -63%，资源体积 -69%~-71%，TBT -132ms，LCP 小幅改善 |
 | `merge_consecutive_plays()` 大批量片段合并 | 80k 行合成片段 2.58s；`/api/dashboard/full` 冷 profile 8.26s，`merge_consecutive_plays` 7.59s，`load_plays` 2 次 | 80k 行合成片段 0.06s 级；`/api/dashboard/full` 冷 profile 1.02s，`merge_consecutive_plays` 0.19s，`load_plays` 1 次 | 合成护栏约 -97%；真实冷 profile -87.7%，核心合并 -97.5% |
+| Billboard summaries 直接 profile | 2.098s / 7,114,904 calls | 1.555s / 5,764,912 calls | 时间 -25.9%，调用数 -19.0% |
 
 实现：`chart_power_score.py` 将 track/album/artist Power Score 的逐行 `DataFrame.apply(axis=1)` 和 Python lambda 聚合改为列级向量化计算，并新增语义测试保证冠军差距、非冠军中位数、debut bonus、#1 bonus、peak/week 统计不漂移。
 
 播放合并补充实现：`merge_consecutive_plays()` 从逐 `_merge_group` 的 `iterrows()/to_dict()` 构造改为组级聚合、首行批量重复与 NumPy 向量化 `ms_played` 回填；保留 `max_gap_minutes`、`boundary_column`、无 duration 行透传、完整播放 + 余数播放展开语义。`/api/dashboard/full` 同步将已加载 DataFrame 传给 `get_random_track()`，避免同一请求内再次进入播放加载路径。
+
+Billboard summaries 补充实现：`compute_artist_track_counts()` 与 `compute_album_track_counts()` 去掉逐行 `DataFrame.apply()` 回查 best peak track，改为一次排序、`drop_duplicates()` 与 merge 回填；新增 summaries 语义测试和架构护栏防止回退到 row-wise apply。
 
 前端补充实现：`displayName()` 将 OpenCC 默认 `full` 包拆为 `opencc-js/t2cn` 与 `opencc-js/cn2t` 两条按需路径；ECharts 统一通过 `LazyEChart` 动态加载 `echarts-for-react/esm/core` 并只注册当前用到的 bar/line/pie/heatmap、tooltip、legend、dataZoom、visualMap 与 mark 组件，避免 `echarts-for-react` 默认入口静态拉入完整 ECharts runtime。
 
@@ -54,6 +57,8 @@
   - `/api/dashboard/full?dynamic_threshold=true`：`5.393, 0.177, 0.167s`
 - dashboard/full 直接 profile（清 `load_plays` cache 后调用路由函数，`dynamic_threshold=true`）：优化前 `8.2606s / 32,861,799 calls`，`merge_consecutive_plays` `7.589s`，`load_plays` 2 次；优化后 `1.0155s / 915,814 calls`，`merge_consecutive_plays` `0.190s`，`load_plays` 1 次。
 - dashboard/full HTTP benchmark（当前后台服务热身状态）：`cold=0.20s, hot=0.16s, 4.2KB/1.2KB gzip`。
+- Billboard summaries 直接 profile（清 `compute_summaries_staged` cache，`dynamic_threshold=true&merge_level=2`）：优化前 `2.0980s / 7,114,904 calls`；优化后 `1.5549s / 5,764,912 calls`。
+- Billboard summaries HTTP benchmark（临时 8000 后端，`SPOTIFY_STATS_WARMUP=0`）：`cold=1.19s, hot=0.04s, 1295.7KB/162.4KB gzip`。
 - API smoke：66 个只读请求；`/api/version-merge/album-types` 空请求返回 422 为正确边界，带 `album_ids=1,2,3` 后 200。
 - 导入/WAL probe：临时 JSON + 临时 SQLite 验证音频/视频缺元数据记录不会中断导入，featured artist 写入 `track_artists`，空来源写入 `source_album_id IS NULL`；临时 DB 验证 WAL 下读事务快照不阻塞独立写提交，新读连接可见提交后数据。
 - 前端交互 probe：Playwright CLI 覆盖 12 路由 × 2 视口；`/analysis/stats` 与 `/analysis/charts` 的 `role=tab` 切换后无错误；Billboard 路由执行 `/billboard` → `/number-ones` → `/all-time` → `/records` 并通过浏览器后退/前进验证路由状态，控制台 error 为 0。
@@ -84,7 +89,7 @@
 
 | 目标项 | 当前证据 | 状态 |
 | --- | --- | --- |
-| 后端现有测试全量通过 | `pytest backend/tests/ -q`：`554 passed, 2 warnings in 55.76s` | 已自动验证 |
+| 后端现有测试全量通过 | `pytest backend/tests/ -q`：`557 passed, 2 warnings in 55.61s` | 已自动验证 |
 | OpenAPI/核心 API 只读覆盖 | 122 paths / 134 operations schema 存在；66 个高风险只读请求覆盖 Dashboard、Billboard、Analysis、Community、AI Insights、Account、Settings、Spotify status | 已覆盖只读核心路径；mutation/破坏性端点未逐一实打 |
 | Extended Streaming History 完整导入 | 新增临时 JSON 导入测试覆盖音频、视频、缺元数据、featured artist、预聚合 | 已自动验证最小完整流程 |
 | 多版本与 Billboard 语义 | contract/full tests 覆盖 Version Merge、Album Project、Power Score、播放过滤参数传播与 Billboard invariants | 已自动验证 |
@@ -113,6 +118,7 @@ sh scripts/phase5_check.sh
 .venv/bin/pytest backend/tests/unit/test_import_data_flow.py -q
 .venv/bin/pytest backend/tests/unit/test_phase5_architecture.py::test_chart_power_score_avoids_row_wise_dataframe_apply -q
 .venv/bin/pytest backend/tests/unit/test_playback_counting.py backend/tests/unit/test_play_service_dashboard.py -q
+.venv/bin/pytest backend/tests/unit/test_billboard_chart_summaries.py backend/tests/unit/test_phase5_architecture.py::test_chart_summaries_avoid_row_wise_dataframe_apply -q
 cd frontend && npm test -- src/tests/phase5-architecture.test.ts -t "Chinese conversion"
 cd frontend && npm test -- src/tests/phase5-architecture.test.ts -t "lightweight ECharts"
 cd frontend && npm test -- src/tests/phase5-architecture.test.ts -t "account chemistry"

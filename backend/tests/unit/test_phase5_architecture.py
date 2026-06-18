@@ -202,6 +202,13 @@ def test_chart_power_score_avoids_row_wise_dataframe_apply():
     assert "axis=1" not in power_score_source
 
 
+def test_chart_summaries_avoid_row_wise_dataframe_apply():
+    summaries_source = _read("backend/domains/billboard/chart_summaries.py")
+
+    assert ".apply(" not in summaries_source
+    assert "axis=1" not in summaries_source
+
+
 def test_chart_staged_cache_is_split_from_chart_compute_facade():
     compute_source = _read("backend/domains/billboard/chart_compute.py")
     staged_cache_source = _read("backend/domains/billboard/chart_staged_cache.py")
