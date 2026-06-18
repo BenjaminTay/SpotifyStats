@@ -4,7 +4,7 @@
 
 **架构**：FastAPI 后端 + React 前端。Streamlit 原有应用已冻结维护。
 
-**Phase 5 产品化收口**：前端 GET 统一 TanStack Query（11 命名空间 queryKeys）、Provider 错误分层、业务 service urllib 清零、模块级 API Map 缓存清除；Billboard records 88 行 facade + chart_compute 211 行 facade；Records/AllTime/Community Feed/RecentPlays/SavedTracks/PersonalRankTable 长列表分页基线。Phase 5.4 八阶段（A-H）全系列完成（2026-06-12）：架构护栏 105+ 测试、TrackDetail 574→5 行、HabitsTab 933 行→9 文件 feature、AI Insights 拆分、24 端点 response_model 硬化、Bundle 懒加载治理（Settings -88%/Records -69%/Account -34%）、TrackDetail 歌词 Query 漏网修复。播放统计规则引擎（Phase C+D，2026-06-18 贯穿修复）：动态阈值、Session 边界检测（`max_gap_minutes` + `boundary_column`）、Track Groups 三级合并（L1/L2/L3 recording/composition scope）、Album Projects 专辑项目统计、`merge_level` 查询参数、Dashboard/Leaderboard/Timeline/Wrapped/Listening Hours/Music Entity/Release Cycle 统一传递 `dynamic_threshold` 与 `max_merge_gap_minutes`，设置页 L1/L2/L3 合并严格度选择器。2026-06-19 补齐全栈验证与性能收口：默认预热改用当前动态阈值口径，Billboard 基础排名共享缓存，Power Score、summaries 与播放合并路径向量化，Dashboard full 单请求复用播放 DataFrame，AI Insights 报告/问答透传播放过滤口径并按过滤指纹分流缓存，Behavior 全量事件分析只暴露/请求 `music_only`，专辑详情来源拆分批量映射，390px 移动端横向滚动归零，pre-commit 收敛到 backend 治理范围，OpenCC/ECharts 大依赖拆为按需加载子包，账号页资源加载收敛并补充 dev/prod-preview Web Vitals lab 探针，新增 91 请求可复跑 API smoke 探针、19 个非破坏性 API 边界 probe、26 组合 route smoke 探针（默认 5s + 业务内容 marker）、4 场景前端交互 smoke 探针、3 场景 ECharts 图表交互 smoke 探针（dev/prod-preview 均覆盖）、6 场景长列表分页/分段渲染 smoke 探针（dev/prod-preview 均覆盖）与 Chromium/Firefox/WebKit 跨浏览器 smoke 探针，OpenAPI GET 覆盖核算，Chat/Settings/LLM profile mutation、AI Insights 生成端点、Import job 调度和 Spotify OAuth PKCE 本地闭环 contract 覆盖，并修复 Spotify 当前播放 token refresh、OAuth login 未配置 Client ID 500、Settings 越界配置、清翻译缓存缺表、AI Insights 报告缓存 readonly 写入 warning、会话列表嵌套按钮、周快捷项重复 key console error，以及音乐详情隐藏 tab 挂载图表导致的 ECharts 零尺寸 warning。详见 [`docs/2026-06-08-phase5-productization-baseline.md`](docs/2026-06-08-phase5-productization-baseline.md)、[`docs/2026-06-18-playback-stats-rules-latest.md`](docs/2026-06-18-playback-stats-rules-latest.md) 和 [`docs/2026-06-19-fullstack-verification-performance-report.md`](docs/2026-06-19-fullstack-verification-performance-report.md)。
+**Phase 5 产品化收口**：前端 GET 统一 TanStack Query（11 命名空间 queryKeys）、Provider 错误分层、业务 service urllib 清零、模块级 API Map 缓存清除；Billboard records 88 行 facade + chart_compute 211 行 facade；Records/AllTime/Community Feed/RecentPlays/SavedTracks/PersonalRankTable 长列表分页基线。Phase 5.4 八阶段（A-H）全系列完成（2026-06-12）：架构护栏 105+ 测试、TrackDetail 574→5 行、HabitsTab 933 行→9 文件 feature、AI Insights 拆分、24 端点 response_model 硬化、Bundle 懒加载治理（Settings -88%/Records -69%/Account -34%）、TrackDetail 歌词 Query 漏网修复。播放统计规则引擎（Phase C+D，2026-06-18 贯穿修复）：动态阈值、Session 边界检测（`max_gap_minutes` + `boundary_column`）、Track Groups 三级合并（L1/L2/L3 recording/composition scope）、Album Projects 专辑项目统计、`merge_level` 查询参数、Dashboard/Leaderboard/Timeline/Wrapped/Listening Hours/Music Entity/Release Cycle 统一传递 `dynamic_threshold` 与 `max_merge_gap_minutes`，设置页 L1/L2/L3 合并严格度选择器。2026-06-19 补齐全栈验证与性能收口：默认预热改用当前动态阈值口径，Billboard 基础排名共享缓存，Power Score、summaries 与播放合并路径向量化，Dashboard full 单请求复用播放 DataFrame，AI Insights 报告/问答透传播放过滤口径并按过滤指纹分流缓存，Behavior 全量事件分析只暴露/请求 `music_only`，专辑详情来源拆分批量映射，390px 移动端横向滚动归零，pre-commit 收敛到 backend 治理范围，OpenCC/ECharts 大依赖拆为按需加载子包，账号页资源加载收敛并补充 dev/prod-preview Web Vitals lab 探针，新增 91 请求可复跑 API smoke 探针、19 个非破坏性 API 边界 probe、26 组合 route smoke 探针（默认 5s + 业务内容 marker）、4 场景前端交互 smoke 探针、3 场景 ECharts 图表交互 smoke 探针（dev/prod-preview 均覆盖）、6 场景长列表分页/分段渲染 smoke 探针（dev/prod-preview 均覆盖）、GitHub Actions 与本地 Phase 5 矩阵 parity 护栏与 Chromium/Firefox/WebKit 跨浏览器 smoke 探针，OpenAPI GET 覆盖核算，Chat/Settings/LLM profile mutation、AI Insights 生成端点、Import job 调度和 Spotify OAuth PKCE 本地闭环 contract 覆盖，并修复 Spotify 当前播放 token refresh、OAuth login 未配置 Client ID 500、Settings 越界配置、清翻译缓存缺表、AI Insights 报告缓存 readonly 写入 warning、会话列表嵌套按钮、周快捷项重复 key console error，以及音乐详情隐藏 tab 挂载图表导致的 ECharts 零尺寸 warning。详见 [`docs/2026-06-08-phase5-productization-baseline.md`](docs/2026-06-08-phase5-productization-baseline.md)、[`docs/2026-06-18-playback-stats-rules-latest.md`](docs/2026-06-18-playback-stats-rules-latest.md) 和 [`docs/2026-06-19-fullstack-verification-performance-report.md`](docs/2026-06-19-fullstack-verification-performance-report.md)。
 
 ## 功能
 
@@ -51,6 +51,7 @@ pre-commit run --all-files
 
 # Phase 5 最低验证矩阵
 sh scripts/phase5_check.sh
+.venv/bin/python scripts/ci_baseline_parity.py  # GitHub Actions / 本地矩阵一致性护栏
 
 # 前端 route/interaction/cross-browser smoke + Web Vitals lab 采样（需后端 8000 + 前端 5173 已启动）
 node scripts/frontend_route_smoke.mjs --viewport both --max-scroll-overflow 0
@@ -88,7 +89,7 @@ SpotifyStats/
 ├── app/                   # Streamlit 旧应用（冻结维护）
 ├── data/                  # SQLite 数据库 + JSON 源数据
 ├── docs/                  # 架构文档 + Phase 5 台账
-├── scripts/               # 工具脚本（phase5_check.sh, benchmark_api.py, api_smoke_probe.py, api_boundary_probe.py）
+├── scripts/               # 工具脚本（phase5_check.sh, ci_baseline_parity.py, api_smoke_probe.py, api_boundary_probe.py）
 └── requirements.txt
 ```
 

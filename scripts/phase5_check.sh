@@ -9,6 +9,7 @@ if [ -d ".venv" ]; then
   . ".venv/bin/activate"
 fi
 
+python scripts/ci_baseline_parity.py
 pytest -m unit -q
 pytest -m contract -q
 ruff check backend/

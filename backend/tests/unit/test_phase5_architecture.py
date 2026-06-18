@@ -242,3 +242,27 @@ def test_chart_staged_public_api_is_split_from_chart_compute_facade():
     assert "def compute_summaries_staged" in staged_api_source
     assert "def compute_records_staged" in staged_api_source
     assert len(staged_api_source.splitlines()) <= 140
+
+
+def test_phase5_github_actions_checks_are_covered_by_local_script():
+    from scripts.ci_baseline_parity import (
+        get_local_check_commands,
+        get_missing_local_commands,
+        get_workflow_check_commands,
+    )
+
+    workflow_checks = get_workflow_check_commands(ROOT / ".github/workflows/phase5-baseline.yml")
+    local_checks = get_local_check_commands(ROOT / "scripts/phase5_check.sh")
+
+    assert "pytest -m unit -q" in workflow_checks
+    assert "pytest -m contract -q" in workflow_checks
+    assert "ruff check backend/" in workflow_checks
+    assert "npm test" in workflow_checks
+    assert "npm run build" in workflow_checks
+    assert get_missing_local_commands(workflow_checks, local_checks) == ()
+
+
+def test_phase5_check_runs_ci_baseline_parity_guard():
+    phase5_check = _read("scripts/phase5_check.sh")
+
+    assert "python scripts/ci_baseline_parity.py" in phase5_check

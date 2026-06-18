@@ -4,9 +4,10 @@
 
 ## 结论
 
-- 后端全量测试通过：`604 passed, 2 warnings`
+- 后端全量测试通过：`606 passed, 2 warnings`
 - 前端测试与构建通过：`130 passed`，`npm run build` 通过
-- Phase 5 最低验证矩阵通过：unit `252 passed`，contract `152 passed`，前端 test/build 通过
+- Phase 5 最低验证矩阵通过：unit `254 passed`，contract `152 passed`，前端 test/build 通过
+- 本地 CI parity 护栏通过：`scripts/ci_baseline_parity.py` 确认 `.github/workflows/phase5-baseline.yml` 的 unit/contract/ruff/frontend test/build 检查均被 `scripts/phase5_check.sh` 覆盖
 - pre-commit 通过：ruff、ruff format、mypy、detect-secrets 全部通过
 - 浏览器路由冒烟通过：`scripts/frontend_route_smoke.mjs` 覆盖 13 个核心路由 × 1280px 桌面/390px 移动端共 26 个组合，console error/warning、page error 与页面级横向滚动均为 0；生产 `vite preview` 产物同样 PASS 26/26，并通过路由业务内容 marker 防止只加载导航壳的误判
 - 浏览器交互冒烟通过：`scripts/frontend_interaction_smoke.mjs` 覆盖分析页 tab、Billboard 子路由/浏览器前进后退、AI Insights 报告/问答 tab（含未配置 LLM 空状态）与主题切换共 4 个非破坏性场景；dev server 与生产 `vite preview` 产物均 PASS 4/4，console error/warning、page error 与页面级横向滚动均为 0
@@ -95,7 +96,8 @@ Billboard summaries 补充实现：`compute_artist_track_counts()` 与 `compute_
 - 跨浏览器 probe：新增 `scripts/frontend_cross_browser_smoke.mjs`，通过 Python Playwright API 覆盖 Chromium、Firefox、WebKit（Safari-family）。每个浏览器引擎执行 6 个核心路由 × 桌面/390px 移动端 marker 检查，以及 `analysis-tabs`、`billboard-routing`、`ai-insights-tabs`、`theme-toggle` 4 个非破坏性交互；dev server 与生产 `vite preview` 产物均 PASS 3/3 浏览器引擎。该探针需要可导入 `playwright.sync_api` 的 Python，可用 `PYTHON_PLAYWRIGHT=/path/to/python` 或 `--python` 指定。
 - 前端长列表 probe：新增 `scripts/frontend_long_list_smoke.mjs`，通过 headless Chrome CDP 覆盖 `records-mini-rank`、`all-time-table`、`community-feed`、`recent-plays`、`saved-tracks`、`personal-rank-table` 6 个场景，并支持 `--api-base-url` 将生产 preview 页面的 `/api` 与 `/covers` 请求重写到 8000 后端。当前 dev server 与生产 `vite preview` 结果均 PASS 6/6：Records `1—10 / 89` → `11—20 / 89`，All-Time `1 / 35` → `2 / 35`，Community Feed `50 posts` → `100 posts`，RecentPlays `第 1/1236 页` → `第 2/1236 页`，SavedTracks `第 1/40 页` → `第 2/40 页`，PersonalRankTable `显示 1-50 / 总数 250 条` → `显示 51-100 / 总数 250 条`；console error/warning/page error 全 0，scroll overflow 全 0px。
 - Web Vitals lab probe（Vite dev server + headless Chrome + CDP）：6 路由 × 桌面/390px 移动端；最终采样 CLS 全部 0，合成点击 FID 0.7-3.6ms，TBT 全部 0ms，非账号页 LCP 416-896ms，账号页 LCP 2,132ms（桌面）/ 2,320ms（移动）。生产 `vite preview` 补充采样资源体积更接近交付产物：非账号页 LCP 380-848ms，账号页 LCP 2,080ms（桌面）/ 2,168ms（移动），CLS/TBT 全部 0。
-- 文档同步：README、AGENTS、CLAUDE、backend/CLAUDE、frontend/CLAUDE 已更新 2026-06-19 验证报告、API smoke / API boundary / route smoke / interaction smoke / chart interaction smoke / cross-browser smoke / long-list smoke 探针、Power Score 向量化、Behavior API 参数收窄、OAuth PKCE 本地合同验证、移动端横向滚动护栏、pre-commit 范围与最新测试基线。
+- 本地 CI parity probe：新增 `scripts/ci_baseline_parity.py`，提取 `.github/workflows/phase5-baseline.yml` 的核心检查命令，并与 `scripts/phase5_check.sh` 对比。当前输出确认 workflow checks 与 local checks 均为 `pytest -m unit -q`、`pytest -m contract -q`、`ruff check backend/`、`npm test`、`npm run build`；`phase5_check.sh` 开头已接入该护栏。
+- 文档同步：README、AGENTS、CLAUDE、backend/CLAUDE、frontend/CLAUDE 已更新 2026-06-19 验证报告、API smoke / API boundary / route smoke / interaction smoke / chart interaction smoke / cross-browser smoke / long-list smoke / CI parity 探针、Power Score 向量化、Behavior API 参数收窄、OAuth PKCE 本地合同验证、移动端横向滚动护栏、pre-commit 范围与最新测试基线。
 
 ### Web Vitals Lab 采样
 
@@ -141,7 +143,7 @@ Billboard summaries 补充实现：`compute_artist_track_counts()` 与 `compute_
 
 | 目标项 | 当前证据 | 状态 |
 | --- | --- | --- |
-| 后端现有测试全量通过 | `pytest backend/tests/ -q`：`604 passed, 2 warnings` | 已自动验证 |
+| 后端现有测试全量通过 | `pytest backend/tests/ -q`：`606 passed, 2 warnings` | 已自动验证 |
 | OpenAPI/核心 API 只读覆盖 | 122 paths / 134 operations schema 存在；91 个可复跑只读请求覆盖 Dashboard、Billboard、Analysis、Community、AI Insights、Account、Settings、Spotify status/data；OpenAPI GET 核算 0 unaccounted；19 个 API boundary GET 覆盖代表性越界参数、非法 path/entity 与特殊字符查询 | 已覆盖只读核心路径与代表性参数边界；mutation/破坏性端点未逐一实打 |
 | Extended Streaming History 完整导入 | 新增临时 JSON 导入测试覆盖音频、视频、缺元数据、featured artist、预聚合 | 已自动验证最小完整流程 |
 | 多版本与统计过滤语义 | contract/full tests 覆盖 Version Merge、Album Project、Power Score、AI Insights 播放过滤传播、Behavior 全量事件例外参数收窄、播放过滤参数传播与 Billboard invariants | 已自动验证 |
@@ -149,6 +151,7 @@ Billboard summaries 补充实现：`compute_artist_track_counts()` 与 `compute_
 | OAuth/加密/缓存/Job Queue/Request ID | AES、cache manager、job queue 单测；API smoke 验证 `X-Request-ID`；Spotify status/data 只读 200；当前播放端点 token refresh 写入边界有 unit test；OAuth PKCE contract 覆盖 login 503、state/verifier、callback token exchange、AES 加密落库和 invalid state | 自动验证基础设施与本地 OAuth 回调语义；真实 OAuth 外部授权未闭环 |
 | 前端路由与响应式 | `scripts/frontend_route_smoke.mjs` 覆盖 13 路由 × 桌面/390px 移动端，无页面错误、无 console error/warning、无横向溢出，并检查业务内容 marker；dev server 与生产 `vite preview` 均 PASS 26/26；`scripts/frontend_cross_browser_smoke.mjs` 额外覆盖 Chromium/Firefox/WebKit 的 6 路由 × 2 视口；图表入口由架构护栏防止回退到完整 ECharts/OpenCC 默认包；Web Vitals lab 覆盖 6 路由 × 2 视口；音乐详情隐藏 tab 图表挂载由架构护栏防回归 | 已自动验证主路径与三浏览器引擎 smoke |
 | 前端交互 / 本地 mutation | `scripts/frontend_interaction_smoke.mjs` 覆盖分析页 tab、Billboard 子路由/前进后退、AI Insights 报告/问答 tab 与主题切换，dev/prod preview 均 PASS 4/4；`scripts/frontend_chart_interaction_smoke.mjs` 覆盖 ECharts hover tooltip、legend toggle、dataZoom drag，dev/prod preview 均 PASS 3/3；`scripts/frontend_cross_browser_smoke.mjs` 在 Chromium/Firefox/WebKit 复跑同类核心交互；`scripts/frontend_long_list_smoke.mjs` 覆盖 Records/AllTime/Community Feed/RecentPlays/SavedTracks/PersonalRankTable 长列表分页或分段渲染，dev/prod preview 均 PASS 6/6；Chat CRUD、Settings 更新、LLM profile CRUD/apply、清翻译缓存、Import job 启动/状态在 contract 临时环境自动验证 | 已自动验证非破坏性主交互、代表性图表交互和 6 个长列表窗口变化；所有按钮/表单/全部图表实例仍未逐项人工穷尽 |
+| 本地 CI 流程 | `scripts/ci_baseline_parity.py` 提取 GitHub Actions baseline 并确认 `scripts/phase5_check.sh` 覆盖 unit、contract、ruff、frontend test、frontend build；`phase5_check.sh` 已内置该 parity 护栏 | 已自动验证本地最低矩阵与 CI baseline 不漂移 |
 | 性能优化 | records profile、API 冷/热请求、build/import、bundle chunk、dev/prod-preview Web Vitals lab 与账号页资源/TBT 均有前后对比 | 已量化关键瓶颈；仍缺真实 RUM 与生产静态托管 Lighthouse |
 
 ## 验证命令
@@ -162,6 +165,7 @@ Billboard summaries 补充实现：`compute_artist_track_counts()` 与 `compute_
 cd frontend && npm test
 cd frontend && npm run build
 sh scripts/phase5_check.sh
+.venv/bin/python scripts/ci_baseline_parity.py
 .venv/bin/pre-commit run --all-files
 ```
 
