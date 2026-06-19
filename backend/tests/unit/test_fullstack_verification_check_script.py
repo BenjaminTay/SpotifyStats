@@ -29,6 +29,8 @@ def test_fullstack_verification_check_script_exposes_reusable_cli():
     assert "--preview-url" in result.stdout
     assert "--openapi-operation-audit-json" in result.stdout
     assert "--openapi-parameter-boundary-audit-json" in result.stdout
+    assert "--quickstart-preflight" in result.stdout
+    assert "--quickstart-json" in result.stdout
     assert "--web-vitals" in result.stdout
     assert "--web-vitals-max-lcp-ms" in result.stdout
     assert "--web-vitals-max-cls" in result.stdout
@@ -53,6 +55,7 @@ def test_fullstack_verification_check_script_covers_delivery_matrix():
     assert "scripts/api_smoke_probe.py" in source
     assert "scripts/api_boundary_probe.py" in source
     assert "scripts/benchmark_api.py" in source
+    assert "scripts/quickstart_smoke.py" in source
     assert "--fail-on-slow" in source
     assert "scripts/frontend_route_smoke.mjs" in source
     assert "scripts/frontend_interaction_smoke.mjs" in source
@@ -83,6 +86,21 @@ def test_fullstack_verification_check_runs_openapi_parameter_boundary_audit_with
         "scripts/openapi_parameter_boundary_audit.py "
         '--json-output "$OPENAPI_PARAMETER_BOUNDARY_AUDIT_JSON"' in source
     )
+
+
+def test_fullstack_verification_check_can_run_quickstart_preflight_without_starting_services():
+    source = (ROOT / "scripts" / "fullstack_verification_check.sh").read_text(encoding="utf-8")
+
+    assert "RUN_QUICKSTART_PREFLIGHT" in source
+    assert "QUICKSTART_JSON" in source
+    assert "--quickstart-preflight" in source
+    assert "--quickstart-json" in source
+    assert "run_quickstart_preflight" in source
+    assert "scripts/quickstart_smoke.py" in source
+    assert "--require-running" in source
+    assert '--backend-url "$BACKEND_URL"' in source
+    assert '--frontend-url "$FRONTEND_URL"' in source
+    assert '--json-output "$QUICKSTART_JSON"' in source
 
 
 def test_fullstack_verification_check_rewrites_preview_route_smoke_api_requests():

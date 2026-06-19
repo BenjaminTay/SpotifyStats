@@ -30,6 +30,7 @@ def test_quickstart_smoke_script_exposes_reusable_cli():
     assert "--timeout-sec" in result.stdout
     assert "--log-dir" in result.stdout
     assert "--json-output" in result.stdout
+    assert "--require-running" in result.stdout
 
 
 def test_quickstart_smoke_constructs_documented_startup_commands():
@@ -77,6 +78,42 @@ def test_quickstart_smoke_cleans_up_started_processes():
     assert "started_processes" in source
     assert "terminate_processes" in source
     assert "process.terminate()" in source
+
+
+def test_quickstart_smoke_can_require_existing_services():
+    source = (ROOT / "scripts" / "quickstart_smoke.py").read_text(encoding="utf-8")
+
+    assert "require_running" in source
+    assert "Backend is not running" in source
+    assert "Frontend is not running" in source
+    assert "build_backend_command" in source
+    assert "build_frontend_command" in source
+
+
+def test_quickstart_smoke_require_running_does_not_start_services(monkeypatch, tmp_path):
+    from scripts import quickstart_smoke
+
+    args = quickstart_smoke.parse_args(
+        [
+            "--backend-url",
+            "http://127.0.0.1:8123",
+            "--frontend-url",
+            "http://127.0.0.1:5123",
+            "--log-dir",
+            str(tmp_path),
+            "--require-running",
+        ]
+    )
+
+    monkeypatch.setattr(quickstart_smoke, "is_ready", lambda *args, **kwargs: False)
+
+    def fail_start_process(*args, **kwargs):
+        raise AssertionError("require-running mode must not start services")
+
+    monkeypatch.setattr(quickstart_smoke, "start_process", fail_start_process)
+
+    with pytest.raises(RuntimeError, match="Backend is not running"):
+        quickstart_smoke.run_quickstart_smoke(args)
 
 
 def test_quickstart_smoke_uses_stable_fastapi_docs_marker():

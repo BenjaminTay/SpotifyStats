@@ -13,6 +13,8 @@ SLOW_MS=${SLOW_MS:-500}
 BENCHMARK_JSON=${BENCHMARK_JSON:-/tmp/spotify_api_benchmark.json}
 OPENAPI_OPERATION_AUDIT_JSON=${OPENAPI_OPERATION_AUDIT_JSON:-/tmp/spotify_openapi_operation_audit.json}
 OPENAPI_PARAMETER_BOUNDARY_AUDIT_JSON=${OPENAPI_PARAMETER_BOUNDARY_AUDIT_JSON:-/tmp/spotify_openapi_parameter_boundary_audit.json}
+RUN_QUICKSTART_PREFLIGHT=${RUN_QUICKSTART_PREFLIGHT:-0}
+QUICKSTART_JSON=${QUICKSTART_JSON:-/tmp/spotify_quickstart_timing.json}
 RUN_CROSS_BROWSER=${RUN_CROSS_BROWSER:-1}
 RUN_WEB_VITALS=${RUN_WEB_VITALS:-0}
 RUN_RESOURCE_SNAPSHOT=${RUN_RESOURCE_SNAPSHOT:-0}
@@ -64,6 +66,10 @@ Options:
                           OpenAPI operation audit JSON output path
   --openapi-parameter-boundary-audit-json <path>
                           OpenAPI parameter boundary audit JSON output path
+  --quickstart-preflight
+                          Verify quickstart health/docs/frontend/proxy against already-running services
+  --quickstart-json <path>
+                          Quickstart timing JSON output path
   --skip-cross-browser    Skip Playwright Chromium/Firefox/WebKit smoke
   --web-vitals            Run Web Vitals lab probes for dev and preview URLs
   --resource-snapshot     Capture backend/frontend process CPU/RSS snapshot
@@ -92,6 +98,7 @@ defaults: BACKEND_URL, FRONTEND_URL, PREVIEW_URL, PREVIEW_API_URL,
 BENCHMARK_RUNS, SLOW_MS, BENCHMARK_JSON, RUN_CROSS_BROWSER, RUN_WEB_VITALS,
 OPENAPI_OPERATION_AUDIT_JSON,
 OPENAPI_PARAMETER_BOUNDARY_AUDIT_JSON,
+RUN_QUICKSTART_PREFLIGHT, QUICKSTART_JSON,
 WEB_VITALS_MAX_LCP_MS, WEB_VITALS_MAX_CLS, WEB_VITALS_MAX_TBT_MS,
 WEB_VITALS_MAX_RESOURCE_COUNT, WEB_VITALS_MAX_ENCODED_RESOURCE_KB,
 WEB_VITALS_MAX_SCROLL_OVERFLOW_PX,
@@ -140,6 +147,13 @@ while [ "$#" -gt 0 ]; do
     --openapi-parameter-boundary-audit-json)
       shift
       OPENAPI_PARAMETER_BOUNDARY_AUDIT_JSON=$1
+      ;;
+    --quickstart-preflight)
+      RUN_QUICKSTART_PREFLIGHT=1
+      ;;
+    --quickstart-json)
+      shift
+      QUICKSTART_JSON=$1
       ;;
     --skip-cross-browser)
       RUN_CROSS_BROWSER=0
@@ -263,6 +277,14 @@ run_resource_snapshot() {
 
   run "$@"
 }
+
+run_quickstart_preflight() {
+  run python scripts/quickstart_smoke.py --backend-url "$BACKEND_URL" --frontend-url "$FRONTEND_URL" --require-running --json-output "$QUICKSTART_JSON"
+}
+
+if [ "$RUN_QUICKSTART_PREFLIGHT" = "1" ]; then
+  run_quickstart_preflight
+fi
 
 run pytest backend/tests/ -q
 run pre-commit run --all-files

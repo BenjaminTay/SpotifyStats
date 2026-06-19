@@ -58,6 +58,11 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
         "--log-dir", default=None, help="Directory for backend/frontend startup logs."
     )
     parser.add_argument("--json-output", default=None, help="Write quickstart timing report JSON.")
+    parser.add_argument(
+        "--require-running",
+        action="store_true",
+        help="Require backend/frontend services to already be running; do not start them.",
+    )
     return parser.parse_args(argv)
 
 
@@ -291,6 +296,8 @@ def run_quickstart_smoke(args: argparse.Namespace) -> dict:
         if is_ready(backend_health_url):
             backend_reused = True
             print(f"Reusing backend: {args.backend_url}", flush=True)
+        elif args.require_running:
+            raise RuntimeError(f"Backend is not running at {args.backend_url}")
         else:
             started_processes.append(
                 start_process(
@@ -320,6 +327,8 @@ def run_quickstart_smoke(args: argparse.Namespace) -> dict:
         if is_ready(args.frontend_url, require_text='id="root"'):
             frontend_reused = True
             print(f"Reusing frontend: {args.frontend_url}", flush=True)
+        elif args.require_running:
+            raise RuntimeError(f"Frontend is not running at {args.frontend_url}")
         else:
             started_processes.append(
                 start_process(
