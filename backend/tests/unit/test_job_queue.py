@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import sqlite3
 import tempfile
+import threading
 import time
 
 import pytest
@@ -76,6 +77,65 @@ def test_queue_stop_gracefully(temp_db):
     q.stop()
     # No exception means clean shutdown
     assert True
+
+
+def test_queue_stop_waits_for_running_job(temp_db):
+    started = threading.Event()
+    release = threading.Event()
+    finished = threading.Event()
+
+    def handler(job):
+        started.set()
+        release.wait(timeout=1)
+        finished.set()
+
+    q = JobQueue(max_workers=1)
+    q.register("test", handler)
+    q.start(temp_db)
+    q.enqueue(Job.create("test", "entity", "running"))
+
+    assert started.wait(timeout=1)
+    timer = threading.Timer(0.05, release.set)
+    timer.start()
+    try:
+        q.stop()
+        assert finished.is_set()
+    finally:
+        timer.cancel()
+        release.set()
+
+
+def test_queue_can_restart_after_stopping_running_job(temp_db):
+    started = threading.Event()
+    release = threading.Event()
+    processed = []
+
+    def blocking_handler(job):
+        started.set()
+        release.wait(timeout=1)
+        processed.append(job.entity_id)
+
+    q = JobQueue(max_workers=1)
+    q.register("blocking", blocking_handler)
+    q.start(temp_db)
+    q.enqueue(Job.create("blocking", "entity", "before-stop"))
+
+    assert started.wait(timeout=1)
+    timer = threading.Timer(0.05, release.set)
+    timer.start()
+    try:
+        q.stop()
+    finally:
+        timer.cancel()
+        release.set()
+
+    q.register("after_restart", lambda job: processed.append(job.entity_id))
+    q.start(temp_db)
+    q.enqueue(Job.create("after_restart", "entity", "after-restart"))
+    time.sleep(0.3)
+    q.stop()
+
+    assert processed == ["before-stop", "after-restart"]
 
 
 def test_enqueue_if_not_pending_uses_db_state(temp_db):

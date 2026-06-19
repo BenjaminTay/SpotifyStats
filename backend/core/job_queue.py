@@ -103,9 +103,21 @@ class JobQueue:
 
     def stop(self):
         """Graceful shutdown — workers finish current job then exit."""
-        self._running = False
-        for _ in self._workers:
-            self._q.put(Job.create("_sentinel", "_", "_"))
+        with self._lock:
+            workers = list(self._workers)
+            self._running = False
+            for _ in workers:
+                self._q.put(Job.create("_sentinel", "_", "_"))
+
+        for worker in workers:
+            if worker is threading.current_thread():
+                continue
+            worker.join()
+
+        with self._lock:
+            self._workers = [worker for worker in self._workers if worker.is_alive()]
+            if not self._workers:
+                self._drain_queue()
 
     # ── Enqueue ────────────────────────────────────────────────────────
 
@@ -148,9 +160,20 @@ class JobQueue:
                 job = self._q.get(timeout=2)
             except queue.Empty:
                 continue
-            if job.job_type == "_sentinel":
+            try:
+                if job.job_type == "_sentinel":
+                    break
+                self._process_job(job)
+            finally:
+                self._q.task_done()
+
+    def _drain_queue(self):
+        """Drop queued sentinel/pending jobs after workers have stopped."""
+        while True:
+            try:
+                self._q.get_nowait()
+            except queue.Empty:
                 break
-            self._process_job(job)
             self._q.task_done()
 
     def _process_job(self, job: Job):
