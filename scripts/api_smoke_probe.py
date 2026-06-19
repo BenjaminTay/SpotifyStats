@@ -75,17 +75,13 @@ DEFAULT_EXCLUDED_GET_PATHS: frozenset[str] = frozenset(
         "/api/spotify/auth/callback",
         "/api/spotify/auth/login",
         "/api/spotify/auth/playing",
-        # These need stable object ids or filesystem artifacts not guaranteed by
-        # every local DB snapshot.
-        "/api/community/post/{post_id}",
-        "/api/settings/llm-profiles/{profile_id}",
-        "/covers/{cover_type}/{entity_id}.jpg",
     }
 )
 
 DEFAULT_SAFE_GET_CASES: tuple[SmokeCase, ...] = (
     SmokeCase("health", "/api/health"),
     SmokeCase("openapi", "/openapi.json"),
+    SmokeCase("cover_missing", "/covers/albums/999999999.jpg", expected_statuses=(404,)),
     SmokeCase("analysis_overview", "/api/analysis/overview", DEFAULT_FILTERS),
     SmokeCase("analysis_stats", "/api/analysis/stats", {**DEFAULT_FILTERS, "period": "lifetime"}),
     SmokeCase(
@@ -139,6 +135,11 @@ DEFAULT_SAFE_GET_CASES: tuple[SmokeCase, ...] = (
     SmokeCase("wrapped_hub", "/api/wrapped-hub"),
     SmokeCase("settings", "/api/settings"),
     SmokeCase("settings_llm_profiles", "/api/settings/llm-profiles"),
+    SmokeCase(
+        "settings_llm_profile_missing",
+        "/api/settings/llm-profiles/999999",
+        expected_statuses=(404,),
+    ),
     SmokeCase("billboard_data", "/api/billboard/data", DEFAULT_BILLBOARD),
     SmokeCase("billboard_weekly", "/api/billboard/weekly", DEFAULT_BILLBOARD),
     SmokeCase("billboard_records", "/api/billboard/records", DEFAULT_BILLBOARD),
@@ -183,6 +184,11 @@ DEFAULT_SAFE_GET_CASES: tuple[SmokeCase, ...] = (
     ),
     SmokeCase("community_feed", "/api/community/feed", {"limit": 5}),
     SmokeCase("community_trending", "/api/community/trending"),
+    SmokeCase(
+        "community_post_missing",
+        "/api/community/post/nonexistent-smoke-post",
+        expected_statuses=(404,),
+    ),
     SmokeCase("version_groups", "/api/version-merge/groups"),
     SmokeCase("version_group_members", "/api/version-merge/groups/2/members"),
     SmokeCase("version_artist_groups", "/api/version-merge/groups/artist/Fixture Artist Alpha"),
@@ -257,12 +263,14 @@ def assert_results(results: list[SmokeResult]) -> None:
 
 
 def _compile_openapi_path_template(path: str) -> Pattern[str]:
-    parts = path.strip("/").split("/")
-    pattern_parts = [
-        r"[^/]+" if part.startswith("{") and part.endswith("}") else re.escape(part)
-        for part in parts
-    ]
-    return re.compile(r"^/" + "/".join(pattern_parts) + r"$")
+    pattern = ""
+    cursor = 0
+    for match in re.finditer(r"\{[^{}]+\}", path):
+        pattern += re.escape(path[cursor : match.start()])
+        pattern += r"[^/]+"
+        cursor = match.end()
+    pattern += re.escape(path[cursor:])
+    return re.compile(r"^" + pattern + r"$")
 
 
 def _covered_openapi_get_paths(cases: tuple[SmokeCase, ...], get_paths: set[str]) -> set[str]:

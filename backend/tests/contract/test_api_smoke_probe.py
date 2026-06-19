@@ -15,7 +15,10 @@ def test_safe_readonly_api_smoke_probe(client):
     assert {result.case.path for result in results} >= {
         "/api/dashboard/full",
         "/api/billboard/summaries",
+        "/api/community/post/nonexistent-smoke-post",
         "/api/lyrics/-1",
         "/api/lyrics/-1/url",
+        "/api/settings/llm-profiles/999999",
         "/api/spotify/auth/status",
+        "/covers/albums/999999999.jpg",
     }
