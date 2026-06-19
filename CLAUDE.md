@@ -43,6 +43,9 @@ sh scripts/phase5_check.sh
 sh scripts/fullstack_verification_check.sh --backend-url http://127.0.0.1:8000 --frontend-url http://127.0.0.1:5173
 sh scripts/fullstack_verification_check.sh --backend-url http://127.0.0.1:8000 --frontend-url http://127.0.0.1:5173 --web-vitals --web-vitals-max-lcp-ms 3000 --web-vitals-max-cls 0.01 --web-vitals-max-tbt-ms 100
 
+# 一键启动冒烟（自动启动/复用后端 8000 + 前端 5173，验证 health/docs/前端壳/API 代理后清理）
+.venv/bin/python scripts/quickstart_smoke.py
+
 # 本地只读 API smoke（96 个 GET + OpenAPI GET 核算）
 .venv/bin/python scripts/api_smoke_probe.py
 

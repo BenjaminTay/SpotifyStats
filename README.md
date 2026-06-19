@@ -33,6 +33,9 @@ uvicorn backend.main:app --reload --reload-dir backend
 # 启动前端（端口 5173，自动代理 /api → 后端）
 cd frontend && npm run dev
 
+# 一键启动冒烟：自动启动/复用 8000 + 5173，验证 health/docs/前端壳/API 代理后清理
+.venv/bin/python scripts/quickstart_smoke.py
+
 # Spotify OAuth 需要 HTTPS，开发环境用 ngrok
 ngrok http --url=stuffing-nebula-tamer.ngrok-free.dev 5173
 
@@ -99,7 +102,7 @@ SpotifyStats/
 ├── app/                   # Streamlit 旧应用（冻结维护）
 ├── data/                  # SQLite 数据库 + JSON 源数据
 ├── docs/                  # 架构文档 + Phase 5 台账
-├── scripts/               # 工具脚本（phase5_check.sh, fullstack_verification_check.sh, ci_baseline_parity.py, api_smoke_probe.py, api_boundary_probe.py, benchmark_api.py）
+├── scripts/               # 工具脚本（quickstart_smoke.py, phase5_check.sh, fullstack_verification_check.sh, ci_baseline_parity.py, api_smoke_probe.py, api_boundary_probe.py, benchmark_api.py）
 └── requirements.txt
 ```
 

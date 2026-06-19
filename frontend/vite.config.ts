@@ -6,6 +6,7 @@ import { visualizer } from 'rollup-plugin-visualizer'
 
 export default defineConfig(() => {
   const plugins: PluginOption[] = [react(), tailwindcss()]
+  const backendUrl = process.env.VITE_BACKEND_URL ?? 'http://localhost:8000'
 
   if (process.env.ANALYZE === 'true') {
     plugins.push(
@@ -28,8 +29,8 @@ export default defineConfig(() => {
     server: {
       allowedHosts: true as const,
       proxy: {
-        '/api': 'http://localhost:8000',
-        '/covers': 'http://localhost:8000',
+        '/api': backendUrl,
+        '/covers': backendUrl,
       },
     },
   }
