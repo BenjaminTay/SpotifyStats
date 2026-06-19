@@ -28,6 +28,9 @@ def test_fullstack_verification_check_script_exposes_reusable_cli():
     assert "--frontend-url" in result.stdout
     assert "--preview-url" in result.stdout
     assert "--web-vitals" in result.stdout
+    assert "--web-vitals-max-lcp-ms" in result.stdout
+    assert "--web-vitals-max-cls" in result.stdout
+    assert "--web-vitals-max-tbt-ms" in result.stdout
 
 
 def test_fullstack_verification_check_script_covers_delivery_matrix():
@@ -63,10 +66,8 @@ def test_fullstack_verification_check_rewrites_preview_route_smoke_api_requests(
         'scripts/frontend_cross_browser_smoke.mjs --base-url "$PREVIEW_URL" --api-base-url "$PREVIEW_API_URL"'
         in source
     )
-    assert (
-        'scripts/frontend_web_vitals_probe.mjs --base-url "$PREVIEW_URL" --api-base-url "$PREVIEW_API_URL"'
-        in source
-    )
+    assert 'run_web_vitals_probe "$PREVIEW_URL" "$PREVIEW_API_URL"' in source
+    assert '--api-base-url "$api_base_url"' in source
 
 
 def test_fullstack_verification_check_preserves_python_with_playwright_across_venv_activation():
@@ -79,3 +80,15 @@ def test_fullstack_verification_check_preserves_python_with_playwright_across_ve
         'scripts/frontend_cross_browser_smoke.mjs --base-url "$FRONTEND_URL" --python "$PYTHON_PLAYWRIGHT"'
         in source
     )
+
+
+def test_fullstack_verification_check_forwards_web_vitals_budgets():
+    source = (ROOT / "scripts" / "fullstack_verification_check.sh").read_text(encoding="utf-8")
+
+    assert "WEB_VITALS_MAX_LCP_MS" in source
+    assert "WEB_VITALS_MAX_CLS" in source
+    assert "WEB_VITALS_MAX_TBT_MS" in source
+    assert "--max-lcp-ms" in source
+    assert "--max-cls" in source
+    assert "--max-tbt-ms" in source
+    assert "run_web_vitals_probe" in source

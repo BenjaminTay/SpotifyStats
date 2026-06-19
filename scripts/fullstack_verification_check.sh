@@ -13,6 +13,9 @@ SLOW_MS=${SLOW_MS:-500}
 BENCHMARK_JSON=${BENCHMARK_JSON:-/tmp/spotify_api_benchmark.json}
 RUN_CROSS_BROWSER=${RUN_CROSS_BROWSER:-1}
 RUN_WEB_VITALS=${RUN_WEB_VITALS:-0}
+WEB_VITALS_MAX_LCP_MS=${WEB_VITALS_MAX_LCP_MS:-}
+WEB_VITALS_MAX_CLS=${WEB_VITALS_MAX_CLS:-}
+WEB_VITALS_MAX_TBT_MS=${WEB_VITALS_MAX_TBT_MS:-}
 
 detect_playwright_python() {
   for candidate in "${PYTHON_PLAYWRIGHT:-}" python3 python "$ROOT_DIR/.venv/bin/python"; do
@@ -50,11 +53,18 @@ Options:
   --benchmark-json <path>  JSON benchmark output path, default /tmp/spotify_api_benchmark.json
   --skip-cross-browser    Skip Playwright Chromium/Firefox/WebKit smoke
   --web-vitals            Run Web Vitals lab probes for dev and preview URLs
+  --web-vitals-max-lcp-ms <ms>
+                          Optional Web Vitals LCP budget passed to lab probes
+  --web-vitals-max-cls <score>
+                          Optional Web Vitals CLS budget passed to lab probes
+  --web-vitals-max-tbt-ms <ms>
+                          Optional Web Vitals TBT approx budget passed to lab probes
   -h, --help              Show this help
 
 Environment variables with the same uppercase names can also configure the
 defaults: BACKEND_URL, FRONTEND_URL, PREVIEW_URL, PREVIEW_API_URL,
-BENCHMARK_RUNS, SLOW_MS, BENCHMARK_JSON, RUN_CROSS_BROWSER, RUN_WEB_VITALS.
+BENCHMARK_RUNS, SLOW_MS, BENCHMARK_JSON, RUN_CROSS_BROWSER, RUN_WEB_VITALS,
+WEB_VITALS_MAX_LCP_MS, WEB_VITALS_MAX_CLS, WEB_VITALS_MAX_TBT_MS.
 When cross-browser smoke is enabled, PYTHON_PLAYWRIGHT may point to a Python
 that can import playwright.sync_api; otherwise the script auto-detects one
 before activating .venv.
@@ -97,6 +107,18 @@ while [ "$#" -gt 0 ]; do
     --web-vitals)
       RUN_WEB_VITALS=1
       ;;
+    --web-vitals-max-lcp-ms)
+      shift
+      WEB_VITALS_MAX_LCP_MS=$1
+      ;;
+    --web-vitals-max-cls)
+      shift
+      WEB_VITALS_MAX_CLS=$1
+      ;;
+    --web-vitals-max-tbt-ms)
+      shift
+      WEB_VITALS_MAX_TBT_MS=$1
+      ;;
     -h|--help)
       usage
       exit 0
@@ -129,6 +151,28 @@ run() {
   "$@"
 }
 
+run_web_vitals_probe() {
+  base_url=$1
+  api_base_url=${2:-}
+
+  set -- node scripts/frontend_web_vitals_probe.mjs --base-url "$base_url"
+  if [ -n "$api_base_url" ]; then
+    set -- "$@" --api-base-url "$api_base_url"
+  fi
+  set -- "$@" --routes /,/analysis/stats,/analysis/charts,/billboard/number-ones,/account,/settings --viewport both --wait-ms 5000
+  if [ -n "$WEB_VITALS_MAX_LCP_MS" ]; then
+    set -- "$@" --max-lcp-ms "$WEB_VITALS_MAX_LCP_MS"
+  fi
+  if [ -n "$WEB_VITALS_MAX_CLS" ]; then
+    set -- "$@" --max-cls "$WEB_VITALS_MAX_CLS"
+  fi
+  if [ -n "$WEB_VITALS_MAX_TBT_MS" ]; then
+    set -- "$@" --max-tbt-ms "$WEB_VITALS_MAX_TBT_MS"
+  fi
+
+  run "$@"
+}
+
 run pytest backend/tests/ -q
 run pre-commit run --all-files
 run sh scripts/phase5_check.sh
@@ -147,7 +191,7 @@ if [ "$RUN_CROSS_BROWSER" = "1" ]; then
 fi
 
 if [ "$RUN_WEB_VITALS" = "1" ]; then
-  run node scripts/frontend_web_vitals_probe.mjs --base-url "$FRONTEND_URL" --routes /,/analysis/stats,/analysis/charts,/billboard/number-ones,/account,/settings --viewport both --wait-ms 5000
+  run_web_vitals_probe "$FRONTEND_URL"
 fi
 
 if [ -n "$PREVIEW_URL" ]; then
@@ -159,7 +203,7 @@ if [ -n "$PREVIEW_URL" ]; then
     run node scripts/frontend_cross_browser_smoke.mjs --base-url "$PREVIEW_URL" --api-base-url "$PREVIEW_API_URL" --python "$PYTHON_PLAYWRIGHT"
   fi
   if [ "$RUN_WEB_VITALS" = "1" ]; then
-    run node scripts/frontend_web_vitals_probe.mjs --base-url "$PREVIEW_URL" --api-base-url "$PREVIEW_API_URL" --routes /,/analysis/stats,/analysis/charts,/billboard/number-ones,/account,/settings --viewport both --wait-ms 5000
+    run_web_vitals_probe "$PREVIEW_URL" "$PREVIEW_API_URL"
   fi
 fi
 

@@ -57,6 +57,7 @@ sh scripts/phase5_check.sh
 # 全栈非破坏性验收矩阵（需后端 8000 + 前端 5173 已启动；可选 --preview-url/--web-vitals）
 # 跨浏览器 smoke 会自动检测可 import playwright.sync_api 的 Python，也可显式设置 PYTHON_PLAYWRIGHT
 sh scripts/fullstack_verification_check.sh --backend-url http://127.0.0.1:8000 --frontend-url http://127.0.0.1:5173
+sh scripts/fullstack_verification_check.sh --backend-url http://127.0.0.1:8000 --frontend-url http://127.0.0.1:5173 --web-vitals --web-vitals-max-lcp-ms 3000 --web-vitals-max-cls 0.01 --web-vitals-max-tbt-ms 100
 
 # 前端 route/interaction/cross-browser smoke + Web Vitals lab 采样（需后端 8000 + 前端 5173 已启动）
 node scripts/frontend_route_smoke.mjs --viewport both --max-scroll-overflow 0
