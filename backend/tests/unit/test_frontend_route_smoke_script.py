@@ -28,6 +28,7 @@ def test_frontend_route_smoke_script_exposes_reusable_cli():
     assert "--viewport" in result.stdout
     assert "--max-scroll-overflow" in result.stdout
     assert "--fail-on-console-warning" in result.stdout
+    assert "--api-base-url" in result.stdout
 
 
 def test_frontend_route_smoke_script_does_not_treat_vite_dev_ids_as_overlays():
@@ -44,6 +45,32 @@ def test_frontend_route_smoke_script_checks_route_content_markers():
     assert "'/billboard/records': ['CHART / HALL OF FAME', '冠军圣殿']" in source
     assert "missing route content marker" in source
     assert "--disable-route-markers" in source
+
+
+def test_frontend_route_smoke_script_covers_analysis_redirect_aliases():
+    source = (ROOT / "scripts" / "frontend_route_smoke.mjs").read_text(encoding="utf-8")
+
+    for route in [
+        "'/analysis'",
+        "'/analysis/timeline'",
+        "'/analysis/leaderboard'",
+        "'/analysis/behavior'",
+        "'/analysis/listening-hours'",
+        "'/analysis/artists'",
+    ]:
+        assert route in source
+
+
+def test_frontend_route_smoke_script_can_rewrite_preview_api_requests():
+    source = (ROOT / "scripts" / "frontend_route_smoke.mjs").read_text(encoding="utf-8")
+
+    assert "apiBaseUrl" in source
+    assert "setupApiRequestRewrite" in source
+    assert "Fetch.requestPaused" in source
+    assert "Fetch.continueRequest" in source
+    assert "catch" in source
+    assert "'/api'" in source
+    assert "'/covers'" in source
 
 
 def test_frontend_route_smoke_default_wait_allows_cold_route_content():

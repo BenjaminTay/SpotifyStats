@@ -48,6 +48,15 @@ def test_fullstack_verification_check_script_covers_delivery_matrix():
     assert "scripts/frontend_web_vitals_probe.mjs" in source
 
 
+def test_fullstack_verification_check_rewrites_preview_route_smoke_api_requests():
+    source = (ROOT / "scripts" / "fullstack_verification_check.sh").read_text(encoding="utf-8")
+
+    assert (
+        'scripts/frontend_route_smoke.mjs --base-url "$PREVIEW_URL" --api-base-url "$PREVIEW_API_URL"'
+        in source
+    )
+
+
 def test_fullstack_verification_check_preserves_python_with_playwright_across_venv_activation():
     source = (ROOT / "scripts" / "fullstack_verification_check.sh").read_text(encoding="utf-8")
 

@@ -10,10 +10,17 @@ import net from 'node:net'
 const DEFAULT_BASE_URL = 'http://127.0.0.1:5173'
 const DEFAULT_WAIT_MS = 5000
 const DEFAULT_MAX_SCROLL_OVERFLOW = 0
+const REWRITE_PATH_PREFIXES = ['/api', '/covers']
 const DEFAULT_ROUTES = [
   '/',
+  '/analysis',
   '/analysis/stats',
   '/analysis/charts',
+  '/analysis/timeline',
+  '/analysis/leaderboard',
+  '/analysis/behavior',
+  '/analysis/listening-hours',
+  '/analysis/artists',
   '/yearly-review',
   '/billboard',
   '/billboard/number-ones',
@@ -28,8 +35,14 @@ const DEFAULT_ROUTES = [
 
 const ROUTE_READY_MARKERS = {
   '/': ['DASHBOARD /', '总播放次数'],
+  '/analysis': ['PLAYBACK / ANALYSIS', '总体播放统计'],
   '/analysis/stats': ['PLAYBACK / ANALYSIS', '总体播放统计'],
   '/analysis/charts': ['PERSONAL CHARTS', '个人排行榜'],
+  '/analysis/timeline': ['PLAYBACK / ANALYSIS', '总体播放统计'],
+  '/analysis/leaderboard': ['PERSONAL CHARTS', '个人排行榜'],
+  '/analysis/behavior': ['PLAYBACK / ANALYSIS', '总体播放统计'],
+  '/analysis/listening-hours': ['PLAYBACK / ANALYSIS', '总体播放统计'],
+  '/analysis/artists': ['PERSONAL CHARTS', '个人排行榜'],
   '/yearly-review': ['YEARLY / REVIEW', '听歌人格'],
   '/billboard': ['CHART / WEEKLY', 'Billboard 周榜'],
   '/billboard/number-ones': ['CHART / NUMBER ONES', '每周冠军歌曲'],
@@ -91,6 +104,7 @@ const PAGE_STATE_EXPRESSION = `
 function parseArgs(argv) {
   const args = {
     baseUrl: DEFAULT_BASE_URL,
+    apiBaseUrl: null,
     routes: DEFAULT_ROUTES,
     waitMs: DEFAULT_WAIT_MS,
     viewports: ['desktop', 'mobile'],
@@ -104,6 +118,7 @@ function parseArgs(argv) {
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i]
     if (arg === '--base-url') args.baseUrl = argv[++i]
+    else if (arg === '--api-base-url') args.apiBaseUrl = argv[++i]
     else if (arg === '--routes') args.routes = argv[++i].split(',').map((route) => route.trim()).filter(Boolean)
     else if (arg === '--wait-ms') args.waitMs = Number(argv[++i])
     else if (arg === '--viewport') {
@@ -140,6 +155,7 @@ function printHelp() {
 
 Options:
   --base-url <url>              Frontend URL, default ${DEFAULT_BASE_URL}
+  --api-base-url <url>          Rewrite same-origin /api and /covers requests to this API URL
   --routes <a,b,c>              Comma-separated route paths, default ${DEFAULT_ROUTES.join(',')}
   --viewport <mode>             desktop, mobile, or both, default both
   --wait-ms <ms>                Wait after load before reading page state, default ${DEFAULT_WAIT_MS}
@@ -290,9 +306,47 @@ class CdpClient {
   }
 }
 
+function rewriteRequestUrl(requestUrl, frontendBaseUrl, apiBaseUrl) {
+  if (!apiBaseUrl) return null
+  const frontendOrigin = new URL(frontendBaseUrl).origin
+  const apiOrigin = new URL(apiBaseUrl).origin
+  if (frontendOrigin === apiOrigin) return null
+
+  let url
+  try {
+    url = new URL(requestUrl)
+  } catch {
+    return null
+  }
+  if (url.origin !== frontendOrigin) return null
+  const shouldRewrite = REWRITE_PATH_PREFIXES.some((prefix) => (
+    url.pathname === prefix || url.pathname.startsWith(`${prefix}/`)
+  ))
+  if (!shouldRewrite) return null
+
+  return new URL(`${url.pathname}${url.search}${url.hash}`, apiBaseUrl).toString()
+}
+
+async function setupApiRequestRewrite(client, frontendBaseUrl, apiBaseUrl) {
+  if (!apiBaseUrl) return
+
+  client.on('Fetch.requestPaused', (params) => {
+    const rewrittenUrl = rewriteRequestUrl(params.request.url, frontendBaseUrl, apiBaseUrl)
+    const request = rewrittenUrl
+      ? { requestId: params.requestId, url: rewrittenUrl }
+      : { requestId: params.requestId }
+    void client.send('Fetch.continueRequest', request).catch(() => {})
+  })
+
+  await client.send('Fetch.enable', {
+    patterns: [{ urlPattern: '*', requestStage: 'Request' }],
+  })
+}
+
 async function smokeRoute({
   port,
   baseUrl,
+  apiBaseUrl,
   route,
   viewportName,
   waitMs,
@@ -311,6 +365,7 @@ async function smokeRoute({
     await client.send('Runtime.enable')
     await client.send('Log.enable')
     await client.send('Network.enable')
+    await setupApiRequestRewrite(client, baseUrl, apiBaseUrl)
     await client.send('Emulation.setDeviceMetricsOverride', {
       width: viewport.width,
       height: viewport.height,
@@ -480,6 +535,7 @@ async function main() {
         const result = await smokeRoute({
           port,
           baseUrl: args.baseUrl,
+          apiBaseUrl: args.apiBaseUrl,
           route,
           viewportName: viewport,
           waitMs: args.waitMs,

@@ -151,7 +151,7 @@ if [ "$RUN_WEB_VITALS" = "1" ]; then
 fi
 
 if [ -n "$PREVIEW_URL" ]; then
-  run node scripts/frontend_route_smoke.mjs --base-url "$PREVIEW_URL" --viewport both --max-scroll-overflow 0
+  run node scripts/frontend_route_smoke.mjs --base-url "$PREVIEW_URL" --api-base-url "$PREVIEW_API_URL" --viewport both --max-scroll-overflow 0
   run node scripts/frontend_interaction_smoke.mjs --base-url "$PREVIEW_URL"
   run node scripts/frontend_chart_interaction_smoke.mjs --base-url "$PREVIEW_URL" --api-base-url "$PREVIEW_API_URL"
   run node scripts/frontend_long_list_smoke.mjs --base-url "$PREVIEW_URL" --api-base-url "$PREVIEW_API_URL"
