@@ -9,7 +9,14 @@ import net from 'node:net'
 
 const DEFAULT_BASE_URL = 'http://127.0.0.1:5173'
 const DEFAULT_WAIT_MS = 5000
-const DEFAULT_SCENARIOS = ['analysis-tabs', 'billboard-routing', 'ai-insights-tabs', 'settings-controls', 'theme-toggle']
+const DEFAULT_SCENARIOS = [
+  'analysis-tabs',
+  'billboard-routing',
+  'ai-insights-tabs',
+  'settings-controls',
+  'settings-data-import',
+  'theme-toggle',
+]
 const REWRITE_PATH_PREFIXES = ['/api', '/covers']
 
 const VIEWPORT = {
@@ -74,6 +81,7 @@ Scenarios:
   billboard-routing       Click Billboard subnav and browser back/forward
   ai-insights-tabs        Click AI Insights report/chat tabs and report type pills
   settings-controls       Toggle non-destructive settings controls and verify local display preference
+  settings-data-import    Verify data import cards and import actions without starting jobs
   theme-toggle            Toggle light/dark theme buttons
 `)
 }
@@ -332,6 +340,49 @@ async function clickSwitchByLabel(client, label, waitMs) {
   )
 }
 
+async function assertClickableTextCount(client, texts, minimum, waitMs) {
+  return waitForCondition(
+    async () => {
+      const state = await evaluate(client, `
+        (() => {
+          const targetTexts = ${JSON.stringify(texts)};
+          const isVisible = (el) => {
+            const rect = el.getBoundingClientRect();
+            const style = getComputedStyle(el);
+            return rect.width > 0 && rect.height > 0 && style.display !== 'none' && style.visibility !== 'hidden';
+          };
+          const count = Array.from(document.querySelectorAll('button, a, [role="button"], [role="tab"], [role="option"]'))
+            .filter((el) => isVisible(el))
+            .filter((el) => {
+              const text = (el.innerText || el.textContent || '').trim();
+              return targetTexts.some((targetText) => text.includes(targetText));
+            }).length;
+          return { count, path: location.pathname };
+        })();
+      `)
+      return state && state.count >= minimum ? state : null
+    },
+    waitMs,
+    `Expected at least ${minimum} clickable control(s): ${texts.join(', ')}`,
+  )
+}
+
+async function fetchLlmAvailability(client) {
+  const availability = await evaluate(client, `
+    (async () => {
+      try {
+        const response = await fetch('/api/settings', { headers: { Accept: 'application/json' } });
+        if (!response.ok) return null;
+        const settings = await response.json();
+        return Boolean(settings.llm_enabled && settings.has_llm_key);
+      } catch {
+        return null;
+      }
+    })();
+  `)
+  return typeof availability === 'boolean' ? availability : null
+}
+
 async function pageState(client) {
   return evaluate(client, `
     (() => ({
@@ -443,8 +494,9 @@ const SCENARIOS = {
     await navigate(client, baseUrl, '/ai-insights', waitMs)
     await waitForText(client, 'AI 洞察', waitMs)
 
-    const readyState = await waitForAnyText(client, ['月报', 'AI 功能尚未配置'], waitMs)
-    if (readyState.bodyText.includes('AI 功能尚未配置')) {
+    const llmAvailable = await fetchLlmAvailability(client)
+    if (llmAvailable === false) {
+      await waitForText(client, 'AI 功能尚未配置', waitMs)
       await clickText(client, '问答', waitMs)
       await waitForText(client, 'AI 功能尚未配置', waitMs)
       await clickText(client, '报告', waitMs)
@@ -452,6 +504,7 @@ const SCENARIOS = {
       return
     }
 
+    await waitForText(client, '月报', waitMs)
     await clickText(client, '月报', waitMs)
     await waitForText(client, '月报', waitMs)
     await clickText(client, '年度叙事', waitMs)
@@ -500,6 +553,18 @@ const SCENARIOS = {
     )
 
     await waitForAnyText(client, ['连接 Spotify', '同步收藏时间'], waitMs)
+  },
+
+  'settings-data-import': async ({ client, baseUrl, waitMs }) => {
+    await navigate(client, baseUrl, '/settings', waitMs)
+    await waitForText(client, '参数与配置', waitMs)
+    await waitForText(client, 'DATA IMPORT', waitMs)
+    await waitForText(client, '串流数据', waitMs)
+    await waitForText(client, '账号数据', waitMs)
+    await waitForText(client, '当前数据库记录数', waitMs)
+    await waitForText(client, '导入 Spotify 账号数据包', waitMs)
+    await waitForAnyText(client, ['未导入', '已导入'], waitMs)
+    await assertClickableTextCount(client, ['开始导入', '重新导入', '导入中...'], 2, waitMs)
   },
 
   'theme-toggle': async ({ client, baseUrl, waitMs }) => {

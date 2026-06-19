@@ -41,9 +41,16 @@ def test_frontend_interaction_smoke_script_covers_core_non_destructive_flows():
     assert "billboard-routing" in source
     assert "ai-insights-tabs" in source
     assert "settings-controls" in source
+    assert "settings-data-import" in source
     assert "theme-toggle" in source
+    assert "assertClickableTextCount" in source
+    assert "fetchLlmAvailability" in source
+    assert "llm_enabled" in source
+    assert "has_llm_key" in source
     assert "AI 功能尚未配置" in source
     assert "过滤参数已更新" in source
+    assert "当前数据库记录数" in source
+    assert "导入 Spotify 账号数据包" in source
     assert "chineseStyle" in source
     assert "Runtime.consoleAPICalled" in source
 
