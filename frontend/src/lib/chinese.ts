@@ -88,8 +88,3 @@ export function useChineseTextVersion(): number {
 
   return version
 }
-
-// Eager init if a preference is already saved
-if (getChineseStyle() !== 'original') {
-  ensureConverter(getChineseStyle())
-}

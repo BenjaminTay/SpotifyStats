@@ -215,6 +215,13 @@ describe('Phase 5 architecture guardrails', () => {
     expect(chineseSource).toContain("import('opencc-js/t2cn')")
   })
 
+  it('keeps Chinese conversion dictionaries demand-loaded after saved preference restore', () => {
+    expect(chineseSource).not.toMatch(
+      /if\s*\(\s*getChineseStyle\(\)\s*!==\s*['"]original['"]\s*\)\s*{[\s\S]*ensureConverter\(getChineseStyle\(\)\)/
+    )
+    expect(appLayoutSource).toContain('useChineseTextVersion()')
+  })
+
   it.each([
     ['MonthlyTrendChart.tsx', monthlyTrendChartSource],
     ['AnalysisCharts.tsx', analysisChartsSource],

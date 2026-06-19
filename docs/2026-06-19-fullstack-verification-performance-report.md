@@ -26,6 +26,7 @@
 - 账号中心 response_model 契约补强：Search History、Insights tiers/marquee、Podcast、Video、Profile、Wrapped Hub 共 12 个 GET 端点补齐响应模型；OpenAPI 缺失 response_model 路由数从 22 降到 10，并已刷新前端 `openapi.json`/`api-types.ts`
 - 核心统计 response_model 契约补强：Timeline weekly、Listening Hours weekday/platform、Artist list/deep-dive、Wrapped available years 共 6 个 GET 端点补齐响应模型；OpenAPI 缺失 response_model 路由数从 10 降到 4，并已刷新前端 `openapi.json`/`api-types.ts`
 - 剩余 JSON response_model 契约收口：Release Cycle compare、Genius lyrics 与 Genius URL 共 3 个 JSON 端点补齐响应模型；OpenAPI 缺失 response_model 路由数从 4 降到 1，唯一剩余项为 Spotify OAuth callback `RedirectResponse`，并已刷新前端 `openapi.json`/`api-types.ts`
+- OpenCC 保存偏好恢复按需加载收口：`chinese.ts` 移除模块初始化时的 `ensureConverter(getChineseStyle())`，保存繁体偏好的用户不再仅因模块导入就后台请求 `cn2t` 大字典；新增架构护栏锁定 `displayName()` / `setChineseStyle()` 作为字典加载入口，并保留 `AppLayout` 的 `useChineseTextVersion()` 重渲染订阅
 
 ## 修复项
 
@@ -75,6 +76,7 @@
 | `/api/billboard/records` 冷请求 | 2.19s | 1.871s | -14.6% |
 | `/api/billboard/records` 热请求 | 0.01-0.02s | 0.012-0.013s | 持平 |
 | OpenCC 默认懒加载包 | `full-yTi_27TG.js` 1,121.76KB / gzip 494.12KB | 简体路径 `t2cn-g7W6-1pz.js` 64.27KB / gzip 38.78KB；繁体路径 `cn2t-DJnOUolw.js` 1,059.13KB / gzip 457.19KB | 默认完整包消除；简体路径 gzip -455.34KB，繁体路径 gzip -36.93KB |
+| OpenCC 已保存繁体偏好恢复 | 模块初始化直接执行 `ensureConverter(getChineseStyle())`，只要导入 `chinese.ts` 且偏好为繁体，就会后台请求 `cn2t-DJnOUolw.js` 1,059.13KB / gzip 457.19KB | 模块初始化 0 字典请求；仅 `displayName()` 渲染转换文本或 `setChineseStyle()` 切换偏好时触发对应子包 | 避免保存偏好用户在实际需要转换前消耗 457.19KB gzip 网络与解析资源 |
 | ECharts 图表懒加载包 | `esm-CBcusPEn.js` 1,134.42KB / gzip 376.65KB | `EChartsTheme-*.js` 673.19KB / gzip 225.67KB | 原始体积 -461.23KB，gzip -150.98KB |
 | `/account` 前端资源加载 | 桌面 250 requests / 24,632.6KB / TBT 132ms / LCP 2,480ms；移动 250 requests / 25,488.7KB / TBT 132ms / LCP 2,412ms | 桌面 92 requests / 7,565.5KB / TBT 0ms / LCP 2,132ms；移动 91 requests / 7,455.4KB / TBT 0ms / LCP 2,320ms | requests -63%，资源体积 -69%~-71%，TBT -132ms，LCP 小幅改善 |
 | `merge_consecutive_plays()` 大批量片段合并 | 80k 行合成片段 2.58s；`/api/dashboard/full` 冷 profile 8.26s，`merge_consecutive_plays` 7.59s，`load_plays` 2 次 | 80k 行合成片段 0.06s 级；`/api/dashboard/full` 冷 profile 1.02s，`merge_consecutive_plays` 0.19s，`load_plays` 1 次 | 合成护栏约 -97%；真实冷 profile -87.7%，核心合并 -97.5% |
@@ -87,7 +89,7 @@
 
 Billboard summaries 补充实现：`compute_artist_track_counts()` 与 `compute_album_track_counts()` 去掉逐行 `DataFrame.apply()` 回查 best peak track，改为一次排序、`drop_duplicates()` 与 merge 回填；新增 summaries 语义测试和架构护栏防止回退到 row-wise apply。
 
-前端补充实现：`displayName()` 将 OpenCC 默认 `full` 包拆为 `opencc-js/t2cn` 与 `opencc-js/cn2t` 两条按需路径；ECharts 统一通过 `LazyEChart` 动态加载 `echarts-for-react/esm/core` 并只注册当前用到的 bar/line/pie/heatmap、tooltip、legend、dataZoom、visualMap 与 mark 组件，避免 `echarts-for-react` 默认入口静态拉入完整 ECharts runtime。
+前端补充实现：`displayName()` 将 OpenCC 默认 `full` 包拆为 `opencc-js/t2cn` 与 `opencc-js/cn2t` 两条按需路径，并取消 `chinese.ts` 模块初始化阶段根据已保存偏好预取字典；加载仍由 `displayName()` 或 `setChineseStyle()` 触发，加载完成后通过 `chinese-style-change` 事件让 `AppLayout` 订阅重渲染。ECharts 统一通过 `LazyEChart` 动态加载 `echarts-for-react/esm/core` 并只注册当前用到的 bar/line/pie/heatmap、tooltip、legend、dataZoom、visualMap 与 mark 组件，避免 `echarts-for-react` 默认入口静态拉入完整 ECharts runtime。
 
 账号页补充实现：`ChemistryBlock` 将每类滚动预览限制到 8 条，保留全量分类计数；账号页深层封面图统一加 `loading="lazy"` 与 `decoding="async"`，避免收藏化学反应的数百张示例封面抢占首屏资源。
 
@@ -197,6 +199,7 @@ Billboard summaries 补充实现：`compute_artist_track_counts()` 与 `compute_
 .venv/bin/ruff check backend/
 .venv/bin/ruff format --check backend/
 cd frontend && npm test
+cd frontend && npm test -- src/tests/phase5-architecture.test.ts
 cd frontend && npm run build
 cd frontend && npm run generate-types -- http://127.0.0.1:8000/openapi.json
 sh scripts/phase5_check.sh
@@ -263,7 +266,7 @@ git diff --check
 
 ## 已知限制
 
-- 生产构建仍提示两个大懒加载 chunk：`cn2t-DJnOUolw.js` gzip 457.19KB、`EChartsTheme-*.js` gzip 225.67KB。旧 `full-yTi_27TG.js` 与 `esm-CBcusPEn.js` 已消除；剩余体积分别来自繁体词典和当前图表能力集合，未牺牲简繁转换语义或图表功能继续强拆。
+- 生产构建仍提示两个大懒加载 chunk：`cn2t-DJnOUolw.js` gzip 457.19KB、`EChartsTheme-*.js` gzip 225.67KB。旧 `full-yTi_27TG.js` 与 `esm-CBcusPEn.js` 已消除；剩余体积分别来自繁体词典和当前图表能力集合，其中 `cn2t` 已从“保存偏好导入即预取”改为实际转换入口触发，未牺牲简繁转换语义或图表功能继续强拆。
 - 未执行真实 ngrok + Spotify OAuth 浏览器授权闭环；已验证 `/api/spotify/auth/status` 与 `/api/spotify/auth/data` 只读端点返回 200 和 request id，修复 `/api/spotify/auth/playing` token refresh 写连接问题，并用 contract 临时 DB 覆盖 OAuth PKCE login/callback 本地闭环、加密落库与 invalid state。
 - 未在用户真实 Firefox.app / Safari.app 有界面会话中人工执行同等交互；当前跨浏览器自动化证据来自 Playwright Chromium / Firefox / WebKit（Safari-family），其中 WebKit 是 Safari-family 引擎 smoke，不等同用户 Safari.app 会话。
 - 未逐一实打所有破坏性或外部依赖端点，例如断开 Spotify、导入生产数据、同步远程账号数据等，避免污染本地真实状态；本地 Settings/Chat mutation 与 Import job 调度已通过 contract 临时环境覆盖。
