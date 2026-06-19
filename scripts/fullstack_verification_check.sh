@@ -16,6 +16,8 @@ RUN_WEB_VITALS=${RUN_WEB_VITALS:-0}
 WEB_VITALS_MAX_LCP_MS=${WEB_VITALS_MAX_LCP_MS:-}
 WEB_VITALS_MAX_CLS=${WEB_VITALS_MAX_CLS:-}
 WEB_VITALS_MAX_TBT_MS=${WEB_VITALS_MAX_TBT_MS:-}
+WEB_VITALS_MAX_RESOURCE_COUNT=${WEB_VITALS_MAX_RESOURCE_COUNT:-}
+WEB_VITALS_MAX_ENCODED_RESOURCE_KB=${WEB_VITALS_MAX_ENCODED_RESOURCE_KB:-}
 
 detect_playwright_python() {
   for candidate in "${PYTHON_PLAYWRIGHT:-}" python3 python "$ROOT_DIR/.venv/bin/python"; do
@@ -59,12 +61,17 @@ Options:
                           Optional Web Vitals CLS budget passed to lab probes
   --web-vitals-max-tbt-ms <ms>
                           Optional Web Vitals TBT approx budget passed to lab probes
+  --web-vitals-max-resource-count <n>
+                          Optional loaded resource count budget passed to lab probes
+  --web-vitals-max-encoded-resource-kb <kb>
+                          Optional encoded resource KB budget passed to lab probes
   -h, --help              Show this help
 
 Environment variables with the same uppercase names can also configure the
 defaults: BACKEND_URL, FRONTEND_URL, PREVIEW_URL, PREVIEW_API_URL,
 BENCHMARK_RUNS, SLOW_MS, BENCHMARK_JSON, RUN_CROSS_BROWSER, RUN_WEB_VITALS,
-WEB_VITALS_MAX_LCP_MS, WEB_VITALS_MAX_CLS, WEB_VITALS_MAX_TBT_MS.
+WEB_VITALS_MAX_LCP_MS, WEB_VITALS_MAX_CLS, WEB_VITALS_MAX_TBT_MS,
+WEB_VITALS_MAX_RESOURCE_COUNT, WEB_VITALS_MAX_ENCODED_RESOURCE_KB.
 When cross-browser smoke is enabled, PYTHON_PLAYWRIGHT may point to a Python
 that can import playwright.sync_api; otherwise the script auto-detects one
 before activating .venv.
@@ -119,6 +126,14 @@ while [ "$#" -gt 0 ]; do
       shift
       WEB_VITALS_MAX_TBT_MS=$1
       ;;
+    --web-vitals-max-resource-count)
+      shift
+      WEB_VITALS_MAX_RESOURCE_COUNT=$1
+      ;;
+    --web-vitals-max-encoded-resource-kb)
+      shift
+      WEB_VITALS_MAX_ENCODED_RESOURCE_KB=$1
+      ;;
     -h|--help)
       usage
       exit 0
@@ -168,6 +183,12 @@ run_web_vitals_probe() {
   fi
   if [ -n "$WEB_VITALS_MAX_TBT_MS" ]; then
     set -- "$@" --max-tbt-ms "$WEB_VITALS_MAX_TBT_MS"
+  fi
+  if [ -n "$WEB_VITALS_MAX_RESOURCE_COUNT" ]; then
+    set -- "$@" --max-resource-count "$WEB_VITALS_MAX_RESOURCE_COUNT"
+  fi
+  if [ -n "$WEB_VITALS_MAX_ENCODED_RESOURCE_KB" ]; then
+    set -- "$@" --max-encoded-resource-kb "$WEB_VITALS_MAX_ENCODED_RESOURCE_KB"
   fi
 
   run "$@"

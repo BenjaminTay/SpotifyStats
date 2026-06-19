@@ -31,6 +31,8 @@ def test_fullstack_verification_check_script_exposes_reusable_cli():
     assert "--web-vitals-max-lcp-ms" in result.stdout
     assert "--web-vitals-max-cls" in result.stdout
     assert "--web-vitals-max-tbt-ms" in result.stdout
+    assert "--web-vitals-max-resource-count" in result.stdout
+    assert "--web-vitals-max-encoded-resource-kb" in result.stdout
 
 
 def test_fullstack_verification_check_script_covers_delivery_matrix():
@@ -102,7 +104,11 @@ def test_fullstack_verification_check_forwards_web_vitals_budgets():
     assert "WEB_VITALS_MAX_LCP_MS" in source
     assert "WEB_VITALS_MAX_CLS" in source
     assert "WEB_VITALS_MAX_TBT_MS" in source
+    assert "WEB_VITALS_MAX_RESOURCE_COUNT" in source
+    assert "WEB_VITALS_MAX_ENCODED_RESOURCE_KB" in source
     assert "--max-lcp-ms" in source
     assert "--max-cls" in source
     assert "--max-tbt-ms" in source
+    assert "--max-resource-count" in source
+    assert "--max-encoded-resource-kb" in source
     assert "run_web_vitals_probe" in source

@@ -124,7 +124,7 @@ Web Vitals lab 采样使用根目录脚本：
 
 ```bash
 sh scripts/fullstack_verification_check.sh --backend-url http://127.0.0.1:8000 --frontend-url http://127.0.0.1:5173
-sh scripts/fullstack_verification_check.sh --backend-url http://127.0.0.1:8000 --frontend-url http://127.0.0.1:5173 --web-vitals --web-vitals-max-lcp-ms 3000 --web-vitals-max-cls 0.01 --web-vitals-max-tbt-ms 100
+sh scripts/fullstack_verification_check.sh --backend-url http://127.0.0.1:8000 --frontend-url http://127.0.0.1:5173 --web-vitals --web-vitals-max-lcp-ms 3000 --web-vitals-max-cls 0.01 --web-vitals-max-tbt-ms 100 --web-vitals-max-resource-count 120 --web-vitals-max-encoded-resource-kb 11000
 .venv/bin/python scripts/quickstart_smoke.py
 node scripts/frontend_route_smoke.mjs --viewport both --max-scroll-overflow 0 --fail-on-console-warning
 node scripts/frontend_interaction_smoke.mjs --base-url http://127.0.0.1:5173
@@ -137,13 +137,13 @@ node scripts/frontend_cross_browser_smoke.mjs --base-url http://127.0.0.1:5173
 node scripts/frontend_cross_browser_smoke.mjs --base-url http://127.0.0.1:4173 --api-base-url http://127.0.0.1:8000
 node scripts/frontend_web_vitals_probe.mjs --routes /,/analysis/stats,/analysis/charts,/billboard/number-ones,/account,/settings --viewport both --wait-ms 5000
 node scripts/frontend_web_vitals_probe.mjs --base-url http://127.0.0.1:4173 --api-base-url http://127.0.0.1:8000 --routes /,/analysis/stats,/analysis/charts,/billboard/number-ones,/account,/settings --viewport both --wait-ms 5000
-node scripts/frontend_web_vitals_probe.mjs --routes /,/analysis/stats,/analysis/charts,/billboard/number-ones,/account,/settings --viewport both --wait-ms 5000 --max-lcp-ms 3000 --max-cls 0.01 --max-tbt-ms 100
+node scripts/frontend_web_vitals_probe.mjs --routes /,/analysis/stats,/analysis/charts,/billboard/number-ones,/account,/settings --viewport both --wait-ms 5000 --max-lcp-ms 3000 --max-cls 0.01 --max-tbt-ms 100 --max-resource-count 120 --max-encoded-resource-kb 11000
 ```
 
 `frontend_route_smoke.mjs` 默认等待 5 秒，并对 19 个默认路由（含 `/analysis` 与 5 个分析重定向别名）检查业务内容 marker；零警告验收用 `--fail-on-console-warning`，全栈聚合入口默认传递该门禁；自定义临时路由可用 `--disable-route-markers` 关闭 marker 检查。
-`fullstack_verification_check.sh` 是非破坏性全栈聚合入口，会串起 backend full、pre-commit、Phase 5、API smoke/boundary、benchmark 和前端 smoke；需先启动后端 8000 与前端 5173，生产 preview 可用 `--preview-url http://127.0.0.1:4173 --preview-api-url http://127.0.0.1:8000`；Web Vitals 可用 `--web-vitals-max-lcp-ms`、`--web-vitals-max-cls`、`--web-vitals-max-tbt-ms` 进入同一聚合门禁。脚本会在激活 `.venv` 前自动检测可导入 `playwright.sync_api` 的 Python，必要时也可显式设置 `PYTHON_PLAYWRIGHT`。
+`fullstack_verification_check.sh` 是非破坏性全栈聚合入口，会串起 backend full、pre-commit、Phase 5、API smoke/boundary、benchmark 和前端 smoke；需先启动后端 8000 与前端 5173，生产 preview 可用 `--preview-url http://127.0.0.1:4173 --preview-api-url http://127.0.0.1:8000`；Web Vitals 可用 `--web-vitals-max-lcp-ms`、`--web-vitals-max-cls`、`--web-vitals-max-tbt-ms`、`--web-vitals-max-resource-count`、`--web-vitals-max-encoded-resource-kb` 进入同一聚合门禁。脚本会在激活 `.venv` 前自动检测可导入 `playwright.sync_api` 的 Python，必要时也可显式设置 `PYTHON_PLAYWRIGHT`。
 `frontend_interaction_smoke.mjs` 覆盖分析页 tab、Billboard 子路由/前进后退、AI Insights 报告/问答 tab（含未配置 LLM 空状态）、Settings 过滤/显示偏好控件与主题切换；生产 preview 用 `--api-base-url http://127.0.0.1:8000` 将 `/api` 与 `/covers` 请求转发到后端。dev server 和生产 preview 都应保持 0 console error、0 page error、0 横向溢出。
 `frontend_chart_interaction_smoke.mjs` 覆盖 ECharts tooltip hover、legend toggle 与 dataZoom drag，默认从真实 `/api/billboard/all-time` 响应动态选择长榜艺人；生产 preview 用 `--api-base-url http://127.0.0.1:8000` 分离静态页面与后端 API。dev server 和生产 preview 都应保持 0 console error/warning、0 page error、0 横向溢出。
 `frontend_long_list_smoke.mjs` 覆盖 Records mini-rank、Billboard All-Time、Community Feed infinite load、RecentPlays、SavedTracks、PersonalRankTable 6 个长列表分页/分段渲染场景，要求点击或滚动后可见窗口变化，并保持 0 console error/warning、0 page error、0 横向溢出；生产 preview 用 `--api-base-url http://127.0.0.1:8000` 将 `/api` 与 `/covers` 请求转发到后端。
 `frontend_cross_browser_smoke.mjs` 使用 Python Playwright API 跑 Chromium、Firefox、WebKit（Safari-family）三引擎；生产 preview 用 `--api-base-url http://127.0.0.1:8000` 通过 Playwright request fetch/fulfill 代理 `/api` 与 `/covers`，避免 4173 非 CORS 白名单 origin 削弱证据。若默认 `python` 不能 `import playwright.sync_api`，用 `PYTHON_PLAYWRIGHT=/path/to/python` 或 `--python` 指定。
-`frontend_web_vitals_probe.mjs` 采集 LCP/CLS/合成 FID/TBT lab 指标；生产 preview 用 `--api-base-url http://127.0.0.1:8000` 将 `/api` 与 `/covers` 请求转发到后端，避免只测到静态 preview 壳；可选 `--max-lcp-ms`、`--max-cls`、`--max-tbt-ms` 会在任一路由/视口超预算时保留报告并以退出码 1 失败。
+`frontend_web_vitals_probe.mjs` 采集 LCP/CLS/合成 FID/TBT lab 指标，并记录 resource count 与 encoded resource KB；生产 preview 用 `--api-base-url http://127.0.0.1:8000` 将 `/api` 与 `/covers` 请求转发到后端，避免只测到静态 preview 壳；可选 `--max-lcp-ms`、`--max-cls`、`--max-tbt-ms`、`--max-resource-count`、`--max-encoded-resource-kb` 会在任一路由/视口超预算时保留报告并以退出码 1 失败。

@@ -122,6 +122,8 @@ function parseArgs(argv) {
     maxLcpMs: null,
     maxCls: null,
     maxTbtMs: null,
+    maxResourceCount: null,
+    maxEncodedResourceKB: null,
   }
 
   for (let i = 0; i < argv.length; i += 1) {
@@ -138,6 +140,8 @@ function parseArgs(argv) {
     else if (arg === '--max-lcp-ms') args.maxLcpMs = parseBudgetNumber(argv[++i], '--max-lcp-ms')
     else if (arg === '--max-cls') args.maxCls = parseBudgetNumber(argv[++i], '--max-cls')
     else if (arg === '--max-tbt-ms') args.maxTbtMs = parseBudgetNumber(argv[++i], '--max-tbt-ms')
+    else if (arg === '--max-resource-count') args.maxResourceCount = parseBudgetNumber(argv[++i], '--max-resource-count')
+    else if (arg === '--max-encoded-resource-kb') args.maxEncodedResourceKB = parseBudgetNumber(argv[++i], '--max-encoded-resource-kb')
     else if (arg === '--help' || arg === '-h') {
       printHelp()
       process.exit(0)
@@ -180,6 +184,10 @@ Options:
   --max-lcp-ms <ms>      Fail when any measured LCP is above this budget
   --max-cls <score>      Fail when any measured CLS is above this budget
   --max-tbt-ms <ms>      Fail when any measured TBT approx is above this budget
+  --max-resource-count <n>
+                         Fail when any route loads more resources than this budget
+  --max-encoded-resource-kb <kb>
+                         Fail when any route loads more encoded resource KB than this budget
 `)
 }
 
@@ -460,6 +468,8 @@ function evaluateBudgets(results, budgets) {
     { key: 'lcp', label: 'LCP', budget: budgets.maxLcpMs, unit: 'ms' },
     { key: 'cls', label: 'CLS', budget: budgets.maxCls, unit: '' },
     { key: 'tbtApprox', label: 'TBT approx', budget: budgets.maxTbtMs, unit: 'ms' },
+    { key: 'resourceCount', label: 'Resource count', budget: budgets.maxResourceCount, unit: ' requests' },
+    { key: 'encodedResourceKB', label: 'Encoded resources', budget: budgets.maxEncodedResourceKB, unit: 'KB' },
   ]
 
   for (const row of results) {
@@ -534,7 +544,9 @@ async function main() {
           waitMs: args.waitMs,
         })
         results.push(result)
-        process.stderr.write(`LCP=${formatMs(result.lcp)} CLS=${result.cls} TBT=${formatMs(result.tbtApprox)}\n`)
+        process.stderr.write(
+          `LCP=${formatMs(result.lcp)} CLS=${result.cls} TBT=${formatMs(result.tbtApprox)} Resources=${result.resourceCount}/${result.encodedResourceKB}KB\n`,
+        )
       }
     }
 
