@@ -8,6 +8,8 @@
 
 **最新交互 smoke 口径**：`scripts/frontend_interaction_smoke.mjs` 默认覆盖 6 个非破坏性场景，新增 `settings-data-import`，AI Insights 会读取 `/api/settings` 后按 LLM 已配置/未配置分支验证；dev server 与生产 `vite preview` 均已复跑 PASS 6/6。
 
+**最新跨浏览器 smoke 口径**：`scripts/frontend_cross_browser_smoke.mjs` 的 `core-interactions` 也覆盖同一组 6 个核心交互；dev server 完整 route-marker + core-interactions 与生产 `vite preview` core-interactions 均已在 Chromium/Firefox/WebKit PASS 3/3。
+
 ## 功能
 
 - **总览仪表盘** — KPI 卡片、月度趋势、平台分布、周热力图、动态数据洞察

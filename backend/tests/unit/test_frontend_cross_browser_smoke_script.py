@@ -48,7 +48,13 @@ def test_frontend_cross_browser_smoke_script_covers_browser_families_and_flows()
     assert "analysis-tabs" in source
     assert "billboard-routing" in source
     assert "ai-insights-tabs" in source
-    assert 'wait_for_any_text(page, ["AI 功能尚未配置", "对话历史"])' in source
+    assert "fetch_llm_availability" in source
+    assert "llm_enabled" in source
+    assert "has_llm_key" in source
+    assert "settings-controls" in source
+    assert "settings-data-import" in source
+    assert "run_settings_controls(browser)" in source
+    assert "run_settings_data_import(browser)" in source
     assert "theme-toggle" in source
     assert "max-scroll-overflow" in source
 
@@ -62,6 +68,8 @@ def test_frontend_cross_browser_smoke_script_can_rewrite_preview_api_requests():
     assert "page.route" in source
     assert "route.fetch(url=rewritten)" in source
     assert "route.fulfill(response=response)" in source
+    assert "except Exception" in source
+    assert "route.abort()" in source
     assert "'/api'" in source
     assert "'/covers'" in source
 
@@ -72,6 +80,14 @@ def test_frontend_cross_browser_smoke_script_waits_for_network_before_closing_pa
     assert "def close_page(page):" in source
     assert 'page.wait_for_load_state("networkidle"' in source
     assert "close_page(page)" in source
+
+
+def test_frontend_cross_browser_smoke_filters_browser_preload_diagnostics_only():
+    source = (ROOT / "scripts" / "frontend_cross_browser_smoke.mjs").read_text(encoding="utf-8")
+
+    assert "IGNORED_CONSOLE_PATTERNS" in source
+    assert "preloaded using link preload but not used within a few seconds" in source
+    assert "is_ignored_console_message" in source
 
 
 def test_frontend_cross_browser_smoke_can_cover_dynamic_detail_routes():

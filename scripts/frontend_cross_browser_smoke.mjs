@@ -213,6 +213,9 @@ MAX_SCROLL_OVERFLOW = int(os.environ["FRONTEND_MAX_SCROLL_OVERFLOW"])
 HEADED = os.environ.get("FRONTEND_HEADED") == "1"
 BROWSER_NAME = sys.argv[1]
 REWRITE_PATH_PREFIXES = ${JSON.stringify(REWRITE_PATH_PREFIXES)}
+IGNORED_CONSOLE_PATTERNS = [
+    "preloaded using link preload but not used within a few seconds",
+]
 
 
 class SmokeFailure(AssertionError):
@@ -246,11 +249,17 @@ def install_request_rewrite(page):
 
     def route_request(route):
         rewritten = rewrite_request_url(route.request.url)
-        if rewritten:
-            response = route.fetch(url=rewritten)
-            route.fulfill(response=response)
-        else:
-            route.continue_()
+        try:
+            if rewritten:
+                response = route.fetch(url=rewritten)
+                route.fulfill(response=response)
+            else:
+                route.continue_()
+        except Exception:
+            try:
+                route.abort()
+            except Exception:
+                pass
 
     page.route("**/*", route_request)
 
@@ -259,8 +268,11 @@ def install_guards(page):
     console_messages = []
     page_errors = []
 
+    def is_ignored_console_message(text: str) -> bool:
+        return any(pattern in text for pattern in IGNORED_CONSOLE_PATTERNS)
+
     def on_console(message):
-        if message.type in ("error", "warning"):
+        if message.type in ("error", "warning") and not is_ignored_console_message(message.text):
             console_messages.append(f"{message.type}: {message.text}")
 
     def on_page_error(error):
@@ -309,6 +321,68 @@ def click_text(page, text: str) -> None:
     target.click(timeout=WAIT_MS)
 
 
+def wait_for_condition(check, failure_message: str):
+    deadline = time.monotonic() + WAIT_MS / 1000
+    last = None
+    while time.monotonic() < deadline:
+        last = check()
+        if last:
+            return last
+        time.sleep(0.15)
+    raise SmokeFailure(f"{failure_message}; last={last!r}")
+
+
+def click_switch_by_label(page, label: str):
+    target = page.get_by_role("switch", name=re.compile(label)).first
+    before = target.get_attribute("aria-checked", timeout=WAIT_MS)
+    target.scroll_into_view_if_needed(timeout=WAIT_MS)
+    target.click(timeout=WAIT_MS)
+
+    def changed():
+        after = target.get_attribute("aria-checked", timeout=1000)
+        return {"before": before, "after": after} if after != before else None
+
+    return wait_for_condition(changed, f"Switch did not toggle: {label}")
+
+
+def assert_clickable_text_count(page, texts, minimum: int):
+    def enough():
+        return page.evaluate(
+            """({ texts, minimum }) => {
+                const isVisible = (el) => {
+                    const rect = el.getBoundingClientRect();
+                    const style = getComputedStyle(el);
+                    return rect.width > 0 && rect.height > 0 && style.display !== 'none' && style.visibility !== 'hidden';
+                };
+                const count = Array.from(document.querySelectorAll('button, a, [role="button"], [role="tab"], [role="option"]'))
+                    .filter((el) => isVisible(el))
+                    .filter((el) => {
+                        const text = (el.innerText || el.textContent || '').trim();
+                        return texts.some((targetText) => text.includes(targetText));
+                    }).length;
+                return count >= minimum ? { count } : null;
+            }""",
+            {"texts": texts, "minimum": minimum},
+        )
+
+    return wait_for_condition(enough, f"Expected at least {minimum} clickable control(s): {texts}")
+
+
+def fetch_llm_availability(page):
+    return page.evaluate(
+        """async () => {
+            try {
+                const response = await fetch('/api/settings', { headers: { Accept: 'application/json' } });
+                if (!response.ok) return null;
+                const settings = await response.json();
+                return Boolean(settings.llm_enabled && settings.has_llm_key);
+            } catch {
+                return null;
+            }
+        }"""
+    )
+
+
 def page_state(page):
     return page.evaluate(
         """() => {
@@ -323,6 +397,7 @@ def page_state(page):
                 scrollOverflow: Math.max(bodyScrollWidth, documentScrollWidth) - viewportWidth,
                 hasFatalText: /Internal Server Error|Failed to fetch dynamically imported module|ReferenceError|TypeError|Unhandled Runtime Error/.test(bodyText),
                 theme: localStorage.getItem('theme'),
+                chineseStyle: localStorage.getItem('chineseStyle'),
                 isDark: document.documentElement.classList.contains('dark'),
             };
         }"""
@@ -432,13 +507,15 @@ def run_ai_insights_tabs(browser):
     try:
         page.goto(absolute_url("/ai-insights"), wait_until="domcontentloaded", timeout=WAIT_MS + 10000)
         wait_for_text(page, "AI 洞察")
-        ready_text = wait_for_any_text(page, ["月报", "AI 功能尚未配置"])
-        if "AI 功能尚未配置" in ready_text:
+        llm_available = fetch_llm_availability(page)
+        if llm_available is False:
+            wait_for_text(page, "AI 功能尚未配置")
             click_text(page, "问答")
-            wait_for_any_text(page, ["AI 功能尚未配置", "对话历史"])
+            wait_for_text(page, "AI 功能尚未配置")
             click_text(page, "报告")
-            wait_for_any_text(page, ["AI 功能尚未配置", "AI 洞察"])
+            wait_for_text(page, "AI 功能尚未配置")
         else:
+            wait_for_text(page, "月报")
             click_text(page, "月报")
             wait_for_text(page, "月报")
             click_text(page, "年度叙事")
@@ -449,6 +526,62 @@ def run_ai_insights_tabs(browser):
             wait_for_text(page, "AI 洞察")
         assert_page_health(page, console_messages, page_errors)
         print("PASS core-interactions ai-insights-tabs")
+    finally:
+        close_page(page)
+
+
+def run_settings_controls(browser):
+    page, console_messages, page_errors = new_page(browser, "desktop")
+    try:
+        page.goto(absolute_url("/settings"), wait_until="domcontentloaded", timeout=WAIT_MS + 10000)
+        wait_for_text(page, "参数与配置")
+        wait_for_text(page, "SPOTIFY 连接")
+        wait_for_text(page, "DATA & DISPLAY")
+        wait_for_text(page, "BILLBOARD PARAMETERS")
+        wait_for_text(page, "VERSION MERGE")
+        wait_for_text(page, "DATA IMPORT")
+
+        click_switch_by_label(page, "动态阈值")
+        click_switch_by_label(page, "动态阈值")
+        click_switch_by_label(page, "仅音乐")
+        wait_for_text(page, "过滤参数已更新")
+        click_switch_by_label(page, "仅音乐")
+        wait_for_text(page, "过滤参数已更新")
+
+        click_text(page, "原样显示")
+        click_text(page, "简体中文")
+        wait_for_condition(
+            lambda: page_state(page) if page_state(page)["chineseStyle"] == "simplified" else None,
+            "Chinese display preference did not update to simplified",
+        )
+        click_text(page, "简体中文")
+        click_text(page, "原样显示")
+        wait_for_condition(
+            lambda: page_state(page) if page_state(page)["chineseStyle"] == "original" else None,
+            "Chinese display preference did not reset to original",
+        )
+
+        wait_for_any_text(page, ["连接 Spotify", "同步收藏时间"])
+        assert_page_health(page, console_messages, page_errors)
+        print("PASS core-interactions settings-controls")
+    finally:
+        close_page(page)
+
+
+def run_settings_data_import(browser):
+    page, console_messages, page_errors = new_page(browser, "desktop")
+    try:
+        page.goto(absolute_url("/settings"), wait_until="domcontentloaded", timeout=WAIT_MS + 10000)
+        wait_for_text(page, "参数与配置")
+        wait_for_text(page, "DATA IMPORT")
+        wait_for_text(page, "串流数据")
+        wait_for_text(page, "账号数据")
+        wait_for_text(page, "当前数据库记录数")
+        wait_for_text(page, "导入 Spotify 账号数据包")
+        wait_for_any_text(page, ["未导入", "已导入"])
+        assert_clickable_text_count(page, ["开始导入", "重新导入", "导入中..."], 2)
+        assert_page_health(page, console_messages, page_errors)
+        print("PASS core-interactions settings-data-import")
     finally:
         close_page(page)
 
@@ -475,6 +608,8 @@ def run_core_interactions(browser):
     run_analysis_tabs(browser)
     run_billboard_routing(browser)
     run_ai_insights_tabs(browser)
+    run_settings_controls(browser)
+    run_settings_data_import(browser)
     run_theme_toggle(browser)
 
 
