@@ -31,7 +31,7 @@ def _make_job():
 def _progress_cb(job_id):
     def cb(message: str, pct: float):
         _jobs[job_id]["message"] = message
-        _jobs[job_id]["progress_pct"] = pct
+        _jobs[job_id]["progress_pct"] = max(0.0, min(1.0, float(pct)))
 
     return cb
 

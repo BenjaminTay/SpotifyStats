@@ -103,3 +103,28 @@ def test_streaming_import_job_records_error_status(client, monkeypatch):
     assert status["progress_pct"] == 0.2
     assert status["message"] == "fixture import failure"
     assert status["result"] is None
+
+
+def test_import_progress_callback_clamps_status_percent(client, monkeypatch):
+    from backend.api import import_ as import_api
+
+    observed = []
+
+    def fake_import_data(progress_callback):
+        progress_callback("negative progress", -0.5)
+        observed.append(next(iter(import_api._jobs.values()))["progress_pct"])
+        progress_callback("overflow progress", 1.5)
+        observed.append(next(iter(import_api._jobs.values()))["progress_pct"])
+        raise RuntimeError("stop after progress probes")
+
+    monkeypatch.setattr(import_api.threading, "Thread", _ImmediateThread)
+    monkeypatch.setattr(import_api, "import_data", fake_import_data)
+
+    response = client.post("/api/import/streaming")
+
+    assert response.status_code == 200
+    assert observed == [0.0, 1.0]
+    job_id = response.json()["job_id"]
+    status = client.get(f"/api/import/status/{job_id}").json()
+    assert status["status"] == "error"
+    assert status["progress_pct"] == 1.0
