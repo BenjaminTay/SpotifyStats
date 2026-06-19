@@ -5,6 +5,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Query
 from pydantic import BaseModel
 
+from backend.providers.base import ProviderError
 from backend.services.genius_service import _get_client as get_genius_client
 from backend.services.wikipedia_service import (
     get_album_wiki,
@@ -62,6 +63,16 @@ class TrackEnrichmentResponse(BaseModel):
     genius: dict | None = None
 
 
+def _safe_wiki_lookup(lookup, *args):
+    """Treat optional wiki enrichment as nullable while preserving provider errors."""
+    try:
+        return lookup(*args)
+    except ProviderError:
+        raise
+    except Exception:
+        return None
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # Album enrichment
 # ═══════════════════════════════════════════════════════════════════════════
@@ -76,7 +87,7 @@ def get_album_enrichment(
     """Get Wikipedia and optionally Genius enrichment data for an album."""
     result: dict = {"wiki": None, "genius": None}
 
-    wiki = get_album_wiki(album_name, artist_name)
+    wiki = _safe_wiki_lookup(get_album_wiki, album_name, artist_name)
     if wiki:
         result["wiki"] = {
             "url": wiki["url"],
@@ -124,7 +135,7 @@ def get_artist_enrichment(
     """Get Wikipedia and optionally Genius enrichment data for an artist."""
     result: dict = {"wiki": None, "genius": None}
 
-    wiki = get_artist_wiki(artist_name)
+    wiki = _safe_wiki_lookup(get_artist_wiki, artist_name)
     if wiki:
         result["wiki"] = {
             "url": wiki["url"],
@@ -168,7 +179,7 @@ def get_track_enrichment(
     """Get Wikipedia and optionally Genius enrichment data for a track."""
     result: dict = {"wiki": None, "genius": None}
 
-    wiki = get_track_wiki(track_name, artist_name)
+    wiki = _safe_wiki_lookup(get_track_wiki, track_name, artist_name)
     if wiki:
         result["wiki"] = {
             "url": wiki["url"],
