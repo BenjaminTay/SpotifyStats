@@ -2,13 +2,14 @@ from __future__ import annotations
 
 # ruff: noqa: UP045
 import argparse
+import json
 import os
 import subprocess
 import sys
 import tempfile
 import time
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Optional, TextIO
 from urllib.error import HTTPError, URLError
@@ -35,6 +36,16 @@ class StartedProcess:
     log_handle: TextIO
 
 
+@dataclass
+class CheckTiming:
+    label: str
+    url: str
+    status: int
+    elapsed_ms: float
+    body_bytes: int
+    has_request_id: bool
+
+
 def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="quickstart_smoke.py",
@@ -43,7 +54,10 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     parser.add_argument("--backend-url", default=DEFAULT_BACKEND_URL)
     parser.add_argument("--frontend-url", default=DEFAULT_FRONTEND_URL)
     parser.add_argument("--timeout-sec", type=float, default=90.0)
-    parser.add_argument("--log-dir", default=None, help="Directory for backend/frontend startup logs.")
+    parser.add_argument(
+        "--log-dir", default=None, help="Directory for backend/frontend startup logs."
+    )
+    parser.add_argument("--json-output", default=None, help="Write quickstart timing report JSON.")
     return parser.parse_args(argv)
 
 
@@ -155,6 +169,36 @@ def wait_for_url(
     raise TimeoutError(f"Timed out waiting for {label} at {url}: {last_error}")
 
 
+def timed_wait_for_url(
+    label: str,
+    url: str,
+    *,
+    timeout_sec: float,
+    expected_status: int = 200,
+    require_text: Optional[str] = None,
+    require_header: Optional[str] = None,
+) -> tuple[HttpResult, CheckTiming]:
+    started_at = time.monotonic()
+    result = wait_for_url(
+        label,
+        url,
+        timeout_sec=timeout_sec,
+        expected_status=expected_status,
+        require_text=require_text,
+        require_header=require_header,
+    )
+    elapsed_ms = round((time.monotonic() - started_at) * 1000, 1)
+    timing = CheckTiming(
+        label=label,
+        url=url,
+        status=result.status,
+        elapsed_ms=elapsed_ms,
+        body_bytes=len(result.body.encode("utf-8")),
+        has_request_id="x-request-id" in result.headers,
+    )
+    return result, timing
+
+
 def _join_url(base_url: str, path: str) -> str:
     return base_url.rstrip("/") + "/" + path.lstrip("/")
 
@@ -195,15 +239,57 @@ def terminate_processes(started_processes: Sequence[StartedProcess]) -> None:
         started.log_handle.close()
 
 
-def run_quickstart_smoke(args: argparse.Namespace) -> None:
-    log_dir = Path(args.log_dir) if args.log_dir else Path(tempfile.mkdtemp(prefix="spotify-quickstart-"))
+def build_timing_report(
+    *,
+    started_at: float,
+    finished_at: float,
+    log_dir: Path,
+    backend_reused: bool,
+    frontend_reused: bool,
+    checks: Sequence[CheckTiming],
+) -> dict:
+    return {
+        "generated_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "total_elapsed_ms": round((finished_at - started_at) * 1000, 1),
+        "backend_reused": backend_reused,
+        "frontend_reused": frontend_reused,
+        "log_dir": str(log_dir),
+        "checks": [asdict(check) for check in checks],
+    }
+
+
+def write_json_report(report: dict, output_path: Path) -> None:
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with output_path.open("w", encoding="utf-8") as handle:
+        json.dump(report, handle, ensure_ascii=False, indent=2)
+
+
+def print_timing_summary(report: dict) -> None:
+    print(f"Quickstart timings: total={report['total_elapsed_ms']}ms", flush=True)
+    for check in report["checks"]:
+        print(
+            f"- {check['label']}: {check['elapsed_ms']}ms "
+            f"status={check['status']} bytes={check['body_bytes']}",
+            flush=True,
+        )
+
+
+def run_quickstart_smoke(args: argparse.Namespace) -> dict:
+    started_at = time.monotonic()
+    log_dir = (
+        Path(args.log_dir) if args.log_dir else Path(tempfile.mkdtemp(prefix="spotify-quickstart-"))
+    )
     env = default_env(args.backend_url)
     started_processes: list[StartedProcess] = []
+    checks: list[CheckTiming] = []
+    backend_reused = False
+    frontend_reused = False
     print(f"Quickstart smoke logs: {log_dir}", flush=True)
 
     try:
         backend_health_url = _join_url(args.backend_url, "/api/health")
         if is_ready(backend_health_url):
+            backend_reused = True
             print(f"Reusing backend: {args.backend_url}", flush=True)
         else:
             started_processes.append(
@@ -216,20 +302,23 @@ def run_quickstart_smoke(args: argparse.Namespace) -> None:
                 )
             )
 
-        wait_for_url(
+        _, timing = timed_wait_for_url(
             "backend health",
             backend_health_url,
             timeout_sec=args.timeout_sec,
             require_header="x-request-id",
         )
-        wait_for_url(
+        checks.append(timing)
+        _, timing = timed_wait_for_url(
             "backend docs",
             _join_url(args.backend_url, "/docs"),
             timeout_sec=args.timeout_sec,
             require_text="swagger-ui",
         )
+        checks.append(timing)
 
         if is_ready(args.frontend_url, require_text='id="root"'):
+            frontend_reused = True
             print(f"Reusing frontend: {args.frontend_url}", flush=True)
         else:
             started_processes.append(
@@ -242,20 +331,35 @@ def run_quickstart_smoke(args: argparse.Namespace) -> None:
                 )
             )
 
-        wait_for_url(
+        _, timing = timed_wait_for_url(
             "frontend shell",
             args.frontend_url,
             timeout_sec=args.timeout_sec,
             require_text='id="root"',
         )
-        wait_for_url(
+        checks.append(timing)
+        _, timing = timed_wait_for_url(
             "frontend api proxy",
             _join_url(args.frontend_url, "/api/health"),
             timeout_sec=args.timeout_sec,
             require_header="x-request-id",
         )
+        checks.append(timing)
 
+        report = build_timing_report(
+            started_at=started_at,
+            finished_at=time.monotonic(),
+            log_dir=log_dir,
+            backend_reused=backend_reused,
+            frontend_reused=frontend_reused,
+            checks=checks,
+        )
+        print_timing_summary(report)
+        if args.json_output:
+            write_json_report(report, Path(args.json_output))
+            print(f"Quickstart timing JSON written to {args.json_output}", flush=True)
         print(f"Quickstart smoke completed. Logs: {log_dir}", flush=True)
+        return report
     finally:
         terminate_processes(started_processes)
 

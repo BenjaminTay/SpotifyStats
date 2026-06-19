@@ -33,8 +33,8 @@ uvicorn backend.main:app --reload --reload-dir backend
 # 启动前端（端口 5173，自动代理 /api → 后端）
 cd frontend && npm run dev
 
-# 一键启动冒烟：自动启动/复用 8000 + 5173，验证 health/docs/前端壳/API 代理后清理
-.venv/bin/python scripts/quickstart_smoke.py
+# 一键启动冒烟：自动启动/复用 8000 + 5173，验证 health/docs/前端壳/API 代理后清理，并输出时序 JSON
+.venv/bin/python scripts/quickstart_smoke.py --json-output /tmp/spotify_quickstart_timing.json
 
 # Spotify OAuth 需要 HTTPS，开发环境用 ngrok
 ngrok http --url=stuffing-nebula-tamer.ngrok-free.dev 5173

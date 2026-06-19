@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import subprocess
 from pathlib import Path
 
@@ -28,6 +29,7 @@ def test_quickstart_smoke_script_exposes_reusable_cli():
     assert "--frontend-url" in result.stdout
     assert "--timeout-sec" in result.stdout
     assert "--log-dir" in result.stdout
+    assert "--json-output" in result.stdout
 
 
 def test_quickstart_smoke_constructs_documented_startup_commands():
@@ -82,3 +84,51 @@ def test_quickstart_smoke_uses_stable_fastapi_docs_marker():
 
     assert 'require_text="swagger-ui"' in source
     assert 'require_text="Swagger UI"' not in source
+
+
+def test_quickstart_smoke_builds_machine_readable_timing_report(tmp_path):
+    from scripts.quickstart_smoke import CheckTiming, build_timing_report, write_json_report
+
+    checks = [
+        CheckTiming(
+            label="backend health",
+            url="http://127.0.0.1:8000/api/health",
+            status=200,
+            elapsed_ms=123.4,
+            body_bytes=128,
+            has_request_id=True,
+        ),
+        CheckTiming(
+            label="frontend shell",
+            url="http://127.0.0.1:5173",
+            status=200,
+            elapsed_ms=456.7,
+            body_bytes=2048,
+            has_request_id=False,
+        ),
+    ]
+
+    report = build_timing_report(
+        started_at=100.0,
+        finished_at=102.345,
+        log_dir=tmp_path,
+        backend_reused=True,
+        frontend_reused=False,
+        checks=checks,
+    )
+
+    assert report["total_elapsed_ms"] == 2345.0
+    assert report["backend_reused"] is True
+    assert report["frontend_reused"] is False
+    assert report["log_dir"] == str(tmp_path)
+    assert report["checks"][0]["label"] == "backend health"
+    assert report["checks"][0]["elapsed_ms"] == 123.4
+    assert report["checks"][0]["has_request_id"] is True
+    assert report["checks"][1]["body_bytes"] == 2048
+
+    output_path = tmp_path / "quickstart.json"
+    write_json_report(report, output_path)
+
+    written = json.loads(output_path.read_text(encoding="utf-8"))
+    assert written["total_elapsed_ms"] == 2345.0
+    assert len(written["checks"]) == 2
