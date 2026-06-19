@@ -73,6 +73,26 @@ class TestTtlCached:
         assert maybe_missing() is None
         assert call_count == 2
 
+    def test_cache_clear_resets_entries_and_stats(self):
+        from backend.core.cache import ttl_cached
+
+        call_count = 0
+
+        @ttl_cached(60)
+        def expensive():
+            nonlocal call_count
+            call_count += 1
+            return call_count
+
+        assert expensive() == 1
+        assert expensive() == 1
+        assert expensive.cache_stats() == {"hits": 1, "misses": 1, "size": 1}
+
+        expensive.cache_clear()
+        assert expensive.cache_stats() == {"hits": 0, "misses": 0, "size": 0}
+        assert expensive() == 2
+        assert expensive.cache_stats() == {"hits": 0, "misses": 1, "size": 1}
+
 
 class TestSingleflight:
     """singleflight serializes concurrent calls via a lock (no result caching)."""
@@ -192,3 +212,33 @@ class TestCacheManager:
 
         clear_all_ttl()
         assert _sample_calc3.cache_info().currsize == 0
+
+    def test_invalidate_ttl_clears_entries_and_stats(self):
+        from backend.core.cache import ttl_cached
+        from backend.core.cache_manager import get_stats, invalidate, register_ttl
+
+        call_count = 0
+
+        @ttl_cached(60, namespace="ttl_invalidate_test")
+        def _slow_call():
+            nonlocal call_count
+            call_count += 1
+            return call_count
+
+        register_ttl("ttl_invalidate_test", "slow", _slow_call)
+
+        assert _slow_call() == 1
+        assert _slow_call() == 1
+        assert get_stats()["ttl_invalidate_test"]["ttl"]["slow"] == {
+            "hits": 1,
+            "misses": 1,
+            "size": 1,
+        }
+
+        invalidate("ttl_invalidate_test")
+        assert get_stats()["ttl_invalidate_test"]["ttl"]["slow"] == {
+            "hits": 0,
+            "misses": 0,
+            "size": 0,
+        }
+        assert _slow_call() == 2

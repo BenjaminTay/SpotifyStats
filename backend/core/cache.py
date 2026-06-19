@@ -47,7 +47,14 @@ def ttl_cached(ttl_seconds: float, namespace: str = "default"):
             with _lock:
                 return {"hits": _hits, "misses": _misses, "size": len(cache)}
 
-        wrapper.cache_clear = cache.clear
+        def cache_clear():
+            nonlocal _hits, _misses
+            with _lock:
+                cache.clear()
+                _hits = 0
+                _misses = 0
+
+        wrapper.cache_clear = cache_clear
         wrapper.cache_stats = cache_stats
         return wrapper
 
