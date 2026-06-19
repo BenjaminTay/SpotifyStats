@@ -42,3 +42,11 @@ def test_frontend_web_vitals_probe_can_rewrite_preview_api_requests():
     assert "Fetch.continueRequest" in source
     assert "'/api'" in source
     assert "'/covers'" in source
+
+
+def test_frontend_web_vitals_probe_default_routes_cover_analysis_charts():
+    source = (ROOT / "scripts" / "frontend_web_vitals_probe.mjs").read_text(
+        encoding="utf-8",
+    )
+
+    assert "'/analysis/charts'" in source
