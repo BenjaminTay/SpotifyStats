@@ -41,6 +41,8 @@ class BoundaryResult:
 SPECIAL_SEARCH = "%_🎧/../"
 
 DEFAULT_BOUNDARY_CASES: tuple[BoundaryCase, ...] = (
+    BoundaryCase("analysis_overview_min_ms_negative", "/api/analysis/overview", {"min_ms": -1}),
+    BoundaryCase("dashboard_top_tracks_n_nonint", "/api/dashboard/top-tracks", {"n": "many"}),
     BoundaryCase("analysis_plays_limit_zero", "/api/analysis/plays", {"limit": 0}),
     BoundaryCase("analysis_plays_limit_too_high", "/api/analysis/plays", {"limit": 201}),
     BoundaryCase("analysis_plays_offset_negative", "/api/analysis/plays", {"offset": -1}),
@@ -53,10 +55,29 @@ DEFAULT_BOUNDARY_CASES: tuple[BoundaryCase, ...] = (
     ),
     BoundaryCase("analysis_charts_limit_zero", "/api/analysis/charts", {"limit": 0}),
     BoundaryCase("analysis_charts_limit_too_high", "/api/analysis/charts", {"limit": 5001}),
+    BoundaryCase("analysis_charts_merge_level_low", "/api/analysis/charts", {"merge_level": 0}),
+    BoundaryCase("analysis_charts_merge_level_high", "/api/analysis/charts", {"merge_level": 4}),
     BoundaryCase("leaderboard_invalid_entity", "/api/leaderboard", {"entity": "invalid"}),
     BoundaryCase("leaderboard_empty_entity", "/api/leaderboard", {"entity": ""}),
+    BoundaryCase("leaderboard_invalid_metric", "/api/leaderboard", {"metric": "minutes"}),
+    BoundaryCase("leaderboard_invalid_time_range", "/api/leaderboard", {"time_range": "forever"}),
     BoundaryCase("leaderboard_top_n_low", "/api/leaderboard", {"top_n": 4}),
     BoundaryCase("leaderboard_top_n_high", "/api/leaderboard", {"top_n": 101}),
+    BoundaryCase("billboard_top_n_low", "/api/billboard/data", {"bb_top_n": 4}),
+    BoundaryCase("billboard_top_n_high", "/api/billboard/data", {"bb_top_n": 101}),
+    BoundaryCase("billboard_album_top_n_low", "/api/billboard/data", {"bb_album_top_n": 4}),
+    BoundaryCase("billboard_album_top_n_high", "/api/billboard/data", {"bb_album_top_n": 101}),
+    BoundaryCase("billboard_artist_top_n_low", "/api/billboard/data", {"bb_artist_top_n": 4}),
+    BoundaryCase("billboard_artist_top_n_high", "/api/billboard/data", {"bb_artist_top_n": 101}),
+    BoundaryCase("billboard_week_start_dow_low", "/api/billboard/data", {"bb_week_start_dow": -1}),
+    BoundaryCase("billboard_week_start_dow_high", "/api/billboard/data", {"bb_week_start_dow": 7}),
+    BoundaryCase(
+        "billboard_week_start_hour_low", "/api/billboard/data", {"bb_week_start_hour": -1}
+    ),
+    BoundaryCase(
+        "billboard_week_start_hour_high", "/api/billboard/data", {"bb_week_start_hour": 24}
+    ),
+    BoundaryCase("community_significance_low", "/api/community/feed", {"significance_min": -0.1}),
     BoundaryCase("community_significance_high", "/api/community/feed", {"significance_min": 1.5}),
     BoundaryCase("community_limit_high", "/api/community/feed", {"limit": 201}),
     BoundaryCase(
@@ -66,12 +87,87 @@ DEFAULT_BOUNDARY_CASES: tuple[BoundaryCase, ...] = (
         expected_statuses=(200,),
         expect_validation_detail=False,
     ),
+    BoundaryCase(
+        "community_trending_artist_limit_low", "/api/community/trending", {"artist_limit": 0}
+    ),
+    BoundaryCase(
+        "community_trending_artist_limit_high", "/api/community/trending", {"artist_limit": 21}
+    ),
+    BoundaryCase(
+        "community_trending_track_limit_low", "/api/community/trending", {"track_limit": 0}
+    ),
+    BoundaryCase(
+        "community_trending_track_limit_high", "/api/community/trending", {"track_limit": 21}
+    ),
+    BoundaryCase("covers_entity_id_nonint", "/covers/albums/not-an-int.jpg"),
+    BoundaryCase("library_playlist_path_nonint", "/api/library/playlists/not-an-int/tracks"),
+    BoundaryCase(
+        "library_saved_tracks_page_nonint", "/api/library/saved-tracks", {"page": "first"}
+    ),
+    BoundaryCase(
+        "library_saved_tracks_limit_nonint", "/api/library/saved-tracks", {"limit": "many"}
+    ),
+    BoundaryCase("wrapped_year_path_nonint", "/api/wrapped/not-an-int"),
+    BoundaryCase("settings_llm_profile_path_nonint", "/api/settings/llm-profiles/not-an-int"),
+    BoundaryCase("chat_session_path_nonint", "/api/chat/sessions/not-an-int"),
+    BoundaryCase("version_group_path_nonint", "/api/version-merge/groups/not-an-int/members"),
     BoundaryCase("music_track_path_nonint", "/api/music/tracks/not-an-int/stats"),
     BoundaryCase("billboard_track_path_nonint", "/api/billboard/track/not-an-int"),
+    BoundaryCase(
+        "version_compare_album_id_a_nonint",
+        "/api/version-merge/compare",
+        {"album_id_a": "left", "album_id_b": 925},
+    ),
+    BoundaryCase(
+        "version_compare_album_id_b_nonint",
+        "/api/version-merge/compare",
+        {"album_id_a": 921, "album_id_b": "right"},
+    ),
+    BoundaryCase(
+        "billboard_versus_track_id_a_nonint",
+        "/api/billboard/versus/track",
+        {"track_id_a": "left", "track_id_b": 906},
+    ),
+    BoundaryCase(
+        "billboard_versus_track_id_b_nonint",
+        "/api/billboard/versus/track",
+        {"track_id_a": 905, "track_id_b": "right"},
+    ),
+    BoundaryCase("ai_insights_year_nonint", "/api/ai-insights/yearly-story", {"year": "twenty"}),
+    BoundaryCase(
+        "release_cycle_artist_weeks_before_low",
+        "/api/billboard/release-cycle/artist/Fixture Artist Alpha",
+        {"weeks_before": 0},
+    ),
+    BoundaryCase(
+        "release_cycle_artist_weeks_before_high",
+        "/api/billboard/release-cycle/artist/Fixture Artist Alpha",
+        {"weeks_before": 25},
+    ),
+    BoundaryCase(
+        "release_cycle_artist_weeks_after_low",
+        "/api/billboard/release-cycle/artist/Fixture Artist Alpha",
+        {"weeks_after": 3},
+    ),
+    BoundaryCase(
+        "release_cycle_artist_weeks_after_high",
+        "/api/billboard/release-cycle/artist/Fixture Artist Alpha",
+        {"weeks_after": 53},
+    ),
     BoundaryCase(
         "release_cycle_weeks_before_low",
         "/api/billboard/release-cycle/artist/Fixture Artist Alpha/album/Fixture Future LP",
         {"weeks_before": 0},
+    ),
+    BoundaryCase(
+        "release_cycle_album_weeks_before_high",
+        "/api/billboard/release-cycle/artist/Fixture Artist Alpha/album/Fixture Future LP",
+        {"weeks_before": 53},
+    ),
+    BoundaryCase(
+        "release_cycle_album_weeks_after_low",
+        "/api/billboard/release-cycle/artist/Fixture Artist Alpha/album/Fixture Future LP",
+        {"weeks_after": 3},
     ),
     BoundaryCase(
         "release_cycle_weeks_after_high",

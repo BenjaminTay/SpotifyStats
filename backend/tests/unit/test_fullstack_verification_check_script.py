@@ -28,6 +28,7 @@ def test_fullstack_verification_check_script_exposes_reusable_cli():
     assert "--frontend-url" in result.stdout
     assert "--preview-url" in result.stdout
     assert "--openapi-operation-audit-json" in result.stdout
+    assert "--openapi-parameter-boundary-audit-json" in result.stdout
     assert "--web-vitals" in result.stdout
     assert "--web-vitals-max-lcp-ms" in result.stdout
     assert "--web-vitals-max-cls" in result.stdout
@@ -47,6 +48,7 @@ def test_fullstack_verification_check_script_covers_delivery_matrix():
     assert "pre-commit run --all-files" in source
     assert "scripts/phase5_check.sh" in source
     assert "scripts/openapi_operation_audit.py" in source
+    assert "scripts/openapi_parameter_boundary_audit.py" in source
     assert "scripts/api_smoke_probe.py" in source
     assert "scripts/api_boundary_probe.py" in source
     assert "scripts/benchmark_api.py" in source
@@ -67,6 +69,17 @@ def test_fullstack_verification_check_runs_openapi_operation_audit_with_json_out
     assert "--openapi-operation-audit-json" in source
     assert (
         'scripts/openapi_operation_audit.py --json-output "$OPENAPI_OPERATION_AUDIT_JSON"' in source
+    )
+
+
+def test_fullstack_verification_check_runs_openapi_parameter_boundary_audit_with_json_output():
+    source = (ROOT / "scripts" / "fullstack_verification_check.sh").read_text(encoding="utf-8")
+
+    assert "OPENAPI_PARAMETER_BOUNDARY_AUDIT_JSON" in source
+    assert "--openapi-parameter-boundary-audit-json" in source
+    assert (
+        "scripts/openapi_parameter_boundary_audit.py "
+        '--json-output "$OPENAPI_PARAMETER_BOUNDARY_AUDIT_JSON"' in source
     )
 
 
