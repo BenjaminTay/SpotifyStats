@@ -309,7 +309,7 @@ export function RecentPlaysSection({
                                 to={row.track_id ? `/music/tracks/${row.track_id}` : '#'}
                                 className="shrink-0"
                               >
-                                <CoverCell index={0} coverUrl={row.cover_url} />
+                                <CoverCell index={0} coverUrl={row.cover_url} label={displayName(row.track_name)} />
                               </Link>
                               <span className="min-w-0">
                                 <Link

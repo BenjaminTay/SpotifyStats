@@ -133,7 +133,7 @@ export function ArtistReleasesSection({
                       key={`${event.album_name}-${event.release_date}`}
                       className="flex items-center gap-3 rounded-[10px] border border-border/70 p-3"
                     >
-                      <CoverCell index={index} coverUrl={releaseCoverUrl(event)} />
+                      <CoverCell index={index} coverUrl={releaseCoverUrl(event)} label={displayName(event.album_name)} />
                       <div className="min-w-0">
                         <p className="truncate font-sans text-[13px] font-semibold">
                           {displayName(event.album_name)}

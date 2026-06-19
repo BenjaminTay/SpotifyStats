@@ -111,7 +111,7 @@ export function MusicTracksSection({
               return paged.map((track, index) => (
                 <tr key={track.track_id} className="transition-colors hover:bg-muted/50">
                   <td className="py-3.5 pr-2">
-                    <CoverCell index={index} coverUrl={track.cover_url} />
+                    <CoverCell index={index} coverUrl={track.cover_url} label={displayName(track.track_name)} />
                   </td>
                   <td className="py-3.5 pl-1">
                     <Link
@@ -188,6 +188,7 @@ export function MusicTracksSection({
                 <button
                   onClick={() => setPage(1)}
                   disabled={safePage <= 1}
+                  aria-label="第一页"
                   className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:text-foreground disabled:opacity-30"
                 >
                   <ChevronsLeft className="h-4 w-4" />
@@ -195,6 +196,7 @@ export function MusicTracksSection({
                 <button
                   onClick={() => setPage((p) => Math.max(1, p - 1))}
                   disabled={safePage <= 1}
+                  aria-label="上一页"
                   className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:text-foreground disabled:opacity-30"
                 >
                   <ChevronLeft className="h-4 w-4" />
@@ -202,6 +204,7 @@ export function MusicTracksSection({
                 <button
                   onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                   disabled={safePage >= totalPages}
+                  aria-label="下一页"
                   className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:text-foreground disabled:opacity-30"
                 >
                   <ChevronRight className="h-4 w-4" />
@@ -209,6 +212,7 @@ export function MusicTracksSection({
                 <button
                   onClick={() => setPage(totalPages)}
                   disabled={safePage >= totalPages}
+                  aria-label="最后一页"
                   className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:text-foreground disabled:opacity-30"
                 >
                   <ChevronsRight className="h-4 w-4" />

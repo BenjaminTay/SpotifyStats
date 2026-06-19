@@ -79,6 +79,7 @@ export function WeekSelector({
       <button
         onClick={onPrev}
         disabled={disablePrev}
+        aria-label="上一周"
         className={cn(
           'flex h-[34px] w-[34px] items-center justify-center rounded-full border border-border bg-card backdrop-blur-[12px] text-muted-foreground transition-[background,border,color] duration-400',
           disablePrev
@@ -132,6 +133,7 @@ export function WeekSelector({
       <button
         onClick={onNext}
         disabled={disableNext}
+        aria-label="下一周"
         className={cn(
           'flex h-[34px] w-[34px] items-center justify-center rounded-full border border-border bg-card backdrop-blur-[12px] text-muted-foreground transition-[background,border,color] duration-400',
           disableNext

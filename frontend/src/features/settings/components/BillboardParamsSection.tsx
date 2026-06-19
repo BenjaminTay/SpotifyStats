@@ -42,6 +42,7 @@ export function BillboardParamsSection({
             </div>
             <p className="text-[12px] text-muted-foreground">每周单曲榜的最大上榜数量</p>
             <Slider
+              aria-label="单曲榜 Top N"
               value={[settings.bb_top_n]}
               onValueChange={(v) => onUpdate({ bb_top_n: (v as number[])[0] })}
               min={10}
@@ -56,6 +57,7 @@ export function BillboardParamsSection({
             </div>
             <p className="text-[12px] text-muted-foreground">每周专辑榜的最大上榜数量</p>
             <Slider
+              aria-label="专辑榜 Top N"
               value={[settings.bb_album_top_n]}
               onValueChange={(v) => onUpdate({ bb_album_top_n: (v as number[])[0] })}
               min={5}
@@ -70,6 +72,7 @@ export function BillboardParamsSection({
             </div>
             <p className="text-[12px] text-muted-foreground">每周艺人榜的最大上榜数量</p>
             <Slider
+              aria-label="艺人榜 Top N"
               value={[settings.bb_artist_top_n]}
               onValueChange={(v) => onUpdate({ bb_artist_top_n: (v as number[])[0] })}
               min={5}

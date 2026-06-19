@@ -14,21 +14,24 @@ export function CoverCell({
   isNewOrRe = false,
   coverUrl,
   className = 'h-10 w-10',
+  label,
 }: {
   index: number
   isNewOrRe?: boolean
   coverUrl?: string | null
   className?: string
+  label?: string
 }) {
   const [imgError, setImgError] = useState(false)
   useEffect(() => { setImgError(false) }, [coverUrl])
+  const coverAlt = label ? `${label} 封面` : ''
 
   if (isNewOrRe) {
     if (coverUrl && !imgError) {
       return (
         <img
           src={coverUrl}
-          alt=""
+          alt={coverAlt}
           className={`${className} rounded-[8px] object-cover`}
           onError={() => setImgError(true)}
           loading="lazy"
@@ -37,16 +40,17 @@ export function CoverCell({
     }
     return (
       <div className={`flex ${className} items-center justify-center rounded-[8px] bg-muted text-base`}>
-        {'🆕'}
+        <span aria-hidden="true">{'🆕'}</span>
+        {coverAlt && <span className="sr-only">{coverAlt}</span>}
       </div>
     )
   }
   if (coverUrl && !imgError) {
     return (
       <img
-      src={coverUrl}
-      alt=""
-      className={`${className} rounded-[8px] object-cover`}
+        src={coverUrl}
+        alt={coverAlt}
+        className={`${className} rounded-[8px] object-cover`}
         onError={() => setImgError(true)}
         loading="lazy"
       />
@@ -59,7 +63,8 @@ export function CoverCell({
       className={`flex ${className} items-center justify-center rounded-[8px] text-base opacity-85`}
       style={{ background: `linear-gradient(135deg, ${c}, ${c2})` }}
     >
-      🎵
+      <span aria-hidden="true">🎵</span>
+      {coverAlt && <span className="sr-only">{coverAlt}</span>}
     </div>
   )
 }

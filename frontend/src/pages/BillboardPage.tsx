@@ -361,7 +361,7 @@ export function BillboardPage() {
                           <ChangeCell change={change} />
                         </td>
                         <td className="pb-3.5 pt-3.5">
-                          <CoverCell index={i} isNewOrRe={isNewOrRe} coverUrl={entry.cover_url} />
+                          <CoverCell index={i} isNewOrRe={isNewOrRe} coverUrl={entry.cover_url} label={displayName(chartName)} />
                         </td>
                         <td className="pb-3.5 pt-3.5">
                           <Link

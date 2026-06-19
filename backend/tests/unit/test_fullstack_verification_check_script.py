@@ -56,6 +56,7 @@ def test_fullstack_verification_check_script_covers_delivery_matrix():
     assert "scripts/frontend_route_smoke.mjs" in source
     assert "scripts/frontend_interaction_smoke.mjs" in source
     assert "scripts/frontend_chart_interaction_smoke.mjs" in source
+    assert "scripts/frontend_control_inventory_smoke.mjs" in source
     assert "scripts/frontend_long_list_smoke.mjs" in source
     assert "scripts/frontend_cross_browser_smoke.mjs" in source
     assert "scripts/frontend_web_vitals_probe.mjs" in source

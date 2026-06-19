@@ -219,6 +219,7 @@ function AutoDetectionTab({ vm }: { vm: ReturnType<typeof useVersionMerge> }) {
           <p className="text-[12px] text-muted-foreground">曲目重叠率高于此值时视为同一专辑的不同版本</p>
           <div className="w-[200px]">
             <Slider
+              aria-label="重叠率阈值"
               value={[threshold]}
               onValueChange={(v) => setThreshold((v as number[])[0])}
               min={0.1}

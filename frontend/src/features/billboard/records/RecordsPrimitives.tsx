@@ -137,11 +137,11 @@ function Pagination({ page, totalPages, startIdx, endIdx, totalItems, onPageChan
   return (
     <div className="flex items-center gap-0.5">
       <span className="mr-1.5 font-sans text-[10px] text-muted-foreground">{startIdx}—{endIdx} / {totalItems}</span>
-      <button onClick={() => onPageChange(1)} disabled={page <= 1} className="rounded p-1 text-muted-foreground hover:text-foreground disabled:opacity-25 transition-colors"><ChevronLeft className="h-3 w-3 rotate-180" /></button>
-      <button onClick={() => onPageChange(page - 1)} disabled={page <= 1} className="rounded p-1 text-muted-foreground hover:text-foreground disabled:opacity-25 transition-colors"><ChevronLeft className="h-3 w-3" /></button>
+      <button onClick={() => onPageChange(1)} disabled={page <= 1} aria-label="第一页" className="rounded p-1 text-muted-foreground hover:text-foreground disabled:opacity-25 transition-colors"><ChevronLeft className="h-3 w-3 rotate-180" /></button>
+      <button onClick={() => onPageChange(page - 1)} disabled={page <= 1} aria-label="上一页" className="rounded p-1 text-muted-foreground hover:text-foreground disabled:opacity-25 transition-colors"><ChevronLeft className="h-3 w-3" /></button>
       <span className="px-0.5 font-sans text-[10px] tabular-nums text-muted-foreground">{page}/{totalPages}</span>
-      <button onClick={() => onPageChange(page + 1)} disabled={page >= totalPages} className="rounded p-1 text-muted-foreground hover:text-foreground disabled:opacity-25 transition-colors"><ChevronRight className="h-3 w-3" /></button>
-      <button onClick={() => onPageChange(totalPages)} disabled={page >= totalPages} className="rounded p-1 text-muted-foreground hover:text-foreground disabled:opacity-25 transition-colors"><ChevronRight className="h-3 w-3 rotate-180" /></button>
+      <button onClick={() => onPageChange(page + 1)} disabled={page >= totalPages} aria-label="下一页" className="rounded p-1 text-muted-foreground hover:text-foreground disabled:opacity-25 transition-colors"><ChevronRight className="h-3 w-3" /></button>
+      <button onClick={() => onPageChange(totalPages)} disabled={page >= totalPages} aria-label="最后一页" className="rounded p-1 text-muted-foreground hover:text-foreground disabled:opacity-25 transition-colors"><ChevronRight className="h-3 w-3 rotate-180" /></button>
     </div>
   )
 }

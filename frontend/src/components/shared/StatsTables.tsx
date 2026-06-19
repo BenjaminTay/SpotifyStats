@@ -73,7 +73,7 @@ export function PersonalRankTable({ rows, entity, metric }: { rows: AnalysisChar
                 <td className="py-3 pr-3">
                   <div className="flex items-center gap-3 min-w-0">
                     <Link to={entityLink(row, entity)}>
-                      <CoverCell index={index} coverUrl={row.cover_url} />
+                      <CoverCell index={index} coverUrl={row.cover_url} label={displayName(title || '未知')} />
                     </Link>
                     <span className="min-w-0">
                       <Link to={entityLink(row, entity)} className="block truncate font-semibold transition-colors hover:text-accent-foreground">
@@ -130,6 +130,7 @@ export function PersonalRankTable({ rows, entity, metric }: { rows: AnalysisChar
             <button
               onClick={() => setPage(1)}
               disabled={safePage <= 1}
+              aria-label="第一页"
               className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:text-foreground disabled:opacity-30"
             >
               <ChevronsLeft className="h-4 w-4" />
@@ -137,6 +138,7 @@ export function PersonalRankTable({ rows, entity, metric }: { rows: AnalysisChar
             <button
               onClick={() => setPage((p) => Math.max(1, p - 1))}
               disabled={safePage <= 1}
+              aria-label="上一页"
               className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:text-foreground disabled:opacity-30"
             >
               <ChevronLeft className="h-4 w-4" />
@@ -144,6 +146,7 @@ export function PersonalRankTable({ rows, entity, metric }: { rows: AnalysisChar
             <button
               onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
               disabled={safePage >= totalPages}
+              aria-label="下一页"
               className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:text-foreground disabled:opacity-30"
             >
               <ChevronRight className="h-4 w-4" />
@@ -151,6 +154,7 @@ export function PersonalRankTable({ rows, entity, metric }: { rows: AnalysisChar
             <button
               onClick={() => setPage(totalPages)}
               disabled={safePage >= totalPages}
+              aria-label="最后一页"
               className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:text-foreground disabled:opacity-30"
             >
               <ChevronsRight className="h-4 w-4" />
@@ -161,5 +165,3 @@ export function PersonalRankTable({ rows, entity, metric }: { rows: AnalysisChar
     </div>
   )
 }
-
-

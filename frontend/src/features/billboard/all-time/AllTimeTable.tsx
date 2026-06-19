@@ -190,6 +190,7 @@ export function Pagination({
       <button
         onClick={() => onPageChange(1)}
         disabled={page <= 1}
+        aria-label="第一页"
         className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:text-foreground disabled:opacity-30"
       >
         <ChevronsLeft className="h-4 w-4" />
@@ -197,6 +198,7 @@ export function Pagination({
       <button
         onClick={() => onPageChange((current) => Math.max(1, current - 1))}
         disabled={page <= 1}
+        aria-label="上一页"
         className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:text-foreground disabled:opacity-30"
       >
         <ChevronLeft className="h-4 w-4" />
@@ -204,6 +206,7 @@ export function Pagination({
       <button
         onClick={() => onPageChange((current) => Math.min(totalPages, current + 1))}
         disabled={page >= totalPages}
+        aria-label="下一页"
         className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:text-foreground disabled:opacity-30"
       >
         <ChevronRight className="h-4 w-4" />
@@ -211,6 +214,7 @@ export function Pagination({
       <button
         onClick={() => onPageChange(totalPages)}
         disabled={page >= totalPages}
+        aria-label="最后一页"
         className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:text-foreground disabled:opacity-30"
       >
         <ChevronsRight className="h-4 w-4" />

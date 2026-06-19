@@ -270,6 +270,7 @@ fi
 run node scripts/frontend_route_smoke.mjs --base-url "$FRONTEND_URL" --viewport both --max-scroll-overflow 0 --fail-on-console-warning --include-detail-routes
 run node scripts/frontend_interaction_smoke.mjs --base-url "$FRONTEND_URL"
 run node scripts/frontend_chart_interaction_smoke.mjs --base-url "$FRONTEND_URL"
+run node scripts/frontend_control_inventory_smoke.mjs --base-url "$FRONTEND_URL" --viewport both --include-detail-routes
 run node scripts/frontend_long_list_smoke.mjs --base-url "$FRONTEND_URL"
 
 if [ "$RUN_CROSS_BROWSER" = "1" ]; then
@@ -284,6 +285,7 @@ if [ -n "$PREVIEW_URL" ]; then
   run node scripts/frontend_route_smoke.mjs --base-url "$PREVIEW_URL" --api-base-url "$PREVIEW_API_URL" --viewport both --max-scroll-overflow 0 --fail-on-console-warning --include-detail-routes
   run node scripts/frontend_interaction_smoke.mjs --base-url "$PREVIEW_URL" --api-base-url "$PREVIEW_API_URL"
   run node scripts/frontend_chart_interaction_smoke.mjs --base-url "$PREVIEW_URL" --api-base-url "$PREVIEW_API_URL"
+  run node scripts/frontend_control_inventory_smoke.mjs --base-url "$PREVIEW_URL" --api-base-url "$PREVIEW_API_URL" --viewport both --include-detail-routes
   run node scripts/frontend_long_list_smoke.mjs --base-url "$PREVIEW_URL" --api-base-url "$PREVIEW_API_URL"
   if [ "$RUN_CROSS_BROWSER" = "1" ]; then
     run node scripts/frontend_cross_browser_smoke.mjs --base-url "$PREVIEW_URL" --api-base-url "$PREVIEW_API_URL" --python "$PYTHON_PLAYWRIGHT" --include-detail-routes

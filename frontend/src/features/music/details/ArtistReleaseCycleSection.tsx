@@ -72,7 +72,7 @@ export function ReleaseCycleSection({
         {cycles.map((cycle, index) => (
           <GlassCard key={`${cycle.album_name}-${cycle.release_date}`} className="p-5">
             <div className="flex items-start gap-4">
-              <CoverCell index={startIndex + index} coverUrl={releaseCoverUrl(cycle)} />
+              <CoverCell index={startIndex + index} coverUrl={releaseCoverUrl(cycle)} label={displayName(cycle.album_name)} />
               <div className="min-w-0 flex-1">
                 <div className="flex items-start justify-between gap-4">
                   <div className="min-w-0">
