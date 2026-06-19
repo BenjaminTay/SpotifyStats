@@ -13,11 +13,13 @@ SLOW_MS=${SLOW_MS:-500}
 BENCHMARK_JSON=${BENCHMARK_JSON:-/tmp/spotify_api_benchmark.json}
 RUN_CROSS_BROWSER=${RUN_CROSS_BROWSER:-1}
 RUN_WEB_VITALS=${RUN_WEB_VITALS:-0}
+RUN_RESOURCE_SNAPSHOT=${RUN_RESOURCE_SNAPSHOT:-0}
 WEB_VITALS_MAX_LCP_MS=${WEB_VITALS_MAX_LCP_MS:-}
 WEB_VITALS_MAX_CLS=${WEB_VITALS_MAX_CLS:-}
 WEB_VITALS_MAX_TBT_MS=${WEB_VITALS_MAX_TBT_MS:-}
 WEB_VITALS_MAX_RESOURCE_COUNT=${WEB_VITALS_MAX_RESOURCE_COUNT:-}
 WEB_VITALS_MAX_ENCODED_RESOURCE_KB=${WEB_VITALS_MAX_ENCODED_RESOURCE_KB:-}
+RESOURCE_SNAPSHOT_JSON=${RESOURCE_SNAPSHOT_JSON:-/tmp/spotify_runtime_resources.json}
 
 detect_playwright_python() {
   for candidate in "${PYTHON_PLAYWRIGHT:-}" python3 python "$ROOT_DIR/.venv/bin/python"; do
@@ -55,6 +57,9 @@ Options:
   --benchmark-json <path>  JSON benchmark output path, default /tmp/spotify_api_benchmark.json
   --skip-cross-browser    Skip Playwright Chromium/Firefox/WebKit smoke
   --web-vitals            Run Web Vitals lab probes for dev and preview URLs
+  --resource-snapshot     Capture backend/frontend process RSS snapshot
+  --resource-snapshot-json <path>
+                          Runtime resource snapshot JSON output path
   --web-vitals-max-lcp-ms <ms>
                           Optional Web Vitals LCP budget passed to lab probes
   --web-vitals-max-cls <score>
@@ -71,7 +76,8 @@ Environment variables with the same uppercase names can also configure the
 defaults: BACKEND_URL, FRONTEND_URL, PREVIEW_URL, PREVIEW_API_URL,
 BENCHMARK_RUNS, SLOW_MS, BENCHMARK_JSON, RUN_CROSS_BROWSER, RUN_WEB_VITALS,
 WEB_VITALS_MAX_LCP_MS, WEB_VITALS_MAX_CLS, WEB_VITALS_MAX_TBT_MS,
-WEB_VITALS_MAX_RESOURCE_COUNT, WEB_VITALS_MAX_ENCODED_RESOURCE_KB.
+WEB_VITALS_MAX_RESOURCE_COUNT, WEB_VITALS_MAX_ENCODED_RESOURCE_KB,
+RUN_RESOURCE_SNAPSHOT, RESOURCE_SNAPSHOT_JSON.
 When cross-browser smoke is enabled, PYTHON_PLAYWRIGHT may point to a Python
 that can import playwright.sync_api; otherwise the script auto-detects one
 before activating .venv.
@@ -113,6 +119,13 @@ while [ "$#" -gt 0 ]; do
       ;;
     --web-vitals)
       RUN_WEB_VITALS=1
+      ;;
+    --resource-snapshot)
+      RUN_RESOURCE_SNAPSHOT=1
+      ;;
+    --resource-snapshot-json)
+      shift
+      RESOURCE_SNAPSHOT_JSON=$1
       ;;
     --web-vitals-max-lcp-ms)
       shift
@@ -194,6 +207,15 @@ run_web_vitals_probe() {
   run "$@"
 }
 
+run_resource_snapshot() {
+  set -- python scripts/runtime_resource_probe.py --backend-url "$BACKEND_URL" --frontend-url "$FRONTEND_URL" --json-output "$RESOURCE_SNAPSHOT_JSON" --fail-on-missing
+  if [ -n "$PREVIEW_URL" ]; then
+    set -- "$@" --preview-url "$PREVIEW_URL"
+  fi
+
+  run "$@"
+}
+
 run pytest backend/tests/ -q
 run pre-commit run --all-files
 run sh scripts/phase5_check.sh
@@ -201,6 +223,10 @@ run sh scripts/phase5_check.sh
 run python scripts/api_smoke_probe.py
 run python scripts/api_boundary_probe.py
 run python scripts/benchmark_api.py --base-url "$BACKEND_URL" --runs "$BENCHMARK_RUNS" --slow-ms "$SLOW_MS" --fail-on-slow --json-output "$BENCHMARK_JSON"
+
+if [ "$RUN_RESOURCE_SNAPSHOT" = "1" ]; then
+  run_resource_snapshot
+fi
 
 run node scripts/frontend_route_smoke.mjs --base-url "$FRONTEND_URL" --viewport both --max-scroll-overflow 0 --fail-on-console-warning
 run node scripts/frontend_interaction_smoke.mjs --base-url "$FRONTEND_URL"

@@ -47,6 +47,7 @@ pytest -m contract -q             # seed DB 契约层
 .venv/bin/python scripts/api_smoke_probe.py  # 本地只读 API smoke（96 个 GET + OpenAPI GET 核算）
 .venv/bin/python scripts/api_boundary_probe.py  # 非破坏性 API 边界 probe（19 个 GET）
 .venv/bin/python scripts/benchmark_api.py --base-url http://127.0.0.1:8000 --runs 3 --slow-ms 500  # API 性能 benchmark
+.venv/bin/python scripts/runtime_resource_probe.py --backend-url http://127.0.0.1:8000 --frontend-url http://127.0.0.1:5173  # 本地服务 RSS 快照
 cd frontend && npm test           # 前端 vitest 单测 + 架构护栏测试
 
 # 代码质量
@@ -57,10 +58,10 @@ pre-commit run --all-files
 sh scripts/phase5_check.sh
 .venv/bin/python scripts/ci_baseline_parity.py  # GitHub Actions / 本地矩阵一致性护栏
 
-# 全栈非破坏性验收矩阵（需后端 8000 + 前端 5173 已启动；可选 --preview-url/--web-vitals）
+# 全栈非破坏性验收矩阵（需后端 8000 + 前端 5173 已启动；可选 --preview-url/--web-vitals/--resource-snapshot）
 # 跨浏览器 smoke 会自动检测可 import playwright.sync_api 的 Python，也可显式设置 PYTHON_PLAYWRIGHT
 sh scripts/fullstack_verification_check.sh --backend-url http://127.0.0.1:8000 --frontend-url http://127.0.0.1:5173
-sh scripts/fullstack_verification_check.sh --backend-url http://127.0.0.1:8000 --frontend-url http://127.0.0.1:5173 --web-vitals --web-vitals-max-lcp-ms 3000 --web-vitals-max-cls 0.01 --web-vitals-max-tbt-ms 100 --web-vitals-max-resource-count 120 --web-vitals-max-encoded-resource-kb 11000
+sh scripts/fullstack_verification_check.sh --backend-url http://127.0.0.1:8000 --frontend-url http://127.0.0.1:5173 --web-vitals --resource-snapshot --web-vitals-max-lcp-ms 3000 --web-vitals-max-cls 0.01 --web-vitals-max-tbt-ms 100 --web-vitals-max-resource-count 120 --web-vitals-max-encoded-resource-kb 11000
 
 # 前端 route/interaction/cross-browser smoke + Web Vitals lab 采样（需后端 8000 + 前端 5173 已启动）
 node scripts/frontend_route_smoke.mjs --viewport both --max-scroll-overflow 0 --fail-on-console-warning
@@ -102,7 +103,7 @@ SpotifyStats/
 ├── app/                   # Streamlit 旧应用（冻结维护）
 ├── data/                  # SQLite 数据库 + JSON 源数据
 ├── docs/                  # 架构文档 + Phase 5 台账
-├── scripts/               # 工具脚本（quickstart_smoke.py, phase5_check.sh, fullstack_verification_check.sh, ci_baseline_parity.py, api_smoke_probe.py, api_boundary_probe.py, benchmark_api.py）
+├── scripts/               # 工具脚本（quickstart_smoke.py, phase5_check.sh, fullstack_verification_check.sh, ci_baseline_parity.py, api_smoke_probe.py, api_boundary_probe.py, benchmark_api.py, runtime_resource_probe.py）
 └── requirements.txt
 ```
 

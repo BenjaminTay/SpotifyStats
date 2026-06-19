@@ -33,6 +33,8 @@ def test_fullstack_verification_check_script_exposes_reusable_cli():
     assert "--web-vitals-max-tbt-ms" in result.stdout
     assert "--web-vitals-max-resource-count" in result.stdout
     assert "--web-vitals-max-encoded-resource-kb" in result.stdout
+    assert "--resource-snapshot" in result.stdout
+    assert "--resource-snapshot-json" in result.stdout
 
 
 def test_fullstack_verification_check_script_covers_delivery_matrix():
@@ -51,6 +53,7 @@ def test_fullstack_verification_check_script_covers_delivery_matrix():
     assert "scripts/frontend_long_list_smoke.mjs" in source
     assert "scripts/frontend_cross_browser_smoke.mjs" in source
     assert "scripts/frontend_web_vitals_probe.mjs" in source
+    assert "scripts/runtime_resource_probe.py" in source
 
 
 def test_fullstack_verification_check_rewrites_preview_route_smoke_api_requests():
@@ -112,3 +115,16 @@ def test_fullstack_verification_check_forwards_web_vitals_budgets():
     assert "--max-resource-count" in source
     assert "--max-encoded-resource-kb" in source
     assert "run_web_vitals_probe" in source
+
+
+def test_fullstack_verification_check_can_capture_runtime_resource_snapshot():
+    source = (ROOT / "scripts" / "fullstack_verification_check.sh").read_text(encoding="utf-8")
+
+    assert "RUN_RESOURCE_SNAPSHOT" in source
+    assert "RESOURCE_SNAPSHOT_JSON" in source
+    assert "--resource-snapshot" in source
+    assert "--resource-snapshot-json" in source
+    assert "scripts/runtime_resource_probe.py" in source
+    assert '--backend-url "$BACKEND_URL"' in source
+    assert '--frontend-url "$FRONTEND_URL"' in source
+    assert '--preview-url "$PREVIEW_URL"' in source
