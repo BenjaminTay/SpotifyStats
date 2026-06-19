@@ -11,6 +11,7 @@ PREVIEW_API_URL=${PREVIEW_API_URL:-$BACKEND_URL}
 BENCHMARK_RUNS=${BENCHMARK_RUNS:-3}
 SLOW_MS=${SLOW_MS:-500}
 BENCHMARK_JSON=${BENCHMARK_JSON:-/tmp/spotify_api_benchmark.json}
+OPENAPI_OPERATION_AUDIT_JSON=${OPENAPI_OPERATION_AUDIT_JSON:-/tmp/spotify_openapi_operation_audit.json}
 RUN_CROSS_BROWSER=${RUN_CROSS_BROWSER:-1}
 RUN_WEB_VITALS=${RUN_WEB_VITALS:-0}
 RUN_RESOURCE_SNAPSHOT=${RUN_RESOURCE_SNAPSHOT:-0}
@@ -57,6 +58,8 @@ Options:
   --benchmark-runs <n>     Number of benchmark requests per endpoint, default 3
   --slow-ms <ms>           API hot P95 slow threshold, default 500
   --benchmark-json <path>  JSON benchmark output path, default /tmp/spotify_api_benchmark.json
+  --openapi-operation-audit-json <path>
+                          OpenAPI operation audit JSON output path
   --skip-cross-browser    Skip Playwright Chromium/Firefox/WebKit smoke
   --web-vitals            Run Web Vitals lab probes for dev and preview URLs
   --resource-snapshot     Capture backend/frontend process CPU/RSS snapshot
@@ -81,6 +84,7 @@ Options:
 Environment variables with the same uppercase names can also configure the
 defaults: BACKEND_URL, FRONTEND_URL, PREVIEW_URL, PREVIEW_API_URL,
 BENCHMARK_RUNS, SLOW_MS, BENCHMARK_JSON, RUN_CROSS_BROWSER, RUN_WEB_VITALS,
+OPENAPI_OPERATION_AUDIT_JSON,
 WEB_VITALS_MAX_LCP_MS, WEB_VITALS_MAX_CLS, WEB_VITALS_MAX_TBT_MS,
 WEB_VITALS_MAX_RESOURCE_COUNT, WEB_VITALS_MAX_ENCODED_RESOURCE_KB,
 RUN_RESOURCE_SNAPSHOT, RESOURCE_SNAPSHOT_JSON, RESOURCE_MAX_TOTAL_RSS_MB,
@@ -120,6 +124,10 @@ while [ "$#" -gt 0 ]; do
     --benchmark-json)
       shift
       BENCHMARK_JSON=$1
+      ;;
+    --openapi-operation-audit-json)
+      shift
+      OPENAPI_OPERATION_AUDIT_JSON=$1
       ;;
     --skip-cross-browser)
       RUN_CROSS_BROWSER=0
@@ -241,6 +249,7 @@ run pytest backend/tests/ -q
 run pre-commit run --all-files
 run sh scripts/phase5_check.sh
 
+run python scripts/openapi_operation_audit.py --json-output "$OPENAPI_OPERATION_AUDIT_JSON"
 run python scripts/api_smoke_probe.py
 run python scripts/api_boundary_probe.py
 run python scripts/benchmark_api.py --base-url "$BACKEND_URL" --runs "$BENCHMARK_RUNS" --slow-ms "$SLOW_MS" --fail-on-slow --json-output "$BENCHMARK_JSON"
