@@ -70,8 +70,6 @@ DEFAULT_EXCLUDED_GET_PATHS: frozenset[str] = frozenset(
         "/api/billboard/enrichment/album/{album_name}",
         "/api/billboard/enrichment/artist/{artist_name}",
         "/api/billboard/enrichment/track/{track_name}",
-        "/api/lyrics/{track_id}",
-        "/api/lyrics/{track_id}/url",
         # OAuth and live playback depend on a real browser/session or Spotify's
         # live API; they are covered by dedicated targeted tests where possible.
         "/api/spotify/auth/callback",
@@ -206,6 +204,8 @@ DEFAULT_SAFE_GET_CASES: tuple[SmokeCase, ...] = (
     SmokeCase("music_track_dates", "/api/music/tracks/901/play-dates", DEFAULT_FILTERS),
     SmokeCase("music_album_dates", "/api/music/albums/Fixture Future LP/play-dates", DEFAULT_FILTERS),
     SmokeCase("music_artist_dates", "/api/music/artists/Fixture Artist Alpha/play-dates", DEFAULT_FILTERS),
+    SmokeCase("lyrics_missing", "/api/lyrics/-1"),
+    SmokeCase("lyrics_url_missing", "/api/lyrics/-1/url"),
     SmokeCase("account", "/api/account"),
     SmokeCase("account_collection", "/api/account/collection-insights"),
     SmokeCase("ai_suggested_questions", "/api/ai-insights/suggested-questions", {"context": "chat"}),
