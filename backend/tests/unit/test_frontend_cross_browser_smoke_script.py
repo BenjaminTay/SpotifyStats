@@ -28,6 +28,7 @@ def test_frontend_cross_browser_smoke_script_exposes_reusable_cli():
     assert "--api-base-url" in result.stdout
     assert "--browser" in result.stdout
     assert "--scenario" in result.stdout
+    assert "--include-detail-routes" in result.stdout
     assert "--python" in result.stdout
     assert "--output" in result.stdout
 
@@ -71,3 +72,20 @@ def test_frontend_cross_browser_smoke_script_waits_for_network_before_closing_pa
     assert "def close_page(page):" in source
     assert 'page.wait_for_load_state("networkidle"' in source
     assert "close_page(page)" in source
+
+
+def test_frontend_cross_browser_smoke_can_cover_dynamic_detail_routes():
+    source = (ROOT / "scripts" / "frontend_cross_browser_smoke.mjs").read_text(encoding="utf-8")
+
+    assert "--include-detail-routes" in source
+    assert "resolveDetailRoutes" in source
+    assert "/api/billboard/entity-lists" in source
+    assert "/api/community/feed" in source
+    for marker in [
+        "MUSIC / 单曲详情",
+        "MUSIC / 专辑详情",
+        "MUSIC / 艺人详情",
+        "COMMUNITY / POST",
+        "COMMUNITY / ACCOUNT",
+    ]:
+        assert marker in source

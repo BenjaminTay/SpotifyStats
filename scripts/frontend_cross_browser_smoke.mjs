@@ -12,6 +12,16 @@ const DEFAULT_SCENARIOS = ['route-markers', 'core-interactions']
 const DEFAULT_WAIT_MS = 5000
 const DEFAULT_MAX_SCROLL_OVERFLOW = 0
 const REWRITE_PATH_PREFIXES = ['/api', '/covers']
+const DETAIL_ROUTE_FILTERS = {
+  min_ms: 30000,
+  music_only: true,
+  merge_enabled: true,
+  dynamic_threshold: true,
+  bb_top_n: 30,
+  bb_album_top_n: 20,
+  bb_artist_top_n: 20,
+  merge_level: 2,
+}
 
 const DEFAULT_ROUTES = [
   { path: '/', markers: ['DASHBOARD /', '总播放次数'] },
@@ -39,6 +49,7 @@ function parseArgs(argv) {
     output: null,
     python: DEFAULT_PYTHON,
     headed: false,
+    includeDetailRoutes: false,
   }
 
   for (let i = 0; i < argv.length; i += 1) {
@@ -57,6 +68,7 @@ function parseArgs(argv) {
     else if (arg === '--output') args.output = argv[++i]
     else if (arg === '--python') args.python = argv[++i]
     else if (arg === '--headed') args.headed = true
+    else if (arg === '--include-detail-routes') args.includeDetailRoutes = true
     else if (arg === '--help' || arg === '-h') {
       printHelp()
       process.exit(0)
@@ -100,6 +112,7 @@ Options:
   --viewport <mode>             desktop, mobile, or both, default both
   --wait-ms <ms>                Max wait for route/text assertions, default ${DEFAULT_WAIT_MS}
   --max-scroll-overflow <px>    Allowed horizontal overflow over viewport width, default ${DEFAULT_MAX_SCROLL_OVERFLOW}
+  --include-detail-routes       Resolve and append music/community detail routes from local API data
   --output <path>               Write JSON results to a file
   --python <path>               Python executable with playwright.sync_api, default ${DEFAULT_PYTHON}
   --headed                      Run headed browsers
@@ -108,6 +121,72 @@ Notes:
   Set PYTHON_PLAYWRIGHT=/path/to/python when the default python cannot import playwright.sync_api.
   webkit is Playwright WebKit, a Safari-family engine smoke test, not the user's Safari.app session.
 `)
+}
+
+async function fetchJson(baseUrl, path, params = {}) {
+  const url = new URL(path, baseUrl)
+  for (const [key, value] of Object.entries(params)) {
+    url.searchParams.set(key, String(value))
+  }
+  const response = await fetch(url)
+  if (!response.ok) throw new Error(`${url.pathname} returned HTTP ${response.status}`)
+  return response.json()
+}
+
+function detailApiBaseUrl(baseUrl, apiBaseUrl) {
+  return apiBaseUrl || baseUrl
+}
+
+async function resolveDetailRoutes(baseUrl, apiBaseUrl) {
+  const apiUrl = detailApiBaseUrl(baseUrl, apiBaseUrl)
+  const [entities, feed] = await Promise.all([
+    fetchJson(apiUrl, '/api/billboard/entity-lists', DETAIL_ROUTE_FILTERS),
+    fetchJson(apiUrl, '/api/community/feed', { limit: 1 }),
+  ])
+
+  const track = entities.tracks?.find((item) => item.track_id != null)
+  const album = entities.albums?.find((item) => item.album_name && item.artist_name)
+  const artist = entities.artists?.find((item) => item.artist_name)
+  const post = feed.posts?.find((item) => item.id)
+
+  const routes = []
+  if (track) {
+    routes.push({
+      path: `/music/tracks/${encodeURIComponent(String(track.track_id))}`,
+      markers: ['MUSIC / 单曲详情', '播放统计'],
+    })
+  }
+  if (album) {
+    routes.push({
+      path: `/music/albums/${encodeURIComponent(album.album_name)}?artist=${encodeURIComponent(album.artist_name)}`,
+      markers: ['MUSIC / 专辑详情', '播放统计'],
+    })
+  }
+  if (artist) {
+    routes.push({
+      path: `/music/artists/${encodeURIComponent(artist.artist_name)}`,
+      markers: ['MUSIC / 艺人详情', '播放统计'],
+    })
+  }
+  if (post) {
+    routes.push({
+      path: `/community/post/${encodeURIComponent(post.id)}`,
+      markers: ['COMMUNITY / POST'],
+    })
+    if (post.account_handle) {
+      routes.push({
+        path: `/community/account/${encodeURIComponent(post.account_handle)}`,
+        markers: ['COMMUNITY / ACCOUNT', 'Posts'],
+      })
+    }
+  }
+
+  if (routes.length < 5) {
+    throw new Error(
+      `Could not resolve all detail routes from /api/billboard/entity-lists and /api/community/feed; got ${routes.length}`,
+    )
+  }
+  return routes
 }
 
 function createPythonSource() {
@@ -482,7 +561,19 @@ async function main() {
   const scriptPath = join(tempDir, scriptFileName)
   await writeFile(scriptPath, createPythonSource())
 
-  const routeConfig = JSON.stringify(DEFAULT_ROUTES)
+  let routes = DEFAULT_ROUTES
+  if (args.includeDetailRoutes) {
+    const detailRoutes = await resolveDetailRoutes(args.baseUrl, args.apiBaseUrl)
+    const seen = new Set()
+    routes = [...DEFAULT_ROUTES, ...detailRoutes].filter((route) => {
+      if (seen.has(route.path)) return false
+      seen.add(route.path)
+      return true
+    })
+    process.stderr.write(`Resolved cross-browser detail routes: ${detailRoutes.map((route) => route.path).join(', ')}\n`)
+  }
+
+  const routeConfig = JSON.stringify(routes)
   const viewportConfig = JSON.stringify(Object.fromEntries(args.viewports.map((name) => [name, VIEWPORTS[name]])))
   const results = []
 

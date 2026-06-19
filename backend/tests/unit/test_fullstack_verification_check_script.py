@@ -143,6 +143,20 @@ def test_fullstack_verification_check_preserves_python_with_playwright_across_ve
     )
 
 
+def test_fullstack_verification_check_covers_detail_routes_in_cross_browser_smoke():
+    source = (ROOT / "scripts" / "fullstack_verification_check.sh").read_text(encoding="utf-8")
+
+    assert (
+        'scripts/frontend_cross_browser_smoke.mjs --base-url "$FRONTEND_URL" '
+        '--python "$PYTHON_PLAYWRIGHT" --include-detail-routes'
+    ) in source
+    assert (
+        'scripts/frontend_cross_browser_smoke.mjs --base-url "$PREVIEW_URL" '
+        '--api-base-url "$PREVIEW_API_URL" --python "$PYTHON_PLAYWRIGHT" '
+        "--include-detail-routes"
+    ) in source
+
+
 def test_fullstack_verification_check_forwards_web_vitals_budgets():
     source = (ROOT / "scripts" / "fullstack_verification_check.sh").read_text(encoding="utf-8")
 

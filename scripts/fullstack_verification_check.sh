@@ -273,7 +273,7 @@ run node scripts/frontend_chart_interaction_smoke.mjs --base-url "$FRONTEND_URL"
 run node scripts/frontend_long_list_smoke.mjs --base-url "$FRONTEND_URL"
 
 if [ "$RUN_CROSS_BROWSER" = "1" ]; then
-  run node scripts/frontend_cross_browser_smoke.mjs --base-url "$FRONTEND_URL" --python "$PYTHON_PLAYWRIGHT"
+  run node scripts/frontend_cross_browser_smoke.mjs --base-url "$FRONTEND_URL" --python "$PYTHON_PLAYWRIGHT" --include-detail-routes
 fi
 
 if [ "$RUN_WEB_VITALS" = "1" ]; then
@@ -286,7 +286,7 @@ if [ -n "$PREVIEW_URL" ]; then
   run node scripts/frontend_chart_interaction_smoke.mjs --base-url "$PREVIEW_URL" --api-base-url "$PREVIEW_API_URL"
   run node scripts/frontend_long_list_smoke.mjs --base-url "$PREVIEW_URL" --api-base-url "$PREVIEW_API_URL"
   if [ "$RUN_CROSS_BROWSER" = "1" ]; then
-    run node scripts/frontend_cross_browser_smoke.mjs --base-url "$PREVIEW_URL" --api-base-url "$PREVIEW_API_URL" --python "$PYTHON_PLAYWRIGHT"
+    run node scripts/frontend_cross_browser_smoke.mjs --base-url "$PREVIEW_URL" --api-base-url "$PREVIEW_API_URL" --python "$PYTHON_PLAYWRIGHT" --include-detail-routes
   fi
   if [ "$RUN_WEB_VITALS" = "1" ]; then
     run_web_vitals_probe "$PREVIEW_URL" "$PREVIEW_API_URL"
