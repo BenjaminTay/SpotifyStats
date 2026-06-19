@@ -2936,6 +2936,17 @@ export interface components {
             /** Skipped Count */
             skipped_count: number;
         };
+        /** ArtistAlbumBreakdown */
+        ArtistAlbumBreakdown: {
+            /** Album Name */
+            album_name: string;
+            /** Plays */
+            plays: number;
+            /** Hours */
+            hours: number;
+            /** Cover Url */
+            cover_url?: string | null;
+        };
         /** ArtistChartDetailResponse */
         ArtistChartDetailResponse: {
             /** Found */
@@ -2987,6 +2998,65 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
+        /** ArtistDeepDiveHeatmap */
+        ArtistDeepDiveHeatmap: {
+            /** Z */
+            z: number[][];
+            /** X */
+            x: number[];
+            /** Y */
+            y: string[];
+        };
+        /** ArtistDeepDiveInfo */
+        ArtistDeepDiveInfo: {
+            /** Total Plays */
+            total_plays: number;
+            /** Total Hours */
+            total_hours: number;
+            /** Unique Tracks */
+            unique_tracks: number;
+            /** Unique Albums */
+            unique_albums: number;
+        };
+        /** ArtistDeepDiveMonth */
+        ArtistDeepDiveMonth: {
+            /** Period */
+            period: string;
+            /** Plays */
+            plays: number;
+            /** Hours */
+            hours: number;
+        };
+        /** ArtistDeepDiveResponse */
+        ArtistDeepDiveResponse: {
+            /** Found */
+            found: boolean;
+            /** Artist Name */
+            artist_name?: string | null;
+            /** Cover Url */
+            cover_url?: string | null;
+            info?: components["schemas"]["ArtistDeepDiveInfo"] | null;
+            heatmap?: components["schemas"]["ArtistDeepDiveHeatmap"] | null;
+            /** Top Tracks */
+            top_tracks?: components["schemas"]["ArtistDeepDiveTrack"][];
+            /** Monthly Trend */
+            monthly_trend?: components["schemas"]["ArtistDeepDiveMonth"][];
+            /** Album Breakdown */
+            album_breakdown?: components["schemas"]["ArtistAlbumBreakdown"][];
+        };
+        /** ArtistDeepDiveTrack */
+        ArtistDeepDiveTrack: {
+            /** Track Id */
+            track_id: number;
+            /** Track Name */
+            track_name: string;
+            /** Plays */
+            plays: number;
+            /** Hours */
+            hours: number;
+            /** Cover Url */
+            cover_url?: string | null;
+        };
         /** ArtistEnrichmentResponse */
         ArtistEnrichmentResponse: {
             /** Wiki */
@@ -2997,13 +3067,6 @@ export interface components {
             genius?: {
                 [key: string]: unknown;
             } | null;
-        };
-        /** ArtistListItem */
-        ArtistListItem: {
-            /** Artist Name */
-            artist_name: string;
-            /** Track Count */
-            track_count: number;
         };
         /** ArtistMultiRequest */
         ArtistMultiRequest: {
@@ -4294,6 +4357,24 @@ export interface components {
             /** Count */
             count: number;
         };
+        /** PlatformHourlyListeningEntry */
+        PlatformHourlyListeningEntry: {
+            /** Platform */
+            platform: string;
+            /** Hour */
+            hour: number;
+            /** Count */
+            count: number;
+        };
+        /** PlatformHourlyListeningResponse */
+        PlatformHourlyListeningResponse: {
+            /** Platform Hourly */
+            platform_hourly?: components["schemas"]["PlatformHourlyListeningEntry"][];
+            /** Platform Pct */
+            platform_pct?: components["schemas"]["PlatformPctEntry"][];
+            /** Platform Peaks */
+            platform_peaks?: components["schemas"]["PlatformPeakEntry"][];
+        };
         /** PlatformMonthly */
         PlatformMonthly: {
             /** Period */
@@ -4302,6 +4383,28 @@ export interface components {
             platform: string;
             /** Count */
             count: number;
+        };
+        /** PlatformPctEntry */
+        PlatformPctEntry: {
+            /** Platform */
+            platform: string;
+            /** Hour */
+            hour: number;
+            /** Pct */
+            pct: number;
+        };
+        /** PlatformPeakEntry */
+        PlatformPeakEntry: {
+            /** Platform */
+            platform: string;
+            /** Peak Hour */
+            peak_hour: number;
+            /** Peak Count */
+            peak_count: number;
+            /** Total Count */
+            total_count: number;
+            /** Total Pct */
+            total_pct: number;
         };
         /** PlayDateEntry */
         PlayDateEntry: {
@@ -5161,6 +5264,13 @@ export interface components {
             /** Drilldown */
             drilldown?: components["schemas"]["TimelineDrilldownTrack"][] | null;
         };
+        /** TimelineWeeklyDrilldownResponse */
+        TimelineWeeklyDrilldownResponse: {
+            /** Weeks */
+            weeks: components["schemas"]["WeeklyTimelinePoint"][];
+            /** Drilldown */
+            drilldown?: components["schemas"]["TimelineDrilldownTrack"][] | null;
+        };
         /** TopAlbumEntry */
         TopAlbumEntry: {
             /** Rank */
@@ -5517,6 +5627,28 @@ export interface components {
             /** Video */
             video: number;
         };
+        /** WeekdayWeekendResponse */
+        WeekdayWeekendResponse: {
+            /** Hours */
+            hours?: string[];
+            /** Weekend */
+            weekend?: number[];
+            /** Weekday */
+            weekday?: number[];
+            /** Comparison */
+            comparison?: {
+                [key: string]: unknown;
+            }[];
+        };
+        /** WeeklyTimelinePoint */
+        WeeklyTimelinePoint: {
+            /** Label */
+            label: string;
+            /** Plays */
+            plays: number;
+            /** Hours */
+            hours: number;
+        };
         /** WrappedAlbumEntry */
         WrappedAlbumEntry: {
             /** Album Name */
@@ -5534,6 +5666,11 @@ export interface components {
             plays: number;
             /** Hours */
             hours: number;
+        };
+        /** WrappedAvailableYearsResponse */
+        WrappedAvailableYearsResponse: {
+            /** Years */
+            years: number[];
         };
         /** WrappedFirstLastTrack */
         WrappedFirstLastTrack: {
@@ -5735,6 +5872,24 @@ export interface components {
             personality?: {
                 [key: string]: unknown;
             } | null;
+        };
+        /** ArtistListItem */
+        backend__api__billboard__release_cycle__ArtistListItem: {
+            /** Artist Name */
+            artist_name: string;
+            /** Track Count */
+            track_count: number;
+        };
+        /** ArtistListItem */
+        backend__models__artist__ArtistListItem: {
+            /** Artist Id */
+            artist_id: number;
+            /** Artist Name */
+            artist_name: string;
+            /** Play Count */
+            play_count: number;
+            /** Cover Url */
+            cover_url?: string | null;
         };
     };
     responses: never;
@@ -6366,7 +6521,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["TimelineWeeklyDrilldownResponse"];
                 };
             };
             /** @description Validation Error */
@@ -6615,7 +6770,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["WeekdayWeekendResponse"];
                 };
             };
             /** @description Validation Error */
@@ -6656,7 +6811,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["PlatformHourlyListeningResponse"];
                 };
             };
             /** @description Validation Error */
@@ -6689,7 +6844,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["backend__models__artist__ArtistListItem"][];
                 };
             };
             /** @description Validation Error */
@@ -6732,7 +6887,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["ArtistDeepDiveResponse"];
                 };
             };
             /** @description Validation Error */
@@ -6763,7 +6918,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["WrappedAvailableYearsResponse"];
                 };
             };
             /** @description Validation Error */
@@ -8076,7 +8231,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ArtistListItem"][];
+                    "application/json": components["schemas"]["backend__api__billboard__release_cycle__ArtistListItem"][];
                 };
             };
             /** @description Validation Error */

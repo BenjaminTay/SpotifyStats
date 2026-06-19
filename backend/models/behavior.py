@@ -1,6 +1,6 @@
 """Behavior & listening-hours response models."""
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class ReasonDist(BaseModel):
@@ -70,3 +70,36 @@ class LateNightEntry(BaseModel):
 
 class LateNightResponse(BaseModel):
     by_year: list[LateNightEntry]
+
+
+class WeekdayWeekendResponse(BaseModel):
+    hours: list[str] = Field(default_factory=list)
+    weekend: list[int] = Field(default_factory=list)
+    weekday: list[int] = Field(default_factory=list)
+    comparison: list[dict] = Field(default_factory=list)
+
+
+class PlatformHourlyListeningEntry(BaseModel):
+    platform: str
+    hour: int
+    count: int
+
+
+class PlatformPctEntry(BaseModel):
+    platform: str
+    hour: int
+    pct: float
+
+
+class PlatformPeakEntry(BaseModel):
+    platform: str
+    peak_hour: int
+    peak_count: int
+    total_count: int
+    total_pct: float
+
+
+class PlatformHourlyListeningResponse(BaseModel):
+    platform_hourly: list[PlatformHourlyListeningEntry] = Field(default_factory=list)
+    platform_pct: list[PlatformPctEntry] = Field(default_factory=list)
+    platform_peaks: list[PlatformPeakEntry] = Field(default_factory=list)

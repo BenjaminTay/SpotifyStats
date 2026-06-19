@@ -12,6 +12,7 @@ from backend.models.timeline import (
     AnnualTimelinePoint,
     MonthlyTimelinePoint,
     TimelineMonthlyDrilldownResponse,
+    TimelineWeeklyDrilldownResponse,
 )
 from backend.services.play_service import (
     get_annual_timeline,
@@ -57,7 +58,7 @@ def timeline_monthly(
     return result
 
 
-@router.get("/weekly")
+@router.get("/weekly", response_model=TimelineWeeklyDrilldownResponse)
 def timeline_weekly(
     filters: PlayFilters = Depends(),
     week: str | None = Query(None, description="YYYY-Www for drilldown top5"),

@@ -5,7 +5,13 @@ from sqlite3 import Connection
 from fastapi import APIRouter, Depends
 
 from backend.dependencies import PlayFilters, get_conn
-from backend.models.behavior import HeatmapResponse, LateNightEntry, YearlyHeatmapEntry
+from backend.models.behavior import (
+    HeatmapResponse,
+    LateNightEntry,
+    PlatformHourlyListeningResponse,
+    WeekdayWeekendResponse,
+    YearlyHeatmapEntry,
+)
 from backend.services.play_service import (
     get_late_night_ratio,
     get_listening_heatmap,
@@ -62,7 +68,7 @@ def late_night(
     )
 
 
-@router.get("/weekday-weekend")
+@router.get("/weekday-weekend", response_model=WeekdayWeekendResponse)
 def weekday_weekend(
     filters: PlayFilters = Depends(),
     conn: Connection = Depends(get_conn),
@@ -77,7 +83,7 @@ def weekday_weekend(
     )
 
 
-@router.get("/platform-hourly")
+@router.get("/platform-hourly", response_model=PlatformHourlyListeningResponse)
 def platform_hourly(
     filters: PlayFilters = Depends(),
     conn: Connection = Depends(get_conn),

@@ -5,6 +5,10 @@ from __future__ import annotations
 from pydantic import BaseModel
 
 
+class WrappedAvailableYearsResponse(BaseModel):
+    years: list[int]
+
+
 class WrappedFullHero(BaseModel):
     total_minutes: float
     total_plays: int

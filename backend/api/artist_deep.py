@@ -5,12 +5,13 @@ from sqlite3 import Connection
 from fastapi import APIRouter, Depends, Query
 
 from backend.dependencies import PlayFilters, get_conn
+from backend.models.artist import ArtistDeepDiveResponse, ArtistListItem
 from backend.services.play_service import get_artist_deep_dive, get_artist_list
 
 router = APIRouter(prefix="/artist", tags=["Artist"])
 
 
-@router.get("/list")
+@router.get("/list", response_model=list[ArtistListItem])
 def artist_list(
     min_ms: int = Query(30000, ge=0),
     music_only: bool = Query(True),
@@ -19,7 +20,9 @@ def artist_list(
     return get_artist_list(conn, min_ms, music_only)
 
 
-@router.get("/{name}/deep-dive")
+@router.get(
+    "/{name}/deep-dive", response_model=ArtistDeepDiveResponse, response_model_exclude_unset=True
+)
 def artist_deep_dive(
     name: str,
     filters: PlayFilters = Depends(),

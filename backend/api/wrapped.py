@@ -6,14 +6,14 @@ from fastapi import APIRouter, Depends
 
 from backend.dependencies import PlayFilters, get_conn
 from backend.models.timeline import YearlyWrapped
-from backend.models.wrapped import WrappedFullResponse
+from backend.models.wrapped import WrappedAvailableYearsResponse, WrappedFullResponse
 from backend.services.play_service import get_wrapped_data
 from backend.services.wrapped_service import get_wrapped_full
 
 router = APIRouter(prefix="/wrapped", tags=["Wrapped"])
 
 
-@router.get("/available-years")
+@router.get("/available-years", response_model=WrappedAvailableYearsResponse)
 def available_years(conn: Connection = Depends(get_conn)):
     """Return years with play data for the yearly review."""
     years = conn.execute("SELECT DISTINCT ts_year FROM plays ORDER BY ts_year").fetchall()

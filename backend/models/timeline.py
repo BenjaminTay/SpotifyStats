@@ -35,6 +35,17 @@ class TimelineMonthlyDrilldownResponse(BaseModel):
     drilldown: list[TimelineDrilldownTrack] | None = None
 
 
+class WeeklyTimelinePoint(BaseModel):
+    label: str
+    plays: int
+    hours: float
+
+
+class TimelineWeeklyDrilldownResponse(BaseModel):
+    weeks: list[WeeklyTimelinePoint]
+    drilldown: list[TimelineDrilldownTrack] | None = None
+
+
 class WrappedHero(BaseModel):
     total_minutes: float
     total_plays: int
