@@ -181,7 +181,7 @@ run python scripts/api_smoke_probe.py
 run python scripts/api_boundary_probe.py
 run python scripts/benchmark_api.py --base-url "$BACKEND_URL" --runs "$BENCHMARK_RUNS" --slow-ms "$SLOW_MS" --fail-on-slow --json-output "$BENCHMARK_JSON"
 
-run node scripts/frontend_route_smoke.mjs --base-url "$FRONTEND_URL" --viewport both --max-scroll-overflow 0
+run node scripts/frontend_route_smoke.mjs --base-url "$FRONTEND_URL" --viewport both --max-scroll-overflow 0 --fail-on-console-warning
 run node scripts/frontend_interaction_smoke.mjs --base-url "$FRONTEND_URL"
 run node scripts/frontend_chart_interaction_smoke.mjs --base-url "$FRONTEND_URL"
 run node scripts/frontend_long_list_smoke.mjs --base-url "$FRONTEND_URL"
@@ -195,7 +195,7 @@ if [ "$RUN_WEB_VITALS" = "1" ]; then
 fi
 
 if [ -n "$PREVIEW_URL" ]; then
-  run node scripts/frontend_route_smoke.mjs --base-url "$PREVIEW_URL" --api-base-url "$PREVIEW_API_URL" --viewport both --max-scroll-overflow 0
+  run node scripts/frontend_route_smoke.mjs --base-url "$PREVIEW_URL" --api-base-url "$PREVIEW_API_URL" --viewport both --max-scroll-overflow 0 --fail-on-console-warning
   run node scripts/frontend_interaction_smoke.mjs --base-url "$PREVIEW_URL" --api-base-url "$PREVIEW_API_URL"
   run node scripts/frontend_chart_interaction_smoke.mjs --base-url "$PREVIEW_URL" --api-base-url "$PREVIEW_API_URL"
   run node scripts/frontend_long_list_smoke.mjs --base-url "$PREVIEW_URL" --api-base-url "$PREVIEW_API_URL"

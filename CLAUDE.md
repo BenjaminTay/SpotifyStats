@@ -53,7 +53,7 @@ sh scripts/fullstack_verification_check.sh --backend-url http://127.0.0.1:8000 -
 .venv/bin/python scripts/benchmark_api.py --base-url http://127.0.0.1:8000 --runs 3 --slow-ms 500 --json-output /tmp/spotify_api_benchmark.json
 
 # 前端 route/interaction/cross-browser smoke + Web Vitals lab 采样（需后端 8000 + 前端 5173）
-node scripts/frontend_route_smoke.mjs --viewport both --max-scroll-overflow 0
+node scripts/frontend_route_smoke.mjs --viewport both --max-scroll-overflow 0 --fail-on-console-warning
 node scripts/frontend_interaction_smoke.mjs --base-url http://127.0.0.1:5173
 node scripts/frontend_interaction_smoke.mjs --base-url http://127.0.0.1:4173 --api-base-url http://127.0.0.1:8000
 node scripts/frontend_chart_interaction_smoke.mjs --base-url http://127.0.0.1:5173

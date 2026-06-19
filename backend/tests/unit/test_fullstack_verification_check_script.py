@@ -70,6 +70,20 @@ def test_fullstack_verification_check_rewrites_preview_route_smoke_api_requests(
     assert '--api-base-url "$api_base_url"' in source
 
 
+def test_fullstack_verification_check_treats_route_console_warnings_as_failures():
+    source = (ROOT / "scripts" / "fullstack_verification_check.sh").read_text(encoding="utf-8")
+
+    assert (
+        'scripts/frontend_route_smoke.mjs --base-url "$FRONTEND_URL" '
+        "--viewport both --max-scroll-overflow 0 --fail-on-console-warning"
+    ) in source
+    assert (
+        'scripts/frontend_route_smoke.mjs --base-url "$PREVIEW_URL" '
+        '--api-base-url "$PREVIEW_API_URL" --viewport both '
+        "--max-scroll-overflow 0 --fail-on-console-warning"
+    ) in source
+
+
 def test_fullstack_verification_check_preserves_python_with_playwright_across_venv_activation():
     source = (ROOT / "scripts" / "fullstack_verification_check.sh").read_text(encoding="utf-8")
 

@@ -60,7 +60,7 @@ sh scripts/fullstack_verification_check.sh --backend-url http://127.0.0.1:8000 -
 sh scripts/fullstack_verification_check.sh --backend-url http://127.0.0.1:8000 --frontend-url http://127.0.0.1:5173 --web-vitals --web-vitals-max-lcp-ms 3000 --web-vitals-max-cls 0.01 --web-vitals-max-tbt-ms 100
 
 # 前端 route/interaction/cross-browser smoke + Web Vitals lab 采样（需后端 8000 + 前端 5173 已启动）
-node scripts/frontend_route_smoke.mjs --viewport both --max-scroll-overflow 0
+node scripts/frontend_route_smoke.mjs --viewport both --max-scroll-overflow 0 --fail-on-console-warning
 node scripts/frontend_interaction_smoke.mjs --base-url http://127.0.0.1:5173
 node scripts/frontend_interaction_smoke.mjs --base-url http://127.0.0.1:4173 --api-base-url http://127.0.0.1:8000
 node scripts/frontend_chart_interaction_smoke.mjs --base-url http://127.0.0.1:5173
