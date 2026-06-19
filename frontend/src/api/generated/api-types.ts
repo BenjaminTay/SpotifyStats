@@ -3412,6 +3412,36 @@ export interface components {
             /** Album Name */
             album_name: string;
         };
+        /** CompareReleaseResult */
+        CompareReleaseResult: {
+            /** Artist Name */
+            artist_name: string;
+            /** Album Name */
+            album_name: string;
+            /** Release Date */
+            release_date: string;
+            /** Label */
+            label: string;
+            /** Metrics */
+            metrics: {
+                [key: string]: unknown;
+            };
+            /** Album Timeline */
+            album_timeline: {
+                [key: string]: unknown;
+            }[];
+            /** Album Ranks */
+            album_ranks: {
+                [key: string]: unknown;
+            }[];
+        };
+        /** CompareReleasesResponse */
+        CompareReleasesResponse: {
+            /** Error */
+            error?: string | null;
+            /** Comparisons */
+            comparisons?: components["schemas"]["CompareReleaseResult"][];
+        };
         /** CompareRequest */
         CompareRequest: {
             /** Items */
@@ -5385,6 +5415,13 @@ export interface components {
                 [key: string]: unknown;
             } | null;
         };
+        /** TrackGeniusUrlResponse */
+        TrackGeniusUrlResponse: {
+            /** Found */
+            found: boolean;
+            /** Genius Url */
+            genius_url?: string | null;
+        };
         /** TrackGroupCandidateResponse */
         TrackGroupCandidateResponse: {
             /** Original Track Id */
@@ -5460,6 +5497,19 @@ export interface components {
             } | null;
         } & {
             [key: string]: unknown;
+        };
+        /** TrackLyricsResponse */
+        TrackLyricsResponse: {
+            /** Found */
+            found: boolean;
+            /** Lyrics */
+            lyrics?: string | null;
+            /** Genius Url */
+            genius_url?: string | null;
+            /** Genius Song Id */
+            genius_song_id?: number | null;
+            /** Cached */
+            cached?: boolean | null;
         };
         /** TrackMultiRequest */
         TrackMultiRequest: {
@@ -8412,7 +8462,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["CompareReleasesResponse"];
                 };
             };
             /** @description Validation Error */
@@ -9832,7 +9882,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["TrackLyricsResponse"];
                 };
             };
             /** @description Validation Error */
@@ -9863,7 +9913,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["TrackGeniusUrlResponse"];
                 };
             };
             /** @description Validation Error */

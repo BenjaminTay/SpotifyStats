@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import json
+from typing import Any
 
 import pandas as pd
 from fastapi import APIRouter, Depends, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from backend.core.json_helpers import df_to_json, py_val
 from backend.dependencies import BillboardFilters, MergeConfig
@@ -551,7 +552,22 @@ class CompareRequest(BaseModel):
     weeks_after: int = 24
 
 
-@router.post("/compare")
+class CompareReleaseResult(BaseModel):
+    artist_name: str
+    album_name: str
+    release_date: str
+    label: str
+    metrics: dict[str, Any]
+    album_timeline: list[dict[str, Any]]
+    album_ranks: list[dict[str, Any]]
+
+
+class CompareReleasesResponse(BaseModel):
+    error: str | None = None
+    comparisons: list[CompareReleaseResult] = Field(default_factory=list)
+
+
+@router.post("/compare", response_model=CompareReleasesResponse, response_model_exclude_unset=True)
 def compare_releases(
     body: CompareRequest,
     filters: BillboardFilters = Depends(),
