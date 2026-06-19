@@ -62,6 +62,7 @@ node scripts/frontend_long_list_smoke.mjs --base-url http://127.0.0.1:4173 --api
 node scripts/frontend_cross_browser_smoke.mjs --base-url http://127.0.0.1:5173
 node scripts/frontend_cross_browser_smoke.mjs --base-url http://127.0.0.1:4173 --api-base-url http://127.0.0.1:8000
 node scripts/frontend_web_vitals_probe.mjs --routes /,/analysis/stats,/analysis/charts,/billboard/number-ones,/account,/settings --viewport both --wait-ms 5000
+node scripts/frontend_web_vitals_probe.mjs --base-url http://127.0.0.1:4173 --api-base-url http://127.0.0.1:8000 --routes /,/analysis/stats,/analysis/charts,/billboard/number-ones,/account,/settings --viewport both --wait-ms 5000
 
 # 其他
 cd frontend && npm run build

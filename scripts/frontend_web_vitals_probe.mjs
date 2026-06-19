@@ -10,6 +10,7 @@ import net from 'node:net'
 const DEFAULT_ROUTES = ['/', '/analysis/stats', '/billboard/number-ones', '/account', '/settings']
 const DEFAULT_BASE_URL = 'http://127.0.0.1:5173'
 const DEFAULT_WAIT_MS = 5000
+const REWRITE_PATH_PREFIXES = ['/api', '/covers']
 
 const VIEWPORTS = {
   desktop: {
@@ -112,6 +113,7 @@ const METRICS_EXPRESSION = `
 function parseArgs(argv) {
   const args = {
     baseUrl: DEFAULT_BASE_URL,
+    apiBaseUrl: null,
     routes: DEFAULT_ROUTES,
     waitMs: DEFAULT_WAIT_MS,
     viewports: ['desktop', 'mobile'],
@@ -122,6 +124,7 @@ function parseArgs(argv) {
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i]
     if (arg === '--base-url') args.baseUrl = argv[++i]
+    else if (arg === '--api-base-url') args.apiBaseUrl = argv[++i]
     else if (arg === '--routes') args.routes = argv[++i].split(',').map((route) => route.trim()).filter(Boolean)
     else if (arg === '--wait-ms') args.waitMs = Number(argv[++i])
     else if (arg === '--viewport') {
@@ -154,6 +157,7 @@ function printHelp() {
 
 Options:
   --base-url <url>       Frontend URL, default ${DEFAULT_BASE_URL}
+  --api-base-url <url>   Rewrite same-origin /api and /covers requests to this API URL
   --routes <a,b,c>       Comma-separated route paths, default ${DEFAULT_ROUTES.join(',')}
   --viewport <mode>      desktop, mobile, or both, default both
   --wait-ms <ms>         Wait after load before reading metrics, default ${DEFAULT_WAIT_MS}
@@ -220,6 +224,43 @@ async function createTarget(port) {
   throw new Error('Could not create or find a Chrome target')
 }
 
+function rewriteRequestUrl(requestUrl, frontendBaseUrl, apiBaseUrl) {
+  if (!apiBaseUrl) return null
+  const frontendOrigin = new URL(frontendBaseUrl).origin
+  const apiOrigin = new URL(apiBaseUrl).origin
+  if (frontendOrigin === apiOrigin) return null
+
+  let url
+  try {
+    url = new URL(requestUrl)
+  } catch {
+    return null
+  }
+  if (url.origin !== frontendOrigin) return null
+  const shouldRewrite = REWRITE_PATH_PREFIXES.some((prefix) => (
+    url.pathname === prefix || url.pathname.startsWith(`${prefix}/`)
+  ))
+  if (!shouldRewrite) return null
+
+  return new URL(`${url.pathname}${url.search}${url.hash}`, apiBaseUrl).toString()
+}
+
+async function setupApiRequestRewrite(client, frontendBaseUrl, apiBaseUrl) {
+  if (!apiBaseUrl) return
+
+  client.on('Fetch.requestPaused', (params) => {
+    const rewrittenUrl = rewriteRequestUrl(params.request.url, frontendBaseUrl, apiBaseUrl)
+    const request = rewrittenUrl
+      ? { requestId: params.requestId, url: rewrittenUrl }
+      : { requestId: params.requestId }
+    void client.send('Fetch.continueRequest', request).catch(() => {})
+  })
+
+  await client.send('Fetch.enable', {
+    patterns: [{ urlPattern: '*', requestStage: 'Request' }],
+  })
+}
+
 class CdpClient {
   constructor(wsUrl) {
     this.wsUrl = wsUrl
@@ -284,12 +325,16 @@ class CdpClient {
     })
   }
 
+  on(method, handler) {
+    this.handlers.set(method, [...(this.handlers.get(method) || []), handler])
+  }
+
   close() {
     this.ws.close()
   }
 }
 
-async function measureRoute({ port, baseUrl, route, viewportName, waitMs }) {
+async function measureRoute({ port, baseUrl, apiBaseUrl, route, viewportName, waitMs }) {
   const viewport = VIEWPORTS[viewportName]
   const target = await createTarget(port)
   const client = await new CdpClient(target.webSocketDebuggerUrl).connect()
@@ -298,6 +343,7 @@ async function measureRoute({ port, baseUrl, route, viewportName, waitMs }) {
     await client.send('Page.enable')
     await client.send('Runtime.enable')
     await client.send('Network.enable')
+    await setupApiRequestRewrite(client, baseUrl, apiBaseUrl)
     await client.send('Emulation.setDeviceMetricsOverride', {
       width: viewport.width,
       height: viewport.height,
@@ -436,6 +482,7 @@ async function main() {
         const result = await measureRoute({
           port,
           baseUrl: args.baseUrl,
+          apiBaseUrl: args.apiBaseUrl,
           route,
           viewportName: viewport,
           waitMs: args.waitMs,
