@@ -135,6 +135,7 @@ node scripts/frontend_cross_browser_smoke.mjs --base-url http://127.0.0.1:5173
 node scripts/frontend_cross_browser_smoke.mjs --base-url http://127.0.0.1:4173 --api-base-url http://127.0.0.1:8000
 node scripts/frontend_web_vitals_probe.mjs --routes /,/analysis/stats,/analysis/charts,/billboard/number-ones,/account,/settings --viewport both --wait-ms 5000
 node scripts/frontend_web_vitals_probe.mjs --base-url http://127.0.0.1:4173 --api-base-url http://127.0.0.1:8000 --routes /,/analysis/stats,/analysis/charts,/billboard/number-ones,/account,/settings --viewport both --wait-ms 5000
+node scripts/frontend_web_vitals_probe.mjs --routes /,/analysis/stats,/analysis/charts,/billboard/number-ones,/account,/settings --viewport both --wait-ms 5000 --max-lcp-ms 3000 --max-cls 0.01 --max-tbt-ms 100
 ```
 
 `frontend_route_smoke.mjs` 默认等待 5 秒，并对 19 个默认路由（含 `/analysis` 与 5 个分析重定向别名）检查业务内容 marker；自定义临时路由可用 `--disable-route-markers` 关闭 marker 检查。
@@ -143,4 +144,4 @@ node scripts/frontend_web_vitals_probe.mjs --base-url http://127.0.0.1:4173 --ap
 `frontend_chart_interaction_smoke.mjs` 覆盖 ECharts tooltip hover、legend toggle 与 dataZoom drag，默认从真实 `/api/billboard/all-time` 响应动态选择长榜艺人；生产 preview 用 `--api-base-url http://127.0.0.1:8000` 分离静态页面与后端 API。dev server 和生产 preview 都应保持 0 console error/warning、0 page error、0 横向溢出。
 `frontend_long_list_smoke.mjs` 覆盖 Records mini-rank、Billboard All-Time、Community Feed infinite load、RecentPlays、SavedTracks、PersonalRankTable 6 个长列表分页/分段渲染场景，要求点击或滚动后可见窗口变化，并保持 0 console error/warning、0 page error、0 横向溢出；生产 preview 用 `--api-base-url http://127.0.0.1:8000` 将 `/api` 与 `/covers` 请求转发到后端。
 `frontend_cross_browser_smoke.mjs` 使用 Python Playwright API 跑 Chromium、Firefox、WebKit（Safari-family）三引擎；生产 preview 用 `--api-base-url http://127.0.0.1:8000` 通过 Playwright request fetch/fulfill 代理 `/api` 与 `/covers`，避免 4173 非 CORS 白名单 origin 削弱证据。若默认 `python` 不能 `import playwright.sync_api`，用 `PYTHON_PLAYWRIGHT=/path/to/python` 或 `--python` 指定。
-`frontend_web_vitals_probe.mjs` 采集 LCP/CLS/合成 FID/TBT lab 指标；生产 preview 用 `--api-base-url http://127.0.0.1:8000` 将 `/api` 与 `/covers` 请求转发到后端，避免只测到静态 preview 壳。
+`frontend_web_vitals_probe.mjs` 采集 LCP/CLS/合成 FID/TBT lab 指标；生产 preview 用 `--api-base-url http://127.0.0.1:8000` 将 `/api` 与 `/covers` 请求转发到后端，避免只测到静态 preview 壳；可选 `--max-lcp-ms`、`--max-cls`、`--max-tbt-ms` 会在任一路由/视口超预算时保留报告并以退出码 1 失败。

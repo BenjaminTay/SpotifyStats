@@ -119,6 +119,9 @@ function parseArgs(argv) {
     viewports: ['desktop', 'mobile'],
     output: null,
     chrome: null,
+    maxLcpMs: null,
+    maxCls: null,
+    maxTbtMs: null,
   }
 
   for (let i = 0; i < argv.length; i += 1) {
@@ -132,6 +135,9 @@ function parseArgs(argv) {
       args.viewports = value === 'both' ? ['desktop', 'mobile'] : [value]
     } else if (arg === '--output') args.output = argv[++i]
     else if (arg === '--chrome') args.chrome = argv[++i]
+    else if (arg === '--max-lcp-ms') args.maxLcpMs = parseBudgetNumber(argv[++i], '--max-lcp-ms')
+    else if (arg === '--max-cls') args.maxCls = parseBudgetNumber(argv[++i], '--max-cls')
+    else if (arg === '--max-tbt-ms') args.maxTbtMs = parseBudgetNumber(argv[++i], '--max-tbt-ms')
     else if (arg === '--help' || arg === '-h') {
       printHelp()
       process.exit(0)
@@ -151,6 +157,14 @@ function parseArgs(argv) {
   return args
 }
 
+function parseBudgetNumber(value, optionName) {
+  const number = Number(value)
+  if (!Number.isFinite(number) || number < 0) {
+    throw new Error(`${optionName} must be a non-negative number`)
+  }
+  return number
+}
+
 function printHelp() {
   console.log(`Usage:
   node scripts/frontend_web_vitals_probe.mjs [options]
@@ -163,6 +177,9 @@ Options:
   --wait-ms <ms>         Wait after load before reading metrics, default ${DEFAULT_WAIT_MS}
   --output <path>        Write JSON results to a file
   --chrome <path>        Chrome/Chromium executable path
+  --max-lcp-ms <ms>      Fail when any measured LCP is above this budget
+  --max-cls <score>      Fail when any measured CLS is above this budget
+  --max-tbt-ms <ms>      Fail when any measured TBT approx is above this budget
 `)
 }
 
@@ -437,6 +454,35 @@ function renderMarkdown(results) {
   return lines.join('\n')
 }
 
+function evaluateBudgets(results, budgets) {
+  const failures = []
+  const checks = [
+    { key: 'lcp', label: 'LCP', budget: budgets.maxLcpMs, unit: 'ms' },
+    { key: 'cls', label: 'CLS', budget: budgets.maxCls, unit: '' },
+    { key: 'tbtApprox', label: 'TBT approx', budget: budgets.maxTbtMs, unit: 'ms' },
+  ]
+
+  for (const row of results) {
+    for (const check of checks) {
+      if (check.budget == null) continue
+
+      const value = row[check.key]
+      const context = `${row.route} (${row.viewport})`
+      if (typeof value !== 'number' || !Number.isFinite(value)) {
+        failures.push(`${context} ${check.label}=n/a is missing budget ${formatBudget(check.budget, check.unit)}`)
+      } else if (value > check.budget) {
+        failures.push(`${context} ${check.label}=${formatBudget(value, check.unit)} exceeds budget ${formatBudget(check.budget, check.unit)}`)
+      }
+    }
+  }
+
+  return failures
+}
+
+function formatBudget(value, unit) {
+  return unit ? `${value}${unit}` : String(value)
+}
+
 function formatMs(value) {
   if (value == null) return 'n/a'
   return `${value}ms`
@@ -498,6 +544,15 @@ async function main() {
     if (args.output) {
       await writeFile(args.output, `${JSON.stringify({ generatedAt: new Date().toISOString(), results }, null, 2)}\n`)
       console.error(`JSON written to ${args.output}`)
+    }
+
+    const budgetFailures = evaluateBudgets(results, args)
+    if (budgetFailures.length > 0) {
+      console.error('Web Vitals budget failures:')
+      for (const failure of budgetFailures) {
+        console.error(`- ${failure}`)
+      }
+      process.exitCode = 1
     }
   } finally {
     await cleanup()

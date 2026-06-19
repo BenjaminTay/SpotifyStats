@@ -29,6 +29,9 @@ def test_frontend_web_vitals_probe_script_exposes_reusable_cli():
     assert "--routes" in result.stdout
     assert "--viewport" in result.stdout
     assert "--output" in result.stdout
+    assert "--max-lcp-ms" in result.stdout
+    assert "--max-cls" in result.stdout
+    assert "--max-tbt-ms" in result.stdout
 
 
 def test_frontend_web_vitals_probe_can_rewrite_preview_api_requests():
@@ -50,3 +53,16 @@ def test_frontend_web_vitals_probe_default_routes_cover_analysis_charts():
     )
 
     assert "'/analysis/charts'" in source
+
+
+def test_frontend_web_vitals_probe_can_fail_on_metric_budgets():
+    source = (ROOT / "scripts" / "frontend_web_vitals_probe.mjs").read_text(
+        encoding="utf-8",
+    )
+
+    assert "evaluateBudgets" in source
+    assert "maxLcpMs" in source
+    assert "maxCls" in source
+    assert "maxTbtMs" in source
+    assert "Web Vitals budget failures" in source
+    assert "process.exitCode = 1" in source
