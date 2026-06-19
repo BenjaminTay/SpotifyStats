@@ -55,6 +55,14 @@ def test_fullstack_verification_check_rewrites_preview_route_smoke_api_requests(
         'scripts/frontend_route_smoke.mjs --base-url "$PREVIEW_URL" --api-base-url "$PREVIEW_API_URL"'
         in source
     )
+    assert (
+        'scripts/frontend_interaction_smoke.mjs --base-url "$PREVIEW_URL" --api-base-url "$PREVIEW_API_URL"'
+        in source
+    )
+    assert (
+        'scripts/frontend_cross_browser_smoke.mjs --base-url "$PREVIEW_URL" --api-base-url "$PREVIEW_API_URL"'
+        in source
+    )
 
 
 def test_fullstack_verification_check_preserves_python_with_playwright_across_venv_activation():

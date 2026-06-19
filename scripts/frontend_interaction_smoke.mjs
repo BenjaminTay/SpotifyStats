@@ -10,6 +10,7 @@ import net from 'node:net'
 const DEFAULT_BASE_URL = 'http://127.0.0.1:5173'
 const DEFAULT_WAIT_MS = 5000
 const DEFAULT_SCENARIOS = ['analysis-tabs', 'billboard-routing', 'ai-insights-tabs', 'settings-controls', 'theme-toggle']
+const REWRITE_PATH_PREFIXES = ['/api', '/covers']
 
 const VIEWPORT = {
   width: 1280,
@@ -23,6 +24,7 @@ const VIEWPORT = {
 function parseArgs(argv) {
   const args = {
     baseUrl: DEFAULT_BASE_URL,
+    apiBaseUrl: null,
     scenarios: DEFAULT_SCENARIOS,
     waitMs: DEFAULT_WAIT_MS,
     output: null,
@@ -32,6 +34,7 @@ function parseArgs(argv) {
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i]
     if (arg === '--base-url') args.baseUrl = argv[++i]
+    else if (arg === '--api-base-url') args.apiBaseUrl = argv[++i]
     else if (arg === '--scenario' || arg === '--scenarios') {
       args.scenarios = argv[++i].split(',').map((scenario) => scenario.trim()).filter(Boolean)
     } else if (arg === '--wait-ms') args.waitMs = Number(argv[++i])
@@ -60,6 +63,7 @@ function printHelp() {
 
 Options:
   --base-url <url>        Frontend URL, default ${DEFAULT_BASE_URL}
+  --api-base-url <url>    Rewrite same-origin /api and /covers requests to this API URL
   --scenario <a,b,c>      Comma-separated scenarios, default ${DEFAULT_SCENARIOS.join(',')}
   --wait-ms <ms>          Max wait for route/text assertions, default ${DEFAULT_WAIT_MS}
   --output <path>         Write JSON results to a file
@@ -210,11 +214,49 @@ async function makeClient(port) {
   return client
 }
 
-async function setupPage(client) {
+function rewriteRequestUrl(requestUrl, frontendBaseUrl, apiBaseUrl) {
+  if (!apiBaseUrl) return null
+  const frontendOrigin = new URL(frontendBaseUrl).origin
+  const apiOrigin = new URL(apiBaseUrl).origin
+  if (frontendOrigin === apiOrigin) return null
+
+  let url
+  try {
+    url = new URL(requestUrl)
+  } catch {
+    return null
+  }
+  if (url.origin !== frontendOrigin) return null
+  const shouldRewrite = REWRITE_PATH_PREFIXES.some((prefix) => (
+    url.pathname === prefix || url.pathname.startsWith(`${prefix}/`)
+  ))
+  if (!shouldRewrite) return null
+
+  return new URL(`${url.pathname}${url.search}${url.hash}`, apiBaseUrl).toString()
+}
+
+async function setupApiRequestRewrite(client, frontendBaseUrl, apiBaseUrl) {
+  if (!apiBaseUrl) return
+
+  client.on('Fetch.requestPaused', (params) => {
+    const rewrittenUrl = rewriteRequestUrl(params.request.url, frontendBaseUrl, apiBaseUrl)
+    const request = rewrittenUrl
+      ? { requestId: params.requestId, url: rewrittenUrl }
+      : { requestId: params.requestId }
+    void client.send('Fetch.continueRequest', request).catch(() => {})
+  })
+
+  await client.send('Fetch.enable', {
+    patterns: [{ urlPattern: '*', requestStage: 'Request' }],
+  })
+}
+
+async function setupPage(client, baseUrl, apiBaseUrl) {
   await client.send('Page.enable')
   await client.send('Runtime.enable')
   await client.send('Log.enable')
   await client.send('Network.enable')
+  await setupApiRequestRewrite(client, baseUrl, apiBaseUrl)
   await client.send('Emulation.setDeviceMetricsOverride', VIEWPORT)
   await client.send('Emulation.setUserAgentOverride', { userAgent: VIEWPORT.userAgent })
 }
@@ -471,12 +513,12 @@ const SCENARIOS = {
   },
 }
 
-async function runScenario({ port, baseUrl, scenario, waitMs }) {
+async function runScenario({ port, baseUrl, apiBaseUrl, scenario, waitMs }) {
   const client = await makeClient(port)
   const { consoleEntries, pageErrors } = collectConsole(client)
 
   try {
-    await setupPage(client)
+    await setupPage(client, baseUrl, apiBaseUrl)
     await SCENARIOS[scenario]({ client, baseUrl, waitMs })
     const consoleErrors = consoleEntries.filter((entry) => ['error', 'assert'].includes(entry.level))
     const consoleWarnings = consoleEntries.filter((entry) => ['warning', 'warn'].includes(entry.level))
@@ -598,6 +640,7 @@ async function main() {
       const result = await runScenario({
         port,
         baseUrl: args.baseUrl,
+        apiBaseUrl: args.apiBaseUrl,
         scenario,
         waitMs: args.waitMs,
       })

@@ -152,11 +152,11 @@ fi
 
 if [ -n "$PREVIEW_URL" ]; then
   run node scripts/frontend_route_smoke.mjs --base-url "$PREVIEW_URL" --api-base-url "$PREVIEW_API_URL" --viewport both --max-scroll-overflow 0
-  run node scripts/frontend_interaction_smoke.mjs --base-url "$PREVIEW_URL"
+  run node scripts/frontend_interaction_smoke.mjs --base-url "$PREVIEW_URL" --api-base-url "$PREVIEW_API_URL"
   run node scripts/frontend_chart_interaction_smoke.mjs --base-url "$PREVIEW_URL" --api-base-url "$PREVIEW_API_URL"
   run node scripts/frontend_long_list_smoke.mjs --base-url "$PREVIEW_URL" --api-base-url "$PREVIEW_API_URL"
   if [ "$RUN_CROSS_BROWSER" = "1" ]; then
-    run node scripts/frontend_cross_browser_smoke.mjs --base-url "$PREVIEW_URL" --python "$PYTHON_PLAYWRIGHT"
+    run node scripts/frontend_cross_browser_smoke.mjs --base-url "$PREVIEW_URL" --api-base-url "$PREVIEW_API_URL" --python "$PYTHON_PLAYWRIGHT"
   fi
   if [ "$RUN_WEB_VITALS" = "1" ]; then
     run node scripts/frontend_web_vitals_probe.mjs --base-url "$PREVIEW_URL" --routes /,/analysis/stats,/analysis/charts,/billboard/number-ones,/account,/settings --viewport both --wait-ms 5000

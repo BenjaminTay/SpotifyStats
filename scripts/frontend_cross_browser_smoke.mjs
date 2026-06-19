@@ -11,6 +11,7 @@ const DEFAULT_BROWSERS = ['chromium', 'firefox', 'webkit']
 const DEFAULT_SCENARIOS = ['route-markers', 'core-interactions']
 const DEFAULT_WAIT_MS = 5000
 const DEFAULT_MAX_SCROLL_OVERFLOW = 0
+const REWRITE_PATH_PREFIXES = ['/api', '/covers']
 
 const DEFAULT_ROUTES = [
   { path: '/', markers: ['DASHBOARD /', '总播放次数'] },
@@ -29,6 +30,7 @@ const VIEWPORTS = {
 function parseArgs(argv) {
   const args = {
     baseUrl: DEFAULT_BASE_URL,
+    apiBaseUrl: null,
     browsers: DEFAULT_BROWSERS,
     scenarios: DEFAULT_SCENARIOS,
     viewports: ['desktop', 'mobile'],
@@ -42,6 +44,7 @@ function parseArgs(argv) {
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i]
     if (arg === '--base-url') args.baseUrl = argv[++i]
+    else if (arg === '--api-base-url') args.apiBaseUrl = argv[++i]
     else if (arg === '--browser' || arg === '--browsers') {
       args.browsers = argv[++i].split(',').map((browser) => browser.trim()).filter(Boolean)
     } else if (arg === '--scenario' || arg === '--scenarios') {
@@ -91,6 +94,7 @@ function printHelp() {
 
 Options:
   --base-url <url>              Frontend URL, default ${DEFAULT_BASE_URL}
+  --api-base-url <url>          Rewrite same-origin /api and /covers requests to this API URL
   --browser <a,b,c>             Browser engines: chromium,firefox,webkit; default ${DEFAULT_BROWSERS.join(',')}
   --scenario <a,b>              Scenarios: route-markers,core-interactions; default ${DEFAULT_SCENARIOS.join(',')}
   --viewport <mode>             desktop, mobile, or both, default both
@@ -115,12 +119,13 @@ import os
 import re
 import sys
 import time
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse, urlunparse
 
 from playwright.sync_api import sync_playwright
 
 
 BASE_URL = os.environ.get("FRONTEND_BASE_URL", ${JSON.stringify(DEFAULT_BASE_URL)})
+API_BASE_URL = os.environ.get("FRONTEND_API_BASE_URL", "")
 ROUTES = json.loads(os.environ["FRONTEND_ROUTES_JSON"])
 SCENARIOS = set(json.loads(os.environ["FRONTEND_SCENARIOS_JSON"]))
 VIEWPORTS = json.loads(os.environ["FRONTEND_VIEWPORTS_JSON"])
@@ -128,6 +133,7 @@ WAIT_MS = int(os.environ["FRONTEND_WAIT_MS"])
 MAX_SCROLL_OVERFLOW = int(os.environ["FRONTEND_MAX_SCROLL_OVERFLOW"])
 HEADED = os.environ.get("FRONTEND_HEADED") == "1"
 BROWSER_NAME = sys.argv[1]
+REWRITE_PATH_PREFIXES = ${JSON.stringify(REWRITE_PATH_PREFIXES)}
 
 
 class SmokeFailure(AssertionError):
@@ -136,6 +142,38 @@ class SmokeFailure(AssertionError):
 
 def absolute_url(path: str) -> str:
     return urljoin(BASE_URL.rstrip("/") + "/", path.lstrip("/"))
+
+
+def rewrite_request_url(request_url):
+    if not API_BASE_URL:
+        return None
+
+    frontend = urlparse(BASE_URL)
+    api = urlparse(API_BASE_URL)
+    request = urlparse(request_url)
+    if (frontend.scheme, frontend.netloc) == (api.scheme, api.netloc):
+        return None
+    if (request.scheme, request.netloc) != (frontend.scheme, frontend.netloc):
+        return None
+    if not any(request.path == prefix or request.path.startswith(prefix + "/") for prefix in REWRITE_PATH_PREFIXES):
+        return None
+
+    return urlunparse((api.scheme, api.netloc, request.path, "", request.query, request.fragment))
+
+
+def install_request_rewrite(page):
+    if not API_BASE_URL:
+        return
+
+    def route_request(route):
+        rewritten = rewrite_request_url(route.request.url)
+        if rewritten:
+            response = route.fetch(url=rewritten)
+            route.fulfill(response=response)
+        else:
+            route.continue_()
+
+    page.route("**/*", route_request)
 
 
 def install_guards(page):
@@ -230,8 +268,20 @@ def assert_page_health(page, console_messages, page_errors):
 
 def new_page(browser, viewport_name: str):
     page = browser.new_page(viewport=VIEWPORTS[viewport_name])
+    install_request_rewrite(page)
     console_messages, page_errors = install_guards(page)
     return page, console_messages, page_errors
+
+
+def close_page(page):
+    try:
+        page.wait_for_load_state("networkidle", timeout=min(WAIT_MS, 3000))
+    except Exception:
+        pass
+    try:
+        page.close()
+    except Exception:
+        pass
 
 
 def run_route_markers(browser):
@@ -245,7 +295,7 @@ def run_route_markers(browser):
                 assert_page_health(page, console_messages, page_errors)
                 print(f"PASS route-markers {viewport_name} {route['path']}")
             finally:
-                page.close()
+                close_page(page)
 
 
 def expect_url(page, pattern: str):
@@ -271,7 +321,7 @@ def run_analysis_tabs(browser):
         assert_page_health(page, console_messages, page_errors)
         print("PASS core-interactions analysis-tabs")
     finally:
-        page.close()
+        close_page(page)
 
 
 def run_billboard_routing(browser):
@@ -295,7 +345,7 @@ def run_billboard_routing(browser):
         assert_page_health(page, console_messages, page_errors)
         print("PASS core-interactions billboard-routing")
     finally:
-        page.close()
+        close_page(page)
 
 
 def run_ai_insights_tabs(browser):
@@ -321,7 +371,7 @@ def run_ai_insights_tabs(browser):
         assert_page_health(page, console_messages, page_errors)
         print("PASS core-interactions ai-insights-tabs")
     finally:
-        page.close()
+        close_page(page)
 
 
 def run_theme_toggle(browser):
@@ -339,7 +389,7 @@ def run_theme_toggle(browser):
         assert_page_health(page, console_messages, page_errors)
         print("PASS core-interactions theme-toggle")
     finally:
-        page.close()
+        close_page(page)
 
 
 def run_core_interactions(browser):
@@ -444,6 +494,7 @@ async function main() {
         env: {
           ...process.env,
           FRONTEND_BASE_URL: args.baseUrl,
+          FRONTEND_API_BASE_URL: args.apiBaseUrl || '',
           FRONTEND_ROUTES_JSON: routeConfig,
           FRONTEND_SCENARIOS_JSON: JSON.stringify(args.scenarios),
           FRONTEND_VIEWPORTS_JSON: viewportConfig,
