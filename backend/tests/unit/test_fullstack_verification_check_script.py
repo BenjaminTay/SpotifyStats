@@ -35,6 +35,8 @@ def test_fullstack_verification_check_script_exposes_reusable_cli():
     assert "--web-vitals-max-encoded-resource-kb" in result.stdout
     assert "--resource-snapshot" in result.stdout
     assert "--resource-snapshot-json" in result.stdout
+    assert "--resource-max-total-rss-mb" in result.stdout
+    assert "--resource-max-total-cpu-percent" in result.stdout
 
 
 def test_fullstack_verification_check_script_covers_delivery_matrix():
@@ -122,9 +124,15 @@ def test_fullstack_verification_check_can_capture_runtime_resource_snapshot():
 
     assert "RUN_RESOURCE_SNAPSHOT" in source
     assert "RESOURCE_SNAPSHOT_JSON" in source
+    assert "RESOURCE_MAX_TOTAL_RSS_MB" in source
+    assert "RESOURCE_MAX_TOTAL_CPU_PERCENT" in source
     assert "--resource-snapshot" in source
     assert "--resource-snapshot-json" in source
+    assert "--resource-max-total-rss-mb" in source
+    assert "--resource-max-total-cpu-percent" in source
     assert "scripts/runtime_resource_probe.py" in source
     assert '--backend-url "$BACKEND_URL"' in source
     assert '--frontend-url "$FRONTEND_URL"' in source
     assert '--preview-url "$PREVIEW_URL"' in source
+    assert '--max-total-rss-mb "$RESOURCE_MAX_TOTAL_RSS_MB"' in source
+    assert '--max-total-cpu-percent "$RESOURCE_MAX_TOTAL_CPU_PERCENT"' in source

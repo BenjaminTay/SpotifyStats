@@ -14,6 +14,8 @@ BENCHMARK_JSON=${BENCHMARK_JSON:-/tmp/spotify_api_benchmark.json}
 RUN_CROSS_BROWSER=${RUN_CROSS_BROWSER:-1}
 RUN_WEB_VITALS=${RUN_WEB_VITALS:-0}
 RUN_RESOURCE_SNAPSHOT=${RUN_RESOURCE_SNAPSHOT:-0}
+RESOURCE_MAX_TOTAL_RSS_MB=${RESOURCE_MAX_TOTAL_RSS_MB:-}
+RESOURCE_MAX_TOTAL_CPU_PERCENT=${RESOURCE_MAX_TOTAL_CPU_PERCENT:-}
 WEB_VITALS_MAX_LCP_MS=${WEB_VITALS_MAX_LCP_MS:-}
 WEB_VITALS_MAX_CLS=${WEB_VITALS_MAX_CLS:-}
 WEB_VITALS_MAX_TBT_MS=${WEB_VITALS_MAX_TBT_MS:-}
@@ -57,9 +59,13 @@ Options:
   --benchmark-json <path>  JSON benchmark output path, default /tmp/spotify_api_benchmark.json
   --skip-cross-browser    Skip Playwright Chromium/Firefox/WebKit smoke
   --web-vitals            Run Web Vitals lab probes for dev and preview URLs
-  --resource-snapshot     Capture backend/frontend process RSS snapshot
+  --resource-snapshot     Capture backend/frontend process CPU/RSS snapshot
   --resource-snapshot-json <path>
                           Runtime resource snapshot JSON output path
+  --resource-max-total-rss-mb <mb>
+                          Optional combined backend/frontend RSS budget
+  --resource-max-total-cpu-percent <percent>
+                          Optional combined backend/frontend CPU budget
   --web-vitals-max-lcp-ms <ms>
                           Optional Web Vitals LCP budget passed to lab probes
   --web-vitals-max-cls <score>
@@ -77,7 +83,8 @@ defaults: BACKEND_URL, FRONTEND_URL, PREVIEW_URL, PREVIEW_API_URL,
 BENCHMARK_RUNS, SLOW_MS, BENCHMARK_JSON, RUN_CROSS_BROWSER, RUN_WEB_VITALS,
 WEB_VITALS_MAX_LCP_MS, WEB_VITALS_MAX_CLS, WEB_VITALS_MAX_TBT_MS,
 WEB_VITALS_MAX_RESOURCE_COUNT, WEB_VITALS_MAX_ENCODED_RESOURCE_KB,
-RUN_RESOURCE_SNAPSHOT, RESOURCE_SNAPSHOT_JSON.
+RUN_RESOURCE_SNAPSHOT, RESOURCE_SNAPSHOT_JSON, RESOURCE_MAX_TOTAL_RSS_MB,
+RESOURCE_MAX_TOTAL_CPU_PERCENT.
 When cross-browser smoke is enabled, PYTHON_PLAYWRIGHT may point to a Python
 that can import playwright.sync_api; otherwise the script auto-detects one
 before activating .venv.
@@ -126,6 +133,14 @@ while [ "$#" -gt 0 ]; do
     --resource-snapshot-json)
       shift
       RESOURCE_SNAPSHOT_JSON=$1
+      ;;
+    --resource-max-total-rss-mb)
+      shift
+      RESOURCE_MAX_TOTAL_RSS_MB=$1
+      ;;
+    --resource-max-total-cpu-percent)
+      shift
+      RESOURCE_MAX_TOTAL_CPU_PERCENT=$1
       ;;
     --web-vitals-max-lcp-ms)
       shift
@@ -211,6 +226,12 @@ run_resource_snapshot() {
   set -- python scripts/runtime_resource_probe.py --backend-url "$BACKEND_URL" --frontend-url "$FRONTEND_URL" --json-output "$RESOURCE_SNAPSHOT_JSON" --fail-on-missing
   if [ -n "$PREVIEW_URL" ]; then
     set -- "$@" --preview-url "$PREVIEW_URL"
+  fi
+  if [ -n "$RESOURCE_MAX_TOTAL_RSS_MB" ]; then
+    set -- "$@" --max-total-rss-mb "$RESOURCE_MAX_TOTAL_RSS_MB"
+  fi
+  if [ -n "$RESOURCE_MAX_TOTAL_CPU_PERCENT" ]; then
+    set -- "$@" --max-total-cpu-percent "$RESOURCE_MAX_TOTAL_CPU_PERCENT"
   fi
 
   run "$@"
