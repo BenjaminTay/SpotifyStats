@@ -3010,6 +3010,46 @@ export interface components {
             /** Artist Names */
             artist_names: string[];
         };
+        /** ArtistTierEntry */
+        ArtistTierEntry: {
+            /** Rank */
+            rank: number;
+            /** Artist Name */
+            artist_name: string;
+            /** Play Count */
+            play_count: number;
+            /** Hours */
+            hours: number;
+            /** Tier */
+            tier: string;
+            /** Cover Url */
+            cover_url?: string | null;
+        };
+        /** ArtistTiersResponse */
+        ArtistTiersResponse: {
+            /** Available */
+            available: boolean;
+            /**
+             * Empty
+             * @default false
+             */
+            empty: boolean;
+            /**
+             * Total Artists
+             * @default 0
+             */
+            total_artists: number;
+            /** Tier Hours */
+            tier_hours?: {
+                [key: string]: number;
+            };
+            /** Tier Counts */
+            tier_counts?: {
+                [key: string]: number;
+            };
+            /** Artists */
+            artists?: components["schemas"]["ArtistTierEntry"][];
+        };
         /** AskRequest */
         AskRequest: {
             /** Question */
@@ -3034,6 +3074,13 @@ export interface components {
             end_date?: string | null;
             /** Error */
             error?: string | null;
+        };
+        /** BannedItem */
+        BannedItem: {
+            /** Name */
+            name: string;
+            /** Type */
+            type: string;
         };
         /** BehaviorResponse */
         BehaviorResponse: {
@@ -4011,6 +4058,35 @@ export interface components {
             /** End */
             end: string;
         };
+        /** MarqueeConversionEntry */
+        MarqueeConversionEntry: {
+            /** Artist Name */
+            artist_name: string;
+            /** Segment */
+            segment: string;
+            /** Impressions */
+            impressions: number;
+            /** Actual Plays */
+            actual_plays: number;
+            /** Actual Hours */
+            actual_hours: number;
+            /** Conversion Rate */
+            conversion_rate: number;
+            /** Cover Url */
+            cover_url?: string | null;
+        };
+        /** MarqueeConversionResponse */
+        MarqueeConversionResponse: {
+            /** Available */
+            available: boolean;
+            /**
+             * Empty
+             * @default false
+             */
+            empty: boolean;
+            /** Conversions */
+            conversions?: components["schemas"]["MarqueeConversionEntry"][];
+        };
         /** MessageAddResponse */
         MessageAddResponse: {
             /** Success */
@@ -4273,6 +4349,65 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
+        /** PodcastInteractionResponse */
+        PodcastInteractionResponse: {
+            /** Type */
+            type: string;
+            /** Uri */
+            uri: string;
+            /** Content */
+            content: string;
+            /** Created At */
+            created_at: string;
+        };
+        /** PodcastMonthlyTrend */
+        PodcastMonthlyTrend: {
+            /** Period */
+            period: string;
+            /** Hours */
+            hours: number;
+        };
+        /** PodcastStatsResponse */
+        PodcastStatsResponse: {
+            /** Available */
+            available: boolean;
+            /**
+             * Empty
+             * @default false
+             */
+            empty: boolean;
+            /**
+             * Total Plays
+             * @default 0
+             */
+            total_plays: number;
+            /**
+             * Total Hours
+             * @default 0
+             */
+            total_hours: number;
+            /**
+             * Unique Shows
+             * @default 0
+             */
+            unique_shows: number;
+            /**
+             * Saved Shows
+             * @default 0
+             */
+            saved_shows: number;
+            /** Top Shows */
+            top_shows?: components["schemas"]["PodcastTopShow"][];
+            /** Monthly Trend */
+            monthly_trend?: components["schemas"]["PodcastMonthlyTrend"][];
+        };
+        /** PodcastTopShow */
+        PodcastTopShow: {
+            /** Show Name */
+            show_name: string;
+            /** Hours */
+            hours: number;
+        };
         /** PostDetailResponse */
         PostDetailResponse: {
             post: components["schemas"]["PostItem"];
@@ -4333,6 +4468,27 @@ export interface components {
              * @default 0
              */
             views: number;
+        };
+        /** ProfileFollow */
+        ProfileFollow: {
+            /** Type */
+            type: string;
+            /** Name */
+            name: string;
+        };
+        /** ProfilePrompt */
+        ProfilePrompt: {
+            /** Message */
+            message: string;
+            /** Created */
+            created: string;
+        };
+        /** ProfileStats */
+        ProfileStats: {
+            /** First Play Date */
+            first_play_date?: string | null;
+            /** Total Audio Plays */
+            total_audio_plays: number;
         };
         /**
          * RandomTrack
@@ -4548,6 +4704,15 @@ export interface components {
             /** Cover Url */
             cover_url: string;
         };
+        /** SavedShowResponse */
+        SavedShowResponse: {
+            /** Uri */
+            uri: string;
+            /** Name */
+            name: string;
+            /** Publisher */
+            publisher: string;
+        };
         /** SavedTracksResponse */
         SavedTracksResponse: {
             /** Page */
@@ -4562,6 +4727,58 @@ export interface components {
             tracks: {
                 [key: string]: unknown;
             }[];
+        };
+        /** SearchDailyVolume */
+        SearchDailyVolume: {
+            /** Date */
+            date: string;
+            /** Count */
+            count: number;
+        };
+        /** SearchHeatmap */
+        SearchHeatmap: {
+            /** Z */
+            z: number[][];
+            /** X */
+            x: number[];
+            /** Y */
+            y: string[];
+        };
+        /** SearchHistoryResponse */
+        SearchHistoryResponse: {
+            /** Available */
+            available: boolean;
+            /**
+             * Empty
+             * @default false
+             */
+            empty: boolean;
+            /**
+             * Total Searches
+             * @default 0
+             */
+            total_searches: number;
+            /** Daily Volume */
+            daily_volume?: components["schemas"]["SearchDailyVolume"][];
+            /** Top Queries */
+            top_queries?: components["schemas"]["SearchQueryCount"][];
+            /** Intent Dist */
+            intent_dist?: components["schemas"]["SearchIntentCount"][];
+            heatmap?: components["schemas"]["SearchHeatmap"] | null;
+        };
+        /** SearchIntentCount */
+        SearchIntentCount: {
+            /** Intent */
+            intent: string;
+            /** Count */
+            count: number;
+        };
+        /** SearchQueryCount */
+        SearchQueryCount: {
+            /** Query */
+            query: string;
+            /** Count */
+            count: number;
         };
         /** SessionCreateResponse */
         SessionCreateResponse: {
@@ -4711,6 +4928,37 @@ export interface components {
             platform: string;
             /** Rate */
             rate: number;
+        };
+        /** SoundCapsuleDaily */
+        SoundCapsuleDaily: {
+            /** Date */
+            date: string;
+            /** Stream Count */
+            stream_count: number;
+            /** Seconds Played */
+            seconds_played: number;
+            /** Top Data */
+            top_data?: string | null;
+        };
+        /** SoundCapsuleHighlight */
+        SoundCapsuleHighlight: {
+            /** Date */
+            date: string;
+            /** Type */
+            type: string;
+            /** Entity Name */
+            entity_name: string;
+            /** Detail */
+            detail?: string | null;
+        };
+        /** SoundCapsuleResponse */
+        SoundCapsuleResponse: {
+            /** Available */
+            available: boolean;
+            /** Highlights */
+            highlights?: components["schemas"]["SoundCapsuleHighlight"][];
+            /** Daily */
+            daily?: components["schemas"]["SoundCapsuleDaily"][];
         };
         /** SpecialMoments */
         SpecialMoments: {
@@ -4979,6 +5227,19 @@ export interface components {
             /** Cover Url */
             cover_url: string;
         };
+        /** TopVideoTrack */
+        TopVideoTrack: {
+            /** Track Name */
+            track_name: string;
+            /** Artist Name */
+            artist_name: string;
+            /** Video Plays */
+            video_plays: number;
+            /** Audio Plays */
+            audio_plays: number;
+            /** Cover Url */
+            cover_url?: string | null;
+        };
         /** TopVsAlltimeMark */
         TopVsAlltimeMark: {
             /** Name */
@@ -5140,6 +5401,31 @@ export interface components {
             /** Title */
             title: string;
         };
+        /** UserInferencesResponse */
+        UserInferencesResponse: {
+            /** Available */
+            available: boolean;
+            /** Total */
+            total: number;
+            /** Categories */
+            categories: {
+                [key: string]: string[];
+            };
+        };
+        /** UserProfileResponse */
+        UserProfileResponse: {
+            /** Profile */
+            profile: {
+                [key: string]: unknown;
+            };
+            /** Follows */
+            follows: components["schemas"]["ProfileFollow"][];
+            /** Prompts */
+            prompts: components["schemas"]["ProfilePrompt"][];
+            stats: components["schemas"]["ProfileStats"];
+            /** Banned Items */
+            banned_items: components["schemas"]["BannedItem"][];
+        };
         /** ValidationError */
         ValidationError: {
             /** Location */
@@ -5188,6 +5474,48 @@ export interface components {
             }[] | null;
         } & {
             [key: string]: unknown;
+        };
+        /** VideoStatsResponse */
+        VideoStatsResponse: {
+            /** Available */
+            available: boolean;
+            /**
+             * Empty
+             * @default false
+             */
+            empty: boolean;
+            /**
+             * Total Video Plays
+             * @default 0
+             */
+            total_video_plays: number;
+            /**
+             * Total Audio Plays
+             * @default 0
+             */
+            total_audio_plays: number;
+            /**
+             * Avg Duration Sec
+             * @default 0
+             */
+            avg_duration_sec: number;
+            /** Platform Dist */
+            platform_dist?: {
+                [key: string]: number;
+            };
+            /** Yearly */
+            yearly?: components["schemas"]["VideoYearlyStats"][];
+            /** Top Video Tracks */
+            top_video_tracks?: components["schemas"]["TopVideoTrack"][];
+        };
+        /** VideoYearlyStats */
+        VideoYearlyStats: {
+            /** Year */
+            year: number;
+            /** Audio */
+            audio: number;
+            /** Video */
+            video: number;
         };
         /** WrappedAlbumEntry */
         WrappedAlbumEntry: {
@@ -5267,6 +5595,61 @@ export interface components {
             total_days: number;
             /** Avg Minutes Per Day */
             avg_minutes_per_day: number;
+        };
+        /** WrappedHubAvailableYearsResponse */
+        WrappedHubAvailableYearsResponse: {
+            /** Years */
+            years: number[];
+        };
+        /** WrappedHubResponse */
+        WrappedHubResponse: {
+            /** Available */
+            available: boolean;
+            /**
+             * Empty
+             * @default false
+             */
+            empty: boolean;
+            /** Top Artists */
+            top_artists?: {
+                [key: string]: unknown;
+            }[];
+            /** Top Tracks */
+            top_tracks?: {
+                [key: string]: unknown;
+            }[];
+            /** Top Albums */
+            top_albums?: {
+                [key: string]: unknown;
+            }[];
+            /** Top Genres */
+            top_genres?: {
+                [key: string]: unknown;
+            }[];
+            /** Top Podcasts */
+            top_podcasts?: {
+                [key: string]: unknown;
+            }[];
+            /** Artist Race */
+            artist_race?: {
+                [key: string]: unknown;
+            }[];
+            /** Clubs */
+            clubs?: {
+                [key: string]: unknown;
+            }[];
+            /** Party Metrics */
+            party_metrics?: {
+                [key: string]: unknown;
+            }[];
+            /** Listening Age */
+            listening_age?: {
+                [key: string]: unknown;
+            };
+            /** Archive Reports */
+            archive_reports?: {
+                [key: string]: unknown;
+            }[];
         };
         /** WrappedMonthlyPulse */
         WrappedMonthlyPulse: {
@@ -6657,7 +7040,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["SearchHistoryResponse"];
                 };
             };
             /** @description Validation Error */
@@ -6688,7 +7071,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["ArtistTiersResponse"];
                 };
             };
             /** @description Validation Error */
@@ -6719,7 +7102,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["MarqueeConversionResponse"];
                 };
             };
             /** @description Validation Error */
@@ -6750,7 +7133,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["PodcastStatsResponse"];
                 };
             };
             /** @description Validation Error */
@@ -6781,7 +7164,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["PodcastInteractionResponse"][];
                 };
             };
             /** @description Validation Error */
@@ -6812,7 +7195,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["SavedShowResponse"][];
                 };
             };
             /** @description Validation Error */
@@ -6843,7 +7226,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["VideoStatsResponse"];
                 };
             };
             /** @description Validation Error */
@@ -6874,7 +7257,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["UserProfileResponse"];
                 };
             };
             /** @description Validation Error */
@@ -6905,7 +7288,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["UserInferencesResponse"];
                 };
             };
             /** @description Validation Error */
@@ -6936,7 +7319,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["SoundCapsuleResponse"];
                 };
             };
             /** @description Validation Error */
@@ -6967,7 +7350,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["WrappedHubAvailableYearsResponse"];
                 };
             };
             /** @description Validation Error */
@@ -6998,7 +7381,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["WrappedHubResponse"];
                 };
             };
             /** @description Validation Error */

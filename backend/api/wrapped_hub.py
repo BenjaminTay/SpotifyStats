@@ -5,12 +5,13 @@ from sqlite3 import Connection
 from fastapi import APIRouter, Depends
 
 from backend.dependencies import get_conn
+from backend.models.account_center import WrappedHubAvailableYearsResponse, WrappedHubResponse
 from backend.services.wrapped_hub_service import get_wrapped_hub
 
 router = APIRouter(prefix="/wrapped-hub", tags=["Wrapped Hub"])
 
 
-@router.get("/available-years")
+@router.get("/available-years", response_model=WrappedHubAvailableYearsResponse)
 def wrapped_hub_available_years(conn: Connection = Depends(get_conn)):
     """Return years with official Wrapped data."""
     try:
@@ -20,6 +21,6 @@ def wrapped_hub_available_years(conn: Connection = Depends(get_conn)):
         return {"years": []}
 
 
-@router.get("")
+@router.get("", response_model=WrappedHubResponse, response_model_exclude_unset=True)
 def wrapped_hub(conn: Connection = Depends(get_conn)):
     return get_wrapped_hub(conn)
