@@ -36,9 +36,10 @@ def test_openapi_parameter_boundary_audit_accounts_for_all_obligations():
 
     audit = build_parameter_boundary_audit(app)
 
-    assert audit.obligation_count >= 30
+    assert audit.obligation_count >= 55
     assert audit.unaccounted_obligations == ()
-    assert audit.category_counts["boundary_probe"] >= 25
+    assert audit.category_counts["boundary_probe"] >= 35
+    assert audit.category_counts["string_resilience_probe"] >= 15
     assert audit.category_counts["controlled_stateful_or_external"] >= 1
     assert_parameter_boundary_audit(audit)
 
@@ -71,6 +72,22 @@ def test_openapi_parameter_boundary_audit_records_evidence_for_high_risk_paramet
     ].category == ("controlled_stateful_or_external")
 
 
+def test_openapi_parameter_boundary_audit_records_evidence_for_string_resilience():
+    from backend.main import app
+    from scripts.openapi_parameter_boundary_audit import build_parameter_boundary_audit
+
+    audit = build_parameter_boundary_audit(app)
+    obligations = audit.obligations_by_key
+
+    assert obligations[("query", "search", "string")].category == "string_resilience_probe"
+    assert "library_saved_tracks_search_long" in obligations[("query", "search", "string")].evidence
+    assert obligations[("path", "album_name", "string")].category == "string_resilience_probe"
+    assert "billboard_album_long_name" in obligations[("path", "album_name", "string")].evidence
+    assert obligations[("path", "track_name", "string")].category == (
+        "controlled_stateful_or_external"
+    )
+
+
 def test_openapi_parameter_boundary_audit_renders_markdown_summary():
     from backend.main import app
     from scripts.openapi_parameter_boundary_audit import (
@@ -83,4 +100,5 @@ def test_openapi_parameter_boundary_audit_renders_markdown_summary():
     assert "OpenAPI parameter boundary audit" in markdown
     assert "Unaccounted obligations | 0" in markdown
     assert "boundary_probe" in markdown
+    assert "string_resilience_probe" in markdown
     assert "controlled_stateful_or_external" in markdown

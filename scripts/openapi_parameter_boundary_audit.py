@@ -263,6 +263,116 @@ BOUNDARY_EVIDENCE_BY_KEY: dict[tuple[str, str, str], ParameterEvidence] = {
         ("wrapped_year_path_nonint",),
         "wrapped year path integer conversion rejects non-integers",
     ),
+    ("path", "album_name", "string"): ParameterEvidence(
+        "string_resilience_probe",
+        ("billboard_album_long_name", "music_album_long_name"),
+        "album-name path strings accept overlong not-found values without server errors",
+    ),
+    ("path", "artist_name", "string"): ParameterEvidence(
+        "string_resilience_probe",
+        ("billboard_artist_long_name", "music_artist_long_name"),
+        "artist-name path strings accept overlong not-found values without server errors",
+    ),
+    ("path", "cover_type", "string"): ParameterEvidence(
+        "string_resilience_probe",
+        ("cover_type_long",),
+        "cover type path string accepts overlong unknown values as a controlled 404",
+    ),
+    ("path", "job_id", "string"): ParameterEvidence(
+        "string_resilience_probe",
+        ("job_status_long_missing", "import_status_long_missing"),
+        "job id path strings accept overlong missing IDs without server errors",
+    ),
+    ("path", "name", "string"): ParameterEvidence(
+        "string_resilience_probe",
+        ("artist_deep_dive_long_name",),
+        "artist deep-dive path strings accept overlong not-found values without server errors",
+    ),
+    ("path", "post_id", "string"): ParameterEvidence(
+        "string_resilience_probe",
+        ("community_post_long_missing",),
+        "community post id path strings accept overlong missing IDs as a controlled 404",
+    ),
+    ("path", "track_name", "string"): ParameterEvidence(
+        "controlled_stateful_or_external",
+        ("OpenAPI schema + Billboard enrichment degradation contracts",),
+        "track-name string path belongs to optional external enrichment outside local boundary probe",
+    ),
+    ("query", "album_a", "string"): ParameterEvidence(
+        "string_resilience_probe",
+        ("billboard_versus_album_a_empty", "billboard_versus_album_a_long"),
+        "album-versus album A query handles empty and overlong strings without server errors",
+    ),
+    ("query", "album_b", "string"): ParameterEvidence(
+        "string_resilience_probe",
+        ("billboard_versus_album_b_empty",),
+        "album-versus album B query handles empty strings without server errors",
+    ),
+    ("query", "album_ids", "string"): ParameterEvidence(
+        "string_resilience_probe",
+        ("version_album_types_album_ids_empty", "version_album_types_album_ids_long"),
+        "album id list query handles empty and long lists without server errors",
+    ),
+    ("query", "artist_a", "string"): ParameterEvidence(
+        "string_resilience_probe",
+        ("billboard_versus_artist_a_empty", "billboard_versus_artist_a_long"),
+        "versus artist A query handles empty and overlong strings without server errors",
+    ),
+    ("query", "artist_b", "string"): ParameterEvidence(
+        "string_resilience_probe",
+        ("billboard_versus_artist_a_empty",),
+        "versus artist B participates in the safe empty-string versus probe",
+    ),
+    ("query", "artist_name", "string"): ParameterEvidence(
+        "string_resilience_probe",
+        ("billboard_album_artist_name_empty", "billboard_album_artist_name_long"),
+        "artist-name query handles empty and overlong filters without server errors",
+    ),
+    ("query", "code", "string"): ParameterEvidence(
+        "controlled_stateful_or_external",
+        ("backend/tests/contract/test_spotify_auth_contract.py",),
+        "OAuth callback code depends on browser-auth state and is covered by PKCE contracts",
+    ),
+    ("query", "entity", "string"): ParameterEvidence(
+        "string_resilience_probe",
+        ("analysis_charts_entity_empty", "analysis_charts_entity_long"),
+        "analysis chart entity query handles empty and overlong strings without server errors",
+    ),
+    ("query", "metric", "string"): ParameterEvidence(
+        "string_resilience_probe",
+        ("analysis_charts_metric_empty", "analysis_charts_metric_long"),
+        "analysis chart metric query handles empty and overlong strings without server errors",
+    ),
+    ("query", "month", "string"): ParameterEvidence(
+        "controlled_stateful_or_external",
+        ("backend/tests/contract/test_ai_insights_contract.py",),
+        "AI monthly report string date input belongs to LLM-generating contract coverage",
+    ),
+    ("query", "period", "string"): ParameterEvidence(
+        "string_resilience_probe",
+        ("analysis_stats_period_empty", "analysis_stats_period_long"),
+        "shared period query handles empty and overlong strings without server errors",
+    ),
+    ("query", "search", "string"): ParameterEvidence(
+        "string_resilience_probe",
+        ("library_saved_tracks_search_empty", "library_saved_tracks_search_long"),
+        "saved-track search handles empty and overlong strings without server errors",
+    ),
+    ("query", "state", "string"): ParameterEvidence(
+        "controlled_stateful_or_external",
+        ("backend/tests/contract/test_spotify_auth_contract.py",),
+        "OAuth callback state depends on browser-auth state and is covered by PKCE contracts",
+    ),
+    ("query", "week_end", "string"): ParameterEvidence(
+        "controlled_stateful_or_external",
+        ("backend/tests/contract/test_ai_insights_contract.py",),
+        "AI weekly report date input belongs to LLM-generating contract coverage",
+    ),
+    ("query", "week_start", "string"): ParameterEvidence(
+        "controlled_stateful_or_external",
+        ("backend/tests/contract/test_ai_insights_contract.py",),
+        "AI weekly report date input belongs to LLM-generating contract coverage",
+    ),
 }
 
 
@@ -295,7 +405,11 @@ def _has_boundary_constraints(schema: dict) -> bool:
 def _is_obligation(location: str, schema: dict) -> bool:
     if location == "path" and schema.get("type") == "integer":
         return True
+    if location == "path" and schema.get("type") == "string":
+        return True
     if location == "query" and schema.get("type") == "integer":
+        return True
+    if location == "query" and schema.get("type") == "string":
         return True
     if location == "query" and _has_boundary_constraints(schema):
         return True
@@ -329,7 +443,7 @@ def _classify_obligation(
             (),
             "parameter boundary is not tied to api_boundary_probe or an explicit exclusion",
         )
-    if evidence.category == "boundary_probe":
+    if evidence.category in {"boundary_probe", "string_resilience_probe"}:
         missing = tuple(
             case_name for case_name in evidence.case_names if case_name not in boundary_case_names
         )

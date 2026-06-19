@@ -39,6 +39,7 @@ class BoundaryResult:
 
 
 SPECIAL_SEARCH = "%_🎧/../"
+LONG_STRING = "x" * 512
 
 DEFAULT_BOUNDARY_CASES: tuple[BoundaryCase, ...] = (
     BoundaryCase("analysis_overview_min_ms_negative", "/api/analysis/overview", {"min_ms": -1}),
@@ -57,6 +58,48 @@ DEFAULT_BOUNDARY_CASES: tuple[BoundaryCase, ...] = (
     BoundaryCase("analysis_charts_limit_too_high", "/api/analysis/charts", {"limit": 5001}),
     BoundaryCase("analysis_charts_merge_level_low", "/api/analysis/charts", {"merge_level": 0}),
     BoundaryCase("analysis_charts_merge_level_high", "/api/analysis/charts", {"merge_level": 4}),
+    BoundaryCase(
+        "analysis_charts_entity_empty",
+        "/api/analysis/charts",
+        {"entity": ""},
+        expected_statuses=(200,),
+        expect_validation_detail=False,
+    ),
+    BoundaryCase(
+        "analysis_charts_entity_long",
+        "/api/analysis/charts",
+        {"entity": LONG_STRING},
+        expected_statuses=(200,),
+        expect_validation_detail=False,
+    ),
+    BoundaryCase(
+        "analysis_charts_metric_empty",
+        "/api/analysis/charts",
+        {"metric": ""},
+        expected_statuses=(200,),
+        expect_validation_detail=False,
+    ),
+    BoundaryCase(
+        "analysis_charts_metric_long",
+        "/api/analysis/charts",
+        {"metric": LONG_STRING},
+        expected_statuses=(200,),
+        expect_validation_detail=False,
+    ),
+    BoundaryCase(
+        "analysis_stats_period_empty",
+        "/api/analysis/stats",
+        {"period": ""},
+        expected_statuses=(200,),
+        expect_validation_detail=False,
+    ),
+    BoundaryCase(
+        "analysis_stats_period_long",
+        "/api/analysis/stats",
+        {"period": LONG_STRING},
+        expected_statuses=(200,),
+        expect_validation_detail=False,
+    ),
     BoundaryCase("leaderboard_invalid_entity", "/api/leaderboard", {"entity": "invalid"}),
     BoundaryCase("leaderboard_empty_entity", "/api/leaderboard", {"entity": ""}),
     BoundaryCase("leaderboard_invalid_metric", "/api/leaderboard", {"metric": "minutes"}),
@@ -99,7 +142,19 @@ DEFAULT_BOUNDARY_CASES: tuple[BoundaryCase, ...] = (
     BoundaryCase(
         "community_trending_track_limit_high", "/api/community/trending", {"track_limit": 21}
     ),
+    BoundaryCase(
+        "community_post_long_missing",
+        f"/api/community/post/{LONG_STRING}",
+        expected_statuses=(404,),
+        expect_validation_detail=False,
+    ),
     BoundaryCase("covers_entity_id_nonint", "/covers/albums/not-an-int.jpg"),
+    BoundaryCase(
+        "cover_type_long",
+        f"/covers/{LONG_STRING}/1.jpg",
+        expected_statuses=(404,),
+        expect_validation_detail=False,
+    ),
     BoundaryCase("library_playlist_path_nonint", "/api/library/playlists/not-an-int/tracks"),
     BoundaryCase(
         "library_saved_tracks_page_nonint", "/api/library/saved-tracks", {"page": "first"}
@@ -107,12 +162,70 @@ DEFAULT_BOUNDARY_CASES: tuple[BoundaryCase, ...] = (
     BoundaryCase(
         "library_saved_tracks_limit_nonint", "/api/library/saved-tracks", {"limit": "many"}
     ),
+    BoundaryCase(
+        "library_saved_tracks_search_empty",
+        "/api/library/saved-tracks",
+        {"search": "", "limit": 5},
+        expected_statuses=(200,),
+        expect_validation_detail=False,
+    ),
+    BoundaryCase(
+        "library_saved_tracks_search_long",
+        "/api/library/saved-tracks",
+        {"search": LONG_STRING, "limit": 5},
+        expected_statuses=(200,),
+        expect_validation_detail=False,
+    ),
     BoundaryCase("wrapped_year_path_nonint", "/api/wrapped/not-an-int"),
     BoundaryCase("settings_llm_profile_path_nonint", "/api/settings/llm-profiles/not-an-int"),
     BoundaryCase("chat_session_path_nonint", "/api/chat/sessions/not-an-int"),
     BoundaryCase("version_group_path_nonint", "/api/version-merge/groups/not-an-int/members"),
     BoundaryCase("music_track_path_nonint", "/api/music/tracks/not-an-int/stats"),
     BoundaryCase("billboard_track_path_nonint", "/api/billboard/track/not-an-int"),
+    BoundaryCase(
+        "music_album_long_name",
+        f"/api/music/albums/{LONG_STRING}/stats",
+        expected_statuses=(200,),
+        expect_validation_detail=False,
+    ),
+    BoundaryCase(
+        "music_artist_long_name",
+        f"/api/music/artists/{LONG_STRING}/stats",
+        expected_statuses=(200,),
+        expect_validation_detail=False,
+    ),
+    BoundaryCase(
+        "artist_deep_dive_long_name",
+        f"/api/artist/{LONG_STRING}/deep-dive",
+        expected_statuses=(200,),
+        expect_validation_detail=False,
+    ),
+    BoundaryCase(
+        "billboard_album_long_name",
+        f"/api/billboard/album/{LONG_STRING}",
+        expected_statuses=(200,),
+        expect_validation_detail=False,
+    ),
+    BoundaryCase(
+        "billboard_artist_long_name",
+        f"/api/billboard/artist/{LONG_STRING}",
+        expected_statuses=(200,),
+        expect_validation_detail=False,
+    ),
+    BoundaryCase(
+        "billboard_album_artist_name_empty",
+        "/api/billboard/album/Fixture Future LP",
+        {"artist_name": ""},
+        expected_statuses=(200,),
+        expect_validation_detail=False,
+    ),
+    BoundaryCase(
+        "billboard_album_artist_name_long",
+        "/api/billboard/album/Fixture Future LP",
+        {"artist_name": LONG_STRING},
+        expected_statuses=(200,),
+        expect_validation_detail=False,
+    ),
     BoundaryCase(
         "version_compare_album_id_a_nonint",
         "/api/version-merge/compare",
@@ -124,6 +237,20 @@ DEFAULT_BOUNDARY_CASES: tuple[BoundaryCase, ...] = (
         {"album_id_a": 921, "album_id_b": "right"},
     ),
     BoundaryCase(
+        "version_album_types_album_ids_empty",
+        "/api/version-merge/album-types",
+        {"album_ids": ""},
+        expected_statuses=(200,),
+        expect_validation_detail=False,
+    ),
+    BoundaryCase(
+        "version_album_types_album_ids_long",
+        "/api/version-merge/album-types",
+        {"album_ids": ",".join(["1"] * 300)},
+        expected_statuses=(200,),
+        expect_validation_detail=False,
+    ),
+    BoundaryCase(
         "billboard_versus_track_id_a_nonint",
         "/api/billboard/versus/track",
         {"track_id_a": "left", "track_id_b": 906},
@@ -132,6 +259,68 @@ DEFAULT_BOUNDARY_CASES: tuple[BoundaryCase, ...] = (
         "billboard_versus_track_id_b_nonint",
         "/api/billboard/versus/track",
         {"track_id_a": 905, "track_id_b": "right"},
+    ),
+    BoundaryCase(
+        "billboard_versus_album_a_empty",
+        "/api/billboard/versus/album",
+        {
+            "album_a": "",
+            "artist_a": "Fixture Artist Alpha",
+            "album_b": "Fixture Future LP",
+            "artist_b": "Fixture Artist Alpha",
+        },
+        expected_statuses=(200,),
+        expect_validation_detail=False,
+    ),
+    BoundaryCase(
+        "billboard_versus_album_a_long",
+        "/api/billboard/versus/album",
+        {
+            "album_a": LONG_STRING,
+            "artist_a": "Fixture Artist Alpha",
+            "album_b": "Fixture Future LP",
+            "artist_b": "Fixture Artist Alpha",
+        },
+        expected_statuses=(200,),
+        expect_validation_detail=False,
+    ),
+    BoundaryCase(
+        "billboard_versus_album_b_empty",
+        "/api/billboard/versus/album",
+        {
+            "album_a": "Fixture Future LP",
+            "artist_a": "Fixture Artist Alpha",
+            "album_b": "",
+            "artist_b": "Fixture Artist Alpha",
+        },
+        expected_statuses=(200,),
+        expect_validation_detail=False,
+    ),
+    BoundaryCase(
+        "billboard_versus_artist_a_empty",
+        "/api/billboard/versus/artist",
+        {"artist_a": "", "artist_b": "Fixture Artist Beta"},
+        expected_statuses=(200,),
+        expect_validation_detail=False,
+    ),
+    BoundaryCase(
+        "billboard_versus_artist_a_long",
+        "/api/billboard/versus/artist",
+        {"artist_a": LONG_STRING, "artist_b": "Fixture Artist Beta"},
+        expected_statuses=(200,),
+        expect_validation_detail=False,
+    ),
+    BoundaryCase(
+        "job_status_long_missing",
+        f"/api/jobs/{LONG_STRING}/status",
+        expected_statuses=(200,),
+        expect_validation_detail=False,
+    ),
+    BoundaryCase(
+        "import_status_long_missing",
+        f"/api/import/status/{LONG_STRING}",
+        expected_statuses=(200,),
+        expect_validation_detail=False,
     ),
     BoundaryCase("ai_insights_year_nonint", "/api/ai-insights/yearly-story", {"year": "twenty"}),
     BoundaryCase(

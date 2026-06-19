@@ -9,7 +9,7 @@ def test_api_boundary_probe_exposes_reusable_boundary_cases():
     from scripts.api_boundary_probe import DEFAULT_BOUNDARY_CASES, run_cases
 
     assert callable(run_cases)
-    assert len(DEFAULT_BOUNDARY_CASES) >= 55
+    assert len(DEFAULT_BOUNDARY_CASES) >= 80
     names = {case.name for case in DEFAULT_BOUNDARY_CASES}
     assert "analysis_plays_limit_zero" in names
     assert "analysis_charts_merge_level_low" in names
@@ -20,6 +20,11 @@ def test_api_boundary_probe_exposes_reusable_boundary_cases():
     assert "chat_session_path_nonint" in names
     assert "ai_insights_year_nonint" in names
     assert "music_track_path_nonint" in names
+    assert "analysis_charts_entity_long" in names
+    assert "library_saved_tracks_search_empty" in names
+    assert "library_saved_tracks_search_long" in names
+    assert "billboard_album_long_name" in names
+    assert "community_post_long_missing" in names
 
 
 def test_api_boundary_probe_cases_cover_validation_and_safe_special_chars():
