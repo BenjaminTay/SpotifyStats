@@ -11,6 +11,16 @@ const DEFAULT_BASE_URL = 'http://127.0.0.1:5173'
 const DEFAULT_WAIT_MS = 5000
 const DEFAULT_MAX_SCROLL_OVERFLOW = 0
 const REWRITE_PATH_PREFIXES = ['/api', '/covers']
+const DETAIL_ROUTE_FILTERS = {
+  min_ms: 30000,
+  music_only: true,
+  merge_enabled: true,
+  dynamic_threshold: true,
+  bb_top_n: 30,
+  bb_album_top_n: 20,
+  bb_artist_top_n: 20,
+  merge_level: 2,
+}
 const DEFAULT_ROUTES = [
   '/',
   '/analysis',
@@ -54,6 +64,14 @@ const ROUTE_READY_MARKERS = {
   '/account': ['ACCOUNT / CENTER', '你的收藏'],
   '/settings': ['SETTINGS / CONFIGURATION', '00 · SPOTIFY 连接'],
 }
+
+const DYNAMIC_ROUTE_READY_MARKERS = [
+  { pattern: /^\/music\/tracks\/[^/]+$/, markers: ['MUSIC / 单曲详情', '播放统计'] },
+  { pattern: /^\/music\/albums\/[^/]+$/, markers: ['MUSIC / 专辑详情', '播放统计'] },
+  { pattern: /^\/music\/artists\/[^/]+$/, markers: ['MUSIC / 艺人详情', '播放统计'] },
+  { pattern: /^\/community\/post\/[^/]+$/, markers: ['COMMUNITY / POST'] },
+  { pattern: /^\/community\/account\/[^/]+$/, markers: ['COMMUNITY / ACCOUNT', 'Posts'] },
+]
 
 const VIEWPORTS = {
   desktop: {
@@ -113,6 +131,7 @@ function parseArgs(argv) {
     maxScrollOverflow: DEFAULT_MAX_SCROLL_OVERFLOW,
     failOnConsoleWarning: false,
     enforceRouteMarkers: true,
+    includeDetailRoutes: false,
   }
 
   for (let i = 0; i < argv.length; i += 1) {
@@ -129,6 +148,7 @@ function parseArgs(argv) {
     else if (arg === '--max-scroll-overflow') args.maxScrollOverflow = Number(argv[++i])
     else if (arg === '--fail-on-console-warning') args.failOnConsoleWarning = true
     else if (arg === '--disable-route-markers') args.enforceRouteMarkers = false
+    else if (arg === '--include-detail-routes') args.includeDetailRoutes = true
     else if (arg === '--help' || arg === '-h') {
       printHelp()
       process.exit(0)
@@ -162,6 +182,7 @@ Options:
   --max-scroll-overflow <px>    Allowed horizontal overflow over viewport width, default ${DEFAULT_MAX_SCROLL_OVERFLOW}
   --fail-on-console-warning     Treat console warnings as failures
   --disable-route-markers       Do not require built-in route content markers for default routes
+  --include-detail-routes       Resolve and append music/community detail routes from local API data
   --output <path>               Write JSON results to a file
   --chrome <path>               Chrome/Chromium executable path
 `)
@@ -230,7 +251,57 @@ function normalizeRoute(route) {
 }
 
 function getRouteReadyMarkers(route) {
-  return ROUTE_READY_MARKERS[normalizeRoute(route)] || []
+  const normalized = normalizeRoute(route)
+  const exact = ROUTE_READY_MARKERS[normalized]
+  if (exact) return exact
+  return DYNAMIC_ROUTE_READY_MARKERS.find((entry) => entry.pattern.test(normalized))?.markers || []
+}
+
+async function fetchJson(baseUrl, path, params = {}) {
+  const url = new URL(path, baseUrl)
+  for (const [key, value] of Object.entries(params)) {
+    url.searchParams.set(key, String(value))
+  }
+  const response = await fetch(url)
+  if (!response.ok) throw new Error(`${url.pathname} returned HTTP ${response.status}`)
+  return response.json()
+}
+
+function detailApiBaseUrl(baseUrl, apiBaseUrl) {
+  return apiBaseUrl || baseUrl
+}
+
+async function resolveDetailRoutes(baseUrl, apiBaseUrl) {
+  const apiUrl = detailApiBaseUrl(baseUrl, apiBaseUrl)
+  const [entities, feed] = await Promise.all([
+    fetchJson(apiUrl, '/api/billboard/entity-lists', DETAIL_ROUTE_FILTERS),
+    fetchJson(apiUrl, '/api/community/feed', { limit: 1 }),
+  ])
+
+  const track = entities.tracks?.find((item) => item.track_id != null)
+  const album = entities.albums?.find((item) => item.album_name && item.artist_name)
+  const artist = entities.artists?.find((item) => item.artist_name)
+  const post = feed.posts?.find((item) => item.id)
+
+  const routes = []
+  if (track) routes.push(`/music/tracks/${encodeURIComponent(String(track.track_id))}`)
+  if (album) {
+    routes.push(
+      `/music/albums/${encodeURIComponent(album.album_name)}?artist=${encodeURIComponent(album.artist_name)}`,
+    )
+  }
+  if (artist) routes.push(`/music/artists/${encodeURIComponent(artist.artist_name)}`)
+  if (post) {
+    routes.push(`/community/post/${encodeURIComponent(post.id)}`)
+    if (post.account_handle) {
+      routes.push(`/community/account/${encodeURIComponent(post.account_handle)}`)
+    }
+  }
+
+  if (routes.length < 5) {
+    throw new Error(`Could not resolve all detail routes from /api/billboard/entity-lists and /api/community/feed; got ${routes.length}`)
+  }
+  return routes
 }
 
 class CdpClient {
@@ -528,8 +599,15 @@ async function main() {
   try {
     await waitForJson(`http://127.0.0.1:${port}/json/version`)
 
+    let routes = args.routes
+    if (args.includeDetailRoutes) {
+      const detailRoutes = await resolveDetailRoutes(args.baseUrl, args.apiBaseUrl)
+      routes = [...new Set([...routes, ...detailRoutes])]
+      process.stderr.write(`Resolved detail routes: ${detailRoutes.join(', ')}\n`)
+    }
+
     const results = []
-    for (const route of args.routes) {
+    for (const route of routes) {
       for (const viewport of args.viewports) {
         process.stderr.write(`Checking ${route} (${viewport}) ... `)
         const result = await smokeRoute({

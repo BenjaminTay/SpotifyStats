@@ -77,3 +77,20 @@ def test_frontend_route_smoke_default_wait_allows_cold_route_content():
     source = (ROOT / "scripts" / "frontend_route_smoke.mjs").read_text(encoding="utf-8")
 
     assert "const DEFAULT_WAIT_MS = 5000" in source
+
+
+def test_frontend_route_smoke_can_cover_dynamic_detail_routes():
+    source = (ROOT / "scripts" / "frontend_route_smoke.mjs").read_text(encoding="utf-8")
+
+    assert "--include-detail-routes" in source
+    assert "resolveDetailRoutes" in source
+    assert "/api/billboard/entity-lists" in source
+    assert "/api/community/feed" in source
+    for marker in [
+        "MUSIC / 单曲详情",
+        "MUSIC / 专辑详情",
+        "MUSIC / 艺人详情",
+        "COMMUNITY / POST",
+        "COMMUNITY / ACCOUNT",
+    ]:
+        assert marker in source

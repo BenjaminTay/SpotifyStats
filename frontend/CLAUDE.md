@@ -129,7 +129,7 @@ sh scripts/fullstack_verification_check.sh --backend-url http://127.0.0.1:8000 -
 .venv/bin/python scripts/openapi_operation_audit.py --json-output /tmp/spotify_openapi_operation_audit.json
 .venv/bin/python scripts/openapi_parameter_boundary_audit.py --json-output /tmp/spotify_openapi_parameter_boundary_audit.json
 .venv/bin/python scripts/runtime_resource_probe.py --backend-url http://127.0.0.1:8000 --frontend-url http://127.0.0.1:5173 --json-output /tmp/spotify_runtime_resources.json --max-total-rss-mb 1200 --max-total-cpu-percent 200
-node scripts/frontend_route_smoke.mjs --viewport both --max-scroll-overflow 0 --fail-on-console-warning
+node scripts/frontend_route_smoke.mjs --viewport both --max-scroll-overflow 0 --fail-on-console-warning --include-detail-routes
 node scripts/frontend_interaction_smoke.mjs --base-url http://127.0.0.1:5173
 node scripts/frontend_interaction_smoke.mjs --base-url http://127.0.0.1:4173 --api-base-url http://127.0.0.1:8000
 node scripts/frontend_chart_interaction_smoke.mjs --base-url http://127.0.0.1:5173
@@ -143,7 +143,7 @@ node scripts/frontend_web_vitals_probe.mjs --base-url http://127.0.0.1:4173 --ap
 node scripts/frontend_web_vitals_probe.mjs --routes /,/analysis/stats,/analysis/charts,/billboard/number-ones,/account,/settings --viewport both --wait-ms 5000 --max-lcp-ms 3000 --max-cls 0.01 --max-tbt-ms 100 --max-resource-count 120 --max-encoded-resource-kb 11000
 ```
 
-`frontend_route_smoke.mjs` 默认等待 5 秒，并对 19 个默认路由（含 `/analysis` 与 5 个分析重定向别名）检查业务内容 marker；零警告验收用 `--fail-on-console-warning`，全栈聚合入口默认传递该门禁；自定义临时路由可用 `--disable-route-markers` 关闭 marker 检查。
+`frontend_route_smoke.mjs` 默认等待 5 秒，并对 19 个默认主路由（含 `/analysis` 与 5 个分析重定向别名）检查业务内容 marker；零警告验收用 `--fail-on-console-warning`，全栈聚合入口默认传递该门禁并启用 `--include-detail-routes`，从本地 API 动态追加歌曲/专辑/艺人/社区帖子/社区账号 5 个详情路由；自定义临时路由可用 `--disable-route-markers` 关闭 marker 检查。
 `fullstack_verification_check.sh` 是非破坏性全栈聚合入口，会串起 backend full、pre-commit、Phase 5、OpenAPI operation audit、OpenAPI parameter boundary audit、API smoke/boundary、benchmark 和前端 smoke；需先启动后端 8000 与前端 5173，生产 preview 可用 `--preview-url http://127.0.0.1:4173 --preview-api-url http://127.0.0.1:8000`；Web Vitals 可用 `--web-vitals-max-lcp-ms`、`--web-vitals-max-cls`、`--web-vitals-max-tbt-ms`、`--web-vitals-max-resource-count`、`--web-vitals-max-encoded-resource-kb` 进入同一聚合门禁，`--resource-snapshot` 会同步采集后端/前端/preview 监听进程树 CPU/RSS，并可用 `--resource-max-total-rss-mb`、`--resource-max-total-cpu-percent` 设置资源预算。脚本会在激活 `.venv` 前自动检测可导入 `playwright.sync_api` 的 Python，必要时也可显式设置 `PYTHON_PLAYWRIGHT`。
 `frontend_interaction_smoke.mjs` 覆盖分析页 tab、Billboard 子路由/前进后退、AI Insights 报告/问答 tab（含未配置 LLM 空状态）、Settings 过滤/显示偏好控件与主题切换；生产 preview 用 `--api-base-url http://127.0.0.1:8000` 将 `/api` 与 `/covers` 请求转发到后端。dev server 和生产 preview 都应保持 0 console error、0 page error、0 横向溢出。
 `frontend_chart_interaction_smoke.mjs` 覆盖 ECharts tooltip hover、legend toggle 与 dataZoom drag，默认从真实 `/api/billboard/all-time` 响应动态选择长榜艺人；生产 preview 用 `--api-base-url http://127.0.0.1:8000` 分离静态页面与后端 API。dev server 和生产 preview 都应保持 0 console error/warning、0 page error、0 横向溢出。
