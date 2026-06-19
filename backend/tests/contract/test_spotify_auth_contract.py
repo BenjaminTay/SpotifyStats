@@ -1,9 +1,53 @@
 import pytest
+from fastapi.responses import RedirectResponse
+from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
 
 from backend.main import app
 
 pytestmark = pytest.mark.contract
+
+SPOTIFY_AUTH_JSON_ROUTES = (
+    ("GET", "/api/spotify/auth/login"),
+    ("GET", "/api/spotify/auth/status"),
+    ("DELETE", "/api/spotify/auth/disconnect"),
+    ("POST", "/api/spotify/auth/sync"),
+    ("GET", "/api/spotify/auth/data"),
+    ("GET", "/api/spotify/auth/playing"),
+    ("POST", "/api/spotify/auth/sync-all"),
+)
+
+
+def _find_route(method: str, path: str) -> APIRoute:
+    for route in app.routes:
+        if isinstance(route, APIRoute) and route.path == path and method in route.methods:
+            return route
+    raise AssertionError(f"Route not found: {method} {path}")
+
+
+def test_spotify_auth_json_routes_declare_response_models():
+    for method, path in SPOTIFY_AUTH_JSON_ROUTES:
+        route = _find_route(method, path)
+
+        assert route.response_model is not None, f"{method} {path} missing response_model"
+
+
+def test_spotify_auth_json_routes_publish_openapi_response_schema():
+    schema = app.openapi()
+    for method, path in SPOTIFY_AUTH_JSON_ROUTES:
+        operation = schema["paths"][path][method.lower()]
+        response = operation["responses"]["200"]
+
+        assert "application/json" in response["content"], f"{method} {path} missing JSON content"
+        assert "schema" in response["content"]["application/json"], (
+            f"{method} {path} missing response schema"
+        )
+
+
+def test_spotify_callback_declares_redirect_response_class():
+    route = _find_route("GET", "/api/spotify/auth/callback")
+
+    assert route.response_class is RedirectResponse
 
 
 @pytest.fixture(autouse=True)

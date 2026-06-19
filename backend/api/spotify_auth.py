@@ -17,6 +17,15 @@ from backend.core.spotify_utils import (
     sync_all_spotify_data,
 )
 from backend.dependencies import get_conn
+from backend.models.common import (
+    SpotifyAuthUrlResponse,
+    SpotifyDataResponse,
+    SpotifyDisconnectResponse,
+    SpotifyPlaybackResponse,
+    SpotifySavedTracksSyncResponse,
+    SpotifyStatusResponse,
+    SpotifySyncAllResponse,
+)
 from backend.services.spotify_auth import (
     begin_oauth_flow,
     complete_oauth_flow,
@@ -34,7 +43,7 @@ def _get_frontend_origin() -> str:
     return FRONTEND_ORIGIN
 
 
-@router.get("/login")
+@router.get("/login", response_model=SpotifyAuthUrlResponse)
 def spotify_login():
     """Start OAuth PKCE flow. Returns the Spotify authorization URL."""
     try:
@@ -48,7 +57,7 @@ def spotify_login():
         raise
 
 
-@router.get("/callback")
+@router.get("/callback", response_class=RedirectResponse)
 def spotify_callback(code: str, state: str):
     """Handle Spotify OAuth redirect. Exchanges code for tokens, redirects to settings."""
     from backend.core.db import get_db
@@ -65,13 +74,13 @@ def spotify_callback(code: str, state: str):
         write_conn.close()
 
 
-@router.get("/status")
+@router.get("/status", response_model=SpotifyStatusResponse)
 def spotify_status(conn: Connection = Depends(get_conn)):
     """Get current Spotify connection status."""
     return get_connection_status(conn)
 
 
-@router.delete("/disconnect")
+@router.delete("/disconnect", response_model=SpotifyDisconnectResponse)
 def spotify_disconnect(auth: None = Depends(require_auth)):
     """Disconnect Spotify and remove stored tokens."""
     from backend.core.db import get_db
@@ -84,7 +93,7 @@ def spotify_disconnect(auth: None = Depends(require_auth)):
         write_conn.close()
 
 
-@router.post("/sync")
+@router.post("/sync", response_model=SpotifySavedTracksSyncResponse)
 def spotify_sync(auth: None = Depends(require_auth)):
     """Fetch saved tracks from Spotify API and backfill added_date."""
     from backend.core.db import get_db
@@ -99,7 +108,7 @@ def spotify_sync(auth: None = Depends(require_auth)):
         write_conn.close()
 
 
-@router.get("/data")
+@router.get("/data", response_model=SpotifyDataResponse)
 def spotify_data(conn: Connection = Depends(get_conn)):
     """Return all persisted Spotify data."""
     result = {}
@@ -114,7 +123,7 @@ def spotify_data(conn: Connection = Depends(get_conn)):
     return result
 
 
-@router.get("/playing")
+@router.get("/playing", response_model=SpotifyPlaybackResponse)
 def spotify_playing():
     """Get current playback state (live from Spotify)."""
     write_conn = get_db(readonly=False)
@@ -124,7 +133,7 @@ def spotify_playing():
         write_conn.close()
 
 
-@router.post("/sync-all")
+@router.post("/sync-all", response_model=SpotifySyncAllResponse)
 def spotify_sync_all(auth: None = Depends(require_auth)):
     """Fetch and persist all available Spotify data (profile, top items, recently played)."""
     from backend.core.db import get_db

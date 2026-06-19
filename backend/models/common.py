@@ -129,6 +129,86 @@ class HealthResponse(BaseModel):
 
 
 # ═══════════════════════════════════════════════════════════════════════════
+# Spotify OAuth / Web API models
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+class SpotifyAuthUrlResponse(BaseModel):
+    """Spotify OAuth authorization URL and PKCE state."""
+
+    auth_url: str
+    state: str
+
+
+class SpotifyStatusResponse(BaseModel):
+    """Current Spotify connection status and locally persisted data summary."""
+
+    connected: bool
+    scope: str = ""
+    connected_at: str = ""
+    profile: dict[str, Any] | None = None
+    available_data: dict[str, int] = Field(default_factory=dict)
+
+
+class SpotifyDisconnectResponse(BaseModel):
+    """Result returned after clearing stored Spotify tokens and data."""
+
+    status: str
+
+
+class SpotifySavedTracksSyncResponse(BaseModel):
+    """Result returned after backfilling saved-track added dates."""
+
+    success: bool
+    total_in_spotify: int | None = None
+    total_in_db: int | None = None
+    matched: int | None = None
+    new_dates: int | None = None
+    error: str | None = None
+
+
+class SpotifyDataResponse(BaseModel):
+    """All locally persisted Spotify account data buckets."""
+
+    artists: dict[str, list[dict[str, Any]]]
+    tracks: dict[str, list[dict[str, Any]]]
+    recently_played: list[dict[str, Any]]
+    followed_artists: list[dict[str, Any]]
+    playlists: list[dict[str, Any]]
+
+
+class SpotifyPlaybackTrack(BaseModel):
+    """Currently playing track details returned by Spotify."""
+
+    name: str | None = None
+    artists: list[str] = Field(default_factory=list)
+    album: str | None = None
+    duration_ms: int | None = None
+    uri: str | None = None
+    images: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class SpotifyPlaybackResponse(BaseModel):
+    """Live Spotify playback state."""
+
+    is_playing: bool | None = None
+    progress_ms: int | None = None
+    track: SpotifyPlaybackTrack | None = None
+    error: str | None = None
+
+
+class SpotifySyncAllResponse(BaseModel):
+    """Summary returned after syncing all available Spotify account data."""
+
+    profile: bool
+    top_artists: list[str]
+    top_tracks: list[str]
+    recently_played: bool
+    followed_artists: int
+    playlists: int
+
+
+# ═══════════════════════════════════════════════════════════════════════════
 # LLM Profile models
 # ═══════════════════════════════════════════════════════════════════════════
 

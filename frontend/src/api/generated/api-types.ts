@@ -4719,6 +4719,149 @@ export interface components {
             latest_listen?: components["schemas"]["ListenMoment"] | null;
             longest_streak?: components["schemas"]["LongestStreak"] | null;
         };
+        /**
+         * SpotifyAuthUrlResponse
+         * @description Spotify OAuth authorization URL and PKCE state.
+         */
+        SpotifyAuthUrlResponse: {
+            /** Auth Url */
+            auth_url: string;
+            /** State */
+            state: string;
+        };
+        /**
+         * SpotifyDataResponse
+         * @description All locally persisted Spotify account data buckets.
+         */
+        SpotifyDataResponse: {
+            /** Artists */
+            artists: {
+                [key: string]: {
+                    [key: string]: unknown;
+                }[];
+            };
+            /** Tracks */
+            tracks: {
+                [key: string]: {
+                    [key: string]: unknown;
+                }[];
+            };
+            /** Recently Played */
+            recently_played: {
+                [key: string]: unknown;
+            }[];
+            /** Followed Artists */
+            followed_artists: {
+                [key: string]: unknown;
+            }[];
+            /** Playlists */
+            playlists: {
+                [key: string]: unknown;
+            }[];
+        };
+        /**
+         * SpotifyDisconnectResponse
+         * @description Result returned after clearing stored Spotify tokens and data.
+         */
+        SpotifyDisconnectResponse: {
+            /** Status */
+            status: string;
+        };
+        /**
+         * SpotifyPlaybackResponse
+         * @description Live Spotify playback state.
+         */
+        SpotifyPlaybackResponse: {
+            /** Is Playing */
+            is_playing?: boolean | null;
+            /** Progress Ms */
+            progress_ms?: number | null;
+            track?: components["schemas"]["SpotifyPlaybackTrack"] | null;
+            /** Error */
+            error?: string | null;
+        };
+        /**
+         * SpotifyPlaybackTrack
+         * @description Currently playing track details returned by Spotify.
+         */
+        SpotifyPlaybackTrack: {
+            /** Name */
+            name?: string | null;
+            /** Artists */
+            artists?: string[];
+            /** Album */
+            album?: string | null;
+            /** Duration Ms */
+            duration_ms?: number | null;
+            /** Uri */
+            uri?: string | null;
+            /** Images */
+            images?: {
+                [key: string]: unknown;
+            }[];
+        };
+        /**
+         * SpotifySavedTracksSyncResponse
+         * @description Result returned after backfilling saved-track added dates.
+         */
+        SpotifySavedTracksSyncResponse: {
+            /** Success */
+            success: boolean;
+            /** Total In Spotify */
+            total_in_spotify?: number | null;
+            /** Total In Db */
+            total_in_db?: number | null;
+            /** Matched */
+            matched?: number | null;
+            /** New Dates */
+            new_dates?: number | null;
+            /** Error */
+            error?: string | null;
+        };
+        /**
+         * SpotifyStatusResponse
+         * @description Current Spotify connection status and locally persisted data summary.
+         */
+        SpotifyStatusResponse: {
+            /** Connected */
+            connected: boolean;
+            /**
+             * Scope
+             * @default
+             */
+            scope: string;
+            /**
+             * Connected At
+             * @default
+             */
+            connected_at: string;
+            /** Profile */
+            profile?: {
+                [key: string]: unknown;
+            } | null;
+            /** Available Data */
+            available_data?: {
+                [key: string]: number;
+            };
+        };
+        /**
+         * SpotifySyncAllResponse
+         * @description Summary returned after syncing all available Spotify account data.
+         */
+        SpotifySyncAllResponse: {
+            /** Profile */
+            profile: boolean;
+            /** Top Artists */
+            top_artists: string[];
+            /** Top Tracks */
+            top_tracks: string[];
+            /** Recently Played */
+            recently_played: boolean;
+            /** Followed Artists */
+            followed_artists: number;
+            /** Playlists */
+            playlists: number;
+        };
         /** StatusResponse */
         StatusResponse: {
             /** Status */
@@ -10168,7 +10311,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["SpotifyAuthUrlResponse"];
                 };
             };
         };
@@ -10186,13 +10329,11 @@ export interface operations {
         requestBody?: never;
         responses: {
             /** @description Successful Response */
-            200: {
+            307: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": unknown;
-                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -10222,7 +10363,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["SpotifyStatusResponse"];
                 };
             };
             /** @description Validation Error */
@@ -10251,7 +10392,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["SpotifyDisconnectResponse"];
                 };
             };
         };
@@ -10271,7 +10412,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["SpotifySavedTracksSyncResponse"];
                 };
             };
         };
@@ -10293,7 +10434,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["SpotifyDataResponse"];
                 };
             };
             /** @description Validation Error */
@@ -10322,7 +10463,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["SpotifyPlaybackResponse"];
                 };
             };
         };
@@ -10342,7 +10483,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["SpotifySyncAllResponse"];
                 };
             };
         };
