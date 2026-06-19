@@ -34,6 +34,7 @@ def test_frontend_web_vitals_probe_script_exposes_reusable_cli():
     assert "--max-tbt-ms" in result.stdout
     assert "--max-resource-count" in result.stdout
     assert "--max-encoded-resource-kb" in result.stdout
+    assert "--max-scroll-overflow-px" in result.stdout
 
 
 def test_frontend_web_vitals_probe_can_rewrite_preview_api_requests():
@@ -68,7 +69,9 @@ def test_frontend_web_vitals_probe_can_fail_on_metric_budgets():
     assert "maxTbtMs" in source
     assert "maxResourceCount" in source
     assert "maxEncodedResourceKB" in source
+    assert "maxScrollOverflowPx" in source
     assert "resourceCount" in source
     assert "encodedResourceKB" in source
+    assert "scrollOverflowPx" in source
     assert "Web Vitals budget failures" in source
     assert "process.exitCode = 1" in source

@@ -84,6 +84,9 @@ const METRICS_EXPRESSION = `
   const resources = performance.getEntriesByType('resource');
   const vitals = window.__codexVitals || {};
   const fcp = paints['first-contentful-paint'] || 0;
+  const bodyScrollWidth = document.body ? document.body.scrollWidth : null;
+  const documentScrollWidth = document.documentElement ? document.documentElement.scrollWidth : null;
+  const widestScrollWidth = Math.max(bodyScrollWidth || 0, documentScrollWidth || 0);
   const tbt = (vitals.longTasks || [])
     .filter((entry) => entry.startTime >= fcp && entry.startTime <= 5000)
     .reduce((sum, entry) => sum + Math.max(0, entry.duration - 50), 0);
@@ -103,8 +106,9 @@ const METRICS_EXPRESSION = `
     transferKB: nav ? Math.round((nav.transferSize || 0) / 102.4) / 10 : null,
     encodedResourceKB: Math.round(resources.reduce((sum, entry) => sum + (entry.encodedBodySize || 0), 0) / 102.4) / 10,
     resourceCount: resources.length,
-    bodyScrollWidth: document.body ? document.body.scrollWidth : null,
-    documentScrollWidth: document.documentElement ? document.documentElement.scrollWidth : null,
+    bodyScrollWidth,
+    documentScrollWidth,
+    scrollOverflowPx: Math.max(0, widestScrollWidth - innerWidth),
     viewportWidth: innerWidth,
   };
 })();
@@ -124,6 +128,7 @@ function parseArgs(argv) {
     maxTbtMs: null,
     maxResourceCount: null,
     maxEncodedResourceKB: null,
+    maxScrollOverflowPx: null,
   }
 
   for (let i = 0; i < argv.length; i += 1) {
@@ -142,6 +147,7 @@ function parseArgs(argv) {
     else if (arg === '--max-tbt-ms') args.maxTbtMs = parseBudgetNumber(argv[++i], '--max-tbt-ms')
     else if (arg === '--max-resource-count') args.maxResourceCount = parseBudgetNumber(argv[++i], '--max-resource-count')
     else if (arg === '--max-encoded-resource-kb') args.maxEncodedResourceKB = parseBudgetNumber(argv[++i], '--max-encoded-resource-kb')
+    else if (arg === '--max-scroll-overflow-px') args.maxScrollOverflowPx = parseBudgetNumber(argv[++i], '--max-scroll-overflow-px')
     else if (arg === '--help' || arg === '-h') {
       printHelp()
       process.exit(0)
@@ -188,6 +194,8 @@ Options:
                          Fail when any route loads more resources than this budget
   --max-encoded-resource-kb <kb>
                          Fail when any route loads more encoded resource KB than this budget
+  --max-scroll-overflow-px <px>
+                         Fail when document/body scroll width exceeds viewport by more than this budget
 `)
 }
 
@@ -470,6 +478,7 @@ function evaluateBudgets(results, budgets) {
     { key: 'tbtApprox', label: 'TBT approx', budget: budgets.maxTbtMs, unit: 'ms' },
     { key: 'resourceCount', label: 'Resource count', budget: budgets.maxResourceCount, unit: ' requests' },
     { key: 'encodedResourceKB', label: 'Encoded resources', budget: budgets.maxEncodedResourceKB, unit: 'KB' },
+    { key: 'scrollOverflowPx', label: 'Scroll overflow', budget: budgets.maxScrollOverflowPx, unit: 'px' },
   ]
 
   for (const row of results) {

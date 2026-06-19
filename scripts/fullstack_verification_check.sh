@@ -23,6 +23,7 @@ WEB_VITALS_MAX_CLS=${WEB_VITALS_MAX_CLS:-}
 WEB_VITALS_MAX_TBT_MS=${WEB_VITALS_MAX_TBT_MS:-}
 WEB_VITALS_MAX_RESOURCE_COUNT=${WEB_VITALS_MAX_RESOURCE_COUNT:-}
 WEB_VITALS_MAX_ENCODED_RESOURCE_KB=${WEB_VITALS_MAX_ENCODED_RESOURCE_KB:-}
+WEB_VITALS_MAX_SCROLL_OVERFLOW_PX=${WEB_VITALS_MAX_SCROLL_OVERFLOW_PX:-}
 RESOURCE_SNAPSHOT_JSON=${RESOURCE_SNAPSHOT_JSON:-/tmp/spotify_runtime_resources.json}
 
 detect_playwright_python() {
@@ -82,6 +83,8 @@ Options:
                           Optional loaded resource count budget passed to lab probes
   --web-vitals-max-encoded-resource-kb <kb>
                           Optional encoded resource KB budget passed to lab probes
+  --web-vitals-max-scroll-overflow-px <px>
+                          Optional horizontal scroll overflow budget passed to lab probes
   -h, --help              Show this help
 
 Environment variables with the same uppercase names can also configure the
@@ -91,6 +94,7 @@ OPENAPI_OPERATION_AUDIT_JSON,
 OPENAPI_PARAMETER_BOUNDARY_AUDIT_JSON,
 WEB_VITALS_MAX_LCP_MS, WEB_VITALS_MAX_CLS, WEB_VITALS_MAX_TBT_MS,
 WEB_VITALS_MAX_RESOURCE_COUNT, WEB_VITALS_MAX_ENCODED_RESOURCE_KB,
+WEB_VITALS_MAX_SCROLL_OVERFLOW_PX,
 RUN_RESOURCE_SNAPSHOT, RESOURCE_SNAPSHOT_JSON, RESOURCE_MAX_TOTAL_RSS_MB,
 RESOURCE_MAX_TOTAL_CPU_PERCENT.
 When cross-browser smoke is enabled, PYTHON_PLAYWRIGHT may point to a Python
@@ -178,6 +182,10 @@ while [ "$#" -gt 0 ]; do
       shift
       WEB_VITALS_MAX_ENCODED_RESOURCE_KB=$1
       ;;
+    --web-vitals-max-scroll-overflow-px)
+      shift
+      WEB_VITALS_MAX_SCROLL_OVERFLOW_PX=$1
+      ;;
     -h|--help)
       usage
       exit 0
@@ -233,6 +241,9 @@ run_web_vitals_probe() {
   fi
   if [ -n "$WEB_VITALS_MAX_ENCODED_RESOURCE_KB" ]; then
     set -- "$@" --max-encoded-resource-kb "$WEB_VITALS_MAX_ENCODED_RESOURCE_KB"
+  fi
+  if [ -n "$WEB_VITALS_MAX_SCROLL_OVERFLOW_PX" ]; then
+    set -- "$@" --max-scroll-overflow-px "$WEB_VITALS_MAX_SCROLL_OVERFLOW_PX"
   fi
 
   run "$@"
