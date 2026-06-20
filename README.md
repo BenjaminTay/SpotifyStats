@@ -8,6 +8,8 @@
 
 **最新交互 smoke 口径**：`scripts/frontend_interaction_smoke.mjs` 默认覆盖 6 个非破坏性场景，新增 `settings-data-import`，AI Insights 会读取 `/api/settings` 后按 LLM 已配置/未配置分支验证；dev server 与生产 `vite preview` 均已复跑 PASS 6/6。
 
+**最新 fix 分支跟进**：2026-06-20 在 `fix/bugfixes-and-polish` 上修复旧 `/analysis/*` 别名嵌套在 lazy `AnalysisLayout` 内导致的冷导航空壳风险，并把首页 Dashboard 月度趋势从 ECharts 改为轻量 DOM 条形图，production preview 首页 encoded resources 从约 `1,282KB` 降至 `1,060KB`；账号页新增轻量 `/profile` 首屏 Hero 查询，`/api/account` 聚合加入 TTL cache + warmup，production `/account` desktop LCP 从 `3532ms` 降至 `468ms`；根级 `scrollbar-gutter: stable` 将 `/billboard/number-ones` desktop CLS 从 `0.1` 压到 `0`；图表交互 smoke 默认冷态等待调至 12s，前端 CDP smoke 脚本默认优先使用 Playwright Chromium/Chrome for Testing，避免系统 Chrome 启动阶段崩溃造成假失败。最终验证：backend full 691、unit 320、contract 171、frontend 134、完整 fullstack verification PASS。详见 [`docs/2026-06-20-fix-branch-verification-follow-up.md`](docs/2026-06-20-fix-branch-verification-follow-up.md)。
+
 **最新控件库存 smoke 口径**：`scripts/frontend_control_inventory_smoke.mjs --include-detail-routes` 覆盖 13 个默认路由 + 5 个动态详情路由 × 桌面/390px 移动端，检查可见交互控件缺少可访问名称、嵌套交互控件、disabled 仍可 tab、输入控件无标签和重复 id；dev server 覆盖 36 组合 / 1821 控件 / 0 violation，生产 `vite preview` 覆盖 36 组合 / 1763 控件 / 0 violation。
 
 **最新跨浏览器 smoke 口径**：`scripts/frontend_cross_browser_smoke.mjs` 的 `core-interactions` 也覆盖同一组 6 个核心交互；dev server 完整 route-marker + core-interactions 与生产 `vite preview` core-interactions 均已在 Chromium/Firefox/WebKit PASS 3/3。
