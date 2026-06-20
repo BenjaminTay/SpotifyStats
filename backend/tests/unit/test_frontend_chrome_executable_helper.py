@@ -17,7 +17,13 @@ def test_frontend_smoke_scripts_prefer_playwright_chromium_before_system_chrome(
 
     assert "PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH" in helper
     assert "Library/Caches/ms-playwright" in helper
+    assert "listPlaywrightHeadlessShellCandidates()" in helper
+    assert "chromium_headless_shell-" in helper
+    assert "chrome-headless-shell" in helper
     assert "listPlaywrightChromiumCandidates()" in helper
+    assert helper.index("...listPlaywrightHeadlessShellCandidates()") < helper.index(
+        "...listPlaywrightChromiumCandidates()",
+    )
     assert helper.index("...listPlaywrightChromiumCandidates()") < helper.index(
         "/Applications/Google Chrome.app",
     )

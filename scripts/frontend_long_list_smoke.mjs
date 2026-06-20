@@ -538,6 +538,7 @@ async function clickFirstEnabledPaginationButtonNearText(client, patternSource, 
             y,
             pointText: pointEl ? normalize(pointEl.innerText || pointEl.textContent || pointEl.getAttribute('aria-label') || '') : '',
             pointTag: pointEl ? pointEl.tagName : '',
+            clicked: true,
           };
         }
         container = container.parentElement;
@@ -546,17 +547,21 @@ async function clickFirstEnabledPaginationButtonNearText(client, patternSource, 
     })();
   `)
   if (!result.ok) throw new Error(result.reason || 'Could not click pagination button')
+  await sleep(250)
   await client.send('Page.bringToFront')
   await client.send('Input.dispatchMouseEvent', {
     type: 'mouseMoved',
     x: result.x,
     y: result.y,
+    button: 'none',
+    buttons: 0,
   })
   await client.send('Input.dispatchMouseEvent', {
     type: 'mousePressed',
     x: result.x,
     y: result.y,
     button: 'left',
+    buttons: 1,
     clickCount: 1,
   })
   await client.send('Input.dispatchMouseEvent', {
@@ -564,6 +569,7 @@ async function clickFirstEnabledPaginationButtonNearText(client, patternSource, 
     x: result.x,
     y: result.y,
     button: 'left',
+    buttons: 0,
     clickCount: 1,
   })
   await sleep(350)

@@ -287,6 +287,61 @@ async function pageState(client) {
   `)
 }
 
+async function canvasState(client) {
+  return evaluate(client, `
+    (() => {
+      const canvases = Array.from(document.querySelectorAll('canvas'));
+      const resources = performance.getEntriesByType('resource')
+        .map((entry) => entry.name)
+        .filter((name) => /echarts|chart|Analysis|RankTrend|core|\\.js(\\?|$)/i.test(name));
+      const rects = canvases.map((canvas, index) => {
+        const rect = canvas.getBoundingClientRect();
+        return {
+          index,
+          left: Math.round(rect.left),
+          top: Math.round(rect.top),
+          width: Math.round(rect.width),
+          height: Math.round(rect.height),
+          visible: rect.width > 0 && rect.height > 0,
+        };
+      });
+      const bodyText = document.body ? document.body.innerText : '';
+      return {
+        path: location.pathname,
+        readyState: document.readyState,
+        bodyTextLength: bodyText.length,
+        bodyTextPreview: bodyText.slice(0, 180),
+        canvasCount: canvases.length,
+        visibleCanvasCount: rects.filter((rect) => rect.visible).length,
+        canvasRects: rects.slice(0, 6),
+        svgCount: document.querySelectorAll('svg').length,
+        chartContainerCount: document.querySelectorAll('[_echarts_instance_], [class*="echarts"], [style*="zrender"]').length,
+        canvas2dAvailable: Boolean(document.createElement('canvas').getContext('2d')),
+        devicePixelRatio,
+        resourcePreview: resources.slice(-12).map((name) => name.split('/').slice(-2).join('/')),
+        loadingNodeCount: document.querySelectorAll('[aria-busy="true"], .animate-pulse').length,
+      };
+    })();
+  `)
+}
+
+function describeCanvasState(state) {
+  if (!state) return ''
+  return `; last canvas state ${JSON.stringify({
+    path: state.path,
+    readyState: state.readyState,
+    bodyTextLength: state.bodyTextLength,
+    canvasCount: state.canvasCount,
+    visibleCanvasCount: state.visibleCanvasCount,
+    svgCount: state.svgCount,
+    chartContainerCount: state.chartContainerCount,
+    canvas2dAvailable: state.canvas2dAvailable,
+    loadingNodeCount: state.loadingNodeCount,
+    canvasRects: state.canvasRects,
+    resourcePreview: state.resourcePreview,
+  })}`
+}
+
 async function clickText(client, text, waitMs) {
   const clicked = await evaluate(client, `
     (() => {
@@ -316,19 +371,19 @@ async function waitForText(client, text, timeoutMs) {
 }
 
 async function waitForCanvasCount(client, minCount, timeoutMs) {
+  let lastCanvasState = null
   return waitForCondition(
     async () => {
-      const count = await evaluate(client, `
-        (() => document.querySelectorAll('canvas').length)();
-      `)
-      return count >= minCount ? count : null
+      lastCanvasState = await canvasState(client)
+      return lastCanvasState.canvasCount >= minCount ? lastCanvasState : null
     },
     timeoutMs,
     `Expected at least ${minCount} ECharts canvas element(s)`,
+    () => describeCanvasState(lastCanvasState),
   )
 }
 
-async function waitForCondition(check, timeoutMs, failureMessage) {
+async function waitForCondition(check, timeoutMs, failureMessage, describeLastState = null) {
   const started = Date.now()
   let lastState = null
   while (Date.now() - started < timeoutMs) {
@@ -336,7 +391,7 @@ async function waitForCondition(check, timeoutMs, failureMessage) {
     if (lastState) return lastState
     await sleep(150)
   }
-  const suffix = lastState && lastState.path ? `; last path ${lastState.path}` : ''
+  const suffix = describeLastState ? describeLastState(lastState) : lastState && lastState.path ? `; last path ${lastState.path}` : ''
   throw new Error(`${failureMessage}${suffix}`)
 }
 
@@ -569,16 +624,22 @@ async function runScenario({ port, baseUrl, apiBaseUrl, scenario, waitMs }) {
       pageErrors: pageErrors.slice(0, 5),
     }
   } catch (error) {
+    const failureState = await canvasState(client).catch(() => null)
+    const scrollOverflow =
+      failureState && Number.isFinite(failureState.scrollWidth) && Number.isFinite(failureState.viewportWidth)
+        ? Math.max(0, failureState.scrollWidth - failureState.viewportWidth)
+        : null
+
     return {
       scenario,
       ok: false,
       failures: [error instanceof Error ? error.message : String(error)],
-      finalPath: null,
+      finalPath: failureState?.path || null,
       consoleErrorCount: 0,
       consoleWarningCount: 0,
       pageErrorCount: pageErrors.length,
-      scrollOverflow: null,
-      evidence: null,
+      scrollOverflow,
+      evidence: failureState,
       consoleErrors: [],
       consoleWarnings: [],
       pageErrors: pageErrors.slice(0, 5),
@@ -642,7 +703,6 @@ async function main() {
     chromePath,
     [
       '--headless=new',
-      '--disable-gpu',
       '--disable-background-networking',
       '--disable-extensions',
       '--disable-dev-shm-usage',

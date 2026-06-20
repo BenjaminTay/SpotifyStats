@@ -49,5 +49,9 @@ def test_frontend_chart_interaction_smoke_script_covers_echarts_flows():
     assert "dataZoom" in source
     assert "legendselectchanged" in source
     assert "document.querySelectorAll('canvas')" in source
+    assert "canvasState" in source
+    assert "visibleCanvasCount" in source
+    assert "bodyTextLength" in source
+    assert "--disable-gpu" not in source
     assert "Runtime.consoleAPICalled" in source
     assert "scrollOverflow" in source

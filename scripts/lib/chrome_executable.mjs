@@ -3,18 +3,21 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 
 const MAC_CHROME_FOR_TESTING = 'Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing'
+const MAC_CHROME_HEADLESS_SHELL = 'chrome-headless-shell-mac-arm64/chrome-headless-shell'
 
-function listPlaywrightChromiumCandidates() {
-  const cacheRoots = [
+function playwrightCacheRoots() {
+  return [
     process.env.PLAYWRIGHT_BROWSERS_PATH && process.env.PLAYWRIGHT_BROWSERS_PATH !== '0'
       ? process.env.PLAYWRIGHT_BROWSERS_PATH
       : null,
     join(homedir(), 'Library/Caches/ms-playwright'),
     join(homedir(), '.cache/ms-playwright'),
   ].filter(Boolean)
+}
 
+function listPlaywrightCacheCandidates(prefix, pathsForEntry) {
   const candidates = []
-  for (const root of cacheRoots) {
+  for (const root of playwrightCacheRoots()) {
     if (!existsSync(root)) continue
 
     let entries = []
@@ -25,16 +28,30 @@ function listPlaywrightChromiumCandidates() {
     }
 
     for (const entry of entries
-      .filter((item) => item.isDirectory() && item.name.startsWith('chromium-'))
+      .filter((item) => item.isDirectory() && item.name.startsWith(prefix))
       .sort((a, b) => b.name.localeCompare(a.name))) {
-      candidates.push(
-        join(root, entry.name, 'chrome-mac-arm64', MAC_CHROME_FOR_TESTING),
-        join(root, entry.name, 'chrome-mac', MAC_CHROME_FOR_TESTING),
-        join(root, entry.name, 'chrome-linux', 'chrome'),
-      )
+      candidates.push(...pathsForEntry(root, entry.name))
     }
   }
   return candidates
+}
+
+function listPlaywrightHeadlessShellCandidates() {
+  return listPlaywrightCacheCandidates('chromium_headless_shell-', (root, entryName) => [
+    join(root, entryName, MAC_CHROME_HEADLESS_SHELL),
+    join(root, entryName, 'chrome-headless-shell-mac-x64', 'chrome-headless-shell'),
+    join(root, entryName, 'chrome-headless-shell-mac', 'chrome-headless-shell'),
+    join(root, entryName, 'chrome-headless-shell-linux64', 'chrome-headless-shell'),
+    join(root, entryName, 'chrome-headless-shell-linux', 'chrome-headless-shell'),
+  ])
+}
+
+function listPlaywrightChromiumCandidates() {
+  return listPlaywrightCacheCandidates('chromium-', (root, entryName) => [
+    join(root, entryName, 'chrome-mac-arm64', MAC_CHROME_FOR_TESTING),
+    join(root, entryName, 'chrome-mac', MAC_CHROME_FOR_TESTING),
+    join(root, entryName, 'chrome-linux', 'chrome'),
+  ])
 }
 
 export function findChrome(explicitPath) {
@@ -42,6 +59,7 @@ export function findChrome(explicitPath) {
     explicitPath,
     process.env.CHROME_PATH,
     process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH,
+    ...listPlaywrightHeadlessShellCandidates(),
     ...listPlaywrightChromiumCandidates(),
     '/Applications/Chromium.app/Contents/MacOS/Chromium',
     '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge',

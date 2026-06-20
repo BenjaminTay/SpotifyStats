@@ -41,6 +41,8 @@ def test_frontend_long_list_smoke_script_covers_named_long_lists():
     assert "personal-rank-table" in source
     assert "detectPageText" in source
     assert "assertRowWindowChange" in source
+    assert "Input.dispatchMouseEvent" in source
+    assert "buttons: 1" in source
     assert "Runtime.consoleAPICalled" in source
 
 

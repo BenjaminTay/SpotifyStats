@@ -1,9 +1,15 @@
 # 2026-06-19 全栈验证与性能收口报告
 
-分支：`codex/playback-logic-update`
+分支：`fix/bugfixes-and-polish`（本报告原始 2026-06-19 基线来自 `codex/playback-logic-update`，2026-06-21 已按用户要求切回 fix 分支并复验）
 
 ## 结论
 
+- 2026-06-21 fix 分支最终复验通过：`sh scripts/fullstack_verification_check.sh --backend-url http://127.0.0.1:8000 --frontend-url http://127.0.0.1:5173 --quickstart-preflight --quickstart-json /tmp/spotify_quickstart_timing_fix_branch_final5.json --benchmark-json /tmp/spotify_api_benchmark_fix_branch_final5.json --openapi-operation-audit-json /tmp/spotify_openapi_operation_audit_fix_branch_final5.json --openapi-parameter-boundary-audit-json /tmp/spotify_openapi_parameter_boundary_audit_fix_branch_final5.json` 完整跑通，最终输出 `Full-stack verification matrix completed.`；本轮 quickstart 复用已运行服务总耗时 `31.6ms`，backend health `2.2ms`，docs `2.3ms`，frontend shell `1.0ms`，frontend API proxy `8.5ms`。
+- 2026-06-21 fix 分支测试基线更新：后端全量 `692 passed, 2 warnings`；Phase 5 unit `320 passed`、contract `172 passed`；前端 vitest `134 passed`；pre-commit ruff/format/mypy/detect-secrets 全部通过；OpenAPI operation audit `134 operations / 0 unaccounted`；OpenAPI parameter boundary audit `59 obligations / 0 unaccounted`；API smoke `96/96`；API boundary `85/85`。
+- 2026-06-21 fix 分支前端验收更新：route smoke `48/48`、interaction `6/6`、chart interaction `3/3`、control inventory `36` 组合 / `1778` 控件 / `0` violation、long-list `6/6`、cross-browser Chromium/Firefox/WebKit `PASS 3/3`；所有前端 smoke 均为 `0` console error/warning、`0` page error、`0px` 页面级横向溢出。
+- 2026-06-21 fix 分支 API 性能更新：8 个核心端点 benchmark `slow_count=0`，hot P95 均低于 `500ms`；代表值为 `/api/billboard/data` hot P95 `0.32s`、`/api/billboard/weekly` `0.14s`、`/api/billboard/all-time` `0.21s`、`/api/dashboard/full` `0.17s`。
+- 2026-06-21 修复 smoke 浏览器稳定性：用户提供的 Google Chrome crash report 指向 Node 拉起系统 Chrome 后在 macOS `TransformProcessType`/`RegisterApplication` 阶段 abort；共享 Chrome helper 现优先使用 Playwright `chromium_headless_shell-*`，再回退 Chrome for Testing / 系统浏览器，避免 chart smoke 因完整 Chrome for Testing 不挂载 ECharts canvas 或系统 Chrome fallback 崩溃而产生假阴性。Chart smoke 同时新增 canvas/resource 失败现场诊断。
+- 2026-06-21 修复长列表 smoke 稳定性：RecentPlays 分页在手写 CDP 鼠标事件中会因 `scrollIntoView` 后立即点击导致第 2 页按钮未触发；分页点击现在等待布局稳定并发送带 `buttons` 状态的真实 CDP mouse 事件，`recent-plays` 单场景从第 `1/1236` 页稳定切到第 `2/1236` 页，完整 long-list `6/6` 通过。
 - 后端全量测试通过：`685 passed, 2 warnings`
 - 前端测试与构建通过：`131 passed`，`npm run build` 通过
 - Phase 5 最低验证矩阵通过：unit `307 passed`，contract `170 passed`，前端 `131 passed`，`npm run build` 通过
@@ -37,6 +43,8 @@
 
 | 严重程度 | 问题 | 影响 | 修复 |
 | --- | --- | --- | --- |
+| P2 | 2026-06-21：手写 CDP 前端 smoke 在完整 Chrome for Testing 下不挂载 ECharts canvas，系统 Chrome fallback 还可能触发 macOS `TransformProcessType`/`RegisterApplication` abort | Chart interaction smoke 会在页面实际有图表时误报 `Expected at least 1 ECharts canvas`，并可能生成 Google Chrome crash report，削弱前端验收链路可信度 | `scripts/lib/chrome_executable.mjs` 自动发现顺序改为优先 Playwright `chromium_headless_shell-*`，再用 Chrome for Testing / 系统浏览器；`scripts/frontend_chart_interaction_smoke.mjs` 增加 canvas/resource/chart 容器失败现场诊断，并移除 chart smoke 的 `--disable-gpu`；新增/更新 helper 与 chart smoke 单测锁定默认选择和诊断字段 |
+| P2 | 2026-06-21：RecentPlays 长列表分页在 CDP `scrollIntoView` 后立即点击时偶发不触发第 2 页按钮 | `scripts/frontend_long_list_smoke.mjs` 的 `recent-plays` 场景会误报分页窗口未变化，阻断完整全栈矩阵；真实 Playwright 点击与页面功能本身可用 | 分页点击补充 `scrollIntoView` 后布局稳定等待，并发送带 `buttons: 1/0` 状态的 CDP mousePressed/mouseReleased；单场景验证 `共 61758 条，第 1/1236 页` → `第 2/1236 页`，完整 long-list `6/6` 与 fullstack final5 通过 |
 | P1 | contract seed fixture 残留 WAL/SHM 导致 `release_groups` 状态漂移 | L3 release group 测试在全量套件中偶发失败 | `build_seed_db.py` 重建前后清理 `seed.db-wal/-shm`，并重新生成 `seed.db` |
 | P1 | contract 测试直接写 canonical `seed.db` | 只读/写入路径会污染后续测试，造成测试顺序依赖 | `backend/tests/contract/conftest.py` 改为每次复制临时 seed DB，teardown 删除临时 WAL/SHM |
 | P1 | Billboard records 测试清缓存不完整 | `_load_and_rank_cached` / `_compute_records_cached` 污染导致 L2 bootstrap 测试全量失败 | 补齐 `_clear_billboard_runtime_caches()` 的缓存清理范围 |
@@ -316,7 +324,7 @@ git diff --check
 ## 已知限制
 
 - 生产构建仍提示两个大懒加载 chunk：`cn2t-DJnOUolw.js` gzip 457.19KB、`EChartsTheme-*.js` gzip 225.67KB。旧 `full-yTi_27TG.js` 与 `esm-CBcusPEn.js` 已消除；剩余体积分别来自繁体词典和当前图表能力集合，其中 `cn2t` 已从“保存偏好导入即预取”改为实际转换入口触发，未牺牲简繁转换语义或图表功能继续强拆。
-- 未执行真实 ngrok + Spotify OAuth 浏览器授权闭环；已验证 `/api/spotify/auth/status` 与 `/api/spotify/auth/data` 只读端点返回 200 和 request id，修复 `/api/spotify/auth/playing` token refresh 写连接问题，并用 contract 临时 DB 覆盖 OAuth PKCE login/callback 本地闭环、加密落库与 invalid state。
+- 未执行真实 ngrok + Spotify OAuth 浏览器授权闭环；已验证 `/api/spotify/auth/status` 与 `/api/spotify/auth/data` 只读端点返回 200 和 request id，修复 `/api/spotify/auth/playing` token refresh 写连接问题，并用 contract 临时 DB 覆盖 OAuth PKCE login/callback 本地闭环、加密落库与 invalid state。2026-06-21 复查 `ngrok http --url=stuffing-nebula-tamer.ngrok-free.dev 5173`，项目侧回跳 origin 修复已具备，但本机外部链路仍阻塞于 ngrok 证书/CRL 获取：日志出现 `failed to verify certificate` 与 `failed to fetch CRL`，需要先恢复本机网络出口/证书解析后才能做真实 Spotify 授权闭环。
 - 未在用户真实 Firefox.app / Safari.app 有界面会话中人工执行同等交互；当前跨浏览器自动化证据来自 Playwright Chromium / Firefox / WebKit（Safari-family），其中 WebKit 是 Safari-family 引擎 smoke，不等同用户 Safari.app 会话；音乐/社区详情页已进入三引擎自动 route-marker smoke，但尚未在真实 Safari.app 会话中人工点击。
 - 未逐一实打所有破坏性或外部依赖端点，例如断开 Spotify、导入生产数据、同步远程账号数据等，避免污染本地真实状态；OpenAPI operation audit 已将 134 个 operation 全部归属到 safe GET smoke、targeted contract 或 controlled stateful/external，OpenAPI parameter boundary audit 已将 59 个参数边界义务归属到 boundary probe、string resilience probe 或 controlled stateful/external，Settings/Chat mutation 与 Import job 调度已通过 contract 临时环境覆盖。
 - Web Vitals 已用 headless Chrome lab probe 采集 Vite dev server 与本地 `vite preview` 生产构建的 LCP/CLS/合成 FID/TBT、resource count 与 encoded resource KB，preview 采样可用 `--api-base-url` 代理后端数据，预算参数可防明显指标回退和资源回弹；runtime resource probe 记录的是本机监听进程树 CPU/RSS 快照，不等同 Python/Node heap profile、CPU profiler 或泄漏追踪；仍未采集真实用户 RUM、Firefox/WebKit Web Vitals，也未在生产静态托管/CDN/HTTPS 环境跑 Lighthouse。
