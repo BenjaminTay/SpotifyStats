@@ -14,6 +14,7 @@
 - 发现并修复账号页首屏冷路径性能回归：`/account` 原先必须等待重聚合 `/api/account` 返回后才渲染 Hero，生产 preview 桌面 LCP 曾达到 `3532ms`；现在 Hero 并行使用轻量 `/api/profile` 数据先渲染，重聚合继续异步填充，生产 preview 桌面 LCP 降至 `468ms`。
 - `/api/account` 聚合结果加入 `account.summary` TTL cache 并在 warmup 阶段预热：本地直连从约 `1.5-1.8s` 的重复聚合降至热路径 `8-11ms`，缓存统计命中可在 `/api/admin/cache-stats` 中看到。
 - 修复异步长内容页桌面 CLS 抖动：根元素增加 `scrollbar-gutter: stable`，`/billboard/number-ones` 生产 preview 桌面 CLS 从复现时的 `0.1` 降至 `0`。
+- 修复 Spotify OAuth 在 ngrok HTTPS 配置下的回调回跳 origin 问题：当 `SPOTIFY_REDIRECT_URI` 已指向 ngrok 但 `FRONTEND_ORIGIN` 未显式设置时，callback 成功/失败页现在回跳到 ngrok origin，而不是默认 `http://localhost:5173`。
 
 ## 修复项
 
@@ -24,6 +25,7 @@
 | P4 | 6 个前端 CDP smoke 脚本默认候选优先系统 `/Applications/Google Chrome.app` | 在 Codex/Node 启动器下可触发 macOS `HIServices/TransformProcessType` 阶段 abort，导致验证链路假失败 | 新增 `scripts/lib/chrome_executable.mjs`，显式 `--chrome`/`CHROME_PATH` 仍优先，其次自动查找 Playwright Chromium/Chrome for Testing，系统 Chrome 后置兜底 | `findChrome()` 默认解析到 Playwright `Google Chrome for Testing`；不带 `CHROME_PATH` 的 `/analysis/behavior` route smoke 桌面/移动端 PASS；新增 `test_frontend_chrome_executable_helper.py` |
 | P3 | `/account` 首屏 Hero 被重聚合 `/api/account` 阻塞 | 缓存过期或冷启动时账号页桌面 LCP 可超过 3s，且用户先看到整页骨架 | 新增 `useProfile()` 独立 TanStack Query 读取 `/api/profile`，账号页在重聚合加载期间先渲染稳定 Hero + 内容骨架 | `query-hooks.test.tsx` 新增 profile query 护栏；`phase5-architecture.test.ts` 锁定 progressive Hero；production `/account` desktop LCP `3532ms -> 468ms` |
 | P3 | 异步加载后页面高度变化未预留滚动条槽位 | `/billboard/number-ones` 桌面 Web Vitals 可记录 CLS `0.1` | 在 `html` 根元素设置 `scrollbar-gutter: stable`，并用后端 unit 护栏防回归 | `test_frontend_global_css_guardrails.py` PASS；production `/billboard/number-ones` desktop CLS `0.1 -> 0` |
+| P3 | ngrok HTTPS OAuth 配置下 callback 成功/失败后仍默认回跳 localhost | 用户从 ngrok 域名进入 Spotify 授权后，回调完成会掉回 `http://localhost:5173/settings`，外部 HTTPS 验证体验不闭环 | `_get_frontend_origin()` 在 `FRONTEND_ORIGIN` 仍为默认值时，从 `SPOTIFY_REDIRECT_URI` 推导前端 origin；显式配置的 `FRONTEND_ORIGIN` 仍优先 | 新增 `test_spotify_callback_origin_follows_ngrok_redirect_uri_when_frontend_origin_is_default`；invalid-state callback probe 返回 `Location: https://stuffing-nebula-tamer.ngrok-free.dev/settings?spotify_error=invalid_state` |
 
 ## 性能优化
 
@@ -44,10 +46,13 @@
 | 前端全量测试 | `cd frontend && npm test` | 8 files / 134 tests passed |
 | 前端生产构建 | `cd frontend && npm run build` | PASS，完整矩阵构建约 395ms，最终 focused build 约 422ms；Dashboard 依赖不再包含 `EChartsTheme`；`AccountCenterPage` chunk gzip 约 9.95KB；仍有非首页动态大 chunk 提示 |
 | 后端账号缓存/样式护栏 | `.venv/bin/pytest backend/tests/unit/test_frontend_global_css_guardrails.py backend/tests/unit/test_account_service_cache.py backend/tests/unit/test_warmup.py -q` | 5 passed；覆盖 `account.summary` TTL cache、warmup 预热和根级 `scrollbar-gutter` |
-| 后端全量测试 | `.venv/bin/python -m pytest backend/tests/ -v` | 691 passed, 2 environment warnings |
+| 后端全量测试 | `.venv/bin/python -m pytest backend/tests/ -q` | 692 passed, 2 environment warnings |
 | Ruff | `.venv/bin/ruff check backend/` / `.venv/bin/ruff format --check backend/` | PASS；保留既有 `UP038` removed-rule warning |
 | pre-commit | `.venv/bin/pre-commit run --all-files` | ruff / ruff format / mypy / detect-secrets 全部 PASS |
-| Phase 5 最低矩阵 | `sh scripts/phase5_check.sh` | unit 320 passed；contract 171 passed；frontend 134 passed；build PASS，production build 约 395ms |
+| Phase 5 最低矩阵 | `sh scripts/phase5_check.sh` | unit 320 passed；contract 171 passed；frontend 134 passed；build PASS，production build 约 395ms；新增 OAuth origin 修复后单独复跑 contract 为 172 passed |
+| Spotify OAuth ngrok origin contract | `.venv/bin/pytest backend/tests/contract/test_spotify_auth_contract.py -q` | 8 passed；新增默认 `FRONTEND_ORIGIN` + ngrok `SPOTIFY_REDIRECT_URI` 的 callback origin 护栏 |
+| 后端 contract 扩展矩阵 | `.venv/bin/pytest -m contract -q` | 172 passed, 520 deselected；新增 OAuth ngrok origin contract 纳入基线 |
+| Spotify OAuth 本地非破坏性探针 | `curl http://127.0.0.1:5173/api/spotify/auth/login` + invalid-state callback | login 生成的 Spotify 授权 URL 使用 ngrok `redirect_uri`；invalid-state callback 307 回跳到 `https://stuffing-nebula-tamer.ngrok-free.dev/settings?spotify_error=invalid_state`，未交换 token、未写入连接状态 |
 | API smoke | `.venv/bin/python scripts/api_smoke_probe.py` | 96/96 PASS；OpenAPI GET 95/104 covered, 9 excluded, 0 unaccounted |
 | API boundary | `.venv/bin/python scripts/api_boundary_probe.py` | 85/85 PASS |
 | API benchmark | `.venv/bin/python scripts/benchmark_api.py --base-url http://127.0.0.1:8000 --runs 3 --slow-ms 500 --json-output /tmp/spotify_api_benchmark.json` | slow_count=0；无 hot P95 超过 500ms |
@@ -66,8 +71,9 @@
 | 图表/浏览器 smoke 脚本护栏 | `.venv/bin/python -m pytest backend/tests/unit/test_frontend_chrome_executable_helper.py backend/tests/unit/test_frontend_chart_interaction_smoke_script.py backend/tests/unit/test_frontend_route_smoke_script.py backend/tests/unit/test_frontend_interaction_smoke_script.py backend/tests/unit/test_frontend_long_list_smoke_script.py backend/tests/unit/test_frontend_control_inventory_smoke_script.py backend/tests/unit/test_frontend_web_vitals_probe_script.py -q` | 26 passed；默认等待常量、三类 ECharts 交互覆盖、Chrome for Testing 优先级和 6 个 smoke 脚本共享浏览器查找逻辑同步 |
 | 默认浏览器 route smoke | `env -u CHROME_PATH node scripts/frontend_route_smoke.mjs --base-url http://127.0.0.1:5173 --api-base-url http://127.0.0.1:8000 --routes /analysis/behavior --viewport both --max-scroll-overflow 0 --fail-on-console-warning --output /tmp/spotify_default_chrome_route_smoke.json` | desktop/mobile PASS；0 console error/warning；0 page error；0 横向溢出；`findChrome()` 默认解析到 Playwright `Google Chrome for Testing` |
 | CI parity | `.venv/bin/python scripts/ci_baseline_parity.py` | GitHub Actions baseline 与本地 Phase 5 核心命令一致 |
-| 完整 fullstack verification | `env -u CHROME_PATH -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY -u http_proxy -u https_proxy -u all_proxy sh scripts/fullstack_verification_check.sh --backend-url http://127.0.0.1:8000 --frontend-url http://127.0.0.1:5173 --quickstart-preflight --quickstart-json /tmp/spotify_quickstart_timing_fix_branch_final2.json --benchmark-json /tmp/spotify_api_benchmark_fix_branch_final2.json --openapi-operation-audit-json /tmp/spotify_openapi_operation_audit_fix_branch_final2.json --openapi-parameter-boundary-audit-json /tmp/spotify_openapi_parameter_boundary_audit_fix_branch_final2.json` | PASS；quickstart 44.7ms；backend 691 passed；pre-commit PASS；Phase 5 unit 320 / contract 171 / frontend 134 / build PASS（约 395ms）；OpenAPI operation 134/0 unaccounted；parameter obligations 59/0 unaccounted；API smoke 96/96；boundary 85/85；benchmark 无 hot P95 >500ms；route 48/48；interaction 6/6；chart 3/3；control inventory 36 组合 / 1787 控件 / 0 violation；long-list 6/6；Chromium/Firefox/WebKit PASS |
-| ngrok HTTPS 初段探测 | `env -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY -u http_proxy -u https_proxy -u all_proxy ngrok http --url=stuffing-nebula-tamer.ngrok-free.dev 5173` + `http://127.0.0.1:4040/api/tunnels` | 未建立 tunnel；带代理启动时报 `ERR_NGROK_9009`，清空代理后 ngrok 进程无报错但本地 API 连续返回 `tunnels 0`，固定域名返回 404；未进入 Spotify 登录授权 |
+| 完整 fullstack verification | `env -u CHROME_PATH -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY -u http_proxy -u https_proxy -u all_proxy sh scripts/fullstack_verification_check.sh --backend-url http://127.0.0.1:8000 --frontend-url http://127.0.0.1:5173 --quickstart-preflight --quickstart-json /tmp/spotify_quickstart_timing_fix_branch_final2.json --benchmark-json /tmp/spotify_api_benchmark_fix_branch_final2.json --openapi-operation-audit-json /tmp/spotify_openapi_operation_audit_fix_branch_final2.json --openapi-parameter-boundary-audit-json /tmp/spotify_openapi_parameter_boundary_audit_fix_branch_final2.json` | PASS；quickstart 44.7ms；backend 691 passed；pre-commit PASS；Phase 5 unit 320 / contract 171 / frontend 134 / build PASS（约 395ms）；OpenAPI operation 134/0 unaccounted；parameter obligations 59/0 unaccounted；API smoke 96/96；boundary 85/85；benchmark 无 hot P95 >500ms；route 48/48；interaction 6/6；chart 3/3；control inventory 36 组合 / 1787 控件 / 0 violation；long-list 6/6；Chromium/Firefox/WebKit PASS。新增 OAuth origin 修复后复跑聚合矩阵的 quickstart/backend/pre-commit 段，quickstart `35.1ms`、backend 692 passed，首次 pre-commit 被 ruff-format 自动改写 1 个测试文件，随后单独复跑 pre-commit PASS |
+| ngrok HTTPS 初段探测 | `env -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY -u http_proxy -u https_proxy -u all_proxy ngrok http --url=stuffing-nebula-tamer.ngrok-free.dev 5173 --log stdout --log-format logfmt` + `http://127.0.0.1:4040/api/tunnels` | 未建立 tunnel；当前 ngrok agent 报 `tls: failed to verify certificate: x509: certificate is not valid for any names, but wanted to match connect.ngrok-agent.com`，本地 API 返回 `tunnels: []` |
+| ngrok 网络出口诊断 | 无代理 `curl -v https://connect.ngrok-agent.com/`、代理 `curl -v https://connect.ngrok-agent.com/`、系统 DNS 与 `dig @1.1.1.1` 对比 | 无代理解析到 `134.122.183.237/27.124.2.66` 并拿到 `CN=104.143.39.106` 的不匹配证书；公共 DNS 返回 AWS 地址；走 7897 HTTP 代理时 TLS 在 ALPN 阶段失败。结论：当前网络/DNS/代理出口不能为 ngrok agent 提供可信连接，非应用代码缺陷 |
 | Runtime resource | `.venv/bin/python scripts/runtime_resource_probe.py --backend-url http://127.0.0.1:8000 --frontend-url http://127.0.0.1:5173 --json-output /tmp/spotify_runtime_resources.json --max-total-rss-mb 1200 --max-total-cpu-percent 200` | PASS；总 RSS 1125.4MB，总 CPU 6.1%；backend 964.7MB，frontend 160.7MB |
 | 当前工作树 Runtime resource | `.venv/bin/python scripts/runtime_resource_probe.py --backend-url http://127.0.0.1:8000 --frontend-url http://127.0.0.1:5173 --preview-url http://127.0.0.1:4173 --json-output /tmp/spotify_runtime_resources_fix_branch_final2.json --max-total-rss-mb 1400 --max-total-cpu-percent 220 --fail-on-missing` | PASS；总 RSS 1183.3MB，总 CPU 5.8%；backend 940.5MB，frontend 186.6MB，preview 56.2MB |
 
@@ -79,24 +85,23 @@
 
 ## 剩余风险
 
-- 本轮没有执行真实 ngrok HTTPS + Spotify 外部 OAuth 浏览器授权闭环；现有证据仍来自本地 OAuth PKCE contract、Spotify auth JSON 端点与状态 API。已尝试 ngrok 初段探测，但固定域名 tunnel 未建立：带代理启动触发 `ERR_NGROK_9009`，清空代理后本地 ngrok API 仍返回 `tunnels 0`。
+- 本轮仍没有执行真实 ngrok HTTPS + Spotify 外部 OAuth 浏览器授权闭环；应用侧已证明 login 使用 ngrok `redirect_uri`，callback 也会回跳 ngrok origin，但 ngrok agent 在当前网络出口下 TLS 证书校验失败，固定域名 tunnel 无法建立。
 - Playwright WebKit 仍只能代表 Safari-family 引擎 smoke，不等同用户真实 Safari.app 手工会话。
 - 生产构建仍提示动态大 chunk：`EChartsTheme` 仍服务于分析/详情等复杂图表页，OpenCC `cn2t` 字典仍是用户切换繁体时按需加载的大字典；它们已不再属于首页 Dashboard 的 preload 依赖。
-- 代码变更仍保持未提交状态；本轮未收到显式 `git commit` 指令，因此没有创建提交。
 
 ## 完成度审计
 
 | 目标要求 | 当前证据 | 判定 |
 | --- | --- | --- |
 | 在正确分支继续 | `git branch --show-current` 为 `fix/bugfixes-and-polish` | 已满足 |
-| 后端所有现有测试通过 | `pytest backend/tests/ -q`：691 passed | 已满足 |
+| 后端所有现有测试通过 | `pytest backend/tests/ -q`：692 passed | 已满足 |
 | API 端点与 OpenAPI 覆盖 | OpenAPI operation audit：134 operations / 0 unaccounted；API smoke 96/96；boundary 85/85 | 已满足 |
 | Provider 错误分层、response_model、基础设施 contract | 完整 fullstack verification 包含 pre-commit、Phase 5、OpenAPI audits、API probes 与 contract 测试；相关 response-model probes 已纳入测试基线 | 已满足 |
 | 前端页面无白屏、无 console error/warning、无横向溢出 | route smoke 48/48；interaction 6/6；chart 3/3；control inventory 36 组合 / 1787 控件 / 0 violation；long-list 6/6；Chromium/Firefox/WebKit PASS | 已满足 |
 | 性能量化与资源占用 | API benchmark 无 hot P95 >500ms；Web Vitals dev/prod 在预算内；runtime resource probe 总 RSS 1183.3MB / CPU 5.8%；性能表列出前后对比 | 已满足 |
 | 文档与交付报告 | README、AGENTS、CLAUDE、backend/CLAUDE 与本报告已同步最新测试基线、修复项、性能数据和 10 分钟复核步骤 | 已满足 |
-| 真实 ngrok HTTPS + Spotify 外部 OAuth 浏览器授权闭环 | 当前只有本地 OAuth PKCE contract、Spotify auth JSON 端点与状态 API 证据；ngrok 固定域名 tunnel 未建立，未进行真实用户登录授权 | 未完成，需可用 ngrok tunnel 与用户 Spotify 授权 |
-| 生成代码提交 | 变更保持在工作树中，未执行 `git commit` | 未完成，等待用户明确提交指令 |
+| 真实 ngrok HTTPS + Spotify 外部 OAuth 浏览器授权闭环 | 本地 OAuth PKCE contract、Spotify auth JSON 端点、login ngrok redirect_uri 与 invalid-state callback ngrok origin 均已验证；ngrok agent 因当前网络/DNS/证书出口失败无法建立 tunnel，未进行真实用户登录授权 | 应用侧已补齐；外部授权闭环仍未完成，需可用 ngrok tunnel 与用户 Spotify 授权 |
+| 生成代码提交 | 本轮修复按功能拆分提交，分支领先远端；未执行 push | 已满足本地提交要求 |
 
 ## 10 分钟快速复核
 

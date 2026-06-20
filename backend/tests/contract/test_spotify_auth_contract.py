@@ -50,6 +50,22 @@ def test_spotify_callback_declares_redirect_response_class():
     assert route.response_class is RedirectResponse
 
 
+def test_spotify_callback_origin_follows_ngrok_redirect_uri_when_frontend_origin_is_default(
+    monkeypatch,
+):
+    from backend.api import spotify_auth as spotify_auth_api
+    from backend.core import config
+
+    monkeypatch.setattr(config, "FRONTEND_ORIGIN", "http://localhost:5173")
+    monkeypatch.setattr(
+        config,
+        "SPOTIFY_REDIRECT_URI",
+        "https://stuffing-nebula-tamer.ngrok-free.dev/api/spotify/auth/callback",
+    )
+
+    assert spotify_auth_api._get_frontend_origin() == "https://stuffing-nebula-tamer.ngrok-free.dev"
+
+
 @pytest.fixture(autouse=True)
 def clear_pkce_store():
     from backend.services import spotify_auth

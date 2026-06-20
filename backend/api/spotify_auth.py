@@ -1,6 +1,7 @@
 """Spotify OAuth PKCE API endpoints."""
 
 from sqlite3 import Connection
+from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import RedirectResponse
@@ -35,12 +36,23 @@ from backend.services.spotify_auth import (
 )
 
 router = APIRouter(prefix="/spotify/auth", tags=["Spotify Auth"])
+_DEFAULT_FRONTEND_ORIGIN = "http://localhost:5173"
+
+
+def _origin_from_url(url: str) -> str:
+    parsed = urlsplit(url)
+    if parsed.scheme and parsed.netloc:
+        return f"{parsed.scheme}://{parsed.netloc}"
+    return ""
 
 
 def _get_frontend_origin() -> str:
-    from backend.core.config import FRONTEND_ORIGIN
+    from backend.core.config import FRONTEND_ORIGIN, SPOTIFY_REDIRECT_URI
 
-    return FRONTEND_ORIGIN
+    configured_origin = FRONTEND_ORIGIN.rstrip("/") if FRONTEND_ORIGIN else ""
+    if configured_origin and configured_origin != _DEFAULT_FRONTEND_ORIGIN:
+        return configured_origin
+    return _origin_from_url(SPOTIFY_REDIRECT_URI) or configured_origin or _DEFAULT_FRONTEND_ORIGIN
 
 
 @router.get("/login", response_model=SpotifyAuthUrlResponse)
