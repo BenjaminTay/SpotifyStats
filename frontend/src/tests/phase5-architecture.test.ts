@@ -23,6 +23,7 @@ import communityPageSource from '../pages/CommunityPage.tsx?raw'
 import communityAccountPageSource from '../pages/CommunityAccountPage.tsx?raw'
 import postDetailPageSource from '../pages/PostDetailPage.tsx?raw'
 import dashboardPageSource from '../pages/DashboardPage.tsx?raw'
+import appSource from '../App.tsx?raw'
 
 import numberOnesExperienceSource from '../features/billboard/number-ones/NumberOnesExperience.tsx?raw'
 import versusExperienceSource from '../features/billboard/versus/VersusExperience.tsx?raw'
@@ -208,6 +209,23 @@ describe('Phase 5 architecture guardrails', () => {
     expect(dashboardPageSource).toContain('w-full max-w-96')
   })
 
+  it('keeps legacy analysis aliases outside the lazy AnalysisLayout route', () => {
+    const analysisLayoutRouteIndex = appSource.indexOf('<Route path="/analysis" element=')
+    expect(analysisLayoutRouteIndex).toBeGreaterThan(-1)
+
+    for (const legacyPath of [
+      '/analysis/timeline',
+      '/analysis/leaderboard',
+      '/analysis/behavior',
+      '/analysis/listening-hours',
+      '/analysis/artists',
+    ]) {
+      const aliasRouteIndex = appSource.indexOf(`<Route path="${legacyPath}"`)
+      expect(aliasRouteIndex).toBeGreaterThan(-1)
+      expect(aliasRouteIndex).toBeLessThan(analysisLayoutRouteIndex)
+    }
+  })
+
   it('keeps Chinese conversion from loading the full OpenCC bundle', () => {
     expect(chineseSource).not.toContain("from 'opencc-js'")
     expect(chineseSource).not.toContain('import(\'opencc-js\')')
@@ -222,8 +240,12 @@ describe('Phase 5 architecture guardrails', () => {
     expect(appLayoutSource).toContain('useChineseTextVersion()')
   })
 
+  it('keeps the dashboard monthly trend chart lightweight for first paint', () => {
+    expect(monthlyTrendChartSource).not.toContain('LazyEChart')
+    expect(monthlyTrendChartSource).not.toContain('EChartsTheme')
+  })
+
   it.each([
-    ['MonthlyTrendChart.tsx', monthlyTrendChartSource],
     ['AnalysisCharts.tsx', analysisChartsSource],
     ['RankTrendChart.tsx', rankTrendChartSource],
     ['ReleaseTimelineChart.tsx', releaseTimelineChartSource],
@@ -239,6 +261,12 @@ describe('Phase 5 architecture guardrails', () => {
   it('keeps account chemistry examples capped for initial render', () => {
     expect(chemistryBlockSource).toContain('MAX_CHEMISTRY_EXAMPLES')
     expect(chemistryBlockSource).toMatch(/\.slice\(0,\s*MAX_CHEMISTRY_EXAMPLES\)/)
+  })
+
+  it('keeps AccountCenterPage hero progressive while the heavy account summary loads', () => {
+    expect(accountCenterPageSource).toContain('useProfile()')
+    expect(accountCenterPageSource).toContain('profileForHero')
+    expect(accountCenterPageSource).toContain('AccountContentSkeleton')
   })
 
   it('keeps artist release archive outside ArtistDetailExperience', () => {

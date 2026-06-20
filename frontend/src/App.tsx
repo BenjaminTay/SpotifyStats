@@ -77,15 +77,15 @@ function App() {
           <Route path="/community/post/:postId" element={<Suspense fallback={<RouteFallback />}><PostDetailPage /></Suspense>} />
           <Route path="/community/account/:handle" element={<Suspense fallback={<RouteFallback />}><CommunityAccountPage /></Suspense>} />
           <Route path="/ai-insights" element={<Suspense fallback={<RouteFallback />}><AiInsightsPage /></Suspense>} />
+          <Route path="/analysis/timeline" element={<Navigate to="/analysis/stats" replace />} />
+          <Route path="/analysis/leaderboard" element={<Navigate to="/analysis/charts" replace />} />
+          <Route path="/analysis/behavior" element={<Navigate to="/analysis/stats" replace />} />
+          <Route path="/analysis/listening-hours" element={<Navigate to="/analysis/stats" replace />} />
+          <Route path="/analysis/artists" element={<Navigate to="/analysis/charts?entity=artist" replace />} />
           <Route path="/analysis" element={<Suspense fallback={<RouteFallback />}><AnalysisLayout /></Suspense>}>
             <Route index element={<Navigate to="/analysis/stats" replace />} />
             <Route path="stats" element={<Suspense fallback={<RouteFallback />}><AnalysisStatsPage /></Suspense>} />
             <Route path="charts" element={<Suspense fallback={<RouteFallback />}><AnalysisChartsPage /></Suspense>} />
-            <Route path="timeline" element={<Navigate to="/analysis/stats" replace />} />
-            <Route path="leaderboard" element={<Navigate to="/analysis/charts" replace />} />
-            <Route path="behavior" element={<Navigate to="/analysis/stats" replace />} />
-            <Route path="listening-hours" element={<Navigate to="/analysis/stats" replace />} />
-            <Route path="artists" element={<Navigate to="/analysis/charts?entity=artist" replace />} />
           </Route>
           <Route path="/settings" element={<Suspense fallback={<RouteFallback />}><SettingsPage /></Suspense>} />
           <Route path="/yearly-review" element={<Suspense fallback={<RouteFallback />}><YearlyReviewPage /></Suspense>} />

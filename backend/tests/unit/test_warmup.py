@@ -31,6 +31,10 @@ class TestWarmup:
             calls.append(("get_analysis_charts", kwargs))
             return {}
 
+        def fake_account_summary(conn):
+            calls.append(("get_account_summary", {}))
+            return {}
+
         class FakeConn:
             def close(self):
                 calls.append(("close", {}))
@@ -45,6 +49,7 @@ class TestWarmup:
         )
         monkeypatch.setattr("backend.core.warmup.get_analysis_stats", fake_analysis_stats)
         monkeypatch.setattr("backend.core.warmup.get_analysis_charts", fake_analysis_charts)
+        monkeypatch.setattr("backend.core.warmup.get_account_summary", fake_account_summary)
         monkeypatch.setattr(
             "backend.core.warmup.compute_billboard_data", fake_compute_billboard_data
         )
@@ -55,6 +60,7 @@ class TestWarmup:
 
         assert calls[0][0] == "load_plays"
         assert calls[1][0] == "load_plays_for_artists"
+        assert calls[-3][0] == "get_account_summary"
         assert calls[-2][0] == "close"
         assert calls[-1][0] == "compute_billboard_data"
         assert calls[0][1]["min_ms"] == 30000

@@ -2,10 +2,10 @@
 
 import { spawn } from 'node:child_process'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
-import { existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import net from 'node:net'
+import { findChrome } from './lib/chrome_executable.mjs'
 
 const DEFAULT_ROUTES = ['/', '/analysis/stats', '/analysis/charts', '/billboard/number-ones', '/account', '/settings']
 const DEFAULT_BASE_URL = 'http://127.0.0.1:5173'
@@ -197,26 +197,6 @@ Options:
   --max-scroll-overflow-px <px>
                          Fail when document/body scroll width exceeds viewport by more than this budget
 `)
-}
-
-function findChrome(explicitPath) {
-  const candidates = [
-    explicitPath,
-    process.env.CHROME_PATH,
-    '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
-    '/Applications/Google Chrome Canary.app/Contents/MacOS/Google Chrome Canary',
-    '/Applications/Chromium.app/Contents/MacOS/Chromium',
-    '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge',
-    '/usr/bin/google-chrome',
-    '/usr/bin/chromium-browser',
-    '/usr/bin/chromium',
-  ].filter(Boolean)
-
-  const match = candidates.find((candidate) => existsSync(candidate))
-  if (!match) {
-    throw new Error('Chrome/Chromium executable not found. Pass --chrome or set CHROME_PATH.')
-  }
-  return match
 }
 
 async function getFreePort() {

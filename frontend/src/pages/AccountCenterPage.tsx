@@ -1,10 +1,10 @@
 import { lazy, Suspense, useState } from 'react'
 import { cn } from '@/lib/utils'
-import { useAccount } from '@/hooks/useAccount'
+import { useAccount, useProfile } from '@/hooks/useAccount'
 import { CollectionTab } from '@/pages/account/CollectionTab'
 import { GlassCard } from '@/components/shared/GlassCard'
 import { AlertCircle } from 'lucide-react'
-import type { AccountSummary } from '@/types/account'
+import type { AccountSummary, ProfileData } from '@/types/account'
 
 const HabitsTab = lazy(() =>
   import('@/features/account/habits/HabitsTab').then((m) => ({ default: m.HabitsTab })),
@@ -21,16 +21,22 @@ function formatNumber(n: number): string {
   return new Intl.NumberFormat('zh-CN').format(n)
 }
 
-function AccountHero({ data }: { data: AccountSummary }) {
-  const profile = data.profile?.profile
+function AccountHero({
+  profileData,
+  collectionInsights,
+}: {
+  profileData: ProfileData | null
+  collectionInsights?: AccountSummary['collection_insights'] | null
+}) {
+  const profile = profileData?.profile
   const displayName = profile?.identity_displayName || profile?.identity_firstName || 'Spotify 用户'
   const imageUrl = profile?.identity_imageUrl
   const username = profile?.attr_username
   const country = profile?.attr_country
-  const stats = data.profile?.stats
+  const stats = profileData?.stats
   const firstPlayDate = stats?.first_play_date || null
   const totalPlays = stats?.total_audio_plays || 0
-  const followsCount = data.profile?.follows?.length || 0
+  const followsCount = profileData?.follows?.length || 0
 
   let listeningYears: number | null = null
   let startYear: number | null = null
@@ -42,8 +48,8 @@ function AccountHero({ data }: { data: AccountSummary }) {
     }
   }
 
-  const personality = data.collection_insights?.available
-    ? data.collection_insights.personality
+  const personality = collectionInsights?.available
+    ? collectionInsights.personality
     : null
 
   return (
@@ -169,6 +175,23 @@ function LoadingSkeleton() {
   )
 }
 
+function AccountContentSkeleton() {
+  return (
+    <>
+      <div className="flex gap-7 border-b border-border pb-0">
+        {[1, 2].map((i) => (
+          <div key={i} className="h-8 w-24 animate-pulse rounded bg-muted" />
+        ))}
+      </div>
+      <div className="space-y-4">
+        {[1, 2, 3].map((i) => (
+          <div key={i} className="h-48 animate-pulse rounded-xl bg-muted" />
+        ))}
+      </div>
+    </>
+  )
+}
+
 function ErrorState({ error, onRetry }: { error: string; onRetry: () => void }) {
   return (
     <div className="flex flex-col items-center gap-4 py-20 text-center">
@@ -201,15 +224,25 @@ function EmptyState() {
 
 export function AccountCenterPage() {
   const { data, loading, error, refetch } = useAccount()
+  const { data: profileData } = useProfile()
   const [activeTab, setActiveTab] = useState<TabKey>('collection')
+  const profileForHero = data?.profile ?? profileData ?? null
 
-  if (loading) return <LoadingSkeleton />
+  if (loading && !profileForHero) return <LoadingSkeleton />
   if (error) return <ErrorState error={error} onRetry={refetch} />
+  if (loading) {
+    return (
+      <div className="mx-auto max-w-[900px] space-y-6 px-6 py-12">
+        <AccountHero profileData={profileForHero} />
+        <AccountContentSkeleton />
+      </div>
+    )
+  }
   if (!data || !data.has_account_data) return <EmptyState />
 
   return (
     <div className="mx-auto max-w-[900px] space-y-6 px-6 py-12">
-      <AccountHero data={data} />
+      <AccountHero profileData={profileForHero} collectionInsights={data.collection_insights} />
 
       {/* Tabs */}
       <div className="flex gap-7 border-b border-border">

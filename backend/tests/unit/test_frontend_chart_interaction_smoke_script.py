@@ -34,7 +34,7 @@ def test_frontend_chart_interaction_smoke_script_exposes_reusable_cli():
 def test_frontend_chart_interaction_smoke_script_covers_echarts_flows():
     source = (ROOT / "scripts" / "frontend_chart_interaction_smoke.mjs").read_text(encoding="utf-8")
 
-    assert "const DEFAULT_WAIT_MS = 5000" in source
+    assert "const DEFAULT_WAIT_MS = 12000" in source
     assert "const DEFAULT_ACCOUNT_CHART_WAIT_MS = 12000" in source
     assert "const DEFAULT_DATAZOOM_WAIT_MS = 12000" in source
     assert "chart-hover-tooltip" in source

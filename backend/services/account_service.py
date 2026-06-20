@@ -4,6 +4,12 @@ from __future__ import annotations
 
 import sqlite3
 from collections import Counter
+from pathlib import Path
+
+from backend.core.cache import ttl_cached
+from backend.core.cache_manager import register_ttl
+
+ACCOUNT_SUMMARY_CACHE_TTL_SECONDS = 300
 
 
 def _cover_url(image_path, image_url, cover_type: str, entity_id) -> str | None:
@@ -1307,7 +1313,43 @@ def get_collection_insights(conn: sqlite3.Connection) -> dict:
     }
 
 
+def _database_file_path(conn: sqlite3.Connection) -> str | None:
+    """Return a stable file-backed SQLite path for cache keys."""
+    rows = conn.execute("PRAGMA database_list").fetchall()
+    for row in rows:
+        if row[1] != "main":
+            continue
+        raw_path = row[2]
+        if not raw_path:
+            return None
+        return str(Path(raw_path).resolve())
+    return None
+
+
+def _open_cached_connection(db_path: str) -> sqlite3.Connection:
+    conn = sqlite3.connect(db_path, timeout=30, check_same_thread=False)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+@ttl_cached(ACCOUNT_SUMMARY_CACHE_TTL_SECONDS, namespace="account")
+def _get_account_summary_cached(db_path: str) -> dict:
+    conn = _open_cached_connection(db_path)
+    try:
+        return _build_account_summary(conn)
+    finally:
+        conn.close()
+
+
 def get_account_summary(conn: sqlite3.Connection) -> dict:
+    """聚合账号中心所有子服务的数据。"""
+    db_path = _database_file_path(conn)
+    if db_path is None:
+        return _build_account_summary(conn)
+    return _get_account_summary_cached(db_path)
+
+
+def _build_account_summary(conn: sqlite3.Connection) -> dict:
     """聚合账号中心所有子服务的数据。"""
     from backend.services.insights_service import get_artist_tiers, get_marquee_conversion
     from backend.services.library_service import get_library_overview
@@ -1375,3 +1417,6 @@ def get_account_summary(conn: sqlite3.Connection) -> dict:
         pass
 
     return summary
+
+
+register_ttl("account", "summary", _get_account_summary_cached)

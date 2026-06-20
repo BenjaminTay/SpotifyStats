@@ -42,6 +42,7 @@ export const queryKeys = {
   account: {
     all: ['account'] as const,
     summary: () => ['account', 'summary'] as const,
+    profile: () => ['account', 'profile'] as const,
   },
 
   yearlyReview: {
