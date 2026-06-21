@@ -350,17 +350,20 @@ def _add_canonical_metadata(type_df, date_df, conn):
 
 def _get_album_canonical_map():
     """获取所有 release group 成员的 (album_name, artist_name) → canonical_name 映射。"""
-    conn = get_db()
-    mapping = pd.read_sql_query(
-        """SELECT al.album_name, a.artist_name, rg.canonical_name
-           FROM release_group_members rgm
-           JOIN release_groups rg ON rgm.group_id = rg.group_id
-           JOIN albums al ON rgm.album_id = al.album_id
-           JOIN artists a ON al.artist_id = a.artist_id""",
-        conn,
-    )
-    conn.close()
-    return mapping
+    try:
+        conn = get_db()
+        mapping = pd.read_sql_query(
+            """SELECT al.album_name, a.artist_name, rg.canonical_name
+               FROM release_group_members rgm
+               JOIN release_groups rg ON rgm.group_id = rg.group_id
+               JOIN albums al ON rgm.album_id = al.album_id
+               JOIN artists a ON al.artist_id = a.artist_id""",
+            conn,
+        )
+        conn.close()
+        return mapping
+    except Exception:
+        return pd.DataFrame(columns=["album_name", "artist_name", "canonical_name"])
 
 
 # ── Cache registration ─────────────────────────────────────────────────
