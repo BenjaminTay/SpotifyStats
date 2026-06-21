@@ -326,6 +326,30 @@ def migrate_019(conn: sqlite3.Connection):
     )
 
 
+@migration(20, "saved_tracks_spotify_track_id")
+def migrate_020(conn: sqlite3.Connection):
+    """Add spotify_track_id column to saved_tracks, matching tracks table fix (migration 18).
+
+    saved_tracks stores the full ``spotify:track:xxx`` URI as its primary key.
+    JOINs with spotify_track_meta currently use
+    ``REPLACE(st.track_uri, 'spotify:track:', '') = stm.spotify_track_id``,
+    which prevents index usage on spotify_track_meta.spotify_track_id.
+
+    This migration adds a dedicated column with an index so those JOINs can
+    use direct indexed lookups.
+    """
+    conn.execute("ALTER TABLE saved_tracks ADD COLUMN spotify_track_id TEXT")
+    conn.execute(
+        "UPDATE saved_tracks SET spotify_track_id = "
+        "REPLACE(track_uri, 'spotify:track:', '') "
+        "WHERE track_uri IS NOT NULL AND spotify_track_id IS NULL"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_saved_tracks_spotify_track_id "
+        "ON saved_tracks(spotify_track_id)"
+    )
+
+
 # ── Runner ────────────────────────────────────────────────────────────────
 
 

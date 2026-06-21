@@ -168,19 +168,225 @@ def _build_wrapped_hub(conn: sqlite3.Connection) -> dict:
     if top_artists.empty:
         return {"available": True, "empty": True}
 
-    # Resolve all URIs to names
-    for df, uri_col, uri_type in [
-        (top_artists, "artist_uri", "artist"),
-        (top_tracks, "track_uri", "track"),
-        (top_albums, "album_uri", "album"),
-        (top_genres, "genre_uri", "artist"),  # genres use artist URIs
-        (top_podcasts, "podcast_uri", "show"),
-        (clubs, "artist_uri", "artist"),
+    # ── Batch resolve all URIs → display names ──
+    uri_name_map = {}  # type: dict[str, str]
+
+    def _collect_ids(df, uri_col, kind):
+        ids = set()
+        for u in df[uri_col].dropna():
+            spotify_id = u.replace(f"spotify:{kind}:", "")
+            if spotify_id:
+                ids.add(spotify_id)
+                uri_name_map[u] = spotify_id  # fallback: raw ID
+        return ids
+
+    # Collect unique spotify IDs per entity type
+    artist_ids = _collect_ids(top_artists, "artist_uri", "artist")
+    artist_ids |= _collect_ids(top_genres, "genre_uri", "artist")
+    artist_ids |= _collect_ids(clubs, "artist_uri", "artist")
+    for u in artist_race["artist_uri"].dropna():
+        sid = u.replace("spotify:artist:", "")
+        if sid:
+            artist_ids.add(sid)
+            uri_name_map[u] = sid
+
+    track_ids = _collect_ids(top_tracks, "track_uri", "track")
+    album_ids = _collect_ids(top_albums, "album_uri", "album")
+    show_ids = _collect_ids(top_podcasts, "podcast_uri", "show")
+
+    # Batch query spotify_artist_meta
+    if artist_ids:
+        placeholders = ",".join("?" * len(artist_ids))
+        for r in conn.execute(
+            f"SELECT spotify_artist_id, artist_name FROM spotify_artist_meta "
+            f"WHERE spotify_artist_id IN ({placeholders})",
+            tuple(artist_ids),
+        ).fetchall():
+            uri_name_map[f"spotify:artist:{r[0]}"] = r[1]
+        # Fallback to saved_artists for unmatched
+        unmatched = [
+            u
+            for u, sid in uri_name_map.items()
+            if u.startswith("spotify:artist:") and u not in uri_name_map
+            if sid == u.replace("spotify:artist:", "")
+        ]
+        # Re-collect unmatched by direct URI lookup
+        unmatched_uris = {
+            u
+            for u in uri_name_map
+            if u.startswith("spotify:artist:")
+            and uri_name_map[u] == u.replace("spotify:artist:", "")
+        }
+        if unmatched_uris:
+            placeholders2 = ",".join("?" * len(unmatched_uris))
+            for r in conn.execute(
+                f"SELECT artist_uri, artist_name FROM saved_artists WHERE artist_uri IN ({placeholders2})",
+                tuple(unmatched_uris),
+            ).fetchall():
+                uri_name_map[r[0]] = r[1]
+
+    # Batch query spotify_track_meta
+    if track_ids:
+        placeholders = ",".join("?" * len(track_ids))
+        for r in conn.execute(
+            f"SELECT spotify_track_id, track_name FROM spotify_track_meta "
+            f"WHERE spotify_track_id IN ({placeholders})",
+            tuple(track_ids),
+        ).fetchall():
+            uri_name_map[f"spotify:track:{r[0]}"] = r[1]
+        # Fallback to tracks table
+        unmatched_track = {
+            u
+            for u in uri_name_map
+            if u.startswith("spotify:track:") and uri_name_map[u] == u.replace("spotify:track:", "")
+        }
+        if unmatched_track:
+            sids = [u.replace("spotify:track:", "") for u in unmatched_track]
+            pts = ",".join("?" * len(sids))
+            for r in conn.execute(
+                f"SELECT t.spotify_track_id, t.track_name FROM tracks t "
+                f"WHERE t.spotify_track_id IN ({pts})",
+                tuple(sids),
+            ).fetchall():
+                if r[0]:
+                    uri_name_map[f"spotify:track:{r[0]}"] = r[1]
+
+    # Batch query spotify_album_meta
+    if album_ids:
+        placeholders = ",".join("?" * len(album_ids))
+        for r in conn.execute(
+            f"SELECT spotify_album_id, album_name FROM spotify_album_meta "
+            f"WHERE spotify_album_id IN ({placeholders})",
+            tuple(album_ids),
+        ).fetchall():
+            uri_name_map[f"spotify:album:{r[0]}"] = r[1]
+        # Fallback to saved_albums
+        unmatched_album = {
+            u
+            for u in uri_name_map
+            if u.startswith("spotify:album:") and uri_name_map[u] == u.replace("spotify:album:", "")
+        }
+        if unmatched_album:
+            for r in conn.execute(
+                f"SELECT album_uri, album_name FROM saved_albums WHERE album_uri IN "
+                f"({','.join('?' * len(unmatched_album))})",
+                tuple(unmatched_album),
+            ).fetchall():
+                uri_name_map[r[0]] = r[1]
+
+    # Batch query saved_shows
+    if show_ids:
+        for r in conn.execute("SELECT show_uri, show_name FROM saved_shows").fetchall():
+            uri_name_map[r[0]] = r[1]
+
+    # Apply display_name to DataFrames
+    for df, uri_col in [
+        (top_artists, "artist_uri"),
+        (top_tracks, "track_uri"),
+        (top_albums, "album_uri"),
+        (top_genres, "genre_uri"),
+        (top_podcasts, "podcast_uri"),
+        (clubs, "artist_uri"),
     ]:
         if uri_col in df.columns:
             df["display_name"] = df[uri_col].apply(
-                lambda u: _resolve_uri_name(conn, u, uri_type) if pd.notna(u) else ""
+                lambda u: uri_name_map.get(u, u) if pd.notna(u) else ""
             )
+
+    # ── Batch resolve track IDs ──
+    track_id_map = {}
+    if track_ids:
+        placeholders = ",".join("?" * len(track_ids))
+        for r in conn.execute(
+            f"SELECT t.spotify_track_id, t.track_id FROM tracks t "
+            f"WHERE t.spotify_track_id IN ({placeholders})",
+            tuple(track_ids),
+        ).fetchall():
+            if r[0]:
+                track_id_map[r[0]] = int(r[1])
+        # Also match via spotify_track_uri
+        unmatched = track_ids - set(track_id_map.keys())
+        if unmatched:
+            full_uris = [f"spotify:track:{sid}" for sid in unmatched]
+            uris_pts = ",".join("?" * len(full_uris))
+            for r in conn.execute(
+                f"SELECT spotify_track_uri, track_id FROM tracks WHERE spotify_track_uri IN ({uris_pts})",
+                tuple(full_uris),
+            ).fetchall():
+                sid = r[0].replace("spotify:track:", "")
+                track_id_map[sid] = int(r[1])
+
+    def _resolve_track_id_fast(track_uri):
+        if not track_uri:
+            return 0
+        sid = track_uri.replace("spotify:track:", "")
+        return track_id_map.get(sid, 0)
+
+    # ── Batch resolve album artists ──
+    album_artist_map = {}
+    album_names = {n for n in top_albums["display_name"].dropna() if n}
+    if album_names:
+        placeholders = ",".join("?" * len(album_names))
+        for r in conn.execute(
+            f"SELECT al.album_name, ar.artist_name FROM albums al "
+            f"JOIN artists ar ON al.artist_id = ar.artist_id "
+            f"WHERE al.album_name IN ({placeholders})",
+            tuple(album_names),
+        ).fetchall():
+            album_artist_map[r[0]] = r[1] or ""
+
+    # ── Batch resolve cover URLs ──
+    cover_map = {}  # (name, kind) → url
+
+    # Artist covers
+    all_artist_names = {n for n in top_artists["display_name"].dropna() if n}
+    all_artist_names |= {n for n in clubs["display_name"].dropna() if n}
+    # Collect from artist_race too (resolved via uri_name_map)
+    all_artist_names |= {
+        uri_name_map.get(r.artist_uri, r.artist_uri)
+        for r in artist_race.itertuples(index=False)
+        if pd.notna(r.artist_uri)
+    }
+    if all_artist_names:
+        placeholders = ",".join("?" * len(all_artist_names))
+        for r in conn.execute(
+            f"SELECT artist_name, image_url FROM spotify_artist_meta "
+            f"WHERE artist_name IN ({placeholders})",
+            tuple(all_artist_names),
+        ).fetchall():
+            if r[1]:
+                cover_map[(r[0], "artist")] = r[1]
+
+    # Track covers
+    all_track_names = {n for n in top_tracks["display_name"].dropna() if n}
+    if all_track_names:
+        placeholders = ",".join("?" * len(all_track_names))
+        for r in conn.execute(
+            f"SELECT t.track_name, sam.image_url FROM spotify_track_meta stm "
+            f"JOIN spotify_album_meta sam ON stm.spotify_album_id = sam.spotify_album_id "
+            f"JOIN tracks t ON t.spotify_track_id = stm.spotify_track_id "
+            f"WHERE t.track_name IN ({placeholders})",
+            tuple(all_track_names),
+        ).fetchall():
+            if r[1]:
+                cover_map[(r[0], "track")] = r[1]
+
+    # Album covers
+    all_album_names = {n for n in top_albums["display_name"].dropna() if n}
+    if all_album_names:
+        placeholders = ",".join("?" * len(all_album_names))
+        for r in conn.execute(
+            f"SELECT album_name, image_url FROM spotify_album_meta "
+            f"WHERE album_name IN ({placeholders})",
+            tuple(all_album_names),
+        ).fetchall():
+            if r[1]:
+                cover_map[(r[0], "album")] = r[1]
+
+    def _get_cover_fast(name, kind):
+        if not name:
+            return ""
+        return cover_map.get((name, kind), "")
 
     return {
         "available": True,
@@ -191,7 +397,7 @@ def _build_wrapped_hub(conn: sqlite3.Connection) -> dict:
                 "name": r.display_name or r.artist_uri,
                 "ms_played": int(r.ms_played) if pd.notna(r.ms_played) else 0,
                 "percentile": float(r.percentile) if pd.notna(r.percentile) else None,
-                "cover_url": _get_cover_for_name(conn, r.display_name, "artist")
+                "cover_url": _get_cover_fast(r.display_name, "artist")
                 if pd.notna(r.display_name)
                 else "",
             }
@@ -201,10 +407,10 @@ def _build_wrapped_hub(conn: sqlite3.Connection) -> dict:
             {
                 "rank": int(r.rank),
                 "name": r.display_name or r.track_uri,
-                "track_id": _resolve_track_id(conn, r.track_uri) if pd.notna(r.track_uri) else 0,
+                "track_id": _resolve_track_id_fast(r.track_uri) if pd.notna(r.track_uri) else 0,
                 "play_count": int(r.play_count) if pd.notna(r.play_count) else 0,
                 "ms_played": int(r.ms_played) if pd.notna(r.ms_played) else 0,
-                "cover_url": _get_cover_for_name(conn, r.display_name, "track")
+                "cover_url": _get_cover_fast(r.display_name, "track")
                 if pd.notna(r.display_name)
                 else "",
             }
@@ -214,12 +420,12 @@ def _build_wrapped_hub(conn: sqlite3.Connection) -> dict:
             {
                 "rank": int(r.rank),
                 "name": r.display_name or r.album_uri,
-                "artist_name": _resolve_album_artist(conn, r.display_name)
+                "artist_name": album_artist_map.get(r.display_name, "")
                 if pd.notna(r.display_name)
                 else "",
                 "play_count": int(r.play_count) if pd.notna(r.play_count) else 0,
                 "ms_played": int(r.ms_played) if pd.notna(r.ms_played) else 0,
-                "cover_url": _get_cover_for_name(conn, r.display_name, "album")
+                "cover_url": _get_cover_fast(r.display_name, "album")
                 if pd.notna(r.display_name)
                 else "",
             }
@@ -239,7 +445,7 @@ def _build_wrapped_hub(conn: sqlite3.Connection) -> dict:
         else [],
         "artist_race": [
             {
-                "artist_name": _resolve_uri_name(conn, r.artist_uri, "artist")
+                "artist_name": uri_name_map.get(r.artist_uri, r.artist_uri)
                 if pd.notna(r.artist_uri)
                 else r.artist_uri,
                 "month": r.month,

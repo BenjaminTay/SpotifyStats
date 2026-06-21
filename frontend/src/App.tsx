@@ -21,6 +21,7 @@ const AccountCenterPage = lazy(() => import('@/pages/AccountCenterPage').then((m
 const AnalysisLayout = lazy(() => import('@/pages/AnalysisLayout').then((m) => ({ default: m.AnalysisLayout })))
 const AnalysisStatsPage = lazy(() => import('@/pages/AnalysisStatsPage').then((m) => ({ default: m.AnalysisStatsPage })))
 const AnalysisChartsPage = lazy(() => import('@/pages/AnalysisChartsPage').then((m) => ({ default: m.AnalysisChartsPage })))
+const NotFoundPage = lazy(() => import('@/pages/NotFoundPage').then((m) => ({ default: m.NotFoundPage })))
 
 function LegacyMusicRedirect({ kind }: { kind: 'track' | 'album' | 'artist' }) {
   const params = useParams()
@@ -90,6 +91,7 @@ function App() {
           <Route path="/settings" element={<Suspense fallback={<RouteFallback />}><SettingsPage /></Suspense>} />
           <Route path="/yearly-review" element={<Suspense fallback={<RouteFallback />}><YearlyReviewPage /></Suspense>} />
           <Route path="/account" element={<Suspense fallback={<RouteFallback />}><AccountCenterPage /></Suspense>} />
+          <Route path="*" element={<Suspense fallback={<RouteFallback />}><NotFoundPage /></Suspense>} />
         </Route>
       </Routes>
     </BrowserRouter>

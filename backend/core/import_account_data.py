@@ -199,12 +199,13 @@ def import_your_library(data_dir: str | None = None, conn=None) -> dict:
     count_tracks = 0
     for item in data.get("tracks", []):
         conn.execute(
-            "INSERT INTO saved_tracks(track_uri, track_name, artist_name, album_name) VALUES (?, ?, ?, ?)",
+            "INSERT INTO saved_tracks(track_uri, track_name, artist_name, album_name, spotify_track_id) VALUES (?, ?, ?, ?, ?)",
             (
                 item.get("uri", ""),
                 item.get("track", ""),
                 item.get("artist", ""),
                 item.get("album", ""),
+                item.get("uri", "").replace("spotify:track:", ""),
             ),
         )
         count_tracks += 1

@@ -406,8 +406,11 @@ CREATE TABLE IF NOT EXISTS saved_tracks (
     track_name TEXT,
     artist_name TEXT,
     album_name TEXT,
-    added_date TEXT
+    added_date TEXT,
+    spotify_track_id TEXT
 );
+
+CREATE INDEX IF NOT EXISTS idx_saved_tracks_spotify_track_id ON saved_tracks(spotify_track_id);
 
 CREATE TABLE IF NOT EXISTS saved_albums (
     album_uri TEXT PRIMARY KEY,

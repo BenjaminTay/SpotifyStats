@@ -1259,7 +1259,7 @@ def get_collection_insights(conn: sqlite3.Connection) -> dict:
         LEFT JOIN tracks t ON st.track_uri = t.spotify_track_uri
         LEFT JOIN albums alb ON t.album_id = alb.album_id
         LEFT JOIN spotify_track_meta stm
-            ON REPLACE(st.track_uri, 'spotify:track:', '') = stm.spotify_track_id
+            ON st.spotify_track_id = stm.spotify_track_id
         LEFT JOIN spotify_album_meta sam ON stm.spotify_album_id = sam.spotify_album_id
         WHERE COALESCE(alb.release_date, sam.release_date) IS NOT NULL
           AND COALESCE(alb.release_date, sam.release_date) != ''
@@ -1279,7 +1279,7 @@ def get_collection_insights(conn: sqlite3.Connection) -> dict:
             LEFT JOIN tracks t ON st.track_uri = t.spotify_track_uri
             LEFT JOIN albums alb ON t.album_id = alb.album_id
             LEFT JOIN spotify_track_meta stm
-                ON REPLACE(st.track_uri, 'spotify:track:', '') = stm.spotify_track_id
+                ON st.spotify_track_id = stm.spotify_track_id
             LEFT JOIN spotify_album_meta sam ON stm.spotify_album_id = sam.spotify_album_id
             WHERE COALESCE(alb.release_date, sam.release_date) IS NOT NULL
               AND COALESCE(alb.release_date, sam.release_date) != ''

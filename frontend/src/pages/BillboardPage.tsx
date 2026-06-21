@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { getDefaultMergeLevel } from '@/lib/merge-level'
 import { useBillboardWeekly } from '@/hooks/useBillboard'
@@ -15,6 +15,7 @@ import { displayName } from '@/lib/chinese'
 import type { WeeklyTrackEntry, WeeklyAlbumEntry, WeeklyArtistEntry } from '@/types/billboard'
 import { type RankChange, ChangeCell } from '@/components/shared/ChangeCell'
 import { CoverCell } from '@/components/shared/CoverCell'
+import { PaginationBar } from '@/components/shared/PaginationBar'
 
 // ── helpers ──────────────────────────────────────────────
 
@@ -59,28 +60,17 @@ const TABS: { key: TabKey; label: string }[] = [
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyEntry = any
 
-function computeRankChange(
-  entry: WeeklyTrackEntry | WeeklyAlbumEntry | WeeklyArtistEntry,
-  prevWeekEntries: (WeeklyTrackEntry | WeeklyAlbumEntry | WeeklyArtistEntry)[],
-  allWeeksEntries: (WeeklyTrackEntry | WeeklyAlbumEntry | WeeklyArtistEntry)[],
-  field: 'track_id' | 'album_name' | 'artist_name',
-): RankChange {
-  const e = entry as AnyEntry
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function computeRankChange(e: AnyEntry, prevWeekEntries: AnyEntry[], allWeeksEntries: AnyEntry[], field: string): RankChange {
   const id = e[field]
-  const prev = prevWeekEntries.find(
-    (p) => (p as AnyEntry)[field] === id,
-  )
+  const prev = prevWeekEntries.find((p) => p[field] === id)
   if (prev) {
-    const prevE = prev as AnyEntry
-    const delta = prevE.rank - e.rank
+    const delta = prev.rank - e.rank
     if (delta > 0) return { type: 'up', delta }
     if (delta < 0) return { type: 'down', delta: Math.abs(delta) }
     return { type: 'same' }
   }
-  const appearedBefore = allWeeksEntries.some(
-    (p) => (p as AnyEntry)[field] === id,
-  )
-  return appearedBefore ? { type: 're' } : { type: 'new' }
+  return allWeeksEntries.some((p) => p[field] === id) ? { type: 're' } : { type: 'new' }
 }
 
 // ── sub-components ────────────────────────────────────────
@@ -131,6 +121,15 @@ export function BillboardPage() {
   } = useBillboardWeekly(initialWeek, mergeLevel, includeCompilations)
 
   const [activeTab, setActiveTab] = useState<TabKey>(cachedTab)
+
+  // ── pagination ──
+  const PAGE_SIZE = 50
+  const [page, setPage] = useState(1)
+  const entries = (currentWeekData[activeTab] as (WeeklyTrackEntry & WeeklyAlbumEntry & WeeklyArtistEntry)[]) ?? []
+  const totalEntries = entries.length
+  const totalPages = Math.max(1, Math.ceil(totalEntries / PAGE_SIZE))
+  useEffect(() => { setPage(1) }, [activeTab, selectedWeek])
+  const safePage = Math.min(page, totalPages)
 
   // compute rank changes for current tab
   const prevWeek = data?.meta.all_weeks_desc[currentIndex + 1]
@@ -300,23 +299,14 @@ export function BillboardPage() {
                 </tr>
               </thead>
               <tbody>
-                {(currentWeekData[activeTab] as (WeeklyTrackEntry & WeeklyAlbumEntry & WeeklyArtistEntry)[]).map(
+                {entries.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE).map(
                   (entry, i) => {
-                    const idField =
-                      activeTab === 'tracks'
-                        ? 'track_id'
-                        : activeTab === 'albums'
-                          ? 'album_name'
-                          : 'artist_name'
-                    const change = computeRankChange(
-                      entry,
-                      prevWeekData as (WeeklyTrackEntry & WeeklyAlbumEntry & WeeklyArtistEntry)[],
-                      allWeeksData as (WeeklyTrackEntry & WeeklyAlbumEntry & WeeklyArtistEntry)[],
-                      idField,
-                    )
+                    const dataIndex = (safePage - 1) * PAGE_SIZE + i
+                    const idField = activeTab === 'tracks' ? 'track_id' : activeTab === 'albums' ? 'album_name' : 'artist_name'
+                    const change = computeRankChange(entry, prevWeekData as AnyEntry[], allWeeksData as AnyEntry[], idField)
                     const isNewOrRe = change.type === 'new' || change.type === 're'
-                    const isTop3 = i < 3
-                    const rankColor = i === 0 ? 'text-accent-foreground' : i === 1 ? 'text-muted-foreground' : 'text-[#C17A4E] dark:text-[#C97B6B]'
+                    const isTop3 = dataIndex < 3
+                    const rankColor = dataIndex === 0 ? 'text-accent-foreground' : dataIndex === 1 ? 'text-muted-foreground' : 'text-[#C17A4E] dark:text-[#C97B6B]'
 
                     // Navigation links
                     const detailLink =
@@ -346,7 +336,7 @@ export function BillboardPage() {
 
                     return (
                       <tr
-                        key={`${activeTab}-${i}`}
+                        key={`${activeTab}-${dataIndex}`}
                         className="transition-colors hover:bg-muted/50"
                       >
                         <td
@@ -361,7 +351,7 @@ export function BillboardPage() {
                           <ChangeCell change={change} />
                         </td>
                         <td className="pb-3.5 pt-3.5">
-                          <CoverCell index={i} isNewOrRe={isNewOrRe} coverUrl={entry.cover_url} label={displayName(chartName)} />
+                          <CoverCell index={dataIndex} isNewOrRe={isNewOrRe} coverUrl={entry.cover_url} label={displayName(chartName)} />
                         </td>
                         <td className="pb-3.5 pt-3.5">
                           <Link
@@ -426,6 +416,13 @@ export function BillboardPage() {
                 )}
               </tbody>
             </table>
+            <PaginationBar
+              page={page}
+              totalPages={totalPages}
+              totalEntries={totalEntries}
+              pageSize={PAGE_SIZE}
+              onPageChange={setPage}
+            />
           </GlassCard>
 
           {/* Footer */}

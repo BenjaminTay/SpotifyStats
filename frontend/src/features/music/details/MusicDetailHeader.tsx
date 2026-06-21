@@ -3,6 +3,7 @@ import { ArrowLeft } from 'lucide-react'
 import type { AlbumDetailResponse, ArtistDetailResponse } from '@/types/billboard'
 import { displayName } from '@/lib/chinese'
 import { cn } from '@/lib/utils'
+import { srcsetFromCoverUrl, heroCoverSizes } from '@/lib/images'
 
 export type MusicDetailTabOption<T extends string> = {
   key: T
@@ -70,6 +71,8 @@ export function ArtistDetailHero({
           <img
             src={data.cover_url}
             alt={data.artist_name}
+            srcSet={srcsetFromCoverUrl(data.cover_url)}
+            sizes={heroCoverSizes()}
             className="h-[120px] w-[120px] flex-shrink-0 rounded-full object-cover shadow-lg"
           />
         )}
@@ -141,6 +144,8 @@ export function AlbumDetailHero({
           <img
             src={data.cover_url}
             alt={data.album_name}
+            srcSet={srcsetFromCoverUrl(data.cover_url)}
+            sizes={heroCoverSizes()}
             className="h-[120px] w-[120px] flex-shrink-0 rounded-[12px] object-cover shadow-lg"
           />
         )}

@@ -1,11 +1,28 @@
 """Insights: artist tiers, marquee conversion."""
 
 import sqlite3
+from pathlib import Path
 
 import pandas as pd
 
+from backend.core.cache import ttl_cached
+from backend.core.cache_manager import register_ttl
 
-def get_artist_tiers(conn: sqlite3.Connection) -> dict:
+INSIGHTS_CACHE_TTL = 600
+
+
+def _database_file_path(conn: sqlite3.Connection):
+    rows = conn.execute("PRAGMA database_list").fetchall()
+    for row in rows:
+        if row[1] != "main":
+            continue
+        if not row[2]:
+            return None
+        return str(Path(row[2]).resolve())
+    return None
+
+
+def _build_artist_tiers(conn: sqlite3.Connection) -> dict:
     """Artist tier classification based on play counts."""
     try:
         artist_df = pd.read_sql_query(
@@ -71,7 +88,24 @@ def get_artist_tiers(conn: sqlite3.Connection) -> dict:
     }
 
 
-def get_marquee_conversion(conn: sqlite3.Connection) -> dict:
+@ttl_cached(INSIGHTS_CACHE_TTL, namespace="insights")
+def _get_artist_tiers_cached(db_path: str) -> dict:
+    conn = sqlite3.connect(db_path, timeout=30, check_same_thread=False)
+    conn.row_factory = sqlite3.Row
+    try:
+        return _build_artist_tiers(conn)
+    finally:
+        conn.close()
+
+
+def get_artist_tiers(conn: sqlite3.Connection) -> dict:
+    db_path = _database_file_path(conn)
+    if db_path is None:
+        return _build_artist_tiers(conn)
+    return _get_artist_tiers_cached(db_path)
+
+
+def _build_marquee_conversion(conn: sqlite3.Connection) -> dict:
     """Marquee impression to actual plays conversion."""
     try:
         df = pd.read_sql_query(
@@ -125,3 +159,24 @@ def get_marquee_conversion(conn: sqlite3.Connection) -> dict:
         "empty": False,
         "conversions": conversions,
     }
+
+
+@ttl_cached(INSIGHTS_CACHE_TTL, namespace="insights")
+def _get_marquee_conversion_cached(db_path: str) -> dict:
+    conn = sqlite3.connect(db_path, timeout=30, check_same_thread=False)
+    conn.row_factory = sqlite3.Row
+    try:
+        return _build_marquee_conversion(conn)
+    finally:
+        conn.close()
+
+
+def get_marquee_conversion(conn: sqlite3.Connection) -> dict:
+    db_path = _database_file_path(conn)
+    if db_path is None:
+        return _build_marquee_conversion(conn)
+    return _get_marquee_conversion_cached(db_path)
+
+
+register_ttl("insights", "artist_tiers", _get_artist_tiers_cached)
+register_ttl("insights", "marquee_conversion", _get_marquee_conversion_cached)

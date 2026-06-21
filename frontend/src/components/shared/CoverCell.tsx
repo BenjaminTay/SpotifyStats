@@ -1,4 +1,5 @@
 import { memo, useState, useEffect } from 'react'
+import { coverSizes, srcsetFromCoverUrl } from '@/lib/images'
 
 const COVER_COLORS = [
   'oklch(0.563 0.18 28.2)',
@@ -32,6 +33,8 @@ function CoverCellInner({
         <img
           src={coverUrl}
           alt={coverAlt}
+          srcSet={srcsetFromCoverUrl(coverUrl)}
+          sizes={coverSizes()}
           className={`${className} rounded-[8px] object-cover`}
           onError={() => setImgError(true)}
           loading="lazy"
@@ -51,6 +54,8 @@ function CoverCellInner({
       <img
         src={coverUrl}
         alt={coverAlt}
+        srcSet={srcsetFromCoverUrl(coverUrl)}
+        sizes={coverSizes()}
         className={`${className} rounded-[8px] object-cover`}
         onError={() => setImgError(true)}
         loading="lazy"
