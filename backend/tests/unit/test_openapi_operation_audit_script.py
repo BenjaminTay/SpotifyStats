@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -15,7 +16,7 @@ def test_openapi_operation_audit_exposes_reusable_cli():
     script = ROOT / "scripts" / "openapi_operation_audit.py"
 
     result = subprocess.run(
-        [".venv/bin/python", str(script), "--help"],
+        [sys.executable, str(script), "--help"],
         cwd=ROOT,
         check=False,
         text=True,

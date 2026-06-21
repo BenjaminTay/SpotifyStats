@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -16,7 +17,7 @@ def test_quickstart_smoke_script_exposes_reusable_cli():
     script = ROOT / "scripts" / "quickstart_smoke.py"
 
     result = subprocess.run(
-        [".venv/bin/python", str(script), "--help"],
+        [sys.executable, str(script), "--help"],
         cwd=ROOT,
         check=False,
         text=True,
@@ -44,7 +45,7 @@ def test_quickstart_smoke_constructs_documented_startup_commands():
     assert DEFAULT_FRONTEND_URL == "http://localhost:5173"
 
     assert build_backend_command("http://127.0.0.1:8000") == [
-        str(ROOT / ".venv" / "bin" / "python"),
+        sys.executable,
         "-m",
         "uvicorn",
         "backend.main:app",

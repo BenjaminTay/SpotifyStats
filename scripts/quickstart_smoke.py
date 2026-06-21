@@ -77,7 +77,7 @@ def _url_host_port(url: str) -> tuple[str, int]:
 
 def build_backend_command(backend_url: str) -> list[str]:
     host, port = _url_host_port(backend_url)
-    python_bin = ROOT / ".venv" / "bin" / "python"
+    python_bin = Path(sys.executable)
     return [
         str(python_bin),
         "-m",
