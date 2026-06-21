@@ -589,6 +589,7 @@ def get_leaderboard(
                 df_agg["_agg_id"] = df_agg["track_id"].map(key_map["track_agg_id"])
                 df_agg["_agg_name"] = df_agg["track_id"].map(key_map["track_agg_name"])
                 mask = df_agg["_agg_id"].notna()
+                df_agg["track_id"] = df_agg["track_id"].astype("int64", copy=False)
                 df_agg.loc[mask, "track_id"] = df_agg.loc[mask, "_agg_id"].astype(int)
                 df_agg.loc[mask, "track_name"] = df_agg.loc[mask, "_agg_name"]
                 df_agg = df_agg.drop(columns=["_agg_id", "_agg_name"])

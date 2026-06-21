@@ -13,8 +13,8 @@
 
 ### 验证
 
-- Backend full 692、unit 320、contract 172、frontend 134、完整 fullstack verification PASS
-- ngrok agent 因本机网络/DNS/证书出口无法建立固定域名 tunnel，真实外部 Spotify 授权仍需可用 tunnel
+- Backend full 694、unit 322、contract 172、frontend 134、完整 fullstack verification PASS
+- 2026-06-21 复核：固定域名 ngrok HTTPS tunnel 已可建立，外部 health、Spotify login URL、invalid-state callback 回跳和 auth data 入口通过；真实 Spotify 用户 consent 点击仍需人工确认
 
 详见 [`docs/verification/2026-06-20-fix-branch-follow-up.md`](verification/2026-06-20-fix-branch-follow-up.md)。
 
@@ -118,4 +118,4 @@ Phase 5 目标是收紧产品线到可持续迭代状态。已完成：
 
 **跨浏览器 smoke**：core-interactions 覆盖同一组 6 个核心交互；dev server 完整 route-marker + core-interactions 与生产 `vite preview` core-interactions 均已在 Chromium/Firefox/WebKit PASS 3/3。
 
-**测试基线**：backend full 692 / unit 320 / contract 172 / frontend 134。
+**测试基线**：backend full 694 / unit 322 / contract 172 / frontend 134。

@@ -7,7 +7,7 @@ import { join } from 'node:path'
 import net from 'node:net'
 import { findChrome } from './lib/chrome_executable.mjs'
 
-const DEFAULT_BASE_URL = 'http://127.0.0.1:5173'
+const DEFAULT_BASE_URL = 'http://localhost:5173'
 const DEFAULT_WAIT_MS = 5000
 const DEFAULT_MAX_SCROLL_OVERFLOW = 0
 const REWRITE_PATH_PREFIXES = ['/api', '/covers']
@@ -45,13 +45,13 @@ const DEFAULT_ROUTES = [
 
 const ROUTE_READY_MARKERS = {
   '/': ['DASHBOARD /', '总播放次数'],
-  '/analysis': ['PLAYBACK / ANALYSIS', '总体播放统计'],
-  '/analysis/stats': ['PLAYBACK / ANALYSIS', '总体播放统计'],
+  '/analysis': ['PERSONAL STATS', '总体播放统计'],
+  '/analysis/stats': ['PERSONAL STATS', '总体播放统计'],
   '/analysis/charts': ['PERSONAL CHARTS', '个人排行榜'],
-  '/analysis/timeline': ['PLAYBACK / ANALYSIS', '总体播放统计'],
+  '/analysis/timeline': ['PERSONAL STATS', '总体播放统计'],
   '/analysis/leaderboard': ['PERSONAL CHARTS', '个人排行榜'],
-  '/analysis/behavior': ['PLAYBACK / ANALYSIS', '总体播放统计'],
-  '/analysis/listening-hours': ['PLAYBACK / ANALYSIS', '总体播放统计'],
+  '/analysis/behavior': ['PERSONAL STATS', '总体播放统计'],
+  '/analysis/listening-hours': ['PERSONAL STATS', '总体播放统计'],
   '/analysis/artists': ['PERSONAL CHARTS', '个人排行榜'],
   '/yearly-review': ['YEARLY / REVIEW', '听歌人格'],
   '/billboard': ['CHART / WEEKLY', 'Billboard 周榜'],

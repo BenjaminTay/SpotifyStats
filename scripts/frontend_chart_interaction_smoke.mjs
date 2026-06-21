@@ -7,7 +7,7 @@ import { join } from 'node:path'
 import net from 'node:net'
 import { findChrome } from './lib/chrome_executable.mjs'
 
-const DEFAULT_BASE_URL = 'http://127.0.0.1:5173'
+const DEFAULT_BASE_URL = 'http://localhost:5173'
 const DEFAULT_WAIT_MS = 12000
 const DEFAULT_ACCOUNT_CHART_WAIT_MS = 12000
 const DEFAULT_DATAZOOM_WAIT_MS = 12000

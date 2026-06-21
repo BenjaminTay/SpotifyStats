@@ -7,7 +7,7 @@ import { join } from 'node:path'
 import net from 'node:net'
 import { findChrome } from './lib/chrome_executable.mjs'
 
-const DEFAULT_BASE_URL = 'http://127.0.0.1:5173'
+const DEFAULT_BASE_URL = 'http://localhost:5173'
 const DEFAULT_WAIT_MS = 8000
 const DEFAULT_SCENARIOS = [
   'records-mini-rank',
@@ -597,7 +597,7 @@ async function exercisePaginatedList({
     afterRows = await waitForCondition(
       async () => {
         const rows = await getRowWindow(client, { rowSelector, focusText, pagePattern })
-        return rows.signature !== beforeRows.signature ? rows : null
+        return rows.count > 0 && rows.signature !== beforeRows.signature ? rows : null
       },
       waitMs,
       'Visible row window did not change after pagination click',

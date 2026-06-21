@@ -18,7 +18,7 @@ from urllib.request import Request, urlopen
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_BACKEND_URL = "http://127.0.0.1:8000"
-DEFAULT_FRONTEND_URL = "http://127.0.0.1:5173"
+DEFAULT_FRONTEND_URL = "http://localhost:5173"
 
 
 @dataclass

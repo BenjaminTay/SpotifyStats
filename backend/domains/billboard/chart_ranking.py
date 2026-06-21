@@ -83,6 +83,7 @@ def _apply_track_groups(df: pd.DataFrame, merge_level: int = 2) -> None:
         df["_track_agg_id"] = df["track_id"].map(key_map["track_agg_id"])
         df["_track_agg_name"] = df["track_id"].map(key_map["track_agg_name"])
         mask = df["_track_agg_id"].notna()
+        df["track_id"] = df["track_id"].astype("int64", copy=False)
         df.loc[mask, "track_id"] = df.loc[mask, "_track_agg_id"].astype(int)
         df.loc[mask, "track_name"] = df.loc[mask, "_track_agg_name"]
 

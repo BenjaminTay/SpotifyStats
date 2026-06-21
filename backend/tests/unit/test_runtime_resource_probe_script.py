@@ -36,8 +36,9 @@ def test_runtime_resource_probe_exposes_reusable_cli():
 
 
 def test_runtime_resource_probe_extracts_port_from_urls():
-    from scripts.runtime_resource_probe import url_port
+    from scripts.runtime_resource_probe import DEFAULT_FRONTEND_URL, url_port
 
+    assert DEFAULT_FRONTEND_URL == "http://localhost:5173"
     assert url_port("http://127.0.0.1:8000") == 8000
     assert url_port("http://localhost:5173/path") == 5173
 

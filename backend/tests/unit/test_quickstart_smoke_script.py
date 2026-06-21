@@ -34,7 +34,14 @@ def test_quickstart_smoke_script_exposes_reusable_cli():
 
 
 def test_quickstart_smoke_constructs_documented_startup_commands():
-    from scripts.quickstart_smoke import build_backend_command, build_frontend_command, default_env
+    from scripts.quickstart_smoke import (
+        DEFAULT_FRONTEND_URL,
+        build_backend_command,
+        build_frontend_command,
+        default_env,
+    )
+
+    assert DEFAULT_FRONTEND_URL == "http://localhost:5173"
 
     assert build_backend_command("http://127.0.0.1:8000") == [
         str(ROOT / ".venv" / "bin" / "python"),
@@ -53,6 +60,17 @@ def test_quickstart_smoke_constructs_documented_startup_commands():
         "--",
         "--host",
         "127.0.0.1",
+        "--port",
+        "5173",
+        "--strictPort",
+    ]
+    assert build_frontend_command(DEFAULT_FRONTEND_URL) == [
+        "npm",
+        "run",
+        "dev",
+        "--",
+        "--host",
+        "localhost",
         "--port",
         "5173",
         "--strictPort",

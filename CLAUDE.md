@@ -8,7 +8,7 @@ Spotify Extended Streaming History 数据分析 Web 应用 — **FastAPI 后端 
 
 UI：「编辑风 × 液态玻璃」— Playfair Display + Inter，毛玻璃，日/夜双皮肤。
 
-**当前状态**：Phase 5 产品化收口完成。后端 692 / 前端 134 测试 PASS，全栈 smoke (48 route + 6 interaction + 3 chart + 36 control + 6 long-list + 3 cross-browser) 全部通过，OpenAPI 134 op / 59 parameter boundary 0 unaccounted。开发台账与验证细节见 `AGENTS.md`、`docs/productization/`、`docs/verification/` 和 `docs/CHANGELOG.md`。
+**当前状态**：Phase 5 产品化收口完成。后端 694 / 前端 134 测试 PASS，全栈 smoke (48 route + 6 interaction + 3 chart + 36 control + 6 long-list + 3 cross-browser) 全部通过，OpenAPI 134 op / 59 parameter boundary 0 unaccounted。开发台账与验证细节见 `AGENTS.md`、`docs/productization/`、`docs/verification/` 和 `docs/CHANGELOG.md`。
 
 ## 常用命令
 
@@ -38,10 +38,10 @@ pre-commit run --all-files
 sh scripts/phase5_check.sh
 .venv/bin/python scripts/ci_baseline_parity.py
 
-# 全栈非破坏性验收矩阵（需后端 8000 + 前端 5173；可选 --preview-url/--web-vitals/--resource-snapshot）
+# 全栈非破坏性验收矩阵（需后端 8000 + 前端 5173；资源数量/体积预算需同时启动 preview 4173）
 # 跨浏览器 smoke 会自动检测可 import playwright.sync_api 的 Python，也可显式设置 PYTHON_PLAYWRIGHT
-sh scripts/fullstack_verification_check.sh --backend-url http://127.0.0.1:8000 --frontend-url http://127.0.0.1:5173
-sh scripts/fullstack_verification_check.sh --backend-url http://127.0.0.1:8000 --frontend-url http://127.0.0.1:5173 --quickstart-preflight --quickstart-json /tmp/spotify_quickstart_timing.json --web-vitals --resource-snapshot --resource-max-total-rss-mb 1200 --resource-max-total-cpu-percent 200 --web-vitals-max-lcp-ms 3000 --web-vitals-max-cls 0.01 --web-vitals-max-tbt-ms 100 --web-vitals-max-resource-count 120 --web-vitals-max-encoded-resource-kb 11000 --web-vitals-max-scroll-overflow-px 0
+sh scripts/fullstack_verification_check.sh --backend-url http://127.0.0.1:8000 --frontend-url http://localhost:5173
+sh scripts/fullstack_verification_check.sh --backend-url http://127.0.0.1:8000 --frontend-url http://localhost:5173 --preview-url http://127.0.0.1:4173 --preview-api-url http://127.0.0.1:8000 --quickstart-preflight --quickstart-json /tmp/spotify_quickstart_timing.json --web-vitals --resource-snapshot --resource-max-total-rss-mb 1200 --resource-max-total-cpu-percent 200 --web-vitals-max-lcp-ms 3000 --web-vitals-max-cls 0.01 --web-vitals-max-tbt-ms 100 --web-vitals-max-resource-count 120 --web-vitals-max-encoded-resource-kb 11000 --web-vitals-max-scroll-overflow-px 0
 
 # 一键启动冒烟（自动启动/复用后端 8000 + 前端 5173，验证 health/docs/前端壳/API 代理后清理，并输出时序 JSON）
 .venv/bin/python scripts/quickstart_smoke.py --json-output /tmp/spotify_quickstart_timing.json
@@ -62,19 +62,19 @@ sh scripts/fullstack_verification_check.sh --backend-url http://127.0.0.1:8000 -
 .venv/bin/python scripts/benchmark_api.py --base-url http://127.0.0.1:8000 --runs 3 --slow-ms 500 --json-output /tmp/spotify_api_benchmark.json
 
 # 本地服务 CPU/RSS 快照（需后端 8000 + 前端 5173 已启动）
-.venv/bin/python scripts/runtime_resource_probe.py --backend-url http://127.0.0.1:8000 --frontend-url http://127.0.0.1:5173 --json-output /tmp/spotify_runtime_resources.json --max-total-rss-mb 1200 --max-total-cpu-percent 200
+.venv/bin/python scripts/runtime_resource_probe.py --backend-url http://127.0.0.1:8000 --frontend-url http://localhost:5173 --json-output /tmp/spotify_runtime_resources.json --max-total-rss-mb 1200 --max-total-cpu-percent 200
 
 # 前端 route/interaction/cross-browser smoke + Web Vitals lab 采样（需后端 8000 + 前端 5173）
 node scripts/frontend_route_smoke.mjs --viewport both --max-scroll-overflow 0 --fail-on-console-warning --include-detail-routes
-node scripts/frontend_interaction_smoke.mjs --base-url http://127.0.0.1:5173
+node scripts/frontend_interaction_smoke.mjs --base-url http://localhost:5173
 node scripts/frontend_interaction_smoke.mjs --base-url http://127.0.0.1:4173 --api-base-url http://127.0.0.1:8000
-node scripts/frontend_chart_interaction_smoke.mjs --base-url http://127.0.0.1:5173
+node scripts/frontend_chart_interaction_smoke.mjs --base-url http://localhost:5173
 node scripts/frontend_chart_interaction_smoke.mjs --base-url http://127.0.0.1:4173 --api-base-url http://127.0.0.1:8000
-node scripts/frontend_control_inventory_smoke.mjs --base-url http://127.0.0.1:5173 --viewport both --include-detail-routes
+node scripts/frontend_control_inventory_smoke.mjs --base-url http://localhost:5173 --viewport both --include-detail-routes
 node scripts/frontend_control_inventory_smoke.mjs --base-url http://127.0.0.1:4173 --api-base-url http://127.0.0.1:8000 --viewport both --include-detail-routes
-node scripts/frontend_long_list_smoke.mjs --base-url http://127.0.0.1:5173
+node scripts/frontend_long_list_smoke.mjs --base-url http://localhost:5173
 node scripts/frontend_long_list_smoke.mjs --base-url http://127.0.0.1:4173 --api-base-url http://127.0.0.1:8000
-node scripts/frontend_cross_browser_smoke.mjs --base-url http://127.0.0.1:5173 --include-detail-routes
+node scripts/frontend_cross_browser_smoke.mjs --base-url http://localhost:5173 --include-detail-routes
 node scripts/frontend_cross_browser_smoke.mjs --base-url http://127.0.0.1:4173 --api-base-url http://127.0.0.1:8000 --include-detail-routes
 node scripts/frontend_web_vitals_probe.mjs --routes /,/analysis/stats,/analysis/charts,/billboard/number-ones,/account,/settings --viewport both --wait-ms 5000
 node scripts/frontend_web_vitals_probe.mjs --base-url http://127.0.0.1:4173 --api-base-url http://127.0.0.1:8000 --routes /,/analysis/stats,/analysis/charts,/billboard/number-ones,/account,/settings --viewport both --wait-ms 5000

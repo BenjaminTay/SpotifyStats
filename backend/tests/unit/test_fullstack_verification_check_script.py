@@ -42,11 +42,13 @@ def test_fullstack_verification_check_script_exposes_reusable_cli():
     assert "--resource-snapshot-json" in result.stdout
     assert "--resource-max-total-rss-mb" in result.stdout
     assert "--resource-max-total-cpu-percent" in result.stdout
+    assert "default http://localhost:5173" in result.stdout
 
 
 def test_fullstack_verification_check_script_covers_delivery_matrix():
     source = (ROOT / "scripts" / "fullstack_verification_check.sh").read_text(encoding="utf-8")
 
+    assert "FRONTEND_URL=${FRONTEND_URL:-http://localhost:5173}" in source
     assert "pytest backend/tests/ -q" in source
     assert "pre-commit run --all-files" in source
     assert "scripts/phase5_check.sh" in source
@@ -193,6 +195,21 @@ def test_fullstack_verification_check_forwards_web_vitals_budgets():
     assert "--max-encoded-resource-kb" in source
     assert "--max-scroll-overflow-px" in source
     assert "run_web_vitals_probe" in source
+
+
+def test_fullstack_verification_check_applies_resource_budgets_only_to_preview():
+    source = (ROOT / "scripts" / "fullstack_verification_check.sh").read_text(encoding="utf-8")
+
+    assert 'run_web_vitals_probe "$FRONTEND_URL" "" 0' in source
+    assert 'run_web_vitals_probe "$PREVIEW_URL" "$PREVIEW_API_URL" 1' in source
+    assert "include_resource_budgets=${3:-0}" in source
+    assert (
+        '[ "$include_resource_budgets" = "1" ] && [ -n "$WEB_VITALS_MAX_RESOURCE_COUNT" ]'
+    ) in source
+    assert (
+        '[ "$include_resource_budgets" = "1" ] && [ -n "$WEB_VITALS_MAX_ENCODED_RESOURCE_KB" ]'
+    ) in source
+    assert "Skipping resource count/encoded resource Web Vitals budgets for dev server" in source
 
 
 def test_fullstack_verification_check_can_capture_runtime_resource_snapshot():

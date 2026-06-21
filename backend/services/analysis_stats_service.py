@@ -499,6 +499,7 @@ def _chart_agg(
                 df_agg["_track_agg_id"] = df_agg["track_id"].map(key_map["track_agg_id"])
                 df_agg["_track_agg_name"] = df_agg["track_id"].map(key_map["track_agg_name"])
                 mask = df_agg["_track_agg_id"].notna()
+                df_agg["track_id"] = df_agg["track_id"].astype("int64", copy=False)
                 df_agg.loc[mask, "track_id"] = df_agg.loc[mask, "_track_agg_id"].astype(int)
                 df_agg.loc[mask, "track_name"] = df_agg.loc[mask, "_track_agg_name"]
                 df_agg = df_agg.drop(columns=["_track_agg_id", "_track_agg_name"])

@@ -11,6 +11,20 @@ pytestmark = pytest.mark.unit
 ROOT = Path(__file__).resolve().parents[3]
 
 
+def test_frontend_dev_smoke_scripts_default_to_localhost():
+    for script_name in [
+        "frontend_route_smoke.mjs",
+        "frontend_interaction_smoke.mjs",
+        "frontend_chart_interaction_smoke.mjs",
+        "frontend_control_inventory_smoke.mjs",
+        "frontend_long_list_smoke.mjs",
+        "frontend_cross_browser_smoke.mjs",
+        "frontend_web_vitals_probe.mjs",
+    ]:
+        source = (ROOT / "scripts" / script_name).read_text(encoding="utf-8")
+        assert "const DEFAULT_BASE_URL = 'http://localhost:5173'" in source
+
+
 def test_frontend_route_smoke_script_exposes_reusable_cli():
     script = ROOT / "scripts" / "frontend_route_smoke.mjs"
 

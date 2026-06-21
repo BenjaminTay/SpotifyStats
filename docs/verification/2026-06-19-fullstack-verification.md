@@ -4,13 +4,13 @@
 
 ## 结论
 
-- 2026-06-21 fix 分支最终复验通过：`sh scripts/fullstack_verification_check.sh --backend-url http://127.0.0.1:8000 --frontend-url http://127.0.0.1:5173 --quickstart-preflight --quickstart-json /tmp/spotify_quickstart_timing_fix_branch_final5.json --benchmark-json /tmp/spotify_api_benchmark_fix_branch_final5.json --openapi-operation-audit-json /tmp/spotify_openapi_operation_audit_fix_branch_final5.json --openapi-parameter-boundary-audit-json /tmp/spotify_openapi_parameter_boundary_audit_fix_branch_final5.json` 完整跑通，最终输出 `Full-stack verification matrix completed.`；本轮 quickstart 复用已运行服务总耗时 `31.6ms`，backend health `2.2ms`，docs `2.3ms`，frontend shell `1.0ms`，frontend API proxy `8.5ms`。
-- 2026-06-21 fix 分支测试基线更新：后端全量 `692 passed, 2 warnings`；Phase 5 unit `320 passed`、contract `172 passed`；前端 vitest `134 passed`；pre-commit ruff/format/mypy/detect-secrets 全部通过；OpenAPI operation audit `134 operations / 0 unaccounted`；OpenAPI parameter boundary audit `59 obligations / 0 unaccounted`；API smoke `96/96`；API boundary `85/85`。
+- 2026-06-21 localhost/fullstack 复验通过：`sh scripts/fullstack_verification_check.sh --backend-url http://127.0.0.1:8000 --frontend-url http://localhost:5173 --preview-url http://127.0.0.1:4173 --preview-api-url http://127.0.0.1:8000 --quickstart-preflight --quickstart-json /tmp/spotify_quickstart_timing_localhost_fullstack2.json --benchmark-json /tmp/spotify_api_benchmark_localhost_fullstack2.json --openapi-operation-audit-json /tmp/spotify_openapi_operation_audit_localhost_fullstack2.json --openapi-parameter-boundary-audit-json /tmp/spotify_openapi_parameter_boundary_audit_localhost_fullstack2.json --web-vitals --resource-snapshot --resource-snapshot-json /tmp/spotify_runtime_resources_localhost_fullstack2.json --resource-max-total-rss-mb 1400 --resource-max-total-cpu-percent 220 --web-vitals-max-lcp-ms 3000 --web-vitals-max-cls 0.01 --web-vitals-max-tbt-ms 100 --web-vitals-max-resource-count 120 --web-vitals-max-encoded-resource-kb 11000 --web-vitals-max-scroll-overflow-px 0 --skip-cross-browser` 完整跑通，最终输出 `Full-stack verification matrix completed.`；本轮 quickstart 复用已运行服务总耗时 `52.5ms`，backend health `2.4ms`，docs `2.1ms`，frontend shell `3.1ms`，frontend API proxy `6.5ms`。
+- 2026-06-21 fix 分支测试基线更新：后端全量 `694 passed, 1 warning`；Phase 5 unit `322 passed`、contract `172 passed`；前端 vitest `134 passed`；pre-commit ruff/format/mypy/detect-secrets 全部通过；OpenAPI operation audit `134 operations / 0 unaccounted`；OpenAPI parameter boundary audit `59 obligations / 0 unaccounted`；API smoke `96/96`；API boundary `85/85`。
 - 2026-06-21 fix 分支前端验收更新：route smoke `48/48`、interaction `6/6`、chart interaction `3/3`、control inventory `36` 组合 / `1778` 控件 / `0` violation、long-list `6/6`、cross-browser Chromium/Firefox/WebKit `PASS 3/3`；所有前端 smoke 均为 `0` console error/warning、`0` page error、`0px` 页面级横向溢出。
 - 2026-06-21 fix 分支 API 性能更新：8 个核心端点 benchmark `slow_count=0`，hot P95 均低于 `500ms`；代表值为 `/api/billboard/data` hot P95 `0.32s`、`/api/billboard/weekly` `0.14s`、`/api/billboard/all-time` `0.21s`、`/api/dashboard/full` `0.17s`。
 - 2026-06-21 修复 smoke 浏览器稳定性：用户提供的 Google Chrome crash report 指向 Node 拉起系统 Chrome 后在 macOS `TransformProcessType`/`RegisterApplication` 阶段 abort；共享 Chrome helper 现优先使用 Playwright `chromium_headless_shell-*`，再回退 Chrome for Testing / 系统浏览器，避免 chart smoke 因完整 Chrome for Testing 不挂载 ECharts canvas 或系统 Chrome fallback 崩溃而产生假阴性。Chart smoke 同时新增 canvas/resource 失败现场诊断。
 - 2026-06-21 修复长列表 smoke 稳定性：RecentPlays 分页在手写 CDP 鼠标事件中会因 `scrollIntoView` 后立即点击导致第 2 页按钮未触发；分页点击现在等待布局稳定并发送带 `buttons` 状态的真实 CDP mouse 事件，`recent-plays` 单场景从第 `1/1236` 页稳定切到第 `2/1236` 页，完整 long-list `6/6` 通过。
-- 2026-06-21 ngrok 阻塞复核更新：直连时系统 DNS 将 `update.ngrok-agent.com` / `tunnel.us.ngrok.com` 解析到异常 `27.124.*` / `223.26.*` 地址，TLS 证书为 IP CN 而不是 ngrok 域名；代理 `127.0.0.1:7897` 可拿到正确 `update.ngrok-agent.com` Let's Encrypt 证书，但 ngrok agent 通过 HTTP/S proxy 会被免费层拒绝为 `ERR_NGROK_9009`。追加 CLI/config 复核确认 `agent.update_check: false` 可跳过 updater 检查但 session 仍失败在 CRL 获取/解析，`agent.connect_url` 指向默认 ingress 也不能绕过，`ngrok diagnose` 直连卡在 name resolution、代理诊断返回 TCP/connectivity 失败。因此真实 ngrok OAuth 闭环仍需先修复系统 DNS/网络出口或使用允许 ngrok agent 直连的网络环境。
+- 2026-06-21 ngrok 复核更新：此前固定域名 tunnel 阻塞在本机网络/DNS/证书/CRL 出口；当前 `ngrok http --url=stuffing-nebula-tamer.ngrok-free.dev 5173` 已可建立 HTTPS tunnel，本地 4040 API 返回 `public_url=https://stuffing-nebula-tamer.ngrok-free.dev`。外部 `/api/health` 200、Spotify login URL 使用 ngrok callback 且包含 state/code_challenge、invalid-state callback 307 回跳 ngrok settings、Spotify auth data 入口 200。尚未执行需要人工点击的 Spotify 用户登录/同意授权闭环。
 - 后端全量测试通过：`685 passed, 2 warnings`
 - 前端测试与构建通过：`131 passed`，`npm run build` 通过
 - Phase 5 最低验证矩阵通过：unit `307 passed`，contract `170 passed`，前端 `131 passed`，`npm run build` 通过
@@ -241,7 +241,7 @@ Billboard summaries 补充实现：`compute_artist_track_counts()` 与 `compute_
 .venv/bin/python scripts/openapi_operation_audit.py --json-output /tmp/spotify_openapi_operation_audit.json
 .venv/bin/python scripts/openapi_parameter_boundary_audit.py --json-output /tmp/spotify_openapi_parameter_boundary_audit.json
 .venv/bin/python scripts/benchmark_api.py --base-url http://127.0.0.1:8000 --runs 3 --slow-ms 500 --json-output /tmp/spotify_api_benchmark.json
-.venv/bin/python scripts/runtime_resource_probe.py --backend-url http://127.0.0.1:8000 --frontend-url http://127.0.0.1:5173 --json-output /tmp/spotify_runtime_resources.json --max-total-rss-mb 1200 --max-total-cpu-percent 200
+.venv/bin/python scripts/runtime_resource_probe.py --backend-url http://127.0.0.1:8000 --frontend-url http://localhost:5173 --json-output /tmp/spotify_runtime_resources.json --max-total-rss-mb 1200 --max-total-cpu-percent 200
 .venv/bin/ruff check backend/
 .venv/bin/ruff format --check backend/
 cd frontend && npm test
@@ -249,8 +249,8 @@ cd frontend && npm test -- src/tests/phase5-architecture.test.ts
 cd frontend && npm run build
 cd frontend && npm run generate-types -- http://127.0.0.1:8000/openapi.json
 sh scripts/phase5_check.sh
-sh scripts/fullstack_verification_check.sh --backend-url http://127.0.0.1:8000 --frontend-url http://127.0.0.1:5173
-sh scripts/fullstack_verification_check.sh --backend-url http://127.0.0.1:8000 --frontend-url http://127.0.0.1:5173 --preview-url http://127.0.0.1:4173 --preview-api-url http://127.0.0.1:8000 --quickstart-preflight --quickstart-json /tmp/spotify_quickstart_timing.json --web-vitals --resource-snapshot --resource-max-total-rss-mb 1200 --resource-max-total-cpu-percent 200 --web-vitals-max-lcp-ms 3000 --web-vitals-max-cls 0.01 --web-vitals-max-tbt-ms 100 --web-vitals-max-resource-count 120 --web-vitals-max-encoded-resource-kb 11000 --web-vitals-max-scroll-overflow-px 0
+sh scripts/fullstack_verification_check.sh --backend-url http://127.0.0.1:8000 --frontend-url http://localhost:5173
+sh scripts/fullstack_verification_check.sh --backend-url http://127.0.0.1:8000 --frontend-url http://localhost:5173 --preview-url http://127.0.0.1:4173 --preview-api-url http://127.0.0.1:8000 --quickstart-preflight --quickstart-json /tmp/spotify_quickstart_timing.json --web-vitals --resource-snapshot --resource-max-total-rss-mb 1200 --resource-max-total-cpu-percent 200 --web-vitals-max-lcp-ms 3000 --web-vitals-max-cls 0.01 --web-vitals-max-tbt-ms 100 --web-vitals-max-resource-count 120 --web-vitals-max-encoded-resource-kb 11000 --web-vitals-max-scroll-overflow-px 0
 .venv/bin/python scripts/ci_baseline_parity.py
 .venv/bin/pre-commit run --all-files
 ```
@@ -304,20 +304,20 @@ cd frontend && npm test -- src/tests/phase5-architecture.test.ts -t "account che
 cd frontend && ANALYZE=true npm run build
 node scripts/frontend_route_smoke.mjs --viewport both --max-scroll-overflow 0 --fail-on-console-warning --include-detail-routes
 node scripts/frontend_route_smoke.mjs --base-url http://127.0.0.1:4173 --api-base-url http://127.0.0.1:8000 --viewport both --max-scroll-overflow 0 --fail-on-console-warning --include-detail-routes
-node scripts/frontend_interaction_smoke.mjs --base-url http://127.0.0.1:5173
+node scripts/frontend_interaction_smoke.mjs --base-url http://localhost:5173
 node scripts/frontend_interaction_smoke.mjs --base-url http://127.0.0.1:4173 --api-base-url http://127.0.0.1:8000
-node scripts/frontend_chart_interaction_smoke.mjs --base-url http://127.0.0.1:5173
+node scripts/frontend_chart_interaction_smoke.mjs --base-url http://localhost:5173
 node scripts/frontend_chart_interaction_smoke.mjs --base-url http://127.0.0.1:4173 --api-base-url http://127.0.0.1:8000
-node scripts/frontend_control_inventory_smoke.mjs --base-url http://127.0.0.1:5173 --viewport both --include-detail-routes
+node scripts/frontend_control_inventory_smoke.mjs --base-url http://localhost:5173 --viewport both --include-detail-routes
 node scripts/frontend_control_inventory_smoke.mjs --base-url http://127.0.0.1:4173 --api-base-url http://127.0.0.1:8000 --viewport both --include-detail-routes
-node scripts/frontend_cross_browser_smoke.mjs --base-url http://127.0.0.1:5173 --include-detail-routes
+node scripts/frontend_cross_browser_smoke.mjs --base-url http://localhost:5173 --include-detail-routes
 node scripts/frontend_cross_browser_smoke.mjs --base-url http://127.0.0.1:4173 --api-base-url http://127.0.0.1:8000 --include-detail-routes
-node scripts/frontend_long_list_smoke.mjs --base-url http://127.0.0.1:5173
+node scripts/frontend_long_list_smoke.mjs --base-url http://localhost:5173
 node scripts/frontend_long_list_smoke.mjs --base-url http://127.0.0.1:4173 --api-base-url http://127.0.0.1:8000
 node scripts/frontend_web_vitals_probe.mjs --routes /,/analysis/stats,/analysis/charts,/billboard/number-ones,/account,/settings --viewport both --wait-ms 5000
 node scripts/frontend_web_vitals_probe.mjs --base-url http://127.0.0.1:4173 --api-base-url http://127.0.0.1:8000 --routes /,/analysis/stats,/analysis/charts,/billboard/number-ones,/account,/settings --viewport both --wait-ms 5000
-node scripts/frontend_web_vitals_probe.mjs --routes /,/analysis/stats,/analysis/charts,/billboard/number-ones,/account,/settings --viewport both --wait-ms 5000 --max-lcp-ms 3000 --max-cls 0.01 --max-tbt-ms 100 --max-resource-count 120 --max-encoded-resource-kb 11000 --max-scroll-overflow-px 0
-sh scripts/fullstack_verification_check.sh --backend-url http://127.0.0.1:8000 --frontend-url http://127.0.0.1:5173 --quickstart-preflight --quickstart-json /tmp/spotify_quickstart_timing.json --web-vitals --resource-snapshot --resource-max-total-rss-mb 1200 --resource-max-total-cpu-percent 200 --web-vitals-max-lcp-ms 3000 --web-vitals-max-cls 0.01 --web-vitals-max-tbt-ms 100 --web-vitals-max-resource-count 120 --web-vitals-max-encoded-resource-kb 11000 --web-vitals-max-scroll-overflow-px 0
+node scripts/frontend_web_vitals_probe.mjs --base-url http://127.0.0.1:4173 --api-base-url http://127.0.0.1:8000 --routes /,/analysis/stats,/analysis/charts,/billboard/number-ones,/account,/settings --viewport both --wait-ms 5000 --max-lcp-ms 3000 --max-cls 0.01 --max-tbt-ms 100 --max-resource-count 120 --max-encoded-resource-kb 11000 --max-scroll-overflow-px 0
+sh scripts/fullstack_verification_check.sh --backend-url http://127.0.0.1:8000 --frontend-url http://localhost:5173 --preview-url http://127.0.0.1:4173 --preview-api-url http://127.0.0.1:8000 --quickstart-preflight --quickstart-json /tmp/spotify_quickstart_timing.json --web-vitals --resource-snapshot --resource-max-total-rss-mb 1200 --resource-max-total-cpu-percent 200 --web-vitals-max-lcp-ms 3000 --web-vitals-max-cls 0.01 --web-vitals-max-tbt-ms 100 --web-vitals-max-resource-count 120 --web-vitals-max-encoded-resource-kb 11000 --web-vitals-max-scroll-overflow-px 0
 sh -n scripts/fullstack_verification_check.sh
 git diff --check
 ```
@@ -325,7 +325,7 @@ git diff --check
 ## 已知限制
 
 - 生产构建仍提示两个大懒加载 chunk：`cn2t-DJnOUolw.js` gzip 457.19KB、`EChartsTheme-*.js` gzip 225.67KB。旧 `full-yTi_27TG.js` 与 `esm-CBcusPEn.js` 已消除；剩余体积分别来自繁体词典和当前图表能力集合，其中 `cn2t` 已从“保存偏好导入即预取”改为实际转换入口触发，未牺牲简繁转换语义或图表功能继续强拆。
-- 未执行真实 ngrok + Spotify OAuth 浏览器授权闭环；已验证 `/api/spotify/auth/status` 与 `/api/spotify/auth/data` 只读端点返回 200 和 request id，修复 `/api/spotify/auth/playing` token refresh 写连接问题，并用 contract 临时 DB 覆盖 OAuth PKCE login/callback 本地闭环、加密落库与 invalid state。2026-06-21 复查 `ngrok http --url=stuffing-nebula-tamer.ngrok-free.dev 5173`，项目侧回跳 origin 修复已具备，但本机外部链路仍阻塞于 ngrok 证书/CRL 获取：直连系统 DNS 会把 `update.ngrok-agent.com` / `tunnel.us.ngrok.com` 解析到异常 IP 并返回 IP 证书，导致 `failed to verify certificate` / `failed to fetch CRL`；代理出口能拿到正确证书，但 ngrok agent 免费层禁止 HTTP/S proxy 并返回 `ERR_NGROK_9009`。补充 `ngrok diagnose -r all` 复核：直连 60s 超时在 name resolution，代理模式报告 proxy TCP OK 但 internet TCP/connectivity 失败；临时合并 `agent.update_check: false` 后 updater 证书错误消失，但 session 仍持续报 `failed to fetch CRL`，再加 `agent.connect_url: connect.ngrok-agent.com:443` 结果不变。因此需要先恢复可信系统 DNS/网络出口，或切换到允许 ngrok agent 直连的网络环境后，才能做真实 Spotify 授权闭环。
+- 未执行需要人工点击的 Spotify OAuth 浏览器授权 consent 闭环；已验证 `/api/spotify/auth/status` 与 `/api/spotify/auth/data` 只读端点返回 200，修复 `/api/spotify/auth/playing` token refresh 写连接问题，并用 contract 临时 DB 覆盖 OAuth PKCE login/callback 本地闭环、加密落库与 invalid state。2026-06-21 复查时，固定域名 ngrok HTTPS tunnel 已可建立，外部 `/api/health` 200，login 使用 `https://stuffing-nebula-tamer.ngrok-free.dev/api/spotify/auth/callback` 且包含 state/code_challenge，invalid-state callback 307 回跳 ngrok settings 并返回 `X-Request-ID`，Spotify auth data 入口返回 200；剩余人工项是用户真实浏览器登录 Spotify 并同意授权。
 - 未在用户真实 Firefox.app / Safari.app 有界面会话中人工执行同等交互；当前跨浏览器自动化证据来自 Playwright Chromium / Firefox / WebKit（Safari-family），其中 WebKit 是 Safari-family 引擎 smoke，不等同用户 Safari.app 会话；音乐/社区详情页已进入三引擎自动 route-marker smoke，但尚未在真实 Safari.app 会话中人工点击。
 - 未逐一实打所有破坏性或外部依赖端点，例如断开 Spotify、导入生产数据、同步远程账号数据等，避免污染本地真实状态；OpenAPI operation audit 已将 134 个 operation 全部归属到 safe GET smoke、targeted contract 或 controlled stateful/external，OpenAPI parameter boundary audit 已将 59 个参数边界义务归属到 boundary probe、string resilience probe 或 controlled stateful/external，Settings/Chat mutation 与 Import job 调度已通过 contract 临时环境覆盖。
 - Web Vitals 已用 headless Chrome lab probe 采集 Vite dev server 与本地 `vite preview` 生产构建的 LCP/CLS/合成 FID/TBT、resource count 与 encoded resource KB，preview 采样可用 `--api-base-url` 代理后端数据，预算参数可防明显指标回退和资源回弹；runtime resource probe 记录的是本机监听进程树 CPU/RSS 快照，不等同 Python/Node heap profile、CPU profiler 或泄漏追踪；仍未采集真实用户 RUM、Firefox/WebKit Web Vitals，也未在生产静态托管/CDN/HTTPS 环境跑 Lighthouse。
@@ -335,10 +335,10 @@ git diff --check
 1. 运行 `.venv/bin/python scripts/quickstart_smoke.py --timeout-sec 90 --json-output /tmp/spotify_quickstart_timing.json`，确认默认 8000/5173 可自动启动、API docs 可访问、Vite `/api` 代理可用，并查看 JSON 中的 `total_elapsed_ms`、`frontend shell` 和 `frontend api proxy` 时序。
 2. 启动后端：`source .venv/bin/activate && uvicorn backend.main:app --reload --reload-dir backend`
 3. 启动前端：`cd frontend && npm run dev`
-4. 打开 `http://127.0.0.1:5173/`，确认 Dashboard 有 KPI 与图表。
+4. 打开 `http://localhost:5173/`，确认 Dashboard 有 KPI 与图表。
 5. 切到移动宽度约 390px，访问 `/analysis/stats`、`/analysis/charts`，页面不能横向拖动。
 6. 访问 `/billboard/number-ones`、`/billboard/all-time`、`/billboard/records`，确认三页能加载业务内容。
 7. 访问 `/account`、`/settings`，确认账户数据和设置区块能渲染。
 8. 打开 `http://127.0.0.1:8000/docs`，快速试 `/api/health`、`/api/billboard/records`、`/api/spotify/auth/status` 和 `/api/spotify/auth/login`（按本机配置返回 `auth_url` 或受控 503）。
 9. 运行 `.venv/bin/python scripts/api_smoke_probe.py`、`.venv/bin/python scripts/api_boundary_probe.py`、`.venv/bin/python scripts/openapi_operation_audit.py --json-output /tmp/spotify_openapi_operation_audit.json` 和 `.venv/bin/python scripts/openapi_parameter_boundary_audit.py --json-output /tmp/spotify_openapi_parameter_boundary_audit.json`，确认 96 个只读 GET、85 个边界 GET、134 个 OpenAPI operation 归属核算与 59 个参数边界义务全绿。
-10. 运行 `sh scripts/phase5_check.sh`，确认最低矩阵仍全绿；需要完整非破坏性矩阵时，运行 `sh scripts/fullstack_verification_check.sh --backend-url http://127.0.0.1:8000 --frontend-url http://127.0.0.1:5173`，需要 quickstart preflight、Web Vitals 与 CPU/RSS 预算证据时追加 `--quickstart-preflight --quickstart-json /tmp/spotify_quickstart_timing.json --web-vitals --resource-snapshot --resource-max-total-rss-mb 1200 --resource-max-total-cpu-percent 200 --web-vitals-max-lcp-ms 3000 --web-vitals-max-cls 0.01 --web-vitals-max-tbt-ms 100 --web-vitals-max-resource-count 120 --web-vitals-max-encoded-resource-kb 11000 --web-vitals-max-scroll-overflow-px 0`。
+10. 运行 `sh scripts/phase5_check.sh`，确认最低矩阵仍全绿；需要完整非破坏性矩阵时，运行 `sh scripts/fullstack_verification_check.sh --backend-url http://127.0.0.1:8000 --frontend-url http://localhost:5173`；需要 quickstart preflight、Web Vitals 与 CPU/RSS 预算证据时，先启动生产 preview `cd frontend && npm run preview -- --host 127.0.0.1 --port 4173`，再追加 `--preview-url http://127.0.0.1:4173 --preview-api-url http://127.0.0.1:8000 --quickstart-preflight --quickstart-json /tmp/spotify_quickstart_timing.json --web-vitals --resource-snapshot --resource-max-total-rss-mb 1200 --resource-max-total-cpu-percent 200 --web-vitals-max-lcp-ms 3000 --web-vitals-max-cls 0.01 --web-vitals-max-tbt-ms 100 --web-vitals-max-resource-count 120 --web-vitals-max-encoded-resource-kb 11000 --web-vitals-max-scroll-overflow-px 0`。

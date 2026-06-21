@@ -5,7 +5,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-const DEFAULT_BASE_URL = 'http://127.0.0.1:5173'
+const DEFAULT_BASE_URL = 'http://localhost:5173'
 const DEFAULT_PYTHON = process.env.PYTHON_PLAYWRIGHT || 'python'
 const DEFAULT_BROWSERS = ['chromium', 'firefox', 'webkit']
 const DEFAULT_SCENARIOS = ['route-markers', 'core-interactions']

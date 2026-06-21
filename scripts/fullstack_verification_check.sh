@@ -5,7 +5,7 @@ ROOT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 cd "$ROOT_DIR"
 
 BACKEND_URL=${BACKEND_URL:-http://127.0.0.1:8000}
-FRONTEND_URL=${FRONTEND_URL:-http://127.0.0.1:5173}
+FRONTEND_URL=${FRONTEND_URL:-http://localhost:5173}
 PREVIEW_URL=${PREVIEW_URL:-}
 PREVIEW_API_URL=${PREVIEW_API_URL:-$BACKEND_URL}
 BENCHMARK_RUNS=${BENCHMARK_RUNS:-3}
@@ -56,7 +56,7 @@ and frontend dev server before running the default command:
 
 Options:
   --backend-url <url>       Backend URL for API benchmark, default http://127.0.0.1:8000
-  --frontend-url <url>      Frontend dev URL for browser smoke, default http://127.0.0.1:5173
+  --frontend-url <url>      Frontend dev URL for browser smoke, default http://localhost:5173
   --preview-url <url>      Optional Vite preview URL; when set, preview smoke also runs
   --preview-api-url <url>  Backend URL used by preview smoke request rewriting
   --benchmark-runs <n>     Number of benchmark requests per endpoint, default 3
@@ -86,9 +86,11 @@ Options:
   --web-vitals-max-tbt-ms <ms>
                           Optional Web Vitals TBT approx budget passed to lab probes
   --web-vitals-max-resource-count <n>
-                          Optional loaded resource count budget passed to lab probes
+                          Optional loaded resource count budget for preview probes
+                          (dev probes skip it to avoid Vite module request noise)
   --web-vitals-max-encoded-resource-kb <kb>
-                          Optional encoded resource KB budget passed to lab probes
+                          Optional encoded resource KB budget for preview probes
+                          (dev probes skip it to avoid Vite module request noise)
   --web-vitals-max-scroll-overflow-px <px>
                           Optional horizontal scroll overflow budget passed to lab probes
   -h, --help              Show this help
@@ -235,6 +237,7 @@ run() {
 run_web_vitals_probe() {
   base_url=$1
   api_base_url=${2:-}
+  include_resource_budgets=${3:-0}
 
   set -- node scripts/frontend_web_vitals_probe.mjs --base-url "$base_url"
   if [ -n "$api_base_url" ]; then
@@ -250,10 +253,10 @@ run_web_vitals_probe() {
   if [ -n "$WEB_VITALS_MAX_TBT_MS" ]; then
     set -- "$@" --max-tbt-ms "$WEB_VITALS_MAX_TBT_MS"
   fi
-  if [ -n "$WEB_VITALS_MAX_RESOURCE_COUNT" ]; then
+  if [ "$include_resource_budgets" = "1" ] && [ -n "$WEB_VITALS_MAX_RESOURCE_COUNT" ]; then
     set -- "$@" --max-resource-count "$WEB_VITALS_MAX_RESOURCE_COUNT"
   fi
-  if [ -n "$WEB_VITALS_MAX_ENCODED_RESOURCE_KB" ]; then
+  if [ "$include_resource_budgets" = "1" ] && [ -n "$WEB_VITALS_MAX_ENCODED_RESOURCE_KB" ]; then
     set -- "$@" --max-encoded-resource-kb "$WEB_VITALS_MAX_ENCODED_RESOURCE_KB"
   fi
   if [ -n "$WEB_VITALS_MAX_SCROLL_OVERFLOW_PX" ]; then
@@ -311,7 +314,10 @@ if [ "$RUN_CROSS_BROWSER" = "1" ]; then
 fi
 
 if [ "$RUN_WEB_VITALS" = "1" ]; then
-  run_web_vitals_probe "$FRONTEND_URL"
+  if [ -z "$PREVIEW_URL" ] && { [ -n "$WEB_VITALS_MAX_RESOURCE_COUNT" ] || [ -n "$WEB_VITALS_MAX_ENCODED_RESOURCE_KB" ]; }; then
+    echo "Skipping resource count/encoded resource Web Vitals budgets for dev server; set --preview-url to enforce production bundle resource budgets."
+  fi
+  run_web_vitals_probe "$FRONTEND_URL" "" 0
 fi
 
 if [ -n "$PREVIEW_URL" ]; then
@@ -324,7 +330,7 @@ if [ -n "$PREVIEW_URL" ]; then
     run node scripts/frontend_cross_browser_smoke.mjs --base-url "$PREVIEW_URL" --api-base-url "$PREVIEW_API_URL" --python "$PYTHON_PLAYWRIGHT" --include-detail-routes
   fi
   if [ "$RUN_WEB_VITALS" = "1" ]; then
-    run_web_vitals_probe "$PREVIEW_URL" "$PREVIEW_API_URL"
+    run_web_vitals_probe "$PREVIEW_URL" "$PREVIEW_API_URL" 1
   fi
 fi
 
