@@ -648,6 +648,9 @@ async function exerciseCommunityFeed({ client, baseUrl, waitMs }) {
   }
   client.on('Network.responseReceived', responseHandler)
 
+  // Record baseline before scrolling
+  const initialCount = communityRequests.length
+
   // Scroll to trigger Virtuoso endReached → infinite load
   await evaluate(client, `
     (() => {
@@ -672,7 +675,6 @@ async function exerciseCommunityFeed({ client, baseUrl, waitMs }) {
   `)
 
   // Wait for at least one new /api/community 200 response after scrolling
-  const initialCount = communityRequests.length
   await waitForCondition(
     async () => {
       return communityRequests.length > initialCount ? communityRequests : null
@@ -814,9 +816,14 @@ function renderMarkdown(results) {
   ]
 
   for (const row of results) {
-    const before = row.details?.beforePage || '-'
-    const after = row.details?.afterPage || '-'
-    const rows = row.details ? `${row.details.beforeRows}->${row.details.afterRows}` : '-'
+    const isCommunity = row.scenario === 'community-feed'
+    const before = row.details?.beforePage || (isCommunity && row.details?.beforePostCount != null ? `${row.details.beforePostCount} posts` : null) || '-'
+    const after = row.details?.afterPage || (isCommunity && row.details?.newRequestsAfterScroll != null ? `+${row.details.newRequestsAfterScroll} req` : null) || '-'
+    const rows = row.details
+      ? (isCommunity
+        ? `${row.details.communityRequestsTriggered ?? '-'} total`
+        : `${row.details.beforeRows}->${row.details.afterRows}`)
+      : '-'
     lines.push(
       `| ${row.scenario} | ${row.ok ? 'PASS' : 'FAIL'} | \`${before}\` | \`${after}\` | ${rows} | ${row.consoleErrorCount} | ${row.consoleWarningCount} | ${row.pageErrorCount} | ${row.scrollOverflow ?? '-'}px |`,
     )
