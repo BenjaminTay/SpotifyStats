@@ -2,17 +2,7 @@
 
 从 Spotify 官方导出的 Extended Streaming History 及账号数据中导入播放记录，提供多维度交互式统计分析仪表盘。
 
-**架构**：FastAPI 后端 + React 前端。Streamlit 原有应用已冻结维护。
-
-**Phase 5 产品化收口**：前端 GET 统一 TanStack Query（11 命名空间 queryKeys）、Provider 错误分层、业务 service urllib 清零、模块级 API Map 缓存清除；Billboard records 88 行 facade + chart_compute 211 行 facade；Records/AllTime/Community Feed/RecentPlays/SavedTracks/PersonalRankTable 长列表分页基线。Phase 5.4 八阶段（A-H）全系列完成（2026-06-12）：架构护栏 105+ 测试、TrackDetail 574→5 行、HabitsTab 933 行→9 文件 feature、AI Insights 拆分、24 端点 response_model 硬化、Bundle 懒加载治理（Settings -88%/Records -69%/Account -34%）、TrackDetail 歌词 Query 漏网修复。播放统计规则引擎（Phase C+D，2026-06-18 贯穿修复）：动态阈值、Session 边界检测（`max_gap_minutes` + `boundary_column`）、Track Groups 三级合并（L1/L2/L3 recording/composition scope）、Album Projects 专辑项目统计、`merge_level` 查询参数、Dashboard/Leaderboard/Timeline/Wrapped/Listening Hours/Music Entity/Release Cycle 统一传递 `dynamic_threshold` 与 `max_merge_gap_minutes`，设置页 L1/L2/L3 合并严格度选择器。2026-06-19 补齐全栈验证与性能收口：默认预热改用当前动态阈值口径，Billboard 基础排名共享缓存，Power Score、summaries 与播放合并路径向量化，Dashboard full 单请求复用播放 DataFrame，AI Insights 报告/问答透传播放过滤口径并按过滤指纹分流缓存，Behavior 全量事件分析只暴露/请求 `music_only`，专辑详情来源拆分批量映射，390px 移动端横向滚动归零，pre-commit 收敛到 backend 治理范围，OpenCC/ECharts 大依赖拆为按需加载子包且保存偏好不再模块级预取字典，账号页资源加载收敛并补充 dev/prod-preview Web Vitals lab 探针与 LCP/CLS/TBT/资源数量/encoded 体积/横向滚动溢出预算门禁，新增 96 请求可复跑 API smoke 探针、85 个非破坏性 API 边界 probe、OpenAPI 参数边界 audit（59 obligations / 36 boundary_probe / 16 string_resilience_probe / 7 controlled stateful-external / 0 unaccounted）、OpenAPI 134 operation 全量 audit（95 safe GET smoke / 30 targeted contract / 9 controlled stateful-external / 0 unaccounted）、Provider 异常响应分层 contract 护栏、Billboard enrichment 降级 contract 护栏、基础设施/Settings mutation/Spotify auth/账号中心/核心统计/剩余 JSON response_model contract 护栏（OpenAPI response_model 缺口 41→1，唯一剩余为 Spotify callback 显式 RedirectResponse，账号中心/画像、Timeline/Listening/Artist/Wrapped、Release Cycle compare 与 Lyrics JSON 发布稳定 schema）、8 端点 API 性能 benchmark 慢端点门禁、48 组合 route smoke 探针（19 主路由 + 5 个动态详情路由 × 2 视口，默认 5s + 业务内容 marker）、6 场景前端交互 smoke 探针（AI Insights 分支按 settings 判断，Settings 过滤/显示偏好与数据导入区覆盖）、3 场景 ECharts 图表交互 smoke 探针（dev/prod-preview 均覆盖）、36 组合控件库存 smoke 探针（13 默认路由 + 5 动态详情路由 × 2 视口，dev/prod-preview 均 0 violation）、6 场景长列表分页/分段渲染 smoke 探针（dev/prod-preview 均覆盖）、全栈非破坏性验收聚合脚本、GitHub Actions 与本地 Phase 5 矩阵 parity 护栏与 Chromium/Firefox/WebKit 跨浏览器 smoke 探针，Chat/Settings/LLM profile mutation、Spotify auth JSON 端点、AI Insights 生成端点、Import job 调度和 Spotify OAuth PKCE 本地闭环 contract 覆盖，并修复 Spotify 当前播放 token refresh、OAuth login 未配置 Client ID 500、Settings 越界配置、清翻译缓存缺表、Provider 异常泛化 500、封面回退查询 schema mismatch 500、Billboard enrichment Wiki lookup 普通异常 500、基础设施/Settings mutation/Spotify auth/账号中心/核心统计/剩余 JSON 相关端点缺少 response_model、AI Insights 报告缓存 readonly 写入 warning、会话列表嵌套按钮、周快捷项重复 key console error、音乐详情隐藏 tab 挂载图表导致的 ECharts 零尺寸 warning，以及 Billboard/Records/AllTime/WeekSelector/音乐详情分页图标按钮与 Settings Slider 内部输入控件缺少可访问名称的问题。详见 [`docs/2026-06-08-phase5-productization-baseline.md`](docs/2026-06-08-phase5-productization-baseline.md)、[`docs/2026-06-18-playback-stats-rules-latest.md`](docs/2026-06-18-playback-stats-rules-latest.md) 和 [`docs/2026-06-19-fullstack-verification-performance-report.md`](docs/2026-06-19-fullstack-verification-performance-report.md)。
-
-**最新交互 smoke 口径**：`scripts/frontend_interaction_smoke.mjs` 默认覆盖 6 个非破坏性场景，新增 `settings-data-import`，AI Insights 会读取 `/api/settings` 后按 LLM 已配置/未配置分支验证；dev server 与生产 `vite preview` 均已复跑 PASS 6/6。
-
-**最新 fix 分支跟进**：2026-06-20 在 `fix/bugfixes-and-polish` 上修复旧 `/analysis/*` 别名嵌套在 lazy `AnalysisLayout` 内导致的冷导航空壳风险，并把首页 Dashboard 月度趋势从 ECharts 改为轻量 DOM 条形图，production preview 首页 encoded resources 从约 `1,282KB` 降至 `1,060KB`；账号页新增轻量 `/profile` 首屏 Hero 查询，`/api/account` 聚合加入 TTL cache + warmup，production `/account` desktop LCP 从 `3532ms` 降至 `468ms`；根级 `scrollbar-gutter: stable` 将 `/billboard/number-ones` desktop CLS 从 `0.1` 压到 `0`；Spotify OAuth 在 ngrok `SPOTIFY_REDIRECT_URI` 且未显式设置 `FRONTEND_ORIGIN` 时，callback 回跳 origin 会从 redirect URI 推导，避免授权后掉回 localhost；图表交互 smoke 默认冷态等待调至 12s，前端 CDP smoke 脚本默认优先使用 Playwright `chromium_headless_shell-*`，避免系统 Chrome 启动阶段崩溃造成假失败。最终验证：backend full 692、unit 320、contract 172、frontend 134、完整 fullstack verification PASS；ngrok agent 当前因本机网络/DNS/证书出口无法建立固定域名 tunnel，`agent.update_check: false` 与默认 `agent.connect_url` 临时配置均不能绕过 session CRL 失败，真实外部 Spotify 授权仍需可用 tunnel。详见 [`docs/2026-06-20-fix-branch-verification-follow-up.md`](docs/2026-06-20-fix-branch-verification-follow-up.md)。
-
-**最新控件库存 smoke 口径**：`scripts/frontend_control_inventory_smoke.mjs --include-detail-routes` 覆盖 13 个默认路由 + 5 个动态详情路由 × 桌面/390px 移动端，检查可见交互控件缺少可访问名称、嵌套交互控件、disabled 仍可 tab、输入控件无标签和重复 id；dev server 覆盖 36 组合 / 1821 控件 / 0 violation，生产 `vite preview` 覆盖 36 组合 / 1763 控件 / 0 violation。
-
-**最新跨浏览器 smoke 口径**：`scripts/frontend_cross_browser_smoke.mjs` 的 `core-interactions` 也覆盖同一组 6 个核心交互；dev server 完整 route-marker + core-interactions 与生产 `vite preview` core-interactions 均已在 Chromium/Firefox/WebKit PASS 3/3。
+**架构**：FastAPI 后端 + React 前端。原 Streamlit 应用（`app/`）已冻结维护。
 
 ## 功能
 
@@ -30,7 +20,7 @@
 ## 快速开始
 
 ```bash
-# 安装
+# 安装依赖
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 cd frontend && npm install && cd ..
@@ -40,65 +30,43 @@ uvicorn backend.main:app --reload --reload-dir backend
 
 # 启动前端（端口 5173，自动代理 /api → 后端）
 cd frontend && npm run dev
-
-# 一键启动冒烟：自动启动/复用 8000 + 5173，验证 health/docs/前端壳/API 代理后清理，并输出时序 JSON
-.venv/bin/python scripts/quickstart_smoke.py --json-output /tmp/spotify_quickstart_timing.json
-
-# Spotify OAuth 需要 HTTPS，开发环境用 ngrok
-ngrok http --url=stuffing-nebula-tamer.ngrok-free.dev 5173
-
-# 测试
-pytest backend/tests/ -v          # 后端测试（unit/contract/integration）
-pytest -m unit -q                 # 快速单元层
-pytest -m contract -q             # seed DB 契约层
-.venv/bin/pytest backend/tests/contract/test_spotify_auth_contract.py -q  # OAuth PKCE 本地闭环
-.venv/bin/python scripts/api_smoke_probe.py  # 本地只读 API smoke（96 个 GET + OpenAPI GET 核算）
-.venv/bin/python scripts/api_boundary_probe.py  # 非破坏性 API 边界 probe（85 个 GET）
-.venv/bin/python scripts/openapi_operation_audit.py --json-output /tmp/spotify_openapi_operation_audit.json  # OpenAPI 全操作覆盖归属核算
-.venv/bin/python scripts/openapi_parameter_boundary_audit.py --json-output /tmp/spotify_openapi_parameter_boundary_audit.json  # OpenAPI 参数边界覆盖归属核算
-.venv/bin/python scripts/benchmark_api.py --base-url http://127.0.0.1:8000 --runs 3 --slow-ms 500  # API 性能 benchmark
-.venv/bin/python scripts/runtime_resource_probe.py --backend-url http://127.0.0.1:8000 --frontend-url http://127.0.0.1:5173 --max-total-rss-mb 1200 --max-total-cpu-percent 200  # 本地服务 CPU/RSS 快照与预算
-cd frontend && npm test           # 前端 vitest 单测 + 架构护栏测试
-
-# 代码质量
-ruff check backend/ && ruff format --check backend/
-pre-commit run --all-files
-
-# Phase 5 最低验证矩阵
-sh scripts/phase5_check.sh
-.venv/bin/python scripts/ci_baseline_parity.py  # GitHub Actions / 本地矩阵一致性护栏
-
-# 全栈非破坏性验收矩阵（需后端 8000 + 前端 5173 已启动；可选 --preview-url/--web-vitals/--resource-snapshot）
-# 跨浏览器 smoke 会自动检测可 import playwright.sync_api 的 Python，也可显式设置 PYTHON_PLAYWRIGHT
-sh scripts/fullstack_verification_check.sh --backend-url http://127.0.0.1:8000 --frontend-url http://127.0.0.1:5173
-sh scripts/fullstack_verification_check.sh --backend-url http://127.0.0.1:8000 --frontend-url http://127.0.0.1:5173 --quickstart-preflight --quickstart-json /tmp/spotify_quickstart_timing.json --web-vitals --resource-snapshot --resource-max-total-rss-mb 1200 --resource-max-total-cpu-percent 200 --web-vitals-max-lcp-ms 3000 --web-vitals-max-cls 0.01 --web-vitals-max-tbt-ms 100 --web-vitals-max-resource-count 120 --web-vitals-max-encoded-resource-kb 11000 --web-vitals-max-scroll-overflow-px 0
-
-# 前端 route/interaction/cross-browser smoke + Web Vitals lab 采样（需后端 8000 + 前端 5173 已启动）
-node scripts/frontend_route_smoke.mjs --viewport both --max-scroll-overflow 0 --fail-on-console-warning --include-detail-routes
-node scripts/frontend_interaction_smoke.mjs --base-url http://127.0.0.1:5173
-node scripts/frontend_interaction_smoke.mjs --base-url http://127.0.0.1:4173 --api-base-url http://127.0.0.1:8000
-node scripts/frontend_chart_interaction_smoke.mjs --base-url http://127.0.0.1:5173
-node scripts/frontend_chart_interaction_smoke.mjs --base-url http://127.0.0.1:4173 --api-base-url http://127.0.0.1:8000
-node scripts/frontend_control_inventory_smoke.mjs --base-url http://127.0.0.1:5173 --viewport both --include-detail-routes
-node scripts/frontend_control_inventory_smoke.mjs --base-url http://127.0.0.1:4173 --api-base-url http://127.0.0.1:8000 --viewport both --include-detail-routes
-node scripts/frontend_long_list_smoke.mjs --base-url http://127.0.0.1:5173
-node scripts/frontend_long_list_smoke.mjs --base-url http://127.0.0.1:4173 --api-base-url http://127.0.0.1:8000
-node scripts/frontend_cross_browser_smoke.mjs --base-url http://127.0.0.1:5173 --include-detail-routes
-node scripts/frontend_cross_browser_smoke.mjs --base-url http://127.0.0.1:4173 --api-base-url http://127.0.0.1:8000 --include-detail-routes
-node scripts/frontend_web_vitals_probe.mjs --routes /,/analysis/stats,/analysis/charts,/billboard/number-ones,/account,/settings --viewport both --wait-ms 5000
-node scripts/frontend_web_vitals_probe.mjs --base-url http://127.0.0.1:4173 --api-base-url http://127.0.0.1:8000 --routes /,/analysis/stats,/analysis/charts,/billboard/number-ones,/account,/settings --viewport both --wait-ms 5000
-node scripts/frontend_web_vitals_probe.mjs --routes /,/analysis/stats,/analysis/charts,/billboard/number-ones,/account,/settings --viewport both --wait-ms 5000 --max-lcp-ms 3000 --max-cls 0.01 --max-tbt-ms 100 --max-resource-count 120 --max-encoded-resource-kb 11000 --max-scroll-overflow-px 0
 ```
 
 首次启动自动导入 JSON 数据到 SQLite。浏览器打开 `http://localhost:5173` 使用 React 界面，`http://localhost:8000/docs` 查看 API 文档。
+
+> Spotify OAuth 功能需要 HTTPS。开发环境可使用 ngrok：
+> ```bash
+> ngrok http --url=your-domain.ngrok-free.dev 5173
+> ```
+
+### 运行测试
+
+```bash
+# 后端
+source .venv/bin/activate && pytest backend/tests/ -v
+pytest -m unit -q        # 单元测试
+pytest -m contract -q    # 契约测试
+
+# 前端
+cd frontend && npm test
+```
+
+### Docker 部署
+
+```bash
+docker compose build
+docker compose up -d
+# 前端 → http://localhost:3000
+# 后端 → http://localhost:8000
+```
 
 ## 技术栈
 
 **后端**：FastAPI · Pandas · SQLite (WAL) · Pydantic v2 · pytest · Ruff · Mypy
 
-**前端**：React 19 · TypeScript 6.0 · Vite 8 · Tailwind CSS v4 · shadcn/ui · React Router v7 · TanStack React Query · ECharts 6 · Vitest
+**前端**：React 19 · TypeScript · Vite · Tailwind CSS v4 · shadcn/ui · React Router v7 · TanStack React Query · ECharts 6 · Vitest
 
-**基础设施**：AES-256-GCM 加密 · OAuth PKCE · 统一 Cache Manager (LRU+TTL) · 版本化 Migration · 后台 Job Queue · OpenAPI 自动生成类型 · Request ID 链路追踪 · Provider 错误分类 · 架构护栏测试 · GitHub Actions CI
+**基础设施**：AES-256-GCM 加密 · OAuth PKCE · Cache Manager (LRU+TTL) · 版本化 Migration · 后台 Job Queue · OpenAPI 自动生成类型 · Request ID 链路追踪 · Provider 错误分类 · GitHub Actions CI
 
 ## 项目结构
 
@@ -107,31 +75,28 @@ SpotifyStats/
 ├── backend/               # FastAPI 后端（api/ → services/ → domains/ → core/）
 ├── frontend/              # React 前端
 │   └── src/
-│       ├── features/      # Feature-first 业务组件（billboard/music/settings/account/ai-insights/community）
+│       ├── features/      # 业务组件（billboard/music/settings/account/ai-insights/community）
 │       ├── pages/         # 路由级页面容器（React.lazy 分包）
 │       ├── components/    # ui/charts/layout/shared
-│       ├── hooks/         # useDashboard, useBillboard, useYearlyReview, useAiInsights...
+│       ├── hooks/         # 自定义 Hooks
 │       └── api/           # QueryClient + queryKeys + OpenAPI 类型
 ├── app/                   # Streamlit 旧应用（冻结维护）
 ├── data/                  # SQLite 数据库 + JSON 源数据
-├── docs/                  # 架构文档 + Phase 5 台账
-├── scripts/               # 工具脚本（quickstart_smoke.py, phase5_check.sh, fullstack_verification_check.sh, ci_baseline_parity.py, api_smoke_probe.py, api_boundary_probe.py, openapi_operation_audit.py, openapi_parameter_boundary_audit.py, benchmark_api.py, runtime_resource_probe.py）
+├── docs/                  # 项目文档
+├── scripts/               # 工具脚本
 └── requirements.txt
 ```
 
-## 详细文档
+## 文档索引
 
-- 主项目提示词（多 Agent 协作）见 [`AGENTS.md`](AGENTS.md)
-- Claude Code 速查卡见 [`CLAUDE.md`](CLAUDE.md)
-- 后端架构细节见 [`backend/CLAUDE.md`](backend/CLAUDE.md)
-- 前端架构细节见 [`frontend/CLAUDE.md`](frontend/CLAUDE.md)
-- UI 风格指南见 [`frontend/UI_STYLE_GUIDE.md`](frontend/UI_STYLE_GUIDE.md)
-- 数据目录说明见 [`data/README.md`](data/README.md)
-- 架构优化文档见 [`docs/phase4-architecture/2026-05-30-architecture-optimize.md`](docs/phase4-architecture/2026-05-30-architecture-optimize.md)
-- Phase 5 产品化收口台账见 [`docs/2026-06-08-phase5-productization-baseline.md`](docs/2026-06-08-phase5-productization-baseline.md)
-- 播放统计规则定义与实现状态见 [`docs/2026-06-18-playback-stats-rules-latest.md`](docs/2026-06-18-playback-stats-rules-latest.md)
-- 播放统计实现计划见 [`docs/2026-06-12-playback-stats-implementation-plan.md`](docs/2026-06-12-playback-stats-implementation-plan.md)
-- 全栈验证与性能收口报告见 [`docs/2026-06-19-fullstack-verification-performance-report.md`](docs/2026-06-19-fullstack-verification-performance-report.md)
+- 开发速查（命令 + 约束）→ [`CLAUDE.md`](CLAUDE.md)
+- 完整项目上下文 → [`AGENTS.md`](AGENTS.md)
+- 后端架构 → [`backend/CLAUDE.md`](backend/CLAUDE.md)
+- 前端架构 → [`frontend/CLAUDE.md`](frontend/CLAUDE.md)
+- UI 风格指南 → [`frontend/UI_STYLE_GUIDE.md`](frontend/UI_STYLE_GUIDE.md)
+- 数据格式说明 → [`data/README.md`](data/README.md)
+- 文档地图 → [`docs/README.md`](docs/README.md)
+- 变更日志 → [`docs/CHANGELOG.md`](docs/CHANGELOG.md)
 
 ## License
 

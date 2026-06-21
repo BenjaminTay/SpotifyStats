@@ -57,7 +57,7 @@ Phase 5 负责把现有 FastAPI + React 产品线收敛到可持续迭代状态�
 | Phase 5 架构红线测试 | 已完成 | 新增后端 service/core urllib 静态测试与前端详情页模块级 API Map 缓存、hero/tabs、overview、tracks/albums/album era/artist releases orchestration 静态测试，后端 records/chart/staged cache/staged API 拆分护栏测试，前端长列表分页渲染测试 |
 | Phase 5 本地验证脚本 | 已完成 | `scripts/phase5_check.sh` 串联后端 unit/contract、ruff、前端 test/build |
 | Community 新页面纳管 | 已完成 | `/community`、`/community/post/:postId`、`/community/account/:handle` 已接入 lazy route、feature 组件与 `useCommunity` Query hooks；Feed 使用 offset/limit 分页与 infinite query |
-| AI Insights 新页面纳管 | 已完成 | `/ai-insights` 已接入 lazy route、`useAiInsights` Query/Mutation hooks、chat session Query keys 与独立 `docs/2026-06-11-ai-insights-module.md` 模块文档 |
+| AI Insights 新页面纳管 | 已完成 | `/ai-insights` 已接入 lazy route、`useAiInsights` Query/Mutation hooks、chat session Query keys 与独立 `docs/productization/2026-06-11-ai-insights.md` 模块文档 |
 | Phase 5.4-A 架构护栏补齐 | 已完成 | `phase5-architecture.test.ts` 从 17 测试扩展到 105+ 测试，覆盖 AI Insights/Community/Billboard Versus/Account Habits/Track Detail 所有新增页面；route container ≤10 行、Experience ≤450 行、section ≤300 行等负面断言 |
 | Phase 5.4-B TrackDetail route container 化 | 已完成 | `TrackDetailPage.tsx` 574→5 行；`TrackDetailExperience.tsx` (237 行) + `TrackOverviewSection.tsx` (204 行) + `TrackLyricsSection.tsx` (157 行) 拆入 `features/music/details/` |
 | Phase 5.4-C Account Habits 下沉 feature | 已完成 | `pages/account/HabitsTab.tsx` 933 行删除；9 文件拆入 `features/account/habits/`：HabitsTab 编排器 (79 行)、habitsData.ts (149 行)、primitives、SearchHistory/FanTiers/Podcast/Marquee/Video/PersonalityHero sections |

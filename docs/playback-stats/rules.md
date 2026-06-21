@@ -2,7 +2,7 @@
 
 > 创建日期：2026-06-18
 > 状态：规则源文件，作为后续实现与验收依据
-> 来源：整合 `docs/2026-06-12-playback-stats-rules.md`、`docs/2026-06-12-playback-stats-implementation-plan.md`，以及 2026-06-18 对歌曲/专辑多版本语义的最新确认。
+> 来源：整合 `docs/playback-stats/2026-06-12-playback-stats-rules.md`、`docs/playback-stats/implementation-plan.md`，以及 2026-06-18 对歌曲/专辑多版本语义的最新确认。
 
 ---
 

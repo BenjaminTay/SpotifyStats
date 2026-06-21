@@ -766,7 +766,7 @@ Billboard 周榜的聚合管线应完整应用：
 
 ## 6. 实现状态
 
-> 详细实现计划见 `docs/2026-06-12-playback-stats-implementation-plan.md`。
+> 详细实现计划见 `docs/playback-stats/implementation-plan.md`。
 
 | Phase | 名称 | 状态 | 测试验证 |
 |:---|---|:---:|:---|

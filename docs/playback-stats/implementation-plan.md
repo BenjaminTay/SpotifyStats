@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Implement the playback counting, entity attribution, version merge, and Billboard consistency rules defined in `docs/2026-06-12-playback-stats-rules.md`.
+**Goal:** Implement the playback counting, entity attribution, version merge, and Billboard consistency rules defined in `docs/playback-stats/2026-06-12-playback-stats-rules.md`.
 
 **Architecture:** Split playback statistics into three layers: counting policy produces stable valid play events, entity attribution maps those events to tracks/albums/artists, and aggregation/ranking applies version merge and display policy. Use path A from the rules document: `merge_consecutive_plays()` only merges adjacent rows with the same `track_id`; cross-track version merge only affects aggregation keys and never changes valid play events.
 
@@ -110,9 +110,9 @@
 
 ### Documentation
 
-- Modify: `docs/2026-06-12-playback-stats-rules.md`
+- Modify: `docs/playback-stats/2026-06-12-playback-stats-rules.md`
   - Keep as source of truth for semantics.
-- Modify: `docs/2026-06-08-phase5-productization-baseline.md`
+- Modify: `docs/productization/2026-06-08-phase5-baseline.md`
   - Record implementation status after each shipped phase.
 - Modify: `AGENTS.md` and `CLAUDE.md`
   - Update playback-counting guidance when implementation lands.
@@ -1239,8 +1239,8 @@ git commit -m "feat: show merged entity version details"
 
 **Files:**
 - Create: `backend/tests/contract/test_playback_invariants.py`
-- Modify: `docs/2026-06-12-playback-stats-rules.md`
-- Modify: `docs/2026-06-08-phase5-productization-baseline.md`
+- Modify: `docs/playback-stats/2026-06-12-playback-stats-rules.md`
+- Modify: `docs/productization/2026-06-08-phase5-baseline.md`
 - Modify: `README.md`
 - Modify: `AGENTS.md`
 - Modify: `CLAUDE.md`
@@ -1309,7 +1309,7 @@ Expected: pass.
 
 - [x] **Step 10.4: Update docs**
 
-Add an implementation-status table to `docs/2026-06-12-playback-stats-rules.md`:
+Add an implementation-status table to `docs/playback-stats/2026-06-12-playback-stats-rules.md`:
 
 ```markdown
 ## Implementation Status
@@ -1336,7 +1336,7 @@ Expected: exit code 0.
 - [x] **Step 10.6: Commit**
 
 ```bash
-git add backend/tests/contract/test_playback_invariants.py docs/2026-06-12-playback-stats-rules.md docs/2026-06-08-phase5-productization-baseline.md README.md AGENTS.md CLAUDE.md
+git add backend/tests/contract/test_playback_invariants.py docs/playback-stats/2026-06-12-playback-stats-rules.md docs/productization/2026-06-08-phase5-baseline.md README.md AGENTS.md CLAUDE.md
 git commit -m "docs: record playback statistics implementation status"
 ```
 

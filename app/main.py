@@ -8,7 +8,7 @@ This module reuses its own app/db, app/import_data, app/styles etc. and
 does NOT import from backend/. The two codebases share only the SQLite
 database file at data/spotify_stats.db.
 
-For migration rationale, see docs/phase4-architecture/2026-05-30-architecture-optimize.md.
+For migration rationale, see docs/architecture/2026-05-30-architecture-optimize.md.
 """
 
 import os

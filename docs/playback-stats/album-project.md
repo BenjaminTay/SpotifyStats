@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps below are now marked complete with checkbox (`- [x]`) syntax for tracking.
 
-**Goal:** Bring album/song version merging, album project play counts, Billboard album ranking, source breakdown, compilation handling, and frontend explanation into alignment with `docs/2026-06-18-playback-stats-rules-latest.md`.
+**Goal:** Bring album/song version merging, album project play counts, Billboard album ranking, source breakdown, compilation handling, and frontend explanation into alignment with `docs/playback-stats/rules.md`.
 
 **Architecture:** Keep the valid-play-event layer unchanged: `load_plays()` still performs music filtering, same-`track_id` consecutive merge, dynamic threshold filtering, and Billboard week boundary handling. Add an album-project attribution layer that maps valid play events to canonical songs, then to a single default album project per canonical song, with source-album breakdown retained as explanation. Replace album ranking entry points so they consume this layer instead of grouping by `source_album_id` or release-group canonical album names directly.
 
@@ -104,9 +104,9 @@ The implementation should preserve these invariants:
 
 ### Docs
 
-- Modify: `docs/2026-06-18-playback-stats-rules-latest.md`
+- Modify: `docs/playback-stats/rules.md`
   - Append implementation status after completion.
-- Modify: `docs/2026-06-08-phase5-productization-baseline.md`
+- Modify: `docs/productization/2026-06-08-phase5-baseline.md`
   - Record shipped behavior and validation matrix.
 - Modify: `AGENTS.md` and `CLAUDE.md`
   - Update album project counting guidance after backend and frontend ship.
@@ -1497,15 +1497,15 @@ Expected: L3 collaboration fixture remains merged through confirmed `track_group
 **Purpose:** Make the new rules durable and easy to verify later.
 
 **Files:**
-- Modify: `docs/2026-06-18-playback-stats-rules-latest.md`
-- Modify: `docs/2026-06-08-phase5-productization-baseline.md`
+- Modify: `docs/playback-stats/rules.md`
+- Modify: `docs/productization/2026-06-08-phase5-baseline.md`
 - Modify: `AGENTS.md`
 - Modify: `CLAUDE.md`
 - Modify: `README.md`
 
 - [x] **Step 8.1: Update rules doc status**
 
-Append a section to `docs/2026-06-18-playback-stats-rules-latest.md`:
+Append a section to `docs/playback-stats/rules.md`:
 
 ```markdown
 ## 17. Implementation Status
@@ -1525,7 +1525,7 @@ Key implemented invariants:
 
 - [x] **Step 8.2: Update Phase 5 baseline**
 
-Add a dated bullet to `docs/2026-06-08-phase5-productization-baseline.md` summarizing:
+Add a dated bullet to `docs/productization/2026-06-08-phase5-baseline.md` summarizing:
 
 - album project tables
 - album project resolver
