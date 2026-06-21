@@ -4,6 +4,8 @@ Provides a typed access layer for common playback-related operations,
 wrapping db.py functions for consistency.
 """
 
+from __future__ import annotations
+
 import sqlite3
 
 import pandas as pd
