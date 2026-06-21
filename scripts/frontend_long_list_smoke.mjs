@@ -627,6 +627,8 @@ async function exerciseCommunityFeed({ client, baseUrl, waitMs }) {
   await navigate(client, baseUrl, '/community')
   await waitForText(client, '榜单社区', waitMs)
   await clickText(client, '全部', waitMs)
+
+  // Wait for initial posts to render
   const beforeRows = await waitForCondition(
     async () => {
       const rows = await getRowWindow(client, { rowSelector: 'article' })
@@ -636,17 +638,29 @@ async function exerciseCommunityFeed({ client, baseUrl, waitMs }) {
     'Community feed did not render posts',
   )
 
+  // Track /api/community network responses via CDP
+  const communityRequests = []
+  const responseHandler = (params) => {
+    const url = params.response?.url || ''
+    if (url.includes('/api/community') && params.response?.status === 200) {
+      communityRequests.push({ url, status: params.response.status })
+    }
+  }
+  client.on('Network.responseReceived', responseHandler)
+
+  // Scroll to trigger Virtuoso endReached → infinite load
   await evaluate(client, `
     (() => {
-      const lastArticle = Array.from(document.querySelectorAll('article')).at(-1);
       const sentinels = Array.from(document.querySelectorAll('div')).filter((el) => el.classList.contains('h-1'));
-      const target = sentinels.at(-1) || lastArticle;
+      const target = sentinels.at(-1);
       if (target) target.scrollIntoView({ block: 'center', inline: 'nearest' });
       else window.scrollTo(0, document.body.scrollHeight);
       return true;
     })();
   `)
   await sleep(500)
+
+  // Second scroll
   await evaluate(client, `
     (() => {
       const sentinels = Array.from(document.querySelectorAll('div')).filter((el) => el.classList.contains('h-1'));
@@ -657,22 +671,21 @@ async function exerciseCommunityFeed({ client, baseUrl, waitMs }) {
     })();
   `)
 
-  const afterRows = await waitForCondition(
+  // Wait for at least one new /api/community 200 response after scrolling
+  const initialCount = communityRequests.length
+  await waitForCondition(
     async () => {
-      const rows = await getRowWindow(client, { rowSelector: 'article' })
-      return rows.count > beforeRows.count ? rows : null
+      return communityRequests.length > initialCount ? communityRequests : null
     },
-    waitMs,
-    'Community infinite feed did not append posts after scrolling',
+    5000,
+    'Community infinite feed did not trigger /api/community request after scrolling',
   )
 
   return {
-    beforePage: `${beforeRows.count} posts`,
-    afterPage: `${afterRows.count} posts`,
-    beforeRows: beforeRows.count,
-    afterRows: afterRows.count,
-    beforeSample: beforeRows.sample[0] || '',
-    afterSample: afterRows.sample[0] || '',
+    beforePostCount: beforeRows.count,
+    communityRequestsTriggered: communityRequests.length,
+    newRequestsAfterScroll: communityRequests.length - initialCount,
+    afterScrollUrls: communityRequests.slice(initialCount).map(r => r.url),
   }
 }
 

@@ -21,11 +21,20 @@ class ErrorBoundary extends Component<{ children: React.ReactNode }, { error: Er
   }
   render() {
     if (this.state.error) {
+      if (import.meta.env.DEV) {
+        console.error('YearlyReview ErrorBoundary caught:', this.state.error)
+      }
       return (
         <div className="py-16 text-center">
           <p className="font-serif text-[28px] font-bold mb-3">页面渲染错误</p>
-          <p className="font-sans text-[13px] text-muted-foreground mb-4 font-mono whitespace-pre-wrap">{this.state.error.message}</p>
-          <p className="font-sans text-[12px] text-muted-foreground/60 font-mono whitespace-pre-wrap max-h-64 overflow-auto">{this.state.error.stack}</p>
+          {import.meta.env.DEV && (
+            <p className="font-sans text-[13px] text-muted-foreground mb-4 font-mono whitespace-pre-wrap break-all max-w-lg mx-auto">
+              {this.state.error.message}
+            </p>
+          )}
+          <p className="font-sans text-[13px] text-muted-foreground/60">
+            请刷新页面后重试。如问题持续，请联系管理员。
+          </p>
         </div>
       )
     }
