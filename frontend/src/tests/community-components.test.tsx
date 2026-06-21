@@ -4,6 +4,24 @@ import { describe, expect, it, vi, beforeEach } from 'vitest'
 
 import type { CommunityPost } from '@/types/community'
 
+// Mock Virtuoso for jsdom: renders all items as flat list (no scroll virtualization in tests)
+vi.mock('react-virtuoso', () => ({
+  Virtuoso: ({ data, totalCount, itemContent, components }: any) => {
+    const count = data ? data.length : (totalCount ?? 0)
+    const items = []
+    for (let i = 0; i < count; i++) {
+      items.push(itemContent(i, data ? data[i] : undefined))
+    }
+    return (
+      <div>
+        {components?.Header?.()}
+        {items}
+        {components?.Footer?.()}
+      </div>
+    )
+  },
+}))
+
 import { AccountAvatar } from '@/features/community/AccountAvatar'
 import { CommunityTimeline } from '@/features/community/CommunityTimeline'
 import { FeedToggle } from '@/features/community/FeedToggle'

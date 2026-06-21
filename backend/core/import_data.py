@@ -120,9 +120,15 @@ def _cache_track(
             tid = row[0]
         else:
             cur = conn.execute(
-                """INSERT INTO tracks(track_name, artist_id, album_id, spotify_track_uri)
-                   VALUES (?, ?, ?, ?)""",
-                (track_name, artist_id, album_id, spotify_uri),
+                """INSERT INTO tracks(track_name, artist_id, album_id, spotify_track_uri, spotify_track_id)
+                   VALUES (?, ?, ?, ?, ?)""",
+                (
+                    track_name,
+                    artist_id,
+                    album_id,
+                    spotify_uri,
+                    spotify_uri.replace("spotify:track:", "") if spotify_uri else None,
+                ),
             )
             tid = cur.lastrowid
         cache[key] = tid

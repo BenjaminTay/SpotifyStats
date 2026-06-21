@@ -41,7 +41,7 @@ def _resolve_album_category(conn: sqlite3.Connection, album_name: str, artist_na
            JOIN artists a ON al.artist_id = a.artist_id
            LEFT JOIN tracks t ON t.album_id = al.album_id
            LEFT JOIN spotify_track_meta stm
-             ON REPLACE(t.spotify_track_uri, 'spotify:track:', '') = stm.spotify_track_id
+             ON t.spotify_track_id = stm.spotify_track_id
            LEFT JOIN spotify_album_meta sam ON (
              stm.spotify_album_id = sam.spotify_album_id
              OR 'spotify:album:' || stm.spotify_album_id = sam.spotify_album_id
@@ -59,7 +59,7 @@ def _resolve_album_category(conn: sqlite3.Connection, album_name: str, artist_na
                JOIN albums al ON rgm.album_id = al.album_id
                LEFT JOIN tracks t ON t.album_id = al.album_id
                LEFT JOIN spotify_track_meta stm
-                 ON REPLACE(t.spotify_track_uri, 'spotify:track:', '') = stm.spotify_track_id
+                 ON t.spotify_track_id = stm.spotify_track_id
                LEFT JOIN spotify_album_meta sam ON (
                  stm.spotify_album_id = sam.spotify_album_id
                  OR 'spotify:album:' || stm.spotify_album_id = sam.spotify_album_id

@@ -165,28 +165,29 @@ def build() -> str:
     # Tracks — 15 tracks across 5 music albums + 1 podcast record
     tracks = [
         # Alpha Debut (album 1, artist 1)
-        (1, "Alpha Song 1", 1, 1, "spotify:track:aaa1"),
-        (2, "Alpha Song 2", 1, 1, "spotify:track:aaa2"),
-        (3, "Alpha Song 3", 1, 1, "spotify:track:aaa3"),
-        (4, "Alpha Song 4", 1, 1, "spotify:track:aaa4"),
+        (1, "Alpha Song 1", 1, 1, "spotify:track:aaa1", "aaa1"),
+        (2, "Alpha Song 2", 1, 1, "spotify:track:aaa2", "aaa2"),
+        (3, "Alpha Song 3", 1, 1, "spotify:track:aaa3", "aaa3"),
+        (4, "Alpha Song 4", 1, 1, "spotify:track:aaa4", "aaa4"),
         # Alpha Debut Deluxe (album 2, artist 1)
-        (5, "Alpha Song 1 (Deluxe)", 1, 2, "spotify:track:aaa5"),
-        (6, "Alpha Song 5", 1, 2, "spotify:track:aaa6"),
-        (7, "Alpha Song 6", 1, 2, "spotify:track:aaa7"),
+        (5, "Alpha Song 1 (Deluxe)", 1, 2, "spotify:track:aaa5", "aaa5"),
+        (6, "Alpha Song 5", 1, 2, "spotify:track:aaa6", "aaa6"),
+        (7, "Alpha Song 6", 1, 2, "spotify:track:aaa7", "aaa7"),
         # Beta Hits (album 3, artist 2)
-        (8, "Beta Song 1", 2, 3, "spotify:track:bbb1"),
-        (9, "Beta Song 2", 2, 3, "spotify:track:bbb2"),
-        (10, "Beta Song 3", 2, 3, "spotify:track:bbb3"),
-        (11, "Beta Song 4", 2, 3, "spotify:track:bbb4"),
+        (8, "Beta Song 1", 2, 3, "spotify:track:bbb1", "bbb1"),
+        (9, "Beta Song 2", 2, 3, "spotify:track:bbb2", "bbb2"),
+        (10, "Beta Song 3", 2, 3, "spotify:track:bbb3", "bbb3"),
+        (11, "Beta Song 4", 2, 3, "spotify:track:bbb4", "bbb4"),
         # Beta Hits Remix (album 4, artist 2, single)
-        (12, "Beta Song 1 Remix", 2, 4, "spotify:track:bbb5"),
+        (12, "Beta Song 1 Remix", 2, 4, "spotify:track:bbb5", "bbb5"),
         # Beta Acoustic (album 5, artist 2)
-        (13, "Beta Song 1 Acoustic", 2, 5, "spotify:track:bbb6"),
-        (14, "Beta Song 5", 2, 5, "spotify:track:bbb7"),
-        (15, "Beta Song 6", 2, 5, "spotify:track:bbb8"),
+        (13, "Beta Song 1 Acoustic", 2, 5, "spotify:track:bbb6", "bbb6"),
+        (14, "Beta Song 5", 2, 5, "spotify:track:bbb7", "bbb7"),
+        (15, "Beta Song 6", 2, 5, "spotify:track:bbb8", "bbb8"),
     ]
     conn.executemany(
-        "INSERT INTO tracks(track_id, track_name, artist_id, album_id, spotify_track_uri) VALUES (?, ?, ?, ?, ?)",
+        "INSERT INTO tracks(track_id, track_name, artist_id, album_id, spotify_track_uri, spotify_track_id) "
+        "VALUES (?, ?, ?, ?, ?, ?)",
         tracks,
     )
 
@@ -433,33 +434,34 @@ def build() -> str:
     # Fixture Tracks
     fixture_tracks = [
         # scenario 1: short_fragments_same_track — 40s track
-        (901, "Fixture Fragment Song", 901, 902, "spotify:track:fix001"),
+        (901, "Fixture Fragment Song", 901, 902, "spotify:track:fix001", "fix001"),
         # scenario 2: long_track_dynamic_threshold — 10min track
-        (902, "Fixture Long Track", 901, 902, "spotify:track:fix002"),
+        (902, "Fixture Long Track", 901, 902, "spotify:track:fix002", "fix002"),
         # scenario 3: multi_artist_fanout
-        (903, "Fixture Shared Credit", 901, 902, "spotify:track:fix003"),
+        (903, "Fixture Shared Credit", 901, 902, "spotify:track:fix003", "fix003"),
         # scenario 4: source_album_single_then_album
-        (904, "Fixture Source Album Song", 901, 901, "spotify:track:fix004"),
+        (904, "Fixture Source Album Song", 901, 901, "spotify:track:fix004", "fix004"),
         # scenario 6: track_group_recording (standard + remastered)
-        (905, "Fixture Recording Song", 901, 902, "spotify:track:fix005"),
-        (906, "Fixture Recording Song - Remastered", 901, 903, "spotify:track:fix006"),
+        (905, "Fixture Recording Song", 901, 902, "spotify:track:fix005", "fix005"),
+        (906, "Fixture Recording Song - Remastered", 901, 903, "spotify:track:fix006", "fix006"),
         # scenario 7: track_group_composition (original + acoustic + demo)
-        (907, "Fixture Composition Song", 901, 902, "spotify:track:fix007"),
-        (908, "Fixture Composition Song - Acoustic", 901, 903, "spotify:track:fix008"),
-        (909, "Fixture Composition Song - Demo", 901, 903, "spotify:track:fix009"),
+        (907, "Fixture Composition Song", 901, 902, "spotify:track:fix007", "fix007"),
+        (908, "Fixture Composition Song - Acoustic", 901, 903, "spotify:track:fix008", "fix008"),
+        (909, "Fixture Composition Song - Demo", 901, 903, "spotify:track:fix009", "fix009"),
         # scenario 10: collab single with multi-artist album_artists (comma-separated)
-        (910, "Fixture Collab Track", 901, 905, "spotify:track:fix010"),
+        (910, "Fixture Collab Track", 901, 905, "spotify:track:fix010", "fix010"),
         # album project scenarios
-        (920, "Fixture Lead Single", 901, 920, "spotify:track:proj920"),
-        (921, "Fixture Album Cut", 901, 921, "spotify:track:proj921"),
-        (922, "Fixture Deluxe Bonus", 901, 922, "spotify:track:proj922"),
-        (923, "Fixture Compilation Exclusive", 901, 924, "spotify:track:proj923"),
-        (925, "Fixture Lead Single (Rerecorded)", 901, 925, "spotify:track:proj925"),
-        (926, "Fixture Lead Single Remix", 901, 926, "spotify:track:proj926"),
-        (927, "Fixture Rerecord Vault", 901, 925, "spotify:track:proj927"),
+        (920, "Fixture Lead Single", 901, 920, "spotify:track:proj920", "proj920"),
+        (921, "Fixture Album Cut", 901, 921, "spotify:track:proj921", "proj921"),
+        (922, "Fixture Deluxe Bonus", 901, 922, "spotify:track:proj922", "proj922"),
+        (923, "Fixture Compilation Exclusive", 901, 924, "spotify:track:proj923", "proj923"),
+        (925, "Fixture Lead Single (Rerecorded)", 901, 925, "spotify:track:proj925", "proj925"),
+        (926, "Fixture Lead Single Remix", 901, 926, "spotify:track:proj926", "proj926"),
+        (927, "Fixture Rerecord Vault", 901, 925, "spotify:track:proj927", "proj927"),
     ]
     conn.executemany(
-        "INSERT INTO tracks(track_id, track_name, artist_id, album_id, spotify_track_uri) VALUES (?, ?, ?, ?, ?)",
+        "INSERT INTO tracks(track_id, track_name, artist_id, album_id, spotify_track_uri, spotify_track_id) "
+        "VALUES (?, ?, ?, ?, ?, ?)",
         fixture_tracks,
     )
 
@@ -961,7 +963,7 @@ def build() -> str:
            FROM plays p
            JOIN tracks t ON p.track_id = t.track_id
            LEFT JOIN spotify_track_meta stm
-             ON REPLACE(t.spotify_track_uri, 'spotify:track:', '') = stm.spotify_track_id
+             ON t.spotify_track_id = stm.spotify_track_id
            WHERE p.track_id IS NOT NULL
            ORDER BY p.ts""",
         conn,

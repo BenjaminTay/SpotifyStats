@@ -1,4 +1,5 @@
-import { useEffect, useRef } from 'react'
+import { useCallback } from 'react'
+import { Virtuoso } from 'react-virtuoso'
 
 import type { CommunityPost } from '@/types/community'
 
@@ -13,24 +14,16 @@ interface CommunityTimelineProps {
 }
 
 export function CommunityTimeline({ posts, loading, hasMore, onLoadMore }: CommunityTimelineProps) {
-  const sentinelRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    const sentinel = sentinelRef.current
-    if (!sentinel) return
-
-    const observer = new IntersectionObserver(
-      entries => {
-        if (entries[0]?.isIntersecting && hasMore && !loading) {
-          onLoadMore()
-        }
-      },
-      { rootMargin: '400px' },
-    )
-
-    observer.observe(sentinel)
-    return () => observer.disconnect()
+  const handleEndReached = useCallback(() => {
+    if (hasMore && !loading) {
+      onLoadMore()
+    }
   }, [hasMore, loading, onLoadMore])
+
+  const renderItem = useCallback(
+    (_index: number, post: CommunityPost) => <PostCard post={post} />,
+    [],
+  )
 
   if (!loading && posts.length === 0) {
     return (
@@ -45,26 +38,30 @@ export function CommunityTimeline({ posts, loading, hasMore, onLoadMore }: Commu
   }
 
   return (
-    <div>
-      {posts.map(post => (
-        <PostCard key={post.id} post={post} />
-      ))}
-
-      {loading && (
-        <div>
-          {Array.from({ length: 3 }).map((_, i) => (
-            <PostSkeleton key={i} />
-          ))}
-        </div>
-      )}
-
-      <div ref={sentinelRef} className="h-1" />
-
-      {!hasMore && posts.length > 0 && (
-        <div className="py-10 text-center">
-          <span className="text-[13px] text-muted-foreground">No more posts</span>
-        </div>
-      )}
-    </div>
+    <Virtuoso
+      useWindowScroll
+      data={posts}
+      itemContent={renderItem}
+      endReached={handleEndReached}
+      overscan={200}
+      components={{
+        Footer: () => (
+          <>
+            {loading && (
+              <div>
+                {Array.from({ length: 3 }).map((_, i) => (
+                  <PostSkeleton key={i} />
+                ))}
+              </div>
+            )}
+            {!hasMore && posts.length > 0 && (
+              <div className="py-10 text-center">
+                <span className="text-[13px] text-muted-foreground">No more posts</span>
+              </div>
+            )}
+          </>
+        ),
+      }}
+    />
   )
 }

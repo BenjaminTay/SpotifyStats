@@ -4,7 +4,7 @@ from functools import lru_cache
 
 import pandas as pd
 
-from backend.core.db import base_filters, get_db, merge_consecutive_plays
+from backend.core.db import _downcast_ints, base_filters, get_db, merge_consecutive_plays
 
 # Weekday labels
 DOW_NAMES = {0: "周一", 1: "周二", 2: "周三", 3: "周四", 4: "周五", 5: "周六", 6: "周日"}
@@ -87,7 +87,7 @@ def load_billboard_raw(
             LEFT JOIN albums al ON t.album_id = al.album_id
             LEFT JOIN albums al_src ON p.source_album_id = al_src.album_id
             LEFT JOIN spotify_track_meta stm
-              ON REPLACE(t.spotify_track_uri, 'spotify:track:', '') = stm.spotify_track_id
+              ON t.spotify_track_id = stm.spotify_track_id
             {_w}
             ORDER BY p.ts""",
         conn,
@@ -115,7 +115,7 @@ def load_billboard_raw(
 
         df = filter_effective_plays(df, min_ms=min_ms, dynamic_threshold=dynamic_threshold)
 
-    return df
+    return _downcast_ints(df)
 
 
 @lru_cache(maxsize=8)
@@ -150,7 +150,7 @@ def load_billboard_raw_for_artists(
             LEFT JOIN albums al ON t.album_id = al.album_id
             LEFT JOIN albums al_src ON p.source_album_id = al_src.album_id
             LEFT JOIN spotify_track_meta stm
-              ON REPLACE(t.spotify_track_uri, 'spotify:track:', '') = stm.spotify_track_id
+              ON t.spotify_track_id = stm.spotify_track_id
             {_w}
             ORDER BY p.ts""",
         conn,
@@ -185,7 +185,7 @@ def load_billboard_raw_for_artists(
     df = df.merge(track_artists_df, on="track_id", how="inner")
     df = df.merge(artists_df, on="artist_id", how="left")
 
-    return df
+    return _downcast_ints(df)
 
 
 @lru_cache(maxsize=8)

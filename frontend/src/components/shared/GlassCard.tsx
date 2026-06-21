@@ -1,3 +1,4 @@
+import { memo } from 'react'
 import { cn } from '@/lib/utils'
 
 interface GlassCardProps {
@@ -5,7 +6,7 @@ interface GlassCardProps {
   className?: string
 }
 
-export function GlassCard({ children, className }: GlassCardProps) {
+function GlassCardInner({ children, className }: GlassCardProps) {
   return (
     <div
       className={cn(
@@ -19,3 +20,5 @@ export function GlassCard({ children, className }: GlassCardProps) {
     </div>
   )
 }
+
+export const GlassCard = memo(GlassCardInner)

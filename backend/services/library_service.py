@@ -1,12 +1,46 @@
 """Library / account data services — direct SQL queries on account tables."""
 
 import sqlite3
+from pathlib import Path
 
 import pandas as pd
+
+from backend.core.cache import ttl_cached
+from backend.core.cache_manager import register_ttl
+
+LIBRARY_CACHE_TTL = 300
+
+
+def _database_file_path(conn: sqlite3.Connection):
+    rows = conn.execute("PRAGMA database_list").fetchall()
+    for row in rows:
+        if row[1] != "main":
+            continue
+        if not row[2]:
+            return None
+        return str(Path(row[2]).resolve())
+    return None
+
+
+@ttl_cached(LIBRARY_CACHE_TTL, namespace="library")
+def _get_library_overview_cached(db_path: str) -> dict:
+    conn = sqlite3.connect(db_path, timeout=30, check_same_thread=False)
+    conn.row_factory = sqlite3.Row
+    try:
+        return _build_library_overview(conn)
+    finally:
+        conn.close()
 
 
 def get_library_overview(conn: sqlite3.Connection) -> dict:
     """Full library overview: saved tracks, coverage, forgotten treasures, etc."""
+    db_path = _database_file_path(conn)
+    if db_path is None:
+        return _build_library_overview(conn)
+    return _get_library_overview_cached(db_path)
+
+
+def _build_library_overview(conn: sqlite3.Connection) -> dict:
     try:
         saved_tracks_df = pd.read_sql_query("SELECT * FROM saved_tracks", conn)
         saved_albums_df = pd.read_sql_query("SELECT * FROM saved_albums", conn)
@@ -24,11 +58,11 @@ def get_library_overview(conn: sqlite3.Connection) -> dict:
         if track_ids:
             placeholders = ",".join("?" * len(track_ids))
             coverage_df = pd.read_sql_query(
-                f"""SELECT REPLACE(t.spotify_track_uri, 'spotify:track:', '') as tid,
+                f"""SELECT t.spotify_track_id as tid,
                            COUNT(p.play_id) as play_count, MAX(p.ts_date) as last_played
                     FROM tracks t
                     LEFT JOIN plays p ON t.track_id = p.track_id
-                    WHERE REPLACE(t.spotify_track_uri, 'spotify:track:', '') IN ({placeholders})
+                    WHERE t.spotify_track_id IN ({placeholders})
                     GROUP BY 1""",
                 conn,
                 params=track_ids,
@@ -239,3 +273,6 @@ def get_playlist_overlap_matrix(conn: sqlite3.Connection) -> dict:
         "playlist_names": [names[pid] for pid in ids],
         "matrix": matrix,
     }
+
+
+register_ttl("library", "overview", _get_library_overview_cached)

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { memo, useState, useEffect } from 'react'
 
 const COVER_COLORS = [
   'oklch(0.563 0.18 28.2)',
@@ -9,7 +9,7 @@ const COVER_COLORS = [
   'oklch(0.47 0.06 330)',
 ]
 
-export function CoverCell({
+function CoverCellInner({
   index,
   isNewOrRe = false,
   coverUrl,
@@ -35,6 +35,7 @@ export function CoverCell({
           className={`${className} rounded-[8px] object-cover`}
           onError={() => setImgError(true)}
           loading="lazy"
+          decoding="async"
         />
       )
     }
@@ -53,6 +54,7 @@ export function CoverCell({
         className={`${className} rounded-[8px] object-cover`}
         onError={() => setImgError(true)}
         loading="lazy"
+        decoding="async"
       />
     )
   }
@@ -68,3 +70,5 @@ export function CoverCell({
     </div>
   )
 }
+
+export const CoverCell = memo(CoverCellInner)

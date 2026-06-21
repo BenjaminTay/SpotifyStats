@@ -15,7 +15,7 @@ def _vs_spotify_track_meta(track_id):
         """SELECT stm.popularity
            FROM tracks t
            JOIN spotify_track_meta stm
-             ON REPLACE(t.spotify_track_uri, 'spotify:track:', '') = stm.spotify_track_id
+             ON t.spotify_track_id = stm.spotify_track_id
            WHERE t.track_id = ? LIMIT 1""",
         (track_id,),
     ).fetchone()
@@ -33,7 +33,7 @@ def _vs_spotify_album_meta(album_name, artist_name):
            JOIN track_albums ta ON ta.album_id = al.album_id
            JOIN tracks t ON ta.track_id = t.track_id
            JOIN spotify_track_meta stm
-             ON REPLACE(t.spotify_track_uri, 'spotify:track:', '') = stm.spotify_track_id
+             ON t.spotify_track_id = stm.spotify_track_id
            JOIN spotify_album_meta sam ON stm.spotify_album_id = sam.spotify_album_id
            LEFT JOIN release_group_members rgm ON al.album_id = rgm.album_id
            LEFT JOIN release_groups rg ON rgm.group_id = rg.group_id

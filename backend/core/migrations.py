@@ -291,6 +291,41 @@ def migrate_017(conn: sqlite3.Connection):
     )
 
 
+@migration(18, "tracks_spotify_track_id")
+def migrate_018(conn: sqlite3.Connection):
+    """Add spotify_track_id column to tracks for index-friendly JOINs.
+
+    The existing pattern REPLACE(t.spotify_track_uri, 'spotify:track:', '')
+    prevents SQLite from using any index on the JOIN to spotify_track_meta.
+    A dedicated column with an index allows direct indexed lookups.
+    """
+    conn.execute("ALTER TABLE tracks ADD COLUMN spotify_track_id TEXT")
+    conn.execute(
+        "UPDATE tracks SET spotify_track_id = "
+        "REPLACE(spotify_track_uri, 'spotify:track:', '') "
+        "WHERE spotify_track_uri IS NOT NULL AND spotify_track_id IS NULL"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_tracks_spotify_track_id ON tracks(spotify_track_id)"
+    )
+
+
+@migration(19, "spotify_meta_indexes")
+def migrate_019(conn: sqlite3.Connection):
+    """Add missing indexes on Spotify meta tables for frequent queries."""
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_spotify_track_meta_album "
+        "ON spotify_track_meta(spotify_album_id)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_spotify_album_meta_name ON spotify_album_meta(album_name)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_spotify_artist_meta_name "
+        "ON spotify_artist_meta(artist_name)"
+    )
+
+
 # ── Runner ────────────────────────────────────────────────────────────────
 
 

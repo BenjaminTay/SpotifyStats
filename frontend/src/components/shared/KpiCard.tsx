@@ -1,3 +1,4 @@
+import { memo } from 'react'
 import { cn } from '@/lib/utils'
 import { TrendingUp, TrendingDown, Minus } from 'lucide-react'
 
@@ -20,7 +21,7 @@ const trendColor = {
   neutral: 'text-muted-foreground',
 }
 
-export function KpiCard({ label, value, trend, trendLabel }: KpiCardProps) {
+function KpiCardInner({ label, value, trend, trendLabel }: KpiCardProps) {
   const Icon = trend ? trendIcon[trend] : null
 
   return (
@@ -45,3 +46,5 @@ export function KpiCard({ label, value, trend, trendLabel }: KpiCardProps) {
     </div>
   )
 }
+
+export const KpiCard = memo(KpiCardInner)

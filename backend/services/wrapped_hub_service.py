@@ -1,8 +1,14 @@
 """Official Spotify Wrapped data service."""
 
 import sqlite3
+from pathlib import Path
 
 import pandas as pd
+
+from backend.core.cache import ttl_cached
+from backend.core.cache_manager import register_ttl
+
+WRAPPED_HUB_CACHE_TTL = 600
 
 
 def _resolve_track_id(conn: sqlite3.Connection, track_uri: str) -> int:
@@ -51,7 +57,7 @@ def _get_cover_for_name(conn: sqlite3.Connection, name: str, kind: str) -> str:
         r = conn.execute(
             "SELECT sam.image_url FROM spotify_track_meta stm "
             "JOIN spotify_album_meta sam ON stm.spotify_album_id = sam.spotify_album_id "
-            "JOIN tracks t ON REPLACE(t.spotify_track_uri, 'spotify:track:', '') = stm.spotify_track_id "
+            "JOIN tracks t ON t.spotify_track_id = stm.spotify_track_id "
             "WHERE t.track_name = ? LIMIT 1",
             (name,),
         ).fetchone()
@@ -91,7 +97,7 @@ def _resolve_uri_name(conn: sqlite3.Connection, uri: str, uri_type: str = "artis
         if r:
             return r[0]
         r = conn.execute(
-            "SELECT t.track_name FROM tracks t WHERE REPLACE(t.spotify_track_uri, 'spotify:track:', '') = ?",
+            "SELECT t.track_name FROM tracks t WHERE t.spotify_track_id = ?",
             (spotify_id,),
         ).fetchone()
         if r:
@@ -115,8 +121,36 @@ def _resolve_uri_name(conn: sqlite3.Connection, uri: str, uri_type: str = "artis
     return spotify_id or uri
 
 
+def _database_file_path(conn: sqlite3.Connection):
+    rows = conn.execute("PRAGMA database_list").fetchall()
+    for row in rows:
+        if row[1] != "main":
+            continue
+        if not row[2]:
+            return None
+        return str(Path(row[2]).resolve())
+    return None
+
+
+@ttl_cached(WRAPPED_HUB_CACHE_TTL, namespace="wrapped")
+def _get_wrapped_hub_cached(db_path: str) -> dict:
+    conn = sqlite3.connect(db_path, timeout=30, check_same_thread=False)
+    conn.row_factory = sqlite3.Row
+    try:
+        return _build_wrapped_hub(conn)
+    finally:
+        conn.close()
+
+
 def get_wrapped_hub(conn: sqlite3.Connection) -> dict:
     """Load all official Spotify Wrapped 2025 data."""
+    db_path = _database_file_path(conn)
+    if db_path is None:
+        return _build_wrapped_hub(conn)
+    return _get_wrapped_hub_cached(db_path)
+
+
+def _build_wrapped_hub(conn: sqlite3.Connection) -> dict:
     try:
         top_artists = pd.read_sql_query("SELECT * FROM wrapped_top_artists ORDER BY rank", conn)
         top_tracks = pd.read_sql_query("SELECT * FROM wrapped_top_tracks ORDER BY rank", conn)
@@ -243,3 +277,6 @@ def get_wrapped_hub(conn: sqlite3.Connection) -> dict:
             for r in archive.itertuples(index=False)
         ],
     }
+
+
+register_ttl("wrapped", "hub", _get_wrapped_hub_cached)

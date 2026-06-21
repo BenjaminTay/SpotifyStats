@@ -174,7 +174,7 @@ def _get_cover_cdn_url(cover_type: str, entity_id: int) -> str | None:
                        ) album_tracks
                        JOIN tracks t ON t.track_id = album_tracks.track_id
                        JOIN spotify_track_meta stm
-                         ON REPLACE(t.spotify_track_uri, 'spotify:track:', '') = stm.spotify_track_id
+                         ON t.spotify_track_id = stm.spotify_track_id
                        JOIN spotify_album_meta sam
                          ON sam.spotify_album_id = stm.spotify_album_id
                        WHERE sam.image_url IS NOT NULL

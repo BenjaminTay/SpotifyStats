@@ -320,7 +320,7 @@ def get_primary_release_date(canonical_name: str, artist_name: str):
            JOIN track_albums ta ON ta.album_id = al.album_id
            JOIN tracks t ON t.track_id = ta.track_id
            JOIN spotify_track_meta stm
-             ON REPLACE(t.spotify_track_uri, 'spotify:track:', '') = stm.spotify_track_id
+             ON t.spotify_track_id = stm.spotify_track_id
            JOIN spotify_album_meta sam ON stm.spotify_album_id = sam.spotify_album_id
            WHERE al.album_id = ?""",
         [primary_id],
@@ -797,7 +797,7 @@ def _get_album_spotify_tracks(conn, album_id: int) -> set:
            FROM track_albums ta
            JOIN tracks t ON t.track_id = ta.track_id
            JOIN spotify_track_meta stm
-             ON REPLACE(t.spotify_track_uri, 'spotify:track:', '') = stm.spotify_track_id
+             ON t.spotify_track_id = stm.spotify_track_id
            JOIN spotify_album_meta sam ON stm.spotify_album_id = sam.spotify_album_id
            WHERE ta.album_id = ?""",
         (album_id,),
@@ -937,7 +937,7 @@ def get_album_track_comparison(album_id_a: int, album_id_b: int) -> dict:
                FROM track_albums ta
                JOIN tracks t ON t.track_id = ta.track_id
                JOIN spotify_track_meta stm
-                 ON REPLACE(t.spotify_track_uri, 'spotify:track:', '') = stm.spotify_track_id
+                 ON t.spotify_track_id = stm.spotify_track_id
                JOIN spotify_album_meta sam ON stm.spotify_album_id = sam.spotify_album_id
                WHERE ta.album_id = ?""",
             (aid,),
@@ -1062,7 +1062,7 @@ def _get_release_date(conn, album_id: int):
            FROM track_albums ta
            JOIN tracks t ON t.track_id = ta.track_id
            JOIN spotify_track_meta stm
-             ON REPLACE(t.spotify_track_uri, 'spotify:track:', '') = stm.spotify_track_id
+             ON t.spotify_track_id = stm.spotify_track_id
            JOIN spotify_album_meta sam ON stm.spotify_album_id = sam.spotify_album_id
            WHERE ta.album_id = ?""",
         (album_id,),
@@ -1092,7 +1092,7 @@ def _build_album_track_sets(conn, albums_df):
                FROM track_albums ta
                JOIN tracks t ON t.track_id = ta.track_id
                JOIN spotify_track_meta stm
-                 ON REPLACE(t.spotify_track_uri, 'spotify:track:', '') = stm.spotify_track_id
+                 ON t.spotify_track_id = stm.spotify_track_id
                JOIN spotify_album_meta sam ON stm.spotify_album_id = sam.spotify_album_id
                WHERE ta.album_id = ?""",
             (aid,),
@@ -1661,7 +1661,7 @@ def _detect_groups_for_type(conn, album_type_filter, overlap_threshold, superset
             FROM track_albums ta2
             JOIN tracks t2 ON t2.track_id = ta2.track_id
             JOIN spotify_track_meta stm2
-              ON REPLACE(t2.spotify_track_uri, 'spotify:track:', '') = stm2.spotify_track_id
+              ON t2.spotify_track_id = stm2.spotify_track_id
             JOIN spotify_album_meta sam2 ON sam2.spotify_album_id = stm2.spotify_album_id
             WHERE sam2.album_type = 'album'
         )"""
@@ -1674,7 +1674,7 @@ def _detect_groups_for_type(conn, album_type_filter, overlap_threshold, superset
            FROM spotify_album_meta sam
            JOIN spotify_track_meta stm ON stm.spotify_album_id = sam.spotify_album_id
            JOIN tracks t
-             ON REPLACE(t.spotify_track_uri, 'spotify:track:', '') = stm.spotify_track_id
+             ON t.spotify_track_id = stm.spotify_track_id
            JOIN track_albums ta ON ta.track_id = t.track_id
            JOIN albums al ON al.album_id = ta.album_id
            JOIN artists a ON al.artist_id = a.artist_id
@@ -2042,7 +2042,7 @@ def get_album_types(album_ids):
             JOIN track_albums ta ON ta.album_id = al.album_id
             JOIN tracks t ON t.track_id = ta.track_id
             JOIN spotify_track_meta stm
-              ON REPLACE(t.spotify_track_uri, 'spotify:track:', '') = stm.spotify_track_id
+              ON t.spotify_track_id = stm.spotify_track_id
             JOIN spotify_album_meta sam
               ON stm.spotify_album_id = sam.spotify_album_id
             WHERE al.album_id IN ({placeholders})

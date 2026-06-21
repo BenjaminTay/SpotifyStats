@@ -73,7 +73,7 @@ def _get_track_spotify_meta(track_id, merge_level=2):
                   sam.album_name AS spotify_album_name
            FROM tracks t
            JOIN spotify_track_meta stm
-             ON REPLACE(t.spotify_track_uri, 'spotify:track:', '') = stm.spotify_track_id
+             ON t.spotify_track_id = stm.spotify_track_id
            LEFT JOIN spotify_album_meta sam ON stm.spotify_album_id = sam.spotify_album_id
            WHERE t.track_id = ?
            LIMIT 1""",
@@ -291,7 +291,7 @@ def _get_album_spotify_meta(album_name, artist_name, merge_level=2):
            JOIN track_albums ta ON ta.album_id = al.album_id
            JOIN tracks t ON ta.track_id = t.track_id
            JOIN spotify_track_meta stm
-             ON REPLACE(t.spotify_track_uri, 'spotify:track:', '') = stm.spotify_track_id
+             ON t.spotify_track_id = stm.spotify_track_id
            JOIN spotify_album_meta sam ON stm.spotify_album_id = sam.spotify_album_id
            WHERE al.album_name = ? AND a.artist_name = ?
            LIMIT 1""",

@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from functools import lru_cache
+from pathlib import Path
 
 import pandas as pd
 
@@ -59,7 +61,7 @@ def _get_track_cover(conn: sqlite3.Connection, track_name: str, artist_name: str
         "FROM tracks t "
         "JOIN artists a ON t.artist_id = a.artist_id "
         "JOIN spotify_track_meta stm "
-        "  ON REPLACE(t.spotify_track_uri, 'spotify:track:', '') = stm.spotify_track_id "
+        "  ON t.spotify_track_id = stm.spotify_track_id "
         "JOIN spotify_album_meta m ON stm.spotify_album_id = m.spotify_album_id "
         "WHERE t.track_name = ? AND a.artist_name = ? LIMIT 1",
         (track_name, artist_name),
@@ -175,6 +177,43 @@ def _dim_label(dim: str) -> str:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
+def _database_file_path(conn: sqlite3.Connection):
+    rows = conn.execute("PRAGMA database_list").fetchall()
+    for row in rows:
+        if row[1] != "main":
+            continue
+        if not row[2]:
+            return None
+        return str(Path(row[2]).resolve())
+    return None
+
+
+@lru_cache(maxsize=8)
+def _get_wrapped_full_cached(
+    db_path: str,
+    min_ms: int,
+    music_only: bool,
+    merge_enabled: bool,
+    year: int,
+    dynamic_threshold: bool = False,
+    max_merge_gap_minutes=None,
+) -> dict:
+    conn = sqlite3.connect(db_path, timeout=30, check_same_thread=False)
+    conn.row_factory = sqlite3.Row
+    try:
+        return _build_wrapped_full(
+            conn,
+            min_ms,
+            music_only,
+            merge_enabled,
+            year,
+            dynamic_threshold=dynamic_threshold,
+            max_merge_gap_minutes=max_merge_gap_minutes,
+        )
+    finally:
+        conn.close()
+
+
 def get_wrapped_full(
     conn: sqlite3.Connection,
     min_ms: int,
@@ -182,12 +221,42 @@ def get_wrapped_full(
     merge_enabled: bool,
     year: int,
     dynamic_threshold: bool = False,
-    max_merge_gap_minutes: int | None = None,
+    max_merge_gap_minutes=None,
 ) -> dict:
     """Generate the full multi-module yearly Wrapped report.
 
-    Returns a dict matching ``backend.models.wrapped.WrappedFullResponse``.
-    """
+    Returns a dict matching ``backend.models.wrapped.WrappedFullResponse``."""
+    db_path = _database_file_path(conn)
+    if db_path is None:
+        return _build_wrapped_full(
+            conn,
+            min_ms,
+            music_only,
+            merge_enabled,
+            year,
+            dynamic_threshold=dynamic_threshold,
+            max_merge_gap_minutes=max_merge_gap_minutes,
+        )
+    return _get_wrapped_full_cached(
+        db_path,
+        min_ms,
+        music_only,
+        merge_enabled,
+        year,
+        dynamic_threshold=dynamic_threshold,
+        max_merge_gap_minutes=max_merge_gap_minutes,
+    )
+
+
+def _build_wrapped_full(
+    conn: sqlite3.Connection,
+    min_ms: int,
+    music_only: bool,
+    merge_enabled: bool,
+    year: int,
+    dynamic_threshold: bool = False,
+    max_merge_gap_minutes=None,
+) -> dict:
     df = load_plays(
         conn,
         min_ms=min_ms,
@@ -347,7 +416,7 @@ def _calc_collector_score(conn: sqlite3.Connection, year_df) -> float:
         SELECT t.track_id, sam.spotify_album_id, sam.total_tracks
         FROM tracks t
         JOIN spotify_track_meta stm
-          ON REPLACE(t.spotify_track_uri, 'spotify:track:', '') = stm.spotify_track_id
+          ON t.spotify_track_id = stm.spotify_track_id
         JOIN spotify_album_meta sam ON stm.spotify_album_id = sam.spotify_album_id
         WHERE t.track_id IN ({placeholders})
           AND sam.total_tracks IS NOT NULL AND sam.total_tracks > 2
@@ -422,7 +491,7 @@ def _fetch_track_release_years(
         "FROM tracks t "
         "JOIN artists a ON t.artist_id = a.artist_id "
         "JOIN spotify_track_meta stm "
-        "  ON REPLACE(t.spotify_track_uri, 'spotify:track:', '') = stm.spotify_track_id "
+        "  ON t.spotify_track_id = stm.spotify_track_id "
         "JOIN spotify_album_meta sam ON stm.spotify_album_id = sam.spotify_album_id "
         "WHERE (t.track_name || '|||' || a.artist_name) IN ({placeholders}) "
         "  AND sam.release_date IS NOT NULL "
@@ -1229,7 +1298,7 @@ def _calc_album_completion(conn, year_df) -> list[dict]:
                sam.total_tracks, sam.image_url
         FROM tracks t
         JOIN spotify_track_meta stm
-          ON REPLACE(t.spotify_track_uri, 'spotify:track:', '') = stm.spotify_track_id
+          ON t.spotify_track_id = stm.spotify_track_id
         JOIN spotify_album_meta sam ON stm.spotify_album_id = sam.spotify_album_id
         WHERE t.track_id IN ({placeholders})
           AND sam.total_tracks IS NOT NULL AND sam.total_tracks > 2
@@ -1520,3 +1589,8 @@ def _build_comparison(df, year_df, year, track_agg, artist_agg):
             "artists": artist_marks,
         },
     }
+
+
+from backend.core.cache_manager import register_lru  # noqa: E402
+
+register_lru("wrapped", "full", _get_wrapped_full_cached)

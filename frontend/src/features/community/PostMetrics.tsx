@@ -1,3 +1,4 @@
+import { memo } from 'react'
 import type { PostMetrics as PostMetricsType } from '@/types/community'
 import { formatCount } from './communityData'
 
@@ -6,7 +7,7 @@ interface PostMetricsBarProps {
   onNavigate?: () => void
 }
 
-export function PostMetricsBar({ metrics, onNavigate }: PostMetricsBarProps) {
+function PostMetricsBarInner({ metrics, onNavigate }: PostMetricsBarProps) {
   return (
     <div className="mt-2 flex items-center gap-5 text-xs text-muted-foreground">
       <MetricButton icon={ReplyIcon} label="replies" count={metrics.replies} onNavigate={onNavigate} />
@@ -67,3 +68,5 @@ function ViewIcon({ className }: { className?: string }) {
     </svg>
   )
 }
+
+export const PostMetricsBar = memo(PostMetricsBarInner)

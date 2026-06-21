@@ -11,6 +11,54 @@ from typing import Any
 
 from backend.core.cache import singleflight
 
+# Column downcast map: common int64 columns → int32 (safe within typical data sizes)
+_INT32_COLUMNS = frozenset(
+    {
+        "track_id",
+        "artist_id",
+        "album_id",
+        "source_album_id",
+        "ms_played",
+        "play_count",
+        "total_ms",
+        "duration_ms",
+        "skipped",
+        "shuffle",
+        "offline",
+        "incognito_mode",
+        "ts_year",
+        "ts_month",
+        "ts_week",
+        "ts_dow",
+        "ts_hour",
+        "play_id",
+        "disc_number",
+        "track_number",
+    }
+)
+
+
+def _downcast_ints(df):
+    """Downcast int64 columns to int32 where safe, saving ~50% memory for those columns."""
+    import numpy as np
+    import pandas as pd  # noqa: F811 — needed at call time, module-level import cyclic
+
+    for col in df.columns:
+        if col not in _INT32_COLUMNS:
+            continue
+        if df[col].dtype != np.int64:
+            continue
+        mn, mx = df[col].min(), df[col].max()
+        if (
+            pd.notna(mn)
+            and pd.notna(mx)
+            and mn >= np.iinfo(np.int32).min
+            and mx <= np.iinfo(np.int32).max
+        ):
+            df[col] = df[col].astype(np.int32)
+    return df
+
+
 # backend/core/ → os.path.dirname x3 = project root
 DB_PATH = os.path.join(
     os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "data", "spotify_stats.db"
@@ -35,6 +83,7 @@ CREATE TABLE IF NOT EXISTS tracks (
     artist_id          INTEGER NOT NULL REFERENCES artists(artist_id),
     album_id           INTEGER REFERENCES albums(album_id),
     spotify_track_uri  TEXT,
+    spotify_track_id   TEXT,
     UNIQUE(artist_id, track_name)
 );
 
@@ -72,6 +121,7 @@ CREATE INDEX IF NOT EXISTS idx_plays_year_skipped_track ON plays(ts_year, skippe
 CREATE INDEX IF NOT EXISTS idx_plays_ts ON plays(ts);
 CREATE INDEX IF NOT EXISTS idx_plays_source_album ON plays(source_album_id);
 CREATE INDEX IF NOT EXISTS idx_tracks_name ON tracks(track_name);
+CREATE INDEX IF NOT EXISTS idx_tracks_spotify_track_id ON tracks(spotify_track_id);
 CREATE INDEX IF NOT EXISTS idx_albums_name ON albums(album_name);
 CREATE TABLE IF NOT EXISTS track_albums (
     track_id INTEGER NOT NULL REFERENCES tracks(track_id),
@@ -244,6 +294,8 @@ CREATE TABLE IF NOT EXISTS spotify_track_meta (
     spotify_album_id   TEXT
 );
 
+CREATE INDEX IF NOT EXISTS idx_spotify_track_meta_album ON spotify_track_meta(spotify_album_id);
+
 CREATE TABLE IF NOT EXISTS spotify_album_meta (
     spotify_album_id   TEXT PRIMARY KEY,
     album_name         TEXT NOT NULL,
@@ -258,6 +310,8 @@ CREATE TABLE IF NOT EXISTS spotify_album_meta (
     track_list         TEXT    -- JSON array of Spotify track IDs in this album
 );
 
+CREATE INDEX IF NOT EXISTS idx_spotify_album_meta_name ON spotify_album_meta(album_name);
+
 CREATE TABLE IF NOT EXISTS spotify_artist_meta (
     spotify_artist_id  TEXT PRIMARY KEY,
     artist_name        TEXT NOT NULL,
@@ -266,6 +320,8 @@ CREATE TABLE IF NOT EXISTS spotify_artist_meta (
     genres             TEXT,
     image_url          TEXT
 );
+
+CREATE INDEX IF NOT EXISTS idx_spotify_artist_meta_name ON spotify_artist_meta(artist_name);
 
 -- ── Genius Lyrics Cache ──────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS track_lyrics (
@@ -800,8 +856,7 @@ def _load_plays_cached(
             )
         if filtered:
             from_clause += (
-                " LEFT JOIN spotify_track_meta stm "
-                "ON REPLACE(t.spotify_track_uri, 'spotify:track:', '') = stm.spotify_track_id"
+                " LEFT JOIN spotify_track_meta stm ON t.spotify_track_id = stm.spotify_track_id"
             )
 
         sql = f"SELECT {cols} {from_clause} {where} ORDER BY p.ts"
@@ -819,7 +874,7 @@ def _load_plays_cached(
 
                 df = filter_effective_plays(df, min_ms=min_ms, dynamic_threshold=dynamic_threshold)
 
-        return df
+        return _downcast_ints(df)
     finally:
         conn.close()
 
@@ -937,8 +992,7 @@ def _load_plays_for_artists_cached(
             )
         if filtered:
             from_clause += (
-                " LEFT JOIN spotify_track_meta stm "
-                "ON REPLACE(t.spotify_track_uri, 'spotify:track:', '') = stm.spotify_track_id"
+                " LEFT JOIN spotify_track_meta stm ON t.spotify_track_id = stm.spotify_track_id"
             )
 
         sql = f"SELECT {cols} {from_clause} {where} ORDER BY p.ts"
@@ -965,7 +1019,7 @@ def _load_plays_for_artists_cached(
         artists_df = pd.read_sql_query("SELECT artist_id, artist_name FROM artists", conn)
         df = df.merge(artists_df, on="artist_id", how="left")
 
-        return df
+        return _downcast_ints(df)
     finally:
         conn.close()
 
@@ -1192,7 +1246,7 @@ def build_aggregations(
             FROM plays p
             JOIN tracks t ON p.track_id = t.track_id
             LEFT JOIN spotify_track_meta stm
-              ON REPLACE(t.spotify_track_uri, 'spotify:track:', '') = stm.spotify_track_id
+              ON t.spotify_track_id = stm.spotify_track_id
             {where}
             ORDER BY p.ts""",
         conn,

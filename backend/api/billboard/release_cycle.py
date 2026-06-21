@@ -144,7 +144,7 @@ def _album_cover_url(album_id):
                JOIN track_albums ta ON ta.album_id = al.album_id
                JOIN tracks t ON t.track_id = ta.track_id
                JOIN spotify_track_meta stm
-                 ON REPLACE(t.spotify_track_uri, 'spotify:track:', '') = stm.spotify_track_id
+                 ON t.spotify_track_id = stm.spotify_track_id
                JOIN spotify_album_meta sam
                  ON sam.spotify_album_id = stm.spotify_album_id
                WHERE al.album_id = ?

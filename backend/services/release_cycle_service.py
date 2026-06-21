@@ -281,7 +281,7 @@ def load_artist_releases(artist_name):
            JOIN track_albums ta ON ta.album_id = al.album_id
            JOIN tracks t ON t.track_id = ta.track_id
            JOIN spotify_track_meta stm
-             ON REPLACE(t.spotify_track_uri, 'spotify:track:', '') = stm.spotify_track_id
+             ON t.spotify_track_id = stm.spotify_track_id
            JOIN spotify_album_meta sam
              ON stm.spotify_album_id = sam.spotify_album_id
            WHERE a.artist_name = ?
@@ -358,7 +358,7 @@ def _filter_release_group_duplicates(releases_df):
             JOIN track_albums ta ON ta.album_id = al.album_id
             JOIN tracks t ON t.track_id = ta.track_id
             JOIN spotify_track_meta stm
-              ON REPLACE(t.spotify_track_uri, 'spotify:track:', '') = stm.spotify_track_id
+              ON t.spotify_track_id = stm.spotify_track_id
             JOIN spotify_album_meta sam ON stm.spotify_album_id = sam.spotify_album_id
             WHERE a.artist_name IN ({artist_placeholders})""",
         conn,
@@ -622,7 +622,7 @@ def _resolve_album_group(artist_name, album_name):
                JOIN track_albums ta ON ta.album_id = rgm.album_id
                JOIN tracks t ON t.track_id = ta.track_id
                JOIN spotify_track_meta stm
-                 ON REPLACE(t.spotify_track_uri, 'spotify:track:', '') = stm.spotify_track_id
+                 ON t.spotify_track_id = stm.spotify_track_id
                JOIN spotify_album_meta sam ON stm.spotify_album_id = sam.spotify_album_id
                JOIN artists a ON a.artist_name = ?
                LEFT JOIN albums pa ON rg.primary_album_id = pa.album_id

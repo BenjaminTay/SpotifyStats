@@ -1,10 +1,44 @@
 """User profile service."""
 
 import sqlite3
+from pathlib import Path
+
+from backend.core.cache import ttl_cached
+from backend.core.cache_manager import register_ttl
+
+PROFILE_CACHE_TTL = 300
+
+
+def _database_file_path(conn: sqlite3.Connection):
+    rows = conn.execute("PRAGMA database_list").fetchall()
+    for row in rows:
+        if row[1] != "main":
+            continue
+        if not row[2]:
+            return None
+        return str(Path(row[2]).resolve())
+    return None
+
+
+@ttl_cached(PROFILE_CACHE_TTL, namespace="profile")
+def _get_profile_cached(db_path: str) -> dict:
+    conn = sqlite3.connect(db_path, timeout=30, check_same_thread=False)
+    conn.row_factory = sqlite3.Row
+    try:
+        return _build_profile(conn)
+    finally:
+        conn.close()
 
 
 def get_profile(conn: sqlite3.Connection) -> dict:
     """User profile, follows, prompts, basic stats."""
+    db_path = _database_file_path(conn)
+    if db_path is None:
+        return _build_profile(conn)
+    return _get_profile_cached(db_path)
+
+
+def _build_profile(conn: sqlite3.Connection) -> dict:
     try:
         profile_rows = conn.execute("SELECT key, value FROM user_profile").fetchall()
         profile = {r["key"]: r["value"] for r in profile_rows}
@@ -111,3 +145,6 @@ def get_sound_capsule(conn: sqlite3.Connection) -> dict:
             for r in daily
         ],
     }
+
+
+register_ttl("profile", "data", _get_profile_cached)

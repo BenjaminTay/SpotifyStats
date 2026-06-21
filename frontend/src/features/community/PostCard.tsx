@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { memo, useCallback, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 
 import type { CommunityPost } from '@/types/community'
@@ -19,7 +19,7 @@ interface PostCardProps {
   post: CommunityPost
 }
 
-export function PostCard({ post }: PostCardProps) {
+function PostCardInner({ post }: PostCardProps) {
   const navigate = useNavigate()
   const account = ACCOUNT_CONFIG[post.account_handle]
   const relativeTime = formatRelativeTime(post.posted_at)
@@ -181,3 +181,5 @@ export function PostContent({ content, linkedEntities }: { content: string; link
     </span>
   )
 }
+
+export const PostCard = memo(PostCardInner)
