@@ -19,8 +19,6 @@ import json
 import statistics
 import time
 
-import httpx
-
 DEFAULT_BASE_URL = "http://localhost:8000"
 TIMEOUT = 120.0  # cold Billboard data computation can be slow
 DEFAULT_SLOW_MS = 500
@@ -39,6 +37,13 @@ ENDPOINTS = [
 
 def measure(endpoint: str, runs: int = 3, base_url: str = DEFAULT_BASE_URL) -> dict:
     """Measure cold and hot response times for an endpoint."""
+    try:
+        import httpx
+    except ImportError as e:
+        raise RuntimeError(
+            "httpx is required to run the benchmark. Install it with `pip install httpx`"
+        ) from e
+
     times_cold = []
     times_hot = []
     raw_size = 0
@@ -218,10 +223,15 @@ def main():
 
     if args.warmup:
         print("Pre-warming caches...")
-        with httpx.Client(base_url=args.base_url, timeout=TIMEOUT) as client:
-            for ep in targets:
-                client.get(ep)
-        print("Warmup complete.\n")
+        try:
+            import httpx
+        except ImportError:
+            print("httpx not installed; skipping warmup (install httpx to enable warmup).")
+        else:
+            with httpx.Client(base_url=args.base_url, timeout=TIMEOUT) as client:
+                for ep in targets:
+                    client.get(ep)
+            print("Warmup complete.\n")
 
     results = []
     for ep in targets:

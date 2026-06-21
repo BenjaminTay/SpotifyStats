@@ -581,6 +581,14 @@ CREATE INDEX IF NOT EXISTS idx_chat_sessions_updated ON chat_sessions(updated_at
 
 def get_db(readonly: bool = True) -> sqlite3.Connection:
     """Get a database connection."""
+    # Ensure parent directory exists — CI and fresh checkouts may not have data/
+    db_dir = os.path.dirname(DB_PATH)
+    if db_dir and not os.path.exists(db_dir):
+        try:
+            os.makedirs(db_dir, exist_ok=True)
+        except OSError:
+            pass  # allow sqlite3.connect to raise the original error
+
     # check_same_thread=False 是必需的：
     # Starlette 的 generator 依赖在后台任务中执行 finally 清理代码，
     # 该任务可能运行在不同于创建连接的线程中（即使只是 close() 也会报错）。
