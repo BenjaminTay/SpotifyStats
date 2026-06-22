@@ -108,6 +108,7 @@ def test_ai_insights_ask_forwards_play_filters(client, monkeypatch):
         *,
         dynamic_threshold,
         max_merge_gap_minutes,
+        merge_level=1,
     ):
         observed.update(
             {

@@ -26,6 +26,7 @@ def artist_list(
 def artist_deep_dive(
     name: str,
     filters: PlayFilters = Depends(),
+    merge_level: int = Query(default=1, ge=1, le=3),
     conn: Connection = Depends(get_conn),
 ):
     """In-depth analysis for a single artist: heatmap, top tracks, album breakdown, monthly trend."""
@@ -37,4 +38,5 @@ def artist_deep_dive(
         name,
         filters.dynamic_threshold,
         filters.max_merge_gap_minutes,
+        merge_level=merge_level,
     )

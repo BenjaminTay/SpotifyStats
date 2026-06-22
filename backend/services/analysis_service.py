@@ -154,8 +154,33 @@ def _top_artists(conn: sqlite3.Connection, df: pd.DataFrame) -> list[dict]:
     ]
 
 
-def _top_albums(conn: sqlite3.Connection, df: pd.DataFrame) -> list[dict]:
+def _top_albums(conn: sqlite3.Connection, df: pd.DataFrame, merge_level: int = 1) -> list[dict]:
     cover_map = _album_cover_lookup(conn)
+
+    if merge_level > 1:
+        from backend.domains.playback.album_projects import compute_album_project_plays
+
+        project_agg = compute_album_project_plays(
+            df, conn, merge_level=merge_level, include_compilations=False
+        )
+        if not project_agg.empty:
+            top = (
+                project_agg.sort_values("play_count", ascending=False)
+                .head(5)
+                .rename(columns={"play_count": "plays", "total_ms": "hours_raw"})
+            )
+            top["hours"] = top["hours_raw"] / 3_600_000
+            return [
+                {
+                    "album_name": r.album_project_name or "未知专辑",
+                    "artist_name": r.artist_name or "",
+                    "plays": int(r.plays),
+                    "hours": round(float(r.hours), 1),
+                    "cover_url": cover_map.get((r.album_project_name, r.artist_name or "")),
+                }
+                for r in top.itertuples(index=False)
+            ]
+
     top = (
         df.groupby(["album_name", "artist_name"])
         .agg(plays=("play_id", "count"), hours=("ms_played", _hours))
@@ -269,6 +294,7 @@ def get_analysis_overview(
     merge_enabled: bool,
     dynamic_threshold: bool = False,
     max_merge_gap_minutes: int | None = None,
+    merge_level: int = 1,
 ) -> dict:
     """Build the playback analysis landing-page aggregate."""
     df = load_plays(
@@ -297,7 +323,7 @@ def get_analysis_overview(
         max_merge_gap_minutes=max_merge_gap_minutes,
     )
     artists = _top_artists(conn, df_artists)
-    albums = _top_albums(conn, df)
+    albums = _top_albums(conn, df, merge_level)
     behavior = _behavior_summary(conn, music_only)
 
     return {

@@ -203,9 +203,9 @@ export function DataFilteringSection({
         </div>
 
         <div className="space-y-1.5">
-          <FieldLabel label={`${getBillboardName()} 显示名称`} badge="自定义" />
+          <FieldLabel label="Billboard 显示名称" badge="自定义" />
           <p className="text-[12px] text-muted-foreground">
-            自定义应用中 "{getBillboardName()}" 的显示名称，留空恢复默认 "Billboard"
+            自定义应用中 "Billboard" 的显示名称，留空恢复默认
           </p>
           <input
             type="text"

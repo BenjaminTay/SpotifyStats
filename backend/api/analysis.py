@@ -28,6 +28,7 @@ router = APIRouter(prefix="/analysis", tags=["Analysis"])
 @router.get("/overview", response_model=AnalysisOverviewResponse)
 def analysis_overview(
     filters: PlayFilters = Depends(),
+    merge_level: int = Query(default=1, ge=1, le=3),
     conn: Connection = Depends(get_conn),
 ):
     return get_analysis_overview(
@@ -37,6 +38,7 @@ def analysis_overview(
         filters.merge_enabled,
         dynamic_threshold=filters.dynamic_threshold,
         max_merge_gap_minutes=filters.max_merge_gap_minutes,
+        merge_level=merge_level,
     )
 
 

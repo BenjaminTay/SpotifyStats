@@ -56,7 +56,19 @@ def _load_and_rank_cached(
 
 
 def _copy_load_and_rank_result(result):
-    weekly, weekly_album, weekly_artist, all_weeks_asc, all_weeks_desc, df_filtered = result
+    if len(result) == 7:
+        (
+            weekly,
+            weekly_album,
+            weekly_artist,
+            all_weeks_asc,
+            all_weeks_desc,
+            df_filtered,
+            album_total_map,
+        ) = result
+    else:
+        weekly, weekly_album, weekly_artist, all_weeks_asc, all_weeks_desc, df_filtered = result
+        album_total_map = {}
     return (
         weekly.copy(),
         weekly_album.copy(),
@@ -64,6 +76,7 @@ def _copy_load_and_rank_result(result):
         list(all_weeks_asc),
         list(all_weeks_desc),
         df_filtered.copy(),
+        album_total_map,
     )
 
 
@@ -159,7 +172,37 @@ def _load_and_rank_uncached(
     weekly = _add_running_metrics(weekly, ["track_id"])
     weekly_album = _add_running_metrics(weekly_album, ["artist_name", "album_name"])
     weekly_artist = _add_running_metrics(weekly_artist, ["artist_name"])
-    return weekly, weekly_album, weekly_artist, all_weeks_asc, all_weeks_desc, df_filtered
+
+    # Compute unfiltered total_plays for all album projects (no release-date filter)
+    from backend.core.db import get_db
+    from backend.domains.playback.album_projects import compute_album_project_plays
+
+    conn = get_db()
+    try:
+        album_total_plays = compute_album_project_plays(
+            df_filtered,
+            conn,
+            merge_level=merge_level,
+            include_compilations=include_compilations,
+            billboard_mode=False,
+        )
+        album_total_map = {}
+        if not album_total_plays.empty:
+            for _, row in album_total_plays.iterrows():
+                key = (row["album_project_name"], row["artist_name"])
+                album_total_map[key] = int(row["play_count"])
+    finally:
+        conn.close()
+
+    return (
+        weekly,
+        weekly_album,
+        weekly_artist,
+        all_weeks_asc,
+        all_weeks_desc,
+        df_filtered,
+        album_total_map,
+    )
 
 
 def _attach_track_and_artist_counts_from_preagg(weekly, weekly_album, weekly_artist):

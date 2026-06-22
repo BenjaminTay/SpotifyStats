@@ -324,7 +324,7 @@ export function buildAllTimeRows(data: BillboardAllTimeResponse): AllTimeRows {
       top10_tracks: counts?.top10 ?? 0,
       power_score: score.power_score,
       power_rank: score.power_rank,
-      total_plays: stats?.totalPlays ?? 0,
+      total_plays: (score as any).total_plays ?? stats?.totalPlays ?? 0,
       is_debut_no1: albumDebutNo1Keys.has(key),
     }
   })

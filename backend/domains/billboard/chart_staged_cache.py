@@ -79,7 +79,7 @@ def _compute_weekly_data_cached(
     max_merge_gap_minutes=None,
     include_compilations=False,
 ):
-    weekly, weekly_album, weekly_artist, all_weeks_asc, all_weeks_desc, df_filtered = (
+    weekly, weekly_album, weekly_artist, all_weeks_asc, all_weeks_desc, df_filtered, _abtm = (
         _load_and_rank(
             min_ms,
             music_only,
@@ -138,7 +138,7 @@ def _compute_power_scores_cached(
     dynamic_threshold=False,
     max_merge_gap_minutes=None,
 ):
-    weekly, weekly_album, weekly_artist, *_ = _load_and_rank(
+    weekly, weekly_album, weekly_artist, *_extra = _load_and_rank(
         min_ms,
         music_only,
         bb_top_n,
@@ -152,12 +152,20 @@ def _compute_power_scores_cached(
         dynamic_threshold=dynamic_threshold,
         max_merge_gap_minutes=max_merge_gap_minutes,
     )
+    album_total_map = _extra[-1] if len(_extra) >= 1 else {}
 
     weekly = enrich_track_artist_names(weekly)
 
     power_scores = compute_power_scores(weekly, bb_top_n)
     album_power_scores = compute_album_power_scores(weekly_album, bb_album_top_n)
     artist_power_scores = compute_artist_power_scores(weekly_artist, bb_artist_top_n)
+
+    # Inject unfiltered total_plays into album power scores
+    if isinstance(album_total_map, dict) and album_total_map:
+        album_power_scores["total_plays"] = album_power_scores.apply(
+            lambda row: album_total_map.get((row["album_name"], row["artist_name"]), 0),
+            axis=1,
+        )
 
     return {
         "power_scores": _df_to_json(power_scores),
@@ -181,7 +189,7 @@ def _compute_summaries_cached(
     dynamic_threshold=False,
     max_merge_gap_minutes=None,
 ):
-    weekly, weekly_album, weekly_artist, *_all_weeks, df_filtered = _load_and_rank(
+    weekly, weekly_album, weekly_artist, *_all_weeks, df_filtered, _album_tm = _load_and_rank(
         min_ms,
         music_only,
         bb_top_n,
@@ -233,7 +241,7 @@ def _compute_records_cached(
     dynamic_threshold=False,
     max_merge_gap_minutes=None,
 ):
-    weekly, weekly_album, weekly_artist, *_all_weeks, df_filtered = _load_and_rank(
+    weekly, weekly_album, weekly_artist, *_all_weeks, df_filtered, _album_tm = _load_and_rank(
         min_ms,
         music_only,
         bb_top_n,

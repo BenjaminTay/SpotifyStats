@@ -692,6 +692,7 @@ def get_wrapped_data(
     year: int,
     dynamic_threshold: bool = False,
     max_merge_gap_minutes: int | None = None,
+    merge_level: int = 1,
 ) -> dict:
     """Generate a custom yearly wrapped report for a given year."""
     df = _load_filtered_plays(
@@ -727,21 +728,35 @@ def get_wrapped_data(
         .reset_index()
     )
 
-    # Top album
-    top_album_row = (
-        year_df.groupby(["album_name", "artist_name"])
-        .agg(hours=("ms_played", _hour))
-        .sort_values("hours", ascending=False)
-        .head(1)
-        .reset_index()
-    )
+    # Top album (project-scoped when merge_level > 1)
     top_album = {"album_name": "", "artist_name": "", "hours": 0.0}
-    if not top_album_row.empty:
-        top_album = {
-            "album_name": top_album_row.iloc[0]["album_name"] or "",
-            "artist_name": top_album_row.iloc[0]["artist_name"] or "",
-            "hours": round(top_album_row.iloc[0]["hours"], 1),
-        }
+    if merge_level > 1:
+        from backend.domains.playback.album_projects import compute_album_project_plays
+
+        project_agg = compute_album_project_plays(
+            year_df, conn, merge_level=merge_level, include_compilations=False
+        )
+        if not project_agg.empty:
+            best = project_agg.sort_values("total_ms", ascending=False).iloc[0]
+            top_album = {
+                "album_name": best.album_project_name or "",
+                "artist_name": best.artist_name or "",
+                "hours": round(float(best.total_ms) / 3_600_000, 1),
+            }
+    else:
+        top_album_row = (
+            year_df.groupby(["album_name", "artist_name"])
+            .agg(hours=("ms_played", _hour))
+            .sort_values("hours", ascending=False)
+            .head(1)
+            .reset_index()
+        )
+        if not top_album_row.empty:
+            top_album = {
+                "album_name": top_album_row.iloc[0]["album_name"] or "",
+                "artist_name": top_album_row.iloc[0]["artist_name"] or "",
+                "hours": round(top_album_row.iloc[0]["hours"], 1),
+            }
 
     # Platform distribution
     platform_hours = (year_df.groupby("platform")["ms_played"].sum() / 3_600_000).to_dict()
@@ -1176,6 +1191,7 @@ def get_artist_deep_dive(
     artist_name: str,
     dynamic_threshold: bool = False,
     max_merge_gap_minutes: int | None = None,
+    merge_level: int = 1,
 ) -> dict:
     """In-depth analysis for a single artist."""
     df = _load_filtered_plays(
@@ -1224,13 +1240,32 @@ def get_artist_deep_dive(
         monthly["ts_year"].astype(str) + "-" + monthly["ts_month"].astype(str).str.zfill(2)
     )
 
-    # Album breakdown
-    album_stats = (
-        artist_df.groupby("album_name")
-        .agg(plays=("play_id", "count"), hours=("ms_played", _hour))
-        .sort_values("hours", ascending=False)
-        .reset_index()
-    )
+    # Album breakdown (project-scoped when merge_level > 1)
+    if merge_level > 1:
+        from backend.domains.playback.album_projects import compute_album_project_plays
+
+        project_agg = compute_album_project_plays(
+            artist_df, conn, merge_level=merge_level, include_compilations=False
+        )
+        # Filter to this artist's projects
+        artist_lower = artist_name.lower()
+        project_agg = project_agg[project_agg["artist_name"].str.lower() == artist_lower]
+        album_stats = project_agg.rename(
+            columns={
+                "album_project_name": "album_name",
+                "play_count": "plays",
+                "total_ms": "hours_raw",
+            }
+        )
+        album_stats["hours"] = album_stats["hours_raw"] / 3_600_000
+        album_stats = album_stats.sort_values("hours", ascending=False).reset_index(drop=True)
+    else:
+        album_stats = (
+            artist_df.groupby("album_name")
+            .agg(plays=("play_id", "count"), hours=("ms_played", _hour))
+            .sort_values("hours", ascending=False)
+            .reset_index()
+        )
 
     return {
         "found": True,
@@ -1240,7 +1275,9 @@ def get_artist_deep_dive(
             "total_plays": len(artist_df),
             "total_hours": round(artist_df["ms_played"].sum() / 3_600_000, 1),
             "unique_tracks": artist_df["track_id"].nunique(),
-            "unique_albums": artist_df["album_name"].dropna().nunique(),
+            "unique_albums": (
+                len(album_stats) if merge_level > 1 else artist_df["album_name"].dropna().nunique()
+            ),
         },
         "heatmap": {
             "z": heatmap_z,

@@ -77,7 +77,7 @@ export function SettingsPage() {
           <Skeleton className="h-10 w-72" />
           <Skeleton className="h-5 w-[420px]" />
         </div>
-        {Array.from({ length: 4 }).map((_, i) => (
+        {Array.from({ length: 6 }).map((_, i) => (
           <div key={i} className="rounded-[16px] border border-border bg-card p-6">
             <Skeleton className="mb-4 h-3 w-36" />
             <Skeleton className="mb-1 h-3 w-64" />
@@ -132,6 +132,7 @@ export function SettingsPage() {
         loading={rebuildLoading}
         message={rebuildMsg}
         onRebuild={handleRebuild}
+        onDismiss={() => setRebuildMsg('')}
       />
 
       {/* Section 1: Spotify Connection */}

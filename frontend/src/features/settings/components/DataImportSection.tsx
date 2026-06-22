@@ -25,7 +25,7 @@ export function DataImportSection({
     <GlassCard className="p-6">
       <CollapsibleSection
         num={2}
-        title="Data Import"
+        title="数据导入"
         desc="管理流媒体数据和账号数据的导入。导入过程在后台进行，可以离开页面等待。"
         defaultOpen={!imported}
         summary={

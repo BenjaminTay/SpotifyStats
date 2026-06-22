@@ -197,6 +197,7 @@ def _get_wrapped_full_cached(
     year: int,
     dynamic_threshold: bool = False,
     max_merge_gap_minutes=None,
+    merge_level: int = 1,
 ) -> dict:
     conn = sqlite3.connect(db_path, timeout=30, check_same_thread=False)
     conn.row_factory = sqlite3.Row
@@ -209,6 +210,7 @@ def _get_wrapped_full_cached(
             year,
             dynamic_threshold=dynamic_threshold,
             max_merge_gap_minutes=max_merge_gap_minutes,
+            merge_level=merge_level,
         )
     finally:
         conn.close()
@@ -222,6 +224,7 @@ def get_wrapped_full(
     year: int,
     dynamic_threshold: bool = False,
     max_merge_gap_minutes=None,
+    merge_level: int = 1,
 ) -> dict:
     """Generate the full multi-module yearly Wrapped report.
 
@@ -236,6 +239,7 @@ def get_wrapped_full(
             year,
             dynamic_threshold=dynamic_threshold,
             max_merge_gap_minutes=max_merge_gap_minutes,
+            merge_level=merge_level,
         )
     return _get_wrapped_full_cached(
         db_path,
@@ -245,6 +249,7 @@ def get_wrapped_full(
         year,
         dynamic_threshold=dynamic_threshold,
         max_merge_gap_minutes=max_merge_gap_minutes,
+        merge_level=merge_level,
     )
 
 
@@ -256,6 +261,7 @@ def _build_wrapped_full(
     year: int,
     dynamic_threshold: bool = False,
     max_merge_gap_minutes=None,
+    merge_level: int = 1,
 ) -> dict:
     df = load_plays(
         conn,
@@ -314,12 +320,30 @@ def _build_wrapped_full(
         .sort_values(["plays", "hours"], ascending=False)
         .reset_index()
     )
-    album_agg = (
-        year_df.groupby(["album_name", "artist_name"])
-        .agg(plays=("play_id", "count"), hours=("ms_played", _hour))
-        .sort_values(["plays", "hours"], ascending=False)
-        .reset_index()
-    )
+    if merge_level > 1:
+        from backend.domains.playback.album_projects import compute_album_project_plays
+
+        project_agg = compute_album_project_plays(
+            year_df, conn, merge_level=merge_level, include_compilations=False
+        )
+        album_agg = project_agg.rename(
+            columns={
+                "album_project_name": "album_name",
+                "play_count": "plays",
+                "total_ms": "hours_raw",
+            }
+        )
+        album_agg["hours"] = album_agg["hours_raw"] / 3_600_000
+        album_agg = album_agg.sort_values(["plays", "hours"], ascending=False).reset_index(
+            drop=True
+        )
+    else:
+        album_agg = (
+            year_df.groupby(["album_name", "artist_name"])
+            .agg(plays=("play_id", "count"), hours=("ms_played", _hour))
+            .sort_values(["plays", "hours"], ascending=False)
+            .reset_index()
+        )
 
     return {
         "year": year,

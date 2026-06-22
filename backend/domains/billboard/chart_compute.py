@@ -70,7 +70,7 @@ def _compute_billboard_data_cached(
 ):
     """Compute full Billboard payload with normalized staged load/rank cache."""
     # ── Load, filter, rank (shared with staged functions) ─────────────
-    weekly, weekly_album, weekly_artist, all_weeks_asc, all_weeks_desc, df_filtered = (
+    weekly, weekly_album, weekly_artist, all_weeks_asc, all_weeks_desc, df_filtered, _abtm = (
         _load_and_rank(
             min_ms,
             music_only,

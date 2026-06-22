@@ -2,7 +2,7 @@
 
 from sqlite3 import Connection
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 
 from backend.dependencies import PlayFilters, get_conn
 from backend.models.timeline import YearlyWrapped
@@ -24,6 +24,7 @@ def available_years(conn: Connection = Depends(get_conn)):
 def yearly_wrapped(
     year: int,
     filters: PlayFilters = Depends(),
+    merge_level: int = Query(default=1, ge=1, le=3),
     conn: Connection = Depends(get_conn),
 ):
     return get_wrapped_data(
@@ -34,6 +35,7 @@ def yearly_wrapped(
         year,
         filters.dynamic_threshold,
         filters.max_merge_gap_minutes,
+        merge_level=merge_level,
     )
 
 
@@ -41,6 +43,7 @@ def yearly_wrapped(
 def yearly_wrapped_full(
     year: int,
     filters: PlayFilters = Depends(),
+    merge_level: int = Query(default=1, ge=1, le=3),
     conn: Connection = Depends(get_conn),
 ):
     return get_wrapped_full(
@@ -51,4 +54,5 @@ def yearly_wrapped_full(
         year,
         filters.dynamic_threshold,
         filters.max_merge_gap_minutes,
+        merge_level=merge_level,
     )

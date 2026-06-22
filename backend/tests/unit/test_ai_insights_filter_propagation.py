@@ -132,6 +132,7 @@ def test_answer_question_passes_effective_filters_to_intent_fetch(monkeypatch):
         *,
         dynamic_threshold,
         max_merge_gap_minutes,
+        merge_level=1,
     ):
         observed.update(
             {
@@ -155,6 +156,7 @@ def test_answer_question_passes_effective_filters_to_intent_fetch(monkeypatch):
         question="我今年听了什么？",
         dynamic_threshold=True,
         max_merge_gap_minutes=30,
+        merge_level=2,
     )
 
     assert result["success"] is True

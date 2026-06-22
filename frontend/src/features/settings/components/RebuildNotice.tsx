@@ -1,4 +1,4 @@
-import { AlertCircle, CheckCircle2, RefreshCw } from 'lucide-react'
+import { AlertCircle, CheckCircle2, RefreshCw, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
@@ -7,11 +7,13 @@ export function RebuildNotice({
   loading,
   message,
   onRebuild,
+  onDismiss,
 }: {
   pending: boolean
   loading: boolean
   message: string
   onRebuild: () => void
+  onDismiss: () => void
 }) {
   if (!pending && !message) return null
 
@@ -40,11 +42,20 @@ export function RebuildNotice({
             )}
           </div>
         </div>
-        {pending && (
+        {pending ? (
           <Button size="sm" onClick={onRebuild} disabled={loading} className="gap-1.5 shrink-0">
             <RefreshCw className={cn('size-3.5', loading && 'animate-spin')} />
             {loading ? '重建中...' : '应用改动并重建统计'}
           </Button>
+        ) : (
+          <button
+            type="button"
+            onClick={onDismiss}
+            className="shrink-0 rounded-lg p-1 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+            aria-label="关闭提示"
+          >
+            <X className="size-4" />
+          </button>
         )}
       </div>
     </div>

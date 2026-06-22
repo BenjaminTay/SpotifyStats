@@ -162,6 +162,7 @@ def yearly_story(
 def ask(
     body: AskRequest,
     filters: PlayFilters = Depends(),
+    merge_level: int = Query(default=1, ge=1, le=3),
     conn: Connection = Depends(get_conn),
 ):
     """Answer a natural-language question about listening history."""
@@ -178,6 +179,7 @@ def ask(
         history,
         dynamic_threshold=filters.dynamic_threshold,
         max_merge_gap_minutes=filters.max_merge_gap_minutes,
+        merge_level=merge_level,
     )
     if not result["success"]:
         _raise_for_error(result)

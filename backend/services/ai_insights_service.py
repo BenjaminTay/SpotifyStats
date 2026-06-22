@@ -273,7 +273,7 @@ def _hours(ms_series) -> float:
     return float(ms_series.sum() / 3_600_000)
 
 
-def _top_entities(df, entity: str, n: int = 5) -> list[dict]:
+def _top_entities(df, entity: str, n: int = 5, conn=None, merge_level: int = 1) -> list[dict]:
     """Return top-n entities from a plays DataFrame."""
     if df.empty:
         return []
@@ -291,11 +291,26 @@ def _top_entities(df, entity: str, n: int = 5) -> list[dict]:
             .reset_index()
         )
     elif entity == "album":
-        agg = (
-            df.groupby(["album_name", "artist_name"], dropna=False)
-            .agg(plays=("play_id", "count"), hours=("ms_played", _hours))
-            .reset_index()
-        )
+        if merge_level > 1 and conn is not None:
+            from backend.domains.playback.album_projects import compute_album_project_plays
+
+            project_agg = compute_album_project_plays(
+                df, conn, merge_level=merge_level, include_compilations=False
+            )
+            agg = project_agg.rename(
+                columns={
+                    "album_project_name": "album_name",
+                    "play_count": "plays",
+                    "total_ms": "hours_raw",
+                }
+            )
+            agg["hours"] = agg["hours_raw"] / 3_600_000
+        else:
+            agg = (
+                df.groupby(["album_name", "artist_name"], dropna=False)
+                .agg(plays=("play_id", "count"), hours=("ms_played", _hours))
+                .reset_index()
+            )
     else:
         return []
 
@@ -963,6 +978,7 @@ def _fetch_data_for_intent(
     intent_result: dict,
     dynamic_threshold: bool = False,
     max_merge_gap_minutes: Optional[int] = None,
+    merge_level: int = 1,
 ) -> dict:
     """Fetch relevant data based on parsed intent. Returns a dict to feed the LLM."""
     from backend.services.analysis_stats_service import (
@@ -1010,7 +1026,7 @@ def _fetch_data_for_intent(
 
     elif intent in ("top_artists", "top_tracks", "top_albums"):
         entity = intent.split("_")[1].rstrip("s")  # "artist", "track", "album"
-        data["top_entities"] = _top_entities(df, entity, 10)
+        data["top_entities"] = _top_entities(df, entity, 10, conn=conn, merge_level=merge_level)
         data["summary"] = _summary(df)
 
     elif intent == "time_patterns":
@@ -1075,6 +1091,7 @@ def answer_question(
     conversation_history: Optional[list[dict[str, str]]] = None,
     dynamic_threshold: bool = False,
     max_merge_gap_minutes: Optional[int] = None,
+    merge_level: int = 1,
 ) -> dict:
     """Answer a natural-language question about the user's listening history.
 
@@ -1102,6 +1119,7 @@ def answer_question(
             intent_result,
             dynamic_threshold=dynamic_threshold,
             max_merge_gap_minutes=max_merge_gap_minutes,
+            merge_level=merge_level,
         )
     except Exception:
         logger.warning("Failed to fetch data for Q&A", exc_info=True)
