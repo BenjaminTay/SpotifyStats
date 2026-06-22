@@ -4,9 +4,10 @@ import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { cn } from '@/lib/utils'
-import { RefreshCw } from 'lucide-react'
+import { CheckCircle2, RefreshCw } from 'lucide-react'
+import { getBillboardName } from '@/lib/billboard-name'
 import type { SettingsUpdatePayload } from '@/types/settings'
-import { SectionHeader, FieldLabel } from '@/features/settings/components/SettingsHelpers'
+import { CollapsibleSection, FieldLabel } from '@/features/settings/components/SettingsHelpers'
 
 const DOW_OPTIONS = [
   { value: 0, label: '周一 (Monday)' },
@@ -23,15 +24,19 @@ export function BillboardParamsSection({
   onUpdate,
   onRebuild,
   rebuildLoading,
+  rebuildMsg,
 }: {
   settings: { bb_top_n: number; bb_album_top_n: number; bb_artist_top_n: number; bb_week_start_dow: number; bb_week_start_hour: number }
   onUpdate: (p: SettingsUpdatePayload) => void
   onRebuild: () => void
   rebuildLoading: boolean
+  rebuildMsg: string
 }) {
+  const bbName = getBillboardName()
+
   return (
     <GlassCard className="p-6">
-      <SectionHeader num={2} title="Billboard Parameters" desc="调整 Billboard 周榜的计算参数，修改后需重建聚合表才能生效。" />
+      <CollapsibleSection num={4} title={`${bbName} Parameters`} desc={`调整 ${bbName} 周榜的计算参数，修改后需重建聚合表才能生效。`}>
 
       <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
         {/* Left: Top N sliders */}
@@ -86,7 +91,7 @@ export function BillboardParamsSection({
         <div className="space-y-5">
           <div className="space-y-1.5">
             <FieldLabel label="周起始日" badge="bb_week_start_dow" />
-            <p className="text-[12px] text-muted-foreground">Billboard 周榜从周几开始计算</p>
+            <p className="text-[12px] text-muted-foreground">{bbName} 周榜从周几开始计算</p>
             <Select
               value={String(settings.bb_week_start_dow)}
               onValueChange={(v) => onUpdate({ bb_week_start_dow: Number(v) })}
@@ -130,9 +135,9 @@ export function BillboardParamsSection({
 
           <Separator />
 
-          <div className="space-y-2">
+          <div className="space-y-3">
             <p className="text-[12px] text-muted-foreground">
-              修改 Billboard 参数后，需要重建预聚合表才能使新设置生效。
+              修改以上参数或数据过滤设置后，需要重建预聚合表才能使新设置生效。
             </p>
             <Button
               variant="outline"
@@ -142,11 +147,19 @@ export function BillboardParamsSection({
               className="gap-1.5"
             >
               <RefreshCw className={cn('size-3.5', rebuildLoading && 'animate-spin')} />
-              {rebuildLoading ? '重建中...' : '重建聚合表 (Rebuild Aggregations)'}
+              {rebuildLoading ? '重建中...' : '重建聚合表'}
             </Button>
           </div>
+
+          {rebuildMsg && (
+            <div className="flex items-center gap-2 text-[13px] text-green-600 dark:text-green-400">
+              <CheckCircle2 className="size-3.5" />
+              {rebuildMsg}
+            </div>
+          )}
         </div>
       </div>
+      </CollapsibleSection>
     </GlassCard>
   )
 }

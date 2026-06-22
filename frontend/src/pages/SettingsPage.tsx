@@ -1,10 +1,10 @@
 import { lazy, Suspense, useState } from 'react'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Button } from '@/components/ui/button'
-import { AlertCircle, CheckCircle2 } from 'lucide-react'
+import { AlertCircle } from 'lucide-react'
 import { useSettings } from '@/hooks/useSettings'
 import { getChineseStyle, setChineseStyle, type ChineseStyle } from '@/lib/chinese'
-import type { LLMProfile } from '@/types/settings'
+import { getBillboardName } from '@/lib/billboard-name'
 import { SpotifyConnectionSection } from '@/features/settings/components/SpotifyConnectionSection'
 import { DataFilteringSection } from '@/features/settings/components/DataFilteringSection'
 import { BillboardParamsSection } from '@/features/settings/components/BillboardParamsSection'
@@ -28,7 +28,6 @@ export function SettingsPage() {
     error,
     refetch,
     updateSettings,
-    updateApiKey,
     clearTranslationCache,
     rebuildAgg,
     startStreamingImport,
@@ -39,7 +38,6 @@ export function SettingsPage() {
     spotifyDisconnect,
     spotifySync,
     fetchProfiles,
-    getProfileDetail,
     applyProfile,
     createProfile,
     deleteProfile,
@@ -48,7 +46,6 @@ export function SettingsPage() {
   const [rebuildLoading, setRebuildLoading] = useState(false)
   const [rebuildMsg, setRebuildMsg] = useState('')
   const [chineseStyle, setChineseStyleState] = useState<ChineseStyle>(getChineseStyle)
-  const [profiles] = useState<LLMProfile[]>([])
 
   const handleRebuild = () => {
     setRebuildLoading(true)
@@ -103,11 +100,11 @@ export function SettingsPage() {
           参数与配置
         </h1>
         <p className="mt-3 max-w-[520px] font-sans text-[17px] leading-relaxed text-muted-foreground">
-          调整数据过滤、Billboard 参数、版本合并规则，以及管理数据导入。
+          管理 Spotify 连接、数据导入、播放过滤、{getBillboardName()} 参数、版本合并与 LLM 配置等全局设置。
         </p>
       </section>
 
-      {/* Section 0: Spotify Connection */}
+      {/* Section 1: Spotify Connection */}
       <SpotifyConnectionSection
         connected={settings.spotify_connected}
         profile={settings.spotify_profile ?? null}
@@ -116,7 +113,17 @@ export function SettingsPage() {
         onSync={spotifySync}
       />
 
-      {/* Section 1: Data Filtering */}
+      {/* Section 2: Data Import */}
+      <DataImportSection
+        dbRecordCount={settings.db_record_count}
+        accountImported={settings.account_data_imported}
+        streamingJob={streamingJob}
+        accountJob={accountJob}
+        onStreamingImport={startStreamingImport}
+        onAccountImport={startAccountImport}
+      />
+
+      {/* Section 3: Data & Display */}
       <DataFilteringSection
         settings={{
           min_ms: settings.min_ms,
@@ -124,6 +131,8 @@ export function SettingsPage() {
           merge_enabled: settings.merge_enabled,
         }}
         onUpdate={updateSettings}
+        onRebuild={handleRebuild}
+        rebuildLoading={rebuildLoading}
         chineseStyle={chineseStyle}
         onChangeChineseStyle={(s: string | null) => {
           const style = (s as ChineseStyle) || 'original'
@@ -132,7 +141,7 @@ export function SettingsPage() {
         }}
       />
 
-      {/* Section 2: Billboard Params */}
+      {/* Section 4: Billboard Params */}
       <BillboardParamsSection
         settings={{
           bb_top_n: settings.bb_top_n,
@@ -144,15 +153,10 @@ export function SettingsPage() {
         onUpdate={updateSettings}
         onRebuild={handleRebuild}
         rebuildLoading={rebuildLoading}
+        rebuildMsg={rebuildMsg}
       />
-      {rebuildMsg && (
-        <div className="-mt-3 flex items-center gap-2 pl-6 text-[13px] text-green-600 dark:text-green-400">
-          <CheckCircle2 className="size-3.5" />
-          {rebuildMsg}
-        </div>
-      )}
 
-      {/* Section 3: Version Merge */}
+      {/* Section 5: Version Merge */}
       <Suspense
         fallback={
           <div className="rounded-[16px] border border-border bg-card p-6">
@@ -165,17 +169,7 @@ export function SettingsPage() {
         <VersionMergeSection />
       </Suspense>
 
-      {/* Section 4: Data Import */}
-      <DataImportSection
-        dbRecordCount={settings.db_record_count}
-        accountImported={settings.account_data_imported}
-        streamingJob={streamingJob}
-        accountJob={accountJob}
-        onStreamingImport={startStreamingImport}
-        onAccountImport={startAccountImport}
-      />
-
-      {/* Section 5: LLM Translation */}
+      {/* Section 6: LLM Translation */}
       <Suspense
         fallback={
           <div className="rounded-[16px] border border-border bg-card p-6">
@@ -192,12 +186,9 @@ export function SettingsPage() {
           llm_model: settings.llm_model,
         }}
         onUpdate={updateSettings}
-        onUpdateApiKey={updateApiKey}
         onClearCache={clearTranslationCache}
         hasLlmKey={settings.has_llm_key}
-        profiles={profiles}
         onFetchProfiles={fetchProfiles}
-        onGetProfileDetail={getProfileDetail}
         onApplyProfile={applyProfile}
         onCreateProfile={createProfile}
         onDeleteProfile={deleteProfile}

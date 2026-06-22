@@ -3,6 +3,7 @@ import { AlertCircle } from 'lucide-react'
 import { useSearchParams } from 'react-router-dom'
 
 import { getDefaultMergeLevel } from '@/lib/merge-level'
+import { getBillboardName } from '@/lib/billboard-name'
 import { BillboardSubNav } from '@/components/shared/BillboardSubNav'
 import { Skeleton } from '@/components/ui/skeleton'
 import { AllTimeTable, Pagination } from '@/features/billboard/all-time/AllTimeTable'
@@ -126,7 +127,7 @@ export function AllTimeChartsPage() {
           Chart / All-Time
         </p>
         <h1 className="font-serif text-[44px] font-bold leading-[1.06] tracking-[-1.2px]">
-          Billboard 总榜
+          {getBillboardName()} 总榜
         </h1>
       </section>
 

@@ -1,7 +1,8 @@
+import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
-import { AlertCircle, CheckCircle2, Upload, RefreshCw } from 'lucide-react'
+import { AlertCircle, CheckCircle2, ChevronDown, Upload, RefreshCw } from 'lucide-react'
 import type { ImportJob, TrackComparison } from '@/types/settings'
 
 // ── Toggle ──────────────────────────────────────────────────
@@ -38,6 +39,57 @@ export function SectionHeader({ num, title, desc }: { num: number; title: string
         {String(num).padStart(2, '0')} · {title}
       </div>
       <p className="font-sans text-[14px] leading-relaxed text-muted-foreground">{desc}</p>
+    </div>
+  )
+}
+
+// ── Collapsible Section ────────────────────────────────────
+
+export function CollapsibleSection({
+  num,
+  title,
+  desc,
+  defaultOpen = true,
+  children,
+  summary,
+}: {
+  num: number
+  title: string
+  desc: string
+  defaultOpen?: boolean
+  children: React.ReactNode
+  summary?: React.ReactNode
+}) {
+  const [open, setOpen] = useState(defaultOpen)
+
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className="group mb-6 w-full text-left focus-visible:outline-none"
+      >
+        <div className="flex items-center justify-between gap-2">
+          <div className="min-w-0">
+            <div className="mb-1 font-sans text-[11px] font-bold uppercase tracking-[1.8px] text-accent-foreground">
+              {String(num).padStart(2, '0')} · {title}
+            </div>
+            {open && (
+              <p className="font-sans text-[14px] leading-relaxed text-muted-foreground">{desc}</p>
+            )}
+            {!open && summary && (
+              <p className="font-sans text-[13px] text-muted-foreground">{summary}</p>
+            )}
+          </div>
+          <ChevronDown
+            className={cn(
+              'size-4 shrink-0 text-muted-foreground transition-transform duration-200',
+              open && 'rotate-180',
+            )}
+          />
+        </div>
+      </button>
+      {open && <div>{children}</div>}
     </div>
   )
 }
@@ -81,12 +133,16 @@ export function ImportProgressCard({
   job,
   onStart,
   statusBadge,
+  reimportLabel,
+  helpLink,
 }: {
   title: string
   label: string
   job: ImportJob | null
   onStart: () => void
   statusBadge?: React.ReactNode
+  reimportLabel?: string
+  helpLink?: { text: string; href: string }
 }) {
   const isRunning = job?.status === 'running'
   const isDone = job?.status === 'done'
@@ -99,6 +155,19 @@ export function ImportProgressCard({
         {statusBadge}
       </div>
       <p className="font-sans text-[13px] text-muted-foreground">{label}</p>
+
+      {helpLink && (
+        <p className="text-[12px] text-muted-foreground">
+          <a
+            href={helpLink.href}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline underline-offset-2 hover:text-foreground"
+          >
+            {helpLink.text}
+          </a>
+        </p>
+      )}
 
       {isRunning && (
         <div className="space-y-1.5">
@@ -136,7 +205,7 @@ export function ImportProgressCard({
         ) : (
           <Upload className="size-3.5" />
         )}
-        {isRunning ? '导入中...' : isDone ? '重新导入' : '开始导入'}
+        {isRunning ? '导入中...' : isDone ? (reimportLabel || '重新导入') : '开始导入'}
       </Button>
     </div>
   )

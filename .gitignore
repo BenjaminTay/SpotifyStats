@@ -16,7 +16,6 @@ data/
 
 # Personal skill configuration
 .superpowers/
-docs/superpowers/
 
 # Environment secrets (Spotify API credentials, etc.)
 .env

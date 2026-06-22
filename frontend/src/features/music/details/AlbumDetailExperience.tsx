@@ -6,6 +6,7 @@ import { queryKeys } from '@/api/query-keys'
 import type { AlbumDetailResponse, AlbumEnrichmentResponse, ReleaseCycleAlbumDetailResponse } from '@/types/billboard'
 import { EntityStatsPanel } from '@/components/shared/EntityStatsPanel'
 import { displayName } from '@/lib/chinese'
+import { getBillboardName } from '@/lib/billboard-name'
 import { AlertCircle } from 'lucide-react'
 import { getDefaultMergeLevel } from '@/lib/merge-level'
 import { AlbumDetailHero, DetailTabs } from './MusicDetailHeader'
@@ -95,7 +96,7 @@ export function AlbumDetailExperience() {
                 onClick={() => navigate(-1)}
                 className="rounded-full border border-border px-6 py-2 text-[13px] font-semibold transition-colors hover:bg-muted"
               >
-                返回 Billboard
+                返回 {getBillboardName()}
               </button>
             </div>
           ) : (

@@ -44,6 +44,7 @@ import trackLyricsSectionSource from '../features/music/details/track/TrackLyric
 import mastheadSource from '../components/layout/Masthead.tsx?raw'
 import appLayoutSource from '../components/layout/AppLayout.tsx?raw'
 import chineseSource from '../lib/chinese.ts?raw'
+import billboardNameSource from '../lib/billboard-name.ts?raw'
 import monthlyTrendChartSource from '../components/charts/MonthlyTrendChart.tsx?raw'
 import analysisChartsSource from '../components/charts/AnalysisCharts.tsx?raw'
 import rankTrendChartSource from '../components/charts/RankTrendChart.tsx?raw'
@@ -247,6 +248,18 @@ describe('Phase 5 architecture guardrails', () => {
       /if\s*\(\s*getChineseStyle\(\)\s*!==\s*['"]original['"]\s*\)\s*{[\s\S]*ensureConverter\(getChineseStyle\(\)\)/
     )
     expect(appLayoutSource).toContain('useChineseTextVersion()')
+  })
+
+  it('keeps Billboard name from eager-loading localStorage on module init', () => {
+    // getBillboardName uses a function (not a module-level const), so module init
+    // should never read localStorage directly at the top level.
+    expect(billboardNameSource).not.toMatch(
+      /^(?:const|let)\s+\w+\s*=\s*localStorage\.getItem/
+    )
+  })
+
+  it('ensures AppLayout subscribes to billboard name changes', () => {
+    expect(appLayoutSource).toContain('useBillboardNameVersion()')
   })
 
   it('keeps the dashboard monthly trend chart lightweight for first paint', () => {

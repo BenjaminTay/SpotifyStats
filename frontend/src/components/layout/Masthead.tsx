@@ -1,6 +1,8 @@
 import { NavLink } from 'react-router-dom'
+import { useMemo } from 'react'
 import { ThemeToggle } from './ThemeToggle'
 import { cn } from '@/lib/utils'
+import { getBillboardName, useBillboardNameVersion } from '@/lib/billboard-name'
 
 type NavItem = {
   to: string
@@ -8,18 +10,19 @@ type NavItem = {
   disabled?: boolean
 }
 
-const NAV_ITEMS: NavItem[] = [
-  { to: '/', label: '总览' },
-  { to: '/analysis', label: '分析' },
-  { to: '/yearly-review', label: '年度回顾' },
-  { to: '/billboard', label: 'Billboard' },
-  { to: '/community', label: '社区' },
-  { to: '/ai-insights', label: 'AI 洞察' },
-  { to: '/account', label: '账户' },
-  { to: '/settings', label: '设置' },
-]
-
 export function Masthead() {
+  const version = useBillboardNameVersion()
+
+  const navItems = useMemo<NavItem[]>(() => [
+    { to: '/', label: '总览' },
+    { to: '/analysis', label: '分析' },
+    { to: '/yearly-review', label: '年度回顾' },
+    { to: '/billboard', label: getBillboardName() },
+    { to: '/community', label: '社区' },
+    { to: '/ai-insights', label: 'AI 洞察' },
+    { to: '/account', label: '账户' },
+    { to: '/settings', label: '设置' },
+  ], [version])
   return (
     <header className="sticky top-0 z-50 border-b border-border bg-card/45 backdrop-blur-[12px] transition-[background,border] duration-400">
       <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-3 sm:flex-nowrap sm:px-10 sm:py-4">
@@ -31,7 +34,7 @@ export function Masthead() {
             </span>
           </div>
           <nav className="order-3 flex w-full min-w-0 max-w-full basis-full gap-4 overflow-x-auto whitespace-nowrap pb-1 sm:order-none sm:w-auto sm:max-w-none sm:basis-auto sm:gap-6 sm:pb-0">
-            {NAV_ITEMS.map((item) =>
+            {navItems.map((item) =>
               item.disabled ? (
                 <span
                   key={item.to}

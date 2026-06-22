@@ -6,6 +6,7 @@ import { queryKeys } from '@/api/query-keys'
 import type { TrackDetailResponse, LyricsData, TrackEnrichmentResponse } from '@/types/billboard'
 import { EntityStatsPanel } from '@/components/shared/EntityStatsPanel'
 import { displayName } from '@/lib/chinese'
+import { getBillboardName } from '@/lib/billboard-name'
 import { Skeleton } from '@/components/ui/skeleton'
 import { AlertCircle, ArrowLeft } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -112,7 +113,7 @@ export function TrackDetailExperience() {
                 onClick={() => navigate(-1)}
                 className="rounded-full border border-border px-6 py-2 text-[13px] font-semibold transition-colors hover:bg-muted"
               >
-                返回 Billboard
+                返回 {getBillboardName()}
               </button>
             </div>
           ) : (

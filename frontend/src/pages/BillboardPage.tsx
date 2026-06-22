@@ -12,6 +12,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { AlertCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { displayName } from '@/lib/chinese'
+import { getBillboardName } from '@/lib/billboard-name'
 import type { WeeklyTrackEntry, WeeklyAlbumEntry, WeeklyArtistEntry } from '@/types/billboard'
 import { type RankChange, ChangeCell } from '@/components/shared/ChangeCell'
 import { CoverCell } from '@/components/shared/CoverCell'
@@ -205,7 +206,7 @@ export function BillboardPage() {
               Chart / Weekly
             </p>
             <h1 className="font-serif text-[44px] font-bold leading-[1.06] tracking-[-1.2px]">
-              Billboard 周榜
+              {getBillboardName()} 周榜
             </h1>
           </section>
 

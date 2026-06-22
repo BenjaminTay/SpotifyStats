@@ -234,7 +234,7 @@ export function useSettings(): UseSettingsResult {
 interface UseVersionMergeResult {
   groups: ReleaseGroup[]
   groupsLoading: boolean
-  fetchGroups: () => void
+  fetchGroups: () => Promise<ReleaseGroup[]>
   detectGroups: (overlapThreshold: number) => Promise<DetectionResult[]>
   applyDetected: (confirmedGroups: DetectionResult[]) => Promise<{ created_count: number; skipped_count: number }>
   fetchCollaborationCandidates: () => Promise<TrackGroupCandidate[]>
@@ -260,8 +260,8 @@ export function useVersionMerge(): UseVersionMergeResult {
   })
 
   const fetchGroups = useCallback(() => {
-    void groupsQuery.refetch()
-  }, [groupsQuery])
+    return groupsQuery.refetch().then((r) => r.data ?? [])
+  }, [groupsQuery.refetch])
 
   const invalidateMergeDependents = useCallback(() => {
     void queryClient.invalidateQueries({ queryKey: queryKeys.versionMerge.all })

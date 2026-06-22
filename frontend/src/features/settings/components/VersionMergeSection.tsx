@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { GlassCard } from '@/components/shared/GlassCard'
 import { displayName } from '@/lib/chinese'
+import { getBillboardName } from '@/lib/billboard-name'
 import { Slider } from '@/components/ui/slider'
 import {
   Select,
@@ -16,7 +17,8 @@ import { cn } from '@/lib/utils'
 import { Star, Trash2, Plus, X, Search, ChevronDown, CheckCircle2, RefreshCw, GitMerge } from 'lucide-react'
 import { useVersionMerge } from '@/hooks/useSettings'
 import type { DetectionResult, DetectionMember, ReleaseGroup, GroupMember, UngroupedAlbum, TrackComparison, TrackGroupCandidate } from '@/types/settings'
-import { SectionHeader, FieldLabel, TrackComparePanel } from '@/features/settings/components/SettingsHelpers'
+import { CoverCell } from '@/components/shared/CoverCell'
+import { CollapsibleSection, FieldLabel, TrackComparePanel } from '@/features/settings/components/SettingsHelpers'
 import { getDefaultMergeLevel, setDefaultMergeLevel } from '@/lib/merge-level'
 
 type MergeTabKey = 'detect' | 'saved' | 'create'
@@ -27,9 +29,9 @@ const MERGE_TABS: { key: MergeTabKey; label: string }[] = [
 ]
 
 const MERGE_LEVELS = [
-  { value: 1, label: 'L1', desc: '不合并' },
-  { value: 2, label: 'L2', desc: 'Recording' },
-  { value: 3, label: 'L3', desc: 'Composition' },
+  { value: 1, shortLabel: 'L1 不合并', desc: '各版本独立统计，不做任何合并' },
+  { value: 2, shortLabel: 'L2 录制', desc: '合并同一录音的不同发行版本（豪华版、改版等），同一录音的多个发行版本会被合并为一个条目统计' },
+  { value: 3, shortLabel: 'L3 作品', desc: '合并同一作品的所有版本（原版、Remix、Acoustic 等），跨录音的同一作品也会被合并' },
 ] as const
 
 export function VersionMergeSection() {
@@ -48,13 +50,13 @@ export function VersionMergeSection() {
 
   return (
     <GlassCard className="p-6">
-      <SectionHeader num={3} title="Version Merge" desc="管理专辑版本合并规则，将同一专辑的不同版本（豪华版、Acoustic版等）合并为统一条目。" />
+      <CollapsibleSection num={5} title="Version Merge" desc="管理专辑版本合并规则，将同一专辑的不同版本（豪华版、Acoustic版等）合并为统一条目。">
 
       {/* Merge Level selector */}
       <div className="mb-5 rounded-xl border border-border bg-muted/30 p-4">
-        <FieldLabel label="默认合并严格度" badge={MERGE_LEVELS.find(l => l.value === mergeLevel)?.label} />
+        <FieldLabel label="默认合并严格度" badge={MERGE_LEVELS.find(l => l.value === mergeLevel)?.shortLabel} />
         <p className="mt-1 text-[12px] text-muted-foreground">
-          控制所有榜单和统计中曲目/专辑版本合并的默认级别。各 Billboard 页面可通过 URL 参数临时覆盖。
+          控制所有榜单和统计中曲目/专辑版本合并的默认级别。各 {getBillboardName()} 页面可通过 URL 参数临时覆盖。
         </p>
         <div className="mt-3 flex gap-2">
           {MERGE_LEVELS.map((l) => (
@@ -69,15 +71,15 @@ export function VersionMergeSection() {
                   : 'border-border bg-card hover:border-muted-foreground/30 hover:bg-muted/50',
               )}
             >
-              <div className={cn('font-sans text-[13px] font-semibold', mergeLevel === l.value ? 'text-primary-foreground' : 'text-foreground')}>
-                {l.label}
-              </div>
-              <div className={cn('font-sans text-[11px]', mergeLevel === l.value ? 'text-primary-foreground/70' : 'text-muted-foreground')}>
-                {l.desc}
-              </div>
+              <span className={cn('font-sans text-[13px] font-semibold', mergeLevel === l.value ? 'text-primary-foreground' : 'text-foreground')}>
+                {l.shortLabel}
+              </span>
             </button>
           ))}
         </div>
+        <p className="mt-3 rounded-lg bg-muted/50 px-3 py-2 text-[12.5px] leading-relaxed text-foreground/80">
+          当前模式：{MERGE_LEVELS.find(l => l.value === mergeLevel)?.desc}
+        </p>
       </div>
 
       {/* Sub-tabs */}
@@ -102,6 +104,7 @@ export function VersionMergeSection() {
       {activeTab === 'detect' && <AutoDetectionTab vm={vm} />}
       {activeTab === 'saved' && <SavedGroupsTab vm={vm} />}
       {activeTab === 'create' && <ManualCreateTab vm={vm} />}
+      </CollapsibleSection>
     </GlassCard>
   )
 }
@@ -113,6 +116,7 @@ function AutoDetectionTab({ vm }: { vm: ReturnType<typeof useVersionMerge> }) {
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [applying, setApplying] = useState(false)
   const [applyMsg, setApplyMsg] = useState('')
+  const [filteredCount, setFilteredCount] = useState(0)
   const [candidates, setCandidates] = useState<TrackGroupCandidate[] | null>(null)
   const [candidateLoading, setCandidateLoading] = useState(false)
   const [candidateMsg, setCandidateMsg] = useState('')
@@ -129,9 +133,16 @@ function AutoDetectionTab({ vm }: { vm: ReturnType<typeof useVersionMerge> }) {
     setLoading(true)
     setResults(null)
     setSelected(new Set())
-    vm.detectGroups(threshold)
-      .then(setResults)
-      .finally(() => setLoading(false))
+    setFilteredCount(0)
+    Promise.all([
+      vm.detectGroups(threshold),
+      vm.fetchGroups(),
+    ]).then(([detected, saved]) => {
+      const savedPrimaryIds = new Set(saved.map((g) => g.primary_album_id).filter(Boolean) as number[])
+      const filtered = detected.filter((r) => !savedPrimaryIds.has(r.primary_album_id))
+      setFilteredCount(detected.length - filtered.length)
+      setResults(filtered)
+    }).finally(() => setLoading(false))
   }
 
   const toggleGroup = (key: string) => {
@@ -324,7 +335,18 @@ function AutoDetectionTab({ vm }: { vm: ReturnType<typeof useVersionMerge> }) {
       )}
 
       {/* Results */}
-      {results !== null && results.length === 0 && !loading && (
+      {results !== null && results.length === 0 && filteredCount > 0 && !loading && (
+        <div className="flex flex-col items-center gap-2 py-8 text-center">
+          <CheckCircle2 className="size-8 text-green-600 dark:text-green-400" />
+          <p className="text-[14px] text-muted-foreground">
+            检测到 {filteredCount} 个分组，但均已保存，当前无需处理。
+          </p>
+          <p className="text-[12px] text-muted-foreground/70">
+            如需重新检测，可先在「已保存分组」中删除对应分组后重试。
+          </p>
+        </div>
+      )}
+      {results !== null && results.length === 0 && filteredCount === 0 && !loading && (
         <div className="py-8 text-center text-[14px] text-muted-foreground">
           未检测到可合并的分组，建议降低重叠率阈值后重试。
         </div>
@@ -332,6 +354,12 @@ function AutoDetectionTab({ vm }: { vm: ReturnType<typeof useVersionMerge> }) {
 
       {results && results.length > 0 && (
         <>
+          {filteredCount > 0 && (
+            <div className="flex items-center gap-1.5 text-[12px] text-muted-foreground">
+              <CheckCircle2 className="size-3.5 text-green-600 dark:text-green-400" />
+              已过滤 {filteredCount} 个已保存的分组，无需重复处理
+            </div>
+          )}
           <div className="flex items-center gap-2">
             <Button variant="ghost" size="sm" onClick={selectAll} className="h-7 text-[12px]">全选</Button>
             <Button variant="ghost" size="sm" onClick={deselectAll} className="h-7 text-[12px]">取消全选</Button>
@@ -430,19 +458,30 @@ function DetectionCard({
           </p>
 
           {/* Members */}
-          <div className="mt-2 flex flex-wrap gap-1.5">
-            {r.members.map((m: DetectionMember) => (
-              <span
-                key={m.album_id}
-                className={cn(
-                  'inline-flex items-center rounded-md border border-border px-2 py-0.5 text-[12px] text-muted-foreground',
-                  m.album_id === r.primary_album_id && 'border-accent-foreground/30 text-foreground',
-                )}
-              >
-                {m.album_id === r.primary_album_id && <Star className="mr-1 size-3 text-accent-foreground" />}
-                {displayName(m.album_name)}
-              </span>
-            ))}
+          <div className="mt-2 flex flex-wrap gap-2">
+            {r.members.map((m: DetectionMember, index) => {
+              const isPrimary = m.album_id === r.primary_album_id
+              return (
+                <span
+                  key={m.album_id}
+                  className={cn(
+                    'inline-flex items-center gap-1.5 rounded-lg border bg-muted/30 pl-1 pr-2.5 py-1 text-[12px]',
+                    isPrimary
+                      ? 'border-accent-foreground/30 text-foreground'
+                      : 'border-border text-muted-foreground',
+                  )}
+                >
+                  <CoverCell
+                    index={index}
+                    coverUrl={`/covers/albums/${m.album_id}.jpg`}
+                    label={m.album_name}
+                    className="size-7 rounded"
+                  />
+                  {isPrimary && <Star className="size-3 text-accent-foreground shrink-0" />}
+                  <span className="truncate max-w-[200px]">{displayName(m.album_name)}</span>
+                </span>
+              )
+            })}
           </div>
 
           {/* Compare toggle */}
@@ -525,25 +564,35 @@ function SavedGroupCard({ group: g, vm }: { group: ReleaseGroup; vm: ReturnType<
   return (
     <div className="rounded-xl border border-border p-4">
       <div className="flex items-start justify-between">
-        <div>
-          <div className="flex items-center gap-2">
-            <span className="font-sans text-[14px] font-semibold text-foreground">{displayName(g.canonical_name)}</span>
-            {g.is_manual ? (
-              <Badge variant="outline" className="text-[10px]">手动</Badge>
-            ) : (
-              <Badge variant="outline" className="text-[10px]">自动</Badge>
-            )}
-            <Badge variant="secondary" className="text-[10px]">
-              {g.scope === 'composition' ? 'L3 作品' : 'L2 发行'}
-            </Badge>
-          </div>
-          <p className="text-[12.5px] text-muted-foreground">{displayName(g.artist_name)}</p>
-          {g.primary_album_name && (
-            <p className="mt-1 flex items-center gap-1 text-[12.5px] text-muted-foreground">
-              <Star className="size-3 text-accent-foreground" />
-              主版本：{displayName(g.primary_album_name)}
-            </p>
+        <div className="flex min-w-0 gap-3">
+          {g.primary_album_id != null && (
+            <CoverCell
+              index={0}
+              coverUrl={`/covers/albums/${g.primary_album_id}.jpg`}
+              label={g.primary_album_name || g.canonical_name}
+              className="size-12 rounded-lg shrink-0"
+            />
           )}
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <span className="truncate font-sans text-[14px] font-semibold text-foreground">{displayName(g.canonical_name)}</span>
+              {g.is_manual ? (
+                <Badge variant="outline" className="text-[10px] shrink-0">手动</Badge>
+              ) : (
+                <Badge variant="outline" className="text-[10px] shrink-0">自动</Badge>
+              )}
+              <Badge variant="secondary" className="text-[10px] shrink-0">
+                {g.scope === 'composition' ? 'L3 作品' : 'L2 发行'}
+              </Badge>
+            </div>
+            <p className="text-[12.5px] text-muted-foreground">{displayName(g.artist_name)}</p>
+            {g.primary_album_name && (
+              <p className="mt-1 flex items-center gap-1 text-[12.5px] text-muted-foreground">
+                <Star className="size-3 text-accent-foreground shrink-0" />
+                <span className="truncate">主版本：{displayName(g.primary_album_name)}</span>
+              </p>
+            )}
+          </div>
         </div>
 
         <div className="flex gap-1">
@@ -574,11 +623,17 @@ function SavedGroupCard({ group: g, vm }: { group: ReleaseGroup; vm: ReturnType<
 
       {membersOpen && (
         <div className="mt-3 space-y-1 border-t border-border pt-3">
-          {members.map((m) => (
-            <div key={m.album_id} className="flex items-center justify-between text-[13px]">
-              <span className={cn(m.is_primary ? 'font-medium text-foreground' : 'text-muted-foreground')}>
-                {m.is_primary ? <Star className="mr-1 inline size-3 text-accent-foreground" /> : null}
-                {displayName(m.album_name)}
+          {members.map((m, index) => (
+            <div key={m.album_id} className="flex items-center justify-between gap-2 text-[13px]">
+              <span className={cn('flex min-w-0 items-center gap-2', m.is_primary ? 'font-medium text-foreground' : 'text-muted-foreground')}>
+                <CoverCell
+                  index={index}
+                  coverUrl={`/covers/albums/${m.album_id}.jpg`}
+                  label={m.album_name}
+                  className="size-8 rounded shrink-0"
+                />
+                {m.is_primary && <Star className="size-3 text-accent-foreground shrink-0" />}
+                <span className="truncate">{displayName(m.album_name)}</span>
               </span>
               <div className="flex gap-1">
                 {!m.is_primary && (
@@ -611,6 +666,7 @@ function SavedGroupCard({ group: g, vm }: { group: ReleaseGroup; vm: ReturnType<
 }
 
 function ManualCreateTab({ vm }: { vm: ReturnType<typeof useVersionMerge> }) {
+  const [step, setStep] = useState(1)
   const [albums, setAlbums] = useState<UngroupedAlbum[]>([])
   const [artistFilter, setArtistFilter] = useState('')
   const [canonicalName, setCanonicalName] = useState('')
@@ -676,10 +732,12 @@ function ManualCreateTab({ vm }: { vm: ReturnType<typeof useVersionMerge> }) {
       .then((res) => {
       if (res.ok) {
         setMsg(res.message)
+        setStep(1)
         setSelectedAlbums(new Set())
         setPrimaryId(null)
         setCanonicalName('')
         setScope('release')
+        setAlbums([])
       } else {
         setMsg(res.message)
       }
@@ -688,122 +746,238 @@ function ManualCreateTab({ vm }: { vm: ReturnType<typeof useVersionMerge> }) {
       .finally(() => setCreating(false))
   }
 
+  const selectedAlbumList = albums.filter((a) => selectedAlbums.has(a.album_id))
+  const primaryAlbum = albums.find((a) => a.album_id === primaryId)
+
   return (
     <div className="space-y-4">
-      <div className="flex gap-3">
-        <div className="flex-1 space-y-1.5">
-          <FieldLabel label="艺人筛选" />
-          <div className="flex gap-2">
-            <input
-              type="text"
-              value={artistFilter}
-              onChange={(e) => setArtistFilter(e.target.value)}
-              placeholder="输入艺人名称筛选..."
-              className="flex h-8 w-full rounded-lg border border-input bg-transparent px-2.5 text-[13px] outline-none focus-visible:border-ring"
-            />
-            <Button size="sm" variant="outline" onClick={loadAlbums} className="shrink-0">
-              查询专辑
-            </Button>
+      {/* Step indicator */}
+      <div className="flex items-center justify-center gap-2 pb-2">
+        {[1, 2, 3].map((s) => (
+          <div key={s} className="flex items-center gap-2">
+            <div
+              className={cn(
+                'flex size-7 items-center justify-center rounded-full text-[12px] font-semibold transition-colors',
+                step === s && 'bg-accent-foreground text-primary-foreground',
+                step > s && 'bg-green-500/20 text-green-700 dark:text-green-400',
+                step < s && 'bg-muted text-muted-foreground',
+              )}
+            >
+              {step > s ? <CheckCircle2 className="size-4" /> : s}
+            </div>
+            <span
+              className={cn(
+                'text-[12px] font-medium',
+                step >= s ? 'text-foreground' : 'text-muted-foreground',
+              )}
+            >
+              {s === 1 ? '选择专辑' : s === 2 ? '配置规则' : '确认创建'}
+            </span>
+            {s < 3 && <span className="mx-1 h-px w-6 bg-border" />}
           </div>
-        </div>
+        ))}
       </div>
 
-      {albums.length > 0 && (
+      {/* Step 1: Select Albums */}
+      {step === 1 && (
         <>
-          <div className="space-y-1.5">
-            <FieldLabel label="未分组专辑" badge={`${selectedAlbums.size} 已选`} />
-            <div className="max-h-[250px] space-y-0.5 overflow-y-auto rounded-lg border border-border p-2">
-              {albums.map((a) => (
-                <label
+          <div className="flex gap-3">
+            <div className="flex-1 space-y-1.5">
+              <FieldLabel label="艺人筛选" />
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={artistFilter}
+                  onChange={(e) => setArtistFilter(e.target.value)}
+                  placeholder="输入艺人名称筛选..."
+                  className="flex h-8 w-full rounded-lg border border-input bg-transparent px-2.5 text-[13px] outline-none focus-visible:border-ring"
+                  onKeyDown={(e) => { if (e.key === 'Enter') loadAlbums() }}
+                />
+                <Button size="sm" variant="outline" onClick={loadAlbums} className="shrink-0">
+                  查询专辑
+                </Button>
+              </div>
+            </div>
+          </div>
+
+          {albums.length > 0 && (
+            <div className="space-y-1.5">
+              <FieldLabel label="未分组专辑" badge={`${selectedAlbums.size} 已选`} />
+              <div className="max-h-[250px] space-y-0.5 overflow-y-auto rounded-lg border border-border p-2">
+                {albums.map((a) => (
+                  <label
+                    key={a.album_id}
+                    className={cn(
+                      'flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-[13px] transition-colors hover:bg-muted/50',
+                      selectedAlbums.has(a.album_id) && 'bg-accent-foreground/5',
+                    )}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedAlbums.has(a.album_id)}
+                      onChange={() => toggleAlbum(a.album_id)}
+                      className="size-3.5 accent-accent-foreground"
+                    />
+                    <span className="flex-1 truncate">{displayName(a.album_name)}</span>
+                    <span className="text-[12px] text-muted-foreground">{displayName(a.artist_name)}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {albums.length === 0 && (
+            <div className="py-8 text-center text-[14px] text-muted-foreground">
+              请选择艺人后查询可用的未分组专辑。
+            </div>
+          )}
+
+          <div className="flex justify-end">
+            <Button
+              size="sm"
+              onClick={() => setStep(2)}
+              disabled={selectedAlbums.size < 2}
+            >
+              下一步：配置规则
+            </Button>
+          </div>
+        </>
+      )}
+
+      {/* Step 2: Configure */}
+      {step === 2 && (
+        <>
+          <div className="space-y-4">
+            <div className="space-y-1.5">
+              <FieldLabel label="统一名称 (canonical_name)" />
+              <p className="text-[12px] text-muted-foreground">所有版本在榜单中共享此名称</p>
+              <input
+                type="text"
+                value={canonicalName}
+                onChange={(e) => setCanonicalName(e.target.value)}
+                placeholder="留空则使用主版本名称"
+                className="flex h-8 w-full max-w-[360px] rounded-lg border border-input bg-transparent px-2.5 text-[13px] outline-none focus-visible:border-ring"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <FieldLabel label="主版本" />
+              <p className="text-[12px] text-muted-foreground">选择默认代表专辑，以 ⭐ 标识</p>
+              <Select
+                value={primaryId ? String(primaryId) : ''}
+                onValueChange={(v) => setPrimaryId(Number(v))}
+              >
+                <SelectTrigger className="w-[280px]">
+                  <SelectValue placeholder="选择主版本专辑" />
+                </SelectTrigger>
+                <SelectContent>
+                  {selectedAlbumList.map((a) => (
+                    <SelectItem key={a.album_id} value={String(a.album_id)}>
+                      {a.album_name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1.5">
+              <FieldLabel label="合并语义" badge={scope === 'composition' ? 'L3' : 'L2'} />
+              <p className="text-[12px] text-muted-foreground">
+                L2 录制：仅合并同一录音的发行版本 · L3 作品：合并所有版本含 Remix、Acoustic
+              </p>
+              <Select
+                value={scope}
+                onValueChange={(v) => setScope(v as 'release' | 'composition')}
+              >
+                <SelectTrigger className="w-[280px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="release">L2 发行版本</SelectItem>
+                  <SelectItem value="composition">L3 作品版本</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <div className="flex justify-between">
+            <Button size="sm" variant="ghost" onClick={() => setStep(1)}>
+              上一步
+            </Button>
+            <Button size="sm" onClick={() => setStep(3)} disabled={!primaryId}>
+              下一步：确认创建
+            </Button>
+          </div>
+        </>
+      )}
+
+      {/* Step 3: Confirm */}
+      {step === 3 && (
+        <>
+          <div className="rounded-xl border border-border bg-muted/20 p-4">
+            <div className="mb-3 font-sans text-[12px] font-semibold uppercase tracking-[1.4px] text-muted-foreground">
+              创建摘要
+            </div>
+            <div className="space-y-1 text-[13px]">
+              <div>
+                <span className="text-muted-foreground">统一名称：</span>
+                <span className="font-medium text-foreground">
+                  {canonicalName || primaryAlbum?.album_name || '—'}
+                </span>
+              </div>
+              <div>
+                <span className="text-muted-foreground">合并语义：</span>
+                <span className="font-medium text-foreground">
+                  {scope === 'composition' ? 'L3 作品版本' : 'L2 发行版本'}
+                </span>
+              </div>
+            </div>
+
+            <div className="mt-3 space-y-1">
+              <div className="text-[12px] text-muted-foreground">合并的专辑 ({selectedAlbumList.length})：</div>
+              {selectedAlbumList.map((a, index) => (
+                <div
                   key={a.album_id}
                   className={cn(
-                    'flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-[13px] transition-colors hover:bg-muted/50',
-                    selectedAlbums.has(a.album_id) && 'bg-accent-foreground/5',
+                    'flex items-center gap-2 rounded-md px-2 py-1.5 text-[13px]',
+                    a.album_id === primaryId
+                      ? 'bg-accent-foreground/5 font-medium text-foreground'
+                      : 'text-muted-foreground',
                   )}
                 >
-                  <input
-                    type="checkbox"
-                    checked={selectedAlbums.has(a.album_id)}
-                    onChange={() => toggleAlbum(a.album_id)}
-                    className="size-3.5 accent-accent-foreground"
+                  <CoverCell
+                    index={index}
+                    coverUrl={`/covers/albums/${a.album_id}.jpg`}
+                    label={a.album_name}
+                    className="size-8 rounded shrink-0"
                   />
-                  <span className="flex-1 truncate">{displayName(a.album_name)}</span>
-                  <span className="text-[12px] text-muted-foreground">{displayName(a.artist_name)}</span>
-                </label>
+                  {a.album_id === primaryId && <Star className="size-3 text-accent-foreground shrink-0" />}
+                  <span className="truncate">{displayName(a.album_name)}</span>
+                </div>
               ))}
             </div>
           </div>
 
-          {selectedAlbums.size > 0 && (
-            <>
-              <div className="space-y-1.5">
-                <FieldLabel label="统一名称 (canonical_name)" />
-                <input
-                  type="text"
-                  value={canonicalName}
-                  onChange={(e) => setCanonicalName(e.target.value)}
-                  placeholder="留空则使用主版本名称"
-                  className="flex h-8 w-full max-w-[360px] rounded-lg border border-input bg-transparent px-2.5 text-[13px] outline-none focus-visible:border-ring"
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <FieldLabel label="主版本" />
-                <Select
-                  value={primaryId ? String(primaryId) : ''}
-                  onValueChange={(v) => setPrimaryId(Number(v))}
-                >
-                  <SelectTrigger className="w-[280px]">
-                    <SelectValue placeholder="选择主版本专辑" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {albums
-                      .filter((a) => selectedAlbums.has(a.album_id))
-                      .map((a) => (
-                        <SelectItem key={a.album_id} value={String(a.album_id)}>
-                          {a.album_name}
-                        </SelectItem>
-                      ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-1.5">
-                <FieldLabel label="合并语义" badge={scope === 'composition' ? 'L3' : 'L2'} />
-                <Select
-                  value={scope}
-                  onValueChange={(v) => setScope(v as 'release' | 'composition')}
-                >
-                  <SelectTrigger className="w-[280px]">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="release">L2 发行版本</SelectItem>
-                    <SelectItem value="composition">L3 作品版本</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {msg && (
-                <div className="flex items-center gap-2 text-[13px] text-green-600 dark:text-green-400">
-                  <CheckCircle2 className="size-3.5" />
-                  {msg}
-                </div>
-              )}
-
-              <Button size="sm" onClick={handleCreate} disabled={creating || !primaryId} className="gap-1.5">
-                {creating ? <RefreshCw className="size-3.5 animate-spin" /> : <Plus className="size-3.5" />}
-                {creating ? '创建中...' : '创建分组'}
-              </Button>
-            </>
+          {msg && (
+            <div className={cn(
+              'flex items-center gap-2 text-[13px]',
+              msg.includes('成功') ? 'text-green-600 dark:text-green-400' : 'text-destructive',
+            )}>
+              <CheckCircle2 className="size-3.5" />
+              {msg}
+            </div>
           )}
-        </>
-      )}
 
-      {albums.length === 0 && (
-        <div className="py-8 text-center text-[14px] text-muted-foreground">
-          请选择艺人后查询可用的未分组专辑。
-        </div>
+          <div className="flex justify-between">
+            <Button size="sm" variant="ghost" onClick={() => setStep(2)}>
+              上一步
+            </Button>
+            <Button size="sm" onClick={handleCreate} disabled={creating} className="gap-1.5">
+              {creating ? <RefreshCw className="size-3.5 animate-spin" /> : <Plus className="size-3.5" />}
+              {creating ? '创建中...' : '创建分组'}
+            </Button>
+          </div>
+        </>
       )}
     </div>
   )

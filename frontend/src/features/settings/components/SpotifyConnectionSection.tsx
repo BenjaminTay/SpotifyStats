@@ -5,7 +5,7 @@ import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 import { AlertCircle, CheckCircle2, RefreshCw, Link, Unlink } from 'lucide-react'
 import type { SpotifyProfile } from '@/types/settings'
-import { SectionHeader } from '@/features/settings/components/SettingsHelpers'
+import { CollapsibleSection } from '@/features/settings/components/SettingsHelpers'
 
 export interface SpotifyConnectResult {
   total_in_spotify?: number
@@ -89,11 +89,11 @@ export function SpotifyConnectionSection({
 
   return (
     <GlassCard className="p-6">
-      <SectionHeader
-        num={0}
+      <CollapsibleSection
+        num={1}
         title="Spotify 连接"
         desc="连接你的 Spotify 账号以获取收藏时间、播放列表等个人数据。仅请求 user-library-read 权限。"
-      />
+      >
 
       {notice && (
         <div className="mb-4 flex items-center gap-2 rounded-lg bg-green-50 px-4 py-2.5 text-[13px] text-green-700 dark:bg-green-950/30 dark:text-green-400">
@@ -200,10 +200,11 @@ export function SpotifyConnectionSection({
 
       {/* Note about what this enables */}
       {connected && (
-        <p className="mt-4 font-sans text-[12px] text-muted-foreground">
-          连接后可同步收藏时间，CollectionTab 的生命周期分析、化学反应等模块将从全零数据变为真实分析。
+        <p className="mt-4 font-sans text-[12px] text-muted-foreground leading-relaxed">
+          连接后可同步 Spotify Library 中每首歌的收藏日期（added_at），让 CollectionTab 的生命周期分析、化学反应等模块从全零数据变为真实分析。如需导入 Extended Streaming History JSON 数据，请前往「02 · 数据导入」。
         </p>
       )}
+      </CollapsibleSection>
     </GlassCard>
   )
 }

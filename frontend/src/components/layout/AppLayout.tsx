@@ -5,9 +5,11 @@ import { NoiseOverlay } from '@/components/shared/NoiseOverlay'
 import { preloadWeeklyData, preloadAllTimeData } from '@/hooks/useBillboard'
 import { preloadDashboardData } from '@/hooks/useDashboard'
 import { useChineseTextVersion } from '@/lib/chinese'
+import { useBillboardNameVersion } from '@/lib/billboard-name'
 
 export function AppLayout() {
   useChineseTextVersion()
+  useBillboardNameVersion()
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
