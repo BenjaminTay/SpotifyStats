@@ -52,10 +52,6 @@ export function NumberOnesExperience({ mergeLevel = 2 }: { mergeLevel?: number }
     setSelectedYear(year)
   }
 
-  if (loading) return <SkeletonBlock />
-  if (error) return <ErrorState error={error} />
-  if (!data) return null
-
   return (
     <>
       <BillboardSubNav active="number-ones" />
@@ -87,7 +83,11 @@ export function NumberOnesExperience({ mergeLevel = 2 }: { mergeLevel?: number }
         ))}
       </div>
 
-      {activeTab === 'tracks' && (
+      {loading && <SkeletonBlock />}
+
+      {!loading && error && <ErrorState error={error} />}
+
+      {!loading && !error && data && activeTab === 'tracks' && (
         <TracksNumberOnesSection
           computed={computed}
           yearFiltered={yearFiltered}
@@ -97,7 +97,7 @@ export function NumberOnesExperience({ mergeLevel = 2 }: { mergeLevel?: number }
         />
       )}
 
-      {activeTab === 'albums' && (
+      {!loading && !error && data && activeTab === 'albums' && (
         <AlbumsNumberOnesSection
           computed={computed}
           yearFiltered={yearFiltered}
@@ -107,7 +107,7 @@ export function NumberOnesExperience({ mergeLevel = 2 }: { mergeLevel?: number }
         />
       )}
 
-      {activeTab === 'artists' && (
+      {!loading && !error && data && activeTab === 'artists' && (
         <ArtistsNumberOnesSection
           computed={computed}
           yearFiltered={yearFiltered}

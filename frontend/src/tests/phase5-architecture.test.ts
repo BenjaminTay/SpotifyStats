@@ -96,6 +96,12 @@ describe('Phase 5 architecture guardrails', () => {
     expect(numberOnesExperienceSource).not.toContain('function longestStreak')
   })
 
+  it('keeps NumberOnesExperience chrome stable while loading', () => {
+    expect(numberOnesExperienceSource).not.toContain('if (loading) return <SkeletonBlock />')
+    expect(numberOnesExperienceSource).toContain('<BillboardSubNav active="number-ones" />')
+    expect(numberOnesExperienceSource).toContain('{loading && <SkeletonBlock />}')
+  })
+
   it('keeps music detail pages as route containers', () => {
     expect(artistDetailSource.split('\n').length).toBeLessThanOrEqual(450)
     expect(albumDetailSource.split('\n').length).toBeLessThanOrEqual(450)

@@ -109,19 +109,26 @@ export function No1BarChart({
 export function SkeletonBlock() {
   return (
     <>
-      <Skeleton className="mb-3 h-3 w-32" />
-      <Skeleton className="mb-2 h-[44px] w-72" />
-      <Skeleton className="mb-8 h-5 w-48" />
       <div className="mb-8 grid grid-cols-3 gap-6">
         {Array.from({ length: 3 }).map((_, index) => (
-          <div key={index}>
-            <Skeleton className="mb-2 h-10 w-20" />
-            <Skeleton className="h-4 w-32" />
+          <div key={index} className="rounded-[8px] border border-border bg-card/70 p-6">
+            <Skeleton className="mb-4 h-3 w-28" />
+            <Skeleton className="mb-4 h-11 w-24" />
+            <div className="flex items-center gap-3">
+              <Skeleton className="h-10 w-10 rounded-[8px]" />
+              <div className="min-w-0 flex-1">
+                <Skeleton className="mb-2 h-4 w-32" />
+                <Skeleton className="h-3 w-24" />
+              </div>
+            </div>
           </div>
         ))}
       </div>
-      <Skeleton className="mb-6 h-[400px] w-full rounded-[16px]" />
-      <Skeleton className="mb-6 h-[300px] w-full rounded-[16px]" />
+      <Skeleton className="mb-8 h-[640px] w-full rounded-[16px]" />
+      <div className="mb-8 grid grid-cols-2 gap-6">
+        <Skeleton className="h-[560px] w-full rounded-[16px]" />
+        <Skeleton className="h-[560px] w-full rounded-[16px]" />
+      </div>
     </>
   )
 }
