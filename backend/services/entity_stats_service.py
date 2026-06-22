@@ -216,20 +216,86 @@ def get_track_stats(
     return data
 
 
-def _resolve_album_names(conn: sqlite3.Connection, album_name: str, artist_name: str) -> list[str]:
-    """Return all album names in the same release group (including the input)."""
-    row = conn.execute(
-        """SELECT a.album_name FROM release_group_members rgm
-           JOIN release_groups rg ON rg.group_id = rgm.group_id
-           JOIN albums a ON a.album_id = rgm.album_id
-           JOIN artists ar ON a.artist_id = ar.artist_id
-           WHERE rg.canonical_name = ? AND ar.artist_name = ?
-           UNION SELECT ?""",
-        (album_name, artist_name, album_name),
+def _resolve_album_project_song_keys(
+    conn: sqlite3.Connection, album_name: str, artist_name: str, merge_level: int = 2
+) -> set[str]:
+    """Return canonical_song_keys belonging to the album project.
+
+    Uses ``album_project_tracks`` membership so that plays from every source
+    (standard, deluxe, single, compilation, …) contribute to the project-scoped
+    statistics — matching the rule in domains/playback/album_projects.py.
+    """
+    from backend.domains.playback.album_projects import (
+        apply_canonical_song_keys,
+        ensure_album_projects,
+    )
+
+    ensure_album_projects(conn)
+
+    project = conn.execute(
+        """SELECT ap.project_id
+           FROM album_projects ap
+           JOIN artists ar ON ar.artist_id = ap.artist_id
+           WHERE ap.canonical_name = ? AND ar.artist_name = ?""",
+        (album_name, artist_name),
+    ).fetchone()
+    if not project:
+        return set()
+
+    rows = conn.execute(
+        """SELECT apt.track_id, t.track_name
+           FROM album_project_tracks apt
+           JOIN tracks t ON t.track_id = apt.track_id
+           WHERE apt.project_id = ? AND apt.min_merge_level <= ?""",
+        (project["project_id"], merge_level),
     ).fetchall()
-    if row:
-        return list({r["album_name"] for r in row})
-    return [album_name]
+    if not rows:
+        return set()
+
+    mini_df = pd.DataFrame(
+        [{"track_id": r["track_id"], "track_name": r["track_name"]} for r in rows]
+    )
+    keyed = apply_canonical_song_keys(mini_df, conn, merge_level)
+    return set(keyed["canonical_song_key"].tolist())
+
+
+def _resolve_album_project_album_names(
+    conn: sqlite3.Connection, album_name: str, artist_name: str, merge_level: int = 2
+) -> list[str]:
+    """Return all source album names that contribute tracks to this album project.
+
+    Used for ``chart_rows()`` ranking and Top-250 counting, where the chart is
+    still grouped by raw album_name.  Matching against this expanded list means
+    the ranking picks up plays from every source (standard, deluxe, single, …).
+    """
+    from backend.domains.playback.album_projects import ensure_album_projects
+
+    ensure_album_projects(conn)
+
+    project = conn.execute(
+        """SELECT ap.project_id
+           FROM album_projects ap
+           JOIN artists ar ON ar.artist_id = ap.artist_id
+           WHERE ap.canonical_name = ? AND ar.artist_name = ?""",
+        (album_name, artist_name),
+    ).fetchone()
+    if not project:
+        return [album_name]
+
+    rows = conn.execute(
+        """SELECT DISTINCT COALESCE(sa.album_name, al.album_name) AS album_name
+           FROM album_project_tracks apt
+           JOIN tracks t ON t.track_id = apt.track_id
+           JOIN albums al ON al.album_id = t.album_id
+           LEFT JOIN albums sa ON sa.album_id = apt.source_album_id
+           WHERE apt.project_id = ? AND apt.min_merge_level <= ?""",
+        (project["project_id"], merge_level),
+    ).fetchall()
+
+    names = list({r["album_name"] for r in rows if r["album_name"]})
+    if album_name not in names:
+        names.append(album_name)
+    return names
 
 
 def get_album_stats(
@@ -244,7 +310,10 @@ def get_album_stats(
     end_date: str | None = None,
     dynamic_threshold: bool = False,
     max_merge_gap_minutes: int | None = None,
+    merge_level: int = 2,
 ) -> dict:
+    from backend.domains.playback.album_projects import apply_canonical_song_keys
+
     all_df, current_df, resolved = load_period_plays(
         conn,
         min_ms,
@@ -262,18 +331,32 @@ def get_album_stats(
         if not matches.empty:
             artist_name = str(matches.iloc[0]["artist_name"])
 
-    # Resolve release group aliases (e.g. standard vs deluxe edition)
+    # Resolve album project track membership — canonical_song_key attribution
+    # replaces the old release_group album_name string matching.
     if artist_name:
-        album_names = _resolve_album_names(conn, album_name, artist_name)
+        project_keys = _resolve_album_project_song_keys(conn, album_name, artist_name, merge_level)
     else:
-        album_names = [album_name]
+        project_keys = set()
 
-    entity_all = all_df[
-        (all_df["album_name"].isin(album_names)) & (all_df["artist_name"] == artist_name)
-    ]
-    entity_df = current_df[
-        (current_df["album_name"].isin(album_names)) & (current_df["artist_name"] == artist_name)
-    ]
+    if project_keys:
+        all_df = apply_canonical_song_keys(all_df, conn, merge_level)
+        current_df = apply_canonical_song_keys(current_df, conn, merge_level)
+        entity_all = all_df[all_df["canonical_song_key"].isin(project_keys)]
+        entity_df = current_df[current_df["canonical_song_key"].isin(project_keys)]
+        # Expand album_names to all source albums in the project so that
+        # ranking/top250 lookups match any contributing version.
+        album_names = _resolve_album_project_album_names(conn, album_name, artist_name, merge_level)
+    else:
+        # Fallback: no album project found — filter by album_name string match
+        # (preserves behaviour for albums that haven't been bootstrapped yet).
+        album_names = [album_name]
+        entity_all = all_df[
+            (all_df["album_name"].isin(album_names)) & (all_df["artist_name"] == artist_name)
+        ]
+        entity_df = current_df[
+            (current_df["album_name"].isin(album_names))
+            & (current_df["artist_name"] == artist_name)
+        ]
     if entity_all.empty:
         return {"found": False}
     data = _entity_base(all_df, entity_df)
@@ -374,6 +457,7 @@ def get_entity_plays(
     min_ms: int = 30000,
     music_only: bool = True,
     merge_enabled: bool = True,
+    merge_level: int = 2,
     period: str = "lifetime",
     start_date: str | None = None,
     end_date: str | None = None,
@@ -397,7 +481,9 @@ def get_entity_plays(
         max_merge_gap_minutes=max_merge_gap_minutes,
         _loader=load_plays_for_artists if entity == "artist" else None,
     )
-    df = _filter_entity_rows(df, entity, track_id, album_name, artist_name)
+    df = _filter_entity_rows(
+        df, entity, track_id, album_name, artist_name, conn=conn, merge_level=merge_level
+    )
 
     if date is not None and not df.empty:
         df = df[df["ts_date"].astype(str) == date]
@@ -462,12 +548,25 @@ def _filter_entity_rows(
     track_id: int | None,
     album_name: str | None,
     artist_name: str | None,
+    conn: sqlite3.Connection | None = None,
+    merge_level: int = 2,
 ) -> pd.DataFrame:
     if df.empty:
         return df
     if entity == "track" and track_id is not None:
         return df[df["track_id"] == track_id]
     if entity == "album" and album_name is not None:
+        # Try album project canonical_song_key attribution first
+        if conn is not None and artist_name is not None:
+            project_keys = _resolve_album_project_song_keys(
+                conn, album_name, artist_name, merge_level
+            )
+            if project_keys:
+                from backend.domains.playback.album_projects import apply_canonical_song_keys
+
+                df = apply_canonical_song_keys(df, conn, merge_level)
+                return df[df["canonical_song_key"].isin(project_keys)]
+        # Fallback: string match on album_name
         out = df[df["album_name"] == album_name]
         if artist_name is not None:
             out = out[out["artist_name"] == artist_name]
@@ -486,6 +585,7 @@ def get_entity_play_dates(
     min_ms: int = 30000,
     music_only: bool = True,
     merge_enabled: bool = True,
+    merge_level: int = 2,
     period: str = "lifetime",
     start_date: str | None = None,
     end_date: str | None = None,
@@ -505,7 +605,9 @@ def get_entity_play_dates(
         max_merge_gap_minutes=max_merge_gap_minutes,
         _loader=load_plays_for_artists if entity == "artist" else None,
     )
-    df = _filter_entity_rows(df, entity, track_id, album_name, artist_name)
+    df = _filter_entity_rows(
+        df, entity, track_id, album_name, artist_name, conn=conn, merge_level=merge_level
+    )
     if df.empty:
         return []
     counts = df.groupby("ts_date").size().reset_index(name="count").sort_values("ts_date")

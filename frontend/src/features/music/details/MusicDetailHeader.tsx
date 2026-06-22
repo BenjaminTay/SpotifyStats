@@ -124,10 +124,17 @@ export function ArtistDetailHero({
 export function AlbumDetailHero({
   data,
   onBack,
+  projectTrackCount,
 }: {
   data: AlbumDetailResponse
   onBack: () => void
+  projectTrackCount?: number
 }) {
+  const showDualTrackCount =
+    projectTrackCount != null &&
+    data.meta?.total_tracks != null &&
+    projectTrackCount !== data.meta.total_tracks
+
   return (
     <section className="mb-6">
       <button
@@ -162,7 +169,9 @@ export function AlbumDetailHero({
               {[
                 data.meta.album_type && formatAlbumKind(data.meta.album_type),
                 data.meta.release_date && formatAlbumReleaseDate(data.meta.release_date),
-                data.meta.total_tracks && `${data.meta.total_tracks} tracks`,
+                showDualTrackCount
+                  ? `${data.meta.total_tracks} tracks (${projectTrackCount} total)`
+                  : data.meta.total_tracks && `${data.meta.total_tracks} tracks`,
                 data.meta.label,
               ]
                 .filter(Boolean)

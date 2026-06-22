@@ -334,7 +334,7 @@ export const analysisApi = {
     kind: 'track' | 'album' | 'artist',
     id: string,
     filters: AnalysisFilters,
-    params: { period: AnalysisPeriod; start_date?: string; end_date?: string; limit?: number; offset?: number; search?: string; date?: string },
+    params: { period: AnalysisPeriod; start_date?: string; end_date?: string; limit?: number; offset?: number; search?: string; date?: string; merge_level?: number },
     artistName?: string,
   ) => {
     const path =
@@ -381,7 +381,7 @@ export const analysisApi = {
     kind: 'track' | 'album' | 'artist',
     id: string,
     filters: AnalysisFilters,
-    params: { period: AnalysisPeriod; start_date?: string; end_date?: string },
+    params: { period: AnalysisPeriod; start_date?: string; end_date?: string; merge_level?: number },
     artistName?: string,
   ) => {
     const path =

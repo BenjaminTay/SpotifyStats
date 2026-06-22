@@ -13,8 +13,7 @@ import { AlbumDetailSkeleton } from './MusicDetailSkeletons'
 import { MusicChartOverviewSection } from './MusicChartOverviewSection'
 import { MusicTracksSection } from './MusicTracksSection'
 import { AlbumEraSection } from './AlbumEraSection'
-import { VersionGroupSection } from './VersionGroupSection'
-import { AlbumProjectSection } from './AlbumProjectSection'
+import { AlbumSourceBreakdown } from './AlbumSourceBreakdown'
 
 type TabKey = 'stats' | 'era' | 'overview' | 'tracks'
 
@@ -101,16 +100,11 @@ export function AlbumDetailExperience() {
             </div>
           ) : (
             <>
-              <AlbumDetailHero data={data} onBack={() => navigate(-1)} />
-
-              {data.meta?.release_group && (
-                <VersionGroupSection
-                  kind="album"
-                  data={data.meta.release_group}
-                />
-              )}
-
-              {data.album_project && <AlbumProjectSection project={data.album_project} />}
+              <AlbumDetailHero
+                data={data}
+                onBack={() => navigate(-1)}
+                projectTrackCount={data.album_project?.unique_canonical_songs}
+              />
 
               <DetailTabs tabs={TABS} activeTab={activeTab} onChange={setActiveTab} />
 
@@ -124,7 +118,14 @@ export function AlbumDetailExperience() {
               )}
 
               {activeTab === 'stats' && (
-                <EntityStatsPanel kind="album" albumName={data.album_name} artistName={data.artist_name} />
+                <>
+                  <EntityStatsPanel kind="album" albumName={data.album_name} artistName={data.artist_name} mergeLevel={mergeLevel} releaseDate={data.meta?.release_date} />
+                  {data.album_project && (
+                    <div className="mt-8">
+                      <AlbumSourceBreakdown project={data.album_project} />
+                    </div>
+                  )}
+                </>
               )}
 
               {activeTab === 'tracks' && (
@@ -142,6 +143,7 @@ export function AlbumDetailExperience() {
                   releaseCycle={releaseCycle}
                   releaseCycleLoading={releaseCycleLoading}
                   releaseCycleError={releaseCycleError}
+                  releaseGroup={data.meta?.release_group ?? null}
                 />
               )}
 

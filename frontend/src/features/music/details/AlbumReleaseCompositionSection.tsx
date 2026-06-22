@@ -13,7 +13,7 @@ export function AlbumReleaseCompositionSection({
   releaseCycle,
 }: AlbumReleaseCompositionSectionProps) {
   const hasWikiSingles = (enrichment?.wiki?.infobox?.singles.length ?? 0) > 0
-  const shouldRender = releaseCycle.is_grouped || releaseCycle.advance_singles.length > 0 || hasWikiSingles
+  const shouldRender = releaseCycle.advance_singles.length > 0 || hasWikiSingles
 
   if (!shouldRender) {
     return null
@@ -23,21 +23,6 @@ export function AlbumReleaseCompositionSection({
     <div className="mb-8">
       <h3 className="mb-4 font-serif text-xl font-semibold">发行构成</h3>
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
-        {releaseCycle.is_grouped && (
-          <GlassCard className="p-5">
-            <h4 className="mb-3 font-serif text-[18px] font-semibold">版本家族</h4>
-            <p className="font-sans text-[13px] text-muted-foreground">
-              主版本：{displayName(releaseCycle.primary_name || releaseCycle.canonical_name)}
-            </p>
-            <div className="mt-3 flex flex-wrap gap-2">
-              {releaseCycle.group_albums.map((name) => (
-                <span key={name} className="rounded-full border border-border px-3 py-1 font-sans text-[12px] text-foreground/75">
-                  {displayName(name)}
-                </span>
-              ))}
-            </div>
-          </GlassCard>
-        )}
         {releaseCycle.advance_singles.length > 0 && (
           <GlassCard className="p-5">
             <h4 className="mb-3 font-serif text-[18px] font-semibold">先行单曲</h4>

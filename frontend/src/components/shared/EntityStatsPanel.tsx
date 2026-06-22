@@ -12,6 +12,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { queryKeys } from '@/api/query-keys'
 import { analysisApi, useAnalysisFilters } from '@/hooks/useAnalysis'
 import { api } from '@/lib/api'
+import { getDefaultMergeLevel } from '@/lib/merge-level'
 import type { AnalysisMetric, EntityStatsResponse } from '@/types/analysis'
 
 function fmt(n: number | null | undefined): string {
@@ -36,17 +37,28 @@ export function EntityStatsPanel({
   trackId,
   albumName,
   artistName,
+  mergeLevel,
+  releaseDate,
 }: {
   kind: 'track' | 'album' | 'artist'
   trackId?: number | string
   albumName?: string
   artistName?: string
+  mergeLevel?: number
+  /** ISO date string (e.g. "2023-09-08") — used as the chart origin for album stats. */
+  releaseDate?: string
 }) {
   const { filters, loading: filtersLoading } = useAnalysisFilters()
   const { period, metric, periodValue, startDate, endDate, setQuery, apiParams } = useAnalysisQueryState()
   const entityId = (trackId ?? albumName ?? artistName) != null ? String(trackId ?? albumName ?? artistName) : ''
+  const resolvedMergeLevel = mergeLevel ?? getDefaultMergeLevel()
+  const statsParams = {
+    ...filters,
+    ...apiParams,
+    ...(kind === 'album' ? { merge_level: resolvedMergeLevel } : {}),
+  }
   const { data, isPending, error } = useQuery({
-    queryKey: queryKeys.music.entityStats(kind, entityId, { ...filters, ...apiParams }),
+    queryKey: queryKeys.music.entityStats(kind, entityId, statsParams),
     queryFn: () => {
       if (kind === 'track' && trackId != null) {
         return api.get<EntityStatsResponse>(`/music/tracks/${trackId}/stats`, { ...filters, ...apiParams })
@@ -54,7 +66,7 @@ export function EntityStatsPanel({
       if (kind === 'album' && albumName) {
         return api.get<EntityStatsResponse>(
           `/music/albums/${encodeURIComponent(albumName)}/stats`,
-          { ...filters, ...apiParams, ...(artistName ? { artist: artistName } : {}) },
+          { ...filters, ...apiParams, ...(artistName ? { artist: artistName } : {}), merge_level: resolvedMergeLevel },
         )
       }
       if (kind === 'artist' && artistName) {
@@ -69,30 +81,41 @@ export function EntityStatsPanel({
   const metricKey: AnalysisMetric = metric
   const distributionKey = metricKey === 'plays' ? 'plays' : 'hours'
 
-  // Pad daily trend with zero-fill for dates with no plays, from first play to today
+  // Chart origin = max(release_date, first_play_date).
+  // Album released before first listen → start at first play (no useless zero-pad).
+  // Album released after earliest plays (advance singles) → start at release date.
+  const chartOrigin = useMemo(() => {
+    if (!data || data.daily_trend.length === 0) return null
+    const firstPlay = data.daily_trend[0].date
+    if (!releaseDate) return firstPlay
+    return releaseDate > firstPlay ? releaseDate : firstPlay
+  }, [releaseDate, data?.daily_trend])
+
+  // Pad daily trend with zero-fill from chartOrigin to today.
+  // Use UTC noon to avoid local-timezone date shifts.
   const paddedDaily = useMemo(() => {
-    if (!data || data.daily_trend.length === 0) return []
+    if (!data || data.daily_trend.length === 0 || !chartOrigin) return []
     const index = new Map(data.daily_trend.map((d) => [d.date, d]))
-    const first = new Date(data.daily_trend[0].date + 'T00:00:00')
+    const first = new Date(chartOrigin + 'T12:00:00.000Z')
     const today = new Date()
-    today.setHours(0, 0, 0, 0)
+    today.setUTCHours(12, 0, 0, 0)
     const result: typeof data.daily_trend = []
     const cursor = new Date(first)
     while (cursor <= today) {
       const dateStr = cursor.toISOString().slice(0, 10)
       result.push(index.get(dateStr) ?? { date: dateStr, plays: 0, hours: 0 })
-      cursor.setDate(cursor.getDate() + 1)
+      cursor.setUTCDate(cursor.getUTCDate() + 1)
     }
     return result
-  }, [data?.daily_trend])
+  }, [data?.daily_trend, chartOrigin])
 
-  // Pad cumulative trend: carry forward last known value for missing dates
+  // Pad cumulative trend: carry forward last known value from chartOrigin
   const paddedCumulative = useMemo(() => {
-    if (!data || data.cumulative_trend.length === 0) return []
+    if (!data || data.cumulative_trend.length === 0 || !chartOrigin) return []
     const index = new Map(data.cumulative_trend.map((d) => [d.date, d]))
-    const first = new Date(data.cumulative_trend[0].date + 'T00:00:00')
+    const first = new Date(chartOrigin + 'T12:00:00.000Z')
     const today = new Date()
-    today.setHours(0, 0, 0, 0)
+    today.setUTCHours(12, 0, 0, 0)
     const result: typeof data.cumulative_trend = []
     const cursor = new Date(first)
     let lastPlays = 0
@@ -261,7 +284,7 @@ export function EntityStatsPanel({
             if (kind === 'track' && trackId != null)
               return analysisApi.entityPlays('track', String(trackId), filters, { ...apiParams, limit, offset: (page - 1) * limit, search, date })
             if (kind === 'album' && albumName)
-              return analysisApi.entityPlays('album', albumName, filters, { ...apiParams, limit, offset: (page - 1) * limit, search, date }, artistName)
+              return analysisApi.entityPlays('album', albumName, filters, { ...apiParams, limit, offset: (page - 1) * limit, search, date, merge_level: resolvedMergeLevel }, artistName)
             if (kind === 'artist' && artistName)
               return analysisApi.entityPlays('artist', artistName, filters, { ...apiParams, limit, offset: (page - 1) * limit, search, date })
             return { total: 0, limit, offset: 0, rows: [] }
@@ -270,7 +293,7 @@ export function EntityStatsPanel({
             if (kind === 'track' && trackId != null)
               return analysisApi.entityPlayDates('track', String(trackId), filters, apiParams)
             if (kind === 'album' && albumName)
-              return analysisApi.entityPlayDates('album', albumName, filters, apiParams, artistName)
+              return analysisApi.entityPlayDates('album', albumName, filters, { ...apiParams, merge_level: resolvedMergeLevel }, artistName)
             if (kind === 'artist' && artistName)
               return analysisApi.entityPlayDates('artist', artistName, filters, apiParams)
             return []

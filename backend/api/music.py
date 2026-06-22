@@ -83,6 +83,12 @@ def album_stats(
     album_name: str,
     artist: str | None = Query(default=None),
     filters: PlayFilters = Depends(),
+    merge_level: int = Query(
+        default=2,
+        ge=1,
+        le=3,
+        description="Album project merge level (1=none, 2=recording, 3=composition)",
+    ),
     period: str = Query(default="lifetime"),
     start_date: str | None = Query(default=None),
     end_date: str | None = Query(default=None),
@@ -100,6 +106,7 @@ def album_stats(
         end_date,
         filters.dynamic_threshold,
         filters.max_merge_gap_minutes,
+        merge_level=merge_level,
     )
 
 
@@ -163,6 +170,7 @@ def album_plays(
     album_name: str,
     artist: str | None = Query(default=None),
     filters: PlayFilters = Depends(),
+    merge_level: int = Query(default=2, ge=1, le=3),
     period: str = Query(default="lifetime"),
     start_date: str | None = Query(default=None),
     end_date: str | None = Query(default=None),
@@ -180,6 +188,7 @@ def album_plays(
         min_ms=filters.min_ms,
         music_only=filters.music_only,
         merge_enabled=filters.merge_enabled,
+        merge_level=merge_level,
         period=period,
         start_date=start_date,
         end_date=end_date,
@@ -253,6 +262,7 @@ def album_play_dates(
     album_name: str,
     artist: str | None = Query(default=None),
     filters: PlayFilters = Depends(),
+    merge_level: int = Query(default=2, ge=1, le=3),
     period: str = Query(default="lifetime"),
     start_date: str | None = Query(default=None),
     end_date: str | None = Query(default=None),
@@ -266,6 +276,7 @@ def album_play_dates(
         min_ms=filters.min_ms,
         music_only=filters.music_only,
         merge_enabled=filters.merge_enabled,
+        merge_level=merge_level,
         period=period,
         start_date=start_date,
         end_date=end_date,
