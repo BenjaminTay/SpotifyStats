@@ -32,6 +32,9 @@ export interface SettingsData {
   llm_provider: string
   llm_model: string
   has_llm_key: boolean
+  llm_active_profile_id: number | null
+  llm_active_profile_name: string | null
+  rebuild_pending: boolean
 }
 
 export type SettingsUpdatePayload = Partial<Omit<SettingsData, 'db_record_count' | 'account_data_imported' | 'has_llm_key'> & {

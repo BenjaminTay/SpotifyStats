@@ -46,6 +46,9 @@ class SettingsResponse(BaseModel):
     llm_provider: str = "deepseek"
     llm_model: str = ""
     has_llm_key: bool = False
+    llm_active_profile_id: int | None = None
+    llm_active_profile_name: str | None = None
+    rebuild_pending: bool = False
 
 
 class RebuildAggregationsResponse(BaseModel):

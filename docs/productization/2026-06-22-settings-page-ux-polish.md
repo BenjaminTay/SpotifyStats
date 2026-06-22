@@ -10,6 +10,50 @@
 
 ---
 
+## Latest Review Baseline
+
+2026-06-22 latest CC patch evaluation:
+
+**Overall judgment:** UX direction is correct, but release readiness is **Fail** until the frontend build blocker is fixed. The page is now more understandable than the previous version, especially because the status overview, global rebuild notice, and LLM current-model card give users clearer answers. However, the current patch cannot be accepted as complete because `npm run build` fails and the focused tests do not cover the broken interaction/type path.
+
+**Verified improvements:**
+
+- The top overview answers the basic readiness questions: data status, Spotify connection, statistics/rebuild state, and current model.
+- The rebuild action has moved toward one global CTA instead of duplicated per-section buttons.
+- The LLM section is clearer: current model, provider logo, profile list, one Wikipedia translation switch, and translation-cache action are separated.
+- The add-profile modal is visually stable on desktop: centered, constrained, and no longer distorts the full page.
+- Browser spot check found no page-render error, no desktop console warning/error, and no 390px horizontal overflow.
+
+**Current blockers and UX risks:**
+
+- `frontend/src/features/settings/components/DataFilteringSection.tsx` destructures removed props (`onRebuild`, `rebuildLoading`) while calling `onRequiresRebuild()` without destructuring it. `cd frontend && npm run build` fails.
+- `frontend/src/tests/settings-llm-section.test.tsx` does not pass the newly required `activeProfileId` and `activeProfileName` props, so TypeScript fails even though the focused Vitest run passes.
+- The current focused tests only verify static rendering. They do not click a filtering control and confirm the global rebuild notice appears.
+- The LLM add-profile modal allows saving an empty API Key, but the copy does not clearly explain that such a profile cannot call the model.
+- The visual direction is improved but still a little engineering-heavy: `Settings / Configuration`, `Data Import`, `profile`, `llm_enabled`, and raw setting keys reduce the polished editorial feel.
+- The mobile layout has no horizontal overflow, but top navigation and theme controls still consume enough space that Settings content feels lower than ideal on 390px.
+
+**Evidence from latest review:**
+
+```bash
+cd frontend && npm run build
+# FAIL: DataFilteringSection props mismatch and missing LLM test props
+
+cd frontend && npm test -- settings-sections.test.tsx settings-llm-section.test.tsx
+# PASS: 2 test files, but insufficient coverage for typecheck and interactions
+
+.venv/bin/pytest backend/tests/contract/test_settings_api_mutations.py -q
+# PASS: 11 tests
+```
+
+Browser evidence:
+
+```text
+Desktop /settings: no visible render error, no console error/warning.
+Add LLM config modal: centered, constrained, no horizontal overflow.
+390px /settings: bodyScrollWidth = 390, htmlScrollWidth = 390.
+```
+
 ## Target UX
 
 The finished Settings page should answer four user questions quickly:
@@ -53,11 +97,124 @@ The finished Settings page should answer four user questions quickly:
 - Modify `backend/tests/contract/test_settings_api_mutations.py`
   - Cover active LLM profile fields after applying a profile.
 - Modify `frontend/src/tests/settings-sections.test.tsx`
-  - Cover overview, single rebuild CTA, and advanced-section behavior.
+  - Cover overview, single rebuild CTA, advanced-section behavior, and clicking a statistics-affecting control.
 - Modify `frontend/src/tests/settings-llm-section.test.tsx`
-  - Cover active profile display and one translation switch.
+  - Cover active profile display, one translation switch, provider logo, and required active-profile props.
 - Optional update `frontend/UI_STYLE_GUIDE.md`
   - Add Settings-specific layout rules after implementation if the pattern becomes canonical.
+
+---
+
+### Task 0: Stabilize Latest CC Patch Before More UX Polish
+
+**Files:**
+- Modify: `frontend/src/features/settings/components/DataFilteringSection.tsx`
+- Modify: `frontend/src/tests/settings-sections.test.tsx`
+- Modify: `frontend/src/tests/settings-llm-section.test.tsx`
+- Optional modify: `frontend/src/features/settings/components/LLMTranslationSection.tsx`
+
+- [ ] **Step 1: Fix `DataFilteringSection` props**
+
+Replace the component parameter destructuring with this exact shape:
+
+```tsx
+export function DataFilteringSection({
+  settings,
+  onUpdate,
+  onRequiresRebuild,
+  chineseStyle,
+  onChangeChineseStyle,
+}: {
+  settings: { min_ms: number; music_only: boolean; merge_enabled: boolean }
+  onUpdate: (p: SettingsUpdatePayload) => void
+  onRequiresRebuild: () => void
+  chineseStyle: ChineseStyle
+  onChangeChineseStyle: (s: string | null) => void
+}) {
+```
+
+Remove any remaining `onRebuild` and `rebuildLoading` references from this file. The child section should only mark pending rebuild; the page-level `RebuildNotice` owns the rebuild action.
+
+- [ ] **Step 2: Update the LLM focused test props**
+
+In `frontend/src/tests/settings-llm-section.test.tsx`, pass the new active-profile props to `LLMTranslationSection`:
+
+```tsx
+activeProfileId={1}
+activeProfileName="DeepSeek 主配置"
+```
+
+Keep the existing assertions for provider logo and single switch, then add:
+
+```tsx
+expect(await screen.findByText('DeepSeek 主配置')).toBeInTheDocument()
+expect(screen.getByText('当前')).toBeInTheDocument()
+```
+
+- [ ] **Step 3: Add an interaction regression test for pending rebuild**
+
+Extend `frontend/src/tests/settings-sections.test.tsx` to click a filtering toggle and assert the parent callback fires:
+
+```tsx
+import { fireEvent, render, screen } from '@testing-library/react'
+
+it('notifies parent when a filtering toggle changes statistics semantics', () => {
+  const onRequiresRebuild = vi.fn()
+  const onUpdate = vi.fn()
+
+  render(
+    <DataFilteringSection
+      settings={{
+        min_ms: 30000,
+        music_only: true,
+        merge_enabled: true,
+      }}
+      onUpdate={onUpdate}
+      onRequiresRebuild={onRequiresRebuild}
+      chineseStyle="original"
+      onChangeChineseStyle={vi.fn()}
+    />,
+  )
+
+  fireEvent.click(screen.getByRole('switch', { name: '仅音乐' }))
+
+  expect(onUpdate).toHaveBeenCalledWith({ music_only: false })
+  expect(onRequiresRebuild).toHaveBeenCalledTimes(1)
+})
+```
+
+- [ ] **Step 4: Decide whether `activeProfileName` should render**
+
+If keeping `activeProfileName` as a prop, render it in the current-model card:
+
+```tsx
+{activeProfileName && (
+  <div className="mt-3 text-[12px] text-muted-foreground">
+    当前档案：<span className="text-foreground">{activeProfileName}</span>
+  </div>
+)}
+```
+
+If this line makes the current-model card too dense, remove the prop from `LLMTranslationSection` and from the caller. Do not leave an unused required prop because `noUnusedLocals` will fail the build.
+
+- [ ] **Step 5: Re-run the minimum stabilization checks**
+
+Run:
+
+```bash
+cd frontend && npm test -- settings-sections.test.tsx settings-llm-section.test.tsx
+cd frontend && npm run build
+```
+
+Expected:
+
+```text
+Settings focused tests pass.
+TypeScript build passes.
+Vite build may emit the existing chunk-size warning, but no error.
+```
+
+Do not continue to visual polish tasks until this task passes.
 
 ---
 
@@ -698,7 +855,71 @@ Remove or soften: raw internal keys like bb_top_n, llm_enabled, max_merge_gap_mi
 
 Technical keys may remain in tooltips or smaller secondary text if needed.
 
-- [ ] **Step 3: Add mobile constraints**
+- [ ] **Step 3: Clean up mixed-language user-facing copy**
+
+Use Chinese-first section names and action labels. Keep product/provider names in English only when they are proper names.
+
+Replace:
+
+```text
+Settings / Configuration
+Data Import
+profile
+llm_enabled
+```
+
+With:
+
+```text
+设置
+数据导入
+配置档案
+Wikipedia 翻译
+```
+
+The top hero can keep a subtle English kicker only if it does not compete with the Chinese page title. Preferred copy:
+
+```tsx
+<div className="mb-3 font-sans text-[11px] font-bold uppercase tracking-[1.8px] text-accent-foreground">
+  Settings
+</div>
+```
+
+- [ ] **Step 4: Make the LLM modal more intuitive**
+
+Clarify the API Key field:
+
+```tsx
+<p className="text-[12px] text-muted-foreground">
+  需要填写 API Key 才能调用模型；留空只会保存一个不可调用的档案。
+</p>
+```
+
+Prefer disabling save when the profile would be misleading:
+
+```tsx
+const canSaveProfile = formProfileName.trim().length > 0 && formApiKey.trim().length > 0
+```
+
+Then use:
+
+```tsx
+<Button size="sm" onClick={handleSaveProfile} disabled={profileSaving || !canSaveProfile}>
+  {profileSaving ? '保存中...' : '保存并设为当前'}
+</Button>
+```
+
+If empty-key profiles are intentionally supported for local gateway workflows, keep Save enabled but add an inline warning before the buttons:
+
+```tsx
+{!formApiKey.trim() && (
+  <p className="mt-3 text-[12px] text-amber-700 dark:text-amber-300">
+    未填写 API Key，保存后该档案会显示为缺少密钥，无法用于 AI 洞察或翻译。
+  </p>
+)}
+```
+
+- [ ] **Step 5: Add mobile constraints**
 
 Use these patterns where necessary:
 
@@ -709,7 +930,17 @@ className="grid grid-cols-1 gap-4 md:grid-cols-2"
 className="w-full max-w-[200px]"
 ```
 
-- [ ] **Step 4: Run route smoke**
+- [ ] **Step 6: Check mobile first viewport**
+
+At 390px width, the Settings page should show at least one Settings-specific element without feeling buried under navigation. If the masthead remains visually heavy, reduce the page hero top padding for Settings only:
+
+```tsx
+<div className="mx-auto max-w-[900px] space-y-6 px-6 py-8 md:py-12">
+```
+
+Do not hide navigation links unless the shared `Masthead` already has an established mobile pattern; this plan should not turn into a global navigation redesign.
+
+- [ ] **Step 7: Run route smoke**
 
 With backend `8000` and frontend `5173` running:
 
@@ -719,7 +950,7 @@ node scripts/frontend_route_smoke.mjs --base-url http://localhost:5173 --viewpor
 
 Expected: `/settings` has no console warnings/errors and no horizontal overflow.
 
-- [ ] **Step 5: Run interaction smoke**
+- [ ] **Step 8: Run interaction smoke**
 
 ```bash
 node scripts/frontend_interaction_smoke.mjs --base-url http://localhost:5173
@@ -727,7 +958,7 @@ node scripts/frontend_interaction_smoke.mjs --base-url http://localhost:5173
 
 Expected: settings controls and data import flow pass.
 
-- [ ] **Step 6: Run control inventory**
+- [ ] **Step 9: Run control inventory**
 
 ```bash
 node scripts/frontend_control_inventory_smoke.mjs --base-url http://localhost:5173 --viewport both --include-detail-routes
@@ -809,6 +1040,7 @@ Manual check at `http://localhost:5173/settings`:
 
 ## Implementation Order
 
+0. Stabilize the latest CC patch: fix the frontend build blocker, update required props in tests, and add one interaction regression for rebuild pending state.
 1. Backend active LLM profile contract.
 2. Top Settings overview.
 3. Global rebuild notice and duplicate rebuild removal.
@@ -817,7 +1049,7 @@ Manual check at `http://localhost:5173/settings`:
 6. Visual polish and responsive QA.
 7. Final validation and style-guide note.
 
-This order keeps runtime safety first, then makes the page easier to scan, then improves beauty and polish.
+This order keeps release safety first. Do not spend time polishing the UI while `npm run build` is red; once the build is green, continue with clarity, then beauty and responsive QA.
 
 ## Risk Notes
 
@@ -826,4 +1058,5 @@ This order keeps runtime safety first, then makes the page easier to scan, then 
 - Do not add another card layer inside every panel; keep visual depth restrained.
 - Do not run destructive settings or import operations in smoke tests.
 - Do not commit automatically unless the user explicitly asks.
-
+- Do not treat focused Vitest success as sufficient when TypeScript build fails.
+- Do not leave required props unused; either render them or remove them from the component contract.

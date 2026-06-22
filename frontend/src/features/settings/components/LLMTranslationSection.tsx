@@ -105,6 +105,8 @@ export function LLMTranslationSection({
   onUpdate,
   onClearCache,
   hasLlmKey,
+  activeProfileId,
+  activeProfileName,
   onFetchProfiles,
   onApplyProfile,
   onCreateProfile,
@@ -115,6 +117,8 @@ export function LLMTranslationSection({
   onUpdate: (p: SettingsUpdatePayload) => void
   onClearCache: () => Promise<{ deleted_count: number }>
   hasLlmKey: boolean
+  activeProfileId: number | null
+  activeProfileName: string | null
   onFetchProfiles: () => Promise<LLMProfile[]>
   onApplyProfile: (profileId: number) => Promise<{ status: string; profile_id: number }>
   onCreateProfile: (payload: LLMProfileCreatePayload) => Promise<{ id: number; status: string }>
@@ -286,6 +290,11 @@ export function LLMTranslationSection({
               ? '当前配置可用于 AI 洞察、智能摘要和详情页增强；Wikipedia 翻译由下方开关单独控制。'
               : '添加带 API Key 的配置档案后，AI 洞察、智能摘要和 LLM 翻译才能调用模型。'}
           </p>
+          {activeProfileName && (
+            <p className="mt-2 text-[12px] text-muted-foreground">
+              当前档案：<span className="font-medium text-foreground">{activeProfileName}</span>
+            </p>
+          )}
         </div>
 
         <div className="rounded-xl border border-border bg-card/70 p-5">
@@ -326,7 +335,7 @@ export function LLMTranslationSection({
         ) : (
           <div className="grid grid-cols-1 gap-2">
             {localProfiles.map((profile) => {
-              const selected = selectedProfileId === profile.id
+              const selected = activeProfileId === profile.id || selectedProfileId === profile.id
               const model = profile.llm_model || getProviderDefaultModel(profile.llm_provider) || '未指定模型'
               return (
                 <div
@@ -485,7 +494,7 @@ export function LLMTranslationSection({
               {/* API Key */}
               <div className="space-y-1.5">
                 <FieldLabel label="API Key" />
-                <p className="text-[12px] text-muted-foreground">留空则不设置密钥</p>
+                <p className="text-[12px] text-muted-foreground">需要填写 API Key 才能调用模型；留空只会保存一个不可调用的空壳档案</p>
                 <input
                   type="password"
                   value={formApiKey}
@@ -511,6 +520,11 @@ export function LLMTranslationSection({
               )}
             </div>
 
+            {!formApiKey.trim() && (
+              <p className="mt-3 text-[12px] text-amber-700 dark:text-amber-300">
+                未填写 API Key，保存后该档案将无法用于 AI 洞察或翻译。
+              </p>
+            )}
             {profileError && (
               <p className="mt-3 text-[12px] text-destructive">{profileError}</p>
             )}

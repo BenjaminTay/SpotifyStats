@@ -16,6 +16,8 @@ describe('LLMTranslationSection', () => {
         onUpdate={vi.fn()}
         onClearCache={vi.fn().mockResolvedValue({ deleted_count: 0 })}
         hasLlmKey
+        activeProfileId={1}
+        activeProfileName="DeepSeek 主配置"
         onFetchProfiles={vi.fn().mockResolvedValue([
           {
             id: 1,

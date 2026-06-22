@@ -1,15 +1,12 @@
 import { useState, useEffect } from 'react'
 import { GlassCard } from '@/components/shared/GlassCard'
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select'
-import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { type ChineseStyle } from '@/lib/chinese'
 import { getBillboardName, setBillboardName } from '@/lib/billboard-name'
 import type { SettingsUpdatePayload } from '@/types/settings'
 import { setDynamicThreshold, setMaxMergeGapMinutes } from '@/hooks/useAnalysis'
 import { CollapsibleSection, Toggle, FieldLabel, InlineNotice } from '@/features/settings/components/SettingsHelpers'
-import { AlertCircle, RefreshCw } from 'lucide-react'
-import { cn } from '@/lib/utils'
 
 const MIN_MS_OPTIONS = [
   { value: 0, label: '0s (不过滤)' },
@@ -33,17 +30,15 @@ function getStoredMaxMergeGap(): string {
 export function DataFilteringSection({
   settings,
   onUpdate,
-  onRebuild,
-  rebuildLoading,
+  onRequiresRebuild,
   chineseStyle,
   onChangeChineseStyle,
 }: {
   settings: { min_ms: number; music_only: boolean; merge_enabled: boolean }
   onUpdate: (p: SettingsUpdatePayload) => void
+  onRequiresRebuild: () => void
   chineseStyle: ChineseStyle
   onChangeChineseStyle: (s: string | null) => void
-  onRebuild: () => void
-  rebuildLoading: boolean
 }) {
   const [notice, setNotice] = useState(false)
   const [dynamicThreshold, setDynamicThresholdLocal] = useState(() => {
@@ -64,6 +59,11 @@ export function DataFilteringSection({
     setTimeout(() => setNotice(false), 3000)
   }
 
+  const updateAndRequireRebuild = (p: SettingsUpdatePayload) => {
+    update(p)
+    onRequiresRebuild()
+  }
+
   const handleMergeGapChange = (value: string) => {
     setMergeGapMinutes(value)
     const n = parseInt(value, 10)
@@ -72,6 +72,7 @@ export function DataFilteringSection({
     } else {
       setMaxMergeGapMinutes(undefined)
     }
+    onRequiresRebuild()
   }
 
   const handleBillboardNameChange = (value: string) => {
@@ -81,7 +82,7 @@ export function DataFilteringSection({
 
   return (
     <GlassCard className="p-6">
-      <CollapsibleSection num={3} title="Data & Display" desc="控制播放记录的过滤策略和名称显示偏好，影响所有页面的结果。">
+      <CollapsibleSection num={3} title="数据与显示" desc="控制播放记录的过滤策略和名称显示偏好，影响所有页面的结果。">
 
       <InlineNotice show={notice}>过滤参数已更新，数据统计将基于新的过滤条件。</InlineNotice>
 
@@ -92,11 +93,11 @@ export function DataFilteringSection({
 
       <div className="mt-3 grid grid-cols-1 gap-5 md:grid-cols-2">
         <div className="space-y-1.5">
-          <FieldLabel label="最短播放时长" badge="min_ms" />
+          <FieldLabel label="最短播放时长" />
           <p className="text-[12px] text-muted-foreground">低于此时长的播放记录将被忽略</p>
           <Select
             value={String(settings.min_ms)}
-            onValueChange={(v) => update({ min_ms: Number(v) })}
+            onValueChange={(v) => updateAndRequireRebuild({ min_ms: Number(v) })}
           >
             <SelectTrigger className="mt-1 w-[160px]">
               <SelectValue>
@@ -114,14 +115,14 @@ export function DataFilteringSection({
         </div>
 
         <div className="space-y-1.5">
-          <FieldLabel label="动态有效播放阈值" badge="dynamic_threshold" />
+          <FieldLabel label="动态有效播放阈值" />
           <p className="text-[12px] text-muted-foreground">
             开启后基于 R2 算法根据曲目时长动态计算有效播放阈值；关闭时使用左侧固定 min_ms 阈值作为兜底
           </p>
           <div className="mt-2">
             <Toggle
               checked={dynamicThreshold}
-              onChange={(v) => setDynamicThresholdLocal(v)}
+              onChange={(v) => { setDynamicThresholdLocal(v); onRequiresRebuild() }}
               label="动态阈值"
             />
           </div>
@@ -130,24 +131,24 @@ export function DataFilteringSection({
 
       <div className="mt-5 grid grid-cols-1 gap-5 md:grid-cols-2">
         <div className="space-y-1.5">
-          <FieldLabel label="仅音乐" badge="music_only" />
+          <FieldLabel label="仅音乐" />
           <p className="text-[12px] text-muted-foreground">排除播客、有声书等非音乐内容</p>
           <div className="mt-2">
             <Toggle
               checked={settings.music_only}
-              onChange={(v) => update({ music_only: v })}
+              onChange={(v) => updateAndRequireRebuild({ music_only: v })}
               label="仅音乐"
             />
           </div>
         </div>
 
         <div className="space-y-1.5">
-          <FieldLabel label="合并连续播放" badge="merge_enabled" />
+          <FieldLabel label="合并连续播放" />
           <p className="text-[12px] text-muted-foreground">将同一曲目的连续播放合并为一次</p>
           <div className="mt-2">
             <Toggle
               checked={settings.merge_enabled}
-              onChange={(v) => update({ merge_enabled: v })}
+              onChange={(v) => updateAndRequireRebuild({ merge_enabled: v })}
               label="合并连续播放"
             />
           </div>
@@ -157,7 +158,7 @@ export function DataFilteringSection({
       {settings.merge_enabled && (
         <div className="mt-5">
           <div className="space-y-1.5">
-            <FieldLabel label="合并最大间隔" badge="max_merge_gap_minutes" />
+            <FieldLabel label="合并最大间隔" />
             <p className="text-[12px] text-muted-foreground">
               两次播放之间允许的最大间隔分钟数（1–240），留空表示无限制
             </p>
@@ -173,28 +174,6 @@ export function DataFilteringSection({
           </div>
         </div>
       )}
-
-      {/* ── 重建提示 ── */}
-      <div className="mt-5 rounded-lg border border-amber-500/30 bg-amber-500/5 px-4 py-3">
-        <div className="flex items-start gap-2.5">
-          <AlertCircle className="mt-0.5 size-3.5 shrink-0 text-amber-600 dark:text-amber-400" />
-          <div className="min-w-0">
-            <p className="text-[12.5px] leading-relaxed text-foreground/80">
-              修改过滤参数后，需要重建聚合表才能在所有统计和榜单中反映新设置。
-            </p>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={onRebuild}
-              disabled={rebuildLoading}
-              className="mt-2 gap-1.5"
-            >
-              <RefreshCw className={cn('size-3.5', rebuildLoading && 'animate-spin')} />
-              {rebuildLoading ? '重建中...' : '重建聚合表'}
-            </Button>
-          </div>
-        </div>
-      </div>
 
       <Separator className="my-5" />
 

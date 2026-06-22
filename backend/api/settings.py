@@ -60,6 +60,30 @@ def _ensure_current():
         _current = _load_settings_from_db()
 
 
+def _find_active_llm_profile(conn: Connection) -> dict:
+    row = conn.execute(
+        """
+        SELECT id, profile_name
+        FROM llm_profiles
+        WHERE llm_provider = ?
+          AND llm_model = ?
+          AND COALESCE(llm_api_key, '') = ?
+          AND COALESCE(llm_base_url, '') = ?
+        ORDER BY updated_at DESC, id DESC
+        LIMIT 1
+        """,
+        (
+            _current.get("llm_provider", ""),
+            _current.get("llm_model", ""),
+            _current.get("llm_api_key", ""),
+            _current.get("llm_base_url", ""),
+        ),
+    ).fetchone()
+    if not row:
+        return {"llm_active_profile_id": None, "llm_active_profile_name": None}
+    return {"llm_active_profile_id": row[0], "llm_active_profile_name": row[1]}
+
+
 def _build_settings_response(conn: Connection) -> dict:
     _ensure_current()
     db_record_count = 0
@@ -78,6 +102,8 @@ def _build_settings_response(conn: Connection) -> dict:
     resp["spotify_connected"] = is_user_connected(conn)
     resp["spotify_profile"] = get_user_profile(conn) if resp["spotify_connected"] else None
     resp["has_llm_key"] = bool(_current.get("llm_api_key", "").strip())
+    resp["rebuild_pending"] = _current.get("rebuild_pending") == "true"
+    resp.update(_find_active_llm_profile(conn))
     resp.pop("llm_api_key", None)
     resp.pop("llm_base_url", None)
     return resp
@@ -116,6 +142,20 @@ def update_settings(
         if key in updates:
             _current[key] = updates[key]
             _save_setting_to_db(key, updates[key])
+    # If any stats-affecting setting changed, mark rebuild as pending
+    _stats_keys = {
+        "min_ms",
+        "music_only",
+        "merge_enabled",
+        "bb_top_n",
+        "bb_album_top_n",
+        "bb_artist_top_n",
+        "bb_week_start_dow",
+        "bb_week_start_hour",
+    }
+    if updates.keys() & _stats_keys:
+        _current["rebuild_pending"] = True
+        _save_setting_to_db("rebuild_pending", "true")
     # Invalidate caches affected by filter/settings changes
     from backend.core.cache_manager import invalidate
 
@@ -147,6 +187,8 @@ def rebuild_aggregations(
             dynamic_threshold=dynamic_threshold,
             max_merge_gap_minutes=max_merge_gap_minutes,
         )
+        _current["rebuild_pending"] = False
+        _save_setting_to_db("rebuild_pending", "false")
         return {
             "status": "done",
             "dynamic_threshold": dynamic_threshold,

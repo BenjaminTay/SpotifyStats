@@ -93,6 +93,8 @@ export function SpotifyConnectionSection({
         num={1}
         title="Spotify 连接"
         desc="连接你的 Spotify 账号以获取收藏时间、播放列表等个人数据。仅请求 user-library-read 权限。"
+        defaultOpen={!connected}
+        summary={connected ? '已连接，可同步收藏时间' : undefined}
       >
 
       {notice && (

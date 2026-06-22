@@ -52,6 +52,7 @@ export function CollapsibleSection({
   defaultOpen = true,
   children,
   summary,
+  tone,
 }: {
   num: number
   title: string
@@ -59,6 +60,7 @@ export function CollapsibleSection({
   defaultOpen?: boolean
   children: React.ReactNode
   summary?: React.ReactNode
+  tone?: 'default' | 'advanced'
 }) {
   const [open, setOpen] = useState(defaultOpen)
 
@@ -71,8 +73,13 @@ export function CollapsibleSection({
       >
         <div className="flex items-center justify-between gap-2">
           <div className="min-w-0">
-            <div className="mb-1 font-sans text-[11px] font-bold uppercase tracking-[1.8px] text-accent-foreground">
-              {String(num).padStart(2, '0')} · {title}
+            <div className="mb-1 flex items-center gap-2 font-sans text-[11px] font-bold uppercase tracking-[1.8px] text-accent-foreground">
+              <span>{String(num).padStart(2, '0')} · {title}</span>
+              {tone === 'advanced' && (
+                <span className="rounded-full bg-muted px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  高级
+                </span>
+              )}
             </div>
             {open && (
               <p className="font-sans text-[14px] leading-relaxed text-muted-foreground">{desc}</p>

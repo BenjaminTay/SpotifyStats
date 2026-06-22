@@ -50,7 +50,7 @@ export function VersionMergeSection() {
 
   return (
     <GlassCard className="p-6">
-      <CollapsibleSection num={5} title="Version Merge" desc="管理专辑版本合并规则，将同一专辑的不同版本（豪华版、Acoustic版等）合并为统一条目。">
+      <CollapsibleSection num={5} title="版本合并" desc="管理专辑版本合并规则，将同一专辑的不同版本（豪华版、Acoustic版等）合并为统一条目。" defaultOpen={false} tone="advanced">
 
       {/* Merge Level selector */}
       <div className="mb-5 rounded-xl border border-border bg-muted/30 p-4">

@@ -151,6 +151,8 @@ def test_llm_profile_crud_apply_and_secret_redaction(client):
     assert settings["llm_provider"] == "openai"
     assert settings["llm_model"] == "gpt-contract-updated"
     assert settings["has_llm_key"] is True
+    assert settings["llm_active_profile_id"] == profile_id
+    assert settings["llm_active_profile_name"] == "Contract Profile"
     assert "llm_api_key" not in settings
 
     delete_response = client.delete(f"/api/settings/llm-profiles/{profile_id}")

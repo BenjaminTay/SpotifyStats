@@ -1,10 +1,12 @@
-import { lazy, Suspense, useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Button } from '@/components/ui/button'
 import { AlertCircle } from 'lucide-react'
 import { useSettings } from '@/hooks/useSettings'
 import { getChineseStyle, setChineseStyle, type ChineseStyle } from '@/lib/chinese'
 import { getBillboardName } from '@/lib/billboard-name'
+import { SettingsOverview } from '@/features/settings/components/SettingsOverview'
+import { RebuildNotice } from '@/features/settings/components/RebuildNotice'
 import { SpotifyConnectionSection } from '@/features/settings/components/SpotifyConnectionSection'
 import { DataFilteringSection } from '@/features/settings/components/DataFilteringSection'
 import { BillboardParamsSection } from '@/features/settings/components/BillboardParamsSection'
@@ -43,15 +45,26 @@ export function SettingsPage() {
     deleteProfile,
   } = useSettings()
 
+  const [rebuildPending, setRebuildPending] = useState(false)
   const [rebuildLoading, setRebuildLoading] = useState(false)
   const [rebuildMsg, setRebuildMsg] = useState('')
   const [chineseStyle, setChineseStyleState] = useState<ChineseStyle>(getChineseStyle)
+
+  useEffect(() => {
+    if (settings) setRebuildPending(settings.rebuild_pending)
+  }, [settings?.rebuild_pending])
+
+  const handleRequiresRebuild = () => setRebuildPending(true)
 
   const handleRebuild = () => {
     setRebuildLoading(true)
     setRebuildMsg('')
     rebuildAgg().then((res) => {
       setRebuildMsg(res.status === 'done' ? '聚合表重建完成' : '重建完成')
+      setRebuildPending(false)
+      setRebuildLoading(false)
+    }).catch(() => {
+      setRebuildMsg('重建失败，请重试')
       setRebuildLoading(false)
     })
   }
@@ -94,7 +107,7 @@ export function SettingsPage() {
       {/* Hero */}
       <section className="mb-10">
         <div className="mb-3 font-sans text-[11px] font-bold uppercase tracking-[1.8px] text-accent-foreground">
-          Settings / Configuration
+          设置
         </div>
         <h1 className="font-serif text-[44px] font-bold tracking-[-1.2px] leading-[1.06]">
           参数与配置
@@ -103,6 +116,23 @@ export function SettingsPage() {
           管理 Spotify 连接、数据导入、播放过滤、{getBillboardName()} 参数、版本合并与 LLM 配置等全局设置。
         </p>
       </section>
+
+      <SettingsOverview
+        dbRecordCount={settings.db_record_count}
+        accountImported={settings.account_data_imported}
+        spotifyConnected={settings.spotify_connected}
+        hasLlmKey={settings.has_llm_key}
+        llmProvider={settings.llm_provider}
+        llmModel={settings.llm_model}
+        rebuildPending={rebuildPending}
+      />
+
+      <RebuildNotice
+        pending={rebuildPending}
+        loading={rebuildLoading}
+        message={rebuildMsg}
+        onRebuild={handleRebuild}
+      />
 
       {/* Section 1: Spotify Connection */}
       <SpotifyConnectionSection
@@ -131,8 +161,7 @@ export function SettingsPage() {
           merge_enabled: settings.merge_enabled,
         }}
         onUpdate={updateSettings}
-        onRebuild={handleRebuild}
-        rebuildLoading={rebuildLoading}
+        onRequiresRebuild={handleRequiresRebuild}
         chineseStyle={chineseStyle}
         onChangeChineseStyle={(s: string | null) => {
           const style = (s as ChineseStyle) || 'original'
@@ -151,9 +180,7 @@ export function SettingsPage() {
           bb_week_start_hour: settings.bb_week_start_hour,
         }}
         onUpdate={updateSettings}
-        onRebuild={handleRebuild}
-        rebuildLoading={rebuildLoading}
-        rebuildMsg={rebuildMsg}
+        onRequiresRebuild={handleRequiresRebuild}
       />
 
       {/* Section 5: Version Merge */}
@@ -188,6 +215,8 @@ export function SettingsPage() {
         onUpdate={updateSettings}
         onClearCache={clearTranslationCache}
         hasLlmKey={settings.has_llm_key}
+        activeProfileId={settings.llm_active_profile_id}
+        activeProfileName={settings.llm_active_profile_name}
         onFetchProfiles={fetchProfiles}
         onApplyProfile={applyProfile}
         onCreateProfile={createProfile}
