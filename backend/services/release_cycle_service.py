@@ -160,21 +160,22 @@ def _fetch_album_artists_from_api(spotify_album_ids, artist_name):
 
 
 def _save_album_meta_to_db(
-    spotify_album_id, album_name, album_type, release_date, album_artists=None
+    spotify_album_id, album_name, album_type, release_date, album_artists=None, image_url=None
 ):
     """Persist Spotify album metadata to spotify_album_meta table."""
     try:
         conn = get_db(readonly=False)
         conn.execute(
             """INSERT INTO spotify_album_meta(
-                   spotify_album_id, album_name, album_type, release_date, album_artists)
-               VALUES (?, ?, ?, ?, ?)
+                   spotify_album_id, album_name, album_type, release_date, album_artists, image_url)
+               VALUES (?, ?, ?, ?, ?, ?)
                ON CONFLICT(spotify_album_id) DO UPDATE SET
                    album_name = excluded.album_name,
                    album_type = excluded.album_type,
                    release_date = excluded.release_date,
-                   album_artists = excluded.album_artists""",
-            (spotify_album_id, album_name, album_type, release_date, album_artists),
+                   album_artists = COALESCE(excluded.album_artists, spotify_album_meta.album_artists),
+                   image_url = COALESCE(excluded.image_url, spotify_album_meta.image_url)""",
+            (spotify_album_id, album_name, album_type, release_date, album_artists, image_url),
         )
         conn.commit()
         conn.close()
@@ -189,7 +190,7 @@ def _spotify_search_album(album_name, artist_name, skip_db_check=False):
         try:
             conn = get_db()
             row = pd.read_sql_query(
-                """SELECT spotify_album_id, album_name, album_type, release_date
+                """SELECT spotify_album_id, album_name, album_type, release_date, image_url
                    FROM spotify_album_meta
                    WHERE album_name = ? AND album_type IS NOT NULL AND release_date IS NOT NULL
                    LIMIT 1""",
@@ -203,6 +204,7 @@ def _spotify_search_album(album_name, artist_name, skip_db_check=False):
                     "album_type": row["album_type"].iloc[0],
                     "release_date": row["release_date"].iloc[0],
                     "spotify_album_id": row["spotify_album_id"].iloc[0],
+                    "image_url": row["image_url"].iloc[0],
                 }
         except Exception:
             pass
@@ -226,6 +228,7 @@ def _spotify_search_album(album_name, artist_name, skip_db_check=False):
                     "album_type": album.get("album_type"),
                     "release_date": album.get("release_date"),
                     "spotify_album_id": album["id"],
+                    "image_url": album["images"][0]["url"] if album.get("images") else None,
                 }
                 _save_album_meta_to_db(
                     album["id"],
@@ -233,6 +236,7 @@ def _spotify_search_album(album_name, artist_name, skip_db_check=False):
                     album.get("album_type"),
                     album.get("release_date"),
                     album_artists=album_artists,
+                    image_url=result["image_url"],
                 )
                 return result
     except Exception:
@@ -1251,6 +1255,51 @@ def fill_summary_from_cycles(summary, artist_name, releases_df, all_cycles, df_r
 # ═══════════════════════════════════════════════════════════════════════════
 
 
+def _album_ids_with_cover_source(conn, album_ids) -> set[int]:
+    """Return album ids that can resolve through the smart /covers endpoint."""
+    ids = [int(aid) for aid in dedup_preserve_order(album_ids) if aid is not None]
+    if not ids:
+        return set()
+
+    placeholders = ",".join("?" for _ in ids)
+    rows = conn.execute(
+        f"""SELECT DISTINCT album_id
+            FROM (
+                SELECT album_id
+                FROM albums
+                WHERE album_id IN ({placeholders})
+                  AND (
+                      image_path IS NOT NULL AND image_path != ''
+                      OR image_url IS NOT NULL AND image_url != ''
+                  )
+
+                UNION
+
+                SELECT album_tracks.album_id
+                FROM (
+                    SELECT album_id, track_id
+                    FROM tracks
+                    WHERE album_id IN ({placeholders})
+
+                    UNION
+
+                    SELECT album_id, track_id
+                    FROM track_albums
+                    WHERE album_id IN ({placeholders})
+                ) album_tracks
+                JOIN tracks t ON t.track_id = album_tracks.track_id
+                JOIN spotify_track_meta stm
+                  ON t.spotify_track_id = stm.spotify_track_id
+                JOIN spotify_album_meta sam
+                  ON sam.spotify_album_id = stm.spotify_album_id
+                WHERE sam.image_url IS NOT NULL
+                  AND sam.image_url != ''
+            )""",
+        ids + ids + ids,
+    ).fetchall()
+    return {int(row["album_id"]) for row in rows}
+
+
 def get_advance_singles(artist_name, album_name):
     """Find singles released before an album via three-tier strategy."""
     releases = load_artist_releases(artist_name)
@@ -1289,17 +1338,23 @@ def get_advance_singles(artist_name, album_name):
     results = []
     for _, row in shared.iterrows():
         candidate_name = row["album_name"]
+        candidate_album_id = int(row["album_id"])
 
         # Tier 1: DB lookup
         meta = pd.read_sql_query(
-            "SELECT album_type, release_date FROM spotify_album_meta WHERE album_name = ? LIMIT 1",
+            """SELECT spotify_album_id, album_type, release_date, image_url
+               FROM spotify_album_meta
+               WHERE album_name = ?
+               LIMIT 1""",
             conn,
             params=[candidate_name],
         )
 
         release_date = None
         db_has_wrong_type = False
+        spotify_image_url = None
         if not meta.empty:
+            spotify_image_url = meta["image_url"].iloc[0]
             db_type = meta["album_type"].iloc[0]
             if db_type == "single":
                 db_rd = meta["release_date"].iloc[0]
@@ -1317,6 +1372,7 @@ def get_advance_singles(artist_name, album_name):
             )
             if spotify_meta and spotify_meta.get("album_type") == "single":
                 release_date = pd.to_datetime(spotify_meta["release_date"])
+                spotify_image_url = spotify_meta.get("image_url")
 
         # Tier 3: earliest play date heuristic
         if release_date is None and not db_has_wrong_type:
@@ -1340,15 +1396,26 @@ def get_advance_singles(artist_name, album_name):
                 {
                     "single_name": candidate_name,
                     "release_date": release_date,
+                    "_album_id": candidate_album_id,
+                    "_spotify_image_url": spotify_image_url,
                 }
             )
 
-    conn.close()
-
     if not results:
+        conn.close()
         return []
 
+    cover_album_ids = _album_ids_with_cover_source(conn, [r.get("_album_id") for r in results])
+    for r in results:
+        album_id = r.pop("_album_id", None)
+        spotify_image_url = r.pop("_spotify_image_url", None)
+        if album_id is not None and int(album_id) in cover_album_ids:
+            r["cover_url"] = f"/covers/albums/{int(album_id)}.jpg"
+        else:
+            r["cover_url"] = spotify_image_url
+
     results.sort(key=lambda x: x["release_date"])
+    conn.close()
     return results
 
 

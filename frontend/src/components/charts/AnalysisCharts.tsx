@@ -1,4 +1,4 @@
-import { useMemo, type CSSProperties } from 'react'
+import { useMemo, useState, type CSSProperties } from 'react'
 import { useTheme } from '@/hooks/useTheme'
 import { buildChartBase } from './EChartsTheme'
 import { LazyEChart } from './LazyEChart'
@@ -25,13 +25,31 @@ function ChartShell({ option, height = 280 }: { option: Record<string, unknown>;
   return <LazyEChart option={option} style={{ height, isolation: 'isolate' } as CSSProperties} notMerge />
 }
 
-export function AnalysisTrendChart({ data, mode = 'bar' }: { data: TrendDatum[]; mode?: 'bar' | 'line' }) {
+export function AnalysisTrendChart({
+  data,
+  mode = 'bar',
+  showZoom = false,
+}: {
+  data: TrendDatum[]
+  mode?: 'bar' | 'line'
+  showZoom?: boolean
+}) {
   const { isDark } = useTheme()
   const base = useMemo(() => buildChartBase(isDark), [isDark])
   const colors = useMemo(() => getChartColors(isDark), [isDark])
 
+  // ── Zoom toggle: 全貌 / 细节（默认展示最近 365 天，从最左边开始）──
+  const WINDOW_SIZE = 365
+  const [viewMode, setViewMode] = useState<'overview' | 'detail'>('overview')
+  const showZoomToggle = showZoom && data.length > WINDOW_SIZE
+  const textColor = isDark ? '#A09888' : '#6B5E58'
+
   const option = useMemo(() => ({
     ...base,
+    grid: {
+      ...base.grid,
+      bottom: showZoomToggle && viewMode === 'detail' ? 60 : base.grid?.bottom ?? 8,
+    },
     xAxis: { ...base.xAxis, data: data.map((d) => d.label) },
     yAxis: { ...base.yAxis },
     tooltip: {
@@ -46,6 +64,37 @@ export function AnalysisTrendChart({ data, mode = 'bar' }: { data: TrendDatum[];
         },
       },
     },
+    dataZoom: showZoomToggle && viewMode === 'detail'
+      ? [
+          {
+            type: 'slider' as const,
+            start: 0,
+            end: Math.min((WINDOW_SIZE / data.length) * 100, 100),
+            zoomLock: true,
+            handleSize: '80%',
+            showDetail: false,
+            backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)',
+            dataBackground: {
+              lineStyle: { color: textColor, opacity: 0.15 },
+              areaStyle: { color: textColor, opacity: 0.04 },
+            },
+            selectedDataBackground: {
+              lineStyle: { color: colors[0], opacity: 0.35 },
+              areaStyle: { color: colors[0], opacity: 0.08 },
+            },
+            handleStyle: { color: colors[0], opacity: 0.7 },
+            moveHandleStyle: { color: colors[0] },
+            textStyle: { color: textColor, fontSize: 10 },
+            borderColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)',
+          },
+          {
+            type: 'inside' as const,
+            zoomOnMouseWheel: false,
+            moveOnMouseMove: true,
+            moveOnMouseWheel: true,
+          },
+        ]
+      : undefined,
     series: [
       {
         type: mode,
@@ -78,9 +127,50 @@ export function AnalysisTrendChart({ data, mode = 'bar' }: { data: TrendDatum[];
           }]
         : []),
     ],
-  }), [base, colors, data, mode, isDark])
+  }), [base, colors, data, mode, isDark, showZoomToggle, viewMode, textColor, WINDOW_SIZE])
 
-  return <ChartShell option={option} />
+  return (
+    <div>
+      {showZoomToggle && (
+        <div className="flex items-center justify-end mb-1">
+          <div
+            className="inline-flex rounded-md border text-xs font-medium overflow-hidden"
+            style={{
+              borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)',
+            }}
+          >
+            <button
+              type="button"
+              onClick={() => setViewMode('overview')}
+              className="px-2.5 py-1 transition-colors cursor-pointer"
+              style={{
+                backgroundColor: viewMode === 'overview'
+                  ? (isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)')
+                  : 'transparent',
+                color: viewMode === 'overview' ? textColor : (isDark ? '#78716C' : '#9B8E85'),
+              }}
+            >
+              全貌
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode('detail')}
+              className="px-2.5 py-1 transition-colors cursor-pointer"
+              style={{
+                backgroundColor: viewMode === 'detail'
+                  ? (isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)')
+                  : 'transparent',
+                color: viewMode === 'detail' ? textColor : (isDark ? '#78716C' : '#9B8E85'),
+              }}
+            >
+              细节
+            </button>
+          </div>
+        </div>
+      )}
+      <ChartShell option={option} />
+    </div>
+  )
 }
 
 export function HorizontalBarChart({ data, valueName = '播放次数' }: { data: CategoryDatum[]; valueName?: string }) {

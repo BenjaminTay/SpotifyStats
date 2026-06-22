@@ -1,7 +1,11 @@
 import { ExternalLink } from 'lucide-react'
-import type { AlbumDetailResponse, AlbumEnrichmentResponse } from '@/types/billboard'
+import type { AlbumDetailResponse, AlbumEnrichmentResponse, ReleaseCycleAlbumDetailResponse } from '@/types/billboard'
 import { GlassCard } from '@/components/shared/GlassCard'
-import { AlbumEnrichmentView } from '@/components/shared/AlbumEnrichmentView'
+import {
+  AlbumEnrichmentView,
+  albumSingleCompactCoverKey,
+  albumSingleCoverKey,
+} from '@/components/shared/AlbumEnrichmentView'
 import {
   AlbumStoryCard,
   InfoRow,
@@ -10,14 +14,39 @@ import {
 type AlbumEnrichmentSectionProps = {
   data: AlbumDetailResponse
   enrichment: AlbumEnrichmentResponse | null
+  releaseCycle: ReleaseCycleAlbumDetailResponse | null
 }
 
-export function AlbumEnrichmentSection({ data, enrichment }: AlbumEnrichmentSectionProps) {
+function addSingleCoverEntry(entries: Record<string, string>, name: string, coverUrl: string) {
+  entries[name] = coverUrl
+  entries[albumSingleCoverKey(name)] = coverUrl
+  entries[albumSingleCompactCoverKey(name)] = coverUrl
+}
+
+function buildSingleCoverUrls(
+  data: AlbumDetailResponse,
+  releaseCycle: ReleaseCycleAlbumDetailResponse | null,
+) {
+  const entries: Record<string, string> = {}
+  for (const track of data.tracks ?? []) {
+    if (!track.track_name || !track.cover_url) continue
+    addSingleCoverEntry(entries, track.track_name, track.cover_url)
+  }
+  for (const single of releaseCycle?.advance_singles ?? []) {
+    if (!single.cover_url) continue
+    addSingleCoverEntry(entries, single.single_name, single.cover_url)
+  }
+  return entries
+}
+
+export function AlbumEnrichmentSection({ data, enrichment, releaseCycle }: AlbumEnrichmentSectionProps) {
+  const singleCoverUrls = buildSingleCoverUrls(data, releaseCycle)
+
   if (enrichment?.wiki?.structured) {
     return (
       <div className="mb-8">
         <h3 className="mb-4 font-serif text-xl font-semibold">专辑简介</h3>
-        <AlbumEnrichmentView data={enrichment.wiki.structured} />
+        <AlbumEnrichmentView data={enrichment.wiki.structured} singleCoverUrls={singleCoverUrls} />
         <div className="mt-4">
           <a
             href={enrichment.wiki.url}

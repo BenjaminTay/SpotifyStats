@@ -118,8 +118,8 @@ export function RankTrendChart({
   const labels = rawLabels.map(formatWeekDisplay)
   const totalPoints = values.length
 
-  // ── Zoom: overview vs detail (50-week window) ──
-  const WINDOW_SIZE = 50
+  // ── Zoom: overview vs detail (52-week window) ──
+  const WINDOW_SIZE = 52
   const [viewMode, setViewMode] = useState<'overview' | 'detail'>('overview')
   const showZoomToggle = totalPoints > WINDOW_SIZE
   const effectiveTotal = viewMode === 'detail' && showZoomToggle

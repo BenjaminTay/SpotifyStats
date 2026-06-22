@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 
 import pandas as pd
 
@@ -487,6 +488,65 @@ def _attach_album_release_group(conn, album_name, artist_name, meta, merge_level
     }
 
 
+def _enrich_source_breakdown(conn: sqlite3.Connection, df: pd.DataFrame) -> pd.DataFrame:
+    """Add album_cover_url, release_date, track_count to source breakdown rows."""
+    if df.empty:
+        return df
+
+    album_ids = [int(i) for i in df["source_album_id"].dropna().unique().tolist()]
+    if not album_ids:
+        return df
+
+    placeholders = ",".join("?" for _ in album_ids)
+    meta_rows = conn.execute(
+        f"""SELECT a.album_id,
+                  a.album_name,
+                  ar.artist_name,
+                  sam.release_date,
+                  (SELECT COUNT(*) FROM track_albums ta
+                   WHERE ta.album_id = a.album_id) AS track_count
+           FROM albums a
+           LEFT JOIN artists ar ON ar.artist_id = a.artist_id
+           LEFT JOIN spotify_album_meta sam
+             ON sam.spotify_album_id = (
+               SELECT stm.spotify_album_id FROM spotify_track_meta stm
+               JOIN tracks t ON t.spotify_track_id = stm.spotify_track_id
+               JOIN track_albums ta ON ta.track_id = t.track_id
+               WHERE ta.album_id = a.album_id
+               LIMIT 1
+             )
+           WHERE a.album_id IN ({placeholders})""",
+        album_ids,
+    ).fetchall()
+
+    meta_by_id: dict[int, dict] = {}
+    for r in meta_rows:
+        meta_by_id[r["album_id"]] = {
+            "release_date": r["release_date"],
+            "track_count": r["track_count"] or 0,
+            "album_name": r["album_name"],
+            "artist_name": r["artist_name"],
+        }
+
+    from backend.services.play_service import _album_cover_lookup
+
+    cover_map = _album_cover_lookup(conn)
+
+    def enrich_row(row):
+        aid = row.get("source_album_id")
+        meta = meta_by_id.get(int(aid)) if aid is not None and pd.notna(aid) else None
+        if meta:
+            row["album_cover_url"] = cover_map.get((meta["album_name"], meta["artist_name"]))
+            row["release_date"] = meta["release_date"] or row.get("release_date")
+            row["track_count"] = meta["track_count"]
+        else:
+            row["album_cover_url"] = None
+            row["track_count"] = 0
+        return row
+
+    return df.apply(enrich_row, axis=1)
+
+
 def _get_album_project_payload(
     album_name: str,
     artist_name: str,
@@ -548,6 +608,7 @@ def _get_album_project_payload(
         breakdown = compute_album_source_breakdown(df, conn, merge_level=merge_level)
         project_breakdown = breakdown[breakdown["album_project_id"] == project_id].copy()
         if not project_breakdown.empty:
+            project_breakdown = _enrich_source_breakdown(conn, project_breakdown)
             project_breakdown["_bucket_rank"] = (
                 project_breakdown["source_bucket"].map(SOURCE_BUCKET_ORDER).fillna(99)
             )

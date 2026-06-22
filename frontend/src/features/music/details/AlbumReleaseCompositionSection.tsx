@@ -28,9 +28,19 @@ export function AlbumReleaseCompositionSection({
             <h4 className="mb-3 font-serif text-[18px] font-semibold">先行单曲</h4>
             <div className="space-y-2">
               {releaseCycle.advance_singles.map((single) => (
-                <div key={`${single.single_name}-${single.release_date}`} className="flex items-center justify-between gap-4 border-b border-border/60 pb-2 last:border-0 last:pb-0">
-                  <span className="font-sans text-[13px] font-semibold">{displayName(single.single_name)}</span>
-                  <span className="font-sans text-[12px] text-muted-foreground">{formatDateShort(single.release_date)}</span>
+                <div key={`${single.single_name}-${single.release_date}`} className="flex items-center gap-3 border-b border-border/60 pb-2 last:border-0 last:pb-0">
+                  {single.cover_url && (
+                    <img
+                      src={single.cover_url}
+                      alt=""
+                      className="w-10 h-10 rounded object-cover flex-shrink-0"
+                      loading="lazy"
+                    />
+                  )}
+                  <div className="min-w-0 flex-1 flex items-center justify-between gap-4">
+                    <span className="font-sans text-[13px] font-semibold truncate">{displayName(single.single_name)}</span>
+                    <span className="font-sans text-[12px] text-muted-foreground flex-shrink-0">{formatDateShort(single.release_date)}</span>
+                  </div>
                 </div>
               ))}
             </div>

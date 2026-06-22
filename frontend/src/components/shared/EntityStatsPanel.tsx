@@ -191,6 +191,7 @@ export function EntityStatsPanel({
         <AnalysisTrendChart
           data={paddedDaily.map((item) => ({ label: item.date.slice(2), value: item[distributionKey] }))}
           mode="line"
+          showZoom
         />
       </GlassCard>
 
@@ -204,6 +205,7 @@ export function EntityStatsPanel({
               value: metric === 'plays' ? item.cumulative_plays : item.cumulative_hours,
             }))}
             mode="line"
+            showZoom
           />
         </GlassCard>
       )}

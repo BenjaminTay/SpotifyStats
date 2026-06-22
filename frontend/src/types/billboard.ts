@@ -971,6 +971,9 @@ export interface AlbumSourceBreakdownItem {
   source_bucket: string
   play_count: number
   total_ms: number
+  album_cover_url?: string | null
+  release_date?: string | null
+  track_count?: number | null
 }
 
 export interface AlbumProject {
@@ -1049,6 +1052,7 @@ export interface AdvanceSingle {
   [key: string]: any
   single_name: string
   release_date: string
+  cover_url?: string | null
 }
 
 export interface AdvanceSingleRank {
@@ -1316,6 +1320,7 @@ export interface AlbumSingle {
   name: string
   peak: number
   certification?: string
+  cover_url?: string | null
 }
 
 export interface StructuredAlbum {

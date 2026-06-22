@@ -13,7 +13,7 @@ import { AlbumDetailSkeleton } from './MusicDetailSkeletons'
 import { MusicChartOverviewSection } from './MusicChartOverviewSection'
 import { MusicTracksSection } from './MusicTracksSection'
 import { AlbumEraSection } from './AlbumEraSection'
-import { AlbumSourceBreakdown } from './AlbumSourceBreakdown'
+import { VersionGroupSection } from './VersionGroupSection'
 
 type TabKey = 'stats' | 'era' | 'overview' | 'tracks'
 
@@ -120,9 +120,13 @@ export function AlbumDetailExperience() {
               {activeTab === 'stats' && (
                 <>
                   <EntityStatsPanel kind="album" albumName={data.album_name} artistName={data.artist_name} mergeLevel={mergeLevel} releaseDate={data.meta?.release_date} />
-                  {data.album_project && (
+                  {data.meta?.release_group && data.meta.release_group.versions && data.meta.release_group.versions.length >= 2 && (
                     <div className="mt-8">
-                      <AlbumSourceBreakdown project={data.album_project} />
+                      <VersionGroupSection
+                        kind="album"
+                        data={data.meta.release_group}
+                        sourceBreakdown={data.album_project?.source_breakdown ?? null}
+                      />
                     </div>
                   )}
                 </>
@@ -143,7 +147,6 @@ export function AlbumDetailExperience() {
                   releaseCycle={releaseCycle}
                   releaseCycleLoading={releaseCycleLoading}
                   releaseCycleError={releaseCycleError}
-                  releaseGroup={data.meta?.release_group ?? null}
                 />
               )}
 

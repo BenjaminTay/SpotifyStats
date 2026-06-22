@@ -27,9 +27,27 @@ function Divider() {
 
 interface AlbumEnrichmentViewProps {
   data: StructuredAlbum
+  singleCoverUrls?: Record<string, string | null | undefined>
 }
 
-export function AlbumEnrichmentView({ data }: AlbumEnrichmentViewProps) {
+export function albumSingleCoverKey(name: string) {
+  return name
+    .normalize('NFKC')
+    .replace(/[’‘]/g, "'")
+    .replace(/[“”"]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase()
+}
+
+export function albumSingleCompactCoverKey(name: string) {
+  return albumSingleCoverKey(name)
+    .replace(/\s*\([^)]*\)/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+export function AlbumEnrichmentView({ data, singleCoverUrls = {} }: AlbumEnrichmentViewProps) {
   return (
     <div className="space-y-8">
       {/* Summary */}
@@ -112,21 +130,40 @@ export function AlbumEnrichmentView({ data }: AlbumEnrichmentViewProps) {
             <SectionHead dot="♫" title="主打单曲" />
             <GlassCard>
               <div className="divide-y divide-border">
-                {data.singles.map((s, i) => (
-                  <div key={i} className="flex items-center gap-4 px-5 py-3.5 transition-colors hover:bg-muted/30">
-                    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded bg-muted font-sans text-[11px] font-bold tabular-nums text-muted-foreground">
-                      {i + 1}
-                    </span>
-                    <Disc3 className="h-3.5 w-3.5 shrink-0 text-muted-foreground/50" />
-                    <span className="font-sans text-[13px] font-semibold text-foreground/85 flex-1">{s.name}</span>
-                    {s.certification && (
-                      <span className="font-sans text-[11px] text-muted-foreground">{s.certification}</span>
-                    )}
-                    <span className="flex h-6 w-8 items-center justify-center rounded bg-amber-500/10 font-sans text-[12px] font-bold tabular-nums text-amber-600 dark:text-amber-400">
-                      #{s.peak}
-                    </span>
-                  </div>
-                ))}
+                {data.singles.map((s, i) => {
+                  const coverUrl =
+                    singleCoverUrls[s.name] ||
+                    singleCoverUrls[albumSingleCoverKey(s.name)] ||
+                    singleCoverUrls[albumSingleCompactCoverKey(s.name)] ||
+                    s.cover_url ||
+                    undefined
+                  return (
+                    <div key={i} className="flex items-center gap-4 px-5 py-3.5 transition-colors hover:bg-muted/30">
+                      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded bg-muted font-sans text-[11px] font-bold tabular-nums text-muted-foreground">
+                        {i + 1}
+                      </span>
+                      {coverUrl ? (
+                        <img
+                          src={coverUrl}
+                          alt=""
+                          className="h-8 w-8 shrink-0 rounded object-cover"
+                          loading="lazy"
+                        />
+                      ) : (
+                        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded bg-muted/60">
+                          <Disc3 className="h-3.5 w-3.5 text-muted-foreground/50" />
+                        </span>
+                      )}
+                      <span className="min-w-0 flex-1 truncate font-sans text-[13px] font-semibold text-foreground/85">{s.name}</span>
+                      {s.certification && (
+                        <span className="font-sans text-[11px] text-muted-foreground">{s.certification}</span>
+                      )}
+                      <span className="flex h-6 w-8 items-center justify-center rounded bg-amber-500/10 font-sans text-[12px] font-bold tabular-nums text-amber-600 dark:text-amber-400">
+                        #{s.peak}
+                      </span>
+                    </div>
+                  )
+                })}
               </div>
             </GlassCard>
           </div>

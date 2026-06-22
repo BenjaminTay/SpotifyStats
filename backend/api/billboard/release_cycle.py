@@ -361,7 +361,59 @@ def get_album_detail(
             .head(20)
             .index.tolist()
         )
-        matrix_data = track_tl[track_tl["track_name"].isin(top_tracks)]
+
+        # Sort tracks by album track order: primary album tracks first
+        # (by track_number), then bonus/deluxe tracks by track_number.
+        track_order: dict[str, tuple[int, int]] = {}
+        from backend.core.db import get_db
+
+        conn3 = get_db()
+        try:
+            primary_album_id = conn3.execute(
+                """SELECT al.album_id FROM albums al
+                   JOIN artists a ON al.artist_id = a.artist_id
+                   WHERE al.album_name = ? AND a.artist_name = ?""",
+                (primary_name or album_name, artist_name),
+            ).fetchone()
+            if primary_album_id:
+                pid = primary_album_id[0]
+                track_rows = conn3.execute(
+                    """SELECT t.track_name, stm.track_number
+                       FROM track_albums ta
+                       JOIN tracks t ON t.track_id = ta.track_id
+                       LEFT JOIN spotify_track_meta stm
+                         ON t.spotify_track_id = stm.spotify_track_id
+                       WHERE ta.album_id = ? AND t.track_name IN ({})
+                       ORDER BY stm.track_number""".format(",".join("?" for _ in top_tracks)),
+                    [pid] + top_tracks,
+                ).fetchall()
+                for i, r in enumerate(track_rows):
+                    track_order[r["track_name"]] = (0, r["track_number"] or i)
+            # Remaining tracks (bonus / deluxe-only) go after, by track_number
+            remaining = [t for t in top_tracks if t not in track_order]
+            if remaining:
+                bonus_rows = conn3.execute(
+                    """SELECT t.track_name, MIN(stm.track_number) AS tn
+                       FROM track_albums ta
+                       JOIN tracks t ON t.track_id = ta.track_id
+                       LEFT JOIN spotify_track_meta stm
+                         ON t.spotify_track_id = stm.spotify_track_id
+                       WHERE t.track_name IN ({})
+                       GROUP BY t.track_name
+                       ORDER BY tn""".format(",".join("?" for _ in remaining)),
+                    remaining,
+                ).fetchall()
+                for i, r in enumerate(bonus_rows):
+                    track_order[r["track_name"]] = (1, r["tn"] or i)
+        finally:
+            conn3.close()
+
+        def _track_sort_key(name: str) -> tuple[int, int]:
+            return track_order.get(name, (2, 0))
+
+        sorted_tracks = sorted(top_tracks, key=_track_sort_key)
+
+        matrix_data = track_tl[track_tl["track_name"].isin(sorted_tracks)]
         if not matrix_data.empty:
             pivot = matrix_data.pivot_table(
                 index="track_name",
@@ -370,8 +422,7 @@ def get_album_detail(
                 fill_value=0,
             )
             if not pivot.empty and not pivot.columns.empty:
-                track_first_week = (pivot > 0).idxmax(axis=1)
-                pivot = pivot.loc[track_first_week.sort_values().index]
+                pivot = pivot.reindex([t for t in sorted_tracks if t in pivot.index])
                 track_matrix = {
                     "tracks": list(pivot.index),
                     "weeks": [int(c) for c in pivot.columns],
