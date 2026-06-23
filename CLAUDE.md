@@ -8,7 +8,7 @@ Spotify Extended Streaming History 数据分析 Web 应用 — **FastAPI 后端 
 
 UI：「编辑风 × 液态玻璃」— Playfair Display + Inter，毛玻璃，日/夜双皮肤。
 
-**当前状态**：Phase 5 产品化收口完成。后端 694 / 前端 135 测试 PASS，全栈 smoke (48 route + 6 interaction + 3 chart + 36 control + 6 long-list + 3 cross-browser) 全部通过，OpenAPI 134 op / 59 parameter boundary 0 unaccounted。开发台账与验证细节见 `AGENTS.md`、`docs/productization/`、`docs/verification/` 和 `docs/CHANGELOG.md`。最终交付报告见 `docs/productization/2026-06-22-phase5-delivery-report.md`。
+**当前状态**：Phase 5 产品化收口完成。后端 694 / 前端 135 测试 PASS，全栈 smoke (48 route + 6 interaction + 3 chart + 36 control + 6 long-list + 3 cross-browser) 全部通过，OpenAPI 135 op / 59 parameter boundary 0 unaccounted。开发台账与验证细节见 `AGENTS.md`、`docs/productization/`、`docs/verification/` 和 `docs/CHANGELOG.md`。最终交付报告见 `docs/productization/2026-06-22-phase5-delivery-report.md`。
 
 ## 常用命令
 
@@ -52,7 +52,7 @@ sh scripts/fullstack_verification_check.sh --backend-url http://127.0.0.1:8000 -
 # 非破坏性 API 边界 probe（85 个 GET）
 .venv/bin/python scripts/api_boundary_probe.py
 
-# OpenAPI 全操作覆盖归属核算（134 operation，0 unaccounted）
+# OpenAPI 全操作覆盖归属核算（135 operation，0 unaccounted）
 .venv/bin/python scripts/openapi_operation_audit.py --json-output /tmp/spotify_openapi_operation_audit.json
 
 # OpenAPI 参数边界覆盖归属核算（59 obligations，0 unaccounted）
@@ -76,9 +76,9 @@ node scripts/frontend_long_list_smoke.mjs --base-url http://localhost:5173
 node scripts/frontend_long_list_smoke.mjs --base-url http://127.0.0.1:4173 --api-base-url http://127.0.0.1:8000
 node scripts/frontend_cross_browser_smoke.mjs --base-url http://localhost:5173 --include-detail-routes
 node scripts/frontend_cross_browser_smoke.mjs --base-url http://127.0.0.1:4173 --api-base-url http://127.0.0.1:8000 --include-detail-routes
-node scripts/frontend_web_vitals_probe.mjs --routes /,/analysis/stats,/analysis/charts,/billboard/number-ones,/account,/settings --viewport both --wait-ms 5000
-node scripts/frontend_web_vitals_probe.mjs --base-url http://127.0.0.1:4173 --api-base-url http://127.0.0.1:8000 --routes /,/analysis/stats,/analysis/charts,/billboard/number-ones,/account,/settings --viewport both --wait-ms 5000
-node scripts/frontend_web_vitals_probe.mjs --routes /,/analysis/stats,/analysis/charts,/billboard/number-ones,/account,/settings --viewport both --wait-ms 5000 --max-lcp-ms 3000 --max-cls 0.01 --max-tbt-ms 100 --max-resource-count 120 --max-encoded-resource-kb 11000 --max-scroll-overflow-px 0
+node scripts/frontend_web_vitals_probe.mjs --routes /,/analysis/stats,/analysis/charts,/analysis/records,/billboard/number-ones,/account,/settings --viewport both --wait-ms 5000
+node scripts/frontend_web_vitals_probe.mjs --base-url http://127.0.0.1:4173 --api-base-url http://127.0.0.1:8000 --routes /,/analysis/stats,/analysis/charts,/analysis/records,/billboard/number-ones,/account,/settings --viewport both --wait-ms 5000
+node scripts/frontend_web_vitals_probe.mjs --routes /,/analysis/stats,/analysis/charts,/analysis/records,/billboard/number-ones,/account,/settings --viewport both --wait-ms 5000 --max-lcp-ms 3000 --max-cls 0.01 --max-tbt-ms 100 --max-resource-count 120 --max-encoded-resource-kb 11000 --max-scroll-overflow-px 0
 
 # 其他
 cd frontend && npm run build
@@ -108,7 +108,7 @@ JSON → import → SQLite → FastAPI (backend/) → React (frontend/)
 
 **后端**：api/ → services/ → domains/（billboard/playback/settings/enrichment/community/chat）→ core/，辅以 infrastructure/http/ + providers/（spotify/genius/wikipedia/llm）
 
-**前端**：pages/（route container，≤450 行）→ features/（billboard/records|number-ones|all-time、community/Experience|Account|FeedToggle|TimeFilter|PostCard|Timeline|Sidebar|PostDetailExperience|MobileSidebarDrawer|communityData、ai-insights/Experience|ReportCard|ChatInterface|ChatSessionList|ChatSessionDrawer|SuggestedQuestions|Primitives|Data、music/details 的 header/primitives/skeletons/overview/tracks/albums/career/artist-releases/album-era 子 sections、settings/components、account/collection）→ components/（ui/charts/layout/shared）
+**前端**：pages/（route container，≤450 行）→ features/（analysis/records/Experience|6 Section|Primitives|Data、billboard/records|number-ones|all-time、community/Experience|Account|FeedToggle|TimeFilter|PostCard|Timeline|Sidebar|PostDetailExperience|MobileSidebarDrawer|communityData、ai-insights/Experience|ReportCard|ChatInterface|ChatSessionList|ChatSessionDrawer|SuggestedQuestions|Primitives|Data、music/details 的 header/primitives/skeletons/overview/tracks/albums/career/artist-releases/album-era 子 sections、settings/components、account/collection）→ components/（ui/charts/layout/shared）
 
 **Phase 5 架构模式**：
 

@@ -728,6 +728,13 @@ const SCENARIOS = {
     pagePattern: '显示\\s*\\d+\\s*-\\s*\\d+\\s*/\\s*总数\\s*\\d+\\s*条',
     focusText: '歌曲榜',
   }),
+  'playback-records-mini-rank': (ctx) => exercisePaginatedList({
+    ...ctx,
+    route: '/analysis/records',
+    readyText: '狂热时刻',
+    pagePattern: '\\d+\\s*/\\s*\\d+',
+    focusText: '单日爆听',
+  }),
 }
 
 function collectConsole(client) {

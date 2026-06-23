@@ -24,6 +24,7 @@ import type {
   LeaderboardResponse,
   LateNightEntry,
   PlatformHourlyResponse,
+  PlaybackRecordsResponse,
   TimelineAnnualPoint,
   TimelineMonthlyResponse,
   TimelineWeeklyResponse,
@@ -408,6 +409,23 @@ export const analysisApi = {
     return fetchQuery(
       queryKeys.analysis.timeline('play-dates', q),
       () => api.get<{ date: string; count: number }[]>('/analysis/play-dates', q),
+    )
+  },
+
+  records: (
+    filters: AnalysisFilters,
+    params: { period: AnalysisPeriod; start_date?: string; end_date?: string; merge_level?: number; include_compilations?: boolean },
+  ) => {
+    const q = analysisParams(filters, {
+      period: params.period,
+      start_date: params.start_date,
+      end_date: params.end_date,
+      merge_level: params.merge_level ?? 2,
+      include_compilations: params.include_compilations ?? false,
+    })
+    return fetchQuery(
+      queryKeys.analysis.records(q),
+      () => api.get<PlaybackRecordsResponse>('/analysis/records', q),
     )
   },
 }

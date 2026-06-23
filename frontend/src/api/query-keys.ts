@@ -29,6 +29,7 @@ export const queryKeys = {
     leaderboard: (params: Record<string, unknown>) => ['analysis', 'leaderboard', params] as const,
     listeningHours: (kind: string, params: Record<string, unknown>) => ['analysis', 'listening-hours', kind, params] as const,
     artistDeepDive: (name: string, params: Record<string, unknown>) => ['analysis', 'artist-deep-dive', name, params] as const,
+    records: (params: Record<string, unknown>) => ['analysis', 'records', params] as const,
   },
 
   settings: {

@@ -13,7 +13,9 @@ from backend.models.analysis import (
     AnalysisPlayDateEntry,
     AnalysisPlaysResponse,
     AnalysisStatsResponse,
+    PlaybackRecordsResponse,
 )
+from backend.services.analysis_records_service import get_analysis_records
 from backend.services.analysis_service import get_analysis_overview
 from backend.services.analysis_stats_service import (
     get_analysis_charts,
@@ -137,4 +139,30 @@ def analysis_play_dates(
         period=period,
         start_date=start_date,
         end_date=end_date,
+    )
+
+
+@router.get("/records", response_model=PlaybackRecordsResponse)
+def analysis_records(
+    filters: PlayFilters = Depends(),
+    merge_cfg: MergeConfig = Depends(),
+    period: str = Query(default="lifetime"),
+    start_date: str | None = Query(default=None),
+    end_date: str | None = Query(default=None),
+    include_compilations: bool = Query(False, description="专辑记录是否包含精选集"),
+    conn: Connection = Depends(get_conn),
+):
+    """获取播放记录 — 基于有效播放事件的个人音乐史极值、连续、回归与行为纪录。"""
+    return get_analysis_records(
+        conn=conn,
+        min_ms=filters.min_ms,
+        music_only=filters.music_only,
+        merge_enabled=filters.merge_enabled,
+        period=period,
+        start_date=start_date,
+        end_date=end_date,
+        merge_level=merge_cfg.merge_level,
+        dynamic_threshold=filters.dynamic_threshold,
+        max_merge_gap_minutes=filters.max_merge_gap_minutes,
+        include_compilations=include_compilations,
     )

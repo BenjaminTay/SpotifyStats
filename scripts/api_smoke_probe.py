@@ -91,6 +91,7 @@ DEFAULT_SAFE_GET_CASES: tuple[SmokeCase, ...] = (
     ),
     SmokeCase("analysis_plays", "/api/analysis/plays", {**DEFAULT_FILTERS, "limit": 5}),
     SmokeCase("analysis_play_dates", "/api/analysis/play-dates", DEFAULT_FILTERS),
+    SmokeCase("analysis_records", "/api/analysis/records", {**DEFAULT_FILTERS, "period": "lifetime", "merge_level": 2}),
     SmokeCase("dashboard_summary", "/api/dashboard/summary", DEFAULT_FILTERS),
     SmokeCase("dashboard_full", "/api/dashboard/full", DEFAULT_FILTERS),
     SmokeCase("dashboard_top_tracks", "/api/dashboard/top-tracks", {**DEFAULT_FILTERS, "n": 5}),

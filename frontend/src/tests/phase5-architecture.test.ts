@@ -9,6 +9,9 @@ import allTimeChartsPageSource from '../pages/AllTimeChartsPage.tsx?raw'
 import numberOnesPageSource from '../pages/NumberOnesPage.tsx?raw'
 import billboardPageSource from '../pages/BillboardPage.tsx?raw'
 import billboardVersusPageSource from '../pages/BillboardVersusPage.tsx?raw'
+import analysisRecordsPageSource from '../pages/AnalysisRecordsPage.tsx?raw'
+import playbackRecordsExperienceSource from '../features/analysis/records/PlaybackRecordsExperience.tsx?raw'
+import obsessionSectionSource from '../features/analysis/records/ObsessionSection.tsx?raw'
 import accountCenterPageSource from '../pages/AccountCenterPage.tsx?raw'
 import habitsTabSource from '../features/account/habits/HabitsTab.tsx?raw'
 import habitsPersonalityHeroSource from '../features/account/habits/HabitsPersonalityHero.tsx?raw'
@@ -501,5 +504,25 @@ describe('Phase 5 architecture guardrails', () => {
         src.includes('useBillboard')
       expect(usesQuery, `${name} must use queryKeys or domain query hooks`).toBe(true)
     }
+  })
+
+  it('keeps AnalysisRecordsPage as a route container, not a full records module', () => {
+    expect(analysisRecordsPageSource.split('\n').length).toBeLessThanOrEqual(450)
+    expect(analysisRecordsPageSource).not.toContain('function ObsessionSection')
+    expect(analysisRecordsPageSource).not.toContain('function LongevitySection')
+    expect(analysisRecordsPageSource).not.toContain('function ReignsSection')
+    expect(analysisRecordsPageSource).not.toContain('<table')
+  })
+
+  it('keeps PlaybackRecordsExperience thin by delegating sections to lazy-loaded modules', () => {
+    expect(playbackRecordsExperienceSource.split('\n').length).toBeLessThanOrEqual(450)
+    expect(playbackRecordsExperienceSource).toContain('lazy(() =>')
+    expect(playbackRecordsExperienceSource).toContain('Suspense')
+  })
+
+  it('keeps ObsessionSection using shared primitives instead of inline tables', () => {
+    expect(obsessionSectionSource.split('\n').length).toBeLessThanOrEqual(300)
+    expect(obsessionSectionSource).toContain('EntityRecordCard')
+    expect(obsessionSectionSource).not.toContain('<table')
   })
 })

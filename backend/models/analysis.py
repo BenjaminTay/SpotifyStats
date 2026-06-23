@@ -231,3 +231,109 @@ class AnalysisPlaysResponse(BaseModel):
 class AnalysisPlayDateEntry(BaseModel):
     date: str
     count: int
+
+
+# ── /analysis/records ──
+
+
+class PlaybackRecordRow(BaseModel):
+    """通用播放记录行模型，三实体记录与事件型记录共用。"""
+
+    rank: int
+    entity_type: str | None = None
+    entity_id: str | None = None
+    name: str
+    artist_name: str | None = None
+    artist_names: list[str] | None = None
+    value: float
+    unit: str
+    secondary_value: float | None = None
+    secondary_unit: str | None = None
+    date: str | None = None
+    start_date: str | None = None
+    end_date: str | None = None
+    total_plays: int | None = None
+    total_hours: float | None = None
+    share_pct: float | None = None
+    cover_url: str | None = None
+    caption: str | None = None
+
+
+class EntityRecordFamily(BaseModel):
+    """三实体记录族，同一记录主题在 track/album/artist 三个维度的结果。"""
+
+    track: list[PlaybackRecordRow] = []
+    album: list[PlaybackRecordRow] = []
+    artist: list[PlaybackRecordRow] = []
+
+
+class PlaybackObsessionRecords(BaseModel):
+    daily_binge: EntityRecordFamily = EntityRecordFamily()
+    daily_duration: EntityRecordFamily = EntityRecordFamily()
+    consecutive_marathon: EntityRecordFamily = EntityRecordFamily()
+    daily_total_record: list[PlaybackRecordRow] = []
+
+
+class PlaybackTimePatternRecords(BaseModel):
+    hourly_dominance: EntityRecordFamily = EntityRecordFamily()
+    monthly_peak: EntityRecordFamily = EntityRecordFamily()
+    yearly_peak: EntityRecordFamily = EntityRecordFamily()
+    late_night_peak_day: list[PlaybackRecordRow] = []
+    weekday_preference: list[PlaybackRecordRow] = []
+    new_year_eve: list[PlaybackRecordRow] = []
+
+
+class PlaybackReignRecords(BaseModel):
+    daily_champion: EntityRecordFamily = EntityRecordFamily()
+    monthly_reign: EntityRecordFamily = EntityRecordFamily()
+    yearly_reign: EntityRecordFamily = EntityRecordFamily()
+    fastest_milestone: EntityRecordFamily = EntityRecordFamily()
+    consecutive_champion_days: EntityRecordFamily = EntityRecordFamily()
+
+
+class PlaybackLongevityRecords(BaseModel):
+    longest_streak_days: EntityRecordFamily = EntityRecordFamily()
+    longest_span: EntityRecordFamily = EntityRecordFamily()
+    comeback_after_sleep: EntityRecordFamily = EntityRecordFamily()
+    most_active_months: EntityRecordFamily = EntityRecordFamily()
+    user_active_streak: list[PlaybackRecordRow] = []
+
+
+class PlaybackDiscoveryRecords(BaseModel):
+    discovery_day: EntityRecordFamily = EntityRecordFamily()
+    longest_no_repeat: EntityRecordFamily = EntityRecordFamily()
+    album_completionist: EntityRecordFamily = EntityRecordFamily()
+    same_name_diff_artist: list[PlaybackRecordRow] = []
+    feat_lover: EntityRecordFamily = EntityRecordFamily()
+
+
+class PlaybackBehaviorRecords(BaseModel):
+    skip_storm: EntityRecordFamily = EntityRecordFamily()
+    shuffle_peak: list[PlaybackRecordRow] = []
+    platform_reign: list[PlaybackRecordRow] = []
+    platform_switch_day: list[PlaybackRecordRow] = []
+    playback_milestones: list[PlaybackRecordRow] = []
+
+
+class PlaybackRecordsData(BaseModel):
+    obsession: PlaybackObsessionRecords = PlaybackObsessionRecords()
+    time_patterns: PlaybackTimePatternRecords = PlaybackTimePatternRecords()
+    reigns: PlaybackReignRecords = PlaybackReignRecords()
+    longevity: PlaybackLongevityRecords = PlaybackLongevityRecords()
+    discovery: PlaybackDiscoveryRecords = PlaybackDiscoveryRecords()
+    behavior: PlaybackBehaviorRecords = PlaybackBehaviorRecords()
+
+
+class PlaybackRecordsMeta(BaseModel):
+    total_plays: int
+    total_hours: float
+    active_days: int
+    merge_level: int
+    min_sample_plays: int = 10
+    generated_at: str
+
+
+class PlaybackRecordsResponse(BaseModel):
+    period: AnalysisResolvedPeriod
+    meta: PlaybackRecordsMeta
+    records: PlaybackRecordsData

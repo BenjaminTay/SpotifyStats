@@ -12,6 +12,7 @@ React 19 + TypeScript 6.0 + Vite 8 + Tailwind CSS v4 + shadcn/ui (base-nova) + R
 src/
 ├── api/              ← API 客户端 + TanStack QueryClient + Query Key 工厂 + OpenAPI 生成类型
 ├── features/         ← Feature-first 业务组件
+│   ├── analysis/records/  ← PlaybackRecordsExperience + 6 Section + Primitives + Data
 │   ├── billboard/
 │   │   ├── number-ones/   ← NumberOnesExperience + 3 Section（tracks/albums/artists）+ Primitives + Data
 │   │   ├── records/       ← RecordsSections + 6 Section + Primitives + Data
@@ -39,6 +40,7 @@ src/
 /                          → DashboardPage
 /analysis/stats            → AnalysisLayout > StatsTab
 /analysis/charts           → AnalysisLayout > ChartsTab
+/analysis/records          → AnalysisLayout > RecordsTab
 /yearly-review             → YearlyReviewPage
 /billboard                 → BillboardPage
 /billboard/number-ones     → NumberOnesPage (5 行 route container)

@@ -404,3 +404,106 @@ export interface EntityStatsResponse extends AnalysisStatsResponse {
   top_tracks?: AnalysisChartRow[]
   top_albums?: AnalysisChartRow[]
 }
+
+// ── /analysis/records ──
+
+export type EntityRecordType = 'track' | 'album' | 'artist'
+
+export interface PlaybackRecordRow {
+  rank: number
+  entity_type?: EntityRecordType | null
+  entity_id?: string | null
+  name: string
+  artist_name?: string | null
+  artist_names?: string[] | null
+  value: number
+  unit: string
+  secondary_value?: number | null
+  secondary_unit?: string | null
+  date?: string | null
+  start_date?: string | null
+  end_date?: string | null
+  total_plays?: number | null
+  total_hours?: number | null
+  share_pct?: number | null
+  cover_url?: string | null
+  caption?: string | null
+}
+
+export interface EntityRecordFamily {
+  track: PlaybackRecordRow[]
+  album: PlaybackRecordRow[]
+  artist: PlaybackRecordRow[]
+}
+
+export interface PlaybackObsessionRecords {
+  daily_binge: EntityRecordFamily
+  daily_duration: EntityRecordFamily
+  consecutive_marathon: EntityRecordFamily
+  daily_total_record: PlaybackRecordRow[]
+}
+
+export interface PlaybackTimePatternRecords {
+  hourly_dominance: EntityRecordFamily
+  monthly_peak: EntityRecordFamily
+  yearly_peak: EntityRecordFamily
+  late_night_peak_day: PlaybackRecordRow[]
+  weekday_preference: PlaybackRecordRow[]
+  new_year_eve: PlaybackRecordRow[]
+}
+
+export interface PlaybackReignRecords {
+  daily_champion: EntityRecordFamily
+  monthly_reign: EntityRecordFamily
+  yearly_reign: EntityRecordFamily
+  fastest_milestone: EntityRecordFamily
+  consecutive_champion_days: EntityRecordFamily
+}
+
+export interface PlaybackLongevityRecords {
+  longest_streak_days: EntityRecordFamily
+  longest_span: EntityRecordFamily
+  comeback_after_sleep: EntityRecordFamily
+  most_active_months: EntityRecordFamily
+  user_active_streak: PlaybackRecordRow[]
+}
+
+export interface PlaybackDiscoveryRecords {
+  discovery_day: EntityRecordFamily
+  longest_no_repeat: EntityRecordFamily
+  album_completionist: EntityRecordFamily
+  same_name_diff_artist: PlaybackRecordRow[]
+  feat_lover: EntityRecordFamily
+}
+
+export interface PlaybackBehaviorRecords {
+  skip_storm: EntityRecordFamily
+  shuffle_peak: PlaybackRecordRow[]
+  platform_reign: PlaybackRecordRow[]
+  platform_switch_day: PlaybackRecordRow[]
+  playback_milestones: PlaybackRecordRow[]
+}
+
+export interface PlaybackRecordsData {
+  obsession: PlaybackObsessionRecords
+  time_patterns: PlaybackTimePatternRecords
+  reigns: PlaybackReignRecords
+  longevity: PlaybackLongevityRecords
+  discovery: PlaybackDiscoveryRecords
+  behavior: PlaybackBehaviorRecords
+}
+
+export interface PlaybackRecordsMeta {
+  total_plays: number
+  total_hours: number
+  active_days: number
+  merge_level: number
+  min_sample_plays: number
+  generated_at: string
+}
+
+export interface PlaybackRecordsResponse {
+  period: AnalysisResolvedPeriod
+  meta: PlaybackRecordsMeta
+  records: PlaybackRecordsData
+}

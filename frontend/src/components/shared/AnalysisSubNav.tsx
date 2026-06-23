@@ -5,6 +5,7 @@ import { cn } from '@/lib/utils'
 const NAV_ITEMS = [
   { to: '/analysis/stats', label: '总体统计' },
   { to: '/analysis/charts', label: '个人排行榜' },
+  { to: '/analysis/records', label: '播放记录' },
 ]
 
 const TIME_RANGE_PARAMS = ['period', 'period_value', 'start', 'end']

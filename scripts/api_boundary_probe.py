@@ -100,6 +100,23 @@ DEFAULT_BOUNDARY_CASES: tuple[BoundaryCase, ...] = (
         expected_statuses=(200,),
         expect_validation_detail=False,
     ),
+    BoundaryCase(
+        "analysis_records_merge_level_low",
+        "/api/analysis/records",
+        {"merge_level": 0},
+    ),
+    BoundaryCase(
+        "analysis_records_merge_level_high",
+        "/api/analysis/records",
+        {"merge_level": 4},
+    ),
+    BoundaryCase(
+        "analysis_records_period_empty",
+        "/api/analysis/records",
+        {"period": ""},
+        expected_statuses=(200,),
+        expect_validation_detail=False,
+    ),
     BoundaryCase("leaderboard_invalid_entity", "/api/leaderboard", {"entity": "invalid"}),
     BoundaryCase("leaderboard_empty_entity", "/api/leaderboard", {"entity": ""}),
     BoundaryCase("leaderboard_invalid_metric", "/api/leaderboard", {"metric": "minutes"}),
