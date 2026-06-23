@@ -62,7 +62,7 @@ const ROUTE_READY_MARKERS = {
   '/community': ['COMMUNITY / FEED', '榜单社区'],
   '/ai-insights': ['AI / INSIGHTS', 'AI 洞察'],
   '/account': ['ACCOUNT / CENTER', '你的收藏'],
-  '/settings': ['SETTINGS / CONFIGURATION', '00 · SPOTIFY 连接'],
+  '/settings': ['设置', 'Spotify 连接'],
 }
 
 const DYNAMIC_ROUTE_READY_MARKERS = [

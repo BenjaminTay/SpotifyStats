@@ -1,9 +1,9 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router'
-import { ChevronDown, ChevronUp, Disc, Layers, Star } from 'lucide-react'
+import { ChevronDown, ChevronUp, Disc, Layers } from 'lucide-react'
 import { GlassCard } from '@/components/shared/GlassCard'
 import type { TrackVersionGroup, AlbumVersionGroup, AlbumSourceBreakdownItem } from '@/types/billboard'
-import { cn } from '@/lib/utils'
+import { VersionCoverageMatrix } from './VersionCoverageMatrix'
 
 interface Props {
   kind: 'track' | 'album'
@@ -214,64 +214,7 @@ export function VersionGroupSection({ kind, data, sourceBreakdown }: Props) {
         </table>
       </div>
 
-      {/* Track coverage matrix — album only (R30.3 / R30.4) */}
-      {albumData?.track_coverage && albumData.track_coverage.length > 0 && (
-        <div className={isAlbum ? 'border-t border-border/50 pt-3 mt-3' : 'border-t border-border/50 px-4 py-3'}>
-          <h4 className="mb-2.5 font-sans text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-            曲目覆盖对比
-          </h4>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-muted-foreground text-[11px] border-b border-border/30">
-                  <th className="text-left py-1.5 pr-4 font-medium">曲目</th>
-                  {albumData.versions.map((v) => (
-                    <th key={v.album_id ?? v.album_name} className="text-center py-1.5 px-2 font-medium w-[72px]">
-                      {v.is_primary ? '标准版' : (v.album_name ?? '').slice(0, 6)}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {albumData.track_coverage.map((tc) => (
-                  <tr
-                    key={tc.track_id}
-                    className={cn(
-                      'border-b border-border/20 last:border-0',
-                      tc.is_exclusive && 'bg-amber-50/30 dark:bg-amber-950/10',
-                    )}
-                  >
-                    <td className="py-1.5 pr-4">
-                      <span className="flex items-center gap-1.5">
-                        {tc.track_name}
-                        {tc.is_exclusive && (
-                          <Star className="w-3 h-3 text-amber-600 dark:text-amber-400 flex-shrink-0" />
-                        )}
-                      </span>
-                    </td>
-                    {albumData.versions.map((v) => {
-                      const hasTrack = tc.album_ids.includes(v.album_id!)
-                      return (
-                        <td key={v.album_id ?? v.album_name} className="text-center py-1.5 px-2">
-                          {hasTrack ? (
-                            <span className="inline-block w-3 h-3 rounded-full bg-primary/60" />
-                          ) : (
-                            <span className="text-[11px] text-muted-foreground/30">—</span>
-                          )}
-                        </td>
-                      )
-                    })}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <p className="mt-2 text-[11px] text-muted-foreground">
-            <Star className="inline w-2.5 h-2.5 text-amber-600 dark:text-amber-400 mr-1" />
-            独占曲目 — 仅在某一个版本中出现，其他版本没有
-          </p>
-        </div>
-      )}
+      <VersionCoverageMatrix albumData={albumData} compact={isAlbum} />
     </div>
   )
 
@@ -280,7 +223,7 @@ export function VersionGroupSection({ kind, data, sourceBreakdown }: Props) {
       <GlassCard className="mb-6">
         <div className="flex items-center gap-2.5 px-4 py-3">
           <Layers className="w-4 h-4 text-muted-foreground" />
-          <span className="font-medium text-sm">版本来源</span>
+          <span className="font-medium text-sm">版本来源拆分</span>
         </div>
         {tableContent}
       </GlassCard>

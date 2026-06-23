@@ -5,7 +5,7 @@
 ### 修复
 
 - 修复旧 `/analysis/*` 别名嵌套在 lazy `AnalysisLayout` 内导致的冷导航空壳风险
-- 首页 Dashboard 月度趋势从 ECharts 改为轻量 DOM 条形图，production preview 首页 encoded resources 从约 `1,282KB` 降至 `1,060KB`
+- 首页 Dashboard 月度趋势按产品偏好保留 ECharts 视觉，并将实现拆到 `MonthlyTrendEChart` 动态块；production preview 首页 LCP/CLS/TBT 仍在预算内（desktop `2004ms/0/0ms`，mobile `544ms/0/0ms`）
 - 账号页新增轻量 `/profile` 首屏 Hero 查询，`/api/account` 聚合加入 TTL cache + warmup，production `/account` desktop LCP 从 `3532ms` 降至 `468ms`
 - 根级 `scrollbar-gutter: stable` 将 `/billboard/number-ones` desktop CLS 从 `0.1` 压到 `0`
 - Spotify OAuth 在 ngrok `SPOTIFY_REDIRECT_URI` 且未显式设置 `FRONTEND_ORIGIN` 时，callback 回跳 origin 从 redirect URI 推导，避免授权后掉回 localhost

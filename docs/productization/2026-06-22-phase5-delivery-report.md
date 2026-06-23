@@ -29,7 +29,7 @@
 | FE-01 | **P3** | 旧 `/analysis/behavior`、`/analysis/timeline` 等别名嵌套在 lazy `AnalysisLayout` 内，冷导航时先渲染全局导航空壳 | 用户首次进入旧分析路径时会短暂看到空白壳 | 将旧别名提升为 `AppLayout` 下的顶层 absolute route，直接重定向到 `/analysis/stats` | `frontend/src/App.tsx` | `node scripts/frontend_route_smoke.mjs --routes /analysis/behavior --viewport both` — desktop/mobile PASS；`phase5-architecture.test.ts` 护栏 |
 | FE-02 | **P3** | `/account` 首屏 Hero 被重聚合 `/api/account` 阻塞 | 缓存过期或冷启动时账号页桌面 LCP 超过 3s，用户先看到整页骨架 | 新增 `useProfile()` 独立 TanStack Query hook 读取 `/api/profile`，Hero 并行先渲染 | `frontend/src/features/account/`、`frontend/src/hooks/useAccount.ts` | `query-hooks.test.tsx` 新增 profile query 护栏；`/account` desktop LCP 3532→468ms |
 | FE-03| **P3** | 异步长内容页桌面 CLS 抖动 — 页面高度变化未预留滚动条槽位 | `/billboard/number-ones` 桌面可记录 CLS 0.1 | `html` 根元素设置 `scrollbar-gutter: stable` | `frontend/src/index.css` | `test_frontend_global_css_guardrails.py` PASS；`/billboard/number-ones` desktop CLS 0.1→0 |
-| FE-04 | **P3** | 首页 Dashboard 月度趋势使用 ECharts，Vite 冷态下首页需要预加载 ECharts 动态 chunk | 首屏 encoded resources 约 1,282KB | 改为轻量 DOM/CSS 条形图，ECharts 只保留在复杂图表页面 | `frontend/src/components/charts/MonthlyTrendChart.tsx` | production preview `/` desktop encoded 1,282KB→1,060KB（↓17%） |
+| FE-04 | **P3** | 首页 Dashboard 月度趋势需要保留 ECharts 视觉，但不能让首页 wrapper 静态引用 ECharts runtime | 首页 production preview encoded resources 约 1,284KB，仍需确保 LCP/CLS/TBT 在预算内 | `MonthlyTrendChart` 仅保留空态和 `React.lazy` wrapper，ECharts 实现拆到 `MonthlyTrendEChart` 动态块 | `frontend/src/components/charts/MonthlyTrendChart.tsx`、`MonthlyTrendEChart.tsx` | production preview `/` desktop LCP 2004ms / CLS 0 / TBT 0ms，mobile LCP 544ms / CLS 0 / TBT 0ms |
 | FE-05 | **P0** | Docker Compose 前端 `serve -s dist -l 3000` 只提供静态文件，无 `/api` 反向代理 | Docker 部署中所有 `/api` 和 `/covers` 请求返回 404，前端完全不可用 | 改为 `nginx:alpine` 反代 `/api`、`/covers` 到 `http://backend:8000`，SPA fallback `try_files` | `Dockerfile`、`nginx.conf`（新建） | `docker compose build frontend && docker compose up -d`，`curl http://localhost:3000/api/health` 返回 JSON 200 |
 | FE-06 | **P1** | ErrorBoundary 生产环境泄露 `error.message` 到 DOM | 用户可见错误信息可能包含本地路径、chunk 名称等敏感信息 | `import.meta.env.DEV` 条件分支：生产只显示「页面渲染错误，请刷新后重试」，开发显示 message（不显示 stack） | `frontend/src/components/shared/ErrorBoundary.tsx` | `npm run build` 后 `grep -r "error.stack\|error.message" dist/` → 生产构建不含敏感字段 |
 | FE-07 | **P3-a** | `index.html` 中有 `<link rel="modulepreload" href="/src/main.tsx">`，这是源码路径，Vite 构建后不存在 | 发送无效 preload 请求，浪费网络带宽 | 删除该行（Vite 已自动注入正确的 hashed modulepreload） | `frontend/index.html` | `npm run build` 后 `grep "modulepreload" dist/index.html` → 只有 Vite 注入的 hashed preload |
@@ -79,7 +79,7 @@
 
 | 优化项 | 严重度 | 优化前 | 优化后 | 改进幅度 | 实现原理 |
 |--------|--------|--------|--------|---------|---------|
-| `/` 首页月度趋势 ECharts→DOM 条形图 | **P1** | 首页需预加载 ECharts 核心 + bar + tooltip 等 ~222KB | 纯 DOM/CSS 渲染，无额外 JS | encoded 1282→1060KB（↓17%），requests 17→15 | `MonthlyTrendChart` 使用 CSS flex 条形图替代 `<canvas>`，ECharts 保留在分析/详情等复杂图表页 |
+| `/` 首页月度趋势 ECharts 动态拆包 | **P1** | 首页月度趋势直接静态引用 ECharts wrapper，首屏路径与图表 runtime 耦合 | 保留 ECharts 视觉与 tooltip，但 wrapper 只动态加载 `MonthlyTrendEChart` | LCP/CLS/TBT 仍过预算：desktop 2004ms/0/0ms，mobile 544ms/0/0ms | `MonthlyTrendChart` 只负责空态和 lazy boundary，`MonthlyTrendEChart` 承载 ECharts 配置；架构护栏禁止 wrapper 直接导入 `LazyEChart` / `EChartsTheme` |
 | `/account` 首屏 Hero 并行渲染 | **P1** | Hero 等待重聚合 `/api/account`（~1.5s） | Hero 用 `/api/profile` 轻量数据先渲染 | desktop LCP 3532→468ms（↓87%） | 新增 `useProfile()` 独立 Query hook，Hero 组件不等待 account summary |
 | `/api/account` 聚合 TTL 缓存 | **P1** | 每次请求重新聚合 ~1.5-1.8s | 命中缓存 ~8-11ms | ↓ 99.4% | `account.summary` 纳入统一 Cache Manager，file-backed DB connection |
 | `/billboard/number-ones` CLS 消除 | **P2** | 异步内容加载后滚动条出现→居中布局偏移，CLS 0.1 | 预留滚动条槽位 | CLS 0 | `scrollbar-gutter: stable` 在 `html` 根元素 |
@@ -120,8 +120,8 @@
 
 | 路由 | 视口 | LCP | CLS | TBT | 资源数 | Encoded KB |
 |------|------|-----|-----|-----|--------|------------|
-| `/` | desktop | 1,188ms | 0 | 0ms | 15 | 1,060.6KB |
-| `/` | mobile | 632ms | 0 | 0ms | 14 | 1,059.1KB |
+| `/` | desktop | 2004ms | 0 | 0ms | 17 | 1,283.7KB |
+| `/` | mobile | 544ms | 0 | 0ms | 17 | 1,283.7KB |
 | `/analysis/stats` | desktop | <1,500ms | 0 | <10ms | <50 | <3,500KB |
 | `/analysis/stats` | mobile | <1,000ms | 0 | <5ms | <40 | <3,000KB |
 | `/billboard/number-ones` | desktop | <1,000ms | **0** | 0ms | <40 | <2,000KB |
@@ -293,7 +293,7 @@ Phase 5 产品化收口 **已完成**。对照目标文档的核心目标：
 | 目标 | 状态 | 证据 |
 |------|------|------|
 | 零缺陷验证 | ✅ | 694 后端测试 / 135 前端测试 / 48 route + 6 interaction + 3 chart + 36 control + 6 long-list + 3 cross-browser smoke 全部 PASS |
-| 极致性能优化 | ✅ | LCP ↓87%（account），CLS 消除（number-ones），API 慢端点 0，encoded resources ↓17%（首页） |
+| 极致性能优化 | ✅ | LCP ↓87%（account），CLS 消除（number-ones），API 慢端点 0，首页保留 ECharts 后 LCP/CLS/TBT 仍全部过预算 |
 | 所有 API 端点无错误 | ✅ | 134 OpenAPI op / 59 param boundary 0 unaccounted；API smoke 96/96；boundary 85/85 |
 | 所有前端页面无崩溃 | ✅ | 24 路由 × 2 视口 0 error / 0 warning / 0 横向溢出 |
 | CI 可正常运行 | ✅ | Python 3.9 兼容，无硬编码路径，4 个 CI 修复 commit |
@@ -303,4 +303,4 @@ Phase 5 产品化收口 **已完成**。对照目标文档的核心目标：
 **剩余风险**：
 - ⚠️ ngrok Spotify OAuth 用户 consent 待人工确认（技术链路已全部通过非破坏性探针）
 - ⚠️ Playwright WebKit ≠ Safari.app（只代表引擎级 smoke）
-- ℹ️ 生产构建 `EChartsTheme` 和 `OpenCC cn2t` 仍为按需大 chunk（不在首页 preload 依赖中）
+- ℹ️ 首页月度趋势按产品偏好保留 ECharts，生产构建中的 `LazyEChart` 大 chunk 会按需加载；当前 Web Vitals 预算通过，但 encoded resources 不再宣称 DOM 版 1,060KB
