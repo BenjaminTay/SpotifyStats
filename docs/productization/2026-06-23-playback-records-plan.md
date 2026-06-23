@@ -100,7 +100,7 @@ RecordCard: 单日爆听
 
 页面头部：
 
-- Eyebrow：`Playback / Records`
+- Eyebrow：`Playback Records`
 - H1：`播放记录`
 - 描述：`基于有效播放事件，整理你的个人音乐史极值、连续、回归与行为纪录。`
 

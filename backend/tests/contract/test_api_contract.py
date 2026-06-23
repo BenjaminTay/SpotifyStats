@@ -243,6 +243,40 @@ class TestAnalysisRecordsEndpoint:
             f"album={len(ls['album'])}, artist={len(ls['artist'])}"
         )
 
+    def test_records_daily_total_record_has_day_rows_with_top_entities(self, client):
+        """Daily total records should be sortable day rows with daily top entities."""
+        r = client.get(
+            "/api/analysis/records",
+            params={
+                "min_ms": 30000,
+                "music_only": "true",
+                "merge_enabled": "true",
+                "period": "lifetime",
+                "merge_level": 2,
+                "dynamic_threshold": "true",
+            },
+        )
+        assert r.status_code == 200
+        rows = r.json()["records"]["obsession"]["daily_total_record"]
+
+        assert 1 <= len(rows) <= 100
+        dates = [row["date"] for row in rows]
+        assert len(dates) == len(set(dates))
+        assert {"播放次数纪录", "总时长纪录", "独特歌曲纪录"}.isdisjoint(
+            {row["name"] for row in rows}
+        )
+        for row in rows:
+            assert row["name"] == row["date"]
+            assert row["total_plays"] and row["total_plays"] > 0
+            assert row["total_hours"] is not None and row["total_hours"] >= 0
+            assert row["unique_tracks"] and row["unique_tracks"] > 0
+            assert row["top_track_name"]
+            assert row["top_album_name"]
+            assert row["top_artist_name"]
+            assert "top_track_cover_url" in row
+            assert "top_album_cover_url" in row
+            assert "top_artist_cover_url" in row
+
     def test_records_cover_url_field_present(self, client):
         """Cover URL contract: records should have cover_url field (may be null if no image data)."""
         r = client.get(

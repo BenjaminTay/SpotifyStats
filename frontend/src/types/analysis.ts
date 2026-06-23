@@ -425,6 +425,18 @@ export interface PlaybackRecordRow {
   end_date?: string | null
   total_plays?: number | null
   total_hours?: number | null
+  unique_tracks?: number | null
+  top_track_name?: string | null
+  top_track_artist_name?: string | null
+  top_track_plays?: number | null
+  top_track_cover_url?: string | null
+  top_album_name?: string | null
+  top_album_artist_name?: string | null
+  top_album_plays?: number | null
+  top_album_cover_url?: string | null
+  top_artist_name?: string | null
+  top_artist_plays?: number | null
+  top_artist_cover_url?: string | null
   share_pct?: number | null
   cover_url?: string | null
   caption?: string | null

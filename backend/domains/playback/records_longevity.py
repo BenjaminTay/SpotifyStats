@@ -4,7 +4,12 @@ from __future__ import annotations
 
 import pandas as pd
 
-from backend.domains.playback.records_helpers import safe_groupby_cols, safe_rename, unique_cols
+from backend.domains.playback.records_helpers import (
+    TOP_RECORD_LIMIT,
+    safe_groupby_cols,
+    safe_rename,
+    unique_cols,
+)
 
 
 def _longest_streak_days(frame, group_col, name_col, artist_col, entity_type="track"):
@@ -81,7 +86,7 @@ def _longest_streak_days(frame, group_col, name_col, artist_col, entity_type="tr
     df = pd.DataFrame(results)
     df = df.sort_values(
         ["streak_days", "total_plays", "end_date"], ascending=[False, False, False]
-    ).head(15)
+    ).head(TOP_RECORD_LIMIT)
     df["rank"] = range(1, len(df) + 1)
     df["entity_type"] = entity_type
     df["value"] = df["streak_days"].astype(float)
@@ -110,7 +115,7 @@ def _longest_span(frame, group_col, name_col, artist_col, entity_type="track"):
     span["first_date"] = pd.to_datetime(span["first_date"])
     span["last_date"] = pd.to_datetime(span["last_date"])
     span["span_days"] = (span["last_date"] - span["first_date"]).dt.days + 1
-    span = span.sort_values("span_days", ascending=False).head(15)
+    span = span.sort_values("span_days", ascending=False).head(TOP_RECORD_LIMIT)
     span["rank"] = range(1, len(span) + 1)
     span["entity_type"] = entity_type
     span["entity_id"] = span[group_col].astype(str)
@@ -174,7 +179,7 @@ def _comeback_after_sleep(frame, group_col, name_col, artist_col, entity_type="t
         return pd.DataFrame()
 
     df = pd.DataFrame(results)
-    df = df.sort_values("gap_days", ascending=False).head(15)
+    df = df.sort_values("gap_days", ascending=False).head(TOP_RECORD_LIMIT)
     df["rank"] = range(1, len(df) + 1)
     df["entity_type"] = entity_type
     df["value"] = df["gap_days"].astype(float)
@@ -198,7 +203,7 @@ def _most_active_months(frame, group_col, name_col, artist_col, entity_type="tra
         .nunique()
         .reset_index(name="active_months")
         .sort_values("active_months", ascending=False)
-        .head(15)
+        .head(TOP_RECORD_LIMIT)
     )
     active["rank"] = range(1, len(active) + 1)
     active["entity_type"] = entity_type

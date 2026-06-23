@@ -46,6 +46,14 @@ def test_frontend_long_list_smoke_script_covers_named_long_lists():
     assert "Runtime.consoleAPICalled" in source
 
 
+def test_frontend_long_list_smoke_script_matches_playback_records_range_pager():
+    source = (ROOT / "scripts" / "frontend_long_list_smoke.mjs").read_text(encoding="utf-8")
+
+    assert "'playback-records-mini-rank'" in source
+    assert "pagePattern: '\\\\d+\\\\s*—\\\\s*\\\\d+\\\\s*/\\\\s*\\\\d+'" in source
+    assert "pagePattern: '\\\\d+\\\\s*/\\\\s*\\\\d+'" not in source
+
+
 def test_frontend_long_list_smoke_script_can_rewrite_preview_api_requests():
     source = (ROOT / "scripts" / "frontend_long_list_smoke.mjs").read_text(encoding="utf-8")
 

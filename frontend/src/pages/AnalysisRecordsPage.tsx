@@ -71,12 +71,10 @@ export function AnalysisRecordsPage() {
     <div className="mx-auto max-w-[1200px]">
       {/* Page header — matches Billboard RecordsPage style */}
       <section className="mt-6 mb-6">
-        <p className="mb-4 font-sans text-[11px] font-bold uppercase tracking-[1.8px] text-accent-foreground">
-          Playback / Records
-        </p>
-        <h1 className="font-serif text-[44px] font-bold leading-[1.06] tracking-[-1.2px]">
+        <p className="mb-2 font-sans text-[11px] font-bold uppercase tracking-[1.5px] text-accent-foreground">Playback Records</p>
+        <h2 className="font-serif text-[34px] font-bold leading-tight">
           播放记录
-        </h1>
+        </h2>
       </section>
 
       <PlaybackRecordsExperience data={data.records} />

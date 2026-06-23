@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+TOP_RECORD_LIMIT = 50
+
 
 def unique_cols(*cols):
     """Return deduplicated column list — first occurrence wins."""
@@ -27,7 +29,12 @@ def safe_groupby_cols(base_cols, group_col, name_col, artist_col):
 
 
 def safe_rename(df, name_col, artist_col):
-    """Rename name_col/artist_col to standard 'name'/'artist_name' columns."""
+    """Rename name_col/artist_col to standard 'name'/'artist_name' columns.
+
+    When name_col == artist_col (e.g. artist records where both are "artist_name"),
+    the column is renamed to "name" and then copied back to "artist_name" so that
+    downstream cover-URL lookup can find the artist name in either column.
+    """
     if name_col != "name" and name_col in df.columns:
         df = df.rename(columns={name_col: "name"})
     if "name" not in df.columns:
@@ -35,5 +42,7 @@ def safe_rename(df, name_col, artist_col):
     if artist_col != "artist_name" and artist_col in df.columns:
         df = df.rename(columns={artist_col: "artist_name"})
     if "artist_name" not in df.columns:
-        df["artist_name"] = ""
+        # When name_col == artist_col the original column was renamed to "name"
+        # above; copy it back so artist cover lookup works.
+        df["artist_name"] = df["name"] if name_col == artist_col else ""
     return df

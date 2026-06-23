@@ -4,7 +4,11 @@ from __future__ import annotations
 
 import pandas as pd
 
-from backend.domains.playback.records_helpers import safe_groupby_cols, safe_rename
+from backend.domains.playback.records_helpers import (
+    TOP_RECORD_LIMIT,
+    safe_groupby_cols,
+    safe_rename,
+)
 
 
 def _group_col_for(frame, entity_type):
@@ -41,7 +45,7 @@ def _skip_storm(frame, group_col, name_col, artist_col, entity_type):
     if agg.empty:
         return pd.DataFrame()
     agg["fwd_rate"] = agg["fwd_plays"] / agg["total_plays"]
-    best = agg.sort_values("fwd_rate", ascending=False).head(15).copy()
+    best = agg.sort_values("fwd_rate", ascending=False).head(TOP_RECORD_LIMIT).copy()
     best["rank"] = range(1, len(best) + 1)
     best["entity_type"] = entity_type
     best["entity_id"] = best[group_col].astype(str)
@@ -69,7 +73,7 @@ def _shuffle_peak(event_frame):
     if daily.empty:
         return pd.DataFrame()
     daily["shuffle_rate"] = daily["shuffle_plays"] / daily["total_plays"]
-    best = daily.sort_values("shuffle_rate", ascending=False).head(5)
+    best = daily.sort_values("shuffle_rate", ascending=False).head(TOP_RECORD_LIMIT)
     rows = []
     for _, row in best.iterrows():
         rows.append(
@@ -113,7 +117,7 @@ def _platform_switch_day(event_frame):
         (df_sorted["platform"] != df_sorted["_prev_platform"]) & df_sorted["_prev_platform"].notna()
     ).astype(int)
     switches = df_sorted.groupby("ts_date")["_switched"].sum().reset_index(name="switch_count")
-    best = switches.sort_values("switch_count", ascending=False).head(5)
+    best = switches.sort_values("switch_count", ascending=False).head(TOP_RECORD_LIMIT)
     rows = []
     for _, row in best.iterrows():
         rows.append(

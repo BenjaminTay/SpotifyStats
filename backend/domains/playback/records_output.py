@@ -97,6 +97,43 @@ def _add_cover_urls_to_records(records: dict) -> None:
             if applied:
                 records[key] = val
 
+    # Name-based track lookup for compound rows such as Daily Total Record.
+    track_name_rows = conn.execute(
+        """SELECT t.track_name, a.artist_name, al.album_id, al.image_path, al.image_url
+           FROM tracks t
+           JOIN artists a ON t.artist_id = a.artist_id
+           LEFT JOIN albums al ON t.album_id = al.album_id"""
+    ).fetchall()
+    track_name_cover_map = {}
+    for r in track_name_rows:
+        key = (r["track_name"], r["artist_name"])
+        url = _build_url(r["image_path"], r["image_url"], "albums", r["album_id"])
+        if url or key not in track_name_cover_map:
+            track_name_cover_map[key] = url
+
+    # Fallback: apply name-based cover lookup to track records that lack
+    # track_id/entity_id (e.g. feat_lover_track which only has name+artist_name).
+    for key, val in records.items():
+        if not isinstance(val, pd.DataFrame) or val.empty:
+            continue
+        if "cover_url" in val.columns:
+            continue  # already handled by ID-based lookup above
+        if "name" not in val.columns or "artist_name" not in val.columns:
+            continue
+        if not _is_track_record(val, key):
+            continue
+        val = val.copy()
+        val["cover_url"] = val.apply(
+            lambda row: track_name_cover_map.get(
+                (
+                    str(row["name"]) if pd.notna(row["name"]) else "",
+                    str(row["artist_name"]) if pd.notna(row["artist_name"]) else "",
+                )
+            ),
+            axis=1,
+        )
+        records[key] = val
+
     # ── Album cover lookup ──
     # Build lookup by (album_name, artist_name)
     album_rows = conn.execute(
@@ -154,6 +191,55 @@ def _add_cover_urls_to_records(records: dict) -> None:
             if cover_col:
                 val["cover_url"] = val[cover_col].map(artist_cover_map)
                 records[key] = val
+
+    def _clean_text(value) -> str:
+        if value is None:
+            return ""
+        try:
+            if pd.isna(value):
+                return ""
+        except (TypeError, ValueError):
+            pass
+        return str(value)
+
+    # ── Daily Total top entity cover lookup ──
+    for key, val in list(records.items()):
+        if not isinstance(val, pd.DataFrame) or val.empty:
+            continue
+        top_cols = {
+            "top_track_name",
+            "top_track_artist_name",
+            "top_album_name",
+            "top_album_artist_name",
+            "top_artist_name",
+        }
+        if not top_cols.intersection(val.columns):
+            continue
+
+        val = val.copy()
+        if {"top_track_name", "top_track_artist_name"}.issubset(val.columns):
+            val["top_track_cover_url"] = val.apply(
+                lambda row: track_name_cover_map.get(
+                    (
+                        _clean_text(row.get("top_track_name")),
+                        _clean_text(row.get("top_track_artist_name")),
+                    )
+                ),
+                axis=1,
+            )
+        if {"top_album_name", "top_album_artist_name"}.issubset(val.columns):
+            val["top_album_cover_url"] = val.apply(
+                lambda row: album_cover_map.get(
+                    (
+                        _clean_text(row.get("top_album_name")),
+                        _clean_text(row.get("top_album_artist_name")),
+                    )
+                ),
+                axis=1,
+            )
+        if "top_artist_name" in val.columns:
+            val["top_artist_cover_url"] = val["top_artist_name"].map(artist_cover_map)
+        records[key] = val
 
     conn.close()
 

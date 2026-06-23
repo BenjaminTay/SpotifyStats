@@ -6,7 +6,7 @@ import sqlite3
 
 import pandas as pd
 
-from backend.domains.playback.records_helpers import safe_groupby_cols
+from backend.domains.playback.records_helpers import TOP_RECORD_LIMIT, safe_groupby_cols
 
 
 def _group_col_for(frame, entity_type):
@@ -33,7 +33,7 @@ def _discovery_day(frame, group_col, name_col, artist_col, entity_type):
     gb_cols = safe_groupby_cols([], group_col, name_col, artist_col)
     first_seen = frame.groupby(gb_cols)["ts_date"].min().reset_index(name="first_date")
     new_per_day = first_seen.groupby("first_date").size().reset_index(name="new_count")
-    best = new_per_day.sort_values("new_count", ascending=False).head(10).copy()
+    best = new_per_day.sort_values("new_count", ascending=False).head(TOP_RECORD_LIMIT).copy()
     best["rank"] = range(1, len(best) + 1)
     best["name"] = best["first_date"].astype(str)
     best["value"] = best["new_count"].astype(float)
@@ -52,7 +52,7 @@ def _same_name_diff_artist(track_frame):
     same_name = (
         same_name[same_name["artist_count"] >= 2]
         .sort_values("artist_count", ascending=False)
-        .head(10)
+        .head(TOP_RECORD_LIMIT)
     )
     if same_name.empty:
         return pd.DataFrame()
@@ -157,9 +157,11 @@ def _album_completionist(frame, conn):
     album_id_col = "album_project_id" if "album_project_id" in frame.columns else "album_name"
     album_name_col = "album_project_name" if "album_project_name" in frame.columns else "album_name"
 
-    # Get distinct tracks per album project
+    song_col = "canonical_song_key" if "canonical_song_key" in frame.columns else "track_id"
+
+    # Get distinct canonical songs per album project
     user_album_tracks = (
-        frame.groupby([album_id_col, album_name_col, "artist_name"])["track_id"]
+        frame.groupby([album_id_col, album_name_col, "artist_name"])[song_col]
         .nunique()
         .reset_index(name="user_track_count")
     )
@@ -177,7 +179,12 @@ def _album_completionist(frame, conn):
             else str(row.get("album_name", ""))
         )
         artist_name = str(row["artist_name"])
-        total = _get_album_total_tracks(conn, album_name, artist_name)
+        project_total = (
+            _get_album_project_total_tracks(conn, row[album_id_col])
+            if album_id_col == "album_project_id"
+            else None
+        )
+        total = project_total or _get_album_total_tracks(conn, album_name, artist_name)
         if total and total > 0:
             completion_pct = min(row["user_track_count"] / total * 100, 100)
         else:
@@ -202,18 +209,37 @@ def _album_completionist(frame, conn):
         ["completion_pct", "user_track_count"],
         ascending=[False, False],
         na_position="last",
-    ).head(15)
+    ).head(TOP_RECORD_LIMIT)
     df["rank"] = range(1, len(df) + 1)
     df["entity_type"] = "album"
     df["value"] = df["completion_pct"].fillna(0).astype(float)
     df["unit"] = "% 完成度"
     df["secondary_value"] = df["user_track_count"].astype(float)
-    df["secondary_unit"] = (
-        f"首 / {int(df['total_tracks'].fillna(0).max())} 首總計"
-        if "total_tracks" in df.columns
-        else "首"
+    df["secondary_unit"] = df["total_tracks"].apply(
+        lambda total: f"首 / {int(total)} 首總計" if pd.notna(total) and int(total) > 0 else "首"
     )
     return df
+
+
+def _get_album_project_total_tracks(conn, album_project_id):
+    """Get album project track membership count for completion percentage."""
+    try:
+        if pd.isna(album_project_id):
+            return None
+        project_id = int(float(album_project_id))
+    except (TypeError, ValueError, OverflowError):
+        return None
+
+    try:
+        row = conn.execute(
+            """SELECT COUNT(DISTINCT track_id) AS total_tracks
+               FROM album_project_tracks
+               WHERE project_id = ?""",
+            (project_id,),
+        ).fetchone()
+        return row["total_tracks"] if row and row["total_tracks"] else None
+    except Exception:
+        return None
 
 
 def _get_album_total_tracks(conn, album_name, artist_name):
@@ -239,11 +265,37 @@ def _get_album_total_tracks(conn, album_name, artist_name):
 
 
 def _has_feat_marker(name):
-    """Check if a track name contains feat/collaboration markers."""
+    """Check if a track name contains feat/collaboration markers.
+
+    Uses regex context matching to distinguish real collaboration markers from
+    ordinary words that happen to appear in song titles:
+
+    - "(feat. X)" / "[feat. X]" / "feat. X" — explicit featured artist
+    - "(with X)" / "[with X]" — parenthesized "with" = collaboration billing
+    - "(vs. X)" / "[vs. X]" / "vs. X" — versus / remix collaboration
+
+    Plain occurrences of "with", "&", "x" in the middle of song titles
+    (e.g. "I'm with You", "Dumb & Poetic", "Taco Truck x VB") are NOT
+    treated as collaboration markers.
+    """
     if not isinstance(name, str):
         return False
-    markers = ["feat.", "ft.", "Feat.", "Ft.", "with ", " & ", " vs. ", " Vs. ", " x "]
-    return any(m in name for m in markers)
+
+    import re
+
+    # feat. / ft. — explicit collab, with or without parentheses/brackets
+    if re.search(r"(?:^|[(\[\s])(?:feat|ft)\.\s", name, re.IGNORECASE):
+        return True
+
+    # (with X) or [with X] — parenthesized "with" indicates featured artist
+    if re.search(r"[(\[]with\s", name, re.IGNORECASE):
+        return True
+
+    # vs. — remix/collaboration marker
+    if re.search(r"(?:^|[(\[\s])vs\.\s", name, re.IGNORECASE):
+        return True
+
+    return False
 
 
 def _feat_lover_track(event_frame):
@@ -278,7 +330,7 @@ def _feat_lover_track(event_frame):
     feat_tracks = (
         ef[ef["_has_feat"]].groupby(["track_name", "artist_name"]).size().reset_index(name="count")
     )
-    top_feat = feat_tracks.sort_values("count", ascending=False).head(10)
+    top_feat = feat_tracks.sort_values("count", ascending=False).head(TOP_RECORD_LIMIT)
 
     rows = []
     for _, row in top_feat.iterrows():
@@ -322,7 +374,7 @@ def _feat_lover_artist(artist_frame):
         return pd.DataFrame()
 
     top_artists = feat_plays.groupby("artist_name").size().reset_index(name="count")
-    top_artists = top_artists.sort_values("count", ascending=False).head(15)
+    top_artists = top_artists.sort_values("count", ascending=False).head(TOP_RECORD_LIMIT)
     top_artists["rank"] = range(1, len(top_artists) + 1)
     top_artists["name"] = top_artists["artist_name"]
     top_artists["value"] = top_artists["count"].astype(float)

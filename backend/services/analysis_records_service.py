@@ -74,9 +74,12 @@ def _build_entity_frames(
             membership = load_album_project_membership(conn, merge_level, include_compilations)
 
             if not membership.empty and "canonical_song_key" in events_with_keys.columns:
+                membership_join = membership[
+                    ["canonical_song_key", "project_id", "album_project_name"]
+                ].rename(columns={"project_id": "album_project_id"})
                 # Join each play event to its album project via canonical song key
                 merged = events_with_keys.merge(
-                    membership[["canonical_song_key", "album_project_id", "album_project_name"]],
+                    membership_join,
                     on="canonical_song_key",
                     how="left",
                 )

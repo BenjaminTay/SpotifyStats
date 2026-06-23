@@ -4,7 +4,11 @@ from __future__ import annotations
 
 import pandas as pd
 
-from backend.domains.playback.records_helpers import safe_groupby_cols, safe_rename
+from backend.domains.playback.records_helpers import (
+    TOP_RECORD_LIMIT,
+    safe_groupby_cols,
+    safe_rename,
+)
 
 
 def _daily_champion(frame, group_col, name_col, artist_col, entity_type="track"):
@@ -25,7 +29,7 @@ def _daily_champion(frame, group_col, name_col, artist_col, entity_type="track")
         .size()
         .reset_index(name="champion_days")
         .sort_values("champion_days", ascending=False)
-        .head(15)
+        .head(TOP_RECORD_LIMIT)
     )
     counts["rank"] = range(1, len(counts) + 1)
     counts["entity_type"] = entity_type
@@ -55,7 +59,7 @@ def _monthly_reign(frame, group_col, name_col, artist_col, entity_type="track"):
         .size()
         .reset_index(name="month_champion")
         .sort_values("month_champion", ascending=False)
-        .head(15)
+        .head(TOP_RECORD_LIMIT)
     )
     counts["rank"] = range(1, len(counts) + 1)
     counts["entity_type"] = entity_type
@@ -75,7 +79,9 @@ def _yearly_reign(frame, group_col, name_col, artist_col, entity_type="track"):
     if yearly.empty:
         return pd.DataFrame()
     idx = yearly.groupby("ts_year")["plays"].idxmax()
-    champions = yearly.loc[idx].sort_values("ts_year", ascending=False).head(15).copy()
+    champions = (
+        yearly.loc[idx].sort_values("ts_year", ascending=False).head(TOP_RECORD_LIMIT).copy()
+    )
     champions["rank"] = range(1, len(champions) + 1)
     champions["entity_type"] = entity_type
     champions["entity_id"] = champions[group_col].astype(str)
@@ -150,7 +156,7 @@ def _fastest_milestone(frame, group_col, name_col, artist_col, entity_type="trac
 
     if not results:
         return pd.DataFrame()
-    df = pd.DataFrame(results).sort_values("days_to_milestone").head(15)
+    df = pd.DataFrame(results).sort_values("days_to_milestone").head(TOP_RECORD_LIMIT)
     df["rank"] = range(1, len(df) + 1)
     df["entity_type"] = entity_type
     df["value"] = df["days_to_milestone"].astype(float)
@@ -214,7 +220,7 @@ def _consecutive_champion_days(frame, group_col, name_col, artist_col, entity_ty
 
     if not results:
         return pd.DataFrame()
-    df = pd.DataFrame(results).sort_values("streak_days", ascending=False).head(10)
+    df = pd.DataFrame(results).sort_values("streak_days", ascending=False).head(TOP_RECORD_LIMIT)
     df["rank"] = range(1, len(df) + 1)
     df["entity_type"] = entity_type
     df["value"] = df["streak_days"].astype(float)

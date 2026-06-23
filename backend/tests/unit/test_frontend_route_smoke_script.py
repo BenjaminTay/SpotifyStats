@@ -57,6 +57,8 @@ def test_frontend_route_smoke_script_checks_route_content_markers():
 
     assert "ROUTE_READY_MARKERS" in source
     assert "'/billboard/records': ['CHART / HALL OF FAME', '冠军圣殿']" in source
+    assert "'/analysis/records': ['PLAYBACK RECORDS', '狂热时刻']" in source
+    assert "'/analysis/records': ['有效播放', '狂热时刻']" not in source
     assert "missing route content marker" in source
     assert "--disable-route-markers" in source
 

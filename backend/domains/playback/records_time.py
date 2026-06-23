@@ -4,7 +4,11 @@ from __future__ import annotations
 
 import pandas as pd
 
-from backend.domains.playback.records_helpers import safe_groupby_cols, safe_rename
+from backend.domains.playback.records_helpers import (
+    TOP_RECORD_LIMIT,
+    safe_groupby_cols,
+    safe_rename,
+)
 
 
 def _entity_hourly_dominance(frame, group_col, name_col, artist_col, entity_type):
@@ -38,7 +42,7 @@ def _entity_monthly_peak(frame, group_col, name_col, artist_col, entity_type):
     if monthly.empty:
         return pd.DataFrame()
     idx = monthly.groupby("_ym")["plays"].idxmax()
-    best = monthly.loc[idx].sort_values("plays", ascending=False).head(15).copy()
+    best = monthly.loc[idx].sort_values("plays", ascending=False).head(TOP_RECORD_LIMIT).copy()
     best["rank"] = range(1, len(best) + 1)
     best["entity_type"] = entity_type
     best["entity_id"] = best[group_col].astype(str)
@@ -135,7 +139,7 @@ def _late_night_peak_day(event_frame):
     if merged.empty:
         return pd.DataFrame()
     merged["late_ratio"] = merged["late_plays"] / merged["total_plays"]
-    best = merged.sort_values("late_ratio", ascending=False).head(5)
+    best = merged.sort_values("late_ratio", ascending=False).head(TOP_RECORD_LIMIT)
     rows = []
     for _, row in best.iterrows():
         rows.append(
@@ -212,4 +216,4 @@ def _new_year_eve(event_frame):
             }
         )
 
-    return pd.DataFrame(results).head(5) if results else pd.DataFrame()
+    return pd.DataFrame(results).head(TOP_RECORD_LIMIT) if results else pd.DataFrame()

@@ -49,7 +49,7 @@ const ROUTE_READY_MARKERS = {
   '/analysis': ['PERSONAL STATS', '总体播放统计'],
   '/analysis/stats': ['PERSONAL STATS', '总体播放统计'],
   '/analysis/charts': ['PERSONAL CHARTS', '个人排行榜'],
-  '/analysis/records': ['有效播放', '狂热时刻'],
+  '/analysis/records': ['PLAYBACK RECORDS', '狂热时刻'],
   '/analysis/timeline': ['PERSONAL STATS', '总体播放统计'],
   '/analysis/leaderboard': ['PERSONAL CHARTS', '个人排行榜'],
   '/analysis/behavior': ['PERSONAL STATS', '总体播放统计'],

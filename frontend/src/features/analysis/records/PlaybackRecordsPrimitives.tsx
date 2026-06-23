@@ -1,6 +1,6 @@
 /** Shared UI primitives for Playback Records — aligned with Billboard RecordsPrimitives. */
 
-import { type ReactNode, useState } from 'react'
+import { createContext, type ReactNode, useCallback, useContext, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react'
 import { Link } from 'react-router-dom'
@@ -63,20 +63,7 @@ function ArtistCoverImg({ url, size = 'sm' }: { url?: string | null; size?: 'sm'
 // Pagination Portal
 // ═══════════════════════════════════════════════════════════════════════════
 
-const PaginationPortalCtx = (() => {
-  let target: HTMLElement | null = null
-  let trigger = () => {}
-  return {
-    setTarget: (el: HTMLElement | null) => { target = el; trigger() },
-    subscribe: (fn: () => void) => { trigger = fn },
-    getTarget: () => target,
-  }
-})()
-
-function usePaginationPortal() {
-  const [, setTick] = useState(0)
-  PaginationPortalCtx.subscribe(() => setTick((t) => t + 1))
-}
+const PaginationPortalContext = createContext<HTMLElement | null>(null)
 
 // ═══════════════════════════════════════════════════════════════════════════
 // SectionHeader
@@ -157,24 +144,29 @@ export function RecordCard({
   toggle?: ReactNode
   children: ReactNode
 }) {
-  const portalRef = (el: HTMLDivElement | null) => PaginationPortalCtx.setTarget(el)
+  const [portalTarget, setPortalTarget] = useState<HTMLDivElement | null>(null)
+  const portalRef = useCallback((el: HTMLDivElement | null) => {
+    setPortalTarget(el)
+  }, [])
 
   return (
-    <GlassCard className="mb-5 p-5">
-      <div className="mb-4 flex items-center justify-between gap-3">
-        <div>
-          <h3 className="font-serif text-[18px] font-bold tracking-[-0.3px]">{title}</h3>
-          {subtitle && (
-            <p className="mt-0.5 font-sans text-[11px] text-muted-foreground">{subtitle}</p>
-          )}
+    <PaginationPortalContext.Provider value={portalTarget}>
+      <GlassCard className="mb-5 p-5">
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <div>
+            <h3 className="font-serif text-[18px] font-bold tracking-[-0.3px]">{title}</h3>
+            {subtitle && (
+              <p className="mt-0.5 font-sans text-[11px] text-muted-foreground">{subtitle}</p>
+            )}
+          </div>
+          <div className="flex shrink-0 items-center gap-3">
+            {toggle}
+            <div ref={portalRef} />
+          </div>
         </div>
-        <div className="flex shrink-0 items-center gap-3">
-          {toggle}
-          <div ref={portalRef} />
-        </div>
-      </div>
-      {children}
-    </GlassCard>
+        {children}
+      </GlassCard>
+    </PaginationPortalContext.Provider>
   )
 }
 
@@ -263,8 +255,9 @@ export function MiniRankTable({
   const totalPages = Math.max(1, Math.ceil(rows.length / perPage))
   const start = page * perPage
   const pageRows = rows.slice(start, start + perPage)
-
-  usePaginationPortal()
+  const minTableWidth = columns.every((col) => col.width?.endsWith('px'))
+    ? `${columns.reduce((sum, col) => sum + Number.parseInt(col.width ?? '0', 10), 0)}px`
+    : undefined
 
   if (rows.length === 0) {
     return <p className="py-4 text-center font-sans text-[12px] text-muted-foreground">{emptyText}</p>
@@ -311,7 +304,7 @@ export function MiniRankTable({
     </div>
   )
 
-  const portalTarget = PaginationPortalCtx.getTarget()
+  const portalTarget = useContext(PaginationPortalContext)
   const pagination = totalPages > 1 ? (
     portalTarget ? (
       createPortal(paginationBar, portalTarget)
@@ -324,14 +317,14 @@ export function MiniRankTable({
     <div>
       {!portalTarget && pagination}
       <div className="overflow-x-auto">
-        <table className={cn('w-full', fixed && 'table-fixed')}>
+        <table className={cn('w-full', fixed && 'table-fixed')} style={minTableWidth ? { minWidth: minTableWidth } : undefined}>
           <thead>
             <tr className="border-b border-border">
               {columns.map((col, i) => (
                 <th
                   key={i}
                   className={cn(
-                    'pb-2 font-sans text-[10px] font-bold uppercase tracking-[1.2px] text-muted-foreground',
+                    'whitespace-nowrap pb-2 font-sans text-[10px] font-bold uppercase tracking-[1.2px] text-muted-foreground',
                     col.align === 'right' && 'text-right',
                     col.align === 'center' && 'text-center',
                   )}

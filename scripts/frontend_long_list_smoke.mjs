@@ -358,10 +358,16 @@ async function detectPageText(client, patternSource, timeoutMs, focusText = null
             return document.body;
           };
           const scope = findScope();
-          const candidates = Array.from(scope.querySelectorAll('span,p,div'))
+          let candidates = Array.from(scope.querySelectorAll('span,p,div'))
             .map((el) => normalize(el.innerText || el.textContent || ''))
             .filter((text) => text.length > 0 && text.length < 140 && pattern.test(text))
             .sort((a, b) => a.length - b.length);
+          if (candidates.length === 0 && scope !== document.body) {
+            candidates = Array.from(document.querySelectorAll('span,p,div'))
+              .map((el) => normalize(el.innerText || el.textContent || ''))
+              .filter((text) => text.length > 0 && text.length < 140 && pattern.test(text))
+              .sort((a, b) => a.length - b.length);
+          }
           const text = candidates[0] || '';
           return text ? { text, path: location.pathname } : null;
         })();
@@ -497,12 +503,20 @@ async function clickFirstEnabledPaginationButtonNearText(client, patternSource, 
         return buttonOnlyScope || document.body;
       };
       const scope = focusScope();
-      const textElements = Array.from(scope.querySelectorAll('span,p,div'))
+      let textElements = Array.from(scope.querySelectorAll('span,p,div'))
         .filter((el) => {
           const text = normalize(el.innerText || el.textContent || '');
           return text.length > 0 && text.length < 140 && pattern.test(text);
         })
         .sort((a, b) => normalize(a.innerText).length - normalize(b.innerText));
+      if (textElements.length === 0 && scope !== document.body) {
+        textElements = Array.from(document.querySelectorAll('span,p,div'))
+          .filter((el) => {
+            const text = normalize(el.innerText || el.textContent || '');
+            return text.length > 0 && text.length < 140 && pattern.test(text);
+          })
+          .sort((a, b) => normalize(a.innerText).length - normalize(b.innerText));
+      }
       const textEl = textElements[0];
       if (!textEl) return { ok: false, reason: 'pagination text not found' };
       const pageText = normalize(textEl.innerText || textEl.textContent || '');
@@ -732,7 +746,7 @@ const SCENARIOS = {
     ...ctx,
     route: '/analysis/records',
     readyText: '狂热时刻',
-    pagePattern: '\\d+\\s*/\\s*\\d+',
+    pagePattern: '\\d+\\s*—\\s*\\d+\\s*/\\s*\\d+',
     focusText: '单日爆听',
   }),
 }

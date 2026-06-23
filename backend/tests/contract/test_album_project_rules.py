@@ -11,6 +11,8 @@ from backend.domains.playback.album_projects import (
     compute_album_source_breakdown,
     load_album_project_membership,
 )
+from backend.domains.playback.records_discovery import _album_completionist
+from backend.services.analysis_records_service import _build_entity_frames
 
 pytestmark = pytest.mark.contract
 
@@ -83,6 +85,78 @@ def test_album_membership_has_one_default_project_per_canonical_song(seed_conn):
     membership = load_album_project_membership(seed_conn, merge_level=2, include_compilations=True)
     duplicated = membership[membership.duplicated(["canonical_song_key"], keep=False)]
     assert duplicated.empty
+
+
+def test_analysis_records_album_frame_uses_album_project_membership(seed_conn):
+    df = load_plays(seed_conn, min_ms=30000, music_only=True, merge_enabled=True)
+
+    _, album_frame, _ = _build_entity_frames(
+        df,
+        seed_conn,
+        merge_level=2,
+        include_compilations=False,
+        min_ms=30000,
+        music_only=True,
+        merge_enabled=True,
+    )
+
+    future_rows = album_frame[album_frame["track_id"].isin([920, 921, 922])]
+    assert not future_rows.empty
+    assert set(future_rows["album_project_name"]) == {"Fixture Future LP"}
+    assert set(future_rows["album_project_id"]) == {3}
+
+
+def test_album_completionist_uses_row_level_total_tracks(seed_conn):
+    import pandas as pd
+
+    frame = pd.DataFrame(
+        [
+            {
+                "album_project_id": "future",
+                "album_project_name": "Fixture Future LP",
+                "artist_name": "Fixture Artist Alpha",
+                "track_id": track_id,
+            }
+            for track_id in [920, 921, 922]
+        ]
+        + [
+            {
+                "album_project_id": "future-deluxe",
+                "album_project_name": "Fixture Future LP Deluxe",
+                "artist_name": "Fixture Artist Alpha",
+                "track_id": track_id,
+            }
+            for track_id in [920, 921, 922]
+        ]
+    )
+
+    result = _album_completionist(frame, seed_conn).set_index("name")
+
+    assert result.loc["Fixture Future LP", "secondary_unit"] == "首 / 10 首總計"
+    assert result.loc["Fixture Future LP Deluxe", "secondary_unit"] == "首 / 12 首總計"
+
+
+def test_album_completionist_uses_album_project_canonical_song_total(seed_conn):
+    import pandas as pd
+
+    frame = pd.DataFrame(
+        [
+            {
+                "album_project_id": 3,
+                "album_project_name": "Fixture Future LP",
+                "artist_name": "Fixture Artist Alpha",
+                "track_id": track_id,
+                "canonical_song_key": str(track_id),
+            }
+            for track_id in [920, 921, 922]
+        ]
+    )
+
+    result = _album_completionist(frame, seed_conn).iloc[0]
+
+    assert result["value"] == 100.0
+    assert result["secondary_value"] == 3.0
+    assert result["secondary_unit"] == "首 / 3 首總計"
 
 
 def test_album_detail_includes_album_project_payload(use_seed_db):
