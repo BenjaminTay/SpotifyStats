@@ -172,7 +172,7 @@ def load_album_project_membership(
                   apt.inferred
            FROM album_project_tracks apt
            JOIN album_projects ap ON ap.project_id = apt.project_id
-           JOIN artists ar ON ar.artist_id = ap.artist_id
+           LEFT JOIN artists ar ON ar.artist_id = ap.artist_id
            JOIN tracks t ON t.track_id = apt.track_id
            LEFT JOIN album_project_albums apa
              ON apa.project_id = apt.project_id
@@ -376,10 +376,21 @@ def _bootstrap_from_release_groups(conn: sqlite3.Connection) -> None:
            ORDER BY rg.group_id"""
     ).fetchall()
     for group in groups:
+        artist_id = int(group["artist_id"])
+        # 🌟 防御：artist_id 为 0 时从 albums 表纠正（防止手动创建的 release group 缺艺人 ID）
+        if artist_id <= 0 and group["primary_album_id"]:
+            fallback = conn.execute(
+                "SELECT artist_id FROM albums WHERE album_id = ?",
+                (group["primary_album_id"],),
+            ).fetchone()
+            if fallback:
+                artist_id = int(fallback["artist_id"])
+        if artist_id <= 0:
+            continue
         project_id = _upsert_project(
             conn,
             canonical_name=group["canonical_name"],
-            artist_id=group["artist_id"],
+            artist_id=artist_id,
             primary_album_id=group["primary_album_id"],
             release_date=group["release_date"],
             scope=group["scope"],
@@ -416,12 +427,14 @@ def _bootstrap_from_release_groups(conn: sqlite3.Connection) -> None:
 def _bootstrap_standalone_album_projects(conn: sqlite3.Connection) -> None:
     albums = conn.execute(
         """SELECT al.album_id, al.album_name, al.artist_id, ar.artist_name,
-                  sam.album_type, sam.total_tracks, sam.release_date
+                  sam.album_type, sam.total_tracks, sam.release_date,
+                  COUNT(DISTINCT t.track_id) AS local_tracks
            FROM albums al
            JOIN artists ar ON ar.artist_id = al.artist_id
            LEFT JOIN spotify_album_meta sam
              ON lower(sam.album_name) = lower(al.album_name)
             AND (sam.album_artists IS NULL OR instr(lower(sam.album_artists), lower(ar.artist_name)) > 0)
+           LEFT JOIN tracks t ON t.album_id = al.album_id
            WHERE NOT EXISTS (
                SELECT 1
                FROM release_group_members rgm
@@ -429,12 +442,38 @@ def _bootstrap_standalone_album_projects(conn: sqlite3.Connection) -> None:
                WHERE rgm.album_id = al.album_id
                  AND rg.scope = 'release'
            )
+           GROUP BY al.album_id
            ORDER BY al.album_id"""
     ).fetchall()
     from backend.domains.playback.album_type import classify_album
 
     for album in albums:
-        category = classify_album(album["album_type"], total_tracks=album["total_tracks"])
+        spotify_type = album["album_type"]
+        spotify_tracks = album["total_tracks"]
+        local_tracks = int(album["local_tracks"] or 0)
+
+        # Skip compilations (handled by _bootstrap_compilation_exclusive_projects)
+        if (spotify_type or "").lower() == "compilation":
+            continue
+
+        # Use local track count as fallback when Spotify metadata is missing
+        effective_tracks = (
+            int(spotify_tracks)
+            if spotify_tracks is not None and int(spotify_tracks) > 0
+            else local_tracks
+        )
+
+        category = classify_album(
+            spotify_type,
+            total_tracks=effective_tracks if effective_tracks > 0 else None,
+        )
+
+        # 容错：无 Spotify 元数据但有足够本地曲目的专辑，按本地曲目数分级
+        if category == "unknown" and local_tracks >= 7:
+            category = "lp"
+        elif category == "unknown" and 3 <= local_tracks <= 6:
+            category = "ep"
+
         if category not in {"lp", "ep"}:
             continue
         project_id = _upsert_project(

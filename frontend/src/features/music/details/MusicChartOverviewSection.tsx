@@ -172,8 +172,6 @@ export function MusicChartOverviewSection({
                   const maxPlays = Math.max(...weeklyHistory.map((entry) => entry.play_count), 1)
                   return weeklyHistory.map((entry) => {
                     const change = parseChange(entry.change)
-                    const isNewOrRe = change.type === 'new' || change.type === 're'
-                    const effectivePeak = isNewOrRe ? entry.rank : entry.running_peak
 
                     return (
                       <tr key={entry.week} className="transition-colors hover:bg-muted/50">
@@ -208,12 +206,12 @@ export function MusicChartOverviewSection({
                         <td
                           className={cn(
                             'pb-3.5 pt-3.5 text-right font-sans text-[13px]',
-                            effectivePeak === 1
+                            entry.running_peak === 1
                               ? 'font-bold text-accent-foreground'
                               : 'text-muted-foreground',
                           )}
                         >
-                          {effectivePeak}
+                          {entry.running_peak}
                         </td>
                         <td className="pb-3.5 pt-3.5 text-right font-sans text-[13px] text-muted-foreground">
                           {entry.running_peak_wks > 0 ? (

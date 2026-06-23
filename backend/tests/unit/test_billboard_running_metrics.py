@@ -38,7 +38,7 @@ def test_add_running_metrics_matches_group_peak_week_semantics():
     track_one = result[result["track_id"] == 1].sort_values("billboard_week")
     assert track_one["running_peak"].tolist() == [5, 3, 3]
     assert track_one["running_wks"].tolist() == [1, 2, 3]
-    assert track_one["running_peak_wks"].tolist() == [0, 1, 2]
+    assert track_one["running_peak_wks"].tolist() == [1, 1, 2]
 
     track_two = result[result["track_id"] == 2].iloc[0]
     assert track_two["running_peak"] == 1

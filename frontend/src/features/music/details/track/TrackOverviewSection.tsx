@@ -138,7 +138,6 @@ export function TrackOverviewSection({ data }: Props) {
                 const maxPlays = Math.max(...data.history.map((e) => e.play_count), 1)
                 return data.history.map((entry) => {
                   const change = parseChange(entry.change)
-                  const isNewOrRe = change.type === 'new' || change.type === 're'
                   const rankColor = entry.rank === 1 ? 'var(--accent-foreground)' : entry.rank === 2 ? undefined : entry.rank === 3 ? '#C17A4E' : undefined
                   return (
                     <tr
@@ -174,10 +173,10 @@ export function TrackOverviewSection({ data }: Props) {
                       <td
                         className={cn(
                           'pb-3.5 pt-3.5 text-right font-sans text-[13px]',
-                          (isNewOrRe ? entry.rank : entry.running_peak) === 1 ? 'font-bold text-accent-foreground' : 'text-muted-foreground',
+                          entry.running_peak === 1 ? 'font-bold text-accent-foreground' : 'text-muted-foreground',
                         )}
                       >
-                        {isNewOrRe ? entry.rank : entry.running_peak}
+                        {entry.running_peak}
                       </td>
                       <td className="pb-3.5 pt-3.5 text-right font-sans text-[13px] text-muted-foreground">
                         {entry.running_peak_wks > 0 ? (

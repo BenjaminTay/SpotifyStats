@@ -396,10 +396,10 @@ export function BillboardPage() {
                         <td
                           className={cn(
                             'pb-3.5 pt-3.5 text-right font-sans text-[13px]',
-                            (isNewOrRe ? entry.rank : runningPeak) === 1 ? 'font-bold text-accent-foreground' : 'text-muted-foreground',
+                            runningPeak === 1 ? 'font-bold text-accent-foreground' : 'text-muted-foreground',
                           )}
                         >
-                          {isNewOrRe ? entry.rank : runningPeak}
+                          {runningPeak}
                         </td>
                         <td className="pb-3.5 pt-3.5 text-right font-sans text-[13px] text-muted-foreground">
                           {runningPeakWks > 0 ? (

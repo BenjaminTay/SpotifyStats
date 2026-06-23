@@ -279,16 +279,24 @@ def _add_running_metrics(df, group_cols):
     df["running_peak"] = groups["rank"].cummin()
     df["running_wks"] = groups.cumcount() + 1
 
-    peak_rank = groups["rank"].transform("min")
-    peak_weeks = (
-        df.loc[df["rank"].eq(peak_rank), cols + ["billboard_week"]]
-        .groupby(cols, sort=False)["billboard_week"]
-        .min()
-        .reset_index()
-        .rename(columns={"billboard_week": "_peak_week"})
-    )
-    df = df.merge(peak_weeks, on=cols, how="left")
-    df["running_peak_wks"] = (
-        (pd.to_datetime(df["billboard_week"]) - pd.to_datetime(df["_peak_week"])).dt.days // 7
-    ) + 1
-    return df.drop(columns=["_peak_week"])
+    # running_peak_wks: cumulative count of weeks at the running peak (cummin).
+    # Accumulates across non-consecutive returns to the same peak level;
+    # resets only when a new (better) peak is achieved.
+    # Non-peak weeks carry the last accumulated count forward so the counter
+    # is always visible.  This is a real-time metric — it doesn't know
+    # about future peaks.
+    results = []
+    for _, g in df.groupby(cols, sort=False):
+        at_run = g["rank"] == g["running_peak"]
+        rp_id = g["running_peak"].ne(g["running_peak"].shift()).cumsum()
+        result = pd.Series(pd.NA, index=g.index, dtype="Int64")
+        mask = at_run.values
+        if mask.any():
+            result.loc[mask] = (
+                g.loc[mask].groupby(rp_id.loc[mask], sort=False).cumcount() + 1
+            ).astype("Int64")
+        # Forward-fill accumulated count across non-peak weeks within each rp_id
+        result = result.groupby(rp_id, sort=False).ffill().fillna(0).astype(int)
+        results.append(result)
+    df["running_peak_wks"] = pd.concat(results).astype(int)
+    return df
