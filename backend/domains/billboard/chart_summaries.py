@@ -93,8 +93,10 @@ def compute_artist_summary(weekly: pd.DataFrame) -> pd.DataFrame:
     peak_position, weeks_on_chart, weeks_at_peak, first_week, last_week, total_chart_plays.
     """
     weekly_fanned = fan_out_weekly_for_artists(weekly)
-    return (
-        weekly_fanned.groupby(["artist_name", "track_id", "track_name", "album_name"])
+    # Aggregate per (artist, track) — a track may chart across multiple albums
+    # (single → album → deluxe), so merge those periods together.
+    agg = (
+        weekly_fanned.groupby(["artist_name", "track_id", "track_name"])
         .agg(
             peak_position=("rank", "min"),
             weeks_on_chart=("billboard_week", "nunique"),
@@ -105,6 +107,16 @@ def compute_artist_summary(weekly: pd.DataFrame) -> pd.DataFrame:
         )
         .reset_index()
     )
+    # Pick one representative album_name (the one with the most charting rows)
+    album_pick = (
+        weekly_fanned.groupby(["artist_name", "track_id", "track_name", "album_name"])
+        .size()
+        .reset_index(name="_cnt")
+        .sort_values("_cnt", ascending=False)
+        .drop_duplicates(["artist_name", "track_id", "track_name"])
+        .drop(columns=["_cnt"])
+    )
+    return agg.merge(album_pick, on=["artist_name", "track_id", "track_name"], how="left")
 
 
 def compute_artist_track_counts(

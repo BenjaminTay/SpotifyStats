@@ -156,8 +156,8 @@ def _get_cover_cdn_url(cover_type: str, entity_id: int) -> str | None:
     try:
         if cover_type == "albums":
             row = conn.execute(
-                """SELECT image_url
-                   FROM (
+                """SELECT image_url FROM (
+                       -- ① Local cache in albums table
                        SELECT image_url, 0 AS priority
                        FROM albums
                        WHERE album_id = ?
@@ -166,23 +166,46 @@ def _get_cover_cdn_url(cover_type: str, entity_id: int) -> str | None:
 
                        UNION ALL
 
-                       SELECT sam.image_url, 1 AS priority
-                       FROM (
-                           SELECT track_id FROM tracks WHERE album_id = ?
-                           UNION
-                           SELECT track_id FROM track_albums WHERE album_id = ?
-                       ) album_tracks
-                       JOIN tracks t ON t.track_id = album_tracks.track_id
-                       JOIN spotify_track_meta stm
-                         ON t.spotify_track_id = stm.spotify_track_id
-                       JOIN spotify_album_meta sam
-                         ON sam.spotify_album_id = stm.spotify_album_id
-                       WHERE sam.image_url IS NOT NULL
-                         AND sam.image_url != ''
+                       -- ② album_spotify_links (prefer album-type)
+                       SELECT image_url, 1 AS priority FROM (
+                           SELECT sam.image_url,
+                                  CASE sam.album_type WHEN 'album' THEN 0 ELSE 1 END AS _sort,
+                                  asl.confidence
+                           FROM album_spotify_links asl
+                           JOIN spotify_album_meta sam
+                             ON sam.spotify_album_id = asl.spotify_album_id
+                           WHERE asl.album_id = ?
+                             AND sam.image_url IS NOT NULL
+                             AND sam.image_url != ''
+                           ORDER BY _sort, asl.confidence DESC, sam.release_date DESC
+                           LIMIT 1
+                       )
+
+                       UNION ALL
+
+                       -- ③ Old track-chain fallback
+                       SELECT image_url, 2 AS priority FROM (
+                           SELECT sam.image_url,
+                                  CASE sam.album_type WHEN 'album' THEN 0 ELSE 1 END AS _sort
+                           FROM (
+                               SELECT track_id FROM tracks WHERE album_id = ?
+                               UNION
+                               SELECT track_id FROM track_albums WHERE album_id = ?
+                           ) album_tracks
+                           JOIN tracks t ON t.track_id = album_tracks.track_id
+                           JOIN spotify_track_meta stm
+                             ON t.spotify_track_id = stm.spotify_track_id
+                           JOIN spotify_album_meta sam
+                             ON sam.spotify_album_id = stm.spotify_album_id
+                           WHERE sam.image_url IS NOT NULL
+                             AND sam.image_url != ''
+                           ORDER BY _sort
+                           LIMIT 1
+                       )
                    )
                    ORDER BY priority
                    LIMIT 1""",
-                [entity_id, entity_id, entity_id],
+                [entity_id, entity_id, entity_id, entity_id],
             ).fetchone()
         elif cover_type == "artists":
             row = conn.execute(
@@ -195,13 +218,94 @@ def _get_cover_cdn_url(cover_type: str, entity_id: int) -> str | None:
     return row["image_url"] if row and row["image_url"] else None
 
 
+def _get_entity_name(cover_type: str, entity_id: int) -> tuple[str | None, str | None]:
+    """查询实体名称，用于 Spotify API 搜索。返回 (name, artist_name_or_None)。"""
+    from backend.core.db import get_db
+
+    conn = get_db()
+    try:
+        if cover_type == "albums":
+            row = conn.execute(
+                "SELECT album_name, artist_name FROM albums "
+                "JOIN artists ON artists.artist_id = albums.artist_id "
+                "WHERE album_id = ?",
+                [entity_id],
+            ).fetchone()
+            if row:
+                return row["album_name"], row["artist_name"]
+        elif cover_type == "artists":
+            row = conn.execute(
+                "SELECT artist_name FROM artists WHERE artist_id = ?", [entity_id]
+            ).fetchone()
+            if row:
+                return row["artist_name"], None
+    finally:
+        conn.close()
+    return None, None
+
+
+def _store_cover_url(cover_type: str, entity_id: int, image_url: str):
+    """将 Spotify API 获取的封面 URL 写回数据库。"""
+    from backend.core.db import get_db
+
+    conn = get_db(readonly=False)
+    try:
+        if cover_type == "albums":
+            conn.execute(
+                "UPDATE albums SET image_url = ? WHERE album_id = ?",
+                [image_url, entity_id],
+            )
+        elif cover_type == "artists":
+            conn.execute(
+                "UPDATE artists SET image_url = ? WHERE artist_id = ?",
+                [image_url, entity_id],
+            )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _search_spotify_cover(cover_type: str, entity_id: int) -> str | None:
+    """通过 Spotify API 搜索专辑/艺人封面 URL。
+
+    仅在本地缓存和数据库 CDN URL 均缺失时调用。
+    成功后会自动将 URL 写回数据库，后续请求直接命中 DB 缓存。
+    """
+    from backend.providers.spotify.client import SpotifyProvider
+
+    entity_name, artist_name = _get_entity_name(cover_type, entity_id)
+    if not entity_name:
+        return None
+
+    provider = SpotifyProvider()
+    token = provider.get_cc_token()
+    if not token:
+        return None
+
+    try:
+        if cover_type == "albums" and artist_name:
+            url = provider.search_album_cover(entity_name, artist_name, token)
+        elif cover_type == "artists":
+            url = provider.search_artist_cover(entity_name, token)
+        else:
+            url = None
+
+        if url:
+            _store_cover_url(cover_type, entity_id, url)
+        return url
+    except Exception:
+        logger.exception("Spotify cover search failed: %s/%s", cover_type, entity_id)
+        return None
+
+
 @app.get("/covers/{cover_type}/{entity_id}.jpg")
 async def get_cover(cover_type: str, entity_id: int):
-    """封面图片服务，三级回退链：
+    """封面图片服务，四级回退链：
 
     1. 本地缓存命中 → 直接返回文件（最快）
     2. 本地缺失 → 查 DB 获取 Spotify CDN URL → 重定向到 CDN + 后台下载缓存
-    3. 无 CDN URL → 404
+    3. 无 CDN URL → 通过 Spotify API 搜索封面 → 写回 DB → 重定向 + 后台下载
+    4. API 搜索无结果 → 404
     """
     if cover_type not in ("albums", "artists"):
         raise HTTPException(status_code=404)
@@ -212,8 +316,13 @@ async def get_cover(cover_type: str, entity_id: int):
     if os.path.isfile(filepath):
         return FileResponse(filepath, media_type="image/jpeg")
 
-    # ② 本地缺失，尝试从 CDN 获取
+    # ② 本地缺失，尝试从 DB CDN URL 获取
     cdn_url = _get_cover_cdn_url(cover_type, entity_id)
+
+    # ③ DB 也无 URL，尝试通过 Spotify API 搜索
+    if not cdn_url:
+        cdn_url = _search_spotify_cover(cover_type, entity_id)
+
     if cdn_url:
         from backend.core.job_queue import Job, get_job_queue
 
@@ -222,7 +331,7 @@ async def get_cover(cover_type: str, entity_id: int):
         get_job_queue().enqueue_if_not_pending(job)
         return RedirectResponse(url=cdn_url)
 
-    # ③ 无数据
+    # ④ 无数据
     raise HTTPException(status_code=404)
 
 

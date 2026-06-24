@@ -741,3 +741,23 @@ GUTS (spilled) / 2024-03-22
 - 精选集独有曲目可以形成 compilation-exclusive project。
 - track-source weekly pre-aggregation 与 raw fallback 在新 album project 口径下一致。
 - 专辑详情页返回 `album_project` payload，并展示来源拆分与项目曲目集合。
+
+---
+
+## 18. Import-Time Derived Data Maintenance
+
+导入新的 Extended Streaming History 后，系统必须动态维护后端数据库，而不是假设所有歌曲、专辑和艺人都已经在旧库中出现过。
+
+导入阶段分为两步：
+
+1. `import_data()` 只负责确定性的本地事实：播放事件、艺人/专辑/曲目维度、featured artist、原始 Spotify track URI，以及播放当时的 `spotify_track_id_at_play`。
+2. 导入 job 在标记 `done` 前运行后置维护：刷新 Spotify track/album 元数据、建立本地 album 到 Spotify album 的证据链接、重建 album projects、重建周聚合表、清理缓存，并返回导入健康报告。
+
+维护不变式：
+
+- 新播放记录中的 Spotify track id 要优先来自原始播放行，而不是只依赖 `tracks` 维表中的当前值。
+- 本地 `albums` 不直接承载唯一 Spotify album 归属；`album_spotify_links` 记录证据、置信度、播放数、曲目数与首次/末次出现时间。
+- album project bootstrap 必须优先使用 `album_spotify_links` 指向的 Spotify album metadata；同名 single 与完整专辑冲突时，完整专辑候选优先。
+- 如果 Spotify API 凭据缺失或上游失败，导入仍应完成基础播放数据写入，并返回 `maintenance_status=partial`；不得让新歌播放记录整体不可用。
+- `build_aggregations()` 必须在 metadata refresh 和 album project rebuild 之后运行，避免榜单基于旧封面、旧 duration 或旧 album project membership。
+- 既有数据库可用 `scripts/refresh_import_derived_data.py` 手动运行同一条维护管线。

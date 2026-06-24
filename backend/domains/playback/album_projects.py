@@ -450,7 +450,29 @@ def _bootstrap_standalone_album_projects(conn: sqlite3.Connection) -> None:
     for album in albums:
         spotify_type = album["album_type"]
         spotify_tracks = album["total_tracks"]
+        release_date = album["release_date"]
         local_tracks = int(album["local_tracks"] or 0)
+        linked = _best_spotify_album_for_local_album(conn, int(album["album_id"]))
+        if linked:
+            # Use linked metadata for classification (album_type, total_tracks).
+            # Only override release_date when the name-matched spotify row has
+            # the wrong type (e.g. a single shadowing a real album), keeping
+            # the original release_date for albums that have deluxe variants.
+            linked_type = linked["album_type"]
+            if linked_type == "album" and (spotify_type or "").lower() in ("single", "", None):
+                release_date = linked["release_date"] or release_date
+            elif not release_date:
+                release_date = linked["release_date"]
+            spotify_type = linked_type or spotify_type
+            spotify_tracks = (
+                linked["total_tracks"] if linked["total_tracks"] is not None else spotify_tracks
+            )
+
+        if (spotify_type or "").lower() == "single" and local_tracks >= 7:
+            spotify_type = "album"
+            spotify_tracks = max(int(spotify_tracks or 0), local_tracks)
+        elif (spotify_type or "").lower() == "single" and 3 <= local_tracks <= 6:
+            spotify_tracks = max(int(spotify_tracks or 0), local_tracks)
 
         # Skip compilations (handled by _bootstrap_compilation_exclusive_projects)
         if (spotify_type or "").lower() == "compilation":
@@ -481,7 +503,7 @@ def _bootstrap_standalone_album_projects(conn: sqlite3.Connection) -> None:
             canonical_name=album["album_name"],
             artist_id=album["artist_id"],
             primary_album_id=album["album_id"],
-            release_date=album["release_date"],
+            release_date=release_date,
             scope="release",
             project_type="album",
             include_in_charts=1,
@@ -502,6 +524,32 @@ def _bootstrap_standalone_album_projects(conn: sqlite3.Connection) -> None:
                 min_merge_level=2,
                 membership_role="standard",
             )
+
+
+def _best_spotify_album_for_local_album(conn: sqlite3.Connection, album_id: int):
+    try:
+        return conn.execute(
+            """SELECT sam.spotify_album_id, sam.album_type, sam.total_tracks,
+                      sam.release_date, sam.album_artists, sam.image_url,
+                      MAX(asl.confidence) AS confidence,
+                      SUM(asl.play_count) AS play_count,
+                      MAX(asl.track_count) AS link_track_count
+               FROM album_spotify_links asl
+               JOIN spotify_album_meta sam ON sam.spotify_album_id = asl.spotify_album_id
+               WHERE asl.album_id = ?
+               GROUP BY sam.spotify_album_id
+               ORDER BY
+                 CASE sam.album_type WHEN 'album' THEN 0 WHEN 'single' THEN 1 ELSE 2 END,
+                 COALESCE(sam.total_tracks, 0) DESC,
+                 COALESCE(play_count, 0) DESC,
+                 confidence DESC
+               LIMIT 1""",
+            (album_id,),
+        ).fetchone()
+    except sqlite3.OperationalError as exc:
+        if "album_spotify_links" not in str(exc):
+            raise
+        return None
 
 
 def _bootstrap_compilation_exclusive_projects(conn: sqlite3.Connection) -> None:

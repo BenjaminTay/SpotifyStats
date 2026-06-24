@@ -8,7 +8,7 @@ Spotify Extended Streaming History 数据分析 Web 应用 — **FastAPI 后端 
 
 UI：「编辑风 × 液态玻璃」— Playfair Display + Inter，毛玻璃，日/夜双皮肤。
 
-**当前状态**：Phase 5 产品化收口完成。后端 694 / 前端 135 测试 PASS，全栈 smoke (48 route + 6 interaction + 3 chart + 36 control + 6 long-list + 3 cross-browser) 全部通过，OpenAPI 135 op / 59 parameter boundary 0 unaccounted。开发台账与验证细节见 `AGENTS.md`、`docs/productization/`、`docs/verification/` 和 `docs/CHANGELOG.md`。最终交付报告见 `docs/productization/2026-06-22-phase5-delivery-report.md`。
+**当前状态**：Phase 5 产品化收口完成 + fix/bugfixes-and-polish。后端 520 (unit+contract) / 前端 147 测试 PASS，全栈 smoke 全部通过。开发台账与验证细节见 `AGENTS.md`、`docs/productization/`、`docs/verification/` 和 `docs/CHANGELOG.md`。最终交付报告见 `docs/productization/2026-06-22-phase5-delivery-report.md`。
 
 ## 常用命令
 
@@ -45,6 +45,9 @@ sh scripts/fullstack_verification_check.sh --backend-url http://127.0.0.1:8000 -
 
 # 一键启动冒烟（自动启动/复用后端 8000 + 前端 5173，验证 health/docs/前端壳/API 代理后清理，并输出时序 JSON）
 .venv/bin/python scripts/quickstart_smoke.py --json-output /tmp/spotify_quickstart_timing.json
+
+# 修复已导入 Streaming History 后缺失的 Spotify 元数据、album projects 与榜单聚合
+.venv/bin/python scripts/refresh_import_derived_data.py --json-output /tmp/spotify_import_maintenance.json
 
 # 本地只读 API smoke（96 个 GET + OpenAPI GET 核算）
 .venv/bin/python scripts/api_smoke_probe.py
@@ -128,6 +131,7 @@ JSON → import → SQLite → FastAPI (backend/) → React (frontend/)
 - 默认启动 warmup 必须使用当前前端默认过滤口径（`dynamic_threshold=True`，`max_merge_gap_minutes=None`），避免预热旧缓存并与首屏请求抢 CPU
 - 环境变量统一 `core/config.py`；禁止业务代码直接 `os.getenv()`
 - Token 加密：`SPOTIFY_STATS_TOKEN_KEY` 环境变量 → 内置密钥
+- Streaming History 导入必须在 `done` 前运行派生数据维护；`maintenance_status=partial` 只表示 Spotify 元数据仍有缺口，不代表基础播放导入失败
 - **新增 GET hook → TanStack Query + `queryKeys`；禁止模块级 `new Map()` 数据缓存**
 - **ECharts 图表 → `LazyEChart`；禁止直接 `import('echarts-for-react')` 默认入口**
 - **简繁转换 → `displayName()`；禁止直接导入默认 `opencc-js` full 包，也禁止模块初始化时预取已保存偏好的大字典**

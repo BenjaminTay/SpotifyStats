@@ -1,5 +1,26 @@
 # 变更日志
 
+## 2026-06-24 — fix/bugfixes-and-polish 收口修复
+
+### 修复
+
+- **PK Wks 算法重写**：`running_peak_wks` 从"日历周差（含非达峰周）"改为"累计达峰周数（同 running_peak 级别累加，新峰值重置，非达峰周 forward-fill）"，只基于实时 `cummin()` 不预知未来
+- **Album Project artist_id 容错**：`load_album_project_membership` 改用 `LEFT JOIN artists`，`_bootstrap_from_release_groups` 新增 artist_id≤0 时从 albums 表回退查找，修复 Red/Fearless (Taylor's Version) 因 artist_id=0 从统计中消失
+- **Album Project 本地曲目回退**：`_bootstrap_standalone_album_projects` 当 Spotify 元数据缺失时使用本地曲目数分级（≥7→LP, 3-6→EP），Flicker/ANTI/Witness 等无元数据专辑恢复上榜
+- **Artist Summary 跨专辑合并**：`compute_artist_summary` 不再按 album_name 分组，改为按 track_id 聚合后取代表专辑（如 vampire 从三条合并为一条）
+- **Album Meta 优先 album_spotify_links**：`_get_album_spotify_meta` 优先走 album_spotify_links（album-type 优先+置信度排序），回退旧链加 ORDER BY，修复同名单曲遮盖完整专辑导致的 total_tracks=1 / album_type=single
+- **封面三级回退**：`_get_cover_cdn_url` 新增 album_spotify_links 分支（album-type 优先），`_add_cover_urls` 新增 Spotify metadata fallback，修复新导入专辑封面缺失或错用单曲封面
+- **Wrapped 年度回顾口径统一**：`/wrapped/{year}/full` merge_level 默认值从 1 改为 2，与 Analysis Charts 一致使用 album project 聚合
+- **Spotify 元数据自动刷新 + 导入维护管道**：`import_data` 写入 `spotify_track_id_at_play`，导入后自动运行维护管线（刷新 Spotify metadata → 重建 album projects → 重建预聚合 → 清除缓存 → 健康报告）；新增 `album_spotify_links` 证据表、`refresh_import_derived_data.py` 独立脚本
+
+### 验证
+
+- Backend 520 (unit+contract) PASS，0 失败
+- 全链路实测：Midnights release_date 2022-10-21（修复前 2023-05-26）、you seem pretty sad... 封面/发行日正确
+- 新增 11 个测试（import maintenance、Spotify metadata refresh、import health、CLI script）
+
+---
+
 ## 2026-06-20 — fix/bugfixes-and-polish 分支
 
 ### 修复

@@ -284,20 +284,46 @@ def _get_artist_spotify_meta(artist_name):
 def _get_album_spotify_meta(album_name, artist_name, merge_level=2):
     """Fetch Spotify metadata for an album by name + artist."""
     conn = get_db()
-    row = conn.execute(
-        """SELECT DISTINCT sam.album_type, sam.release_date, sam.popularity,
-                  sam.label, sam.total_tracks
-           FROM albums al
-           JOIN artists a ON al.artist_id = a.artist_id
-           JOIN track_albums ta ON ta.album_id = al.album_id
-           JOIN tracks t ON ta.track_id = t.track_id
-           JOIN spotify_track_meta stm
-             ON t.spotify_track_id = stm.spotify_track_id
-           JOIN spotify_album_meta sam ON stm.spotify_album_id = sam.spotify_album_id
-           WHERE al.album_name = ? AND a.artist_name = ?
-           LIMIT 1""",
-        (album_name, artist_name),
-    ).fetchone()
+    # Prefer album_spotify_links (confidence-scored) over the old track-chain path.
+    # Sort album-type rows first so a full album isn't shadowed by a same-name single.
+    row = None
+    try:
+        row = conn.execute(
+            """SELECT sam.album_type, sam.release_date, sam.popularity,
+                      sam.label, sam.total_tracks
+               FROM album_spotify_links asl
+               JOIN spotify_album_meta sam ON sam.spotify_album_id = asl.spotify_album_id
+               JOIN albums al ON al.album_id = asl.album_id
+               JOIN artists a ON a.artist_id = al.artist_id
+               WHERE al.album_name = ? AND a.artist_name = ?
+               ORDER BY CASE sam.album_type WHEN 'album' THEN 0 ELSE 1 END,
+                        asl.confidence DESC,
+                        sam.release_date DESC
+               LIMIT 1""",
+            (album_name, artist_name),
+        ).fetchone()
+    except Exception:
+        pass  # album_spotify_links may not exist yet (fresh DB / seed DB)
+
+    if not row:
+        # Fallback: old track-chain path with deterministic ordering
+        row = conn.execute(
+            """SELECT DISTINCT sam.album_type, sam.release_date, sam.popularity,
+                      sam.label, sam.total_tracks
+               FROM albums al
+               JOIN artists a ON al.artist_id = a.artist_id
+               JOIN track_albums ta ON ta.album_id = al.album_id
+               JOIN tracks t ON ta.track_id = t.track_id
+               JOIN spotify_track_meta stm
+                 ON t.spotify_track_id = stm.spotify_track_id
+               JOIN spotify_album_meta sam ON stm.spotify_album_id = sam.spotify_album_id
+               WHERE al.album_name = ? AND a.artist_name = ?
+               ORDER BY CASE sam.album_type WHEN 'album' THEN 0 ELSE 1 END,
+                        sam.total_tracks DESC,
+                        sam.release_date DESC
+               LIMIT 1""",
+            (album_name, artist_name),
+        ).fetchone()
 
     if not row:
         conn.close()
@@ -889,7 +915,7 @@ def get_artist_chart_detail(
     art_tracks["power_rank"] = art_tracks["power_rank"].fillna(0).astype(int)
     art_tracks = art_tracks.sort_values(
         ["peak_position", "weeks_on_chart"], ascending=[True, False]
-    )
+    ).drop_duplicates("track_id")
 
     # Track cover_url lookup
     track_cover_map = {}

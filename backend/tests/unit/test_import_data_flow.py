@@ -88,16 +88,19 @@ def test_import_data_handles_audio_and_video_records_without_metadata(tmp_path, 
         conn.row_factory = sqlite3.Row
         try:
             rows = conn.execute(
-                "SELECT content_type, track_id, source_album_id, skipped, offline, incognito_mode "
-                "FROM plays ORDER BY play_id"
+                "SELECT content_type, track_id, source_album_id, spotify_track_id_at_play, "
+                "skipped, offline, incognito_mode FROM plays ORDER BY play_id"
             ).fetchall()
             assert [row["content_type"] for row in rows] == ["audio", "audio", "video"]
             assert rows[0]["track_id"] is not None
             assert rows[0]["source_album_id"] is not None
+            assert rows[0]["spotify_track_id_at_play"] == "signal"
             assert rows[1]["track_id"] is None
             assert rows[1]["source_album_id"] is None
+            assert rows[1]["spotify_track_id_at_play"] is None
             assert rows[2]["track_id"] is None
             assert rows[2]["source_album_id"] is None
+            assert rows[2]["spotify_track_id_at_play"] is None
             assert rows[1]["skipped"] == 1
             assert rows[1]["offline"] == 1
             assert rows[2]["incognito_mode"] == 1

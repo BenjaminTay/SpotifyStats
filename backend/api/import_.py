@@ -9,6 +9,7 @@ from backend.core.auth import require_auth
 from backend.core.import_account_data import import_all
 from backend.core.import_data import import_data
 from backend.models.common import ImportJobCreateResponse, ImportJobStatus
+from backend.services.import_maintenance_service import run_post_streaming_import_maintenance
 
 router = APIRouter(prefix="/import", tags=["Import"])
 
@@ -44,19 +45,18 @@ def start_streaming_import(auth: None = Depends(require_auth)):
 
     def _run():
         try:
-            result = import_data(progress_callback=cb)
-            from backend.core.cache_manager import invalidate_all
-
-            invalidate_all()
+            result = import_data(progress_callback=cb, build_preaggregations=False)
+            maintenance = run_post_streaming_import_maintenance(progress_callback=cb)
             _jobs[job_id]["status"] = "done"
             _jobs[job_id]["progress_pct"] = 1.0
             _jobs[job_id]["message"] = "导入完成"
             _jobs[job_id]["result"] = {
-                "files": result.get("files", 0),
-                "records": result.get("records", 0),
-                "artists": result.get("artists", 0),
-                "albums": result.get("albums", 0),
-                "tracks": result.get("tracks", 0),
+                "files": result.get("files_imported", result.get("files", 0)),
+                "records": result.get("total_records", result.get("records", 0)),
+                "artists": result.get("unique_artists", result.get("artists", 0)),
+                "albums": result.get("unique_albums", result.get("albums", 0)),
+                "tracks": result.get("unique_tracks", result.get("tracks", 0)),
+                **maintenance,
             }
         except Exception as e:
             _jobs[job_id]["status"] = "error"

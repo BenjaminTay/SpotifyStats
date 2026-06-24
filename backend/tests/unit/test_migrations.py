@@ -134,6 +134,39 @@ def test_plays_has_source_album_id_after_migrations(empty_db):
     assert "idx_plays_source_album" in indexes
 
 
+def test_import_maintenance_schema_after_migrations(empty_db):
+    """Import maintenance schema stores play-time Spotify ids and album evidence."""
+    _ensure_migrations_table(empty_db)
+    sorted_migrations = sorted(MIGRATIONS, key=lambda m: m[0])
+    for _, _, fn in sorted_migrations:
+        try:
+            fn(empty_db)
+        except sqlite3.OperationalError:
+            pass
+
+    play_columns = {row[1] for row in empty_db.execute("PRAGMA table_info(plays)").fetchall()}
+    assert "spotify_track_id_at_play" in play_columns
+    assert "spotify_album_id_at_play" in play_columns
+
+    tables = {
+        row[0]
+        for row in empty_db.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
+        ).fetchall()
+    }
+    assert "album_spotify_links" in tables
+
+    play_indexes = {row[1] for row in empty_db.execute("PRAGMA index_list(plays)").fetchall()}
+    assert "idx_plays_spotify_track_at_play" in play_indexes
+    assert "idx_plays_spotify_album_at_play" in play_indexes
+
+    link_indexes = {
+        row[1] for row in empty_db.execute("PRAGMA index_list(album_spotify_links)").fetchall()
+    }
+    assert "idx_album_spotify_links_album" in link_indexes
+    assert "idx_album_spotify_links_spotify_album" in link_indexes
+
+
 def test_release_groups_support_scope_and_parent(empty_db):
     """Migration 14 adds scope and parent_group_id to release_groups."""
     _ensure_migrations_table(empty_db)

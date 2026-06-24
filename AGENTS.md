@@ -74,6 +74,9 @@ cd frontend && npm run dev
 # 一键启动冒烟（自动启动/复用后端 8000 + 前端 5173，验证 health/docs/前端壳/API 代理后清理，并输出时序 JSON）
 .venv/bin/python scripts/quickstart_smoke.py --json-output /tmp/spotify_quickstart_timing.json
 
+# 修复已导入 Streaming History 后缺失的 Spotify 元数据、album projects 与榜单聚合
+.venv/bin/python scripts/refresh_import_derived_data.py --json-output /tmp/spotify_import_maintenance.json
+
 # ngrok HTTPS 隧道（Spotify OAuth 回调需要）
 ngrok http --url=stuffing-nebula-tamer.ngrok-free.dev 5173
 
@@ -265,7 +268,7 @@ frontend/src/
 
 ### 数据库
 
-维度表 `artists` → `albums` → `tracks`，事实表 `plays`（预计算 `ts_year/month/week/dow/hour/date`，均为北京时间 UTC+8）。`track_albums` 处理同曲多专辑关联。Spotify 元数据独立存储在 `spotify_*_meta` 表。`release_groups` + `release_group_members` 管理专辑版本合并。
+维度表 `artists` → `albums` → `tracks`，事实表 `plays`（预计算 `ts_year/month/week/dow/hour/date`，均为北京时间 UTC+8）。`plays.spotify_track_id_at_play` / `spotify_album_id_at_play` 保留播放当时的 Spotify 归属，`track_albums` 处理同曲多专辑关联。Spotify 元数据独立存储在 `spotify_*_meta` 表，`album_spotify_links` 记录本地 album 到 Spotify album 的证据链接。`release_groups` + `release_group_members` 管理专辑版本合并。
 
 账号数据表独立：`saved_tracks/albums/artists`、`playlists`、`search_queries`、`podcast_*`、`user_*`、`marquee_impressions`、`wrapped_*`、`banned_items`。
 
@@ -282,6 +285,7 @@ frontend/src/
 - Python 3.9：使用 `Optional[X]` 而非 `X | None`
 - 后端绝对导入：`from backend.core.db import get_db`
 - SQLite `data/spotify_stats.db`，由 `.gitignore` 排除
+- Streaming History 导入必须在 job `done` 前运行元数据刷新、album project rebuild、聚合重建和缓存失效；`maintenance_status=partial` 不代表基础播放导入失败
 - `ttl_cached()` 不缓存 `None`，`cache_clear()` 必须同时清空条目并重置 hit/miss 统计
 - 昂贵缓存优先通过公开 wrapper 规范化参数 + `singleflight()` 避免并发重复计算
 - Spotify OAuth 开发需要 HTTPS，用 ngrok 静态域名代理

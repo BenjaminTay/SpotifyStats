@@ -107,7 +107,9 @@ CREATE TABLE IF NOT EXISTS plays (
     offline          INTEGER NOT NULL DEFAULT 0,
     incognito_mode   INTEGER NOT NULL DEFAULT 0,
     content_type     TEXT NOT NULL DEFAULT 'audio',
-    source_album_id  INTEGER REFERENCES albums(album_id)
+    source_album_id  INTEGER REFERENCES albums(album_id),
+    spotify_track_id_at_play TEXT,
+    spotify_album_id_at_play TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_plays_year     ON plays(ts_year);
@@ -120,6 +122,8 @@ CREATE INDEX IF NOT EXISTS idx_plays_dow_hour ON plays(ts_dow, ts_hour);
 CREATE INDEX IF NOT EXISTS idx_plays_year_skipped_track ON plays(ts_year, skipped, track_id, ms_played);
 CREATE INDEX IF NOT EXISTS idx_plays_ts ON plays(ts);
 CREATE INDEX IF NOT EXISTS idx_plays_source_album ON plays(source_album_id);
+CREATE INDEX IF NOT EXISTS idx_plays_spotify_track_at_play ON plays(spotify_track_id_at_play);
+CREATE INDEX IF NOT EXISTS idx_plays_spotify_album_at_play ON plays(spotify_album_id_at_play);
 CREATE INDEX IF NOT EXISTS idx_tracks_name ON tracks(track_name);
 CREATE INDEX IF NOT EXISTS idx_tracks_spotify_track_id ON tracks(spotify_track_id);
 CREATE INDEX IF NOT EXISTS idx_albums_name ON albums(album_name);
@@ -311,6 +315,22 @@ CREATE TABLE IF NOT EXISTS spotify_album_meta (
 );
 
 CREATE INDEX IF NOT EXISTS idx_spotify_album_meta_name ON spotify_album_meta(album_name);
+
+CREATE TABLE IF NOT EXISTS album_spotify_links (
+    album_id INTEGER NOT NULL REFERENCES albums(album_id),
+    spotify_album_id TEXT NOT NULL REFERENCES spotify_album_meta(spotify_album_id),
+    evidence TEXT NOT NULL,
+    confidence REAL NOT NULL DEFAULT 0.0,
+    play_count INTEGER NOT NULL DEFAULT 0,
+    track_count INTEGER NOT NULL DEFAULT 0,
+    first_seen TEXT,
+    last_seen TEXT,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY(album_id, spotify_album_id, evidence)
+);
+
+CREATE INDEX IF NOT EXISTS idx_album_spotify_links_album ON album_spotify_links(album_id);
+CREATE INDEX IF NOT EXISTS idx_album_spotify_links_spotify_album ON album_spotify_links(spotify_album_id);
 
 CREATE TABLE IF NOT EXISTS spotify_artist_meta (
     spotify_artist_id  TEXT PRIMARY KEY,

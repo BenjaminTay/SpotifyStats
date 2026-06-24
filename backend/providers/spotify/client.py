@@ -94,12 +94,70 @@ class SpotifyProvider(BaseProvider):
         url = f"{self.config.base_url}/albums?ids={','.join(album_ids)}"
         return self.api_get(url, access_token)
 
+    def get_tracks(self, track_ids: list[str], access_token: str) -> dict | None:
+        if not track_ids:
+            return {"tracks": []}
+        url = f"{self.config.base_url}/tracks?ids={','.join(track_ids)}"
+        return self.api_get(url, access_token)
+
+    def get_artists_by_ids(self, artist_ids: list[str], access_token: str) -> dict | None:
+        if not artist_ids:
+            return {"artists": []}
+        url = f"{self.config.base_url}/artists?ids={','.join(artist_ids)}"
+        return self.api_get(url, access_token)
+
     def search_albums(
         self, album_name: str, artist_name: str, access_token: str, limit: int = 5
     ) -> dict | None:
         query = quote(f"album:{album_name} artist:{artist_name}")
         url = f"{self.config.base_url}/search?q={query}&type=album&limit={limit}"
         return self.api_get(url, access_token)
+
+    def search_album_cover(
+        self, album_name: str, artist_name: str, access_token: str
+    ) -> str | None:
+        """Search Spotify for an album and return the best cover image URL."""
+        result = self.search_albums(album_name, artist_name, access_token, limit=3)
+        if not result:
+            return None
+        items = result.get("albums", {}).get("items", [])
+        if not items:
+            return None
+        # Prefer exact name match, then fall back to first result
+        for item in items:
+            if item.get("name", "").lower() == album_name.lower():
+                images = item.get("images", [])
+                if images:
+                    return images[0].get("url")
+        # Fallback: first result with images
+        for item in items:
+            images = item.get("images", [])
+            if images:
+                return images[0].get("url")
+        return None
+
+    def search_artist_cover(self, artist_name: str, access_token: str) -> str | None:
+        """Search Spotify for an artist and return the best cover image URL."""
+        query = quote(artist_name)
+        url = f"{self.config.base_url}/search?q={query}&type=artist&limit=3"
+        result = self.api_get(url, access_token)
+        if not result:
+            return None
+        items = result.get("artists", {}).get("items", [])
+        if not items:
+            return None
+        # Prefer exact name match
+        for item in items:
+            if item.get("name", "").lower() == artist_name.lower():
+                images = item.get("images", [])
+                if images:
+                    return images[0].get("url")
+        # Fallback
+        for item in items:
+            images = item.get("images", [])
+            if images:
+                return images[0].get("url")
+        return None
 
     def get_profile(self, access_token: str) -> dict | None:
         return fetch_spotify_profile(access_token)

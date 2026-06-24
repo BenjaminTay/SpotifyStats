@@ -2,6 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 
 import { DataFilteringSection } from '@/features/settings/components/DataFilteringSection'
+import { ImportProgressCard } from '@/features/settings/components/SettingsHelpers'
 
 describe('Settings sections', () => {
   it('renders data filtering controls without internal rebuild button', () => {
@@ -41,5 +42,55 @@ describe('Settings sections', () => {
     // updateAndRequireRebuild calls both onUpdate and onRequiresRebuild
     expect(onUpdate).toHaveBeenCalledWith({ music_only: false })
     expect(onRequiresRebuild).toHaveBeenCalled()
+  })
+
+  it('shows partial metadata maintenance result after streaming import', () => {
+    render(
+      <ImportProgressCard
+        title="串流数据"
+        label="当前数据库记录数：1,000"
+        job={{
+          job_id: 'fixture',
+          status: 'done',
+          progress_pct: 1,
+          message: '导入完成',
+          result: {
+            maintenance_status: 'partial',
+            unresolved_recent_tracks: 3,
+            unresolved_recent_albums: 2,
+          },
+        }}
+        onStart={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByText('播放数据已导入，部分 Spotify 元数据待补全')).toBeInTheDocument()
+    expect(screen.getByText('未解析曲目 3')).toBeInTheDocument()
+    expect(screen.getByText('未解析专辑 2')).toBeInTheDocument()
+  })
+
+  it('shows derived data refresh success after streaming import', () => {
+    render(
+      <ImportProgressCard
+        title="串流数据"
+        label="当前数据库记录数：1,000"
+        job={{
+          job_id: 'fixture',
+          status: 'done',
+          progress_pct: 1,
+          message: '导入完成',
+          result: {
+            maintenance_status: 'ok',
+            tracks_metadata_updated: 12,
+            albums_metadata_updated: 4,
+          },
+        }}
+        onStart={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByText('导入完成，派生数据已更新')).toBeInTheDocument()
+    expect(screen.getByText('曲目元数据 +12')).toBeInTheDocument()
+    expect(screen.getByText('专辑元数据 +4')).toBeInTheDocument()
   })
 })

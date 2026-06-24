@@ -134,6 +134,38 @@ export function InlineNotice({ show, children }: { show: boolean; children: Reac
 
 // ── ImportProgressCard ──────────────────────────────────────
 
+function resultString(result: Record<string, unknown> | null, key: string) {
+  const value = result?.[key]
+  return typeof value === 'string' ? value : null
+}
+
+function resultNumber(result: Record<string, unknown> | null, key: string) {
+  const value = result?.[key]
+  return typeof value === 'number' && Number.isFinite(value) ? value : 0
+}
+
+function maintenanceLabel(job: ImportJob | null) {
+  const status = resultString(job?.result ?? null, 'maintenance_status')
+  if (status === 'partial') return '播放数据已导入，部分 Spotify 元数据待补全'
+  if (status === 'ok') return '导入完成，派生数据已更新'
+  return '导入完成'
+}
+
+function maintenanceChips(job: ImportJob | null) {
+  const result = job?.result ?? null
+  return [
+    ['tracks_metadata_updated', '曲目元数据', '+'],
+    ['albums_metadata_updated', '专辑元数据', '+'],
+    ['unresolved_recent_tracks', '未解析曲目', ''],
+    ['unresolved_recent_albums', '未解析专辑', ''],
+  ]
+    .map(([key, label, prefix]) => {
+      const value = resultNumber(result, key)
+      return value > 0 ? `${label} ${prefix}${value}` : null
+    })
+    .filter(Boolean)
+}
+
 export function ImportProgressCard({
   title,
   label,
@@ -154,6 +186,8 @@ export function ImportProgressCard({
   const isRunning = job?.status === 'running'
   const isDone = job?.status === 'done'
   const isError = job?.status === 'error'
+  const isPartial = resultString(job?.result ?? null, 'maintenance_status') === 'partial'
+  const chips = maintenanceChips(job)
 
   return (
     <div className="flex flex-col gap-3">
@@ -188,9 +222,30 @@ export function ImportProgressCard({
         </div>
       )}
       {isDone && (
-        <div className="flex items-center gap-1.5 text-[13px] text-green-600 dark:text-green-400">
-          <CheckCircle2 className="size-3.5" />
-          导入完成
+        <div className="space-y-2">
+          <div
+            className={cn(
+              'flex items-center gap-1.5 text-[13px]',
+              isPartial
+                ? 'text-amber-700 dark:text-amber-300'
+                : 'text-green-600 dark:text-green-400',
+            )}
+          >
+            {isPartial ? <AlertCircle className="size-3.5" /> : <CheckCircle2 className="size-3.5" />}
+            {maintenanceLabel(job)}
+          </div>
+          {chips.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {chips.map((chip) => (
+                <span
+                  key={chip}
+                  className="rounded-md border border-border/70 bg-muted/50 px-2 py-0.5 text-[11px] text-muted-foreground"
+                >
+                  {chip}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
       )}
       {isError && (

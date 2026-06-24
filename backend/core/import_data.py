@@ -68,6 +68,12 @@ def _parse_featured_artists(track_name: str) -> list[str]:
     return result
 
 
+def _spotify_track_id_from_uri(uri: str | None) -> str | None:
+    if not uri or not uri.startswith("spotify:track:"):
+        return None
+    return uri.rsplit(":", 1)[-1] or None
+
+
 def _cache_artist(conn, name: str, cache: dict[str, int]) -> int:
     if name in cache:
         return cache[name]
@@ -127,7 +133,7 @@ def _cache_track(
                     artist_id,
                     album_id,
                     spotify_uri,
-                    spotify_uri.replace("spotify:track:", "") if spotify_uri else None,
+                    _spotify_track_id_from_uri(spotify_uri),
                 ),
             )
             tid = cur.lastrowid
@@ -152,6 +158,7 @@ def import_data(
     agg_week_start_hour: int = 0,
     agg_dynamic_threshold: bool = True,
     agg_max_merge_gap_minutes: int | None = None,
+    build_preaggregations: bool = True,
 ) -> dict[str, Any]:
     """Import all JSON streaming history files into the SQLite database.
 
@@ -251,6 +258,7 @@ def import_data(
             artist_name = rec.get("master_metadata_album_artist_name")
             album_name = rec.get("master_metadata_album_album_name")
             spotify_uri = rec.get("spotify_track_uri")
+            spotify_track_id_at_play = _spotify_track_id_from_uri(spotify_uri)
 
             # Resolve or create dimension rows
             track_id = None
@@ -296,6 +304,7 @@ def import_data(
                     1 if rec.get("incognito_mode") else 0,
                     "audio",
                     album_id,  # source_album_id from playback-time album
+                    spotify_track_id_at_play,
                 )
             )
 
@@ -304,8 +313,9 @@ def import_data(
                 conn.executemany(
                     """INSERT INTO plays(ts, ts_year, ts_month, ts_week, ts_dow, ts_hour,
                        ts_date, platform, ms_played, conn_country, track_id,
-                       reason_start, reason_end, shuffle, skipped, offline, incognito_mode, content_type, source_album_id)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                       reason_start, reason_end, shuffle, skipped, offline, incognito_mode,
+                       content_type, source_album_id, spotify_track_id_at_play)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     plays_batch,
                 )
                 conn.commit()
@@ -327,8 +337,9 @@ def import_data(
             conn.executemany(
                 """INSERT INTO plays(ts, ts_year, ts_month, ts_week, ts_dow, ts_hour,
                    ts_date, platform, ms_played, conn_country, track_id,
-                   reason_start, reason_end, shuffle, skipped, offline, incognito_mode, content_type, source_album_id)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                   reason_start, reason_end, shuffle, skipped, offline, incognito_mode,
+                   content_type, source_album_id, spotify_track_id_at_play)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 plays_batch,
             )
             conn.commit()
@@ -357,6 +368,7 @@ def import_data(
                 artist_name = rec.get("master_metadata_album_artist_name")
                 album_name = rec.get("master_metadata_album_album_name")
                 spotify_uri = rec.get("spotify_track_uri")
+                spotify_track_id_at_play = _spotify_track_id_from_uri(spotify_uri)
 
                 track_id = None
                 album_id = None
@@ -400,6 +412,7 @@ def import_data(
                         1 if rec.get("incognito_mode") else 0,
                         "video",
                         album_id,
+                        spotify_track_id_at_play,
                     )
                 )
 
@@ -407,8 +420,9 @@ def import_data(
                     conn.executemany(
                         """INSERT INTO plays(ts, ts_year, ts_month, ts_week, ts_dow, ts_hour,
                            ts_date, platform, ms_played, conn_country, track_id,
-                           reason_start, reason_end, shuffle, skipped, offline, incognito_mode, content_type, source_album_id)
-                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                           reason_start, reason_end, shuffle, skipped, offline, incognito_mode,
+                           content_type, source_album_id, spotify_track_id_at_play)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                         plays_batch,
                     )
                     conn.commit()
@@ -428,8 +442,9 @@ def import_data(
                 conn.executemany(
                     """INSERT INTO plays(ts, ts_year, ts_month, ts_week, ts_dow, ts_hour,
                        ts_date, platform, ms_played, conn_country, track_id,
-                       reason_start, reason_end, shuffle, skipped, offline, incognito_mode, content_type, source_album_id)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                       reason_start, reason_end, shuffle, skipped, offline, incognito_mode,
+                       content_type, source_album_id, spotify_track_id_at_play)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     plays_batch,
                 )
                 conn.commit()
@@ -437,26 +452,29 @@ def import_data(
 
     conn.commit()
 
-    # Build pre-aggregated weekly Billboard tables
-    if progress_callback:
-        progress_callback("构建预聚合表...", 0.96)
-    try:
-        agg_results = build_aggregations(
-            min_ms=agg_min_ms,
-            music_only=agg_music_only,
-            week_start_dow=agg_week_start_dow,
-            week_start_hour=agg_week_start_hour,
-            dynamic_threshold=agg_dynamic_threshold,
-            max_merge_gap_minutes=agg_max_merge_gap_minutes,
-            progress_callback=progress_callback,
-        )
-    except Exception as e:
-        import logging
-        import traceback
+    if build_preaggregations:
+        # Build pre-aggregated weekly Billboard tables
+        if progress_callback:
+            progress_callback("构建预聚合表...", 0.96)
+        try:
+            agg_results = build_aggregations(
+                min_ms=agg_min_ms,
+                music_only=agg_music_only,
+                week_start_dow=agg_week_start_dow,
+                week_start_hour=agg_week_start_hour,
+                dynamic_threshold=agg_dynamic_threshold,
+                max_merge_gap_minutes=agg_max_merge_gap_minutes,
+                progress_callback=progress_callback,
+            )
+        except Exception as e:
+            import logging
+            import traceback
 
-        logger = logging.getLogger(__name__)
-        logger.warning("预聚合表构建失败（Billboard 页面将使用实时计算）: %s", e)
-        traceback.print_exc()
+            logger = logging.getLogger(__name__)
+            logger.warning("预聚合表构建失败（Billboard 页面将使用实时计算）: %s", e)
+            traceback.print_exc()
+            agg_results = {}
+    else:
         agg_results = {}
 
     conn.close()

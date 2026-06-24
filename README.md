@@ -34,6 +34,12 @@ cd frontend && npm run dev
 
 首次启动自动导入 JSON 数据到 SQLite。浏览器打开 `http://localhost:5173` 使用 React 界面，`http://localhost:8000/docs` 查看 API 文档。
 
+Streaming History 导入会先写入基础播放事实，再自动刷新 Spotify 元数据、重建 album projects、重建 Billboard 预聚合并返回维护状态。若已经导入过新数据但封面、专辑关系或专辑榜缺失，可手动运行：
+
+```bash
+.venv/bin/python scripts/refresh_import_derived_data.py --json-output /tmp/spotify_import_maintenance.json
+```
+
 > Spotify OAuth 功能需要 HTTPS。开发环境可使用 ngrok：
 > ```bash
 > ngrok http --url=your-domain.ngrok-free.dev 5173

@@ -105,6 +105,39 @@ def _add_cover_urls(weekly, weekly_album, weekly_artist):
                         )
                 album_cover_map[key] = url
 
+        # ── Spotify metadata fallback for albums missing local image_url ──
+        missing_keys = [k for k, v in album_cover_map.items() if v is None]
+        if missing_keys:
+            try:
+                placeholders = ",".join("(?, ?)" for _ in missing_keys)
+                flat_params = []
+                for album_name, artist_name in missing_keys:
+                    flat_params.extend([album_name, artist_name])
+                spot_rows = conn.execute(
+                    f"""SELECT al.album_name, a.artist_name, al.album_id,
+                               sam.image_url
+                        FROM albums al
+                        JOIN artists a ON a.artist_id = al.artist_id
+                        JOIN album_spotify_links asl ON asl.album_id = al.album_id
+                        JOIN spotify_album_meta sam
+                          ON sam.spotify_album_id = asl.spotify_album_id
+                        WHERE (al.album_name, a.artist_name) IN ({placeholders})
+                          AND sam.image_url IS NOT NULL
+                          AND sam.image_url != ''
+                        ORDER BY CASE sam.album_type WHEN 'album' THEN 0 ELSE 1 END,
+                                 asl.confidence DESC,
+                                 sam.release_date DESC""",
+                    flat_params,
+                ).fetchall()
+                for r in spot_rows:
+                    key = (r["album_name"], r["artist_name"])
+                    if album_cover_map.get(key) is None:
+                        album_cover_map[key] = _build_url(
+                            None, r["image_url"], "albums", r["album_id"]
+                        )
+            except Exception:
+                pass  # album_spotify_links may not exist yet (fresh DB / seed DB)
+
         weekly_album = weekly_album.copy()
         weekly_album["cover_url"] = weekly_album.apply(
             lambda row: album_cover_map.get((row["album_name"], row["artist_name"])), axis=1

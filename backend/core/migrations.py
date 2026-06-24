@@ -44,6 +44,19 @@ def migration(version: int, name: str):
 @migration(1, "initial_schema")
 def migrate_001(conn: sqlite3.Connection):
     """Baseline: create all tables and indexes with IF NOT EXISTS."""
+    existing_tables = {
+        row[0]
+        for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
+    }
+    if "plays" in existing_tables:
+        play_columns = {
+            row["name"] if isinstance(row, sqlite3.Row) else row[1]
+            for row in conn.execute("PRAGMA table_info(plays)").fetchall()
+        }
+        if "spotify_track_id_at_play" not in play_columns:
+            conn.execute("ALTER TABLE plays ADD COLUMN spotify_track_id_at_play TEXT")
+        if "spotify_album_id_at_play" not in play_columns:
+            conn.execute("ALTER TABLE plays ADD COLUMN spotify_album_id_at_play TEXT")
     conn.executescript(SCHEMA)
 
 
@@ -347,6 +360,53 @@ def migrate_020(conn: sqlite3.Connection):
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_saved_tracks_spotify_track_id "
         "ON saved_tracks(spotify_track_id)"
+    )
+
+
+@migration(21, "import_maintenance_play_spotify_ids")
+def migrate_021(conn: sqlite3.Connection):
+    """Persist play-time Spotify ids and local album to Spotify album evidence."""
+    play_columns = {
+        row["name"] if isinstance(row, sqlite3.Row) else row[1]
+        for row in conn.execute("PRAGMA table_info(plays)").fetchall()
+    }
+    if "spotify_track_id_at_play" not in play_columns:
+        conn.execute("ALTER TABLE plays ADD COLUMN spotify_track_id_at_play TEXT")
+    if "spotify_album_id_at_play" not in play_columns:
+        conn.execute("ALTER TABLE plays ADD COLUMN spotify_album_id_at_play TEXT")
+    conn.execute(
+        "UPDATE plays SET spotify_track_id_at_play = ("
+        "SELECT tracks.spotify_track_id FROM tracks WHERE tracks.track_id = plays.track_id"
+        ") WHERE spotify_track_id_at_play IS NULL AND track_id IS NOT NULL"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_plays_spotify_track_at_play "
+        "ON plays(spotify_track_id_at_play)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_plays_spotify_album_at_play "
+        "ON plays(spotify_album_id_at_play)"
+    )
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS album_spotify_links (
+            album_id INTEGER NOT NULL REFERENCES albums(album_id),
+            spotify_album_id TEXT NOT NULL REFERENCES spotify_album_meta(spotify_album_id),
+            evidence TEXT NOT NULL,
+            confidence REAL NOT NULL DEFAULT 0.0,
+            play_count INTEGER NOT NULL DEFAULT 0,
+            track_count INTEGER NOT NULL DEFAULT 0,
+            first_seen TEXT,
+            last_seen TEXT,
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY(album_id, spotify_album_id, evidence)
+        )"""
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_album_spotify_links_album ON album_spotify_links(album_id)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_album_spotify_links_spotify_album "
+        "ON album_spotify_links(spotify_album_id)"
     )
 
 
