@@ -189,13 +189,14 @@ class TestParentChildGroupResolution:
         At L3 it must resolve to the composition canonical name (R6)."""
         keys = load_track_group_keys(seed_conn, merge_level=3)
         key_map = keys.set_index("track_id")
-        # 907: direct member of composition group 2
+        # 907: direct member of composition group 2 (primary_track_id=907)
         assert key_map.loc[907, "track_agg_name"] == "Fixture Composition Song"
-        assert key_map.loc[907, "track_agg_id"] == 2
+        assert key_map.loc[907, "track_agg_id"] == 907
         assert key_map.loc[907, "track_group_scope"] == "composition"
         # 908: member of recording group 3 → parent composition group 2
+        # (parent primary_track_id=907)
         assert key_map.loc[908, "track_agg_name"] == "Fixture Composition Song"
-        assert key_map.loc[908, "track_agg_id"] == 2  # resolved to parent
+        assert key_map.loc[908, "track_agg_id"] == 907
         assert key_map.loc[908, "track_group_scope"] == "composition"
 
     def test_child_recording_group_keeps_own_canonical_at_l2(self, seed_conn):

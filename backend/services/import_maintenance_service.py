@@ -32,6 +32,9 @@ def run_post_streaming_import_maintenance(progress_callback=None) -> dict[str, A
             progress_callback=lambda message, _pct: _progress(progress_callback, message, 0.76),
         )
 
+        _progress(progress_callback, "合并重复曲目（spotify_track_id）...", 0.80)
+        groups_created, members_added = _auto_group_tracks_by_spotify_id(conn)
+
         _progress(progress_callback, "重建 album projects...", 0.84)
         rebuild_album_projects(conn)
 
@@ -63,6 +66,8 @@ def run_post_streaming_import_maintenance(progress_callback=None) -> dict[str, A
             "albums_metadata_updated": metadata_report.albums_updated,
             "album_links_backfilled": metadata_report.album_links_backfilled,
             "metadata_errors": list(metadata_report.errors),
+            "track_groups_created": groups_created,
+            "track_group_members_added": members_added,
             "album_projects_rebuilt": True,
             "agg_track_wks": agg_results.get("tracks", 0),
             "agg_album_wks": agg_results.get("albums", 0),
@@ -71,3 +76,62 @@ def run_post_streaming_import_maintenance(progress_callback=None) -> dict[str, A
         }
     finally:
         conn.close()
+
+
+def _auto_group_tracks_by_spotify_id(conn) -> tuple[int, int]:
+    """Create recording-scope track groups for tracks sharing a spotify_track_id
+    WITHIN THE SAME ARTIST.  Cross-artist spotify_track_id matches are metadata
+    errors and must not be merged.
+
+    Returns (groups_created, members_added).
+    """
+    # ① Create groups — one per (spotify_track_id, artist_id), primary = most-plays,
+    #     canonical_name = primary track's name (no artist suffix needed:
+    #     grouping by artist_id prevents cross-artist clashes).
+    conn.execute(
+        """INSERT OR IGNORE INTO track_groups
+           (canonical_name, primary_track_id, scope, is_manual)
+           SELECT
+             pt.track_name,
+             pt.track_id,
+             'recording', 0
+           FROM (
+               SELECT spotify_track_id, artist_id,
+                      (SELECT t2.track_id FROM tracks t2
+                       WHERE t2.spotify_track_id = tracks.spotify_track_id
+                         AND t2.artist_id = tracks.artist_id
+                       ORDER BY (SELECT COUNT(*) FROM plays p WHERE p.track_id = t2.track_id) DESC
+                       LIMIT 1) AS best_track_id
+               FROM tracks
+               WHERE spotify_track_id IS NOT NULL AND spotify_track_id != ''
+               GROUP BY spotify_track_id, artist_id
+               HAVING COUNT(*) > 1
+           ) dup
+           JOIN tracks pt ON pt.track_id = dup.best_track_id"""
+    )
+    groups_created = conn.execute("SELECT CHANGES()").fetchone()[0]
+
+    # ② Add members — match by (spotify_track_id, artist_id) to primary_track_id
+    conn.execute(
+        """INSERT OR IGNORE INTO track_group_members (group_id, track_id)
+           SELECT tg.group_id, t.track_id
+           FROM tracks t
+           JOIN track_groups tg ON tg.scope = 'recording' AND tg.is_manual = 0
+           WHERE t.spotify_track_id IS NOT NULL AND t.spotify_track_id != ''
+             AND EXISTS (
+               SELECT 1 FROM tracks t2
+               WHERE t2.spotify_track_id = t.spotify_track_id
+                 AND t2.artist_id = t.artist_id
+                 AND t2.track_id = tg.primary_track_id
+             )
+             AND EXISTS (
+               SELECT 1 FROM tracks t3
+               WHERE t3.spotify_track_id = t.spotify_track_id
+                 AND t3.artist_id = t.artist_id
+               GROUP BY t3.spotify_track_id, t3.artist_id
+               HAVING COUNT(*) > 1
+             )"""
+    )
+    members_added = conn.execute("SELECT CHANGES()").fetchone()[0]
+
+    return groups_created, members_added

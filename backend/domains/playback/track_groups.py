@@ -26,9 +26,11 @@ def load_track_group_keys(conn: sqlite3.Connection, merge_level: int) -> pd.Data
         # L3: all recording + composition members, with parent resolution.
         # Recording groups that have parent_group_id → composition group are
         # resolved to the composition canonical name (R6 child-group expansion).
+        # track_agg_id uses primary_track_id (a real track id) to avoid
+        # group_id collisions with unrelated tracks.
         df = pd.read_sql_query(
             """SELECT tgm.track_id,
-                      COALESCE(parent_tg.group_id, tg.group_id) AS track_agg_id,
+                      COALESCE(parent_tg.primary_track_id, tg.primary_track_id) AS track_agg_id,
                       COALESCE(parent_tg.canonical_name, tg.canonical_name) AS track_agg_name,
                       CASE WHEN parent_tg.group_id IS NOT NULL THEN 'composition'
                            ELSE tg.scope END AS track_group_scope
@@ -51,7 +53,7 @@ def load_track_group_keys(conn: sqlite3.Connection, merge_level: int) -> pd.Data
 
     return pd.read_sql_query(
         """SELECT tgm.track_id,
-                  tg.group_id AS track_agg_id,
+                  tg.primary_track_id AS track_agg_id,
                   tg.canonical_name AS track_agg_name,
                   tg.scope AS track_group_scope
            FROM track_group_members tgm

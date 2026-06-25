@@ -125,18 +125,32 @@ def _cache_track(
         if row:
             tid = row[0]
         else:
-            cur = conn.execute(
-                """INSERT INTO tracks(track_name, artist_id, album_id, spotify_track_uri, spotify_track_id)
-                   VALUES (?, ?, ?, ?, ?)""",
-                (
-                    track_name,
-                    artist_id,
-                    album_id,
-                    spotify_uri,
-                    _spotify_track_id_from_uri(spotify_uri),
-                ),
-            )
-            tid = cur.lastrowid
+            # Check by spotify_track_id before inserting — catches duplicates
+            # with different punctuation in the track name (e.g. half-width
+            # vs full-width comma).
+            spotify_tid = _spotify_track_id_from_uri(spotify_uri)
+            if spotify_tid:
+                existing = conn.execute(
+                    "SELECT track_id FROM tracks WHERE spotify_track_id = ? AND artist_id = ?",
+                    (spotify_tid, artist_id),
+                ).fetchone()
+                if existing:
+                    row = existing
+            if row:
+                tid = row[0]
+            else:
+                cur = conn.execute(
+                    """INSERT INTO tracks(track_name, artist_id, album_id, spotify_track_uri, spotify_track_id)
+                       VALUES (?, ?, ?, ?, ?)""",
+                    (
+                        track_name,
+                        artist_id,
+                        album_id,
+                        spotify_uri,
+                        spotify_tid,
+                    ),
+                )
+                tid = cur.lastrowid
         cache[key] = tid
 
     # If track already existed and current play has a different album, record the association

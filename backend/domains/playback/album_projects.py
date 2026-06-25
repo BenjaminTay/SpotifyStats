@@ -366,7 +366,7 @@ def compute_album_source_breakdown(
 def _bootstrap_from_release_groups(conn: sqlite3.Connection) -> None:
     groups = conn.execute(
         """SELECT rg.group_id, rg.canonical_name, rg.artist_id, rg.primary_album_id, rg.scope,
-                  sam.release_date
+                  sam.release_date, sam.album_type, sam.total_tracks
            FROM release_groups rg
            LEFT JOIN albums al ON al.album_id = rg.primary_album_id
            LEFT JOIN artists ar ON ar.artist_id = al.artist_id
@@ -387,6 +387,23 @@ def _bootstrap_from_release_groups(conn: sqlite3.Connection) -> None:
                 artist_id = int(fallback["artist_id"])
         if artist_id <= 0:
             continue
+
+        # Singles: skip release groups whose primary album is classified
+        # as a single by Spotify metadata.  The name-match SQL already
+        # prefers album > ep > single via the correlated subquery.
+        spotify_type = group["album_type"]
+        resolved = _resolve_standalone_album_type(
+            conn, int(group["primary_album_id"]), spotify_type
+        )
+        if resolved in ("single", "unknown"):
+            continue
+
+        member_rows = conn.execute(
+            "SELECT album_id FROM release_group_members WHERE group_id = ?",
+            (group["group_id"],),
+        ).fetchall()
+        member_ids = [int(row["album_id"]) for row in member_rows]
+
         project_id = _upsert_project(
             conn,
             canonical_name=group["canonical_name"],
@@ -398,11 +415,6 @@ def _bootstrap_from_release_groups(conn: sqlite3.Connection) -> None:
             include_in_charts=1,
             is_manual=0,
         )
-        members = conn.execute(
-            "SELECT album_id FROM release_group_members WHERE group_id = ?",
-            (group["group_id"],),
-        ).fetchall()
-        member_ids = [int(row["album_id"]) for row in members]
         for album_id in member_ids:
             _insert_project_album(
                 conn,
@@ -424,17 +436,75 @@ def _bootstrap_from_release_groups(conn: sqlite3.Connection) -> None:
             )
 
 
+def _resolve_standalone_album_type(
+    conn: sqlite3.Connection, album_id: int, name_match_type: str | None
+) -> str:
+    """Determine album type using Spotify metadata as primary signal.
+
+    1. Direct name-match in spotify_album_meta → trust Spotify's type
+    2. No name-match → aggregate album_spotify_links by play_count majority
+    3. No links → 'unknown'
+
+    Returns 'album', 'ep', 'single', 'compilation', or 'unknown'.
+    """
+    # ① Direct name-match — Spotify's classification is the best signal
+    if name_match_type:
+        t = name_match_type.lower()
+        if t in ("album", "ep", "single", "compilation"):
+            return t
+
+    # ② No name-match — vote by album_spotify_links (weighted by play_count)
+    try:
+        links = conn.execute(
+            """SELECT sam.album_type, asl.play_count
+               FROM album_spotify_links asl
+               JOIN spotify_album_meta sam
+                 ON sam.spotify_album_id = asl.spotify_album_id
+               WHERE asl.album_id = ?""",
+            (album_id,),
+        ).fetchall()
+    except sqlite3.OperationalError as exc:
+        if "album_spotify_links" not in str(exc):
+            raise
+        links = []
+
+    if links:
+        scores: dict[str, int] = {"album": 0, "ep": 0, "single": 0, "compilation": 0}
+        for link in links:
+            t = (link["album_type"] or "").lower()
+            if t in scores:
+                scores[t] += link["play_count"] or 1
+        best = max(scores, key=scores.get)
+        if scores[best] > 0:
+            return best
+
+    return "unknown"
+
+
 def _bootstrap_standalone_album_projects(conn: sqlite3.Connection) -> None:
     albums = conn.execute(
         """SELECT al.album_id, al.album_name, al.artist_id, ar.artist_name,
                   sam.album_type, sam.total_tracks, sam.release_date,
-                  COUNT(DISTINCT t.track_id) AS local_tracks
+                  (SELECT COUNT(DISTINCT track_id) FROM (
+                      SELECT track_id FROM tracks WHERE album_id = al.album_id
+                      UNION
+                      SELECT track_id FROM track_albums WHERE album_id = al.album_id
+                  )) AS local_tracks
            FROM albums al
            JOIN artists ar ON ar.artist_id = al.artist_id
-           LEFT JOIN spotify_album_meta sam
-             ON lower(sam.album_name) = lower(al.album_name)
-            AND (sam.album_artists IS NULL OR instr(lower(sam.album_artists), lower(ar.artist_name)) > 0)
-           LEFT JOIN tracks t ON t.album_id = al.album_id
+           LEFT JOIN spotify_album_meta sam ON sam.spotify_album_id = (
+               SELECT s.spotify_album_id FROM spotify_album_meta s
+               WHERE lower(s.album_name) = lower(al.album_name)
+                 AND (s.album_artists IS NULL
+                      OR instr(lower(s.album_artists), lower(ar.artist_name)) > 0)
+               ORDER BY CASE s.album_type
+                          WHEN 'album' THEN 0
+                          WHEN 'ep' THEN 1
+                          WHEN 'single' THEN 2
+                          ELSE 3
+                        END
+               LIMIT 1
+           )
            WHERE NOT EXISTS (
                SELECT 1
                FROM release_group_members rgm
@@ -445,59 +515,38 @@ def _bootstrap_standalone_album_projects(conn: sqlite3.Connection) -> None:
            GROUP BY al.album_id
            ORDER BY al.album_id"""
     ).fetchall()
-    from backend.domains.playback.album_type import classify_album
 
     for album in albums:
-        spotify_type = album["album_type"]
-        spotify_tracks = album["total_tracks"]
+        name_match_type = album["album_type"]  # Spotify type from name-match (or None)
         release_date = album["release_date"]
         local_tracks = int(album["local_tracks"] or 0)
-        linked = _best_spotify_album_for_local_album(conn, int(album["album_id"]))
-        if linked:
-            # Use linked metadata for classification (album_type, total_tracks).
-            # Only override release_date when the name-matched spotify row has
-            # the wrong type (e.g. a single shadowing a real album), keeping
-            # the original release_date for albums that have deluxe variants.
-            linked_type = linked["album_type"]
-            if linked_type == "album" and (spotify_type or "").lower() in ("single", "", None):
+
+        # ── Resolve album type: Spotify metadata first, links second ──
+        resolved = _resolve_standalone_album_type(conn, int(album["album_id"]), name_match_type)
+
+        # Singles do not chart (R13)
+        if resolved == "single":
+            continue
+
+        # Compilations handled by _bootstrap_compilation_exclusive_projects
+        if resolved == "compilation":
+            continue
+
+        # Unknown type: only create project when there's strong evidence (≥7 tracks)
+        if resolved == "unknown":
+            if local_tracks >= 7:
+                resolved = "album"
+            else:
+                continue
+
+        if resolved not in ("album", "ep"):
+            continue
+
+        # Release date: prefer name-match; fall back to best linked album
+        if not release_date:
+            linked = _best_spotify_album_for_local_album(conn, int(album["album_id"]))
+            if linked:
                 release_date = linked["release_date"] or release_date
-            elif not release_date:
-                release_date = linked["release_date"]
-            spotify_type = linked_type or spotify_type
-            spotify_tracks = (
-                linked["total_tracks"] if linked["total_tracks"] is not None else spotify_tracks
-            )
-
-        if (spotify_type or "").lower() == "single" and local_tracks >= 7:
-            spotify_type = "album"
-            spotify_tracks = max(int(spotify_tracks or 0), local_tracks)
-        elif (spotify_type or "").lower() == "single" and 3 <= local_tracks <= 6:
-            spotify_tracks = max(int(spotify_tracks or 0), local_tracks)
-
-        # Skip compilations (handled by _bootstrap_compilation_exclusive_projects)
-        if (spotify_type or "").lower() == "compilation":
-            continue
-
-        # Use local track count as fallback when Spotify metadata is missing
-        effective_tracks = (
-            int(spotify_tracks)
-            if spotify_tracks is not None and int(spotify_tracks) > 0
-            else local_tracks
-        )
-
-        category = classify_album(
-            spotify_type,
-            total_tracks=effective_tracks if effective_tracks > 0 else None,
-        )
-
-        # 容错：无 Spotify 元数据但有足够本地曲目的专辑，按本地曲目数分级
-        if category == "unknown" and local_tracks >= 7:
-            category = "lp"
-        elif category == "unknown" and 3 <= local_tracks <= 6:
-            category = "ep"
-
-        if category not in {"lp", "ep"}:
-            continue
         project_id = _upsert_project(
             conn,
             canonical_name=album["album_name"],

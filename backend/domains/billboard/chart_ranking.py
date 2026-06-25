@@ -101,22 +101,22 @@ def _canonicalize_album_name(df, mask, conn):
     """For rows mapped to a track group, set album_name to the
     primary track's album so all versions share the same album.
     """
-    group_ids = df.loc[mask, "_track_agg_id"].dropna().astype(int).unique()
-    if len(group_ids) == 0:
+    primary_ids = df.loc[mask, "_track_agg_id"].dropna().astype(int).unique()
+    if len(primary_ids) == 0:
         return
 
-    placeholders = ",".join("?" for _ in group_ids)
+    placeholders = ",".join("?" for _ in primary_ids)
     rows = conn.execute(
-        f"""SELECT tg.group_id, a.album_name
+        f"""SELECT tg.primary_track_id, a.album_name
             FROM track_groups tg
             JOIN tracks t ON tg.primary_track_id = t.track_id
             JOIN albums a ON t.album_id = a.album_id
-            WHERE tg.group_id IN ({placeholders})""",
-        tuple(int(g) for g in group_ids),
+            WHERE tg.primary_track_id IN ({placeholders})""",
+        tuple(int(g) for g in primary_ids),
     ).fetchall()
 
     album_map = {row[0]: row[1] for row in rows}
-    # _track_agg_id is the group_id; map to canonical album_name
+    # _track_agg_id is the primary_track_id; map to canonical album_name
     df.loc[mask, "album_name"] = (
         df.loc[mask, "_track_agg_id"].map(album_map).fillna(df.loc[mask, "album_name"])
     )
