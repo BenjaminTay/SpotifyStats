@@ -46,9 +46,9 @@ describe('Settings sections', () => {
   })
 
   it.each([
-    ['单曲榜 Top N', { bb_top_n: 55 }, 55, 50],
-    ['专辑榜 Top N', { bb_album_top_n: 55 }, 55, 52.63157894736842],
-    ['艺人榜 Top N', { bb_artist_top_n: 55 }, 55, 52.63157894736842],
+    ['单曲榜 Top N', { bb_top_n: 55 }, 55, 55],
+    ['专辑榜 Top N', { bb_album_top_n: 55 }, 55, 55],
+    ['艺人榜 Top N', { bb_artist_top_n: 55 }, 55, 55],
   ])('keeps %s responsive while committing only after the slider interaction ends', async (label, payload, expectedValue, clientX) => {
     const onRequiresRebuild = vi.fn()
     const onUpdate = vi.fn()
@@ -61,6 +61,7 @@ describe('Settings sections', () => {
           bb_artist_top_n: 20,
           bb_week_start_dow: 4,
           bb_week_start_hour: 0,
+          include_compilations: false,
         }}
         onUpdate={onUpdate}
         onRequiresRebuild={onRequiresRebuild}
@@ -110,6 +111,68 @@ describe('Settings sections', () => {
 
     expect(onUpdate).toHaveBeenCalledWith(payload)
     expect(onRequiresRebuild).toHaveBeenCalledOnce()
+  })
+
+  it('uses a shared visual scale for the Billboard Top N sliders', async () => {
+    render(
+      <BillboardParamsSection
+        settings={{
+          bb_top_n: 30,
+          bb_album_top_n: 30,
+          bb_artist_top_n: 30,
+          bb_week_start_dow: 4,
+          bb_week_start_hour: 0,
+          include_compilations: false,
+        }}
+        onUpdate={vi.fn()}
+        onRequiresRebuild={vi.fn()}
+      />,
+    )
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /榜单参数/ }))
+    })
+
+    const sliders = ['单曲榜 Top N', '专辑榜 Top N', '艺人榜 Top N'].map((label) => {
+      const slider = document.querySelector<HTMLInputElement>(`input[type="range"][aria-label="${label}"]`)
+      expect(slider).toBeTruthy()
+      return slider
+    })
+
+    for (const slider of sliders) {
+      expect(slider).toHaveAttribute('min', '0')
+      expect(slider).toHaveAttribute('max', '100')
+      expect(slider).toHaveValue('30')
+    }
+  })
+
+  it('keeps the album compilation switch in settings without requiring aggregation rebuild', async () => {
+    const onRequiresRebuild = vi.fn()
+    const onUpdate = vi.fn()
+
+    render(
+      <BillboardParamsSection
+        settings={{
+          bb_top_n: 30,
+          bb_album_top_n: 20,
+          bb_artist_top_n: 20,
+          bb_week_start_dow: 4,
+          bb_week_start_hour: 0,
+          include_compilations: false,
+        }}
+        onUpdate={onUpdate}
+        onRequiresRebuild={onRequiresRebuild}
+      />,
+    )
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /榜单参数/ }))
+    })
+
+    fireEvent.click(screen.getByRole('switch', { name: '专辑榜包含精选集' }))
+
+    expect(onUpdate).toHaveBeenCalledWith({ include_compilations: true })
+    expect(onRequiresRebuild).not.toHaveBeenCalled()
   })
 
   it('shows partial metadata maintenance result after streaming import', () => {

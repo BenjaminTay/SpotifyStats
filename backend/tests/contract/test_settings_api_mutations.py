@@ -80,6 +80,28 @@ def test_settings_update_persists_values_and_redacts_secrets(client):
     assert "llm_base_url" not in read_back
 
 
+def test_settings_update_persists_include_compilations_without_rebuild(client):
+    before = client.get("/api/settings").json()
+    original_rebuild_pending = before["rebuild_pending"]
+
+    reset_response = client.put("/api/settings", json={"include_compilations": False})
+    assert reset_response.status_code == 200
+
+    response = client.put("/api/settings", json={"include_compilations": True})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["include_compilations"] is True
+    assert body["rebuild_pending"] is original_rebuild_pending
+
+    read_back = client.get("/api/settings").json()
+    assert read_back["include_compilations"] is True
+    assert read_back["rebuild_pending"] is original_rebuild_pending
+
+    cleanup = client.put("/api/settings", json={"include_compilations": False})
+    assert cleanup.status_code == 200
+
+
 @pytest.mark.parametrize(
     "payload",
     [

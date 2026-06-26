@@ -8,7 +8,7 @@ import subprocess
 import sys
 import tempfile
 import time
-from collections.abc import Sequence
+from collections.abc import MutableMapping, Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Optional, TextIO
@@ -19,6 +19,7 @@ from urllib.request import Request, urlopen
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_BACKEND_URL = "http://127.0.0.1:8000"
 DEFAULT_FRONTEND_URL = "http://localhost:5173"
+LOCAL_NO_PROXY_HOSTS = ("localhost", "127.0.0.1", "::1")
 
 
 @dataclass
@@ -107,10 +108,29 @@ def build_frontend_command(frontend_url: str) -> list[str]:
 
 def default_env(backend_url: str = DEFAULT_BACKEND_URL) -> dict[str, str]:
     env = dict(os.environ)
+    ensure_local_no_proxy(env)
     env.setdefault("SPOTIFY_STATS_WARMUP", "0")
     env.setdefault("PYTHONUNBUFFERED", "1")
     env["VITE_BACKEND_URL"] = backend_url
     return env
+
+
+def _merge_no_proxy(value: str) -> str:
+    hosts = [part.strip() for part in value.split(",") if part.strip()]
+    normalized = {host.lower() for host in hosts}
+    for host in LOCAL_NO_PROXY_HOSTS:
+        if host.lower() not in normalized:
+            hosts.append(host)
+            normalized.add(host.lower())
+    return ",".join(hosts)
+
+
+def ensure_local_no_proxy(env: Optional[MutableMapping[str, str]] = None) -> None:
+    """Keep local quickstart probes away from user/system HTTP proxies."""
+    target = os.environ if env is None else env
+    merged = _merge_no_proxy(target.get("NO_PROXY") or target.get("no_proxy") or "")
+    target["NO_PROXY"] = merged
+    target["no_proxy"] = merged
 
 
 def fetch_url(url: str, timeout_sec: float = 5.0) -> HttpResult:
@@ -281,6 +301,7 @@ def print_timing_summary(report: dict) -> None:
 
 def run_quickstart_smoke(args: argparse.Namespace) -> dict:
     started_at = time.monotonic()
+    ensure_local_no_proxy()
     log_dir = (
         Path(args.log_dir) if args.log_dir else Path(tempfile.mkdtemp(prefix="spotify-quickstart-"))
     )

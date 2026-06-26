@@ -4,7 +4,7 @@ import { Slider } from '@/components/ui/slider'
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select'
 import { getBillboardName } from '@/lib/billboard-name'
 import type { SettingsUpdatePayload } from '@/types/settings'
-import { CollapsibleSection, FieldLabel } from '@/features/settings/components/SettingsHelpers'
+import { CollapsibleSection, FieldLabel, Toggle } from '@/features/settings/components/SettingsHelpers'
 
 const DOW_OPTIONS = [
   { value: 0, label: '周一 (Monday)' },
@@ -18,11 +18,16 @@ const DOW_OPTIONS = [
 
 type TopNValue = number | readonly number[]
 
+const TOP_N_VISUAL_MIN = 0
+const TOP_N_VISUAL_MAX = 100
+const TRACK_TOP_N_MIN = 10
+const ALBUM_ARTIST_TOP_N_MIN = 5
+
 function normalizeTopN(value: TopNValue, fallback: number, min: number) {
   const raw = Array.isArray(value) ? value[0] : value
   if (typeof raw !== 'number' || !Number.isFinite(raw)) return fallback
   const stepped = Math.round(raw / 5) * 5
-  return Math.min(100, Math.max(min, stepped))
+  return Math.min(TOP_N_VISUAL_MAX, Math.max(min, stepped))
 }
 
 export function BillboardParamsSection({
@@ -30,7 +35,14 @@ export function BillboardParamsSection({
   onUpdate,
   onRequiresRebuild,
 }: {
-  settings: { bb_top_n: number; bb_album_top_n: number; bb_artist_top_n: number; bb_week_start_dow: number; bb_week_start_hour: number }
+  settings: {
+    bb_top_n: number
+    bb_album_top_n: number
+    bb_artist_top_n: number
+    bb_week_start_dow: number
+    bb_week_start_hour: number
+    include_compilations: boolean
+  }
   onUpdate: (p: SettingsUpdatePayload) => void
   onRequiresRebuild: () => void
 }) {
@@ -51,19 +63,19 @@ export function BillboardParamsSection({
   }
 
   const commitBbTopN = (value: TopNValue) => {
-    const newVal = normalizeTopN(value, localBbTopN, 10)
+    const newVal = normalizeTopN(value, localBbTopN, TRACK_TOP_N_MIN)
     setLocalBbTopN(newVal)
     commitAndRequireRebuild({ bb_top_n: newVal })
   }
 
   const commitBbAlbumTopN = (value: TopNValue) => {
-    const newVal = normalizeTopN(value, localBbAlbumTopN, 5)
+    const newVal = normalizeTopN(value, localBbAlbumTopN, ALBUM_ARTIST_TOP_N_MIN)
     setLocalBbAlbumTopN(newVal)
     commitAndRequireRebuild({ bb_album_top_n: newVal })
   }
 
   const commitBbArtistTopN = (value: TopNValue) => {
-    const newVal = normalizeTopN(value, localBbArtistTopN, 5)
+    const newVal = normalizeTopN(value, localBbArtistTopN, ALBUM_ARTIST_TOP_N_MIN)
     setLocalBbArtistTopN(newVal)
     commitAndRequireRebuild({ bb_artist_top_n: newVal })
   }
@@ -76,7 +88,7 @@ export function BillboardParamsSection({
         desc={`调整 ${bbName} 周榜的计算边界和榜单容量，修改后需重建聚合表才能生效。`}
         defaultOpen={false}
         tone="advanced"
-        summary={`单曲 ${localBbTopN} · 专辑 ${localBbAlbumTopN} · 艺人 ${localBbArtistTopN}`}
+        summary={`单曲 ${localBbTopN} · 专辑 ${localBbAlbumTopN} · 艺人 ${localBbArtistTopN} · 精选集${settings.include_compilations ? '包含' : '排除'}`}
       >
 
       <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
@@ -90,10 +102,10 @@ export function BillboardParamsSection({
             <Slider
               aria-label="单曲榜 Top N"
               value={[localBbTopN]}
-              onValueChange={(v) => setLocalBbTopN(normalizeTopN(v, localBbTopN, 10))}
+              onValueChange={(v) => setLocalBbTopN(normalizeTopN(v, localBbTopN, TRACK_TOP_N_MIN))}
               onValueCommitted={commitBbTopN}
-              min={10}
-              max={100}
+              min={TOP_N_VISUAL_MIN}
+              max={TOP_N_VISUAL_MAX}
               step={5}
             />
           </div>
@@ -106,10 +118,10 @@ export function BillboardParamsSection({
             <Slider
               aria-label="专辑榜 Top N"
               value={[localBbAlbumTopN]}
-              onValueChange={(v) => setLocalBbAlbumTopN(normalizeTopN(v, localBbAlbumTopN, 5))}
+              onValueChange={(v) => setLocalBbAlbumTopN(normalizeTopN(v, localBbAlbumTopN, ALBUM_ARTIST_TOP_N_MIN))}
               onValueCommitted={commitBbAlbumTopN}
-              min={5}
-              max={100}
+              min={TOP_N_VISUAL_MIN}
+              max={TOP_N_VISUAL_MAX}
               step={5}
             />
           </div>
@@ -122,10 +134,10 @@ export function BillboardParamsSection({
             <Slider
               aria-label="艺人榜 Top N"
               value={[localBbArtistTopN]}
-              onValueChange={(v) => setLocalBbArtistTopN(normalizeTopN(v, localBbArtistTopN, 5))}
+              onValueChange={(v) => setLocalBbArtistTopN(normalizeTopN(v, localBbArtistTopN, ALBUM_ARTIST_TOP_N_MIN))}
               onValueCommitted={commitBbArtistTopN}
-              min={5}
-              max={100}
+              min={TOP_N_VISUAL_MIN}
+              max={TOP_N_VISUAL_MAX}
               step={5}
             />
           </div>
@@ -175,6 +187,20 @@ export function BillboardParamsSection({
                 ))}
               </SelectContent>
             </Select>
+          </div>
+
+          <div className="flex items-center justify-between gap-4 rounded-[10px] border border-border bg-muted/20 px-4 py-3">
+            <div className="min-w-0">
+              <FieldLabel label="专辑榜包含精选集" />
+              <p className="mt-1 text-[12px] leading-relaxed text-muted-foreground">
+                适用于 {bbName} 周榜专辑榜和播放分析个人排行榜专辑榜。
+              </p>
+            </div>
+            <Toggle
+              checked={settings.include_compilations}
+              onChange={(value) => onUpdate({ include_compilations: value })}
+              label="专辑榜包含精选集"
+            />
           </div>
 
         </div>

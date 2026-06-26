@@ -391,6 +391,19 @@ async function waitForText(client, text, timeoutMs) {
   )
 }
 
+async function hasPageText(client, text) {
+  const state = await pageState(client)
+  return state.bodyText.includes(text)
+}
+
+async function expandSectionForText(client, sectionTitle, targetText, waitMs) {
+  await waitForText(client, sectionTitle, waitMs)
+  if (!(await hasPageText(client, targetText))) {
+    await clickText(client, sectionTitle, waitMs)
+  }
+  await waitForText(client, targetText, waitMs)
+}
+
 async function waitForAnyText(client, texts, timeoutMs) {
   return waitForCondition(
     async () => {
@@ -501,10 +514,10 @@ const SCENARIOS = {
     await navigate(client, baseUrl, '/settings', waitMs)
     await waitForText(client, '参数与配置', waitMs)
     await waitForText(client, 'SPOTIFY 连接', waitMs)
-    await waitForText(client, 'DATA & DISPLAY', waitMs)
-    await waitForText(client, 'BILLBOARD PARAMETERS', waitMs)
-    await waitForText(client, 'VERSION MERGE', waitMs)
-    await waitForText(client, 'DATA IMPORT', waitMs)
+    await waitForText(client, '数据与显示', waitMs)
+    await waitForText(client, '榜单参数', waitMs)
+    await waitForText(client, '版本合并', waitMs)
+    await waitForText(client, '数据导入', waitMs)
 
     await clickSwitchByLabel(client, '动态阈值', waitMs)
     await clickSwitchByLabel(client, '动态阈值', waitMs)
@@ -540,8 +553,7 @@ const SCENARIOS = {
   'settings-data-import': async ({ client, baseUrl, waitMs }) => {
     await navigate(client, baseUrl, '/settings', waitMs)
     await waitForText(client, '参数与配置', waitMs)
-    await waitForText(client, 'DATA IMPORT', waitMs)
-    await waitForText(client, '串流数据', waitMs)
+    await expandSectionForText(client, '数据导入', '串流数据', waitMs)
     await waitForText(client, '账号数据', waitMs)
     await waitForText(client, '当前数据库记录数', waitMs)
     await waitForText(client, '导入 Spotify 账号数据包', waitMs)

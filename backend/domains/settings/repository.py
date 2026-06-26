@@ -17,6 +17,7 @@ SETTINGS_DEFAULTS = {
     "bb_artist_top_n": 20,
     "bb_week_start_dow": 4,
     "bb_week_start_hour": 0,
+    "include_compilations": False,
     "llm_enabled": False,
     "llm_provider": "deepseek",
     "llm_model": "",
@@ -35,6 +36,7 @@ _SQLITE_TYPE_COERCION = [
     "bb_artist_top_n",
     "bb_week_start_dow",
     "bb_week_start_hour",
+    "include_compilations",
     "llm_enabled",
     "rebuild_pending",
 ]

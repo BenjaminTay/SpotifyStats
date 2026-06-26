@@ -1,8 +1,6 @@
-import { useState } from 'react'
 import { EntityTabs, MetricToggle, useAnalysisQueryState } from '@/components/shared/AnalysisControls'
 import { GlassCard } from '@/components/shared/GlassCard'
 import { PersonalRankTable } from '@/components/shared/StatsTables'
-import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { analysisApi, useAnalysisFilters, useApiData } from '@/hooks/useAnalysis'
 
@@ -15,10 +13,15 @@ const ENTITY_TITLE = {
 export function AnalysisChartsPage() {
   const { filters, loading: filtersLoading } = useAnalysisFilters()
   const { metric, entity, setQuery, apiParams } = useAnalysisQueryState('track')
-  const [includeCompilations, setIncludeCompilations] = useState(false)
   const { data, loading } = useApiData(
-    () => analysisApi.charts(filters, { ...apiParams, entity, metric, limit: 250, include_compilations: includeCompilations }),
-    [filters, apiParams, entity, metric, includeCompilations],
+    () => analysisApi.charts(filters, {
+      ...apiParams,
+      entity,
+      metric,
+      limit: 250,
+      include_compilations: filters.include_compilations,
+    }),
+    [filters, apiParams, entity, metric],
     !filtersLoading,
   )
 
@@ -43,17 +46,6 @@ export function AnalysisChartsPage() {
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
-            {entity === 'album' && (
-              <Button
-                type="button"
-                size="sm"
-                variant={includeCompilations ? 'default' : 'ghost'}
-                onClick={() => setIncludeCompilations((prev) => !prev)}
-                className="h-8 rounded-[7px] px-3 text-xs"
-              >
-                包含精选集
-              </Button>
-            )}
             <EntityTabs entity={entity} onChange={(next) => setQuery({ entity: next })} />
           </div>
         </div>

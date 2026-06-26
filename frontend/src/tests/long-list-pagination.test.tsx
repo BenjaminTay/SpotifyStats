@@ -5,6 +5,8 @@ import { describe, expect, it, vi } from 'vitest'
 import { AllTimeTable } from '@/features/billboard/all-time/AllTimeTable'
 import type { AllTimeRow, ColumnDef, MergedTrackRow } from '@/features/billboard/all-time/allTimeData'
 import { MiniRankTable } from '@/features/billboard/records/RecordsPrimitives'
+import { recentPlayRowKey } from '@/components/shared/RecentPlaysSection'
+import type { RecentPlayRow } from '@/types/analysis'
 
 describe('Phase 5 long-list pagination', () => {
   it('renders only the current page for Records mini rank tables', () => {
@@ -85,5 +87,42 @@ describe('Phase 5 long-list pagination', () => {
     expect(screen.getByText('Track 10')).toBeInTheDocument()
     expect(screen.queryByText('Track 11')).not.toBeInTheDocument()
     expect(screen.queryByText('Track 25')).not.toBeInTheDocument()
+  })
+
+  it('keeps recent-play row keys unique when entity joins return duplicate play ids', () => {
+    const rows: RecentPlayRow[] = [
+      {
+        play_id: 2112807,
+        ts: '2026-06-01T12:00:00Z',
+        date: '2026-06-01',
+        track_id: 42,
+        track_name: 'Duplicate Key Song',
+        artist_name: 'Artist One',
+        artist_names: ['Artist One', 'Artist Two'],
+        album_name: 'Join Edge Case',
+        ms_played: 180000,
+        hours: 0.05,
+        platform: 'ios',
+        cover_url: null,
+      },
+      {
+        play_id: 2112807,
+        ts: '2026-06-01T12:00:00Z',
+        date: '2026-06-01',
+        track_id: 42,
+        track_name: 'Duplicate Key Song',
+        artist_name: 'Artist Two',
+        artist_names: ['Artist One', 'Artist Two'],
+        album_name: 'Join Edge Case',
+        ms_played: 180000,
+        hours: 0.05,
+        platform: 'ios',
+        cover_url: null,
+      },
+    ]
+
+    const keys = rows.map(recentPlayRowKey)
+
+    expect(new Set(keys).size).toBe(rows.length)
   })
 })

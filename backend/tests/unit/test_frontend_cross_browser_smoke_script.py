@@ -53,10 +53,26 @@ def test_frontend_cross_browser_smoke_script_covers_browser_families_and_flows()
     assert "has_llm_key" in source
     assert "settings-controls" in source
     assert "settings-data-import" in source
+    assert "expand_section_for_text" in source
     assert "run_settings_controls(browser)" in source
     assert "run_settings_data_import(browser)" in source
+    assert "参数与配置" in source
+    assert "01 · SPOTIFY 连接" in source
+    assert "数据与显示" in source
+    assert "数据导入" in source
+    assert "榜单参数" in source
+    assert "版本合并" in source
+    assert "SETTINGS / CONFIGURATION" not in source
+    assert "00 · SPOTIFY 连接" not in source
+    assert "DATA & DISPLAY" not in source
+    assert "DATA IMPORT" not in source
+    assert "BILLBOARD PARAMETERS" not in source
+    assert "VERSION MERGE" not in source
     assert "theme-toggle" in source
     assert "max-scroll-overflow" in source
+    assert "const DYNAMIC_ROUTE_WAIT_MS = 12000" in source
+    assert "FRONTEND_DYNAMIC_ROUTE_WAIT_MS" in source
+    assert "def wait_ms_for_route(route)" in source
 
 
 def test_frontend_cross_browser_smoke_script_can_rewrite_preview_api_requests():
@@ -95,12 +111,13 @@ def test_frontend_cross_browser_smoke_can_cover_dynamic_detail_routes():
 
     assert "--include-detail-routes" in source
     assert "resolveDetailRoutes" in source
+    assert "dynamic: true" in source
     assert "/api/billboard/entity-lists" in source
     assert "/api/community/feed" in source
     for marker in [
-        "MUSIC / 单曲详情",
-        "MUSIC / 专辑详情",
-        "MUSIC / 艺人详情",
+        "单曲详情",
+        "专辑详情",
+        "艺人详情",
         "COMMUNITY / POST",
         "COMMUNITY / ACCOUNT",
     ]:

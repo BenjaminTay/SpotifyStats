@@ -10,6 +10,7 @@ const DEFAULT_PYTHON = process.env.PYTHON_PLAYWRIGHT || 'python'
 const DEFAULT_BROWSERS = ['chromium', 'firefox', 'webkit']
 const DEFAULT_SCENARIOS = ['route-markers', 'core-interactions']
 const DEFAULT_WAIT_MS = 5000
+const DYNAMIC_ROUTE_WAIT_MS = 12000
 const DEFAULT_MAX_SCROLL_OVERFLOW = 0
 const REWRITE_PATH_PREFIXES = ['/api', '/covers']
 const DETAIL_ROUTE_FILTERS = {
@@ -29,7 +30,7 @@ const DEFAULT_ROUTES = [
   { path: '/analysis/charts', markers: ['PERSONAL CHARTS', '个人排行榜'] },
   { path: '/billboard/records', markers: ['CHART / HALL OF FAME', '冠军圣殿'] },
   { path: '/ai-insights', markers: ['AI / INSIGHTS', 'AI 洞察'] },
-  { path: '/settings', markers: ['SETTINGS / CONFIGURATION', '00 · SPOTIFY 连接'] },
+  { path: '/settings', markers: ['参数与配置', '01 · SPOTIFY 连接'] },
 ]
 
 const VIEWPORTS = {
@@ -110,7 +111,7 @@ Options:
   --browser <a,b,c>             Browser engines: chromium,firefox,webkit; default ${DEFAULT_BROWSERS.join(',')}
   --scenario <a,b>              Scenarios: route-markers,core-interactions; default ${DEFAULT_SCENARIOS.join(',')}
   --viewport <mode>             desktop, mobile, or both, default both
-  --wait-ms <ms>                Max wait for route/text assertions, default ${DEFAULT_WAIT_MS}
+  --wait-ms <ms>                Max wait for route/text assertions, default ${DEFAULT_WAIT_MS}; dynamic detail routes use at least ${DYNAMIC_ROUTE_WAIT_MS}
   --max-scroll-overflow <px>    Allowed horizontal overflow over viewport width, default ${DEFAULT_MAX_SCROLL_OVERFLOW}
   --include-detail-routes       Resolve and append music/community detail routes from local API data
   --output <path>               Write JSON results to a file
@@ -153,30 +154,35 @@ async function resolveDetailRoutes(baseUrl, apiBaseUrl) {
   if (track) {
     routes.push({
       path: `/music/tracks/${encodeURIComponent(String(track.track_id))}`,
-      markers: ['MUSIC / 单曲详情', '播放统计'],
+      markers: ['单曲详情', '播放统计'],
+      dynamic: true,
     })
   }
   if (album) {
     routes.push({
       path: `/music/albums/${encodeURIComponent(album.album_name)}?artist=${encodeURIComponent(album.artist_name)}`,
-      markers: ['MUSIC / 专辑详情', '播放统计'],
+      markers: ['专辑详情', '播放统计'],
+      dynamic: true,
     })
   }
   if (artist) {
     routes.push({
       path: `/music/artists/${encodeURIComponent(artist.artist_name)}`,
-      markers: ['MUSIC / 艺人详情', '播放统计'],
+      markers: ['艺人详情', '播放统计'],
+      dynamic: true,
     })
   }
   if (post) {
     routes.push({
       path: `/community/post/${encodeURIComponent(post.id)}`,
       markers: ['COMMUNITY / POST'],
+      dynamic: true,
     })
     if (post.account_handle) {
       routes.push({
         path: `/community/account/${encodeURIComponent(post.account_handle)}`,
         markers: ['COMMUNITY / ACCOUNT', 'Posts'],
+        dynamic: true,
       })
     }
   }
@@ -209,6 +215,7 @@ ROUTES = json.loads(os.environ["FRONTEND_ROUTES_JSON"])
 SCENARIOS = set(json.loads(os.environ["FRONTEND_SCENARIOS_JSON"]))
 VIEWPORTS = json.loads(os.environ["FRONTEND_VIEWPORTS_JSON"])
 WAIT_MS = int(os.environ["FRONTEND_WAIT_MS"])
+DYNAMIC_ROUTE_WAIT_MS = int(os.environ["FRONTEND_DYNAMIC_ROUTE_WAIT_MS"])
 MAX_SCROLL_OVERFLOW = int(os.environ["FRONTEND_MAX_SCROLL_OVERFLOW"])
 HEADED = os.environ.get("FRONTEND_HEADED") == "1"
 BROWSER_NAME = sys.argv[1]
@@ -224,6 +231,10 @@ class SmokeFailure(AssertionError):
 
 def absolute_url(path: str) -> str:
     return urljoin(BASE_URL.rstrip("/") + "/", path.lstrip("/"))
+
+
+def wait_ms_for_route(route) -> int:
+    return max(WAIT_MS, DYNAMIC_ROUTE_WAIT_MS) if route.get("dynamic") else WAIT_MS
 
 
 def rewrite_request_url(request_url):
@@ -290,8 +301,9 @@ def body_text(page) -> str:
         return ""
 
 
-def wait_for_text(page, text: str) -> str:
-    deadline = time.monotonic() + WAIT_MS / 1000
+def wait_for_text(page, text: str, timeout_ms: int | None = None) -> str:
+    wait_ms = WAIT_MS if timeout_ms is None else timeout_ms
+    deadline = time.monotonic() + wait_ms / 1000
     last = ""
     while time.monotonic() < deadline:
         last = body_text(page)
@@ -299,6 +311,17 @@ def wait_for_text(page, text: str) -> str:
             return last
         time.sleep(0.15)
     raise SmokeFailure(f"Expected page text not found: {text}; sample={last[:240]!r}")
+
+
+def has_text(page, text: str) -> bool:
+    return text in body_text(page)
+
+
+def expand_section_for_text(page, section_title: str, target_text: str) -> None:
+    wait_for_text(page, section_title)
+    if not has_text(page, target_text):
+        click_text(page, section_title)
+    wait_for_text(page, target_text)
 
 
 def wait_for_any_text(page, texts) -> str:
@@ -443,9 +466,10 @@ def run_route_markers(browser):
         for route in ROUTES:
             page, console_messages, page_errors = new_page(browser, viewport_name)
             try:
-                page.goto(absolute_url(route["path"]), wait_until="domcontentloaded", timeout=WAIT_MS + 10000)
+                route_wait_ms = wait_ms_for_route(route)
+                page.goto(absolute_url(route["path"]), wait_until="domcontentloaded", timeout=route_wait_ms + 10000)
                 for marker in route["markers"]:
-                    wait_for_text(page, marker)
+                    wait_for_text(page, marker, timeout_ms=route_wait_ms)
                 assert_page_health(page, console_messages, page_errors)
                 print(f"PASS route-markers {viewport_name} {route['path']}")
             finally:
@@ -536,10 +560,10 @@ def run_settings_controls(browser):
         page.goto(absolute_url("/settings"), wait_until="domcontentloaded", timeout=WAIT_MS + 10000)
         wait_for_text(page, "参数与配置")
         wait_for_text(page, "SPOTIFY 连接")
-        wait_for_text(page, "DATA & DISPLAY")
-        wait_for_text(page, "BILLBOARD PARAMETERS")
-        wait_for_text(page, "VERSION MERGE")
-        wait_for_text(page, "DATA IMPORT")
+        wait_for_text(page, "数据与显示")
+        wait_for_text(page, "榜单参数")
+        wait_for_text(page, "版本合并")
+        wait_for_text(page, "数据导入")
 
         click_switch_by_label(page, "动态阈值")
         click_switch_by_label(page, "动态阈值")
@@ -573,8 +597,7 @@ def run_settings_data_import(browser):
     try:
         page.goto(absolute_url("/settings"), wait_until="domcontentloaded", timeout=WAIT_MS + 10000)
         wait_for_text(page, "参数与配置")
-        wait_for_text(page, "DATA IMPORT")
-        wait_for_text(page, "串流数据")
+        expand_section_for_text(page, "数据导入", "串流数据")
         wait_for_text(page, "账号数据")
         wait_for_text(page, "当前数据库记录数")
         wait_for_text(page, "导入 Spotify 账号数据包")
@@ -725,6 +748,7 @@ async function main() {
           FRONTEND_SCENARIOS_JSON: JSON.stringify(args.scenarios),
           FRONTEND_VIEWPORTS_JSON: viewportConfig,
           FRONTEND_WAIT_MS: String(args.waitMs),
+          FRONTEND_DYNAMIC_ROUTE_WAIT_MS: String(Math.max(args.waitMs, DYNAMIC_ROUTE_WAIT_MS)),
           FRONTEND_MAX_SCROLL_OVERFLOW: String(args.maxScrollOverflow),
           FRONTEND_HEADED: args.headed ? '1' : '0',
         },

@@ -25,6 +25,7 @@ const STATS_SETTING_KEYS = new Set<keyof SettingsUpdatePayload>([
   'bb_artist_top_n',
   'bb_week_start_dow',
   'bb_week_start_hour',
+  'include_compilations',
 ])
 
 function touchesStatsSettings(payload: SettingsUpdatePayload): boolean {

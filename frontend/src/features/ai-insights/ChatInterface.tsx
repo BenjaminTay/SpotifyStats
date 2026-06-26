@@ -298,6 +298,7 @@ export function ChatInterface({
             <button
               onClick={handleSend}
               disabled={asking || !input.trim()}
+              aria-label="发送问题"
               className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-accent-foreground text-card transition-opacity hover:opacity-85 disabled:opacity-30"
             >
               <Send className="h-4 w-4" />

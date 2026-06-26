@@ -13,11 +13,12 @@ export interface paths {
         };
         /**
          * Get Cover
-         * @description 封面图片服务，三级回退链：
+         * @description 封面图片服务，四级回退链：
          *
          *     1. 本地缓存命中 → 直接返回文件（最快）
          *     2. 本地缺失 → 查 DB 获取 Spotify CDN URL → 重定向到 CDN + 后台下载缓存
-         *     3. 无 CDN URL → 404
+         *     3. 无 CDN URL → 通过 Spotify API 搜索封面 → 写回 DB → 重定向 + 后台下载
+         *     4. API 搜索无结果 → 404
          */
         get: operations["get_cover_covers__cover_type___entity_id__jpg_get"];
         put?: never;
@@ -105,6 +106,26 @@ export interface paths {
         };
         /** Analysis Play Dates */
         get: operations["analysis_play_dates_api_analysis_play_dates_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/analysis/records": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Analysis Records
+         * @description 获取播放记录 — 基于有效播放事件的个人音乐史极值、连续、回归与行为纪录。
+         */
+        get: operations["analysis_records_api_analysis_records_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -3632,6 +3653,27 @@ export interface components {
                 [key: string]: unknown;
             }[];
         };
+        /**
+         * EntityRecordFamily
+         * @description 三实体记录族，同一记录主题在 track/album/artist 三个维度的结果。
+         */
+        EntityRecordFamily: {
+            /**
+             * Track
+             * @default []
+             */
+            track: components["schemas"]["PlaybackRecordRow"][];
+            /**
+             * Album
+             * @default []
+             */
+            album: components["schemas"]["PlaybackRecordRow"][];
+            /**
+             * Artist
+             * @default []
+             */
+            artist: components["schemas"]["PlaybackRecordRow"][];
+        };
         /** EntityStatsResponse */
         EntityStatsResponse: {
             /** Found */
@@ -4443,6 +4485,467 @@ export interface components {
             /** Count */
             count: number;
         };
+        /** PlaybackBehaviorRecords */
+        PlaybackBehaviorRecords: {
+            /**
+             * @default {
+             *       "track": [],
+             *       "album": [],
+             *       "artist": []
+             *     }
+             */
+            skip_storm: components["schemas"]["EntityRecordFamily"];
+            /**
+             * Shuffle Peak
+             * @default []
+             */
+            shuffle_peak: components["schemas"]["PlaybackRecordRow"][];
+            /**
+             * Platform Reign
+             * @default []
+             */
+            platform_reign: components["schemas"]["PlaybackRecordRow"][];
+            /**
+             * Platform Switch Day
+             * @default []
+             */
+            platform_switch_day: components["schemas"]["PlaybackRecordRow"][];
+            /**
+             * Playback Milestones
+             * @default []
+             */
+            playback_milestones: components["schemas"]["PlaybackRecordRow"][];
+        };
+        /** PlaybackDiscoveryRecords */
+        PlaybackDiscoveryRecords: {
+            /**
+             * @default {
+             *       "track": [],
+             *       "album": [],
+             *       "artist": []
+             *     }
+             */
+            discovery_day: components["schemas"]["EntityRecordFamily"];
+            /**
+             * @default {
+             *       "track": [],
+             *       "album": [],
+             *       "artist": []
+             *     }
+             */
+            longest_no_repeat: components["schemas"]["EntityRecordFamily"];
+            /**
+             * @default {
+             *       "track": [],
+             *       "album": [],
+             *       "artist": []
+             *     }
+             */
+            album_completionist: components["schemas"]["EntityRecordFamily"];
+            /**
+             * Same Name Diff Artist
+             * @default []
+             */
+            same_name_diff_artist: components["schemas"]["PlaybackRecordRow"][];
+            /**
+             * @default {
+             *       "track": [],
+             *       "album": [],
+             *       "artist": []
+             *     }
+             */
+            feat_lover: components["schemas"]["EntityRecordFamily"];
+        };
+        /** PlaybackLongevityRecords */
+        PlaybackLongevityRecords: {
+            /**
+             * @default {
+             *       "track": [],
+             *       "album": [],
+             *       "artist": []
+             *     }
+             */
+            longest_streak_days: components["schemas"]["EntityRecordFamily"];
+            /**
+             * @default {
+             *       "track": [],
+             *       "album": [],
+             *       "artist": []
+             *     }
+             */
+            longest_span: components["schemas"]["EntityRecordFamily"];
+            /**
+             * @default {
+             *       "track": [],
+             *       "album": [],
+             *       "artist": []
+             *     }
+             */
+            comeback_after_sleep: components["schemas"]["EntityRecordFamily"];
+            /**
+             * @default {
+             *       "track": [],
+             *       "album": [],
+             *       "artist": []
+             *     }
+             */
+            most_active_months: components["schemas"]["EntityRecordFamily"];
+            /**
+             * User Active Streak
+             * @default []
+             */
+            user_active_streak: components["schemas"]["PlaybackRecordRow"][];
+        };
+        /** PlaybackObsessionRecords */
+        PlaybackObsessionRecords: {
+            /**
+             * @default {
+             *       "track": [],
+             *       "album": [],
+             *       "artist": []
+             *     }
+             */
+            daily_binge: components["schemas"]["EntityRecordFamily"];
+            /**
+             * @default {
+             *       "track": [],
+             *       "album": [],
+             *       "artist": []
+             *     }
+             */
+            daily_duration: components["schemas"]["EntityRecordFamily"];
+            /**
+             * @default {
+             *       "track": [],
+             *       "album": [],
+             *       "artist": []
+             *     }
+             */
+            consecutive_marathon: components["schemas"]["EntityRecordFamily"];
+            /**
+             * Daily Total Record
+             * @default []
+             */
+            daily_total_record: components["schemas"]["PlaybackRecordRow"][];
+        };
+        /**
+         * PlaybackRecordRow
+         * @description 通用播放记录行模型，三实体记录与事件型记录共用。
+         */
+        PlaybackRecordRow: {
+            /** Rank */
+            rank: number;
+            /** Entity Type */
+            entity_type?: string | null;
+            /** Entity Id */
+            entity_id?: string | null;
+            /** Name */
+            name: string;
+            /** Artist Name */
+            artist_name?: string | null;
+            /** Artist Names */
+            artist_names?: string[] | null;
+            /** Value */
+            value: number;
+            /** Unit */
+            unit: string;
+            /** Secondary Value */
+            secondary_value?: number | null;
+            /** Secondary Unit */
+            secondary_unit?: string | null;
+            /** Date */
+            date?: string | null;
+            /** Start Date */
+            start_date?: string | null;
+            /** End Date */
+            end_date?: string | null;
+            /** Total Plays */
+            total_plays?: number | null;
+            /** Total Hours */
+            total_hours?: number | null;
+            /** Unique Tracks */
+            unique_tracks?: number | null;
+            /** Top Track Name */
+            top_track_name?: string | null;
+            /** Top Track Artist Name */
+            top_track_artist_name?: string | null;
+            /** Top Track Plays */
+            top_track_plays?: number | null;
+            /** Top Track Cover Url */
+            top_track_cover_url?: string | null;
+            /** Top Album Name */
+            top_album_name?: string | null;
+            /** Top Album Artist Name */
+            top_album_artist_name?: string | null;
+            /** Top Album Plays */
+            top_album_plays?: number | null;
+            /** Top Album Cover Url */
+            top_album_cover_url?: string | null;
+            /** Top Artist Name */
+            top_artist_name?: string | null;
+            /** Top Artist Plays */
+            top_artist_plays?: number | null;
+            /** Top Artist Cover Url */
+            top_artist_cover_url?: string | null;
+            /** Share Pct */
+            share_pct?: number | null;
+            /** Cover Url */
+            cover_url?: string | null;
+            /** Caption */
+            caption?: string | null;
+        };
+        /** PlaybackRecordsData */
+        PlaybackRecordsData: {
+            /**
+             * @default {
+             *       "daily_binge": {
+             *         "album": [],
+             *         "artist": [],
+             *         "track": []
+             *       },
+             *       "daily_duration": {
+             *         "album": [],
+             *         "artist": [],
+             *         "track": []
+             *       },
+             *       "consecutive_marathon": {
+             *         "album": [],
+             *         "artist": [],
+             *         "track": []
+             *       },
+             *       "daily_total_record": []
+             *     }
+             */
+            obsession: components["schemas"]["PlaybackObsessionRecords"];
+            /**
+             * @default {
+             *       "hourly_dominance": {
+             *         "album": [],
+             *         "artist": [],
+             *         "track": []
+             *       },
+             *       "monthly_peak": {
+             *         "album": [],
+             *         "artist": [],
+             *         "track": []
+             *       },
+             *       "yearly_peak": {
+             *         "album": [],
+             *         "artist": [],
+             *         "track": []
+             *       },
+             *       "late_night_peak_day": [],
+             *       "weekday_preference": [],
+             *       "new_year_eve": []
+             *     }
+             */
+            time_patterns: components["schemas"]["PlaybackTimePatternRecords"];
+            /**
+             * @default {
+             *       "daily_champion": {
+             *         "album": [],
+             *         "artist": [],
+             *         "track": []
+             *       },
+             *       "monthly_reign": {
+             *         "album": [],
+             *         "artist": [],
+             *         "track": []
+             *       },
+             *       "yearly_reign": {
+             *         "album": [],
+             *         "artist": [],
+             *         "track": []
+             *       },
+             *       "fastest_milestone": {
+             *         "album": [],
+             *         "artist": [],
+             *         "track": []
+             *       },
+             *       "consecutive_champion_days": {
+             *         "album": [],
+             *         "artist": [],
+             *         "track": []
+             *       }
+             *     }
+             */
+            reigns: components["schemas"]["PlaybackReignRecords"];
+            /**
+             * @default {
+             *       "longest_streak_days": {
+             *         "album": [],
+             *         "artist": [],
+             *         "track": []
+             *       },
+             *       "longest_span": {
+             *         "album": [],
+             *         "artist": [],
+             *         "track": []
+             *       },
+             *       "comeback_after_sleep": {
+             *         "album": [],
+             *         "artist": [],
+             *         "track": []
+             *       },
+             *       "most_active_months": {
+             *         "album": [],
+             *         "artist": [],
+             *         "track": []
+             *       },
+             *       "user_active_streak": []
+             *     }
+             */
+            longevity: components["schemas"]["PlaybackLongevityRecords"];
+            /**
+             * @default {
+             *       "discovery_day": {
+             *         "album": [],
+             *         "artist": [],
+             *         "track": []
+             *       },
+             *       "longest_no_repeat": {
+             *         "album": [],
+             *         "artist": [],
+             *         "track": []
+             *       },
+             *       "album_completionist": {
+             *         "album": [],
+             *         "artist": [],
+             *         "track": []
+             *       },
+             *       "same_name_diff_artist": [],
+             *       "feat_lover": {
+             *         "album": [],
+             *         "artist": [],
+             *         "track": []
+             *       }
+             *     }
+             */
+            discovery: components["schemas"]["PlaybackDiscoveryRecords"];
+            /**
+             * @default {
+             *       "skip_storm": {
+             *         "album": [],
+             *         "artist": [],
+             *         "track": []
+             *       },
+             *       "shuffle_peak": [],
+             *       "platform_reign": [],
+             *       "platform_switch_day": [],
+             *       "playback_milestones": []
+             *     }
+             */
+            behavior: components["schemas"]["PlaybackBehaviorRecords"];
+        };
+        /** PlaybackRecordsMeta */
+        PlaybackRecordsMeta: {
+            /** Total Plays */
+            total_plays: number;
+            /** Total Hours */
+            total_hours: number;
+            /** Active Days */
+            active_days: number;
+            /** Merge Level */
+            merge_level: number;
+            /**
+             * Min Sample Plays
+             * @default 10
+             */
+            min_sample_plays: number;
+            /** Generated At */
+            generated_at: string;
+        };
+        /** PlaybackRecordsResponse */
+        PlaybackRecordsResponse: {
+            period: components["schemas"]["AnalysisResolvedPeriod"];
+            meta: components["schemas"]["PlaybackRecordsMeta"];
+            records: components["schemas"]["PlaybackRecordsData"];
+        };
+        /** PlaybackReignRecords */
+        PlaybackReignRecords: {
+            /**
+             * @default {
+             *       "track": [],
+             *       "album": [],
+             *       "artist": []
+             *     }
+             */
+            daily_champion: components["schemas"]["EntityRecordFamily"];
+            /**
+             * @default {
+             *       "track": [],
+             *       "album": [],
+             *       "artist": []
+             *     }
+             */
+            monthly_reign: components["schemas"]["EntityRecordFamily"];
+            /**
+             * @default {
+             *       "track": [],
+             *       "album": [],
+             *       "artist": []
+             *     }
+             */
+            yearly_reign: components["schemas"]["EntityRecordFamily"];
+            /**
+             * @default {
+             *       "track": [],
+             *       "album": [],
+             *       "artist": []
+             *     }
+             */
+            fastest_milestone: components["schemas"]["EntityRecordFamily"];
+            /**
+             * @default {
+             *       "track": [],
+             *       "album": [],
+             *       "artist": []
+             *     }
+             */
+            consecutive_champion_days: components["schemas"]["EntityRecordFamily"];
+        };
+        /** PlaybackTimePatternRecords */
+        PlaybackTimePatternRecords: {
+            /**
+             * @default {
+             *       "track": [],
+             *       "album": [],
+             *       "artist": []
+             *     }
+             */
+            hourly_dominance: components["schemas"]["EntityRecordFamily"];
+            /**
+             * @default {
+             *       "track": [],
+             *       "album": [],
+             *       "artist": []
+             *     }
+             */
+            monthly_peak: components["schemas"]["EntityRecordFamily"];
+            /**
+             * @default {
+             *       "track": [],
+             *       "album": [],
+             *       "artist": []
+             *     }
+             */
+            yearly_peak: components["schemas"]["EntityRecordFamily"];
+            /**
+             * Late Night Peak Day
+             * @default []
+             */
+            late_night_peak_day: components["schemas"]["PlaybackRecordRow"][];
+            /**
+             * Weekday Preference
+             * @default []
+             */
+            weekday_preference: components["schemas"]["PlaybackRecordRow"][];
+            /**
+             * New Year Eve
+             * @default []
+             */
+            new_year_eve: components["schemas"]["PlaybackRecordRow"][];
+        };
         /** PlaylistEntry */
         PlaylistEntry: {
             /** Id */
@@ -4982,6 +5485,11 @@ export interface components {
             bb_week_start_dow: number;
             /** Bb Week Start Hour */
             bb_week_start_hour: number;
+            /**
+             * Include Compilations
+             * @default false
+             */
+            include_compilations: boolean;
             /** Db Record Count */
             db_record_count: number;
             /** Account Data Imported */
@@ -5015,6 +5523,15 @@ export interface components {
              * @default false
              */
             has_llm_key: boolean;
+            /** Llm Active Profile Id */
+            llm_active_profile_id?: number | null;
+            /** Llm Active Profile Name */
+            llm_active_profile_name?: string | null;
+            /**
+             * Rebuild Pending
+             * @default false
+             */
+            rebuild_pending: boolean;
         };
         /**
          * SettingsUpdateRequest
@@ -5037,6 +5554,8 @@ export interface components {
             bb_week_start_dow?: number | null;
             /** Bb Week Start Hour */
             bb_week_start_hour?: number | null;
+            /** Include Compilations */
+            include_compilations?: boolean | null;
             /** Llm Enabled */
             llm_enabled?: boolean | null;
             /** Llm Provider */
@@ -5985,6 +6504,7 @@ export interface operations {
     analysis_overview_api_analysis_overview_get: {
         parameters: {
             query?: {
+                merge_level?: number;
                 /** @description 最短播放时长 (毫秒) */
                 min_ms?: number;
                 /** @description 仅音乐 */
@@ -6198,6 +6718,54 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AnalysisPlayDateEntry"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    analysis_records_api_analysis_records_get: {
+        parameters: {
+            query?: {
+                period?: string;
+                start_date?: string | null;
+                end_date?: string | null;
+                /** @description 专辑记录是否包含精选集 */
+                include_compilations?: boolean;
+                /** @description 最短播放时长 (毫秒) */
+                min_ms?: number;
+                /** @description 仅音乐 */
+                music_only?: boolean;
+                /** @description 合并连续播放 */
+                merge_enabled?: boolean;
+                /** @description 使用动态有效播放阈值 */
+                dynamic_threshold?: boolean;
+                /** @description 连续播放最大合并间隔 (分钟) */
+                max_merge_gap_minutes?: number | null;
+                /** @description 版本合并严格度 */
+                merge_level?: number;
+                readonly?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaybackRecordsResponse"];
                 };
             };
             /** @description Validation Error */
@@ -6911,6 +7479,7 @@ export interface operations {
     artist_deep_dive_api_artist__name__deep_dive_get: {
         parameters: {
             query?: {
+                merge_level?: number;
                 /** @description 最短播放时长 (毫秒) */
                 min_ms?: number;
                 /** @description 仅音乐 */
@@ -6985,6 +7554,7 @@ export interface operations {
     yearly_wrapped_api_wrapped__year__get: {
         parameters: {
             query?: {
+                merge_level?: number;
                 /** @description 最短播放时长 (毫秒) */
                 min_ms?: number;
                 /** @description 仅音乐 */
@@ -7028,6 +7598,7 @@ export interface operations {
     yearly_wrapped_full_api_wrapped__year__full_get: {
         parameters: {
             query?: {
+                merge_level?: number;
                 /** @description 最短播放时长 (毫秒) */
                 min_ms?: number;
                 /** @description 仅音乐 */
@@ -7919,19 +8490,19 @@ export interface operations {
                 /** @description Include compilation albums in album chart (R14) */
                 include_compilations?: boolean;
                 /** @description 最短播放时长 (毫秒) */
-                min_ms?: number;
+                min_ms?: number | null;
                 /** @description 仅音乐 */
-                music_only?: boolean;
+                music_only?: boolean | null;
                 /** @description 单曲榜 Top N */
-                bb_top_n?: number;
+                bb_top_n?: number | null;
                 /** @description 专辑榜 Top N */
-                bb_album_top_n?: number;
+                bb_album_top_n?: number | null;
                 /** @description 艺人榜 Top N */
-                bb_artist_top_n?: number;
+                bb_artist_top_n?: number | null;
                 /** @description 周起始星期 (0=周一) */
-                bb_week_start_dow?: number;
+                bb_week_start_dow?: number | null;
                 /** @description 周起始小时 */
-                bb_week_start_hour?: number;
+                bb_week_start_hour?: number | null;
                 /** @description 起始年份 (含) */
                 year_start?: number | null;
                 /** @description 结束年份 (含) */
@@ -7975,19 +8546,19 @@ export interface operations {
                 /** @description Include compilation albums in album chart (R14) */
                 include_compilations?: boolean;
                 /** @description 最短播放时长 (毫秒) */
-                min_ms?: number;
+                min_ms?: number | null;
                 /** @description 仅音乐 */
-                music_only?: boolean;
+                music_only?: boolean | null;
                 /** @description 单曲榜 Top N */
-                bb_top_n?: number;
+                bb_top_n?: number | null;
                 /** @description 专辑榜 Top N */
-                bb_album_top_n?: number;
+                bb_album_top_n?: number | null;
                 /** @description 艺人榜 Top N */
-                bb_artist_top_n?: number;
+                bb_artist_top_n?: number | null;
                 /** @description 周起始星期 (0=周一) */
-                bb_week_start_dow?: number;
+                bb_week_start_dow?: number | null;
                 /** @description 周起始小时 */
-                bb_week_start_hour?: number;
+                bb_week_start_hour?: number | null;
                 /** @description 起始年份 (含) */
                 year_start?: number | null;
                 /** @description 结束年份 (含) */
@@ -8029,19 +8600,19 @@ export interface operations {
         parameters: {
             query?: {
                 /** @description 最短播放时长 (毫秒) */
-                min_ms?: number;
+                min_ms?: number | null;
                 /** @description 仅音乐 */
-                music_only?: boolean;
+                music_only?: boolean | null;
                 /** @description 单曲榜 Top N */
-                bb_top_n?: number;
+                bb_top_n?: number | null;
                 /** @description 专辑榜 Top N */
-                bb_album_top_n?: number;
+                bb_album_top_n?: number | null;
                 /** @description 艺人榜 Top N */
-                bb_artist_top_n?: number;
+                bb_artist_top_n?: number | null;
                 /** @description 周起始星期 (0=周一) */
-                bb_week_start_dow?: number;
+                bb_week_start_dow?: number | null;
                 /** @description 周起始小时 */
-                bb_week_start_hour?: number;
+                bb_week_start_hour?: number | null;
                 /** @description 起始年份 (含) */
                 year_start?: number | null;
                 /** @description 结束年份 (含) */
@@ -8083,19 +8654,19 @@ export interface operations {
         parameters: {
             query?: {
                 /** @description 最短播放时长 (毫秒) */
-                min_ms?: number;
+                min_ms?: number | null;
                 /** @description 仅音乐 */
-                music_only?: boolean;
+                music_only?: boolean | null;
                 /** @description 单曲榜 Top N */
-                bb_top_n?: number;
+                bb_top_n?: number | null;
                 /** @description 专辑榜 Top N */
-                bb_album_top_n?: number;
+                bb_album_top_n?: number | null;
                 /** @description 艺人榜 Top N */
-                bb_artist_top_n?: number;
+                bb_artist_top_n?: number | null;
                 /** @description 周起始星期 (0=周一) */
-                bb_week_start_dow?: number;
+                bb_week_start_dow?: number | null;
                 /** @description 周起始小时 */
-                bb_week_start_hour?: number;
+                bb_week_start_hour?: number | null;
                 /** @description 起始年份 (含) */
                 year_start?: number | null;
                 /** @description 结束年份 (含) */
@@ -8137,19 +8708,19 @@ export interface operations {
         parameters: {
             query?: {
                 /** @description 最短播放时长 (毫秒) */
-                min_ms?: number;
+                min_ms?: number | null;
                 /** @description 仅音乐 */
-                music_only?: boolean;
+                music_only?: boolean | null;
                 /** @description 单曲榜 Top N */
-                bb_top_n?: number;
+                bb_top_n?: number | null;
                 /** @description 专辑榜 Top N */
-                bb_album_top_n?: number;
+                bb_album_top_n?: number | null;
                 /** @description 艺人榜 Top N */
-                bb_artist_top_n?: number;
+                bb_artist_top_n?: number | null;
                 /** @description 周起始星期 (0=周一) */
-                bb_week_start_dow?: number;
+                bb_week_start_dow?: number | null;
                 /** @description 周起始小时 */
-                bb_week_start_hour?: number;
+                bb_week_start_hour?: number | null;
                 /** @description 起始年份 (含) */
                 year_start?: number | null;
                 /** @description 结束年份 (含) */
@@ -8193,19 +8764,19 @@ export interface operations {
                 /** @description Include compilation albums in album chart (R14) */
                 include_compilations?: boolean;
                 /** @description 最短播放时长 (毫秒) */
-                min_ms?: number;
+                min_ms?: number | null;
                 /** @description 仅音乐 */
-                music_only?: boolean;
+                music_only?: boolean | null;
                 /** @description 单曲榜 Top N */
-                bb_top_n?: number;
+                bb_top_n?: number | null;
                 /** @description 专辑榜 Top N */
-                bb_album_top_n?: number;
+                bb_album_top_n?: number | null;
                 /** @description 艺人榜 Top N */
-                bb_artist_top_n?: number;
+                bb_artist_top_n?: number | null;
                 /** @description 周起始星期 (0=周一) */
-                bb_week_start_dow?: number;
+                bb_week_start_dow?: number | null;
                 /** @description 周起始小时 */
-                bb_week_start_hour?: number;
+                bb_week_start_hour?: number | null;
                 /** @description 起始年份 (含) */
                 year_start?: number | null;
                 /** @description 结束年份 (含) */
@@ -8247,19 +8818,19 @@ export interface operations {
         parameters: {
             query?: {
                 /** @description 最短播放时长 (毫秒) */
-                min_ms?: number;
+                min_ms?: number | null;
                 /** @description 仅音乐 */
-                music_only?: boolean;
+                music_only?: boolean | null;
                 /** @description 单曲榜 Top N */
-                bb_top_n?: number;
+                bb_top_n?: number | null;
                 /** @description 专辑榜 Top N */
-                bb_album_top_n?: number;
+                bb_album_top_n?: number | null;
                 /** @description 艺人榜 Top N */
-                bb_artist_top_n?: number;
+                bb_artist_top_n?: number | null;
                 /** @description 周起始星期 (0=周一) */
-                bb_week_start_dow?: number;
+                bb_week_start_dow?: number | null;
                 /** @description 周起始小时 */
-                bb_week_start_hour?: number;
+                bb_week_start_hour?: number | null;
                 /** @description 起始年份 (含) */
                 year_start?: number | null;
                 /** @description 结束年份 (含) */
@@ -8303,19 +8874,19 @@ export interface operations {
                 weeks_before?: number;
                 weeks_after?: number;
                 /** @description 最短播放时长 (毫秒) */
-                min_ms?: number;
+                min_ms?: number | null;
                 /** @description 仅音乐 */
-                music_only?: boolean;
+                music_only?: boolean | null;
                 /** @description 单曲榜 Top N */
-                bb_top_n?: number;
+                bb_top_n?: number | null;
                 /** @description 专辑榜 Top N */
-                bb_album_top_n?: number;
+                bb_album_top_n?: number | null;
                 /** @description 艺人榜 Top N */
-                bb_artist_top_n?: number;
+                bb_artist_top_n?: number | null;
                 /** @description 周起始星期 (0=周一) */
-                bb_week_start_dow?: number;
+                bb_week_start_dow?: number | null;
                 /** @description 周起始小时 */
-                bb_week_start_hour?: number;
+                bb_week_start_hour?: number | null;
                 /** @description 起始年份 (含) */
                 year_start?: number | null;
                 /** @description 结束年份 (含) */
@@ -8364,19 +8935,19 @@ export interface operations {
                 weeks_before?: number;
                 weeks_after?: number;
                 /** @description 最短播放时长 (毫秒) */
-                min_ms?: number;
+                min_ms?: number | null;
                 /** @description 仅音乐 */
-                music_only?: boolean;
+                music_only?: boolean | null;
                 /** @description 单曲榜 Top N */
-                bb_top_n?: number;
+                bb_top_n?: number | null;
                 /** @description 专辑榜 Top N */
-                bb_album_top_n?: number;
+                bb_album_top_n?: number | null;
                 /** @description 艺人榜 Top N */
-                bb_artist_top_n?: number;
+                bb_artist_top_n?: number | null;
                 /** @description 周起始星期 (0=周一) */
-                bb_week_start_dow?: number;
+                bb_week_start_dow?: number | null;
                 /** @description 周起始小时 */
-                bb_week_start_hour?: number;
+                bb_week_start_hour?: number | null;
                 /** @description 起始年份 (含) */
                 year_start?: number | null;
                 /** @description 结束年份 (含) */
@@ -8422,19 +8993,19 @@ export interface operations {
                 /** @description 专辑榜是否包含精选集 */
                 include_compilations?: boolean;
                 /** @description 最短播放时长 (毫秒) */
-                min_ms?: number;
+                min_ms?: number | null;
                 /** @description 仅音乐 */
-                music_only?: boolean;
+                music_only?: boolean | null;
                 /** @description 单曲榜 Top N */
-                bb_top_n?: number;
+                bb_top_n?: number | null;
                 /** @description 专辑榜 Top N */
-                bb_album_top_n?: number;
+                bb_album_top_n?: number | null;
                 /** @description 艺人榜 Top N */
-                bb_artist_top_n?: number;
+                bb_artist_top_n?: number | null;
                 /** @description 周起始星期 (0=周一) */
-                bb_week_start_dow?: number;
+                bb_week_start_dow?: number | null;
                 /** @description 周起始小时 */
-                bb_week_start_hour?: number;
+                bb_week_start_hour?: number | null;
                 /** @description 起始年份 (含) */
                 year_start?: number | null;
                 /** @description 结束年份 (含) */
@@ -8480,19 +9051,19 @@ export interface operations {
         parameters: {
             query?: {
                 /** @description 最短播放时长 (毫秒) */
-                min_ms?: number;
+                min_ms?: number | null;
                 /** @description 仅音乐 */
-                music_only?: boolean;
+                music_only?: boolean | null;
                 /** @description 单曲榜 Top N */
-                bb_top_n?: number;
+                bb_top_n?: number | null;
                 /** @description 专辑榜 Top N */
-                bb_album_top_n?: number;
+                bb_album_top_n?: number | null;
                 /** @description 艺人榜 Top N */
-                bb_artist_top_n?: number;
+                bb_artist_top_n?: number | null;
                 /** @description 周起始星期 (0=周一) */
-                bb_week_start_dow?: number;
+                bb_week_start_dow?: number | null;
                 /** @description 周起始小时 */
-                bb_week_start_hour?: number;
+                bb_week_start_hour?: number | null;
                 /** @description 起始年份 (含) */
                 year_start?: number | null;
                 /** @description 结束年份 (含) */
@@ -8536,19 +9107,19 @@ export interface operations {
         parameters: {
             query?: {
                 /** @description 最短播放时长 (毫秒) */
-                min_ms?: number;
+                min_ms?: number | null;
                 /** @description 仅音乐 */
-                music_only?: boolean;
+                music_only?: boolean | null;
                 /** @description 单曲榜 Top N */
-                bb_top_n?: number;
+                bb_top_n?: number | null;
                 /** @description 专辑榜 Top N */
-                bb_album_top_n?: number;
+                bb_album_top_n?: number | null;
                 /** @description 艺人榜 Top N */
-                bb_artist_top_n?: number;
+                bb_artist_top_n?: number | null;
                 /** @description 周起始星期 (0=周一) */
-                bb_week_start_dow?: number;
+                bb_week_start_dow?: number | null;
                 /** @description 周起始小时 */
-                bb_week_start_hour?: number;
+                bb_week_start_hour?: number | null;
                 /** @description 起始年份 (含) */
                 year_start?: number | null;
                 /** @description 结束年份 (含) */
@@ -8592,19 +9163,19 @@ export interface operations {
                 /** @description Artist name for disambiguation */
                 artist_name?: string;
                 /** @description 最短播放时长 (毫秒) */
-                min_ms?: number;
+                min_ms?: number | null;
                 /** @description 仅音乐 */
-                music_only?: boolean;
+                music_only?: boolean | null;
                 /** @description 单曲榜 Top N */
-                bb_top_n?: number;
+                bb_top_n?: number | null;
                 /** @description 专辑榜 Top N */
-                bb_album_top_n?: number;
+                bb_album_top_n?: number | null;
                 /** @description 艺人榜 Top N */
-                bb_artist_top_n?: number;
+                bb_artist_top_n?: number | null;
                 /** @description 周起始星期 (0=周一) */
-                bb_week_start_dow?: number;
+                bb_week_start_dow?: number | null;
                 /** @description 周起始小时 */
-                bb_week_start_hour?: number;
+                bb_week_start_hour?: number | null;
                 /** @description 起始年份 (含) */
                 year_start?: number | null;
                 /** @description 结束年份 (含) */
@@ -8650,19 +9221,19 @@ export interface operations {
                 /** @description Filter entities by name (case-insensitive) */
                 search?: string | null;
                 /** @description 最短播放时长 (毫秒) */
-                min_ms?: number;
+                min_ms?: number | null;
                 /** @description 仅音乐 */
-                music_only?: boolean;
+                music_only?: boolean | null;
                 /** @description 单曲榜 Top N */
-                bb_top_n?: number;
+                bb_top_n?: number | null;
                 /** @description 专辑榜 Top N */
-                bb_album_top_n?: number;
+                bb_album_top_n?: number | null;
                 /** @description 艺人榜 Top N */
-                bb_artist_top_n?: number;
+                bb_artist_top_n?: number | null;
                 /** @description 周起始星期 (0=周一) */
-                bb_week_start_dow?: number;
+                bb_week_start_dow?: number | null;
                 /** @description 周起始小时 */
-                bb_week_start_hour?: number;
+                bb_week_start_hour?: number | null;
                 /** @description 起始年份 (含) */
                 year_start?: number | null;
                 /** @description 结束年份 (含) */
@@ -8706,19 +9277,19 @@ export interface operations {
                 /** @description Track B ID */
                 track_id_b: number;
                 /** @description 最短播放时长 (毫秒) */
-                min_ms?: number;
+                min_ms?: number | null;
                 /** @description 仅音乐 */
-                music_only?: boolean;
+                music_only?: boolean | null;
                 /** @description 单曲榜 Top N */
-                bb_top_n?: number;
+                bb_top_n?: number | null;
                 /** @description 专辑榜 Top N */
-                bb_album_top_n?: number;
+                bb_album_top_n?: number | null;
                 /** @description 艺人榜 Top N */
-                bb_artist_top_n?: number;
+                bb_artist_top_n?: number | null;
                 /** @description 周起始星期 (0=周一) */
-                bb_week_start_dow?: number;
+                bb_week_start_dow?: number | null;
                 /** @description 周起始小时 */
-                bb_week_start_hour?: number;
+                bb_week_start_hour?: number | null;
                 /** @description 起始年份 (含) */
                 year_start?: number | null;
                 /** @description 结束年份 (含) */
@@ -8758,19 +9329,19 @@ export interface operations {
         parameters: {
             query?: {
                 /** @description 最短播放时长 (毫秒) */
-                min_ms?: number;
+                min_ms?: number | null;
                 /** @description 仅音乐 */
-                music_only?: boolean;
+                music_only?: boolean | null;
                 /** @description 单曲榜 Top N */
-                bb_top_n?: number;
+                bb_top_n?: number | null;
                 /** @description 专辑榜 Top N */
-                bb_album_top_n?: number;
+                bb_album_top_n?: number | null;
                 /** @description 艺人榜 Top N */
-                bb_artist_top_n?: number;
+                bb_artist_top_n?: number | null;
                 /** @description 周起始星期 (0=周一) */
-                bb_week_start_dow?: number;
+                bb_week_start_dow?: number | null;
                 /** @description 周起始小时 */
-                bb_week_start_hour?: number;
+                bb_week_start_hour?: number | null;
                 /** @description 起始年份 (含) */
                 year_start?: number | null;
                 /** @description 结束年份 (含) */
@@ -8822,19 +9393,19 @@ export interface operations {
                 /** @description Album B artist */
                 artist_b: string;
                 /** @description 最短播放时长 (毫秒) */
-                min_ms?: number;
+                min_ms?: number | null;
                 /** @description 仅音乐 */
-                music_only?: boolean;
+                music_only?: boolean | null;
                 /** @description 单曲榜 Top N */
-                bb_top_n?: number;
+                bb_top_n?: number | null;
                 /** @description 专辑榜 Top N */
-                bb_album_top_n?: number;
+                bb_album_top_n?: number | null;
                 /** @description 艺人榜 Top N */
-                bb_artist_top_n?: number;
+                bb_artist_top_n?: number | null;
                 /** @description 周起始星期 (0=周一) */
-                bb_week_start_dow?: number;
+                bb_week_start_dow?: number | null;
                 /** @description 周起始小时 */
-                bb_week_start_hour?: number;
+                bb_week_start_hour?: number | null;
                 /** @description 起始年份 (含) */
                 year_start?: number | null;
                 /** @description 结束年份 (含) */
@@ -8874,19 +9445,19 @@ export interface operations {
         parameters: {
             query?: {
                 /** @description 最短播放时长 (毫秒) */
-                min_ms?: number;
+                min_ms?: number | null;
                 /** @description 仅音乐 */
-                music_only?: boolean;
+                music_only?: boolean | null;
                 /** @description 单曲榜 Top N */
-                bb_top_n?: number;
+                bb_top_n?: number | null;
                 /** @description 专辑榜 Top N */
-                bb_album_top_n?: number;
+                bb_album_top_n?: number | null;
                 /** @description 艺人榜 Top N */
-                bb_artist_top_n?: number;
+                bb_artist_top_n?: number | null;
                 /** @description 周起始星期 (0=周一) */
-                bb_week_start_dow?: number;
+                bb_week_start_dow?: number | null;
                 /** @description 周起始小时 */
-                bb_week_start_hour?: number;
+                bb_week_start_hour?: number | null;
                 /** @description 起始年份 (含) */
                 year_start?: number | null;
                 /** @description 结束年份 (含) */
@@ -8934,19 +9505,19 @@ export interface operations {
                 /** @description Artist B name */
                 artist_b: string;
                 /** @description 最短播放时长 (毫秒) */
-                min_ms?: number;
+                min_ms?: number | null;
                 /** @description 仅音乐 */
-                music_only?: boolean;
+                music_only?: boolean | null;
                 /** @description 单曲榜 Top N */
-                bb_top_n?: number;
+                bb_top_n?: number | null;
                 /** @description 专辑榜 Top N */
-                bb_album_top_n?: number;
+                bb_album_top_n?: number | null;
                 /** @description 艺人榜 Top N */
-                bb_artist_top_n?: number;
+                bb_artist_top_n?: number | null;
                 /** @description 周起始星期 (0=周一) */
-                bb_week_start_dow?: number;
+                bb_week_start_dow?: number | null;
                 /** @description 周起始小时 */
-                bb_week_start_hour?: number;
+                bb_week_start_hour?: number | null;
                 /** @description 起始年份 (含) */
                 year_start?: number | null;
                 /** @description 结束年份 (含) */
@@ -8986,19 +9557,19 @@ export interface operations {
         parameters: {
             query?: {
                 /** @description 最短播放时长 (毫秒) */
-                min_ms?: number;
+                min_ms?: number | null;
                 /** @description 仅音乐 */
-                music_only?: boolean;
+                music_only?: boolean | null;
                 /** @description 单曲榜 Top N */
-                bb_top_n?: number;
+                bb_top_n?: number | null;
                 /** @description 专辑榜 Top N */
-                bb_album_top_n?: number;
+                bb_album_top_n?: number | null;
                 /** @description 艺人榜 Top N */
-                bb_artist_top_n?: number;
+                bb_artist_top_n?: number | null;
                 /** @description 周起始星期 (0=周一) */
-                bb_week_start_dow?: number;
+                bb_week_start_dow?: number | null;
                 /** @description 周起始小时 */
-                bb_week_start_hour?: number;
+                bb_week_start_hour?: number | null;
                 /** @description 起始年份 (含) */
                 year_start?: number | null;
                 /** @description 结束年份 (含) */
@@ -9977,6 +10548,8 @@ export interface operations {
         parameters: {
             query?: {
                 artist?: string | null;
+                /** @description Album project merge level (1=none, 2=recording, 3=composition) */
+                merge_level?: number;
                 period?: string;
                 start_date?: string | null;
                 end_date?: string | null;
@@ -10120,6 +10693,7 @@ export interface operations {
         parameters: {
             query?: {
                 artist?: string | null;
+                merge_level?: number;
                 period?: string;
                 start_date?: string | null;
                 end_date?: string | null;
@@ -10267,6 +10841,7 @@ export interface operations {
         parameters: {
             query?: {
                 artist?: string | null;
+                merge_level?: number;
                 period?: string;
                 start_date?: string | null;
                 end_date?: string | null;
@@ -10559,6 +11134,7 @@ export interface operations {
     ask_api_ai_insights_ask_post: {
         parameters: {
             query?: {
+                merge_level?: number;
                 /** @description 最短播放时长 (毫秒) */
                 min_ms?: number;
                 /** @description 仅音乐 */

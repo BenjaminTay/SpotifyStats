@@ -58,6 +58,7 @@ export function useAnalysisFilters() {
       dynamic_threshold: storedThreshold,
       max_merge_gap_minutes: storedGap,
       merge_level: getDefaultMergeLevel(),
+      include_compilations: settings?.include_compilations ?? false,
     }
   }, [settings])
 

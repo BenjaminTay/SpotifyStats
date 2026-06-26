@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { getDefaultMergeLevel } from '@/lib/merge-level'
 import { useBillboardWeekly } from '@/hooks/useBillboard'
+import { useSettings } from '@/hooks/useSettings'
 import { GlassCard } from '@/components/shared/GlassCard'
 import { BillboardSubNav } from '@/components/shared/BillboardSubNav'
 import { WeekSelector } from '@/components/shared/WeekSelector'
@@ -105,7 +106,8 @@ export function BillboardPage() {
   const [searchParams] = useSearchParams()
   const initialWeek = searchParams.get('week')
   const mergeLevel = Number(searchParams.get('merge_level') ?? getDefaultMergeLevel())
-  const [includeCompilations, setIncludeCompilations] = useState(false)
+  const { settings, loading: settingsLoading } = useSettings()
+  const includeCompilations = settings?.include_compilations ?? false
 
   const {
     data,
@@ -119,7 +121,7 @@ export function BillboardPage() {
     goNext,
     goPrev,
     goToWeek,
-  } = useBillboardWeekly(initialWeek, mergeLevel, includeCompilations)
+  } = useBillboardWeekly(initialWeek, mergeLevel, includeCompilations, !settingsLoading)
 
   const [activeTab, setActiveTab] = useState<TabKey>(cachedTab)
 
@@ -181,7 +183,7 @@ export function BillboardPage() {
 
   return (
     <>
-      {loading && <BillboardSkeleton />}
+      {(loading || settingsLoading) && <BillboardSkeleton />}
 
       {error && (
         <div className="flex flex-col items-center gap-4 py-20 text-center">
@@ -229,12 +231,6 @@ export function BillboardPage() {
                 </button>
               ))}
             </div>
-            {activeTab === 'albums' && (
-              <label className="-mb-px flex cursor-pointer items-center gap-1.5 pb-2.5 font-sans text-[11px] text-muted-foreground transition-colors hover:text-foreground">
-                <input type="checkbox" checked={includeCompilations} onChange={(e) => setIncludeCompilations(e.target.checked)} className="h-3.5 w-3.5 cursor-pointer rounded border-border accent-accent-foreground" />
-                含精选集
-              </label>
-            )}
           </div>
 
           {/* Week Selector */}

@@ -42,12 +42,22 @@ def test_frontend_interaction_smoke_script_covers_core_non_destructive_flows():
     assert "ai-insights-tabs" in source
     assert "settings-controls" in source
     assert "settings-data-import" in source
+    assert "expandSectionForText" in source
     assert "theme-toggle" in source
     assert "assertClickableTextCount" in source
     assert "fetchLlmAvailability" in source
     assert "llm_enabled" in source
     assert "has_llm_key" in source
     assert "AI 功能尚未配置" in source
+    assert "数据与显示" in source
+    assert "数据导入" in source
+    assert "'串流数据'" in source
+    assert "榜单参数" in source
+    assert "版本合并" in source
+    assert "DATA & DISPLAY" not in source
+    assert "DATA IMPORT" not in source
+    assert "BILLBOARD PARAMETERS" not in source
+    assert "VERSION MERGE" not in source
     assert "过滤参数已更新" in source
     assert "当前数据库记录数" in source
     assert "导入 Spotify 账号数据包" in source

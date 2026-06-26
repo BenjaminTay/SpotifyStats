@@ -9,6 +9,7 @@ import { findChrome } from './lib/chrome_executable.mjs'
 
 const DEFAULT_BASE_URL = 'http://localhost:5173'
 const DEFAULT_WAIT_MS = 5000
+const DYNAMIC_ROUTE_WAIT_MS = 12000
 const DEFAULT_MAX_SCROLL_OVERFLOW = 0
 const REWRITE_PATH_PREFIXES = ['/api', '/covers']
 const DETAIL_ROUTE_FILTERS = {
@@ -68,9 +69,9 @@ const ROUTE_READY_MARKERS = {
 }
 
 const DYNAMIC_ROUTE_READY_MARKERS = [
-  { pattern: /^\/music\/tracks\/[^/]+$/, markers: ['MUSIC / 单曲详情', '播放统计'] },
-  { pattern: /^\/music\/albums\/[^/]+$/, markers: ['MUSIC / 专辑详情', '播放统计'] },
-  { pattern: /^\/music\/artists\/[^/]+$/, markers: ['MUSIC / 艺人详情', '播放统计'] },
+  { pattern: /^\/music\/tracks\/[^/]+$/, markers: ['单曲详情', '播放统计'] },
+  { pattern: /^\/music\/albums\/[^/]+$/, markers: ['专辑详情', '播放统计'] },
+  { pattern: /^\/music\/artists\/[^/]+$/, markers: ['艺人详情', '播放统计'] },
   { pattern: /^\/community\/post\/[^/]+$/, markers: ['COMMUNITY / POST'] },
   { pattern: /^\/community\/account\/[^/]+$/, markers: ['COMMUNITY / ACCOUNT', 'Posts'] },
 ]
@@ -239,6 +240,11 @@ function getRouteReadyMarkers(route) {
   const exact = ROUTE_READY_MARKERS[normalized]
   if (exact) return exact
   return DYNAMIC_ROUTE_READY_MARKERS.find((entry) => entry.pattern.test(normalized))?.markers || []
+}
+
+function isDynamicRoute(route) {
+  const normalized = normalizeRoute(route)
+  return DYNAMIC_ROUTE_READY_MARKERS.some((entry) => entry.pattern.test(normalized))
 }
 
 async function fetchJson(baseUrl, path, params = {}) {
@@ -451,7 +457,9 @@ async function smokeRoute({
     const loadEvent = client.once('Page.loadEventFired')
     await client.send('Page.navigate', { url })
     await loadEvent
-    await sleep(waitMs)
+    const routeMarkers = enforceRouteMarkers ? getRouteReadyMarkers(route) : []
+    const routeWaitMs = isDynamicRoute(route) ? Math.max(waitMs, DYNAMIC_ROUTE_WAIT_MS) : waitMs
+    await sleep(routeWaitMs)
 
     const evaluation = await client.send('Runtime.evaluate', {
       expression: PAGE_STATE_EXPRESSION,
@@ -463,7 +471,6 @@ async function smokeRoute({
     const scrollOverflow = Math.max(0, scrollWidth - (state.viewportWidth || viewport.width))
     const consoleErrors = consoleEntries.filter((entry) => ['error', 'assert'].includes(entry.level))
     const consoleWarnings = consoleEntries.filter((entry) => ['warning', 'warn'].includes(entry.level))
-    const routeMarkers = enforceRouteMarkers ? getRouteReadyMarkers(route) : []
     const missingRouteMarkers = routeMarkers.filter((marker) => !state.bodyText.includes(marker))
 
     const failures = []

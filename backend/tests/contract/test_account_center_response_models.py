@@ -8,6 +8,8 @@ from backend.main import app
 pytestmark = pytest.mark.contract
 
 ACCOUNT_CENTER_ROUTES = (
+    ("GET", "/api/account"),
+    ("GET", "/api/account/collection-insights"),
     ("GET", "/api/search-history"),
     ("GET", "/api/insights/tiers"),
     ("GET", "/api/insights/marquee"),
@@ -47,3 +49,12 @@ def test_account_center_routes_publish_openapi_response_schema():
         assert "schema" in response["content"]["application/json"], (
             f"{method} {path} missing response schema"
         )
+
+
+def test_collection_insights_route_returns_json_without_server_error(client):
+    response = client.get("/api/account/collection-insights")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert isinstance(payload, dict)
+    assert "available" in payload

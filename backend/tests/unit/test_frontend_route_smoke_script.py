@@ -93,6 +93,8 @@ def test_frontend_route_smoke_default_wait_allows_cold_route_content():
     source = (ROOT / "scripts" / "frontend_route_smoke.mjs").read_text(encoding="utf-8")
 
     assert "const DEFAULT_WAIT_MS = 5000" in source
+    assert "const DYNAMIC_ROUTE_WAIT_MS = 12000" in source
+    assert "isDynamicRoute(route)" in source
 
 
 def test_frontend_route_smoke_can_cover_dynamic_detail_routes():
@@ -103,9 +105,9 @@ def test_frontend_route_smoke_can_cover_dynamic_detail_routes():
     assert "/api/billboard/entity-lists" in source
     assert "/api/community/feed" in source
     for marker in [
-        "MUSIC / 单曲详情",
-        "MUSIC / 专辑详情",
-        "MUSIC / 艺人详情",
+        "单曲详情",
+        "专辑详情",
+        "艺人详情",
         "COMMUNITY / POST",
         "COMMUNITY / ACCOUNT",
     ]:

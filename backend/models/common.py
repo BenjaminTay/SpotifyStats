@@ -36,6 +36,7 @@ class SettingsResponse(BaseModel):
     bb_artist_top_n: int
     bb_week_start_dow: int
     bb_week_start_hour: int
+    include_compilations: bool = False
     db_record_count: int
     account_data_imported: bool
     # Spotify connection
@@ -81,6 +82,7 @@ class SettingsUpdateRequest(BaseModel):
     bb_artist_top_n: int | None = Field(default=None, ge=5, le=100)
     bb_week_start_dow: int | None = Field(default=None, ge=0, le=6)
     bb_week_start_hour: int | None = Field(default=None, ge=0, le=23)
+    include_compilations: bool | None = None
     # LLM translation
     llm_enabled: bool | None = None
     llm_provider: str | None = None

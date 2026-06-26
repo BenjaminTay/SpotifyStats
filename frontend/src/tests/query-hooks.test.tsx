@@ -73,6 +73,7 @@ describe('Phase 5 query hook migration', () => {
       bb_artist_top_n: 20,
       bb_week_start_dow: 0,
       bb_week_start_hour: 0,
+      include_compilations: false,
       db_record_count: 12,
       account_data_imported: true,
       spotify_connected: false,
@@ -106,6 +107,7 @@ describe('Phase 5 query hook migration', () => {
       bb_artist_top_n: 20,
       bb_week_start_dow: 0,
       bb_week_start_hour: 0,
+      include_compilations: false,
       db_record_count: 12,
       account_data_imported: true,
       spotify_connected: false,
@@ -184,6 +186,7 @@ describe('Phase 5 query hook migration', () => {
       dynamic_threshold: true,
       max_merge_gap_minutes: 30,
       merge_level: 3,
+      include_compilations: false,
     })
 
     expect(api.get).toHaveBeenCalledWith('/behavior', { music_only: false })

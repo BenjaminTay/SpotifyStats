@@ -9,6 +9,7 @@ import { findChrome } from './lib/chrome_executable.mjs'
 
 const DEFAULT_BASE_URL = 'http://localhost:5173'
 const DEFAULT_WAIT_MS = 8000
+const DYNAMIC_ROUTE_WAIT_MS = 12000
 const DEFAULT_MAX_VIOLATIONS = 0
 const REWRITE_PATH_PREFIXES = ['/api', '/covers']
 const DETAIL_ROUTE_FILTERS = {
@@ -53,13 +54,13 @@ const ROUTE_READY_MARKERS = {
   '/community': ['COMMUNITY / FEED', '榜单社区'],
   '/ai-insights': ['AI / INSIGHTS', 'AI 洞察'],
   '/account': ['ACCOUNT / CENTER', '你的收藏'],
-  '/settings': ['SETTINGS / CONFIGURATION', '00 · SPOTIFY 连接'],
+  '/settings': ['参数与配置', '01 · SPOTIFY 连接'],
 }
 
 const DYNAMIC_ROUTE_READY_MARKERS = [
-  { pattern: /^\/music\/tracks\/[^/]+$/, markers: ['MUSIC / 单曲详情', '播放统计'] },
-  { pattern: /^\/music\/albums\/[^/]+$/, markers: ['MUSIC / 专辑详情', '播放统计'] },
-  { pattern: /^\/music\/artists\/[^/]+$/, markers: ['MUSIC / 艺人详情', '播放统计'] },
+  { pattern: /^\/music\/tracks\/[^/]+$/, markers: ['单曲详情', '播放统计'] },
+  { pattern: /^\/music\/albums\/[^/]+$/, markers: ['专辑详情', '播放统计'] },
+  { pattern: /^\/music\/artists\/[^/]+$/, markers: ['艺人详情', '播放统计'] },
   { pattern: /^\/community\/post\/[^/]+$/, markers: ['COMMUNITY / POST'] },
   { pattern: /^\/community\/account\/[^/]+$/, markers: ['COMMUNITY / ACCOUNT', 'Posts'] },
 ]
@@ -139,7 +140,7 @@ Options:
   --routes <a,b,c>              Comma-separated route paths, default ${DEFAULT_ROUTES.join(',')}
   --viewport <mode>             desktop, mobile, or both, default both
   --include-detail-routes       Resolve and append music/community detail routes from local API data
-  --wait-ms <ms>                Max wait for route content, default ${DEFAULT_WAIT_MS}
+  --wait-ms <ms>                Max wait for route content, default ${DEFAULT_WAIT_MS}; dynamic detail routes use at least ${DYNAMIC_ROUTE_WAIT_MS}
   --max-violations <n>          Allowed interactive control inventory violations, default ${DEFAULT_MAX_VIOLATIONS}
   --output <path>               Write JSON results to a file
   --chrome <path>               Chrome/Chromium executable path
@@ -326,9 +327,10 @@ async function evaluate(client, expression, awaitPromise = false) {
 
 async function waitForRouteReady(client, route, timeoutMs) {
   const markers = markersForRoute(route)
+  const effectiveTimeoutMs = waitMsForRoute(route, timeoutMs)
   const started = Date.now()
   let state = null
-  while (Date.now() - started < timeoutMs) {
+  while (Date.now() - started < effectiveTimeoutMs) {
     state = await evaluate(
       client,
       `(() => {
@@ -351,10 +353,11 @@ async function waitForRouteReady(client, route, timeoutMs) {
 
 async function navigateAndWaitForRouteReady(client, route, url, viewport, timeoutMs) {
   let lastError
+  const effectiveTimeoutMs = waitMsForRoute(route, timeoutMs)
   for (let attempt = 1; attempt <= 2; attempt += 1) {
-    await navigate(client, url, viewport, timeoutMs)
+    await navigate(client, url, viewport, effectiveTimeoutMs)
     try {
-      return await waitForRouteReady(client, route, timeoutMs)
+      return await waitForRouteReady(client, route, effectiveTimeoutMs)
     } catch (error) {
       lastError = error
       if (attempt < 2) {
@@ -370,6 +373,15 @@ function markersForRoute(route) {
   if (ROUTE_READY_MARKERS[routePath]) return ROUTE_READY_MARKERS[routePath]
   const dynamic = DYNAMIC_ROUTE_READY_MARKERS.find(({ pattern }) => pattern.test(routePath))
   return dynamic ? dynamic.markers : []
+}
+
+function isDynamicRoute(route) {
+  const routePath = route.split('?')[0]
+  return DYNAMIC_ROUTE_READY_MARKERS.some(({ pattern }) => pattern.test(routePath))
+}
+
+function waitMsForRoute(route, timeoutMs) {
+  return isDynamicRoute(route) ? Math.max(timeoutMs, DYNAMIC_ROUTE_WAIT_MS) : timeoutMs
 }
 
 async function collectControlInventory(client) {

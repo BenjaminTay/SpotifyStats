@@ -24,6 +24,7 @@ export interface SettingsData {
   bb_artist_top_n: number
   bb_week_start_dow: number
   bb_week_start_hour: number
+  include_compilations: boolean
   db_record_count: number
   account_data_imported: boolean
   spotify_connected: boolean

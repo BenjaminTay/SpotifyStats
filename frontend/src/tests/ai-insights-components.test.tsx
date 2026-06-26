@@ -2,8 +2,17 @@ import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 
 import { AiInsightsTimeSelectors } from '@/features/ai-insights/AiInsightsTimeSelectors'
+import { ChatInterface } from '@/features/ai-insights/ChatInterface'
 import { ChatSessionList } from '@/features/ai-insights/ChatSessionList'
 import type { ChatSession } from '@/types/ai-insights'
+
+vi.mock('@/hooks/useAiInsights', () => ({
+  useAskQuestion: () => ({ ask: vi.fn(), asking: false, cancel: vi.fn() }),
+  useSuggestedQuestions: () => ({ questions: [], isLoading: false }),
+  useChatSession: () => ({ data: null }),
+  useCreateSession: () => ({ mutateAsync: vi.fn() }),
+  useAddMessage: () => ({ mutate: vi.fn() }),
+}))
 
 function makeSession(overrides: Partial<ChatSession> = {}): ChatSession {
   return {
@@ -55,6 +64,23 @@ describe('ChatSessionList', () => {
 
     fireEvent.click(screen.getByText('删除'))
     expect(onDelete).toHaveBeenCalledWith(1)
+  })
+})
+
+describe('ChatInterface', () => {
+  it('gives the icon-only send button an accessible name', () => {
+    render(
+      <ChatInterface
+        sessionId={null}
+        onSessionCreated={() => {}}
+      />,
+    )
+
+    fireEvent.change(screen.getByPlaceholderText('输入问题，如「我今年听最多的艺人是谁？」'), {
+      target: { value: '我今年听最多的艺人是谁？' },
+    })
+
+    expect(screen.getByRole('button', { name: '发送问题' })).toBeEnabled()
   })
 })
 

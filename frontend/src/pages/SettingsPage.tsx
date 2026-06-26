@@ -179,6 +179,7 @@ export function SettingsPage() {
           bb_artist_top_n: settings.bb_artist_top_n,
           bb_week_start_dow: settings.bb_week_start_dow,
           bb_week_start_hour: settings.bb_week_start_hour,
+          include_compilations: settings.include_compilations,
         }}
         onUpdate={updateSettings}
         onRequiresRebuild={handleRequiresRebuild}

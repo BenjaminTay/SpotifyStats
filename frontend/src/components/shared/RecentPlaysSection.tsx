@@ -49,6 +49,16 @@ interface RecentPlaysSectionProps {
   fetchPlayDates: () => Promise<PlayDateEntry[]>
 }
 
+export function recentPlayRowKey(row: RecentPlayRow, index: number): string {
+  return [
+    row.play_id,
+    row.ts,
+    row.track_id ?? 'trackless',
+    row.artist_name,
+    index,
+  ].join(':')
+}
+
 export function RecentPlaysSection({
   kind: _kind,
   entityId: _entityId,
@@ -298,8 +308,8 @@ export function RecentPlaysSection({
                 <div className="overflow-x-auto">
                   <table className="w-full min-w-[660px] table-fixed border-collapse text-left font-sans text-[13px]">
                     <tbody>
-                      {group.rows.map((row) => (
-                        <tr key={row.play_id} className="border-b border-border/40">
+                      {group.rows.map((row, rowIndex) => (
+                        <tr key={recentPlayRowKey(row, rowIndex)} className="border-b border-border/40">
                           <td className="w-[90px] py-2.5 tabular-nums text-muted-foreground">
                             {formatTime(row.ts)}
                           </td>

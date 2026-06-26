@@ -12,6 +12,7 @@ export interface AnalysisFilters {
   dynamic_threshold: boolean
   max_merge_gap_minutes?: number
   merge_level: number
+  include_compilations: boolean
 }
 
 export interface AnalysisTrendSummary {

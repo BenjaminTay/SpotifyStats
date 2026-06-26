@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import datetime as _dt
 import sqlite3
 from collections import Counter
 from pathlib import Path
@@ -182,8 +183,6 @@ def get_collection_insights(conn: sqlite3.Connection) -> dict:
     first = min(stats, key=lambda s: s["added_date"] or "z") if stats else None
     first_save_story = None
     if first and first["added_date"]:
-        import datetime as _dt
-
         save_dt = _dt.datetime.strptime(first["added_date"][:10], "%Y-%m-%d")
         days_since = (_dt.date.today() - save_dt.date()).days
         total_plays_f = first["total_plays"] or 0

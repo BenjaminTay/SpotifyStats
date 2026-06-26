@@ -50,6 +50,10 @@ def test_frontend_control_inventory_smoke_checks_interactive_control_contracts()
     assert "artist_name" in source
     assert "account_handle" in source
     assert "Could not resolve all control inventory detail routes" in source
+    assert "参数与配置" in source
+    assert "01 · SPOTIFY 连接" in source
+    assert "SETTINGS / CONFIGURATION" not in source
+    assert "00 · SPOTIFY 连接" not in source
 
 
 def test_frontend_control_inventory_smoke_can_rewrite_preview_api_requests():
@@ -78,3 +82,6 @@ def test_frontend_control_inventory_smoke_resets_page_between_viewport_passes():
     assert "Reset same-route viewport passes" in source
     assert "Retrying control inventory route" in source
     assert "const DEFAULT_WAIT_MS = 8000" in source
+    assert "const DYNAMIC_ROUTE_WAIT_MS = 12000" in source
+    assert "function waitMsForRoute(route, timeoutMs)" in source
+    assert "function isDynamicRoute(route)" in source

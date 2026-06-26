@@ -91,6 +91,27 @@ def test_quickstart_smoke_forwards_custom_backend_url_to_vite_proxy():
     assert "'/covers': backendUrl" in vite_config
 
 
+def test_quickstart_smoke_bypasses_proxies_for_local_services(monkeypatch):
+    from scripts import quickstart_smoke
+    from scripts.quickstart_smoke import default_env
+
+    monkeypatch.setenv("NO_PROXY", "example.com")
+    monkeypatch.delenv("no_proxy", raising=False)
+
+    quickstart_smoke.ensure_local_no_proxy()
+
+    for key in ("NO_PROXY", "no_proxy"):
+        value = quickstart_smoke.os.environ[key]
+        assert "example.com" in value
+        assert "localhost" in value
+        assert "127.0.0.1" in value
+        assert "::1" in value
+
+    env = default_env()
+    assert "localhost" in env["NO_PROXY"]
+    assert "127.0.0.1" in env["no_proxy"]
+
+
 def test_quickstart_smoke_cleans_up_started_processes():
     source = (ROOT / "scripts" / "quickstart_smoke.py").read_text(encoding="utf-8")
 

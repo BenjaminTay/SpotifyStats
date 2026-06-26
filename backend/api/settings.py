@@ -141,6 +141,7 @@ def update_settings(
         "bb_artist_top_n",
         "bb_week_start_dow",
         "bb_week_start_hour",
+        "include_compilations",
         "llm_enabled",
         "llm_provider",
         "llm_model",
