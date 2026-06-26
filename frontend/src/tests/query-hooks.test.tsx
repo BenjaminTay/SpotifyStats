@@ -95,6 +95,49 @@ describe('Phase 5 query hook migration', () => {
     expect(result.current.settings?.min_ms).toBe(30000)
   })
 
+  it('invalidates Billboard queries after Billboard settings are updated', async () => {
+    const client = createClient()
+    const settings = {
+      min_ms: 30000,
+      music_only: true,
+      merge_enabled: true,
+      bb_top_n: 30,
+      bb_album_top_n: 20,
+      bb_artist_top_n: 20,
+      bb_week_start_dow: 0,
+      bb_week_start_hour: 0,
+      db_record_count: 12,
+      account_data_imported: true,
+      spotify_connected: false,
+      spotify_profile: null,
+      llm_enabled: false,
+      llm_provider: 'deepseek',
+      llm_model: '',
+      has_llm_key: false,
+      llm_active_profile_id: null,
+      llm_active_profile_name: null,
+      rebuild_pending: false,
+    }
+    const updated = { ...settings, bb_top_n: 40, rebuild_pending: true }
+    const invalidateSpy = vi.spyOn(client, 'invalidateQueries')
+    vi.spyOn(api, 'get').mockResolvedValue(settings)
+    vi.spyOn(api, 'put').mockResolvedValue(updated)
+
+    const { result } = renderHook(() => useSettings(), {
+      wrapper: wrapperFor(client),
+    })
+
+    await waitFor(() => expect(result.current.loading).toBe(false))
+
+    await act(async () => {
+      await result.current.updateSettings({ bb_top_n: 40 })
+    })
+
+    expect(api.put).toHaveBeenCalledWith('/settings', { bb_top_n: 40 })
+    expect(client.getQueryData(queryKeys.settings.data())).toEqual(updated)
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.billboard.all })
+  })
+
   it('forces a fresh AI weekly report request on every manual refresh', async () => {
     const client = createClient()
     const response = {

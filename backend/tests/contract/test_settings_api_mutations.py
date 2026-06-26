@@ -67,12 +67,14 @@ def test_settings_update_persists_values_and_redacts_secrets(client):
     assert body["llm_provider"] == "openai"
     assert body["llm_model"] == "gpt-test"
     assert body["has_llm_key"] is True
+    assert body["rebuild_pending"] is True
     assert "llm_api_key" not in body
     assert "llm_base_url" not in body
 
     read_back = client.get("/api/settings").json()
     assert read_back["min_ms"] == 45000
     assert read_back["music_only"] is False
+    assert read_back["rebuild_pending"] is True
     assert read_back["has_llm_key"] is True
     assert "llm_api_key" not in read_back
     assert "llm_base_url" not in read_back

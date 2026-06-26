@@ -60,6 +60,14 @@ def _ensure_current():
         _current = _load_settings_from_db()
 
 
+def _setting_bool(value) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.lower() in ("true", "1", "yes")
+    return bool(value)
+
+
 def _find_active_llm_profile(conn: Connection) -> dict:
     row = conn.execute(
         """
@@ -102,7 +110,7 @@ def _build_settings_response(conn: Connection) -> dict:
     resp["spotify_connected"] = is_user_connected(conn)
     resp["spotify_profile"] = get_user_profile(conn) if resp["spotify_connected"] else None
     resp["has_llm_key"] = bool(_current.get("llm_api_key", "").strip())
-    resp["rebuild_pending"] = _current.get("rebuild_pending") == "true"
+    resp["rebuild_pending"] = _setting_bool(_current.get("rebuild_pending", False))
     resp.update(_find_active_llm_profile(conn))
     resp.pop("llm_api_key", None)
     resp.pop("llm_base_url", None)

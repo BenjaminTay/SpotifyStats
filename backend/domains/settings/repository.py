@@ -22,6 +22,7 @@ SETTINGS_DEFAULTS = {
     "llm_model": "",
     "llm_api_key": "",
     "llm_base_url": "",
+    "rebuild_pending": False,
 }
 
 # Keys that need type coercion when loaded from DB (stored as strings)
@@ -35,6 +36,7 @@ _SQLITE_TYPE_COERCION = [
     "bb_week_start_dow",
     "bb_week_start_hour",
     "llm_enabled",
+    "rebuild_pending",
 ]
 
 

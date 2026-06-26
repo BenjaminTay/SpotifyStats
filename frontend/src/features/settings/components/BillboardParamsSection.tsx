@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import { GlassCard } from '@/components/shared/GlassCard'
 import { Slider } from '@/components/ui/slider'
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select'
@@ -15,6 +16,15 @@ const DOW_OPTIONS = [
   { value: 6, label: '周日 (Sunday)' },
 ]
 
+type TopNValue = number | readonly number[]
+
+function normalizeTopN(value: TopNValue, fallback: number, min: number) {
+  const raw = Array.isArray(value) ? value[0] : value
+  if (typeof raw !== 'number' || !Number.isFinite(raw)) return fallback
+  const stepped = Math.round(raw / 5) * 5
+  return Math.min(100, Math.max(min, stepped))
+}
+
 export function BillboardParamsSection({
   settings,
   onUpdate,
@@ -26,9 +36,36 @@ export function BillboardParamsSection({
 }) {
   const bbName = getBillboardName()
 
-  const updateAndRequireRebuild = (p: SettingsUpdatePayload) => {
+  // Slider drag updates local state; commit writes settings once the interaction ends.
+  const [localBbTopN, setLocalBbTopN] = useState(settings.bb_top_n)
+  const [localBbAlbumTopN, setLocalBbAlbumTopN] = useState(settings.bb_album_top_n)
+  const [localBbArtistTopN, setLocalBbArtistTopN] = useState(settings.bb_artist_top_n)
+
+  useEffect(() => { setLocalBbTopN(settings.bb_top_n) }, [settings.bb_top_n])
+  useEffect(() => { setLocalBbAlbumTopN(settings.bb_album_top_n) }, [settings.bb_album_top_n])
+  useEffect(() => { setLocalBbArtistTopN(settings.bb_artist_top_n) }, [settings.bb_artist_top_n])
+
+  const commitAndRequireRebuild = (p: SettingsUpdatePayload) => {
     onUpdate(p)
     onRequiresRebuild()
+  }
+
+  const commitBbTopN = (value: TopNValue) => {
+    const newVal = normalizeTopN(value, localBbTopN, 10)
+    setLocalBbTopN(newVal)
+    commitAndRequireRebuild({ bb_top_n: newVal })
+  }
+
+  const commitBbAlbumTopN = (value: TopNValue) => {
+    const newVal = normalizeTopN(value, localBbAlbumTopN, 5)
+    setLocalBbAlbumTopN(newVal)
+    commitAndRequireRebuild({ bb_album_top_n: newVal })
+  }
+
+  const commitBbArtistTopN = (value: TopNValue) => {
+    const newVal = normalizeTopN(value, localBbArtistTopN, 5)
+    setLocalBbArtistTopN(newVal)
+    commitAndRequireRebuild({ bb_artist_top_n: newVal })
   }
 
   return (
@@ -39,7 +76,7 @@ export function BillboardParamsSection({
         desc={`调整 ${bbName} 周榜的计算边界和榜单容量，修改后需重建聚合表才能生效。`}
         defaultOpen={false}
         tone="advanced"
-        summary={`单曲 ${settings.bb_top_n} · 专辑 ${settings.bb_album_top_n} · 艺人 ${settings.bb_artist_top_n}`}
+        summary={`单曲 ${localBbTopN} · 专辑 ${localBbAlbumTopN} · 艺人 ${localBbArtistTopN}`}
       >
 
       <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
@@ -47,13 +84,14 @@ export function BillboardParamsSection({
         <div className="space-y-5">
           <div className="space-y-1.5">
             <div className="flex items-center justify-between">
-              <FieldLabel label="单曲榜 Top N" badge={settings.bb_top_n} />
+              <FieldLabel label="单曲榜 Top N" badge={localBbTopN} />
             </div>
             <p className="text-[12px] text-muted-foreground">每周单曲榜的最大上榜数量</p>
             <Slider
               aria-label="单曲榜 Top N"
-              value={[settings.bb_top_n]}
-              onValueChange={(v) => updateAndRequireRebuild({ bb_top_n: (v as number[])[0] })}
+              value={[localBbTopN]}
+              onValueChange={(v) => setLocalBbTopN(normalizeTopN(v, localBbTopN, 10))}
+              onValueCommitted={commitBbTopN}
               min={10}
               max={100}
               step={5}
@@ -62,13 +100,14 @@ export function BillboardParamsSection({
 
           <div className="space-y-1.5">
             <div className="flex items-center justify-between">
-              <FieldLabel label="专辑榜 Top N" badge={settings.bb_album_top_n} />
+              <FieldLabel label="专辑榜 Top N" badge={localBbAlbumTopN} />
             </div>
             <p className="text-[12px] text-muted-foreground">每周专辑榜的最大上榜数量</p>
             <Slider
               aria-label="专辑榜 Top N"
-              value={[settings.bb_album_top_n]}
-              onValueChange={(v) => updateAndRequireRebuild({ bb_album_top_n: (v as number[])[0] })}
+              value={[localBbAlbumTopN]}
+              onValueChange={(v) => setLocalBbAlbumTopN(normalizeTopN(v, localBbAlbumTopN, 5))}
+              onValueCommitted={commitBbAlbumTopN}
               min={5}
               max={100}
               step={5}
@@ -77,13 +116,14 @@ export function BillboardParamsSection({
 
           <div className="space-y-1.5">
             <div className="flex items-center justify-between">
-              <FieldLabel label="艺人榜 Top N" badge={settings.bb_artist_top_n} />
+              <FieldLabel label="艺人榜 Top N" badge={localBbArtistTopN} />
             </div>
             <p className="text-[12px] text-muted-foreground">每周艺人榜的最大上榜数量</p>
             <Slider
               aria-label="艺人榜 Top N"
-              value={[settings.bb_artist_top_n]}
-              onValueChange={(v) => updateAndRequireRebuild({ bb_artist_top_n: (v as number[])[0] })}
+              value={[localBbArtistTopN]}
+              onValueChange={(v) => setLocalBbArtistTopN(normalizeTopN(v, localBbArtistTopN, 5))}
+              onValueCommitted={commitBbArtistTopN}
               min={5}
               max={100}
               step={5}
@@ -98,7 +138,7 @@ export function BillboardParamsSection({
             <p className="text-[12px] text-muted-foreground">{bbName} 周榜从周几开始计算</p>
             <Select
               value={String(settings.bb_week_start_dow)}
-              onValueChange={(v) => updateAndRequireRebuild({ bb_week_start_dow: Number(v) })}
+              onValueChange={(v) => commitAndRequireRebuild({ bb_week_start_dow: Number(v) })}
             >
               <SelectTrigger className="mt-1 w-[200px]">
                 <SelectValue>
@@ -120,7 +160,7 @@ export function BillboardParamsSection({
             <p className="text-[12px] text-muted-foreground">一周从几点开始计算</p>
             <Select
               value={String(settings.bb_week_start_hour)}
-              onValueChange={(v) => updateAndRequireRebuild({ bb_week_start_hour: Number(v) })}
+              onValueChange={(v) => commitAndRequireRebuild({ bb_week_start_hour: Number(v) })}
             >
               <SelectTrigger className="mt-1 w-[160px]">
                 <SelectValue>

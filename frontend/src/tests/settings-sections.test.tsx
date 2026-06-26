@@ -1,6 +1,7 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 
+import { BillboardParamsSection } from '@/features/settings/components/BillboardParamsSection'
 import { DataFilteringSection } from '@/features/settings/components/DataFilteringSection'
 import { ImportProgressCard } from '@/features/settings/components/SettingsHelpers'
 
@@ -42,6 +43,73 @@ describe('Settings sections', () => {
     // updateAndRequireRebuild calls both onUpdate and onRequiresRebuild
     expect(onUpdate).toHaveBeenCalledWith({ music_only: false })
     expect(onRequiresRebuild).toHaveBeenCalled()
+  })
+
+  it.each([
+    ['单曲榜 Top N', { bb_top_n: 55 }, 55, 50],
+    ['专辑榜 Top N', { bb_album_top_n: 55 }, 55, 52.63157894736842],
+    ['艺人榜 Top N', { bb_artist_top_n: 55 }, 55, 52.63157894736842],
+  ])('keeps %s responsive while committing only after the slider interaction ends', async (label, payload, expectedValue, clientX) => {
+    const onRequiresRebuild = vi.fn()
+    const onUpdate = vi.fn()
+
+    render(
+      <BillboardParamsSection
+        settings={{
+          bb_top_n: 30,
+          bb_album_top_n: 20,
+          bb_artist_top_n: 20,
+          bb_week_start_dow: 4,
+          bb_week_start_hour: 0,
+        }}
+        onUpdate={onUpdate}
+        onRequiresRebuild={onRequiresRebuild}
+      />,
+    )
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /榜单参数/ }))
+    })
+
+    const slider = document.querySelector<HTMLInputElement>(`input[type="range"][aria-label="${label}"]`)
+    expect(slider).toBeTruthy()
+    if (!slider) return
+    const root = slider.closest('[data-slot="slider"]')
+    const control = root?.firstElementChild as HTMLElement | null
+    expect(control).toBeTruthy()
+    if (!control) return
+
+    control.getBoundingClientRect = () => ({
+      width: 100,
+      height: 10,
+      bottom: 10,
+      left: 0,
+      right: 100,
+      top: 0,
+      x: 0,
+      y: 0,
+      toJSON: () => {},
+    })
+    Object.assign(control, {
+      hasPointerCapture: () => false,
+      releasePointerCapture: vi.fn(),
+      setPointerCapture: vi.fn(),
+    })
+
+    await act(async () => {
+      fireEvent.pointerDown(control, { button: 0, clientX, clientY: 5 })
+    })
+
+    expect(slider).toHaveValue(String(expectedValue))
+    expect(onUpdate).not.toHaveBeenCalled()
+    expect(onRequiresRebuild).not.toHaveBeenCalled()
+
+    await act(async () => {
+      fireEvent.pointerUp(document, { button: 0, buttons: 0, clientX, clientY: 5 })
+    })
+
+    expect(onUpdate).toHaveBeenCalledWith(payload)
+    expect(onRequiresRebuild).toHaveBeenCalledOnce()
   })
 
   it('shows partial metadata maintenance result after streaming import', () => {

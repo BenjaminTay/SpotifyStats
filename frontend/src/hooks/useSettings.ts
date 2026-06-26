@@ -16,6 +16,21 @@ interface SpotifyAuthUrl { auth_url: string; state: string }
 interface SpotifyStatus { connected: boolean; scope?: string; connected_at?: string }
 interface SpotifySyncResult { success: boolean; total_in_spotify?: number; total_in_db?: number; matched?: number; new_dates?: number; error?: string }
 
+const STATS_SETTING_KEYS = new Set<keyof SettingsUpdatePayload>([
+  'min_ms',
+  'music_only',
+  'merge_enabled',
+  'bb_top_n',
+  'bb_album_top_n',
+  'bb_artist_top_n',
+  'bb_week_start_dow',
+  'bb_week_start_hour',
+])
+
+function touchesStatsSettings(payload: SettingsUpdatePayload): boolean {
+  return Object.keys(payload).some((key) => STATS_SETTING_KEYS.has(key as keyof SettingsUpdatePayload))
+}
+
 function getStoredBool(key: string, fallback: boolean): boolean {
   try {
     const v = localStorage.getItem(key)
@@ -88,6 +103,13 @@ export function useSettings(): UseSettingsResult {
   const updateSettings = useCallback(async (payload: SettingsUpdatePayload) => {
     const updated = await api.put<SettingsData>('/settings', payload)
     queryClient.setQueryData(queryKeys.settings.data(), updated)
+    if (touchesStatsSettings(payload)) {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.billboard.all })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.analysis.all })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.all })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.music.all })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.community.all })
+    }
   }, [queryClient])
 
   const updateApiKey = useCallback(async (apiKey: string, baseUrl?: string) => {
