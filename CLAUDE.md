@@ -49,13 +49,13 @@ sh scripts/fullstack_verification_check.sh --backend-url http://127.0.0.1:8000 -
 # 修复已导入 Streaming History 后缺失的 Spotify 元数据、album projects 与榜单聚合
 .venv/bin/python scripts/refresh_import_derived_data.py --json-output /tmp/spotify_import_maintenance.json
 
-# 本地只读 API smoke（96 个 GET + OpenAPI GET 核算）
+# 本地只读 API smoke（98 个 GET + OpenAPI GET 核算）
 .venv/bin/python scripts/api_smoke_probe.py
 
 # 非破坏性 API 边界 probe（85 个 GET）
 .venv/bin/python scripts/api_boundary_probe.py
 
-# OpenAPI 全操作覆盖归属核算（135 operation，0 unaccounted）
+# OpenAPI 全操作覆盖归属核算（136 operation，0 unaccounted）
 .venv/bin/python scripts/openapi_operation_audit.py --json-output /tmp/spotify_openapi_operation_audit.json
 
 # OpenAPI 参数边界覆盖归属核算（59 obligations，0 unaccounted）

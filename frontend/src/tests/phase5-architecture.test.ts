@@ -6,6 +6,7 @@ import albumDetailSource from '../pages/AlbumDetailPage.tsx?raw'
 import artistDetailSource from '../pages/ArtistDetailPage.tsx?raw'
 import recordsPageSource from '../pages/RecordsPage.tsx?raw'
 import allTimeChartsPageSource from '../pages/AllTimeChartsPage.tsx?raw'
+import billboardYearEndPageSource from '../pages/BillboardYearEndPage.tsx?raw'
 import numberOnesPageSource from '../pages/NumberOnesPage.tsx?raw'
 import billboardPageSource from '../pages/BillboardPage.tsx?raw'
 import billboardVersusPageSource from '../pages/BillboardVersusPage.tsx?raw'
@@ -27,8 +28,14 @@ import communityAccountPageSource from '../pages/CommunityAccountPage.tsx?raw'
 import postDetailPageSource from '../pages/PostDetailPage.tsx?raw'
 import dashboardPageSource from '../pages/DashboardPage.tsx?raw'
 import appSource from '../App.tsx?raw'
+import useBillboardSource from '../hooks/useBillboard.ts?raw'
 
 import numberOnesExperienceSource from '../features/billboard/number-ones/NumberOnesExperience.tsx?raw'
+import allTimeDataSource from '../features/billboard/all-time/allTimeData.ts?raw'
+import yearEndExperienceSource from '../features/billboard/year-end/YearEndExperience.tsx?raw'
+import yearEndHonorsSource from '../features/billboard/year-end/YearEndHonors.tsx?raw'
+import yearEndTableSource from '../features/billboard/year-end/YearEndTable.tsx?raw'
+import yearEndDataSource from '../features/billboard/year-end/yearEndData.ts?raw'
 import versusExperienceSource from '../features/billboard/versus/VersusExperience.tsx?raw'
 import artistDetailExperienceSource from '../features/music/details/ArtistDetailExperience.tsx?raw'
 import albumDetailExperienceSource from '../features/music/details/AlbumDetailExperience.tsx?raw'
@@ -46,6 +53,7 @@ import trackLyricsSectionSource from '../features/music/details/track/TrackLyric
 
 import mastheadSource from '../components/layout/Masthead.tsx?raw'
 import appLayoutSource from '../components/layout/AppLayout.tsx?raw'
+import billboardSubNavSource from '../components/shared/BillboardSubNav.tsx?raw'
 import chineseSource from '../lib/chinese.ts?raw'
 import billboardNameSource from '../lib/billboard-name.ts?raw'
 import monthlyTrendChartSource from '../components/charts/MonthlyTrendChart.tsx?raw'
@@ -85,6 +93,12 @@ describe('Phase 5 architecture guardrails', () => {
     expect(allTimeChartsPageSource).not.toContain('<table')
   })
 
+  it('keeps BillboardYearEndPage as a thin route container', () => {
+    expect(billboardYearEndPageSource.split('\n').length).toBeLessThanOrEqual(20)
+    expect(billboardYearEndPageSource).toContain('YearEndExperience')
+    expect(billboardYearEndPageSource).not.toContain('<table')
+  })
+
   it('keeps NumberOnesPage as a route container instead of a full chart experience module', () => {
     expect(numberOnesPageSource.split('\n').length).toBeLessThanOrEqual(450)
     expect(numberOnesPageSource).not.toContain('function No1BarChart')
@@ -105,6 +119,76 @@ describe('Phase 5 architecture guardrails', () => {
     expect(numberOnesExperienceSource).not.toContain('if (loading) return <SkeletonBlock />')
     expect(numberOnesExperienceSource).toContain('<BillboardSubNav active="number-ones" />')
     expect(numberOnesExperienceSource).toContain('{loading && <SkeletonBlock />}')
+  })
+
+  it('keeps Billboard Year-End aligned with shared Billboard visual primitives', () => {
+    expect(yearEndExperienceSource).toContain('<BillboardSubNav active="year-end" />')
+    expect(yearEndExperienceSource).toContain('tracking-[1.8px]')
+    expect(yearEndHonorsSource).toContain('aria-label="Year-End Summary"')
+    expect(yearEndHonorsSource).not.toContain('<GlassCard')
+    expect(yearEndTableSource).toContain("from '@/components/shared/CoverCell'")
+    expect(yearEndTableSource).toContain("from '@/components/shared/PaginationBar'")
+    expect(yearEndTableSource).not.toContain('function Pagination(')
+  })
+
+  it('uses Yearly Review style year pills for Billboard Year-End', () => {
+    expect(yearEndExperienceSource).not.toContain('<select')
+    expect(yearEndExperienceSource).toContain('bg-accent-foreground text-card')
+    expect(yearEndExperienceSource).toContain('bg-muted text-muted-foreground hover:text-foreground')
+    expect(yearEndExperienceSource.indexOf('aria-label="切换年榜年份"')).toBeLessThan(
+      yearEndExperienceSource.indexOf('role="tablist"'),
+    )
+  })
+
+  it('places the Billboard All-Time tab immediately after Year-End', () => {
+    const yearEndIndex = billboardSubNavSource.indexOf("active: 'year-end'")
+    const allTimeIndex = billboardSubNavSource.indexOf("active: 'all-time'")
+
+    expect(yearEndIndex).toBeGreaterThan(-1)
+    expect(allTimeIndex).toBeGreaterThan(yearEndIndex)
+  })
+
+  it('uses chart-specific Billboard Year-End tab labels', () => {
+    expect(yearEndDataSource).toContain("label: '单曲榜'")
+    expect(yearEndDataSource).toContain("label: '专辑榜'")
+    expect(yearEndDataSource).toContain("label: '艺人榜'")
+    expect(yearEndDataSource).not.toContain("label: '歌曲'")
+    expect(yearEndDataSource).not.toContain("label: '专辑'")
+    expect(yearEndDataSource).not.toContain("label: '艺人'")
+    expect(yearEndDataSource).not.toContain('年度单曲榜')
+    expect(yearEndDataSource).not.toContain('年度专辑榜')
+    expect(yearEndDataSource).not.toContain('年度艺人榜')
+  })
+
+  it('uses chart-specific Billboard All-Time tab labels', () => {
+    expect(allTimeDataSource).toContain("label: '单曲榜'")
+    expect(allTimeDataSource).toContain("label: '专辑榜'")
+    expect(allTimeDataSource).toContain("label: '艺人榜'")
+    expect(allTimeDataSource).not.toContain("label: '歌曲'")
+    expect(allTimeDataSource).not.toContain("label: '专辑'")
+    expect(allTimeDataSource).not.toContain("label: '艺人'")
+  })
+
+  it('places Billboard Year-End tabs between honors and the ranking table', () => {
+    const honorsIndex = yearEndExperienceSource.indexOf('<YearEndHonors')
+    const tabsIndex = yearEndExperienceSource.indexOf('role="tablist"')
+    const tableIndex = yearEndExperienceSource.indexOf('<YearEndTable')
+
+    expect(honorsIndex).toBeGreaterThan(-1)
+    expect(tabsIndex).toBeGreaterThan(honorsIndex)
+    expect(tableIndex).toBeGreaterThan(tabsIndex)
+  })
+
+  it('keeps selected Billboard Year-End honors in a desktop 3x2 grid', () => {
+    expect(yearEndHonorsSource).toContain('lg:grid-cols-3')
+    expect(yearEndHonorsSource).not.toContain('xl:grid-cols-4')
+  })
+
+  it('prefetches all Billboard Year-End years and keeps previous data while switching', () => {
+    expect(useBillboardSource).toContain('prefetchBillboardYearEndYears')
+    expect(useBillboardSource).toContain('placeholderData: keepPreviousData')
+    expect(useBillboardSource).toContain('available_years')
+    expect(useBillboardSource).toContain('getQueryData')
   })
 
   it('keeps music detail pages as route containers', () => {

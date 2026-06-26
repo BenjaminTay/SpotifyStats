@@ -1,12 +1,15 @@
 import { fireEvent, render, screen } from '@testing-library/react'
+import { useState } from 'react'
 import { MemoryRouter } from 'react-router-dom'
 import { describe, expect, it, vi } from 'vitest'
 
 import { AllTimeTable } from '@/features/billboard/all-time/AllTimeTable'
 import type { AllTimeRow, ColumnDef, MergedTrackRow } from '@/features/billboard/all-time/allTimeData'
+import { YearEndTable } from '@/features/billboard/year-end/YearEndTable'
 import { MiniRankTable } from '@/features/billboard/records/RecordsPrimitives'
 import { recentPlayRowKey } from '@/components/shared/RecentPlaysSection'
 import type { RecentPlayRow } from '@/types/analysis'
+import type { BillboardYearEndTrackRow } from '@/types/billboard'
 
 describe('Phase 5 long-list pagination', () => {
   it('renders only the current page for Records mini rank tables', () => {
@@ -87,6 +90,128 @@ describe('Phase 5 long-list pagination', () => {
     expect(screen.getByText('Track 10')).toBeInTheDocument()
     expect(screen.queryByText('Track 11')).not.toBeInTheDocument()
     expect(screen.queryByText('Track 25')).not.toBeInTheDocument()
+  })
+
+  it('paginates Billboard Year-End rows', () => {
+    const rows: BillboardYearEndTrackRow[] = Array.from({ length: 75 }, (_, index) => ({
+      track_id: index + 1,
+      track_name: `Year-End Track ${index + 1}`,
+      artist_name: 'Artist',
+      artist_names: ['Artist'],
+      album_name: 'Album',
+      cover_url: null,
+      year_end_score: 1000 - index,
+      year_end_rank: index + 1,
+      peak_position: 1,
+      weeks_on_chart: 10,
+      weeks_at_peak: 2,
+      weeks_at_no1: 1,
+      weeks_top5: 6,
+      weeks_top10: 10,
+      chart_plays: 200 - index,
+      first_week: '2025-01-03',
+      last_week: '2025-03-07',
+      true_first_week: '2025-01-03',
+      is_true_debut_no1: index === 0,
+    }))
+
+    function Wrapper() {
+      const [page, setPage] = useState(1)
+      return <YearEndTable tab="tracks" rows={rows} page={page} pageSize={50} onPageChange={setPage} />
+    }
+
+    render(
+      <MemoryRouter>
+        <Wrapper />
+      </MemoryRouter>,
+    )
+
+    expect(screen.getByText('Year-End Track 1')).toBeInTheDocument()
+    expect(screen.getByText('显示 1–50 / 总数 75 条')).toBeInTheDocument()
+    expect(screen.queryByText('Year-End Track 75')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByLabelText('下一页'))
+
+    expect(screen.getByText('Year-End Track 75')).toBeInTheDocument()
+    expect(screen.getByText('显示 51–75 / 总数 75 条')).toBeInTheDocument()
+  })
+
+  it('labels Billboard Year-End table metrics as annual and formats annual peak like rank numbers', () => {
+    const rows: BillboardYearEndTrackRow[] = [
+      {
+        track_id: 1,
+        track_name: 'Annual Peak Song',
+        artist_name: 'Artist',
+        artist_names: ['Artist'],
+        album_name: 'Album',
+        cover_url: null,
+        year_end_score: 1000,
+        year_end_rank: 12,
+        peak_position: 1,
+        weeks_on_chart: 10,
+        weeks_at_peak: 2,
+        weeks_at_no1: 1,
+        weeks_top5: 6,
+        weeks_top10: 10,
+        chart_plays: 200,
+        first_week: '2025-01-03',
+        last_week: '2025-03-07',
+        true_first_week: '2025-01-03',
+        is_true_debut_no1: false,
+      },
+    ]
+
+    render(
+      <MemoryRouter>
+        <YearEndTable tab="tracks" rows={rows} page={1} pageSize={50} onPageChange={vi.fn()} />
+      </MemoryRouter>,
+    )
+
+    for (const label of ['年度积分', '年度最高', '年度在榜', '年度#1周', '年度Top5', '年度Top10', '年度播放']) {
+      expect(screen.getByRole('button', { name: `按${label}排序` })).toBeInTheDocument()
+    }
+
+    const annualPeakCell = screen.getByText('01').closest('td')
+    expect(annualPeakCell).toHaveClass('font-serif')
+    expect(annualPeakCell).toHaveClass('text-[22px]')
+    expect(annualPeakCell).toHaveClass('text-accent-foreground')
+    expect(screen.queryByText('#1')).not.toBeInTheDocument()
+  })
+
+  it('insets Year-End metric columns before annual plays to keep the final metrics readable', () => {
+    const rows: BillboardYearEndTrackRow[] = [
+      {
+        track_id: 1,
+        track_name: 'Spacing Song',
+        artist_name: 'Artist',
+        artist_names: ['Artist'],
+        album_name: 'Album',
+        cover_url: null,
+        year_end_score: 1000,
+        year_end_rank: 12,
+        peak_position: 1,
+        weeks_on_chart: 37,
+        weeks_at_peak: 2,
+        weeks_at_no1: 4,
+        weeks_top5: 8,
+        weeks_top10: 14,
+        chart_plays: 200,
+        first_week: '2025-01-03',
+        last_week: '2025-03-07',
+        true_first_week: '2025-01-03',
+        is_true_debut_no1: false,
+      },
+    ]
+
+    render(
+      <MemoryRouter>
+        <YearEndTable tab="tracks" rows={rows} page={1} pageSize={50} onPageChange={vi.fn()} />
+      </MemoryRouter>,
+    )
+
+    expect(screen.getByText('14').closest('td')).toHaveClass('pr-5')
+    expect(screen.getByText('8').closest('td')).toHaveClass('pr-5')
+    expect(screen.getByText('200').closest('td')).not.toHaveClass('pr-5')
   })
 
   it('keeps recent-play row keys unique when entity joins return duplicate play ids', () => {

@@ -147,6 +147,7 @@ DEFAULT_SAFE_GET_CASES: tuple[SmokeCase, ...] = (
     SmokeCase("billboard_power", "/api/billboard/power-scores", DEFAULT_BILLBOARD),
     SmokeCase("billboard_summaries", "/api/billboard/summaries", DEFAULT_BILLBOARD),
     SmokeCase("billboard_all_time", "/api/billboard/all-time", DEFAULT_BILLBOARD),
+    SmokeCase("billboard_year_end", "/api/billboard/year-end", DEFAULT_BILLBOARD),
     SmokeCase("release_cycle_artist_list", "/api/billboard/release-cycle/artist-list", DEFAULT_BILLBOARD),
     SmokeCase(
         "release_cycle_artist",

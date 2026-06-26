@@ -103,13 +103,13 @@ sh scripts/phase5_check.sh
 sh scripts/fullstack_verification_check.sh --backend-url http://127.0.0.1:8000 --frontend-url http://localhost:5173
 sh scripts/fullstack_verification_check.sh --backend-url http://127.0.0.1:8000 --frontend-url http://localhost:5173 --preview-url http://127.0.0.1:4173 --preview-api-url http://127.0.0.1:8000 --quickstart-preflight --quickstart-json /tmp/spotify_quickstart_timing.json --web-vitals --resource-snapshot --resource-max-total-rss-mb 1200 --resource-max-total-cpu-percent 200 --web-vitals-max-lcp-ms 3000 --web-vitals-max-cls 0.01 --web-vitals-max-tbt-ms 100 --web-vitals-max-resource-count 120 --web-vitals-max-encoded-resource-kb 11000 --web-vitals-max-scroll-overflow-px 0
 
-# 本地只读 API smoke（96 个 GET，验证 X-Request-ID，并核算 OpenAPI GET 覆盖）
+# 本地只读 API smoke（98 个 GET，验证 X-Request-ID，并核算 OpenAPI GET 覆盖）
 .venv/bin/python scripts/api_smoke_probe.py
 
 # 非破坏性 API 边界 probe（85 个 GET，验证 422/200、X-Request-ID 与 validation detail）
 .venv/bin/python scripts/api_boundary_probe.py
 
-# OpenAPI 全操作覆盖归属核算（134 operation，0 unaccounted）
+# OpenAPI 全操作覆盖归属核算（136 operation，0 unaccounted）
 .venv/bin/python scripts/openapi_operation_audit.py --json-output /tmp/spotify_openapi_operation_audit.json
 
 # OpenAPI 参数边界覆盖归属核算（59 obligations，0 unaccounted）

@@ -550,11 +550,21 @@ weekly_album_project_plays =
 
 L1/L2/L3 的差异在排名层通过 canonical key resolver 应用。
 
+### R36. Billboard Year-End 年榜
+
+Billboard Year-End 年榜不是年度播放量榜。它先使用当前 Billboard 过滤、连续播放合并、动态阈值、周边界、`merge_level` 与 album project 规则生成周榜，再按单个 `billboard_week.year` 窗口重算年度榜单积分。
+
+单曲、专辑、艺人年榜分别来自 `weekly`、`weekly_album` 与 `weekly_artist`。主排序为 `year_end_score DESC`，同分时依次比较 #1 周数、peak、Top 10 周数和 chart plays。
+
+年榜展示规模独立于每周 Billboard 榜单设置，默认单曲 Top 50、专辑 Top 30、艺人 Top 30。
+
+年榜三类榜单统一使用年度冠军周数作为统治力奖励：`no1_bonus = weeks_at_no1 × 40`。单曲真实空降 #1 只作为事实字段和荣誉叙事素材保留，不额外增加年度积分。
+
 ---
 
 ## 12. 展示规则
 
-### R36. 歌曲详情页
+### R37. 歌曲详情页
 
 歌曲详情页在非 L1 下应展示：
 
@@ -566,7 +576,7 @@ L1/L2/L3 的差异在排名层通过 canonical key resolver 应用。
 - 各版本 source album。
 - L3 下标注不同录音类型，例如 Acoustic、Live、Taylor's Version。
 
-### R37. 专辑详情页
+### R38. 专辑详情页
 
 专辑详情页展示 album project：
 
@@ -579,7 +589,7 @@ L1/L2/L3 的差异在排名层通过 canonical key resolver 应用。
 - 发行前单曲播放是否计入全时专辑播放量。
 - Billboard 入榜起始日期。
 
-### R38. 榜单页
+### R39. 榜单页
 
 榜单页必须显示当前合并级别：
 
@@ -599,7 +609,7 @@ L1/L2/L3 的差异在排名层通过 canonical key resolver 应用。
 
 ## 13. 数据关系要求
 
-### R39. 必需概念关系
+### R40. 必需概念关系
 
 为了实现上述规则，需要维护以下概念关系：
 
@@ -612,7 +622,7 @@ L1/L2/L3 的差异在排名层通过 canonical key resolver 应用。
 | `source_album_id` | 每次播放的来源发行容器 |
 | `album_source_breakdown` | 专辑播放量来源解释 |
 
-### R40. 自动检测与人工确认
+### R41. 自动检测与人工确认
 
 自动检测可以高置信应用：
 
@@ -627,7 +637,7 @@ L1/L2/L3 的差异在排名层通过 canonical key resolver 应用。
 - 同名不同歌。
 - 翻唱、采样、mashup。
 
-### R41. 历史 backfill 标注
+### R42. 历史 backfill 标注
 
 历史播放若缺少真实 source album，只能用当前 track primary album 推断。
 

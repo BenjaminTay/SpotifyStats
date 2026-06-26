@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, type QueryClient, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { queryClient } from '@/api/query-client'
 import { queryKeys } from '@/api/query-keys'
@@ -9,6 +9,7 @@ import {
   type BillboardDataResponse,
   type BillboardRecordsResponse,
   type BillboardWeeklyResponse,
+  type BillboardYearEndResponse,
   type WeeklyAlbumEntry,
   type WeeklyArtistEntry,
   type WeeklyTrackEntry,
@@ -244,6 +245,76 @@ export function useBillboardAllTime(mergeLevel = 2, includeCompilations = false)
     queryKey: queryKeys.billboard.allTime(params),
     queryFn: () => api.get<BillboardAllTimeResponse>('/billboard/all-time', params),
   })
+
+  return {
+    data: query.data ?? null,
+    loading: query.isLoading,
+    error: errorMessage(query.error),
+    refetch: () => void query.refetch(),
+  }
+}
+
+function billboardYearEndParams(
+  year: number | null,
+  mergeLevel: number,
+  includeCompilations: boolean,
+): Record<string, string | number | boolean> {
+  const params: Record<string, string | number | boolean> = {
+    merge_level: mergeLevel,
+    include_compilations: includeCompilations,
+  }
+  if (year) params.year = year
+  return params
+}
+
+function cacheResolvedBillboardYearEndYear(
+  queryClientForHook: QueryClient,
+  data: BillboardYearEndResponse | undefined,
+  mergeLevel: number,
+  includeCompilations: boolean,
+): void {
+  const resolvedYear = data?.meta.year
+  if (!resolvedYear) return
+
+  const params = billboardYearEndParams(resolvedYear, mergeLevel, includeCompilations)
+  const queryKey = queryKeys.billboard.yearEnd(params)
+  if (!queryClientForHook.getQueryData(queryKey)) {
+    queryClientForHook.setQueryData(queryKey, data)
+  }
+}
+
+function prefetchBillboardYearEndYears(
+  queryClientForHook: QueryClient,
+  years: number[],
+  mergeLevel: number,
+  includeCompilations: boolean,
+): void {
+  years.forEach((availableYear) => {
+    const params = billboardYearEndParams(availableYear, mergeLevel, includeCompilations)
+    void queryClientForHook.prefetchQuery({
+      queryKey: queryKeys.billboard.yearEnd(params),
+      queryFn: () => api.get<BillboardYearEndResponse>('/billboard/year-end', params),
+    })
+  })
+}
+
+export function useBillboardYearEnd(year: number | null, mergeLevel = 2, includeCompilations = false) {
+  const queryClientForHook = useQueryClient()
+  const params = billboardYearEndParams(year, mergeLevel, includeCompilations)
+  const query = useQuery({
+    queryKey: queryKeys.billboard.yearEnd(params),
+    queryFn: () => api.get<BillboardYearEndResponse>('/billboard/year-end', params),
+    placeholderData: keepPreviousData,
+  })
+  const availableYearKey = query.data?.meta.available_years.join(',') ?? ''
+
+  useEffect(() => {
+    cacheResolvedBillboardYearEndYear(queryClientForHook, query.data, mergeLevel, includeCompilations)
+
+    const availableYears = query.data?.meta.available_years ?? []
+    if (availableYears.length === 0) return
+    prefetchBillboardYearEndYears(queryClientForHook, availableYears, mergeLevel, includeCompilations)
+  }, [availableYearKey, includeCompilations, mergeLevel, query.data, queryClientForHook])
 
   return {
     data: query.data ?? null,

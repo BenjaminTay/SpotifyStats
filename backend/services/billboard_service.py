@@ -18,6 +18,7 @@ from backend.domains.billboard.chart_compute import (
     compute_weekly_data,
     compute_weekly_rankings,
 )
+from backend.domains.billboard.chart_staged_api import compute_year_end_staged
 from backend.domains.billboard.data_loader import (
     DOW_NAMES,
     DOW_SHORT,
@@ -90,6 +91,7 @@ __all__ = [
     "compute_summaries_staged",
     "compute_weekly_data",
     "compute_weekly_rankings",
+    "compute_year_end_staged",
     # records
     "_add_cover_urls",
     "_serialize_records",

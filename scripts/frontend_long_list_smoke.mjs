@@ -12,6 +12,7 @@ const DEFAULT_WAIT_MS = 8000
 const DEFAULT_SCENARIOS = [
   'records-mini-rank',
   'all-time-table',
+  'year-end-table',
   'community-feed',
   'recent-plays',
   'saved-tracks',
@@ -79,6 +80,7 @@ Options:
 Scenarios:
   records-mini-rank       Click a paginated Billboard Records mini-rank table
   all-time-table          Click Billboard All-Time table pagination
+  year-end-table          Click Billboard Year-End table pagination
   community-feed          Scroll Community Feed to trigger infinite loading
   recent-plays            Click Analysis Recent Plays pagination
   saved-tracks            Click Account Saved Tracks pagination
@@ -719,6 +721,14 @@ const SCENARIOS = {
     readyText: 'Billboard 总榜',
     pagePattern: '\\b\\d+\\s*/\\s*\\d+\\b',
     focusText: 'Billboard 总榜',
+  }),
+  'year-end-table': (ctx) => exercisePaginatedList({
+    ...ctx,
+    waitMs: Math.max(ctx.waitMs, 20000),
+    route: '/billboard/year-end',
+    readyText: 'Billboard 年榜',
+    pagePattern: '\\b\\d+\\s*/\\s*\\d+\\b',
+    focusText: 'Billboard 年榜',
   }),
   'community-feed': exerciseCommunityFeed,
   'recent-plays': (ctx) => exercisePaginatedList({

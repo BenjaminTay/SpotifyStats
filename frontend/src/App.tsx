@@ -9,6 +9,7 @@ const ArtistDetailPage = lazy(() => import('@/pages/ArtistDetailPage').then((m) 
 const AlbumDetailPage = lazy(() => import('@/pages/AlbumDetailPage').then((m) => ({ default: m.AlbumDetailPage })))
 const NumberOnesPage = lazy(() => import('@/pages/NumberOnesPage').then((m) => ({ default: m.NumberOnesPage })))
 const AllTimeChartsPage = lazy(() => import('@/pages/AllTimeChartsPage').then((m) => ({ default: m.AllTimeChartsPage })))
+const BillboardYearEndPage = lazy(() => import('@/pages/BillboardYearEndPage').then((m) => ({ default: m.BillboardYearEndPage })))
 const RecordsPage = lazy(() => import('@/pages/RecordsPage').then((m) => ({ default: m.RecordsPage })))
 const BillboardVersusPage = lazy(() => import('@/pages/BillboardVersusPage').then((m) => ({ default: m.BillboardVersusPage })))
 const CommunityPage = lazy(() => import('@/pages/CommunityPage').then((m) => ({ default: m.CommunityPage })))
@@ -73,6 +74,7 @@ function App() {
           <Route path="/billboard/album/:albumName" element={<LegacyMusicRedirect kind="album" />} />
           <Route path="/billboard/number-ones" element={<Suspense fallback={<RouteFallback />}><NumberOnesPage /></Suspense>} />
           <Route path="/billboard/all-time" element={<Suspense fallback={<RouteFallback />}><AllTimeChartsPage /></Suspense>} />
+          <Route path="/billboard/year-end" element={<Suspense fallback={<RouteFallback />}><BillboardYearEndPage /></Suspense>} />
           <Route path="/billboard/records" element={<Suspense fallback={<RouteFallback />}><RecordsPage /></Suspense>} />
           <Route path="/billboard/versus" element={<Suspense fallback={<RouteFallback />}><BillboardVersusPage /></Suspense>} />
           <Route path="/community" element={<Suspense fallback={<RouteFallback />}><CommunityPage /></Suspense>} />

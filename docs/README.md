@@ -43,6 +43,13 @@
 | [`productization/2026-06-11-ai-insights.md`](productization/2026-06-11-ai-insights.md) | AI Insights 模块设计（已完成，已归入 Phase 5.4-C/D） |
 | [`productization/2026-06-22-phase5-delivery-report.md`](productization/2026-06-22-phase5-delivery-report.md) | Phase 5 最终交付报告 — 零缺陷验证、性能对比、10 分钟快速验证指南 |
 
+## 当前功能设计
+
+| 文档 | 内容 |
+|------|------|
+| [`superpowers/specs/2026-06-26-billboard-year-end-design.md`](superpowers/specs/2026-06-26-billboard-year-end-design.md) | Billboard 年榜设计：年度单曲/专辑/艺人榜、Year-End Score、荣誉卡片与 UI 组织 |
+| [`superpowers/plans/2026-06-26-billboard-year-end.md`](superpowers/plans/2026-06-26-billboard-year-end.md) | Billboard 年榜实现计划与最终落地口径 |
+
 ## 历史归档
 
 以下文档记录了项目的演进历程，不再活跃引用。均已完成实现，仅保留设计上下文供参考。

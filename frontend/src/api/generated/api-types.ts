@@ -1071,6 +1071,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/billboard/year-end": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Billboard Year End */
+        get: operations["get_billboard_year_end_api_billboard_year_end_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/billboard/release-cycle/artist-list": {
         parameters: {
             query?: never;
@@ -3326,6 +3343,70 @@ export interface components {
             weekly_artist: {
                 [key: string]: unknown;
             }[];
+        } & {
+            [key: string]: unknown;
+        };
+        /** BillboardYearEndMeta */
+        BillboardYearEndMeta: {
+            /** Year */
+            year: number | null;
+            /** Available Years */
+            available_years: number[];
+            /** Total Weeks */
+            total_weeks: number;
+            /** Top N */
+            top_n: number;
+            /** Album Top N */
+            album_top_n: number;
+            /** Artist Top N */
+            artist_top_n: number;
+            /** Week Start Dow */
+            week_start_dow: number;
+            /** Week Start Hour */
+            week_start_hour: number;
+            /** Score Label */
+            score_label: string;
+        };
+        /** BillboardYearEndResponse */
+        BillboardYearEndResponse: {
+            meta: components["schemas"]["BillboardYearEndMeta"];
+            /** Tracks */
+            tracks: components["schemas"]["BillboardYearEndRow"][];
+            /** Albums */
+            albums: components["schemas"]["BillboardYearEndRow"][];
+            /** Artists */
+            artists: components["schemas"]["BillboardYearEndRow"][];
+            /** Honors */
+            honors: {
+                [key: string]: unknown;
+            };
+        };
+        /** BillboardYearEndRow */
+        BillboardYearEndRow: {
+            /** Year End Score */
+            year_end_score: number;
+            /** Year End Rank */
+            year_end_rank: number;
+            /** Peak Position */
+            peak_position: number;
+            /** Weeks On Chart */
+            weeks_on_chart: number;
+            /** Weeks At Peak */
+            weeks_at_peak: number;
+            /** Weeks At No1 */
+            weeks_at_no1: number;
+            /** Weeks Top5 */
+            weeks_top5: number;
+            /** Weeks Top10 */
+            weeks_top10: number;
+            /** Chart Plays */
+            chart_plays: number;
+            /** First Week */
+            first_week: string | null;
+            /** Last Week */
+            last_week: string | null;
+            /** True First Week */
+            true_first_week?: string | null;
         } & {
             [key: string]: unknown;
         };
@@ -8801,6 +8882,64 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BillboardAllTimeResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_billboard_year_end_api_billboard_year_end_get: {
+        parameters: {
+            query?: {
+                /** @description Billboard Year-End 年份 */
+                year?: number | null;
+                /** @description Include compilation albums in album chart */
+                include_compilations?: boolean;
+                /** @description 最短播放时长 (毫秒) */
+                min_ms?: number | null;
+                /** @description 仅音乐 */
+                music_only?: boolean | null;
+                /** @description 单曲榜 Top N */
+                bb_top_n?: number | null;
+                /** @description 专辑榜 Top N */
+                bb_album_top_n?: number | null;
+                /** @description 艺人榜 Top N */
+                bb_artist_top_n?: number | null;
+                /** @description 周起始星期 (0=周一) */
+                bb_week_start_dow?: number | null;
+                /** @description 周起始小时 */
+                bb_week_start_hour?: number | null;
+                /** @description 起始年份 (含) */
+                year_start?: number | null;
+                /** @description 结束年份 (含) */
+                year_end?: number | null;
+                /** @description 使用动态有效播放阈值 */
+                dynamic_threshold?: boolean;
+                /** @description 连续播放最大合并间隔 (分钟) */
+                max_merge_gap_minutes?: number | null;
+                /** @description 版本合并严格度 */
+                merge_level?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BillboardYearEndResponse"];
                 };
             };
             /** @description Validation Error */

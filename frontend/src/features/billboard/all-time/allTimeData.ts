@@ -113,9 +113,9 @@ export const PEAK_FILTER_OPTIONS: { value: PeakFilter; label: string }[] = [
 ]
 
 export const TABS: { key: EntityTab; label: string }[] = [
-  { key: 'tracks', label: '歌曲' },
-  { key: 'albums', label: '专辑' },
-  { key: 'artists', label: '艺人' },
+  { key: 'tracks', label: '单曲榜' },
+  { key: 'albums', label: '专辑榜' },
+  { key: 'artists', label: '艺人榜' },
 ]
 
 export function formatNumber(n: number): string {

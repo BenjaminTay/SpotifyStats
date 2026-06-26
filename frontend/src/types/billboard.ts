@@ -227,6 +227,72 @@ export interface BillboardAllTimeResponse {
   artist_track_counts: ArtistTrackCounts[]
 }
 
+/** Year-end response from GET /api/billboard/year-end */
+export interface BillboardYearEndMeta {
+  [key: string]: any
+  year: number | null
+  available_years: number[]
+  total_weeks: number
+  top_n: number
+  album_top_n: number
+  artist_top_n: number
+  week_start_dow: number
+  week_start_hour: number
+  score_label: string
+}
+
+export interface BillboardYearEndRow {
+  [key: string]: any
+  year_end_score: number
+  year_end_rank: number
+  peak_position: number
+  weeks_on_chart: number
+  weeks_at_peak: number
+  weeks_at_no1: number
+  weeks_top5: number
+  weeks_top10: number
+  chart_plays: number
+  first_week: string | null
+  last_week: string | null
+  true_first_week?: string | null
+  cover_url?: string | null
+}
+
+export interface BillboardYearEndTrackRow extends BillboardYearEndRow {
+  track_id: number
+  track_name: string
+  artist_name: string
+  artist_names?: string[]
+  album_name?: string
+  is_true_debut_no1: boolean
+}
+
+export interface BillboardYearEndAlbumRow extends BillboardYearEndRow {
+  album_name: string
+  artist_name: string
+  release_date?: string | null
+  album_type?: string | null
+  is_new_entry?: boolean
+}
+
+export interface BillboardYearEndArtistRow extends BillboardYearEndRow {
+  artist_name: string
+  is_new_entry?: boolean
+}
+
+export interface BillboardYearEndHonors {
+  [key: string]: BillboardYearEndRow | null
+}
+
+export interface BillboardYearEndResponse {
+  [key: string]: any
+  meta: BillboardYearEndMeta
+  tracks: BillboardYearEndTrackRow[]
+  albums: BillboardYearEndAlbumRow[]
+  artists: BillboardYearEndArtistRow[]
+  honors: BillboardYearEndHonors
+}
+
 // ── Billboard Records ──────────────────────────────────────────
 
 export interface BillboardRecords {
