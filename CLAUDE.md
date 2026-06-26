@@ -139,6 +139,6 @@ JSON → import → SQLite → FastAPI (backend/) → React (frontend/)
 - **新增外部 HTTP 调用 → Provider/HttpClient；禁止直接 `urllib.request.Request`/`urlopen`**
 - **页面容器只做路由入口；业务逻辑在 `features/`**
 - 架构护栏测试 `phase5-architecture.test.ts` 对上述约定做负面断言强制执行
-- 使用 `PlayFilters` / `BillboardFilters` 的统计端点必须透传 `dynamic_threshold` 与 `max_merge_gap_minutes` 到最终计数管线；新增入口要补传播测试或复用已有 service
+- 使用 `PlayFilters` / `BillboardFilters` 的统计端点必须透传 `dynamic_threshold` 与 `max_merge_gap_minutes` 到最终计数管线；Community feed/trending/post detail 也必须使用 `BillboardFilters` + `MergeConfig`，并把 `merge_level` / `include_compilations` 纳入生成参数和 query key；新增入口要补传播测试或复用已有 service
 
 完整架构、模块表、数据库结构、过滤策略见 `AGENTS.md`；后端细节见 `backend/CLAUDE.md`；前端细节见 `frontend/CLAUDE.md`。

@@ -28,6 +28,8 @@ def _load_chart_data(
     year_end,
     dynamic_threshold=False,
     max_merge_gap_minutes=None,
+    merge_level=2,
+    include_compilations=False,
 ):
     """Load raw data and compute all three weekly rankings. Returns a 5-tuple."""
     df_raw = load_billboard_raw(
@@ -67,8 +69,14 @@ def _load_chart_data(
             )
         ]
 
-    weekly = compute_weekly_rankings(df_raw, bb_top_n, pre_agg=_agg_tracks)
-    weekly_album = compute_album_weekly_rankings(df_raw, bb_album_top_n, pre_agg=_agg_albums)
+    weekly = compute_weekly_rankings(df_raw, bb_top_n, pre_agg=_agg_tracks, merge_level=merge_level)
+    weekly_album = compute_album_weekly_rankings(
+        df_raw,
+        bb_album_top_n,
+        pre_agg=_agg_albums,
+        merge_level=merge_level,
+        include_compilations=include_compilations,
+    )
     if _agg_artists is not None:
         weekly_artist = compute_artist_weekly_rankings(
             df_raw, bb_artist_top_n, pre_agg=_agg_artists

@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import { useParams, Link } from 'react-router-dom'
 
-import { useCommunityFeed, useCommunityTrending } from '@/hooks/useCommunity'
+import { useCommunityChartParams, useCommunityFeed, useCommunityTrending } from '@/hooks/useCommunity'
 import { AccountAvatar } from './AccountAvatar'
 import { CommunitySidebar } from './CommunitySidebar'
 import { CommunityTimeline } from './CommunityTimeline'
@@ -11,16 +11,17 @@ export function CommunityAccountExperience() {
   const { handle } = useParams<{ handle: string }>()
   const decodedHandle = decodeURIComponent(handle ?? '')
   const account = ACCOUNT_CONFIG[decodedHandle]
+  const chartParams = useCommunityChartParams()
 
   const filters = useMemo(() => {
-    const f: Record<string, string | number | boolean> = { limit: 50, offset: 0 }
+    const f: Record<string, string | number | boolean> = { ...chartParams, limit: 50, offset: 0 }
     if (decodedHandle) f.accounts = decodedHandle
     return f
-  }, [decodedHandle])
+  }, [chartParams, decodedHandle])
 
   const { posts, meta, loading, loadingMore, error, refetch, hasMore, loadMore } = useCommunityFeed(filters)
 
-  const { trending } = useCommunityTrending()
+  const { trending } = useCommunityTrending(chartParams)
 
   if (!account) {
     return (

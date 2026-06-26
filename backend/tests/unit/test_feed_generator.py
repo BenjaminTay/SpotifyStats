@@ -48,3 +48,69 @@ class TestOrchestratorStructure:
 
         assert a is not None
         assert b is not None
+
+
+class TestFeedFilterPropagation:
+    def test_load_chart_data_forwards_merge_and_album_compilation_options(self, monkeypatch):
+        import pandas as pd
+
+        from backend.domains.community import feed_data
+
+        raw = pd.DataFrame(
+            [
+                {
+                    "billboard_week": pd.Timestamp("2026-01-02"),
+                    "track_id": 1,
+                    "track_name": "Test Track",
+                    "artist_name": "Test Artist",
+                    "album_name": "Test Album",
+                    "ms_played": 180000,
+                }
+            ]
+        )
+        calls = {}
+
+        monkeypatch.setattr(feed_data, "load_billboard_raw", lambda *args, **kwargs: raw)
+        monkeypatch.setattr(
+            feed_data, "load_billboard_raw_for_artists", lambda *args, **kwargs: raw
+        )
+        monkeypatch.setattr(feed_data, "_try_load_from_agg", lambda *args: (None, None, None))
+
+        def fake_track_rankings(_df, top_n, pre_agg=None, merge_level=2):
+            calls["track_merge_level"] = merge_level
+            return raw.assign(rank=1, play_count=1, total_ms=180000)
+
+        def fake_album_rankings(
+            _df, top_n, pre_agg=None, merge_level=2, include_compilations=False
+        ):
+            calls["album_merge_level"] = merge_level
+            calls["include_compilations"] = include_compilations
+            return raw.assign(rank=1, play_count=1, total_ms=180000, tracks_count=1)
+
+        def fake_artist_rankings(_df, top_n, pre_agg=None):
+            calls["artist_called"] = True
+            return raw.assign(rank=1, play_count=1, total_ms=180000)
+
+        monkeypatch.setattr(feed_data, "compute_weekly_rankings", fake_track_rankings)
+        monkeypatch.setattr(feed_data, "compute_album_weekly_rankings", fake_album_rankings)
+        monkeypatch.setattr(feed_data, "compute_artist_weekly_rankings", fake_artist_rankings)
+
+        feed_data._load_chart_data(
+            30000,
+            True,
+            30,
+            20,
+            20,
+            4,
+            12,
+            None,
+            None,
+            dynamic_threshold=True,
+            max_merge_gap_minutes=30,
+            merge_level=3,
+            include_compilations=True,
+        )
+
+        assert calls["track_merge_level"] == 3
+        assert calls["album_merge_level"] == 3
+        assert calls["include_compilations"] is True

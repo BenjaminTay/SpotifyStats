@@ -22,7 +22,17 @@ vi.mock('react-virtuoso', () => ({
   },
 }))
 
+const communityHookMocks = vi.hoisted(() => ({
+  useCommunityChartParams: vi.fn(),
+  useCommunityFeed: vi.fn(),
+  useCommunityTrending: vi.fn(),
+  useCommunityPost: vi.fn(),
+}))
+
+vi.mock('@/hooks/useCommunity', () => communityHookMocks)
+
 import { AccountAvatar } from '@/features/community/AccountAvatar'
+import { CommunityExperience } from '@/features/community/CommunityExperience'
 import { CommunityTimeline } from '@/features/community/CommunityTimeline'
 import { FeedToggle } from '@/features/community/FeedToggle'
 import { PostCard } from '@/features/community/PostCard'
@@ -35,7 +45,26 @@ class MockIntersectionObserver {
   constructor(_callback: IntersectionObserverCallback, _options?: IntersectionObserverInit) {}
 }
 beforeEach(() => {
+  vi.clearAllMocks()
   vi.stubGlobal('IntersectionObserver', MockIntersectionObserver)
+  communityHookMocks.useCommunityChartParams.mockReturnValue({})
+  communityHookMocks.useCommunityFeed.mockReturnValue({
+    posts: [],
+    meta: { total: 0, total_all: 0, returned: 0, offset: 0, limit: 50 },
+    loading: false,
+    loadingMore: false,
+    error: null,
+    refetch: vi.fn(),
+    hasMore: false,
+    loadMore: vi.fn(),
+  })
+  communityHookMocks.useCommunityTrending.mockReturnValue({ trending: null })
+  communityHookMocks.useCommunityPost.mockReturnValue({
+    detail: null,
+    loading: false,
+    error: null,
+    refetch: vi.fn(),
+  })
 })
 
 function makePost(overrides: Partial<CommunityPost> = {}): CommunityPost {
@@ -174,12 +203,11 @@ describe('PostCard', () => {
     expect(screen.getByText('@chartdata')).toBeInTheDocument()
   })
 
-  it('renders single image as square container', () => {
+  it('renders single image as compact square container', () => {
     const { container } = renderWithRouter(
       <PostCard post={makePost({ images: ['/covers/albums/1.jpg'] })} />,
     )
-    // Single image in w-52 h-52 container
-    const squareContainer = container.querySelector('.w-52.h-52')
+    const squareContainer = container.querySelector('.w-40.h-40')
     expect(squareContainer).toBeInTheDocument()
     const contentImg = squareContainer?.querySelector('img')
     expect(contentImg).toBeInTheDocument()
@@ -192,6 +220,7 @@ describe('PostCard', () => {
     // Content images are in the grid (plus avatar image)
     const grid = container.querySelector('.grid-cols-2')
     expect(grid).toBeInTheDocument()
+    expect(grid!.className).toContain('max-w-[320px]')
     const gridImgs = grid!.querySelectorAll('img')
     expect(gridImgs).toHaveLength(3)
   })
@@ -279,5 +308,39 @@ describe('CommunityTimeline', () => {
       />,
     )
     expect(screen.queryByText('No more posts')).not.toBeInTheDocument()
+  })
+})
+
+
+describe('CommunityExperience filter propagation', () => {
+  it('passes chart settings params to feed and trending hooks', () => {
+    const chartParams = {
+      min_ms: 45000,
+      music_only: true,
+      bb_top_n: 77,
+      bb_album_top_n: 66,
+      bb_artist_top_n: 55,
+      bb_week_start_dow: 2,
+      bb_week_start_hour: 12,
+      include_compilations: true,
+      merge_level: 3,
+      dynamic_threshold: false,
+      max_merge_gap_minutes: 45,
+    }
+    communityHookMocks.useCommunityChartParams.mockReturnValue(chartParams)
+
+    renderWithRouter(<CommunityExperience />)
+
+    expect(communityHookMocks.useCommunityFeed).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ...chartParams,
+        limit: 50,
+        offset: 0,
+        highlights_only: true,
+      }),
+    )
+    expect(communityHookMocks.useCommunityTrending).toHaveBeenCalledWith(
+      expect.objectContaining(chartParams),
+    )
   })
 })

@@ -106,7 +106,7 @@ function PostCardInner({ post }: PostCardProps) {
         {/* Images — single cover or multi-cover grid */}
         {images.length > 0 && !multiImage && (
           <div
-            className="mt-3 rounded-2xl border border-white/15 overflow-hidden w-52 h-52 cursor-pointer"
+            className="mt-3 rounded-2xl border border-white/15 overflow-hidden w-40 h-40 cursor-pointer"
             onClick={goToDetail}
           >
             <img
@@ -119,7 +119,7 @@ function PostCardInner({ post }: PostCardProps) {
         )}
         {multiImage && (
           <div
-            className="mt-3 grid w-full max-w-[424px] grid-cols-2 gap-0.5 rounded-2xl border border-white/15 overflow-hidden cursor-pointer"
+            className="mt-3 grid w-full max-w-[320px] grid-cols-2 gap-0.5 rounded-2xl border border-white/15 overflow-hidden cursor-pointer"
             onClick={goToDetail}
           >
             {images.slice(0, 4).map((url, i) => (

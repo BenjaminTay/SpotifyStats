@@ -1,6 +1,6 @@
 import { useParams, Link } from 'react-router-dom'
 
-import { useCommunityPost, useCommunityTrending } from '@/hooks/useCommunity'
+import { useCommunityChartParams, useCommunityPost, useCommunityTrending } from '@/hooks/useCommunity'
 import type { CommunityPost } from '@/types/community'
 import { displayName } from '@/lib/chinese'
 
@@ -32,8 +32,9 @@ function parsePost(apiPost: Record<string, unknown>): CommunityPost {
 
 export function PostDetailExperience() {
   const { postId } = useParams<{ postId: string }>()
-  const { detail, loading, error, refetch } = useCommunityPost(postId ?? '')
-  const { trending } = useCommunityTrending()
+  const chartParams = useCommunityChartParams()
+  const { detail, loading, error, refetch } = useCommunityPost(postId ?? '', chartParams)
+  const { trending } = useCommunityTrending(chartParams)
 
   if (loading) {
     return (

@@ -10,11 +10,33 @@ from typing import Optional
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
 
-from backend.dependencies import PlayFilters, get_conn
+from backend.dependencies import BillboardFilters, MergeConfig, get_conn
 from backend.domains.community.feed_generator import generate_all_posts
 from backend.domains.community.post_types import HIGHLIGHT_POST_TYPES, CommunityPost
 
 router = APIRouter(prefix="/community", tags=["Community"])
+
+
+def _community_generation_params(
+    filters: BillboardFilters,
+    merge_cfg: MergeConfig,
+    include_compilations: bool,
+) -> dict:
+    return {
+        "min_ms": filters.min_ms,
+        "music_only": filters.music_only,
+        "bb_top_n": filters.bb_top_n,
+        "bb_album_top_n": filters.bb_album_top_n,
+        "bb_artist_top_n": filters.bb_artist_top_n,
+        "bb_week_start_dow": filters.bb_week_start_dow,
+        "bb_week_start_hour": filters.bb_week_start_hour,
+        "year_start": filters.year_start,
+        "year_end": filters.year_end,
+        "dynamic_threshold": filters.dynamic_threshold,
+        "max_merge_gap_minutes": filters.max_merge_gap_minutes,
+        "merge_level": merge_cfg.merge_level,
+        "include_compilations": include_compilations,
+    }
 
 
 class FeedMeta(BaseModel):
@@ -94,7 +116,11 @@ def get_community_feed(
     ),
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
-    filters: PlayFilters = Depends(),
+    filters: BillboardFilters = Depends(),
+    merge_cfg: MergeConfig = Depends(),
+    include_compilations: bool = Query(
+        default=False, description="Include compilation albums in album chart"
+    ),
     conn: Connection = Depends(get_conn),
 ):
     """Get the community feed — simulated X-style posts from chart data.
@@ -107,10 +133,7 @@ def get_community_feed(
     """
     all_posts = generate_all_posts(
         conn=conn,
-        min_ms=filters.min_ms,
-        music_only=filters.music_only,
-        dynamic_threshold=filters.dynamic_threshold,
-        max_merge_gap_minutes=filters.max_merge_gap_minutes,
+        **_community_generation_params(filters, merge_cfg, include_compilations),
     )
 
     # Apply filters — track both totals (with and without highlights filter)
@@ -191,7 +214,11 @@ def get_community_trending(
     date_to: str | None = Query(default=None, description="ISO date upper bound"),
     artist_limit: int = Query(default=6, ge=1, le=20),
     track_limit: int = Query(default=3, ge=1, le=20),
-    filters: PlayFilters = Depends(),
+    filters: BillboardFilters = Depends(),
+    merge_cfg: MergeConfig = Depends(),
+    include_compilations: bool = Query(
+        default=False, description="Include compilation albums in album chart"
+    ),
     conn: Connection = Depends(get_conn),
 ):
     """Get trending entities computed over ALL community posts (not just current page).
@@ -200,10 +227,7 @@ def get_community_trending(
     """
     all_posts = generate_all_posts(
         conn=conn,
-        min_ms=filters.min_ms,
-        music_only=filters.music_only,
-        dynamic_threshold=filters.dynamic_threshold,
-        max_merge_gap_minutes=filters.max_merge_gap_minutes,
+        **_community_generation_params(filters, merge_cfg, include_compilations),
     )
 
     # Date filter
@@ -291,17 +315,18 @@ def get_community_trending(
 @router.get("/post/{post_id}", response_model=PostDetailResponse)
 def get_community_post(
     post_id: str,
-    filters: PlayFilters = Depends(),
+    filters: BillboardFilters = Depends(),
+    merge_cfg: MergeConfig = Depends(),
+    include_compilations: bool = Query(
+        default=False, description="Include compilation albums in album chart"
+    ),
     conn: Connection = Depends(get_conn),
 ):
     """Get a single community post by ID, with simulated related replies."""
 
     all_posts = generate_all_posts(
         conn=conn,
-        min_ms=filters.min_ms,
-        music_only=filters.music_only,
-        dynamic_threshold=filters.dynamic_threshold,
-        max_merge_gap_minutes=filters.max_merge_gap_minutes,
+        **_community_generation_params(filters, merge_cfg, include_compilations),
     )
 
     target = None

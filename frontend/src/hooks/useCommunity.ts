@@ -1,14 +1,61 @@
+import { useMemo } from 'react'
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
 
 import { queryClient } from '@/api/query-client'
 import { queryKeys } from '@/api/query-keys'
 import { api } from '@/lib/api'
+import { getDefaultMergeLevel } from '@/lib/merge-level'
+import { useSettings } from '@/hooks/useSettings'
 import type { CommunityFeedResponse } from '@/types/community'
 
 const DEFAULT_LIMIT = 50
 
 function errorMessage(error: unknown): string | null {
   return error instanceof Error ? error.message : error ? String(error) : null
+}
+
+function getStoredBool(key: string, fallback: boolean): boolean {
+  try {
+    const v = localStorage.getItem(key)
+    if (v === 'true') return true
+    if (v === 'false') return false
+  } catch { /* localStorage unavailable */ }
+  return fallback
+}
+
+function getStoredNumber(key: string): number | undefined {
+  try {
+    const v = localStorage.getItem(key)
+    if (v != null) {
+      const n = parseInt(v, 10)
+      if (!Number.isNaN(n) && n >= 1 && n <= 240) return n
+    }
+  } catch { /* localStorage unavailable */ }
+  return undefined
+}
+
+export function useCommunityChartParams(): Record<string, string | number | boolean> {
+  const { settings } = useSettings()
+
+  return useMemo(() => {
+    const params: Record<string, string | number | boolean> = {
+      merge_level: getDefaultMergeLevel(),
+      dynamic_threshold: getStoredBool('spotify_stats_dynamic_threshold', true),
+    }
+    const maxGap = getStoredNumber('spotify_stats_max_merge_gap_minutes')
+    if (maxGap != null) params.max_merge_gap_minutes = maxGap
+    if (settings) {
+      params.min_ms = settings.min_ms
+      params.music_only = settings.music_only
+      params.bb_top_n = settings.bb_top_n
+      params.bb_album_top_n = settings.bb_album_top_n
+      params.bb_artist_top_n = settings.bb_artist_top_n
+      params.bb_week_start_dow = settings.bb_week_start_dow
+      params.bb_week_start_hour = settings.bb_week_start_hour
+      params.include_compilations = settings.include_compilations
+    }
+    return params
+  }, [settings])
 }
 
 export function useCommunityFeed(params: Record<string, string | number | boolean> = {}) {
@@ -71,10 +118,13 @@ export interface PostDetail {
   replies: Record<string, unknown>[]
 }
 
-export function useCommunityPost(postId: string) {
+export function useCommunityPost(
+  postId: string,
+  params: Record<string, string | number | boolean> = {},
+) {
   const { data, isLoading, error, refetch } = useQuery<PostDetail>({
-    queryKey: queryKeys.community.post(postId),
-    queryFn: () => api.get<PostDetail>(`/community/post/${postId}`),
+    queryKey: queryKeys.community.post(postId, params),
+    queryFn: () => api.get<PostDetail>(`/community/post/${postId}`, params),
     staleTime: 5 * 60 * 1000,
     enabled: !!postId,
   })

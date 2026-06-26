@@ -12,7 +12,7 @@ FastAPI 后端采用四层分离：**api/**（路由 + Depends 依赖注入）�
 - `BillboardFilters` — 继承播放过滤 + Billboard 参数（`bb_top_n`, `bb_week_start_dow`, `year_start/end`）
 - `MergeConfig` — 版本合并严格度（`merge_level`: 1=不合并, 2=recording scope, 3=composition+recording scope）
 - `get_conn()` — 数据库只读连接注入
-- 暴露 `PlayFilters` / `BillboardFilters` 的统计路由必须把 `dynamic_threshold` 与 `max_merge_gap_minutes` 传到最终 `load_plays()` / `load_billboard_raw()` 路径；新增入口应补传播契约测试或复用已有 service 管线
+- 暴露 `PlayFilters` / `BillboardFilters` 的统计路由必须把 `dynamic_threshold` 与 `max_merge_gap_minutes` 传到最终 `load_plays()` / `load_billboard_raw()` 路径；Community feed/trending/post detail 使用 `BillboardFilters` + `MergeConfig` 生成帖子，必须继续转发 `merge_level` / `include_compilations`；新增入口应补传播契约测试或复用已有 service 管线
 
 ### 连接管理
 

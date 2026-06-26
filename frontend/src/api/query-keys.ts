@@ -81,7 +81,7 @@ export const queryKeys = {
     all: ['community'] as const,
     feed: (filters: Record<string, unknown> = {}) => ['community', 'feed', filters] as const,
     trending: (filters: Record<string, unknown> = {}) => ['community', 'trending', filters] as const,
-    post: (postId: string) => ['community', 'post', postId] as const,
+    post: (postId: string, filters: Record<string, unknown> = {}) => ['community', 'post', postId, filters] as const,
   },
 
   aiInsights: {

@@ -69,6 +69,8 @@ Query Key 工厂在 `@/api/query-keys.ts`，按领域 namespace：dashboard / bi
 
 AppLayout 首屏渲染后延迟预取常用数据。年度回顾使用序列化预取（`for...of` + `await`）避免并发请求触发 SQLite 锁竞争。
 
+Community 列表、账号页、趋势侧栏和帖子详情必须通过 `useCommunityChartParams()` 带入当前榜单设置口径，并把这些参数放入 community query keys，避免不同 Top N、周起点、动态阈值、合并级别或精选集设置共用旧缓存。
+
 **Phase 5 强制约束**：
 - 新增 GET hook 必须使用 `queryKeys` + `useQuery`
 - **禁止模块级 `new Map()` 缓存 API 响应**（enrichment/release-cycle 等数据必须走 Query Client）

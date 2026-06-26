@@ -1,5 +1,22 @@
 # 变更日志
 
+## 2026-06-27 — 榜单社区口径同步
+
+### 修复
+
+- **社区榜单口径跟随设置**：Community feed、trending 和 post detail 改用 `BillboardFilters` + `MergeConfig`，向帖子生成链路转发 Top N、周起点、年份范围、动态阈值、最大连续播放合并间隔、`merge_level` 和 `include_compilations`
+- **前端社区缓存分流**：社区列表、账号页、帖子详情和趋势侧栏通过 `useCommunityChartParams()` 带入当前设置口径，帖子详情 query key 纳入 filters，避免设置变化后继续显示旧口径社区动态
+- **社区图片尺寸微调**：`PostCard` 单图从 208px 收紧到 160px，多图网格最大宽度从 424px 收紧到 320px，让榜单社区时间线更紧凑
+
+### 验证
+
+- `pytest backend/tests/unit/test_community_api_filter_propagation.py backend/tests/unit/test_feed_generator.py -q`
+- `cd frontend && npm test -- community-components.test.tsx`
+- `cd frontend && npm run build`
+- `node scripts/frontend_route_smoke.mjs --base-url http://localhost:5173 --routes /community --viewport mobile --max-scroll-overflow 0 --fail-on-console-warning`
+
+---
+
 ## 2026-06-24 — fix/bugfixes-and-polish 收口修复
 
 ### 修复

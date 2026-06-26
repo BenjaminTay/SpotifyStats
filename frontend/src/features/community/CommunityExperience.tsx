@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
-import { useCommunityFeed, useCommunityTrending } from '@/hooks/useCommunity'
+import { useCommunityChartParams, useCommunityFeed, useCommunityTrending } from '@/hooks/useCommunity'
 
 import { CommunitySidebar } from './CommunitySidebar'
 import { CommunityTimeline } from './CommunityTimeline'
@@ -21,6 +21,7 @@ export function CommunityExperience() {
   const [searchInput, setSearchInput] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
   const searchTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
+  const chartParams = useCommunityChartParams()
 
   // Debounce search input → search query (300ms)
   const handleSearchChange = useCallback((value: string) => {
@@ -35,20 +36,23 @@ export function CommunityExperience() {
 
   // 精选 = newsworthy post types only, 全部 = no filter
   const filters = useMemo(() => {
-    const f: Record<string, string | number | boolean> = { limit: 50, offset: 0 }
+    const f: Record<string, string | number | boolean> = { ...chartParams, limit: 50, offset: 0 }
     if (activeTab === 'highlights') f.highlights_only = true
     if (period.date_from) f.date_from = period.date_from
     if (period.date_to) f.date_to = period.date_to
     if (searchQuery) f.search = searchQuery
     return f
-  }, [activeTab, period, searchQuery])
+  }, [activeTab, chartParams, period, searchQuery])
 
   const { posts, meta, loading, loadingMore, error, refetch, hasMore, loadMore } = useCommunityFeed(filters)
 
   // Trending data from server — independent of pagination
-  const trendingParams: Record<string, string | number | boolean> = {}
-  if (period.date_from) trendingParams.date_from = period.date_from
-  if (period.date_to) trendingParams.date_to = period.date_to
+  const trendingParams = useMemo(() => {
+    const params: Record<string, string | number | boolean> = { ...chartParams }
+    if (period.date_from) params.date_from = period.date_from
+    if (period.date_to) params.date_to = period.date_to
+    return params
+  }, [chartParams, period])
   const { trending } = useCommunityTrending(trendingParams)
 
   const handleTabChange = useCallback((tab: FeedTab) => {
