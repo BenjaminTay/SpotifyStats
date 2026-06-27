@@ -571,12 +571,15 @@ const SCENARIOS = {
     return hoverUntilTooltip(client, 0, waitMs)
   },
 
-  'legend-toggle': async ({ client, baseUrl, waitMs }) => {
+  'legend-toggle': async ({ client, baseUrl, apiBaseUrl, waitMs }) => {
     const scenarioWaitMs = Math.max(waitMs, DEFAULT_ACCOUNT_CHART_WAIT_MS)
-    await navigate(client, baseUrl, '/account')
-    await waitForText(client, '收藏生命周期', scenarioWaitMs)
-    await waitForCanvasCount(client, 2, scenarioWaitMs)
-    return clickLegendUntilCanvasDelta(client, 1, scenarioWaitMs)
+    const target = await resolveDataZoomPath(apiBaseUrl)
+    await navigate(client, baseUrl, target.path)
+    await waitForText(client, target.readyText, scenarioWaitMs)
+    await clickText(client, '榜单成绩', scenarioWaitMs)
+    await waitForText(client, target.marker, scenarioWaitMs)
+    await waitForCanvasCount(client, 1, scenarioWaitMs)
+    return { ...(await clickLegendUntilCanvasDelta(client, 0, scenarioWaitMs)), target: target.label }
   },
 
   'datazoom-drag': async ({ client, baseUrl, apiBaseUrl, waitMs }) => {

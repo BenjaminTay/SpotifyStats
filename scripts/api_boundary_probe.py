@@ -43,6 +43,16 @@ LONG_STRING = "x" * 512
 
 DEFAULT_BOUNDARY_CASES: tuple[BoundaryCase, ...] = (
     BoundaryCase("analysis_overview_min_ms_negative", "/api/analysis/overview", {"min_ms": -1}),
+    BoundaryCase(
+        "analysis_overview_max_merge_gap_low",
+        "/api/analysis/overview",
+        {"max_merge_gap_minutes": 0},
+    ),
+    BoundaryCase(
+        "analysis_overview_max_merge_gap_high",
+        "/api/analysis/overview",
+        {"max_merge_gap_minutes": 241},
+    ),
     BoundaryCase("dashboard_top_tracks_n_nonint", "/api/dashboard/top-tracks", {"n": "many"}),
     BoundaryCase("analysis_plays_limit_zero", "/api/analysis/plays", {"limit": 0}),
     BoundaryCase("analysis_plays_limit_too_high", "/api/analysis/plays", {"limit": 201}),

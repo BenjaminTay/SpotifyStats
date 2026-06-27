@@ -90,6 +90,21 @@ def _album_identity_lookup(conn: sqlite3.Connection) -> pd.DataFrame:
     )
 
 
+def _track_album_name_lookup(conn: sqlite3.Connection, track_ids) -> dict[int, str]:
+    ids = [int(v) for v in pd.Series(track_ids).dropna().unique().tolist()]
+    if not ids:
+        return {}
+    placeholders = ",".join("?" * len(ids))
+    rows = conn.execute(
+        f"""SELECT t.track_id, al.album_name
+              FROM tracks t
+              LEFT JOIN albums al ON al.album_id = t.album_id
+             WHERE t.track_id IN ({placeholders})""",
+        ids,
+    ).fetchall()
+    return {int(row["track_id"]): row["album_name"] for row in rows if row["album_name"]}
+
+
 def _album_container_ids(df: pd.DataFrame) -> pd.Series:
     source_ids = (
         pd.to_numeric(df["source_album_id"], errors="coerce")
@@ -661,6 +676,11 @@ def chart_rows(
         if entity == "track" and not sliced.empty
         else {}
     )
+    track_album_names = (
+        _track_album_name_lookup(conn, sliced["track_id"])
+        if entity == "track" and conn is not None and not sliced.empty
+        else {}
+    )
     album_covers = _album_cover_lookup(conn) if entity == "album" else {}
     artist_covers = _artist_cover_lookup(conn) if entity == "artist" else {}
     active_days = max(int(df["ts_date"].nunique()), 1)
@@ -684,12 +704,16 @@ def chart_rows(
         }
         if entity == "track":
             tid = int(r["track_id"])
+            album_name = r.get("album_name", "")
+            if pd.isna(album_name):
+                album_name = ""
+            album_name = str(album_name) if album_name else track_album_names.get(tid, "")
             row.update(
                 {
                     "track_id": tid,
                     "track_name": r["track_name"],
                     "artist_name": r["artist_name"],
-                    "album_name": r.get("album_name", ""),
+                    "album_name": album_name,
                     "cover_url": track_covers.get(tid),
                 }
             )

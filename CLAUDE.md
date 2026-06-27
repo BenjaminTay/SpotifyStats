@@ -52,13 +52,13 @@ sh scripts/fullstack_verification_check.sh --backend-url http://127.0.0.1:8000 -
 # 本地只读 API smoke（98 个 GET + OpenAPI GET 核算）
 .venv/bin/python scripts/api_smoke_probe.py
 
-# 非破坏性 API 边界 probe（85 个 GET）
+# 非破坏性 API 边界 probe（90 个 GET）
 .venv/bin/python scripts/api_boundary_probe.py
 
 # OpenAPI 全操作覆盖归属核算（136 operation，0 unaccounted）
 .venv/bin/python scripts/openapi_operation_audit.py --json-output /tmp/spotify_openapi_operation_audit.json
 
-# OpenAPI 参数边界覆盖归属核算（59 obligations，0 unaccounted）
+# OpenAPI 参数边界覆盖归属核算（60 obligations，0 unaccounted）
 .venv/bin/python scripts/openapi_parameter_boundary_audit.py --json-output /tmp/spotify_openapi_parameter_boundary_audit.json
 
 # API 性能 benchmark（需后端 8000 已启动）

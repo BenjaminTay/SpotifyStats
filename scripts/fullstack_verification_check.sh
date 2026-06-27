@@ -234,6 +234,13 @@ run() {
   "$@"
 }
 
+run_without_proxy() {
+  run env \
+    -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY \
+    -u http_proxy -u https_proxy -u all_proxy \
+    "$@"
+}
+
 run_web_vitals_probe() {
   base_url=$1
   api_base_url=${2:-}
@@ -297,7 +304,7 @@ run python scripts/openapi_operation_audit.py --json-output "$OPENAPI_OPERATION_
 run python scripts/openapi_parameter_boundary_audit.py --json-output "$OPENAPI_PARAMETER_BOUNDARY_AUDIT_JSON"
 run python scripts/api_smoke_probe.py
 run python scripts/api_boundary_probe.py
-run python scripts/benchmark_api.py --base-url "$BACKEND_URL" --runs "$BENCHMARK_RUNS" --slow-ms "$SLOW_MS" --fail-on-slow --json-output "$BENCHMARK_JSON"
+run_without_proxy python scripts/benchmark_api.py --base-url "$BACKEND_URL" --runs "$BENCHMARK_RUNS" --slow-ms "$SLOW_MS" --fail-on-slow --json-output "$BENCHMARK_JSON"
 
 if [ "$RUN_RESOURCE_SNAPSHOT" = "1" ]; then
   run_resource_snapshot

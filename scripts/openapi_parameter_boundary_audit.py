@@ -139,6 +139,11 @@ BOUNDARY_EVIDENCE_BY_KEY: dict[tuple[str, str, str], ParameterEvidence] = {
         ("analysis_charts_merge_level_low", "analysis_charts_merge_level_high"),
         "merge-level shared dependency is validated below and above the allowed range",
     ),
+    ("query", "max_merge_gap_minutes", "integer|maximum=240|minimum=1"): ParameterEvidence(
+        "boundary_probe",
+        ("analysis_overview_max_merge_gap_low", "analysis_overview_max_merge_gap_high"),
+        "shared merge-gap dependency is validated below and above the allowed range",
+    ),
     ("query", "metric", "string|pattern=^(plays|hours)$"): ParameterEvidence(
         "boundary_probe",
         ("leaderboard_invalid_metric",),
@@ -385,7 +390,26 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
+def _effective_schema(schema: dict) -> dict:
+    """Return the validating branch for nullable OpenAPI parameter schemas."""
+    for key in ("anyOf", "oneOf"):
+        variants = schema.get(key)
+        if not isinstance(variants, list):
+            continue
+        non_null = [
+            variant
+            for variant in variants
+            if isinstance(variant, dict) and variant.get("type") != "null"
+        ]
+        if len(non_null) == 1:
+            merged = {k: v for k, v in schema.items() if k not in {"anyOf", "oneOf"}}
+            merged.update(non_null[0])
+            return merged
+    return schema
+
+
 def _schema_signature(schema: dict) -> str:
+    schema = _effective_schema(schema)
     schema_type = str(schema.get("type") or "any")
     parts = [schema_type]
     for key in BOUNDARY_SCHEMA_KEYS:
@@ -399,19 +423,22 @@ def _schema_signature(schema: dict) -> str:
 
 
 def _has_boundary_constraints(schema: dict) -> bool:
+    schema = _effective_schema(schema)
     return any(key in schema for key in BOUNDARY_SCHEMA_KEYS)
 
 
 def _is_obligation(location: str, schema: dict) -> bool:
-    if location == "path" and schema.get("type") == "integer":
+    raw_type = schema.get("type")
+    effective = _effective_schema(schema)
+    if location == "path" and effective.get("type") == "integer":
         return True
-    if location == "path" and schema.get("type") == "string":
+    if location == "path" and effective.get("type") == "string":
         return True
-    if location == "query" and schema.get("type") == "integer":
+    if location == "query" and raw_type == "integer":
         return True
-    if location == "query" and schema.get("type") == "string":
+    if location == "query" and raw_type == "string":
         return True
-    if location == "query" and _has_boundary_constraints(schema):
+    if location == "query" and _has_boundary_constraints(effective):
         return True
     return False
 

@@ -10,8 +10,10 @@ import { findChrome } from './lib/chrome_executable.mjs'
 const DEFAULT_BASE_URL = 'http://localhost:5173'
 const DEFAULT_WAIT_MS = 5000
 const DYNAMIC_ROUTE_WAIT_MS = 12000
+const SLOW_ROUTE_WAIT_MS = 12000
 const DEFAULT_MAX_SCROLL_OVERFLOW = 0
 const REWRITE_PATH_PREFIXES = ['/api', '/covers']
+const SLOW_ROUTES = new Set(['/analysis/records'])
 const DETAIL_ROUTE_FILTERS = {
   min_ms: 30000,
   music_only: true,
@@ -249,6 +251,17 @@ function isDynamicRoute(route) {
   return DYNAMIC_ROUTE_READY_MARKERS.some((entry) => entry.pattern.test(normalized))
 }
 
+function routeWaitTime(route, waitMs) {
+  const normalized = normalizeRoute(route)
+  if (isDynamicRoute(normalized)) {
+    return Math.max(waitMs, DYNAMIC_ROUTE_WAIT_MS)
+  }
+  if (SLOW_ROUTES.has(normalized)) {
+    return Math.max(waitMs, SLOW_ROUTE_WAIT_MS)
+  }
+  return waitMs
+}
+
 async function fetchJson(baseUrl, path, params = {}) {
   const url = new URL(path, baseUrl)
   for (const [key, value] of Object.entries(params)) {
@@ -455,25 +468,42 @@ async function smokeRoute({
       }
     })
 
-    const url = new URL(route, baseUrl).toString()
-    const loadEvent = client.once('Page.loadEventFired')
-    await client.send('Page.navigate', { url })
-    await loadEvent
     const routeMarkers = enforceRouteMarkers ? getRouteReadyMarkers(route) : []
-    const routeWaitMs = isDynamicRoute(route) ? Math.max(waitMs, DYNAMIC_ROUTE_WAIT_MS) : waitMs
-    await sleep(routeWaitMs)
+    const routeWaitMs = routeWaitTime(route, waitMs)
+    const url = new URL(route, baseUrl).toString()
+    let attempts = 0
 
-    const evaluation = await client.send('Runtime.evaluate', {
-      expression: PAGE_STATE_EXPRESSION,
-      returnByValue: true,
-      awaitPromise: true,
-    })
-    const state = evaluation.result.value
+    async function navigateAndReadState() {
+      attempts += 1
+      const loadEvent = client.once('Page.loadEventFired')
+      await client.send('Page.navigate', { url })
+      await loadEvent
+      await sleep(routeWaitMs)
+
+      const evaluation = await client.send('Runtime.evaluate', {
+        expression: PAGE_STATE_EXPRESSION,
+        returnByValue: true,
+        awaitPromise: true,
+      })
+      return evaluation.result.value
+    }
+
+    let state = await navigateAndReadState()
+    let missingRouteMarkers = routeMarkers.filter((marker) => !state.bodyText.includes(marker))
+    const shouldRetryRouteRead =
+      pageErrors.length === 0 &&
+      !state.hasDevOverlay &&
+      !state.hasFatalText &&
+      (state.rootTextLength < 20 || missingRouteMarkers.length > 0)
+    if (shouldRetryRouteRead) {
+      state = await navigateAndReadState()
+      missingRouteMarkers = routeMarkers.filter((marker) => !state.bodyText.includes(marker))
+    }
+
     const scrollWidth = Math.max(state.bodyScrollWidth || 0, state.documentScrollWidth || 0)
     const scrollOverflow = Math.max(0, scrollWidth - (state.viewportWidth || viewport.width))
     const consoleErrors = consoleEntries.filter((entry) => ['error', 'assert'].includes(entry.level))
     const consoleWarnings = consoleEntries.filter((entry) => ['warning', 'warn'].includes(entry.level))
-    const missingRouteMarkers = routeMarkers.filter((marker) => !state.bodyText.includes(marker))
 
     const failures = []
     if (pageErrors.length > 0) failures.push(`${pageErrors.length} runtime exception(s)`)
@@ -510,6 +540,7 @@ async function smokeRoute({
       pageErrors: pageErrors.slice(0, 5),
       missingRouteMarkers,
       bodyTextSample: state.bodyTextSample,
+      attempts,
     }
   } finally {
     client.close()

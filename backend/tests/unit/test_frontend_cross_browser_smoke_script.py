@@ -70,7 +70,7 @@ def test_frontend_cross_browser_smoke_script_covers_browser_families_and_flows()
     assert "VERSION MERGE" not in source
     assert "theme-toggle" in source
     assert "max-scroll-overflow" in source
-    assert "const DYNAMIC_ROUTE_WAIT_MS = 12000" in source
+    assert "const DYNAMIC_ROUTE_WAIT_MS = 20000" in source
     assert "FRONTEND_DYNAMIC_ROUTE_WAIT_MS" in source
     assert "def wait_ms_for_route(route)" in source
 

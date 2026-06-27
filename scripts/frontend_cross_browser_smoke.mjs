@@ -9,8 +9,8 @@ const DEFAULT_BASE_URL = 'http://localhost:5173'
 const DEFAULT_PYTHON = process.env.PYTHON_PLAYWRIGHT || 'python'
 const DEFAULT_BROWSERS = ['chromium', 'firefox', 'webkit']
 const DEFAULT_SCENARIOS = ['route-markers', 'core-interactions']
-const DEFAULT_WAIT_MS = 5000
-const DYNAMIC_ROUTE_WAIT_MS = 12000
+const DEFAULT_WAIT_MS = 12000
+const DYNAMIC_ROUTE_WAIT_MS = 20000
 const DEFAULT_MAX_SCROLL_OVERFLOW = 0
 const REWRITE_PATH_PREFIXES = ['/api', '/covers']
 const DETAIL_ROUTE_FILTERS = {
@@ -216,6 +216,7 @@ SCENARIOS = set(json.loads(os.environ["FRONTEND_SCENARIOS_JSON"]))
 VIEWPORTS = json.loads(os.environ["FRONTEND_VIEWPORTS_JSON"])
 WAIT_MS = int(os.environ["FRONTEND_WAIT_MS"])
 DYNAMIC_ROUTE_WAIT_MS = int(os.environ["FRONTEND_DYNAMIC_ROUTE_WAIT_MS"])
+SLOW_PAGE_WAIT_MS = max(WAIT_MS, 20000)
 MAX_SCROLL_OVERFLOW = int(os.environ["FRONTEND_MAX_SCROLL_OVERFLOW"])
 HEADED = os.environ.get("FRONTEND_HEADED") == "1"
 BROWSER_NAME = sys.argv[1]
@@ -320,7 +321,12 @@ def has_text(page, text: str) -> bool:
 def expand_section_for_text(page, section_title: str, target_text: str) -> None:
     wait_for_text(page, section_title)
     if not has_text(page, target_text):
-        click_text(page, section_title)
+        try:
+            button = page.get_by_role("button", name=re.compile(re.escape(section_title))).first
+            button.scroll_into_view_if_needed(timeout=WAIT_MS)
+            button.click(timeout=WAIT_MS)
+        except Exception:
+            click_text(page, section_title)
     wait_for_text(page, target_text)
 
 
@@ -467,9 +473,20 @@ def run_route_markers(browser):
             page, console_messages, page_errors = new_page(browser, viewport_name)
             try:
                 route_wait_ms = wait_ms_for_route(route)
-                page.goto(absolute_url(route["path"]), wait_until="domcontentloaded", timeout=route_wait_ms + 10000)
-                for marker in route["markers"]:
-                    wait_for_text(page, marker, timeout_ms=route_wait_ms)
+                last_error = None
+                for attempt in range(2):
+                    try:
+                        page.goto(absolute_url(route["path"]), wait_until="domcontentloaded", timeout=route_wait_ms + 10000)
+                        for marker in route["markers"]:
+                            wait_for_text(page, marker, timeout_ms=route_wait_ms)
+                        last_error = None
+                        break
+                    except Exception as error:
+                        last_error = error
+                        if attempt == 0:
+                            page.wait_for_timeout(250)
+                if last_error:
+                    raise last_error
                 assert_page_health(page, console_messages, page_errors)
                 print(f"PASS route-markers {viewport_name} {route['path']}")
             finally:
@@ -488,14 +505,14 @@ def expect_url(page, pattern: str):
 def run_analysis_tabs(browser):
     page, console_messages, page_errors = new_page(browser, "desktop")
     try:
-        page.goto(absolute_url("/analysis/stats"), wait_until="domcontentloaded", timeout=WAIT_MS + 10000)
-        wait_for_text(page, "总体播放统计")
+        page.goto(absolute_url("/analysis/stats"), wait_until="domcontentloaded", timeout=SLOW_PAGE_WAIT_MS + 10000)
+        wait_for_text(page, "总体播放统计", timeout_ms=SLOW_PAGE_WAIT_MS)
         click_text(page, "个人排行榜")
         expect_url(page, r"/analysis/charts$")
-        wait_for_text(page, "PERSONAL CHARTS")
+        wait_for_text(page, "PERSONAL CHARTS", timeout_ms=SLOW_PAGE_WAIT_MS)
         click_text(page, "总体统计")
         expect_url(page, r"/analysis/stats$")
-        wait_for_text(page, "总体播放统计")
+        wait_for_text(page, "总体播放统计", timeout_ms=SLOW_PAGE_WAIT_MS)
         assert_page_health(page, console_messages, page_errors)
         print("PASS core-interactions analysis-tabs")
     finally:

@@ -18,7 +18,7 @@ from backend.domains.billboard.chart_compute import (
     compute_weekly_data,
     compute_weekly_rankings,
 )
-from backend.domains.billboard.chart_staged_api import compute_year_end_staged
+from backend.domains.billboard.chart_year_end_api import compute_year_end_staged
 from backend.domains.billboard.data_loader import (
     DOW_NAMES,
     DOW_SHORT,

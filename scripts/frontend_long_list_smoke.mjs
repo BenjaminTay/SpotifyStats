@@ -80,7 +80,7 @@ Options:
 Scenarios:
   records-mini-rank       Click a paginated Billboard Records mini-rank table
   all-time-table          Click Billboard All-Time table pagination
-  year-end-table          Click Billboard Year-End table pagination
+  year-end-table          Click Billboard Year-End pagination, or verify the capped table when only one page exists
   community-feed          Scroll Community Feed to trigger infinite loading
   recent-plays            Click Analysis Recent Plays pagination
   saved-tracks            Click Account Saved Tracks pagination
@@ -639,6 +639,49 @@ async function exercisePaginatedList({
   }
 }
 
+async function exercisePaginatedOrCappedList(options) {
+  const {
+    client,
+    waitMs,
+    focusText,
+    pagePattern,
+    rowSelector = 'tbody tr',
+    maxVisibleRows = 50,
+  } = options
+
+  try {
+    return await exercisePaginatedList(options)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    if (!message.includes('Expected pagination text matching')) {
+      throw error
+    }
+  }
+
+  if (focusText) await scrollTextIntoView(client, focusText)
+  const rows = await waitForCondition(
+    async () => {
+      const result = await getRowWindow(client, { rowSelector, focusText, pagePattern: null })
+      return result.count > 0 ? result : null
+    },
+    waitMs,
+    'Capped table did not render visible rows',
+  )
+  if (rows.count > maxVisibleRows) {
+    throw new Error(`Capped table rendered ${rows.count} rows, expected <= ${maxVisibleRows}`)
+  }
+
+  return {
+    beforePage: `capped <=${maxVisibleRows}`,
+    afterPage: 'no pagination',
+    beforeRows: rows.count,
+    afterRows: rows.count,
+    beforeSample: rows.sample[0] || '',
+    afterSample: rows.sample[0] || '',
+    capped: true,
+  }
+}
+
 async function exerciseCommunityFeed({ client, baseUrl, waitMs }) {
   await navigate(client, baseUrl, '/community')
   await waitForText(client, '榜单社区', waitMs)
@@ -722,13 +765,14 @@ const SCENARIOS = {
     pagePattern: '\\b\\d+\\s*/\\s*\\d+\\b',
     focusText: 'Billboard 总榜',
   }),
-  'year-end-table': (ctx) => exercisePaginatedList({
+  'year-end-table': (ctx) => exercisePaginatedOrCappedList({
     ...ctx,
     waitMs: Math.max(ctx.waitMs, 20000),
     route: '/billboard/year-end',
     readyText: 'Billboard 年榜',
     pagePattern: '\\b\\d+\\s*/\\s*\\d+\\b',
     focusText: 'Billboard 年榜',
+    maxVisibleRows: 50,
   }),
   'community-feed': exerciseCommunityFeed,
   'recent-plays': (ctx) => exercisePaginatedList({

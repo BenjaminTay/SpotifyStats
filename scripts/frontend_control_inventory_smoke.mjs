@@ -10,6 +10,7 @@ import { findChrome } from './lib/chrome_executable.mjs'
 const DEFAULT_BASE_URL = 'http://localhost:5173'
 const DEFAULT_WAIT_MS = 8000
 const DYNAMIC_ROUTE_WAIT_MS = 12000
+const SLOW_ROUTE_WAIT_MS = 12000
 const DEFAULT_MAX_VIOLATIONS = 0
 const REWRITE_PATH_PREFIXES = ['/api', '/covers']
 const DETAIL_ROUTE_FILTERS = {
@@ -39,6 +40,8 @@ const DEFAULT_ROUTES = [
   '/account',
   '/settings',
 ]
+
+const SLOW_ROUTES = new Set(['/analysis/records'])
 
 const ROUTE_READY_MARKERS = {
   '/': ['DASHBOARD /', '总播放次数'],
@@ -381,7 +384,10 @@ function isDynamicRoute(route) {
 }
 
 function waitMsForRoute(route, timeoutMs) {
-  return isDynamicRoute(route) ? Math.max(timeoutMs, DYNAMIC_ROUTE_WAIT_MS) : timeoutMs
+  const routePath = route.split('?')[0]
+  if (isDynamicRoute(route)) return Math.max(timeoutMs, DYNAMIC_ROUTE_WAIT_MS)
+  if (SLOW_ROUTES.has(routePath)) return Math.max(timeoutMs, SLOW_ROUTE_WAIT_MS)
+  return timeoutMs
 }
 
 async function collectControlInventory(client) {

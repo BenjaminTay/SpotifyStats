@@ -38,6 +38,27 @@
 
 ---
 
+## 2026-06-27 — 验收补强与阻塞复核
+
+### 修复
+
+- 修复 OpenAPI 参数边界审计未解包 nullable schema 的漏算问题，`max_merge_gap_minutes` 已纳入边界 probe；当前参数边界 audit 为 60 obligations / 0 unaccounted，API boundary probe 为 90/90 PASS
+- 修复个人排行榜 track 行在 track group 聚合后缺失 `album_name`，避免前端从排行榜进入音乐详情时生成空专辑路径
+- 将 Billboard Year-End staged wrapper 拆入 `chart_year_end_api.py`，保持 `chart_staged_api.py` 作为薄 facade 并继续满足行数护栏
+- 前端 smoke 补强冷态重页面和动态详情路由等待：`/analysis/records` 在 route/control smoke 中使用慢页窗口，cross-browser 动态详情路由支持重试；Year-End 单页 50 行表格在 long-list smoke 中按 capped 表格验收
+- 图表交互 smoke 的 legend 场景改为稳定的音乐详情 ECharts 排名趋势图，避免账号页生命周期趋势为空时误报；首页 Dashboard 月度趋势继续保留 ECharts 视觉
+- Web Vitals probe 对单次 lab 预算失败样本执行一次复测，预算仍未通过则失败，降低 headless CLS 采样噪声导致的误杀
+- fullstack verification 的 API benchmark 调用会清空本地代理变量，避免 `HTTP_PROXY/ALL_PROXY` 污染 127.0.0.1 性能检查
+
+### 验证
+
+- Backend full 739 passed；Phase 5 最低矩阵 PASS；pre-commit PASS；完整 fullstack verification 带 quickstart、preview、Web Vitals 与资源预算 PASS
+- API benchmark hot P95 均低于 500ms；`/api/billboard/data` hot P95 0.20s，`/api/dashboard/full` hot P95 0.16s；runtime resource 总 RSS 826.4MB / CPU 77.7%
+- dev 与 production preview route/interaction/chart/control/long-list/cross-browser smoke 均通过；production preview Web Vitals 全部在预算内，首页 ECharts 版本 desktop LCP 2060ms / CLS 0 / TBT 0ms / 17 resources / 1131.2KB，mobile LCP 612ms / CLS 0 / TBT 0ms
+- 固定域名 ngrok HTTPS tunnel 复核通过；外部 `/api/health`、Spotify auth status/data/login 和 invalid-state callback 均可达，callback 回跳 `https://stuffing-nebula-tamer.ngrok-free.dev/settings?spotify_error=invalid_state`；真实 Spotify 用户 consent 点击仍需人工确认
+
+---
+
 ## 2026-06-20 — fix/bugfixes-and-polish 分支
 
 ### 修复

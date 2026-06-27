@@ -64,6 +64,9 @@ def test_frontend_web_vitals_probe_can_fail_on_metric_budgets():
     )
 
     assert "evaluateBudgets" in source
+    assert "BUDGET_RETRY_LIMIT" in source
+    assert "chooseBudgetResult" in source
+    assert "budget retry" in source
     assert "maxLcpMs" in source
     assert "maxCls" in source
     assert "maxTbtMs" in source
