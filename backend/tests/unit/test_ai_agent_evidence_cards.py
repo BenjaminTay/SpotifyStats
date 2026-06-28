@@ -254,6 +254,45 @@ def test_builds_wrapped_yearly_evidence_card_for_yearly_summary():
     assert any("Taylor Swift" in item for item in cards[0].observations)
 
 
+def test_builds_late_night_tracks_evidence_card():
+    cards = build_evidence_cards(
+        [
+            {
+                "tool_name": "listening_hours",
+                "status": "done",
+                "params_summary": "view=late_night_tracks",
+                "result_summary": "view=late_night_tracks, items=1",
+                "source_range": "late_night_tracks",
+                "data": {
+                    "view": "late_night_tracks",
+                    "items": {
+                        "window": "00:00-05:59",
+                        "total_late_night_plays": 2,
+                        "tracks": [
+                            {
+                                "rank": 1,
+                                "track_name": "Midnight Rain",
+                                "artist_name": "Taylor Swift",
+                                "plays": 2,
+                                "share_pct": 100.0,
+                            }
+                        ],
+                    },
+                },
+            }
+        ]
+    )
+
+    assert len(cards) == 1
+    assert cards[0].question_axis == "time_of_day"
+    metric_names = {metric.name for metric in cards[0].metrics}
+    assert "total_late_night_plays" in metric_names
+    assert "top_1_track" in metric_names
+    assert next(metric.value for metric in cards[0].metrics if metric.name == "top_1_track") == (
+        "Midnight Rain - Taylor Swift"
+    )
+
+
 def test_final_payload_preserves_compare_entities_core_evidence():
     payload = ai_agent_service._final_payload(
         {

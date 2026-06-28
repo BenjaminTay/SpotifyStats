@@ -612,6 +612,58 @@ def test_listening_hours_dispatches_selected_readonly_view(
     }
 
 
+def test_listening_hours_dispatches_late_night_top_tracks_view(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    db_observed = _patch_readonly_db(monkeypatch)
+    service_observed: dict[str, Any] = {}
+
+    def fake_get_late_night_top_tracks(
+        conn: FakeReadonlyConn,
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        service_observed["conn"] = conn
+        service_observed["kwargs"] = kwargs
+        return {
+            "window": "00:00-05:59",
+            "total_late_night_plays": 2,
+            "tracks": [{"track_name": "Midnight Rain", "plays": 2}],
+        }
+
+    monkeypatch.setattr(
+        tools.play_service,
+        "get_late_night_top_tracks",
+        fake_get_late_night_top_tracks,
+    )
+
+    result = tool_registry.dispatch_tool(
+        "listening_hours",
+        {
+            "view": "late_night_tracks",
+            "min_ms": 45000,
+            "music_only": True,
+            "merge_enabled": True,
+            "dynamic_threshold": True,
+            "max_merge_gap_minutes": 45,
+        },
+    )
+
+    assert result["tool_name"] == "listening_hours"
+    assert result["source_range"] == "late_night_tracks"
+    assert "view=late_night_tracks" in result["params_summary"]
+    assert "items=1" in result["result_summary"]
+    assert db_observed["readonly_flags"] == [True]
+    assert db_observed["connections"][0].closed is True
+    assert service_observed["conn"] is db_observed["connections"][0]
+    assert service_observed["kwargs"] == {
+        "min_ms": 45000,
+        "music_only": True,
+        "merge_enabled": True,
+        "dynamic_threshold": True,
+        "max_merge_gap_minutes": 45,
+    }
+
+
 def test_listening_hours_rejects_unknown_view() -> None:
     with pytest.raises(ValidationError):
         tool_registry.dispatch_tool("listening_hours", {"view": "raw_sql"})

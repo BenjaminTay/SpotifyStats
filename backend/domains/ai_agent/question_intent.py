@@ -52,7 +52,19 @@ def _contains_any(question: str, tokens: tuple[str, ...]) -> bool:
 def _task_type(question: str) -> TaskType:
     has_ranking_signal = _contains_any(
         question,
-        ("排名", "排行", "top", "最高", "最多", "最常", "最喜欢", "前十", "前 10"),
+        (
+            "排名",
+            "排行",
+            "top",
+            "最高",
+            "最多",
+            "最常",
+            "最常听",
+            "最喜欢",
+            "最爱",
+            "前十",
+            "前 10",
+        ),
     )
     has_strong_comparison_signal = bool(_CONTEXT_ENTITY_PATTERN.search(question)) or _contains_any(
         question,
@@ -91,12 +103,28 @@ def _append_metric(metrics: list[str], metric: str) -> None:
 
 def _metrics(question: str, time_scope: str) -> list[str]:
     metrics: list[str] = []
-    if _contains_any(question, ("播放次数", "播放量", "听了多少", "plays")):
+    if _contains_any(
+        question,
+        (
+            "播放次数",
+            "播放量",
+            "播放趋势",
+            "听了多少",
+            "喜欢",
+            "喜爱",
+            "最爱",
+            "爱听",
+            "常听",
+            "plays",
+        ),
+    ):
         _append_metric(metrics, "plays")
     if _contains_any(question, ("时长", "小时", "hours")):
         _append_metric(metrics, "hours")
     if _contains_any(question, ("billboard", "榜单", "排名", "冠军")):
         _append_metric(metrics, "personal_billboard")
+    if _contains_any(question, ("深夜", "夜晚", "凌晨", "时段", "几点")):
+        _append_metric(metrics, "time_of_day")
     if time_scope != "lifetime":
         _append_metric(metrics, "recent_window")
     return metrics or ["summary"]
@@ -156,7 +184,7 @@ def _entity_type(
         return "album"
     if _contains_any(question, ("艺人", "歌手", "artist")):
         return "artist"
-    if _contains_any(question, ("歌曲", "单曲", "track", "song")):
+    if _contains_any(question, ("歌曲", "单曲", "听什么歌", "哪些歌", "track", "song")):
         return "track"
     if task_type == "trend" and len(entities) == 1:
         return "artist"

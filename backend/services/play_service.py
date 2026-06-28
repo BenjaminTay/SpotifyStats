@@ -1067,6 +1067,57 @@ def get_late_night_ratio(
     return [{"year": int(y), "rate": float(ratio.get(y, 0))} for y in sorted(total.index)]
 
 
+def get_late_night_top_tracks(
+    conn: sqlite3.Connection,
+    min_ms: int,
+    music_only: bool,
+    merge_enabled: bool,
+    dynamic_threshold: bool = False,
+    max_merge_gap_minutes: int | None = None,
+    limit: int = 20,
+) -> dict:
+    """Top tracks during late night hours (0-5)."""
+    df = _load_filtered_plays(
+        conn, min_ms, music_only, merge_enabled, dynamic_threshold, max_merge_gap_minutes
+    )
+    if df.empty:
+        return {"window": "00:00-05:59", "total_late_night_plays": 0, "tracks": []}
+
+    late_night = df[df["ts_hour"].between(0, 5)]
+    if late_night.empty:
+        return {"window": "00:00-05:59", "total_late_night_plays": 0, "tracks": []}
+
+    cover_map = _track_cover_urls(conn, late_night["track_id"])
+    total_late_night_plays = int(len(late_night))
+    ranked = (
+        late_night.groupby(["track_id", "track_name", "artist_name"])
+        .agg(plays=("play_id", "count"), hours=("ms_played", _hour))
+        .sort_values(["plays", "hours"], ascending=False)
+        .head(limit)
+        .reset_index()
+    )
+    tracks = []
+    for rank, row in enumerate(ranked.itertuples(index=False), start=1):
+        plays = int(row.plays)
+        tracks.append(
+            {
+                "rank": rank,
+                "track_id": int(row.track_id),
+                "track_name": row.track_name,
+                "artist_name": row.artist_name,
+                "plays": plays,
+                "hours": round(float(row.hours), 2),
+                "share_pct": round(plays / max(total_late_night_plays, 1) * 100, 2),
+                "cover_url": cover_map.get(int(row.track_id)),
+            }
+        )
+    return {
+        "window": "00:00-05:59",
+        "total_late_night_plays": total_late_night_plays,
+        "tracks": tracks,
+    }
+
+
 def get_weekday_weekend_comparison(
     conn: sqlite3.Connection,
     min_ms: int,

@@ -1,0 +1,177 @@
+[
+  {
+    "id": "album_guts_vs_showgirl",
+    "question": "从播放次数和billboard榜单成绩来看，我对GUTS和The Life of a Showgirl这两张专辑的喜爱程度哪张专辑更甚？",
+    "expected_intent": {
+      "task_type": "comparison",
+      "entity_type": "album",
+      "entities": ["GUTS", "The Life of a Showgirl"],
+      "requested_metrics_contains": ["plays", "personal_billboard"],
+      "forbidden_metrics_contains": ["time_of_day"],
+      "time_scope": "lifetime",
+      "needs_fairness_note": true
+    },
+    "required_tool_calls": [
+      {
+        "tool_name": "compare_entities",
+        "params": {
+          "entity_type": "album",
+          "names": ["GUTS", "The Life of a Showgirl"]
+        }
+      }
+    ],
+    "recommended_tools": [
+      {
+        "tool_name": "compare_entities",
+        "params": {
+          "entity_type": "album",
+          "names": ["GUTS", "The Life of a Showgirl"],
+          "merge_level": 2
+        }
+      }
+    ],
+    "required_answer_terms": [
+      "GUTS",
+      "The Life of a Showgirl",
+      "播放",
+      "个人 Billboard",
+      "发行时间"
+    ],
+    "forbidden_answer_terms": [
+      "官方 Billboard",
+      "市场影响力",
+      "商业成绩",
+      "数据不足"
+    ],
+    "critic": {
+      "coverage": {
+        "requested_entities": ["GUTS", "The Life of a Showgirl"],
+        "entities": {
+          "GUTS": {"compare_entities": "found"},
+          "The Life of a Showgirl": {"compare_entities": "found"}
+        },
+        "comparison": {"compare_entities": "found"}
+      },
+      "safe_answer": "基于个人 Billboard 和本地播放数据，GUTS 的播放次数更高；The Life of a Showgirl 发行时间更晚，所以需要补充公平性说明。",
+      "unsafe_answer": "GUTS 的官方 Billboard 商业成绩和市场影响力更强，因此另一张专辑数据不足。"
+    }
+  },
+  {
+    "id": "artist_olivia_last_6_months_trend",
+    "question": "我最近六个月是不是越来越喜欢 Olivia Rodrigo？",
+    "expected_intent": {
+      "task_type": "trend",
+      "entity_type": "artist",
+      "entities": ["Olivia Rodrigo"],
+      "requested_metrics_contains": ["plays", "recent_window"],
+      "forbidden_metrics_contains": ["personal_billboard", "time_of_day"],
+      "time_scope": "last_6_months",
+      "needs_fairness_note": false
+    },
+    "required_tool_calls": [
+      {
+        "tool_name": "entity_stats",
+        "params": {
+          "entity": "artist",
+          "artist_name": "Olivia Rodrigo",
+          "period": "last_6_months"
+        }
+      },
+      {
+        "tool_name": "analysis_charts",
+        "params": {
+          "entity": "artist",
+          "metric": "plays",
+          "period": "last_6_months"
+        }
+      }
+    ],
+    "recommended_tools": [
+      {
+        "tool_name": "entity_stats",
+        "params": {
+          "entity": "artist",
+          "artist_name": "Olivia Rodrigo",
+          "period": "last_6_months",
+          "merge_level": 2
+        }
+      },
+      {
+        "tool_name": "analysis_charts",
+        "params": {
+          "entity": "artist",
+          "metric": "plays",
+          "period": "last_6_months",
+          "limit": 20,
+          "merge_level": 2
+        }
+      }
+    ],
+    "required_answer_terms": ["Olivia Rodrigo", "最近六个月", "趋势", "播放"],
+    "forbidden_answer_terms": ["官方 Billboard", "没有数据", "无法判断"]
+  },
+  {
+    "id": "ranking_top_artist_2023",
+    "question": "2023年我播放量最高的艺人是谁？",
+    "expected_intent": {
+      "task_type": "ranking",
+      "entity_type": "artist",
+      "entities": [],
+      "requested_metrics_contains": ["plays"],
+      "forbidden_metrics_contains": ["personal_billboard", "time_of_day"],
+      "time_scope": "year:2023",
+      "needs_fairness_note": false
+    },
+    "required_tool_calls": [
+      {
+        "tool_name": "analysis_charts",
+        "params": {
+          "entity": "artist",
+          "metric": "plays",
+          "period": "custom",
+          "start_date": "2023-01-01",
+          "end_date": "2023-12-31"
+        }
+      },
+      {"tool_name": "wrapped_yearly", "params": {"year": 2023}}
+    ],
+    "recommended_tools": [
+      {
+        "tool_name": "analysis_charts",
+        "params": {
+          "entity": "artist",
+          "metric": "plays",
+          "period": "custom",
+          "start_date": "2023-01-01",
+          "end_date": "2023-12-31",
+          "limit": 10,
+          "merge_level": 2
+        }
+      },
+      {"tool_name": "wrapped_yearly", "params": {"year": 2023, "merge_level": 2}}
+    ],
+    "required_answer_terms": ["2023", "艺人", "播放量"],
+    "forbidden_answer_terms": ["今年", "2026", "数据不足"]
+  },
+  {
+    "id": "deep_night_tracks_and_hours",
+    "question": "我深夜最爱听什么歌？",
+    "expected_intent": {
+      "task_type": "ranking",
+      "entity_type": "track",
+      "entities": [],
+      "requested_metrics_contains": ["plays", "time_of_day"],
+      "forbidden_metrics_contains": ["personal_billboard"],
+      "time_scope": "lifetime",
+      "needs_fairness_note": false
+    },
+    "required_tool_calls": [
+      {"tool_name": "listening_hours", "params": {"view": "late_night_tracks"}}
+    ],
+    "recommended_tools": [
+      {"tool_name": "listening_hours", "params": {"view": "late_night_tracks"}}
+    ],
+    "required_answer_terms": ["深夜", "歌曲", "时段", "播放"],
+    "forbidden_answer_terms": ["早晨", "没有数据", "无法判断"]
+  }
+]

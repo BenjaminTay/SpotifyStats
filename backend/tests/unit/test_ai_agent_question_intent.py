@@ -30,7 +30,24 @@ def test_detects_trend_question() -> None:
     assert intent.entity_type == "artist"
     assert intent.entities == ["Olivia Rodrigo"]
     assert intent.time_scope == "last_6_months"
+    assert "plays" in intent.requested_metrics
     assert "recent_window" in intent.requested_metrics
+
+
+def test_detects_late_night_favorite_tracks_question() -> None:
+    intent = parse_question_intent("我深夜最爱听什么歌？")
+
+    assert intent.task_type == "ranking"
+    assert intent.entity_type == "track"
+    assert "plays" in intent.requested_metrics
+    assert "time_of_day" in intent.requested_metrics
+
+
+def test_plain_like_question_is_not_ranking() -> None:
+    intent = parse_question_intent("我是不是爱听 Olivia Rodrigo？")
+
+    assert intent.task_type != "ranking"
+    assert "plays" in intent.requested_metrics
 
 
 def test_ignores_product_names_when_extracting_entities() -> None:

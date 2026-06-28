@@ -289,6 +289,47 @@ def _wrapped_yearly_card(item: dict[str, Any], data: dict[str, Any]) -> Evidence
     )
 
 
+def _listening_hours_card(item: dict[str, Any], data: dict[str, Any]) -> EvidenceCard | None:
+    if data.get("view") != "late_night_tracks":
+        return None
+    items = data.get("items")
+    if not isinstance(items, dict):
+        return None
+    tracks = items.get("tracks")
+    if not isinstance(tracks, list):
+        return None
+    metrics: list[EvidenceMetric] = []
+    _append_metric(
+        metrics,
+        _metric(
+            "total_late_night_plays", "深夜播放总次数", items.get("total_late_night_plays"), "plays"
+        ),
+    )
+    for track in tracks[:3]:
+        if not isinstance(track, dict):
+            continue
+        rank = track.get("rank")
+        prefix = f"top_{rank}" if rank is not None else f"top_{len(metrics)}"
+        name = _display_row_name("track", track)
+        _append_metric(metrics, _metric(f"{prefix}_track", f"#{rank or '?'} 深夜歌曲", name))
+        _append_metric(
+            metrics,
+            _metric(f"{prefix}_plays", f"#{rank or '?'} 深夜播放", track.get("plays"), "plays"),
+        )
+        _append_metric(
+            metrics,
+            _metric(f"{prefix}_share_pct", f"#{rank or '?'} 深夜占比", track.get("share_pct"), "%"),
+        )
+    return EvidenceCard(
+        card_id="listening_hours:late_night_tracks",
+        title="深夜歌曲排行证据",
+        question_axis="time_of_day",
+        source=_source(item),
+        metrics=metrics,
+        limitations=["深夜窗口按 00:00-05:59 本地播放记录统计"],
+    )
+
+
 def build_evidence_cards(tool_results: list[dict[str, Any]]) -> list[EvidenceCard]:
     cards: list[EvidenceCard] = []
     for item in tool_results:
@@ -306,6 +347,8 @@ def build_evidence_cards(tool_results: list[dict[str, Any]]) -> list[EvidenceCar
             card = _analysis_charts_card(item, data)
         elif tool_name == "wrapped_yearly":
             card = _wrapped_yearly_card(item, data)
+        elif tool_name == "listening_hours":
+            card = _listening_hours_card(item, data)
         else:
             card = None
         if card is not None:

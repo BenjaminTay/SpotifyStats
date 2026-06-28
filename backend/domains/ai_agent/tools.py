@@ -143,6 +143,7 @@ class ListeningHoursParams(BaseModel):
         "heatmap",
         "yearly_heatmaps",
         "late_night_ratio",
+        "late_night_tracks",
         "weekday_weekend",
         "platform_hourly",
     ] = "heatmap"
@@ -332,7 +333,8 @@ def _listening_hours_result_summary(data: dict[str, Any]) -> str:
     if isinstance(items, list):
         count = len(items)
     elif isinstance(items, dict):
-        count = len(items)
+        tracks = items.get("tracks")
+        count = len(tracks) if isinstance(tracks, list) else len(items)
     else:
         count = 0
     return f"view={data.get('view')}, items={count}"
@@ -610,6 +612,15 @@ def listening_hours_handler(params: BaseModel) -> AgentToolResult:
             )
         elif parsed.view == "late_night_ratio":
             items = play_service.get_late_night_ratio(
+                conn,
+                min_ms=parsed.min_ms,
+                music_only=parsed.music_only,
+                merge_enabled=parsed.merge_enabled,
+                dynamic_threshold=parsed.dynamic_threshold,
+                max_merge_gap_minutes=parsed.max_merge_gap_minutes,
+            )
+        elif parsed.view == "late_night_tracks":
+            items = play_service.get_late_night_top_tracks(
                 conn,
                 min_ms=parsed.min_ms,
                 music_only=parsed.music_only,
