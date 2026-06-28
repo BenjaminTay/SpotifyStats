@@ -17,10 +17,10 @@
 | CI-01 | **P0** | GitHub Actions Phase 5 Baseline workflow 无 `.venv` 目录，`FileNotFoundError: .venv/bin/python` | CI 全红，所有后端测试和 ruff 检查无法运行 | CI 中新增 `python -m venv .venv` 步骤，所有命令改用 `.venv/bin/pytest`、`.venv/bin/ruff` | `.github/workflows/phase5-baseline.yml` | CI workflow 在 GitHub 上 re-run 通过 |
 | CI-02 | **P0** | 5 个测试/脚本文件硬编码 `.venv/bin/python` 路径，在其他环境（无 `.venv` 或有不同 Python 路径）启动失败 | `test_quickstart_smoke_script.py`、`test_runtime_resource_probe_script.py`、`test_openapi_operation_audit_script.py`、`test_openapi_parameter_boundary_audit_script.py`、`scripts/quickstart_smoke.py` | 全部改为 `sys.executable`（Python 进程自身路径），新增 `import sys` | 5 个文件 | `pytest backend/tests/unit/test_quickstart_smoke_script.py backend/tests/unit/test_runtime_resource_probe_script.py backend/tests/unit/test_openapi_operation_audit_script.py backend/tests/unit/test_openapi_parameter_boundary_audit_script.py -v` — 全部 PASS |
 | CI-03 | **P0** | `pyproject.toml` 中 `target-version = "py312"` 与 CI Python 3.9 不匹配，ruff 可能漏检 3.9 兼容性问题 | CI 对 Python 3.9 兼容性检查无效 | `target-version` 改为 `"py39"`，`python_version` 改为 `"3.9"` | `pyproject.toml` | `ruff check backend/` 在 Python 3.9 环境下 PASS |
-| CI-04 | **P1** | `backend/domains/enrichment/repository.py` 和 `backend/domains/playback/repository.py` 使用了 `X | None` 语法但没有 `from __future__ import annotations`，Python 3.9 下可能报错 | 两个 repository 模块在 Python 3.9 下导入失败 | 防御性添加 `from __future__ import annotations` | `backend/domains/enrichment/repository.py`、`backend/domains/playback/repository.py` | `pytest backend/tests/ -q` — 694 passed |
+| CI-04 | **P1** | `backend/domains/enrichment/repository.py` 和 `backend/domains/playback/repository.py` 使用了 `X | None` 语法但没有 `from __future__ import annotations`，Python 3.9 下可能报错 | 两个 repository 模块在 Python 3.9 下导入失败 | 防御性添加 `from __future__ import annotations` | `backend/domains/enrichment/repository.py`、`backend/domains/playback/repository.py` | `pytest backend/tests/ -q` — 739 passed |
 | CI-05 | **P1** | `scripts/benchmark_api.py` 模块级 `import httpx`，httpx 未安装时 `--help` 都会报 `ModuleNotFoundError` | benchmark 脚本无法在无 httpx 环境中展示帮助信息 | 将 `import httpx` 移入 `measure()` 和 `main()` 函数内部，改为懒加载 + 友好错误提示 | `scripts/benchmark_api.py` | `python scripts/benchmark_api.py --help` 在无 httpx 环境下正常输出帮助信息 |
-| CI-06 | **P1** | `sqlite3.OperationalError: unable to open database file` — CI 无 `data/` 目录，`get_db()` 直接 `sqlite3.connect` 失败 | 所有涉及 DB 查询的测试在无 `data/` 目录的干净环境中失败 | `get_db()` 中新增 `os.makedirs(db_dir, exist_ok=True)`，连接前先创建目录 | `backend/core/db.py` | 临时 `mv data data.bak` 后运行单元测试，322 passed |
-| CI-07 | **P1** | `sqlite3.OperationalError: no such table: release_group_members` — 上一步只创建了目录，DB 文件是空的，没有 schema，查询 `release_group_members` 表失败 | `test_compute_album_track_counts_picks_best_peak_track_per_album_artist` 在无 `data/` 环境下失败 | `_get_album_canonical_map()` 包裹 try/except，查询失败时返回空 DataFrame；调用方 `_normalize_album_column()` 已有 `if mapping.empty: return df` 逻辑 | `backend/domains/billboard/data_loader.py` | 无 `data/` 目录下 `pytest backend/tests/ -m unit -q` — 322 passed |
+| CI-06 | **P1** | `sqlite3.OperationalError: unable to open database file` — CI 无 `data/` 目录，`get_db()` 直接 `sqlite3.connect` 失败 | 所有涉及 DB 查询的测试在无 `data/` 目录的干净环境中失败 | `get_db()` 中新增 `os.makedirs(db_dir, exist_ok=True)`，连接前先创建目录 | `backend/core/db.py` | 临时 `mv data data.bak` 后运行单元测试；现行 Phase 5 unit 基线 339 passed |
+| CI-07 | **P1** | `sqlite3.OperationalError: no such table: release_group_members` — 上一步只创建了目录，DB 文件是空的，没有 schema，查询 `release_group_members` 表失败 | `test_compute_album_track_counts_picks_best_peak_track_per_album_artist` 在无 `data/` 环境下失败 | `_get_album_canonical_map()` 包裹 try/except，查询失败时返回空 DataFrame；调用方 `_normalize_album_column()` 已有 `if mapping.empty: return df` 逻辑 | `backend/domains/billboard/data_loader.py` | 无 `data/` 目录下 unit 测试通过；现行 Phase 5 unit 基线 339 passed |
 
 ### 1.2 前端
 
@@ -29,12 +29,12 @@
 | FE-01 | **P3** | 旧 `/analysis/behavior`、`/analysis/timeline` 等别名嵌套在 lazy `AnalysisLayout` 内，冷导航时先渲染全局导航空壳 | 用户首次进入旧分析路径时会短暂看到空白壳 | 将旧别名提升为 `AppLayout` 下的顶层 absolute route，直接重定向到 `/analysis/stats` | `frontend/src/App.tsx` | `node scripts/frontend_route_smoke.mjs --routes /analysis/behavior --viewport both` — desktop/mobile PASS；`phase5-architecture.test.ts` 护栏 |
 | FE-02 | **P3** | `/account` 首屏 Hero 被重聚合 `/api/account` 阻塞 | 缓存过期或冷启动时账号页桌面 LCP 超过 3s，用户先看到整页骨架 | 新增 `useProfile()` 独立 TanStack Query hook 读取 `/api/profile`，Hero 并行先渲染 | `frontend/src/features/account/`、`frontend/src/hooks/useAccount.ts` | `query-hooks.test.tsx` 新增 profile query 护栏；`/account` desktop LCP 3532→468ms |
 | FE-03| **P3** | 异步长内容页桌面 CLS 抖动 — 页面高度变化未预留滚动条槽位 | `/billboard/number-ones` 桌面可记录 CLS 0.1 | `html` 根元素设置 `scrollbar-gutter: stable` | `frontend/src/index.css` | `test_frontend_global_css_guardrails.py` PASS；`/billboard/number-ones` desktop CLS 0.1→0 |
-| FE-04 | **P3** | 首页 Dashboard 月度趋势需要保留 ECharts 视觉，但不能让首页 wrapper 静态引用 ECharts runtime | 首页 production preview encoded resources 约 1,284KB，仍需确保 LCP/CLS/TBT 在预算内 | `MonthlyTrendChart` 仅保留空态和 `React.lazy` wrapper，ECharts 实现拆到 `MonthlyTrendEChart` 动态块 | `frontend/src/components/charts/MonthlyTrendChart.tsx`、`MonthlyTrendEChart.tsx` | production preview `/` desktop LCP 2004ms / CLS 0 / TBT 0ms，mobile LCP 544ms / CLS 0 / TBT 0ms |
+| FE-04 | **P3** | 首页 Dashboard 月度趋势必须保留 ECharts 视觉，但不能让首页 wrapper 静态引用 ECharts runtime | 首页 production preview encoded resources 约 1,131KB，仍需确保 LCP/CLS/TBT 在预算内 | `MonthlyTrendChart` 仅保留空态和 `React.lazy` wrapper，ECharts 实现拆到 `MonthlyTrendEChart` 动态块 | `frontend/src/components/charts/MonthlyTrendChart.tsx`、`MonthlyTrendEChart.tsx` | production preview `/` desktop LCP 2060ms / CLS 0 / TBT 0ms，mobile LCP 612ms / CLS 0 / TBT 0ms |
 | FE-05 | **P0** | Docker Compose 前端 `serve -s dist -l 3000` 只提供静态文件，无 `/api` 反向代理 | Docker 部署中所有 `/api` 和 `/covers` 请求返回 404，前端完全不可用 | 改为 `nginx:alpine` 反代 `/api`、`/covers` 到 `http://backend:8000`，SPA fallback `try_files` | `Dockerfile`、`nginx.conf`（新建） | `docker compose build frontend && docker compose up -d`，`curl http://localhost:3000/api/health` 返回 JSON 200 |
 | FE-06 | **P1** | ErrorBoundary 生产环境泄露 `error.message` 到 DOM | 用户可见错误信息可能包含本地路径、chunk 名称等敏感信息 | `import.meta.env.DEV` 条件分支：生产只显示「页面渲染错误，请刷新后重试」，开发显示 message（不显示 stack） | `frontend/src/components/shared/ErrorBoundary.tsx` | `npm run build` 后 `grep -r "error.stack\|error.message" dist/` → 生产构建不含敏感字段 |
 | FE-07 | **P3-a** | `index.html` 中有 `<link rel="modulepreload" href="/src/main.tsx">`，这是源码路径，Vite 构建后不存在 | 发送无效 preload 请求，浪费网络带宽 | 删除该行（Vite 已自动注入正确的 hashed modulepreload） | `frontend/index.html` | `npm run build` 后 `grep "modulepreload" dist/index.html` → 只有 Vite 注入的 hashed preload |
 | FE-08 | **P3-b** | `images.ts` 对 Spotify CDN URL 生成 `640w 300w 64w` 三个宽度描述符，但 Spotify CDN 不按 width 参数改变图片尺寸 | 浏览器下载同一资源三次，无带宽节省 | 删除 `frontend/src/lib/images.ts`，`CoverCell.tsx` 和 `MusicDetailHeader.tsx` 移除 `srcSet`/`sizes` 属性，保留 `loading="lazy"` + `decoding="async"` | `frontend/src/lib/images.ts`（删除）、`frontend/src/components/shared/CoverCell.tsx`、`frontend/src/features/music/details/MusicDetailHeader.tsx` | `npm test && npm run build` 无 import 错误；封面渲染正常 |
-| FE-09 | **P2** | Community 虚拟滚动 smoke 用 DOM `article` 数量递增判断 infinite load 成功，但 Virtuoso 只渲染视口内 DOM，数量基本稳定 | `frontend_long_list_smoke.mjs` 的 `exerciseCommunityFeed` 场景可能误报失败 | 验收逻辑改为 CDP `Network.responseReceived` 监听 `/api/community` 新请求 | `scripts/frontend_long_list_smoke.mjs` | `node scripts/frontend_long_list_smoke.mjs --base-url http://localhost:5173` — 6/6 PASS |
+| FE-09 | **P2** | Community 虚拟滚动 smoke 用 DOM `article` 数量递增判断 infinite load 成功，但 Virtuoso 只渲染视口内 DOM，数量基本稳定 | `frontend_long_list_smoke.mjs` 的 `exerciseCommunityFeed` 场景可能误报失败 | 验收逻辑改为 CDP `Network.responseReceived` 监听 `/api/community` 新请求 | `scripts/frontend_long_list_smoke.mjs` | `node scripts/frontend_long_list_smoke.mjs --base-url http://localhost:5173` — 7/7 PASS |
 | FE-10 | **P3** | `frontend_chart_interaction_smoke.mjs` 默认 5s 等待在 Vite dev 冷态下可能早于 ECharts lazy chunk 完成 | 图表交互 smoke 可能误报 `Expected at least 1 ECharts canvas` | 默认等待调至 12s，并同步单元测试护栏 | `scripts/frontend_chart_interaction_smoke.mjs`、`backend/tests/unit/test_frontend_chart_interaction_smoke_script.py` | chart smoke 3/3 PASS |
 | FE-11 | **P3** | 6 个前端 CDP smoke 脚本默认优先使用系统 `/Applications/Google Chrome.app`，在 Codex/Node 启动器下触发 macOS `HIServices/TransformProcessType` abort | 验证链路假失败 | 新增 `scripts/lib/chrome_executable.mjs`，优先 Playwright `chromium_headless_shell-*`，再 Chrome for Testing，系统 Chrome 兜底 | `scripts/lib/chrome_executable.mjs`（新建）、6 个 smoke 脚本 | `test_frontend_chrome_executable_helper.py` PASS；默认解析到 headless shell |
 | FE-12 | **P3** | Spotify OAuth 在 ngrok HTTPS 配置下，callback 成功后回跳默认 `http://localhost:5173` | 外部 HTTPS 用户授权后掉回 localhost，体验不闭环 | `_get_frontend_origin()` 在 `FRONTEND_ORIGIN` 为默认值时，从 `SPOTIFY_REDIRECT_URI` 推导前端 origin | `backend/core/config.py` | `test_spotify_callback_origin_follows_ngrok_redirect_uri_when_frontend_origin_is_default` contract PASS；invalid-state callback 307 回跳 ngrok domain |
@@ -79,7 +79,7 @@
 
 | 优化项 | 严重度 | 优化前 | 优化后 | 改进幅度 | 实现原理 |
 |--------|--------|--------|--------|---------|---------|
-| `/` 首页月度趋势 ECharts 动态拆包 | **P1** | 首页月度趋势直接静态引用 ECharts wrapper，首屏路径与图表 runtime 耦合 | 保留 ECharts 视觉与 tooltip，但 wrapper 只动态加载 `MonthlyTrendEChart` | LCP/CLS/TBT 仍过预算：desktop 2004ms/0/0ms，mobile 544ms/0/0ms | `MonthlyTrendChart` 只负责空态和 lazy boundary，`MonthlyTrendEChart` 承载 ECharts 配置；架构护栏禁止 wrapper 直接导入 `LazyEChart` / `EChartsTheme` |
+| `/` 首页月度趋势 ECharts 动态拆包 | **P1** | 首页月度趋势直接静态引用 ECharts wrapper，首屏路径与图表 runtime 耦合 | 保留 ECharts 视觉与 tooltip，但 wrapper 只动态加载 `MonthlyTrendEChart` | LCP/CLS/TBT 仍在预算内：desktop 2060ms/0/0ms，mobile 612ms/0/0ms | `MonthlyTrendChart` 只负责空态和 lazy boundary，`MonthlyTrendEChart` 承载 ECharts 配置；架构护栏禁止 wrapper 直接导入 `LazyEChart` / `EChartsTheme` |
 | `/account` 首屏 Hero 并行渲染 | **P1** | Hero 等待重聚合 `/api/account`（~1.5s） | Hero 用 `/api/profile` 轻量数据先渲染 | desktop LCP 3532→468ms（↓87%） | 新增 `useProfile()` 独立 Query hook，Hero 组件不等待 account summary |
 | `/api/account` 聚合 TTL 缓存 | **P1** | 每次请求重新聚合 ~1.5-1.8s | 命中缓存 ~8-11ms | ↓ 99.4% | `account.summary` 纳入统一 Cache Manager，file-backed DB connection |
 | `/billboard/number-ones` CLS 消除 | **P2** | 异步内容加载后滚动条出现→居中布局偏移，CLS 0.1 | 预留滚动条槽位 | CLS 0 | `scrollbar-gutter: stable` 在 `html` 根元素 |
@@ -120,8 +120,8 @@
 
 | 路由 | 视口 | LCP | CLS | TBT | 资源数 | Encoded KB |
 |------|------|-----|-----|-----|--------|------------|
-| `/` | desktop | 2004ms | 0 | 0ms | 17 | 1,283.7KB |
-| `/` | mobile | 544ms | 0 | 0ms | 17 | 1,283.7KB |
+| `/` | desktop | 2060ms | 0 | 0ms | 17 | 1,131.2KB |
+| `/` | mobile | 612ms | 0 | 0ms | 17 | 1,131.2KB |
 | `/analysis/stats` | desktop | <1,500ms | 0 | <10ms | <50 | <3,500KB |
 | `/analysis/stats` | mobile | <1,000ms | 0 | <5ms | <40 | <3,000KB |
 | `/billboard/number-ones` | desktop | <1,000ms | **0** | 0ms | <40 | <2,000KB |
@@ -136,10 +136,10 @@
 
 | 进程 | RSS | CPU% |
 |------|-----|------|
-| Backend (uvicorn) | 488.4MB | 67.9% |
-| Frontend (vite preview) | 56.1MB | 0% |
-| Dev Server (vite) | 86.6MB | 0% |
-| **合计** | **631.1MB** | **67.9%** |
+| Backend (uvicorn) | 630.2MB | 77.7% |
+| Frontend dev server (vite) | 120.2MB | 0% |
+| Production preview (vite) | 76.0MB | 0% |
+| **合计** | **826.4MB** | **77.7%** |
 
 > 预算门禁：RSS < 1,400MB，CPU < 220% — **通过**。
 
@@ -153,6 +153,23 @@
 
 | 提交 | 类型 | 描述 |
 |------|------|------|
+| `ca8fa70` | fix | 收口当前验收发现的边界与 smoke 回归 |
+| `86e8c1e` | fix | 同步榜单社区统计口径 |
+| `a0b1bcd` | feat | 新增 Billboard 个人年榜 |
+| `b97be6f` | fix | 收口冒烟验证发现的设置与交互问题 |
+| `f576a63` | fix | 榜单参数滑块拖拽无响应、rebuild_pending 布尔归一与设置缓存级联失效修复 |
+| `88a8a85` | fix | 专辑单曲分类修复、track 去重与 track_agg_id 归属修正 |
+| `3d74da6` | fix | 导入维护闭环、PK Wks、Album Project、封面与元数据聚合修复 |
+| `ebf131e` | fix | 修复回榜歌曲 PK 显示错误 |
+| `720c9da` | fix | 播放记录模块 bug 修复与打磨 |
+| `bb70bf0` | feat | 新增播放记录模块 `/analysis/records` |
+| `33d91b4` | fix | 保留首页 ECharts 并隔离月度趋势动态块 |
+| `e459508` | fix | 全局统一专辑播放统计口径 + Billboard 总榜 total_plays 解除发行日过滤 |
+| `0827f3e` | feat | 设置页面 UX 深度打磨 |
+| `f3fd650` | feat | 设置页面 UX 全面优化 + 自定义 Billboard 名称 |
+| `a163f31` | feat | 版本来源合并、收听展开排序优化、先行单曲封面与每日/累计聚焦 |
+| `75585ae` | fix | 统一专辑统计为 album_project_tracks 归因 + 重构详情页布局 |
+| `590675c` | docs | Phase 5 最终交付报告、文档索引更新、测试计数修正 |
 | `91c8fc6` | fix | 稳定 Number Ones 加载态避免 CLS 抖动 |
 | `78a5ec1` | fix | `_get_album_canonical_map` 容错空 DB — 缺表时返回空映射 |
 | `7a7db5a` | fix | httpx 懒加载 + `get_db` 自动创建 `data/` 目录 |
@@ -187,6 +204,8 @@
 - `frontend/index.html` — 删除无效 modulepreload
 - `frontend/src/components/shared/ErrorBoundary.tsx` — DEV/PROD 分支
 - `frontend/src/components/shared/CoverCell.tsx` — 移除 srcSet/sizes
+- `frontend/src/components/charts/MonthlyTrendChart.tsx` — 首页月度趋势 ECharts lazy wrapper
+- `frontend/src/components/charts/MonthlyTrendEChart.tsx` — 首页月度趋势 ECharts 实现
 - `frontend/src/features/music/details/MusicDetailHeader.tsx` — 移除 srcSet/sizes
 - `frontend/src/features/billboard/number-ones/` — Number Ones 加载态稳定
 - `frontend/src/lib/images.ts` — **删除**
@@ -244,7 +263,7 @@
 sh scripts/phase5_check.sh
 ```
 
-预期：unit 322 passed / contract 172 passed / frontend 134 passed / build PASS。
+预期：unit 339 passed / contract 192 passed / frontend 175 passed / build PASS。
 
 ### 第 2 步：一键启动冒烟（2 分钟）
 
@@ -277,7 +296,7 @@ node scripts/frontend_route_smoke.mjs --base-url http://localhost:5173 --api-bas
 
 | 页面 | URL | 检查要点 |
 |------|-----|---------|
-| 首页 | `/` | 月度播放趋势（DOM 条形图）正常渲染，无白屏 |
+| 首页 | `/` | 月度播放趋势 ECharts 正常渲染，canvas/tooltip 可用，无白屏 |
 | 分析 | `/analysis/stats` | 8 个 KPI 卡片 + 图表正常 |
 | Billboard | `/billboard/number-ones` | 冠单列表正常，无 CLS 抖动 |
 | 账号 | `/account` | Hero 先显示，收藏/习惯内容随后填充 |
@@ -292,10 +311,10 @@ Phase 5 产品化收口 **已完成**。对照目标文档的核心目标：
 
 | 目标 | 状态 | 证据 |
 |------|------|------|
-| 零缺陷验证 | ✅ | 694 后端测试 / 135 前端测试 / 48 route + 6 interaction + 3 chart + 36 control + 6 long-list + 3 cross-browser smoke 全部 PASS |
-| 极致性能优化 | ✅ | LCP ↓87%（account），CLS 消除（number-ones），API 慢端点 0，首页保留 ECharts 后 LCP/CLS/TBT 仍全部过预算 |
-| 所有 API 端点无错误 | ✅ | 134 OpenAPI op / 59 param boundary 0 unaccounted；API smoke 96/96；boundary 85/85 |
-| 所有前端页面无崩溃 | ✅ | 24 路由 × 2 视口 0 error / 0 warning / 0 横向溢出 |
+| 零缺陷验证 | ✅ | 739 后端测试 / 175 前端测试 / route + interaction + chart + control + long-list + cross-browser smoke 全部 PASS |
+| 极致性能优化 | ✅ | LCP ↓87%（account），CLS 消除（number-ones），API 慢端点 0，首页保留 ECharts 后 LCP/CLS/TBT 仍全部在预算内 |
+| 所有 API 端点无错误 | ✅ | 136 OpenAPI op / 60 param boundary 0 unaccounted；API smoke 98/98；boundary 90/90 |
+| 所有前端页面无崩溃 | ✅ | 24 路由 × 2 视口及动态详情路由 0 error / 0 warning / 0 横向溢出 |
 | CI 可正常运行 | ✅ | Python 3.9 兼容，无硬编码路径，4 个 CI 修复 commit |
 | Docker 可一键部署 | ✅ | nginx 反代 /api + /covers，SPA fallback |
 | 文档完整 | ✅ | 用户/开发者/AI Agent 三层文档 + 变更日志 + 验证报告 + 本交付报告 |
