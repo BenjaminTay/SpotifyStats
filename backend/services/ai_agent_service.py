@@ -6,6 +6,8 @@ import json
 from typing import Any
 
 from backend.core.db import get_db
+from backend.domains.ai_agent.evidence import compact_evidence_cards
+from backend.domains.ai_agent.evidence_builders import build_evidence_cards
 from backend.domains.ai_agent.tool_registry import describe_for_model, dispatch_tool
 from backend.domains.ai_tasks.repository import AiTaskRepository
 from backend.services import ai_insights_service
@@ -452,10 +454,12 @@ def _final_payload(
     tool_results: list[dict[str, Any]],
 ) -> dict[str, Any]:
     compact_results = [_compact_tool_result_for_llm(item) for item in tool_results]
+    evidence_cards = build_evidence_cards(tool_results)
     return {
         "question": request.get("question", ""),
         "conversation_history": (request.get("conversation_history") or [])[-6:],
         "coverage": _build_coverage(tool_results),
+        "evidence_cards": compact_evidence_cards(evidence_cards),
         "tool_results": compact_results,
     }
 
@@ -669,6 +673,7 @@ def run_chat_agent_task(task_id: str, request: dict[str, Any]) -> None:
                 "answer_retried": answer_retried,
                 "validation_issues": validation_issues,
                 "coverage": final_payload["coverage"],
+                "evidence_cards": final_payload["evidence_cards"],
                 "tools": [
                     {
                         "tool_name": item["tool_name"],

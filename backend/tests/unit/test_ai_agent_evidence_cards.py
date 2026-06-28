@@ -4,6 +4,8 @@ from backend.domains.ai_agent.evidence import (
     EvidenceSource,
     compact_evidence_cards,
 )
+from backend.domains.ai_agent.evidence_builders import build_evidence_cards
+from backend.services import ai_agent_service
 
 
 def test_evidence_card_serializes_metric_and_source():
@@ -42,3 +44,82 @@ def test_compact_evidence_cards_limits_metric_count():
     assert len(compact) == 1
     assert len(compact[0]["metrics"]) == 5
     assert compact[0]["metrics"][4]["name"] == "m4"
+
+
+def test_builds_album_entity_stats_evidence_card():
+    cards = build_evidence_cards(
+        [
+            {
+                "tool_name": "entity_stats",
+                "status": "done",
+                "params_summary": "entity=album, album_name=GUTS",
+                "result_summary": "found=true, plays=1749, hours=95.6",
+                "source_range": "2022-07-01..2026-06-23",
+                "data": {
+                    "found": True,
+                    "album_name": "GUTS",
+                    "summary": {"total_plays": 1749, "total_hours": 95.6},
+                },
+            }
+        ]
+    )
+
+    assert len(cards) == 1
+    assert cards[0].entity_name == "GUTS"
+    assert cards[0].question_axis == "personal_playback"
+    assert cards[0].metrics[0].name == "total_plays"
+
+
+def test_builds_album_billboard_evidence_card():
+    cards = build_evidence_cards(
+        [
+            {
+                "tool_name": "billboard_entity_detail",
+                "status": "done",
+                "params_summary": "entity=album, album_name=The Life of a Showgirl",
+                "result_summary": "found=true",
+                "source_range": "all_years",
+                "data": {
+                    "found": True,
+                    "album_name": "The Life of a Showgirl",
+                    "chart_summary": {
+                        "power_score": 10629,
+                        "power_rank": 9,
+                        "peak_position": 1,
+                        "weeks_on_chart": 37,
+                        "no1_weeks": 14,
+                    },
+                },
+            }
+        ]
+    )
+
+    metric_names = {metric.name for metric in cards[0].metrics}
+    assert cards[0].question_axis == "personal_billboard"
+    assert "power_score" in metric_names
+    assert "no1_weeks" in metric_names
+
+
+def test_final_payload_includes_compact_evidence_cards():
+    payload = ai_agent_service._final_payload(
+        {"question": "我更喜欢 GUTS 吗？", "conversation_history": []},
+        [
+            {
+                "tool_name": "entity_stats",
+                "status": "done",
+                "params_summary": "entity=album, album_name=GUTS",
+                "result_summary": "found=true, plays=1749, hours=95.6",
+                "source_range": "2022-07-01..2026-06-23",
+                "data": {
+                    "found": True,
+                    "album_name": "GUTS",
+                    "summary": {"total_plays": 1749, "total_hours": 95.6},
+                },
+            }
+        ],
+    )
+
+    assert payload["coverage"]["entities"]["GUTS"]["entity_stats"] == "found"
+    assert payload["tool_results"][0]["tool_name"] == "entity_stats"
+    assert payload["evidence_cards"][0]["entity_name"] == "GUTS"
+    assert payload["evidence_cards"][0]["metrics"][0]["name"] == "total_plays"
