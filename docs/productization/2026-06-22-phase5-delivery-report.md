@@ -320,6 +320,6 @@ Phase 5 产品化收口 **已完成**。对照目标文档的核心目标：
 | 文档完整 | ✅ | 用户/开发者/AI Agent 三层文档 + 变更日志 + 验证报告 + 本交付报告 |
 
 **剩余风险**：
-- ⚠️ ngrok Spotify OAuth 用户 consent 待人工确认（技术链路已全部通过非破坏性探针）
+- ⚠️ ngrok Spotify OAuth 当前外部 status 已为 `connected=true` 且 auth data 可读；fresh 用户 consent 点击仍需人工确认（技术链路已全部通过非破坏性探针）
 - ⚠️ Playwright WebKit ≠ Safari.app（只代表引擎级 smoke）
 - ℹ️ 首页月度趋势按产品偏好保留 ECharts，生产构建中的 `LazyEChart` 大 chunk 会按需加载；当前 Web Vitals 预算通过，但 encoded resources 不再宣称 DOM 版 1,060KB
