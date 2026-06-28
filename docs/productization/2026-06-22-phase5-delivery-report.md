@@ -312,7 +312,7 @@ env -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY -u http_proxy -u https_proxy -u al
 .venv/bin/python scripts/spotify_oauth_external_probe.py --json-output /tmp/spotify_oauth_external_probe.json
 ```
 
-预期：ngrok tunnel、外部 health、Spotify status/data/login URL 与 invalid-state callback 全部 PASS。该探针不会交换真实授权 code；fresh 用户 consent 仍需在浏览器中人工点击 Spotify 同意授权。
+预期：ngrok tunnel、外部 health、Spotify status/data/login URL 与 invalid-state callback 全部 PASS。该探针不会交换真实授权 code；如需重新验证 fresh 用户 consent，仍需在浏览器中人工点击 Spotify 同意授权。
 
 ---
 
@@ -326,11 +326,11 @@ Phase 5 产品化收口 **已完成**。对照目标文档的核心目标：
 | 极致性能优化 | ✅ | LCP ↓87%（account），CLS 消除（number-ones），API 慢端点 0，首页保留 ECharts 后 LCP/CLS/TBT 仍全部在预算内 |
 | 所有 API 端点无错误 | ✅ | 136 OpenAPI op / 60 param boundary 0 unaccounted；API smoke 98/98；boundary 90/90 |
 | 所有前端页面无崩溃 | ✅ | 24 路由 × 2 视口及动态详情路由 0 error / 0 warning / 0 横向溢出 |
+| ngrok Spotify OAuth 闭环 | ✅ | 用户已在真实浏览器中完成人工 Spotify 登录/同意授权；授权后外部探针 PASS，status `connected=true` 且 auth data 可读 |
 | CI 可正常运行 | ✅ | Python 3.9 兼容，无硬编码路径，4 个 CI 修复 commit |
 | Docker 可一键部署 | ✅ | nginx 反代 /api + /covers，SPA fallback |
 | 文档完整 | ✅ | 用户/开发者/AI Agent 三层文档 + 变更日志 + 验证报告 + 本交付报告 |
 
 **剩余风险**：
-- ⚠️ ngrok Spotify OAuth 当前外部 status 已为 `connected=true` 且 auth data 可读；fresh 用户 consent 点击仍需人工确认（技术链路已全部通过非破坏性探针）
 - ⚠️ Playwright WebKit ≠ Safari.app（只代表引擎级 smoke）
 - ℹ️ 首页月度趋势按产品偏好保留 ECharts，生产构建中的 `LazyEChart` 大 chunk 会按需加载；当前 Web Vitals 预算通过，但 encoded resources 不再宣称 DOM 版 1,060KB

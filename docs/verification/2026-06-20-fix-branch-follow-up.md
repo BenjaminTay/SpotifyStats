@@ -15,7 +15,7 @@
 - `/api/account` 聚合结果加入 `account.summary` TTL cache 并在 warmup 阶段预热：本地直连从约 `1.5-1.8s` 的重复聚合降至热路径 `8-11ms`，缓存统计命中可在 `/api/admin/cache-stats` 中看到。
 - 修复异步长内容页桌面 CLS 抖动：根元素增加 `scrollbar-gutter: stable`，`/billboard/number-ones` 生产 preview 桌面 CLS 从复现时的 `0.1` 降至 `0`。
 - 修复 Spotify OAuth 在 ngrok HTTPS 配置下的回调回跳 origin 问题：当 `SPOTIFY_REDIRECT_URI` 已指向 ngrok 但 `FRONTEND_ORIGIN` 未显式设置时，callback 成功/失败页现在回跳到 ngrok origin，而不是默认 `http://localhost:5173`。
-- 2026-06-21 复核：此前 ngrok 证书/CRL 阻塞已解除，固定域名 tunnel 当前可建立；外部 HTTPS `/api/health`、Spotify login URL 生成、invalid-state callback 回跳、Spotify auth data 入口均已通过非破坏性探针。完整“点击 Spotify 登录并同意授权”的用户浏览器闭环仍需人工会话确认。
+- 2026-06-21 复核：此前 ngrok 证书/CRL 阻塞已解除，固定域名 tunnel 当前可建立；外部 HTTPS `/api/health`、Spotify login URL 生成、invalid-state callback 回跳、Spotify auth data 入口均已通过非破坏性探针。2026-06-28 用户已在真实浏览器中完成人工 Spotify 登录/同意授权，外部探针复核继续 PASS。
 
 ## 修复项
 
@@ -93,6 +93,7 @@
 | ngrok HTTPS tunnel | `env -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY -u http_proxy -u https_proxy -u all_proxy ngrok http --url=stuffing-nebula-tamer.ngrok-free.dev 5173` + `curl http://127.0.0.1:4040/api/tunnels` | PASS；代理变量存在时 ngrok 会报 `ERR_NGROK_9009`，清空代理后固定域名 tunnel 可建立 |
 | Spotify OAuth ngrok 初段/回跳 | 外部 `/api/health`、`/api/spotify/auth/status`、`/api/spotify/auth/data`、`/api/spotify/auth/login`、invalid-state callback | PASS；login URL 使用 `redirect_uri=https://stuffing-nebula-tamer.ngrok-free.dev/api/spotify/auth/callback`；invalid-state callback 307 回跳 `https://stuffing-nebula-tamer.ngrok-free.dev/settings?spotify_error=invalid_state` |
 | 2026-06-28 ngrok/OAuth 当前态复核 | `ngrok http --url=stuffing-nebula-tamer.ngrok-free.dev 5173` + `.venv/bin/python scripts/spotify_oauth_external_probe.py --json-output /tmp/spotify_oauth_external_probe.json` | PASS；4040 API 显示固定域名转发到 `http://localhost:5173`；外部 health 200 且有 `X-Request-ID`；Spotify status 200 且 `connected=true`；auth data 200，返回 artists/tracks/recently_played/followed_artists/playlists；login URL 指向 `accounts.spotify.com` 且使用 ngrok callback、state 和 code_challenge 均存在；invalid-state callback 307 回跳 ngrok settings 并带 `X-Request-ID`；探针结束后已停止 ngrok |
+| 2026-06-28 fresh OAuth consent 人工闭环 | 用户从 ngrok 设置页点击 Spotify 登录并同意授权；随后运行 `.venv/bin/python scripts/spotify_oauth_external_probe.py --json-output /tmp/spotify_oauth_external_probe_after_consent.json` | PASS；用户确认人工授权成功；复核探针显示固定域名 tunnel 可达、外部 health 200、Spotify status `connected=true`、auth data 可读、login URL 仍使用 ngrok callback、invalid-state callback 仍回跳 ngrok settings 并带 `X-Request-ID` |
 | 脚本/质量门 | focused script tests、`test_fullstack_verification_check_script.py`、`.venv/bin/pre-commit run --all-files`、`sh scripts/fullstack_verification_check.sh ... --web-vitals --resource-snapshot` | 相关脚本单测 PASS；pre-commit ruff / ruff format / mypy / detect-secrets PASS；完整 fullstack verification 最终 PASS |
 
 ## Chrome 崩溃说明
@@ -103,7 +104,6 @@
 
 ## 剩余风险
 
-- 2026-06-28 复核时，真实 ngrok HTTPS tunnel 仍可建立；ngrok 免费 agent 在当前 shell 代理变量存在时会被 `ERR_NGROK_9009` 拒绝，清空 `HTTP_PROXY/HTTPS_PROXY/ALL_PROXY` 后固定域名可用。Spotify OAuth 的外部 HTTPS 初段、已连接状态（`connected=true`）、auth data、login URL 和 callback 回跳均已通过非破坏性探针；仍未重新执行需要用户交互的 Spotify 登录/同意授权点击，因此“fresh 用户浏览器 consent 闭环”保留为人工验证项。
 - Playwright WebKit 仍只能代表 Safari-family 引擎 smoke，不等同用户真实 Safari.app 手工会话。
 - 生产构建仍提示动态大 chunk：`EChartsTheme` 仍服务于分析/详情等复杂图表页，OpenCC `cn2t` 字典仍是用户切换繁体时按需加载的大字典；它们已不再属于首页 Dashboard 的 preload 依赖。
 
@@ -118,7 +118,7 @@
 | 前端页面无白屏、无 console error/warning、无横向溢出 | dev/prod-preview route、interaction、chart、control inventory、long-list、Chromium/Firefox/WebKit smoke 均 PASS；control inventory 当前覆盖 38 组合；long-list 当前 7/7 | 已满足 |
 | 性能量化与资源占用 | API benchmark 无 hot P95 >500ms；production Web Vitals 在资源预算内，首页 ECharts 版本 production preview desktop LCP 2060ms / CLS 0 / TBT 0ms、mobile LCP 612ms / CLS 0 / TBT 0ms；runtime resource probe 总 RSS 826.4MB / CPU 77.7% | 已满足 |
 | 文档与交付报告 | README、AGENTS、CLAUDE、backend/CLAUDE 与本报告已同步最新测试基线、修复项、性能数据和 10 分钟复核步骤 | 已满足 |
-| 真实 ngrok HTTPS + Spotify 外部 OAuth 浏览器授权闭环 | 本地 OAuth PKCE contract、Spotify auth JSON 端点、login ngrok redirect_uri、invalid-state callback ngrok origin、外部 HTTPS health/status/data/login 入口均已验证；2026-06-28 固定域名 tunnel 已可建立，外部 status 为 `connected=true` 且 auth data 可读 | ngrok 网络阻塞已解除；仍需用户在真实浏览器中重新点击 Spotify 登录/同意授权以确认 fresh consent 闭环 |
+| 真实 ngrok HTTPS + Spotify 外部 OAuth 浏览器授权闭环 | 本地 OAuth PKCE contract、Spotify auth JSON 端点、login ngrok redirect_uri、invalid-state callback ngrok origin、外部 HTTPS health/status/data/login 入口均已验证；2026-06-28 固定域名 tunnel 已可建立，用户已在真实浏览器中完成人工 Spotify 登录/同意授权，复核探针显示外部 status 为 `connected=true` 且 auth data 可读 | 已满足 |
 | 生成代码提交 | 本轮修复按功能拆分提交，分支领先远端；未执行 push | 已满足本地提交要求 |
 
 ## 10 分钟快速复核
@@ -129,5 +129,5 @@
 4. 运行 `node scripts/frontend_route_smoke.mjs --base-url http://localhost:5173 --api-base-url http://127.0.0.1:8000 --routes /analysis/behavior --viewport both --max-scroll-overflow 0 --fail-on-console-warning`；默认会优先使用 Playwright `chromium_headless_shell-*` / Chrome for Testing，如需指定浏览器再传 `--chrome` 或 `CHROME_PATH`。
 5. 访问首页 `/`，确认“月度播放趋势”仍正常显示；需要量化资源体积时，用生产 preview 跑 `node scripts/frontend_web_vitals_probe.mjs --base-url http://127.0.0.1:4173 --api-base-url http://127.0.0.1:8000 --routes / --viewport both --wait-ms 5000`。
 6. 访问 `/account`，确认账号 Hero 先显示，收藏/习惯内容随后填充；需要量化 LCP 时用 `node scripts/frontend_web_vitals_probe.mjs --base-url http://127.0.0.1:4173 --api-base-url http://127.0.0.1:8000 --routes /account --viewport both --wait-ms 5000`。
-7. 如需复核外部 OAuth 初段，先运行 `env -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY -u http_proxy -u https_proxy -u all_proxy ngrok http --url=stuffing-nebula-tamer.ngrok-free.dev 5173`，再运行 `.venv/bin/python scripts/spotify_oauth_external_probe.py --json-output /tmp/spotify_oauth_external_probe.json`；该探针不会交换真实授权 code，fresh consent 仍需浏览器人工点击。
+7. 如需复核外部 OAuth 初段，先运行 `env -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY -u http_proxy -u https_proxy -u all_proxy ngrok http --url=stuffing-nebula-tamer.ngrok-free.dev 5173`，再运行 `.venv/bin/python scripts/spotify_oauth_external_probe.py --json-output /tmp/spotify_oauth_external_probe.json`；该探针不会交换真实授权 code，如需重新验证 fresh consent，仍需浏览器人工点击。
 7. 运行 `sh scripts/phase5_check.sh`，确认最低验证矩阵仍全绿。
