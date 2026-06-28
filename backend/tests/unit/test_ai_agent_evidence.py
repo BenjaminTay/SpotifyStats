@@ -98,3 +98,72 @@ def test_final_prompt_includes_requested_entity_coverage_manifest() -> None:
         payload["coverage"]["entities"]["The Life of a Showgirl"]["billboard_entity_detail"]
         == "found"
     )
+
+
+def test_chat_agent_retries_when_critic_rejects_external_billboard_claim(monkeypatch) -> None:
+    class FakeConn:
+        def close(self) -> None:
+            pass
+
+    class FakeRepo:
+        def __init__(self) -> None:
+            self.result: dict[str, Any] | None = None
+
+        def update_run_if_not_terminal(self, **kwargs: Any) -> bool:
+            if "result" in kwargs:
+                self.result = kwargs["result"]
+            return True
+
+        def add_event(self, **kwargs: Any) -> None:
+            pass
+
+        def get_run(self, task_id: str) -> dict[str, str]:
+            return {"status": "running"}
+
+        def add_tool_call(self, **kwargs: Any) -> None:
+            pass
+
+    fake_repo = FakeRepo()
+    llm_calls: list[tuple[str, str, float]] = []
+
+    def fake_llm_chat(system_prompt: str, user_content: str, temperature: float = 0.3) -> str:
+        llm_calls.append((system_prompt, user_content, temperature))
+        if len(llm_calls) == 1:
+            return (
+                '[{"tool_name":"billboard_entity_detail",'
+                '"params":{"entity":"album","album_name":"GUTS"}}]'
+            )
+        if len(llm_calls) == 2:
+            return "GUTS 的 Billboard 市场影响力和商业成绩更强。"
+        assert "上一版回答与工具证据矛盾" in user_content
+        assert "外部官方 Billboard" in user_content
+        return "在你的个人 Billboard 口径里，GUTS 的榜单表现更强。"
+
+    def fake_dispatch_tool(tool_name: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
+        assert tool_name == "billboard_entity_detail"
+        assert (params or {})["album_name"] == "GUTS"
+        return {
+            "tool_name": tool_name,
+            "params_summary": "entity=album, album_name=GUTS",
+            "result_summary": "found=true, album=GUTS, weeks=34, peak=1",
+            "source_range": "all_years",
+            "data": {
+                "found": True,
+                "entity": "album",
+                "album_name": "GUTS",
+                "chart_summary": {"weeks_on_chart": 34, "peak_position": 1},
+            },
+        }
+
+    monkeypatch.setattr(ai_agent_service, "get_db", lambda readonly=False: FakeConn())
+    monkeypatch.setattr(ai_agent_service, "AiTaskRepository", lambda conn: fake_repo)
+    monkeypatch.setattr(ai_agent_service.ai_insights_service, "_llm_chat", fake_llm_chat)
+    monkeypatch.setattr(ai_agent_service, "dispatch_tool", fake_dispatch_tool)
+
+    ai_agent_service.run_chat_agent_task("task-critic-retry", {"question": "GUTS 的榜单成绩如何？"})
+
+    assert fake_repo.result is not None
+    assert fake_repo.result["answer_retried"] is True
+    assert fake_repo.result["answer"] == "在你的个人 Billboard 口径里，GUTS 的榜单表现更强。"
+    assert any("外部官方 Billboard" in issue for issue in fake_repo.result["validation_issues"])
+    assert len(llm_calls) == 3

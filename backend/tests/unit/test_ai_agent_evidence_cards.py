@@ -218,6 +218,10 @@ def test_final_payload_preserves_compare_entities_core_evidence():
     assert any(
         metric["name"] == "GUTS_total_plays" for metric in payload["evidence_cards"][0]["metrics"]
     )
+    assert any(
+        metric["name"] == "The Life of a Showgirl_power_score"
+        for metric in payload["evidence_cards"][0]["metrics"]
+    )
 
 
 def test_final_payload_includes_compact_evidence_cards():

@@ -38,7 +38,7 @@ def compact_evidence_cards(
     cards: list[EvidenceCard],
     *,
     max_cards: int = 12,
-    max_metrics_per_card: int = 10,
+    max_metrics_per_card: int = 20,
 ) -> list[dict[str, Any]]:
     compact: list[dict[str, Any]] = []
     for card in cards[:max_cards]:

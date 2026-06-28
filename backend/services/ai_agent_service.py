@@ -6,6 +6,7 @@ import json
 from typing import Any
 
 from backend.core.db import get_db
+from backend.domains.ai_agent.answer_critic import critique_answer
 from backend.domains.ai_agent.coverage_review import review_coverage
 from backend.domains.ai_agent.evidence import compact_evidence_cards
 from backend.domains.ai_agent.evidence_builders import build_evidence_cards
@@ -205,6 +206,14 @@ def _tool_call_identity(tool_call: dict[str, Any]) -> tuple[str, str]:
         "track_name",
         "query",
         "entity_type",
+        "min_ms",
+        "music_only",
+        "merge_enabled",
+        "dynamic_threshold",
+        "max_merge_gap_minutes",
+        "merge_level",
+        "year_start",
+        "year_end",
     )
     identity_params = {key: params[key] for key in identity_keys if key in params}
     if not identity_params:
@@ -275,6 +284,14 @@ def _execute_tool_call(
         "source_range": result.get("source_range", ""),
         "data": result.get("data"),
     }
+
+
+def _prepare_followup_tool_call(
+    followup: dict[str, Any],
+    request: dict[str, Any],
+) -> dict[str, Any] | None:
+    prepared = _sanitize_plan([followup], request)
+    return prepared[0] if prepared else None
 
 
 def _extract_json_array(raw: str | None) -> list[Any] | None:
@@ -774,14 +791,17 @@ def run_chat_agent_task(task_id: str, request: dict[str, Any]) -> None:
                 coverage_review["followup_tool_calls"],
                 start=1,
             ):
-                identity = _tool_call_identity(followup)
+                prepared_followup = _prepare_followup_tool_call(followup, request)
+                if prepared_followup is None:
+                    continue
+                identity = _tool_call_identity(prepared_followup)
                 if identity in executed_identities:
                     continue
                 executed_identities.add(identity)
                 result = _execute_tool_call(
                     repo,
                     task_id=task_id,
-                    tool_call=followup,
+                    tool_call=prepared_followup,
                     index=len(tool_results) + 1,
                     progress_pct=min(0.86, 0.78 + offset * 0.03),
                 )
@@ -821,6 +841,9 @@ def run_chat_agent_task(task_id: str, request: dict[str, Any]) -> None:
         answer = answer.strip()
         answer_retried = False
         validation_issues = _answer_validation_issues(answer, final_payload["coverage"])
+        critic_result = critique_answer(answer, final_payload)
+        if not critic_result["ok"]:
+            validation_issues.extend(str(issue) for issue in critic_result.get("issues", []))
         if validation_issues:
             retry_answer = ai_insights_service._llm_chat(
                 THINKING_FINAL_ANSWER_SYSTEM_PROMPT

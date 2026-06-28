@@ -45,11 +45,9 @@ def _comparison_already_found(
     entities: dict[str, Any],
     coverage: dict[str, Any],
 ) -> bool:
-    comparison = coverage.get("comparison")
-    if isinstance(comparison, dict) and comparison.get("compare_entities") == "found":
-        return True
     if not requested_entities:
-        return False
+        comparison = coverage.get("comparison")
+        return isinstance(comparison, dict) and comparison.get("compare_entities") == "found"
     return all(
         isinstance(entities.get(entity_name), dict)
         and entities[entity_name].get("compare_entities") == "found"
@@ -95,10 +93,29 @@ def review_coverage(
         entities,
         coverage,
     ):
+        if entity_type == "track" and len(requested_entities) >= 2:
+            followup_tool_calls.append(
+                {
+                    "tool_name": "compare_entities",
+                    "params": {
+                        "entity_type": "track",
+                        "names": requested_entities[:4],
+                    },
+                }
+            )
+            reasons.append("歌曲比较缺少完整播放统计和个人榜单证据")
+            return {
+                "sufficient": False,
+                "reasons": reasons,
+                "followup_tool_calls": followup_tool_calls,
+            }
+
         for entity_name in requested_entities:
             statuses = entities.get(entity_name, {})
             if not isinstance(statuses, dict):
                 statuses = {}
+            if statuses.get("compare_entities") == "found":
+                continue
             if statuses.get("entity_stats") != "found":
                 add_followup(
                     "entity_stats",

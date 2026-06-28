@@ -384,7 +384,13 @@ def test_chat_agent_adds_one_coverage_followup_round_for_missing_billboard(
             "question": (
                 "从播放次数和billboard榜单成绩来看，我对GUTS和"
                 "The Life of a Showgirl这两张专辑的喜爱程度哪张专辑更甚？"
-            )
+            ),
+            "min_ms": 45000,
+            "music_only": False,
+            "merge_enabled": False,
+            "dynamic_threshold": False,
+            "max_merge_gap_minutes": 45,
+            "merge_level": 3,
         },
     )
 
@@ -397,7 +403,16 @@ def test_chat_agent_adds_one_coverage_followup_round_for_missing_billboard(
     assert status_payload["result"]["tool_call_count"] == 4
     assert dispatched[-1] == (
         "billboard_entity_detail",
-        {"entity": "album", "album_name": "The Life of a Showgirl"},
+        {
+            "entity": "album",
+            "album_name": "The Life of a Showgirl",
+            "min_ms": 45000,
+            "music_only": False,
+            "merge_enabled": False,
+            "dynamic_threshold": False,
+            "max_merge_gap_minutes": 45,
+            "merge_level": 3,
+        },
     )
     assert "reviewing_coverage" in [event["stage"] for event in events_payload["events"]]
     assert [call["tool_name"] for call in events_payload["tool_calls"]] == [
