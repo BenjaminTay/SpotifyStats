@@ -410,6 +410,62 @@ def migrate_021(conn: sqlite3.Connection):
     )
 
 
+@migration(22, "ai_task_runs_events_tool_calls")
+def migrate_022(conn: sqlite3.Connection):
+    """Persist AI task progress, event history, and read-only tool traces."""
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS ai_task_runs (
+            task_id TEXT PRIMARY KEY,
+            task_type TEXT NOT NULL,
+            status TEXT NOT NULL,
+            stage TEXT NOT NULL,
+            progress_pct REAL NOT NULL DEFAULT 0,
+            message TEXT NOT NULL DEFAULT '',
+            request_json TEXT,
+            result_json TEXT,
+            error TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )"""
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_ai_task_runs_status ON ai_task_runs(status)")
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_ai_task_runs_type_created "
+        "ON ai_task_runs(task_type, created_at)"
+    )
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS ai_task_events (
+            event_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            task_id TEXT NOT NULL REFERENCES ai_task_runs(task_id) ON DELETE CASCADE,
+            event_type TEXT NOT NULL,
+            stage TEXT NOT NULL,
+            message TEXT NOT NULL DEFAULT '',
+            payload_json TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )"""
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_ai_task_events_task ON ai_task_events(task_id, event_id)"
+    )
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS ai_tool_calls (
+            tool_call_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            task_id TEXT NOT NULL REFERENCES ai_task_runs(task_id) ON DELETE CASCADE,
+            tool_name TEXT NOT NULL,
+            status TEXT NOT NULL,
+            params_summary TEXT NOT NULL DEFAULT '',
+            result_summary TEXT NOT NULL DEFAULT '',
+            source_range TEXT NOT NULL DEFAULT '',
+            error TEXT,
+            started_at TEXT NOT NULL DEFAULT (datetime('now')),
+            completed_at TEXT
+        )"""
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_ai_tool_calls_task ON ai_tool_calls(task_id, tool_call_id)"
+    )
+
+
 # ── Runner ────────────────────────────────────────────────────────────────
 
 

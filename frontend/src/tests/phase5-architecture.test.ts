@@ -46,6 +46,7 @@ import communityExperienceSource from '../features/community/CommunityExperience
 import communityAccountExperienceSource from '../features/community/CommunityAccountExperience.tsx?raw'
 import postDetailExperienceSource from '../features/community/PostDetailExperience.tsx?raw'
 import aiInsightsExperienceSource from '../features/ai-insights/AiInsightsExperience.tsx?raw'
+import aiReportsPanelSource from '../features/ai-insights/AiReportsPanel.tsx?raw'
 import chatInterfaceSource from '../features/ai-insights/ChatInterface.tsx?raw'
 import aiInsightsTimeSelectorsSource from '../features/ai-insights/AiInsightsTimeSelectors.tsx?raw'
 import chatMessageListSource from '../features/ai-insights/ChatMessageList.tsx?raw'
@@ -526,7 +527,8 @@ describe('Phase 5 architecture guardrails', () => {
     expect(aiInsightsExperienceSource).not.toContain('const enrichmentCache = new Map')
     expect(aiInsightsExperienceSource).not.toContain('const releaseCycleCache = new Map')
     expect(aiInsightsExperienceSource).not.toContain('const detailCache = new Map')
-    expect(aiInsightsExperienceSource).toContain('AiInsightsTimeSelectors')
+    expect(aiInsightsExperienceSource).toContain('AiReportsPanel')
+    expect(aiReportsPanelSource).toContain('AiInsightsTimeSelectors')
   })
 
   it('keeps ChatInterface under baseline with message list delegated', () => {

@@ -2129,6 +2129,125 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ai/tasks/report": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Report Task */
+        post: operations["create_report_task_api_ai_tasks_report_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ai/tasks/chat": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Chat Agent Task */
+        post: operations["create_chat_agent_task_api_ai_tasks_chat_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ai/tasks/enrichment/artist": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Artist Enrichment Task */
+        post: operations["create_artist_enrichment_task_api_ai_tasks_enrichment_artist_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ai/tasks/enrichment/album": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Album Enrichment Task */
+        post: operations["create_album_enrichment_task_api_ai_tasks_enrichment_album_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ai/tasks/{task_id}/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Ai Task Events */
+        get: operations["get_ai_task_events_api_ai_tasks__task_id__events_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ai/tasks/{task_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel Ai Task */
+        post: operations["cancel_ai_task_api_ai_tasks__task_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ai/tasks/{task_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Ai Task */
+        get: operations["get_ai_task_api_ai_tasks__task_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/chat/sessions": {
         parameters: {
             query?: never;
@@ -2437,6 +2556,126 @@ export interface components {
             /** Meta Json */
             meta_json?: string | null;
         };
+        /** AiTaskCreateResponse */
+        AiTaskCreateResponse: {
+            /** Task Id */
+            task_id: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "queued" | "running" | "done" | "error" | "cancelled";
+            /** Stage */
+            stage: string;
+            /**
+             * Progress Pct
+             * @default 0
+             */
+            progress_pct: number;
+            /**
+             * Message
+             * @default
+             */
+            message: string;
+            /** Result */
+            result?: {
+                [key: string]: unknown;
+            } | unknown[] | null;
+        };
+        /** AiTaskEvent */
+        AiTaskEvent: {
+            /** Event Id */
+            event_id: number;
+            /** Task Id */
+            task_id: string;
+            /** Event Type */
+            event_type: string;
+            /** Stage */
+            stage: string;
+            /**
+             * Message
+             * @default
+             */
+            message: string;
+            /** Payload */
+            payload?: {
+                [key: string]: unknown;
+            } | unknown[] | null;
+            /** Created At */
+            created_at: string;
+        };
+        /** AiTaskEventsResponse */
+        AiTaskEventsResponse: {
+            /** Found */
+            found: boolean;
+            /** Events */
+            events: components["schemas"]["AiTaskEvent"][];
+            /** Tool Calls */
+            tool_calls: components["schemas"]["AiToolCall"][];
+        };
+        /** AiTaskStatusResponse */
+        AiTaskStatusResponse: {
+            /** Found */
+            found: boolean;
+            /** Task Id */
+            task_id?: string | null;
+            /** Task Type */
+            task_type?: string | null;
+            /** Status */
+            status?: ("queued" | "running" | "done" | "error" | "cancelled") | null;
+            /** Stage */
+            stage?: string | null;
+            /** Progress Pct */
+            progress_pct?: number | null;
+            /** Message */
+            message?: string | null;
+            /** Request */
+            request?: {
+                [key: string]: unknown;
+            } | unknown[] | null;
+            /** Result */
+            result?: {
+                [key: string]: unknown;
+            } | unknown[] | null;
+            /** Error */
+            error?: string | null;
+            /** Created At */
+            created_at?: string | null;
+            /** Updated At */
+            updated_at?: string | null;
+        };
+        /** AiToolCall */
+        AiToolCall: {
+            /** Tool Call Id */
+            tool_call_id: number;
+            /** Task Id */
+            task_id: string;
+            /** Tool Name */
+            tool_name: string;
+            /** Status */
+            status: string;
+            /**
+             * Params Summary
+             * @default
+             */
+            params_summary: string;
+            /**
+             * Result Summary
+             * @default
+             */
+            result_summary: string;
+            /**
+             * Source Range
+             * @default
+             */
+            source_range: string;
+            /** Error */
+            error?: string | null;
+            /** Started At */
+            started_at: string;
+            /** Completed At */
+            completed_at?: string | null;
+        };
         /** AlbumChartDetailResponse */
         AlbumChartDetailResponse: {
             /** Found */
@@ -2503,6 +2742,13 @@ export interface components {
             genius?: {
                 [key: string]: unknown;
             } | null;
+        };
+        /** AlbumEnrichmentTaskRequest */
+        AlbumEnrichmentTaskRequest: {
+            /** Album Name */
+            album_name: string;
+            /** Artist Name */
+            artist_name: string;
         };
         /** AlbumMultiRequest */
         AlbumMultiRequest: {
@@ -3106,6 +3352,11 @@ export interface components {
                 [key: string]: unknown;
             } | null;
         };
+        /** ArtistEnrichmentTaskRequest */
+        ArtistEnrichmentTaskRequest: {
+            /** Artist Name */
+            artist_name: string;
+        };
         /** ArtistMultiRequest */
         ArtistMultiRequest: {
             /** Artist Names */
@@ -3421,6 +3672,47 @@ export interface components {
                     [key: string]: unknown;
                 };
             };
+        };
+        /** ChatAgentTaskRequest */
+        ChatAgentTaskRequest: {
+            /** Question */
+            question: string;
+            /** Conversation History */
+            conversation_history?: {
+                [key: string]: string;
+            }[] | null;
+            /**
+             * Thinking Mode
+             * @default false
+             */
+            thinking_mode: boolean;
+            /**
+             * Min Ms
+             * @default 30000
+             */
+            min_ms: number;
+            /**
+             * Music Only
+             * @default true
+             */
+            music_only: boolean;
+            /**
+             * Merge Enabled
+             * @default true
+             */
+            merge_enabled: boolean;
+            /**
+             * Dynamic Threshold
+             * @default true
+             */
+            dynamic_threshold: boolean;
+            /** Max Merge Gap Minutes */
+            max_merge_gap_minutes?: number | null;
+            /**
+             * Merge Level
+             * @default 1
+             */
+            merge_level: number;
         };
         /** ChatMessage */
         ChatMessage: {
@@ -5405,6 +5697,55 @@ export interface components {
              * @default []
              */
             tracks: string[];
+        };
+        /** ReportTaskRequest */
+        ReportTaskRequest: {
+            /**
+             * Report Type
+             * @enum {string}
+             */
+            report_type: "weekly" | "monthly" | "yearly";
+            /**
+             * Action
+             * @default cache_only
+             * @enum {string}
+             */
+            action: "cache_only" | "generate";
+            /**
+             * Force
+             * @default false
+             */
+            force: boolean;
+            /** Week Start */
+            week_start?: string | null;
+            /** Week End */
+            week_end?: string | null;
+            /** Month */
+            month?: string | null;
+            /** Year */
+            year?: number | null;
+            /**
+             * Min Ms
+             * @default 30000
+             */
+            min_ms: number;
+            /**
+             * Music Only
+             * @default true
+             */
+            music_only: boolean;
+            /**
+             * Merge Enabled
+             * @default true
+             */
+            merge_enabled: boolean;
+            /**
+             * Dynamic Threshold
+             * @default true
+             */
+            dynamic_threshold: boolean;
+            /** Max Merge Gap Minutes */
+            max_merge_gap_minutes?: number | null;
         };
         /** ReturningTrack */
         ReturningTrack: {
@@ -9875,16 +10216,32 @@ export interface operations {
                 post_types?: string | null;
                 limit?: number;
                 offset?: number;
+                /** @description Include compilation albums in album chart */
+                include_compilations?: boolean;
                 /** @description 最短播放时长 (毫秒) */
-                min_ms?: number;
+                min_ms?: number | null;
                 /** @description 仅音乐 */
-                music_only?: boolean;
-                /** @description 合并连续播放 */
-                merge_enabled?: boolean;
+                music_only?: boolean | null;
+                /** @description 单曲榜 Top N */
+                bb_top_n?: number | null;
+                /** @description 专辑榜 Top N */
+                bb_album_top_n?: number | null;
+                /** @description 艺人榜 Top N */
+                bb_artist_top_n?: number | null;
+                /** @description 周起始星期 (0=周一) */
+                bb_week_start_dow?: number | null;
+                /** @description 周起始小时 */
+                bb_week_start_hour?: number | null;
+                /** @description 起始年份 (含) */
+                year_start?: number | null;
+                /** @description 结束年份 (含) */
+                year_end?: number | null;
                 /** @description 使用动态有效播放阈值 */
                 dynamic_threshold?: boolean;
                 /** @description 连续播放最大合并间隔 (分钟) */
                 max_merge_gap_minutes?: number | null;
+                /** @description 版本合并严格度 */
+                merge_level?: number;
                 readonly?: boolean;
             };
             header?: never;
@@ -9922,16 +10279,32 @@ export interface operations {
                 date_to?: string | null;
                 artist_limit?: number;
                 track_limit?: number;
+                /** @description Include compilation albums in album chart */
+                include_compilations?: boolean;
                 /** @description 最短播放时长 (毫秒) */
-                min_ms?: number;
+                min_ms?: number | null;
                 /** @description 仅音乐 */
-                music_only?: boolean;
-                /** @description 合并连续播放 */
-                merge_enabled?: boolean;
+                music_only?: boolean | null;
+                /** @description 单曲榜 Top N */
+                bb_top_n?: number | null;
+                /** @description 专辑榜 Top N */
+                bb_album_top_n?: number | null;
+                /** @description 艺人榜 Top N */
+                bb_artist_top_n?: number | null;
+                /** @description 周起始星期 (0=周一) */
+                bb_week_start_dow?: number | null;
+                /** @description 周起始小时 */
+                bb_week_start_hour?: number | null;
+                /** @description 起始年份 (含) */
+                year_start?: number | null;
+                /** @description 结束年份 (含) */
+                year_end?: number | null;
                 /** @description 使用动态有效播放阈值 */
                 dynamic_threshold?: boolean;
                 /** @description 连续播放最大合并间隔 (分钟) */
                 max_merge_gap_minutes?: number | null;
+                /** @description 版本合并严格度 */
+                merge_level?: number;
                 readonly?: boolean;
             };
             header?: never;
@@ -9963,16 +10336,32 @@ export interface operations {
     get_community_post_api_community_post__post_id__get: {
         parameters: {
             query?: {
+                /** @description Include compilation albums in album chart */
+                include_compilations?: boolean;
                 /** @description 最短播放时长 (毫秒) */
-                min_ms?: number;
+                min_ms?: number | null;
                 /** @description 仅音乐 */
-                music_only?: boolean;
-                /** @description 合并连续播放 */
-                merge_enabled?: boolean;
+                music_only?: boolean | null;
+                /** @description 单曲榜 Top N */
+                bb_top_n?: number | null;
+                /** @description 专辑榜 Top N */
+                bb_album_top_n?: number | null;
+                /** @description 艺人榜 Top N */
+                bb_artist_top_n?: number | null;
+                /** @description 周起始星期 (0=周一) */
+                bb_week_start_dow?: number | null;
+                /** @description 周起始小时 */
+                bb_week_start_hour?: number | null;
+                /** @description 起始年份 (含) */
+                year_start?: number | null;
+                /** @description 结束年份 (含) */
+                year_end?: number | null;
                 /** @description 使用动态有效播放阈值 */
                 dynamic_threshold?: boolean;
                 /** @description 连续播放最大合并间隔 (分钟) */
                 max_merge_gap_minutes?: number | null;
+                /** @description 版本合并严格度 */
+                merge_level?: number;
                 readonly?: boolean;
             };
             header?: never;
@@ -11335,6 +11724,231 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SuggestedQuestionsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_report_task_api_ai_tasks_report_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReportTaskRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AiTaskCreateResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_chat_agent_task_api_ai_tasks_chat_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChatAgentTaskRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AiTaskCreateResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_artist_enrichment_task_api_ai_tasks_enrichment_artist_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ArtistEnrichmentTaskRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AiTaskCreateResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_album_enrichment_task_api_ai_tasks_enrichment_album_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AlbumEnrichmentTaskRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AiTaskCreateResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_ai_task_events_api_ai_tasks__task_id__events_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AiTaskEventsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_ai_task_api_ai_tasks__task_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AiTaskStatusResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_ai_task_api_ai_tasks__task_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AiTaskStatusResponse"];
                 };
             };
             /** @description Validation Error */

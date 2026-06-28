@@ -82,6 +82,31 @@ TARGETED_CONTRACT_OPERATIONS: dict[tuple[str, str], OperationEvidence] = {
         "backend/tests/contract/test_ai_insights_contract.py",
         "LLM question path is monkeypatched in contract tests to avoid external generation.",
     ),
+    ("POST", "/api/ai/tasks/report"): OperationEvidence(
+        "targeted_contract",
+        "backend/tests/contract/test_ai_task_api.py",
+        "AI report task creation and request validation are covered by contract tests.",
+    ),
+    ("POST", "/api/ai/tasks/chat"): OperationEvidence(
+        "targeted_contract",
+        "backend/tests/contract/test_ai_agent_task_contract.py",
+        "AI chat agent task creation and deterministic runner paths are covered by contract tests.",
+    ),
+    ("POST", "/api/ai/tasks/enrichment/artist"): OperationEvidence(
+        "targeted_contract",
+        "backend/tests/contract/test_ai_enrichment_tasks.py",
+        "Artist enrichment task creation, progress events, result, and validation are covered.",
+    ),
+    ("POST", "/api/ai/tasks/enrichment/album"): OperationEvidence(
+        "targeted_contract",
+        "backend/tests/contract/test_ai_enrichment_tasks.py",
+        "Album enrichment task creation, nullable wiki result, and validation are covered.",
+    ),
+    ("POST", "/api/ai/tasks/{task_id}/cancel"): OperationEvidence(
+        "targeted_contract",
+        "backend/tests/contract/test_ai_task_api.py",
+        "AI task cancellation state transitions are covered by contract tests.",
+    ),
     ("GET", "/api/billboard/enrichment/album/{album_name}"): OperationEvidence(
         "targeted_contract",
         "backend/tests/contract/test_billboard_enrichment_contract.py",

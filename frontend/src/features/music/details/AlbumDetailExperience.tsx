@@ -1,14 +1,16 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { queryKeys } from '@/api/query-keys'
 import type { AlbumDetailResponse, AlbumEnrichmentResponse, ReleaseCycleAlbumDetailResponse } from '@/types/billboard'
+import type { AiTaskRun } from '@/types/ai-tasks'
 import { EntityStatsPanel } from '@/components/shared/EntityStatsPanel'
 import { displayName } from '@/lib/chinese'
 import { getBillboardName } from '@/lib/billboard-name'
 import { AlertCircle } from 'lucide-react'
 import { getDefaultMergeLevel } from '@/lib/merge-level'
+import { useAiTask, useStartAlbumEnrichmentTask } from '@/hooks/useAiTasks'
 import { AlbumDetailHero, DetailTabs } from './MusicDetailHeader'
 import { AlbumDetailSkeleton } from './MusicDetailSkeletons'
 import { MusicChartOverviewSection } from './MusicChartOverviewSection'
@@ -25,6 +27,11 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: 'tracks', label: '单曲成绩' },
 ]
 
+function albumEnrichmentFromTask(task: AiTaskRun | null): AlbumEnrichmentResponse | null {
+  if (task?.status !== 'done' || !task.result || Array.isArray(task.result)) return null
+  return task.result as AlbumEnrichmentResponse
+}
+
 export function AlbumDetailExperience() {
   const { albumName } = useParams<{ albumName: string }>()
   const [searchParams] = useSearchParams()
@@ -40,16 +47,15 @@ export function AlbumDetailExperience() {
     enabled: !!albumName,
   })
 
+  const [albumEnrichmentTaskId, setAlbumEnrichmentTaskId] = useState<string | null>(null)
+  const albumEnrichmentStartedKeyRef = useRef<string | null>(null)
+  const {
+    mutateAsync: startAlbumEnrichmentTask,
+    isPending: albumEnrichmentStarting,
+  } = useStartAlbumEnrichmentTask()
+  const albumEnrichmentTask = useAiTask(albumEnrichmentTaskId)
+
   const releaseCycleParams = { weeks_before: 12, weeks_after: 24 }
-  const { data: enrichment = null } = useQuery({
-    queryKey: queryKeys.music.albumEnrichment(data?.album_name ?? '', data?.artist_name ?? ''),
-    queryFn: () =>
-      api.get<AlbumEnrichmentResponse>(
-        '/billboard/enrichment/album/' + encodeURIComponent(data!.album_name),
-        { artist_name: data!.artist_name },
-      ),
-    enabled: activeTab === 'era' && !!data?.found,
-  })
   const {
     data: releaseCycle = null,
     isFetching: releaseCycleLoading,
@@ -68,6 +74,36 @@ export function AlbumDetailExperience() {
     enabled: activeTab === 'era' && !!data?.found,
   })
   const releaseCycleError = releaseCycle?.error || releaseCycleQueryError?.message || null
+  const enrichment = albumEnrichmentFromTask(albumEnrichmentTask.task)
+  const enrichmentLoading =
+    albumEnrichmentStarting ||
+    (Boolean(albumEnrichmentTaskId) && albumEnrichmentTask.loading && !albumEnrichmentTask.task)
+
+  useEffect(() => {
+    if (activeTab !== 'era' || !data?.found) return
+    const album = data.album_name.trim()
+    const artist = data.artist_name.trim()
+    const key = `${artist}\u0000${album}`
+    if (!album || !artist || albumEnrichmentStartedKeyRef.current === key) return
+
+    let ignored = false
+    albumEnrichmentStartedKeyRef.current = key
+    setAlbumEnrichmentTaskId(null)
+
+    startAlbumEnrichmentTask({ album_name: album, artist_name: artist })
+      .then((task) => {
+        if (!ignored) setAlbumEnrichmentTaskId(task.task_id)
+      })
+      .catch(() => {
+        if (!ignored && albumEnrichmentStartedKeyRef.current === key) {
+          albumEnrichmentStartedKeyRef.current = null
+        }
+      })
+
+    return () => {
+      ignored = true
+    }
+  }, [activeTab, data?.album_name, data?.artist_name, data?.found, startAlbumEnrichmentTask])
 
   return (
     <>
@@ -145,6 +181,9 @@ export function AlbumDetailExperience() {
                 <AlbumEraSection
                   data={data}
                   enrichment={enrichment}
+                  enrichmentLoading={enrichmentLoading}
+                  enrichmentTask={albumEnrichmentTask.task}
+                  enrichmentTaskEvents={albumEnrichmentTask.events}
                   releaseCycle={releaseCycle}
                   releaseCycleLoading={releaseCycleLoading}
                   releaseCycleError={releaseCycleError}

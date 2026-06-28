@@ -349,6 +349,12 @@ DEFAULT_BOUNDARY_CASES: tuple[BoundaryCase, ...] = (
         expected_statuses=(200,),
         expect_validation_detail=False,
     ),
+    BoundaryCase(
+        "ai_task_long_missing",
+        f"/api/ai/tasks/{LONG_STRING}",
+        expected_statuses=(200,),
+        expect_validation_detail=False,
+    ),
     BoundaryCase("ai_insights_year_nonint", "/api/ai-insights/yearly-story", {"year": "twenty"}),
     BoundaryCase(
         "release_cycle_artist_weeks_before_low",

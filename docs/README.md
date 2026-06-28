@@ -49,6 +49,8 @@
 |------|------|
 | [`superpowers/specs/2026-06-26-billboard-year-end-design.md`](superpowers/specs/2026-06-26-billboard-year-end-design.md) | Billboard 年榜设计：年度单曲/专辑/艺人榜、Year-End Score、荣誉卡片与 UI 组织 |
 | [`superpowers/plans/2026-06-26-billboard-year-end.md`](superpowers/plans/2026-06-26-billboard-year-end.md) | Billboard 年榜实现计划与最终落地口径 |
+| [`superpowers/specs/2026-06-28-ai-observable-agent-orchestrator-design.md`](superpowers/specs/2026-06-28-ai-observable-agent-orchestrator-design.md) | AI 可观察任务与只读 Agent Orchestrator V2 设计 |
+| [`superpowers/plans/2026-06-28-ai-observable-agent-orchestrator.md`](superpowers/plans/2026-06-28-ai-observable-agent-orchestrator.md) | AI Orchestrator V2 实现计划、验收清单与当前落地状态 |
 
 ## 历史归档
 

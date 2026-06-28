@@ -84,6 +84,8 @@ def test_openapi_parameter_boundary_audit_records_evidence_for_string_resilience
     assert "library_saved_tracks_search_long" in obligations[("query", "search", "string")].evidence
     assert obligations[("path", "album_name", "string")].category == "string_resilience_probe"
     assert "billboard_album_long_name" in obligations[("path", "album_name", "string")].evidence
+    assert obligations[("path", "task_id", "string")].category == "string_resilience_probe"
+    assert "ai_task_long_missing" in obligations[("path", "task_id", "string")].evidence
     assert obligations[("path", "track_name", "string")].category == (
         "controlled_stateful_or_external"
     )

@@ -1,5 +1,26 @@
 # 变更日志
 
+## 2026-06-29 — AI 可观察任务与只读 Agent V2
+
+### 新增
+
+- **AI Task Orchestrator**：新增 AI task runs/events/tool calls 持久化模型，报告、AI 问答、艺人 career enrichment、专辑 era enrichment 统一展示阶段进度
+- **AI 报告 cache-first**：周报/月报/年度叙事不再打开页面自动调用 LLM；无缓存时显示手动生成，生成过程中展示准备数据、调用 LLM、保存缓存等事件
+- **只读 Agent 问答**：AI 问答改为 LLM 规划后端 allowlist read-only 工具，再基于工具结果生成回答；支持思考模式、工具轨迹、coverage 自检和矛盾回答重试
+- **证据压缩与提示词护栏**：最终回答只接收 compact evidence + coverage，prompt 明确个人 Billboard 不是外部官方 Billboard，并要求比较问题说明统计窗口和公平性限制
+
+### 验证
+
+- `pytest -m unit -q`：385 passed
+- `pytest -m contract -q`：222 passed
+- `cd frontend && npm test -- --run`：214 passed
+- `cd frontend && npm run build`
+- `ruff check backend/`
+- OpenAPI operation/parameter audit、API smoke/boundary、AI Insights interaction smoke、`/ai-insights` control inventory smoke 通过
+- 真实浏览器验证：在 `/ai-insights` 打开思考模式询问 GUTS vs The Life of a Showgirl，工具轨迹正确查询两张专辑的 entity stats 与个人 Billboard detail，回答不再误报 Showgirl 数据缺失
+
+---
+
 ## 2026-06-27 — 榜单社区口径同步
 
 ### 修复

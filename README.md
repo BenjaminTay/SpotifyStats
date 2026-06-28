@@ -12,9 +12,9 @@
 - **年度总结** — 播放分析内的自定义 Wrapped 总结（听歌人格识别 6 型、曲风五大洲全景、发现与回归、聆听深度金字塔、特殊时刻、年度对比）+ 官方 Wrapped 数据
 - **Billboard 周榜 / 年榜** — 周榜、每周榜首、年度单曲/专辑/艺人榜、走势总榜 Power Score、总榜、榜单记录、对决、发行周期分析
 - **榜单社区** — 按当前榜单设置口径生成模拟社区动态、账号时间线和热议趋势，支持精选/全部、时间范围、搜索和帖子详情
-- **音乐实体详情** — 歌曲/专辑/艺人全局页面，整合个人播放统计、Billboard 成绩、Genius 歌词、Wikipedia 百科
+- **音乐实体详情** — 歌曲/专辑/艺人全局页面，整合个人播放统计、Billboard 成绩、Genius 歌词、Wikipedia 百科；艺人与专辑 enrichment 会展示 Wikipedia/LLM 处理进度
 - **账号中心** — 播放分析内的收藏分析（生命周期、化学反应、品味迁徙、Flip Side）+ 搜索编年史、粉丝层级、播客、视频分析
-- **AI 洞察** — 自然语言听歌周报/月报/年度叙事 + 自由问答，LLM 驱动数据解读
+- **AI 洞察** — 自然语言听歌周报/月报/年度叙事 + 自由问答；报告为缓存优先、手动生成，问答通过只读 Agent 工具查询后端数据并展示进度和工具轨迹
 - **设置** — Spotify OAuth 连接管理、LLM 翻译配置（多提供商 + 档案管理）、数据过滤、版本合并、数据导入
 - **Spotify Web API** — OAuth PKCE 授权，回填收藏日期、Top 排行、最近播放、播放列表、实时播放状态
 
@@ -78,7 +78,7 @@ docker compose up -d
 
 **前端**：React 19 · TypeScript · Vite · Tailwind CSS v4 · shadcn/ui · React Router v7 · TanStack React Query · ECharts 6 · Vitest
 
-**基础设施**：AES-256-GCM 加密 · OAuth PKCE · Cache Manager (LRU+TTL) · 版本化 Migration · 后台 Job Queue · OpenAPI 自动生成类型 · Request ID 链路追踪 · Provider 错误分类 · GitHub Actions CI
+**基础设施**：AES-256-GCM 加密 · OAuth PKCE · Cache Manager (LRU+TTL) · 版本化 Migration · 后台 Job Queue · AI Task Orchestrator · OpenAPI 自动生成类型 · Request ID 链路追踪 · Provider 错误分类 · GitHub Actions CI
 
 ## 项目结构
 
@@ -87,7 +87,7 @@ SpotifyStats/
 ├── backend/               # FastAPI 后端（api/ → services/ → domains/ → core/）
 ├── frontend/              # React 前端
 │   └── src/
-│       ├── features/      # 业务组件（billboard/music/settings/account/ai-insights/community）
+│       ├── features/      # 业务组件（billboard/music/settings/account/ai-insights/ai-tasks/community）
 │       ├── pages/         # 路由级页面容器（React.lazy 分包）
 │       ├── components/    # ui/charts/layout/shared
 │       ├── hooks/         # 自定义 Hooks

@@ -12,6 +12,7 @@ import json
 import logging
 import re
 import sqlite3
+from collections.abc import Callable
 from datetime import date, datetime, timedelta, timezone
 from typing import Any, Optional
 
@@ -20,6 +21,9 @@ from backend.providers.llm.client import LLMProvider
 from backend.services.llm_translator import PROVIDERS, _get_config
 
 logger = logging.getLogger(__name__)
+
+ReportProgressCallback = Callable[[str, float, str], bool]
+ReportContinueCallback = Callable[[], bool]
 
 # ── Prompt templates ────────────────────────────────────────────────────────
 
@@ -235,12 +239,19 @@ def _get_cached(
     return row["data"], fetched_at
 
 
-def _write_cache(conn: sqlite3.Connection, cache_key: str, content: str) -> None:
+def _write_cache(
+    conn: sqlite3.Connection,
+    cache_key: str,
+    content: str,
+    *,
+    commit: bool = True,
+) -> None:
     conn.execute(
         "INSERT OR REPLACE INTO wikipedia_cache (cache_key, data, fetched_at) VALUES (?, ?, datetime('now'))",
         (cache_key, content),
     )
-    conn.commit()
+    if commit:
+        conn.commit()
 
 
 def _is_readonly_error(exc: sqlite3.Error) -> bool:
@@ -264,6 +275,69 @@ def _set_cache(conn: sqlite3.Connection, cache_key: str, content: str) -> None:
                     write_conn.close()
             return
         logger.warning("AI report cache write failed", exc_info=True)
+
+
+def _report_cache_key(
+    report_type: str,
+    *,
+    min_ms: int,
+    music_only: bool,
+    merge_enabled: bool,
+    dynamic_threshold: bool,
+    max_merge_gap_minutes: Optional[int],
+    week_start: str | None = None,
+    week_end: str | None = None,
+    month: str | None = None,
+    year: int | None = None,
+) -> str | None:
+    filter_part = _filter_cache_part(
+        min_ms, music_only, merge_enabled, dynamic_threshold, max_merge_gap_minutes
+    )
+    if report_type == "weekly":
+        return _cache_key("weekly", week_start or "", week_end or "", filter_part)
+    if report_type == "monthly":
+        return _cache_key("monthly", month or "", str(year or ""), filter_part)
+    if report_type == "yearly":
+        return _cache_key("yearly", str(year or ""), filter_part)
+    return None
+
+
+def store_report_cache(
+    conn: sqlite3.Connection,
+    report_type: str,
+    content: str,
+    *,
+    min_ms: int,
+    music_only: bool,
+    merge_enabled: bool,
+    dynamic_threshold: bool,
+    max_merge_gap_minutes: Optional[int],
+    week_start: str | None = None,
+    week_end: str | None = None,
+    month: str | None = None,
+    year: int | None = None,
+    commit: bool = True,
+) -> bool:
+    """Store a generated report in the shared report cache."""
+    cache_key = _report_cache_key(
+        report_type,
+        min_ms=min_ms,
+        music_only=music_only,
+        merge_enabled=merge_enabled,
+        dynamic_threshold=dynamic_threshold,
+        max_merge_gap_minutes=max_merge_gap_minutes,
+        week_start=week_start,
+        week_end=week_end,
+        month=month,
+        year=year,
+    )
+    if cache_key is None:
+        return False
+    if commit:
+        _set_cache(conn, cache_key, content)
+    else:
+        _write_cache(conn, cache_key, content, commit=False)
+    return True
 
 
 # ── Data gathering helpers ──────────────────────────────────────────────────
@@ -628,6 +702,109 @@ def _safe_extract_entities(gather_fn, *args, **kwargs) -> dict:
     return _extract_entities(data)
 
 
+def _should_continue_report(should_continue: ReportContinueCallback | None) -> bool:
+    return True if should_continue is None else bool(should_continue())
+
+
+def _emit_report_progress(
+    progress_callback: ReportProgressCallback | None,
+    stage: str,
+    progress_pct: float,
+    message: str,
+) -> bool:
+    return (
+        True if progress_callback is None else bool(progress_callback(stage, progress_pct, message))
+    )
+
+
+def peek_report_cache(
+    conn: sqlite3.Connection,
+    report_type: str,
+    *,
+    min_ms: int,
+    music_only: bool,
+    merge_enabled: bool,
+    dynamic_threshold: bool,
+    max_merge_gap_minutes: Optional[int],
+    week_start: str | None = None,
+    week_end: str | None = None,
+    month: str | None = None,
+    year: int | None = None,
+) -> dict:
+    """Return cached AI report metadata without calling the LLM or generating."""
+    key = _report_cache_key(
+        report_type,
+        min_ms=min_ms,
+        music_only=music_only,
+        merge_enabled=merge_enabled,
+        dynamic_threshold=dynamic_threshold,
+        max_merge_gap_minutes=max_merge_gap_minutes,
+        week_start=week_start,
+        week_end=week_end,
+        month=month,
+        year=year,
+    )
+    if key is None:
+        return {"cached": False, "report": None, "cached_at": None, "entities": None}
+
+    if report_type == "weekly":
+        ttl = _CACHE_TTL["weekly"]
+    elif report_type == "monthly":
+        ttl = _CACHE_TTL["monthly"]
+    elif report_type == "yearly":
+        ttl = _CACHE_TTL["yearly"]
+    else:
+        return {"cached": False, "report": None, "cached_at": None, "entities": None}
+
+    cached = _get_cached(conn, key, ttl)
+    if not cached:
+        return {"cached": False, "report": None, "cached_at": None, "entities": None}
+
+    entities: dict[str, Any] = {"artists": [], "tracks": []}
+    if report_type == "weekly":
+        entities = _safe_extract_entities(
+            _gather_weekly_data,
+            conn,
+            min_ms,
+            music_only,
+            merge_enabled,
+            week_start or "",
+            week_end or "",
+            dynamic_threshold=dynamic_threshold,
+            max_merge_gap_minutes=max_merge_gap_minutes,
+        )
+    elif report_type == "monthly":
+        entities = _safe_extract_entities(
+            _gather_monthly_data,
+            conn,
+            min_ms,
+            music_only,
+            merge_enabled,
+            month or "",
+            year or 0,
+            dynamic_threshold=dynamic_threshold,
+            max_merge_gap_minutes=max_merge_gap_minutes,
+        )
+    elif report_type == "yearly":
+        entities = _safe_extract_entities(
+            _gather_yearly_data,
+            conn,
+            min_ms,
+            music_only,
+            merge_enabled,
+            year or 0,
+            dynamic_threshold=dynamic_threshold,
+            max_merge_gap_minutes=max_merge_gap_minutes,
+        )
+
+    return {
+        "cached": True,
+        "report": cached[0],
+        "cached_at": cached[1],
+        "entities": entities,
+    }
+
+
 # ── Public report generation ────────────────────────────────────────────────
 
 
@@ -641,6 +818,9 @@ def generate_weekly_digest(
     force: bool = False,
     dynamic_threshold: bool = False,
     max_merge_gap_minutes: Optional[int] = None,
+    cache_result: bool = True,
+    progress_callback: ReportProgressCallback | None = None,
+    should_continue: ReportContinueCallback | None = None,
 ) -> dict:
     """Generate a natural-language weekly listening digest.
 
@@ -706,6 +886,18 @@ def generate_weekly_digest(
             "error": "该时间范围暂无听歌数据",
         }
 
+    if not _should_continue_report(should_continue):
+        return {"success": False, "report": None, "cached": False, "error": "任务已取消"}
+    if not _emit_report_progress(
+        progress_callback,
+        "calling_llm",
+        0.7,
+        "正在调用 LLM 生成报告",
+    ):
+        return {"success": False, "report": None, "cached": False, "error": "任务已取消"}
+    if not _should_continue_report(should_continue):
+        return {"success": False, "report": None, "cached": False, "error": "任务已取消"}
+
     entities = _extract_entities(data)
     user_content = f"DATA:\n{_data_to_json_safe(data)}"
     report = _llm_chat(WEEKLY_DIGEST_SYSTEM, user_content, temperature=0.5)
@@ -715,7 +907,8 @@ def generate_weekly_digest(
     if not report.strip():
         return {"success": False, "report": None, "cached": False, "error": "LLM 返回为空"}
 
-    _set_cache(conn, key, report)
+    if cache_result:
+        _set_cache(conn, key, report)
     return {
         "success": True,
         "report": report,
@@ -736,19 +929,24 @@ def generate_monthly_personality(
     force: bool = False,
     dynamic_threshold: bool = False,
     max_merge_gap_minutes: Optional[int] = None,
+    cache_result: bool = True,
+    progress_callback: ReportProgressCallback | None = None,
+    should_continue: ReportContinueCallback | None = None,
 ) -> dict:
     """Generate a monthly personality report.
 
     Returns:
         {'success': bool, 'report': str|None, 'error': str|None, 'cached': bool}
     """
-    key = _cache_key(
+    key = _report_cache_key(
         "monthly",
-        month,
-        str(year),
-        _filter_cache_part(
-            min_ms, music_only, merge_enabled, dynamic_threshold, max_merge_gap_minutes
-        ),
+        min_ms=min_ms,
+        music_only=music_only,
+        merge_enabled=merge_enabled,
+        dynamic_threshold=dynamic_threshold,
+        max_merge_gap_minutes=max_merge_gap_minutes,
+        month=month,
+        year=year,
     )
     cached = None if force else _get_cached(conn, key, _CACHE_TTL["monthly"])
     if cached:
@@ -797,6 +995,18 @@ def generate_monthly_personality(
     if data.get("summary", {}).get("total_plays", 0) == 0:
         return {"success": False, "report": None, "cached": False, "error": "该月暂无听歌数据"}
 
+    if not _should_continue_report(should_continue):
+        return {"success": False, "report": None, "cached": False, "error": "任务已取消"}
+    if not _emit_report_progress(
+        progress_callback,
+        "calling_llm",
+        0.7,
+        "正在调用 LLM 生成报告",
+    ):
+        return {"success": False, "report": None, "cached": False, "error": "任务已取消"}
+    if not _should_continue_report(should_continue):
+        return {"success": False, "report": None, "cached": False, "error": "任务已取消"}
+
     entities = _extract_entities(data)
     user_content = f"DATA:\n{_data_to_json_safe(data)}"
     report = _llm_chat(MONTHLY_PERSONALITY_SYSTEM, user_content, temperature=0.5)
@@ -806,7 +1016,8 @@ def generate_monthly_personality(
     if not report.strip():
         return {"success": False, "report": None, "cached": False, "error": "LLM 返回为空"}
 
-    _set_cache(conn, key, report)
+    if cache_result:
+        _set_cache(conn, key, report)
     return {
         "success": True,
         "report": report,
@@ -826,18 +1037,23 @@ def generate_yearly_story(
     force: bool = False,
     dynamic_threshold: bool = False,
     max_merge_gap_minutes: Optional[int] = None,
+    cache_result: bool = True,
+    progress_callback: ReportProgressCallback | None = None,
+    should_continue: ReportContinueCallback | None = None,
 ) -> dict:
     """Generate a narrative story from full Wrapped data.
 
     Returns:
         {'success': bool, 'report': str|None, 'error': str|None, 'cached': bool}
     """
-    key = _cache_key(
+    key = _report_cache_key(
         "yearly",
-        str(year),
-        _filter_cache_part(
-            min_ms, music_only, merge_enabled, dynamic_threshold, max_merge_gap_minutes
-        ),
+        min_ms=min_ms,
+        music_only=music_only,
+        merge_enabled=merge_enabled,
+        dynamic_threshold=dynamic_threshold,
+        max_merge_gap_minutes=max_merge_gap_minutes,
+        year=year,
     )
     cached = None if force else _get_cached(conn, key, _CACHE_TTL["yearly"])
     if cached:
@@ -888,6 +1104,18 @@ def generate_yearly_story(
             "error": f"{year} 年暂无听歌数据",
         }
 
+    if not _should_continue_report(should_continue):
+        return {"success": False, "report": None, "cached": False, "error": "任务已取消"}
+    if not _emit_report_progress(
+        progress_callback,
+        "calling_llm",
+        0.7,
+        "正在调用 LLM 生成报告",
+    ):
+        return {"success": False, "report": None, "cached": False, "error": "任务已取消"}
+    if not _should_continue_report(should_continue):
+        return {"success": False, "report": None, "cached": False, "error": "任务已取消"}
+
     entities = _extract_entities(data)
     user_content = f"DATA:\n{_data_to_json_safe(data)}"
     report = _llm_chat(YEARLY_STORY_SYSTEM, user_content, temperature=0.6)
@@ -897,7 +1125,8 @@ def generate_yearly_story(
     if not report.strip():
         return {"success": False, "report": None, "cached": False, "error": "LLM 返回为空"}
 
-    _set_cache(conn, key, report)
+    if cache_result:
+        _set_cache(conn, key, report)
     return {
         "success": True,
         "report": report,

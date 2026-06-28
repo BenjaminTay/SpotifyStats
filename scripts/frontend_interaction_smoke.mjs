@@ -458,13 +458,13 @@ function collectConsole(client) {
 const SCENARIOS = {
   'analysis-tabs': async ({ client, baseUrl, waitMs }) => {
     await navigate(client, baseUrl, '/analysis/stats', waitMs)
-    await waitForText(client, '总体播放统计', waitMs)
-    await clickText(client, '个人排行榜', waitMs)
+    await waitForText(client, '播放统计', waitMs)
+    await clickText(client, '播放排行', waitMs)
     await waitForPath(client, '/analysis/charts', waitMs)
-    await waitForText(client, 'PERSONAL CHARTS', waitMs)
-    await clickText(client, '总体统计', waitMs)
+    await waitForText(client, '播放排行', waitMs)
+    await clickText(client, '播放统计', waitMs)
     await waitForPath(client, '/analysis/stats', waitMs)
-    await waitForText(client, '总体播放统计', waitMs)
+    await waitForText(client, '播放统计', waitMs)
   },
 
   'billboard-routing': async ({ client, baseUrl, waitMs }) => {

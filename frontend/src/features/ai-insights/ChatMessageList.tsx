@@ -1,7 +1,10 @@
 import ReactMarkdown from 'react-markdown'
 import rehypeSanitize from 'rehype-sanitize'
-import { Calendar, RefreshCw, Sparkles, X } from 'lucide-react'
+import { Calendar, RefreshCw, X } from 'lucide-react'
+import { AITaskProgress } from '@/features/ai-tasks/AITaskProgress'
+import { AIToolTrace } from '@/features/ai-tasks/AIToolTrace'
 import type { ChatMessage, ReportType } from '@/types/ai-insights'
+import type { AiTaskEvent, AiTaskRun, AiToolCall } from '@/types/ai-tasks'
 import { REPORT_LABELS } from './aiInsightsData'
 
 function formatDateRange(start: string | null, end: string | null): string {
@@ -20,6 +23,11 @@ function periodLabel(periodInfo: string | null): string {
 interface Props {
   messages: ChatMessage[]
   asking: boolean
+  activeTask?: {
+    task: AiTaskRun | null
+    events: AiTaskEvent[]
+    toolCalls: AiToolCall[]
+  }
   retryingIdx: number | null
   reportContext?: ReportType
   onRetry: (idx: number) => void
@@ -30,6 +38,7 @@ interface Props {
 export function ChatMessageList({
   messages,
   asking,
+  activeTask,
   retryingIdx,
   reportContext,
   onRetry,
@@ -88,9 +97,9 @@ export function ChatMessageList({
                       {msg.meta?.period_info && (
                         <div className="mb-2 flex items-center gap-1 text-[10px] text-muted-foreground/40">
                           <Calendar className="h-2.5 w-2.5" />
-                          <span>{periodLabel(msg.meta.period_info)}</span>
-                          {formatDateRange(msg.meta.start_date, msg.meta.end_date) && (
-                            <span>· {formatDateRange(msg.meta.start_date, msg.meta.end_date)}</span>
+                          <span>{periodLabel(msg.meta.period_info ?? null)}</span>
+                          {formatDateRange(msg.meta.start_date ?? null, msg.meta.end_date ?? null) && (
+                            <span>· {formatDateRange(msg.meta.start_date ?? null, msg.meta.end_date ?? null)}</span>
                           )}
                         </div>
                       )}
@@ -99,6 +108,11 @@ export function ChatMessageList({
                           {msg.content}
                         </ReactMarkdown>
                       </div>
+                      {msg.meta?.tool_calls && msg.meta.tool_calls.length > 0 && (
+                        <div className="mt-3">
+                          <AIToolTrace toolCalls={msg.meta.tool_calls} />
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -106,20 +120,14 @@ export function ChatMessageList({
             </div>
           ))}
 
-          {/* Loading shimmer */}
           {asking && (
             <div className="flex justify-start">
-              <div className="max-w-[65%] rounded-r-2xl border-l-2 border-accent-foreground/20 bg-card/40 backdrop-blur-[8px] px-4 py-3">
-                <div className="flex items-center gap-2.5">
-                  <Sparkles className="h-3.5 w-3.5 animate-pulse text-muted-foreground/50" />
-                  <span className="text-[12px] text-muted-foreground/60">AI 正在分析你的听歌数据</span>
-                </div>
-                <div className="mt-2.5 h-1 w-full rounded-full bg-muted/20 overflow-hidden">
-                  <div className="h-full w-2/5 rounded-full bg-gradient-to-r from-transparent via-accent-foreground/10 to-transparent animate-pulse" />
-                </div>
+              <div className="max-w-[80%] space-y-3 rounded-r-2xl border-l-2 border-accent-foreground/20 bg-card/40 backdrop-blur-[8px] px-4 py-3">
+                <AITaskProgress task={activeTask?.task ?? null} events={activeTask?.events ?? []} />
+                <AIToolTrace toolCalls={activeTask?.toolCalls ?? []} />
                 <button
                   onClick={onCancel}
-                  className="mt-2.5 flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.6px] text-muted-foreground/30 transition-colors hover:text-destructive"
+                  className="flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.6px] text-muted-foreground/40 transition-colors hover:text-destructive"
                 >
                   <X className="h-3 w-3" />
                   取消

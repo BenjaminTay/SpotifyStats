@@ -7,11 +7,36 @@ import { ChatSessionList } from '@/features/ai-insights/ChatSessionList'
 import type { ChatSession } from '@/types/ai-insights'
 
 vi.mock('@/hooks/useAiInsights', () => ({
-  useAskQuestion: () => ({ ask: vi.fn(), asking: false, cancel: vi.fn() }),
   useSuggestedQuestions: () => ({ questions: [], isLoading: false }),
   useChatSession: () => ({ data: null }),
   useCreateSession: () => ({ mutateAsync: vi.fn() }),
   useAddMessage: () => ({ mutate: vi.fn() }),
+}))
+
+vi.mock('@/hooks/useSettings', () => ({
+  useSettings: () => ({
+    settings: {
+      min_ms: 30000,
+      music_only: true,
+      merge_enabled: true,
+      dynamic_threshold: true,
+      max_merge_gap_minutes: null,
+    },
+  }),
+}))
+
+vi.mock('@/hooks/useAiTasks', () => ({
+  useAiTask: () => ({
+    task: null,
+    events: [],
+    toolCalls: [],
+    loading: false,
+    fetching: false,
+    error: null,
+    refetch: vi.fn(),
+  }),
+  useStartChatAgentTask: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useCancelAiTask: () => ({ mutate: vi.fn() }),
 }))
 
 function makeSession(overrides: Partial<ChatSession> = {}): ChatSession {

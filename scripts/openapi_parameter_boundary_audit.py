@@ -298,6 +298,11 @@ BOUNDARY_EVIDENCE_BY_KEY: dict[tuple[str, str, str], ParameterEvidence] = {
         ("community_post_long_missing",),
         "community post id path strings accept overlong missing IDs as a controlled 404",
     ),
+    ("path", "task_id", "string"): ParameterEvidence(
+        "string_resilience_probe",
+        ("ai_task_long_missing",),
+        "AI task id path strings accept overlong missing IDs as a controlled not-found response",
+    ),
     ("path", "track_name", "string"): ParameterEvidence(
         "controlled_stateful_or_external",
         ("OpenAPI schema + Billboard enrichment degradation contracts",),

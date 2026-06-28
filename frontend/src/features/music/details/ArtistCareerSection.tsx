@@ -1,23 +1,35 @@
 import { ExternalLink } from 'lucide-react'
 import type { ArtistEnrichmentResponse, ArtistSpotifyMeta } from '@/types/billboard'
+import type { AiTaskEvent, AiTaskRun } from '@/types/ai-tasks'
 import { GlassCard } from '@/components/shared/GlassCard'
 import { FormattedText } from '@/components/shared/FormattedText'
 import { ArtistEnrichmentView } from '@/components/shared/ArtistEnrichmentView'
+import { AITaskProgress } from '@/features/ai-tasks/AITaskProgress'
 import { Skeleton } from '@/components/ui/skeleton'
 import { formatArtistFollowers } from './MusicDetailHeader'
 
 export function ArtistCareerSection({
   enrichment,
   enrichmentLoading,
+  enrichmentTask,
+  enrichmentTaskEvents,
   meta,
 }: {
   enrichment: ArtistEnrichmentResponse | null
   enrichmentLoading: boolean
+  enrichmentTask: AiTaskRun | null
+  enrichmentTaskEvents: AiTaskEvent[]
   meta: ArtistSpotifyMeta | null
 }) {
+  const showEnrichmentTaskProgress = !!enrichmentTask && enrichmentTask.status !== 'done'
+
   return (
     <div className="mb-8">
-      {enrichmentLoading ? (
+      {showEnrichmentTaskProgress ? (
+        <div className="mb-8">
+          <AITaskProgress task={enrichmentTask} events={enrichmentTaskEvents} />
+        </div>
+      ) : enrichmentLoading ? (
         <div className="space-y-4">
           <Skeleton className="h-[200px] w-full rounded-[16px]" />
           <Skeleton className="h-[120px] w-full rounded-[16px]" />

@@ -37,7 +37,7 @@ def test_openapi_operation_audit_accounts_for_all_operations():
     assert audit.operation_count >= 130
     assert audit.unaccounted_operations == ()
     assert audit.category_counts["safe_get_smoke"] >= 90
-    assert audit.category_counts["targeted_contract"] >= 30
+    assert audit.category_counts["targeted_contract"] >= 33
     assert_operation_audit(audit)
 
 
@@ -56,12 +56,41 @@ def test_openapi_operation_audit_records_evidence_for_high_risk_operations():
     assert "test_import_api_jobs.py" in operations[("POST", "/api/import/streaming")].evidence
     assert operations[("POST", "/api/ai-insights/ask")].category == "targeted_contract"
     assert "test_ai_insights_contract.py" in operations[("POST", "/api/ai-insights/ask")].evidence
+    assert operations[("POST", "/api/ai/tasks/report")].category == "targeted_contract"
+    assert "test_ai_task_api.py" in operations[("POST", "/api/ai/tasks/report")].evidence
+    assert operations[("POST", "/api/ai/tasks/chat")].category == "targeted_contract"
+    assert "test_ai_agent_task_contract.py" in operations[("POST", "/api/ai/tasks/chat")].evidence
+    assert operations[("POST", "/api/ai/tasks/enrichment/artist")].category == ("targeted_contract")
+    assert (
+        "test_ai_enrichment_tasks.py"
+        in operations[("POST", "/api/ai/tasks/enrichment/artist")].evidence
+    )
+    assert operations[("POST", "/api/ai/tasks/enrichment/album")].category == ("targeted_contract")
+    assert (
+        "test_ai_enrichment_tasks.py"
+        in operations[("POST", "/api/ai/tasks/enrichment/album")].evidence
+    )
+    assert operations[("POST", "/api/ai/tasks/{task_id}/cancel")].category == ("targeted_contract")
+    assert "test_ai_task_api.py" in operations[("POST", "/api/ai/tasks/{task_id}/cancel")].evidence
     assert operations[("POST", "/api/version-merge/apply")].category == (
         "controlled_external_or_stateful"
     )
     assert (
         "stateful local data mutation" in operations[("POST", "/api/version-merge/apply")].rationale
     )
+
+
+def test_ai_task_missing_routes_are_safe_get_smoke_cases():
+    from scripts.api_smoke_probe import DEFAULT_SAFE_GET_CASES
+
+    smoke_cases = {case.path: case for case in DEFAULT_SAFE_GET_CASES}
+
+    assert smoke_cases["/api/ai/tasks/nonexistent-smoke-task"].expected_json == {"found": False}
+    assert smoke_cases["/api/ai/tasks/nonexistent-smoke-task/events"].expected_json == {
+        "found": False,
+        "events": [],
+        "tool_calls": [],
+    }
 
 
 def test_openapi_operation_audit_renders_markdown_summary():

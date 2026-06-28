@@ -26,6 +26,7 @@ class SmokeCase:
     path: str
     params: dict[str, Any] | None = None
     expected_statuses: tuple[int, ...] = (200,)
+    expected_json: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -216,6 +217,16 @@ DEFAULT_SAFE_GET_CASES: tuple[SmokeCase, ...] = (
     SmokeCase("lyrics_url_missing", "/api/lyrics/-1/url"),
     SmokeCase("account", "/api/account"),
     SmokeCase("account_collection", "/api/account/collection-insights"),
+    SmokeCase(
+        "ai_task_missing",
+        "/api/ai/tasks/nonexistent-smoke-task",
+        expected_json={"found": False},
+    ),
+    SmokeCase(
+        "ai_task_events_missing",
+        "/api/ai/tasks/nonexistent-smoke-task/events",
+        expected_json={"found": False, "events": [], "tool_calls": []},
+    ),
     SmokeCase("ai_suggested_questions", "/api/ai-insights/suggested-questions", {"context": "chat"}),
     SmokeCase("chat_sessions", "/api/chat/sessions", {"limit": 5}),
     SmokeCase("chat_session_missing", "/api/chat/sessions/999999"),
@@ -234,7 +245,13 @@ def run_cases(client, cases: tuple[SmokeCase, ...] = DEFAULT_SAFE_GET_CASES) -> 
         status_ok = response.status_code in case.expected_statuses
         no_server_error = response.status_code < 500
         request_id_ok = bool(request_id)
-        ok = status_ok and no_server_error and request_id_ok
+        expected_json_ok = True
+        if case.expected_json is not None:
+            try:
+                expected_json_ok = response.json() == case.expected_json
+            except ValueError:
+                expected_json_ok = False
+        ok = status_ok and no_server_error and request_id_ok and expected_json_ok
         detail = ""
         if not status_ok:
             detail = f"expected {case.expected_statuses}, got {response.status_code}"
@@ -242,6 +259,8 @@ def run_cases(client, cases: tuple[SmokeCase, ...] = DEFAULT_SAFE_GET_CASES) -> 
             detail = f"server error {response.status_code}"
         elif not request_id_ok:
             detail = "missing X-Request-ID"
+        elif not expected_json_ok:
+            detail = f"expected JSON {case.expected_json}, got {response.text[:200]}"
         results.append(
             SmokeResult(
                 case=case,

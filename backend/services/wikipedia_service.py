@@ -6,6 +6,7 @@ import json
 import re
 import sqlite3
 import time
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from backend.core.db import get_db
@@ -17,6 +18,8 @@ USER_AGENT = "SpotifyStats/1.0 (personal analytics; contact@example.com)"
 
 PROXY = None
 WIKI_PROVIDER = None
+ProgressCallback = Callable[[str, str], None]
+ContinueCallback = Callable[[], bool]
 
 
 def _get_proxy():
@@ -339,17 +342,25 @@ def _ensure_cache_table():
 
 def _cache_get(key):
     """Get cached Wikipedia data. Returns dict or None."""
+    _hit, data = _cache_lookup(key)
+    return data
+
+
+def _cache_lookup(key):
+    """Get cached Wikipedia data and distinguish cached null from a miss."""
     try:
         conn = get_db()
-        row = conn.execute(
-            "SELECT data, fetched_at FROM wikipedia_cache WHERE cache_key = ?", (key,)
-        ).fetchone()
-        conn.close()
+        try:
+            row = conn.execute(
+                "SELECT data, fetched_at FROM wikipedia_cache WHERE cache_key = ?", (key,)
+            ).fetchone()
+        finally:
+            conn.close()
         if row:
-            return json.loads(row["data"])
+            return True, json.loads(row["data"])
     except sqlite3.OperationalError:
         pass
-    return None
+    return False, None
 
 
 def _cache_set(key, data):
@@ -362,6 +373,19 @@ def _cache_set(key, data):
     )
     conn.commit()
     conn.close()
+
+
+def _emit_progress(
+    progress_callback: ProgressCallback | None,
+    stage: str,
+    message: str,
+) -> None:
+    if progress_callback is not None:
+        progress_callback(stage, message)
+
+
+def _should_continue(should_continue: ContinueCallback | None) -> bool:
+    return True if should_continue is None else bool(should_continue())
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -477,15 +501,28 @@ def _add_translations(result):
 # ═══════════════════════════════════════════════════════════════════════════
 
 
-def get_album_wiki(album_name, artist_name):
+def get_album_wiki(
+    album_name,
+    artist_name,
+    progress_callback: ProgressCallback | None = None,
+    should_continue: ContinueCallback | None = None,
+):
     """Get Wikipedia enrichment for an album. Returns dict or None."""
     cache_key = f"album:{artist_name}:{album_name}"
-    cached = _cache_get(cache_key)
-    if cached:
+    _emit_progress(progress_callback, "checking_cache", "正在检查专辑 Wikipedia 缓存")
+    cache_hit, cached = _cache_lookup(cache_key)
+    if cache_hit:
+        _emit_progress(progress_callback, "checking_cache", "命中专辑 Wikipedia 缓存")
         return cached
 
+    _emit_progress(progress_callback, "fetching_external_data", "正在获取专辑 Wikipedia 外部资料")
     title, lang = find_album_page(album_name, artist_name)
     if not title:
+        if not _should_continue(should_continue):
+            return None
+        _emit_progress(
+            progress_callback, "saving_cache", "未找到专辑 Wikipedia 页面，正在保存空结果"
+        )
         _cache_set(cache_key, None)
         return None
 
@@ -545,6 +582,7 @@ def get_album_wiki(album_name, artist_name):
         },
     }
 
+    _emit_progress(progress_callback, "calling_llm", "正在调用 LLM 整理专辑百科")
     result = _add_translations(result)
 
     # Structured enrichment via LLM (full article -> JSON)
@@ -558,19 +596,33 @@ def get_album_wiki(album_name, artist_name):
         except Exception:
             pass
 
-    _cache_set(cache_key, result)
+    if _should_continue(should_continue):
+        _emit_progress(progress_callback, "saving_cache", "正在保存专辑 Wikipedia 缓存")
+        _cache_set(cache_key, result)
     return result
 
 
-def get_artist_wiki(artist_name):
+def get_artist_wiki(
+    artist_name,
+    progress_callback: ProgressCallback | None = None,
+    should_continue: ContinueCallback | None = None,
+):
     """Get Wikipedia enrichment for an artist. Returns dict or None."""
     cache_key = f"artist:{artist_name}"
-    cached = _cache_get(cache_key)
-    if cached:
+    _emit_progress(progress_callback, "checking_cache", "正在检查艺人 Wikipedia 缓存")
+    cache_hit, cached = _cache_lookup(cache_key)
+    if cache_hit:
+        _emit_progress(progress_callback, "checking_cache", "命中艺人 Wikipedia 缓存")
         return cached
 
+    _emit_progress(progress_callback, "fetching_external_data", "正在获取艺人 Wikipedia 外部资料")
     title, lang = find_artist_page(artist_name)
     if not title:
+        if not _should_continue(should_continue):
+            return None
+        _emit_progress(
+            progress_callback, "saving_cache", "未找到艺人 Wikipedia 页面，正在保存空结果"
+        )
         _cache_set(cache_key, None)
         return None
 
@@ -610,6 +662,7 @@ def get_artist_wiki(artist_name):
         },
     }
 
+    _emit_progress(progress_callback, "calling_llm", "正在调用 LLM 整理艺人百科")
     result = _add_translations(result)
 
     # Structured enrichment via LLM (full article -> JSON)
@@ -623,7 +676,9 @@ def get_artist_wiki(artist_name):
         except Exception:
             pass
 
-    _cache_set(cache_key, result)
+    if _should_continue(should_continue):
+        _emit_progress(progress_callback, "saving_cache", "正在保存艺人 Wikipedia 缓存")
+        _cache_set(cache_key, result)
     return result
 
 

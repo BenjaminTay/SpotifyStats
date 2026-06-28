@@ -10,7 +10,7 @@ UI：「编辑风 × 液态玻璃」— Playfair Display + Inter，毛玻璃，�
 
 导航命名：顶级入口使用“播放分析”；二级 tab 固定为“播放统计 / 播放排行 / 年度总结 / 播放记录 / 账号中心”。年度总结与账号中心保持在播放分析 tab 行内，避免恢复独立顶级入口或重复下拉入口。
 
-**当前状态**：Phase 5 产品化收口完成 + fix/bugfixes-and-polish。后端 520 (unit+contract) / 前端 147 测试 PASS，全栈 smoke 全部通过。开发台账与验证细节见 `AGENTS.md`、`docs/productization/`、`docs/verification/` 和 `docs/CHANGELOG.md`。最终交付报告见 `docs/productization/2026-06-22-phase5-delivery-report.md`。
+**当前状态**：Phase 5 产品化收口完成 + AI Observable Agent Orchestrator V2。AI 报告已改为缓存优先、手动生成并显示任务进度；AI 问答通过后端只读 Agent 工具查询数据，支持思考模式、工具轨迹、coverage 自检与矛盾回答重试；艺人与专辑详情 enrichment 已接入可观察任务。当前本地验证基线：后端 unit 385 / contract 222，前端 214，关键 smoke 与真实浏览器 AI 问答已复核。开发台账与验证细节见 `AGENTS.md`、`docs/productization/`、`docs/verification/`、`docs/superpowers/` 和 `docs/CHANGELOG.md`。
 
 ## 常用命令
 
@@ -112,9 +112,9 @@ JSON → import → SQLite → FastAPI (backend/) → React (frontend/)
                               └── Streamlit (app/ 冻结)
 ```
 
-**后端**：api/ → services/ → domains/（billboard/playback/settings/enrichment/community/chat）→ core/，辅以 infrastructure/http/ + providers/（spotify/genius/wikipedia/llm）
+**后端**：api/ → services/ → domains/（billboard/playback/settings/enrichment/community/chat/ai_agent/ai_tasks）→ core/，辅以 infrastructure/http/ + providers/（spotify/genius/wikipedia/llm）
 
-**前端**：pages/（route container，≤450 行）→ features/（analysis/records/Experience|6 Section|Primitives|Data、billboard/records|number-ones|all-time、community/Experience|Account|FeedToggle|TimeFilter|PostCard|Timeline|Sidebar|PostDetailExperience|MobileSidebarDrawer|communityData、ai-insights/Experience|ReportCard|ChatInterface|ChatSessionList|ChatSessionDrawer|SuggestedQuestions|Primitives|Data、music/details 的 header/primitives/skeletons/overview/tracks/albums/career/artist-releases/album-era 子 sections、settings/components、account/collection）→ components/（ui/charts/layout/shared）
+**前端**：pages/（route container，≤450 行）→ features/（analysis/records/Experience|6 Section|Primitives|Data、billboard/records|number-ones|all-time、community/Experience|Account|FeedToggle|TimeFilter|PostCard|Timeline|Sidebar|PostDetailExperience|MobileSidebarDrawer|communityData、ai-insights/Experience|ReportsPanel|ReportCard|ChatInterface|ChatComposer|ChatSessionList|ChatSessionDrawer|SuggestedQuestions|Primitives|Data、ai-tasks/Progress|ToolTrace|ResultShell、music/details 的 header/primitives/skeletons/overview/tracks/albums/career/artist-releases/album-era 子 sections、settings/components、account/collection）→ components/（ui/charts/layout/shared）
 
 **Phase 5 架构模式**：
 
@@ -140,6 +140,7 @@ JSON → import → SQLite → FastAPI (backend/) → React (frontend/)
 - **简繁转换 → `displayName()`；禁止直接导入默认 `opencc-js` full 包，也禁止模块初始化时预取已保存偏好的大字典**
 - 账号页长图片列表必须有预览上限或分页，并使用 `loading="lazy"` / `decoding="async"`
 - **新增外部 HTTP 调用 → Provider/HttpClient；禁止直接 `urllib.request.Request`/`urlopen`**
+- **AI Agent 工具必须后端 allowlist + read_only**；不得提供任意 SQL、任意 URL、settings/import/cache/playlist 写工具；最终回答只能基于 persisted tool results 和 coverage
 - **页面容器只做路由入口；业务逻辑在 `features/`**
 - 架构护栏测试 `phase5-architecture.test.ts` 对上述约定做负面断言强制执行
 - 使用 `PlayFilters` / `BillboardFilters` 的统计端点必须透传 `dynamic_threshold` 与 `max_merge_gap_minutes` 到最终计数管线；Community feed/trending/post detail 也必须使用 `BillboardFilters` + `MergeConfig`，并把 `merge_level` / `include_compilations` 纳入生成参数和 query key；新增入口要补传播测试或复用已有 service

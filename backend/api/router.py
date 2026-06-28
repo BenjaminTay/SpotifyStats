@@ -5,6 +5,7 @@ from fastapi import APIRouter
 from backend.api.account import router as account_router
 from backend.api.admin import router as admin_router
 from backend.api.ai_insights import router as ai_insights_router
+from backend.api.ai_tasks import router as ai_tasks_router
 from backend.api.analysis import router as analysis_router
 from backend.api.artist_deep import router as artist_deep_router
 from backend.api.behavior import router as behavior_router
@@ -57,6 +58,7 @@ api_router.include_router(lyrics_router, prefix="/lyrics", tags=["Lyrics"])
 api_router.include_router(music_router)
 api_router.include_router(account_router)
 api_router.include_router(ai_insights_router)
+api_router.include_router(ai_tasks_router)
 api_router.include_router(chat_router)
 api_router.include_router(admin_router)
 api_router.include_router(jobs_router)

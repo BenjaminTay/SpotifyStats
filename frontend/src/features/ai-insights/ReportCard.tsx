@@ -21,6 +21,10 @@ interface ReportCardProps {
   onRetry: () => void
   onCancel?: () => void
   onFollowUp?: (question: string, label: string) => void
+  showGenerateAction?: boolean
+  generateLoading?: boolean
+  onGenerate?: () => void
+  generateLabel?: string
 }
 
 function relativeTime(isoString: string | null): string {
@@ -76,12 +80,38 @@ export function ReportCard({
   onRetry,
   onCancel,
   onFollowUp,
+  showGenerateAction = false,
+  generateLoading = false,
+  onGenerate,
+  generateLabel = '生成报告',
 }: ReportCardProps) {
   const [copied, setCopied] = useState(false)
 
   if (loading && !report) return <ReportSkeleton onCancel={onCancel} />
   if (error) return <ErrorState message={error} onRetry={onRetry} />
   if (!report && !loading) {
+    if (showGenerateAction && onGenerate) {
+      return (
+        <div className="rounded-[16px] border border-border bg-card/40 p-6 backdrop-blur-[12px]">
+          <div className="flex flex-col items-center gap-4 py-12 text-center">
+            <div className="space-y-1">
+              <h2 className="font-serif text-[22px] font-bold">{title}</h2>
+              <p className="text-[13px] text-muted-foreground/60">
+                当前范围还没有缓存报告
+              </p>
+            </div>
+            <button
+              onClick={onGenerate}
+              disabled={generateLoading}
+              className="inline-flex items-center gap-2 rounded-full bg-accent-foreground px-5 py-2 text-[12px] font-semibold uppercase tracking-[0.8px] text-card transition-opacity hover:opacity-85 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${generateLoading ? 'animate-spin' : ''}`} />
+              {generateLabel}
+            </button>
+          </div>
+        </div>
+      )
+    }
     return (
       <div className="rounded-[16px] border border-border bg-card/40 p-6 backdrop-blur-[12px] flex items-center justify-center py-16">
         <p className="text-[13px] text-muted-foreground/60">该时间段暂无听歌数据</p>

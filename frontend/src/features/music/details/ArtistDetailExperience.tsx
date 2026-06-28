@@ -1,13 +1,15 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { queryKeys } from '@/api/query-keys'
 import type { ArtistDetailResponse, ArtistEnrichmentResponse, ReleaseCycleArtistOverviewResponse } from '@/types/billboard'
+import type { AiTaskRun } from '@/types/ai-tasks'
 import { EntityStatsPanel } from '@/components/shared/EntityStatsPanel'
 import { displayName } from '@/lib/chinese'
 import { getBillboardName } from '@/lib/billboard-name'
 import { AlertCircle } from 'lucide-react'
+import { useAiTask, useStartArtistEnrichmentTask } from '@/hooks/useAiTasks'
 import { ArtistDetailHero, DetailTabs } from './MusicDetailHeader'
 import { ArtistDetailSkeleton } from './MusicDetailSkeletons'
 import { MusicChartOverviewSection } from './MusicChartOverviewSection'
@@ -27,6 +29,11 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: 'albums', label: '专辑成绩' },
 ]
 
+function artistEnrichmentFromTask(task: AiTaskRun | null): ArtistEnrichmentResponse | null {
+  if (task?.status !== 'done' || !task.result || Array.isArray(task.result)) return null
+  return task.result as ArtistEnrichmentResponse
+}
+
 export function ArtistDetailExperience() {
   const { artistName } = useParams<{ artistName: string }>()
   const navigate = useNavigate()
@@ -41,18 +48,15 @@ export function ArtistDetailExperience() {
     enabled: !!artistName,
   })
 
-  const releaseCycleParams = { weeks_before: 4, weeks_after: 24, cover_version: 2 }
+  const [artistEnrichmentTaskId, setArtistEnrichmentTaskId] = useState<string | null>(null)
+  const artistEnrichmentStartedKeyRef = useRef<string | null>(null)
   const {
-    data: enrichment = null,
-    isFetching: enrichmentLoading,
-  } = useQuery({
-    queryKey: queryKeys.music.artistEnrichment(data?.artist_name ?? ''),
-    queryFn: () =>
-      api.get<ArtistEnrichmentResponse>(
-        '/billboard/enrichment/artist/' + encodeURIComponent(data!.artist_name),
-      ),
-    enabled: activeTab === 'career' && !!data?.found,
-  })
+    mutateAsync: startArtistEnrichmentTask,
+    isPending: artistEnrichmentStarting,
+  } = useStartArtistEnrichmentTask()
+  const artistEnrichmentTask = useAiTask(artistEnrichmentTaskId)
+
+  const releaseCycleParams = { weeks_before: 4, weeks_after: 24, cover_version: 2 }
   const {
     data: releaseCycle = null,
     isFetching: releaseCycleLoading,
@@ -67,6 +71,34 @@ export function ArtistDetailExperience() {
     enabled: activeTab === 'releases' && !!data?.found,
   })
   const releaseCycleError = releaseCycleQueryError?.message || null
+  const enrichment = artistEnrichmentFromTask(artistEnrichmentTask.task)
+  const enrichmentLoading =
+    artistEnrichmentStarting ||
+    (Boolean(artistEnrichmentTaskId) && artistEnrichmentTask.loading && !artistEnrichmentTask.task)
+
+  useEffect(() => {
+    if (activeTab !== 'career' || !data?.found) return
+    const artist = data.artist_name.trim()
+    if (!artist || artistEnrichmentStartedKeyRef.current === artist) return
+
+    let ignored = false
+    artistEnrichmentStartedKeyRef.current = artist
+    setArtistEnrichmentTaskId(null)
+
+    startArtistEnrichmentTask({ artist_name: artist })
+      .then((task) => {
+        if (!ignored) setArtistEnrichmentTaskId(task.task_id)
+      })
+      .catch(() => {
+        if (!ignored && artistEnrichmentStartedKeyRef.current === artist) {
+          artistEnrichmentStartedKeyRef.current = null
+        }
+      })
+
+    return () => {
+      ignored = true
+    }
+  }, [activeTab, data?.artist_name, data?.found, startArtistEnrichmentTask])
 
   return (
     <>
@@ -149,6 +181,8 @@ export function ArtistDetailExperience() {
                 <ArtistCareerSection
                   enrichment={enrichment}
                   enrichmentLoading={enrichmentLoading}
+                  enrichmentTask={artistEnrichmentTask.task}
+                  enrichmentTaskEvents={artistEnrichmentTask.events}
                   meta={data.meta}
                 />
               )}
