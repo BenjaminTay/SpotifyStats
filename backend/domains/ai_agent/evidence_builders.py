@@ -144,6 +144,30 @@ def _comparison_card(item: dict[str, Any], data: dict[str, Any]) -> EvidenceCard
             data.get("winner_by_intensity"),
         ),
     )
+    observations = [str(note) for note in data.get("fairness_notes", []) if isinstance(note, str)]
+    for entity in entities[:4]:
+        if not isinstance(entity, dict):
+            continue
+        name = str(entity.get("name") or entity.get("requested_name") or "实体")
+        if entity.get("found") is False:
+            observations.append(f"{name}: 未找到完整比较证据")
+        for metric_name, label, unit in (
+            ("plays", "播放次数", "plays"),
+            ("hours", "播放时长", "hours"),
+            ("power_score", "个人榜单 Power Score", None),
+            ("power_rank", "个人榜单排名", None),
+            ("weeks_on_chart", "在榜周数", "weeks"),
+            ("plays_per_chart_week", "单位在榜周播放", "plays/week"),
+        ):
+            _append_metric(
+                metrics,
+                _metric(
+                    f"{name}_{'total_plays' if metric_name == 'plays' else metric_name}",
+                    f"{name} {label}",
+                    entity.get(metric_name),
+                    unit,
+                ),
+            )
     return EvidenceCard(
         card_id=f"{data.get('entity_type', 'entity')}:comparison",
         title="实体比较摘要",
@@ -151,9 +175,7 @@ def _comparison_card(item: dict[str, Any], data: dict[str, Any]) -> EvidenceCard
         question_axis="comparison",
         source=_source(item),
         metrics=metrics,
-        observations=[
-            str(note) for note in data.get("fairness_notes", []) if isinstance(note, str)
-        ],
+        observations=observations,
         limitations=["比较结果同时包含累计播放/时长与单位在榜周归一化强度，最终回答必须说明口径。"],
     )
 

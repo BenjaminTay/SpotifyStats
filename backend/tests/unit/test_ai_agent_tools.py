@@ -823,3 +823,70 @@ def test_compare_entities_keeps_missing_entities(
     assert result["data"]["entities"][1]["name"] == "Unknown Album"
     assert result["data"]["entities"][1]["found"] is False
     assert result["data"]["entities"][1]["error"] == "not found"
+
+
+def test_compare_track_entities_preserves_track_names(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tool_registry.get_default_registry.cache_clear()
+
+    candidates = {
+        "vampire": {"name": "vampire", "track_id": 100},
+        "drivers license": {"name": "drivers license", "track_id": 200},
+    }
+
+    def fake_resolve_entities(conn: FakeReadonlyConn, *, query: str, entity_type: str, limit: int):
+        del conn, entity_type, limit
+        return {"found": True, "candidates": [candidates[query]]}
+
+    def fake_get_db(readonly: bool = True) -> FakeReadonlyConn:
+        assert readonly is True
+        return FakeReadonlyConn()
+
+    def fake_entity_stats_handler(params: tools.EntityStatsParams) -> tool_registry.AgentToolResult:
+        track_name = "vampire" if params.track_id == 100 else "drivers license"
+        plays = 435 if params.track_id == 100 else 400
+        return tool_registry.AgentToolResult(
+            data={
+                "found": True,
+                "entity": {"track_id": params.track_id, "track_name": track_name},
+                "summary": {"total_plays": plays, "total_hours": 20.0},
+            },
+            result_summary="found=true",
+            source_range="lifetime",
+        )
+
+    def fake_billboard_entity_detail_handler(
+        params: tools.BillboardEntityDetailParams,
+    ) -> tool_registry.AgentToolResult:
+        track_name = "vampire" if params.track_id == 100 else "drivers license"
+        return tool_registry.AgentToolResult(
+            data={
+                "found": True,
+                "track_name": track_name,
+                "artist_name": "Olivia Rodrigo",
+                "summary": {"weeks_on_chart": 30, "power_score": 100, "power_rank": 1},
+            },
+            result_summary="found=true",
+            source_range="all_years",
+        )
+
+    monkeypatch.setattr(tools, "get_db", fake_get_db)
+    monkeypatch.setattr(tools, "resolve_entities", fake_resolve_entities)
+    monkeypatch.setattr(tools, "entity_stats_handler", fake_entity_stats_handler)
+    monkeypatch.setattr(
+        tools,
+        "billboard_entity_detail_handler",
+        fake_billboard_entity_detail_handler,
+    )
+
+    result = tool_registry.dispatch_tool(
+        "compare_entities",
+        {"entity_type": "track", "names": ["vampire", "drivers license"]},
+    )
+
+    assert [entity["name"] for entity in result["data"]["entities"]] == [
+        "vampire",
+        "drivers license",
+    ]
+    assert result["data"]["winner_by_cumulative_plays"] == "vampire"

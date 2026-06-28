@@ -727,6 +727,41 @@ def _entity_errors(*payloads: dict[str, Any]) -> str | None:
     return "; ".join(errors) if errors else None
 
 
+def _nested_entity_value(payload: dict[str, Any], key: str) -> Any:
+    entity = payload.get("entity")
+    if isinstance(entity, dict):
+        return entity.get(key)
+    return None
+
+
+def _comparison_display_name(
+    *,
+    requested_name: str,
+    entity_type: str,
+    playback: dict[str, Any],
+    billboard: dict[str, Any],
+) -> str:
+    if entity_type == "track":
+        name = (
+            playback.get("track_name")
+            or _nested_entity_value(playback, "track_name")
+            or billboard.get("track_name")
+        )
+    elif entity_type == "album":
+        name = (
+            playback.get("album_name")
+            or _nested_entity_value(playback, "album_name")
+            or billboard.get("album_name")
+        )
+    else:
+        name = (
+            playback.get("artist_name")
+            or _nested_entity_value(playback, "artist_name")
+            or billboard.get("artist_name")
+        )
+    return str(name or requested_name)
+
+
 def _comparison_row(
     *,
     requested_name: str,
@@ -737,17 +772,13 @@ def _comparison_row(
 ) -> dict[str, Any]:
     summary = playback.get("summary") if isinstance(playback.get("summary"), dict) else {}
     metric_source = _metric_source(billboard, entity_type)
-    name = (
-        playback.get("album_name")
-        or billboard.get("album_name")
-        or playback.get("artist_name")
-        or billboard.get("artist_name")
-        or playback.get("track_name")
-        or billboard.get("track_name")
-        or requested_name
-    )
     row: dict[str, Any] = {
-        "name": str(name),
+        "name": _comparison_display_name(
+            requested_name=requested_name,
+            entity_type=entity_type,
+            playback=playback,
+            billboard=billboard,
+        ),
         "requested_name": requested_name,
         "entity_type": entity_type,
         "found": _entity_found(playback, billboard),
@@ -773,6 +804,8 @@ def _comparison_row(
         row["track_id"] = track_id
     if error := _entity_errors(playback, billboard):
         row["error"] = error
+    elif row["found"] is False:
+        row["error"] = "not found in local evidence"
     return row
 
 

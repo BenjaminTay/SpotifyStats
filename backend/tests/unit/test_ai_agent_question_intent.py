@@ -81,3 +81,17 @@ def test_planner_user_content_includes_question_intent() -> None:
     assert payload["question_intent"]["task_type"] == "comparison"
     assert payload["question_intent"]["entity_type"] == "album"
     assert payload["question_intent"]["entities"] == ["GUTS", "Sour"]
+
+
+def test_sanitize_plan_applies_merge_level_to_compare_entities() -> None:
+    plan = ai_agent_service._sanitize_plan(
+        [
+            {
+                "tool_name": "compare_entities",
+                "params": {"entity_type": "album", "names": ["A", "B"]},
+            }
+        ],
+        {"question": "A 和 B 哪张更高？", "merge_level": 3},
+    )
+
+    assert plan[0]["params"]["merge_level"] == 3

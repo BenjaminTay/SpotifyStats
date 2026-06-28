@@ -112,10 +112,20 @@ def test_builds_compare_entities_evidence_card():
                 "data": {
                     "entity_type": "album",
                     "entities": [
-                        {"name": "GUTS", "plays": 1749, "plays_per_chart_week": 22.14},
+                        {
+                            "name": "GUTS",
+                            "plays": 1749,
+                            "power_score": 13566,
+                            "power_rank": 4,
+                            "weeks_on_chart": 79,
+                            "plays_per_chart_week": 22.14,
+                        },
                         {
                             "name": "The Life of a Showgirl",
                             "plays": 1637,
+                            "power_score": 10629,
+                            "power_rank": 9,
+                            "weeks_on_chart": 37,
                             "plays_per_chart_week": 44.24,
                         },
                     ],
@@ -142,7 +152,72 @@ def test_builds_compare_entities_evidence_card():
     assert "winner_by_total_hours" in metric_names
     assert "winner_by_power_score" in metric_names
     assert "winner_by_intensity" in metric_names
+    assert "GUTS_total_plays" in metric_names
+    assert "The Life of a Showgirl_power_score" in metric_names
     assert any("最终回答必须说明口径" in item for item in cards[0].limitations)
+
+
+def test_final_payload_preserves_compare_entities_core_evidence():
+    payload = ai_agent_service._final_payload(
+        {
+            "question": "从播放次数和billboard榜单成绩来看，GUTS和The Life of a Showgirl哪张更甚？",
+            "conversation_history": [],
+        },
+        [
+            {
+                "tool_name": "compare_entities",
+                "status": "done",
+                "params_summary": ("entity_type=album, names=['GUTS', 'The Life of a Showgirl']"),
+                "result_summary": "entities=2, winner_by_plays=GUTS",
+                "source_range": "comparison",
+                "data": {
+                    "entity_type": "album",
+                    "entities": [
+                        {
+                            "name": "GUTS",
+                            "requested_name": "GUTS",
+                            "found": True,
+                            "plays": 1749,
+                            "hours": 95.6,
+                            "power_score": 13566,
+                            "power_rank": 4,
+                            "weeks_on_chart": 79,
+                            "plays_per_chart_week": 22.14,
+                        },
+                        {
+                            "name": "The Life of a Showgirl",
+                            "requested_name": "The Life of a Showgirl",
+                            "found": True,
+                            "plays": 1637,
+                            "hours": 96.0,
+                            "power_score": 10629,
+                            "power_rank": 9,
+                            "weeks_on_chart": 37,
+                            "plays_per_chart_week": 44.24,
+                        },
+                    ],
+                    "winner_by_cumulative_plays": "GUTS",
+                    "winner_by_total_hours": "The Life of a Showgirl",
+                    "winner_by_power_score": "GUTS",
+                    "winner_by_power_rank": "GUTS",
+                    "winner_by_intensity": "The Life of a Showgirl",
+                    "fairness_notes": ["对象进入你的播放历史时间不同，累计值和强度值需要分开看。"],
+                },
+            }
+        ],
+    )
+
+    compare_evidence = payload["tool_results"][0]["evidence"]
+    assert compare_evidence["winner_by_cumulative_plays"] == "GUTS"
+    assert compare_evidence["winner_by_intensity"] == "The Life of a Showgirl"
+    assert compare_evidence["entities"][0]["plays"] == 1749
+    assert compare_evidence["entities"][1]["power_score"] == 10629
+    assert payload["coverage"]["comparison"]["compare_entities"] == "found"
+    assert payload["coverage"]["entities"]["GUTS"]["compare_entities"] == "found"
+    assert payload["evidence_cards"][0]["metrics"][0]["name"] == "winner_by_cumulative_plays"
+    assert any(
+        metric["name"] == "GUTS_total_plays" for metric in payload["evidence_cards"][0]["metrics"]
+    )
 
 
 def test_final_payload_includes_compact_evidence_cards():

@@ -324,6 +324,97 @@ def test_chat_agent_retries_final_answer_when_it_contradicts_found_album_evidenc
     assert len(llm_calls) == 3
 
 
+def test_chat_agent_adds_one_coverage_followup_round_for_missing_billboard(
+    client,
+    monkeypatch,
+):
+    import backend.services.ai_agent_service as agent_service
+
+    llm_calls: list[tuple[str, str, float]] = []
+    dispatched: list[tuple[str, dict[str, Any]]] = []
+
+    def fake_llm_chat(system_prompt: str, user_content: str, temperature: float = 0.3):
+        llm_calls.append((system_prompt, user_content, temperature))
+        if len(llm_calls) == 1:
+            return (
+                '[{"tool_name":"entity_stats","params":{"entity":"album","album_name":"GUTS"}},'
+                '{"tool_name":"billboard_entity_detail","params":{"entity":"album",'
+                '"album_name":"GUTS"}},'
+                '{"tool_name":"entity_stats","params":{"entity":"album",'
+                '"album_name":"The Life of a Showgirl"}}]'
+            )
+        return "GUTS 的累计更强，The Life of a Showgirl 的近期榜单表现也已补查。"
+
+    def fake_dispatch_tool(tool_name: str, params: dict[str, Any] | None = None):
+        params = params or {}
+        dispatched.append((tool_name, dict(params)))
+        album_name = str(params.get("album_name") or "")
+        if tool_name == "entity_stats":
+            plays = 1749 if album_name == "GUTS" else 1637
+            return {
+                "tool_name": tool_name,
+                "params_summary": f"entity=album, album_name={album_name}",
+                "result_summary": f"found=true, plays={plays}",
+                "source_range": "lifetime",
+                "data": {
+                    "found": True,
+                    "album_name": album_name,
+                    "summary": {"total_plays": plays},
+                },
+            }
+        return {
+            "tool_name": tool_name,
+            "params_summary": f"entity=album, album_name={album_name}",
+            "result_summary": f"found=true, album={album_name}, weeks=12, peak=1",
+            "source_range": "all_years",
+            "data": {
+                "found": True,
+                "album_name": album_name,
+                "chart_summary": {"peak_position": 1},
+            },
+        }
+
+    monkeypatch.setattr(ai_task_service.threading, "Thread", SyncThread)
+    monkeypatch.setattr(agent_service.ai_insights_service, "_llm_chat", fake_llm_chat)
+    monkeypatch.setattr(agent_service, "dispatch_tool", fake_dispatch_tool)
+
+    create_response = client.post(
+        "/api/ai/tasks/chat",
+        json={
+            "question": (
+                "从播放次数和billboard榜单成绩来看，我对GUTS和"
+                "The Life of a Showgirl这两张专辑的喜爱程度哪张专辑更甚？"
+            )
+        },
+    )
+
+    assert create_response.status_code == 200
+    task_id = create_response.json()["task_id"]
+    status_payload = client.get(f"/api/ai/tasks/{task_id}").json()
+    events_payload = client.get(f"/api/ai/tasks/{task_id}/events").json()
+
+    assert status_payload["status"] == "done"
+    assert status_payload["result"]["tool_call_count"] == 4
+    assert dispatched[-1] == (
+        "billboard_entity_detail",
+        {"entity": "album", "album_name": "The Life of a Showgirl"},
+    )
+    assert "reviewing_coverage" in [event["stage"] for event in events_payload["events"]]
+    assert [call["tool_name"] for call in events_payload["tool_calls"]] == [
+        "entity_stats",
+        "billboard_entity_detail",
+        "entity_stats",
+        "billboard_entity_detail",
+    ]
+    assert (
+        status_payload["result"]["coverage"]["entities"]["The Life of a Showgirl"][
+            "billboard_entity_detail"
+        ]
+        == "found"
+    )
+    assert len(llm_calls) == 2
+
+
 def test_chat_agent_task_marks_error_when_final_llm_is_empty(client, monkeypatch):
     import backend.services.ai_agent_service as agent_service
 

@@ -6,6 +6,7 @@ import json
 from typing import Any
 
 from backend.core.db import get_db
+from backend.domains.ai_agent.coverage_review import review_coverage
 from backend.domains.ai_agent.evidence import compact_evidence_cards
 from backend.domains.ai_agent.evidence_builders import build_evidence_cards
 from backend.domains.ai_agent.question_intent import parse_question_intent
@@ -23,9 +24,10 @@ PLANNER_SYSTEM_PROMPT = """你是 SpotifyStats 的只读数据工具规划器。
 返回 ONLY JSON 数组，每项形如 {"tool_name":"analysis_stats","params":{...}}。
 最多返回 5 个工具调用。
 DATA.question_intent 是系统给出的结构化提示。
+如果 task_type=comparison 且 compare_entities 出现在 available_tools，优先调用 compare_entities；2-4 个同类实体比较不要拆成大量单实体工具。
 如果问题点名比较歌曲、专辑或艺人，优先同时查询 entity_stats 与 billboard_entity_detail。
 如果 task_type=comparison 且 entities 非空，必须为每个实体查询比较所需工具。
-如果 requested_metrics 包含 personal_billboard，必须使用 available_tools 中的 billboard_entity_detail；后续若 compare_entities 出现在 available_tools 才可使用。
+如果 requested_metrics 包含 personal_billboard，必须使用 available_tools 中的 billboard_entity_detail 或 compare_entities。
 如果 time_scope 不是 lifetime，至少一个工具调用必须使用对应 period 或自定义窗口。
 如果 thinking_mode=true，请优先规划 2-4 个互补工具用于交叉核对，例如总体统计、排行、记录或听歌时段。"""
 
@@ -193,6 +195,88 @@ def _raw_params_summary(params: dict[str, Any] | None) -> str:
     return rendered[:500]
 
 
+def _tool_call_identity(tool_call: dict[str, Any]) -> tuple[str, str]:
+    params = tool_call.get("params") if isinstance(tool_call.get("params"), dict) else {}
+    identity_keys = (
+        "entity",
+        "track_id",
+        "album_name",
+        "artist_name",
+        "track_name",
+        "query",
+        "entity_type",
+    )
+    identity_params = {key: params[key] for key in identity_keys if key in params}
+    if not identity_params:
+        identity_params = params
+    return (
+        str(tool_call.get("tool_name") or ""),
+        json.dumps(identity_params, ensure_ascii=False, sort_keys=True, default=str),
+    )
+
+
+def _execute_tool_call(
+    repo: AiTaskRepository,
+    *,
+    task_id: str,
+    tool_call: dict[str, Any],
+    index: int,
+    progress_pct: float,
+) -> dict[str, Any] | None:
+    tool_name = str(tool_call["tool_name"])
+    params = tool_call.get("params") if isinstance(tool_call.get("params"), dict) else {}
+    if not _set_stage(
+        repo,
+        task_id=task_id,
+        stage="calling_tool",
+        progress_pct=progress_pct,
+        message=f"正在调用只读工具：{tool_name}",
+        payload={"tool_name": tool_name, "index": index},
+    ):
+        return None
+    try:
+        result = dispatch_tool(tool_name, params)
+    except Exception as exc:
+        if _is_terminal(repo, task_id):
+            return None
+        error_message = str(exc) or exc.__class__.__name__
+        repo.add_tool_call(
+            task_id=task_id,
+            tool_name=tool_name,
+            status="error",
+            params_summary=_raw_params_summary(params),
+            result_summary="",
+            source_range="",
+            error=error_message,
+        )
+        return {
+            "tool_name": tool_name,
+            "status": "error",
+            "params_summary": _raw_params_summary(params),
+            "error": error_message,
+        }
+
+    if _is_terminal(repo, task_id):
+        return None
+    repo.add_tool_call(
+        task_id=task_id,
+        tool_name=result["tool_name"],
+        status="done",
+        params_summary=result.get("params_summary", ""),
+        result_summary=result.get("result_summary", ""),
+        source_range=result.get("source_range", ""),
+        error=None,
+    )
+    return {
+        "tool_name": result["tool_name"],
+        "status": "done",
+        "params_summary": result.get("params_summary", ""),
+        "result_summary": result.get("result_summary", ""),
+        "source_range": result.get("source_range", ""),
+        "data": result.get("data"),
+    }
+
+
 def _extract_json_array(raw: str | None) -> list[Any] | None:
     if not raw:
         return None
@@ -231,6 +315,7 @@ def _sanitize_plan(raw_items: list[Any], request: dict[str, Any]) -> list[dict[s
             "playback_records",
             "entity_stats",
             "billboard_entity_detail",
+            "compare_entities",
             "wrapped_yearly",
         }:
             merged_params.setdefault("merge_level", merge_level)
@@ -373,9 +458,68 @@ def _top_track_evidence(rows: Any) -> list[dict[str, Any]]:
     return compact
 
 
+def _compare_entities_evidence(data: dict[str, Any]) -> dict[str, Any]:
+    rows = data.get("entities")
+    compact_entities = []
+    if isinstance(rows, list):
+        for row in rows[:4]:
+            if not isinstance(row, dict):
+                continue
+            compact_entities.append(
+                {
+                    key: row.get(key)
+                    for key in (
+                        "name",
+                        "requested_name",
+                        "entity_type",
+                        "found",
+                        "error",
+                        "plays",
+                        "hours",
+                        "first_play_date",
+                        "latest_play_date",
+                        "power_score",
+                        "power_rank",
+                        "no1_weeks",
+                        "weeks_on_chart",
+                        "peak_position",
+                        "plays_per_chart_week",
+                    )
+                    if row.get(key) is not None
+                }
+            )
+    evidence = {
+        key: data.get(key)
+        for key in (
+            "entity_type",
+            "winner_by_cumulative_plays",
+            "winner_by_total_hours",
+            "winner_by_power_score",
+            "winner_by_power_rank",
+            "winner_by_intensity",
+        )
+        if data.get(key) is not None
+    }
+    if compact_entities:
+        evidence["entities"] = compact_entities
+    fairness_notes = data.get("fairness_notes")
+    if isinstance(fairness_notes, list):
+        evidence["fairness_notes"] = [str(note) for note in fairness_notes[:6]]
+    return evidence
+
+
 def _tool_data_evidence(data: Any) -> dict[str, Any]:
     if not isinstance(data, dict):
         return _list_summary(data)
+    if isinstance(data.get("entities"), list) and any(
+        key in data
+        for key in (
+            "winner_by_cumulative_plays",
+            "winner_by_power_score",
+            "winner_by_intensity",
+        )
+    ):
+        return _compare_entities_evidence(data)
     evidence: dict[str, Any] = {}
     for key in (
         "found",
@@ -439,7 +583,33 @@ def _tool_found_status(item: dict[str, Any]) -> str:
 def _build_coverage(tool_results: list[dict[str, Any]]) -> dict[str, Any]:
     entities: dict[str, dict[str, str]] = {}
     requested_entities: list[str] = []
+    comparison: dict[str, str] = {}
     for item in tool_results:
+        if item.get("tool_name") == "compare_entities":
+            data = item.get("data")
+            rows = data.get("entities") if isinstance(data, dict) else None
+            if isinstance(rows, list) and rows:
+                found_statuses: list[str] = []
+                for row in rows:
+                    if not isinstance(row, dict):
+                        continue
+                    entity_name = str(row.get("requested_name") or row.get("name") or "").strip()
+                    if not entity_name:
+                        continue
+                    if entity_name not in entities:
+                        entities[entity_name] = {}
+                        requested_entities.append(entity_name)
+                    status = "found" if row.get("found") is True else "missing"
+                    entities[entity_name]["compare_entities"] = status
+                    found_statuses.append(status)
+                if found_statuses:
+                    comparison["compare_entities"] = (
+                        "found"
+                        if all(status == "found" for status in found_statuses)
+                        else "missing"
+                    )
+            continue
+
         params_summary = str(item.get("params_summary") or "")
         entity_name = (
             _named_param(params_summary, "album_name")
@@ -454,7 +624,10 @@ def _build_coverage(tool_results: list[dict[str, Any]]) -> dict[str, Any]:
         entities[entity_name][str(item.get("tool_name") or "unknown_tool")] = _tool_found_status(
             item
         )
-    return {"requested_entities": requested_entities, "entities": entities}
+    coverage = {"requested_entities": requested_entities, "entities": entities}
+    if comparison:
+        coverage["comparison"] = comparison
+    return coverage
 
 
 def _final_payload(
@@ -568,69 +741,59 @@ def run_chat_agent_task(task_id: str, request: dict[str, Any]) -> None:
 
         tool_results: list[dict[str, Any]] = []
         for index, tool_call in enumerate(tool_plan[:MAX_TOOL_CALLS], start=1):
-            tool_name = str(tool_call["tool_name"])
-            params = tool_call.get("params") if isinstance(tool_call.get("params"), dict) else {}
+            result = _execute_tool_call(
+                repo,
+                task_id=task_id,
+                tool_call=tool_call,
+                index=index,
+                progress_pct=min(0.7, 0.35 + (index - 1) * 0.08),
+            )
+            if result is None:
+                return
+            tool_results.append(result)
+
+        question_intent = parse_question_intent(str(request.get("question", ""))).model_dump()
+        coverage_review = review_coverage(
+            question_intent=question_intent,
+            coverage=_build_coverage(tool_results),
+        )
+        if not coverage_review["sufficient"]:
             if not _set_stage(
                 repo,
                 task_id=task_id,
-                stage="calling_tool",
-                progress_pct=min(0.75, 0.15 + index * 0.1),
-                message=f"正在调用只读工具：{tool_name}",
-                payload={"tool_name": tool_name, "index": index},
+                stage="reviewing_coverage",
+                progress_pct=0.78,
+                message="正在补查缺失证据",
+                payload={"reasons": coverage_review["reasons"]},
             ):
                 return
-            try:
-                result = dispatch_tool(tool_name, params)
-            except Exception as exc:
-                if _is_terminal(repo, task_id):
-                    return
-                error_message = str(exc) or exc.__class__.__name__
-                repo.add_tool_call(
+            executed_identities = {
+                _tool_call_identity(planned_call) for planned_call in tool_plan[:MAX_TOOL_CALLS]
+            }
+            for offset, followup in enumerate(
+                coverage_review["followup_tool_calls"],
+                start=1,
+            ):
+                identity = _tool_call_identity(followup)
+                if identity in executed_identities:
+                    continue
+                executed_identities.add(identity)
+                result = _execute_tool_call(
+                    repo,
                     task_id=task_id,
-                    tool_name=tool_name,
-                    status="error",
-                    params_summary=_raw_params_summary(params),
-                    result_summary="",
-                    source_range="",
-                    error=error_message,
+                    tool_call=followup,
+                    index=len(tool_results) + 1,
+                    progress_pct=min(0.86, 0.78 + offset * 0.03),
                 )
-                tool_results.append(
-                    {
-                        "tool_name": tool_name,
-                        "status": "error",
-                        "params_summary": _raw_params_summary(params),
-                        "error": error_message,
-                    }
-                )
-                continue
-
-            if _is_terminal(repo, task_id):
-                return
-            repo.add_tool_call(
-                task_id=task_id,
-                tool_name=result["tool_name"],
-                status="done",
-                params_summary=result.get("params_summary", ""),
-                result_summary=result.get("result_summary", ""),
-                source_range=result.get("source_range", ""),
-                error=None,
-            )
-            tool_results.append(
-                {
-                    "tool_name": result["tool_name"],
-                    "status": "done",
-                    "params_summary": result.get("params_summary", ""),
-                    "result_summary": result.get("result_summary", ""),
-                    "source_range": result.get("source_range", ""),
-                    "data": result.get("data"),
-                }
-            )
+                if result is None:
+                    return
+                tool_results.append(result)
 
         if _thinking_mode_enabled(request) and not _set_stage(
             repo,
             task_id=task_id,
             stage="reviewing_evidence",
-            progress_pct=0.82,
+            progress_pct=0.87,
             message="正在交叉核对查询结果",
         ):
             return
