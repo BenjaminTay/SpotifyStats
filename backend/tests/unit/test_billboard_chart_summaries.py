@@ -85,6 +85,39 @@ def test_compute_artist_track_counts_picks_best_peak_track_and_counts_no1s():
     assert int(artist_a["artist_chart_no1_weeks"]) == 1
 
 
+def test_compute_artist_track_counts_defaults_missing_no1_weeks_to_zero():
+    artist_summary = pd.DataFrame(
+        [
+            {
+                "artist_name": "Artist A",
+                "track_id": 1,
+                "track_name": "Primary Hit",
+                "peak_position": 1,
+                "weeks_on_chart": 5,
+            },
+            {
+                "artist_name": "Featured Artist",
+                "track_id": 2,
+                "track_name": "Featured Entry",
+                "peak_position": 8,
+                "weeks_on_chart": 2,
+            },
+        ]
+    )
+    track_summary = pd.DataFrame(
+        [
+            {"artist_name": "Artist A", "weeks_at_no1": 3},
+        ]
+    )
+    weekly_album = pd.DataFrame(columns=["artist_name", "album_name", "rank", "billboard_week"])
+    weekly_artist = pd.DataFrame(columns=["artist_name", "rank", "billboard_week"])
+
+    result = compute_artist_track_counts(artist_summary, track_summary, weekly_album, weekly_artist)
+
+    featured = result[result["artist_name"] == "Featured Artist"].iloc[0]
+    assert int(featured["weeks_at_no1"]) == 0
+
+
 def test_compute_album_track_counts_picks_best_peak_track_per_album_artist():
     track_summary = pd.DataFrame(
         [

@@ -804,6 +804,14 @@ class TestBillboardDetails:
         assert len(d["tracks"]) > 10
         assert len(d["albums"]) >= 1
 
+    def test_artist_chart_detail_featured_artist_without_no1_weeks(self, client, default_params):
+        r = client.get("/api/billboard/artist/21 Savage", params=default_params)
+        assert r.status_code == 200
+        d = r.json()
+        assert d["found"] is True
+        assert d["artist_name"] == "21 Savage"
+        assert d["info"]["weeks_at_no1"] == 0
+
     def test_artist_chart_detail_not_found(self, client, default_params):
         r = client.get("/api/billboard/artist/NonExistentArtistXYZ123", params=default_params)
         assert r.status_code == 200

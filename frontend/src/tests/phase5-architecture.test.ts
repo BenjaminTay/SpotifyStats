@@ -53,6 +53,7 @@ import trackLyricsSectionSource from '../features/music/details/track/TrackLyric
 
 import mastheadSource from '../components/layout/Masthead.tsx?raw'
 import appLayoutSource from '../components/layout/AppLayout.tsx?raw'
+import routeContextSource from '../components/layout/routeContext.ts?raw'
 import billboardSubNavSource from '../components/shared/BillboardSubNav.tsx?raw'
 import chineseSource from '../lib/chinese.ts?raw'
 import billboardNameSource from '../lib/billboard-name.ts?raw'
@@ -296,6 +297,15 @@ describe('Phase 5 architecture guardrails', () => {
     expect(mastheadSource).toContain('whitespace-nowrap')
     expect(mastheadSource).toContain('basis-full')
     expect(mastheadSource).toContain('max-w-full')
+  })
+
+  it('keeps mobile masthead orientation explicit without duplicating detail breadcrumbs', () => {
+    expect(mastheadSource).toContain('getMastheadRouteContext')
+    expect(mastheadSource).toContain('scrollIntoView')
+    expect(mastheadSource).not.toContain('aria-label="当前位置"')
+    expect(mastheadSource).not.toContain('返回上一页')
+    expect(routeContextSource).toContain("pathname.startsWith('/music/artists/')")
+    expect(routeContextSource).toContain('activeNavTo: null')
   })
 
   it('keeps the app shell from allowing page-level horizontal scroll on mobile', () => {

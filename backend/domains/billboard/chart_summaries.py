@@ -158,6 +158,7 @@ def compute_artist_track_counts(
 
     artist_weeks_no1 = track_summary.groupby("artist_name")["weeks_at_no1"].sum().reset_index()
     artist_track_counts = artist_track_counts.merge(artist_weeks_no1, on="artist_name", how="left")
+    artist_track_counts["weeks_at_no1"] = artist_track_counts["weeks_at_no1"].fillna(0).astype(int)
 
     album_no1_artist = (
         weekly_album[weekly_album["rank"] == 1]
