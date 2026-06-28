@@ -32,6 +32,8 @@ MISSING_DATA_TOKENS = (
     "无法比较",
 )
 
+NEGATION_TOKENS = ("不是", "不能", "不代表", "不等于", "无法说明", "不能说明")
+
 
 def _sentences(answer: str) -> list[str]:
     normalized = answer
@@ -55,43 +57,61 @@ def _coverage_found_entities(coverage: Any) -> list[str]:
     return found_entities
 
 
-def _compare_entities_found(coverage: Any) -> bool:
+def _missing_claim_targets_entity(sentence: str, entity_name: str) -> bool:
+    entity_index = sentence.find(entity_name)
+    if entity_index < 0:
+        return False
+    after_entity = sentence[entity_index : entity_index + len(entity_name) + 24]
+    before_entity = sentence[max(0, entity_index - 12) : entity_index + len(entity_name)]
+    direct_missing_tokens = tuple(
+        token for token in MISSING_DATA_TOKENS if token not in {"无法比较"}
+    )
+    if any(token in after_entity for token in direct_missing_tokens):
+        return True
+    return any(token in before_entity for token in ("缺少", "缺乏", "未查询", "没有查询"))
+
+
+def _compare_entities_globally_found(coverage: Any) -> bool:
     if not isinstance(coverage, dict):
         return False
     comparison = coverage.get("comparison")
-    if isinstance(comparison, dict) and comparison.get("compare_entities") == "found":
-        return True
-    entities = coverage.get("entities")
-    if not isinstance(entities, dict):
-        return False
-    for tool_statuses in entities.values():
-        if isinstance(tool_statuses, dict) and tool_statuses.get("compare_entities") == "found":
-            return True
-    return False
+    return isinstance(comparison, dict) and comparison.get("compare_entities") == "found"
+
+
+def _is_negated_external_billboard_sentence(sentence: str) -> bool:
+    return any(token in sentence for token in NEGATION_TOKENS)
 
 
 def critique_answer(answer: str, final_payload: dict[str, Any]) -> dict[str, Any]:
     """Return deterministic answer issues without calling external services."""
     issues: list[str] = []
-    if any(token in answer for token in EXTERNAL_BILLBOARD_TOKENS) and not any(
-        qualifier in answer for qualifier in PERSONAL_BILLBOARD_QUALIFIERS
-    ):
-        issues.append("回答把 SpotifyStats 个人 Billboard 表述成外部官方 Billboard 或市场成绩。")
+    for sentence in _sentences(answer):
+        if not any(token in sentence for token in EXTERNAL_BILLBOARD_TOKENS):
+            continue
+        if _is_negated_external_billboard_sentence(sentence):
+            continue
+        if not any(qualifier in sentence for qualifier in PERSONAL_BILLBOARD_QUALIFIERS):
+            issues.append(
+                "回答把 SpotifyStats 个人 Billboard 表述成外部官方 Billboard 或市场成绩。"
+            )
+            break
 
     coverage = final_payload.get("coverage") if isinstance(final_payload, dict) else {}
     found_entities = _coverage_found_entities(coverage)
-    compare_found = _compare_entities_found(coverage)
+    compare_found = _compare_entities_globally_found(coverage)
     for sentence in _sentences(answer):
         if not any(token in sentence for token in MISSING_DATA_TOKENS):
             continue
-        if compare_found:
-            issues.append("compare_entities 已 found，但回答声称数据不足、未查询或无法比较。")
-            break
-        contradicted_entities = [entity for entity in found_entities if entity in sentence]
+        contradicted_entities = [
+            entity for entity in found_entities if _missing_claim_targets_entity(sentence, entity)
+        ]
         if contradicted_entities:
             issues.append(
                 f"{'、'.join(contradicted_entities)} 已查到 found 证据，但回答声称数据不足或未查询。"
             )
+            break
+        if compare_found:
+            issues.append("compare_entities 已 found，但回答声称数据不足、未查询或无法比较。")
             break
 
     return {"ok": len(issues) == 0, "issues": issues}

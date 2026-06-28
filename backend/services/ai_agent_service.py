@@ -204,6 +204,7 @@ def _tool_call_identity(tool_call: dict[str, Any]) -> tuple[str, str]:
         "album_name",
         "artist_name",
         "track_name",
+        "names",
         "query",
         "entity_type",
         "min_ms",
@@ -216,6 +217,9 @@ def _tool_call_identity(tool_call: dict[str, Any]) -> tuple[str, str]:
         "year_end",
     )
     identity_params = {key: params[key] for key in identity_keys if key in params}
+    names = identity_params.get("names")
+    if isinstance(names, list):
+        identity_params["names"] = sorted(str(name) for name in names)
     if not identity_params:
         identity_params = params
     return (

@@ -100,6 +100,23 @@ def test_final_prompt_includes_requested_entity_coverage_manifest() -> None:
     )
 
 
+def test_tool_call_identity_distinguishes_compare_entity_names() -> None:
+    first = ai_agent_service._tool_call_identity(
+        {
+            "tool_name": "compare_entities",
+            "params": {"entity_type": "album", "names": ["GUTS", "SOUR"]},
+        }
+    )
+    second = ai_agent_service._tool_call_identity(
+        {
+            "tool_name": "compare_entities",
+            "params": {"entity_type": "album", "names": ["GUTS", "SOUR", "brat"]},
+        }
+    )
+
+    assert first != second
+
+
 def test_chat_agent_retries_when_critic_rejects_external_billboard_claim(monkeypatch) -> None:
     class FakeConn:
         def close(self) -> None:
