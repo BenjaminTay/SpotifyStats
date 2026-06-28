@@ -169,7 +169,7 @@ Create `backend/domains/ai_agent/evidence.py`:
 
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -178,8 +178,8 @@ class EvidenceMetric(BaseModel):
     name: str
     label: str
     value: Any
-    unit: Optional[str] = None
-    note: Optional[str] = None
+    unit: str | None = None
+    note: str | None = None
 
 
 class EvidenceSource(BaseModel):
@@ -192,9 +192,9 @@ class EvidenceSource(BaseModel):
 class EvidenceCard(BaseModel):
     card_id: str
     title: str
-    entity_name: Optional[str] = None
-    entity_type: Optional[str] = None
-    question_axis: Optional[str] = None
+    entity_name: str | None = None
+    entity_type: str | None = None
+    question_axis: str | None = None
     source: EvidenceSource
     metrics: list[EvidenceMetric] = Field(default_factory=list)
     observations: list[str] = Field(default_factory=list)
@@ -324,7 +324,7 @@ Create `backend/domains/ai_agent/evidence_builders.py`:
 
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any
 
 from backend.domains.ai_agent.evidence import EvidenceCard, EvidenceMetric, EvidenceSource
 
@@ -342,8 +342,8 @@ def _metric(
     name: str,
     label: str,
     value: Any,
-    unit: Optional[str] = None,
-) -> Optional[EvidenceMetric]:
+    unit: str | None = None,
+) -> EvidenceMetric | None:
     if value is None:
         return None
     return EvidenceMetric(name=name, label=label, value=value, unit=unit)
