@@ -19,7 +19,7 @@ src/
 │   │   └── all-time/      ← AllTimeTable + Data
 │   ├── community/         ← CommunityExperience/Account + FeedToggle + TimeFilter + PostCard + PostMetrics + Timeline + Sidebar + PostDetailExperience + MobileSidebarDrawer + Skeleton + Data
 │   ├── ai-insights/        ← AiInsightsExperience + ReportsPanel + ReportCard + ChatInterface + ChatComposer + ChatSessionList + ChatSessionDrawer + SuggestedQuestions + Primitives + Data
-│   ├── ai-tasks/           ← AITaskProgress + AIToolTrace + AIResultShell，共享 AI task 进度/结果/工具轨迹 UI
+│   ├── ai-tasks/           ← AITaskProgress + AIEvidenceCards + AIToolTrace + AIResultShell，共享 AI task 进度/证据/工具轨迹 UI
 │   ├── music/details/     ← Artist/Album Experience + Header/Tabs + Skeletons + Overview/Tracks/Albums/Career/AlbumEra 子 sections + ReleaseCycle sections + Primitives
 │   ├── settings/components/  ← 7 配置 Section 组件
 │   └── account/collection/   ← 收藏分析组件
@@ -118,7 +118,7 @@ Community 列表、账号页、趋势侧栏和帖子详情必须通过 `useCommu
 - 外部文本（LLM、Wikipedia、翻译）必须经 `react-markdown` + `rehype-sanitize` 渲染，禁止 `dangerouslySetInnerHTML`
 - LLM API Key 永不对前端返回明文，通过 `POST /apply` 端点让服务端直接写入
 - AI 报告页面必须 cache-first，不因打开页面或切换报告类型自动调用 LLM；无缓存时显示明确的手动生成动作
-- AI 问答和音乐详情 enrichment 的长耗时流程必须通过 `features/ai-tasks` 展示 task progress，问答还要展示 tool trace
+- AI 问答和音乐详情 enrichment 的长耗时流程必须通过 `features/ai-tasks` 展示 task progress；问答完成后必须保留 assistant message `meta.evidence_cards` 并展示 evidence cards 与 tool trace
 - 图表组件不能 SSR，必须 lazy load
 - 新增页面务必参考 `UI_STYLE_GUIDE.md`
 - 简繁转换用 `displayName()` 统一入口，OpenCC 按需动态 import `opencc-js/t2cn` 或 `opencc-js/cn2t`，禁止回退到默认 `opencc-js` full 包，也禁止模块初始化时根据已保存偏好 eager-load 大字典

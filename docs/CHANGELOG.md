@@ -1,5 +1,29 @@
 # 变更日志
 
+## 2026-06-29 — AI Agent Harness Quality Roadmap
+
+### 新增
+
+- **Evidence-driven Agent harness**：新增 evidence cards、确定性问题意图解析、实体解析、通用实体比较、coverage follow-up、answer critic 与 golden-question eval harness
+- **问答证据可视化**：AI 问答完成后在回答旁展示结构化证据卡片，并保留原始工具轨迹
+- **深夜歌曲只读工具**：`listening_hours` 增加 `late_night_tracks` view，可回答“深夜最爱听什么歌”这类时段歌曲问题
+- **Golden fixtures**：覆盖 GUTS vs The Life of a Showgirl、Olivia Rodrigo 近期趋势、2023 Top artist、深夜歌曲问题，并校验 required tool calls 与 forbidden metrics
+
+### 验证
+
+- `.venv/bin/pytest backend/tests/unit/test_ai_agent_* backend/tests/unit/test_play_service_dashboard.py backend/tests/contract/test_ai_agent_task_contract.py -q`
+- `.venv/bin/pytest -m unit -q`：432 passed
+- `.venv/bin/pytest -m contract -q`：223 passed
+- `.venv/bin/python scripts/evaluate_ai_agent_harness.py`
+- `cd frontend && npm test -- --run`：217 passed
+- `cd frontend && npm run build`
+- OpenAPI operation/parameter audit：143 operations / 61 obligations，0 unaccounted
+- `.venv/bin/python scripts/api_smoke_probe.py`：100/100 passed；OpenAPI GET coverage 0 unaccounted
+- `.venv/bin/python scripts/api_boundary_probe.py`：91/91 passed
+- `node scripts/frontend_interaction_smoke.mjs --base-url http://localhost:5173 --wait-ms 15000`：6/6 passed，0 console/page error，0 横向溢出
+- `node scripts/frontend_control_inventory_smoke.mjs --base-url http://localhost:5173 --viewport desktop --include-detail-routes`：19 routes / 928 controls / 0 violation
+- 真实浏览器验证：`/ai-insights` 提交“我深夜最爱听什么歌？请用本地数据回答，并展示依据。”，生成中显示阶段进度，完成后显示 conclusion、thinking sections、evidence cards 与 tool trace；1280px 桌面无横向溢出、无 console warning/error；此前 390px 移动端问答证据卡验证无横向溢出
+
 ## 2026-06-29 — AI 可观察任务与只读 Agent V2
 
 ### 新增
