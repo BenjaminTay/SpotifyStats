@@ -157,6 +157,103 @@ def test_builds_compare_entities_evidence_card():
     assert any("最终回答必须说明口径" in item for item in cards[0].limitations)
 
 
+def test_builds_analysis_charts_evidence_card_for_ranked_rows():
+    cards = build_evidence_cards(
+        [
+            {
+                "tool_name": "analysis_charts",
+                "status": "done",
+                "params_summary": "entity=artist, metric=plays",
+                "result_summary": "artist plays rows=2/420",
+                "source_range": "2023-01-01..2023-12-31",
+                "data": {
+                    "period": {
+                        "label": "自定义",
+                        "start_date": "2023-01-01",
+                        "end_date": "2023-12-31",
+                    },
+                    "entity": "artist",
+                    "metric": "plays",
+                    "total": 420,
+                    "rows": [
+                        {
+                            "rank": 1,
+                            "artist_name": "Taylor Swift",
+                            "plays": 5160,
+                            "hours": 319.73,
+                            "share_pct": 36.71,
+                        },
+                        {
+                            "rank": 2,
+                            "artist_name": "Olivia Rodrigo",
+                            "plays": 1159,
+                            "hours": 88.2,
+                            "share_pct": 8.24,
+                        },
+                    ],
+                },
+            }
+        ]
+    )
+
+    assert len(cards) == 1
+    assert cards[0].entity_type == "artist"
+    assert cards[0].question_axis == "ranked_plays"
+    metric_names = {metric.name for metric in cards[0].metrics}
+    assert "total_ranked_entities" in metric_names
+    assert "top_1_name" in metric_names
+    assert "top_1_plays" in metric_names
+    assert cards[0].metrics[1].value == "Taylor Swift"
+
+
+def test_builds_wrapped_yearly_evidence_card_for_yearly_summary():
+    cards = build_evidence_cards(
+        [
+            {
+                "tool_name": "wrapped_yearly",
+                "status": "done",
+                "params_summary": "year=2023",
+                "result_summary": "plays=13085, minutes=47070, tracks=1608, artists=420",
+                "source_range": "2023",
+                "data": {
+                    "year": 2023,
+                    "hero": {
+                        "total_plays": 13085,
+                        "total_minutes": 47070,
+                        "unique_tracks": 1608,
+                        "unique_artists": 420,
+                        "active_days": 365,
+                    },
+                    "top_lists": {
+                        "artists": [
+                            {"rank": 1, "name": "Taylor Swift", "plays": 5160, "hours": 319.73}
+                        ],
+                        "tracks": [
+                            {
+                                "rank": 1,
+                                "name": "vampire",
+                                "artist_name": "Olivia Rodrigo",
+                                "plays": 198,
+                            }
+                        ],
+                    },
+                },
+            }
+        ]
+    )
+
+    assert len(cards) == 1
+    assert cards[0].question_axis == "yearly_summary"
+    metric_names = {metric.name for metric in cards[0].metrics}
+    assert "total_plays" in metric_names
+    assert "top_artist" in metric_names
+    assert "top_track" in metric_names
+    assert next(metric.value for metric in cards[0].metrics if metric.name == "top_track") == (
+        "vampire - Olivia Rodrigo"
+    )
+    assert any("Taylor Swift" in item for item in cards[0].observations)
+
+
 def test_final_payload_preserves_compare_entities_core_evidence():
     payload = ai_agent_service._final_payload(
         {

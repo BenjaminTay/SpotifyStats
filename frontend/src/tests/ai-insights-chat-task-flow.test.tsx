@@ -261,6 +261,20 @@ describe('ChatInterface task-based agent flow', () => {
           answer: '你今年听最多的艺人是 Artist A。',
           tool_call_count: 1,
           tools: [{ tool_name: 'analysis_charts', status: 'done' }],
+          evidence_cards: [
+            {
+              card_id: 'artist:Artist A:analysis_charts',
+              title: 'Artist A 年度证据',
+              entity_name: 'Artist A',
+              entity_type: 'artist',
+              source: { tool_name: 'analysis_charts', source_range: '2026' },
+              metrics: [
+                { name: 'plays', label: '播放次数', value: 128, unit: 'plays' },
+              ],
+              observations: ['Artist A ranked #1'],
+              limitations: ['2026 上半年数据'],
+            },
+          ],
         },
         error: null,
         created_at: '2026-06-28T00:00:00',
@@ -281,11 +295,20 @@ describe('ChatInterface task-based agent flow', () => {
     await advanceTimers(1_000)
 
     expect(await screen.findByText('你今年听最多的艺人是 Artist A。')).toBeInTheDocument()
+    expect(screen.getByText('证据卡片')).toBeInTheDocument()
+    expect(screen.getByText('Artist A 年度证据')).toBeInTheDocument()
+    expect(screen.getByText('播放次数')).toBeInTheDocument()
+    expect(screen.getByText('128 plays')).toBeInTheDocument()
+    expect(screen.getByText('2026 上半年数据')).toBeInTheDocument()
     expect(screen.getByText('数据查询轨迹')).toBeInTheDocument()
-    expect(screen.getByText('analysis_charts')).toBeInTheDocument()
+    expect(screen.getAllByText('analysis_charts').length).toBeGreaterThan(0)
     expect(postSpy.mock.calls).toEqual(
       expect.arrayContaining([
-        ['/chat/sessions/7/messages', { role: 'assistant', content: '你今年听最多的艺人是 Artist A。', meta_json: expect.stringContaining('chat-task-1') }],
+        ['/chat/sessions/7/messages', {
+          role: 'assistant',
+          content: '你今年听最多的艺人是 Artist A。',
+          meta_json: expect.stringContaining('evidence_cards'),
+        }],
       ]),
     )
   })

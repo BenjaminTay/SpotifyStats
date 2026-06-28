@@ -1,6 +1,6 @@
 /** AI Insights feature types. */
 
-import type { AiTaskJsonPayload, AiToolCall } from './ai-tasks'
+import type { AiEvidenceCard, AiTaskJsonPayload, AiToolCall } from './ai-tasks'
 
 export interface ReportEntities {
   artists: string[]
@@ -46,6 +46,7 @@ export interface AskResponse {
 export interface ChatMessageMeta extends Partial<AskResponse> {
   task_id?: string
   result?: AiTaskJsonPayload | null
+  evidence_cards?: AiEvidenceCard[]
   tool_calls?: AiToolCall[]
   tool_call_count?: number
   tools?: unknown[]
@@ -127,12 +128,16 @@ export function chatAgentMeta(
   const result = task?.result ?? null
   const resultRecord = isRecord(result) ? result : {}
   const tools = Array.isArray(resultRecord.tools) ? resultRecord.tools : undefined
+  const evidenceCards = Array.isArray(resultRecord.evidence_cards)
+    ? resultRecord.evidence_cards as AiEvidenceCard[]
+    : overrides.evidence_cards
   return {
     success: overrides.success,
     answer: typeof resultRecord.answer === 'string' ? resultRecord.answer : overrides.answer,
     error: typeof resultRecord.error === 'string' ? resultRecord.error : overrides.error ?? null,
     task_id: task?.task_id ?? overrides.task_id,
     result,
+    evidence_cards: evidenceCards,
     tool_calls: toolCalls,
     tool_call_count: typeof resultRecord.tool_call_count === 'number'
       ? resultRecord.tool_call_count

@@ -180,6 +180,115 @@ def _comparison_card(item: dict[str, Any], data: dict[str, Any]) -> EvidenceCard
     )
 
 
+def _display_row_name(entity_type: str, row: dict[str, Any]) -> str:
+    if entity_type == "track":
+        track = str(row.get("track_name") or row.get("name") or "未知歌曲")
+        artist = str(row.get("artist_name") or "").strip()
+        return f"{track} - {artist}" if artist else track
+    if entity_type == "album":
+        album = str(row.get("album_name") or row.get("name") or "未知专辑")
+        artist = str(row.get("artist_name") or "").strip()
+        return f"{album} - {artist}" if artist else album
+    return str(row.get("artist_name") or row.get("name") or "未知艺人")
+
+
+def _analysis_charts_card(item: dict[str, Any], data: dict[str, Any]) -> EvidenceCard | None:
+    rows = data.get("rows")
+    if not isinstance(rows, list) or not rows:
+        return None
+    entity_type = str(data.get("entity") or "track")
+    metric = str(data.get("metric") or "plays")
+    period = data.get("period") if isinstance(data.get("period"), dict) else {}
+    source_range = _source(item).source_range
+    period_label = str(period.get("label") or source_range or "所选范围")
+    metric_label = "播放次数" if metric == "plays" else "播放时长"
+    metrics: list[EvidenceMetric] = []
+    _append_metric(metrics, _metric("total_ranked_entities", "候选数量", data.get("total")))
+    for row in rows[:3]:
+        if not isinstance(row, dict):
+            continue
+        rank = row.get("rank")
+        prefix = f"top_{rank}" if rank is not None else f"top_{len(metrics)}"
+        name = _display_row_name(entity_type, row)
+        _append_metric(metrics, _metric(f"{prefix}_name", f"#{rank or '?'}", name))
+        _append_metric(
+            metrics,
+            _metric(
+                f"{prefix}_{metric}",
+                f"#{rank or '?'} {metric_label}",
+                row.get(metric),
+                "plays" if metric == "plays" else "hours",
+            ),
+        )
+        _append_metric(
+            metrics,
+            _metric(f"{prefix}_share_pct", f"#{rank or '?'} 占比", row.get("share_pct"), "%"),
+        )
+    return EvidenceCard(
+        card_id=f"{entity_type}:{metric}:{source_range or period_label}:analysis_charts",
+        title=f"{period_label} {entity_type} 排行证据",
+        entity_type=entity_type,
+        question_axis=f"ranked_{metric}",
+        source=_source(item),
+        metrics=metrics,
+        limitations=["本地 Spotify 播放记录排行口径"],
+    )
+
+
+def _wrapped_yearly_card(item: dict[str, Any], data: dict[str, Any]) -> EvidenceCard | None:
+    hero = data.get("hero")
+    if not isinstance(hero, dict):
+        return None
+    year = data.get("year") or _source(item).source_range or "年度"
+    metrics: list[EvidenceMetric] = []
+    total_minutes = hero.get("total_minutes")
+    total_hours = round(float(total_minutes) / 60, 2) if total_minutes is not None else None
+    _append_metric(
+        metrics, _metric("total_plays", "年度播放次数", hero.get("total_plays"), "plays")
+    )
+    _append_metric(metrics, _metric("total_hours", "年度播放时长", total_hours, "hours"))
+    _append_metric(
+        metrics, _metric("unique_tracks", "不同歌曲数", hero.get("unique_tracks"), "tracks")
+    )
+    _append_metric(
+        metrics, _metric("unique_artists", "不同艺人数", hero.get("unique_artists"), "artists")
+    )
+    _append_metric(metrics, _metric("active_days", "活跃天数", hero.get("active_days"), "days"))
+
+    observations: list[str] = []
+    top_lists = data.get("top_lists") if isinstance(data.get("top_lists"), dict) else {}
+    artists = top_lists.get("artists") if isinstance(top_lists.get("artists"), list) else []
+    tracks = top_lists.get("tracks") if isinstance(top_lists.get("tracks"), list) else []
+    if artists and isinstance(artists[0], dict):
+        artist = artists[0]
+        name = str(artist.get("name") or "未知艺人")
+        _append_metric(metrics, _metric("top_artist", "年度第一艺人", name))
+        _append_metric(
+            metrics, _metric("top_artist_plays", "第一艺人播放", artist.get("plays"), "plays")
+        )
+        _append_metric(
+            metrics, _metric("top_artist_hours", "第一艺人时长", artist.get("hours"), "hours")
+        )
+        observations.append(f"年度第一艺人：{name}")
+    if tracks and isinstance(tracks[0], dict):
+        track = tracks[0]
+        name = _display_row_name("track", track)
+        _append_metric(metrics, _metric("top_track", "年度第一歌曲", name))
+        _append_metric(
+            metrics, _metric("top_track_plays", "第一歌曲播放", track.get("plays"), "plays")
+        )
+
+    return EvidenceCard(
+        card_id=f"year:{year}:wrapped_yearly",
+        title=f"{year} 年度概览证据",
+        question_axis="yearly_summary",
+        source=_source(item),
+        metrics=metrics,
+        observations=observations,
+        limitations=["本地 Spotify 年度总结口径"],
+    )
+
+
 def build_evidence_cards(tool_results: list[dict[str, Any]]) -> list[EvidenceCard]:
     cards: list[EvidenceCard] = []
     for item in tool_results:
@@ -193,6 +302,10 @@ def build_evidence_cards(tool_results: list[dict[str, Any]]) -> list[EvidenceCar
             card = _billboard_card(item, data)
         elif tool_name == "compare_entities":
             card = _comparison_card(item, data)
+        elif tool_name == "analysis_charts":
+            card = _analysis_charts_card(item, data)
+        elif tool_name == "wrapped_yearly":
+            card = _wrapped_yearly_card(item, data)
         else:
             card = None
         if card is not None:

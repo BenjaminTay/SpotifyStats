@@ -1,6 +1,7 @@
 import ReactMarkdown from 'react-markdown'
 import rehypeSanitize from 'rehype-sanitize'
 import { Calendar, RefreshCw, X } from 'lucide-react'
+import { AIEvidenceCards } from '@/features/ai-tasks/AIEvidenceCards'
 import { AITaskProgress } from '@/features/ai-tasks/AITaskProgress'
 import { AIToolTrace } from '@/features/ai-tasks/AIToolTrace'
 import type { ChatMessage, ReportType } from '@/types/ai-insights'
@@ -108,6 +109,11 @@ export function ChatMessageList({
                           {msg.content}
                         </ReactMarkdown>
                       </div>
+                      {msg.meta?.evidence_cards && msg.meta.evidence_cards.length > 0 && (
+                        <div className="mt-3">
+                          <AIEvidenceCards cards={msg.meta.evidence_cards} />
+                        </div>
+                      )}
                       {msg.meta?.tool_calls && msg.meta.tool_calls.length > 0 && (
                         <div className="mt-3">
                           <AIToolTrace toolCalls={msg.meta.tool_calls} />

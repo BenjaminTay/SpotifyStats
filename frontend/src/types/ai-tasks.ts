@@ -2,6 +2,33 @@ export type AiTaskStatus = 'queued' | 'running' | 'done' | 'error' | 'cancelled'
 
 export type AiTaskJsonPayload = Record<string, unknown> | unknown[]
 
+export interface AiEvidenceMetric {
+  name: string
+  label: string
+  value?: string | number | boolean | null
+  unit?: string | null
+  note?: string | null
+}
+
+export interface AiEvidenceSource {
+  tool_name: string
+  source_range?: string | null
+  params_summary?: string | null
+  result_summary?: string | null
+}
+
+export interface AiEvidenceCard {
+  card_id: string
+  title: string
+  entity_name?: string | null
+  entity_type?: string | null
+  question_axis?: string | null
+  source: AiEvidenceSource
+  metrics: AiEvidenceMetric[]
+  observations?: string[]
+  limitations?: string[]
+}
+
 export interface AiTaskRun {
   found: boolean
   task_id?: string | null
