@@ -107,6 +107,57 @@ def _billboard_card(item: dict[str, Any], data: dict[str, Any]) -> EvidenceCard 
     )
 
 
+def _comparison_card(item: dict[str, Any], data: dict[str, Any]) -> EvidenceCard | None:
+    entities = data.get("entities")
+    if not isinstance(entities, list):
+        return None
+    metrics: list[EvidenceMetric] = []
+    _append_metric(
+        metrics,
+        _metric(
+            "winner_by_cumulative_plays",
+            "累计播放胜出",
+            data.get("winner_by_cumulative_plays"),
+        ),
+    )
+    _append_metric(
+        metrics,
+        _metric(
+            "winner_by_total_hours",
+            "播放时长胜出",
+            data.get("winner_by_total_hours"),
+        ),
+    )
+    _append_metric(
+        metrics,
+        _metric(
+            "winner_by_power_score",
+            "个人榜单 Power Score 胜出",
+            data.get("winner_by_power_score"),
+        ),
+    )
+    _append_metric(
+        metrics,
+        _metric(
+            "winner_by_intensity",
+            "单位在榜周强度胜出",
+            data.get("winner_by_intensity"),
+        ),
+    )
+    return EvidenceCard(
+        card_id=f"{data.get('entity_type', 'entity')}:comparison",
+        title="实体比较摘要",
+        entity_type=str(data.get("entity_type") or "unknown"),
+        question_axis="comparison",
+        source=_source(item),
+        metrics=metrics,
+        observations=[
+            str(note) for note in data.get("fairness_notes", []) if isinstance(note, str)
+        ],
+        limitations=["比较结果同时包含累计播放/时长与单位在榜周归一化强度，最终回答必须说明口径。"],
+    )
+
+
 def build_evidence_cards(tool_results: list[dict[str, Any]]) -> list[EvidenceCard]:
     cards: list[EvidenceCard] = []
     for item in tool_results:
@@ -118,6 +169,8 @@ def build_evidence_cards(tool_results: list[dict[str, Any]]) -> list[EvidenceCar
             card = _entity_stats_card(item, data)
         elif tool_name == "billboard_entity_detail":
             card = _billboard_card(item, data)
+        elif tool_name == "compare_entities":
+            card = _comparison_card(item, data)
         else:
             card = None
         if card is not None:

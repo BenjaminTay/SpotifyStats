@@ -100,6 +100,51 @@ def test_builds_album_billboard_evidence_card():
     assert "no1_weeks" in metric_names
 
 
+def test_builds_compare_entities_evidence_card():
+    cards = build_evidence_cards(
+        [
+            {
+                "tool_name": "compare_entities",
+                "status": "done",
+                "params_summary": ("entity_type=album, names=['GUTS', 'The Life of a Showgirl']"),
+                "result_summary": "entities=2, winner_by_plays=GUTS",
+                "source_range": "comparison",
+                "data": {
+                    "entity_type": "album",
+                    "entities": [
+                        {"name": "GUTS", "plays": 1749, "plays_per_chart_week": 22.14},
+                        {
+                            "name": "The Life of a Showgirl",
+                            "plays": 1637,
+                            "plays_per_chart_week": 44.24,
+                        },
+                    ],
+                    "winner_by_cumulative_plays": "GUTS",
+                    "winner_by_total_hours": "The Life of a Showgirl",
+                    "winner_by_power_score": "GUTS",
+                    "winner_by_power_rank": "GUTS",
+                    "winner_by_intensity": "The Life of a Showgirl",
+                    "fairness_notes": [
+                        "对象进入你的播放历史时间不同，累计值和强度值需要分开看。",
+                        "个人 Billboard 是本地个人 Billboard，不是外部官方 Billboard。",
+                    ],
+                },
+            }
+        ]
+    )
+
+    assert len(cards) == 1
+    assert cards[0].question_axis == "comparison"
+    assert cards[0].entity_type == "album"
+    assert cards[0].observations
+    metric_names = {metric.name for metric in cards[0].metrics}
+    assert "winner_by_cumulative_plays" in metric_names
+    assert "winner_by_total_hours" in metric_names
+    assert "winner_by_power_score" in metric_names
+    assert "winner_by_intensity" in metric_names
+    assert any("最终回答必须说明口径" in item for item in cards[0].limitations)
+
+
 def test_final_payload_includes_compact_evidence_cards():
     payload = ai_agent_service._final_payload(
         {"question": "我更喜欢 GUTS 吗？", "conversation_history": []},

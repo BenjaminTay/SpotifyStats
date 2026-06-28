@@ -9,6 +9,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from backend.core.db import get_db
+from backend.domains.ai_agent.comparison import summarize_entity_comparison
 from backend.domains.ai_agent.entity_resolver import resolve_entities
 from backend.domains.ai_agent.tool_registry import AgentToolDefinition, AgentToolResult
 from backend.domains.billboard import details as billboard_details
@@ -156,6 +157,27 @@ class ResolveEntityParams(BaseModel):
     query: str = Field(..., min_length=1, max_length=300)
     entity_type: Literal["track", "album", "artist"] = "album"
     limit: int = Field(default=5, ge=1, le=10)
+
+
+class CompareEntitiesParams(BaseModel):
+    entity_type: Literal["track", "album", "artist"] = "album"
+    names: list[str] = Field(..., min_length=2, max_length=4)
+    min_ms: int = Field(default=30000, ge=0, le=3_600_000)
+    music_only: bool = True
+    merge_enabled: bool = True
+    dynamic_threshold: bool = True
+    max_merge_gap_minutes: int | None = Field(default=None, ge=1, le=240)
+    merge_level: int = Field(default=2, ge=1, le=3)
+
+    @field_validator("names")
+    @classmethod
+    def validate_names(cls, value: list[str]) -> list[str]:
+        cleaned = [name.strip() for name in value if name.strip()]
+        if len(cleaned) != len(value):
+            raise ValueError("names must not contain empty values")
+        if len(set(cleaned)) != len(cleaned):
+            raise ValueError("names must be unique")
+        return cleaned
 
 
 def _source_range(data: dict[str, Any]) -> str:
@@ -320,6 +342,16 @@ def _resolve_entity_result_summary(data: dict[str, Any]) -> str:
     candidates = data.get("candidates")
     count = len(candidates) if isinstance(candidates, list) else 0
     return f"found={str(bool(data.get('found'))).lower()}, candidates={count}"
+
+
+def _comparison_result_summary(data: dict[str, Any]) -> str:
+    entities = data.get("entities")
+    count = len(entities) if isinstance(entities, list) else 0
+    return (
+        f"entities={count}, "
+        f"winner_by_plays={data.get('winner_by_cumulative_plays') or 'n/a'}, "
+        f"winner_by_intensity={data.get('winner_by_intensity') or 'n/a'}"
+    )
 
 
 def _filter_kwargs(parsed: AnalysisStatsParams) -> dict[str, Any]:
@@ -637,6 +669,219 @@ def resolve_entity_handler(params: BaseModel) -> AgentToolResult:
     )
 
 
+def _compare_filter_kwargs(parsed: CompareEntitiesParams) -> dict[str, Any]:
+    return {
+        "min_ms": parsed.min_ms,
+        "music_only": parsed.music_only,
+        "merge_enabled": parsed.merge_enabled,
+        "dynamic_threshold": parsed.dynamic_threshold,
+        "max_merge_gap_minutes": parsed.max_merge_gap_minutes,
+        "merge_level": parsed.merge_level,
+    }
+
+
+def _compare_billboard_kwargs(parsed: CompareEntitiesParams) -> dict[str, Any]:
+    return {
+        "min_ms": parsed.min_ms,
+        "music_only": parsed.music_only,
+        "dynamic_threshold": parsed.dynamic_threshold,
+        "max_merge_gap_minutes": parsed.max_merge_gap_minutes,
+        "merge_level": parsed.merge_level,
+    }
+
+
+def _track_candidate(name: str) -> dict[str, Any] | None:
+    result = resolve_entity_handler(
+        ResolveEntityParams(query=name, entity_type="track", limit=1)
+    ).data
+    candidates = result.get("candidates")
+    if not result.get("found") or not isinstance(candidates, list) or not candidates:
+        return None
+    candidate = candidates[0]
+    return candidate if isinstance(candidate, dict) else None
+
+
+def _metric_source(data: dict[str, Any], entity_type: str) -> dict[str, Any]:
+    chart_summary = data.get("chart_summary")
+    if isinstance(chart_summary, dict):
+        return chart_summary
+    summary = data.get("summary")
+    if entity_type == "track" and isinstance(summary, dict):
+        return summary
+    return {}
+
+
+def _entity_found(*payloads: dict[str, Any]) -> bool:
+    explicit_flags = [payload.get("found") for payload in payloads if "found" in payload]
+    if explicit_flags:
+        return any(bool(flag) for flag in explicit_flags)
+    return any(bool(payload.get("summary") or payload.get("chart_summary")) for payload in payloads)
+
+
+def _entity_errors(*payloads: dict[str, Any]) -> str | None:
+    errors: list[str] = []
+    for payload in payloads:
+        error = payload.get("error")
+        if error and str(error) not in errors:
+            errors.append(str(error))
+    return "; ".join(errors) if errors else None
+
+
+def _comparison_row(
+    *,
+    requested_name: str,
+    entity_type: str,
+    playback: dict[str, Any],
+    billboard: dict[str, Any],
+    track_id: int | None = None,
+) -> dict[str, Any]:
+    summary = playback.get("summary") if isinstance(playback.get("summary"), dict) else {}
+    metric_source = _metric_source(billboard, entity_type)
+    name = (
+        playback.get("album_name")
+        or billboard.get("album_name")
+        or playback.get("artist_name")
+        or billboard.get("artist_name")
+        or playback.get("track_name")
+        or billboard.get("track_name")
+        or requested_name
+    )
+    row: dict[str, Any] = {
+        "name": str(name),
+        "requested_name": requested_name,
+        "entity_type": entity_type,
+        "found": _entity_found(playback, billboard),
+        "plays": summary.get("total_plays"),
+        "hours": summary.get("total_hours"),
+        "first_play_date": playback.get("first_played")
+        or playback.get("first_play_date")
+        or summary.get("first_play_date")
+        or summary.get("first_played"),
+        "latest_play_date": playback.get("last_played")
+        or playback.get("latest_play_date")
+        or summary.get("latest_play_date")
+        or summary.get("last_played"),
+        "power_score": metric_source.get("power_score"),
+        "power_rank": metric_source.get("power_rank"),
+        "no1_weeks": metric_source.get("no1_weeks")
+        if metric_source.get("no1_weeks") is not None
+        else metric_source.get("weeks_at_no1"),
+        "weeks_on_chart": metric_source.get("weeks_on_chart"),
+        "peak_position": metric_source.get("peak_position"),
+    }
+    if track_id is not None:
+        row["track_id"] = track_id
+    if error := _entity_errors(playback, billboard):
+        row["error"] = error
+    return row
+
+
+def _missing_comparison_row(
+    *,
+    requested_name: str,
+    entity_type: str,
+    error: str,
+) -> dict[str, Any]:
+    return {
+        "name": requested_name,
+        "requested_name": requested_name,
+        "entity_type": entity_type,
+        "found": False,
+        "error": error,
+    }
+
+
+def _compare_album_or_artist_row(parsed: CompareEntitiesParams, name: str) -> dict[str, Any]:
+    base_params: dict[str, Any] = {
+        "entity": parsed.entity_type,
+        **_compare_filter_kwargs(parsed),
+    }
+    billboard_params: dict[str, Any] = {
+        "entity": parsed.entity_type,
+        **_compare_billboard_kwargs(parsed),
+    }
+    if parsed.entity_type == "album":
+        base_params["album_name"] = name
+        billboard_params["album_name"] = name
+    else:
+        base_params["artist_name"] = name
+        billboard_params["artist_name"] = name
+
+    playback = entity_stats_handler(EntityStatsParams.model_validate(base_params)).data
+    billboard = billboard_entity_detail_handler(
+        BillboardEntityDetailParams.model_validate(billboard_params)
+    ).data
+    return _comparison_row(
+        requested_name=name,
+        entity_type=parsed.entity_type,
+        playback=playback,
+        billboard=billboard,
+    )
+
+
+def _compare_track_row(parsed: CompareEntitiesParams, name: str) -> dict[str, Any]:
+    candidate = _track_candidate(name)
+    if candidate is None:
+        return _missing_comparison_row(
+            requested_name=name,
+            entity_type="track",
+            error="track not found in local listening data",
+        )
+    track_id = candidate.get("track_id")
+    if track_id is None:
+        return _missing_comparison_row(
+            requested_name=name,
+            entity_type="track",
+            error="resolved track candidate has no track_id",
+        )
+
+    playback = entity_stats_handler(
+        EntityStatsParams.model_validate(
+            {
+                "entity": "track",
+                "track_id": int(track_id),
+                **_compare_filter_kwargs(parsed),
+            }
+        )
+    ).data
+    billboard = billboard_entity_detail_handler(
+        BillboardEntityDetailParams.model_validate(
+            {
+                "entity": "track",
+                "track_id": int(track_id),
+                **_compare_billboard_kwargs(parsed),
+            }
+        )
+    ).data
+    return _comparison_row(
+        requested_name=name,
+        entity_type="track",
+        playback={**playback, "track_name": playback.get("track_name") or candidate.get("name")},
+        billboard=billboard,
+        track_id=int(track_id),
+    )
+
+
+def compare_entities_handler(params: BaseModel) -> AgentToolResult:
+    parsed = (
+        params
+        if isinstance(params, CompareEntitiesParams)
+        else CompareEntitiesParams.model_validate(params)
+    )
+    rows = [
+        _compare_track_row(parsed, name)
+        if parsed.entity_type == "track"
+        else _compare_album_or_artist_row(parsed, name)
+        for name in parsed.names
+    ]
+    data = summarize_entity_comparison(entity_type=parsed.entity_type, entities=rows)
+    return AgentToolResult(
+        data=data,
+        result_summary=_comparison_result_summary(data),
+        source_range="comparison",
+    )
+
+
 ANALYSIS_STATS_TOOL = AgentToolDefinition(
     name="analysis_stats",
     description="Read compact listening statistics for a bounded period.",
@@ -699,4 +944,15 @@ RESOLVE_ENTITY_TOOL = AgentToolDefinition(
     read_only=True,
     params_model=ResolveEntityParams,
     handler=resolve_entity_handler,
+)
+
+COMPARE_ENTITIES_TOOL = AgentToolDefinition(
+    name="compare_entities",
+    description=(
+        "Compare two to four known tracks, albums, or artists using local playback "
+        "statistics and personal Billboard evidence."
+    ),
+    read_only=True,
+    params_model=CompareEntitiesParams,
+    handler=compare_entities_handler,
 )

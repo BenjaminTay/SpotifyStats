@@ -79,6 +79,7 @@ def test_default_registry_exposes_backend_defined_readonly_tool_allowlist() -> N
         "billboard_entity_detail",
         "listening_hours",
         "resolve_entity",
+        "compare_entities",
     }.issubset(names)
     assert all(item["read_only"] is True for item in registered)
     assert (
@@ -674,3 +675,151 @@ def test_resolve_entity_dispatches_with_readonly_connection(
 def test_resolve_entity_rejects_empty_query() -> None:
     with pytest.raises(ValidationError):
         tool_registry.dispatch_tool("resolve_entity", {"query": ""})
+
+
+def test_compare_entities_combines_playback_and_billboard_handlers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tool_registry.get_default_registry.cache_clear()
+    observed: dict[str, Any] = {"playback": [], "billboard": []}
+
+    playback_data = {
+        "GUTS": {
+            "found": True,
+            "album_name": "GUTS",
+            "first_played": "2023-09-08",
+            "last_played": "2026-06-23",
+            "summary": {"total_plays": 1749, "total_hours": 95.6},
+        },
+        "The Life of a Showgirl": {
+            "found": True,
+            "album_name": "The Life of a Showgirl",
+            "first_played": "2025-10-03",
+            "last_played": "2026-06-23",
+            "summary": {"total_plays": 1637, "total_hours": 96.0},
+        },
+    }
+    billboard_data = {
+        "GUTS": {
+            "found": True,
+            "album_name": "GUTS",
+            "chart_summary": {
+                "power_score": 13566,
+                "power_rank": 4,
+                "no1_weeks": 11,
+                "weeks_on_chart": 79,
+            },
+        },
+        "The Life of a Showgirl": {
+            "found": True,
+            "album_name": "The Life of a Showgirl",
+            "chart_summary": {
+                "power_score": 10629,
+                "power_rank": 9,
+                "no1_weeks": 14,
+                "weeks_on_chart": 37,
+            },
+        },
+    }
+
+    def fake_entity_stats_handler(params: tools.EntityStatsParams) -> tool_registry.AgentToolResult:
+        observed["playback"].append(params.model_dump())
+        return tool_registry.AgentToolResult(
+            data=playback_data[str(params.album_name)],
+            result_summary="found=true",
+            source_range="lifetime",
+        )
+
+    def fake_billboard_entity_detail_handler(
+        params: tools.BillboardEntityDetailParams,
+    ) -> tool_registry.AgentToolResult:
+        observed["billboard"].append(params.model_dump())
+        return tool_registry.AgentToolResult(
+            data=billboard_data[str(params.album_name)],
+            result_summary="found=true",
+            source_range="all_years",
+        )
+
+    monkeypatch.setattr(tools, "entity_stats_handler", fake_entity_stats_handler)
+    monkeypatch.setattr(
+        tools,
+        "billboard_entity_detail_handler",
+        fake_billboard_entity_detail_handler,
+    )
+
+    result = tool_registry.dispatch_tool(
+        "compare_entities",
+        {
+            "entity_type": "album",
+            "names": ["GUTS", "The Life of a Showgirl"],
+            "merge_level": 3,
+            "min_ms": 45000,
+        },
+    )
+
+    assert result["tool_name"] == "compare_entities"
+    assert result["source_range"] == "comparison"
+    assert "entities=2" in result["result_summary"]
+    assert "winner_by_plays=GUTS" in result["result_summary"]
+    assert result["data"]["winner_by_cumulative_plays"] == "GUTS"
+    assert result["data"]["winner_by_power_score"] == "GUTS"
+    assert result["data"]["winner_by_intensity"] == "The Life of a Showgirl"
+    assert [item["album_name"] for item in observed["playback"]] == [
+        "GUTS",
+        "The Life of a Showgirl",
+    ]
+    assert all(item["merge_level"] == 3 for item in observed["billboard"])
+    assert all(item["min_ms"] == 45000 for item in observed["playback"])
+
+
+def test_compare_entities_keeps_missing_entities(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tool_registry.get_default_registry.cache_clear()
+
+    def fake_entity_stats_handler(params: tools.EntityStatsParams) -> tool_registry.AgentToolResult:
+        found = params.album_name == "GUTS"
+        return tool_registry.AgentToolResult(
+            data={
+                "found": found,
+                "album_name": params.album_name,
+                "error": None if found else "not found",
+                "summary": {"total_plays": 12, "total_hours": 1.5} if found else {},
+            },
+            result_summary=f"found={str(found).lower()}",
+            source_range="lifetime",
+        )
+
+    def fake_billboard_entity_detail_handler(
+        params: tools.BillboardEntityDetailParams,
+    ) -> tool_registry.AgentToolResult:
+        found = params.album_name == "GUTS"
+        return tool_registry.AgentToolResult(
+            data={
+                "found": found,
+                "album_name": params.album_name,
+                "error": None if found else "not found",
+                "chart_summary": {"power_score": 20, "power_rank": 2, "weeks_on_chart": 4}
+                if found
+                else {},
+            },
+            result_summary=f"found={str(found).lower()}",
+            source_range="all_years",
+        )
+
+    monkeypatch.setattr(tools, "entity_stats_handler", fake_entity_stats_handler)
+    monkeypatch.setattr(
+        tools,
+        "billboard_entity_detail_handler",
+        fake_billboard_entity_detail_handler,
+    )
+
+    result = tool_registry.dispatch_tool(
+        "compare_entities",
+        {"entity_type": "album", "names": ["GUTS", "Unknown Album"]},
+    )
+
+    assert len(result["data"]["entities"]) == 2
+    assert result["data"]["entities"][1]["name"] == "Unknown Album"
+    assert result["data"]["entities"][1]["found"] is False
+    assert result["data"]["entities"][1]["error"] == "not found"
