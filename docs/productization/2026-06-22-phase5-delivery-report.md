@@ -19,8 +19,8 @@
 | CI-03 | **P0** | `pyproject.toml` 中 `target-version = "py312"` 与 CI Python 3.9 不匹配，ruff 可能漏检 3.9 兼容性问题 | CI 对 Python 3.9 兼容性检查无效 | `target-version` 改为 `"py39"`，`python_version` 改为 `"3.9"` | `pyproject.toml` | `ruff check backend/` 在 Python 3.9 环境下 PASS |
 | CI-04 | **P1** | `backend/domains/enrichment/repository.py` 和 `backend/domains/playback/repository.py` 使用了 `X | None` 语法但没有 `from __future__ import annotations`，Python 3.9 下可能报错 | 两个 repository 模块在 Python 3.9 下导入失败 | 防御性添加 `from __future__ import annotations` | `backend/domains/enrichment/repository.py`、`backend/domains/playback/repository.py` | `pytest backend/tests/ -q` — 739 passed |
 | CI-05 | **P1** | `scripts/benchmark_api.py` 模块级 `import httpx`，httpx 未安装时 `--help` 都会报 `ModuleNotFoundError` | benchmark 脚本无法在无 httpx 环境中展示帮助信息 | 将 `import httpx` 移入 `measure()` 和 `main()` 函数内部，改为懒加载 + 友好错误提示 | `scripts/benchmark_api.py` | `python scripts/benchmark_api.py --help` 在无 httpx 环境下正常输出帮助信息 |
-| CI-06 | **P1** | `sqlite3.OperationalError: unable to open database file` — CI 无 `data/` 目录，`get_db()` 直接 `sqlite3.connect` 失败 | 所有涉及 DB 查询的测试在无 `data/` 目录的干净环境中失败 | `get_db()` 中新增 `os.makedirs(db_dir, exist_ok=True)`，连接前先创建目录 | `backend/core/db.py` | 临时 `mv data data.bak` 后运行单元测试；现行 Phase 5 unit 基线 339 passed |
-| CI-07 | **P1** | `sqlite3.OperationalError: no such table: release_group_members` — 上一步只创建了目录，DB 文件是空的，没有 schema，查询 `release_group_members` 表失败 | `test_compute_album_track_counts_picks_best_peak_track_per_album_artist` 在无 `data/` 环境下失败 | `_get_album_canonical_map()` 包裹 try/except，查询失败时返回空 DataFrame；调用方 `_normalize_album_column()` 已有 `if mapping.empty: return df` 逻辑 | `backend/domains/billboard/data_loader.py` | 无 `data/` 目录下 unit 测试通过；现行 Phase 5 unit 基线 339 passed |
+| CI-06 | **P1** | `sqlite3.OperationalError: unable to open database file` — CI 无 `data/` 目录，`get_db()` 直接 `sqlite3.connect` 失败 | 所有涉及 DB 查询的测试在无 `data/` 目录的干净环境中失败 | `get_db()` 中新增 `os.makedirs(db_dir, exist_ok=True)`，连接前先创建目录 | `backend/core/db.py` | 临时 `mv data data.bak` 后运行单元测试；现行 Phase 5 unit 基线 344 passed |
+| CI-07 | **P1** | `sqlite3.OperationalError: no such table: release_group_members` — 上一步只创建了目录，DB 文件是空的，没有 schema，查询 `release_group_members` 表失败 | `test_compute_album_track_counts_picks_best_peak_track_per_album_artist` 在无 `data/` 环境下失败 | `_get_album_canonical_map()` 包裹 try/except，查询失败时返回空 DataFrame；调用方 `_normalize_album_column()` 已有 `if mapping.empty: return df` 逻辑 | `backend/domains/billboard/data_loader.py` | 无 `data/` 目录下 unit 测试通过；现行 Phase 5 unit 基线 344 passed |
 
 ### 1.2 前端
 
@@ -199,6 +199,7 @@
 - `backend/tests/unit/test_runtime_resource_probe_script.py` — 同上
 - `backend/tests/unit/test_frontend_route_smoke_script.py` — 同上
 - `backend/tests/unit/test_fullstack_verification_check_script.py` — 同上
+- `backend/tests/unit/test_spotify_oauth_external_probe_script.py` — OAuth 外部探针脚本护栏
 
 **前端 (frontend/)**：
 - `frontend/index.html` — 删除无效 modulepreload
@@ -219,6 +220,7 @@
 - `scripts/quickstart_smoke.py` — `sys.executable`
 - `scripts/frontend_long_list_smoke.mjs` — CDP 网络监听
 - `scripts/frontend_chart_interaction_smoke.mjs` — 等待调至 12s
+- `scripts/spotify_oauth_external_probe.py` — **新建** ngrok Spotify OAuth 外部初段非破坏性探针
 - `scripts/lib/chrome_executable.mjs` — **新建** Playwright headless shell 优先
 - 其余 5 个 frontend smoke 脚本 — 共享浏览器查找逻辑
 
@@ -263,7 +265,7 @@
 sh scripts/phase5_check.sh
 ```
 
-预期：unit 339 passed / contract 192 passed / frontend 175 passed / build PASS。
+预期：unit 344 passed / contract 192 passed / frontend 175 passed / build PASS。
 
 ### 第 2 步：一键启动冒烟（2 分钟）
 
@@ -303,6 +305,15 @@ node scripts/frontend_route_smoke.mjs --base-url http://localhost:5173 --api-bas
 | 社区 | `/community` | Feed 正常加载，滚动触发新请求 |
 | AI 洞察 | `/ai-insights` | 报告/问答 Tab 可切换 |
 
+### 可选：Spotify OAuth 外部初段验证
+
+```bash
+env -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY -u http_proxy -u https_proxy -u all_proxy ngrok http --url=stuffing-nebula-tamer.ngrok-free.dev 5173
+.venv/bin/python scripts/spotify_oauth_external_probe.py --json-output /tmp/spotify_oauth_external_probe.json
+```
+
+预期：ngrok tunnel、外部 health、Spotify status/data/login URL 与 invalid-state callback 全部 PASS。该探针不会交换真实授权 code；fresh 用户 consent 仍需在浏览器中人工点击 Spotify 同意授权。
+
 ---
 
 ## 六、结论与签署
@@ -311,7 +322,7 @@ Phase 5 产品化收口 **已完成**。对照目标文档的核心目标：
 
 | 目标 | 状态 | 证据 |
 |------|------|------|
-| 零缺陷验证 | ✅ | 739 后端测试 / 175 前端测试 / route + interaction + chart + control + long-list + cross-browser smoke 全部 PASS |
+| 零缺陷验证 | ✅ | 744 后端测试 / 175 前端测试 / route + interaction + chart + control + long-list + cross-browser smoke 全部 PASS |
 | 极致性能优化 | ✅ | LCP ↓87%（account），CLS 消除（number-ones），API 慢端点 0，首页保留 ECharts 后 LCP/CLS/TBT 仍全部在预算内 |
 | 所有 API 端点无错误 | ✅ | 136 OpenAPI op / 60 param boundary 0 unaccounted；API smoke 98/98；boundary 90/90 |
 | 所有前端页面无崩溃 | ✅ | 24 路由 × 2 视口及动态详情路由 0 error / 0 warning / 0 横向溢出 |

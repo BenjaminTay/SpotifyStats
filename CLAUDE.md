@@ -23,6 +23,7 @@ cd frontend && npm run dev
 
 # ngrok（Spotify OAuth 需要 HTTPS）
 ngrok http --url=stuffing-nebula-tamer.ngrok-free.dev 5173
+.venv/bin/python scripts/spotify_oauth_external_probe.py --json-output /tmp/spotify_oauth_external_probe.json
 
 # 测试
 source .venv/bin/activate && pytest -m unit -v         # ~5秒

@@ -45,6 +45,11 @@ Streaming History 导入会先写入基础播放事实，再自动刷新 Spotify
 > ```bash
 > ngrok http --url=your-domain.ngrok-free.dev 5173
 > ```
+> 固定域名 tunnel 建立后，可运行非破坏性外部探针确认 OAuth 初段和回跳：
+> ```bash
+> .venv/bin/python scripts/spotify_oauth_external_probe.py --base-url https://your-domain.ngrok-free.dev --json-output /tmp/spotify_oauth_external_probe.json
+> ```
+> 该探针不会交换真实授权 code；完整 fresh consent 仍需在浏览器中人工点击 Spotify 同意授权。
 
 ### 运行测试
 

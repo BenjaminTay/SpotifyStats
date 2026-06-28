@@ -82,7 +82,7 @@
 | 项目 | 命令/探针 | 结果 |
 | --- | --- | --- |
 | 后端 full | `.venv/bin/python -m pytest backend/tests/ -q` | 739 passed, 1 warning |
-| Phase 5 最低矩阵 | `sh scripts/phase5_check.sh` | PASS；unit 339 passed / contract 192 passed / frontend 175 passed / build PASS |
+| Phase 5 最低矩阵 | `sh scripts/phase5_check.sh` | PASS；unit 344 passed / contract 192 passed / frontend 175 passed / build PASS |
 | OpenAPI 参数边界审计 | `.venv/bin/python scripts/openapi_parameter_boundary_audit.py --json-output /tmp/spotify_openapi_parameter_boundary_audit_current.json` | 60 obligations / 0 unaccounted；`max_merge_gap_minutes` nullable schema 边界已纳入 |
 | API boundary | `.venv/bin/python scripts/api_boundary_probe.py --base-url http://127.0.0.1:8000` | 90/90 PASS |
 | API benchmark | `env -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY -u http_proxy -u https_proxy -u all_proxy .venv/bin/python scripts/benchmark_api.py --base-url http://127.0.0.1:8000 --runs 3 --slow-ms 500 --fail-on-slow --json-output /tmp/spotify_api_benchmark.json` | PASS；无 hot P95 超过 500ms，`/api/billboard/data` hot P95 0.20s，`/api/dashboard/full` hot P95 0.16s |
@@ -92,7 +92,7 @@
 | Production Web Vitals | `node scripts/frontend_web_vitals_probe.mjs --base-url http://127.0.0.1:4173 --api-base-url http://127.0.0.1:8000 --routes /,/analysis/stats,/analysis/charts,/billboard/number-ones,/account,/settings --viewport both --wait-ms 5000 --max-lcp-ms 3000 --max-cls 0.01 --max-tbt-ms 100 --max-resource-count 120 --max-encoded-resource-kb 11000 --max-scroll-overflow-px 0` | PASS；首页保留 ECharts，desktop LCP 2060ms / CLS 0 / TBT 0ms / 17 resources / 1131.2KB，mobile LCP 612ms / CLS 0 / TBT 0ms |
 | ngrok HTTPS tunnel | `env -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY -u http_proxy -u https_proxy -u all_proxy ngrok http --url=stuffing-nebula-tamer.ngrok-free.dev 5173` + `curl http://127.0.0.1:4040/api/tunnels` | PASS；代理变量存在时 ngrok 会报 `ERR_NGROK_9009`，清空代理后固定域名 tunnel 可建立 |
 | Spotify OAuth ngrok 初段/回跳 | 外部 `/api/health`、`/api/spotify/auth/status`、`/api/spotify/auth/data`、`/api/spotify/auth/login`、invalid-state callback | PASS；login URL 使用 `redirect_uri=https://stuffing-nebula-tamer.ngrok-free.dev/api/spotify/auth/callback`；invalid-state callback 307 回跳 `https://stuffing-nebula-tamer.ngrok-free.dev/settings?spotify_error=invalid_state` |
-| 2026-06-28 ngrok/OAuth 当前态复核 | `ngrok http --url=stuffing-nebula-tamer.ngrok-free.dev 5173` + 外部 `/api/health`、`/api/spotify/auth/status`、`/api/spotify/auth/data`、`/api/spotify/auth/login`、invalid-state callback | PASS；4040 API 显示固定域名转发到 `http://localhost:5173`；外部 health 200 且有 `X-Request-ID`；Spotify status 200 且 `connected=true`；auth data 200，返回 artists/tracks/recently_played/followed_artists/playlists；login URL 指向 `accounts.spotify.com` 且使用 ngrok callback、state 和 code_challenge 均存在；invalid-state callback 307 回跳 ngrok settings 并带 `X-Request-ID`；探针结束后已停止 ngrok |
+| 2026-06-28 ngrok/OAuth 当前态复核 | `ngrok http --url=stuffing-nebula-tamer.ngrok-free.dev 5173` + `.venv/bin/python scripts/spotify_oauth_external_probe.py --json-output /tmp/spotify_oauth_external_probe.json` | PASS；4040 API 显示固定域名转发到 `http://localhost:5173`；外部 health 200 且有 `X-Request-ID`；Spotify status 200 且 `connected=true`；auth data 200，返回 artists/tracks/recently_played/followed_artists/playlists；login URL 指向 `accounts.spotify.com` 且使用 ngrok callback、state 和 code_challenge 均存在；invalid-state callback 307 回跳 ngrok settings 并带 `X-Request-ID`；探针结束后已停止 ngrok |
 | 脚本/质量门 | focused script tests、`test_fullstack_verification_check_script.py`、`.venv/bin/pre-commit run --all-files`、`sh scripts/fullstack_verification_check.sh ... --web-vitals --resource-snapshot` | 相关脚本单测 PASS；pre-commit ruff / ruff format / mypy / detect-secrets PASS；完整 fullstack verification 最终 PASS |
 
 ## Chrome 崩溃说明
@@ -112,7 +112,7 @@
 | 目标要求 | 当前证据 | 判定 |
 | --- | --- | --- |
 | 在正确分支继续 | `git branch --show-current` 为 `fix/bugfixes-and-polish` | 已满足 |
-| 后端所有现有测试通过 | `pytest backend/tests/ -q`：739 passed | 已满足 |
+| 后端所有现有测试通过 | `pytest backend/tests/ -q`：744 passed | 已满足 |
 | API 端点与 OpenAPI 覆盖 | OpenAPI operation audit：136 operations / 0 unaccounted；API smoke 98/98；boundary 90/90；parameter boundary 60 obligations / 0 unaccounted | 已满足 |
 | Provider 错误分层、response_model、基础设施 contract | 完整 fullstack verification 包含 pre-commit、Phase 5、OpenAPI audits、API probes 与 contract 测试；相关 response-model probes 已纳入测试基线 | 已满足 |
 | 前端页面无白屏、无 console error/warning、无横向溢出 | dev/prod-preview route、interaction、chart、control inventory、long-list、Chromium/Firefox/WebKit smoke 均 PASS；control inventory 当前覆盖 38 组合；long-list 当前 7/7 | 已满足 |
@@ -129,4 +129,5 @@
 4. 运行 `node scripts/frontend_route_smoke.mjs --base-url http://localhost:5173 --api-base-url http://127.0.0.1:8000 --routes /analysis/behavior --viewport both --max-scroll-overflow 0 --fail-on-console-warning`；默认会优先使用 Playwright `chromium_headless_shell-*` / Chrome for Testing，如需指定浏览器再传 `--chrome` 或 `CHROME_PATH`。
 5. 访问首页 `/`，确认“月度播放趋势”仍正常显示；需要量化资源体积时，用生产 preview 跑 `node scripts/frontend_web_vitals_probe.mjs --base-url http://127.0.0.1:4173 --api-base-url http://127.0.0.1:8000 --routes / --viewport both --wait-ms 5000`。
 6. 访问 `/account`，确认账号 Hero 先显示，收藏/习惯内容随后填充；需要量化 LCP 时用 `node scripts/frontend_web_vitals_probe.mjs --base-url http://127.0.0.1:4173 --api-base-url http://127.0.0.1:8000 --routes /account --viewport both --wait-ms 5000`。
+7. 如需复核外部 OAuth 初段，先运行 `env -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY -u http_proxy -u https_proxy -u all_proxy ngrok http --url=stuffing-nebula-tamer.ngrok-free.dev 5173`，再运行 `.venv/bin/python scripts/spotify_oauth_external_probe.py --json-output /tmp/spotify_oauth_external_probe.json`；该探针不会交换真实授权 code，fresh consent 仍需浏览器人工点击。
 7. 运行 `sh scripts/phase5_check.sh`，确认最低验证矩阵仍全绿。
