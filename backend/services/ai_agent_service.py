@@ -8,6 +8,7 @@ from typing import Any
 from backend.core.db import get_db
 from backend.domains.ai_agent.evidence import compact_evidence_cards
 from backend.domains.ai_agent.evidence_builders import build_evidence_cards
+from backend.domains.ai_agent.question_intent import parse_question_intent
 from backend.domains.ai_agent.tool_registry import describe_for_model, dispatch_tool
 from backend.domains.ai_tasks.repository import AiTaskRepository
 from backend.services import ai_insights_service
@@ -21,7 +22,11 @@ PLANNER_SYSTEM_PROMPT = """你是 SpotifyStats 的只读数据工具规划器。
 所有 Billboard 工具都表示用户本地播放数据计算出的个人榜单，不是外部官方 Billboard 或市场成绩。
 返回 ONLY JSON 数组，每项形如 {"tool_name":"analysis_stats","params":{...}}。
 最多返回 5 个工具调用。
+DATA.question_intent 是系统给出的结构化提示。
 如果问题点名比较歌曲、专辑或艺人，优先同时查询 entity_stats 与 billboard_entity_detail。
+如果 task_type=comparison 且 entities 非空，必须为每个实体查询比较所需工具。
+如果 requested_metrics 包含 personal_billboard，必须使用 available_tools 中的 billboard_entity_detail；后续若 compare_entities 出现在 available_tools 才可使用。
+如果 time_scope 不是 lifetime，至少一个工具调用必须使用对应 period 或自定义窗口。
 如果 thinking_mode=true，请优先规划 2-4 个互补工具用于交叉核对，例如总体统计、排行、记录或听歌时段。"""
 
 FINAL_ANSWER_SYSTEM_PROMPT = """你是友好的 Spotify 听歌数据助手。
@@ -254,8 +259,11 @@ def _augment_plan_for_thinking_mode(
 
 
 def _planner_user_content(request: dict[str, Any]) -> str:
+    question = str(request.get("question", ""))
+    intent = parse_question_intent(question)
     payload = {
-        "question": request.get("question", ""),
+        "question": question,
+        "question_intent": intent.model_dump(),
         "conversation_history": (request.get("conversation_history") or [])[-6:],
         "thinking_mode": _thinking_mode_enabled(request),
         "default_filters": {
