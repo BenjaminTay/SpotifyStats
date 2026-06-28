@@ -29,8 +29,8 @@ export function AnalysisChartsPage() {
     <div className="space-y-7">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <p className="mb-2 font-sans text-[11px] font-bold uppercase tracking-[1.5px] text-accent-foreground">Personal Charts</p>
-          <h2 className="font-serif text-[34px] font-bold leading-tight">个人排行榜</h2>
+          <p className="mb-2 font-sans text-[11px] font-bold uppercase tracking-[1.5px] text-accent-foreground">Playback Ranking</p>
+          <h2 className="font-serif text-[34px] font-bold leading-tight">播放排行</h2>
         </div>
         <div className="flex flex-wrap items-end gap-3">
           <MetricToggle metric={metric} onChange={(next) => setQuery({ metric: next })} />

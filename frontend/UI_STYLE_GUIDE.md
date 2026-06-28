@@ -189,7 +189,7 @@ Inter 通过 `@fontsource-variable/inter` npm 包加载。Playfair Display 通�
 - 高度：padding `py-4`（16px）
 - Logo：`Spotify Stats`，serif 22px bold，"Stats" 斜体 accent 色
 - 导航项：12px sans semibold 全大写 tracking-[1.2px]，活动项底部 accent 色 2px 下划线
-- 未实现导航项：`opacity-40 cursor-not-allowed`（排行榜、年度回顾、分析）
+- 当前导航：Masthead 顶级入口使用“播放分析”，其二级 tab 统一为“播放统计 / 播放排行 / 年度总结 / 播放记录 / 账号中心”；不要再额外增加 Masthead 下拉或第二套页面子导航
 - 主题切换：右对齐药丸按钮
 
 ### ThemeToggle（主题切换）
@@ -364,7 +364,7 @@ className="rounded-[16px] border border-border bg-card backdrop-blur-[12px] shad
 | `src/hooks/useTheme.tsx` | ThemeProvider + useTheme hook |
 | `src/hooks/useDashboard.ts` | Dashboard 数据获取 + 缓存 |
 | `src/hooks/useBillboard.ts` | Billboard 数据获取 + 缓存 + 周导航 |
-| `src/hooks/useAnalysis.ts` | 播放统计、个人排行榜、实体播放统计 API hook |
+| `src/hooks/useAnalysis.ts` | 播放统计、播放排行、实体播放统计 API hook |
 | `src/components/layout/AppLayout.tsx` | 全局布局壳（NoiseOverlay + 深色渐变 + Masthead + Outlet） |
 | `src/components/layout/Masthead.tsx` | 粘性顶栏（Logo + Nav + ThemeToggle） |
 | `src/components/layout/ThemeToggle.tsx` | 日/夜切换药丸 |

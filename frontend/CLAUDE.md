@@ -61,13 +61,15 @@ src/
 
 播放分析子页面通过 URL search params 自动保留 `period`/`period_value`/`start`/`end` 参数。
 
+播放分析二级 tab 顺序固定为“播放统计 / 播放排行 / 年度总结 / 播放记录 / 账号中心”。`/yearly-review` 与 `/account` 仍是独立路由，但在导航语义上归属播放分析，避免在 Masthead 下再增加下拉或重复入口。
+
 ## 数据获取 (TanStack React Query)
 
 统一配置：staleTime 5 分钟 / gcTime 30 分钟 / retry 2 次 / refetchOnWindowFocus false。
 
 Query Key 工厂在 `@/api/query-keys.ts`，按领域 namespace：dashboard / billboard / analysis / settings / account / yearlyReview / music / library / versionMerge / community / aiInsights。
 
-AppLayout 首屏渲染后延迟预取常用数据。年度回顾使用序列化预取（`for...of` + `await`）避免并发请求触发 SQLite 锁竞争。
+AppLayout 首屏渲染后延迟预取常用数据。年度总结使用序列化预取（`for...of` + `await`）避免并发请求触发 SQLite 锁竞争。
 
 Community 列表、账号页、趋势侧栏和帖子详情必须通过 `useCommunityChartParams()` 带入当前榜单设置口径，并把这些参数放入 community query keys，避免不同 Top N、周起点、动态阈值、合并级别或精选集设置共用旧缓存。
 

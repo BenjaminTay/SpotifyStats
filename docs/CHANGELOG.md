@@ -27,7 +27,7 @@
 - **Artist Summary 跨专辑合并**：`compute_artist_summary` 不再按 album_name 分组，改为按 track_id 聚合后取代表专辑（如 vampire 从三条合并为一条）
 - **Album Meta 优先 album_spotify_links**：`_get_album_spotify_meta` 优先走 album_spotify_links（album-type 优先+置信度排序），回退旧链加 ORDER BY，修复同名单曲遮盖完整专辑导致的 total_tracks=1 / album_type=single
 - **封面三级回退**：`_get_cover_cdn_url` 新增 album_spotify_links 分支（album-type 优先），`_add_cover_urls` 新增 Spotify metadata fallback，修复新导入专辑封面缺失或错用单曲封面
-- **Wrapped 年度回顾口径统一**：`/wrapped/{year}/full` merge_level 默认值从 1 改为 2，与 Analysis Charts 一致使用 album project 聚合
+- **Wrapped 年度总结口径统一**：`/wrapped/{year}/full` merge_level 默认值从 1 改为 2，与 Analysis Charts 一致使用 album project 聚合
 - **Spotify 元数据自动刷新 + 导入维护管道**：`import_data` 写入 `spotify_track_id_at_play`，导入后自动运行维护管线（刷新 Spotify metadata → 重建 album projects → 重建预聚合 → 清除缓存 → 健康报告）；新增 `album_spotify_links` 证据表、`refresh_import_derived_data.py` 独立脚本
 
 ### 验证
@@ -43,7 +43,7 @@
 ### 修复
 
 - 修复 OpenAPI 参数边界审计未解包 nullable schema 的漏算问题，`max_merge_gap_minutes` 已纳入边界 probe；当前参数边界 audit 为 60 obligations / 0 unaccounted，API boundary probe 为 90/90 PASS
-- 修复个人排行榜 track 行在 track group 聚合后缺失 `album_name`，避免前端从排行榜进入音乐详情时生成空专辑路径
+- 修复播放排行 track 行在 track group 聚合后缺失 `album_name`，避免前端从播放排行进入音乐详情时生成空专辑路径
 - 将 Billboard Year-End staged wrapper 拆入 `chart_year_end_api.py`，保持 `chart_staged_api.py` 作为薄 facade 并继续满足行数护栏
 - 前端 smoke 补强冷态重页面和动态详情路由等待：`/analysis/records` 在 route/control smoke 中使用慢页窗口，cross-browser 动态详情路由支持重试；Year-End 单页 50 行表格在 long-list smoke 中按 capped 表格验收
 - 图表交互 smoke 的 legend 场景改为稳定的音乐详情 ECharts 排名趋势图，避免账号页生命周期趋势为空时误报；首页 Dashboard 月度趋势继续保留 ECharts 视觉

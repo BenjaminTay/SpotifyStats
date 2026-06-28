@@ -124,7 +124,7 @@
 ## 10 分钟快速复核
 
 1. 运行 `.venv/bin/python scripts/quickstart_smoke.py --json-output /tmp/spotify_quickstart_timing.json`，确认 8000/5173 默认启动链路可用。
-2. 打开 `http://localhost:5173/analysis/behavior`，确认地址最终为 `/analysis/stats` 且页面出现 `总体播放统计`。
+2. 打开 `http://localhost:5173/analysis/behavior`，确认地址最终为 `/analysis/stats` 且页面出现 `播放统计`。
 3. 在 390px 移动宽度重复访问 `/analysis/behavior`，确认无横向滚动。
 4. 运行 `node scripts/frontend_route_smoke.mjs --base-url http://localhost:5173 --api-base-url http://127.0.0.1:8000 --routes /analysis/behavior --viewport both --max-scroll-overflow 0 --fail-on-console-warning`；默认会优先使用 Playwright `chromium_headless_shell-*` / Chrome for Testing，如需指定浏览器再传 `--chrome` 或 `CHROME_PATH`。
 5. 访问首页 `/`，确认“月度播放趋势”仍正常显示；需要量化资源体积时，用生产 preview 跑 `node scripts/frontend_web_vitals_probe.mjs --base-url http://127.0.0.1:4173 --api-base-url http://127.0.0.1:8000 --routes / --viewport both --wait-ms 5000`。

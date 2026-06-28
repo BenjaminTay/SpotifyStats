@@ -13,6 +13,7 @@ import billboardVersusPageSource from '../pages/BillboardVersusPage.tsx?raw'
 import analysisRecordsPageSource from '../pages/AnalysisRecordsPage.tsx?raw'
 import playbackRecordsExperienceSource from '../features/analysis/records/PlaybackRecordsExperience.tsx?raw'
 import obsessionSectionSource from '../features/analysis/records/ObsessionSection.tsx?raw'
+import yearlyReviewPageSource from '../pages/YearlyReviewPage.tsx?raw'
 import accountCenterPageSource from '../pages/AccountCenterPage.tsx?raw'
 import habitsTabSource from '../features/account/habits/HabitsTab.tsx?raw'
 import habitsPersonalityHeroSource from '../features/account/habits/HabitsPersonalityHero.tsx?raw'
@@ -54,6 +55,8 @@ import trackLyricsSectionSource from '../features/music/details/track/TrackLyric
 import mastheadSource from '../components/layout/Masthead.tsx?raw'
 import appLayoutSource from '../components/layout/AppLayout.tsx?raw'
 import routeContextSource from '../components/layout/routeContext.ts?raw'
+import analysisPageHeaderSource from '../components/shared/AnalysisPageHeader.tsx?raw'
+import analysisSubNavSource from '../components/shared/AnalysisSubNav.tsx?raw'
 import billboardSubNavSource from '../components/shared/BillboardSubNav.tsx?raw'
 import chineseSource from '../lib/chinese.ts?raw'
 import billboardNameSource from '../lib/billboard-name.ts?raw'
@@ -132,7 +135,7 @@ describe('Phase 5 architecture guardrails', () => {
     expect(yearEndTableSource).not.toContain('function Pagination(')
   })
 
-  it('uses Yearly Review style year pills for Billboard Year-End', () => {
+  it('uses compact year pill styling for Billboard Year-End', () => {
     expect(yearEndExperienceSource).not.toContain('<select')
     expect(yearEndExperienceSource).toContain('bg-accent-foreground text-card')
     expect(yearEndExperienceSource).toContain('bg-muted text-muted-foreground hover:text-foreground')
@@ -297,6 +300,56 @@ describe('Phase 5 architecture guardrails', () => {
     expect(mastheadSource).toContain('whitespace-nowrap')
     expect(mastheadSource).toContain('basis-full')
     expect(mastheadSource).toContain('max-w-full')
+  })
+
+  it('keeps the masthead top-level destinations consolidated', () => {
+    expect(mastheadSource).toContain('primaryNavItems')
+    expect(mastheadSource).toContain("label: '首页'")
+    expect(mastheadSource).toContain("label: '播放分析'")
+    expect(mastheadSource).toContain("label: '榜单'")
+    expect(mastheadSource).toContain("label: '社区'")
+    expect(mastheadSource).toContain("label: 'AI'")
+    expect(mastheadSource).toContain('to="/settings"')
+    expect(mastheadSource).not.toContain('DropdownMenu')
+    expect(mastheadSource).not.toContain('menuItems')
+    expect(mastheadSource).not.toContain('aria-haspopup')
+    expect(mastheadSource).not.toContain("to: '/yearly-review'")
+    expect(mastheadSource).not.toContain("to: '/account'")
+  })
+
+  it('keeps playback analysis secondary destinations in the analysis tab row', () => {
+    expect(analysisSubNavSource).toContain("to: '/analysis/stats'")
+    expect(analysisSubNavSource).toContain("to: '/analysis/charts'")
+    expect(analysisSubNavSource).toContain("to: '/analysis/records'")
+    expect(analysisSubNavSource).toContain("to: '/yearly-review'")
+    expect(analysisSubNavSource).toContain("to: '/account'")
+    expect(analysisSubNavSource).toContain("label: '播放统计'")
+    expect(analysisSubNavSource).toContain("label: '播放排行'")
+    expect(analysisSubNavSource).toContain("label: '年度总结'")
+    expect(analysisSubNavSource).toContain("label: '账号中心'")
+    expect(analysisSubNavSource.indexOf("to: '/analysis/charts'")).toBeLessThan(
+      analysisSubNavSource.indexOf("to: '/yearly-review'"),
+    )
+    expect(analysisSubNavSource.indexOf("to: '/yearly-review'")).toBeLessThan(
+      analysisSubNavSource.indexOf("to: '/analysis/records'"),
+    )
+    expect(yearlyReviewPageSource).toContain('AnalysisSubNav')
+    expect(yearlyReviewPageSource.indexOf('<AnalysisSubNav')).toBeLessThan(
+      yearlyReviewPageSource.indexOf('Yearly Summary'),
+    )
+    expect(yearlyReviewPageSource).toContain('font-serif text-[34px] font-bold leading-tight')
+    expect(accountCenterPageSource).toContain('AnalysisSubNav')
+  })
+
+  it('keeps playback analysis tab rows vertically stable across child pages', () => {
+    expect(analysisPageHeaderSource).toContain('<section className="mb-6">')
+    expect(analysisSubNavSource).toContain('min-h-9')
+    expect(analysisSubNavSource).toContain('shrink-0 pb-2.5 font-sans text-[13px] font-medium border-b-2 transition-colors -mb-[1px]')
+    expect(analysisSubNavSource).toContain('-translate-y-[3px]')
+    expect(analysisSubNavSource).toContain('basis-full h-9 sm:hidden')
+    expect(analysisSubNavSource).not.toContain('inline-flex h-9')
+    expect(yearlyReviewPageSource).not.toContain('你的年度音乐档案，用数据讲述这一年的听觉故事。')
+    expect(accountCenterPageSource).toContain('AnalysisPageHeader')
   })
 
   it('keeps mobile masthead orientation explicit without duplicating detail breadcrumbs', () => {

@@ -45,10 +45,10 @@ const SLOW_ROUTES = new Set(['/analysis/records'])
 
 const ROUTE_READY_MARKERS = {
   '/': ['DASHBOARD /', '总播放次数'],
-  '/analysis/stats': ['PLAYBACK / ANALYSIS', '总体播放统计'],
-  '/analysis/charts': ['PERSONAL CHARTS', '个人排行榜'],
+  '/analysis/stats': ['PLAYBACK / ANALYSIS', '播放统计'],
+  '/analysis/charts': ['PLAYBACK RANKING', '播放排行'],
   '/analysis/records': ['PLAYBACK RECORDS', '狂热时刻'],
-  '/yearly-review': ['YEARLY / REVIEW', '听歌人格'],
+  '/yearly-review': ['YEARLY SUMMARY', '听歌人格'],
   '/billboard': ['CHART / WEEKLY', 'Billboard 周榜'],
   '/billboard/number-ones': ['CHART / NUMBER ONES', '每周冠军歌曲'],
   '/billboard/all-time': ['CHART / ALL-TIME', 'Billboard 总榜'],
@@ -56,7 +56,7 @@ const ROUTE_READY_MARKERS = {
   '/billboard/versus': ['CHART / VERSUS', '请搜索并添加歌曲开始对决'],
   '/community': ['COMMUNITY / FEED', '榜单社区'],
   '/ai-insights': ['AI / INSIGHTS', 'AI 洞察'],
-  '/account': ['ACCOUNT / CENTER', '你的收藏'],
+  '/account': ['ACCOUNT CENTER', '你的收藏'],
   '/settings': ['参数与配置', '01 · SPOTIFY 连接'],
 }
 

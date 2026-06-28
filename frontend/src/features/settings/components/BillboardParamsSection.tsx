@@ -193,7 +193,7 @@ export function BillboardParamsSection({
             <div className="min-w-0">
               <FieldLabel label="专辑榜包含精选集" />
               <p className="mt-1 text-[12px] leading-relaxed text-muted-foreground">
-                适用于 {bbName} 周榜专辑榜和播放分析个人排行榜专辑榜。
+                适用于 {bbName} 周榜专辑榜和播放分析播放排行专辑榜。
               </p>
             </div>
             <Toggle

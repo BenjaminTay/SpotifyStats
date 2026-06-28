@@ -25,8 +25,8 @@ npm run build      # 生产构建
 | 路由 | 页面 | 说明 |
 |------|------|------|
 | `/` | DashboardPage | 总览仪表盘：KPI 行、月度趋势图、平台分布、动态数据洞察（月度季节分析 + 聆听高峰） |
-| `/analysis` | AnalysisLayout | 播放分析：子路由 `/stats`（总体统计 + 最近播放 + 时钟图）与 `/charts`（个人排行榜 track/album/artist × plays/hours） |
-| `/yearly-review` | YearlyReviewPage | 年度回顾：2 Tab（自定义年度总结 + 官方 Wrapped 2025）、年份选择器、序列化预取（避免 SQLite 并发锁）、ErrorBoundary 容错 |
+| `/analysis` | AnalysisLayout | 播放分析：二级 tab 收敛 `/stats`（播放统计 + 最近播放 + 时钟图）、`/charts`（播放排行 track/album/artist × plays/hours）、`/yearly-review`（年度总结）、`/analysis/records`（播放记录）与 `/account`（账号中心） |
+| `/yearly-review` | YearlyReviewPage | 年度总结：2 Tab（自定义年度总结 + 官方 Wrapped 2025）、年份选择器、序列化预取（避免 SQLite 并发锁）、ErrorBoundary 容错 |
 | `/billboard` | BillboardPage | Billboard 周榜：单曲/专辑/艺人三榜、周切换（含 URL 参数 `?week=`）、排名表（含 CoverCell 封面 + 跳转详情链接）、Tab 选择跨页面记忆保持 |
 | `/billboard/number-ones` | NumberOnesPage | 每周榜首：3 子 Tab（单曲/专辑/艺人）、年度筛选 + KPI 卡片 + 冠单表 + 排行柱状图 + 空冠统计、子 Tab 和年份选择跨页面记忆保持 |
 | `/billboard/all-time` | AllTimeChartsPage | Billboard 总榜：3 实体 Tab（歌曲/专辑/艺人）、富数据表格（走势评分/排名峰值/在榜周数等）、列头排序、排名峰值筛选（全部/#1/Top5/Top10/空冠）、可拖拽列宽（localStorage 记忆）、翻页、Tab/筛选/排序/翻页均跨页面记忆保持 |
@@ -51,7 +51,7 @@ src/
 │   ├── layout/      ← 布局（AppLayout, Masthead, ThemeToggle）
 │   └── shared/      ← 共享组件（GlassCard, KpiCard, WeekSelector, ChangeCell, CoverCell, BillboardSubNav 等）
 ├── pages/           ← 页面组件
-│   └── yearly-review/  ← 年度回顾子组件（14 个：HeroSection, PersonalityReveal, TopCharts, GenrePanorama, TimeStory, HourClock, MusicMap, DiscoveryReturns, ListeningDepth, SpecialMoments, MonthlyDrilldown, YearComparison, ShareButton, OfficialWrapped）
+│   └── yearly-review/  ← 年度总结子组件（14 个：HeroSection, PersonalityReveal, TopCharts, GenrePanorama, TimeStory, HourClock, MusicMap, DiscoveryReturns, ListeningDepth, SpecialMoments, MonthlyDrilldown, YearComparison, ShareButton, OfficialWrapped）
 ├── hooks/           ← 自定义 hooks（数据获取 + 客户端缓存，含 useYearlyReview 模块级 Map 缓存 + 序列化预取）
 ├── lib/             ← API 客户端、工具函数、图表色盘、听歌人格主题、曲风地理映射
 └── types/           ← TypeScript 类型定义（dashboard, billboard, analysis, settings, yearly-review）

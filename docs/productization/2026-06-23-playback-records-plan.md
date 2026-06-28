@@ -12,7 +12,7 @@
 | 页面 | 当前职责 | 局限 |
 |---|---|---|
 | `/analysis/stats` | 总体 KPI、小时/日/周/月/年分布、最近播放 | 更偏平均值、分布和趋势 |
-| `/analysis/charts` | 歌曲/专辑/艺人个人排行榜 | 更偏总量排名 |
+| `/analysis/charts` | 歌曲/专辑/艺人播放排行 | 更偏总量排名 |
 | `/billboard/records` | 基于周榜名次的榜单纪录 | 关注榜单竞争表现，而不是个人播放行为 |
 
 新增 `/analysis/records` 的定位是：
@@ -94,8 +94,8 @@ RecordCard: 单日爆听
 
 | 路径 | Tab 文案 | 页面标题 |
 |---|---|---|
-| `/analysis/stats` | 总体统计 | 总体播放统计 |
-| `/analysis/charts` | 个人排行榜 | 个人排行榜 |
+| `/analysis/stats` | 播放统计 | 播放统计 |
+| `/analysis/charts` | 播放排行 | 播放排行 |
 | `/analysis/records` | 播放记录 | 播放记录 |
 
 页面头部：

@@ -33,7 +33,7 @@ export function getMastheadRouteContext(pathname: string, search = ''): Masthead
   if (pathname === '/') {
     return {
       activeNavTo: '/',
-      contextSegments: ['总览'],
+      contextSegments: ['首页'],
       title: null,
       showMobileContext: false,
     }
@@ -42,7 +42,7 @@ export function getMastheadRouteContext(pathname: string, search = ''): Masthead
   if (pathname === '/analysis') {
     return {
       activeNavTo: '/analysis',
-      contextSegments: ['分析'],
+      contextSegments: ['播放分析'],
       title: null,
       showMobileContext: false,
     }
@@ -51,13 +51,13 @@ export function getMastheadRouteContext(pathname: string, search = ''): Masthead
   if (pathname.startsWith('/analysis/')) {
     const segment = pathname.split('/')[2]
     const labels: Record<string, string> = {
-      stats: '统计',
-      charts: '排行榜',
+      stats: '播放统计',
+      charts: '播放排行',
       records: '记录',
     }
     return {
       activeNavTo: '/analysis',
-      contextSegments: ['分析', labels[segment] ?? '分析'],
+      contextSegments: ['播放分析', labels[segment] ?? '分析'],
       title: null,
       showMobileContext: true,
     }
@@ -66,7 +66,7 @@ export function getMastheadRouteContext(pathname: string, search = ''): Masthead
   if (pathname === '/billboard') {
     return {
       activeNavTo: '/billboard',
-      contextSegments: ['Billboard'],
+      contextSegments: ['榜单'],
       title: null,
       showMobileContext: false,
     }
@@ -83,7 +83,7 @@ export function getMastheadRouteContext(pathname: string, search = ''): Masthead
     }
     return {
       activeNavTo: '/billboard',
-      contextSegments: ['Billboard', labels[segment] ?? '榜单'],
+      contextSegments: ['榜单', labels[segment] ?? '榜单'],
       title: null,
       showMobileContext: true,
     }
@@ -91,10 +91,10 @@ export function getMastheadRouteContext(pathname: string, search = ''): Masthead
 
   if (pathname === '/yearly-review') {
     return {
-      activeNavTo: '/yearly-review',
-      contextSegments: ['年度回顾'],
+      activeNavTo: '/analysis',
+      contextSegments: ['播放分析', '年度总结'],
       title: null,
-      showMobileContext: false,
+      showMobileContext: true,
     }
   }
 
@@ -137,10 +137,10 @@ export function getMastheadRouteContext(pathname: string, search = ''): Masthead
 
   if (pathname === '/account') {
     return {
-      activeNavTo: '/account',
-      contextSegments: ['账户'],
+      activeNavTo: '/analysis',
+      contextSegments: ['播放分析', '账号中心'],
       title: null,
-      showMobileContext: false,
+      showMobileContext: true,
     }
   }
 

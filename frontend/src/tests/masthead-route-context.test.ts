@@ -6,7 +6,7 @@ describe('masthead route context', () => {
   it('marks top-level pages without a mobile context strip', () => {
     expect(getMastheadRouteContext('/', '')).toEqual({
       activeNavTo: '/',
-      contextSegments: ['总览'],
+      contextSegments: ['首页'],
       title: null,
       showMobileContext: false,
     })
@@ -15,7 +15,23 @@ describe('masthead route context', () => {
   it('maps nested analysis routes to the analysis nav item', () => {
     expect(getMastheadRouteContext('/analysis/charts', '?entity=artist')).toEqual({
       activeNavTo: '/analysis',
-      contextSegments: ['分析', '排行榜'],
+      contextSegments: ['播放分析', '播放排行'],
+      title: null,
+      showMobileContext: true,
+    })
+  })
+
+  it('keeps yearly review and account under the playback analysis nav owner', () => {
+    expect(getMastheadRouteContext('/yearly-review', '')).toEqual({
+      activeNavTo: '/analysis',
+      contextSegments: ['播放分析', '年度总结'],
+      title: null,
+      showMobileContext: true,
+    })
+
+    expect(getMastheadRouteContext('/account', '')).toEqual({
+      activeNavTo: '/analysis',
+      contextSegments: ['播放分析', '账号中心'],
       title: null,
       showMobileContext: true,
     })
@@ -24,7 +40,7 @@ describe('masthead route context', () => {
   it('maps nested billboard routes to the billboard nav item', () => {
     expect(getMastheadRouteContext('/billboard/records', '')).toEqual({
       activeNavTo: '/billboard',
-      contextSegments: ['Billboard', '纪录'],
+      contextSegments: ['榜单', '纪录'],
       title: null,
       showMobileContext: true,
     })

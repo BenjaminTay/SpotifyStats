@@ -24,7 +24,7 @@ Phase 5 负责把现有 FastAPI + React 产品线收敛到可持续迭代状态�
 | Billboard hooks Query 迁移 | 已完成 | `useBillboard`、`useBillboardWeekly`、records、all-time 数据读取改为 TanStack Query |
 | Settings Query 迁移 | 已完成 | `useSettings` 主数据与 LLM profile/Spotify status fetch 接入 Query Client |
 | Analysis Query 迁移 | 已完成 | `useAnalysisOverview`、`useApiData`、`analysisApi` 通过 Query Client 去重与缓存 |
-| Yearly Review Query 迁移 | 已完成 | 自定义年度回顾、年份列表、官方 Wrapped hub 接入 Query |
+| 年度总结 Query 迁移 | 已完成 | 自定义年度总结、年份列表、官方 Wrapped hub 接入 Query |
 | Request ID | 已完成 | 请求自动生成/透传 `X-Request-ID`，响应返回同名 header，日志格式包含 request id |
 | Provider 错误基线 | 已完成 | 新增 Provider 错误分类；共享 `HttpClient` 将网络失败映射为 `ProviderNetworkError` |
 | Wikipedia service Provider 迁移 | 已完成 | `wikipedia_service.py` 使用 `WikipediaProvider` 执行 MediaWiki query/page URL，不再直接新建 `urllib.request.Request` |

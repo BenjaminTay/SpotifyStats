@@ -60,7 +60,7 @@ export function ShareButton() {
           onClick={() => setPreview(null)}
         >
           <div className="relative max-w-md max-h-[90vh] overflow-auto rounded-xl" onClick={e => e.stopPropagation()}>
-            <img src={preview} alt="年度回顾长图" className="w-full" />
+            <img src={preview} alt="年度总结长图" className="w-full" />
             <button
               onClick={() => setPreview(null)}
               className="absolute top-2 right-2 w-8 h-8 rounded-full bg-black/50 text-white flex items-center justify-center hover:bg-black/70 transition-colors"

@@ -8,6 +8,8 @@ Spotify Extended Streaming History 数据分析 Web 应用 — **FastAPI 后端 
 
 UI：「编辑风 × 液态玻璃」— Playfair Display + Inter，毛玻璃，日/夜双皮肤。
 
+导航命名：顶级入口使用“播放分析”；二级 tab 固定为“播放统计 / 播放排行 / 年度总结 / 播放记录 / 账号中心”。年度总结与账号中心保持在播放分析 tab 行内，避免恢复独立顶级入口或重复下拉入口。
+
 **当前状态**：Phase 5 产品化收口完成 + fix/bugfixes-and-polish。后端 520 (unit+contract) / 前端 147 测试 PASS，全栈 smoke 全部通过。开发台账与验证细节见 `AGENTS.md`、`docs/productization/`、`docs/verification/` 和 `docs/CHANGELOG.md`。最终交付报告见 `docs/productization/2026-06-22-phase5-delivery-report.md`。
 
 ## 常用命令

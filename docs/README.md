@@ -60,7 +60,7 @@
 |------|------|
 | [`archive/features/account-center/`](archive/features/account-center/) | 账号中心功能设计（plan + spec） |
 | [`archive/features/release-cycle/`](archive/features/release-cycle/) | 发行周期分析设计（plan + spec） |
-| [`archive/features/yearly-review/`](archive/features/yearly-review/) | 年度回顾设计（plan + spec） |
+| [`archive/features/yearly-review/`](archive/features/yearly-review/) | 年度总结设计（plan + spec） |
 | [`archive/features/enhancements/`](archive/features/enhancements/) | 早期增强功能设计 |
 
 ### 历史阶段

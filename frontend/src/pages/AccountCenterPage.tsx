@@ -1,8 +1,11 @@
 import { lazy, Suspense, useState } from 'react'
+import type { ReactNode } from 'react'
 import { cn } from '@/lib/utils'
 import { useAccount, useProfile } from '@/hooks/useAccount'
 import { CollectionTab } from '@/pages/account/CollectionTab'
 import { GlassCard } from '@/components/shared/GlassCard'
+import { AnalysisPageHeader } from '@/components/shared/AnalysisPageHeader'
+import { AnalysisSubNav } from '@/components/shared/AnalysisSubNav'
 import { AlertCircle } from 'lucide-react'
 import type { AccountSummary, ProfileData } from '@/types/account'
 
@@ -56,7 +59,7 @@ function AccountHero({
     <>
       <section className="mb-8">
         <p className="mb-3 font-sans text-[11px] font-bold uppercase tracking-[1.8px] text-accent-foreground">
-          Account / Center
+          Account Center
         </p>
 
         {/* Hero card — editorial profile */}
@@ -90,9 +93,9 @@ function AccountHero({
 
               {/* Info */}
               <div className="flex flex-1 flex-col gap-1.5 min-w-0">
-                <h1 className="font-serif text-[34px] font-bold leading-[1.08] tracking-[-0.8px]">
+                <h2 className="font-serif text-[34px] font-bold leading-[1.08] tracking-[-0.8px]">
                   {displayName}
-                </h1>
+                </h2>
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 font-sans text-sm text-muted-foreground">
                   {username && <span>@{username}</span>}
                   {country && <span>&middot; {country}</span>}
@@ -156,7 +159,7 @@ function AccountHero({
 
 function LoadingSkeleton() {
   return (
-    <div className="mx-auto max-w-[900px] space-y-6 px-6 py-12">
+    <div className="space-y-6">
       <div className="mb-8">
         <div className="mb-3 h-3 w-32 animate-pulse rounded bg-muted" />
         <div className="h-[200px] animate-pulse rounded-2xl bg-muted" />
@@ -209,7 +212,7 @@ function ErrorState({ error, onRetry }: { error: string; onRetry: () => void }) 
 
 function EmptyState() {
   return (
-    <div className="mx-auto flex max-w-[900px] flex-col items-center gap-4 px-6 py-24">
+    <div className="flex flex-col items-center gap-4 py-24">
       <p className="text-center font-serif text-xl font-semibold">尚未导入账号数据</p>
       <p className="max-w-md text-center text-[15px] leading-relaxed text-muted-foreground">
         前往
@@ -222,26 +225,54 @@ function EmptyState() {
   )
 }
 
+function AccountPageShell({ children }: { children: ReactNode }) {
+  return (
+    <>
+      <AnalysisPageHeader />
+      <AnalysisSubNav />
+      <div className="mx-auto max-w-[900px] space-y-6 px-6 pb-12">{children}</div>
+    </>
+  )
+}
+
 export function AccountCenterPage() {
   const { data, loading, error, refetch } = useAccount()
   const { data: profileData } = useProfile()
   const [activeTab, setActiveTab] = useState<TabKey>('collection')
   const profileForHero = data?.profile ?? profileData ?? null
 
-  if (loading && !profileForHero) return <LoadingSkeleton />
-  if (error) return <ErrorState error={error} onRetry={refetch} />
-  if (loading) {
+  if (loading && !profileForHero) {
     return (
-      <div className="mx-auto max-w-[900px] space-y-6 px-6 py-12">
-        <AccountHero profileData={profileForHero} />
-        <AccountContentSkeleton />
-      </div>
+      <AccountPageShell>
+        <LoadingSkeleton />
+      </AccountPageShell>
     )
   }
-  if (!data || !data.has_account_data) return <EmptyState />
+  if (error) {
+    return (
+      <AccountPageShell>
+        <ErrorState error={error} onRetry={refetch} />
+      </AccountPageShell>
+    )
+  }
+  if (loading) {
+    return (
+      <AccountPageShell>
+        <AccountHero profileData={profileForHero} />
+        <AccountContentSkeleton />
+      </AccountPageShell>
+    )
+  }
+  if (!data || !data.has_account_data) {
+    return (
+      <AccountPageShell>
+        <EmptyState />
+      </AccountPageShell>
+    )
+  }
 
   return (
-    <div className="mx-auto max-w-[900px] space-y-6 px-6 py-12">
+    <AccountPageShell>
       <AccountHero profileData={profileForHero} collectionInsights={data.collection_insights} />
 
       {/* Tabs */}
@@ -288,6 +319,6 @@ export function AccountCenterPage() {
           </Suspense>
         )}
       </div>
-    </div>
+    </AccountPageShell>
   )
 }

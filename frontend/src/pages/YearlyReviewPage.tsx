@@ -7,6 +7,8 @@ import { CustomSummary } from '@/pages/yearly-review/CustomSummary'
 import { ShareButton } from '@/pages/yearly-review/ShareButton'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
+import { AnalysisPageHeader } from '@/components/shared/AnalysisPageHeader'
+import { AnalysisSubNav } from '@/components/shared/AnalysisSubNav'
 
 // OfficialWrapped 懒加载
 const OfficialWrapped = lazy(() => import('@/pages/yearly-review/OfficialWrapped').then(m => ({ default: m.OfficialWrapped })))
@@ -115,17 +117,14 @@ export function YearlyReviewPage() {
 
   return (
     <>
-      {/* 页面头部 */}
+      <AnalysisPageHeader />
+      <AnalysisSubNav />
+
       <section className="mb-8">
-        <p className="mb-4 font-sans text-[11px] font-bold uppercase tracking-[1.8px] text-accent-foreground">
-          Yearly / Review
+        <p className="mb-2 font-sans text-[11px] font-bold uppercase tracking-[1.5px] text-accent-foreground">
+          Yearly Summary
         </p>
-        <h1 className="mb-3 font-serif text-[48px] font-bold leading-[1.06] tracking-[-1.2px]">
-          年度回顾
-        </h1>
-        <p className="max-w-[620px] font-sans text-[16px] leading-relaxed text-muted-foreground">
-          你的年度音乐档案，用数据讲述这一年的听觉故事。
-        </p>
+        <h2 className="font-serif text-[34px] font-bold leading-tight">年度总结</h2>
       </section>
 
       {/* 年份选择器 + Tab 导航 */}
