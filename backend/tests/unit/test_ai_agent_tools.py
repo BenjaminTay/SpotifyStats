@@ -78,6 +78,7 @@ def test_default_registry_exposes_backend_defined_readonly_tool_allowlist() -> N
         "entity_stats",
         "billboard_entity_detail",
         "listening_hours",
+        "resolve_entity",
     }.issubset(names)
     assert all(item["read_only"] is True for item in registered)
     assert (
@@ -613,3 +614,63 @@ def test_listening_hours_dispatches_selected_readonly_view(
 def test_listening_hours_rejects_unknown_view() -> None:
     with pytest.raises(ValidationError):
         tool_registry.dispatch_tool("listening_hours", {"view": "raw_sql"})
+
+
+def test_resolve_entity_dispatches_with_readonly_connection(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    db_observed = _patch_readonly_db(monkeypatch)
+    resolver_observed: dict[str, Any] = {}
+
+    def fake_resolve_entities(
+        conn: FakeReadonlyConn,
+        *,
+        query: str,
+        entity_type: str,
+        limit: int,
+    ) -> dict[str, Any]:
+        resolver_observed["conn"] = conn
+        resolver_observed["query"] = query
+        resolver_observed["entity_type"] = entity_type
+        resolver_observed["limit"] = limit
+        return {
+            "found": True,
+            "query": query,
+            "entity_type": entity_type,
+            "candidates": [
+                {
+                    "name": "The Life of a Showgirl",
+                    "entity_type": "album",
+                    "album_id": 20,
+                    "artist_name": "Taylor Swift",
+                    "play_events": 7,
+                    "total_ms": 1400000,
+                }
+            ],
+        }
+
+    monkeypatch.setattr(tools, "resolve_entities", fake_resolve_entities)
+
+    result = tool_registry.dispatch_tool(
+        "resolve_entity",
+        {"query": "showgirl", "entity_type": "album", "limit": 3},
+    )
+
+    assert result["tool_name"] == "resolve_entity"
+    assert "query=showgirl" in result["params_summary"]
+    assert result["result_summary"] == "found=true, candidates=1"
+    assert result["source_range"] == "local_tracks"
+    assert result["data"]["candidates"][0]["name"] == "The Life of a Showgirl"
+    assert db_observed["readonly_flags"] == [True]
+    assert db_observed["connections"][0].closed is True
+    assert resolver_observed == {
+        "conn": db_observed["connections"][0],
+        "query": "showgirl",
+        "entity_type": "album",
+        "limit": 3,
+    }
+
+
+def test_resolve_entity_rejects_empty_query() -> None:
+    with pytest.raises(ValidationError):
+        tool_registry.dispatch_tool("resolve_entity", {"query": ""})

@@ -9,6 +9,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from backend.core.db import get_db
+from backend.domains.ai_agent.entity_resolver import resolve_entities
 from backend.domains.ai_agent.tool_registry import AgentToolDefinition, AgentToolResult
 from backend.domains.billboard import details as billboard_details
 from backend.services import (
@@ -149,6 +150,12 @@ class ListeningHoursParams(BaseModel):
     merge_enabled: bool = True
     dynamic_threshold: bool = True
     max_merge_gap_minutes: int | None = Field(default=None, ge=1, le=240)
+
+
+class ResolveEntityParams(BaseModel):
+    query: str = Field(..., min_length=1, max_length=300)
+    entity_type: Literal["track", "album", "artist"] = "album"
+    limit: int = Field(default=5, ge=1, le=10)
 
 
 def _source_range(data: dict[str, Any]) -> str:
@@ -307,6 +314,12 @@ def _listening_hours_result_summary(data: dict[str, Any]) -> str:
     else:
         count = 0
     return f"view={data.get('view')}, items={count}"
+
+
+def _resolve_entity_result_summary(data: dict[str, Any]) -> str:
+    candidates = data.get("candidates")
+    count = len(candidates) if isinstance(candidates, list) else 0
+    return f"found={str(bool(data.get('found'))).lower()}, candidates={count}"
 
 
 def _filter_kwargs(parsed: AnalysisStatsParams) -> dict[str, Any]:
@@ -601,6 +614,29 @@ def listening_hours_handler(params: BaseModel) -> AgentToolResult:
     )
 
 
+def resolve_entity_handler(params: BaseModel) -> AgentToolResult:
+    parsed = (
+        params
+        if isinstance(params, ResolveEntityParams)
+        else ResolveEntityParams.model_validate(params)
+    )
+    conn = get_db(readonly=True)
+    try:
+        data = resolve_entities(
+            conn,
+            query=parsed.query,
+            entity_type=parsed.entity_type,
+            limit=parsed.limit,
+        )
+    finally:
+        conn.close()
+    return AgentToolResult(
+        data=data,
+        result_summary=_resolve_entity_result_summary(data),
+        source_range="local_tracks",
+    )
+
+
 ANALYSIS_STATS_TOOL = AgentToolDefinition(
     name="analysis_stats",
     description="Read compact listening statistics for a bounded period.",
@@ -655,4 +691,12 @@ LISTENING_HOURS_TOOL = AgentToolDefinition(
     read_only=True,
     params_model=ListeningHoursParams,
     handler=listening_hours_handler,
+)
+
+RESOLVE_ENTITY_TOOL = AgentToolDefinition(
+    name="resolve_entity",
+    description="Resolve a user-provided album, artist, or track name against local listening data.",
+    read_only=True,
+    params_model=ResolveEntityParams,
+    handler=resolve_entity_handler,
 )

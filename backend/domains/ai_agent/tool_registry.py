@@ -102,6 +102,7 @@ def get_default_registry() -> AgentToolRegistry:
         ENTITY_STATS_TOOL,
         LISTENING_HOURS_TOOL,
         PLAYBACK_RECORDS_TOOL,
+        RESOLVE_ENTITY_TOOL,
         WRAPPED_YEARLY_TOOL,
     )
 
@@ -113,6 +114,7 @@ def get_default_registry() -> AgentToolRegistry:
     registry.register(ENTITY_STATS_TOOL)
     registry.register(BILLBOARD_ENTITY_DETAIL_TOOL)
     registry.register(LISTENING_HOURS_TOOL)
+    registry.register(RESOLVE_ENTITY_TOOL)
     return registry
 
 
