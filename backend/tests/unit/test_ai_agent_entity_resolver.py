@@ -30,32 +30,56 @@ def _normalized_conn() -> sqlite3.Connection:
             album_id INTEGER NOT NULL,
             duration_ms INTEGER
         );
+        CREATE TABLE track_albums (
+            track_id INTEGER NOT NULL,
+            album_id INTEGER NOT NULL
+        );
+        CREATE TABLE track_artists (
+            track_id INTEGER NOT NULL,
+            artist_id INTEGER NOT NULL,
+            role TEXT NOT NULL DEFAULT 'primary'
+        );
         CREATE TABLE plays (
             play_id INTEGER PRIMARY KEY,
             track_id INTEGER NOT NULL,
-            ms_played INTEGER
+            ms_played INTEGER,
+            source_album_id INTEGER
         );
 
         INSERT INTO artists(artist_id, artist_name) VALUES
             (1, 'Olivia Rodrigo'),
-            (2, 'Taylor Swift');
+            (2, 'Taylor Swift'),
+            (3, 'Chappell Roan');
         INSERT INTO albums(album_id, album_name, artist_id) VALUES
             (10, 'GUTS', 1),
             (11, 'GUTS (spilled)', 1),
-            (20, 'The Life of a Showgirl', 2);
+            (20, 'The Life of a Showgirl', 2),
+            (30, 'featured soundtrack', 3);
         INSERT INTO tracks(track_id, track_name, artist_id, album_id, duration_ms) VALUES
             (100, 'vampire', 1, 10, 219724),
             (101, 'bad idea right?', 1, 10, 184783),
             (102, 'obsessed', 1, 11, 170000),
             (200, 'The Fate of Ophelia', 2, 20, 206000);
-        INSERT INTO plays(play_id, track_id, ms_played) VALUES
-            (1, 100, 200000),
-            (2, 100, 190000),
-            (3, 101, 180000),
-            (4, 102, 170000),
-            (5, 102, 165000),
-            (6, 102, 160000),
-            (7, 200, 210000);
+        INSERT INTO track_albums(track_id, album_id) VALUES
+            (100, 10),
+            (101, 10),
+            (102, 11),
+            (200, 20),
+            (200, 30);
+        INSERT INTO track_artists(track_id, artist_id, role) VALUES
+            (100, 1, 'primary'),
+            (101, 1, 'primary'),
+            (102, 1, 'primary'),
+            (200, 2, 'primary'),
+            (200, 3, 'featured');
+        INSERT INTO plays(play_id, track_id, ms_played, source_album_id) VALUES
+            (1, 100, 200000, NULL),
+            (2, 100, 190000, NULL),
+            (3, 101, 180000, NULL),
+            (4, 102, 170000, NULL),
+            (5, 102, 165000, NULL),
+            (6, 102, 160000, NULL),
+            (7, 200, 210000, 30);
         """
     )
     return conn
@@ -118,6 +142,35 @@ def test_resolve_album_on_normalized_schema_prioritizes_exact_name_before_play_c
     assert result["candidates"][0]["artist_name"] == "Olivia Rodrigo"
     assert result["candidates"][0]["play_events"] == 3
     assert result["candidates"][0]["total_ms"] == 570000
+
+
+def test_resolve_album_on_normalized_schema_uses_source_and_junction_attribution() -> None:
+    conn = _normalized_conn()
+
+    result = resolve_entities(conn, query="soundtrack", entity_type="album", limit=5)
+
+    assert result["found"] is True
+    assert result["candidates"][0]["name"] == "featured soundtrack"
+    assert result["candidates"][0]["album_id"] == 30
+    assert result["candidates"][0]["artist_name"] == "Chappell Roan"
+    assert result["candidates"][0]["play_events"] == 1
+    assert result["candidates"][0]["total_ms"] == 210000
+
+
+def test_resolve_artist_on_normalized_schema_uses_track_artist_fanout() -> None:
+    conn = _normalized_conn()
+
+    result = resolve_entities(conn, query="chappell", entity_type="artist", limit=5)
+
+    assert result["found"] is True
+    assert result["candidates"][0] == {
+        "name": "Chappell Roan",
+        "entity_type": "artist",
+        "artist_id": 3,
+        "artist_name": "Chappell Roan",
+        "play_events": 1,
+        "total_ms": 210000,
+    }
 
 
 def test_resolve_artist_on_simple_schema_is_case_insensitive() -> None:

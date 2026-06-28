@@ -27,10 +27,7 @@ def _row_dict(row: sqlite3.Row) -> dict[str, Any]:
 
 
 def _table_columns(conn: sqlite3.Connection, table_name: str) -> set[str]:
-    try:
-        rows = conn.execute(f"PRAGMA table_info({table_name})").fetchall()
-    except sqlite3.Error:
-        return set()
+    rows = conn.execute(f"PRAGMA table_info({table_name})").fetchall()
     return {str(_row_value(row, "name", 1)) for row in rows}
 
 
@@ -125,9 +122,43 @@ def _normalized_track_query(conn: sqlite3.Connection, query: str, limit: int) ->
 def _normalized_album_query(conn: sqlite3.Connection, query: str, limit: int) -> list[sqlite3.Row]:
     if not (
         _has_columns(conn, "albums", {"album_id", "album_name"})
-        and _has_columns(conn, "tracks", {"track_id", "album_id"})
+        and _has_columns(conn, "tracks", {"track_id"})
         and _has_columns(conn, "plays", {"track_id", "ms_played"})
     ):
+        return []
+
+    track_columns = _table_columns(conn, "tracks")
+    play_columns = _table_columns(conn, "plays")
+    play_key = "p.play_id" if "play_id" in play_columns else "p.rowid"
+    album_play_sources: list[str] = []
+    if "album_id" in track_columns:
+        album_play_sources.append(
+            f"""
+            SELECT {play_key} AS play_key, t.album_id AS album_id, p.ms_played AS ms_played
+            FROM plays p
+            JOIN tracks t ON t.track_id = p.track_id
+            WHERE t.album_id IS NOT NULL
+            """
+        )
+    if _has_columns(conn, "track_albums", {"track_id", "album_id"}):
+        album_play_sources.append(
+            f"""
+            SELECT {play_key} AS play_key, ta.album_id AS album_id, p.ms_played AS ms_played
+            FROM plays p
+            JOIN track_albums ta ON ta.track_id = p.track_id
+            WHERE ta.album_id IS NOT NULL
+            """
+        )
+    if "source_album_id" in play_columns:
+        album_play_sources.append(
+            f"""
+            SELECT {play_key} AS play_key, p.source_album_id AS album_id, p.ms_played AS ms_played
+            FROM plays p
+            WHERE p.source_album_id IS NOT NULL
+              AND p.source_album_id != 0
+            """
+        )
+    if not album_play_sources:
         return []
 
     album_columns = _table_columns(conn, "albums")
@@ -145,8 +176,12 @@ def _normalized_album_query(conn: sqlite3.Connection, query: str, limit: int) ->
 
     like_term, exact_term, prefix_term = _search_terms(query)
     group_by = ", ".join(["al.album_id", "al.album_name", *artist_group])
+    album_play_cte = "\nUNION\n".join(album_play_sources)
     return conn.execute(
         f"""
+        WITH album_play_events AS (
+            {album_play_cte}
+        )
         SELECT
             al.album_name AS name,
             al.album_id AS album_id,
@@ -154,10 +189,9 @@ def _normalized_album_query(conn: sqlite3.Connection, query: str, limit: int) ->
             {artist_id_select},
             {artist_select},
             COUNT(*) AS play_events,
-            COALESCE(SUM(p.ms_played), 0) AS total_ms
+            COALESCE(SUM(ape.ms_played), 0) AS total_ms
         FROM albums al
-        JOIN tracks t ON t.album_id = al.album_id
-        JOIN plays p ON p.track_id = t.track_id
+        JOIN album_play_events ape ON ape.album_id = al.album_id
         {artist_join}
         WHERE lower(al.album_name) LIKE ?
           AND al.album_name IS NOT NULL
@@ -181,23 +215,51 @@ def _normalized_album_query(conn: sqlite3.Connection, query: str, limit: int) ->
 def _normalized_artist_query(conn: sqlite3.Connection, query: str, limit: int) -> list[sqlite3.Row]:
     if not (
         _has_columns(conn, "artists", {"artist_id", "artist_name"})
-        and _has_columns(conn, "tracks", {"track_id", "artist_id"})
+        and _has_columns(conn, "tracks", {"track_id"})
         and _has_columns(conn, "plays", {"track_id", "ms_played"})
     ):
         return []
 
+    track_columns = _table_columns(conn, "tracks")
+    play_columns = _table_columns(conn, "plays")
+    play_key = "p.play_id" if "play_id" in play_columns else "p.rowid"
+    artist_play_sources: list[str] = []
+    if _has_columns(conn, "track_artists", {"track_id", "artist_id"}):
+        artist_play_sources.append(
+            f"""
+            SELECT {play_key} AS play_key, ta.artist_id AS artist_id, p.ms_played AS ms_played
+            FROM plays p
+            JOIN track_artists ta ON ta.track_id = p.track_id
+            WHERE ta.artist_id IS NOT NULL
+            """
+        )
+    if "artist_id" in track_columns:
+        artist_play_sources.append(
+            f"""
+            SELECT {play_key} AS play_key, t.artist_id AS artist_id, p.ms_played AS ms_played
+            FROM plays p
+            JOIN tracks t ON t.track_id = p.track_id
+            WHERE t.artist_id IS NOT NULL
+            """
+        )
+    if not artist_play_sources:
+        return []
+
     like_term, exact_term, prefix_term = _search_terms(query)
+    artist_play_cte = "\nUNION\n".join(artist_play_sources)
     return conn.execute(
-        """
+        f"""
+        WITH artist_play_events AS (
+            {artist_play_cte}
+        )
         SELECT
             ar.artist_name AS name,
             ar.artist_id AS artist_id,
             ar.artist_name AS artist_name,
             COUNT(*) AS play_events,
-            COALESCE(SUM(p.ms_played), 0) AS total_ms
+            COALESCE(SUM(ape.ms_played), 0) AS total_ms
         FROM artists ar
-        JOIN tracks t ON t.artist_id = ar.artist_id
-        JOIN plays p ON p.track_id = t.track_id
+        JOIN artist_play_events ape ON ape.artist_id = ar.artist_id
         WHERE lower(ar.artist_name) LIKE ?
           AND ar.artist_name IS NOT NULL
           AND TRIM(ar.artist_name) != ''
