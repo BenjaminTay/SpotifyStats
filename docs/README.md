@@ -52,6 +52,7 @@
 | [`superpowers/specs/2026-06-28-ai-observable-agent-orchestrator-design.md`](superpowers/specs/2026-06-28-ai-observable-agent-orchestrator-design.md) | AI 可观察任务与只读 Agent Orchestrator V2 设计 |
 | [`superpowers/plans/2026-06-28-ai-observable-agent-orchestrator.md`](superpowers/plans/2026-06-28-ai-observable-agent-orchestrator.md) | AI Orchestrator V2 实现计划、验收清单与当前落地状态 |
 | [`superpowers/specs/2026-06-29-ai-agent-universal-analytical-harness-design.md`](superpowers/specs/2026-06-29-ai-agent-universal-analytical-harness-design.md) | AI Agent 通用分析中间层设计：QuestionFrame、EvidenceRecipe、AnalyticalBrief 与 AnswerContract |
+| [`superpowers/plans/2026-06-29-ai-agent-universal-analytical-harness.md`](superpowers/plans/2026-06-29-ai-agent-universal-analytical-harness.md) | AI Agent 通用分析中间层实施计划：问题家族、证据配方、分析底稿、回答契约与验收步骤 |
 
 ## 历史归档
 
