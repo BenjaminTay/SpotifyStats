@@ -1,5 +1,5 @@
 import { render, screen } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import { AIEvidenceCards } from '@/features/ai-tasks/AIEvidenceCards'
 
@@ -120,5 +120,36 @@ describe('AIEvidenceCards', () => {
       ),
     )
     expect(hasStrayZeroTextNode).toBe(false)
+  })
+
+  it('keeps repeated entity evidence card ids unique across time windows', () => {
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+
+    render(
+      <AIEvidenceCards
+        cards={[
+          {
+            card_id: 'album:GUTS:entity_stats',
+            title: 'GUTS 播放统计',
+            source: { tool_name: 'entity_stats', source_range: '2025-12-29..2026-06-29' },
+            metrics: [{ name: 'total_plays', label: '播放次数', value: 293, unit: 'plays' }],
+          },
+          {
+            card_id: 'album:GUTS:entity_stats',
+            title: 'GUTS 播放统计',
+            source: { tool_name: 'entity_stats', source_range: '2026-06-02..2026-06-29' },
+            metrics: [{ name: 'total_plays', label: '播放次数', value: 59, unit: 'plays' }],
+          },
+        ]}
+      />,
+    )
+
+    expect(screen.getAllByText('GUTS 播放统计')).toHaveLength(2)
+    expect(
+      consoleErrorSpy.mock.calls.some(([message]) =>
+        String(message).includes('Encountered two children with the same key'),
+      ),
+    ).toBe(false)
+    consoleErrorSpy.mockRestore()
   })
 })

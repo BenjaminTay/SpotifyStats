@@ -1,5 +1,20 @@
 # 变更日志
 
+## 2026-06-29 — AI Agent Universal Analytical Harness
+
+### 新增
+
+- **通用分析中间层**：AI 问答新增 QuestionFrame、EvidenceRecipe、EvidenceSufficiency 与 AnalyticalBrief，把用户问题先归类为问题家族，再按证据配方补查只读工具，最后用结构化分析底稿约束回答。
+- **回答契约护栏**：Answer critic 会检查 forbidden claims、must_explain、个人 Billboard 边界、冲突口径和证据不足场景；当回答过度单边、把本地个人榜单说成官方/市场成绩，或在证据不足时给确定性结论，会触发一次重试。
+- **Golden harness 扩展**：golden fixture 扩展到 8 条问题，覆盖偏好比较、近期趋势、年度排行、深夜歌曲、本命偏好、跨年变化、近期下降解释和播放次数/喜好边界，并校验 QuestionFrame、EvidenceRecipe、required tool patterns 与 critic 行为。
+- **真实任务回归**：AI chat task contract 覆盖 evidence_sufficiency=false 时的真实 retry 路径，确认不是只在 unit critic 层通过。
+
+### 验证
+
+- `PYTHONDONTWRITEBYTECODE=1 .venv/bin/pytest -p no:cacheprovider backend/tests/unit/test_ai_agent_question_frame.py backend/tests/unit/test_ai_agent_evidence_recipes.py backend/tests/unit/test_ai_agent_coverage_review.py backend/tests/unit/test_ai_agent_analytical_brief.py backend/tests/unit/test_ai_agent_answer_critic.py backend/tests/unit/test_ai_agent_golden_questions.py backend/tests/unit/test_ai_agent_tools.py backend/tests/contract/test_ai_agent_task_contract.py -q`：105 passed
+- `.venv/bin/python scripts/evaluate_ai_agent_harness.py`：8/8 PASS
+- `cd frontend && npm test -- ai-evidence-cards.test.tsx` 与 `cd frontend && npm run build`
+
 ## 2026-06-29 — AI Agent Harness Quality Roadmap
 
 ### 新增

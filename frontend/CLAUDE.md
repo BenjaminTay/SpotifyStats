@@ -119,6 +119,7 @@ Community 列表、账号页、趋势侧栏和帖子详情必须通过 `useCommu
 - LLM API Key 永不对前端返回明文，通过 `POST /apply` 端点让服务端直接写入
 - AI 报告页面必须 cache-first，不因打开页面或切换报告类型自动调用 LLM；无缓存时显示明确的手动生成动作
 - AI 问答和音乐详情 enrichment 的长耗时流程必须通过 `features/ai-tasks` 展示 task progress；问答完成后必须保留 assistant message `meta.evidence_cards` 并展示 evidence cards 与 tool trace
+- AI comparison evidence cards 必须在 390px 移动端保持单列可读，宽屏可用双列矩阵；长专辑名、维度胜者和限制说明不得造成横向滚动或卡片内文字溢出
 - 图表组件不能 SSR，必须 lazy load
 - 新增页面务必参考 `UI_STYLE_GUIDE.md`
 - 简繁转换用 `displayName()` 统一入口，OpenCC 按需动态 import `opencc-js/t2cn` 或 `opencc-js/cn2t`，禁止回退到默认 `opencc-js` full 包，也禁止模块初始化时根据已保存偏好 eager-load 大字典

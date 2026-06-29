@@ -10,6 +10,15 @@ function formatMetricValue(metric: AiEvidenceMetric): string {
   return metric.unit ? `${value} ${metric.unit}` : value
 }
 
+function evidenceCardKey(card: AiEvidenceCard, index: number): string {
+  return [
+    card.card_id || card.title || 'evidence-card',
+    card.source.tool_name,
+    card.source.source_range || 'unknown-range',
+    index,
+  ].join(':')
+}
+
 export function AIEvidenceCards({ cards }: AIEvidenceCardsProps) {
   if (cards.length === 0) return null
 
@@ -20,7 +29,7 @@ export function AIEvidenceCards({ cards }: AIEvidenceCardsProps) {
       </p>
       <div className="mt-3 grid gap-3 md:grid-cols-2">
         {cards.map((card, index) => (
-          <EvidenceCard card={card} index={index} key={card.card_id || `${card.title}-${index}`} />
+          <EvidenceCard card={card} index={index} key={evidenceCardKey(card, index)} />
         ))}
       </div>
     </section>

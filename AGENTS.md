@@ -16,7 +16,7 @@ Spotify Extended Streaming History 数据分析 Web 应用的主项目提示词�
 
 **性能策略**：Cache Manager 管理 5 命名空间（billboard/analysis/db/auth）LRU+TTL 缓存；Billboard 拆为 4 个独立 `@lru_cache` 函数，并通过共享 `_load_and_rank_cached` + `singleflight()` 避免 weekly/power/summaries/all-time 冷启动重复计算；Power Score、Billboard summaries 和 `merge_consecutive_plays()` 使用列级/组级向量化，避免逐行 `DataFrame.apply(axis=1)`、`iterrows()` 或 `to_dict()` 热路径；Dashboard full 单请求复用同一播放 DataFrame；`agg_weekly_track_sources` 支撑 album project 专辑榜和详情来源拆分；启动 warmup 使用当前默认动态阈值口径并预热 artist fan-out；SQLite 版本化 Migration；后台 Job Queue（3 worker）异步处理封面下载与 Wikipedia+LLM enrichment；前端 GET 数据统一进入 TanStack React Query（staleTime 5min/gcTime 30min/retry 2），路由级 lazy 分包；ECharts 统一走 `LazyEChart` + `echarts-for-react/esm/core` 按需注册，OpenCC 简繁转换只动态加载 `opencc-js/t2cn` 或 `opencc-js/cn2t` 子包，保存偏好恢复不得在模块初始化时预取大字典；账号页长图列表使用预览上限与原生图片懒加载，Web Vitals lab 通过 `scripts/frontend_web_vitals_probe.mjs` 采样，并可用 LCP/CLS/TBT/资源数量/encoded 体积/横向滚动溢出预算参数作为回归门禁。
 
-**AI 可观察任务与只读 Agent（2026-06-29）**：AI 报告采用 cache-first + 手动生成，不因打开页面自动调用 LLM；AI task runs/events/tool_calls 持久化到 SQLite，前端通过 `features/ai-tasks` 统一展示进度、证据卡片和工具轨迹；问答改为后端只读 Agent 工具链，模型只可规划 allowlist read-only 工具（总体统计、排行、播放记录、年度总结、实体统计、个人 Billboard 实体详情、听歌时段/深夜歌曲排行），不得调用任意 SQL/URL/写操作；最终回答只能基于 compact evidence + coverage，prompt 明确区分本地个人 Billboard 与外部官方 Billboard，并在 coverage 矛盾时自动重试一次；question intent、entity resolver、compare_entities、coverage follow-up、answer critic 与 golden-question harness 共同构成 AI Agent harness quality layer；艺人 career 与专辑 era enrichment 已接入同一 task 进度模型。
+**AI 可观察任务与只读 Agent（2026-06-29）**：AI 报告采用 cache-first + 手动生成，不因打开页面自动调用 LLM；AI task runs/events/tool_calls 持久化到 SQLite，前端通过 `features/ai-tasks` 统一展示进度、证据卡片和工具轨迹；问答改为后端只读 Agent 工具链，模型只可规划 allowlist read-only 工具（总体统计、排行、播放记录、年度总结、实体统计、个人 Billboard 实体详情、听歌时段/深夜歌曲排行），不得调用任意 SQL/URL/写操作；最终回答只能基于 compact evidence、coverage、EvidenceSufficiency 和 AnalyticalBrief，prompt 与 AnswerContract 明确区分本地个人 Billboard 与外部官方 Billboard，并在 coverage/answer contract 矛盾时自动重试一次；QuestionFrame、EvidenceRecipe、EvidenceSufficiency、AnalyticalBrief、entity resolver、compare_entities、answer critic 与 golden-question harness 共同构成 AI Agent 通用分析中间层；艺人 career 与专辑 era enrichment 已接入同一 task 进度模型。
 
 ## Phase 5 产品化收口基线
 
@@ -35,7 +35,7 @@ Phase 5 目标是收紧产品线到可持续迭代状态。当前进度：
 - Billboard records 输出层已拆入 `backend/domains/billboard/records_output.py`，championship/no1 family 已拆入 `records_championship.py`，longevity/persistence family 已拆入 `records_longevity.py`，movement/breakthrough family 已拆入 `records_movement.py`，hall-of-fame/power ranking family 已拆入 `records_hall_of_fame.py`，endurance/rank-stability family 已拆入 `records_endurance.py`，self-replacement/blocker family 已拆入 `records_self_replacement_blocker.py`，market/market-intensity family 已拆入 `records_market.py`，quirky/special-feat family 已拆入 `records_quirky.py`，`records.py` 保留 88 行纯编排 facade
 - Billboard chart 周榜排名已拆入 `backend/domains/billboard/chart_ranking.py`，走势评分（Power Score）已拆入 `backend/domains/billboard/chart_power_score.py`，summary/count helper 已拆入 `backend/domains/billboard/chart_summaries.py`，共享 load/rank cache 已拆入 `backend/domains/billboard/chart_load_rank.py`，staged cache 已拆入 `backend/domains/billboard/chart_staged_cache.py`，staged public API 已拆入 `backend/domains/billboard/chart_staged_api.py`，`chart_compute.py` 保留 211 行兼容入口/re-export/cache registration facade
 - 架构护栏测试（`frontend/src/tests/phase5-architecture.test.ts`）与长列表分页渲染测试（`frontend/src/tests/long-list-pagination.test.tsx`）
-- AI Observable Agent Orchestrator V2：报告/问答/艺人和专辑 enrichment 接入 AI task 进度，问答支持只读工具规划、思考模式、证据卡片、工具轨迹、coverage 自检、矛盾回答重试和 golden-question harness
+- AI Observable Agent Orchestrator V2 + Universal Analytical Harness：报告/问答/艺人和专辑 enrichment 接入 AI task 进度，问答支持只读工具规划、思考模式、证据卡片、工具轨迹、QuestionFrame/EvidenceRecipe 证据配方、EvidenceSufficiency 补查、AnalyticalBrief 回答底稿、AnswerContract critic、矛盾回答重试和 golden-question harness
 - `scripts/phase5_check.sh` 最低验证矩阵 + GitHub Actions CI 基线（`.github/workflows/phase5-baseline.yml`）
 
 **持续治理**：
@@ -212,7 +212,7 @@ JSON 导出 ──→ import_data.py ──→ SQLite (spotify_stats.db) ──�
 | `services/wrapped_service.py` | 自定义年度总结（听歌人格/Top榜/曲风全景/发现回归等） |
 | `services/billboard_service.py` | Billboard facade（~100行），实现已迁入 `domains/billboard/` |
 | `services/ai_task_service.py` | AI task 编排：报告 cache check/manual generation、艺人/专辑 enrichment、任务状态与事件持久化 |
-| `services/ai_agent_service.py` | 只读 Agent 问答：工具规划、allowlist 执行、compact evidence、coverage 自检与回答重试 |
+| `services/ai_agent_service.py` | 只读 Agent 问答：工具规划、allowlist 执行、compact evidence、证据充分性复核、分析底稿、回答契约 critic 与回答重试 |
 | `services/chat_service.py` | 对话历史管理：会话 CRUD + 消息持久化 + 自动标题 |
 | `services/spotify_auth.py` | OAuth PKCE 授权与数据同步 |
 
