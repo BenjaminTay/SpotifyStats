@@ -42,7 +42,7 @@ def recipe_for_frame(frame: QuestionFrame | dict[str, object]) -> EvidenceRecipe
                 {"tool_name": "entity_stats", "period": "last_6_months"},
                 {"tool_name": "entity_stats", "period": "last_4_weeks"},
             ],
-            max_followup_calls=4,
+            max_followup_calls=5,
         )
 
     if family == "identity_preference":
@@ -119,7 +119,7 @@ def recipe_for_frame(frame: QuestionFrame | dict[str, object]) -> EvidenceRecipe
 
     if family == "entity_detail":
         required_axes = ["detail", "cumulative"]
-        required_tool_patterns = [{"tool_name": "entity_stats"}]
+        required_tool_patterns: list[dict[str, object]] = [{"tool_name": "entity_stats"}]
         if "personal_billboard" in parsed_frame.analysis_axes:
             required_axes.append("personal_billboard")
             required_tool_patterns.append({"tool_name": "billboard_entity_detail"})
