@@ -32,7 +32,82 @@ MISSING_DATA_TOKENS = (
     "无法比较",
 )
 
-NEGATION_TOKENS = ("不是", "不能", "不代表", "不等于", "无法说明", "不能说明")
+HARD_MISSING_DATA_TOKENS = (
+    "数据不足",
+    "缺少",
+    "缺乏",
+    "未查询",
+    "没有查询",
+    "无法比较",
+)
+
+NEGATION_TOKENS = (
+    "不是",
+    "不能",
+    "不代表",
+    "不等于",
+    "无法",
+    "不要",
+    "不应",
+    "不宜",
+    "并非",
+    "不完全",
+)
+
+LOCAL_BILLBOARD_BOUNDARY_TOKENS = (
+    "个人 Billboard",
+    "个人Billboard",
+    "本地个人榜单",
+    "SpotifyStats Billboard",
+    "个人榜单",
+)
+
+LIMITATION_TOKENS = (
+    "限制",
+    "证据不足",
+    "数据不足",
+    "缺失证据",
+    "缺少证据",
+    "缺乏证据",
+    "无法确定",
+    "无法判断",
+    "不能确定",
+    "不能断定",
+    "只能说",
+    "目前只能",
+)
+
+SINGLE_WINNER_TOKENS = (
+    "明显胜出",
+    "明显更胜",
+    "均指向",
+    "都指向",
+    "毫无疑问",
+    "完全",
+    "单方胜出",
+    "单方明显胜出",
+)
+
+INSUFFICIENT_CONFIDENCE_TOKENS = (
+    "明显",
+    "确定",
+    "更甚",
+    "毫无疑问",
+    "均指向",
+    "都指向",
+)
+
+METRIC_LAYERING_TOKENS = (
+    "分口径",
+    "不同口径",
+    "长期",
+    "近期",
+    "强度",
+    "累计",
+    "最近",
+    "播放次数",
+    "Power Score",
+)
 
 
 def _sentences(answer: str) -> list[str]:
@@ -40,6 +115,51 @@ def _sentences(answer: str) -> list[str]:
     for punctuation in ("。", "；", ";", "，", ",", "\n"):
         normalized = normalized.replace(punctuation, "\n")
     return [part.strip() for part in normalized.splitlines() if part.strip()]
+
+
+def _as_dict(value: Any) -> dict[str, Any]:
+    return value if isinstance(value, dict) else {}
+
+
+def _as_str_list(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [item for item in value if isinstance(item, str) and item.strip()]
+
+
+def _contains_any(text: str, tokens: tuple[str, ...]) -> bool:
+    return any(token in text for token in tokens)
+
+
+def _sentence_has_unnegated_token(sentence: str, token: str) -> bool:
+    start = 0
+    while True:
+        index = sentence.find(token, start)
+        if index < 0:
+            return False
+        before_token = sentence[max(0, index - 8) : index]
+        token_context = sentence[max(0, index - 8) : index + len(token)]
+        if not any(
+            negation in token_context or negation in before_token for negation in NEGATION_TOKENS
+        ):
+            return True
+        start = index + len(token)
+
+
+def _has_unnegated_any(sentence: str, tokens: tuple[str, ...]) -> bool:
+    return any(_sentence_has_unnegated_token(sentence, token) for token in tokens)
+
+
+def _brief(final_payload: dict[str, Any]) -> dict[str, Any]:
+    return _as_dict(final_payload.get("analytical_brief"))
+
+
+def _evidence_sufficiency(final_payload: dict[str, Any]) -> dict[str, Any]:
+    return _as_dict(final_payload.get("evidence_sufficiency"))
+
+
+def _must_explain_requires(must_explain: list[str], token: str) -> bool:
+    return any(token in item for item in must_explain)
 
 
 def _coverage_found_entities(coverage: Any) -> list[str]:
@@ -78,17 +198,101 @@ def _compare_entities_globally_found(coverage: Any) -> bool:
     return isinstance(comparison, dict) and comparison.get("compare_entities") == "found"
 
 
-def _is_negated_external_billboard_sentence(sentence: str) -> bool:
-    return any(token in sentence for token in NEGATION_TOKENS)
+def _global_missing_claim_conflicts_with_found(
+    sentence: str,
+    evidence_sufficiency: dict[str, Any],
+) -> bool:
+    if any(token in sentence for token in HARD_MISSING_DATA_TOKENS):
+        return True
+    if "证据不足" in sentence and evidence_sufficiency.get("sufficient") is not False:
+        return True
+    return False
+
+
+def _check_forbidden_claims(answer: str, analytical_brief: dict[str, Any]) -> list[str]:
+    issues: list[str] = []
+    forbidden_claims = _as_str_list(analytical_brief.get("forbidden_claims"))
+    for claim in forbidden_claims:
+        if any(_sentence_has_unnegated_token(sentence, claim) for sentence in _sentences(answer)):
+            issues.append(f"回答出现 analytical_brief.forbidden_claims 禁止表述：{claim}")
+            break
+    return issues
+
+
+def _conflict_answer_mentions_layered_evidence(
+    answer: str,
+    analytical_brief: dict[str, Any],
+) -> bool:
+    dimension_winners = analytical_brief.get("dimension_winners")
+    winners: set[str] = set()
+    if isinstance(dimension_winners, dict):
+        winners = {str(value) for value in dimension_winners.values() if value}
+    mentioned_winners = {winner for winner in winners if winner in answer}
+    has_layering_language = _contains_any(answer, METRIC_LAYERING_TOKENS)
+    has_limitation_language = _contains_any(answer, LIMITATION_TOKENS)
+    if len(winners) >= 2:
+        return len(mentioned_winners) >= 2 and has_layering_language
+    return has_layering_language and has_limitation_language
+
+
+def _check_conflict_contract(answer: str, analytical_brief: dict[str, Any]) -> list[str]:
+    if analytical_brief.get("conflict") is not True:
+        return []
+    for sentence in _sentences(answer):
+        if _has_unnegated_any(sentence, SINGLE_WINNER_TOKENS):
+            return ["analytical_brief.conflict=true，但回答给出过度单一结论。"]
+    if not _conflict_answer_mentions_layered_evidence(answer, analytical_brief):
+        return ["analytical_brief.conflict=true，但回答没有呈现多口径冲突证据。"]
+    return []
+
+
+def _check_must_explain_contract(answer: str, analytical_brief: dict[str, Any]) -> list[str]:
+    must_explain = _as_str_list(analytical_brief.get("must_explain"))
+    issues: list[str] = []
+    if _must_explain_requires(must_explain, "本地个人榜单") and not _contains_any(
+        answer,
+        LOCAL_BILLBOARD_BOUNDARY_TOKENS,
+    ):
+        issues.append("analytical_brief.must_explain 要求说明本地个人榜单边界。")
+    if _must_explain_requires(must_explain, "不同口径胜者不一致") and not _contains_any(
+        answer,
+        METRIC_LAYERING_TOKENS,
+    ):
+        issues.append("analytical_brief.must_explain 要求解释不同口径胜者不一致。")
+    return issues
+
+
+def _check_insufficient_evidence_contract(
+    answer: str,
+    evidence_sufficiency: dict[str, Any],
+) -> list[str]:
+    if evidence_sufficiency.get("sufficient") is not False:
+        return []
+    issues: list[str] = []
+    if not _contains_any(answer, LIMITATION_TOKENS):
+        issues.append("evidence_sufficiency.sufficient=false，但回答没有说明限制或证据不足。")
+    for sentence in _sentences(answer):
+        if _has_unnegated_any(sentence, INSUFFICIENT_CONFIDENCE_TOKENS):
+            issues.append("证据不足时回答使用了强确定单一结论。")
+            break
+    return issues
 
 
 def critique_answer(answer: str, final_payload: dict[str, Any]) -> dict[str, Any]:
     """Return deterministic answer issues without calling external services."""
     issues: list[str] = []
+    if not isinstance(final_payload, dict):
+        final_payload = {}
+    analytical_brief = _brief(final_payload)
+    issues.extend(_check_forbidden_claims(answer, analytical_brief))
+    issues.extend(_check_conflict_contract(answer, analytical_brief))
+    issues.extend(_check_must_explain_contract(answer, analytical_brief))
+    issues.extend(
+        _check_insufficient_evidence_contract(answer, _evidence_sufficiency(final_payload))
+    )
+
     for sentence in _sentences(answer):
-        if not any(token in sentence for token in EXTERNAL_BILLBOARD_TOKENS):
-            continue
-        if _is_negated_external_billboard_sentence(sentence):
+        if not _has_unnegated_any(sentence, EXTERNAL_BILLBOARD_TOKENS):
             continue
         if not any(qualifier in sentence for qualifier in PERSONAL_BILLBOARD_QUALIFIERS):
             issues.append(
@@ -97,6 +301,7 @@ def critique_answer(answer: str, final_payload: dict[str, Any]) -> dict[str, Any
             break
 
     coverage = final_payload.get("coverage") if isinstance(final_payload, dict) else {}
+    evidence_sufficiency = _evidence_sufficiency(final_payload)
     found_entities = _coverage_found_entities(coverage)
     compare_found = _compare_entities_globally_found(coverage)
     for sentence in _sentences(answer):
@@ -110,7 +315,10 @@ def critique_answer(answer: str, final_payload: dict[str, Any]) -> dict[str, Any
                 f"{'、'.join(contradicted_entities)} 已查到 found 证据，但回答声称数据不足或未查询。"
             )
             break
-        if compare_found:
+        if compare_found and _global_missing_claim_conflicts_with_found(
+            sentence,
+            evidence_sufficiency,
+        ):
             issues.append("compare_entities 已 found，但回答声称数据不足、未查询或无法比较。")
             break
 

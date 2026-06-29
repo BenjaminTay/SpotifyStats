@@ -5,18 +5,62 @@
     "expected_intent": {
       "task_type": "comparison",
       "entity_type": "album",
-      "entities": ["GUTS", "The Life of a Showgirl"],
-      "requested_metrics_contains": ["plays", "personal_billboard"],
-      "forbidden_metrics_contains": ["time_of_day"],
+      "entities": [
+        "GUTS",
+        "The Life of a Showgirl"
+      ],
+      "requested_metrics_contains": [
+        "plays",
+        "personal_billboard"
+      ],
+      "forbidden_metrics_contains": [
+        "time_of_day"
+      ],
       "time_scope": "lifetime",
       "needs_fairness_note": true
+    },
+    "expected_frame": {
+      "family": "preference_comparison",
+      "answer_contract": "layered_preference_comparison",
+      "analysis_axes_contains": [
+        "cumulative",
+        "recency",
+        "intensity",
+        "personal_billboard",
+        "fairness"
+      ]
+    },
+    "expected_recipe": {
+      "family": "preference_comparison",
+      "required_axes_contains": [
+        "cumulative",
+        "recency",
+        "intensity",
+        "personal_billboard"
+      ],
+      "required_tool_patterns_contains": [
+        {
+          "tool_name": "compare_entities"
+        },
+        {
+          "tool_name": "entity_stats",
+          "period": "last_6_months"
+        },
+        {
+          "tool_name": "entity_stats",
+          "period": "last_4_weeks"
+        }
+      ]
     },
     "required_tool_calls": [
       {
         "tool_name": "compare_entities",
         "params": {
           "entity_type": "album",
-          "names": ["GUTS", "The Life of a Showgirl"]
+          "names": [
+            "GUTS",
+            "The Life of a Showgirl"
+          ]
         }
       }
     ],
@@ -25,7 +69,10 @@
         "tool_name": "compare_entities",
         "params": {
           "entity_type": "album",
-          "names": ["GUTS", "The Life of a Showgirl"],
+          "names": [
+            "GUTS",
+            "The Life of a Showgirl"
+          ],
           "merge_level": 2
         }
       }
@@ -45,12 +92,21 @@
     ],
     "critic": {
       "coverage": {
-        "requested_entities": ["GUTS", "The Life of a Showgirl"],
+        "requested_entities": [
+          "GUTS",
+          "The Life of a Showgirl"
+        ],
         "entities": {
-          "GUTS": {"compare_entities": "found"},
-          "The Life of a Showgirl": {"compare_entities": "found"}
+          "GUTS": {
+            "compare_entities": "found"
+          },
+          "The Life of a Showgirl": {
+            "compare_entities": "found"
+          }
         },
-        "comparison": {"compare_entities": "found"}
+        "comparison": {
+          "compare_entities": "found"
+        }
       },
       "safe_answer": "基于个人 Billboard 和本地播放数据，GUTS 的播放次数更高；The Life of a Showgirl 发行时间更晚，所以需要补充公平性说明。",
       "unsafe_answer": "GUTS 的官方 Billboard 商业成绩和市场影响力更强，因此另一张专辑数据不足。"
@@ -62,11 +118,44 @@
     "expected_intent": {
       "task_type": "trend",
       "entity_type": "artist",
-      "entities": ["Olivia Rodrigo"],
-      "requested_metrics_contains": ["plays", "recent_window"],
-      "forbidden_metrics_contains": ["personal_billboard", "time_of_day"],
+      "entities": [
+        "Olivia Rodrigo"
+      ],
+      "requested_metrics_contains": [
+        "plays",
+        "recent_window"
+      ],
+      "forbidden_metrics_contains": [
+        "personal_billboard",
+        "time_of_day"
+      ],
       "time_scope": "last_6_months",
       "needs_fairness_note": false
+    },
+    "expected_frame": {
+      "family": "trend_preference",
+      "answer_contract": "trend_answer",
+      "analysis_axes_contains": [
+        "recency",
+        "trend"
+      ]
+    },
+    "expected_recipe": {
+      "family": "trend_preference",
+      "required_axes_contains": [
+        "recency",
+        "trend"
+      ],
+      "required_tool_patterns_contains": [
+        {
+          "tool_name": "entity_stats",
+          "period": "last_6_months"
+        },
+        {
+          "tool_name": "analysis_charts",
+          "period": "last_6_months"
+        }
+      ]
     },
     "required_tool_calls": [
       {
@@ -107,8 +196,17 @@
         }
       }
     ],
-    "required_answer_terms": ["Olivia Rodrigo", "最近六个月", "趋势", "播放"],
-    "forbidden_answer_terms": ["官方 Billboard", "没有数据", "无法判断"]
+    "required_answer_terms": [
+      "Olivia Rodrigo",
+      "最近六个月",
+      "趋势",
+      "播放"
+    ],
+    "forbidden_answer_terms": [
+      "官方 Billboard",
+      "没有数据",
+      "无法判断"
+    ]
   },
   {
     "id": "ranking_top_artist_2023",
@@ -117,10 +215,33 @@
       "task_type": "ranking",
       "entity_type": "artist",
       "entities": [],
-      "requested_metrics_contains": ["plays"],
-      "forbidden_metrics_contains": ["personal_billboard", "time_of_day"],
+      "requested_metrics_contains": [
+        "plays"
+      ],
+      "forbidden_metrics_contains": [
+        "personal_billboard",
+        "time_of_day"
+      ],
       "time_scope": "year:2023",
       "needs_fairness_note": false
+    },
+    "expected_frame": {
+      "family": "simple_ranking",
+      "answer_contract": "simple_rank_answer",
+      "analysis_axes_contains": [
+        "ranking"
+      ]
+    },
+    "expected_recipe": {
+      "family": "simple_ranking",
+      "required_axes_contains": [
+        "ranking"
+      ],
+      "required_tool_patterns_contains": [
+        {
+          "tool_name": "analysis_charts"
+        }
+      ]
     },
     "required_tool_calls": [
       {
@@ -133,7 +254,12 @@
           "end_date": "2023-12-31"
         }
       },
-      {"tool_name": "wrapped_yearly", "params": {"year": 2023}}
+      {
+        "tool_name": "wrapped_yearly",
+        "params": {
+          "year": 2023
+        }
+      }
     ],
     "recommended_tools": [
       {
@@ -148,10 +274,24 @@
           "merge_level": 2
         }
       },
-      {"tool_name": "wrapped_yearly", "params": {"year": 2023, "merge_level": 2}}
+      {
+        "tool_name": "wrapped_yearly",
+        "params": {
+          "year": 2023,
+          "merge_level": 2
+        }
+      }
     ],
-    "required_answer_terms": ["2023", "艺人", "播放量"],
-    "forbidden_answer_terms": ["今年", "2026", "数据不足"]
+    "required_answer_terms": [
+      "2023",
+      "艺人",
+      "播放量"
+    ],
+    "forbidden_answer_terms": [
+      "今年",
+      "2026",
+      "数据不足"
+    ]
   },
   {
     "id": "deep_night_tracks_and_hours",
@@ -160,18 +300,498 @@
       "task_type": "ranking",
       "entity_type": "track",
       "entities": [],
-      "requested_metrics_contains": ["plays", "time_of_day"],
-      "forbidden_metrics_contains": ["personal_billboard"],
+      "requested_metrics_contains": [
+        "plays",
+        "time_of_day"
+      ],
+      "forbidden_metrics_contains": [
+        "personal_billboard"
+      ],
       "time_scope": "lifetime",
       "needs_fairness_note": false
     },
+    "expected_frame": {
+      "family": "time_of_day_ranking",
+      "answer_contract": "time_of_day_answer",
+      "analysis_axes_contains": [
+        "time_of_day",
+        "ranking"
+      ]
+    },
+    "expected_recipe": {
+      "family": "time_of_day_ranking",
+      "required_axes_contains": [
+        "time_of_day",
+        "ranking"
+      ],
+      "required_tool_patterns_contains": [
+        {
+          "tool_name": "listening_hours",
+          "view": "late_night_tracks"
+        }
+      ]
+    },
     "required_tool_calls": [
-      {"tool_name": "listening_hours", "params": {"view": "late_night_tracks"}}
+      {
+        "tool_name": "listening_hours",
+        "params": {
+          "view": "late_night_tracks"
+        }
+      }
     ],
     "recommended_tools": [
-      {"tool_name": "listening_hours", "params": {"view": "late_night_tracks"}}
+      {
+        "tool_name": "listening_hours",
+        "params": {
+          "view": "late_night_tracks"
+        }
+      }
     ],
-    "required_answer_terms": ["深夜", "歌曲", "时段", "播放"],
-    "forbidden_answer_terms": ["早晨", "没有数据", "无法判断"]
+    "required_answer_terms": [
+      "深夜",
+      "歌曲",
+      "时段",
+      "播放"
+    ],
+    "forbidden_answer_terms": [
+      "早晨",
+      "没有数据",
+      "无法判断"
+    ]
+  },
+  {
+    "id": "artist_identity_taylor_vs_olivia",
+    "question": "Taylor Swift 和 Olivia Rodrigo 谁更像我的本命？",
+    "expected_intent": {
+      "task_type": "comparison",
+      "entity_type": "unknown",
+      "entities": [
+        "Taylor Swift",
+        "Olivia Rodrigo"
+      ],
+      "requested_metrics_contains": [
+        "summary"
+      ],
+      "forbidden_metrics_contains": [
+        "time_of_day"
+      ],
+      "time_scope": "lifetime",
+      "needs_fairness_note": false
+    },
+    "expected_frame": {
+      "family": "identity_preference",
+      "answer_contract": "identity_preference_answer",
+      "analysis_axes_contains": [
+        "cumulative",
+        "recency",
+        "consistency",
+        "peak",
+        "personal_billboard",
+        "fairness"
+      ]
+    },
+    "expected_recipe": {
+      "family": "identity_preference",
+      "required_axes_contains": [
+        "cumulative",
+        "recency",
+        "consistency",
+        "peak"
+      ],
+      "required_tool_patterns_contains": [
+        {
+          "tool_name": "compare_entities"
+        },
+        {
+          "tool_name": "entity_stats",
+          "period": "last_6_months"
+        },
+        {
+          "tool_name": "billboard_entity_detail"
+        }
+      ]
+    },
+    "required_tool_calls": [
+      {
+        "tool_name": "compare_entities",
+        "params": {
+          "entity_type": "artist",
+          "names": [
+            "Taylor Swift",
+            "Olivia Rodrigo"
+          ]
+        }
+      },
+      {
+        "tool_name": "entity_stats",
+        "params": {
+          "entity": "artist",
+          "artist_name": "Taylor Swift",
+          "period": "last_6_months"
+        }
+      },
+      {
+        "tool_name": "entity_stats",
+        "params": {
+          "entity": "artist",
+          "artist_name": "Olivia Rodrigo",
+          "period": "last_6_months"
+        }
+      }
+    ],
+    "recommended_tools": [
+      {
+        "tool_name": "compare_entities",
+        "params": {
+          "entity_type": "artist",
+          "names": [
+            "Taylor Swift",
+            "Olivia Rodrigo"
+          ],
+          "merge_level": 2
+        }
+      },
+      {
+        "tool_name": "entity_stats",
+        "params": {
+          "entity": "artist",
+          "artist_name": "Taylor Swift",
+          "period": "last_6_months",
+          "merge_level": 2
+        }
+      },
+      {
+        "tool_name": "entity_stats",
+        "params": {
+          "entity": "artist",
+          "artist_name": "Olivia Rodrigo",
+          "period": "last_6_months",
+          "merge_level": 2
+        }
+      },
+      {
+        "tool_name": "billboard_entity_detail",
+        "params": {
+          "entity": "artist",
+          "artist_name": "Taylor Swift",
+          "merge_level": 2
+        }
+      },
+      {
+        "tool_name": "billboard_entity_detail",
+        "params": {
+          "entity": "artist",
+          "artist_name": "Olivia Rodrigo",
+          "merge_level": 2
+        }
+      }
+    ],
+    "required_answer_terms": [
+      "Taylor Swift",
+      "Olivia Rodrigo",
+      "本命",
+      "长期",
+      "近期"
+    ],
+    "forbidden_answer_terms": [
+      "官方 Billboard",
+      "市场影响力",
+      "毫无疑问"
+    ]
+  },
+  {
+    "id": "period_this_year_vs_last_year",
+    "question": "今年和去年我听歌口味有什么变化？",
+    "expected_intent": {
+      "task_type": "trend",
+      "entity_type": "unknown",
+      "entities": [],
+      "requested_metrics_contains": [
+        "recent_window"
+      ],
+      "forbidden_metrics_contains": [
+        "personal_billboard"
+      ],
+      "time_scope": "this_year",
+      "needs_fairness_note": false
+    },
+    "expected_frame": {
+      "family": "period_comparison",
+      "answer_contract": "period_comparison_answer",
+      "analysis_axes_contains": [
+        "period",
+        "ranking"
+      ]
+    },
+    "expected_recipe": {
+      "family": "period_comparison",
+      "required_axes_contains": [
+        "period",
+        "ranking"
+      ],
+      "required_tool_patterns_contains": [
+        {
+          "tool_name": "analysis_charts"
+        },
+        {
+          "tool_name": "wrapped_yearly"
+        }
+      ]
+    },
+    "required_tool_calls": [
+      {
+        "tool_name": "analysis_charts",
+        "params": {
+          "entity": "artist",
+          "metric": "plays",
+          "period": "this_year"
+        }
+      },
+      {
+        "tool_name": "wrapped_yearly",
+        "params": {
+          "year": 2025
+        }
+      }
+    ],
+    "recommended_tools": [
+      {
+        "tool_name": "analysis_charts",
+        "params": {
+          "entity": "artist",
+          "metric": "plays",
+          "period": "this_year",
+          "limit": 10,
+          "merge_level": 2
+        }
+      },
+      {
+        "tool_name": "wrapped_yearly",
+        "params": {
+          "year": 2025,
+          "merge_level": 2
+        }
+      },
+      {
+        "tool_name": "analysis_charts",
+        "params": {
+          "entity": "artist",
+          "metric": "plays",
+          "period": "custom",
+          "start_date": "2025-01-01",
+          "end_date": "2025-12-31",
+          "limit": 10,
+          "merge_level": 2
+        }
+      }
+    ],
+    "required_answer_terms": [
+      "今年",
+      "去年",
+      "变化",
+      "播放"
+    ],
+    "forbidden_answer_terms": [
+      "2023",
+      "官方 Billboard",
+      "无法判断"
+    ]
+  },
+  {
+    "id": "album_recent_drop_explanation",
+    "question": "为什么 GUTS 这张专辑最近播放量下降了？",
+    "expected_intent": {
+      "task_type": "trend",
+      "entity_type": "album",
+      "entities": [
+        "GUTS"
+      ],
+      "requested_metrics_contains": [
+        "plays",
+        "recent_window"
+      ],
+      "forbidden_metrics_contains": [
+        "time_of_day"
+      ],
+      "time_scope": "last_4_weeks",
+      "needs_fairness_note": false
+    },
+    "expected_frame": {
+      "family": "change_explanation",
+      "answer_contract": "change_explanation_answer",
+      "analysis_axes_contains": [
+        "trend",
+        "recency",
+        "ranking"
+      ]
+    },
+    "expected_recipe": {
+      "family": "change_explanation",
+      "required_axes_contains": [
+        "trend",
+        "recency",
+        "ranking"
+      ],
+      "required_tool_patterns_contains": [
+        {
+          "tool_name": "entity_stats",
+          "period": "last_6_months"
+        },
+        {
+          "tool_name": "entity_stats",
+          "period": "last_4_weeks"
+        },
+        {
+          "tool_name": "analysis_charts",
+          "period": "last_6_months"
+        }
+      ]
+    },
+    "required_tool_calls": [
+      {
+        "tool_name": "entity_stats",
+        "params": {
+          "entity": "album",
+          "album_name": "GUTS",
+          "period": "last_6_months"
+        }
+      },
+      {
+        "tool_name": "entity_stats",
+        "params": {
+          "entity": "album",
+          "album_name": "GUTS",
+          "period": "last_4_weeks"
+        }
+      },
+      {
+        "tool_name": "analysis_charts",
+        "params": {
+          "entity": "album",
+          "metric": "plays",
+          "period": "last_6_months"
+        }
+      }
+    ],
+    "recommended_tools": [
+      {
+        "tool_name": "entity_stats",
+        "params": {
+          "entity": "album",
+          "album_name": "GUTS",
+          "period": "last_6_months",
+          "merge_level": 2
+        }
+      },
+      {
+        "tool_name": "entity_stats",
+        "params": {
+          "entity": "album",
+          "album_name": "GUTS",
+          "period": "last_4_weeks",
+          "merge_level": 2
+        }
+      },
+      {
+        "tool_name": "analysis_charts",
+        "params": {
+          "entity": "album",
+          "metric": "plays",
+          "period": "last_6_months",
+          "limit": 20,
+          "merge_level": 2
+        }
+      }
+    ],
+    "required_answer_terms": [
+      "GUTS",
+      "最近",
+      "下降",
+      "播放"
+    ],
+    "forbidden_answer_terms": [
+      "官方 Billboard",
+      "市场影响力",
+      "确定唯一原因"
+    ]
+  },
+  {
+    "id": "habit_plays_vs_preference_explanation",
+    "question": "播放次数最多是否就代表最喜欢？",
+    "expected_intent": {
+      "task_type": "ranking",
+      "entity_type": "unknown",
+      "entities": [],
+      "requested_metrics_contains": [
+        "plays"
+      ],
+      "forbidden_metrics_contains": [
+        "personal_billboard"
+      ],
+      "time_scope": "lifetime",
+      "needs_fairness_note": false
+    },
+    "expected_frame": {
+      "family": "habit_summary",
+      "answer_contract": "habit_summary_answer",
+      "analysis_axes_contains": [
+        "behavior",
+        "cumulative"
+      ]
+    },
+    "expected_recipe": {
+      "family": "habit_summary",
+      "required_axes_contains": [
+        "behavior",
+        "cumulative"
+      ],
+      "required_tool_patterns_contains": [
+        {
+          "tool_name": "analysis_stats"
+        },
+        {
+          "tool_name": "listening_hours"
+        }
+      ]
+    },
+    "required_tool_calls": [
+      {
+        "tool_name": "analysis_stats",
+        "params": {
+          "period": "lifetime"
+        }
+      },
+      {
+        "tool_name": "listening_hours",
+        "params": {
+          "view": "heatmap"
+        }
+      }
+    ],
+    "recommended_tools": [
+      {
+        "tool_name": "analysis_stats",
+        "params": {
+          "period": "lifetime"
+        }
+      },
+      {
+        "tool_name": "listening_hours",
+        "params": {
+          "view": "heatmap"
+        }
+      }
+    ],
+    "required_answer_terms": [
+      "播放次数",
+      "最喜欢",
+      "行为",
+      "不能只用"
+    ],
+    "forbidden_answer_terms": [
+      "等于最喜欢",
+      "毫无疑问",
+      "官方 Billboard"
+    ]
   }
 ]

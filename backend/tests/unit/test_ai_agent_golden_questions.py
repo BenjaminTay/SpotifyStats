@@ -37,6 +37,30 @@ def test_golden_question_fixture_has_executable_shape() -> None:
         assert isinstance(case["id"], str) and case["id"]
         assert isinstance(case["question"], str) and case["question"]
         assert isinstance(case["expected_intent"], dict)
+        expected_frame = case.get("expected_frame")
+        assert isinstance(expected_frame, dict), case["id"]
+        assert isinstance(expected_frame.get("family"), str) and expected_frame["family"]
+        assert (
+            isinstance(expected_frame.get("answer_contract"), str)
+            and expected_frame["answer_contract"]
+        )
+        analysis_axes_contains = expected_frame.get("analysis_axes_contains")
+        assert isinstance(analysis_axes_contains, list) and analysis_axes_contains, case["id"]
+        assert all(isinstance(axis, str) and axis.strip() for axis in analysis_axes_contains)
+
+        expected_recipe = case.get("expected_recipe")
+        assert isinstance(expected_recipe, dict), case["id"]
+        assert isinstance(expected_recipe.get("family"), str) and expected_recipe["family"]
+        required_axes_contains = expected_recipe.get("required_axes_contains")
+        assert isinstance(required_axes_contains, list) and required_axes_contains, case["id"]
+        assert all(isinstance(axis, str) and axis.strip() for axis in required_axes_contains)
+        required_tool_patterns_contains = expected_recipe.get("required_tool_patterns_contains")
+        assert (
+            isinstance(required_tool_patterns_contains, list) and required_tool_patterns_contains
+        ), case["id"]
+        for pattern in required_tool_patterns_contains:
+            assert isinstance(pattern, dict), case["id"]
+            assert isinstance(pattern.get("tool_name"), str) and pattern["tool_name"]
 
         recommended_tools = case.get("recommended_tools")
         expected_tools = case.get("expected_tools")
@@ -89,3 +113,39 @@ def test_golden_harness_rejects_missing_required_tool_call() -> None:
     failures = evaluate_ai_agent_harness.evaluate_case(case)
 
     assert any("missing required tool call" in failure for failure in failures)
+
+
+def test_golden_harness_rejects_expected_frame_mismatch() -> None:
+    case = deepcopy(next(item for item in _load_cases() if item["id"] == "album_guts_vs_showgirl"))
+    case["expected_frame"] = {
+        "family": "simple_ranking",
+        "answer_contract": "simple_rank_answer",
+        "analysis_axes_contains": ["ranking"],
+    }
+    case["expected_recipe"] = {
+        "family": "simple_ranking",
+        "required_axes_contains": ["ranking"],
+        "required_tool_patterns_contains": [{"tool_name": "analysis_charts"}],
+    }
+
+    failures = evaluate_ai_agent_harness.evaluate_case(case)
+
+    assert any("expected_frame.family" in failure for failure in failures)
+
+
+def test_golden_harness_rejects_expected_recipe_missing_tool_pattern() -> None:
+    case = deepcopy(next(item for item in _load_cases() if item["id"] == "album_guts_vs_showgirl"))
+    case["expected_frame"] = {
+        "family": "preference_comparison",
+        "answer_contract": "layered_preference_comparison",
+        "analysis_axes_contains": ["cumulative", "recency", "intensity"],
+    }
+    case["expected_recipe"] = {
+        "family": "preference_comparison",
+        "required_axes_contains": ["cumulative", "recency", "intensity"],
+        "required_tool_patterns_contains": [{"tool_name": "wrapped_yearly"}],
+    }
+
+    failures = evaluate_ai_agent_harness.evaluate_case(case)
+
+    assert any("required_tool_patterns" in failure for failure in failures)

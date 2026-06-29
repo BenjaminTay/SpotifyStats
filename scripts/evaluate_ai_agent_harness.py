@@ -14,6 +14,8 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from backend.domains.ai_agent.answer_critic import critique_answer  # noqa: E402
+from backend.domains.ai_agent.evidence_recipes import recipe_for_frame  # noqa: E402
+from backend.domains.ai_agent.question_frame import build_question_frame  # noqa: E402
 from backend.domains.ai_agent.question_intent import parse_question_intent  # noqa: E402
 from backend.domains.ai_agent.tool_registry import (  # noqa: E402
     UnknownAgentToolError,
@@ -80,6 +82,13 @@ def _tool_call_matches(required: dict[str, Any], actual: dict[str, Any]) -> bool
     return _param_value_matches(actual_params, required_params)
 
 
+def _dict_contains(actual: dict[str, Any], expected: dict[str, Any]) -> bool:
+    return all(
+        key in actual and _param_value_matches(actual[key], expected_value)
+        for key, expected_value in expected.items()
+    )
+
+
 def _validate_required_tool_calls(case: dict[str, Any]) -> list[str]:
     case_id = str(case.get("id") or "<missing-id>")
     required_calls = case.get("required_tool_calls")
@@ -112,6 +121,62 @@ def _validate_structure(case: dict[str, Any]) -> list[str]:
         failures.append(f"{case_id}: question must be a non-empty string")
     if not isinstance(case.get("expected_intent"), dict):
         failures.append(f"{case_id}: expected_intent must be an object")
+    expected_frame = case.get("expected_frame")
+    if not isinstance(expected_frame, dict):
+        failures.append(f"{case_id}: expected_frame must be an object")
+        expected_frame = {}
+    if expected_frame and (
+        not isinstance(expected_frame.get("family"), str) or not expected_frame["family"]
+    ):
+        failures.append(f"{case_id}: expected_frame.family must be a non-empty string")
+    if expected_frame and (
+        not isinstance(expected_frame.get("answer_contract"), str)
+        or not expected_frame["answer_contract"]
+    ):
+        failures.append(f"{case_id}: expected_frame.answer_contract must be a non-empty string")
+    frame_axes = expected_frame.get("analysis_axes_contains")
+    if not isinstance(frame_axes, list) or not frame_axes:
+        failures.append(
+            f"{case_id}: expected_frame.analysis_axes_contains must be a non-empty list"
+        )
+        frame_axes = []
+    invalid_frame_axes = [axis for axis in frame_axes if not isinstance(axis, str) or not axis]
+    if invalid_frame_axes:
+        failures.append(f"{case_id}: expected_frame.analysis_axes_contains has invalid values")
+
+    expected_recipe = case.get("expected_recipe")
+    if not isinstance(expected_recipe, dict):
+        failures.append(f"{case_id}: expected_recipe must be an object")
+        expected_recipe = {}
+    if expected_recipe and (
+        not isinstance(expected_recipe.get("family"), str) or not expected_recipe["family"]
+    ):
+        failures.append(f"{case_id}: expected_recipe.family must be a non-empty string")
+    recipe_axes = expected_recipe.get("required_axes_contains")
+    if not isinstance(recipe_axes, list) or not recipe_axes:
+        failures.append(
+            f"{case_id}: expected_recipe.required_axes_contains must be a non-empty list"
+        )
+        recipe_axes = []
+    invalid_recipe_axes = [axis for axis in recipe_axes if not isinstance(axis, str) or not axis]
+    if invalid_recipe_axes:
+        failures.append(f"{case_id}: expected_recipe.required_axes_contains has invalid values")
+    recipe_patterns = expected_recipe.get("required_tool_patterns_contains")
+    if not isinstance(recipe_patterns, list) or not recipe_patterns:
+        failures.append(
+            f"{case_id}: expected_recipe.required_tool_patterns_contains must be a non-empty list"
+        )
+        recipe_patterns = []
+    for pattern in recipe_patterns:
+        if not isinstance(pattern, dict):
+            failures.append(
+                f"{case_id}: expected_recipe.required_tool_patterns_contains entries must be objects"
+            )
+            continue
+        if not isinstance(pattern.get("tool_name"), str) or not pattern["tool_name"]:
+            failures.append(
+                f"{case_id}: expected_recipe.required_tool_patterns_contains tool_name is required"
+            )
 
     tools = _expected_tools(case)
     if not tools:
@@ -142,6 +207,70 @@ def _validate_structure(case: dict[str, Any]) -> list[str]:
     if overlap:
         failures.append(f"{case_id}: terms appear in both required and forbidden: {overlap}")
 
+    return failures
+
+
+def _validate_frame_and_recipe(case: dict[str, Any]) -> list[str]:
+    failures: list[str] = []
+    case_id = str(case.get("id") or "<missing-id>")
+    expected_frame = case.get("expected_frame")
+    expected_recipe = case.get("expected_recipe")
+    if not isinstance(expected_frame, dict):
+        return [f"{case_id}: expected_frame must be an object"]
+    if not isinstance(expected_recipe, dict):
+        return [f"{case_id}: expected_recipe must be an object"]
+
+    intent = parse_question_intent(str(case.get("question") or ""))
+    frame = build_question_frame(str(case.get("question") or ""), intent)
+    frame_dump = frame.model_dump()
+    expected_family = expected_frame.get("family")
+    if isinstance(expected_family, str) and frame.family != expected_family:
+        failures.append(
+            f"{case_id}: expected_frame.family expected {expected_family!r}, got {frame.family!r}"
+        )
+    expected_contract = expected_frame.get("answer_contract")
+    if isinstance(expected_contract, str) and frame.answer_contract != expected_contract:
+        failures.append(
+            f"{case_id}: expected_frame.answer_contract expected "
+            f"{expected_contract!r}, got {frame.answer_contract!r}"
+        )
+    expected_axes = expected_frame.get("analysis_axes_contains")
+    if isinstance(expected_axes, list):
+        missing_axes = sorted(set(expected_axes) - set(frame_dump["analysis_axes"]))
+        if missing_axes:
+            failures.append(f"{case_id}: expected_frame missing analysis axes {missing_axes}")
+
+    recipe = recipe_for_frame(frame)
+    recipe_dump = recipe.model_dump()
+    expected_recipe_family = expected_recipe.get("family")
+    if isinstance(expected_recipe_family, str) and recipe.family != expected_recipe_family:
+        failures.append(
+            f"{case_id}: expected_recipe.family expected "
+            f"{expected_recipe_family!r}, got {recipe.family!r}"
+        )
+    expected_required_axes = expected_recipe.get("required_axes_contains")
+    if isinstance(expected_required_axes, list):
+        missing_required_axes = sorted(
+            set(expected_required_axes) - set(recipe_dump["required_axes"])
+        )
+        if missing_required_axes:
+            failures.append(
+                f"{case_id}: expected_recipe missing required axes {missing_required_axes}"
+            )
+    expected_patterns = expected_recipe.get("required_tool_patterns_contains")
+    actual_patterns = recipe_dump["required_tool_patterns"]
+    if isinstance(expected_patterns, list):
+        for expected_pattern in expected_patterns:
+            if not isinstance(expected_pattern, dict):
+                continue
+            if not any(
+                isinstance(actual_pattern, dict)
+                and _dict_contains(actual_pattern, expected_pattern)
+                for actual_pattern in actual_patterns
+            ):
+                failures.append(
+                    f"{case_id}: expected_recipe missing required_tool_patterns {expected_pattern}"
+                )
     return failures
 
 
@@ -215,6 +344,7 @@ def evaluate_case(case: dict[str, Any]) -> list[str]:
     failures: list[str] = []
     failures.extend(_validate_structure(case))
     failures.extend(_validate_intent(case))
+    failures.extend(_validate_frame_and_recipe(case))
     failures.extend(_validate_critic(case))
     return failures
 

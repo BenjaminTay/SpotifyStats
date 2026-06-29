@@ -352,7 +352,16 @@ def test_chat_agent_adds_sufficiency_followups_with_total_tool_cap(
                 '{"tool_name":"entity_stats","params":{"entity":"album",'
                 '"album_name":"The Life of a Showgirl"}}]'
             )
-        return "GUTS 的累计更强，The Life of a Showgirl 的近期榜单表现也已补查。"
+        if len(llm_calls) == 2:
+            return "结论：所有指标均指向 GUTS，明显是 GUTS 更甚。"
+        assert "evidence_sufficiency" in user_content
+        assert "analytical_brief" in user_content
+        assert "missing_axes" in user_content
+        assert "must_explain" in user_content
+        return (
+            "结论：现有证据不足以给出确定性单一结论。"
+            "累计播放偏向 GUTS，但近期窗口证据没有补齐，需要保留限制。"
+        )
 
     def fake_dispatch_tool(tool_name: str, params: dict[str, Any] | None = None):
         params = params or {}
@@ -468,7 +477,14 @@ def test_chat_agent_adds_sufficiency_followups_with_total_tool_cap(
     ]
     assert status_payload["result"]["coverage"]["comparison"]["compare_entities"] == "found"
     assert status_payload["result"]["evidence_sufficiency"]["sufficient"] is False
-    assert len(llm_calls) == 2
+    assert status_payload["result"]["answer_retried"] is True
+    assert "证据不足" in status_payload["result"]["answer"]
+    assert "明显是 GUTS 更甚" not in status_payload["result"]["answer"]
+    assert any(
+        "证据不足" in issue or "过度" in issue
+        for issue in status_payload["result"]["validation_issues"]
+    )
+    assert len(llm_calls) == 3
 
 
 def test_chat_agent_task_marks_error_when_final_llm_is_empty(client, monkeypatch):
