@@ -100,6 +100,147 @@ def test_final_prompt_includes_requested_entity_coverage_manifest() -> None:
     )
 
 
+def test_final_payload_preserves_scoped_artist_album_and_track_rankings() -> None:
+    payload = ai_agent_service._final_payload(
+        {
+            "question": "我最喜欢的Ariana Grande的专辑和歌曲是什么",
+            "conversation_history": [],
+        },
+        [
+            {
+                "tool_name": "entity_stats",
+                "status": "done",
+                "params_summary": "entity=artist, artist_name=Ariana Grande, period=lifetime",
+                "result_summary": "found=true, plays=2153, hours=115.7",
+                "source_range": "2022-07-01..2026-06-23",
+                "data": {
+                    "found": True,
+                    "period": {"period": "lifetime"},
+                    "summary": {"total_plays": 2153, "total_hours": 115.7},
+                    "top_albums": [
+                        {
+                            "rank": 1,
+                            "album_name": "eternal sunshine",
+                            "plays": 997,
+                            "hours": 49.67,
+                        }
+                    ],
+                    "top_tracks": [
+                        {
+                            "rank": 1,
+                            "track_name": "Santa Tell Me",
+                            "plays": 145,
+                            "hours": 8.08,
+                        }
+                    ],
+                },
+            }
+        ],
+    )
+
+    evidence = payload["tool_results"][0]["evidence"]
+    assert evidence["top_albums"][0]["album_name"] == "eternal sunshine"
+    assert evidence["top_albums"][0]["plays"] == 997
+    assert evidence["top_tracks"][0]["track_name"] == "Santa Tell Me"
+    assert evidence["top_tracks"][0]["plays"] == 145
+    assert payload["analytical_brief"]["recommended_conclusion"]["top_album"] == (
+        "eternal sunshine"
+    )
+
+
+def test_scoped_ranking_defaults_to_concise_answer_style() -> None:
+    payload = ai_agent_service._final_payload(
+        {
+            "question": "我最喜欢的Ariana Grande的专辑和歌曲是什么",
+            "conversation_history": [],
+        },
+        [
+            {
+                "tool_name": "entity_stats",
+                "status": "done",
+                "params_summary": "entity=artist, artist_name=Ariana Grande, period=lifetime",
+                "result_summary": "found=true, plays=2153, hours=115.7",
+                "source_range": "2022-07-01..2026-06-23",
+                "data": {
+                    "found": True,
+                    "period": {"period": "lifetime"},
+                    "top_albums": [{"rank": 1, "album_name": "eternal sunshine", "plays": 997}],
+                    "top_tracks": [{"rank": 1, "track_name": "Santa Tell Me", "plays": 145}],
+                },
+            }
+        ],
+    )
+
+    assert payload["answer_style"]["style"] == "concise"
+    assert payload["answer_style"]["max_sentences"] == 6
+    assert "我查了什么" in payload["answer_style"]["avoid_sections"]
+    assert payload["analytical_brief"]["concise_shape"] == (
+        "一句直接结论 + 两条关键数字 + 一句必要口径"
+    )
+    assert payload["project_context_version"] == "spotify-stats-project-context-v1"
+
+
+def test_final_user_content_includes_project_context_version() -> None:
+    content = ai_agent_service._final_user_content(
+        {
+            "question": "2023年我播放量最高的艺人是谁？",
+            "conversation_history": [],
+        },
+        [
+            {
+                "tool_name": "analysis_charts",
+                "status": "done",
+                "params_summary": (
+                    "period=custom, start_date=2023-01-01, end_date=2023-12-31, "
+                    "entity=artist, metric=plays"
+                ),
+                "result_summary": "rows=10, top_artist=Taylor Swift",
+                "source_range": "2023-01-01..2023-12-31",
+                "data": {
+                    "entity": "artist",
+                    "metric": "plays",
+                    "period": {
+                        "period": "custom",
+                        "start_date": "2023-01-01",
+                        "end_date": "2023-12-31",
+                    },
+                    "rows": [{"rank": 1, "artist_name": "Taylor Swift", "plays": 1000}],
+                },
+            }
+        ],
+    )
+
+    payload = json.loads(content)
+    assert payload["project_context_version"] == "spotify-stats-project-context-v1"
+
+
+def test_explicit_detail_request_uses_detailed_answer_style() -> None:
+    payload = ai_agent_service._final_payload(
+        {
+            "question": "请详细说明我最喜欢的Ariana Grande的专辑和歌曲是什么，并列出依据",
+            "conversation_history": [],
+        },
+        [
+            {
+                "tool_name": "entity_stats",
+                "status": "done",
+                "params_summary": "entity=artist, artist_name=Ariana Grande, period=lifetime",
+                "result_summary": "found=true, plays=2153, hours=115.7",
+                "source_range": "2022-07-01..2026-06-23",
+                "data": {
+                    "found": True,
+                    "period": {"period": "lifetime"},
+                    "top_albums": [{"rank": 1, "album_name": "eternal sunshine", "plays": 997}],
+                    "top_tracks": [{"rank": 1, "track_name": "Santa Tell Me", "plays": 145}],
+                },
+            }
+        ],
+    )
+
+    assert payload["answer_style"]["style"] == "detailed"
+    assert payload["answer_style"]["allow_sections"] is True
+
+
 def test_tool_call_identity_distinguishes_compare_entity_names() -> None:
     first = ai_agent_service._tool_call_identity(
         {
@@ -152,13 +293,25 @@ def test_chat_agent_retries_when_critic_rejects_external_billboard_claim(monkeyp
             )
         if len(llm_calls) == 2:
             return "GUTS 的 Billboard 市场影响力和商业成绩更强。"
-        assert "上一版回答与工具证据矛盾" in user_content
-        assert "外部官方 Billboard" in user_content
+        assert "上一版回答与工具证据或回答契约矛盾" in user_content
         return "在你的个人 Billboard 口径里，GUTS 的榜单表现更强。"
 
     def fake_dispatch_tool(tool_name: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
-        assert tool_name == "billboard_entity_detail"
         assert (params or {})["album_name"] == "GUTS"
+        if tool_name == "entity_stats":
+            return {
+                "tool_name": tool_name,
+                "params_summary": "entity=album, album_name=GUTS",
+                "result_summary": "found=true, plays=1749",
+                "source_range": "lifetime",
+                "data": {
+                    "found": True,
+                    "entity": "album",
+                    "album_name": "GUTS",
+                    "summary": {"total_plays": 1749},
+                },
+            }
+        assert tool_name == "billboard_entity_detail"
         return {
             "tool_name": tool_name,
             "params_summary": "entity=album, album_name=GUTS",

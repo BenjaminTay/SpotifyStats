@@ -1,11 +1,10 @@
-import ReactMarkdown from 'react-markdown'
-import rehypeSanitize from 'rehype-sanitize'
 import { Calendar, RefreshCw, X } from 'lucide-react'
 import { AIEvidenceCards } from '@/features/ai-tasks/AIEvidenceCards'
 import { AITaskProgress } from '@/features/ai-tasks/AITaskProgress'
 import { AIToolTrace } from '@/features/ai-tasks/AIToolTrace'
 import type { ChatMessage, ReportType } from '@/types/ai-insights'
 import type { AiTaskEvent, AiTaskRun, AiToolCall } from '@/types/ai-tasks'
+import { AiMarkdown } from './AiMarkdown'
 import { REPORT_LABELS } from './aiInsightsData'
 
 function formatDateRange(start: string | null, end: string | null): string {
@@ -105,9 +104,7 @@ export function ChatMessageList({
                         </div>
                       )}
                       <div className="prose prose-sm max-w-none text-[13px] leading-relaxed [&_strong]:text-foreground">
-                        <ReactMarkdown rehypePlugins={[rehypeSanitize]}>
-                          {msg.content}
-                        </ReactMarkdown>
+                        <AiMarkdown>{msg.content}</AiMarkdown>
                       </div>
                       {msg.meta?.evidence_cards && msg.meta.evidence_cards.length > 0 && (
                         <div className="mt-3">

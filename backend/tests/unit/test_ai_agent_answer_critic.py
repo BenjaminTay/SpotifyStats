@@ -40,6 +40,20 @@ def test_critic_accepts_personal_billboard_language() -> None:
     assert critique["issues"] == []
 
 
+def test_critic_allows_markdown_table_output() -> None:
+    critique = critique_answer(
+        answer=(
+            "| 维度 | GUTS | The Life of a Showgirl |\n"
+            "| --- | --- | --- |\n"
+            "| 播放次数 | 1749 | 1637 |"
+        ),
+        final_payload={"coverage": {}, "evidence_cards": []},
+    )
+
+    assert critique["ok"] is True
+    assert critique["issues"] == []
+
+
 def test_critic_rejects_later_external_billboard_claim_even_with_personal_scope_elsewhere() -> None:
     critique = critique_answer(
         answer=(

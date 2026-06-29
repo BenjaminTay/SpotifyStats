@@ -1,11 +1,11 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import ReactMarkdown from 'react-markdown'
-import rehypeSanitize from 'rehype-sanitize'
 import { ArrowRight, Check, Clock, Copy, RefreshCw, X } from 'lucide-react'
 
 import { ReportSkeleton } from './ReportSkeleton'
 import { AiDisclaimer, ErrorState } from './AiInsightsPrimitives'
+import { AiMarkdown } from './AiMarkdown'
+import { formatRelativeTimeZh } from '@/lib/datetime'
 import type { ReportEntities, ReportType } from '@/types/ai-insights'
 
 interface ReportCardProps {
@@ -25,23 +25,6 @@ interface ReportCardProps {
   generateLoading?: boolean
   onGenerate?: () => void
   generateLabel?: string
-}
-
-function relativeTime(isoString: string | null): string {
-  if (!isoString) return ''
-  try {
-    const then = new Date(isoString).getTime()
-    const now = Date.now()
-    const minutes = Math.floor((now - then) / 60000)
-    if (minutes < 1) return '刚刚'
-    if (minutes < 60) return `${minutes} 分钟前`
-    const hours = Math.floor(minutes / 60)
-    if (hours < 24) return `${hours} 小时前`
-    const days = Math.floor(hours / 24)
-    return `${days} 天前`
-  } catch {
-    return ''
-  }
 }
 
 function followUpQuestions(
@@ -120,7 +103,7 @@ export function ReportCard({
   }
   if (!report) return <ReportSkeleton />
 
-  const timeAgo = relativeTime(cachedAt)
+  const timeAgo = formatRelativeTimeZh(cachedAt)
   const suggestions = onFollowUp ? followUpQuestions(reportType, entities) : []
 
   const handleCopy = async () => {
@@ -184,7 +167,7 @@ export function ReportCard({
 
       {/* Report content */}
       <div className="prose prose-sm max-w-none max-h-[600px] overflow-y-auto text-[14px] leading-relaxed text-muted-foreground [&_h2]:font-serif [&_h2]:text-[18px] [&_h2]:font-semibold [&_h2]:text-foreground [&_strong]:text-foreground">
-        <ReactMarkdown rehypePlugins={[rehypeSanitize]}>{report}</ReactMarkdown>
+        <AiMarkdown>{report}</AiMarkdown>
       </div>
 
       {/* Entity links */}

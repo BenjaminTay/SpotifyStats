@@ -49,6 +49,30 @@ def test_simple_ranking_recipe_stays_small() -> None:
     assert recipe.max_followup_calls == 2
 
 
+def test_scoped_ranking_recipe_requires_artist_entity_stats() -> None:
+    recipe = _recipe("我最喜欢的Ariana Grande的专辑和歌曲是什么")
+
+    assert recipe.family == "scoped_ranking"
+    assert recipe.required_axes == ["scope", "cumulative", "ranking"]
+    assert recipe.conditional_axes == ["recency"]
+    assert {
+        "tool_name": "entity_stats",
+        "entity": "artist",
+        "period": "lifetime",
+    } in recipe.required_tool_patterns
+    assert {
+        "tool_name": "entity_stats",
+        "entity": "artist",
+        "period": "last_6_months",
+    } in recipe.recommended_tool_patterns
+    assert recipe.required_context == {
+        "scope_entity_type": "artist",
+        "scope_entity_name": "Ariana Grande",
+        "target_entity_types": ["album", "track"],
+        "metric": "plays",
+    }
+
+
 def test_time_of_day_recipe_uses_late_night_tracks() -> None:
     recipe = _recipe("我深夜最爱听什么歌？")
 

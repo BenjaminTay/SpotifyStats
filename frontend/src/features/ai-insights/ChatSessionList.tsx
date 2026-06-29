@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { MessageSquare, Plus, Trash2, X } from 'lucide-react'
+import { formatRelativeTimeZh } from '@/lib/datetime'
 import type { ChatSession } from '@/types/ai-insights'
 
 interface Props {
@@ -9,22 +10,6 @@ interface Props {
   onDelete: (id: number) => void
   onNew: () => void
   loading: boolean
-}
-
-function relativeTime(isoString: string): string {
-  const then = new Date(isoString).getTime()
-  const now = Date.now()
-  const minutes = Math.floor((now - then) / 60000)
-  if (minutes < 1) return '刚刚'
-  if (minutes < 60) return `${minutes} 分钟前`
-  const hours = Math.floor(minutes / 60)
-  if (hours < 24) return `${hours} 小时前`
-  const days = Math.floor(hours / 24)
-  if (days < 7) return `${days} 天前`
-  const weeks = Math.floor(days / 7)
-  if (weeks < 5) return `${weeks} 周前`
-  const months = Math.floor(days / 30)
-  return `${months} 个月前`
 }
 
 export function ChatSessionList({ sessions, activeId, onSelect, onDelete, onNew, loading }: Props) {
@@ -104,7 +89,7 @@ function SessionItem({
           <div className="mt-0.5 flex items-center gap-2 text-[10px] text-muted-foreground/40">
             <span>{session.message_count} 条消息</span>
             <span>·</span>
-            <span>{relativeTime(session.updated_at)}</span>
+            <span>{formatRelativeTimeZh(session.updated_at)}</span>
           </div>
         </button>
 

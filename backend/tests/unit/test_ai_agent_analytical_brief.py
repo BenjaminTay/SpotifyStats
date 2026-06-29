@@ -144,6 +144,57 @@ def test_simple_ranking_brief_stays_concise() -> None:
     assert brief["must_explain"] == ["说明时间范围和排序指标"]
 
 
+def test_scoped_ranking_brief_extracts_album_and_track_winners() -> None:
+    frame, recipe = _frame_and_recipe("我最喜欢的Ariana Grande的专辑和歌曲是什么")
+
+    brief = build_analytical_brief(
+        question_frame=frame.model_dump(),
+        evidence_recipe=recipe.model_dump(),
+        tool_results=[
+            {
+                "tool_name": "entity_stats",
+                "status": "done",
+                "source_range": "2022-07-01..2026-06-23",
+                "params_summary": "entity=artist, artist_name=Ariana Grande, period=lifetime",
+                "data": {
+                    "found": True,
+                    "summary": {"total_plays": 2153, "total_hours": 115.7},
+                    "top_albums": [
+                        {
+                            "rank": 1,
+                            "album_name": "eternal sunshine",
+                            "plays": 997,
+                            "hours": 49.67,
+                        }
+                    ],
+                    "top_tracks": [
+                        {
+                            "rank": 1,
+                            "track_name": "Santa Tell Me",
+                            "plays": 145,
+                            "hours": 8.08,
+                        }
+                    ],
+                },
+            }
+        ],
+        coverage={},
+        evidence_cards=[],
+    )
+
+    assert brief["family"] == "scoped_ranking"
+    assert brief["answer_contract"] == "scoped_ranking_answer"
+    assert brief["recommended_conclusion"] == {
+        "scope_entity": "Ariana Grande",
+        "top_album": "eternal sunshine",
+        "top_track": "Santa Tell Me",
+    }
+    assert brief["dimension_winners"]["album"] == "eternal sunshine"
+    assert brief["dimension_winners"]["track"] == "Santa Tell Me"
+    assert "分别回答专辑和歌曲，不要只给一个全局结论" in brief["must_explain"]
+    assert "用全局 Top10 缺席来断言没有数据" in brief["forbidden_claims"]
+
+
 def test_entity_detail_billboard_brief_protects_local_personal_chart_boundary() -> None:
     frame, recipe = _frame_and_recipe("GUTS 的播放和 Billboard 表现如何？")
 

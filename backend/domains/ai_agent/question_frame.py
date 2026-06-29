@@ -11,6 +11,7 @@ from backend.domains.ai_agent.question_intent import QuestionIntent
 
 QuestionFamily = Literal[
     "simple_ranking",
+    "scoped_ranking",
     "entity_detail",
     "preference_comparison",
     "trend_preference",
@@ -22,6 +23,7 @@ QuestionFamily = Literal[
 ]
 
 AnalysisAxis = Literal[
+    "scope",
     "cumulative",
     "recency",
     "intensity",
@@ -39,6 +41,7 @@ AnalysisAxis = Literal[
 
 AnswerContract = Literal[
     "simple_rank_answer",
+    "scoped_ranking_answer",
     "entity_detail_answer",
     "layered_preference_comparison",
     "trend_answer",
@@ -60,6 +63,9 @@ class QuestionFrame(BaseModel):
     analysis_axes: list[AnalysisAxis] = Field(default_factory=list)
     answer_contract: AnswerContract
     requires_layered_conclusion: bool = False
+    scope_entity_type: str | None = None
+    scope_entity_name: str | None = None
+    target_entity_types: list[str] = Field(default_factory=list)
 
 
 def _contains_any(question: str, tokens: Sequence[str]) -> bool:
@@ -96,6 +102,13 @@ def _family(question: str, intent: QuestionIntent) -> QuestionFamily:
         return "preference_comparison"
     if intent.task_type == "trend":
         return "trend_preference"
+    if (
+        intent.task_type == "ranking"
+        and intent.entity_type == "artist"
+        and len(intent.entities) == 1
+        and _target_entity_types(question)
+    ):
+        return "scoped_ranking"
     if intent.task_type == "ranking":
         return "simple_ranking"
     if intent.task_type == "entity_detail":
@@ -121,6 +134,8 @@ def _axes_for_family(family: QuestionFamily, intent: QuestionIntent) -> list[Ana
         return ["trend", "recency", "ranking"]
     if family == "time_of_day_ranking":
         return ["time_of_day", "ranking"]
+    if family == "scoped_ranking":
+        return ["scope", "cumulative", "ranking", "recency"]
     if family == "simple_ranking":
         return ["ranking"]
     if family == "entity_detail":
@@ -134,6 +149,7 @@ def _axes_for_family(family: QuestionFamily, intent: QuestionIntent) -> list[Ana
 def _contract_for_family(family: QuestionFamily) -> AnswerContract:
     contracts: dict[QuestionFamily, AnswerContract] = {
         "simple_ranking": "simple_rank_answer",
+        "scoped_ranking": "scoped_ranking_answer",
         "entity_detail": "entity_detail_answer",
         "preference_comparison": "layered_preference_comparison",
         "trend_preference": "trend_answer",
@@ -152,6 +168,15 @@ def _entity_type_for_family(family: QuestionFamily, intent: QuestionIntent) -> s
     return intent.entity_type
 
 
+def _target_entity_types(question: str) -> list[str]:
+    target_types: list[str] = []
+    if _contains_any(question, ("专辑", "album")):
+        target_types.append("album")
+    if _contains_any(question, ("歌曲", "单曲", "什么歌", "track", "song")):
+        target_types.append("track")
+    return target_types
+
+
 def build_question_frame(
     question: str, intent: QuestionIntent | dict[str, object]
 ) -> QuestionFrame:
@@ -159,6 +184,9 @@ def build_question_frame(
         intent if isinstance(intent, QuestionIntent) else QuestionIntent.model_validate(intent)
     )
     family = _family(question, parsed_intent)
+    scope_entity_name = (
+        parsed_intent.entities[0] if family == "scoped_ranking" and parsed_intent.entities else None
+    )
     return QuestionFrame(
         family=family,
         task_type=parsed_intent.task_type,
@@ -168,5 +196,9 @@ def build_question_frame(
         requested_metrics=parsed_intent.requested_metrics,
         analysis_axes=_axes_for_family(family, parsed_intent),
         answer_contract=_contract_for_family(family),
-        requires_layered_conclusion=family in {"preference_comparison", "identity_preference"},
+        requires_layered_conclusion=family
+        in {"preference_comparison", "identity_preference", "scoped_ranking"},
+        scope_entity_type="artist" if family == "scoped_ranking" else None,
+        scope_entity_name=scope_entity_name,
+        target_entity_types=_target_entity_types(question) if family == "scoped_ranking" else [],
     )

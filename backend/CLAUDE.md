@@ -109,6 +109,7 @@ Contract 测试使用 canonical `backend/tests/fixtures/seed.db` 的临时副本
 - `album_spotify_links` 表记录本地 album→Spotify album 的证据链接（含 confidence）；封面和元数据查询优先走此表（album-type 优先 + 置信度排序），回退旧 track-chain；ORDER BY 必须有 tiebreaker（release_date DESC）
 - `artist_summary` 必须按 track_id 聚合（不含 album_name），防止同一曲目因多专辑归属被拆分
 - AI Agent 工具结果必须保留 `params_summary`、`result_summary`、`source_range` 和必要 compact evidence；最终回答 prompt 必须遵守 coverage、EvidenceSufficiency 与 AnalyticalBrief，不得把 found 实体或个人 Billboard 结果说成缺失，也不得在 answer contract 冲突时给过度单边结论
+- AI Agent 项目语境由 `backend/domains/ai_agent/project_context.py` 统一维护；新增 prompt 规则时优先更新 Project Context / Tool Playbook / Answer Philosophy，并同步 `test_ai_agent_project_context.py`、golden fixture 和 changelog，避免在 `ai_agent_service.py` 中复制散落语境。
 - Agent 工具只允许后端注册的 read-only handler；禁止任意 SQL、任意 URL、settings/import/cache/playlist 写入和未审核 backend route 透传
 - 新增或调整 Agent 问答能力时必须同步 golden fixture（`backend/tests/fixtures/ai_agent_golden_questions.json`）和 `scripts/evaluate_ai_agent_harness.py` 约束；若问题需要新证据，优先补后端只读工具而不是让 fixture 迁就不完整工具
 - Wrapped 年度回顾 `merge_level` 默认值必须与 Analysis Charts 一致（当前均为 2）

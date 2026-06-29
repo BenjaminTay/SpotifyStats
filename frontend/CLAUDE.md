@@ -115,7 +115,8 @@ Community 列表、账号页、趋势侧栏和帖子详情必须通过 `useCommu
 
 ## 关键约束
 
-- 外部文本（LLM、Wikipedia、翻译）必须经 `react-markdown` + `rehype-sanitize` 渲染，禁止 `dangerouslySetInnerHTML`
+- 外部文本（LLM、Wikipedia、翻译）必须经 `react-markdown` + `rehype-sanitize` 渲染，禁止 `dangerouslySetInnerHTML`；AI 报告/问答正文统一复用 `features/ai-insights/AiMarkdown.tsx`，保留 GFM 表格但必须包裹横向滚动容器
+- 后端 SQLite 风格时间戳（`YYYY-MM-DD HH:mm:ss`）默认视为 UTC；对话历史等相对时间显示必须通过 `lib/datetime.ts` 的 `formatRelativeTimeZh()`，避免本地时区偏移
 - LLM API Key 永不对前端返回明文，通过 `POST /apply` 端点让服务端直接写入
 - AI 报告页面必须 cache-first，不因打开页面或切换报告类型自动调用 LLM；无缓存时显示明确的手动生成动作
 - AI 问答和音乐详情 enrichment 的长耗时流程必须通过 `features/ai-tasks` 展示 task progress；问答完成后必须保留 assistant message `meta.evidence_cards` 并展示 evidence cards 与 tool trace

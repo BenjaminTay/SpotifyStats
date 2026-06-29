@@ -50,6 +50,18 @@ def test_2023_top_artist_stays_simple_ranking() -> None:
     assert frame.requires_layered_conclusion is False
 
 
+def test_artist_catalog_favorite_album_and_track_uses_scoped_ranking() -> None:
+    frame = _frame("我最喜欢的Ariana Grande的专辑和歌曲是什么")
+
+    assert frame.family == "scoped_ranking"
+    assert frame.task_type == "ranking"
+    assert frame.entity_type == "artist"
+    assert frame.entities == ["Ariana Grande"]
+    assert frame.answer_contract == "scoped_ranking_answer"
+    assert frame.analysis_axes == ["scope", "cumulative", "ranking", "recency"]
+    assert frame.requires_layered_conclusion is True
+
+
 def test_identity_question_requires_layered_axes() -> None:
     frame = _frame("Taylor Swift 和 Olivia Rodrigo 谁更像我的本命？")
 

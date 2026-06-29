@@ -6,7 +6,7 @@ from typing import Any
 import pytest
 
 import backend.api.ai_tasks as ai_tasks_api
-from backend.services import ai_task_service
+from backend.services import ai_agent_service, ai_task_service
 
 pytestmark = pytest.mark.contract
 
@@ -25,6 +25,70 @@ class SyncThread:
 
     def start(self) -> None:
         self.target(*self.args)
+
+
+def test_chat_agent_prompts_include_project_context(monkeypatch) -> None:
+    class FakeConn:
+        def close(self) -> None:
+            pass
+
+    class FakeRepo:
+        def __init__(self) -> None:
+            self.result: dict[str, object] | None = None
+
+        def update_run_if_not_terminal(self, **kwargs):
+            if "result" in kwargs:
+                self.result = kwargs["result"]
+            return True
+
+        def add_event(self, **kwargs):
+            pass
+
+        def get_run(self, task_id):
+            return {"status": "running"}
+
+        def add_tool_call(self, **kwargs):
+            pass
+
+    fake_repo = FakeRepo()
+    llm_calls: list[tuple[str, str, float]] = []
+
+    def fake_llm_chat(system_prompt: str, user_content: str, temperature: float = 0.3) -> str:
+        llm_calls.append((system_prompt, user_content, temperature))
+        if len(llm_calls) == 1:
+            return '[{"tool_name":"analysis_stats","params":{"period":"this_year"}}]'
+        return "今年你听歌很多。"
+
+    def fake_dispatch_tool(tool_name, params=None):
+        return {
+            "tool_name": tool_name,
+            "params_summary": "period=this_year",
+            "result_summary": "plays=100",
+            "source_range": "2026-01-01..2026-06-29",
+            "data": {
+                "period": {"period": "this_year"},
+                "summary": {"total_plays": 100},
+            },
+        }
+
+    monkeypatch.setattr(ai_agent_service, "get_db", lambda readonly=False: FakeConn())
+    monkeypatch.setattr(ai_agent_service, "AiTaskRepository", lambda conn: fake_repo)
+    monkeypatch.setattr(ai_agent_service.ai_insights_service, "_llm_chat", fake_llm_chat)
+    monkeypatch.setattr(ai_agent_service, "dispatch_tool", fake_dispatch_tool)
+
+    ai_agent_service.run_chat_agent_task("task-project-context", {"question": "我今年听歌怎么样？"})
+
+    assert len(llm_calls) >= 2
+    planner_prompt = llm_calls[0][0]
+    final_prompt = llm_calls[1][0]
+    assert "spotify-stats-project-context-v1" in planner_prompt
+    assert "Tool Playbook" in planner_prompt
+    assert "不要编造工具、SQL、URL" in planner_prompt
+    assert "spotify-stats-project-context-v1" in final_prompt
+    assert "Answer Philosophy" in final_prompt
+    assert "本地个人 Billboard" in final_prompt
+    assert fake_repo.result is not None
+    assert fake_repo.result["project_context_version"] == "spotify-stats-project-context-v1"
 
 
 def test_chat_task_endpoint_uses_static_route_before_task_id(client, monkeypatch):
@@ -247,6 +311,14 @@ def test_chat_agent_thinking_mode_uses_deeper_fallback_and_review_stage(
     assert "analysis_stats" in dispatched_tools
     assert "analysis_charts" in dispatched_tools
     assert "thinking_mode" in llm_calls[0][1]
+    thinking_final_prompt = llm_calls[1][0]
+    assert "spotify-stats-project-context-v1" in thinking_final_prompt
+    assert "Answer Philosophy" in thinking_final_prompt
+    assert "Thinking Mode Note" in thinking_final_prompt
+    assert "思考模式只表示工具核对更充分" in thinking_final_prompt
+    assert "用中文组织为「结论」「我查了什么」「依据」「自检与限制」四段" not in (
+        thinking_final_prompt
+    )
 
 
 def test_chat_agent_retries_final_answer_when_it_contradicts_found_album_evidence(
@@ -274,6 +346,10 @@ def test_chat_agent_retries_final_answer_when_it_contradicts_found_album_evidenc
                 "也没有 billboard 榜单成绩。"
             )
         assert "上一版回答与工具证据或回答契约矛盾" in user_content
+        assert "project_context_version" in user_content
+        assert "spotify-stats-project-context-v1" in user_content
+        assert "Project Context 的项目语境要求" in user_content
+        assert "answer_style" in user_content
         assert "The Life of a Showgirl" in user_content
         assert "plays=1637" in user_content
         return "**结论**\nThe Life of a Showgirl 的短期热度更强；GUTS 的长期累计榜单资历更强。"
@@ -359,8 +435,8 @@ def test_chat_agent_adds_sufficiency_followups_with_total_tool_cap(
         assert "missing_axes" in user_content
         assert "must_explain" in user_content
         return (
-            "结论：现有证据不足以给出确定性单一结论。"
-            "累计播放偏向 GUTS，但近期窗口证据没有补齐，需要保留限制。"
+            "结论：不同口径不完全一致，不能给出明显单方胜出的结论。"
+            "累计播放偏向 GUTS，但个人榜单和强度证据需要分层说明。"
         )
 
     def fake_dispatch_tool(tool_name: str, params: dict[str, Any] | None = None):
@@ -369,14 +445,16 @@ def test_chat_agent_adds_sufficiency_followups_with_total_tool_cap(
         album_name = str(params.get("album_name") or "")
         if tool_name == "entity_stats":
             plays = 1749 if album_name == "GUTS" else 1637
+            period = str(params.get("period") or "lifetime")
             return {
                 "tool_name": tool_name,
-                "params_summary": f"entity=album, album_name={album_name}",
+                "params_summary": f"entity=album, album_name={album_name}, period={period}",
                 "result_summary": f"found=true, plays={plays}",
-                "source_range": "lifetime",
+                "source_range": period,
                 "data": {
                     "found": True,
                     "album_name": album_name,
+                    "period": {"period": period},
                     "summary": {"total_plays": plays},
                 },
             }
@@ -450,7 +528,7 @@ def test_chat_agent_adds_sufficiency_followups_with_total_tool_cap(
     events_payload = client.get(f"/api/ai/tasks/{task_id}/events").json()
 
     assert status_payload["status"] == "done"
-    assert status_payload["result"]["tool_call_count"] == 5
+    assert status_payload["result"]["tool_call_count"] == 8
     assert dispatched[3] == (
         "compare_entities",
         {
@@ -467,6 +545,15 @@ def test_chat_agent_adds_sufficiency_followups_with_total_tool_cap(
     assert dispatched[4][0] == "entity_stats"
     assert dispatched[4][1]["album_name"] == "GUTS"
     assert dispatched[4][1]["period"] == "last_6_months"
+    assert dispatched[5][0] == "entity_stats"
+    assert dispatched[5][1]["album_name"] == "The Life of a Showgirl"
+    assert dispatched[5][1]["period"] == "last_6_months"
+    assert dispatched[6][0] == "entity_stats"
+    assert dispatched[6][1]["album_name"] == "GUTS"
+    assert dispatched[6][1]["period"] == "last_4_weeks"
+    assert dispatched[7][0] == "entity_stats"
+    assert dispatched[7][1]["album_name"] == "The Life of a Showgirl"
+    assert dispatched[7][1]["period"] == "last_4_weeks"
     assert "reviewing_coverage" in [event["stage"] for event in events_payload["events"]]
     assert [call["tool_name"] for call in events_payload["tool_calls"]] == [
         "entity_stats",
@@ -474,17 +561,133 @@ def test_chat_agent_adds_sufficiency_followups_with_total_tool_cap(
         "entity_stats",
         "compare_entities",
         "entity_stats",
+        "entity_stats",
+        "entity_stats",
+        "entity_stats",
     ]
     assert status_payload["result"]["coverage"]["comparison"]["compare_entities"] == "found"
-    assert status_payload["result"]["evidence_sufficiency"]["sufficient"] is False
+    assert status_payload["result"]["evidence_sufficiency"]["sufficient"] is True
     assert status_payload["result"]["answer_retried"] is True
-    assert "证据不足" in status_payload["result"]["answer"]
+    assert "不同口径不完全一致" in status_payload["result"]["answer"]
     assert "明显是 GUTS 更甚" not in status_payload["result"]["answer"]
     assert any(
         "证据不足" in issue or "过度" in issue
         for issue in status_payload["result"]["validation_issues"]
     )
     assert len(llm_calls) == 3
+
+
+def test_chat_agent_replans_scoped_ranking_after_global_chart_miss(
+    client,
+    monkeypatch,
+):
+    import backend.services.ai_agent_service as agent_service
+
+    llm_calls: list[tuple[str, str, float]] = []
+    dispatched: list[tuple[str, dict[str, Any]]] = []
+
+    def fake_llm_chat(system_prompt: str, user_content: str, temperature: float = 0.3):
+        llm_calls.append((system_prompt, user_content, temperature))
+        if len(llm_calls) == 1:
+            return (
+                '[{"tool_name":"analysis_stats","params":{"period":"this_year"}},'
+                '{"tool_name":"analysis_charts","params":{"entity":"album","metric":"plays",'
+                '"period":"lifetime","limit":10}},'
+                '{"tool_name":"analysis_charts","params":{"entity":"artist","metric":"plays",'
+                '"period":"this_year","limit":10}},'
+                '{"tool_name":"listening_hours","params":{"view":"platform_hourly"}},'
+                '{"tool_name":"analysis_charts","params":{"entity":"track","metric":"plays",'
+                '"period":"lifetime","limit":10}}]'
+            )
+        assert "scoped_ranking" in user_content
+        assert "eternal sunshine" in user_content
+        assert "Santa Tell Me" in user_content
+        return "你最喜欢的 Ariana Grande 专辑是 eternal sunshine，歌曲是 Santa Tell Me。"
+
+    def fake_dispatch_tool(tool_name: str, params: dict[str, Any] | None = None):
+        params = params or {}
+        dispatched.append((tool_name, dict(params)))
+        if tool_name == "entity_stats":
+            return {
+                "tool_name": "entity_stats",
+                "params_summary": "entity=artist, artist_name=Ariana Grande, period=lifetime",
+                "result_summary": "found=true, plays=2153, hours=115.7",
+                "source_range": "2022-07-01..2026-06-23",
+                "data": {
+                    "found": True,
+                    "period": {"period": "lifetime"},
+                    "summary": {"total_plays": 2153, "total_hours": 115.7},
+                    "top_albums": [{"rank": 1, "album_name": "eternal sunshine", "plays": 997}],
+                    "top_tracks": [{"rank": 1, "track_name": "Santa Tell Me", "plays": 145}],
+                },
+            }
+        if tool_name == "analysis_charts":
+            return {
+                "tool_name": "analysis_charts",
+                "params_summary": ", ".join(f"{key}={value}" for key, value in params.items()),
+                "result_summary": f"{params.get('entity', 'track')} plays rows=10/100",
+                "source_range": "2022-07-01..2026-06-23",
+                "data": {
+                    "entity": params.get("entity", "track"),
+                    "metric": params.get("metric", "plays"),
+                    "period": {"period": params.get("period", "lifetime")},
+                    "rows": [{"rank": 1, "album_name": "Midnights", "plays": 2559}],
+                },
+            }
+        if tool_name == "listening_hours":
+            return {
+                "tool_name": "listening_hours",
+                "params_summary": "view=platform_hourly",
+                "result_summary": "view=platform_hourly, items=3",
+                "source_range": "platform_hourly",
+                "data": {"view": "platform_hourly", "items": []},
+            }
+        return {
+            "tool_name": "analysis_stats",
+            "params_summary": "period=this_year",
+            "result_summary": "plays=7860, hours=498",
+            "source_range": "2026-01-01..2026-06-29",
+            "data": {"period": {"period": "this_year"}, "summary": {"total_plays": 7860}},
+        }
+
+    monkeypatch.setattr(ai_task_service.threading, "Thread", SyncThread)
+    monkeypatch.setattr(agent_service.ai_insights_service, "_llm_chat", fake_llm_chat)
+    monkeypatch.setattr(agent_service, "dispatch_tool", fake_dispatch_tool)
+
+    create_response = client.post(
+        "/api/ai/tasks/chat",
+        json={
+            "question": "我最喜欢的Ariana Grande的专辑和歌曲是什么",
+            "thinking_mode": True,
+        },
+    )
+
+    assert create_response.status_code == 200
+    task_id = create_response.json()["task_id"]
+    status_payload = client.get(f"/api/ai/tasks/{task_id}").json()
+
+    assert status_payload["status"] == "done"
+    assert status_payload["result"]["question_frame"]["family"] == "scoped_ranking"
+    assert status_payload["result"]["tool_call_count"] == 6
+    assert dispatched[5] == (
+        "entity_stats",
+        {
+            "entity": "artist",
+            "artist_name": "Ariana Grande",
+            "period": "lifetime",
+            "min_ms": 30000,
+            "music_only": True,
+            "merge_enabled": True,
+            "dynamic_threshold": True,
+            "max_merge_gap_minutes": None,
+            "merge_level": 1,
+        },
+    )
+    assert status_payload["result"]["evidence_sufficiency"]["sufficient"] is True
+    assert (
+        status_payload["result"]["analytical_brief"]["recommended_conclusion"]["top_album"]
+        == "eternal sunshine"
+    )
 
 
 def test_chat_agent_task_marks_error_when_final_llm_is_empty(client, monkeypatch):

@@ -353,6 +353,69 @@ def _ranking_top_result(
     return None
 
 
+def _scoped_context(frame: dict[str, Any], recipe: dict[str, Any]) -> dict[str, Any]:
+    context = recipe.get("required_context")
+    if not isinstance(context, dict):
+        context = {}
+    scope_name = context.get("scope_entity_name") or frame.get("scope_entity_name")
+    if not isinstance(scope_name, str) or not scope_name.strip():
+        entities = _frame_entities(frame)
+        scope_name = entities[0] if entities else ""
+    target_types = context.get("target_entity_types") or frame.get("target_entity_types")
+    if not isinstance(target_types, list):
+        target_types = []
+    return {
+        "scope_entity": scope_name.strip(),
+        "target_entity_types": [
+            target
+            for target in target_types
+            if isinstance(target, str) and target in {"album", "track"}
+        ],
+    }
+
+
+def _scoped_entity_stats_data(
+    tool_results: list[dict[str, Any]],
+    *,
+    frame: dict[str, Any],
+    recipe: dict[str, Any],
+    period: str = "lifetime",
+) -> dict[str, Any]:
+    context = _scoped_context(frame, recipe)
+    scope_entity = str(context.get("scope_entity") or "")
+    if not scope_entity:
+        return {}
+    for item in tool_results:
+        if item.get("tool_name") != "entity_stats" or item.get("status") == "error":
+            continue
+        item_period = _period_from_item(item)
+        if period == "lifetime" and item_period in {"last_6_months", "last_4_weeks"}:
+            continue
+        if period != "lifetime" and item_period != period:
+            continue
+        if scope_entity.casefold() not in _text_blob(item).casefold():
+            continue
+        if not _item_matches_entity_type(item, "artist"):
+            continue
+        data = item.get("data")
+        if isinstance(data, dict):
+            return data
+    return {}
+
+
+def _first_name(rows: Any, keys: tuple[str, ...]) -> str | None:
+    if not isinstance(rows, list) or not rows:
+        return None
+    first = rows[0]
+    if not isinstance(first, dict):
+        return None
+    for key in keys:
+        value = first.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return None
+
+
 def _recipe_required_axes(recipe: dict[str, Any]) -> set[str]:
     axes = recipe.get("required_axes")
     if not isinstance(axes, list):
@@ -508,6 +571,54 @@ def _simple_ranking_brief(
     }
 
 
+def _scoped_ranking_brief(
+    *,
+    frame: dict[str, Any],
+    recipe: dict[str, Any],
+    tool_results: list[dict[str, Any]],
+) -> dict[str, Any]:
+    context = _scoped_context(frame, recipe)
+    lifetime_data = _scoped_entity_stats_data(
+        tool_results,
+        frame=frame,
+        recipe=recipe,
+        period="lifetime",
+    )
+    top_album = _first_name(lifetime_data.get("top_albums"), ("album_name", "name"))
+    top_track = _first_name(lifetime_data.get("top_tracks"), ("track_name", "name"))
+    winners: dict[str, str] = {}
+    if top_album:
+        winners["album"] = top_album
+    if top_track:
+        winners["track"] = top_track
+
+    return {
+        "family": frame.get("family"),
+        "answer_contract": frame.get("answer_contract"),
+        "main_question": "在指定艺人范围内找出用户最常听的专辑和歌曲",
+        "dimension_winners": winners,
+        "conflict": False,
+        "recommended_conclusion": {
+            "scope_entity": context.get("scope_entity"),
+            "top_album": top_album,
+            "top_track": top_track,
+        },
+        "concise_shape": "一句直接结论 + 两条关键数字 + 一句必要口径",
+        "must_explain": [
+            "说明这是指定艺人范围内的排行，不是全局排行",
+            "分别回答专辑和歌曲，不要只给一个全局结论",
+            "主结论必须基于 entity_stats.top_albums/top_tracks",
+            "说明排序指标和时间范围",
+        ],
+        "forbidden_claims": [
+            "用全局 Top10 缺席来断言没有数据",
+            "把全局排行当作指定艺人范围内排行",
+            "用个人 Billboard 替代播放排行主结论",
+        ],
+        "evidence_recipe": recipe,
+    }
+
+
 def _time_of_day_brief(*, frame: dict[str, Any], recipe: dict[str, Any]) -> dict[str, Any]:
     return {
         "family": frame.get("family"),
@@ -585,6 +696,8 @@ def build_analytical_brief(
 
     if family in {"preference_comparison", "identity_preference"}:
         return _preference_brief(frame=frame, recipe=recipe, tool_results=results)
+    if family == "scoped_ranking":
+        return _scoped_ranking_brief(frame=frame, recipe=recipe, tool_results=results)
     if family == "simple_ranking":
         return _simple_ranking_brief(frame=frame, recipe=recipe, tool_results=results)
     if family == "time_of_day_ranking":

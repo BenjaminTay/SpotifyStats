@@ -21,8 +21,10 @@ from backend.domains.ai_agent.tool_registry import (  # noqa: E402
     UnknownAgentToolError,
     get_default_registry,
 )
+from backend.services import ai_agent_service  # noqa: E402
 
 DEFAULT_FIXTURE_PATH = ROOT / "backend" / "tests" / "fixtures" / "ai_agent_golden_questions.json"
+ANSWER_STYLE_VALUES = {"concise", "structured", "detailed"}
 
 
 def load_cases(path: Path = DEFAULT_FIXTURE_PATH) -> list[dict[str, Any]]:
@@ -89,6 +91,224 @@ def _dict_contains(actual: dict[str, Any], expected: dict[str, Any]) -> bool:
     )
 
 
+def _case_entities(case: dict[str, Any]) -> tuple[str, list[str]]:
+    expected_intent = case.get("expected_intent")
+    if not isinstance(expected_intent, dict):
+        return "unknown", []
+    entity_type = str(expected_intent.get("entity_type") or "unknown")
+    entities = expected_intent.get("entities")
+    if not isinstance(entities, list):
+        return entity_type, []
+    return entity_type, [entity for entity in entities if isinstance(entity, str) and entity]
+
+
+def _entity_name_param(entity_type: str, name: str) -> dict[str, str]:
+    if entity_type == "artist":
+        return {"artist_name": name}
+    if entity_type == "album":
+        return {"album_name": name}
+    if entity_type == "track":
+        return {"track_name": name}
+    return {}
+
+
+def _period_params_from_scope(time_scope: Any) -> dict[str, Any]:
+    if isinstance(time_scope, str) and time_scope.startswith("year:"):
+        year = time_scope.split(":", 1)[1]
+        if year.isdigit():
+            return {
+                "period": "custom",
+                "start_date": f"{year}-01-01",
+                "end_date": f"{year}-12-31",
+            }
+    if isinstance(time_scope, str) and time_scope:
+        return {"period": time_scope}
+    return {"period": "lifetime"}
+
+
+def _period_payload(params: dict[str, Any]) -> Any:
+    period = params.get("period") or "lifetime"
+    if params.get("start_date") or params.get("end_date"):
+        return {
+            "period": period,
+            "start_date": params.get("start_date"),
+            "end_date": params.get("end_date"),
+        }
+    return period
+
+
+def _params_summary(params: dict[str, Any]) -> str:
+    return ", ".join(f"{key}={value}" for key, value in params.items())
+
+
+def _tool_result_from_call(tool_call: dict[str, Any]) -> dict[str, Any]:
+    tool_name = str(tool_call.get("tool_name") or "")
+    params = tool_call.get("params")
+    params = params if isinstance(params, dict) else {}
+    data: dict[str, Any] = {**params}
+
+    if tool_name == "compare_entities":
+        names = params.get("names") if isinstance(params.get("names"), list) else []
+        names = [name for name in names if isinstance(name, str)]
+        winner = names[0] if names else ""
+        data.update(
+            {
+                "entity_type": params.get("entity_type", "unknown"),
+                "entities": [
+                    {
+                        "requested_name": name,
+                        "name": name,
+                        "plays": 120 - index * 10,
+                        "power_score": 80 - index * 5,
+                        "weeks_on_chart": 10 - index,
+                    }
+                    for index, name in enumerate(names)
+                ],
+                "winner_by_plays": winner,
+                "winner_by_intensity": winner,
+                "winner_by_power_score": winner,
+                "fairness_notes": ["发行时间不同，比较时保留窗口边界。"],
+            }
+        )
+    elif tool_name == "entity_stats":
+        data["period"] = _period_payload(params)
+        if data.get("entity") == "artist":
+            data.setdefault(
+                "top_albums",
+                [{"album_name": "Representative Album", "plays": 100, "share_pct": 42.0}],
+            )
+            data.setdefault(
+                "top_tracks",
+                [{"track_name": "Representative Track", "plays": 80, "share_pct": 33.6}],
+            )
+        else:
+            data.setdefault("summary", {"plays": 100})
+    elif tool_name == "billboard_entity_detail":
+        data.update({"power_score": 88.0, "peak_position": 1, "weeks_on_chart": 12})
+    elif tool_name == "analysis_charts":
+        data["period"] = _period_payload(params)
+        data.setdefault(
+            "rows",
+            [{"rank": 1, "artist_name": "Representative Artist", "plays": 100}],
+        )
+    elif tool_name == "analysis_stats":
+        data["period"] = _period_payload(params)
+        data.setdefault("summary", {"total_plays": 100})
+    elif tool_name == "listening_hours":
+        data.setdefault("view", params.get("view") or "heatmap")
+        data.setdefault("rows", [{"rank": 1, "track_name": "Representative Track", "plays": 20}])
+    elif tool_name == "wrapped_yearly":
+        data.setdefault("year", params.get("year"))
+        data.setdefault("top_artists", [{"artist_name": "Representative Artist", "plays": 100}])
+
+    return {
+        "tool_name": tool_name,
+        "status": "done",
+        "params": params,
+        "params_summary": _params_summary(params),
+        "result_summary": "synthetic golden harness result",
+        "source_range": "fixture",
+        "data": data,
+    }
+
+
+def _tool_calls_from_recipe_patterns(case: dict[str, Any]) -> list[dict[str, Any]]:
+    expected_recipe = case.get("expected_recipe")
+    if not isinstance(expected_recipe, dict):
+        return []
+    patterns = expected_recipe.get("required_tool_patterns_contains")
+    if not isinstance(patterns, list):
+        return []
+
+    expected_intent = case.get("expected_intent")
+    expected_intent = expected_intent if isinstance(expected_intent, dict) else {}
+    entity_type, entities = _case_entities(case)
+    calls: list[dict[str, Any]] = []
+
+    for pattern in patterns:
+        if not isinstance(pattern, dict):
+            continue
+        tool_name = pattern.get("tool_name")
+        if not isinstance(tool_name, str):
+            continue
+
+        if tool_name == "compare_entities" and entity_type in {"artist", "album", "track"}:
+            calls.append(
+                {
+                    "tool_name": tool_name,
+                    "params": {"entity_type": entity_type, "names": entities[:4]},
+                }
+            )
+            continue
+
+        if tool_name in {"entity_stats", "billboard_entity_detail"} and entities:
+            pattern_entity = pattern.get("entity")
+            call_entity_type = (
+                pattern_entity if pattern_entity in {"artist", "album", "track"} else entity_type
+            )
+            for entity_name in entities:
+                entity_params = {
+                    "entity": call_entity_type,
+                    **_entity_name_param(call_entity_type, entity_name),
+                }
+                if isinstance(pattern.get("period"), str):
+                    entity_params["period"] = pattern["period"]
+                calls.append({"tool_name": tool_name, "params": entity_params})
+            continue
+
+        if tool_name == "analysis_charts":
+            chart_params: dict[str, Any] = {
+                "entity": pattern.get("entity") or entity_type,
+                "metric": pattern.get("metric") or "plays",
+            }
+            if isinstance(pattern.get("period"), str):
+                chart_params["period"] = pattern["period"]
+            else:
+                chart_params.update(_period_params_from_scope(expected_intent.get("time_scope")))
+            calls.append({"tool_name": tool_name, "params": chart_params})
+            continue
+
+        if tool_name == "analysis_stats":
+            stats_params: dict[str, Any] = {}
+            if isinstance(pattern.get("period"), str):
+                stats_params["period"] = pattern["period"]
+            calls.append({"tool_name": tool_name, "params": stats_params})
+            continue
+
+        if tool_name == "listening_hours":
+            listening_params: dict[str, Any] = {}
+            if isinstance(pattern.get("view"), str):
+                listening_params["view"] = pattern["view"]
+            calls.append({"tool_name": tool_name, "params": listening_params})
+            continue
+
+        if tool_name == "wrapped_yearly":
+            time_scope = expected_intent.get("time_scope")
+            if isinstance(time_scope, str) and time_scope.startswith("year:"):
+                year = time_scope.split(":", 1)[1]
+                if year.isdigit():
+                    calls.append({"tool_name": tool_name, "params": {"year": int(year)}})
+
+    return calls
+
+
+def answer_style_probe_tool_results(case: dict[str, Any]) -> list[dict[str, Any]]:
+    """Build deterministic offline tool results for probing answer_style."""
+    calls = [*_expected_tools(case), *_tool_calls_from_recipe_patterns(case)]
+    results: list[dict[str, Any]] = []
+    seen: set[tuple[str, str]] = set()
+    for call in calls:
+        if not isinstance(call, dict):
+            continue
+        result = _tool_result_from_call(call)
+        identity = (result["tool_name"], repr(sorted(result["params"].items())))
+        if identity in seen:
+            continue
+        seen.add(identity)
+        results.append(result)
+    return results
+
+
 def _validate_required_tool_calls(case: dict[str, Any]) -> list[str]:
     case_id = str(case.get("id") or "<missing-id>")
     required_calls = case.get("required_tool_calls")
@@ -119,6 +339,14 @@ def _validate_structure(case: dict[str, Any]) -> list[str]:
         failures.append(f"{case_id}: id must be a non-empty string")
     if not isinstance(case.get("question"), str) or not case["question"]:
         failures.append(f"{case_id}: question must be a non-empty string")
+    expected_answer_style = case.get("expected_answer_style")
+    if expected_answer_style is not None and (
+        not isinstance(expected_answer_style, str)
+        or expected_answer_style not in ANSWER_STYLE_VALUES
+    ):
+        failures.append(
+            f"{case_id}: expected_answer_style must be one of {sorted(ANSWER_STYLE_VALUES)}"
+        )
     if not isinstance(case.get("expected_intent"), dict):
         failures.append(f"{case_id}: expected_intent must be an object")
     expected_frame = case.get("expected_frame")
@@ -340,12 +568,36 @@ def _validate_critic(case: dict[str, Any]) -> list[str]:
     return failures
 
 
+def _validate_answer_style(case: dict[str, Any]) -> list[str]:
+    expected_answer_style = case.get("expected_answer_style")
+    if not expected_answer_style:
+        return []
+    if (
+        not isinstance(expected_answer_style, str)
+        or expected_answer_style not in ANSWER_STYLE_VALUES
+    ):
+        return []
+
+    case_id = str(case.get("id") or "<missing-id>")
+    question = str(case.get("question") or "")
+    payload = ai_agent_service._final_payload(
+        {"question": question, "conversation_history": []},
+        answer_style_probe_tool_results(case),
+    )
+    answer_style = payload.get("answer_style")
+    actual_style = answer_style.get("style") if isinstance(answer_style, dict) else None
+    if actual_style != expected_answer_style:
+        return [f"{case_id}: expected answer_style={expected_answer_style}, got {actual_style}"]
+    return []
+
+
 def evaluate_case(case: dict[str, Any]) -> list[str]:
     failures: list[str] = []
     failures.extend(_validate_structure(case))
     failures.extend(_validate_intent(case))
     failures.extend(_validate_frame_and_recipe(case))
     failures.extend(_validate_critic(case))
+    failures.extend(_validate_answer_style(case))
     return failures
 
 

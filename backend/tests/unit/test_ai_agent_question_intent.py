@@ -56,6 +56,16 @@ def test_ignores_product_names_when_extracting_entities() -> None:
     assert intent.entities == ["GUTS"]
 
 
+def test_ignores_markdown_table_format_instruction_when_extracting_entities() -> None:
+    intent = parse_question_intent(
+        "请用 Markdown 表格比较 GUTS 和 The Life of a Showgirl 这两张专辑。"
+    )
+
+    assert intent.task_type == "comparison"
+    assert intent.entity_type == "album"
+    assert intent.entities == ["GUTS", "The Life of a Showgirl"]
+
+
 def test_ranking_signals_win_over_generic_which_terms() -> None:
     album_intent = parse_question_intent("我今年最常听哪张专辑？")
     artist_intent = parse_question_intent("哪个艺人播放量最高？")
@@ -66,6 +76,15 @@ def test_ranking_signals_win_over_generic_which_terms() -> None:
     assert artist_intent.task_type == "ranking"
     assert artist_intent.entity_type == "artist"
     assert "plays" in artist_intent.requested_metrics
+
+
+def test_scoped_artist_catalog_question_uses_artist_scope() -> None:
+    intent = parse_question_intent("我最喜欢的Ariana Grande的专辑和歌曲是什么")
+
+    assert intent.task_type == "ranking"
+    assert intent.entity_type == "artist"
+    assert intent.entities == ["Ariana Grande"]
+    assert "plays" in intent.requested_metrics
 
 
 def test_extracts_lowercase_numeric_and_chinese_context_entities() -> None:

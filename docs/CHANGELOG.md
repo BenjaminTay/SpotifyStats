@@ -1,5 +1,24 @@
 # 变更日志
 
+## 2026-06-29 — AI Agent Project Context Layer 与回答渲染
+
+### 新增
+
+- **Project Context Prompt**：AI 问答新增稳定项目语境层，集中描述 SpotifyStats 的个人音乐数据定位、本地个人 Billboard 边界、偏好分析口径和默认回答哲学。
+- **Prompt 组合与版本化**：Planner 与最终回答 prompt 通过 `project_context.py` 组合 Project Context、Tool Playbook、Answer Philosophy 和 Safety Boundary，并在最终 payload / task result 中记录 `project_context_version`。
+- **Golden answer style 护栏**：Golden harness 可检查代表问题的 `expected_answer_style`，防止简单问题再次退化为长报告或复杂比较被压成单一结论。
+- **AI Markdown 渲染**：AI 报告和问答统一通过 `AiMarkdown` 渲染 LLM 返回的 Markdown，启用 GFM 表格并用 `rehype-sanitize` 保持外部文本安全边界。
+- **对话时间显示修正**：前端将 SQLite 风格后端时间戳按 UTC 解析，避免对话历史“刚刚 / N 分钟前”因本地时区偏移显示错误。
+
+### 验证
+
+- `PYTHONDONTWRITEBYTECODE=1 .venv/bin/pytest -p no:cacheprovider backend/tests/unit/test_ai_agent_project_context.py backend/tests/unit/test_ai_agent_question_frame.py backend/tests/unit/test_ai_agent_evidence_recipes.py backend/tests/unit/test_ai_agent_coverage_review.py backend/tests/unit/test_ai_agent_analytical_brief.py backend/tests/unit/test_ai_agent_answer_critic.py backend/tests/unit/test_ai_agent_golden_questions.py backend/tests/unit/test_ai_agent_tools.py backend/tests/unit/test_ai_agent_question_intent.py backend/tests/unit/test_ai_agent_evidence.py backend/tests/unit/test_ai_agent_evidence_cards.py backend/tests/contract/test_ai_agent_task_contract.py -q`：151 passed
+- `.venv/bin/python scripts/evaluate_ai_agent_harness.py`：9/9 PASS
+- `.venv/bin/ruff check backend/domains/ai_agent backend/services/ai_agent_service.py`
+- `cd frontend && npm test -- ai-markdown-rendering.test.tsx ai-insights-components.test.tsx`
+- `cd frontend && npm run build`
+- 真实浏览器验证：`/ai-insights` 新建对话、打开思考模式并询问“我最喜欢的Ariana Grande的专辑和歌曲是什么”，页面展示 task 进度、证据卡片和工具轨迹，回答短答命中 `eternal sunshine` / `Santa Tell Me`，task result 含 `project_context_version=spotify-stats-project-context-v1` 且 `validation_issues=[]`。
+
 ## 2026-06-29 — AI Agent Universal Analytical Harness
 
 ### 新增

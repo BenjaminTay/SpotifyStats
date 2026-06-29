@@ -12,6 +12,9 @@ EntityType = Literal["track", "album", "artist", "unknown"]
 
 _NAME_PATTERN = re.compile(r"[A-Z][A-Za-z0-9:'’!?.&-]*(?: [A-Za-z0-9][A-Za-z0-9:'’!?.&-]*){0,8}")
 _CONNECTOR_SPLIT_PATTERN = re.compile(r"\s+(?:and|vs|v|VS|Vs|V)\s+")
+_FORMAT_PREFIX_PATTERN = re.compile(
+    r"^(?:请)?用\s*(?:Markdown|markdown)?\s*(?:表格|列表)?\s*(?:来)?(?:比较|对比)\s*"
+)
 _CONTEXT_ENTITY_PATTERN = re.compile(
     r"(?:我对|对)?"
     r"(?P<left>[^，,。？！?；;：:\n]{1,100}?)"
@@ -26,6 +29,7 @@ _IGNORED_ENTITIES = {
     "Artist",
     "Billboard",
     "DATA",
+    "Markdown",
     "Song",
     "SpotifyStats",
     "Top",
@@ -132,6 +136,7 @@ def _metrics(question: str, time_scope: str) -> list[str]:
 
 def _clean_entity(value: str) -> str | None:
     cleaned = value.strip(" \t\r\n,，。？?：:；;（）()[]【】")
+    cleaned = _FORMAT_PREFIX_PATTERN.sub("", cleaned).strip()
     for prefix in ("我对", "对"):
         if cleaned.startswith(prefix):
             cleaned = cleaned[len(prefix) :].strip()
@@ -180,6 +185,13 @@ def _entity_type(
     task_type: TaskType,
     entities: list[str],
 ) -> EntityType:
+    if (
+        task_type == "ranking"
+        and len(entities) == 1
+        and _contains_any(question, ("的专辑", "album"))
+        and _contains_any(question, ("歌曲", "单曲", "歌是什么", "track", "song"))
+    ):
+        return "artist"
     if _contains_any(question, ("专辑", "album")):
         return "album"
     if _contains_any(question, ("艺人", "歌手", "artist")):

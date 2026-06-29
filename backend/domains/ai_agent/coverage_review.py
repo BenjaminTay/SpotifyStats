@@ -337,6 +337,82 @@ def _requested_frame_entities(frame: dict[str, Any]) -> list[str]:
     return [entity.strip() for entity in entities if isinstance(entity, str) and entity.strip()]
 
 
+def _scoped_context(frame: dict[str, Any], recipe: dict[str, Any]) -> dict[str, Any]:
+    context = recipe.get("required_context")
+    if not isinstance(context, dict):
+        context = {}
+    scope_name = context.get("scope_entity_name") or frame.get("scope_entity_name")
+    if not isinstance(scope_name, str) or not scope_name.strip():
+        entities = _requested_frame_entities(frame)
+        scope_name = entities[0] if entities else ""
+    scope_type = context.get("scope_entity_type") or frame.get("scope_entity_type") or "artist"
+    target_types = context.get("target_entity_types") or frame.get("target_entity_types")
+    if not isinstance(target_types, list):
+        target_types = []
+    return {
+        "scope_entity_type": scope_type if scope_type in {"artist"} else "artist",
+        "scope_entity_name": scope_name.strip(),
+        "target_entity_types": [
+            target
+            for target in target_types
+            if isinstance(target, str) and target in {"album", "track"}
+        ],
+    }
+
+
+def _scoped_entity_stats_items(
+    tool_results: list[dict[str, Any]],
+    *,
+    frame: dict[str, Any],
+    recipe: dict[str, Any],
+    period: str | None = None,
+) -> list[dict[str, Any]]:
+    context = _scoped_context(frame, recipe)
+    scope_name = context["scope_entity_name"]
+    if not scope_name:
+        return []
+    pattern: dict[str, Any] = {
+        "tool_name": "entity_stats",
+        "entity": context["scope_entity_type"],
+    }
+    if period:
+        pattern["period"] = period
+    return [
+        item
+        for item in tool_results
+        if _item_matches_pattern(item, pattern, entity_name=scope_name)
+    ]
+
+
+def _scoped_rankings_present(
+    tool_results: list[dict[str, Any]],
+    *,
+    frame: dict[str, Any],
+    recipe: dict[str, Any],
+) -> bool:
+    context = _scoped_context(frame, recipe)
+    target_types = context["target_entity_types"] or ["track"]
+    for item in _scoped_entity_stats_items(
+        tool_results,
+        frame=frame,
+        recipe=recipe,
+        period="lifetime",
+    ):
+        data = item.get("data")
+        if not isinstance(data, dict):
+            continue
+        has_all_targets = True
+        if "album" in target_types:
+            top_albums = data.get("top_albums")
+            has_all_targets = has_all_targets and isinstance(top_albums, list) and bool(top_albums)
+        if "track" in target_types:
+            top_tracks = data.get("top_tracks")
+            has_all_targets = has_all_targets and isinstance(top_tracks, list) and bool(top_tracks)
+        if has_all_targets:
+            return True
+    return False
+
+
 def _item_mentions_entity(item: dict[str, Any], entity_name: str) -> bool:
     return entity_name.casefold() in _item_text(item).casefold()
 
@@ -649,6 +725,37 @@ def _axis_coverage_for(
     tool_results: list[dict[str, Any]],
 ) -> str:
     comparison = _compare_data(tool_results, frame)
+    family = str(frame.get("family") or recipe.get("family") or "")
+
+    if family == "scoped_ranking":
+        if axis in {"scope", "cumulative"}:
+            return (
+                "covered"
+                if _scoped_entity_stats_items(
+                    tool_results,
+                    frame=frame,
+                    recipe=recipe,
+                    period="lifetime",
+                )
+                else "missing"
+            )
+        if axis == "ranking":
+            return (
+                "covered"
+                if _scoped_rankings_present(tool_results, frame=frame, recipe=recipe)
+                else "missing"
+            )
+        if axis == "recency":
+            return (
+                "covered"
+                if _scoped_entity_stats_items(
+                    tool_results,
+                    frame=frame,
+                    recipe=recipe,
+                    period="last_6_months",
+                )
+                else "missing"
+            )
 
     if axis == "cumulative":
         has_cumulative = (
@@ -854,7 +961,7 @@ def review_evidence_sufficiency(
             add_followup(call)
     if "time_of_day" in missing_axes:
         add_followup({"tool_name": "listening_hours", "params": {"view": "late_night_tracks"}})
-    if "ranking" in missing_axes:
+    if "ranking" in missing_axes and frame.get("family") != "scoped_ranking":
         for call in _tool_calls_for_pattern(
             {"tool_name": "analysis_charts"},
             frame=frame,

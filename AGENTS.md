@@ -16,7 +16,7 @@ Spotify Extended Streaming History 数据分析 Web 应用的主项目提示词�
 
 **性能策略**：Cache Manager 管理 5 命名空间（billboard/analysis/db/auth）LRU+TTL 缓存；Billboard 拆为 4 个独立 `@lru_cache` 函数，并通过共享 `_load_and_rank_cached` + `singleflight()` 避免 weekly/power/summaries/all-time 冷启动重复计算；Power Score、Billboard summaries 和 `merge_consecutive_plays()` 使用列级/组级向量化，避免逐行 `DataFrame.apply(axis=1)`、`iterrows()` 或 `to_dict()` 热路径；Dashboard full 单请求复用同一播放 DataFrame；`agg_weekly_track_sources` 支撑 album project 专辑榜和详情来源拆分；启动 warmup 使用当前默认动态阈值口径并预热 artist fan-out；SQLite 版本化 Migration；后台 Job Queue（3 worker）异步处理封面下载与 Wikipedia+LLM enrichment；前端 GET 数据统一进入 TanStack React Query（staleTime 5min/gcTime 30min/retry 2），路由级 lazy 分包；ECharts 统一走 `LazyEChart` + `echarts-for-react/esm/core` 按需注册，OpenCC 简繁转换只动态加载 `opencc-js/t2cn` 或 `opencc-js/cn2t` 子包，保存偏好恢复不得在模块初始化时预取大字典；账号页长图列表使用预览上限与原生图片懒加载，Web Vitals lab 通过 `scripts/frontend_web_vitals_probe.mjs` 采样，并可用 LCP/CLS/TBT/资源数量/encoded 体积/横向滚动溢出预算参数作为回归门禁。
 
-**AI 可观察任务与只读 Agent（2026-06-29）**：AI 报告采用 cache-first + 手动生成，不因打开页面自动调用 LLM；AI task runs/events/tool_calls 持久化到 SQLite，前端通过 `features/ai-tasks` 统一展示进度、证据卡片和工具轨迹；问答改为后端只读 Agent 工具链，模型只可规划 allowlist read-only 工具（总体统计、排行、播放记录、年度总结、实体统计、个人 Billboard 实体详情、听歌时段/深夜歌曲排行），不得调用任意 SQL/URL/写操作；最终回答只能基于 compact evidence、coverage、EvidenceSufficiency 和 AnalyticalBrief，prompt 与 AnswerContract 明确区分本地个人 Billboard 与外部官方 Billboard，并在 coverage/answer contract 矛盾时自动重试一次；QuestionFrame、EvidenceRecipe、EvidenceSufficiency、AnalyticalBrief、entity resolver、compare_entities、answer critic 与 golden-question harness 共同构成 AI Agent 通用分析中间层；艺人 career 与专辑 era enrichment 已接入同一 task 进度模型。
+**AI 可观察任务与只读 Agent（2026-06-29）**：AI 报告采用 cache-first + 手动生成，不因打开页面自动调用 LLM；AI task runs/events/tool_calls 持久化到 SQLite，前端通过 `features/ai-tasks` 统一展示进度、证据卡片和工具轨迹；问答改为后端只读 Agent 工具链，模型只可规划 allowlist read-only 工具（总体统计、排行、播放记录、年度总结、实体统计、个人 Billboard 实体详情、听歌时段/深夜歌曲排行），不得调用任意 SQL/URL/写操作；最终回答只能基于 compact evidence、coverage、EvidenceSufficiency 和 AnalyticalBrief，prompt 与 AnswerContract 明确区分本地个人 Billboard 与外部官方 Billboard，并在 coverage/answer contract 矛盾时自动重试一次；Project Context Prompt 作为 AI Agent 的项目语境层，集中描述 SpotifyStats 的个人音乐数据定位、本地个人 Billboard 边界、偏好分析口径和默认回答哲学；Planner 与最终回答 prompt 通过版本化 context 组合工具 playbook 与 answer philosophy，最终 payload / task result 记录 `project_context_version` 便于排查；QuestionFrame、EvidenceRecipe、EvidenceSufficiency、AnalyticalBrief、entity resolver、compare_entities、answer critic 与 golden-question harness 共同构成 AI Agent 通用分析中间层；艺人 career 与专辑 era enrichment 已接入同一 task 进度模型。
 
 ## Phase 5 产品化收口基线
 
@@ -265,7 +265,8 @@ frontend/src/
 | Data | `features/*/xxxData.ts` | — | 纯函数，计算逻辑与 UI 完全分离 |
 
 **关键约定**：
-- 外部文本渲染必须经 `react-markdown` + `rehype-sanitize`，禁止 `dangerouslySetInnerHTML`
+- 外部文本渲染必须经 `react-markdown` + `rehype-sanitize`，禁止 `dangerouslySetInnerHTML`；AI 报告/问答正文统一复用 `features/ai-insights/AiMarkdown.tsx`，保留 GFM 表格但必须包裹横向滚动容器
+- 后端 SQLite 风格时间戳（`YYYY-MM-DD HH:mm:ss`）默认按 UTC 解析；对话历史等相对时间必须通过 `frontend/src/lib/datetime.ts` 的 `formatRelativeTimeZh()`，避免本地时区偏移
 - LLM API Key 永远不通过 API 返回前端，仅返回 `has_llm_key: bool`
 - OpenAPI 类型通过 `npm run generate-types` 从后端自动生成
 - ECharts 图表必须复用 `LazyEChart`，禁止直接 `import('echarts-for-react')` 默认入口；新增图表能力先扩展共享 wrapper

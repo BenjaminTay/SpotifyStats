@@ -103,6 +103,30 @@ def recipe_for_frame(frame: QuestionFrame | dict[str, object]) -> EvidenceRecipe
             max_followup_calls=1,
         )
 
+    if family == "scoped_ranking":
+        scope_entity_name = parsed_frame.scope_entity_name or (
+            parsed_frame.entities[0] if parsed_frame.entities else ""
+        )
+        return EvidenceRecipe(
+            family=family,
+            required_axes=["scope", "cumulative", "ranking"],
+            conditional_axes=["recency"],
+            required_tool_patterns=[
+                {"tool_name": "entity_stats", "entity": "artist", "period": "lifetime"}
+            ],
+            recommended_tool_patterns=[
+                {"tool_name": "entity_stats", "entity": "artist", "period": "last_6_months"},
+                {"tool_name": "billboard_entity_detail", "entity": "artist"},
+            ],
+            required_context={
+                "scope_entity_type": parsed_frame.scope_entity_type or "artist",
+                "scope_entity_name": scope_entity_name,
+                "target_entity_types": parsed_frame.target_entity_types,
+                "metric": _ranking_metric(parsed_frame),
+            },
+            max_followup_calls=3,
+        )
+
     if family == "simple_ranking":
         return EvidenceRecipe(
             family=family,

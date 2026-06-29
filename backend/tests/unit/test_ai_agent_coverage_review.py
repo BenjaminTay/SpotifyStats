@@ -365,6 +365,72 @@ def test_simple_ranking_late_night_tool_does_not_cover_general_ranking_axis() ->
     assert review["axis_coverage"]["ranking"] == "missing"
 
 
+def test_scoped_ranking_rejects_global_album_chart_without_artist_scope() -> None:
+    frame, recipe = _frame_and_recipe("我最喜欢的Ariana Grande的专辑和歌曲是什么")
+
+    review = review_evidence_sufficiency(
+        question_frame=frame.model_dump(),
+        evidence_recipe=recipe.model_dump(),
+        tool_results=[
+            {
+                "tool_name": "analysis_charts",
+                "status": "done",
+                "source_range": "2022-07-01..2026-06-23",
+                "params_summary": "entity=album, metric=plays, period=lifetime, limit=10",
+                "data": {
+                    "entity": "album",
+                    "metric": "plays",
+                    "rows": [{"rank": 1, "album_name": "Midnights", "plays": 2559}],
+                    "period": {"period": "lifetime"},
+                },
+            }
+        ],
+        coverage={},
+    )
+
+    assert review["sufficient"] is False
+    assert review["axis_coverage"]["scope"] == "missing"
+    assert review["axis_coverage"]["ranking"] == "missing"
+    assert {
+        "tool_name": "entity_stats",
+        "params": {
+            "entity": "artist",
+            "artist_name": "Ariana Grande",
+            "period": "lifetime",
+        },
+    } in review["followup_tool_calls"]
+
+
+def test_scoped_ranking_accepts_artist_stats_with_album_and_track_rankings() -> None:
+    frame, recipe = _frame_and_recipe("我最喜欢的Ariana Grande的专辑和歌曲是什么")
+
+    review = review_evidence_sufficiency(
+        question_frame=frame.model_dump(),
+        evidence_recipe=recipe.model_dump(),
+        tool_results=[
+            {
+                "tool_name": "entity_stats",
+                "status": "done",
+                "source_range": "2022-07-01..2026-06-23",
+                "params_summary": "entity=artist, artist_name=Ariana Grande, period=lifetime",
+                "data": {
+                    "found": True,
+                    "period": {"period": "lifetime"},
+                    "summary": {"total_plays": 2153, "total_hours": 115.7},
+                    "top_albums": [{"rank": 1, "album_name": "eternal sunshine", "plays": 997}],
+                    "top_tracks": [{"rank": 1, "track_name": "Santa Tell Me", "plays": 145}],
+                },
+            }
+        ],
+        coverage={},
+    )
+
+    assert review["sufficient"] is True
+    assert review["axis_coverage"]["scope"] == "covered"
+    assert review["axis_coverage"]["cumulative"] == "covered"
+    assert review["axis_coverage"]["ranking"] == "covered"
+
+
 def test_compare_entities_for_wrong_objects_does_not_satisfy_preference_comparison() -> None:
     question = (
         "从播放次数和billboard榜单成绩来看，我对GUTS和The Life of a Showgirl"

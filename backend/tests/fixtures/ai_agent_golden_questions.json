@@ -2,6 +2,7 @@
   {
     "id": "album_guts_vs_showgirl",
     "question": "从播放次数和billboard榜单成绩来看，我对GUTS和The Life of a Showgirl这两张专辑的喜爱程度哪张专辑更甚？",
+    "expected_answer_style": "structured",
     "expected_intent": {
       "task_type": "comparison",
       "entity_type": "album",
@@ -209,8 +210,103 @@
     ]
   },
   {
+    "id": "artist_ariana_catalog_favorites",
+    "question": "我最喜欢的Ariana Grande的专辑和歌曲是什么",
+    "expected_answer_style": "concise",
+    "expected_intent": {
+      "task_type": "ranking",
+      "entity_type": "artist",
+      "entities": [
+        "Ariana Grande"
+      ],
+      "requested_metrics_contains": [
+        "plays"
+      ],
+      "forbidden_metrics_contains": [
+        "time_of_day"
+      ],
+      "time_scope": "lifetime",
+      "needs_fairness_note": false
+    },
+    "expected_frame": {
+      "family": "scoped_ranking",
+      "answer_contract": "scoped_ranking_answer",
+      "analysis_axes_contains": [
+        "scope",
+        "cumulative",
+        "ranking",
+        "recency"
+      ]
+    },
+    "expected_recipe": {
+      "family": "scoped_ranking",
+      "required_axes_contains": [
+        "scope",
+        "cumulative",
+        "ranking"
+      ],
+      "required_tool_patterns_contains": [
+        {
+          "tool_name": "entity_stats",
+          "entity": "artist",
+          "period": "lifetime"
+        }
+      ]
+    },
+    "required_tool_calls": [
+      {
+        "tool_name": "entity_stats",
+        "params": {
+          "entity": "artist",
+          "artist_name": "Ariana Grande",
+          "period": "lifetime"
+        }
+      }
+    ],
+    "recommended_tools": [
+      {
+        "tool_name": "entity_stats",
+        "params": {
+          "entity": "artist",
+          "artist_name": "Ariana Grande",
+          "period": "lifetime",
+          "merge_level": 2
+        }
+      },
+      {
+        "tool_name": "entity_stats",
+        "params": {
+          "entity": "artist",
+          "artist_name": "Ariana Grande",
+          "period": "last_6_months",
+          "merge_level": 2
+        }
+      },
+      {
+        "tool_name": "billboard_entity_detail",
+        "params": {
+          "entity": "artist",
+          "artist_name": "Ariana Grande",
+          "merge_level": 2
+        }
+      }
+    ],
+    "required_answer_terms": [
+      "Ariana Grande",
+      "专辑",
+      "歌曲",
+      "播放"
+    ],
+    "forbidden_answer_terms": [
+      "全局 Top10",
+      "没有数据",
+      "无法确定"
+    ]
+  },
+  {
     "id": "ranking_top_artist_2023",
     "question": "2023年我播放量最高的艺人是谁？",
+    "expected_answer_style": "concise",
     "expected_intent": {
       "task_type": "ranking",
       "entity_type": "artist",
@@ -362,6 +458,7 @@
   {
     "id": "artist_identity_taylor_vs_olivia",
     "question": "Taylor Swift 和 Olivia Rodrigo 谁更像我的本命？",
+    "expected_answer_style": "structured",
     "expected_intent": {
       "task_type": "comparison",
       "entity_type": "unknown",

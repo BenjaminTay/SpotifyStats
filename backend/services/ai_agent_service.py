@@ -12,21 +12,28 @@ from backend.domains.ai_agent.coverage_review import review_evidence_sufficiency
 from backend.domains.ai_agent.evidence import compact_evidence_cards
 from backend.domains.ai_agent.evidence_builders import build_evidence_cards
 from backend.domains.ai_agent.evidence_recipes import recipe_for_frame
+from backend.domains.ai_agent.project_context import (
+    PROJECT_CONTEXT_VERSION,
+    build_final_answer_system_prompt,
+    build_planner_system_prompt,
+    project_context_payload,
+)
 from backend.domains.ai_agent.question_frame import build_question_frame
 from backend.domains.ai_agent.question_intent import parse_question_intent
 from backend.domains.ai_agent.tool_registry import describe_for_model, dispatch_tool
 from backend.domains.ai_tasks.repository import AiTaskRepository
 from backend.services import ai_insights_service
 
-MAX_TOOL_CALLS = 5
+MAX_TOOL_CALLS = 8
+MAX_COVERAGE_REVIEW_ROUNDS = 2
 FINAL_LLM_FAILURE_MESSAGE = "LLM 未配置或调用失败，无法生成回答"
 TERMINAL_STATUSES = {"done", "error", "cancelled"}
 
-PLANNER_SYSTEM_PROMPT = """你是 SpotifyStats 的只读数据工具规划器。
+BASE_PLANNER_SYSTEM_PROMPT = """你是 SpotifyStats 的只读数据工具规划器。
 你只能选择后端提供的 read_only 工具，不要编造工具名、SQL、URL 或 API route。
 所有 Billboard 工具都表示用户本地播放数据计算出的个人榜单，不是外部官方 Billboard 或市场成绩。
 返回 ONLY JSON 数组，每项形如 {"tool_name":"analysis_stats","params":{...}}。
-最多返回 5 个工具调用。
+最多返回 8 个工具调用。
 DATA.question_intent 是系统给出的结构化提示。
 DATA.question_frame 是硬约束，family 决定问题类型，analysis_axes 决定必须覆盖的证据维度。
 DATA.evidence_recipe 是最低证据要求；规划工具时优先满足 required_axes 和 required_tool_patterns。
@@ -36,32 +43,50 @@ DATA.evidence_recipe 是最低证据要求；规划工具时优先满足 require
 如果 task_type=comparison 且 compare_entities 出现在 available_tools，优先调用 compare_entities；2-4 个同类实体比较不要拆成大量单实体工具。
 如果问题点名比较歌曲、专辑或艺人，优先同时查询 entity_stats 与 billboard_entity_detail。
 如果 task_type=comparison 且 entities 非空，必须为每个实体查询比较所需工具。
+如果 family=scoped_ranking，必须优先调用 entity_stats，并使用 scope_entity_type/scope_entity_name 对应的指定范围；不要用全局 Top10 代替范围内排行。
 如果 requested_metrics 包含 personal_billboard，必须使用 available_tools 中的 billboard_entity_detail 或 compare_entities。
 如果 time_scope 不是 lifetime，至少一个工具调用必须使用对应 period 或自定义窗口。
 如果 thinking_mode=true，请优先规划 2-4 个互补工具用于交叉核对，例如总体统计、排行、记录或听歌时段。"""
 
-FINAL_ANSWER_SYSTEM_PROMPT = """你是友好的 Spotify 听歌数据助手。
+BASE_FINAL_ANSWER_SYSTEM_PROMPT = """你是友好的 Spotify 听歌数据助手。
 只基于 DATA 中的工具结果回答用户问题。不要声称访问了 DATA 之外的数据。
 DATA.coverage 是硬约束：coverage 标记为 found 的实体或榜单，不得说缺少、未查询或无法比较。
 DATA.question_frame.family 决定回答形状，DATA.answer_contract 或 DATA.analytical_brief.answer_contract 是硬约束。
 DATA.analytical_brief 是回答底稿；必须覆盖 must_explain，不得出现 forbidden_claims。
+DATA.answer_style 是硬约束，用来决定回答长短和结构。
+如果 DATA.answer_style.style=concise，用 3-6 句或最多 3 个 bullet 直接回答；不要输出「我查了什么」「依据」「自检与限制」等固定小节，除非证据不足。
+如果 DATA.answer_style.style=structured，可使用少量小节或列表，但仍要围绕结论、关键数字和必要限制，不要写工具调用流水账。
+如果 DATA.answer_style.style=detailed，才可以展开为较完整的分析、表格或依据说明。
 如果 DATA.evidence_sufficiency.sufficient=false，必须说明缺失证据和限制，避免给出确定性单一结论。
 如果 DATA.analytical_brief.conflict=true，必须分层回答，不要说所有指标都指向同一个对象。
 SpotifyStats Billboard 是本地个人榜单，不能把它表述成外部官方 Billboard、市场影响力或权威商业成绩。
+如果 answer_contract=scoped_ranking_answer，主结论必须来自 entity_stats 的 top_albums/top_tracks；按播放次数说明专辑和歌曲，可补充时长或近期窗口；top_albums/top_tracks 里的 share_pct 表示播放次数占比，不是时长占比；不要用 billboard_entity_detail 或全局 analysis_charts 替代主依据。
 比较多个对象时，不要只看单一累计值；如果发行时间、数据窗口或统计口径影响公平性，要主动说明。
 用中文回答，引用关键数字；如果工具结果不足，直接说明限制。"""
 
-THINKING_FINAL_ANSWER_SYSTEM_PROMPT = """你是友好的 Spotify 听歌数据助手。
+BASE_THINKING_FINAL_ANSWER_SYSTEM_PROMPT = """你是友好的 Spotify 听歌数据助手。
 只基于 DATA 中的工具结果回答用户问题。不要声称访问了 DATA 之外的数据。
 思考模式已开启：请输出可见分析摘要，而不是逐字内部思维链。
 DATA.coverage 是硬约束：coverage 标记为 found 的实体或榜单，不得说缺少、未查询或无法比较。
 DATA.question_frame.family 决定回答形状，DATA.answer_contract 或 DATA.analytical_brief.answer_contract 是硬约束。
 DATA.analytical_brief 是回答底稿；必须覆盖 must_explain，不得出现 forbidden_claims。
+DATA.answer_style 是硬约束；思考模式只表示工具核对更充分，不表示回答必须变长。
+如果 DATA.answer_style.style=concise，用 3-6 句或最多 3 个 bullet 直接回答；不要输出「我查了什么」「依据」「自检与限制」等固定小节，除非证据不足。
+如果 DATA.answer_style.style=structured，可使用少量小节或列表，但仍要围绕结论、关键数字和必要限制，不要写工具调用流水账。
+如果 DATA.answer_style.style=detailed，才可以展开为较完整的分析、表格或依据说明。
 如果 DATA.evidence_sufficiency.sufficient=false，必须说明缺失证据和限制，避免给出确定性单一结论。
 如果 DATA.analytical_brief.conflict=true，必须分层回答，不要说所有指标都指向同一个对象。
 SpotifyStats Billboard 是本地个人榜单，不能把它表述成外部官方 Billboard、市场影响力或权威商业成绩。
+如果 answer_contract=scoped_ranking_answer，主结论必须来自 entity_stats 的 top_albums/top_tracks；按播放次数说明专辑和歌曲，可补充时长或近期窗口；top_albums/top_tracks 里的 share_pct 表示播放次数占比，不是时长占比；不要用 billboard_entity_detail 或全局 analysis_charts 替代主依据。
 比较多个对象时，不要只看单一累计值；如果发行时间、数据窗口或统计口径影响公平性，要主动说明。
-用中文组织为「结论」「我查了什么」「依据」「自检与限制」四段，引用关键数字；如果工具结果不足，直接说明限制。"""
+用中文回答，引用关键数字；如果工具结果不足，直接说明限制。"""
+
+PLANNER_SYSTEM_PROMPT = build_planner_system_prompt(BASE_PLANNER_SYSTEM_PROMPT)
+FINAL_ANSWER_SYSTEM_PROMPT = build_final_answer_system_prompt(BASE_FINAL_ANSWER_SYSTEM_PROMPT)
+THINKING_FINAL_ANSWER_SYSTEM_PROMPT = build_final_answer_system_prompt(
+    BASE_THINKING_FINAL_ANSWER_SYSTEM_PROMPT,
+    thinking_mode=True,
+)
 
 
 class ChatAgentError(RuntimeError):
@@ -167,6 +192,99 @@ def _base_filter_params(request: dict[str, Any]) -> dict[str, Any]:
 
 def _thinking_mode_enabled(request: dict[str, Any]) -> bool:
     return bool(request.get("thinking_mode"))
+
+
+_DETAILED_ANSWER_TOKENS = (
+    "详细",
+    "完整",
+    "全面",
+    "展开",
+    "深度",
+    "报告",
+    "依据",
+    "证据",
+    "过程",
+    "自检",
+    "限制",
+    "为什么",
+    "原因",
+    "解释",
+)
+
+_STRUCTURED_ANSWER_TOKENS = (
+    "比较",
+    "对比",
+    "维度",
+    "表格",
+    "markdown",
+    "列出",
+    "排行",
+    "排名",
+    "前十",
+    "top",
+)
+
+_STRUCTURED_DEFAULT_FAMILIES = {
+    "preference_comparison",
+    "identity_preference",
+    "period_comparison",
+    "change_explanation",
+    "trend_preference",
+}
+
+
+def _question_contains_any(question: str, tokens: tuple[str, ...]) -> bool:
+    lowered = question.casefold()
+    return any(token.casefold() in lowered for token in tokens)
+
+
+def _answer_style_payload(style: str, *, evidence_sufficient: bool) -> dict[str, Any]:
+    if style == "detailed":
+        return {
+            "style": "detailed",
+            "allow_sections": True,
+            "max_sections": 5,
+            "instruction": "用户明确要求详细时，给完整分析、关键数字和必要限制。",
+        }
+    if style == "structured":
+        return {
+            "style": "structured",
+            "allow_sections": True,
+            "max_sections": 3,
+            "avoid_sections": ["我查了什么", "工具调用过程"],
+            "instruction": "用短小结构回答复杂问题，保留结论、关键数字和必要限制。",
+            "must_include_limitations": not evidence_sufficient,
+        }
+    return {
+        "style": "concise",
+        "allow_sections": False,
+        "max_sentences": 6,
+        "max_bullets": 3,
+        "avoid_sections": ["我查了什么", "依据", "自检与限制", "工具调用过程"],
+        "instruction": "直接回答用户问题，再补最关键的数字；只有证据不足时才补限制。",
+        "must_include_limitations": not evidence_sufficient,
+    }
+
+
+def _answer_style(
+    request: dict[str, Any],
+    *,
+    question_frame: dict[str, Any],
+    evidence_sufficiency: dict[str, Any],
+) -> dict[str, Any]:
+    question = str(request.get("question") or "")
+    evidence_sufficient = bool(evidence_sufficiency.get("sufficient", True))
+    if not evidence_sufficient:
+        return _answer_style_payload("structured", evidence_sufficient=evidence_sufficient)
+    if _question_contains_any(question, _DETAILED_ANSWER_TOKENS):
+        return _answer_style_payload("detailed", evidence_sufficient=evidence_sufficient)
+
+    family = str(question_frame.get("family") or "")
+    if family in _STRUCTURED_DEFAULT_FAMILIES:
+        return _answer_style_payload("structured", evidence_sufficient=evidence_sufficient)
+    if _question_contains_any(question, _STRUCTURED_ANSWER_TOKENS):
+        return _answer_style_payload("structured", evidence_sufficient=evidence_sufficient)
+    return _answer_style_payload("concise", evidence_sufficient=evidence_sufficient)
 
 
 def _question_context(request: dict[str, Any]) -> dict[str, Any]:
@@ -598,6 +716,12 @@ def _tool_data_evidence(data: Any) -> dict[str, Any]:
     tracks = _top_track_evidence(data.get("tracks"))
     if tracks:
         evidence["top_tracks"] = tracks
+    top_albums = data.get("top_albums")
+    if isinstance(top_albums, list):
+        evidence["top_albums"] = top_albums[:10]
+    top_tracks = data.get("top_tracks")
+    if isinstance(top_tracks, list):
+        evidence["top_tracks"] = top_tracks[:10]
     rows = data.get("rows")
     if isinstance(rows, list):
         evidence["rows"] = rows[:20]
@@ -706,10 +830,17 @@ def _final_payload(
         coverage=coverage,
         evidence_cards=compact_cards,
     )
+    answer_style = _answer_style(
+        request,
+        question_frame=context["question_frame"],
+        evidence_sufficiency=evidence_sufficiency,
+    )
     return {
         "question": request.get("question", ""),
         "conversation_history": (request.get("conversation_history") or [])[-6:],
         **context,
+        **project_context_payload(),
+        "answer_style": answer_style,
         "coverage": coverage,
         "evidence_sufficiency": evidence_sufficiency,
         "analytical_brief": analytical_brief,
@@ -782,7 +913,8 @@ def _retry_user_content(
         "instruction": (
             "上一版回答与工具证据或回答契约矛盾。请只基于 coverage、"
             "evidence_sufficiency、analytical_brief 和 tool_results 重新回答；"
-            "不要声称 found 的实体或榜单数据缺失，不要忽略 analytical_brief.must_explain。"
+            "不要声称 found 的实体或榜单数据缺失，不要忽略 analytical_brief.must_explain，"
+            "并严格遵守 project_context_version、answer_style 和 Project Context 的项目语境要求。"
         ),
     }
     return _compact_json(retry_payload, limit=16000)
@@ -827,26 +959,29 @@ def run_chat_agent_task(task_id: str, request: dict[str, Any]) -> None:
             tool_results.append(result)
 
         context = _question_context(request)
-        coverage = _build_coverage(tool_results)
-        coverage_review = review_evidence_sufficiency(
-            question_frame=context["question_frame"],
-            evidence_recipe=context["evidence_recipe"],
-            tool_results=tool_results,
-            coverage=coverage,
-        )
-        if not coverage_review["sufficient"]:
+        executed_identities = {
+            _tool_call_identity(planned_call) for planned_call in tool_plan[:MAX_TOOL_CALLS]
+        }
+        for review_round in range(MAX_COVERAGE_REVIEW_ROUNDS):
+            coverage = _build_coverage(tool_results)
+            coverage_review = review_evidence_sufficiency(
+                question_frame=context["question_frame"],
+                evidence_recipe=context["evidence_recipe"],
+                tool_results=tool_results,
+                coverage=coverage,
+            )
+            if coverage_review["sufficient"]:
+                break
             if not _set_stage(
                 repo,
                 task_id=task_id,
                 stage="reviewing_coverage",
-                progress_pct=0.78,
+                progress_pct=min(0.86, 0.76 + review_round * 0.05),
                 message="正在补查缺失证据",
-                payload={"reasons": coverage_review["reasons"]},
+                payload={"reasons": coverage_review["reasons"], "round": review_round + 1},
             ):
                 return
-            executed_identities = {
-                _tool_call_identity(planned_call) for planned_call in tool_plan[:MAX_TOOL_CALLS]
-            }
+            added_followups = 0
             for offset, followup in enumerate(
                 coverage_review["followup_tool_calls"],
                 start=1,
@@ -865,11 +1000,14 @@ def run_chat_agent_task(task_id: str, request: dict[str, Any]) -> None:
                     task_id=task_id,
                     tool_call=prepared_followup,
                     index=len(tool_results) + 1,
-                    progress_pct=min(0.86, 0.78 + offset * 0.03),
+                    progress_pct=min(0.88, 0.78 + review_round * 0.04 + offset * 0.02),
                 )
                 if result is None:
                     return
                 tool_results.append(result)
+                added_followups += 1
+            if added_followups == 0:
+                break
 
         if _thinking_mode_enabled(request) and not _set_stage(
             repo,
@@ -927,6 +1065,7 @@ def run_chat_agent_task(task_id: str, request: dict[str, Any]) -> None:
                 "tool_call_count": len(tool_results),
                 "thinking_mode": _thinking_mode_enabled(request),
                 "answer_retried": answer_retried,
+                "project_context_version": PROJECT_CONTEXT_VERSION,
                 "validation_issues": validation_issues,
                 "coverage": final_payload["coverage"],
                 "question_frame": final_payload["question_frame"],

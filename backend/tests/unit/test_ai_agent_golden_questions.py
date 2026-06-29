@@ -8,6 +8,7 @@ import pytest
 
 from backend.domains.ai_agent.question_intent import parse_question_intent
 from backend.domains.ai_agent.tool_registry import list_tools
+from backend.services import ai_agent_service
 from scripts import evaluate_ai_agent_harness
 
 pytestmark = pytest.mark.unit
@@ -82,12 +83,22 @@ def test_golden_question_fixture_has_executable_shape() -> None:
         )
 
 
+def test_golden_questions_may_assert_answer_style() -> None:
+    cases = _load_cases()
+    style_cases = [case for case in cases if case.get("expected_answer_style")]
+
+    assert style_cases
+    for case in style_cases:
+        assert case["expected_answer_style"] in {"concise", "structured", "detailed"}
+
+
 @pytest.mark.parametrize("case", _load_cases(), ids=lambda case: case["id"])
 def test_golden_questions_match_current_intent_parser(case: dict[str, object]) -> None:
     expected = case["expected_intent"]
     assert isinstance(expected, dict)
 
-    intent = parse_question_intent(str(case["question"]))
+    question = str(case["question"])
+    intent = parse_question_intent(question)
     dumped = intent.model_dump()
 
     for key in ("task_type", "entity_type", "entities", "time_scope", "needs_fairness_note"):
@@ -97,6 +108,14 @@ def test_golden_questions_match_current_intent_parser(case: dict[str, object]) -
     expected_metrics = expected.get("requested_metrics_contains", [])
     assert isinstance(expected_metrics, list)
     assert set(expected_metrics).issubset(set(intent.requested_metrics))
+
+    expected_answer_style = case.get("expected_answer_style")
+    if expected_answer_style:
+        payload = ai_agent_service._final_payload(
+            {"question": question, "conversation_history": []},
+            evaluate_ai_agent_harness.answer_style_probe_tool_results(case),
+        )
+        assert payload["answer_style"]["style"] == expected_answer_style
 
 
 def test_golden_harness_reports_all_cases_pass() -> None:

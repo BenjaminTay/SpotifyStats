@@ -1,5 +1,5 @@
 import { fireEvent, render, screen } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { AiInsightsTimeSelectors } from '@/features/ai-insights/AiInsightsTimeSelectors'
 import { ChatInterface } from '@/features/ai-insights/ChatInterface'
@@ -51,6 +51,10 @@ function makeSession(overrides: Partial<ChatSession> = {}): ChatSession {
 }
 
 describe('ChatSessionList', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
   it('renders session actions without nesting buttons', () => {
     const { container } = render(
       <ChatSessionList
@@ -89,6 +93,25 @@ describe('ChatSessionList', () => {
 
     fireEvent.click(screen.getByText('删除'))
     expect(onDelete).toHaveBeenCalledWith(1)
+  })
+
+  it('treats SQLite chat timestamps as UTC when rendering relative time', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-06-29T06:16:40Z'))
+
+    render(
+      <ChatSessionList
+        sessions={[makeSession({ updated_at: '2026-06-29 06:16:29' })]}
+        activeId={null}
+        onSelect={() => {}}
+        onDelete={() => {}}
+        onNew={() => {}}
+        loading={false}
+      />,
+    )
+
+    expect(screen.getByText('刚刚')).toBeInTheDocument()
+    expect(screen.queryByText('8 小时前')).not.toBeInTheDocument()
   })
 })
 
