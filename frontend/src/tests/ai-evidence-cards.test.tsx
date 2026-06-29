@@ -54,6 +54,48 @@ describe('AIEvidenceCards', () => {
     expect(screen.getByText('无数据')).toBeInTheDocument()
   })
 
+  it('renders comparison winner metrics as a readable matrix', () => {
+    const { container } = render(
+      <AIEvidenceCards
+        cards={[
+          {
+            card_id: 'album:comparison',
+            title: '实体比较摘要',
+            entity_type: 'album',
+            question_axis: 'comparison',
+            source: { tool_name: 'compare_entities', source_range: 'comparison' },
+            metrics: [
+              { name: 'winner_by_cumulative_plays', label: '累计播放胜出', value: 'GUTS' },
+              {
+                name: 'winner_by_total_hours',
+                label: '播放时长胜出',
+                value: 'The Life of a Showgirl',
+              },
+              { name: 'winner_by_power_score', label: '个人榜单 Power Score 胜出', value: 'GUTS' },
+              {
+                name: 'winner_by_intensity',
+                label: '单位在榜周强度胜出',
+                value: 'The Life of a Showgirl',
+              },
+            ],
+            observations: ['对象进入你的播放历史时间不同，累计值和强度值需要分开看。'],
+            limitations: ['比较结果必须说明口径。'],
+          },
+        ]}
+      />,
+    )
+
+    expect(screen.getByText('累计播放胜出')).toBeInTheDocument()
+    expect(screen.getAllByText('GUTS').length).toBeGreaterThanOrEqual(2)
+    expect(screen.getByText('单位在榜周强度胜出')).toBeInTheDocument()
+    expect(screen.getAllByText('The Life of a Showgirl').length).toBeGreaterThanOrEqual(2)
+
+    const metricsMatrix = container.querySelector('dl')
+    expect(metricsMatrix).toHaveClass('grid-cols-1')
+    expect(metricsMatrix).toHaveClass('sm:grid-cols-2')
+    expect(metricsMatrix).not.toHaveClass('grid-cols-2')
+  })
+
   it('does not render a stray zero when notes are empty', () => {
     const { container } = render(
       <AIEvidenceCards

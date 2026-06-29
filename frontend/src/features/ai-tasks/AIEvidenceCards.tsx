@@ -29,6 +29,10 @@ export function AIEvidenceCards({ cards }: AIEvidenceCardsProps) {
 
 function EvidenceCard({ card, index }: { card: AiEvidenceCard; index: number }) {
   const hasNotes = Boolean(card.observations?.length || card.limitations?.length)
+  const isComparison = card.question_axis === 'comparison'
+  const metricsGridClass = isComparison
+    ? 'mt-3 grid grid-cols-1 gap-x-3 gap-y-2 sm:grid-cols-2'
+    : 'mt-3 grid grid-cols-2 gap-x-3 gap-y-2'
 
   return (
     <article className="rounded-[8px] border border-border/50 bg-muted/20 p-3">
@@ -48,7 +52,7 @@ function EvidenceCard({ card, index }: { card: AiEvidenceCard; index: number }) 
       </div>
 
       {card.metrics.length > 0 && (
-        <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2">
+        <dl className={metricsGridClass}>
           {card.metrics.map((metric, metricIndex) => (
             <div className="min-w-0" key={metric.name || `${card.card_id}-${metricIndex}-${index}`}>
               <dt className="text-[11px] leading-snug text-muted-foreground">
