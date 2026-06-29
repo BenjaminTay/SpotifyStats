@@ -51,6 +51,7 @@
 | [`superpowers/plans/2026-06-26-billboard-year-end.md`](superpowers/plans/2026-06-26-billboard-year-end.md) | Billboard 年榜实现计划与最终落地口径 |
 | [`superpowers/specs/2026-06-28-ai-observable-agent-orchestrator-design.md`](superpowers/specs/2026-06-28-ai-observable-agent-orchestrator-design.md) | AI 可观察任务与只读 Agent Orchestrator V2 设计 |
 | [`superpowers/plans/2026-06-28-ai-observable-agent-orchestrator.md`](superpowers/plans/2026-06-28-ai-observable-agent-orchestrator.md) | AI Orchestrator V2 实现计划、验收清单与当前落地状态 |
+| [`superpowers/specs/2026-06-29-ai-agent-universal-analytical-harness-design.md`](superpowers/specs/2026-06-29-ai-agent-universal-analytical-harness-design.md) | AI Agent 通用分析中间层设计：QuestionFrame、EvidenceRecipe、AnalyticalBrief 与 AnswerContract |
 
 ## 历史归档
 
