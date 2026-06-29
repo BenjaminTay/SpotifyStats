@@ -6,6 +6,7 @@ import pytest
 from pydantic import ValidationError
 
 from backend.domains.ai_agent import tool_registry, tools
+from backend.services import ai_agent_service
 
 pytestmark = pytest.mark.unit
 
@@ -942,3 +943,70 @@ def test_compare_track_entities_preserves_track_names(
         "drivers license",
     ]
     assert result["data"]["winner_by_cumulative_plays"] == "vampire"
+
+
+def test_planner_user_content_contains_frame_and_recipe() -> None:
+    content = ai_agent_service._planner_user_content(
+        {
+            "question": (
+                "从播放次数和billboard榜单成绩来看，我对GUTS和"
+                "The Life of a Showgirl这两张专辑的喜爱程度哪张专辑更甚？"
+            ),
+            "thinking_mode": True,
+            "min_ms": 30000,
+            "music_only": True,
+            "merge_enabled": True,
+            "dynamic_threshold": True,
+            "merge_level": 2,
+        }
+    )
+
+    assert '"question_intent"' in content
+    assert '"question_frame"' in content
+    assert '"family":"preference_comparison"' in content
+    assert '"evidence_recipe"' in content
+    assert '"layered_preference_comparison"' in content
+
+
+def test_final_payload_contains_analytical_brief_and_sufficiency() -> None:
+    request = {
+        "question": "我深夜最爱听什么歌？",
+        "thinking_mode": False,
+    }
+    payload = ai_agent_service._final_payload(
+        request,
+        [
+            {
+                "tool_name": "listening_hours",
+                "status": "done",
+                "source_range": "late_night_tracks",
+                "params_summary": "view=late_night_tracks",
+                "result_summary": "深夜歌曲排行",
+                "data": {"view": "late_night_tracks", "items": {"tracks": []}},
+            }
+        ],
+    )
+
+    assert payload["question_frame"]["family"] == "time_of_day_ranking"
+    assert payload["evidence_recipe"]["family"] == "time_of_day_ranking"
+    assert payload["evidence_sufficiency"]["sufficient"] is True
+    assert payload["analytical_brief"]["answer_contract"] == "time_of_day_answer"
+
+
+def test_tool_call_identity_keeps_period_specific_followups_distinct() -> None:
+    lifetime_call = {
+        "tool_name": "entity_stats",
+        "params": {"entity": "album", "album_name": "GUTS"},
+    }
+    recent_call = {
+        "tool_name": "entity_stats",
+        "params": {
+            "entity": "album",
+            "album_name": "GUTS",
+            "period": "last_6_months",
+        },
+    }
+
+    assert ai_agent_service._tool_call_identity(lifetime_call) != (
+        ai_agent_service._tool_call_identity(recent_call)
+    )

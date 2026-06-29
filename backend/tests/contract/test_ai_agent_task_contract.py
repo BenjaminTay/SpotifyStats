@@ -119,20 +119,20 @@ def test_chat_agent_task_runs_sync_and_persists_events_and_tool_trace(
         llm_calls.append((system_prompt, user_content, temperature))
         if len(llm_calls) == 1:
             return (
-                '[{"tool_name":"wrapped_yearly","params":{"year":2026}},'
+                '[{"tool_name":"analysis_stats","params":{"period":"this_year"}},'
                 '{"tool_name":"listening_hours","params":{"view":"late_night_ratio"}}]'
             )
         return "你 2026 年的夜间聆听占比是 12.5%，年度播放 77 次。"
 
     def fake_dispatch_tool(tool_name: str, params: dict[str, Any] | None = None):
-        assert tool_name in {"wrapped_yearly", "listening_hours"}
-        if tool_name == "wrapped_yearly":
+        assert tool_name in {"analysis_stats", "listening_hours"}
+        if tool_name == "analysis_stats":
             return {
                 "tool_name": tool_name,
-                "params_summary": "year=2026",
+                "params_summary": "period=this_year",
                 "result_summary": "plays=77, hours=9.5",
                 "source_range": "2026",
-                "data": {"year": 2026, "summary": {"total_plays": 77}},
+                "data": {"period": {"period": "this_year"}, "summary": {"total_plays": 77}},
             }
         return {
             "tool_name": tool_name,
@@ -166,6 +166,15 @@ def test_chat_agent_task_runs_sync_and_persists_events_and_tool_trace(
         status_payload["result"]["answer"] == "你 2026 年的夜间聆听占比是 12.5%，年度播放 77 次。"
     )
     assert status_payload["result"]["tool_call_count"] == 2
+    assert "coverage" in status_payload["result"]
+    assert "evidence_cards" in status_payload["result"]
+    assert "tools" in status_payload["result"]
+    assert "question_frame" in status_payload["result"]
+    assert "evidence_sufficiency" in status_payload["result"]
+    assert "analytical_brief" in status_payload["result"]
+    assert isinstance(status_payload["result"]["question_frame"]["family"], str)
+    assert "sufficient" in status_payload["result"]["evidence_sufficiency"]
+    assert "answer_contract" in status_payload["result"]["analytical_brief"]
 
     events_payload = events_response.json()
     assert events_payload["found"] is True
@@ -177,9 +186,9 @@ def test_chat_agent_task_runs_sync_and_persists_events_and_tool_trace(
     assert "calling_llm" in stages
     assert "done" in stages
     tool_calls = events_payload["tool_calls"]
-    assert [call["tool_name"] for call in tool_calls] == ["wrapped_yearly", "listening_hours"]
+    assert [call["tool_name"] for call in tool_calls] == ["analysis_stats", "listening_hours"]
     assert [call["status"] for call in tool_calls] == ["done", "done"]
-    assert tool_calls[0]["params_summary"] == "year=2026"
+    assert tool_calls[0]["params_summary"] == "period=this_year"
     assert tool_calls[0]["result_summary"] == "plays=77, hours=9.5"
     assert tool_calls[0]["source_range"] == "2026"
     assert tool_calls[1]["params_summary"] == "view=late_night_ratio"
@@ -264,7 +273,7 @@ def test_chat_agent_retries_final_answer_when_it_contradicts_found_album_evidenc
                 "只能提供 GUTS 的播放情况，缺少 The Life of a Showgirl 的播放数据，"
                 "也没有 billboard 榜单成绩。"
             )
-        assert "上一版回答与工具证据矛盾" in user_content
+        assert "上一版回答与工具证据或回答契约矛盾" in user_content
         assert "The Life of a Showgirl" in user_content
         assert "plays=1637" in user_content
         return "**结论**\nThe Life of a Showgirl 的短期热度更强；GUTS 的长期累计榜单资历更强。"
@@ -324,7 +333,7 @@ def test_chat_agent_retries_final_answer_when_it_contradicts_found_album_evidenc
     assert len(llm_calls) == 3
 
 
-def test_chat_agent_adds_one_coverage_followup_round_for_missing_billboard(
+def test_chat_agent_adds_sufficiency_followups_with_total_tool_cap(
     client,
     monkeypatch,
 ):
@@ -360,6 +369,38 @@ def test_chat_agent_adds_one_coverage_followup_round_for_missing_billboard(
                     "found": True,
                     "album_name": album_name,
                     "summary": {"total_plays": plays},
+                },
+            }
+        if tool_name == "compare_entities":
+            return {
+                "tool_name": tool_name,
+                "params_summary": "entity_type=album, names=GUTS|The Life of a Showgirl",
+                "result_summary": "found=true, compared=2",
+                "source_range": "lifetime",
+                "data": {
+                    "entity_type": "album",
+                    "entities": [
+                        {
+                            "requested_name": "GUTS",
+                            "name": "GUTS",
+                            "found": True,
+                            "plays": 1749,
+                            "power_score": 9000,
+                            "plays_per_chart_week": 12.0,
+                        },
+                        {
+                            "requested_name": "The Life of a Showgirl",
+                            "name": "The Life of a Showgirl",
+                            "found": True,
+                            "plays": 1637,
+                            "power_score": 10087,
+                            "plays_per_chart_week": 18.0,
+                        },
+                    ],
+                    "winner_by_cumulative_plays": "GUTS",
+                    "winner_by_power_score": "The Life of a Showgirl",
+                    "winner_by_intensity": "The Life of a Showgirl",
+                    "fairness_notes": ["发行窗口不同，需要分层比较。"],
                 },
             }
         return {
@@ -400,12 +441,12 @@ def test_chat_agent_adds_one_coverage_followup_round_for_missing_billboard(
     events_payload = client.get(f"/api/ai/tasks/{task_id}/events").json()
 
     assert status_payload["status"] == "done"
-    assert status_payload["result"]["tool_call_count"] == 4
-    assert dispatched[-1] == (
-        "billboard_entity_detail",
+    assert status_payload["result"]["tool_call_count"] == 5
+    assert dispatched[3] == (
+        "compare_entities",
         {
-            "entity": "album",
-            "album_name": "The Life of a Showgirl",
+            "entity_type": "album",
+            "names": ["GUTS", "The Life of a Showgirl"],
             "min_ms": 45000,
             "music_only": False,
             "merge_enabled": False,
@@ -414,19 +455,19 @@ def test_chat_agent_adds_one_coverage_followup_round_for_missing_billboard(
             "merge_level": 3,
         },
     )
+    assert dispatched[4][0] == "entity_stats"
+    assert dispatched[4][1]["album_name"] == "GUTS"
+    assert dispatched[4][1]["period"] == "last_6_months"
     assert "reviewing_coverage" in [event["stage"] for event in events_payload["events"]]
     assert [call["tool_name"] for call in events_payload["tool_calls"]] == [
         "entity_stats",
         "billboard_entity_detail",
         "entity_stats",
-        "billboard_entity_detail",
+        "compare_entities",
+        "entity_stats",
     ]
-    assert (
-        status_payload["result"]["coverage"]["entities"]["The Life of a Showgirl"][
-            "billboard_entity_detail"
-        ]
-        == "found"
-    )
+    assert status_payload["result"]["coverage"]["comparison"]["compare_entities"] == "found"
+    assert status_payload["result"]["evidence_sufficiency"]["sufficient"] is False
     assert len(llm_calls) == 2
 
 

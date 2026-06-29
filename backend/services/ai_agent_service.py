@@ -6,10 +6,13 @@ import json
 from typing import Any
 
 from backend.core.db import get_db
+from backend.domains.ai_agent.analytical_brief import build_analytical_brief
 from backend.domains.ai_agent.answer_critic import critique_answer
-from backend.domains.ai_agent.coverage_review import review_coverage
+from backend.domains.ai_agent.coverage_review import review_evidence_sufficiency
 from backend.domains.ai_agent.evidence import compact_evidence_cards
 from backend.domains.ai_agent.evidence_builders import build_evidence_cards
+from backend.domains.ai_agent.evidence_recipes import recipe_for_frame
+from backend.domains.ai_agent.question_frame import build_question_frame
 from backend.domains.ai_agent.question_intent import parse_question_intent
 from backend.domains.ai_agent.tool_registry import describe_for_model, dispatch_tool
 from backend.domains.ai_tasks.repository import AiTaskRepository
@@ -25,6 +28,11 @@ PLANNER_SYSTEM_PROMPT = """你是 SpotifyStats 的只读数据工具规划器。
 返回 ONLY JSON 数组，每项形如 {"tool_name":"analysis_stats","params":{...}}。
 最多返回 5 个工具调用。
 DATA.question_intent 是系统给出的结构化提示。
+DATA.question_frame 是硬约束，family 决定问题类型，analysis_axes 决定必须覆盖的证据维度。
+DATA.evidence_recipe 是最低证据要求；规划工具时优先满足 required_axes 和 required_tool_patterns。
+如果 family=preference_comparison，必须优先使用 compare_entities，并尽量补 last_6_months 或 last_4_weeks 的 entity_stats。
+如果 family=trend_preference，不得只查询 lifetime。
+如果 family=time_of_day_ranking，必须使用 listening_hours 且 view=late_night_tracks。
 如果 task_type=comparison 且 compare_entities 出现在 available_tools，优先调用 compare_entities；2-4 个同类实体比较不要拆成大量单实体工具。
 如果问题点名比较歌曲、专辑或艺人，优先同时查询 entity_stats 与 billboard_entity_detail。
 如果 task_type=comparison 且 entities 非空，必须为每个实体查询比较所需工具。
@@ -35,6 +43,10 @@ DATA.question_intent 是系统给出的结构化提示。
 FINAL_ANSWER_SYSTEM_PROMPT = """你是友好的 Spotify 听歌数据助手。
 只基于 DATA 中的工具结果回答用户问题。不要声称访问了 DATA 之外的数据。
 DATA.coverage 是硬约束：coverage 标记为 found 的实体或榜单，不得说缺少、未查询或无法比较。
+DATA.question_frame.family 决定回答形状，DATA.answer_contract 或 DATA.analytical_brief.answer_contract 是硬约束。
+DATA.analytical_brief 是回答底稿；必须覆盖 must_explain，不得出现 forbidden_claims。
+如果 DATA.evidence_sufficiency.sufficient=false，必须说明缺失证据和限制，避免给出确定性单一结论。
+如果 DATA.analytical_brief.conflict=true，必须分层回答，不要说所有指标都指向同一个对象。
 SpotifyStats Billboard 是本地个人榜单，不能把它表述成外部官方 Billboard、市场影响力或权威商业成绩。
 比较多个对象时，不要只看单一累计值；如果发行时间、数据窗口或统计口径影响公平性，要主动说明。
 用中文回答，引用关键数字；如果工具结果不足，直接说明限制。"""
@@ -43,6 +55,10 @@ THINKING_FINAL_ANSWER_SYSTEM_PROMPT = """你是友好的 Spotify 听歌数据助
 只基于 DATA 中的工具结果回答用户问题。不要声称访问了 DATA 之外的数据。
 思考模式已开启：请输出可见分析摘要，而不是逐字内部思维链。
 DATA.coverage 是硬约束：coverage 标记为 found 的实体或榜单，不得说缺少、未查询或无法比较。
+DATA.question_frame.family 决定回答形状，DATA.answer_contract 或 DATA.analytical_brief.answer_contract 是硬约束。
+DATA.analytical_brief 是回答底稿；必须覆盖 must_explain，不得出现 forbidden_claims。
+如果 DATA.evidence_sufficiency.sufficient=false，必须说明缺失证据和限制，避免给出确定性单一结论。
+如果 DATA.analytical_brief.conflict=true，必须分层回答，不要说所有指标都指向同一个对象。
 SpotifyStats Billboard 是本地个人榜单，不能把它表述成外部官方 Billboard、市场影响力或权威商业成绩。
 比较多个对象时，不要只看单一累计值；如果发行时间、数据窗口或统计口径影响公平性，要主动说明。
 用中文组织为「结论」「我查了什么」「依据」「自检与限制」四段，引用关键数字；如果工具结果不足，直接说明限制。"""
@@ -153,6 +169,18 @@ def _thinking_mode_enabled(request: dict[str, Any]) -> bool:
     return bool(request.get("thinking_mode"))
 
 
+def _question_context(request: dict[str, Any]) -> dict[str, Any]:
+    question = str(request.get("question", ""))
+    intent = parse_question_intent(question)
+    frame = build_question_frame(question, intent)
+    recipe = recipe_for_frame(frame)
+    return {
+        "question_intent": intent.model_dump(),
+        "question_frame": frame.model_dump(),
+        "evidence_recipe": recipe.model_dump(),
+    }
+
+
 def _thinking_fallback_plan(request: dict[str, Any]) -> list[dict[str, Any]]:
     base = _base_filter_params(request)
     merge_level = request.get("merge_level", 1)
@@ -183,7 +211,7 @@ def _fallback_plan(request: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def _compact_json(value: Any, *, limit: int = 12000) -> str:
-    rendered = json.dumps(value, ensure_ascii=False, default=str)
+    rendered = json.dumps(value, ensure_ascii=False, default=str, separators=(",", ":"))
     if len(rendered) <= limit:
         return rendered
     return rendered[:limit] + "...[truncated]"
@@ -207,6 +235,11 @@ def _tool_call_identity(tool_call: dict[str, Any]) -> tuple[str, str]:
         "names",
         "query",
         "entity_type",
+        "period",
+        "view",
+        "metric",
+        "start_date",
+        "end_date",
         "min_ms",
         "music_only",
         "merge_enabled",
@@ -366,10 +399,10 @@ def _augment_plan_for_thinking_mode(
 
 def _planner_user_content(request: dict[str, Any]) -> str:
     question = str(request.get("question", ""))
-    intent = parse_question_intent(question)
+    context = _question_context(request)
     payload = {
         "question": question,
-        "question_intent": intent.model_dump(),
+        **context,
         "conversation_history": (request.get("conversation_history") or [])[-6:],
         "thinking_mode": _thinking_mode_enabled(request),
         "default_filters": {
@@ -657,11 +690,30 @@ def _final_payload(
 ) -> dict[str, Any]:
     compact_results = [_compact_tool_result_for_llm(item) for item in tool_results]
     evidence_cards = build_evidence_cards(tool_results)
+    compact_cards = compact_evidence_cards(evidence_cards)
+    context = _question_context(request)
+    coverage = _build_coverage(tool_results)
+    evidence_sufficiency = review_evidence_sufficiency(
+        question_frame=context["question_frame"],
+        evidence_recipe=context["evidence_recipe"],
+        tool_results=tool_results,
+        coverage=coverage,
+    )
+    analytical_brief = build_analytical_brief(
+        question_frame=context["question_frame"],
+        evidence_recipe=context["evidence_recipe"],
+        tool_results=tool_results,
+        coverage=coverage,
+        evidence_cards=compact_cards,
+    )
     return {
         "question": request.get("question", ""),
         "conversation_history": (request.get("conversation_history") or [])[-6:],
-        "coverage": _build_coverage(tool_results),
-        "evidence_cards": compact_evidence_cards(evidence_cards),
+        **context,
+        "coverage": coverage,
+        "evidence_sufficiency": evidence_sufficiency,
+        "analytical_brief": analytical_brief,
+        "evidence_cards": compact_cards,
         "tool_results": compact_results,
     }
 
@@ -728,8 +780,9 @@ def _retry_user_content(
         "previous_answer": previous_answer,
         "validation_issues": issues,
         "instruction": (
-            "上一版回答与工具证据矛盾。请只基于 coverage 和 tool_results 重新回答；"
-            "不要声称 found 的实体或榜单数据缺失。"
+            "上一版回答与工具证据或回答契约矛盾。请只基于 coverage、"
+            "evidence_sufficiency、analytical_brief 和 tool_results 重新回答；"
+            "不要声称 found 的实体或榜单数据缺失，不要忽略 analytical_brief.must_explain。"
         ),
     }
     return _compact_json(retry_payload, limit=16000)
@@ -773,10 +826,13 @@ def run_chat_agent_task(task_id: str, request: dict[str, Any]) -> None:
                 return
             tool_results.append(result)
 
-        question_intent = parse_question_intent(str(request.get("question", ""))).model_dump()
-        coverage_review = review_coverage(
-            question_intent=question_intent,
-            coverage=_build_coverage(tool_results),
+        context = _question_context(request)
+        coverage = _build_coverage(tool_results)
+        coverage_review = review_evidence_sufficiency(
+            question_frame=context["question_frame"],
+            evidence_recipe=context["evidence_recipe"],
+            tool_results=tool_results,
+            coverage=coverage,
         )
         if not coverage_review["sufficient"]:
             if not _set_stage(
@@ -795,6 +851,8 @@ def run_chat_agent_task(task_id: str, request: dict[str, Any]) -> None:
                 coverage_review["followup_tool_calls"],
                 start=1,
             ):
+                if len(tool_results) >= MAX_TOOL_CALLS:
+                    break
                 prepared_followup = _prepare_followup_tool_call(followup, request)
                 if prepared_followup is None:
                     continue
@@ -871,6 +929,9 @@ def run_chat_agent_task(task_id: str, request: dict[str, Any]) -> None:
                 "answer_retried": answer_retried,
                 "validation_issues": validation_issues,
                 "coverage": final_payload["coverage"],
+                "question_frame": final_payload["question_frame"],
+                "evidence_sufficiency": final_payload["evidence_sufficiency"],
+                "analytical_brief": final_payload["analytical_brief"],
                 "evidence_cards": final_payload["evidence_cards"],
                 "tools": [
                     {
