@@ -250,6 +250,31 @@ def test_critic_accepts_layered_answer_when_brief_has_conflict() -> None:
     assert critique["issues"] == []
 
 
+def test_critic_allows_dimension_scoped_strong_language_when_brief_has_conflict() -> None:
+    critique = critique_answer(
+        answer=(
+            "长期个人 Billboard 维度里，GUTS 明显更强。"
+            "近期强度维度里，The Life of a Showgirl 更突出。"
+            "因此不同口径胜者不同，不存在单方明显胜出。"
+        ),
+        final_payload={
+            "coverage": {},
+            "evidence_cards": [],
+            "analytical_brief": {
+                "conflict": True,
+                "dimension_winners": {
+                    "personal_billboard": "GUTS",
+                    "intensity": "The Life of a Showgirl",
+                },
+                "must_explain": ["不同口径胜者不一致，不能说单方明显胜出"],
+            },
+        },
+    )
+
+    assert critique["ok"] is True
+    assert critique["issues"] == []
+
+
 def test_critic_rejects_conflict_overclaim_even_when_sentence_has_distant_negation() -> None:
     critique = critique_answer(
         answer="这不是所有维度都完整，但 GUTS 明显胜出。",
@@ -331,6 +356,39 @@ def test_critic_rejects_confident_single_conclusion_when_evidence_is_insufficien
 def test_critic_allows_limited_answer_when_evidence_is_insufficient() -> None:
     critique = critique_answer(
         answer="证据不足，目前无法确定单一胜者；只能说现有播放证据里 GUTS 暂时更高。",
+        final_payload={
+            "coverage": {},
+            "evidence_cards": [],
+            "evidence_sufficiency": {"sufficient": False},
+        },
+    )
+
+    assert critique["ok"] is True
+
+
+def test_critic_allows_conditional_future_certainty_when_evidence_is_insufficient() -> None:
+    critique = critique_answer(
+        answer=(
+            "暂时无法判断，因为缺少语种拆分。"
+            "如果可以提供语种标签或按语言分组查询，就能给出确定的结论。"
+        ),
+        final_payload={
+            "coverage": {},
+            "evidence_cards": [],
+            "evidence_sufficiency": {"sufficient": False},
+        },
+    )
+
+    assert critique["ok"] is True
+    assert critique["issues"] == []
+
+
+def test_critic_allows_negated_certainty_when_evidence_is_insufficient() -> None:
+    critique = critique_answer(
+        answer=(
+            "目前证据不足，无法给出按音乐类型聚合的确定性结论。"
+            "只能根据艺人排行侧面推断华语流行较突出。"
+        ),
         final_payload={
             "coverage": {},
             "evidence_cards": [],

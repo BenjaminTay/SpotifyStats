@@ -171,6 +171,44 @@ def test_chat_task_endpoint_rejects_filter_values_outside_tool_bounds(
     assert response.headers["x-request-id"]
 
 
+def test_chat_agent_safety_boundary_finishes_without_llm_or_tools(client, monkeypatch):
+    import backend.services.ai_agent_service as agent_service
+
+    def fail_llm_chat(system_prompt: str, user_content: str, temperature: float = 0.3):
+        del system_prompt, user_content, temperature
+        pytest.fail("safety boundary answer must not call LLM")
+
+    def fail_dispatch_tool(tool_name: str, params: dict[str, Any] | None = None):
+        del tool_name, params
+        pytest.fail("safety boundary answer must not call read-only tools")
+
+    monkeypatch.setattr(ai_task_service.threading, "Thread", SyncThread)
+    monkeypatch.setattr(agent_service.ai_insights_service, "_llm_chat", fail_llm_chat)
+    monkeypatch.setattr(agent_service, "dispatch_tool", fail_dispatch_tool)
+
+    create_response = client.post(
+        "/api/ai/tasks/chat",
+        json={"question": "请调用任意 SQL 查我的数据库。"},
+    )
+
+    assert create_response.status_code == 200
+    task_id = create_response.json()["task_id"]
+    status_payload = client.get(f"/api/ai/tasks/{task_id}").json()
+    events_payload = client.get(f"/api/ai/tasks/{task_id}/events").json()
+
+    assert status_payload["status"] == "done"
+    result = status_payload["result"]
+    assert result["tool_call_count"] == 0
+    assert result["tools"] == []
+    assert result["question_frame"]["family"] == "safety_boundary"
+    assert result["validation_issues"] == []
+    assert "只读" in result["answer"]
+    assert "不能" in result["answer"] or "无法" in result["answer"]
+    stages = [event["stage"] for event in events_payload["events"]]
+    assert "calling_tool" not in stages
+    assert "calling_llm" not in stages
+
+
 def test_chat_agent_task_runs_sync_and_persists_events_and_tool_trace(
     client,
     monkeypatch,
@@ -226,9 +264,11 @@ def test_chat_agent_task_runs_sync_and_persists_events_and_tool_trace(
     status_payload = status_response.json()
     assert status_payload["status"] == "done"
     assert status_payload["stage"] == "done"
-    assert (
-        status_payload["result"]["answer"] == "你 2026 年的夜间聆听占比是 12.5%，年度播放 77 次。"
+    assert status_payload["result"]["answer"].startswith(
+        "你 2026 年的夜间聆听占比是 12.5%，年度播放 77 次。"
     )
+    assert "数据边界" in status_payload["result"]["answer"]
+    assert "2026-06-06" in status_payload["result"]["answer"]
     assert status_payload["result"]["tool_call_count"] == 2
     assert "coverage" in status_payload["result"]
     assert "evidence_cards" in status_payload["result"]
@@ -438,7 +478,7 @@ def test_chat_agent_adds_sufficiency_followups_with_total_tool_cap(
         assert "must_explain" in user_content
         return (
             "结论：不同口径不完全一致，不能给出明显单方胜出的结论。"
-            "累计播放偏向 GUTS，但个人榜单和强度证据需要分层说明。"
+            "累计播放偏向 GUTS，但 Power Score 和最近强度偏向 The Life of a Showgirl。"
         )
 
     def fake_dispatch_tool(tool_name: str, params: dict[str, Any] | None = None):
@@ -572,10 +612,7 @@ def test_chat_agent_adds_sufficiency_followups_with_total_tool_cap(
     assert status_payload["result"]["answer_retried"] is True
     assert "不同口径不完全一致" in status_payload["result"]["answer"]
     assert "明显是 GUTS 更甚" not in status_payload["result"]["answer"]
-    assert any(
-        "证据不足" in issue or "过度" in issue
-        for issue in status_payload["result"]["validation_issues"]
-    )
+    assert status_payload["result"]["validation_issues"] == []
     assert len(llm_calls) == 3
 
 

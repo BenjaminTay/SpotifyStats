@@ -12,7 +12,7 @@ UI：「编辑风 × 液态玻璃」— Playfair Display + Inter，毛玻璃，�
 
 音乐查找：Masthead 右侧提供全局搜索图标，`/music/search` 提供可分享的完整查找页；后端 `/api/music/search` 只搜索本地播放历史中的歌曲/专辑/艺人，并打开既有 `/music/{tracks|albums|artists}/...` 详情页。`include_chart=true` 时返回与详情页同口径的个人 Billboard 摘要，前端仅显示播放次数、`PK #`、在榜周数与走势排名；搜索弹层默认不高亮第一条结果。
 
-**当前状态**：Phase 5 产品化收口完成 + AI Observable Agent Orchestrator V2。AI 报告已改为缓存优先、手动生成并显示任务进度；AI 问答通过后端只读 Agent 工具查询数据，支持思考模式、工具轨迹、coverage 自检、answer obligations、矛盾回答重试，以及账号收藏/搜索历史/社区数据域工具；艺人与专辑详情 enrichment 已接入可观察任务。当前本地验证基线随迭代变化，AI harness 定向基线见 `docs/verification/2026-07-03-ai-question-matrix-test-report.md`。开发台账与验证细节见 `AGENTS.md`、`docs/productization/`、`docs/verification/`、`docs/superpowers/` 和 `docs/CHANGELOG.md`。
+**当前状态**：Phase 5 产品化收口完成 + AI Observable Agent Orchestrator V2。AI 报告已改为缓存优先、手动生成并显示任务进度；AI 问答通过后端只读 Agent 工具查询数据，支持思考模式、工具轨迹、coverage 自检、answer obligations、矛盾回答重试，以及账号收藏/搜索历史/社区数据域工具；相对时间会以 `question_time`/`timezone` grounding，并把 temporal guard 校正后的 custom range 投影到 EvidenceRecipe/AnalyticalBrief；艺人与专辑详情 enrichment 已接入可观察任务。当前本地验证基线随迭代变化，AI harness 定向基线见 `docs/verification/2026-07-03-ai-question-matrix-test-report.md`，大范围 live 回归可用 `scripts/evaluate_ai_question_matrix.py --mode changed|full`。开发台账与验证细节见 `AGENTS.md`、`docs/productization/`、`docs/verification/`、`docs/superpowers/` 和 `docs/CHANGELOG.md`。
 
 ## 常用命令
 
@@ -42,6 +42,11 @@ pre-commit run --all-files
 # Phase 5 验证矩阵
 sh scripts/phase5_check.sh
 .venv/bin/python scripts/ci_baseline_parity.py
+
+# AI 问答矩阵检查（static 不调用 LLM；live 模式需后端 8000 与 LLM 已配置）
+.venv/bin/python scripts/evaluate_ai_question_matrix.py
+.venv/bin/python scripts/evaluate_ai_question_matrix.py --mode changed --backend-url http://127.0.0.1:8000 --question-time 2026-07-03T09:00:00+08:00
+.venv/bin/python scripts/evaluate_ai_question_matrix.py --mode full --backend-url http://127.0.0.1:8000 --question-time 2026-07-03T09:00:00+08:00
 
 # 全栈非破坏性验收矩阵（需后端 8000 + 前端 5173；资源数量/体积预算需同时启动 preview 4173）
 # 跨浏览器 smoke 会自动检测可 import playwright.sync_api 的 Python，也可显式设置 PYTHON_PLAYWRIGHT
@@ -142,7 +147,7 @@ JSON → import → SQLite → FastAPI (backend/) → React (frontend/)
 - **简繁转换 → `displayName()`；禁止直接导入默认 `opencc-js` full 包，也禁止模块初始化时预取已保存偏好的大字典**
 - 账号页长图片列表必须有预览上限或分页，并使用 `loading="lazy"` / `decoding="async"`
 - **新增外部 HTTP 调用 → Provider/HttpClient；禁止直接 `urllib.request.Request`/`urlopen`**
-- **AI Agent 工具必须后端 allowlist + read_only**；不得提供任意 SQL、任意 URL、settings/import/cache/playlist 写工具；最终回答只能基于 persisted tool results 和 coverage
+- **AI Agent 工具必须后端 allowlist + read_only**；不得提供任意 SQL、任意 URL、settings/import/cache/playlist 写工具；最终回答只能基于 persisted tool results 和 coverage；曲风/语种问题没有结构化证据时必须保守说明限制
 - **页面容器只做路由入口；业务逻辑在 `features/`**
 - 架构护栏测试 `phase5-architecture.test.ts` 对上述约定做负面断言强制执行
 - 使用 `PlayFilters` / `BillboardFilters` 的统计端点必须透传 `dynamic_threshold` 与 `max_merge_gap_minutes` 到最终计数管线；Community feed/trending/post detail 也必须使用 `BillboardFilters` + `MergeConfig`，并把 `merge_level` / `include_compilations` 纳入生成参数和 query key；新增入口要补传播测试或复用已有 service

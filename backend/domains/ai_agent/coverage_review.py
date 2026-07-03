@@ -483,9 +483,7 @@ def _pattern_with_required_context(
         **pattern,
         "entity": entity,
         "metric": metric,
-        **_period_params_from_scope(
-            context.get("period") or context.get("time_scope") or frame.get("time_scope")
-        ),
+        **_period_params_from_context(context, frame.get("time_scope")),
     }
 
 
@@ -564,6 +562,19 @@ def _period_params_from_scope(time_scope: Any) -> dict[str, Any]:
     return {"period": "lifetime"}
 
 
+def _period_params_from_context(context: dict[str, Any], fallback_scope: Any) -> dict[str, Any]:
+    params = _period_params_from_scope(
+        context.get("period") or context.get("time_scope") or fallback_scope
+    )
+    if params.get("period") == "custom":
+        params = dict(params)
+        for date_key in ("start_date", "end_date"):
+            value = context.get(date_key)
+            if isinstance(value, str) and value:
+                params[date_key] = value
+    return params
+
+
 def _entity_tool_calls(
     tool_name: str,
     frame: dict[str, Any],
@@ -627,9 +638,7 @@ def _tool_calls_for_pattern(
         metric = context.get("metric")
         if metric not in {"plays", "hours"}:
             metric = "plays"
-        period_params = _period_params_from_scope(
-            context.get("period") or context.get("time_scope") or frame.get("time_scope")
-        )
+        period_params = _period_params_from_context(context, frame.get("time_scope"))
         return [
             {
                 "tool_name": "analysis_charts",

@@ -105,6 +105,15 @@ def test_temporal_answer_issues_only_flags_conflicting_relative_time_sentence() 
         [],
     )
 
+    assert temporal_answer_issues("去年夏天（2024年6月-8月）你听得最多。", guard)
+    assert (
+        temporal_answer_issues(
+            "数据截止到 2026-06-22，去年夏天（2025年6月-8月）的数据已完整收录。",
+            guard,
+        )
+        == []
+    )
+
 
 def test_last_winter_uses_cross_year_display_label_without_false_conflict() -> None:
     _, guard = apply_temporal_guard(

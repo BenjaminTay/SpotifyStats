@@ -13,6 +13,7 @@ _EXPLICIT_YEAR_PATTERN = re.compile(r"(20\d{2}|2100)")
 _RECENT_MONTHS_PATTERN = re.compile(r"最近\s*([一二三四五六七八九十\d]+)\s*个?月")
 _RECENT_DAYS_PATTERN = re.compile(r"最近\s*([一二三四五六七八九十\d]+)\s*天")
 _ANSWER_SENTENCE_SPLIT_PATTERN = re.compile(r"[。！？!?；;\n]+")
+_DATA_CUTOFF_ANSWER_TOKENS = ("数据截止", "截至", "只覆盖到", "最新播放数据", "播放数据")
 _BOUNDED_PERIOD_TOOLS = {
     "analysis_stats",
     "analysis_charts",
@@ -323,6 +324,11 @@ def _cross_year_sentence_matches_interpretation(
     return False
 
 
+def _year_match_is_data_cutoff(sentence: str, start: int, end: int) -> bool:
+    context = sentence[max(0, start - 12) : min(len(sentence), end + 12)]
+    return any(token in context for token in _DATA_CUTOFF_ANSWER_TOKENS)
+
+
 def apply_temporal_guard(
     question: str,
     temporal_context: dict[str, Any],
@@ -401,8 +407,10 @@ def temporal_answer_issues(answer: str, guard: dict[str, Any]) -> list[str]:
             continue
         if _cross_year_sentence_matches_interpretation(sentence, interpretation):
             continue
-        for match in _EXPLICIT_YEAR_PATTERN.findall(sentence):
-            year = int(match)
+        for match in _EXPLICIT_YEAR_PATTERN.finditer(sentence):
+            year = int(match.group(1))
+            if _year_match_is_data_cutoff(sentence, match.start(), match.end()):
+                continue
             if abs(year - expected_year) == 1 and year != expected_year:
                 issues.append(
                     f"回答年份 {year} 与 {interpretation['label']}={expected_year} 不一致"

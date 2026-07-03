@@ -52,6 +52,23 @@ def test_critic_requires_obligation_values_when_present() -> None:
     assert satisfied["ok"] is True
 
 
+def test_insufficient_evidence_adds_limitation_obligation() -> None:
+    frame = build_question_frame(
+        "GUTS 和 Showgirl 哪张更喜欢？", parse_question_intent("GUTS 和 Showgirl 哪张更喜欢？")
+    )
+
+    obligations = build_answer_obligations(
+        question="GUTS 和 Showgirl 哪张更喜欢？",
+        question_frame=frame.model_dump(),
+        temporal_context={"today": "2026-07-03", "latest_play_date": "2026-06-23"},
+        temporal_guard={},
+        evidence_sufficiency={"sufficient": False},
+    )
+
+    limitation = next(item for item in obligations if item["kind"] == "evidence_limitation")
+    assert "证据不足" in limitation["required_tokens_any"]
+
+
 def test_safe_readonly_refusal_is_not_penalized_as_insufficient_evidence() -> None:
     critique = critique_answer(
         "我不能删除你的播放记录；当前 AI 问答只允许只读查询分析。",

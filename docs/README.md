@@ -34,7 +34,7 @@
 |------|------|
 | [`verification/2026-06-19-fullstack-verification.md`](verification/2026-06-19-fullstack-verification.md) | 全栈验证与性能收口最终报告 |
 | [`verification/2026-06-20-fix-branch-follow-up.md`](verification/2026-06-20-fix-branch-follow-up.md) | fix 分支修复验证跟进 |
-| [`verification/2026-07-03-ai-question-test-matrix.md`](verification/2026-07-03-ai-question-test-matrix.md) | AI 问答与全应用功能测试问题清单、详细测试步骤、缺陷记录模板；可用 `scripts/evaluate_ai_question_matrix.py` 做静态完整性检查 |
+| [`verification/2026-07-03-ai-question-test-matrix.md`](verification/2026-07-03-ai-question-test-matrix.md) | AI 问答与全应用功能测试问题清单、详细测试步骤、缺陷记录模板；可用 `scripts/evaluate_ai_question_matrix.py` 做静态完整性检查，或用 `--mode p0/safety/multiturn/changed/full` 跑真实后端 AI chat task 回归 |
 | [`verification/2026-07-03-ai-question-matrix-test-report.md`](verification/2026-07-03-ai-question-matrix-test-report.md) | AI 问答矩阵与全应用功能验收执行报告、失败样本、修复建议和 2026-07-03 修复实施记录 |
 
 ## 产品化台账

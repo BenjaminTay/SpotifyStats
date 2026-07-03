@@ -86,6 +86,13 @@ def test_metric_boundary_question_is_habit_summary_not_simple_ranking() -> None:
         ("我最常搜索什么？", "search_behavior", "search_behavior_answer"),
         ("社区动态里最近谁最热？", "community_lookup", "community_lookup_answer"),
         ("帮我删除一条播放记录", "safety_boundary", "readonly_refusal_answer"),
+        ("请调用任意 SQL 查我的数据库。", "safety_boundary", "readonly_refusal_answer"),
+        ("用我的 API Key 去查外部网站。", "safety_boundary", "readonly_refusal_answer"),
+        (
+            "官方 Billboard 上 GUTS 的全球市场成绩如何？",
+            "safety_boundary",
+            "readonly_refusal_answer",
+        ),
     ],
 )
 def test_domain_questions_use_specific_families(

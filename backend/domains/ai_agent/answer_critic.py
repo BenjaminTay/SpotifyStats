@@ -43,6 +43,7 @@ HARD_MISSING_DATA_TOKENS = (
 
 NEGATION_TOKENS = (
     "不是",
+    "不存在",
     "不能",
     "不代表",
     "不等于",
@@ -109,6 +110,23 @@ METRIC_LAYERING_TOKENS = (
     "Power Score",
 )
 
+DIMENSION_SCOPED_STRENGTH_TOKENS = (
+    "长期",
+    "近期",
+    "累计",
+    "播放次数",
+    "播放时长",
+    "Power Score",
+    "个人 Billboard",
+    "个人Billboard",
+    "个人榜单",
+    "强度",
+    "单位",
+    "最近",
+    "榜单统治力",
+    "在榜周",
+)
+
 SAFE_REFUSAL_TOKENS = (
     "只读",
     "不能",
@@ -168,6 +186,59 @@ def _sentence_has_unnegated_token(sentence: str, token: str) -> bool:
 
 def _has_unnegated_any(sentence: str, tokens: tuple[str, ...]) -> bool:
     return any(_sentence_has_unnegated_token(sentence, token) for token in tokens)
+
+
+def _has_unnegated_global_single_winner(sentence: str) -> bool:
+    for token in SINGLE_WINNER_TOKENS:
+        start = 0
+        while True:
+            index = sentence.find(token, start)
+            if index < 0:
+                break
+            if _sentence_has_unnegated_token(sentence, token):
+                context = sentence[max(0, index - 24) : index + len(token) + 8]
+                if any(scope in context for scope in DIMENSION_SCOPED_STRENGTH_TOKENS):
+                    start = index + len(token)
+                    continue
+                return True
+            start = index + len(token)
+    return False
+
+
+def _is_conditional_future_confidence(sentence: str, index: int, token: str) -> bool:
+    context = sentence[max(0, index - 28) : index + len(token) + 16]
+    before = sentence[max(0, index - 28) : index]
+    if "就能给出" in before or "才能给出" in before:
+        return True
+    return any(marker in before for marker in ("如果", "若", "提供", "补充", "允许")) and any(
+        marker in context for marker in ("就能", "才能", "可以")
+    )
+
+
+def _has_unnegated_insufficient_confidence(sentence: str) -> bool:
+    for token in INSUFFICIENT_CONFIDENCE_TOKENS:
+        start = 0
+        while True:
+            index = sentence.find(token, start)
+            if index < 0:
+                break
+            if _sentence_has_unnegated_token(sentence, token):
+                extended_context = sentence[max(0, index - 18) : index + len(token)]
+                if token == "确定" and any(
+                    negation in extended_context for negation in NEGATION_TOKENS
+                ):
+                    start = index + len(token)
+                    continue
+                if token == "确定" and _is_conditional_future_confidence(
+                    sentence,
+                    index,
+                    token,
+                ):
+                    start = index + len(token)
+                    continue
+                return True
+            start = index + len(token)
+    return False
 
 
 def _brief(final_payload: dict[str, Any]) -> dict[str, Any]:
@@ -263,7 +334,7 @@ def _check_conflict_contract(answer: str, analytical_brief: dict[str, Any]) -> l
     if analytical_brief.get("conflict") is not True:
         return []
     for sentence in _sentences(answer):
-        if _has_unnegated_any(sentence, SINGLE_WINNER_TOKENS):
+        if _has_unnegated_global_single_winner(sentence):
             return ["analytical_brief.conflict=true，但回答给出过度单一结论。"]
     if not _conflict_answer_mentions_layered_evidence(answer, analytical_brief):
         return ["analytical_brief.conflict=true，但回答没有呈现多口径冲突证据。"]
@@ -299,7 +370,7 @@ def _check_insufficient_evidence_contract(
     if not _contains_any(answer, LIMITATION_TOKENS):
         issues.append("evidence_sufficiency.sufficient=false，但回答没有说明限制或证据不足。")
     for sentence in _sentences(answer):
-        if _has_unnegated_any(sentence, INSUFFICIENT_CONFIDENCE_TOKENS):
+        if _has_unnegated_insufficient_confidence(sentence):
             issues.append("证据不足时回答使用了强确定单一结论。")
             break
     return issues

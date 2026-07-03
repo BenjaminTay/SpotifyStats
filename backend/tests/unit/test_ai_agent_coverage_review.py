@@ -343,6 +343,47 @@ def test_simple_ranking_wrong_entity_chart_does_not_satisfy_required_context() -
     ]
 
 
+def test_simple_ranking_accepts_temporal_guarded_custom_chart_context() -> None:
+    frame, recipe = _frame_and_recipe("去年夏天我最常听什么类型的音乐？")
+    recipe_payload = recipe.model_dump()
+    recipe_payload["required_context"].update(
+        {
+            "period": "custom",
+            "time_scope": "custom",
+            "start_date": "2025-06-01",
+            "end_date": "2025-08-31",
+        }
+    )
+
+    review = review_evidence_sufficiency(
+        question_frame=frame.model_dump(),
+        evidence_recipe=recipe_payload,
+        tool_results=[
+            {
+                "tool_name": "analysis_charts",
+                "status": "done",
+                "source_range": "2025-06-01..2025-08-31",
+                "params_summary": "entity=track, metric=plays, period=custom",
+                "data": {
+                    "entity": "track",
+                    "metric": "plays",
+                    "period": {
+                        "period": "custom",
+                        "start_date": "2025-06-01",
+                        "end_date": "2025-08-31",
+                    },
+                    "rows": [{"rank": 1, "track_name": "Manchild", "plays": 53}],
+                },
+            }
+        ],
+        coverage={},
+    )
+
+    assert review["sufficient"] is True
+    assert review["axis_coverage"]["ranking"] == "covered"
+    assert review["followup_tool_calls"] == []
+
+
 def test_simple_ranking_late_night_tool_does_not_cover_general_ranking_axis() -> None:
     frame, recipe = _frame_and_recipe("2023年我播放量最高的艺人是谁？")
 

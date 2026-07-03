@@ -49,7 +49,6 @@ def build_answer_obligations(
 ) -> list[dict[str, Any]]:
     """Return deterministic, concise obligations the final answer must satisfy."""
 
-    del evidence_sufficiency
     obligations: list[dict[str, Any]] = []
     frame = _as_dict(question_frame)
     family = str(frame.get("family") or "")
@@ -68,6 +67,24 @@ def build_answer_obligations(
             },
         )
         return obligations
+
+    sufficiency = _as_dict(evidence_sufficiency)
+    if sufficiency.get("sufficient") is False:
+        _append_once(
+            obligations,
+            {
+                "kind": "evidence_limitation",
+                "description": "证据不足时必须明确说明限制，不能给出强确定单一结论。",
+                "required_tokens_any": [
+                    "证据不足",
+                    "数据不足",
+                    "限制",
+                    "无法确定",
+                    "只能",
+                ],
+                "required_values": [],
+            },
+        )
 
     latest_play_date = temporal.get("latest_play_date")
     today = temporal.get("today")

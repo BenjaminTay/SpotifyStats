@@ -276,6 +276,19 @@ def _period_params_from_scope(time_scope: Any) -> dict[str, str]:
     return {"period": "lifetime"}
 
 
+def _period_params_from_context(context: dict[str, Any], fallback_scope: Any) -> dict[str, str]:
+    params = _period_params_from_scope(
+        context.get("period") or context.get("time_scope") or fallback_scope
+    )
+    if params.get("period") == "custom":
+        params = dict(params)
+        for date_key in ("start_date", "end_date"):
+            value = context.get(date_key)
+            if isinstance(value, str) and value:
+                params[date_key] = value
+    return params
+
+
 def _item_period_date(item: dict[str, Any], key: str) -> str:
     data = item.get("data")
     if isinstance(data, dict):
@@ -316,7 +329,7 @@ def _ranking_item_matches_context(
     expected_metric = context.get("metric") or "plays"
     if expected_metric in {"plays", "hours"} and data.get("metric") != expected_metric:
         return False
-    period_params = _period_params_from_scope(context.get("time_scope") or frame.get("time_scope"))
+    period_params = _period_params_from_context(context, frame.get("time_scope"))
     period = data.get("period")
     data_period = period.get("period") if isinstance(period, dict) else None
     if data_period is not None and data_period != period_params.get("period"):

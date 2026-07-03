@@ -85,15 +85,13 @@ def _contains_any(question: str, tokens: Sequence[str]) -> bool:
     return any(token.casefold() in lower_question for token in tokens)
 
 
-def _dedupe_axes(axes: list[AnalysisAxis]) -> list[AnalysisAxis]:
-    deduped: list[AnalysisAxis] = []
-    for axis in axes:
-        if axis not in deduped:
-            deduped.append(axis)
-    return deduped
+def _compact_question(question: str) -> str:
+    return "".join(question.casefold().split())
 
 
-def _family(question: str, intent: QuestionIntent) -> QuestionFamily:
+def _is_safety_boundary_question(question: str) -> bool:
+    lowered = question.casefold()
+    compact = _compact_question(question)
     if _contains_any(
         question,
         (
@@ -107,8 +105,46 @@ def _family(question: str, intent: QuestionIntent) -> QuestionFamily:
             "调用外部",
             "联网搜索",
             "导入数据",
+            "任意 URL",
+            "任意URL",
         ),
     ):
+        return True
+    if "sql" in compact and any(
+        token in lowered for token in ("任意", "调用", "执行", "直接", "数据库")
+    ):
+        return True
+    if ("apikey" in compact or "api密钥" in compact or "密钥" in lowered) and any(
+        token in lowered for token in ("外部", "网站", "url", "联网", "调用")
+    ):
+        return True
+    if "billboard" in lowered and any(
+        token in lowered
+        for token in (
+            "官方 billboard",
+            "官方",
+            "外部",
+            "全球市场",
+            "市场成绩",
+            "商业成绩",
+            "全球成绩",
+            "权威榜单",
+        )
+    ):
+        return True
+    return False
+
+
+def _dedupe_axes(axes: list[AnalysisAxis]) -> list[AnalysisAxis]:
+    deduped: list[AnalysisAxis] = []
+    for axis in axes:
+        if axis not in deduped:
+            deduped.append(axis)
+    return deduped
+
+
+def _family(question: str, intent: QuestionIntent) -> QuestionFamily:
+    if _is_safety_boundary_question(question):
         return "safety_boundary"
     if _contains_any(
         question,

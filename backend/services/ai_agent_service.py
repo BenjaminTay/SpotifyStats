@@ -368,6 +368,38 @@ def _question_context(request: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _context_with_temporal_guarded_recipe(
+    context: dict[str, Any],
+    temporal_guard: Any,
+) -> dict[str, Any]:
+    if not isinstance(temporal_guard, dict):
+        return context
+    interpretation = temporal_guard.get("time_interpretation")
+    if not isinstance(interpretation, dict):
+        return context
+    start_date = interpretation.get("start_date")
+    end_date = interpretation.get("end_date")
+    if not isinstance(start_date, str) or not isinstance(end_date, str):
+        return context
+    recipe = context.get("evidence_recipe")
+    if not isinstance(recipe, dict):
+        return context
+    required_context = recipe.get("required_context")
+    if not isinstance(required_context, dict):
+        required_context = {}
+    guarded_recipe = {
+        **recipe,
+        "required_context": {
+            **required_context,
+            "period": "custom",
+            "time_scope": "custom",
+            "start_date": start_date,
+            "end_date": end_date,
+        },
+    }
+    return {**context, "evidence_recipe": guarded_recipe}
+
+
 def _question_family(request: dict[str, Any]) -> str:
     return str(_question_context(request)["question_frame"].get("family") or "")
 
@@ -791,6 +823,15 @@ def _planner_user_content(request: dict[str, Any]) -> str:
 
 
 def _plan_tool_calls(request: dict[str, Any]) -> tuple[list[dict[str, Any]], str]:
+    if _question_family(request) == "safety_boundary":
+        _, temporal_guard = apply_temporal_guard(
+            str(request.get("question") or ""),
+            _temporal_context(request),
+            [],
+        )
+        request["_temporal_guard"] = temporal_guard
+        return [], "safety_boundary"
+
     try:
         raw = ai_insights_service._llm_chat(
             PLANNER_SYSTEM_PROMPT,
@@ -1117,7 +1158,6 @@ def _final_payload(
     compact_results = [_compact_tool_result_for_llm(item) for item in tool_results]
     evidence_cards = build_evidence_cards(tool_results)
     compact_cards = compact_evidence_cards(evidence_cards)
-    context = _question_context(request)
     temporal_context = _temporal_context(request)
     temporal_guard = request.get("_temporal_guard")
     if not isinstance(temporal_guard, dict):
@@ -1127,6 +1167,10 @@ def _final_payload(
             [],
         )
         request["_temporal_guard"] = temporal_guard
+    context = _context_with_temporal_guarded_recipe(
+        _question_context(request),
+        temporal_guard,
+    )
     coverage = _build_coverage(tool_results)
     evidence_sufficiency = review_evidence_sufficiency(
         question_frame=context["question_frame"],
@@ -1227,6 +1271,147 @@ def _answer_validation_issues(
     return issues
 
 
+def _dedupe_issues(issues: list[str]) -> list[str]:
+    deduped: list[str] = []
+    for issue in issues:
+        if issue and issue not in deduped:
+            deduped.append(issue)
+    return deduped
+
+
+def _combined_answer_issues(answer: str, final_payload: dict[str, Any]) -> list[str]:
+    issues = _answer_validation_issues(
+        answer,
+        final_payload["coverage"],
+        final_payload.get("temporal_guard")
+        if isinstance(final_payload.get("temporal_guard"), dict)
+        else None,
+    )
+    critic_result = critique_answer(answer, final_payload)
+    if not critic_result["ok"]:
+        issues.extend(str(issue) for issue in critic_result.get("issues", []))
+    return _dedupe_issues(issues)
+
+
+def _missing_obligation_kinds(issues: list[str]) -> set[str]:
+    kinds: set[str] = set()
+    prefix = "answer_obligations."
+    suffix = " 未满足。"
+    for issue in issues:
+        if not issue.startswith(prefix) or not issue.endswith(suffix):
+            continue
+        kinds.add(issue[len(prefix) : -len(suffix)])
+    return kinds
+
+
+def _obligation_fallback_note(obligation: dict[str, Any]) -> str | None:
+    kind = str(obligation.get("kind") or "")
+    values = obligation.get("required_values")
+    if not isinstance(values, list):
+        values = []
+    required_values = [str(value) for value in values if value]
+    if kind == "data_cutoff":
+        date = required_values[0] if required_values else None
+        return (
+            f"数据边界：本地播放数据截至 {date}。" if date else "数据边界：本地播放数据有截止日期。"
+        )
+    if kind == "evidence_limitation":
+        return "限制：当前证据不足，只能基于已查到的只读工具结果保守判断。"
+    if kind == "local_personal_billboard":
+        return "口径说明：这里的 Billboard 指 SpotifyStats 本地个人 Billboard，不是外部官方 Billboard。"
+    if kind == "cross_year_season" and required_values:
+        return f"时间口径：这里按 {' 至 '.join(required_values)} 理解。"
+    return None
+
+
+def _apply_obligation_fallback_notes(
+    answer: str,
+    final_payload: dict[str, Any],
+    issues: list[str],
+) -> str:
+    missing_kinds = _missing_obligation_kinds(issues)
+    if not missing_kinds:
+        return answer
+    obligations = final_payload.get("answer_obligations")
+    if not isinstance(obligations, list):
+        return answer
+    notes: list[str] = []
+    for obligation in obligations:
+        if not isinstance(obligation, dict):
+            continue
+        if obligation.get("kind") not in missing_kinds:
+            continue
+        note = _obligation_fallback_note(obligation)
+        if note and note not in answer and note not in notes:
+            notes.append(note)
+    if not notes:
+        return answer
+    return f"{answer.rstrip()}\n\n{' '.join(notes)}"
+
+
+def _safety_boundary_answer(request: dict[str, Any]) -> str:
+    question = str(request.get("question") or "")
+    lowered = question.casefold()
+    compact = "".join(lowered.split())
+    if "sql" in compact:
+        return (
+            "我不能调用任意 SQL 或直接查询数据库。当前 AI 问答只允许使用后端 "
+            "allowlist 中的只读分析工具；你可以让我分析播放统计、个人 Billboard、"
+            "账号收藏、搜索历史或社区数据。"
+        )
+    if "billboard" in lowered and any(
+        token in lowered for token in ("官方", "外部", "全球", "市场", "商业")
+    ):
+        return (
+            "我不能查询外部官方 Billboard 或全球市场成绩。当前 AI 问答只能基于 "
+            "SpotifyStats 本地数据做只读分析；这里的 Billboard 是你的本地个人 "
+            "Billboard，不是外部官方榜单。"
+        )
+    if "apikey" in compact or "api密钥" in compact or "密钥" in lowered:
+        return (
+            "我不能使用你的 API Key 去访问外部网站或任意 URL。当前 AI 问答只允许"
+            "调用 SpotifyStats 后端 allowlist 中的只读分析工具。"
+        )
+    return "我不能执行删除、修改、写入、导入或外部调用；当前 AI 问答只允许只读查询分析。"
+
+
+def _result_payload(
+    *,
+    answer: str,
+    tool_results: list[dict[str, Any]],
+    request: dict[str, Any],
+    final_payload: dict[str, Any],
+    answer_retried: bool,
+    validation_issues: list[str],
+) -> dict[str, Any]:
+    return {
+        "answer": answer,
+        "tool_call_count": len(tool_results),
+        "thinking_mode": _thinking_mode_enabled(request),
+        "answer_retried": answer_retried,
+        "project_context_version": PROJECT_CONTEXT_VERSION,
+        "validation_issues": validation_issues,
+        "coverage": final_payload["coverage"],
+        "temporal_context": final_payload["temporal_context"],
+        "temporal_guard": final_payload["temporal_guard"],
+        "question_frame": final_payload["question_frame"],
+        "evidence_sufficiency": final_payload["evidence_sufficiency"],
+        "analytical_brief": final_payload["analytical_brief"],
+        "answer_obligations": final_payload["answer_obligations"],
+        "evidence_cards": final_payload["evidence_cards"],
+        "tools": [
+            {
+                "tool_name": item["tool_name"],
+                "status": item["status"],
+                "result_summary": item.get("result_summary", ""),
+                "source_range": item.get("source_range", ""),
+                "error": item.get("error"),
+            }
+            for item in tool_results
+        ],
+    }
+
+
 def _retry_user_content(
     payload: dict[str, Any],
     previous_answer: str,
@@ -1289,6 +1474,36 @@ def run_chat_agent_task(task_id: str, request: dict[str, Any]) -> None:
                     payload=temporal_guard,
                 )
 
+        if plan_mode == "safety_boundary":
+            if not _set_stage(
+                repo,
+                task_id=task_id,
+                stage="answering_boundary",
+                progress_pct=0.9,
+                message="正在生成只读边界说明",
+            ):
+                return
+            safety_tool_results: list[dict[str, Any]] = []
+            final_payload = _final_payload(request, safety_tool_results)
+            answer = _safety_boundary_answer(request)
+            validation_issues = _combined_answer_issues(answer, final_payload)
+            answer = _apply_obligation_fallback_notes(answer, final_payload, validation_issues)
+            validation_issues = _combined_answer_issues(answer, final_payload)
+            _mark_done(
+                repo,
+                task_id=task_id,
+                message="Agent Chat 已完成",
+                result=_result_payload(
+                    answer=answer,
+                    tool_results=safety_tool_results,
+                    request=request,
+                    final_payload=final_payload,
+                    answer_retried=False,
+                    validation_issues=validation_issues,
+                ),
+            )
+            return
+
         tool_results: list[dict[str, Any]] = []
         for index, tool_call in enumerate(tool_plan[:MAX_TOOL_CALLS], start=1):
             result = _execute_tool_call(
@@ -1302,7 +1517,10 @@ def run_chat_agent_task(task_id: str, request: dict[str, Any]) -> None:
                 return
             tool_results.append(result)
 
-        context = _question_context(request)
+        context = _context_with_temporal_guarded_recipe(
+            _question_context(request),
+            request.get("_temporal_guard"),
+        )
         executed_identities = {
             _tool_call_identity(planned_call) for planned_call in tool_plan[:MAX_TOOL_CALLS]
         }
@@ -1394,16 +1612,7 @@ def run_chat_agent_task(task_id: str, request: dict[str, Any]) -> None:
         )
         answer = answer.strip()
         answer_retried = False
-        validation_issues = _answer_validation_issues(
-            answer,
-            final_payload["coverage"],
-            final_payload.get("temporal_guard")
-            if isinstance(final_payload.get("temporal_guard"), dict)
-            else None,
-        )
-        critic_result = critique_answer(answer, final_payload)
-        if not critic_result["ok"]:
-            validation_issues.extend(str(issue) for issue in critic_result.get("issues", []))
+        validation_issues = _combined_answer_issues(answer, final_payload)
         if validation_issues:
             try:
                 retry_answer = _call_final_llm_with_retry(
@@ -1432,37 +1641,22 @@ def run_chat_agent_task(task_id: str, request: dict[str, Any]) -> None:
             if retry_answer and retry_answer.strip():
                 answer = retry_answer.strip()
                 answer_retried = True
+                validation_issues = _combined_answer_issues(answer, final_payload)
+        answer = _apply_obligation_fallback_notes(answer, final_payload, validation_issues)
+        validation_issues = _combined_answer_issues(answer, final_payload)
 
         _mark_done(
             repo,
             task_id=task_id,
             message="Agent Chat 已完成",
-            result={
-                "answer": answer,
-                "tool_call_count": len(tool_results),
-                "thinking_mode": _thinking_mode_enabled(request),
-                "answer_retried": answer_retried,
-                "project_context_version": PROJECT_CONTEXT_VERSION,
-                "validation_issues": validation_issues,
-                "coverage": final_payload["coverage"],
-                "temporal_context": final_payload["temporal_context"],
-                "temporal_guard": final_payload["temporal_guard"],
-                "question_frame": final_payload["question_frame"],
-                "evidence_sufficiency": final_payload["evidence_sufficiency"],
-                "analytical_brief": final_payload["analytical_brief"],
-                "answer_obligations": final_payload["answer_obligations"],
-                "evidence_cards": final_payload["evidence_cards"],
-                "tools": [
-                    {
-                        "tool_name": item["tool_name"],
-                        "status": item["status"],
-                        "result_summary": item.get("result_summary", ""),
-                        "source_range": item.get("source_range", ""),
-                        "error": item.get("error"),
-                    }
-                    for item in tool_results
-                ],
-            },
+            result=_result_payload(
+                answer=answer,
+                tool_results=tool_results,
+                request=request,
+                final_payload=final_payload,
+                answer_retried=answer_retried,
+                validation_issues=validation_issues,
+            ),
         )
     except ChatAgentError as exc:
         _mark_error(

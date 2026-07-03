@@ -26,8 +26,8 @@ const DETAIL_ROUTE_FILTERS = {
 
 const DEFAULT_ROUTES = [
   { path: '/', markers: ['DASHBOARD /', '总播放次数'] },
-  { path: '/analysis/stats', markers: ['PLAYBACK / ANALYSIS', '总体播放统计'] },
-  { path: '/analysis/charts', markers: ['PERSONAL CHARTS', '个人排行榜'] },
+  { path: '/analysis/stats', markers: ['PLAYBACK / ANALYSIS', '播放统计'] },
+  { path: '/analysis/charts', markers: ['PLAYBACK RANKING', '播放排行'] },
   { path: '/billboard/records', markers: ['CHART / HALL OF FAME', '冠军圣殿'] },
   { path: '/ai-insights', markers: ['AI / INSIGHTS', 'AI 洞察'] },
   { path: '/settings', markers: ['参数与配置', '01 · SPOTIFY 连接'] },
@@ -420,10 +420,38 @@ def page_state(page):
             const bodyScrollWidth = document.body ? document.body.scrollWidth : 0;
             const documentScrollWidth = document.documentElement ? document.documentElement.scrollWidth : 0;
             const viewportWidth = window.innerWidth;
+            const elementLabel = (el) => {
+                const tag = el.tagName ? el.tagName.toLowerCase() : 'node';
+                const classes = typeof el.className === 'string'
+                    ? el.className.trim().split(/\\\\s+/).slice(0, 4).join('.')
+                    : '';
+                const text = (el.innerText || el.textContent || '').trim().replace(/\\\\s+/g, ' ').slice(0, 80);
+                return [tag, classes ? '.' + classes : '', text ? ' :: ' + text : ''].join('');
+            };
+            const overflowElements = Array.from(document.querySelectorAll('body *'))
+                .map((el) => {
+                    const rect = el.getBoundingClientRect();
+                    const style = getComputedStyle(el);
+                    const overflowRight = rect.right - viewportWidth;
+                    const scrollOverflow = el.scrollWidth - el.clientWidth;
+                    return {
+                        label: elementLabel(el),
+                        left: Math.round(rect.left),
+                        right: Math.round(rect.right),
+                        width: Math.round(rect.width),
+                        overflowRight: Math.round(overflowRight),
+                        scrollOverflow: Math.round(scrollOverflow),
+                        display: style.display,
+                    };
+                })
+                .filter((item) => item.width > 0 && (item.overflowRight > 1 || item.scrollOverflow > 1))
+                .sort((a, b) => Math.max(b.overflowRight, b.scrollOverflow) - Math.max(a.overflowRight, a.scrollOverflow))
+                .slice(0, 5);
             return {
                 bodyText,
                 rootTextLength: root ? (root.textContent || '').trim().length : 0,
                 scrollOverflow: Math.max(bodyScrollWidth, documentScrollWidth) - viewportWidth,
+                overflowElements,
                 hasFatalText: /Internal Server Error|Failed to fetch dynamically imported module|ReferenceError|TypeError|Unhandled Runtime Error/.test(bodyText),
                 theme: localStorage.getItem('theme'),
                 chineseStyle: localStorage.getItem('chineseStyle'),
@@ -441,7 +469,7 @@ def assert_page_health(page, console_messages, page_errors):
         raise SmokeFailure("Fatal text found in page body")
     overflow = max(0, state["scrollOverflow"])
     if overflow > MAX_SCROLL_OVERFLOW:
-        raise SmokeFailure(f"Horizontal overflow {overflow}px")
+        raise SmokeFailure(f"Horizontal overflow {overflow}px; offenders={state.get('overflowElements')}")
     if page_errors:
         raise SmokeFailure("Page errors: " + " | ".join(page_errors[:5]))
     if console_messages:
@@ -506,13 +534,13 @@ def run_analysis_tabs(browser):
     page, console_messages, page_errors = new_page(browser, "desktop")
     try:
         page.goto(absolute_url("/analysis/stats"), wait_until="domcontentloaded", timeout=SLOW_PAGE_WAIT_MS + 10000)
-        wait_for_text(page, "总体播放统计", timeout_ms=SLOW_PAGE_WAIT_MS)
-        click_text(page, "个人排行榜")
+        wait_for_text(page, "播放统计", timeout_ms=SLOW_PAGE_WAIT_MS)
+        click_text(page, "播放排行")
         expect_url(page, r"/analysis/charts$")
-        wait_for_text(page, "PERSONAL CHARTS", timeout_ms=SLOW_PAGE_WAIT_MS)
-        click_text(page, "总体统计")
+        wait_for_text(page, "PLAYBACK RANKING", timeout_ms=SLOW_PAGE_WAIT_MS)
+        click_text(page, "播放统计")
         expect_url(page, r"/analysis/stats$")
-        wait_for_text(page, "总体播放统计", timeout_ms=SLOW_PAGE_WAIT_MS)
+        wait_for_text(page, "播放统计", timeout_ms=SLOW_PAGE_WAIT_MS)
         assert_page_health(page, console_messages, page_errors)
         print("PASS core-interactions analysis-tabs")
     finally:

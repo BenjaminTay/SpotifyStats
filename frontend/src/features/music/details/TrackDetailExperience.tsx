@@ -127,16 +127,17 @@ export function TrackDetailExperience() {
                   <ArrowLeft className="h-3 w-3" />
                   Music / 单曲详情
                 </button>
-                <div className="flex items-start gap-6">
+                <div className="flex min-w-0 flex-col gap-4 sm:flex-row sm:items-start sm:gap-6">
                   {data.cover_url && (
                     <img
                       src={data.cover_url}
                       alt={data.track_name}
+                      style={{ width: 120, height: 120 }}
                       className="h-[120px] w-[120px] flex-shrink-0 rounded-[12px] object-cover shadow-lg"
                     />
                   )}
-                  <div>
-                    <h1 className="font-serif text-[44px] font-bold leading-[1.06] tracking-[-1.2px]">
+                  <div className="min-w-0 max-w-full">
+                    <h1 className="break-words font-serif text-[44px] font-bold leading-[1.06] tracking-normal">
                       {displayName(data.track_name)}
                     </h1>
                     <p className="mt-2 font-sans text-[17px] text-muted-foreground">
@@ -158,7 +159,7 @@ export function TrackDetailExperience() {
                       ))}
                     </p>
                     {data.meta && (
-                      <p className="mt-1 font-sans text-[14px] text-muted-foreground">
+                      <p className="mt-1 break-words font-sans text-[14px] text-muted-foreground">
                         {[
                           data.meta.spotify_album_name && (
                             <Link

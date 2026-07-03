@@ -41,6 +41,21 @@ def test_answer_philosophy_keeps_simple_answers_concise() -> None:
     assert "本地个人 Billboard" in prompt
 
 
+def test_project_context_requires_conservative_genre_language_answers() -> None:
+    combined = "\n".join(
+        [
+            project_context.PROJECT_CONTEXT_PROMPT,
+            project_context.ANSWER_PHILOSOPHY_PROMPT,
+        ]
+    )
+
+    assert "曲风" in combined
+    assert "语种" in combined
+    assert "结构化标签" in combined
+    assert "不能凭常识" in combined
+    assert "证据不足" in combined
+
+
 def test_project_context_fragments_stay_within_budget() -> None:
     combined = "\n".join(
         [

@@ -1,5 +1,33 @@
 # 变更日志
 
+## 2026-07-03 — AI Agent 安全短路与矩阵复测
+
+### 修复与增强
+
+- 安全边界问题在 planner 前确定性短路，覆盖任意 SQL、API Key 外部网站、官方 Billboard/全球市场成绩和写操作请求，避免模型先调用只读工具再拒绝。
+- `answer_obligations` 新增证据不足限制说明，最终回答 retry 后会重新运行 validation/critic，并在必要时追加数据截止、本地个人 Billboard 或证据限制兜底句。
+- 校准 answer critic：允许“长期/近期/播放次数/个人 Billboard”等维度限定下的强弱表述，同时继续拦截全局单边结论；允许“无法给出确定性结论”等否定语境和“补充标签后才能确定”的条件句。
+- temporal guard 校正后的 custom range 会投影到 EvidenceRecipe/AnalyticalBrief 的 `required_context`，避免工具已按正确日期执行但 evidence review 仍按 lifetime 判定。
+- Project Context Prompt 新增曲风/语种边界：没有结构化 genre/language 标签时，只能把播放排行或艺人名称视为代理线索并保守说明限制。
+- `scripts/evaluate_ai_question_matrix.py` 新增 live 模式：`p0`、`safety`、`multiturn`、`changed`、`full`，可真实创建 AI chat task、轮询结果、读取工具轨迹并执行质量门禁；`full` 会把 `AI-MULTI-*` 用例交给多轮 runner。
+- WebKit/Safari-family 音乐详情页移动端封面尺寸改为稳定 120x120，cross-browser smoke 的横向溢出失败会输出候选撑宽元素。
+
+### 验证
+
+- `python scripts/evaluate_ai_question_matrix.py --mode p0 --backend-url http://127.0.0.1:8000 --question-time 2026-07-03T09:00:00+08:00`：12/12 Pass
+- `python scripts/evaluate_ai_question_matrix.py --mode safety --backend-url http://127.0.0.1:8000 --question-time 2026-07-03T09:00:00+08:00`：8/8 Pass
+- `python scripts/evaluate_ai_question_matrix.py --mode multiturn --backend-url http://127.0.0.1:8000 --question-time 2026-07-03T09:00:00+08:00`：3/3 Pass
+- `python scripts/evaluate_ai_question_matrix.py --mode changed --backend-url http://127.0.0.1:8000 --question-time 2026-07-03T09:00:00+08:00`：11/11 Pass
+- `python scripts/evaluate_ai_question_matrix.py --mode full --backend-url http://127.0.0.1:8000 --question-time 2026-07-03T09:00:00+08:00`：42 cases，41 Pass / 1 Partial / 0 Fail，质量门禁 PASS；唯一 Partial 是无结构化语种标签时模型凭艺人常识估算华语比例并给出偏强结论，后续应补 genre/language 证据工具或更严格降级。
+- AI agent unit + task contract 定向测试：129 passed
+- AI agent temporal recipe/critic 定向测试：62 passed
+- `python scripts/evaluate_ai_question_matrix.py`：141 questions / P0 12 / golden 12 / PASS
+- `node scripts/frontend_cross_browser_smoke.mjs --base-url http://localhost:5173 --api-base-url http://127.0.0.1:8000 --browser webkit --scenario route-markers --viewport mobile --include-detail-routes --max-scroll-overflow 0`：PASS
+- `node scripts/frontend_chart_interaction_smoke.mjs --base-url http://localhost:5173`：3/3 Pass
+- `node scripts/frontend_long_list_smoke.mjs --base-url http://localhost:5173`：7/7 Pass
+- `cd frontend && npm test -- --run`：229 passed
+- `cd frontend && npm run build`：Pass，保留既有 Vite large chunk warning
+
 ## 2026-07-03 — 音乐查找榜单摘要与快速搜索交互
 
 ### 修复与增强

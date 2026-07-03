@@ -66,16 +66,17 @@ export function ArtistDetailHero({
         <ArrowLeft className="h-3 w-3" />
         Music / 艺人详情
       </button>
-      <div className="flex items-start gap-6">
+      <div className="flex min-w-0 flex-col gap-4 sm:flex-row sm:items-start sm:gap-6">
         {data.cover_url && (
           <img
             src={data.cover_url}
             alt={data.artist_name}
+            style={{ width: 120, height: 120 }}
             className="h-[120px] w-[120px] flex-shrink-0 rounded-full object-cover shadow-lg"
           />
         )}
-        <div>
-          <h1 className="font-serif text-[44px] font-bold leading-[1.06] tracking-[-1.2px]">
+        <div className="min-w-0 max-w-full">
+          <h1 className="break-words font-serif text-[44px] font-bold leading-[1.06] tracking-normal">
             {displayName(data.artist_name)}
           </h1>
           {data.meta && (
@@ -100,7 +101,7 @@ export function ArtistDetailHero({
                 </p>
               )}
               {data.meta.popularity != null && (
-                <div className="mt-1.5 flex items-center gap-2">
+                <div className="mt-1.5 flex min-w-0 flex-wrap items-center gap-2">
                   <span className="font-sans text-[12px] text-muted-foreground">Popularity</span>
                   <span className="inline-block h-[5px] w-[120px] rounded-[3px] bg-muted align-middle">
                     <span
@@ -144,16 +145,17 @@ export function AlbumDetailHero({
         <ArrowLeft className="h-3 w-3" />
         Music / 专辑详情
       </button>
-      <div className="flex items-start gap-6">
+      <div className="flex min-w-0 flex-col gap-4 sm:flex-row sm:items-start sm:gap-6">
         {data.cover_url && (
           <img
             src={data.cover_url}
             alt={data.album_name}
+            style={{ width: 120, height: 120 }}
             className="h-[120px] w-[120px] flex-shrink-0 rounded-[12px] object-cover shadow-lg"
           />
         )}
-        <div>
-          <h1 className="font-serif text-[44px] font-bold leading-[1.06] tracking-[-1.2px]">
+        <div className="min-w-0 max-w-full">
+          <h1 className="break-words font-serif text-[44px] font-bold leading-[1.06] tracking-normal">
             {displayName(data.album_name)}
           </h1>
           <p className="mt-2 font-sans text-[17px] text-muted-foreground">
@@ -165,7 +167,7 @@ export function AlbumDetailHero({
             </Link>
           </p>
           {data.meta && (
-            <p className="mt-1 font-sans text-[14px] text-muted-foreground">
+            <p className="mt-1 break-words font-sans text-[14px] text-muted-foreground">
               {[
                 data.meta.album_type && formatAlbumKind(data.meta.album_type),
                 data.meta.release_date && formatAlbumReleaseDate(data.meta.release_date),

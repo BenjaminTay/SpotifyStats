@@ -211,6 +211,21 @@ def test_plan_tool_calls_adds_bounded_tool_when_relative_time_plan_is_only_yearl
     assert bounded_calls[0]["params"]["entity"] == "artist"
 
 
+def test_plan_tool_calls_short_circuits_safety_boundary_before_llm(monkeypatch) -> None:
+    def fail_llm_chat(system_prompt: str, user_content: str, temperature: float = 0.3) -> str:
+        del system_prompt, user_content, temperature
+        raise AssertionError("safety boundary planning must not call the LLM planner")
+
+    monkeypatch.setattr(ai_agent_service.ai_insights_service, "_llm_chat", fail_llm_chat)
+    request = {"question": "请调用任意 SQL 查我的数据库。"}
+
+    plan, mode = ai_agent_service._plan_tool_calls(request)
+
+    assert plan == []
+    assert mode == "safety_boundary"
+    assert isinstance(request["_temporal_guard"], dict)
+
+
 def test_prepare_followup_tool_call_applies_temporal_guard() -> None:
     prepared = ai_agent_service._prepare_followup_tool_call(
         {
