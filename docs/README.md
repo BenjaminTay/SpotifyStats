@@ -58,6 +58,10 @@
 | [`superpowers/specs/2026-06-29-ai-project-context-prompt-design.md`](superpowers/specs/2026-06-29-ai-project-context-prompt-design.md) | AI Agent Project Context Prompt 设计：项目语境、工具 playbook、回答哲学与只读安全边界 |
 | [`superpowers/plans/2026-06-29-ai-project-context-prompt.md`](superpowers/plans/2026-06-29-ai-project-context-prompt.md) | AI Agent Project Context Prompt 实施计划：prompt 组合、版本化 metadata、golden answer style 与验证步骤 |
 | [`superpowers/plans/2026-07-03-ai-harness-matrix-fixes.md`](superpowers/plans/2026-07-03-ai-harness-matrix-fixes.md) | AI 问答矩阵验收后的完整修复计划：LLM 可靠性、coverage、时间语义、页面域工具、critic 与 smoke |
+| [`superpowers/plans/2026-07-03-ai-yearly-report-quality.md`](superpowers/plans/2026-07-03-ai-yearly-report-quality.md) | AI 年度报告质量修复计划：报告数据契约、年中/全年口径、同期对比、名称保真、validator 重试与验收脚本 |
+| [`superpowers/plans/2026-07-03-ai-yearly-report-editorial-quality.md`](superpowers/plans/2026-07-03-ai-yearly-report-editorial-quality.md) | AI 年度报告编辑质量修复计划：TOP 专辑、个人 Billboard Year-End、editorial brief、去重复与文本质量探针 |
+| [`superpowers/specs/2026-07-03-agentic-longform-yearly-report-design.md`](superpowers/specs/2026-07-03-agentic-longform-yearly-report-design.md) | Agentic Longform Yearly Report 设计：只读 Report Agent 自主查询、Evidence Ledger、动态大纲、个人 Billboard 深度分析与长文质量 critic |
+| [`superpowers/plans/2026-07-03-agentic-longform-yearly-report.md`](superpowers/plans/2026-07-03-agentic-longform-yearly-report.md) | Agentic Longform Yearly Report 实施计划：只读 Report Agent、自主查询、Evidence Ledger、动态大纲、个人 Billboard 深度分析、长文 critic 与验收探针 |
 | [`superpowers/plans/2026-07-03-music-search-quick-open.md`](superpowers/plans/2026-07-03-music-search-quick-open.md) | 音乐查找入口实现计划：Masthead 快速搜索、`/music/search` 全页查找、本地实体搜索 API 与验证矩阵 |
 | [`superpowers/plans/2026-07-03-music-search-chart-badges.md`](superpowers/plans/2026-07-03-music-search-chart-badges.md) | 音乐查找榜单摘要实现计划：`include_chart`、详情页同口径播放次数与个人 Billboard 摘要、快速搜索键盘高亮体验 |
 

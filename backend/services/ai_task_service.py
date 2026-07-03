@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import sqlite3
 import threading
@@ -22,6 +23,13 @@ ENRICHMENT_PROGRESS_BY_STAGE = {
     "fetching_external_data": 0.4,
     "calling_llm": 0.75,
     "saving_cache": 0.9,
+}
+_AGENTIC_STAGE_PROGRESS = {
+    "researching": 0.25,
+    "synthesizing_insights": 0.45,
+    "outlining": 0.6,
+    "drafting": 0.75,
+    "critic_review": 0.85,
 }
 
 
@@ -175,6 +183,13 @@ def _task_type_for_report(report_type: str) -> str:
         "monthly": "ai_report_monthly",
         "yearly": "ai_report_yearly",
     }[report_type]
+
+
+def _should_use_agentic_yearly_report(request: dict[str, Any]) -> bool:
+    return (
+        request.get("report_type") == "yearly"
+        and request.get("report_mode", "agentic_longform") == "agentic_longform"
+    )
 
 
 def peek_report_cache(request: dict[str, Any]) -> dict[str, Any]:
@@ -541,6 +556,24 @@ def _run_report_generator(
             progress_callback=progress_callback,
             should_continue=should_continue,
         )
+    if _should_use_agentic_yearly_report(request):
+        from backend.services.yearly_report_agent_service import generate_agentic_yearly_report
+
+        def emit_event(
+            event_type: str,
+            message: str,
+            payload: dict[str, Any] | None = None,
+        ) -> None:
+            del event_type
+            event_payload = payload or {}
+            stage = str(event_payload.get("stage") or "researching")
+            progress = float(
+                event_payload.get("progress_pct") or _AGENTIC_STAGE_PROGRESS.get(stage, 0.5)
+            )
+            if progress_callback is not None:
+                progress_callback(stage, progress, message)
+
+        return generate_agentic_yearly_report(request, emit_event=emit_event)
     return ai_insights_service.generate_yearly_story(
         conn,
         min_ms,
@@ -581,6 +614,27 @@ def _write_report_cache_from_task_result(
         )
     except sqlite3.Error:
         logger.warning("AI report task cache write failed", exc_info=True)
+
+
+def _persist_report_tool_calls(
+    repo: AiTaskRepository,
+    *,
+    task_id: str,
+    result: dict[str, Any],
+) -> None:
+    metadata = result.get("metadata") if isinstance(result.get("metadata"), dict) else {}
+    source_range = str(metadata.get("data_range") or "")
+    for entry in result.get("evidence_ledger") or []:
+        if not isinstance(entry, dict):
+            continue
+        repo.add_tool_call(
+            task_id=task_id,
+            tool_name=str(entry.get("tool_name") or ""),
+            status="done",
+            params_summary=json.dumps(entry.get("params") or {}, ensure_ascii=False),
+            result_summary=str(entry.get("result_summary") or ""),
+            source_range=source_range,
+        )
 
 
 def run_report_generation_task(task_id: str, request: dict[str, Any]) -> None:
@@ -632,6 +686,10 @@ def run_report_generation_task(task_id: str, request: dict[str, Any]) -> None:
                 message=str(exc) or exc.__class__.__name__,
             )
             return
+
+        metadata = result.get("metadata") if isinstance(result.get("metadata"), dict) else {}
+        if metadata.get("report_mode") == "agentic_longform":
+            _persist_report_tool_calls(repo, task_id=task_id, result=result)
 
         if result.get("success"):
             if not result.get("cached"):

@@ -36,7 +36,7 @@ describe('AITaskProgress', () => {
     )
 
     expect(screen.getByText('AI 任务进度')).toBeInTheDocument()
-    expect(screen.getByText('calling_llm')).toBeInTheDocument()
+    expect(screen.getByText('调用 LLM 生成')).toBeInTheDocument()
     expect(screen.getByText('AI 正在生成周报')).toBeInTheDocument()
     expect(screen.getByText('60%')).toBeInTheDocument()
     expect(screen.getByText('已汇总播放数据')).toBeInTheDocument()

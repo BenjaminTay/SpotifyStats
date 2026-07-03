@@ -10,6 +10,27 @@ function progressPercent(value: number | null | undefined): number {
   return Math.max(0, Math.min(100, Math.round(normalized)))
 }
 
+const STAGE_LABELS: Record<string, string> = {
+  checking_cache: '检查报告缓存',
+  gathering_local_data: '汇总本地播放数据',
+  calling_llm: '调用 LLM 生成',
+  saving_cache: '保存报告缓存',
+  researching: '只读调研数据',
+  synthesizing_insights: '综合证据洞见',
+  outlining: '生成文章大纲',
+  drafting: '撰写长篇报告',
+  critic_review: '编辑审稿',
+  fetching_external_data: '获取外部资料',
+  done: '完成',
+  cancelled: '已取消',
+  error: '失败',
+}
+
+function stageLabel(stage: string | null | undefined): string | null {
+  if (!stage) return null
+  return STAGE_LABELS[stage] ?? stage
+}
+
 export function AITaskProgress({ task, events }: AITaskProgressProps) {
   if (!task) return null
 
@@ -26,6 +47,7 @@ export function AITaskProgress({ task, events }: AITaskProgressProps) {
 
   const pct = progressPercent(task.progress_pct)
   const stage = task.stage?.trim()
+  const readableStage = stageLabel(stage)
   const message = task.message?.trim()
   const showError = task.status === 'error' && task.error
 
@@ -38,7 +60,7 @@ export function AITaskProgress({ task, events }: AITaskProgressProps) {
           </p>
           {stage && (
             <p className="mt-1 font-mono text-[12px] text-muted-foreground">
-              {stage}
+              {readableStage}
             </p>
           )}
           {message && (

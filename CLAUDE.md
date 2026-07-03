@@ -12,7 +12,7 @@ UI：「编辑风 × 液态玻璃」— Playfair Display + Inter，毛玻璃，�
 
 音乐查找：Masthead 右侧提供全局搜索图标，`/music/search` 提供可分享的完整查找页；后端 `/api/music/search` 只搜索本地播放历史中的歌曲/专辑/艺人，并打开既有 `/music/{tracks|albums|artists}/...` 详情页。`include_chart=true` 时返回与详情页同口径的个人 Billboard 摘要，前端仅显示播放次数、`PK #`、在榜周数与走势排名；搜索弹层默认不高亮第一条结果。
 
-**当前状态**：Phase 5 产品化收口完成 + AI Observable Agent Orchestrator V2。AI 报告已改为缓存优先、手动生成并显示任务进度；AI 问答通过后端只读 Agent 工具查询数据，支持思考模式、工具轨迹、coverage 自检、answer obligations、矛盾回答重试，以及账号收藏/搜索历史/社区数据域工具；相对时间会以 `question_time`/`timezone` grounding，并把 temporal guard 校正后的 custom range 投影到 EvidenceRecipe/AnalyticalBrief；艺人与专辑详情 enrichment 已接入可观察任务。当前本地验证基线随迭代变化，AI harness 定向基线见 `docs/verification/2026-07-03-ai-question-matrix-test-report.md`，大范围 live 回归可用 `scripts/evaluate_ai_question_matrix.py --mode changed|full`。开发台账与验证细节见 `AGENTS.md`、`docs/productization/`、`docs/verification/`、`docs/superpowers/` 和 `docs/CHANGELOG.md`。
+**当前状态**：Phase 5 产品化收口完成 + AI Observable Agent Orchestrator V2。AI 报告已改为缓存优先、手动生成并显示任务进度；年度叙事默认走 `agentic_longform` Report Agent，先用只读工具自主查询年度概览、TOP 实体、同期对比、个人 Billboard 年榜/诊断、流派、发现回归和高光日，再生成 evidence ledger、insight synthesis、dynamic outline 与长文草稿，并通过 editorial critic；旧年度数据契约、validator 与确定性 fallback 仍作为事实安全网和 `basic_summary` 回退。AI 问答通过后端只读 Agent 工具查询数据，支持思考模式、工具轨迹、coverage 自检、answer obligations、矛盾回答重试，以及账号收藏/搜索历史/社区数据域工具；相对时间会以 `question_time`/`timezone` grounding，并把 temporal guard 校正后的 custom range 投影到 EvidenceRecipe/AnalyticalBrief；艺人与专辑详情 enrichment 已接入可观察任务。当前本地验证基线随迭代变化，AI harness 定向基线见 `docs/verification/2026-07-03-ai-question-matrix-test-report.md`，大范围 live 回归可用 `scripts/evaluate_ai_question_matrix.py --mode changed|full`。开发台账与验证细节见 `AGENTS.md`、`docs/productization/`、`docs/verification/`、`docs/superpowers/` 和 `docs/CHANGELOG.md`。
 
 ## 常用命令
 
@@ -148,6 +148,7 @@ JSON → import → SQLite → FastAPI (backend/) → React (frontend/)
 - 账号页长图片列表必须有预览上限或分页，并使用 `loading="lazy"` / `decoding="async"`
 - **新增外部 HTTP 调用 → Provider/HttpClient；禁止直接 `urllib.request.Request`/`urlopen`**
 - **AI Agent 工具必须后端 allowlist + read_only**；不得提供任意 SQL、任意 URL、settings/import/cache/playlist 写工具；最终回答只能基于 persisted tool results 和 coverage；曲风/语种问题没有结构化证据时必须保守说明限制
+- **AI 年度叙事 → `yearly_report_agent_service.py` + `agentic_tools.py` + `editorial_critic.py`**；默认年度报告必须走只读 Report Agent、evidence ledger、dynamic outline 和 critic，旧 `yearly_contract.py` / `yearly_validator.py` / 确定性 fallback 只作为事实安全网和 `basic_summary` 回退；不要把新长文逻辑继续堆进 `ai_insights_service.py`
 - **页面容器只做路由入口；业务逻辑在 `features/`**
 - 架构护栏测试 `phase5-architecture.test.ts` 对上述约定做负面断言强制执行
 - 使用 `PlayFilters` / `BillboardFilters` 的统计端点必须透传 `dynamic_threshold` 与 `max_merge_gap_minutes` 到最终计数管线；Community feed/trending/post detail 也必须使用 `BillboardFilters` + `MergeConfig`，并把 `merge_level` / `include_compilations` 纳入生成参数和 query key；新增入口要补传播测试或复用已有 service

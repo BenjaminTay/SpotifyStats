@@ -5,7 +5,7 @@
 from __future__ import annotations
 
 from sqlite3 import Connection
-from typing import Literal, Optional
+from typing import Any, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
@@ -46,6 +46,12 @@ class DigestResponse(BaseModel):
     cached: bool = False
     cached_at: Optional[str] = None
     entities: Optional[ReportEntities] = None
+    metadata: Optional[dict[str, Any]] = None
+    critic: Optional[dict[str, Any]] = None
+    fact_validation: Optional[dict[str, Any]] = None
+    insight_synthesis: Optional[dict[str, Any]] = None
+    dynamic_outline: Optional[dict[str, Any]] = None
+    evidence_ledger: Optional[list[dict[str, Any]]] = None
     error: Optional[str] = None
 
 
@@ -72,7 +78,7 @@ def _raise_for_error(result: dict) -> None:
     if "暂无听歌数据" in error:
         return  # 200 OK — valid business result, not an error
 
-    if "LLM 调用失败" in error or "LLM 返回为空" in error:
+    if "LLM 调用失败" in error or "LLM 返回为空" in error or "报告质量校验未通过" in error:
         raise HTTPException(status_code=502, detail=error)
 
     if "数据获取失败" in error or "数据查询失败" in error:
@@ -136,10 +142,34 @@ def monthly_personality(
 def yearly_story(
     year: int = Query(...),
     force: bool = Query(False, description="Bypass server-side cache"),
+    report_mode: Literal["agentic_longform", "basic_summary"] = Query(
+        "agentic_longform",
+        description="Use the agentic longform report flow or legacy basic summary flow",
+    ),
     filters: PlayFilters = Depends(),
     conn: Connection = Depends(get_conn),
 ):
     """Generate a narrative story from full Wrapped data."""
+    if report_mode == "agentic_longform" and force:
+        from backend.services.yearly_report_agent_service import generate_agentic_yearly_report
+
+        result = generate_agentic_yearly_report(
+            {
+                "report_type": "yearly",
+                "report_mode": report_mode,
+                "year": year,
+                "min_ms": filters.min_ms,
+                "music_only": filters.music_only,
+                "merge_enabled": filters.merge_enabled,
+                "dynamic_threshold": filters.dynamic_threshold,
+                "max_merge_gap_minutes": filters.max_merge_gap_minutes,
+                "force": force,
+            }
+        )
+        if not result["success"]:
+            _raise_for_error(result)
+        return result
+
     result = generate_yearly_story(
         conn,
         filters.min_ms,

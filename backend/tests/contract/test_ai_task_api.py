@@ -231,6 +231,7 @@ def test_report_task_request_preserves_filter_parameters(client, monkeypatch):
         json={
             "report_type": "monthly",
             "action": "cache_only",
+            "report_mode": "agentic_longform",
             "month": "2026-06",
             "year": 2026,
             "min_ms": 45000,
@@ -247,6 +248,7 @@ def test_report_task_request_preserves_filter_parameters(client, monkeypatch):
     assert observed["merge_enabled"] is False
     assert observed["dynamic_threshold"] is False
     assert observed["max_merge_gap_minutes"] == 45
+    assert observed["report_mode"] == "agentic_longform"
     assert response.json()["result"]["request"]["month"] == "2026-06"
 
 

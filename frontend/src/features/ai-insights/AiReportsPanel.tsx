@@ -25,6 +25,7 @@ interface ReportTaskResult {
   cached: boolean
   cached_at: string | null
   entities: ReportEntities | null
+  metadata: Record<string, unknown> | null
   error?: string | null
   needs_generation?: boolean
 }
@@ -65,6 +66,7 @@ function reportResultFromPayload(value: unknown): ReportTaskResult | null {
     cached: value.cached === true,
     cached_at: typeof value.cached_at === 'string' ? value.cached_at : null,
     entities: normalizeEntities(value.entities),
+    metadata: isRecord(value.metadata) ? value.metadata : null,
     error: typeof value.error === 'string' ? value.error : null,
     needs_generation: value.needs_generation === true,
   }
@@ -140,6 +142,7 @@ export function AiReportsPanel({ settings, onFollowUp }: AiReportsPanelProps) {
     return {
       report_type: 'yearly',
       action: 'cache_only',
+      report_mode: 'agentic_longform',
       year,
       ...basePayload,
     }
@@ -404,6 +407,7 @@ export function AiReportsPanel({ settings, onFollowUp }: AiReportsPanelProps) {
             cached={reportTaskResult?.cached ?? false}
             cachedAt={reportTaskResult?.cached_at ?? null}
             entities={reportTaskResult?.entities ?? null}
+            metadata={reportTaskResult?.metadata ?? null}
             loading={checkingCache || generatingReport}
             fetching={generatingReport}
             error={reportTaskError}

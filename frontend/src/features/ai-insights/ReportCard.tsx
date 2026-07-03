@@ -15,6 +15,7 @@ interface ReportCardProps {
   cached: boolean
   cachedAt: string | null
   entities: ReportEntities | null
+  metadata?: Record<string, unknown> | null
   loading: boolean
   fetching: boolean
   error: string | null
@@ -57,6 +58,7 @@ export function ReportCard({
   cached,
   cachedAt,
   entities,
+  metadata,
   loading,
   fetching,
   error,
@@ -105,6 +107,10 @@ export function ReportCard({
 
   const timeAgo = formatRelativeTimeZh(cachedAt)
   const suggestions = onFollowUp ? followUpQuestions(reportType, entities) : []
+  const reportMode = typeof metadata?.report_mode === 'string' ? metadata.report_mode : null
+  const fallbackLevel = typeof metadata?.fallback_level === 'string' ? metadata.fallback_level : null
+  const criticPassed = typeof metadata?.critic_passed === 'boolean' ? metadata.critic_passed : null
+  const articleLength = typeof metadata?.article_length === 'number' ? metadata.article_length : null
 
   const handleCopy = async () => {
     try {
@@ -164,6 +170,31 @@ export function ReportCard({
           </button>
         </div>
       </div>
+
+      {metadata && (
+        <div className="mb-4 flex flex-wrap gap-2 text-[11px] text-muted-foreground">
+          {reportMode === 'agentic_longform' && (
+            <span className="rounded-full border border-border bg-card/60 px-2 py-0.5">
+              Agentic 长文
+            </span>
+          )}
+          {criticPassed !== null && (
+            <span className="rounded-full border border-border bg-card/60 px-2 py-0.5">
+              {criticPassed ? '已通过编辑审稿' : '审稿后回退'}
+            </span>
+          )}
+          {fallbackLevel && (
+            <span className="rounded-full border border-border bg-card/60 px-2 py-0.5">
+              基础摘要回退
+            </span>
+          )}
+          {articleLength !== null && (
+            <span className="rounded-full border border-border bg-card/60 px-2 py-0.5">
+              {articleLength.toLocaleString('zh-CN')} 字
+            </span>
+          )}
+        </div>
+      )}
 
       {/* Report content */}
       <div className="prose prose-sm max-w-none max-h-[600px] overflow-y-auto text-[14px] leading-relaxed text-muted-foreground [&_h2]:font-serif [&_h2]:text-[18px] [&_h2]:font-semibold [&_h2]:text-foreground [&_strong]:text-foreground">

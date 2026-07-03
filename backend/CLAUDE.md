@@ -58,7 +58,7 @@ FastAPI 后端采用四层分离：**api/**（路由 + Depends 依赖注入）�
 | `services/genius_service.py` | Genius 歌词获取 + SQLite 缓存，懒加载单例 |
 | `services/wikipedia_service.py` | Wikipedia 搜索/提取/缓存/翻译/LLM 结构化 |
 | `services/llm_translator.py` | 多提供商 LLM 翻译与结构化（DeepSeek/OpenAI/Anthropic/自定义） |
-| `services/ai_insights_service.py` | AI 洞察：周报/月报/年度叙事 + 自然语言问答 + 推荐问题随机池（复用 LLM 基建 + wikipedia_cache 表） |
+| `services/ai_insights_service.py` | AI 洞察：周报/月报/年度叙事 + 自然语言问答 + 推荐问题随机池（年度叙事接入报告数据契约、质量 validator、cache contract version 与确定性 fallback；复用 LLM 基建 + wikipedia_cache 表） |
 | `services/ai_task_service.py` | AI task 编排：报告 cache check/manual generation、艺人/专辑 enrichment、任务状态与事件持久化 |
 | `services/ai_agent_service.py` | 只读 AI Agent 问答：LLM 规划工具、执行 allowlist 工具、压缩 evidence cards、QuestionFrame/EvidenceRecipe、temporal context/guard、temporal-guarded recipe、证据充分性复核、AnalyticalBrief、answer contract critic 与必要时重试回答 |
 | `services/chat_service.py` | 对话历史管理：会话 CRUD + 消息持久化 + 自动标题（取首条用户消息前 30 字符） |
@@ -113,6 +113,7 @@ Contract 测试使用 canonical `backend/tests/fixtures/seed.db` 的临时副本
 - AI Agent 工具结果必须保留 `params_summary`、`result_summary`、`source_range` 和必要 compact evidence；最终回答 prompt 必须遵守 coverage、EvidenceSufficiency 与 AnalyticalBrief，不得把 found 实体或个人 Billboard 结果说成缺失，也不得在 answer contract 冲突时给过度单边结论
 - AI Agent 相对时间必须以 `temporal_context.question_time` 为锚点；前端应传 `question_time`/`timezone`，后端必须兜底生成 `temporal_context` 并用 `temporal_guard` 在工具执行前校正“去年/今年/上个月/夏天”等明显错年的参数，校正后的 custom range 必须投影到 EvidenceRecipe/AnalyticalBrief 的 `required_context`，最终 task result 要保留 `temporal_context` 与 `temporal_guard`
 - AI Agent 项目语境由 `backend/domains/ai_agent/project_context.py` 统一维护；新增 prompt 规则时优先更新 Project Context / Tool Playbook / Answer Philosophy，并同步 `test_ai_agent_project_context.py`、golden fixture 和 changelog，避免在 `ai_agent_service.py` 中复制散落语境。
+- AI 年度叙事默认由 `backend/services/yearly_report_agent_service.py` 编排，只能调用 `backend/domains/ai_reports/agentic_tools.py` 的 report-specific read-only 工具，生成 evidence ledger、insight synthesis、dynamic outline、longform draft 与 editorial critic；`agentic_yearly_v14` metadata 和 evidence ledger 必须进入 task result / `ai_tool_calls`。`backend/domains/ai_reports/yearly_contract.py` 与 `yearly_validator.py` 仍维护事实安全口径；2026 这类未完整年份必须按 `reporting_period.end_date` 写成阶段性/年中总结，只能用 same-period YTD 对比，不得混用完整上一年跌幅、编造场景或隐藏 TOP 名称；critic 或 validator 失败时只能标记 `fallback_level=basic_summary` 并使用确定性 fallback。
 - Agent 工具只允许后端注册的 read-only handler；禁止任意 SQL、任意 URL、settings/import/cache/playlist 写入和未审核 backend route 透传
 - 新增或调整 Agent 问答能力时必须同步 golden fixture（`backend/tests/fixtures/ai_agent_golden_questions.json`）和 `scripts/evaluate_ai_agent_harness.py` 约束；若问题需要新证据，优先补后端只读工具而不是让 fixture 迁就不完整工具
 - Wrapped 年度回顾 `merge_level` 默认值必须与 Analysis Charts 一致（当前均为 2）

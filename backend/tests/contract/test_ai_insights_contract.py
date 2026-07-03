@@ -31,7 +31,7 @@ def _success_report():
         ),
         (
             "/api/ai-insights/yearly-story",
-            {"year": 2026},
+            {"year": 2026, "report_mode": "basic_summary"},
             "generate_yearly_story",
         ),
     ],
@@ -180,3 +180,24 @@ def test_ai_insights_llm_not_configured_maps_to_503(client, monkeypatch):
     assert response.status_code == 503
     assert response.headers["x-request-id"]
     assert response.json()["detail"] == "LLM 未配置"
+
+
+def test_ai_insights_yearly_validation_failure_maps_to_502(client, monkeypatch):
+    import backend.api.ai_insights as ai_api
+
+    monkeypatch.setattr(
+        ai_api,
+        "generate_yearly_story",
+        lambda *args, **kwargs: {
+            "success": False,
+            "report": None,
+            "cached": False,
+            "error": "年度报告质量校验未通过，请重试",
+        },
+    )
+
+    response = client.get("/api/ai-insights/yearly-story", params={"year": 2026})
+
+    assert response.status_code == 502
+    assert response.headers["x-request-id"]
+    assert response.json()["detail"] == "年度报告质量校验未通过，请重试"

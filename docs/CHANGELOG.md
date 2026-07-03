@@ -1,5 +1,71 @@
 # 变更日志
 
+## 2026-07-03 — Agentic Longform 年度报告落地
+
+### 新增
+
+- 年度报告默认接入 `agentic_longform` Report Agent：只读查询年度概览、TOP 实体、同期对比、个人 Billboard 年榜、Billboard 诊断、流派、发现回归和高光日，再形成 evidence ledger、insight synthesis、dynamic outline 与长文草稿。
+- 新增 `backend/domains/ai_reports/agentic_tools.py`、`agentic_prompts.py`、`agentic_models.py` 与 `editorial_critic.py`，把报告生成拆为只读工具、提示词、结构化元数据和编辑质量门禁。
+- 新增 `backend/services/yearly_report_agent_service.py` 编排年度 Report Agent；task result 返回 `metadata`、`critic`、`insight_synthesis`、`dynamic_outline`、`evidence_ledger`，并把 evidence ledger 持久化为 `ai_tool_calls`。
+- 前端 AI 报告页展示 agentic 长文、critic、回退和字数元信息；AI task progress 将 `researching`、`synthesizing_insights`、`outlining`、`drafting`、`critic_review` 等阶段显示为中文。
+- 新增 `scripts/probe_agentic_yearly_report.py`，通过真实 task API 创建年度报告、轮询结果并校验 metadata、critic、长度、工具轨迹和个人 Billboard 证据。
+- Agentic 年报复用 `yearly_validator` 作为事实安全网，并在 task result 中保留 `fact_validation`；若 LLM 草稿/修订仍不合格，会退到同一 evidence context 生成的结构化长文修复，最后才标记 `basic_summary` 回退。
+
+### 兼容与回退
+
+- `/api/ai/tasks/report` 年度任务默认 `report_mode=agentic_longform`；显式 `report_mode=basic_summary` 时保留旧 `generate_yearly_story` 路径。
+- `/api/ai-insights/yearly-story?force=true&report_mode=agentic_longform` 可直接触发新引擎并返回 metadata；非 force 兼容旧缓存查询行为，避免打开页面自动触发长文 LLM。
+- 若编辑 critic 未通过，结果会标记 `fallback_level=basic_summary`，使用确定性基础摘要兜底，不把基础摘要伪装成正式长文。
+- `report_period_context` 工具在未显式传入 `latest_play_date` 时会读取真实年度数据契约中的 `reporting_period.end_date`，保证 evidence ledger、最终报告和 metadata 的截止日期一致。
+
+### 验证
+
+- `.venv/bin/pytest backend/tests/unit/test_agentic_yearly_report_service.py backend/tests/unit/test_agentic_yearly_report_tools.py backend/tests/unit/test_agentic_yearly_report_critic.py -q`
+- `.venv/bin/pytest backend/tests/unit/test_agentic_yearly_report_service.py backend/tests/unit/test_agentic_yearly_report_tools.py backend/tests/unit/test_agentic_yearly_report_critic.py backend/tests/unit/test_ai_report_tasks.py backend/tests/contract/test_agentic_yearly_report_contract.py backend/tests/contract/test_ai_insights_contract.py backend/tests/contract/test_ai_task_api.py -q`：55 passed
+- `.venv/bin/pytest backend/tests/unit/test_ai_report_tasks.py::test_yearly_agent_task_emits_research_outline_and_critic_events backend/tests/unit/test_ai_report_tasks.py::test_run_report_generation_task_dispatches_report_type backend/tests/unit/test_ai_report_tasks.py::test_basic_summary_yearly_report_mode_dispatches_legacy_generator -q`
+- `.venv/bin/pytest backend/tests/contract/test_agentic_yearly_report_contract.py backend/tests/contract/test_ai_insights_contract.py::test_ai_insights_report_endpoints_forward_play_filters backend/tests/contract/test_ai_task_api.py::test_report_task_request_preserves_filter_parameters -q`
+- `.venv/bin/python -m py_compile scripts/probe_agentic_yearly_report.py`
+- `scripts/probe_agentic_yearly_report.py --year 2026`：PASS，`report_mode=agentic_longform`，`contract_version=agentic_yearly_v14`，`fallback_level=null`，9 个只读工具调用，`critic.ok=true`，`fact_validation.ok=true`，报告长度 1,846 字符。
+- 应用内浏览器手动验收 `/ai-insights`：切换“年度叙事”并点击“刷新报告”，页面显示工具查询、洞见综合、动态大纲、长文撰写、编辑审稿与事实口径检查进度，最终卡片显示 `Agentic 长文`、`已通过编辑审稿`、`1,846 字`。
+
+## 2026-07-03 — AI 年度叙事编辑质量与个人年榜证据
+
+### 修复与增强
+
+- 年度叙事 payload 在既有 `reporting_period` / TOP 艺人歌曲 / 同期对比基础上新增 `top_albums`、`billboard_year_end` 和 `editorial_brief`，让 LLM 能同时看到专辑偏好、个人 Billboard Year-End 稳定性证据和一条明确写作主线。
+- 个人 Billboard Year-End 证据以只读、best-effort 方式接入年度报告，包含单曲/专辑/艺人年榜排名、Year-End Score、峰值、在榜周数、冠军周数和 chart plays，并明确这是本地个人榜而非外部官方 Billboard。
+- 年度报告 prompt 新增编辑义务：必须使用 TOP 专辑与个人年榜证据、先读 `editorial_brief.thesis`、同一组 same-period YTD 对比只写一次，并避免“有意识地”“主动选择”等无数据支撑的主观意图推断。
+- 年度报告 validator 扩展为编辑质量门禁：拦截缺 TOP 专辑、缺个人年榜证据、个人 Billboard 被误写成外部官方榜单、重复同期对比、无依据意图词、歌词/性别/别名外推、完整年度/阶段性报告标签混用、partial-year 中“年度专辑/年度单曲/年度冠军”等完整年度实体标签、错误时间段表述、过长报告和模糊“前者/后者”引用；年度报告缓存 key 升级到 `contract_v12`，避免旧报告绕过新合同。
+- 年度报告生成改为低温首稿 + 多轮降温修订；若 LLM 多轮仍不满足 validator，则使用确定性 fallback 从同一份结构化 DATA 生成简洁可用报告，fallback 会按完整年/阶段性年份选择标题与后续观察口径，并在专辑、新艺人或部分个人年榜证据缺失时干净降级。
+- `scripts/probe_ai_yearly_report_quality.py` 扩展到专辑/个人年榜/editorial brief；新增 `scripts/probe_ai_yearly_report_text_quality.py` 通过 HTTP API 获取年度报告并复用 validator 检查真实返回文本。
+
+### 验证
+
+- `.venv/bin/pytest backend/tests/unit/test_ai_insights_yearly_quality.py backend/tests/unit/test_ai_insights_service.py backend/tests/unit/test_ai_report_tasks.py backend/tests/contract/test_ai_insights_contract.py -q`：59 passed
+- `.venv/bin/python scripts/probe_ai_yearly_report_quality.py --year 2026 --json-output /tmp/spotify_ai_yearly_2026_editorial_quality.json`：PASS
+- `.venv/bin/python scripts/probe_ai_yearly_report_text_quality.py --year 2026 --force --json-output /tmp/spotify_ai_yearly_text_force.json`：PASS，返回 1183 字符、`issues=[]`
+- `.venv/bin/python scripts/evaluate_ai_agent_harness.py`：12/12 PASS
+- `node scripts/frontend_interaction_smoke.mjs --base-url http://localhost:5173 --scenario ai-insights-tabs`：PASS，0 console error/warning，0px 横向溢出
+- 真实浏览器 `/ai-insights` → 年度叙事 → `刷新报告`：页面展示 `AI 任务进度`、`calling_llm 70%`、`done 100%`，最终报告包含 `2026 年中音乐报告（截至 2026-06-23）`、TOP 专辑、个人 Billboard 年榜、人格/流派和高光日；浏览器 console error/warn 为 0。
+
+## 2026-07-03 — AI 年度叙事数据契约与质量校验
+
+### 修复与增强
+
+- 年度叙事新增 `ai_reports/yearly_contract.py`，在 LLM 前构造稳定报告数据契约：`reporting_period`、年中/全年标记、同周期 YTD 对比、TOP 艺人与歌曲名称、人格维度、流派 caveat、高光解释和写作约束。
+- 年度报告 prompt 改为可信个人音乐年度编辑，要求 partial year 明确写“截至数据截止日”、只使用同期对比、保留 TOP 名称与人格分数对应关系，并禁止编造天气、失眠、告别、人生转折等 DATA 外叙事。
+- 新增年度报告 validator：对未完整年份缺少截止日、误用全年/来年表述、错误引用去年全年对比、TOP 名称缺失、人格分数错配、场景臆造、“其他流派”遗漏、流派 caveat 缺失和低置信高光夸大做拦截；首次生成不合格时带反馈重试一次，仍不合格则返回 502 且不写缓存。
+- 年度报告缓存 key 引入 `contract_v2`，避免旧缓存继续展示已知错误的 2026 年度叙事。
+- 新增 `scripts/probe_ai_yearly_report_quality.py`，用本地只读数据验证年度报告 payload 的截止日、partial year 标记、TOP 名称、同期对比和完整上一年变更禁用状态。
+
+### 验证
+
+- `.venv/bin/pytest backend/tests/unit/test_ai_insights_yearly_quality.py backend/tests/unit/test_ai_insights_service.py backend/tests/unit/test_ai_report_tasks.py backend/tests/contract/test_ai_insights_contract.py -q`：40 passed
+- `.venv/bin/python scripts/evaluate_ai_agent_harness.py`：12/12 PASS
+- `.venv/bin/python scripts/probe_ai_yearly_report_quality.py --year 2026 --json-output /tmp/spotify_ai_yearly_2026_quality.json`：PASS
+- 真实 API `/api/ai-insights/yearly-story?year=2026&force=false`：返回新 `contract_v2` 报告，标题含 `截至 2026-06-23`，使用同期 YTD 对比，保留 Taylor Swift / `Opalite` / `其他流派`，不再出现旧的 `少了 55%`、`来年寄语` 或编造雨夜叙事。
+- 真实浏览器 `/ai-insights` → `年度叙事`：页面展示新报告，命中截止日、TOP 名称和流派 caveat，未命中旧错误文案；DOM 文本探针确认不含 `55%`、`来年寄语` 或雨夜叙事。
+
 ## 2026-07-03 — AI Agent 安全短路与矩阵复测
 
 ### 修复与增强

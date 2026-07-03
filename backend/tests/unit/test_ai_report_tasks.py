@@ -100,23 +100,19 @@ def _insert_cache(
     **request_overrides: Any,
 ) -> dict[str, Any]:
     request = _base_report_request(report_type=report_type, **request_overrides)
-    filter_part = ai_insights_service._filter_cache_part(
-        request["min_ms"],
-        request["music_only"],
-        request["merge_enabled"],
-        request["dynamic_threshold"],
-        request["max_merge_gap_minutes"],
+    key = ai_insights_service._report_cache_key(
+        report_type,
+        min_ms=request["min_ms"],
+        music_only=request["music_only"],
+        merge_enabled=request["merge_enabled"],
+        dynamic_threshold=request["dynamic_threshold"],
+        max_merge_gap_minutes=request["max_merge_gap_minutes"],
+        week_start=request.get("week_start"),
+        week_end=request.get("week_end"),
+        month=request.get("month"),
+        year=request.get("year"),
     )
-    if report_type == "weekly":
-        key = ai_insights_service._cache_key(
-            "weekly", request["week_start"], request["week_end"], filter_part
-        )
-    elif report_type == "monthly":
-        key = ai_insights_service._cache_key(
-            "monthly", request["month"], str(request["year"]), filter_part
-        )
-    else:
-        key = ai_insights_service._cache_key("yearly", str(request["year"]), filter_part)
+    assert key is not None
 
     conn = sqlite3.connect(db_path)
     try:
@@ -532,7 +528,6 @@ def test_run_report_generation_task_error_result_writes_error(
             "generate_monthly_personality",
             {"month": "2026-06", "year": 2026},
         ),
-        ("yearly", "generate_yearly_story", {"year": 2026}),
     ],
 )
 def test_run_report_generation_task_dispatches_report_type(
@@ -579,6 +574,122 @@ def test_run_report_generation_task_dispatches_report_type(
     )
 
     assert called == [expected_function]
+
+
+def test_basic_summary_yearly_report_mode_dispatches_legacy_generator(
+    ai_report_task_db: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    del ai_report_task_db
+    called = []
+    request = _base_report_request(
+        action="generate",
+        report_type="yearly",
+        year=2026,
+        report_mode="basic_summary",
+    )
+    task = ai_task_service.create_task(
+        task_type="ai_report_yearly",
+        stage="checking_cache",
+        message="准备生成 AI 报告",
+        request=request,
+    )
+
+    def fake_generate_yearly_story(*args, **kwargs):
+        called.append("generate_yearly_story")
+        return {"success": True, "report": "legacy yearly", "cached": False, "error": None}
+
+    monkeypatch.setattr(
+        ai_task_service.ai_insights_service,
+        "generate_yearly_story",
+        fake_generate_yearly_story,
+    )
+
+    ai_task_service.run_report_generation_task(task["task_id"], request)
+
+    assert called == ["generate_yearly_story"]
+
+
+def test_yearly_agent_task_emits_research_outline_and_critic_events(
+    ai_report_task_db: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    del ai_report_task_db
+    request = _base_report_request(
+        action="generate",
+        report_type="yearly",
+        year=2026,
+        report_mode="agentic_longform",
+    )
+    task = ai_task_service.create_task(
+        task_type="ai_report_yearly",
+        stage="checking_cache",
+        message="准备生成 AI 报告",
+        request=request,
+    )
+    captured: list[dict[str, Any]] = []
+
+    def fake_generate(request_payload, *, emit_event=None):
+        if emit_event:
+            emit_event("stage_started", "查询年度播放概览", {"stage": "researching"})
+            emit_event("stage_started", "生成文章大纲", {"stage": "outlining"})
+            emit_event("stage_started", "审稿与修订", {"stage": "critic_review"})
+        captured.append(request_payload)
+        return {
+            "success": True,
+            "report": "## Longform\n" + "解释" * 800,
+            "cached": False,
+            "cached_at": None,
+            "entities": {"artists": ["Taylor Swift"], "tracks": ["Opalite"]},
+            "metadata": {
+                "report_mode": "agentic_longform",
+                "contract_version": "agentic_yearly_v14",
+                "fallback_level": None,
+                "tool_calls": 2,
+                "data_range": "2026-01-01 to 2026-06-23",
+                "is_partial_year": True,
+                "critic_passed": True,
+                "article_length": 1600,
+            },
+            "evidence_ledger": [
+                {
+                    "tool_name": "yearly_overview",
+                    "params": {"year": 2026},
+                    "result_summary": "播放 7,860 次，累计 498 小时。",
+                },
+                {
+                    "tool_name": "personal_billboard_year_end",
+                    "params": {"year": 2026},
+                    "result_summary": "个人 Billboard 显示 Taylor Swift 三榜联动。",
+                },
+            ],
+            "critic": {"ok": True, "issues": []},
+            "error": None,
+        }
+
+    monkeypatch.setattr(
+        "backend.services.yearly_report_agent_service.generate_agentic_yearly_report",
+        fake_generate,
+    )
+
+    ai_task_service.run_report_generation_task(task["task_id"], request)
+
+    stored = ai_task_service.get_task(task["task_id"])
+    events = ai_task_service.get_task_events(task["task_id"])
+
+    assert captured and captured[0]["report_mode"] == "agentic_longform"
+    assert stored is not None
+    assert stored["status"] == "done"
+    assert stored["result"]["metadata"]["contract_version"] == "agentic_yearly_v14"
+    assert events is not None
+    messages = [event["message"] for event in events[0]]
+    assert "查询年度播放概览" in messages
+    assert "生成文章大纲" in messages
+    assert "审稿与修订" in messages
+    assert [call["tool_name"] for call in events[1]] == [
+        "yearly_overview",
+        "personal_billboard_year_end",
+    ]
 
 
 def test_monthly_generation_forwards_filter_parameters(

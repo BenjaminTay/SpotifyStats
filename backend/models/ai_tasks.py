@@ -87,6 +87,7 @@ class AiTaskCreateRequest(BaseModel):
 class ReportTaskRequest(BaseModel):
     report_type: Literal["weekly", "monthly", "yearly"]
     action: Literal["cache_only", "generate"] = "cache_only"
+    report_mode: Literal["agentic_longform", "basic_summary"] = "agentic_longform"
     force: bool = False
     week_start: str | None = None
     week_end: str | None = None
