@@ -20,6 +20,25 @@ function periodLabel(periodInfo: string | null): string {
   return periodInfo
 }
 
+function recordValue(value: unknown): Record<string, unknown> | null {
+  return value != null && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null
+}
+
+function temporalSummary(result: unknown): string | null {
+  const resultRecord = recordValue(result)
+  const guard = recordValue(resultRecord?.temporal_guard)
+  const interpretation = recordValue(guard?.time_interpretation)
+  if (!interpretation) return null
+  const label = typeof interpretation.label === 'string' ? interpretation.label : '相对时间'
+  const startDate = typeof interpretation.start_date === 'string' ? interpretation.start_date : null
+  const endDate = typeof interpretation.end_date === 'string' ? interpretation.end_date : null
+  if (!startDate && !endDate) return null
+  const corrected = guard?.had_corrections === true ? '已校正 · ' : ''
+  return `${corrected}${label} → ${formatDateRange(startDate, endDate)}`
+}
+
 interface Props {
   messages: ChatMessage[]
   asking: boolean
@@ -101,6 +120,12 @@ export function ChatMessageList({
                           {formatDateRange(msg.meta.start_date ?? null, msg.meta.end_date ?? null) && (
                             <span>· {formatDateRange(msg.meta.start_date ?? null, msg.meta.end_date ?? null)}</span>
                           )}
+                        </div>
+                      )}
+                      {temporalSummary(msg.meta?.result) && (
+                        <div className="mb-2 flex items-center gap-1 text-[10px] text-muted-foreground/50">
+                          <Calendar className="h-2.5 w-2.5" />
+                          <span>{temporalSummary(msg.meta?.result)}</span>
                         </div>
                       )}
                       <div className="prose prose-sm max-w-none text-[13px] leading-relaxed [&_strong]:text-foreground">

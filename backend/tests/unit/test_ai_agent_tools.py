@@ -81,6 +81,11 @@ def test_default_registry_exposes_backend_defined_readonly_tool_allowlist() -> N
         "listening_hours",
         "resolve_entity",
         "compare_entities",
+        "account_summary",
+        "account_collection_insights",
+        "search_history",
+        "community_feed_search",
+        "community_trending",
     }.issubset(names)
     assert all(item["read_only"] is True for item in registered)
     assert (
@@ -1010,3 +1015,108 @@ def test_tool_call_identity_keeps_period_specific_followups_distinct() -> None:
     assert ai_agent_service._tool_call_identity(lifetime_call) != (
         ai_agent_service._tool_call_identity(recent_call)
     )
+
+
+def test_account_collection_tool_compacts_collection_insights(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    db_observed = _patch_readonly_db(monkeypatch)
+
+    def fake_collection_insights(conn: FakeReadonlyConn) -> dict[str, Any]:
+        assert conn in db_observed["connections"]
+        return {
+            "available": True,
+            "personality": {"type": "均衡型收藏者", "metrics": {"retention_pct": 88.1}},
+            "overview": {"saved_tracks": 100, "saved_albums": 20},
+            "first_save_story": {"track_name": "First", "artist_name": "Artist"},
+            "lifecycle": {"fate": {"evergreen_pct": 40.0}},
+            "huge_unused_section": [{"x": index} for index in range(100)],
+        }
+
+    monkeypatch.setattr(
+        tools.account_service,
+        "get_collection_insights",
+        fake_collection_insights,
+    )
+
+    result = tool_registry.dispatch_tool("account_collection_insights", {})
+
+    assert result["tool_name"] == "account_collection_insights"
+    assert "available=true" in result["result_summary"]
+    assert result["data"]["personality"]["type"] == "均衡型收藏者"
+    assert "huge_unused_section" not in result["data"]
+    assert db_observed["connections"][0].closed is True
+
+
+def test_search_history_tool_returns_top_queries(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_readonly_db(monkeypatch)
+
+    monkeypatch.setattr(
+        tools.search_service,
+        "get_search_stats",
+        lambda conn: {
+            "available": True,
+            "empty": False,
+            "total_searches": 9,
+            "top_queries": [
+                {"query": "Ariana Grande", "count": 4},
+                {"query": "Taylor Swift", "count": 3},
+            ],
+            "intent_dist": [{"intent": "艺人搜索", "count": 7}],
+        },
+    )
+
+    result = tool_registry.dispatch_tool("search_history", {"query": "ariana", "limit": 5})
+
+    assert result["tool_name"] == "search_history"
+    assert result["data"]["top_queries"] == [{"query": "Ariana Grande", "count": 4}]
+    assert "total_searches=9" in result["result_summary"]
+
+
+def test_community_trending_tool_compacts_generated_posts(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_readonly_db(monkeypatch)
+
+    class FakeMetrics:
+        likes = 1
+        retweets = 2
+        replies = 3
+        views = 4
+
+    class FakePost:
+        def __init__(self, linked_entities: list[dict[str, Any]], post_type: str) -> None:
+            self.id = f"post-{post_type}"
+            self.account_handle = "@chart"
+            self.posted_at = "2026-06-01T00:00:00"
+            self.content = "chart update"
+            self.post_type = post_type
+            self.tags = ["chart"]
+            self.significance = 0.9
+            self.linked_entities = linked_entities
+            self.images: list[Any] = []
+            self.attached_list = None
+            self.metrics = FakeMetrics()
+
+    monkeypatch.setattr(
+        tools.community_feed_generator,
+        "generate_all_posts",
+        lambda **kwargs: [
+            FakePost(
+                [
+                    {"type": "artist", "name": "Ariana Grande"},
+                    {"type": "track", "name": "yes, and?", "id": 1},
+                ],
+                "no1_announcement",
+            ),
+            FakePost([{"type": "artist", "name": "Ariana Grande"}], "debut"),
+        ],
+    )
+
+    result = tool_registry.dispatch_tool("community_trending", {"artist_limit": 3})
+
+    assert result["tool_name"] == "community_trending"
+    assert result["data"]["artists"][0]["name"] == "Ariana Grande"
+    assert result["data"]["latest_no1"]["track"] == "yes, and?"

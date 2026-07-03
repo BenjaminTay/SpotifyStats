@@ -890,5 +890,182 @@
       "毫无疑问",
       "官方 Billboard"
     ]
+  },
+  {
+    "id": "account_collection_profile",
+    "question": "我的收藏夹有什么特点？",
+    "expected_answer_style": "concise",
+    "expected_intent": {
+      "task_type": "general",
+      "entity_type": "unknown",
+      "entities": [],
+      "requested_metrics_contains": [
+        "summary"
+      ],
+      "forbidden_metrics_contains": [
+        "personal_billboard"
+      ],
+      "time_scope": "lifetime",
+      "needs_fairness_note": false
+    },
+    "expected_frame": {
+      "family": "account_collection",
+      "answer_contract": "account_collection_answer",
+      "analysis_axes_contains": [
+        "collection",
+        "behavior"
+      ]
+    },
+    "expected_recipe": {
+      "family": "account_collection",
+      "required_axes_contains": [
+        "collection"
+      ],
+      "required_tool_patterns_contains": [
+        {
+          "tool_name": "account_collection_insights"
+        }
+      ]
+    },
+    "required_tool_calls": [
+      {
+        "tool_name": "account_collection_insights",
+        "params": {}
+      }
+    ],
+    "recommended_tools": [
+      {
+        "tool_name": "account_collection_insights",
+        "params": {}
+      }
+    ],
+    "required_answer_terms": [
+      "收藏夹",
+      "收藏",
+      "特点"
+    ],
+    "forbidden_answer_terms": [
+      "应用没有收藏数据",
+      "官方 Billboard",
+      "外部市场"
+    ]
+  },
+  {
+    "id": "search_history_top_queries",
+    "question": "我最常搜索什么？",
+    "expected_answer_style": "concise",
+    "expected_intent": {
+      "task_type": "ranking",
+      "entity_type": "unknown",
+      "entities": [],
+      "requested_metrics_contains": [
+        "summary"
+      ],
+      "forbidden_metrics_contains": [
+        "personal_billboard"
+      ],
+      "time_scope": "lifetime",
+      "needs_fairness_note": false
+    },
+    "expected_frame": {
+      "family": "search_behavior",
+      "answer_contract": "search_behavior_answer",
+      "analysis_axes_contains": [
+        "search",
+        "behavior"
+      ]
+    },
+    "expected_recipe": {
+      "family": "search_behavior",
+      "required_axes_contains": [
+        "search"
+      ],
+      "required_tool_patterns_contains": [
+        {
+          "tool_name": "search_history"
+        }
+      ]
+    },
+    "required_tool_calls": [
+      {
+        "tool_name": "search_history",
+        "params": {}
+      }
+    ],
+    "recommended_tools": [
+      {
+        "tool_name": "search_history",
+        "params": {}
+      }
+    ],
+    "required_answer_terms": [
+      "搜索",
+      "最常",
+      "查询"
+    ],
+    "forbidden_answer_terms": [
+      "应用没有搜索数据",
+      "播放次数最高",
+      "官方 Billboard"
+    ]
+  },
+  {
+    "id": "community_trending_lookup",
+    "question": "社区动态里最近谁最热？",
+    "expected_answer_style": "concise",
+    "expected_intent": {
+      "task_type": "trend",
+      "entity_type": "unknown",
+      "entities": [],
+      "requested_metrics_contains": [
+        "recent_window"
+      ],
+      "forbidden_metrics_contains": [
+        "personal_billboard"
+      ],
+      "time_scope": "last_4_weeks",
+      "needs_fairness_note": false
+    },
+    "expected_frame": {
+      "family": "community_lookup",
+      "answer_contract": "community_lookup_answer",
+      "analysis_axes_contains": [
+        "community",
+        "ranking"
+      ]
+    },
+    "expected_recipe": {
+      "family": "community_lookup",
+      "required_axes_contains": [
+        "community"
+      ],
+      "required_tool_patterns_contains": [
+        {
+          "tool_name": "community_trending"
+        }
+      ]
+    },
+    "required_tool_calls": [
+      {
+        "tool_name": "community_trending",
+        "params": {}
+      }
+    ],
+    "recommended_tools": [
+      {
+        "tool_name": "community_trending",
+        "params": {}
+      }
+    ],
+    "required_answer_terms": [
+      "社区",
+      "热",
+      "动态"
+    ],
+    "forbidden_answer_terms": [
+      "应用没有社区数据",
+      "官方 Billboard",
+      "外部市场"
+    ]
   }
 ]

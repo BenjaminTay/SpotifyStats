@@ -13,11 +13,15 @@ from backend.domains.ai_agent.comparison import summarize_entity_comparison
 from backend.domains.ai_agent.entity_resolver import resolve_entities
 from backend.domains.ai_agent.tool_registry import AgentToolDefinition, AgentToolResult
 from backend.domains.billboard import details as billboard_details
+from backend.domains.community import feed_generator as community_feed_generator
+from backend.domains.community.post_types import HIGHLIGHT_POST_TYPES
 from backend.services import (
+    account_service,
     analysis_records_service,
     analysis_stats_service,
     entity_stats_service,
     play_service,
+    search_service,
     wrapped_service,
 )
 
@@ -179,6 +183,61 @@ class CompareEntitiesParams(BaseModel):
         if len(set(cleaned)) != len(cleaned):
             raise ValueError("names must be unique")
         return cleaned
+
+
+class AccountSummaryParams(BaseModel):
+    include_collection: bool = True
+    include_search: bool = True
+
+
+class AccountCollectionInsightsParams(BaseModel):
+    limit: int = Field(default=10, ge=1, le=50)
+
+
+class SearchHistoryParams(BaseModel):
+    query: str | None = Field(default=None, min_length=1, max_length=120)
+    limit: int = Field(default=10, ge=1, le=30)
+
+
+class CommunityFeedSearchParams(BaseModel):
+    search: str | None = Field(default=None, min_length=1, max_length=120)
+    highlights_only: bool = False
+    limit: int = Field(default=10, ge=1, le=50)
+    date_from: str | None = None
+    date_to: str | None = None
+    min_ms: int = Field(default=30000, ge=0, le=3_600_000)
+    music_only: bool = True
+    bb_top_n: int = Field(default=30, ge=5, le=100)
+    bb_album_top_n: int = Field(default=20, ge=5, le=100)
+    bb_artist_top_n: int = Field(default=20, ge=5, le=100)
+    bb_week_start_dow: int = Field(default=4, ge=0, le=6)
+    bb_week_start_hour: int = Field(default=0, ge=0, le=23)
+    year_start: int | None = Field(default=None, ge=2000, le=2100)
+    year_end: int | None = Field(default=None, ge=2000, le=2100)
+    dynamic_threshold: bool = True
+    max_merge_gap_minutes: int | None = Field(default=None, ge=1, le=240)
+    merge_level: int = Field(default=2, ge=1, le=3)
+    include_compilations: bool = False
+
+    @field_validator("date_from", "date_to")
+    @classmethod
+    def validate_iso_date(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        date.fromisoformat(value[:10])
+        return value
+
+    @model_validator(mode="after")
+    def validate_year_bounds(self) -> CommunityFeedSearchParams:
+        if self.year_start is not None and self.year_end is not None:
+            if self.year_start > self.year_end:
+                raise ValueError("year_start must be before or equal to year_end")
+        return self
+
+
+class CommunityTrendingParams(CommunityFeedSearchParams):
+    artist_limit: int = Field(default=6, ge=1, le=20)
+    track_limit: int = Field(default=3, ge=1, le=20)
 
 
 def _source_range(data: dict[str, Any]) -> str:
@@ -354,6 +413,178 @@ def _comparison_result_summary(data: dict[str, Any]) -> str:
         f"winner_by_plays={data.get('winner_by_cumulative_plays') or 'n/a'}, "
         f"winner_by_intensity={data.get('winner_by_intensity') or 'n/a'}"
     )
+
+
+def _account_summary_result_summary(data: dict[str, Any]) -> str:
+    library = data.get("library") if isinstance(data.get("library"), dict) else {}
+    search = data.get("search") if isinstance(data.get("search"), dict) else {}
+    collection = (
+        data.get("collection_insights") if isinstance(data.get("collection_insights"), dict) else {}
+    )
+    return (
+        f"has_account_data={str(bool(data.get('has_account_data'))).lower()}, "
+        f"saved_tracks={int(library.get('saved_tracks') or 0)}, "
+        f"total_searches={int(search.get('total_searches') or 0)}, "
+        f"collection_available={str(bool(collection.get('available'))).lower()}"
+    )
+
+
+def _collection_result_summary(data: dict[str, Any]) -> str:
+    overview = data.get("overview") if isinstance(data.get("overview"), dict) else {}
+    personality = data.get("personality") if isinstance(data.get("personality"), dict) else {}
+    return (
+        f"available={str(bool(data.get('available'))).lower()}, "
+        f"saved_tracks={int(overview.get('saved_tracks') or 0)}, "
+        f"saved_albums={int(overview.get('saved_albums') or 0)}, "
+        f"personality={personality.get('type') or 'n/a'}"
+    )
+
+
+def _search_result_summary(data: dict[str, Any]) -> str:
+    top_queries = data.get("top_queries")
+    top_count = len(top_queries) if isinstance(top_queries, list) else 0
+    return (
+        f"available={str(bool(data.get('available'))).lower()}, "
+        f"total_searches={int(data.get('total_searches') or 0)}, "
+        f"top_queries={top_count}"
+    )
+
+
+def _community_feed_result_summary(data: dict[str, Any]) -> str:
+    meta = data.get("meta") if isinstance(data.get("meta"), dict) else {}
+    return (
+        f"posts={int(meta.get('returned') or 0)}/{int(meta.get('total') or 0)}, "
+        f"highlights_only={str(bool(data.get('highlights_only'))).lower()}"
+    )
+
+
+def _community_trending_result_summary(data: dict[str, Any]) -> str:
+    artists = data.get("artists")
+    tracks = data.get("tracks")
+    return (
+        f"artists={len(artists) if isinstance(artists, list) else 0}, "
+        f"tracks={len(tracks) if isinstance(tracks, list) else 0}"
+    )
+
+
+def _compact_account_summary(data: dict[str, Any], parsed: AccountSummaryParams) -> dict[str, Any]:
+    compact: dict[str, Any] = {"has_account_data": data.get("has_account_data")}
+    library = data.get("library")
+    if isinstance(library, dict):
+        compact["library"] = {
+            key: library.get(key)
+            for key in (
+                "available",
+                "saved_tracks",
+                "saved_albums",
+                "saved_artists",
+                "playlists",
+                "coverage_pct",
+                "forgotten_count",
+            )
+            if key in library
+        }
+        artist_comparison = library.get("artist_comparison")
+        if isinstance(artist_comparison, list):
+            compact["library"]["artist_comparison"] = artist_comparison[:10]
+    if parsed.include_collection and isinstance(data.get("collection_insights"), dict):
+        compact["collection_insights"] = _compact_collection_insights(
+            data["collection_insights"],
+            limit=6,
+        )
+    if parsed.include_search and isinstance(data.get("search"), dict):
+        compact["search"] = _compact_search_stats(data["search"], limit=6)
+    return compact
+
+
+def _compact_collection_insights(data: dict[str, Any], *, limit: int) -> dict[str, Any]:
+    compact: dict[str, Any] = {
+        "available": data.get("available"),
+        "empty": data.get("empty"),
+    }
+    for key in (
+        "personality",
+        "overview",
+        "first_save_story",
+        "lifecycle",
+        "lifecycle_top_tracks",
+    ):
+        value = data.get(key)
+        if isinstance(value, (dict, list)):
+            compact[key] = value[:limit] if isinstance(value, list) else value
+    for key in (
+        "honeymoon_examples",
+        "cooling_examples",
+        "settling_examples",
+        "forgotten_tracks",
+        "artist_comparison",
+    ):
+        value = data.get(key)
+        if isinstance(value, list):
+            compact[key] = value[:limit]
+    return compact
+
+
+def _compact_search_stats(
+    data: dict[str, Any], *, limit: int, query: str | None = None
+) -> dict[str, Any]:
+    query_lower = query.casefold() if query else None
+    top_queries = data.get("top_queries")
+    if isinstance(top_queries, list):
+        rows = [
+            row
+            for row in top_queries
+            if isinstance(row, dict)
+            and (not query_lower or query_lower in str(row.get("query") or "").casefold())
+        ][:limit]
+    else:
+        rows = []
+    intent_dist = data.get("intent_dist")
+    return {
+        "available": data.get("available"),
+        "empty": data.get("empty"),
+        "total_searches": data.get("total_searches"),
+        "top_queries": rows,
+        "intent_dist": intent_dist[:limit] if isinstance(intent_dist, list) else [],
+    }
+
+
+def _post_to_dict(post: Any) -> dict[str, Any]:
+    metrics = getattr(post, "metrics", None)
+    return {
+        "id": getattr(post, "id", None),
+        "account_handle": getattr(post, "account_handle", None),
+        "posted_at": getattr(post, "posted_at", None),
+        "content": getattr(post, "content", None),
+        "post_type": getattr(post, "post_type", None),
+        "tags": list(getattr(post, "tags", []) or [])[:6],
+        "significance": getattr(post, "significance", None),
+        "linked_entities": list(getattr(post, "linked_entities", []) or [])[:6],
+        "metrics": {
+            "likes": getattr(metrics, "likes", 0) if metrics else 0,
+            "retweets": getattr(metrics, "retweets", 0) if metrics else 0,
+            "replies": getattr(metrics, "replies", 0) if metrics else 0,
+            "views": getattr(metrics, "views", 0) if metrics else 0,
+        },
+    }
+
+
+def _community_generation_kwargs(parsed: CommunityFeedSearchParams) -> dict[str, Any]:
+    return {
+        "min_ms": parsed.min_ms,
+        "music_only": parsed.music_only,
+        "bb_top_n": parsed.bb_top_n,
+        "bb_album_top_n": parsed.bb_album_top_n,
+        "bb_artist_top_n": parsed.bb_artist_top_n,
+        "bb_week_start_dow": parsed.bb_week_start_dow,
+        "bb_week_start_hour": parsed.bb_week_start_hour,
+        "year_start": parsed.year_start,
+        "year_end": parsed.year_end,
+        "dynamic_threshold": parsed.dynamic_threshold,
+        "max_merge_gap_minutes": parsed.max_merge_gap_minutes,
+        "merge_level": parsed.merge_level,
+        "include_compilations": parsed.include_compilations,
+    }
 
 
 def _filter_kwargs(parsed: AnalysisStatsParams) -> dict[str, Any]:
@@ -926,6 +1157,205 @@ def compare_entities_handler(params: BaseModel) -> AgentToolResult:
     )
 
 
+def account_summary_handler(params: BaseModel) -> AgentToolResult:
+    parsed = (
+        params
+        if isinstance(params, AccountSummaryParams)
+        else AccountSummaryParams.model_validate(params)
+    )
+    conn = get_db(readonly=True)
+    try:
+        raw_data = account_service.get_account_summary(conn)
+    finally:
+        conn.close()
+    data = _compact_account_summary(raw_data, parsed)
+    return AgentToolResult(
+        data=data,
+        result_summary=_account_summary_result_summary(data),
+        source_range="account",
+    )
+
+
+def account_collection_insights_handler(params: BaseModel) -> AgentToolResult:
+    parsed = (
+        params
+        if isinstance(params, AccountCollectionInsightsParams)
+        else AccountCollectionInsightsParams.model_validate(params)
+    )
+    conn = get_db(readonly=True)
+    try:
+        raw_data = account_service.get_collection_insights(conn)
+    finally:
+        conn.close()
+    data = _compact_collection_insights(raw_data, limit=parsed.limit)
+    return AgentToolResult(
+        data=data,
+        result_summary=_collection_result_summary(data),
+        source_range="account_collection",
+    )
+
+
+def search_history_handler(params: BaseModel) -> AgentToolResult:
+    parsed = (
+        params
+        if isinstance(params, SearchHistoryParams)
+        else SearchHistoryParams.model_validate(params)
+    )
+    conn = get_db(readonly=True)
+    try:
+        raw_data = search_service.get_search_stats(conn)
+    finally:
+        conn.close()
+    data = _compact_search_stats(raw_data, limit=parsed.limit, query=parsed.query)
+    return AgentToolResult(
+        data=data,
+        result_summary=_search_result_summary(data),
+        source_range="search_history",
+    )
+
+
+def _community_posts(parsed: CommunityFeedSearchParams) -> list[Any]:
+    conn = get_db(readonly=True)
+    try:
+        return community_feed_generator.generate_all_posts(
+            conn=conn,
+            **_community_generation_kwargs(parsed),
+        )
+    finally:
+        conn.close()
+
+
+def community_feed_search_handler(params: BaseModel) -> AgentToolResult:
+    parsed = (
+        params
+        if isinstance(params, CommunityFeedSearchParams)
+        else CommunityFeedSearchParams.model_validate(params)
+    )
+    posts = _community_posts(parsed)
+    search_lower = parsed.search.casefold() if parsed.search else None
+    filtered = []
+    total_all = 0
+    for post in posts:
+        posted_at = str(getattr(post, "posted_at", "") or "")
+        if parsed.date_from and posted_at < parsed.date_from:
+            continue
+        if parsed.date_to and posted_at > parsed.date_to:
+            continue
+        if search_lower:
+            linked_entities = getattr(post, "linked_entities", []) or []
+            content_match = search_lower in str(getattr(post, "content", "") or "").casefold()
+            handle_match = search_lower in str(getattr(post, "account_handle", "") or "").casefold()
+            entity_match = any(
+                search_lower in str(entity.get("name", "")).casefold()
+                for entity in linked_entities
+                if isinstance(entity, dict)
+            )
+            if not (content_match or handle_match or entity_match):
+                continue
+        total_all += 1
+        if not parsed.highlights_only or getattr(post, "post_type", "") in HIGHLIGHT_POST_TYPES:
+            filtered.append(post)
+    page = filtered[: parsed.limit]
+    data = {
+        "meta": {
+            "total": len(filtered),
+            "total_all": total_all,
+            "returned": len(page),
+            "limit": parsed.limit,
+        },
+        "highlights_only": parsed.highlights_only,
+        "posts": [_post_to_dict(post) for post in page],
+    }
+    return AgentToolResult(
+        data=data,
+        result_summary=_community_feed_result_summary(data),
+        source_range="community_feed",
+    )
+
+
+def community_trending_handler(params: BaseModel) -> AgentToolResult:
+    parsed = (
+        params
+        if isinstance(params, CommunityTrendingParams)
+        else CommunityTrendingParams.model_validate(params)
+    )
+    posts = _community_posts(parsed)
+    artist_counts: dict[str, int] = {}
+    track_counts: dict[str, int] = {}
+    track_to_id: dict[str, str | int] = {}
+    latest_no1_post: Any | None = None
+    latest_debut_post: Any | None = None
+
+    for post in posts:
+        posted_at = str(getattr(post, "posted_at", "") or "")
+        if parsed.date_from and posted_at < parsed.date_from:
+            continue
+        if parsed.date_to and posted_at > parsed.date_to:
+            continue
+        post_type = getattr(post, "post_type", "")
+        if latest_no1_post is None and post_type == "no1_announcement":
+            latest_no1_post = post
+        if latest_debut_post is None and post_type == "debut":
+            latest_debut_post = post
+        for entity in getattr(post, "linked_entities", []) or []:
+            if not isinstance(entity, dict):
+                continue
+            name = str(entity.get("name") or "")
+            if not name:
+                continue
+            if entity.get("type") == "artist":
+                artist_counts[name] = artist_counts.get(name, 0) + 1
+            elif entity.get("type") == "track":
+                track_counts[name] = track_counts.get(name, 0) + 1
+                if entity.get("id") is not None and name not in track_to_id:
+                    track_to_id[name] = entity["id"]
+
+    def linked_entity(post: Any | None, entity_type: str) -> dict[str, Any] | None:
+        if post is None:
+            return None
+        for entity in getattr(post, "linked_entities", []) or []:
+            if isinstance(entity, dict) and entity.get("type") == entity_type:
+                return entity
+        return None
+
+    no1_track = linked_entity(latest_no1_post, "track")
+    no1_artist = linked_entity(latest_no1_post, "artist")
+    debut_track = linked_entity(latest_debut_post, "track")
+    debut_artist = linked_entity(latest_debut_post, "artist")
+    top_artists = sorted(artist_counts.items(), key=lambda item: item[1], reverse=True)[
+        : parsed.artist_limit
+    ]
+    top_tracks = sorted(track_counts.items(), key=lambda item: item[1], reverse=True)[
+        : parsed.track_limit
+    ]
+    data = {
+        "artists": [{"name": name, "count": count} for name, count in top_artists],
+        "tracks": [
+            {"name": name, "count": count, "entity_id": track_to_id.get(name)}
+            for name, count in top_tracks
+        ],
+        "latest_no1": {
+            "track": no1_track.get("name") if no1_track else None,
+            "artist": no1_artist.get("name") if no1_artist else None,
+            "post_id": getattr(latest_no1_post, "id", None) if latest_no1_post else None,
+        }
+        if latest_no1_post
+        else None,
+        "latest_debut": {
+            "track": debut_track.get("name") if debut_track else None,
+            "artist": debut_artist.get("name") if debut_artist else None,
+            "post_id": getattr(latest_debut_post, "id", None) if latest_debut_post else None,
+        }
+        if latest_debut_post
+        else None,
+    }
+    return AgentToolResult(
+        data=data,
+        result_summary=_community_trending_result_summary(data),
+        source_range="community_trending",
+    )
+
+
 ANALYSIS_STATS_TOOL = AgentToolDefinition(
     name="analysis_stats",
     description="Read compact listening statistics for a bounded period.",
@@ -999,4 +1429,44 @@ COMPARE_ENTITIES_TOOL = AgentToolDefinition(
     read_only=True,
     params_model=CompareEntitiesParams,
     handler=compare_entities_handler,
+)
+
+ACCOUNT_SUMMARY_TOOL = AgentToolDefinition(
+    name="account_summary",
+    description="Read compact account-center overview including library, collection, and search signals.",
+    read_only=True,
+    params_model=AccountSummaryParams,
+    handler=account_summary_handler,
+)
+
+ACCOUNT_COLLECTION_INSIGHTS_TOOL = AgentToolDefinition(
+    name="account_collection_insights",
+    description="Read compact saved-library and collection-versus-playback insights.",
+    read_only=True,
+    params_model=AccountCollectionInsightsParams,
+    handler=account_collection_insights_handler,
+)
+
+SEARCH_HISTORY_TOOL = AgentToolDefinition(
+    name="search_history",
+    description="Read compact Spotify search-history statistics and top queries.",
+    read_only=True,
+    params_model=SearchHistoryParams,
+    handler=search_history_handler,
+)
+
+COMMUNITY_FEED_SEARCH_TOOL = AgentToolDefinition(
+    name="community_feed_search",
+    description="Read generated community feed posts filtered by search text or date range.",
+    read_only=True,
+    params_model=CommunityFeedSearchParams,
+    handler=community_feed_search_handler,
+)
+
+COMMUNITY_TRENDING_TOOL = AgentToolDefinition(
+    name="community_trending",
+    description="Read trending artists, tracks, latest #1, and debut signals from community posts.",
+    read_only=True,
+    params_model=CommunityTrendingParams,
+    handler=community_trending_handler,
 )

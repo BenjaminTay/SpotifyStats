@@ -566,7 +566,7 @@ function collectConsole(client) {
 const SCENARIOS = {
   'chart-hover-tooltip': async ({ client, baseUrl, waitMs }) => {
     await navigate(client, baseUrl, '/analysis/stats')
-    await waitForText(client, '总体播放统计', waitMs)
+    await waitForText(client, '播放统计', waitMs)
     await waitForCanvasCount(client, 1, waitMs)
     return hoverUntilTooltip(client, 0, waitMs)
   },

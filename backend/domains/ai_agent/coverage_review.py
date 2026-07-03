@@ -148,6 +148,11 @@ _ALLOWED_FOLLOWUP_TOOLS = {
     "listening_hours",
     "resolve_entity",
     "compare_entities",
+    "account_summary",
+    "account_collection_insights",
+    "search_history",
+    "community_feed_search",
+    "community_trending",
 }
 
 _PERIOD_NAMES = {
@@ -647,6 +652,20 @@ def _tool_calls_for_pattern(
         params = {"view": view} if isinstance(view, str) else {}
         return [{"tool_name": "listening_hours", "params": params}]
 
+    if tool_name in {
+        "account_summary",
+        "account_collection_insights",
+        "search_history",
+        "community_feed_search",
+        "community_trending",
+    }:
+        params = {
+            key: value
+            for key, value in pattern.items()
+            if key != "tool_name" and isinstance(key, str)
+        }
+        return [{"tool_name": tool_name, "params": params}]
+
     if tool_name == "wrapped_yearly":
         time_scope = frame.get("time_scope")
         if isinstance(time_scope, str) and time_scope.startswith("year:"):
@@ -798,6 +817,28 @@ def _axis_coverage_for(
 
     if axis == "time_of_day":
         return "covered" if _has_late_night_tool(tool_results) else "missing"
+
+    if axis == "collection":
+        return (
+            "covered"
+            if _has_tool(tool_results, "account_collection_insights")
+            or _has_tool(tool_results, "account_summary")
+            else "missing"
+        )
+
+    if axis == "search":
+        return "covered" if _has_tool(tool_results, "search_history") else "missing"
+
+    if axis == "community":
+        return (
+            "covered"
+            if _has_tool(tool_results, "community_trending")
+            or _has_tool(tool_results, "community_feed_search")
+            else "missing"
+        )
+
+    if axis == "safety":
+        return "covered"
 
     if axis == "ranking":
         required_context = recipe.get("required_context")

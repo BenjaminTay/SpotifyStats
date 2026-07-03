@@ -8,6 +8,7 @@ from typing import Any
 from backend.core.db import get_db
 from backend.domains.ai_agent.analytical_brief import build_analytical_brief
 from backend.domains.ai_agent.answer_critic import critique_answer
+from backend.domains.ai_agent.answer_obligations import build_answer_obligations
 from backend.domains.ai_agent.coverage_review import review_evidence_sufficiency
 from backend.domains.ai_agent.evidence import compact_evidence_cards
 from backend.domains.ai_agent.evidence_builders import build_evidence_cards
@@ -20,13 +21,20 @@ from backend.domains.ai_agent.project_context import (
 )
 from backend.domains.ai_agent.question_frame import build_question_frame
 from backend.domains.ai_agent.question_intent import parse_question_intent
+from backend.domains.ai_agent.temporal_context import (
+    apply_temporal_guard,
+    build_temporal_context,
+    temporal_answer_issues,
+)
 from backend.domains.ai_agent.tool_registry import describe_for_model, dispatch_tool
 from backend.domains.ai_tasks.repository import AiTaskRepository
 from backend.services import ai_insights_service
 
 MAX_TOOL_CALLS = 8
 MAX_COVERAGE_REVIEW_ROUNDS = 2
-FINAL_LLM_FAILURE_MESSAGE = "LLM 未配置或调用失败，无法生成回答"
+FINAL_LLM_UNCONFIGURED_MESSAGE = "LLM 未配置，无法生成回答"
+FINAL_LLM_PROVIDER_FAILURE_MESSAGE = "LLM 调用失败，已保留查询证据，可稍后重试"
+FINAL_LLM_FAILURE_MESSAGE = FINAL_LLM_PROVIDER_FAILURE_MESSAGE
 TERMINAL_STATUSES = {"done", "error", "cancelled"}
 
 BASE_PLANNER_SYSTEM_PROMPT = """你是 SpotifyStats 的只读数据工具规划器。
@@ -37,9 +45,14 @@ BASE_PLANNER_SYSTEM_PROMPT = """你是 SpotifyStats 的只读数据工具规划�
 DATA.question_intent 是系统给出的结构化提示。
 DATA.question_frame 是硬约束，family 决定问题类型，analysis_axes 决定必须覆盖的证据维度。
 DATA.evidence_recipe 是最低证据要求；规划工具时优先满足 required_axes 和 required_tool_patterns。
+DATA.temporal_context 是硬约束。用户问题中的今年、去年、上个月、最近、夏天等相对时间，必须以 question_time 为准解释；latest_play_date 只表示本地播放数据截止日期。
 如果 family=preference_comparison，必须优先使用 compare_entities，并尽量补 last_6_months 或 last_4_weeks 的 entity_stats。
 如果 family=trend_preference，不得只查询 lifetime。
 如果 family=time_of_day_ranking，必须使用 listening_hours 且 view=late_night_tracks。
+如果 family=account_collection，必须使用 account_collection_insights；可补 account_summary。
+如果 family=search_behavior，必须使用 search_history。
+如果 family=community_lookup，必须使用 community_trending；需要具体帖子时补 community_feed_search。
+如果 family=safety_boundary，返回空数组，不要调用任何工具。
 如果 task_type=comparison 且 compare_entities 出现在 available_tools，优先调用 compare_entities；2-4 个同类实体比较不要拆成大量单实体工具。
 如果问题点名比较歌曲、专辑或艺人，优先同时查询 entity_stats 与 billboard_entity_detail。
 如果 task_type=comparison 且 entities 非空，必须为每个实体查询比较所需工具。
@@ -53,7 +66,9 @@ BASE_FINAL_ANSWER_SYSTEM_PROMPT = """你是友好的 Spotify 听歌数据助手�
 DATA.coverage 是硬约束：coverage 标记为 found 的实体或榜单，不得说缺少、未查询或无法比较。
 DATA.question_frame.family 决定回答形状，DATA.answer_contract 或 DATA.analytical_brief.answer_contract 是硬约束。
 DATA.analytical_brief 是回答底稿；必须覆盖 must_explain，不得出现 forbidden_claims。
+DATA.answer_obligations 是硬约束；凡是其中要求的 token 或日期，都必须在最终回答正文中体现。
 DATA.answer_style 是硬约束，用来决定回答长短和结构。
+DATA.temporal_context 和 DATA.temporal_guard 是硬约束；回答中的时间标签、年份与工具 source_range 必须一致。
 如果 DATA.answer_style.style=concise，用 3-6 句或最多 3 个 bullet 直接回答；不要输出「我查了什么」「依据」「自检与限制」等固定小节，除非证据不足。
 如果 DATA.answer_style.style=structured，可使用少量小节或列表，但仍要围绕结论、关键数字和必要限制，不要写工具调用流水账。
 如果 DATA.answer_style.style=detailed，才可以展开为较完整的分析、表格或依据说明。
@@ -61,6 +76,7 @@ DATA.answer_style 是硬约束，用来决定回答长短和结构。
 如果 DATA.analytical_brief.conflict=true，必须分层回答，不要说所有指标都指向同一个对象。
 SpotifyStats Billboard 是本地个人榜单，不能把它表述成外部官方 Billboard、市场影响力或权威商业成绩。
 如果 answer_contract=scoped_ranking_answer，主结论必须来自 entity_stats 的 top_albums/top_tracks；按播放次数说明专辑和歌曲，可补充时长或近期窗口；top_albums/top_tracks 里的 share_pct 表示播放次数占比，不是时长占比；不要用 billboard_entity_detail 或全局 analysis_charts 替代主依据。
+如果 answer_contract=readonly_refusal_answer，直接说明当前 AI 问答只允许只读查询分析，不能执行删除、修改、写入、导入或外部调用。
 比较多个对象时，不要只看单一累计值；如果发行时间、数据窗口或统计口径影响公平性，要主动说明。
 用中文回答，引用关键数字；如果工具结果不足，直接说明限制。"""
 
@@ -70,7 +86,9 @@ BASE_THINKING_FINAL_ANSWER_SYSTEM_PROMPT = """你是友好的 Spotify 听歌数�
 DATA.coverage 是硬约束：coverage 标记为 found 的实体或榜单，不得说缺少、未查询或无法比较。
 DATA.question_frame.family 决定回答形状，DATA.answer_contract 或 DATA.analytical_brief.answer_contract 是硬约束。
 DATA.analytical_brief 是回答底稿；必须覆盖 must_explain，不得出现 forbidden_claims。
+DATA.answer_obligations 是硬约束；凡是其中要求的 token 或日期，都必须在最终回答正文中体现。
 DATA.answer_style 是硬约束；思考模式只表示工具核对更充分，不表示回答必须变长。
+DATA.temporal_context 和 DATA.temporal_guard 是硬约束；回答中的时间标签、年份与工具 source_range 必须一致。
 如果 DATA.answer_style.style=concise，用 3-6 句或最多 3 个 bullet 直接回答；不要输出「我查了什么」「依据」「自检与限制」等固定小节，除非证据不足。
 如果 DATA.answer_style.style=structured，可使用少量小节或列表，但仍要围绕结论、关键数字和必要限制，不要写工具调用流水账。
 如果 DATA.answer_style.style=detailed，才可以展开为较完整的分析、表格或依据说明。
@@ -78,6 +96,7 @@ DATA.answer_style 是硬约束；思考模式只表示工具核对更充分，�
 如果 DATA.analytical_brief.conflict=true，必须分层回答，不要说所有指标都指向同一个对象。
 SpotifyStats Billboard 是本地个人榜单，不能把它表述成外部官方 Billboard、市场影响力或权威商业成绩。
 如果 answer_contract=scoped_ranking_answer，主结论必须来自 entity_stats 的 top_albums/top_tracks；按播放次数说明专辑和歌曲，可补充时长或近期窗口；top_albums/top_tracks 里的 share_pct 表示播放次数占比，不是时长占比；不要用 billboard_entity_detail 或全局 analysis_charts 替代主依据。
+如果 answer_contract=readonly_refusal_answer，直接说明当前 AI 问答只允许只读查询分析，不能执行删除、修改、写入、导入或外部调用。
 比较多个对象时，不要只看单一累计值；如果发行时间、数据窗口或统计口径影响公平性，要主动说明。
 用中文回答，引用关键数字；如果工具结果不足，直接说明限制。"""
 
@@ -91,6 +110,56 @@ THINKING_FINAL_ANSWER_SYSTEM_PROMPT = build_final_answer_system_prompt(
 
 class ChatAgentError(RuntimeError):
     """Raised for expected chat-agent execution failures."""
+
+
+def _is_unconfigured_llm_error(error: Exception) -> bool:
+    message = str(error).casefold()
+    return any(
+        token in message
+        for token in (
+            "not configured",
+            "未配置",
+            "missing api key",
+            "api key is required",
+            "llm provider is not configured",
+        )
+    )
+
+
+def _classify_final_llm_error(error: Exception) -> str:
+    if _is_unconfigured_llm_error(error):
+        return FINAL_LLM_UNCONFIGURED_MESSAGE
+    return FINAL_LLM_PROVIDER_FAILURE_MESSAGE
+
+
+def _call_final_llm_with_retry(
+    call,
+    *,
+    on_retry=None,
+) -> str:
+    last_error: Exception | None = None
+    for attempt in range(2):
+        try:
+            answer = call()
+        except Exception as exc:
+            if _is_unconfigured_llm_error(exc):
+                raise ChatAgentError(FINAL_LLM_UNCONFIGURED_MESSAGE) from exc
+            last_error = exc
+            if attempt == 0:
+                if callable(on_retry):
+                    on_retry(exc)
+                continue
+            raise ChatAgentError(_classify_final_llm_error(exc)) from exc
+        if answer and str(answer).strip():
+            return str(answer)
+        last_error = RuntimeError("empty LLM response")
+        if attempt == 0:
+            if callable(on_retry):
+                on_retry(last_error)
+            continue
+    raise ChatAgentError(
+        _classify_final_llm_error(last_error or RuntimeError("empty LLM response"))
+    )
 
 
 def _set_stage(
@@ -299,7 +368,50 @@ def _question_context(request: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _question_family(request: dict[str, Any]) -> str:
+    return str(_question_context(request)["question_frame"].get("family") or "")
+
+
+def _play_data_range() -> dict[str, str | None]:
+    conn = None
+    try:
+        conn = get_db(readonly=True)
+        try:
+            row = conn.execute(
+                "SELECT min(ts_date), max(ts_date) FROM plays WHERE ts_date IS NOT NULL"
+            ).fetchone()
+        except Exception:
+            row = conn.execute("SELECT min(date(ts)), max(date(ts)) FROM plays").fetchone()
+        if row is None:
+            return {}
+        return {"data_start_date": row[0], "data_end_date": row[1]}
+    except Exception:
+        return {}
+    finally:
+        if conn is not None:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+
+def _temporal_context(request: dict[str, Any]) -> dict[str, Any]:
+    existing = request.get("_temporal_context")
+    if isinstance(existing, dict):
+        return existing
+    context = build_temporal_context(request, data_range=_play_data_range())
+    request["_temporal_context"] = context
+    return context
+
+
 def _thinking_fallback_plan(request: dict[str, Any]) -> list[dict[str, Any]]:
+    if _question_family(request) in {
+        "safety_boundary",
+        "account_collection",
+        "search_behavior",
+        "community_lookup",
+    }:
+        return _fallback_plan(request)
     base = _base_filter_params(request)
     merge_level = request.get("merge_level", 1)
     return [
@@ -323,9 +435,75 @@ def _thinking_fallback_plan(request: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def _fallback_plan(request: dict[str, Any]) -> list[dict[str, Any]]:
+    family = _question_family(request)
+    if family == "safety_boundary":
+        return []
+    if family == "account_collection":
+        return [{"tool_name": "account_collection_insights", "params": {}}]
+    if family == "search_behavior":
+        return [{"tool_name": "search_history", "params": {}}]
+    if family == "community_lookup":
+        return [{"tool_name": "community_trending", "params": {}}]
     if _thinking_mode_enabled(request):
         return _thinking_fallback_plan(request)
     return [{"tool_name": "analysis_stats", "params": _base_filter_params(request)}]
+
+
+def _chart_entity_for_temporal_fallback(question: str) -> str:
+    if _question_contains_any(question, ("专辑", "album")):
+        return "album"
+    if _question_contains_any(question, ("歌曲", "单曲", "什么歌", "track", "song")):
+        return "track"
+    return "artist"
+
+
+def _has_bounded_temporal_tool(
+    plan: list[dict[str, Any]],
+    temporal_guard: dict[str, Any],
+) -> bool:
+    interpretation = temporal_guard.get("time_interpretation")
+    if not isinstance(interpretation, dict):
+        return True
+    expected_start = interpretation.get("start_date")
+    expected_end = interpretation.get("end_date")
+    if not expected_start or not expected_end:
+        return True
+    for item in plan:
+        if not isinstance(item, dict):
+            continue
+        params = item.get("params") if isinstance(item.get("params"), dict) else {}
+        if params.get("start_date") == expected_start and params.get("end_date") == expected_end:
+            return True
+    return False
+
+
+def _temporal_bounded_tool_call(
+    request: dict[str, Any],
+    temporal_guard: dict[str, Any],
+) -> dict[str, Any] | None:
+    interpretation = temporal_guard.get("time_interpretation")
+    if not isinstance(interpretation, dict):
+        return None
+    start_date = interpretation.get("start_date")
+    end_date = interpretation.get("end_date")
+    if not start_date or not end_date:
+        return None
+    question = str(request.get("question") or "")
+    return {
+        "tool_name": "analysis_charts",
+        "params": {
+            **_base_filter_params(request),
+            "period": "custom",
+            "start_date": start_date,
+            "end_date": end_date,
+            "entity": _chart_entity_for_temporal_fallback(question),
+            "metric": "plays",
+            "limit": 20,
+            "offset": 0,
+            "merge_level": request.get("merge_level", 1),
+            "include_compilations": False,
+        },
+    }
 
 
 def _compact_json(value: Any, *, limit: int = 12000) -> str:
@@ -366,6 +544,14 @@ def _tool_call_identity(tool_call: dict[str, Any]) -> tuple[str, str]:
         "merge_level",
         "year_start",
         "year_end",
+        "search",
+        "highlights_only",
+        "date_from",
+        "date_to",
+        "include_collection",
+        "include_search",
+        "artist_limit",
+        "track_limit",
     )
     identity_params = {key: params[key] for key in identity_keys if key in params}
     names = identity_params.get("names")
@@ -446,7 +632,23 @@ def _prepare_followup_tool_call(
     request: dict[str, Any],
 ) -> dict[str, Any] | None:
     prepared = _sanitize_plan([followup], request)
-    return prepared[0] if prepared else None
+    if not prepared:
+        return None
+    guarded, temporal_guard = apply_temporal_guard(
+        str(request.get("question") or ""),
+        _temporal_context(request),
+        prepared,
+    )
+    if temporal_guard.get("had_corrections"):
+        existing_guard = request.get("_temporal_guard")
+        if isinstance(existing_guard, dict):
+            existing_guard.setdefault("followup_corrections", []).extend(
+                temporal_guard.get("corrections") or []
+            )
+            request["_temporal_guard"] = existing_guard
+        else:
+            request["_temporal_guard"] = temporal_guard
+    return guarded[0] if guarded else None
 
 
 def _extract_json_array(raw: str | None) -> list[Any] | None:
@@ -466,6 +668,52 @@ def _extract_json_array(raw: str | None) -> list[Any] | None:
     except json.JSONDecodeError:
         return None
     return parsed if isinstance(parsed, list) else None
+
+
+def _compact_param_schema(schema: dict[str, Any]) -> dict[str, Any]:
+    properties = schema.get("properties")
+    if not isinstance(properties, dict):
+        return {}
+    compact_props: dict[str, Any] = {}
+    for name, raw_prop in properties.items():
+        if not isinstance(name, str) or not isinstance(raw_prop, dict):
+            continue
+        prop = {
+            key: raw_prop[key]
+            for key in ("type", "enum", "default", "minimum", "maximum")
+            if key in raw_prop
+        }
+        any_of = raw_prop.get("anyOf")
+        if isinstance(any_of, list):
+            prop["anyOf"] = [
+                {key: branch[key] for key in ("type", "enum") if key in branch}
+                for branch in any_of
+                if isinstance(branch, dict)
+            ]
+        compact_props[name] = prop
+    compact: dict[str, Any] = {"properties": compact_props}
+    required = schema.get("required")
+    if isinstance(required, list) and required:
+        compact["required"] = required
+    return compact
+
+
+def _available_tools_for_planner() -> list[dict[str, Any]]:
+    compact_tools = []
+    for tool in describe_for_model():
+        if not isinstance(tool, dict):
+            continue
+        compact_tools.append(
+            {
+                "name": tool.get("name"),
+                "description": tool.get("description"),
+                "read_only": tool.get("read_only"),
+                "params_schema": _compact_param_schema(
+                    tool.get("params_schema") if isinstance(tool.get("params_schema"), dict) else {}
+                ),
+            }
+        )
+    return compact_tools
 
 
 def _sanitize_plan(raw_items: list[Any], request: dict[str, Any]) -> list[dict[str, Any]]:
@@ -489,6 +737,8 @@ def _sanitize_plan(raw_items: list[Any], request: dict[str, Any]) -> list[dict[s
             "billboard_entity_detail",
             "compare_entities",
             "wrapped_yearly",
+            "community_feed_search",
+            "community_trending",
         }:
             merged_params.setdefault("merge_level", merge_level)
         plan.append({"tool_name": tool_name, "params": merged_params})
@@ -502,6 +752,13 @@ def _augment_plan_for_thinking_mode(
     request: dict[str, Any],
 ) -> list[dict[str, Any]]:
     if not _thinking_mode_enabled(request):
+        return plan
+    if _question_family(request) in {
+        "safety_boundary",
+        "account_collection",
+        "search_behavior",
+        "community_lookup",
+    }:
         return plan
     augmented = list(plan)
     existing = {item["tool_name"] for item in augmented}
@@ -521,30 +778,57 @@ def _planner_user_content(request: dict[str, Any]) -> str:
     payload = {
         "question": question,
         **context,
+        "temporal_context": _temporal_context(request),
         "conversation_history": (request.get("conversation_history") or [])[-6:],
         "thinking_mode": _thinking_mode_enabled(request),
         "default_filters": {
             **_base_filter_params(request),
             "merge_level": request.get("merge_level", 1),
         },
-        "available_tools": describe_for_model(),
+        "available_tools": _available_tools_for_planner(),
     }
     return _compact_json(payload, limit=16000)
 
 
 def _plan_tool_calls(request: dict[str, Any]) -> tuple[list[dict[str, Any]], str]:
-    raw = ai_insights_service._llm_chat(
-        PLANNER_SYSTEM_PROMPT,
-        _planner_user_content(request),
-        temperature=0.1,
-    )
+    try:
+        raw = ai_insights_service._llm_chat(
+            PLANNER_SYSTEM_PROMPT,
+            _planner_user_content(request),
+            temperature=0.1,
+        )
+    except Exception:
+        raw = None
     parsed = _extract_json_array(raw)
     if parsed is None:
-        return _fallback_plan(request), "fallback"
-    plan = _sanitize_plan(parsed, request)
+        plan = _fallback_plan(request)
+        mode = "fallback"
+    else:
+        plan = _sanitize_plan(parsed, request)
+        mode = "planned"
     if not plan:
-        return _fallback_plan(request), "fallback"
-    return _augment_plan_for_thinking_mode(plan, request), "planned"
+        plan = _fallback_plan(request)
+        mode = "fallback"
+    plan = _augment_plan_for_thinking_mode(plan, request)
+    guarded_plan, temporal_guard = apply_temporal_guard(
+        str(request.get("question") or ""),
+        _temporal_context(request),
+        plan,
+    )
+    request["_temporal_guard"] = temporal_guard
+    if temporal_guard.get("had_corrections"):
+        mode = f"{mode}_temporal_guarded"
+    if not _has_bounded_temporal_tool(guarded_plan, temporal_guard):
+        bounded_tool = _temporal_bounded_tool_call(request, temporal_guard)
+        if bounded_tool is not None:
+            identity = _tool_call_identity(bounded_tool)
+            existing_identities = {_tool_call_identity(item) for item in guarded_plan}
+            if identity not in existing_identities and len(guarded_plan) < MAX_TOOL_CALLS:
+                guarded_plan.append(bounded_tool)
+                temporal_guard["bounded_tool_added"] = bounded_tool
+                request["_temporal_guard"] = temporal_guard
+                mode = f"{mode}_temporal_bounded"
+    return guarded_plan, mode
 
 
 def _named_param(params_summary: str, key: str) -> str | None:
@@ -695,6 +979,8 @@ def _tool_data_evidence(data: Any) -> dict[str, Any]:
     evidence: dict[str, Any] = {}
     for key in (
         "found",
+        "available",
+        "empty",
         "album_name",
         "track_name",
         "artist_name",
@@ -703,10 +989,26 @@ def _tool_data_evidence(data: Any) -> dict[str, Any]:
         "summary",
         "chart_summary",
         "info",
+        "has_account_data",
+        "library",
+        "collection_insights",
+        "personality",
+        "overview",
+        "first_save_story",
+        "lifecycle",
+        "top_queries",
+        "intent_dist",
+        "meta",
+        "posts",
+        "artists",
+        "latest_no1",
+        "latest_debut",
     ):
         value = data.get(key)
         if isinstance(value, (str, int, float, bool)) or isinstance(value, dict):
             evidence[key] = value
+        elif isinstance(value, list):
+            evidence[key] = value[:10]
     album_project = _album_project_evidence(data.get("album_project"))
     if album_project:
         evidence["album_project"] = album_project
@@ -816,6 +1118,15 @@ def _final_payload(
     evidence_cards = build_evidence_cards(tool_results)
     compact_cards = compact_evidence_cards(evidence_cards)
     context = _question_context(request)
+    temporal_context = _temporal_context(request)
+    temporal_guard = request.get("_temporal_guard")
+    if not isinstance(temporal_guard, dict):
+        _, temporal_guard = apply_temporal_guard(
+            str(request.get("question") or ""),
+            temporal_context,
+            [],
+        )
+        request["_temporal_guard"] = temporal_guard
     coverage = _build_coverage(tool_results)
     evidence_sufficiency = review_evidence_sufficiency(
         question_frame=context["question_frame"],
@@ -830,6 +1141,13 @@ def _final_payload(
         coverage=coverage,
         evidence_cards=compact_cards,
     )
+    answer_obligations = build_answer_obligations(
+        question=str(request.get("question") or ""),
+        question_frame=context["question_frame"],
+        temporal_context=temporal_context,
+        temporal_guard=temporal_guard,
+        evidence_sufficiency=evidence_sufficiency,
+    )
     answer_style = _answer_style(
         request,
         question_frame=context["question_frame"],
@@ -839,11 +1157,14 @@ def _final_payload(
         "question": request.get("question", ""),
         "conversation_history": (request.get("conversation_history") or [])[-6:],
         **context,
+        "temporal_context": temporal_context,
+        "temporal_guard": temporal_guard,
         **project_context_payload(),
         "answer_style": answer_style,
         "coverage": coverage,
         "evidence_sufficiency": evidence_sufficiency,
         "analytical_brief": analytical_brief,
+        "answer_obligations": answer_obligations,
         "evidence_cards": compact_cards,
         "tool_results": compact_results,
     }
@@ -856,11 +1177,15 @@ def _final_user_content(
     return _compact_json(_final_payload(request, tool_results), limit=16000)
 
 
-def _answer_validation_issues(answer: str, coverage: dict[str, Any]) -> list[str]:
+def _answer_validation_issues(
+    answer: str,
+    coverage: dict[str, Any],
+    temporal_guard: dict[str, Any] | None = None,
+) -> list[str]:
     issues: list[str] = []
     entities = coverage.get("entities") if isinstance(coverage, dict) else {}
     if not isinstance(entities, dict):
-        return issues
+        entities = {}
     sentences = [
         part.strip()
         for chunk in answer.replace("。", "\n").replace("；", "\n").replace("，", "\n").splitlines()
@@ -898,6 +1223,7 @@ def _answer_validation_issues(answer: str, coverage: dict[str, Any]) -> list[str
             )
         ):
             issues.append(f"{entity_name} 已有 Billboard 工具结果，但回答声称缺少榜单成绩")
+    issues.extend(temporal_answer_issues(answer, temporal_guard or {}))
     return issues
 
 
@@ -914,7 +1240,8 @@ def _retry_user_content(
             "上一版回答与工具证据或回答契约矛盾。请只基于 coverage、"
             "evidence_sufficiency、analytical_brief 和 tool_results 重新回答；"
             "不要声称 found 的实体或榜单数据缺失，不要忽略 analytical_brief.must_explain，"
-            "并严格遵守 project_context_version、answer_style 和 Project Context 的项目语境要求。"
+            "必须满足 answer_obligations，并严格遵守 project_context_version、answer_style "
+            "和 Project Context 的项目语境要求。"
         ),
     }
     return _compact_json(retry_payload, limit=16000)
@@ -944,6 +1271,23 @@ def run_chat_agent_task(task_id: str, request: dict[str, Any]) -> None:
             message="工具规划完成",
             payload={"mode": plan_mode, "tool_count": len(tool_plan)},
         )
+        temporal_guard = request.get("_temporal_guard")
+        if isinstance(temporal_guard, dict):
+            interpretation = temporal_guard.get("time_interpretation")
+            if isinstance(interpretation, dict):
+                start = interpretation.get("start_date")
+                end = interpretation.get("end_date")
+                label = interpretation.get("label") or "相对时间"
+                message = f"时间范围解释：{label} → {start} 至 {end}"
+                if temporal_guard.get("had_corrections"):
+                    message = f"已校正时间范围：{label} → {start} 至 {end}"
+                repo.add_event(
+                    task_id=task_id,
+                    event_type="temporal_context",
+                    stage="temporal_context",
+                    message=message,
+                    payload=temporal_guard,
+                )
 
         tool_results: list[dict[str, Any]] = []
         for index, tool_call in enumerate(tool_plan[:MAX_TOOL_CALLS], start=1):
@@ -1029,29 +1373,62 @@ def run_chat_agent_task(task_id: str, request: dict[str, Any]) -> None:
 
         final_payload = _final_payload(request, tool_results)
         final_user_content = _compact_json(final_payload, limit=16000)
-        answer = ai_insights_service._llm_chat(
+        final_system_prompt = (
             THINKING_FINAL_ANSWER_SYSTEM_PROMPT
             if _thinking_mode_enabled(request)
-            else FINAL_ANSWER_SYSTEM_PROMPT,
-            final_user_content,
-            temperature=0.4,
+            else FINAL_ANSWER_SYSTEM_PROMPT
         )
-        if not answer or not answer.strip():
-            raise ChatAgentError(FINAL_LLM_FAILURE_MESSAGE)
+        answer = _call_final_llm_with_retry(
+            lambda: ai_insights_service._llm_chat(
+                final_system_prompt,
+                final_user_content,
+                temperature=0.4,
+            ),
+            on_retry=lambda exc: repo.add_event(
+                task_id=task_id,
+                event_type="llm_retry",
+                stage="calling_llm",
+                message="LLM 调用失败，正在重试一次",
+                payload={"error": str(exc) or exc.__class__.__name__},
+            ),
+        )
         answer = answer.strip()
         answer_retried = False
-        validation_issues = _answer_validation_issues(answer, final_payload["coverage"])
+        validation_issues = _answer_validation_issues(
+            answer,
+            final_payload["coverage"],
+            final_payload.get("temporal_guard")
+            if isinstance(final_payload.get("temporal_guard"), dict)
+            else None,
+        )
         critic_result = critique_answer(answer, final_payload)
         if not critic_result["ok"]:
             validation_issues.extend(str(issue) for issue in critic_result.get("issues", []))
         if validation_issues:
-            retry_answer = ai_insights_service._llm_chat(
-                THINKING_FINAL_ANSWER_SYSTEM_PROMPT
-                if _thinking_mode_enabled(request)
-                else FINAL_ANSWER_SYSTEM_PROMPT,
-                _retry_user_content(final_payload, answer, validation_issues),
-                temperature=0.25,
-            )
+            try:
+                retry_answer = _call_final_llm_with_retry(
+                    lambda: ai_insights_service._llm_chat(
+                        final_system_prompt,
+                        _retry_user_content(final_payload, answer, validation_issues),
+                        temperature=0.25,
+                    ),
+                    on_retry=lambda exc: repo.add_event(
+                        task_id=task_id,
+                        event_type="llm_retry",
+                        stage="calling_llm",
+                        message="LLM 修正回答失败，正在重试一次",
+                        payload={"error": str(exc) or exc.__class__.__name__},
+                    ),
+                )
+            except ChatAgentError as exc:
+                retry_answer = ""
+                repo.add_event(
+                    task_id=task_id,
+                    event_type="answer_retry_failed",
+                    stage="calling_llm",
+                    message="回答修正重试失败，保留初版回答",
+                    payload={"error": str(exc)},
+                )
             if retry_answer and retry_answer.strip():
                 answer = retry_answer.strip()
                 answer_retried = True
@@ -1068,9 +1445,12 @@ def run_chat_agent_task(task_id: str, request: dict[str, Any]) -> None:
                 "project_context_version": PROJECT_CONTEXT_VERSION,
                 "validation_issues": validation_issues,
                 "coverage": final_payload["coverage"],
+                "temporal_context": final_payload["temporal_context"],
+                "temporal_guard": final_payload["temporal_guard"],
                 "question_frame": final_payload["question_frame"],
                 "evidence_sufficiency": final_payload["evidence_sufficiency"],
                 "analytical_brief": final_payload["analytical_brief"],
+                "answer_obligations": final_payload["answer_obligations"],
                 "evidence_cards": final_payload["evidence_cards"],
                 "tools": [
                     {

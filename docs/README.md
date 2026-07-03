@@ -34,6 +34,8 @@
 |------|------|
 | [`verification/2026-06-19-fullstack-verification.md`](verification/2026-06-19-fullstack-verification.md) | 全栈验证与性能收口最终报告 |
 | [`verification/2026-06-20-fix-branch-follow-up.md`](verification/2026-06-20-fix-branch-follow-up.md) | fix 分支修复验证跟进 |
+| [`verification/2026-07-03-ai-question-test-matrix.md`](verification/2026-07-03-ai-question-test-matrix.md) | AI 问答与全应用功能测试问题清单、详细测试步骤、缺陷记录模板；可用 `scripts/evaluate_ai_question_matrix.py` 做静态完整性检查 |
+| [`verification/2026-07-03-ai-question-matrix-test-report.md`](verification/2026-07-03-ai-question-matrix-test-report.md) | AI 问答矩阵与全应用功能验收执行报告、失败样本、修复建议和 2026-07-03 修复实施记录 |
 
 ## 产品化台账
 
@@ -55,6 +57,7 @@
 | [`superpowers/plans/2026-06-29-ai-agent-universal-analytical-harness.md`](superpowers/plans/2026-06-29-ai-agent-universal-analytical-harness.md) | AI Agent 通用分析中间层实施计划：问题家族、证据配方、分析底稿、回答契约与验收步骤 |
 | [`superpowers/specs/2026-06-29-ai-project-context-prompt-design.md`](superpowers/specs/2026-06-29-ai-project-context-prompt-design.md) | AI Agent Project Context Prompt 设计：项目语境、工具 playbook、回答哲学与只读安全边界 |
 | [`superpowers/plans/2026-06-29-ai-project-context-prompt.md`](superpowers/plans/2026-06-29-ai-project-context-prompt.md) | AI Agent Project Context Prompt 实施计划：prompt 组合、版本化 metadata、golden answer style 与验证步骤 |
+| [`superpowers/plans/2026-07-03-ai-harness-matrix-fixes.md`](superpowers/plans/2026-07-03-ai-harness-matrix-fixes.md) | AI 问答矩阵验收后的完整修复计划：LLM 可靠性、coverage、时间语义、页面域工具、critic 与 smoke |
 
 ## 历史归档
 

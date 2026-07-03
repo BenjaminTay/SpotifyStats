@@ -43,6 +43,8 @@ export interface ReportTaskRequest {
 export interface ChatAgentTaskRequest {
   question: string
   conversation_history?: Array<{ role: string; content: string }>
+  question_time?: string
+  timezone?: string
   thinking_mode?: boolean
   min_ms?: number
   music_only?: boolean

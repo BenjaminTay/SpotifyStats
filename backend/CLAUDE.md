@@ -60,7 +60,7 @@ FastAPI 后端采用四层分离：**api/**（路由 + Depends 依赖注入）�
 | `services/llm_translator.py` | 多提供商 LLM 翻译与结构化（DeepSeek/OpenAI/Anthropic/自定义） |
 | `services/ai_insights_service.py` | AI 洞察：周报/月报/年度叙事 + 自然语言问答 + 推荐问题随机池（复用 LLM 基建 + wikipedia_cache 表） |
 | `services/ai_task_service.py` | AI task 编排：报告 cache check/manual generation、艺人/专辑 enrichment、任务状态与事件持久化 |
-| `services/ai_agent_service.py` | 只读 AI Agent 问答：LLM 规划工具、执行 allowlist 工具、压缩 evidence cards、QuestionFrame/EvidenceRecipe、证据充分性复核、AnalyticalBrief、answer contract critic 与必要时重试回答 |
+| `services/ai_agent_service.py` | 只读 AI Agent 问答：LLM 规划工具、执行 allowlist 工具、压缩 evidence cards、QuestionFrame/EvidenceRecipe、temporal context/guard、证据充分性复核、AnalyticalBrief、answer contract critic 与必要时重试回答 |
 | `services/chat_service.py` | 对话历史管理：会话 CRUD + 消息持久化 + 自动标题（取首条用户消息前 30 字符） |
 | `services/spotify_auth.py` | OAuth PKCE 授权与数据同步 |
 | `services/account_service.py` | 账号中心聚合（收藏分析 + 搜索/习惯） |
@@ -74,7 +74,7 @@ FastAPI 后端采用四层分离：**api/**（路由 + Depends 依赖注入）�
 - `domains/metadata/` — `spotify_refresh.py`（缺失 Spotify track/album metadata 批量刷新与 album link evidence 写入）/ `import_health.py`（近期导入元数据覆盖与 album project 覆盖核验）
 - `domains/enrichment/repository.py` — 歌词/Wikipedia/LLM 缓存表访问
 - `domains/ai_tasks/` — `AiTaskRepository` 管理 AI task runs、events、tool calls，支持取消、进度查询和 trace 查询
-- `domains/ai_agent/` — 后端定义的只读 Agent 工具注册表、question intent、QuestionFrame、EvidenceRecipe、EvidenceSufficiency、AnalyticalBrief、entity resolver、compare_entities、coverage review、answer critic、golden harness、evidence builders 与 handler；当前覆盖总体统计、排行、播放记录、年度总结、实体统计、个人 Billboard 实体详情和听歌时段/深夜歌曲排行
+- `domains/ai_agent/` — 后端定义的只读 Agent 工具注册表、question intent、QuestionFrame、EvidenceRecipe、EvidenceSufficiency、AnalyticalBrief、temporal context/guard、entity resolver、compare_entities、coverage review、answer critic、golden harness、evidence builders 与 handler；当前覆盖总体统计、排行、播放记录、年度总结、实体统计、个人 Billboard 实体详情、听歌时段/深夜歌曲排行、账号收藏、搜索历史、社区帖子搜索和社区热议趋势
 - `domains/community/` — 榜单社区模拟 X 时间线：`accounts.py`（10 个模拟资讯账号）+ `post_types.py`（18 种帖子类型/7 种精选类型/模板/评分）+ `historical_state.py`（逐周累计历史状态追踪器，去重计数）+ `feed_generator.py`（编排器，~600 行）+ `feed_helpers.py`（格式/ID/指标工具）+ `feed_data.py`（榜单数据加载）+ `feed_weekly.py`（每周速报）+ `feed_records.py`（纪录/里程碑）+ `feed_personal.py`（个人播放/收藏）+ `feed_talk.py`（深度分析）+ `feed_ranking.py`（全时期排名/Power Score）+ `feed_images.py`（封面匹配）
 - `domains/chat/repository.py` — 对话历史持久化：`ChatRepository` 类封装 `chat_sessions`/`chat_messages` 表 CRUD，`ON DELETE CASCADE` 删除会话自动清消息
 
@@ -109,6 +109,7 @@ Contract 测试使用 canonical `backend/tests/fixtures/seed.db` 的临时副本
 - `album_spotify_links` 表记录本地 album→Spotify album 的证据链接（含 confidence）；封面和元数据查询优先走此表（album-type 优先 + 置信度排序），回退旧 track-chain；ORDER BY 必须有 tiebreaker（release_date DESC）
 - `artist_summary` 必须按 track_id 聚合（不含 album_name），防止同一曲目因多专辑归属被拆分
 - AI Agent 工具结果必须保留 `params_summary`、`result_summary`、`source_range` 和必要 compact evidence；最终回答 prompt 必须遵守 coverage、EvidenceSufficiency 与 AnalyticalBrief，不得把 found 实体或个人 Billboard 结果说成缺失，也不得在 answer contract 冲突时给过度单边结论
+- AI Agent 相对时间必须以 `temporal_context.question_time` 为锚点；前端应传 `question_time`/`timezone`，后端必须兜底生成 `temporal_context` 并用 `temporal_guard` 在工具执行前校正“去年/今年/上个月/夏天”等明显错年的参数，最终 task result 要保留 `temporal_context` 与 `temporal_guard`
 - AI Agent 项目语境由 `backend/domains/ai_agent/project_context.py` 统一维护；新增 prompt 规则时优先更新 Project Context / Tool Playbook / Answer Philosophy，并同步 `test_ai_agent_project_context.py`、golden fixture 和 changelog，避免在 `ai_agent_service.py` 中复制散落语境。
 - Agent 工具只允许后端注册的 read-only handler；禁止任意 SQL、任意 URL、settings/import/cache/playlist 写入和未审核 backend route 透传
 - 新增或调整 Agent 问答能力时必须同步 golden fixture（`backend/tests/fixtures/ai_agent_golden_questions.json`）和 `scripts/evaluate_ai_agent_harness.py` 约束；若问题需要新证据，优先补后端只读工具而不是让 fixture 迁就不完整工具

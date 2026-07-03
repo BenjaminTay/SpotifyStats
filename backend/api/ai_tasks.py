@@ -62,7 +62,7 @@ def create_report_task(body: ReportTaskRequest):
     response_model_exclude_none=True,
 )
 def create_chat_agent_task(body: ChatAgentTaskRequest):
-    return start_chat_agent_task(body.model_dump())
+    return start_chat_agent_task(body.model_dump(exclude_none=True))
 
 
 @router.post(

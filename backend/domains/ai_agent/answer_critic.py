@@ -109,6 +109,26 @@ METRIC_LAYERING_TOKENS = (
     "Power Score",
 )
 
+SAFE_REFUSAL_TOKENS = (
+    "只读",
+    "不能",
+    "无法",
+    "不会",
+    "不支持",
+    "没有权限",
+)
+
+WRITE_OPERATION_TOKENS = (
+    "删除",
+    "修改",
+    "写入",
+    "更新",
+    "导入",
+    "设置",
+    "执行",
+    "写操作",
+)
+
 
 def _sentences(answer: str) -> list[str]:
     normalized = answer
@@ -156,6 +176,10 @@ def _brief(final_payload: dict[str, Any]) -> dict[str, Any]:
 
 def _evidence_sufficiency(final_payload: dict[str, Any]) -> dict[str, Any]:
     return _as_dict(final_payload.get("evidence_sufficiency"))
+
+
+def _question_frame(final_payload: dict[str, Any]) -> dict[str, Any]:
+    return _as_dict(final_payload.get("question_frame"))
 
 
 def _must_explain_requires(must_explain: list[str], token: str) -> bool:
@@ -265,8 +289,11 @@ def _check_must_explain_contract(answer: str, analytical_brief: dict[str, Any]) 
 def _check_insufficient_evidence_contract(
     answer: str,
     evidence_sufficiency: dict[str, Any],
+    question_frame: dict[str, Any],
 ) -> list[str]:
     if evidence_sufficiency.get("sufficient") is not False:
+        return []
+    if question_frame.get("family") == "safety_boundary" and _is_clear_safe_refusal(answer):
         return []
     issues: list[str] = []
     if not _contains_any(answer, LIMITATION_TOKENS):
@@ -278,18 +305,67 @@ def _check_insufficient_evidence_contract(
     return issues
 
 
+def _is_clear_safe_refusal(answer: str) -> bool:
+    return _contains_any(answer, SAFE_REFUSAL_TOKENS) and (
+        _contains_any(answer, WRITE_OPERATION_TOKENS) or "只读" in answer
+    )
+
+
+def _answer_obligations(final_payload: dict[str, Any]) -> list[dict[str, Any]]:
+    value = final_payload.get("answer_obligations")
+    if not isinstance(value, list):
+        return []
+    return [item for item in value if isinstance(item, dict)]
+
+
+def _obligation_values_satisfied(answer: str, values: list[Any]) -> bool:
+    required_values = [str(value) for value in values if value]
+    if not required_values:
+        return True
+    if len(required_values) >= 2:
+        return all(value in answer for value in required_values)
+    return any(value in answer for value in required_values)
+
+
+def _check_answer_obligations(answer: str, final_payload: dict[str, Any]) -> list[str]:
+    issues: list[str] = []
+    for obligation in _answer_obligations(final_payload):
+        kind = str(obligation.get("kind") or "unknown")
+        tokens = tuple(
+            token
+            for token in obligation.get("required_tokens_any", [])
+            if isinstance(token, str) and token
+        )
+        values = obligation.get("required_values")
+        if not isinstance(values, list):
+            values = []
+        tokens_ok = True if not tokens else _contains_any(answer, tokens)
+        values_ok = _obligation_values_satisfied(answer, values)
+        if kind == "readonly_refusal" and _is_clear_safe_refusal(answer):
+            continue
+        if not tokens_ok or not values_ok:
+            issues.append(f"answer_obligations.{kind} 未满足。")
+    return issues
+
+
 def critique_answer(answer: str, final_payload: dict[str, Any]) -> dict[str, Any]:
     """Return deterministic answer issues without calling external services."""
     issues: list[str] = []
     if not isinstance(final_payload, dict):
         final_payload = {}
     analytical_brief = _brief(final_payload)
+    question_frame = _question_frame(final_payload)
     issues.extend(_check_forbidden_claims(answer, analytical_brief))
     issues.extend(_check_conflict_contract(answer, analytical_brief))
     issues.extend(_check_must_explain_contract(answer, analytical_brief))
     issues.extend(
-        _check_insufficient_evidence_contract(answer, _evidence_sufficiency(final_payload))
+        _check_insufficient_evidence_contract(
+            answer,
+            _evidence_sufficiency(final_payload),
+            question_frame,
+        )
     )
+    issues.extend(_check_answer_obligations(answer, final_payload))
 
     for sentence in _sentences(answer):
         if not _has_unnegated_any(sentence, EXTERNAL_BILLBOARD_TOKENS):

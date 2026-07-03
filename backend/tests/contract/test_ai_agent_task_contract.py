@@ -236,6 +236,7 @@ def test_chat_agent_task_runs_sync_and_persists_events_and_tool_trace(
     assert "question_frame" in status_payload["result"]
     assert "evidence_sufficiency" in status_payload["result"]
     assert "analytical_brief" in status_payload["result"]
+    assert "answer_obligations" in status_payload["result"]
     assert isinstance(status_payload["result"]["question_frame"]["family"], str)
     assert "sufficient" in status_payload["result"]["evidence_sufficiency"]
     assert "answer_contract" in status_payload["result"]["analytical_brief"]
@@ -256,7 +257,8 @@ def test_chat_agent_task_runs_sync_and_persists_events_and_tool_trace(
     assert tool_calls[0]["result_summary"] == "plays=77, hours=9.5"
     assert tool_calls[0]["source_range"] == "2026"
     assert tool_calls[1]["params_summary"] == "view=late_night_ratio"
-    assert len(llm_calls) == 2
+    assert len(llm_calls) == 3
+    assert status_payload["result"]["answer_retried"] is True
 
 
 def test_chat_agent_thinking_mode_uses_deeper_fallback_and_review_stage(
@@ -726,7 +728,7 @@ def test_chat_agent_task_marks_error_when_final_llm_is_empty(client, monkeypatch
 
     assert status_payload["status"] == "error"
     assert status_payload["stage"] == "error"
-    assert "LLM 未配置或调用失败" in status_payload["message"]
+    assert "LLM 调用失败" in status_payload["message"]
     assert events_payload["events"][-1]["event_type"] == "stage_failed"
     assert events_payload["events"][-1]["stage"] == "error"
 

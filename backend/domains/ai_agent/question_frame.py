@@ -19,6 +19,10 @@ QuestionFamily = Literal[
     "change_explanation",
     "time_of_day_ranking",
     "identity_preference",
+    "account_collection",
+    "search_behavior",
+    "community_lookup",
+    "safety_boundary",
     "habit_summary",
 ]
 
@@ -37,6 +41,10 @@ AnalysisAxis = Literal[
     "consistency",
     "peak",
     "behavior",
+    "collection",
+    "search",
+    "community",
+    "safety",
 ]
 
 AnswerContract = Literal[
@@ -49,6 +57,10 @@ AnswerContract = Literal[
     "change_explanation_answer",
     "time_of_day_answer",
     "identity_preference_answer",
+    "account_collection_answer",
+    "search_behavior_answer",
+    "community_lookup_answer",
+    "readonly_refusal_answer",
     "habit_summary_answer",
 ]
 
@@ -82,6 +94,34 @@ def _dedupe_axes(axes: list[AnalysisAxis]) -> list[AnalysisAxis]:
 
 
 def _family(question: str, intent: QuestionIntent) -> QuestionFamily:
+    if _contains_any(
+        question,
+        (
+            "删除",
+            "修改设置",
+            "改设置",
+            "写入",
+            "更新数据库",
+            "执行sql",
+            "执行 SQL",
+            "调用外部",
+            "联网搜索",
+            "导入数据",
+        ),
+    ):
+        return "safety_boundary"
+    if _contains_any(
+        question,
+        ("社区", "社区动态", "帖子", "feed", "trending", "热议", "推文"),
+    ):
+        return "community_lookup"
+    if _contains_any(question, ("搜索记录", "搜索历史", "最常搜索", "搜过", "搜索什么")):
+        return "search_behavior"
+    if _contains_any(
+        question,
+        ("收藏", "收藏夹", "已保存", "saved", "liked", "账号", "歌单", "playlist", "关注"),
+    ):
+        return "account_collection"
     if _contains_any(question, ("是否就代表", "是不是就代表", "等于最喜欢", "代表最喜欢")):
         return "habit_summary"
     if _contains_any(question, ("本命", "真爱", "核心偏好")):
@@ -134,6 +174,14 @@ def _axes_for_family(family: QuestionFamily, intent: QuestionIntent) -> list[Ana
         return ["trend", "recency", "ranking"]
     if family == "time_of_day_ranking":
         return ["time_of_day", "ranking"]
+    if family == "account_collection":
+        return ["collection", "behavior"]
+    if family == "search_behavior":
+        return ["search", "behavior"]
+    if family == "community_lookup":
+        return ["community", "ranking"]
+    if family == "safety_boundary":
+        return ["safety"]
     if family == "scoped_ranking":
         return ["scope", "cumulative", "ranking", "recency"]
     if family == "simple_ranking":
@@ -157,6 +205,10 @@ def _contract_for_family(family: QuestionFamily) -> AnswerContract:
         "change_explanation": "change_explanation_answer",
         "time_of_day_ranking": "time_of_day_answer",
         "identity_preference": "identity_preference_answer",
+        "account_collection": "account_collection_answer",
+        "search_behavior": "search_behavior_answer",
+        "community_lookup": "community_lookup_answer",
+        "safety_boundary": "readonly_refusal_answer",
         "habit_summary": "habit_summary_answer",
     }
     return contracts[family]

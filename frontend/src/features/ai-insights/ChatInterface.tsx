@@ -121,6 +121,8 @@ export function ChatInterface({
         const task = await startChatTask.mutateAsync({
           question,
           conversation_history: history,
+          question_time: new Date().toISOString(),
+          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
           thinking_mode: thinkingMode,
           ...chatFilterPayload,
         })

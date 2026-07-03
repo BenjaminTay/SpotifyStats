@@ -110,6 +110,8 @@ def test_planner_user_content_includes_question_intent() -> None:
             {
                 "question": "GUTS 和 Sour 哪张专辑播放量更高？",
                 "conversation_history": [],
+                "question_time": "2026-07-02T16:06:01+08:00",
+                "timezone": "Asia/Shanghai",
             }
         )
     )
@@ -117,6 +119,115 @@ def test_planner_user_content_includes_question_intent() -> None:
     assert payload["question_intent"]["task_type"] == "comparison"
     assert payload["question_intent"]["entity_type"] == "album"
     assert payload["question_intent"]["entities"] == ["GUTS", "Sour"]
+    assert payload["temporal_context"]["today"] == "2026-07-02"
+    assert "相对时间以 question_time 为准" in payload["temporal_context"]["relative_time_policy"]
+
+
+def test_play_data_range_prefers_local_ts_date(monkeypatch: pytest.MonkeyPatch) -> None:
+    observed_sql: list[str] = []
+
+    class FakeConn:
+        def execute(self, sql: str):
+            observed_sql.append(sql)
+            return self
+
+        def fetchone(self):
+            return ("2022-07-01", "2026-06-23")
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr(ai_agent_service, "get_db", lambda readonly=True: FakeConn())
+
+    assert ai_agent_service._play_data_range() == {
+        "data_start_date": "2022-07-01",
+        "data_end_date": "2026-06-23",
+    }
+    assert "ts_date" in observed_sql[0]
+
+
+def test_plan_tool_calls_temporal_guard_corrects_wrong_last_summer_year(monkeypatch) -> None:
+    def fake_llm_chat(system_prompt: str, user_content: str, temperature: float = 0.3) -> str:
+        return """
+        [
+          {
+            "tool_name": "analysis_charts",
+            "params": {
+              "period": "custom",
+              "start_date": "2024-06-01",
+              "end_date": "2024-08-31",
+              "entity": "artist",
+              "metric": "plays"
+            }
+          },
+          {"tool_name": "wrapped_yearly", "params": {"year": 2024}}
+        ]
+        """
+
+    monkeypatch.setattr(ai_agent_service.ai_insights_service, "_llm_chat", fake_llm_chat)
+
+    plan, mode = ai_agent_service._plan_tool_calls(
+        {
+            "question": "去年夏天我最常听什么类型的音乐？",
+            "conversation_history": [],
+            "question_time": "2026-07-02T16:06:01+08:00",
+            "timezone": "Asia/Shanghai",
+        }
+    )
+
+    assert mode == "planned_temporal_guarded"
+    assert plan[0]["params"]["period"] == "custom"
+    assert plan[0]["params"]["start_date"] == "2025-06-01"
+    assert plan[0]["params"]["end_date"] == "2025-08-31"
+    assert plan[1]["params"]["year"] == 2025
+
+
+def test_plan_tool_calls_adds_bounded_tool_when_relative_time_plan_is_only_yearly(
+    monkeypatch,
+) -> None:
+    def fake_llm_chat(system_prompt: str, user_content: str, temperature: float = 0.3) -> str:
+        return '[{"tool_name":"wrapped_yearly","params":{"year":2025}}]'
+
+    monkeypatch.setattr(ai_agent_service.ai_insights_service, "_llm_chat", fake_llm_chat)
+
+    plan, mode = ai_agent_service._plan_tool_calls(
+        {
+            "question": "去年夏天我最常听什么类型的音乐？",
+            "conversation_history": [],
+            "question_time": "2026-07-02T16:06:01+08:00",
+            "timezone": "Asia/Shanghai",
+        }
+    )
+
+    assert mode == "planned_temporal_bounded"
+    bounded_calls = [
+        item
+        for item in plan
+        if item["tool_name"] == "analysis_charts"
+        and item["params"].get("start_date") == "2025-06-01"
+        and item["params"].get("end_date") == "2025-08-31"
+    ]
+    assert bounded_calls
+    assert bounded_calls[0]["params"]["entity"] == "artist"
+
+
+def test_prepare_followup_tool_call_applies_temporal_guard() -> None:
+    prepared = ai_agent_service._prepare_followup_tool_call(
+        {
+            "tool_name": "analysis_charts",
+            "params": {"period": "lifetime", "entity": "track", "metric": "plays"},
+        },
+        {
+            "question": "去年夏天我最常听什么类型的音乐？",
+            "question_time": "2026-07-02T16:06:01+08:00",
+            "timezone": "Asia/Shanghai",
+        },
+    )
+
+    assert prepared is not None
+    assert prepared["params"]["period"] == "custom"
+    assert prepared["params"]["start_date"] == "2025-06-01"
+    assert prepared["params"]["end_date"] == "2025-08-31"
 
 
 def test_sanitize_plan_applies_merge_level_to_compare_entities() -> None:

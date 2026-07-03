@@ -112,6 +112,8 @@ class ReportTaskRequest(BaseModel):
 class ChatAgentTaskRequest(BaseModel):
     question: str = Field(..., min_length=1, max_length=500)
     conversation_history: list[dict[str, str]] | None = None
+    question_time: str | None = Field(default=None, max_length=80)
+    timezone: str | None = Field(default=None, max_length=80)
     thinking_mode: bool = False
     min_ms: int = Field(default=30000, ge=0, le=3_600_000)
     music_only: bool = True

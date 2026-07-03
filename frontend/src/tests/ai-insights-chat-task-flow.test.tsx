@@ -141,6 +141,7 @@ function renderChat() {
 describe('ChatInterface task-based agent flow', () => {
   beforeEach(() => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
+    vi.setSystemTime(new Date('2026-07-02T08:43:01.554Z'))
     Element.prototype.scrollIntoView = vi.fn()
   })
 
@@ -176,9 +177,11 @@ describe('ChatInterface task-based agent flow', () => {
     fireEvent.click(screen.getByRole('button', { name: '发送问题' }))
 
     await waitFor(() => {
-      expect(postSpy).toHaveBeenCalledWith('/ai/tasks/chat', {
+      expect(postSpy).toHaveBeenCalledWith('/ai/tasks/chat', expect.objectContaining({
         question: '我今年听最多的艺人是谁？',
         conversation_history: [],
+        question_time: expect.any(String),
+        timezone: expect.any(String),
         thinking_mode: false,
         min_ms: 45000,
         music_only: false,
@@ -186,8 +189,11 @@ describe('ChatInterface task-based agent flow', () => {
         dynamic_threshold: false,
         max_merge_gap_minutes: 45,
         merge_level: 2,
-      })
+      }))
     })
+    const chatTaskPayload = postSpy.mock.calls.find(([path]) => path === '/ai/tasks/chat')?.[1]
+    expect(new Date((chatTaskPayload as { question_time: string }).question_time).toISOString())
+      .toMatch(/^2026-07-02T08:43:01\.\d{3}Z$/)
     expect(postSpy.mock.calls.some(([path]) => path === '/ai-insights/ask')).toBe(false)
     expect(await screen.findByText('AI 任务进度')).toBeInTheDocument()
     expect(screen.getAllByText('正在查询你的年度播放数据').length).toBeGreaterThan(0)

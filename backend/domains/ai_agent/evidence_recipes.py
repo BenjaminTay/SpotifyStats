@@ -103,6 +103,43 @@ def recipe_for_frame(frame: QuestionFrame | dict[str, object]) -> EvidenceRecipe
             max_followup_calls=1,
         )
 
+    if family == "account_collection":
+        return EvidenceRecipe(
+            family=family,
+            required_axes=["collection"],
+            conditional_axes=["behavior"],
+            required_tool_patterns=[{"tool_name": "account_collection_insights"}],
+            recommended_tool_patterns=[{"tool_name": "account_summary"}],
+            max_followup_calls=2,
+        )
+
+    if family == "search_behavior":
+        return EvidenceRecipe(
+            family=family,
+            required_axes=["search"],
+            conditional_axes=["behavior"],
+            required_tool_patterns=[{"tool_name": "search_history"}],
+            max_followup_calls=1,
+        )
+
+    if family == "community_lookup":
+        return EvidenceRecipe(
+            family=family,
+            required_axes=["community"],
+            conditional_axes=["ranking"],
+            required_tool_patterns=[{"tool_name": "community_trending"}],
+            recommended_tool_patterns=[{"tool_name": "community_feed_search"}],
+            max_followup_calls=2,
+        )
+
+    if family == "safety_boundary":
+        return EvidenceRecipe(
+            family=family,
+            required_axes=["safety"],
+            required_tool_patterns=[],
+            max_followup_calls=0,
+        )
+
     if family == "scoped_ranking":
         scope_entity_name = parsed_frame.scope_entity_name or (
             parsed_frame.entities[0] if parsed_frame.entities else ""

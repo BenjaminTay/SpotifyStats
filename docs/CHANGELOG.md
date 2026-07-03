@@ -1,5 +1,46 @@
 # 变更日志
 
+## 2026-07-03 — AI Agent 相对时间 grounding
+
+### 新增
+
+- **提问时间上下文**：Chat Agent 请求新增可选 `question_time` 与 `timezone`，后端生成 `temporal_context` 并把 `today`、数据起止日、`latest_play_date` 注入 planner 与最终回答。
+- **相对时间护栏**：新增 `domains/ai_agent/temporal_context.py`，对“去年/今年/上个月/最近/夏天”等高置信表达做轻量 guard；当 planner 把“去年夏天”错规划到 2024 或只规划全年/全部时间工具时，会在工具执行前校正或补充基于提问时间的 2025 夏天 custom range，后续补查工具也会沿用同一时间范围。
+- **可观察性**：AI task events/result 保留 `temporal_guard`，前端问答消息显示“时间解释/已校正”摘要，便于用户确认 Agent 使用的时间窗口。
+
+### 验证
+
+- `.venv/bin/pytest backend/tests/unit/test_ai_agent_temporal_context.py backend/tests/unit/test_ai_agent_question_intent.py backend/tests/contract/test_ai_agent_task_contract.py -q`：30 passed
+- `.venv/bin/ruff check backend/domains/ai_agent/temporal_context.py backend/services/ai_agent_service.py backend/models/ai_tasks.py backend/api/ai_tasks.py`
+- `cd frontend && npm test -- --run`：222 passed
+- `cd frontend && npm run build`
+- 真实页面验证 `/ai-insights` 问答：“去年夏天我最常听什么类型的音乐？”显示 `去年夏天 → 2025-06-01 至 2025-08-31`，工具调用均为 `2025-06-01..2025-08-31`，console error/warning 为 0。
+
+## 2026-07-03 — AI Agent Harness 矩阵修复
+
+### 修复与增强
+
+- 拆分 AI 最终回答阶段的 LLM 未配置与 provider 调用失败，并对 provider 临时失败增加一次重试和任务事件记录
+- `latest_play_date` 优先使用本地 `ts_date`，并为“去年冬天”等跨年季节生成明确显示标签
+- 新增 `answer_obligations`，强制最终回答覆盖数据截止日、本地个人 Billboard 边界和只读安全拒绝等硬约束
+- 新增账号收藏、账号总览、搜索历史、社区帖子搜索、社区热议趋势等只读 AI 工具，并接入 QuestionFrame、EvidenceRecipe、Project Context 和 golden harness
+- Planner 可用工具描述改为 compact schema，避免工具增长后 payload 截断成无效 JSON
+- 修复 chart/long-list smoke 的旧文案与冷态等待误报
+- 新增 AI 问题矩阵静态检查脚本 `scripts/evaluate_ai_question_matrix.py`
+
+### 验证
+
+- AI agent unit + task contract：190 passed
+- AI golden harness：12/12 passed
+- AI question matrix static check：141 questions / P0 12 / PASS
+- Frontend chart interaction smoke：3/3 passed
+- Frontend long-list smoke：7/7 passed
+- in-app Browser 真实问答：收藏问题调用账号工具；删除播放记录请求被只读边界拒绝
+
+详见 [`docs/verification/2026-07-03-ai-question-matrix-test-report.md`](verification/2026-07-03-ai-question-matrix-test-report.md)。
+
+---
+
 ## 2026-06-29 — AI Agent Project Context Layer 与回答渲染
 
 ### 新增

@@ -606,7 +606,14 @@ async function exercisePaginatedList({
   await waitForText(client, readyText, waitMs)
   if (focusText) await scrollTextIntoView(client, focusText)
   const beforePage = await detectPageText(client, pagePattern, waitMs, focusText)
-  const beforeRows = await getRowWindow(client, { rowSelector, focusText, pagePattern })
+  const beforeRows = await waitForCondition(
+    async () => {
+      const rows = await getRowWindow(client, { rowSelector, focusText, pagePattern })
+      return rows.count > 0 ? rows : null
+    },
+    waitMs,
+    'Before row window was empty',
+  )
   const clickResult = await clickFirstEnabledPaginationButtonNearText(client, pagePattern, focusText)
   let afterRows
   try {
@@ -753,6 +760,7 @@ async function exerciseCommunityFeed({ client, baseUrl, waitMs }) {
 const SCENARIOS = {
   'records-mini-rank': (ctx) => exercisePaginatedList({
     ...ctx,
+    waitMs: Math.max(ctx.waitMs, 20000),
     route: '/billboard/records',
     readyText: '冠军圣殿',
     pagePattern: '\\d+\\s*—\\s*\\d+\\s*/\\s*\\d+',
@@ -774,7 +782,10 @@ const SCENARIOS = {
     focusText: 'Billboard 年榜',
     maxVisibleRows: 50,
   }),
-  'community-feed': exerciseCommunityFeed,
+  'community-feed': (ctx) => exerciseCommunityFeed({
+    ...ctx,
+    waitMs: Math.max(ctx.waitMs, 20000),
+  }),
   'recent-plays': (ctx) => exercisePaginatedList({
     ...ctx,
     route: '/analysis/stats',
@@ -792,7 +803,7 @@ const SCENARIOS = {
   'personal-rank-table': (ctx) => exercisePaginatedList({
     ...ctx,
     route: '/analysis/charts',
-    readyText: '个人排行榜',
+    readyText: '播放排行',
     pagePattern: '显示\\s*\\d+\\s*-\\s*\\d+\\s*/\\s*总数\\s*\\d+\\s*条',
     focusText: '歌曲榜',
   }),

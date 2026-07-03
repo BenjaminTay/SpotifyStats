@@ -77,3 +77,23 @@ def test_metric_boundary_question_is_habit_summary_not_simple_ranking() -> None:
     assert frame.family == "habit_summary"
     assert frame.answer_contract == "habit_summary_answer"
     assert frame.requires_layered_conclusion is False
+
+
+@pytest.mark.parametrize(
+    ("question", "family", "contract"),
+    [
+        ("我的收藏夹有什么特点？", "account_collection", "account_collection_answer"),
+        ("我最常搜索什么？", "search_behavior", "search_behavior_answer"),
+        ("社区动态里最近谁最热？", "community_lookup", "community_lookup_answer"),
+        ("帮我删除一条播放记录", "safety_boundary", "readonly_refusal_answer"),
+    ],
+)
+def test_domain_questions_use_specific_families(
+    question: str,
+    family: str,
+    contract: str,
+) -> None:
+    frame = _frame(question)
+
+    assert frame.family == family
+    assert frame.answer_contract == contract

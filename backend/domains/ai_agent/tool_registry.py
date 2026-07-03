@@ -96,14 +96,19 @@ class AgentToolRegistry:
 @lru_cache(maxsize=1)
 def get_default_registry() -> AgentToolRegistry:
     from backend.domains.ai_agent.tools import (
+        ACCOUNT_COLLECTION_INSIGHTS_TOOL,
+        ACCOUNT_SUMMARY_TOOL,
         ANALYSIS_CHARTS_TOOL,
         ANALYSIS_STATS_TOOL,
         BILLBOARD_ENTITY_DETAIL_TOOL,
+        COMMUNITY_FEED_SEARCH_TOOL,
+        COMMUNITY_TRENDING_TOOL,
         COMPARE_ENTITIES_TOOL,
         ENTITY_STATS_TOOL,
         LISTENING_HOURS_TOOL,
         PLAYBACK_RECORDS_TOOL,
         RESOLVE_ENTITY_TOOL,
+        SEARCH_HISTORY_TOOL,
         WRAPPED_YEARLY_TOOL,
     )
 
@@ -117,6 +122,11 @@ def get_default_registry() -> AgentToolRegistry:
     registry.register(LISTENING_HOURS_TOOL)
     registry.register(RESOLVE_ENTITY_TOOL)
     registry.register(COMPARE_ENTITIES_TOOL)
+    registry.register(ACCOUNT_SUMMARY_TOOL)
+    registry.register(ACCOUNT_COLLECTION_INSIGHTS_TOOL)
+    registry.register(SEARCH_HISTORY_TOOL)
+    registry.register(COMMUNITY_FEED_SEARCH_TOOL)
+    registry.register(COMMUNITY_TRENDING_TOOL)
     return registry
 
 

@@ -200,6 +200,43 @@ def _tool_result_from_call(tool_call: dict[str, Any]) -> dict[str, Any]:
     elif tool_name == "wrapped_yearly":
         data.setdefault("year", params.get("year"))
         data.setdefault("top_artists", [{"artist_name": "Representative Artist", "plays": 100}])
+    elif tool_name == "account_collection_insights":
+        data.update(
+            {
+                "available": True,
+                "personality": {"type": "均衡型收藏者"},
+                "overview": {"saved_tracks": 100, "saved_albums": 20},
+            }
+        )
+    elif tool_name == "account_summary":
+        data.update(
+            {
+                "has_account_data": True,
+                "library": {"saved_tracks": 100, "saved_albums": 20},
+            }
+        )
+    elif tool_name == "search_history":
+        data.update(
+            {
+                "available": True,
+                "total_searches": 10,
+                "top_queries": [{"query": "Ariana Grande", "count": 4}],
+            }
+        )
+    elif tool_name == "community_trending":
+        data.update(
+            {
+                "artists": [{"name": "Representative Artist", "count": 5}],
+                "tracks": [{"name": "Representative Track", "count": 3}],
+            }
+        )
+    elif tool_name == "community_feed_search":
+        data.update(
+            {
+                "meta": {"total": 1, "returned": 1},
+                "posts": [{"content": "Representative community post"}],
+            }
+        )
 
     return {
         "tool_name": tool_name,
@@ -288,6 +325,16 @@ def _tool_calls_from_recipe_patterns(case: dict[str, Any]) -> list[dict[str, Any
                 year = time_scope.split(":", 1)[1]
                 if year.isdigit():
                     calls.append({"tool_name": tool_name, "params": {"year": int(year)}})
+            continue
+
+        if tool_name in {
+            "account_summary",
+            "account_collection_insights",
+            "search_history",
+            "community_feed_search",
+            "community_trending",
+        }:
+            calls.append({"tool_name": tool_name, "params": {}})
 
     return calls
 

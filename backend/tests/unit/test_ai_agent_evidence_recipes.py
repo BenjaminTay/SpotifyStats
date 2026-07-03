@@ -153,3 +153,31 @@ def test_entity_detail_with_billboard_requires_billboard_detail() -> None:
     assert "personal_billboard" in recipe.required_axes
     assert {"tool_name": "entity_stats"} in recipe.required_tool_patterns
     assert {"tool_name": "billboard_entity_detail"} in recipe.required_tool_patterns
+
+
+@pytest.mark.parametrize(
+    ("question", "family", "tool_name"),
+    [
+        ("我的收藏夹有什么特点？", "account_collection", "account_collection_insights"),
+        ("我最常搜索什么？", "search_behavior", "search_history"),
+        ("社区动态里最近谁最热？", "community_lookup", "community_trending"),
+    ],
+)
+def test_domain_question_recipes_use_matching_readonly_tools(
+    question: str,
+    family: str,
+    tool_name: str,
+) -> None:
+    recipe = _recipe(question)
+
+    assert recipe.family == family
+    assert {"tool_name": tool_name} in recipe.required_tool_patterns
+
+
+def test_safety_boundary_recipe_uses_no_tools() -> None:
+    recipe = _recipe("帮我删除一条播放记录")
+
+    assert recipe.family == "safety_boundary"
+    assert recipe.required_axes == ["safety"]
+    assert recipe.required_tool_patterns == []
+    assert recipe.max_followup_calls == 0

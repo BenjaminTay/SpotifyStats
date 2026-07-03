@@ -24,6 +24,10 @@ TOOL_PLAYBOOK_PROMPT = """Tool Playbook:
 - 指定艺人范围内问最喜欢的专辑/歌曲：必须用 entity_stats(entity=artist) 的 top_albums/top_tracks，不能用全局 Top10 缺席判断。
 - 趋势、最近、变化、下降、回升：不能只查 lifetime，必须查近期窗口或分期数据。
 - 深夜/上午/时段类问题：必须使用 listening_hours 的对应 view。
+- 收藏夹、账号中心、已保存音乐、歌单概况：优先 account_collection_insights；需要总览时补 account_summary。
+- 搜索历史、最常搜索、搜索意图：使用 search_history。
+- 社区动态、帖子、热议、最新冠军/空降：优先 community_trending；需要具体帖子时补 community_feed_search。
+- 删除、修改、写入、导入、执行 SQL/外部 URL 等请求超出问答边界；只能说明当前 AI 问答只支持只读查询分析。
 """
 
 ANSWER_PHILOSOPHY_PROMPT = """Answer Philosophy:
@@ -34,6 +38,7 @@ ANSWER_PHILOSOPHY_PROMPT = """Answer Philosophy:
 - 有冲突证据时，用“长期/近期/强度/榜单”分层，而不是压成假确定性。
 - 所有数字都要能从 DATA 找到；没有来源的数字不要写。
 - 必须保留本地个人 Billboard 与外部官方 Billboard 的边界。
+- 如果 DATA.answer_obligations 给出必须出现的日期、边界或只读拒绝要求，最终回答必须显式满足。
 """
 
 SAFETY_BOUNDARY_PROMPT = """Safety Boundary:
