@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import json
 from sqlite3 import Connection
 from typing import Any, Literal, Optional
 
@@ -11,6 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from backend.dependencies import PlayFilters, get_conn
+from backend.services import ai_insights_service
 from backend.services.ai_insights_service import (
     answer_question,
     generate_monthly_personality,
@@ -43,6 +45,7 @@ class ReportEntities(BaseModel):
 class DigestResponse(BaseModel):
     success: bool
     report: Optional[str] = None
+    artifact: Optional[dict[str, Any]] = None
     cached: bool = False
     cached_at: Optional[str] = None
     entities: Optional[ReportEntities] = None
@@ -142,14 +145,50 @@ def monthly_personality(
 def yearly_story(
     year: int = Query(...),
     force: bool = Query(False, description="Bypass server-side cache"),
-    report_mode: Literal["agentic_longform", "basic_summary"] = Query(
-        "agentic_longform",
-        description="Use the agentic longform report flow or legacy basic summary flow",
+    report_mode: Literal["visual_yearly_artifact", "agentic_longform", "basic_summary"] = Query(
+        "visual_yearly_artifact",
+        description="Use visual artifact, agentic longform, or legacy basic summary yearly flow",
     ),
     filters: PlayFilters = Depends(),
     conn: Connection = Depends(get_conn),
 ):
     """Generate a narrative story from full Wrapped data."""
+    if report_mode == "visual_yearly_artifact" and not force:
+        cached = ai_insights_service.peek_report_cache(
+            conn,
+            "yearly",
+            min_ms=filters.min_ms,
+            music_only=filters.music_only,
+            merge_enabled=filters.merge_enabled,
+            dynamic_threshold=filters.dynamic_threshold,
+            max_merge_gap_minutes=filters.max_merge_gap_minutes,
+            report_mode="visual_yearly_artifact",
+            year=year,
+        )
+        return _visual_yearly_cache_response(cached)
+
+    if report_mode == "visual_yearly_artifact" and force:
+        from backend.domains.ai_reports.visual_yearly_artifact_service import (
+            generate_visual_yearly_artifact,
+        )
+
+        result = generate_visual_yearly_artifact(
+            {
+                "report_type": "yearly",
+                "report_mode": report_mode,
+                "year": year,
+                "min_ms": filters.min_ms,
+                "music_only": filters.music_only,
+                "merge_enabled": filters.merge_enabled,
+                "dynamic_threshold": filters.dynamic_threshold,
+                "max_merge_gap_minutes": filters.max_merge_gap_minutes,
+                "force": force,
+            }
+        )
+        if not result["success"]:
+            _raise_for_error(result)
+        return result
+
     if report_mode == "agentic_longform" and force:
         from backend.services.yearly_report_agent_service import generate_agentic_yearly_report
 
@@ -183,6 +222,64 @@ def yearly_story(
     if not result["success"]:
         _raise_for_error(result)
     return result
+
+
+def _visual_yearly_cache_response(cached: dict[str, Any]) -> dict[str, Any]:
+    if not cached.get("cached") or not isinstance(cached.get("report"), str):
+        return {
+            "success": True,
+            "report": None,
+            "artifact": None,
+            "cached": False,
+            "cached_at": None,
+            "entities": None,
+            "metadata": {
+                "report_mode": "visual_yearly_artifact",
+                "needs_generation": True,
+            },
+            "error": None,
+        }
+    try:
+        payload = json.loads(cached["report"])
+    except (TypeError, json.JSONDecodeError):
+        return {
+            "success": True,
+            "report": cached["report"],
+            "artifact": None,
+            "cached": True,
+            "cached_at": cached.get("cached_at"),
+            "entities": None,
+            "metadata": {
+                "report_mode": "visual_yearly_artifact",
+                "cache_parse_error": True,
+            },
+            "error": None,
+        }
+    if not isinstance(payload, dict):
+        payload = {}
+    return {
+        "success": bool(payload.get("success", True)),
+        "report": payload.get("report"),
+        "artifact": payload.get("artifact") if isinstance(payload.get("artifact"), dict) else None,
+        "cached": True,
+        "cached_at": cached.get("cached_at"),
+        "entities": payload.get("entities") if isinstance(payload.get("entities"), dict) else None,
+        "metadata": payload.get("metadata") if isinstance(payload.get("metadata"), dict) else None,
+        "critic": payload.get("critic") if isinstance(payload.get("critic"), dict) else None,
+        "fact_validation": payload.get("fact_validation")
+        if isinstance(payload.get("fact_validation"), dict)
+        else None,
+        "insight_synthesis": payload.get("insight_synthesis")
+        if isinstance(payload.get("insight_synthesis"), dict)
+        else None,
+        "dynamic_outline": payload.get("dynamic_outline")
+        if isinstance(payload.get("dynamic_outline"), dict)
+        else None,
+        "evidence_ledger": payload.get("evidence_ledger")
+        if isinstance(payload.get("evidence_ledger"), list)
+        else None,
+        "error": payload.get("error"),
+    }
 
 
 # ── Phase 2 endpoints ───────────────────────────────────────────────────────

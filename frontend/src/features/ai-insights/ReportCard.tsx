@@ -5,13 +5,27 @@ import { ArrowRight, Check, Clock, Copy, RefreshCw, X } from 'lucide-react'
 import { ReportSkeleton } from './ReportSkeleton'
 import { AiDisclaimer, ErrorState } from './AiInsightsPrimitives'
 import { AiMarkdown } from './AiMarkdown'
-import { formatRelativeTimeZh } from '@/lib/datetime'
+import { VisualYearlyReport } from './yearly-artifact/VisualYearlyReport'
+import type { VisualYearlyArtifact } from './yearly-artifact/yearlyArtifactTypes'
+import { formatRelativeTimeZh, parseBackendTimestamp } from '@/lib/datetime'
 import type { ReportEntities, ReportType } from '@/types/ai-insights'
+
+function formatReportTimestamp(value: string | null | undefined): string {
+  const date = parseBackendTimestamp(value)
+  if (!date) return ''
+  return new Intl.DateTimeFormat('zh-CN', {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  }).format(date)
+}
 
 interface ReportCardProps {
   title: string
   reportType: ReportType
   report: string | null
+  artifact?: VisualYearlyArtifact | null
   cached: boolean
   cachedAt: string | null
   entities: ReportEntities | null
@@ -55,6 +69,7 @@ export function ReportCard({
   title,
   reportType,
   report,
+  artifact = null,
   cached,
   cachedAt,
   entities,
@@ -72,9 +87,9 @@ export function ReportCard({
 }: ReportCardProps) {
   const [copied, setCopied] = useState(false)
 
-  if (loading && !report) return <ReportSkeleton onCancel={onCancel} />
+  if (loading && !report && !artifact) return <ReportSkeleton onCancel={onCancel} />
   if (error) return <ErrorState message={error} onRetry={onRetry} />
-  if (!report && !loading) {
+  if (!report && !artifact && !loading) {
     if (showGenerateAction && onGenerate) {
       return (
         <div className="rounded-[16px] border border-border bg-card/40 p-6 backdrop-blur-[12px]">
@@ -103,9 +118,10 @@ export function ReportCard({
       </div>
     )
   }
-  if (!report) return <ReportSkeleton />
+  if (!report && !artifact) return <ReportSkeleton />
 
   const timeAgo = formatRelativeTimeZh(cachedAt)
+  const exactTime = formatReportTimestamp(cachedAt)
   const suggestions = onFollowUp ? followUpQuestions(reportType, entities) : []
   const reportMode = typeof metadata?.report_mode === 'string' ? metadata.report_mode : null
   const fallbackLevel = typeof metadata?.fallback_level === 'string' ? metadata.fallback_level : null
@@ -113,13 +129,14 @@ export function ReportCard({
   const articleLength = typeof metadata?.article_length === 'number' ? metadata.article_length : null
 
   const handleCopy = async () => {
+    const copyText = report ?? `${artifact?.title ?? title}\n\n${artifact?.subtitle ?? ''}`.trim()
     try {
-      await navigator.clipboard.writeText(report)
+      await navigator.clipboard.writeText(copyText)
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
     } catch {
       const ta = document.createElement('textarea')
-      ta.value = report
+      ta.value = copyText
       document.body.appendChild(ta)
       ta.select()
       document.execCommand('copy')
@@ -135,10 +152,14 @@ export function ReportCard({
       <div className="mb-4 flex items-center justify-between">
         <h2 className="font-serif text-[22px] font-bold">{title}</h2>
         <div className="flex items-center gap-2">
-          {cached && timeAgo && (
-            <span className="flex items-center gap-1 text-[11px] text-muted-foreground/50">
+          {timeAgo && (
+            <span
+              aria-label={cached ? '缓存时间' : '生成时间'}
+              className="flex items-center gap-1 text-[11px] text-muted-foreground/50"
+            >
               <Clock className="h-3 w-3" />
               {timeAgo}
+              {exactTime ? <span className="text-muted-foreground/35">· {exactTime}</span> : null}
             </span>
           )}
           {fetching && report && onCancel && (
@@ -197,9 +218,13 @@ export function ReportCard({
       )}
 
       {/* Report content */}
-      <div className="prose prose-sm max-w-none max-h-[600px] overflow-y-auto text-[14px] leading-relaxed text-muted-foreground [&_h2]:font-serif [&_h2]:text-[18px] [&_h2]:font-semibold [&_h2]:text-foreground [&_strong]:text-foreground">
-        <AiMarkdown>{report}</AiMarkdown>
-      </div>
+      {artifact ? (
+        <VisualYearlyReport artifact={artifact} />
+      ) : (
+        <div className="prose prose-sm max-w-none max-h-[600px] overflow-y-auto text-[14px] leading-relaxed text-muted-foreground [&_h2]:font-serif [&_h2]:text-[18px] [&_h2]:font-semibold [&_h2]:text-foreground [&_strong]:text-foreground">
+          <AiMarkdown>{report ?? ''}</AiMarkdown>
+        </div>
+      )}
 
       {/* Entity links */}
       {entities && (entities.artists.length > 0 || entities.tracks.length > 0) && (

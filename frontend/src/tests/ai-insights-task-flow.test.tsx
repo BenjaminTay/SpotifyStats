@@ -54,7 +54,10 @@ function wrapperFor(client: QueryClient) {
   }
 }
 
-function mockCommonGet(taskReport = '生成后的周报') {
+function mockCommonGet(
+  taskReport = '生成后的周报',
+  taskResultOverrides: Record<string, unknown> = {},
+) {
   return vi.spyOn(api, 'get').mockImplementation((path: string) => {
     if (path === '/analysis/stats') {
       return Promise.resolve({
@@ -79,6 +82,7 @@ function mockCommonGet(taskReport = '生成后的周报') {
           cached: false,
           cached_at: null,
           entities: { artists: [], tracks: [] },
+          ...taskResultOverrides,
         },
         error: null,
         created_at: '2026-06-28T00:00:00',
@@ -222,7 +226,7 @@ describe('AiInsightsExperience report task flow', () => {
 
   it('refreshes an existing cached report with a forced generate task', async () => {
     const client = createClient()
-    mockCommonGet('刷新后的周报')
+    mockCommonGet('缓存命中的周报', { cached_at: '2026-06-28T12:00:00Z' })
     const postSpy = vi.spyOn(api, 'post').mockImplementation((path: string, body?: unknown) => {
       if (path !== '/ai/tasks/report') {
         return Promise.reject(new Error(`unexpected POST ${path}`))
@@ -260,6 +264,7 @@ describe('AiInsightsExperience report task flow', () => {
     render(<AiInsightsExperience />, { wrapper: wrapperFor(client) })
 
     expect(await screen.findByText('缓存命中的周报')).toBeInTheDocument()
+    expect(screen.getByText('12 小时前')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: '刷新报告' }))
 
     await waitFor(() => expect(postSpy).toHaveBeenCalledTimes(2))
@@ -275,7 +280,10 @@ describe('AiInsightsExperience report task flow', () => {
       dynamic_threshold: true,
       max_merge_gap_minutes: null,
     })
-    expect(await screen.findByText('刷新后的周报')).toBeInTheDocument()
+    expect(await screen.findByText('刚刚')).toBeInTheDocument()
+    expect(screen.getByText('缓存命中的周报')).toBeInTheDocument()
+    expect(screen.queryByText('AI 任务进度')).not.toBeInTheDocument()
+    expect(screen.queryByText('报告生成完成')).not.toBeInTheDocument()
   })
 
   it('cancels an in-flight report generation task', async () => {

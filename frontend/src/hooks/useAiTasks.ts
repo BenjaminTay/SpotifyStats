@@ -28,7 +28,7 @@ function queryErrorMessage(error: unknown): string | null {
 export interface ReportTaskRequest {
   report_type: ReportType
   action: 'cache_only' | 'generate'
-  report_mode?: 'agentic_longform' | 'basic_summary'
+  report_mode?: 'visual_yearly_artifact' | 'agentic_longform' | 'basic_summary'
   force?: boolean
   week_start?: string
   week_end?: string

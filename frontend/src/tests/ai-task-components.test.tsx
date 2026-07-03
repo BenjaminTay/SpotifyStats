@@ -42,6 +42,30 @@ describe('AITaskProgress', () => {
     expect(screen.getByText('已汇总播放数据')).toBeInTheDocument()
   })
 
+  it('renders visual yearly artifact stages with readable labels', () => {
+    render(
+      <AITaskProgress
+        task={{
+          found: true,
+          task_id: 'task-visual-yearly',
+          task_type: 'ai_report_yearly',
+          status: 'running',
+          stage: 'building_chart_data',
+          progress_pct: 72,
+          message: '正在准备年度图表数据',
+          result: null,
+          error: null,
+          created_at: '2026-07-04T00:00:00',
+          updated_at: '2026-07-04T00:00:01',
+        }}
+        events={[]}
+      />,
+    )
+
+    expect(screen.getByText('准备图表数据')).toBeInTheDocument()
+    expect(screen.getByText('72%')).toBeInTheDocument()
+  })
+
   it('renders task errors when the task fails', () => {
     render(
       <AITaskProgress

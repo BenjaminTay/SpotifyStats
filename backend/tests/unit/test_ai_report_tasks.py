@@ -254,6 +254,91 @@ def test_cache_only_weekly_report_does_not_call_llm(
     assert called["llm"] is False
 
 
+def test_cache_only_visual_yearly_report_ignores_legacy_yearly_cache(
+    ai_report_task_db: Path,
+):
+    legacy_request = _insert_cache(
+        ai_report_task_db,
+        report_type="yearly",
+        report="旧版 Markdown 年报",
+        year=2025,
+    )
+
+    result = ai_task_service.start_report_task(
+        {
+            **legacy_request,
+            "action": "cache_only",
+            "report_mode": "visual_yearly_artifact",
+        }
+    )
+
+    assert result["status"] == "done"
+    assert result["result"]["cached"] is False
+    assert result["result"]["report"] is None
+    assert result["result"]["needs_generation"] is True
+
+
+def test_visual_yearly_report_generation_writes_artifact_cache(
+    ai_report_task_db: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    request = _base_report_request(
+        action="generate",
+        report_type="yearly",
+        year=2025,
+        report_mode="visual_yearly_artifact",
+        force=True,
+    )
+    task = ai_task_service.create_task(
+        task_type="ai_report_yearly",
+        stage="checking_cache",
+        message="准备生成 AI 报告",
+        request=request,
+    )
+
+    def fake_generate(request_payload, *, emit_event=None):
+        del request_payload
+        if emit_event:
+            emit_event("stage_started", "正在生成图文年报", {"stage": "composing_artifact"})
+        return {
+            "success": True,
+            "report": "图文年报正文",
+            "artifact": {
+                "report_mode": "visual_yearly_artifact",
+                "contract_version": "visual_yearly_v1",
+                "title": "你的 2025 音乐年记",
+                "sections": [],
+                "insight_cards": [],
+                "chart_specs": [],
+                "chart_data": {},
+                "metadata": {"report_mode": "visual_yearly_artifact"},
+            },
+            "cached": False,
+            "cached_at": None,
+            "entities": {"artists": ["Taylor Swift"], "tracks": []},
+            "metadata": {"report_mode": "visual_yearly_artifact"},
+            "evidence_ledger": [],
+            "error": None,
+        }
+
+    monkeypatch.setattr(
+        "backend.domains.ai_reports.visual_yearly_artifact_service.generate_visual_yearly_artifact",
+        fake_generate,
+    )
+
+    ai_task_service.run_report_generation_task(task["task_id"], request)
+    cached = ai_task_service.start_report_task({**request, "action": "cache_only", "force": False})
+    stored = ai_task_service.get_task(task["task_id"])
+
+    assert stored is not None
+    assert stored["result"]["cached_at"] is not None
+    assert cached["result"]["cached"] is True
+    assert cached["result"]["cached_at"] == stored["result"]["cached_at"]
+    assert cached["result"]["report"] == "图文年报正文"
+    assert cached["result"]["artifact"]["contract_version"] == "visual_yearly_v1"
+    assert cached["result"]["needs_generation"] is False
+
+
 def test_generate_weekly_report_starts_background_task(monkeypatch: pytest.MonkeyPatch):
     observed = {}
 
@@ -374,14 +459,17 @@ def test_run_report_generation_task_writes_report_cache_after_generation(
     conn = sqlite3.connect(ai_report_task_db)
     try:
         row = conn.execute(
-            "SELECT data FROM wikipedia_cache WHERE cache_key LIKE 'ai:report:weekly:%'"
+            "SELECT data, fetched_at FROM wikipedia_cache WHERE cache_key LIKE 'ai:report:weekly:%'"
         ).fetchone()
     finally:
         conn.close()
+    stored = ai_task_service.get_task(task["task_id"])
 
     assert observed["cache_result"] is False
     assert row is not None
     assert row[0] == "应写入缓存的周报"
+    assert stored is not None
+    assert stored["result"]["cached_at"] == row[1]
 
 
 def test_run_report_generation_task_cancelled_after_llm_skips_cache_write(
@@ -690,6 +778,42 @@ def test_yearly_agent_task_emits_research_outline_and_critic_events(
         "yearly_overview",
         "personal_billboard_year_end",
     ]
+
+
+def test_visual_yearly_report_mode_dispatches_visual_artifact(monkeypatch: pytest.MonkeyPatch):
+    called: dict[str, Any] = {}
+
+    def fake_generate(request, emit_event=None):
+        called["request"] = request
+        if emit_event:
+            emit_event(
+                "stage_started",
+                "正在提炼年度故事线",
+                {"stage": "building_narrative_brief"},
+            )
+        return {
+            "success": True,
+            "report": "visual",
+            "artifact": {},
+            "cached": False,
+            "metadata": {"report_mode": "visual_yearly_artifact"},
+            "evidence_ledger": [],
+        }
+
+    monkeypatch.setattr(
+        "backend.domains.ai_reports.visual_yearly_artifact_service.generate_visual_yearly_artifact",
+        fake_generate,
+    )
+
+    result = ai_task_service._run_report_generator(
+        None,
+        {"report_type": "yearly", "report_mode": "visual_yearly_artifact", "year": 2025},
+        progress_callback=lambda *args: None,
+        should_continue=lambda: True,
+    )
+
+    assert result["metadata"]["report_mode"] == "visual_yearly_artifact"
+    assert called["request"]["year"] == 2025
 
 
 def test_monthly_generation_forwards_filter_parameters(

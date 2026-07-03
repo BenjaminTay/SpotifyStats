@@ -1,5 +1,40 @@
 # 变更日志
 
+## 2026-07-04 — AI Visual Yearly Report Artifact
+
+### 新增
+
+- 年度叙事默认 `report_mode=visual_yearly_artifact`，返回结构化图文年报 artifact：标题/副标题、故事章节、重点 insight cards、chart specs、真实 chart data、metadata、visual critic 与 fact validation。
+- 新增 `backend/domains/ai_reports/visual_artifact_models.py`、`narrative_brief.py`、`visual_brief.py`、`visual_chart_data.py`、`visual_yearly_artifact_service.py`、`visual_yearly_critic.py` 与 `visual_yearly_prompts.py`，把年度报告拆为叙事底稿、视觉规划、只读图表数据、artifact 组合和风格/事实门禁。
+- 前端新增 `features/ai-insights/yearly-artifact/` 渲染器，支持年度 hero、章节、重点卡片和 7 类图表：活跃日热力、艺人月度趋势、常听/长留专辑对照、高光日时间切片、流派/语种占比、新发现时间线、播放与个人榜单矩阵。
+- 新增 `scripts/probe_visual_yearly_report_artifact.py`，通过真实 AI task API 触发年度图文 artifact，校验 report mode、contract version、章节数、图表数据、insight cards、禁用词、critic、fact validation 和 2025/2026 golden signals。
+
+### 修复与兼容
+
+- 年度报告缓存 key 区分 `visual_yearly_artifact` / `visual_yearly_v1`，避免旧 Markdown 或 agentic longform 年报缓存挡住图文 artifact。
+- `agentic_longform` 与 `basic_summary` 保留为显式兼容/回退模式；年度 task 与前端年度叙事按钮默认请求 `visual_yearly_artifact`。
+- 前端图表适配真实后端 schema：`artist_monthly_trend.entities/months`、`genre_language_mix.share`、`highlight_day_timeline.top_tracks` 对象数组、`discovery_timeline.new_artists/first_date` 均可正确渲染，避免空图、`[object Object]` 和重复 key warning。
+- 年度图文报告新增 `story_insight_builder.py` 作为正文前的结构化洞察层，统一判断专辑播放/个人 Billboard 是 `aligned` 还是 `divergent`、第二艺人线索是否有语种证据、高光日是否为多曲目密集日、新发现应写成强支线还是入口。
+- 重写年度图文报告章节正文，移除跨章节重复的“图表负责回答/正文负责回答”模板句，避免把内部写作指令、confidence 标签或 `interpretation_guidance` 泄漏给用户。
+- 同专辑场景会写成“播放热度与个人 Billboard 长留指向同一个重心”，不再生成 `The Life of a Showgirl 和 The Life of a Showgirl 说明了两种不同的喜欢` 这类假对比；相关图表标题与 interpretation 也按 aligned/divergent 动态输出。
+- 第二艺人线索不再把全局 `mandopop/c-pop` 流派标签套到 Olivia Rodrigo 等非华语艺人身上；visual critic 与真实 API probe 会拦截 Olivia Rodrigo 被无证据写成“华语/现场感/回望”的回答。
+- 年度图文报告新增确定性 Editorial Plan，给核心事实分配唯一章节主场，记录 `section_roles` / `fact_count` / `language_budget`，并将 critic/probe 从“原样复述图表 observation”升级为“解释性使用图表证据”；这减少了模板词、重复事实和播放分析页面复述感，同时继续保留个人 Billboard 与本地播放数据的事实边界。
+
+### 验证
+
+- `.venv/bin/pytest backend/tests/unit/test_editorial_plan.py backend/tests/unit/test_narrative_quality.py backend/tests/unit/test_visual_yearly_critic.py backend/tests/unit/test_visual_yearly_artifact_service.py -q`：32 passed
+- `cd frontend && npm test -- --run src/tests/visual-yearly-report.test.tsx`：5 passed
+- `scripts/probe_visual_yearly_report_artifact.py --mode changed --year 2026`：PASS，2025/2026 均生成 `yearly_editorial_v1` metadata，7 个章节、7 个图表数据块、无 chart observation 缺失。
+- `scripts/probe_visual_yearly_report_artifact.py --mode full --year 2026`：PASS，2022-2026 全部通过；所有年份均返回 `editorial_plan_version=yearly_editorial_v1`，`fact_count >= 6`，`section_roles` 非空。
+- `.venv/bin/pytest backend/tests/unit/test_visual_yearly_artifact_models.py backend/tests/unit/test_narrative_brief.py backend/tests/unit/test_visual_brief.py backend/tests/unit/test_visual_chart_data.py backend/tests/unit/test_visual_yearly_critic.py backend/tests/unit/test_visual_yearly_artifact_service.py backend/tests/unit/test_ai_report_tasks.py backend/tests/contract/test_visual_yearly_report_contract.py -q`：36 passed
+- `cd frontend && npm test -- --run src/tests/visual-yearly-report.test.tsx src/tests/ai-task-components.test.tsx`：7 passed
+- `cd frontend && npm run build`：PASS
+- `.venv/bin/ruff check backend/domains/ai_reports backend/services/ai_task_service.py backend/services/ai_insights_service.py backend/api/ai_insights.py backend/models/ai_tasks.py scripts/probe_visual_yearly_report_artifact.py backend/tests/unit/test_visual_yearly_artifact_service.py backend/tests/unit/test_visual_chart_data.py backend/tests/unit/test_ai_report_tasks.py backend/tests/contract/test_visual_yearly_report_contract.py`：PASS
+- `scripts/probe_visual_yearly_report_artifact.py --year 2025` 与 `--year 2026`：均 PASS；两个年份均生成 7 个章节、7 个图表数据块、4 张 insight cards，2026 报告明确 `截至 2026-06-23`。
+- `.venv/bin/pytest backend/tests/unit/test_story_insight_builder.py backend/tests/unit/test_visual_yearly_critic.py backend/tests/unit/test_visual_yearly_artifact_service.py backend/tests/unit/test_visual_chart_data.py backend/tests/unit/test_visual_brief.py -q`：22 passed
+- Chrome CDP 模拟用户路径 `/ai-insights` → `年度叙事`：desktop 1440px 与 mobile 390px 均渲染图文 artifact，8 个 figure、0 横向溢出、0 console warning/error，未出现空图 fallback 或 `[object Object]`。
+- 应用内浏览器模拟用户刷新 2026 年度叙事：页面显示 `专辑热度与长留关系` 与 `播放量和持续在榜指向同一张专辑`，不再出现旧图表短句、同专辑假对比或内部提示词泄漏；390px 移动视口 `scrollWidth=390/clientWidth=390`。
+
 ## 2026-07-03 — Agentic Longform 年度报告落地
 
 ### 新增

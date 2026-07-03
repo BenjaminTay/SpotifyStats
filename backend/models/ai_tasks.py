@@ -70,6 +70,7 @@ class AiTaskEventsResponse(BaseModel):
 
 class AiTaskCreateResponse(BaseModel):
     task_id: str
+    task_type: str | None = None
     status: AiTaskStatus
     stage: str
     progress_pct: float = Field(default=0.0, ge=0.0, le=1.0)
@@ -87,7 +88,9 @@ class AiTaskCreateRequest(BaseModel):
 class ReportTaskRequest(BaseModel):
     report_type: Literal["weekly", "monthly", "yearly"]
     action: Literal["cache_only", "generate"] = "cache_only"
-    report_mode: Literal["agentic_longform", "basic_summary"] = "agentic_longform"
+    report_mode: Literal["visual_yearly_artifact", "agentic_longform", "basic_summary"] = (
+        "visual_yearly_artifact"
+    )
     force: bool = False
     week_start: str | None = None
     week_end: str | None = None

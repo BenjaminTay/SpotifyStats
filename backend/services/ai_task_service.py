@@ -8,9 +8,11 @@ import sqlite3
 import threading
 import uuid
 from collections.abc import Callable
+from datetime import datetime, timezone
 from typing import Any
 
 from backend.core.db import get_db
+from backend.domains.ai_reports.visual_artifact_models import VISUAL_YEARLY_REPORT_MODE
 from backend.domains.ai_tasks.repository import AiTaskRepository
 from backend.services import ai_insights_service, wikipedia_service
 
@@ -30,6 +32,11 @@ _AGENTIC_STAGE_PROGRESS = {
     "outlining": 0.6,
     "drafting": 0.75,
     "critic_review": 0.85,
+    "building_narrative_brief": 0.48,
+    "planning_visuals": 0.58,
+    "building_chart_data": 0.68,
+    "composing_artifact": 0.78,
+    "reviewing_visual_artifact": 0.88,
 }
 
 
@@ -98,6 +105,7 @@ def create_task(
 
     return {
         "task_id": task_id,
+        "task_type": task_type,
         "status": "queued",
         "stage": stage,
         "progress_pct": 0.0,
@@ -192,6 +200,13 @@ def _should_use_agentic_yearly_report(request: dict[str, Any]) -> bool:
     )
 
 
+def _should_use_visual_yearly_artifact(request: dict[str, Any]) -> bool:
+    return (
+        request.get("report_type") == "yearly"
+        and request.get("report_mode", "visual_yearly_artifact") == "visual_yearly_artifact"
+    )
+
+
 def peek_report_cache(request: dict[str, Any]) -> dict[str, Any]:
     conn = get_db(readonly=True)
     try:
@@ -203,11 +218,16 @@ def peek_report_cache(request: dict[str, Any]) -> dict[str, Any]:
             merge_enabled=request.get("merge_enabled", True),
             dynamic_threshold=request.get("dynamic_threshold", True),
             max_merge_gap_minutes=request.get("max_merge_gap_minutes"),
+            report_mode=VISUAL_YEARLY_REPORT_MODE
+            if _should_use_visual_yearly_artifact(request)
+            else None,
             week_start=request.get("week_start"),
             week_end=request.get("week_end"),
             month=request.get("month"),
             year=request.get("year"),
         )
+        if _should_use_visual_yearly_artifact(request):
+            return _visual_yearly_cache_result(cached)
         return {**cached, "needs_generation": not cached["cached"]}
     finally:
         conn.close()
@@ -256,6 +276,7 @@ def start_report_task(request: dict[str, Any]) -> dict[str, Any]:
             conn.close()
         return {
             "task_id": task_id,
+            "task_type": _task_type_for_report(report_type),
             "status": "done",
             "stage": "done",
             "progress_pct": 1.0,
@@ -556,6 +577,26 @@ def _run_report_generator(
             progress_callback=progress_callback,
             should_continue=should_continue,
         )
+    if _should_use_visual_yearly_artifact(request):
+        from backend.domains.ai_reports.visual_yearly_artifact_service import (
+            generate_visual_yearly_artifact,
+        )
+
+        def emit_event(
+            event_type: str,
+            message: str,
+            payload: dict[str, Any] | None = None,
+        ) -> None:
+            del event_type
+            event_payload = payload or {}
+            stage = str(event_payload.get("stage") or "building_narrative_brief")
+            progress = float(
+                event_payload.get("progress_pct") or _AGENTIC_STAGE_PROGRESS.get(stage, 0.5)
+            )
+            if progress_callback is not None:
+                progress_callback(stage, progress, message)
+
+        return generate_visual_yearly_artifact(request, emit_event=emit_event)
     if _should_use_agentic_yearly_report(request):
         from backend.services.yearly_report_agent_service import generate_agentic_yearly_report
 
@@ -593,10 +634,37 @@ def _write_report_cache_from_task_result(
     conn: sqlite3.Connection,
     request: dict[str, Any],
     result: dict[str, Any],
+    *,
+    fetched_at: str | None = None,
 ) -> None:
-    if result.get("cached") or not result.get("report"):
+    if result.get("cached") or (not result.get("report") and not result.get("artifact")):
         return
     try:
+        if _should_use_visual_yearly_artifact(request):
+            if not result.get("artifact"):
+                return
+            payload = json.dumps(
+                _visual_yearly_cache_payload(result, cached_at=fetched_at),
+                ensure_ascii=False,
+            )
+            ai_insights_service.store_report_cache(
+                conn,
+                request["report_type"],
+                payload,
+                min_ms=request.get("min_ms", 30000),
+                music_only=request.get("music_only", True),
+                merge_enabled=request.get("merge_enabled", True),
+                dynamic_threshold=request.get("dynamic_threshold", True),
+                max_merge_gap_minutes=request.get("max_merge_gap_minutes"),
+                report_mode=VISUAL_YEARLY_REPORT_MODE,
+                week_start=request.get("week_start"),
+                week_end=request.get("week_end"),
+                month=request.get("month"),
+                year=request.get("year"),
+                commit=False,
+                fetched_at=fetched_at,
+            )
+            return
         ai_insights_service.store_report_cache(
             conn,
             request["report_type"],
@@ -611,9 +679,95 @@ def _write_report_cache_from_task_result(
             month=request.get("month"),
             year=request.get("year"),
             commit=False,
+            fetched_at=fetched_at,
         )
     except sqlite3.Error:
         logger.warning("AI report task cache write failed", exc_info=True)
+
+
+def _visual_yearly_cache_payload(
+    result: dict[str, Any],
+    *,
+    cached_at: str | None = None,
+) -> dict[str, Any]:
+    return {
+        "success": bool(result.get("success", True)),
+        "report": result.get("report"),
+        "artifact": result.get("artifact"),
+        "cached": False,
+        "cached_at": cached_at,
+        "entities": result.get("entities"),
+        "metadata": result.get("metadata"),
+        "critic": result.get("critic"),
+        "fact_validation": result.get("fact_validation"),
+        "evidence_ledger": result.get("evidence_ledger"),
+        "error": result.get("error"),
+    }
+
+
+def _report_result_is_cacheable(result: dict[str, Any]) -> bool:
+    return bool((not result.get("cached")) and (result.get("report") or result.get("artifact")))
+
+
+def _report_cache_write_timestamp() -> str:
+    return datetime.now(timezone.utc).replace(tzinfo=None, microsecond=0).isoformat(sep=" ")
+
+
+def _report_task_result_with_cached_at(
+    result: dict[str, Any],
+    cached_at: str | None,
+) -> dict[str, Any]:
+    if not cached_at:
+        return result
+    return {**result, "cached_at": cached_at}
+
+
+def _visual_yearly_cache_result(cached: dict[str, Any]) -> dict[str, Any]:
+    if not cached.get("cached"):
+        return {
+            "success": True,
+            "report": None,
+            "artifact": None,
+            "cached": False,
+            "cached_at": None,
+            "entities": None,
+            "metadata": None,
+            "error": None,
+            "needs_generation": True,
+        }
+    try:
+        payload = json.loads(str(cached.get("report") or ""))
+    except json.JSONDecodeError:
+        logger.warning("Invalid visual yearly report cache payload")
+        return {
+            "success": True,
+            "report": None,
+            "artifact": None,
+            "cached": False,
+            "cached_at": None,
+            "entities": None,
+            "metadata": None,
+            "error": None,
+            "needs_generation": True,
+        }
+    if not isinstance(payload, dict) or not isinstance(payload.get("artifact"), dict):
+        return {
+            "success": True,
+            "report": None,
+            "artifact": None,
+            "cached": False,
+            "cached_at": None,
+            "entities": None,
+            "metadata": None,
+            "error": None,
+            "needs_generation": True,
+        }
+    return {
+        **payload,
+        "cached": True,
+        "cached_at": cached.get("cached_at"),
+        "needs_generation": False,
+    }
 
 
 def _persist_report_tool_calls(
@@ -688,10 +842,14 @@ def run_report_generation_task(task_id: str, request: dict[str, Any]) -> None:
             return
 
         metadata = result.get("metadata") if isinstance(result.get("metadata"), dict) else {}
-        if metadata.get("report_mode") == "agentic_longform":
+        if metadata.get("report_mode") in {"agentic_longform", "visual_yearly_artifact"}:
             _persist_report_tool_calls(repo, task_id=task_id, result=result)
 
         if result.get("success"):
+            cache_written_at = (
+                _report_cache_write_timestamp() if _report_result_is_cacheable(result) else None
+            )
+            task_result = _report_task_result_with_cached_at(result, cache_written_at)
             if not result.get("cached"):
                 if not _set_task_stage(
                     repo,
@@ -708,11 +866,12 @@ def run_report_generation_task(task_id: str, request: dict[str, Any]) -> None:
                 stage="done",
                 progress_pct=1.0,
                 message="报告生成完成",
-                result=result,
+                result=task_result,
                 write=lambda active_conn: _write_report_cache_from_task_result(
                     active_conn,
                     request,
-                    result,
+                    task_result,
+                    fetched_at=cache_written_at,
                 ),
             )
             if not updated:
@@ -722,7 +881,10 @@ def run_report_generation_task(task_id: str, request: dict[str, Any]) -> None:
                 event_type="result_ready",
                 stage="done",
                 message="报告生成完成",
-                payload={"cached": result.get("cached", False)},
+                payload={
+                    "cached": task_result.get("cached", False),
+                    "cached_at": task_result.get("cached_at"),
+                },
             )
             return
 

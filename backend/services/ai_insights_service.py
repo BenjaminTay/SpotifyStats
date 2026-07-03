@@ -18,6 +18,10 @@ from pathlib import Path
 from typing import Any, Optional
 
 from backend.core.db import DB_PATH, get_db, load_plays
+from backend.domains.ai_reports.visual_artifact_models import (
+    VISUAL_YEARLY_CONTRACT_VERSION,
+    VISUAL_YEARLY_REPORT_MODE,
+)
 from backend.domains.ai_reports.yearly_contract import (
     build_editorial_brief,
     build_reporting_period,
@@ -468,10 +472,11 @@ def _write_cache(
     content: str,
     *,
     commit: bool = True,
+    fetched_at: str | None = None,
 ) -> None:
     conn.execute(
-        "INSERT OR REPLACE INTO wikipedia_cache (cache_key, data, fetched_at) VALUES (?, ?, datetime('now'))",
-        (cache_key, content),
+        "INSERT OR REPLACE INTO wikipedia_cache (cache_key, data, fetched_at) VALUES (?, ?, COALESCE(?, datetime('now')))",
+        (cache_key, content, fetched_at),
     )
     if commit:
         conn.commit()
@@ -482,15 +487,21 @@ def _is_readonly_error(exc: sqlite3.Error) -> bool:
     return "readonly" in message or "read-only" in message
 
 
-def _set_cache(conn: sqlite3.Connection, cache_key: str, content: str) -> None:
+def _set_cache(
+    conn: sqlite3.Connection,
+    cache_key: str,
+    content: str,
+    *,
+    fetched_at: str | None = None,
+) -> None:
     try:
-        _write_cache(conn, cache_key, content)
+        _write_cache(conn, cache_key, content, fetched_at=fetched_at)
     except sqlite3.Error as exc:
         if _is_readonly_error(exc):
             write_conn = None
             try:
                 write_conn = get_db(readonly=False)
-                _write_cache(write_conn, cache_key, content)
+                _write_cache(write_conn, cache_key, content, fetched_at=fetched_at)
             except sqlite3.Error:
                 logger.warning("AI report cache write failed", exc_info=True)
             finally:
@@ -508,6 +519,7 @@ def _report_cache_key(
     merge_enabled: bool,
     dynamic_threshold: bool,
     max_merge_gap_minutes: Optional[int],
+    report_mode: str | None = None,
     week_start: str | None = None,
     week_end: str | None = None,
     month: str | None = None,
@@ -521,6 +533,14 @@ def _report_cache_key(
     if report_type == "monthly":
         return _cache_key("monthly", month or "", str(year or ""), filter_part)
     if report_type == "yearly":
+        if report_mode == VISUAL_YEARLY_REPORT_MODE:
+            return _cache_key(
+                "yearly",
+                VISUAL_YEARLY_REPORT_MODE,
+                VISUAL_YEARLY_CONTRACT_VERSION,
+                str(year or ""),
+                filter_part,
+            )
         return _cache_key("yearly", YEARLY_REPORT_CONTRACT_VERSION, str(year or ""), filter_part)
     return None
 
@@ -535,11 +555,13 @@ def store_report_cache(
     merge_enabled: bool,
     dynamic_threshold: bool,
     max_merge_gap_minutes: Optional[int],
+    report_mode: str | None = None,
     week_start: str | None = None,
     week_end: str | None = None,
     month: str | None = None,
     year: int | None = None,
     commit: bool = True,
+    fetched_at: str | None = None,
 ) -> bool:
     """Store a generated report in the shared report cache."""
     cache_key = _report_cache_key(
@@ -549,6 +571,7 @@ def store_report_cache(
         merge_enabled=merge_enabled,
         dynamic_threshold=dynamic_threshold,
         max_merge_gap_minutes=max_merge_gap_minutes,
+        report_mode=report_mode,
         week_start=week_start,
         week_end=week_end,
         month=month,
@@ -557,9 +580,9 @@ def store_report_cache(
     if cache_key is None:
         return False
     if commit:
-        _set_cache(conn, cache_key, content)
+        _set_cache(conn, cache_key, content, fetched_at=fetched_at)
     else:
-        _write_cache(conn, cache_key, content, commit=False)
+        _write_cache(conn, cache_key, content, commit=False, fetched_at=fetched_at)
     return True
 
 
@@ -1100,6 +1123,7 @@ def peek_report_cache(
     merge_enabled: bool,
     dynamic_threshold: bool,
     max_merge_gap_minutes: Optional[int],
+    report_mode: str | None = None,
     week_start: str | None = None,
     week_end: str | None = None,
     month: str | None = None,
@@ -1113,6 +1137,7 @@ def peek_report_cache(
         merge_enabled=merge_enabled,
         dynamic_threshold=dynamic_threshold,
         max_merge_gap_minutes=max_merge_gap_minutes,
+        report_mode=report_mode,
         week_start=week_start,
         week_end=week_end,
         month=month,
@@ -1133,6 +1158,14 @@ def peek_report_cache(
     cached = _get_cached(conn, key, ttl)
     if not cached:
         return {"cached": False, "report": None, "cached_at": None, "entities": None}
+
+    if report_type == "yearly" and report_mode == VISUAL_YEARLY_REPORT_MODE:
+        return {
+            "cached": True,
+            "report": cached[0],
+            "cached_at": cached[1],
+            "entities": None,
+        }
 
     entities: dict[str, Any] = {"artists": [], "tracks": []}
     if report_type == "weekly":

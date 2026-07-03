@@ -6,6 +6,10 @@ import type { ReportTaskRequest } from '@/hooks/useAiTasks'
 import type { ReportEntities, ReportType } from '@/types/ai-insights'
 import type { AiTaskCreatePayload } from '@/types/ai-tasks'
 import { AITaskProgress } from '@/features/ai-tasks/AITaskProgress'
+import {
+  isVisualYearlyArtifact,
+  type VisualYearlyArtifact,
+} from '@/features/ai-insights/yearly-artifact/yearlyArtifactTypes'
 
 import { EmptyState } from './AiInsightsPrimitives'
 import {
@@ -22,6 +26,7 @@ import { ReportCard } from './ReportCard'
 interface ReportTaskResult {
   success?: boolean
   report: string | null
+  artifact: VisualYearlyArtifact | null
   cached: boolean
   cached_at: string | null
   entities: ReportEntities | null
@@ -63,6 +68,7 @@ function reportResultFromPayload(value: unknown): ReportTaskResult | null {
   return {
     success: typeof value.success === 'boolean' ? value.success : undefined,
     report: typeof value.report === 'string' ? value.report : null,
+    artifact: isVisualYearlyArtifact(value.artifact) ? value.artifact : null,
     cached: value.cached === true,
     cached_at: typeof value.cached_at === 'string' ? value.cached_at : null,
     entities: normalizeEntities(value.entities),
@@ -142,7 +148,7 @@ export function AiReportsPanel({ settings, onFollowUp }: AiReportsPanelProps) {
     return {
       report_type: 'yearly',
       action: 'cache_only',
-      report_mode: 'agentic_longform',
+      report_mode: 'visual_yearly_artifact',
       year,
       ...basePayload,
     }
@@ -177,6 +183,7 @@ export function AiReportsPanel({ settings, onFollowUp }: AiReportsPanelProps) {
   const startGenerateReport = useCallback(async () => {
     const key = reportPayloadKey
     reportPayloadKeyRef.current = key
+    setActiveReportTaskId(null)
     setCurrentReportTask({ key, mode: 'generate', taskId: null, result: null, error: null })
 
     try {
@@ -215,6 +222,13 @@ export function AiReportsPanel({ settings, onFollowUp }: AiReportsPanelProps) {
       if (!previous || previous.taskId !== activeReportTaskId) return previous
       return { ...previous, result: taskResult ?? previous.result, error: taskError }
     })
+    if (
+      activeReportTask.task.status === 'done'
+      || activeReportTask.task.status === 'error'
+      || activeReportTask.task.status === 'cancelled'
+    ) {
+      setActiveReportTaskId(null)
+    }
   }, [activeReportTask.error, activeReportTask.task, activeReportTaskId])
 
   const weeklyQuickValue = `${weekStart}_${weekEnd}`
@@ -404,6 +418,7 @@ export function AiReportsPanel({ settings, onFollowUp }: AiReportsPanelProps) {
             reportType={reportType}
             title={reportTitle}
             report={reportTaskResult?.report ?? null}
+            artifact={reportTaskResult?.artifact ?? null}
             cached={reportTaskResult?.cached ?? false}
             cachedAt={reportTaskResult?.cached_at ?? null}
             entities={reportTaskResult?.entities ?? null}
