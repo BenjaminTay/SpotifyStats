@@ -13,6 +13,7 @@ const DEFAULT_SCENARIOS = [
   'analysis-tabs',
   'billboard-routing',
   'ai-insights-tabs',
+  'music-search-quick-open',
   'settings-controls',
   'settings-data-import',
   'theme-toggle',
@@ -80,6 +81,7 @@ Scenarios:
   analysis-tabs           Click Analysis subnav between stats and personal charts
   billboard-routing       Click Billboard subnav and browser back/forward
   ai-insights-tabs        Click AI Insights report/chat tabs and report type pills
+  music-search-quick-open Open Masthead music search and navigate to the full search page
   settings-controls       Toggle non-destructive settings controls and verify local display preference
   settings-data-import    Verify data import cards and import actions without starting jobs
   theme-toggle            Toggle light/dark theme buttons
@@ -286,6 +288,45 @@ async function clickText(client, text, waitMs) {
   `)
   if (!clicked) throw new Error(`Clickable text not found: ${text}`)
   await sleep(Math.min(250, waitMs))
+}
+
+async function clickByAriaLabel(client, label, waitMs) {
+  const clicked = await evaluate(client, `
+    (() => {
+      const targetLabel = ${JSON.stringify(label)};
+      const candidates = Array.from(document.querySelectorAll('button, a, [role="button"], [role="tab"], [role="option"]'))
+        .filter((el) => (el.getAttribute('aria-label') || '').trim() === targetLabel);
+      const el = candidates[0];
+      if (!el) return false;
+      el.scrollIntoView({ block: 'center', inline: 'center' });
+      el.click();
+      return true;
+    })();
+  `)
+  if (!clicked) throw new Error(`Clickable aria-label not found: ${label}`)
+  await sleep(Math.min(250, waitMs))
+}
+
+async function fillInputByAriaLabel(client, label, value, waitMs) {
+  const filled = await evaluate(client, `
+    (() => {
+      const targetLabel = ${JSON.stringify(label)};
+      const value = ${JSON.stringify(value)};
+      const input = Array.from(document.querySelectorAll('input, textarea'))
+        .find((el) => (el.getAttribute('aria-label') || '').trim() === targetLabel);
+      if (!input) return false;
+      input.scrollIntoView({ block: 'center', inline: 'center' });
+      input.focus();
+      const proto = input instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+      const descriptor = Object.getOwnPropertyDescriptor(proto, 'value');
+      descriptor?.set?.call(input, value);
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+      return true;
+    })();
+  `)
+  if (!filled) throw new Error(`Input aria-label not found: ${label}`)
+  await sleep(Math.min(300, waitMs))
 }
 
 async function clickSwitchByLabel(client, label, waitMs) {
@@ -508,6 +549,18 @@ const SCENARIOS = {
     await waitForText(client, '对话历史', waitMs)
     await clickText(client, '报告', waitMs)
     await waitForText(client, 'AI 洞察', waitMs)
+  },
+
+  'music-search-quick-open': async ({ client, baseUrl, waitMs }) => {
+    await navigate(client, baseUrl, '/', waitMs)
+    await clickByAriaLabel(client, '搜索音乐详情', waitMs)
+    await waitForText(client, '输入歌曲、专辑或艺人名称开始查找', waitMs)
+    await fillInputByAriaLabel(client, '搜索歌曲、专辑或艺人', 'Fixture', waitMs)
+    await waitForAnyText(client, ['单曲', '专辑', '艺人', '没有找到匹配的音乐详情'], waitMs)
+    await waitForText(client, '查看全部结果', waitMs)
+    await clickText(client, '查看全部结果', waitMs)
+    await waitForPath(client, '/music/search', waitMs)
+    await waitForText(client, '音乐查找', waitMs)
   },
 
   'settings-controls': async ({ client, baseUrl, waitMs }) => {

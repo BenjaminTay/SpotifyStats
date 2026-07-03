@@ -44,6 +44,7 @@ const DEFAULT_ROUTES = [
   '/billboard/versus',
   '/community',
   '/ai-insights',
+  '/music/search',
   '/account',
   '/settings',
 ]
@@ -68,6 +69,7 @@ const ROUTE_READY_MARKERS = {
   '/billboard/versus': ['CHART / VERSUS', '请搜索并添加歌曲开始对决'],
   '/community': ['COMMUNITY / FEED', '榜单社区'],
   '/ai-insights': ['AI / INSIGHTS', 'AI 洞察'],
+  '/music/search': ['MUSIC / SEARCH', '音乐查找'],
   '/account': ['ACCOUNT CENTER', '你的收藏'],
   '/settings': ['设置', 'Spotify 连接'],
 }

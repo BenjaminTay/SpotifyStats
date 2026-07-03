@@ -153,6 +153,15 @@ export function getMastheadRouteContext(pathname: string, search = ''): Masthead
     }
   }
 
+  if (pathname === '/music/search') {
+    return {
+      activeNavTo: null,
+      contextSegments: ['音乐查找'],
+      title: null,
+      showMobileContext: false,
+    }
+  }
+
   if (pathname.startsWith('/music/artists/')) {
     return {
       activeNavTo: null,

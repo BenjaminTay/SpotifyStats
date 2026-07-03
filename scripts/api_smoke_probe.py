@@ -92,7 +92,11 @@ DEFAULT_SAFE_GET_CASES: tuple[SmokeCase, ...] = (
     ),
     SmokeCase("analysis_plays", "/api/analysis/plays", {**DEFAULT_FILTERS, "limit": 5}),
     SmokeCase("analysis_play_dates", "/api/analysis/play-dates", DEFAULT_FILTERS),
-    SmokeCase("analysis_records", "/api/analysis/records", {**DEFAULT_FILTERS, "period": "lifetime", "merge_level": 2}),
+    SmokeCase(
+        "analysis_records",
+        "/api/analysis/records",
+        {**DEFAULT_FILTERS, "period": "lifetime", "merge_level": 2},
+    ),
     SmokeCase("dashboard_summary", "/api/dashboard/summary", DEFAULT_FILTERS),
     SmokeCase("dashboard_full", "/api/dashboard/full", DEFAULT_FILTERS),
     SmokeCase("dashboard_top_tracks", "/api/dashboard/top-tracks", {**DEFAULT_FILTERS, "n": 5}),
@@ -149,7 +153,9 @@ DEFAULT_SAFE_GET_CASES: tuple[SmokeCase, ...] = (
     SmokeCase("billboard_summaries", "/api/billboard/summaries", DEFAULT_BILLBOARD),
     SmokeCase("billboard_all_time", "/api/billboard/all-time", DEFAULT_BILLBOARD),
     SmokeCase("billboard_year_end", "/api/billboard/year-end", DEFAULT_BILLBOARD),
-    SmokeCase("release_cycle_artist_list", "/api/billboard/release-cycle/artist-list", DEFAULT_BILLBOARD),
+    SmokeCase(
+        "release_cycle_artist_list", "/api/billboard/release-cycle/artist-list", DEFAULT_BILLBOARD
+    ),
     SmokeCase(
         "release_cycle_artist",
         "/api/billboard/release-cycle/artist/Fixture Artist Alpha",
@@ -161,8 +167,12 @@ DEFAULT_SAFE_GET_CASES: tuple[SmokeCase, ...] = (
         DEFAULT_BILLBOARD,
     ),
     SmokeCase("billboard_track_detail", "/api/billboard/track/901", DEFAULT_BILLBOARD),
-    SmokeCase("billboard_artist_detail", "/api/billboard/artist/Fixture Artist Alpha", DEFAULT_BILLBOARD),
-    SmokeCase("billboard_album_detail", "/api/billboard/album/Fixture Future LP", DEFAULT_BILLBOARD),
+    SmokeCase(
+        "billboard_artist_detail", "/api/billboard/artist/Fixture Artist Alpha", DEFAULT_BILLBOARD
+    ),
+    SmokeCase(
+        "billboard_album_detail", "/api/billboard/album/Fixture Future LP", DEFAULT_BILLBOARD
+    ),
     SmokeCase("billboard_entity_lists", "/api/billboard/entity-lists", DEFAULT_BILLBOARD),
     SmokeCase(
         "billboard_versus_track",
@@ -183,7 +193,11 @@ DEFAULT_SAFE_GET_CASES: tuple[SmokeCase, ...] = (
     SmokeCase(
         "billboard_versus_artist",
         "/api/billboard/versus/artist",
-        {**DEFAULT_BILLBOARD, "artist_a": "Fixture Artist Alpha", "artist_b": "Fixture Artist Beta"},
+        {
+            **DEFAULT_BILLBOARD,
+            "artist_a": "Fixture Artist Alpha",
+            "artist_b": "Fixture Artist Beta",
+        },
     ),
     SmokeCase("community_feed", "/api/community/feed", {"limit": 5}),
     SmokeCase("community_trending", "/api/community/trending"),
@@ -196,23 +210,38 @@ DEFAULT_SAFE_GET_CASES: tuple[SmokeCase, ...] = (
     SmokeCase("version_group_members", "/api/version-merge/groups/2/members"),
     SmokeCase("version_artist_groups", "/api/version-merge/groups/artist/Fixture Artist Alpha"),
     SmokeCase("version_ungrouped", "/api/version-merge/ungrouped"),
-    SmokeCase("version_compare", "/api/version-merge/compare", {"album_id_a": 921, "album_id_b": 925}),
+    SmokeCase(
+        "version_compare", "/api/version-merge/compare", {"album_id_a": 921, "album_id_b": 925}
+    ),
     SmokeCase("version_album_types", "/api/version-merge/album-types", {"album_ids": "921,925"}),
-    SmokeCase("version_collab_candidates", "/api/version-merge/track-group-candidates/collaboration"),
+    SmokeCase(
+        "version_collab_candidates", "/api/version-merge/track-group-candidates/collaboration"
+    ),
     SmokeCase("import_status_missing", "/api/import/status/nonexistent"),
+    SmokeCase("music_search", "/api/music/search", {"q": "Fixture", "limit_per_type": 3}),
     SmokeCase("music_track_stats", "/api/music/tracks/901/stats", DEFAULT_FILTERS),
     SmokeCase("music_album_stats", "/api/music/albums/Fixture Future LP/stats", DEFAULT_FILTERS),
-    SmokeCase("music_artist_stats", "/api/music/artists/Fixture Artist Alpha/stats", DEFAULT_FILTERS),
+    SmokeCase(
+        "music_artist_stats", "/api/music/artists/Fixture Artist Alpha/stats", DEFAULT_FILTERS
+    ),
     SmokeCase("music_track_plays", "/api/music/tracks/901/plays", {**DEFAULT_FILTERS, "limit": 5}),
-    SmokeCase("music_album_plays", "/api/music/albums/Fixture Future LP/plays", {**DEFAULT_FILTERS, "limit": 5}),
+    SmokeCase(
+        "music_album_plays",
+        "/api/music/albums/Fixture Future LP/plays",
+        {**DEFAULT_FILTERS, "limit": 5},
+    ),
     SmokeCase(
         "music_artist_plays",
         "/api/music/artists/Fixture Artist Alpha/plays",
         {**DEFAULT_FILTERS, "limit": 5},
     ),
     SmokeCase("music_track_dates", "/api/music/tracks/901/play-dates", DEFAULT_FILTERS),
-    SmokeCase("music_album_dates", "/api/music/albums/Fixture Future LP/play-dates", DEFAULT_FILTERS),
-    SmokeCase("music_artist_dates", "/api/music/artists/Fixture Artist Alpha/play-dates", DEFAULT_FILTERS),
+    SmokeCase(
+        "music_album_dates", "/api/music/albums/Fixture Future LP/play-dates", DEFAULT_FILTERS
+    ),
+    SmokeCase(
+        "music_artist_dates", "/api/music/artists/Fixture Artist Alpha/play-dates", DEFAULT_FILTERS
+    ),
     SmokeCase("lyrics_missing", "/api/lyrics/-1"),
     SmokeCase("lyrics_url_missing", "/api/lyrics/-1/url"),
     SmokeCase("account", "/api/account"),
@@ -227,7 +256,9 @@ DEFAULT_SAFE_GET_CASES: tuple[SmokeCase, ...] = (
         "/api/ai/tasks/nonexistent-smoke-task/events",
         expected_json={"found": False, "events": [], "tool_calls": []},
     ),
-    SmokeCase("ai_suggested_questions", "/api/ai-insights/suggested-questions", {"context": "chat"}),
+    SmokeCase(
+        "ai_suggested_questions", "/api/ai-insights/suggested-questions", {"context": "chat"}
+    ),
     SmokeCase("chat_sessions", "/api/chat/sessions", {"limit": 5}),
     SmokeCase("chat_session_missing", "/api/chat/sessions/999999"),
     SmokeCase("admin_cache_stats", "/api/admin/cache-stats"),
@@ -277,8 +308,7 @@ def assert_results(results: list[SmokeResult]) -> None:
     failures = [r for r in results if not r.ok]
     if failures:
         lines = [
-            f"{r.case.name}: GET {r.case.path} -> {r.status_code} ({r.detail})"
-            for r in failures
+            f"{r.case.name}: GET {r.case.path} -> {r.status_code} ({r.detail})" for r in failures
         ]
         raise AssertionError("API smoke failures:\n" + "\n".join(lines))
 

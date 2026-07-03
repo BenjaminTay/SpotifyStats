@@ -1,5 +1,29 @@
 # 变更日志
 
+## 2026-07-03 — 音乐查找入口与本地实体搜索
+
+### 新增
+
+- 新增只读 `/api/music/search`，复用本地实体解析能力搜索歌曲、专辑、艺人，并返回既有音乐详情页链接。
+- Masthead 右侧新增全局音乐搜索图标，支持快速输入、分组结果和“查看全部结果”跳转。
+- 新增 `/music/search` 完整查找页，URL `q` / `kind` 参数可分享，继续使用 TanStack Query + `queryKeys.music.search`，结果列表会显示本地 `/covers` 封面并在图片失败时回退占位。
+- route/interaction smoke 覆盖 `/music/search` 和 Masthead 快速查找；播放排行页不增加重复搜索入口。
+
+### 验证
+
+- `pytest backend/tests/unit/test_music_search_service.py backend/tests/contract/test_music_search_api.py -v`：9 passed
+- `cd frontend && npm test -- --run src/tests/music-search-components.test.tsx src/tests/music-search-flow.test.tsx src/tests/masthead-navigation.test.tsx src/tests/masthead-route-context.test.ts src/tests/query-hooks.test.tsx src/tests/phase5-architecture.test.ts`：123 passed
+- `cd frontend && npm test -- --run`：229 passed
+- `cd frontend && npm run build`
+- `.venv/bin/python scripts/api_smoke_probe.py`：101/101 passed；OpenAPI GET coverage 0 unaccounted
+- `.venv/bin/python scripts/api_boundary_probe.py`：95/95 passed
+- `.venv/bin/python scripts/openapi_operation_audit.py --json-output /tmp/spotify_openapi_operation_audit_music_search.json`：144 operations / 0 unaccounted
+- `.venv/bin/python scripts/openapi_parameter_boundary_audit.py --json-output /tmp/spotify_openapi_parameter_boundary_audit_music_search.json`：64 obligations / 0 unaccounted
+- `node scripts/frontend_route_smoke.mjs --base-url http://localhost:5173 --routes /music/search --viewport both --max-scroll-overflow 0 --fail-on-console-warning`：desktop/mobile PASS，0 console warning/error，0 横向溢出
+- `node scripts/frontend_interaction_smoke.mjs --base-url http://localhost:5173 --scenario music-search-quick-open --wait-ms 15000`：PASS，0 console/page error，0 横向溢出
+- `pytest -m unit -q`：543 passed；`pytest -m contract -q`：229 passed；`npm test`：229 passed
+- CDP 页面探针 `/music/search?q=the`：15 个音乐结果链接、15 张封面图片全部加载完成，样例 `/covers/albums/1894.jpg` 为 640x640
+
 ## 2026-07-03 — AI Agent 相对时间 grounding
 
 ### 新增

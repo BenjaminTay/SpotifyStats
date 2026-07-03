@@ -14,6 +14,8 @@ Spotify Extended Streaming History 数据分析 Web 应用的主项目提示词�
 
 **导航命名（2026-06-28）**：顶级入口使用“播放分析”；二级 tab 顺序固定为“播放统计 / 播放排行 / 年度总结 / 播放记录 / 账号中心”。年度总结与账号中心归属播放分析 tab 行，避免在 Masthead 中恢复独立顶级入口、重复下拉入口或第二套子导航。
 
+**音乐查找（2026-07-03）**：Masthead 右侧提供全局音乐搜索图标，`/music/search` 是可分享的完整查找页；后端 `/api/music/search` 只读搜索本地播放历史中的歌曲/专辑/艺人，结果打开既有 `/music/tracks/:trackId`、`/music/albums/:albumName?artist=...`、`/music/artists/:artistName` 详情页。不要在“播放排行”页再放重复搜索框或按钮。
+
 **性能策略**：Cache Manager 管理 5 命名空间（billboard/analysis/db/auth）LRU+TTL 缓存；Billboard 拆为 4 个独立 `@lru_cache` 函数，并通过共享 `_load_and_rank_cached` + `singleflight()` 避免 weekly/power/summaries/all-time 冷启动重复计算；Power Score、Billboard summaries 和 `merge_consecutive_plays()` 使用列级/组级向量化，避免逐行 `DataFrame.apply(axis=1)`、`iterrows()` 或 `to_dict()` 热路径；Dashboard full 单请求复用同一播放 DataFrame；`agg_weekly_track_sources` 支撑 album project 专辑榜和详情来源拆分；启动 warmup 使用当前默认动态阈值口径并预热 artist fan-out；SQLite 版本化 Migration；后台 Job Queue（3 worker）异步处理封面下载与 Wikipedia+LLM enrichment；前端 GET 数据统一进入 TanStack React Query（staleTime 5min/gcTime 30min/retry 2），路由级 lazy 分包；ECharts 统一走 `LazyEChart` + `echarts-for-react/esm/core` 按需注册，OpenCC 简繁转换只动态加载 `opencc-js/t2cn` 或 `opencc-js/cn2t` 子包，保存偏好恢复不得在模块初始化时预取大字典；账号页长图列表使用预览上限与原生图片懒加载，Web Vitals lab 通过 `scripts/frontend_web_vitals_probe.mjs` 采样，并可用 LCP/CLS/TBT/资源数量/encoded 体积/横向滚动溢出预算参数作为回归门禁。
 
 **AI 可观察任务与只读 Agent（2026-07-03）**：AI 报告采用 cache-first + 手动生成，不因打开页面自动调用 LLM；AI task runs/events/tool_calls 持久化到 SQLite，前端通过 `features/ai-tasks` 统一展示进度、证据卡片和工具轨迹；问答改为后端只读 Agent 工具链，模型只可规划 allowlist read-only 工具（总体统计、排行、播放记录、年度总结、实体统计、个人 Billboard 实体详情、听歌时段/深夜歌曲排行、账号收藏概况、搜索历史、社区帖子搜索与热议趋势），不得调用任意 SQL/URL/写操作；最终回答只能基于 compact evidence、coverage、EvidenceSufficiency、AnalyticalBrief 和 answer_obligations，prompt 与 AnswerContract 明确区分本地个人 Billboard 与外部官方 Billboard，并在 coverage/answer contract 矛盾时自动重试一次；Project Context Prompt 作为 AI Agent 的项目语境层，集中描述 SpotifyStats 的个人音乐数据定位、本地个人 Billboard 边界、偏好分析口径、页面域工具和默认回答哲学；Planner 与最终回答 prompt 通过版本化 context 组合工具 playbook 与 answer philosophy，最终 payload / task result 记录 `project_context_version` 便于排查；QuestionFrame、EvidenceRecipe、EvidenceSufficiency、AnalyticalBrief、answer_obligations、entity resolver、compare_entities、answer critic 与 golden-question harness 共同构成 AI Agent 通用分析中间层；相对时间以 question_time 为准，数据范围优先使用本地 `ts_date`；艺人 career 与专辑 era enrichment 已接入同一 task 进度模型。
@@ -115,16 +117,16 @@ sh scripts/phase5_check.sh
 sh scripts/fullstack_verification_check.sh --backend-url http://127.0.0.1:8000 --frontend-url http://localhost:5173
 sh scripts/fullstack_verification_check.sh --backend-url http://127.0.0.1:8000 --frontend-url http://localhost:5173 --preview-url http://127.0.0.1:4173 --preview-api-url http://127.0.0.1:8000 --quickstart-preflight --quickstart-json /tmp/spotify_quickstart_timing.json --web-vitals --resource-snapshot --resource-max-total-rss-mb 1200 --resource-max-total-cpu-percent 200 --web-vitals-max-lcp-ms 3000 --web-vitals-max-cls 0.01 --web-vitals-max-tbt-ms 100 --web-vitals-max-resource-count 120 --web-vitals-max-encoded-resource-kb 11000 --web-vitals-max-scroll-overflow-px 0
 
-# 本地只读 API smoke（98 个 GET，验证 X-Request-ID，并核算 OpenAPI GET 覆盖）
+# 本地只读 API smoke（101 个 GET，验证 X-Request-ID，并核算 OpenAPI GET 覆盖）
 .venv/bin/python scripts/api_smoke_probe.py
 
-# 非破坏性 API 边界 probe（90 个 GET，验证 422/200、X-Request-ID 与 validation detail）
+# 非破坏性 API 边界 probe（95 个 GET，验证 422/200、X-Request-ID 与 validation detail）
 .venv/bin/python scripts/api_boundary_probe.py
 
-# OpenAPI 全操作覆盖归属核算（136 operation，0 unaccounted）
+# OpenAPI 全操作覆盖归属核算（144 operation，0 unaccounted）
 .venv/bin/python scripts/openapi_operation_audit.py --json-output /tmp/spotify_openapi_operation_audit.json
 
-# OpenAPI 参数边界覆盖归属核算（60 obligations，0 unaccounted）
+# OpenAPI 参数边界覆盖归属核算（64 obligations，0 unaccounted）
 .venv/bin/python scripts/openapi_parameter_boundary_audit.py --json-output /tmp/spotify_openapi_parameter_boundary_audit.json
 
 # API 性能 benchmark（需后端 8000 已启动；输出冷/热响应、体积、慢端点汇总）
@@ -238,6 +240,7 @@ frontend/src/
 │   │   └── all-time/      ← AllTimeTable + Data
 │   ├── community/         ← CommunityExperience/Account + FeedToggle + TimeFilter + PostCard + Timeline + Sidebar + PostDetailExperience + MobileSidebarDrawer + Data
 │   ├── music/details/     ← Artist/Album Experience + Header/Tabs + Skeletons + Overview/Tracks/Albums/Career/ArtistReleases/AlbumEra 子 sections + ReleaseCycle sections + Primitives
+│   ├── music/search/      ← Masthead 快速搜索 + `/music/search` 全页查找 + 结果分组渲染
 │   ├── ai-insights/        ← AiInsightsExperience + ReportsPanel + ReportCard + ChatInterface + ChatComposer + ChatSessionList + ChatSessionDrawer + SuggestedQuestions + Primitives + Data
 │   ├── ai-tasks/           ← AITaskProgress + AIToolTrace + AIResultShell，共享 AI task 进度/结果/工具轨迹 UI
 │   ├── settings/components/  ← 7 配置 Section 组件
@@ -254,7 +257,7 @@ frontend/src/
 └── types/             ← 手写 TypeScript 展示类型
 ```
 
-**路由**：`/` → `/analysis/stats|charts` → `/yearly-review` → `/billboard` → `/community` → `/ai-insights` → `/account` → `/settings`；音乐实体详情 `/music/{tracks|albums|artists}/:id`；社区 `/community/account/:handle`（账号页）+ `/community/post/:postId`（帖子详情）；旧 `/billboard/track|album|artist/*` 仅兼容跳转。
+**路由**：`/` → `/analysis/stats|charts` → `/yearly-review` → `/billboard` → `/community` → `/ai-insights` → `/account` → `/settings`；音乐查找 `/music/search`；音乐实体详情 `/music/{tracks|albums|artists}/:id`；社区 `/community/account/:handle`（账号页）+ `/community/post/:postId`（帖子详情）；旧 `/billboard/track|album|artist/*` 仅兼容跳转。
 
 **Phase 5 架构模式**（新增组件必须遵守）：
 

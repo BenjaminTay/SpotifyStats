@@ -31,6 +31,7 @@ import type {
   WeekdayWeekendResponse,
   YearlyHeatmapEntry,
 } from '@/types/analysis'
+import type { MusicSearchKind, MusicSearchResponse } from '@/types/music-search'
 
 function playParams(filters: AnalysisFilters): Record<string, string | number | boolean> {
   const p: Record<string, string | number | boolean> = {
@@ -429,4 +430,45 @@ export const analysisApi = {
       () => api.get<PlaybackRecordsResponse>('/analysis/records', q),
     )
   },
+}
+
+export const musicSearchApi = {
+  search: (query: string, kind?: MusicSearchKind, limitPerType = 5) => {
+    const trimmed = query.trim()
+    const params: Record<string, string | number> = {
+      q: trimmed,
+      limit_per_type: limitPerType,
+    }
+    if (kind) params.kind = kind
+    return fetchQuery(
+      queryKeys.music.search(params),
+      () => api.get<MusicSearchResponse>('/music/search', params),
+    )
+  },
+}
+
+export function useMusicSearch(query: string, kind?: MusicSearchKind, limitPerType = 5) {
+  const trimmed = query.trim()
+  const params = useMemo<Record<string, string | number>>(() => {
+    const q: Record<string, string | number> = {
+      q: trimmed,
+      limit_per_type: limitPerType,
+    }
+    if (kind) q.kind = kind
+    return q
+  }, [kind, limitPerType, trimmed])
+
+  const enabled = trimmed.length > 0
+  const searchQuery = useQuery({
+    queryKey: queryKeys.music.search(params),
+    queryFn: () => api.get<MusicSearchResponse>('/music/search', params),
+    enabled,
+  })
+
+  return {
+    data: searchQuery.data ?? null,
+    loading: enabled ? searchQuery.isLoading : false,
+    error: errorMessage(searchQuery.error),
+    refetch: () => void searchQuery.refetch(),
+  }
 }

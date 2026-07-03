@@ -15,7 +15,7 @@ import {
   useDeleteSession,
 } from '@/hooks/useAiInsights'
 import { useSettings } from '@/hooks/useSettings'
-import { analysisApi } from '@/hooks/useAnalysis'
+import { analysisApi, musicSearchApi } from '@/hooks/useAnalysis'
 import { queryClient } from '@/api/query-client'
 import { useProfile } from '@/hooks/useAccount'
 
@@ -212,6 +212,26 @@ describe('Phase 5 query hook migration', () => {
     expect(api.get).toHaveBeenCalledWith('/profile')
     expect(client.getQueryData(queryKeys.account.profile())).toBe(profile)
     expect(result.current.data?.profile.identity_displayName).toBe('Taylor Listener')
+  })
+
+  it('stores local music search data under music query keys', async () => {
+    queryClient.clear()
+    const params = { q: 'love', limit_per_type: 3, kind: 'track' }
+    const response = {
+      query: 'love',
+      limit_per_type: 3,
+      total: 1,
+      tracks: [{ kind: 'track', label: 'Cruel Summer', href: '/music/tracks/42', play_events: 17 }],
+      albums: [],
+      artists: [],
+    }
+    vi.spyOn(api, 'get').mockResolvedValue(response)
+
+    const result = await musicSearchApi.search(' love ', 'track', 3)
+
+    expect(api.get).toHaveBeenCalledWith('/music/search', params)
+    expect(result).toBe(response)
+    expect(queryClient.getQueryData(queryKeys.music.search(params))).toBe(response)
   })
 })
 

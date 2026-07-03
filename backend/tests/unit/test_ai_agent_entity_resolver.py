@@ -119,6 +119,7 @@ def test_resolve_track_on_normalized_schema_returns_ids_and_context() -> None:
                 "name": "vampire",
                 "entity_type": "track",
                 "track_id": 100,
+                "album_id": 10,
                 "artist_name": "Olivia Rodrigo",
                 "album_name": "GUTS",
                 "play_events": 2,

@@ -109,6 +109,11 @@ BOUNDARY_EVIDENCE_BY_KEY: dict[tuple[str, str, str], ParameterEvidence] = {
         ("leaderboard_invalid_entity", "leaderboard_empty_entity"),
         "leaderboard entity pattern rejects invalid and empty values",
     ),
+    ("query", "kind", "string|enum=track,album,artist"): ParameterEvidence(
+        "boundary_probe",
+        ("music_search_kind_invalid",),
+        "music search kind enum rejects unsupported values",
+    ),
     ("query", "album_id_a", "integer"): ParameterEvidence(
         "boundary_probe",
         ("version_compare_album_id_a_nonint",),
@@ -128,6 +133,11 @@ BOUNDARY_EVIDENCE_BY_KEY: dict[tuple[str, str, str], ParameterEvidence] = {
         "boundary_probe",
         ("analysis_charts_limit_zero", "analysis_charts_limit_too_high"),
         "large analysis chart limit is validated at both bounds",
+    ),
+    ("query", "limit_per_type", "integer|maximum=10|minimum=1"): ParameterEvidence(
+        "boundary_probe",
+        ("music_search_limit_low", "music_search_limit_high"),
+        "music search per-type limit is validated at both bounds",
     ),
     ("query", "limit", "integer"): ParameterEvidence(
         "boundary_probe",
@@ -168,6 +178,11 @@ BOUNDARY_EVIDENCE_BY_KEY: dict[tuple[str, str, str], ParameterEvidence] = {
         "boundary_probe",
         ("library_saved_tracks_page_nonint",),
         "saved-track page rejects non-integers",
+    ),
+    ("query", "q", "string|maxLength=120"): ParameterEvidence(
+        "boundary_probe",
+        ("music_search_q_too_long",),
+        "music search query rejects overlong search strings",
     ),
     ("query", "overlap_threshold", "number|maximum=1.0|minimum=0.1"): ParameterEvidence(
         "controlled_stateful_or_external",

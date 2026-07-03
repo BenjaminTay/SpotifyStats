@@ -1,9 +1,10 @@
 import { Link, useLocation } from 'react-router-dom'
-import { useCallback, useEffect, useMemo, useRef } from 'react'
-import { Settings } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Search, Settings } from 'lucide-react'
 import { ThemeToggle } from './ThemeToggle'
 import { cn } from '@/lib/utils'
 import { getMastheadRouteContext, type MastheadNavTo } from './routeContext'
+import { MusicSearchDialog } from '@/features/music/search/MusicSearchDialog'
 
 type NavItem = {
   to: MastheadNavTo
@@ -21,6 +22,7 @@ const primaryNavItems: NavItem[] = [
 export function Masthead() {
   const location = useLocation()
   const activeNavRef = useRef<HTMLElement | null>(null)
+  const [searchOpen, setSearchOpen] = useState(false)
   const routeContext = useMemo(
     () => getMastheadRouteContext(location.pathname, location.search),
     [location.pathname, location.search],
@@ -86,6 +88,14 @@ export function Masthead() {
           })}
         </nav>
         <div className="flex shrink-0 items-center gap-2 sm:order-none">
+          <button
+            type="button"
+            aria-label="搜索音乐详情"
+            onClick={() => setSearchOpen(true)}
+            className={utilityLinkClassName(location.pathname === '/music/search')}
+          >
+            <Search className="h-4.5 w-4.5" aria-hidden="true" />
+          </button>
           <ThemeToggle />
           <Link
             to="/settings"
@@ -96,6 +106,7 @@ export function Masthead() {
           </Link>
         </div>
       </div>
+      {searchOpen && <MusicSearchDialog open={searchOpen} onOpenChange={setSearchOpen} />}
     </header>
   )
 }

@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 from sqlite3 import Connection
+from typing import Literal
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
 
 from backend.dependencies import PlayFilters, get_conn
+from backend.models.music_search import MusicSearchResponse
 from backend.services.entity_stats_service import (
     get_album_stats,
     get_artist_stats,
@@ -15,6 +17,7 @@ from backend.services.entity_stats_service import (
     get_entity_plays,
     get_track_stats,
 )
+from backend.services.music_search_service import search_music_entities
 
 router = APIRouter(prefix="/music", tags=["Music"])
 
@@ -53,6 +56,24 @@ class EntityPlaysResponse(BaseModel):
 class PlayDateEntry(BaseModel):
     date: str
     count: int
+
+
+@router.get("/search", response_model=MusicSearchResponse)
+def music_search(
+    q: str = Query(default="", max_length=120, description="Local track, album, or artist query"),
+    kind: Literal["track", "album", "artist"] | None = Query(
+        default=None,
+        description="Optional entity kind filter",
+    ),
+    limit_per_type: int = Query(default=5, ge=1, le=10),
+    conn: Connection = Depends(get_conn),
+):
+    return search_music_entities(
+        conn,
+        query=q,
+        kinds=(kind,) if kind else None,
+        limit_per_type=limit_per_type,
+    )
 
 
 @router.get("/tracks/{track_id}/stats", response_model=EntityStatsResponse)

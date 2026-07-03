@@ -53,6 +53,7 @@ describe('masthead navigation', () => {
     expect(within(nav).queryByRole('button', { name: '榜单' })).not.toBeInTheDocument()
     expect(within(nav).queryByRole('link', { name: '年度总结' })).not.toBeInTheDocument()
     expect(within(nav).queryByRole('link', { name: '账号中心' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '搜索音乐详情' })).toBeInTheDocument()
   })
 
   it('keeps secondary destination groups out of the masthead dropdown layer', () => {
@@ -61,6 +62,7 @@ describe('masthead navigation', () => {
     expect(screen.queryByRole('button', { name: '播放分析' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '榜单' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '打开账户与设置菜单' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '搜索音乐详情' })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: '偏好设置' })).toHaveAttribute('href', '/settings')
   })
 })

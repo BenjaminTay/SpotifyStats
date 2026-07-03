@@ -208,6 +208,16 @@ DEFAULT_BOUNDARY_CASES: tuple[BoundaryCase, ...] = (
     BoundaryCase("chat_session_path_nonint", "/api/chat/sessions/not-an-int"),
     BoundaryCase("version_group_path_nonint", "/api/version-merge/groups/not-an-int/members"),
     BoundaryCase("music_track_path_nonint", "/api/music/tracks/not-an-int/stats"),
+    BoundaryCase("music_search_q_too_long", "/api/music/search", {"q": LONG_STRING}),
+    BoundaryCase(
+        "music_search_kind_invalid", "/api/music/search", {"q": "Fixture", "kind": "playlist"}
+    ),
+    BoundaryCase(
+        "music_search_limit_low", "/api/music/search", {"q": "Fixture", "limit_per_type": 0}
+    ),
+    BoundaryCase(
+        "music_search_limit_high", "/api/music/search", {"q": "Fixture", "limit_per_type": 11}
+    ),
     BoundaryCase("billboard_track_path_nonint", "/api/billboard/track/not-an-int"),
     BoundaryCase(
         "music_album_long_name",

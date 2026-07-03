@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import trackDetailSource from '../pages/TrackDetailPage.tsx?raw'
+import musicSearchPageSource from '../pages/MusicSearchPage.tsx?raw'
 import trackDetailExperienceSource from '../features/music/details/TrackDetailExperience.tsx?raw'
 import albumDetailSource from '../pages/AlbumDetailPage.tsx?raw'
 import artistDetailSource from '../pages/ArtistDetailPage.tsx?raw'
@@ -199,8 +200,11 @@ describe('Phase 5 architecture guardrails', () => {
   it('keeps music detail pages as route containers', () => {
     expect(artistDetailSource.split('\n').length).toBeLessThanOrEqual(450)
     expect(albumDetailSource.split('\n').length).toBeLessThanOrEqual(450)
+    expect(musicSearchPageSource.split('\n').length).toBeLessThanOrEqual(20)
+    expect(musicSearchPageSource).toContain('MusicSearchExperience')
     expect(artistDetailSource).not.toContain('function KpiCard')
     expect(albumDetailSource).not.toContain('function KpiCard')
+    expect(musicSearchPageSource).not.toContain('<table')
     expect(artistDetailSource).not.toContain('<table')
     expect(albumDetailSource).not.toContain('<table')
   })

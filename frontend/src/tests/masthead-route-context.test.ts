@@ -64,6 +64,15 @@ describe('masthead route context', () => {
     })
   })
 
+  it('keeps music search as a utility route without a primary nav owner', () => {
+    expect(getMastheadRouteContext('/music/search', '?q=love')).toEqual({
+      activeNavTo: null,
+      contextSegments: ['音乐查找'],
+      title: null,
+      showMobileContext: false,
+    })
+  })
+
   it('maps community detail routes to the community nav item', () => {
     expect(getMastheadRouteContext('/community/post/abc123', '')).toEqual({
       activeNavTo: '/community',

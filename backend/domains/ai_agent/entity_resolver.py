@@ -78,20 +78,28 @@ def _normalized_track_query(conn: sqlite3.Connection, query: str, limit: int) ->
         artist_group = ["ar.artist_name"]
 
     album_join = ""
+    album_id_select = "NULL AS album_id"
     album_select = "NULL AS album_name"
+    album_id_group: list[str] = []
     album_group: list[str] = []
+    if "album_id" in track_columns:
+        album_id_select = "t.album_id AS album_id"
+        album_id_group = ["t.album_id"]
     if "album_id" in track_columns and _has_columns(conn, "albums", {"album_id", "album_name"}):
         album_join = "LEFT JOIN albums al ON al.album_id = t.album_id"
         album_select = "al.album_name AS album_name"
         album_group = ["al.album_name"]
 
     like_term, exact_term, prefix_term = _search_terms(query)
-    group_by = ", ".join(["t.track_id", "t.track_name", *artist_group, *album_group])
+    group_by = ", ".join(
+        ["t.track_id", "t.track_name", *artist_group, *album_id_group, *album_group]
+    )
     return conn.execute(
         f"""
         SELECT
             t.track_name AS name,
             t.track_id AS track_id,
+            {album_id_select},
             {artist_select},
             {album_select},
             COUNT(*) AS play_events,
@@ -292,6 +300,9 @@ def _simple_query(conn: sqlite3.Connection, entity_type: EntityType, query: str,
         if track_id_column in tracks_columns:
             select_columns.append(f"{track_id_column} AS track_id")
             group_columns.append(track_id_column)
+        if "album_id" in tracks_columns:
+            select_columns.append("album_id AS album_id")
+            group_columns.append("album_id")
         for column in ("artist_name", "album_name"):
             if column in tracks_columns:
                 select_columns.append(f"{column} AS {column}")

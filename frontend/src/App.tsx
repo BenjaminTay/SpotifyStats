@@ -4,6 +4,7 @@ import { AppLayout } from '@/components/layout/AppLayout'
 
 const DashboardPage = lazy(() => import('@/pages/DashboardPage').then((m) => ({ default: m.DashboardPage })))
 const BillboardPage = lazy(() => import('@/pages/BillboardPage').then((m) => ({ default: m.BillboardPage })))
+const MusicSearchPage = lazy(() => import('@/pages/MusicSearchPage').then((m) => ({ default: m.MusicSearchPage })))
 const TrackDetailPage = lazy(() => import('@/pages/TrackDetailPage').then((m) => ({ default: m.TrackDetailPage })))
 const ArtistDetailPage = lazy(() => import('@/pages/ArtistDetailPage').then((m) => ({ default: m.ArtistDetailPage })))
 const AlbumDetailPage = lazy(() => import('@/pages/AlbumDetailPage').then((m) => ({ default: m.AlbumDetailPage })))
@@ -66,6 +67,7 @@ function App() {
         <Route element={<AppLayout />}>
           <Route path="/" element={<Suspense fallback={<RouteFallback />}><DashboardPage /></Suspense>} />
           <Route path="/billboard" element={<Suspense fallback={<RouteFallback />}><BillboardPage /></Suspense>} />
+          <Route path="/music/search" element={<Suspense fallback={<RouteFallback />}><MusicSearchPage /></Suspense>} />
           <Route path="/music/tracks/:trackId" element={<Suspense fallback={<RouteFallback />}><TrackDetailPage /></Suspense>} />
           <Route path="/music/artists/:artistName" element={<Suspense fallback={<RouteFallback />}><ArtistDetailPage /></Suspense>} />
           <Route path="/music/albums/:albumName" element={<Suspense fallback={<RouteFallback />}><AlbumDetailPage /></Suspense>} />
