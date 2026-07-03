@@ -9,6 +9,18 @@ from pydantic import BaseModel, Field
 MusicSearchKind = Literal["track", "album", "artist"]
 
 
+class MusicSearchChartSummary(BaseModel):
+    peak_position: int | None = None
+    peak_weeks: int | None = None
+    weeks_on_chart: int | None = None
+    weeks_at_no1: int | None = None
+    power_score: int | None = None
+    power_rank: int | None = None
+    first_week: str | None = None
+    latest_week: str | None = None
+    first_peak_week: str | None = None
+
+
 class MusicSearchResult(BaseModel):
     kind: MusicSearchKind
     label: str
@@ -20,6 +32,7 @@ class MusicSearchResult(BaseModel):
     album_name: str | None = None
     artist_name: str | None = None
     cover_url: str | None = None
+    chart: MusicSearchChartSummary | None = None
 
 
 class MusicSearchResponse(BaseModel):

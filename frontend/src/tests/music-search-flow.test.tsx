@@ -29,10 +29,47 @@ const sampleResults: MusicSearchResponse = {
       album_name: 'Lover',
       artist_name: 'Taylor Swift',
       cover_url: null,
+      chart: {
+        peak_position: 1,
+        peak_weeks: 2,
+        weeks_on_chart: 12,
+        weeks_at_no1: 3,
+        power_score: 1234,
+        power_rank: 8,
+        first_week: '2026-01-02',
+        latest_week: '2026-03-20',
+        first_peak_week: '2026-01-09',
+      },
     },
   ],
   albums: [],
   artists: [],
+}
+
+const keyboardResults: MusicSearchResponse = {
+  ...sampleResults,
+  total: 2,
+  tracks: [
+    sampleResults.tracks[0],
+    {
+      ...sampleResults.tracks[0],
+      label: 'Lover',
+      href: '/music/tracks/43',
+      track_id: 43,
+      play_events: 9,
+      chart: {
+        peak_position: 3,
+        peak_weeks: 1,
+        weeks_on_chart: 4,
+        weeks_at_no1: 0,
+        power_score: 820,
+        power_rank: 18,
+        first_week: '2026-02-06',
+        latest_week: '2026-02-27',
+        first_peak_week: '2026-02-13',
+      },
+    },
+  ],
 }
 
 function mockMatchMedia(matches = false) {
@@ -82,7 +119,7 @@ describe('music search flow', () => {
     )
 
     expect(screen.getByRole('searchbox', { name: '搜索歌曲、专辑或艺人' })).toHaveValue('love')
-    expect(hookMocks.useMusicSearch).toHaveBeenCalledWith('love', undefined, 5)
+    expect(hookMocks.useMusicSearch).toHaveBeenCalledWith('love', undefined, 5, { includeChart: true })
     expect(screen.getByRole('link', { name: /Cruel Summer/ })).toHaveAttribute('href', '/music/tracks/42')
   })
 
@@ -103,7 +140,80 @@ describe('music search flow', () => {
     })
 
     expect(screen.getByRole('link', { name: /Cruel Summer/ })).toBeInTheDocument()
+    expect(screen.getByText('PK #1')).toBeInTheDocument()
+    expect(screen.getByText('在榜 12周')).toBeInTheDocument()
+    expect(screen.getByText('走势 #8')).toBeInTheDocument()
+    expect(screen.queryByText('冠军 3 周')).not.toBeInTheDocument()
+    expect(hookMocks.useMusicSearch).toHaveBeenCalledWith('love', undefined, 5, { includeChart: true })
     expect(screen.getByRole('link', { name: '查看全部结果' })).toHaveAttribute('href', '/music/search?q=love')
+
+    vi.useRealTimers()
+  })
+
+  it('shows a clear loading message while quick search is waiting for chart results', () => {
+    vi.useFakeTimers()
+    hookMocks.useMusicSearch.mockReturnValue({
+      data: null,
+      loading: true,
+      error: null,
+      refetch: vi.fn(),
+    })
+
+    renderWithTheme(<Masthead />)
+
+    fireEvent.click(screen.getByRole('button', { name: '搜索音乐详情' }))
+    fireEvent.change(screen.getByRole('searchbox', { name: '搜索歌曲、专辑或艺人' }), {
+      target: { value: 'love' },
+    })
+
+    act(() => {
+      vi.advanceTimersByTime(260)
+    })
+
+    expect(screen.getByText('正在加载搜索结果…')).toBeInTheDocument()
+
+    vi.useRealTimers()
+  })
+
+  it('lets keyboard users select quick search results and open the active result', () => {
+    vi.useFakeTimers()
+    hookMocks.useMusicSearch.mockReturnValue({
+      data: keyboardResults,
+      loading: false,
+      error: null,
+      refetch: vi.fn(),
+    })
+
+    renderWithTheme(
+      <Routes>
+        <Route path="/" element={<Masthead />} />
+        <Route path="/music/tracks/43" element={<div>Track 43 reached</div>} />
+      </Routes>,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: '搜索音乐详情' }))
+    const searchbox = screen.getByRole('searchbox', { name: '搜索歌曲、专辑或艺人' })
+    fireEvent.change(searchbox, {
+      target: { value: 'love' },
+    })
+
+    act(() => {
+      vi.advanceTimersByTime(260)
+    })
+
+    const firstResult = screen.getByRole('link', { name: /Cruel Summer/ })
+    const secondResult = screen.getByRole('link', { name: /PK #3/ })
+    expect(firstResult).not.toHaveAttribute('aria-current')
+    expect(secondResult).not.toHaveAttribute('aria-current')
+
+    fireEvent.keyDown(searchbox, { key: 'ArrowDown' })
+    expect(firstResult).toHaveAttribute('aria-current', 'true')
+
+    fireEvent.keyDown(searchbox, { key: 'ArrowDown' })
+    expect(secondResult).toHaveAttribute('aria-current', 'true')
+
+    fireEvent.keyDown(searchbox, { key: 'Enter' })
+    expect(screen.getByText('Track 43 reached')).toBeInTheDocument()
 
     vi.useRealTimers()
   })

@@ -216,7 +216,36 @@ describe('Phase 5 query hook migration', () => {
 
   it('stores local music search data under music query keys', async () => {
     queryClient.clear()
-    const params = { q: 'love', limit_per_type: 3, kind: 'track' }
+    const filters = {
+      min_ms: 45000,
+      music_only: true,
+      merge_enabled: false,
+      dynamic_threshold: false,
+      max_merge_gap_minutes: undefined,
+      merge_level: 2,
+      include_compilations: false,
+      bb_top_n: 40,
+      bb_album_top_n: 30,
+      bb_artist_top_n: 25,
+      bb_week_start_dow: 5,
+      bb_week_start_hour: 2,
+    }
+    const params = {
+      q: 'love',
+      limit_per_type: 3,
+      kind: 'track',
+      min_ms: 45000,
+      music_only: true,
+      merge_enabled: false,
+      dynamic_threshold: false,
+      merge_level: 2,
+      include_chart: true,
+      bb_top_n: 40,
+      bb_album_top_n: 30,
+      bb_artist_top_n: 25,
+      bb_week_start_dow: 5,
+      bb_week_start_hour: 2,
+    }
     const response = {
       query: 'love',
       limit_per_type: 3,
@@ -227,11 +256,43 @@ describe('Phase 5 query hook migration', () => {
     }
     vi.spyOn(api, 'get').mockResolvedValue(response)
 
-    const result = await musicSearchApi.search(' love ', 'track', 3)
+    const result = await musicSearchApi.search(filters, ' love ', 'track', 3, { includeChart: true })
 
     expect(api.get).toHaveBeenCalledWith('/music/search', params)
     expect(result).toBe(response)
     expect(queryClient.getQueryData(queryKeys.music.search(params))).toBe(response)
+  })
+
+  it('keeps quick music search lightweight unless chart badges are requested', async () => {
+    queryClient.clear()
+    const filters = {
+      min_ms: 45000,
+      music_only: true,
+      merge_enabled: false,
+      dynamic_threshold: false,
+      max_merge_gap_minutes: undefined,
+      merge_level: 2,
+      include_compilations: false,
+      bb_top_n: 40,
+      bb_album_top_n: 30,
+      bb_artist_top_n: 25,
+      bb_week_start_dow: 5,
+      bb_week_start_hour: 2,
+    }
+    vi.spyOn(api, 'get').mockResolvedValue({
+      query: 'love',
+      limit_per_type: 5,
+      total: 0,
+      tracks: [],
+      albums: [],
+      artists: [],
+    })
+
+    await musicSearchApi.search(filters, ' love ')
+
+    expect(api.get).toHaveBeenCalledWith('/music/search', expect.not.objectContaining({
+      include_chart: true,
+    }))
   })
 })
 

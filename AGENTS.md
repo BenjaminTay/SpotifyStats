@@ -14,7 +14,7 @@ Spotify Extended Streaming History 数据分析 Web 应用的主项目提示词�
 
 **导航命名（2026-06-28）**：顶级入口使用“播放分析”；二级 tab 顺序固定为“播放统计 / 播放排行 / 年度总结 / 播放记录 / 账号中心”。年度总结与账号中心归属播放分析 tab 行，避免在 Masthead 中恢复独立顶级入口、重复下拉入口或第二套子导航。
 
-**音乐查找（2026-07-03）**：Masthead 右侧提供全局音乐搜索图标，`/music/search` 是可分享的完整查找页；后端 `/api/music/search` 只读搜索本地播放历史中的歌曲/专辑/艺人，结果打开既有 `/music/tracks/:trackId`、`/music/albums/:albumName?artist=...`、`/music/artists/:artistName` 详情页。不要在“播放排行”页再放重复搜索框或按钮。
+**音乐查找（2026-07-03）**：Masthead 右侧提供全局音乐搜索图标，`/music/search` 是可分享的完整查找页；后端 `/api/music/search` 只读搜索本地播放历史中的歌曲/专辑/艺人，结果打开既有 `/music/tracks/:trackId`、`/music/albums/:albumName?artist=...`、`/music/artists/:artistName` 详情页。`include_chart=true` 时返回与详情页同口径的个人 Billboard 摘要，前端只展示播放次数、`PK #`、在榜周数与走势排名，不展示冠军周数；Masthead 弹层默认不预选第一条结果，只有 hover/focus 或方向键后才高亮。不要在“播放排行”页再放重复搜索框或按钮。
 
 **性能策略**：Cache Manager 管理 5 命名空间（billboard/analysis/db/auth）LRU+TTL 缓存；Billboard 拆为 4 个独立 `@lru_cache` 函数，并通过共享 `_load_and_rank_cached` + `singleflight()` 避免 weekly/power/summaries/all-time 冷启动重复计算；Power Score、Billboard summaries 和 `merge_consecutive_plays()` 使用列级/组级向量化，避免逐行 `DataFrame.apply(axis=1)`、`iterrows()` 或 `to_dict()` 热路径；Dashboard full 单请求复用同一播放 DataFrame；`agg_weekly_track_sources` 支撑 album project 专辑榜和详情来源拆分；启动 warmup 使用当前默认动态阈值口径并预热 artist fan-out；SQLite 版本化 Migration；后台 Job Queue（3 worker）异步处理封面下载与 Wikipedia+LLM enrichment；前端 GET 数据统一进入 TanStack React Query（staleTime 5min/gcTime 30min/retry 2），路由级 lazy 分包；ECharts 统一走 `LazyEChart` + `echarts-for-react/esm/core` 按需注册，OpenCC 简繁转换只动态加载 `opencc-js/t2cn` 或 `opencc-js/cn2t` 子包，保存偏好恢复不得在模块初始化时预取大字典；账号页长图列表使用预览上限与原生图片懒加载，Web Vitals lab 通过 `scripts/frontend_web_vitals_probe.mjs` 采样，并可用 LCP/CLS/TBT/资源数量/encoded 体积/横向滚动溢出预算参数作为回归门禁。
 

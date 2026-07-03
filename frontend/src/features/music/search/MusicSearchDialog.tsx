@@ -1,8 +1,9 @@
 import { Search, X } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
 
 import { useMusicSearch } from '@/hooks/useAnalysis'
+import type { MusicSearchResponse, MusicSearchResult } from '@/types/music-search'
 
 import { MusicSearchResults } from './MusicSearchResults'
 import { fullSearchHref, trimSearchQuery } from './musicSearchUtils'
@@ -12,10 +13,17 @@ type MusicSearchDialogProps = {
   onOpenChange: (open: boolean) => void
 }
 
+function flattenSearchResults(data: MusicSearchResponse | null): MusicSearchResult[] {
+  if (!data) return []
+  return [...data.tracks, ...data.albums, ...data.artists]
+}
+
 export function MusicSearchDialog({ open, onOpenChange }: MusicSearchDialogProps) {
   const [query, setQuery] = useState('')
   const [debouncedQuery, setDebouncedQuery] = useState('')
+  const [activeIndex, setActiveIndex] = useState(-1)
   const inputRef = useRef<HTMLInputElement | null>(null)
+  const navigate = useNavigate()
 
   useEffect(() => {
     if (!open) return
@@ -28,17 +36,52 @@ export function MusicSearchDialog({ open, onOpenChange }: MusicSearchDialogProps
     return () => window.clearTimeout(timer)
   }, [query])
 
-  useEffect(() => {
-    if (!open) return
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onOpenChange(false)
-    }
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [onOpenChange, open])
-
-  const { data, loading, error } = useMusicSearch(debouncedQuery, undefined, 5)
+  const { data, loading, error } = useMusicSearch(debouncedQuery, undefined, 5, { includeChart: true })
+  const resultItems = useMemo(() => flattenSearchResults(data), [data])
+  const activeItem = activeIndex >= 0 ? resultItems[activeIndex] : undefined
+  const resultsKey = useMemo(() => resultItems.map((item) => item.href).join('\u0000'), [resultItems])
   const fullHref = fullSearchHref(query)
+
+  useEffect(() => {
+    setActiveIndex(-1)
+  }, [query, debouncedQuery, loading, open, resultItems.length, resultsKey])
+
+  const moveActiveResult = (direction: 1 | -1) => {
+    if (resultItems.length === 0) return
+    setActiveIndex((current) => {
+      if (current < 0) return direction === 1 ? 0 : resultItems.length - 1
+      return (current + direction + resultItems.length) % resultItems.length
+    })
+  }
+
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    const isSearchInput = event.target === inputRef.current
+    if (event.key === 'Escape') {
+      event.preventDefault()
+      onOpenChange(false)
+      return
+    }
+    if (event.key === 'ArrowDown') {
+      event.preventDefault()
+      moveActiveResult(1)
+      return
+    }
+    if (event.key === 'ArrowUp') {
+      event.preventDefault()
+      moveActiveResult(-1)
+      return
+    }
+    if (event.key === 'Enter' && activeItem && isSearchInput) {
+      event.preventDefault()
+      onOpenChange(false)
+      navigate(activeItem.href)
+    }
+  }
+
+  const handleActiveHrefChange = (href: string) => {
+    const nextIndex = resultItems.findIndex((item) => item.href === href)
+    if (nextIndex >= 0) setActiveIndex(nextIndex)
+  }
 
   if (!open) return null
 
@@ -54,6 +97,7 @@ export function MusicSearchDialog({ open, onOpenChange }: MusicSearchDialogProps
         role="dialog"
         aria-modal="true"
         aria-label="搜索音乐详情"
+        onKeyDown={handleKeyDown}
         className="relative w-full max-w-[820px] rounded-lg border border-border bg-card shadow-2xl"
       >
         <div className="flex items-center gap-3 border-b border-border px-4 py-3">
@@ -84,6 +128,8 @@ export function MusicSearchDialog({ open, onOpenChange }: MusicSearchDialogProps
             loading={loading}
             error={error}
             compact
+            activeHref={activeItem?.href}
+            onActiveHrefChange={handleActiveHrefChange}
             onResultClick={() => onOpenChange(false)}
           />
         </div>

@@ -10,7 +10,7 @@ UI：「编辑风 × 液态玻璃」— Playfair Display + Inter，毛玻璃，�
 
 导航命名：顶级入口使用“播放分析”；二级 tab 固定为“播放统计 / 播放排行 / 年度总结 / 播放记录 / 账号中心”。年度总结与账号中心保持在播放分析 tab 行内，避免恢复独立顶级入口或重复下拉入口。
 
-音乐查找：Masthead 右侧提供全局搜索图标，`/music/search` 提供可分享的完整查找页；后端 `/api/music/search` 只搜索本地播放历史中的歌曲/专辑/艺人，并打开既有 `/music/{tracks|albums|artists}/...` 详情页。
+音乐查找：Masthead 右侧提供全局搜索图标，`/music/search` 提供可分享的完整查找页；后端 `/api/music/search` 只搜索本地播放历史中的歌曲/专辑/艺人，并打开既有 `/music/{tracks|albums|artists}/...` 详情页。`include_chart=true` 时返回与详情页同口径的个人 Billboard 摘要，前端仅显示播放次数、`PK #`、在榜周数与走势排名；搜索弹层默认不高亮第一条结果。
 
 **当前状态**：Phase 5 产品化收口完成 + AI Observable Agent Orchestrator V2。AI 报告已改为缓存优先、手动生成并显示任务进度；AI 问答通过后端只读 Agent 工具查询数据，支持思考模式、工具轨迹、coverage 自检、answer obligations、矛盾回答重试，以及账号收藏/搜索历史/社区数据域工具；艺人与专辑详情 enrichment 已接入可观察任务。当前本地验证基线随迭代变化，AI harness 定向基线见 `docs/verification/2026-07-03-ai-question-matrix-test-report.md`。开发台账与验证细节见 `AGENTS.md`、`docs/productization/`、`docs/verification/`、`docs/superpowers/` 和 `docs/CHANGELOG.md`。
 

@@ -13,6 +13,11 @@ export interface AnalysisFilters {
   max_merge_gap_minutes?: number
   merge_level: number
   include_compilations: boolean
+  bb_top_n?: number
+  bb_album_top_n?: number
+  bb_artist_top_n?: number
+  bb_week_start_dow?: number
+  bb_week_start_hour?: number
 }
 
 export interface AnalysisTrendSummary {

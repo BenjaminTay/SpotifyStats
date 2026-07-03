@@ -46,6 +46,17 @@ function playParams(filters: AnalysisFilters): Record<string, string | number | 
   return p
 }
 
+function musicSearchChartParams(filters: AnalysisFilters): Record<string, string | number | boolean> {
+  return {
+    include_chart: true,
+    bb_top_n: filters.bb_top_n ?? 30,
+    bb_album_top_n: filters.bb_album_top_n ?? 20,
+    bb_artist_top_n: filters.bb_artist_top_n ?? 20,
+    bb_week_start_dow: filters.bb_week_start_dow ?? 4,
+    bb_week_start_hour: filters.bb_week_start_hour ?? 0,
+  }
+}
+
 export function useAnalysisFilters() {
   const { settings, loading } = useSettings()
 
@@ -60,6 +71,11 @@ export function useAnalysisFilters() {
       max_merge_gap_minutes: storedGap,
       merge_level: getDefaultMergeLevel(),
       include_compilations: settings?.include_compilations ?? false,
+      bb_top_n: settings?.bb_top_n ?? 30,
+      bb_album_top_n: settings?.bb_album_top_n ?? 20,
+      bb_artist_top_n: settings?.bb_artist_top_n ?? 20,
+      bb_week_start_dow: settings?.bb_week_start_dow ?? 4,
+      bb_week_start_hour: settings?.bb_week_start_hour ?? 0,
     }
   }, [settings])
 
@@ -432,12 +448,25 @@ export const analysisApi = {
   },
 }
 
+type MusicSearchOptions = {
+  includeChart?: boolean
+}
+
 export const musicSearchApi = {
-  search: (query: string, kind?: MusicSearchKind, limitPerType = 5) => {
+  search: (
+    filters: AnalysisFilters,
+    query: string,
+    kind?: MusicSearchKind,
+    limitPerType = 5,
+    options: MusicSearchOptions = {},
+  ) => {
     const trimmed = query.trim()
-    const params: Record<string, string | number> = {
+    const params: Record<string, string | number | boolean> = {
+      ...playParams(filters),
       q: trimmed,
       limit_per_type: limitPerType,
+      merge_level: filters.merge_level,
+      ...(options.includeChart ? musicSearchChartParams(filters) : {}),
     }
     if (kind) params.kind = kind
     return fetchQuery(
@@ -447,18 +476,27 @@ export const musicSearchApi = {
   },
 }
 
-export function useMusicSearch(query: string, kind?: MusicSearchKind, limitPerType = 5) {
+export function useMusicSearch(
+  query: string,
+  kind?: MusicSearchKind,
+  limitPerType = 5,
+  options: MusicSearchOptions = {},
+) {
+  const { filters, loading: filtersLoading } = useAnalysisFilters()
   const trimmed = query.trim()
-  const params = useMemo<Record<string, string | number>>(() => {
-    const q: Record<string, string | number> = {
+  const params = useMemo<Record<string, string | number | boolean>>(() => {
+    const q: Record<string, string | number | boolean> = {
+      ...playParams(filters),
       q: trimmed,
       limit_per_type: limitPerType,
+      merge_level: filters.merge_level,
+      ...(options.includeChart ? musicSearchChartParams(filters) : {}),
     }
     if (kind) q.kind = kind
     return q
-  }, [kind, limitPerType, trimmed])
+  }, [filters, kind, limitPerType, options.includeChart, trimmed])
 
-  const enabled = trimmed.length > 0
+  const enabled = trimmed.length > 0 && !filtersLoading
   const searchQuery = useQuery({
     queryKey: queryKeys.music.search(params),
     queryFn: () => api.get<MusicSearchResponse>('/music/search', params),
@@ -467,7 +505,7 @@ export function useMusicSearch(query: string, kind?: MusicSearchKind, limitPerTy
 
   return {
     data: searchQuery.data ?? null,
-    loading: enabled ? searchQuery.isLoading : false,
+    loading: trimmed.length > 0 ? filtersLoading || searchQuery.isLoading : false,
     error: errorMessage(searchQuery.error),
     refetch: () => void searchQuery.refetch(),
   }

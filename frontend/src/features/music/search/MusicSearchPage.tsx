@@ -41,7 +41,7 @@ export function MusicSearchPage() {
     return () => window.clearTimeout(timer)
   }, [kindParam, qParam, query, setSearchParams])
 
-  const { data, loading, error } = useMusicSearch(query, kindParam, 5)
+  const { data, loading, error } = useMusicSearch(query, kindParam, 5, { includeChart: true })
   const resultQuery = useMemo(() => trimSearchQuery(query), [query])
 
   const setKind = (kind: MusicSearchKind | 'all') => {

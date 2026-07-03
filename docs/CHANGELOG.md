@@ -1,5 +1,20 @@
 # 变更日志
 
+## 2026-07-03 — 音乐查找榜单摘要与快速搜索交互
+
+### 修复与增强
+
+- `/api/music/search` 新增 `include_chart=true`，返回与音乐详情页同口径的播放次数和个人 Billboard 摘要，覆盖歌曲、专辑和艺人。
+- 完整搜索页与 Masthead 快速搜索统一显示播放次数、`PK #`、在榜周数和走势排名；按产品取舍不展示冠军周数和 peak weeks。
+- 快速搜索加载态压缩为单行状态提示；结果默认不高亮第一条，只有鼠标 hover/focus 或键盘方向键后才进入高亮态，Enter 打开当前高亮结果。
+
+### 验证
+
+- `pytest backend/tests/unit/test_music_search_service.py backend/tests/contract/test_music_search_api.py backend/tests/contract/test_music_search_counting_consistency.py -q`：通过
+- `cd frontend && npm test -- --run src/tests/music-search-components.test.tsx src/tests/music-search-flow.test.tsx src/tests/query-hooks.test.tsx`：29 passed
+- `cd frontend && npm run build`：Pass，保留既有 Vite large chunk warning
+- 浏览器实测 Masthead 搜索 `Anti`：初始 `activeCount=0`，按一次 `ArrowDown` 后 `activeCount=1`，console error/warn 为 0
+
 ## 2026-07-03 — 音乐查找入口与本地实体搜索
 
 ### 新增

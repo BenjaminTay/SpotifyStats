@@ -169,6 +169,7 @@ def track_history(
 def artist_chart_detail(
     artist_name: str,
     filters: BillboardFilters = Depends(),
+    merge: MergeConfig = Depends(),
 ):
     """Get detailed artist chart data: weekly history, track/album performances, trend overlay."""
     return get_artist_chart_detail(
@@ -184,6 +185,7 @@ def artist_chart_detail(
         year_end=filters.year_end,
         dynamic_threshold=filters.dynamic_threshold,
         max_merge_gap_minutes=filters.max_merge_gap_minutes,
+        merge_level=merge.merge_level,
     )
 
 

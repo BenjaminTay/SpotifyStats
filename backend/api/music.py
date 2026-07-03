@@ -8,7 +8,7 @@ from typing import Literal
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
 
-from backend.dependencies import PlayFilters, get_conn
+from backend.dependencies import BillboardFilters, MergeConfig, PlayFilters, get_conn
 from backend.models.music_search import MusicSearchResponse
 from backend.services.entity_stats_service import (
     get_album_stats,
@@ -66,6 +66,12 @@ def music_search(
         description="Optional entity kind filter",
     ),
     limit_per_type: int = Query(default=5, ge=1, le=10),
+    include_chart: bool = Query(
+        default=False, description="Include personal Billboard chart summary"
+    ),
+    filters: PlayFilters = Depends(),
+    billboard_filters: BillboardFilters = Depends(),
+    merge_cfg: MergeConfig = Depends(),
     conn: Connection = Depends(get_conn),
 ):
     return search_music_entities(
@@ -73,6 +79,20 @@ def music_search(
         query=q,
         kinds=(kind,) if kind else None,
         limit_per_type=limit_per_type,
+        min_ms=filters.min_ms,
+        music_only=filters.music_only,
+        merge_enabled=filters.merge_enabled,
+        dynamic_threshold=filters.dynamic_threshold,
+        max_merge_gap_minutes=filters.max_merge_gap_minutes,
+        merge_level=merge_cfg.merge_level,
+        include_chart=include_chart,
+        bb_top_n=billboard_filters.bb_top_n,
+        bb_album_top_n=billboard_filters.bb_album_top_n,
+        bb_artist_top_n=billboard_filters.bb_artist_top_n,
+        bb_week_start_dow=billboard_filters.bb_week_start_dow,
+        bb_week_start_hour=billboard_filters.bb_week_start_hour,
+        year_start=billboard_filters.year_start,
+        year_end=billboard_filters.year_end,
     )
 
 

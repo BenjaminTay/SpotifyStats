@@ -846,6 +846,7 @@ def get_artist_chart_detail(
     year_end,
     dynamic_threshold=False,
     max_merge_gap_minutes=None,
+    merge_level=2,
 ):
     """Get detailed artist chart data: history, track/album performances, trend."""
     data = compute_billboard_data(
@@ -858,6 +859,7 @@ def get_artist_chart_detail(
         bb_week_start_hour,
         year_start,
         year_end,
+        merge_level=merge_level,
         dynamic_threshold=dynamic_threshold,
         max_merge_gap_minutes=max_merge_gap_minutes,
     )
@@ -1176,6 +1178,7 @@ def get_album_chart_detail(
         bb_week_start_hour,
         year_start,
         year_end,
+        merge_level=merge_level,
         dynamic_threshold=dynamic_threshold,
         max_merge_gap_minutes=max_merge_gap_minutes,
     )

@@ -21,6 +21,17 @@ const sampleResults: MusicSearchResponse = {
       album_name: 'Lover',
       artist_name: 'Taylor Swift',
       cover_url: '/covers/albums/42.jpg',
+      chart: {
+        peak_position: 1,
+        peak_weeks: 2,
+        weeks_on_chart: 12,
+        weeks_at_no1: 3,
+        power_score: 1234,
+        power_rank: 8,
+        first_week: '2026-01-02',
+        latest_week: '2026-03-20',
+        first_peak_week: '2026-01-09',
+      },
     },
   ],
   albums: [
@@ -35,6 +46,7 @@ const sampleResults: MusicSearchResponse = {
       album_name: 'Lover',
       artist_name: 'Taylor Swift',
       cover_url: null,
+      chart: null,
     },
   ],
   artists: [
@@ -49,6 +61,7 @@ const sampleResults: MusicSearchResponse = {
       album_name: null,
       artist_name: 'Taylor Swift',
       cover_url: null,
+      chart: null,
     },
   ],
 }
@@ -61,23 +74,41 @@ function renderResults(data: MusicSearchResponse | null, query = 'love') {
   )
 }
 
+function renderCompactLoading() {
+  return render(
+    <MemoryRouter>
+      <MusicSearchResults data={null} query="love" loading compact />
+    </MemoryRouter>,
+  )
+}
+
 describe('MusicSearchResults', () => {
-  it('renders grouped local music search results with detail links', () => {
+  it('renders separated result groups with restrained chart summaries', () => {
     renderResults(sampleResults)
 
     const trackGroup = screen.getByRole('region', { name: '单曲结果' })
-    expect(within(trackGroup).getByRole('link', { name: /Cruel Summer/ })).toHaveAttribute('href', '/music/tracks/42')
-    expect(within(trackGroup).getByRole('img', { name: 'Cruel Summer 封面' })).toHaveAttribute('src', '/covers/albums/42.jpg')
-    expect(within(trackGroup).getByText('Taylor Swift · Lover')).toBeInTheDocument()
-    expect(within(trackGroup).getByText('17 次播放')).toBeInTheDocument()
-
     const albumGroup = screen.getByRole('region', { name: '专辑结果' })
+    const artistGroup = screen.getByRole('region', { name: '艺人结果' })
+    expect(within(trackGroup).getByText('1')).toBeInTheDocument()
+    expect(within(albumGroup).getByText('1')).toBeInTheDocument()
+    expect(within(artistGroup).getByText('1')).toBeInTheDocument()
+
+    const trackItem = within(trackGroup).getByRole('listitem')
+    expect(within(trackItem).getByRole('link', { name: /Cruel Summer/ })).toHaveAttribute('href', '/music/tracks/42')
+    expect(within(trackItem).getByRole('img', { name: 'Cruel Summer 封面' })).toHaveAttribute('src', '/covers/albums/42.jpg')
+    expect(within(trackItem).getByText('Taylor Swift · Lover')).toBeInTheDocument()
+    expect(within(trackItem).getByText('17 次播放')).toBeInTheDocument()
+    expect(within(trackItem).getByText('PK #1')).toBeInTheDocument()
+    expect(within(trackItem).getByText('在榜 12周')).toBeInTheDocument()
+    expect(within(trackItem).getByText('走势 #8')).toBeInTheDocument()
+    expect(screen.queryByText('冠军 3 周')).not.toBeInTheDocument()
+    expect(screen.queryByText('2wks')).not.toBeInTheDocument()
+    expect(screen.queryByText('未入榜')).not.toBeInTheDocument()
+
     expect(within(albumGroup).getByRole('link', { name: /Lover/ })).toHaveAttribute(
       'href',
       '/music/albums/Lover?artist=Taylor%20Swift',
     )
-
-    const artistGroup = screen.getByRole('region', { name: '艺人结果' })
     expect(within(artistGroup).getByRole('link', { name: /Taylor Swift/ })).toHaveAttribute(
       'href',
       '/music/artists/Taylor%20Swift',
@@ -94,5 +125,15 @@ describe('MusicSearchResults', () => {
     renderResults(null, '')
 
     expect(screen.getByText('输入歌曲、专辑或艺人名称开始查找')).toBeInTheDocument()
+  })
+
+  it('keeps quick search loading as a single compact status row', () => {
+    renderCompactLoading()
+
+    const status = screen.getByRole('status', { name: '正在查找音乐详情' })
+    expect(within(status).getByText('正在加载搜索结果…')).toBeInTheDocument()
+    expect(within(status).getByText('匹配播放记录与榜单信息')).toBeInTheDocument()
+    expect(within(status).queryAllByTestId('music-search-loading-row')).toHaveLength(0)
+    expect(within(status).getByTestId('music-search-loading-message')).toHaveClass('py-2')
   })
 })

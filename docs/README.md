@@ -59,6 +59,7 @@
 | [`superpowers/plans/2026-06-29-ai-project-context-prompt.md`](superpowers/plans/2026-06-29-ai-project-context-prompt.md) | AI Agent Project Context Prompt 实施计划：prompt 组合、版本化 metadata、golden answer style 与验证步骤 |
 | [`superpowers/plans/2026-07-03-ai-harness-matrix-fixes.md`](superpowers/plans/2026-07-03-ai-harness-matrix-fixes.md) | AI 问答矩阵验收后的完整修复计划：LLM 可靠性、coverage、时间语义、页面域工具、critic 与 smoke |
 | [`superpowers/plans/2026-07-03-music-search-quick-open.md`](superpowers/plans/2026-07-03-music-search-quick-open.md) | 音乐查找入口实现计划：Masthead 快速搜索、`/music/search` 全页查找、本地实体搜索 API 与验证矩阵 |
+| [`superpowers/plans/2026-07-03-music-search-chart-badges.md`](superpowers/plans/2026-07-03-music-search-chart-badges.md) | 音乐查找榜单摘要实现计划：`include_chart`、详情页同口径播放次数与个人 Billboard 摘要、快速搜索键盘高亮体验 |
 
 ## 历史归档
 

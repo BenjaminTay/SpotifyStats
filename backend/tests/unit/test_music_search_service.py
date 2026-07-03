@@ -62,7 +62,9 @@ def _conn() -> sqlite3.Connection:
 
 
 def test_search_music_entities_returns_grouped_results_with_detail_links() -> None:
-    result = search_music_entities(_conn(), query="vamp", limit_per_type=5)
+    result = search_music_entities(
+        _conn(), query="vamp", limit_per_type=5, use_filtered_counts=False
+    )
 
     assert result.query == "vamp"
     assert result.total == 1
@@ -73,12 +75,15 @@ def test_search_music_entities_returns_grouped_results_with_detail_links() -> No
     assert result.tracks[0].cover_url == "/covers/albums/10.jpg"
     assert result.tracks[0].play_events == 2
     assert result.tracks[0].total_ms == 390000
+    assert result.tracks[0].chart is None
     assert result.albums == []
     assert result.artists == []
 
 
 def test_search_music_entities_searches_all_entity_types() -> None:
-    result = search_music_entities(_conn(), query="olivia", limit_per_type=5)
+    result = search_music_entities(
+        _conn(), query="olivia", limit_per_type=5, use_filtered_counts=False
+    )
 
     assert result.total == 1
     assert result.tracks == []
@@ -89,7 +94,9 @@ def test_search_music_entities_searches_all_entity_types() -> None:
 
 
 def test_search_music_entities_can_filter_entity_types() -> None:
-    result = search_music_entities(_conn(), query="gut", kinds=("album",), limit_per_type=5)
+    result = search_music_entities(
+        _conn(), query="gut", kinds=("album",), limit_per_type=5, use_filtered_counts=False
+    )
 
     assert result.total == 1
     assert result.tracks == []
@@ -110,7 +117,7 @@ def test_search_music_entities_returns_empty_for_blank_query_without_db_work() -
 
 
 def test_search_music_entities_bounds_limit_per_type() -> None:
-    result = search_music_entities(_conn(), query="a", limit_per_type=99)
+    result = search_music_entities(_conn(), query="a", limit_per_type=99, use_filtered_counts=False)
 
     assert result.limit_per_type == 10
     assert result.total >= 1

@@ -100,6 +100,18 @@ def test_music_search_endpoint_accepts_kind_filter(client: TestClient) -> None:
     assert data["artists"] == []
 
 
+def test_music_search_endpoint_can_include_chart_shape(client: TestClient) -> None:
+    response = client.get(
+        "/api/music/search",
+        params={"q": "vamp", "kind": "track", "include_chart": True},
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["tracks"][0]["label"] == "vampire"
+    assert "chart" in data["tracks"][0]
+
+
 def test_music_search_endpoint_rejects_oversized_limit(client: TestClient) -> None:
     response = client.get("/api/music/search", params={"q": "vamp", "limit_per_type": 50})
 
