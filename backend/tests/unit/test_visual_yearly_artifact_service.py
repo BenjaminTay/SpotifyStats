@@ -93,6 +93,7 @@ def test_visual_yearly_artifact_service_generates_artifact(monkeypatch):
             "merge_enabled": False,
             "dynamic_threshold": True,
             "max_merge_gap_minutes": 12,
+            "writer_pipeline": "deterministic_visual_v1",
         }
     )
 
@@ -114,6 +115,210 @@ def test_visual_yearly_artifact_service_generates_artifact(monkeypatch):
         "dynamic_threshold": True,
         "max_merge_gap_minutes": 12,
     }
+
+
+def test_visual_yearly_artifact_service_uses_editorial_agent_writer_pipeline(monkeypatch):
+    from backend.domains.ai_reports import visual_yearly_artifact_service as svc
+    from backend.domains.ai_reports.editorial_agent.models import (
+        ArticleDraft,
+        ArticleSection,
+        ClaimCheckResult,
+        TasteScore,
+    )
+
+    context = {
+        "year": 2026,
+        "reporting_period": {
+            "year": 2026,
+            "start_date": "2026-01-01",
+            "end_date": "2026-06-23",
+            "is_partial_year": True,
+        },
+        "hero": {"active_days": 174, "total_minutes": 29882, "total_plays": 7860},
+        "top_artists": [
+            {"name": "Taylor Swift", "plays": 1115},
+            {"name": "Olivia Rodrigo", "plays": 769},
+        ],
+        "top_tracks": [{"name": "Opalite", "artist": "Taylor Swift", "plays": 123}],
+        "top_albums": [{"name": "The Life of a Showgirl", "artist": "Taylor Swift", "plays": 445}],
+        "personal_billboard_year_end": {
+            "albums": [{"name": "The Life of a Showgirl", "rank": 1, "weeks_on_chart": 24}],
+            "tracks": [{"name": "Opalite", "rank": 1, "weeks_on_chart": 19}],
+            "artists": [{"name": "Taylor Swift", "rank": 1, "weeks_on_chart": 25}],
+        },
+        "genre_distribution": {"top_genres": [{"name": "mandopop", "share": 14.4}]},
+        "discovery_and_returns": {
+            "new_artists": [{"name": "Zhang Zhen Yue", "first_date": "2026-03-09", "plays": 574}]
+        },
+        "highlight_day_detail": {"date": "2026-04-03", "plays": 143},
+    }
+    article = ArticleDraft(
+        title="Agent 写出的 2026 稳定中心音乐年记",
+        subtitle="截至 2026-06-23，这份年记先讲转折，再讲排名。",
+        thesis="Taylor Swift 的稳定回访、Olivia Rodrigo 的阶段变化和个人 Billboard 长留共同构成年中主线。",
+        sections=tuple(
+            ArticleSection(
+                id=section_id,
+                heading=f"章节 {index}",
+                purpose="解释一个年度故事线",
+                prose=(
+                    "Zhang Zhen Yue 作为新发现信号表明年度记录持续引入新声音。"
+                    if section_id == "discovery_signal"
+                    else f"agent 写出的段落 {index}，Taylor Swift 和个人 Billboard 共同进入解释，下一年继续看。"
+                ),
+                evidence_refs=("top_artist_taylor_swift",),
+                chart_refs=("artist_monthly_trend",),
+            )
+            for index, section_id in enumerate(
+                (
+                    "opening",
+                    "stable_top_artist",
+                    "monthly_turning_point",
+                    "album_playback_billboard_alignment",
+                    "highlight_day_density",
+                    "discovery_signal",
+                ),
+                start=1,
+            )
+        ),
+        closing="下半年继续看这些关系是否留下。",
+    )
+    stages: list[str] = []
+    monkeypatch.setattr(
+        svc,
+        "_run_visual_research",
+        lambda request, emit_event=None: (
+            [
+                EvidenceLedgerEntry(
+                    tool_name="yearly_overview",
+                    params={"year": 2026},
+                    result_summary="summary",
+                )
+            ],
+            context,
+        ),
+    )
+    monkeypatch.setattr(
+        svc,
+        "build_visual_chart_data",
+        lambda context, chart_specs: {
+            **{spec["id"]: {"ok": True} for spec in chart_specs},
+            "artist_monthly_trend": {
+                "ok": True,
+                "observations": [
+                    "Olivia Rodrigo 在 2026-05 达到 105 次，超过 Taylor Swift 的 67 次。"
+                ],
+            },
+        },
+    )
+    monkeypatch.setattr(
+        svc,
+        "critique_visual_yearly_artifact",
+        lambda artifact, context: {"ok": True, "issues": [], "repair_instructions": []},
+    )
+    monkeypatch.setattr(
+        svc,
+        "_validate_visual_fact_safety",
+        lambda report, artifact, context: {"ok": True, "issues": []},
+    )
+
+    def fake_run_pipeline(context, *, chart_data, chat_fn=None, emit_stage=None):
+        del context, chart_data, chat_fn
+        if emit_stage:
+            emit_stage("building_research_brief", "正在整理年度研究简报")
+            emit_stage("planning_storyline", "正在规划文章主线")
+            emit_stage("checking_claims", "正在核对文章事实")
+        return {
+            "article": article,
+            "research_brief": None,
+            "storyline_plan": None,
+            "claim_check": ClaimCheckResult((), (), (), (), ()),
+            "taste_score": TasteScore(
+                {
+                    "文章感": 5,
+                    "年度主题": 5,
+                    "洞见密度": 5,
+                    "个人化": 5,
+                    "事实安全": 5,
+                    "可读性": 5,
+                    "图文融合": 5,
+                },
+                (),
+            ),
+            "metadata": {
+                "writer_pipeline_version": "yearly_editorial_agent_v1",
+                "research_brief_version": "yearly_research_brief_v1",
+                "claim_check_passed": True,
+                "editorial_review_passed": True,
+                "taste_score": {"ok": True, "total": 35, "dimensions": {}, "notes": []},
+            },
+        }
+
+    monkeypatch.setattr(svc, "run_editorial_agent_pipeline", fake_run_pipeline, raising=False)
+
+    result = svc.generate_visual_yearly_artifact(
+        {"year": 2026, "writer_pipeline": "editorial_agent_v1"},
+        emit_event=lambda _event_type, _message, payload: stages.append(payload["stage"]),
+    )
+
+    assert result["artifact"]["title"] == "Agent 写出的 2026 稳定位置音乐年记"
+    assert "agent 写出的段落 1" in result["report"]
+    assert "Opalite" in result["report"]
+    assert "截至 2026-06-23" in result["report"]
+    assert "Olivia Rodrigo" in result["report"]
+    assert "2026-05" in result["report"]
+    assert "105 次" in result["report"]
+    assert "67 次" in result["report"]
+    assert "这说明" in result["report"]
+    assert "稳定中心" not in result["report"]
+    assert "转折" not in result["report"]
+    assert "下一年" not in result["report"]
+    assert "表明这个统计期的记录" in result["report"]
+    assert "表之后度" not in result["report"]
+    assert "之后度" not in result["report"]
+    assert result["metadata"]["writer_pipeline_version"] == "yearly_editorial_agent_v1"
+    assert result["metadata"]["claim_check_passed"] is True
+    assert result["metadata"]["taste_score"]["total"] == 35
+    assert "building_research_brief" in stages
+    assert "planning_storyline" in stages
+    assert "checking_claims" in stages
+
+
+def test_visual_yearly_artifact_service_promotes_failed_writer_to_editorial_fallback():
+    from backend.domains.ai_reports import visual_yearly_artifact_service as svc
+
+    context = {
+        "reporting_period": {"year": 2026, "end_date": "2026-06-23", "is_partial_year": True},
+        "top_artists": [{"name": "Taylor Swift", "plays": 1115}],
+        "top_tracks": [{"name": "Opalite", "plays": 123}],
+        "top_albums": [{"name": "The Life of a Showgirl", "plays": 445}],
+        "personal_billboard_year_end": {
+            "albums": [{"name": "The Life of a Showgirl", "weeks_on_chart": 24}]
+        },
+        "highlight_day_detail": {"date": "2026-04-03", "plays": 143, "top_track_plays": 4},
+        "discovery_and_returns": {
+            "new_artists": [{"name": "Zhang Zhen Yue", "first_seen": "2026-03-09", "plays": 574}]
+        },
+    }
+
+    result = svc._deterministic_editorial_fallback_result(
+        {
+            "metadata": {
+                "writer_pipeline_version": "yearly_editorial_agent_v1",
+                "writer_pipeline_status": "fallback_visual_composer",
+                "claim_check_passed": False,
+            }
+        },
+        context,
+        chart_data={},
+    )
+
+    assert result is not None
+    assert result["metadata"]["writer_pipeline_status"] == "accepted"
+    assert result["metadata"]["claim_check_passed"] is True
+    assert result["metadata"]["editorial_review_passed"] is True
+    assert result["metadata"]["deterministic_editorial_fallback"] is True
+    assert len(result["article"].sections) >= 5
 
 
 def test_visual_yearly_artifact_service_avoids_duplicate_partial_cutoff(monkeypatch):
@@ -174,7 +379,9 @@ def test_visual_yearly_artifact_service_avoids_duplicate_partial_cutoff(monkeypa
         lambda report, artifact, context: {"ok": True, "issues": []},
     )
 
-    result = svc.generate_visual_yearly_artifact({"year": 2026})
+    result = svc.generate_visual_yearly_artifact(
+        {"year": 2026, "writer_pipeline": "deterministic_visual_v1"}
+    )
 
     assert "截至 2026-06-23" in result["report"]
     assert "截至 2026-06-23，截至 2026-06-23" not in result["report"]
@@ -232,7 +439,9 @@ def test_visual_yearly_artifact_service_handles_aligned_album_without_false_cont
         lambda report, artifact, context: {"ok": True, "issues": []},
     )
 
-    result = svc.generate_visual_yearly_artifact({"year": 2026})
+    result = svc.generate_visual_yearly_artifact(
+        {"year": 2026, "writer_pipeline": "deterministic_visual_v1"}
+    )
 
     assert "The Life of a Showgirl 和 The Life of a Showgirl" not in result["report"]
     assert "两种不同的喜欢" not in result["report"]
@@ -298,7 +507,9 @@ def test_visual_yearly_artifact_service_sanitizes_editorial_leakage(monkeypatch)
         lambda report, artifact, context: {"ok": True, "issues": []},
     )
 
-    result = svc.generate_visual_yearly_artifact({"year": 2026})
+    result = svc.generate_visual_yearly_artifact(
+        {"year": 2026, "writer_pipeline": "deterministic_visual_v1"}
+    )
     prose = result["report"]
 
     assert "Olivia Rodrigo 让年度画像多了一条不同的情绪线。它把华语、回望和现场感" not in prose
@@ -362,7 +573,9 @@ def test_visual_yearly_artifact_service_passes_full_context_to_visual_critic(mon
 
     monkeypatch.setattr(svc, "critique_visual_yearly_artifact", fake_critic)
 
-    result = svc.generate_visual_yearly_artifact({"year": 2026})
+    result = svc.generate_visual_yearly_artifact(
+        {"year": 2026, "writer_pipeline": "deterministic_visual_v1"}
+    )
 
     assert result["critic"]["ok"] is True
     critic_context = captured["context"]
@@ -406,7 +619,9 @@ def test_visual_yearly_artifact_service_reads_chart_observations_in_sections(mon
         lambda report, artifact, context: {"ok": True, "issues": []},
     )
 
-    result = svc.generate_visual_yearly_artifact({"year": 2026})
+    result = svc.generate_visual_yearly_artifact(
+        {"year": 2026, "writer_pipeline": "deterministic_visual_v1"}
+    )
 
     assert result["critic"]["ok"] is True
     report = result["report"]
@@ -449,7 +664,9 @@ def test_visual_yearly_artifact_service_uses_chart_data_for_dynamic_outline(monk
         lambda report, artifact, context: {"ok": True, "issues": []},
     )
 
-    result = svc.generate_visual_yearly_artifact({"year": 2026})
+    result = svc.generate_visual_yearly_artifact(
+        {"year": 2026, "writer_pipeline": "deterministic_visual_v1"}
+    )
 
     roles = [section["role"] for section in result["artifact"]["visual_brief"]["outline_sections"]]
     assert "turning_point" in roles
@@ -483,7 +700,9 @@ def test_visual_yearly_artifact_service_partial_year_avoids_full_year_labels(mon
         ),
     )
 
-    result = svc.generate_visual_yearly_artifact({"year": 2026})
+    result = svc.generate_visual_yearly_artifact(
+        {"year": 2026, "writer_pipeline": "deterministic_visual_v1"}
+    )
 
     assert result["fact_validation"]["ok"] is True
     assert "年度排名" not in result["report"]
@@ -572,7 +791,9 @@ def test_visual_yearly_artifact_exposes_editorial_metadata(monkeypatch):
         lambda report, artifact, context: {"ok": True, "issues": []},
     )
 
-    result = svc.generate_visual_yearly_artifact({"year": 2026})
+    result = svc.generate_visual_yearly_artifact(
+        {"year": 2026, "writer_pipeline": "deterministic_visual_v1"}
+    )
 
     metadata = result["artifact"]["metadata"]
     assert metadata["editorial_plan_version"] == "yearly_editorial_v1"
@@ -604,7 +825,9 @@ def test_visual_yearly_artifact_respects_language_budget_and_avoids_overview_rep
         lambda report, artifact, context: {"ok": True, "issues": []},
     )
 
-    result = svc.generate_visual_yearly_artifact({"year": 2026})
+    result = svc.generate_visual_yearly_artifact(
+        {"year": 2026, "writer_pipeline": "deterministic_visual_v1"}
+    )
 
     assert result["critic"]["ok"] is True
     metadata = result["artifact"]["metadata"]

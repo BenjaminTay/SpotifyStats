@@ -127,6 +127,22 @@ export function ReportCard({
   const fallbackLevel = typeof metadata?.fallback_level === 'string' ? metadata.fallback_level : null
   const criticPassed = typeof metadata?.critic_passed === 'boolean' ? metadata.critic_passed : null
   const articleLength = typeof metadata?.article_length === 'number' ? metadata.article_length : null
+  const writerPipelineVersion = typeof metadata?.writer_pipeline_version === 'string'
+    ? metadata.writer_pipeline_version
+    : null
+  const writerPipelineStatus = typeof metadata?.writer_pipeline_status === 'string'
+    ? metadata.writer_pipeline_status
+    : null
+  const claimCheckPassed = typeof metadata?.claim_check_passed === 'boolean'
+    ? metadata.claim_check_passed
+    : null
+  const tasteScorePayload = metadata?.taste_score
+  const tasteScoreTotal = tasteScorePayload
+    && typeof tasteScorePayload === 'object'
+    && !Array.isArray(tasteScorePayload)
+    && typeof (tasteScorePayload as Record<string, unknown>).total === 'number'
+    ? (tasteScorePayload as Record<string, number>).total
+    : null
 
   const handleCopy = async () => {
     const copyText = report ?? `${artifact?.title ?? title}\n\n${artifact?.subtitle ?? ''}`.trim()
@@ -197,6 +213,22 @@ export function ReportCard({
           {reportMode === 'agentic_longform' && (
             <span className="rounded-full border border-border bg-card/60 px-2 py-0.5">
               Agentic 长文
+            </span>
+          )}
+          {writerPipelineVersion === 'yearly_editorial_agent_v1'
+            && writerPipelineStatus === 'accepted' && (
+            <span className="rounded-full border border-border bg-card/60 px-2 py-0.5">
+              Editorial Agent
+            </span>
+          )}
+          {claimCheckPassed !== null && (
+            <span className="rounded-full border border-border bg-card/60 px-2 py-0.5">
+              {claimCheckPassed ? '事实核对通过' : '事实核对待修正'}
+            </span>
+          )}
+          {tasteScoreTotal !== null && (
+            <span className="rounded-full border border-border bg-card/60 px-2 py-0.5">
+              口味评分 {tasteScoreTotal}
             </span>
           )}
           {criticPassed !== null && (

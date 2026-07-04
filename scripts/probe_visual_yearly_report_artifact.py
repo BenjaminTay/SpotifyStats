@@ -14,6 +14,7 @@ from urllib.error import HTTPError, URLError
 
 FORBIDDEN_TERMS = (
     "稳定中心",
+    "之后度",
     "三榜联动",
     "第二层证据",
     "evidence ledger",
@@ -75,7 +76,17 @@ GOLDEN_TERMS_BY_YEAR = {
 }
 
 PLACEHOLDER_TOKENS = ("NaN", "null", "undefined", "unknown")
-INTERPRETATION_MARKERS = ("说明", "意味着", "更像", "不是", "而是", "因此", "这让", "这使", "可以看见")
+INTERPRETATION_MARKERS = (
+    "说明",
+    "意味着",
+    "更像",
+    "不是",
+    "而是",
+    "因此",
+    "这让",
+    "这使",
+    "可以看见",
+)
 
 
 def request_json(
@@ -114,6 +125,11 @@ def main() -> int:
     )
     parser.add_argument("--timeout", type=int, default=300)
     parser.add_argument("--poll-interval", type=float, default=2.0)
+    parser.add_argument(
+        "--writer-pipeline",
+        choices=("editorial_agent_v1", "deterministic_visual_v1"),
+        default="editorial_agent_v1",
+    )
     parser.add_argument("--json-output", required=True)
     args = parser.parse_args()
     if args.mode == "single" and args.year is None:
@@ -127,7 +143,13 @@ def main() -> int:
         years = [2022, 2023, 2024, 2025, 2026]
 
     summaries = [
-        _probe_year(base=base, year=year, timeout=args.timeout, poll_interval=args.poll_interval)
+        _probe_year(
+            base=base,
+            year=year,
+            timeout=args.timeout,
+            poll_interval=args.poll_interval,
+            writer_pipeline=args.writer_pipeline,
+        )
         for year in years
     ]
     if args.mode == "single":
@@ -140,16 +162,21 @@ def main() -> int:
         "mode": args.mode,
         "summaries": summaries,
         "issues": [
-            f"{summary['year']}: {issue}"
-            for summary in summaries
-            for issue in summary["issues"]
+            f"{summary['year']}: {issue}" for summary in summaries for issue in summary["issues"]
         ],
     }
     Path(args.json_output).write_text(json.dumps(aggregate, ensure_ascii=False, indent=2))
     return 0 if aggregate["ok"] else 1
 
 
-def _probe_year(*, base: str, year: int, timeout: int, poll_interval: float) -> dict[str, Any]:
+def _probe_year(
+    *,
+    base: str,
+    year: int,
+    timeout: int,
+    poll_interval: float,
+    writer_pipeline: str,
+) -> dict[str, Any]:
     task = request_json(
         f"{base}/api/ai/tasks/report",
         method="POST",
@@ -157,6 +184,7 @@ def _probe_year(*, base: str, year: int, timeout: int, poll_interval: float) -> 
             "report_type": "yearly",
             "action": "generate",
             "report_mode": "visual_yearly_artifact",
+            "writer_pipeline": writer_pipeline,
             "year": year,
             "force": True,
         },
@@ -175,6 +203,7 @@ def _probe_year(*, base: str, year: int, timeout: int, poll_interval: float) -> 
         task_id=task_id,
         detail=detail,
         result=_dict(detail.get("result")),
+        writer_pipeline=writer_pipeline,
     )
 
 
@@ -184,6 +213,7 @@ def _build_summary(
     task_id: str,
     detail: dict[str, Any],
     result: dict[str, Any],
+    writer_pipeline: str,
 ) -> dict[str, Any]:
     result = _dict(result) or _dict(detail.get("result"))
     artifact = _dict(result.get("artifact"))
@@ -198,6 +228,7 @@ def _build_summary(
         sections=sections,
         chart_data=chart_data,
         prose=prose,
+        writer_pipeline=writer_pipeline,
     )
     issues = _validate(
         year=year,
@@ -209,6 +240,7 @@ def _build_summary(
         chart_specs=chart_specs,
         chart_data=chart_data,
         prose=prose,
+        writer_pipeline=writer_pipeline,
     )
 
     return {
@@ -243,6 +275,7 @@ def _validate(
     chart_specs: list[dict[str, Any]],
     chart_data: dict[str, Any],
     prose: str,
+    writer_pipeline: str,
 ) -> list[str]:
     issues: list[str] = []
     quality_checks = _quality_checks(
@@ -251,6 +284,7 @@ def _validate(
         sections=sections,
         chart_data=chart_data,
         prose=prose,
+        writer_pipeline=writer_pipeline,
     )
     if detail.get("status") != "done":
         issues.append(f"task status is {detail.get('status')}")
@@ -260,6 +294,16 @@ def _validate(
         issues.append("contract_version is not visual_yearly_v1")
     if artifact.get("contract_version") != "visual_yearly_v1":
         issues.append("artifact contract_version is not visual_yearly_v1")
+    if writer_pipeline == "editorial_agent_v1":
+        if metadata.get("writer_pipeline_version") != "yearly_editorial_agent_v1":
+            issues.append("metadata writer_pipeline_version is not yearly_editorial_agent_v1")
+        if metadata.get("writer_pipeline_status") != "accepted":
+            issues.append("metadata writer_pipeline_status is not accepted")
+        if metadata.get("claim_check_passed") is not True:
+            issues.append("metadata claim_check_passed is not true")
+        taste_score = _dict(metadata.get("taste_score"))
+        if taste_score.get("ok") is not True:
+            issues.append("metadata taste_score.ok is not true")
     artifact_metadata = quality_checks["artifact_metadata"]
     if artifact_metadata.get("critic_passed") is not True:
         issues.append("artifact.metadata.critic_passed is not true")
@@ -348,6 +392,7 @@ def _quality_checks(
     sections: list[dict[str, Any]],
     chart_data: dict[str, Any],
     prose: str,
+    writer_pipeline: str,
 ) -> dict[str, Any]:
     artifact_metadata = _dict(artifact.get("metadata"))
     min_article_length = 1800 if _is_partial_year(year, artifact) else 2800
@@ -357,9 +402,14 @@ def _quality_checks(
             "critic_passed": artifact_metadata.get("critic_passed"),
             "fact_validation_passed": artifact_metadata.get("fact_validation_passed"),
             "editorial_plan_version": artifact_metadata.get("editorial_plan_version"),
+            "writer_pipeline_version": artifact_metadata.get("writer_pipeline_version"),
+            "writer_pipeline_status": artifact_metadata.get("writer_pipeline_status"),
+            "claim_check_passed": artifact_metadata.get("claim_check_passed"),
+            "taste_score": artifact_metadata.get("taste_score"),
             "section_roles": artifact_metadata.get("section_roles"),
             "fact_count": artifact_metadata.get("fact_count"),
         },
+        "writer_pipeline": writer_pipeline,
         "is_partial_year": _is_partial_year(year, artifact),
         "article_length": len(prose),
         "min_article_length": min_article_length,

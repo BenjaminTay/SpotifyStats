@@ -149,6 +149,10 @@ def yearly_story(
         "visual_yearly_artifact",
         description="Use visual artifact, agentic longform, or legacy basic summary yearly flow",
     ),
+    writer_pipeline: Literal["editorial_agent_v1", "deterministic_visual_v1"] = Query(
+        "editorial_agent_v1",
+        description="Writer pipeline for visual yearly artifacts",
+    ),
     filters: PlayFilters = Depends(),
     conn: Connection = Depends(get_conn),
 ):
@@ -163,6 +167,7 @@ def yearly_story(
             dynamic_threshold=filters.dynamic_threshold,
             max_merge_gap_minutes=filters.max_merge_gap_minutes,
             report_mode="visual_yearly_artifact",
+            writer_pipeline=writer_pipeline,
             year=year,
         )
         return _visual_yearly_cache_response(cached)
@@ -176,6 +181,7 @@ def yearly_story(
             {
                 "report_type": "yearly",
                 "report_mode": report_mode,
+                "writer_pipeline": writer_pipeline,
                 "year": year,
                 "min_ms": filters.min_ms,
                 "music_only": filters.music_only,

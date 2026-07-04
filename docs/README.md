@@ -44,6 +44,7 @@
 | [`productization/2026-06-08-phase5-baseline.md`](productization/2026-06-08-phase5-baseline.md) | Phase 5 产品化收口基线台账 |
 | [`productization/2026-06-11-ai-insights.md`](productization/2026-06-11-ai-insights.md) | AI Insights 模块设计（已完成，已归入 Phase 5.4-C/D） |
 | [`productization/2026-06-22-phase5-delivery-report.md`](productization/2026-06-22-phase5-delivery-report.md) | Phase 5 最终交付报告 — 零缺陷验证、性能对比、10 分钟快速验证指南 |
+| [`productization/2026-07-04-artist-genre-taxonomy.md`](productization/2026-07-04-artist-genre-taxonomy.md) | Artist genre taxonomy 与 Settings 审计面板：来源优先级、canonical 统计口径、非标准透传审计和当前数据快照 |
 
 ## 当前功能设计
 
@@ -65,6 +66,9 @@
 | [`superpowers/specs/2026-07-03-ai-visual-yearly-report-artifact-design.md`](superpowers/specs/2026-07-03-ai-visual-yearly-report-artifact-design.md) | AI Visual Yearly Report Artifact 设计：Narrative Brief、Visual Brief、图文年报 artifact、真实图表数据、风格 critic 与前端渲染器 |
 | [`superpowers/plans/2026-07-04-ai-visual-yearly-report-artifact.md`](superpowers/plans/2026-07-04-ai-visual-yearly-report-artifact.md) | AI Visual Yearly Report Artifact 实施计划：Narrative Brief、Visual Brief、真实图表数据、图文年报渲染器、critic、probe 与浏览器验收 |
 | [`superpowers/plans/2026-07-04-ai-visual-yearly-report-editorial-fix.md`](superpowers/plans/2026-07-04-ai-visual-yearly-report-editorial-fix.md) | AI 图文年度报告编辑质量修复计划：Story Insight Builder、章节写作去模板化、内部指令泄漏拦截、同实体 false contrast 与 2026 golden checks |
+| [`superpowers/specs/2026-07-04-ai-yearly-report-editorial-agent-pipeline-design.md`](superpowers/specs/2026-07-04-ai-yearly-report-editorial-agent-pipeline-design.md) | AI Yearly Report Editorial Agent Pipeline 设计：Research Brief、Storyline Planner、LLM 主笔、LLM 编辑、Claim Checker、Taste Rubric 与 artifact 兼容迁移 |
+| [`superpowers/plans/2026-07-04-ai-yearly-report-editorial-agent-pipeline.md`](superpowers/plans/2026-07-04-ai-yearly-report-editorial-agent-pipeline.md) | AI Yearly Report Editorial Agent Pipeline 实施计划：模型、研究简报、LLM 写作/编辑、claim checker、taste rubric、缓存隔离、默认切换和验收步骤 |
+| [`superpowers/plans/2026-07-04-artist-genre-taxonomy-v2.md`](superpowers/plans/2026-07-04-artist-genre-taxonomy-v2.md) | Artist Genre Taxonomy v2 修复计划：拆分过粗 canonical 标签、补 label axis、dominance warning 与 Settings 审计风险解释 |
 | [`superpowers/plans/2026-07-03-music-search-quick-open.md`](superpowers/plans/2026-07-03-music-search-quick-open.md) | 音乐查找入口实现计划：Masthead 快速搜索、`/music/search` 全页查找、本地实体搜索 API 与验证矩阵 |
 | [`superpowers/plans/2026-07-03-music-search-chart-badges.md`](superpowers/plans/2026-07-03-music-search-chart-badges.md) | 音乐查找榜单摘要实现计划：`include_chart`、详情页同口径播放次数与个人 Billboard 摘要、快速搜索键盘高亮体验 |
 

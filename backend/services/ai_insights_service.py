@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 from backend.core.db import DB_PATH, get_db, load_plays
+from backend.domains.ai_reports.editorial_agent import WRITER_PIPELINE_REQUEST_VALUE
 from backend.domains.ai_reports.visual_artifact_models import (
     VISUAL_YEARLY_CONTRACT_VERSION,
     VISUAL_YEARLY_REPORT_MODE,
@@ -523,6 +524,7 @@ def _report_cache_key(
     dynamic_threshold: bool,
     max_merge_gap_minutes: Optional[int],
     report_mode: str | None = None,
+    writer_pipeline: str | None = None,
     week_start: str | None = None,
     week_end: str | None = None,
     month: str | None = None,
@@ -541,6 +543,7 @@ def _report_cache_key(
                 "yearly",
                 VISUAL_YEARLY_REPORT_MODE,
                 VISUAL_YEARLY_CONTRACT_VERSION,
+                writer_pipeline or WRITER_PIPELINE_REQUEST_VALUE,
                 str(year or ""),
                 filter_part,
             )
@@ -559,6 +562,7 @@ def store_report_cache(
     dynamic_threshold: bool,
     max_merge_gap_minutes: Optional[int],
     report_mode: str | None = None,
+    writer_pipeline: str | None = None,
     week_start: str | None = None,
     week_end: str | None = None,
     month: str | None = None,
@@ -575,6 +579,7 @@ def store_report_cache(
         dynamic_threshold=dynamic_threshold,
         max_merge_gap_minutes=max_merge_gap_minutes,
         report_mode=report_mode,
+        writer_pipeline=writer_pipeline,
         week_start=week_start,
         week_end=week_end,
         month=month,
@@ -1127,6 +1132,7 @@ def peek_report_cache(
     dynamic_threshold: bool,
     max_merge_gap_minutes: Optional[int],
     report_mode: str | None = None,
+    writer_pipeline: str | None = None,
     week_start: str | None = None,
     week_end: str | None = None,
     month: str | None = None,
@@ -1141,6 +1147,7 @@ def peek_report_cache(
         dynamic_threshold=dynamic_threshold,
         max_merge_gap_minutes=max_merge_gap_minutes,
         report_mode=report_mode,
+        writer_pipeline=writer_pipeline,
         week_start=week_start,
         week_end=week_end,
         month=month,

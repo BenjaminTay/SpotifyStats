@@ -35,7 +35,13 @@ _AGENTIC_STAGE_PROGRESS = {
     "building_narrative_brief": 0.48,
     "planning_visuals": 0.58,
     "building_chart_data": 0.68,
+    "building_research_brief": 0.72,
+    "planning_storyline": 0.74,
+    "writing_article": 0.76,
     "composing_artifact": 0.78,
+    "editing_article": 0.8,
+    "checking_claims": 0.84,
+    "scoring_taste": 0.86,
     "reviewing_visual_artifact": 0.88,
 }
 
@@ -221,6 +227,7 @@ def peek_report_cache(request: dict[str, Any]) -> dict[str, Any]:
             report_mode=VISUAL_YEARLY_REPORT_MODE
             if _should_use_visual_yearly_artifact(request)
             else None,
+            writer_pipeline=request.get("writer_pipeline"),
             week_start=request.get("week_start"),
             week_end=request.get("week_end"),
             month=request.get("month"),
@@ -669,6 +676,7 @@ def _write_report_cache_from_task_result(
                 dynamic_threshold=request.get("dynamic_threshold", True),
                 max_merge_gap_minutes=request.get("max_merge_gap_minutes"),
                 report_mode=VISUAL_YEARLY_REPORT_MODE,
+                writer_pipeline=request.get("writer_pipeline"),
                 week_start=request.get("week_start"),
                 week_end=request.get("week_end"),
                 month=request.get("month"),

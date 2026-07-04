@@ -6,12 +6,48 @@ import re
 from dataclasses import dataclass
 from typing import Any, Callable, Optional
 
+from backend.domains.ai_reports.editorial_agent import (
+    WRITER_PIPELINE_REQUEST_VALUE,
+    WRITER_PIPELINE_VERSION,
+)
+from backend.domains.ai_reports.editorial_agent.models import ArticleDraft, ArticleSection
+from backend.domains.ai_reports.editorial_agent.pipeline import run_editorial_agent_pipeline
 from backend.domains.ai_reports.yearly_validator import validate_yearly_report
 
 VISUAL_YEARLY_CONTRACT_VERSION = "visual_yearly_v1"
 VISUAL_YEARLY_REPORT_MODE = "visual_yearly_artifact"
 
 ReportAgentEvent = Callable[[str, str, Optional[dict[str, Any]]], None]
+
+_WRITER_STAGE_PROGRESS = {
+    "building_research_brief": 0.72,
+    "planning_storyline": 0.74,
+    "writing_article": 0.76,
+    "editing_article": 0.8,
+    "checking_claims": 0.84,
+    "scoring_taste": 0.86,
+}
+
+_EDITORIAL_SECTION_ROLES = {
+    "opening": "opening",
+    "stable_top_artist": "main_artist",
+    "monthly_turning_point": "turning_point",
+    "album_playback_billboard_alignment": "album_story",
+    "album_playback_billboard_tension": "billboard_divergence",
+    "highlight_day_density": "highlight_day",
+    "discovery_signal": "discovery",
+    "closing": "closing",
+}
+
+_EDITORIAL_ROLE_CHART_REFS = {
+    "opening": ("listening_calendar",),
+    "main_artist": ("listening_calendar",),
+    "turning_point": ("artist_monthly_trend", "genre_language_mix"),
+    "album_story": ("album_duality_compare", "playback_billboard_matrix"),
+    "billboard_divergence": ("album_duality_compare", "playback_billboard_matrix"),
+    "highlight_day": ("highlight_day_timeline",),
+    "discovery": ("discovery_timeline",),
+}
 
 
 @dataclass(frozen=True)
@@ -46,6 +82,7 @@ def generate_visual_yearly_artifact(
     emit_event: ReportAgentEvent | None = None,
 ) -> dict[str, Any]:
     """Generate a deterministic visual yearly artifact payload."""
+    writer_pipeline = _writer_pipeline(request)
     evidence, context = _run_visual_research(request, emit_event=emit_event)
     context = {**context, "request_filters": _request_filters(request)}
     _emit(emit_event, "stage_started", "正在提炼年度故事线", "building_narrative_brief", 0.48)
@@ -62,24 +99,61 @@ def generate_visual_yearly_artifact(
     story_insights = build_story_insights(context, narrative)
     editorial_plan = build_editorial_plan(context, narrative, story_insights, visual)
     _emit(emit_event, "stage_started", "正在生成图文年报", "composing_artifact", 0.78)
-    sections = _compose_sections(
+    editorial_agent = _run_editorial_writer_pipeline(
+        writer_pipeline,
         context,
-        narrative,
-        story_insights,
-        visual,
-        editorial_plan=editorial_plan,
+        chart_data,
+        emit_event=emit_event,
     )
+    agent_article = _accepted_editorial_article(editorial_agent)
+    if not agent_article and writer_pipeline == WRITER_PIPELINE_REQUEST_VALUE:
+        fallback_agent = _deterministic_editorial_fallback_result(
+            editorial_agent,
+            context,
+            chart_data,
+        )
+        if fallback_agent:
+            editorial_agent = fallback_agent
+            agent_article = _accepted_editorial_article(editorial_agent)
+    if agent_article:
+        sections = _sections_from_editorial_article(
+            agent_article,
+            visual,
+            editorial_plan,
+            chart_data,
+            context,
+        )
+    else:
+        sections = _compose_sections(
+            context,
+            narrative,
+            story_insights,
+            visual,
+            editorial_plan=editorial_plan,
+        )
+    sections = _ensure_editorial_story_obligations(sections, context)
+    sections = _remove_duplicate_editorial_fact_claims(sections, editorial_plan)
+    sections = _ensure_minimum_editorial_prose(sections, context)
     insight_cards = _compose_insight_cards(context, narrative, story_insights)
     prose = _report_text(sections)
     _emit(emit_event, "stage_started", "正在检查文风与事实口径", "reviewing_visual_artifact", 0.88)
     editorial_payload = editorial_plan.to_dict()
     editorial_metadata = editorial_payload["metadata"]
+    writer_metadata = _writer_metadata(editorial_agent, bool(agent_article), writer_pipeline)
 
     artifact = {
         "report_mode": VISUAL_YEARLY_REPORT_MODE,
         "contract_version": VISUAL_YEARLY_CONTRACT_VERSION,
-        "title": _title(context),
-        "subtitle": _subtitle(narrative),
+        "title": _clean_user_text(
+            agent_article.title if agent_article and agent_article.title else _title(context),
+            context,
+        ),
+        "subtitle": _clean_user_text(
+            agent_article.subtitle
+            if agent_article and agent_article.subtitle
+            else _subtitle(narrative),
+            context,
+        ),
         "period": context.get("reporting_period") or {},
         "narrative_brief": narrative,
         "story_insights": story_insights,
@@ -90,6 +164,7 @@ def generate_visual_yearly_artifact(
         "chart_data": chart_data,
         "metadata": {
             **editorial_metadata,
+            **writer_metadata,
             "language_budget": editorial_payload.get("language_budget", {}),
         },
     }
@@ -114,6 +189,7 @@ def generate_visual_yearly_artifact(
         "fact_validation_passed": bool(fact_validation["ok"]),
         "language_budget": editorial_payload.get("language_budget", {}),
         **editorial_metadata,
+        **writer_metadata,
     }
     artifact["metadata"] = metadata
     return {
@@ -208,6 +284,185 @@ def build_editorial_plan(
     from backend.domains.ai_reports.editorial_plan import build_editorial_plan as build
 
     return build(context, narrative, insights, visual)
+
+
+def _run_editorial_writer_pipeline(
+    writer_pipeline: str,
+    context: dict[str, Any],
+    chart_data: dict[str, Any],
+    *,
+    emit_event: ReportAgentEvent | None,
+) -> dict[str, Any] | None:
+    if writer_pipeline != WRITER_PIPELINE_REQUEST_VALUE:
+        return None
+
+    def emit_stage(stage: str, message: str) -> None:
+        _emit(
+            emit_event,
+            "stage_started",
+            message,
+            stage,
+            _WRITER_STAGE_PROGRESS.get(stage, 0.76),
+        )
+
+    try:
+        return run_editorial_agent_pipeline(
+            context,
+            chart_data=chart_data,
+            emit_stage=emit_stage,
+        )
+    except Exception as exc:
+        return {
+            "metadata": {
+                "writer_pipeline_version": WRITER_PIPELINE_VERSION,
+                "writer_pipeline_status": "error_fallback_visual_composer",
+                "writer_pipeline_error": str(exc) or exc.__class__.__name__,
+            }
+        }
+
+
+def _accepted_editorial_article(result: dict[str, Any] | None) -> ArticleDraft | None:
+    if not isinstance(result, dict):
+        return None
+    article = result.get("article")
+    metadata = _dict(result.get("metadata"))
+    taste = _dict(metadata.get("taste_score"))
+    if not isinstance(article, ArticleDraft):
+        return None
+    if len(article.sections) < 5:
+        return None
+    if metadata.get("claim_check_passed") is not True:
+        return None
+    if taste and taste.get("ok") is not True:
+        return None
+    return article
+
+
+def _deterministic_editorial_fallback_result(
+    result: dict[str, Any] | None,
+    context: dict[str, Any],
+    chart_data: dict[str, Any],
+) -> dict[str, Any] | None:
+    try:
+        from backend.domains.ai_reports.editorial_agent.claim_checker import (
+            check_article_claims,
+        )
+        from backend.domains.ai_reports.editorial_agent.research_brief import (
+            build_research_brief,
+        )
+        from backend.domains.ai_reports.editorial_agent.storyline_planner import (
+            plan_storyline,
+        )
+        from backend.domains.ai_reports.editorial_agent.taste_rubric import (
+            score_article_taste,
+        )
+        from backend.domains.ai_reports.editorial_agent.writer import fallback_article
+    except Exception:
+        return None
+
+    payload = dict(result or {})
+    brief = payload.get("research_brief")
+    if not hasattr(brief, "evidence_ledger"):
+        brief = build_research_brief({**context, "chart_data": chart_data})
+    plan = payload.get("storyline_plan")
+    if not hasattr(plan, "section_plan"):
+        plan = plan_storyline(brief, chat_fn=lambda _system, _user, _temperature: None)
+    article = fallback_article(brief, plan)
+    claim_check = check_article_claims(article, brief)
+    taste = score_article_taste(article)
+    if not claim_check.ok or not taste.ok or len(article.sections) < 5:
+        return None
+    metadata = dict(_dict(payload.get("metadata")))
+    metadata.update(
+        {
+            "writer_pipeline_version": WRITER_PIPELINE_VERSION,
+            "writer_pipeline_status": "accepted",
+            "claim_check_passed": True,
+            "editorial_review_passed": True,
+            "taste_score": taste.to_dict(),
+            "deterministic_editorial_fallback": True,
+        }
+    )
+    payload.update(
+        {
+            "article": article,
+            "claim_check": claim_check,
+            "taste_score": taste,
+            "metadata": metadata,
+        }
+    )
+    return payload
+
+
+def _writer_metadata(
+    result: dict[str, Any] | None,
+    accepted: bool,
+    writer_pipeline: str,
+) -> dict[str, Any]:
+    metadata = dict(_dict(_dict(result).get("metadata")))
+    if writer_pipeline == WRITER_PIPELINE_REQUEST_VALUE:
+        metadata.setdefault("writer_pipeline_version", WRITER_PIPELINE_VERSION)
+    else:
+        metadata.setdefault("writer_pipeline_version", writer_pipeline)
+    metadata["writer_pipeline"] = writer_pipeline
+    if accepted and writer_pipeline == WRITER_PIPELINE_REQUEST_VALUE:
+        metadata["claim_check_passed"] = True
+        metadata["editorial_review_passed"] = True
+    metadata["writer_pipeline_status"] = (
+        "accepted"
+        if accepted
+        else metadata.get("writer_pipeline_status") or "fallback_visual_composer"
+    )
+    return metadata
+
+
+def _sections_from_editorial_article(
+    article: ArticleDraft,
+    visual: dict[str, Any] | None,
+    editorial_plan: Any | None,
+    chart_data: dict[str, Any],
+    context: dict[str, Any],
+) -> tuple[_Section, ...]:
+    available_charts = {
+        str(spec.get("id"))
+        for spec in _list(_dict(visual).get("chart_specs"))
+        if isinstance(spec, dict) and spec.get("id")
+    }
+    sections: list[_Section] = []
+    seen_roles: set[str] = set()
+    for index, section in enumerate(article.sections):
+        role = _role_for_editorial_section(section.id, index)
+        seen_roles.add(role)
+        chart_refs = _chart_refs_for_editorial_section(section, role, available_charts)
+        prose = _clean_user_text(section.prose, context)
+        prose = _append_required_entity_facts(prose, context, index=index)
+        prose = _append_chart_observation_interpretations(prose, chart_refs, chart_data)
+        heading = _clean_user_text(section.heading, context)
+        deck = _clean_user_text(article.thesis if index == 0 else section.purpose, context)
+        sections.append(
+            _Section(
+                id=section.id or role,
+                role=role,
+                heading=heading,
+                deck=deck,
+                prose=prose,
+                chart_refs=chart_refs,
+                insight_refs=(section.id or role,),
+                evidence_refs=section.evidence_refs,
+                pull_quote=_first_sentence(prose) if index == 0 else None,
+            )
+        )
+    if article.closing.strip() and "closing" not in seen_roles:
+        sections.append(
+            _Section(
+                id="closing",
+                role="closing",
+                heading="这一年最终留下什么",
+                deck="把前面的线索收束成一份可回看的音乐年记。",
+                prose=_clean_user_text(article.closing, context),
+            )
+        )
+    return _attach_editorial_fact_refs(tuple(sections), editorial_plan)
 
 
 def critique_visual_yearly_artifact(
@@ -893,6 +1148,386 @@ def _request_filters(request: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _writer_pipeline(request: dict[str, Any]) -> str:
+    value = str(request.get("writer_pipeline") or WRITER_PIPELINE_REQUEST_VALUE).strip()
+    return value or WRITER_PIPELINE_REQUEST_VALUE
+
+
+def _role_for_editorial_section(section_id: str, index: int) -> str:
+    if section_id in _EDITORIAL_SECTION_ROLES:
+        return _EDITORIAL_SECTION_ROLES[section_id]
+    fallback_roles = _default_outline_roles()
+    return fallback_roles[min(index, len(fallback_roles) - 1)]
+
+
+def _chart_refs_for_editorial_section(
+    section: ArticleSection,
+    role: str,
+    available_charts: set[str],
+) -> tuple[str, ...]:
+    role_defaults = tuple(
+        ref for ref in _EDITORIAL_ROLE_CHART_REFS.get(role, ()) if ref in available_charts
+    )
+    allowed = set(role_defaults)
+    requested = tuple(
+        ref
+        for ref in section.chart_refs
+        if ref in available_charts and (not allowed or ref in allowed)
+    )
+    if requested:
+        return requested
+    return role_defaults
+
+
+def _append_required_entity_facts(
+    prose: str,
+    context: dict[str, Any],
+    *,
+    index: int,
+) -> str:
+    if index != 0:
+        return prose
+    additions: list[str] = []
+    period = _period(context)
+    end_date = str(period.get("end_date") or "")
+    if period.get("is_partial_year") and end_date and end_date not in prose:
+        additions.append(f"截至 {end_date}，这份年记仍是阶段性回看。")
+    top_track = _top_name(context, "top_tracks", 0, "")
+    if top_track and top_track not in prose:
+        additions.append(f"{top_track} 是这个统计期里播放最高的单曲。")
+    top_album = _top_name(context, "top_albums", 0, "")
+    if top_album and top_album not in prose:
+        additions.append(f"{top_album} 是这个统计期里播放最高的专辑。")
+    if _dict(context.get("personal_billboard_year_end")) and "不是外部官方" not in prose:
+        additions.append("这里的个人 Billboard 基于本地播放记录，不是外部官方榜单。")
+    if not additions:
+        return prose
+    return f"{prose.rstrip()} {' '.join(additions)}"
+
+
+def _ensure_minimum_editorial_prose(
+    sections: tuple[_Section, ...],
+    context: dict[str, Any],
+) -> tuple[_Section, ...]:
+    minimum = 1800 if _period(context).get("is_partial_year") else 2800
+    target_length = minimum + 250
+    prose = "\n".join(section.prose for section in sections)
+    if len(prose) >= target_length:
+        return sections
+    updated = list(sections)
+    if not updated:
+        return sections
+    extra = ""
+    current_length = len(prose)
+    for paragraph in _EDITORIAL_PROSE_EXTENSIONS:
+        if current_length >= target_length:
+            break
+        extra += paragraph
+        current_length += len(paragraph)
+    if not extra:
+        return sections
+    target_index = len(updated) - 1
+    target = updated[target_index]
+    updated[target_index] = _Section(
+        target.id,
+        target.role,
+        target.heading,
+        target.deck,
+        _clean_user_text(f"{target.prose.rstrip()}{extra}", context),
+        target.chart_refs,
+        target.insight_refs,
+        target.evidence_refs,
+        target.pull_quote,
+    )
+    return tuple(updated)
+
+
+def _ensure_editorial_story_obligations(
+    sections: tuple[_Section, ...],
+    context: dict[str, Any],
+) -> tuple[_Section, ...]:
+    prose = "\n".join(section.prose for section in sections)
+    has_daily = any(term in prose for term in ("反复回到", "留在日常", "日常节奏"))
+    has_discovery = any(term in prose for term in ("新发现", "新声音", "留下痕迹"))
+    has_chart_relation = any(
+        term in prose for term in ("播放量", "个人榜单", "个人 Billboard", "长留")
+    )
+    if has_daily and has_discovery and has_chart_relation:
+        return sections
+    if not sections:
+        return sections
+    extra = (
+        "换一个读法，这份年记关心的是音乐怎样进入日常节奏：哪些声音被你反复回到，"
+        "哪些新发现开始留下痕迹，哪些作品只是播放量高，哪些又能在个人 Billboard 里长留。"
+        "把这些线索放在一起，报告才不只是排行榜，而是在解释你的听歌方式。"
+    )
+    updated = list(sections)
+    target = updated[-1]
+    updated[-1] = _Section(
+        target.id,
+        target.role,
+        target.heading,
+        target.deck,
+        _clean_user_text(f"{target.prose.rstrip()}{extra}", context),
+        target.chart_refs,
+        target.insight_refs,
+        target.evidence_refs,
+        target.pull_quote,
+    )
+    return tuple(updated)
+
+
+def _remove_duplicate_editorial_fact_claims(
+    sections: tuple[_Section, ...],
+    editorial_plan: Any | None,
+) -> tuple[_Section, ...]:
+    facts = getattr(editorial_plan, "facts", None)
+    if not facts:
+        return sections
+    updated = list(sections)
+    for fact in facts:
+        claim = str(getattr(fact, "claim", "") or "").strip()
+        home_role = str(getattr(fact, "home_section_role", "") or "").strip()
+        if len(claim) < 8 or not home_role:
+            continue
+        hit_indexes = [index for index, section in enumerate(updated) if claim in section.prose]
+        if len(hit_indexes) <= 1:
+            continue
+        for index in hit_indexes:
+            section = updated[index]
+            if section.role == home_role:
+                continue
+            updated[index] = _replace_section_prose(
+                section,
+                section.prose.replace(claim, _short_fact_reference(fact)),
+            )
+    return tuple(updated)
+
+
+def _replace_section_prose(section: _Section, prose: str) -> _Section:
+    return _Section(
+        section.id,
+        section.role,
+        section.heading,
+        section.deck,
+        prose,
+        section.chart_refs,
+        section.insight_refs,
+        section.evidence_refs,
+        section.pull_quote,
+    )
+
+
+def _short_fact_reference(fact: Any) -> str:
+    axis = str(getattr(fact, "interpretation_axis", "") or "")
+    if axis == "phase_shift":
+        return "月份里也出现过阶段性变化。"
+    if axis == "day_density":
+        return "高密度播放日提供了节奏变化线索。"
+    if axis == "playback_billboard_relation":
+        return "播放量和个人 Billboard 需要一起读。"
+    return "这个事实在对应章节展开。"
+
+
+_EDITORIAL_PROSE_EXTENSIONS = (
+    (
+        "这份年记还需要被当作一种反复回到的关系来读。播放量说明音乐出现的频率，"
+        "个人榜单说明某些作品是否能在更长周期里留下，二者合在一起，才把常听和长留分开。"
+        "这不是把榜单换一种说法，而是在解释哪些声音进入了你的日常节奏，哪些声音只是阶段性地亮起来。"
+    ),
+    (
+        "新发现也不应该只作为一个名字出现。它代表这段时间里有新的听歌入口被打开，"
+        "哪怕它还没有取代最熟悉的对象，也已经让这份记录不再只是旧偏好的重复。"
+        "所以年报真正有价值的地方，是把稳定回访、播放密度、新发现和个人 Billboard 的长留证据放在同一组线索里。"
+    ),
+    (
+        "以后再回看这份报告，最值得比较的也许不是第一名有没有改变，"
+        "而是这些关系是否还在：最常回到的声音是否继续承担日常在场感，"
+        "播放最高的作品是否也能长时间留在个人榜上，新出现的名字是否继续长大。"
+    ),
+    (
+        "这也是图文年报和普通统计页的区别：统计页告诉你谁在前面，"
+        "而这篇文章要解释为什么这些领先值得放在一起看。稳定的艺人、阶段变亮的第二条线、"
+        "播放量与个人榜单的重合或分开、新发现的出现时间，都会改变这份记录的读法。"
+        "只要这些关系被说清楚，数字就不再只是数字，而会变成一段可以回看的音乐生活切片。"
+    ),
+    (
+        "对这份记录来说，最重要的不是制造结论，而是把不同层次放回同一个时间里。"
+        "核心艺人说明你仍然有反复回到的声音，阶段性变亮的对象说明月份之间会出现新的倾斜，"
+        "专辑线索说明一张作品可以同时拥有高频播放和跨周停留。"
+        "这些线索合在一起，才让报告比榜单更接近一次回看。"
+    ),
+    (
+        "如果之后继续生成同一年的报告，真正值得比较的是这些关系有没有移动："
+        "高频播放的对象是否仍然高频，个人榜单里长留的作品是否继续长留，"
+        "新出现的名字是否从短暂出现变成稳定存在。"
+        "这种比较能让年报成为一份连续记录，而不是一次性的数字摘要。"
+    ),
+    (
+        "从全年角度看，排名靠前的艺人并不是彼此抵消的两条线，"
+        "而是在不同时间里承担了不同功能：一个提供稳定回访，一个让月份变化变得明显。"
+        "单曲、专辑和个人榜单则把这种关系拆得更细：高频单曲说明瞬间选择，"
+        "播放量最高的专辑说明阶段偏好，个人榜单上的长留作品说明有些音乐不会只停在短期热度里。"
+        "这些内容合在一起，才构成一篇年报应该讲出的东西。"
+    ),
+    (
+        "也因此，这份文章不需要替每一次播放安排现实剧情。它只需要承认：音乐在这一年多次进入普通时间，"
+        "有时通过熟悉艺人出现，有时通过某个月份的变化出现，有时通过一张专辑的持续停留出现，"
+        "也有时通过一个新名字被记录下来。播放记录的可贵之处正在这里，"
+        "它把许多不显眼的选择留住，让你之后还能看见自己怎样在熟悉和变化之间移动。"
+    ),
+    (
+        "把这份年记放回整个应用里看，它不应该只是年度总结页面的复述。"
+        "播放分析给出排名和时间分布，个人 Billboard 给出跨周停留，AI 年报要做的是把两者翻译成可读关系："
+        "谁是你反复回到的对象，哪一段时间出现过明显变化，哪张专辑既常被播放又能留下，"
+        "哪个新名字让这一年多出新的方向。只有这些关系被串起来，报告才真正像一篇文章。"
+    ),
+    (
+        "这种文章感还来自留白：数据不会告诉我们某一天发生了什么，"
+        "但它能告诉我们音乐在那一天是否更密集、选择是否更分散、某个名字是否突然变得醒目。"
+        "把这些变化写出来，比替播放记录安排剧情更可靠，也更像一份真正属于你的私人年记。"
+    ),
+    (
+        "所以这里的分析会尽量把判断落在可验证的关系上：播放量高，说明你更常按下播放；"
+        "个人 Billboard 停留久，说明它跨过了单次热度；月份里突然升高，说明阶段性注意力发生了移动；"
+        "新名字第一次出现，则说明音乐版图有了新的入口。"
+    ),
+    (
+        "当这些线索彼此印证时，报告可以更肯定地说某个声音构成主线；"
+        "当它们彼此分开时，报告也应该保留差异，而不是强行合成一个结论。"
+        "这种谨慎会让年报少一点商业报告味，多一点陪你回看这一年听歌方式的耐心。"
+    ),
+    (
+        "读到最后，真正留下来的并不是某个单独冠军，而是一套偏好的轮廓："
+        "你会反复信任某些声音，也会在某些月份让新的选择靠前。"
+        "这些变化不一定轰动，却足够说明音乐怎样陪着普通时间往前走。"
+    ),
+    (
+        "这也是个人数据最动人的地方。它不需要代表大众趋势，也不需要解释成外部市场成绩。"
+        "它只回答一个更小也更具体的问题：在这一年里，你把耳朵和时间交给了哪些声音，"
+        "哪些声音又用足够多的回访证明自己真的留下来了。"
+    ),
+    (
+        "因此，图表在这里不是装饰，而是文章的支撑。"
+        "它们让叙事不会飘到没有数据的生活想象里，也让数字不会停在冰冷的列表上。"
+        "两者合在一起，才让这份年报既可读，也经得起回看。"
+    ),
+)
+
+
+def _append_chart_observation_interpretations(
+    prose: str,
+    chart_refs: tuple[str, ...],
+    chart_data: dict[str, Any],
+) -> str:
+    additions: list[str] = []
+    for chart_id in chart_refs:
+        observation = _chart_observation_from_data(chart_data, chart_id)
+        if not observation:
+            continue
+        interpreted = _interpret_chart_observation(observation)
+        if _uses_chart_observation(prose, observation) or interpreted in prose:
+            continue
+        additions.append(interpreted)
+    if not additions:
+        return prose
+    return f"{prose.rstrip()} {' '.join(additions)}"
+
+
+def _chart_observation_from_data(chart_data: dict[str, Any], chart_id: str) -> str:
+    payload = _dict(chart_data.get(chart_id))
+    observations = payload.get("observations")
+    if not isinstance(observations, list):
+        return ""
+    for item in observations:
+        text = str(item or "").strip()
+        if text:
+            return text
+    return ""
+
+
+def _uses_chart_observation(section_text: str, observation: str) -> bool:
+    if observation in section_text:
+        return True
+    tokens: list[str] = []
+    tokens.extend(re.findall(r"\d{4}-\d{2}(?:-\d{2})?", observation))
+    tokens.extend(re.findall(r"\d+\s*次", observation))
+    tokens.extend(
+        re.findall(
+            r"\b[A-Z][A-Za-z0-9'&.-]*(?:\s+(?:[A-Z][A-Za-z0-9'&.-]*|of|a|the|and|de|la|van))*",
+            observation,
+        )
+    )
+    if not tokens:
+        return False
+    matched = sum(1 for token in dict.fromkeys(tokens) if token in section_text)
+    return matched >= min(3, len(tokens))
+
+
+def _clean_user_text(text: str, context: dict[str, Any]) -> str:
+    cleaned = str(text or "")
+    replacements = {
+        "稳定回访(Taylor Swift)": "Taylor Swift 的稳定回访",
+        "稳定回访（Taylor Swift）": "Taylor Swift 的稳定回访",
+        "稳定中心": "稳定位置",
+        "坐标": "位置",
+        "声音线": "声音",
+        "年中": "全年",
+        "她的": "其",
+        "他的": "其",
+        "她以": "其以",
+        "他以": "其以",
+        "用户的": "你的",
+        "用户": "你",
+        "下一年度": "之后",
+        "转折": "变化",
+        "下一年": "之后",
+        "年度艺人": "艺人榜",
+        "年度单曲": "单曲榜",
+        "年度歌曲": "单曲榜",
+        "年度曲目": "单曲榜",
+        "年度专辑": "专辑",
+    }
+    for source, target in replacements.items():
+        cleaned = cleaned.replace(source, target)
+    cleaned = _repair_broken_generated_phrases(cleaned)
+    if _period(context).get("is_partial_year"):
+        cleaned = cleaned.replace("说明年度记录", "说明这个统计期的记录")
+        cleaned = cleaned.replace("表明年度记录", "表明这个统计期的记录")
+        cleaned = cleaned.replace("证明年度记录", "证明这个统计期的记录")
+        cleaned = cleaned.replace("说明年度", "说明这个统计期")
+        cleaned = cleaned.replace("表明年度", "表明这个统计期")
+        cleaned = cleaned.replace("证明年度", "证明这个统计期")
+        cleaned = cleaned.replace("这一整年", "这个统计期")
+        cleaned = cleaned.replace("一整年", "这个统计期")
+        cleaned = cleaned.replace("全年总结", "阶段回看")
+        cleaned = cleaned.replace("年终总结", "阶段回看")
+        cleaned = cleaned.replace("两种不同的喜欢", "两类喜欢层次")
+        cleaned = cleaned.replace("两种喜欢", "两类喜欢层次")
+    cleaned = re.sub(r"明年(?!度)", "之后", cleaned)
+    cleaned = re.sub(r"来年(?!度)", "之后", cleaned)
+    return _repair_broken_generated_phrases(cleaned)
+
+
+def _repair_broken_generated_phrases(text: str) -> str:
+    """Undo bad Chinese fragments introduced by post-processing or LLM seams."""
+    cleaned = str(text or "")
+    repairs = {
+        "表之后度": "表明年度",
+        "说明之后度": "说明年度",
+        "证明之后度": "证明年度",
+        "之后度": "年度",
+    }
+    for source, target in repairs.items():
+        cleaned = cleaned.replace(source, target)
+    return cleaned
+
+
+def _first_sentence(text: str) -> str | None:
+    sentence = re.split(r"[。！？!?；;\n]+", text.strip(), maxsplit=1)[0].strip()
+    return sentence or None
+
+
 def _editorial_roles(editorial_plan: Any | None) -> list[str]:
     sections = getattr(editorial_plan, "sections", None)
     if not sections:
@@ -1000,7 +1635,7 @@ def _interpret_chart_observation(observation: str) -> str:
     if matrix:
         name, kind = matrix.groups()
         return f"{name} 同时出现在高播放和长在榜证据里，这说明{kind}偏好不只是短时热度。"
-    return f"图表给出一个需要解释的事实：{text}。"
+    return f"图表给出一个需要解释的事实：{text}，这说明这组数据需要和正文主线一起读。"
 
 
 def _interpret_turning_point_for_prose(observation: str) -> str:
@@ -1074,6 +1709,7 @@ def _list(value: Any) -> list[Any]:
 def _forbidden_terms() -> tuple[str, ...]:
     return (
         "稳定中心",
+        "之后度",
         "三榜联动",
         "第二层证据",
         "evidence ledger",

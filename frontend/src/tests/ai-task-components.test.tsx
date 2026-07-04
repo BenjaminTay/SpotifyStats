@@ -66,6 +66,41 @@ describe('AITaskProgress', () => {
     expect(screen.getByText('72%')).toBeInTheDocument()
   })
 
+  it('renders editorial agent writer stages with readable labels', () => {
+    render(
+      <AITaskProgress
+        task={{
+          found: true,
+          task_id: 'task-editorial-yearly',
+          task_type: 'ai_report_yearly',
+          status: 'running',
+          stage: 'planning_storyline',
+          progress_pct: 0.64,
+          message: '正在规划文章主线',
+          result: null,
+          error: null,
+          created_at: '2026-07-04T00:00:00',
+          updated_at: '2026-07-04T00:00:01',
+        }}
+        events={[
+          {
+            event_id: 1,
+            task_id: 'task-editorial-yearly',
+            event_type: 'stage_started',
+            stage: 'building_research_brief',
+            message: '正在整理年度研究简报',
+            payload: null,
+            created_at: '2026-07-04T00:00:00',
+          },
+        ]}
+      />,
+    )
+
+    expect(screen.getByText('规划文章主线')).toBeInTheDocument()
+    expect(screen.getByText('正在整理年度研究简报')).toBeInTheDocument()
+    expect(screen.getByText('64%')).toBeInTheDocument()
+  })
+
   it('renders task errors when the task fails', () => {
     render(
       <AITaskProgress

@@ -332,6 +332,7 @@ def test_visual_probe_summary_includes_quality_checks_and_outline_roles():
         task_id="task-visual",
         detail={"status": "done"},
         result=result,
+        writer_pipeline="",
     )
 
     assert summary["ok"] is True
@@ -349,7 +350,7 @@ def test_visual_probe_rejects_failed_metadata_short_text_missing_observation_and
     prose = (
         "截至 2026-06-23，Taylor Swift、Olivia Rodrigo、Zhang Zhen Yue 和 "
         "The Life of a Showgirl 仍在报告里，但 undefined null NaN unknown、"
-        "Dynamic Outline 和 Evidence Ledger 泄漏出来。"
+        "Dynamic Outline、Evidence Ledger 和之后度泄漏出来。"
     )
     artifact = _probe_artifact(prose, include_observation=False)
     artifact["metadata"] = {"critic_passed": False, "fact_validation_passed": False}
@@ -366,11 +367,12 @@ def test_visual_probe_rejects_failed_metadata_short_text_missing_observation_and
         chart_specs=artifact["chart_specs"],
         chart_data=artifact["chart_data"],
         prose=probe_text,
+        writer_pipeline="",
     )
 
     assert "artifact.metadata.critic_passed is not true" in issues
     assert "artifact.metadata.fact_validation_passed is not true" in issues
     assert "partial-year prose length < 1800" in issues
     assert "missing chart observations: opening -> artist_monthly_trend" in issues
-    assert "forbidden terms: evidence ledger, dynamic outline" in issues
+    assert "forbidden terms: 之后度, evidence ledger, dynamic outline" in issues
     assert "invalid placeholder tokens: NaN, null, undefined, unknown" in issues

@@ -9,6 +9,7 @@ from backend.domains.ai_reports.narrative_quality import evaluate_visual_yearly_
 
 BUSINESS_REPORT_TERMS = (
     "稳定中心",
+    "之后度",
     "三榜联动",
     "第二层证据",
     "evidence ledger",

@@ -278,6 +278,34 @@ def test_cache_only_visual_yearly_report_ignores_legacy_yearly_cache(
     assert result["result"]["needs_generation"] is True
 
 
+def test_visual_yearly_report_cache_key_includes_writer_pipeline():
+    base = {
+        "report_type": "yearly",
+        "min_ms": 30000,
+        "music_only": True,
+        "merge_enabled": True,
+        "dynamic_threshold": True,
+        "max_merge_gap_minutes": None,
+        "report_mode": "visual_yearly_artifact",
+        "year": 2026,
+    }
+
+    editorial_key = ai_insights_service._report_cache_key(
+        **base,
+        writer_pipeline="editorial_agent_v1",
+    )
+    legacy_key = ai_insights_service._report_cache_key(
+        **base,
+        writer_pipeline="deterministic_visual_v1",
+    )
+
+    assert editorial_key is not None
+    assert "visual_yearly_artifact" in editorial_key
+    assert "visual_yearly_v1" in editorial_key
+    assert "editorial_agent_v1" in editorial_key
+    assert legacy_key != editorial_key
+
+
 def test_visual_yearly_report_generation_writes_artifact_cache(
     ai_report_task_db: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -807,13 +835,19 @@ def test_visual_yearly_report_mode_dispatches_visual_artifact(monkeypatch: pytes
 
     result = ai_task_service._run_report_generator(
         None,
-        {"report_type": "yearly", "report_mode": "visual_yearly_artifact", "year": 2025},
+        {
+            "report_type": "yearly",
+            "report_mode": "visual_yearly_artifact",
+            "writer_pipeline": "editorial_agent_v1",
+            "year": 2025,
+        },
         progress_callback=lambda *args: None,
         should_continue=lambda: True,
     )
 
     assert result["metadata"]["report_mode"] == "visual_yearly_artifact"
     assert called["request"]["year"] == 2025
+    assert called["request"]["writer_pipeline"] == "editorial_agent_v1"
 
 
 def test_monthly_generation_forwards_filter_parameters(

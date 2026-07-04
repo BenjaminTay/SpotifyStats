@@ -29,6 +29,7 @@ export interface ReportTaskRequest {
   report_type: ReportType
   action: 'cache_only' | 'generate'
   report_mode?: 'visual_yearly_artifact' | 'agentic_longform' | 'basic_summary'
+  writer_pipeline?: 'editorial_agent_v1' | 'deterministic_visual_v1'
   force?: boolean
   week_start?: string
   week_end?: string

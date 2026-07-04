@@ -149,6 +149,7 @@ export function AiReportsPanel({ settings, onFollowUp }: AiReportsPanelProps) {
       report_type: 'yearly',
       action: 'cache_only',
       report_mode: 'visual_yearly_artifact',
+      writer_pipeline: 'editorial_agent_v1',
       year,
       ...basePayload,
     }

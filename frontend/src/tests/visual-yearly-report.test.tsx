@@ -328,4 +328,69 @@ describe('VisualYearlyReport', () => {
     expect(screen.queryByText(new RegExp(EDITORIAL_METADATA_SENTINEL))).not.toBeInTheDocument()
     expect(screen.queryByText(/yearly_editorial_v1/)).not.toBeInTheDocument()
   })
+
+  it('ReportCard shows editorial-agent quality badges without raw metadata leakage', () => {
+    const value = artifact()
+    value.metadata = {
+      ...value.metadata,
+      writer_pipeline_version: 'yearly_editorial_agent_v1',
+      writer_pipeline_status: 'accepted',
+      claim_check_passed: true,
+      editorial_review_passed: true,
+      taste_score: { ok: true, total: 31, dimensions: {}, notes: [] },
+    }
+
+    render(
+      <ReportCard
+        artifact={value}
+        cached={false}
+        cachedAt={null}
+        entities={null}
+        error={null}
+        fetching={false}
+        loading={false}
+        metadata={value.metadata}
+        onRetry={() => undefined}
+        report={null}
+        reportType="yearly"
+        title="年度叙事 · 2025"
+      />,
+    )
+
+    expect(screen.getByText('Editorial Agent')).toBeInTheDocument()
+    expect(screen.getByText('事实核对通过')).toBeInTheDocument()
+    expect(screen.getByText('口味评分 31')).toBeInTheDocument()
+    expect(screen.queryByText(/yearly_editorial_agent_v1/)).not.toBeInTheDocument()
+  })
+
+  it('ReportCard does not label fallback visual composer as Editorial Agent', () => {
+    const value = artifact()
+    value.metadata = {
+      ...value.metadata,
+      writer_pipeline_version: 'yearly_editorial_agent_v1',
+      writer_pipeline_status: 'fallback_visual_composer',
+      claim_check_passed: false,
+      taste_score: { ok: false, total: 24, dimensions: {}, notes: [] },
+    }
+
+    render(
+      <ReportCard
+        artifact={value}
+        cached={false}
+        cachedAt={null}
+        entities={null}
+        error={null}
+        fetching={false}
+        loading={false}
+        metadata={value.metadata}
+        onRetry={() => undefined}
+        report={null}
+        reportType="yearly"
+        title="年度叙事 · 2025"
+      />,
+    )
+
+    expect(screen.queryByText('Editorial Agent')).not.toBeInTheDocument()
+    expect(screen.getByText('事实核对待修正')).toBeInTheDocument()
+  })
 })

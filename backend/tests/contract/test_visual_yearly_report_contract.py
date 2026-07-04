@@ -127,6 +127,7 @@ def test_report_task_accepts_visual_yearly_mode(client):
             "action": "generate",
             "year": 2025,
             "report_mode": "visual_yearly_artifact",
+            "writer_pipeline": "editorial_agent_v1",
             "force": True,
         },
     )

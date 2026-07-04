@@ -1,5 +1,29 @@
 # 变更日志
 
+## 2026-07-05 — AI 年报 Editorial Agent 写作流水线
+
+### 新增
+
+- 年度叙事默认 `visual_yearly_artifact` + `writer_pipeline=editorial_agent_v1`：新增 `backend/domains/ai_reports/editorial_agent/`，按 Research Brief、Storyline Planner、LLM writer、LLM editor、Claim Checker、Taste Rubric 与 pipeline orchestrator 生成长文。
+- 年报 artifact metadata 记录 `writer_pipeline_version`、`writer_pipeline_status`、`claim_check_passed`、`editorial_review_passed`、`taste_score`、`research_brief_version` 与文章长度；前端报告卡片展示 Editorial Agent、事实核对、口味评分和编辑审稿状态。
+- AI task 报告请求支持 `writer_pipeline`，年度图文报告缓存 key 纳入 writer pipeline，避免 deterministic visual composer 或旧 Markdown/agentic 缓存挡住新结果。
+- `scripts/probe_visual_yearly_report_artifact.py` 支持 `--writer-pipeline editorial_agent_v1`，并校验 writer metadata、claim check、taste score、critic、fact validation、图表观察、golden terms 和 forbidden terms。
+
+### 修复与质量
+
+- artifact 组装层补充图表观察解释、必要实体事实、核心事实去重、partial-year 文案修正和故事义务兜底，避免年度报告退化为播放分析页面数据复述。
+- 修复后处理把“表明年度”误替换成“表之后度”的词缝 bug；visual critic、HTTP probe 与单测都把“之后度”列为硬失败。
+- 前端年度叙事刷新默认携带 `writer_pipeline=editorial_agent_v1`，任务进度增加研究简报、故事规划、写作、编辑、事实核对和口味评分阶段。
+
+### 验证
+
+- `.venv/bin/pytest backend/tests/unit/test_yearly_editorial_agent_models.py backend/tests/unit/test_yearly_research_brief.py backend/tests/unit/test_yearly_storyline_planner.py backend/tests/unit/test_yearly_writer_editor.py backend/tests/unit/test_yearly_claim_checker.py backend/tests/unit/test_yearly_taste_rubric.py backend/tests/unit/test_yearly_editorial_agent_pipeline.py backend/tests/contract/test_yearly_editorial_agent_contract.py backend/tests/unit/test_visual_yearly_artifact_service.py backend/tests/unit/test_visual_yearly_critic.py backend/tests/unit/test_ai_report_tasks.py backend/tests/contract/test_visual_yearly_report_contract.py -q`：77 passed
+- `.venv/bin/pytest backend/tests/unit/test_visual_yearly_artifact_service.py backend/tests/unit/test_visual_yearly_critic.py -q`：24 passed
+- `cd frontend && npm test -- src/tests/ai-task-components.test.tsx src/tests/visual-yearly-report.test.tsx --run`：12 passed
+- `cd frontend && npm run build`：PASS
+- `scripts/probe_visual_yearly_report_artifact.py --mode changed --writer-pipeline editorial_agent_v1`：2025/2026 均 PASS，均为 `writer_pipeline_status=accepted`、`claim_check_passed=true`、`critic_passed=true`、`fact_validation_passed=true`。
+- Playwright 模拟用户路径 `/ai-insights` → `年度叙事` → `刷新报告`：页面显示 `Editorial Agent`、`事实核对通过`、`口味评分 35` 与完整图文年报 artifact，未出现事实核对失败徽章、`之后度` 或 `fallback_visual_composer`。
+
 ## 2026-07-04 — AI Visual Yearly Report Artifact
 
 ### 新增
