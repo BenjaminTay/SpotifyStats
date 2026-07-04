@@ -93,6 +93,8 @@ class VersusEntity(BaseModel):
     cover_url: str | None = None
     popularity: int | None = None
     genres: list[str] | None = None
+    genre_source: str | None = None
+    genre_confidence: float | None = None
     rank_history: list[dict] | None = None
     metrics: dict | None = None
 
@@ -115,6 +117,8 @@ class MultiVersusEntity(BaseModel):
     cover_url: str | None = None
     popularity: int | None = None
     genres: list[str] | None = None
+    genre_source: str | None = None
+    genre_confidence: float | None = None
     rank_history: list[dict] | None = None
     metrics: dict | None = None
 

@@ -250,7 +250,7 @@ export function LLMTranslationSection({
 
   return (
     <GlassCard className="p-6">
-      <CollapsibleSection num={6} title="LLM 配置" desc="配置大模型供应商与模型，用于 Wikipedia 翻译、歌曲/专辑/艺人详情页智能摘要、AI 洞察报告与对话等场景。">
+      <CollapsibleSection num={7} title="LLM 配置" desc="配置大模型供应商与模型，用于 Wikipedia 翻译、歌曲/专辑/艺人详情页智能摘要、AI 洞察报告与对话等场景。">
 
       <InlineNotice show={notice}>LLM 配置已保存。</InlineNotice>
 

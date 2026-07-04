@@ -41,6 +41,17 @@ export const queryKeys = {
     spotifyStatus: () => ['settings', 'spotify-status'] as const,
   },
 
+  metadata: {
+    all: ['metadata'] as const,
+    artistGenres: {
+      all: ['metadata', 'artist-genres'] as const,
+      coverage: () => ['metadata', 'artist-genres', 'coverage'] as const,
+      taxonomy: () => ['metadata', 'artist-genres', 'taxonomy'] as const,
+      reviews: (status = 'open', limit = 50) =>
+        ['metadata', 'artist-genres', 'reviews', status, limit] as const,
+    },
+  },
+
   account: {
     all: ['account'] as const,
     summary: () => ['account', 'summary'] as const,

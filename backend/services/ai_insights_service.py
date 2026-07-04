@@ -81,7 +81,7 @@ YEARLY_STORY_SYSTEM = """你是一位可信的个人音乐年度编辑。根据 
 6. TOP 艺人、歌曲、新艺人如果有 name，必须写出具体名称；不要用“某位艺人”“另一首歌”替代。
 7. 如果 top_albums 有数据，必须写出 TOP 专辑名称；如果 billboard_year_end.available=true，必须使用“个人 Billboard / 年榜 / 在榜周数 / 峰值”等证据说明它是本地个人榜，不是外部官方 Billboard。
 8. 必须先读取 editorial_brief.thesis 和 required_angles，把报告写成有主线的编辑稿，不要只是逐项罗列数字。
-9. 流派解读必须保留 genre_summary.caveat 的含义；如果 top_genres 中包含“其他流派”，需要说明它也是最大或重要类别之一。
+9. 流派解读必须保留 genre_summary.caveat 的含义；canonical genre 是统计标签，可能重叠且可能分属 style/scene/context/role，不是互斥分类；高占比标签可能由少数艺人或某个来源驱动。如果 top_genres 中包含“其他流派”，需要说明它也是最大或重要类别之一。
 10. 高光日解释必须参考 most_active_day.interpretation_guidance，不要把低播放次数的单曲写成重度循环。
 11. 可以有温度，但不要编造 DATA 外的人生事件、天气、失眠、告别、重要转折或心理原因；不要用“有意识地”“主动选择”“学会了选择”等词推断用户主观意图。
 12. year_over_year.same_period 只允许集中写一次；不要在多个小节重复同一组同比数字。
@@ -293,7 +293,10 @@ def _build_yearly_report_fallback(data: dict[str, Any]) -> str:
     if dimension_text:
         lines.append(f"人格维度前三是 {dimension_text}。")
     if genre_names:
-        lines.append(f"流派前列包括 {genre_names}。Spotify 流派标签可能重叠，百分比不互斥。")
+        lines.append(
+            f"流派前列包括 {genre_names}。canonical genre 是统计标签，"
+            "可能重叠且可能分属 style/scene/context/role，百分比不互斥；高占比标签也可能由少数艺人或某个来源驱动。"
+        )
 
     if most_active_day:
         top_day_track = most_active_day.get("top_track")
@@ -918,7 +921,7 @@ def _gather_yearly_data(
     top_tracks = normalize_top_tracks(top_lists.get("tracks") or [])
     top_albums = normalize_top_albums(top_lists.get("albums") or [])
     new_artists = normalize_new_artists(discovery.get("new_artists") or [])
-    genre_summary = summarize_genres(genre_panorama.get("top_genres") or [])
+    genre_summary = summarize_genres(genre_panorama)
     personality_summary = summarize_personality(personality)
     most_active_day = summarize_highlight_strength(special.get("most_active_day"))
     same_period_comparison = (

@@ -33,6 +33,10 @@ SPOTIFY_REDIRECT_URI = _get(
 GENIUS_ACCESS_TOKEN = _get("GENIUS_ACCESS_TOKEN")
 GENIUS_PROXY = _get("GENIUS_PROXY")
 
+# ── Last.fm ───────────────────────────────────────────────────────────────
+
+LASTFM_API_KEY = _get("LASTFM_API_KEY")
+
 # ── Proxy ────────────────────────────────────────────────────────────────
 
 HTTPS_PROXY = _get("HTTPS_PROXY") or _get("https_proxy")

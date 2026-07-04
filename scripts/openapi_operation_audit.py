@@ -102,6 +102,36 @@ TARGETED_CONTRACT_OPERATIONS: dict[tuple[str, str], OperationEvidence] = {
         "backend/tests/contract/test_ai_enrichment_tasks.py",
         "Album enrichment task creation, nullable wiki result, and validation are covered.",
     ),
+    ("POST", "/api/ai/tasks/metadata/artist-genres"): OperationEvidence(
+        "targeted_contract",
+        "backend/tests/contract/test_artist_genre_backfill_task.py",
+        "Artist genre backfill task creation, suggestions, tool calls, and validation are covered.",
+    ),
+    ("GET", "/api/metadata/artist-genres/coverage"): OperationEvidence(
+        "targeted_contract",
+        "backend/tests/contract/test_artist_genre_metadata_api.py",
+        "Artist genre coverage report is covered by isolated contract data.",
+    ),
+    ("GET", "/api/metadata/artist-genres/taxonomy"): OperationEvidence(
+        "targeted_contract",
+        "backend/tests/contract/test_artist_genre_metadata_api.py",
+        "Artist genre taxonomy audit and canonical labels are covered by isolated contract data.",
+    ),
+    ("GET", "/api/metadata/artist-genres/reviews"): OperationEvidence(
+        "targeted_contract",
+        "backend/tests/contract/test_artist_genre_metadata_api.py",
+        "Artist genre review queue listing is covered by isolated contract data.",
+    ),
+    ("POST", "/api/metadata/artist-genres/reviews/{review_id}/approve"): OperationEvidence(
+        "targeted_contract",
+        "backend/tests/contract/test_artist_genre_metadata_api.py",
+        "Artist genre review approval and resolver effect are covered by contract tests.",
+    ),
+    ("POST", "/api/metadata/artist-genres/reviews/{review_id}/reject"): OperationEvidence(
+        "targeted_contract",
+        "backend/tests/contract/test_artist_genre_metadata_api.py",
+        "Artist genre review rejection and stale review behavior are covered by contract tests.",
+    ),
     ("POST", "/api/ai/tasks/{task_id}/cancel"): OperationEvidence(
         "targeted_contract",
         "backend/tests/contract/test_ai_task_api.py",

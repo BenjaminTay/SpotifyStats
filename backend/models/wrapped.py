@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from pydantic import BaseModel
 
 
@@ -87,6 +89,8 @@ class GenrePanorama(BaseModel):
     top_genres: list[GenreItem] = []
     monthly_genres: list[MonthlyGenreItem] = []
     language_dist: LanguageDist | None = None
+    coverage: dict[str, Any] | None = None
+    caveat: str | None = None
 
 
 class LateNightTrack(BaseModel):

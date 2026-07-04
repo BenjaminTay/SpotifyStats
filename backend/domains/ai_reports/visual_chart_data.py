@@ -227,7 +227,11 @@ def _genre_language_mix(
     genre = _dict(context.get("genre_distribution"))
     return {
         "genres": _list(genre.get("top_genres")),
-        "caveat": genre.get("caveat") or "Spotify 流派标签可能重叠，百分比不互斥。",
+        "caveat": genre.get("caveat")
+        or (
+            "canonical genre 是统计标签，可能重叠且可能分属 style/scene/context/role，"
+            "百分比不互斥；高占比标签也可能由少数艺人或某个来源驱动。"
+        ),
     }
 
 

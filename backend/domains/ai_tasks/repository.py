@@ -197,6 +197,43 @@ class AiTaskRepository:
         )
         self.conn.commit()
 
+    def add_tool_call_if_not_terminal(
+        self,
+        *,
+        task_id: str,
+        tool_name: str,
+        status: str,
+        params_summary: str,
+        result_summary: str = "",
+        source_range: str = "",
+        error: str | None = None,
+        completed: bool = True,
+    ) -> bool:
+        completed_at_expr = "datetime('now')" if completed else "NULL"
+        cursor = self.conn.execute(
+            f"""INSERT INTO ai_tool_calls
+                (task_id, tool_name, status, params_summary, result_summary,
+                 source_range, error, completed_at)
+                SELECT ?, ?, ?, ?, ?, ?, ?, {completed_at_expr}
+                WHERE EXISTS (
+                    SELECT 1 FROM ai_task_runs
+                    WHERE task_id = ? AND status NOT IN (?, ?, ?)
+                )""",
+            (
+                task_id,
+                tool_name,
+                status,
+                params_summary,
+                result_summary,
+                source_range,
+                error,
+                task_id,
+                *TERMINAL_STATUSES,
+            ),
+        )
+        self.conn.commit()
+        return cursor.rowcount > 0
+
     def get_run(self, task_id: str) -> dict[str, Any] | None:
         row = self.conn.execute(
             "SELECT * FROM ai_task_runs WHERE task_id = ?", (task_id,)

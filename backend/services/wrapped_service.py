@@ -8,7 +8,6 @@ and year-over-year comparison.
 
 from __future__ import annotations
 
-import json
 import sqlite3
 from functools import lru_cache
 from pathlib import Path
@@ -16,6 +15,13 @@ from pathlib import Path
 import pandas as pd
 
 from backend.core.db import get_track_artist_names_map, load_plays, load_plays_for_artists
+from backend.domains.metadata.artist_genres import (
+    STATISTICAL_GENRE_CAVEAT,
+    ResolvedArtistGenres,
+    canonicalize_genres_for_statistics,
+    compute_genre_coverage,
+    resolve_artist_genres_map,
+)
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # helpers
@@ -188,9 +194,50 @@ def _database_file_path(conn: sqlite3.Connection):
     return None
 
 
+def _artist_genre_revision(conn: sqlite3.Connection) -> str:
+    tables = {
+        row["name"]
+        for row in conn.execute(
+            """SELECT name FROM sqlite_master
+               WHERE type = 'table'
+                 AND name IN ('artist_genre_sources', 'artist_genre_overrides')"""
+        ).fetchall()
+    }
+    parts = []
+    if "artist_genre_sources" in tables:
+        row = conn.execute(
+            """SELECT COUNT(*) AS row_count,
+                      COALESCE(MAX(updated_at), '') AS max_updated_at,
+                      COALESCE(SUM(CASE WHEN status = 'approved' THEN source_id ELSE 0 END), 0)
+                        AS approved_sum,
+                      COALESCE(SUM(CASE WHEN status = 'suggested' THEN source_id ELSE 0 END), 0)
+                        AS suggested_sum,
+                      COALESCE(SUM(CASE WHEN status = 'rejected' THEN source_id ELSE 0 END), 0)
+                        AS rejected_sum
+               FROM artist_genre_sources"""
+        ).fetchone()
+        parts.append(
+            "sources:"
+            f"{row['row_count']}:"
+            f"{row['max_updated_at']}:"
+            f"{row['approved_sum']}:"
+            f"{row['suggested_sum']}:"
+            f"{row['rejected_sum']}"
+        )
+    if "artist_genre_overrides" in tables:
+        row = conn.execute(
+            """SELECT COUNT(*) AS row_count,
+                      COALESCE(MAX(updated_at), '') AS max_updated_at
+               FROM artist_genre_overrides"""
+        ).fetchone()
+        parts.append(f"overrides:{row['row_count']}:{row['max_updated_at']}")
+    return "|".join(parts) or "no-artist-genre-tables"
+
+
 @lru_cache(maxsize=8)
 def _get_wrapped_full_cached(
     db_path: str,
+    artist_genre_revision: str,
     min_ms: int,
     music_only: bool,
     merge_enabled: bool,
@@ -199,6 +246,7 @@ def _get_wrapped_full_cached(
     max_merge_gap_minutes=None,
     merge_level: int = 1,
 ) -> dict:
+    _ = artist_genre_revision
     conn = sqlite3.connect(db_path, timeout=30, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     try:
@@ -243,6 +291,7 @@ def get_wrapped_full(
         )
     return _get_wrapped_full_cached(
         db_path,
+        _artist_genre_revision(conn),
         min_ms,
         music_only,
         merge_enabled,
@@ -531,6 +580,59 @@ def _fetch_track_release_years(
     return result
 
 
+CHINESE_GENRE_KEYWORDS = {
+    "mandopop",
+    "cantopop",
+    "c-pop",
+    "chinese",
+    "taiwan",
+    "hokkien",
+    "chinese pop",
+    "taiwanese",
+    "singaporean",
+}
+CHINESE_LANGUAGE_KEYWORDS = (
+    "chinese",
+    "mandarin",
+    "cantonese",
+    "hokkien",
+    "中文",
+    "华语",
+    "普通话",
+    "粤语",
+)
+CHINESE_REGION_KEYWORDS = ("中国", "香港", "台湾", "新加坡")
+
+
+def _normalize_language_kind(language: str | None) -> str | None:
+    value = str(language or "").strip().lower()
+    if not value:
+        return None
+    if any(keyword in value for keyword in CHINESE_LANGUAGE_KEYWORDS):
+        return "chinese"
+    if "english" in value or value in {"en", "英语"}:
+        return "english"
+    return "other"
+
+
+def _resolved_has_region_evidence(item: ResolvedArtistGenres) -> bool:
+    return bool(item.genres or item.language or item.region)
+
+
+def _resolved_is_chinese(item: ResolvedArtistGenres) -> bool:
+    language_kind = _normalize_language_kind(item.language)
+    if language_kind == "chinese":
+        return True
+    region = str(item.region or "")
+    if any(keyword in region for keyword in CHINESE_REGION_KEYWORDS):
+        return True
+    genres_list = [g.strip().lower() for g in item.genres]
+    joined = " ".join(genres_list)
+    if any(keyword in joined for keyword in CHINESE_GENRE_KEYWORDS):
+        return True
+    return any(any(keyword in genre for keyword in CHINESE_GENRE_KEYWORDS) for genre in genres_list)
+
+
 def _calc_globetrotter_score(conn: sqlite3.Connection, year_df, artist_agg) -> float:
     """Share of play time on non-Chinese-language music.
 
@@ -541,56 +643,20 @@ def _calc_globetrotter_score(conn: sqlite3.Connection, year_df, artist_agg) -> f
     if not artist_names:
         return 0.0
 
-    # Fetch genres for these artists in batches
-    placeholders = ",".join("?" * len(artist_names))
-    rows = conn.execute(
-        f"SELECT artist_name, genres FROM spotify_artist_meta "
-        f"WHERE artist_name IN ({placeholders})",
-        artist_names,
-    ).fetchall()
+    resolved = resolve_artist_genres_map(conn, artist_names)
 
-    chinese_keywords = {
-        "mandopop",
-        "cantopop",
-        "c-pop",
-        "chinese",
-        "taiwan",
-        "hokkien",
-        "chinese pop",
-        "taiwanese",
-        "singaporean",
-    }
-    is_chinese = {}
-    for r in rows:
-        name = r[0]
-        genres_str = (r[1] or "").lower()
-        try:
-            genres_list = [g.strip().lower() for g in json.loads(genres_str)]
-        except (json.JSONDecodeError, TypeError):
-            genres_list = [g.strip().lower() for g in genres_str.split(",")]
-        matched = any(kw in " ".join(genres_list) for kw in chinese_keywords)
-        # Also check individual genre tokens
-        if not matched:
-            for g in genres_list:
-                if any(kw in g for kw in chinese_keywords):
-                    matched = True
-                    break
-        is_chinese[name] = matched
-
-    # Sum play counts for Chinese vs non-Chinese artists
-    chinese_plays = 0
+    total_plays = 0
     non_chinese_plays = 0
     for artist_name, row in artist_agg.iterrows():
         plays = int(row["plays"])
-        if is_chinese.get(artist_name, False):
-            chinese_plays += plays
-        else:
+        total_plays += plays
+        item = resolved.get(artist_name)
+        if item and _resolved_has_region_evidence(item) and not _resolved_is_chinese(item):
             non_chinese_plays += plays
 
-    total = chinese_plays + non_chinese_plays
-    if total == 0:
+    if total_plays == 0:
         return 0.0
-    return round(non_chinese_plays / total * 100, 1)
+    return round(non_chinese_plays / total_plays * 100, 1)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -659,37 +725,30 @@ def _build_genre_panorama(conn, year_df, artist_agg):
     """Weighted genre distribution based on play time per artist."""
     artist_names = list(artist_agg.index)
     if not artist_names:
-        return {"top_genres": [], "monthly_genres": [], "language_dist": None}
+        return {
+            "top_genres": [],
+            "monthly_genres": [],
+            "language_dist": None,
+            "coverage": compute_genre_coverage(conn, {}),
+            "caveat": STATISTICAL_GENRE_CAVEAT,
+        }
 
-    # Fetch genres for all artists
-    placeholders = ",".join("?" * len(artist_names))
-    rows = conn.execute(
-        f"SELECT artist_name, genres FROM spotify_artist_meta "
-        f"WHERE artist_name IN ({placeholders})",
-        artist_names,
-    ).fetchall()
+    resolved = resolve_artist_genres_map(conn, artist_names)
+    artist_genres = {
+        name: canonicalize_genres_for_statistics(item.genres) for name, item in resolved.items()
+    }
+    artist_hours = {artist_name: float(row["hours"]) for artist_name, row in artist_agg.iterrows()}
 
-    artist_genres: dict[str, list[str]] = {}
-    for r in rows:
-        genres_str = (r[1] or "").strip()
-        if not genres_str:
-            continue
-        try:
-            parsed = json.loads(genres_str)
-            if isinstance(parsed, list):
-                artist_genres[r[0]] = [g.strip() for g in parsed if g.strip()]
-        except (json.JSONDecodeError, TypeError):
-            artist_genres[r[0]] = [g.strip() for g in genres_str.split(",") if g.strip()]
-
-    # Weighted by play hours — track known vs unknown
+    # Weighted by play hours; multi-genre artists are split across statistic families.
     genre_weight: dict[str, float] = {}
     known_hours = 0.0
     for artist_name, row in artist_agg.iterrows():
         hours = float(row["hours"])
         gen = artist_genres.get(artist_name, [])
         if gen:
+            genre_hours = hours / len(gen)
             for g in gen:
-                genre_weight[g] = genre_weight.get(g, 0) + hours
+                genre_weight[g] = genre_weight.get(g, 0) + genre_hours
             known_hours += hours
 
     total_hours = float(artist_agg["hours"].sum())
@@ -710,6 +769,8 @@ def _build_genre_panorama(conn, year_df, artist_agg):
         "top_genres": top_genres_list,
         "monthly_genres": monthly_genres_list,
         "language_dist": None,  # frontend infers from genre data
+        "coverage": compute_genre_coverage(conn, artist_hours),
+        "caveat": STATISTICAL_GENRE_CAVEAT,
     }
 
 
@@ -728,8 +789,9 @@ def _build_monthly_genres(year_df, artist_genres: dict[str, list[str]]) -> list[
             hours = float(grp["ms_played"].sum() / 3_600_000)
             gen = artist_genres.get(artist_name, [])
             if gen:
+                genre_share = hours / len(gen)
                 for g in gen:
-                    genre_hours[g] = genre_hours.get(g, 0) + hours
+                    genre_hours[g] = genre_hours.get(g, 0) + genre_share
             else:
                 unknown_hours += hours
 
@@ -760,6 +822,7 @@ GENRE_REGION_MAP = {
     "taiwan": ("chinese", "中国台湾", "🇹🇼"),
     "taiwan pop": ("chinese", "中国台湾", "🇹🇼"),
     "singaporean": ("chinese", "新加坡", "🇸🇬"),
+    "southeast asian pop": ("other", "东南亚", "🌏"),
     "k-pop": ("korean", "韩国", "🇰🇷"),
     "korean": ("korean", "韩国", "🇰🇷"),
     "k-rap": ("korean", "韩国", "🇰🇷"),
@@ -775,6 +838,9 @@ GENRE_REGION_MAP = {
     "anison": ("japanese", "日本", "🇯🇵"),
     "vocaloid": ("japanese", "日本", "🇯🇵"),
     "pop": ("english", "全球", "🌍"),
+    "indie/alternative": ("english", "全球", "🌍"),
+    "singer-songwriter": ("english", "全球", "🌍"),
+    "singer-songwriter/folk": ("english", "全球", "🌍"),
     "dance pop": ("english", "全球", "🌍"),
     "art pop": ("english", "全球", "🌍"),
     "synth-pop": ("english", "全球", "🌍"),
@@ -785,6 +851,7 @@ GENRE_REGION_MAP = {
     "alt-pop": ("english", "全球", "🌍"),
     "hyperpop": ("english", "全球", "🌍"),
     "rock": ("english", "全球", "🌍"),
+    "rock/alternative": ("english", "全球", "🌍"),
     "classic rock": ("english", "全球", "🌍"),
     "hard rock": ("english", "全球", "🌍"),
     "soft rock": ("english", "全球", "🌍"),
@@ -795,6 +862,7 @@ GENRE_REGION_MAP = {
     "garage rock": ("english", "全球", "🌍"),
     "post-rock": ("english", "全球", "🌍"),
     "hip hop": ("english", "美国", "🇺🇸"),
+    "hip hop/rap": ("english", "美国", "🇺🇸"),
     "rap": ("english", "美国", "🇺🇸"),
     "trap": ("english", "美国", "🇺🇸"),
     "drill": ("english", "美国", "🇺🇸"),
@@ -805,10 +873,12 @@ GENRE_REGION_MAP = {
     "east coast hip hop": ("english", "美国", "🇺🇸"),
     "west coast hip hop": ("english", "美国", "🇺🇸"),
     "r&b": ("english", "美国", "🇺🇸"),
+    "r&b/soul": ("english", "美国", "🇺🇸"),
     "contemporary r&b": ("english", "美国", "🇺🇸"),
     "neo soul": ("english", "美国", "🇺🇸"),
     "alternative r&b": ("english", "美国", "🇺🇸"),
     "edm": ("english", "全球", "🌍"),
+    "electronic/dance": ("english", "全球", "🌍"),
     "electronic": ("english", "全球", "🌍"),
     "house": ("english", "全球", "🌍"),
     "deep house": ("english", "全球", "🌍"),
@@ -834,9 +904,11 @@ GENRE_REGION_MAP = {
     "indie folk": ("english", "全球", "🌍"),
     "indie soul": ("english", "全球", "🌍"),
     "folk": ("english", "全球", "🌍"),
+    "traditional/folk": ("other", "全球", "🌍"),
     "folk rock": ("english", "全球", "🌍"),
     "neo-folk": ("english", "全球", "🌍"),
     "classical": ("instrumental", "全球", "🎼"),
+    "classical/instrumental": ("instrumental", "全球", "🎼"),
     "orchestral": ("instrumental", "全球", "🎼"),
     "opera": ("instrumental", "全球", "🎼"),
     "baroque": ("instrumental", "全球", "🎼"),
@@ -844,6 +916,7 @@ GENRE_REGION_MAP = {
     "lo-fi": ("instrumental", "全球", "🎼"),
     "post-rock instrumental": ("instrumental", "全球", "🎼"),
     "jazz": ("instrumental", "美国", "🇺🇸"),
+    "jazz/blues": ("instrumental", "美国", "🇺🇸"),
     "bebop": ("instrumental", "美国", "🇺🇸"),
     "cool jazz": ("instrumental", "美国", "🇺🇸"),
     "fusion": ("instrumental", "美国", "🇺🇸"),
@@ -854,6 +927,8 @@ GENRE_REGION_MAP = {
     "motown": ("english", "美国", "🇺🇸"),
     "disco": ("english", "美国", "🇺🇸"),
     "country": ("english", "美国", "🇺🇸"),
+    "americana/roots": ("english", "美国", "🇺🇸"),
+    "country/americana": ("english", "美国", "🇺🇸"),
     "country pop": ("english", "美国", "🇺🇸"),
     "country rock": ("english", "美国", "🇺🇸"),
     "outlaw country": ("english", "美国", "🇺🇸"),
@@ -889,12 +964,20 @@ GENRE_REGION_MAP = {
     "dancehall": ("other", "牙买加", "🇯🇲"),
     "ska": ("other", "牙买加", "🇯🇲"),
     "afrobeats": ("other", "非洲", "🌍"),
+    "afrobeats/afropop": ("other", "非洲", "🌍"),
     "afrobeat": ("other", "非洲", "🌍"),
     "afropop": ("other", "非洲", "🌍"),
     "highlife": ("other", "非洲", "🌍"),
     "gospel": ("english", "美国", "🇺🇸"),
     "christian": ("english", "全球", "🌍"),
     "worship": ("english", "全球", "🌍"),
+    "gospel/christian": ("english", "全球", "🌍"),
+    "holiday": ("other", "全球", "🌍"),
+    "soundtrack/stage": ("other", "全球", "🌍"),
+    "children/family": ("other", "全球", "🌍"),
+    "comedy/spoken": ("other", "全球", "🌍"),
+    "caribbean": ("other", "加勒比", "🌎"),
+    "brazilian": ("other", "巴西", "🇧🇷"),
     "blues": ("english", "美国", "🇺🇸"),
     "delta blues": ("english", "美国", "🇺🇸"),
     "chicago blues": ("english", "美国", "🇺🇸"),
@@ -928,42 +1011,43 @@ def _classify_genre_region(genre: str) -> tuple:
     return GENRE_REGION_MAP.get(key, UNKNOWN_REGION)
 
 
+def _flag_for_region(region: str) -> str:
+    for _, mapped_region, flag in GENRE_REGION_MAP.values():
+        if mapped_region == region:
+            return flag
+    return UNKNOWN_REGION[2]
+
+
+def _classify_resolved_region(item: ResolvedArtistGenres | None) -> tuple[str, str, str]:
+    if item is None:
+        return UNKNOWN_REGION
+    if item.region:
+        language_kind = _normalize_language_kind(item.language)
+        if language_kind is None and any(
+            keyword in item.region for keyword in CHINESE_REGION_KEYWORDS
+        ):
+            language_kind = "chinese"
+        return language_kind or "other", item.region, _flag_for_region(item.region)
+    for genre in item.genres:
+        lang, region, flag = _classify_genre_region(genre)
+        if region != "未知":
+            return lang, region, flag
+    return UNKNOWN_REGION
+
+
 def _build_music_map(conn, year_df, artist_agg) -> dict:
     artist_names = list(artist_agg.index)
     if not artist_names:
         return {"regions": [], "top_overseas_artists": []}
 
-    placeholders = ",".join("?" * len(artist_names))
-    rows = conn.execute(
-        f"SELECT artist_name, genres FROM spotify_artist_meta "
-        f"WHERE artist_name IN ({placeholders})",
-        artist_names,
-    ).fetchall()
-
-    artist_genres: dict[str, list[str]] = {}
-    for r in rows:
-        genres_str = (r[1] or "").strip()
-        if not genres_str:
-            continue
-        try:
-            parsed = json.loads(genres_str)
-            if isinstance(parsed, list):
-                artist_genres[r[0]] = [g.strip() for g in parsed if g.strip()]
-        except (json.JSONDecodeError, TypeError):
-            artist_genres[r[0]] = [g.strip() for g in genres_str.split(",") if g.strip()]
+    resolved = resolve_artist_genres_map(conn, artist_names)
+    artist_regions = {name: _classify_resolved_region(item) for name, item in resolved.items()}
 
     # Weighted region aggregation
     region_hours: dict[str, dict] = {}
     for artist_name, row in artist_agg.iterrows():
         hours = float(row["hours"])
-        genres = artist_genres.get(artist_name, [])
-
-        lang, region, flag = UNKNOWN_REGION
-        if genres:
-            for g in genres:
-                lang, region, flag = _classify_genre_region(g)
-                if region != "未知":
-                    break
+        _, region, flag = artist_regions.get(artist_name, UNKNOWN_REGION)
 
         if region not in region_hours:
             region_hours[region] = {"region": region, "flag": flag, "play_share": 0.0}
@@ -977,18 +1061,12 @@ def _build_music_map(conn, year_df, artist_agg) -> dict:
     # Top overseas artists (non-Chinese)
     overseas_artists = []
     for artist_name, row in artist_agg.iterrows():
-        genres = artist_genres.get(artist_name, [])
-        is_chinese = False
-        for g in genres:
-            lang, _, _ = _classify_genre_region(g)
-            if lang == "chinese":
-                is_chinese = True
-                break
-        if not is_chinese and genres:
+        lang, region, _ = artist_regions.get(artist_name, UNKNOWN_REGION)
+        if region != "未知" and lang != "chinese":
             overseas_artists.append(
                 {
                     "name": artist_name,
-                    "region": _classify_genre_region(genres[0])[1],
+                    "region": region,
                     "cover_url": _get_artist_cover(conn, artist_name),
                 }
             )

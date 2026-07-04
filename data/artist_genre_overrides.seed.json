@@ -1,0 +1,5603 @@
+[
+  {
+    "artist_name": "Taylor Swift",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "seed:taylor-swift",
+    "genres": [
+      "pop",
+      "country pop",
+      "singer-songwriter"
+    ],
+    "primary_genre": "pop",
+    "language": "english",
+    "region": "美国",
+    "confidence": 0.95,
+    "evidence_url": "https://en.wikipedia.org/wiki/Taylor_Swift",
+    "evidence_summary": "High-play artist with empty Spotify genres in local DB; seed uses broad public artist profile genres.",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Olivia Rodrigo",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "seed:olivia-rodrigo",
+    "genres": [
+      "pop",
+      "pop rock",
+      "alt z"
+    ],
+    "primary_genre": "pop",
+    "language": "english",
+    "region": "美国",
+    "confidence": 0.9,
+    "evidence_url": "https://en.wikipedia.org/wiki/Olivia_Rodrigo",
+    "evidence_summary": "High-play artist with empty Spotify genres in local DB; seed uses broad public artist profile genres.",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Ryan Gosling",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "seed:ryan-gosling",
+    "genres": [
+      "soundtrack",
+      "musical theatre",
+      "pop"
+    ],
+    "primary_genre": "soundtrack",
+    "language": "english",
+    "region": "加拿大",
+    "confidence": 0.85,
+    "evidence_url": null,
+    "evidence_summary": "Curated from local track context dominated by Barbie and La La Land soundtrack songs; broad fallback genre for Spotify-empty artist metadata.",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Baby Queen",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "seed:baby-queen",
+    "genres": [
+      "indie pop",
+      "pop"
+    ],
+    "primary_genre": "indie pop",
+    "language": "english",
+    "region": "英国",
+    "confidence": 0.85,
+    "evidence_url": null,
+    "evidence_summary": "Curated from local playback context and broad public artist profile; used as fallback for Spotify-empty artist metadata.",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Keira Knightley",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "seed:keira-knightley",
+    "genres": [
+      "soundtrack",
+      "folk pop"
+    ],
+    "primary_genre": "soundtrack",
+    "language": "english",
+    "region": "英国",
+    "confidence": 0.8,
+    "evidence_url": null,
+    "evidence_summary": "Curated from local track context dominated by Begin Again soundtrack songs; broad fallback genre for Spotify-empty artist metadata.",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Jodi Benson",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "seed:jodi-benson",
+    "genres": [
+      "soundtrack",
+      "musical theatre"
+    ],
+    "primary_genre": "soundtrack",
+    "language": "english",
+    "region": "美国",
+    "confidence": 0.85,
+    "evidence_url": null,
+    "evidence_summary": "Curated from local track context dominated by Disney soundtrack songs; broad fallback genre for Spotify-empty artist metadata.",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Cast of High School Musical: The Musical: The Series",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "seed:cast-high-school-musical-the-musical-the-series",
+    "genres": [
+      "soundtrack",
+      "musical theatre",
+      "pop"
+    ],
+    "primary_genre": "soundtrack",
+    "language": "english",
+    "region": "美国",
+    "confidence": 0.85,
+    "evidence_url": null,
+    "evidence_summary": "Curated from local track context for High School Musical: The Musical: The Series soundtrack entries; fallback for cast artist metadata.",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Kristen Bell",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "seed:kristen-bell",
+    "genres": [
+      "soundtrack",
+      "musical theatre"
+    ],
+    "primary_genre": "soundtrack",
+    "language": "english",
+    "region": "美国",
+    "confidence": 0.85,
+    "evidence_url": null,
+    "evidence_summary": "Curated from local track context dominated by Frozen soundtrack songs; broad fallback genre for Spotify-empty artist metadata.",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Rachel Zegler",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "seed:rachel-zegler",
+    "genres": [
+      "soundtrack",
+      "musical theatre"
+    ],
+    "primary_genre": "soundtrack",
+    "language": "english",
+    "region": "美国",
+    "confidence": 0.8,
+    "evidence_url": null,
+    "evidence_summary": "Curated from local track context dominated by film soundtrack songs; broad fallback genre for Spotify-empty artist metadata.",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Nathan Lane",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "seed:nathan-lane",
+    "genres": [
+      "soundtrack",
+      "musical theatre"
+    ],
+    "primary_genre": "soundtrack",
+    "language": "english",
+    "region": "美国",
+    "confidence": 0.85,
+    "evidence_url": null,
+    "evidence_summary": "Curated from local track context dominated by The Lion King soundtrack songs; broad fallback genre for Spotify-empty artist metadata.",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Magdalena Bay",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "seed:magdalena-bay",
+    "genres": [
+      "synthpop",
+      "electropop",
+      "indie pop"
+    ],
+    "primary_genre": "synthpop",
+    "language": "english",
+    "region": "美国",
+    "confidence": 0.85,
+    "evidence_url": null,
+    "evidence_summary": "Curated from local playback context and broad public artist profile; used as fallback for Spotify-empty artist metadata.",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Wasia Project",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "seed:wasia-project",
+    "genres": [
+      "indie pop",
+      "jazz pop"
+    ],
+    "primary_genre": "indie pop",
+    "language": "english",
+    "region": "英国",
+    "confidence": 0.8,
+    "evidence_url": null,
+    "evidence_summary": "Curated from local playback context and broad public artist profile; used as fallback for Spotify-empty artist metadata.",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Melanie Martinez",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "seed:melanie-martinez",
+    "genres": [
+      "alternative pop",
+      "dark pop"
+    ],
+    "primary_genre": "alternative pop",
+    "language": "english",
+    "region": "美国",
+    "confidence": 0.85,
+    "evidence_url": null,
+    "evidence_summary": "Curated from local playback context and broad public artist profile; used as fallback for Spotify-empty artist metadata.",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Lauv",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "seed:lauv",
+    "genres": [
+      "pop",
+      "electropop"
+    ],
+    "primary_genre": "pop",
+    "language": "english",
+    "region": "美国",
+    "confidence": 0.85,
+    "evidence_url": null,
+    "evidence_summary": "Curated from local playback context and broad public artist profile; used as fallback for Spotify-empty artist metadata.",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Shawn Mendes",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "seed:shawn-mendes",
+    "genres": [
+      "pop",
+      "pop rock"
+    ],
+    "primary_genre": "pop",
+    "language": "english",
+    "region": "加拿大",
+    "confidence": 0.9,
+    "evidence_url": null,
+    "evidence_summary": "Curated from local playback context and broad public artist profile; used as fallback for Spotify-empty artist metadata.",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Loren Allred",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "seed:loren-allred",
+    "genres": [
+      "pop",
+      "musical theatre",
+      "soundtrack"
+    ],
+    "primary_genre": "pop",
+    "language": "english",
+    "region": "美国",
+    "confidence": 0.8,
+    "evidence_url": null,
+    "evidence_summary": "Curated from local track context around The Greatest Showman soundtrack songs and broad public artist profile.",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Nelly",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "seed:nelly",
+    "genres": [
+      "hip hop",
+      "pop rap"
+    ],
+    "primary_genre": "hip hop",
+    "language": "english",
+    "region": "美国",
+    "confidence": 0.85,
+    "evidence_url": null,
+    "evidence_summary": "Curated from local playback context and broad public artist profile; used as fallback for Spotify-empty artist metadata.",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Ellie Goulding",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "seed:ellie-goulding",
+    "genres": [
+      "pop",
+      "electropop"
+    ],
+    "primary_genre": "pop",
+    "language": "english",
+    "region": "英国",
+    "confidence": 0.9,
+    "evidence_url": null,
+    "evidence_summary": "Curated from local playback context and broad public artist profile; used as fallback for Spotify-empty artist metadata.",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Megan Thee Stallion",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "seed:megan-thee-stallion",
+    "genres": [
+      "hip hop",
+      "rap"
+    ],
+    "primary_genre": "hip hop",
+    "language": "english",
+    "region": "美国",
+    "confidence": 0.9,
+    "evidence_url": null,
+    "evidence_summary": "Curated from local playback context and broad public artist profile; used as fallback for Spotify-empty artist metadata.",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Stephanie Beatriz",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "seed:stephanie-beatriz",
+    "genres": [
+      "soundtrack",
+      "musical theatre"
+    ],
+    "primary_genre": "soundtrack",
+    "language": "english",
+    "region": "美国",
+    "confidence": 0.85,
+    "evidence_url": null,
+    "evidence_summary": "Curated from local track context dominated by Encanto soundtrack songs; broad fallback genre for Spotify-empty artist metadata.",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Elias",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "pop",
+      "soul"
+    ],
+    "primary_genre": "pop",
+    "language": "english",
+    "region": "瑞典",
+    "confidence": 0.76,
+    "evidence_url": "https://i-d.co/article/premiere-elias-revolution/",
+    "evidence_summary": "Audited 2026-07-05: local top context is Revolution | Entwined; external review describes Revolution through contemporary pop/R&B-soul references, supporting pop + soul instead of the unrelated jazz pianist Eliane Elias.",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Sebastian Croft",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "pop",
+      "alternative pop"
+    ],
+    "primary_genre": "pop",
+    "language": "english",
+    "region": "英国",
+    "confidence": 0.76,
+    "evidence_url": "https://www.shazam.com/song/1875356365/better-than-ever",
+    "evidence_summary": "Audited 2026-07-05: local top context is Tokyo / Better than ever; Shazam lists Better than ever as Pop, so pop + alternative pop remains a conservative artist-level fallback.",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Auli'i Cravalho",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "soundtrack",
+      "musical theatre",
+      "pop"
+    ],
+    "primary_genre": "soundtrack",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: How Far I'll Go | Moana ; How Far I'll Go - Reprise | Moana ; Part of Your World - From \"The Little Mermaid Live!\" | The Little Mermaid Live!",
+    "status": "approved"
+  },
+  {
+    "artist_name": "4*TOWN (From Disney and Pixar’s Turning Red)",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "soundtrack",
+      "pop"
+    ],
+    "primary_genre": "soundtrack",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Nobody Like U | Turning Red ; 1 True Love | Turning Red ; U Know What's Up | Turning Red",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Alessia Cara",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "pop",
+      "r&b"
+    ],
+    "primary_genre": "pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: How Far I'll Go - Alessia Cara Version | Moana",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Halle",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "r&b",
+      "pop",
+      "soundtrack"
+    ],
+    "primary_genre": "r&b",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Part of Your World - From \"The Little Mermaid\" | Part of Your World ; Part of Your World (Reprise) | The Little Mermaid ; Angel | Angel ; Part of Your World (Reprise II) | The Little Mermaid",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Kristen Anderson-Lopez",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "soundtrack",
+      "musical theatre"
+    ],
+    "primary_genre": "soundtrack",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Show Yourself - Instrumental | Frozen 2 - Original Motion Picture Soundtrack/Deluxe Edition ; I Seek the Truth - Outtake | Frozen 2 - Original Motion Picture Soundtrack/Deluxe Edition ; The Next Right Thing - Instrumenta",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Olivia Newton-John",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "pop",
+      "country pop",
+      "disco"
+    ],
+    "primary_genre": "pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Physical - Remastered 2021 | Physical ; Xanadu | Xanadu ; Xanadu - Remastered 2022 | Olivia's Greatest Hits ; Hopelessly Devoted To You | 20th Century Masters: The Millennium Collection: Best Of Olivia Newton-John ; You'",
+    "status": "approved"
+  },
+  {
+    "artist_name": "安沐凡",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "c-pop",
+      "musical theatre",
+      "classical crossover"
+    ],
+    "primary_genre": "c-pop",
+    "language": "chinese",
+    "region": "中国",
+    "confidence": 0.76,
+    "evidence_url": "https://www.sina.cn/news/detail/5259735189160931.html",
+    "evidence_summary": "Audited 2026-07-05: local top context is 劉泉君; Sina review frames 安沐凡 as a musical-theatre performer with narrative vocal writing, supporting c-pop + musical theatre + classical crossover.",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Maggie Rogers",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "indie pop",
+      "folk pop",
+      "singer-songwriter"
+    ],
+    "primary_genre": "indie pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Shatter | Surrender ; Alaska - Toby Green Remix | Alaska",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Backstreet Boys",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "pop",
+      "teen pop",
+      "dance pop"
+    ],
+    "primary_genre": "pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Get Down (You're the One for Me) - LP Edit No Rap | Backstreet Boys ; As Long as You Love Me | Backstreet Boys ; Show Me the Meaning of Being Lonely | Millennium ; Quit Playing Games (With My Heart) | Backstreet Boys",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Ashe",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "indie pop",
+      "indie folk",
+      "singer-songwriter"
+    ],
+    "primary_genre": "indie pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Moral of the Story (feat. Niall Horan) - Bonus Track | Ashlyn ; Till Forever Falls Apart | Ashlyn ; Moral of the Story (feat. Niall Horan) | Moral of the Story (feat. Niall Horan) ; Moral of the Story | Ashlyn",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Amy Winehouse",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "soul",
+      "jazz",
+      "r&b"
+    ],
+    "primary_genre": "soul",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Rehab | Back To Black",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Addison Rae",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "pop",
+      "dance pop"
+    ],
+    "primary_genre": "pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Summer Forever | Addison ; In The Rain | Addison ; High Fashion | Addison ; Fame is a Gun | Addison ; Diet Pepsi | Addison",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Tori Kelly",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "pop",
+      "r&b",
+      "soundtrack"
+    ],
+    "primary_genre": "pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Don't You Worry 'Bout A Thing - From \"Sing\" Original Motion Picture Soundtrack | Sing - Original Motion Picture Soundtrack / Deluxe ; Waving Through A Window (Tori Kelly Version) - From The “Dear Evan Hansen” Original Mo",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Alec Benjamin",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "pop",
+      "singer-songwriter"
+    ],
+    "primary_genre": "pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Gotta Be A Reason | Narrated For You ; Mind Is A Prison | These Two Windows ; Water Fountain | Narrated For You ; If We Have Each Other | Narrated For You ; Let Me Down Slowly | Narrated For You",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Metro Boomin",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "hip hop",
+      "trap"
+    ],
+    "primary_genre": "hip hop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Creepin' (with The Weeknd & 21 Savage) | HEROES & VILLAINS ; Calling (Spider-Man: Across the Spider-Verse) (Metro Boomin & Swae Lee, NAV, feat. A Boogie Wit da Hoodie) | METRO BOOMIN PRESENTS SPIDER-MAN: ACROSS THE SPIDE",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Willemijn Verkaik",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "musical theatre",
+      "soundtrack"
+    ],
+    "primary_genre": "musical theatre",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Solang ich dich hab | Wicked ; Gutes tun | Wicked",
+    "status": "approved"
+  },
+  {
+    "artist_name": "孫燕姿",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "mandopop",
+      "c-pop"
+    ],
+    "primary_genre": "mandopop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: 我不愛 | Leave ; 逆光 | 逆光 ; 我懷念的 | 逆光 ; 一樣的夏天 | Leave",
+    "status": "approved"
+  },
+  {
+    "artist_name": "sombr",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "indie pop",
+      "alternative pop"
+    ],
+    "primary_genre": "indie pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: back to friends | back to friends ; Potential | Potential ; i wish i knew how to quit you | I Barely Know Her ; Homewrecker | Homewrecker",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Teddy Swims",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "soul",
+      "pop"
+    ],
+    "primary_genre": "soul",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Lose Control | I've Tried Everything But Therapy (Part 1)",
+    "status": "approved"
+  },
+  {
+    "artist_name": "The 1975",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "indie rock",
+      "pop rock",
+      "synthpop"
+    ],
+    "primary_genre": "indie rock",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: About You | Being Funny In A Foreign Language ; The Sound | I like it when you sleep, for you are so beautiful yet so unaware of it ; When We Are Together | Being Funny In A Foreign Language ; Somebody Else | I like it w",
+    "status": "approved"
+  },
+  {
+    "artist_name": "TLC",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "r&b",
+      "pop"
+    ],
+    "primary_genre": "r&b",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: No Scrubs | Fanmail ; Waterfalls | Crazysexycool",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Fools Garden",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "pop rock"
+    ],
+    "primary_genre": "pop rock",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Lemon Tree | Dish of the Day",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Tom Odell",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "singer-songwriter",
+      "pop"
+    ],
+    "primary_genre": "singer-songwriter",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Black Friday | Black Friday ; Best Day Of My Life | Best Day of My Life ; Another Love | Long Way Down",
+    "status": "approved"
+  },
+  {
+    "artist_name": "MAX",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "pop"
+    ],
+    "primary_genre": "pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: The Other Side (with MAX & Ty Dolla $ign) | The Greatest Showman: Reimagined",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Owl City",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "electropop",
+      "synthpop",
+      "pop"
+    ],
+    "primary_genre": "electropop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Fireflies | Ocean Eyes ; Waving Through a Window - From Dear Evan Hansen | Waving Through A Window ; Good Time | The Midsummer Station",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Carolina Gaitán",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "soundtrack",
+      "latin pop"
+    ],
+    "primary_genre": "soundtrack",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: We Don't Talk About Bruno | Encanto",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Rina Sawayama",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "pop",
+      "dance pop",
+      "alternative pop"
+    ],
+    "primary_genre": "pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: LUCID | SAWAYAMA (Deluxe Edition)",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Randy Newman",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "soundtrack",
+      "score",
+      "singer-songwriter"
+    ],
+    "primary_genre": "soundtrack",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Andy's Birthday | Toy Story ; Strange Things | Toy Story ; I Will Go Sailing No More | Toy Story ; You've Got a Friend in Me | Toy Story ; Soldier's Mission | Toy Story",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Troy",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "soundtrack",
+      "musical theatre",
+      "pop"
+    ],
+    "primary_genre": "soundtrack",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Start of Something New | High School Musical ; You Are the Music in Me | High School Musical 2",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Steve Lacy",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "r&b",
+      "indie pop"
+    ],
+    "primary_genre": "r&b",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: the feeling | the feeling ; Bad Habit | Gemini Rights",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Deloris & The Sisters",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "soundtrack",
+      "gospel"
+    ],
+    "primary_genre": "soundtrack",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Finale: I Will Follow Him [\"Chariot\"] | Sister Act ; My Guy (My God) | Sister Act",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Jessica Darrow",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "soundtrack",
+      "musical theatre"
+    ],
+    "primary_genre": "soundtrack",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Surface Pressure | Encanto",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Big Thief",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "indie folk",
+      "indie rock"
+    ],
+    "primary_genre": "indie folk",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Double Infinity | Double Infinity",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Cyndi Lauper",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "pop",
+      "synthpop"
+    ],
+    "primary_genre": "pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Girls Just Want to Have Fun | She's So Unusual",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Pharrell Williams",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "pop",
+      "r&b",
+      "hip hop"
+    ],
+    "primary_genre": "pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Happy - From \"Despicable Me 2\" | G I R L ; Doctor (Work It Out) [feat. Miley Cyrus] | Doctor (Work It Out) [feat. Miley Cyrus]",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Indigo Girls",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "folk",
+      "folk rock"
+    ],
+    "primary_genre": "folk",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Closer to Fine | Indigo Girls (Expanded Edition)",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Bowen Yang",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "soundtrack",
+      "musical theatre"
+    ],
+    "primary_genre": "soundtrack",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Dancing Through Life - Live from the Dolby Theatre | Wicked: One Wonderful Night (Live) – The Soundtrack",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Benson Boone",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "pop",
+      "singer-songwriter"
+    ],
+    "primary_genre": "pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Beautiful Things | Beautiful Things ; To Love Someone | To Love Someone ; Slow It Down | Fireworks & Rollerblades",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Adiescar Chase",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "score",
+      "soundtrack"
+    ],
+    "primary_genre": "score",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Pair Up | Heartstopper: Season 2 (Soundtrack from the Netflix Series) ; Telling People | Heartstopper: Season 2 (Soundtrack from the Netflix Series) ; Star-crossed Lovers | Heartstopper: Season 2 (Soundtrack from the Net",
+    "status": "approved"
+  },
+  {
+    "artist_name": "flor",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "indie pop",
+      "pop rock"
+    ],
+    "primary_genre": "indie pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: heart | come out. you're hiding",
+    "status": "approved"
+  },
+  {
+    "artist_name": "A Great Big World",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "pop",
+      "singer-songwriter"
+    ],
+    "primary_genre": "pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Say Something | Is There Anybody Out There?",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Sam Fender",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "rock",
+      "singer-songwriter"
+    ],
+    "primary_genre": "rock",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Rein Me In (with Olivia Dean) | People Watching",
+    "status": "approved"
+  },
+  {
+    "artist_name": "George Michael",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "pop",
+      "soul"
+    ],
+    "primary_genre": "pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Father Figure - Remastered | Ladies & Gentlemen",
+    "status": "approved"
+  },
+  {
+    "artist_name": "The Wicked Orchestra",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "soundtrack",
+      "musical theatre"
+    ],
+    "primary_genre": "soundtrack",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Ozdust Duet - Bonus Track | Wicked: The Soundtrack",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Djo",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "indie pop",
+      "synthpop"
+    ],
+    "primary_genre": "indie pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: End of Beginning | DECIDE",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Gabrielle Aplin",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "folk pop",
+      "singer-songwriter"
+    ],
+    "primary_genre": "folk pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Never Be the Same | Phosphorescent",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Cameron Winter",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "indie rock",
+      "singer-songwriter"
+    ],
+    "primary_genre": "indie rock",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Love Takes Miles | Heavy Metal",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Kali Uchis",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "r&b",
+      "latin pop"
+    ],
+    "primary_genre": "r&b",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Sunshine & Rain... | Sunshine & Rain...",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Stevie Nicks",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "rock",
+      "pop rock",
+      "singer-songwriter"
+    ],
+    "primary_genre": "rock",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: The Lighthouse | The Lighthouse ; Edge of Seventeen - 2016 Remaster | Bella Donna",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Gaius Yeong",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "classical piano",
+      "instrumental"
+    ],
+    "primary_genre": "classical piano",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: The Blue Danube (Piano Version) | The Blue Danube (Piano Version) ; The Moon Represents My Heart (Piano Version) | The Moon Represents My Heart (Piano Version) ; Air on the G String (Piano Version) | Air on the G String ",
+    "status": "approved"
+  },
+  {
+    "artist_name": "The Goo Goo Dolls",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "pop rock",
+      "alternative rock"
+    ],
+    "primary_genre": "pop rock",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Iris | Dizzy up the Girl",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Quavo",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "hip hop",
+      "trap"
+    ],
+    "primary_genre": "hip hop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Tough | Tough",
+    "status": "approved"
+  },
+  {
+    "artist_name": "The Rembrandts",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "pop rock"
+    ],
+    "primary_genre": "pop rock",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: I'll Be There for You - Theme From \"Friends\" | L.P.",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Holly Humberstone",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "indie pop",
+      "singer-songwriter"
+    ],
+    "primary_genre": "indie pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Beauty Pageant | Cruel World ; Deep End | Deep End",
+    "status": "approved"
+  },
+  {
+    "artist_name": "niceboy ed",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "indie pop"
+    ],
+    "primary_genre": "indie pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: life you lead | life you lead",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Alex Warren",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "pop",
+      "singer-songwriter"
+    ],
+    "primary_genre": "pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Ordinary | You'll Be Alright, Kid (Chapter 1) ; Before You Leave Me | Before You Leave Me",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Diane Guerrero",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "soundtrack",
+      "musical theatre"
+    ],
+    "primary_genre": "soundtrack",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: What Else Can I Do? | Encanto",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Matilda Mann",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "indie pop",
+      "singer-songwriter"
+    ],
+    "primary_genre": "indie pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Paper Mache World | Because I Wanted You to Know",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Carmody",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "indie pop",
+      "singer-songwriter"
+    ],
+    "primary_genre": "indie pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Paradise | Paradise",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Nuno Freitas",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "pop"
+    ],
+    "primary_genre": "pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Swimming Pool | Swimming Pool ; Just Friends | Just Friends ; Blue | Blue",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Spice Girls",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "pop",
+      "dance pop"
+    ],
+    "primary_genre": "pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Spice Up Your Life | Spiceworld",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Shaboozey",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "country",
+      "hip hop"
+    ],
+    "primary_genre": "country",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: A Bar Song (Tipsy) | A Bar Song (Tipsy)",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Natalie Imbruglia",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "pop rock"
+    ],
+    "primary_genre": "pop rock",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Torn | Left Of The Middle",
+    "status": "approved"
+  },
+  {
+    "artist_name": "HONNE",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "electropop",
+      "r&b"
+    ],
+    "primary_genre": "electropop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Crying Over You ◐ | Love Me / Love Me Not ; Shrink ◐ | Love Me / Love Me Not",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Carmen Twillie",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "soundtrack",
+      "musical theatre"
+    ],
+    "primary_genre": "soundtrack",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Circle of Life | The Lion King",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Sir Babygirl",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "pop",
+      "electropop"
+    ],
+    "primary_genre": "pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Flirting with Her | Crush on Me",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Josh Gad",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "soundtrack",
+      "musical theatre"
+    ],
+    "primary_genre": "soundtrack",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: In Summer - From \"Frozen\"/Soundtrack Version | Frozen - Original Motion Picture Soundtrack / Deluxe Edition ; When I Am Older | Frozen 2 - Original Motion Picture Soundtrack/Deluxe Edition ; Unmeltable Me - Outtake | Fro",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Sixpence None The Richer",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "pop rock",
+      "alternative rock"
+    ],
+    "primary_genre": "pop rock",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Kiss Me | Sixpence None the Richer ; There She Goes | Sixpence None the Richer",
+    "status": "approved"
+  },
+  {
+    "artist_name": "LÉON",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "pop",
+      "soul"
+    ],
+    "primary_genre": "pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Pretty Boy | Pretty Boy",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Sia",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "pop",
+      "dance pop"
+    ],
+    "primary_genre": "pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Chandelier | 1000 Forms Of Fear (Deluxe Version) ; Snowman | Everyday Is Christmas ; Dance Alone | Dance Alone",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Liam Payne",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "pop",
+      "dance pop"
+    ],
+    "primary_genre": "pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: For You (With Rita Ora) | LP1 ; Strip That Down (feat. Quavo) | LP1",
+    "status": "approved"
+  },
+  {
+    "artist_name": "boygenius",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "indie rock",
+      "folk"
+    ],
+    "primary_genre": "indie rock",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Not Strong Enough | the record ; Souvenir | boygenius",
+    "status": "approved"
+  },
+  {
+    "artist_name": "U.S.A. For Africa",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "pop"
+    ],
+    "primary_genre": "pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: We Are The World | We Are The World",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Scarlett Johansson",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "soundtrack",
+      "pop"
+    ],
+    "primary_genre": "soundtrack",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Set It All Free - From \"Sing\" Original Motion Picture Soundtrack | Sing - Original Motion Picture Soundtrack / Deluxe",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Bakar",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "indie rock",
+      "r&b"
+    ],
+    "primary_genre": "indie rock",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Hell N Back | Will You Be My Yellow?",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Bleachers",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "indie pop",
+      "pop rock"
+    ],
+    "primary_genre": "indie pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Secret Life (feat. Lana Del Rey) | Take the Sadness Out of Saturday Night ; we should talk | everyone for ten minutes ; Hey Joe | Bleachers ; Call Me After Midnight | Bleachers ; Rollercoaster | Strange Desire",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Tomberlin",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "indie folk",
+      "singer-songwriter"
+    ],
+    "primary_genre": "indie folk",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Any Other Way | At Weddings",
+    "status": "approved"
+  },
+  {
+    "artist_name": "HUNTR/X",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "soundtrack",
+      "k-pop",
+      "pop"
+    ],
+    "primary_genre": "soundtrack",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Golden | KPop Demon Hunters ; How It’s Done | KPop Demon Hunters",
+    "status": "approved"
+  },
+  {
+    "artist_name": "MIKA",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "pop"
+    ],
+    "primary_genre": "pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Popular Song | Yours Truly",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Thomas Headon",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "indie pop"
+    ],
+    "primary_genre": "indie pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: UrbanAngel1999 | UrbanAngel1999",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Zara Larsson",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "pop",
+      "dance pop"
+    ],
+    "primary_genre": "pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Ruin My Life | Poster Girl ; Midnight Sun | Midnight Sun ; Eurosummer - Girls Trip | Midnight Sun: Girls Trip",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Disney",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "children's music",
+      "soundtrack"
+    ],
+    "primary_genre": "children's music",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Zoo - From \"Zootopia 2\" | Zoo",
+    "status": "approved"
+  },
+  {
+    "artist_name": "SOAK",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "indie folk",
+      "indie pop"
+    ],
+    "primary_genre": "indie folk",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Knock Me Off My Feet | Grim Town",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Father John Misty",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "folk rock",
+      "singer-songwriter"
+    ],
+    "primary_genre": "folk rock",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Real Love Baby | Real Love Baby",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Lizzy McAlpine",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "singer-songwriter",
+      "indie pop"
+    ],
+    "primary_genre": "singer-songwriter",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: ceilings | five seconds flat",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Dasha",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "country pop"
+    ],
+    "primary_genre": "country pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Austin (Boots Stop Workin') | What Happens Now? ; Austin | What Happens Now?",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Kenya Grace",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "electronic",
+      "dance pop"
+    ],
+    "primary_genre": "electronic",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Strangers | Strangers",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Jonah Hauer-King",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "soundtrack",
+      "musical theatre"
+    ],
+    "primary_genre": "soundtrack",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Wild Uncharted Waters | The Little Mermaid",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Gael Garcia Bernal",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "soundtrack",
+      "latin pop"
+    ],
+    "primary_genre": "soundtrack",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Remember Me (Lullaby) | Coco ; Recuérdame (Arrullo) | Coco",
+    "status": "approved"
+  },
+  {
+    "artist_name": "ella jane",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "indie pop"
+    ],
+    "primary_genre": "indie pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: nothing else i could do | nothing else i could do",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Noah Cyrus",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "pop",
+      "country pop"
+    ],
+    "primary_genre": "pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: July | THE END OF EVERYTHING",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Anne-Marie",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "pop",
+      "dance pop"
+    ],
+    "primary_genre": "pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Our Song | Therapy ; 2002 | Speak Your Mind",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Tommy Richman",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "r&b",
+      "pop"
+    ],
+    "primary_genre": "r&b",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: MILLION DOLLAR BABY | MILLION DOLLAR BABY",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Jonas Brothers",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "pop",
+      "pop rock"
+    ],
+    "primary_genre": "pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Cool | Happiness Begins ; Strong Enough (feat. Bailey Zimmerman) | Strong Enough ; Only Human | Happiness Begins",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Chris Lee Artiste",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "c-pop",
+      "mandopop"
+    ],
+    "primary_genre": "c-pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: 1987我不知会遇见你 | 1987我不知会遇见你 ; 是你（电视剧《难哄》片尾曲） | 电视剧《难哄》影视原声带·只喜欢你Love Moments",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Labrinth",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "r&b",
+      "pop"
+    ],
+    "primary_genre": "r&b",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Never Felt So Alone | Ends & Begins",
+    "status": "approved"
+  },
+  {
+    "artist_name": "汪源",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "c-pop"
+    ],
+    "primary_genre": "c-pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: 北京东路的日子 | 北京东路的日子",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Beats By AI",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "country",
+      "comedy"
+    ],
+    "primary_genre": "country",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Country Girls Make Do | Country Girls Make Do ; Scissored In My Chevy | Scissored In My Chevy",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Hozier",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "folk",
+      "soul"
+    ],
+    "primary_genre": "folk",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Too Sweet | Unheard",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Kid Cudi",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "hip hop",
+      "alternative hip hop"
+    ],
+    "primary_genre": "hip hop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Mr. Rager | Man On The Moon II: The Legend Of Mr. Rager",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Bobby McFerrin",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "jazz",
+      "pop"
+    ],
+    "primary_genre": "jazz",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Don't Worry Be Happy | Simple Pleasures",
+    "status": "approved"
+  },
+  {
+    "artist_name": "High School Musical Cast",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "soundtrack",
+      "musical theatre",
+      "pop"
+    ],
+    "primary_genre": "soundtrack",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Just Wanna Be With You | High School Musical 3: Senior Year",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Coi Leray",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "hip hop",
+      "pop rap"
+    ],
+    "primary_genre": "hip hop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Players | Players",
+    "status": "approved"
+  },
+  {
+    "artist_name": "JAY-Z",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "hip hop",
+      "rap"
+    ],
+    "primary_genre": "hip hop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Empire State Of Mind | The Blueprint 3 ; Ni**as In Paris | Watch The Throne",
+    "status": "approved"
+  },
+  {
+    "artist_name": "JVKE",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "pop"
+    ],
+    "primary_genre": "pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: golden hour | this is what ____ feels like (Vol. 1-4)",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Deniece Williams",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "r&b",
+      "soul",
+      "soundtrack"
+    ],
+    "primary_genre": "r&b",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Let's Hear It for the Boy - From \"Footloose\" Soundtrack | Footloose (15th Anniversary Collectors' Edition)",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Sharon Van Etten",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "indie rock",
+      "singer-songwriter"
+    ],
+    "primary_genre": "indie rock",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Every Time the Sun Comes Up | Are We There",
+    "status": "approved"
+  },
+  {
+    "artist_name": "The Police",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "rock",
+      "synthpop"
+    ],
+    "primary_genre": "rock",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Every Breath You Take | Synchronicity",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Mandy Moore",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "pop",
+      "soundtrack"
+    ],
+    "primary_genre": "pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: I See the Light - From \"Tangled\" / Soundtrack Version | Disney Summer Songs , Vol. 2 ; When Will My Life Begin? - From \"Tangled\" / Soundtrack Version | Disney Summer Songs",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Bridgit Mendler",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "pop"
+    ],
+    "primary_genre": "pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Hurricane | Hello My Name Is...",
+    "status": "approved"
+  },
+  {
+    "artist_name": "The Kid LAROI",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "pop rap",
+      "pop"
+    ],
+    "primary_genre": "pop rap",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Forever & Again | Barbie The Album",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Demi Lovato",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "pop",
+      "pop rock"
+    ],
+    "primary_genre": "pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Let It Go - From \"Frozen / Single Version | Frozen - Original Motion Picture Soundtrack / Deluxe Edition ; Sorry Not Sorry | Tell Me You Love Me",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Natasha Bedingfield",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "pop"
+    ],
+    "primary_genre": "pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Unwritten | Unwritten",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Evan Honer",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "country",
+      "folk"
+    ],
+    "primary_genre": "country",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Jersey Giant | Jersey Giant",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Flyana Boss",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "hip hop",
+      "rap"
+    ],
+    "primary_genre": "hip hop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: You Wish | You Wish + Trashboi",
+    "status": "approved"
+  },
+  {
+    "artist_name": "The Chainsmokers",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "edm",
+      "dance pop"
+    ],
+    "primary_genre": "edm",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Closer | Closer",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Adam Lambert",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "pop",
+      "pop rock"
+    ],
+    "primary_genre": "pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Outlaws of Love | Trespassing (Deluxe Version) ; Runnin' | Trespassing (Deluxe Version) ; Whataya Want from Me | For Your Entertainment",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Dido",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "pop",
+      "trip hop"
+    ],
+    "primary_genre": "pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: White Flag | Life For Rent",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Reneé Rapp",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "pop",
+      "musical theatre"
+    ],
+    "primary_genre": "pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: In The Kitchen | In The Kitchen ; Pretty Girls | Snow Angel",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Matt吕彦良",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "c-pop"
+    ],
+    "primary_genre": "c-pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: 再见 | 再见",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Ruth B.",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "pop",
+      "singer-songwriter"
+    ],
+    "primary_genre": "pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Dandelions | Safe Haven",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Paul McCartney",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "rock",
+      "pop rock"
+    ],
+    "primary_genre": "rock",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Wonderful Christmastime - Edited Version / Remastered 2011 | McCartney II",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Craig David",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "r&b",
+      "pop"
+    ],
+    "primary_genre": "r&b",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Come Alive - Bonus Track | The Greatest Showman: Reimagined",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Mona Rue",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "pop"
+    ],
+    "primary_genre": "pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: see it all | see it all",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Georgia",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "electronic",
+      "dance pop"
+    ],
+    "primary_genre": "electronic",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: It’s Euphoric | It's Euphoric",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Joaquin Phoenix",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "soundtrack"
+    ],
+    "primary_genre": "soundtrack",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: The Joker - Music From The Motion Picture | Joker: Folie à Deux",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Jeremy Irons",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "soundtrack",
+      "musical theatre"
+    ],
+    "primary_genre": "soundtrack",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Be Prepared | The Lion King",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Hailee Steinfeld",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "pop"
+    ],
+    "primary_genre": "pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: I Love You's | Half Written Story ; Let Me Go (with Alesso, Florida Georgia Line & watt) | Let Me Go (with Alesso, Florida Georgia Line & watt)",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Lenka",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "pop",
+      "singer-songwriter"
+    ],
+    "primary_genre": "pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Trouble Is a Friend | Lenka (Expanded Edition) ; The Show | Lenka (Expanded Edition)",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Montaigne",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "indie pop"
+    ],
+    "primary_genre": "indie pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Because I Love You | Glorious Heights",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Madison Beer",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "pop"
+    ],
+    "primary_genre": "pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: bittersweet | locket ; Reckless | Silence Between Songs ; Spinnin | Silence Between Songs",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Ingrid Michaelson",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "pop",
+      "singer-songwriter"
+    ],
+    "primary_genre": "pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Auld Lang Syne | Ingrid Michaelson's Songs For The Season ; Time Machine | Lights Out",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Fifth Harmony",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "pop",
+      "dance pop"
+    ],
+    "primary_genre": "pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Work from Home (feat. Ty Dolla $ign) | 7/27 ; Worth It (feat. Kid Ink) | Reflection",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Nicky Youre",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "pop"
+    ],
+    "primary_genre": "pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Sunroof | Sunroof",
+    "status": "approved"
+  },
+  {
+    "artist_name": "6ix9ine",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "hip hop",
+      "rap"
+    ],
+    "primary_genre": "hip hop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: TROLLZ (with Nicki Minaj) | TattleTales ; GTL | TattleTales ; GOOBA | TattleTales",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Chairlift",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "indie pop",
+      "synthpop"
+    ],
+    "primary_genre": "indie pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: I Belong in Your Arms | Something",
+    "status": "approved"
+  },
+  {
+    "artist_name": "黄霄云",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "c-pop",
+      "mandopop"
+    ],
+    "primary_genre": "c-pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: 星辰大海 | 星辰大海",
+    "status": "approved"
+  },
+  {
+    "artist_name": "mj apanay",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "indie pop",
+      "singer-songwriter"
+    ],
+    "primary_genre": "indie pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: time machine | seen 11:23 pm",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Haley Heynderickx",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "indie folk",
+      "singer-songwriter"
+    ],
+    "primary_genre": "indie folk",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: The Bug Collector | I Need to Start a Garden",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Fitz and The Tantrums",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "indie pop",
+      "soul",
+      "pop"
+    ],
+    "primary_genre": "indie pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Out of My League | More Than Just a Dream",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Carolina Gaitán - La Gaita",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "soundtrack",
+      "latin pop"
+    ],
+    "primary_genre": "soundtrack",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: We Don't Talk About Bruno | Encanto",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Saint Joan",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "indie pop"
+    ],
+    "primary_genre": "indie pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Gold | Ashes",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Vistas",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "indie rock"
+    ],
+    "primary_genre": "indie rock",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Retrospect | Everything Changes in the End",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Alan Walker",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "edm",
+      "electronic"
+    ],
+    "primary_genre": "edm",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: On My Way | World Of Walker",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Marissa Bode",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "soundtrack",
+      "musical theatre"
+    ],
+    "primary_genre": "soundtrack",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: The Wicked Witch of the East | Wicked: For Good – The Soundtrack",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Lily-Rose Depp",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "pop",
+      "soundtrack"
+    ],
+    "primary_genre": "pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: World Class Sinner / I’m A Freak | The Idol Episode 1",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Del Water Gap",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "indie pop",
+      "singer-songwriter"
+    ],
+    "primary_genre": "indie pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Ode to a Conversation Stuck in Your Throat | Del Water Gap",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Natalie Jane",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "pop"
+    ],
+    "primary_genre": "pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Intrusive Thoughts | Where Am I?",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Nick Jonas",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "pop"
+    ],
+    "primary_genre": "pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Spaceman | Spaceman - Deluxe ; 2Drunk | Spaceman - Deluxe",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Myles Smith",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "singer-songwriter",
+      "folk pop"
+    ],
+    "primary_genre": "singer-songwriter",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Drive Safe | Drive Safe ; Stargazing | Stargazing",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Taylor Bickett",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "pop",
+      "singer-songwriter"
+    ],
+    "primary_genre": "pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: QUARTER LIFE CRISIS | QUARTER LIFE CRISIS",
+    "status": "approved"
+  },
+  {
+    "artist_name": "carpetgarden",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "indie pop",
+      "pop"
+    ],
+    "primary_genre": "indie pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: I Think Ur Rlly Cool | Small and Quiet",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Muni Long",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "r&b",
+      "soul"
+    ],
+    "primary_genre": "r&b",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Made For Me (with Mariah Carey) | Made For Me (with Mariah Carey)",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Samuel E. Wright",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "soundtrack",
+      "musical theatre"
+    ],
+    "primary_genre": "soundtrack",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Under the Sea | The Little Mermaid Special Edition",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Rachel Platten",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "pop"
+    ],
+    "primary_genre": "pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Fight Song | Wildfire",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Olly Murs",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "pop"
+    ],
+    "primary_genre": "pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Dance with Me Tonight | In Case You Didn't Know ; That Girl | 24 HRS",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Stephan Schleiner",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "classical piano",
+      "instrumental"
+    ],
+    "primary_genre": "classical piano",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Raindrops Keep Falling on My Head | Famous Songs on Piano, Vol. 1",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Bradley Kim",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "pop"
+    ],
+    "primary_genre": "pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Internet Boy | Internet Boy",
+    "status": "approved"
+  },
+  {
+    "artist_name": "kenzie",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "pop"
+    ],
+    "primary_genre": "pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: anatomy | anatomy",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Julia Michaels",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "pop",
+      "singer-songwriter"
+    ],
+    "primary_genre": "pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: What A Time (feat. Niall Horan) | Inner Monologue Part 1",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Billie Marten",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "indie folk",
+      "singer-songwriter"
+    ],
+    "primary_genre": "indie folk",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: La Lune | Writing of Blues and Yellows (Deluxe Version)",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Birdy",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "singer-songwriter",
+      "pop"
+    ],
+    "primary_genre": "singer-songwriter",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Paradise Calling | Portraits",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Kim Petras",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "pop",
+      "dance pop"
+    ],
+    "primary_genre": "pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Alone (with Nicki Minaj) | Alone",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Hayley Kiyoko",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "pop",
+      "electropop"
+    ],
+    "primary_genre": "pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Curious | Expectations",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Lea Salonga",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "musical theatre",
+      "soundtrack"
+    ],
+    "primary_genre": "musical theatre",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Reflection | Mulan",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Faouzia",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "pop"
+    ],
+    "primary_genre": "pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: ICE | ICE",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Gustixa",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "electronic",
+      "pop"
+    ],
+    "primary_genre": "electronic",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Somewhere Only We Know | Somewhere Only We Know",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Julia Jacklin",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "indie rock",
+      "singer-songwriter"
+    ],
+    "primary_genre": "indie rock",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Pressure To Party | Crushing",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Maia Wilson",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "soundtrack",
+      "musical theatre"
+    ],
+    "primary_genre": "soundtrack",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Fixer Upper - From \"Frozen\"/Soundtrack Version | Frozen",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Ciara",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "r&b",
+      "dance pop"
+    ],
+    "primary_genre": "r&b",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: One, Two Step (feat. Missy Elliott) | Goodies",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Beach Bunny",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "indie rock",
+      "indie pop"
+    ],
+    "primary_genre": "indie rock",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Cloud 9 | Honeymoon",
+    "status": "approved"
+  },
+  {
+    "artist_name": "keshi",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "r&b",
+      "pop"
+    ],
+    "primary_genre": "r&b",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: like i need u | THE REAPER",
+    "status": "approved"
+  },
+  {
+    "artist_name": "amy michelle",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "indie pop",
+      "singer-songwriter"
+    ],
+    "primary_genre": "indie pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: welcome to the sidelines | is that all there is?",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Joseph Williams",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "soundtrack",
+      "musical theatre"
+    ],
+    "primary_genre": "soundtrack",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Can You Feel the Love Tonight | The Lion King",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Jon Batiste",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "jazz",
+      "soul",
+      "soundtrack"
+    ],
+    "primary_genre": "jazz",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: It's All Right | Soul",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Tegan and Sara",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "indie pop",
+      "synthpop"
+    ],
+    "primary_genre": "indie pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: You Wouldn't like Me | So Jealous",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Jason Weaver",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "soundtrack",
+      "musical theatre"
+    ],
+    "primary_genre": "soundtrack",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: I Just Can't Wait to Be King | The Lion King",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Cassie",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "r&b",
+      "pop"
+    ],
+    "primary_genre": "r&b",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Me & U | Cassie",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Cliff Edwards",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "soundtrack",
+      "children's music"
+    ],
+    "primary_genre": "soundtrack",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: When You Wish Upon a Star | Pinocchio",
+    "status": "approved"
+  },
+  {
+    "artist_name": "American Authors",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "pop rock",
+      "indie rock"
+    ],
+    "primary_genre": "pop rock",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Best Day Of My Life | Oh, What A Life",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Lindsay Lohan",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "pop"
+    ],
+    "primary_genre": "pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Back To Me | Back To Me",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Khalid",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "r&b",
+      "pop"
+    ],
+    "primary_genre": "r&b",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Silver Platter | Barbie The Album",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Grace Potter",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "rock",
+      "soul"
+    ],
+    "primary_genre": "rock",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Something That I Want | Tangled",
+    "status": "approved"
+  },
+  {
+    "artist_name": "daydreamers",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "pop",
+      "indie pop"
+    ],
+    "primary_genre": "pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Call Me Up | Call Me Up",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Icona Pop",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "dance pop",
+      "electropop"
+    ],
+    "primary_genre": "dance pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: I Love It (feat. Charli XCX) | THIS IS... ICONA POP",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Michael Marcagi",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "folk pop",
+      "singer-songwriter"
+    ],
+    "primary_genre": "folk pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Scared To Start | Scared To Start",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Random Piano",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "classical piano",
+      "instrumental"
+    ],
+    "primary_genre": "classical piano",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Canon in D | Canon in D",
+    "status": "approved"
+  },
+  {
+    "artist_name": "THE ANXIETY",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "alternative hip hop",
+      "pop"
+    ],
+    "primary_genre": "alternative hip hop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Meet Me At Our Spot | THE ANXIETY",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Sinéad O'Connor",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "rock",
+      "singer-songwriter"
+    ],
+    "primary_genre": "rock",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: All Apologies | Universal Mother",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Good Neighbours",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "indie pop"
+    ],
+    "primary_genre": "indie pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Home | Home",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Artemas",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "pop",
+      "alternative pop"
+    ],
+    "primary_genre": "pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: i like the way you kiss me | i like the way you kiss me",
+    "status": "approved"
+  },
+  {
+    "artist_name": "MKTO",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "pop"
+    ],
+    "primary_genre": "pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Classic | MKTO",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Mark Ambor",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "pop",
+      "singer-songwriter"
+    ],
+    "primary_genre": "pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Belong Together | Belong Together",
+    "status": "approved"
+  },
+  {
+    "artist_name": "NINA",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "c-pop",
+      "pop"
+    ],
+    "primary_genre": "c-pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: 美美Sunday - 《One Spot》中文版 | 美美Sunday (《One Spot》中文版)",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Jacob Ryan Smith",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "pop"
+    ],
+    "primary_genre": "pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: In My Head | In My Head",
+    "status": "approved"
+  },
+  {
+    "artist_name": "sped up 8282",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "pop",
+      "electronic"
+    ],
+    "primary_genre": "pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Cupid – Twin Ver. (FIFTY FIFTY) – Sped Up Version | Cupid – Twin Ver. (FIFTY FIFTY) – Sped Up Version",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Lauran Hibberd",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "indie rock",
+      "pop punk"
+    ],
+    "primary_genre": "indie rock",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Bang Bang Bang | Bang Bang Bang",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Cil",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "pop"
+    ],
+    "primary_genre": "pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: One More Shot | One More Shot ; Bloodsucker | Bloodsucker",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Ava Max",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "pop",
+      "dance pop"
+    ],
+    "primary_genre": "pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Choose Your Fighter | Barbie The Album ; Not Your Barbie Girl | Not Your Barbie Girl",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Max Bennett Kelly",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "indie pop"
+    ],
+    "primary_genre": "indie pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Happy, Healthy, Well-Adjusted | Happy, Healthy, Well-Adjusted ; Superinlove (Roll Credits) | Superinlove (Roll Credits)",
+    "status": "approved"
+  },
+  {
+    "artist_name": "GAYLE",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "pop",
+      "pop rock"
+    ],
+    "primary_genre": "pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: butterflies | Barbie The Album",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Laufey",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "jazz",
+      "pop"
+    ],
+    "primary_genre": "jazz",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Winter Wonderland - Spotify Singles Holiday | Spotify Singles Holiday",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Katherine Jayne",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "comedy",
+      "pop"
+    ],
+    "primary_genre": "comedy",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Ariana Tanked | The Tortured Twitter Society",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Сто-Личный Она-Нас",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "pop"
+    ],
+    "primary_genre": "pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Capybara | Capybara",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Susan Egan",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "musical theatre",
+      "soundtrack"
+    ],
+    "primary_genre": "musical theatre",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: I Won't Say (I'm In Love) | Hercules",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Biscuit Beats",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "comedy",
+      "country"
+    ],
+    "primary_genre": "comedy",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: I Ain't Gay | I Ain't Gay ; Fishing At The River | Nature's Ignition",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Evan Rachel Wood",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "soundtrack",
+      "musical theatre"
+    ],
+    "primary_genre": "soundtrack",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: All Is Found (Lullaby Ending) - Outtake | Frozen 2 - Original Motion Picture Soundtrack/Deluxe Edition",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Benjamin Bratt",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "soundtrack",
+      "latin pop"
+    ],
+    "primary_genre": "soundtrack",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Remember Me (Ernesto de la Cruz) | Coco ; Much Needed Advice | Coco",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Ari Notartomaso",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "soundtrack",
+      "musical theatre",
+      "pop"
+    ],
+    "primary_genre": "soundtrack",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Crushing Me - From the Paramount+ Series ‘Grease: Rise of the Pink Ladies' | Grease: Rise of the Pink Ladies",
+    "status": "approved"
+  },
+  {
+    "artist_name": "夏小桃",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "classical piano",
+      "instrumental"
+    ],
+    "primary_genre": "classical piano",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: 卡农 - 经典钢琴曲 | 卡农",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Germaine Franco",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "score",
+      "soundtrack"
+    ],
+    "primary_genre": "score",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: ¡Hola Casita! | Encanto ; Abre Los Ojos | Encanto ; Meet La Familia | Encanto",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Regard",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "dance",
+      "electronic"
+    ],
+    "primary_genre": "dance",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: You | You",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Sisqo",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "r&b",
+      "pop"
+    ],
+    "primary_genre": "r&b",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Thong Song | Unleash The Dragon",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Zendaya",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "pop",
+      "r&b"
+    ],
+    "primary_genre": "pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Replay | Zendaya",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Willow Sage Hart",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "soundtrack",
+      "pop"
+    ],
+    "primary_genre": "soundtrack",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: A Million Dreams - Reprise | The Greatest Showman: Reimagined",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Jennifer Hudson",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "soul",
+      "r&b",
+      "soundtrack"
+    ],
+    "primary_genre": "soul",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Golden Slumbers / Carry That Weight - From \"Sing\" Original Motion Picture Soundtrack | Sing - Original Motion Picture Soundtrack / Deluxe",
+    "status": "approved"
+  },
+  {
+    "artist_name": "benny blanco",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "pop",
+      "dance pop"
+    ],
+    "primary_genre": "pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Eastside (with Halsey & Khalid) | FRIENDS KEEP SECRETS",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Mitski",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "indie rock",
+      "singer-songwriter"
+    ],
+    "primary_genre": "indie rock",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: My Love Mine All Mine | The Land Is Inhospitable and So Are We",
+    "status": "approved"
+  },
+  {
+    "artist_name": "La La Land Cast",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "soundtrack",
+      "musical theatre"
+    ],
+    "primary_genre": "soundtrack",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Another Day Of Sun | La La Land",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Saja Boys",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "soundtrack",
+      "k-pop",
+      "pop"
+    ],
+    "primary_genre": "soundtrack",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Soda Pop | KPop Demon Hunters ; Your Idol | KPop Demon Hunters",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Selena Gomez & The Scene",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "pop",
+      "dance pop"
+    ],
+    "primary_genre": "pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Who Says | When The Sun Goes Down ; Love You Like A Love Song | When The Sun Goes Down",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Trinix",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "electronic",
+      "dance"
+    ],
+    "primary_genre": "electronic",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Beautiful Day (Thank You for Sunshine) | Beautiful Day (Thank You for Sunshine)",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Oliver Tree",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "alternative rock",
+      "pop"
+    ],
+    "primary_genre": "alternative rock",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Miss You | Miss You",
+    "status": "approved"
+  },
+  {
+    "artist_name": "WILLOW",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "alternative rock",
+      "pop"
+    ],
+    "primary_genre": "alternative rock",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: 9 | 3",
+    "status": "approved"
+  },
+  {
+    "artist_name": "21 Savage",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "hip hop",
+      "trap"
+    ],
+    "primary_genre": "hip hop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: redrum | american dream",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Rob Grant",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "classical piano",
+      "instrumental"
+    ],
+    "primary_genre": "classical piano",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Lost at Sea | Lost At Sea",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Alan Menken",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "soundtrack",
+      "score",
+      "musical theatre"
+    ],
+    "primary_genre": "soundtrack",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Kiss the Girl (Island Band Reprise) | The Little Mermaid ; Vanessa's Trick | The Little Mermaid ; Part of Your World | The Little Mermaid Special Edition",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Jason Derulo",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "pop",
+      "r&b"
+    ],
+    "primary_genre": "pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Ridin' Solo | Jason Derulo ; Swalla (feat. Nicki Minaj & Ty Dolla $ign) | Swalla (feat. Nicki Minaj & Ty Dolla $ign)",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Bunnies",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "soundtrack",
+      "pop"
+    ],
+    "primary_genre": "soundtrack",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: OH.MY.GOSH - From \"Sing\" Original Motion Picture Soundtrack | Sing - Original Motion Picture Soundtrack / Deluxe",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Right Said Fred",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "dance pop",
+      "pop"
+    ],
+    "primary_genre": "dance pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: I'm Too Sexy | Up",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Little Mix",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "pop",
+      "dance pop"
+    ],
+    "primary_genre": "pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Secret Love Song (feat. Jason Derulo) | Get Weird",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Maddie Zahm",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "pop",
+      "singer-songwriter"
+    ],
+    "primary_genre": "pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Fat Funny Friend | Fat Funny Friend",
+    "status": "approved"
+  },
+  {
+    "artist_name": "John Carpenter",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "score",
+      "soundtrack",
+      "electronic"
+    ],
+    "primary_genre": "score",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Halloween Theme - Main Title | Halloween Motion Picture Soundtrack ; Laurie's Theme | Halloween Motion Picture Soundtrack",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Wiz Khalifa",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "hip hop",
+      "pop rap"
+    ],
+    "primary_genre": "hip hop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Go Hard or Go Home | Furious 7: Original Motion Picture Soundtrack",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Gigi Perez",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "indie pop",
+      "singer-songwriter"
+    ],
+    "primary_genre": "indie pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Sailor Song | Sailor Song",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Jay Rock",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "hip hop",
+      "rap"
+    ],
+    "primary_genre": "hip hop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Redemption (feat. SZA) | Redemption",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Gatlin",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "pop",
+      "singer-songwriter"
+    ],
+    "primary_genre": "pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: What If I Love You | What If I Love You",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Khloe Rose",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "pop",
+      "singer-songwriter"
+    ],
+    "primary_genre": "pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Fictional | The In Between",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Suki Waterhouse",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "indie pop",
+      "singer-songwriter"
+    ],
+    "primary_genre": "indie pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Coolest Place in the World | Coolest Place in the World",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Mark Ronson",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "funk",
+      "pop"
+    ],
+    "primary_genre": "funk",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Uptown Funk (feat. Bruno Mars) | Uptown Special",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Olly Alexander (Years & Years)",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "electropop",
+      "dance pop"
+    ],
+    "primary_genre": "electropop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Come Alive (with Years & Years and Jess Glynne) | The Greatest Showman: Reimagined ; Desire | Communion",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Corinne Bailey Rae",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "soul",
+      "r&b",
+      "pop"
+    ],
+    "primary_genre": "soul",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Put Your Records On | Corinne Bailey Rae",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Jenna Raine",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "pop"
+    ],
+    "primary_genre": "pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: It Is What It Is | It Is What It Is",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Akon",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "r&b",
+      "pop"
+    ],
+    "primary_genre": "r&b",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Don't Matter | Konvicted",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Leah Kate",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "pop"
+    ],
+    "primary_genre": "pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: 10 Things I Hate About You | Alive and Unwell",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Cast - Frozen",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "soundtrack",
+      "musical theatre"
+    ],
+    "primary_genre": "soundtrack",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Frozen Heart - From \"Frozen\"/Soundtrack Version | Frozen - Original Motion Picture Soundtrack / Deluxe Edition",
+    "status": "approved"
+  },
+  {
+    "artist_name": "will.i.am",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "hip hop",
+      "pop"
+    ],
+    "primary_genre": "hip hop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Scream & Shout | #willpower",
+    "status": "approved"
+  },
+  {
+    "artist_name": "whereami",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "indie pop"
+    ],
+    "primary_genre": "indie pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: deja vu | deja vu",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Francis Lung",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "indie pop",
+      "indie rock"
+    ],
+    "primary_genre": "indie pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Dance 4 Sorrow | Dance 4 Sorrow",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Coldplay",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "pop rock",
+      "alternative rock"
+    ],
+    "primary_genre": "pop rock",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Yellow | Parachutes",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Fire Inc.",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "rock",
+      "soundtrack"
+    ],
+    "primary_genre": "rock",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Nowhere Fast | Streets Of Fire",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Ray Parker Jr.",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "funk",
+      "pop",
+      "soundtrack"
+    ],
+    "primary_genre": "funk",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Ghostbusters | Greatest Hits",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Rockwell",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "synthpop",
+      "funk"
+    ],
+    "primary_genre": "synthpop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Somebody's Watching Me - Single Version | Somebody’s Watching Me",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Tyler, The Creator",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "hip hop",
+      "alternative hip hop"
+    ],
+    "primary_genre": "hip hop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: St. Chroma (feat. Daniel Caesar) | CHROMAKOPIA",
+    "status": "approved"
+  },
+  {
+    "artist_name": "3OH!3",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "electropop",
+      "pop rap"
+    ],
+    "primary_genre": "electropop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: My First Kiss (feat. Ke$ha) | Streets Of Gold",
+    "status": "approved"
+  },
+  {
+    "artist_name": "SHAED",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "electropop",
+      "indie pop"
+    ],
+    "primary_genre": "electropop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Trampoline (with ZAYN) | Melt (Deluxe)",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Dean Lewis",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "pop",
+      "singer-songwriter"
+    ],
+    "primary_genre": "pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: How Do I Say Goodbye | How Do I Say Goodbye",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Ceechynaa",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "hip hop",
+      "rap"
+    ],
+    "primary_genre": "hip hop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Last laugh | Last laugh",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Dove Cameron",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "pop",
+      "soundtrack"
+    ],
+    "primary_genre": "pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Girl Like Me | Girl Like Me",
+    "status": "approved"
+  },
+  {
+    "artist_name": "我杀猪了 (何浪Ciel)",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "c-pop",
+      "indie pop"
+    ],
+    "primary_genre": "c-pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: 快乐的扑满 | 快乐的扑满",
+    "status": "approved"
+  },
+  {
+    "artist_name": "S Club",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "pop",
+      "dance pop"
+    ],
+    "primary_genre": "pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Don't Stop Movin' | Sunshine",
+    "status": "approved"
+  },
+  {
+    "artist_name": "TheARTI$t",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "r&b",
+      "pop"
+    ],
+    "primary_genre": "r&b",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Love Outloud | ARTchives",
+    "status": "approved"
+  },
+  {
+    "artist_name": "HYBS",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "thai pop",
+      "indie pop"
+    ],
+    "primary_genre": "thai pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Ride | Making Steak",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Danna Paola",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "latin pop",
+      "pop"
+    ],
+    "primary_genre": "latin pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: PLATONIK | PLATONIK",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Mokita",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "pop",
+      "electronic"
+    ],
+    "primary_genre": "pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: With You | With You",
+    "status": "approved"
+  },
+  {
+    "artist_name": "ISMA",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "latin pop"
+    ],
+    "primary_genre": "latin pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Antes del Amanecer | Antes del Amanecer",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Jeak",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "electronic",
+      "dance"
+    ],
+    "primary_genre": "electronic",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Club Believer | Electronic Dance Music",
+    "status": "approved"
+  },
+  {
+    "artist_name": "David Kushner",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "pop",
+      "singer-songwriter"
+    ],
+    "primary_genre": "pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Daylight | Daylight",
+    "status": "approved"
+  },
+  {
+    "artist_name": "CeeLo Green",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "soul",
+      "r&b",
+      "pop"
+    ],
+    "primary_genre": "soul",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Fuck You | The Lady Killer",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Morgan Wade",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "country",
+      "singer-songwriter"
+    ],
+    "primary_genre": "country",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Halloween | Halloween",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Dwayne Johnson",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "soundtrack",
+      "musical theatre"
+    ],
+    "primary_genre": "soundtrack",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: You're Welcome | Moana",
+    "status": "approved"
+  },
+  {
+    "artist_name": "MEG MYERS",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "alternative rock",
+      "indie rock"
+    ],
+    "primary_genre": "alternative rock",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Desire | Sorry",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Nick Cave",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "soundtrack",
+      "show tunes"
+    ],
+    "primary_genre": "soundtrack",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Slap That Bass | Get Happy | What The World Needs Now Is Love - Music From The Motion Picture | Joker: Folie à Deux",
+    "status": "approved"
+  },
+  {
+    "artist_name": "HavinMotion",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "electronic",
+      "dance"
+    ],
+    "primary_genre": "electronic",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: déjà vu | 100 Day Run",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Maria Cururu",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "latin pop"
+    ],
+    "primary_genre": "latin pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Telephone | Telephone",
+    "status": "approved"
+  },
+  {
+    "artist_name": "章若楠",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "c-pop",
+      "soundtrack"
+    ],
+    "primary_genre": "c-pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: 一切的一切（电视剧《难哄》友情曲） | 电视剧《难哄》影视原声带·只喜欢你Love Moments",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Mark Wilkinson",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "singer-songwriter",
+      "folk"
+    ],
+    "primary_genre": "singer-songwriter",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: It Must Have Been Love | You and Me",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Em Beihold",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "pop",
+      "singer-songwriter"
+    ],
+    "primary_genre": "pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Numb Little Bug | Egg in the Backseat",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Joji",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "r&b",
+      "pop"
+    ],
+    "primary_genre": "r&b",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Glimpse of Us | Glimpse of Us ; Past Won't Leave My Bed | Past Won't Leave My Bed",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Julie and the Phantoms Cast",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "soundtrack",
+      "musical theatre",
+      "pop"
+    ],
+    "primary_genre": "soundtrack",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Stand Tall (feat. Madison Reyes, Charlie Gillespie, Owen Patrick Joyner & Jeremy Shada) | Julie and the Phantoms: Season 1 (From the Netflix Original Series)",
+    "status": "approved"
+  },
+  {
+    "artist_name": "The Drop Weekly",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "comedy"
+    ],
+    "primary_genre": "comedy",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Interstitial 1 | The Drop Weekly Interstitials",
+    "status": "approved"
+  },
+  {
+    "artist_name": "YOYO家族藝人",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "children's music",
+      "c-pop"
+    ],
+    "primary_genre": "children's music",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: 生日快快樂 | YoYo點點名12",
+    "status": "approved"
+  },
+  {
+    "artist_name": "The Cranberries",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "alternative rock",
+      "pop rock"
+    ],
+    "primary_genre": "alternative rock",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Linger | Everybody Else Is Doing It, So Why Can't We?",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Chris James",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "pop",
+      "singer-songwriter"
+    ],
+    "primary_genre": "pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: The Race | The Race",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Amel Music",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "folk pop",
+      "singer-songwriter"
+    ],
+    "primary_genre": "folk pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Snow Falling Outside My Window | Winter Knows My Heart (Soft Winter Acoustic Pop Vol.3)",
+    "status": "approved"
+  },
+  {
+    "artist_name": "VIVI",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "c-pop",
+      "children's music"
+    ],
+    "primary_genre": "c-pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: 开心往前飞 | 开心往前飞",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Bonnie Tyler",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "rock",
+      "pop rock"
+    ],
+    "primary_genre": "rock",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Total Eclipse of the Heart | The Very Best of Bonnie Tyler",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Karmin",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "pop",
+      "pop rap"
+    ],
+    "primary_genre": "pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Brokenhearted | Hello",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Andrew Gold",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "pop rock",
+      "holiday"
+    ],
+    "primary_genre": "pop rock",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Spooky, Scary Skeletons - Undead Tombstone Remix | Halloween Howls: Fun & Scary Music",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Mickey's Friends",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "children's music",
+      "holiday",
+      "soundtrack"
+    ],
+    "primary_genre": "children's music",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Jingle Bells (Vocal) | Disney Karaoke Series: Christmas Favorites",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Lola Young",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "soul",
+      "pop"
+    ],
+    "primary_genre": "soul",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: d£aler | d£aler",
+    "status": "approved"
+  },
+  {
+    "artist_name": "VERNON",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "k-pop",
+      "pop punk"
+    ],
+    "primary_genre": "k-pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Black Eye | Black Eye",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Dan Imhoff",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "pop"
+    ],
+    "primary_genre": "pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Water Under the Bridge | Water Under the Bridge",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Do Re Mi By AI",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "country",
+      "comedy"
+    ],
+    "primary_genre": "country",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: It Ain't The Size Of The Boat | It Ain't The Size Of The Boat",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Billy Ray Cyrus",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "country",
+      "country rock"
+    ],
+    "primary_genre": "country",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Back To Tennessee | Hannah Montana The Movie",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Zachary Dawes",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "score",
+      "soundtrack"
+    ],
+    "primary_genre": "score",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Laurel and Susannah Hug | The Summer I Turned Pretty: Season 1 (Amazon Original Series Soundtrack) ; Opening | The Summer I Turned Pretty: Season 1 (Amazon Original Series Soundtrack)",
+    "status": "approved"
+  },
+  {
+    "artist_name": "陳一發兒",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "c-pop",
+      "folk pop"
+    ],
+    "primary_genre": "c-pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: 童話鎮 | 童話鎮",
+    "status": "approved"
+  },
+  {
+    "artist_name": "赵海洋",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "classical piano",
+      "instrumental"
+    ],
+    "primary_genre": "classical piano",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: 日长天久 - 夜色钢琴曲 | 夜色钢琴曲",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Ally Brooke",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "pop",
+      "dance pop"
+    ],
+    "primary_genre": "pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Baby I'm Coming Home | Baby I'm Coming Home",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Bazzi",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "pop",
+      "r&b"
+    ],
+    "primary_genre": "pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: I.F.L.Y. | Soul Searching",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Cyn",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "pop",
+      "indie pop"
+    ],
+    "primary_genre": "pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: House With A View | House With A View",
+    "status": "approved"
+  },
+  {
+    "artist_name": "d4vd",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "indie pop",
+      "alternative r&b"
+    ],
+    "primary_genre": "indie pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Feel It - From The Original Series “Invincible” | Feel It",
+    "status": "approved"
+  },
+  {
+    "artist_name": "lovelytheband",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "indie pop",
+      "alternative rock"
+    ],
+    "primary_genre": "indie pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: nice to know you | nice to know you",
+    "status": "approved"
+  },
+  {
+    "artist_name": "MØ",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "electropop",
+      "dance pop"
+    ],
+    "primary_genre": "electropop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Final Song | Final Song",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Sekou",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "r&b",
+      "soul"
+    ],
+    "primary_genre": "r&b",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Catching Bodies | Catching Bodies",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Sparklingjupp",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "pop"
+    ],
+    "primary_genre": "pop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Sauflegende | Sauflegende",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Timbaland",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "hip hop",
+      "r&b"
+    ],
+    "primary_genre": "hip hop",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: If We Ever Meet Again (Featuring Katy Perry) | Shock Value II",
+    "status": "approved"
+  },
+  {
+    "artist_name": "Velvet Road Collective",
+    "spotify_artist_id": null,
+    "source": "curated_seed",
+    "source_key": "missing_completion_2026-07-05_v1",
+    "genres": [
+      "country",
+      "folk"
+    ],
+    "primary_genre": "country",
+    "language": null,
+    "region": null,
+    "confidence": 0.76,
+    "evidence_url": null,
+    "evidence_summary": "Curated missing-genre fill (known_public_or_manual_context); local top context: Running Wild | Running Wild",
+    "status": "approved"
+  }
+]

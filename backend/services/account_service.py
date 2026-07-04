@@ -9,6 +9,10 @@ from pathlib import Path
 
 from backend.core.cache import ttl_cached
 from backend.core.cache_manager import register_ttl
+from backend.domains.metadata.artist_genres import (
+    canonicalize_genres_for_statistics,
+    resolve_artist_genres_map,
+)
 
 ACCOUNT_SUMMARY_CACHE_TTL_SECONDS = 300
 
@@ -55,7 +59,6 @@ def get_collection_insights(conn: sqlite3.Connection) -> dict:
     性能优化：核心 saved_tracks×plays 交叉查询只执行一次，
     所有衍生计算（人格、生命周期、化学反应等）均在 Python 内存中完成。
     """
-    import json
     import re
 
     import jieba
@@ -1147,19 +1150,25 @@ def get_collection_insights(conn: sqlite3.Connection) -> dict:
 
     # ── 流派变迁 ────────────────────────────────────────────────────────
     cur = conn.execute("""
-        SELECT SUBSTR(st.added_date, 1, 4) as yr, sam.genres, COUNT(*) as cnt
+        SELECT SUBSTR(st.added_date, 1, 4) as yr,
+               st.artist_name,
+               COUNT(*) as cnt
         FROM saved_tracks st
-        JOIN spotify_artist_meta sam ON sam.artist_name = st.artist_name
-        WHERE sam.genres IS NOT NULL AND sam.genres != ''
+        WHERE st.artist_name IS NOT NULL AND st.artist_name != ''
           AND st.added_date IS NOT NULL AND st.added_date != ''
-        GROUP BY yr, sam.genres
+        GROUP BY yr, st.artist_name
         ORDER BY yr, cnt DESC
     """)
+    saved_artist_rows = cur.fetchall()
+    resolved_genres = resolve_artist_genres_map(conn, [r["artist_name"] for r in saved_artist_rows])
     genre_by_year: dict[str, Counter] = {}
-    for yr, genres_json, cnt in cur.fetchall():
+    for yr, artist_name, cnt in saved_artist_rows:
+        genres = resolved_genres.get(artist_name)
+        if not genres or not genres.genres:
+            continue
         if yr not in genre_by_year:
             genre_by_year[yr] = Counter()
-        for g in json.loads(genres_json):
+        for g in canonicalize_genres_for_statistics(genres.genres):
             genre_by_year[yr][g] += cnt
     genre_migration: dict[str, list[str]] = {}
     for yr in sorted(genre_by_year.keys()):

@@ -457,7 +457,9 @@ def _build_structured_longform_repair(
         (
             f"流派层面，{genre_leader or '主要流派'}"
             f"{f'约占 {genre_share:.1f}%' if isinstance(genre_share, (int, float)) else ''}，"
-            "但 Spotify 的流派标签可能重叠，因此它更适合作为方向线索，而不是互斥分类。"
+            "但 Spotify 流派标签可能重叠，canonical genre 也只是统计标签，"
+            "可能分属 style、scene、context 或 role，并可能由少数高播放艺人驱动，"
+            "因此它更适合作为方向线索，而不是互斥分类。"
             "华语、区域流行和其他流派共同出现，说明探索不是完全随机，而是在熟悉语境与新鲜入口之间移动。"
             f"{highlight.get('date') or '最活跃日'} 的 {_fmt_int(highlight.get('plays'))} 次也说明这一点："
             f"{highlight_guidance or '这更像多曲目活跃，而不是单曲循环'}。"
@@ -578,7 +580,11 @@ def _validator_data_from_context(context: dict[str, Any]) -> dict[str, Any]:
         "new_artists": discovery.get("new_artists") or context.get("new_artists") or [],
         "genre_summary": {
             "top_genres": genre.get("top_genres") or context.get("top_genres") or [],
-            "caveat": genre.get("caveat") or "Spotify genre 标签可能重叠。",
+            "caveat": genre.get("caveat")
+            or (
+                "canonical genre 是统计标签，可能重叠且可能分属 style/scene/context/role，"
+                "百分比不互斥；高占比标签也可能由少数艺人或某个来源驱动。"
+            ),
         },
         "billboard_year_end": context.get("personal_billboard_year_end") or {},
         "most_active_day": highlight,

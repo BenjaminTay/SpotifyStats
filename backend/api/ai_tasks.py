@@ -12,6 +12,7 @@ from backend.models.ai_tasks import (
     AiTaskStatusResponse,
     AlbumEnrichmentTaskRequest,
     ArtistEnrichmentTaskRequest,
+    ArtistGenreBackfillTaskRequest,
     ChatAgentTaskRequest,
     ReportTaskRequest,
 )
@@ -21,6 +22,7 @@ from backend.services.ai_task_service import (
     get_task_events,
     start_album_enrichment_task,
     start_artist_enrichment_task,
+    start_artist_genre_backfill_task,
     start_chat_agent_task,
     start_report_task,
 )
@@ -81,6 +83,15 @@ def create_artist_enrichment_task(body: ArtistEnrichmentTaskRequest):
 )
 def create_album_enrichment_task(body: AlbumEnrichmentTaskRequest):
     return start_album_enrichment_task(body.model_dump())
+
+
+@router.post(
+    "/metadata/artist-genres",
+    response_model=AiTaskCreateResponse,
+    response_model_exclude_none=True,
+)
+def create_artist_genre_backfill_task(body: ArtistGenreBackfillTaskRequest):
+    return start_artist_genre_backfill_task(body.model_dump())
 
 
 @router.get(

@@ -1,11 +1,10 @@
 """Billboard entity versus comparison endpoints."""
 
-import json
-
 import pandas as pd
 
 from backend.core.db import fan_out_weekly_for_artists, get_db
 from backend.domains.billboard.chart_compute import compute_billboard_data
+from backend.domains.metadata.artist_genres import resolve_artist_genres
 
 
 def _vs_spotify_track_meta(track_id):
@@ -48,26 +47,22 @@ def _vs_spotify_album_meta(album_name, artist_name):
 def _vs_spotify_artist_meta(artist_name):
     """Fetch cover_url, popularity and genres for an artist."""
     conn = get_db()
-    row = conn.execute(
-        """SELECT popularity, followers, genres, image_url
-           FROM spotify_artist_meta
-           WHERE artist_name = ? LIMIT 1""",
-        (artist_name,),
-    ).fetchone()
-    conn.close()
-    if not row:
-        return None, None, None
+    try:
+        row = conn.execute(
+            """SELECT popularity, followers, image_url
+               FROM spotify_artist_meta
+               WHERE artist_name = ? LIMIT 1""",
+            (artist_name,),
+        ).fetchone()
+        resolved = resolve_artist_genres(conn, artist_name)
+    finally:
+        conn.close()
     pop = int(row["popularity"]) if row and row["popularity"] is not None else None
-    genres = None
-    if row and row["genres"]:
-        try:
-            parsed = json.loads(row["genres"])
-            if isinstance(parsed, list) and parsed:
-                genres = parsed
-        except (json.JSONDecodeError, TypeError):
-            pass
+    genres = resolved.genres or None
     cover = row["image_url"] if row and row["image_url"] else None
-    return pop, genres, cover
+    genre_source = resolved.source if resolved.genres else None
+    genre_confidence = resolved.confidence if resolved.genres else None
+    return pop, genres, cover, genre_source, genre_confidence
 
 
 def _get_ps_rank(power_scores_df, key_col, key_val, artist_val=None):
@@ -335,7 +330,13 @@ def get_versus_artist(
         total_no1_album_weeks = int((artist_albums["rank"] == 1).sum())
 
         # Spotify metadata
-        artist_pop, artist_genres, artist_cover = _vs_spotify_artist_meta(artist_name)
+        (
+            artist_pop,
+            artist_genres,
+            artist_cover,
+            artist_genre_source,
+            artist_genre_confidence,
+        ) = _vs_spotify_artist_meta(artist_name)
 
         # Sum of album power scores
         album_ps_sum = 0
@@ -351,6 +352,8 @@ def get_versus_artist(
             "cover_url": artist_cover,
             "popularity": artist_pop,
             "genres": artist_genres,
+            "genre_source": artist_genre_source,
+            "genre_confidence": artist_genre_confidence,
             "rank_history": [
                 {
                     "week": str(r["billboard_week"]),
@@ -744,7 +747,13 @@ def get_versus_artist_multi(
         num_no1_albums = int(artist_albums[artist_albums["rank"] == 1]["album_name"].nunique())
         total_no1_album_weeks = int((artist_albums["rank"] == 1).sum())
 
-        artist_pop, artist_genres, artist_cover = _vs_spotify_artist_meta(artist_name)
+        (
+            artist_pop,
+            artist_genres,
+            artist_cover,
+            artist_genre_source,
+            artist_genre_confidence,
+        ) = _vs_spotify_artist_meta(artist_name)
 
         # Track-level global rankings for this artist
         trmetrics = _lookup_artist_track_metrics(artist_track_ranks, artist_name)
@@ -765,6 +774,8 @@ def get_versus_artist_multi(
                 "cover_url": artist_cover,
                 "popularity": artist_pop,
                 "genres": artist_genres,
+                "genre_source": artist_genre_source,
+                "genre_confidence": artist_genre_confidence,
                 "rank_history": [
                     {
                         "week": str(r["billboard_week"]),

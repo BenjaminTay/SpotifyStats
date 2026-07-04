@@ -134,3 +134,10 @@ class ArtistEnrichmentTaskRequest(BaseModel):
 class AlbumEnrichmentTaskRequest(BaseModel):
     album_name: str = Field(..., min_length=1, max_length=300)
     artist_name: str = Field(..., min_length=1, max_length=300)
+
+
+class ArtistGenreBackfillTaskRequest(BaseModel):
+    limit: int = Field(default=50, ge=1, le=500)
+    min_hours: float = Field(default=1.0, ge=0)
+    include_ai: bool = True
+    approve_high_confidence_external: bool = True

@@ -8,6 +8,7 @@ from backend.api.ai_insights import router as ai_insights_router
 from backend.api.ai_tasks import router as ai_tasks_router
 from backend.api.analysis import router as analysis_router
 from backend.api.artist_deep import router as artist_deep_router
+from backend.api.artist_genre_metadata import router as artist_genre_metadata_router
 from backend.api.behavior import router as behavior_router
 from backend.api.billboard import router as billboard_router
 from backend.api.chat import router as chat_router
@@ -59,6 +60,7 @@ api_router.include_router(music_router)
 api_router.include_router(account_router)
 api_router.include_router(ai_insights_router)
 api_router.include_router(ai_tasks_router)
+api_router.include_router(artist_genre_metadata_router)
 api_router.include_router(chat_router)
 api_router.include_router(admin_router)
 api_router.include_router(jobs_router)

@@ -105,7 +105,15 @@ def _wrapped_payload() -> dict[str, Any]:
                 {"name": "其他流派", "play_share": 19.1},
                 {"name": "mandopop", "play_share": 14.4},
                 {"name": "c-pop", "play_share": 14.4},
-            ]
+            ],
+            "coverage": {
+                "known_pct": 80.9,
+                "unknown_pct": 19.1,
+                "known_hours": 420.0,
+                "unknown_hours": 99.2,
+                "source_hours": {"spotify": 310.0, "curated_seed": 110.0},
+            },
+            "caveat": "Spotify 与本地补全流派标签可能重叠，百分比不互斥。",
         },
         "time_story": {"late_night": {"ratio": 12.0}},
         "discovery_returns": {
@@ -276,6 +284,9 @@ def test_gather_yearly_data_normalizes_personality_and_genres(
     assert data["genre_summary"]["top_genres"][0] == {"name": "其他流派", "share": 19.1}
     assert data["genre_summary"]["has_other_bucket"] is True
     assert "可能重叠" in data["genre_summary"]["caveat"]
+    assert data["genre_summary"]["coverage"]["known_pct"] == 80.9
+    assert data["genre_summary"]["coverage"]["unknown_pct"] == 19.1
+    assert data["genre_summary"]["source_hours"] == {"spotify": 310.0, "curated_seed": 110.0}
 
 
 def test_gather_yearly_data_includes_albums_billboard_and_editorial_brief(

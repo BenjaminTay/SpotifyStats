@@ -178,3 +178,80 @@ def test_release_groups_support_scope_and_parent(empty_db):
             pass
     cols = {row[1] for row in empty_db.execute("PRAGMA table_info(release_groups)").fetchall()}
     assert {"scope", "parent_group_id"} <= cols
+
+
+def test_migration_023_adds_artist_genre_resolution_tables(tmp_path, monkeypatch):
+    from backend.core import db as db_mod
+    from backend.core import migrations
+
+    db_path = tmp_path / "spotify_stats.db"
+    monkeypatch.setattr(db_mod, "DB_PATH", str(db_path))
+
+    db_mod.init_db()
+    migrations.run_migrations()
+
+    conn = db_mod.get_db(readonly=True)
+    try:
+        tables = {
+            row["name"]
+            for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
+        }
+        assert "artist_genre_sources" in tables
+        assert "artist_genre_overrides" in tables
+        assert "artist_genre_review_queue" in tables
+
+        source_columns = {
+            row["name"]
+            for row in conn.execute("PRAGMA table_info(artist_genre_sources)").fetchall()
+        }
+        assert {
+            "artist_name",
+            "source",
+            "normalized_genres_json",
+            "confidence",
+            "status",
+            "evidence_summary",
+        } <= source_columns
+
+        indexes = {
+            row["name"]
+            for row in conn.execute("SELECT name FROM sqlite_master WHERE type='index'").fetchall()
+        }
+        assert "idx_artist_genre_sources_artist" in indexes
+    finally:
+        conn.close()
+
+
+def test_migrate_023_upgrades_existing_database_without_fresh_schema(empty_db):
+    """Migration 23 itself creates artist genre resolution tables."""
+    from backend.core import migrations
+
+    migrations.migrate_023(empty_db)
+
+    tables = {
+        row[0]
+        for row in empty_db.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
+        ).fetchall()
+    }
+    assert "artist_genre_sources" in tables
+    assert "artist_genre_overrides" in tables
+    assert "artist_genre_review_queue" in tables
+
+    source_columns = {
+        row[1] for row in empty_db.execute("PRAGMA table_info(artist_genre_sources)").fetchall()
+    }
+    assert {
+        "artist_name",
+        "spotify_artist_id",
+        "source",
+        "source_key",
+        "normalized_genres_json",
+        "confidence",
+        "status",
+    } <= source_columns
+
+    indexes = {
+        row[1] for row in empty_db.execute("PRAGMA index_list(artist_genre_sources)").fetchall()
+    }
+    assert "idx_artist_genre_sources_artist" in indexes

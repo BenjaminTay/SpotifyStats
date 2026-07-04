@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import sqlite3
 
 import pandas as pd
@@ -14,6 +13,7 @@ from backend.core.db import (
 )
 from backend.core.json_helpers import df_to_json
 from backend.domains.billboard.chart_compute import compute_billboard_data
+from backend.domains.metadata.artist_genres import resolve_artist_genres
 
 
 def _compute_change_column(hist_df):
@@ -253,30 +253,27 @@ def _attach_track_version_group(conn, track_id, meta, merge_level=2):
 def _get_artist_spotify_meta(artist_name):
     """Fetch Spotify metadata for an artist by name."""
     conn = get_db()
-    row = conn.execute(
-        """SELECT popularity, followers, genres
-           FROM spotify_artist_meta
-           WHERE artist_name = ?
-           LIMIT 1""",
-        (artist_name,),
-    ).fetchone()
-    conn.close()
-
-    if not row:
-        return None
+    try:
+        row = conn.execute(
+            """SELECT popularity, followers
+               FROM spotify_artist_meta
+               WHERE artist_name = ?
+               LIMIT 1""",
+            (artist_name,),
+        ).fetchone()
+        resolved = resolve_artist_genres(conn, artist_name)
+    finally:
+        conn.close()
 
     meta = {}
-    if row["popularity"] is not None:
+    if row and row["popularity"] is not None:
         meta["popularity"] = row["popularity"]
-    if row["followers"] is not None:
+    if row and row["followers"] is not None:
         meta["followers"] = row["followers"]
-    if row["genres"]:
-        try:
-            parsed = json.loads(row["genres"])
-            if isinstance(parsed, list) and parsed:
-                meta["genres"] = parsed
-        except (json.JSONDecodeError, TypeError):
-            pass
+    if resolved.genres:
+        meta["genres"] = resolved.genres
+        meta["genre_source"] = resolved.source
+        meta["genre_confidence"] = resolved.confidence
 
     return meta if meta else None
 

@@ -11,6 +11,7 @@ import { SpotifyConnectionSection } from '@/features/settings/components/Spotify
 import { DataFilteringSection } from '@/features/settings/components/DataFilteringSection'
 import { BillboardParamsSection } from '@/features/settings/components/BillboardParamsSection'
 import { DataImportSection } from '@/features/settings/components/DataImportSection'
+import { GenreDataHealthSection } from '@/features/settings/components/GenreDataHealthSection'
 
 const VersionMergeSection = lazy(() =>
   import('@/features/settings/components/VersionMergeSection').then(
@@ -198,7 +199,10 @@ export function SettingsPage() {
         <VersionMergeSection />
       </Suspense>
 
-      {/* Section 6: LLM Translation */}
+      {/* Section 6: Genre Data Health */}
+      <GenreDataHealthSection />
+
+      {/* Section 7: LLM Translation */}
       <Suspense
         fallback={
           <div className="rounded-[16px] border border-border bg-card p-6">
@@ -209,22 +213,22 @@ export function SettingsPage() {
         }
       >
         <LLMTranslationSection
-        settings={{
-          llm_enabled: settings.llm_enabled,
-          llm_provider: settings.llm_provider,
-          llm_model: settings.llm_model,
-        }}
-        onUpdate={updateSettings}
-        onClearCache={clearTranslationCache}
-        hasLlmKey={settings.has_llm_key}
-        activeProfileId={settings.llm_active_profile_id}
-        activeProfileName={settings.llm_active_profile_name}
-        onFetchProfiles={fetchProfiles}
-        onApplyProfile={applyProfile}
-        onCreateProfile={createProfile}
-        onDeleteProfile={deleteProfile}
-        onRefetch={refetch}
-      />
+          settings={{
+            llm_enabled: settings.llm_enabled,
+            llm_provider: settings.llm_provider,
+            llm_model: settings.llm_model,
+          }}
+          onUpdate={updateSettings}
+          onClearCache={clearTranslationCache}
+          hasLlmKey={settings.has_llm_key}
+          activeProfileId={settings.llm_active_profile_id}
+          activeProfileName={settings.llm_active_profile_name}
+          onFetchProfiles={fetchProfiles}
+          onApplyProfile={applyProfile}
+          onCreateProfile={createProfile}
+          onDeleteProfile={deleteProfile}
+          onRefetch={refetch}
+        />
       </Suspense>
     </div>
   )

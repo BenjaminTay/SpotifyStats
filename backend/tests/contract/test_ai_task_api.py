@@ -279,6 +279,7 @@ def test_ai_task_routes_declare_response_models():
         ("POST", "/api/ai/tasks/chat"),
         ("POST", "/api/ai/tasks/enrichment/artist"),
         ("POST", "/api/ai/tasks/enrichment/album"),
+        ("POST", "/api/ai/tasks/metadata/artist-genres"),
         ("GET", "/api/ai/tasks/{task_id}"),
         ("GET", "/api/ai/tasks/{task_id}/events"),
         ("POST", "/api/ai/tasks/{task_id}/cancel"),

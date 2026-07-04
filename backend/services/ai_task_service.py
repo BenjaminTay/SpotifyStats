@@ -325,6 +325,18 @@ def start_album_enrichment_task(request: dict[str, Any]) -> dict[str, Any]:
     )
 
 
+def start_artist_genre_backfill_task(request: dict[str, Any]) -> dict[str, Any]:
+    from backend.services.artist_genre_backfill_service import run_artist_genre_backfill_task
+
+    return create_task(
+        task_type="artist_genre_backfill",
+        stage="selecting_artists",
+        message="准备补全艺人流派标签",
+        request=request,
+        handler=run_artist_genre_backfill_task,
+    )
+
+
 def _set_task_stage(
     repo: AiTaskRepository,
     *,

@@ -212,18 +212,44 @@ def summarize_personality(personality: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def summarize_genres(items: list[dict[str, Any]], limit: int = 5) -> dict[str, Any]:
+def summarize_genres(
+    items: list[dict[str, Any]] | dict[str, Any], limit: int = 5
+) -> dict[str, Any]:
+    coverage = None
+    source_hours = None
+    caveat = None
+    if isinstance(items, dict):
+        coverage = items.get("coverage") if isinstance(items.get("coverage"), dict) else None
+        if coverage:
+            source_hours = (
+                coverage.get("source_hours")
+                if isinstance(coverage.get("source_hours"), dict)
+                else None
+            )
+        caveat = str(items.get("caveat") or "").strip() or None
+        genre_items = items.get("top_genres") if isinstance(items.get("top_genres"), list) else []
+    else:
+        genre_items = items
     top_genres = []
-    for item in items[:limit]:
+    for item in genre_items[:limit]:
         name = str(item.get("name") or "")
         if not name:
             continue
         top_genres.append({"name": name, "share": round(float(item.get("play_share") or 0), 1)})
-    return {
+    summary = {
         "top_genres": top_genres,
         "has_other_bucket": any(item["name"] == "其他流派" for item in top_genres),
-        "caveat": "Spotify genre 标签可能重叠，百分比不应被解释为互斥类别。",
+        "caveat": caveat
+        or (
+            "canonical genre 是统计标签，可能重叠且可能分属 style/scene/context/role，"
+            "百分比不互斥；高占比标签也可能由少数艺人或某个来源驱动。"
+        ),
     }
+    if coverage:
+        summary["coverage"] = coverage
+    if source_hours:
+        summary["source_hours"] = source_hours
+    return summary
 
 
 def summarize_highlight_strength(
@@ -349,7 +375,7 @@ def build_writing_constraints(reporting_period: dict[str, Any]) -> list[str]:
         "所有结论必须基于 DATA，不要编造天气、失眠、告别、人生转折等未提供场景。",
         "如果实体名称存在，必须优先写出具体艺人名和歌曲名。",
         "解释人格分数时必须使用 personality_summary.top_dimensions 中同一行的 label 和 score。",
-        "解释流派时必须保留 genre_summary.caveat，不要把 genre 百分比写成互斥类别。",
+        "解释流派时必须保留 genre_summary.caveat，不要把 genre 百分比写成互斥类别；如果 caveat 提到少数艺人或来源驱动，必须保守表述。",
     ]
     if reporting_period.get("is_partial_year"):
         constraints.extend(

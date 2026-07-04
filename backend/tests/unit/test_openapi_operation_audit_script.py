@@ -70,6 +70,20 @@ def test_openapi_operation_audit_records_evidence_for_high_risk_operations():
         "test_ai_enrichment_tasks.py"
         in operations[("POST", "/api/ai/tasks/enrichment/album")].evidence
     )
+    assert operations[("POST", "/api/ai/tasks/metadata/artist-genres")].category == (
+        "targeted_contract"
+    )
+    assert (
+        "test_artist_genre_backfill_task.py"
+        in operations[("POST", "/api/ai/tasks/metadata/artist-genres")].evidence
+    )
+    assert operations[("GET", "/api/metadata/artist-genres/taxonomy")].category == (
+        "targeted_contract"
+    )
+    assert (
+        "test_artist_genre_metadata_api.py"
+        in operations[("GET", "/api/metadata/artist-genres/taxonomy")].evidence
+    )
     assert operations[("POST", "/api/ai/tasks/{task_id}/cancel")].category == ("targeted_contract")
     assert "test_ai_task_api.py" in operations[("POST", "/api/ai/tasks/{task_id}/cancel")].evidence
     assert operations[("POST", "/api/version-merge/apply")].category == (

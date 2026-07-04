@@ -6,6 +6,37 @@ import { DataFilteringSection } from '@/features/settings/components/DataFilteri
 import { ImportProgressCard } from '@/features/settings/components/SettingsHelpers'
 
 describe('Settings sections', () => {
+  it('uses page-level numbering for statistical settings sections', () => {
+    render(
+      <>
+        <DataFilteringSection
+          settings={{ min_ms: 30000, music_only: true, merge_enabled: true }}
+          onUpdate={vi.fn()}
+          onRequiresRebuild={vi.fn()}
+          chineseStyle="original"
+          onChangeChineseStyle={vi.fn()}
+        />
+        <BillboardParamsSection
+          settings={{
+            bb_top_n: 30,
+            bb_album_top_n: 20,
+            bb_artist_top_n: 20,
+            bb_week_start_dow: 4,
+            bb_week_start_hour: 0,
+            include_compilations: false,
+          }}
+          onUpdate={vi.fn()}
+          onRequiresRebuild={vi.fn()}
+        />
+      </>,
+    )
+
+    expect(screen.getByText('03 · 数据与显示')).toBeInTheDocument()
+    expect(screen.getByText('04 · 榜单参数')).toBeInTheDocument()
+    expect(screen.queryByText('01 · 数据与显示')).not.toBeInTheDocument()
+    expect(screen.queryByText('02 · 榜单参数')).not.toBeInTheDocument()
+  })
+
   it('renders data filtering controls without internal rebuild button', () => {
     render(
       <DataFilteringSection

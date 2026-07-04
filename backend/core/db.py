@@ -343,6 +343,51 @@ CREATE TABLE IF NOT EXISTS spotify_artist_meta (
 
 CREATE INDEX IF NOT EXISTS idx_spotify_artist_meta_name ON spotify_artist_meta(artist_name);
 
+CREATE TABLE IF NOT EXISTS artist_genre_sources (
+    source_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    artist_name TEXT NOT NULL,
+    spotify_artist_id TEXT,
+    source TEXT NOT NULL,
+    source_key TEXT NOT NULL,
+    raw_genres_json TEXT,
+    normalized_genres_json TEXT NOT NULL,
+    primary_genre TEXT,
+    language TEXT,
+    region TEXT,
+    confidence REAL NOT NULL DEFAULT 0.0,
+    evidence_url TEXT,
+    evidence_summary TEXT,
+    status TEXT NOT NULL DEFAULT 'approved',
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(artist_name, source, source_key)
+);
+
+CREATE INDEX IF NOT EXISTS idx_artist_genre_sources_artist
+ON artist_genre_sources(artist_name, status, confidence);
+
+CREATE TABLE IF NOT EXISTS artist_genre_overrides (
+    artist_name TEXT PRIMARY KEY,
+    normalized_genres_json TEXT NOT NULL,
+    primary_genre TEXT,
+    language TEXT,
+    region TEXT,
+    confidence REAL NOT NULL DEFAULT 1.0,
+    note TEXT,
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS artist_genre_review_queue (
+    review_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    artist_name TEXT NOT NULL,
+    play_hours REAL NOT NULL DEFAULT 0,
+    reason TEXT NOT NULL,
+    suggested_source_id INTEGER REFERENCES artist_genre_sources(source_id),
+    status TEXT NOT NULL DEFAULT 'open',
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 -- ── Genius Lyrics Cache ──────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS track_lyrics (
     track_id       INTEGER PRIMARY KEY,

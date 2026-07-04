@@ -107,3 +107,51 @@ def test_repository_creates_run_event_and_tool_call():
     assert tools[0]["source_range"] == "2026-01-01 to 2026-12-31"
     assert "今年我听得最多" in stored["request_json"]
     assert "\\u4eca" not in stored["request_json"]
+
+
+def test_repository_skips_conditional_tool_call_after_terminal_status():
+    from backend.domains.ai_tasks.repository import AiTaskRepository
+
+    conn = make_conn()
+    repo = AiTaskRepository(conn)
+
+    repo.create_run(
+        task_id="task-done",
+        task_type="ai_chat_agent",
+        status="done",
+        stage="done",
+        message="完成",
+    )
+    inserted = repo.add_tool_call_if_not_terminal(
+        task_id="task-done",
+        tool_name="analysis_charts",
+        status="done",
+        params_summary="late trace",
+    )
+
+    assert inserted is False
+    assert repo.list_tool_calls("task-done") == []
+
+
+def test_repository_writes_conditional_tool_call_for_active_task():
+    from backend.domains.ai_tasks.repository import AiTaskRepository
+
+    conn = make_conn()
+    repo = AiTaskRepository(conn)
+
+    repo.create_run(
+        task_id="task-running",
+        task_type="ai_chat_agent",
+        status="running",
+        stage="collecting",
+        message="分析中",
+    )
+    inserted = repo.add_tool_call_if_not_terminal(
+        task_id="task-running",
+        tool_name="analysis_charts",
+        status="done",
+        params_summary="active trace",
+    )
+
+    assert inserted is True
+    assert repo.list_tool_calls("task-running")[0]["params_summary"] == "active trace"
