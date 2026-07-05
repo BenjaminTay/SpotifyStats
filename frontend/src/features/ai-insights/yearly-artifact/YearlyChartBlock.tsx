@@ -179,7 +179,6 @@ export function YearlyChartBlock({
 }) {
   if (!spec) return null
 
-  const insight = cleanText(spec.insight)
   const fallback = cleanText(spec.fallback) ?? '图表数据不足'
   const observations = chartObservations(chartData)
 
@@ -187,7 +186,6 @@ export function YearlyChartBlock({
     <figure className="min-w-0 rounded-[8px] border border-border bg-card/35 p-4">
       <figcaption>
         <p className="break-words font-serif text-[18px] font-semibold text-foreground">{spec.title}</p>
-        {insight && <p className="mt-1 text-[12px] leading-relaxed text-muted-foreground">{insight}</p>}
       </figcaption>
       <div className="mt-4 min-h-[160px] min-w-0 overflow-hidden rounded-[6px] bg-muted/20 p-4">
         {chartData ? <ChartBody data={chartData} spec={spec} /> : (

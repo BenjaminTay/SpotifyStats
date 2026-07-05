@@ -281,6 +281,14 @@ export function AiReportsPanel({ settings, onFollowUp }: AiReportsPanelProps) {
     if (!isNaN(parsedYear)) setYearForMonthly(parsedYear)
   }
 
+  const handleReportTypeChange = (type: ReportType) => {
+    if (type === reportType) return
+    reportPayloadKeyRef.current = null
+    setActiveReportTaskId(null)
+    setCurrentReportTask(null)
+    setReportType(type)
+  }
+
   const handleReportRetry = useCallback(() => {
     if (currentReportTask?.mode === 'cache' && currentReportTask.error) {
       void startCacheCheck()
@@ -353,7 +361,8 @@ export function AiReportsPanel({ settings, onFollowUp }: AiReportsPanelProps) {
           {(Object.keys(REPORT_LABELS) as ReportType[]).map((type) => (
             <button
               key={type}
-              onClick={() => setReportType(type)}
+              onClick={() => handleReportTypeChange(type)}
+              aria-pressed={reportType === type}
               className={`rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.8px] transition-all ${
                 reportType === type
                   ? 'bg-accent-foreground text-card'

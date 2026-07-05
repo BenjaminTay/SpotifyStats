@@ -566,4 +566,91 @@ describe('AiInsightsExperience report task flow', () => {
       max_merge_gap_minutes: null,
     })
   })
+
+  it('switches to yearly reports without keeping weekly copy or payload', async () => {
+    const client = createClient()
+    mockCommonGet()
+    const postSpy = vi.spyOn(api, 'post').mockImplementation((path: string, body?: unknown) => {
+      if (path !== '/ai/tasks/report') {
+        return Promise.reject(new Error(`unexpected POST ${path}`))
+      }
+      const payload = body as { action?: string; report_type?: string; year?: number }
+      if (payload.action === 'cache_only' && payload.report_type === 'weekly') {
+        return Promise.resolve({
+          task_id: 'task-weekly-cache',
+          status: 'done',
+          stage: 'done',
+          progress_pct: 1,
+          message: '缓存检查完成',
+          result: {
+            cached: true,
+            report: '缓存命中的周报',
+            cached_at: '2026-06-28T00:00:00',
+            entities: { artists: [], tracks: [] },
+            needs_generation: false,
+          },
+        })
+      }
+      if (payload.action === 'cache_only' && payload.report_type === 'yearly') {
+        return Promise.resolve({
+          task_id: 'task-yearly-cache',
+          status: 'done',
+          stage: 'done',
+          progress_pct: 1,
+          message: '缓存检查完成',
+          result: {
+            cached: false,
+            report: null,
+            cached_at: null,
+            entities: null,
+            needs_generation: true,
+          },
+        })
+      }
+      if (payload.action === 'generate' && payload.report_type === 'yearly') {
+        return Promise.resolve({
+          task_id: 'task-generate',
+          status: 'queued',
+          stage: 'checking_cache',
+          progress_pct: 0,
+          message: '准备生成 AI 报告',
+          result: null,
+        })
+      }
+      return Promise.reject(new Error(`unexpected payload ${JSON.stringify(payload)}`))
+    })
+
+    render(<AiInsightsExperience />, { wrapper: wrapperFor(client) })
+
+    expect(await screen.findByText('缓存命中的周报')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '周报', pressed: true })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '年度叙事' }))
+
+    expect(screen.getByRole('button', { name: '年度叙事', pressed: true })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '周报', pressed: false })).toBeInTheDocument()
+    expect(await screen.findByText('将年度听歌总结转化为音乐故事')).toBeInTheDocument()
+    await waitFor(() => {
+      expect(postSpy).toHaveBeenLastCalledWith('/ai/tasks/report', expect.objectContaining({
+        report_type: 'yearly',
+        action: 'cache_only',
+        report_mode: 'visual_yearly_artifact',
+        writer_pipeline: 'editorial_agent_v1',
+        year: 2026,
+      }))
+    })
+    expect(screen.queryByText('缓存命中的周报')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: '生成报告' }))
+
+    await waitFor(() => {
+      expect(postSpy).toHaveBeenLastCalledWith('/ai/tasks/report', expect.objectContaining({
+        report_type: 'yearly',
+        action: 'generate',
+        force: true,
+        report_mode: 'visual_yearly_artifact',
+        writer_pipeline: 'editorial_agent_v1',
+        year: 2026,
+      }))
+    })
+  })
 })

@@ -282,6 +282,43 @@ describe('VisualYearlyReport', () => {
     expect(screen.queryByText('新发现时间线数据不足')).not.toBeInTheDocument()
   })
 
+  it('renders each chart only once even when multiple sections reference it', () => {
+    const value = artifact()
+    value.sections = [
+      {
+        ...value.sections[0],
+        id: 'opening',
+        heading: '开篇',
+        chart_refs: ['listening_calendar'],
+      },
+      {
+        ...value.sections[0],
+        id: 'stable_return',
+        heading: '稳定回访',
+        chart_refs: ['listening_calendar'],
+      },
+    ]
+
+    render(<VisualYearlyReport artifact={value} />)
+
+    expect(screen.getAllByText('音乐铺满这一年')).toHaveLength(1)
+  })
+
+  it('does not render chart spec insight as user-facing copy', () => {
+    const value = artifact()
+    value.chart_specs[0].insight = '展示播放密度并解释当前统计期的陪伴关系。'
+    value.chart_data.listening_calendar = {
+      days: [],
+      active_days: 364,
+      observations: ['活跃 364 天，说明音乐几乎每天都在场。'],
+    }
+
+    render(<VisualYearlyReport artifact={value} />)
+
+    expect(screen.queryByText('展示播放密度并解释当前统计期的陪伴关系。')).not.toBeInTheDocument()
+    expect(screen.getByText('活跃 364 天，说明音乐几乎每天都在场。')).toBeInTheDocument()
+  })
+
   it('ReportCard renders visual artifact instead of markdown when artifact exists', () => {
     render(
       <ReportCard
@@ -361,6 +398,43 @@ describe('VisualYearlyReport', () => {
     expect(screen.getByText('事实核对通过')).toBeInTheDocument()
     expect(screen.getByText('口味评分 31')).toBeInTheDocument()
     expect(screen.queryByText(/yearly_editorial_agent_v1/)).not.toBeInTheDocument()
+  })
+
+  it('ReportCard does not show accepted quality badges when final artifact gate failed', () => {
+    const value = artifact()
+    value.metadata = {
+      ...value.metadata,
+      writer_pipeline_version: 'yearly_editorial_agent_v1',
+      writer_pipeline_status: 'accepted',
+      critic_passed: true,
+      final_artifact_quality_passed: false,
+      fallback_level: 'final_quality_gate_failed',
+      claim_check_passed: true,
+      taste_score: { ok: true, total: 35, dimensions: {}, notes: [] },
+    }
+
+    render(
+      <ReportCard
+        artifact={value}
+        cached={false}
+        cachedAt={null}
+        entities={null}
+        error={null}
+        fetching={false}
+        loading={false}
+        metadata={value.metadata}
+        onRetry={() => undefined}
+        report={null}
+        reportType="yearly"
+        title="年度叙事 · 2025"
+      />,
+    )
+
+    expect(screen.getByText('最终质量待修正')).toBeInTheDocument()
+    expect(screen.queryByText('Editorial Agent')).not.toBeInTheDocument()
+    expect(screen.queryByText('口味评分 35')).not.toBeInTheDocument()
+    expect(screen.queryByText('已通过编辑审稿')).not.toBeInTheDocument()
+    expect(screen.queryByText('基础摘要回退')).not.toBeInTheDocument()
   })
 
   it('ReportCard does not label fallback visual composer as Editorial Agent', () => {

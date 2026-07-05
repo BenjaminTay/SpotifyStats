@@ -87,6 +87,13 @@ INTERPRETATION_MARKERS = (
     "这使",
     "可以看见",
 )
+INTERNAL_BRIEF_LEAK_PATTERNS = (
+    re.compile(r"(?:^|\n)展示.{0,80}(播放量|个人榜单|偏好|关系|证据|趋势)"),
+    re.compile(r"(?:^|\n)解释播放领先"),
+    re.compile(r"(?:^|\n)揭示偏好深度"),
+    re.compile(r"(?:^|\n)说明偏好会在特定月份"),
+    re.compile(r"(interpretation_guidance|safe_speculation_rules|evidence_refs|chart_refs)"),
+)
 
 
 def request_json(
@@ -297,13 +304,12 @@ def _validate(
     if writer_pipeline == "editorial_agent_v1":
         if metadata.get("writer_pipeline_version") != "yearly_editorial_agent_v1":
             issues.append("metadata writer_pipeline_version is not yearly_editorial_agent_v1")
-        if metadata.get("writer_pipeline_status") != "accepted":
-            issues.append("metadata writer_pipeline_status is not accepted")
-        if metadata.get("claim_check_passed") is not True:
-            issues.append("metadata claim_check_passed is not true")
-        taste_score = _dict(metadata.get("taste_score"))
-        if taste_score.get("ok") is not True:
-            issues.append("metadata taste_score.ok is not true")
+        if metadata.get("writer_pipeline_status") == "accepted":
+            if metadata.get("claim_check_passed") is not True:
+                issues.append("metadata claim_check_passed is not true")
+            taste_score = _dict(metadata.get("taste_score"))
+            if taste_score.get("ok") is not True:
+                issues.append("metadata taste_score.ok is not true")
     artifact_metadata = quality_checks["artifact_metadata"]
     if artifact_metadata.get("critic_passed") is not True:
         issues.append("artifact.metadata.critic_passed is not true")
@@ -363,6 +369,19 @@ def _validate(
     placeholder_tokens = quality_checks["invalid_placeholder_tokens"]
     if placeholder_tokens:
         issues.append("invalid placeholder tokens: " + ", ".join(placeholder_tokens))
+    internal_brief_leaks = quality_checks["internal_brief_leaks"]
+    if internal_brief_leaks:
+        issues.append("internal brief leakage in sections: " + ", ".join(internal_brief_leaks))
+    duplicate_chart_refs = quality_checks["duplicate_chart_refs"]
+    if duplicate_chart_refs:
+        issues.append("duplicate chart refs: " + ", ".join(duplicate_chart_refs))
+    artifact_metadata = quality_checks["artifact_metadata"]
+    if writer_pipeline == "editorial_agent_v1":
+        if artifact_metadata.get("final_artifact_quality_passed") is not True:
+            issues.append("metadata final_artifact_quality_passed is not true")
+        final_quality = _dict(artifact_metadata.get("final_artifact_quality"))
+        if final_quality and final_quality.get("ok") is not True:
+            issues.append("metadata final_artifact_quality.ok is not true")
     if prose.count(REPEATED_META_PHRASE) > 1:
         issues.append("repeated meta prose: " + REPEATED_META_PHRASE)
     same_album_false_contrast = _same_album_false_contrast(artifact, prose)
@@ -408,6 +427,8 @@ def _quality_checks(
             "taste_score": artifact_metadata.get("taste_score"),
             "section_roles": artifact_metadata.get("section_roles"),
             "fact_count": artifact_metadata.get("fact_count"),
+            "final_artifact_quality_passed": artifact_metadata.get("final_artifact_quality_passed"),
+            "final_artifact_quality": artifact_metadata.get("final_artifact_quality"),
         },
         "writer_pipeline": writer_pipeline,
         "is_partial_year": _is_partial_year(year, artifact),
@@ -422,6 +443,8 @@ def _quality_checks(
         ],
         "visual_brief_outline_roles": _visual_brief_outline_roles(artifact),
         "invalid_placeholder_tokens": _invalid_placeholder_tokens(prose),
+        "internal_brief_leaks": _internal_brief_leaks(artifact, sections),
+        "duplicate_chart_refs": _duplicate_chart_refs(sections),
     }
 
 
@@ -522,6 +545,36 @@ def _section_body_text(section: dict[str, Any]) -> str:
     )
 
 
+def _internal_brief_leaks(artifact: dict[str, Any], sections: list[dict[str, Any]]) -> list[str]:
+    leaks: list[str] = []
+    for section in sections:
+        section_id = str(section.get("id") or section.get("heading") or "unknown")
+        visible = _section_body_text(section)
+        if any(pattern.search(visible.strip()) for pattern in INTERNAL_BRIEF_LEAK_PATTERNS):
+            leaks.append(section_id)
+    for card in _list(artifact.get("insight_cards")):
+        card_id = str(card.get("id") or card.get("label") or "unknown")
+        visible = "\n".join(str(card.get(key) or "") for key in ("label", "value", "caption"))
+        if any(pattern.search(visible.strip()) for pattern in INTERNAL_BRIEF_LEAK_PATTERNS):
+            leaks.append(f"insight_card:{card_id}")
+    return leaks
+
+
+def _duplicate_chart_refs(sections: list[dict[str, Any]]) -> list[str]:
+    owner: dict[str, str] = {}
+    duplicates: list[str] = []
+    for section in sections:
+        section_id = str(section.get("id") or section.get("heading") or "unknown")
+        for ref in section.get("chart_refs") or []:
+            chart_id = str(ref)
+            previous = owner.get(chart_id)
+            if previous:
+                duplicates.append(f"{chart_id}: {previous}, {section_id}")
+            else:
+                owner[chart_id] = section_id
+    return duplicates
+
+
 def _visual_brief_outline_roles(artifact: dict[str, Any]) -> list[str]:
     visual_brief = _dict(artifact.get("visual_brief"))
     return [
@@ -550,12 +603,14 @@ def _artifact_text(
     sections: list[dict[str, Any]],
 ) -> str:
     section_text = _sections_text(sections)
+    insight_cards_text = _insight_cards_text(artifact)
     fallback_report = "" if section_text else str(result.get("report") or "")
     return "\n".join(
         str(part or "")
         for part in (
             artifact.get("title"),
             artifact.get("subtitle"),
+            insight_cards_text,
             section_text,
             fallback_report,
         )
@@ -574,6 +629,15 @@ def _sections_text(sections: list[dict[str, Any]]) -> str:
             )
         )
         for section in sections
+    )
+
+
+def _insight_cards_text(artifact: dict[str, Any]) -> str:
+    return "\n".join(
+        "\n".join(
+            str(part or "") for part in (card.get("label"), card.get("value"), card.get("caption"))
+        )
+        for card in _list(artifact.get("insight_cards"))
     )
 
 

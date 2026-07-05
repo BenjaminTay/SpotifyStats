@@ -23,6 +23,11 @@ INTERNAL_GUIDANCE_TERMS = (
     "不要写成",
     "interpretation_guidance",
     "safe_speculation_rules",
+    "展示Olivia",
+    "展示播放",
+    "解释播放领先",
+    "揭示偏好深度",
+    "说明偏好会在特定月份",
 )
 
 CONFIDENCE_LABEL_PATTERN = re.compile(
@@ -152,7 +157,22 @@ def critique_visual_yearly_artifact(
 
 
 def _all_prose(artifact: dict[str, Any]) -> str:
-    return "\n".join(str(section.get("prose") or "") for section in _list(artifact.get("sections")))
+    parts: list[str] = []
+    for section in _list(artifact.get("sections")):
+        parts.extend(
+            [
+                str(section.get("heading") or ""),
+                str(section.get("deck") or ""),
+                str(section.get("prose") or ""),
+                str(section.get("pull_quote") or ""),
+            ]
+        )
+    chart_data = _dict(artifact.get("chart_data"))
+    for payload in chart_data.values():
+        observations = _dict(payload).get("observations")
+        if isinstance(observations, list):
+            parts.extend(str(item) for item in observations if str(item).strip())
+    return "\n".join(part for part in parts if part)
 
 
 def _missing_chart_refs(

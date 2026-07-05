@@ -103,6 +103,22 @@ def test_visual_critic_rejects_internal_guidance_leakage():
     assert any(issue["code"] == "internal_guidance_leakage" for issue in result["issues"])
 
 
+def test_visual_critic_rejects_internal_guidance_in_deck():
+    prose = (
+        "Taylor Swift 是你反复回到的陪伴声音。"
+        "JOLIN 是新发现，播放量和个人榜单关系也留在日常节奏里。"
+    ) * 30
+    artifact = _artifact(prose)
+    artifact["sections"][1]["deck"] = (
+        "展示Olivia Rodrigo在5月超越Taylor Swift的播放量，说明偏好会在特定月份发生转向。"
+    )
+
+    result = critique_visual_yearly_artifact(artifact, {"is_partial_year": True})
+
+    assert result["ok"] is False
+    assert any(issue["code"] == "internal_guidance_leakage" for issue in result["issues"])
+
+
 def test_visual_critic_rejects_repeated_meta_prose():
     repeated = (
         "图表负责回答发生了什么，正文负责回答为什么值得被记住。"
@@ -376,3 +392,110 @@ def test_visual_probe_rejects_failed_metadata_short_text_missing_observation_and
     assert "missing chart observations: opening -> artist_monthly_trend" in issues
     assert "forbidden terms: 之后度, evidence ledger, dynamic outline" in issues
     assert "invalid placeholder tokens: NaN, null, undefined, unknown" in issues
+
+
+def test_visual_probe_rejects_final_visible_deck_leak_and_duplicate_chart_refs():
+    prose = (
+        "Taylor Swift 是你反复回到的陪伴声音。"
+        "Zhang Zhen Yue 是新发现，播放量和个人榜单关系也留在日常节奏里。"
+    ) * 30
+    artifact = _probe_artifact(prose)
+    artifact["metadata"]["final_artifact_quality_passed"] = True
+    artifact["metadata"]["final_artifact_quality"] = {"ok": True, "issues": []}
+    artifact["sections"][0]["deck"] = "展示Olivia Rodrigo在5月超越Taylor Swift的播放量。"
+    artifact["sections"][1]["chart_refs"] = ["artist_monthly_trend"]
+    result = _probe_result(artifact)
+    probe_text = visual_probe._artifact_text(result, artifact, artifact["sections"])
+
+    issues = visual_probe._validate(
+        year=2026,
+        detail={"status": "done"},
+        result=result,
+        artifact=artifact,
+        metadata=result["metadata"],
+        sections=artifact["sections"],
+        chart_specs=artifact["chart_specs"],
+        chart_data=artifact["chart_data"],
+        prose=probe_text,
+        writer_pipeline="editorial_agent_v1",
+    )
+
+    assert any("internal brief leakage" in issue for issue in issues)
+    assert any("duplicate chart refs" in issue for issue in issues)
+
+
+def test_visual_probe_checks_insight_card_visible_text_for_internal_leakage():
+    prose = (
+        "截至 2026-06-23，Taylor Swift、Olivia Rodrigo、Zhang Zhen Yue 和 "
+        "The Life of a Showgirl 留在年记里。"
+    ) * 45
+    artifact = _probe_artifact(prose)
+    artifact["insight_cards"] = [
+        {
+            "id": "album_axis",
+            "label": "专辑重心",
+            "value": "The Life of a Showgirl",
+            "caption": "解释播放领先专辑和个人榜单领先专辑的关系。",
+        },
+        {"id": "artist_axis", "label": "稳定艺人", "value": "Taylor Swift"},
+        {"id": "discovery_axis", "label": "新发现", "value": "Zhang Zhen Yue"},
+    ]
+    result = _probe_result(artifact)
+    probe_text = visual_probe._artifact_text(result, artifact, artifact["sections"])
+
+    issues = visual_probe._validate(
+        year=2026,
+        detail={"status": "done"},
+        result=result,
+        artifact=artifact,
+        metadata=result["metadata"],
+        sections=artifact["sections"],
+        chart_specs=artifact["chart_specs"],
+        chart_data=artifact["chart_data"],
+        prose=probe_text,
+        writer_pipeline="",
+    )
+
+    assert "专辑重心" in probe_text
+    assert "The Life of a Showgirl" in probe_text
+    assert any("insight_card:album_axis" in issue for issue in issues)
+
+
+def test_visual_probe_allows_writer_fallback_when_final_visible_quality_passes():
+    prose = (
+        "截至 2026-06-23，Taylor Swift、Olivia Rodrigo、Zhang Zhen Yue 和 "
+        "The Life of a Showgirl 留在年记里。"
+    ) * 45
+    artifact = _probe_artifact(prose)
+    metadata = {
+        "writer_pipeline_version": "yearly_editorial_agent_v1",
+        "writer_pipeline_status": "fallback_visual_composer",
+        "claim_check_passed": False,
+        "final_artifact_quality_passed": True,
+        "final_artifact_quality": {"ok": True, "issues": []},
+    }
+    artifact["metadata"] = {**artifact["metadata"], **metadata}
+    result = _probe_result(artifact)
+    result["metadata"] = {
+        **result["metadata"],
+        "writer_pipeline_version": "yearly_editorial_agent_v1",
+        "writer_pipeline_status": "fallback_visual_composer",
+        "claim_check_passed": False,
+    }
+    probe_text = visual_probe._artifact_text(result, artifact, artifact["sections"])
+
+    issues = visual_probe._validate(
+        year=2026,
+        detail={"status": "done"},
+        result=result,
+        artifact=artifact,
+        metadata=result["metadata"],
+        sections=artifact["sections"],
+        chart_specs=artifact["chart_specs"],
+        chart_data=artifact["chart_data"],
+        prose=probe_text,
+        writer_pipeline="editorial_agent_v1",
+    )
+
+    assert "metadata writer_pipeline_status is not accepted" not in issues
+    assert "metadata claim_check_passed is not true" not in issues

@@ -12,6 +12,7 @@ from backend.domains.ai_reports.editorial_agent import (
 )
 from backend.domains.ai_reports.editorial_agent.models import ArticleDraft, ArticleSection
 from backend.domains.ai_reports.editorial_agent.pipeline import run_editorial_agent_pipeline
+from backend.domains.ai_reports.final_artifact_quality import evaluate_final_artifact_quality
 from backend.domains.ai_reports.yearly_validator import validate_yearly_report
 
 VISUAL_YEARLY_CONTRACT_VERSION = "visual_yearly_v1"
@@ -30,11 +31,22 @@ _WRITER_STAGE_PROGRESS = {
 
 _EDITORIAL_SECTION_ROLES = {
     "opening": "opening",
+    "stable_core": "main_artist",
+    "stable_anchor": "main_artist",
     "stable_top_artist": "main_artist",
+    "monthly_turn": "turning_point",
+    "monthly_shift": "turning_point",
     "monthly_turning_point": "turning_point",
+    "album_alignment": "album_story",
+    "album_story": "album_story",
     "album_playback_billboard_alignment": "album_story",
+    "album_divergence": "billboard_divergence",
     "album_playback_billboard_tension": "billboard_divergence",
+    "density_peak": "highlight_day",
+    "highlight_day": "highlight_day",
     "highlight_day_density": "highlight_day",
+    "new_voice": "discovery",
+    "discovery": "discovery",
     "discovery_signal": "discovery",
     "closing": "closing",
 }
@@ -134,6 +146,8 @@ def generate_visual_yearly_artifact(
     sections = _ensure_editorial_story_obligations(sections, context)
     sections = _remove_duplicate_editorial_fact_claims(sections, editorial_plan)
     sections = _ensure_minimum_editorial_prose(sections, context)
+    sections = _dedupe_editorial_sections(sections)
+    sections = _dedupe_chart_refs_across_sections(sections)
     insight_cards = _compose_insight_cards(context, narrative, story_insights)
     prose = _report_text(sections)
     _emit(emit_event, "stage_started", "正在检查文风与事实口径", "reviewing_visual_artifact", 0.88)
@@ -177,21 +191,55 @@ def generate_visual_yearly_artifact(
         },
     )
     fact_validation = _validate_visual_fact_safety(prose, artifact, context)
+    final_quality = evaluate_final_artifact_quality(artifact)
+    if not final_quality["ok"]:
+        critic = {
+            **critic,
+            "ok": False,
+            "issues": [*_list(critic.get("issues")), *final_quality["issues"]],
+            "repair_instructions": [
+                *_str_list(critic.get("repair_instructions")),
+                "修复最终可见 artifact 文本后再缓存报告。",
+            ],
+        }
+    if not final_quality["ok"]:
+        fallback_level = "final_quality_gate_failed"
+    elif not critic["ok"]:
+        fallback_level = "reduced_visuals"
+    else:
+        fallback_level = None
+
     metadata = {
         "report_mode": VISUAL_YEARLY_REPORT_MODE,
         "contract_version": VISUAL_YEARLY_CONTRACT_VERSION,
-        "fallback_level": None if critic["ok"] else "reduced_visuals",
+        "fallback_level": fallback_level,
         "section_count": len(sections),
         "chart_count": len(chart_data),
         "insight_card_count": len(insight_cards),
         "article_length": len(prose),
         "critic_passed": bool(critic["ok"]),
         "fact_validation_passed": bool(fact_validation["ok"]),
+        "final_artifact_quality_passed": bool(final_quality["ok"]),
+        "final_artifact_quality": final_quality,
         "language_budget": editorial_payload.get("language_budget", {}),
         **editorial_metadata,
         **writer_metadata,
     }
     artifact["metadata"] = metadata
+    if not final_quality["ok"]:
+        return {
+            "success": False,
+            "report": None,
+            "artifact": None,
+            "cached": False,
+            "cached_at": None,
+            "entities": _entities(context),
+            "metadata": metadata,
+            "critic": critic,
+            "fact_validation": fact_validation,
+            "evidence_ledger": [_entry_to_dict(entry) for entry in evidence],
+            "error": "最终年报质量校验未通过，请重新生成。",
+        }
     return {
         "success": True,
         "report": prose,
@@ -431,14 +479,14 @@ def _sections_from_editorial_article(
     sections: list[_Section] = []
     seen_roles: set[str] = set()
     for index, section in enumerate(article.sections):
-        role = _role_for_editorial_section(section.id, index)
+        role = _role_for_editorial_section(section, index)
         seen_roles.add(role)
         chart_refs = _chart_refs_for_editorial_section(section, role, available_charts)
         prose = _clean_user_text(section.prose, context)
         prose = _append_required_entity_facts(prose, context, index=index)
         prose = _append_chart_observation_interpretations(prose, chart_refs, chart_data)
         heading = _clean_user_text(section.heading, context)
-        deck = _clean_user_text(article.thesis if index == 0 else section.purpose, context)
+        deck = _editorial_section_deck(article, section, index, context)
         sections.append(
             _Section(
                 id=section.id or role,
@@ -463,6 +511,37 @@ def _sections_from_editorial_article(
             )
         )
     return _attach_editorial_fact_refs(tuple(sections), editorial_plan)
+
+
+def _editorial_section_deck(
+    article: ArticleDraft,
+    section: ArticleSection,
+    index: int,
+    context: dict[str, Any],
+) -> str:
+    if index == 0:
+        return _clean_user_text(article.thesis, context)
+    prose_sentence = _first_sentence(section.prose)
+    if prose_sentence:
+        return _clean_user_text(prose_sentence, context)
+    role = _role_for_editorial_section(section, index)
+    return _clean_user_text(_deck_for_role(role, context), context)
+
+
+def _deck_for_role(role: str, context: dict[str, Any]) -> str:
+    if role == "turning_point":
+        return "累计排名之外，也有某个月突然变亮的声音。"
+    if role in {"album_story", "billboard_divergence"}:
+        return "播放热度和个人 Billboard 长留需要放在一起读。"
+    if role == "highlight_day":
+        day = _dict(context.get("highlight_day_detail"))
+        date = str(day.get("date") or "高光日")
+        return f"{date} 更适合被看作播放密度升高的一天。"
+    if role == "discovery":
+        return "新出现的名字让年度画像不只停在旧偏好里。"
+    if role == "closing":
+        return "把前面的线索收束成一份可回看的音乐年记。"
+    return "这一节继续解释播放记录里出现的年度关系。"
 
 
 def critique_visual_yearly_artifact(
@@ -1153,11 +1232,62 @@ def _writer_pipeline(request: dict[str, Any]) -> str:
     return value or WRITER_PIPELINE_REQUEST_VALUE
 
 
-def _role_for_editorial_section(section_id: str, index: int) -> str:
-    if section_id in _EDITORIAL_SECTION_ROLES:
-        return _EDITORIAL_SECTION_ROLES[section_id]
+def _role_for_editorial_section(section: ArticleSection | str, index: int) -> str:
+    if isinstance(section, ArticleSection):
+        section_id = str(section.id or "")
+        if section_id in _EDITORIAL_SECTION_ROLES:
+            return _EDITORIAL_SECTION_ROLES[section_id]
+        inferred = _infer_editorial_section_role(section)
+        if inferred:
+            return inferred
+    else:
+        section_id = str(section or "")
+        if section_id in _EDITORIAL_SECTION_ROLES:
+            return _EDITORIAL_SECTION_ROLES[section_id]
     fallback_roles = _default_outline_roles()
     return fallback_roles[min(index, len(fallback_roles) - 1)]
+
+
+def _infer_editorial_section_role(section: ArticleSection) -> str | None:
+    section_id = str(section.id or "").casefold()
+    heading = str(section.heading or "").casefold()
+    purpose = str(section.purpose or "").casefold()
+    text = f"{section_id} {heading} {purpose}"
+    chart_refs = {str(ref) for ref in section.chart_refs}
+    evidence_refs = {str(ref) for ref in section.evidence_refs}
+    if chart_refs & {"artist_monthly_trend", "genre_language_mix"} or evidence_refs & {
+        "artist_monthly_turning_point",
+        "artist_monthly_trend_primary_observation",
+    }:
+        return "turning_point"
+    if chart_refs & {"album_duality_compare", "playback_billboard_matrix"} or evidence_refs & {
+        "album_relation_primary",
+        "playback_billboard_matrix_primary_observation",
+    }:
+        return "album_story"
+    if chart_refs & {"highlight_day_timeline"} or evidence_refs & {
+        "highlight_day_density",
+        "highlight_day_primary",
+    }:
+        return "highlight_day"
+    if chart_refs & {"discovery_timeline"} or evidence_refs & {
+        "new_artist_discovery",
+        "discovery_primary",
+    }:
+        return "discovery"
+    if "closing" in section_id or "conclusion" in section_id or "收束" in text:
+        return "closing"
+    if any(token in text for token in ("monthly", "turn", "shift", "phase", "月度", "阶段")):
+        return "turning_point"
+    if any(token in text for token in ("album", "billboard", "alignment", "duality", "专辑")):
+        return "album_story"
+    if any(token in text for token in ("highlight", "density", "peak", "高光", "密度")):
+        return "highlight_day"
+    if any(token in text for token in ("discovery", "new_voice", "new voice", "新声音", "新发现")):
+        return "discovery"
+    if any(token in text for token in ("stable", "anchor", "core", "artist", "主线", "稳定")):
+        return "main_artist"
+    return None
 
 
 def _chart_refs_for_editorial_section(
@@ -1240,6 +1370,52 @@ def _ensure_minimum_editorial_prose(
         target.pull_quote,
     )
     return tuple(updated)
+
+
+def _dedupe_editorial_sections(sections: tuple[_Section, ...]) -> tuple[_Section, ...]:
+    seen_signatures: set[str] = set()
+    result: list[_Section] = []
+    for section in sections:
+        signature = _section_text_signature(section.prose)
+        if signature and signature in seen_signatures:
+            continue
+        if signature:
+            seen_signatures.add(signature)
+        result.append(section)
+    return tuple(result)
+
+
+def _section_text_signature(text: str) -> str:
+    compact = re.sub(r"\s+", "", text or "")
+    if len(compact) < 80:
+        return ""
+    return compact[:180]
+
+
+def _dedupe_chart_refs_across_sections(sections: tuple[_Section, ...]) -> tuple[_Section, ...]:
+    rendered: set[str] = set()
+    result: list[_Section] = []
+    for section in sections:
+        chart_refs: list[str] = []
+        for chart_ref in section.chart_refs:
+            if chart_ref in rendered:
+                continue
+            rendered.add(chart_ref)
+            chart_refs.append(chart_ref)
+        result.append(
+            _Section(
+                id=section.id,
+                role=section.role,
+                heading=section.heading,
+                deck=section.deck,
+                prose=section.prose,
+                chart_refs=tuple(chart_refs),
+                insight_refs=section.insight_refs,
+                evidence_refs=section.evidence_refs,
+                pull_quote=section.pull_quote,
+            )
+        )
+    return tuple(result)
 
 
 def _ensure_editorial_story_obligations(
@@ -1704,6 +1880,10 @@ def _dict(value: Any) -> dict[str, Any]:
 
 def _list(value: Any) -> list[Any]:
     return value if isinstance(value, list) else []
+
+
+def _str_list(value: Any) -> list[str]:
+    return [str(item) for item in value or [] if str(item).strip()]
 
 
 def _forbidden_terms() -> tuple[str, ...]:

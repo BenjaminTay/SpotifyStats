@@ -843,6 +843,267 @@ def test_visual_yearly_artifact_respects_language_budget_and_avoids_overview_rep
         assert "下雨" not in text
 
 
+def test_editorial_article_purpose_is_not_rendered_as_user_deck(monkeypatch):
+    from backend.domains.ai_reports import visual_yearly_artifact_service as svc
+    from backend.domains.ai_reports.editorial_agent.models import (
+        ArticleDraft,
+        ArticleSection,
+        ClaimCheckResult,
+        TasteScore,
+    )
+
+    context = _quality_polish_context()
+    article = ArticleDraft(
+        title="2026 年中音乐年记",
+        subtitle="截至 2026-06-23",
+        thesis="Taylor Swift 的稳定回访、Olivia Rodrigo 的阶段变化和 Zhang Zhen Yue 的新声音共同构成年中主线。",
+        sections=tuple(
+            ArticleSection(
+                id=section_id,
+                heading=f"章节 {index}",
+                purpose="展示Olivia Rodrigo在5月超越Taylor Swift的播放量，说明偏好会在特定月份发生转向。",
+                prose=(
+                    "Taylor Swift 以 1115 次播放位列艺人榜第一。"
+                    "这让年度第一不只是一个名次，而是一条你持续回到的声音。"
+                    if section_id == "stable_top_artist"
+                    else f"第 {index} 节写 Zhang Zhen Yue 作为新发现信号，表明年度记录持续引入新声音。"
+                ),
+                evidence_refs=("top_artist_taylor_swift",),
+                chart_refs=("listening_calendar",),
+            )
+            for index, section_id in enumerate(
+                (
+                    "opening",
+                    "stable_top_artist",
+                    "monthly_turning_point",
+                    "album_playback_billboard_alignment",
+                    "highlight_day_density",
+                    "discovery_signal",
+                ),
+                start=1,
+            )
+        ),
+        closing="下半年继续看这些关系是否留下。",
+    )
+
+    monkeypatch.setattr(
+        svc,
+        "_run_visual_research",
+        lambda request, emit_event=None: (
+            [
+                EvidenceLedgerEntry(
+                    tool_name="yearly_overview",
+                    params={"year": 2026},
+                    result_summary="summary",
+                )
+            ],
+            context,
+        ),
+    )
+    monkeypatch.setattr(
+        svc,
+        "build_visual_chart_data",
+        lambda context, chart_specs: {
+            spec["id"]: {"ok": True, "observations": ["活跃 174 天。"]} for spec in chart_specs
+        },
+    )
+    monkeypatch.setattr(
+        svc,
+        "_validate_visual_fact_safety",
+        lambda report, artifact, context: {"ok": True, "issues": []},
+    )
+    monkeypatch.setattr(
+        svc,
+        "critique_visual_yearly_artifact",
+        lambda artifact, context: {"ok": True, "issues": [], "repair_instructions": []},
+    )
+    monkeypatch.setattr(
+        svc,
+        "run_editorial_agent_pipeline",
+        lambda context, *, chart_data, chat_fn=None, emit_stage=None: {
+            "article": article,
+            "claim_check": ClaimCheckResult((), (), (), (), ()),
+            "taste_score": TasteScore(
+                {
+                    "文章感": 5,
+                    "年度主题": 5,
+                    "洞见密度": 5,
+                    "个人化": 5,
+                    "事实安全": 5,
+                    "可读性": 5,
+                    "图文融合": 5,
+                },
+                (),
+            ),
+            "metadata": {
+                "writer_pipeline_version": "yearly_editorial_agent_v1",
+                "claim_check_passed": True,
+                "editorial_review_passed": True,
+                "taste_score": {"ok": True, "total": 35, "dimensions": {}, "notes": []},
+            },
+        },
+        raising=False,
+    )
+
+    result = svc.generate_visual_yearly_artifact(
+        {"year": 2026, "writer_pipeline": "editorial_agent_v1"}
+    )
+    decks = "\n".join(section["deck"] for section in result["artifact"]["sections"])
+    chart_refs = [
+        ref for section in result["artifact"]["sections"] for ref in section["chart_refs"]
+    ]
+
+    assert "展示Olivia Rodrigo" not in decks
+    assert "解释播放领先" not in decks
+    assert len(chart_refs) == len(set(chart_refs))
+    assert result["critic"]["ok"] is True
+    assert result["metadata"]["final_artifact_quality_passed"] is True
+
+
+def test_visual_yearly_artifact_service_blocks_final_quality_failure(monkeypatch):
+    from backend.domains.ai_reports import visual_yearly_artifact_service as svc
+
+    context = _quality_polish_context()
+    monkeypatch.setattr(
+        svc,
+        "_run_visual_research",
+        lambda request, emit_event=None: (
+            [
+                EvidenceLedgerEntry(
+                    tool_name="yearly_overview",
+                    params={"year": 2026},
+                    result_summary="summary",
+                )
+            ],
+            context,
+        ),
+    )
+    monkeypatch.setattr(
+        svc,
+        "build_visual_chart_data",
+        lambda context, chart_specs: {spec["id"]: {"ok": True} for spec in chart_specs},
+    )
+    monkeypatch.setattr(
+        svc,
+        "_validate_visual_fact_safety",
+        lambda report, artifact, context: {"ok": True, "issues": []},
+    )
+    monkeypatch.setattr(
+        svc,
+        "critique_visual_yearly_artifact",
+        lambda artifact, context: {"ok": True, "issues": [], "repair_instructions": []},
+    )
+    monkeypatch.setattr(
+        svc,
+        "evaluate_final_artifact_quality",
+        lambda artifact: {
+            "ok": False,
+            "issues": [
+                {
+                    "code": "internal_brief_leakage",
+                    "message": "洞察卡片泄漏内部 brief 语言。",
+                    "severity": "error",
+                }
+            ],
+            "visible_text_length": 1200,
+        },
+    )
+
+    result = svc.generate_visual_yearly_artifact(
+        {"year": 2026, "writer_pipeline": "deterministic_visual_v1"}
+    )
+
+    assert result["success"] is False
+    assert result["artifact"] is None
+    assert result["report"] is None
+    assert result["cached"] is False
+    assert result["metadata"]["final_artifact_quality_passed"] is False
+    assert result["metadata"]["fallback_level"] == "final_quality_gate_failed"
+    assert result["critic"]["ok"] is False
+    assert "最终年报质量校验未通过" in result["error"]
+
+
+def test_editorial_section_roles_are_inferred_from_noncanonical_agent_ids():
+    from backend.domains.ai_reports import visual_yearly_artifact_service as svc
+    from backend.domains.ai_reports.editorial_agent.models import ArticleDraft, ArticleSection
+
+    context = _quality_polish_context()
+    article = ArticleDraft(
+        title="2026 年中音乐年记",
+        subtitle="截至 2026-06-23",
+        thesis="Taylor Swift、Olivia Rodrigo 和 Zhang Zhen Yue 共同构成阶段主线。",
+        sections=(
+            ArticleSection(
+                id="stable_core",
+                heading="稳定回访",
+                purpose="解释主艺人为什么长期在场",
+                prose="Taylor Swift 是你持续回到的声音。",
+                evidence_refs=("top_artist_primary",),
+                chart_refs=("listening_calendar",),
+            ),
+            ArticleSection(
+                id="monthly_turn",
+                heading="月度转折",
+                purpose="解释五月的阶段变化",
+                prose="Olivia Rodrigo 在 2026-05 达到 105 次，超过 Taylor Swift 的 67 次。",
+                evidence_refs=("artist_monthly_trend_primary_observation",),
+                chart_refs=("artist_monthly_trend",),
+            ),
+            ArticleSection(
+                id="album_alignment",
+                heading="专辑重合",
+                purpose="解释专辑播放和个人 Billboard 的关系",
+                prose="The Life of a Showgirl 的播放量和个人 Billboard 指向同一张专辑。",
+                evidence_refs=("album_relation_primary",),
+                chart_refs=("album_duality_compare",),
+            ),
+            ArticleSection(
+                id="density_peak",
+                heading="高光日",
+                purpose="解释最高播放日",
+                prose="2026-04-03 更像多曲目密集经过。",
+                evidence_refs=("highlight_day_density",),
+                chart_refs=("highlight_day_timeline",),
+            ),
+            ArticleSection(
+                id="new_voice",
+                heading="新声音",
+                purpose="解释新艺人出现",
+                prose="Zhang Zhen Yue 是这个统计期的新声音。",
+                evidence_refs=("new_artist_discovery",),
+                chart_refs=("discovery_timeline",),
+            ),
+        ),
+        closing="这是一份阶段性回看。",
+    )
+    visual = {
+        "chart_specs": [
+            {"id": "listening_calendar"},
+            {"id": "artist_monthly_trend"},
+            {"id": "album_duality_compare"},
+            {"id": "highlight_day_timeline"},
+            {"id": "discovery_timeline"},
+        ]
+    }
+    chart_data = {
+        "artist_monthly_trend": {
+            "observations": ["Olivia Rodrigo 在 2026-05 达到 105 次，超过 Taylor Swift 的 67 次。"]
+        }
+    }
+
+    sections = svc._sections_from_editorial_article(article, visual, None, chart_data, context)
+    roles = {section.id: section.role for section in sections}
+
+    assert roles["stable_core"] == "main_artist"
+    assert roles["monthly_turn"] == "turning_point"
+    assert roles["album_alignment"] == "album_story"
+    assert roles["density_peak"] == "highlight_day"
+    assert roles["new_voice"] == "discovery"
+    assert [section.chart_refs for section in sections if section.id == "monthly_turn"] == [
+        ("artist_monthly_trend",)
+    ]
+
+
 def _artifact_section_text(artifact: dict) -> str:
     parts: list[str] = []
     for section in artifact["sections"]:

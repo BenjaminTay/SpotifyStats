@@ -136,6 +136,9 @@ export function ReportCard({
   const claimCheckPassed = typeof metadata?.claim_check_passed === 'boolean'
     ? metadata.claim_check_passed
     : null
+  const finalArtifactQualityPassed = typeof metadata?.final_artifact_quality_passed === 'boolean'
+    ? metadata.final_artifact_quality_passed
+    : null
   const tasteScorePayload = metadata?.taste_score
   const tasteScoreTotal = tasteScorePayload
     && typeof tasteScorePayload === 'object'
@@ -143,6 +146,11 @@ export function ReportCard({
     && typeof (tasteScorePayload as Record<string, unknown>).total === 'number'
     ? (tasteScorePayload as Record<string, number>).total
     : null
+  const finalQualityRejected = finalArtifactQualityPassed === false
+  const editorialAgentAccepted = writerPipelineVersion === 'yearly_editorial_agent_v1'
+    && writerPipelineStatus === 'accepted'
+    && !finalQualityRejected
+    && criticPassed !== false
 
   const handleCopy = async () => {
     const copyText = report ?? `${artifact?.title ?? title}\n\n${artifact?.subtitle ?? ''}`.trim()
@@ -215,10 +223,14 @@ export function ReportCard({
               Agentic 长文
             </span>
           )}
-          {writerPipelineVersion === 'yearly_editorial_agent_v1'
-            && writerPipelineStatus === 'accepted' && (
+          {editorialAgentAccepted && (
             <span className="rounded-full border border-border bg-card/60 px-2 py-0.5">
               Editorial Agent
+            </span>
+          )}
+          {finalQualityRejected && (
+            <span className="rounded-full border border-border bg-card/60 px-2 py-0.5">
+              最终质量待修正
             </span>
           )}
           {claimCheckPassed !== null && (
@@ -226,17 +238,17 @@ export function ReportCard({
               {claimCheckPassed ? '事实核对通过' : '事实核对待修正'}
             </span>
           )}
-          {tasteScoreTotal !== null && (
+          {tasteScoreTotal !== null && !finalQualityRejected && (
             <span className="rounded-full border border-border bg-card/60 px-2 py-0.5">
               口味评分 {tasteScoreTotal}
             </span>
           )}
-          {criticPassed !== null && (
+          {criticPassed !== null && !finalQualityRejected && (
             <span className="rounded-full border border-border bg-card/60 px-2 py-0.5">
               {criticPassed ? '已通过编辑审稿' : '审稿后回退'}
             </span>
           )}
-          {fallbackLevel && (
+          {fallbackLevel && !finalQualityRejected && (
             <span className="rounded-full border border-border bg-card/60 px-2 py-0.5">
               基础摘要回退
             </span>
