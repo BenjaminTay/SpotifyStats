@@ -149,8 +149,10 @@ def yearly_story(
         "visual_yearly_artifact",
         description="Use visual artifact, agentic longform, or legacy basic summary yearly flow",
     ),
-    writer_pipeline: Literal["editorial_agent_v1", "deterministic_visual_v1"] = Query(
-        "editorial_agent_v1",
+    writer_pipeline: Literal[
+        "agent_synthesis_v2", "editorial_agent_v1", "deterministic_visual_v1"
+    ] = Query(
+        "agent_synthesis_v2",
         description="Writer pipeline for visual yearly artifacts",
     ),
     filters: PlayFilters = Depends(),

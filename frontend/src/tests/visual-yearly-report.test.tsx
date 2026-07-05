@@ -366,15 +366,13 @@ describe('VisualYearlyReport', () => {
     expect(screen.queryByText(/yearly_editorial_v1/)).not.toBeInTheDocument()
   })
 
-  it('ReportCard shows editorial-agent quality badges without raw metadata leakage', () => {
+  it('ReportCard shows agent-synthesis quality badges without raw metadata leakage', () => {
     const value = artifact()
     value.metadata = {
       ...value.metadata,
-      writer_pipeline_version: 'yearly_editorial_agent_v1',
+      writer_pipeline: 'agent_synthesis_v2',
+      writer_pipeline_version: 'agent_synthesis_v2',
       writer_pipeline_status: 'accepted',
-      claim_check_passed: true,
-      editorial_review_passed: true,
-      taste_score: { ok: true, total: 31, dimensions: {}, notes: [] },
     }
 
     render(
@@ -394,10 +392,8 @@ describe('VisualYearlyReport', () => {
       />,
     )
 
-    expect(screen.getByText('Editorial Agent')).toBeInTheDocument()
-    expect(screen.getByText('事实核对通过')).toBeInTheDocument()
-    expect(screen.getByText('口味评分 31')).toBeInTheDocument()
-    expect(screen.queryByText(/yearly_editorial_agent_v1/)).not.toBeInTheDocument()
+    expect(screen.getByText('Agent 合成')).toBeInTheDocument()
+    expect(screen.queryByText(/agent_synthesis_v2/)).not.toBeInTheDocument()
   })
 
   it('ReportCard does not show accepted quality badges when final artifact gate failed', () => {
@@ -437,14 +433,14 @@ describe('VisualYearlyReport', () => {
     expect(screen.queryByText('基础摘要回退')).not.toBeInTheDocument()
   })
 
-  it('ReportCard does not label fallback visual composer as Editorial Agent', () => {
+  it('ReportCard does not label fallback visual composer as Agent Synthesis', () => {
     const value = artifact()
     value.metadata = {
       ...value.metadata,
-      writer_pipeline_version: 'yearly_editorial_agent_v1',
+      writer_pipeline: 'agent_synthesis_v2',
+      writer_pipeline_version: 'agent_synthesis_v2',
       writer_pipeline_status: 'fallback_visual_composer',
-      claim_check_passed: false,
-      taste_score: { ok: false, total: 24, dimensions: {}, notes: [] },
+      critic_passed: false,
     }
 
     render(
@@ -464,7 +460,7 @@ describe('VisualYearlyReport', () => {
       />,
     )
 
-    expect(screen.queryByText('Editorial Agent')).not.toBeInTheDocument()
-    expect(screen.getByText('事实核对待修正')).toBeInTheDocument()
+    expect(screen.queryByText('Agent 合成')).not.toBeInTheDocument()
+    expect(screen.getByText('审稿后回退')).toBeInTheDocument()
   })
 })

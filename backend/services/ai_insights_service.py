@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 from backend.core.db import DB_PATH, get_db, load_plays
-from backend.domains.ai_reports.editorial_agent import WRITER_PIPELINE_REQUEST_VALUE
+from backend.domains.ai_reports.report_writer import WRITER_PIPELINE_REQUEST_VALUE
 from backend.domains.ai_reports.visual_artifact_models import (
     VISUAL_YEARLY_CONTRACT_VERSION,
     VISUAL_YEARLY_REPORT_MODE,

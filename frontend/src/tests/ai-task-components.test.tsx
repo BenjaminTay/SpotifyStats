@@ -66,39 +66,39 @@ describe('AITaskProgress', () => {
     expect(screen.getByText('72%')).toBeInTheDocument()
   })
 
-  it('renders editorial agent writer stages with readable labels', () => {
+  it('renders agent synthesis writer stage with readable label', () => {
     render(
       <AITaskProgress
         task={{
           found: true,
-          task_id: 'task-editorial-yearly',
+          task_id: 'task-synthesis-yearly',
           task_type: 'ai_report_yearly',
           status: 'running',
-          stage: 'planning_storyline',
-          progress_pct: 0.64,
-          message: '正在规划文章主线',
+          stage: 'generating_report_prose',
+          progress_pct: 0.75,
+          message: '正在撰写年度报告',
           result: null,
           error: null,
-          created_at: '2026-07-04T00:00:00',
-          updated_at: '2026-07-04T00:00:01',
+          created_at: '2026-07-05T00:00:00',
+          updated_at: '2026-07-05T00:00:01',
         }}
         events={[
           {
             event_id: 1,
-            task_id: 'task-editorial-yearly',
+            task_id: 'task-synthesis-yearly',
             event_type: 'stage_started',
-            stage: 'building_research_brief',
-            message: '正在整理年度研究简报',
+            stage: 'building_chart_data',
+            message: '正在准备图表数据',
             payload: null,
-            created_at: '2026-07-04T00:00:00',
+            created_at: '2026-07-05T00:00:00',
           },
         ]}
       />,
     )
 
-    expect(screen.getByText('规划文章主线')).toBeInTheDocument()
-    expect(screen.getByText('正在整理年度研究简报')).toBeInTheDocument()
-    expect(screen.getByText('64%')).toBeInTheDocument()
+    expect(screen.getByText('撰写年度报告')).toBeInTheDocument()
+    expect(screen.getByText('正在准备图表数据')).toBeInTheDocument()
+    expect(screen.getByText('75%')).toBeInTheDocument()
   })
 
   it('renders task errors when the task fails', () => {

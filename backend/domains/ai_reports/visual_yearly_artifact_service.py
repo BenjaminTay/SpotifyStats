@@ -6,13 +6,15 @@ import re
 from dataclasses import dataclass
 from typing import Any, Callable, Optional
 
-from backend.domains.ai_reports.editorial_agent import (
-    WRITER_PIPELINE_REQUEST_VALUE,
-    WRITER_PIPELINE_VERSION,
-)
-from backend.domains.ai_reports.editorial_agent.models import ArticleDraft, ArticleSection
-from backend.domains.ai_reports.editorial_agent.pipeline import run_editorial_agent_pipeline
 from backend.domains.ai_reports.final_artifact_quality import evaluate_final_artifact_quality
+from backend.domains.ai_reports.report_writer import (
+    REPORT_WRITER_SYSTEM_PROMPT,
+    WRITER_PIPELINE_REQUEST_VALUE,
+    build_report_writer_context,
+    call_report_writer_llm,
+    parse_report_sections,
+    report_writer_metadata,
+)
 from backend.domains.ai_reports.yearly_validator import validate_yearly_report
 
 VISUAL_YEARLY_CONTRACT_VERSION = "visual_yearly_v1"
@@ -20,36 +22,7 @@ VISUAL_YEARLY_REPORT_MODE = "visual_yearly_artifact"
 
 ReportAgentEvent = Callable[[str, str, Optional[dict[str, Any]]], None]
 
-_WRITER_STAGE_PROGRESS = {
-    "building_research_brief": 0.72,
-    "planning_storyline": 0.74,
-    "writing_article": 0.76,
-    "editing_article": 0.8,
-    "checking_claims": 0.84,
-    "scoring_taste": 0.86,
-}
-
-_EDITORIAL_SECTION_ROLES = {
-    "opening": "opening",
-    "stable_core": "main_artist",
-    "stable_anchor": "main_artist",
-    "stable_top_artist": "main_artist",
-    "monthly_turn": "turning_point",
-    "monthly_shift": "turning_point",
-    "monthly_turning_point": "turning_point",
-    "album_alignment": "album_story",
-    "album_story": "album_story",
-    "album_playback_billboard_alignment": "album_story",
-    "album_divergence": "billboard_divergence",
-    "album_playback_billboard_tension": "billboard_divergence",
-    "density_peak": "highlight_day",
-    "highlight_day": "highlight_day",
-    "highlight_day_density": "highlight_day",
-    "new_voice": "discovery",
-    "discovery": "discovery",
-    "discovery_signal": "discovery",
-    "closing": "closing",
-}
+_REPORT_WRITER_STAGE = "generating_report_prose"
 
 _EDITORIAL_ROLE_CHART_REFS = {
     "opening": ("listening_calendar",),
@@ -93,81 +66,77 @@ def generate_visual_yearly_artifact(
     *,
     emit_event: ReportAgentEvent | None = None,
 ) -> dict[str, Any]:
-    """Generate a deterministic visual yearly artifact payload."""
+    """Generate a visual yearly artifact using Agent-synthesis style LLM writing."""
     writer_pipeline = _writer_pipeline(request)
     evidence, context = _run_visual_research(request, emit_event=emit_event)
     context = {**context, "request_filters": _request_filters(request)}
-    _emit(emit_event, "stage_started", "正在提炼年度故事线", "building_narrative_brief", 0.48)
-    narrative = build_narrative_brief(context)
-    _emit(emit_event, "stage_started", "正在选择年报图表", "planning_visuals", 0.58)
+
+    # Phase B: Deterministic chart planning and data
+    _emit(emit_event, "stage_started", "正在选择年报图表", "planning_visuals", 0.50)
     coverage = chart_coverage(context)
+    # Build a minimal narrative for visual brief (only chart planning, no LLM)
+    narrative = _minimal_narrative(context)
     visual = build_visual_brief(narrative, coverage)
     chart_specs = list(visual.get("chart_specs") or _default_chart_specs())
-    _emit(emit_event, "stage_started", "正在准备图表数据", "building_chart_data", 0.68)
+    _emit(emit_event, "stage_started", "正在准备图表数据", "building_chart_data", 0.62)
     chart_data = build_visual_chart_data(context, chart_specs)
     context = {**context, "chart_data": chart_data}
     visual = build_visual_brief(narrative, coverage, chart_data=chart_data)
     chart_specs = list(visual.get("chart_specs") or chart_specs)
-    story_insights = build_story_insights(context, narrative)
-    editorial_plan = build_editorial_plan(context, narrative, story_insights, visual)
-    _emit(emit_event, "stage_started", "正在生成图文年报", "composing_artifact", 0.78)
-    editorial_agent = _run_editorial_writer_pipeline(
-        writer_pipeline,
-        context,
-        chart_data,
-        emit_event=emit_event,
-    )
-    agent_article = _accepted_editorial_article(editorial_agent)
-    if not agent_article and writer_pipeline == WRITER_PIPELINE_REQUEST_VALUE:
-        fallback_agent = _deterministic_editorial_fallback_result(
-            editorial_agent,
-            context,
-            chart_data,
+
+    # Phase D: Agent-synthesis LLM report writing
+    _emit(emit_event, "stage_started", "正在撰写年度报告", _REPORT_WRITER_STAGE, 0.75)
+    writer_context = build_report_writer_context(context, chart_data, chart_specs)
+    writer_accepted = False
+    llm_output: str | None = None
+    if writer_pipeline in (WRITER_PIPELINE_REQUEST_VALUE, "editorial_agent_v1"):
+        llm_output = call_report_writer_llm(
+            REPORT_WRITER_SYSTEM_PROMPT,
+            writer_context,
         )
-        if fallback_agent:
-            editorial_agent = fallback_agent
-            agent_article = _accepted_editorial_article(editorial_agent)
-    if agent_article:
-        sections = _sections_from_editorial_article(
-            agent_article,
-            visual,
-            editorial_plan,
-            chart_data,
-            context,
+        if llm_output and llm_output.strip():
+            writer_accepted = True
+
+    sections_raw = parse_report_sections(llm_output, chart_specs)
+    if sections_raw:
+        sections = tuple(
+            _Section(
+                id=s["id"],
+                role=s["role"],
+                heading=s["heading"],
+                deck=s["deck"],
+                prose=s["prose"],
+                chart_refs=tuple(s["chart_refs"]),
+                insight_refs=tuple(s["insight_refs"]),
+                evidence_refs=tuple(s["evidence_refs"]),
+                pull_quote=s["pull_quote"],
+            )
+            for s in sections_raw
         )
     else:
-        sections = _compose_sections(
-            context,
-            narrative,
-            story_insights,
-            visual,
-            editorial_plan=editorial_plan,
-        )
+        # Fallback: use deterministic sections as safety net
+        story_insights = build_story_insights(context, narrative)
+        sections = _compose_sections(context, narrative, story_insights, visual)
+        writer_accepted = False
+
+    # Phase E: Deterministic post-processing (unchanged)
     sections = _ensure_editorial_story_obligations(sections, context)
-    sections = _remove_duplicate_editorial_fact_claims(sections, editorial_plan)
+    sections = _remove_duplicate_editorial_fact_claims(sections, None)
     sections = _ensure_minimum_editorial_prose(sections, context)
     sections = _dedupe_editorial_sections(sections)
     sections = _dedupe_chart_refs_across_sections(sections)
+    story_insights = build_story_insights(context, narrative)
     insight_cards = _compose_insight_cards(context, narrative, story_insights)
     prose = _report_text(sections)
     _emit(emit_event, "stage_started", "正在检查文风与事实口径", "reviewing_visual_artifact", 0.88)
-    editorial_payload = editorial_plan.to_dict()
-    editorial_metadata = editorial_payload["metadata"]
-    writer_metadata = _writer_metadata(editorial_agent, bool(agent_article), writer_pipeline)
+
+    w_metadata = report_writer_metadata(writer_accepted)
 
     artifact = {
         "report_mode": VISUAL_YEARLY_REPORT_MODE,
         "contract_version": VISUAL_YEARLY_CONTRACT_VERSION,
-        "title": _clean_user_text(
-            agent_article.title if agent_article and agent_article.title else _title(context),
-            context,
-        ),
-        "subtitle": _clean_user_text(
-            agent_article.subtitle
-            if agent_article and agent_article.subtitle
-            else _subtitle(narrative),
-            context,
-        ),
+        "title": _title(context),
+        "subtitle": _subtitle(narrative),
         "period": context.get("reporting_period") or {},
         "narrative_brief": narrative,
         "story_insights": story_insights,
@@ -176,18 +145,13 @@ def generate_visual_yearly_artifact(
         "insight_cards": insight_cards,
         "chart_specs": chart_specs,
         "chart_data": chart_data,
-        "metadata": {
-            **editorial_metadata,
-            **writer_metadata,
-            "language_budget": editorial_payload.get("language_budget", {}),
-        },
+        "metadata": {**w_metadata},
     }
     critic = critique_visual_yearly_artifact(
         artifact,
         {
             **context,
             "is_partial_year": bool(_period(context).get("is_partial_year")),
-            "editorial_plan": editorial_payload,
         },
     )
     fact_validation = _validate_visual_fact_safety(prose, artifact, context)
@@ -221,9 +185,7 @@ def generate_visual_yearly_artifact(
         "fact_validation_passed": bool(fact_validation["ok"]),
         "final_artifact_quality_passed": bool(final_quality["ok"]),
         "final_artifact_quality": final_quality,
-        "language_budget": editorial_payload.get("language_budget", {}),
-        **editorial_metadata,
-        **writer_metadata,
+        **w_metadata,
     }
     artifact["metadata"] = metadata
     if not final_quality["ok"]:
@@ -334,198 +296,20 @@ def build_editorial_plan(
     return build(context, narrative, insights, visual)
 
 
-def _run_editorial_writer_pipeline(
-    writer_pipeline: str,
-    context: dict[str, Any],
-    chart_data: dict[str, Any],
-    *,
-    emit_event: ReportAgentEvent | None,
-) -> dict[str, Any] | None:
-    if writer_pipeline != WRITER_PIPELINE_REQUEST_VALUE:
-        return None
+def _minimal_narrative(context: dict[str, Any]) -> dict[str, Any]:
+    """Build a minimal narrative dict for chart planning (no LLM needed)."""
+    top_artists = _list(context.get("top_artists"))
 
-    def emit_stage(stage: str, message: str) -> None:
-        _emit(
-            emit_event,
-            "stage_started",
-            message,
-            stage,
-            _WRITER_STAGE_PROGRESS.get(stage, 0.76),
-        )
-
-    try:
-        return run_editorial_agent_pipeline(
-            context,
-            chart_data=chart_data,
-            emit_stage=emit_stage,
-        )
-    except Exception as exc:
-        return {
-            "metadata": {
-                "writer_pipeline_version": WRITER_PIPELINE_VERSION,
-                "writer_pipeline_status": "error_fallback_visual_composer",
-                "writer_pipeline_error": str(exc) or exc.__class__.__name__,
-            }
-        }
-
-
-def _accepted_editorial_article(result: dict[str, Any] | None) -> ArticleDraft | None:
-    if not isinstance(result, dict):
-        return None
-    article = result.get("article")
-    metadata = _dict(result.get("metadata"))
-    taste = _dict(metadata.get("taste_score"))
-    if not isinstance(article, ArticleDraft):
-        return None
-    if len(article.sections) < 5:
-        return None
-    if metadata.get("claim_check_passed") is not True:
-        return None
-    if taste and taste.get("ok") is not True:
-        return None
-    return article
-
-
-def _deterministic_editorial_fallback_result(
-    result: dict[str, Any] | None,
-    context: dict[str, Any],
-    chart_data: dict[str, Any],
-) -> dict[str, Any] | None:
-    try:
-        from backend.domains.ai_reports.editorial_agent.claim_checker import (
-            check_article_claims,
-        )
-        from backend.domains.ai_reports.editorial_agent.research_brief import (
-            build_research_brief,
-        )
-        from backend.domains.ai_reports.editorial_agent.storyline_planner import (
-            plan_storyline,
-        )
-        from backend.domains.ai_reports.editorial_agent.taste_rubric import (
-            score_article_taste,
-        )
-        from backend.domains.ai_reports.editorial_agent.writer import fallback_article
-    except Exception:
-        return None
-
-    payload = dict(result or {})
-    brief = payload.get("research_brief")
-    if not hasattr(brief, "evidence_ledger"):
-        brief = build_research_brief({**context, "chart_data": chart_data})
-    plan = payload.get("storyline_plan")
-    if not hasattr(plan, "section_plan"):
-        plan = plan_storyline(brief, chat_fn=lambda _system, _user, _temperature: None)
-    article = fallback_article(brief, plan)
-    claim_check = check_article_claims(article, brief)
-    taste = score_article_taste(article)
-    if not claim_check.ok or not taste.ok or len(article.sections) < 5:
-        return None
-    metadata = dict(_dict(payload.get("metadata")))
-    metadata.update(
-        {
-            "writer_pipeline_version": WRITER_PIPELINE_VERSION,
-            "writer_pipeline_status": "accepted",
-            "claim_check_passed": True,
-            "editorial_review_passed": True,
-            "taste_score": taste.to_dict(),
-            "deterministic_editorial_fallback": True,
-        }
-    )
-    payload.update(
-        {
-            "article": article,
-            "claim_check": claim_check,
-            "taste_score": taste,
-            "metadata": metadata,
-        }
-    )
-    return payload
-
-
-def _writer_metadata(
-    result: dict[str, Any] | None,
-    accepted: bool,
-    writer_pipeline: str,
-) -> dict[str, Any]:
-    metadata = dict(_dict(_dict(result).get("metadata")))
-    if writer_pipeline == WRITER_PIPELINE_REQUEST_VALUE:
-        metadata.setdefault("writer_pipeline_version", WRITER_PIPELINE_VERSION)
-    else:
-        metadata.setdefault("writer_pipeline_version", writer_pipeline)
-    metadata["writer_pipeline"] = writer_pipeline
-    if accepted and writer_pipeline == WRITER_PIPELINE_REQUEST_VALUE:
-        metadata["claim_check_passed"] = True
-        metadata["editorial_review_passed"] = True
-    metadata["writer_pipeline_status"] = (
-        "accepted"
-        if accepted
-        else metadata.get("writer_pipeline_status") or "fallback_visual_composer"
-    )
-    return metadata
-
-
-def _sections_from_editorial_article(
-    article: ArticleDraft,
-    visual: dict[str, Any] | None,
-    editorial_plan: Any | None,
-    chart_data: dict[str, Any],
-    context: dict[str, Any],
-) -> tuple[_Section, ...]:
-    available_charts = {
-        str(spec.get("id"))
-        for spec in _list(_dict(visual).get("chart_specs"))
-        if isinstance(spec, dict) and spec.get("id")
+    return {
+        "main_story": "",
+        "opening_scene": "",
+        "companionship_thread": {"entity": _name_at(top_artists, 0, "")},
+        "second_thread": {"entity": _name_at(top_artists, 1, "")},
+        "discovery_thread": {"entity": ""},
+        "life_rhythm": {},
+        "tensions": {},
+        "closing_direction": "",
     }
-    sections: list[_Section] = []
-    seen_roles: set[str] = set()
-    for index, section in enumerate(article.sections):
-        role = _role_for_editorial_section(section, index)
-        seen_roles.add(role)
-        chart_refs = _chart_refs_for_editorial_section(section, role, available_charts)
-        prose = _clean_user_text(section.prose, context)
-        prose = _append_required_entity_facts(prose, context, index=index)
-        prose = _append_chart_observation_interpretations(prose, chart_refs, chart_data)
-        heading = _clean_user_text(section.heading, context)
-        deck = _editorial_section_deck(article, section, index, context)
-        sections.append(
-            _Section(
-                id=section.id or role,
-                role=role,
-                heading=heading,
-                deck=deck,
-                prose=prose,
-                chart_refs=chart_refs,
-                insight_refs=(section.id or role,),
-                evidence_refs=section.evidence_refs,
-                pull_quote=_first_sentence(prose) if index == 0 else None,
-            )
-        )
-    if article.closing.strip() and "closing" not in seen_roles:
-        sections.append(
-            _Section(
-                id="closing",
-                role="closing",
-                heading="这一年最终留下什么",
-                deck="把前面的线索收束成一份可回看的音乐年记。",
-                prose=_clean_user_text(article.closing, context),
-            )
-        )
-    return _attach_editorial_fact_refs(tuple(sections), editorial_plan)
-
-
-def _editorial_section_deck(
-    article: ArticleDraft,
-    section: ArticleSection,
-    index: int,
-    context: dict[str, Any],
-) -> str:
-    if index == 0:
-        return _clean_user_text(article.thesis, context)
-    prose_sentence = _first_sentence(section.prose)
-    if prose_sentence:
-        return _clean_user_text(prose_sentence, context)
-    role = _role_for_editorial_section(section, index)
-    return _clean_user_text(_deck_for_role(role, context), context)
 
 
 def _deck_for_role(role: str, context: dict[str, Any]) -> str:
@@ -1230,83 +1014,6 @@ def _request_filters(request: dict[str, Any]) -> dict[str, Any]:
 def _writer_pipeline(request: dict[str, Any]) -> str:
     value = str(request.get("writer_pipeline") or WRITER_PIPELINE_REQUEST_VALUE).strip()
     return value or WRITER_PIPELINE_REQUEST_VALUE
-
-
-def _role_for_editorial_section(section: ArticleSection | str, index: int) -> str:
-    if isinstance(section, ArticleSection):
-        section_id = str(section.id or "")
-        if section_id in _EDITORIAL_SECTION_ROLES:
-            return _EDITORIAL_SECTION_ROLES[section_id]
-        inferred = _infer_editorial_section_role(section)
-        if inferred:
-            return inferred
-    else:
-        section_id = str(section or "")
-        if section_id in _EDITORIAL_SECTION_ROLES:
-            return _EDITORIAL_SECTION_ROLES[section_id]
-    fallback_roles = _default_outline_roles()
-    return fallback_roles[min(index, len(fallback_roles) - 1)]
-
-
-def _infer_editorial_section_role(section: ArticleSection) -> str | None:
-    section_id = str(section.id or "").casefold()
-    heading = str(section.heading or "").casefold()
-    purpose = str(section.purpose or "").casefold()
-    text = f"{section_id} {heading} {purpose}"
-    chart_refs = {str(ref) for ref in section.chart_refs}
-    evidence_refs = {str(ref) for ref in section.evidence_refs}
-    if chart_refs & {"artist_monthly_trend", "genre_language_mix"} or evidence_refs & {
-        "artist_monthly_turning_point",
-        "artist_monthly_trend_primary_observation",
-    }:
-        return "turning_point"
-    if chart_refs & {"album_duality_compare", "playback_billboard_matrix"} or evidence_refs & {
-        "album_relation_primary",
-        "playback_billboard_matrix_primary_observation",
-    }:
-        return "album_story"
-    if chart_refs & {"highlight_day_timeline"} or evidence_refs & {
-        "highlight_day_density",
-        "highlight_day_primary",
-    }:
-        return "highlight_day"
-    if chart_refs & {"discovery_timeline"} or evidence_refs & {
-        "new_artist_discovery",
-        "discovery_primary",
-    }:
-        return "discovery"
-    if "closing" in section_id or "conclusion" in section_id or "收束" in text:
-        return "closing"
-    if any(token in text for token in ("monthly", "turn", "shift", "phase", "月度", "阶段")):
-        return "turning_point"
-    if any(token in text for token in ("album", "billboard", "alignment", "duality", "专辑")):
-        return "album_story"
-    if any(token in text for token in ("highlight", "density", "peak", "高光", "密度")):
-        return "highlight_day"
-    if any(token in text for token in ("discovery", "new_voice", "new voice", "新声音", "新发现")):
-        return "discovery"
-    if any(token in text for token in ("stable", "anchor", "core", "artist", "主线", "稳定")):
-        return "main_artist"
-    return None
-
-
-def _chart_refs_for_editorial_section(
-    section: ArticleSection,
-    role: str,
-    available_charts: set[str],
-) -> tuple[str, ...]:
-    role_defaults = tuple(
-        ref for ref in _EDITORIAL_ROLE_CHART_REFS.get(role, ()) if ref in available_charts
-    )
-    allowed = set(role_defaults)
-    requested = tuple(
-        ref
-        for ref in section.chart_refs
-        if ref in available_charts and (not allowed or ref in allowed)
-    )
-    if requested:
-        return requested
-    return role_defaults
 
 
 def _append_required_entity_facts(

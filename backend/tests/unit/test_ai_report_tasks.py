@@ -292,7 +292,7 @@ def test_visual_yearly_report_cache_key_includes_writer_pipeline():
 
     editorial_key = ai_insights_service._report_cache_key(
         **base,
-        writer_pipeline="editorial_agent_v1",
+        writer_pipeline="agent_synthesis_v2",
     )
     legacy_key = ai_insights_service._report_cache_key(
         **base,
@@ -302,7 +302,7 @@ def test_visual_yearly_report_cache_key_includes_writer_pipeline():
     assert editorial_key is not None
     assert "visual_yearly_artifact" in editorial_key
     assert "visual_yearly_v1" in editorial_key
-    assert "editorial_agent_v1" in editorial_key
+    assert "agent_synthesis_v2" in editorial_key
     assert legacy_key != editorial_key
 
 
@@ -838,7 +838,7 @@ def test_visual_yearly_report_mode_dispatches_visual_artifact(monkeypatch: pytes
         {
             "report_type": "yearly",
             "report_mode": "visual_yearly_artifact",
-            "writer_pipeline": "editorial_agent_v1",
+            "writer_pipeline": "agent_synthesis_v2",
             "year": 2025,
         },
         progress_callback=lambda *args: None,
@@ -847,7 +847,7 @@ def test_visual_yearly_report_mode_dispatches_visual_artifact(monkeypatch: pytes
 
     assert result["metadata"]["report_mode"] == "visual_yearly_artifact"
     assert called["request"]["year"] == 2025
-    assert called["request"]["writer_pipeline"] == "editorial_agent_v1"
+    assert called["request"]["writer_pipeline"] == "agent_synthesis_v2"
 
 
 def test_monthly_generation_forwards_filter_parameters(

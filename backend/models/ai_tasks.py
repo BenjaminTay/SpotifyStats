@@ -91,7 +91,9 @@ class ReportTaskRequest(BaseModel):
     report_mode: Literal["visual_yearly_artifact", "agentic_longform", "basic_summary"] = (
         "visual_yearly_artifact"
     )
-    writer_pipeline: Literal["editorial_agent_v1", "deterministic_visual_v1"] = "editorial_agent_v1"
+    writer_pipeline: Literal[
+        "agent_synthesis_v2", "editorial_agent_v1", "deterministic_visual_v1"
+    ] = "agent_synthesis_v2"
     force: bool = False
     week_start: str | None = None
     week_end: str | None = None

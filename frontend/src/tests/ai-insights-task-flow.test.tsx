@@ -634,7 +634,7 @@ describe('AiInsightsExperience report task flow', () => {
         report_type: 'yearly',
         action: 'cache_only',
         report_mode: 'visual_yearly_artifact',
-        writer_pipeline: 'editorial_agent_v1',
+        writer_pipeline: 'agent_synthesis_v2',
         year: 2026,
       }))
     })
@@ -648,7 +648,7 @@ describe('AiInsightsExperience report task flow', () => {
         action: 'generate',
         force: true,
         report_mode: 'visual_yearly_artifact',
-        writer_pipeline: 'editorial_agent_v1',
+        writer_pipeline: 'agent_synthesis_v2',
         year: 2026,
       }))
     })

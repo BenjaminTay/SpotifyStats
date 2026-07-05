@@ -127,26 +127,22 @@ export function ReportCard({
   const fallbackLevel = typeof metadata?.fallback_level === 'string' ? metadata.fallback_level : null
   const criticPassed = typeof metadata?.critic_passed === 'boolean' ? metadata.critic_passed : null
   const articleLength = typeof metadata?.article_length === 'number' ? metadata.article_length : null
+  const writerPipeline = typeof metadata?.writer_pipeline === 'string' ? metadata.writer_pipeline : null
   const writerPipelineVersion = typeof metadata?.writer_pipeline_version === 'string'
     ? metadata.writer_pipeline_version
     : null
   const writerPipelineStatus = typeof metadata?.writer_pipeline_status === 'string'
     ? metadata.writer_pipeline_status
     : null
-  const claimCheckPassed = typeof metadata?.claim_check_passed === 'boolean'
-    ? metadata.claim_check_passed
-    : null
   const finalArtifactQualityPassed = typeof metadata?.final_artifact_quality_passed === 'boolean'
     ? metadata.final_artifact_quality_passed
     : null
-  const tasteScorePayload = metadata?.taste_score
-  const tasteScoreTotal = tasteScorePayload
-    && typeof tasteScorePayload === 'object'
-    && !Array.isArray(tasteScorePayload)
-    && typeof (tasteScorePayload as Record<string, unknown>).total === 'number'
-    ? (tasteScorePayload as Record<string, number>).total
-    : null
   const finalQualityRejected = finalArtifactQualityPassed === false
+  const synthesisAccepted = (writerPipeline === 'agent_synthesis_v2'
+    || writerPipelineVersion === 'agent_synthesis_v2')
+    && writerPipelineStatus === 'accepted'
+    && !finalQualityRejected
+    && criticPassed !== false
   const editorialAgentAccepted = writerPipelineVersion === 'yearly_editorial_agent_v1'
     && writerPipelineStatus === 'accepted'
     && !finalQualityRejected
@@ -218,6 +214,11 @@ export function ReportCard({
 
       {metadata && (
         <div className="mb-4 flex flex-wrap gap-2 text-[11px] text-muted-foreground">
+          {reportMode === 'visual_yearly_artifact' && synthesisAccepted && (
+            <span className="rounded-full border border-border bg-card/60 px-2 py-0.5">
+              Agent 合成
+            </span>
+          )}
           {reportMode === 'agentic_longform' && (
             <span className="rounded-full border border-border bg-card/60 px-2 py-0.5">
               Agentic 长文
@@ -233,16 +234,6 @@ export function ReportCard({
               最终质量待修正
             </span>
           )}
-          {claimCheckPassed !== null && (
-            <span className="rounded-full border border-border bg-card/60 px-2 py-0.5">
-              {claimCheckPassed ? '事实核对通过' : '事实核对待修正'}
-            </span>
-          )}
-          {tasteScoreTotal !== null && !finalQualityRejected && (
-            <span className="rounded-full border border-border bg-card/60 px-2 py-0.5">
-              口味评分 {tasteScoreTotal}
-            </span>
-          )}
           {criticPassed !== null && !finalQualityRejected && (
             <span className="rounded-full border border-border bg-card/60 px-2 py-0.5">
               {criticPassed ? '已通过编辑审稿' : '审稿后回退'}
@@ -250,7 +241,7 @@ export function ReportCard({
           )}
           {fallbackLevel && !finalQualityRejected && (
             <span className="rounded-full border border-border bg-card/60 px-2 py-0.5">
-              基础摘要回退
+              回退模式
             </span>
           )}
           {articleLength !== null && (
