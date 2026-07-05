@@ -74,7 +74,7 @@ describe('AITaskProgress', () => {
           task_id: 'task-synthesis-yearly',
           task_type: 'ai_report_yearly',
           status: 'running',
-          stage: 'generating_report_prose',
+          stage: 'writing_report',
           progress_pct: 0.75,
           message: '正在撰写年度报告',
           result: null,
@@ -96,7 +96,7 @@ describe('AITaskProgress', () => {
       />,
     )
 
-    expect(screen.getByText('撰写年度报告')).toBeInTheDocument()
+    expect(screen.getByText('综合研究撰写报告')).toBeInTheDocument()
     expect(screen.getByText('正在准备图表数据')).toBeInTheDocument()
     expect(screen.getByText('75%')).toBeInTheDocument()
   })

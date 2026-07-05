@@ -48,7 +48,7 @@ export function ChatInterface({
 }: Props) {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState('')
-  const [thinkingMode, setThinkingMode] = useState(false)
+  const [thinkingMode, setThinkingMode] = useState(true)
   const [retryingIdx, setRetryingIdx] = useState<number | null>(null)
   const [sessionError, setSessionError] = useState<string | null>(null)
   const [activeChatTask, setActiveChatTask] = useState<ActiveChatTask | null>(null)

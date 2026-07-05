@@ -390,7 +390,11 @@ def _get_llm(cfg: Optional[dict] = None) -> Optional[LLMProvider]:
 
 
 def _llm_chat(
-    system_prompt: str, user_content: str, temperature: float = 0.3, max_tokens: int = 2048
+    system_prompt: str,
+    user_content: str,
+    temperature: float = 0.3,
+    max_tokens: int = 2048,
+    thinking: bool = False,
 ) -> Optional[str]:
     """Send a single-turn chat to LLM. Returns content string or None."""
     cfg = _get_config()
@@ -406,6 +410,7 @@ def _llm_chat(
             ],
             temperature=temperature,
             max_tokens=max_tokens,
+            thinking=thinking,
         )
     except Exception:
         logger.warning("LLM chat call failed", exc_info=True)

@@ -111,6 +111,7 @@ def get_default_registry() -> AgentToolRegistry:
         SEARCH_HISTORY_TOOL,
         WRAPPED_YEARLY_TOOL,
     )
+    from backend.domains.ai_agent.web_search_tool import WEB_SEARCH_TOOL
 
     registry = AgentToolRegistry()
     registry.register(ANALYSIS_STATS_TOOL)
@@ -127,6 +128,7 @@ def get_default_registry() -> AgentToolRegistry:
     registry.register(SEARCH_HISTORY_TOOL)
     registry.register(COMMUNITY_FEED_SEARCH_TOOL)
     registry.register(COMMUNITY_TRENDING_TOOL)
+    registry.register(WEB_SEARCH_TOOL)
     return registry
 
 

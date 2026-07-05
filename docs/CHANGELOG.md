@@ -1,6 +1,27 @@
 # 变更日志
 
-## 2026-07-05 — Agent 合成管道重构 + AI 洞察 UX 全面修复
+## 2026-07-05 — Agent 多轮年报 + 事实准确性 + 思考模式
+
+### 年报 Agent（report_agent.py）
+
+- 用 Agent 多轮工具调用（Planner 规划 → 执行本地数据工具 + web_search → 直接写报告 JSON）替换单次 LLM 合成
+- Web Search 工具（Wikipedia）注册到共享 Agent 工具注册表，年报和 Chat 均可使用
+- Writer 只接收原始工具数据（ground truth），不接收 LLM 研究摘要，根除报告编造（girl in red / 周杰伦 / TikTok 等凭空艺人/事件）
+- 删除 Editorial Agent 流水线（`editorial_agent/` 目录，~1,500 行），LLM 调用从 6 次减为 Agent 多轮（5-10 次）
+- 所有质量门禁（critic/fact_validation/final_quality）改为软警告记录到 metadata，不再阻止报告展示
+- 短报告自动重试（<300 字/<1 节 → 最多 3 次）
+- 年报和 Chat 默认启用 DeepSeek 思考模式（`LLMProvider.chat(thinking=True)`）
+
+### AI 洞察 UX 修复（12 项）
+
+- 加载闪烁消除、多行输入、追问保留会话、幽灵消息修复、元数据徽章简化
+- Markdown 渲染、滚动渐变、年报选择器统一、聊天高度优化、会话加载态、工具轨迹中文标签
+
+### 文档
+
+- 更新 AGENTS.md / CLAUDE.md / CHANGELOG 反映新架构
+
+## 2026-07-05 — Agent 合成管道重构 + AI 洞察 UX 全面修复（旧）
 
 ### 重构
 

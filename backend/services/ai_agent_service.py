@@ -837,6 +837,7 @@ def _plan_tool_calls(request: dict[str, Any]) -> tuple[list[dict[str, Any]], str
             PLANNER_SYSTEM_PROMPT,
             _planner_user_content(request),
             temperature=0.1,
+            thinking=_thinking_mode_enabled(request),
         )
     except Exception:
         raw = None
@@ -1601,6 +1602,7 @@ def run_chat_agent_task(task_id: str, request: dict[str, Any]) -> None:
                 final_system_prompt,
                 final_user_content,
                 temperature=0.4,
+                thinking=_thinking_mode_enabled(request),
             ),
             on_retry=lambda exc: repo.add_event(
                 task_id=task_id,
@@ -1620,6 +1622,7 @@ def run_chat_agent_task(task_id: str, request: dict[str, Any]) -> None:
                         final_system_prompt,
                         _retry_user_content(final_payload, answer, validation_issues),
                         temperature=0.25,
+                        thinking=_thinking_mode_enabled(request),
                     ),
                     on_retry=lambda exc: repo.add_event(
                         task_id=task_id,

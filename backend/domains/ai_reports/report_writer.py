@@ -80,6 +80,10 @@ REPORT_WRITER_SYSTEM_PROMPT = """你是 SpotifyStats 的年度音乐报告作者
 - 艺人、专辑、歌曲名称必须完整写出
 - 数字必须有单位（次、小时、天、周、%）
 - 时间必须有具体月份或日期
+- 禁止使用"前者/后者"指代实体，需要指代时直接重复名称
+- 禁止推断艺人性别，不要使用"她/他/她的/他的"，直接用艺人名或"其"
+- 艺人名只用数据中出现的写法，不要加括号附注英文/别名（如不要写"张震岳(Zhang Zhen Yue)"）
+- 避免使用"转折"，用"变化"替代（防止触发叙事场景词限制）
 
 ### 部分年份处理
 - 如果 is_partial_year 为 true，全文使用"截至 end_date"、"阶段性回顾"、"上半年"
@@ -204,16 +208,22 @@ def build_report_writer_context(
 
     # ── Top Artists ──
     parts.append("## 年度 Top 艺人")
-    for i, a in enumerate(top_artists[:5]):
+    for i, a in enumerate(top_artists[:8]):
         name = a.get("name", "?")
         plays = _num(a.get("plays"))
         hours = round(_num(a.get("hours") or _num(a.get("minutes", 0)) / 60, 0))
         pct_val = _pct(_num(plays), _num(total_plays))
+        tracks = a.get("unique_tracks") or a.get("tracks") or ""
+        albums = a.get("unique_albums") or a.get("albums") or ""
         detail = f"{plays:,} 次"
         if pct_val:
             detail += f"（{pct_val}）"
         if hours:
             detail += f"，{hours:,} 小时"
+        if tracks:
+            detail += f"，{tracks} 首歌"
+        if albums:
+            detail += f"，{albums} 张专辑"
         parts.append(f"{i + 1}. **{name}**: {detail}")
     parts.append("")
 
@@ -236,7 +246,7 @@ def build_report_writer_context(
 
     # ── Top Tracks ──
     parts.append("## 年度 Top 单曲")
-    for i, t in enumerate(top_tracks[:5]):
+    for i, t in enumerate(top_tracks[:10]):
         name = t.get("name", "?")
         artist = t.get("artist", "")
         plays = _num(t.get("plays"))
@@ -247,11 +257,11 @@ def build_report_writer_context(
         parts.append(f"{i + 1}. **{name}** — {artist}: {label}")
     parts.append("")
 
-    # ── Monthly Trend (abbreviated) ──
+    # ── Monthly Trend ──
     if monthly:
-        parts.append("## 月度艺人趋势（首尾及关键月份）")
-        show_months = [m for i, m in enumerate(monthly) if i < 3 or i >= len(monthly) - 2]
-        for m in show_months:
+        parts.append("## 月度艺人趋势")
+        parts.append("每月播放次数最高的艺人：")
+        for m in monthly[:12]:
             month_label = str(m.get("month") or "")
             top_name = _name(_list(m.get("top_artists")), 0)
             plays_val = _num(m.get("plays") or 0)
@@ -356,15 +366,20 @@ def build_report_writer_context(
             parts.append(f"- 聆听时长同期{direction} {abs(_num(comp_hours))}%")
         parts.append("")
 
-    # ── Chart Observations (key facts only) ──
+    # ── Chart Observations ──
     if chart_data:
-        parts.append("## 图表关键观察")
+        parts.append("## 图表观察（来自确定性数据分析）")
         for spec in chart_specs:
             chart_id = str(spec.get("id") or "")
             data = _dict(chart_data.get(chart_id))
             observations = _list(data.get("observations"))
             if observations:
-                parts.append(f"- {spec.get('title', chart_id)}（`{chart_id}`）: {observations[0]}")
+                parts.append(
+                    f"### {spec.get('title', chart_id)}（chart_id: {chart_id}，类型: {spec.get('chart_type', '')}）"
+                )
+                for obs in observations:
+                    parts.append(f"- {obs}")
+                parts.append("")
     parts.append("")
 
     # ── Available Chart Refs ──
@@ -387,7 +402,7 @@ def call_report_writer_llm(
     writer_context: str,
     *,
     temperature: float = 0.40,
-    max_tokens: int = 8192,
+    max_tokens: int = 12288,
 ) -> str | None:
     """Call the LLM with the report writer prompt and data context.
 

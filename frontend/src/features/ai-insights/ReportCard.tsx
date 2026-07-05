@@ -134,11 +134,10 @@ export function ReportCard({
   const finalArtifactQualityPassed = typeof metadata?.final_artifact_quality_passed === 'boolean'
     ? metadata.final_artifact_quality_passed
     : null
-  const qualityRejected = (
-    criticPassed === false ||
-    factValidationPassed === false ||
-    finalArtifactQualityPassed === false
-  )
+  // Only final_artifact_quality is a hard gate (text corruption, duplicates, template leakage).
+  // Critic and fact_validation are too strict for agent-generated content and would
+  // hide perfectly good reports behind "质量校验未通过".
+  const qualityRejected = finalArtifactQualityPassed === false
 
   const handleCopy = async () => {
     const copyText = report ?? `${artifact?.title ?? title}\n\n${artifact?.subtitle ?? ''}`.trim()

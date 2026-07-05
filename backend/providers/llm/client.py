@@ -88,13 +88,16 @@ class LLMProvider(BaseProvider):
         }
 
     def chat(
-        self, messages: list[dict], temperature: float = 0.3, max_tokens: int = 4096
+        self,
+        messages: list[dict],
+        temperature: float = 0.3,
+        max_tokens: int = 4096,
+        thinking: bool = False,
     ) -> dict | None:
         """Send a chat completion request. Returns the API response dict or None on failure."""
         headers = self._auth_headers()
 
         if self.provider == "anthropic":
-            # Anthropic uses a different API format
             system_msg = ""
             user_messages = []
             for m in messages:
@@ -117,6 +120,8 @@ class LLMProvider(BaseProvider):
                 "temperature": temperature,
                 "max_tokens": max_tokens,
             }
+            if thinking:
+                body["thinking"] = {"type": "enabled"}
             url = f"{self.base_url}/chat/completions"
 
         resp = self._http.post(url, data=body, headers=headers)

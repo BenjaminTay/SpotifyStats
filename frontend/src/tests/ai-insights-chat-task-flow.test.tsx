@@ -182,7 +182,7 @@ describe('ChatInterface task-based agent flow', () => {
         conversation_history: [],
         question_time: expect.any(String),
         timezone: expect.any(String),
-        thinking_mode: false,
+        thinking_mode: true,
         min_ms: 45000,
         music_only: false,
         merge_enabled: false,
@@ -223,9 +223,10 @@ describe('ChatInterface task-based agent flow', () => {
     await waitFor(() => expect(api.get).toHaveBeenCalledWith('/chat/sessions/7'))
 
     const thinkingSwitch = screen.getByRole('switch', { name: '思考模式' })
-    expect(thinkingSwitch).toHaveAttribute('aria-checked', 'false')
-    fireEvent.click(thinkingSwitch)
     expect(thinkingSwitch).toHaveAttribute('aria-checked', 'true')
+    // Toggle off to test explicit disable
+    fireEvent.click(thinkingSwitch)
+    expect(thinkingSwitch).toHaveAttribute('aria-checked', 'false')
 
     fireEvent.change(screen.getByPlaceholderText('输入问题，如「我今年听最多的艺人是谁？」'), {
       target: { value: '深度分析一下我今年的听歌变化' },
@@ -235,7 +236,7 @@ describe('ChatInterface task-based agent flow', () => {
     await waitFor(() => {
       expect(postSpy).toHaveBeenCalledWith('/ai/tasks/chat', expect.objectContaining({
         question: '深度分析一下我今年的听歌变化',
-        thinking_mode: true,
+        thinking_mode: false,
       }))
     })
   })

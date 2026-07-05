@@ -27,21 +27,8 @@ ENRICHMENT_PROGRESS_BY_STAGE = {
     "saving_cache": 0.9,
 }
 _AGENTIC_STAGE_PROGRESS = {
-    "researching": 0.25,
-    "synthesizing_insights": 0.45,
-    "outlining": 0.6,
-    "drafting": 0.75,
-    "critic_review": 0.85,
-    "building_narrative_brief": 0.48,
-    "planning_visuals": 0.58,
-    "building_chart_data": 0.68,
-    "building_research_brief": 0.72,
-    "planning_storyline": 0.74,
-    "writing_article": 0.76,
-    "composing_artifact": 0.78,
-    "editing_article": 0.8,
-    "checking_claims": 0.84,
-    "scoring_taste": 0.86,
+    "researching": 0.35,
+    "writing_report": 0.80,
     "reviewing_visual_artifact": 0.88,
 }
 

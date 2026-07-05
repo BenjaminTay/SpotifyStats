@@ -121,7 +121,7 @@ class ChatAgentTaskRequest(BaseModel):
     conversation_history: list[dict[str, str]] | None = None
     question_time: str | None = Field(default=None, max_length=80)
     timezone: str | None = Field(default=None, max_length=80)
-    thinking_mode: bool = False
+    thinking_mode: bool = True
     min_ms: int = Field(default=30000, ge=0, le=3_600_000)
     music_only: bool = True
     merge_enabled: bool = True
