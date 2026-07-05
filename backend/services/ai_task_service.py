@@ -656,7 +656,7 @@ def _write_report_cache_from_task_result(
     *,
     fetched_at: str | None = None,
 ) -> None:
-    if result.get("cached") or (not result.get("report") and not result.get("artifact")):
+    if not _report_result_is_cacheable(result):
         return
     try:
         if _should_use_visual_yearly_artifact(request):
@@ -726,7 +726,19 @@ def _visual_yearly_cache_payload(
 
 
 def _report_result_is_cacheable(result: dict[str, Any]) -> bool:
-    return bool((not result.get("cached")) and (result.get("report") or result.get("artifact")))
+    if not result.get("success", True):
+        return False
+    if result.get("cached") or (not result.get("report") and not result.get("artifact")):
+        return False
+    metadata = result.get("metadata") if isinstance(result.get("metadata"), dict) else {}
+    if metadata.get("report_mode") == VISUAL_YEARLY_REPORT_MODE:
+        gates = (
+            metadata.get("critic_passed"),
+            metadata.get("fact_validation_passed"),
+            metadata.get("final_artifact_quality_passed"),
+        )
+        return all(gate is True for gate in gates)
+    return True
 
 
 def _report_cache_write_timestamp() -> str:
@@ -782,12 +794,45 @@ def _visual_yearly_cache_result(cached: dict[str, Any]) -> dict[str, Any]:
             "error": None,
             "needs_generation": True,
         }
+    metadata = payload.get("metadata") if isinstance(payload.get("metadata"), dict) else {}
+    if not _visual_yearly_cached_payload_is_displayable(payload, metadata):
+        return {
+            "success": True,
+            "report": None,
+            "artifact": None,
+            "cached": False,
+            "cached_at": None,
+            "entities": None,
+            "metadata": {
+                "report_mode": VISUAL_YEARLY_REPORT_MODE,
+                "needs_generation": True,
+                "cache_quality_rejected": True,
+            },
+            "error": None,
+            "needs_generation": True,
+        }
     return {
         **payload,
         "cached": True,
         "cached_at": cached.get("cached_at"),
         "needs_generation": False,
     }
+
+
+def _visual_yearly_cached_payload_is_displayable(
+    payload: dict[str, Any],
+    metadata: dict[str, Any],
+) -> bool:
+    if payload.get("success", True) is not True:
+        return False
+    if not isinstance(payload.get("artifact"), dict):
+        return False
+    gates = (
+        metadata.get("critic_passed"),
+        metadata.get("fact_validation_passed"),
+        metadata.get("final_artifact_quality_passed"),
+    )
+    return all(gate is True for gate in gates)
 
 
 def _persist_report_tool_calls(

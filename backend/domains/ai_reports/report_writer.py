@@ -32,14 +32,18 @@ _SECTION_ROLES: dict[str, str] = {
     "stable_core": "main_artist",
     "second_thread": "second_thread",
     "turning_point": "turning_point",
+    "monthly_turn": "turning_point",
     "monthly_shift": "turning_point",
     "album_story": "album_story",
+    "album_alignment": "album_story",
     "album": "album_story",
     "playback_billboard": "billboard_divergence",
     "billboard_divergence": "billboard_divergence",
     "highlight_day": "highlight_day",
+    "density_peak": "highlight_day",
     "peak_day": "highlight_day",
     "discovery": "discovery",
+    "new_voice": "discovery",
     "new_voices": "discovery",
     "genre_language": "genre_language",
     "habits": "habits",
@@ -200,22 +204,16 @@ def build_report_writer_context(
 
     # ── Top Artists ──
     parts.append("## 年度 Top 艺人")
-    for i, a in enumerate(top_artists[:8]):
+    for i, a in enumerate(top_artists[:5]):
         name = a.get("name", "?")
         plays = _num(a.get("plays"))
         hours = round(_num(a.get("hours") or _num(a.get("minutes", 0)) / 60, 0))
         pct_val = _pct(_num(plays), _num(total_plays))
-        tracks = a.get("unique_tracks") or a.get("tracks") or ""
-        albums = a.get("unique_albums") or a.get("albums") or ""
         detail = f"{plays:,} 次"
         if pct_val:
             detail += f"（{pct_val}）"
         if hours:
             detail += f"，{hours:,} 小时"
-        if tracks:
-            detail += f"，{tracks} 首歌"
-        if albums:
-            detail += f"，{albums} 张专辑"
         parts.append(f"{i + 1}. **{name}**: {detail}")
     parts.append("")
 
@@ -238,7 +236,7 @@ def build_report_writer_context(
 
     # ── Top Tracks ──
     parts.append("## 年度 Top 单曲")
-    for i, t in enumerate(top_tracks[:10]):
+    for i, t in enumerate(top_tracks[:5]):
         name = t.get("name", "?")
         artist = t.get("artist", "")
         plays = _num(t.get("plays"))
@@ -249,11 +247,11 @@ def build_report_writer_context(
         parts.append(f"{i + 1}. **{name}** — {artist}: {label}")
     parts.append("")
 
-    # ── Monthly Trend ──
+    # ── Monthly Trend (abbreviated) ──
     if monthly:
-        parts.append("## 月度艺人趋势")
-        parts.append("每月播放次数最高的艺人：")
-        for m in monthly[:12]:
+        parts.append("## 月度艺人趋势（首尾及关键月份）")
+        show_months = [m for i, m in enumerate(monthly) if i < 3 or i >= len(monthly) - 2]
+        for m in show_months:
             month_label = str(m.get("month") or "")
             top_name = _name(_list(m.get("top_artists")), 0)
             plays_val = _num(m.get("plays") or 0)
@@ -358,20 +356,15 @@ def build_report_writer_context(
             parts.append(f"- 聆听时长同期{direction} {abs(_num(comp_hours))}%")
         parts.append("")
 
-    # ── Chart Observations ──
+    # ── Chart Observations (key facts only) ──
     if chart_data:
-        parts.append("## 图表观察（来自确定性数据分析）")
+        parts.append("## 图表关键观察")
         for spec in chart_specs:
             chart_id = str(spec.get("id") or "")
             data = _dict(chart_data.get(chart_id))
             observations = _list(data.get("observations"))
             if observations:
-                parts.append(
-                    f"### {spec.get('title', chart_id)}（chart_id: {chart_id}，类型: {spec.get('chart_type', '')}）"
-                )
-                for obs in observations:
-                    parts.append(f"- {obs}")
-                parts.append("")
+                parts.append(f"- {spec.get('title', chart_id)}（`{chart_id}`）: {observations[0]}")
     parts.append("")
 
     # ── Available Chart Refs ──
@@ -394,7 +387,7 @@ def call_report_writer_llm(
     writer_context: str,
     *,
     temperature: float = 0.40,
-    max_tokens: int = 4096,
+    max_tokens: int = 8192,
 ) -> str | None:
     """Call the LLM with the report writer prompt and data context.
 
@@ -479,20 +472,21 @@ def _repair_truncated_json(text: str) -> str:
 
 
 def _parse_markdown_sections(text: str) -> list[dict[str, Any]]:
-    """Fallback parser: extract sections from markdown ## headings."""
+    """Fallback parser: extract sections from markdown ## or ### headings."""
     sections: list[dict[str, Any]] = []
-    # Split on ## headings
-    blocks = re.split(r"\n(?=## )", text)
+    # Try ## headings first, then ### headings
+    for prefix in ("## ", "### "):
+        blocks = re.split(rf"\n(?={prefix})", text)
+        if len(blocks) > 1:
+            break
     for block in blocks:
         block = block.strip()
         if not block:
             continue
-        # Extract heading from ## prefix
-        heading_match = re.match(r"^##\s+(.+?)(?:\n|$)", block)
+        heading_match = re.match(r"^(?:###|##)\s+(.+?)(?:\n|$)", block)
         if not heading_match:
             continue
         heading = heading_match.group(1).strip()
-        # Everything after the heading line is prose
         prose = block[heading_match.end() :].strip()
         if not prose:
             continue
@@ -517,13 +511,13 @@ def _assign_role(heading: str, section_id: str) -> str:
     # Pattern-based role assignment
     patterns = [
         (r"总览|概览|全貌|这一年|年度总览|年度回顾|开场|打开|音乐在场", "opening"),
-        (r"主线|核心|陪伴|第一|反复|回到|声音|年度艺人|稳定", "main_artist"),
-        (r"第二|另一条|情绪线|对比|分叉|并行", "second_thread"),
+        (r"发现|新声|新.*艺人|新人|第一次|首次|进入|新声音", "discovery"),
         (r"变化|转折|切换|赶超|反超|转向|月度|五月|四月|三月|六月", "turning_point"),
         (r"专辑|双重|留存|热播|榜单|播放量.*Billboard|Billboard.*播放", "album_story"),
         (r"分开|分歧|错位|热度和|两种|不同", "billboard_divergence"),
         (r"高光|密度|峰值|那天|一天|时刻|时间线", "highlight_day"),
-        (r"发现|新声|新.*艺人|新人|第一次|首次|进入", "discovery"),
+        (r"第二|另一条|情绪线|对比|分叉|并行", "second_thread"),
+        (r"主线|核心|陪伴|第一|反复|回到|声音|年度艺人|稳定", "main_artist"),
         (r"曲风|语种|语言|风格|音乐地图|地理", "genre_language"),
         (r"习惯|节奏|作息|时段|深夜|白天", "habits"),
         (r"结尾|总结|展望|继续|未来|下阶段|年记|年志", "closing"),
@@ -584,6 +578,15 @@ def parse_report_sections(
                 "ok" if parsed else "fail",
                 llm_output[:200],
             )
+            # Last resort: use entire output as single section
+            if llm_output and len(llm_output.strip()) > 50:
+                raw_sections = [
+                    {
+                        "heading": "年度报告",
+                        "prose": llm_output.strip(),
+                        "chart_refs": [],
+                    }
+                ]
 
     # Build set of valid chart IDs for validation
     valid_chart_ids = {str(s.get("id") or "") for s in chart_specs}

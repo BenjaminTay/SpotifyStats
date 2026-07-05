@@ -316,6 +316,8 @@ def _probe_artifact(prose: str, *, include_observation: bool = True) -> dict:
         "metadata": {
             "critic_passed": True,
             "fact_validation_passed": True,
+            "final_artifact_quality_passed": True,
+            "final_artifact_quality": {"ok": True, "issues": []},
             "editorial_plan_version": "yearly_editorial_v1",
             "section_roles": ["opening", "turning_point", "album_story", "closing"],
             "fact_count": 6,

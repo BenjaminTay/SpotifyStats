@@ -56,14 +56,23 @@ def final_visible_artifact_text(artifact: dict[str, Any]) -> str:
     return "\n".join(part for part in parts if part).strip()
 
 
-def evaluate_final_artifact_quality(artifact: dict[str, Any]) -> dict[str, Any]:
+def evaluate_final_artifact_quality(
+    artifact: dict[str, Any],
+    *,
+    context: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     issues: list[dict[str, str]] = []
     visible_text = final_visible_artifact_text(artifact)
     sections = _list(artifact.get("sections"))
+    context = context or {}
 
     issues.extend(_internal_brief_issues(artifact, sections))
     issues.extend(_duplicate_section_issues(sections))
+    issues.extend(_repeated_paragraph_issues(sections))
     issues.extend(_duplicate_chart_ref_issues(sections))
+    issues.extend(_conflicting_play_count_issues(visible_text))
+    issues.extend(_unsupported_entity_alias_issues(visible_text, context))
+    issues.extend(_partial_year_language_issues(artifact, visible_text, context))
 
     placeholders = sorted(
         set(match.group(0) for match in PLACEHOLDER_PATTERN.finditer(visible_text))
@@ -149,6 +158,25 @@ def _duplicate_section_issues(sections: list[dict[str, Any]]) -> list[dict[str, 
     return issues
 
 
+def _repeated_paragraph_issues(sections: list[dict[str, Any]]) -> list[dict[str, str]]:
+    issues: list[dict[str, str]] = []
+    for section in sections:
+        section_id = str(section.get("id") or section.get("heading") or "unknown")
+        chunks = _paragraph_signatures(str(section.get("prose") or ""))
+        seen: set[str] = set()
+        for chunk in chunks:
+            if chunk in seen:
+                issues.append(
+                    _issue(
+                        "repeated_section_paragraph",
+                        f"章节 {section_id} 内部重复了同一段或同一句正文。",
+                    )
+                )
+                break
+            seen.add(chunk)
+    return issues
+
+
 def _duplicate_chart_ref_issues(sections: list[dict[str, Any]]) -> list[dict[str, str]]:
     owner: dict[str, str] = {}
     issues: list[dict[str, str]] = []
@@ -168,11 +196,119 @@ def _duplicate_chart_ref_issues(sections: list[dict[str, Any]]) -> list[dict[str
     return issues
 
 
+def _conflicting_play_count_issues(text: str) -> list[dict[str, str]]:
+    counts: dict[str, set[int]] = {}
+    for name, count in _entity_play_count_mentions(text):
+        if not name or count <= 0:
+            continue
+        counts.setdefault(name.casefold(), set()).add(count)
+    return [
+        _issue(
+            "conflicting_entity_play_count",
+            f"同一实体 {name_key} 在最终文本中出现多个播放次数："
+            + ", ".join(str(value) for value in sorted(values)),
+        )
+        for name_key, values in counts.items()
+        if len(values) > 1
+    ]
+
+
+def _unsupported_entity_alias_issues(
+    text: str,
+    context: dict[str, Any],
+) -> list[dict[str, str]]:
+    del context
+    unsupported_aliases = {
+        "Zhang Zhen Yue": ("张真源",),
+    }
+    issues: list[dict[str, str]] = []
+    for canonical, aliases in unsupported_aliases.items():
+        for alias in aliases:
+            if alias in text:
+                issues.append(
+                    _issue(
+                        "unsupported_entity_alias",
+                        f"最终文本把 {canonical} 写成了未受支持的别名 {alias}。",
+                    )
+                )
+    return issues
+
+
+def _partial_year_language_issues(
+    artifact: dict[str, Any],
+    visible_text: str,
+    context: dict[str, Any],
+) -> list[dict[str, str]]:
+    period = _dict(context.get("reporting_period"))
+    artifact_period = _dict(artifact.get("period"))
+    is_partial_year = bool(period.get("is_partial_year") or artifact_period.get("is_partial_year"))
+    if not is_partial_year:
+        return []
+    chart_text = "\n".join(
+        "\n".join(
+            str(spec.get(key) or "")
+            for key in ("title", "narrative_question", "insight", "fallback")
+        )
+        for spec in _list(artifact.get("chart_specs"))
+    )
+    full_text = "\n".join([visible_text, chart_text])
+    forbidden = [
+        term
+        for term in ("全年陪伴密度", "年度高光日", "年度声音线索", "这一年")
+        if term in full_text
+    ]
+    if not forbidden:
+        return []
+    return [
+        _issue(
+            "partial_year_full_year_language",
+            "部分年份报告包含完整年份措辞：" + ", ".join(forbidden),
+        )
+    ]
+
+
 def _section_signature(prose: str) -> str:
     text = re.sub(r"\s+", "", prose)
     if len(text) < 40:
         return ""
     return text[:120]
+
+
+def _paragraph_signatures(prose: str) -> list[str]:
+    chunks = [chunk.strip() for chunk in re.split(r"\n\s*\n", prose) if chunk.strip()]
+    if len(chunks) <= 1:
+        chunks = [
+            chunk.strip()
+            for chunk in re.split(r"(?<=[。！？!?])", prose)
+            if len(chunk.strip()) >= 18
+        ]
+    signatures: list[str] = []
+    for chunk in chunks:
+        compact = re.sub(r"\s+", "", chunk)
+        if len(compact) >= 24:
+            signatures.append(compact[:160])
+    return signatures
+
+
+def _entity_play_count_mentions(text: str) -> list[tuple[str, int]]:
+    mentions: list[tuple[str, int]] = []
+    for match in re.finditer(
+        r"([^。！？!?；;\n]{1,80}?)(?:以|是|为|达到|播放)?\s*(\d{1,5})\s*次播放", text
+    ):
+        name = _clean_count_entity_name(match.group(1))
+        if name:
+            mentions.append((name, int(match.group(2))))
+    return mentions
+
+
+def _clean_count_entity_name(value: str) -> str:
+    value = re.sub(r"^[，,。；;：:\s]*(?:后文又写|其中|而|但|此外|单曲层面)?", "", value).strip()
+    latin_matches = re.findall(r"[A-Za-z][A-Za-z0-9'’.,:!?&() -]{1,80}", value)
+    if latin_matches:
+        return latin_matches[-1].strip(" ，,。；;：:")
+    value = re.sub(r".*[：:，,]\s*", "", value).strip()
+    value = re.sub(r"^(?:后文又写|其中|而|但|此外|单曲层面)", "", value).strip()
+    return value[:40].strip(" ，,。；;：:")
 
 
 def _chart_refs(section: dict[str, Any]) -> list[str]:

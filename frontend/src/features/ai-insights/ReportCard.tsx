@@ -125,10 +125,20 @@ export function ReportCard({
   const suggestions = onFollowUp ? followUpQuestions(reportType, entities) : []
   const fallbackLevel = typeof metadata?.fallback_level === 'string' ? metadata.fallback_level : null
   const articleLength = typeof metadata?.article_length === 'number' ? metadata.article_length : null
+  const criticPassed = typeof metadata?.critic_passed === 'boolean'
+    ? metadata.critic_passed
+    : null
+  const factValidationPassed = typeof metadata?.fact_validation_passed === 'boolean'
+    ? metadata.fact_validation_passed
+    : null
   const finalArtifactQualityPassed = typeof metadata?.final_artifact_quality_passed === 'boolean'
     ? metadata.final_artifact_quality_passed
     : null
-  const finalQualityRejected = finalArtifactQualityPassed === false
+  const qualityRejected = (
+    criticPassed === false ||
+    factValidationPassed === false ||
+    finalArtifactQualityPassed === false
+  )
 
   const handleCopy = async () => {
     const copyText = report ?? `${artifact?.title ?? title}\n\n${artifact?.subtitle ?? ''}`.trim()
@@ -196,12 +206,12 @@ export function ReportCard({
 
       {metadata && (
         <div className="mb-4 flex flex-wrap gap-2 text-[11px] text-muted-foreground">
-          {finalQualityRejected && (
+          {qualityRejected && (
             <span className="rounded-full border border-destructive/30 bg-destructive/[0.06] px-2 py-0.5 text-destructive/80">
               报告质量未通过校验
             </span>
           )}
-          {!finalQualityRejected && fallbackLevel && (
+          {!qualityRejected && fallbackLevel && (
             <span className="rounded-full border border-amber-500/20 bg-amber-500/[0.06] px-2 py-0.5 text-amber-600 dark:text-amber-400">
               基础模式生成
             </span>
@@ -215,8 +225,12 @@ export function ReportCard({
       )}
 
       {/* Report content */}
-      {artifact ? (
+      {artifact && !qualityRejected ? (
         <VisualYearlyReport artifact={artifact} />
+      ) : qualityRejected ? (
+        <div className="rounded-[12px] border border-destructive/20 bg-destructive/[0.04] p-5 text-[13px] leading-relaxed text-destructive/80">
+          这份报告没有通过质量校验，已停止展示。请重新生成一次。
+        </div>
       ) : (
         <div className="relative">
           <div className="prose prose-sm max-w-none max-h-[600px] overflow-y-auto text-[14px] leading-relaxed text-muted-foreground [&_h2]:font-serif [&_h2]:text-[18px] [&_h2]:font-semibold [&_h2]:text-foreground [&_strong]:text-foreground">

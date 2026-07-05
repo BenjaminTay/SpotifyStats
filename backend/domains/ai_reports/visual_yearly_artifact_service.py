@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Any, Callable, Optional
+from typing import TYPE_CHECKING, Any, Callable, Optional
 
 from backend.domains.ai_reports.final_artifact_quality import evaluate_final_artifact_quality
 from backend.domains.ai_reports.report_writer import (
@@ -19,6 +19,9 @@ from backend.domains.ai_reports.yearly_validator import validate_yearly_report
 
 VISUAL_YEARLY_CONTRACT_VERSION = "visual_yearly_v1"
 VISUAL_YEARLY_REPORT_MODE = "visual_yearly_artifact"
+
+if TYPE_CHECKING:
+    from backend.domains.ai_reports.agentic_models import EvidenceLedgerEntry
 
 ReportAgentEvent = Callable[[str, str, Optional[dict[str, Any]]], None]
 
@@ -81,8 +84,6 @@ def generate_visual_yearly_artifact(
     _emit(emit_event, "stage_started", "正在准备图表数据", "building_chart_data", 0.62)
     chart_data = build_visual_chart_data(context, chart_specs)
     context = {**context, "chart_data": chart_data}
-    visual = build_visual_brief(narrative, coverage, chart_data=chart_data)
-    chart_specs = list(visual.get("chart_specs") or chart_specs)
 
     # Phase D: Agent-synthesis LLM report writing
     _emit(emit_event, "stage_started", "正在撰写年度报告", _REPORT_WRITER_STAGE, 0.75)
@@ -126,14 +127,61 @@ def generate_visual_yearly_artifact(
         sections = _compose_sections(context, narrative, story_insights, visual)
         writer_accepted = False
 
+    result = _finalize_visual_artifact_result(
+        sections=sections,
+        skip_story_obligations=bool(sections_raw),
+        writer_accepted=writer_accepted,
+        context=context,
+        narrative=narrative,
+        visual=visual,
+        chart_specs=chart_specs,
+        chart_data=chart_data,
+        evidence=evidence,
+        emit_event=emit_event,
+    )
+    if result["success"] or not sections_raw:
+        return result
+
+    story_insights = build_story_insights(context, narrative)
+    fallback_sections = _compose_sections(context, narrative, story_insights, visual)
+    return _finalize_visual_artifact_result(
+        sections=fallback_sections,
+        skip_story_obligations=False,
+        writer_accepted=False,
+        context=context,
+        narrative=narrative,
+        visual=visual,
+        chart_specs=chart_specs,
+        chart_data=chart_data,
+        evidence=evidence,
+        emit_event=emit_event,
+        success_fallback_level="deterministic_repair",
+    )
+
+
+def _finalize_visual_artifact_result(
+    *,
+    sections: tuple[_Section, ...],
+    skip_story_obligations: bool,
+    writer_accepted: bool,
+    context: dict[str, Any],
+    narrative: dict[str, Any],
+    visual: dict[str, Any],
+    chart_specs: list[dict[str, Any]],
+    chart_data: dict[str, Any],
+    evidence: list[EvidenceLedgerEntry],
+    emit_event: ReportAgentEvent | None = None,
+    success_fallback_level: str | None = None,
+) -> dict[str, Any]:
     # Phase E: Deterministic post-processing
-    # Only run obligations check for fallback sections; LLM output is naturally comprehensive
-    if not sections_raw:
+    if not skip_story_obligations:
         sections = _ensure_editorial_story_obligations(sections, context)
     sections = _remove_duplicate_editorial_fact_claims(sections, None)
     sections = _ensure_minimum_editorial_prose(sections, context)
+    sections = _clean_sections(sections, context)
     sections = _dedupe_editorial_sections(sections)
     sections = _dedupe_chart_refs_across_sections(sections)
+    sections = _ensure_chart_observation_interpretations(sections, chart_data)
     story_insights = build_story_insights(context, narrative)
     insight_cards = _compose_insight_cards(context, narrative, story_insights)
     prose = _report_text(sections)
@@ -164,7 +212,7 @@ def generate_visual_yearly_artifact(
         },
     )
     fact_validation = _validate_visual_fact_safety(prose, artifact, context)
-    final_quality = evaluate_final_artifact_quality(artifact)
+    final_quality = _evaluate_final_artifact_quality(artifact, context)
     if not final_quality["ok"]:
         critic = {
             **critic,
@@ -177,10 +225,12 @@ def generate_visual_yearly_artifact(
         }
     if not final_quality["ok"]:
         fallback_level = "final_quality_gate_failed"
+    elif not fact_validation["ok"]:
+        fallback_level = "fact_validation_failed"
     elif not critic["ok"]:
-        fallback_level = "reduced_visuals"
+        fallback_level = "visual_critic_failed"
     else:
-        fallback_level = None
+        fallback_level = success_fallback_level
 
     metadata = {
         "report_mode": VISUAL_YEARLY_REPORT_MODE,
@@ -197,7 +247,8 @@ def generate_visual_yearly_artifact(
         **w_metadata,
     }
     artifact["metadata"] = metadata
-    if not final_quality["ok"]:
+    gate_error = _artifact_gate_error(critic, fact_validation, final_quality)
+    if gate_error:
         return {
             "success": False,
             "report": None,
@@ -209,7 +260,7 @@ def generate_visual_yearly_artifact(
             "critic": critic,
             "fact_validation": fact_validation,
             "evidence_ledger": [_entry_to_dict(entry) for entry in evidence],
-            "error": "最终年报质量校验未通过，请重新生成。",
+            "error": gate_error,
         }
     return {
         "success": True,
@@ -224,6 +275,32 @@ def generate_visual_yearly_artifact(
         "evidence_ledger": [_entry_to_dict(entry) for entry in evidence],
         "error": None,
     }
+
+
+def _evaluate_final_artifact_quality(
+    artifact: dict[str, Any],
+    context: dict[str, Any],
+) -> dict[str, Any]:
+    try:
+        return evaluate_final_artifact_quality(artifact, context=context)
+    except TypeError:
+        return evaluate_final_artifact_quality(artifact)
+
+
+def _artifact_gate_error(
+    critic: dict[str, Any],
+    fact_validation: dict[str, Any],
+    final_quality: dict[str, Any],
+) -> str | None:
+    """Hard gates: only final_quality and fact_validation block caching.
+    Critic issues (missing chart observations, template fluff) are soft warnings
+    recorded in metadata but do not prevent the artifact from being served.
+    """
+    if not final_quality.get("ok"):
+        return "最终年报质量校验未通过，请重新生成。"
+    if not fact_validation.get("ok"):
+        return "事实校验未通过，请重新生成。"
+    return None
 
 
 def build_narrative_brief(context: dict[str, Any]) -> dict[str, Any]:
@@ -308,13 +385,17 @@ def build_editorial_plan(
 def _minimal_narrative(context: dict[str, Any]) -> dict[str, Any]:
     """Build a minimal narrative dict for chart planning (no LLM needed)."""
     top_artists = _list(context.get("top_artists"))
+    period = _period(context)
+    discovery = _dict(context.get("discovery_and_returns"))
+    new_artists = _list(discovery.get("new_artists"))
 
     return {
+        "is_partial_year": bool(period.get("is_partial_year")),
         "main_story": "",
         "opening_scene": "",
         "companionship_thread": {"entity": _name_at(top_artists, 0, "")},
         "second_thread": {"entity": _name_at(top_artists, 1, "")},
-        "discovery_thread": {"entity": ""},
+        "discovery_thread": {"entity": _name_at(new_artists, 0, "")},
         "life_rhythm": {},
         "tensions": {},
         "closing_direction": "",
@@ -1101,6 +1182,25 @@ def _dedupe_editorial_sections(sections: tuple[_Section, ...]) -> tuple[_Section
     return tuple(result)
 
 
+def _clean_sections(
+    sections: tuple[_Section, ...], context: dict[str, Any]
+) -> tuple[_Section, ...]:
+    return tuple(
+        _Section(
+            section.id,
+            section.role,
+            _clean_user_text(section.heading, context),
+            _clean_user_text(section.deck, context),
+            _clean_user_text(section.prose, context),
+            section.chart_refs,
+            section.insight_refs,
+            section.evidence_refs,
+            _clean_user_text(section.pull_quote or "", context) if section.pull_quote else None,
+        )
+        for section in sections
+    )
+
+
 def _section_text_signature(text: str) -> str:
     compact = re.sub(r"\s+", "", text or "")
     if len(compact) < 80:
@@ -1132,6 +1232,21 @@ def _dedupe_chart_refs_across_sections(sections: tuple[_Section, ...]) -> tuple[
             )
         )
     return tuple(result)
+
+
+def _ensure_chart_observation_interpretations(
+    sections: tuple[_Section, ...],
+    chart_data: dict[str, Any],
+) -> tuple[_Section, ...]:
+    updated: list[_Section] = []
+    for section in sections:
+        prose = _append_chart_observation_interpretations(
+            section.prose,
+            section.chart_refs,
+            chart_data,
+        )
+        updated.append(_replace_section_prose(section, prose))
+    return tuple(updated)
 
 
 def _ensure_editorial_story_obligations(
@@ -1364,7 +1479,6 @@ def _clean_user_text(text: str, context: dict[str, Any]) -> str:
         "稳定中心": "稳定位置",
         "坐标": "位置",
         "声音线": "声音",
-        "年中": "全年",
         "她的": "其",
         "他的": "其",
         "她以": "其以",
@@ -1382,8 +1496,12 @@ def _clean_user_text(text: str, context: dict[str, Any]) -> str:
     }
     for source, target in replacements.items():
         cleaned = cleaned.replace(source, target)
+    if not _period(context).get("is_partial_year"):
+        cleaned = cleaned.replace("年中", "全年")
+    cleaned = _replace_ambiguous_entity_references(cleaned, context)
     cleaned = _repair_broken_generated_phrases(cleaned)
     if _period(context).get("is_partial_year"):
+        cleaned = cleaned.replace("这一年", "这个统计期")
         cleaned = cleaned.replace("说明年度记录", "说明这个统计期的记录")
         cleaned = cleaned.replace("表明年度记录", "表明这个统计期的记录")
         cleaned = cleaned.replace("证明年度记录", "证明这个统计期的记录")
@@ -1413,6 +1531,18 @@ def _repair_broken_generated_phrases(text: str) -> str:
     for source, target in repairs.items():
         cleaned = cleaned.replace(source, target)
     return cleaned
+
+
+def _replace_ambiguous_entity_references(text: str, context: dict[str, Any]) -> str:
+    if "前者" not in text and "后者" not in text:
+        return text
+    playback_album = _top_name(context, "top_albums", 0, "播放量领先的对象")
+    chart_album = _name_at(
+        _list(_dict(context.get("personal_billboard_year_end")).get("albums")),
+        0,
+        "个人 Billboard 领先的对象",
+    )
+    return text.replace("前者", playback_album).replace("后者", chart_album)
 
 
 def _first_sentence(text: str) -> str | None:

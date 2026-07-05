@@ -46,6 +46,7 @@ logger = logging.getLogger(__name__)
 
 ReportProgressCallback = Callable[[str, float, str], bool]
 ReportContinueCallback = Callable[[], bool]
+VISUAL_YEARLY_CACHE_GATE_VERSION = "quality_gate_v2"
 
 # ── Prompt templates ────────────────────────────────────────────────────────
 
@@ -545,6 +546,7 @@ def _report_cache_key(
                 "yearly",
                 VISUAL_YEARLY_REPORT_MODE,
                 VISUAL_YEARLY_CONTRACT_VERSION,
+                VISUAL_YEARLY_CACHE_GATE_VERSION,
                 writer_pipeline or WRITER_PIPELINE_REQUEST_VALUE,
                 str(year or ""),
                 filter_part,

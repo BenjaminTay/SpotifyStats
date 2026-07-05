@@ -29,6 +29,9 @@ def _visual_result() -> dict:
         "metadata": {
             "report_mode": "visual_yearly_artifact",
             "contract_version": "visual_yearly_v1",
+            "critic_passed": True,
+            "fact_validation_passed": True,
+            "final_artifact_quality_passed": True,
         },
         "critic": {"ok": True, "issues": []},
         "fact_validation": {"ok": True, "issues": []},
@@ -84,6 +87,40 @@ def test_yearly_story_visual_cache_only_returns_artifact_without_legacy_generati
     assert payload["cached"] is True
     assert payload["artifact"]["contract_version"] == "visual_yearly_v1"
     assert payload["metadata"]["report_mode"] == "visual_yearly_artifact"
+
+
+def test_yearly_story_visual_cache_rejects_failed_quality_payload(client, monkeypatch):
+    cached_payload = _visual_result()
+    cached_payload["metadata"]["critic_passed"] = False
+    cached_payload["cached"] = True
+    monkeypatch.setattr(
+        "backend.services.ai_insights_service.peek_report_cache",
+        lambda *args, **kwargs: {
+            "cached": True,
+            "report": json.dumps(cached_payload),
+            "cached_at": "2026-07-04T00:00:00",
+            "entities": None,
+        },
+    )
+    monkeypatch.setattr(
+        "backend.api.ai_insights.generate_yearly_story",
+        lambda *args, **kwargs: pytest.fail("visual cache-only must not call legacy yearly story"),
+    )
+
+    response = client.get(
+        "/api/ai-insights/yearly-story",
+        params={"year": 2025, "report_mode": "visual_yearly_artifact"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["cached"] is False
+    assert payload["artifact"] is None
+    assert payload["metadata"] == {
+        "report_mode": "visual_yearly_artifact",
+        "needs_generation": True,
+        "cache_quality_rejected": True,
+    }
 
 
 def test_yearly_story_visual_cache_only_returns_needs_generation_without_legacy_generation(

@@ -146,6 +146,17 @@ def test_final_quality_rejects_duplicate_section_prose():
     assert any(issue["code"] == "duplicate_section_text" for issue in result["issues"])
 
 
+def test_final_quality_rejects_repeated_paragraphs_inside_one_section():
+    artifact = _artifact()
+    paragraph = "Taylor Swift 以 1115 次播放位列艺人榜第一，这说明她仍然是你反复回到的声音。"
+    artifact["sections"][0]["prose"] = f"{paragraph}\n\n{paragraph}\n\n{paragraph}"
+
+    result = evaluate_final_artifact_quality(artifact)
+
+    assert result["ok"] is False
+    assert any(issue["code"] == "repeated_section_paragraph" for issue in result["issues"])
+
+
 def test_final_quality_rejects_duplicate_chart_refs():
     artifact = _artifact()
     artifact["sections"][1]["chart_refs"] = ["listening_calendar", "artist_monthly_trend"]
@@ -196,3 +207,51 @@ def test_final_quality_accepts_normal_user_facing_explanatory_sentence():
     result = evaluate_final_artifact_quality(artifact)
 
     assert result["ok"] is True
+
+
+def test_final_quality_rejects_unsupported_entity_alias_from_context():
+    artifact = _artifact()
+    artifact["sections"][4]["prose"] = "张真源 在 2026-03-09 首次出现，累计 574 次播放。"
+    context = {
+        "top_artists": [{"name": "Taylor Swift"}, {"name": "Olivia Rodrigo"}],
+        "discovery_and_returns": {
+            "new_artists": [{"name": "Zhang Zhen Yue", "first_date": "2026-03-09"}]
+        },
+    }
+
+    result = evaluate_final_artifact_quality(artifact, context=context)
+
+    assert result["ok"] is False
+    assert any(issue["code"] == "unsupported_entity_alias" for issue in result["issues"])
+
+
+def test_final_quality_rejects_conflicting_play_counts_for_same_entity():
+    artifact = _artifact()
+    artifact["sections"][0]["prose"] = (
+        "Opalite 以 123 次播放成为单曲第一。"
+        "后文又写 Opalite 是 117 次播放，这会让同一个事实前后冲突。"
+    )
+
+    result = evaluate_final_artifact_quality(artifact)
+
+    assert result["ok"] is False
+    assert any(issue["code"] == "conflicting_entity_play_count" for issue in result["issues"])
+
+
+def test_final_quality_rejects_full_year_language_for_partial_year_context():
+    artifact = _artifact()
+    artifact["chart_specs"][0]["title"] = "全年陪伴密度"
+    artifact["sections"][0]["prose"] = "这一年音乐一直在场。"
+    context = {
+        "reporting_period": {
+            "year": 2026,
+            "start_date": "2026-01-01",
+            "end_date": "2026-06-23",
+            "is_partial_year": True,
+        }
+    }
+
+    result = evaluate_final_artifact_quality(artifact, context=context)
+
+    assert result["ok"] is False
+    assert any(issue["code"] == "partial_year_full_year_language" for issue in result["issues"])

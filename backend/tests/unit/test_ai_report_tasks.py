@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sqlite3
 from pathlib import Path
 from typing import Any
@@ -302,6 +303,7 @@ def test_visual_yearly_report_cache_key_includes_writer_pipeline():
     assert editorial_key is not None
     assert "visual_yearly_artifact" in editorial_key
     assert "visual_yearly_v1" in editorial_key
+    assert "quality_gate_v2" in editorial_key
     assert "agent_synthesis_v2" in editorial_key
     assert legacy_key != editorial_key
 
@@ -339,12 +341,22 @@ def test_visual_yearly_report_generation_writes_artifact_cache(
                 "insight_cards": [],
                 "chart_specs": [],
                 "chart_data": {},
-                "metadata": {"report_mode": "visual_yearly_artifact"},
+                "metadata": {
+                    "report_mode": "visual_yearly_artifact",
+                    "critic_passed": True,
+                    "fact_validation_passed": True,
+                    "final_artifact_quality_passed": True,
+                },
             },
             "cached": False,
             "cached_at": None,
             "entities": {"artists": ["Taylor Swift"], "tracks": []},
-            "metadata": {"report_mode": "visual_yearly_artifact"},
+            "metadata": {
+                "report_mode": "visual_yearly_artifact",
+                "critic_passed": True,
+                "fact_validation_passed": True,
+                "final_artifact_quality_passed": True,
+            },
             "evidence_ledger": [],
             "error": None,
         }
@@ -365,6 +377,67 @@ def test_visual_yearly_report_generation_writes_artifact_cache(
     assert cached["result"]["report"] == "图文年报正文"
     assert cached["result"]["artifact"]["contract_version"] == "visual_yearly_v1"
     assert cached["result"]["needs_generation"] is False
+
+
+def test_cache_only_visual_yearly_report_rejects_failed_quality_gate(
+    ai_report_task_db: Path,
+):
+    request = _base_report_request(
+        action="cache_only",
+        report_type="yearly",
+        year=2026,
+        report_mode="visual_yearly_artifact",
+        writer_pipeline="agent_synthesis_v2",
+    )
+    payload = {
+        "success": True,
+        "report": "不应展示的年报正文",
+        "artifact": {
+            "report_mode": "visual_yearly_artifact",
+            "contract_version": "visual_yearly_v1",
+            "title": "不应展示",
+            "sections": [],
+            "insight_cards": [],
+            "chart_specs": [],
+            "chart_data": {},
+        },
+        "cached": False,
+        "cached_at": None,
+        "entities": None,
+        "metadata": {
+            "report_mode": "visual_yearly_artifact",
+            "critic_passed": True,
+            "fact_validation_passed": True,
+            "final_artifact_quality_passed": False,
+        },
+        "error": None,
+    }
+    conn = sqlite3.connect(ai_report_task_db)
+    try:
+        ai_insights_service.store_report_cache(
+            conn,
+            "yearly",
+            json.dumps(payload, ensure_ascii=False),
+            min_ms=request["min_ms"],
+            music_only=request["music_only"],
+            merge_enabled=request["merge_enabled"],
+            dynamic_threshold=request["dynamic_threshold"],
+            max_merge_gap_minutes=request["max_merge_gap_minutes"],
+            report_mode="visual_yearly_artifact",
+            writer_pipeline="agent_synthesis_v2",
+            year=2026,
+        )
+    finally:
+        conn.close()
+
+    result = ai_task_service.start_report_task(request)
+
+    assert result["status"] == "done"
+    assert result["result"]["cached"] is False
+    assert result["result"]["report"] is None
+    assert result["result"]["artifact"] is None
+    assert result["result"]["needs_generation"] is True
+    assert result["result"]["metadata"]["cache_quality_rejected"] is True
 
 
 def test_generate_weekly_report_starts_background_task(monkeypatch: pytest.MonkeyPatch):

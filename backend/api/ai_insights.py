@@ -265,6 +265,22 @@ def _visual_yearly_cache_response(cached: dict[str, Any]) -> dict[str, Any]:
         }
     if not isinstance(payload, dict):
         payload = {}
+    metadata = payload.get("metadata") if isinstance(payload.get("metadata"), dict) else {}
+    if not _visual_yearly_cached_payload_is_displayable(payload, metadata):
+        return {
+            "success": True,
+            "report": None,
+            "artifact": None,
+            "cached": False,
+            "cached_at": None,
+            "entities": None,
+            "metadata": {
+                "report_mode": "visual_yearly_artifact",
+                "needs_generation": True,
+                "cache_quality_rejected": True,
+            },
+            "error": None,
+        }
     return {
         "success": bool(payload.get("success", True)),
         "report": payload.get("report"),
@@ -272,7 +288,7 @@ def _visual_yearly_cache_response(cached: dict[str, Any]) -> dict[str, Any]:
         "cached": True,
         "cached_at": cached.get("cached_at"),
         "entities": payload.get("entities") if isinstance(payload.get("entities"), dict) else None,
-        "metadata": payload.get("metadata") if isinstance(payload.get("metadata"), dict) else None,
+        "metadata": metadata or None,
         "critic": payload.get("critic") if isinstance(payload.get("critic"), dict) else None,
         "fact_validation": payload.get("fact_validation")
         if isinstance(payload.get("fact_validation"), dict)
@@ -288,6 +304,22 @@ def _visual_yearly_cache_response(cached: dict[str, Any]) -> dict[str, Any]:
         else None,
         "error": payload.get("error"),
     }
+
+
+def _visual_yearly_cached_payload_is_displayable(
+    payload: dict[str, Any],
+    metadata: dict[str, Any],
+) -> bool:
+    if payload.get("success", True) is not True:
+        return False
+    if not isinstance(payload.get("artifact"), dict):
+        return False
+    gates = (
+        metadata.get("critic_passed"),
+        metadata.get("fact_validation_passed"),
+        metadata.get("final_artifact_quality_passed"),
+    )
+    return all(gate is True for gate in gates)
 
 
 # ── Phase 2 endpoints ───────────────────────────────────────────────────────

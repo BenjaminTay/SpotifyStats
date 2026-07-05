@@ -134,8 +134,8 @@ def main() -> int:
     parser.add_argument("--poll-interval", type=float, default=2.0)
     parser.add_argument(
         "--writer-pipeline",
-        choices=("editorial_agent_v1", "deterministic_visual_v1"),
-        default="editorial_agent_v1",
+        choices=("agent_synthesis_v2", "editorial_agent_v1", "deterministic_visual_v1"),
+        default="agent_synthesis_v2",
     )
     parser.add_argument("--json-output", required=True)
     args = parser.parse_args()
@@ -301,26 +301,21 @@ def _validate(
         issues.append("contract_version is not visual_yearly_v1")
     if artifact.get("contract_version") != "visual_yearly_v1":
         issues.append("artifact contract_version is not visual_yearly_v1")
-    if writer_pipeline == "editorial_agent_v1":
-        if metadata.get("writer_pipeline_version") != "yearly_editorial_agent_v1":
-            issues.append("metadata writer_pipeline_version is not yearly_editorial_agent_v1")
-        if metadata.get("writer_pipeline_status") == "accepted":
-            if metadata.get("claim_check_passed") is not True:
-                issues.append("metadata claim_check_passed is not true")
-            taste_score = _dict(metadata.get("taste_score"))
-            if taste_score.get("ok") is not True:
-                issues.append("metadata taste_score.ok is not true")
+    if writer_pipeline in {"agent_synthesis_v2", "editorial_agent_v1"}:
+        if metadata.get("writer_pipeline_version") != "agent_synthesis_v2":
+            issues.append("metadata writer_pipeline_version is not agent_synthesis_v2")
+        if metadata.get("writer_pipeline_status") not in {"accepted", "fallback_visual_composer"}:
+            issues.append("metadata writer_pipeline_status is invalid")
     artifact_metadata = quality_checks["artifact_metadata"]
     if artifact_metadata.get("critic_passed") is not True:
         issues.append("artifact.metadata.critic_passed is not true")
     if artifact_metadata.get("fact_validation_passed") is not True:
         issues.append("artifact.metadata.fact_validation_passed is not true")
-    if artifact_metadata.get("editorial_plan_version") != "yearly_editorial_v1":
-        issues.append("artifact metadata editorial_plan_version is not yearly_editorial_v1")
-    if not artifact_metadata.get("section_roles"):
-        issues.append("artifact metadata section_roles is empty")
-    if _safe_int(artifact_metadata.get("fact_count")) < 5:
-        issues.append("artifact metadata fact_count < 5")
+    if artifact_metadata.get("final_artifact_quality_passed") is not True:
+        issues.append("metadata final_artifact_quality_passed is not true")
+    final_quality = _dict(artifact_metadata.get("final_artifact_quality"))
+    if final_quality and final_quality.get("ok") is not True:
+        issues.append("metadata final_artifact_quality.ok is not true")
     if len(sections) < 6:
         issues.append("section_count < 6")
     if len(chart_specs) < 4:
@@ -375,13 +370,6 @@ def _validate(
     duplicate_chart_refs = quality_checks["duplicate_chart_refs"]
     if duplicate_chart_refs:
         issues.append("duplicate chart refs: " + ", ".join(duplicate_chart_refs))
-    artifact_metadata = quality_checks["artifact_metadata"]
-    if writer_pipeline == "editorial_agent_v1":
-        if artifact_metadata.get("final_artifact_quality_passed") is not True:
-            issues.append("metadata final_artifact_quality_passed is not true")
-        final_quality = _dict(artifact_metadata.get("final_artifact_quality"))
-        if final_quality and final_quality.get("ok") is not True:
-            issues.append("metadata final_artifact_quality.ok is not true")
     if prose.count(REPEATED_META_PHRASE) > 1:
         issues.append("repeated meta prose: " + REPEATED_META_PHRASE)
     same_album_false_contrast = _same_album_false_contrast(artifact, prose)
