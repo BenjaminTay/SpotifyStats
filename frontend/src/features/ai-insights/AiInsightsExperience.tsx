@@ -25,8 +25,6 @@ export function AiInsightsExperience() {
   const deleteSession = useDeleteSession()
 
   const handleFollowUp = useCallback((question: string, label: string, context: ReportType) => {
-    setActiveSessionId(null)
-    setChatResetKey((key) => key + 1)
     setChatInitialQuestion(question)
     setChatContext(context)
     setChatContextLabel(label)

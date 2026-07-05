@@ -1,4 +1,4 @@
-import type { KeyboardEvent } from 'react'
+import { useCallback, useRef, useEffect, type KeyboardEvent } from 'react'
 import { Brain, Send } from 'lucide-react'
 
 interface ChatComposerProps {
@@ -18,7 +18,20 @@ export function ChatComposer({
   onThinkingModeChange,
   onSend,
 }: ChatComposerProps) {
-  const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
+
+  const autoResize = useCallback(() => {
+    const el = textareaRef.current
+    if (!el) return
+    el.style.height = 'auto'
+    el.style.height = `${Math.min(el.scrollHeight, 160)}px`
+  }, [])
+
+  useEffect(() => {
+    autoResize()
+  }, [value, autoResize])
+
+  const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
       e.preventDefault()
       onSend()
@@ -27,7 +40,13 @@ export function ChatComposer({
 
   return (
     <div className="border-t border-border/40 px-4 py-3">
-      <div className="mb-2 flex items-center justify-end">
+      <div className="mb-2 flex items-center justify-end gap-2">
+        <span
+          className="text-[10px] text-muted-foreground/40"
+          title="开启后 AI 将展示推理过程，回答更深入但耗时更长"
+        >
+          Shift+Enter 换行
+        </span>
         <button
           type="button"
           role="switch"
@@ -35,6 +54,7 @@ export function ChatComposer({
           aria-checked={thinkingMode}
           disabled={disabled}
           onClick={() => onThinkingModeChange(!thinkingMode)}
+          title="开启后 AI 将展示推理过程，回答更深入但耗时更长"
           className={[
             'inline-flex h-7 items-center gap-1.5 rounded-full border px-2.5 text-[11px] font-semibold transition-colors',
             thinkingMode
@@ -47,16 +67,17 @@ export function ChatComposer({
           <span>思考模式</span>
         </button>
       </div>
-      <div className="flex gap-2">
-        <input
-          type="text"
+      <div className="flex items-end gap-2">
+        <textarea
+          ref={textareaRef}
           value={value}
           onChange={(e) => onChange(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder="输入问题，如「我今年听最多的艺人是谁？」"
           disabled={disabled}
           maxLength={500}
-          className="flex-1 rounded-full border border-border/60 bg-card/30 px-4 py-2.5 text-[13px] text-foreground placeholder:text-muted-foreground/40 backdrop-blur-[8px] outline-none transition-colors focus:border-accent-foreground/20 disabled:opacity-40"
+          rows={1}
+          className="flex-1 resize-none rounded-2xl border border-border/60 bg-card/30 px-4 py-2.5 text-[13px] leading-relaxed text-foreground placeholder:text-muted-foreground/40 backdrop-blur-[8px] outline-none transition-colors focus:border-accent-foreground/20 disabled:opacity-40"
         />
         <button
           onClick={onSend}

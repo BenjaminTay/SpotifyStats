@@ -99,28 +99,37 @@ def generate_visual_yearly_artifact(
 
     sections_raw = parse_report_sections(llm_output, chart_specs)
     if sections_raw:
+        # Apply chart observation interpretations to each section
+        enriched_raw: list[dict[str, Any]] = []
+        for s in sections_raw:
+            chart_refs = tuple(s.get("chart_refs", []))
+            prose = _append_chart_observation_interpretations(s["prose"], chart_refs, chart_data)
+            enriched_raw.append({**s, "prose": prose, "chart_refs": chart_refs})
         sections = tuple(
             _Section(
                 id=s["id"],
                 role=s["role"],
                 heading=s["heading"],
                 deck=s["deck"],
-                prose=s["prose"],
-                chart_refs=tuple(s["chart_refs"]),
-                insight_refs=tuple(s["insight_refs"]),
-                evidence_refs=tuple(s["evidence_refs"]),
-                pull_quote=s["pull_quote"],
+                prose=_clean_user_text(s["prose"], context),
+                chart_refs=s["chart_refs"],
+                insight_refs=tuple(s.get("insight_refs", [])),
+                evidence_refs=tuple(s.get("evidence_refs", [])),
+                pull_quote=s.get("pull_quote"),
             )
-            for s in sections_raw
+            for s in enriched_raw
         )
+        # LLM-generated content is naturally comprehensive; skip template obligations
     else:
         # Fallback: use deterministic sections as safety net
         story_insights = build_story_insights(context, narrative)
         sections = _compose_sections(context, narrative, story_insights, visual)
         writer_accepted = False
 
-    # Phase E: Deterministic post-processing (unchanged)
-    sections = _ensure_editorial_story_obligations(sections, context)
+    # Phase E: Deterministic post-processing
+    # Only run obligations check for fallback sections; LLM output is naturally comprehensive
+    if not sections_raw:
+        sections = _ensure_editorial_story_obligations(sections, context)
     sections = _remove_duplicate_editorial_fact_claims(sections, None)
     sections = _ensure_minimum_editorial_prose(sections, context)
     sections = _dedupe_editorial_sections(sections)

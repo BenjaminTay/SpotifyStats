@@ -1,3 +1,4 @@
+import { AiMarkdown } from '@/features/ai-insights/AiMarkdown'
 import { YearlyChartBlock } from './YearlyChartBlock'
 import type { VisualYearlyArtifact, YearlyArtifactSection } from './yearlyArtifactTypes'
 
@@ -17,9 +18,9 @@ export function YearlySection({
         {section.deck && (
           <p className="mt-2 text-[14px] leading-relaxed text-muted-foreground">{section.deck}</p>
         )}
-        <p className="mt-4 whitespace-pre-line text-[15px] leading-7 text-muted-foreground">
-          {section.prose}
-        </p>
+        <div className="prose prose-sm mt-4 max-w-none text-[15px] leading-7 text-muted-foreground [&_strong]:text-foreground">
+          <AiMarkdown>{section.prose}</AiMarkdown>
+        </div>
         {section.pull_quote && (
           <blockquote className="mt-4 border-l-2 border-accent-foreground/50 pl-4 font-serif text-[18px] leading-relaxed text-foreground">
             {section.pull_quote}

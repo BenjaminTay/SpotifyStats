@@ -42,6 +42,7 @@ function temporalSummary(result: unknown): string | null {
 interface Props {
   messages: ChatMessage[]
   asking: boolean
+  sessionLoading?: boolean
   activeTask?: {
     task: AiTaskRun | null
     events: AiTaskEvent[]
@@ -57,6 +58,7 @@ interface Props {
 export function ChatMessageList({
   messages,
   asking,
+  sessionLoading = false,
   activeTask,
   retryingIdx,
   reportContext,
@@ -67,8 +69,13 @@ export function ChatMessageList({
   const hasMessages = messages.length > 0
 
   return (
-    <div className="min-h-[320px] max-h-[460px] overflow-y-auto">
-      {!hasMessages && (
+    <div className="min-h-[320px] max-h-[520px] sm:max-h-[640px] overflow-y-auto">
+      {sessionLoading && (
+        <div className="flex items-center justify-center py-20">
+          <div className="h-5 w-5 animate-spin rounded-full border-2 border-muted-foreground/30 border-t-muted-foreground" />
+        </div>
+      )}
+      {!sessionLoading && !hasMessages && (
         <div className="flex flex-col items-center justify-center gap-3 py-20 text-center select-none">
           <div className="font-serif text-[56px] italic leading-none text-muted-foreground/[0.07]">
             AI
@@ -81,7 +88,7 @@ export function ChatMessageList({
         </div>
       )}
 
-      {hasMessages && (
+      {!sessionLoading && hasMessages && (
         <div className="px-4 pt-4 space-y-4">
           {messages.map((msg, i) => (
             <div key={i}>

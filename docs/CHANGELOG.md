@@ -1,6 +1,31 @@
 # 变更日志
 
-## 2026-07-05 — AI 年报 Editorial Agent 写作流水线
+## 2026-07-05 — Agent 合成管道重构 + AI 洞察 UX 全面修复
+
+### 重构
+
+- **年度报告写作管道重构**：删除 6 阶段 `editorial_agent/` 流水线（~1,500 行），用 606 行 `report_writer.py` 替代。新方案用一次 LLM 合成调用（遵循 Agent Answer Philosophy 模式）生成报告正文，`build_report_writer_context()` 将研究数据转为富文本摘要（具体数字直接呈现给 LLM），`parse_report_sections()` 解析 JSON/Markdown 输出为 Section 列表。LLM 调用从 6 次减为 1 次，报告信息密度（具体数字/篇）提升 4-6 倍，抽象废话消除。
+- `writer_pipeline` 新增 `agent_synthesis_v2` 并设为默认值，`editorial_agent_v1` 映射到新路径保持兼容。
+- 保留全部确定性组件作为安全网：`visual_chart_data.py`、`visual_brief.py`、`visual_yearly_critic.py`、`yearly_validator.py`、`final_artifact_quality.py`、`_compose_sections()` 确定性 fallback。
+- 删除 9 个 editorial_agent 相关测试文件，重写核心测试覆盖 agent_synthesis_v2 和 LLM 失败回退路径。
+
+### AI 洞察 UX 修复（12 项）
+
+- 报告面板：页面加载/切换类型时不再闪烁"暂无数据"，改为骨架屏过渡
+- 聊天输入：`input` → `textarea` 支持多行，Enter 发送、Shift+Enter 换行，自适应高度
+- 会话管理：追问从报告卡片跳转时保留当前对话不销毁；会话创建失败时消息不显示
+- 元数据徽章：隐藏内部流水线术语（Agent 合成/Editorial Agent/事实核对/口味评分），仅保留"报告质量未通过校验"和"基础模式生成"两个异常状态徽章
+- 报告内容：YearlySection prose 通过 `AiMarkdown` 正确渲染粗体/斜体/列表；底部添加渐变遮罩暗示可滚动
+- 视觉一致性：年报年份选择器改为按钮组与周报/月报统一；EmptyState/ErrorState 使用不同图标区分
+- 聊天体验：桌面端最大高度 460→640px；切换历史会话时显示加载动画；工具轨迹显示中文标签（`analysis_stats`→「播放统计」等 14 个）
+- 思考模式：添加 tooltip 说明功能
+
+### 验证
+
+- 前端 253/253 通过，后端 unit 708/711（3 个预存失败），contract 258/264（6 个预存失败）
+- 真实生成验收（2025 完整年份 + 2026 部分年份）：Critic/ Fact/ Quality 三门禁全过，writer_status=accepted
+
+## 2026-07-05 — AI 年报 Editorial Agent 写作流水线（已废弃）
 
 ### 新增
 

@@ -123,30 +123,12 @@ export function ReportCard({
   const timeAgo = formatRelativeTimeZh(cachedAt)
   const exactTime = formatReportTimestamp(cachedAt)
   const suggestions = onFollowUp ? followUpQuestions(reportType, entities) : []
-  const reportMode = typeof metadata?.report_mode === 'string' ? metadata.report_mode : null
   const fallbackLevel = typeof metadata?.fallback_level === 'string' ? metadata.fallback_level : null
-  const criticPassed = typeof metadata?.critic_passed === 'boolean' ? metadata.critic_passed : null
   const articleLength = typeof metadata?.article_length === 'number' ? metadata.article_length : null
-  const writerPipeline = typeof metadata?.writer_pipeline === 'string' ? metadata.writer_pipeline : null
-  const writerPipelineVersion = typeof metadata?.writer_pipeline_version === 'string'
-    ? metadata.writer_pipeline_version
-    : null
-  const writerPipelineStatus = typeof metadata?.writer_pipeline_status === 'string'
-    ? metadata.writer_pipeline_status
-    : null
   const finalArtifactQualityPassed = typeof metadata?.final_artifact_quality_passed === 'boolean'
     ? metadata.final_artifact_quality_passed
     : null
   const finalQualityRejected = finalArtifactQualityPassed === false
-  const synthesisAccepted = (writerPipeline === 'agent_synthesis_v2'
-    || writerPipelineVersion === 'agent_synthesis_v2')
-    && writerPipelineStatus === 'accepted'
-    && !finalQualityRejected
-    && criticPassed !== false
-  const editorialAgentAccepted = writerPipelineVersion === 'yearly_editorial_agent_v1'
-    && writerPipelineStatus === 'accepted'
-    && !finalQualityRejected
-    && criticPassed !== false
 
   const handleCopy = async () => {
     const copyText = report ?? `${artifact?.title ?? title}\n\n${artifact?.subtitle ?? ''}`.trim()
@@ -214,34 +196,14 @@ export function ReportCard({
 
       {metadata && (
         <div className="mb-4 flex flex-wrap gap-2 text-[11px] text-muted-foreground">
-          {reportMode === 'visual_yearly_artifact' && synthesisAccepted && (
-            <span className="rounded-full border border-border bg-card/60 px-2 py-0.5">
-              Agent 合成
-            </span>
-          )}
-          {reportMode === 'agentic_longform' && (
-            <span className="rounded-full border border-border bg-card/60 px-2 py-0.5">
-              Agentic 长文
-            </span>
-          )}
-          {editorialAgentAccepted && (
-            <span className="rounded-full border border-border bg-card/60 px-2 py-0.5">
-              Editorial Agent
-            </span>
-          )}
           {finalQualityRejected && (
-            <span className="rounded-full border border-border bg-card/60 px-2 py-0.5">
-              最终质量待修正
+            <span className="rounded-full border border-destructive/30 bg-destructive/[0.06] px-2 py-0.5 text-destructive/80">
+              报告质量未通过校验
             </span>
           )}
-          {criticPassed !== null && !finalQualityRejected && (
-            <span className="rounded-full border border-border bg-card/60 px-2 py-0.5">
-              {criticPassed ? '已通过编辑审稿' : '审稿后回退'}
-            </span>
-          )}
-          {fallbackLevel && !finalQualityRejected && (
-            <span className="rounded-full border border-border bg-card/60 px-2 py-0.5">
-              回退模式
+          {!finalQualityRejected && fallbackLevel && (
+            <span className="rounded-full border border-amber-500/20 bg-amber-500/[0.06] px-2 py-0.5 text-amber-600 dark:text-amber-400">
+              基础模式生成
             </span>
           )}
           {articleLength !== null && (
@@ -256,8 +218,11 @@ export function ReportCard({
       {artifact ? (
         <VisualYearlyReport artifact={artifact} />
       ) : (
-        <div className="prose prose-sm max-w-none max-h-[600px] overflow-y-auto text-[14px] leading-relaxed text-muted-foreground [&_h2]:font-serif [&_h2]:text-[18px] [&_h2]:font-semibold [&_h2]:text-foreground [&_strong]:text-foreground">
-          <AiMarkdown>{report ?? ''}</AiMarkdown>
+        <div className="relative">
+          <div className="prose prose-sm max-w-none max-h-[600px] overflow-y-auto text-[14px] leading-relaxed text-muted-foreground [&_h2]:font-serif [&_h2]:text-[18px] [&_h2]:font-semibold [&_h2]:text-foreground [&_strong]:text-foreground">
+            <AiMarkdown>{report ?? ''}</AiMarkdown>
+          </div>
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-card/40 to-transparent" />
         </div>
       )}
 

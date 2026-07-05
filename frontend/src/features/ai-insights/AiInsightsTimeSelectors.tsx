@@ -215,19 +215,23 @@ export function AiInsightsTimeSelectors({
             current={String(year)}
             onSelect={onYearlyQuick}
           />
-          <select
-            value={year}
-            onChange={(e) => onYearChange(parseInt(e.target.value, 10))}
-            className={`${dateInputClass} cursor-pointer appearance-none`}
-          >
-            {Array.from({ length: nowYear - 2009 }, (_, i) => nowYear - i).map(
+          <div className="flex flex-wrap gap-1">
+            {Array.from({ length: 6 }, (_, i) => nowYear - i).map(
               (y) => (
-                <option key={y} value={y}>
+                <button
+                  key={y}
+                  onClick={() => onYearChange(y)}
+                  className={`rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.6px] transition-all ${
+                    year === y
+                      ? 'bg-accent-foreground text-card'
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
                   {y}
-                </option>
+                </button>
               ),
             )}
-          </select>
+          </div>
         </>
       )}
     </div>

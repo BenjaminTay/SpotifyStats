@@ -403,7 +403,12 @@ def call_report_writer_llm(
     from backend.services.ai_insights_service import _llm_chat  # lazy import (circular)
 
     try:
-        result = _llm_chat(system_prompt, writer_context, temperature=temperature)
+        result = _llm_chat(
+            system_prompt,
+            writer_context,
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
     except Exception:
         logger.warning("Report writer LLM call failed", exc_info=True)
         return None
@@ -471,6 +476,34 @@ def _repair_truncated_json(text: str) -> str:
     text += "}" * open_braces
 
     return text
+
+
+def _parse_markdown_sections(text: str) -> list[dict[str, Any]]:
+    """Fallback parser: extract sections from markdown ## headings."""
+    sections: list[dict[str, Any]] = []
+    # Split on ## headings
+    blocks = re.split(r"\n(?=## )", text)
+    for block in blocks:
+        block = block.strip()
+        if not block:
+            continue
+        # Extract heading from ## prefix
+        heading_match = re.match(r"^##\s+(.+?)(?:\n|$)", block)
+        if not heading_match:
+            continue
+        heading = heading_match.group(1).strip()
+        # Everything after the heading line is prose
+        prose = block[heading_match.end() :].strip()
+        if not prose:
+            continue
+        sections.append(
+            {
+                "heading": heading,
+                "prose": prose,
+                "chart_refs": [],
+            }
+        )
+    return sections
 
 
 def _assign_role(heading: str, section_id: str) -> str:
@@ -541,8 +574,16 @@ def parse_report_sections(
     raw_sections = _list(parsed.get("sections"))
 
     if not raw_sections:
-        logger.warning("No sections found in LLM output, returning empty")
-        return []
+        # Fallback: try to parse sections from markdown headings
+        raw_sections = _parse_markdown_sections(llm_output)
+        if raw_sections:
+            logger.info("Parsed %d sections from markdown fallback", len(raw_sections))
+        else:
+            logger.warning(
+                "No sections found in LLM output (JSON=%s, preview=%s)",
+                "ok" if parsed else "fail",
+                llm_output[:200],
+            )
 
     # Build set of valid chart IDs for validation
     valid_chart_ids = {str(s.get("id") or "") for s in chart_specs}

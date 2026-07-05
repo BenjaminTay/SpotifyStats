@@ -71,7 +71,7 @@ export function ChatInterface({
     ? { found: true, status: 'queued', stage: 'starting', progress_pct: 0, message: '正在启动 Agent Chat' }
     : null)
 
-  const { data: loadedSession } = useChatSession(
+  const { data: loadedSession, isLoading: sessionLoading } = useChatSession(
     sessionId !== null && sessionId !== loadedSessionRef.current && !justCreatedRef.current
       ? sessionId
       : null,
@@ -146,11 +146,16 @@ export function ChatInterface({
       const q = question.trim()
       if (!q || asking) return
       setInput('')
-      if (appendUser) setMessages((prev) => [...prev, { role: 'user', content: q }])
 
       const sid = await ensureSession()
-      if (sid === null) return
-      if (appendUser) saveMessage(sid, 'user', q)
+      if (sid === null) {
+        // Don't show the message if session creation failed
+        return
+      }
+      if (appendUser) {
+        setMessages((prev) => [...prev, { role: 'user', content: q }])
+        saveMessage(sid, 'user', q)
+      }
       await startAgentTask(q, sid)
     },
     [asking, ensureSession, saveMessage, startAgentTask],
@@ -293,6 +298,7 @@ export function ChatInterface({
         <ChatMessageList
           messages={messages}
           asking={asking}
+          sessionLoading={sessionLoading}
           activeTask={{ task: displayedTask, events: activeTaskState.events, toolCalls: activeTaskState.toolCalls }}
           retryingIdx={retryingIdx}
           reportContext={reportContext}

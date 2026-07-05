@@ -143,7 +143,7 @@ describe('AIToolTrace', () => {
     )
 
     expect(screen.getByText('数据查询轨迹')).toBeInTheDocument()
-    expect(screen.getByText('analysis_charts')).toBeInTheDocument()
+    expect(screen.getByText('排行榜')).toBeInTheDocument()
     expect(screen.getByText('done')).toBeInTheDocument()
     expect(screen.getByText('2026 artist plays top 10')).toBeInTheDocument()
     expect(screen.getByText('Artist A ranked #1')).toBeInTheDocument()

@@ -198,7 +198,7 @@ describe('ChatInterface task-based agent flow', () => {
     expect(await screen.findByText('AI 任务进度')).toBeInTheDocument()
     expect(screen.getAllByText('正在查询你的年度播放数据').length).toBeGreaterThan(0)
     expect(screen.getByText('数据查询轨迹')).toBeInTheDocument()
-    expect(screen.getByText('analysis_charts')).toBeInTheDocument()
+    expect(screen.getByText('排行榜')).toBeInTheDocument()
   })
 
   it('sends thinking_mode when the visible thinking toggle is enabled', async () => {
@@ -307,7 +307,7 @@ describe('ChatInterface task-based agent flow', () => {
     expect(screen.getByText('128 plays')).toBeInTheDocument()
     expect(screen.getByText('2026 上半年数据')).toBeInTheDocument()
     expect(screen.getByText('数据查询轨迹')).toBeInTheDocument()
-    expect(screen.getAllByText('analysis_charts').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('排行榜').length).toBeGreaterThan(0)
     expect(postSpy.mock.calls).toEqual(
       expect.arrayContaining([
         ['/chat/sessions/7/messages', {

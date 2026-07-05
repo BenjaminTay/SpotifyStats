@@ -388,7 +388,9 @@ def _get_llm(cfg: Optional[dict] = None) -> Optional[LLMProvider]:
     return LLMProvider(provider=provider, api_key=api_key, model=model, base_url=base_url)
 
 
-def _llm_chat(system_prompt: str, user_content: str, temperature: float = 0.3) -> Optional[str]:
+def _llm_chat(
+    system_prompt: str, user_content: str, temperature: float = 0.3, max_tokens: int = 2048
+) -> Optional[str]:
     """Send a single-turn chat to LLM. Returns content string or None."""
     cfg = _get_config()
     llm = _get_llm(cfg)
@@ -402,7 +404,7 @@ def _llm_chat(system_prompt: str, user_content: str, temperature: float = 0.3) -
                 {"role": "user", "content": user_content},
             ],
             temperature=temperature,
-            max_tokens=2048,
+            max_tokens=max_tokens,
         )
     except Exception:
         logger.warning("LLM chat call failed", exc_info=True)

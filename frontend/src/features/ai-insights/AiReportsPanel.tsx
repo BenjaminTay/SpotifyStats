@@ -87,6 +87,7 @@ export function AiReportsPanel({ settings, onFollowUp }: AiReportsPanelProps) {
   const defaultRangeApplied = useRef(false)
   const userChangedRange = useRef(false)
   const [defaultRangeReady, setDefaultRangeReady] = useState(false)
+  const [initialLoading, setInitialLoading] = useState(true)
   const now = useMemo(() => new Date(), [])
 
   const [reportType, setReportType] = useState<ReportType>('weekly')
@@ -178,6 +179,8 @@ export function AiReportsPanel({ settings, onFollowUp }: AiReportsPanelProps) {
     } catch (error) {
       if (reportPayloadKeyRef.current !== key) return
       setCurrentReportTask({ key, mode: 'cache', taskId: null, result: null, error: errorMessage(error) })
+    } finally {
+      setInitialLoading(false)
     }
   }, [reportPayload, reportPayloadKey, startReportTask])
 
@@ -286,6 +289,7 @@ export function AiReportsPanel({ settings, onFollowUp }: AiReportsPanelProps) {
     reportPayloadKeyRef.current = null
     setActiveReportTaskId(null)
     setCurrentReportTask(null)
+    setInitialLoading(true)
     setReportType(type)
   }
 
@@ -433,7 +437,7 @@ export function AiReportsPanel({ settings, onFollowUp }: AiReportsPanelProps) {
             cachedAt={reportTaskResult?.cached_at ?? null}
             entities={reportTaskResult?.entities ?? null}
             metadata={reportTaskResult?.metadata ?? null}
-            loading={checkingCache || generatingReport}
+            loading={checkingCache || generatingReport || initialLoading}
             fetching={generatingReport}
             error={reportTaskError}
             onRetry={handleReportRetry}

@@ -366,81 +366,13 @@ describe('VisualYearlyReport', () => {
     expect(screen.queryByText(/yearly_editorial_v1/)).not.toBeInTheDocument()
   })
 
-  it('ReportCard shows agent-synthesis quality badges without raw metadata leakage', () => {
+  it('ReportCard hides internal pipeline metadata for accepted reports', () => {
     const value = artifact()
     value.metadata = {
       ...value.metadata,
       writer_pipeline: 'agent_synthesis_v2',
       writer_pipeline_version: 'agent_synthesis_v2',
       writer_pipeline_status: 'accepted',
-    }
-
-    render(
-      <ReportCard
-        artifact={value}
-        cached={false}
-        cachedAt={null}
-        entities={null}
-        error={null}
-        fetching={false}
-        loading={false}
-        metadata={value.metadata}
-        onRetry={() => undefined}
-        report={null}
-        reportType="yearly"
-        title="年度叙事 · 2025"
-      />,
-    )
-
-    expect(screen.getByText('Agent 合成')).toBeInTheDocument()
-    expect(screen.queryByText(/agent_synthesis_v2/)).not.toBeInTheDocument()
-  })
-
-  it('ReportCard does not show accepted quality badges when final artifact gate failed', () => {
-    const value = artifact()
-    value.metadata = {
-      ...value.metadata,
-      writer_pipeline_version: 'yearly_editorial_agent_v1',
-      writer_pipeline_status: 'accepted',
-      critic_passed: true,
-      final_artifact_quality_passed: false,
-      fallback_level: 'final_quality_gate_failed',
-      claim_check_passed: true,
-      taste_score: { ok: true, total: 35, dimensions: {}, notes: [] },
-    }
-
-    render(
-      <ReportCard
-        artifact={value}
-        cached={false}
-        cachedAt={null}
-        entities={null}
-        error={null}
-        fetching={false}
-        loading={false}
-        metadata={value.metadata}
-        onRetry={() => undefined}
-        report={null}
-        reportType="yearly"
-        title="年度叙事 · 2025"
-      />,
-    )
-
-    expect(screen.getByText('最终质量待修正')).toBeInTheDocument()
-    expect(screen.queryByText('Editorial Agent')).not.toBeInTheDocument()
-    expect(screen.queryByText('口味评分 35')).not.toBeInTheDocument()
-    expect(screen.queryByText('已通过编辑审稿')).not.toBeInTheDocument()
-    expect(screen.queryByText('基础摘要回退')).not.toBeInTheDocument()
-  })
-
-  it('ReportCard does not label fallback visual composer as Agent Synthesis', () => {
-    const value = artifact()
-    value.metadata = {
-      ...value.metadata,
-      writer_pipeline: 'agent_synthesis_v2',
-      writer_pipeline_version: 'agent_synthesis_v2',
-      writer_pipeline_status: 'fallback_visual_composer',
-      critic_passed: false,
     }
 
     render(
@@ -461,6 +393,68 @@ describe('VisualYearlyReport', () => {
     )
 
     expect(screen.queryByText('Agent 合成')).not.toBeInTheDocument()
-    expect(screen.getByText('审稿后回退')).toBeInTheDocument()
+    expect(screen.queryByText(/agent_synthesis_v2/)).not.toBeInTheDocument()
+    expect(screen.queryByText('回退模式')).not.toBeInTheDocument()
+  })
+
+  it('ReportCard shows quality failure badge when final artifact gate failed', () => {
+    const value = artifact()
+    value.metadata = {
+      ...value.metadata,
+      final_artifact_quality_passed: false,
+      fallback_level: 'final_quality_gate_failed',
+    }
+
+    render(
+      <ReportCard
+        artifact={value}
+        cached={false}
+        cachedAt={null}
+        entities={null}
+        error={null}
+        fetching={false}
+        loading={false}
+        metadata={value.metadata}
+        onRetry={() => undefined}
+        report={null}
+        reportType="yearly"
+        title="年度叙事 · 2025"
+      />,
+    )
+
+    expect(screen.getByText('报告质量未通过校验')).toBeInTheDocument()
+    expect(screen.queryByText('Agent 合成')).not.toBeInTheDocument()
+    expect(screen.queryByText('Editorial Agent')).not.toBeInTheDocument()
+    expect(screen.queryByText('已通过编辑审稿')).not.toBeInTheDocument()
+  })
+
+  it('ReportCard shows fallback badge when writer fell back to basic mode', () => {
+    const value = artifact()
+    value.metadata = {
+      ...value.metadata,
+      writer_pipeline_version: 'agent_synthesis_v2',
+      writer_pipeline_status: 'fallback_visual_composer',
+      fallback_level: 'reduced_visuals',
+    }
+
+    render(
+      <ReportCard
+        artifact={value}
+        cached={false}
+        cachedAt={null}
+        entities={null}
+        error={null}
+        fetching={false}
+        loading={false}
+        metadata={value.metadata}
+        onRetry={() => undefined}
+        report={null}
+        reportType="yearly"
+        title="年度叙事 · 2025"
+      />,
+    )
+
+    expect(screen.getByText('基础模式生成')).toBeInTheDocument()
+    expect(screen.queryByText('Agent 合成')).not.toBeInTheDocument()
   })
 })
