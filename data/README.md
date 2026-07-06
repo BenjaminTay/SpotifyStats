@@ -59,8 +59,9 @@ data/
 
 ```
 data/
-├── spotify_stats.db                     # SQLite 数据库（47MB+，导入后生成）
+├── spotify_stats.db                     # SQLite 数据库（78MB+，导入后生成）
 ├── spotify_stats.db-shm / .db-wal       # SQLite WAL 文件（运行时自动管理）
+├── artist_genre_overrides.seed.json     # 人工审校的艺人流派种子数据（~171KB）
 └── covers/                              # 封面图片缓存
     ├── albums/                          #   专辑封面（WebP，Spotify API 全量拉取）
     └── artists/                         #   艺人头像

@@ -1,100 +1,120 @@
 # 文档地图
 
+只有两类文档：**活跃文档**（仍被引用或仍在推进）和**历史归档**（已完成，只供回溯）。
+
 ## 总览
 
 | 文档 | 目标读者 | 内容 |
 |------|---------|------|
-| [`README.md`](../README.md) | 使用者 | 项目介绍、功能列表、快速开始、技术栈 |
-| [`AGENTS.md`](../AGENTS.md) | AI Agent | 完整项目上下文、架构细节、所有约定 |
-| [`CLAUDE.md`](../CLAUDE.md) | 开发者（速查） | 常用命令、核心约束清单 |
+| [`../README.md`](../README.md) | 使用者 | 项目介绍、功能列表、快速开始、技术栈 |
+| [`../AGENTS.md`](../AGENTS.md) | AI Agent | 完整项目上下文、架构细节、所有约定 |
+| [`../CLAUDE.md`](../CLAUDE.md) | 开发者（速查） | 常用命令、核心约束清单 |
 | [`CHANGELOG.md`](CHANGELOG.md) | 所有人 | 变更日志 |
-| [`data/README.md`](../data/README.md) | 数据使用者 | Spotify 官方数据格式说明 |
+| [`../data/README.md`](../data/README.md) | 数据使用者 | Spotify 官方数据格式说明 |
 
-## 架构
+## 活跃文档
 
-| 文档 | 内容 |
+### 实现计划 (`plans/`) — 2 个
+
+只保留尚未完成的工作。
+
+| 计划 | 内容 |
 |------|------|
-| [`backend/CLAUDE.md`](../backend/CLAUDE.md) | 后端四层架构（api/services/domains/core）、模块表、测试策略 |
-| [`frontend/CLAUDE.md`](../frontend/CLAUDE.md) | 前端架构、路由表、Feature-first 分层、TanStack Query 约定 |
-| [`frontend/UI_STYLE_GUIDE.md`](../frontend/UI_STYLE_GUIDE.md) | "编辑风 × 液态玻璃"设计系统 — 颜色、字体、组件规范 |
-| [`architecture/2026-05-30-architecture-optimize.md`](architecture/2026-05-30-architecture-optimize.md) | Phase 4 架构优化决策文档 |
+| [`plans/2026-06-23-playback-records-plan.md`](plans/2026-06-23-playback-records-plan.md) | 播放记录功能规划（尚未实现） |
+| [`plans/2026-06-29-ai-agent-harness-quality-roadmap.md`](plans/2026-06-29-ai-agent-harness-quality-roadmap.md) | AI Agent Harness 质量路线图（持续指引，非单次任务） |
 
-## 播放统计规则
+### 设计规格 (`designs/`) — 2 个
 
-| 文档 | 内容 |
+只保留仍在活跃迭代的系统的设计。已稳定系统的设计归档到对应开发阶段。
+
+| 设计 | 内容 |
 |------|------|
-| [`playback-stats/rules.md`](playback-stats/rules.md) | 播放统计规则权威定义：三级合并、Session 边界、Album Projects |
-| [`playback-stats/implementation-plan.md`](playback-stats/implementation-plan.md) | 播放统计 Phase C+D 逐阶段实现计划 |
-| [`playback-stats/album-project.md`](playback-stats/album-project.md) | Album Project 播放统计专项设计 |
-| [`playback-stats/2026-06-12-playback-stats-rules.md`](playback-stats/2026-06-12-playback-stats-rules.md) | 播放统计规则初版（已整合至 rules.md，保留参考） |
+| [`designs/2026-07-04-ai-yearly-report-editorial-agent-pipeline-design.md`](designs/2026-07-04-ai-yearly-report-editorial-agent-pipeline-design.md) | 现行 Editorial Agent Pipeline 设计 |
+| [`designs/2026-07-04-genre-review-settings-design.md`](designs/2026-07-04-genre-review-settings-design.md) | Genre Review Settings 设计 |
 
-## 验证报告
+### 报告 (`reports/`) — 7 个
 
-| 文档 | 内容 |
+一次性验证/交付/审计报告。
+
+| 报告 | 内容 |
 |------|------|
-| [`verification/2026-06-19-fullstack-verification.md`](verification/2026-06-19-fullstack-verification.md) | 全栈验证与性能收口最终报告 |
-| [`verification/2026-06-20-fix-branch-follow-up.md`](verification/2026-06-20-fix-branch-follow-up.md) | fix 分支修复验证跟进 |
-| [`verification/2026-07-03-ai-question-test-matrix.md`](verification/2026-07-03-ai-question-test-matrix.md) | AI 问答与全应用功能测试问题清单、详细测试步骤、缺陷记录模板；可用 `scripts/evaluate_ai_question_matrix.py` 做静态完整性检查，或用 `--mode p0/safety/multiturn/changed/full` 跑真实后端 AI chat task 回归 |
-| [`verification/2026-07-03-ai-question-matrix-test-report.md`](verification/2026-07-03-ai-question-matrix-test-report.md) | AI 问答矩阵与全应用功能验收执行报告、失败样本、修复建议和 2026-07-03 修复实施记录 |
+| [`reports/2026-06-19-fullstack-verification-performance.md`](reports/2026-06-19-fullstack-verification-performance.md) | 全栈验证与性能收口执行计划 |
+| [`reports/2026-06-19-fullstack-verification.md`](reports/2026-06-19-fullstack-verification.md) | 全栈验证与性能收口最终报告 |
+| [`reports/2026-06-20-fix-branch-follow-up.md`](reports/2026-06-20-fix-branch-follow-up.md) | fix 分支修复验证跟进 |
+| [`reports/2026-06-22-phase5-delivery-report.md`](reports/2026-06-22-phase5-delivery-report.md) | Phase 5 最终交付报告 — 零缺陷验证、性能对比、10 分钟快速验证指南 |
+| [`reports/2026-07-03-ai-question-test-matrix.md`](reports/2026-07-03-ai-question-test-matrix.md) | AI 问答测试问题清单；可用 `scripts/evaluate_ai_question_matrix.py` 做静态完整性检查 |
+| [`reports/2026-07-03-ai-question-matrix-test-report.md`](reports/2026-07-03-ai-question-matrix-test-report.md) | AI 问答矩阵验收执行报告、失败样本、修复建议与实施记录 |
+| [`reports/2026-07-05-artist-genre-seed-audit.md`](reports/2026-07-05-artist-genre-seed-audit.md) | Artist Genre Seed 准确性审计 |
 
-## 产品化台账
+### 参考文档 (`reference/`) — 2 个
 
-| 文档 | 内容 |
+规则定义与权威口径，被 CLAUDE.md/AGENTS.md 引用。
+
+| 参考 | 内容 |
 |------|------|
-| [`productization/2026-06-08-phase5-baseline.md`](productization/2026-06-08-phase5-baseline.md) | Phase 5 产品化收口基线台账 |
-| [`productization/2026-06-11-ai-insights.md`](productization/2026-06-11-ai-insights.md) | AI Insights 模块设计（已完成，已归入 Phase 5.4-C/D） |
-| [`productization/2026-06-22-phase5-delivery-report.md`](productization/2026-06-22-phase5-delivery-report.md) | Phase 5 最终交付报告 — 零缺陷验证、性能对比、10 分钟快速验证指南 |
-| [`productization/2026-07-04-artist-genre-taxonomy.md`](productization/2026-07-04-artist-genre-taxonomy.md) | Artist genre taxonomy 与 Settings 审计面板：来源优先级、canonical 统计口径、非标准透传审计和当前数据快照 |
+| [`reference/playback-stats-rules.md`](reference/playback-stats-rules.md) | 播放统计规则权威定义：三级合并、Session 边界、Album Projects |
+| [`reference/2026-07-04-artist-genre-taxonomy.md`](reference/2026-07-04-artist-genre-taxonomy.md) | Artist Genre Taxonomy：来源优先级、canonical 统计口径、非标准透传审计 |
 
-## 当前功能设计
+## 历史归档 (`archive/`)
 
-| 文档 | 内容 |
+按项目开发阶段组织，已实现或被取代的文档均保留对应阶段目录下，供回溯上下文。
+
+### 01 · Streamlit MVP（2026-05）
+
+全功能 Streamlit 原型：Billboard 周榜、发行周期、封面系统、版本合并引擎。
+
+| 目录 | 内容 |
 |------|------|
-| [`superpowers/specs/2026-06-26-billboard-year-end-design.md`](superpowers/specs/2026-06-26-billboard-year-end-design.md) | Billboard 年榜设计：年度单曲/专辑/艺人榜、Year-End Score、荣誉卡片与 UI 组织 |
-| [`superpowers/plans/2026-06-26-billboard-year-end.md`](superpowers/plans/2026-06-26-billboard-year-end.md) | Billboard 年榜实现计划与最终落地口径 |
-| [`superpowers/specs/2026-06-28-ai-observable-agent-orchestrator-design.md`](superpowers/specs/2026-06-28-ai-observable-agent-orchestrator-design.md) | AI 可观察任务与只读 Agent Orchestrator V2 设计 |
-| [`superpowers/plans/2026-06-28-ai-observable-agent-orchestrator.md`](superpowers/plans/2026-06-28-ai-observable-agent-orchestrator.md) | AI Orchestrator V2 实现计划、验收清单与当前落地状态 |
-| [`superpowers/specs/2026-06-29-ai-agent-universal-analytical-harness-design.md`](superpowers/specs/2026-06-29-ai-agent-universal-analytical-harness-design.md) | AI Agent 通用分析中间层设计：QuestionFrame、EvidenceRecipe、AnalyticalBrief 与 AnswerContract |
-| [`superpowers/plans/2026-06-29-ai-agent-universal-analytical-harness.md`](superpowers/plans/2026-06-29-ai-agent-universal-analytical-harness.md) | AI Agent 通用分析中间层实施计划：问题家族、证据配方、分析底稿、回答契约与验收步骤 |
-| [`superpowers/specs/2026-06-29-ai-project-context-prompt-design.md`](superpowers/specs/2026-06-29-ai-project-context-prompt-design.md) | AI Agent Project Context Prompt 设计：项目语境、工具 playbook、回答哲学与只读安全边界 |
-| [`superpowers/plans/2026-06-29-ai-project-context-prompt.md`](superpowers/plans/2026-06-29-ai-project-context-prompt.md) | AI Agent Project Context Prompt 实施计划：prompt 组合、版本化 metadata、golden answer style 与验证步骤 |
-| [`superpowers/plans/2026-07-03-ai-harness-matrix-fixes.md`](superpowers/plans/2026-07-03-ai-harness-matrix-fixes.md) | AI 问答矩阵验收后的完整修复计划：LLM 可靠性、coverage、时间语义、页面域工具、critic 与 smoke |
-| [`superpowers/plans/2026-07-03-ai-yearly-report-quality.md`](superpowers/plans/2026-07-03-ai-yearly-report-quality.md) | AI 年度报告质量修复计划：报告数据契约、年中/全年口径、同期对比、名称保真、validator 重试与验收脚本 |
-| [`superpowers/plans/2026-07-03-ai-yearly-report-editorial-quality.md`](superpowers/plans/2026-07-03-ai-yearly-report-editorial-quality.md) | AI 年度报告编辑质量修复计划：TOP 专辑、个人 Billboard Year-End、editorial brief、去重复与文本质量探针 |
-| [`superpowers/specs/2026-07-03-agentic-longform-yearly-report-design.md`](superpowers/specs/2026-07-03-agentic-longform-yearly-report-design.md) | Agentic Longform Yearly Report 设计：只读 Report Agent 自主查询、Evidence Ledger、动态大纲、个人 Billboard 深度分析与长文质量 critic |
-| [`superpowers/plans/2026-07-03-agentic-longform-yearly-report.md`](superpowers/plans/2026-07-03-agentic-longform-yearly-report.md) | Agentic Longform Yearly Report 实施计划：只读 Report Agent、自主查询、Evidence Ledger、动态大纲、个人 Billboard 深度分析、长文 critic 与验收探针 |
-| [`superpowers/specs/2026-07-03-ai-visual-yearly-report-artifact-design.md`](superpowers/specs/2026-07-03-ai-visual-yearly-report-artifact-design.md) | AI Visual Yearly Report Artifact 设计：Narrative Brief、Visual Brief、图文年报 artifact、真实图表数据、风格 critic 与前端渲染器 |
-| [`superpowers/plans/2026-07-04-ai-visual-yearly-report-artifact.md`](superpowers/plans/2026-07-04-ai-visual-yearly-report-artifact.md) | AI Visual Yearly Report Artifact 实施计划：Narrative Brief、Visual Brief、真实图表数据、图文年报渲染器、critic、probe 与浏览器验收 |
-| [`superpowers/plans/2026-07-04-ai-visual-yearly-report-editorial-fix.md`](superpowers/plans/2026-07-04-ai-visual-yearly-report-editorial-fix.md) | AI 图文年度报告编辑质量修复计划：Story Insight Builder、章节写作去模板化、内部指令泄漏拦截、同实体 false contrast 与 2026 golden checks |
-| [`superpowers/specs/2026-07-04-ai-yearly-report-editorial-agent-pipeline-design.md`](superpowers/specs/2026-07-04-ai-yearly-report-editorial-agent-pipeline-design.md) | AI Yearly Report Editorial Agent Pipeline 设计：Research Brief、Storyline Planner、LLM 主笔、LLM 编辑、Claim Checker、Taste Rubric 与 artifact 兼容迁移 |
-| [`superpowers/plans/2026-07-04-ai-yearly-report-editorial-agent-pipeline.md`](superpowers/plans/2026-07-04-ai-yearly-report-editorial-agent-pipeline.md) | AI Yearly Report Editorial Agent Pipeline 实施计划：模型、研究简报、LLM 写作/编辑、claim checker、taste rubric、缓存隔离、默认切换和验收步骤 |
-| [`superpowers/plans/2026-07-04-artist-genre-taxonomy-v2.md`](superpowers/plans/2026-07-04-artist-genre-taxonomy-v2.md) | Artist Genre Taxonomy v2 修复计划：拆分过粗 canonical 标签、补 label axis、dominance warning 与 Settings 审计风险解释 |
-| [`superpowers/plans/2026-07-03-music-search-quick-open.md`](superpowers/plans/2026-07-03-music-search-quick-open.md) | 音乐查找入口实现计划：Masthead 快速搜索、`/music/search` 全页查找、本地实体搜索 API 与验证矩阵 |
-| [`superpowers/plans/2026-07-03-music-search-chart-badges.md`](superpowers/plans/2026-07-03-music-search-chart-badges.md) | 音乐查找榜单摘要实现计划：`include_chart`、详情页同口径播放次数与个人 Billboard 摘要、快速搜索键盘高亮体验 |
+| [`archive/01-streamlit-mvp/phase1-2-streamlit/`](archive/01-streamlit-mvp/phase1-2-streamlit/) | Streamlit 版本功能清单 |
+| [`archive/01-streamlit-mvp/phase3-frontend/`](archive/01-streamlit-mvp/phase3-frontend/) | React 前端迁移页面规划 |
+| [`archive/01-streamlit-mvp/phase4-architecture/`](archive/01-streamlit-mvp/phase4-architecture/) | 架构优化白皮书与 Phase 4 验收报告 |
+| [`archive/01-streamlit-mvp/features/account-center/`](archive/01-streamlit-mvp/features/account-center/) | 账号中心设计 |
+| [`archive/01-streamlit-mvp/features/release-cycle/`](archive/01-streamlit-mvp/features/release-cycle/) | 发行周期分析设计 |
+| [`archive/01-streamlit-mvp/features/yearly-review/`](archive/01-streamlit-mvp/features/yearly-review/) | 年度总结设计 |
+| [`archive/01-streamlit-mvp/features/enhancements/`](archive/01-streamlit-mvp/features/enhancements/) | 早期增强功能设计 |
 
-## 历史归档
+### 02 · React 产品化（2026-06-08~18）
 
-以下文档记录了项目的演进历程，不再活跃引用。均已完成实现，仅保留设计上下文供参考。
+React 重写、大文件拆分、API 契约硬化、AI Insights 模块、播放统计规则引擎。
 
-### 功能设计（已实现）
-
-| 文档 | 内容 |
+| 文件/目录 | 内容 |
 |------|------|
-| [`archive/features/account-center/`](archive/features/account-center/) | 账号中心功能设计（plan + spec） |
-| [`archive/features/release-cycle/`](archive/features/release-cycle/) | 发行周期分析设计（plan + spec） |
-| [`archive/features/yearly-review/`](archive/features/yearly-review/) | 年度总结设计（plan + spec） |
-| [`archive/features/enhancements/`](archive/features/enhancements/) | 早期增强功能设计 |
+| [`archive/02-react-productization/2026-06-08-phase5-baseline.md`](archive/02-react-productization/2026-06-08-phase5-baseline.md) | Phase 5 产品化基线台账 |
+| [`archive/02-react-productization/2026-06-11-ai-insights.md`](archive/02-react-productization/2026-06-11-ai-insights.md) | AI Insights 模块设计 |
+| [`archive/02-react-productization/playback-stats/`](archive/02-react-productization/playback-stats/) | 播放统计实现计划、Album Project、规则 v1 |
 
-### 历史阶段
+### 03 · 全栈质量门禁（2026-06-19~27）
 
-| 目录 | 阶段 | 内容 |
-|------|------|------|
-| [`archive/phase1-2-streamlit/`](archive/phase1-2-streamlit/) | Phase 1-2 | Streamlit 版本功能清单 |
-| [`archive/phase3-frontend/`](archive/phase3-frontend/) | Phase 3 | 前端迁移页面规划 |
-| [`archive/phase4-architecture/`](archive/phase4-architecture/) | Phase 4 | 架构优化文档与最终验收报告 |
+61 个 commits：验证矩阵、性能收口、Billboard 年榜、Settings UX 打磨。
 
-### 历史执行计划
-
-| 文档 | 内容 |
+| 文件 | 内容 |
 |------|------|
-| [`archive/2026-06-19-fullstack-verification-performance.md`](archive/2026-06-19-fullstack-verification-performance.md) | Superpowers 全栈验证执行计划（已执行完成，最终报告见 `verification/`） |
+| [`archive/03-quality-gate/2026-06-22-settings-page-ux-polish.md`](archive/03-quality-gate/2026-06-22-settings-page-ux-polish.md) | Settings 页面 UX 打磨 |
+| [`archive/03-quality-gate/2026-06-24-import-derived-data-maintenance.md`](archive/03-quality-gate/2026-06-24-import-derived-data-maintenance.md) | 导入派生数据维护方案 |
+| [`archive/03-quality-gate/2026-06-26-billboard-year-end.md`](archive/03-quality-gate/2026-06-26-billboard-year-end.md) | Billboard 个人年榜实现计划 |
+| [`archive/03-quality-gate/2026-06-26-billboard-year-end-design.md`](archive/03-quality-gate/2026-06-26-billboard-year-end-design.md) | Billboard 年榜设计规格 |
+
+### 04 · AI Agent 中间层（2026-06-28~07-03）
+
+AI Observable Agent Orchestrator、Universal Analytical Harness、证据链与回答契约。
+
+| 文件 | 内容 |
+|------|------|
+| [`archive/04-ai-agent-harness/2026-06-28-mobile-navigation-orientation.md`](archive/04-ai-agent-harness/2026-06-28-mobile-navigation-orientation.md) | 移动端导航与横竖屏适配 |
+| [`archive/04-ai-agent-harness/2026-06-28-ai-observable-agent-orchestrator.md`](archive/04-ai-agent-harness/2026-06-28-ai-observable-agent-orchestrator.md) | AI Observable Agent Orchestrator V2（plan） |
+| [`archive/04-ai-agent-harness/2026-06-28-ai-observable-agent-orchestrator-design.md`](archive/04-ai-agent-harness/2026-06-28-ai-observable-agent-orchestrator-design.md) | AI Observable Agent Orchestrator V2（design） |
+| [`archive/04-ai-agent-harness/2026-06-29-ai-agent-universal-analytical-harness.md`](archive/04-ai-agent-harness/2026-06-29-ai-agent-universal-analytical-harness.md) | 通用分析中间层（plan） |
+| [`archive/04-ai-agent-harness/2026-06-29-ai-agent-universal-analytical-harness-design.md`](archive/04-ai-agent-harness/2026-06-29-ai-agent-universal-analytical-harness-design.md) | 通用分析中间层（design） |
+| [`archive/04-ai-agent-harness/2026-06-29-ai-project-context-prompt.md`](archive/04-ai-agent-harness/2026-06-29-ai-project-context-prompt.md) | Project Context Prompt（plan） |
+| [`archive/04-ai-agent-harness/2026-06-29-ai-project-context-prompt-design.md`](archive/04-ai-agent-harness/2026-06-29-ai-project-context-prompt-design.md) | Project Context Prompt（design） |
+| [`archive/04-ai-agent-harness/2026-07-03-ai-harness-matrix-fixes.md`](archive/04-ai-agent-harness/2026-07-03-ai-harness-matrix-fixes.md) | Harness 矩阵验收后修复 |
+
+### 05 · AI 年报与流派（2026-07-03~05）
+
+图文年度报告 12 轮迭代、Music Search、Genre Taxonomy 体系。
+
+| 目录 | 内容 |
+|------|------|
+| [`archive/05-yearly-report-genre/ai-yearly-report/`](archive/05-yearly-report-genre/ai-yearly-report/) | 年报完整迭代链：agentic_longform → visual_artifact → editorial_agent → final_quality_gate |
+| [`archive/05-yearly-report-genre/music-search/`](archive/05-yearly-report-genre/music-search/) | 音乐查找入口与榜单摘要 |
+| [`archive/05-yearly-report-genre/genre-taxonomy/`](archive/05-yearly-report-genre/genre-taxonomy/) | Genre 解析、Taxonomy v2、Axis Confidence 早期迭代 |

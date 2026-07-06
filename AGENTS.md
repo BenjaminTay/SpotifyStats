@@ -72,7 +72,7 @@ Phase 5 目标是收紧产品线到可持续迭代状态。当前进度：
   - R24b 不变式合约测试：`test_playback_invariants.py`（6 条断言）+ `test_merge_level_aggregation.py`（14 条断言）+ `test_playback_filter_parameter_propagation.py`（过滤参数传播）
   - 测试基线：AI Agent Harness Quality Roadmap 后本地 unit 432 / contract 223 / frontend 217；`npm run build`、OpenAPI operation/parameter audit、API smoke/boundary、AI Insights interaction smoke、`/ai-insights` control inventory smoke 与真实浏览器思考模式问答已通过；Phase 5 既有完整验证矩阵仍以 `scripts/fullstack_verification_check.sh` 为发布前门禁
 
-详见 `docs/playback-stats/rules.md`、`docs/productization/2026-06-08-phase5-baseline.md`、`docs/verification/2026-06-19-fullstack-verification.md` 和 `docs/verification/2026-06-20-fix-branch-follow-up.md`。
+详见 `docs/reference/playback-stats-rules.md`、`docs/archive/02-react-productization/2026-06-08-phase5-baseline.md`、`docs/reports/2026-06-19-fullstack-verification.md` 和 `docs/reports/2026-06-20-fix-branch-follow-up.md`。
 
 ## 常用命令
 
