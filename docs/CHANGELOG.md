@@ -1,5 +1,31 @@
 # 变更日志
 
+## 2026-07-07 — 迭代收口：测试修复 + Streamlit 移除 + 基础设施加固
+
+### 测试修复（38 个）
+
+- **visual_yearly_artifact_service (21→0)**：`call_report_writer_llm`→`run_report_agent` 适配 Agent 合成管道，软警告语义更新（success 恒 True），补齐 deterministic 管线 `run_report_agent` mock
+- **ai_agent 系列 (8→0)**：`fake_llm_chat` 全局补 `**kwargs` 适配新增的 `thinking=True` 参数；tool_call_count 断言适配 temporal guard 自动注入
+- **审计基线 (3→0)**：`api_smoke_probe.py` 登记 3 个新 artist-genres 路径；`openapi_parameter_boundary_audit.py` 登记 4 个新参数（review_id/report_mode/status/writer_pipeline）
+- **contract 路由分发 (3→0)**：`yearly-story` 端点默认走 `visual_yearly_artifact` 缓存路径，测试补 `report_mode` 参数命中对应流水线
+- **测试隔离 (3→0)**：`artist_genre_metadata_api`/`artist_genre_consumers` fixture 的 `DB_PATH` 用 monkeypatch 改但 teardown 不恢复，导致 `music_search_api` 全量跑时连到错误数据库；改为手动 save/restore
+
+### 基础设施
+
+- `wikipedia_cache` 表加入 SCHEMA（`backend/core/db.py`），确保所有环境（含 seed DB）自动建表，消除 `no such table: wikipedia_cache` 错误
+
+### Streamlit 移除
+
+- 删除 `app/` 目录（45 个 .py 文件，15,609 行），自 2026-05-30 冻结以来所有功能已迁移至 FastAPI + React
+- `CLAUDE.md`/`README.md`/`AGENTS.md` 同步移除 Streamlit 相关引用和命令
+
+### 验证
+
+- BE unit 754/754 passed
+- BE contract 265/265 passed
+- FE 253/253 passed
+- ruff lint + format 全过
+
 ## 2026-07-05 — Agent 多轮年报 + 事实准确性 + 思考模式
 
 ### 年报 Agent（report_agent.py）
