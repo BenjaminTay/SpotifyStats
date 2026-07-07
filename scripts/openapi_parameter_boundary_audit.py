@@ -398,6 +398,30 @@ BOUNDARY_EVIDENCE_BY_KEY: dict[tuple[str, str, str], ParameterEvidence] = {
         ("backend/tests/contract/test_ai_insights_contract.py",),
         "AI weekly report date input belongs to LLM-generating contract coverage",
     ),
+    # Artist genre metadata — review workflow endpoints covered by dedicated
+    # metadata tests (import_artist_genre_overrides, review_artist_genre_suggestions).
+    ("path", "review_id", "integer"): ParameterEvidence(
+        "controlled_stateful_or_external",
+        ("scripts/import_artist_genre_overrides.py", "scripts/review_artist_genre_suggestions.py"),
+        "artist genre review workflow is a human-in-the-loop operation outside default probe",
+    ),
+    ("query", "status", "string|maxLength=40"): ParameterEvidence(
+        "controlled_stateful_or_external",
+        ("backend/tests/contract/test_artist_genre_metadata_api.py",),
+        "artist genre review status filter is covered by metadata contract tests",
+    ),
+    # AI yearly report — writer pipeline and report mode enum values covered
+    # by dedicated yearly report quality probes.
+    ("query", "writer_pipeline", "string|enum=agent_synthesis_v2,editorial_agent_v1,deterministic_visual_v1"): ParameterEvidence(
+        "controlled_stateful_or_external",
+        ("scripts/probe_visual_yearly_report_artifact.py", "scripts/probe_ai_yearly_report_quality.py"),
+        "writer_pipeline is validated by yearly report quality probes",
+    ),
+    ("query", "report_mode", "string|enum=visual_yearly_artifact,agentic_longform,basic_summary"): ParameterEvidence(
+        "controlled_stateful_or_external",
+        ("backend/tests/contract/test_visual_yearly_report_contract.py",),
+        "report_mode is covered by visual yearly report contract tests",
+    ),
 }
 
 

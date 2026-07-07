@@ -332,7 +332,9 @@ def test_chat_agent_retries_when_critic_rejects_external_billboard_claim(monkeyp
     fake_repo = FakeRepo()
     llm_calls: list[tuple[str, str, float]] = []
 
-    def fake_llm_chat(system_prompt: str, user_content: str, temperature: float = 0.3) -> str:
+    def fake_llm_chat(
+        system_prompt: str, user_content: str, temperature: float = 0.3, **kwargs: Any
+    ) -> str:
         llm_calls.append((system_prompt, user_content, temperature))
         if len(llm_calls) == 1:
             return (

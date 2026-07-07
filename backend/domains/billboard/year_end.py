@@ -207,8 +207,10 @@ def _track_rows(
     scores = scores.merge(_first_chart_map(full_weekly, ["track_id"]), on="track_id", how="left")
 
     scores["is_true_debut_no1"] = scores.apply(
-        lambda row: _year_matches(row.get("true_first_week"), year)
-        and _int_value(row.get("true_first_rank")) == 1,
+        lambda row: (
+            _year_matches(row.get("true_first_week"), year)
+            and _int_value(row.get("true_first_rank")) == 1
+        ),
         axis=1,
     )
     scores = scores.merge(_weeks_at_no1(annual_weekly, ["track_id"]), on="track_id", how="left")

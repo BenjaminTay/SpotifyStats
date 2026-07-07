@@ -34,7 +34,9 @@ def test_yearly_story_response_includes_agentic_metadata(monkeypatch):
     )
     client = TestClient(app)
 
-    response = client.get("/api/ai-insights/yearly-story?year=2026&force=true")
+    response = client.get(
+        "/api/ai-insights/yearly-story?year=2026&force=true&report_mode=agentic_longform"
+    )
 
     assert response.status_code == 200
     payload = response.json()

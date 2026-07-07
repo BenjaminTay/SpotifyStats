@@ -27,9 +27,10 @@ ARTISTS = [
 
 
 @pytest.fixture()
-def artist_genre_consumer_conn(tmp_path, monkeypatch) -> Generator[sqlite3.Connection, None, None]:
+def artist_genre_consumer_conn(tmp_path) -> Generator[sqlite3.Connection, None, None]:
     db_path = tmp_path / "artist-genre-consumers.db"
-    monkeypatch.setattr(db_mod, "DB_PATH", str(db_path))
+    original = db_mod.DB_PATH
+    db_mod.DB_PATH = str(db_path)
     db_mod.init_db()
     migrations.run_migrations()
 
@@ -43,6 +44,7 @@ def artist_genre_consumer_conn(tmp_path, monkeypatch) -> Generator[sqlite3.Conne
     _seed_artist_genre_consumer_db(conn)
     yield conn
     conn.close()
+    db_mod.DB_PATH = original
 
 
 def _seed_artist_genre_consumer_db(conn: sqlite3.Connection) -> None:

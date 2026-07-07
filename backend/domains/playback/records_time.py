@@ -193,9 +193,11 @@ def _new_year_eve(event_frame):
         nye["ts_date"]
         .astype(str)
         .apply(
-            lambda d: str(int(d[:4]) - 1) + "-" + d[:4]
-            if d.endswith("-01-01")
-            else d[:4] + "-" + str(int(d[:4]) + 1)
+            lambda d: (
+                str(int(d[:4]) - 1) + "-" + d[:4]
+                if d.endswith("-01-01")
+                else d[:4] + "-" + str(int(d[:4]) + 1)
+            )
         )
     )
 

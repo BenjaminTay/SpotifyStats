@@ -641,6 +641,12 @@ CREATE TABLE IF NOT EXISTS chat_messages (
 
 CREATE INDEX IF NOT EXISTS idx_chat_messages_session ON chat_messages(session_id);
 CREATE INDEX IF NOT EXISTS idx_chat_sessions_updated ON chat_sessions(updated_at DESC);
+
+CREATE TABLE IF NOT EXISTS wikipedia_cache (
+    cache_key TEXT PRIMARY KEY,
+    data TEXT NOT NULL,
+    fetched_at REAL NOT NULL
+);
 """
 
 

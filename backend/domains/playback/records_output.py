@@ -87,9 +87,9 @@ def _add_cover_urls_to_records(records: dict) -> None:
             ):
                 try:
                     val["cover_url"] = val["entity_id"].apply(
-                        lambda eid: track_cover_map.get(int(eid))
-                        if eid and str(eid).isdigit()
-                        else None
+                        lambda eid: (
+                            track_cover_map.get(int(eid)) if eid and str(eid).isdigit() else None
+                        )
                     )
                     applied = True
                 except (ValueError, TypeError):

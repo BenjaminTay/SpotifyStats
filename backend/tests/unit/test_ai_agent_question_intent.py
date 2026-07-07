@@ -147,7 +147,9 @@ def test_play_data_range_prefers_local_ts_date(monkeypatch: pytest.MonkeyPatch) 
 
 
 def test_plan_tool_calls_temporal_guard_corrects_wrong_last_summer_year(monkeypatch) -> None:
-    def fake_llm_chat(system_prompt: str, user_content: str, temperature: float = 0.3) -> str:
+    def fake_llm_chat(
+        system_prompt: str, user_content: str, temperature: float = 0.3, **kwargs
+    ) -> str:
         return """
         [
           {
@@ -185,7 +187,9 @@ def test_plan_tool_calls_temporal_guard_corrects_wrong_last_summer_year(monkeypa
 def test_plan_tool_calls_adds_bounded_tool_when_relative_time_plan_is_only_yearly(
     monkeypatch,
 ) -> None:
-    def fake_llm_chat(system_prompt: str, user_content: str, temperature: float = 0.3) -> str:
+    def fake_llm_chat(
+        system_prompt: str, user_content: str, temperature: float = 0.3, **kwargs
+    ) -> str:
         return '[{"tool_name":"wrapped_yearly","params":{"year":2025}}]'
 
     monkeypatch.setattr(ai_agent_service.ai_insights_service, "_llm_chat", fake_llm_chat)

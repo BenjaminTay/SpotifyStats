@@ -175,7 +175,10 @@ def test_ai_insights_llm_not_configured_maps_to_503(client, monkeypatch):
         },
     )
 
-    response = client.get("/api/ai-insights/yearly-story", params={"year": 2026})
+    response = client.get(
+        "/api/ai-insights/yearly-story",
+        params={"year": 2026, "report_mode": "basic_summary"},
+    )
 
     assert response.status_code == 503
     assert response.headers["x-request-id"]
@@ -196,7 +199,10 @@ def test_ai_insights_yearly_validation_failure_maps_to_502(client, monkeypatch):
         },
     )
 
-    response = client.get("/api/ai-insights/yearly-story", params={"year": 2026})
+    response = client.get(
+        "/api/ai-insights/yearly-story",
+        params={"year": 2026, "report_mode": "basic_summary"},
+    )
 
     assert response.status_code == 502
     assert response.headers["x-request-id"]
