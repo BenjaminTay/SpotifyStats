@@ -4,7 +4,7 @@
 
 ## 项目概述
 
-Spotify Extended Streaming History 数据分析 Web 应用 — **FastAPI 后端 + React 前端**。Streamlit `app/` 自 2026-05-30 冻结维护。
+Spotify Extended Streaming History 数据分析 Web 应用 — **FastAPI 后端 + React 前端**。
 
 UI：「编辑风 × 液态玻璃」— Playfair Display + Inter，毛玻璃，日/夜双皮肤。
 
@@ -95,7 +95,6 @@ node scripts/frontend_web_vitals_probe.mjs --routes /,/analysis/stats,/analysis/
 
 # 其他
 cd frontend && npm run build
-source .venv/bin/activate && streamlit run app/main.py  # 冻结
 ```
 
 ## Git 提交规范
@@ -116,7 +115,6 @@ conventional commit 前缀 + 4-7 条中文 bullet。
 
 ```
 JSON → import → SQLite → FastAPI (backend/) → React (frontend/)
-                              └── Streamlit (app/ 冻结)
 ```
 
 **后端**：api/ → services/ → domains/（billboard/playback/settings/enrichment/community/chat/ai_agent/ai_tasks）→ core/，辅以 infrastructure/http/ + providers/（spotify/genius/wikipedia/llm）

@@ -2,7 +2,7 @@
 
 从 Spotify 官方导出的 Extended Streaming History 及账号数据中导入播放记录，提供多维度交互式统计分析仪表盘。
 
-**架构**：FastAPI 后端 + React 前端。原 Streamlit 应用（`app/`）已冻结维护。
+**架构**：FastAPI 后端 + React 前端。
 
 ## 功能
 
@@ -92,7 +92,6 @@ SpotifyStats/
 │       ├── components/    # ui/charts/layout/shared
 │       ├── hooks/         # 自定义 Hooks
 │       └── api/           # QueryClient + queryKeys + OpenAPI 类型
-├── app/                   # Streamlit 旧应用（冻结维护）
 ├── data/                  # SQLite 数据库 + JSON 源数据
 ├── docs/                  # 项目文档
 ├── scripts/               # 工具脚本

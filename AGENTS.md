@@ -8,7 +8,7 @@ Spotify Extended Streaming History 数据分析 Web 应用的主项目提示词�
 
 从 Spotify 官方 JSON 播放记录导入 SQLite，通过 **FastAPI 后端 + React 前端** 提供交互式多维度统计仪表盘。
 
-原 Streamlit 单体架构已迁移到 FastAPI + React。`app/` 目录下的 Streamlit 应用自 2026-05-30 进入**冻结维护**（只修严重 bug，新功能进 backend/ + frontend/）。两者仅共享 `data/spotify_stats.db`，无代码交叉依赖。
+Streamlit 原型已于 2026-07-07 移除。历史代码可通过 `git log -- app/` 回溯。
 
 **UI 主题**：「编辑风 × 液态玻璃」— 杂志式排版（Playfair Display 衬线 + Inter 无衬线）+ 毛玻璃材质 + 日/夜双皮肤。详见 `frontend/UI_STYLE_GUIDE.md`。
 
@@ -163,7 +163,6 @@ node scripts/frontend_web_vitals_probe.mjs --routes /,/analysis/stats,/analysis/
 # 其他
 cd frontend && npm run build          # 生产构建
 cd frontend && npx shadcn@latest add <component-name>
-source .venv/bin/activate && streamlit run app/main.py  # Streamlit（冻结维护）
 ```
 
 ## Git 提交规范
@@ -189,7 +188,7 @@ source .venv/bin/activate && streamlit run app/main.py  # Streamlit（冻结维�
 ```
 JSON 导出 ──→ import_data.py ──→ SQLite (spotify_stats.db) ──→ FastAPI backend/ ──→ React frontend/
                                          │
-账号数据 ──→ import_account_data.py ─────┘         └──→ Streamlit app/ (冻结维护)
+账号数据 ──→ import_account_data.py ─────┘
 ```
 
 ### 后端架构 (backend/)
