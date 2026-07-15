@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import sqlite3
 from collections import Counter, defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 SOURCE_PRIORITY = {
@@ -364,6 +364,10 @@ class ResolvedArtistGenres:
     evidence_url: str | None = None
     evidence_summary: str | None = None
     is_fallback: bool = False
+    axis_genres: dict[str, list[str]] = field(default_factory=dict)
+    axis_sources: dict[str, str] = field(default_factory=dict)
+    axis_confidences: dict[str, float] = field(default_factory=dict)
+    axis_evidence_urls: dict[str, str | None] = field(default_factory=dict)
 
 
 def normalize_genres(values: list[Any]) -> list[str]:
@@ -573,6 +577,51 @@ def _source_sort_key(row: sqlite3.Row) -> tuple[int, float, int]:
     )
 
 
+def _canonical_genres_by_axis(genres: list[str]) -> dict[str, list[str]]:
+    grouped: dict[str, list[str]] = defaultdict(list)
+    for genre in canonicalize_genres_for_statistics(genres):
+        axis = STATISTICAL_GENRE_METADATA.get(genre, {}).get("axis", "style")
+        grouped[axis].append(genre)
+    return dict(grouped)
+
+
+def _with_axis_resolution(
+    base: ResolvedArtistGenres,
+    candidates: list[dict[str, Any]],
+) -> ResolvedArtistGenres:
+    axis_genres: dict[str, list[str]] = {}
+    axis_sources: dict[str, str] = {}
+    axis_confidences: dict[str, float] = {}
+    axis_evidence_urls: dict[str, str | None] = {}
+    for candidate in candidates:
+        source = str(candidate["source"])
+        confidence = min(max(float(candidate.get("confidence") or 0.0), 0.0), 1.0)
+        evidence_url = candidate.get("evidence_url")
+        for axis, genres in _canonical_genres_by_axis(candidate["genres"]).items():
+            if axis in axis_genres or not genres:
+                continue
+            axis_genres[axis] = genres
+            axis_sources[axis] = source
+            axis_confidences[axis] = confidence
+            axis_evidence_urls[axis] = evidence_url
+    return ResolvedArtistGenres(
+        artist_name=base.artist_name,
+        genres=base.genres,
+        primary_genre=base.primary_genre,
+        language=base.language,
+        region=base.region,
+        source=base.source,
+        confidence=base.confidence,
+        evidence_url=base.evidence_url,
+        evidence_summary=base.evidence_summary,
+        is_fallback=base.is_fallback,
+        axis_genres=axis_genres,
+        axis_sources=axis_sources,
+        axis_confidences=axis_confidences,
+        axis_evidence_urls=axis_evidence_urls,
+    )
+
+
 def upsert_genre_source(
     conn: sqlite3.Connection,
     *,
@@ -645,6 +694,10 @@ def resolve_artist_genres_map(
 
     tables = _existing_tables(conn, LOCAL_TABLES | {"spotify_artist_meta"})
 
+    spotify_candidates: dict[str, dict[str, Any]] = {}
+    override_candidates: dict[str, dict[str, Any]] = {}
+    approved_candidates: dict[str, list[dict[str, Any]]] = defaultdict(list)
+
     if "spotify_artist_meta" in tables:
         rows = conn.execute(
             f"""SELECT artist_name, spotify_artist_id, genres
@@ -657,6 +710,12 @@ def resolve_artist_genres_map(
             if not genres:
                 continue
             artist_name = row["artist_name"]
+            spotify_candidates[artist_name] = {
+                "genres": genres,
+                "source": "spotify",
+                "confidence": 1.0,
+                "evidence_url": None,
+            }
             resolved[artist_name] = ResolvedArtistGenres(
                 artist_name=artist_name,
                 genres=genres,
@@ -668,39 +727,44 @@ def resolve_artist_genres_map(
                 is_fallback=False,
             )
 
-    remaining = [name for name in names if not resolved[name].genres]
-    if remaining and "artist_genre_overrides" in tables:
+    if "artist_genre_overrides" in tables:
         rows = conn.execute(
             f"""SELECT *
                 FROM artist_genre_overrides
-                WHERE artist_name IN ({_placeholders(remaining)})""",
-            remaining,
+                WHERE artist_name IN ({_placeholders(names)})""",
+            names,
         ).fetchall()
         for row in rows:
             genres = _loads_list(row["normalized_genres_json"])
             if not genres:
                 continue
             artist_name = row["artist_name"]
-            resolved[artist_name] = ResolvedArtistGenres(
-                artist_name=artist_name,
-                genres=genres,
-                primary_genre=row["primary_genre"] or genres[0],
-                language=row["language"],
-                region=row["region"],
-                source="manual_override",
-                confidence=float(row["confidence"] or 1.0),
-                evidence_summary=row["note"],
-                is_fallback=True,
-            )
+            override_candidates[artist_name] = {
+                "genres": genres,
+                "source": "manual_override",
+                "confidence": float(row["confidence"] or 1.0),
+                "evidence_url": None,
+            }
+            if not resolved[artist_name].genres:
+                resolved[artist_name] = ResolvedArtistGenres(
+                    artist_name=artist_name,
+                    genres=genres,
+                    primary_genre=row["primary_genre"] or genres[0],
+                    language=row["language"],
+                    region=row["region"],
+                    source="manual_override",
+                    confidence=float(row["confidence"] or 1.0),
+                    evidence_summary=row["note"],
+                    is_fallback=True,
+                )
 
-    remaining = [name for name in names if not resolved[name].genres]
-    if remaining and "artist_genre_sources" in tables:
+    if "artist_genre_sources" in tables:
         rows = conn.execute(
             f"""SELECT *
                 FROM artist_genre_sources
-                WHERE artist_name IN ({_placeholders(remaining)})
+                WHERE artist_name IN ({_placeholders(names)})
                   AND status = 'approved'""",
-            remaining,
+            names,
         ).fetchall()
         by_artist: dict[str, list[sqlite3.Row]] = {}
         for row in rows:
@@ -708,20 +772,40 @@ def resolve_artist_genres_map(
                 continue
             by_artist.setdefault(row["artist_name"], []).append(row)
         for artist_name, source_rows in by_artist.items():
-            best = sorted(source_rows, key=_source_sort_key, reverse=True)[0]
+            sorted_rows = sorted(source_rows, key=_source_sort_key, reverse=True)
+            for source_row in sorted_rows:
+                approved_candidates[artist_name].append(
+                    {
+                        "genres": _loads_list(source_row["normalized_genres_json"]),
+                        "source": source_row["source"],
+                        "confidence": float(source_row["confidence"] or 0),
+                        "evidence_url": source_row["evidence_url"],
+                    }
+                )
+            best = sorted_rows[0]
             genres = _loads_list(best["normalized_genres_json"])
-            resolved[artist_name] = ResolvedArtistGenres(
-                artist_name=artist_name,
-                genres=genres,
-                primary_genre=best["primary_genre"] or genres[0],
-                language=best["language"],
-                region=best["region"],
-                source=best["source"],
-                confidence=float(best["confidence"] or 0),
-                evidence_url=best["evidence_url"],
-                evidence_summary=best["evidence_summary"],
-                is_fallback=True,
-            )
+            if not resolved[artist_name].genres:
+                resolved[artist_name] = ResolvedArtistGenres(
+                    artist_name=artist_name,
+                    genres=genres,
+                    primary_genre=best["primary_genre"] or genres[0],
+                    language=best["language"],
+                    region=best["region"],
+                    source=best["source"],
+                    confidence=float(best["confidence"] or 0),
+                    evidence_url=best["evidence_url"],
+                    evidence_summary=best["evidence_summary"],
+                    is_fallback=True,
+                )
+
+    for artist_name in names:
+        candidates: list[dict[str, Any]] = []
+        if artist_name in spotify_candidates:
+            candidates.append(spotify_candidates[artist_name])
+        if artist_name in override_candidates:
+            candidates.append(override_candidates[artist_name])
+        candidates.extend(approved_candidates.get(artist_name, []))
+        resolved[artist_name] = _with_axis_resolution(resolved[artist_name], candidates)
 
     return resolved
 
@@ -754,6 +838,33 @@ def compute_genre_coverage(
         "source_hours": {key: round(value, 1) for key, value in source_hours.items()},
         "top_missing": top_missing[:20],
     }
+
+
+def compute_genre_axis_gaps(
+    conn: sqlite3.Connection,
+    artist_hours: dict[str, float],
+    *,
+    axis: str,
+) -> list[dict[str, Any]]:
+    if axis not in AXIS_ORDER:
+        raise ValueError(f"unsupported genre axis: {axis}")
+    resolved = resolve_artist_genres_map(conn, list(artist_hours))
+    gaps: list[dict[str, Any]] = []
+    for artist_name, hours_value in artist_hours.items():
+        item = resolved[artist_name]
+        if item.axis_genres.get(axis):
+            continue
+        gaps.append(
+            {
+                "artist_name": artist_name,
+                "hours": round(float(hours_value), 1),
+                "axis": axis,
+                "raw_genres": item.genres,
+                "raw_source": item.source,
+                "resolved_axes": item.axis_genres,
+            }
+        )
+    return sorted(gaps, key=lambda row: (-float(row["hours"]), row["artist_name"]))
 
 
 def compute_genre_taxonomy_audit(
@@ -790,25 +901,24 @@ def compute_genre_taxonomy_audit(
             unknown_hours += hours
             continue
 
-        canonical_genres = canonicalize_genres_for_statistics(raw_genres)
-        genres_by_axis: dict[str, list[str]] = defaultdict(list)
-        for genre in canonical_genres:
-            axis = STATISTICAL_GENRE_METADATA.get(genre, {}).get("axis", "style")
-            genres_by_axis[axis].append(genre)
+        genres_by_axis = item.axis_genres or _canonical_genres_by_axis(raw_genres)
 
-        for axis_genres in genres_by_axis.values():
+        for axis, axis_genres in genres_by_axis.items():
+            axis_source = item.axis_sources.get(axis, item.source)
+            axis_confidence = item.axis_confidences.get(axis, item.confidence)
+            axis_evidence_url = item.axis_evidence_urls.get(axis, item.evidence_url)
             share = hours / len(axis_genres)
             for genre in axis_genres:
                 canonical_hours[genre] += share
-                canonical_source_hours[genre][item.source] += share
-                canonical_source_confidence_hours[genre][item.source] += share * min(
-                    max(float(item.confidence), 0.0), 1.0
+                canonical_source_hours[genre][axis_source] += share
+                canonical_source_confidence_hours[genre][axis_source] += share * min(
+                    max(float(axis_confidence), 0.0), 1.0
                 )
-                if item.source in {"spotify", "manual_override"} or item.evidence_url:
-                    canonical_source_evidence_hours[genre][item.source] += share
+                if axis_source in {"spotify", "manual_override"} or axis_evidence_url:
+                    canonical_source_evidence_hours[genre][axis_source] += share
                 canonical_artist_hours[genre][artist_name] += share
                 artist_raw_genres[artist_name] = raw_genres
-                artist_sources[artist_name] = item.source
+                artist_sources[artist_name] = axis_source
 
         for raw_genre in raw_genres:
             raw_hours[raw_genre] += hours

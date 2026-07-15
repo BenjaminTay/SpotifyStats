@@ -255,3 +255,22 @@ def test_migrate_023_upgrades_existing_database_without_fresh_schema(empty_db):
         row[1] for row in empty_db.execute("PRAGMA index_list(artist_genre_sources)").fetchall()
     }
     assert "idx_artist_genre_sources_artist" in indexes
+
+
+def test_migration_027_adds_pre_review_fields_to_both_review_queues(empty_db):
+    from backend.core import migrations
+
+    migrations.migrate_001(empty_db)
+    migrations.migrate_024(empty_db)
+    migrations.migrate_027(empty_db)
+
+    required = {
+        "pre_review_recommendation",
+        "pre_review_confidence",
+        "pre_review_note",
+        "pre_reviewed_by",
+        "pre_reviewed_at",
+    }
+    for table in ("artist_genre_review_queue", "artist_language_review_queue"):
+        columns = {row[1] for row in empty_db.execute(f"PRAGMA table_info({table})")}
+        assert required <= columns

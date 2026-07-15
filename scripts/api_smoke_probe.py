@@ -77,7 +77,8 @@ DEFAULT_EXCLUDED_GET_PATHS: frozenset[str] = frozenset(
         "/api/spotify/auth/login",
         "/api/spotify/auth/playing",
         # Artist genre metadata endpoints — read-only review/coverage/taxonomy
-        # data covered by dedicated metadata tests.
+        # and per-axis gaps are covered by dedicated metadata tests.
+        "/api/metadata/artist-genres/axis-gaps",
         "/api/metadata/artist-genres/coverage",
         "/api/metadata/artist-genres/reviews",
         "/api/metadata/artist-genres/taxonomy",

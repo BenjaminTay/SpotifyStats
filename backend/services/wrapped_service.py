@@ -17,10 +17,8 @@ import pandas as pd
 from backend.core.db import get_track_artist_names_map, load_plays, load_plays_for_artists
 from backend.domains.metadata.artist_genres import (
     ResolvedArtistGenres,
-    canonicalize_genres_for_statistics,
     compute_artist_genre_distribution,
     resolve_artist_genres_map,
-    statistical_genre_label_metadata,
 )
 from backend.domains.metadata.artist_languages import (
     artist_language_fact_revision,
@@ -798,14 +796,9 @@ def _build_genre_panorama(conn, year_df, artist_agg):
         }
 
     resolved = resolve_artist_genres_map(conn, artist_names)
-    metadata = statistical_genre_label_metadata()
     artist_style_genres = {}
     for name, item in resolved.items():
-        artist_style_genres[name] = [
-            genre
-            for genre in canonicalize_genres_for_statistics(item.genres)
-            if metadata.get(genre, {}).get("axis", "style") == "style"
-        ]
+        artist_style_genres[name] = item.axis_genres.get("style", [])
 
     distribution = compute_artist_genre_distribution(conn, artist_hours)
     distribution["coverage"]["excluded_unattributed_hours"] = excluded_ms / 3_600_000

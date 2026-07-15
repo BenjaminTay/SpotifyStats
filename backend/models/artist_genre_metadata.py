@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -17,6 +17,25 @@ class ArtistGenreCoverageResponse(BaseModel):
     artist_count: int
     total_hours: float
     excluded_unattributed_hours: float = 0.0
+
+
+class ArtistGenreAxisGapItem(BaseModel):
+    artist_name: str
+    hours: float
+    axis: str
+    raw_genres: list[str] = Field(default_factory=list)
+    raw_source: str
+    resolved_axes: dict[str, list[str]] = Field(default_factory=dict)
+    review_id: int | None = None
+    review_status: str | None = None
+    pre_review_recommendation: str | None = None
+
+
+class ArtistGenreAxisGapResponse(BaseModel):
+    axis: str
+    total: int
+    unknown_hours: float
+    items: list[ArtistGenreAxisGapItem] = Field(default_factory=list)
 
 
 class ArtistGenreSourceMixItem(BaseModel):
@@ -111,6 +130,11 @@ class ArtistGenreReviewItem(BaseModel):
     evidence_summary: str | None = None
     evidence_url: str | None = None
     review_status: str
+    pre_review_recommendation: str | None = None
+    pre_review_confidence: float | None = Field(default=None, ge=0.0, le=1.0)
+    pre_review_note: str | None = None
+    pre_reviewed_by: str | None = None
+    pre_reviewed_at: str | None = None
     reviewed_by: str | None = None
     reviewed_at: str | None = None
     resolution_note: str | None = None
@@ -130,6 +154,17 @@ class ArtistGenreEvidenceUpdateRequest(BaseModel):
 
 class ArtistGenreReviewDecisionRequest(BaseModel):
     resolution_note: str = Field(min_length=1, max_length=500)
+
+
+class MetadataPreReviewRequest(BaseModel):
+    recommendation: Literal[
+        "recommend_approve",
+        "manual_review",
+        "insufficient_evidence",
+        "recommend_reject",
+    ]
+    confidence: float = Field(ge=0.0, le=1.0)
+    note: str = Field(min_length=1, max_length=1000)
 
 
 class ArtistGenreReviewDecisionResponse(BaseModel):

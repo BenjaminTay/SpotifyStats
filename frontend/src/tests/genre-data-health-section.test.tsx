@@ -70,6 +70,36 @@ const reviewPayload = {
   total: 1,
 }
 
+const styleGapPayload = {
+  axis: 'style',
+  total: 2,
+  unknown_hours: 77.7,
+  items: [
+    {
+      artist_name: 'Conan Gray',
+      hours: 42.5,
+      axis: 'style',
+      raw_genres: ['singer-songwriter'],
+      raw_source: 'spotify',
+      resolved_axes: { role: ['singer-songwriter'] },
+      review_id: null,
+      review_status: null,
+      pre_review_recommendation: null,
+    },
+    {
+      artist_name: 'Gracie Abrams',
+      hours: 35.2,
+      axis: 'style',
+      raw_genres: [],
+      raw_source: 'unknown',
+      resolved_axes: {},
+      review_id: null,
+      review_status: null,
+      pre_review_recommendation: null,
+    },
+  ],
+}
+
 const taxonomyPayload = {
   raw_genre_count: 230,
   canonical_genre_count: 24,
@@ -228,6 +258,9 @@ function mockArtistGenreApi() {
     }
     if (path === '/metadata/artist-genres/taxonomy') {
       return Promise.resolve(taxonomyPayload)
+    }
+    if (path === '/metadata/artist-genres/axis-gaps') {
+      return Promise.resolve(styleGapPayload)
     }
     if (path === '/metadata/artist-genres/reviews') {
       return Promise.resolve(reviewPayload)

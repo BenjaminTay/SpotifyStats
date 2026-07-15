@@ -38,6 +38,12 @@ _PERFORMER_ATTRIBUTIONS = {
     "track_language_only",
     "not_applicable",
 }
+_PRE_REVIEW_RECOMMENDATIONS = {
+    "recommend_approve",
+    "manual_review",
+    "insufficient_evidence",
+    "recommend_reject",
+}
 
 
 @contextmanager
@@ -131,6 +137,46 @@ def list_reviews(
         params,
     ).fetchall()
     return [get_review(conn, int(row[0])) for row in review_ids]
+
+
+def pre_review_language(
+    conn: sqlite3.Connection,
+    *,
+    review_id: int,
+    recommendation: str,
+    confidence: float,
+    note: str,
+    reviewed_by: str = "codex_first_pass",
+) -> dict[str, Any]:
+    if recommendation not in _PRE_REVIEW_RECOMMENDATIONS:
+        raise ArtistLanguageValidationError(
+            f"unsupported pre-review recommendation: {recommendation}"
+        )
+    normalized_note = note.strip()
+    normalized_actor = reviewed_by.strip()
+    normalized_confidence = float(confidence)
+    if not normalized_note or not normalized_actor:
+        raise ArtistLanguageValidationError("pre-review note and reviewer must not be empty")
+    if not 0.0 <= normalized_confidence <= 1.0:
+        raise ArtistLanguageValidationError("pre-review confidence must be between 0 and 1")
+    with immediate_transaction(conn):
+        _load_open_review(conn, review_id)
+        conn.execute(
+            """UPDATE artist_language_review_queue
+               SET pre_review_recommendation=?, pre_review_confidence=?,
+                   pre_review_note=?, pre_reviewed_by=?, pre_reviewed_at=?,
+                   updated_at=datetime('now')
+               WHERE review_id=? AND status='open'""",
+            (
+                recommendation,
+                normalized_confidence,
+                normalized_note,
+                normalized_actor,
+                _utc_now(),
+                int(review_id),
+            ),
+        )
+    return get_review(conn, review_id)
 
 
 def get_or_create_review(

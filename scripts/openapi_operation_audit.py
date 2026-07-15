@@ -87,6 +87,14 @@ TARGETED_CONTRACT_OPERATIONS: dict[tuple[str, str], OperationEvidence] = {
         "backend/tests/contract/test_artist_language_metadata_api.py",
         "Artist language review decisions and conflict handling are covered by isolated contracts.",
     ),
+    (
+        "PATCH",
+        "/api/metadata/artist-languages/reviews/{review_id}/pre-review",
+    ): OperationEvidence(
+        "targeted_contract",
+        "backend/tests/contract/test_artist_language_metadata_api.py",
+        "Codex first-pass language recommendations are covered as non-terminal review metadata.",
+    ),
     ("GET", "/api/ai-insights/monthly-personality"): OperationEvidence(
         "targeted_contract",
         "backend/tests/contract/test_ai_insights_contract.py",
@@ -146,6 +154,19 @@ TARGETED_CONTRACT_OPERATIONS: dict[tuple[str, str], OperationEvidence] = {
         "targeted_contract",
         "backend/tests/contract/test_artist_genre_metadata_api.py",
         "Artist genre review queue listing is covered by isolated contract data.",
+    ),
+    ("GET", "/api/metadata/artist-genres/axis-gaps"): OperationEvidence(
+        "targeted_contract",
+        "backend/tests/contract/test_artist_genre_metadata_api.py",
+        "Play-weighted per-axis genre gaps and unsupported-axis validation are covered by contracts.",
+    ),
+    (
+        "PATCH",
+        "/api/metadata/artist-genres/reviews/{review_id}/pre-review",
+    ): OperationEvidence(
+        "targeted_contract",
+        "backend/tests/contract/test_artist_genre_metadata_api.py",
+        "Codex first-pass genre recommendations are covered as non-terminal review metadata.",
     ),
     (
         "PATCH",

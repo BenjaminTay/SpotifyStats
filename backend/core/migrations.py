@@ -591,6 +591,11 @@ def migrate_024(conn: sqlite3.Connection):
             play_hours_snapshot REAL NOT NULL DEFAULT 0,
             reason TEXT NOT NULL,
             status TEXT NOT NULL DEFAULT 'open',
+            pre_review_recommendation TEXT,
+            pre_review_confidence REAL,
+            pre_review_note TEXT,
+            pre_reviewed_by TEXT,
+            pre_reviewed_at TEXT,
             resolution_note TEXT,
             reviewed_by TEXT,
             reviewed_at TEXT,
@@ -700,6 +705,35 @@ def migrate_026(conn: sqlite3.Connection):
            FROM tracks t
            JOIN artists a ON a.artist_id=t.artist_id
            WHERE a.artist_name='Stephen Schwartz'"""
+    )
+
+
+@migration(27, "metadata_pre_review_fields")
+def migrate_027(conn: sqlite3.Connection):
+    """Store non-terminal Codex recommendations separately from user decisions."""
+    additions = {
+        "pre_review_recommendation": "TEXT",
+        "pre_review_confidence": "REAL",
+        "pre_review_note": "TEXT",
+        "pre_reviewed_by": "TEXT",
+        "pre_reviewed_at": "TEXT",
+    }
+    for table in ("artist_genre_review_queue", "artist_language_review_queue"):
+        columns = {
+            row["name"] if isinstance(row, sqlite3.Row) else row[1]
+            for row in conn.execute(f"PRAGMA table_info({table})").fetchall()
+        }
+        for name, column_type in additions.items():
+            if name not in columns:
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN {name} {column_type}")
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_artist_genre_pre_review "
+        "ON artist_genre_review_queue(status, pre_review_recommendation, play_hours DESC)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_artist_language_pre_review "
+        "ON artist_language_review_queue(status, pre_review_recommendation, "
+        "play_hours_snapshot DESC)"
     )
 
 

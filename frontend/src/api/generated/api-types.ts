@@ -2316,6 +2316,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/metadata/artist-genres/axis-gaps": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Artist Genre Axis Gaps */
+        get: operations["get_artist_genre_axis_gaps_api_metadata_artist_genres_axis_gaps_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/metadata/artist-genres/reviews": {
         parameters: {
             query?: never;
@@ -2348,6 +2365,23 @@ export interface paths {
         head?: never;
         /** Patch Artist Genre Review Evidence */
         patch: operations["patch_artist_genre_review_evidence_api_metadata_artist_genres_reviews__review_id__evidence_patch"];
+        trace?: never;
+    };
+    "/api/metadata/artist-genres/reviews/{review_id}/pre-review": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Patch Artist Genre Pre Review */
+        patch: operations["patch_artist_genre_pre_review_api_metadata_artist_genres_reviews__review_id__pre_review_patch"];
         trace?: never;
     };
     "/api/metadata/artist-genres/reviews/{review_id}/approve": {
@@ -2451,6 +2485,23 @@ export interface paths {
         head?: never;
         /** Patch Artist Language Review */
         patch: operations["patch_artist_language_review_api_metadata_artist_languages_reviews__review_id__patch"];
+        trace?: never;
+    };
+    "/api/metadata/artist-languages/reviews/{review_id}/pre-review": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Patch Artist Language Pre Review */
+        patch: operations["patch_artist_language_pre_review_api_metadata_artist_languages_reviews__review_id__pre_review_patch"];
         trace?: never;
     };
     "/api/chat/sessions": {
@@ -3564,6 +3615,40 @@ export interface components {
             /** Artist Name */
             artist_name: string;
         };
+        /** ArtistGenreAxisGapItem */
+        ArtistGenreAxisGapItem: {
+            /** Artist Name */
+            artist_name: string;
+            /** Hours */
+            hours: number;
+            /** Axis */
+            axis: string;
+            /** Raw Genres */
+            raw_genres?: string[];
+            /** Raw Source */
+            raw_source: string;
+            /** Resolved Axes */
+            resolved_axes?: {
+                [key: string]: string[];
+            };
+            /** Review Id */
+            review_id?: number | null;
+            /** Review Status */
+            review_status?: string | null;
+            /** Pre Review Recommendation */
+            pre_review_recommendation?: string | null;
+        };
+        /** ArtistGenreAxisGapResponse */
+        ArtistGenreAxisGapResponse: {
+            /** Axis */
+            axis: string;
+            /** Total */
+            total: number;
+            /** Unknown Hours */
+            unknown_hours: number;
+            /** Items */
+            items?: components["schemas"]["ArtistGenreAxisGapItem"][];
+        };
         /** ArtistGenreAxisSummaryItem */
         ArtistGenreAxisSummaryItem: {
             /** Axis */
@@ -3750,6 +3835,16 @@ export interface components {
             evidence_url?: string | null;
             /** Review Status */
             review_status: string;
+            /** Pre Review Recommendation */
+            pre_review_recommendation?: string | null;
+            /** Pre Review Confidence */
+            pre_review_confidence?: number | null;
+            /** Pre Review Note */
+            pre_review_note?: string | null;
+            /** Pre Reviewed By */
+            pre_reviewed_by?: string | null;
+            /** Pre Reviewed At */
+            pre_reviewed_at?: string | null;
             /** Reviewed By */
             reviewed_by?: string | null;
             /** Reviewed At */
@@ -3939,6 +4034,18 @@ export interface components {
             /** Hours */
             hours: number;
         };
+        /** ArtistLanguagePreReviewRequest */
+        ArtistLanguagePreReviewRequest: {
+            /**
+             * Recommendation
+             * @enum {string}
+             */
+            recommendation: "recommend_approve" | "manual_review" | "insufficient_evidence" | "recommend_reject";
+            /** Confidence */
+            confidence: number;
+            /** Note */
+            note: string;
+        };
         /** ArtistLanguageReviewCreateRequest */
         ArtistLanguageReviewCreateRequest: {
             /** Artist Id */
@@ -3978,6 +4085,16 @@ export interface components {
              * @enum {string}
              */
             status: "open" | "approved" | "rejected" | "insufficient_evidence";
+            /** Pre Review Recommendation */
+            pre_review_recommendation?: string | null;
+            /** Pre Review Confidence */
+            pre_review_confidence?: number | null;
+            /** Pre Review Note */
+            pre_review_note?: string | null;
+            /** Pre Reviewed By */
+            pre_reviewed_by?: string | null;
+            /** Pre Reviewed At */
+            pre_reviewed_at?: string | null;
             /** Resolution Note */
             resolution_note?: string | null;
             /** Reviewed By */
@@ -5415,6 +5532,18 @@ export interface components {
             data?: null;
             /** Error */
             error?: string | null;
+        };
+        /** MetadataPreReviewRequest */
+        MetadataPreReviewRequest: {
+            /**
+             * Recommendation
+             * @enum {string}
+             */
+            recommendation: "recommend_approve" | "manual_review" | "insufficient_evidence" | "recommend_reject";
+            /** Confidence */
+            confidence: number;
+            /** Note */
+            note: string;
         };
         /** MonthlyDrillArtist */
         MonthlyDrillArtist: {
@@ -13050,6 +13179,49 @@ export interface operations {
             };
         };
     };
+    get_artist_genre_axis_gaps_api_metadata_artist_genres_axis_gaps_get: {
+        parameters: {
+            query?: {
+                axis?: string;
+                limit?: number;
+                /** @description 最短播放时长 (毫秒) */
+                min_ms?: number;
+                /** @description 仅音乐 */
+                music_only?: boolean;
+                /** @description 合并连续播放 */
+                merge_enabled?: boolean;
+                /** @description 使用动态有效播放阈值 */
+                dynamic_threshold?: boolean;
+                /** @description 连续播放最大合并间隔 (分钟) */
+                max_merge_gap_minutes?: number | null;
+                readonly?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArtistGenreAxisGapResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_artist_genre_reviews_api_metadata_artist_genres_reviews_get: {
         parameters: {
             query?: {
@@ -13095,6 +13267,41 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["ArtistGenreEvidenceUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArtistGenreReviewItem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_artist_genre_pre_review_api_metadata_artist_genres_reviews__review_id__pre_review_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                review_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MetadataPreReviewRequest"];
             };
         };
         responses: {
@@ -13363,6 +13570,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ArtistLanguageReviewMutationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_artist_language_pre_review_api_metadata_artist_languages_reviews__review_id__pre_review_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                review_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ArtistLanguagePreReviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArtistLanguageReviewItem"];
                 };
             };
             /** @description Validation Error */

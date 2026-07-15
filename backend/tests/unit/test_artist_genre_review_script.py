@@ -59,6 +59,11 @@ def _review_conn() -> sqlite3.Connection:
             reviewed_by TEXT,
             reviewed_at TEXT,
             resolution_note TEXT,
+            pre_review_recommendation TEXT,
+            pre_review_confidence REAL,
+            pre_review_note TEXT,
+            pre_reviewed_by TEXT,
+            pre_reviewed_at TEXT,
             created_at TEXT NOT NULL DEFAULT (datetime('now')),
             updated_at TEXT NOT NULL DEFAULT (datetime('now'))
         );
@@ -117,6 +122,11 @@ def test_list_open_reviews_includes_source_metadata():
             "evidence_summary": "LLM suggestion from external evidence.",
             "evidence_url": "https://example.com/review-artist",
             "review_status": "open",
+            "pre_review_recommendation": None,
+            "pre_review_confidence": None,
+            "pre_review_note": None,
+            "pre_reviewed_by": None,
+            "pre_reviewed_at": None,
             "reviewed_by": None,
             "reviewed_at": None,
             "resolution_note": None,

@@ -137,6 +137,45 @@ def test_artist_genre_metadata_api_returns_taxonomy_audit(client, artist_genre_m
     assert "单一高播放艺人" in payload["caveat"]
 
 
+def test_artist_genre_axis_gaps_returns_play_weighted_style_queue(client, artist_genre_metadata_db):
+    artist_genre_metadata_db.execute(
+        "INSERT INTO artists(artist_id, artist_name) VALUES (4, 'Scene Artist')"
+    )
+    artist_genre_metadata_db.execute(
+        "INSERT INTO tracks(track_id, track_name, artist_id) VALUES (40, 'Scene Song', 4)"
+    )
+    artist_genre_metadata_db.execute(
+        """INSERT INTO plays(
+               play_id, ts, ts_year, ts_month, ts_week, ts_dow, ts_hour,
+               ts_date, platform, ms_played, track_id, content_type
+           ) VALUES (400, '2024-01-04T12:00:00Z', 2024, 1, 1, 1, 12,
+                     '2024-01-04', 'web', 10800000, 40, 'audio')"""
+    )
+    artist_genre_metadata_db.execute(
+        "INSERT INTO spotify_artist_meta(spotify_artist_id, artist_name, genres) VALUES (?, ?, ?)",
+        ("sp-scene", "Scene Artist", json.dumps(["mandopop"])),
+    )
+    artist_genre_metadata_db.commit()
+    db_mod._load_plays_cached.cache_clear()
+
+    response = client.get("/api/metadata/artist-genres/axis-gaps?axis=style&limit=10")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["axis"] == "style"
+    assert payload["items"][0]["artist_name"] == "Scene Artist"
+    assert payload["items"][0]["hours"] == pytest.approx(3.0)
+    assert payload["items"][0]["raw_genres"] == ["mandopop"]
+    assert payload["items"][0]["resolved_axes"] == {"scene": ["c-pop"]}
+
+
+def test_artist_genre_axis_gaps_rejects_unsupported_axis(client):
+    response = client.get("/api/metadata/artist-genres/axis-gaps?axis=unsupported")
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "unsupported genre axis: unsupported"
+
+
 def test_artist_genre_metadata_api_lists_open_reviews(client, artist_genre_metadata_db):
     response = client.get("/api/metadata/artist-genres/reviews?limit=10")
 
@@ -146,6 +185,29 @@ def test_artist_genre_metadata_api_lists_open_reviews(client, artist_genre_metad
     assert payload["items"][0]["genres"] == ["review pop"]
     assert payload["items"][0]["source_status"] == "suggested"
     assert payload["items"][0]["review_id"] == 1
+
+
+def test_artist_genre_pre_review_is_non_terminal_and_does_not_change_statistics(
+    client, artist_genre_metadata_db
+):
+    before = client.get("/api/metadata/artist-genres/taxonomy").json()
+
+    response = client.patch(
+        "/api/metadata/artist-genres/reviews/1/pre-review",
+        json={
+            "recommendation": "manual_review",
+            "confidence": 0.82,
+            "note": "Evidence is plausible, but this artist has material distribution impact.",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["review_status"] == "open"
+    assert payload["source_status"] == "suggested"
+    assert payload["pre_review_recommendation"] == "manual_review"
+    assert payload["pre_reviewed_by"] == "codex_first_pass"
+    assert client.get("/api/metadata/artist-genres/taxonomy").json() == before
 
 
 def test_artist_genre_metadata_api_approves_review(client, artist_genre_metadata_db):

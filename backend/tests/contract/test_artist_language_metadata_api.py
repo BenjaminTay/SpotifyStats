@@ -179,6 +179,34 @@ def test_review_api_supports_full_manual_flow(client: TestClient) -> None:
     assert listed.json()["items"][0]["reviewed_by"] == "local_user"
 
 
+def test_language_pre_review_is_non_terminal_and_does_not_change_coverage(
+    client: TestClient,
+) -> None:
+    before = client.get("/api/metadata/artist-languages/coverage").json()
+    started = client.post(
+        "/api/metadata/artist-languages/reviews",
+        json={"artist_id": 9002, "reason": "codex_first_pass"},
+    ).json()
+    review_id = started["review_id"]
+
+    response = client.patch(
+        f"/api/metadata/artist-languages/reviews/{review_id}/pre-review",
+        json={
+            "recommendation": "insufficient_evidence",
+            "confidence": 0.7,
+            "note": "No artist-level vocal-language source has been attached yet.",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "open"
+    assert payload["suggested_source_id"] is None
+    assert payload["pre_review_recommendation"] == "insufficient_evidence"
+    assert payload["pre_reviewed_by"] == "codex_first_pass"
+    assert client.get("/api/metadata/artist-languages/coverage").json() == before
+
+
 def test_review_api_maps_not_found_conflict_and_validation_errors(
     client: TestClient,
 ) -> None:

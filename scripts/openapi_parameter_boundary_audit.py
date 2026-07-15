@@ -76,6 +76,12 @@ class ParameterBoundaryAudit:
 
 
 BOUNDARY_EVIDENCE_BY_KEY: dict[tuple[str, str, str], ParameterEvidence] = {
+    ("query", "axis", "string"): ParameterEvidence(
+        "targeted_contract",
+        (),
+        "genre axis allowlist and unsupported-axis 422 behavior are covered by contract tests",
+        ("backend/tests/contract/test_artist_genre_metadata_api.py",),
+    ),
     ("query", "dynamic_threshold", "boolean"): ParameterEvidence(
         "targeted_contract",
         ("backend/tests/contract/test_playback_filter_parameter_propagation.py",),

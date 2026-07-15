@@ -339,6 +339,8 @@ function ReadonlyReview({ review }: { review: ArtistLanguageReviewItem }) {
     <div className="space-y-4">
       <div className="rounded-[8px] bg-muted/25 p-3 text-[12.5px] leading-relaxed">
         <p><span className="text-muted-foreground">状态：</span>{review.status}</p>
+        {review.pre_review_recommendation && <p><span className="text-muted-foreground">Codex 预审：</span>{review.pre_review_recommendation}{review.pre_review_confidence != null ? ` · ${Math.round(review.pre_review_confidence * 100)}%` : ''}</p>}
+        {review.pre_review_note && <p className="mt-1 break-words text-muted-foreground">{review.pre_review_note}</p>}
         {source && <p><span className="text-muted-foreground">事实：</span>{source.classification}{source.primary_language_code ? ` · ${source.primary_language_code}` : ''}</p>}
         {source?.replaces_source_id != null && <p>替换来源 #{source.replaces_source_id}</p>}
         {review.reviewed_by && <p><span className="text-muted-foreground">审核人：</span>{review.reviewed_by}</p>}
@@ -459,6 +461,15 @@ function ArtistLanguageReviewDialogContent({
         ) : (
           <TooltipProvider>
             <div className="space-y-5">
+              {review.pre_review_recommendation && (
+                <div className="rounded-[8px] border border-accent-foreground/20 bg-accent-foreground/5 px-3 py-2.5 text-[12px] leading-relaxed">
+                  <p className="font-semibold text-accent-foreground">
+                    Codex 预审：{review.pre_review_recommendation}
+                    {review.pre_review_confidence != null ? ` · ${Math.round(review.pre_review_confidence * 100)}%` : ''}
+                  </p>
+                  {review.pre_review_note && <p className="mt-1 break-words text-muted-foreground">{review.pre_review_note}</p>}
+                </div>
+              )}
               <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-3">
                 <Field label="分类">
                   <Select

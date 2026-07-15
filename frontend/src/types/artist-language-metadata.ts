@@ -124,6 +124,11 @@ export interface ArtistLanguageReviewItem {
   play_hours_snapshot: number
   reason: string
   status: ArtistLanguageReviewStatus
+  pre_review_recommendation?: string | null
+  pre_review_confidence?: number | null
+  pre_review_note?: string | null
+  pre_reviewed_by?: string | null
+  pre_reviewed_at?: string | null
   resolution_note: string | null
   reviewed_by: string | null
   reviewed_at: string | null

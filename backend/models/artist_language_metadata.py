@@ -24,6 +24,12 @@ PerformerAttribution = Literal[
 SourceStatus = Literal["suggested", "approved", "rejected", "superseded"]
 ReviewStatus = Literal["open", "approved", "rejected", "insufficient_evidence"]
 ReviewAction = Literal["approve", "reject", "insufficient_evidence"]
+PreReviewRecommendation = Literal[
+    "recommend_approve",
+    "manual_review",
+    "insufficient_evidence",
+    "recommend_reject",
+]
 LanguageBucketClassification = Literal[
     "single_language",
     "multilingual",
@@ -63,6 +69,12 @@ class ArtistLanguageReviewCreateRequest(BaseModel):
 class ArtistLanguageReviewDecisionRequest(BaseModel):
     action: ReviewAction
     resolution_note: str
+
+
+class ArtistLanguagePreReviewRequest(BaseModel):
+    recommendation: PreReviewRecommendation
+    confidence: float = Field(ge=0.0, le=1.0)
+    note: str = Field(min_length=1, max_length=1000)
 
 
 class ArtistLanguageBucket(BaseModel):
@@ -132,6 +144,11 @@ class ArtistLanguageReviewItem(BaseModel):
     play_hours_snapshot: float
     reason: str
     status: ReviewStatus
+    pre_review_recommendation: str | None = None
+    pre_review_confidence: float | None = Field(default=None, ge=0.0, le=1.0)
+    pre_review_note: str | None = None
+    pre_reviewed_by: str | None = None
+    pre_reviewed_at: str | None = None
     resolution_note: str | None = None
     reviewed_by: str | None = None
     reviewed_at: str | None = None

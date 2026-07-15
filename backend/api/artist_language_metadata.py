@@ -14,6 +14,7 @@ from backend.domains.metadata.artist_language_review import (
     decide_review,
     get_or_create_review,
     list_reviews,
+    pre_review_language,
     save_review_source,
 )
 from backend.domains.metadata.artist_languages import (
@@ -23,6 +24,7 @@ from backend.domains.metadata.artist_languages import (
 )
 from backend.models.artist_language_metadata import (
     ArtistLanguageCoverageResponse,
+    ArtistLanguagePreReviewRequest,
     ArtistLanguageReviewCreateRequest,
     ArtistLanguageReviewDecisionRequest,
     ArtistLanguageReviewItem,
@@ -179,3 +181,28 @@ def patch_artist_language_review(
             status_code=422,
             detail={"code": "invalid_review_request", "message": str(exc)},
         ) from exc
+
+
+@router.patch(
+    "/reviews/{review_id}/pre-review",
+    response_model=ArtistLanguageReviewItem,
+)
+def patch_artist_language_pre_review(
+    review_id: int,
+    request: ArtistLanguagePreReviewRequest,
+    conn: Connection = Depends(get_write_conn),
+):
+    try:
+        return pre_review_language(
+            conn,
+            review_id=review_id,
+            recommendation=request.recommendation,
+            confidence=request.confidence,
+            note=request.note,
+        )
+    except (
+        ArtistLanguageNotFoundError,
+        ArtistLanguageConflictError,
+        ArtistLanguageValidationError,
+    ) as exc:
+        raise _domain_http_error(exc) from exc

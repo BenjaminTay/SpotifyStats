@@ -30,6 +30,13 @@ const STATUS_OPTIONS: Array<{ value: ArtistLanguageReviewStatus; label: string }
   { value: 'insufficient_evidence', label: '证据不足' },
 ]
 
+const PRE_REVIEW_LABELS: Record<string, string> = {
+  recommend_approve: 'Codex 建议通过',
+  manual_review: 'Codex 建议重点复核',
+  insufficient_evidence: 'Codex 判断证据不足',
+  recommend_reject: 'Codex 建议拒绝',
+}
+
 function formatHours(hours: number): string {
   return `${new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 1 }).format(hours)}h`
 }
@@ -93,8 +100,8 @@ export function ArtistLanguageHealthSection() {
   const [message, setMessage] = useState<string | null>(null)
 
   const coverageQuery = useArtistLanguageCoverage(filters)
-  const reviewsQuery = useArtistLanguageReviews(reviewStatus, 50)
-  const openReviewsQuery = useArtistLanguageReviews('open', 50)
+  const reviewsQuery = useArtistLanguageReviews(reviewStatus, 100)
+  const openReviewsQuery = useArtistLanguageReviews('open', 100)
   const startReview = useStartArtistLanguageReview(filters)
   const artistSearch = useMusicSearch(artistQuery, 'artist', 5)
 
@@ -284,12 +291,15 @@ export function ArtistLanguageHealthSection() {
               <p className="mt-3 text-[12px] text-muted-foreground">正在加载审核记录…</p>
             ) : reviews.length ? (
               <div className="mt-2 divide-y divide-border/60">
-                {reviews.slice(0, 50).map((review) => (
+                {reviews.slice(0, 100).map((review) => (
                   <div className="flex flex-wrap items-center justify-between gap-2 py-2.5" key={review.review_id}>
                     <div className="min-w-0">
                       <p className="break-words text-[12.5px] font-medium text-foreground">{review.artist_name}</p>
                       <p className="mt-0.5 break-words text-[11.5px] text-muted-foreground">
-                        {review.resolution_note || `${formatHours(review.play_hours_snapshot)} · 等待人工审核`}
+                        {review.resolution_note
+                          || `${formatHours(review.play_hours_snapshot)} · ${review.pre_review_recommendation
+                            ? PRE_REVIEW_LABELS[review.pre_review_recommendation] ?? review.pre_review_recommendation
+                            : '等待人工审核'}`}
                       </p>
                     </div>
                     <Button

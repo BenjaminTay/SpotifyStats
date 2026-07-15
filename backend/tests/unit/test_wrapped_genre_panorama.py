@@ -6,7 +6,7 @@ import sqlite3
 import pandas as pd
 import pytest
 
-from backend.core.migrations import migrate_024
+from backend.core.migrations import migrate_023, migrate_024
 from backend.services.wrapped_service import (
     _build_genre_panorama,
     _language_region_kind,
@@ -45,6 +45,7 @@ def _genre_conn() -> sqlite3.Connection:
         VALUES (10, 'C-Pop Track', 1);
         """
     )
+    migrate_023(conn)
     migrate_024(conn)
     return conn
 
@@ -85,6 +86,51 @@ def test_genre_panorama_uses_statistical_genre_families_for_spotify_overlap() ->
     assert panorama["monthly_genres"][0]["genres"] == {}
     assert panorama["language_dist"]["unknown_hours"] == pytest.approx(1.0)
     assert "原始标签" in panorama["caveat"]
+
+
+def test_genre_panorama_monthly_style_uses_approved_axis_fallback() -> None:
+    conn = _genre_conn()
+    conn.execute(
+        """INSERT INTO spotify_artist_meta(spotify_artist_id, artist_name, genres)
+           VALUES (?, ?, ?)""",
+        ("sp-cpop", "C-Pop Overlap Artist", json.dumps(["mandopop"])),
+    )
+    conn.execute(
+        """INSERT INTO artist_genre_sources(
+               artist_name, spotify_artist_id, source, source_key,
+               raw_genres_json, normalized_genres_json, primary_genre,
+               confidence, evidence_url, status
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'approved')""",
+        (
+            "C-Pop Overlap Artist",
+            "sp-cpop",
+            "external_consensus",
+            "style-axis-unit",
+            json.dumps(["pop"]),
+            json.dumps(["pop"]),
+            "pop",
+            0.9,
+            "https://example.test/c-pop-overlap-artist",
+        ),
+    )
+
+    artist_agg = pd.DataFrame(
+        {"plays": [20], "hours": [1.0]},
+        index=pd.Index(["C-Pop Overlap Artist"], name="artist_name"),
+    )
+    year_df = pd.DataFrame(
+        {
+            "track_id": [10],
+            "artist_name": ["C-Pop Overlap Artist"],
+            "ts_month": [1],
+            "ms_played": [3_600_000],
+        }
+    )
+
+    panorama = _build_genre_panorama(conn, year_df, artist_agg)
+
+    assert [row["name"] for row in panorama["top_genres"]] == ["pop"]
+    assert panorama["monthly_genres"][0]["genres"] == {"pop": 100.0}
 
 
 def test_legacy_genre_language_values_use_canonical_registry() -> None:

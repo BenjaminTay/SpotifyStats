@@ -15,6 +15,25 @@ export interface ArtistGenreCoverageResponse {
   excluded_unattributed_hours: number
 }
 
+export interface ArtistGenreAxisGapItem {
+  artist_name: string
+  hours: number
+  axis: string
+  raw_genres: string[]
+  raw_source: string
+  resolved_axes: Record<string, string[]>
+  review_id: number | null
+  review_status: string | null
+  pre_review_recommendation: string | null
+}
+
+export interface ArtistGenreAxisGapResponse {
+  axis: string
+  total: number
+  unknown_hours: number
+  items: ArtistGenreAxisGapItem[]
+}
+
 export interface ArtistGenreCanonicalItem {
   name: string
   axis: string
@@ -107,6 +126,11 @@ export interface ArtistGenreReviewItem {
   evidence_summary: string | null
   evidence_url: string | null
   review_status: 'open' | 'approved' | 'rejected' | string
+  pre_review_recommendation?: string | null
+  pre_review_confidence?: number | null
+  pre_review_note?: string | null
+  pre_reviewed_by?: string | null
+  pre_reviewed_at?: string | null
   reviewed_by: string | null
   reviewed_at: string | null
   resolution_note: string | null

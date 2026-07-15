@@ -10,7 +10,6 @@ from pathlib import Path
 from backend.core.cache import ttl_cached
 from backend.core.cache_manager import register_ttl
 from backend.domains.metadata.artist_genres import (
-    canonicalize_genres_for_statistics,
     resolve_artist_genres_map,
 )
 
@@ -1168,7 +1167,7 @@ def get_collection_insights(conn: sqlite3.Connection) -> dict:
             continue
         if yr not in genre_by_year:
             genre_by_year[yr] = Counter()
-        for g in canonicalize_genres_for_statistics(genres.genres):
+        for g in genres.axis_genres.get("style", []):
             genre_by_year[yr][g] += cnt
     genre_migration: dict[str, list[str]] = {}
     for yr in sorted(genre_by_year.keys()):

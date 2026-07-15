@@ -4,6 +4,7 @@ import { queryKeys } from '@/api/query-keys'
 import { api } from '@/lib/api'
 import type {
   ArtistGenreBackfillTaskRequest,
+  ArtistGenreAxisGapResponse,
   ArtistGenreCoverageResponse,
   ArtistGenreEvidenceUpdateRequest,
   ArtistGenreReviewItem,
@@ -47,6 +48,22 @@ export function useArtistGenreTaxonomy(filters: ArtistLanguagePlayFilters) {
   return useQuery({
     queryKey: queryKeys.metadata.artistGenres.taxonomy(params),
     queryFn: () => api.get<ArtistGenreTaxonomyResponse>('/metadata/artist-genres/taxonomy', params),
+  })
+}
+
+export function useArtistGenreAxisGaps(
+  filters: ArtistLanguagePlayFilters,
+  axis = 'style',
+  limit = 50,
+) {
+  const params = { ...playParams(filters), limit }
+  return useQuery({
+    queryKey: queryKeys.metadata.artistGenres.axisGaps(axis, params),
+    queryFn: () =>
+      api.get<ArtistGenreAxisGapResponse>('/metadata/artist-genres/axis-gaps', {
+        ...params,
+        axis,
+      }),
   })
 }
 

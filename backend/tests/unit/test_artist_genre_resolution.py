@@ -8,6 +8,7 @@ import pytest
 from backend.domains.metadata import artist_genres
 from backend.domains.metadata.artist_genres import (
     canonicalize_genres_for_statistics,
+    compute_genre_axis_gaps,
     compute_genre_coverage,
     compute_genre_taxonomy_audit,
     normalize_genres,
@@ -263,6 +264,168 @@ def test_resolver_prefers_non_empty_spotify_over_local_source() -> None:
     assert resolved.genres == ["spotify pop"]
     assert resolved.source == "spotify"
     assert resolved.is_fallback is False
+
+
+def test_resolver_supplements_only_missing_spotify_axes_from_approved_source() -> None:
+    conn = _conn()
+    conn.execute(
+        "INSERT INTO spotify_artist_meta(spotify_artist_id, artist_name, genres) VALUES (?, ?, ?)",
+        ("sp1", "C-Pop Artist", json.dumps(["mandopop", "c-pop"])),
+    )
+    upsert_genre_source(
+        conn,
+        artist_name="C-Pop Artist",
+        spotify_artist_id="sp1",
+        source="external_consensus",
+        source_key="audit:c-pop-artist",
+        raw_genres=["pop", "r&b"],
+        normalized_genres=["pop", "r&b"],
+        primary_genre="pop",
+        language=None,
+        region=None,
+        confidence=0.9,
+        evidence_url="https://example.test/c-pop-artist",
+        evidence_summary="Audited style evidence.",
+        status="approved",
+    )
+
+    resolved = resolve_artist_genres(conn, "C-Pop Artist")
+
+    assert resolved.genres == ["mandopop", "c-pop"]
+    assert resolved.source == "spotify"
+    assert resolved.axis_genres == {"scene": ["c-pop"], "style": ["pop", "r&b/soul"]}
+    assert resolved.axis_sources == {"scene": "spotify", "style": "external_consensus"}
+    assert resolved.axis_evidence_urls["style"] == "https://example.test/c-pop-artist"
+
+
+def test_resolver_does_not_override_an_existing_spotify_axis() -> None:
+    conn = _conn()
+    conn.execute(
+        "INSERT INTO spotify_artist_meta(spotify_artist_id, artist_name, genres) VALUES (?, ?, ?)",
+        ("sp1", "Pop Artist", json.dumps(["pop"])),
+    )
+    upsert_genre_source(
+        conn,
+        artist_name="Pop Artist",
+        spotify_artist_id="sp1",
+        source="external_consensus",
+        source_key="audit:pop-artist",
+        raw_genres=["country"],
+        normalized_genres=["country"],
+        primary_genre="country",
+        language=None,
+        region=None,
+        confidence=0.9,
+        evidence_url="https://example.test/pop-artist",
+        evidence_summary="Conflicting local style evidence.",
+        status="approved",
+    )
+
+    resolved = resolve_artist_genres(conn, "Pop Artist")
+
+    assert resolved.axis_genres["style"] == ["pop"]
+    assert resolved.axis_sources["style"] == "spotify"
+
+
+def test_resolver_never_uses_suggested_source_for_axis_supplement() -> None:
+    conn = _conn()
+    conn.execute(
+        "INSERT INTO spotify_artist_meta(spotify_artist_id, artist_name, genres) VALUES (?, ?, ?)",
+        ("sp1", "Open Review Artist", json.dumps(["mandopop"])),
+    )
+    upsert_genre_source(
+        conn,
+        artist_name="Open Review Artist",
+        spotify_artist_id="sp1",
+        source="external_consensus",
+        source_key="audit:open-review",
+        raw_genres=["pop"],
+        normalized_genres=["pop"],
+        primary_genre="pop",
+        language=None,
+        region=None,
+        confidence=0.9,
+        evidence_url="https://example.test/open-review",
+        evidence_summary="Pending review.",
+        status="suggested",
+    )
+
+    resolved = resolve_artist_genres(conn, "Open Review Artist")
+
+    assert resolved.axis_genres == {"scene": ["c-pop"]}
+    assert "style" not in resolved.axis_sources
+
+
+def test_taxonomy_attributes_each_axis_to_its_actual_source() -> None:
+    conn = _conn()
+    conn.execute(
+        "INSERT INTO spotify_artist_meta(spotify_artist_id, artist_name, genres) VALUES (?, ?, ?)",
+        ("sp1", "C-Pop Artist", json.dumps(["mandopop"])),
+    )
+    upsert_genre_source(
+        conn,
+        artist_name="C-Pop Artist",
+        spotify_artist_id="sp1",
+        source="external_consensus",
+        source_key="audit:taxonomy-source",
+        raw_genres=["pop"],
+        normalized_genres=["pop"],
+        primary_genre="pop",
+        language=None,
+        region=None,
+        confidence=0.9,
+        evidence_url="https://example.test/taxonomy-source",
+        evidence_summary="Audited style evidence.",
+        status="approved",
+    )
+
+    audit = compute_genre_taxonomy_audit(conn, {"C-Pop Artist": 10.0})
+    rows = {row["name"]: row for row in audit["top_canonical_genres"]}
+
+    assert rows["c-pop"]["source_mix"][0]["source"] == "spotify"
+    assert rows["pop"]["source_mix"][0]["source"] == "external_consensus"
+    assert rows["pop"]["source_mix"][0]["evidence_pct"] == 100.0
+
+
+def test_axis_gaps_are_sorted_and_ignore_approved_axis_supplements() -> None:
+    conn = _conn()
+    conn.executemany(
+        "INSERT INTO spotify_artist_meta(spotify_artist_id, artist_name, genres) VALUES (?, ?, ?)",
+        [
+            ("sp1", "Large Scene Artist", json.dumps(["mandopop"])),
+            ("sp2", "Small Scene Artist", json.dumps(["k-pop"])),
+            ("sp3", "Supplemented Artist", json.dumps(["c-pop"])),
+        ],
+    )
+    upsert_genre_source(
+        conn,
+        artist_name="Supplemented Artist",
+        spotify_artist_id="sp3",
+        source="external_consensus",
+        source_key="audit:supplemented",
+        raw_genres=["pop"],
+        normalized_genres=["pop"],
+        primary_genre="pop",
+        language=None,
+        region=None,
+        confidence=0.9,
+        evidence_url="https://example.test/supplemented",
+        evidence_summary="Approved style.",
+        status="approved",
+    )
+
+    gaps = compute_genre_axis_gaps(
+        conn,
+        {
+            "Small Scene Artist": 2.0,
+            "Supplemented Artist": 20.0,
+            "Large Scene Artist": 10.0,
+        },
+        axis="style",
+    )
+
+    assert [row["artist_name"] for row in gaps] == ["Large Scene Artist", "Small Scene Artist"]
+    assert gaps[0]["resolved_axes"] == {"scene": ["c-pop"]}
 
 
 def test_resolver_uses_approved_local_source_when_spotify_empty() -> None:

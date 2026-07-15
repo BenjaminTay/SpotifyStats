@@ -10,15 +10,19 @@ from backend.core.db import get_db, load_plays
 from backend.dependencies import PlayFilters, get_conn
 from backend.domains.metadata.artist_genre_review import (
     list_reviews,
+    pre_review_suggestion,
     review_suggestion,
     update_review_evidence,
 )
 from backend.domains.metadata.artist_genres import (
+    AXIS_ORDER,
+    compute_genre_axis_gaps,
     compute_genre_coverage,
     compute_genre_taxonomy_audit,
 )
 from backend.domains.metadata.artist_languages import build_primary_artist_ms
 from backend.models.artist_genre_metadata import (
+    ArtistGenreAxisGapResponse,
     ArtistGenreCoverageResponse,
     ArtistGenreEvidenceUpdateRequest,
     ArtistGenreReviewDecisionRequest,
@@ -26,6 +30,7 @@ from backend.models.artist_genre_metadata import (
     ArtistGenreReviewItem,
     ArtistGenreReviewListResponse,
     ArtistGenreTaxonomyResponse,
+    MetadataPreReviewRequest,
 )
 
 router = APIRouter(prefix="/metadata/artist-genres", tags=["Artist Genre Metadata"])
@@ -94,6 +99,42 @@ def get_artist_genre_taxonomy(
     return compute_genre_taxonomy_audit(conn, artist_hours)
 
 
+@router.get("/axis-gaps", response_model=ArtistGenreAxisGapResponse)
+def get_artist_genre_axis_gaps(
+    axis: str = Query(default="style"),
+    limit: int = Query(default=50, ge=1, le=200),
+    filters: PlayFilters = Depends(),
+    conn: Connection = Depends(get_conn),
+):
+    if axis not in AXIS_ORDER:
+        raise HTTPException(status_code=422, detail=f"unsupported genre axis: {axis}")
+    artist_hours, _ = _load_artist_play_hours(conn, filters)
+    gaps = compute_genre_axis_gaps(conn, artist_hours, axis=axis)
+    artist_names = [item["artist_name"] for item in gaps]
+    reviews_by_artist = {}
+    if artist_names:
+        placeholders = ",".join("?" for _ in artist_names)
+        rows = conn.execute(
+            f"""SELECT review_id, artist_name, status, pre_review_recommendation
+                FROM artist_genre_review_queue
+                WHERE artist_name IN ({placeholders}) AND status='open'
+                ORDER BY review_id DESC""",
+            artist_names,
+        ).fetchall()
+        reviews_by_artist = {row["artist_name"]: row for row in rows}
+    for item in gaps:
+        review = reviews_by_artist.get(item["artist_name"])
+        item["review_id"] = int(review["review_id"]) if review else None
+        item["review_status"] = review["status"] if review else None
+        item["pre_review_recommendation"] = review["pre_review_recommendation"] if review else None
+    return {
+        "axis": axis,
+        "total": len(gaps),
+        "unknown_hours": round(sum(float(item["hours"]) for item in gaps), 1),
+        "items": gaps[:limit],
+    }
+
+
 @router.get("/reviews", response_model=ArtistGenreReviewListResponse)
 def get_artist_genre_reviews(
     status: str = Query(default="open", max_length=40),
@@ -118,6 +159,24 @@ def patch_artist_genre_review_evidence(
             review_id=review_id,
             evidence_url=request.evidence_url,
             evidence_summary=request.evidence_summary,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.patch("/reviews/{review_id}/pre-review", response_model=ArtistGenreReviewItem)
+def patch_artist_genre_pre_review(
+    review_id: int,
+    request: MetadataPreReviewRequest,
+    conn: Connection = Depends(get_write_conn),
+):
+    try:
+        return pre_review_suggestion(
+            conn,
+            review_id=review_id,
+            recommendation=request.recommendation,
+            confidence=request.confidence,
+            note=request.note,
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc

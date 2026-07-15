@@ -274,6 +274,28 @@ def test_wrapped_cache_reflects_newly_approved_artist_genre_source(
 def test_account_collection_genre_migration_uses_resolved_fallback(
     artist_genre_consumer_conn,
 ):
+    artist_genre_consumer_conn.execute(
+        "UPDATE spotify_artist_meta SET genres=? WHERE artist_name='Spotify Genre Artist'",
+        (json.dumps(["mandopop"]),),
+    )
+    upsert_genre_source(
+        artist_genre_consumer_conn,
+        artist_name="Spotify Genre Artist",
+        spotify_artist_id="sp-artist",
+        source="external_consensus",
+        source_key="style-axis-fixture",
+        raw_genres=["rock"],
+        normalized_genres=["rock"],
+        primary_genre="rock",
+        language=None,
+        region=None,
+        confidence=0.9,
+        evidence_url="https://example.test/spotify-genre-artist",
+        evidence_summary="approved style for an artist whose Spotify label is scene-only",
+        status="approved",
+    )
+    artist_genre_consumer_conn.commit()
+
     result = get_collection_insights(artist_genre_consumer_conn)
 
     assert "rock/alternative" in result["genre_migration"]["2024"]

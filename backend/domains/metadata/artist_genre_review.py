@@ -7,6 +7,13 @@ from typing import Any
 
 from backend.domains.metadata.artist_genres import normalize_genres
 
+PRE_REVIEW_RECOMMENDATIONS = {
+    "recommend_approve",
+    "manual_review",
+    "insufficient_evidence",
+    "recommend_reject",
+}
+
 
 def _loads_genres(raw: str | None) -> list[str]:
     if not raw:
@@ -36,6 +43,15 @@ def _row_to_review(row) -> dict[str, Any]:
         "evidence_summary": row["evidence_summary"],
         "evidence_url": row["evidence_url"],
         "review_status": row["review_status"],
+        "pre_review_recommendation": row["pre_review_recommendation"],
+        "pre_review_confidence": (
+            float(row["pre_review_confidence"])
+            if row["pre_review_confidence"] is not None
+            else None
+        ),
+        "pre_review_note": row["pre_review_note"],
+        "pre_reviewed_by": row["pre_reviewed_by"],
+        "pre_reviewed_at": row["pre_reviewed_at"],
         "reviewed_by": row["reviewed_by"],
         "reviewed_at": row["reviewed_at"],
         "resolution_note": row["resolution_note"],
@@ -62,6 +78,11 @@ def list_reviews(conn, *, status: str = "open", limit: int = 20) -> list[dict[st
                   s.evidence_summary,
                   s.evidence_url,
                   q.status AS review_status,
+                  q.pre_review_recommendation,
+                  q.pre_review_confidence,
+                  q.pre_review_note,
+                  q.pre_reviewed_by,
+                  q.pre_reviewed_at,
                   q.reviewed_by,
                   q.reviewed_at,
                   q.resolution_note,
@@ -75,6 +96,46 @@ def list_reviews(conn, *, status: str = "open", limit: int = 20) -> list[dict[st
         (status, int(limit)),
     ).fetchall()
     return [_row_to_review(row) for row in rows]
+
+
+def pre_review_suggestion(
+    conn,
+    *,
+    review_id: int,
+    recommendation: str,
+    confidence: float,
+    note: str,
+    reviewed_by: str = "codex_first_pass",
+) -> dict[str, Any]:
+    if recommendation not in PRE_REVIEW_RECOMMENDATIONS:
+        raise ValueError(f"unsupported pre-review recommendation: {recommendation}")
+    normalized_note = note.strip()
+    normalized_actor = reviewed_by.strip()
+    if not normalized_note or not normalized_actor:
+        raise ValueError("pre-review note and reviewer must not be empty")
+    normalized_confidence = float(confidence)
+    if not 0.0 <= normalized_confidence <= 1.0:
+        raise ValueError("pre-review confidence must be between 0 and 1")
+    cursor = conn.execute(
+        """UPDATE artist_genre_review_queue
+           SET pre_review_recommendation=?, pre_review_confidence=?,
+               pre_review_note=?, pre_reviewed_by=?, pre_reviewed_at=datetime('now'),
+               updated_at=datetime('now')
+           WHERE review_id=? AND status='open'""",
+        (
+            recommendation,
+            normalized_confidence,
+            normalized_note,
+            normalized_actor,
+            int(review_id),
+        ),
+    )
+    if cursor.rowcount != 1:
+        conn.rollback()
+        raise ValueError(f"review_id {review_id} is not open")
+    conn.commit()
+    items = list_reviews(conn, status="open", limit=200)
+    return next(item for item in items if item["review_id"] == int(review_id))
 
 
 def update_review_evidence(

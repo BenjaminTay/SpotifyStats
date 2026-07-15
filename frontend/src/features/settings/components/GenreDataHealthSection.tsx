@@ -17,6 +17,7 @@ import { CollapsibleSection } from '@/features/settings/components/SettingsHelpe
 import { ArtistLanguageHealthSection } from '@/features/settings/components/ArtistLanguageHealthSection'
 import {
   useApproveArtistGenreReview,
+  useArtistGenreAxisGaps,
   useArtistGenreCoverage,
   useArtistGenreReviews,
   useArtistGenreTaxonomy,
@@ -63,6 +64,13 @@ const CONFIDENCE_LABELS: Record<string, string> = {
   high: '高可信',
   medium: '中可信',
   low: '低可信',
+}
+
+const PRE_REVIEW_LABELS: Record<string, string> = {
+  recommend_approve: 'Codex 建议通过',
+  manual_review: 'Codex 建议重点复核',
+  insufficient_evidence: 'Codex 判断证据不足',
+  recommend_reject: 'Codex 建议拒绝',
 }
 
 function sourceLabel(source: string): string {
@@ -434,6 +442,27 @@ function ReviewCard({
         ))}
       </div>
 
+      {item.pre_review_recommendation && (
+        <div className="mt-3 rounded-[8px] border border-accent-foreground/20 bg-accent-foreground/5 px-3 py-2.5">
+          <div className="flex flex-wrap items-center gap-2 text-[11.5px]">
+            <span className="font-semibold text-accent-foreground">
+              {PRE_REVIEW_LABELS[item.pre_review_recommendation] ?? item.pre_review_recommendation}
+            </span>
+            {item.pre_review_confidence != null && (
+              <span className="font-mono text-muted-foreground">
+                {Math.round(item.pre_review_confidence * 100)}%
+              </span>
+            )}
+            {item.pre_reviewed_by && <span className="text-muted-foreground">{item.pre_reviewed_by}</span>}
+          </div>
+          {item.pre_review_note && (
+            <p className="mt-1 break-words text-[12px] leading-relaxed text-muted-foreground">
+              {item.pre_review_note}
+            </p>
+          )}
+        </div>
+      )}
+
       {item.evidence_summary && (
         <p className="mt-3 text-[12.5px] leading-relaxed text-muted-foreground">
           {item.evidence_summary}
@@ -492,6 +521,7 @@ export function GenreDataHealthSection() {
 
   const coverageQuery = useArtistGenreCoverage(filters)
   const taxonomyQuery = useArtistGenreTaxonomy(filters)
+  const styleGapsQuery = useArtistGenreAxisGaps(filters, 'style', 50)
   const reviewsQuery = useArtistGenreReviews(reviewStatus, 100)
   const openReviewsQuery = useArtistGenreReviews('open', 1)
   const approveMutation = useApproveArtistGenreReview()
@@ -513,8 +543,8 @@ export function GenreDataHealthSection() {
     )
   }, [reviewSearch, reviews])
   const visibleReviews = filteredReviews.slice(0, visibleReviewCount)
-  const loading = coverageQuery.isLoading || taxonomyQuery.isLoading || reviewsQuery.isLoading
-  const error = coverageQuery.error ?? taxonomyQuery.error ?? reviewsQuery.error
+  const loading = coverageQuery.isLoading || taxonomyQuery.isLoading || styleGapsQuery.isLoading || reviewsQuery.isLoading
+  const error = coverageQuery.error ?? taxonomyQuery.error ?? styleGapsQuery.error ?? reviewsQuery.error
   const reviewBusy = approveMutation.isPending || rejectMutation.isPending || evidenceMutation.isPending
   const openReviewCount = openReviewsQuery.data?.total ?? 0
 
@@ -576,6 +606,7 @@ export function GenreDataHealthSection() {
   const refresh = () => {
     void coverageQuery.refetch()
     void taxonomyQuery.refetch()
+    void styleGapsQuery.refetch()
     void reviewsQuery.refetch()
   }
 
@@ -654,20 +685,20 @@ export function GenreDataHealthSection() {
         <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div className="min-w-0">
             <p className="text-[12.5px] leading-relaxed text-muted-foreground">
-              Spotify genre 优先；Spotify 缺失时使用已审核的本地来源。原始标签覆盖率不等于声音风格覆盖率，style 等各轴请在分类审计中查看。
+              Spotify 原始 genre 保持优先；某个统计轴缺失时，才使用该轴已审核的本地来源补足。原始标签覆盖率不等于声音风格覆盖率，Style 缺口按播放时长单独排序。
             </p>
           </div>
           <div className="flex shrink-0 flex-wrap gap-2">
             <Button
               aria-label="刷新 genre 数据健康"
               className="gap-1.5"
-              disabled={coverageQuery.isFetching || taxonomyQuery.isFetching || reviewsQuery.isFetching}
+              disabled={coverageQuery.isFetching || taxonomyQuery.isFetching || styleGapsQuery.isFetching || reviewsQuery.isFetching}
               onClick={refresh}
               size="sm"
-              tabIndex={coverageQuery.isFetching || taxonomyQuery.isFetching || reviewsQuery.isFetching ? -1 : undefined}
+              tabIndex={coverageQuery.isFetching || taxonomyQuery.isFetching || styleGapsQuery.isFetching || reviewsQuery.isFetching ? -1 : undefined}
               variant="outline"
             >
-              <RefreshCw className={cn('size-3.5', (coverageQuery.isFetching || taxonomyQuery.isFetching || reviewsQuery.isFetching) && 'animate-spin')} />
+              <RefreshCw className={cn('size-3.5', (coverageQuery.isFetching || taxonomyQuery.isFetching || styleGapsQuery.isFetching || reviewsQuery.isFetching) && 'animate-spin')} />
               刷新
             </Button>
             <Button
@@ -759,17 +790,28 @@ export function GenreDataHealthSection() {
                     </section>
 
                     <section className="rounded-[8px] border border-border bg-muted/20 p-4">
-                      <h3 className="text-[13px] font-semibold text-foreground">Top 缺失艺人</h3>
-                      {coverage.top_missing.length === 0 ? (
-                        <p className="mt-3 text-[12px] text-muted-foreground">暂无高播放量缺失艺人。</p>
+                      <div className="flex items-center justify-between gap-2">
+                        <h3 className="text-[13px] font-semibold text-foreground">Style 待补艺人</h3>
+                        <span className="font-mono text-[11px] text-muted-foreground">
+                          {styleGapsQuery.data ? formatHours(styleGapsQuery.data.unknown_hours) : '-'}
+                        </span>
+                      </div>
+                      {!styleGapsQuery.data?.items.length ? (
+                        <p className="mt-3 text-[12px] text-muted-foreground">暂无 Style 缺口。</p>
                       ) : (
                         <ol className="mt-3 space-y-2">
-                          {coverage.top_missing.slice(0, 6).map((artist, index) => (
+                          {styleGapsQuery.data.items.slice(0, 6).map((artist, index) => (
                             <li className="flex items-center justify-between gap-3 text-[12.5px]" key={artist.artist_name}>
-                              <span className="min-w-0 truncate text-foreground">
-                                <span className="mr-2 font-mono text-muted-foreground">{index + 1}</span>
-                                {artist.artist_name}
-                              </span>
+                              <div className="min-w-0">
+                                <p className="truncate text-foreground">
+                                  <span className="mr-2 font-mono text-muted-foreground">{index + 1}</span>
+                                  {artist.artist_name}
+                                </p>
+                                <p className="mt-0.5 truncate pl-5 text-[10.5px] text-muted-foreground">
+                                  {artist.raw_genres.join(' · ') || '无原始标签'}
+                                  {artist.pre_review_recommendation ? ` · ${PRE_REVIEW_LABELS[artist.pre_review_recommendation] ?? artist.pre_review_recommendation}` : ''}
+                                </p>
+                              </div>
                               <span className="shrink-0 font-mono text-muted-foreground">{formatHours(artist.hours)}</span>
                             </li>
                           ))}
