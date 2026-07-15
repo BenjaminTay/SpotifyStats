@@ -27,7 +27,9 @@ def test_registry_normalizes_legacy_aliases() -> None:
     assert language_label("zh") == "中文"
     assert language_label("ca") == "加泰罗尼亚文"
     assert normalize_language_claim("Catalan", None) == ("ca", None)
-    assert LANGUAGE_REGISTRY_VERSION == "artist-language-v2"
+    assert language_label("pcm") == "尼日利亚皮钦语"
+    assert normalize_language_claim("Nigerian Pidgin", None) == ("pcm", None)
+    assert LANGUAGE_REGISTRY_VERSION == "artist-language-v3"
 
 
 def test_supported_language_codes_have_stable_registry_order() -> None:
@@ -49,6 +51,7 @@ def test_supported_language_codes_have_stable_registry_order() -> None:
         "id",
         "ms",
         "ca",
+        "pcm",
     )
 
 

@@ -99,3 +99,15 @@ Language L2：继续后 37 位，总计 69 位，预计覆盖率约 98%。
 - Genre style 覆盖率目标 `>=90%`，Language 目标 `>=98%`，但不得强行达到 100%。
 - 所有新增终态 fact 都有 HTTPS evidence、reviewer、reviewed_at 和 resolution_note。
 - 后端、前端、OpenAPI、迁移、真实数据库重算和 Settings 双视口 UI 验收通过。
+
+## 2026-07-16 审核补充
+
+Language registry 升级为 `artist-language-v3`，新增 ISO 639-3 `pcm`
+（Nigerian Pidgin）。该扩展用于把持续使用 Nigerian Pidgin 与英语的目录准确
+表达为 multilingual，不得把 Pidgin 无条件折叠到 `en`。新增代码仍必须满足
+同一 artist-level evidence validator，不能仅凭国籍、地区或 genre 写入。
+
+最终审核遵循“准确性优先于 100% 覆盖率”：高播放候选有明确官方目录、可靠
+编辑资料或代表曲目证据时才批准；作曲者、demo、伴奏、器乐和实际演唱者归属
+混杂时以 `insufficient_evidence` 结案。验收结果为 Genre Style 93.0%、
+Language 98.46%，两类 open review 均为 0。

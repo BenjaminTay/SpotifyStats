@@ -174,9 +174,15 @@ def review_suggestion(
     review_id: int,
     decision: str,
     resolution_note: str = "本地审核完成。",
+    reviewed_by: str = "local_user",
 ) -> dict[str, Any]:
     if decision not in {"approve", "reject"}:
         raise ValueError("decision must be approve or reject")
+
+    normalized_reviewer = reviewed_by.strip()
+    normalized_note = resolution_note.strip()
+    if not normalized_reviewer or not normalized_note:
+        raise ValueError("reviewer and resolution note must not be empty")
 
     source_status = "approved" if decision == "approve" else "rejected"
     try:
@@ -211,10 +217,10 @@ def review_suggestion(
         )
         review_cursor = conn.execute(
             """UPDATE artist_genre_review_queue
-               SET status = ?, reviewed_by='local_user', reviewed_at=datetime('now'),
+               SET status = ?, reviewed_by=?, reviewed_at=datetime('now'),
                    resolution_note=?, updated_at = datetime('now')
                WHERE review_id = ? AND status = 'open'""",
-            (source_status, resolution_note.strip(), int(review_id)),
+            (source_status, normalized_reviewer, normalized_note, int(review_id)),
         )
         if source_cursor.rowcount != 1 or review_cursor.rowcount != 1:
             conn.rollback()

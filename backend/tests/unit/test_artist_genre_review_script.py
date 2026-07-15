@@ -164,6 +164,29 @@ def test_approve_review_marks_source_approved_and_enables_resolver():
     assert resolved.genres == ["pop", "singer-songwriter"]
 
 
+def test_approve_review_records_explicit_reviewer_and_note():
+    from scripts.review_artist_genre_suggestions import review_suggestion
+
+    conn = _review_conn()
+
+    review_suggestion(
+        conn,
+        review_id=1,
+        decision="approve",
+        reviewed_by="codex_evidence_audit",
+        resolution_note="Official artist evidence verified.",
+    )
+    row = conn.execute(
+        """SELECT reviewed_by, resolution_note
+           FROM artist_genre_review_queue WHERE review_id = 1"""
+    ).fetchone()
+
+    assert dict(row) == {
+        "reviewed_by": "codex_evidence_audit",
+        "resolution_note": "Official artist evidence verified.",
+    }
+
+
 def test_reject_review_marks_source_rejected_and_keeps_resolver_unknown():
     from scripts.review_artist_genre_suggestions import review_suggestion
 

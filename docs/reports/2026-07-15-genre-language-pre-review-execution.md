@@ -60,3 +60,61 @@ Settings 当前筛选口径下 Style 待补约为 1099.2 小时；与上表差�
 | 未分类时长 | 185.56 小时 | 102.30 小时 | -83.26 小时 |
 
 受控批准脚本为 `scripts/approve_artist_language_second_pass.py`，默认只在临时数据库 dry-run；只有传入 `--apply` 才修改真实数据库，并在修改前创建 SQLite backup。本次备份位于 `/tmp/spotify_stats_before_language_second_pass_20260716.db`。
+
+## 高影响 Genre 与 Language 最终审核（2026-07-16）
+
+本轮由 Codex 作为审核人执行证据核验，审核标识为
+`codex_evidence_audit_2026_07_16`。正式写库前先在临时 SQLite 副本运行完整
+dry-run，并通过 review state machine、证据 validator、外键检查和
+`PRAGMA integrity_check`。
+
+### Genre 结论
+
+| 艺人 | 最终 Style | 审核说明 |
+| --- | --- | --- |
+| Michael Wong | pop | Apple Music 支持稳定 pop/ballad 风格；C-Pop 保留在 scene 轴 |
+| Stefanie Sun | pop | 采用稳定 pop 风格，不把宽泛 alternative 影响扩张到全生涯 |
+| A-Mei Chang | pop, rock | 台湾文化部同时支持 pop diva 与 Amit rock persona；保留 era caveat |
+| Fish Leong | pop | Apple Music 明确描述 pop-ballad 目录 |
+| JJ Lin | pop, r&b | AllMusic 支持长期 R&B-influenced Mandopop |
+| G.E.M. | pop | 原多标签候选收紧为 pop，避免证据不足的次级风格被等比例放大 |
+
+6 条全部批准后，Style 覆盖率从 72.6% 提升至 93.0%，taxonomy 轴汇总的未知
+时长从 1098.4 小时降至 281.3 小时；Settings 的逐艺人缺口列表为 282.1 小时，
+约 0.8 小时差异来自该接口先把每位艺人时长舍入到 0.1 小时后再求和。Pop 占
+已知 Style 的 63.4%；Top artist 为
+Taylor Swift 21.6%、Michael Wong 18.4%，没有触发单艺人 70% dominance
+warning。A-Mei 对 Rock / Alternative 的贡献为 35.3 小时，JJ Lin 对
+R&B / Soul 的贡献为 20.0 小时，均保留来源与 artist-level/era 限制说明。
+
+### 15 条高风险 Language 结论
+
+- 批准 14 条：Fiona Sit、Wicked Movie Cast、FIFTY FIFTY、Terence Lam、
+  Crowd Lu、Jacky Cheung、BLACKPINK、Karen Mok、Shakira、Sandy Lam、LISA、
+  Ryuichi Sakamoto、TWICE、Céline Dion。
+- Karen Mok 在原粤语、国语候选上补充英语正式目录证据。
+- TWICE 在原韩语、日语候选上补充正式英语录音证据。
+- Rema 的英语单语候选不予批准：代表目录持续使用 Nigerian Pidgin，直接
+  降级为 `en` 会产生假精度，旧 review 以 `insufficient_evidence` 结案。
+- `artist-language-v3` 新增 ISO 639-3 `pcm` 后，为 Rema 建立新的
+  `en + pcm` 多语言事实并通过同一 validator 批准。
+
+### Language 高播放长尾
+
+继续审核下一批高播放未知艺人。31 位中批准 29 位，包括单语、多语言和器乐
+事实；Kristen Anderson-Lopez 与安沐凡因主艺人行混合作曲者、demo、人声、
+伴奏或器乐归属，以 `insufficient_evidence` 结案，不强行标为英语或器乐。
+
+Language 最终覆盖率从本轮开始前的 97.45% 提升至 98.46%，未知时长从
+102.30 小时降至 61.86 小时。最终动态 buckets 为：英文 2609.77 小时、
+中文 882.01 小时、多语言 451.48 小时、器乐 2.69 小时、意大利文 1.72
+小时、泰文 1.42 小时、未知 61.86 小时。Genre 与 Language 的 open review
+队列均为 0。
+
+### 可恢复性
+
+- 高影响审核前备份：`/tmp/spotify_stats_before_high_impact_metadata_audit_20260716.db`
+- Language 长尾审核前备份：`/tmp/spotify_stats_before_language_long_tail_audit_20260716.db`
+- 受控脚本：`scripts/review_high_impact_metadata_batch.py`、
+  `scripts/approve_artist_language_long_tail_batch.py`
+- 两个脚本默认 dry-run；只有显式 `--apply` 才写正式数据库。
