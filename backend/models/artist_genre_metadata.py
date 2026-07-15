@@ -16,12 +16,15 @@ class ArtistGenreCoverageResponse(BaseModel):
     top_missing: list[dict[str, Any]]
     artist_count: int
     total_hours: float
+    excluded_unattributed_hours: float = 0.0
 
 
 class ArtistGenreSourceMixItem(BaseModel):
     source: str
     hours: float
     share_pct: float
+    confidence: float = Field(ge=0.0, le=1.0)
+    evidence_pct: float = Field(ge=0.0, le=100.0)
 
 
 class ArtistGenreRiskFlag(BaseModel):
@@ -46,6 +49,7 @@ class ArtistGenreCanonicalItem(BaseModel):
     confidence_tier: str = "medium"
     hours: float
     share_pct: float
+    overall_share_pct: float
     source_mix: list[ArtistGenreSourceMixItem] = Field(default_factory=list)
     top_artists: list[ArtistGenreTopArtistItem] = Field(default_factory=list)
     dominance_warning: str | None = None
@@ -57,6 +61,9 @@ class ArtistGenreAxisSummaryItem(BaseModel):
     label: str
     hours: float
     share_pct: float
+    coverage_pct: float
+    unknown_hours: float
+    unknown_pct: float
     canonical_count: int
     interpretation: str
 
@@ -102,10 +109,27 @@ class ArtistGenreReviewItem(BaseModel):
     region: str | None = None
     confidence: float = Field(ge=0.0, le=1.0)
     evidence_summary: str | None = None
+    evidence_url: str | None = None
+    review_status: str
+    reviewed_by: str | None = None
+    reviewed_at: str | None = None
+    resolution_note: str | None = None
+    created_at: str
+    updated_at: str
 
 
 class ArtistGenreReviewListResponse(BaseModel):
     items: list[ArtistGenreReviewItem]
+    total: int = 0
+
+
+class ArtistGenreEvidenceUpdateRequest(BaseModel):
+    evidence_url: str = Field(min_length=9)
+    evidence_summary: str = Field(min_length=1)
+
+
+class ArtistGenreReviewDecisionRequest(BaseModel):
+    resolution_note: str = Field(min_length=1, max_length=500)
 
 
 class ArtistGenreReviewDecisionResponse(BaseModel):

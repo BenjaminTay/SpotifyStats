@@ -34,6 +34,13 @@ def _row_to_review(row) -> dict[str, Any]:
         "region": row["region"],
         "confidence": float(row["confidence"] or 0.0),
         "evidence_summary": row["evidence_summary"],
+        "evidence_url": row["evidence_url"],
+        "review_status": row["review_status"],
+        "reviewed_by": row["reviewed_by"],
+        "reviewed_at": row["reviewed_at"],
+        "resolution_note": row["resolution_note"],
+        "created_at": row["created_at"],
+        "updated_at": row["updated_at"],
     }
 
 
@@ -52,7 +59,14 @@ def list_reviews(conn, *, status: str = "open", limit: int = 20) -> list[dict[st
                   s.language,
                   s.region,
                   s.confidence,
-                  s.evidence_summary
+                  s.evidence_summary,
+                  s.evidence_url,
+                  q.status AS review_status,
+                  q.reviewed_by,
+                  q.reviewed_at,
+                  q.resolution_note,
+                  q.created_at,
+                  q.updated_at
            FROM artist_genre_review_queue q
            JOIN artist_genre_sources s ON s.source_id = q.suggested_source_id
            WHERE q.status = ?
@@ -63,7 +77,43 @@ def list_reviews(conn, *, status: str = "open", limit: int = 20) -> list[dict[st
     return [_row_to_review(row) for row in rows]
 
 
-def review_suggestion(conn, *, review_id: int, decision: str) -> dict[str, Any]:
+def update_review_evidence(
+    conn,
+    *,
+    review_id: int,
+    evidence_url: str,
+    evidence_summary: str,
+) -> dict[str, Any]:
+    normalized_url = evidence_url.strip()
+    normalized_summary = evidence_summary.strip()
+    if not normalized_url.startswith("https://"):
+        raise ValueError("证据链接必须使用 https://")
+    if not normalized_summary:
+        raise ValueError("证据摘要不能为空")
+    cursor = conn.execute(
+        """UPDATE artist_genre_sources
+           SET evidence_url=?, evidence_summary=?, updated_at=datetime('now')
+           WHERE source_id=(
+               SELECT suggested_source_id FROM artist_genre_review_queue
+               WHERE review_id=? AND status='open'
+           ) AND status='suggested'""",
+        (normalized_url, normalized_summary, int(review_id)),
+    )
+    if cursor.rowcount != 1:
+        conn.rollback()
+        raise ValueError(f"review_id {review_id} is not an open suggested review")
+    conn.commit()
+    items = list_reviews(conn, status="open", limit=200)
+    return next(item for item in items if item["review_id"] == int(review_id))
+
+
+def review_suggestion(
+    conn,
+    *,
+    review_id: int,
+    decision: str,
+    resolution_note: str = "本地审核完成。",
+) -> dict[str, Any]:
     if decision not in {"approve", "reject"}:
         raise ValueError("decision must be approve or reject")
 
@@ -76,7 +126,8 @@ def review_suggestion(conn, *, review_id: int, decision: str) -> dict[str, Any]:
                       q.status AS review_status,
                       q.suggested_source_id,
                       s.source_id AS source_id,
-                      s.status AS source_status
+                      s.status AS source_status,
+                      s.evidence_url
                FROM artist_genre_review_queue q
                JOIN artist_genre_sources s ON s.source_id = q.suggested_source_id
                WHERE q.review_id = ?
@@ -87,6 +138,9 @@ def review_suggestion(conn, *, review_id: int, decision: str) -> dict[str, Any]:
         if row is None:
             conn.rollback()
             raise ValueError(f"review_id {review_id} is not an open suggested review")
+        if decision == "approve" and not str(row["evidence_url"] or "").startswith("https://"):
+            conn.rollback()
+            raise ValueError("批准前必须补充可复核的 HTTPS 证据链接")
 
         source_cursor = conn.execute(
             """UPDATE artist_genre_sources
@@ -96,9 +150,10 @@ def review_suggestion(conn, *, review_id: int, decision: str) -> dict[str, Any]:
         )
         review_cursor = conn.execute(
             """UPDATE artist_genre_review_queue
-               SET status = ?, updated_at = datetime('now')
+               SET status = ?, reviewed_by='local_user', reviewed_at=datetime('now'),
+                   resolution_note=?, updated_at = datetime('now')
                WHERE review_id = ? AND status = 'open'""",
-            (source_status, int(review_id)),
+            (source_status, resolution_note.strip(), int(review_id)),
         )
         if source_cursor.rowcount != 1 or review_cursor.rowcount != 1:
             conn.rollback()

@@ -76,8 +76,13 @@ def test_genre_panorama_uses_statistical_genre_families_for_spotify_overlap() ->
 
     panorama = _build_genre_panorama(conn, year_df, artist_agg)
 
-    assert panorama["top_genres"] == [{"name": "c-pop", "play_share": 100.0}]
-    assert panorama["monthly_genres"][0]["genres"] == {"c-pop": 100.0}
+    assert panorama["top_genres"] == []
+    axes = {axis["axis"]: axis for axis in panorama["axes"]}
+    assert axes["style"]["coverage_pct"] == 0.0
+    assert axes["scene"]["coverage_pct"] == 100.0
+    assert axes["scene"]["buckets"][0]["name"] == "c-pop"
+    assert axes["scene"]["buckets"][0]["share_pct"] == 100.0
+    assert panorama["monthly_genres"][0]["genres"] == {}
     assert panorama["language_dist"]["unknown_hours"] == pytest.approx(1.0)
     assert "原始标签" in panorama["caveat"]
 

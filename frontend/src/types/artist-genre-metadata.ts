@@ -12,6 +12,7 @@ export interface ArtistGenreCoverageResponse {
   top_missing: ArtistGenreMissingItem[]
   artist_count: number
   total_hours: number
+  excluded_unattributed_hours: number
 }
 
 export interface ArtistGenreCanonicalItem {
@@ -22,6 +23,7 @@ export interface ArtistGenreCanonicalItem {
   confidence_tier: string
   hours: number
   share_pct: number
+  overall_share_pct: number
   source_mix: ArtistGenreSourceMixItem[]
   top_artists: ArtistGenreTopArtistItem[]
   dominance_warning: string | null
@@ -39,6 +41,9 @@ export interface ArtistGenreAxisSummaryItem {
   label: string
   hours: number
   share_pct: number
+  coverage_pct: number
+  unknown_hours: number
+  unknown_pct: number
   canonical_count: number
   interpretation: string
 }
@@ -47,6 +52,8 @@ export interface ArtistGenreSourceMixItem {
   source: string
   hours: number
   share_pct: number
+  confidence: number
+  evidence_pct: number
 }
 
 export interface ArtistGenreTopArtistItem {
@@ -98,10 +105,23 @@ export interface ArtistGenreReviewItem {
   region: string | null
   confidence: number
   evidence_summary: string | null
+  evidence_url: string | null
+  review_status: 'open' | 'approved' | 'rejected' | string
+  reviewed_by: string | null
+  reviewed_at: string | null
+  resolution_note: string | null
+  created_at: string
+  updated_at: string
 }
 
 export interface ArtistGenreReviewListResponse {
   items: ArtistGenreReviewItem[]
+  total: number
+}
+
+export interface ArtistGenreEvidenceUpdateRequest {
+  evidence_url: string
+  evidence_summary: string
 }
 
 export interface ArtistGenreReviewDecisionResponse {

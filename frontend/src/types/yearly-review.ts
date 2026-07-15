@@ -58,7 +58,12 @@ export interface TopLists {
 
 export interface GenreItem {
   name: string
+  label?: string | null
   play_share: number
+  hours?: number
+  confidence_tier?: 'high' | 'medium' | 'low' | string
+  top_artists?: Array<{ artist_name: string; hours: number; share_pct: number }>
+  risk_flags?: Array<{ code: string; severity: string; message: string }>
 }
 
 export interface MonthlyGenreItem {
@@ -79,10 +84,41 @@ export interface LanguageDistribution {
   caveat: string
 }
 
+export interface GenreAxisDistribution {
+  axis: 'style' | 'scene' | 'context' | 'role' | string
+  label: string
+  hours: number
+  share_pct: number
+  coverage_pct: number
+  unknown_hours: number
+  unknown_pct: number
+  canonical_count: number
+  interpretation: string
+  buckets: Array<{
+    name: string
+    label: string | null
+    hours: number
+    share_pct: number
+    overall_share_pct: number
+    confidence_tier: string
+    top_artists: Array<{ artist_name: string; hours: number; share_pct: number }>
+    risk_flags: Array<{ code: string; severity: string; message: string }>
+  }>
+}
+
 export interface GenrePanorama {
   top_genres: GenreItem[]
   monthly_genres: MonthlyGenreItem[]
+  axes?: GenreAxisDistribution[]
   language_dist: LanguageDistribution | null
+  coverage?: {
+    known_hours: number
+    unknown_hours: number
+    known_pct: number
+    unknown_pct: number
+    excluded_unattributed_hours?: number
+  } | null
+  caveat?: string | null
 }
 
 export interface LateNightTrack {

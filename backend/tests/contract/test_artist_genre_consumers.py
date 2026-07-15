@@ -215,7 +215,10 @@ def test_wrapped_genre_panorama_uses_resolved_fallback_and_reports_coverage(
 
     assert "rock/alternative" in names
     assert "pop" in names
-    assert "其他流派" in names
+    assert "其他流派" not in names
+    style_axis = next(row for row in panorama["axes"] if row["axis"] == "style")
+    assert style_axis["coverage_pct"] == pytest.approx(66.7)
+    assert style_axis["unknown_hours"] == pytest.approx(0.1)
     assert panorama["coverage"]["source_hours"]["curated_seed"] == 0.1
     assert panorama["coverage"]["unknown_hours"] == 0.1
     assert "style/scene/context/role" in panorama["caveat"]

@@ -16,11 +16,11 @@ import pandas as pd
 
 from backend.core.db import get_track_artist_names_map, load_plays, load_plays_for_artists
 from backend.domains.metadata.artist_genres import (
-    STATISTICAL_GENRE_CAVEAT,
     ResolvedArtistGenres,
     canonicalize_genres_for_statistics,
-    compute_genre_coverage,
+    compute_artist_genre_distribution,
     resolve_artist_genres_map,
+    statistical_genre_label_metadata,
 )
 from backend.domains.metadata.artist_languages import (
     artist_language_fact_revision,
@@ -763,7 +763,7 @@ def _build_top_lists(conn, artist_agg, track_agg, album_agg):
 
 
 def _build_genre_panorama(conn, year_df, artist_agg):
-    """Weighted genre distribution based on play time per artist."""
+    """Build genre axes and language coverage from the same primary-artist plays."""
     artist_ms, excluded_ms = build_primary_artist_ms(
         conn,
         year_df.loc[:, ["track_id", "ms_played"]],
@@ -773,54 +773,48 @@ def _build_genre_panorama(conn, year_df, artist_agg):
         artist_ms,
         excluded_ms=excluded_ms,
     )
-    artist_names = list(artist_agg.index)
+    artist_names_by_id: dict[int, str] = {}
+    artist_ids = list(artist_ms)
+    for offset in range(0, len(artist_ids), 500):
+        chunk = artist_ids[offset : offset + 500]
+        placeholders = ",".join("?" for _ in chunk)
+        rows = conn.execute(
+            f"SELECT artist_id, artist_name FROM artists WHERE artist_id IN ({placeholders})",
+            chunk,
+        ).fetchall()
+        artist_names_by_id.update({int(row[0]): str(row[1]) for row in rows})
+    artist_hours = {
+        artist_names_by_id[artist_id]: ms / 3_600_000
+        for artist_id, ms in artist_ms.items()
+        if artist_id in artist_names_by_id
+    }
+    artist_names = list(artist_hours)
     if not artist_names:
+        distribution = compute_artist_genre_distribution(conn, {})
         return {
-            "top_genres": [],
+            **distribution,
             "monthly_genres": [],
             "language_dist": language_dist,
-            "coverage": compute_genre_coverage(conn, {}),
-            "caveat": STATISTICAL_GENRE_CAVEAT,
         }
 
     resolved = resolve_artist_genres_map(conn, artist_names)
-    artist_genres = {
-        name: canonicalize_genres_for_statistics(item.genres) for name, item in resolved.items()
-    }
-    artist_hours = {artist_name: float(row["hours"]) for artist_name, row in artist_agg.iterrows()}
+    metadata = statistical_genre_label_metadata()
+    artist_style_genres = {}
+    for name, item in resolved.items():
+        artist_style_genres[name] = [
+            genre
+            for genre in canonicalize_genres_for_statistics(item.genres)
+            if metadata.get(genre, {}).get("axis", "style") == "style"
+        ]
 
-    # Weighted by play hours; multi-genre artists are split across statistic families.
-    genre_weight: dict[str, float] = {}
-    known_hours = 0.0
-    for artist_name, row in artist_agg.iterrows():
-        hours = float(row["hours"])
-        gen = artist_genres.get(artist_name, [])
-        if gen:
-            genre_hours = hours / len(gen)
-            for g in gen:
-                genre_weight[g] = genre_weight.get(g, 0) + genre_hours
-            known_hours += hours
-
-    total_hours = float(artist_agg["hours"].sum())
-    unknown_hours = total_hours - known_hours
-    if unknown_hours > 0:
-        genre_weight["其他流派"] = genre_weight.get("其他流派", 0) + unknown_hours
-
-    total_weight = sum(genre_weight.values()) or 1
-    top_genres = sorted(genre_weight.items(), key=lambda x: x[1], reverse=True)[:10]
-    top_genres_list = [
-        {"name": g, "play_share": round(w / total_weight * 100, 1)} for g, w in top_genres
-    ]
-
-    # Monthly genres: for each month, top 5 genres by play hours
-    monthly_genres_list = _build_monthly_genres(year_df, artist_genres)
+    distribution = compute_artist_genre_distribution(conn, artist_hours)
+    distribution["coverage"]["excluded_unattributed_hours"] = excluded_ms / 3_600_000
+    monthly_genres_list = _build_monthly_genres(year_df, artist_style_genres)
 
     return {
-        "top_genres": top_genres_list,
+        **distribution,
         "monthly_genres": monthly_genres_list,
         "language_dist": language_dist,
-        "coverage": compute_genre_coverage(conn, artist_hours),
-        "caveat": STATISTICAL_GENRE_CAVEAT,
     }
 
 
@@ -834,7 +828,6 @@ def _build_monthly_genres(year_df, artist_genres: dict[str, list[str]]) -> list[
             continue
 
         genre_hours: dict[str, float] = {}
-        unknown_hours = 0.0
         for artist_name, grp in month_df.groupby("artist_name"):
             hours = float(grp["ms_played"].sum() / 3_600_000)
             gen = artist_genres.get(artist_name, [])
@@ -842,14 +835,9 @@ def _build_monthly_genres(year_df, artist_genres: dict[str, list[str]]) -> list[
                 genre_share = hours / len(gen)
                 for g in gen:
                     genre_hours[g] = genre_hours.get(g, 0) + genre_share
-            else:
-                unknown_hours += hours
-
-        if unknown_hours > 0:
-            genre_hours["其他流派"] = unknown_hours
 
         top5 = sorted(genre_hours.items(), key=lambda x: x[1], reverse=True)[:5]
-        total_m = sum(h for _, h in top5) or 1
+        total_m = sum(genre_hours.values()) or 1
         monthly.append(
             {
                 "month": m,

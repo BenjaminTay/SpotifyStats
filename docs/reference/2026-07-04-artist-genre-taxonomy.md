@@ -47,7 +47,7 @@ Spotify Web API 对部分艺人不返回 genre；即使返回，也常见粒度�
 - `americana`、`bluegrass`、`roots rock` -> `americana/roots`
 - `musicals`、`musical theatre`、`score`、`soundtrack` -> `soundtrack/stage`
 
-一个艺人可以落到多个 canonical genre。统计播放时长时，系统会把该艺人的时长平均分摊到这些 canonical 标签，避免多标签艺人被重复计算成超过 100%。
+一个艺人可以落到多个 canonical genre。统计播放时长时，系统先按 axis 分组，再只在同一 axis 内平均分摊：`style`、`scene`、`context`、`role` 各自独立计算覆盖率和构成，因此跨轴标签不会互相稀释；同一轴内的多标签也不会重复计算成超过 100%。例如 `latin pop` 的同一段播放时长会分别完整进入 scene 轴的 `latin` 与 style 轴的 `pop`，而不是各算一半。
 
 ## Settings 审计面板
 
@@ -78,12 +78,24 @@ Settings 页的 **Genre 数据健康** 面板现在提供两类审计：
 - `GET /api/metadata/artist-genres/coverage`
 - `GET /api/metadata/artist-genres/taxonomy`
 - `GET /api/metadata/artist-genres/reviews`
+- `PATCH /api/metadata/artist-genres/reviews/{review_id}/evidence`
 - `POST /api/metadata/artist-genres/reviews/{review_id}/approve`
 - `POST /api/metadata/artist-genres/reviews/{review_id}/reject`
 
-## 2026-07-04 数据快照
+## 2026-07-15 当前数据快照
 
-本地数据库审计结果：
+按 Settings 默认过滤口径重新计算：
+
+- Source genre 已知时长：4011.0h，原始标签覆盖率 100%。这只代表每位已归属艺人都有 source genre，不代表每个标签都能解释成声音风格。
+- Style 轴覆盖率：72.6%，未知 27.4%；Scene 轴 32.9%；Context 轴 4.2%；Role 轴 30.2%。四个轴独立统计，未知时长不会被隐藏。
+- Style 轴 Top 构成：Pop 55.0%、Country 18.8%、R&B / Soul 9.6%、Rock / Alternative 7.2%、Indie / Alternative 3.7%。这些百分比是 style 已知时长内部构成，不等同于全部播放时长占比。
+- 主要来源时长：Spotify 2009.0h、curated seed 1263.0h、LLM approved 739.0h。来源置信度会同时乘以该行自身 confidence；缺少证据 URL、LLM 占比过高或单一艺人主导都会触发风险标记并限制最高置信度。
+
+年度总结的主流派榜只展示 `style`；`scene`、`context`、`role` 作为并列但不同语义的辅助轴展示。Settings 则保留 raw -> canonical 映射、来源、证据覆盖、Top driving artists 和审核历史，供维护者复核。
+
+## 2026-07-04 历史数据快照
+
+以下是旧版跨轴分摊逻辑的历史结果，仅用于对比，不应再作为当前口径：
 
 - Raw genre labels: 230
 - Canonical genre labels: 26

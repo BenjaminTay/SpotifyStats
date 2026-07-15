@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-LANGUAGE_REGISTRY_VERSION = "artist-language-v1"
+LANGUAGE_REGISTRY_VERSION = "artist-language-v2"
 
 LANGUAGE_LABELS = {
     "en": "英文",
@@ -21,6 +21,7 @@ LANGUAGE_LABELS = {
     "vi": "越南文",
     "id": "印尼文",
     "ms": "马来文",
+    "ca": "加泰罗尼亚文",
 }
 
 SUPPORTED_LANGUAGE_CODES = tuple(LANGUAGE_LABELS)
@@ -34,6 +35,7 @@ LANGUAGE_ALIASES = {
     "french": "fr",
     "german": "de",
     "portuguese": "pt",
+    "catalan": "ca",
 }
 
 LANGUAGE_VARIANTS = {

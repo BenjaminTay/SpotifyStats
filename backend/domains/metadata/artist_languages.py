@@ -290,7 +290,7 @@ def build_primary_artist_ms(
         for track_id, ms in with_track.groupby("track_id", sort=False)["ms_played"].sum().items()
     }
 
-    track_to_artist: dict[int, int] = {}
+    track_to_artist: dict[int, int | None] = {}
     track_ids = list(track_ms)
     for offset in range(0, len(track_ids), 500):
         chunk = track_ids[offset : offset + 500]
@@ -303,12 +303,37 @@ def build_primary_artist_ms(
         ).fetchall()
         track_to_artist.update({int(row[0]): int(row[1]) for row in rows})
 
+    table_names = {
+        str(row[0])
+        for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
+    }
+    if "artist_metadata_attribution_overrides" in table_names:
+        for offset in range(0, len(track_ids), 500):
+            chunk = track_ids[offset : offset + 500]
+            placeholders = ",".join("?" for _ in chunk)
+            rows = conn.execute(
+                f"""SELECT track_id, artist_id
+                    FROM artist_metadata_attribution_overrides
+                    WHERE track_id IN ({placeholders})""",
+                chunk,
+            ).fetchall()
+            for row in rows:
+                track_to_artist[int(row[0])] = int(row[1]) if row[1] is not None else None
+
+    artist_aliases: dict[int, int] = {}
+    if "artist_identity_aliases" in table_names:
+        rows = conn.execute(
+            "SELECT alias_artist_id, canonical_artist_id FROM artist_identity_aliases"
+        ).fetchall()
+        artist_aliases = {int(row[0]): int(row[1]) for row in rows}
+
     artist_ms: dict[int, int] = defaultdict(int)
     attributed_ms = 0
     for track_id, ms in track_ms.items():
         artist_id = track_to_artist.get(track_id)
         if artist_id is None:
             continue
+        artist_id = artist_aliases.get(artist_id, artist_id)
         artist_ms[artist_id] += ms
         attributed_ms += ms
     return dict(artist_ms), total_ms - attributed_ms

@@ -2333,6 +2333,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/metadata/artist-genres/reviews/{review_id}/evidence": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Patch Artist Genre Review Evidence */
+        patch: operations["patch_artist_genre_review_evidence_api_metadata_artist_genres_reviews__review_id__evidence_patch"];
+        trace?: never;
+    };
     "/api/metadata/artist-genres/reviews/{review_id}/approve": {
         parameters: {
             query?: never;
@@ -3557,6 +3574,12 @@ export interface components {
             hours: number;
             /** Share Pct */
             share_pct: number;
+            /** Coverage Pct */
+            coverage_pct: number;
+            /** Unknown Hours */
+            unknown_hours: number;
+            /** Unknown Pct */
+            unknown_pct: number;
             /** Canonical Count */
             canonical_count: number;
             /** Interpretation */
@@ -3607,6 +3630,8 @@ export interface components {
             hours: number;
             /** Share Pct */
             share_pct: number;
+            /** Overall Share Pct */
+            overall_share_pct: number;
             /** Source Mix */
             source_mix?: components["schemas"]["ArtistGenreSourceMixItem"][];
             /** Top Artists */
@@ -3638,6 +3663,18 @@ export interface components {
             artist_count: number;
             /** Total Hours */
             total_hours: number;
+            /**
+             * Excluded Unattributed Hours
+             * @default 0
+             */
+            excluded_unattributed_hours: number;
+        };
+        /** ArtistGenreEvidenceUpdateRequest */
+        ArtistGenreEvidenceUpdateRequest: {
+            /** Evidence Url */
+            evidence_url: string;
+            /** Evidence Summary */
+            evidence_summary: string;
         };
         /** ArtistGenrePassthroughItem */
         ArtistGenrePassthroughItem: {
@@ -3658,6 +3695,11 @@ export interface components {
             artist_count: number;
             /** Sources */
             sources?: string[];
+        };
+        /** ArtistGenreReviewDecisionRequest */
+        ArtistGenreReviewDecisionRequest: {
+            /** Resolution Note */
+            resolution_note: string;
         };
         /** ArtistGenreReviewDecisionResponse */
         ArtistGenreReviewDecisionResponse: {
@@ -3704,11 +3746,30 @@ export interface components {
             confidence: number;
             /** Evidence Summary */
             evidence_summary?: string | null;
+            /** Evidence Url */
+            evidence_url?: string | null;
+            /** Review Status */
+            review_status: string;
+            /** Reviewed By */
+            reviewed_by?: string | null;
+            /** Reviewed At */
+            reviewed_at?: string | null;
+            /** Resolution Note */
+            resolution_note?: string | null;
+            /** Created At */
+            created_at: string;
+            /** Updated At */
+            updated_at: string;
         };
         /** ArtistGenreReviewListResponse */
         ArtistGenreReviewListResponse: {
             /** Items */
             items: components["schemas"]["ArtistGenreReviewItem"][];
+            /**
+             * Total
+             * @default 0
+             */
+            total: number;
         };
         /** ArtistGenreRiskFlag */
         ArtistGenreRiskFlag: {
@@ -3727,6 +3788,10 @@ export interface components {
             hours: number;
             /** Share Pct */
             share_pct: number;
+            /** Confidence */
+            confidence: number;
+            /** Evidence Pct */
+            evidence_pct: number;
         };
         /** ArtistGenreTaxonomyResponse */
         ArtistGenreTaxonomyResponse: {
@@ -4810,12 +4875,57 @@ export interface components {
             /** Count */
             count: number;
         };
+        /** GenreAxisDistribution */
+        GenreAxisDistribution: {
+            /** Axis */
+            axis: string;
+            /** Label */
+            label: string;
+            /** Hours */
+            hours: number;
+            /** Share Pct */
+            share_pct: number;
+            /** Coverage Pct */
+            coverage_pct: number;
+            /** Unknown Hours */
+            unknown_hours: number;
+            /** Unknown Pct */
+            unknown_pct: number;
+            /** Canonical Count */
+            canonical_count: number;
+            /** Interpretation */
+            interpretation: string;
+            /** Buckets */
+            buckets?: {
+                [key: string]: unknown;
+            }[];
+        };
         /** GenreItem */
         GenreItem: {
             /** Name */
             name: string;
+            /** Label */
+            label?: string | null;
             /** Play Share */
             play_share: number;
+            /**
+             * Hours
+             * @default 0
+             */
+            hours: number;
+            /**
+             * Confidence Tier
+             * @default medium
+             */
+            confidence_tier: string;
+            /** Top Artists */
+            top_artists?: {
+                [key: string]: unknown;
+            }[];
+            /** Risk Flags */
+            risk_flags?: {
+                [key: string]: unknown;
+            }[];
         };
         /** GenrePanorama */
         GenrePanorama: {
@@ -4829,6 +4939,11 @@ export interface components {
              * @default []
              */
             monthly_genres: components["schemas"]["MonthlyGenreItem"][];
+            /**
+             * Axes
+             * @default []
+             */
+            axes: components["schemas"]["GenreAxisDistribution"][];
             language_dist?: components["schemas"]["LanguageDistribution"] | null;
             /** Coverage */
             coverage?: {
@@ -12856,6 +12971,16 @@ export interface operations {
     get_artist_genre_coverage_api_metadata_artist_genres_coverage_get: {
         parameters: {
             query?: {
+                /** @description 最短播放时长 (毫秒) */
+                min_ms?: number;
+                /** @description 仅音乐 */
+                music_only?: boolean;
+                /** @description 合并连续播放 */
+                merge_enabled?: boolean;
+                /** @description 使用动态有效播放阈值 */
+                dynamic_threshold?: boolean;
+                /** @description 连续播放最大合并间隔 (分钟) */
+                max_merge_gap_minutes?: number | null;
                 readonly?: boolean;
             };
             header?: never;
@@ -12887,6 +13012,16 @@ export interface operations {
     get_artist_genre_taxonomy_api_metadata_artist_genres_taxonomy_get: {
         parameters: {
             query?: {
+                /** @description 最短播放时长 (毫秒) */
+                min_ms?: number;
+                /** @description 仅音乐 */
+                music_only?: boolean;
+                /** @description 合并连续播放 */
+                merge_enabled?: boolean;
+                /** @description 使用动态有效播放阈值 */
+                dynamic_threshold?: boolean;
+                /** @description 连续播放最大合并间隔 (分钟) */
+                max_merge_gap_minutes?: number | null;
                 readonly?: boolean;
             };
             header?: never;
@@ -12948,6 +13083,41 @@ export interface operations {
             };
         };
     };
+    patch_artist_genre_review_evidence_api_metadata_artist_genres_reviews__review_id__evidence_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                review_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ArtistGenreEvidenceUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArtistGenreReviewItem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     approve_artist_genre_review_api_metadata_artist_genres_reviews__review_id__approve_post: {
         parameters: {
             query?: never;
@@ -12957,7 +13127,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ArtistGenreReviewDecisionRequest"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
@@ -12988,7 +13162,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ArtistGenreReviewDecisionRequest"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {

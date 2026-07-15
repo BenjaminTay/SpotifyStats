@@ -56,6 +56,9 @@ def _review_conn() -> sqlite3.Connection:
             reason TEXT NOT NULL,
             suggested_source_id INTEGER REFERENCES artist_genre_sources(source_id),
             status TEXT NOT NULL DEFAULT 'open',
+            reviewed_by TEXT,
+            reviewed_at TEXT,
+            resolution_note TEXT,
             created_at TEXT NOT NULL DEFAULT (datetime('now')),
             updated_at TEXT NOT NULL DEFAULT (datetime('now'))
         );
@@ -74,7 +77,7 @@ def _review_conn() -> sqlite3.Connection:
         language="english",
         region="美国",
         confidence=0.82,
-        evidence_url=None,
+        evidence_url="https://example.com/review-artist",
         evidence_summary="LLM suggestion from external evidence.",
         status="suggested",
     )
@@ -112,6 +115,13 @@ def test_list_open_reviews_includes_source_metadata():
             "region": "美国",
             "confidence": 0.82,
             "evidence_summary": "LLM suggestion from external evidence.",
+            "evidence_url": "https://example.com/review-artist",
+            "review_status": "open",
+            "reviewed_by": None,
+            "reviewed_at": None,
+            "resolution_note": None,
+            "created_at": rows[0]["created_at"],
+            "updated_at": rows[0]["updated_at"],
         }
     ]
 

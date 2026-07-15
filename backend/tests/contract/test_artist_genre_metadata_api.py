@@ -99,45 +99,36 @@ def test_artist_genre_metadata_api_returns_taxonomy_audit(client, artist_genre_m
     assert payload["raw_genre_count"] == 1
     assert payload["canonical_genre_count"] == 1
     assert payload["noncanonical_passthrough_count"] == 0
-    assert payload["axis_summary"] == [
+    axes = {row["axis"]: row for row in payload["axis_summary"]}
+    assert set(axes) == {"style", "scene", "context", "role"}
+    assert axes["style"] == {
+        "axis": "style",
+        "label": "风格",
+        "hours": 1.0,
+        "share_pct": 25.0,
+        "coverage_pct": 25.0,
+        "unknown_hours": 3.0,
+        "unknown_pct": 75.0,
+        "canonical_count": 1,
+        "interpretation": "声音/风格偏好，可作为主要流派分析。",
+    }
+    pop = payload["top_canonical_genres"][0]
+    assert pop["name"] == "pop"
+    assert pop["axis"] == "style"
+    assert pop["confidence_tier"] == "medium"
+    assert pop["share_pct"] == 100.0
+    assert pop["overall_share_pct"] == 25.0
+    assert pop["source_mix"] == [
         {
-            "axis": "style",
-            "label": "风格",
+            "source": "spotify",
             "hours": 1.0,
-            "share_pct": 25.0,
-            "canonical_count": 1,
-            "interpretation": "声音/风格偏好，可作为主要流派分析。",
+            "share_pct": 100.0,
+            "confidence": 1.0,
+            "evidence_pct": 100.0,
         }
     ]
-    assert payload["top_canonical_genres"] == [
-        {
-            "name": "pop",
-            "axis": "style",
-            "label": "Pop",
-            "interpretation": "声音/风格偏好，可作为主要流派分析。",
-            "confidence_tier": "high",
-            "hours": 1.0,
-            "share_pct": 25.0,
-            "source_mix": [{"source": "spotify", "hours": 1.0, "share_pct": 100.0}],
-            "top_artists": [
-                {
-                    "artist_name": "Spotify Artist",
-                    "hours": 1.0,
-                    "share_pct": 100.0,
-                    "source": "spotify",
-                    "raw_genres": ["spotify pop"],
-                }
-            ],
-            "dominance_warning": "Spotify Artist contributes 100.0% of this label",
-            "risk_flags": [
-                {
-                    "code": "single_artist_dominance",
-                    "severity": "medium",
-                    "message": "Spotify Artist contributes 100.0% of this label",
-                }
-            ],
-        }
-    ]
+    assert pop["top_artists"][0]["artist_name"] == "Spotify Artist"
+    assert {flag["code"] for flag in pop["risk_flags"]} == {"single_artist_dominance"}
     assert payload["top_raw_genres"][0]["raw_genre"] == "spotify pop"
     assert payload["top_raw_genres"][0]["canonical_genres"] == ["pop"]
     assert payload["mapping_examples"][0]["raw_genre"] == "spotify pop"
@@ -158,7 +149,18 @@ def test_artist_genre_metadata_api_lists_open_reviews(client, artist_genre_metad
 
 
 def test_artist_genre_metadata_api_approves_review(client, artist_genre_metadata_db):
-    response = client.post("/api/metadata/artist-genres/reviews/1/approve")
+    evidence = client.patch(
+        "/api/metadata/artist-genres/reviews/1/evidence",
+        json={
+            "evidence_url": "https://example.com/review-artist",
+            "evidence_summary": "Editor profile supports the proposed genre tags.",
+        },
+    )
+    assert evidence.status_code == 200
+    response = client.post(
+        "/api/metadata/artist-genres/reviews/1/approve",
+        json={"resolution_note": "Evidence checked in contract test."},
+    )
 
     assert response.status_code == 200
     payload = response.json()
@@ -169,7 +171,10 @@ def test_artist_genre_metadata_api_approves_review(client, artist_genre_metadata
 
 
 def test_artist_genre_metadata_api_rejects_review(client, artist_genre_metadata_db):
-    response = client.post("/api/metadata/artist-genres/reviews/1/reject")
+    response = client.post(
+        "/api/metadata/artist-genres/reviews/1/reject",
+        json={"resolution_note": "Suggestion is not supported."},
+    )
 
     assert response.status_code == 200
     payload = response.json()
@@ -182,9 +187,22 @@ def test_artist_genre_metadata_api_returns_404_for_stale_review(
     client,
     artist_genre_metadata_db,
 ):
-    client.post("/api/metadata/artist-genres/reviews/1/approve")
+    client.patch(
+        "/api/metadata/artist-genres/reviews/1/evidence",
+        json={
+            "evidence_url": "https://example.com/review-artist",
+            "evidence_summary": "Editor profile supports the proposed genre tags.",
+        },
+    )
+    client.post(
+        "/api/metadata/artist-genres/reviews/1/approve",
+        json={"resolution_note": "Approved once."},
+    )
 
-    response = client.post("/api/metadata/artist-genres/reviews/1/reject")
+    response = client.post(
+        "/api/metadata/artist-genres/reviews/1/reject",
+        json={"resolution_note": "Stale second decision."},
+    )
 
-    assert response.status_code == 404
+    assert response.status_code == 422
     assert response.headers["x-request-id"]

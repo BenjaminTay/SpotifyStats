@@ -28,6 +28,8 @@ Streamlit 原型已于 2026-07-07 移除。历史代码可通过 `git log -- app
 
 **艺人语言事实与统计（2026-07-11）**：语言元数据以稳定 `artist_id` 为主体，独立于 genre 解析与 taxonomy；播放语言统计只按 `tracks.artist_id` 的主艺人归属，不使用 `track_artists` fan-out。只有 approved fact 可进入统计和 Wrapped 缓存 revision；legacy 数据、LLM 和未审核 seed 只能进入 suggested/review 流程。显式 reviewed seed 仅可在 evidence、`reviewed_by` 与 `resolution_note` 齐全，并通过同一 validator 与 review state machine 时批准，仍不得自动猜测批准。统计与 UI 必须保留 `unknown`、`multilingual`、`instrumental` 以及未归属时长，不得通过 genre 或艺人名称启发式补齐。Settings 卡片 06 负责覆盖率、缺失项、搜索、证据和审核历史；年度总结直接渲染后端动态 language buckets，并与 genre 独立显示。
 
+**艺人 genre 四轴统计与审核（2026-07-15）**：resolved artist genre 仍遵循 Spotify 非空优先、本地 approved fallback 次之，但 source coverage 不等同于 style coverage。canonical 标签按 `style`、`scene`、`context`、`role` 独立统计，只在同一 axis 内分摊艺人时长；年度总结主榜只能使用 style，其他轴作为独立辅助语义展示，并各自保留 unknown。Genre 和 language 统一采用 `tracks.artist_id` 主艺人归属、艺人 alias canonicalization 与明确的 track attribution exclusion，不做 featured artist fan-out。Settings 审核通过前必须保存 HTTPS evidence、reviewer、reviewed_at 和 resolution_note；source confidence 必须乘以事实行 confidence，缺证据、LLM 主导或单艺人主导时不得显示高置信结论。
+
 ## Phase 5 产品化收口基线
 
 Phase 5 目标是收紧产品线到可持续迭代状态。当前进度：

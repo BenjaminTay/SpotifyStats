@@ -88,7 +88,15 @@ def test_canonicalize_genres_for_statistics_preserves_audit_level_display_tags()
 def test_canonicalize_genres_for_statistics_splits_market_and_style_tags() -> None:
     assert canonicalize_genres_for_statistics(
         ["mandopop", "chinese r&b", "chinese rock", "gufeng"]
-    ) == ["c-pop", "r&b/soul", "rock/alternative", "traditional/folk"]
+    ) == ["c-pop", "r&b/soul", "rock/alternative"]
+
+
+def test_statistical_genres_do_not_promote_noisy_context_or_market_tags() -> None:
+    assert canonicalize_genres_for_statistics(["malay pop"]) == []
+    assert canonicalize_genres_for_statistics(["vocaloid"]) == []
+    assert canonicalize_genres_for_statistics(["anime", "anison"]) == ["soundtrack/stage"]
+    assert canonicalize_genres_for_statistics(["japanese classical"]) == ["classical/instrumental"]
+    assert canonicalize_genres_for_statistics(["lo-fi"]) == ["electronic/dance"]
 
 
 def test_canonicalize_genres_for_statistics_collapses_pop_substyles_but_keeps_hybrids() -> None:
@@ -571,14 +579,19 @@ def test_compute_genre_taxonomy_audit_groups_axes_and_flags_interpretation_risks
     assert axis_summary["style"]["label"] == "风格"
     assert axis_summary["scene"]["label"] == "场景"
     assert axis_summary["role"]["label"] == "身份"
-    assert axis_summary["style"]["hours"] == pytest.approx(13.7)
+    assert axis_summary["style"]["hours"] == pytest.approx(16.0)
     assert axis_summary["scene"]["hours"] == pytest.approx(4.0)
-    assert axis_summary["role"]["hours"] == pytest.approx(2.3)
+    assert axis_summary["role"]["hours"] == pytest.approx(7.0)
+    assert axis_summary["style"]["coverage_pct"] == pytest.approx(80.0)
+    assert axis_summary["scene"]["coverage_pct"] == pytest.approx(20.0)
+    assert axis_summary["context"]["unknown_pct"] == pytest.approx(100.0)
     assert "声音/风格偏好" in axis_summary["style"]["interpretation"]
     assert "不等同于声音风格" in axis_summary["scene"]["interpretation"]
 
     by_name = {row["name"]: row for row in report["top_canonical_genres"]}
     assert by_name["pop"]["confidence_tier"] == "medium"
+    assert by_name["pop"]["share_pct"] == pytest.approx(53.1)
+    assert by_name["pop"]["overall_share_pct"] == pytest.approx(42.5)
     assert by_name["pop"]["interpretation"] == axis_summary["style"]["interpretation"]
     assert by_name["c-pop"]["axis"] == "scene"
     assert by_name["c-pop"]["confidence_tier"] == "high"
@@ -586,9 +599,12 @@ def test_compute_genre_taxonomy_audit_groups_axes_and_flags_interpretation_risks
 
     country_flags = {flag["code"]: flag for flag in by_name["country"]["risk_flags"]}
     assert "single_artist_dominance" in country_flags
+    assert "missing_evidence_url" in country_flags
+    assert by_name["country"]["confidence_tier"] == "medium"
     assert "Taylor Swift" in country_flags["single_artist_dominance"]["message"]
 
     electronic_flags = {flag["code"]: flag for flag in by_name["electronic/dance"]["risk_flags"]}
     assert by_name["electronic/dance"]["confidence_tier"] == "low"
     assert "source_confidence" in electronic_flags
+    assert "llm_majority" in electronic_flags
     assert "LLM" in electronic_flags["source_confidence"]["message"]

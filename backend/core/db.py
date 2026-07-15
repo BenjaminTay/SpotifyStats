@@ -384,8 +384,27 @@ CREATE TABLE IF NOT EXISTS artist_genre_review_queue (
     reason TEXT NOT NULL,
     suggested_source_id INTEGER REFERENCES artist_genre_sources(source_id),
     status TEXT NOT NULL DEFAULT 'open',
+    reviewed_by TEXT,
+    reviewed_at TEXT,
+    resolution_note TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS artist_identity_aliases (
+    alias_artist_id INTEGER PRIMARY KEY REFERENCES artists(artist_id),
+    canonical_artist_id INTEGER NOT NULL REFERENCES artists(artist_id),
+    reason TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    CHECK (alias_artist_id != canonical_artist_id)
+);
+
+CREATE TABLE IF NOT EXISTS artist_metadata_attribution_overrides (
+    track_id INTEGER PRIMARY KEY REFERENCES tracks(track_id),
+    artist_id INTEGER REFERENCES artists(artist_id),
+    reason TEXT NOT NULL,
+    evidence_url TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 -- ── Genius Lyrics Cache ──────────────────────────────────────────────

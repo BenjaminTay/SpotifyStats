@@ -87,7 +87,7 @@ describe('Yearly GenrePanorama language distribution', () => {
     )
 
     expect(screen.getByText('art pop')).toBeInTheDocument()
-    expect(screen.queryByText('语言分布')).not.toBeInTheDocument()
+    expect(screen.queryByText('艺人语言归属')).not.toBeInTheDocument()
     expect(screen.queryByText(/曲风流派数据不足/)).not.toBeInTheDocument()
   })
 
@@ -104,6 +104,6 @@ describe('Yearly GenrePanorama language distribution', () => {
 
     expect(screen.getByText('曲风与语言数据不足，多听听歌获取更多洞察')).toBeInTheDocument()
     expect(screen.queryByText('Top 流派')).not.toBeInTheDocument()
-    expect(screen.queryByText('语言分布')).not.toBeInTheDocument()
+    expect(screen.queryByText('艺人语言归属')).not.toBeInTheDocument()
   })
 })

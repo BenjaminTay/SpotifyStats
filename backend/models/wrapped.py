@@ -73,12 +73,30 @@ class TopLists(BaseModel):
 
 class GenreItem(BaseModel):
     name: str
+    label: str | None = None
     play_share: float
+    hours: float = 0.0
+    confidence_tier: str = "medium"
+    top_artists: list[dict[str, Any]] = Field(default_factory=list)
+    risk_flags: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class MonthlyGenreItem(BaseModel):
     month: int
     genres: dict[str, float]
+
+
+class GenreAxisDistribution(BaseModel):
+    axis: str
+    label: str
+    hours: float
+    share_pct: float
+    coverage_pct: float
+    unknown_hours: float
+    unknown_pct: float
+    canonical_count: int
+    interpretation: str
+    buckets: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class LanguageDistribution(BaseModel):
@@ -97,6 +115,7 @@ class LanguageDistribution(BaseModel):
 class GenrePanorama(BaseModel):
     top_genres: list[GenreItem] = []
     monthly_genres: list[MonthlyGenreItem] = []
+    axes: list[GenreAxisDistribution] = []
     language_dist: LanguageDistribution | None = None
     coverage: dict[str, Any] | None = None
     caveat: str | None = None

@@ -38,6 +38,7 @@ const coveragePayload = {
   ],
   artist_count: 128,
   total_hours: 4045.9,
+  excluded_unattributed_hours: 0,
 }
 
 const reviewPayload = {
@@ -57,8 +58,16 @@ const reviewPayload = {
       region: '美国',
       confidence: 0.82,
       evidence_summary: 'Matched official biographies and public metadata.',
+      evidence_url: 'https://example.com/lana-del-rey',
+      review_status: 'open',
+      reviewed_by: null,
+      reviewed_at: null,
+      resolution_note: null,
+      created_at: '2026-07-01T00:00:00Z',
+      updated_at: '2026-07-01T00:00:00Z',
     },
   ],
+  total: 1,
 }
 
 const taxonomyPayload = {
@@ -73,6 +82,9 @@ const taxonomyPayload = {
       label: '风格',
       hours: 1588.3,
       share_pct: 39.3,
+      coverage_pct: 39.3,
+      unknown_hours: 2457.6,
+      unknown_pct: 60.7,
       canonical_count: 2,
       interpretation: '声音/风格偏好，可作为主要流派分析。',
     },
@@ -81,6 +93,9 @@ const taxonomyPayload = {
       label: '场景',
       hours: 1062.6,
       share_pct: 26.3,
+      coverage_pct: 26.3,
+      unknown_hours: 2983.3,
+      unknown_pct: 73.7,
       canonical_count: 1,
       interpretation: '语言、地区或音乐市场场景，不等同于声音风格。',
     },
@@ -89,6 +104,9 @@ const taxonomyPayload = {
       label: '身份',
       hours: 431.3,
       share_pct: 10.7,
+      coverage_pct: 10.7,
+      unknown_hours: 3614.6,
+      unknown_pct: 89.3,
       canonical_count: 1,
       interpretation: '创作或表演身份标签，不等同于声音风格。',
     },
@@ -102,7 +120,8 @@ const taxonomyPayload = {
       confidence_tier: 'high',
       hours: 1335.2,
       share_pct: 33.0,
-      source_mix: [{ source: 'spotify', hours: 910.4, share_pct: 68.2 }],
+      overall_share_pct: 33.0,
+      source_mix: [{ source: 'spotify', hours: 910.4, share_pct: 68.2, confidence: 1, evidence_pct: 100 }],
       top_artists: [],
       dominance_warning: null,
       risk_flags: [],
@@ -115,7 +134,8 @@ const taxonomyPayload = {
       confidence_tier: 'high',
       hours: 1062.6,
       share_pct: 26.3,
-      source_mix: [{ source: 'spotify', hours: 1062.6, share_pct: 100 }],
+      overall_share_pct: 26.3,
+      source_mix: [{ source: 'spotify', hours: 1062.6, share_pct: 100, confidence: 1, evidence_pct: 100 }],
       top_artists: [],
       dominance_warning: null,
       risk_flags: [],
@@ -128,7 +148,8 @@ const taxonomyPayload = {
       confidence_tier: 'medium',
       hours: 431.3,
       share_pct: 10.7,
-      source_mix: [{ source: 'curated_seed', hours: 343.4, share_pct: 79.6 }],
+      overall_share_pct: 10.7,
+      source_mix: [{ source: 'curated_seed', hours: 343.4, share_pct: 79.6, confidence: 0.95, evidence_pct: 0 }],
       top_artists: [
         {
           artist_name: 'Taylor Swift',
@@ -155,7 +176,8 @@ const taxonomyPayload = {
       confidence_tier: 'low',
       hours: 66.8,
       share_pct: 1.6,
-      source_mix: [{ source: 'llm', hours: 62.6, share_pct: 93.7 }],
+      overall_share_pct: 1.6,
+      source_mix: [{ source: 'llm', hours: 62.6, share_pct: 93.7, confidence: 0.72, evidence_pct: 0 }],
       top_artists: [],
       dominance_warning: null,
       risk_flags: [
@@ -163,7 +185,7 @@ const taxonomyPayload = {
           code: 'source_confidence',
           severity: 'high',
           message:
-            'LLM contributes 93.7% of this label; treat it as low-confidence genre evidence',
+            'LLM 占该标签 93.7%，当前只能按 low 置信度解读',
         },
       ],
     },
@@ -341,7 +363,7 @@ describe('GenreDataHealthSection', () => {
     expect(within(sceneSection).getByText(/不等同于声音风格/)).toBeInTheDocument()
     expect(within(roleSection).getByText('Singer-Songwriter')).toBeInTheDocument()
     expect(within(roleSection).getByText(/Taylor Swift contributes 79.6%/)).toBeInTheDocument()
-    expect(within(styleSection).getByText(/low-confidence genre evidence/)).toBeInTheDocument()
+    expect(within(styleSection).getByText(/当前只能按 low 置信度解读/)).toBeInTheDocument()
     expect(within(styleSection).getByText('低可信')).toBeInTheDocument()
   })
 
@@ -356,12 +378,16 @@ describe('GenreDataHealthSection', () => {
 
     await user.click(within(reviewRow).getByRole('button', { name: '通过 Lana Del Rey 的 genre 建议' }))
     await waitFor(() => {
-      expect(postSpy).toHaveBeenCalledWith('/metadata/artist-genres/reviews/1/approve')
+      expect(postSpy).toHaveBeenCalledWith('/metadata/artist-genres/reviews/1/approve', {
+        resolution_note: '已在 Settings 核对标签与证据后批准。',
+      })
     })
 
     await user.click(within(reviewRow).getByRole('button', { name: '拒绝 Lana Del Rey 的 genre 建议' }))
     await waitFor(() => {
-      expect(postSpy).toHaveBeenCalledWith('/metadata/artist-genres/reviews/1/reject')
+      expect(postSpy).toHaveBeenCalledWith('/metadata/artist-genres/reviews/1/reject', {
+        resolution_note: '已在 Settings 核对后拒绝该建议。',
+      })
     })
   })
 

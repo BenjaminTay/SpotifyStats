@@ -89,6 +89,41 @@ def test_primary_artist_hours_do_not_fan_out_collaborations(
     assert excluded_ms == 1_000_000
 
 
+def test_primary_artist_hours_apply_identity_aliases_and_exclusions(
+    language_conn: sqlite3.Connection,
+) -> None:
+    language_conn.executescript(
+        """
+        CREATE TABLE artist_identity_aliases (
+            alias_artist_id INTEGER PRIMARY KEY,
+            canonical_artist_id INTEGER NOT NULL,
+            reason TEXT NOT NULL
+        );
+        CREATE TABLE artist_metadata_attribution_overrides (
+            track_id INTEGER PRIMARY KEY,
+            artist_id INTEGER,
+            reason TEXT NOT NULL,
+            evidence_url TEXT
+        );
+        INSERT INTO artist_identity_aliases(alias_artist_id, canonical_artist_id, reason)
+        VALUES (2, 1, 'test alias');
+        INSERT INTO artist_metadata_attribution_overrides(track_id, artist_id, reason)
+        VALUES (30, NULL, 'invalid primary artist attribution');
+        """
+    )
+    plays = pd.DataFrame(
+        {
+            "track_id": [10, 20, 30],
+            "ms_played": [1_000, 2_000, 3_000],
+        }
+    )
+
+    artist_ms, excluded_ms = build_primary_artist_ms(language_conn, plays)
+
+    assert artist_ms == {1: 3_000}
+    assert excluded_ms == 3_000
+
+
 def test_distribution_conserves_integer_ms_and_returns_public_dynamic_buckets(
     language_conn: sqlite3.Connection,
 ) -> None:

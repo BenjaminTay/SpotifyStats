@@ -2,8 +2,10 @@ import { useEffect, useMemo, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import {
   AlertCircle,
+  ChevronDown,
   CheckCircle2,
   RefreshCw,
+  Search,
   Sparkles,
   XCircle,
 } from 'lucide-react'
@@ -20,8 +22,10 @@ import {
   useArtistGenreTaxonomy,
   useRejectArtistGenreReview,
   useStartArtistGenreBackfillTask,
+  useUpdateArtistGenreEvidence,
 } from '@/hooks/useArtistGenreMetadata'
 import { useAiTask } from '@/hooks/useAiTasks'
+import { useAnalysisFilters } from '@/hooks/useAnalysis'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -34,6 +38,7 @@ import type {
 } from '@/types/artist-genre-metadata'
 
 type GenreHealthPanel = 'overview' | 'reviews' | 'audit'
+type GenreReviewStatus = 'open' | 'approved' | 'rejected'
 
 const BACKFILL_PAYLOAD = {
   limit: 10,
@@ -41,6 +46,7 @@ const BACKFILL_PAYLOAD = {
   include_ai: true,
   approve_high_confidence_external: true,
 }
+const REVIEW_PAGE_SIZE = 10
 
 const SOURCE_LABELS: Record<string, string> = {
   spotify: 'Spotify',
@@ -99,12 +105,17 @@ function LoadingState() {
   )
 }
 
-function EmptyReviews() {
+function EmptyReviews({ status, searching }: { status: GenreReviewStatus; searching: boolean }) {
+  const statusLabel = status === 'open' ? '待审核' : status === 'approved' ? '已批准' : '已拒绝'
   return (
     <div className="rounded-[8px] border border-border bg-muted/20 px-4 py-5 text-center">
       <CheckCircle2 className="mx-auto size-5 text-green-600 dark:text-green-400" />
-      <p className="mt-2 text-[13px] font-medium text-foreground">暂无待审核建议</p>
-      <p className="mt-1 text-[12px] text-muted-foreground">新的外部或 LLM 建议会出现在这里。</p>
+      <p className="mt-2 text-[13px] font-medium text-foreground">
+        {searching ? '没有匹配的审核记录' : `暂无${statusLabel}记录`}
+      </p>
+      <p className="mt-1 text-[12px] text-muted-foreground">
+        {searching ? '可尝试缩短关键词或切换审核状态。' : '新的外部或 LLM 建议会在对应状态下显示。'}
+      </p>
     </div>
   )
 }
@@ -255,6 +266,8 @@ function CanonicalGenreAuditRow({ genre }: { genre: ArtistGenreCanonicalItem }) 
                 <span className="font-mono">{topSource.source}</span>
                 <span className="font-mono">{formatPct(topSource.share_pct)}</span>
                 <span className="font-mono">{formatHours(topSource.hours)}</span>
+                <span>来源记录置信度 {formatPct(topSource.confidence * 100)}</span>
+                <span>证据链接覆盖 {formatPct(topSource.evidence_pct)}</span>
               </p>
             )}
             {topArtists.length > 0 && (
@@ -324,10 +337,10 @@ function AxisGenreGroup({
         </div>
         <div className="shrink-0 text-left sm:text-right">
           <p className="font-mono text-[13px] font-semibold text-foreground">
-            {formatPct(summary.share_pct)}
+            覆盖 {formatPct(summary.coverage_pct)}
           </p>
           <p className="mt-1 font-mono text-[11.5px] text-muted-foreground">
-            {formatHours(summary.hours)}
+            {formatHours(summary.hours)} · 未知 {formatPct(summary.unknown_pct)}
           </p>
         </div>
       </div>
@@ -345,12 +358,18 @@ function ReviewCard({
   busy,
   onApprove,
   onReject,
+  onSaveEvidence,
 }: {
   item: ArtistGenreReviewItem
   busy: boolean
   onApprove: (reviewId: number) => void
   onReject: (reviewId: number) => void
+  onSaveEvidence: (reviewId: number, evidenceUrl: string, evidenceSummary: string) => void
 }) {
+  const [evidenceUrl, setEvidenceUrl] = useState(item.evidence_url ?? '')
+  const [evidenceSummary, setEvidenceSummary] = useState(item.evidence_summary ?? '')
+  const isOpen = item.review_status === 'open'
+  const canApprove = isOpen && item.evidence_url?.startsWith('https://')
   return (
     <article
       aria-label={`审核 ${item.artist_name} 的 genre 建议`}
@@ -373,11 +392,11 @@ function ReviewCard({
             {formatHours(item.play_hours)} · {item.reason}
           </p>
         </div>
-        <div className="flex shrink-0 gap-2">
+        {isOpen && <div className="flex shrink-0 gap-2">
           <Button
             aria-label={`通过 ${item.artist_name} 的 genre 建议`}
             className="gap-1.5"
-            disabled={busy}
+            disabled={busy || !canApprove}
             onClick={() => onApprove(item.review_id)}
             size="sm"
             variant="outline"
@@ -396,7 +415,7 @@ function ReviewCard({
             <XCircle className="size-3.5" />
             拒绝
           </Button>
-        </div>
+        </div>}
       </div>
 
       <div className="mt-3 flex flex-wrap gap-1.5">
@@ -420,30 +439,84 @@ function ReviewCard({
           {item.evidence_summary}
         </p>
       )}
+      {item.evidence_url && (
+        <a className="mt-2 block break-all text-[11.5px] text-accent-foreground underline underline-offset-2" href={item.evidence_url} rel="noreferrer" target="_blank">
+          {item.evidence_url}
+        </a>
+      )}
+      {isOpen && !item.evidence_url && (
+        <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
+          <input
+            aria-label={`证据链接 ${item.artist_name}`}
+            className="h-9 min-w-0 rounded-[8px] border border-input bg-background px-3 text-[12px] outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
+            onChange={(event) => setEvidenceUrl(event.target.value)}
+            placeholder="https:// 官方或编辑来源"
+            type="url"
+            value={evidenceUrl}
+          />
+          <input
+            aria-label={`证据摘要 ${item.artist_name}`}
+            className="h-9 min-w-0 rounded-[8px] border border-input bg-background px-3 text-[12px] outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
+            onChange={(event) => setEvidenceSummary(event.target.value)}
+            placeholder="这份来源支持哪些标签"
+            value={evidenceSummary}
+          />
+          <Button
+            disabled={busy || !evidenceUrl.startsWith('https://') || !evidenceSummary.trim()}
+            onClick={() => onSaveEvidence(item.review_id, evidenceUrl, evidenceSummary)}
+            size="sm"
+            variant="outline"
+          >
+            保存证据
+          </Button>
+        </div>
+      )}
+      {!isOpen && item.resolution_note && (
+        <p className="mt-3 text-[11.5px] text-muted-foreground">
+          {item.reviewed_at || item.updated_at} · {item.reviewed_by || '本地审核'} · {item.resolution_note}
+        </p>
+      )}
     </article>
   )
 }
 
 export function GenreDataHealthSection() {
+  const { filters } = useAnalysisFilters()
   const queryClient = useQueryClient()
   const [message, setMessage] = useState<string | null>(null)
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null)
   const [activePanel, setActivePanel] = useState<GenreHealthPanel>('overview')
+  const [reviewStatus, setReviewStatus] = useState<GenreReviewStatus>('open')
+  const [reviewSearch, setReviewSearch] = useState('')
+  const [visibleReviewCount, setVisibleReviewCount] = useState(REVIEW_PAGE_SIZE)
 
-  const coverageQuery = useArtistGenreCoverage()
-  const taxonomyQuery = useArtistGenreTaxonomy()
-  const reviewsQuery = useArtistGenreReviews('open', 50)
+  const coverageQuery = useArtistGenreCoverage(filters)
+  const taxonomyQuery = useArtistGenreTaxonomy(filters)
+  const reviewsQuery = useArtistGenreReviews(reviewStatus, 100)
+  const openReviewsQuery = useArtistGenreReviews('open', 1)
   const approveMutation = useApproveArtistGenreReview()
   const rejectMutation = useRejectArtistGenreReview()
   const startBackfillMutation = useStartArtistGenreBackfillTask()
+  const evidenceMutation = useUpdateArtistGenreEvidence()
   const activeTask = useAiTask(activeTaskId)
 
   const coverage = coverageQuery.data
   const taxonomy = taxonomyQuery.data
   const reviews = reviewsQuery.data?.items ?? []
+  const filteredReviews = useMemo(() => {
+    const query = reviewSearch.trim().toLocaleLowerCase()
+    if (!query) return reviews
+    return reviews.filter((item) =>
+      [item.artist_name, item.primary_genre, ...item.genres, item.evidence_summary]
+        .filter(Boolean)
+        .some((value) => String(value).toLocaleLowerCase().includes(query)),
+    )
+  }, [reviewSearch, reviews])
+  const visibleReviews = filteredReviews.slice(0, visibleReviewCount)
   const loading = coverageQuery.isLoading || taxonomyQuery.isLoading || reviewsQuery.isLoading
   const error = coverageQuery.error ?? taxonomyQuery.error ?? reviewsQuery.error
-  const reviewBusy = approveMutation.isPending || rejectMutation.isPending
+  const reviewBusy = approveMutation.isPending || rejectMutation.isPending || evidenceMutation.isPending
+  const openReviewCount = openReviewsQuery.data?.total ?? 0
 
   const sourceRows = useMemo(() => {
     if (!coverage) return []
@@ -481,6 +554,9 @@ export function GenreDataHealthSection() {
           label: axis,
           hours: genres.reduce((total, genre) => total + genre.hours, 0),
           share_pct: genres.reduce((total, genre) => total + genre.share_pct, 0),
+          coverage_pct: genres.reduce((total, genre) => total + genre.overall_share_pct, 0),
+          unknown_hours: 0,
+          unknown_pct: 0,
           canonical_count: genres.length,
           interpretation: genres[0]?.interpretation ?? '标准化统计标签，需结合原始来源审计解释。',
         },
@@ -523,6 +599,23 @@ export function GenreDataHealthSection() {
     }
   }
 
+  const saveEvidence = async (
+    reviewId: number,
+    evidenceUrl: string,
+    evidenceSummary: string,
+  ) => {
+    setMessage(null)
+    try {
+      await evidenceMutation.mutateAsync({
+        reviewId,
+        evidence: { evidence_url: evidenceUrl, evidence_summary: evidenceSummary },
+      })
+      setMessage('已保存 genre 审核证据，现在可以批准该建议。')
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : '保存证据失败')
+    }
+  }
+
   const startBackfill = async () => {
     setMessage(null)
     try {
@@ -535,12 +628,12 @@ export function GenreDataHealthSection() {
   }
 
   const summary = coverage
-    ? `已知 ${formatPct(coverage.known_pct)} · 待补 ${formatPct(coverage.unknown_pct)} · 待审 ${reviews.length}`
+    ? `已知 ${formatPct(coverage.known_pct)} · 待补 ${formatPct(coverage.unknown_pct)} · 待审 ${openReviewCount}`
     : undefined
   const panelItems = coverage
     ? [
         { value: 'overview' as const, label: '概览', meta: formatPct(coverage.known_pct) },
-        { value: 'reviews' as const, label: '审核', meta: String(reviews.length) },
+        { value: 'reviews' as const, label: '审核', meta: String(openReviewCount) },
         {
           value: 'audit' as const,
           label: '分类审计',
@@ -561,7 +654,7 @@ export function GenreDataHealthSection() {
         <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div className="min-w-0">
             <p className="text-[12.5px] leading-relaxed text-muted-foreground">
-              Spotify genre 优先；Spotify 缺失时使用已审核的本地来源补齐统计。
+              Spotify genre 优先；Spotify 缺失时使用已审核的本地来源。原始标签覆盖率不等于声音风格覆盖率，style 等各轴请在分类审计中查看。
             </p>
           </div>
           <div className="flex shrink-0 flex-wrap gap-2">
@@ -571,6 +664,7 @@ export function GenreDataHealthSection() {
               disabled={coverageQuery.isFetching || taxonomyQuery.isFetching || reviewsQuery.isFetching}
               onClick={refresh}
               size="sm"
+              tabIndex={coverageQuery.isFetching || taxonomyQuery.isFetching || reviewsQuery.isFetching ? -1 : undefined}
               variant="outline"
             >
               <RefreshCw className={cn('size-3.5', (coverageQuery.isFetching || taxonomyQuery.isFetching || reviewsQuery.isFetching) && 'animate-spin')} />
@@ -618,12 +712,12 @@ export function GenreDataHealthSection() {
                 <section className="space-y-5">
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
                     <div className="rounded-[8px] border border-border bg-muted/20 p-4">
-                      <p className="text-[11px] font-semibold uppercase tracking-[1.2px] text-muted-foreground">已知覆盖</p>
+                      <p className="text-[11px] font-semibold uppercase tracking-[1.2px] text-muted-foreground">原始标签覆盖</p>
                       <p className="mt-2 font-mono text-[26px] font-semibold leading-none text-foreground">{formatPct(coverage.known_pct)}</p>
                       <p className="mt-2 text-[12px] text-muted-foreground">{formatHours(coverage.known_hours)}</p>
                     </div>
                     <div className="rounded-[8px] border border-border bg-muted/20 p-4">
-                      <p className="text-[11px] font-semibold uppercase tracking-[1.2px] text-muted-foreground">待补齐</p>
+                      <p className="text-[11px] font-semibold uppercase tracking-[1.2px] text-muted-foreground">无来源标签</p>
                       <p className="mt-2 font-mono text-[26px] font-semibold leading-none text-foreground">{formatPct(coverage.unknown_pct)}</p>
                       <p className="mt-2 text-[12px] text-muted-foreground">{formatHours(coverage.unknown_hours)}</p>
                     </div>
@@ -689,22 +783,80 @@ export function GenreDataHealthSection() {
               {activePanel === 'reviews' && (
                 <section className="space-y-4">
                   <div className="mb-3 flex items-center justify-between gap-3">
-                    <h3 className="text-[13px] font-semibold text-foreground">待审核建议</h3>
-                    <span className="font-mono text-[12px] text-muted-foreground">{reviews.length}</span>
+                    <h3 className="text-[13px] font-semibold text-foreground">Genre 审核记录</h3>
+                    <span className="font-mono text-[12px] text-muted-foreground">{reviewsQuery.data?.total ?? 0}</span>
                   </div>
-                  {reviews.length === 0 ? (
-                    <EmptyReviews />
-                  ) : (
-                    <div className="space-y-3">
-                      {reviews.map((item) => (
-                        <ReviewCard
-                          busy={reviewBusy}
-                          item={item}
-                          key={item.review_id}
-                          onApprove={approve}
-                          onReject={reject}
-                        />
+                  <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                    <div aria-label="Genre 审核状态" className="flex w-fit gap-1 rounded-[8px] bg-muted/40 p-1">
+                      {([
+                        ['open', '待审核'],
+                        ['approved', '已批准'],
+                        ['rejected', '已拒绝'],
+                      ] as const).map(([value, label]) => (
+                        <button
+                          aria-pressed={reviewStatus === value}
+                          className={cn(
+                            'rounded-md px-3 py-1.5 text-[12px] font-medium',
+                            reviewStatus === value ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground',
+                          )}
+                          key={value}
+                          onClick={() => {
+                            setReviewStatus(value)
+                            setVisibleReviewCount(REVIEW_PAGE_SIZE)
+                          }}
+                          type="button"
+                        >
+                          {label}
+                        </button>
                       ))}
+                    </div>
+                    <label className="relative block min-w-0 md:w-64">
+                      <Search className="pointer-events-none absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+                      <input
+                        aria-label="搜索 Genre 审核记录"
+                        className="h-9 w-full rounded-[8px] border border-input bg-background pl-9 pr-3 text-[12px] outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring/30"
+                        onChange={(event) => {
+                          setReviewSearch(event.target.value)
+                          setVisibleReviewCount(REVIEW_PAGE_SIZE)
+                        }}
+                        placeholder="搜索艺人、标签或证据"
+                        type="search"
+                        value={reviewSearch}
+                      />
+                    </label>
+                  </div>
+                  {filteredReviews.length === 0 ? (
+                    <EmptyReviews status={reviewStatus} searching={Boolean(reviewSearch.trim())} />
+                  ) : (
+                    <div className="space-y-4">
+                      <p className="text-[11.5px] text-muted-foreground">
+                        显示 {visibleReviews.length} / {filteredReviews.length} 条
+                      </p>
+                      <div className="space-y-3">
+                        {visibleReviews.map((item) => (
+                          <ReviewCard
+                            busy={reviewBusy}
+                            item={item}
+                            key={item.review_id}
+                            onApprove={approve}
+                            onReject={reject}
+                            onSaveEvidence={saveEvidence}
+                          />
+                        ))}
+                      </div>
+                      {visibleReviews.length < filteredReviews.length && (
+                        <div className="flex justify-center">
+                          <Button
+                            className="gap-1.5"
+                            onClick={() => setVisibleReviewCount((count) => count + REVIEW_PAGE_SIZE)}
+                            size="sm"
+                            variant="outline"
+                          >
+                            <ChevronDown className="size-3.5" />
+                            继续加载
+                          </Button>
+                        </div>
+                      )}
                     </div>
                   )}
                 </section>

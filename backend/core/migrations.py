@@ -619,6 +619,90 @@ def migrate_024(conn: sqlite3.Connection):
     )
 
 
+@migration(25, "artist_genre_review_audit_fields")
+def migrate_025(conn: sqlite3.Connection):
+    """Add a minimal decision audit trail to the existing genre review queue."""
+    columns = {
+        row["name"] if isinstance(row, sqlite3.Row) else row[1]
+        for row in conn.execute("PRAGMA table_info(artist_genre_review_queue)").fetchall()
+    }
+    additions = {
+        "reviewed_by": "TEXT",
+        "reviewed_at": "TEXT",
+        "resolution_note": "TEXT",
+    }
+    for name, column_type in additions.items():
+        if name not in columns:
+            conn.execute(f"ALTER TABLE artist_genre_review_queue ADD COLUMN {name} {column_type}")
+    conn.execute(
+        """UPDATE artist_genre_review_queue
+           SET reviewed_by = COALESCE(reviewed_by, 'legacy_local_review'),
+               reviewed_at = COALESCE(reviewed_at, updated_at),
+               resolution_note = COALESCE(
+                   resolution_note,
+                   '迁移前完成的审核；原始结论说明未记录。'
+               )
+           WHERE status IN ('approved', 'rejected')"""
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_artist_genre_reviews_status_updated "
+        "ON artist_genre_review_queue(status, updated_at DESC)"
+    )
+
+
+@migration(26, "artist_metadata_identity_overrides")
+def migrate_026(conn: sqlite3.Connection):
+    """Add narrow identity aliases and explicit invalid primary-artist attributions."""
+    conn.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS artist_identity_aliases (
+            alias_artist_id INTEGER PRIMARY KEY REFERENCES artists(artist_id),
+            canonical_artist_id INTEGER NOT NULL REFERENCES artists(artist_id),
+            reason TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            CHECK (alias_artist_id != canonical_artist_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_artist_identity_aliases_canonical
+            ON artist_identity_aliases(canonical_artist_id);
+
+        CREATE TABLE IF NOT EXISTS artist_metadata_attribution_overrides (
+            track_id INTEGER PRIMARY KEY REFERENCES tracks(track_id),
+            artist_id INTEGER REFERENCES artists(artist_id),
+            reason TEXT NOT NULL,
+            evidence_url TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        """
+    )
+    alias_pairs = (
+        ("JOLIN", "Jolin Tsai", "同一艺人的发行名称变体"),
+        ("孫燕姿", "Stefanie Sun", "同一艺人的中英文名称变体"),
+        ("鄧紫棋", "G.E.M.", "同一艺人的中英文名称变体"),
+    )
+    for alias_name, canonical_name, reason in alias_pairs:
+        conn.execute(
+            """INSERT OR IGNORE INTO artist_identity_aliases(
+                   alias_artist_id, canonical_artist_id, reason
+               )
+               SELECT alias.artist_id, canonical.artist_id, ?
+               FROM artists alias, artists canonical
+               WHERE alias.artist_name=? AND canonical.artist_name=?
+                 AND alias.artist_id != canonical.artist_id""",
+            (reason, alias_name, canonical_name),
+        )
+    conn.execute(
+        """INSERT OR IGNORE INTO artist_metadata_attribution_overrides(
+               track_id, artist_id, reason, evidence_url
+           )
+           SELECT t.track_id, NULL,
+                  'Wicked cast recording is attributed to the composer instead of the vocal performer',
+                  'https://wickedthemusical.com/cast-creative'
+           FROM tracks t
+           JOIN artists a ON a.artist_id=t.artist_id
+           WHERE a.artist_name='Stephen Schwartz'"""
+    )
+
+
 # ── Runner ────────────────────────────────────────────────────────────────
 
 

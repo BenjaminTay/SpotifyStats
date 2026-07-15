@@ -60,7 +60,8 @@ AXIS_ORDER = ("style", "scene", "context", "role")
 STATISTICAL_GENRE_CAVEAT = (
     "流派统计使用标准化统计标签，并按 style/scene/context/role 分轴解释；"
     "scene、context、role 不等同于声音风格。Spotify 与本地原始标签保留用于审计，"
-    "多流派艺人的播放时长会在标准标签间分摊，单一高播放艺人或低可信来源主导的标签需降置信解读。"
+    "播放时长只在同一轴的多标签间分摊，各轴独立保留未知；"
+    "单一高播放艺人或低可信来源主导的标签需降置信解读。"
 )
 LOCAL_TABLES = {
     "artist_genre_overrides",
@@ -79,13 +80,15 @@ STATISTICAL_GENRE_MAP: dict[str, tuple[str, ...]] = {
     "taiwan pop": ("c-pop",),
     "taiwanese pop": ("c-pop",),
     "hokkien pop": ("c-pop",),
-    "malay pop": ("c-pop",),
+    # Spotify's "malay pop" is too noisy in this library to infer either C-Pop
+    # or Southeast Asian Pop. Keep the raw tag for audit, but do not count it.
+    "malay pop": (),
     "chinese r&b": ("c-pop", "r&b/soul"),
     "chinese hip hop": ("c-pop", "hip hop/rap"),
     "chinese rock": ("c-pop", "rock/alternative"),
     "chinese indie": ("c-pop", "indie/alternative"),
     "taiwanese indie": ("c-pop", "indie/alternative"),
-    "gufeng": ("c-pop", "traditional/folk"),
+    "gufeng": ("c-pop",),
     "k-pop": ("k-pop",),
     "korean": ("k-pop",),
     "k-rap": ("k-pop", "hip hop/rap"),
@@ -94,9 +97,11 @@ STATISTICAL_GENRE_MAP: dict[str, tuple[str, ...]] = {
     "k-ballad": ("k-pop", "pop"),
     "j-pop": ("j-pop",),
     "japanese": ("j-pop",),
-    "anime": ("j-pop",),
-    "anison": ("j-pop",),
-    "vocaloid": ("j-pop",),
+    "anime": ("soundtrack/stage",),
+    "anison": ("soundtrack/stage",),
+    # Vocaloid describes a production/vocal-synthesis ecosystem rather than a
+    # reliable sound style or market scene.
+    "vocaloid": (),
     "j-r&b": ("j-pop", "r&b/soul"),
     "j-rock": ("j-pop", "rock/alternative"),
     "j-indie": ("j-pop", "indie/alternative"),
@@ -274,10 +279,10 @@ STATISTICAL_GENRE_MAP: dict[str, tuple[str, ...]] = {
     "concerto": ("classical/instrumental",),
     "early music": ("classical/instrumental",),
     "instrumental": ("classical/instrumental",),
-    "japanese classical": ("classical/instrumental", "j-pop"),
+    "japanese classical": ("classical/instrumental",),
     "enka": ("j-pop", "traditional/folk"),
     "kayōkyoku": ("j-pop", "traditional/folk"),
-    "lo-fi": ("classical/instrumental",),
+    "lo-fi": ("electronic/dance",),
     "new age": ("classical/instrumental",),
     "opera": ("classical/instrumental",),
     "orchestral": ("classical/instrumental",),
@@ -395,7 +400,7 @@ STATISTICAL_GENRE_METADATA: dict[str, dict[str, str]] = {
     "indie/alternative": {"axis": "style", "label": "Indie / Alternative"},
     "r&b/soul": {"axis": "style", "label": "R&B / Soul"},
     "hip hop/rap": {"axis": "style", "label": "Hip Hop / Rap"},
-    "electronic/dance": {"axis": "style", "label": "Electronic / Dance"},
+    "electronic/dance": {"axis": "style", "label": "Electronic / Ambient / Dance"},
     "singer-songwriter": {"axis": "role", "label": "Singer-Songwriter"},
     "folk": {"axis": "style", "label": "Folk"},
     "country": {"axis": "style", "label": "Country"},
@@ -445,11 +450,12 @@ def _source_confidence_tier(source_mix: list[dict[str, Any]], hours: float) -> s
     for row in source_mix:
         source = str(row.get("source") or "unknown")
         source_hours = float(row.get("hours") or 0)
-        score += SOURCE_CONFIDENCE_WEIGHT.get(source, 0.55) * source_hours
+        row_confidence = min(max(float(row.get("confidence") or 0.0), 0.0), 1.0)
+        score += SOURCE_CONFIDENCE_WEIGHT.get(source, 0.55) * row_confidence * source_hours
     weighted_score = score / hours
     if weighted_score >= 0.85:
         return "high"
-    if weighted_score >= 0.65:
+    if weighted_score >= 0.6:
         return "medium"
     return "low"
 
@@ -468,8 +474,7 @@ def _source_confidence_risk(
         "code": "source_confidence",
         "severity": severity,
         "message": (
-            f"{source_label} contributes {share_pct:.1f}% of this label; "
-            f"treat it as {confidence_tier}-confidence genre evidence"
+            f"{source_label} 占该标签 {share_pct:.1f}%，当前只能按 {confidence_tier} 置信度解读"
         ),
     }
 
@@ -480,8 +485,10 @@ def _infer_statistical_genres(genre: str) -> tuple[str, ...]:
         inferred.append("c-pop")
     if any(token in genre for token in ("korean", "k-pop", "k-")):
         inferred.append("k-pop")
-    if any(token in genre for token in ("japanese", "j-pop", "anime", "vocaloid")):
+    if any(token in genre for token in ("japanese", "j-pop")) and "classical" not in genre:
         inferred.append("j-pop")
+    if "anime" in genre or "anison" in genre:
+        inferred.append("soundtrack/stage")
     if any(token in genre for token in ("latin", "reggaeton", "corrido", "música mexicana")):
         inferred.append("latin")
     if "afro" in genre or "afrobeats" in genre:
@@ -759,6 +766,12 @@ def compute_genre_taxonomy_audit(
     raw_artist_count: Counter[str] = Counter()
     canonical_hours: dict[str, float] = defaultdict(float)
     canonical_source_hours: dict[str, dict[str, float]] = defaultdict(lambda: defaultdict(float))
+    canonical_source_confidence_hours: dict[str, dict[str, float]] = defaultdict(
+        lambda: defaultdict(float)
+    )
+    canonical_source_evidence_hours: dict[str, dict[str, float]] = defaultdict(
+        lambda: defaultdict(float)
+    )
     canonical_artist_hours: dict[str, dict[str, float]] = defaultdict(lambda: defaultdict(float))
     noncanonical_passthrough: dict[str, float] = defaultdict(float)
     raw_canonical_examples: dict[str, list[str]] = {}
@@ -778,11 +791,21 @@ def compute_genre_taxonomy_audit(
             continue
 
         canonical_genres = canonicalize_genres_for_statistics(raw_genres)
-        if canonical_genres:
-            share = hours / len(canonical_genres)
-            for genre in canonical_genres:
+        genres_by_axis: dict[str, list[str]] = defaultdict(list)
+        for genre in canonical_genres:
+            axis = STATISTICAL_GENRE_METADATA.get(genre, {}).get("axis", "style")
+            genres_by_axis[axis].append(genre)
+
+        for axis_genres in genres_by_axis.values():
+            share = hours / len(axis_genres)
+            for genre in axis_genres:
                 canonical_hours[genre] += share
                 canonical_source_hours[genre][item.source] += share
+                canonical_source_confidence_hours[genre][item.source] += share * min(
+                    max(float(item.confidence), 0.0), 1.0
+                )
+                if item.source in {"spotify", "manual_override"} or item.evidence_url:
+                    canonical_source_evidence_hours[genre][item.source] += share
                 canonical_artist_hours[genre][artist_name] += share
                 artist_raw_genres[artist_name] = raw_genres
                 artist_sources[artist_name] = item.source
@@ -796,7 +819,7 @@ def compute_genre_taxonomy_audit(
             if raw_canonical == [raw_genre] and raw_genre not in canonical_labels:
                 noncanonical_passthrough[raw_genre] += hours
 
-    total_hours = sum(float(value) for value in artist_hours.values()) or 1.0
+    total_hours = sum(float(value) for value in artist_hours.values())
 
     def raw_row(raw_genre: str, hours: float) -> dict[str, Any]:
         return {
@@ -818,14 +841,21 @@ def compute_genre_taxonomy_audit(
     def source_mix_rows(genre: str, hours: float) -> list[dict[str, Any]]:
         if hours <= 0:
             return []
-        return [
-            {
-                "source": source,
-                "hours": round(float(source_hours), 1),
-                "share_pct": round(float(source_hours) / hours * 100, 1),
-            }
-            for source, source_hours in sorted_hours_items(canonical_source_hours[genre])
-        ]
+        rows: list[dict[str, Any]] = []
+        for source, source_hours in sorted_hours_items(canonical_source_hours[genre]):
+            source_hours_float = float(source_hours)
+            confidence_hours = canonical_source_confidence_hours[genre][source]
+            evidence_hours = canonical_source_evidence_hours[genre][source]
+            rows.append(
+                {
+                    "source": source,
+                    "hours": round(source_hours_float, 1),
+                    "share_pct": round(source_hours_float / hours * 100, 1),
+                    "confidence": round(confidence_hours / source_hours_float, 3),
+                    "evidence_pct": round(evidence_hours / source_hours_float * 100, 1),
+                }
+            )
+        return rows
 
     def top_artist_rows(genre: str, hours: float) -> list[dict[str, Any]]:
         if hours <= 0:
@@ -848,7 +878,7 @@ def compute_genre_taxonomy_audit(
         artist, artist_hours = top_artists[0]
         share_pct = float(artist_hours) / hours * 100
         if share_pct >= 70:
-            return f"{artist} contributes {share_pct:.1f}% of this label"
+            return f"{artist} 贡献了该标签 {share_pct:.1f}% 的播放时长，存在单一艺人主导"
         return None
 
     def risk_flags(
@@ -862,6 +892,32 @@ def compute_genre_taxonomy_audit(
                     "code": "single_artist_dominance",
                     "severity": "medium",
                     "message": warning,
+                }
+            )
+        evidence_pct = (
+            sum(float(row["hours"]) * float(row.get("evidence_pct") or 0) for row in source_mix)
+            / hours
+            if hours > 0
+            else 0.0
+        )
+        if evidence_pct < 99.95:
+            flags.append(
+                {
+                    "code": "missing_evidence_url",
+                    "severity": "medium",
+                    "message": f"该标签有 {100 - evidence_pct:.1f}% 的来源缺少可复核证据链接",
+                }
+            )
+        llm_share = next(
+            (float(row.get("share_pct") or 0) for row in source_mix if row.get("source") == "llm"),
+            0.0,
+        )
+        if llm_share > 50:
+            flags.append(
+                {
+                    "code": "llm_majority",
+                    "severity": "high",
+                    "message": f"LLM 占该标签 {llm_share:.1f}%，建议补充人工证据后再做强结论",
                 }
             )
         source_risk = _source_confidence_risk(
@@ -884,7 +940,14 @@ def compute_genre_taxonomy_audit(
             "axis": axis,
             "label": axis_meta["label"],
             "hours": round(float(hours), 1),
-            "share_pct": round(float(hours) / total_hours * 100, 1),
+            "share_pct": round(float(hours) / total_hours * 100, 1) if total_hours else 0.0,
+            "coverage_pct": round(float(hours) / total_hours * 100, 1) if total_hours else 0.0,
+            "unknown_hours": round(max(total_hours - float(hours), 0.0), 1),
+            "unknown_pct": (
+                round(max(total_hours - float(hours), 0.0) / total_hours * 100, 1)
+                if total_hours
+                else 0.0
+            ),
             "canonical_count": int(axis_canonical_counts[axis]),
             "interpretation": axis_meta["interpretation"],
         }
@@ -901,16 +964,14 @@ def compute_genre_taxonomy_audit(
         "noncanonical_passthrough_count": len(noncanonical_passthrough),
         "unknown_hours": round(unknown_hours, 1),
         "axis_summary": [
-            axis_row(axis, hours)
-            for axis, hours in sorted(
-                axis_hours.items(),
-                key=lambda item: axis_sort_index.get(item[0], len(AXIS_ORDER)),
-            )
+            axis_row(axis, axis_hours.get(axis, 0.0))
+            for axis in sorted(AXIS_ORDER, key=lambda value: axis_sort_index[value])
         ],
         "top_canonical_genres": _canonical_genre_rows(
             canonical_hours,
             metadata,
             total_hours,
+            axis_hours,
             source_mix_rows,
             top_artist_rows,
             dominance_warning,
@@ -928,23 +989,66 @@ def compute_genre_taxonomy_audit(
     }
 
 
+def compute_artist_genre_distribution(
+    conn: sqlite3.Connection,
+    artist_hours: dict[str, float],
+) -> dict[str, Any]:
+    """Build independent style/scene/context/role distributions for consumers."""
+    audit = compute_genre_taxonomy_audit(conn, artist_hours)
+    canonical_rows = audit["top_canonical_genres"]
+    axes = []
+    for summary in audit["axis_summary"]:
+        axis = summary["axis"]
+        buckets = [row for row in canonical_rows if row["axis"] == axis]
+        axes.append({**summary, "buckets": buckets})
+
+    style = next((item for item in axes if item["axis"] == "style"), None)
+    top_genres = []
+    if style:
+        top_genres = [
+            {
+                "name": row["name"],
+                "label": row["label"],
+                "play_share": row["share_pct"],
+                "hours": row["hours"],
+                "confidence_tier": row["confidence_tier"],
+                "top_artists": row["top_artists"],
+                "risk_flags": row["risk_flags"],
+            }
+            for row in style["buckets"][:10]
+        ]
+
+    return {
+        "top_genres": top_genres,
+        "axes": axes,
+        "coverage": compute_genre_coverage(conn, artist_hours),
+        "caveat": audit["caveat"],
+    }
+
+
 def _canonical_genre_rows(
     canonical_hours: dict[str, float],
     metadata: dict[str, dict[str, str]],
     total_hours: float,
+    axis_hours: dict[str, float],
     source_mix_rows,
     top_artist_rows,
     dominance_warning,
     risk_flags,
 ) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
-    for genre, hours in sorted(canonical_hours.items(), key=lambda item: item[1], reverse=True)[
-        :20
-    ]:
+    for genre, hours in sorted(canonical_hours.items(), key=lambda item: item[1], reverse=True):
         hours_float = float(hours)
         axis = metadata.get(genre, {}).get("axis", "style")
         source_mix = source_mix_rows(genre, hours_float)
         confidence_tier = _source_confidence_tier(source_mix, hours_float)
+        genre_risks = risk_flags(genre, hours_float, source_mix)
+        if confidence_tier == "high" and any(
+            flag["code"] in {"single_artist_dominance", "missing_evidence_url"}
+            for flag in genre_risks
+        ):
+            confidence_tier = "medium"
+        axis_total = float(axis_hours.get(axis) or 0.0)
         rows.append(
             {
                 "name": genre,
@@ -953,11 +1057,14 @@ def _canonical_genre_rows(
                 "interpretation": _axis_metadata(axis)["interpretation"],
                 "confidence_tier": confidence_tier,
                 "hours": round(hours_float, 1),
-                "share_pct": round(hours_float / total_hours * 100, 1),
+                "share_pct": round(hours_float / axis_total * 100, 1) if axis_total else 0.0,
+                "overall_share_pct": (
+                    round(hours_float / total_hours * 100, 1) if total_hours else 0.0
+                ),
                 "source_mix": source_mix,
                 "top_artists": top_artist_rows(genre, hours_float),
                 "dominance_warning": dominance_warning(genre, hours_float),
-                "risk_flags": risk_flags(genre, hours_float, source_mix),
+                "risk_flags": genre_risks,
             }
         )
     return rows

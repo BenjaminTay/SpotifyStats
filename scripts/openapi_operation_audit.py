@@ -147,6 +147,14 @@ TARGETED_CONTRACT_OPERATIONS: dict[tuple[str, str], OperationEvidence] = {
         "backend/tests/contract/test_artist_genre_metadata_api.py",
         "Artist genre review queue listing is covered by isolated contract data.",
     ),
+    (
+        "PATCH",
+        "/api/metadata/artist-genres/reviews/{review_id}/evidence",
+    ): OperationEvidence(
+        "targeted_contract",
+        "backend/tests/contract/test_artist_genre_metadata_api.py",
+        "Artist genre evidence editing and HTTPS validation are covered by contract tests.",
+    ),
     ("POST", "/api/metadata/artist-genres/reviews/{review_id}/approve"): OperationEvidence(
         "targeted_contract",
         "backend/tests/contract/test_artist_genre_metadata_api.py",

@@ -45,8 +45,10 @@ export const queryKeys = {
     all: ['metadata'] as const,
     artistGenres: {
       all: ['metadata', 'artist-genres'] as const,
-      coverage: () => ['metadata', 'artist-genres', 'coverage'] as const,
-      taxonomy: () => ['metadata', 'artist-genres', 'taxonomy'] as const,
+      coverage: (params: Record<string, unknown>) =>
+        ['metadata', 'artist-genres', 'coverage', params] as const,
+      taxonomy: (params: Record<string, unknown>) =>
+        ['metadata', 'artist-genres', 'taxonomy', params] as const,
       reviews: (status = 'open', limit = 50) =>
         ['metadata', 'artist-genres', 'reviews', status, limit] as const,
     },
