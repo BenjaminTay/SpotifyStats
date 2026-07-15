@@ -52,6 +52,7 @@ const REVIEW_PAGE_SIZE = 10
 const SOURCE_LABELS: Record<string, string> = {
   spotify: 'Spotify',
   curated_seed: '人工种子',
+  external_consensus: '外部共识',
   manual_override: '手动覆盖',
   llm: 'LLM',
   lastfm: 'Last.fm',
@@ -271,7 +272,7 @@ function CanonicalGenreAuditRow({ genre }: { genre: ArtistGenreCanonicalItem }) 
             {topSource && (
               <p className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
                 <span className="font-medium text-foreground/80">来源占比</span>
-                <span className="font-mono">{topSource.source}</span>
+                <span>{sourceLabel(topSource.source)}</span>
                 <span className="font-mono">{formatPct(topSource.share_pct)}</span>
                 <span className="font-mono">{formatHours(topSource.hours)}</span>
                 <span>来源记录置信度 {formatPct(topSource.confidence * 100)}</span>

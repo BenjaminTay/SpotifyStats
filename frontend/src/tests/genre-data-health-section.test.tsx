@@ -30,6 +30,7 @@ const coveragePayload = {
   source_hours: {
     spotify: 2037.2,
     curated_seed: 1210.7,
+    external_consensus: 120.5,
     llm: 305.3,
   },
   top_missing: [
@@ -343,6 +344,7 @@ describe('GenreDataHealthSection', () => {
     expect(screen.getByText('12.2%')).toBeInTheDocument()
     expect(screen.getByText('Spotify')).toBeInTheDocument()
     expect(screen.getByText('人工种子')).toBeInTheDocument()
+    expect(screen.getByText('外部共识')).toBeInTheDocument()
     expect(screen.getByText('Conan Gray')).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: '审核' })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: '分类审计' })).toBeInTheDocument()
@@ -369,7 +371,7 @@ describe('GenreDataHealthSection', () => {
     expect(within(auditPanel).getByText('Singer-Songwriter')).toBeInTheDocument()
     expect(within(auditPanel).getByText('Taylor Swift')).toBeInTheDocument()
     expect(within(auditPanel).getAllByText(/79.6%/).length).toBeGreaterThan(0)
-    expect(within(auditPanel).getByText(/curated_seed/)).toBeInTheDocument()
+    expect(within(auditPanel).getAllByText('人工种子').length).toBeGreaterThan(0)
     expect(within(auditPanel).getByText(/Taylor Swift contributes 79.6%/)).toBeInTheDocument()
     expect(within(auditPanel).getByText('mandopop')).toBeInTheDocument()
     expect(within(auditPanel).getByText('chinese r&b')).toBeInTheDocument()
