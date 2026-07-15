@@ -1,5 +1,22 @@
 # 变更日志
 
+## 2026-07-11 — 艺人语言事实、审核与真实统计
+
+### 数据与审核
+
+- 新增 artist-ID based 的语言来源、审核与 approved fact 数据层；语言与 genre 独立，legacy、LLM 和未审核 seed 只进入 suggested/review 流程。显式 reviewed seed 仅在证据、审核人和结论说明齐全，并通过同一 validator/state machine 时批准，不会自动猜测批准。
+- 建立 canonical language registry、证据校验和审核状态机，支持批准、拒绝、证据不足、终态冲突保护与可追溯历史；`unknown`、`multilingual`、`instrumental` 均作为显式结果保留。
+- 提供语言覆盖率、艺人状态/历史、审核写入和音乐搜索关联 API；统计使用 `tracks.artist_id` 主艺人归属并保持整数毫秒守恒，不使用协作艺人 fan-out。
+
+### 前端与年度总结
+
+- Settings 卡片 06 更新为“流派与语言数据健康”，在保留既有 genre 面板的同时新增语言覆盖率、Top unknown、艺人搜索、审核历史和证据审核 Dialog。
+- 年度总结直接渲染后端动态 language buckets；流派和语言独立展示，不再从 genre 推断语种，并明确展示分类率、未知率与未归属时长。
+
+### 验证与迁移
+
+- OpenAPI 类型、operation/parameter audit、API smoke 和 Settings 非破坏性交互 smoke 已覆盖 5 个语言 API；生产 legacy 导入仅执行 `--dry-run`，不会写入现有数据库。
+
 ## 2026-07-07 — 迭代收口：测试修复 + Streamlit 移除 + 基础设施加固
 
 ### 测试修复（38 个）

@@ -4,7 +4,12 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+
+from backend.models.artist_language_metadata import (
+    ArtistLanguageBucket,
+    ArtistLanguageMissingItem,
+)
 
 
 class WrappedAvailableYearsResponse(BaseModel):
@@ -76,19 +81,23 @@ class MonthlyGenreItem(BaseModel):
     genres: dict[str, float]
 
 
-class LanguageDist(BaseModel):
-    chinese: float = 0.0
-    english: float = 0.0
-    korean: float = 0.0
-    japanese: float = 0.0
-    instrumental: float = 0.0
-    other: float = 0.0
+class LanguageDistribution(BaseModel):
+    eligible_hours: float = 0.0
+    excluded_unattributed_hours: float = 0.0
+    classified_hours: float = 0.0
+    unknown_hours: float = 0.0
+    classified_pct: float = 0.0
+    unknown_pct: float = 0.0
+    buckets: list[ArtistLanguageBucket] = Field(default_factory=list)
+    source_hours: dict[str, float] = Field(default_factory=dict)
+    top_missing: list[ArtistLanguageMissingItem] = Field(default_factory=list)
+    caveat: str = "艺人级估算，按主艺人归属。"
 
 
 class GenrePanorama(BaseModel):
     top_genres: list[GenreItem] = []
     monthly_genres: list[MonthlyGenreItem] = []
-    language_dist: LanguageDist | None = None
+    language_dist: LanguageDistribution | None = None
     coverage: dict[str, Any] | None = None
     caveat: str | None = None
 

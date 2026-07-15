@@ -26,6 +26,7 @@ const sampleResults: MusicSearchResponse = {
       play_events: 17,
       total_ms: 3100000,
       track_id: 42,
+      artist_id: null,
       album_name: 'Lover',
       artist_name: 'Taylor Swift',
       cover_url: null,

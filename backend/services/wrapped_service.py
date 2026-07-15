@@ -22,6 +22,16 @@ from backend.domains.metadata.artist_genres import (
     compute_genre_coverage,
     resolve_artist_genres_map,
 )
+from backend.domains.metadata.artist_languages import (
+    artist_language_fact_revision,
+    build_primary_artist_ms,
+    compute_artist_language_distribution,
+)
+from backend.domains.metadata.language_registry import (
+    LANGUAGE_LABELS,
+    LANGUAGE_VARIANTS,
+    normalize_language_claim,
+)
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # helpers
@@ -194,7 +204,7 @@ def _database_file_path(conn: sqlite3.Connection):
     return None
 
 
-def _artist_genre_revision(conn: sqlite3.Connection) -> str:
+def _artist_metadata_revision(conn: sqlite3.Connection) -> str:
     tables = {
         row["name"]
         for row in conn.execute(
@@ -231,13 +241,14 @@ def _artist_genre_revision(conn: sqlite3.Connection) -> str:
                FROM artist_genre_overrides"""
         ).fetchone()
         parts.append(f"overrides:{row['row_count']}:{row['max_updated_at']}")
-    return "|".join(parts) or "no-artist-genre-tables"
+    genre_revision = "|".join(parts) or "no-artist-genre-tables"
+    return f"{genre_revision}|language:{artist_language_fact_revision(conn)}"
 
 
 @lru_cache(maxsize=8)
 def _get_wrapped_full_cached(
     db_path: str,
-    artist_genre_revision: str,
+    artist_metadata_revision: str,
     min_ms: int,
     music_only: bool,
     merge_enabled: bool,
@@ -246,7 +257,7 @@ def _get_wrapped_full_cached(
     max_merge_gap_minutes=None,
     merge_level: int = 1,
 ) -> dict:
-    _ = artist_genre_revision
+    _ = artist_metadata_revision
     conn = sqlite3.connect(db_path, timeout=30, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     try:
@@ -291,7 +302,7 @@ def get_wrapped_full(
         )
     return _get_wrapped_full_cached(
         db_path,
-        _artist_genre_revision(conn),
+        _artist_metadata_revision(conn),
         min_ms,
         music_only,
         merge_enabled,
@@ -591,7 +602,14 @@ CHINESE_GENRE_KEYWORDS = {
     "taiwanese",
     "singaporean",
 }
-CHINESE_LANGUAGE_KEYWORDS = (
+CHINESE_REGION_KEYWORDS = ("中国", "香港", "台湾", "新加坡")
+_LEGACY_GENRE_LANGUAGE_CLAIMS = {
+    "华语": ("zh", None),
+    "普通话": ("zh", "mandarin"),
+    "粤语": ("zh", "cantonese"),
+    "hokkien": ("zh", "minnan"),
+}
+_LEGACY_CHINESE_LANGUAGE_KEYWORDS = (
     "chinese",
     "mandarin",
     "cantonese",
@@ -601,18 +619,42 @@ CHINESE_LANGUAGE_KEYWORDS = (
     "普通话",
     "粤语",
 )
-CHINESE_REGION_KEYWORDS = ("中国", "香港", "台湾", "新加坡")
 
 
-def _normalize_language_kind(language: str | None) -> str | None:
+def _registry_language_code(language: str | None) -> str | None:
+    """Normalize legacy genre metadata through the canonical language registry."""
     value = str(language or "").strip().lower()
     if not value:
         return None
-    if any(keyword in value for keyword in CHINESE_LANGUAGE_KEYWORDS):
+    # Preserve the pre-registry substring behavior for legacy genre metadata only.
+    if any(keyword in value for keyword in _LEGACY_CHINESE_LANGUAGE_KEYWORDS):
+        return "zh"
+    if "english" in value or value == "英语":
+        return "en"
+    legacy_claim = _LEGACY_GENRE_LANGUAGE_CLAIMS.get(value)
+    if legacy_claim:
+        code, _ = normalize_language_claim(*legacy_claim)
+        return code
+    label_codes = {label.lower(): code for code, label in LANGUAGE_LABELS.items()}
+    if value in label_codes:
+        return label_codes[value]
+    for code, variants in LANGUAGE_VARIANTS.items():
+        if value in variants:
+            return code
+    try:
+        code, _ = normalize_language_claim(value, None)
+    except ValueError:
+        return None
+    return code
+
+
+def _language_region_kind(language: str | None) -> str | None:
+    code = _registry_language_code(language)
+    if code == "zh":
         return "chinese"
-    if "english" in value or value in {"en", "英语"}:
+    if code == "en":
         return "english"
-    return "other"
+    return "other" if code else None
 
 
 def _resolved_has_region_evidence(item: ResolvedArtistGenres) -> bool:
@@ -620,8 +662,7 @@ def _resolved_has_region_evidence(item: ResolvedArtistGenres) -> bool:
 
 
 def _resolved_is_chinese(item: ResolvedArtistGenres) -> bool:
-    language_kind = _normalize_language_kind(item.language)
-    if language_kind == "chinese":
+    if _registry_language_code(item.language) == "zh":
         return True
     region = str(item.region or "")
     if any(keyword in region for keyword in CHINESE_REGION_KEYWORDS):
@@ -723,12 +764,21 @@ def _build_top_lists(conn, artist_agg, track_agg, album_agg):
 
 def _build_genre_panorama(conn, year_df, artist_agg):
     """Weighted genre distribution based on play time per artist."""
+    artist_ms, excluded_ms = build_primary_artist_ms(
+        conn,
+        year_df.loc[:, ["track_id", "ms_played"]],
+    )
+    language_dist = compute_artist_language_distribution(
+        conn,
+        artist_ms,
+        excluded_ms=excluded_ms,
+    )
     artist_names = list(artist_agg.index)
     if not artist_names:
         return {
             "top_genres": [],
             "monthly_genres": [],
-            "language_dist": None,
+            "language_dist": language_dist,
             "coverage": compute_genre_coverage(conn, {}),
             "caveat": STATISTICAL_GENRE_CAVEAT,
         }
@@ -768,7 +818,7 @@ def _build_genre_panorama(conn, year_df, artist_agg):
     return {
         "top_genres": top_genres_list,
         "monthly_genres": monthly_genres_list,
-        "language_dist": None,  # frontend infers from genre data
+        "language_dist": language_dist,
         "coverage": compute_genre_coverage(conn, artist_hours),
         "caveat": STATISTICAL_GENRE_CAVEAT,
     }
@@ -1022,7 +1072,7 @@ def _classify_resolved_region(item: ResolvedArtistGenres | None) -> tuple[str, s
     if item is None:
         return UNKNOWN_REGION
     if item.region:
-        language_kind = _normalize_language_kind(item.language)
+        language_kind = _language_region_kind(item.language)
         if language_kind is None and any(
             keyword in item.region for keyword in CHINESE_REGION_KEYWORDS
         ):

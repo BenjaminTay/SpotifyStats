@@ -445,6 +445,83 @@ async function expandSectionForText(client, sectionTitle, targetText, waitMs) {
   await waitForText(client, targetText, waitMs)
 }
 
+async function openExistingArtistLanguageReview(client, waitMs) {
+  const opened = await evaluate(client, `
+    (() => {
+      const button = Array.from(document.querySelectorAll('button'))
+        .find((el) => (el.getAttribute('aria-label') || '').startsWith('打开审核记录 '));
+      if (!button) return false;
+      button.scrollIntoView({ block: 'center', inline: 'center' });
+      button.click();
+      return true;
+    })();
+  `)
+  if (!opened) return false
+  await waitForText(client, '仅批准有可审计证据的艺人级结论', waitMs)
+  await clickText(client, '关闭', waitMs)
+  return true
+}
+
+async function assertArtistLanguageHealthControls(client, waitMs) {
+  await expandSectionForText(client, '艺人语言数据', 'Top 未知艺人', waitMs)
+  await waitForAnyText(client, ['审核', '暂无高播放量未知艺人。'], waitMs)
+  await openExistingArtistLanguageReview(client, waitMs)
+
+  const artistName = await evaluate(client, `
+    (async () => {
+      const reviewButton = Array.from(document.querySelectorAll('button'))
+        .find((el) => (el.getAttribute('aria-label') || '').startsWith('审核 '));
+      if (reviewButton) return reviewButton.getAttribute('aria-label').slice('审核 '.length);
+
+      for (const query of ['a', 'e', 'i', 'o', 'u', '周', '张', '陈']) {
+        const response = await fetch('/api/music/search?' + new URLSearchParams({
+          q: query,
+          kind: 'artist',
+          limit_per_type: '1',
+        }));
+        if (!response.ok) continue;
+        const payload = await response.json();
+        if (payload.artists?.[0]?.label) return payload.artists[0].label;
+      }
+      return null;
+    })();
+  `)
+  if (!artistName) throw new Error('No artist is available for the non-mutating review control check')
+
+  await fillInputByAriaLabel(client, '查找待审核艺人', artistName, waitMs)
+  const selected = await waitForCondition(
+    async () => evaluate(client, `
+      (() => {
+        const button = Array.from(document.querySelectorAll('button'))
+          .find((el) => (el.getAttribute('aria-label') || '').startsWith('选择艺人 '));
+        if (!button) return null;
+        button.scrollIntoView({ block: 'center', inline: 'center' });
+        button.click();
+        return { selected: true, path: location.pathname };
+      })();
+    `),
+    waitMs,
+    'Artist search did not expose a selectable result',
+  )
+  if (!selected) throw new Error('Artist search selection failed')
+
+  await waitForCondition(
+    async () => evaluate(client, `
+      (() => {
+        const button = Array.from(document.querySelectorAll('button'))
+          .find((el) => (el.innerText || el.textContent || '').trim() === '开始审核');
+        if (!button) return null;
+        const rect = button.getBoundingClientRect();
+        return rect.width > 0 && rect.height > 0 && !button.disabled
+          ? { accessible: true, path: location.pathname }
+          : null;
+      })();
+    `),
+    waitMs,
+    '开始审核 command is not accessible',
+  )
+}
+
 async function waitForAnyText(client, texts, timeoutMs) {
   return waitForCondition(
     async () => {
@@ -571,6 +648,7 @@ const SCENARIOS = {
     await waitForText(client, '榜单参数', waitMs)
     await waitForText(client, '版本合并', waitMs)
     await waitForText(client, '数据导入', waitMs)
+    await assertArtistLanguageHealthControls(client, waitMs)
 
     await clickSwitchByLabel(client, '动态阈值', waitMs)
     await clickSwitchByLabel(client, '动态阈值', waitMs)

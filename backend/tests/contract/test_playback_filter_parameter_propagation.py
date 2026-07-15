@@ -17,6 +17,42 @@ def _sum_rows(rows, key="plays"):
 
 
 class TestPlayFilterPropagation:
+    def test_artist_language_coverage_applies_dynamic_threshold_and_merge_gap(
+        self, client, monkeypatch
+    ):
+        from backend.api import artist_language_metadata
+
+        captured: list[dict[str, object]] = []
+        original = artist_language_metadata.load_plays
+
+        def recording_load_plays(conn, **kwargs):
+            captured.append(kwargs)
+            return original(conn, **kwargs)
+
+        monkeypatch.setattr(artist_language_metadata, "load_plays", recording_load_plays)
+        params = {
+            "min_ms": 30000,
+            "music_only": True,
+            "merge_enabled": True,
+            "max_merge_gap_minutes": 37,
+        }
+        static = client.get(
+            "/api/metadata/artist-languages/coverage",
+            params={**params, "dynamic_threshold": False},
+        )
+        dynamic = client.get(
+            "/api/metadata/artist-languages/coverage",
+            params={**params, "dynamic_threshold": True},
+        )
+
+        assert static.status_code == 200
+        assert dynamic.status_code == 200
+        assert static.json()["eligible_hours"] > dynamic.json()["eligible_hours"]
+        assert captured == [
+            {**params, "dynamic_threshold": False},
+            {**params, "dynamic_threshold": True},
+        ]
+
     def test_dashboard_summary_applies_dynamic_threshold(self, client):
         static = client.get(
             "/api/dashboard/summary",

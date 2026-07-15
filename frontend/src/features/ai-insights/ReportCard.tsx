@@ -125,12 +125,6 @@ export function ReportCard({
   const suggestions = onFollowUp ? followUpQuestions(reportType, entities) : []
   const fallbackLevel = typeof metadata?.fallback_level === 'string' ? metadata.fallback_level : null
   const articleLength = typeof metadata?.article_length === 'number' ? metadata.article_length : null
-  const criticPassed = typeof metadata?.critic_passed === 'boolean'
-    ? metadata.critic_passed
-    : null
-  const factValidationPassed = typeof metadata?.fact_validation_passed === 'boolean'
-    ? metadata.fact_validation_passed
-    : null
   const finalArtifactQualityPassed = typeof metadata?.final_artifact_quality_passed === 'boolean'
     ? metadata.final_artifact_quality_passed
     : null

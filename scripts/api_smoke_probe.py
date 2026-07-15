@@ -124,6 +124,12 @@ DEFAULT_SAFE_GET_CASES: tuple[SmokeCase, ...] = (
     SmokeCase("listening_platform_hourly", "/api/listening-hours/platform-hourly", DEFAULT_FILTERS),
     SmokeCase("artist_list", "/api/artist/list", DEFAULT_FILTERS),
     SmokeCase("artist_deep_dive", "/api/artist/Fixture Artist Alpha/deep-dive", DEFAULT_FILTERS),
+    SmokeCase(
+        "artist-language-coverage",
+        "/api/metadata/artist-languages/coverage",
+        DEFAULT_FILTERS,
+    ),
+    SmokeCase("artist-language-reviews", "/api/metadata/artist-languages/reviews"),
     SmokeCase("wrapped_years", "/api/wrapped/available-years"),
     SmokeCase("wrapped_2024", "/api/wrapped/2024", DEFAULT_FILTERS),
     SmokeCase("wrapped_2024_full", "/api/wrapped/2024/full", DEFAULT_FILTERS),

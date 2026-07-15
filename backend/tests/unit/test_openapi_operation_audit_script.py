@@ -107,6 +107,30 @@ def test_ai_task_missing_routes_are_safe_get_smoke_cases():
     }
 
 
+def test_artist_language_operations_have_contract_and_safe_get_evidence():
+    from backend.main import app
+    from scripts.api_smoke_probe import DEFAULT_SAFE_GET_CASES
+    from scripts.openapi_operation_audit import build_operation_audit
+
+    operations = build_operation_audit(app).operations_by_key
+    contract_path = "backend/tests/contract/test_artist_language_metadata_api.py"
+    operation_keys = (
+        ("GET", "/api/metadata/artist-languages/coverage"),
+        ("GET", "/api/metadata/artist-languages/reviews"),
+        ("POST", "/api/metadata/artist-languages/reviews"),
+        ("PUT", "/api/metadata/artist-languages/reviews/{review_id}/source"),
+        ("PATCH", "/api/metadata/artist-languages/reviews/{review_id}"),
+    )
+
+    for key in operation_keys:
+        assert operations[key].category == "targeted_contract"
+        assert operations[key].evidence == contract_path
+
+    smoke_paths = {case.path for case in DEFAULT_SAFE_GET_CASES}
+    assert "/api/metadata/artist-languages/coverage" in smoke_paths
+    assert "/api/metadata/artist-languages/reviews" in smoke_paths
+
+
 def test_openapi_operation_audit_renders_markdown_summary():
     from backend.main import app
     from scripts.openapi_operation_audit import build_operation_audit, render_markdown_report

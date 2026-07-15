@@ -26,6 +26,8 @@ Streamlit 原型已于 2026-07-07 移除。历史代码可通过 `git log -- app
 
 **AI Agent 相对时间 grounding（2026-07-03）**：Chat Agent 请求可携带 `question_time` 与 `timezone`，后端会生成 `temporal_context`（含 `today`、数据起止日与 `latest_play_date`）并注入 planner/final answer；“今年/去年/上个月/最近/夏天”等相对时间必须以 `question_time` 为锚点，`temporal_guard` 会在工具执行前校正明显错年的只读工具参数，必要时补充 bounded custom range 工具并约束后续补查工具；校正后的 custom range 必须投影到 EvidenceRecipe/AnalyticalBrief 的 `required_context`，让 EvidenceSufficiency 按实际执行时间窗口判定；在 task events/result 与前端消息中展示时间解释。曲风/语种问题若没有结构化 genre/language 证据，只能给保守限制说明，不得仅凭艺人常识给强确定结论。
 
+**艺人语言事实与统计（2026-07-11）**：语言元数据以稳定 `artist_id` 为主体，独立于 genre 解析与 taxonomy；播放语言统计只按 `tracks.artist_id` 的主艺人归属，不使用 `track_artists` fan-out。只有 approved fact 可进入统计和 Wrapped 缓存 revision；legacy 数据、LLM 和未审核 seed 只能进入 suggested/review 流程。显式 reviewed seed 仅可在 evidence、`reviewed_by` 与 `resolution_note` 齐全，并通过同一 validator 与 review state machine 时批准，仍不得自动猜测批准。统计与 UI 必须保留 `unknown`、`multilingual`、`instrumental` 以及未归属时长，不得通过 genre 或艺人名称启发式补齐。Settings 卡片 06 负责覆盖率、缺失项、搜索、证据和审核历史；年度总结直接渲染后端动态 language buckets，并与 genre 独立显示。
+
 ## Phase 5 产品化收口基线
 
 Phase 5 目标是收紧产品线到可持续迭代状态。当前进度：

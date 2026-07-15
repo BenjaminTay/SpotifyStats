@@ -128,6 +128,7 @@ def _artist_result(
         href=f"/music/artists/{quote(str(artist_name), safe='')}",
         play_events=play_events,
         total_ms=_candidate_metric(candidate, "total_ms", metrics),
+        artist_id=int(candidate["artist_id"]) if candidate.get("artist_id") is not None else None,
         artist_name=str(artist_name),
         cover_url=_cover_url("artists", candidate.get("artist_id")),
         chart=chart,

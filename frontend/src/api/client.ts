@@ -32,7 +32,8 @@ function buildUrl(path: string, params?: Record<string, string | number | boolea
 async function parseErrorBody(res: Response): Promise<string> {
   try {
     const body = await res.json()
-    return typeof body?.detail === 'string' ? body.detail : ''
+    if (typeof body?.detail === 'string') return body.detail
+    return body?.detail == null ? '' : JSON.stringify(body.detail)
   } catch {
     return ''
   }

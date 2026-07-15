@@ -1,3 +1,5 @@
+import type { ArtistLanguageMissingItem, LanguageBucket } from './artist-language-metadata'
+
 export interface WrappedFullHero {
   total_minutes: number
   total_plays: number
@@ -64,19 +66,23 @@ export interface MonthlyGenreItem {
   genres: Record<string, number>
 }
 
-export interface LanguageDist {
-  chinese: number
-  english: number
-  korean: number
-  japanese: number
-  instrumental: number
-  other: number
+export interface LanguageDistribution {
+  eligible_hours: number
+  excluded_unattributed_hours: number
+  classified_hours: number
+  unknown_hours: number
+  classified_pct: number
+  unknown_pct: number
+  buckets: LanguageBucket[]
+  source_hours: Record<string, number>
+  top_missing: ArtistLanguageMissingItem[]
+  caveat: string
 }
 
 export interface GenrePanorama {
   top_genres: GenreItem[]
   monthly_genres: MonthlyGenreItem[]
-  language_dist: LanguageDist | null
+  language_dist: LanguageDistribution | null
 }
 
 export interface LateNightTrack {

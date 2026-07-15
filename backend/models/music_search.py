@@ -29,6 +29,7 @@ class MusicSearchResult(BaseModel):
     play_events: int = 0
     total_ms: int = 0
     track_id: int | None = None
+    artist_id: int | None = None
     album_name: str | None = None
     artist_name: str | None = None
     cover_url: str | None = None

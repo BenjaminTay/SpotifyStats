@@ -282,7 +282,8 @@ describe('GenreDataHealthSection', () => {
     mockArtistGenreApi()
     renderWithClient(<GenreDataHealthSection />)
 
-    expect(await screen.findByText(/Genre 数据健康/)).toBeInTheDocument()
+    expect(await screen.findByText(/流派与语言数据健康/)).toBeInTheDocument()
+    expect(screen.getByText(/艺人语言数据/)).toBeInTheDocument()
     expect((await screen.findAllByText('87.8%')).length).toBeGreaterThan(0)
     expect(screen.getByText('12.2%')).toBeInTheDocument()
     expect(screen.getByText('Spotify')).toBeInTheDocument()

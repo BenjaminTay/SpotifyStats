@@ -26,6 +26,7 @@ if str(ROOT) not in sys.path:
 from scripts.api_boundary_probe import DEFAULT_BOUNDARY_CASES  # noqa: E402
 
 HTTP_METHODS = {"get", "post", "put", "delete", "patch"}
+PLAY_FILTER_BOOLEAN_PARAMETERS = {"dynamic_threshold", "merge_enabled", "music_only"}
 BOUNDARY_SCHEMA_KEYS = (
     "maximum",
     "minimum",
@@ -43,10 +44,11 @@ class ParameterEvidence:
     category: str
     case_names: tuple[str, ...]
     rationale: str
+    contract_paths: tuple[str, ...] = ()
 
     @property
     def evidence(self) -> str:
-        return ", ".join(self.case_names)
+        return ", ".join((*self.case_names, *self.contract_paths))
 
 
 @dataclass(frozen=True)
@@ -74,6 +76,21 @@ class ParameterBoundaryAudit:
 
 
 BOUNDARY_EVIDENCE_BY_KEY: dict[tuple[str, str, str], ParameterEvidence] = {
+    ("query", "dynamic_threshold", "boolean"): ParameterEvidence(
+        "targeted_contract",
+        ("backend/tests/contract/test_playback_filter_parameter_propagation.py",),
+        "shared dynamic-threshold propagation includes artist language coverage contracts",
+    ),
+    ("query", "merge_enabled", "boolean"): ParameterEvidence(
+        "targeted_contract",
+        ("backend/tests/contract/test_playback_filter_parameter_propagation.py",),
+        "shared merge toggle propagation includes artist language coverage contracts",
+    ),
+    ("query", "music_only", "boolean"): ParameterEvidence(
+        "targeted_contract",
+        ("backend/tests/contract/test_playback_filter_parameter_propagation.py",),
+        "shared music-only propagation includes artist language coverage contracts",
+    ),
     ("query", "artist_limit", "integer|maximum=20|minimum=1"): ParameterEvidence(
         "boundary_probe",
         ("community_trending_artist_limit_low", "community_trending_artist_limit_high"),
@@ -128,6 +145,7 @@ BOUNDARY_EVIDENCE_BY_KEY: dict[tuple[str, str, str], ParameterEvidence] = {
         "boundary_probe",
         ("analysis_plays_limit_zero", "analysis_plays_limit_too_high"),
         "pagination limit bound is validated on a representative paginated route",
+        contract_paths=("backend/tests/contract/test_artist_language_metadata_api.py",),
     ),
     ("query", "limit", "integer|maximum=5000|minimum=1"): ParameterEvidence(
         "boundary_probe",
@@ -153,6 +171,7 @@ BOUNDARY_EVIDENCE_BY_KEY: dict[tuple[str, str, str], ParameterEvidence] = {
         "boundary_probe",
         ("analysis_overview_max_merge_gap_low", "analysis_overview_max_merge_gap_high"),
         "shared merge-gap dependency is validated below and above the allowed range",
+        contract_paths=("backend/tests/contract/test_playback_filter_parameter_propagation.py",),
     ),
     ("query", "metric", "string|pattern=^(plays|hours)$"): ParameterEvidence(
         "boundary_probe",
@@ -163,6 +182,7 @@ BOUNDARY_EVIDENCE_BY_KEY: dict[tuple[str, str, str], ParameterEvidence] = {
         "boundary_probe",
         ("analysis_overview_min_ms_negative",),
         "shared play filter minimum duration rejects negative values",
+        contract_paths=("backend/tests/contract/test_playback_filter_parameter_propagation.py",),
     ),
     ("query", "n", "integer"): ParameterEvidence(
         "boundary_probe",
@@ -402,8 +422,20 @@ BOUNDARY_EVIDENCE_BY_KEY: dict[tuple[str, str, str], ParameterEvidence] = {
     # metadata tests (import_artist_genre_overrides, review_artist_genre_suggestions).
     ("path", "review_id", "integer"): ParameterEvidence(
         "controlled_stateful_or_external",
-        ("scripts/import_artist_genre_overrides.py", "scripts/review_artist_genre_suggestions.py"),
-        "artist genre review workflow is a human-in-the-loop operation outside default probe",
+        (
+            "backend/tests/contract/test_artist_genre_metadata_api.py",
+            "backend/tests/contract/test_artist_language_metadata_api.py",
+        ),
+        "artist genre and language review IDs are covered by isolated workflow contracts",
+    ),
+    (
+        "query",
+        "status",
+        "string|enum=open,approved,rejected,insufficient_evidence",
+    ): ParameterEvidence(
+        "controlled_stateful_or_external",
+        ("backend/tests/contract/test_artist_language_metadata_api.py",),
+        "artist language review status and limit validation are covered by isolated contracts",
     ),
     ("query", "status", "string|maxLength=40"): ParameterEvidence(
         "controlled_stateful_or_external",
@@ -412,12 +444,23 @@ BOUNDARY_EVIDENCE_BY_KEY: dict[tuple[str, str, str], ParameterEvidence] = {
     ),
     # AI yearly report — writer pipeline and report mode enum values covered
     # by dedicated yearly report quality probes.
-    ("query", "writer_pipeline", "string|enum=agent_synthesis_v2,editorial_agent_v1,deterministic_visual_v1"): ParameterEvidence(
+    (
+        "query",
+        "writer_pipeline",
+        "string|enum=agent_synthesis_v2,editorial_agent_v1,deterministic_visual_v1",
+    ): ParameterEvidence(
         "controlled_stateful_or_external",
-        ("scripts/probe_visual_yearly_report_artifact.py", "scripts/probe_ai_yearly_report_quality.py"),
+        (
+            "scripts/probe_visual_yearly_report_artifact.py",
+            "scripts/probe_ai_yearly_report_quality.py",
+        ),
         "writer_pipeline is validated by yearly report quality probes",
     ),
-    ("query", "report_mode", "string|enum=visual_yearly_artifact,agentic_longform,basic_summary"): ParameterEvidence(
+    (
+        "query",
+        "report_mode",
+        "string|enum=visual_yearly_artifact,agentic_longform,basic_summary",
+    ): ParameterEvidence(
         "controlled_stateful_or_external",
         ("backend/tests/contract/test_visual_yearly_report_contract.py",),
         "report_mode is covered by visual yearly report contract tests",
@@ -471,7 +514,7 @@ def _has_boundary_constraints(schema: dict) -> bool:
     return any(key in schema for key in BOUNDARY_SCHEMA_KEYS)
 
 
-def _is_obligation(location: str, schema: dict) -> bool:
+def _is_obligation(location: str, name: str, schema: dict) -> bool:
     raw_type = schema.get("type")
     effective = _effective_schema(schema)
     if location == "path" and effective.get("type") == "integer":
@@ -481,6 +524,8 @@ def _is_obligation(location: str, schema: dict) -> bool:
     if location == "query" and raw_type == "integer":
         return True
     if location == "query" and raw_type == "string":
+        return True
+    if location == "query" and raw_type == "boolean" and name in PLAY_FILTER_BOOLEAN_PARAMETERS:
         return True
     if location == "query" and _has_boundary_constraints(effective):
         return True
@@ -495,10 +540,11 @@ def _iter_parameter_obligations(schema: dict) -> dict[tuple[str, str, str], list
                 continue
             for parameter in operation.get("parameters") or ():
                 location = parameter.get("in") or ""
+                name = parameter.get("name", "")
                 param_schema = parameter.get("schema") or {}
-                if not _is_obligation(location, param_schema):
+                if not _is_obligation(location, name, param_schema):
                     continue
-                key = (location, parameter.get("name", ""), _schema_signature(param_schema))
+                key = (location, name, _schema_signature(param_schema))
                 groups.setdefault(key, []).append(f"{method.upper()} {path}")
     return groups
 

@@ -116,8 +116,8 @@ class TestAiInsightsCachedReports:
 
         assert write_conn.executed == [
             (
-                "INSERT OR REPLACE INTO wikipedia_cache (cache_key, data, fetched_at) VALUES (?, ?, datetime('now'))",
-                ("ai:report:weekly:test", "generated report"),
+                "INSERT OR REPLACE INTO wikipedia_cache (cache_key, data, fetched_at) VALUES (?, ?, COALESCE(?, datetime('now')))",
+                ("ai:report:weekly:test", "generated report", None),
             )
         ]
         assert write_conn.committed is True

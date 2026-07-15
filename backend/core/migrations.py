@@ -520,6 +520,105 @@ def migrate_023(conn: sqlite3.Connection):
     )
 
 
+@migration(24, "artist_language_resolution")
+def migrate_024(conn: sqlite3.Connection):
+    """Persist artist language facts, evidence, and review decisions."""
+    conn.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS artist_language_sources (
+            source_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            artist_id INTEGER NOT NULL REFERENCES artists(artist_id),
+            classification TEXT NOT NULL,
+            primary_language_code TEXT,
+            language_variant TEXT,
+            raw_language TEXT,
+            origin TEXT NOT NULL,
+            source_key TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'suggested',
+            replaces_source_id INTEGER REFERENCES artist_language_sources(source_id),
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+            UNIQUE(artist_id, origin, source_key),
+            CHECK (classification IN ('single_language', 'multilingual', 'instrumental')),
+            CHECK (
+                (classification = 'single_language' AND primary_language_code IS NOT NULL) OR
+                (classification IN ('multilingual', 'instrumental') AND primary_language_code IS NULL)
+            ),
+            CHECK (classification = 'single_language' OR language_variant IS NULL),
+            CHECK (origin IN ('manual', 'curated_seed', 'legacy_import')),
+            CHECK (status IN ('suggested', 'approved', 'rejected', 'superseded')),
+            CHECK (replaces_source_id IS NULL OR replaces_source_id != source_id)
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS uq_artist_language_one_approved
+            ON artist_language_sources(artist_id) WHERE status = 'approved';
+        CREATE INDEX IF NOT EXISTS idx_artist_language_sources_artist
+            ON artist_language_sources(artist_id, status);
+
+        CREATE TABLE IF NOT EXISTS artist_language_evidence (
+            evidence_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            source_id INTEGER NOT NULL REFERENCES artist_language_sources(source_id),
+            local_track_id INTEGER REFERENCES tracks(track_id),
+            claimed_language_code TEXT,
+            claimed_language_variant TEXT,
+            evidence_kind TEXT NOT NULL,
+            performer_attribution TEXT NOT NULL,
+            evidence_url TEXT NOT NULL,
+            evidence_title TEXT NOT NULL,
+            evidence_accessed_at TEXT NOT NULL,
+            evidence_summary TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            CHECK (evidence_kind IN (
+                'artist_profile', 'artist_repertoire', 'editorial_source',
+                'track_credit', 'track_language'
+            )),
+            CHECK (performer_attribution IN (
+                'artist_vocal_confirmed', 'artist_instrumental_confirmed',
+                'track_language_only', 'not_applicable'
+            )),
+            CHECK (claimed_language_variant IS NULL OR claimed_language_code IS NOT NULL),
+            CHECK (evidence_url LIKE 'https://%'),
+            CHECK (length(trim(evidence_title)) > 0),
+            CHECK (length(trim(evidence_accessed_at)) > 0),
+            CHECK (length(trim(evidence_summary)) > 0)
+        );
+        CREATE INDEX IF NOT EXISTS idx_artist_language_evidence_source
+            ON artist_language_evidence(source_id, local_track_id);
+
+        CREATE TABLE IF NOT EXISTS artist_language_review_queue (
+            review_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            artist_id INTEGER NOT NULL REFERENCES artists(artist_id),
+            suggested_source_id INTEGER REFERENCES artist_language_sources(source_id),
+            play_hours_snapshot REAL NOT NULL DEFAULT 0,
+            reason TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'open',
+            resolution_note TEXT,
+            reviewed_by TEXT,
+            reviewed_at TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+            CHECK (play_hours_snapshot >= 0),
+            CHECK (length(trim(reason)) > 0),
+            CHECK (status IN ('open', 'approved', 'rejected', 'insufficient_evidence')),
+            CHECK (
+                status = 'open' OR (
+                    reviewed_by IS NOT NULL AND reviewed_at IS NOT NULL AND
+                    resolution_note IS NOT NULL AND length(trim(reviewed_by)) > 0 AND
+                    length(trim(reviewed_at)) > 0 AND length(trim(resolution_note)) > 0
+                )
+            ),
+            CHECK (status NOT IN ('approved', 'rejected') OR suggested_source_id IS NOT NULL)
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS uq_artist_language_one_open_review
+            ON artist_language_review_queue(artist_id) WHERE status = 'open';
+        CREATE UNIQUE INDEX IF NOT EXISTS uq_artist_language_source_review
+            ON artist_language_review_queue(suggested_source_id)
+            WHERE suggested_source_id IS NOT NULL;
+        CREATE INDEX IF NOT EXISTS idx_artist_language_reviews_status
+            ON artist_language_review_queue(status, play_hours_snapshot DESC);
+        """
+    )
+
+
 # ── Runner ────────────────────────────────────────────────────────────────
 
 

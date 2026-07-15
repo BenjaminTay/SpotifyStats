@@ -62,6 +62,31 @@ class OperationAudit:
 
 
 TARGETED_CONTRACT_OPERATIONS: dict[tuple[str, str], OperationEvidence] = {
+    ("GET", "/api/metadata/artist-languages/coverage"): OperationEvidence(
+        "targeted_contract",
+        "backend/tests/contract/test_artist_language_metadata_api.py",
+        "Artist language coverage and playback-filter behavior are covered by isolated contracts.",
+    ),
+    ("GET", "/api/metadata/artist-languages/reviews"): OperationEvidence(
+        "targeted_contract",
+        "backend/tests/contract/test_artist_language_metadata_api.py",
+        "Artist language review listing and query validation are covered by isolated contracts.",
+    ),
+    ("POST", "/api/metadata/artist-languages/reviews"): OperationEvidence(
+        "targeted_contract",
+        "backend/tests/contract/test_artist_language_metadata_api.py",
+        "Artist language review creation and idempotency are covered by isolated contracts.",
+    ),
+    ("PUT", "/api/metadata/artist-languages/reviews/{review_id}/source"): OperationEvidence(
+        "targeted_contract",
+        "backend/tests/contract/test_artist_language_metadata_api.py",
+        "Artist language evidence validation and source replacement are covered by isolated contracts.",
+    ),
+    ("PATCH", "/api/metadata/artist-languages/reviews/{review_id}"): OperationEvidence(
+        "targeted_contract",
+        "backend/tests/contract/test_artist_language_metadata_api.py",
+        "Artist language review decisions and conflict handling are covered by isolated contracts.",
+    ),
     ("GET", "/api/ai-insights/monthly-personality"): OperationEvidence(
         "targeted_contract",
         "backend/tests/contract/test_ai_insights_contract.py",
@@ -351,6 +376,10 @@ def _classify_operation(
     path: str,
     covered_get_paths: set[str],
 ) -> OperationEvidence:
+    targeted = TARGETED_CONTRACT_OPERATIONS.get((method, path))
+    if targeted is not None:
+        return targeted
+
     if method == "GET":
         safe = _safe_get_evidence(path, covered_get_paths)
         if safe is not None:
@@ -364,10 +393,6 @@ def _classify_operation(
                     "GET path depends on external/browser/live state and is excluded from local smoke",
                 ),
             )
-
-    targeted = TARGETED_CONTRACT_OPERATIONS.get((method, path))
-    if targeted is not None:
-        return targeted
 
     controlled = CONTROLLED_EXTERNAL_OR_STATEFUL_OPERATIONS.get((method, path))
     if controlled is not None:

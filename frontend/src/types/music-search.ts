@@ -20,6 +20,7 @@ export interface MusicSearchResult {
   play_events: number
   total_ms: number
   track_id: number | null
+  artist_id: number | null
   album_name: string | null
   artist_name: string | null
   cover_url: string | null

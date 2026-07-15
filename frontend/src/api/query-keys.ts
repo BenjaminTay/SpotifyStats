@@ -50,6 +50,13 @@ export const queryKeys = {
       reviews: (status = 'open', limit = 50) =>
         ['metadata', 'artist-genres', 'reviews', status, limit] as const,
     },
+    artistLanguages: {
+      all: ['metadata', 'artist-languages'] as const,
+      coverage: (params: Record<string, unknown>) =>
+        ['metadata', 'artist-languages', 'coverage', params] as const,
+      reviews: (status = 'open', limit = 50) =>
+        ['metadata', 'artist-languages', 'reviews', status, limit] as const,
+    },
   },
 
   account: {

@@ -61,6 +61,13 @@ def test_frontend_interaction_smoke_script_covers_core_non_destructive_flows():
     assert "过滤参数已更新" in source
     assert "当前数据库记录数" in source
     assert "导入 Spotify 账号数据包" in source
+    assert "艺人语言数据" in source
+    assert "Top 未知艺人" in source
+    assert "暂无高播放量未知艺人。" in source
+    assert "开始审核" in source
+    assert "assertArtistLanguageHealthControls" in source
+    assert "openExistingArtistLanguageReview" in source
+    assert "clickText(client, '开始审核'" not in source
     assert "chineseStyle" in source
     assert "Runtime.consoleAPICalled" in source
 

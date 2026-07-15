@@ -91,6 +91,40 @@ def test_openapi_parameter_boundary_audit_records_evidence_for_string_resilience
     )
 
 
+def test_artist_language_parameters_have_explicit_boundary_ownership():
+    from backend.main import app
+    from scripts.openapi_parameter_boundary_audit import build_parameter_boundary_audit
+
+    obligations = build_parameter_boundary_audit(app).obligations_by_key
+    language_contract = "backend/tests/contract/test_artist_language_metadata_api.py"
+
+    review_id = obligations[("path", "review_id", "integer")]
+    assert review_id.category == "controlled_stateful_or_external"
+    assert language_contract in review_id.evidence
+
+    status = obligations[
+        ("query", "status", "string|enum=open,approved,rejected,insufficient_evidence")
+    ]
+    assert status.category == "controlled_stateful_or_external"
+    assert status.evidence == language_contract
+
+    limit = obligations[("query", "limit", "integer|maximum=200|minimum=1")]
+    assert limit.category == "boundary_probe"
+    assert "analysis_plays_limit_zero" in limit.evidence
+    assert language_contract in limit.evidence
+
+    for key in (
+        ("query", "min_ms", "integer|minimum=0"),
+        ("query", "max_merge_gap_minutes", "integer|maximum=240|minimum=1"),
+    ):
+        assert obligations[key].category == "boundary_probe"
+        assert "test_playback_filter_parameter_propagation.py" in obligations[key].evidence
+
+    assert obligations[("query", "music_only", "boolean")].category == "targeted_contract"
+    assert obligations[("query", "merge_enabled", "boolean")].category == "targeted_contract"
+    assert obligations[("query", "dynamic_threshold", "boolean")].category == "targeted_contract"
+
+
 def test_openapi_parameter_boundary_audit_renders_markdown_summary():
     from backend.main import app
     from scripts.openapi_parameter_boundary_audit import (

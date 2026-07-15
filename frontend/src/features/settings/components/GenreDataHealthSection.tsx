@@ -12,6 +12,7 @@ import { queryKeys } from '@/api/query-keys'
 import { GlassCard } from '@/components/shared/GlassCard'
 import { AITaskProgress } from '@/features/ai-tasks/AITaskProgress'
 import { CollapsibleSection } from '@/features/settings/components/SettingsHelpers'
+import { ArtistLanguageHealthSection } from '@/features/settings/components/ArtistLanguageHealthSection'
 import {
   useApproveArtistGenreReview,
   useArtistGenreCoverage,
@@ -552,10 +553,10 @@ export function GenreDataHealthSection() {
     <GlassCard className="p-6">
       <CollapsibleSection
         defaultOpen
-        desc="查看艺人 genre 覆盖率、来源结构和待审核建议。"
+        desc="查看艺人流派与常用演唱语言的覆盖率、来源和人工审核记录。"
         num={6}
         summary={summary}
-        title="Genre 数据健康"
+        title="流派与语言数据健康"
       >
         <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div className="min-w-0">
@@ -787,6 +788,7 @@ export function GenreDataHealthSection() {
             </div>
           </div>
         )}
+        <ArtistLanguageHealthSection />
       </CollapsibleSection>
     </GlassCard>
   )

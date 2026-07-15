@@ -1,10 +1,37 @@
-import { describe, it, expect } from 'vitest'
+import { afterEach, describe, it, expect, vi } from 'vitest'
+import { apiClient } from '@/api/client'
 import {
   ApiError,
   AuthRequiredError,
   NetworkError,
   TimeoutError,
 } from '@/api/errors'
+
+afterEach(() => {
+  vi.unstubAllGlobals()
+})
+
+describe('apiClient error responses', () => {
+  it('preserves structured detail objects for readable validation errors', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      detail: {
+        code: 'artist_language_validation_error',
+        message: '多语言至少需要两个不同的艺人级演唱主张',
+      },
+    }), {
+      status: 422,
+      headers: { 'Content-Type': 'application/json' },
+    })))
+
+    await expect(apiClient.get('/structured-error')).rejects.toMatchObject({
+      status: 422,
+      detail: JSON.stringify({
+        code: 'artist_language_validation_error',
+        message: '多语言至少需要两个不同的艺人级演唱主张',
+      }),
+    })
+  })
+})
 
 describe('ApiError', () => {
   it('has correct name and status', () => {
