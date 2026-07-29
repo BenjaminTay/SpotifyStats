@@ -552,13 +552,35 @@ L1/L2/L3 的差异在排名层通过 canonical key resolver 应用。
 
 ### R36. Billboard Year-End 年榜
 
-Billboard Year-End 年榜不是年度播放量榜。它先使用当前 Billboard 过滤、连续播放合并、动态阈值、周边界、`merge_level` 与 album project 规则生成周榜，再按单个 `billboard_week.year` 窗口重算年度榜单积分。
+Billboard Year-End 年榜不是单纯的年度播放量榜。它先使用当前 Billboard 过滤、连续播放合并、动态阈值、周边界、`merge_level` 与 album project 规则生成周榜，再按单个 `billboard_week.year` 窗口重算年度榜单积分。
 
-单曲、专辑、艺人年榜分别来自 `weekly`、`weekly_album` 与 `weekly_artist`。主排序为 `year_end_score DESC`，同分时依次比较 #1 周数、peak、Top 10 周数和 chart plays。
+单曲、专辑、艺人年榜分别来自应用当前周榜入榜线后的 `weekly`、`weekly_album` 与 `weekly_artist`。例如设置为单曲 Top 25 时，年度在榜周数只能统计每周排名 1–25 的周，不得因为年榜要输出 50 行而把周榜入榜线扩大为 Top 50。
 
-年榜展示规模独立于每周 Billboard 榜单设置，默认单曲 Top 50、专辑 Top 30、艺人 Top 30。
+周榜入榜线与年榜输出规模是两个独立参数：
 
-年榜三类榜单统一使用年度冠军周数作为统治力奖励：`no1_bonus = weeks_at_no1 × 40`。单曲真实空降 #1 只作为事实字段和荣誉叙事素材保留，不额外增加年度积分。
+- `weekly_top_n` / `weekly_album_top_n` / `weekly_artist_top_n`：决定哪些实体周进入年度积分与在榜指标，来自当前 Billboard 设置。
+- `year_end_top_n` / `year_end_album_top_n` / `year_end_artist_top_n`：只决定年度排序完成后返回多少行，默认单曲 50、专辑 30、艺人 30。
+
+改变年榜输出规模不得改变共同实体的年度积分、年度排名或任何在榜指标。
+
+主排序为 `year_end_score DESC`，同分时依次比较 #1 周数、peak、Top 10 周数和 `chart_plays`。行级播放字段必须区分：
+
+- `annual_plays`：该实体在所选 `billboard_week.year` 内的全部有效播放，不受周榜 Top N 截断影响。
+- `chart_plays`：该实体进入当前周榜入榜线的周内播放，仅用于榜单成绩解释与同分裁决。
+
+年榜主表只展示 `chart_plays`，列名固定为“在榜播放”，避免与听歌排行中的全年播放量形成重复信息。`annual_plays` 仍保留在 API 与 AI 年报证据中，供需要解释全年有效播放的消费者使用；任何消费者若展示该字段，必须明确标为“年度播放”。
+
+年榜使用 V3 积分口径：`year_end_score = round(Σ weekly_score)`。其中 `weekly_score` 继续使用周榜既有的“排名基础分 × 当周竞争强度 × 个体统治力”公式；年榜层不再重复叠加持续性、年度 peak 或冠军周奖励。`peak_position`、`weeks_on_chart`、`weeks_at_no1`、Top 5/Top 10 周数继续作为展示、荣誉与同分裁决字段，单曲真实空降 #1 只作为事实字段和荣誉叙事素材保留。
+
+年榜必须返回年份覆盖元数据。`period_start` / `period_end` 表示实际有效播放日期范围，`first_billboard_week` / `last_billboard_week` 表示榜单周边界；两者不得混用。只有首个预期榜单周至最后一个预期榜单周全部存在且无内部缺口时，`is_complete_year=true`；当年尚未结束、导入从年中开始或中间缺周时，必须显示阶段/不完整提示，荣誉不得写成已确定的完整年度冠军。
+
+只读一致性检查：
+
+```bash
+.venv/bin/python scripts/billboard_year_end_consistency_probe.py \
+  --merge-levels 1,2,3 \
+  --json-output /tmp/billboard_year_end_consistency.json
+```
 
 ---
 

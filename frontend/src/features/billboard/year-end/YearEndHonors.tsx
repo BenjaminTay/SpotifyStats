@@ -8,20 +8,22 @@ import {
   type YearEndTab,
 } from './yearEndData'
 
-const HONORS: { key: string; label: string; tab: YearEndTab }[] = [
-  { key: 'year_end_no1_track', label: '年度冠军单曲', tab: 'tracks' },
-  { key: 'year_end_no1_album', label: '年度冠军专辑', tab: 'albums' },
-  { key: 'year_end_no1_artist', label: '年度艺人', tab: 'artists' },
-  { key: 'longest_charting_track', label: '最长在榜单曲', tab: 'tracks' },
-  { key: 'biggest_no1_run_track', label: '冠军统治单曲', tab: 'tracks' },
-  { key: 'breakthrough_artist', label: '突破艺人', tab: 'artists' },
+type HonorKey = keyof BillboardYearEndHonors
+
+const HONORS: { key: HonorKey; label: string; partialLabel: string; tab: YearEndTab }[] = [
+  { key: 'year_end_no1_track', label: '年度冠军单曲', partialLabel: '阶段领先单曲', tab: 'tracks' },
+  { key: 'year_end_no1_album', label: '年度冠军专辑', partialLabel: '阶段领先专辑', tab: 'albums' },
+  { key: 'year_end_no1_artist', label: '年度艺人', partialLabel: '阶段领先艺人', tab: 'artists' },
+  { key: 'longest_charting_track', label: '最长在榜单曲', partialLabel: '当前最长在榜单曲', tab: 'tracks' },
+  { key: 'biggest_no1_run_track', label: '冠军统治单曲', partialLabel: '当前冠军统治单曲', tab: 'tracks' },
+  { key: 'breakthrough_artist', label: '突破艺人', partialLabel: '阶段突破艺人', tab: 'artists' },
 ]
 
 function rankLabel(rank: number): string {
   return `#${rank}`
 }
 
-function detailForHonor(key: string, row: YearEndRow): string {
+function detailForHonor(key: string, row: YearEndRow, isCompleteYear: boolean): string {
   const score = `${formatYearEndNumber(row.year_end_score)} pts`
   const peak = `最高 ${rankLabel(row.peak_position)}`
   const weeks = `${formatYearEndNumber(row.weeks_on_chart)} 周`
@@ -43,13 +45,20 @@ function detailForHonor(key: string, row: YearEndRow): string {
   }
 
   if (key === 'breakthrough_artist') {
-    return `年度首次入榜 · ${rankLabel(row.year_end_rank)} · ${score}`
+    const debutLabel = isCompleteYear ? '年度首次入榜' : '本阶段首次入榜'
+    return `${debutLabel} · ${rankLabel(row.year_end_rank)} · ${score}`
   }
 
   return `${rankLabel(row.year_end_rank)} · ${score} · 在榜 ${weeks}`
 }
 
-export function YearEndHonors({ honors }: { honors: BillboardYearEndHonors }) {
+export function YearEndHonors({
+  honors,
+  isCompleteYear = true,
+}: {
+  honors: BillboardYearEndHonors
+  isCompleteYear?: boolean
+}) {
   return (
     <section
       className="mb-6 grid gap-3 border-b border-border pb-5 sm:grid-cols-2 lg:grid-cols-3"
@@ -73,11 +82,11 @@ export function YearEndHonors({ honors }: { honors: BillboardYearEndHonors }) {
                 {title}
               </p>
               <p className="mt-1 font-sans text-[10px] font-bold uppercase tracking-[1px] text-muted-foreground">
-                {honor.label}
+                {isCompleteYear ? honor.label : honor.partialLabel}
               </p>
               {row && (
                 <p className="mt-1 truncate font-sans text-[12px] text-muted-foreground">
-                  {detailForHonor(honor.key, row)}
+                  {detailForHonor(honor.key, row, isCompleteYear)}
                 </p>
               )}
             </div>

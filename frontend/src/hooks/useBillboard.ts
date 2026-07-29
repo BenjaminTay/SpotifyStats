@@ -298,13 +298,19 @@ function prefetchBillboardYearEndYears(
   })
 }
 
-export function useBillboardYearEnd(year: number | null, mergeLevel = 2, includeCompilations = false) {
+export function useBillboardYearEnd(
+  year: number | null,
+  mergeLevel = 2,
+  includeCompilations = false,
+  enabled = true,
+) {
   const queryClientForHook = useQueryClient()
   const params = billboardYearEndParams(year, mergeLevel, includeCompilations)
   const query = useQuery({
     queryKey: queryKeys.billboard.yearEnd(params),
     queryFn: () => api.get<BillboardYearEndResponse>('/billboard/year-end', params),
     placeholderData: keepPreviousData,
+    enabled,
   })
   const availableYearKey = query.data?.meta.available_years.join(',') ?? ''
 
@@ -319,6 +325,8 @@ export function useBillboardYearEnd(year: number | null, mergeLevel = 2, include
   return {
     data: query.data ?? null,
     loading: query.isLoading,
+    fetching: query.isFetching,
+    placeholder: query.isPlaceholderData,
     error: errorMessage(query.error),
     refetch: () => void query.refetch(),
   }

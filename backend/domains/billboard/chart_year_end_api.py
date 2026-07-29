@@ -11,9 +11,9 @@ from backend.domains.billboard.year_end import (
 def compute_year_end_staged(
     min_ms=30000,
     music_only=True,
-    bb_top_n=YEAR_END_TRACK_TOP_N,
-    bb_album_top_n=YEAR_END_ALBUM_TOP_N,
-    bb_artist_top_n=YEAR_END_ARTIST_TOP_N,
+    bb_top_n=30,
+    bb_album_top_n=20,
+    bb_artist_top_n=20,
     bb_week_start_dow=4,
     bb_week_start_hour=0,
     year=None,
@@ -21,6 +21,9 @@ def compute_year_end_staged(
     dynamic_threshold=False,
     max_merge_gap_minutes=None,
     include_compilations=False,
+    year_end_top_n=YEAR_END_TRACK_TOP_N,
+    year_end_album_top_n=YEAR_END_ALBUM_TOP_N,
+    year_end_artist_top_n=YEAR_END_ARTIST_TOP_N,
 ):
     """Compute Billboard Year-End charts for tracks, albums, and artists."""
     return _compute_year_end_cached(
@@ -36,6 +39,9 @@ def compute_year_end_staged(
         dynamic_threshold=dynamic_threshold,
         max_merge_gap_minutes=max_merge_gap_minutes,
         include_compilations=include_compilations,
+        year_end_top_n=year_end_top_n,
+        year_end_album_top_n=year_end_album_top_n,
+        year_end_artist_top_n=year_end_artist_top_n,
     )
 
 

@@ -4425,43 +4425,8 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
-        /** BillboardYearEndMeta */
-        BillboardYearEndMeta: {
-            /** Year */
-            year: number | null;
-            /** Available Years */
-            available_years: number[];
-            /** Total Weeks */
-            total_weeks: number;
-            /** Top N */
-            top_n: number;
-            /** Album Top N */
-            album_top_n: number;
-            /** Artist Top N */
-            artist_top_n: number;
-            /** Week Start Dow */
-            week_start_dow: number;
-            /** Week Start Hour */
-            week_start_hour: number;
-            /** Score Label */
-            score_label: string;
-        };
-        /** BillboardYearEndResponse */
-        BillboardYearEndResponse: {
-            meta: components["schemas"]["BillboardYearEndMeta"];
-            /** Tracks */
-            tracks: components["schemas"]["BillboardYearEndRow"][];
-            /** Albums */
-            albums: components["schemas"]["BillboardYearEndRow"][];
-            /** Artists */
-            artists: components["schemas"]["BillboardYearEndRow"][];
-            /** Honors */
-            honors: {
-                [key: string]: unknown;
-            };
-        };
-        /** BillboardYearEndRow */
-        BillboardYearEndRow: {
+        /** BillboardYearEndAlbumRow */
+        BillboardYearEndAlbumRow: {
             /** Year End Score */
             year_end_score: number;
             /** Year End Rank */
@@ -4480,14 +4445,192 @@ export interface components {
             weeks_top10: number;
             /** Chart Plays */
             chart_plays: number;
+            /** Annual Plays */
+            annual_plays: number;
             /** First Week */
             first_week: string | null;
             /** Last Week */
             last_week: string | null;
             /** True First Week */
             true_first_week?: string | null;
-        } & {
-            [key: string]: unknown;
+            /** Cover Url */
+            cover_url?: string | null;
+            /** Album Name */
+            album_name: string;
+            /** Artist Name */
+            artist_name: string;
+            /** Release Date */
+            release_date?: string | null;
+            /** Album Type */
+            album_type?: string | null;
+            /**
+             * Is New Entry
+             * @default false
+             */
+            is_new_entry: boolean;
+        };
+        /** BillboardYearEndArtistRow */
+        BillboardYearEndArtistRow: {
+            /** Year End Score */
+            year_end_score: number;
+            /** Year End Rank */
+            year_end_rank: number;
+            /** Peak Position */
+            peak_position: number;
+            /** Weeks On Chart */
+            weeks_on_chart: number;
+            /** Weeks At Peak */
+            weeks_at_peak: number;
+            /** Weeks At No1 */
+            weeks_at_no1: number;
+            /** Weeks Top5 */
+            weeks_top5: number;
+            /** Weeks Top10 */
+            weeks_top10: number;
+            /** Chart Plays */
+            chart_plays: number;
+            /** Annual Plays */
+            annual_plays: number;
+            /** First Week */
+            first_week: string | null;
+            /** Last Week */
+            last_week: string | null;
+            /** True First Week */
+            true_first_week?: string | null;
+            /** Cover Url */
+            cover_url?: string | null;
+            /** Artist Name */
+            artist_name: string;
+            /**
+             * Is New Entry
+             * @default false
+             */
+            is_new_entry: boolean;
+        };
+        /** BillboardYearEndHonors */
+        BillboardYearEndHonors: {
+            year_end_no1_track?: components["schemas"]["BillboardYearEndTrackRow"] | null;
+            year_end_no1_album?: components["schemas"]["BillboardYearEndAlbumRow"] | null;
+            year_end_no1_artist?: components["schemas"]["BillboardYearEndArtistRow"] | null;
+            longest_charting_track?: components["schemas"]["BillboardYearEndTrackRow"] | null;
+            longest_charting_album?: components["schemas"]["BillboardYearEndAlbumRow"] | null;
+            longest_charting_artist?: components["schemas"]["BillboardYearEndArtistRow"] | null;
+            biggest_no1_run_track?: components["schemas"]["BillboardYearEndTrackRow"] | null;
+            biggest_no1_run_album?: components["schemas"]["BillboardYearEndAlbumRow"] | null;
+            biggest_no1_run_artist?: components["schemas"]["BillboardYearEndArtistRow"] | null;
+            top_new_entry_track?: components["schemas"]["BillboardYearEndTrackRow"] | null;
+            breakthrough_artist?: components["schemas"]["BillboardYearEndArtistRow"] | null;
+            album_era_of_the_year?: components["schemas"]["BillboardYearEndAlbumRow"] | null;
+        };
+        /** BillboardYearEndMeta */
+        BillboardYearEndMeta: {
+            /** Year */
+            year: number | null;
+            /** Available Years */
+            available_years: number[];
+            /** Total Weeks */
+            total_weeks: number;
+            /** Top N */
+            top_n: number;
+            /** Album Top N */
+            album_top_n: number;
+            /** Artist Top N */
+            artist_top_n: number;
+            /** Year End Top N */
+            year_end_top_n: number;
+            /** Year End Album Top N */
+            year_end_album_top_n: number;
+            /** Year End Artist Top N */
+            year_end_artist_top_n: number;
+            /** Weekly Top N */
+            weekly_top_n: number;
+            /** Weekly Album Top N */
+            weekly_album_top_n: number;
+            /** Weekly Artist Top N */
+            weekly_artist_top_n: number;
+            /** Week Start Dow */
+            week_start_dow: number;
+            /** Week Start Hour */
+            week_start_hour: number;
+            /** Score Label */
+            score_label: string;
+            /** Semantics Version */
+            semantics_version: string;
+            /**
+             * Coverage Status
+             * @enum {string}
+             */
+            coverage_status: "empty" | "complete" | "incomplete" | "partial_start" | "year_to_date" | "partial_range";
+            /** Is Complete Year */
+            is_complete_year: boolean;
+            /** Period Start */
+            period_start: string | null;
+            /** Period End */
+            period_end: string | null;
+            /** First Billboard Week */
+            first_billboard_week: string | null;
+            /** Last Billboard Week */
+            last_billboard_week: string | null;
+            /** Observed Weeks */
+            observed_weeks: number;
+            /** Expected Weeks */
+            expected_weeks: number;
+            /** Has Internal Gaps */
+            has_internal_gaps: boolean;
+        };
+        /** BillboardYearEndResponse */
+        BillboardYearEndResponse: {
+            meta: components["schemas"]["BillboardYearEndMeta"];
+            /** Tracks */
+            tracks: components["schemas"]["BillboardYearEndTrackRow"][];
+            /** Albums */
+            albums: components["schemas"]["BillboardYearEndAlbumRow"][];
+            /** Artists */
+            artists: components["schemas"]["BillboardYearEndArtistRow"][];
+            honors: components["schemas"]["BillboardYearEndHonors"];
+        };
+        /** BillboardYearEndTrackRow */
+        BillboardYearEndTrackRow: {
+            /** Year End Score */
+            year_end_score: number;
+            /** Year End Rank */
+            year_end_rank: number;
+            /** Peak Position */
+            peak_position: number;
+            /** Weeks On Chart */
+            weeks_on_chart: number;
+            /** Weeks At Peak */
+            weeks_at_peak: number;
+            /** Weeks At No1 */
+            weeks_at_no1: number;
+            /** Weeks Top5 */
+            weeks_top5: number;
+            /** Weeks Top10 */
+            weeks_top10: number;
+            /** Chart Plays */
+            chart_plays: number;
+            /** Annual Plays */
+            annual_plays: number;
+            /** First Week */
+            first_week: string | null;
+            /** Last Week */
+            last_week: string | null;
+            /** True First Week */
+            true_first_week?: string | null;
+            /** Cover Url */
+            cover_url?: string | null;
+            /** Track Id */
+            track_id: number;
+            /** Track Name */
+            track_name: string;
+            /** Artist Name */
+            artist_name: string;
+            /** Artist Names */
+            artist_names?: string[];
+            /** Album Name */
+            album_name?: string | null;
+            /** Is True Debut No1 */
+            is_true_debut_no1: boolean;
         };
         /**
          * CacheStatsResponse

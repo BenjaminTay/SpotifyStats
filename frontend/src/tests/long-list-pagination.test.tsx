@@ -109,6 +109,7 @@ describe('Phase 5 long-list pagination', () => {
       weeks_top5: 6,
       weeks_top10: 10,
       chart_plays: 200 - index,
+      annual_plays: 220 - index,
       first_week: '2025-01-03',
       last_week: '2025-03-07',
       true_first_week: '2025-01-03',
@@ -154,6 +155,7 @@ describe('Phase 5 long-list pagination', () => {
         weeks_top5: 6,
         weeks_top10: 10,
         chart_plays: 200,
+        annual_plays: 240,
         first_week: '2025-01-03',
         last_week: '2025-03-07',
         true_first_week: '2025-01-03',
@@ -167,9 +169,10 @@ describe('Phase 5 long-list pagination', () => {
       </MemoryRouter>,
     )
 
-    for (const label of ['年度积分', '年度最高', '年度在榜', '年度#1周', '年度Top5', '年度Top10', '年度播放']) {
+    for (const label of ['年度积分', '年度最高', '年度在榜', '年度#1周', '年度Top5', '年度Top10', '在榜播放']) {
       expect(screen.getByRole('button', { name: `按${label}排序` })).toBeInTheDocument()
     }
+    expect(screen.queryByRole('button', { name: '按年度播放排序' })).not.toBeInTheDocument()
 
     const annualPeakCell = screen.getByText('01').closest('td')
     expect(annualPeakCell).toHaveClass('font-serif')
@@ -196,6 +199,7 @@ describe('Phase 5 long-list pagination', () => {
         weeks_top5: 8,
         weeks_top10: 14,
         chart_plays: 200,
+        annual_plays: 240,
         first_week: '2025-01-03',
         last_week: '2025-03-07',
         true_first_week: '2025-01-03',

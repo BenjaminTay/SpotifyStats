@@ -304,6 +304,18 @@ def summarize_billboard_year_end(
             "year": meta.get("year"),
             "total_weeks": meta.get("total_weeks"),
             "score_label": meta.get("score_label") or "Year-End Score",
+            "semantics_version": meta.get("semantics_version"),
+            "coverage_status": meta.get("coverage_status"),
+            "is_complete_year": bool(meta.get("is_complete_year")),
+            "period_start": meta.get("period_start"),
+            "period_end": meta.get("period_end"),
+            "first_billboard_week": meta.get("first_billboard_week"),
+            "last_billboard_week": meta.get("last_billboard_week"),
+            "observed_weeks": meta.get("observed_weeks"),
+            "expected_weeks": meta.get("expected_weeks"),
+            "weekly_top_n": meta.get("weekly_top_n"),
+            "weekly_album_top_n": meta.get("weekly_album_top_n"),
+            "weekly_artist_top_n": meta.get("weekly_artist_top_n"),
         },
         "tracks": tracks,
         "albums": albums,
@@ -347,6 +359,8 @@ def _normalize_year_end_row(
     if not name:
         return None
 
+    chart_plays = int(item.get("chart_plays") or 0)
+    annual_plays = int(item.get("annual_plays") or item.get("plays") or chart_plays)
     row = {
         "rank": int(item.get("year_end_rank") or item.get("rank") or index + 1),
         "name": name,
@@ -354,7 +368,9 @@ def _normalize_year_end_row(
         "peak_position": _optional_int(item.get("peak_position")),
         "weeks_on_chart": int(item.get("weeks_on_chart") or 0),
         "weeks_at_no1": int(item.get("weeks_at_no1") or 0),
-        "plays": int(item.get("chart_plays") or item.get("plays") or 0),
+        "plays": annual_plays,
+        "annual_plays": annual_plays,
+        "chart_plays": chart_plays,
     }
     if entity_type in {"track", "album"}:
         row["artist"] = item_text(item, "artist_name", "artist")

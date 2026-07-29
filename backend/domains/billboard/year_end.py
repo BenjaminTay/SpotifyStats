@@ -8,9 +8,6 @@ import numpy as np
 import pandas as pd
 
 from backend.domains.billboard.chart_power_score import (
-    _LONGEVITY_FACTOR,
-    _PEAK_BONUS,
-    _TOP1_BONUS,
     _aggregate_scored_rows,
     _score_ranked_rows,
 )
@@ -18,6 +15,7 @@ from backend.domains.billboard.chart_power_score import (
 YEAR_END_TRACK_TOP_N = 50
 YEAR_END_ALBUM_TOP_N = 30
 YEAR_END_ARTIST_TOP_N = 30
+YEAR_END_SEMANTICS_VERSION = "year_end_v3"
 
 EMPTY_HONORS: dict[str, Any] = {
     "year_end_no1_track": None,
@@ -78,6 +76,100 @@ def _all_week_count(*frames: pd.DataFrame) -> int:
         parsed = pd.to_datetime(frame["billboard_week"], errors="coerce").dropna()
         weeks.update(parsed)
     return len(weeks)
+
+
+def _expected_billboard_weeks(year: int, week_start_dow: int) -> pd.DatetimeIndex:
+    year_start = pd.Timestamp(year=year, month=1, day=1)
+    year_end = pd.Timestamp(year=year, month=12, day=31)
+    offset = (week_start_dow - year_start.dayofweek) % 7
+    first_week = year_start + pd.Timedelta(days=offset)
+    return pd.date_range(first_week, year_end, freq="7D")
+
+
+def _coverage_meta(
+    year: int,
+    week_start_dow: int,
+    *frames: pd.DataFrame,
+    coverage_source: pd.DataFrame | None = None,
+) -> dict[str, Any]:
+    observed: set[pd.Timestamp] = set()
+    for frame in frames:
+        if frame.empty or "billboard_week" not in frame.columns:
+            continue
+        weeks = pd.to_datetime(frame["billboard_week"], errors="coerce").dropna().dt.normalize()
+        observed.update(weeks)
+
+    expected = _expected_billboard_weeks(year, week_start_dow)
+    observed_weeks = sorted(observed)
+    expected_weeks = list(expected)
+    if not observed_weeks:
+        return {
+            "coverage_status": "empty",
+            "is_complete_year": False,
+            "period_start": None,
+            "period_end": None,
+            "first_billboard_week": None,
+            "last_billboard_week": None,
+            "observed_weeks": 0,
+            "expected_weeks": len(expected_weeks),
+            "has_internal_gaps": False,
+        }
+
+    first_observed = observed_weeks[0]
+    last_observed = observed_weeks[-1]
+    expected_between = {week for week in expected_weeks if first_observed <= week <= last_observed}
+    has_internal_gaps = not expected_between.issubset(observed)
+    starts_at_year_boundary = bool(expected_weeks and first_observed == expected_weeks[0])
+    ends_at_year_boundary = bool(expected_weeks and last_observed == expected_weeks[-1])
+    is_complete = (
+        starts_at_year_boundary
+        and ends_at_year_boundary
+        and not has_internal_gaps
+        and len(observed_weeks) == len(expected_weeks)
+    )
+    if is_complete:
+        status = "complete"
+    elif has_internal_gaps:
+        status = "incomplete"
+    elif not starts_at_year_boundary and ends_at_year_boundary:
+        status = "partial_start"
+    elif starts_at_year_boundary and not ends_at_year_boundary:
+        status = "year_to_date"
+    else:
+        status = "partial_range"
+
+    period_start = first_observed
+    period_end = last_observed
+    if coverage_source is not None and not coverage_source.empty:
+        date_column = next(
+            (column for column in ("ts_date", "ts") if column in coverage_source.columns),
+            None,
+        )
+        if date_column is not None:
+            source_dates = pd.to_datetime(
+                coverage_source[date_column],
+                errors="coerce",
+                utc=True,
+            ).dropna()
+            if not source_dates.empty:
+                period_start = source_dates.min()
+                period_end = source_dates.max()
+        else:
+            bounds = coverage_source.attrs.get("coverage_periods", {}).get(year)
+            if bounds:
+                period_start, period_end = bounds
+
+    return {
+        "coverage_status": status,
+        "is_complete_year": is_complete,
+        "period_start": period_start.isoformat(),
+        "period_end": period_end.isoformat(),
+        "first_billboard_week": first_observed.isoformat(),
+        "last_billboard_week": last_observed.isoformat(),
+        "observed_weeks": len(observed_weeks),
+        "expected_weeks": len(expected_weeks),
+        "has_internal_gaps": has_internal_gaps,
+    }
 
 
 def _first_chart_map(df: pd.DataFrame, group_cols: list[str]) -> pd.DataFrame:
@@ -186,16 +278,17 @@ def sort_year_end_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return sorted_rows
 
 
-def _add_common_score_columns(scores: pd.DataFrame) -> pd.DataFrame:
+def _add_year_end_score(scores: pd.DataFrame) -> pd.DataFrame:
+    """V3: 年度积分只累计现有周积分，不重复叠加年度奖励。"""
     out = scores.copy()
-    out["longevity_bonus"] = np.sqrt(out["weeks_on_chart"].clip(lower=1)) * _LONGEVITY_FACTOR
-    out["peak_bonus"] = out["peak_position"].map(_PEAK_BONUS).fillna(0)
+    out["year_end_score"] = out["raw_score"].round().astype(int)
     return out
 
 
 def _track_rows(
     full_weekly: pd.DataFrame,
     annual_weekly: pd.DataFrame,
+    annual_all_weekly: pd.DataFrame,
     year: int,
 ) -> list[dict[str, Any]]:
     if annual_weekly.empty:
@@ -203,7 +296,7 @@ def _track_rows(
 
     annual_weekly = _ensure_artist_names(annual_weekly)
     scored = _score_ranked_rows(annual_weekly)
-    scores = _add_common_score_columns(_aggregate_scored_rows(scored, "track_id"))
+    scores = _add_year_end_score(_aggregate_scored_rows(scored, "track_id"))
     scores = scores.merge(_first_chart_map(full_weekly, ["track_id"]), on="track_id", how="left")
 
     scores["is_true_debut_no1"] = scores.apply(
@@ -215,17 +308,6 @@ def _track_rows(
     )
     scores = scores.merge(_weeks_at_no1(annual_weekly, ["track_id"]), on="track_id", how="left")
     scores["weeks_at_no1"] = scores["weeks_at_no1"].fillna(0).astype(int)
-    scores["no1_bonus"] = scores["weeks_at_no1"] * _TOP1_BONUS
-    scores["year_end_score"] = (
-        (
-            scores["raw_score"]
-            + scores["longevity_bonus"]
-            + scores["peak_bonus"]
-            + scores["no1_bonus"]
-        )
-        .round()
-        .astype(int)
-    )
 
     dim_cols = [
         col
@@ -238,6 +320,8 @@ def _track_rows(
     rows = rows.merge(_cover_map(annual_weekly, ["track_id"]), on="track_id", how="left")
     plays = annual_weekly.groupby("track_id", sort=False)["play_count"].sum()
     rows = rows.merge(plays.reset_index(name="chart_plays"), on="track_id", how="left")
+    annual_plays = annual_all_weekly.groupby("track_id", sort=False)["play_count"].sum()
+    rows = rows.merge(annual_plays.reset_index(name="annual_plays"), on="track_id", how="left")
     rows["weeks_at_no1"] = rows["weeks_at_no1"].fillna(0).astype(int)
 
     result = []
@@ -261,6 +345,7 @@ def _track_rows(
                 "weeks_top5": _int_value(row.get("weeks_top5")),
                 "weeks_top10": _int_value(row.get("weeks_top10")),
                 "chart_plays": _int_value(row.get("chart_plays")),
+                "annual_plays": _int_value(row.get("annual_plays")),
                 "first_week": _iso(row.get("first_week")),
                 "last_week": _iso(row.get("last_week")),
                 "true_first_week": _iso(row.get("true_first_week")),
@@ -273,6 +358,7 @@ def _track_rows(
 def _album_or_artist_rows(
     full_df: pd.DataFrame,
     annual_df: pd.DataFrame,
+    annual_all_df: pd.DataFrame,
     year: int,
     group_cols: list[str],
 ) -> list[dict[str, Any]]:
@@ -280,20 +366,9 @@ def _album_or_artist_rows(
         return []
 
     scored = _score_ranked_rows(annual_df)
-    scores = _add_common_score_columns(_aggregate_scored_rows(scored, group_cols))
+    scores = _add_year_end_score(_aggregate_scored_rows(scored, group_cols))
     scores = scores.merge(_weeks_at_no1(annual_df, group_cols), on=group_cols, how="left")
     scores["weeks_at_no1"] = scores["weeks_at_no1"].fillna(0).astype(int)
-    scores["no1_bonus"] = scores["weeks_at_no1"] * _TOP1_BONUS
-    scores["year_end_score"] = (
-        (
-            scores["raw_score"]
-            + scores["longevity_bonus"]
-            + scores["peak_bonus"]
-            + scores["no1_bonus"]
-        )
-        .round()
-        .astype(int)
-    )
 
     scores = scores.merge(_first_chart_map(full_df, group_cols), on=group_cols, how="left")
     scores = scores.merge(_first_last_map(annual_df, group_cols), on=group_cols, how="left")
@@ -304,6 +379,12 @@ def _album_or_artist_rows(
         .reset_index(name="chart_plays")
     )
     scores = scores.merge(plays, on=group_cols, how="left")
+    annual_plays = (
+        annual_all_df.groupby(group_cols, sort=False)["play_count"]
+        .sum()
+        .reset_index(name="annual_plays")
+    )
+    scores = scores.merge(annual_plays, on=group_cols, how="left")
 
     optional_cols = [col for col in ["release_date", "album_type"] if col in annual_df.columns]
     if optional_cols:
@@ -322,6 +403,7 @@ def _album_or_artist_rows(
             "weeks_top5": _int_value(row.get("weeks_top5")),
             "weeks_top10": _int_value(row.get("weeks_top10")),
             "chart_plays": _int_value(row.get("chart_plays")),
+            "annual_plays": _int_value(row.get("annual_plays")),
             "first_week": _iso(row.get("first_week")),
             "last_week": _iso(row.get("last_week")),
             "true_first_week": _iso(row.get("true_first_week")),
@@ -392,6 +474,9 @@ def _empty_response(
     top_n: int,
     album_top_n: int,
     artist_top_n: int,
+    weekly_top_n: int,
+    weekly_album_top_n: int,
+    weekly_artist_top_n: int,
     week_start_dow: int,
     week_start_hour: int,
 ) -> dict[str, Any]:
@@ -403,9 +488,25 @@ def _empty_response(
             "top_n": top_n,
             "album_top_n": album_top_n,
             "artist_top_n": artist_top_n,
+            "year_end_top_n": top_n,
+            "year_end_album_top_n": album_top_n,
+            "year_end_artist_top_n": artist_top_n,
+            "weekly_top_n": weekly_top_n,
+            "weekly_album_top_n": weekly_album_top_n,
+            "weekly_artist_top_n": weekly_artist_top_n,
             "week_start_dow": week_start_dow,
             "week_start_hour": week_start_hour,
             "score_label": "Year-End Score",
+            "semantics_version": YEAR_END_SEMANTICS_VERSION,
+            "coverage_status": "empty",
+            "is_complete_year": False,
+            "period_start": None,
+            "period_end": None,
+            "first_billboard_week": None,
+            "last_billboard_week": None,
+            "observed_weeks": 0,
+            "expected_weeks": 0,
+            "has_internal_gaps": False,
         },
         "tracks": [],
         "albums": [],
@@ -424,7 +525,22 @@ def build_year_end_response(
     artist_top_n: int,
     week_start_dow: int,
     week_start_hour: int,
+    *,
+    weekly_top_n: int | None = None,
+    weekly_album_top_n: int | None = None,
+    weekly_artist_top_n: int | None = None,
+    all_weekly: pd.DataFrame | None = None,
+    all_weekly_album: pd.DataFrame | None = None,
+    all_weekly_artist: pd.DataFrame | None = None,
+    coverage_source: pd.DataFrame | None = None,
 ) -> dict[str, Any]:
+    weekly_top_n = top_n if weekly_top_n is None else weekly_top_n
+    weekly_album_top_n = album_top_n if weekly_album_top_n is None else weekly_album_top_n
+    weekly_artist_top_n = artist_top_n if weekly_artist_top_n is None else weekly_artist_top_n
+    all_weekly = weekly if all_weekly is None else all_weekly
+    all_weekly_album = weekly_album if all_weekly_album is None else all_weekly_album
+    all_weekly_artist = weekly_artist if all_weekly_artist is None else all_weekly_artist
+
     years = available_years_from_weekly(weekly, weekly_album, weekly_artist)
     selected_year = year if year is not None else (years[-1] if years else None)
     if selected_year is None:
@@ -432,6 +548,9 @@ def build_year_end_response(
             top_n=top_n,
             album_top_n=album_top_n,
             artist_top_n=artist_top_n,
+            weekly_top_n=weekly_top_n,
+            weekly_album_top_n=weekly_album_top_n,
+            weekly_artist_top_n=weekly_artist_top_n,
             week_start_dow=week_start_dow,
             week_start_hour=week_start_hour,
         )
@@ -444,20 +563,43 @@ def build_year_end_response(
     annual_weekly = _annual_window(full_weekly, selected_year)
     annual_weekly_album = _annual_window(full_weekly_album, selected_year)
     annual_weekly_artist = _annual_window(full_weekly_artist, selected_year)
+    annual_all_weekly = _annual_window(_ensure_datetime(all_weekly), selected_year)
+    annual_all_weekly_album = _annual_window(_ensure_datetime(all_weekly_album), selected_year)
+    annual_all_weekly_artist = _annual_window(_ensure_datetime(all_weekly_artist), selected_year)
+    annual_coverage_source = (
+        _annual_window(_ensure_datetime(coverage_source), selected_year)
+        if coverage_source is not None
+        else None
+    )
 
-    tracks = _track_rows(full_weekly, annual_weekly, selected_year)[:top_n]
+    tracks = _track_rows(
+        full_weekly,
+        annual_weekly,
+        annual_all_weekly,
+        selected_year,
+    )[:top_n]
     albums = _album_or_artist_rows(
         full_weekly_album,
         annual_weekly_album,
+        annual_all_weekly_album,
         selected_year,
         ["album_name", "artist_name"],
     )[:album_top_n]
     artists = _album_or_artist_rows(
         full_weekly_artist,
         annual_weekly_artist,
+        annual_all_weekly_artist,
         selected_year,
         ["artist_name"],
     )[:artist_top_n]
+    coverage = _coverage_meta(
+        selected_year,
+        week_start_dow,
+        annual_weekly,
+        annual_weekly_album,
+        annual_weekly_artist,
+        coverage_source=annual_coverage_source,
+    )
 
     return {
         "meta": {
@@ -471,9 +613,17 @@ def build_year_end_response(
             "top_n": top_n,
             "album_top_n": album_top_n,
             "artist_top_n": artist_top_n,
+            "year_end_top_n": top_n,
+            "year_end_album_top_n": album_top_n,
+            "year_end_artist_top_n": artist_top_n,
+            "weekly_top_n": weekly_top_n,
+            "weekly_album_top_n": weekly_album_top_n,
+            "weekly_artist_top_n": weekly_artist_top_n,
             "week_start_dow": week_start_dow,
             "week_start_hour": week_start_hour,
             "score_label": "Year-End Score",
+            "semantics_version": YEAR_END_SEMANTICS_VERSION,
+            **coverage,
         },
         "tracks": tracks,
         "albums": albums,

@@ -149,6 +149,16 @@ def _year_end_payload() -> dict[str, Any]:
             "year": 2026,
             "total_weeks": 25,
             "score_label": "Year-End Score",
+            "semantics_version": "year_end_v3",
+            "coverage_status": "year_to_date",
+            "is_complete_year": False,
+            "period_start": "2026-01-02T00:00:00",
+            "period_end": "2026-06-19T00:00:00",
+            "observed_weeks": 25,
+            "expected_weeks": 52,
+            "weekly_top_n": 25,
+            "weekly_album_top_n": 15,
+            "weekly_artist_top_n": 15,
         },
         "tracks": [
             {
@@ -158,6 +168,7 @@ def _year_end_payload() -> dict[str, Any]:
                 "weeks_on_chart": 19,
                 "weeks_at_no1": 6,
                 "chart_plays": 117,
+                "annual_plays": 126,
                 "track_name": "Opalite",
                 "artist_name": "Taylor Swift",
             },
@@ -327,6 +338,9 @@ def test_gather_yearly_data_includes_albums_billboard_and_editorial_brief(
     assert data["top_albums"][0]["name"] == "The Life of a Showgirl"
     assert data["top_albums"][3]["artist"] == "Zhang Zhen Yue"
     assert data["billboard_year_end"]["tracks"][0]["name"] == "Opalite"
+    assert data["billboard_year_end"]["tracks"][0]["plays"] == 126
+    assert data["billboard_year_end"]["tracks"][0]["chart_plays"] == 117
+    assert data["billboard_year_end"]["meta"]["coverage_status"] == "year_to_date"
     assert data["billboard_year_end"]["albums"][0]["name"] == "The Life of a Showgirl"
     assert data["billboard_year_end"]["artists"][0]["name"] == "Taylor Swift"
     assert data["editorial_brief"]["thesis"]
@@ -1275,4 +1289,51 @@ def test_yearly_report_cache_key_includes_contract_version():
     )
 
     assert key is not None
-    assert "contract_v12" in key
+    assert "contract_v13" in key
+    assert "year_end_v3" in key
+
+
+def test_yearly_report_year_end_uses_persisted_billboard_settings(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    import backend.services.billboard_service as billboard_service
+
+    conn = sqlite3.connect(tmp_path / "settings.db")
+    conn.row_factory = sqlite3.Row
+    conn.execute("CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
+    conn.executemany(
+        "INSERT INTO settings(key, value) VALUES (?, ?)",
+        [
+            ("bb_top_n", "17"),
+            ("bb_album_top_n", "11"),
+            ("bb_artist_top_n", "9"),
+            ("bb_week_start_dow", "2"),
+            ("bb_week_start_hour", "6"),
+            ("include_compilations", "true"),
+        ],
+    )
+    captured: dict[str, Any] = {}
+
+    monkeypatch.setattr(svc, "_connection_uses_default_database", lambda _conn: True)
+    monkeypatch.setattr(
+        billboard_service,
+        "compute_year_end_staged",
+        lambda **kwargs: captured.update(kwargs) or {"meta": {"year": 2026}},
+    )
+
+    svc._compute_year_end_for_yearly_report(
+        conn,
+        min_ms=30000,
+        music_only=True,
+        year=2026,
+        dynamic_threshold=True,
+        max_merge_gap_minutes=45,
+    )
+
+    assert captured["bb_top_n"] == 17
+    assert captured["bb_album_top_n"] == 11
+    assert captured["bb_artist_top_n"] == 9
+    assert captured["bb_week_start_dow"] == 2
+    assert captured["bb_week_start_hour"] == 6
+    assert captured["include_compilations"] is True

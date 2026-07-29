@@ -229,20 +229,34 @@ export interface BillboardAllTimeResponse {
 
 /** Year-end response from GET /api/billboard/year-end */
 export interface BillboardYearEndMeta {
-  [key: string]: any
   year: number | null
   available_years: number[]
   total_weeks: number
   top_n: number
   album_top_n: number
   artist_top_n: number
+  year_end_top_n: number
+  year_end_album_top_n: number
+  year_end_artist_top_n: number
+  weekly_top_n: number
+  weekly_album_top_n: number
+  weekly_artist_top_n: number
   week_start_dow: number
   week_start_hour: number
   score_label: string
+  semantics_version: string
+  coverage_status: 'empty' | 'complete' | 'incomplete' | 'partial_start' | 'year_to_date' | 'partial_range'
+  is_complete_year: boolean
+  period_start: string | null
+  period_end: string | null
+  first_billboard_week: string | null
+  last_billboard_week: string | null
+  observed_weeks: number
+  expected_weeks: number
+  has_internal_gaps: boolean
 }
 
 export interface BillboardYearEndRow {
-  [key: string]: any
   year_end_score: number
   year_end_rank: number
   peak_position: number
@@ -252,6 +266,7 @@ export interface BillboardYearEndRow {
   weeks_top5: number
   weeks_top10: number
   chart_plays: number
+  annual_plays: number
   first_week: string | null
   last_week: string | null
   true_first_week?: string | null
@@ -281,11 +296,21 @@ export interface BillboardYearEndArtistRow extends BillboardYearEndRow {
 }
 
 export interface BillboardYearEndHonors {
-  [key: string]: BillboardYearEndRow | null
+  year_end_no1_track: BillboardYearEndTrackRow | null
+  year_end_no1_album: BillboardYearEndAlbumRow | null
+  year_end_no1_artist: BillboardYearEndArtistRow | null
+  longest_charting_track: BillboardYearEndTrackRow | null
+  longest_charting_album: BillboardYearEndAlbumRow | null
+  longest_charting_artist: BillboardYearEndArtistRow | null
+  biggest_no1_run_track: BillboardYearEndTrackRow | null
+  biggest_no1_run_album: BillboardYearEndAlbumRow | null
+  biggest_no1_run_artist: BillboardYearEndArtistRow | null
+  top_new_entry_track: BillboardYearEndTrackRow | null
+  breakthrough_artist: BillboardYearEndArtistRow | null
+  album_era_of_the_year: BillboardYearEndAlbumRow | null
 }
 
 export interface BillboardYearEndResponse {
-  [key: string]: any
   meta: BillboardYearEndMeta
   tracks: BillboardYearEndTrackRow[]
   albums: BillboardYearEndAlbumRow[]

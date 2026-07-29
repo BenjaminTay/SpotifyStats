@@ -35,6 +35,8 @@ from backend.domains.billboard.year_end import (
     build_year_end_response,
 )
 
+_YEAR_END_UNBOUNDED_TOP_N = 1_000_000
+
 
 def _load_and_rank(
     min_ms=30000,
@@ -291,9 +293,9 @@ def _compute_records_cached(
 def _compute_year_end_cached(
     min_ms=30000,
     music_only=True,
-    bb_top_n=YEAR_END_TRACK_TOP_N,
-    bb_album_top_n=YEAR_END_ALBUM_TOP_N,
-    bb_artist_top_n=YEAR_END_ARTIST_TOP_N,
+    bb_top_n=30,
+    bb_album_top_n=20,
+    bb_artist_top_n=20,
     bb_week_start_dow=4,
     bb_week_start_hour=0,
     year=None,
@@ -301,13 +303,24 @@ def _compute_year_end_cached(
     dynamic_threshold=False,
     max_merge_gap_minutes=None,
     include_compilations=False,
+    year_end_top_n=YEAR_END_TRACK_TOP_N,
+    year_end_album_top_n=YEAR_END_ALBUM_TOP_N,
+    year_end_artist_top_n=YEAR_END_ARTIST_TOP_N,
 ):
-    weekly, weekly_album, weekly_artist, *_extra = _load_and_rank(
+    (
+        all_weekly,
+        all_weekly_album,
+        all_weekly_artist,
+        _all_weeks_asc,
+        _all_weeks_desc,
+        df_filtered,
+        _album_total_map,
+    ) = _load_and_rank(
         min_ms,
         music_only,
-        bb_top_n,
-        bb_album_top_n,
-        bb_artist_top_n,
+        _YEAR_END_UNBOUNDED_TOP_N,
+        _YEAR_END_UNBOUNDED_TOP_N,
+        _YEAR_END_UNBOUNDED_TOP_N,
         bb_week_start_dow,
         bb_week_start_hour,
         None,
@@ -317,6 +330,9 @@ def _compute_year_end_cached(
         max_merge_gap_minutes=max_merge_gap_minutes,
         include_compilations=include_compilations,
     )
+    weekly = all_weekly[all_weekly["rank"] <= bb_top_n].copy()
+    weekly_album = all_weekly_album[all_weekly_album["rank"] <= bb_album_top_n].copy()
+    weekly_artist = all_weekly_artist[all_weekly_artist["rank"] <= bb_artist_top_n].copy()
 
     from backend.domains.billboard.records import _add_cover_urls  # noqa: E402
 
@@ -328,11 +344,18 @@ def _compute_year_end_cached(
         weekly_album=weekly_album,
         weekly_artist=weekly_artist,
         year=year,
-        top_n=bb_top_n,
-        album_top_n=bb_album_top_n,
-        artist_top_n=bb_artist_top_n,
+        top_n=year_end_top_n,
+        album_top_n=year_end_album_top_n,
+        artist_top_n=year_end_artist_top_n,
         week_start_dow=bb_week_start_dow,
         week_start_hour=bb_week_start_hour,
+        weekly_top_n=bb_top_n,
+        weekly_album_top_n=bb_album_top_n,
+        weekly_artist_top_n=bb_artist_top_n,
+        all_weekly=all_weekly,
+        all_weekly_album=all_weekly_album,
+        all_weekly_artist=all_weekly_artist,
+        coverage_source=df_filtered,
     )
 
 

@@ -303,6 +303,7 @@ def test_visual_yearly_report_cache_key_includes_writer_pipeline():
     assert editorial_key is not None
     assert "visual_yearly_artifact" in editorial_key
     assert "visual_yearly_v1" in editorial_key
+    assert "year_end_v3" in editorial_key
     assert "quality_gate_v2" in editorial_key
     assert "agent_synthesis_v2" in editorial_key
     assert legacy_key != editorial_key

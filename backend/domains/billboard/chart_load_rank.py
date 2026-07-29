@@ -120,6 +120,35 @@ def _load_and_rank_uncached(
         )
         df_filtered = _filter_billboard_years(df_raw.copy(), year_start, year_end)
 
+    coverage_source = _agg_albums if _agg_tracks is not None else df_filtered
+    if (
+        coverage_source is not None
+        and not coverage_source.empty
+        and "billboard_week" in coverage_source.columns
+    ):
+        date_column = next(
+            (column for column in ("ts_date", "ts") if column in coverage_source.columns),
+            None,
+        )
+        if date_column is not None:
+            coverage_dates = pd.DataFrame(
+                {
+                    "year": pd.to_datetime(
+                        coverage_source["billboard_week"],
+                        errors="coerce",
+                    ).dt.year,
+                    "date": pd.to_datetime(
+                        coverage_source[date_column],
+                        errors="coerce",
+                        utc=True,
+                    ),
+                }
+            ).dropna()
+            df_filtered.attrs["coverage_periods"] = {
+                int(year): (group["date"].min(), group["date"].max())
+                for year, group in coverage_dates.groupby("year", sort=False)
+            }
+
     all_weeks_asc = sorted(df_filtered["billboard_week"].unique().tolist())
     all_weeks_desc = sorted(all_weeks_asc, reverse=True)
     weekly = compute_weekly_rankings(

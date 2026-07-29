@@ -32,6 +32,20 @@ def test_year_end_route_publishes_openapi_schema():
 
     assert "application/json" in response["content"]
     assert "schema" in response["content"]["application/json"]
+    response_ref = response["content"]["application/json"]["schema"]["$ref"]
+    response_schema = schema["components"]["schemas"][response_ref.rsplit("/", 1)[-1]]
+    assert response_schema["properties"]["tracks"]["items"]["$ref"].endswith(
+        "/BillboardYearEndTrackRow"
+    )
+    assert response_schema["properties"]["albums"]["items"]["$ref"].endswith(
+        "/BillboardYearEndAlbumRow"
+    )
+    assert response_schema["properties"]["artists"]["items"]["$ref"].endswith(
+        "/BillboardYearEndArtistRow"
+    )
+    track_row = schema["components"]["schemas"]["BillboardYearEndTrackRow"]
+    assert "annual_plays" in track_row["properties"]
+    assert "chart_plays" in track_row["properties"]
 
 
 def test_year_end_endpoint_returns_response_shape(monkeypatch):
@@ -46,12 +60,28 @@ def test_year_end_endpoint_returns_response_shape(monkeypatch):
                 "year": 2025,
                 "available_years": [2025],
                 "total_weeks": 1,
-                "top_n": kwargs["bb_top_n"],
-                "album_top_n": kwargs["bb_album_top_n"],
-                "artist_top_n": kwargs["bb_artist_top_n"],
+                "top_n": kwargs["year_end_top_n"],
+                "album_top_n": kwargs["year_end_album_top_n"],
+                "artist_top_n": kwargs["year_end_artist_top_n"],
+                "year_end_top_n": kwargs["year_end_top_n"],
+                "year_end_album_top_n": kwargs["year_end_album_top_n"],
+                "year_end_artist_top_n": kwargs["year_end_artist_top_n"],
+                "weekly_top_n": kwargs["bb_top_n"],
+                "weekly_album_top_n": kwargs["bb_album_top_n"],
+                "weekly_artist_top_n": kwargs["bb_artist_top_n"],
                 "week_start_dow": 4,
                 "week_start_hour": 0,
                 "score_label": "Year-End Score",
+                "semantics_version": "year_end_v3",
+                "coverage_status": "year_to_date",
+                "is_complete_year": False,
+                "period_start": "2025-01-03T00:00:00",
+                "period_end": "2025-01-03T00:00:00",
+                "first_billboard_week": "2025-01-03T00:00:00",
+                "last_billboard_week": "2025-01-03T00:00:00",
+                "observed_weeks": 1,
+                "expected_weeks": 52,
+                "has_internal_gaps": False,
             },
             "tracks": [
                 {
@@ -70,6 +100,7 @@ def test_year_end_endpoint_returns_response_shape(monkeypatch):
                     "weeks_top5": 1,
                     "weeks_top10": 1,
                     "chart_plays": 100,
+                    "annual_plays": 110,
                     "first_week": "2025-01-03T00:00:00",
                     "last_week": "2025-01-03T00:00:00",
                     "true_first_week": "2025-01-03T00:00:00",
@@ -91,10 +122,38 @@ def test_year_end_endpoint_returns_response_shape(monkeypatch):
     assert data["meta"]["top_n"] == 50
     assert data["meta"]["album_top_n"] == 30
     assert data["meta"]["artist_top_n"] == 30
+    assert data["meta"]["weekly_top_n"] == captured_kwargs["bb_top_n"]
+    assert data["meta"]["weekly_album_top_n"] == captured_kwargs["bb_album_top_n"]
+    assert data["meta"]["weekly_artist_top_n"] == captured_kwargs["bb_artist_top_n"]
     assert data["tracks"][0]["year_end_rank"] == 1
-    assert captured_kwargs["bb_top_n"] == 50
-    assert captured_kwargs["bb_album_top_n"] == 30
-    assert captured_kwargs["bb_artist_top_n"] == 30
+    assert data["tracks"][0]["annual_plays"] == 110
+    assert captured_kwargs["year_end_top_n"] == 50
+    assert captured_kwargs["year_end_album_top_n"] == 30
+    assert captured_kwargs["year_end_artist_top_n"] == 30
+
+
+def test_year_end_query_cutoffs_do_not_change_output_limits(monkeypatch):
+    from backend.api.billboard import year_end as api_year_end
+
+    captured_kwargs = {}
+
+    def fake_compute_year_end_staged(**kwargs):
+        captured_kwargs.update(kwargs)
+        raise ValueError("stop after parameter capture")
+
+    monkeypatch.setattr(api_year_end, "compute_year_end_staged", fake_compute_year_end_staged)
+
+    response = TestClient(app).get(
+        "/api/billboard/year-end?year=2025&bb_top_n=10&bb_album_top_n=8&bb_artist_top_n=6"
+    )
+
+    assert response.status_code == 422
+    assert captured_kwargs["bb_top_n"] == 10
+    assert captured_kwargs["bb_album_top_n"] == 8
+    assert captured_kwargs["bb_artist_top_n"] == 6
+    assert captured_kwargs["year_end_top_n"] == 50
+    assert captured_kwargs["year_end_album_top_n"] == 30
+    assert captured_kwargs["year_end_artist_top_n"] == 30
 
 
 def test_year_end_invalid_year_returns_422_and_request_id(monkeypatch):

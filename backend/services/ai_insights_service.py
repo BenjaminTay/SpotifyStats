@@ -39,6 +39,8 @@ from backend.domains.ai_reports.yearly_contract import (
     summarize_personality,
 )
 from backend.domains.ai_reports.yearly_validator import validate_yearly_report
+from backend.domains.billboard.year_end import YEAR_END_SEMANTICS_VERSION
+from backend.domains.settings.repository import SettingsRepository
 from backend.providers.llm.client import LLMProvider
 from backend.services.llm_translator import PROVIDERS, _get_config
 
@@ -140,7 +142,7 @@ _CACHE_TTL: dict[str, int] = {
     "yearly": 168,  # 7 days
 }
 
-YEARLY_REPORT_CONTRACT_VERSION = "contract_v12"
+YEARLY_REPORT_CONTRACT_VERSION = "contract_v13"
 YEARLY_REPORT_TEMPERATURE = 0.2
 YEARLY_REPORT_RETRY_TEMPERATURES = (0.15, 0.1, 0.05)
 
@@ -551,12 +553,19 @@ def _report_cache_key(
                 "yearly",
                 VISUAL_YEARLY_REPORT_MODE,
                 VISUAL_YEARLY_CONTRACT_VERSION,
+                YEAR_END_SEMANTICS_VERSION,
                 VISUAL_YEARLY_CACHE_GATE_VERSION,
                 writer_pipeline or WRITER_PIPELINE_REQUEST_VALUE,
                 str(year or ""),
                 filter_part,
             )
-        return _cache_key("yearly", YEARLY_REPORT_CONTRACT_VERSION, str(year or ""), filter_part)
+        return _cache_key(
+            "yearly",
+            YEARLY_REPORT_CONTRACT_VERSION,
+            YEAR_END_SEMANTICS_VERSION,
+            str(year or ""),
+            filter_part,
+        )
     return None
 
 
@@ -1062,19 +1071,20 @@ def _compute_year_end_for_yearly_report(
     try:
         from backend.services.billboard_service import compute_year_end_staged
 
+        settings = SettingsRepository(conn).load_all()
         return compute_year_end_staged(
             min_ms=min_ms,
             music_only=music_only,
-            bb_top_n=50,
-            bb_album_top_n=30,
-            bb_artist_top_n=30,
-            bb_week_start_dow=4,
-            bb_week_start_hour=12,
+            bb_top_n=int(settings["bb_top_n"]),
+            bb_album_top_n=int(settings["bb_album_top_n"]),
+            bb_artist_top_n=int(settings["bb_artist_top_n"]),
+            bb_week_start_dow=int(settings["bb_week_start_dow"]),
+            bb_week_start_hour=int(settings["bb_week_start_hour"]),
             year=year,
             merge_level=2,
             dynamic_threshold=dynamic_threshold,
             max_merge_gap_minutes=max_merge_gap_minutes,
-            include_compilations=False,
+            include_compilations=bool(settings["include_compilations"]),
         )
     except Exception:
         logger.warning("Failed to compute yearly report Billboard Year-End", exc_info=True)

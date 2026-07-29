@@ -7,6 +7,17 @@ from backend.domains.ai_reports.agentic_models import EvidenceLedgerEntry
 pytestmark = pytest.mark.unit
 
 
+@pytest.fixture(autouse=True)
+def _disable_live_llm_for_unit_tests(monkeypatch):
+    from backend.api import settings
+
+    monkeypatch.setattr(
+        settings,
+        "_current",
+        {"llm_enabled": False, "llm_api_key": "", "llm_base_url": ""},
+    )
+
+
 def test_visual_yearly_artifact_service_generates_artifact(monkeypatch):
     from backend.domains.ai_reports import visual_yearly_artifact_service as svc
 

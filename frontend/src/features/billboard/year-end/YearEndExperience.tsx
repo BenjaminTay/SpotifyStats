@@ -5,9 +5,11 @@ import { useSearchParams } from 'react-router-dom'
 import { BillboardSubNav } from '@/components/shared/BillboardSubNav'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useBillboardYearEnd } from '@/hooks/useBillboard'
+import { useSettings } from '@/hooks/useSettings'
 import { getBillboardName } from '@/lib/billboard-name'
 import { getDefaultMergeLevel } from '@/lib/merge-level'
 import { cn } from '@/lib/utils'
+import type { BillboardYearEndMeta } from '@/types/billboard'
 import { YearEndHonors } from './YearEndHonors'
 import { YearEndTable } from './YearEndTable'
 import {
@@ -63,19 +65,59 @@ function ErrorState({ error, refetch }: { error: string; refetch: () => void }) 
   )
 }
 
+function formatCoverageDate(value: string | null): string {
+  if (!value) return '未知日期'
+  const [year, month, day] = value.slice(0, 10).split('-')
+  return `${year}年${Number(month)}月${Number(day)}日`
+}
+
+function coverageMessage(meta: BillboardYearEndMeta): string | null {
+  if (meta.is_complete_year) return null
+  const period = `${formatCoverageDate(meta.period_start)}至${formatCoverageDate(meta.period_end)}`
+  if (meta.coverage_status === 'year_to_date') {
+    return `本页是截至 ${formatCoverageDate(meta.period_end)} 的阶段年榜，后续榜单周会继续改变排名与荣誉。`
+  }
+  if (meta.coverage_status === 'partial_start') {
+    return `该年份的本地数据从 ${formatCoverageDate(meta.period_start)} 开始，仅覆盖 ${period}，不能视为完整年度结论。`
+  }
+  if (meta.coverage_status === 'incomplete' || meta.has_internal_gaps) {
+    return `该年份覆盖 ${period}，但榜单周存在缺口，排名与荣誉仅供阶段性参考。`
+  }
+  if (meta.coverage_status === 'empty') return '该年份没有可计算的个人榜单数据。'
+  return `该年份仅覆盖 ${period}，排名与荣誉是阶段结果。`
+}
+
 export function YearEndExperience() {
   const [searchParams, setSearchParams] = useSearchParams()
   const requestedYear = parseYear(searchParams.get('year'))
   const mergeLevel = parseMergeLevel(searchParams.get('merge_level'))
-  const includeCompilations = searchParams.get('include_compilations') === 'true'
-  const { data, loading, error, refetch } = useBillboardYearEnd(requestedYear, mergeLevel, includeCompilations)
+  const { settings, loading: settingsLoading } = useSettings()
+  const includeCompilationsParam = searchParams.get('include_compilations')
+  const includeCompilations = includeCompilationsParam === null
+    ? settings?.include_compilations ?? false
+    : includeCompilationsParam === 'true'
+  const { data, loading, fetching, placeholder, error, refetch } = useBillboardYearEnd(
+    requestedYear,
+    mergeLevel,
+    includeCompilations,
+    !settingsLoading,
+  )
   const [activeTab, setActiveTab] = useState<YearEndTab>(cachedTab)
   const [page, setPage] = useState(cachedPage)
   const [sortKey, setSortKey] = useState<YearEndSortKey>(cachedSortKey)
   const [sortDir, setSortDir] = useState<YearEndSortDir>(cachedSortDir)
 
-  const selectedYear = data?.meta.year ?? requestedYear
+  const visibleData = data &&
+    !settingsLoading &&
+    !placeholder &&
+    (requestedYear === null || data.meta.year === requestedYear)
+    ? data
+    : null
+  const selectedYear = requestedYear ?? data?.meta.year
   const availableYears = data?.meta.available_years ?? []
+  const isTransitioning = !visibleData && (settingsLoading || loading || fetching || placeholder)
+  const areYearOptionsLoading =
+    availableYears.length === 0 && (settingsLoading || loading || fetching || placeholder)
 
   useEffect(() => { cachedTab = activeTab }, [activeTab])
   useEffect(() => { cachedPage = page }, [page])
@@ -83,7 +125,7 @@ export function YearEndExperience() {
   useEffect(() => { cachedSortDir = sortDir }, [sortDir])
   useEffect(() => { setPage(1) }, [activeTab, requestedYear, sortKey, sortDir])
 
-  const rows = useMemo(() => rowsForTab(data, activeTab), [activeTab, data])
+  const rows = useMemo(() => rowsForTab(visibleData, activeTab), [activeTab, visibleData])
   const sortedRows = useMemo(
     () => sortYearEndRows(rows, sortKey, sortDir),
     [rows, sortDir, sortKey],
@@ -123,7 +165,12 @@ export function YearEndExperience() {
           className="mt-5 flex max-w-full gap-2 overflow-x-auto pb-0.5"
           aria-label="切换年榜年份"
         >
-          {availableYears.length === 0 ? (
+          {areYearOptionsLoading ? (
+            <Skeleton
+              className="h-8 w-[76px] shrink-0 rounded-full"
+              aria-label="正在加载可用年份"
+            />
+          ) : availableYears.length === 0 && !error ? (
             <span className="rounded-full bg-muted px-4 py-1.5 font-sans text-[13px] font-medium text-muted-foreground">
               无数据
             </span>
@@ -148,12 +195,29 @@ export function YearEndExperience() {
         </div>
       </section>
 
-      {loading && !data && <SkeletonBlock />}
-      {error && !data && <ErrorState error={error} refetch={refetch} />}
+      {isTransitioning && <SkeletonBlock />}
+      {error && !visibleData && !isTransitioning && <ErrorState error={error} refetch={refetch} />}
 
-      {data && (
+      {visibleData && (
         <>
-          <YearEndHonors honors={data.honors} />
+          {coverageMessage(visibleData.meta) && (
+            <div
+              className="mb-5 flex gap-3 rounded-[12px] border border-amber-500/30 bg-amber-500/[0.08] px-4 py-3 text-sm text-muted-foreground"
+              role="status"
+            >
+              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
+              <p>{coverageMessage(visibleData.meta)}</p>
+            </div>
+          )}
+          <p className="mb-4 font-sans text-[12px] text-muted-foreground">
+            已统计 {visibleData.meta.observed_weeks}/{visibleData.meta.expected_weeks} 个榜单周
+            {' · '}周榜入榜线：单曲 Top {visibleData.meta.weekly_top_n}、专辑 Top {visibleData.meta.weekly_album_top_n}、艺人 Top {visibleData.meta.weekly_artist_top_n}
+          </p>
+
+          <YearEndHonors
+            honors={visibleData.honors}
+            isCompleteYear={visibleData.meta.is_complete_year}
+          />
 
           <div className="mb-6 border-b border-border">
             <div className="flex gap-7 overflow-x-auto" role="tablist">

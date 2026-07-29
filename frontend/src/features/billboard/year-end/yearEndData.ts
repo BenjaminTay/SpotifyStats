@@ -42,7 +42,7 @@ export const YEAR_END_COLUMNS: YearEndColumn[] = [
   { key: 'weeks_at_no1', label: '年度#1周', width: 96, align: 'right', sortable: true },
   { key: 'weeks_top5', label: '年度Top5', width: 92, align: 'right', sortable: true },
   { key: 'weeks_top10', label: '年度Top10', width: 96, align: 'right', sortable: true },
-  { key: 'chart_plays', label: '年度播放', width: 100, align: 'right', sortable: true },
+  { key: 'chart_plays', label: '在榜播放', width: 100, align: 'right', sortable: true },
 ]
 
 export function formatYearEndNumber(value: number | null | undefined): string {
