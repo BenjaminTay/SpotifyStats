@@ -22,6 +22,29 @@ from backend.services.analysis_stats_service import PERIOD_LABELS, resolve_perio
 logger = logging.getLogger(__name__)
 
 
+def _load_reliable_album_release_dates(conn: sqlite3.Connection) -> pd.DataFrame:
+    """Load unambiguous full-precision Spotify release dates for local albums."""
+    try:
+        return pd.read_sql_query(
+            """SELECT al.album_name,
+                      ar.artist_name,
+                      MIN(sam.release_date) AS source_album_release_date
+               FROM album_spotify_links asl
+               JOIN albums al ON al.album_id = asl.album_id
+               JOIN artists ar ON ar.artist_id = al.artist_id
+               JOIN spotify_album_meta sam ON sam.spotify_album_id = asl.spotify_album_id
+               WHERE asl.confidence >= 0.9
+                 AND LOWER(COALESCE(sam.album_type, '')) IN ('album', 'ep')
+                 AND sam.release_date GLOB '????-??-??'
+               GROUP BY al.album_name, ar.artist_name
+               HAVING COUNT(DISTINCT sam.release_date) = 1""",
+            conn,
+        )
+    except Exception as exc:
+        logger.warning("Reliable album release-date lookup failed: %s", exc)
+        return pd.DataFrame(columns=["album_name", "artist_name", "source_album_release_date"])
+
+
 def _build_entity_frames(
     event_frame: pd.DataFrame,
     conn: sqlite3.Connection,
@@ -75,8 +98,13 @@ def _build_entity_frames(
 
             if not membership.empty and "canonical_song_key" in events_with_keys.columns:
                 membership_join = membership[
-                    ["canonical_song_key", "project_id", "album_project_name"]
-                ].rename(columns={"project_id": "album_project_id"})
+                    ["canonical_song_key", "project_id", "album_project_name", "release_date"]
+                ].rename(
+                    columns={
+                        "project_id": "album_project_id",
+                        "release_date": "album_project_release_date",
+                    }
+                )
                 # Join each play event to its album project via canonical song key
                 merged = events_with_keys.merge(
                     membership_join,
@@ -103,6 +131,26 @@ def _build_entity_frames(
     elif not album_frame.empty:
         album_frame["album_project_id"] = album_frame["album_name"].astype(str)
         album_frame["album_project_name"] = album_frame["album_name"]
+
+    # Fastest album milestones use a trustworthy formal release date to discard
+    # prerelease plays. Prefer the canonical album-project date; only use a
+    # source-album fallback when one high-confidence Spotify date is unambiguous.
+    if not album_frame.empty:
+        if "album_project_release_date" not in album_frame.columns:
+            album_frame["album_project_release_date"] = None
+        release_dates = _load_reliable_album_release_dates(conn)
+        if not release_dates.empty:
+            album_frame = album_frame.merge(
+                release_dates,
+                on=["album_name", "artist_name"],
+                how="left",
+            )
+            album_frame["album_release_date"] = album_frame["album_project_release_date"].fillna(
+                album_frame["source_album_release_date"]
+            )
+            album_frame = album_frame.drop(columns=["source_album_release_date"])
+        else:
+            album_frame["album_release_date"] = album_frame["album_project_release_date"]
 
     # ── Artist fan-out with same filtering as event_frame ──
     try:
@@ -271,6 +319,12 @@ def _assemble_nested_records(flat: dict) -> dict:
             "monthly_peak": _triple("time_monthly_peak"),
             "yearly_peak": _triple("time_yearly_peak"),
             "late_night_peak_day": flat.get("time_late_night_peak_day", []),
+            "late_night_trajectory": {
+                "monthly": flat.get("time_late_night_trajectory_monthly", []),
+                "quarterly": flat.get("time_late_night_trajectory_quarterly", []),
+                "monthly_min_plays": flat.get("time_late_night_monthly_min_plays", 500),
+                "quarterly_min_plays": flat.get("time_late_night_quarterly_min_plays", 1500),
+            },
             "weekday_preference": flat.get("time_weekday_preference", []),
             "new_year_eve": flat.get("time_new_year_eve", []),
         },
@@ -299,7 +353,7 @@ def _assemble_nested_records(flat: dict) -> dict:
             "same_name_diff_artist": flat.get("discovery_same_name_diff_artist", []),
             "feat_lover": {
                 "track": flat.get("discovery_feat_lover_track", []),
-                "album": [],
+                "album": flat.get("discovery_feat_lover_album", []),
                 "artist": flat.get("discovery_feat_lover_artist", []),
             },
         },

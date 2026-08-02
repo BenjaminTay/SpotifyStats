@@ -54,7 +54,7 @@ const ROUTE_READY_MARKERS = {
   '/analysis': ['PLAYBACK STATS', '播放统计'],
   '/analysis/stats': ['PLAYBACK STATS', '播放统计'],
   '/analysis/charts': ['PLAYBACK RANKING', '播放排行'],
-  '/analysis/records': ['PLAYBACK RECORDS', '狂热时刻'],
+  '/analysis/records': ['PLAYBACK RECORDS', '高光时刻'],
   '/analysis/timeline': ['PLAYBACK STATS', '播放统计'],
   '/analysis/leaderboard': ['PLAYBACK RANKING', '播放排行'],
   '/analysis/behavior': ['PLAYBACK STATS', '播放统计'],

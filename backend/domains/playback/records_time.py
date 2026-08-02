@@ -10,6 +10,9 @@ from backend.domains.playback.records_helpers import (
     safe_rename,
 )
 
+LATE_NIGHT_MONTHLY_MIN_PLAYS = 500
+LATE_NIGHT_QUARTERLY_MIN_PLAYS = 1500
+
 
 def _entity_hourly_dominance(frame, group_col, name_col, artist_col, entity_type):
     """每小時段播放最多的 entity。"""
@@ -122,6 +125,11 @@ def compute_time_pattern_records(
 
     # Late night peak day
     records["time_late_night_peak_day"] = _late_night_peak_day(event_frame)
+    monthly_late, quarterly_late = _late_night_trajectory(event_frame)
+    records["time_late_night_trajectory_monthly"] = monthly_late
+    records["time_late_night_trajectory_quarterly"] = quarterly_late
+    records["time_late_night_monthly_min_plays"] = LATE_NIGHT_MONTHLY_MIN_PLAYS
+    records["time_late_night_quarterly_min_plays"] = LATE_NIGHT_QUARTERLY_MIN_PLAYS
     records["time_weekday_preference"] = _weekday_preference(event_frame)
     records["time_new_year_eve"] = _new_year_eve(event_frame)
 
@@ -154,6 +162,51 @@ def _late_night_peak_day(event_frame):
             }
         )
     return pd.DataFrame(rows) if rows else pd.DataFrame()
+
+
+def _late_night_trajectory(event_frame):
+    """按月/季度计算 0:00–4:59 深夜有效播放占比。"""
+    empty = pd.DataFrame()
+    if event_frame.empty:
+        return empty, empty
+
+    frame = event_frame.copy()
+    dates = pd.to_datetime(frame["ts_date"], errors="coerce")
+    frame = frame[dates.notna()].copy()
+    if frame.empty:
+        return empty, empty
+    dates = dates[dates.notna()]
+    frame["_month"] = dates.dt.strftime("%Y-%m")
+    frame["_quarter"] = dates.dt.to_period("Q").astype(str)
+    frame["_is_late"] = frame["ts_hour"].between(0, 4)
+
+    def aggregate(period_col, threshold):
+        grouped = (
+            frame.groupby(period_col)
+            .agg(total_plays=("_is_late", "size"), late_plays=("_is_late", "sum"))
+            .reset_index()
+            .rename(columns={period_col: "name"})
+            .sort_values("name")
+        )
+        if grouped.empty:
+            return empty
+        grouped["rank"] = range(1, len(grouped) + 1)
+        grouped["value"] = (grouped["late_plays"] / grouped["total_plays"] * 100).round(1)
+        grouped["unit"] = "% 深夜播放"
+        grouped["date"] = grouped["name"]
+        grouped["secondary_value"] = grouped["late_plays"].astype(float)
+        grouped["secondary_unit"] = "次深夜播放"
+        grouped["qualified"] = grouped["total_plays"] >= threshold
+        grouped["caption"] = grouped.apply(
+            lambda row: f"{int(row['late_plays'])} / {int(row['total_plays'])} 次有效播放",
+            axis=1,
+        )
+        return grouped
+
+    return (
+        aggregate("_month", LATE_NIGHT_MONTHLY_MIN_PLAYS),
+        aggregate("_quarter", LATE_NIGHT_QUARTERLY_MIN_PLAYS),
+    )
 
 
 def _weekday_preference(event_frame):

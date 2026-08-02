@@ -114,6 +114,8 @@ export function EntityRecordToggle({
       {available.map((et) => (
         <button
           key={et}
+          type="button"
+          aria-pressed={value === et}
           onClick={() => onChange(et)}
           className={cn(
             'rounded-[4px] px-2.5 py-1 font-sans text-[11px] font-medium transition-colors',
@@ -152,14 +154,14 @@ export function RecordCard({
   return (
     <PaginationPortalContext.Provider value={portalTarget}>
       <GlassCard className="mb-5 p-5">
-        <div className="mb-4 flex items-center justify-between gap-3">
-          <div>
+        <div className="mb-4 flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
+          <div className="min-w-0">
             <h3 className="font-serif text-[18px] font-bold tracking-[-0.3px]">{title}</h3>
             {subtitle && (
               <p className="mt-0.5 font-sans text-[11px] text-muted-foreground">{subtitle}</p>
             )}
           </div>
-          <div className="flex shrink-0 items-center gap-3">
+          <div className="flex w-full flex-wrap items-center justify-between gap-3 sm:w-auto sm:shrink-0 sm:justify-end">
             {toggle}
             <div ref={portalRef} />
           </div>
@@ -236,6 +238,7 @@ interface ColumnDef {
   header: string
   width?: string
   align?: 'left' | 'right' | 'center'
+  verticalAlign?: 'top' | 'middle'
   render: (row: PlaybackRecordRow, idx: number) => ReactNode
 }
 
@@ -250,14 +253,26 @@ export function MiniRankTable({
   emptyText?: string
   fixed?: boolean
 }) {
-  const [page, setPage] = useState(0)
+  const [paginationState, setPaginationState] = useState({ rows, page: 0 })
+  const page = paginationState.rows === rows ? paginationState.page : 0
+  const setCurrentPage = (next: number | ((current: number) => number)) => {
+    setPaginationState((current) => {
+      const currentPage = current.rows === rows ? current.page : 0
+      return {
+        rows,
+        page: typeof next === 'function' ? next(currentPage) : next,
+      }
+    })
+  }
   const perPage = 10
   const totalPages = Math.max(1, Math.ceil(rows.length / perPage))
-  const start = page * perPage
+  const effectivePage = Math.min(page, totalPages - 1)
+  const start = effectivePage * perPage
   const pageRows = rows.slice(start, start + perPage)
   const minTableWidth = columns.every((col) => col.width?.endsWith('px'))
     ? `${columns.reduce((sum, col) => sum + Number.parseInt(col.width ?? '0', 10), 0)}px`
     : undefined
+  const portalTarget = useContext(PaginationPortalContext)
 
   if (rows.length === 0) {
     return <p className="py-4 text-center font-sans text-[12px] text-muted-foreground">{emptyText}</p>
@@ -270,32 +285,32 @@ export function MiniRankTable({
         / {fmtNum(rows.length)}
       </span>
       <button
-        onClick={() => setPage(0)}
-        disabled={page === 0}
+        onClick={() => setCurrentPage(0)}
+        disabled={effectivePage === 0}
         className="p-0.5 disabled:opacity-30"
         aria-label="第一页"
       >
         <ChevronsLeft className="h-3 w-3" />
       </button>
       <button
-        onClick={() => setPage((p) => Math.max(0, p - 1))}
-        disabled={page === 0}
+        onClick={() => setCurrentPage((p) => Math.max(0, p - 1))}
+        disabled={effectivePage === 0}
         className="p-0.5 disabled:opacity-30"
         aria-label="上一页"
       >
         <ChevronLeft className="h-3 w-3" />
       </button>
       <button
-        onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
-        disabled={page >= totalPages - 1}
+        onClick={() => setCurrentPage((p) => Math.min(totalPages - 1, p + 1))}
+        disabled={effectivePage >= totalPages - 1}
         className="p-0.5 disabled:opacity-30"
         aria-label="下一页"
       >
         <ChevronRight className="h-3 w-3" />
       </button>
       <button
-        onClick={() => setPage(totalPages - 1)}
-        disabled={page >= totalPages - 1}
+        onClick={() => setCurrentPage(totalPages - 1)}
+        disabled={effectivePage >= totalPages - 1}
         className="p-0.5 disabled:opacity-30"
         aria-label="最后一页"
       >
@@ -304,7 +319,6 @@ export function MiniRankTable({
     </div>
   )
 
-  const portalTarget = useContext(PaginationPortalContext)
   const pagination = totalPages > 1 ? (
     portalTarget ? (
       createPortal(paginationBar, portalTarget)
@@ -348,6 +362,8 @@ export function MiniRankTable({
                       'py-2.5',
                       col.align === 'right' && 'text-right',
                       col.align === 'center' && 'text-center',
+                      col.verticalAlign === 'top' && 'align-top',
+                      col.verticalAlign === 'middle' && 'align-middle',
                     )}
                   >
                     {col.render(row, start + i)}
@@ -431,11 +447,18 @@ export function AlbumCell({
   artistName?: string | null
   coverUrl?: string | null
 }) {
+  const artistQuery = artistName ? `?artist=${encodeURIComponent(artistName)}` : ''
+
   return (
     <div className="flex items-center gap-2.5 min-w-0">
       <CoverImg url={coverUrl} />
       <div className="min-w-0 truncate">
-        <span className="block truncate font-sans text-[14px] font-medium">{displayName(name)}</span>
+        <Link
+          to={`/music/albums/${encodeURIComponent(name)}${artistQuery}`}
+          className="block truncate font-sans text-[14px] font-medium text-foreground hover:text-accent-foreground"
+        >
+          {displayName(name)}
+        </Link>
         {artistName && (
           <p className="truncate font-sans text-[11px] italic text-muted-foreground">{displayName(artistName)}</p>
         )}
@@ -444,16 +467,37 @@ export function AlbumCell({
   )
 }
 
-export function ValueBar({ value, max, suffix }: { value: number; max: number; suffix?: string }) {
-  const pct = max > 0 ? Math.min((value / max) * 100, 100) : 0
+export function ValueBar({
+  value,
+  max,
+  suffix,
+  label = '相对值',
+}: {
+  value: number
+  max: number
+  suffix?: string
+  label?: string
+}) {
+  const safeValue = Number.isFinite(value) ? value : 0
+  const safeMax = Number.isFinite(max) && max > 0 ? max : 1
+  const pct = Math.max(0, Math.min((safeValue / safeMax) * 100, 100))
+
   return (
-    <span className="inline-flex items-center gap-1.5">
+    <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
       <span className="inline-block w-[52px] text-right font-sans text-[14px] font-semibold tabular-nums">
-        {typeof value === 'number' && value % 1 !== 0 ? value.toFixed(1) : fmtNum(value)}
+        {safeValue % 1 !== 0 ? safeValue.toFixed(1) : fmtNum(safeValue)}
       </span>
-      <span className="inline-block h-[3px] w-[56px] rounded-[2px] bg-muted">
+      <span
+        role="meter"
+        aria-label={label}
+        aria-valuemin={0}
+        aria-valuemax={safeMax}
+        aria-valuenow={safeValue}
+        className="inline-block h-1 w-[68px] overflow-hidden rounded-full bg-muted"
+      >
         <span
-          className="block h-full rounded-[2px] bg-accent-foreground transition-[width]"
+          data-value-bar-fill
+          className="block h-full rounded-full bg-accent-foreground transition-[width] duration-300"
           style={{ width: `${pct}%` }}
         />
       </span>
@@ -471,6 +515,7 @@ export function ValueBar({ value, max, suffix }: { value: number; max: number; s
 export function EntityRecordCard({
   title,
   subtitle,
+  headerExtra,
   recordsByEntity,
   defaultEntity = 'track',
   columns,
@@ -478,6 +523,7 @@ export function EntityRecordCard({
 }: {
   title: string
   subtitle?: string
+  headerExtra?: ReactNode
   recordsByEntity: Partial<Record<EntityRecordType, PlaybackRecordRow[]>>
   defaultEntity?: EntityRecordType
   columns: (entity: EntityRecordType) => ColumnDef[]
@@ -499,11 +545,14 @@ export function EntityRecordCard({
       title={title}
       subtitle={subtitle}
       toggle={
-        <EntityRecordToggle
-          value={entity}
-          available={allAvailable}
-          onChange={setEntity}
-        />
+        <div className="flex max-w-full flex-wrap items-center justify-end gap-2">
+          {headerExtra}
+          <EntityRecordToggle
+            value={entity}
+            available={allAvailable}
+            onChange={setEntity}
+          />
+        </div>
       }
     >
       <MiniRankTable rows={rows} columns={columns(entity)} emptyText={emptyText} />

@@ -10,6 +10,8 @@ from backend.domains.playback.records_helpers import (
     safe_rename,
 )
 
+MILESTONE_THRESHOLDS = {"track": 50, "album": 100, "artist": 250}
+
 
 def _daily_champion(frame, group_col, name_col, artist_col, entity_type="track"):
     """每日冠軍次數。"""
@@ -115,28 +117,40 @@ def _entity_reign_records(frame, group_col, name_col, artist_col, entity_type):
 
 
 def _fastest_milestone(frame, group_col, name_col, artist_col, entity_type="track"):
-    """最快里程碑：從首次播放到達到播放次數閾值所需天數最短的 entity。"""
+    """最快里程碑：专辑忽略发行前播放，并从首次发行后播放开始计时。"""
     if frame.empty:
         return pd.DataFrame()
 
-    # Thresholds by entity type
-    thresholds = {"track": [10, 25, 50], "album": [25, 50, 100], "artist": [50, 100, 250]}.get(
-        entity_type, [50]
-    )
+    threshold = MILESTONE_THRESHOLDS.get(entity_type, 50)
 
     results = []
     for entity_id, grp in frame.groupby(group_col):
-        if len(grp) < thresholds[0]:
+        grp_sorted = grp.sort_values("ts_date").copy()
+        if entity_type == "album":
+            if "album_release_date" not in grp_sorted.columns:
+                continue
+            release_values = (
+                grp_sorted["album_release_date"].dropna().astype(str).drop_duplicates().tolist()
+            )
+            if (
+                len(release_values) != 1
+                or not pd.Series(release_values).str.fullmatch(r"\d{4}-\d{2}-\d{2}").all()
+            ):
+                continue
+            release_date = pd.to_datetime(release_values[0], errors="coerce")
+            if pd.isna(release_date):
+                continue
+            event_dates = pd.to_datetime(grp_sorted["ts_date"], errors="coerce")
+            grp_sorted = grp_sorted[event_dates >= release_date]
+            if grp_sorted.empty:
+                continue
+            first_date = pd.to_datetime(grp_sorted["ts_date"].iloc[0])
+        else:
+            first_date = pd.to_datetime(grp_sorted["ts_date"].iloc[0])
+
+        if len(grp_sorted) < threshold:
             continue
-        grp_sorted = grp.sort_values("ts_date")
-        first_date = pd.to_datetime(grp_sorted["ts_date"].iloc[0])
-        cumsum = 0
-        milestone_date = None
-        for _, row in grp_sorted.iterrows():
-            cumsum += 1
-            if cumsum >= thresholds[0] and milestone_date is None:
-                milestone_date = pd.to_datetime(row["ts_date"])
-                break
+        milestone_date = pd.to_datetime(grp_sorted["ts_date"].iloc[threshold - 1])
 
         if milestone_date is not None:
             days = (milestone_date - first_date).days
@@ -148,7 +162,7 @@ def _fastest_milestone(frame, group_col, name_col, artist_col, entity_type="trac
                     "name": name,
                     "artist_name": artist,
                     "days_to_milestone": days,
-                    "milestone_target": thresholds[0],
+                    "milestone_target": threshold,
                     "first_date": str(first_date.date()),
                     "milestone_date": str(milestone_date.date()),
                 }

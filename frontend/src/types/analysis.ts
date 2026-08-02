@@ -422,6 +422,8 @@ export interface PlaybackRecordRow {
   name: string
   artist_name?: string | null
   artist_names?: string[] | null
+  artist_cover_urls?: (string | null)[] | null
+  artist_play_counts?: number[] | null
   value: number
   unit: string
   secondary_value?: number | null
@@ -433,6 +435,7 @@ export interface PlaybackRecordRow {
   total_hours?: number | null
   unique_tracks?: number | null
   top_track_name?: string | null
+  top_track_entity_id?: string | null
   top_track_artist_name?: string | null
   top_track_plays?: number | null
   top_track_cover_url?: string | null
@@ -446,6 +449,7 @@ export interface PlaybackRecordRow {
   share_pct?: number | null
   cover_url?: string | null
   caption?: string | null
+  qualified?: boolean | null
 }
 
 export interface EntityRecordFamily {
@@ -466,8 +470,13 @@ export interface PlaybackTimePatternRecords {
   monthly_peak: EntityRecordFamily
   yearly_peak: EntityRecordFamily
   late_night_peak_day: PlaybackRecordRow[]
+  late_night_trajectory?: {
+    monthly: PlaybackRecordRow[]
+    quarterly: PlaybackRecordRow[]
+    monthly_min_plays: number
+    quarterly_min_plays: number
+  }
   weekday_preference: PlaybackRecordRow[]
-  new_year_eve: PlaybackRecordRow[]
 }
 
 export interface PlaybackReignRecords {

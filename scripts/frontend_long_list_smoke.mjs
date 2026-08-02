@@ -810,7 +810,7 @@ const SCENARIOS = {
   'playback-records-mini-rank': (ctx) => exercisePaginatedList({
     ...ctx,
     route: '/analysis/records',
-    readyText: '狂热时刻',
+    readyText: '高光时刻',
     pagePattern: '\\d+\\s*—\\s*\\d+\\s*/\\s*\\d+',
     focusText: '单日爆听',
   }),

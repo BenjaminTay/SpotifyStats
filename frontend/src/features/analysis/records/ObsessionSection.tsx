@@ -1,20 +1,41 @@
-/** 狂热时刻 */
+/** 高光时刻 */
 
 import { useMemo, useState } from 'react'
-import { Flame } from 'lucide-react'
+import { ArrowLeftRight, Clock3, Flame, Hash } from 'lucide-react'
 import { displayName } from '@/lib/chinese'
-import type { EntityRecordType, PlaybackObsessionRecords, PlaybackRecordRow } from '@/types/analysis'
-import { EntityRecordCard, RecordCard, MiniRankTable, RankNum, TrackCell, ArtistCell, AlbumCell, ValueBar, SectionHeader } from './PlaybackRecordsPrimitives'
+import type { EntityRecordType, PlaybackBehaviorRecords, PlaybackObsessionRecords, PlaybackRecordRow, PlaybackReignRecords } from '@/types/analysis'
+import {
+  EntityRecordCard,
+  EntityRecordToggle,
+  RecordCard,
+  RankNum,
+  TrackCell,
+  ArtistCell,
+  AlbumCell,
+  ValueBar,
+  SectionHeader,
+  MiniRankTable,
+} from './PlaybackRecordsPrimitives'
+import {
+  DailyTotalLeaderboard,
+  type DailyTotalSortMode,
+} from './DailyTotalLeaderboard'
+import { PlaybackMilestonesCard } from './BehaviorSection'
+import { FastestMilestoneCard } from './ReignsSection'
 
-interface Props { data: PlaybackObsessionRecords }
+interface Props {
+  data: PlaybackObsessionRecords
+  reigns: PlaybackReignRecords
+  behavior: PlaybackBehaviorRecords
+}
 
-type DailyTotalSortMode = 'plays' | 'hours'
+type DailyPeakMode = 'plays' | 'hours'
 
 const DAILY_TOTAL_RECORD_LIMIT = 50
 
 const dailyTotalSortOptions: { value: DailyTotalSortMode; label: string }[] = [
-  { value: 'plays', label: '播放次数纪录' },
-  { value: 'hours', label: '总时长纪录' },
+  { value: 'plays', label: '按次数' },
+  { value: 'hours', label: '按时长' },
 ]
 
 function DailyTotalSortToggle({
@@ -38,6 +59,11 @@ function DailyTotalSortToggle({
               : 'text-muted-foreground hover:text-foreground'
           }`}
         >
+          {option.value === 'plays' ? (
+            <Hash className="mr-1 inline-block h-3 w-3" aria-hidden="true" />
+          ) : (
+            <Clock3 className="mr-1 inline-block h-3 w-3" aria-hidden="true" />
+          )}
           {option.label}
         </button>
       ))}
@@ -45,60 +71,126 @@ function DailyTotalSortToggle({
   )
 }
 
-const fmtMetric = (value?: number | null, unit = '') =>
-  value == null ? '—' : `${new Intl.NumberFormat('zh-CN').format(value)}${unit}`
+const metricMax = (
+  rows: PlaybackRecordRow[],
+  getValue: (row: PlaybackRecordRow) => number = (row) => row.value,
+) => Math.max(0, ...rows.map(getValue))
 
-function DailyTopEntityCell({
-  type,
-  name,
-  artistName,
-  plays,
-  coverUrl,
-}: {
-  type: 'track' | 'album' | 'artist'
-  name?: string | null
-  artistName?: string | null
-  plays?: number | null
-  coverUrl?: string | null
-}) {
-  if (!name) {
-    return <span className="font-sans text-[12px] text-muted-foreground">—</span>
+function entityCell(entity: EntityRecordType, row: PlaybackRecordRow) {
+  if (entity === 'track') {
+    return (
+      <TrackCell
+        trackId={row.entity_id}
+        name={row.name}
+        artistName={row.artist_name}
+        coverUrl={row.cover_url}
+      />
+    )
   }
+  if (entity === 'album') {
+    return (
+      <AlbumCell name={row.name} artistName={row.artist_name} coverUrl={row.cover_url} />
+    )
+  }
+  return <ArtistCell name={row.name} coverUrl={row.cover_url} />
+}
 
-  const metric = typeof plays === 'number' ? `${fmtMetric(plays, '次')}居首` : '当日最高'
+function DailyPeakRecordCard({ data }: Pick<Props, 'data'>) {
+  const [mode, setMode] = useState<DailyPeakMode>('plays')
+  const [entity, setEntity] = useState<EntityRecordType>('track')
+  const family = mode === 'plays' ? data.daily_binge : data.daily_duration
+  const rows = family?.[entity] ?? []
+  const maxValue = metricMax(rows)
+  const isPlays = mode === 'plays'
+  const nextModeLabel = isPlays ? '听歌时长' : '播放次数'
 
   return (
-    <div className="min-w-[160px] space-y-1">
-      {type === 'track' && (
-        <TrackCell name={name} artistName={artistName} coverUrl={coverUrl} />
-      )}
-      {type === 'album' && (
-        <AlbumCell name={name} artistName={artistName} coverUrl={coverUrl} />
-      )}
-      {type === 'artist' && <ArtistCell name={name} coverUrl={coverUrl} />}
-      <p className="pl-[50px] font-sans text-[11px] text-muted-foreground">{metric}</p>
-    </div>
+    <RecordCard
+      title="单日巅峰 · Daily Peak"
+      subtitle="单个自然日内播放次数或累计听歌时长最高的歌曲、专辑与艺人"
+      toggle={
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            aria-pressed={!isPlays}
+            aria-label={`排名口径：${isPlays ? '播放次数' : '听歌时长'}。点击切换为${nextModeLabel}`}
+            onClick={() => setMode(isPlays ? 'hours' : 'plays')}
+            className="inline-flex items-center gap-1.5 rounded-[6px] border border-border bg-muted/30 px-2.5 py-1 font-sans text-[11px] font-semibold text-foreground transition-colors hover:border-accent-foreground/40 hover:bg-muted/60"
+          >
+            {isPlays ? (
+              <Hash className="h-3 w-3 text-accent-foreground" aria-hidden="true" />
+            ) : (
+              <Clock3 className="h-3 w-3 text-accent-foreground" aria-hidden="true" />
+            )}
+            按{isPlays ? '播放次数' : '听歌时长'}
+            <ArrowLeftRight className="h-3 w-3 text-muted-foreground" aria-hidden="true" />
+          </button>
+          <EntityRecordToggle
+            value={entity}
+            available={['track', 'album', 'artist']}
+            onChange={setEntity}
+          />
+        </div>
+      }
+    >
+      <MiniRankTable
+        rows={rows}
+        columns={[
+          {
+            header: '#',
+            width: '48px',
+            align: 'center',
+            render: (_, index) => <RankNum rank={index + 1} />,
+          },
+          {
+            header: entity === 'track' ? '歌曲' : entity === 'album' ? '专辑' : '艺人',
+            render: (row) => entityCell(entity, row),
+          },
+          {
+            header: isPlays ? '播放次数' : '听歌时长',
+            width: '160px',
+            align: 'right',
+            render: (row) => (
+              <ValueBar
+                value={row.value}
+                max={maxValue}
+                suffix={displayName(row.unit)}
+                label={`${isPlays ? '播放次数' : '听歌时长'}：${displayName(row.name)}`}
+              />
+            ),
+          },
+          {
+            header: '日期',
+            width: '120px',
+            align: 'right',
+            render: (row) => (
+              <span className="font-sans text-[12px] text-muted-foreground">
+                {row.date ?? '—'}
+              </span>
+            ),
+          },
+        ]}
+      />
+    </RecordCard>
   )
 }
 
-function marathonCols(entity: EntityRecordType) {
+function marathonCols(entity: EntityRecordType, rows: PlaybackRecordRow[]) {
+  const maxRuns = metricMax(rows)
+  const maxHours = metricMax(rows, (row) => row.secondary_value ?? 0)
   const nameCol = {
     header: entity === 'track' ? '歌曲' : entity === 'album' ? '专辑' : '艺人',
-    render: (row: PlaybackRecordRow) => {
-      if (entity === 'track') return <TrackCell trackId={row.entity_id} name={row.name} artistName={row.artist_name} coverUrl={row.cover_url} />
-      if (entity === 'album') return <AlbumCell name={row.name} artistName={row.artist_name} coverUrl={row.cover_url} />
-      return <ArtistCell name={row.name} coverUrl={row.cover_url} />
-    },
+    render: (row: PlaybackRecordRow) => entityCell(entity, row),
   }
   return [
     { header: '#', width: '48px', align: 'center' as const, render: (_: PlaybackRecordRow, i: number) => <RankNum rank={i + 1} /> },
     nameCol,
-    { header: '连续次数', width: '120px', align: 'right' as const, render: (row: PlaybackRecordRow) => <ValueBar value={row.value} max={row.value} suffix={displayName(row.unit)} /> },
-    { header: '总时长', width: '120px', align: 'right' as const, render: (row: PlaybackRecordRow) => <span className="font-sans text-[14px] tabular-nums text-muted-foreground">{row.secondary_value != null ? `${row.secondary_value} ${displayName(row.secondary_unit ?? '')}` : '—'}</span> },
+    { header: '连续次数', width: '180px', align: 'right' as const, render: (row: PlaybackRecordRow) => <ValueBar value={row.value} max={maxRuns} suffix={displayName(row.unit)} label={`连续次数：${displayName(row.name)}`} /> },
+    { header: '总时长', width: '160px', align: 'right' as const, render: (row: PlaybackRecordRow) => row.secondary_value != null ? <ValueBar value={row.secondary_value} max={maxHours} suffix={displayName(row.secondary_unit ?? '')} label={`马拉松时长：${displayName(row.name)}`} /> : <span className="font-sans text-[12px] text-muted-foreground">—</span> },
   ]
 }
 
-export function ObsessionSection({ data }: Props) {
+export function ObsessionSection({ data, reigns, behavior }: Props) {
   const [dailyTotalSort, setDailyTotalSort] = useState<DailyTotalSortMode>('plays')
   const dailyTotalRows = useMemo(() => {
     const rows = [...(data.daily_total_record ?? [])]
@@ -115,44 +207,26 @@ export function ObsessionSection({ data }: Props) {
 
   return (
     <div>
-      <SectionHeader icon={Flame} title="狂热时刻" subtitle="关于极端播放行为的记录——哪一天听得最疯、哪首歌循环最多。" />
-      <EntityRecordCard title="单日爆听 · Daily Binge" subtitle="单个自然日内播放次数最多的歌曲/专辑/艺人"
-        recordsByEntity={{ track: data.daily_binge?.track ?? [], album: data.daily_binge?.album ?? [], artist: data.daily_binge?.artist ?? [] }}
-        columns={(entity) => [
-          { header: '#', width: '48px', align: 'center', render: (_, i) => <RankNum rank={i + 1} /> },
-          { header: entity === 'track' ? '歌曲' : entity === 'album' ? '专辑' : '艺人', render: (row) => entity === 'track' ? <TrackCell trackId={row.entity_id} name={row.name} artistName={row.artist_name} coverUrl={row.cover_url} /> : entity === 'album' ? <AlbumCell name={row.name} artistName={row.artist_name} coverUrl={row.cover_url} /> : <ArtistCell name={row.name} coverUrl={row.cover_url} /> },
-          { header: '次数', width: '80px', align: 'right', render: (row) => <span className="font-serif text-[20px] font-semibold tabular-nums">{row.value}</span> },
-          { header: '日期', width: '120px', align: 'right', render: (row) => <span className="font-sans text-[12px] text-muted-foreground">{row.date ?? '—'}</span> },
-        ]} />
-      <EntityRecordCard title="单日听歌时长 · Daily Duration" subtitle="单个自然日内累计播放时长最高的歌曲/专辑/艺人"
-        recordsByEntity={{ track: data.daily_duration?.track ?? [], album: data.daily_duration?.album ?? [], artist: data.daily_duration?.artist ?? [] }}
-        columns={(entity) => [
-          { header: '#', width: '48px', align: 'center', render: (_, i) => <RankNum rank={i + 1} /> },
-          { header: entity === 'track' ? '歌曲' : entity === 'album' ? '专辑' : '艺人', render: (row) => entity === 'track' ? <TrackCell trackId={row.entity_id} name={row.name} artistName={row.artist_name} coverUrl={row.cover_url} /> : entity === 'album' ? <AlbumCell name={row.name} artistName={row.artist_name} coverUrl={row.cover_url} /> : <ArtistCell name={row.name} coverUrl={row.cover_url} /> },
-          { header: '时长', width: '100px', align: 'right', render: (row) => <ValueBar value={row.value} max={row.value} suffix={displayName(row.unit)} /> },
-          { header: '日期', width: '120px', align: 'right', render: (row) => <span className="font-sans text-[12px] text-muted-foreground">{row.date ?? '—'}</span> },
-        ]} />
+      <SectionHeader icon={Flame} title="高光时刻" subtitle="把最强烈的一天、关键里程碑与最快达成纪录放在同一条个人音乐时间线上。" />
+      <DailyPeakRecordCard data={data} />
+      <RecordCard
+        title="单日总量记录 · Daily Total"
+        subtitle="把一天的播放强度、曲目广度与最高歌曲、专辑、艺人放在同一张日历切片中"
+        toggle={<DailyTotalSortToggle value={dailyTotalSort} onChange={setDailyTotalSort} />}
+      >
+        {dailyTotalRows.length > 0 ? (
+          <DailyTotalLeaderboard
+            key={dailyTotalSort}
+            rows={dailyTotalRows}
+            sortMode={dailyTotalSort}
+          />
+        ) : <p className="py-6 text-center font-sans text-[12px] text-muted-foreground">暂无单日总量记录</p>}
+      </RecordCard>
+      <PlaybackMilestonesCard data={behavior} />
+      <FastestMilestoneCard data={reigns} />
       <EntityRecordCard title="连续播放马拉松 · Consecutive Marathon" subtitle="播放序列中连续出现同一实体的最长 run"
         recordsByEntity={{ track: data.consecutive_marathon?.track ?? [], album: data.consecutive_marathon?.album ?? [], artist: data.consecutive_marathon?.artist ?? [] }}
-        columns={marathonCols} />
-      {dailyTotalRows.length > 0 && (
-        <RecordCard
-          title="单日总量纪录 · Daily Total Record"
-          subtitle="按单日播放次数或总时长排序，并列出当天播放最高歌曲/专辑/艺人"
-          toggle={<DailyTotalSortToggle value={dailyTotalSort} onChange={setDailyTotalSort} />}
-        >
-          <MiniRankTable rows={dailyTotalRows} columns={[
-            { header: '#', width: '48px', align: 'center', render: (_, i) => <RankNum rank={i + 1} /> },
-            { header: '日期', width: '110px', render: (row) => <span className="font-sans text-[14px] font-medium">{row.date ?? '—'}</span> },
-            { header: '当日播放次数', width: '110px', align: 'right', render: (row) => <span className="whitespace-nowrap font-serif text-[20px] font-semibold tabular-nums">{fmtMetric(row.total_plays, '次')}</span> },
-            { header: '当日播放时长', width: '110px', align: 'right', render: (row) => <span className="whitespace-nowrap font-serif text-[20px] font-semibold tabular-nums">{fmtMetric(row.total_hours, '小时')}</span> },
-            { header: '当日播放歌曲', width: '110px', align: 'right', render: (row) => <span className="whitespace-nowrap font-serif text-[20px] font-semibold tabular-nums">{fmtMetric(row.unique_tracks, '首')}</span> },
-            { header: '最高歌曲', width: '190px', render: (row) => <DailyTopEntityCell type="track" name={row.top_track_name} artistName={row.top_track_artist_name} plays={row.top_track_plays} coverUrl={row.top_track_cover_url} /> },
-            { header: '最高专辑', width: '190px', render: (row) => <DailyTopEntityCell type="album" name={row.top_album_name} artistName={row.top_album_artist_name} plays={row.top_album_plays} coverUrl={row.top_album_cover_url} /> },
-            { header: '最高艺人', width: '170px', render: (row) => <DailyTopEntityCell type="artist" name={row.top_artist_name} plays={row.top_artist_plays} coverUrl={row.top_artist_cover_url} /> },
-          ]} />
-        </RecordCard>
-      )}
+        columns={(entity) => marathonCols(entity, data.consecutive_marathon?.[entity] ?? [])} />
     </div>
   )
 }

@@ -132,25 +132,44 @@ def _platform_switch_day(event_frame):
     return pd.DataFrame(rows) if rows else pd.DataFrame()
 
 
+def _milestone_targets(total_plays: int) -> list[int]:
+    """Return readable, completed milestone nodes for the valid-play total."""
+    if total_plays < 500:
+        return []
+    if total_plays < 3000:
+        return list(range(500, total_plays // 500 * 500 + 1, 500))
+    if total_plays <= 10000:
+        targets = [target for target in (1000, 2000, 5000, 8000) if target <= total_plays]
+        targets.append(total_plays // 1000 * 1000)
+        return sorted(set(targets))
+
+    targets = [1000, 5000, 10000]
+    targets.extend(range(20000, total_plays // 10000 * 10000 + 1, 10000))
+    return sorted(set(targets))
+
+
 def _playback_milestones(event_frame):
-    """播放里程碑。"""
+    """播放里程碑：按有效播放总量选择可读的已完成节点。"""
     if event_frame.empty:
         return pd.DataFrame()
     df_sorted = event_frame.sort_values("ts").copy()
     milestones = []
-    for target in [1000, 5000, 10000, 50000]:
-        if target > len(df_sorted):
-            break
+    total_plays = len(df_sorted)
+    for target in _milestone_targets(total_plays):
         row = df_sorted.iloc[target - 1]
+        track_id = row.get("canonical_track_id", row.get("track_id"))
         milestones.append(
             {
                 "rank": len(milestones) + 1,
+                "entity_type": "track",
+                "entity_id": str(int(track_id)) if pd.notna(track_id) else None,
                 "name": str(row.get("track_name", "")),
                 "artist_name": str(row.get("artist_name", "")),
                 "value": float(target),
                 "unit": "次播放里程碑",
                 "date": str(row["ts_date"]),
-                "caption": f"第 {target} 次有效播放",
+                "caption": f"第 {target:,} 次播放",
+                "total_plays": total_plays,
             }
         )
     return pd.DataFrame(milestones) if milestones else pd.DataFrame()

@@ -104,14 +104,17 @@ def _top_daily_entity(frame, group_col, name_col, artist_col=None, prefix="track
     if len(gb_cols) <= 1:
         return {}
 
-    counts = (
-        frame.groupby(gb_cols, dropna=False)
-        .agg(
-            entity_plays=("play_id", "count"),
-            entity_ms=("ms_played", "sum"),
-        )
-        .reset_index()
-    )
+    aggregations = {
+        "entity_plays": ("play_id", "count"),
+        "entity_ms": ("ms_played", "sum"),
+    }
+    # A canonical track group is not itself a routable track detail ID. Keep a
+    # real member track ID from the winning group so the daily snapshot can link
+    # to an existing song detail page.
+    if prefix == "track" and "track_id" in frame.columns:
+        aggregations["detail_track_id"] = ("track_id", "first")
+
+    counts = frame.groupby(gb_cols, dropna=False).agg(**aggregations).reset_index()
     if counts.empty:
         return {}
 
@@ -132,6 +135,13 @@ def _top_daily_entity(frame, group_col, name_col, artist_col=None, prefix="track
             item[f"top_{prefix}_artist_name"] = (
                 str(row[artist_col]) if pd.notna(row[artist_col]) else ""
             )
+        if prefix == "track" and "detail_track_id" in row.index:
+            detail_track_id = row["detail_track_id"]
+            if pd.notna(detail_track_id):
+                try:
+                    item["top_track_entity_id"] = str(int(float(detail_track_id)))
+                except (TypeError, ValueError, OverflowError):
+                    item["top_track_entity_id"] = str(detail_track_id)
         result[date] = item
     return result
 

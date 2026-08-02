@@ -271,6 +271,7 @@ class TestAnalysisRecordsEndpoint:
             assert row["total_hours"] is not None and row["total_hours"] >= 0
             assert row["unique_tracks"] and row["unique_tracks"] > 0
             assert row["top_track_name"]
+            assert row["top_track_entity_id"]
             assert row["top_album_name"]
             assert row["top_artist_name"]
             assert "top_track_cover_url" in row

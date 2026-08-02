@@ -245,6 +245,8 @@ class PlaybackRecordRow(BaseModel):
     name: str
     artist_name: str | None = None
     artist_names: list[str] | None = None
+    artist_cover_urls: list[str | None] | None = None
+    artist_play_counts: list[int] | None = None
     value: float
     unit: str
     secondary_value: float | None = None
@@ -256,6 +258,7 @@ class PlaybackRecordRow(BaseModel):
     total_hours: float | None = None
     unique_tracks: int | None = None
     top_track_name: str | None = None
+    top_track_entity_id: str | None = None
     top_track_artist_name: str | None = None
     top_track_plays: int | None = None
     top_track_cover_url: str | None = None
@@ -269,6 +272,7 @@ class PlaybackRecordRow(BaseModel):
     share_pct: float | None = None
     cover_url: str | None = None
     caption: str | None = None
+    qualified: bool | None = None
 
 
 class EntityRecordFamily(BaseModel):
@@ -286,11 +290,19 @@ class PlaybackObsessionRecords(BaseModel):
     daily_total_record: list[PlaybackRecordRow] = []
 
 
+class PlaybackLateNightTrajectory(BaseModel):
+    monthly: list[PlaybackRecordRow] = []
+    quarterly: list[PlaybackRecordRow] = []
+    monthly_min_plays: int = 500
+    quarterly_min_plays: int = 1500
+
+
 class PlaybackTimePatternRecords(BaseModel):
     hourly_dominance: EntityRecordFamily = EntityRecordFamily()
     monthly_peak: EntityRecordFamily = EntityRecordFamily()
     yearly_peak: EntityRecordFamily = EntityRecordFamily()
     late_night_peak_day: list[PlaybackRecordRow] = []
+    late_night_trajectory: PlaybackLateNightTrajectory = PlaybackLateNightTrajectory()
     weekday_preference: list[PlaybackRecordRow] = []
     new_year_eve: list[PlaybackRecordRow] = []
 

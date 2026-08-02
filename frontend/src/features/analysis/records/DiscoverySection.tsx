@@ -1,76 +1,109 @@
-/** 探索发现 */
+/** 探索与品味 */
 
 import { Compass } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import { displayName } from '@/lib/chinese'
 import type { PlaybackDiscoveryRecords, PlaybackRecordRow } from '@/types/analysis'
-import { EntityRecordCard, RecordCard, MiniRankTable, RankNum, TrackCell, ArtistCell, AlbumCell, SectionHeader } from './PlaybackRecordsPrimitives'
+import { EntityRecordCard, RecordCard, MiniRankTable, RankNum, TrackCell, ArtistCell, AlbumCell, SectionHeader, ValueBar } from './PlaybackRecordsPrimitives'
 
 interface Props { data: PlaybackDiscoveryRecords }
 
 export function DiscoverySection({ data }: Props) {
   const featTrackRows = data.feat_lover?.track ?? []
-  const featSummaryRow = featTrackRows.find(
-    (row) => row.rank === 0 || row.caption?.includes('合作曲播放'),
+  const featSummaryRow = featTrackRows.find((row) =>
+    row.rank === 0 || row.name === '合作曲播放佔比' || row.name === '合作曲播放占比',
   )
   const featTrackRankRows = featSummaryRow
     ? featTrackRows.filter((row) => row !== featSummaryRow)
     : featTrackRows
   const featArtistRows = data.feat_lover?.artist ?? []
+  const featAlbumRows = data.feat_lover?.album ?? []
+  const discoveryRows = data.discovery_day ?? { track: [], album: [], artist: [] }
 
   return (
     <div>
-      <SectionHeader icon={Compass} title="探索发现" subtitle="关于新发现和多样性——你最博爱的那一天、陪你跨越最远年代的作品。" />
+      <SectionHeader icon={Compass} title="探索与品味" subtitle="从新发现、完整专辑、合作歌曲与同名作品中，看见你的聆听广度。" />
       <EntityRecordCard title="发现日 · Discovery Day" subtitle="单日首次播放的新歌曲/专辑/艺人数量最多的日期"
         recordsByEntity={{ track: data.discovery_day?.track ?? [], album: data.discovery_day?.album ?? [], artist: data.discovery_day?.artist ?? [] }}
-        columns={() => [
+        columns={(entity) => {
+          const rows = discoveryRows[entity] ?? []
+          const max = Math.max(0, ...rows.map((row) => row.value))
+          return [
           { header: '#', width: '48px', align: 'center', render: (_, i) => <RankNum rank={i + 1} /> },
           { header: '日期', render: (row) => <span className="font-sans text-[14px] font-medium">{displayName(row.name)}</span> },
-          { header: '新发现', width: '100px', align: 'right', render: (row) => <span className="font-serif text-[20px] font-semibold tabular-nums">{row.value}<span className="ml-1 font-sans text-[12px] font-normal text-muted-foreground">{displayName(row.unit)}</span></span> },
-        ]} />
-      <EntityRecordCard title="最长不重复序列 · Longest No-Repeat" subtitle="播放序列中连续不重复歌曲/专辑/艺人的最长序列"
-        recordsByEntity={{ track: data.longest_no_repeat?.track ?? [], album: data.longest_no_repeat?.album ?? [], artist: data.longest_no_repeat?.artist ?? [] }}
-        columns={(entity) => [
-          { header: '#', width: '48px', align: 'center', render: (_, i) => <RankNum rank={i + 1} /> },
-          { header: entity === 'track' ? '歌曲' : entity === 'album' ? '专辑' : '艺人', render: (row) => <span className="font-sans text-[14px] font-medium">{displayName(row.name)}</span> },
-          { header: '序列长度', width: '120px', align: 'right', render: (row) => <span className="font-serif text-[20px] font-semibold tabular-nums">{row.value}<span className="ml-1 font-sans text-[12px] font-normal text-muted-foreground">{displayName(row.unit)}</span></span> },
-        ]} />
-      <EntityRecordCard title="专辑完成者 · Album Completionist" subtitle="同一专辑中播放过的不同歌曲占比最高（至少播放3首）"
+          { header: '新发现', width: '170px', align: 'right', render: (row) => <ValueBar value={row.value} max={max} suffix={displayName(row.unit)} label={`${displayName(row.name)}新发现数量`} /> },
+          ]
+        }} />
+      <EntityRecordCard title="专辑全碟回放 · Full Album Replays" subtitle="仅统计曲目总数可靠且已听完全部曲目的专辑；完整回放次数取各曲目播放次数的最小值"
         recordsByEntity={{ album: data.album_completionist?.album ?? [] }} defaultEntity="album"
         columns={() => [
           { header: '#', width: '48px', align: 'center', render: (_, i) => <RankNum rank={i + 1} /> },
           { header: '专辑', render: (row) => <AlbumCell name={row.name} artistName={row.artist_name} coverUrl={row.cover_url} /> },
-          { header: '完成度', width: '120px', align: 'right', render: (row) => <span className="font-serif text-[20px] font-semibold tabular-nums">{row.value}<span className="ml-1 font-sans text-[12px] font-normal text-muted-foreground">{displayName(row.unit)}</span></span> },
+          { header: '完整回放', width: '130px', align: 'right', render: (row) => <span className="font-serif text-[20px] font-semibold tabular-nums">{row.value}<span className="ml-1 font-sans text-[12px] font-normal text-muted-foreground">{displayName(row.unit)}</span></span> },
+          { header: '曲目覆盖', width: '110px', align: 'right', render: (row) => <span className="font-sans text-[12px] text-muted-foreground">{row.secondary_value}{displayName(row.secondary_unit ?? '')}</span> },
+          { header: '总播放', width: '100px', align: 'right', render: (row) => <span className="font-sans text-[12px] text-muted-foreground">{row.total_plays ?? '—'} 次</span> },
         ]} />
-      {featSummaryRow && (
-        <RecordCard title="合作曲总体占比 · Collaboration Share" subtitle="所有播放中带 feat/with/& 等合作标记的比例">
-          <MiniRankTable rows={[featSummaryRow]} columns={[
-            { header: '范围', render: (row) => <span className="font-sans text-[14px] font-medium">{displayName(row.name)}</span> },
-            { header: '占比', width: '100px', align: 'right', render: (row) => <span className="font-serif text-[20px] font-semibold tabular-nums">{row.value}<span className="ml-1 font-sans text-[12px] font-normal text-muted-foreground">{displayName(row.unit)}</span></span> },
-            { header: '播放次数', width: '140px', align: 'right', render: (row) => <span className="font-sans text-[12px] text-muted-foreground">{row.secondary_value}{displayName(row.secondary_unit ?? '')}</span> },
-          ]} />
-        </RecordCard>
-      )}
-      {(featTrackRankRows.length > 0 || featArtistRows.length > 0) && (
-        <EntityRecordCard title="合作曲排行 · Feat Ranking" subtitle="合作歌曲播放次数与常出现的合作艺人"
-          recordsByEntity={{ track: featTrackRankRows, artist: featArtistRows }} defaultEntity="track"
-          columns={(entity) => [
+      <EntityRecordCard title="合作曲排行 · Feat Ranking" subtitle="合作歌曲与常出现的合作艺人排行"
+          headerExtra={featSummaryRow ? (
+            <div aria-label="合作曲播放摘要" className="flex max-w-full flex-wrap items-center gap-x-3 gap-y-1 rounded-[8px] border border-accent-foreground/20 bg-accent-foreground/[0.05] px-3 py-1.5 font-sans text-[10px] text-muted-foreground">
+              <span>播放次数 <strong className="ml-1 font-serif text-[15px] font-semibold tabular-nums text-foreground">{Number(featSummaryRow.secondary_value ?? 0).toLocaleString('zh-CN')}</strong></span>
+              <span className="hidden h-4 w-px bg-border sm:block" aria-hidden="true" />
+              <span>占全部有效播放 <strong className="ml-1 font-serif text-[15px] font-semibold tabular-nums text-accent-foreground">{featSummaryRow.value}%</strong></span>
+            </div>
+          ) : undefined}
+          recordsByEntity={{ track: featTrackRankRows, album: featAlbumRows, artist: featArtistRows }} defaultEntity="track"
+          columns={(entity) => {
+            const rows = entity === 'track' ? featTrackRankRows : entity === 'album' ? featAlbumRows : featArtistRows
+            const max = Math.max(0, ...rows.map((row) => row.value))
+            return [
             { header: '#', width: '48px', align: 'center', render: (_, i) => <RankNum rank={i + 1} /> },
             entity === 'track'
               ? { header: '歌曲', render: (row: PlaybackRecordRow) => <TrackCell name={row.name} artistName={row.artist_name} coverUrl={row.cover_url} /> }
-              : { header: '艺人', render: (row: PlaybackRecordRow) => <ArtistCell name={row.name} coverUrl={row.cover_url} /> },
-            { header: '播放次数', width: '100px', align: 'right', render: (row) => <span className="font-serif text-[20px] font-semibold tabular-nums">{row.value}<span className="ml-1 font-sans text-[12px] font-normal text-muted-foreground">{displayName(row.unit)}</span></span> },
-          ]} />
-      )}
-      {data.same_name_diff_artist && data.same_name_diff_artist.length > 0 && (
-        <RecordCard title="同名异曲 · Same Name, Different Artist" subtitle="播放过相同歌名但不同艺人的歌曲">
+              : entity === 'album'
+                ? { header: '专辑', render: (row: PlaybackRecordRow) => <AlbumCell name={row.name} artistName={row.artist_name} coverUrl={row.cover_url} /> }
+                : { header: '艺人', render: (row: PlaybackRecordRow) => <ArtistCell name={row.name} coverUrl={row.cover_url} /> },
+            { header: '播放次数', width: '156px', align: 'right', render: (row) => <ValueBar value={row.value} max={max} suffix="次" label={`${displayName(row.name)}合作曲播放次数`} /> },
+            ]
+          }} />
+      <RecordCard title="同名异曲 · Same Name, Different Artist" subtitle="以歌名为索引，对照你听过的所有不同艺人版本">
           <MiniRankTable rows={data.same_name_diff_artist} columns={[
-            { header: '#', width: '48px', align: 'center', render: (_, i) => <RankNum rank={i + 1} /> },
-            { header: '歌名', render: (row) => <span className="font-sans text-[14px] font-medium">{displayName(row.name)}</span> },
-            { header: '不同艺人', width: '100px', align: 'right', render: (row) => <span className="font-serif text-[20px] font-semibold tabular-nums">{row.value}<span className="ml-1 font-sans text-[12px] font-normal text-muted-foreground">{displayName(row.unit)}</span></span> },
-            { header: '示例', render: (row) => <span className="font-sans text-[12px] text-muted-foreground truncate max-w-[200px] inline-block">{displayName(row.caption ?? '—')}</span> },
+            { header: '歌名', width: '24%', verticalAlign: 'middle', render: (row) => (
+              <div className="min-w-0 pr-3 font-serif text-[17px] font-semibold leading-snug break-words">{displayName(row.name)}</div>
+            ) },
+            { header: '艺人版本', verticalAlign: 'middle', render: (row) => {
+              const names = row.artist_names?.length ? row.artist_names : (row.caption?.split('、').filter(Boolean) ?? [])
+              return (
+                <div className="min-w-0 py-1">
+                  <div className="flex flex-wrap gap-2">
+                    {names.map((name, index) => {
+                      const coverUrl = row.artist_cover_urls?.[index]
+                      const plays = row.artist_play_counts?.[index]
+                      return (
+                        <Link key={`${name}-${index}`} to={`/music/artists/${encodeURIComponent(name)}`} className="inline-flex max-w-full items-center gap-2 rounded-full border border-border/70 bg-muted/20 py-1 pr-2.5 pl-1 transition-colors hover:bg-muted/50">
+                          <span aria-hidden="true" className="relative flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-full border border-accent-foreground/20 bg-accent-foreground/10 font-serif text-[11px] font-semibold text-accent-foreground">
+                            {displayName(name).slice(0, 1).toUpperCase()}
+                            {coverUrl && (
+                              <img
+                                src={coverUrl}
+                                alt=""
+                                className="absolute inset-0 h-full w-full object-cover"
+                                loading="lazy"
+                                decoding="async"
+                                onError={(event) => { event.currentTarget.style.display = 'none' }}
+                              />
+                            )}
+                          </span>
+                          <span className="font-sans text-[12px] font-medium leading-tight break-words">{displayName(name)}</span>
+                          {plays != null && <span className="shrink-0 rounded-full bg-background/80 px-1.5 py-0.5 font-sans text-[10px] font-semibold tabular-nums text-muted-foreground">{plays.toLocaleString('zh-CN')} 次</span>}
+                        </Link>
+                      )
+                    })}
+                  </div>
+                </div>
+              )
+            } },
           ]} />
-        </RecordCard>
-      )}
+      </RecordCard>
     </div>
   )
 }

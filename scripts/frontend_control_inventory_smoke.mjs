@@ -47,7 +47,7 @@ const ROUTE_READY_MARKERS = {
   '/': ['DASHBOARD /', '总播放次数'],
   '/analysis/stats': ['PLAYBACK / ANALYSIS', '播放统计'],
   '/analysis/charts': ['PLAYBACK RANKING', '播放排行'],
-  '/analysis/records': ['PLAYBACK RECORDS', '狂热时刻'],
+  '/analysis/records': ['PLAYBACK RECORDS', '高光时刻'],
   '/yearly-review': ['YEARLY SUMMARY', '听歌人格'],
   '/billboard': ['CHART / WEEKLY', 'Billboard 周榜'],
   '/billboard/number-ones': ['CHART / NUMBER ONES', '每周冠军歌曲'],

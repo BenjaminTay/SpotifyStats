@@ -49,7 +49,13 @@ def compute_playback_records(
     compute_reign_records(records, event_frame, track_frame, album_frame, artist_frame)
     compute_longevity_records(records, event_frame, track_frame, album_frame, artist_frame)
     compute_discovery_records(
-        records, event_frame, track_frame, album_frame, artist_frame, conn=conn
+        records,
+        event_frame,
+        track_frame,
+        album_frame,
+        artist_frame,
+        conn=conn,
+        merge_level=merge_level,
     )
     compute_behavior_records(records, event_frame, track_frame, album_frame, artist_frame)
 

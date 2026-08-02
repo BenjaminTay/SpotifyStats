@@ -14,6 +14,7 @@ import billboardVersusPageSource from '../pages/BillboardVersusPage.tsx?raw'
 import analysisRecordsPageSource from '../pages/AnalysisRecordsPage.tsx?raw'
 import playbackRecordsExperienceSource from '../features/analysis/records/PlaybackRecordsExperience.tsx?raw'
 import obsessionSectionSource from '../features/analysis/records/ObsessionSection.tsx?raw'
+import dailyTotalLeaderboardSource from '../features/analysis/records/DailyTotalLeaderboard.tsx?raw'
 import yearlyReviewPageSource from '../pages/YearlyReviewPage.tsx?raw'
 import accountCenterPageSource from '../pages/AccountCenterPage.tsx?raw'
 import habitsTabSource from '../features/account/habits/HabitsTab.tsx?raw'
@@ -682,16 +683,14 @@ describe('Phase 5 architecture guardrails', () => {
   it('keeps Daily Total Record as a sortable day leaderboard', () => {
     expect(obsessionSectionSource).toContain("'plays' | 'hours'")
     expect(obsessionSectionSource).toContain('DAILY_TOTAL_RECORD_LIMIT = 50')
-    expect(obsessionSectionSource).toContain('播放次数纪录')
-    expect(obsessionSectionSource).toContain('总时长纪录')
-    expect(obsessionSectionSource).toContain('当日播放次数')
-    expect(obsessionSectionSource).toContain('当日播放时长')
-    expect(obsessionSectionSource).toContain('当日播放歌曲')
-    expect(obsessionSectionSource).toContain('最高歌曲')
-    expect(obsessionSectionSource).toContain('最高专辑')
-    expect(obsessionSectionSource).toContain('最高艺人')
-    expect(obsessionSectionSource).toContain('top_track_cover_url')
-    expect(obsessionSectionSource).toContain('top_album_cover_url')
-    expect(obsessionSectionSource).toContain('top_artist_cover_url')
+    expect(obsessionSectionSource).toContain('DailyTotalLeaderboard')
+    expect(obsessionSectionSource).toContain('按次数')
+    expect(obsessionSectionSource).toContain('按时长')
+    expect(dailyTotalLeaderboardSource).toContain('最高歌曲')
+    expect(dailyTotalLeaderboardSource).toContain('最高专辑')
+    expect(dailyTotalLeaderboardSource).toContain('最高艺人')
+    expect(dailyTotalLeaderboardSource).toContain('top_track_cover_url')
+    expect(dailyTotalLeaderboardSource).toContain('top_album_cover_url')
+    expect(dailyTotalLeaderboardSource).toContain('top_artist_cover_url')
   })
 })

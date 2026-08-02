@@ -39,25 +39,34 @@ def _add_cover_urls_to_records(records: dict) -> None:
     # Collect track IDs from both track_id and entity_id columns (entity_id may be
     # canonical_track_id for L2/L3 or track_id for L1, stored as string)
     track_ids_set = set()
+
+    def _numeric_track_id(value):
+        try:
+            return int(value)
+        except (ValueError, TypeError, OverflowError):
+            try:
+                numeric_value = float(value)
+                return int(numeric_value) if numeric_value.is_integer() else None
+            except (ValueError, TypeError, OverflowError):
+                return None
+
     for key, val in records.items():
         if not isinstance(val, pd.DataFrame) or val.empty:
             continue
         # Direct track_id column
         if "track_id" in val.columns:
             for tid in val["track_id"].dropna().unique():
-                try:
-                    track_ids_set.add(int(tid))
-                except (ValueError, TypeError):
-                    pass
+                numeric_id = _numeric_track_id(tid)
+                if numeric_id is not None:
+                    track_ids_set.add(numeric_id)
         # entity_id for track records (may be canonical_track_id or track_id as string)
         if "entity_id" in val.columns and (
             "entity_type" not in val.columns or _is_track_record(val, key)
         ):
             for eid in val["entity_id"].dropna().unique():
-                try:
-                    track_ids_set.add(int(eid))
-                except (ValueError, TypeError):
-                    pass
+                numeric_id = _numeric_track_id(eid)
+                if numeric_id is not None:
+                    track_ids_set.add(numeric_id)
 
     if track_ids_set:
         placeholders = ",".join("?" for _ in track_ids_set)
@@ -74,6 +83,11 @@ def _add_cover_urls_to_records(records: dict) -> None:
             else None
             for r in rows
         }
+
+        def _track_cover_for_entity_id(entity_id):
+            numeric_id = _numeric_track_id(entity_id)
+            return track_cover_map.get(numeric_id) if numeric_id is not None else None
+
         for key, val in records.items():
             if not isinstance(val, pd.DataFrame) or val.empty:
                 continue
@@ -86,11 +100,7 @@ def _add_cover_urls_to_records(records: dict) -> None:
                 "entity_type" not in val.columns or _is_track_record(val, key)
             ):
                 try:
-                    val["cover_url"] = val["entity_id"].apply(
-                        lambda eid: (
-                            track_cover_map.get(int(eid)) if eid and str(eid).isdigit() else None
-                        )
-                    )
+                    val["cover_url"] = val["entity_id"].apply(_track_cover_for_entity_id)
                     applied = True
                 except (ValueError, TypeError):
                     pass

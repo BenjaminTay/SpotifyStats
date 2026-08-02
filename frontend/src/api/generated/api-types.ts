@@ -6088,6 +6088,29 @@ export interface components {
              */
             feat_lover: components["schemas"]["EntityRecordFamily"];
         };
+        /** PlaybackLateNightTrajectory */
+        PlaybackLateNightTrajectory: {
+            /**
+             * Monthly
+             * @default []
+             */
+            monthly: components["schemas"]["PlaybackRecordRow"][];
+            /**
+             * Quarterly
+             * @default []
+             */
+            quarterly: components["schemas"]["PlaybackRecordRow"][];
+            /**
+             * Monthly Min Plays
+             * @default 500
+             */
+            monthly_min_plays: number;
+            /**
+             * Quarterly Min Plays
+             * @default 1500
+             */
+            quarterly_min_plays: number;
+        };
         /** PlaybackLongevityRecords */
         PlaybackLongevityRecords: {
             /**
@@ -6177,6 +6200,10 @@ export interface components {
             artist_name?: string | null;
             /** Artist Names */
             artist_names?: string[] | null;
+            /** Artist Cover Urls */
+            artist_cover_urls?: (string | null)[] | null;
+            /** Artist Play Counts */
+            artist_play_counts?: number[] | null;
             /** Value */
             value: number;
             /** Unit */
@@ -6199,6 +6226,8 @@ export interface components {
             unique_tracks?: number | null;
             /** Top Track Name */
             top_track_name?: string | null;
+            /** Top Track Entity Id */
+            top_track_entity_id?: string | null;
             /** Top Track Artist Name */
             top_track_artist_name?: string | null;
             /** Top Track Plays */
@@ -6225,6 +6254,8 @@ export interface components {
             cover_url?: string | null;
             /** Caption */
             caption?: string | null;
+            /** Qualified */
+            qualified?: boolean | null;
         };
         /** PlaybackRecordsData */
         PlaybackRecordsData: {
@@ -6267,6 +6298,12 @@ export interface components {
              *         "track": []
              *       },
              *       "late_night_peak_day": [],
+             *       "late_night_trajectory": {
+             *         "monthly": [],
+             *         "monthly_min_plays": 500,
+             *         "quarterly": [],
+             *         "quarterly_min_plays": 1500
+             *       },
              *       "weekday_preference": [],
              *       "new_year_eve": []
              *     }
@@ -6467,6 +6504,15 @@ export interface components {
              * @default []
              */
             late_night_peak_day: components["schemas"]["PlaybackRecordRow"][];
+            /**
+             * @default {
+             *       "monthly": [],
+             *       "quarterly": [],
+             *       "monthly_min_plays": 500,
+             *       "quarterly_min_plays": 1500
+             *     }
+             */
+            late_night_trajectory: components["schemas"]["PlaybackLateNightTrajectory"];
             /**
              * Weekday Preference
              * @default []

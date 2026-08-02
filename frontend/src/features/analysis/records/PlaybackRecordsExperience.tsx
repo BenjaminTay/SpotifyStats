@@ -4,37 +4,26 @@ import { Suspense, lazy, useState } from 'react'
 import { cn } from '@/lib/utils'
 import type { PlaybackRecordsData } from '@/types/analysis'
 import { SectionFallback } from './PlaybackRecordsPrimitives'
+import { PLAYBACK_RECORD_SECTIONS, type PlaybackRecordSectionKey } from './recordsArchitecture'
 
 const ObsessionSection = lazy(() => import('./ObsessionSection').then((m) => ({ default: m.ObsessionSection })))
 const LongevitySection = lazy(() => import('./LongevitySection').then((m) => ({ default: m.LongevitySection })))
 const ReignsSection = lazy(() => import('./ReignsSection').then((m) => ({ default: m.ReignsSection })))
 const TimePatternsSection = lazy(() => import('./TimePatternsSection').then((m) => ({ default: m.TimePatternsSection })))
 const DiscoverySection = lazy(() => import('./DiscoverySection').then((m) => ({ default: m.DiscoverySection })))
-const BehaviorSection = lazy(() => import('./BehaviorSection').then((m) => ({ default: m.BehaviorSection })))
-
-type SectionKey = 'obsession' | 'longevity' | 'reigns' | 'timePatterns' | 'discovery' | 'behavior'
-
-const SECTIONS: { key: SectionKey; label: string }[] = [
-  { key: 'obsession', label: '狂热时刻' },
-  { key: 'longevity', label: '长线陪伴' },
-  { key: 'reigns', label: '个人王朝' },
-  { key: 'timePatterns', label: '时间密码' },
-  { key: 'discovery', label: '探索发现' },
-  { key: 'behavior', label: '行为奇观' },
-]
 
 interface Props {
   data: PlaybackRecordsData
 }
 
 export function PlaybackRecordsExperience({ data }: Props) {
-  const [activeSection, setActiveSection] = useState<SectionKey>('obsession')
+  const [activeSection, setActiveSection] = useState<PlaybackRecordSectionKey>('highlights')
 
   return (
     <div>
       {/* Section tabs — matches Billboard RecordsPage tab style */}
       <nav className="mb-8 flex gap-7 border-b border-border" role="tablist" aria-label="播放记录分类">
-        {SECTIONS.map((s) => (
+        {PLAYBACK_RECORD_SECTIONS.map((s) => (
           <button
             key={s.key}
             role="tab"
@@ -54,12 +43,11 @@ export function PlaybackRecordsExperience({ data }: Props) {
 
       {/* Section content */}
       <Suspense fallback={<SectionFallback />}>
-        {activeSection === 'obsession' && <ObsessionSection data={data.obsession} />}
-        {activeSection === 'longevity' && <LongevitySection data={data.longevity} />}
+        {activeSection === 'highlights' && <ObsessionSection data={data.obsession} reigns={data.reigns} behavior={data.behavior} />}
         {activeSection === 'reigns' && <ReignsSection data={data.reigns} />}
+        {activeSection === 'longevity' && <LongevitySection data={data.longevity} />}
         {activeSection === 'timePatterns' && <TimePatternsSection data={data.time_patterns} />}
         {activeSection === 'discovery' && <DiscoverySection data={data.discovery} />}
-        {activeSection === 'behavior' && <BehaviorSection data={data.behavior} />}
       </Suspense>
     </div>
   )
