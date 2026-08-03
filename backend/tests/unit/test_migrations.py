@@ -102,6 +102,20 @@ def test_all_core_tables_exist(empty_db):
     assert required.issubset(tables), f"Missing tables: {required - tables}"
 
 
+def test_track_credit_management_tables_exist_after_migrations(empty_db):
+    _ensure_migrations_table(empty_db)
+    for _, _, fn in sorted(MIGRATIONS, key=lambda item: item[0]):
+        try:
+            fn(empty_db)
+        except sqlite3.OperationalError:
+            pass
+    tables = {
+        row[0]
+        for row in empty_db.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
+    }
+    assert {"track_credit_overrides", "track_credit_events", "track_credit_state"} <= tables
+
+
 def test_background_jobs_table_exists(empty_db):
     """background_jobs table is created by migrate_010."""
     _ensure_migrations_table(empty_db)

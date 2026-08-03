@@ -1,4 +1,4 @@
-"""Shadow rebuild for identity-sensitive artist weekly aggregates."""
+"""Shadow rebuild for track-credit-sensitive artist weekly aggregates."""
 
 from __future__ import annotations
 
@@ -11,12 +11,12 @@ from backend.domains.metadata.track_credits import get_track_credit_revision
 from backend.domains.settings.repository import SettingsRepository
 
 
-def handle_artist_identity_rebuild(job: Job) -> None:
+def handle_track_credit_rebuild(job: Job) -> None:
     conn = get_db(readonly=False)
-    revision = int(job.payload.get("revision") or get_identity_revision(conn))
+    revision = int(job.payload.get("revision") or get_track_credit_revision(conn))
     try:
         conn.execute(
-            """UPDATE artist_identity_state
+            """UPDATE track_credit_state
                SET rebuild_status='running', last_error=NULL, updated_at=datetime('now')
                WHERE state_id=1 AND current_revision=?""",
             (revision,),
@@ -60,7 +60,7 @@ def handle_artist_identity_rebuild(job: Job) -> None:
             else []
         )
         conn.execute(
-            """CREATE TEMP TABLE IF NOT EXISTS agg_weekly_artists_shadow (
+            """CREATE TEMP TABLE IF NOT EXISTS agg_weekly_artists_credit_shadow (
                    billboard_week TEXT NOT NULL,
                    artist_id INTEGER NOT NULL,
                    play_count INTEGER NOT NULL,
@@ -68,17 +68,16 @@ def handle_artist_identity_rebuild(job: Job) -> None:
                    PRIMARY KEY (billboard_week, artist_id)
                )"""
         )
-        conn.execute("DELETE FROM agg_weekly_artists_shadow")
+        conn.execute("DELETE FROM agg_weekly_artists_credit_shadow")
         conn.executemany(
-            """INSERT INTO agg_weekly_artists_shadow(
+            """INSERT INTO agg_weekly_artists_credit_shadow(
                    billboard_week, artist_id, play_count, total_ms
                ) VALUES (?, ?, ?, ?)""",
             rows,
         )
         conn.commit()
         conn.execute("BEGIN IMMEDIATE")
-        current_revision = get_identity_revision(conn)
-        if current_revision != revision:
+        if get_track_credit_revision(conn) != revision:
             conn.rollback()
             return
         conn.execute("DELETE FROM agg_weekly_artists")
@@ -86,7 +85,7 @@ def handle_artist_identity_rebuild(job: Job) -> None:
             """INSERT INTO agg_weekly_artists(
                    billboard_week, artist_id, play_count, total_ms
                ) SELECT billboard_week, artist_id, play_count, total_ms
-                 FROM agg_weekly_artists_shadow"""
+                 FROM agg_weekly_artists_credit_shadow"""
         )
         param_hash = _agg_param_hash(
             min_ms,
@@ -95,15 +94,15 @@ def handle_artist_identity_rebuild(job: Job) -> None:
             week_start_hour,
             dynamic_threshold=dynamic_threshold,
             max_merge_gap_minutes=max_merge_gap_minutes,
-            identity_revision=revision,
-            track_credit_revision=get_track_credit_revision(conn),
+            identity_revision=get_identity_revision(conn),
+            track_credit_revision=revision,
         )
         conn.execute(
             "INSERT OR REPLACE INTO agg_config(key, value) VALUES ('param_hash', ?)",
             (param_hash,),
         )
         conn.execute(
-            """UPDATE artist_identity_state
+            """UPDATE track_credit_state
                SET active_aggregate_revision=?, rebuild_status='ready', last_error=NULL,
                    updated_at=datetime('now') WHERE state_id=1""",
             (revision,),
@@ -112,7 +111,7 @@ def handle_artist_identity_rebuild(job: Job) -> None:
     except Exception as exc:
         conn.rollback()
         conn.execute(
-            """UPDATE artist_identity_state
+            """UPDATE track_credit_state
                SET rebuild_status='failed', last_error=?, updated_at=datetime('now')
                WHERE state_id=1""",
             (str(exc)[:500],),

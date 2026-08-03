@@ -8,7 +8,7 @@ import { EntityStatsPanel } from '@/components/shared/EntityStatsPanel'
 import { displayName } from '@/lib/chinese'
 import { getBillboardName } from '@/lib/billboard-name'
 import { Skeleton } from '@/components/ui/skeleton'
-import { AlertCircle, ArrowLeft } from 'lucide-react'
+import { AlertCircle, ArrowLeft, Settings2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { getDefaultMergeLevel } from '@/lib/merge-level'
 import { TrackOverviewSection } from './track/TrackOverviewSection'
@@ -79,7 +79,10 @@ export function TrackDetailExperience() {
     queryFn: () =>
       api.get<TrackEnrichmentResponse>(
         '/billboard/enrichment/track/' + encodeURIComponent(data!.track_name),
-        { artist_name: data!.artist_name },
+        {
+          artist_name:
+            data!.primary_artist_name ?? data!.artist_names?.[0] ?? data!.artist_name,
+        },
       ),
     enabled: activeTab === 'lyrics' && !!data?.found,
   })
@@ -140,10 +143,21 @@ export function TrackDetailExperience() {
                       className="h-[120px] w-[120px] flex-shrink-0 rounded-[12px] object-cover shadow-lg"
                     />
                   )}
-                  <div className="min-w-0 max-w-full">
-                    <h1 className="break-words font-serif text-[44px] font-bold leading-[1.06] tracking-normal">
-                      {displayName(data.track_name)}
-                    </h1>
+                  <div className="min-w-0 max-w-full flex-1">
+                    <div className="flex min-w-0 items-start justify-between gap-3">
+                      <h1 className="min-w-0 break-words font-serif text-[44px] font-bold leading-[1.06] tracking-normal">
+                        {displayName(data.track_name)}
+                      </h1>
+                      <Link
+                        aria-label={`编辑 ${data.track_name} 的曲目信息`}
+                        title="编辑曲目信息"
+                        to={`/settings?metadata=track-credits&track_id=${encodeURIComponent(trackId ?? '')}&return_to=${encodeURIComponent(`/music/tracks/${trackId ?? ''}`)}#music-metadata-management`}
+                        className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-border px-2.5 text-[11px] font-semibold text-muted-foreground transition hover:border-accent-foreground/40 hover:text-foreground"
+                      >
+                        <Settings2 className="size-3.5" />
+                        <span className="hidden md:inline">编辑</span>
+                      </Link>
+                    </div>
                     <p className="mt-2 font-sans text-[17px] text-muted-foreground">
                       {(data.artist_names && data.artist_names.length > 1
                         ? data.artist_names
@@ -168,7 +182,7 @@ export function TrackDetailExperience() {
                           data.meta.spotify_album_name && (
                             <Link
                               key="album"
-                              to={`/music/albums/${encodeURIComponent(data.meta.spotify_album_name)}?artist=${encodeURIComponent(data.artist_name)}`}
+                              to={`/music/albums/${encodeURIComponent(data.meta.spotify_album_name)}?artist=${encodeURIComponent(data.primary_artist_name ?? data.artist_names?.[0] ?? data.artist_name)}`}
                               className="transition-colors hover:text-accent-foreground"
                             >
                               {displayName(data.meta.spotify_album_name)}
@@ -214,13 +228,8 @@ export function TrackDetailExperience() {
                 ))}
               </div>
 
-              {/* Tab: 榜单表现 */}
               {activeTab === 'overview' && <TrackOverviewSection data={data} />}
-
-              {/* Tab: 播放统计 */}
               {activeTab === 'stats' && <EntityStatsPanel kind="track" trackId={trackId} />}
-
-              {/* Tab: 歌词 */}
               {activeTab === 'lyrics' && (
                 <TrackLyricsSection
                   data={data}

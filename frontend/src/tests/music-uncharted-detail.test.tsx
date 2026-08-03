@@ -8,6 +8,7 @@ import { AlbumDetailExperience } from '@/features/music/details/AlbumDetailExper
 import { ArtistDetailExperience } from '@/features/music/details/ArtistDetailExperience'
 import { MusicChartOverviewSection } from '@/features/music/details/MusicChartOverviewSection'
 import { TrackOverviewSection } from '@/features/music/details/track/TrackOverviewSection'
+import { TrackDetailExperience } from '@/features/music/details/TrackDetailExperience'
 import { api } from '@/lib/api'
 import type { TrackDetailResponse } from '@/types/billboard'
 
@@ -43,6 +44,7 @@ function detailWrapper(initialEntry: string) {
           <Routes>
             <Route path="/music/albums/:albumName" element={children} />
             <Route path="/music/artists/:artistName" element={children} />
+            <Route path="/music/tracks/:trackId" element={children} />
           </Routes>
         </QueryClientProvider>
       </MemoryRouter>
@@ -53,6 +55,38 @@ function detailWrapper(initialEntry: string) {
 afterEach(() => vi.restoreAllMocks())
 
 describe('未入榜实体详情', () => {
+  it('单曲标题区提供精准管理深链并保留返回路径', async () => {
+    vi.spyOn(api, 'get').mockImplementation((path: string) => {
+      if (path === '/billboard/track/175') {
+        return Promise.resolve({
+          found: true,
+          chart_status: 'not_charted',
+          effective_play_count: 35,
+          track_id: 175,
+          track_name: 'Hold Me Closer',
+          artist_name: 'Elton John',
+          artist_names: ['Elton John', 'Britney Spears'],
+          primary_artist_name: 'Elton John',
+          cover_url: null,
+          meta: null,
+          summary: null,
+          history: [],
+          chart_data: { x: [], y: [], texts: [], top_n: 30, peak_position: 0 },
+        })
+      }
+      if (path.startsWith('/billboard/enrichment/track/')) return Promise.resolve(null)
+      return Promise.reject(new Error(`unexpected GET ${path}`))
+    })
+
+    render(<TrackDetailExperience />, {
+      wrapper: detailWrapper('/music/tracks/175'),
+    })
+    const link = await screen.findByRole('link', { name: '编辑 Hold Me Closer 的曲目信息' })
+    expect(link).toHaveAttribute('href', expect.stringContaining('metadata=track-credits'))
+    expect(link).toHaveAttribute('href', expect.stringContaining('track_id=175'))
+    expect(link).toHaveAttribute('href', expect.stringContaining('#music-metadata-management'))
+  })
+
   it('单曲显示有效播放空态且不伪造排名', () => {
     const data: TrackDetailResponse = {
       found: true,

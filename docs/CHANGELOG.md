@@ -1,5 +1,14 @@
 # 变更日志
 
+## 2026-08-03 — 音乐源数据管理与有效曲目署名
+
+- 新增不改写 `plays`、`tracks`、`track_artists` 原始事实的人工曲目署名覆盖层，支持按稳定本地艺人 ID 添加、移除和调整 primary/featured 角色；append-only 事件、全局 revision、重建状态与撤销链保留完整可追溯性。
+- 建立统一有效署名 resolver：原始署名叠加人工覆盖后投影到 canonical artist，并按曲目、播放事件和 canonical 身份去重；Billboard、对决、详情、播放分析、搜索、Wrapped 与 AI 等消费者统一读取该结果，避免合作艺人与身份 alias 重复计数。
+- 新增 `/api/music-metadata/track-credits` 管理 API、OpenAPI 类型、查询缓存失效与周聚合 shadow rebuild。真实样本 `Hold Me Closer` 保留 Elton John 原始 primary，并以本地稳定实体添加 Britney Spears featured，原始播放与署名事实不变。
+- Settings 的 `05 · 音乐源数据管理` 收口为“归并与版本 / 曲目署名 / 艺人身份 / 流派与语言”四个平级模块。“归并与版本”只保留一套 L1/L2/L3、自动检测、已保存分组和手动创建入口，再按歌曲归并或专辑版本显示对应字段与高级选项；后续设置编号连续顺延。
+- 单曲、专辑、艺人详情提供精确的管理深链；只有携带实体上下文的外部深链会执行一次定位和预填，Settings 内普通模块切换保持当前视口稳定，旧 metadata 参数继续兼容。
+- 新增模型迁移、resolver/重建、API contract、Settings 管理流程、深链和滚动行为测试；全量后端、前端生产构建及 1440/390 浏览器验收均已覆盖。
+
 ## 2026-08-03 — Billboard 总榜跨层级指标与表格控制
 
 - 专辑总榜新增成员歌曲走势点数/排名；艺人总榜新增 credited canonical 歌曲与专辑走势点数/排名。聚合复用详情与对决的 album project membership、artist fan-out 和 identity 去重语义，并以当前完整同类总榜为排名集合；正值按 competition rank 排名，零贡献显示 0 且不生成虚假名次。

@@ -1,7 +1,5 @@
 import { useState, useEffect } from 'react'
-import { GlassCard } from '@/components/shared/GlassCard'
 import { displayName } from '@/lib/chinese'
-import { getBillboardName } from '@/lib/billboard-name'
 import { Slider } from '@/components/ui/slider'
 import {
   Select,
@@ -18,8 +16,7 @@ import { Star, Trash2, Plus, X, Search, ChevronDown, CheckCircle2, RefreshCw, Gi
 import { useVersionMerge } from '@/hooks/useSettings'
 import type { DetectionResult, DetectionMember, ReleaseGroup, GroupMember, UngroupedAlbum, TrackComparison, TrackGroupCandidate } from '@/types/settings'
 import { CoverCell } from '@/components/shared/CoverCell'
-import { CollapsibleSection, FieldLabel, TrackComparePanel } from '@/features/settings/components/SettingsHelpers'
-import { getDefaultMergeLevel, setDefaultMergeLevel } from '@/lib/merge-level'
+import { FieldLabel, TrackComparePanel } from '@/features/settings/components/SettingsHelpers'
 
 type MergeTabKey = 'detect' | 'saved' | 'create'
 const MERGE_TABS: { key: MergeTabKey; label: string }[] = [
@@ -28,68 +25,32 @@ const MERGE_TABS: { key: MergeTabKey; label: string }[] = [
   { key: 'create', label: '手动创建' },
 ]
 
-const MERGE_LEVELS = [
-  { value: 1, shortLabel: 'L1 不合并', desc: '各版本独立统计，不做任何合并' },
-  { value: 2, shortLabel: 'L2 录制', desc: '合并同一录音的不同发行版本（豪华版、改版等），同一录音的多个发行版本会被合并为一个条目统计' },
-  { value: 3, shortLabel: 'L3 作品', desc: '合并同一作品的所有版本（原版、Remix、Acoustic 等），跨录音的同一作品也会被合并' },
-] as const
-
-export function VersionMergeSection() {
-  const [activeTab, setActiveTab] = useState<MergeTabKey>('detect')
-  const [mergeLevel, setMergeLevel] = useState(getDefaultMergeLevel)
+export function VersionMergeSection({ initialArtistFilter = '', initialCanonicalName = '', initialObjectType = 'track' }: { initialArtistFilter?: string; initialCanonicalName?: string; initialObjectType?: 'track' | 'album' }) {
+  const [activeTab, setActiveTab] = useState<MergeTabKey>(initialArtistFilter || initialCanonicalName ? 'create' : 'detect')
   const vm = useVersionMerge()
+  const fetchGroups = vm.fetchGroups
 
   useEffect(() => {
-    if (activeTab === 'saved') vm.fetchGroups()
-  }, [activeTab, vm.fetchGroups])
-
-  const handleMergeLevelChange = (v: number) => {
-    setMergeLevel(v)
-    setDefaultMergeLevel(v)
-  }
+    if (activeTab === 'saved') fetchGroups()
+  }, [activeTab, fetchGroups])
 
   return (
-    <GlassCard className="p-6">
-      <CollapsibleSection num={5} title="版本合并" desc="管理专辑版本合并规则，将同一专辑的不同版本（豪华版、Acoustic版等）合并为统一条目。" defaultOpen={false} tone="advanced">
-
-      {/* Merge Level selector */}
-      <div className="mb-5 rounded-xl border border-border bg-muted/30 p-4">
-        <FieldLabel label="默认合并严格度" badge={MERGE_LEVELS.find(l => l.value === mergeLevel)?.shortLabel} />
-        <p className="mt-1 text-[12px] text-muted-foreground">
-          控制所有榜单和统计中曲目/专辑版本合并的默认级别。各 {getBillboardName()} 页面可通过 URL 参数临时覆盖。
-        </p>
-        <div className="mt-3 flex gap-2">
-          {MERGE_LEVELS.map((l) => (
-            <button
-              key={l.value}
-              type="button"
-              onClick={() => handleMergeLevelChange(l.value)}
-              className={cn(
-                'flex-1 rounded-lg border px-3 py-2 text-center transition-all duration-200',
-                mergeLevel === l.value
-                  ? 'border-accent-foreground bg-accent-foreground text-primary-foreground shadow-sm'
-                  : 'border-border bg-card hover:border-muted-foreground/30 hover:bg-muted/50',
-              )}
-            >
-              <span className={cn('font-sans text-[13px] font-semibold', mergeLevel === l.value ? 'text-primary-foreground' : 'text-foreground')}>
-                {l.shortLabel}
-              </span>
-            </button>
-          ))}
-        </div>
-        <p className="mt-3 rounded-lg bg-muted/50 px-3 py-2 text-[12.5px] leading-relaxed text-foreground/80">
-          当前模式：{MERGE_LEVELS.find(l => l.value === mergeLevel)?.desc}
+    <section className="space-y-5" aria-labelledby="version-merge-heading">
+      <div>
+        <h3 id="version-merge-heading" className="font-serif text-2xl font-bold">归并与版本</h3>
+        <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
+          在同一工作区处理歌曲录音关系与专辑发行版本；系统按对象类型保留各自的数据规则。
         </p>
       </div>
 
       {/* Sub-tabs */}
-      <div className="mb-5 flex gap-7 border-b border-border">
+      <div className="mb-5 grid grid-cols-3 gap-2 border-b border-border">
         {MERGE_TABS.map((tab) => (
           <button
             key={tab.key}
             onClick={() => setActiveTab(tab.key)}
             className={cn(
-              '-mb-px cursor-pointer border-none bg-transparent px-0 pb-2.5 font-sans text-[13px] font-medium transition-[color,border] duration-200',
+              '-mb-px cursor-pointer whitespace-nowrap border-none bg-transparent px-0 pb-2.5 text-center font-sans text-[12.5px] font-medium transition-[color,border] duration-200 sm:text-[13px]',
               'border-b-2',
               activeTab === tab.key
                 ? 'border-accent-foreground font-semibold text-foreground'
@@ -103,9 +64,8 @@ export function VersionMergeSection() {
 
       {activeTab === 'detect' && <AutoDetectionTab vm={vm} />}
       {activeTab === 'saved' && <SavedGroupsTab vm={vm} />}
-      {activeTab === 'create' && <ManualCreateTab vm={vm} />}
-      </CollapsibleSection>
-    </GlassCard>
+      {activeTab === 'create' && <ManualCreateTab vm={vm} initialArtistFilter={initialArtistFilter} initialCanonicalName={initialCanonicalName} initialObjectType={initialObjectType} onOpenDetection={() => setActiveTab('detect')} />}
+    </section>
   )
 }
 
@@ -223,59 +183,19 @@ function AutoDetectionTab({ vm }: { vm: ReturnType<typeof useVersionMerge> }) {
 
   return (
     <div className="space-y-4">
-      {/* Controls */}
-      <div className="flex items-end gap-4">
-        <div className="space-y-1.5">
-          <FieldLabel label="重叠率阈值" badge={threshold} />
-          <p className="text-[12px] text-muted-foreground">曲目重叠率高于此值时视为同一专辑的不同版本</p>
-          <div className="w-[200px]">
-            <Slider
-              aria-label="重叠率阈值"
-              value={[threshold]}
-              onValueChange={(v) => setThreshold((v as number[])[0])}
-              min={0.1}
-              max={1.0}
-              step={0.05}
-            />
-          </div>
-        </div>
-        <Button size="sm" onClick={handleDetect} disabled={loading} className="gap-1.5">
-          {loading ? <RefreshCw className="size-3.5 animate-spin" /> : <Search className="size-3.5" />}
-          {loading ? '检测中...' : '开始检测'}
-        </Button>
-      </div>
-
-      <div className="grid gap-3 lg:grid-cols-2">
-        <div className="rounded-xl border border-border p-4">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <FieldLabel label="Album Projects" />
-              <p className="mt-1 text-[12px] text-muted-foreground">按当前版本分组重新生成专辑项目归属。</p>
-            </div>
-            <Button size="sm" variant="outline" onClick={handleRebuildProjects} disabled={rebuildLoading} className="gap-1.5">
-              {rebuildLoading ? <RefreshCw className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />}
-              重建
-            </Button>
-          </div>
-          {maintenanceMsg && (
-            <div className="mt-3 flex items-center gap-2 text-[13px] text-green-600 dark:text-green-400">
-              <CheckCircle2 className="size-3.5" />
-              {maintenanceMsg}
-            </div>
-          )}
-        </div>
-
-        <div className="rounded-xl border border-border p-4">
-          <div className="flex items-start justify-between gap-4">
-            <div>
+      <div className="rounded-xl border border-border p-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <div className="flex items-center gap-2">
               <FieldLabel label="合作版候选" />
-              <p className="mt-1 text-[12px] text-muted-foreground">查找包含原主艺人的 remix / feat. 候选。</p>
+              <Badge variant="outline" className="text-[10px]">歌曲归并</Badge>
             </div>
-            <Button size="sm" variant="outline" onClick={handleFetchCandidates} disabled={candidateLoading} className="gap-1.5">
-              {candidateLoading ? <RefreshCw className="size-3.5 animate-spin" /> : <GitMerge className="size-3.5" />}
-              查询
-            </Button>
+            <p className="mt-1 text-[12px] text-muted-foreground">查找包含原主艺人的 remix / feat. 候选，并按稳定曲目记录确认。</p>
           </div>
+          <Button size="sm" variant="outline" onClick={handleFetchCandidates} disabled={candidateLoading} className="shrink-0 gap-1.5">
+            {candidateLoading ? <RefreshCw className="size-3.5 animate-spin" /> : <GitMerge className="size-3.5" />}
+            查询歌曲候选
+          </Button>
         </div>
       </div>
 
@@ -288,12 +208,13 @@ function AutoDetectionTab({ vm }: { vm: ReturnType<typeof useVersionMerge> }) {
               const key = candidateKey(item)
               const confirming = confirmingCandidateKey === key
               return (
-                <div key={key} className="flex items-center gap-3 rounded-lg bg-muted/30 px-3 py-2">
+                <div key={key} className="flex flex-wrap items-center gap-3 rounded-lg bg-muted/30 px-3 py-2 sm:flex-nowrap">
                   <GitMerge className="size-3.5 shrink-0 text-accent-foreground" />
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-[13px] font-medium">{displayName(item.original_track_name)}</p>
                     <p className="truncate text-[12px] text-muted-foreground">{displayName(item.candidate_track_name)}</p>
                   </div>
+                  <Badge variant="secondary" className="shrink-0 text-[10px]">歌曲归并</Badge>
                   <Badge variant="outline" className="shrink-0 text-[10px]">#{item.primary_artist_id}</Badge>
                   <Button
                     size="sm"
@@ -333,6 +254,59 @@ function AutoDetectionTab({ vm }: { vm: ReturnType<typeof useVersionMerge> }) {
           )}
         </div>
       )}
+
+      <details className="group rounded-xl border border-border bg-muted/15">
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-[13px] font-semibold marker:hidden">
+          <span className="flex items-center gap-2">
+            专辑版本高级选项
+            <Badge variant="outline" className="text-[10px]">专辑版本</Badge>
+          </span>
+          <ChevronDown className="size-4 text-muted-foreground transition-transform group-open:rotate-180" />
+        </summary>
+        <div className="space-y-4 border-t border-border px-4 py-4">
+          <p className="text-[12px] leading-relaxed text-muted-foreground">
+            仅在处理原版、豪华版、加曲版等专辑发行关系时使用；不会改变歌曲归并的独立语义。
+          </p>
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
+            <div className="space-y-1.5">
+              <FieldLabel label="重叠率阈值" badge={threshold} />
+              <p className="text-[12px] text-muted-foreground">曲目重叠率高于此值时视为同一专辑的不同版本</p>
+              <div className="w-full sm:w-[200px]">
+                <Slider
+                  aria-label="重叠率阈值"
+                  value={[threshold]}
+                  onValueChange={(v) => setThreshold((v as number[])[0])}
+                  min={0.1}
+                  max={1.0}
+                  step={0.05}
+                />
+              </div>
+            </div>
+            <Button size="sm" onClick={handleDetect} disabled={loading} className="gap-1.5">
+              {loading ? <RefreshCw className="size-3.5 animate-spin" /> : <Search className="size-3.5" />}
+              {loading ? '检测中...' : '检测专辑版本'}
+            </Button>
+          </div>
+          <div className="rounded-xl border border-border bg-background/70 p-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <FieldLabel label="发行项目重建" />
+                <p className="mt-1 text-[12px] text-muted-foreground">按当前已保存的专辑版本关系重新生成 Album Projects 归属。</p>
+              </div>
+              <Button size="sm" variant="outline" onClick={handleRebuildProjects} disabled={rebuildLoading} className="shrink-0 gap-1.5">
+                {rebuildLoading ? <RefreshCw className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />}
+                重建
+              </Button>
+            </div>
+            {maintenanceMsg && (
+              <div className="mt-3 flex items-center gap-2 text-[13px] text-green-600 dark:text-green-400">
+                <CheckCircle2 className="size-3.5" />
+                {maintenanceMsg}
+              </div>
+            )}
+          </div>
+        </div>
+      </details>
 
       {/* Results */}
       {results !== null && results.length === 0 && filteredCount > 0 && !loading && (
@@ -449,6 +423,7 @@ function DetectionCard({
             <span className="truncate font-sans text-[14px] font-semibold text-foreground">
               {displayName(r.canonical_name)}
             </span>
+            <Badge variant="outline" className="shrink-0 text-[10px]">专辑版本</Badge>
             <Badge variant={r.confidence === 'high' ? 'default' : 'secondary'} className="text-[11px]">
               {r.confidence === 'high' ? '高置信' : '低置信'}
             </Badge>
@@ -576,6 +551,7 @@ function SavedGroupCard({ group: g, vm }: { group: ReleaseGroup; vm: ReturnType<
           <div className="min-w-0">
             <div className="flex items-center gap-2">
               <span className="truncate font-sans text-[14px] font-semibold text-foreground">{displayName(g.canonical_name)}</span>
+              <Badge variant="outline" className="shrink-0 text-[10px]">专辑版本</Badge>
               {g.is_manual ? (
                 <Badge variant="outline" className="text-[10px] shrink-0">手动</Badge>
               ) : (
@@ -665,20 +641,41 @@ function SavedGroupCard({ group: g, vm }: { group: ReleaseGroup; vm: ReturnType<
   )
 }
 
-function ManualCreateTab({ vm }: { vm: ReturnType<typeof useVersionMerge> }) {
+function ManualCreateTab({ vm, initialArtistFilter = '', initialCanonicalName = '', initialObjectType = 'album', onOpenDetection }: { vm: ReturnType<typeof useVersionMerge>; initialArtistFilter?: string; initialCanonicalName?: string; initialObjectType?: 'track' | 'album'; onOpenDetection: () => void }) {
+  const [objectType, setObjectType] = useState<'track' | 'album'>(initialObjectType)
   const [step, setStep] = useState(1)
   const [albums, setAlbums] = useState<UngroupedAlbum[]>([])
-  const [artistFilter, setArtistFilter] = useState('')
-  const [canonicalName, setCanonicalName] = useState('')
+  const [artistFilter, setArtistFilter] = useState(initialArtistFilter)
+  const [canonicalName, setCanonicalName] = useState(initialCanonicalName)
   const [scope, setScope] = useState<'release' | 'composition'>('release')
   const [selectedAlbums, setSelectedAlbums] = useState<Set<number>>(new Set())
   const [primaryId, setPrimaryId] = useState<number | null>(null)
   const [creating, setCreating] = useState(false)
   const [msg, setMsg] = useState('')
+  const getUngroupedAlbums = vm.getUngroupedAlbums
 
   const loadAlbums = () => {
     vm.getUngroupedAlbums(artistFilter || undefined).then(setAlbums)
   }
+
+  useEffect(() => {
+    if (!initialArtistFilter) return
+    getUngroupedAlbums(initialArtistFilter).then((items) => {
+      setAlbums(items)
+      if (!initialCanonicalName) return
+      const albumName = initialCanonicalName.trim().toLocaleLowerCase()
+      const artistName = initialArtistFilter.trim().toLocaleLowerCase()
+      const match = items.find(
+        (item) =>
+          item.album_name.trim().toLocaleLowerCase() === albumName &&
+          item.artist_name.trim().toLocaleLowerCase() === artistName,
+      )
+      if (match) {
+        setSelectedAlbums(new Set([match.album_id]))
+        setPrimaryId(match.album_id)
+      }
+    })
+  }, [getUngroupedAlbums, initialArtistFilter, initialCanonicalName])
 
   const toggleAlbum = (id: number) => {
     setSelectedAlbums((prev) => {
@@ -751,6 +748,53 @@ function ManualCreateTab({ vm }: { vm: ReturnType<typeof useVersionMerge> }) {
 
   return (
     <div className="space-y-4">
+      <div className="space-y-2">
+        <FieldLabel label="对象类型" />
+        <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="归并对象类型">
+          <button
+            type="button"
+            role="radio"
+            aria-checked={objectType === 'track'}
+            onClick={() => setObjectType('track')}
+            className={cn(
+              'rounded-xl border px-3 py-2.5 text-left transition-colors',
+              objectType === 'track' ? 'border-accent-foreground bg-accent-foreground/5' : 'border-border hover:border-accent-foreground/35',
+            )}
+          >
+            <span className="block text-[13px] font-semibold">歌曲归并</span>
+            <span className="block text-[10px] text-muted-foreground">稳定曲目记录与录音/作品关系</span>
+          </button>
+          <button
+            type="button"
+            role="radio"
+            aria-checked={objectType === 'album'}
+            onClick={() => setObjectType('album')}
+            className={cn(
+              'rounded-xl border px-3 py-2.5 text-left transition-colors',
+              objectType === 'album' ? 'border-accent-foreground bg-accent-foreground/5' : 'border-border hover:border-accent-foreground/35',
+            )}
+          >
+            <span className="block text-[13px] font-semibold">专辑版本</span>
+            <span className="block text-[10px] text-muted-foreground">正式原版、成员与发行项目</span>
+          </button>
+        </div>
+      </div>
+
+      {objectType === 'track' && (
+        <div className="rounded-xl border border-border bg-muted/20 p-4">
+          <Badge variant="outline" className="mb-2 text-[10px]">歌曲归并</Badge>
+          <p className="text-[13px] font-semibold">按稳定候选确认歌曲关系</p>
+          <p className="mt-1 text-[12px] leading-relaxed text-muted-foreground">
+            当前安全路径只允许从系统识别的本地 track id 候选中确认，避免按名称误合并；不会创建纯文本歌曲关系。
+          </p>
+          <Button type="button" size="sm" variant="outline" className="mt-3 gap-1.5" onClick={onOpenDetection}>
+            <Search className="size-3.5" />查看歌曲候选
+          </Button>
+        </div>
+      )}
+
+      {objectType === 'album' && (
+        <>
       {/* Step indicator */}
       <div className="flex items-center justify-center gap-2 pb-2">
         {[1, 2, 3].map((s) => (
@@ -977,6 +1021,8 @@ function ManualCreateTab({ vm }: { vm: ReturnType<typeof useVersionMerge> }) {
               {creating ? '创建中...' : '创建分组'}
             </Button>
           </div>
+        </>
+      )}
         </>
       )}
     </div>

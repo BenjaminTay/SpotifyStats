@@ -874,6 +874,7 @@ export interface TrackDetailResponse {
   track_name: string
   artist_name: string
   artist_names?: string[]
+  primary_artist_name?: string
   cover_url: string | null
   meta: TrackSpotifyMeta | null
   summary: {

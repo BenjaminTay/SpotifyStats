@@ -228,58 +228,25 @@ def _normalized_artist_query(conn: sqlite3.Connection, query: str, limit: int) -
     ):
         return []
 
-    track_columns = _table_columns(conn, "tracks")
-    play_columns = _table_columns(conn, "plays")
-    play_key = "p.play_id" if "play_id" in play_columns else "p.rowid"
-    artist_play_sources: list[str] = []
-    if _has_columns(conn, "track_artists", {"track_id", "artist_id"}):
-        artist_play_sources.append(
-            f"""
-            SELECT {play_key} AS play_key, ta.artist_id AS artist_id, p.ms_played AS ms_played
-            FROM plays p
-            JOIN track_artists ta ON ta.track_id = p.track_id
-            WHERE ta.artist_id IS NOT NULL
-            """
-        )
-    if "artist_id" in track_columns:
-        artist_play_sources.append(
-            f"""
-            SELECT {play_key} AS play_key, t.artist_id AS artist_id, p.ms_played AS ms_played
-            FROM plays p
-            JOIN tracks t ON t.track_id = p.track_id
-            WHERE t.artist_id IS NOT NULL
-            """
-        )
-    if not artist_play_sources:
-        return []
-
     like_term, exact_term, prefix_term = _search_terms(query)
-    artist_play_cte = "\nUNION\n".join(artist_play_sources)
     return conn.execute(
-        f"""
-        WITH artist_play_events AS (
-            {artist_play_cte}
-        )
+        """
         SELECT
             ar.artist_name AS name,
             ar.artist_id AS artist_id,
             ar.artist_name AS artist_name,
-            COUNT(*) AS play_events,
-            COALESCE(SUM(ape.ms_played), 0) AS total_ms
+            0 AS play_events,
+            0 AS total_ms
         FROM artists ar
-        JOIN artist_play_events ape ON ape.artist_id = ar.artist_id
         WHERE lower(ar.artist_name) LIKE ?
           AND ar.artist_name IS NOT NULL
           AND TRIM(ar.artist_name) != ''
-        GROUP BY ar.artist_id, ar.artist_name
         ORDER BY
             CASE
                 WHEN lower(ar.artist_name) = ? THEN 0
                 WHEN lower(ar.artist_name) LIKE ? THEN 1
                 ELSE 2
             END ASC,
-            play_events DESC,
-            total_ms DESC,
             name COLLATE NOCASE ASC
         LIMIT ?
         """,
@@ -402,12 +369,6 @@ def resolve_entities(
             }
         canonical_candidates: dict[int, dict[str, Any]] = {}
         exact_canonical_ids: set[int] = set()
-        has_track_artists = (
-            conn.execute(
-                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='track_artists'"
-            ).fetchone()
-            is not None
-        )
         for candidate in candidates:
             raw_id = int(candidate["artist_id"])
             resolved = mapping.get(raw_id)
@@ -426,25 +387,26 @@ def resolve_entities(
                 },
             )
             item["raw_artist_ids"].append(raw_id)
+        from backend.domains.metadata.track_credits import get_effective_track_credits
+
+        credit_tracks: dict[int, set[int]] = {}
+        for credit in get_effective_track_credits(conn):
+            credit_tracks.setdefault(int(credit["artist_id"]), set()).add(int(credit["track_id"]))
+        play_metrics = {
+            int(row["track_id"]): (int(row["play_events"]), int(row["total_ms"]))
+            for row in conn.execute(
+                """SELECT track_id, COUNT(*) AS play_events,
+                          COALESCE(SUM(ms_played), 0) AS total_ms
+                   FROM plays WHERE track_id IS NOT NULL GROUP BY track_id"""
+            ).fetchall()
+        }
         for canonical_id, item in canonical_candidates.items():
-            member_ids = [
-                raw_id
-                for raw_id, resolution in mapping.items()
-                if resolution.canonical_artist_id == canonical_id
+            metrics = [
+                play_metrics.get(track_id, (0, 0))
+                for track_id in credit_tracks.get(canonical_id, set())
             ]
-            if has_track_artists:
-                placeholders = ",".join("?" for _ in member_ids)
-                metrics = conn.execute(
-                    f"""SELECT COUNT(*), COALESCE(SUM(ms_played), 0) FROM (
-                            SELECT p.play_id, MAX(p.ms_played) AS ms_played
-                            FROM plays p JOIN track_artists ta ON ta.track_id=p.track_id
-                            WHERE ta.artist_id IN ({placeholders})
-                            GROUP BY p.play_id
-                        )""",
-                    member_ids,
-                ).fetchone()
-                item["play_events"] = int(metrics[0])
-                item["total_ms"] = int(metrics[1])
+            item["play_events"] = sum(value[0] for value in metrics)
+            item["total_ms"] = sum(value[1] for value in metrics)
             item.pop("raw_artist_ids", None)
         if exact_canonical_ids:
             canonical_candidates = {

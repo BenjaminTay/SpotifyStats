@@ -34,8 +34,17 @@ def _try_load_from_agg(
         load_agg_weekly_tracks,
     )
     from backend.domains.metadata.artist_identity import get_identity_revision
+    from backend.domains.metadata.track_credits import (
+        get_track_credit_revision,
+        get_track_credit_state,
+    )
 
     conn = get_db()
+
+    credit_state = get_track_credit_state(conn)
+    if credit_state.get("current_revision", 0) != credit_state.get("active_aggregate_revision", 0):
+        conn.close()
+        return None, None, None
 
     param_hash = _agg_param_hash(
         min_ms,
@@ -45,6 +54,7 @@ def _try_load_from_agg(
         dynamic_threshold=dynamic_threshold,
         max_merge_gap_minutes=max_merge_gap_minutes,
         identity_revision=get_identity_revision(conn),
+        track_credit_revision=get_track_credit_revision(conn),
     )
     if not check_agg_valid(conn, param_hash):
         conn.close()
@@ -182,14 +192,20 @@ def load_billboard_raw_for_artists(
 
         df = filter_effective_plays(df, min_ms=min_ms, dynamic_threshold=dynamic_threshold)
 
-    # Step 2: Fan out through track_artists. Keep each effective output row
+    # Step 2: Fan out through raw + manual effective credits. Keep each effective output row
     # distinct even when consecutive-play expansion reused a source play_id.
     df["_artist_event_id"] = range(len(df))
-    track_artists_df = pd.read_sql_query("SELECT track_id, artist_id FROM track_artists", conn)
-    artists_df = pd.read_sql_query("SELECT artist_id, artist_name FROM artists", conn)
+    from backend.domains.metadata.track_credits import get_effective_track_credit_frame
+
+    track_artists_df = get_effective_track_credit_frame(conn)
     df = df.drop(columns=["artist_name"], errors="ignore")
-    df = df.merge(track_artists_df, on="track_id", how="inner")
-    df = df.merge(artists_df, on="artist_id", how="left")
+    df = df.merge(
+        track_artists_df[["track_id", "artist_id", "raw_artist_id", "artist_name"]],
+        on="track_id",
+        how="inner",
+    )
+    df["artist_id"] = df["raw_artist_id"]
+    df = df.drop(columns=["raw_artist_id"])
 
     from backend.domains.metadata.artist_identity import canonicalize_artist_frame
 

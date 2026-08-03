@@ -546,8 +546,12 @@ def _report_cache_key(
     identity_conn = get_db()
     try:
         from backend.domains.metadata.artist_identity import get_identity_revision
+        from backend.domains.metadata.track_credits import get_track_credit_revision
 
-        filter_part = f"{filter_part}|identity:{get_identity_revision(identity_conn)}"
+        filter_part = (
+            f"{filter_part}|identity:{get_identity_revision(identity_conn)}"
+            f"|track_credit:{get_track_credit_revision(identity_conn)}"
+        )
     finally:
         identity_conn.close()
     if report_type == "weekly":

@@ -1,33 +1,31 @@
-import { lazy, Suspense, useState } from 'react'
-import { Skeleton } from '@/components/ui/skeleton'
-import { Button } from '@/components/ui/button'
-import { AlertCircle } from 'lucide-react'
-import { useSettings } from '@/hooks/useSettings'
-import { getChineseStyle, setChineseStyle, type ChineseStyle } from '@/lib/chinese'
-import { getBillboardName } from '@/lib/billboard-name'
-import { SettingsOverview } from '@/features/settings/components/SettingsOverview'
-import { RebuildNotice } from '@/features/settings/components/RebuildNotice'
-import { SpotifyConnectionSection } from '@/features/settings/components/SpotifyConnectionSection'
-import { DataFilteringSection } from '@/features/settings/components/DataFilteringSection'
-import { BillboardParamsSection } from '@/features/settings/components/BillboardParamsSection'
-import { DataImportSection } from '@/features/settings/components/DataImportSection'
-import { GenreDataHealthSection } from '@/features/settings/components/GenreDataHealthSection'
+import { lazy, Suspense, useState } from "react";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Button } from "@/components/ui/button";
+import { AlertCircle } from "lucide-react";
+import { useSettings } from "@/hooks/useSettings";
+import {
+  getChineseStyle,
+  setChineseStyle,
+  type ChineseStyle,
+} from "@/lib/chinese";
+import { getBillboardName } from "@/lib/billboard-name";
+import { SettingsOverview } from "@/features/settings/components/SettingsOverview";
+import { RebuildNotice } from "@/features/settings/components/RebuildNotice";
+import { SpotifyConnectionSection } from "@/features/settings/components/SpotifyConnectionSection";
+import { DataFilteringSection } from "@/features/settings/components/DataFilteringSection";
+import { BillboardParamsSection } from "@/features/settings/components/BillboardParamsSection";
+import { DataImportSection } from "@/features/settings/components/DataImportSection";
 
-const VersionMergeSection = lazy(() =>
-  import('@/features/settings/components/VersionMergeSection').then(
-    (m) => ({ default: m.VersionMergeSection }),
-  ),
-)
-const ArtistIdentitySection = lazy(() =>
-  import('@/features/settings/components/ArtistIdentitySection').then(
-    (m) => ({ default: m.ArtistIdentitySection }),
-  ),
-)
+const MusicMetadataSection = lazy(() =>
+  import("@/features/settings/components/MusicMetadataSection").then((m) => ({
+    default: m.MusicMetadataSection,
+  })),
+);
 const LLMTranslationSection = lazy(() =>
-  import('@/features/settings/components/LLMTranslationSection').then(
-    (m) => ({ default: m.LLMTranslationSection }),
-  ),
-)
+  import("@/features/settings/components/LLMTranslationSection").then((m) => ({
+    default: m.LLMTranslationSection,
+  })),
+);
 
 export function SettingsPage() {
   const {
@@ -49,27 +47,32 @@ export function SettingsPage() {
     applyProfile,
     createProfile,
     deleteProfile,
-  } = useSettings()
+  } = useSettings();
 
-  const [rebuildPendingOverride, setRebuildPending] = useState<boolean | null>(null)
-  const [rebuildLoading, setRebuildLoading] = useState(false)
-  const [rebuildMsg, setRebuildMsg] = useState('')
-  const [chineseStyle, setChineseStyleState] = useState<ChineseStyle>(getChineseStyle)
+  const [rebuildPendingOverride, setRebuildPending] = useState<boolean | null>(
+    null,
+  );
+  const [rebuildLoading, setRebuildLoading] = useState(false);
+  const [rebuildMsg, setRebuildMsg] = useState("");
+  const [chineseStyle, setChineseStyleState] =
+    useState<ChineseStyle>(getChineseStyle);
 
-  const handleRequiresRebuild = () => setRebuildPending(true)
+  const handleRequiresRebuild = () => setRebuildPending(true);
 
   const handleRebuild = () => {
-    setRebuildLoading(true)
-    setRebuildMsg('')
-    rebuildAgg().then((res) => {
-      setRebuildMsg(res.status === 'done' ? '聚合表重建完成' : '重建完成')
-      setRebuildPending(false)
-      setRebuildLoading(false)
-    }).catch(() => {
-      setRebuildMsg('重建失败，请重试')
-      setRebuildLoading(false)
-    })
-  }
+    setRebuildLoading(true);
+    setRebuildMsg("");
+    rebuildAgg()
+      .then((res) => {
+        setRebuildMsg(res.status === "done" ? "聚合表重建完成" : "重建完成");
+        setRebuildPending(false);
+        setRebuildLoading(false);
+      })
+      .catch(() => {
+        setRebuildMsg("重建失败，请重试");
+        setRebuildLoading(false);
+      });
+  };
 
   if (loading) {
     return (
@@ -80,31 +83,36 @@ export function SettingsPage() {
           <Skeleton className="h-5 w-[420px]" />
         </div>
         {Array.from({ length: 6 }).map((_, i) => (
-          <div key={i} className="rounded-[16px] border border-border bg-card p-6">
+          <div
+            key={i}
+            className="rounded-[16px] border border-border bg-card p-6"
+          >
             <Skeleton className="mb-4 h-3 w-36" />
             <Skeleton className="mb-1 h-3 w-64" />
             <Skeleton className="h-24 w-full" />
           </div>
         ))}
       </div>
-    )
+    );
   }
 
   if (error && !settings) {
     return (
       <div className="mx-auto flex max-w-[900px] flex-col items-center gap-4 px-6 py-24">
         <AlertCircle className="size-10 text-muted-foreground" />
-        <p className="text-[15px] text-muted-foreground">无法加载设置: {error}</p>
+        <p className="text-[15px] text-muted-foreground">
+          无法加载设置: {error}
+        </p>
         <Button variant="outline" size="sm" onClick={refetch}>
           重试
         </Button>
       </div>
-    )
+    );
   }
 
-  if (!settings) return null
+  if (!settings) return null;
 
-  const rebuildPending = rebuildPendingOverride ?? settings.rebuild_pending
+  const rebuildPending = rebuildPendingOverride ?? settings.rebuild_pending;
 
   return (
     <div className="mx-auto max-w-[900px] space-y-6 px-6 py-12">
@@ -117,7 +125,8 @@ export function SettingsPage() {
           参数与配置
         </h1>
         <p className="mt-3 max-w-[520px] font-sans text-[17px] leading-relaxed text-muted-foreground">
-          管理 Spotify 连接、数据导入、播放过滤、{getBillboardName()} 参数、版本与艺人身份合并，以及 LLM 配置等全局设置。
+          管理 Spotify 连接、数据导入、播放过滤、{getBillboardName()}{" "}
+          参数、音乐元数据治理，以及 LLM 配置等全局设置。
         </p>
       </section>
 
@@ -136,7 +145,7 @@ export function SettingsPage() {
         loading={rebuildLoading}
         message={rebuildMsg}
         onRebuild={handleRebuild}
-        onDismiss={() => setRebuildMsg('')}
+        onDismiss={() => setRebuildMsg("")}
       />
 
       {/* Section 1: Spotify Connection */}
@@ -169,9 +178,9 @@ export function SettingsPage() {
         onRequiresRebuild={handleRequiresRebuild}
         chineseStyle={chineseStyle}
         onChangeChineseStyle={(s: string | null) => {
-          const style = (s as ChineseStyle) || 'original'
-          setChineseStyleState(style)
-          setChineseStyle(style)
+          const style = (s as ChineseStyle) || "original";
+          setChineseStyleState(style);
+          setChineseStyle(style);
         }}
       />
 
@@ -189,7 +198,7 @@ export function SettingsPage() {
         onRequiresRebuild={handleRequiresRebuild}
       />
 
-      {/* Section 5: Version Merge */}
+      {/* Section 5: Music Metadata Management */}
       <Suspense
         fallback={
           <div className="rounded-[16px] border border-border bg-card p-6">
@@ -199,26 +208,10 @@ export function SettingsPage() {
           </div>
         }
       >
-        <VersionMergeSection />
+        <MusicMetadataSection />
       </Suspense>
 
-      {/* Section 6: Artist Identity */}
-      <Suspense
-        fallback={
-          <div className="rounded-[16px] border border-border bg-card p-6">
-            <Skeleton className="mb-4 h-3 w-36" />
-            <Skeleton className="mb-1 h-3 w-64" />
-            <Skeleton className="h-24 w-full" />
-          </div>
-        }
-      >
-        <ArtistIdentitySection />
-      </Suspense>
-
-      {/* Section 7: Genre Data Health */}
-      <GenreDataHealthSection />
-
-      {/* Section 8: LLM Translation */}
+      {/* Section 6: LLM Translation */}
       <Suspense
         fallback={
           <div className="rounded-[16px] border border-border bg-card p-6">
@@ -247,5 +240,5 @@ export function SettingsPage() {
         />
       </Suspense>
     </div>
-  )
+  );
 }

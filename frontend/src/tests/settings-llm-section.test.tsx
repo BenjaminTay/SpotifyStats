@@ -43,6 +43,7 @@ describe('LLMTranslationSection', () => {
       />,
     )
 
+    expect(screen.getByText('06 · LLM 配置')).toBeInTheDocument()
     expect(screen.getByText('当前模型')).toBeInTheDocument()
     expect(screen.getByRole('img', { name: 'DeepSeek 模型头像' })).toHaveAttribute(
       'src',

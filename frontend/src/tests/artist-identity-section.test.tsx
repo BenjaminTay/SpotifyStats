@@ -36,7 +36,6 @@ describe('ArtistIdentitySection', () => {
 
   it('presents raw ids, evidence context and keeps canonical separate from display name', () => {
     render(<ArtistIdentitySection />)
-    fireEvent.click(screen.getByRole('button', { name: /06 · 艺人身份/ }))
     fireEvent.change(screen.getByLabelText('搜索本地艺人'), { target: { value: 'JOLIN' } })
     fireEvent.click(screen.getByRole('button', { name: /Jolin Tsai/ }))
     fireEvent.click(screen.getAllByText('JOLIN')[0].closest('button')!)
@@ -45,19 +44,19 @@ describe('ArtistIdentitySection', () => {
     expect(screen.getAllByText(/raw #765/).length).toBeGreaterThan(0)
     expect(screen.getByLabelText('最终显示名')).toHaveValue('Jolin Tsai')
     expect(screen.getByText(/选择 canonical 只决定身份主键/)).toBeInTheDocument()
+    expect(screen.queryByText(/合并理由与证据/)).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: '预览全局影响' }))
     expect(previewMutate).toHaveBeenCalledWith({ artist_ids: [532, 765], canonical_artist_id: 532, display_name: 'Jolin Tsai' })
   })
 
-  it('shows saved groups and append-only audit with undo control without a wide table', () => {
+  it('shows lightweight active manual changes with direct edit and undo controls', () => {
     const { container } = render(<ArtistIdentitySection />)
-    fireEvent.click(screen.getByRole('button', { name: /06 · 艺人身份/ }))
-    fireEvent.click(screen.getByRole('tab', { name: '已合并身份' }))
+    fireEvent.click(screen.getByRole('tab', { name: '人工修改（1）' }))
     expect(screen.getByText('身份组 #3 · canonical raw #532')).toBeInTheDocument()
     expect(screen.getByText('2 个成员')).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('tab', { name: '操作记录' }))
-    expect(screen.getByText(/set_display · revision 2/)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '撤销' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '保存修改' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '撤销最近修改' })).toBeInTheDocument()
+    expect(screen.queryByText(/revision 2/)).not.toBeInTheDocument()
     expect(container.querySelector('table')).toBeNull()
   })
 })

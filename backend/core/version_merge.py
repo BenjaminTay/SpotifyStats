@@ -12,36 +12,48 @@ def detect_collaboration_track_group_candidates() -> pd.DataFrame:
     """Find L3 collaboration/remix candidates that include the original primary artist."""
     conn = get_db()
     try:
-        return pd.read_sql_query(
-            """WITH primary_tracks AS (
-                   SELECT t.track_id,
-                          t.track_name,
-                          ta.artist_id AS primary_artist_id
-                     FROM tracks t
-                     JOIN track_artists ta ON ta.track_id = t.track_id
-                    WHERE ta.role = 'primary'
-               ),
-               candidate_tracks AS (
-                   SELECT t.track_id,
-                          t.track_name,
-                          ta.artist_id
-                     FROM tracks t
-                     JOIN track_artists ta ON ta.track_id = t.track_id
-               )
-               SELECT DISTINCT
-                      p.track_id AS original_track_id,
-                      p.track_name AS original_track_name,
-                      c.track_id AS candidate_track_id,
-                      c.track_name AS candidate_track_name,
-                      p.primary_artist_id
-                 FROM primary_tracks p
-                 JOIN candidate_tracks c
-                   ON c.artist_id = p.primary_artist_id
-                  AND c.track_id != p.track_id
-                WHERE lower(c.track_name) LIKE '%' || lower(p.track_name) || '%'
-                   OR lower(c.track_name) LIKE '%' || lower(replace(p.track_name, ' - ', ' ')) || '%'
-                ORDER BY p.track_name, c.track_name""",
-            conn,
+        from backend.domains.metadata.track_credits import get_effective_track_credit_frame
+
+        credits = get_effective_track_credit_frame(conn)
+        tracks = pd.read_sql_query("SELECT track_id, track_name FROM tracks", conn)
+        credited_tracks = credits.merge(tracks, on="track_id", how="inner")
+        primary = credited_tracks[credited_tracks["role"] == "primary"].rename(
+            columns={
+                "track_id": "original_track_id",
+                "track_name": "original_track_name",
+                "artist_id": "primary_artist_id",
+            }
+        )
+        candidates = credited_tracks.rename(
+            columns={
+                "track_id": "candidate_track_id",
+                "track_name": "candidate_track_name",
+                "artist_id": "primary_artist_id",
+            }
+        )
+        merged = primary.merge(candidates, on="primary_artist_id", how="inner")
+        merged = merged[merged["original_track_id"] != merged["candidate_track_id"]]
+        original = merged["original_track_name"].str.casefold()
+        simplified = original.str.replace(" - ", " ", regex=False)
+        candidate = merged["candidate_track_name"].str.casefold()
+        mask = [
+            source in target or simple in target
+            for source, simple, target in zip(original, simplified, candidate)
+        ]
+        return (
+            merged.loc[
+                mask,
+                [
+                    "original_track_id",
+                    "original_track_name",
+                    "candidate_track_id",
+                    "candidate_track_name",
+                    "primary_artist_id",
+                ],
+            ]
+            .drop_duplicates()
+            .sort_values(["original_track_name", "candidate_track_name"])
+            .reset_index(drop=True)
         )
     finally:
         conn.close()

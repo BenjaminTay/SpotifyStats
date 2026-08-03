@@ -314,43 +314,100 @@ def search_artist_identity_candidates(
 ) -> list[dict[str, Any]]:
     pattern = f"%{query.strip()}%"
     rows = conn.execute(
-        """SELECT a.artist_id, a.artist_name, a.image_url, a.image_path,
-                  COUNT(DISTINCT p.play_id) AS play_count,
-                  MIN(p.ts_date) AS first_play_date, MAX(p.ts_date) AS last_play_date
+        """SELECT a.artist_id, a.artist_name, a.image_url, a.image_path
            FROM artists a
-           LEFT JOIN track_artists ta ON ta.artist_id=a.artist_id
-           LEFT JOIN plays p ON p.track_id=ta.track_id
            WHERE a.artist_name LIKE ? COLLATE NOCASE
-           GROUP BY a.artist_id
-           ORDER BY play_count DESC, a.artist_name
+           ORDER BY a.artist_name
            LIMIT ?""",
         (pattern, limit),
     ).fetchall()
     mapping = get_artist_identity_map(conn)
+    from backend.domains.metadata.track_credits import get_effective_track_credits
+
+    tracks_by_artist: dict[int, set[int]] = {}
+    for credit in get_effective_track_credits(conn):
+        tracks_by_artist.setdefault(int(credit["artist_id"]), set()).add(int(credit["track_id"]))
+    play_metrics = {
+        int(row["track_id"]): dict(row)
+        for row in conn.execute(
+            """SELECT track_id, COUNT(DISTINCT play_id) AS play_count,
+                      MIN(ts_date) AS first_play_date, MAX(ts_date) AS last_play_date
+               FROM plays WHERE track_id IS NOT NULL GROUP BY track_id"""
+        ).fetchall()
+    }
     result = []
     for row in rows:
         item = dict(row)
         resolved = mapping[int(row["artist_id"])]
+        external_ids = (
+            [
+                dict(value)
+                for value in conn.execute(
+                    """SELECT provider, external_id, evidence_type, confidence, verified
+                       FROM artist_identity_external_ids WHERE artist_id=?""",
+                    (row["artist_id"],),
+                ).fetchall()
+            ]
+            if _table_exists(conn, "artist_identity_external_ids")
+            else []
+        )
+        metrics = [
+            play_metrics.get(track_id, {})
+            for track_id in tracks_by_artist.get(resolved.canonical_artist_id, set())
+        ]
         item.update(
             {
+                "play_count": sum(int(value.get("play_count") or 0) for value in metrics),
+                "first_play_date": min(
+                    (
+                        str(value["first_play_date"])
+                        for value in metrics
+                        if value.get("first_play_date")
+                    ),
+                    default=None,
+                ),
+                "last_play_date": max(
+                    (
+                        str(value["last_play_date"])
+                        for value in metrics
+                        if value.get("last_play_date")
+                    ),
+                    default=None,
+                ),
                 "identity_id": resolved.identity_id,
                 "canonical_artist_id": resolved.canonical_artist_id,
                 "canonical_display_name": resolved.display_name,
                 "cover_url": f"/covers/artists/{row['artist_id']}.jpg"
                 if row["image_url"] or row["image_path"]
                 else None,
-                "external_ids": [
-                    dict(value)
-                    for value in conn.execute(
-                        """SELECT provider, external_id, evidence_type, confidence, verified
-                           FROM artist_identity_external_ids WHERE artist_id=?""",
-                        (row["artist_id"],),
-                    ).fetchall()
-                ],
+                "external_ids": external_ids,
             }
         )
+        # Older imports can have authoritative Spotify metadata without the
+        # governance link having been backfilled yet. Surface that stable ID
+        # as non-verified evidence only when the name resolves uniquely; the
+        # write operation still binds the selected local artist_id.
+        if not item["external_ids"] and _table_exists(conn, "spotify_artist_meta"):
+            meta_rows = conn.execute(
+                """SELECT DISTINCT spotify_artist_id
+                   FROM spotify_artist_meta
+                   WHERE artist_name=? COLLATE NOCASE
+                     AND COALESCE(spotify_artist_id, '')<>''""",
+                (row["artist_name"],),
+            ).fetchall()
+            meta_ids = sorted({str(value[0]) for value in meta_rows})
+            if len(meta_ids) == 1:
+                item["external_ids"] = [
+                    {
+                        "provider": "spotify",
+                        "external_id": meta_ids[0],
+                        "evidence_type": "provider_metadata_name_match",
+                        "confidence": 0.8,
+                        "verified": 0,
+                    }
+                ]
         result.append(item)
-    return result
+    return sorted(result, key=lambda item: (-int(item["play_count"]), item["artist_name"]))
 
 
 def preview_artist_identity_merge(
@@ -365,38 +422,79 @@ def preview_artist_identity_merge(
     if canonical_artist_id not in unique_ids:
         raise ValueError("canonical artist 必须属于所选成员")
     placeholders = ",".join("?" for _ in unique_ids)
-    rows = conn.execute(
-        f"""SELECT a.artist_id, a.artist_name, a.genres, a.image_url,
-                   COUNT(DISTINCT p.play_id) AS play_count,
-                   MIN(p.ts_date) AS first_play_date, MAX(p.ts_date) AS last_play_date
-            FROM artists a
-            LEFT JOIN track_artists ta ON ta.artist_id=a.artist_id
-            LEFT JOIN plays p ON p.track_id=ta.track_id
-            WHERE a.artist_id IN ({placeholders})
-            GROUP BY a.artist_id ORDER BY a.artist_id""",
-        unique_ids,
-    ).fetchall()
+    rows = [
+        dict(row)
+        for row in conn.execute(
+            f"""SELECT a.artist_id, a.artist_name, a.genres, a.image_url
+                FROM artists a WHERE a.artist_id IN ({placeholders})
+                ORDER BY a.artist_id""",
+            unique_ids,
+        ).fetchall()
+    ]
     if len(rows) != len(unique_ids):
         raise ValueError("包含不存在的艺人")
-    shared_tracks = conn.execute(
-        f"""SELECT t.spotify_track_id, t.track_name, COUNT(DISTINCT ta.artist_id) AS artists
-            FROM track_artists ta JOIN tracks t ON t.track_id=ta.track_id
-            WHERE ta.artist_id IN ({placeholders})
-              AND COALESCE(t.spotify_track_id, '') != ''
-            GROUP BY t.spotify_track_id, t.track_name
-            HAVING COUNT(DISTINCT ta.artist_id) > 1
-            ORDER BY artists DESC, t.track_name LIMIT 20""",
-        unique_ids,
-    ).fetchall()
-    duplicate_events = conn.execute(
-        f"""SELECT COUNT(*) FROM (
-                SELECT p.play_id
-                FROM plays p JOIN track_artists ta ON ta.track_id=p.track_id
-                WHERE ta.artist_id IN ({placeholders})
-                GROUP BY p.play_id HAVING COUNT(DISTINCT ta.artist_id) > 1
-            )""",
-        unique_ids,
-    ).fetchone()[0]
+    from backend.domains.metadata.track_credits import get_effective_track_credits
+
+    mapping = get_artist_identity_map(conn)
+    selected_canonical_ids = {
+        mapping[artist_id].canonical_artist_id if artist_id in mapping else artist_id
+        for artist_id in unique_ids
+    }
+    credits_by_track: dict[int, set[int]] = {}
+    tracks_by_artist: dict[int, set[int]] = {}
+    for credit in get_effective_track_credits(conn):
+        artist_id = int(credit["artist_id"])
+        if artist_id not in selected_canonical_ids:
+            continue
+        track_id = int(credit["track_id"])
+        credits_by_track.setdefault(track_id, set()).add(artist_id)
+        tracks_by_artist.setdefault(artist_id, set()).add(track_id)
+    play_rows = {
+        int(row["track_id"]): dict(row)
+        for row in conn.execute(
+            """SELECT track_id, COUNT(DISTINCT play_id) AS play_count,
+                      MIN(ts_date) AS first_play_date, MAX(ts_date) AS last_play_date
+               FROM plays WHERE track_id IS NOT NULL GROUP BY track_id"""
+        ).fetchall()
+    }
+    for member in rows:
+        resolved = mapping.get(int(member["artist_id"]))
+        member_canonical = resolved.canonical_artist_id if resolved else int(member["artist_id"])
+        metrics = [
+            play_rows.get(track_id, {})
+            for track_id in tracks_by_artist.get(member_canonical, set())
+        ]
+        member["play_count"] = sum(int(value.get("play_count") or 0) for value in metrics)
+        member["first_play_date"] = min(
+            (str(value["first_play_date"]) for value in metrics if value.get("first_play_date")),
+            default=None,
+        )
+        member["last_play_date"] = max(
+            (str(value["last_play_date"]) for value in metrics if value.get("last_play_date")),
+            default=None,
+        )
+    shared_track_ids = [
+        track_id for track_id, artist_set in credits_by_track.items() if len(artist_set) > 1
+    ]
+    shared_tracks = []
+    if shared_track_ids:
+        track_placeholders = ",".join("?" for _ in shared_track_ids)
+        shared_tracks = [
+            {
+                **dict(row),
+                "artists": len(credits_by_track[int(row["track_id"])]),
+            }
+            for row in conn.execute(
+                f"""SELECT track_id, spotify_track_id, track_name FROM tracks
+                    WHERE track_id IN ({track_placeholders})
+                      AND COALESCE(spotify_track_id, '') != ''
+                    ORDER BY track_name LIMIT 20""",
+                shared_track_ids,
+            ).fetchall()
+        ]
+    duplicate_events = sum(
+        int(play_rows.get(track_id, {}).get("play_count") or 0) for track_id in shared_track_ids
+    )
     conflicts = _external_id_conflicts(conn, unique_ids)
     if _table_exists(conn, "spotify_artist_meta"):
         provider_rows = conn.execute(
@@ -442,12 +540,12 @@ def preview_artist_identity_merge(
         if len(language_keys) > 1:
             metadata_conflicts["language"] = language_facts
     return {
-        "members": [dict(row) for row in rows],
+        "members": rows,
         "canonical_artist_id": canonical_artist_id,
         "display_name": display_name.strip(),
         "combined_play_count_before_dedupe": sum(int(row["play_count"] or 0) for row in rows),
         "duplicate_play_events": int(duplicate_events),
-        "shared_stable_tracks": [dict(row) for row in shared_tracks],
+        "shared_stable_tracks": shared_tracks,
         "external_id_conflicts": conflicts,
         "metadata_conflicts": metadata_conflicts,
         "blocked": bool(conflicts),
@@ -532,9 +630,8 @@ def create_artist_identity_group(
         return {"event_id": prior[0], "revision": prior[1], "identity_id": prior[2]}
     preview = preview_artist_identity_merge(conn, artist_ids, canonical_artist_id, display_name)
     if preview["blocked"] and not confirm_external_id_conflict:
-        raise ValueError("所选艺人存在不同的 provider / 外部 ID；需要明确确认并填写理由")
-    if not reason.strip():
-        raise ValueError("必须填写合并理由")
+        raise ValueError("所选艺人存在不同的 provider / 外部 ID；请确认后再合并")
+    reason = reason.strip() or "个人管理直接合并"
     unique_ids = list(dict.fromkeys(int(value) for value in artist_ids))
     normalized_external_ids: list[dict[str, Any]] = []
     for link in external_ids or []:
@@ -566,7 +663,7 @@ def create_artist_identity_group(
             verified_by_provider.setdefault(link["provider"], set()).add(link["external_id"])
     prospective_conflict = any(len(values) > 1 for values in verified_by_provider.values())
     if prospective_conflict and not confirm_external_id_conflict:
-        raise ValueError("所选艺人存在不同的 provider / 外部 ID；需要明确确认并填写理由")
+        raise ValueError("所选艺人存在不同的 provider / 外部 ID；请确认后再合并")
     placeholders = ",".join("?" for _ in unique_ids)
     existing_groups = [
         int(row[0])
@@ -718,7 +815,8 @@ def update_artist_identity_group(
         else {"blocked": False}
     )
     if preview["blocked"] and not confirm_external_id_conflict:
-        raise ValueError("所选艺人存在不同的 provider / 外部 ID；需要明确确认并填写理由")
+        raise ValueError("所选艺人存在不同的 provider / 外部 ID；请确认后再修改")
+    reason = reason.strip() or "个人管理直接修改"
     for artist_id in add_ids or []:
         existing_member = conn.execute(
             """SELECT identity_id FROM artist_identity_members

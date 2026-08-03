@@ -17,6 +17,20 @@ from backend.domains.metadata.artist_genres import resolve_artist_genres
 from backend.domains.metadata.artist_spotify_meta import resolve_artist_spotify_meta
 
 
+def _track_primary_artist_name(track_id: int, fallback: str) -> str:
+    """Return the canonical primary credit used to resolve album ownership."""
+    conn = get_db()
+    try:
+        row = conn.execute("SELECT artist_id FROM tracks WHERE track_id=?", (track_id,)).fetchone()
+        if row is None:
+            return fallback
+        from backend.domains.metadata.artist_identity import resolve_artist_id
+
+        return resolve_artist_id(conn, int(row[0])).display_name
+    finally:
+        conn.close()
+
+
 def _load_detail_access_stats(
     kind: str,
     *,
@@ -870,6 +884,9 @@ def get_track_history(
             "track_name": str(entity["track_name"]),
             "artist_name": str(entity["artist_name"]),
             "artist_names": list(entity.get("artist_names") or [entity["artist_name"]]),
+            "primary_artist_name": _track_primary_artist_name(
+                int(entity["track_id"]), str(entity["artist_name"])
+            ),
             "cover_url": entity.get("cover_url"),
             "meta": _get_track_spotify_meta(track_id, merge_level),
             "summary": None,
@@ -912,6 +929,7 @@ def get_track_history(
         "track_name": str(track_hist.iloc[0]["track_name"]),
         "artist_name": display_artist,
         "artist_names": artist_names,
+        "primary_artist_name": _track_primary_artist_name(track_id, primary_artist),
         "cover_url": cover_url if pd.notna(cover_url) else None,
         "meta": _get_track_spotify_meta(track_id, merge_level),
         "summary": {

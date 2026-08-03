@@ -153,6 +153,7 @@ JSON → import → SQLite → FastAPI (backend/) → React (frontend/)
 - **新增外部 HTTP 调用 → Provider/HttpClient；禁止直接 `urllib.request.Request`/`urlopen`**
 - **AI Agent 工具必须后端 allowlist + read_only**；不得提供任意 SQL、任意 URL、settings/import/cache/playlist 写工具；最终回答只能基于 persisted tool results 和 coverage；曲风/语种问题没有结构化证据时必须保守说明限制
 - **艺人语言元数据以 `artist_id` 为主体并独立于 genre**；统计只使用 `tracks.artist_id` 主艺人归属，禁止 track-artist fan-out 或 genre-to-language 推断；legacy、LLM 和未审核 seed 只能 suggested，显式 reviewed seed 仅可在 evidence、`reviewed_by`、`resolution_note` 齐全并通过同一 validator/state machine 时批准，禁止自动猜测批准；只有 approved fact 进入统计，`unknown`、`multilingual`、`instrumental` 与未归属时长必须保留并可审计
+- **人工曲目署名不得修改原始事实**；统一使用 `track_credit_overrides`/events/revision 和 `backend/domains/metadata/track_credits.py` resolver，以稳定本地 `artist_id` 保存，先 canonicalize 再按播放事件去重。Settings“音乐源数据管理”是单管理员直接编辑入口，理由/证据不必填，普通修改直接应用而底层 revision/idempotency/undo/rebuild 继续强制；详情页仅精准深链，聚合 revision 落后时必须走实时 resolver，重建失败不得回退旧署名
 - **AI 年度叙事 → `visual_yearly_artifact_service.py` + `report_agent.py` + `visual_chart_data.py` + `visual_yearly_critic.py`**；默认年度报告必须返回 `visual_yearly_artifact` 且走 `writer_pipeline=agent_synthesis_v2`，Agent 多轮调用本地数据工具 + web_search 后直接输出报告 JSON（无中间摘要），图表数据只能由 deterministic backend builder 生成；年报和 Chat 默认启用 DeepSeek 思考模式；`editorial_agent_v1` 映射到新路径，旧 `yearly_contract.py` / `yearly_validator.py` / 确定性 fallback 只作为事实安全网和 `basic_summary` 回退
 - **页面容器只做路由入口；业务逻辑在 `features/`**
 - 架构护栏测试 `phase5-architecture.test.ts` 对上述约定做负面断言强制执行

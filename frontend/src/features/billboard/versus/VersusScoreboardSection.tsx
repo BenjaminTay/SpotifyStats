@@ -257,11 +257,6 @@ export function VersusScoreboardSection({
                     个人播放
                   </td>
                 </tr>
-                <tr>
-                  <td colSpan={n + 1} className="px-4 py-2 text-[11px] leading-relaxed text-muted-foreground bg-muted/20">
-                    个人总播放按全部有效播放计算；“入榜周最高播放”只统计进入个人榜单的周，两者范围不同。
-                  </td>
-                </tr>
                 {personalRows.map((row) => (
                   <tr key={row.label} className="border-b border-border/40 transition-colors hover:bg-muted/30">
                     <td className="py-2.5 pl-4 text-[13px] text-muted-foreground sticky left-0 bg-card w-[140px]">

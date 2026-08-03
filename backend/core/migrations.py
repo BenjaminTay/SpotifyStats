@@ -899,6 +899,65 @@ def migrate_029(conn: sqlite3.Connection):
         )
 
 
+@migration(30, "track_credit_metadata_management")
+def migrate_030(conn: sqlite3.Connection):
+    """Add an auditable overlay for effective track credits without rewriting raw facts."""
+    conn.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS track_credit_overrides (
+            override_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            track_id INTEGER NOT NULL REFERENCES tracks(track_id),
+            artist_id INTEGER NOT NULL REFERENCES artists(artist_id),
+            action TEXT NOT NULL CHECK (action IN ('add', 'remove', 'set_role')),
+            role TEXT CHECK (role IN ('primary', 'featured')),
+            evidence_type TEXT NOT NULL DEFAULT 'user_confirmed',
+            evidence_source TEXT,
+            reason TEXT NOT NULL,
+            actor TEXT NOT NULL DEFAULT 'local-user',
+            revision INTEGER NOT NULL,
+            active INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0, 1)),
+            supersedes_override_id INTEGER REFERENCES track_credit_overrides(override_id),
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            deactivated_at TEXT
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS uq_track_credit_override_active
+            ON track_credit_overrides(track_id, artist_id) WHERE active = 1;
+        CREATE INDEX IF NOT EXISTS idx_track_credit_overrides_track
+            ON track_credit_overrides(track_id, active);
+
+        CREATE TABLE IF NOT EXISTS track_credit_events (
+            event_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            track_id INTEGER NOT NULL REFERENCES tracks(track_id),
+            artist_id INTEGER NOT NULL REFERENCES artists(artist_id),
+            action TEXT NOT NULL,
+            before_json TEXT NOT NULL DEFAULT '{}',
+            after_json TEXT NOT NULL DEFAULT '{}',
+            actor TEXT NOT NULL,
+            reason TEXT NOT NULL,
+            revision INTEGER NOT NULL,
+            idempotency_key TEXT NOT NULL UNIQUE,
+            undo_of_event_id INTEGER REFERENCES track_credit_events(event_id),
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_track_credit_events_track
+            ON track_credit_events(track_id, event_id DESC);
+
+        CREATE TABLE IF NOT EXISTS track_credit_state (
+            state_id INTEGER PRIMARY KEY CHECK (state_id = 1),
+            current_revision INTEGER NOT NULL DEFAULT 0,
+            active_aggregate_revision INTEGER NOT NULL DEFAULT 0,
+            rebuild_status TEXT NOT NULL DEFAULT 'ready'
+                CHECK (rebuild_status IN ('ready', 'pending', 'running', 'failed')),
+            last_error TEXT,
+            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        INSERT OR IGNORE INTO track_credit_state(
+            state_id, current_revision, active_aggregate_revision, rebuild_status
+        ) VALUES (1, 0, 0, 'ready');
+        """
+    )
+
+
 # ── Runner ────────────────────────────────────────────────────────────────
 
 

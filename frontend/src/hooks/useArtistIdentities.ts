@@ -19,7 +19,7 @@ export interface IdentityDraft {
 interface IdentityWrite extends IdentityDraft {
   expected_revision: number
   idempotency_key: string
-  reason: string
+  reason?: string
   confirm_external_id_conflict?: boolean
 }
 
@@ -31,7 +31,7 @@ interface IdentityUpdate {
   provider_metadata_artist_id?: number
   expected_revision: number
   idempotency_key: string
-  reason: string
+  reason?: string
   confirm_external_id_conflict?: boolean
 }
 
@@ -84,11 +84,10 @@ export function useArtistIdentities(search: string) {
     onSuccess: invalidateIdentityChange,
   })
   const undo = useMutation({
-    mutationFn: ({ eventId, revision, reason }: { eventId: number; revision: number; reason: string }) =>
+    mutationFn: ({ eventId, revision }: { eventId: number; revision: number }) =>
       api.post<ArtistIdentityMutation>(`/artist-identities/events/${eventId}/undo`, {
         expected_revision: revision,
         idempotency_key: idempotencyKey('artist-identity-undo'),
-        reason,
       }),
     onSuccess: invalidateIdentityChange,
   })

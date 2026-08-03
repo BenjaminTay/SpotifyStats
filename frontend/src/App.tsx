@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect } from 'react'
+import { lazy, Suspense, useEffect, useRef } from 'react'
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigationType, useParams } from 'react-router-dom'
 import { AppLayout } from '@/components/layout/AppLayout'
 
@@ -48,13 +48,16 @@ function RouteFallback() {
   )
 }
 
-function ScrollToTop() {
+export function ScrollToTop() {
   const { pathname } = useLocation()
   const navigationType = useNavigationType()
+  const previousPathname = useRef(pathname)
   useEffect(() => {
-    if (navigationType !== 'POP') {
+    const pathnameChanged = previousPathname.current !== pathname
+    if (pathnameChanged && navigationType !== 'POP') {
       window.scrollTo(0, 0)
     }
+    previousPathname.current = pathname
   }, [pathname, navigationType])
   return null
 }

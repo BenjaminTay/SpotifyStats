@@ -37,7 +37,7 @@ class IdentityExternalIdInput(BaseModel):
     artist_id: int
     provider: str = Field(min_length=1, max_length=50)
     external_id: str = Field(min_length=1, max_length=200)
-    evidence_type: str = Field(min_length=1, max_length=100)
+    evidence_type: str = Field(default="user_confirmed", min_length=1, max_length=100)
     evidence_source: str | None = Field(default=None, max_length=500)
     confidence: float = Field(default=1.0, ge=0, le=1)
     verified: bool = True
@@ -46,7 +46,7 @@ class IdentityExternalIdInput(BaseModel):
 class IdentityCreateRequest(IdentityPreviewRequest):
     expected_revision: int = Field(ge=0)
     idempotency_key: str = Field(min_length=8, max_length=200)
-    reason: str = Field(min_length=2, max_length=500)
+    reason: str | None = Field(default=None, max_length=500)
     confirm_external_id_conflict: bool = False
     external_ids: list[IdentityExternalIdInput] = Field(default_factory=list)
 
@@ -59,14 +59,14 @@ class IdentityUpdateRequest(BaseModel):
     provider_metadata_artist_id: int | None = None
     expected_revision: int = Field(ge=0)
     idempotency_key: str = Field(min_length=8, max_length=200)
-    reason: str = Field(min_length=2, max_length=500)
+    reason: str | None = Field(default=None, max_length=500)
     confirm_external_id_conflict: bool = False
 
 
 class IdentityUndoRequest(BaseModel):
     expected_revision: int = Field(ge=0)
     idempotency_key: str = Field(min_length=8, max_length=200)
-    reason: str = Field(min_length=2, max_length=500)
+    reason: str | None = Field(default=None, max_length=500)
 
 
 class IdentityMutationResponse(BaseModel):
@@ -134,7 +134,7 @@ def create_identity(
             display_name=body.display_name,
             expected_revision=body.expected_revision,
             idempotency_key=body.idempotency_key,
-            reason=body.reason,
+            reason=body.reason or "个人管理直接合并",
             confirm_external_id_conflict=body.confirm_external_id_conflict,
             external_ids=[item.model_dump() for item in body.external_ids],
         )
@@ -165,7 +165,7 @@ def update_identity(
             provider_metadata_artist_id=body.provider_metadata_artist_id,
             expected_revision=body.expected_revision,
             idempotency_key=body.idempotency_key,
-            reason=body.reason,
+            reason=body.reason or "个人管理直接修改",
             confirm_external_id_conflict=body.confirm_external_id_conflict,
         )
     except ValueError as exc:
@@ -198,7 +198,7 @@ def undo_identity(
             event_id=event_id,
             expected_revision=body.expected_revision,
             idempotency_key=body.idempotency_key,
-            reason=body.reason,
+            reason=body.reason or "撤销人工修改",
         )
     except ValueError as exc:
         conn.rollback()

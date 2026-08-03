@@ -379,6 +379,11 @@ BOUNDARY_EVIDENCE_BY_KEY: dict[tuple[str, str, str], ParameterEvidence] = {
         ("billboard_album_artist_name_empty", "billboard_album_artist_name_long"),
         "artist-name query handles empty and overlong filters without server errors",
     ),
+    ("query", "track_id", "integer|exclusiveMinimum=0"): ParameterEvidence(
+        "targeted_contract",
+        ("backend/tests/contract/test_track_credit_api.py",),
+        "optional track-credit event filtering validates positive stable local track IDs",
+    ),
     ("query", "code", "string"): ParameterEvidence(
         "controlled_stateful_or_external",
         ("backend/tests/contract/test_spotify_auth_contract.py",),
@@ -480,8 +485,17 @@ BOUNDARY_EVIDENCE_BY_KEY: dict[tuple[str, str, str], ParameterEvidence] = {
     ("path", "event_id", "integer"): ParameterEvidence(
         "targeted_contract",
         (),
-        "identity undo path validation is exercised in isolated API contracts",
-        ("backend/tests/unit/test_artist_identity.py",),
+        "identity and track-credit undo path validation is exercised in isolated API contracts",
+        (
+            "backend/tests/unit/test_artist_identity.py",
+            "backend/tests/contract/test_track_credit_api.py",
+        ),
+    ),
+    ("path", "override_id", "integer"): ParameterEvidence(
+        "targeted_contract",
+        (),
+        "track-credit override update and removal path validation is covered by isolated contracts",
+        ("backend/tests/contract/test_track_credit_api.py",),
     ),
     (
         "query",

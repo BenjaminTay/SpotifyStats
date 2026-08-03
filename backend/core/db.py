@@ -471,6 +471,57 @@ INSERT OR IGNORE INTO artist_identity_state(
     state_id, current_revision, active_aggregate_revision, rebuild_status
 ) VALUES (1, 0, 0, 'ready');
 
+CREATE TABLE IF NOT EXISTS track_credit_overrides (
+    override_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    track_id INTEGER NOT NULL REFERENCES tracks(track_id),
+    artist_id INTEGER NOT NULL REFERENCES artists(artist_id),
+    action TEXT NOT NULL CHECK (action IN ('add', 'remove', 'set_role')),
+    role TEXT CHECK (role IN ('primary', 'featured')),
+    evidence_type TEXT NOT NULL DEFAULT 'user_confirmed',
+    evidence_source TEXT,
+    reason TEXT NOT NULL,
+    actor TEXT NOT NULL DEFAULT 'local-user',
+    revision INTEGER NOT NULL,
+    active INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0, 1)),
+    supersedes_override_id INTEGER REFERENCES track_credit_overrides(override_id),
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    deactivated_at TEXT
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_track_credit_override_active
+ON track_credit_overrides(track_id, artist_id) WHERE active = 1;
+CREATE INDEX IF NOT EXISTS idx_track_credit_overrides_track
+ON track_credit_overrides(track_id, active);
+
+CREATE TABLE IF NOT EXISTS track_credit_events (
+    event_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    track_id INTEGER NOT NULL REFERENCES tracks(track_id),
+    artist_id INTEGER NOT NULL REFERENCES artists(artist_id),
+    action TEXT NOT NULL,
+    before_json TEXT NOT NULL DEFAULT '{}',
+    after_json TEXT NOT NULL DEFAULT '{}',
+    actor TEXT NOT NULL,
+    reason TEXT NOT NULL,
+    revision INTEGER NOT NULL,
+    idempotency_key TEXT NOT NULL UNIQUE,
+    undo_of_event_id INTEGER REFERENCES track_credit_events(event_id),
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_track_credit_events_track
+ON track_credit_events(track_id, event_id DESC);
+
+CREATE TABLE IF NOT EXISTS track_credit_state (
+    state_id INTEGER PRIMARY KEY CHECK (state_id = 1),
+    current_revision INTEGER NOT NULL DEFAULT 0,
+    active_aggregate_revision INTEGER NOT NULL DEFAULT 0,
+    rebuild_status TEXT NOT NULL DEFAULT 'ready'
+        CHECK (rebuild_status IN ('ready', 'pending', 'running', 'failed')),
+    last_error TEXT,
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+INSERT OR IGNORE INTO track_credit_state(
+    state_id, current_revision, active_aggregate_revision, rebuild_status
+) VALUES (1, 0, 0, 'ready');
+
 CREATE TABLE IF NOT EXISTS artist_metadata_attribution_overrides (
     track_id INTEGER PRIMARY KEY REFERENCES tracks(track_id),
     artist_id INTEGER REFERENCES artists(artist_id),
@@ -1119,8 +1170,9 @@ def _load_plays_for_artists_cached(
     max_merge_gap_minutes: int | None = None,
     boundary_column: str | None = None,
     identity_revision: int = 0,
+    track_credit_revision: int = 0,
 ) -> pd.DataFrame:
-    """Same as _load_plays_cached but fans out through track_artists after merge
+    """Same as _load_plays_cached but fans out through effective credits after merge
     so featured artists get their own rows. One play on a multi-artist track
     produces one row per credited artist.
 
@@ -1191,17 +1243,22 @@ def _load_plays_for_artists_cached(
 
                 df = filter_effective_plays(df, min_ms=min_ms, dynamic_threshold=dynamic_threshold)
 
-        # Step 2: Fan out through track_artists for multi-artist attribution.
+        # Step 2: Fan out through the raw + manual effective credit resolver.
         # Preserve effective-event identity across the many-to-many merge: a
         # merged logical play can share its source play_id with another output.
         df["_artist_event_id"] = range(len(df))
-        track_artists_df = pd.read_sql_query("SELECT track_id, artist_id FROM track_artists", conn)
+        from backend.domains.metadata.track_credits import get_effective_track_credit_frame
+
+        track_artists_df = get_effective_track_credit_frame(conn)
         # Drop the single-artist artist_name (will be replaced by fan-out join)
         df = df.drop(columns=["artist_name"], errors="ignore")
-        df = df.merge(track_artists_df, on="track_id", how="inner")
-        # Re-join artist names from the fanned-out artist_ids
-        artists_df = pd.read_sql_query("SELECT artist_id, artist_name FROM artists", conn)
-        df = df.merge(artists_df, on="artist_id", how="left")
+        df = df.merge(
+            track_artists_df[["track_id", "artist_id", "raw_artist_id", "artist_name"]],
+            on="track_id",
+            how="inner",
+        )
+        df["artist_id"] = df["raw_artist_id"]
+        df = df.drop(columns=["raw_artist_id"])
 
         from backend.domains.metadata.artist_identity import canonicalize_artist_frame
 
@@ -1237,6 +1294,7 @@ def load_plays_for_artists(
     — it duplicates rows for multi-artist tracks.
     """
     from backend.domains.metadata.artist_identity import get_identity_revision
+    from backend.domains.metadata.track_credits import get_track_credit_revision
 
     return _load_plays_for_artists_cached(
         min_ms=min_ms,
@@ -1251,6 +1309,7 @@ def load_plays_for_artists(
         max_merge_gap_minutes=max_merge_gap_minutes,
         boundary_column=boundary_column,
         identity_revision=get_identity_revision(conn),
+        track_credit_revision=get_track_credit_revision(conn),
     ).copy()
 
 
@@ -1280,16 +1339,9 @@ def get_track_all_artists_map() -> dict[int, str]:
     from the dict so callers can use .get() with the existing artist_name as
     fallback."""
     conn = get_db()
-    rows = conn.execute(
-        """SELECT ta.track_id, ta.artist_id, ta.role
-           FROM track_artists ta
-           ORDER BY ta.track_id, CASE ta.role WHEN 'primary' THEN 0 ELSE 1 END"""
-    ).fetchall()
-    from backend.domains.metadata.artist_identity import canonical_artist_names_for_track
+    from backend.domains.metadata.track_credits import canonical_artist_names_for_effective_tracks
 
-    resolved = canonical_artist_names_for_track(
-        conn, [(int(row[0]), int(row[1]), str(row[2])) for row in rows]
-    )
+    resolved = canonical_artist_names_for_effective_tracks(conn)
     conn.close()
     return {tid: ", ".join(names) for tid, names in resolved.items() if len(names) > 1}
 
@@ -1299,16 +1351,9 @@ def get_track_artist_names_map() -> dict[int, list[str]]:
     """Return {track_id: [artist_name, ...]} for ALL tracks that have
     track_artists entries (at minimum the primary artist)."""
     conn = get_db()
-    rows = conn.execute(
-        """SELECT ta.track_id, ta.artist_id, ta.role
-           FROM track_artists ta
-           ORDER BY ta.track_id, CASE ta.role WHEN 'primary' THEN 0 ELSE 1 END"""
-    ).fetchall()
-    from backend.domains.metadata.artist_identity import canonical_artist_names_for_track
+    from backend.domains.metadata.track_credits import canonical_artist_names_for_effective_tracks
 
-    result = canonical_artist_names_for_track(
-        conn, [(int(row[0]), int(row[1]), str(row[2])) for row in rows]
-    )
+    result = canonical_artist_names_for_effective_tracks(conn)
     conn.close()
     return result
 
@@ -1378,6 +1423,7 @@ def _agg_param_hash(
     dynamic_threshold: bool = False,
     max_merge_gap_minutes: int | None = None,
     identity_revision: int = 0,
+    track_credit_revision: int = 0,
 ) -> str:
     """Compute a content-hash of the parameters that affect aggregation results."""
     payload = json.dumps(
@@ -1389,6 +1435,7 @@ def _agg_param_hash(
             dynamic_threshold,
             max_merge_gap_minutes,
             identity_revision,
+            track_credit_revision,
         ],
         sort_keys=True,
     )
@@ -1447,6 +1494,15 @@ def build_aggregations(
         conn.execute("DELETE FROM agg_weekly_track_sources")
         conn.execute("DELETE FROM agg_weekly_artists")
         conn.execute("DELETE FROM agg_config")
+        if conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='track_credit_state'"
+        ).fetchone():
+            conn.execute(
+                """UPDATE track_credit_state
+                   SET active_aggregate_revision=current_revision,
+                       rebuild_status='ready', last_error=NULL, updated_at=datetime('now')
+                   WHERE state_id=1"""
+            )
         conn.commit()
         conn.close()
         return {"tracks": 0, "albums": 0, "track_sources": 0, "artists": 0}
@@ -1575,18 +1631,23 @@ def build_aggregations(
     if progress_callback:
         progress_callback("预聚合: 专辑完成", 0.66)
 
-    # 4. Artists — fan out through track_artists for multi-artist attribution
+    # 4. Artists — fan out through effective raw + manual credits.
     if progress_callback:
         progress_callback("预聚合: 艺人...", 0.66)
-    track_artists_df = pd.read_sql_query("SELECT track_id, artist_id FROM track_artists", conn)
+    from backend.domains.metadata.track_credits import (
+        get_effective_track_credit_frame,
+        get_track_credit_revision,
+    )
+
+    track_artists_df = get_effective_track_credit_frame(conn)
     df_artists = df.merge(track_artists_df, on="track_id", how="inner", suffixes=("_primary", ""))
+    df_artists["artist_id"] = df_artists["raw_artist_id"]
+    df_artists = df_artists.drop(columns=["raw_artist_id"])
     from backend.domains.metadata.artist_identity import (
         canonicalize_artist_frame,
         get_identity_revision,
     )
 
-    artists_df = pd.read_sql_query("SELECT artist_id, artist_name FROM artists", conn)
-    df_artists = df_artists.merge(artists_df, on="artist_id", how="left")
     df_artists = canonicalize_artist_frame(df_artists, conn)
     artists_agg = (
         df_artists.groupby(["billboard_week", "artist_id"])
@@ -1616,11 +1677,21 @@ def build_aggregations(
         dynamic_threshold=dynamic_threshold,
         max_merge_gap_minutes=max_merge_gap_minutes,
         identity_revision=get_identity_revision(conn),
+        track_credit_revision=get_track_credit_revision(conn),
     )
     conn.execute(
         "INSERT OR REPLACE INTO agg_config(key, value) VALUES ('param_hash', ?)",
         (param_hash,),
     )
+    if conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='track_credit_state'"
+    ).fetchone():
+        conn.execute(
+            """UPDATE track_credit_state
+               SET active_aggregate_revision=current_revision,
+                   rebuild_status='ready', last_error=NULL, updated_at=datetime('now')
+               WHERE state_id=1"""
+        )
     conn.commit()
     conn.close()
 

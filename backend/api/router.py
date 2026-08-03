@@ -30,6 +30,7 @@ from backend.api.search import router as search_router
 from backend.api.settings import router as settings_router
 from backend.api.spotify_auth import router as spotify_auth_router
 from backend.api.timeline import router as timeline_router
+from backend.api.track_credits import router as track_credits_router
 from backend.api.version_merge import router as version_merge_router
 from backend.api.video import router as video_router
 from backend.api.wrapped import router as wrapped_router
@@ -65,6 +66,7 @@ api_router.include_router(ai_tasks_router)
 api_router.include_router(artist_genre_metadata_router)
 api_router.include_router(artist_language_metadata_router)
 api_router.include_router(artist_identity_router)
+api_router.include_router(track_credits_router)
 api_router.include_router(chat_router)
 api_router.include_router(admin_router)
 api_router.include_router(jobs_router)

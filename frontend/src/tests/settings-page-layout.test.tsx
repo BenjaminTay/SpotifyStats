@@ -35,16 +35,8 @@ vi.mock('@/features/settings/components/BillboardParamsSection', () => ({
   BillboardParamsSection: () => <div data-testid="billboard-params-section">BillboardParamsSection</div>,
 }))
 
-vi.mock('@/features/settings/components/GenreDataHealthSection', () => ({
-  GenreDataHealthSection: () => <div data-testid="genre-data-health-section">GenreDataHealthSection</div>,
-}))
-
-vi.mock('@/features/settings/components/VersionMergeSection', () => ({
-  VersionMergeSection: () => <div data-testid="version-merge-section">VersionMergeSection</div>,
-}))
-
-vi.mock('@/features/settings/components/ArtistIdentitySection', () => ({
-  ArtistIdentitySection: () => <div data-testid="artist-identity-section">ArtistIdentitySection</div>,
+vi.mock('@/features/settings/components/MusicMetadataSection', () => ({
+  MusicMetadataSection: () => <div data-testid="music-metadata-section">MusicMetadataSection</div>,
 }))
 
 vi.mock('@/features/settings/components/LLMTranslationSection', () => ({
@@ -96,13 +88,12 @@ function mockLoadedSettings() {
 }
 
 describe('SettingsPage layout', () => {
-  it('keeps the original flat settings sequence and inserts genre health before LLM settings', async () => {
+  it('keeps the flat settings sequence with genre and language embedded in metadata', async () => {
     mockLoadedSettings()
 
     render(<SettingsPage />)
 
-    await screen.findByTestId('version-merge-section')
-    await screen.findByTestId('artist-identity-section')
+    await screen.findByTestId('music-metadata-section')
     await screen.findByTestId('llm-translation-section')
 
     const orderedSections = [
@@ -112,9 +103,7 @@ describe('SettingsPage layout', () => {
       screen.getByTestId('data-import-section'),
       screen.getByTestId('data-filtering-section'),
       screen.getByTestId('billboard-params-section'),
-      screen.getByTestId('version-merge-section'),
-      screen.getByTestId('artist-identity-section'),
-      screen.getByTestId('genre-data-health-section'),
+      screen.getByTestId('music-metadata-section'),
       screen.getByTestId('llm-translation-section'),
     ]
 
@@ -127,5 +116,6 @@ describe('SettingsPage layout', () => {
     expect(screen.queryByRole('region', { name: '统计口径' })).not.toBeInTheDocument()
     expect(screen.queryByRole('region', { name: '元数据与 AI' })).not.toBeInTheDocument()
     expect(screen.queryByRole('region', { name: '高级维护' })).not.toBeInTheDocument()
+    expect(screen.queryByTestId('genre-data-health-section')).not.toBeInTheDocument()
   })
 })

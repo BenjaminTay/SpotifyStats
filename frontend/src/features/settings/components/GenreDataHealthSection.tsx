@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import {
   AlertCircle,
@@ -510,7 +510,44 @@ function ReviewCard({
   )
 }
 
-export function GenreDataHealthSection() {
+function GenreDataHealthFrame({
+  embedded,
+  summary,
+  children,
+}: {
+  embedded: boolean
+  summary?: string
+  children: ReactNode
+}) {
+  if (embedded) {
+    return (
+      <section id="genre-data-health" aria-label="流派与语言数据健康" className="space-y-5">
+        <div>
+          <h3 className="font-serif text-2xl font-bold">流派与语言数据健康</h3>
+          <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
+            查看艺人流派与常用演唱语言的覆盖率、来源和人工审核记录。
+          </p>
+        </div>
+        {children}
+      </section>
+    )
+  }
+  return (
+    <GlassCard className="p-6">
+      <CollapsibleSection
+        defaultOpen
+        desc="查看艺人流派与常用演唱语言的覆盖率、来源和人工审核记录。"
+        num={7}
+        summary={summary}
+        title="流派与语言数据健康"
+      >
+        {children}
+      </CollapsibleSection>
+    </GlassCard>
+  )
+}
+
+export function GenreDataHealthSection({ embedded = false }: { embedded?: boolean }) {
   const { filters } = useAnalysisFilters()
   const queryClient = useQueryClient()
   const [message, setMessage] = useState<string | null>(null)
@@ -675,14 +712,7 @@ export function GenreDataHealthSection() {
     : []
 
   return (
-    <GlassCard className="p-6">
-      <CollapsibleSection
-        defaultOpen
-        desc="查看艺人流派与常用演唱语言的覆盖率、来源和人工审核记录。"
-        num={7}
-        summary={summary}
-        title="流派与语言数据健康"
-      >
+    <GenreDataHealthFrame embedded={embedded} summary={summary}>
         <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div className="min-w-0">
             <p className="text-[12.5px] leading-relaxed text-muted-foreground">
@@ -984,7 +1014,6 @@ export function GenreDataHealthSection() {
           </div>
         )}
         <ArtistLanguageHealthSection />
-      </CollapsibleSection>
-    </GlassCard>
+    </GenreDataHealthFrame>
   )
 }

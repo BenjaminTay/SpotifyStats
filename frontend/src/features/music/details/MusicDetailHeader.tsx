@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { ArrowLeft } from 'lucide-react'
+import { ArrowLeft, Settings2 } from 'lucide-react'
 import type { AlbumDetailResponse, ArtistDetailResponse } from '@/types/billboard'
 import { displayName } from '@/lib/chinese'
 import { cn } from '@/lib/utils'
@@ -56,10 +56,21 @@ export function ArtistDetailHero({
             className="h-[120px] w-[120px] flex-shrink-0 rounded-full object-cover shadow-lg"
           />
         )}
-        <div className="min-w-0 max-w-full">
-          <h1 className="break-words font-serif text-[44px] font-bold leading-[1.06] tracking-normal">
-            {displayName(data.artist_name)}
-          </h1>
+        <div className="min-w-0 max-w-full flex-1">
+          <div className="flex min-w-0 items-start justify-between gap-3">
+            <h1 className="min-w-0 break-words font-serif text-[44px] font-bold leading-[1.06] tracking-normal">
+              {displayName(data.artist_name)}
+            </h1>
+            <Link
+              aria-label={`管理 ${data.artist_name} 的艺人身份`}
+              title="管理艺人身份"
+              to={`/settings?metadata=artist-identities&artist=${encodeURIComponent(data.artist_name)}&return_to=${encodeURIComponent(`/music/artists/${data.artist_name}`)}#music-metadata-management`}
+              className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-border px-2.5 text-[11px] font-semibold text-muted-foreground transition hover:border-accent-foreground/40 hover:text-foreground"
+            >
+              <Settings2 className="size-3.5" />
+              <span className="hidden md:inline">管理</span>
+            </Link>
+          </div>
           {data.meta && (
             <div className="mt-2 font-sans text-[14px] text-muted-foreground">
               {data.meta.genres && data.meta.genres.length > 0 && (
@@ -137,10 +148,21 @@ export function AlbumDetailHero({
             className="h-[120px] w-[120px] flex-shrink-0 rounded-[12px] object-cover shadow-lg"
           />
         )}
-        <div className="min-w-0 max-w-full">
-          <h1 className="break-words font-serif text-[44px] font-bold leading-[1.06] tracking-normal">
-            {displayName(data.album_name)}
-          </h1>
+        <div className="min-w-0 max-w-full flex-1">
+          <div className="flex min-w-0 items-start justify-between gap-3">
+            <h1 className="min-w-0 break-words font-serif text-[44px] font-bold leading-[1.06] tracking-normal">
+              {displayName(data.album_name)}
+            </h1>
+            <Link
+              aria-label={`管理 ${data.album_name} 的专辑版本`}
+              title="管理专辑版本"
+              to={`/settings?metadata=album-projects&album_name=${encodeURIComponent(data.album_name)}&artist=${encodeURIComponent(data.artist_name)}&return_to=${encodeURIComponent(`/music/albums/${data.album_name}?artist=${data.artist_name}`)}#music-metadata-management`}
+              className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-border px-2.5 text-[11px] font-semibold text-muted-foreground transition hover:border-accent-foreground/40 hover:text-foreground"
+            >
+              <Settings2 className="size-3.5" />
+              <span className="hidden md:inline">管理</span>
+            </Link>
+          </div>
           <p className="mt-2 font-sans text-[17px] text-muted-foreground">
             <Link
               to={`/music/artists/${encodeURIComponent(data.artist_name)}`}

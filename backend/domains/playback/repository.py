@@ -44,15 +44,25 @@ class PlaybackRepository:
         return row["cnt"] if row else 0
 
     def get_artist_play_count(self, artist_name: str) -> int:
+        from backend.domains.metadata.artist_identity import resolve_artist_name
+        from backend.domains.metadata.track_credits import get_effective_track_credits
+
+        resolved = resolve_artist_name(self.conn, artist_name)
+        if resolved is None:
+            return 0
+        track_ids = {
+            int(row["track_id"])
+            for row in get_effective_track_credits(self.conn)
+            if int(row["artist_id"]) == resolved.canonical_artist_id
+        }
+        if not track_ids:
+            return 0
+        placeholders = ",".join("?" for _ in track_ids)
         row = self.conn.execute(
-            """SELECT COUNT(*) AS cnt FROM plays p
-               JOIN tracks t ON p.track_id = t.track_id
-               JOIN track_artists ta ON t.track_id = ta.track_id
-               JOIN artists a ON ta.artist_id = a.artist_id
-               WHERE a.artist_name = ?""",
-            (artist_name,),
+            f"SELECT COUNT(*) AS cnt FROM plays WHERE track_id IN ({placeholders})",
+            sorted(track_ids),
         ).fetchone()
-        return row["cnt"] if row else 0
+        return int(row["cnt"]) if row else 0
 
     def get_album_play_count(self, album_name: str, artist_name: str | None = None) -> int:
         params: tuple = (album_name,)

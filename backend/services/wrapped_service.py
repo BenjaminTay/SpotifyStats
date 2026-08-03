@@ -238,10 +238,12 @@ def _artist_metadata_revision(conn: sqlite3.Connection) -> str:
         parts.append(f"overrides:{row['row_count']}:{row['max_updated_at']}")
     genre_revision = "|".join(parts) or "no-artist-genre-tables"
     from backend.domains.metadata.artist_identity import get_identity_revision
+    from backend.domains.metadata.track_credits import get_track_credit_revision
 
     return (
         f"{genre_revision}|language:{artist_language_fact_revision(conn)}"
         f"|identity:{get_identity_revision(conn)}"
+        f"|track_credit:{get_track_credit_revision(conn)}"
     )
 
 
@@ -418,11 +420,15 @@ def _build_wrapped_full(
         "genre_panorama": _build_genre_panorama(conn, year_df, artist_agg),
         "time_story": _build_time_story(conn, year_df),
         "music_map": _build_music_map(conn, year_df, artist_agg),
-        "discovery_returns": _build_discovery_returns(conn, df, year_df, year),
+        "discovery_returns": _build_discovery_returns(
+            conn, df, year_df, df_artists, year_df_artists, year
+        ),
         "listening_depth": _build_listening_depth(conn, year_df, track_agg, year),
         "special_moments": _build_special_moments(conn, year_df),
-        "monthly_drilldown": _build_monthly_drilldown(conn, year_df),
-        "comparison": _build_comparison(df, year_df, year, track_agg, artist_agg),
+        "monthly_drilldown": _build_monthly_drilldown(conn, year_df, year_df_artists),
+        "comparison": _build_comparison(
+            df, year_df, df_artists, year_df_artists, year, track_agg, artist_agg
+        ),
     }
 
 
@@ -1207,12 +1213,12 @@ def _build_late_night(conn, year_df) -> dict:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
-def _build_discovery_returns(conn, df, year_df, year):
-    all_previous_df = df[df["ts_year"] < year]
+def _build_discovery_returns(conn, df, year_df, df_artists, year_df_artists, year):
+    all_previous_df = df_artists[df_artists["ts_year"] < year]
     previous_artists = set(all_previous_df["artist_name"].dropna().unique())
 
     # new_artists: first heard this year
-    new_artists = _build_new_artists(conn, year_df, previous_artists)
+    new_artists = _build_new_artists(conn, year_df_artists, previous_artists)
 
     # returning_tracks: tracks released >5 years ago that got heavy play this year
     returning_tracks = _build_returning_tracks(conn, year_df, year)
@@ -1585,7 +1591,7 @@ def _find_longest_streak(year_df) -> dict | None:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
-def _build_monthly_drilldown(conn, year_df) -> list[dict]:
+def _build_monthly_drilldown(conn, year_df, year_df_artists=None) -> list[dict]:
     """Per-month breakdown: total_hours + top 3 tracks + top 1 artist."""
     months = []
     for m in range(1, 13):
@@ -1629,8 +1635,13 @@ def _build_monthly_drilldown(conn, year_df) -> list[dict]:
             top_tracks.append(entry)
 
         # Top 1 artist
+        artist_month_df = (
+            year_df_artists[year_df_artists["ts_month"] == m]
+            if year_df_artists is not None
+            else month_df
+        )
         top_artist_name = (
-            month_df.groupby("artist_name").size().sort_values(ascending=False).index[0]
+            artist_month_df.groupby("artist_name").size().sort_values(ascending=False).index[0]
         )
         top_artist = (
             {
@@ -1657,7 +1668,7 @@ def _build_monthly_drilldown(conn, year_df) -> list[dict]:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
-def _build_comparison(df, year_df, year, track_agg, artist_agg):
+def _build_comparison(df, year_df, df_artists, year_df_artists, year, track_agg, artist_agg):
     # last_year comparison
     last_year_df = df[df["ts_year"] == year - 1]
     last_year_cmp = None
@@ -1666,8 +1677,9 @@ def _build_comparison(df, year_df, year, track_agg, artist_agg):
         last_hours = _hour(last_year_df["ms_played"])
         this_plays = len(year_df)
         last_plays = len(last_year_df)
-        this_artists = year_df["artist_name"].dropna().nunique()
-        last_artists = last_year_df["artist_name"].dropna().nunique()
+        last_year_artists_df = df_artists[df_artists["ts_year"] == year - 1]
+        this_artists = year_df_artists["artist_name"].dropna().nunique()
+        last_artists = last_year_artists_df["artist_name"].dropna().nunique()
         this_tracks = year_df["track_id"].nunique()
         last_tracks = last_year_df["track_id"].nunique()
 
@@ -1691,7 +1703,9 @@ def _build_comparison(df, year_df, year, track_agg, artist_agg):
     alltime_tracks_df = (
         df.groupby(["track_name", "artist_name"]).size().sort_values(ascending=False).head(10)
     )
-    alltime_artists_df = df.groupby("artist_name").size().sort_values(ascending=False).head(10)
+    alltime_artists_df = (
+        df_artists.groupby("artist_name").size().sort_values(ascending=False).head(10)
+    )
 
     alltime_track_set = set(alltime_tracks_df.index.tolist())
     alltime_artist_set = set(alltime_artists_df.index.tolist())

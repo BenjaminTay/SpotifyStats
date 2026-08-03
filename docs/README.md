@@ -46,13 +46,14 @@
 | [`reports/2026-07-03-ai-question-matrix-test-report.md`](reports/2026-07-03-ai-question-matrix-test-report.md) | AI 问答矩阵验收执行报告、失败样本、修复建议与实施记录 |
 | [`reports/2026-07-05-artist-genre-seed-audit.md`](reports/2026-07-05-artist-genre-seed-audit.md) | Artist Genre Seed 准确性审计 |
 
-### 参考文档 (`reference/`) — 2 个
+### 参考文档 (`reference/`) — 3 个
 
 规则定义与权威口径，被 CLAUDE.md/AGENTS.md 引用。
 
 | 参考 | 内容 |
 |------|------|
 | [`reference/playback-stats-rules.md`](reference/playback-stats-rules.md) | 播放统计规则权威定义：三级合并、Session 边界、Album Projects |
+| [`reference/music-metadata-management.md`](reference/music-metadata-management.md) | 音乐源数据管理：有效曲目署名、人工覆盖、审计撤销、统一归并工作区与深链规则 |
 | [`reference/2026-07-04-artist-genre-taxonomy.md`](reference/2026-07-04-artist-genre-taxonomy.md) | Artist Genre Taxonomy：来源优先级、canonical 统计口径、非标准透传审计 |
 
 ## 历史归档 (`archive/`)

@@ -62,6 +62,27 @@ class OperationAudit:
 
 
 TARGETED_CONTRACT_OPERATIONS: dict[tuple[str, str], OperationEvidence] = {
+    **{
+        (method, path): OperationEvidence(
+            "targeted_contract",
+            "backend/tests/contract/test_track_credit_api.py + backend/tests/unit/test_track_credits.py",
+            "Track-credit read, dry-run, audited mutation, undo, rebuild, revision, and raw-fact preservation are covered.",
+        )
+        for method, path in (
+            ("GET", "/api/music-metadata/track-credits/status"),
+            ("GET", "/api/music-metadata/track-credits/tracks"),
+            ("GET", "/api/music-metadata/track-credits/artist-candidates"),
+            ("GET", "/api/music-metadata/track-credits/tracks/{track_id}"),
+            ("GET", "/api/music-metadata/track-credits/events"),
+            ("GET", "/api/music-metadata/track-credits/manual-changes"),
+            ("POST", "/api/music-metadata/track-credits/preview"),
+            ("POST", "/api/music-metadata/track-credits/overrides"),
+            ("PUT", "/api/music-metadata/track-credits/overrides/{override_id}"),
+            ("POST", "/api/music-metadata/track-credits/overrides/{override_id}/remove"),
+            ("POST", "/api/music-metadata/track-credits/events/{event_id}/undo"),
+            ("POST", "/api/music-metadata/track-credits/rebuild"),
+        )
+    },
     ("POST", "/api/artist-identities/preview"): OperationEvidence(
         "targeted_contract",
         "backend/tests/unit/test_artist_identity.py",

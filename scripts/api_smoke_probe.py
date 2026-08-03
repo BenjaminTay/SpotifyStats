@@ -88,6 +88,30 @@ DEFAULT_EXCLUDED_GET_PATHS: frozenset[str] = frozenset(
 DEFAULT_SAFE_GET_CASES: tuple[SmokeCase, ...] = (
     SmokeCase("health", "/api/health"),
     SmokeCase("openapi", "/openapi.json"),
+    SmokeCase("track_credit_status", "/api/music-metadata/track-credits/status"),
+    SmokeCase(
+        "track_credit_tracks",
+        "/api/music-metadata/track-credits/tracks",
+        {"q": "Fixture", "limit": 5},
+    ),
+    SmokeCase(
+        "track_credit_artist_candidates",
+        "/api/music-metadata/track-credits/artist-candidates",
+        {"q": "Fixture", "limit": 5},
+    ),
+    SmokeCase(
+        "track_credit_detail",
+        "/api/music-metadata/track-credits/tracks/903",
+    ),
+    SmokeCase(
+        "track_credit_events",
+        "/api/music-metadata/track-credits/events",
+        {"limit": 5},
+    ),
+    SmokeCase(
+        "track_credit_manual_changes",
+        "/api/music-metadata/track-credits/manual-changes",
+    ),
     SmokeCase("cover_missing", "/covers/albums/999999999.jpg", expected_statuses=(404,)),
     SmokeCase("analysis_overview", "/api/analysis/overview", DEFAULT_FILTERS),
     SmokeCase("analysis_stats", "/api/analysis/stats", {**DEFAULT_FILTERS, "period": "lifetime"}),

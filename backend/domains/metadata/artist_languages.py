@@ -125,24 +125,22 @@ def _validate_track_attribution(
     track_ids = sorted(
         {int(item["local_track_id"]) for item in evidence if item.get("local_track_id") is not None}
     )
-    for offset in range(0, len(track_ids), 500):
-        chunk = track_ids[offset : offset + 500]
-        placeholders = ",".join("?" for _ in chunk)
-        credited = {
-            int(row[0])
-            for row in conn.execute(
-                f"""SELECT track_id
-                    FROM track_artists
-                    WHERE artist_id=? AND track_id IN ({placeholders})""",
-                [artist_id, *chunk],
-            ).fetchall()
-        }
-        missing = set(chunk) - credited
-        if missing:
-            missing_text = ", ".join(str(value) for value in sorted(missing))
-            raise ArtistLanguageValidationError(
-                f"track_artists does not credit artist {artist_id} on track(s): {missing_text}"
-            )
+    from backend.domains.metadata.artist_identity import resolve_artist_id
+    from backend.domains.metadata.track_credits import get_effective_track_credits
+
+    canonical_artist_id = resolve_artist_id(conn, artist_id).canonical_artist_id
+    credited = {
+        int(row["track_id"])
+        for row in get_effective_track_credits(conn, track_ids)
+        if int(row["artist_id"]) == canonical_artist_id
+    }
+    missing = set(track_ids) - credited
+    if missing:
+        missing_text = ", ".join(str(value) for value in sorted(missing))
+        raise ArtistLanguageValidationError(
+            "effective credits (raw track_artists plus manual overrides) do not "
+            f"credit artist {artist_id} on track(s): {missing_text}"
+        )
 
 
 def _canonical_vocal_claim_count(claims: set[tuple[str, str | None]]) -> int:
