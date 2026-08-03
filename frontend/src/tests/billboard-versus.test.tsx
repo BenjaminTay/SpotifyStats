@@ -23,6 +23,7 @@ describe('Billboard versus context', () => {
     })).toEqual({
       min_ms: 30000,
       music_only: true,
+      merge_enabled: true,
       dynamic_threshold: false,
       max_merge_gap_minutes: 45,
       merge_level: 3,

@@ -3041,6 +3041,12 @@ export interface components {
         AlbumChartDetailResponse: {
             /** Found */
             found: boolean;
+            /** Chart Status */
+            chart_status?: ("charted" | "not_charted") | null;
+            /** Track Chart Status */
+            track_chart_status?: ("charted" | "not_charted") | null;
+            /** Effective Play Count */
+            effective_play_count?: number | null;
             /** Album Name */
             album_name?: string | null;
             /** Artist Name */
@@ -3596,6 +3602,14 @@ export interface components {
         ArtistChartDetailResponse: {
             /** Found */
             found: boolean;
+            /** Chart Status */
+            chart_status?: ("charted" | "not_charted") | null;
+            /** Track Chart Status */
+            track_chart_status?: ("charted" | "not_charted") | null;
+            /** Album Chart Status */
+            album_chart_status?: ("charted" | "not_charted") | null;
+            /** Effective Play Count */
+            effective_play_count?: number | null;
             /** Artist Name */
             artist_name?: string | null;
             /** Cover Url */
@@ -7828,6 +7842,10 @@ export interface components {
         TrackHistoryResponse: {
             /** Found */
             found: boolean;
+            /** Chart Status */
+            chart_status?: ("charted" | "not_charted") | null;
+            /** Effective Play Count */
+            effective_play_count?: number | null;
             /** Track Id */
             track_id?: number | null;
             /** Track Name */
@@ -10337,6 +10355,8 @@ export interface operations {
                 min_ms?: number | null;
                 /** @description 仅音乐 */
                 music_only?: boolean | null;
+                /** @description 合并连续播放 */
+                merge_enabled?: boolean | null;
                 /** @description 单曲榜 Top N */
                 bb_top_n?: number | null;
                 /** @description 专辑榜 Top N */
@@ -10393,6 +10413,8 @@ export interface operations {
                 min_ms?: number | null;
                 /** @description 仅音乐 */
                 music_only?: boolean | null;
+                /** @description 合并连续播放 */
+                merge_enabled?: boolean | null;
                 /** @description 单曲榜 Top N */
                 bb_top_n?: number | null;
                 /** @description 专辑榜 Top N */
@@ -10447,6 +10469,8 @@ export interface operations {
                 min_ms?: number | null;
                 /** @description 仅音乐 */
                 music_only?: boolean | null;
+                /** @description 合并连续播放 */
+                merge_enabled?: boolean | null;
                 /** @description 单曲榜 Top N */
                 bb_top_n?: number | null;
                 /** @description 专辑榜 Top N */
@@ -10501,6 +10525,8 @@ export interface operations {
                 min_ms?: number | null;
                 /** @description 仅音乐 */
                 music_only?: boolean | null;
+                /** @description 合并连续播放 */
+                merge_enabled?: boolean | null;
                 /** @description 单曲榜 Top N */
                 bb_top_n?: number | null;
                 /** @description 专辑榜 Top N */
@@ -10555,6 +10581,8 @@ export interface operations {
                 min_ms?: number | null;
                 /** @description 仅音乐 */
                 music_only?: boolean | null;
+                /** @description 合并连续播放 */
+                merge_enabled?: boolean | null;
                 /** @description 单曲榜 Top N */
                 bb_top_n?: number | null;
                 /** @description 专辑榜 Top N */
@@ -10611,6 +10639,8 @@ export interface operations {
                 min_ms?: number | null;
                 /** @description 仅音乐 */
                 music_only?: boolean | null;
+                /** @description 合并连续播放 */
+                merge_enabled?: boolean | null;
                 /** @description 单曲榜 Top N */
                 bb_top_n?: number | null;
                 /** @description 专辑榜 Top N */
@@ -10669,6 +10699,8 @@ export interface operations {
                 min_ms?: number | null;
                 /** @description 仅音乐 */
                 music_only?: boolean | null;
+                /** @description 合并连续播放 */
+                merge_enabled?: boolean | null;
                 /** @description 单曲榜 Top N */
                 bb_top_n?: number | null;
                 /** @description 专辑榜 Top N */
@@ -10723,6 +10755,8 @@ export interface operations {
                 min_ms?: number | null;
                 /** @description 仅音乐 */
                 music_only?: boolean | null;
+                /** @description 合并连续播放 */
+                merge_enabled?: boolean | null;
                 /** @description 单曲榜 Top N */
                 bb_top_n?: number | null;
                 /** @description 专辑榜 Top N */
@@ -10779,6 +10813,8 @@ export interface operations {
                 min_ms?: number | null;
                 /** @description 仅音乐 */
                 music_only?: boolean | null;
+                /** @description 合并连续播放 */
+                merge_enabled?: boolean | null;
                 /** @description 单曲榜 Top N */
                 bb_top_n?: number | null;
                 /** @description 专辑榜 Top N */
@@ -10840,6 +10876,8 @@ export interface operations {
                 min_ms?: number | null;
                 /** @description 仅音乐 */
                 music_only?: boolean | null;
+                /** @description 合并连续播放 */
+                merge_enabled?: boolean | null;
                 /** @description 单曲榜 Top N */
                 bb_top_n?: number | null;
                 /** @description 专辑榜 Top N */
@@ -10898,6 +10936,8 @@ export interface operations {
                 min_ms?: number | null;
                 /** @description 仅音乐 */
                 music_only?: boolean | null;
+                /** @description 合并连续播放 */
+                merge_enabled?: boolean | null;
                 /** @description 单曲榜 Top N */
                 bb_top_n?: number | null;
                 /** @description 专辑榜 Top N */
@@ -10952,10 +10992,13 @@ export interface operations {
     track_history_api_billboard_track__track_id__get: {
         parameters: {
             query?: {
+                include_compilations?: boolean;
                 /** @description 最短播放时长 (毫秒) */
                 min_ms?: number | null;
                 /** @description 仅音乐 */
                 music_only?: boolean | null;
+                /** @description 合并连续播放 */
+                merge_enabled?: boolean | null;
                 /** @description 单曲榜 Top N */
                 bb_top_n?: number | null;
                 /** @description 专辑榜 Top N */
@@ -10994,6 +11037,13 @@ export interface operations {
                     "application/json": components["schemas"]["TrackHistoryResponse"];
                 };
             };
+            /** @description Track has no resolvable chart or effective-play facts */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -11008,10 +11058,13 @@ export interface operations {
     artist_chart_detail_api_billboard_artist__artist_name__get: {
         parameters: {
             query?: {
+                include_compilations?: boolean;
                 /** @description 最短播放时长 (毫秒) */
                 min_ms?: number | null;
                 /** @description 仅音乐 */
                 music_only?: boolean | null;
+                /** @description 合并连续播放 */
+                merge_enabled?: boolean | null;
                 /** @description 单曲榜 Top N */
                 bb_top_n?: number | null;
                 /** @description 专辑榜 Top N */
@@ -11050,6 +11103,13 @@ export interface operations {
                     "application/json": components["schemas"]["ArtistChartDetailResponse"];
                 };
             };
+            /** @description Artist has no resolvable chart or effective-play facts */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -11066,10 +11126,13 @@ export interface operations {
             query?: {
                 /** @description Artist name for disambiguation */
                 artist_name?: string;
+                include_compilations?: boolean;
                 /** @description 最短播放时长 (毫秒) */
                 min_ms?: number | null;
                 /** @description 仅音乐 */
                 music_only?: boolean | null;
+                /** @description 合并连续播放 */
+                merge_enabled?: boolean | null;
                 /** @description 单曲榜 Top N */
                 bb_top_n?: number | null;
                 /** @description 专辑榜 Top N */
@@ -11108,6 +11171,13 @@ export interface operations {
                     "application/json": components["schemas"]["AlbumChartDetailResponse"];
                 };
             };
+            /** @description Album has no resolvable chart or effective-play facts */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -11124,10 +11194,13 @@ export interface operations {
             query?: {
                 /** @description Filter entities by name (case-insensitive) */
                 search?: string | null;
+                include_compilations?: boolean;
                 /** @description 最短播放时长 (毫秒) */
                 min_ms?: number | null;
                 /** @description 仅音乐 */
                 music_only?: boolean | null;
+                /** @description 合并连续播放 */
+                merge_enabled?: boolean | null;
                 /** @description 单曲榜 Top N */
                 bb_top_n?: number | null;
                 /** @description 专辑榜 Top N */
@@ -11146,6 +11219,8 @@ export interface operations {
                 dynamic_threshold?: boolean;
                 /** @description 连续播放最大合并间隔 (分钟) */
                 max_merge_gap_minutes?: number | null;
+                /** @description 版本合并严格度 */
+                merge_level?: number;
             };
             header?: never;
             path?: never;
@@ -11180,10 +11255,13 @@ export interface operations {
                 track_id_a: number;
                 /** @description Track B ID */
                 track_id_b: number;
+                include_compilations?: boolean;
                 /** @description 最短播放时长 (毫秒) */
                 min_ms?: number | null;
                 /** @description 仅音乐 */
                 music_only?: boolean | null;
+                /** @description 合并连续播放 */
+                merge_enabled?: boolean | null;
                 /** @description 单曲榜 Top N */
                 bb_top_n?: number | null;
                 /** @description 专辑榜 Top N */
@@ -11202,6 +11280,8 @@ export interface operations {
                 dynamic_threshold?: boolean;
                 /** @description 连续播放最大合并间隔 (分钟) */
                 max_merge_gap_minutes?: number | null;
+                /** @description 版本合并严格度 */
+                merge_level?: number;
             };
             header?: never;
             path?: never;
@@ -11232,10 +11312,13 @@ export interface operations {
     versus_track_multi_api_billboard_versus_track_post: {
         parameters: {
             query?: {
+                include_compilations?: boolean;
                 /** @description 最短播放时长 (毫秒) */
                 min_ms?: number | null;
                 /** @description 仅音乐 */
                 music_only?: boolean | null;
+                /** @description 合并连续播放 */
+                merge_enabled?: boolean | null;
                 /** @description 单曲榜 Top N */
                 bb_top_n?: number | null;
                 /** @description 专辑榜 Top N */
@@ -11254,6 +11337,8 @@ export interface operations {
                 dynamic_threshold?: boolean;
                 /** @description 连续播放最大合并间隔 (分钟) */
                 max_merge_gap_minutes?: number | null;
+                /** @description 版本合并严格度 */
+                merge_level?: number;
             };
             header?: never;
             path?: never;
@@ -11296,10 +11381,13 @@ export interface operations {
                 album_b: string;
                 /** @description Album B artist */
                 artist_b: string;
+                include_compilations?: boolean;
                 /** @description 最短播放时长 (毫秒) */
                 min_ms?: number | null;
                 /** @description 仅音乐 */
                 music_only?: boolean | null;
+                /** @description 合并连续播放 */
+                merge_enabled?: boolean | null;
                 /** @description 单曲榜 Top N */
                 bb_top_n?: number | null;
                 /** @description 专辑榜 Top N */
@@ -11318,6 +11406,8 @@ export interface operations {
                 dynamic_threshold?: boolean;
                 /** @description 连续播放最大合并间隔 (分钟) */
                 max_merge_gap_minutes?: number | null;
+                /** @description 版本合并严格度 */
+                merge_level?: number;
             };
             header?: never;
             path?: never;
@@ -11348,10 +11438,13 @@ export interface operations {
     versus_album_multi_api_billboard_versus_album_post: {
         parameters: {
             query?: {
+                include_compilations?: boolean;
                 /** @description 最短播放时长 (毫秒) */
                 min_ms?: number | null;
                 /** @description 仅音乐 */
                 music_only?: boolean | null;
+                /** @description 合并连续播放 */
+                merge_enabled?: boolean | null;
                 /** @description 单曲榜 Top N */
                 bb_top_n?: number | null;
                 /** @description 专辑榜 Top N */
@@ -11370,6 +11463,8 @@ export interface operations {
                 dynamic_threshold?: boolean;
                 /** @description 连续播放最大合并间隔 (分钟) */
                 max_merge_gap_minutes?: number | null;
+                /** @description 版本合并严格度 */
+                merge_level?: number;
             };
             header?: never;
             path?: never;
@@ -11408,10 +11503,13 @@ export interface operations {
                 artist_a: string;
                 /** @description Artist B name */
                 artist_b: string;
+                include_compilations?: boolean;
                 /** @description 最短播放时长 (毫秒) */
                 min_ms?: number | null;
                 /** @description 仅音乐 */
                 music_only?: boolean | null;
+                /** @description 合并连续播放 */
+                merge_enabled?: boolean | null;
                 /** @description 单曲榜 Top N */
                 bb_top_n?: number | null;
                 /** @description 专辑榜 Top N */
@@ -11430,6 +11528,8 @@ export interface operations {
                 dynamic_threshold?: boolean;
                 /** @description 连续播放最大合并间隔 (分钟) */
                 max_merge_gap_minutes?: number | null;
+                /** @description 版本合并严格度 */
+                merge_level?: number;
             };
             header?: never;
             path?: never;
@@ -11460,10 +11560,13 @@ export interface operations {
     versus_artist_multi_api_billboard_versus_artist_post: {
         parameters: {
             query?: {
+                include_compilations?: boolean;
                 /** @description 最短播放时长 (毫秒) */
                 min_ms?: number | null;
                 /** @description 仅音乐 */
                 music_only?: boolean | null;
+                /** @description 合并连续播放 */
+                merge_enabled?: boolean | null;
                 /** @description 单曲榜 Top N */
                 bb_top_n?: number | null;
                 /** @description 专辑榜 Top N */
@@ -11482,6 +11585,8 @@ export interface operations {
                 dynamic_threshold?: boolean;
                 /** @description 连续播放最大合并间隔 (分钟) */
                 max_merge_gap_minutes?: number | null;
+                /** @description 版本合并严格度 */
+                merge_level?: number;
             };
             header?: never;
             path?: never;
@@ -11646,6 +11751,8 @@ export interface operations {
                 min_ms?: number | null;
                 /** @description 仅音乐 */
                 music_only?: boolean | null;
+                /** @description 合并连续播放 */
+                merge_enabled?: boolean | null;
                 /** @description 单曲榜 Top N */
                 bb_top_n?: number | null;
                 /** @description 专辑榜 Top N */
@@ -11709,6 +11816,8 @@ export interface operations {
                 min_ms?: number | null;
                 /** @description 仅音乐 */
                 music_only?: boolean | null;
+                /** @description 合并连续播放 */
+                merge_enabled?: boolean | null;
                 /** @description 单曲榜 Top N */
                 bb_top_n?: number | null;
                 /** @description 专辑榜 Top N */
@@ -11766,6 +11875,8 @@ export interface operations {
                 min_ms?: number | null;
                 /** @description 仅音乐 */
                 music_only?: boolean | null;
+                /** @description 合并连续播放 */
+                merge_enabled?: boolean | null;
                 /** @description 单曲榜 Top N */
                 bb_top_n?: number | null;
                 /** @description 专辑榜 Top N */
@@ -12465,7 +12576,7 @@ export interface operations {
                 /** @description 仅音乐 */
                 music_only?: boolean | null;
                 /** @description 合并连续播放 */
-                merge_enabled?: boolean;
+                merge_enabled?: boolean | null;
                 /** @description 使用动态有效播放阈值 */
                 dynamic_threshold?: boolean;
                 /** @description 连续播放最大合并间隔 (分钟) */

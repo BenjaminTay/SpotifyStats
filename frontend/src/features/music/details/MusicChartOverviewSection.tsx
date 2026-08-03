@@ -10,6 +10,7 @@ import {
   formatTimeSpan,
   formatWeekStart,
 } from './MusicDetailPrimitives'
+import { MusicChartEmptyState } from './MusicChartEmptyState'
 
 type ChartSummary = {
   peak_position: number
@@ -63,13 +64,24 @@ export function MusicChartOverviewSection({
   weeklyHistory,
   bestSinglesOverlay,
   bestAlbumsOverlay,
+  effectivePlayCount,
 }: {
   kind: 'artist' | 'album'
-  chartSummary: ChartSummary
+  chartSummary: ChartSummary | null
   weeklyHistory: WeeklyHistoryEntry[]
   bestSinglesOverlay: { week: string; rank: number; track_name: string }[]
   bestAlbumsOverlay?: { week: string; rank: number; album_name: string }[]
+  effectivePlayCount?: number
 }) {
+  if (!chartSummary) {
+    return (
+      <MusicChartEmptyState
+        title={kind === 'artist' ? '暂未进入艺人榜' : '暂未进入专辑榜'}
+        effectivePlayCount={effectivePlayCount}
+      />
+    )
+  }
+
   return (
     <>
       <div className="mb-8 grid grid-cols-2 gap-5">

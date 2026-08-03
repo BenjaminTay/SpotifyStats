@@ -5,6 +5,7 @@ import { RankTrendChart } from '@/components/charts/RankTrendChart'
 import { formatNumber, formatDateShort, formatWeekStart } from '../MusicDetailPrimitives'
 import { cn } from '@/lib/utils'
 import type { TrackDetailResponse } from '@/types/billboard'
+import { MusicChartEmptyState } from '../MusicChartEmptyState'
 
 function parseChange(change: string | undefined): { type: 'up' | 'down' | 'same' | 'new' | 're'; delta?: number } {
   if (change === 'NEW') return { type: 'new' }
@@ -46,6 +47,15 @@ interface Props {
 }
 
 export function TrackOverviewSection({ data }: Props) {
+  if (data.chart_status === 'not_charted' || !data.summary) {
+    return (
+      <MusicChartEmptyState
+        title="暂未进入单曲榜"
+        effectivePlayCount={data.effective_play_count}
+      />
+    )
+  }
+
   return (
     <>
       {/* KPI Row */}

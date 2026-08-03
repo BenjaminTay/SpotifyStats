@@ -17,6 +17,65 @@ from backend.domains.metadata.artist_genres import resolve_artist_genres
 from backend.domains.metadata.artist_spotify_meta import resolve_artist_spotify_meta
 
 
+def _load_detail_access_stats(
+    kind: str,
+    *,
+    min_ms: int,
+    music_only: bool,
+    merge_enabled: bool,
+    dynamic_threshold: bool,
+    max_merge_gap_minutes: int | None,
+    track_id: int | None = None,
+    album_name: str | None = None,
+    artist_name: str | None = None,
+    merge_level: int = 2,
+) -> dict:
+    """Resolve detail-page eligibility through the effective-play pipeline.
+
+    Billboard summaries are Top-N qualified and therefore cannot be used as an
+    entity-existence test. Versus pickers intentionally remain chart-qualified;
+    detail routes instead fall back to the same effective-play facts used by
+    global search and personal entity statistics.
+    """
+    from backend.services.entity_stats_service import (
+        get_album_stats,
+        get_artist_stats,
+        get_track_stats,
+    )
+
+    conn = get_db()
+    try:
+        common = (
+            min_ms,
+            music_only,
+            merge_enabled,
+            "lifetime",
+            None,
+            None,
+            dynamic_threshold,
+            max_merge_gap_minutes,
+        )
+        if kind == "track" and track_id is not None:
+            return get_track_stats(conn, track_id, *common)
+        if kind == "album" and album_name is not None:
+            return get_album_stats(
+                conn,
+                album_name,
+                artist_name,
+                *common,
+                merge_level=merge_level,
+            )
+        if kind == "artist" and artist_name is not None:
+            return get_artist_stats(conn, artist_name, *common)
+        return {"found": False}
+    finally:
+        conn.close()
+
+
+def _effective_play_count(stats: dict) -> int:
+    return int((stats.get("summary") or {}).get("total_plays") or 0)
+
+
 def _compute_change_column(hist_df):
     """Compute NEW/RE/▲n/▼n/─ change column for a sorted weekly history DataFrame."""
     hist = hist_df.sort_values("billboard_week").copy()
@@ -665,15 +724,46 @@ def _resolve_album_project_ids(
     album_name: str,
     artist_name: str,
 ) -> set[int]:
+    from backend.domains.metadata.artist_identity import (
+        get_artist_identity_map,
+        resolve_artist_name,
+    )
+
+    identity = resolve_artist_name(conn, artist_name)
+    if identity is None:
+        group = conn.execute(
+            """SELECT canonical_artist_id FROM artist_identity_groups
+               WHERE status='active' AND lower(display_name)=lower(?)
+               ORDER BY identity_id LIMIT 1""",
+            (artist_name,),
+        ).fetchone()
+        canonical_artist_id = int(group[0]) if group else None
+    else:
+        canonical_artist_id = identity.canonical_artist_id
+    artist_ids: set[int] = set()
+    if canonical_artist_id is not None:
+        artist_ids = {
+            raw_id
+            for raw_id, resolved in get_artist_identity_map(conn).items()
+            if resolved.canonical_artist_id == canonical_artist_id
+        }
+    if not artist_ids:
+        rows = conn.execute(
+            "SELECT artist_id FROM artists WHERE lower(artist_name)=lower(?)",
+            (artist_name,),
+        ).fetchall()
+        artist_ids = {int(row[0]) for row in rows}
+    if not artist_ids:
+        return set()
+    placeholders = ",".join("?" for _ in artist_ids)
     rows = conn.execute(
-        """SELECT DISTINCT ap.project_id
+        f"""SELECT DISTINCT ap.project_id
            FROM album_projects ap
            JOIN album_project_albums apa ON apa.project_id = ap.project_id
            JOIN albums al ON al.album_id = apa.album_id
-           JOIN artists ar ON ar.artist_id = al.artist_id
           WHERE al.album_name = ?
-            AND ar.artist_name = ?""",
-        (album_name, artist_name),
+            AND al.artist_id IN ({placeholders})""",
+        (album_name, *sorted(artist_ids)),
     ).fetchall()
     return {int(row["project_id"]) for row in rows}
 
@@ -733,6 +823,7 @@ def get_track_history(
     year_end,
     dynamic_threshold=False,
     max_merge_gap_minutes=None,
+    merge_enabled=True,
     merge_level=2,
     include_compilations=False,
 ):
@@ -758,7 +849,33 @@ def get_track_history(
 
     track_hist = weekly[weekly["track_id"] == track_id]
     if track_hist.empty:
-        return {"found": False, "meta": None}
+        stats = _load_detail_access_stats(
+            "track",
+            track_id=track_id,
+            min_ms=min_ms,
+            music_only=music_only,
+            merge_enabled=merge_enabled,
+            dynamic_threshold=dynamic_threshold,
+            max_merge_gap_minutes=max_merge_gap_minutes,
+            merge_level=merge_level,
+        )
+        if not stats.get("found"):
+            return {"found": False, "meta": None}
+        entity = stats["entity"]
+        return {
+            "found": True,
+            "chart_status": "not_charted",
+            "effective_play_count": _effective_play_count(stats),
+            "track_id": int(entity["track_id"]),
+            "track_name": str(entity["track_name"]),
+            "artist_name": str(entity["artist_name"]),
+            "artist_names": list(entity.get("artist_names") or [entity["artist_name"]]),
+            "cover_url": entity.get("cover_url"),
+            "meta": _get_track_spotify_meta(track_id, merge_level),
+            "summary": None,
+            "history": [],
+            "chart_data": {"x": [], "y": [], "texts": [], "top_n": bb_top_n},
+        }
 
     track_hist = track_hist.sort_values("billboard_week")
     ts_row = track_summary[track_summary["track_id"] == track_id]
@@ -790,6 +907,7 @@ def get_track_history(
 
     return {
         "found": True,
+        "chart_status": "charted",
         "track_id": track_id,
         "track_name": str(track_hist.iloc[0]["track_name"]),
         "artist_name": display_artist,
@@ -851,6 +969,7 @@ def get_artist_chart_detail(
     year_end,
     dynamic_threshold=False,
     max_merge_gap_minutes=None,
+    merge_enabled=True,
     merge_level=2,
     include_compilations=False,
 ):
@@ -889,15 +1008,53 @@ def get_artist_chart_detail(
     album_power_scores = pd.DataFrame(data["album_power_scores"])
     artist_power_scores = pd.DataFrame(data["artist_power_scores"])
 
-    art_row = artist_track_counts[artist_track_counts["artist_name"] == artist_name]
-    if art_row.empty:
-        return {"found": False, "meta": None}
-    art_row = art_row.iloc[0]
-
-    # Artist weekly history — use fanned-out weekly for multi-artist support
+    # Resolve the three artist score families independently.  Artist-chart,
+    # track-chart and album-chart facts may exist in any combination.
     weekly_fanned = fan_out_weekly_for_artists(weekly)
     artist_chart_data = weekly_artist[weekly_artist["artist_name"] == artist_name]
     artist_weekly = weekly_fanned[weekly_fanned["artist_name"] == artist_name]
+    artist_albums_all = weekly_album[weekly_album["artist_name"] == artist_name]
+    art_rows = artist_track_counts[artist_track_counts["artist_name"] == artist_name]
+    art_row = art_rows.iloc[0] if not art_rows.empty else None
+    if (
+        art_row is None
+        and artist_chart_data.empty
+        and artist_weekly.empty
+        and artist_albums_all.empty
+    ):
+        stats = _load_detail_access_stats(
+            "artist",
+            artist_name=artist_name,
+            min_ms=min_ms,
+            music_only=music_only,
+            merge_enabled=merge_enabled,
+            dynamic_threshold=dynamic_threshold,
+            max_merge_gap_minutes=max_merge_gap_minutes,
+            merge_level=merge_level,
+        )
+        if not stats.get("found"):
+            return {"found": False, "meta": None}
+        entity = stats["entity"]
+        canonical_name = str(entity["artist_name"])
+        return {
+            "found": True,
+            "chart_status": "not_charted",
+            "track_chart_status": "not_charted",
+            "album_chart_status": "not_charted",
+            "effective_play_count": _effective_play_count(stats),
+            "artist_name": canonical_name,
+            "cover_url": entity.get("cover_url"),
+            "meta": _get_artist_spotify_meta(canonical_name),
+            "info": None,
+            "chart_summary": None,
+            "artist_weekly_history": [],
+            "artist_no1_by_week": [],
+            "week_no1_albums": [],
+            "best_singles_overlay": [],
+            "best_albums_overlay": [],
+            "tracks": [],
+            "albums": [],
+        }
 
     # Artist power score/rank
     aps_sorted = artist_power_scores.sort_values("power_score", ascending=False).reset_index(
@@ -1001,7 +1158,6 @@ def get_artist_chart_detail(
         }
 
     # Album chart performance summary
-    artist_albums_all = weekly_album[weekly_album["artist_name"] == artist_name]
     album_perf = []
     if not artist_albums_all.empty:
         album_summary = (
@@ -1061,33 +1217,56 @@ def get_artist_chart_detail(
             for _, r in album_summary.iterrows()
         ]
 
-    # Artist cover URL from weekly_artist data
+    access_stats = None
+    if artist_chart_data.empty:
+        access_stats = _load_detail_access_stats(
+            "artist",
+            artist_name=artist_name,
+            min_ms=min_ms,
+            music_only=music_only,
+            merge_enabled=merge_enabled,
+            dynamic_threshold=dynamic_threshold,
+            max_merge_gap_minutes=max_merge_gap_minutes,
+            merge_level=merge_level,
+        )
+
+    # Artist cover URL from weekly_artist data, falling back to personal facts
     artist_cover_url = None
     if not artist_chart_data.empty and "cover_url" in artist_chart_data.columns:
         first_cover = artist_chart_data.iloc[0].get("cover_url")
         if pd.notna(first_cover):
             artist_cover_url = first_cover
+    if artist_cover_url is None and access_stats and access_stats.get("found"):
+        artist_cover_url = (access_stats.get("entity") or {}).get("cover_url")
 
     return {
         "found": True,
+        "chart_status": "charted" if not artist_chart_data.empty else "not_charted",
+        "track_chart_status": "charted" if not art_tracks.empty else "not_charted",
+        "album_chart_status": "charted" if album_perf else "not_charted",
+        "effective_play_count": _effective_play_count(access_stats or {}),
         "artist_name": artist_name,
         "cover_url": artist_cover_url,
         "meta": _get_artist_spotify_meta(artist_name),
         "info": {
-            "total_tracks": int(art_row["total_tracks"]),
-            "best_peak": int(art_row["best_peak"]),
-            "total_weeks": int(art_row["total_weeks"]),
-            "avg_weeks": round(float(art_row["avg_weeks"]), 1),
-            "top1": int(art_row["top1"]),
-            "top5": int(art_row["top5"]),
-            "top10": int(art_row["top10"]),
-            "weeks_at_no1": int(art_row["weeks_at_no1"]),
-            "num_no1_albums": int(art_row.get("num_no1_albums", 0)),
-            "album_no1_weeks": int(art_row.get("album_no1_weeks", 0)),
+            "total_tracks": int(art_row["total_tracks"]) if art_row is not None else 0,
+            "best_peak": int(art_row["best_peak"]) if art_row is not None else 0,
+            "total_weeks": int(art_row["total_weeks"]) if art_row is not None else 0,
+            "avg_weeks": round(float(art_row["avg_weeks"]), 1) if art_row is not None else 0.0,
+            "top1": int(art_row["top1"]) if art_row is not None else 0,
+            "top5": int(art_row["top5"]) if art_row is not None else 0,
+            "top10": int(art_row["top10"]) if art_row is not None else 0,
+            "weeks_at_no1": int(art_row["weeks_at_no1"]) if art_row is not None else 0,
+            "num_no1_albums": int(
+                artist_albums_all.loc[artist_albums_all["rank"] == 1, "album_name"].nunique()
+            ),
+            "album_no1_weeks": int(
+                artist_albums_all.loc[artist_albums_all["rank"] == 1, "billboard_week"].nunique()
+            ),
             "total_track_power": int(artist_track_power["power_score"].sum()),
             "total_album_power": int(artist_album_power["power_score"].sum()),
         },
-        "chart_summary": chart_summary,
+        "chart_summary": chart_summary or None,
         "artist_weekly_history": [
             {
                 "week": str(r["billboard_week"]),
@@ -1181,6 +1360,7 @@ def get_album_chart_detail(
     year_end,
     dynamic_threshold=False,
     max_merge_gap_minutes=None,
+    merge_enabled=True,
     merge_level=2,
     include_compilations=False,
 ):
@@ -1207,29 +1387,81 @@ def get_album_chart_detail(
     power_scores = pd.DataFrame(data["power_scores"])
     album_power_scores = pd.DataFrame(data["album_power_scores"])
 
-    # Find matching album
-    mask = album_track_counts["album_name"] == album_name
-    if artist_name:
-        mask &= album_track_counts["artist_name"] == artist_name
-    alb_row = album_track_counts[mask]
-    if alb_row.empty:
-        return {"found": False, "meta": None}
-    # When multiple artists have the same album name, pick the one with most tracks
-    alb_row = alb_row.sort_values("total_tracks", ascending=False).iloc[0]
-    resolved_artist = alb_row["artist_name"]
-
-    # Album chart data
+    # Resolve the album-chart identity independently from charting singles. An
+    # album can enter the album Top N through distributed project plays even if
+    # none of its member tracks enters the track Top N.
     album_mask = weekly_album["album_name"] == album_name
-    if resolved_artist:
-        album_mask &= weekly_album["artist_name"] == resolved_artist
+    if artist_name:
+        album_mask &= weekly_album["artist_name"] == artist_name
     album_chart_data = weekly_album[album_mask]
+    if album_chart_data.empty and artist_name and "album_project_id" in weekly_album.columns:
+        conn = get_db(readonly=True)
+        try:
+            project_ids = _resolve_album_project_ids(conn, album_name, artist_name)
+        finally:
+            conn.close()
+        if project_ids:
+            album_chart_data = weekly_album[weekly_album["album_project_id"].isin(project_ids)]
+
+    stats = {}
+    if not artist_name:
+        stats = _load_detail_access_stats(
+            "album",
+            album_name=album_name,
+            artist_name=artist_name or None,
+            min_ms=min_ms,
+            music_only=music_only,
+            merge_enabled=merge_enabled,
+            dynamic_threshold=dynamic_threshold,
+            max_merge_gap_minutes=max_merge_gap_minutes,
+            merge_level=merge_level,
+        )
+        if stats.get("found") and not album_chart_data.empty:
+            stats_artist = str(stats["entity"]["artist_name"])
+            album_chart_data = album_chart_data[album_chart_data["artist_name"] == stats_artist]
+    if album_chart_data.empty and not stats.get("found"):
+        stats = _load_detail_access_stats(
+            "album",
+            album_name=album_name,
+            artist_name=artist_name or None,
+            min_ms=min_ms,
+            music_only=music_only,
+            merge_enabled=merge_enabled,
+            dynamic_threshold=dynamic_threshold,
+            max_merge_gap_minutes=max_merge_gap_minutes,
+            merge_level=merge_level,
+        )
+
+    if not album_chart_data.empty:
+        identity_row = album_chart_data.sort_values(
+            ["play_count", "total_ms"], ascending=[False, False]
+        ).iloc[0]
+        resolved_album = str(identity_row["album_name"])
+        resolved_artist = str(identity_row["artist_name"])
+    elif stats.get("found"):
+        entity = stats["entity"]
+        resolved_album = str(entity["album_name"])
+        resolved_artist = str(entity["artist_name"])
+    else:
+        return {"found": False, "meta": None}
+
+    mask = album_track_counts["album_name"] == resolved_album
+    if resolved_artist:
+        mask &= album_track_counts["artist_name"] == resolved_artist
+    alb_rows = album_track_counts[mask]
+    alb_row = (
+        alb_rows.sort_values("total_tracks", ascending=False).iloc[0]
+        if not alb_rows.empty
+        else None
+    )
 
     # Album power score/rank
     aps_sorted = album_power_scores.sort_values("power_score", ascending=False).reset_index(
         drop=True
     )
     ap_row = aps_sorted[
-        (aps_sorted["album_name"] == album_name) & (aps_sorted["artist_name"] == resolved_artist)
+        (aps_sorted["album_name"] == resolved_album)
+        & (aps_sorted["artist_name"] == resolved_artist)
     ]
     album_power_score = int(ap_row.iloc[0]["power_score"]) if not ap_row.empty else 0
     album_power_rank = int(ap_row.iloc[0].name) + 1 if not ap_row.empty else None
@@ -1237,7 +1469,7 @@ def get_album_chart_detail(
     # Album's charting tracks
     alb_track_ids = set(
         track_per_album[
-            (track_per_album["album_name"] == album_name)
+            (track_per_album["album_name"] == resolved_album)
             & (track_per_album["artist_name"] == resolved_artist)
         ]["track_id"].tolist()
     )
@@ -1246,7 +1478,7 @@ def get_album_chart_detail(
     album_track_power = track_power[track_power["track_id"].isin(alb_track_ids)]
 
     alb_tracks = track_per_album[
-        (track_per_album["album_name"] == album_name)
+        (track_per_album["album_name"] == resolved_album)
         & (track_per_album["artist_name"] == resolved_artist)
     ].copy()
     alb_tracks = alb_tracks.merge(
@@ -1307,12 +1539,14 @@ def get_album_chart_detail(
             "power_rank": album_power_rank,
         }
 
-    # Album cover URL from weekly_album data
+    # Album cover URL from weekly_album data, falling back to personal facts
     album_cover_url = None
     if not album_chart_data.empty and "cover_url" in album_chart_data.columns:
         first_cover = album_chart_data.iloc[0].get("cover_url")
         if pd.notna(first_cover):
             album_cover_url = first_cover
+    if album_cover_url is None and stats.get("found"):
+        album_cover_url = (stats.get("entity") or {}).get("cover_url")
 
     album_project_events = _load_album_project_detail_events(
         min_ms,
@@ -1325,7 +1559,7 @@ def get_album_chart_detail(
         max_merge_gap_minutes=max_merge_gap_minutes,
     )
     album_project = _get_album_project_payload(
-        album_name,
+        resolved_album,
         resolved_artist,
         album_project_events,
         merge_level,
@@ -1333,23 +1567,33 @@ def get_album_chart_detail(
 
     return {
         "found": True,
-        "album_name": album_name,
+        "chart_status": "charted" if not album_chart_data.empty else "not_charted",
+        "track_chart_status": "charted" if not alb_tracks.empty else "not_charted",
+        "effective_play_count": max(
+            _effective_play_count(stats),
+            int((album_project or {}).get("play_count") or 0),
+        ),
+        "album_name": resolved_album,
         "artist_name": resolved_artist,
         "cover_url": album_cover_url,
-        "meta": _get_album_spotify_meta(album_name, resolved_artist, merge_level),
-        "info": {
-            "total_tracks": int(alb_row["total_tracks"]),
-            "best_peak": int(alb_row["best_peak"]),
-            "total_weeks": int(alb_row["total_weeks"]),
-            "avg_weeks": round(float(alb_row["avg_weeks"]), 1),
-            "top1": int(alb_row["top1"]),
-            "top5": int(alb_row["top5"]),
-            "top10": int(alb_row["top10"]),
-            "weeks_at_no1": int(alb_row["weeks_at_no1"]),
-            "album_chart_no1_weeks": int(alb_row.get("album_chart_no1_weeks", 0)),
-            "total_track_power": int(album_track_power["power_score"].sum()),
-        },
-        "chart_summary": chart_summary,
+        "meta": _get_album_spotify_meta(resolved_album, resolved_artist, merge_level),
+        "info": (
+            {
+                "total_tracks": int(alb_row["total_tracks"]),
+                "best_peak": int(alb_row["best_peak"]),
+                "total_weeks": int(alb_row["total_weeks"]),
+                "avg_weeks": round(float(alb_row["avg_weeks"]), 1),
+                "top1": int(alb_row["top1"]),
+                "top5": int(alb_row["top5"]),
+                "top10": int(alb_row["top10"]),
+                "weeks_at_no1": int(alb_row["weeks_at_no1"]),
+                "album_chart_no1_weeks": int(alb_row.get("album_chart_no1_weeks", 0)),
+                "total_track_power": int(album_track_power["power_score"].sum()),
+            }
+            if alb_row is not None
+            else None
+        ),
+        "chart_summary": chart_summary or None,
         "album_project": album_project,
         "album_weekly_history": [
             {

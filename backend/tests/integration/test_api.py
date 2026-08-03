@@ -786,8 +786,7 @@ class TestBillboardDetails:
 
     def test_track_history_not_found(self, client, default_params):
         r = client.get("/api/billboard/track/99999", params=default_params)
-        assert r.status_code == 200
-        assert r.json()["found"] is False
+        assert r.status_code == 404
 
     def test_artist_chart_detail(self, client, default_params):
         r = client.get("/api/billboard/artist/Taylor Swift", params=default_params)
@@ -814,8 +813,7 @@ class TestBillboardDetails:
 
     def test_artist_chart_detail_not_found(self, client, default_params):
         r = client.get("/api/billboard/artist/NonExistentArtistXYZ123", params=default_params)
-        assert r.status_code == 200
-        assert r.json()["found"] is False
+        assert r.status_code == 404
 
     def test_album_chart_detail(self, client, default_params):
         r = client.get(
@@ -838,8 +836,7 @@ class TestBillboardDetails:
             "/api/billboard/album/NonExistentAlbumXYZ",
             params={**default_params, "artist_name": "FakeArtist"},
         )
-        assert r.status_code == 200
-        assert r.json()["found"] is False
+        assert r.status_code == 404
 
     def test_artist_history_has_change_column(self, client, default_params):
         r = client.get("/api/billboard/artist/Taylor Swift", params=default_params)

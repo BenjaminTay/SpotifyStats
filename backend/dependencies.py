@@ -65,6 +65,7 @@ class BillboardFilters:
         self,
         min_ms: int | None = Query(default=None, ge=0, description="最短播放时长 (毫秒)"),
         music_only: bool | None = Query(default=None, description="仅音乐"),
+        merge_enabled: bool | None = Query(default=None, description="合并连续播放"),
         bb_top_n: int | None = Query(default=None, ge=5, le=100, description="单曲榜 Top N"),
         bb_album_top_n: int | None = Query(default=None, ge=5, le=100, description="专辑榜 Top N"),
         bb_artist_top_n: int | None = Query(default=None, ge=5, le=100, description="艺人榜 Top N"),
@@ -82,6 +83,7 @@ class BillboardFilters:
         settings = _load_filter_settings()
         self.min_ms = _filter_value(min_ms, settings, "min_ms")
         self.music_only = _filter_value(music_only, settings, "music_only")
+        self.merge_enabled = _filter_value(merge_enabled, settings, "merge_enabled")
         self.bb_top_n = _filter_value(bb_top_n, settings, "bb_top_n")
         self.bb_album_top_n = _filter_value(bb_album_top_n, settings, "bb_album_top_n")
         self.bb_artist_top_n = _filter_value(bb_artist_top_n, settings, "bb_artist_top_n")

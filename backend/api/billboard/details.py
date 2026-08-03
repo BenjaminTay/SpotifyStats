@@ -14,7 +14,9 @@ POST /billboard/versus/artist        — compare multiple artists (2–5)
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Query
+from typing import Literal
+
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 from backend.dependencies import BillboardFilters, MergeConfig
@@ -37,6 +39,8 @@ router = APIRouter()
 class TrackHistoryResponse(BaseModel):
     model_config = {"extra": "allow"}
     found: bool
+    chart_status: Literal["charted", "not_charted"] | None = None
+    effective_play_count: int | None = None
     track_id: int | None = None
     track_name: str | None = None
     artist_name: str | None = None
@@ -51,6 +55,10 @@ class TrackHistoryResponse(BaseModel):
 class ArtistChartDetailResponse(BaseModel):
     model_config = {"extra": "allow"}
     found: bool
+    chart_status: Literal["charted", "not_charted"] | None = None
+    track_chart_status: Literal["charted", "not_charted"] | None = None
+    album_chart_status: Literal["charted", "not_charted"] | None = None
+    effective_play_count: int | None = None
     artist_name: str | None = None
     cover_url: str | None = None
     meta: dict | None = None
@@ -68,6 +76,9 @@ class ArtistChartDetailResponse(BaseModel):
 class AlbumChartDetailResponse(BaseModel):
     model_config = {"extra": "allow"}
     found: bool
+    chart_status: Literal["charted", "not_charted"] | None = None
+    track_chart_status: Literal["charted", "not_charted"] | None = None
+    effective_play_count: int | None = None
     album_name: str | None = None
     artist_name: str | None = None
     cover_url: str | None = None
@@ -145,7 +156,11 @@ class ArtistMultiRequest(BaseModel):
     artist_names: list[str]
 
 
-@router.get("/track/{track_id}", response_model=TrackHistoryResponse)
+@router.get(
+    "/track/{track_id}",
+    response_model=TrackHistoryResponse,
+    responses={404: {"description": "Track has no resolvable chart or effective-play facts"}},
+)
 def track_history(
     track_id: int,
     filters: BillboardFilters = Depends(),
@@ -153,7 +168,7 @@ def track_history(
     include_compilations: bool = Query(False),
 ):
     """Get detailed track chart history with change column and gapped chart data."""
-    return get_track_history(
+    result = get_track_history(
         track_id=track_id,
         min_ms=filters.min_ms,
         music_only=filters.music_only,
@@ -166,12 +181,20 @@ def track_history(
         year_end=filters.year_end,
         dynamic_threshold=filters.dynamic_threshold,
         max_merge_gap_minutes=filters.max_merge_gap_minutes,
+        merge_enabled=filters.merge_enabled,
         merge_level=merge.merge_level,
         include_compilations=include_compilations,
     )
+    if not result.get("found"):
+        raise HTTPException(status_code=404, detail="Track not found")
+    return result
 
 
-@router.get("/artist/{artist_name:path}", response_model=ArtistChartDetailResponse)
+@router.get(
+    "/artist/{artist_name:path}",
+    response_model=ArtistChartDetailResponse,
+    responses={404: {"description": "Artist has no resolvable chart or effective-play facts"}},
+)
 def artist_chart_detail(
     artist_name: str,
     filters: BillboardFilters = Depends(),
@@ -179,7 +202,7 @@ def artist_chart_detail(
     include_compilations: bool = Query(False),
 ):
     """Get detailed artist chart data: weekly history, track/album performances, trend overlay."""
-    return get_artist_chart_detail(
+    result = get_artist_chart_detail(
         artist_name=artist_name,
         min_ms=filters.min_ms,
         music_only=filters.music_only,
@@ -192,12 +215,20 @@ def artist_chart_detail(
         year_end=filters.year_end,
         dynamic_threshold=filters.dynamic_threshold,
         max_merge_gap_minutes=filters.max_merge_gap_minutes,
+        merge_enabled=filters.merge_enabled,
         merge_level=merge.merge_level,
         include_compilations=include_compilations,
     )
+    if not result.get("found"):
+        raise HTTPException(status_code=404, detail="Artist not found")
+    return result
 
 
-@router.get("/album/{album_name:path}", response_model=AlbumChartDetailResponse)
+@router.get(
+    "/album/{album_name:path}",
+    response_model=AlbumChartDetailResponse,
+    responses={404: {"description": "Album has no resolvable chart or effective-play facts"}},
+)
 def album_chart_detail(
     album_name: str,
     artist_name: str = Query(default="", description="Artist name for disambiguation"),
@@ -206,7 +237,7 @@ def album_chart_detail(
     include_compilations: bool = Query(False),
 ):
     """Get detailed album chart data: weekly history, track performances, trend overlay."""
-    return get_album_chart_detail(
+    result = get_album_chart_detail(
         album_name=album_name,
         artist_name=artist_name,
         min_ms=filters.min_ms,
@@ -220,9 +251,13 @@ def album_chart_detail(
         year_end=filters.year_end,
         dynamic_threshold=filters.dynamic_threshold,
         max_merge_gap_minutes=filters.max_merge_gap_minutes,
+        merge_enabled=filters.merge_enabled,
         merge_level=merge.merge_level,
         include_compilations=include_compilations,
     )
+    if not result.get("found"):
+        raise HTTPException(status_code=404, detail="Album not found")
+    return result
 
 
 @router.get("/entity-lists", response_model=EntityListsResponse)

@@ -533,6 +533,33 @@ class TestBillboardService:
         assert "chart_summary" in data
         assert "album_weekly_history" in data
 
+    def test_album_chart_detail_without_charting_singles(self):
+        from backend.services.billboard_service import get_album_chart_detail
+
+        data = get_album_chart_detail(
+            album_name="CONFESSIONS II",
+            artist_name="Madonna",
+            min_ms=30000,
+            music_only=True,
+            bb_top_n=30,
+            bb_album_top_n=20,
+            bb_artist_top_n=20,
+            bb_week_start_dow=4,
+            bb_week_start_hour=12,
+            year_start=None,
+            year_end=None,
+            dynamic_threshold=True,
+            merge_level=2,
+        )
+        assert data["chart_status"] == "charted"
+        assert data["track_chart_status"] == "not_charted"
+        assert data["chart_summary"]["peak_position"] == 4
+        assert data["chart_summary"]["weeks_on_chart"] == 2
+        assert data["chart_summary"]["peak_weeks"] == 1
+        assert data["chart_summary"]["no1_weeks"] == 0
+        assert data["chart_summary"]["power_score"] == 288
+        assert data["tracks"] == []
+
     def test_entity_lists(self):
         from backend.services.billboard_service import get_billboard_entity_lists
 

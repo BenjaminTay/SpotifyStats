@@ -13,6 +13,7 @@ import { useAiTask, useStartArtistEnrichmentTask } from '@/hooks/useAiTasks'
 import { ArtistDetailHero, DetailTabs } from './MusicDetailHeader'
 import { ArtistDetailSkeleton } from './MusicDetailSkeletons'
 import { MusicChartOverviewSection } from './MusicChartOverviewSection'
+import { MusicChartEmptyState } from './MusicChartEmptyState'
 import { MusicTracksSection } from './MusicTracksSection'
 import { ArtistAlbumsSection } from './ArtistAlbumsSection'
 import { ArtistCareerSection } from './ArtistCareerSection'
@@ -51,6 +52,9 @@ export function ArtistDetailExperience() {
     queryFn: () => api.get<ArtistDetailResponse>('/billboard/artist/' + artistName!, billboardParams),
     enabled: !!artistName && !filtersLoading,
   })
+  const isCharted = data?.chart_status === 'charted' || !!data?.chart_summary
+  const hasTrackChart = data?.track_chart_status === 'charted' || Boolean(data?.tracks.length)
+  const hasAlbumChart = data?.album_chart_status === 'charted' || Boolean(data?.albums.length)
 
   const [artistEnrichmentTaskId, setArtistEnrichmentTaskId] = useState<string | null>(null)
   const artistEnrichmentStartedKeyRef = useRef<string | null>(null)
@@ -155,6 +159,7 @@ export function ArtistDetailExperience() {
                   weeklyHistory={data.artist_weekly_history}
                   bestSinglesOverlay={data.best_singles_overlay}
                   bestAlbumsOverlay={data.best_albums_overlay}
+                  effectivePlayCount={data.effective_play_count}
                 />
               )}
 
@@ -164,20 +169,34 @@ export function ArtistDetailExperience() {
               )}
 
               {activeTab === 'tracks' && (
-                <MusicTracksSection
-                  artistName={data.artist_name}
-                  info={data.info}
-                  tracks={data.tracks}
-                />
+                hasTrackChart && data.info ? (
+                  <MusicTracksSection
+                    artistName={data.artist_name}
+                    info={data.info}
+                    tracks={data.tracks}
+                  />
+                ) : (
+                  <MusicChartEmptyState
+                    title="暂无歌曲进入单曲榜"
+                    description="该艺人目前没有歌曲进入当前单曲榜统计范围。"
+                  />
+                )
               )}
 
               {/* ═══ Tab 3: 专辑成绩 ═══ */}
               {activeTab === 'albums' && (
-                <ArtistAlbumsSection
-                  artistName={data.artist_name}
-                  info={data.info}
-                  albums={data.albums}
-                />
+                hasAlbumChart && data.info ? (
+                  <ArtistAlbumsSection
+                    artistName={data.artist_name}
+                    info={data.info}
+                    albums={data.albums}
+                  />
+                ) : (
+                  <MusicChartEmptyState
+                    title="暂无专辑进入专辑榜"
+                    description="该艺人目前没有专辑进入当前专辑榜统计范围。"
+                  />
+                )
               )}
 
               {/* ═══ Tab 4: 发行周期 ═══ */}
@@ -201,7 +220,10 @@ export function ArtistDetailExperience() {
               )}
 
               <p className="mt-6 font-serif text-[13px] italic text-muted-foreground">
-                {displayName(data.artist_name)} · 共 {data.info.total_tracks} 首曲目入榜
+                {displayName(data.artist_name)} ·{' '}
+                {isCharted && data.info
+                  ? `共 ${data.info.total_tracks} 首曲目入榜`
+                  : `已有 ${new Intl.NumberFormat('zh-CN').format(data.effective_play_count ?? 0)} 次有效播放`}
               </p>
             </>
           )}

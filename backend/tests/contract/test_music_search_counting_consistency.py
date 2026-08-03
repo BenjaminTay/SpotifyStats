@@ -38,6 +38,17 @@ def test_music_search_uses_track_detail_counting_filters(client):
     assert dynamic_search["total"] == 0
     assert dynamic_search["tracks"] == []
 
+    static_billboard_detail = client.get(
+        "/api/billboard/track/902",
+        params={**params, "dynamic_threshold": False, "bb_top_n": 5},
+    )
+    dynamic_billboard_detail = client.get(
+        "/api/billboard/track/902",
+        params={**params, "dynamic_threshold": True, "bb_top_n": 5},
+    )
+    assert static_billboard_detail.status_code == 200
+    assert dynamic_billboard_detail.status_code == 404
+
 
 def test_music_search_artist_count_matches_detail_stats(client):
     params = {

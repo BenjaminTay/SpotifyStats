@@ -1,5 +1,13 @@
 # 变更日志
 
+## 2026-08-03 — 未入榜音乐实体详情页
+
+- 将歌曲、专辑、艺人详情的存在资格从 Billboard Top-N summaries 中拆出，复用全局搜索与个人实体统计的有效播放管线；有效播放实体即使暂未入榜也返回 200，并保留 canonical track、album project + canonical artist、artist identity alias 语义。
+- 详情响应新增 `chart_status` 与 `effective_play_count`；专辑另有 `track_chart_status`，艺人另有 `track_chart_status` / `album_chart_status`，主榜与子成绩独立判断。未入榜时对应摘要为 `null`、历史为空数组，不再用 `#0` 或零值伪装成绩；真正无有效播放且无法解析的实体改为 404。
+- 三类前端详情以播放统计为默认主内容，并始终保留固定 Tab。单曲、专辑、艺人主榜及其单曲/专辑子成绩分别显示精确空态，发行档案、发行周期、艺人生涯与歌词不再因榜单为空而消失。
+- 修复“专辑榜已入榜但没有成员歌曲进入单曲榜”被误判为未入榜：专辑详情先按 album project identity + canonical artist 读取 `weekly_album`，`album_track_counts` / `track_per_album` 仅作为可选单曲成绩。真实数据 `CONFESSIONS II` 恢复为峰值 #4、在榜 2 周，单曲成绩保持独立空态。
+- versus picker 继续只列可与详情榜单指标对照的实体，与详情可访问资格刻意分离；新增 contract 与前端空态测试锁定该边界，并刷新 OpenAPI 快照和生成类型。
+
 ## 2026-08-03 — Billboard 对决与详情统计口径统一
 
 ### 统计与数据归属

@@ -14,6 +14,8 @@ UI：「编辑风 × 液态玻璃」— Playfair Display + Inter，毛玻璃，�
 
 Billboard 对决：单曲、专辑、艺人对决及 entity lists 必须与详情页共享完整统计上下文（动态阈值、连续播放间隔、合并级别、榜单周边界、三类 Top N、年份范围、精选集设置），前端 query key 必须包含完整过滤指纹。专辑曲目归属复用详情的 album project + canonical artist 口径，艺人歌曲成绩复用 credited artist fan-out 并按 stable event + canonical artist 去重。
 
+音乐详情存在资格与成绩：Billboard Top-N 和 versus picker 不是详情页存在条件；当前有效播放口径下有播放或已有榜单事实的歌曲、专辑、艺人均可打开详情。详情固定 Tab 始终存在，`chart_status` 仅描述实体自身榜单；专辑和艺人的单曲/专辑子成绩使用独立状态与空态，专辑自身入榜不得依赖成员歌曲入榜。真正无有效播放且无法解析的请求才返回 404。
+
 **当前状态**：Phase 5 产品化收口完成 + AI Observable Agent Orchestrator V2。AI 报告已改为缓存优先、手动生成并显示任务进度；年度叙事默认走 `visual_yearly_artifact` + `writer_pipeline=agent_synthesis_v2`，在只读 Report Agent 证据、deterministic chart data builder 和 fact validator 基础上用 `report_agent.py` Agent 多轮工具调用（含 web_search）+ 直接写报告，图表数据仍由确定性后端生成；保留 `_compose_sections()` 确定性 fallback 作为安全网；年报和 Chat 默认启用 DeepSeek 思考模式；`agentic_longform`、`basic_summary` 和 `editorial_agent_v1` 保留为兼容/回退模式。AI 问答通过后端只读 Agent 工具查询数据，支持思考模式、工具轨迹、coverage 自检、answer obligations、矛盾回答重试，以及账号收藏/搜索历史/社区数据域工具；相对时间会以 `question_time`/`timezone` grounding，并把 temporal guard 校正后的 custom range 投影到 EvidenceRecipe/AnalyticalBrief；艺人与专辑详情 enrichment 已接入可观察任务。当前本地验证基线随迭代变化，AI harness 定向基线见 `docs/reports/2026-07-03-ai-question-matrix-test-report.md`，年度图文报告回归可用 `scripts/probe_visual_yearly_report_artifact.py --mode changed`，大范围 live 问答回归可用 `scripts/evaluate_ai_question_matrix.py --mode changed|full`。开发台账与验证细节见 `AGENTS.md`、`docs/plans/`、`docs/reports/`、`docs/designs/` 和 `docs/CHANGELOG.md`。
 
 ## 常用命令

@@ -14,6 +14,7 @@ import { useAiTask, useStartAlbumEnrichmentTask } from '@/hooks/useAiTasks'
 import { AlbumDetailHero, DetailTabs } from './MusicDetailHeader'
 import { AlbumDetailSkeleton } from './MusicDetailSkeletons'
 import { MusicChartOverviewSection } from './MusicChartOverviewSection'
+import { MusicChartEmptyState } from './MusicChartEmptyState'
 import { MusicTracksSection } from './MusicTracksSection'
 import { AlbumEraSection } from './AlbumEraSection'
 import { VersionGroupSection } from './VersionGroupSection'
@@ -50,6 +51,8 @@ export function AlbumDetailExperience() {
     queryFn: () => api.get<AlbumDetailResponse>('/billboard/album/' + albumName!, { ...billboardParams, artist_name: artistName }),
     enabled: !!albumName && !filtersLoading,
   })
+  const isCharted = data?.chart_status === 'charted' || !!data?.chart_summary
+  const hasTrackChart = data?.track_chart_status === 'charted' || Boolean(data?.tracks.length)
 
   const [albumEnrichmentTaskId, setAlbumEnrichmentTaskId] = useState<string | null>(null)
   const albumEnrichmentStartedKeyRef = useRef<string | null>(null)
@@ -155,6 +158,7 @@ export function AlbumDetailExperience() {
                   chartSummary={data.chart_summary}
                   weeklyHistory={data.album_weekly_history}
                   bestSinglesOverlay={data.best_singles_overlay}
+                  effectivePlayCount={data.effective_play_count}
                 />
               )}
 
@@ -174,11 +178,18 @@ export function AlbumDetailExperience() {
               )}
 
               {activeTab === 'tracks' && (
-                <MusicTracksSection
-                  artistName={data.artist_name}
-                  info={data.info}
-                  tracks={data.tracks}
-                />
+                hasTrackChart && data.info ? (
+                  <MusicTracksSection
+                    artistName={data.artist_name}
+                    info={data.info}
+                    tracks={data.tracks}
+                  />
+                ) : (
+                  <MusicChartEmptyState
+                    title="暂无歌曲进入单曲榜"
+                    description="这张专辑目前没有成员歌曲进入当前单曲榜统计范围。"
+                  />
+                )
               )}
 
               {activeTab === 'era' && (
@@ -195,8 +206,10 @@ export function AlbumDetailExperience() {
               )}
 
               <p className="mt-6 font-serif text-[13px] italic text-muted-foreground">
-                {displayName(data.album_name)} · {displayName(data.artist_name)} · 共{' '}
-                {data.info.total_tracks} 首曲目入榜
+                {displayName(data.album_name)} · {displayName(data.artist_name)} ·{' '}
+                {isCharted && data.info
+                  ? `共 ${data.info.total_tracks} 首曲目入榜`
+                  : `已有 ${new Intl.NumberFormat('zh-CN').format(data.effective_play_count ?? 0)} 次有效播放`}
               </p>
             </>
           )}

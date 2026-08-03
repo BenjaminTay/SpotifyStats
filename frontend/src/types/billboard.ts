@@ -861,6 +861,8 @@ export interface TrackChartData {
 export interface TrackDetailResponse {
   [key: string]: any
   found: boolean
+  chart_status?: 'charted' | 'not_charted'
+  effective_play_count?: number
   track_id: number
   track_name: string
   artist_name: string
@@ -879,7 +881,7 @@ export interface TrackDetailResponse {
     weeks_at_no1: number
     power_score: number
     power_rank: number | null
-  }
+  } | null
   history: TrackHistoryEntry[]
   chart_data: TrackChartData
 }
@@ -969,11 +971,15 @@ export interface ArtistAlbumEntry {
 export interface ArtistDetailResponse {
   [key: string]: any
   found: boolean
+  chart_status?: 'charted' | 'not_charted'
+  track_chart_status?: 'charted' | 'not_charted'
+  album_chart_status?: 'charted' | 'not_charted'
+  effective_play_count?: number
   artist_name: string
   cover_url: string | null
   meta: ArtistSpotifyMeta | null
-  info: ArtistInfo
-  chart_summary: ArtistChartSummary
+  info: ArtistInfo | null
+  chart_summary: ArtistChartSummary | null
   artist_weekly_history: ArtistWeeklyHistoryEntry[]
   artist_no1_by_week: ArtistNo1ByWeek[]
   week_no1_albums: { week: string; album_name: string; artist_name: string }[]
@@ -1083,12 +1089,15 @@ export interface AlbumProject {
 export interface AlbumDetailResponse {
   [key: string]: any
   found: boolean
+  chart_status?: 'charted' | 'not_charted'
+  track_chart_status?: 'charted' | 'not_charted'
+  effective_play_count?: number
   album_name: string
   artist_name: string
   cover_url: string | null
   meta: AlbumSpotifyMeta | null
-  info: AlbumInfo
-  chart_summary: AlbumChartSummary
+  info: AlbumInfo | null
+  chart_summary: AlbumChartSummary | null
   album_project?: AlbumProject | null
   album_weekly_history: AlbumWeeklyHistoryEntry[]
   album_no1_by_week: { week: string; no1_track_names: string; no1_track_id: number | null; no1_count: number }[]

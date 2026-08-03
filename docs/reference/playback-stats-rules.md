@@ -586,6 +586,20 @@ Billboard Year-End 年榜不是单纯的年度播放量榜。它先使用当前 
 
 ## 12. 展示规则
 
+### 详情页存在资格与成绩状态
+
+歌曲、专辑、艺人详情页的可访问资格与 Billboard 入榜资格分离：当前统计设置下只要存在至少一条有效播放，或存在可解析的对应榜单事实，详情 API 就应返回可渲染结果。只有既无有效播放、也无可解析本地实体或榜单事实的请求返回 404。对决选择器可继续只列出具有可对照榜单指标的实体，不得反向限制详情页入口。
+
+详情页的固定 Tab 不因任一榜单数据为空而隐藏。成绩状态按数据域独立判断：
+
+- 歌曲 `chart_status` 只表示该歌曲是否进入单曲榜。
+- 专辑 `chart_status` 只表示该 album project 是否进入专辑榜；`track_chart_status` 独立表示成员歌曲是否进入单曲榜。
+- 艺人 `chart_status`、`track_chart_status`、`album_chart_status` 分别表示艺人榜、其歌曲单曲榜和其专辑专辑榜事实。
+- 未入榜成绩使用 `not_charted`、`null` summary 和空 history/list 表达，并显示精确空态；不得用峰值 `#0`、`0 周`等数值伪装成绩。
+- `effective_play_count` 用于解释未入榜实体仍可访问的个人播放事实，继续遵循当前有效播放、动态阈值、连续播放合并和实体 identity 规则。
+
+专辑自身榜单成绩必须优先按 album project identity + canonical artist 匹配 `weekly_album`；成员曲的 `album_track_counts` / `track_per_album` 只服务“单曲成绩”，不得作为专辑是否入榜的前置条件。
+
 ### R37. 歌曲详情页
 
 歌曲详情页在非 L1 下应展示：

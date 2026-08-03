@@ -7,6 +7,7 @@ export function buildBillboardContextParams(filters: AnalysisFilters): Billboard
   const params: BillboardContextParams = {
     min_ms: filters.min_ms,
     music_only: filters.music_only,
+    merge_enabled: filters.merge_enabled,
     dynamic_threshold: filters.dynamic_threshold,
     merge_level: filters.merge_level,
     include_compilations: filters.include_compilations,

@@ -240,13 +240,13 @@ DEFAULT_BOUNDARY_CASES: tuple[BoundaryCase, ...] = (
     BoundaryCase(
         "billboard_album_long_name",
         f"/api/billboard/album/{LONG_STRING}",
-        expected_statuses=(200,),
+        expected_statuses=(404,),
         expect_validation_detail=False,
     ),
     BoundaryCase(
         "billboard_artist_long_name",
         f"/api/billboard/artist/{LONG_STRING}",
-        expected_statuses=(200,),
+        expected_statuses=(404,),
         expect_validation_detail=False,
     ),
     BoundaryCase(
@@ -260,7 +260,7 @@ DEFAULT_BOUNDARY_CASES: tuple[BoundaryCase, ...] = (
         "billboard_album_artist_name_long",
         "/api/billboard/album/Fixture Future LP",
         {"artist_name": LONG_STRING},
-        expected_statuses=(200,),
+        expected_statuses=(404,),
         expect_validation_detail=False,
     ),
     BoundaryCase(
