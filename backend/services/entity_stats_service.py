@@ -407,6 +407,11 @@ def get_artist_stats(
     dynamic_threshold: bool = False,
     max_merge_gap_minutes: int | None = None,
 ) -> dict:
+    from backend.domains.metadata.artist_identity import resolve_artist_name
+
+    identity = resolve_artist_name(conn, artist_name)
+    if identity is not None:
+        artist_name = identity.display_name
     all_df, current_df, resolved = load_period_plays(
         conn,
         min_ms,
@@ -572,6 +577,12 @@ def _filter_entity_rows(
             out = out[out["artist_name"] == artist_name]
         return out
     if entity == "artist" and artist_name is not None:
+        if conn is not None:
+            from backend.domains.metadata.artist_identity import resolve_artist_name
+
+            identity = resolve_artist_name(conn, artist_name)
+            if identity is not None:
+                artist_name = identity.display_name
         return df[df["artist_name"] == artist_name]
     return df.iloc[0:0]
 

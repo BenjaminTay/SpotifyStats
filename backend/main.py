@@ -47,12 +47,32 @@ async def lifespan(_app: FastAPI):
         handle_genius_lyrics,
         handle_wikipedia_enrich,
     )
+    from backend.services.artist_identity_rebuild_service import handle_artist_identity_rebuild
 
     job_queue = get_job_queue()
     job_queue.register("cover_download", handle_cover_download)
     job_queue.register("wikipedia_enrich", handle_wikipedia_enrich)
     job_queue.register("genius_lyrics", handle_genius_lyrics)
+    job_queue.register("artist_identity_rebuild", handle_artist_identity_rebuild)
     job_queue.start(DB_PATH)
+    from backend.core.db import get_db
+    from backend.core.job_queue import Job
+    from backend.domains.metadata.artist_identity import get_identity_state
+
+    identity_conn = get_db()
+    try:
+        identity_state = get_identity_state(identity_conn)
+    finally:
+        identity_conn.close()
+    if identity_state.get("rebuild_status") in {"pending", "failed"}:
+        job_queue.enqueue_if_not_pending(
+            Job.create(
+                "artist_identity_rebuild",
+                "artist_identity",
+                "global",
+                revision=int(identity_state.get("current_revision") or 0),
+            )
+        )
 
     if (
         os.environ.get("SPOTIFY_STATS_WARMUP", "1") != "0"

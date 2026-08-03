@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
 from backend.dependencies import get_conn
+from backend.domains.metadata.artist_identity import canonicalize_artist_payload
 from backend.services.library_service import (
     get_library_overview,
     get_playlist_overlap_matrix,
@@ -67,7 +68,7 @@ class PlaylistOverlapResponse(BaseModel):
 
 @router.get("", response_model=LibraryOverviewResponse)
 def library_overview(conn: Connection = Depends(get_conn)):
-    return get_library_overview(conn)
+    return canonicalize_artist_payload(get_library_overview(conn), conn)
 
 
 @router.get("/playlists", response_model=list[PlaylistEntry])
@@ -77,14 +78,16 @@ def playlists(conn: Connection = Depends(get_conn)):
 
 @router.get("/playlists/{playlist_id}/tracks", response_model=list[PlaylistTrackEntry])
 def playlist_tracks(playlist_id: int, conn: Connection = Depends(get_conn)):
-    return get_playlist_tracks(conn, playlist_id)
+    return canonicalize_artist_payload(get_playlist_tracks(conn, playlist_id), conn)
 
 
 @router.get("/saved-tracks", response_model=SavedTracksResponse)
 def saved_tracks(
     page: int = 1, limit: int = 50, search: str = "", conn: Connection = Depends(get_conn)
 ):
-    return get_saved_tracks_paginated(conn, page=page, limit=limit, search=search)
+    return canonicalize_artist_payload(
+        get_saved_tracks_paginated(conn, page=page, limit=limit, search=search), conn
+    )
 
 
 @router.get("/playlist-overlap", response_model=PlaylistOverlapResponse)

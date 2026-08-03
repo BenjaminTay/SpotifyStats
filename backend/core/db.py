@@ -404,6 +404,73 @@ CREATE TABLE IF NOT EXISTS artist_identity_aliases (
     CHECK (alias_artist_id != canonical_artist_id)
 );
 
+CREATE TABLE IF NOT EXISTS artist_identity_groups (
+    identity_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    canonical_artist_id INTEGER NOT NULL REFERENCES artists(artist_id),
+    display_artist_id INTEGER REFERENCES artists(artist_id),
+    display_name TEXT NOT NULL,
+    display_source TEXT NOT NULL DEFAULT 'canonical_artist',
+    provider_metadata_artist_id INTEGER REFERENCES artists(artist_id),
+    status TEXT NOT NULL DEFAULT 'active',
+    revision INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS artist_identity_members (
+    membership_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    identity_id INTEGER NOT NULL REFERENCES artist_identity_groups(identity_id),
+    artist_id INTEGER NOT NULL REFERENCES artists(artist_id),
+    role TEXT NOT NULL DEFAULT 'alias',
+    evidence_type TEXT NOT NULL DEFAULT 'legacy_alias',
+    evidence_json TEXT NOT NULL DEFAULT '{}',
+    confidence REAL NOT NULL DEFAULT 1.0,
+    active INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    removed_at TEXT
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_artist_identity_member_active
+ON artist_identity_members(artist_id) WHERE active = 1;
+
+CREATE TABLE IF NOT EXISTS artist_identity_external_ids (
+    link_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    artist_id INTEGER NOT NULL REFERENCES artists(artist_id),
+    provider TEXT NOT NULL,
+    external_id TEXT NOT NULL,
+    evidence_type TEXT NOT NULL,
+    evidence_source TEXT,
+    confidence REAL NOT NULL DEFAULT 1.0,
+    verified INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(artist_id, provider, external_id)
+);
+
+CREATE TABLE IF NOT EXISTS artist_identity_events (
+    event_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    identity_id INTEGER REFERENCES artist_identity_groups(identity_id),
+    action TEXT NOT NULL,
+    before_json TEXT NOT NULL DEFAULT '{}',
+    after_json TEXT NOT NULL DEFAULT '{}',
+    actor TEXT NOT NULL,
+    reason TEXT NOT NULL,
+    revision INTEGER NOT NULL,
+    idempotency_key TEXT NOT NULL UNIQUE,
+    undo_of_event_id INTEGER REFERENCES artist_identity_events(event_id),
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS artist_identity_state (
+    state_id INTEGER PRIMARY KEY CHECK (state_id = 1),
+    current_revision INTEGER NOT NULL DEFAULT 0,
+    active_aggregate_revision INTEGER NOT NULL DEFAULT 0,
+    rebuild_status TEXT NOT NULL DEFAULT 'ready',
+    last_error TEXT,
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+INSERT OR IGNORE INTO artist_identity_state(
+    state_id, current_revision, active_aggregate_revision, rebuild_status
+) VALUES (1, 0, 0, 'ready');
+
 CREATE TABLE IF NOT EXISTS artist_metadata_attribution_overrides (
     track_id INTEGER PRIMARY KEY REFERENCES tracks(track_id),
     artist_id INTEGER REFERENCES artists(artist_id),
@@ -938,9 +1005,9 @@ def _load_plays_cached(
 
         if columns == "*":
             if join_albums:
-                cols = "p.*, t.track_name, t.spotify_track_uri, t.album_id AS track_album_id, a.artist_name, al.album_name, al_src.album_name AS source_album_name"
+                cols = "p.*, t.track_name, t.spotify_track_uri, t.album_id AS track_album_id, t.artist_id, a.artist_name, al.album_name, al_src.album_name AS source_album_name"
             else:
-                cols = "p.*, t.track_name, t.spotify_track_uri, a.artist_name"
+                cols = "p.*, t.track_name, t.spotify_track_uri, t.artist_id, a.artist_name"
             if filtered:
                 cols += ", stm.duration_ms"
         else:
@@ -979,6 +1046,13 @@ def _load_plays_cached(
                 from backend.domains.playback.counting import filter_effective_plays
 
                 df = filter_effective_plays(df, min_ms=min_ms, dynamic_threshold=dynamic_threshold)
+
+        # Primary-credit fields are still needed by track/album consumers,
+        # but their identity and display must follow the same global resolver
+        # as artist fan-out.  No rows are removed on this path.
+        from backend.domains.metadata.artist_identity import canonicalize_artist_frame
+
+        df = canonicalize_artist_frame(df, conn, dedupe=False)
 
         return _downcast_ints(df)
     finally:
@@ -1044,6 +1118,7 @@ def _load_plays_for_artists_cached(
     dynamic_threshold: bool = False,
     max_merge_gap_minutes: int | None = None,
     boundary_column: str | None = None,
+    identity_revision: int = 0,
 ) -> pd.DataFrame:
     """Same as _load_plays_cached but fans out through track_artists after merge
     so featured artists get their own rows. One play on a multi-artist track
@@ -1116,7 +1191,10 @@ def _load_plays_for_artists_cached(
 
                 df = filter_effective_plays(df, min_ms=min_ms, dynamic_threshold=dynamic_threshold)
 
-        # Step 2: Fan out through track_artists for multi-artist attribution
+        # Step 2: Fan out through track_artists for multi-artist attribution.
+        # Preserve effective-event identity across the many-to-many merge: a
+        # merged logical play can share its source play_id with another output.
+        df["_artist_event_id"] = range(len(df))
         track_artists_df = pd.read_sql_query("SELECT track_id, artist_id FROM track_artists", conn)
         # Drop the single-artist artist_name (will be replaced by fan-out join)
         df = df.drop(columns=["artist_name"], errors="ignore")
@@ -1124,6 +1202,11 @@ def _load_plays_for_artists_cached(
         # Re-join artist names from the fanned-out artist_ids
         artists_df = pd.read_sql_query("SELECT artist_id, artist_name FROM artists", conn)
         df = df.merge(artists_df, on="artist_id", how="left")
+
+        from backend.domains.metadata.artist_identity import canonicalize_artist_frame
+
+        df = canonicalize_artist_frame(df, conn)
+        df = df.drop(columns=["_artist_event_id"], errors="ignore")
 
         return _downcast_ints(df)
     finally:
@@ -1153,6 +1236,8 @@ def load_plays_for_artists(
     DO NOT USE for total play counts, track statistics, or album statistics
     — it duplicates rows for multi-artist tracks.
     """
+    from backend.domains.metadata.artist_identity import get_identity_revision
+
     return _load_plays_for_artists_cached(
         min_ms=min_ms,
         music_only=music_only,
@@ -1165,6 +1250,7 @@ def load_plays_for_artists(
         dynamic_threshold=dynamic_threshold,
         max_merge_gap_minutes=max_merge_gap_minutes,
         boundary_column=boundary_column,
+        identity_revision=get_identity_revision(conn),
     ).copy()
 
 
@@ -1195,20 +1281,17 @@ def get_track_all_artists_map() -> dict[int, str]:
     fallback."""
     conn = get_db()
     rows = conn.execute(
-        """SELECT ta.track_id, a.artist_name
+        """SELECT ta.track_id, ta.artist_id, ta.role
            FROM track_artists ta
-           JOIN artists a ON ta.artist_id = a.artist_id
            ORDER BY ta.track_id, CASE ta.role WHEN 'primary' THEN 0 ELSE 1 END"""
     ).fetchall()
+    from backend.domains.metadata.artist_identity import canonical_artist_names_for_track
+
+    resolved = canonical_artist_names_for_track(
+        conn, [(int(row[0]), int(row[1]), str(row[2])) for row in rows]
+    )
     conn.close()
-
-    from collections import defaultdict
-
-    track_artists = defaultdict(list)
-    for track_id, artist_name in rows:
-        track_artists[track_id].append(artist_name)
-
-    return {tid: ", ".join(names) for tid, names in track_artists.items() if len(names) > 1}
+    return {tid: ", ".join(names) for tid, names in resolved.items() if len(names) > 1}
 
 
 @lru_cache(maxsize=1)
@@ -1217,20 +1300,17 @@ def get_track_artist_names_map() -> dict[int, list[str]]:
     track_artists entries (at minimum the primary artist)."""
     conn = get_db()
     rows = conn.execute(
-        """SELECT ta.track_id, a.artist_name
+        """SELECT ta.track_id, ta.artist_id, ta.role
            FROM track_artists ta
-           JOIN artists a ON ta.artist_id = a.artist_id
            ORDER BY ta.track_id, CASE ta.role WHEN 'primary' THEN 0 ELSE 1 END"""
     ).fetchall()
+    from backend.domains.metadata.artist_identity import canonical_artist_names_for_track
+
+    result = canonical_artist_names_for_track(
+        conn, [(int(row[0]), int(row[1]), str(row[2])) for row in rows]
+    )
     conn.close()
-
-    from collections import defaultdict
-
-    track_artists = defaultdict(list)
-    for track_id, artist_name in rows:
-        track_artists[track_id].append(artist_name)
-
-    return dict(track_artists)
+    return result
 
 
 def enrich_track_artist_names(df: pd.DataFrame) -> pd.DataFrame:
@@ -1297,6 +1377,7 @@ def _agg_param_hash(
     week_start_hour: int,
     dynamic_threshold: bool = False,
     max_merge_gap_minutes: int | None = None,
+    identity_revision: int = 0,
 ) -> str:
     """Compute a content-hash of the parameters that affect aggregation results."""
     payload = json.dumps(
@@ -1307,6 +1388,7 @@ def _agg_param_hash(
             week_start_hour,
             dynamic_threshold,
             max_merge_gap_minutes,
+            identity_revision,
         ],
         sort_keys=True,
     )
@@ -1347,7 +1429,7 @@ def build_aggregations(
     # Load raw data with track dimensions needed for merge and aggregation
     # (ms_played filter is applied AFTER merge to preserve short fragments)
     df = pd.read_sql_query(
-        f"""SELECT p.ts, p.ts_date, p.ts_dow, p.ts_hour, p.ms_played, p.track_id,
+        f"""SELECT p.play_id, p.ts, p.ts_date, p.ts_dow, p.ts_hour, p.ms_played, p.track_id,
                    p.source_album_id, t.album_id, t.artist_id, stm.duration_ms
             FROM plays p
             JOIN tracks t ON p.track_id = t.track_id
@@ -1498,6 +1580,14 @@ def build_aggregations(
         progress_callback("预聚合: 艺人...", 0.66)
     track_artists_df = pd.read_sql_query("SELECT track_id, artist_id FROM track_artists", conn)
     df_artists = df.merge(track_artists_df, on="track_id", how="inner", suffixes=("_primary", ""))
+    from backend.domains.metadata.artist_identity import (
+        canonicalize_artist_frame,
+        get_identity_revision,
+    )
+
+    artists_df = pd.read_sql_query("SELECT artist_id, artist_name FROM artists", conn)
+    df_artists = df_artists.merge(artists_df, on="artist_id", how="left")
+    df_artists = canonicalize_artist_frame(df_artists, conn)
     artists_agg = (
         df_artists.groupby(["billboard_week", "artist_id"])
         .agg(play_count=("ms_played", "count"), total_ms=("ms_played", "sum"))
@@ -1525,6 +1615,7 @@ def build_aggregations(
         week_start_hour,
         dynamic_threshold=dynamic_threshold,
         max_merge_gap_minutes=max_merge_gap_minutes,
+        identity_revision=get_identity_revision(conn),
     )
     conn.execute(
         "INSERT OR REPLACE INTO agg_config(key, value) VALUES ('param_hash', ?)",
@@ -1541,7 +1632,8 @@ def load_agg_weekly_tracks(conn: sqlite3.Connection) -> pd.DataFrame:
     import pandas as pd
 
     df = pd.read_sql_query(
-        """SELECT awt.billboard_week, awt.track_id, t.track_name, a.artist_name,
+        """SELECT awt.billboard_week, awt.track_id, t.track_name,
+                  t.artist_id, a.artist_name,
                   al.album_name, awt.play_count, awt.total_ms
            FROM agg_weekly_tracks awt
            JOIN tracks t ON awt.track_id = t.track_id
@@ -1551,7 +1643,9 @@ def load_agg_weekly_tracks(conn: sqlite3.Connection) -> pd.DataFrame:
         conn,
     )
     df["billboard_week"] = pd.to_datetime(df["billboard_week"]).dt.date
-    return df
+    from backend.domains.metadata.artist_identity import canonicalize_artist_frame
+
+    return canonicalize_artist_frame(df, conn, dedupe=False)
 
 
 def load_agg_weekly_albums(conn: sqlite3.Connection) -> pd.DataFrame:
@@ -1559,7 +1653,8 @@ def load_agg_weekly_albums(conn: sqlite3.Connection) -> pd.DataFrame:
     import pandas as pd
 
     df = pd.read_sql_query(
-        """SELECT awa.billboard_week, awa.album_id, al.album_name, a.artist_name,
+        """SELECT awa.billboard_week, awa.album_id, al.album_name,
+                  al.artist_id, a.artist_name,
                   awa.play_count, awa.total_ms
            FROM agg_weekly_albums awa
            JOIN albums al ON awa.album_id = al.album_id
@@ -1568,7 +1663,9 @@ def load_agg_weekly_albums(conn: sqlite3.Connection) -> pd.DataFrame:
         conn,
     )
     df["billboard_week"] = pd.to_datetime(df["billboard_week"]).dt.date
-    return df
+    from backend.domains.metadata.artist_identity import canonicalize_artist_frame
+
+    return canonicalize_artist_frame(df, conn, dedupe=False)
 
 
 def load_agg_weekly_track_sources(conn: sqlite3.Connection) -> pd.DataFrame:
@@ -1580,6 +1677,7 @@ def load_agg_weekly_track_sources(conn: sqlite3.Connection) -> pd.DataFrame:
                   awts.play_date,
                   awts.track_id,
                   t.track_name,
+                  t.artist_id,
                   a.artist_name,
                   t.album_id AS track_album_id,
                   COALESCE(al_src.album_name, al.album_name) AS album_name,
@@ -1597,7 +1695,9 @@ def load_agg_weekly_track_sources(conn: sqlite3.Connection) -> pd.DataFrame:
         conn,
     )
     df["billboard_week"] = pd.to_datetime(df["billboard_week"]).dt.date
-    return df
+    from backend.domains.metadata.artist_identity import canonicalize_artist_frame
+
+    return canonicalize_artist_frame(df, conn, dedupe=False)
 
 
 def load_agg_weekly_artists(conn: sqlite3.Connection) -> pd.DataFrame:
@@ -1613,12 +1713,15 @@ def load_agg_weekly_artists(conn: sqlite3.Connection) -> pd.DataFrame:
         conn,
     )
     df["billboard_week"] = pd.to_datetime(df["billboard_week"]).dt.date
-    return df
+    from backend.domains.metadata.artist_identity import canonicalize_artist_frame
+
+    return canonicalize_artist_frame(df, conn, dedupe=False)
 
 
 # ── Cache registration ─────────────────────────────────────────────────
 from backend.core.cache_manager import register_lru  # noqa: E402
 
 register_lru("db", "plays", _load_plays_cached)
+register_lru("db", "plays_for_artists", _load_plays_for_artists_cached)
 register_lru("db", "track_all_artists_map", get_track_all_artists_map)
 register_lru("db", "track_artist_names_map", get_track_artist_names_map)

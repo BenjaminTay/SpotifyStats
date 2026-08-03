@@ -7,6 +7,7 @@ import pandas as pd
 
 from backend.core.cache import ttl_cached
 from backend.core.cache_manager import register_ttl
+from backend.domains.metadata.artist_spotify_meta import resolve_artist_image_url
 
 WRAPPED_HUB_CACHE_TTL = 600
 
@@ -49,10 +50,7 @@ def _get_cover_for_name(conn: sqlite3.Connection, name: str, kind: str) -> str:
     if not name:
         return ""
     if kind == "artist":
-        r = conn.execute(
-            "SELECT image_url FROM spotify_artist_meta WHERE artist_name = ? LIMIT 1",
-            (name,),
-        ).fetchone()
+        return resolve_artist_image_url(conn, name)
     elif kind == "track":
         r = conn.execute(
             "SELECT sam.image_url FROM spotify_track_meta stm "
@@ -356,6 +354,12 @@ def _build_wrapped_hub(conn: sqlite3.Connection) -> dict:
         ).fetchall():
             if r[1]:
                 cover_map[(r[0], "artist")] = r[1]
+        for artist_name in all_artist_names:
+            key = (artist_name, "artist")
+            if key not in cover_map:
+                image_url = resolve_artist_image_url(conn, artist_name)
+                if image_url:
+                    cover_map[key] = image_url
 
     # Track covers
     all_track_names = {n for n in top_tracks["display_name"].dropna() if n}

@@ -471,6 +471,48 @@ BOUNDARY_EVIDENCE_BY_KEY: dict[tuple[str, str, str], ParameterEvidence] = {
         ("backend/tests/contract/test_visual_yearly_report_contract.py",),
         "report_mode is covered by visual yearly report contract tests",
     ),
+    ("path", "identity_id", "integer"): ParameterEvidence(
+        "targeted_contract",
+        (),
+        "identity update path validation is exercised in isolated API contracts",
+        ("backend/tests/unit/test_artist_identity.py",),
+    ),
+    ("path", "event_id", "integer"): ParameterEvidence(
+        "targeted_contract",
+        (),
+        "identity undo path validation is exercised in isolated API contracts",
+        ("backend/tests/unit/test_artist_identity.py",),
+    ),
+    (
+        "query",
+        "limit",
+        "integer|maximum=100|minimum=1",
+    ): ParameterEvidence(
+        "boundary_probe",
+        (
+            "artist_identity_candidates_limit_low",
+            "artist_identity_candidates_limit_high",
+        ),
+        "artist identity candidate page size is validated at both bounds",
+    ),
+    (
+        "query",
+        "limit",
+        "integer|maximum=500|minimum=1",
+    ): ParameterEvidence(
+        "boundary_probe",
+        ("artist_identity_events_limit_low", "artist_identity_events_limit_high"),
+        "artist identity event page size is validated at both bounds",
+    ),
+    (
+        "query",
+        "q",
+        "string|maxLength=200|minLength=1",
+    ): ParameterEvidence(
+        "boundary_probe",
+        ("artist_identity_candidates_q_empty", "artist_identity_candidates_q_long"),
+        "artist identity candidate search length is validated at both bounds",
+    ),
 }
 
 

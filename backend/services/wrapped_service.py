@@ -25,6 +25,7 @@ from backend.domains.metadata.artist_languages import (
     build_primary_artist_ms,
     compute_artist_language_distribution,
 )
+from backend.domains.metadata.artist_spotify_meta import resolve_artist_image_url
 from backend.domains.metadata.language_registry import (
     LANGUAGE_LABELS,
     LANGUAGE_VARIANTS,
@@ -47,11 +48,7 @@ def _total_minutes(ms_series):
 
 
 def _get_artist_cover(conn: sqlite3.Connection, artist_name: str) -> str:
-    row = conn.execute(
-        "SELECT image_url FROM spotify_artist_meta WHERE artist_name = ? LIMIT 1",
-        (artist_name,),
-    ).fetchone()
-    return (row[0] or "") if row else ""
+    return resolve_artist_image_url(conn, artist_name)
 
 
 def _get_album_cover(conn: sqlite3.Connection, album_name: str) -> str:
@@ -240,7 +237,12 @@ def _artist_metadata_revision(conn: sqlite3.Connection) -> str:
         ).fetchone()
         parts.append(f"overrides:{row['row_count']}:{row['max_updated_at']}")
     genre_revision = "|".join(parts) or "no-artist-genre-tables"
-    return f"{genre_revision}|language:{artist_language_fact_revision(conn)}"
+    from backend.domains.metadata.artist_identity import get_identity_revision
+
+    return (
+        f"{genre_revision}|language:{artist_language_fact_revision(conn)}"
+        f"|identity:{get_identity_revision(conn)}"
+    )
 
 
 @lru_cache(maxsize=8)

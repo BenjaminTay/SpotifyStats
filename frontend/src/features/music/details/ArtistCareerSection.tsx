@@ -6,7 +6,7 @@ import { FormattedText } from '@/components/shared/FormattedText'
 import { ArtistEnrichmentView } from '@/components/shared/ArtistEnrichmentView'
 import { AITaskProgress } from '@/features/ai-tasks/AITaskProgress'
 import { Skeleton } from '@/components/ui/skeleton'
-import { formatArtistFollowers } from './MusicDetailHeader'
+import { formatArtistFollowers } from './MusicDetailFormatters'
 
 export function ArtistCareerSection({
   enrichment,

@@ -1,0 +1,246 @@
+import { useState, type ComponentProps } from 'react'
+import { AlertTriangle, Check, History, Link2, Loader2, Plus, RotateCcw, Search, ShieldCheck, UserRound, X } from 'lucide-react'
+
+import { GlassCard } from '@/components/shared/GlassCard'
+import { Button } from '@/components/ui/button'
+import { CollapsibleSection } from '@/features/settings/components/SettingsHelpers'
+import { useArtistIdentities } from '@/hooks/useArtistIdentities'
+import { cn } from '@/lib/utils'
+import type { ArtistIdentityCandidate, ArtistIdentityGroup } from '@/types/settings'
+
+type IdentityTab = 'create' | 'groups' | 'events'
+
+function Input({ className, ...props }: ComponentProps<'input'>) {
+  return <input className={cn('h-10 w-full rounded-lg border border-input bg-background px-3 text-sm outline-none transition focus:border-accent-foreground focus:ring-2 focus:ring-accent-foreground/15', className)} {...props} />
+}
+
+function Textarea({ className, ...props }: ComponentProps<'textarea'>) {
+  return <textarea className={cn('w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none transition focus:border-accent-foreground focus:ring-2 focus:ring-accent-foreground/15', className)} {...props} />
+}
+
+function ArtistAvatar({ candidate, name }: { candidate?: { cover_url: string | null }; name: string }) {
+  const [failed, setFailed] = useState(false)
+  if (!candidate?.cover_url || failed) {
+    return (
+      <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-accent-foreground/10 font-serif text-sm font-bold text-accent-foreground">
+        {name.trim().slice(0, 1).toUpperCase() || <UserRound className="size-4" />}
+      </span>
+    )
+  }
+  return (
+    <img
+      src={candidate.cover_url}
+      alt=""
+      className="size-10 shrink-0 rounded-full object-cover"
+      onError={() => setFailed(true)}
+    />
+  )
+}
+
+function mutationMessage(error: unknown): string {
+  return error instanceof Error ? error.message : '操作失败，请检查选择与证据后重试'
+}
+
+export function ArtistIdentitySection() {
+  const [tab, setTab] = useState<IdentityTab>('create')
+  const [search, setSearch] = useState('')
+  const [selected, setSelected] = useState<ArtistIdentityCandidate[]>([])
+  const [canonicalId, setCanonicalId] = useState<number | null>(null)
+  const [displayName, setDisplayName] = useState('')
+  const [reason, setReason] = useState('')
+  const [confirmConflict, setConfirmConflict] = useState(false)
+  const identity = useArtistIdentities(search)
+  const state = identity.overview.data?.state
+
+  const selectCandidate = (candidate: ArtistIdentityCandidate) => {
+    if (selected.some((item) => item.artist_id === candidate.artist_id)) return
+    setSelected((items) => [...items, candidate])
+    if (canonicalId == null) {
+      setCanonicalId(candidate.artist_id)
+      setDisplayName(candidate.canonical_display_name || candidate.artist_name)
+    }
+  }
+  const removeCandidate = (artistId: number) => {
+    const next = selected.filter((item) => item.artist_id !== artistId)
+    setSelected(next)
+    if (canonicalId === artistId) {
+      setCanonicalId(next[0]?.artist_id ?? null)
+      setDisplayName(next[0]?.canonical_display_name ?? next[0]?.artist_name ?? '')
+    }
+  }
+  const draft = canonicalId == null ? null : {
+    artist_ids: selected.map((item) => item.artist_id),
+    canonical_artist_id: canonicalId,
+    display_name: displayName,
+  }
+  const canPreview = Boolean(draft && selected.length >= 2 && displayName.trim())
+  const preview = identity.preview.data
+
+  const confirmCreate = async () => {
+    if (!draft || state == null) return
+    await identity.create.mutateAsync({
+      ...draft,
+      expected_revision: state.current_revision,
+      reason,
+      confirm_external_id_conflict: confirmConflict,
+    })
+    setSelected([])
+    setCanonicalId(null)
+    setDisplayName('')
+    setReason('')
+    setConfirmConflict(false)
+    identity.preview.reset()
+    setTab('groups')
+  }
+
+  return (
+    <GlassCard className="p-6">
+      <CollapsibleSection
+        num={6}
+        title="艺人身份"
+        desc="以稳定身份合并同一艺人的多个本地条目；原始播放与署名保持不变，所有统计统一解析到所选身份。"
+        defaultOpen={false}
+        tone="advanced"
+      >
+        <div className="mb-5 flex flex-wrap items-center gap-2 rounded-xl border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+          <ShieldCheck className="size-4 text-accent-foreground" />
+          <span>身份 revision {state?.current_revision ?? '—'}</span>
+          <span aria-hidden>·</span>
+          <span>聚合 revision {state?.active_aggregate_revision ?? '—'}</span>
+          <span className={cn('rounded-full px-2 py-0.5', state?.rebuild_status === 'ready' ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300' : 'bg-amber-500/10 text-amber-700 dark:text-amber-300')}>
+            {state?.rebuild_status === 'ready' ? '已同步' : state?.rebuild_status === 'failed' ? '重建失败，实时解析仍生效' : '聚合重建中，实时解析已生效'}
+          </span>
+        </div>
+
+        <div className="mb-5 flex gap-6 border-b border-border" role="tablist" aria-label="艺人身份管理">
+          {([
+            ['create', '创建或合并'],
+            ['groups', '已合并身份'],
+            ['events', '操作记录'],
+          ] as const).map(([key, label]) => (
+            <button
+              key={key}
+              type="button"
+              role="tab"
+              aria-selected={tab === key}
+              onClick={() => setTab(key)}
+              className={cn('-mb-px border-b-2 pb-2.5 text-[13px] font-medium', tab === key ? 'border-accent-foreground text-foreground' : 'border-transparent text-muted-foreground')}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {tab === 'create' && (
+          <div className="space-y-5">
+            <div>
+              <label htmlFor="artist-identity-search" className="mb-2 block text-xs font-semibold text-foreground">搜索本地艺人</label>
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                <Input id="artist-identity-search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="输入艺人名称，可分多次搜索并保留选择" className="pl-9" />
+              </div>
+              {search.trim() && (
+                <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                  {identity.candidates.map((candidate) => (
+                    <button key={candidate.artist_id} type="button" onClick={() => selectCandidate(candidate)} className="flex min-w-0 items-center gap-3 rounded-xl border border-border bg-background p-3 text-left transition hover:border-accent-foreground/40">
+                      <ArtistAvatar candidate={candidate} name={candidate.artist_name} />
+                      <span className="min-w-0 flex-1">
+                        <span className="block break-words text-sm font-semibold text-foreground">{candidate.artist_name}</span>
+                        <span className="block text-[11px] text-muted-foreground">raw #{candidate.artist_id} · {candidate.play_count.toLocaleString()} 次 · {candidate.first_play_date ?? '无播放'}—{candidate.last_play_date ?? '无播放'}</span>
+                      </span>
+                      {selected.some((item) => item.artist_id === candidate.artist_id) ? <Check className="size-4 text-accent-foreground" /> : <Plus className="size-4 text-muted-foreground" />}
+                    </button>
+                  ))}
+                  {!identity.candidatesLoading && identity.candidates.length === 0 && <p className="text-xs text-muted-foreground">没有匹配的本地艺人。</p>}
+                </div>
+              )}
+            </div>
+
+            {selected.length > 0 && (
+              <div className="space-y-3 rounded-xl border border-border bg-muted/20 p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <h4 className="text-sm font-semibold">待合并成员（{selected.length}）</h4>
+                  <span className="text-[11px] text-muted-foreground">选择 canonical 只决定身份主键；显示名可独立设置</span>
+                </div>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {selected.map((candidate) => (
+                    <div key={candidate.artist_id} className={cn('flex min-w-0 items-center gap-3 rounded-lg border p-3', canonicalId === candidate.artist_id ? 'border-accent-foreground bg-accent-foreground/5' : 'border-border bg-background')}>
+                      <button type="button" aria-label={`将 ${candidate.artist_name} 设为 canonical`} onClick={() => { setCanonicalId(candidate.artist_id); setDisplayName(candidate.canonical_display_name || candidate.artist_name) }} className="flex min-w-0 flex-1 items-center gap-3 text-left">
+                        <ArtistAvatar candidate={candidate} name={candidate.artist_name} />
+                        <span className="min-w-0">
+                          <span className="block break-words text-sm font-medium">{candidate.artist_name}</span>
+                          <span className="text-[11px] text-muted-foreground">raw #{candidate.artist_id}{canonicalId === candidate.artist_id ? ' · canonical' : ''}</span>
+                        </span>
+                      </button>
+                      <button type="button" aria-label={`移除 ${candidate.artist_name}`} onClick={() => removeCandidate(candidate.artist_id)} className="rounded-full p-1 text-muted-foreground hover:bg-muted hover:text-foreground"><X className="size-4" /></button>
+                    </div>
+                  ))}
+                </div>
+                <label className="block text-xs font-semibold">最终显示名<Input value={displayName} onChange={(event) => setDisplayName(event.target.value)} className="mt-2" /></label>
+                <label className="block text-xs font-semibold">合并理由与证据<Textarea value={reason} onChange={(event) => setReason(event.target.value)} placeholder="例如：稳定 Spotify artist id 相同，且多首 stable track id 与主艺人署名一致" className="mt-2 min-h-20" /></label>
+                <Button type="button" variant="outline" disabled={!canPreview || identity.preview.isPending} onClick={() => draft && identity.preview.mutate(draft)}>
+                  {identity.preview.isPending ? <Loader2 className="size-4 animate-spin" /> : <Link2 className="size-4" />}预览全局影响
+                </Button>
+              </div>
+            )}
+
+            {preview && (
+              <div className={cn('space-y-3 rounded-xl border p-4', preview.blocked ? 'border-destructive/40 bg-destructive/5' : 'border-emerald-500/30 bg-emerald-500/5')}>
+                <div className="flex items-center gap-2 text-sm font-semibold">{preview.blocked ? <AlertTriangle className="size-4 text-destructive" /> : <ShieldCheck className="size-4 text-emerald-600" />}{preview.blocked ? '发现需人工确认的身份冲突' : '预览通过，可确认写入'}</div>
+                <p className="text-xs leading-relaxed text-muted-foreground">合并前共 {preview.combined_play_count_before_dedupe.toLocaleString()} 次；同一播放事件重复署名 {preview.duplicate_play_events.toLocaleString()} 条将在 canonical fan-out 后去重。共享稳定曲目 {preview.shared_stable_tracks.length} 首。</p>
+                <div className="flex flex-wrap gap-1.5">{preview.affected_scopes.map((scope) => <span key={scope} className="rounded-full border border-border bg-background px-2 py-1 text-[11px]">{scope}</span>)}</div>
+                {preview.blocked && <label className="flex items-start gap-2 text-xs"><input type="checkbox" checked={confirmConflict} onChange={(event) => setConfirmConflict(event.target.checked)} className="mt-0.5" /><span>我已核对不同的已验证外部 ID，并以当前理由明确确认此次例外合并。</span></label>}
+                <Button type="button" disabled={!reason.trim() || identity.create.isPending || (preview.blocked && !confirmConflict)} onClick={() => void confirmCreate()}>
+                  {identity.create.isPending && <Loader2 className="size-4 animate-spin" />}确认并全局应用
+                </Button>
+              </div>
+            )}
+            {(identity.preview.error || identity.create.error) && <p className="text-xs text-destructive">{mutationMessage(identity.preview.error || identity.create.error)}</p>}
+          </div>
+        )}
+
+        {tab === 'groups' && (
+          <div className="space-y-3">
+            {(identity.overview.data?.groups ?? []).map((group) => <IdentityGroupCard key={group.identity_id} group={group} revision={state?.current_revision ?? 0} onUpdate={identity.update.mutateAsync} />)}
+            {!identity.overview.isLoading && (identity.overview.data?.groups.length ?? 0) === 0 && <p className="rounded-xl border border-dashed border-border p-6 text-center text-sm text-muted-foreground">尚无已合并的艺人身份。</p>}
+          </div>
+        )}
+
+        {tab === 'events' && (
+          <div className="space-y-2">
+            {identity.events.map((event) => (
+              <div key={event.event_id} className="flex flex-col gap-3 rounded-xl border border-border bg-background p-3 sm:flex-row sm:items-center">
+                <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-muted"><History className="size-4" /></span>
+                <div className="min-w-0 flex-1"><p className="text-sm font-semibold">{event.action} · revision {event.revision}</p><p className="break-words text-xs text-muted-foreground">{event.reason} · {event.actor} · {event.created_at}</p></div>
+                {event.action !== 'undo' && !event.undo_of_event_id && <Button type="button" size="sm" variant="outline" disabled={identity.undo.isPending} onClick={() => void identity.undo.mutateAsync({ eventId: event.event_id, revision: state?.current_revision ?? 0, reason: `撤销操作 #${event.event_id}` })}><RotateCcw className="size-3.5" />撤销</Button>}
+              </div>
+            ))}
+            {identity.events.length === 0 && <p className="text-sm text-muted-foreground">暂无操作记录；legacy alias 迁移不会伪造用户操作。</p>}
+          </div>
+        )}
+      </CollapsibleSection>
+    </GlassCard>
+  )
+}
+
+function IdentityGroupCard({ group, revision, onUpdate }: { group: ArtistIdentityGroup; revision: number; onUpdate: ReturnType<typeof useArtistIdentities>['update']['mutateAsync'] }) {
+  const [displayName, setDisplayName] = useState(group.display_name)
+  const [canonicalId, setCanonicalId] = useState(group.canonical_artist_id)
+  const [reason, setReason] = useState('调整身份组展示或成员')
+  const [error, setError] = useState('')
+  const changed = displayName.trim() !== group.display_name || canonicalId !== group.canonical_artist_id
+  const save = async (removeIds: number[] = []) => {
+    setError('')
+    try {
+      await onUpdate({ identityId: group.identity_id, payload: { remove_ids: removeIds, canonical_artist_id: canonicalId, display_name: displayName, expected_revision: revision, reason } })
+    } catch (value) { setError(mutationMessage(value)) }
+  }
+  return (
+    <div className="space-y-3 rounded-xl border border-border bg-muted/20 p-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"><div><h4 className="font-serif text-lg font-bold">{group.display_name}</h4><p className="text-[11px] text-muted-foreground">身份组 #{group.identity_id} · canonical raw #{group.canonical_artist_id}</p></div><span className="self-start rounded-full border border-border bg-background px-2 py-1 text-[11px]">{group.members.length} 个成员</span></div>
+      <div className="grid gap-2 sm:grid-cols-2">{group.members.map((member) => <div key={member.artist_id} className={cn('flex min-w-0 items-center gap-3 rounded-lg border p-3', canonicalId === member.artist_id ? 'border-accent-foreground bg-accent-foreground/5' : 'border-border bg-background')}><button type="button" onClick={() => setCanonicalId(member.artist_id)} className="flex min-w-0 flex-1 items-center gap-3 text-left"><ArtistAvatar candidate={member} name={member.artist_name} /><span className="min-w-0"><span className="block break-words text-sm font-medium">{member.artist_name}</span><span className="text-[11px] text-muted-foreground">raw #{member.artist_id} · {canonicalId === member.artist_id ? 'canonical' : member.evidence_type}</span></span></button>{group.members.length > 1 && canonicalId !== member.artist_id && <button type="button" aria-label={`从身份组移除 ${member.artist_name}`} onClick={() => void save([member.artist_id])} className="rounded-full p-1 text-muted-foreground hover:bg-muted hover:text-destructive"><X className="size-4" /></button>}</div>)}</div>
+      <div className="grid gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end"><label className="text-xs font-semibold">最终显示名<Input value={displayName} onChange={(event) => setDisplayName(event.target.value)} className="mt-1.5" /></label><label className="text-xs font-semibold">修改理由<Input value={reason} onChange={(event) => setReason(event.target.value)} className="mt-1.5" /></label><Button type="button" size="sm" disabled={!changed || !displayName.trim() || !reason.trim()} onClick={() => void save()}>保存</Button></div>
+      {error && <p className="text-xs text-destructive">{error}</p>}
+    </div>
+  )
+}

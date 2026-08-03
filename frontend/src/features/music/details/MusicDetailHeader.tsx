@@ -3,18 +3,7 @@ import { ArrowLeft } from 'lucide-react'
 import type { AlbumDetailResponse, ArtistDetailResponse } from '@/types/billboard'
 import { displayName } from '@/lib/chinese'
 import { cn } from '@/lib/utils'
-
-
-export type MusicDetailTabOption<T extends string> = {
-  key: T
-  label: string
-}
-
-export function formatArtistFollowers(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`
-  return String(n)
-}
+import { formatAlbumKind, formatArtistFollowers } from './MusicDetailFormatters'
 
 function formatAlbumReleaseDate(iso: string): string {
   const [y, m, d] = iso.split('-')
@@ -37,17 +26,9 @@ function formatAlbumReleaseDate(iso: string): string {
   return `${parseInt(d)} ${months[mi]} ${y}`
 }
 
-export function formatAlbumKind(t: string): string {
-  switch (t) {
-    case 'album':
-      return 'Album'
-    case 'single':
-      return 'Single'
-    case 'compilation':
-      return 'Compilation'
-    default:
-      return t
-  }
+export type MusicDetailTabOption<T extends string> = {
+  key: T
+  label: string
 }
 
 export function ArtistDetailHero({
@@ -90,11 +71,13 @@ export function ArtistDetailHero({
                 </p>
               )}
               {[
-                data.meta.followers && `${formatArtistFollowers(data.meta.followers)} followers`,
+                data.meta.followers != null &&
+                  `${formatArtistFollowers(data.meta.followers)} followers`,
               ].filter(Boolean).length > 0 && (
                 <p>
                   {[
-                    data.meta.followers && `${formatArtistFollowers(data.meta.followers)} followers`,
+                    data.meta.followers != null &&
+                      `${formatArtistFollowers(data.meta.followers)} followers`,
                   ]
                     .filter(Boolean)
                     .join(' · ')}

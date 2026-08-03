@@ -5,6 +5,7 @@ from sqlite3 import Connection
 from fastapi import APIRouter, Depends
 
 from backend.dependencies import get_conn
+from backend.domains.metadata.artist_identity import canonicalize_artist_payload
 from backend.models.account_center import WrappedHubAvailableYearsResponse, WrappedHubResponse
 from backend.services.wrapped_hub_service import get_wrapped_hub
 
@@ -23,4 +24,4 @@ def wrapped_hub_available_years(conn: Connection = Depends(get_conn)):
 
 @router.get("", response_model=WrappedHubResponse, response_model_exclude_unset=True)
 def wrapped_hub(conn: Connection = Depends(get_conn)):
-    return get_wrapped_hub(conn)
+    return canonicalize_artist_payload(get_wrapped_hub(conn), conn)

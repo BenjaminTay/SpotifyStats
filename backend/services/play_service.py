@@ -11,7 +11,6 @@ import sqlite3
 import pandas as pd
 
 from backend.core.db import (
-    base_filters,
     get_track_all_artists_map,
     get_track_artist_names_map,
     load_plays,
@@ -1212,25 +1211,24 @@ def get_artist_list(
     music_only: bool,
 ) -> list[dict]:
     """Get ranked list of artists for the selector."""
-    f, fp = base_filters(min_ms=min_ms, music_only=music_only)
-    w = f"WHERE {f}" if f else ""
-    rows = conn.execute(
-        f"""SELECT a.artist_id, a.artist_name, a.image_path, a.image_url, COUNT(*) as cnt
-            FROM plays p JOIN tracks t ON p.track_id = t.track_id
-            JOIN track_artists ta ON t.track_id = ta.track_id
-            JOIN artists a ON ta.artist_id = a.artist_id
-            {w}
-            GROUP BY a.artist_id ORDER BY cnt DESC""",
-        fp,
-    ).fetchall()
+    frame = load_plays_for_artists(conn, min_ms=min_ms, music_only=music_only)
+    if frame.empty:
+        return []
+    rows = (
+        frame.groupby(["artist_id", "artist_name"], as_index=False)
+        .size()
+        .rename(columns={"size": "cnt"})
+        .sort_values("cnt", ascending=False)
+    )
+    cover_map = _artist_cover_lookup(conn)
     return [
         {
-            "artist_id": r["artist_id"],
-            "artist_name": r["artist_name"],
-            "play_count": r["cnt"],
-            "cover_url": _cover_url(r["image_path"], r["image_url"], "artists", r["artist_id"]),
+            "artist_id": int(r.artist_id),
+            "artist_name": str(r.artist_name),
+            "play_count": int(r.cnt),
+            "cover_url": cover_map.get(str(r.artist_name)),
         }
-        for r in rows
+        for r in rows.itertuples(index=False)
     ]
 
 
@@ -1245,6 +1243,11 @@ def get_artist_deep_dive(
     merge_level: int = 1,
 ) -> dict:
     """In-depth analysis for a single artist."""
+    from backend.domains.metadata.artist_identity import resolve_artist_name
+
+    identity = resolve_artist_name(conn, artist_name)
+    if identity is not None:
+        artist_name = identity.display_name
     df = _load_filtered_plays(
         conn,
         min_ms,

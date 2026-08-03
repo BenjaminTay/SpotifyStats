@@ -533,7 +533,7 @@ export function GenreDataHealthSection() {
 
   const coverage = coverageQuery.data
   const taxonomy = taxonomyQuery.data
-  const reviews = reviewsQuery.data?.items ?? []
+  const reviews = useMemo(() => reviewsQuery.data?.items ?? [], [reviewsQuery.data?.items])
   const filteredReviews = useMemo(() => {
     const query = reviewSearch.trim().toLocaleLowerCase()
     if (!query) return reviews
@@ -679,7 +679,7 @@ export function GenreDataHealthSection() {
       <CollapsibleSection
         defaultOpen
         desc="查看艺人流派与常用演唱语言的覆盖率、来源和人工审核记录。"
-        num={6}
+        num={7}
         summary={summary}
         title="流派与语言数据健康"
       >

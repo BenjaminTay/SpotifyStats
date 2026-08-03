@@ -5,6 +5,8 @@ import pandas as pd
 from backend.core.db import fan_out_weekly_for_artists, get_db
 from backend.domains.billboard.chart_compute import compute_billboard_data
 from backend.domains.metadata.artist_genres import resolve_artist_genres
+from backend.domains.metadata.artist_identity import resolve_artist_name
+from backend.domains.metadata.artist_spotify_meta import resolve_artist_spotify_meta
 
 
 def _vs_spotify_track_meta(track_id):
@@ -48,20 +50,21 @@ def _vs_spotify_artist_meta(artist_name):
     """Fetch cover_url, popularity and genres for an artist."""
     conn = get_db()
     try:
-        row = conn.execute(
-            """SELECT popularity, followers, image_url
-               FROM spotify_artist_meta
-               WHERE artist_name = ? LIMIT 1""",
-            (artist_name,),
-        ).fetchone()
-        resolved = resolve_artist_genres(conn, artist_name)
+        provider = resolve_artist_spotify_meta(conn, artist_name)
+        resolved_genres = resolve_artist_genres(conn, artist_name)
     finally:
         conn.close()
-    pop = int(row["popularity"]) if row and row["popularity"] is not None else None
-    genres = resolved.genres or None
-    cover = row["image_url"] if row and row["image_url"] else None
-    genre_source = resolved.source if resolved.genres else None
-    genre_confidence = resolved.confidence if resolved.genres else None
+    metadata = provider.metadata or {}
+    pop = int(metadata["popularity"]) if metadata.get("popularity") is not None else None
+    if metadata.get("genres"):
+        genres = metadata["genres"]
+        genre_source = "spotify"
+        genre_confidence = 1.0
+    else:
+        genres = resolved_genres.genres or None
+        genre_source = resolved_genres.source if resolved_genres.genres else None
+        genre_confidence = resolved_genres.confidence if resolved_genres.genres else None
+    cover = metadata.get("image_url") or None
     return pop, genres, cover, genre_source, genre_confidence
 
 
@@ -280,6 +283,14 @@ def get_versus_artist(
     year_end,
 ):
     """Compare two artists side-by-side."""
+    identity_conn = get_db()
+    try:
+        resolved_a = resolve_artist_name(identity_conn, sel_a)
+        resolved_b = resolve_artist_name(identity_conn, sel_b)
+        sel_a = resolved_a.display_name if resolved_a else sel_a
+        sel_b = resolved_b.display_name if resolved_b else sel_b
+    finally:
+        identity_conn.close()
     data = compute_billboard_data(
         min_ms,
         music_only,
@@ -693,6 +704,20 @@ def get_versus_artist_multi(
     """Compare multiple artists.  artist_names is a list of str (2–5)."""
     if len(artist_names) < 2:
         return {"found": False, "reason": "请至少选择 2 位艺人进行对比"}
+
+    identity_conn = get_db()
+    try:
+        artist_names = [
+            resolved.display_name
+            if (resolved := resolve_artist_name(identity_conn, name))
+            else name
+            for name in artist_names
+        ]
+        artist_names = list(dict.fromkeys(artist_names))
+    finally:
+        identity_conn.close()
+    if len(artist_names) < 2:
+        return {"found": False, "reason": "选中的艺人规范化后不足 2 位"}
 
     data = compute_billboard_data(
         min_ms,

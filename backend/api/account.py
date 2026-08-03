@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
 from backend.dependencies import get_conn
+from backend.domains.metadata.artist_identity import canonicalize_artist_payload
 from backend.services.account_service import get_account_summary, get_collection_insights
 
 router = APIRouter(prefix="/account", tags=["Account"])
@@ -27,10 +28,10 @@ class CollectionInsightsResponse(BaseModel):
 @router.get("", response_model=AccountSummaryResponse)
 def account_summary(conn: Connection = Depends(get_conn)):
     """聚合账号中心所有数据（library + search + insights + podcast + video + profile + collection insights）。"""
-    return get_account_summary(conn)
+    return canonicalize_artist_payload(get_account_summary(conn), conn)
 
 
 @router.get("/collection-insights", response_model=CollectionInsightsResponse)
 def collection_insights(conn: Connection = Depends(get_conn)):
     """收藏×播放交叉分析洞察。"""
-    return get_collection_insights(conn)
+    return canonicalize_artist_payload(get_collection_insights(conn), conn)

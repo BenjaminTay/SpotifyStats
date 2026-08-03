@@ -2504,6 +2504,109 @@ export interface paths {
         patch: operations["patch_artist_language_pre_review_api_metadata_artist_languages_reviews__review_id__pre_review_patch"];
         trace?: never;
     };
+    "/api/artist-identities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Identities */
+        get: operations["list_identities_api_artist_identities_get"];
+        put?: never;
+        /** Create Identity */
+        post: operations["create_identity_api_artist_identities_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/artist-identities/candidates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Search Candidates */
+        get: operations["search_candidates_api_artist_identities_candidates_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/artist-identities/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Preview Identity */
+        post: operations["preview_identity_api_artist_identities_preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/artist-identities/{identity_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Update Identity */
+        put: operations["update_identity_api_artist_identities__identity_id__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/artist-identities/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Identity Events */
+        get: operations["identity_events_api_artist_identities_events_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/artist-identities/events/{event_id}/undo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Undo Identity */
+        post: operations["undo_identity_api_artist_identities_events__event_id__undo_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/chat/sessions": {
         parameters: {
             query?: never;
@@ -5259,6 +5362,104 @@ export interface components {
             hour: number;
             /** Plays */
             plays: number;
+        };
+        /** IdentityCreateRequest */
+        IdentityCreateRequest: {
+            /** Artist Ids */
+            artist_ids: number[];
+            /** Canonical Artist Id */
+            canonical_artist_id: number;
+            /** Display Name */
+            display_name: string;
+            /** Expected Revision */
+            expected_revision: number;
+            /** Idempotency Key */
+            idempotency_key: string;
+            /** Reason */
+            reason: string;
+            /**
+             * Confirm External Id Conflict
+             * @default false
+             */
+            confirm_external_id_conflict: boolean;
+            /** External Ids */
+            external_ids?: components["schemas"]["IdentityExternalIdInput"][];
+        };
+        /** IdentityExternalIdInput */
+        IdentityExternalIdInput: {
+            /** Artist Id */
+            artist_id: number;
+            /** Provider */
+            provider: string;
+            /** External Id */
+            external_id: string;
+            /** Evidence Type */
+            evidence_type: string;
+            /** Evidence Source */
+            evidence_source?: string | null;
+            /**
+             * Confidence
+             * @default 1
+             */
+            confidence: number;
+            /**
+             * Verified
+             * @default true
+             */
+            verified: boolean;
+        };
+        /** IdentityMutationResponse */
+        IdentityMutationResponse: {
+            /** Event Id */
+            event_id: number;
+            /** Identity Id */
+            identity_id?: number | null;
+            /** Revision */
+            revision: number;
+            /** Rebuild Job Id */
+            rebuild_job_id?: string | null;
+        };
+        /** IdentityPreviewRequest */
+        IdentityPreviewRequest: {
+            /** Artist Ids */
+            artist_ids: number[];
+            /** Canonical Artist Id */
+            canonical_artist_id: number;
+            /** Display Name */
+            display_name: string;
+        };
+        /** IdentityUndoRequest */
+        IdentityUndoRequest: {
+            /** Expected Revision */
+            expected_revision: number;
+            /** Idempotency Key */
+            idempotency_key: string;
+            /** Reason */
+            reason: string;
+        };
+        /** IdentityUpdateRequest */
+        IdentityUpdateRequest: {
+            /** Add Ids */
+            add_ids?: number[];
+            /** Remove Ids */
+            remove_ids?: number[];
+            /** Canonical Artist Id */
+            canonical_artist_id?: number | null;
+            /** Display Name */
+            display_name?: string | null;
+            /** Provider Metadata Artist Id */
+            provider_metadata_artist_id?: number | null;
+            /** Expected Revision */
+            expected_revision: number;
+            /** Idempotency Key */
+            idempotency_key: string;
+            /** Reason */
+            reason: string;
+            /**
+             * Confirm External Id Conflict
+             * @default false
+             */
+            confirm_external_id_conflict: boolean;
         };
         /**
          * ImportJobCreateResponse
@@ -13794,6 +13995,248 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ArtistLanguageReviewItem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_identities_api_artist_identities_get: {
+        parameters: {
+            query?: {
+                readonly?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_identity_api_artist_identities_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IdentityCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IdentityMutationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    search_candidates_api_artist_identities_candidates_get: {
+        parameters: {
+            query: {
+                q: string;
+                limit?: number;
+                readonly?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_identity_api_artist_identities_preview_post: {
+        parameters: {
+            query?: {
+                readonly?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IdentityPreviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_identity_api_artist_identities__identity_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                identity_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IdentityUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IdentityMutationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    identity_events_api_artist_identities_events_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                readonly?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    undo_identity_api_artist_identities_events__event_id__undo_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IdentityUndoRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IdentityMutationResponse"];
                 };
             };
             /** @description Validation Error */

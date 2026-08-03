@@ -152,6 +152,11 @@ DEFAULT_SAFE_GET_CASES: tuple[SmokeCase, ...] = (
     SmokeCase("wrapped_hub_years", "/api/wrapped-hub/available-years"),
     SmokeCase("wrapped_hub", "/api/wrapped-hub"),
     SmokeCase("settings", "/api/settings"),
+    SmokeCase("artist_identities", "/api/artist-identities"),
+    SmokeCase(
+        "artist_identity_candidates", "/api/artist-identities/candidates", {"q": "a", "limit": 5}
+    ),
+    SmokeCase("artist_identity_events", "/api/artist-identities/events", {"limit": 5}),
     SmokeCase("settings_llm_profiles", "/api/settings/llm-profiles"),
     SmokeCase(
         "settings_llm_profile_missing",

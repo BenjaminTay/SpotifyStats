@@ -14,6 +14,7 @@ from backend.core.db import (
 from backend.core.json_helpers import df_to_json
 from backend.domains.billboard.chart_compute import compute_billboard_data
 from backend.domains.metadata.artist_genres import resolve_artist_genres
+from backend.domains.metadata.artist_spotify_meta import resolve_artist_spotify_meta
 
 
 def _compute_change_column(hist_df):
@@ -251,29 +252,34 @@ def _attach_track_version_group(conn, track_id, meta, merge_level=2):
 
 
 def _get_artist_spotify_meta(artist_name):
-    """Fetch Spotify metadata for an artist by name."""
+    """Fetch Spotify metadata for an artist through its canonical identity."""
     conn = get_db()
     try:
-        row = conn.execute(
-            """SELECT popularity, followers
-               FROM spotify_artist_meta
-               WHERE artist_name = ?
-               LIMIT 1""",
-            (artist_name,),
-        ).fetchone()
-        resolved = resolve_artist_genres(conn, artist_name)
+        provider = resolve_artist_spotify_meta(conn, artist_name)
+        resolved_genres = resolve_artist_genres(conn, artist_name)
     finally:
         conn.close()
 
     meta = {}
-    if row and row["popularity"] is not None:
-        meta["popularity"] = row["popularity"]
-    if row and row["followers"] is not None:
-        meta["followers"] = row["followers"]
-    if resolved.genres:
-        meta["genres"] = resolved.genres
-        meta["genre_source"] = resolved.source
-        meta["genre_confidence"] = resolved.confidence
+    provider_meta = provider.metadata or {}
+    if provider_meta.get("popularity") is not None:
+        meta["popularity"] = provider_meta["popularity"]
+    if provider_meta.get("followers") is not None:
+        meta["followers"] = provider_meta["followers"]
+    if provider_meta.get("genres"):
+        meta["genres"] = provider_meta["genres"]
+        meta["genre_source"] = "spotify"
+        meta["genre_confidence"] = 1.0
+    elif resolved_genres.genres:
+        meta["genres"] = resolved_genres.genres
+        meta["genre_source"] = resolved_genres.source
+        meta["genre_confidence"] = resolved_genres.confidence
+    if provider.has_conflict:
+        meta["provider_metadata_conflict"] = {
+            "provider": "spotify",
+            "external_ids": list(provider.conflict_external_ids),
+            "source": provider.source,
+        }
 
     return meta if meta else None
 
@@ -846,6 +852,15 @@ def get_artist_chart_detail(
     merge_level=2,
 ):
     """Get detailed artist chart data: history, track/album performances, trend."""
+    identity_conn = get_db()
+    try:
+        from backend.domains.metadata.artist_identity import resolve_artist_name
+
+        identity = resolve_artist_name(identity_conn, artist_name)
+        if identity is not None:
+            artist_name = identity.display_name
+    finally:
+        identity_conn.close()
     data = compute_billboard_data(
         min_ms,
         music_only,

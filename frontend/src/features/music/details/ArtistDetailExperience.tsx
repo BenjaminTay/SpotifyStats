@@ -77,6 +77,15 @@ export function ArtistDetailExperience() {
     (Boolean(artistEnrichmentTaskId) && artistEnrichmentTask.loading && !artistEnrichmentTask.task)
 
   useEffect(() => {
+    if (!data?.found || !artistName || data.artist_name === artistName) return
+    const query = searchParams.toString()
+    navigate(
+      `/music/artists/${encodeURIComponent(data.artist_name)}${query ? `?${query}` : ''}`,
+      { replace: true },
+    )
+  }, [artistName, data?.artist_name, data?.found, navigate, searchParams])
+
+  useEffect(() => {
     if (activeTab !== 'career' || !data?.found) return
     const artist = data.artist_name.trim()
     if (!artist || artistEnrichmentStartedKeyRef.current === artist) return

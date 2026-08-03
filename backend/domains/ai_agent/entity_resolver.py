@@ -389,6 +389,70 @@ def resolve_entities(
         rows = _simple_query(conn, entity_type, query, limit)
 
     candidates = [_candidate_from_row(row, entity_type) for row in rows]
+    if entity_type == "artist" and candidates:
+        from backend.domains.metadata.artist_identity import get_artist_identity_map
+
+        mapping = get_artist_identity_map(conn)
+        if not mapping:
+            return {
+                "found": bool(candidates),
+                "query": query,
+                "entity_type": entity_type,
+                "candidates": candidates,
+            }
+        canonical_candidates: dict[int, dict[str, Any]] = {}
+        exact_canonical_ids: set[int] = set()
+        has_track_artists = (
+            conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='track_artists'"
+            ).fetchone()
+            is not None
+        )
+        for candidate in candidates:
+            raw_id = int(candidate["artist_id"])
+            resolved = mapping.get(raw_id)
+            canonical_id = resolved.canonical_artist_id if resolved else raw_id
+            display_name = resolved.display_name if resolved else str(candidate["artist_name"])
+            if str(candidate["artist_name"]).casefold() == query.strip().casefold():
+                exact_canonical_ids.add(canonical_id)
+            item = canonical_candidates.setdefault(
+                canonical_id,
+                {
+                    **candidate,
+                    "name": display_name,
+                    "artist_name": display_name,
+                    "artist_id": canonical_id,
+                    "raw_artist_ids": [],
+                },
+            )
+            item["raw_artist_ids"].append(raw_id)
+        for canonical_id, item in canonical_candidates.items():
+            member_ids = [
+                raw_id
+                for raw_id, resolution in mapping.items()
+                if resolution.canonical_artist_id == canonical_id
+            ]
+            if has_track_artists:
+                placeholders = ",".join("?" for _ in member_ids)
+                metrics = conn.execute(
+                    f"""SELECT COUNT(*), COALESCE(SUM(ms_played), 0) FROM (
+                            SELECT p.play_id, MAX(p.ms_played) AS ms_played
+                            FROM plays p JOIN track_artists ta ON ta.track_id=p.track_id
+                            WHERE ta.artist_id IN ({placeholders})
+                            GROUP BY p.play_id
+                        )""",
+                    member_ids,
+                ).fetchone()
+                item["play_events"] = int(metrics[0])
+                item["total_ms"] = int(metrics[1])
+            item.pop("raw_artist_ids", None)
+        if exact_canonical_ids:
+            canonical_candidates = {
+                canonical_id: candidate
+                for canonical_id, candidate in canonical_candidates.items()
+                if canonical_id in exact_canonical_ids
+            }
+        candidates = list(canonical_candidates.values())[: _bounded_limit(limit)]
     return {
         "found": bool(candidates),
         "query": query,

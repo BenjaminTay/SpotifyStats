@@ -11,7 +11,7 @@ import {
   formatNumber,
   formatOptionalRank,
 } from './MusicDetailPrimitives'
-import { formatAlbumKind } from './MusicDetailHeader'
+import { formatAlbumKind } from './MusicDetailFormatters'
 
 type AlbumEraOverviewSectionProps = {
   data: AlbumDetailResponse

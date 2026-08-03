@@ -543,6 +543,13 @@ def _report_cache_key(
     filter_part = _filter_cache_part(
         min_ms, music_only, merge_enabled, dynamic_threshold, max_merge_gap_minutes
     )
+    identity_conn = get_db()
+    try:
+        from backend.domains.metadata.artist_identity import get_identity_revision
+
+        filter_part = f"{filter_part}|identity:{get_identity_revision(identity_conn)}"
+    finally:
+        identity_conn.close()
     if report_type == "weekly":
         return _cache_key("weekly", week_start or "", week_end or "", filter_part)
     if report_type == "monthly":

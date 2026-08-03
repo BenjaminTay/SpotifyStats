@@ -171,6 +171,92 @@ export interface RebuildResult {
   [key: string]: unknown
 }
 
+// ── Artist Identity ─────────────────────────────────────────
+
+export interface ArtistIdentityState {
+  current_revision: number
+  active_aggregate_revision: number
+  rebuild_status: 'ready' | 'pending' | 'running' | 'failed'
+  last_error: string | null
+  updated_at?: string
+}
+
+export interface ArtistIdentityCandidate {
+  artist_id: number
+  artist_name: string
+  play_count: number
+  first_play_date: string | null
+  last_play_date: string | null
+  cover_url: string | null
+  identity_id: number | null
+  canonical_artist_id: number
+  canonical_display_name: string
+  external_ids: Array<{
+    provider: string
+    external_id: string
+    evidence_type: string
+    confidence: number
+    verified: number
+  }>
+}
+
+export interface ArtistIdentityMember {
+  artist_id: number
+  artist_name: string
+  role: 'canonical' | 'alias'
+  evidence_type: string
+  evidence_json: string
+  confidence: number
+  cover_url: string | null
+}
+
+export interface ArtistIdentityGroup {
+  identity_id: number
+  canonical_artist_id: number
+  display_artist_id: number
+  display_name: string
+  display_source: string
+  provider_metadata_artist_id?: number | null
+  revision: number
+  members: ArtistIdentityMember[]
+}
+
+export interface ArtistIdentityOverview {
+  state: ArtistIdentityState
+  groups: ArtistIdentityGroup[]
+}
+
+export interface ArtistIdentityPreview {
+  members: ArtistIdentityCandidate[]
+  canonical_artist_id: number
+  display_name: string
+  combined_play_count_before_dedupe: number
+  duplicate_play_events: number
+  shared_stable_tracks: Array<{ spotify_track_id: string; track_name: string; artists: number }>
+  external_id_conflicts: Array<Record<string, unknown>>
+  metadata_conflicts: Record<string, unknown>
+  blocked: boolean
+  affected_scopes: string[]
+}
+
+export interface ArtistIdentityEvent {
+  event_id: number
+  identity_id: number | null
+  action: string
+  actor: string
+  reason: string
+  revision: number
+  undo_of_event_id: number | null
+  created_at: string
+}
+
+export interface ArtistIdentityMutation {
+  event_id: number
+  identity_id: number | null
+  revision: number
+  rebuild_job_id: string | null
+}
+
 // ── LLM Profiles ────────────────────────────────────────────
 
 export interface LLMProfile {

@@ -408,6 +408,36 @@ DEFAULT_BOUNDARY_CASES: tuple[BoundaryCase, ...] = (
     ),
     BoundaryCase("lyrics_path_nonint", "/api/lyrics/not-an-int"),
     BoundaryCase("chat_sessions_limit_high", "/api/chat/sessions", {"limit": 201}),
+    BoundaryCase(
+        "artist_identity_candidates_q_empty",
+        "/api/artist-identities/candidates",
+        {"q": ""},
+    ),
+    BoundaryCase(
+        "artist_identity_candidates_q_long",
+        "/api/artist-identities/candidates",
+        {"q": LONG_STRING},
+    ),
+    BoundaryCase(
+        "artist_identity_candidates_limit_low",
+        "/api/artist-identities/candidates",
+        {"q": "JOLIN", "limit": 0},
+    ),
+    BoundaryCase(
+        "artist_identity_candidates_limit_high",
+        "/api/artist-identities/candidates",
+        {"q": "JOLIN", "limit": 101},
+    ),
+    BoundaryCase(
+        "artist_identity_events_limit_low",
+        "/api/artist-identities/events",
+        {"limit": 0},
+    ),
+    BoundaryCase(
+        "artist_identity_events_limit_high",
+        "/api/artist-identities/events",
+        {"limit": 501},
+    ),
 )
 
 

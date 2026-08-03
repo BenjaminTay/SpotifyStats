@@ -25,18 +25,17 @@ def _database_file_path(conn: sqlite3.Connection):
 def _build_artist_tiers(conn: sqlite3.Connection) -> dict:
     """Artist tier classification based on play counts."""
     try:
-        artist_df = pd.read_sql_query(
-            """SELECT a.artist_name, COUNT(DISTINCT p.play_id) as play_count,
-                      SUM(p.ms_played) / 3600000.0 as hours
-               FROM plays p
-               JOIN tracks t ON p.track_id = t.track_id
-               JOIN track_artists ta ON t.track_id = ta.track_id
-               JOIN artists a ON ta.artist_id = a.artist_id
-               WHERE p.track_id IS NOT NULL
-               GROUP BY a.artist_name
-               ORDER BY hours DESC""",
-            conn,
+        from backend.core.db import load_plays_for_artists
+
+        plays = load_plays_for_artists(
+            conn, min_ms=0, music_only=True, filtered=False, merge_enabled=False
         )
+        artist_df = (
+            plays.groupby(["artist_id", "artist_name"], as_index=False)
+            .agg(play_count=("play_id", "nunique"), total_ms=("ms_played", "sum"))
+            .sort_values("total_ms", ascending=False)
+        )
+        artist_df["hours"] = artist_df["total_ms"] / 3_600_000
     except Exception:
         return {"available": False}
 

@@ -62,6 +62,26 @@ class OperationAudit:
 
 
 TARGETED_CONTRACT_OPERATIONS: dict[tuple[str, str], OperationEvidence] = {
+    ("POST", "/api/artist-identities/preview"): OperationEvidence(
+        "targeted_contract",
+        "backend/tests/unit/test_artist_identity.py",
+        "Artist identity dry-run evidence, duplicate risk, and external-id conflicts are covered.",
+    ),
+    ("POST", "/api/artist-identities"): OperationEvidence(
+        "targeted_contract",
+        "backend/tests/unit/test_artist_identity.py",
+        "Identity creation, 2/3+ members, legacy projection, and raw fact preservation are covered.",
+    ),
+    ("PUT", "/api/artist-identities/{identity_id}"): OperationEvidence(
+        "targeted_contract",
+        "backend/tests/unit/test_artist_identity.py",
+        "Member removal and canonical/display changes are covered with revision checks.",
+    ),
+    ("POST", "/api/artist-identities/events/{event_id}/undo"): OperationEvidence(
+        "targeted_contract",
+        "backend/tests/unit/test_artist_identity.py",
+        "Append-only audit undo restores the prior identity snapshot without rewriting raw facts.",
+    ),
     ("GET", "/api/metadata/artist-languages/coverage"): OperationEvidence(
         "targeted_contract",
         "backend/tests/contract/test_artist_language_metadata_api.py",

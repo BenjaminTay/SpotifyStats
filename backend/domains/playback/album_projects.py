@@ -184,6 +184,9 @@ def load_album_project_membership(
     )
     if raw.empty:
         return raw
+    from backend.domains.metadata.artist_identity import canonicalize_artist_frame
+
+    raw = canonicalize_artist_frame(raw, conn, dedupe=False)
     if not include_compilations:
         raw = raw[raw["project_type"] != "compilation_exclusive"]
     if raw.empty:

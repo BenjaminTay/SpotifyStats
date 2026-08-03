@@ -43,6 +43,10 @@ vi.mock('@/features/settings/components/VersionMergeSection', () => ({
   VersionMergeSection: () => <div data-testid="version-merge-section">VersionMergeSection</div>,
 }))
 
+vi.mock('@/features/settings/components/ArtistIdentitySection', () => ({
+  ArtistIdentitySection: () => <div data-testid="artist-identity-section">ArtistIdentitySection</div>,
+}))
+
 vi.mock('@/features/settings/components/LLMTranslationSection', () => ({
   LLMTranslationSection: () => <div data-testid="llm-translation-section">LLMTranslationSection</div>,
 }))
@@ -98,6 +102,7 @@ describe('SettingsPage layout', () => {
     render(<SettingsPage />)
 
     await screen.findByTestId('version-merge-section')
+    await screen.findByTestId('artist-identity-section')
     await screen.findByTestId('llm-translation-section')
 
     const orderedSections = [
@@ -108,6 +113,7 @@ describe('SettingsPage layout', () => {
       screen.getByTestId('data-filtering-section'),
       screen.getByTestId('billboard-params-section'),
       screen.getByTestId('version-merge-section'),
+      screen.getByTestId('artist-identity-section'),
       screen.getByTestId('genre-data-health-section'),
       screen.getByTestId('llm-translation-section'),
     ]

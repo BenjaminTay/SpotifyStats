@@ -30,6 +30,24 @@ class TestHealthEndpoint:
         assert r.headers["X-Request-ID"] == "phase5-test-request"
 
 
+class TestArtistIdentityEndpoints:
+    def test_identity_overview_exposes_revision_state_and_groups(self, client):
+        response = client.get("/api/artist-identities")
+        assert response.status_code == 200
+        data = response.json()
+        assert isinstance(data["state"]["current_revision"], int)
+        assert isinstance(data["state"]["active_aggregate_revision"], int)
+        assert data["state"]["rebuild_status"] in {"ready", "pending", "running", "failed"}
+        assert isinstance(data["groups"], list)
+
+    def test_candidate_search_contract(self, client):
+        response = client.get("/api/artist-identities/candidates", params={"q": "a"})
+        assert response.status_code == 200
+        data = response.json()
+        assert isinstance(data["items"], list)
+        assert "state" in data
+
+
 class TestDashboardEndpoints:
     def test_summary_structure(self, client):
         r = client.get("/api/dashboard/summary", params={"min_ms": 30000})

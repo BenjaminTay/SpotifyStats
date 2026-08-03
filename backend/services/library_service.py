@@ -93,23 +93,30 @@ def _build_library_overview(conn: sqlite3.Connection) -> dict:
            ORDER BY saved_count DESC"""
     ).fetchall()
 
-    artist_comparison = []
+    from backend.core.db import load_plays_for_artists
+    from backend.domains.metadata.artist_identity import resolve_artist_name
+
+    artist_plays = load_plays_for_artists(
+        conn, min_ms=0, music_only=True, filtered=False, merge_enabled=False
+    )
+    play_counts = (
+        artist_plays.groupby("artist_name")["play_id"].nunique().to_dict()
+        if not artist_plays.empty
+        else {}
+    )
+    comparison_by_name: dict[str, dict] = {}
     for r in artist_comp_rows:
-        play_count = conn.execute(
-            """SELECT COUNT(DISTINCT p.play_id)
-               FROM plays p JOIN tracks t ON p.track_id = t.track_id
-               JOIN track_artists ta ON t.track_id = ta.track_id
-               JOIN artists a ON ta.artist_id = a.artist_id
-               WHERE a.artist_name = ?""",
-            (r["artist_name"],),
-        ).fetchone()[0]
-        artist_comparison.append(
-            {
-                "artist_name": r["artist_name"],
-                "saved_count": r["saved_count"] or 0,
-                "play_count": play_count or 0,
-            }
+        identity = resolve_artist_name(conn, str(r["artist_name"]))
+        artist_name = identity.display_name if identity else str(r["artist_name"])
+        item = comparison_by_name.setdefault(
+            artist_name,
+            {"artist_name": artist_name, "saved_count": 0, "play_count": 0},
         )
+        item["saved_count"] += int(r["saved_count"] or 0)
+        item["play_count"] = int(play_counts.get(artist_name, 0))
+    artist_comparison = sorted(
+        comparison_by_name.values(), key=lambda item: item["saved_count"], reverse=True
+    )
 
     return {
         "available": True,
@@ -191,8 +198,32 @@ def get_saved_tracks_paginated(
     where = ""
     params: list = []
     if search:
-        where = "WHERE track_name LIKE ? OR artist_name LIKE ?"
-        params = [f"%{search}%", f"%{search}%"]
+        from backend.domains.metadata.artist_identity import (
+            get_artist_identity_map,
+            resolve_artist_name,
+        )
+
+        identity = resolve_artist_name(conn, search)
+        artist_terms = [search]
+        if identity is not None:
+            mapping = get_artist_identity_map(conn)
+            raw_ids = [
+                raw_id
+                for raw_id, resolved in mapping.items()
+                if resolved.canonical_artist_id == identity.canonical_artist_id
+            ]
+            if raw_ids:
+                placeholders = ",".join("?" for _ in raw_ids)
+                artist_terms = [
+                    str(row[0])
+                    for row in conn.execute(
+                        f"SELECT artist_name FROM artists WHERE artist_id IN ({placeholders})",
+                        raw_ids,
+                    ).fetchall()
+                ]
+        artist_predicates = " OR ".join("artist_name LIKE ?" for _ in artist_terms)
+        where = f"WHERE track_name LIKE ? OR {artist_predicates}"
+        params = [f"%{search}%", *[f"%{term}%" for term in artist_terms]]
 
     count_row = conn.execute(f"SELECT COUNT(*) FROM saved_tracks {where}", params).fetchone()
     total = count_row[0]

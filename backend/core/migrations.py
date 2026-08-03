@@ -737,6 +737,168 @@ def migrate_027(conn: sqlite3.Connection):
     )
 
 
+@migration(28, "artist_identity_management")
+def migrate_028(conn: sqlite3.Connection):
+    """Promote narrow artist aliases into auditable, reversible identity groups."""
+    conn.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS artist_identity_groups (
+            identity_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            canonical_artist_id INTEGER NOT NULL REFERENCES artists(artist_id),
+            display_artist_id INTEGER REFERENCES artists(artist_id),
+            display_name TEXT NOT NULL,
+            display_source TEXT NOT NULL DEFAULT 'canonical_artist',
+            status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'archived')),
+            revision INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_artist_identity_groups_status
+            ON artist_identity_groups(status, identity_id);
+
+        CREATE TABLE IF NOT EXISTS artist_identity_members (
+            membership_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            identity_id INTEGER NOT NULL REFERENCES artist_identity_groups(identity_id),
+            artist_id INTEGER NOT NULL REFERENCES artists(artist_id),
+            role TEXT NOT NULL DEFAULT 'alias' CHECK (role IN ('canonical', 'alias')),
+            evidence_type TEXT NOT NULL DEFAULT 'legacy_alias',
+            evidence_json TEXT NOT NULL DEFAULT '{}',
+            confidence REAL NOT NULL DEFAULT 1.0 CHECK (confidence >= 0 AND confidence <= 1),
+            active INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0, 1)),
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            removed_at TEXT
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS uq_artist_identity_member_active
+            ON artist_identity_members(artist_id) WHERE active = 1;
+        CREATE INDEX IF NOT EXISTS idx_artist_identity_members_group
+            ON artist_identity_members(identity_id, active);
+
+        CREATE TABLE IF NOT EXISTS artist_identity_external_ids (
+            link_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            artist_id INTEGER NOT NULL REFERENCES artists(artist_id),
+            provider TEXT NOT NULL,
+            external_id TEXT NOT NULL,
+            evidence_type TEXT NOT NULL,
+            evidence_source TEXT,
+            confidence REAL NOT NULL DEFAULT 1.0 CHECK (confidence >= 0 AND confidence <= 1),
+            verified INTEGER NOT NULL DEFAULT 0 CHECK (verified IN (0, 1)),
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            UNIQUE(artist_id, provider, external_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_artist_identity_external_lookup
+            ON artist_identity_external_ids(provider, external_id);
+
+        CREATE TABLE IF NOT EXISTS artist_identity_events (
+            event_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            identity_id INTEGER REFERENCES artist_identity_groups(identity_id),
+            action TEXT NOT NULL,
+            before_json TEXT NOT NULL DEFAULT '{}',
+            after_json TEXT NOT NULL DEFAULT '{}',
+            actor TEXT NOT NULL,
+            reason TEXT NOT NULL,
+            revision INTEGER NOT NULL,
+            idempotency_key TEXT NOT NULL UNIQUE,
+            undo_of_event_id INTEGER REFERENCES artist_identity_events(event_id),
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_artist_identity_events_group
+            ON artist_identity_events(identity_id, event_id DESC);
+
+        CREATE TABLE IF NOT EXISTS artist_identity_state (
+            state_id INTEGER PRIMARY KEY CHECK (state_id = 1),
+            current_revision INTEGER NOT NULL DEFAULT 0,
+            active_aggregate_revision INTEGER NOT NULL DEFAULT 0,
+            rebuild_status TEXT NOT NULL DEFAULT 'ready'
+                CHECK (rebuild_status IN ('ready', 'pending', 'running', 'failed')),
+            last_error TEXT,
+            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        INSERT OR IGNORE INTO artist_identity_state(
+            state_id, current_revision, active_aggregate_revision, rebuild_status
+        ) VALUES (1, 0, 0, 'ready');
+        """
+    )
+
+    spotify_column = {row[1] for row in conn.execute("PRAGMA table_info(artists)").fetchall()}
+    if "spotify_artist_id" in spotify_column:
+        conn.execute(
+            """INSERT OR IGNORE INTO artist_identity_external_ids(
+                   artist_id, provider, external_id, evidence_type,
+                   evidence_source, confidence, verified
+               )
+               SELECT artist_id, 'spotify', spotify_artist_id, 'artist_metadata',
+                      'artists.spotify_artist_id', 1.0, 1
+               FROM artists
+               WHERE COALESCE(spotify_artist_id, '') != ''"""
+        )
+
+    canonical_rows = conn.execute(
+        """SELECT DISTINCT canonical_artist_id
+           FROM artist_identity_aliases
+           ORDER BY canonical_artist_id"""
+    ).fetchall()
+    migrated = False
+    for (canonical_artist_id,) in canonical_rows:
+        canonical = conn.execute(
+            "SELECT artist_name FROM artists WHERE artist_id=?", (canonical_artist_id,)
+        ).fetchone()
+        if canonical is None:
+            continue
+        existing = conn.execute(
+            """SELECT identity_id FROM artist_identity_groups
+               WHERE canonical_artist_id=? AND status='active'""",
+            (canonical_artist_id,),
+        ).fetchone()
+        if existing:
+            identity_id = int(existing[0])
+        else:
+            cursor = conn.execute(
+                """INSERT INTO artist_identity_groups(
+                       canonical_artist_id, display_artist_id, display_name,
+                       display_source, revision
+                   ) VALUES (?, ?, ?, 'canonical_artist', 1)""",
+                (canonical_artist_id, canonical_artist_id, canonical[0]),
+            )
+            identity_id = int(cursor.lastrowid)
+        conn.execute(
+            """INSERT OR IGNORE INTO artist_identity_members(
+                   identity_id, artist_id, role, evidence_type, evidence_json, confidence
+               ) VALUES (?, ?, 'canonical', 'legacy_alias', '{}', 1.0)""",
+            (identity_id, canonical_artist_id),
+        )
+        aliases = conn.execute(
+            """SELECT alias_artist_id, reason FROM artist_identity_aliases
+               WHERE canonical_artist_id=?""",
+            (canonical_artist_id,),
+        ).fetchall()
+        for alias_artist_id, reason in aliases:
+            conn.execute(
+                """INSERT OR IGNORE INTO artist_identity_members(
+                       identity_id, artist_id, role, evidence_type, evidence_json, confidence
+                   ) VALUES (?, ?, 'alias', 'legacy_alias', json_object('reason', ?), 1.0)""",
+                (identity_id, alias_artist_id, reason),
+            )
+        migrated = migrated or bool(aliases)
+    if migrated:
+        conn.execute(
+            """UPDATE artist_identity_state
+               SET current_revision=MAX(current_revision, 1),
+                   active_aggregate_revision=0,
+                   rebuild_status='pending', updated_at=datetime('now')
+               WHERE state_id=1"""
+        )
+
+
+@migration(29, "artist_identity_provider_metadata_selection")
+def migrate_029(conn: sqlite3.Connection):
+    """Persist an explicit provider-metadata member for confirmed ID conflicts."""
+    columns = {row[1] for row in conn.execute("PRAGMA table_info(artist_identity_groups)")}
+    if "provider_metadata_artist_id" not in columns:
+        conn.execute(
+            "ALTER TABLE artist_identity_groups ADD COLUMN provider_metadata_artist_id INTEGER REFERENCES artists(artist_id)"
+        )
+
+
 # ── Runner ────────────────────────────────────────────────────────────────
 
 

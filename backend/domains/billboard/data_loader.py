@@ -33,6 +33,9 @@ def _try_load_from_agg(
         load_agg_weekly_track_sources,
         load_agg_weekly_tracks,
     )
+    from backend.domains.metadata.artist_identity import get_identity_revision
+
+    conn = get_db()
 
     param_hash = _agg_param_hash(
         min_ms,
@@ -41,8 +44,8 @@ def _try_load_from_agg(
         week_start_hour,
         dynamic_threshold=dynamic_threshold,
         max_merge_gap_minutes=max_merge_gap_minutes,
+        identity_revision=get_identity_revision(conn),
     )
-    conn = get_db()
     if not check_agg_valid(conn, param_hash):
         conn.close()
         return None, None, None
@@ -76,9 +79,9 @@ def load_billboard_raw(
     _f, _fp = base_filters(min_ms=0, music_only=music_only)
     _w = f"WHERE {_f}" if _f else ""
     df = pd.read_sql_query(
-        f"""SELECT p.ts, p.ts_date, p.ts_dow, p.ts_hour, p.ms_played, p.track_id,
+        f"""SELECT p.play_id, p.ts, p.ts_date, p.ts_dow, p.ts_hour, p.ms_played, p.track_id,
                    p.source_album_id,
-                   t.track_name, a.artist_name,
+                   t.track_name, t.artist_id, a.artist_name,
                    COALESCE(al_src.album_name, al.album_name) AS album_name,
                    stm.duration_ms
             FROM plays p
@@ -93,8 +96,6 @@ def load_billboard_raw(
         conn,
         params=_fp,
     )
-    conn.close()
-
     # Billboard week: configurable boundary
     df["days_back"] = (df["ts_dow"] - week_start_dow) % 7
     mask_before = (df["ts_dow"] == week_start_dow) & (df["ts_hour"] < week_start_hour)
@@ -114,6 +115,11 @@ def load_billboard_raw(
         from backend.domains.playback.counting import filter_effective_plays
 
         df = filter_effective_plays(df, min_ms=min_ms, dynamic_threshold=dynamic_threshold)
+
+    from backend.domains.metadata.artist_identity import canonicalize_artist_frame
+
+    df = canonicalize_artist_frame(df, conn, dedupe=False)
+    conn.close()
 
     return _downcast_ints(df)
 
@@ -139,7 +145,7 @@ def load_billboard_raw_for_artists(
 
     # Step 1: Load single-artist data (same as load_billboard_raw)
     df = pd.read_sql_query(
-        f"""SELECT p.ts, p.ts_date, p.ts_dow, p.ts_hour, p.ms_played, p.track_id,
+        f"""SELECT p.play_id, p.ts, p.ts_date, p.ts_dow, p.ts_hour, p.ms_played, p.track_id,
                    p.source_album_id,
                    t.track_name, a.artist_name,
                    COALESCE(al_src.album_name, al.album_name) AS album_name,
@@ -176,14 +182,20 @@ def load_billboard_raw_for_artists(
 
         df = filter_effective_plays(df, min_ms=min_ms, dynamic_threshold=dynamic_threshold)
 
-    # Step 2: Fan out through track_artists
+    # Step 2: Fan out through track_artists. Keep each effective output row
+    # distinct even when consecutive-play expansion reused a source play_id.
+    df["_artist_event_id"] = range(len(df))
     track_artists_df = pd.read_sql_query("SELECT track_id, artist_id FROM track_artists", conn)
     artists_df = pd.read_sql_query("SELECT artist_id, artist_name FROM artists", conn)
-    conn.close()
-
     df = df.drop(columns=["artist_name"], errors="ignore")
     df = df.merge(track_artists_df, on="track_id", how="inner")
     df = df.merge(artists_df, on="artist_id", how="left")
+
+    from backend.domains.metadata.artist_identity import canonicalize_artist_frame
+
+    df = canonicalize_artist_frame(df, conn)
+    df = df.drop(columns=["_artist_event_id"], errors="ignore")
+    conn.close()
 
     return _downcast_ints(df)
 

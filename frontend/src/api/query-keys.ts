@@ -39,6 +39,10 @@ export const queryKeys = {
     llmProfiles: () => ['settings', 'llm-profiles'] as const,
     llmProfile: (profileId: number) => ['settings', 'llm-profile', profileId] as const,
     spotifyStatus: () => ['settings', 'spotify-status'] as const,
+    artistIdentities: () => ['settings', 'artist-identities'] as const,
+    artistIdentityCandidates: (query: string) =>
+      ['settings', 'artist-identities', 'candidates', query] as const,
+    artistIdentityEvents: () => ['settings', 'artist-identities', 'events'] as const,
   },
 
   metadata: {
