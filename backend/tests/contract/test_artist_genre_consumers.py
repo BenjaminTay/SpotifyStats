@@ -477,4 +477,26 @@ def _versus_fixture_data(*_args, **_kwargs) -> dict:
                 "weeks_on_chart": 1,
             },
         ],
+        "artist_summary": [
+            {"artist_name": "Spotify Genre Artist", "track_id": 1001},
+            {"artist_name": "Curated Fallback Artist", "track_id": 1002},
+        ],
+        "artist_track_counts": [
+            {
+                "artist_name": "Spotify Genre Artist",
+                "total_tracks": 1,
+                "top1": 0,
+                "weeks_at_no1": 0,
+                "num_no1_albums": 0,
+                "album_no1_weeks": 0,
+            },
+            {
+                "artist_name": "Curated Fallback Artist",
+                "total_tracks": 1,
+                "top1": 1,
+                "weeks_at_no1": 1,
+                "num_no1_albums": 1,
+                "album_no1_weeks": 1,
+            },
+        ],
     }

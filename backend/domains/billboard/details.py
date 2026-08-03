@@ -734,6 +734,7 @@ def get_track_history(
     dynamic_threshold=False,
     max_merge_gap_minutes=None,
     merge_level=2,
+    include_compilations=False,
 ):
     """Get detailed track chart history with change column and gapped chart data."""
     data = compute_billboard_data(
@@ -749,6 +750,7 @@ def get_track_history(
         merge_level=merge_level,
         dynamic_threshold=dynamic_threshold,
         max_merge_gap_minutes=max_merge_gap_minutes,
+        include_compilations=include_compilations,
     )
     weekly = pd.DataFrame(data["weekly"])
     track_summary = pd.DataFrame(data["track_summary"])
@@ -850,6 +852,7 @@ def get_artist_chart_detail(
     dynamic_threshold=False,
     max_merge_gap_minutes=None,
     merge_level=2,
+    include_compilations=False,
 ):
     """Get detailed artist chart data: history, track/album performances, trend."""
     identity_conn = get_db()
@@ -874,6 +877,7 @@ def get_artist_chart_detail(
         merge_level=merge_level,
         dynamic_threshold=dynamic_threshold,
         max_merge_gap_minutes=max_merge_gap_minutes,
+        include_compilations=include_compilations,
     )
     weekly = pd.DataFrame(data["weekly"])
     weekly_artist = pd.DataFrame(data["weekly_artist"])
@@ -1178,6 +1182,7 @@ def get_album_chart_detail(
     dynamic_threshold=False,
     max_merge_gap_minutes=None,
     merge_level=2,
+    include_compilations=False,
 ):
     """Get detailed album chart data: history, track performances, trend."""
     data = compute_billboard_data(
@@ -1193,6 +1198,7 @@ def get_album_chart_detail(
         merge_level=merge_level,
         dynamic_threshold=dynamic_threshold,
         max_merge_gap_minutes=max_merge_gap_minutes,
+        include_compilations=include_compilations,
     )
     weekly = pd.DataFrame(data["weekly"])
     weekly_album = pd.DataFrame(data["weekly_album"])

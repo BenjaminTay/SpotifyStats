@@ -84,24 +84,6 @@ def _get_ps_rank(power_scores_df, key_col, key_val, artist_val=None):
     return int(match.iloc[0]["power_score"]), idx + 1
 
 
-def _resolve_album_members_vs(album_name, artist_name):
-    """Resolve all member album names in a release group."""
-    conn = get_db()
-    row = conn.execute(
-        """SELECT a.album_name FROM release_group_members rgm
-           JOIN release_groups rg ON rg.group_id = rgm.group_id
-           JOIN albums a ON a.album_id = rgm.album_id
-           JOIN artists ar ON a.artist_id = ar.artist_id
-           WHERE rg.canonical_name = ? AND ar.artist_name = ?
-           UNION SELECT ?""",
-        (album_name, artist_name, album_name),
-    ).fetchall()
-    conn.close()
-    if row:
-        return [r["album_name"] for r in row]
-    return [album_name]
-
-
 def get_versus_track(
     tid_a,
     tid_b,
@@ -114,8 +96,38 @@ def get_versus_track(
     bb_week_start_hour,
     year_start,
     year_end,
+    dynamic_threshold=False,
+    max_merge_gap_minutes=None,
+    merge_level=2,
+    include_compilations=False,
 ):
     """Compare two tracks side-by-side."""
+    result = get_versus_track_multi(
+        [tid_a, tid_b],
+        min_ms,
+        music_only,
+        bb_top_n,
+        bb_album_top_n,
+        bb_artist_top_n,
+        bb_week_start_dow,
+        bb_week_start_hour,
+        year_start,
+        year_end,
+        dynamic_threshold,
+        max_merge_gap_minutes,
+        merge_level,
+        include_compilations,
+    )
+    if result.get("found"):
+        return {
+            "found": True,
+            "entity_a": result["entities"][0],
+            "entity_b": result["entities"][1],
+            "head_to_head": [],
+        }
+    return result
+
+    # Kept below as an implementation reference for old serialized responses.
     data = compute_billboard_data(
         min_ms,
         music_only,
@@ -186,8 +198,41 @@ def get_versus_album(
     bb_week_start_hour,
     year_start,
     year_end,
+    dynamic_threshold=False,
+    max_merge_gap_minutes=None,
+    merge_level=2,
+    include_compilations=False,
 ):
     """Compare two albums side-by-side."""
+    result = get_versus_album_multi(
+        [
+            {"album_name": aname_a, "artist_name": aart_a},
+            {"album_name": aname_b, "artist_name": aart_b},
+        ],
+        min_ms,
+        music_only,
+        bb_top_n,
+        bb_album_top_n,
+        bb_artist_top_n,
+        bb_week_start_dow,
+        bb_week_start_hour,
+        year_start,
+        year_end,
+        dynamic_threshold,
+        max_merge_gap_minutes,
+        merge_level,
+        include_compilations,
+    )
+    if result.get("found"):
+        return {
+            "found": True,
+            "entity_a": result["entities"][0],
+            "entity_b": result["entities"][1],
+            "head_to_head": [],
+        }
+    return result
+
+    # Kept below as an implementation reference for old serialized responses.
     data = compute_billboard_data(
         min_ms,
         music_only,
@@ -212,8 +257,8 @@ def get_versus_album(
             return None
         aps_val, aps_rank = _get_ps_rank(album_power_scores, "album_name", aname, aart)
 
-        # Track-level stats via release group members
-        member_names = _resolve_album_members_vs(aname, aart)
+        # Unreachable legacy implementation retained only for response-shape reference.
+        member_names = [aname]
         album_tracks = weekly[weekly["album_name"].isin(member_names)]
         num_tracks = int(album_tracks["track_id"].nunique())
         num_no1_tracks = int(album_tracks[album_tracks["rank"] == 1]["track_id"].nunique())
@@ -281,8 +326,38 @@ def get_versus_artist(
     bb_week_start_hour,
     year_start,
     year_end,
+    dynamic_threshold=False,
+    max_merge_gap_minutes=None,
+    merge_level=2,
+    include_compilations=False,
 ):
     """Compare two artists side-by-side."""
+    result = get_versus_artist_multi(
+        [sel_a, sel_b],
+        min_ms,
+        music_only,
+        bb_top_n,
+        bb_album_top_n,
+        bb_artist_top_n,
+        bb_week_start_dow,
+        bb_week_start_hour,
+        year_start,
+        year_end,
+        dynamic_threshold,
+        max_merge_gap_minutes,
+        merge_level,
+        include_compilations,
+    )
+    if result.get("found"):
+        return {
+            "found": True,
+            "entity_a": result["entities"][0],
+            "entity_b": result["entities"][1],
+            "head_to_head": [],
+        }
+    return result
+
+    # Kept below as an implementation reference for old serialized responses.
     identity_conn = get_db()
     try:
         resolved_a = resolve_artist_name(identity_conn, sel_a)
@@ -401,19 +476,13 @@ def get_versus_artist(
 # ── Multi-entity helper: global rankings ────────────────────────────────────
 
 
-def _compute_album_track_ranks(weekly, power_scores):
-    """Compute track_power_rank / track_peak_position / total_track_weeks per album.
-
-    Groups by album_name only (not artist_name) because in weekly, collaborative
-    tracks have a combined artist_name string (e.g. "Artist A, Artist B") which
-    would split the same album's tracks into separate groups and produce ranks
-    inconsistent with the entity-level track_power_sum that includes all tracks.
-    """
-    track_album = weekly[["track_id", "album_name"]].drop_duplicates()
+def _compute_album_track_ranks(track_per_album, power_scores):
+    """Compute project-aware track aggregates for every album identity."""
+    track_album = track_per_album[["track_id", "album_name", "artist_name"]].drop_duplicates()
     ps = power_scores[["track_id", "power_score", "peak_position", "weeks_on_chart"]]
     merged = track_album.merge(ps, on="track_id", how="inner")
     agg = (
-        merged.groupby("album_name")
+        merged.groupby(["album_name", "artist_name"])
         .agg(
             track_power_sum=("power_score", "sum"),
             track_peak_position=("peak_position", "min"),
@@ -458,18 +527,12 @@ def _compute_artist_album_ranks(album_power_scores):
     return agg
 
 
-def _lookup_album_track_rank(ranks_df, member_names, artist_name):
-    """Look up track_power_rank for an album, trying each member name.
-
-    artist_name is accepted for signature compatibility but not used for filtering:
-    ranks are computed per album_name (not per artist) so the lookup only needs
-    album name matching.  See _compute_album_track_ranks for rationale.
-    """
-    for name in member_names:
-        row = ranks_df[ranks_df["album_name"] == name]
-        if not row.empty:
-            return int(row.iloc[0]["track_power_rank"])
-    return None
+def _lookup_album_track_rank(ranks_df, album_name, artist_name):
+    """Look up track rank by the same album + canonical artist identity as details."""
+    row = ranks_df[
+        (ranks_df["album_name"] == album_name) & (ranks_df["artist_name"] == artist_name)
+    ]
+    return int(row.iloc[0]["track_power_rank"]) if not row.empty else None
 
 
 def _lookup_artist_track_metrics(ranks_df, artist_name):
@@ -538,6 +601,145 @@ def _build_track_entity(tid, weekly, power_scores):
     }
 
 
+def _build_album_entity(
+    album_name,
+    artist_name,
+    weekly_album,
+    album_power_scores,
+    track_power_scores,
+    album_track_counts,
+    track_per_album,
+    album_track_ranks,
+):
+    """Build an album using the exact project membership consumed by album details."""
+    chart_rows = weekly_album[
+        (weekly_album["album_name"] == album_name) & (weekly_album["artist_name"] == artist_name)
+    ].sort_values("billboard_week")
+    count_rows = album_track_counts[
+        (album_track_counts["album_name"] == album_name)
+        & (album_track_counts["artist_name"] == artist_name)
+    ]
+    if chart_rows.empty or count_rows.empty:
+        return None
+
+    counts = count_rows.sort_values("total_tracks", ascending=False).iloc[0]
+    track_ids = track_per_album[
+        (track_per_album["album_name"] == album_name)
+        & (track_per_album["artist_name"] == artist_name)
+    ]["track_id"].drop_duplicates()
+    track_scores = track_power_scores[track_power_scores["track_id"].isin(track_ids)]
+    score, score_rank = _get_ps_rank(album_power_scores, "album_name", album_name, artist_name)
+    cover_url = None
+    if "cover_url" in chart_rows.columns:
+        covers = chart_rows["cover_url"].dropna()
+        cover_url = str(covers.iloc[0]) if not covers.empty else None
+
+    return {
+        "name": f"{album_name} — {artist_name}",
+        "album_name": album_name,
+        "artist_name": artist_name,
+        "cover_url": cover_url,
+        "popularity": _vs_spotify_album_meta(album_name, artist_name),
+        "rank_history": [
+            {
+                "week": str(row["billboard_week"]),
+                "rank": int(row["rank"]),
+                "play_count": int(row["play_count"]),
+            }
+            for _, row in chart_rows.iterrows()
+        ],
+        "metrics": {
+            "power_score": score,
+            "power_rank": score_rank,
+            "peak_position": int(chart_rows["rank"].min()),
+            "weeks_on_chart": int(chart_rows["billboard_week"].nunique()),
+            "no1_weeks": int((chart_rows["rank"] == 1).sum()),
+            "num_tracks": int(counts["total_tracks"]),
+            "num_no1_tracks": int(counts["top1"]),
+            "total_no1_track_weeks": int(counts["weeks_at_no1"]),
+            "track_power_sum": int(track_scores["power_score"].sum())
+            if not track_scores.empty
+            else 0,
+            "track_power_rank": _lookup_album_track_rank(
+                album_track_ranks, album_name, artist_name
+            ),
+            "track_peak_position": int(counts["best_peak"]),
+            "total_track_weeks": int(counts["total_weeks"]),
+            "total_plays": int(chart_rows["play_count"].sum()),
+        },
+    }
+
+
+def _build_artist_entity(
+    artist_name,
+    weekly_artist,
+    weekly_album,
+    artist_power_scores,
+    track_power_scores,
+    album_power_scores,
+    artist_summary,
+    artist_track_counts,
+    artist_track_ranks,
+    artist_album_ranks,
+):
+    """Build an artist from the shared credited-artist fan-out summaries."""
+    chart_rows = weekly_artist[weekly_artist["artist_name"] == artist_name].sort_values(
+        "billboard_week"
+    )
+    counts_rows = artist_track_counts[artist_track_counts["artist_name"] == artist_name]
+    if chart_rows.empty or counts_rows.empty:
+        return None
+    counts = counts_rows.iloc[0]
+    track_ids = artist_summary[artist_summary["artist_name"] == artist_name][
+        "track_id"
+    ].drop_duplicates()
+    track_scores = track_power_scores[track_power_scores["track_id"].isin(track_ids)]
+    artist_albums = weekly_album[weekly_album["artist_name"] == artist_name]
+    album_scores = album_power_scores[album_power_scores["artist_name"] == artist_name]
+    score, score_rank = _get_ps_rank(artist_power_scores, "artist_name", artist_name)
+    popularity, genres, cover, genre_source, genre_confidence = _vs_spotify_artist_meta(artist_name)
+    track_rank = _lookup_artist_track_metrics(artist_track_ranks, artist_name)
+    album_rank = _lookup_artist_album_metrics(artist_album_ranks, artist_name)
+    return {
+        "name": artist_name,
+        "cover_url": cover,
+        "popularity": popularity,
+        "genres": genres,
+        "genre_source": genre_source,
+        "genre_confidence": genre_confidence,
+        "rank_history": [
+            {
+                "week": str(row["billboard_week"]),
+                "rank": int(row["rank"]),
+                "play_count": int(row["play_count"]),
+            }
+            for _, row in chart_rows.iterrows()
+        ],
+        "metrics": {
+            "power_score": score,
+            "power_rank": score_rank,
+            "peak_position": int(chart_rows["rank"].min()),
+            "weeks_on_chart": int(chart_rows["billboard_week"].nunique()),
+            "no1_weeks": int((chart_rows["rank"] == 1).sum()),
+            "num_tracks": int(counts["total_tracks"]),
+            "num_no1_tracks": int(counts["top1"]),
+            "total_no1_track_weeks": int(counts["weeks_at_no1"]),
+            "track_power_sum": int(track_scores["power_score"].sum())
+            if not track_scores.empty
+            else 0,
+            **track_rank,
+            "num_albums": int(artist_albums["album_name"].dropna().nunique()),
+            "num_no1_albums": int(counts["num_no1_albums"]),
+            "total_no1_album_weeks": int(counts["album_no1_weeks"]),
+            "album_power_sum": int(album_scores["power_score"].sum())
+            if not album_scores.empty
+            else 0,
+            **album_rank,
+            "total_plays": int(chart_rows["play_count"].sum()),
+        },
+    }
+
+
 def get_versus_track_multi(
     track_ids,
     min_ms,
@@ -549,6 +751,10 @@ def get_versus_track_multi(
     bb_week_start_hour,
     year_start,
     year_end,
+    dynamic_threshold=False,
+    max_merge_gap_minutes=None,
+    merge_level=2,
+    include_compilations=False,
 ):
     """Compare multiple tracks.  track_ids is a list of int (2–5)."""
     if len(track_ids) < 2:
@@ -564,6 +770,10 @@ def get_versus_track_multi(
         bb_week_start_hour,
         year_start,
         year_end,
+        dynamic_threshold=dynamic_threshold,
+        max_merge_gap_minutes=max_merge_gap_minutes,
+        merge_level=merge_level,
+        include_compilations=include_compilations,
     )
     weekly = pd.DataFrame(data["weekly"])
     power_scores = pd.DataFrame(data["power_scores"])
@@ -589,6 +799,10 @@ def get_versus_album_multi(
     bb_week_start_hour,
     year_start,
     year_end,
+    dynamic_threshold=False,
+    max_merge_gap_minutes=None,
+    merge_level=2,
+    include_compilations=False,
 ):
     """Compare multiple albums.  albums is a list of {album_name, artist_name} (2–5)."""
     if len(albums) < 2:
@@ -604,85 +818,36 @@ def get_versus_album_multi(
         bb_week_start_hour,
         year_start,
         year_end,
+        dynamic_threshold=dynamic_threshold,
+        max_merge_gap_minutes=max_merge_gap_minutes,
+        merge_level=merge_level,
+        include_compilations=include_compilations,
     )
-    weekly = pd.DataFrame(data["weekly"])
     weekly_album = pd.DataFrame(data["weekly_album"])
     album_power_scores = pd.DataFrame(data["album_power_scores"])
     track_power_scores = pd.DataFrame(data["power_scores"])
+    album_track_counts = pd.DataFrame(data["album_track_counts"])
+    track_per_album = pd.DataFrame(data["track_per_album"])
 
     # Pre-compute global track-level rankings per album
-    album_track_ranks = _compute_album_track_ranks(weekly, track_power_scores)
+    album_track_ranks = _compute_album_track_ranks(track_per_album, track_power_scores)
 
     entities = []
     for alb in albums:
         aname = alb["album_name"]
         aart = alb["artist_name"]
-        grp = weekly_album[
-            (weekly_album["album_name"] == aname) & (weekly_album["artist_name"] == aart)
-        ].sort_values("billboard_week")
-        if grp.empty:
-            continue
-
-        aps_val, aps_rank = _get_ps_rank(album_power_scores, "album_name", aname, aart)
-
-        member_names = _resolve_album_members_vs(aname, aart)
-        album_tracks = weekly[weekly["album_name"].isin(member_names)]
-        num_tracks = int(album_tracks["track_id"].nunique())
-        num_no1_tracks = int(album_tracks[album_tracks["rank"] == 1]["track_id"].nunique())
-        total_no1_weeks = int((album_tracks["rank"] == 1).sum())
-
-        album_track_ids = album_tracks["track_id"].unique()
-        track_ps_sum = 0
-        track_peak_position = None
-        total_track_weeks = None
-        if track_power_scores is not None and len(track_power_scores) > 0:
-            tps_filtered = track_power_scores[track_power_scores["track_id"].isin(album_track_ids)]
-            if len(tps_filtered) > 0:
-                track_ps_sum = int(tps_filtered["power_score"].sum())
-                track_peak_position = int(tps_filtered["peak_position"].min())
-                total_track_weeks = int(tps_filtered["weeks_on_chart"].sum())
-
-        # Track power rank (global) — resolve via member names
-        track_power_rank = _lookup_album_track_rank(album_track_ranks, member_names, aart)
-
-        cover_url = None
-        if "cover_url" in grp.columns:
-            cv = grp["cover_url"].dropna()
-            cover_url = str(cv.iloc[0]) if len(cv) > 0 else None
-        popularity = _vs_spotify_album_meta(aname, aart)
-
-        entities.append(
-            {
-                "name": f"{aname} — {aart}",
-                "album_name": aname,
-                "artist_name": aart,
-                "cover_url": cover_url,
-                "popularity": popularity,
-                "rank_history": [
-                    {
-                        "week": str(r["billboard_week"]),
-                        "rank": int(r["rank"]),
-                        "play_count": int(r["play_count"]),
-                    }
-                    for _, r in grp.iterrows()
-                ],
-                "metrics": {
-                    "power_score": aps_val,
-                    "power_rank": aps_rank,
-                    "peak_position": int(grp["rank"].min()),
-                    "weeks_on_chart": int(grp["billboard_week"].nunique()),
-                    "no1_weeks": int((grp["rank"] == 1).sum()),
-                    "num_tracks": num_tracks,
-                    "num_no1_tracks": num_no1_tracks,
-                    "total_no1_track_weeks": total_no1_weeks,
-                    "track_power_sum": track_ps_sum,
-                    "track_power_rank": track_power_rank,
-                    "track_peak_position": track_peak_position,
-                    "total_track_weeks": total_track_weeks,
-                    "total_plays": int(grp["play_count"].sum()),
-                },
-            }
+        entity = _build_album_entity(
+            aname,
+            aart,
+            weekly_album,
+            album_power_scores,
+            track_power_scores,
+            album_track_counts,
+            track_per_album,
+            album_track_ranks,
         )
+        if entity is not None:
+            entities.append(entity)
 
     if len(entities) < 2:
         return {"found": False, "reason": "选中的专辑在选定年份范围内入榜数量不足 2 张"}
@@ -700,6 +865,10 @@ def get_versus_artist_multi(
     bb_week_start_hour,
     year_start,
     year_end,
+    dynamic_threshold=False,
+    max_merge_gap_minutes=None,
+    merge_level=2,
+    include_compilations=False,
 ):
     """Compare multiple artists.  artist_names is a list of str (2–5)."""
     if len(artist_names) < 2:
@@ -729,110 +898,39 @@ def get_versus_artist_multi(
         bb_week_start_hour,
         year_start,
         year_end,
+        dynamic_threshold=dynamic_threshold,
+        max_merge_gap_minutes=max_merge_gap_minutes,
+        merge_level=merge_level,
+        include_compilations=include_compilations,
     )
-    weekly = pd.DataFrame(data["weekly"])
     weekly_artist = pd.DataFrame(data["weekly_artist"])
     weekly_album = pd.DataFrame(data["weekly_album"])
     artist_power_scores = pd.DataFrame(data["artist_power_scores"])
     track_power_scores = pd.DataFrame(data["power_scores"])
     album_power_scores = pd.DataFrame(data["album_power_scores"])
-
-    weekly_fanned = fan_out_weekly_for_artists(weekly)
+    artist_summary = pd.DataFrame(data["artist_summary"])
+    artist_track_counts = pd.DataFrame(data["artist_track_counts"])
 
     # Pre-compute global rankings
-    artist_track_ranks = _compute_artist_track_ranks(weekly_fanned, track_power_scores)
+    artist_track_ranks = _compute_artist_track_ranks(artist_summary, track_power_scores)
     artist_album_ranks = _compute_artist_album_ranks(album_power_scores)
 
     entities = []
     for artist_name in artist_names:
-        grp = weekly_artist[weekly_artist["artist_name"] == artist_name].sort_values(
-            "billboard_week"
+        entity = _build_artist_entity(
+            artist_name,
+            weekly_artist,
+            weekly_album,
+            artist_power_scores,
+            track_power_scores,
+            album_power_scores,
+            artist_summary,
+            artist_track_counts,
+            artist_track_ranks,
+            artist_album_ranks,
         )
-        if grp.empty:
-            continue
-
-        aps_val, aps_rank = _get_ps_rank(artist_power_scores, "artist_name", artist_name)
-
-        artist_tracks = weekly_fanned[weekly_fanned["artist_name"] == artist_name]
-        num_tracks = int(artist_tracks["track_id"].nunique())
-        num_no1_tracks = int(artist_tracks[artist_tracks["rank"] == 1]["track_id"].nunique())
-        total_no1_track_weeks = int((artist_tracks["rank"] == 1).sum())
-
-        artist_track_ids = artist_tracks["track_id"].unique()
-        track_ps_sum = 0
-        if track_power_scores is not None and len(track_power_scores) > 0:
-            track_ps_sum = int(
-                track_power_scores[track_power_scores["track_id"].isin(artist_track_ids)][
-                    "power_score"
-                ].sum()
-            )
-
-        artist_albums = weekly_album[weekly_album["artist_name"] == artist_name]
-        num_albums = int(artist_albums["album_name"].dropna().nunique())
-        num_no1_albums = int(artist_albums[artist_albums["rank"] == 1]["album_name"].nunique())
-        total_no1_album_weeks = int((artist_albums["rank"] == 1).sum())
-
-        (
-            artist_pop,
-            artist_genres,
-            artist_cover,
-            artist_genre_source,
-            artist_genre_confidence,
-        ) = _vs_spotify_artist_meta(artist_name)
-
-        # Track-level global rankings for this artist
-        trmetrics = _lookup_artist_track_metrics(artist_track_ranks, artist_name)
-        # Album-level global rankings for this artist
-        almetrics = _lookup_artist_album_metrics(artist_album_ranks, artist_name)
-
-        album_ps_sum = 0
-        if album_power_scores is not None and len(album_power_scores) > 0:
-            album_ps_sum = int(
-                album_power_scores[album_power_scores["artist_name"] == artist_name][
-                    "power_score"
-                ].sum()
-            )
-
-        entities.append(
-            {
-                "name": artist_name,
-                "cover_url": artist_cover,
-                "popularity": artist_pop,
-                "genres": artist_genres,
-                "genre_source": artist_genre_source,
-                "genre_confidence": artist_genre_confidence,
-                "rank_history": [
-                    {
-                        "week": str(r["billboard_week"]),
-                        "rank": int(r["rank"]),
-                        "play_count": int(r["play_count"]),
-                    }
-                    for _, r in grp.iterrows()
-                ],
-                "metrics": {
-                    "power_score": aps_val,
-                    "power_rank": aps_rank,
-                    "peak_position": int(grp["rank"].min()),
-                    "weeks_on_chart": int(grp["billboard_week"].nunique()),
-                    "no1_weeks": int((grp["rank"] == 1).sum()),
-                    "num_tracks": num_tracks,
-                    "num_no1_tracks": num_no1_tracks,
-                    "total_no1_track_weeks": total_no1_track_weeks,
-                    "track_power_sum": track_ps_sum,
-                    "track_power_rank": trmetrics["track_power_rank"],
-                    "track_peak_position": trmetrics["track_peak_position"],
-                    "total_track_weeks": trmetrics["total_track_weeks"],
-                    "num_albums": num_albums,
-                    "num_no1_albums": num_no1_albums,
-                    "total_no1_album_weeks": total_no1_album_weeks,
-                    "album_power_sum": album_ps_sum,
-                    "album_power_rank": almetrics["album_power_rank"],
-                    "album_peak_position": almetrics["album_peak_position"],
-                    "total_album_weeks": almetrics["total_album_weeks"],
-                    "total_plays": int(grp["play_count"].sum()),
-                },
-            }
-        )
+        if entity is not None:
+            entities.append(entity)
 
     if len(entities) < 2:
         return {"found": False, "reason": "选中的艺人在选定年份范围内入榜数量不足 2 位"}

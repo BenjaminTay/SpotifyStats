@@ -13,6 +13,7 @@ interface VersusScoreboardSectionProps {
   kind: VersusKind
   queue: EntityListItem[]
   buildDetailLink: (item: EntityListItem) => string | null
+  personalStatsParams: Record<string, string | number | boolean>
 }
 
 function personalPath(kind: VersusKind, id: string): string {
@@ -36,23 +37,30 @@ export function VersusScoreboardSection({
   kind,
   queue,
   buildDetailLink,
+  personalStatsParams,
 }: VersusScoreboardSectionProps) {
-  if (!entities || entities.length < 2) return null
-
-  const n = entities.length
-
   // ── Personal stats (useQueries, only when versus data is ready) ──
   const personalResults = useQueries({
     queries: queue.map((q) => ({
-      queryKey: queryKeys.music.entityStats(kind, personalId(kind, q), kind === 'album' ? { artist: q.artist_name ?? '' } : {}),
+      queryKey: queryKeys.music.entityStats(kind, personalId(kind, q), {
+        ...personalStatsParams,
+        ...(kind === 'album' ? { artist: q.artist_name ?? '' } : {}),
+      }),
       queryFn: () => api.get<EntityStatsResponse>(
         personalPath(kind, personalId(kind, q)),
-        kind === 'album' ? { artist: q.artist_name ?? '' } : undefined,
+        {
+          ...personalStatsParams,
+          ...(kind === 'album' ? { artist: q.artist_name ?? '' } : {}),
+        },
       ),
       enabled: !!personalId(kind, q),
       staleTime: 1000 * 60 * 5,
     })),
   })
+
+  if (!entities || entities.length < 2) return null
+
+  const n = entities.length
 
   // ── Chart metrics ──
   const allMetrics = entities.map((e) => {
@@ -121,11 +129,11 @@ export function VersusScoreboardSection({
       return max > 0 ? max : null
     }, (v) => v != null ? String(v) : '—')
 
-    // 单周最多播放 (from chart rank_history)
+    // Highest play count among weeks where this entity entered the chart.
     if (chartWeekMaxes.some((v) => v != null)) {
       const w = bestIndices(chartWeekMaxes, true)
       if (w.length === 1) wins[w[0]]++
-      rows.push({ label: '单周最多播放', higherIsBetter: true, values: [...chartWeekMaxes], winners: w, fmt: (v) => v != null ? String(v) : '—' })
+      rows.push({ label: '入榜周最高播放', higherIsBetter: true, values: [...chartWeekMaxes], winners: w, fmt: (v) => v != null ? String(v) : '—' })
     }
 
     define('活跃天数', true, (s) => s.summary?.active_days, (v) => v != null ? String(v) : '—')
@@ -214,7 +222,7 @@ export function VersusScoreboardSection({
                   return (
                     <tr key={def.key} className="border-b border-border/40 transition-colors hover:bg-muted/30">
                       <td className="py-2.5 pl-4 text-[13px] text-muted-foreground sticky left-0 bg-card w-[140px]">
-                        {def.label}
+                        <span title={def.description}>{def.label}</span>
                       </td>
                       {values.map((v, i) => {
                         const isBest = winners.includes(i)
@@ -247,6 +255,11 @@ export function VersusScoreboardSection({
                     className="py-2 pl-4 text-[11px] font-bold uppercase tracking-[1.4px] text-accent-foreground bg-accent/12 border-b border-border"
                   >
                     个人播放
+                  </td>
+                </tr>
+                <tr>
+                  <td colSpan={n + 1} className="px-4 py-2 text-[11px] leading-relaxed text-muted-foreground bg-muted/20">
+                    个人总播放按全部有效播放计算；“入榜周最高播放”只统计进入个人榜单的周，两者范围不同。
                   </td>
                 </tr>
                 {personalRows.map((row) => (

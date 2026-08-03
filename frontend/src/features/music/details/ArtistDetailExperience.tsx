@@ -17,6 +17,8 @@ import { MusicTracksSection } from './MusicTracksSection'
 import { ArtistAlbumsSection } from './ArtistAlbumsSection'
 import { ArtistCareerSection } from './ArtistCareerSection'
 import { ArtistReleasesSection } from './ArtistReleasesSection'
+import { useAnalysisFilters } from '@/hooks/useAnalysis'
+import { buildBillboardContextParams } from '@/features/billboard/billboardContext'
 
 type TabKey = 'stats' | 'releases' | 'career' | 'overview' | 'tracks' | 'albums'
 
@@ -41,11 +43,13 @@ export function ArtistDetailExperience() {
   const [activeTab, setActiveTab] = useState<TabKey>(
     (searchParams.get('tab') as TabKey | null) ?? 'stats',
   )
+  const { filters, loading: filtersLoading } = useAnalysisFilters()
+  const billboardParams = buildBillboardContextParams(filters)
 
   const { data, isPending, error, refetch } = useQuery({
-    queryKey: queryKeys.music.artistDetail(artistName ?? ''),
-    queryFn: () => api.get<ArtistDetailResponse>('/billboard/artist/' + artistName!),
-    enabled: !!artistName,
+    queryKey: queryKeys.music.artistDetail(artistName ?? '', billboardParams),
+    queryFn: () => api.get<ArtistDetailResponse>('/billboard/artist/' + artistName!, billboardParams),
+    enabled: !!artistName && !filtersLoading,
   })
 
   const [artistEnrichmentTaskId, setArtistEnrichmentTaskId] = useState<string | null>(null)
@@ -56,7 +60,7 @@ export function ArtistDetailExperience() {
   } = useStartArtistEnrichmentTask()
   const artistEnrichmentTask = useAiTask(artistEnrichmentTaskId)
 
-  const releaseCycleParams = { weeks_before: 4, weeks_after: 24, cover_version: 2 }
+  const releaseCycleParams = { ...billboardParams, weeks_before: 4, weeks_after: 24, cover_version: 2 }
   const {
     data: releaseCycle = null,
     isFetching: releaseCycleLoading,
@@ -66,7 +70,7 @@ export function ArtistDetailExperience() {
     queryFn: () =>
       api.get<ReleaseCycleArtistOverviewResponse>(
         '/billboard/release-cycle/artist/' + encodeURIComponent(data!.artist_name),
-        { weeks_before: 4, weeks_after: 24 },
+        releaseCycleParams,
       ),
     enabled: activeTab === 'releases' && !!data?.found,
   })

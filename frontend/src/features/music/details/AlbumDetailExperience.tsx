@@ -17,6 +17,8 @@ import { MusicChartOverviewSection } from './MusicChartOverviewSection'
 import { MusicTracksSection } from './MusicTracksSection'
 import { AlbumEraSection } from './AlbumEraSection'
 import { VersionGroupSection } from './VersionGroupSection'
+import { useAnalysisFilters } from '@/hooks/useAnalysis'
+import { buildBillboardContextParams } from '@/features/billboard/billboardContext'
 
 type TabKey = 'stats' | 'era' | 'overview' | 'tracks'
 
@@ -38,13 +40,15 @@ export function AlbumDetailExperience() {
   const artistName = searchParams.get('artist') || ''
   const navigate = useNavigate()
   const mergeLevel = Number(searchParams.get('merge_level') ?? getDefaultMergeLevel())
+  const { filters, loading: filtersLoading } = useAnalysisFilters()
+  const billboardParams = buildBillboardContextParams({ ...filters, merge_level: mergeLevel })
 
   const [activeTab, setActiveTab] = useState<TabKey>((searchParams.get('tab') as TabKey | null) ?? 'stats')
 
   const { data, isPending, error, refetch } = useQuery({
-    queryKey: queryKeys.music.albumDetail(albumName ?? '', artistName, mergeLevel),
-    queryFn: () => api.get<AlbumDetailResponse>('/billboard/album/' + albumName!, { artist_name: artistName, merge_level: mergeLevel }),
-    enabled: !!albumName,
+    queryKey: queryKeys.music.albumDetail(albumName ?? '', artistName, mergeLevel, billboardParams),
+    queryFn: () => api.get<AlbumDetailResponse>('/billboard/album/' + albumName!, { ...billboardParams, artist_name: artistName }),
+    enabled: !!albumName && !filtersLoading,
   })
 
   const [albumEnrichmentTaskId, setAlbumEnrichmentTaskId] = useState<string | null>(null)
@@ -55,7 +59,7 @@ export function AlbumDetailExperience() {
   } = useStartAlbumEnrichmentTask()
   const albumEnrichmentTask = useAiTask(albumEnrichmentTaskId)
 
-  const releaseCycleParams = { weeks_before: 12, weeks_after: 24 }
+  const releaseCycleParams = { ...billboardParams, weeks_before: 12, weeks_after: 24 }
   const {
     data: releaseCycle = null,
     isFetching: releaseCycleLoading,

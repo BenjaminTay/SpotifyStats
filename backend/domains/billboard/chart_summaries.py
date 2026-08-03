@@ -156,7 +156,21 @@ def compute_artist_track_counts(
         how="left",
     )
 
-    artist_weeks_no1 = track_summary.groupby("artist_name")["weeks_at_no1"].sum().reset_index()
+    # Attribute a track's #1 weeks to every credited canonical artist, matching
+    # artist_summary's fan-out semantics.  Joining on the stable track id also
+    # avoids counting the same chart event twice when two raw credits resolve to
+    # the same artist identity.
+    artist_weeks_no1 = (
+        artist_summary[["artist_name", "track_id"]]
+        .drop_duplicates()
+        .merge(
+            track_summary[["track_id", "weeks_at_no1"]].drop_duplicates("track_id"),
+            on="track_id",
+            how="left",
+        )
+        .groupby("artist_name", as_index=False)["weeks_at_no1"]
+        .sum()
+    )
     artist_track_counts = artist_track_counts.merge(artist_weeks_no1, on="artist_name", how="left")
     artist_track_counts["weeks_at_no1"] = artist_track_counts["weeks_at_no1"].fillna(0).astype(int)
 

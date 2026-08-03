@@ -1,5 +1,23 @@
 # 变更日志
 
+## 2026-08-03 — Billboard 对决与详情统计口径统一
+
+### 统计与数据归属
+
+- 单曲、专辑、艺人对决、实体选择列表和对应详情页统一透传动态阈值、连续播放间隔、合并级别、榜单周边界、三类 Top N、年份范围与精选集设置；前端缓存键同步纳入完整过滤指纹，避免设置变化后复用旧结果。
+- 专辑对决移除基于 legacy release group 与周榜专辑名称的归属路径，改为复用详情页的 album project、`track_per_album` 与 `album_track_counts`，按专辑项目身份和 canonical artist 消歧；无法与详情口径可靠对应的 picker 实体会被保守排除。
+- 艺人对决与详情统一 credited artist fan-out；冠军周数按稳定歌曲 ID 归属到全部署名 canonical artist，并对同一 canonical 身份去重，修复 featured artist 少计。
+
+### 交互与文案
+
+- 对决搜索添加实体后保留查询词与结果列表，支持连续添加同一搜索结果集中的多个实体；切换实体类型时才重置。
+- 将“单周最多播放”明确为“入榜周最高播放”，区分个人全部有效播放与入榜周播放，并标注发行后 24 周窗口和 aggregate rank 的派生含义。
+
+### 验证
+
+- 新增专辑项目归属、艺人 fan-out、完整参数传播和三模式前端对决回归测试；真实数据核对中 GUTS 为 4 首冠单 / 7 个冠军周，`you seem pretty sad for a girl so in love` 为 3 首冠单 / 5 个冠军周。
+- 后端全量 1,410 项、前端 300 项测试、TypeScript 生产构建、Ruff/format、ESLint 与 1440/390 浏览器验收均通过；三种对决无横向溢出或控制台错误。
+
 ## 2026-07-28 — Billboard Year-End V3 积分
 
 ### 统计语义

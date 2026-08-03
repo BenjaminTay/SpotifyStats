@@ -100,6 +100,13 @@ export const apiClient = {
     request<T>(path, { method: 'PUT', body, timeout }),
   post: <T>(path: string, body?: unknown, timeout?: number, signal?: AbortSignal) =>
     request<T>(path, { method: 'POST', body, timeout, signal }),
+  postWithParams: <T>(
+    path: string,
+    body: unknown,
+    params: Record<string, string | number | boolean>,
+    timeout?: number,
+    signal?: AbortSignal,
+  ) => request<T>(path, { method: 'POST', body, params, timeout, signal }),
   del: <T>(path: string, timeout?: number) =>
     request<T>(path, { method: 'DELETE', timeout }),
   patch: <T>(path: string, body?: unknown, timeout?: number) =>

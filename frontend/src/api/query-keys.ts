@@ -84,9 +84,9 @@ export const queryKeys = {
   music: {
     all: ['music'] as const,
     search: (params: Record<string, unknown>) => ['music', 'search', params] as const,
-    artistDetail: (artistName: string) => ['music', 'artist-detail', artistName] as const,
-    trackDetail: (trackId: string, mergeLevel?: number) => ['music', 'track-detail', trackId, mergeLevel ?? 2] as const,
-    albumDetail: (albumName: string, artistName: string, mergeLevel?: number) => ['music', 'album-detail', albumName, artistName, mergeLevel ?? 2] as const,
+    artistDetail: (artistName: string, params: Record<string, unknown> = {}) => ['music', 'artist-detail', artistName, params] as const,
+    trackDetail: (trackId: string, mergeLevel?: number, params: Record<string, unknown> = {}) => ['music', 'track-detail', trackId, mergeLevel ?? 2, params] as const,
+    albumDetail: (albumName: string, artistName: string, mergeLevel?: number, params: Record<string, unknown> = {}) => ['music', 'album-detail', albumName, artistName, mergeLevel ?? 2, params] as const,
     trackEnrichment: (trackName: string, artistName: string) => ['music', 'track-enrichment', trackName, artistName] as const,
     trackLyrics: (trackId: string) => ['music', 'track-lyrics', trackId] as const,
     albumEnrichment: (albumName: string, artistName: string) => ['music', 'album-enrichment', albumName, artistName] as const,

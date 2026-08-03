@@ -14,6 +14,8 @@ import { getDefaultMergeLevel } from '@/lib/merge-level'
 import { TrackOverviewSection } from './track/TrackOverviewSection'
 import { TrackLyricsSection } from './track/TrackLyricsSection'
 import { VersionGroupSection } from './VersionGroupSection'
+import { useAnalysisFilters } from '@/hooks/useAnalysis'
+import { buildBillboardContextParams } from '@/features/billboard/billboardContext'
 
 function formatDuration(ms: number): string {
   const totalSec = Math.floor(ms / 1000)
@@ -64,11 +66,13 @@ export function TrackDetailExperience() {
     (searchParams.get('tab') as TabKey | null) ?? 'stats',
   )
   const mergeLevel = Number(searchParams.get('merge_level') ?? getDefaultMergeLevel())
+  const { filters, loading: filtersLoading } = useAnalysisFilters()
+  const billboardParams = buildBillboardContextParams({ ...filters, merge_level: mergeLevel })
 
   const { data, isPending, error, refetch } = useQuery({
-    queryKey: queryKeys.music.trackDetail(trackId ?? '', mergeLevel),
-    queryFn: () => api.get<TrackDetailResponse>('/billboard/track/' + trackId!, { merge_level: mergeLevel }),
-    enabled: !!trackId,
+    queryKey: queryKeys.music.trackDetail(trackId ?? '', mergeLevel, billboardParams),
+    queryFn: () => api.get<TrackDetailResponse>('/billboard/track/' + trackId!, billboardParams),
+    enabled: !!trackId && !filtersLoading,
   })
   const { data: enrichment = null } = useQuery({
     queryKey: queryKeys.music.trackEnrichment(data?.track_name ?? '', data?.artist_name ?? ''),

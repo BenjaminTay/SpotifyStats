@@ -103,13 +103,10 @@ export function useBillboard(initialWeek?: string | null, mergeLevel = 2, includ
     setWeekIndexState(idx)
   }, [])
 
-  const allWeeks = query.data?.meta.all_weeks_desc ?? []
+  const allWeeks = useMemo(() => query.data?.meta.all_weeks_desc ?? [], [query.data])
   const totalWeeks = allWeeks.length
-  const selectedWeek = allWeeks[weekIndex] ?? ''
-
-  useEffect(() => {
-    if (query.data && weekIndex >= query.data.meta.all_weeks_desc.length) setWeekIndex(0)
-  }, [query.data, setWeekIndex, weekIndex])
+  const currentIndex = totalWeeks > 0 ? Math.min(weekIndex, totalWeeks - 1) : 0
+  const selectedWeek = allWeeks[currentIndex] ?? ''
 
   useInitialWeek(initialWeek, allWeeks, setWeekIndex)
 
@@ -119,12 +116,12 @@ export function useBillboard(initialWeek?: string | null, mergeLevel = 2, includ
   )
 
   const goNext = useCallback(() => {
-    setWeekIndex(Math.max(0, weekIndex - 1))
-  }, [setWeekIndex, weekIndex])
+    setWeekIndex(Math.max(0, currentIndex - 1))
+  }, [currentIndex, setWeekIndex])
 
   const goPrev = useCallback(() => {
-    setWeekIndex(Math.min(totalWeeks - 1, weekIndex + 1))
-  }, [setWeekIndex, totalWeeks, weekIndex])
+    setWeekIndex(Math.min(totalWeeks - 1, currentIndex + 1))
+  }, [currentIndex, setWeekIndex, totalWeeks])
 
   const goToWeek = useCallback((week: string) => {
     const idx = allWeeks.indexOf(week)
@@ -138,7 +135,7 @@ export function useBillboard(initialWeek?: string | null, mergeLevel = 2, includ
     refetch: () => void queryClientForHook.invalidateQueries({ queryKey: queryKeys.billboard.data() }),
     selectedWeek,
     currentWeekData,
-    currentIndex: weekIndex,
+    currentIndex,
     totalWeeks,
     goNext,
     goPrev,
@@ -167,13 +164,10 @@ export function useBillboardWeekly(initialWeek?: string | null, mergeLevel = 2, 
     setWeekIndexState(idx)
   }, [])
 
-  const allWeeks = query.data?.meta.all_weeks_desc ?? []
+  const allWeeks = useMemo(() => query.data?.meta.all_weeks_desc ?? [], [query.data])
   const totalWeeks = allWeeks.length
-  const selectedWeek = allWeeks[weekIndex] ?? ''
-
-  useEffect(() => {
-    if (query.data && weekIndex >= query.data.meta.all_weeks_desc.length) setWeekIndex(0)
-  }, [query.data, setWeekIndex, weekIndex])
+  const currentIndex = totalWeeks > 0 ? Math.min(weekIndex, totalWeeks - 1) : 0
+  const selectedWeek = allWeeks[currentIndex] ?? ''
 
   useInitialWeek(initialWeek, allWeeks, setWeekIndex)
 
@@ -183,12 +177,12 @@ export function useBillboardWeekly(initialWeek?: string | null, mergeLevel = 2, 
   )
 
   const goNext = useCallback(() => {
-    setWeekIndex(Math.max(0, weekIndex - 1))
-  }, [setWeekIndex, weekIndex])
+    setWeekIndex(Math.max(0, currentIndex - 1))
+  }, [currentIndex, setWeekIndex])
 
   const goPrev = useCallback(() => {
-    setWeekIndex(Math.min(totalWeeks - 1, weekIndex + 1))
-  }, [setWeekIndex, totalWeeks, weekIndex])
+    setWeekIndex(Math.min(totalWeeks - 1, currentIndex + 1))
+  }, [currentIndex, setWeekIndex, totalWeeks])
 
   const goToWeek = useCallback((week: string) => {
     const idx = allWeeks.indexOf(week)
@@ -202,7 +196,7 @@ export function useBillboardWeekly(initialWeek?: string | null, mergeLevel = 2, 
     refetch: () => void query.refetch(),
     selectedWeek,
     currentWeekData,
-    currentIndex: weekIndex,
+    currentIndex,
     totalWeeks,
     goNext,
     goPrev,
@@ -339,15 +333,21 @@ export function preloadEntityLists(): void {
   })
 }
 
-export function useEntityLists(search?: string) {
+export function useEntityLists(
+  params: Record<string, string | number | boolean> = {},
+  search?: string,
+  enabled = true,
+) {
+  const requestParams = search ? { ...params, search } : params
   const query = useQuery({
-    queryKey: queryKeys.billboard.entityLists(search ? { search } : {}),
+    queryKey: queryKeys.billboard.entityLists(requestParams),
     queryFn: () =>
       api.get<import('@/types/billboard').EntityListsResponse>(
         '/billboard/entity-lists',
-        search ? { search } : undefined,
+        requestParams,
       ),
     staleTime: 1000 * 60 * 30,
+    enabled,
   })
   return {
     data: query.data ?? null,
@@ -360,14 +360,16 @@ export function useEntityLists(search?: string) {
 export function useVersus(
   kind: 'track' | 'album' | 'artist',
   body: Record<string, unknown> | null,
+  params: Record<string, string | number | boolean> = {},
 ) {
   const enabled = body !== null
   const query = useQuery({
-    queryKey: queryKeys.billboard.versus(kind, body ?? {}),
+    queryKey: queryKeys.billboard.versus(kind, { body, filters: params }),
     queryFn: () =>
-      api.post<import('@/types/billboard').VersusResponse>(
+      api.postWithParams<import('@/types/billboard').VersusResponse>(
         `/billboard/versus/${kind}`,
         body,
+        params,
       ),
     enabled,
   })
@@ -381,14 +383,16 @@ export function useVersus(
 
 export function useReleaseCycleCompare(
   items: { artist_name: string; album_name: string }[] | null,
+  params: Record<string, string | number | boolean> = {},
 ) {
   const enabled = !!items && items.length >= 2
   const query = useQuery({
-    queryKey: queryKeys.billboard.releaseCycleCompare(items ? { items } : {}),
+    queryKey: queryKeys.billboard.releaseCycleCompare({ items, filters: params }),
     queryFn: () =>
-      api.post<import('@/types/billboard').ReleaseCycleCompareResponse>(
+      api.postWithParams<import('@/types/billboard').ReleaseCycleCompareResponse>(
         '/billboard/release-cycle/compare',
         { items, weeks_before: 12, weeks_after: 24 },
+        params,
       ),
     enabled,
   })

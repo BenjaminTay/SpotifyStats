@@ -1,7 +1,7 @@
 import type { EntityListItem } from '@/types/billboard'
 import type { VersusKind } from './versusData'
-import { MAX_QUEUE_SIZE } from './versusData'
-import { KIND_TABS, SearchableAddSelect, EntityQueue } from './versusPrimitives'
+import { KIND_TABS, MAX_QUEUE_SIZE } from './versusData'
+import { SearchableAddSelect, EntityQueue } from './versusPrimitives'
 
 interface VersusSelectorSectionProps {
   kind: VersusKind

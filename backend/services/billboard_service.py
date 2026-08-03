@@ -55,7 +55,6 @@ from backend.domains.billboard.version_merge import (
 )
 from backend.domains.billboard.versus import (
     _get_ps_rank,
-    _resolve_album_members_vs,
     get_versus_album,
     get_versus_album_multi,
     get_versus_artist,
@@ -107,7 +106,6 @@ __all__ = [
     "get_track_history",
     # versus
     "_get_ps_rank",
-    "_resolve_album_members_vs",
     "get_versus_album",
     "get_versus_album_multi",
     "get_versus_artist",

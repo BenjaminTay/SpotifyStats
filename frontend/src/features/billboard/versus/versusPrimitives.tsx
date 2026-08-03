@@ -1,16 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import type { EntityListItem, VersusEntityData } from '@/types/billboard'
-import type { VersusKind } from './versusData'
 import { ENTITY_COLORS, MAX_QUEUE_SIZE } from './versusData'
-
-// ── Entity type tab config ──
-
-export const KIND_TABS: { key: VersusKind; label: string }[] = [
-  { key: 'track', label: '单曲' },
-  { key: 'album', label: '专辑' },
-  { key: 'artist', label: '艺人' },
-]
 
 // ── Skeleton ──
 
@@ -150,7 +141,8 @@ export function SearchableAddSelect({
                   type="button"
                   onClick={() => {
                     onAdd(item)
-                    setSearch('')
+                    // Keep the current query and result list open so adjacent
+                    // matches can be added without repeating the search.
                     if (alreadySelected.length + 1 >= MAX_QUEUE_SIZE) setOpen(false)
                   }}
                   className="w-full flex items-center justify-between px-3 py-2 text-left text-[13px] transition-colors hover:bg-muted"

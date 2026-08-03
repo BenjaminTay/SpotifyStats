@@ -14,6 +14,10 @@ def get_billboard_entity_lists(
     year_start,
     year_end,
     search=None,
+    dynamic_threshold=False,
+    max_merge_gap_minutes=None,
+    merge_level=2,
+    include_compilations=False,
 ):
     """Return entity lists for versus search pickers (tracks, albums, artists)."""
     data = compute_billboard_data(
@@ -26,6 +30,10 @@ def get_billboard_entity_lists(
         bb_week_start_hour,
         year_start,
         year_end,
+        dynamic_threshold=dynamic_threshold,
+        max_merge_gap_minutes=max_merge_gap_minutes,
+        merge_level=merge_level,
+        include_compilations=include_compilations,
     )
 
     track_rows = sorted(
@@ -38,8 +46,15 @@ def get_billboard_entity_lists(
         for r in track_rows
     ]
 
+    detail_album_keys = {
+        (row["album_name"], row["artist_name"]) for row in data["album_track_counts"]
+    }
     album_rows = sorted(
-        data["album_power_scores"],
+        [
+            row
+            for row in data["album_power_scores"]
+            if (row["album_name"], row["artist_name"]) in detail_album_keys
+        ],
         key=lambda r: r.get("power_score") or 0,
         reverse=True,
     )
@@ -52,8 +67,9 @@ def get_billboard_entity_lists(
         for r in album_rows
     ]
 
+    detail_artist_names = {row["artist_name"] for row in data["artist_track_counts"]}
     artist_rows = sorted(
-        data["artist_power_scores"],
+        [row for row in data["artist_power_scores"] if row["artist_name"] in detail_artist_names],
         key=lambda r: r.get("power_score") or 0,
         reverse=True,
     )

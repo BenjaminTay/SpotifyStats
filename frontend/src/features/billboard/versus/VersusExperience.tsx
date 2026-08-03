@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { BillboardSubNav } from '@/components/shared/BillboardSubNav'
 import { GlassCard } from '@/components/shared/GlassCard'
 import { useEntityLists, useVersus } from '@/hooks/useBillboard'
+import { useAnalysisFilters } from '@/hooks/useAnalysis'
 import type { EntityListItem, VersusResponse } from '@/types/billboard'
 import type { VersusKind } from './versusData'
 import { MAX_QUEUE_SIZE } from './versusData'
@@ -10,6 +11,7 @@ import { VersusSelectorSection } from './VersusSelectorSection'
 import { VersusScoreboardSection } from './VersusScoreboardSection'
 import { VersusChartSection } from './VersusChartSection'
 import { VersusReleaseCycleSection } from './VersusReleaseCycleSection'
+import { buildBillboardContextParams, buildPersonalStatsParams } from '../billboardContext'
 
 const KIND_LABELS: Record<VersusKind, string> = { track: '歌曲', album: '专辑', artist: '艺人' }
 
@@ -45,12 +47,15 @@ function cacheQueue(k: VersusKind, q: EntityListItem[]) {
 export function VersusExperience() {
   const [kind, setKindState] = useState<VersusKind>(cachedKind)
   const [queue, setQueue] = useState<EntityListItem[]>(cachedQueues[cachedKind])
+  const { filters, loading: filtersLoading } = useAnalysisFilters()
+  const billboardParams = buildBillboardContextParams(filters)
+  const personalStatsParams = buildPersonalStatsParams(filters)
 
-  const { data: lists } = useEntityLists()
+  const { data: lists } = useEntityLists(billboardParams, undefined, !filtersLoading)
 
   // Build POST body and fetch
   const body = queue.length >= 2 ? buildVersusBody(kind, queue) : null
-  const versus = useVersus(kind, body)
+  const versus = useVersus(kind, filtersLoading ? null : body, billboardParams)
 
   const versusData: VersusResponse | null = versus.data
   const versusLoading = versus.loading
@@ -115,7 +120,8 @@ export function VersusExperience() {
 
       {/* Selector */}
       <GlassCard className="relative z-10 mb-8 p-6">
-        <VersusSelectorSection
+          <VersusSelectorSection
+          key={kind}
           kind={kind}
           onKindChange={setKind}
           items={lists ?? { tracks: [], albums: [], artists: [] }}
@@ -161,6 +167,7 @@ export function VersusExperience() {
             kind={kind}
             queue={queue}
             buildDetailLink={(item) => buildDetailLink(kind, item)}
+            personalStatsParams={personalStatsParams}
           />
 
           <VersusChartSection
@@ -175,6 +182,7 @@ export function VersusExperience() {
                 artistName: q.artist_name ?? '',
                 name: q.display,
               }))}
+              billboardParams={billboardParams}
             />
           )}
         </div>

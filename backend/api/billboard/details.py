@@ -150,6 +150,7 @@ def track_history(
     track_id: int,
     filters: BillboardFilters = Depends(),
     merge: MergeConfig = Depends(),
+    include_compilations: bool = Query(False),
 ):
     """Get detailed track chart history with change column and gapped chart data."""
     return get_track_history(
@@ -166,6 +167,7 @@ def track_history(
         dynamic_threshold=filters.dynamic_threshold,
         max_merge_gap_minutes=filters.max_merge_gap_minutes,
         merge_level=merge.merge_level,
+        include_compilations=include_compilations,
     )
 
 
@@ -174,6 +176,7 @@ def artist_chart_detail(
     artist_name: str,
     filters: BillboardFilters = Depends(),
     merge: MergeConfig = Depends(),
+    include_compilations: bool = Query(False),
 ):
     """Get detailed artist chart data: weekly history, track/album performances, trend overlay."""
     return get_artist_chart_detail(
@@ -190,6 +193,7 @@ def artist_chart_detail(
         dynamic_threshold=filters.dynamic_threshold,
         max_merge_gap_minutes=filters.max_merge_gap_minutes,
         merge_level=merge.merge_level,
+        include_compilations=include_compilations,
     )
 
 
@@ -199,6 +203,7 @@ def album_chart_detail(
     artist_name: str = Query(default="", description="Artist name for disambiguation"),
     filters: BillboardFilters = Depends(),
     merge: MergeConfig = Depends(),
+    include_compilations: bool = Query(False),
 ):
     """Get detailed album chart data: weekly history, track performances, trend overlay."""
     return get_album_chart_detail(
@@ -216,6 +221,7 @@ def album_chart_detail(
         dynamic_threshold=filters.dynamic_threshold,
         max_merge_gap_minutes=filters.max_merge_gap_minutes,
         merge_level=merge.merge_level,
+        include_compilations=include_compilations,
     )
 
 
@@ -225,6 +231,8 @@ def entity_lists(
         default=None, description="Filter entities by name (case-insensitive)"
     ),
     filters: BillboardFilters = Depends(),
+    merge: MergeConfig = Depends(),
+    include_compilations: bool = Query(False),
 ):
     """Return track/album/artist lists for versus search pickers."""
     return get_billboard_entity_lists(
@@ -238,6 +246,10 @@ def entity_lists(
         year_start=filters.year_start,
         year_end=filters.year_end,
         search=search,
+        dynamic_threshold=filters.dynamic_threshold,
+        max_merge_gap_minutes=filters.max_merge_gap_minutes,
+        merge_level=merge.merge_level,
+        include_compilations=include_compilations,
     )
 
 
@@ -249,6 +261,8 @@ def versus_track(
     track_id_a: int = Query(..., description="Track A ID"),
     track_id_b: int = Query(..., description="Track B ID"),
     filters: BillboardFilters = Depends(),
+    merge: MergeConfig = Depends(),
+    include_compilations: bool = Query(False),
 ):
     """Compare two tracks side-by-side."""
     return get_versus_track(
@@ -263,6 +277,10 @@ def versus_track(
         bb_week_start_hour=filters.bb_week_start_hour,
         year_start=filters.year_start,
         year_end=filters.year_end,
+        dynamic_threshold=filters.dynamic_threshold,
+        max_merge_gap_minutes=filters.max_merge_gap_minutes,
+        merge_level=merge.merge_level,
+        include_compilations=include_compilations,
     )
 
 
@@ -273,6 +291,8 @@ def versus_album(
     album_b: str = Query(..., description="Album B name"),
     artist_b: str = Query(..., description="Album B artist"),
     filters: BillboardFilters = Depends(),
+    merge: MergeConfig = Depends(),
+    include_compilations: bool = Query(False),
 ):
     """Compare two albums side-by-side."""
     return get_versus_album(
@@ -289,6 +309,10 @@ def versus_album(
         bb_week_start_hour=filters.bb_week_start_hour,
         year_start=filters.year_start,
         year_end=filters.year_end,
+        dynamic_threshold=filters.dynamic_threshold,
+        max_merge_gap_minutes=filters.max_merge_gap_minutes,
+        merge_level=merge.merge_level,
+        include_compilations=include_compilations,
     )
 
 
@@ -297,6 +321,8 @@ def versus_artist(
     artist_a: str = Query(..., description="Artist A name"),
     artist_b: str = Query(..., description="Artist B name"),
     filters: BillboardFilters = Depends(),
+    merge: MergeConfig = Depends(),
+    include_compilations: bool = Query(False),
 ):
     """Compare two artists side-by-side."""
     return get_versus_artist(
@@ -311,6 +337,10 @@ def versus_artist(
         bb_week_start_hour=filters.bb_week_start_hour,
         year_start=filters.year_start,
         year_end=filters.year_end,
+        dynamic_threshold=filters.dynamic_threshold,
+        max_merge_gap_minutes=filters.max_merge_gap_minutes,
+        merge_level=merge.merge_level,
+        include_compilations=include_compilations,
     )
 
 
@@ -321,6 +351,8 @@ def versus_artist(
 def versus_track_multi(
     body: TrackMultiRequest,
     filters: BillboardFilters = Depends(),
+    merge: MergeConfig = Depends(),
+    include_compilations: bool = Query(False),
 ):
     """Compare multiple tracks side-by-side (2–5)."""
     return get_versus_track_multi(
@@ -334,6 +366,10 @@ def versus_track_multi(
         bb_week_start_hour=filters.bb_week_start_hour,
         year_start=filters.year_start,
         year_end=filters.year_end,
+        dynamic_threshold=filters.dynamic_threshold,
+        max_merge_gap_minutes=filters.max_merge_gap_minutes,
+        merge_level=merge.merge_level,
+        include_compilations=include_compilations,
     )
 
 
@@ -341,6 +377,8 @@ def versus_track_multi(
 def versus_album_multi(
     body: AlbumMultiRequest,
     filters: BillboardFilters = Depends(),
+    merge: MergeConfig = Depends(),
+    include_compilations: bool = Query(False),
 ):
     """Compare multiple albums side-by-side (2–5)."""
     return get_versus_album_multi(
@@ -354,6 +392,10 @@ def versus_album_multi(
         bb_week_start_hour=filters.bb_week_start_hour,
         year_start=filters.year_start,
         year_end=filters.year_end,
+        dynamic_threshold=filters.dynamic_threshold,
+        max_merge_gap_minutes=filters.max_merge_gap_minutes,
+        merge_level=merge.merge_level,
+        include_compilations=include_compilations,
     )
 
 
@@ -361,6 +403,8 @@ def versus_album_multi(
 def versus_artist_multi(
     body: ArtistMultiRequest,
     filters: BillboardFilters = Depends(),
+    merge: MergeConfig = Depends(),
+    include_compilations: bool = Query(False),
 ):
     """Compare multiple artists side-by-side (2–5)."""
     return get_versus_artist_multi(
@@ -374,4 +418,8 @@ def versus_artist_multi(
         bb_week_start_hour=filters.bb_week_start_hour,
         year_start=filters.year_start,
         year_end=filters.year_end,
+        dynamic_threshold=filters.dynamic_threshold,
+        max_merge_gap_minutes=filters.max_merge_gap_minutes,
+        merge_level=merge.merge_level,
+        include_compilations=include_compilations,
     )
