@@ -152,6 +152,9 @@ export interface AlbumPowerScoreEntry {
   weeks_top5: number
   weeks_top10: number
   power_rank: number
+  track_power_sum: number
+  track_power_rank: number | null
+  total_plays?: number
 }
 
 export interface ArtistPowerScoreEntry {
@@ -164,6 +167,10 @@ export interface ArtistPowerScoreEntry {
   weeks_top5: number
   weeks_top10: number
   power_rank: number
+  track_power_sum: number
+  track_power_rank: number | null
+  album_power_sum: number
+  album_power_rank: number | null
 }
 
 export interface BillboardDataResponse {

@@ -3124,6 +3124,30 @@ export interface components {
                 [key: string]: unknown;
             }[];
         };
+        /** AlbumPowerScoreRow */
+        AlbumPowerScoreRow: {
+            /** Album Name */
+            album_name: string;
+            /** Artist Name */
+            artist_name: string;
+            /** Power Score */
+            power_score: number;
+            /** Peak Position */
+            peak_position: number;
+            /** Weeks On Chart */
+            weeks_on_chart: number;
+            /** Power Rank */
+            power_rank: number;
+            /**
+             * Track Power Sum
+             * @default 0
+             */
+            track_power_sum: number;
+            /** Track Power Rank */
+            track_power_rank?: number | null;
+        } & {
+            [key: string]: unknown;
+        };
         /** AlbumRelationConfirmRequest */
         AlbumRelationConfirmRequest: {
             /** Canonical Name */
@@ -4307,6 +4331,35 @@ export interface components {
             /** Artist Names */
             artist_names: string[];
         };
+        /** ArtistPowerScoreRow */
+        ArtistPowerScoreRow: {
+            /** Artist Name */
+            artist_name: string;
+            /** Power Score */
+            power_score: number;
+            /** Peak Position */
+            peak_position: number;
+            /** Weeks On Chart */
+            weeks_on_chart: number;
+            /** Power Rank */
+            power_rank: number;
+            /**
+             * Track Power Sum
+             * @default 0
+             */
+            track_power_sum: number;
+            /** Track Power Rank */
+            track_power_rank?: number | null;
+            /**
+             * Album Power Sum
+             * @default 0
+             */
+            album_power_sum: number;
+            /** Album Power Rank */
+            album_power_rank?: number | null;
+        } & {
+            [key: string]: unknown;
+        };
         /** ArtistTierEntry */
         ArtistTierEntry: {
             /** Rank */
@@ -4400,6 +4453,42 @@ export interface components {
         };
         /** BillboardAllTimeResponse */
         BillboardAllTimeResponse: {
+            meta: components["schemas"]["BillboardMeta"];
+            /** Weekly */
+            weekly: {
+                [key: string]: unknown;
+            }[];
+            /** Weekly Album */
+            weekly_album: {
+                [key: string]: unknown;
+            }[];
+            /** Weekly Artist */
+            weekly_artist: {
+                [key: string]: unknown;
+            }[];
+            /** Power Scores */
+            power_scores: components["schemas"]["TrackPowerScoreRow"][];
+            /** Album Power Scores */
+            album_power_scores: components["schemas"]["AlbumPowerScoreRow"][];
+            /** Artist Power Scores */
+            artist_power_scores: components["schemas"]["ArtistPowerScoreRow"][];
+            /** Track Summary */
+            track_summary: {
+                [key: string]: unknown;
+            }[];
+            /** Artist Summary */
+            artist_summary: {
+                [key: string]: unknown;
+            }[];
+            /** Album Track Counts */
+            album_track_counts: {
+                [key: string]: unknown;
+            }[];
+            /** Artist Track Counts */
+            artist_track_counts: {
+                [key: string]: unknown;
+            }[];
+        } & {
             [key: string]: unknown;
         };
         /** BillboardDataResponse */
@@ -4442,17 +4531,11 @@ export interface components {
                 [key: string]: unknown;
             };
             /** Power Scores */
-            power_scores: {
-                [key: string]: unknown;
-            }[];
+            power_scores: components["schemas"]["TrackPowerScoreRow"][];
             /** Album Power Scores */
-            album_power_scores: {
-                [key: string]: unknown;
-            }[];
+            album_power_scores: components["schemas"]["AlbumPowerScoreRow"][];
             /** Artist Power Scores */
-            artist_power_scores: {
-                [key: string]: unknown;
-            }[];
+            artist_power_scores: components["schemas"]["ArtistPowerScoreRow"][];
         } & {
             [key: string]: unknown;
         };
@@ -4484,17 +4567,11 @@ export interface components {
         /** BillboardPowerScoresResponse */
         BillboardPowerScoresResponse: {
             /** Power Scores */
-            power_scores: {
-                [key: string]: unknown;
-            }[];
+            power_scores: components["schemas"]["TrackPowerScoreRow"][];
             /** Album Power Scores */
-            album_power_scores: {
-                [key: string]: unknown;
-            }[];
+            album_power_scores: components["schemas"]["AlbumPowerScoreRow"][];
             /** Artist Power Scores */
-            artist_power_scores: {
-                [key: string]: unknown;
-            }[];
+            artist_power_scores: components["schemas"]["ArtistPowerScoreRow"][];
         };
         /** BillboardRecordsResponse */
         BillboardRecordsResponse: {
@@ -7893,6 +7970,25 @@ export interface components {
             /** Track Ids */
             track_ids: number[];
         };
+        /** TrackPowerScoreRow */
+        TrackPowerScoreRow: {
+            /** Track Id */
+            track_id: number;
+            /** Track Name */
+            track_name: string;
+            /** Artist Name */
+            artist_name: string;
+            /** Power Score */
+            power_score: number;
+            /** Peak Position */
+            peak_position: number;
+            /** Weeks On Chart */
+            weeks_on_chart: number;
+            /** Power Rank */
+            power_rank: number;
+        } & {
+            [key: string]: unknown;
+        };
         /** TrendingItem */
         TrendingItem: {
             /** Name */
@@ -10521,6 +10617,8 @@ export interface operations {
     get_billboard_power_scores_api_billboard_power_scores_get: {
         parameters: {
             query?: {
+                /** @description Include compilation albums in album chart (R14) */
+                include_compilations?: boolean;
                 /** @description 最短播放时长 (毫秒) */
                 min_ms?: number | null;
                 /** @description 仅音乐 */
@@ -10577,6 +10675,8 @@ export interface operations {
     get_billboard_summaries_api_billboard_summaries_get: {
         parameters: {
             query?: {
+                /** @description Include compilation albums in album chart (R14) */
+                include_compilations?: boolean;
                 /** @description 最短播放时长 (毫秒) */
                 min_ms?: number | null;
                 /** @description 仅音乐 */

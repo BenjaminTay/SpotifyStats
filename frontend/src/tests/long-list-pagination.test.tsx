@@ -46,6 +46,7 @@ describe('Phase 5 long-list pagination', () => {
       track_name: `Track ${index + 1}`,
       artist_name: `Artist ${index + 1}`,
       artist_names: [`Artist ${index + 1}`],
+      album_name: `Album ${index + 1}`,
       cover_url: null,
       peak_position: index + 1,
       weeks_at_peak: 1,
@@ -61,6 +62,10 @@ describe('Phase 5 long-list pagination', () => {
       {
         key: 'total_chart_plays',
         label: '播放',
+        group: '个人数据',
+        defaultVisible: true,
+        minWidth: 100,
+        mobilePriority: 1,
         align: 'right',
         getValue: (row) => (row as MergedTrackRow).total_chart_plays,
         format: (row) => String((row as MergedTrackRow).total_chart_plays),

@@ -7,6 +7,8 @@ import { getBillboardName } from '@/lib/billboard-name'
 import { BillboardSubNav } from '@/components/shared/BillboardSubNav'
 import { Skeleton } from '@/components/ui/skeleton'
 import { AllTimeTable, Pagination } from '@/features/billboard/all-time/AllTimeTable'
+import { AllTimeControls } from '@/features/billboard/all-time/AllTimeControls'
+import { AllTimeToolbar } from '@/features/billboard/all-time/AllTimeToolbar'
 import {
   ALL_TIME_PAGE_SIZE,
   EMPTY_ALL_TIME_ROWS,
@@ -14,14 +16,21 @@ import {
   TABS,
   buildAllTimeRows,
   getMaxBarValue,
+  getColumnsForTab,
   getRowsForTab,
+  loadVisibleColumnIds,
+  recommendedVisibleColumnIds,
+  saveVisibleColumnIds,
   selectAllTimeRows,
+  visibleColumnsForTab,
   type ColumnDef,
   type AllTimeRow,
   type EntityTab,
   type PeakFilter,
 } from '@/features/billboard/all-time/allTimeData'
 import { useBillboardAllTime } from '@/hooks/useBillboard'
+import { useAnalysisFilters } from '@/hooks/useAnalysis'
+import { buildBillboardContextParams } from '@/features/billboard/billboardContext'
 import { cn } from '@/lib/utils'
 
 let cachedEntityTab: EntityTab = 'tracks'
@@ -65,9 +74,12 @@ function ErrorState({ error, refetch }: { error: string; refetch: () => void }) 
 }
 
 export function AllTimeChartsPage() {
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
   const mergeLevel = Number(searchParams.get('merge_level') ?? getDefaultMergeLevel())
-  const { data, loading, error, refetch } = useBillboardAllTime(mergeLevel)
+  const searchQuery = searchParams.get('q') ?? ''
+  const { filters, loading: filtersLoading } = useAnalysisFilters()
+  const billboardParams = buildBillboardContextParams({ ...filters, merge_level: mergeLevel })
+  const { data, loading, error, refetch } = useBillboardAllTime(mergeLevel, filters.include_compilations, billboardParams, !filtersLoading)
   const [activeTab, setActiveTab] = useState<EntityTab>(cachedEntityTab)
   const [peakFilter, setPeakFilter] = useState<PeakFilter>(cachedPeakFilter)
   const [page, setPage] = useState(cachedPage)
@@ -77,13 +89,17 @@ export function AllTimeChartsPage() {
   const [sortDirAlbum, setSortDirAlbum] = useState<'asc' | 'desc'>(cachedSortDirAlbum)
   const [sortKeyArtist, setSortKeyArtist] = useState(cachedSortKeyArtist)
   const [sortDirArtist, setSortDirArtist] = useState<'asc' | 'desc'>(cachedSortDirArtist)
+  const [visibleColumnsByTab, setVisibleColumnsByTab] = useState<Record<EntityTab, string[]>>(() => ({
+    tracks: loadVisibleColumnIds('tracks'),
+    albums: loadVisibleColumnIds('albums'),
+    artists: loadVisibleColumnIds('artists'),
+  }))
 
   const sortKey = activeTab === 'tracks' ? sortKeyTrack : activeTab === 'albums' ? sortKeyAlbum : sortKeyArtist
   const sortDir = activeTab === 'tracks' ? sortDirTrack : activeTab === 'albums' ? sortDirAlbum : sortDirArtist
   const setSortKey = activeTab === 'tracks' ? setSortKeyTrack : activeTab === 'albums' ? setSortKeyAlbum : setSortKeyArtist
   const setSortDir = activeTab === 'tracks' ? setSortDirTrack : activeTab === 'albums' ? setSortDirAlbum : setSortDirArtist
 
-  useEffect(() => { setPage(1) }, [activeTab, peakFilter, sortKey, sortDir])
   useEffect(() => { cachedEntityTab = activeTab }, [activeTab])
   useEffect(() => { cachedPeakFilter = peakFilter }, [peakFilter])
   useEffect(() => { cachedPage = page }, [page])
@@ -96,8 +112,12 @@ export function AllTimeChartsPage() {
 
   const allTimeRows = useMemo(() => data ? buildAllTimeRows(data) : EMPTY_ALL_TIME_ROWS, [data])
   const displayRows = useMemo(
-    () => selectAllTimeRows(allTimeRows, activeTab, peakFilter, sortKey, sortDir),
-    [activeTab, allTimeRows, peakFilter, sortDir, sortKey],
+    () => selectAllTimeRows(allTimeRows, activeTab, peakFilter, sortKey, sortDir, searchQuery),
+    [activeTab, allTimeRows, peakFilter, searchQuery, sortDir, sortKey],
+  )
+  const visibleColumns = useMemo(
+    () => visibleColumnsForTab(activeTab, visibleColumnsByTab[activeTab]),
+    [activeTab, visibleColumnsByTab],
   )
   const maxBarValue = useMemo(
     () => getMaxBarValue(getRowsForTab(allTimeRows, activeTab), activeTab),
@@ -106,6 +126,7 @@ export function AllTimeChartsPage() {
 
   function handleColumnClick(column: ColumnDef<AllTimeRow>) {
     if (!column.sortable) return
+    setPage(1)
     if (sortKey === column.key) {
       setSortDir(sortDir === 'desc' ? 'asc' : 'desc')
     } else {
@@ -114,7 +135,26 @@ export function AllTimeChartsPage() {
     }
   }
 
-  if (loading) return <SkeletonBlock />
+  function updateSearchQuery(value: string) {
+    setPage(1)
+    setSearchParams((current) => {
+      const next = new URLSearchParams(current)
+      if (value) next.set('q', value)
+      else next.delete('q')
+      return next
+    }, { replace: true })
+  }
+
+  function updateVisibleColumns(ids: string[]) {
+    saveVisibleColumnIds(activeTab, ids)
+    setVisibleColumnsByTab((current) => ({ ...current, [activeTab]: ids }))
+  }
+
+  function restoreRecommendedColumns() {
+    updateVisibleColumns(recommendedVisibleColumnIds(activeTab))
+  }
+
+  if (loading || filtersLoading) return <SkeletonBlock />
   if (error) return <ErrorState error={error} refetch={refetch} />
   if (!data) return null
 
@@ -140,6 +180,8 @@ export function AllTimeChartsPage() {
             onClick={() => {
               cachedEntityTab = tab.key
               setActiveTab(tab.key)
+              setPage(1)
+              updateSearchQuery('')
             }}
             className={cn(
               '-mb-px border-none bg-transparent px-0 pb-2.5 font-sans text-[13px] font-medium transition-[color,border] duration-200',
@@ -154,8 +196,9 @@ export function AllTimeChartsPage() {
         ))}
       </div>
 
-      <div className="mb-5 flex items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
+      <AllTimeToolbar
+        filters={(
+          <>
           <span className="font-sans text-[12px] font-medium uppercase tracking-[1px] text-muted-foreground">
             筛选
           </span>
@@ -178,18 +221,31 @@ export function AllTimeChartsPage() {
               </button>
             ))}
           </div>
-        </div>
-        <Pagination
-          page={Math.min(page, Math.max(1, Math.ceil(displayRows.rows.length / ALL_TIME_PAGE_SIZE)))}
-          totalPages={Math.max(1, Math.ceil(displayRows.rows.length / ALL_TIME_PAGE_SIZE))}
-          onPageChange={setPage}
-        />
-      </div>
+          </>
+        )}
+        fieldsSearch={(
+          <AllTimeControls
+            query={searchQuery}
+            onQueryChange={updateSearchQuery}
+            columns={getColumnsForTab(activeTab)}
+            visibleColumnIds={visibleColumnsByTab[activeTab]}
+            onVisibleColumnIdsChange={updateVisibleColumns}
+            onRestoreRecommended={restoreRecommendedColumns}
+          />
+        )}
+        pagination={(
+          <Pagination
+            page={Math.min(page, Math.max(1, Math.ceil(displayRows.rows.length / ALL_TIME_PAGE_SIZE)))}
+            totalPages={Math.max(1, Math.ceil(displayRows.rows.length / ALL_TIME_PAGE_SIZE))}
+            onPageChange={setPage}
+          />
+        )}
+      />
 
       <AllTimeTable
         activeTab={activeTab}
         rows={displayRows.rows}
-        columns={displayRows.columns}
+        columns={visibleColumns}
         total={displayRows.total}
         sortKey={sortKey}
         sortDir={sortDir}
@@ -198,6 +254,7 @@ export function AllTimeChartsPage() {
         maxBarValue={maxBarValue}
         onColumnClick={handleColumnClick}
         onPageChange={setPage}
+        emptyMessage={searchQuery ? '没有匹配当前搜索的结果' : '暂无数据'}
       />
     </>
   )

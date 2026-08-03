@@ -35,7 +35,11 @@ const COLUMN_WIDTH_DEFAULTS: Record<string, number> = {
   weeks_top5: 72,
   weeks_top10: 72,
   power_score: 80,
-  power_rank: 72,
+  power_rank: 88,
+  track_power_sum: 116,
+  track_power_rank: 108,
+  album_power_sum: 116,
+  album_power_rank: 108,
   total_chart_plays: 110,
   total_plays: 110,
   total_tracks: 72,
@@ -68,16 +72,15 @@ function saveColumnWidths(widths: Record<string, number>) {
 }
 
 function CoverImg({ url }: { url?: string | null }) {
-  const [imgError, setImgError] = useState(false)
-  useEffect(() => { setImgError(false) }, [url])
+  const [failedUrl, setFailedUrl] = useState<string | null>(null)
 
-  if (url && !imgError) {
+  if (url && failedUrl !== url) {
     return (
       <img
         src={url}
         alt=""
         className="h-10 w-10 shrink-0 rounded-[8px] object-cover"
-        onError={() => setImgError(true)}
+        onError={() => setFailedUrl(url)}
         loading="lazy"
       />
     )
@@ -183,7 +186,7 @@ export function Pagination({
   onPageChange: (page: number | ((current: number) => number)) => void
 }) {
   return (
-    <div className="flex items-center gap-1">
+    <nav aria-label="总榜分页" className="flex items-center gap-1">
       <span className="mr-2 font-sans text-[12px] text-muted-foreground tabular-nums">
         {page} / {totalPages}
       </span>
@@ -219,7 +222,7 @@ export function Pagination({
       >
         <ChevronsRight className="h-4 w-4" />
       </button>
-    </div>
+    </nav>
   )
 }
 
@@ -233,6 +236,7 @@ interface AllTimeTableProps {
   page: number
   pageSize: number
   maxBarValue: number
+  emptyMessage?: string
   onColumnClick: (column: ColumnDef<AllTimeRow>) => void
   onPageChange: (page: number | ((current: number) => number)) => void
 }
@@ -247,15 +251,16 @@ export function AllTimeTable({
   page,
   pageSize,
   maxBarValue,
+  emptyMessage = '暂无数据',
   onColumnClick,
 }: AllTimeTableProps) {
   const [columnWidths, setColumnWidths] = useState<Record<string, number>>(loadColumnWidths)
   const columnWidthsRef = useRef(columnWidths)
-  columnWidthsRef.current = columnWidths
+  useEffect(() => { columnWidthsRef.current = columnWidths }, [columnWidths])
   const didResizeRef = useRef(false)
   const [resizing, setResizing] = useState<{ key: string; startX: number; startWidth: number } | null>(null)
 
-  const getColWidth = (key: string) => columnWidths[key] ?? COLUMN_WIDTH_DEFAULTS[key] ?? 80
+  const getColWidth = (key: string, fallback?: number) => columnWidths[key] ?? COLUMN_WIDTH_DEFAULTS[key] ?? fallback ?? 80
 
   useEffect(() => {
     if (!resizing) return
@@ -293,25 +298,44 @@ export function AllTimeTable({
     onColumnClick(column)
   }
 
+  function resizeColumnByKeyboard(key: string, delta: number) {
+    setColumnWidths((current) => {
+      const width = current[key] ?? COLUMN_WIDTH_DEFAULTS[key] ?? 80
+      const next = { ...current, [key]: Math.max(48, width + delta) }
+      saveColumnWidths(next)
+      return next
+    })
+  }
+
   function renderTableCell(row: AllTimeRow, column: ColumnDef<AllTimeRow>) {
     const rawValue = column.getValue(row)
     const isSortCol = column.key === sortKey
-    const isRankCol = column.rankStyle && typeof rawValue === 'number'
+    const isRankCol = column.rankStyle && typeof rawValue === 'number' && Number.isFinite(rawValue)
     const showBar = isTotalPlaysCol(column.key) && typeof rawValue === 'number'
+    const pinTrackPlayValueRight = column.key === 'total_chart_plays'
 
     return (
       <td
         key={column.key}
+        data-column-key={column.key}
         className={cn(
           'whitespace-nowrap px-3 py-2.5 tabular-nums',
+          pinTrackPlayValueRight && 'relative',
           isRankCol ? 'font-serif text-[17px] font-semibold' : 'font-sans text-[13px]',
           column.align === 'right' ? 'text-right' : column.align === 'center' ? 'text-center' : 'text-left',
           isRankCol ? rankColorClass(rawValue) : isSortCol ? 'font-semibold text-accent-foreground' : 'text-foreground/80',
         )}
       >
-        {isRankCol ? String(rawValue).padStart(2, '0') : column.format(row)}
+        <span className={cn(pinTrackPlayValueRight && 'relative z-[1] inline-block text-right')}>
+          {isRankCol ? String(rawValue).padStart(2, '0') : column.format(row)}
+        </span>
         {showBar && (
-          <span className="ml-2 inline-block h-[3px] w-[70px] rounded-[2px] bg-muted align-middle">
+          <span className={cn(
+            'h-[3px] w-[70px] rounded-[2px] bg-muted',
+            pinTrackPlayValueRight
+              ? 'absolute bottom-1.5 right-3'
+              : 'ml-2 inline-block align-middle',
+          )}>
             <span
               className="block h-full rounded-[2px] bg-accent-foreground transition-[width] duration-300"
               style={{ width: `${Math.round((rawValue / maxBarValue) * 100)}%` }}
@@ -327,19 +351,23 @@ export function AllTimeTable({
       <GlassCard className="overflow-x-auto p-0">
         <table
           className="table-fixed border-collapse"
-          style={{ width: 44 + getColWidth(`_name_${activeTab}`) + columns.reduce((sum, column) => sum + getColWidth(column.key), 0) }}
+          style={{ width: 44 + getColWidth(`_name_${activeTab}`) + columns.reduce((sum, column) => sum + getColWidth(column.key, column.minWidth), 0) }}
         >
           <thead>
             <tr className="border-b border-border">
-              <th style={{ width: 44 }} className="sticky top-0 z-10 bg-card px-2 py-3 text-center font-sans text-[10px] font-bold uppercase tracking-[1.2px] text-muted-foreground">
+              <th style={{ width: 44 }} className="sticky left-0 top-0 z-30 bg-card px-2 py-3 text-right font-sans text-[10px] font-bold uppercase tracking-[1.2px] text-muted-foreground">
                 #
               </th>
               <th
                 style={{ width: getColWidth(`_name_${activeTab}`) }}
-                className="relative sticky top-0 z-10 bg-card px-3 py-3 text-left font-sans text-[10px] font-bold uppercase tracking-[1.2px] text-muted-foreground"
+                className="relative sticky left-[44px] top-0 z-20 bg-card px-3 py-3 text-left font-sans text-[10px] font-bold uppercase tracking-[1.2px] text-muted-foreground"
               >
                 名称
                 <div
+                  role="separator"
+                  aria-label="调整名称列宽"
+                  aria-orientation="vertical"
+                  tabIndex={0}
                   className="absolute bottom-0 right-0 top-0 w-[6px] cursor-col-resize transition-colors hover:bg-accent-foreground/25"
                   onMouseDown={(event) => {
                     event.preventDefault()
@@ -347,13 +375,20 @@ export function AllTimeTable({
                     const key = `_name_${activeTab}`
                     setResizing({ key, startX: event.clientX, startWidth: getColWidth(key) })
                   }}
+                  onKeyDown={(event) => {
+                    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
+                    event.preventDefault()
+                    resizeColumnByKeyboard(`_name_${activeTab}`, event.key === 'ArrowLeft' ? -8 : 8)
+                  }}
                 />
               </th>
               {columns.map((column) => (
                 <th
                   key={column.key}
+                  data-column-key={column.key}
                   onClick={() => handleHeaderClick(column)}
-                  style={{ width: getColWidth(column.key) }}
+                  style={{ width: getColWidth(column.key, column.minWidth) }}
+                  title={column.description}
                   className={cn(
                     'relative sticky top-0 z-10 cursor-pointer select-none whitespace-nowrap bg-card px-2 py-3 font-sans text-[10px] font-bold uppercase tracking-[1.2px] transition-colors hover:text-foreground',
                     column.align === 'right' ? 'text-right' : 'text-left',
@@ -363,11 +398,21 @@ export function AllTimeTable({
                   {column.label}
                   <SortIcon active={column.key === sortKey} dir={column.key === sortKey ? sortDir : 'desc'} />
                   <div
+                    role="separator"
+                    aria-label={`调整${column.label}列宽`}
+                    aria-orientation="vertical"
+                    tabIndex={0}
                     className="absolute bottom-0 right-0 top-0 w-[6px] cursor-col-resize transition-colors hover:bg-accent-foreground/25"
                     onMouseDown={(event) => {
                       event.preventDefault()
                       event.stopPropagation()
                       setResizing({ key: column.key, startX: event.clientX, startWidth: getColWidth(column.key) })
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
+                      event.preventDefault()
+                      event.stopPropagation()
+                      resizeColumnByKeyboard(column.key, event.key === 'ArrowLeft' ? -8 : 8)
                     }}
                   />
                 </th>
@@ -375,19 +420,19 @@ export function AllTimeTable({
             </tr>
           </thead>
           <tbody>
-            {paginatedRows.map((row, index) => {
-              const globalIndex = (safePage - 1) * pageSize + index
+            {paginatedRows.map((row) => {
               return (
                 <tr key={rowKey(activeTab, row)} className="border-b border-border/50 transition-colors hover:bg-muted/50">
                   <td
                     className={cn(
-                      'px-2 py-2.5 text-center font-serif text-[17px] font-semibold tabular-nums',
-                      rankColorClass(globalIndex + 1),
+                      'sticky left-0 z-20 bg-card px-2 py-2.5 text-right font-serif text-[17px] font-semibold tabular-nums',
+                      rankColorClass(row.power_rank),
                     )}
+                    title="当前完整总榜走势排名；搜索、分页和字段隐藏不会重算"
                   >
-                    {String(globalIndex + 1).padStart(2, '0')}
+                    {String(row.power_rank).padStart(2, '0')}
                   </td>
-                  <td className="px-3 py-2.5" style={{ maxWidth: getColWidth(`_name_${activeTab}`) }}>
+                  <td className="sticky left-[44px] z-10 bg-card px-3 py-2.5" style={{ maxWidth: getColWidth(`_name_${activeTab}`) }}>
                     {renderNameCell(activeTab, row)}
                   </td>
                   {columns.map((column) => renderTableCell(row, column))}
@@ -397,7 +442,7 @@ export function AllTimeTable({
             {paginatedRows.length === 0 && (
               <tr>
                 <td colSpan={2 + columns.length} className="px-3 py-16 text-center font-sans text-[14px] text-muted-foreground">
-                  暂无数据
+                  {emptyMessage}
                 </td>
               </tr>
             )}
@@ -406,7 +451,7 @@ export function AllTimeTable({
       </GlassCard>
 
       <p className="mb-5 font-sans text-[12px] text-muted-foreground">
-        显示 {(safePage - 1) * pageSize + 1}-{Math.min(safePage * pageSize, rows.length)} / 总数 {formatNumber(rows.length)} 条
+        显示 {rows.length === 0 ? 0 : (safePage - 1) * pageSize + 1}-{Math.min(safePage * pageSize, rows.length)} / 总数 {formatNumber(rows.length)} 条
         {rows.length !== total && <>（共 {formatNumber(total)} 条）</>}
       </p>
     </>

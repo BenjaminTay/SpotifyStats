@@ -39,6 +39,42 @@ class BillboardMeta(BaseModel):
     week_start_hour: int
 
 
+class TrackPowerScoreRow(BaseModel):
+    model_config = {"extra": "allow"}
+    track_id: int
+    track_name: str
+    artist_name: str
+    power_score: int
+    peak_position: int
+    weeks_on_chart: int
+    power_rank: int
+
+
+class AlbumPowerScoreRow(BaseModel):
+    model_config = {"extra": "allow"}
+    album_name: str
+    artist_name: str
+    power_score: int
+    peak_position: int
+    weeks_on_chart: int
+    power_rank: int
+    track_power_sum: int = 0
+    track_power_rank: int | None = None
+
+
+class ArtistPowerScoreRow(BaseModel):
+    model_config = {"extra": "allow"}
+    artist_name: str
+    power_score: int
+    peak_position: int
+    weeks_on_chart: int
+    power_rank: int
+    track_power_sum: int = 0
+    track_power_rank: int | None = None
+    album_power_sum: int = 0
+    album_power_rank: int | None = None
+
+
 class BillboardDataResponse(BaseModel):
     model_config = {"extra": "allow"}
     meta: BillboardMeta
@@ -51,9 +87,9 @@ class BillboardDataResponse(BaseModel):
     album_track_counts: list[dict]
     track_per_album: list[dict]
     records: dict
-    power_scores: list[dict]
-    album_power_scores: list[dict]
-    artist_power_scores: list[dict]
+    power_scores: list[TrackPowerScoreRow]
+    album_power_scores: list[AlbumPowerScoreRow]
+    artist_power_scores: list[ArtistPowerScoreRow]
 
 
 class BillboardWeeklyResponse(BaseModel):
@@ -69,9 +105,9 @@ class BillboardRecordsResponse(BaseModel):
 
 
 class BillboardPowerScoresResponse(BaseModel):
-    power_scores: list[dict]
-    album_power_scores: list[dict]
-    artist_power_scores: list[dict]
+    power_scores: list[TrackPowerScoreRow]
+    album_power_scores: list[AlbumPowerScoreRow]
+    artist_power_scores: list[ArtistPowerScoreRow]
 
 
 class BillboardSummariesResponse(BaseModel):
@@ -84,6 +120,17 @@ class BillboardSummariesResponse(BaseModel):
 
 class BillboardAllTimeResponse(BaseModel):
     model_config = {"extra": "allow"}
+    meta: BillboardMeta
+    weekly: list[dict]
+    weekly_album: list[dict]
+    weekly_artist: list[dict]
+    power_scores: list[TrackPowerScoreRow]
+    album_power_scores: list[AlbumPowerScoreRow]
+    artist_power_scores: list[ArtistPowerScoreRow]
+    track_summary: list[dict]
+    artist_summary: list[dict]
+    album_track_counts: list[dict]
+    artist_track_counts: list[dict]
 
 
 def _billboard_params(filters: BillboardFilters):
@@ -158,6 +205,9 @@ def get_billboard_records(
 def get_billboard_power_scores(
     filters: BillboardFilters = Depends(),
     merge_cfg: MergeConfig = Depends(),
+    include_compilations: bool = Query(
+        default=False, description="Include compilation albums in album chart (R14)"
+    ),
 ):
     """Power scores for tracks, albums, and artists.
 
@@ -165,7 +215,9 @@ def get_billboard_power_scores(
     each with power_rank, weeks_top5, weeks_top10.
     """
     return compute_power_scores_staged(
-        **_billboard_params(filters), merge_level=merge_cfg.merge_level
+        **_billboard_params(filters),
+        merge_level=merge_cfg.merge_level,
+        include_compilations=include_compilations,
     )
 
 
@@ -173,13 +225,20 @@ def get_billboard_power_scores(
 def get_billboard_summaries(
     filters: BillboardFilters = Depends(),
     merge_cfg: MergeConfig = Depends(),
+    include_compilations: bool = Query(
+        default=False, description="Include compilation albums in album chart (R14)"
+    ),
 ):
     """Track/artist/album summaries and counts.
 
     Returns track_summary, artist_summary, album_track_counts,
     artist_track_counts.
     """
-    return compute_summaries_staged(**_billboard_params(filters), merge_level=merge_cfg.merge_level)
+    return compute_summaries_staged(
+        **_billboard_params(filters),
+        merge_level=merge_cfg.merge_level,
+        include_compilations=include_compilations,
+    )
 
 
 @router.get("/all-time", response_model=BillboardAllTimeResponse)
@@ -202,6 +261,10 @@ def get_billboard_all_time(
         merge_level=ml,
         include_compilations=include_compilations,
     )
-    power = compute_power_scores_staged(**params, merge_level=ml)
-    summaries = compute_summaries_staged(**params, merge_level=ml)
+    power = compute_power_scores_staged(
+        **params, merge_level=ml, include_compilations=include_compilations
+    )
+    summaries = compute_summaries_staged(
+        **params, merge_level=ml, include_compilations=include_compilations
+    )
     return {**weekly, **power, **summaries}

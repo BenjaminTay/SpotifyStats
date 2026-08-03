@@ -45,6 +45,7 @@ from backend.domains.billboard.chart_summaries import (
     compute_artist_track_counts,
     compute_track_summary,
 )
+from backend.domains.billboard.cross_level_power import attach_cross_level_power_metrics
 from backend.domains.billboard.data_loader import (
     DOW_NAMES,
     DOW_SHORT,
@@ -108,6 +109,13 @@ def _compute_billboard_data_cached(
     power_scores = compute_power_scores(weekly, bb_top_n)
     album_power_scores = compute_album_power_scores(weekly_album, bb_album_top_n)
     artist_power_scores = compute_artist_power_scores(weekly_artist, bb_artist_top_n)
+    album_power_scores, artist_power_scores = attach_cross_level_power_metrics(
+        album_power_scores,
+        artist_power_scores,
+        power_scores,
+        track_per_album,
+        artist_summary,
+    )
 
     # ── Records ────────────────────────────────────────────────────────
     from backend.domains.billboard.records import (  # noqa: E402

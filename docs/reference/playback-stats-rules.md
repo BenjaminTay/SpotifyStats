@@ -641,6 +641,13 @@ Billboard Year-End 年榜不是单纯的年度播放量榜。它先使用当前 
 - 详情页版本列表刷新。
 - 有效播放事件总数不变。
 
+#### 总榜跨层级走势指标
+
+- 专辑 `track_power_sum` 是当前统计上下文中、由该 album project membership 归属且已进入单曲榜的 canonical tracks 的 Power Score 去重求和；同名专辑必须同时以 canonical artist 消歧。
+- 艺人 `track_power_sum` 按 credited canonical artist fan-out 汇总已入榜歌曲，同一稳定歌曲/艺人身份只贡献一次；`album_power_sum` 汇总该 canonical artist 的已入榜 album projects。
+- `track_power_rank` / `album_power_rank` 只在当前完整同类总榜实体集合中对正值使用 competition rank（并列共享最小名次）；零贡献显示 0，派生排名为 `null`。
+- 表内搜索、分页和列显示偏好只是客户端展示控制，不得改变 Power Score、上述聚合值或任何原始/派生排名。
+
 ---
 
 ## 13. 数据关系要求

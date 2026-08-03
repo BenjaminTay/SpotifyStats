@@ -4,6 +4,11 @@ import pandas as pd
 
 from backend.core.db import fan_out_weekly_for_artists, get_db
 from backend.domains.billboard.chart_compute import compute_billboard_data
+from backend.domains.billboard.cross_level_power import (
+    compute_album_track_power_metrics,
+    compute_artist_album_power_metrics,
+    compute_artist_track_power_metrics,
+)
 from backend.domains.metadata.artist_genres import resolve_artist_genres
 from backend.domains.metadata.artist_identity import resolve_artist_name
 from backend.domains.metadata.artist_spotify_meta import resolve_artist_spotify_meta
@@ -481,17 +486,16 @@ def _compute_album_track_ranks(track_per_album, power_scores):
     track_album = track_per_album[["track_id", "album_name", "artist_name"]].drop_duplicates()
     ps = power_scores[["track_id", "power_score", "peak_position", "weeks_on_chart"]]
     merged = track_album.merge(ps, on="track_id", how="inner")
-    agg = (
+    detail = (
         merged.groupby(["album_name", "artist_name"])
         .agg(
-            track_power_sum=("power_score", "sum"),
             track_peak_position=("peak_position", "min"),
             total_track_weeks=("weeks_on_chart", "sum"),
         )
         .reset_index()
     )
-    agg["track_power_rank"] = agg["track_power_sum"].rank(ascending=False, method="min").astype(int)
-    return agg
+    ranked = compute_album_track_power_metrics(track_album, track_album, power_scores)
+    return ranked.merge(detail, on=["album_name", "artist_name"], how="left")
 
 
 def _compute_artist_track_ranks(weekly_fanned, power_scores):
@@ -499,32 +503,30 @@ def _compute_artist_track_ranks(weekly_fanned, power_scores):
     track_artist = weekly_fanned[["track_id", "artist_name"]].drop_duplicates()
     ps = power_scores[["track_id", "power_score", "peak_position", "weeks_on_chart"]]
     merged = track_artist.merge(ps, on="track_id", how="inner")
-    agg = (
+    detail = (
         merged.groupby("artist_name")
         .agg(
-            track_power_sum=("power_score", "sum"),
             track_peak_position=("peak_position", "min"),
             total_track_weeks=("weeks_on_chart", "sum"),
         )
         .reset_index()
     )
-    agg["track_power_rank"] = agg["track_power_sum"].rank(ascending=False, method="min").astype(int)
-    return agg
+    ranked = compute_artist_track_power_metrics(track_artist, track_artist, power_scores)
+    return ranked.merge(detail, on="artist_name", how="left")
 
 
 def _compute_artist_album_ranks(album_power_scores):
     """Compute album_power_rank / album_peak_position / total_album_weeks per artist."""
-    agg = (
+    detail = (
         album_power_scores.groupby("artist_name")
         .agg(
-            album_power_sum=("power_score", "sum"),
             album_peak_position=("peak_position", "min"),
             total_album_weeks=("weeks_on_chart", "sum"),
         )
         .reset_index()
     )
-    agg["album_power_rank"] = agg["album_power_sum"].rank(ascending=False, method="min").astype(int)
-    return agg
+    ranked = compute_artist_album_power_metrics(album_power_scores, album_power_scores)
+    return ranked.merge(detail, on="artist_name", how="left")
 
 
 def _lookup_album_track_rank(ranks_df, album_name, artist_name):
@@ -532,13 +534,15 @@ def _lookup_album_track_rank(ranks_df, album_name, artist_name):
     row = ranks_df[
         (ranks_df["album_name"] == album_name) & (ranks_df["artist_name"] == artist_name)
     ]
-    return int(row.iloc[0]["track_power_rank"]) if not row.empty else None
+    if row.empty or pd.isna(row.iloc[0]["track_power_rank"]):
+        return None
+    return int(row.iloc[0]["track_power_rank"])
 
 
 def _lookup_artist_track_metrics(ranks_df, artist_name):
     """Look up track-level artist metrics from pre-computed ranks DataFrame."""
     row = ranks_df[ranks_df["artist_name"] == artist_name]
-    if row.empty:
+    if row.empty or pd.isna(row.iloc[0]["track_power_rank"]):
         return {"track_power_rank": None, "track_peak_position": None, "total_track_weeks": None}
     r = row.iloc[0]
     return {
@@ -551,7 +555,7 @@ def _lookup_artist_track_metrics(ranks_df, artist_name):
 def _lookup_artist_album_metrics(ranks_df, artist_name):
     """Look up album-level artist metrics from pre-computed ranks DataFrame."""
     row = ranks_df[ranks_df["artist_name"] == artist_name]
-    if row.empty:
+    if row.empty or pd.isna(row.iloc[0]["album_power_rank"]):
         return {"album_power_rank": None, "album_peak_position": None, "total_album_weeks": None}
     r = row.iloc[0]
     return {

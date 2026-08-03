@@ -23,7 +23,6 @@ def compute_weekly_data(
     max_merge_gap_minutes=None,
     include_compilations=False,
 ):
-    """Compute weekly rankings + meta only (no summaries, no records)."""
     return _compute_weekly_data_cached(
         min_ms,
         music_only,
@@ -54,8 +53,8 @@ def compute_power_scores_staged(
     merge_level=2,
     dynamic_threshold=False,
     max_merge_gap_minutes=None,
+    include_compilations=False,
 ):
-    """Compute power scores only (track, album, artist)."""
     return _compute_power_scores_cached(
         min_ms,
         music_only,
@@ -69,6 +68,7 @@ def compute_power_scores_staged(
         merge_level,
         dynamic_threshold=dynamic_threshold,
         max_merge_gap_minutes=max_merge_gap_minutes,
+        include_compilations=include_compilations,
     )
 
 
@@ -85,8 +85,8 @@ def compute_summaries_staged(
     merge_level=2,
     dynamic_threshold=False,
     max_merge_gap_minutes=None,
+    include_compilations=False,
 ):
-    """Compute summaries only."""
     return _compute_summaries_cached(
         min_ms,
         music_only,
@@ -100,6 +100,7 @@ def compute_summaries_staged(
         merge_level,
         dynamic_threshold=dynamic_threshold,
         max_merge_gap_minutes=max_merge_gap_minutes,
+        include_compilations=include_compilations,
     )
 
 
@@ -117,7 +118,6 @@ def compute_records_staged(
     dynamic_threshold=False,
     max_merge_gap_minutes=None,
 ):
-    """Compute records only."""
     return _compute_records_cached(
         min_ms,
         music_only,

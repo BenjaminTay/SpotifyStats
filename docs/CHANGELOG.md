@@ -1,5 +1,12 @@
 # 变更日志
 
+## 2026-08-03 — Billboard 总榜跨层级指标与表格控制
+
+- 专辑总榜新增成员歌曲走势点数/排名；艺人总榜新增 credited canonical 歌曲与专辑走势点数/排名。聚合复用详情与对决的 album project membership、artist fan-out 和 identity 去重语义，并以当前完整同类总榜为排名集合；正值按 competition rank 排名，零贡献显示 0 且不生成虚假名次。
+- `/api/billboard/all-time`、`/power-scores` 与生成类型补齐新字段，并把 `include_compilations` 纳入 staged power/summary 缓存参数；不改变实体自身 Power Score、主排名或周榜筛选口径。
+- 单曲、专辑、艺人总榜加入客户端表内搜索和各自独立持久化的字段菜单。名称和当前总榜排名固定显示，实体走势评分与走势排名可独立选择；无效旧字段配置会被忽略，新字段按推荐值迁移，可一键恢复经过桌面/移动端信息密度校准的推荐列集。
+- 数值列统一右对齐并保留列宽拖拽；单曲榜桌面工具栏按“筛选 → 字段/搜索 → 分页”收口为单行，分页恢复为上一页/当前页提示/下一页的既有紧凑形态，移动端继续自适应换行且不引入页面级横向滚动。
+
 ## 2026-08-03 — 未入榜音乐实体详情页
 
 - 将歌曲、专辑、艺人详情的存在资格从 Billboard Top-N summaries 中拆出，复用全局搜索与个人实体统计的有效播放管线；有效播放实体即使暂未入榜也返回 200，并保留 canonical track、album project + canonical artist、artist identity alias 语义。

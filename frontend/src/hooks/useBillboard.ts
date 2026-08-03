@@ -233,11 +233,17 @@ export function preloadAllTimeData(): void {
   })
 }
 
-export function useBillboardAllTime(mergeLevel = 2, includeCompilations = false) {
-  const params = { merge_level: mergeLevel, include_compilations: includeCompilations }
+export function useBillboardAllTime(
+  mergeLevel = 2,
+  includeCompilations = false,
+  contextParams: Record<string, string | number | boolean> = {},
+  enabled = true,
+) {
+  const params = { ...contextParams, merge_level: mergeLevel, include_compilations: includeCompilations }
   const query = useQuery({
     queryKey: queryKeys.billboard.allTime(params),
     queryFn: () => api.get<BillboardAllTimeResponse>('/billboard/all-time', params),
+    enabled,
   })
 
   return {

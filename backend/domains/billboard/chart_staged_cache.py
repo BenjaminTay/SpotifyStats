@@ -23,6 +23,7 @@ from backend.domains.billboard.chart_summaries import (
     compute_artist_track_counts,
     compute_track_summary,
 )
+from backend.domains.billboard.cross_level_power import attach_cross_level_power_metrics
 from backend.domains.billboard.data_loader import (
     DOW_NAMES,
     DOW_SHORT,
@@ -146,8 +147,9 @@ def _compute_power_scores_cached(
     merge_level=2,
     dynamic_threshold=False,
     max_merge_gap_minutes=None,
+    include_compilations=False,
 ):
-    weekly, weekly_album, weekly_artist, *_extra = _load_and_rank(
+    weekly, weekly_album, weekly_artist, *_all_weeks, df_filtered, album_total_map = _load_and_rank(
         min_ms,
         music_only,
         bb_top_n,
@@ -160,14 +162,26 @@ def _compute_power_scores_cached(
         merge_level,
         dynamic_threshold=dynamic_threshold,
         max_merge_gap_minutes=max_merge_gap_minutes,
+        include_compilations=include_compilations,
     )
-    album_total_map = _extra[-1] if len(_extra) >= 1 else {}
+
+    track_summary = compute_track_summary(weekly, df_filtered)
+    artist_summary = compute_artist_summary(weekly)
+    _album_counts, track_per_album = compute_album_track_counts(
+        track_summary, load_track_album_map(), weekly_album
+    )
 
     weekly = enrich_track_artist_names(weekly)
-
     power_scores = compute_power_scores(weekly, bb_top_n)
     album_power_scores = compute_album_power_scores(weekly_album, bb_album_top_n)
     artist_power_scores = compute_artist_power_scores(weekly_artist, bb_artist_top_n)
+    album_power_scores, artist_power_scores = attach_cross_level_power_metrics(
+        album_power_scores,
+        artist_power_scores,
+        power_scores,
+        track_per_album,
+        artist_summary,
+    )
 
     # Inject unfiltered total_plays into album power scores
     if isinstance(album_total_map, dict) and album_total_map:
@@ -197,6 +211,7 @@ def _compute_summaries_cached(
     merge_level=2,
     dynamic_threshold=False,
     max_merge_gap_minutes=None,
+    include_compilations=False,
 ):
     weekly, weekly_album, weekly_artist, *_all_weeks, df_filtered, _album_tm = _load_and_rank(
         min_ms,
@@ -211,6 +226,7 @@ def _compute_summaries_cached(
         merge_level,
         dynamic_threshold=dynamic_threshold,
         max_merge_gap_minutes=max_merge_gap_minutes,
+        include_compilations=include_compilations,
     )
 
     album_map = load_track_album_map()
