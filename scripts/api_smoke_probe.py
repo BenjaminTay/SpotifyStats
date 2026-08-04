@@ -263,7 +263,17 @@ DEFAULT_SAFE_GET_CASES: tuple[SmokeCase, ...] = (
     SmokeCase("music_track_stats", "/api/music/tracks/901/stats", DEFAULT_FILTERS),
     SmokeCase("music_album_stats", "/api/music/albums/Fixture Future LP/stats", DEFAULT_FILTERS),
     SmokeCase(
+        "music_album_rankings",
+        "/api/music/albums/Fixture Future LP/rankings",
+        DEFAULT_FILTERS,
+    ),
+    SmokeCase(
         "music_artist_stats", "/api/music/artists/Fixture Artist Alpha/stats", DEFAULT_FILTERS
+    ),
+    SmokeCase(
+        "music_artist_rankings",
+        "/api/music/artists/Fixture Artist Alpha/rankings",
+        {**DEFAULT_FILTERS, "entity": "track", "metric": "plays", "limit": 5},
     ),
     SmokeCase("music_track_plays", "/api/music/tracks/901/plays", {**DEFAULT_FILTERS, "limit": 5}),
     SmokeCase(

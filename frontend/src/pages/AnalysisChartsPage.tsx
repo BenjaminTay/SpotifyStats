@@ -1,3 +1,5 @@
+import { useState } from 'react'
+import { Search, X } from 'lucide-react'
 import { EntityTabs, MetricToggle, useAnalysisQueryState } from '@/components/shared/AnalysisControls'
 import { GlassCard } from '@/components/shared/GlassCard'
 import { PersonalRankTable } from '@/components/shared/StatsTables'
@@ -11,6 +13,7 @@ const ENTITY_TITLE = {
 }
 
 export function AnalysisChartsPage() {
+  const [searchQuery, setSearchQuery] = useState('')
   const { filters, loading: filtersLoading } = useAnalysisFilters()
   const { metric, entity, setQuery, apiParams } = useAnalysisQueryState('track')
   const { data, loading } = useApiData(
@@ -45,14 +48,38 @@ export function AnalysisChartsPage() {
               {data ? `${data.period.label} · 共 ${data.total.toLocaleString('zh-CN')} 条记录` : '正在加载'}
             </p>
           </div>
-          <div className="flex flex-wrap items-center gap-3">
-            <EntityTabs entity={entity} onChange={(next) => setQuery({ entity: next })} />
+          <div className="flex w-full flex-wrap items-center justify-start gap-3 sm:w-auto sm:justify-end">
+            <label className="relative w-full sm:w-[260px]">
+              <span className="sr-only">在当前播放排行中搜索</span>
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <input
+                type="search"
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                placeholder="在当前榜单中搜索"
+                className="h-9 w-full rounded-full border border-border bg-card/70 pl-9 pr-9 font-sans text-[13px] outline-none transition-colors placeholder:text-muted-foreground focus:border-accent-foreground"
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery('')}
+                  aria-label="清除播放排行搜索"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </label>
+            <EntityTabs entity={entity} onChange={(next) => {
+              setSearchQuery('')
+              setQuery({ entity: next })
+            }} />
           </div>
         </div>
         {loading || !data ? (
           <Skeleton className="h-[520px] rounded-[12px]" />
         ) : (
-          <PersonalRankTable rows={data.rows} entity={entity} metric={metric} />
+          <PersonalRankTable rows={data.rows} entity={entity} metric={metric} searchQuery={searchQuery} />
         )}
       </GlassCard>
     </div>

@@ -76,6 +76,18 @@ class ParameterBoundaryAudit:
 
 
 BOUNDARY_EVIDENCE_BY_KEY: dict[tuple[str, str, str], ParameterEvidence] = {
+    ("query", "entity", "string|enum=track,album"): ParameterEvidence(
+        "targeted_contract",
+        (),
+        "artist personal ranking entity allowlist is covered by its pagination contract",
+        ("backend/tests/contract/test_music_search_counting_consistency.py",),
+    ),
+    ("query", "metric", "string|enum=plays,hours"): ParameterEvidence(
+        "targeted_contract",
+        (),
+        "artist personal ranking metric allowlist is covered by its pagination contract",
+        ("backend/tests/contract/test_music_search_counting_consistency.py",),
+    ),
     ("query", "axis", "string"): ParameterEvidence(
         "targeted_contract",
         (),

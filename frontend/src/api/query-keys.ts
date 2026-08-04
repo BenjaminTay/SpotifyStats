@@ -138,6 +138,13 @@ export const queryKeys = {
       ["music", "search", params] as const,
     artistDetail: (artistName: string, params: Record<string, unknown> = {}) =>
       ["music", "artist-detail", artistName, params] as const,
+    artistRankings: (artistName: string, params: Record<string, unknown> = {}) =>
+      ["music", "artist-rankings", artistName, params] as const,
+    albumRankings: (
+      albumName: string,
+      artistName: string,
+      params: Record<string, unknown> = {},
+    ) => ["music", "album-rankings", albumName, artistName, params] as const,
     trackDetail: (
       trackId: string,
       mergeLevel?: number,

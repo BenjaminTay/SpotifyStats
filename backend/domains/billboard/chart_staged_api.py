@@ -1,5 +1,4 @@
-"""Public staged Billboard chart API wrappers."""
-
+from backend.domains.billboard.chart_load_rank import call_with_billboard_revision_cache
 from backend.domains.billboard.chart_staged_cache import (
     _compute_power_scores_cached,
     _compute_records_cached,
@@ -23,7 +22,7 @@ def compute_weekly_data(
     max_merge_gap_minutes=None,
     include_compilations=False,
 ):
-    return _compute_weekly_data_cached(
+    args = (
         min_ms,
         music_only,
         bb_top_n,
@@ -34,10 +33,11 @@ def compute_weekly_data(
         year_start,
         year_end,
         merge_level,
-        dynamic_threshold=dynamic_threshold,
-        max_merge_gap_minutes=max_merge_gap_minutes,
-        include_compilations=include_compilations,
+        dynamic_threshold,
+        max_merge_gap_minutes,
+        include_compilations,
     )
+    return call_with_billboard_revision_cache(_compute_weekly_data_cached, args)
 
 
 def compute_power_scores_staged(

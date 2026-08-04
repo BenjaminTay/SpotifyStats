@@ -322,7 +322,7 @@ export function BillboardPage() {
                     const trackEntry = isTrackTab ? (entry as WeeklyTrackEntry) : null
                     const subLabel =
                       activeTab === 'artists'
-                        ? `${(entry as WeeklyArtistEntry).tracks_count} 首曲目`
+                        ? `${(entry as WeeklyArtistEntry).tracks_count} 首入榜曲目`
                         : displayName((entry as WeeklyTrackEntry).artist_name)
 
                     // As-of-week metrics from weekly entry (PK, Wks, PK Wks are

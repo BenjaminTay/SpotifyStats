@@ -949,6 +949,7 @@ export interface ArtistTrackEntry {
   [key: string]: any
   track_id: number
   track_name: string
+  artist_names?: string[]
   cover_url: string | null
   peak_position: number
   weeks_on_chart: number

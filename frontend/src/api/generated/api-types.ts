@@ -1904,6 +1904,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/music/albums/{album_name}/rankings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Album Personal Rankings */
+        get: operations["album_personal_rankings_api_music_albums__album_name__rankings_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/music/artists/{artist_name}/rankings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Artist Personal Rankings */
+        get: operations["artist_personal_rankings_api_music_artists__artist_name__rankings_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/music/tracks/{track_id}/plays": {
         parameters: {
             query?: never;
@@ -3328,6 +3362,39 @@ export interface components {
                 [key: string]: unknown;
             }[];
         };
+        /** AlbumPersonalRankingResponse */
+        AlbumPersonalRankingResponse: {
+            /** Found */
+            found: boolean;
+            /** Album Name */
+            album_name?: string | null;
+            /** Artist Name */
+            artist_name?: string | null;
+            /**
+             * Entity
+             * @default track
+             * @constant
+             */
+            entity: "track";
+            /**
+             * Metric
+             * @default plays
+             * @enum {string}
+             */
+            metric: "plays" | "hours";
+            /** Total */
+            total: number;
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Rows */
+            rows: {
+                [key: string]: unknown;
+            }[];
+        } & {
+            [key: string]: unknown;
+        };
         /** AlbumPowerScoreRow */
         AlbumPowerScoreRow: {
             /** Album Name */
@@ -4534,6 +4601,36 @@ export interface components {
         ArtistMultiRequest: {
             /** Artist Names */
             artist_names: string[];
+        };
+        /** ArtistPersonalRankingResponse */
+        ArtistPersonalRankingResponse: {
+            /** Found */
+            found: boolean;
+            /** Artist Name */
+            artist_name?: string | null;
+            /**
+             * Entity
+             * @enum {string}
+             */
+            entity: "track" | "album";
+            /**
+             * Metric
+             * @default plays
+             * @enum {string}
+             */
+            metric: "plays" | "hours";
+            /** Total */
+            total: number;
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Rows */
+            rows: {
+                [key: string]: unknown;
+            }[];
+        } & {
+            [key: string]: unknown;
         };
         /** ArtistPowerScoreRow */
         ArtistPowerScoreRow: {
@@ -13158,6 +13255,107 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EntityStatsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    album_personal_rankings_api_music_albums__album_name__rankings_get: {
+        parameters: {
+            query?: {
+                artist?: string | null;
+                metric?: "plays" | "hours";
+                limit?: number;
+                offset?: number;
+                merge_level?: number;
+                period?: string;
+                start_date?: string | null;
+                end_date?: string | null;
+                /** @description 最短播放时长 (毫秒) */
+                min_ms?: number;
+                /** @description 仅音乐 */
+                music_only?: boolean;
+                /** @description 合并连续播放 */
+                merge_enabled?: boolean;
+                /** @description 使用动态有效播放阈值 */
+                dynamic_threshold?: boolean;
+                /** @description 连续播放最大合并间隔 (分钟) */
+                max_merge_gap_minutes?: number | null;
+                readonly?: boolean;
+            };
+            header?: never;
+            path: {
+                album_name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AlbumPersonalRankingResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    artist_personal_rankings_api_music_artists__artist_name__rankings_get: {
+        parameters: {
+            query?: {
+                entity?: "track" | "album";
+                metric?: "plays" | "hours";
+                limit?: number;
+                offset?: number;
+                period?: string;
+                start_date?: string | null;
+                end_date?: string | null;
+                /** @description 最短播放时长 (毫秒) */
+                min_ms?: number;
+                /** @description 仅音乐 */
+                music_only?: boolean;
+                /** @description 合并连续播放 */
+                merge_enabled?: boolean;
+                /** @description 使用动态有效播放阈值 */
+                dynamic_threshold?: boolean;
+                /** @description 连续播放最大合并间隔 (分钟) */
+                max_merge_gap_minutes?: number | null;
+                readonly?: boolean;
+            };
+            header?: never;
+            path: {
+                artist_name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArtistPersonalRankingResponse"];
                 };
             };
             /** @description Validation Error */

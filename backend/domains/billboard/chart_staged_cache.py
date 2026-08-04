@@ -73,7 +73,7 @@ def _load_and_rank(
     )
 
 
-@lru_cache(maxsize=4)
+@lru_cache(maxsize=8)
 def _compute_weekly_data_cached(
     min_ms=30000,
     music_only=True,
@@ -88,6 +88,7 @@ def _compute_weekly_data_cached(
     dynamic_threshold=False,
     max_merge_gap_minutes=None,
     include_compilations=False,
+    _revision_state=(0, 0, 0, 0, "ready:ready"),
 ):
     weekly, weekly_album, weekly_artist, all_weeks_asc, all_weeks_desc, df_filtered, _abtm = (
         _load_and_rank(

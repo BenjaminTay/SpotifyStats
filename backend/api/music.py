@@ -11,7 +11,9 @@ from pydantic import BaseModel
 from backend.dependencies import BillboardFilters, MergeConfig, PlayFilters, get_conn
 from backend.models.music_search import MusicSearchResponse
 from backend.services.entity_stats_service import (
+    get_album_personal_ranking,
     get_album_stats,
+    get_artist_personal_ranking,
     get_artist_stats,
     get_entity_play_dates,
     get_entity_plays,
@@ -56,6 +58,31 @@ class EntityPlaysResponse(BaseModel):
 class PlayDateEntry(BaseModel):
     date: str
     count: int
+
+
+class ArtistPersonalRankingResponse(BaseModel):
+    model_config = {"extra": "allow"}
+    found: bool
+    artist_name: str | None = None
+    entity: Literal["track", "album"]
+    metric: Literal["plays", "hours"] = "plays"
+    total: int
+    limit: int
+    offset: int
+    rows: list[dict]
+
+
+class AlbumPersonalRankingResponse(BaseModel):
+    model_config = {"extra": "allow"}
+    found: bool
+    album_name: str | None = None
+    artist_name: str | None = None
+    entity: Literal["track"] = "track"
+    metric: Literal["plays", "hours"] = "plays"
+    total: int
+    limit: int
+    offset: int
+    rows: list[dict]
 
 
 @router.get("/search", response_model=MusicSearchResponse)
@@ -163,6 +190,76 @@ def artist_stats(
     return get_artist_stats(
         conn,
         artist_name,
+        filters.min_ms,
+        filters.music_only,
+        filters.merge_enabled,
+        period,
+        start_date,
+        end_date,
+        filters.dynamic_threshold,
+        filters.max_merge_gap_minutes,
+    )
+
+
+@router.get(
+    "/albums/{album_name}/rankings",
+    response_model=AlbumPersonalRankingResponse,
+)
+def album_personal_rankings(
+    album_name: str,
+    artist: str | None = Query(default=None),
+    metric: Literal["plays", "hours"] = Query(default="plays"),
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    filters: PlayFilters = Depends(),
+    merge_level: int = Query(default=2, ge=1, le=3),
+    period: str = Query(default="lifetime"),
+    start_date: str | None = Query(default=None),
+    end_date: str | None = Query(default=None),
+    conn: Connection = Depends(get_conn),
+):
+    return get_album_personal_ranking(
+        conn,
+        album_name,
+        artist,
+        metric,
+        limit,
+        offset,
+        filters.min_ms,
+        filters.music_only,
+        filters.merge_enabled,
+        period,
+        start_date,
+        end_date,
+        filters.dynamic_threshold,
+        filters.max_merge_gap_minutes,
+        merge_level,
+    )
+
+
+@router.get(
+    "/artists/{artist_name}/rankings",
+    response_model=ArtistPersonalRankingResponse,
+)
+def artist_personal_rankings(
+    artist_name: str,
+    entity: Literal["track", "album"] = Query(default="track"),
+    metric: Literal["plays", "hours"] = Query(default="plays"),
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    filters: PlayFilters = Depends(),
+    period: str = Query(default="lifetime"),
+    start_date: str | None = Query(default=None),
+    end_date: str | None = Query(default=None),
+    conn: Connection = Depends(get_conn),
+):
+    return get_artist_personal_ranking(
+        conn,
+        artist_name,
+        entity,
+        metric,
+        limit,
+        offset,
         filters.min_ms,
         filters.music_only,
         filters.merge_enabled,

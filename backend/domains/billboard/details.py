@@ -1117,6 +1117,21 @@ def get_artist_chart_detail(
             if pd.notna(r["cover_url"]):
                 track_cover_map[int(r["track_id"])] = r["cover_url"]
 
+    detail_track_ids = [int(value) for value in art_tracks.get("track_id", [])]
+    detail_artist_names: dict[int, list[str]] = {}
+    if detail_track_ids:
+        from backend.domains.metadata.track_credits import (
+            canonical_artist_names_for_effective_tracks,
+        )
+
+        credit_conn = get_db()
+        try:
+            detail_artist_names = canonical_artist_names_for_effective_tracks(
+                credit_conn, detail_track_ids
+            )
+        finally:
+            credit_conn.close()
+
     # Best singles rank per week (for overlay chart)
     best_singles_idx = artist_weekly.groupby("billboard_week")["rank"].idxmin()
     best_singles = artist_weekly.loc[
@@ -1342,6 +1357,7 @@ def get_artist_chart_detail(
             {
                 "track_id": r["track_id"],
                 "track_name": r["track_name"],
+                "artist_names": detail_artist_names.get(int(r["track_id"]), [artist_name]),
                 "peak_position": int(r["peak_position"]),
                 "weeks_on_chart": int(r["weeks_on_chart"]),
                 "weeks_at_peak": int(r["weeks_at_peak"]),

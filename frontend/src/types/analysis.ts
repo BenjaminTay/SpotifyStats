@@ -411,6 +411,29 @@ export interface EntityStatsResponse extends AnalysisStatsResponse {
   top_albums?: AnalysisChartRow[]
 }
 
+export interface ArtistPersonalRankingResponse {
+  found: boolean
+  artist_name?: string
+  entity: 'track' | 'album'
+  metric: AnalysisMetric
+  total: number
+  limit: number
+  offset: number
+  rows: AnalysisChartRow[]
+}
+
+export interface AlbumPersonalRankingResponse {
+  found: boolean
+  album_name?: string
+  artist_name?: string
+  entity: 'track'
+  metric: AnalysisMetric
+  total: number
+  limit: number
+  offset: number
+  rows: AnalysisChartRow[]
+}
+
 // ── /analysis/records ──
 
 export type EntityRecordType = 'track' | 'album' | 'artist'

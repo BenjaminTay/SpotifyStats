@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react'
 import { CoverCell } from '@/components/shared/CoverCell'
+import { ArtistLinks } from '@/components/shared/ArtistLinks'
 import { GlassCard } from '@/components/shared/GlassCard'
 import { displayName } from '@/lib/chinese'
 import {
@@ -24,6 +25,7 @@ type TrackInfo = {
 type TrackEntry = {
   track_id: number
   track_name: string
+  artist_names?: string[]
   cover_url: string | null
   peak_position: number
   weeks_on_chart: number
@@ -120,9 +122,11 @@ export function MusicTracksSection({
                     >
                       {displayName(track.track_name)}
                     </Link>
-                    <div className="mt-0.5 font-sans text-[12px] italic text-muted-foreground">
-                      {displayName(artistName)}
-                    </div>
+                    <ArtistLinks
+                      artistName={track.artist_names?.[0] ?? artistName}
+                      artistNames={track.artist_names}
+                      className="mt-0.5 block font-sans text-[12px] italic text-muted-foreground"
+                    />
                   </td>
                   <td
                     className="py-3.5 text-right font-serif text-[22px] font-bold italic"

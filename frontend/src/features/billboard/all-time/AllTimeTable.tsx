@@ -14,6 +14,7 @@ import { ArtistLinks } from '@/components/shared/ArtistLinks'
 import { GlassCard } from '@/components/shared/GlassCard'
 import { displayName } from '@/lib/chinese'
 import { cn } from '@/lib/utils'
+import { RankNumber } from '@/components/shared/RankNumber'
 import { billboardDetailLink, primaryArtistName } from '@/lib/navigation'
 import type {
   AllTimeRow,
@@ -424,13 +425,10 @@ export function AllTimeTable({
               return (
                 <tr key={rowKey(activeTab, row)} className="border-b border-border/50 transition-colors hover:bg-muted/50">
                   <td
-                    className={cn(
-                      'sticky left-0 z-20 bg-card px-2 py-2.5 text-right font-serif text-[17px] font-semibold tabular-nums',
-                      rankColorClass(row.power_rank),
-                    )}
+                    className="sticky left-0 z-20 bg-card px-2 py-2.5 text-right"
                     title="当前完整总榜走势排名；搜索、分页和字段隐藏不会重算"
                   >
-                    {String(row.power_rank).padStart(2, '0')}
+                    <RankNumber rank={row.power_rank} className="text-[17px]" />
                   </td>
                   <td className="sticky left-[44px] z-10 bg-card px-3 py-2.5" style={{ maxWidth: getColWidth(`_name_${activeTab}`) }}>
                     {renderNameCell(activeTab, row)}

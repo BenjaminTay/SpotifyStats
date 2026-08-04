@@ -68,6 +68,35 @@ def test_music_search_artist_count_matches_detail_stats(client):
     assert search["artists"][0]["play_events"] == detail["summary"]["total_plays"]
 
 
+def test_artist_personal_rankings_are_server_paginated_and_stable(client):
+    params = {
+        "min_ms": 30000,
+        "music_only": True,
+        "merge_enabled": True,
+        "dynamic_threshold": False,
+        "entity": "track",
+        "metric": "plays",
+        "limit": 1,
+    }
+    first = client.get(
+        "/api/music/artists/Fixture Artist Alpha/rankings",
+        params={**params, "offset": 0},
+    )
+    assert first.status_code == 200
+    first_data = first.json()
+    assert first_data["found"] is True
+    assert first_data["total"] >= 2
+    assert len(first_data["rows"]) == 1
+    assert first_data["rows"][0]["rank"] == 1
+
+    second = client.get(
+        "/api/music/artists/Fixture Artist Alpha/rankings",
+        params={**params, "offset": 1},
+    ).json()
+    assert second["total"] == first_data["total"]
+    assert second["rows"][0]["rank"] == 2
+
+
 def test_music_search_album_count_matches_detail_stats(client):
     params = {
         "q": "Fixture Future LP",
@@ -88,6 +117,38 @@ def test_music_search_album_count_matches_detail_stats(client):
 
     assert detail["found"] is True
     assert search["albums"][0]["play_events"] == detail["summary"]["total_plays"]
+
+
+def test_album_personal_rankings_are_server_paginated_and_project_scoped(client):
+    params = {
+        "artist": "Fixture Artist Alpha",
+        "min_ms": 30000,
+        "music_only": True,
+        "merge_enabled": True,
+        "dynamic_threshold": False,
+        "merge_level": 2,
+        "metric": "plays",
+        "limit": 1,
+    }
+    first = client.get(
+        "/api/music/albums/Fixture Future LP/rankings",
+        params={**params, "offset": 0},
+    )
+    assert first.status_code == 200
+    first_data = first.json()
+    assert first_data["found"] is True
+    assert first_data["entity"] == "track"
+    assert first_data["total"] >= 2
+    assert len(first_data["rows"]) == 1
+    assert first_data["rows"][0]["rank"] == 1
+    assert first_data["rows"][0]["artist_names"]
+
+    second = client.get(
+        "/api/music/albums/Fixture Future LP/rankings",
+        params={**params, "offset": 1},
+    ).json()
+    assert second["total"] == first_data["total"]
+    assert second["rows"][0]["rank"] == 2
 
 
 def test_music_search_track_chart_matches_billboard_detail(client):

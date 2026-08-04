@@ -3,8 +3,8 @@ import { Link } from 'react-router-dom'
 import { GlassCard } from '@/components/shared/GlassCard'
 import { ArtistLinks } from '@/components/shared/ArtistLinks'
 import { displayName } from '@/lib/chinese'
+import { ListeningClock } from '@/components/charts/ListeningClock'
 import type { TimeStory as TimeStoryType } from '@/types/yearly-review'
-import { HourClock } from './HourClock'
 
 interface TimeStoryProps {
   timeStory: TimeStoryType
@@ -215,7 +215,10 @@ export function TimeStory({ timeStory }: TimeStoryProps) {
         {/* 听歌高峰时段 */}
         <GlassCard className="p-5">
           <h3 className="font-sans text-[12px] font-semibold uppercase tracking-[1.5px] text-muted-foreground mb-4">听歌高峰时段</h3>
-          <HourClock hourlyDist={timeStory.hourly_dist} />
+          <ListeningClock
+            data={timeStory.hourly_dist.map((item) => ({ ...item, hours: 0 }))}
+            metricLabel="次"
+          />
         </GlassCard>
 
         {/* 深夜听歌画像 */}

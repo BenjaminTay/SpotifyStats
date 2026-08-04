@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react'
 import { ArtistLinks } from '@/components/shared/ArtistLinks'
 import { CoverCell } from '@/components/shared/CoverCell'
+import { RankNumber } from '@/components/shared/RankNumber'
 import type { AnalysisChartRow } from '@/types/analysis'
 import { cn } from '@/lib/utils'
 import { displayName } from '@/lib/chinese'
@@ -21,7 +22,7 @@ function dateShort(value: string): string {
   return value ? value.slice(0, 10) : '—'
 }
 
-export function entityLink(row: Pick<AnalysisChartRow, 'track_id' | 'track_name' | 'album_name' | 'artist_name'>, entity: 'track' | 'album' | 'artist'): string {
+function entityLink(row: Pick<AnalysisChartRow, 'track_id' | 'track_name' | 'album_name' | 'artist_name'>, entity: 'track' | 'album' | 'artist'): string {
   if (entity === 'track' && row.track_id != null) return `/music/tracks/${row.track_id}`
   if (entity === 'album' && row.album_name) {
     return `/music/albums/${encodeURIComponent(row.album_name)}${row.artist_name ? `?artist=${encodeURIComponent(row.artist_name)}` : ''}`
@@ -30,14 +31,43 @@ export function entityLink(row: Pick<AnalysisChartRow, 'track_id' | 'track_name'
   return '#'
 }
 
-export function PersonalRankTable({ rows, entity, metric }: { rows: AnalysisChartRow[]; entity: 'track' | 'album' | 'artist'; metric: 'plays' | 'hours' }) {
-  const [page, setPage] = useState(1)
-  const totalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE))
-  const safePage = Math.min(page, totalPages)
+function matchesPersonalRankSearch(
+  row: AnalysisChartRow,
+  entity: 'track' | 'album' | 'artist',
+  query: string,
+): boolean {
+  const normalized = query.normalize('NFKC').toLocaleLowerCase().replace(/\s+/g, ' ').trim()
+  if (!normalized) return true
+  const fields = entity === 'track'
+    ? [row.track_name, row.artist_name, ...(row.artist_names ?? []), row.album_name]
+    : entity === 'album'
+      ? [row.album_name, row.artist_name]
+      : [row.artist_name]
+  return fields.some((field) => field && [field, displayName(field)].some((candidate) =>
+    candidate.normalize('NFKC').toLocaleLowerCase().includes(normalized),
+  ))
+}
 
-  useEffect(() => { setPage(1) }, [rows])
+export function PersonalRankTable({ rows, entity, metric, pagination, searchQuery = '' }: { rows: AnalysisChartRow[]; entity: 'track' | 'album' | 'artist'; metric: 'plays' | 'hours'; pagination?: { total: number; page: number; pageSize: number; onPageChange: (page: number) => void }; searchQuery?: string }) {
+  const [internalPageState, setInternalPageState] = useState({ rows, entity, searchQuery, page: 1 })
+  const internalPage = internalPageState.rows === rows
+    && internalPageState.entity === entity
+    && internalPageState.searchQuery === searchQuery
+    ? internalPageState.page
+    : 1
+  const filteredRows = searchQuery
+    ? rows.filter((row) => matchesPersonalRankSearch(row, entity, searchQuery))
+    : rows
+  const total = pagination?.total ?? filteredRows.length
+  const pageSize = pagination?.pageSize ?? PAGE_SIZE
+  const totalPages = Math.max(1, Math.ceil(total / pageSize))
+  const safePage = Math.min(pagination?.page ?? internalPage, totalPages)
+  const goToPage = (next: number) => {
+    if (pagination) pagination.onPageChange(next)
+    else setInternalPageState({ rows, entity, searchQuery, page: next })
+  }
 
-  const paged = rows.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE)
+  const paged = pagination ? rows : filteredRows.slice((safePage - 1) * pageSize, safePage * pageSize)
   const maxPlays = Math.max(1, ...rows.map((r) => r.plays))
   const maxHours = Math.max(1, ...rows.map((r) => r.hours))
 
@@ -69,7 +99,9 @@ export function PersonalRankTable({ rows, entity, metric }: { rows: AnalysisChar
                 : `${Math.round(row.avg_daily_hours * 60)}m`
             return (
               <tr key={`${row.rank}-${title}`} className="border-b border-border/70">
-                <td className="py-3 font-semibold tabular-nums text-muted-foreground">{row.rank}</td>
+                <td className="py-3">
+                  <RankNumber rank={row.rank} className="text-[20px]" />
+                </td>
                 <td className="py-3 pr-3">
                   <div className="flex items-center gap-3 min-w-0">
                     <Link to={entityLink(row, entity)}>
@@ -116,19 +148,26 @@ export function PersonalRankTable({ rows, entity, metric }: { rows: AnalysisChar
               </tr>
             )
           })}
+          {paged.length === 0 && (
+            <tr>
+              <td colSpan={8} className="py-16 text-center text-sm text-muted-foreground">
+                没有匹配的结果
+              </td>
+            </tr>
+          )}
         </tbody>
       </table>
       {totalPages > 1 && (
         <div className="mt-3 flex items-center justify-between">
           <span className="font-sans text-[12px] text-muted-foreground tabular-nums">
-            显示 {(safePage - 1) * PAGE_SIZE + 1}-{Math.min(safePage * PAGE_SIZE, rows.length)} / 总数 {rows.length} 条
+            显示 {total === 0 ? 0 : (safePage - 1) * pageSize + 1}-{Math.min(safePage * pageSize, total)} / 总数 {total} 条
           </span>
           <div className="flex items-center gap-1">
             <span className="mr-2 font-sans text-[12px] text-muted-foreground tabular-nums">
               {safePage} / {totalPages}
             </span>
             <button
-              onClick={() => setPage(1)}
+              onClick={() => goToPage(1)}
               disabled={safePage <= 1}
               aria-label="第一页"
               className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:text-foreground disabled:opacity-30"
@@ -136,7 +175,7 @@ export function PersonalRankTable({ rows, entity, metric }: { rows: AnalysisChar
               <ChevronsLeft className="h-4 w-4" />
             </button>
             <button
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              onClick={() => goToPage(Math.max(1, safePage - 1))}
               disabled={safePage <= 1}
               aria-label="上一页"
               className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:text-foreground disabled:opacity-30"
@@ -144,7 +183,7 @@ export function PersonalRankTable({ rows, entity, metric }: { rows: AnalysisChar
               <ChevronLeft className="h-4 w-4" />
             </button>
             <button
-              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              onClick={() => goToPage(Math.min(totalPages, safePage + 1))}
               disabled={safePage >= totalPages}
               aria-label="下一页"
               className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:text-foreground disabled:opacity-30"
@@ -152,7 +191,7 @@ export function PersonalRankTable({ rows, entity, metric }: { rows: AnalysisChar
               <ChevronRight className="h-4 w-4" />
             </button>
             <button
-              onClick={() => setPage(totalPages)}
+              onClick={() => goToPage(totalPages)}
               disabled={safePage >= totalPages}
               aria-label="最后一页"
               className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:text-foreground disabled:opacity-30"

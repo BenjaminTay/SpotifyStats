@@ -216,6 +216,22 @@ def get_track_stats(
     return data
 
 
+def _resolve_album_project_id(
+    conn: sqlite3.Connection, album_name: str, artist_name: str, merge_level: int
+) -> int | None:
+    preferred_scope = "composition" if merge_level >= 3 else "release"
+    row = conn.execute(
+        """SELECT ap.project_id
+           FROM album_projects ap
+           JOIN artists ar ON ar.artist_id = ap.artist_id
+           WHERE ap.canonical_name = ? AND ar.artist_name = ?
+           ORDER BY CASE WHEN ap.scope = ? THEN 0 ELSE 1 END, ap.project_id
+           LIMIT 1""",
+        (album_name, artist_name, preferred_scope),
+    ).fetchone()
+    return int(row["project_id"]) if row else None
+
+
 def _resolve_album_project_song_keys(
     conn: sqlite3.Connection, album_name: str, artist_name: str, merge_level: int = 2
 ) -> set[str]:
@@ -232,14 +248,8 @@ def _resolve_album_project_song_keys(
 
     ensure_album_projects(conn)
 
-    project = conn.execute(
-        """SELECT ap.project_id
-           FROM album_projects ap
-           JOIN artists ar ON ar.artist_id = ap.artist_id
-           WHERE ap.canonical_name = ? AND ar.artist_name = ?""",
-        (album_name, artist_name),
-    ).fetchone()
-    if not project:
+    project_id = _resolve_album_project_id(conn, album_name, artist_name, merge_level)
+    if project_id is None:
         return set()
 
     rows = conn.execute(
@@ -247,7 +257,7 @@ def _resolve_album_project_song_keys(
            FROM album_project_tracks apt
            JOIN tracks t ON t.track_id = apt.track_id
            WHERE apt.project_id = ? AND apt.min_merge_level <= ?""",
-        (project["project_id"], merge_level),
+        (project_id, merge_level),
     ).fetchall()
     if not rows:
         return set()
@@ -272,14 +282,8 @@ def _resolve_album_project_album_names(
 
     ensure_album_projects(conn)
 
-    project = conn.execute(
-        """SELECT ap.project_id
-           FROM album_projects ap
-           JOIN artists ar ON ar.artist_id = ap.artist_id
-           WHERE ap.canonical_name = ? AND ar.artist_name = ?""",
-        (album_name, artist_name),
-    ).fetchone()
-    if not project:
+    project_id = _resolve_album_project_id(conn, album_name, artist_name, merge_level)
+    if project_id is None:
         return [album_name]
 
     rows = conn.execute(
@@ -289,7 +293,7 @@ def _resolve_album_project_album_names(
            JOIN albums al ON al.album_id = t.album_id
            LEFT JOIN albums sa ON sa.album_id = apt.source_album_id
            WHERE apt.project_id = ? AND apt.min_merge_level <= ?""",
-        (project["project_id"], merge_level),
+        (project_id, merge_level),
     ).fetchall()
 
     names = list({r["album_name"] for r in rows if r["album_name"]})
@@ -360,7 +364,9 @@ def get_album_stats(
     if entity_all.empty:
         return {"found": False}
     data = _entity_base(all_df, entity_df)
-    _, breakdown = chart_rows(conn, entity_df, "track", "plays", 250, 0)
+    # Keep the legacy summary payload bounded; the detail UI uses the dedicated
+    # rankings endpoint for every page instead of downloading the full project.
+    _, breakdown = chart_rows(conn, entity_df, "track", "plays", 20, 0)
     data.update(
         {
             "found": True,
@@ -393,6 +399,85 @@ def get_album_stats(
         }
     )
     return data
+
+
+def get_album_personal_ranking(
+    conn: sqlite3.Connection,
+    album_name: str,
+    artist: str | None,
+    metric: str,
+    limit: int,
+    offset: int,
+    min_ms: int,
+    music_only: bool,
+    merge_enabled: bool,
+    period: str = "lifetime",
+    start_date: str | None = None,
+    end_date: str | None = None,
+    dynamic_threshold: bool = False,
+    max_merge_gap_minutes: int | None = None,
+    merge_level: int = 2,
+) -> dict:
+    """Return a stable server-paginated track ranking for one album project."""
+    from backend.domains.playback.album_projects import apply_canonical_song_keys
+
+    all_df, current_df, resolved = load_period_plays(
+        conn,
+        min_ms,
+        music_only,
+        merge_enabled,
+        period,
+        start_date,
+        end_date,
+        dynamic_threshold=dynamic_threshold,
+        max_merge_gap_minutes=max_merge_gap_minutes,
+    )
+    artist_name = artist
+    if not artist_name:
+        matches = all_df[all_df["album_name"] == album_name]
+        if not matches.empty:
+            artist_name = str(matches.iloc[0]["artist_name"])
+
+    project_keys = (
+        _resolve_album_project_song_keys(conn, album_name, artist_name, merge_level)
+        if artist_name
+        else set()
+    )
+    if project_keys:
+        all_df = apply_canonical_song_keys(all_df, conn, merge_level)
+        current_df = apply_canonical_song_keys(current_df, conn, merge_level)
+        entity_all = all_df[all_df["canonical_song_key"].isin(project_keys)]
+        entity_df = current_df[current_df["canonical_song_key"].isin(project_keys)]
+    else:
+        entity_all = all_df[
+            (all_df["album_name"] == album_name) & (all_df["artist_name"] == artist_name)
+        ]
+        entity_df = current_df[
+            (current_df["album_name"] == album_name) & (current_df["artist_name"] == artist_name)
+        ]
+
+    if entity_all.empty:
+        return {
+            "found": False,
+            "entity": "track",
+            "total": 0,
+            "limit": limit,
+            "offset": offset,
+            "rows": [],
+        }
+    total, rows = chart_rows(conn, entity_df, "track", metric, limit, offset)
+    return {
+        "found": True,
+        "album_name": album_name,
+        "artist_name": artist_name,
+        "period": resolved,
+        "entity": "track",
+        "metric": metric,
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+        "rows": rows,
+    }
 
 
 def get_artist_stats(
@@ -451,6 +536,64 @@ def get_artist_stats(
         }
     )
     return data
+
+
+def get_artist_personal_ranking(
+    conn: sqlite3.Connection,
+    artist_name: str,
+    entity: str,
+    metric: str,
+    limit: int,
+    offset: int,
+    min_ms: int,
+    music_only: bool,
+    merge_enabled: bool,
+    period: str = "lifetime",
+    start_date: str | None = None,
+    end_date: str | None = None,
+    dynamic_threshold: bool = False,
+    max_merge_gap_minutes: int | None = None,
+) -> dict:
+    """Return a stable server-paginated personal track/album ranking for an artist."""
+    from backend.domains.metadata.artist_identity import resolve_artist_name
+
+    identity = resolve_artist_name(conn, artist_name)
+    if identity is not None:
+        artist_name = identity.display_name
+    all_df, current_df, resolved = load_period_plays(
+        conn,
+        min_ms,
+        music_only,
+        merge_enabled,
+        period,
+        start_date,
+        end_date,
+        dynamic_threshold=dynamic_threshold,
+        max_merge_gap_minutes=max_merge_gap_minutes,
+        _loader=load_plays_for_artists,
+    )
+    if all_df[all_df["artist_name"] == artist_name].empty:
+        return {
+            "found": False,
+            "entity": entity,
+            "total": 0,
+            "limit": limit,
+            "offset": offset,
+            "rows": [],
+        }
+    artist_df = current_df[current_df["artist_name"] == artist_name]
+    total, rows = chart_rows(conn, artist_df, entity, metric, limit, offset)
+    return {
+        "found": True,
+        "artist_name": artist_name,
+        "period": resolved,
+        "entity": entity,
+        "metric": metric,
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+        "rows": rows,
+    }
 
 
 def get_entity_plays(

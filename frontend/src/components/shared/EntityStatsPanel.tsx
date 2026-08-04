@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { AnalysisTrendChart } from '@/components/charts/AnalysisCharts'
 import { ListeningClock } from '@/components/charts/ListeningClock'
@@ -13,7 +13,10 @@ import { queryKeys } from '@/api/query-keys'
 import { analysisApi, useAnalysisFilters } from '@/hooks/useAnalysis'
 import { api } from '@/lib/api'
 import { getDefaultMergeLevel } from '@/lib/merge-level'
-import type { AnalysisMetric, EntityStatsResponse } from '@/types/analysis'
+import type { AlbumPersonalRankingResponse, AnalysisMetric, ArtistPersonalRankingResponse, EntityStatsResponse } from '@/types/analysis'
+
+const ARTIST_RANKING_PAGE_SIZE = 20
+const ALBUM_RANKING_PAGE_SIZE = 20
 
 function fmt(n: number | null | undefined): string {
   if (n == null) return '—'
@@ -77,6 +80,58 @@ export function EntityStatsPanel({
     enabled: !filtersLoading && entityId !== '',
   })
   const queryError = error instanceof Error ? error.message : error ? String(error) : null
+
+  const [artistRankingKind, setArtistRankingKind] = useState<'track' | 'album'>('track')
+  const artistRankingContext = `${period}:${periodValue}:${startDate}:${endDate}:${metric}:${artistName}`
+  const [artistRankingPageState, setArtistRankingPageState] = useState({
+    context: artistRankingContext,
+    track: 1,
+    album: 1,
+  })
+  const artistRankingPages = artistRankingPageState.context === artistRankingContext
+    ? artistRankingPageState
+    : { context: artistRankingContext, track: 1, album: 1 }
+  const artistRankingPage = artistRankingPages[artistRankingKind]
+  const artistRankingParams = {
+    ...filters,
+    ...apiParams,
+    entity: artistRankingKind,
+    metric,
+    limit: ARTIST_RANKING_PAGE_SIZE,
+    offset: (artistRankingPage - 1) * ARTIST_RANKING_PAGE_SIZE,
+  }
+  const { data: artistRanking, isPending: artistRankingPending } = useQuery({
+    queryKey: queryKeys.music.artistRankings(artistName ?? '', artistRankingParams),
+    queryFn: () => api.get<ArtistPersonalRankingResponse>(
+      `/music/artists/${encodeURIComponent(artistName!)}/rankings`, artistRankingParams,
+    ),
+    enabled: kind === 'artist' && !!artistName && !filtersLoading,
+  })
+
+  const albumRankingContext = JSON.stringify({ albumName, artistName, metric, resolvedMergeLevel, ...filters, ...apiParams })
+  const [albumRankingPageState, setAlbumRankingPageState] = useState({
+    context: albumRankingContext,
+    page: 1,
+  })
+  const albumRankingPage = albumRankingPageState.context === albumRankingContext
+    ? albumRankingPageState.page
+    : 1
+  const albumRankingParams = {
+    ...filters,
+    ...apiParams,
+    ...(artistName ? { artist: artistName } : {}),
+    merge_level: resolvedMergeLevel,
+    metric,
+    limit: ALBUM_RANKING_PAGE_SIZE,
+    offset: (albumRankingPage - 1) * ALBUM_RANKING_PAGE_SIZE,
+  }
+  const { data: albumRanking, isPending: albumRankingPending } = useQuery({
+    queryKey: queryKeys.music.albumRankings(albumName ?? '', artistName ?? '', albumRankingParams),
+    queryFn: () => api.get<AlbumPersonalRankingResponse>(
+      `/music/albums/${encodeURIComponent(albumName!)}/rankings`, albumRankingParams,
+    ),
+    enabled: kind === 'album' && !!albumName && !filtersLoading,
+  })
 
   const metricKey: AnalysisMetric = metric
   const distributionKey = metricKey === 'plays' ? 'plays' : 'hours'
@@ -249,27 +304,120 @@ export function EntityStatsPanel({
         </GlassCard>
       </div>
 
-      {/* 专辑内曲目 (仅专辑详情) */}
-      {data.track_breakdown && data.track_breakdown.length > 0 && (
+      {/* 专辑项目曲目排行：服务端分页，20 首以内保持单页。 */}
+      {kind === 'album' && (
         <GlassCard className="p-6">
-          <h3 className="mb-5 font-serif text-2xl font-semibold">专辑内曲目排行</h3>
-          <PersonalRankTable rows={data.track_breakdown} entity="track" metric={metric} />
+          <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+            <h3 className="font-serif text-2xl font-semibold">播放排行</h3>
+            {(albumRanking?.total ?? 0) > ALBUM_RANKING_PAGE_SIZE && (
+              <div className="inline-flex items-center gap-1 text-[12px] text-muted-foreground">
+                <button
+                  type="button"
+                  aria-label="上一页"
+                  disabled={albumRankingPage <= 1}
+                  onClick={() => setAlbumRankingPageState({ context: albumRankingContext, page: Math.max(1, albumRankingPage - 1) })}
+                  className="rounded-lg border border-border px-2.5 py-1.5 disabled:opacity-30"
+                >
+                  上一页
+                </button>
+                <span className="min-w-14 text-center tabular-nums">
+                  {albumRankingPage} / {Math.ceil((albumRanking?.total ?? 0) / ALBUM_RANKING_PAGE_SIZE)}
+                </span>
+                <button
+                  type="button"
+                  aria-label="下一页"
+                  disabled={albumRankingPage >= Math.ceil((albumRanking?.total ?? 0) / ALBUM_RANKING_PAGE_SIZE)}
+                  onClick={() => setAlbumRankingPageState({ context: albumRankingContext, page: albumRankingPage + 1 })}
+                  className="rounded-lg border border-border px-2.5 py-1.5 disabled:opacity-30"
+                >
+                  下一页
+                </button>
+              </div>
+            )}
+          </div>
+          {albumRankingPending ? (
+            <Skeleton className="h-64 rounded-xl" />
+          ) : albumRanking?.rows.length ? (
+            <PersonalRankTable
+              rows={albumRanking.rows}
+              entity="track"
+              metric={metric}
+              pagination={{
+                total: albumRanking.total,
+                page: albumRankingPage,
+                pageSize: ALBUM_RANKING_PAGE_SIZE,
+                onPageChange: (page) => setAlbumRankingPageState({ context: albumRankingContext, page }),
+              }}
+            />
+          ) : (
+            <p className="py-10 text-center text-sm text-muted-foreground">当前区间暂无曲目播放记录。</p>
+          )}
         </GlassCard>
       )}
 
-      {/* 个人 Top 歌曲 */}
-      {data.top_tracks && data.top_tracks.length > 0 && (
+      {/* 艺人个人排行：歌曲/专辑共享同一服务端分页工作区。 */}
+      {kind === 'artist' && (
         <GlassCard className="p-6">
-          <h3 className="mb-5 font-serif text-2xl font-semibold">个人 Top 歌曲</h3>
-          <PersonalRankTable rows={data.top_tracks} entity="track" metric={metric} />
-        </GlassCard>
-      )}
-
-      {/* 个人 Top 专辑 */}
-      {data.top_albums && data.top_albums.length > 0 && (
-        <GlassCard className="p-6">
-          <h3 className="mb-5 font-serif text-2xl font-semibold">个人 Top 专辑</h3>
-          <PersonalRankTable rows={data.top_albums} entity="album" metric={metric} />
+          <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+            <h3 className="font-serif text-2xl font-semibold">播放排行</h3>
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              <div className="inline-flex rounded-full border border-border p-1" aria-label="排行类型">
+                {(['track', 'album'] as const).map((value) => (
+                  <button
+                    key={value}
+                    type="button"
+                    aria-pressed={artistRankingKind === value}
+                    onClick={() => setArtistRankingKind(value)}
+                    className={`rounded-full px-3 py-1.5 text-[12px] font-semibold transition-colors ${artistRankingKind === value ? 'bg-accent-foreground text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+                  >
+                    {value === 'track' ? '歌曲' : '专辑'}
+                  </button>
+                ))}
+              </div>
+              <div className="inline-flex items-center gap-1 text-[12px] text-muted-foreground">
+                <button
+                  type="button"
+                  aria-label="上一页"
+                  disabled={artistRankingPage <= 1}
+                  onClick={() => setArtistRankingPageState({ ...artistRankingPages, [artistRankingKind]: Math.max(1, artistRankingPage - 1) })}
+                  className="rounded-lg border border-border px-2.5 py-1.5 disabled:opacity-30"
+                >
+                  上一页
+                </button>
+                <span className="min-w-14 text-center tabular-nums">
+                  {artistRankingPage} / {Math.max(1, Math.ceil((artistRanking?.total ?? 0) / ARTIST_RANKING_PAGE_SIZE))}
+                </span>
+                <button
+                  type="button"
+                  aria-label="下一页"
+                  disabled={artistRankingPage >= Math.max(1, Math.ceil((artistRanking?.total ?? 0) / ARTIST_RANKING_PAGE_SIZE))}
+                  onClick={() => setArtistRankingPageState({ ...artistRankingPages, [artistRankingKind]: artistRankingPage + 1 })}
+                  className="rounded-lg border border-border px-2.5 py-1.5 disabled:opacity-30"
+                >
+                  下一页
+                </button>
+              </div>
+            </div>
+          </div>
+          {artistRankingPending ? (
+            <Skeleton className="h-64 rounded-xl" />
+          ) : artistRanking?.rows.length ? (
+            <PersonalRankTable
+              rows={artistRanking.rows}
+              entity={artistRankingKind}
+              metric={metric}
+              pagination={{
+                total: artistRanking.total,
+                page: artistRankingPage,
+                pageSize: ARTIST_RANKING_PAGE_SIZE,
+                onPageChange: (page) => setArtistRankingPageState({ ...artistRankingPages, [artistRankingKind]: page }),
+              }}
+            />
+          ) : (
+            <p className="py-10 text-center text-sm text-muted-foreground">
+              当前区间暂无{artistRankingKind === 'track' ? '歌曲' : '专辑'}播放记录。
+            </p>
+          )}
         </GlassCard>
       )}
 

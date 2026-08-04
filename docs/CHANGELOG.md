@@ -1,5 +1,13 @@
 # 变更日志
 
+## 2026-08-04 — 艺人周榜曲目数与详情排行
+
+- 周榜艺人“入榜曲目数”统一改为仅统计当周已裁剪 Top N 的 canonical track，再通过有效曲目署名投影到 canonical artist；pre-aggregate 与 fallback 共用同一计算，featured、身份 alias 和曲目版本组均去重。缓存按 identity/track-credit current + active revision 分代，重建 pending 的 fallback 不进入稳定 LRU。
+- 艺人详情“单曲成绩”逐曲返回并展示真实完整署名，主艺人与合作艺人均链接到 canonical 艺人详情，不再把每一行写死为当前艺人。
+- 艺人播放统计将个人歌曲/专辑合并为统一排行区域，新增只读 `/api/music/artists/{artist_name}/rankings` 服务端分页契约；类型切换、页码、稳定排序、总数与空态由真实 API 驱动。
+- 专辑播放统计新增只读 `/api/music/albums/{album_name}/rankings` 服务端分页契约；合并专辑项目按当前 L1/L2/L3 选择对应 release/composition scope，默认每页 20 首，20 首以内保持单页，超出后可访问完整末页。
+- 真实 W29 验证为 30 个唯一入榜 canonical track，單依純 15 首、Phoebe Bridgers 8 首；單依純个人歌曲共 44 首，最后一页为第 41–44 名。
+
 ## 2026-08-03 — 音乐源数据管理与有效曲目署名
 
 - 新增不改写 `plays`、`tracks`、`track_artists` 原始事实的人工曲目署名覆盖层，支持按稳定本地艺人 ID 添加、移除和调整 primary/featured 角色；append-only 事件、全局 revision、重建状态与撤销链保留完整可追溯性。
