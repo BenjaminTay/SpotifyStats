@@ -7,6 +7,7 @@ from typing import Any
 
 import pytest
 
+from backend.core.migrations import migrate_024
 from backend.services import ai_insights_service, ai_task_service
 
 pytestmark = pytest.mark.unit
@@ -60,6 +61,10 @@ def ai_report_task_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
             );
             """
         )
+        # Report generation now includes the artist-language revision in its
+        # cache context. Reuse the production migration so this focused task
+        # database cannot drift from the metadata schema.
+        migrate_024(conn)
     finally:
         conn.close()
 

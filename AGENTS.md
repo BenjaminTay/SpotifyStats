@@ -8,8 +8,6 @@ Spotify Extended Streaming History 数据分析 Web 应用的主项目提示词�
 
 从 Spotify 官方 JSON 播放记录导入 SQLite，通过 **FastAPI 后端 + React 前端** 提供交互式多维度统计仪表盘。
 
-Streamlit 原型已于 2026-07-07 移除。历史代码可通过 `git log -- app/` 回溯。
-
 **UI 主题**：「编辑风 × 液态玻璃」— 杂志式排版（Playfair Display 衬线 + Inter 无衬线）+ 毛玻璃材质 + 日/夜双皮肤。详见 `frontend/UI_STYLE_GUIDE.md`。
 
 **导航命名（2026-06-28）**：顶级入口使用“播放分析”；二级 tab 顺序固定为“播放统计 / 播放排行 / 年度总结 / 播放记录 / 账号中心”。年度总结与账号中心归属播放分析 tab 行，避免在 Masthead 中恢复独立顶级入口、重复下拉入口或第二套子导航。

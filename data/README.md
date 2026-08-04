@@ -280,7 +280,7 @@ Wrapped 2025 → 音乐库 → 歌单 → 搜索记录 → 兴趣画像
 ### 3. 触发方式
 
 - **设置页手动导入**：点击「导入数据」按钮，可分别触发 Streaming History 和 Account Data 导入
-- **命令行导入**：Streamlit 冻结版 `app/import_data.py` 仍可使用
+- **命令行派生数据维护**：运行 `scripts/refresh_import_derived_data.py` 可补齐既有导入数据的元数据、专辑项目和榜单聚合
 - **首次启动**：若数据库不存在，应用引导用户导入
 
 ## 运行时文件说明

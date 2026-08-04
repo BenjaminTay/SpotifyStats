@@ -1,7 +1,7 @@
 """Shared play-data loading and aggregation service.
 
 All play-history endpoints use this service for data loading and groupby operations.
-Replaces the st.cache_data pattern from Streamlit with lru_cache for computation results.
+Computation results are cached with lru_cache.
 """
 
 from __future__ import annotations

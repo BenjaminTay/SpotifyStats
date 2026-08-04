@@ -5,7 +5,6 @@ __pycache__/
 *.db-wal
 !backend/tests/fixtures/seed.db
 .venv/
-.streamlit/secrets.toml
 .DS_Store
 
 # Personal Spotify data — contains IP addresses and listening history

@@ -57,7 +57,7 @@ def client():
 
 @pytest.fixture(scope="session")
 def default_params():
-    """Default filter parameters matching the Streamlit app defaults."""
+    """Default filter parameters used by the API and analysis tests."""
     return {
         "min_ms": 30000,
         "music_only": True,

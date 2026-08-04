@@ -76,7 +76,11 @@ def test_visual_chart_data_builds_required_shapes():
                 }
             ],
         },
-        "genre_distribution": {"top_genres": [{"name": "mandopop", "share": 16.7}]},
+        "genre_distribution": {
+            "primary_styles": {
+                "buckets": [{"key": "mandopop", "label": "mandopop", "share_pct": 16.7}]
+            }
+        },
         "discovery_and_returns": {
             "new_artists": [{"name": "JOLIN", "first_date": "2025-05-08", "plays": 108}]
         },
@@ -108,7 +112,7 @@ def test_visual_chart_data_builds_required_shapes():
         == "光良「回憶裡的瘋狂」巡迴演唱會"
     )
     assert chart_data["highlight_day_timeline"]["date"] == "2025-02-14"
-    assert chart_data["genre_language_mix"]["genres"][0]["name"] == "mandopop"
+    assert chart_data["genre_language_mix"]["items"][0]["label"] == "mandopop"
     assert chart_data["discovery_timeline"]["new_artists"][0]["name"] == "JOLIN"
     assert chart_data["playback_billboard_matrix"]["items"][0]["name"] == "The Fate of Ophelia"
     assert chart_data["playback_billboard_matrix"]["items"][0]["peak_rank"] == 1

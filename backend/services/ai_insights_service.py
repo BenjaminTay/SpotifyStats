@@ -294,13 +294,15 @@ def _build_yearly_report_fallback(data: dict[str, Any]) -> str:
         for row in (genre_summary.get("top_genres") or [])[:5]
         if isinstance(row, dict) and isinstance(row.get("share"), (int, float))
     )
+    genre_caveat = str(
+        genre_summary.get("caveat")
+        or "主曲风允许多标签，流派标签可能重叠；占比按全部可归属有效聆听时长计算。"
+    )
     lines.extend(["", "## 人格与主曲风"])
     if dimension_text:
         lines.append(f"人格维度前三是 {dimension_text}。")
     if genre_names:
-        lines.append(
-            f"主曲风前列包括 {genre_names}。风格可以多标签，占比按全部可归属有效聆听时长计算。"
-        )
+        lines.append(f"主曲风前列包括 {genre_names}。{genre_caveat}")
 
     if most_active_day:
         top_day_track = most_active_day.get("top_track")

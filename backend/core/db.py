@@ -830,8 +830,7 @@ def ensure_schema() -> None:
     """Ensure all tables/indexes exist (safe to call repeatedly).
 
     Delegates to the versioned migration system. Kept for backward
-    compatibility with callers in import_data, scripts, and frozen
-    Streamlit app code.
+    compatibility with callers in import_data and scripts.
     """
     from backend.core.migrations import run_migrations
 

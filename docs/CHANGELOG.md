@@ -1,5 +1,18 @@
 # 变更日志
 
+## 2026-08-04 — CI 基线修复与 Streamlit 遗留清理
+
+### 运行时与配置
+
+- 删除已迁移完成的 `.streamlit/config.toml`，并从生产依赖和 mypy 配置中移除 Streamlit、Plotly 及旧 `app/` 目录相关设置；历史方案继续保留在 `docs/archive/`，仅供回溯。
+- 更新 `data/README.md` 的导入说明，统一指向当前的 FastAPI 设置页导入和 `scripts/refresh_import_derived_data.py` 派生数据维护流程。
+
+### CI 与测试契约
+
+- AI 年报任务测试夹具复用 migration 024 创建 `artist_language_sources`，避免测试数据库落后于艺人语言 revision 查询。
+- 年度图表测试夹具同步当前 `primary_styles.buckets` / `genre_language_mix.items` 数据契约。
+- 年报确定性 fallback 复用后端返回的 genre caveat，确保文本质量校验与真实报告数据保持一致。
+
 ## 2026-08-04 — 曲风与语言消费层
 
 - 保留 `style / scene / context / role` 四轴 taxonomy、原始 genre/language facts 与 Settings 审核能力，新增版本化 `consumer_v1` 展示映射，不把消费标签写回治理事实。
