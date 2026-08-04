@@ -285,8 +285,11 @@ def test_cache_only_visual_yearly_report_ignores_legacy_yearly_cache(
     assert result["result"]["needs_generation"] is True
 
 
-def test_visual_yearly_report_cache_key_includes_writer_pipeline():
-    base = {
+def test_visual_yearly_report_cache_key_includes_writer_pipeline(
+    ai_report_task_db: Path,
+):
+    del ai_report_task_db
+    base: dict[str, Any] = {
         "report_type": "yearly",
         "min_ms": 30000,
         "music_only": True,
