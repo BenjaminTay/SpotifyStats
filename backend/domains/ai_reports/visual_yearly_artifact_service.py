@@ -758,7 +758,7 @@ def _default_chart_specs() -> list[dict[str, Any]]:
         _chart_spec("artist_monthly_trend", "artist_monthly_trend", "核心艺人的月份轨迹"),
         _chart_spec("album_duality_compare", "album_duality_compare", "常听与长留的专辑差异"),
         _chart_spec("highlight_day_timeline", "highlight_day_timeline", "高光日播放切片"),
-        _chart_spec("genre_language_mix", "genre_language_mix", "流派与语境混合"),
+        _chart_spec("genre_language_mix", "genre_language_mix", "主曲风分布"),
         _chart_spec("discovery_timeline", "discovery_timeline", "新声音出现时间线"),
         _chart_spec("playback_billboard_matrix", "playback_billboard_matrix", "播放与榜单位置"),
     ]

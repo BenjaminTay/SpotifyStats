@@ -1,4 +1,5 @@
 import type { DashboardSummary, MonthlyTrendPoint } from './dashboard'
+import type { ConsumerTasteProfile } from './yearly-review'
 
 export type AnalysisTimeRange = 'all' | 'this_year' | 'this_month' | 'custom'
 export type AnalysisPeriod = 'lifetime' | 'last_6_months' | 'last_4_weeks' | 'year' | 'month' | 'week' | 'day' | 'custom'
@@ -350,6 +351,7 @@ export interface AnalysisStatsResponse {
   month_distribution: AnalysisMonthPoint[]
   year_distribution: AnalysisYearPoint[]
   behavior_summary: AnalysisStatsBehaviorSummary
+  taste_profile: ConsumerTasteProfile
   recent_plays: RecentPlayRow[]
 }
 

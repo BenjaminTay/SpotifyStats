@@ -132,10 +132,11 @@ describe('artist language metadata hooks', () => {
     expect(invalidateSpy.mock.calls.map(([options]) => options!.queryKey)).toEqual([
       queryKeys.metadata.artistLanguages.all,
       queryKeys.yearlyReview.all,
+      queryKeys.analysis.all,
     ])
   })
 
-  it('saves the suggested source with PUT and invalidates the two consumers', async () => {
+  it('saves the suggested source with PUT and invalidates user-facing consumers', async () => {
     const client = createClient()
     const invalidateSpy = vi.spyOn(client, 'invalidateQueries')
     vi.spyOn(api, 'put').mockResolvedValue({ source_id: 22 })
@@ -168,10 +169,11 @@ describe('artist language metadata hooks', () => {
     expect(invalidateSpy.mock.calls.map(([options]) => options!.queryKey)).toEqual([
       queryKeys.metadata.artistLanguages.all,
       queryKeys.yearlyReview.all,
+      queryKeys.analysis.all,
     ])
   })
 
-  it('submits a review decision with PATCH and invalidates the two consumers', async () => {
+  it('submits a review decision with PATCH and invalidates user-facing consumers', async () => {
     const client = createClient()
     const invalidateSpy = vi.spyOn(client, 'invalidateQueries')
     vi.spyOn(api, 'patch').mockResolvedValue({
@@ -197,6 +199,7 @@ describe('artist language metadata hooks', () => {
     expect(invalidateSpy.mock.calls.map(([options]) => options!.queryKey)).toEqual([
       queryKeys.metadata.artistLanguages.all,
       queryKeys.yearlyReview.all,
+      queryKeys.analysis.all,
     ])
   })
 })

@@ -49,6 +49,20 @@ Spotify Web API 对部分艺人不返回 genre；即使返回，也常见粒度�
 
 一个艺人可以落到多个 canonical genre。统计播放时长时，系统先按 axis 分组，再只在同一 axis 内平均分摊：`style`、`scene`、`context`、`role` 各自独立计算覆盖率和构成，因此跨轴标签不会互相稀释；同一轴内的多标签也不会重复计算成超过 100%。例如 `latin pop` 的同一段播放时长会分别完整进入 scene 轴的 `latin` 与 style 轴的 `pop`，而不是各算一半。
 
+## 消费展示 taxonomy（consumer_v1）
+
+底层四轴 taxonomy 是治理和审计事实，不直接等同于普通用户看到的图表。`backend/domains/metadata/genre_display_taxonomy.py` 提供显式、版本化、可回滚的消费映射；当前版本为 `consumer_v1`，不会写回或覆盖 Spotify raw genre、approved source 或人工 override。
+
+年度总结只展示三个并列视角：
+
+- **主曲风**：只消费 `style`。`rock/alternative` 显示为 Rock，`indie/alternative` 显示为 Indie，`r&b/soul` 显示为 R&B / Soul；`electronic/dance` 仅在原始标签明确支持时拆为 Electronic、Dance 或 Ambient。
+- **地区流行**：只消费 `scene`，例如 C-Pop、J-Pop、K-Pop、Latin。它与主曲风不是互斥分类，同一段华语 R&B 聆听可以分别进入 C-Pop 与 R&B / Soul。
+- **语言**：继续使用独立的 approved artist-language facts 和主艺人归属，不从 genre 或 Music Map 推断。
+
+每个轴保留多标签语义，艺人时长只在同一 display axis 内平均分摊；百分比分母为全部可归属的有效聆听时长，未取得对应标签的部分显示为“尚未归类”。`context` / `role` 仍可在 Settings 审计，但不进入年度主图，避免 Singer-Songwriter 等单一 role 形成误导性的 100% 偏好。播放统计页不展示这一消费模块。
+
+Music Map 仍是 genre/region heuristic，不是艺人国籍、语言或可靠地区事实；当前从年度消费页隐藏，底层字段保持兼容。`GENRE_DISPLAY_TAXONOMY_VERSION` 必须进入 Wrapped、AI 报告及相关消费缓存键；genre、language、identity 或 track-credit revision 变化后，相应查询也必须失效。
+
 ## Settings 审计面板
 
 Settings 页的 **Genre 数据健康** 面板现在提供两类审计：
@@ -91,7 +105,7 @@ Settings 页的 **Genre 数据健康** 面板现在提供两类审计：
 - Style 轴 Top 构成：Pop 55.0%、Country 18.8%、R&B / Soul 9.6%、Rock / Alternative 7.2%、Indie / Alternative 3.7%。这些百分比是 style 已知时长内部构成，不等同于全部播放时长占比。
 - 主要来源时长：Spotify 2009.0h、curated seed 1263.0h、LLM approved 739.0h。来源置信度会同时乘以该行自身 confidence；缺少证据 URL、LLM 占比过高或单一艺人主导都会触发风险标记并限制最高置信度。
 
-年度总结的主流派榜只展示 `style`；`scene`、`context`、`role` 作为并列但不同语义的辅助轴展示。Settings 则保留 raw -> canonical 映射、来源、证据覆盖、Top driving artists 和审核历史，供维护者复核。
+年度总结通过 `consumer_v1` 分别展示 style 的“主曲风”、scene 的“地区流行”和独立语言分布；`context`、`role` 只保留在 Settings 治理层。Settings 继续保留 raw -> canonical 映射、来源、证据覆盖、Top driving artists 和审核历史，供维护者复核。
 
 ## 2026-07-04 历史数据快照
 

@@ -99,6 +99,24 @@ class GenreAxisDistribution(BaseModel):
     buckets: list[dict[str, Any]] = Field(default_factory=list)
 
 
+class ConsumerGenreBucket(BaseModel):
+    key: str
+    label: str
+    hours: float
+    share_pct: float
+    artist_count: int
+
+
+class ConsumerGenreDistribution(BaseModel):
+    axis: str
+    label: str
+    total_hours: float
+    known_hours: float
+    unknown_hours: float
+    allows_multiple: bool = True
+    buckets: list[ConsumerGenreBucket] = Field(default_factory=list)
+
+
 class LanguageDistribution(BaseModel):
     eligible_hours: float = 0.0
     excluded_unattributed_hours: float = 0.0
@@ -112,7 +130,17 @@ class LanguageDistribution(BaseModel):
     caveat: str = "艺人级估算，按主艺人归属。"
 
 
+class ConsumerTasteProfile(BaseModel):
+    display_taxonomy_version: str
+    primary_styles: ConsumerGenreDistribution
+    regional_pop: ConsumerGenreDistribution
+    language_dist: LanguageDistribution
+
+
 class GenrePanorama(BaseModel):
+    display_taxonomy_version: str | None = None
+    primary_styles: ConsumerGenreDistribution | None = None
+    regional_pop: ConsumerGenreDistribution | None = None
     top_genres: list[GenreItem] = []
     monthly_genres: list[MonthlyGenreItem] = []
     axes: list[GenreAxisDistribution] = []

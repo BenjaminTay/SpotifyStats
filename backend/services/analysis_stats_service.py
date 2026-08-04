@@ -10,6 +10,7 @@ from typing import Any
 import pandas as pd
 
 from backend.core.db import get_db, get_track_artist_names_map, load_plays, load_plays_for_artists
+from backend.domains.metadata.genre_display_taxonomy import build_consumer_taste_profile
 from backend.services.play_service import (
     _album_cover_lookup,
     _artist_cover_lookup,
@@ -407,6 +408,8 @@ def get_analysis_stats(
     max_merge_gap_minutes: int | None = None,
 ) -> dict:
     if conn is not None:
+        from backend.services.wrapped_service import _artist_metadata_revision
+
         return _get_analysis_stats_cached(
             min_ms,
             music_only,
@@ -416,6 +419,7 @@ def get_analysis_stats(
             end_date,
             dynamic_threshold,
             max_merge_gap_minutes,
+            _artist_metadata_revision(conn),
         )
 
 
@@ -429,7 +433,9 @@ def _get_analysis_stats_cached(
     end_date: str | None = None,
     dynamic_threshold: bool = False,
     max_merge_gap_minutes: int | None = None,
+    artist_metadata_revision: str = "",
 ) -> dict:
+    _ = artist_metadata_revision
     conn = get_db()
     try:
         return _build_analysis_stats(
@@ -482,6 +488,7 @@ def _build_analysis_stats(
         "month_distribution": _month_distribution(df),
         "year_distribution": _year_distribution(df),
         "behavior_summary": _behavior_summary(df),
+        "taste_profile": build_consumer_taste_profile(conn, df),
         "recent_plays": recent_plays(conn, df, 50),
     }
 

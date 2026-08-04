@@ -83,6 +83,10 @@ def test_genre_panorama_uses_statistical_genre_families_for_spotify_overlap() ->
     assert axes["scene"]["coverage_pct"] == 100.0
     assert axes["scene"]["buckets"][0]["name"] == "c-pop"
     assert axes["scene"]["buckets"][0]["share_pct"] == 100.0
+    assert panorama["display_taxonomy_version"] == "consumer_v1"
+    assert panorama["primary_styles"]["buckets"][0]["key"] == "unknown"
+    assert panorama["regional_pop"]["buckets"][0]["key"] == "c-pop"
+    assert panorama["regional_pop"]["buckets"][0]["share_pct"] == 100.0
     assert panorama["monthly_genres"][0]["genres"] == {}
     assert panorama["language_dist"]["unknown_hours"] == pytest.approx(1.0)
     assert "原始标签" in panorama["caveat"]
@@ -130,6 +134,7 @@ def test_genre_panorama_monthly_style_uses_approved_axis_fallback() -> None:
     panorama = _build_genre_panorama(conn, year_df, artist_agg)
 
     assert [row["name"] for row in panorama["top_genres"]] == ["pop"]
+    assert panorama["primary_styles"]["buckets"][0]["label"] == "Pop"
     assert panorama["monthly_genres"][0]["genres"] == {"pop": 100.0}
 
 

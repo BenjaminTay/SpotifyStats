@@ -45,6 +45,7 @@ function invalidateArtistLanguageConsumers(
     queryKey: queryKeys.metadata.artistLanguages.all,
   })
   void queryClient.invalidateQueries({ queryKey: queryKeys.yearlyReview.all })
+  void queryClient.invalidateQueries({ queryKey: queryKeys.analysis.all })
 }
 
 export function useArtistLanguageCoverage(filters: ArtistLanguagePlayFilters) {

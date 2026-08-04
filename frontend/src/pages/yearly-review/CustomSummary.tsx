@@ -3,7 +3,6 @@ import { PersonalityReveal } from './PersonalityReveal'
 import { TopCharts } from './TopCharts'
 import { GenrePanorama } from './GenrePanorama'
 import { TimeStory } from './TimeStory'
-import { MusicMap } from './MusicMap'
 import { DiscoveryReturns } from './DiscoveryReturns'
 import { ListeningDepth } from './ListeningDepth'
 import { SpecialMoments } from './SpecialMoments'
@@ -30,8 +29,6 @@ export function CustomSummary({ data }: CustomSummaryProps) {
       <GenrePanorama genrePanorama={data.genre_panorama} />
 
       {data.time_story && <TimeStory timeStory={data.time_story} />}
-
-      <MusicMap musicMap={data.music_map} />
 
       {data.discovery_returns && <DiscoveryReturns discovery={data.discovery_returns} />}
 

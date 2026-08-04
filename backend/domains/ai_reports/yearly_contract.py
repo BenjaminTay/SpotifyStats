@@ -226,8 +226,24 @@ def summarize_genres(
                 if isinstance(coverage.get("source_hours"), dict)
                 else None
             )
-        caveat = str(items.get("caveat") or "").strip() or None
-        genre_items = items.get("top_genres") if isinstance(items.get("top_genres"), list) else []
+        primary_styles = items.get("primary_styles")
+        if isinstance(primary_styles, dict) and isinstance(primary_styles.get("buckets"), list):
+            genre_items = [
+                {
+                    "name": row.get("label"),
+                    "play_share": row.get("share_pct"),
+                }
+                for row in primary_styles["buckets"]
+                if isinstance(row, dict) and row.get("key") != "unknown"
+            ]
+            caveat = (
+                "主曲风允许多标签，并在同一风格维度内分摊；占比以全部可归属有效聆听时长为分母。"
+            )
+        else:
+            caveat = str(items.get("caveat") or "").strip() or None
+            genre_items = (
+                items.get("top_genres") if isinstance(items.get("top_genres"), list) else []
+            )
     else:
         genre_items = items
     top_genres = []
@@ -239,11 +255,7 @@ def summarize_genres(
     summary = {
         "top_genres": top_genres,
         "has_other_bucket": any(item["name"] == "其他流派" for item in top_genres),
-        "caveat": caveat
-        or (
-            "canonical genre 是统计标签，可能重叠且可能分属 style/scene/context/role，"
-            "百分比不互斥；高占比标签也可能由少数艺人或某个来源驱动。"
-        ),
+        "caveat": caveat or "主曲风允许多标签，占比以全部可归属有效聆听时长为分母。",
     }
     if coverage:
         summary["coverage"] = coverage
@@ -391,7 +403,7 @@ def build_writing_constraints(reporting_period: dict[str, Any]) -> list[str]:
         "所有结论必须基于 DATA，不要编造天气、失眠、告别、人生转折等未提供场景。",
         "如果实体名称存在，必须优先写出具体艺人名和歌曲名。",
         "解释人格分数时必须使用 personality_summary.top_dimensions 中同一行的 label 和 score。",
-        "解释流派时必须保留 genre_summary.caveat，不要把 genre 百分比写成互斥类别；如果 caveat 提到少数艺人或来源驱动，必须保守表述。",
+        "解释主曲风时必须保留 genre_summary.caveat，不要把多标签占比写成逐曲唯一分类。",
     ]
     if reporting_period.get("is_partial_year"):
         constraints.extend(

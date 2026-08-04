@@ -96,6 +96,7 @@ def test_artist_genre_metadata_api_returns_taxonomy_audit(client, artist_genre_m
 
     assert response.status_code == 200
     payload = response.json()
+    assert payload["display_taxonomy_version"] == "consumer_v1"
     assert payload["raw_genre_count"] == 1
     assert payload["canonical_genre_count"] == 1
     assert payload["noncanonical_passthrough_count"] == 0

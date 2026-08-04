@@ -101,6 +101,7 @@ class ArtistGenrePassthroughItem(BaseModel):
 
 
 class ArtistGenreTaxonomyResponse(BaseModel):
+    display_taxonomy_version: str
     raw_genre_count: int
     canonical_genre_count: int
     noncanonical_passthrough_count: int

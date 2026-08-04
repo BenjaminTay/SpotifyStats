@@ -54,7 +54,7 @@
 |------|------|
 | [`reference/playback-stats-rules.md`](reference/playback-stats-rules.md) | 播放统计规则权威定义：三级合并、Session 边界、Album Projects |
 | [`reference/music-metadata-management.md`](reference/music-metadata-management.md) | 音乐源数据管理：有效曲目署名、人工覆盖、审计撤销、统一归并工作区与深链规则 |
-| [`reference/2026-07-04-artist-genre-taxonomy.md`](reference/2026-07-04-artist-genre-taxonomy.md) | Artist Genre Taxonomy：来源优先级、canonical 统计口径、非标准透传审计 |
+| [`reference/2026-07-04-artist-genre-taxonomy.md`](reference/2026-07-04-artist-genre-taxonomy.md) | Artist Genre Taxonomy：来源优先级、四轴治理、consumer_v1 展示映射与审计边界 |
 
 ## 历史归档 (`archive/`)
 

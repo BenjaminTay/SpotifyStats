@@ -23,9 +23,13 @@ from backend.domains.metadata.artist_genres import (
 from backend.domains.metadata.artist_languages import (
     artist_language_fact_revision,
     build_primary_artist_ms,
-    compute_artist_language_distribution,
 )
 from backend.domains.metadata.artist_spotify_meta import resolve_artist_image_url
+from backend.domains.metadata.genre_display_taxonomy import (
+    GENRE_DISPLAY_TAXONOMY_VERSION,
+    build_consumer_taste_profile,
+    display_style_keys,
+)
 from backend.domains.metadata.language_registry import (
     LANGUAGE_LABELS,
     LANGUAGE_VARIANTS,
@@ -241,7 +245,8 @@ def _artist_metadata_revision(conn: sqlite3.Connection) -> str:
     from backend.domains.metadata.track_credits import get_track_credit_revision
 
     return (
-        f"{genre_revision}|language:{artist_language_fact_revision(conn)}"
+        f"{genre_revision}|display:{GENRE_DISPLAY_TAXONOMY_VERSION}"
+        f"|language:{artist_language_fact_revision(conn)}"
         f"|identity:{get_identity_revision(conn)}"
         f"|track_credit:{get_track_credit_revision(conn)}"
     )
@@ -770,14 +775,10 @@ def _build_top_lists(conn, artist_agg, track_agg, album_agg):
 
 def _build_genre_panorama(conn, year_df, artist_agg):
     """Build genre axes and language coverage from the same primary-artist plays."""
+    consumer_profile = build_consumer_taste_profile(conn, year_df)
     artist_ms, excluded_ms = build_primary_artist_ms(
         conn,
         year_df.loc[:, ["track_id", "ms_played"]],
-    )
-    language_dist = compute_artist_language_distribution(
-        conn,
-        artist_ms,
-        excluded_ms=excluded_ms,
     )
     artist_names_by_id: dict[int, str] = {}
     artist_ids = list(artist_ms)
@@ -799,14 +800,12 @@ def _build_genre_panorama(conn, year_df, artist_agg):
         distribution = compute_artist_genre_distribution(conn, {})
         return {
             **distribution,
+            **consumer_profile,
             "monthly_genres": [],
-            "language_dist": language_dist,
         }
 
     resolved = resolve_artist_genres_map(conn, artist_names)
-    artist_style_genres = {}
-    for name, item in resolved.items():
-        artist_style_genres[name] = item.axis_genres.get("style", [])
+    artist_style_genres = {name: display_style_keys(item) for name, item in resolved.items()}
 
     distribution = compute_artist_genre_distribution(conn, artist_hours)
     distribution["coverage"]["excluded_unattributed_hours"] = excluded_ms / 3_600_000
@@ -814,13 +813,13 @@ def _build_genre_panorama(conn, year_df, artist_agg):
 
     return {
         **distribution,
+        **consumer_profile,
         "monthly_genres": monthly_genres_list,
-        "language_dist": language_dist,
     }
 
 
 def _build_monthly_genres(year_df, artist_genres: dict[str, list[str]]) -> list[dict]:
-    """Per-month top 5 genres, weighted by play hours."""
+    """Per-month display styles as a share of all attributable listening hours."""
     monthly = []
     for m in range(1, 13):
         month_df = year_df[year_df["ts_month"] == m]
@@ -838,7 +837,7 @@ def _build_monthly_genres(year_df, artist_genres: dict[str, list[str]]) -> list[
                     genre_hours[g] = genre_hours.get(g, 0) + genre_share
 
         top5 = sorted(genre_hours.items(), key=lambda x: x[1], reverse=True)[:5]
-        total_m = sum(genre_hours.values()) or 1
+        total_m = float(month_df["ms_played"].sum() / 3_600_000) or 1
         monthly.append(
             {
                 "month": m,

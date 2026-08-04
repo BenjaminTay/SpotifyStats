@@ -107,6 +107,9 @@ export interface GenreAxisDistribution {
 }
 
 export interface GenrePanorama {
+  display_taxonomy_version?: string | null
+  primary_styles?: ConsumerGenreDistribution | null
+  regional_pop?: ConsumerGenreDistribution | null
   top_genres: GenreItem[]
   monthly_genres: MonthlyGenreItem[]
   axes?: GenreAxisDistribution[]
@@ -119,6 +122,31 @@ export interface GenrePanorama {
     excluded_unattributed_hours?: number
   } | null
   caveat?: string | null
+}
+
+export interface ConsumerGenreBucket {
+  key: string
+  label: string
+  hours: number
+  share_pct: number
+  artist_count: number
+}
+
+export interface ConsumerGenreDistribution {
+  axis: 'style' | 'scene' | string
+  label: string
+  total_hours: number
+  known_hours: number
+  unknown_hours: number
+  allows_multiple: boolean
+  buckets: ConsumerGenreBucket[]
+}
+
+export interface ConsumerTasteProfile {
+  display_taxonomy_version?: string | null
+  primary_styles?: ConsumerGenreDistribution | null
+  regional_pop?: ConsumerGenreDistribution | null
+  language_dist?: LanguageDistribution | null
 }
 
 export interface LateNightTrack {

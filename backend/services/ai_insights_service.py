@@ -40,6 +40,7 @@ from backend.domains.ai_reports.yearly_contract import (
 )
 from backend.domains.ai_reports.yearly_validator import validate_yearly_report
 from backend.domains.billboard.year_end import YEAR_END_SEMANTICS_VERSION
+from backend.domains.metadata.genre_display_taxonomy import GENRE_DISPLAY_TAXONOMY_VERSION
 from backend.domains.settings.repository import SettingsRepository
 from backend.providers.llm.client import LLMProvider
 from backend.services.llm_translator import PROVIDERS, _get_config
@@ -85,7 +86,7 @@ YEARLY_STORY_SYSTEM = """你是一位可信的个人音乐年度编辑。根据 
 6. TOP 艺人、歌曲、新艺人如果有 name，必须写出具体名称；不要用“某位艺人”“另一首歌”替代。
 7. 如果 top_albums 有数据，必须写出 TOP 专辑名称；如果 billboard_year_end.available=true，必须使用“个人 Billboard / 年榜 / 在榜周数 / 峰值”等证据说明它是本地个人榜，不是外部官方 Billboard。
 8. 必须先读取 editorial_brief.thesis 和 required_angles，把报告写成有主线的编辑稿，不要只是逐项罗列数字。
-9. 流派解读必须保留 genre_summary.caveat 的含义；canonical genre 是统计标签，可能重叠且可能分属 style/scene/context/role，不是互斥分类；高占比标签可能由少数艺人或某个来源驱动。如果 top_genres 中包含“其他流派”，需要说明它也是最大或重要类别之一。
+9. 曲风解读使用 genre_summary 中面向用户的“主曲风”口径。主曲风允许多标签，并在同一风格维度内分摊；百分比以全部可归属有效聆听时长为分母，不要把它写成逐曲唯一分类。
 10. 高光日解释必须参考 most_active_day.interpretation_guidance，不要把低播放次数的单曲写成重度循环。
 11. 可以有温度，但不要编造 DATA 外的人生事件、天气、失眠、告别、重要转折或心理原因；不要用“有意识地”“主动选择”“学会了选择”等词推断用户主观意图。
 12. year_over_year.same_period 只允许集中写一次；不要在多个小节重复同一组同比数字。
@@ -293,13 +294,12 @@ def _build_yearly_report_fallback(data: dict[str, Any]) -> str:
         for row in (genre_summary.get("top_genres") or [])[:5]
         if isinstance(row, dict) and isinstance(row.get("share"), (int, float))
     )
-    lines.extend(["", "## 人格与流派"])
+    lines.extend(["", "## 人格与主曲风"])
     if dimension_text:
         lines.append(f"人格维度前三是 {dimension_text}。")
     if genre_names:
         lines.append(
-            f"流派前列包括 {genre_names}。canonical genre 是统计标签，"
-            "可能重叠且可能分属 style/scene/context/role，百分比不互斥；高占比标签也可能由少数艺人或某个来源驱动。"
+            f"主曲风前列包括 {genre_names}。风格可以多标签，占比按全部可归属有效聆听时长计算。"
         )
 
     if most_active_day:
@@ -547,10 +547,13 @@ def _report_cache_key(
     try:
         from backend.domains.metadata.artist_identity import get_identity_revision
         from backend.domains.metadata.track_credits import get_track_credit_revision
+        from backend.services.wrapped_service import _artist_metadata_revision
 
         filter_part = (
             f"{filter_part}|identity:{get_identity_revision(identity_conn)}"
             f"|track_credit:{get_track_credit_revision(identity_conn)}"
+            f"|genre_display:{GENRE_DISPLAY_TAXONOMY_VERSION}"
+            f"|artist_metadata:{_artist_metadata_revision(identity_conn)}"
         )
     finally:
         identity_conn.close()
@@ -1790,10 +1793,12 @@ def _fetch_data_for_intent(
             max_merge_gap_minutes=max_merge_gap_minutes,
         )
         gp = (wrapped or {}).get("genre_panorama") or {}
+        primary_styles = gp.get("primary_styles") or {}
         data["top_genres"] = [
-            {"name": g.get("name", ""), "share": g.get("play_share", 0)}
-            for g in (gp.get("top_genres") or [])[:10]
-        ]
+            {"name": g.get("label", ""), "share": g.get("share_pct", 0)}
+            for g in (primary_styles.get("buckets") or [])
+            if g.get("key") != "unknown"
+        ][:10]
         data["year"] = year
 
     return data

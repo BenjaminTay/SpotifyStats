@@ -51,7 +51,7 @@ def chart_coverage(
         "artist_monthly_trend": not df.empty and {"ts_date", "artist_name"}.issubset(df.columns),
         "album_duality_compare": bool(context.get("top_albums")) and bool(billboard.get("albums")),
         "highlight_day_timeline": bool(highlight.get("date")) and not df.empty,
-        "genre_language_mix": bool(genre.get("top_genres")),
+        "genre_language_mix": bool(_dict(genre.get("primary_styles")).get("buckets")),
         "discovery_timeline": bool(discovery.get("new_artists")),
         "playback_billboard_matrix": bool(
             billboard.get("tracks") or billboard.get("albums") or billboard.get("artists")
@@ -225,13 +225,17 @@ def _genre_language_mix(
 ) -> dict[str, Any]:
     del spec, df
     genre = _dict(context.get("genre_distribution"))
+    primary_styles = _dict(genre.get("primary_styles"))
     return {
-        "genres": _list(genre.get("top_genres")),
-        "caveat": genre.get("caveat")
-        or (
-            "canonical genre 是统计标签，可能重叠且可能分属 style/scene/context/role，"
-            "百分比不互斥；高占比标签也可能由少数艺人或某个来源驱动。"
-        ),
+        "items": [
+            {
+                "label": row.get("label"),
+                "percent": row.get("share_pct"),
+            }
+            for row in _list(primary_styles.get("buckets"))
+            if row.get("key") != "unknown"
+        ],
+        "caveat": "主曲风允许多标签，占比以全部可归属有效聆听时长为分母。",
     }
 
 

@@ -114,6 +114,7 @@ class TestAnalysisStats:
             "month_distribution",
             "year_distribution",
             "behavior_summary",
+            "taste_profile",
             "recent_plays",
         ]:
             assert key in data
@@ -127,6 +128,9 @@ class TestAnalysisStats:
         assert data["cumulative_trend"][-1]["cumulative_plays"] == data["summary"]["total_plays"]
         assert data["recent_plays"]
         assert "cover_url" in data["recent_plays"][0]
+        assert data["taste_profile"]["display_taxonomy_version"] == "consumer_v1"
+        assert data["taste_profile"]["primary_styles"]["axis"] == "style"
+        assert data["taste_profile"]["regional_pop"]["axis"] == "scene"
 
     def test_stats_custom_empty_range_returns_zero_shape(self, client, default_params):
         r = client.get(
@@ -144,6 +148,7 @@ class TestAnalysisStats:
         assert data["summary"]["total_plays"] == 0
         assert data["daily_trend"] == []
         assert data["recent_plays"] == []
+        assert data["taste_profile"]["primary_styles"]["buckets"] == []
         assert len(data["hourly_distribution"]) == 24
 
 

@@ -3756,6 +3756,7 @@ export interface components {
             /** Year Distribution */
             year_distribution: components["schemas"]["AnalysisYearPoint"][];
             behavior_summary: components["schemas"]["AnalysisStatsBehaviorSummary"];
+            taste_profile: components["schemas"]["ConsumerTasteProfile"];
             /** Recent Plays */
             recent_plays: {
                 [key: string]: unknown;
@@ -4302,6 +4303,8 @@ export interface components {
         };
         /** ArtistGenreTaxonomyResponse */
         ArtistGenreTaxonomyResponse: {
+            /** Display Taxonomy Version */
+            display_taxonomy_version: string;
             /** Raw Genre Count */
             raw_genre_count: number;
             /** Canonical Genre Count */
@@ -5321,6 +5324,47 @@ export interface components {
              */
             weeks_after: number;
         };
+        /** ConsumerGenreBucket */
+        ConsumerGenreBucket: {
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+            /** Hours */
+            hours: number;
+            /** Share Pct */
+            share_pct: number;
+            /** Artist Count */
+            artist_count: number;
+        };
+        /** ConsumerGenreDistribution */
+        ConsumerGenreDistribution: {
+            /** Axis */
+            axis: string;
+            /** Label */
+            label: string;
+            /** Total Hours */
+            total_hours: number;
+            /** Known Hours */
+            known_hours: number;
+            /** Unknown Hours */
+            unknown_hours: number;
+            /**
+             * Allows Multiple
+             * @default true
+             */
+            allows_multiple: boolean;
+            /** Buckets */
+            buckets?: components["schemas"]["ConsumerGenreBucket"][];
+        };
+        /** ConsumerTasteProfile */
+        ConsumerTasteProfile: {
+            /** Display Taxonomy Version */
+            display_taxonomy_version: string;
+            primary_styles: components["schemas"]["ConsumerGenreDistribution"];
+            regional_pop: components["schemas"]["ConsumerGenreDistribution"];
+            language_dist: components["schemas"]["LanguageDistribution"];
+        };
         /** CreateGroupRequest */
         CreateGroupRequest: {
             /** Canonical Name */
@@ -5684,6 +5728,10 @@ export interface components {
         };
         /** GenrePanorama */
         GenrePanorama: {
+            /** Display Taxonomy Version */
+            display_taxonomy_version?: string | null;
+            primary_styles?: components["schemas"]["ConsumerGenreDistribution"] | null;
+            regional_pop?: components["schemas"]["ConsumerGenreDistribution"] | null;
             /**
              * Top Genres
              * @default []

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pydantic import BaseModel
 
+from backend.models.wrapped import ConsumerTasteProfile
+
 # ── Sub-structures for /analysis/overview ──
 
 
@@ -165,6 +167,7 @@ class AnalysisStatsResponse(BaseModel):
     month_distribution: list[AnalysisMonthPoint]
     year_distribution: list[AnalysisYearPoint]
     behavior_summary: AnalysisStatsBehaviorSummary
+    taste_profile: ConsumerTasteProfile
     recent_plays: list[dict]
 
 

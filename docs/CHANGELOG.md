@@ -1,5 +1,12 @@
 # 变更日志
 
+## 2026-08-04 — 曲风与语言消费层
+
+- 保留 `style / scene / context / role` 四轴 taxonomy、原始 genre/language facts 与 Settings 审核能力，新增版本化 `consumer_v1` 展示映射，不把消费标签写回治理事实。
+- 年度总结改为并列展示“主曲风 / 地区流行 / 语言”：Rock/Alternative 与 Indie/Alternative 使用更直观的消费名称，Electronic、Dance、Ambient 仅按可靠原始标签拆分，R&B / Soul 保持合并；跨轴标签可同时出现，未知统一显示为“尚未归类”。
+- `context` / `role` 不再进入年度主图，避免 Singer-Songwriter 形成 100% 假象；基于 genre heuristic 的 Music Map 暂从年度消费页隐藏，播放统计页保持原布局且不新增曲风/语言模块。
+- 普通用户界面移除来源、证据、置信度、审核状态和内部 ID 等治理术语；这些信息继续留在 Settings“音乐源数据管理 → 流派与语言”。Wrapped、AI 年报与分析缓存纳入 display taxonomy 和艺人元数据 revision，OpenAPI 与生成类型同步更新。
+
 ## 2026-08-04 — 艺人周榜曲目数与详情排行
 
 - 周榜艺人“入榜曲目数”统一改为仅统计当周已裁剪 Top N 的 canonical track，再通过有效曲目署名投影到 canonical artist；pre-aggregate 与 fallback 共用同一计算，featured、身份 alias 和曲目版本组均去重。缓存按 identity/track-credit current + active revision 分代，重建 pending 的 fallback 不进入稳定 LRU。

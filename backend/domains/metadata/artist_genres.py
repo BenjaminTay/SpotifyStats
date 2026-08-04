@@ -1068,7 +1068,10 @@ def compute_genre_taxonomy_audit(
         if raw_canonical_examples.get(genre)
     ][:12]
 
+    from backend.domains.metadata.genre_display_taxonomy import GENRE_DISPLAY_TAXONOMY_VERSION
+
     return {
+        "display_taxonomy_version": GENRE_DISPLAY_TAXONOMY_VERSION,
         "raw_genre_count": len(raw_hours),
         "canonical_genre_count": len(canonical_hours),
         "noncanonical_passthrough_count": len(noncanonical_passthrough),
