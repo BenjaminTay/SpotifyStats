@@ -6,9 +6,29 @@ from typing import Any
 
 import pytest
 
+from backend.core.migrations import migrate_024
 from backend.services import ai_insights_service as svc
 
 pytestmark = pytest.mark.unit
+
+
+@pytest.fixture(autouse=True)
+def _isolated_metadata_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """Keep report cache-key tests independent from the user's production DB."""
+    db_path = tmp_path / "report_metadata.db"
+    conn = sqlite3.connect(db_path)
+    try:
+        migrate_024(conn)
+    finally:
+        conn.close()
+
+    def get_test_db(readonly: bool = False) -> sqlite3.Connection:
+        del readonly
+        test_conn = sqlite3.connect(db_path)
+        test_conn.row_factory = sqlite3.Row
+        return test_conn
+
+    monkeypatch.setattr(svc, "get_db", get_test_db)
 
 
 def _conn_with_play_dates(tmp_path: Path, dates: list[str]) -> sqlite3.Connection:

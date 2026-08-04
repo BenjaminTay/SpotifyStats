@@ -82,6 +82,13 @@ def test_visual_yearly_artifact_service_generates_artifact(monkeypatch):
             context,
         ),
     )
+    # This orchestration test should not derive chart availability from the
+    # developer's local production database. Keep the planner deterministic.
+    monkeypatch.setattr(
+        svc,
+        "chart_coverage",
+        lambda _context: {spec["id"]: True for spec in svc._default_chart_specs()},
+    )
     chart_contexts = []
     monkeypatch.setattr(
         svc,

@@ -75,6 +75,7 @@ def ai_report_task_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
         return test_conn
 
     monkeypatch.setattr(ai_task_service, "get_db", get_test_db)
+    monkeypatch.setattr(ai_insights_service, "get_db", get_test_db)
     return db_path
 
 

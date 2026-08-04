@@ -10,7 +10,9 @@
 ### CI 与测试契约
 
 - AI 年报任务测试夹具复用 migration 024 创建 `artist_language_sources`，避免测试数据库落后于艺人语言 revision 查询。
+- 年报质量测试和报告任务测试同时隔离 `ai_insights_service.get_db`，不再依赖开发者本机已有的 `data/spotify_stats.db`。
 - 年度图表测试夹具同步当前 `primary_styles.buckets` / `genre_language_mix.items` 数据契约。
+- 视觉年报编排测试固定 chart coverage，避免无个人数据库的 CI 环境因图表数量降级而误报。
 - 年报确定性 fallback 复用后端返回的 genre caveat，确保文本质量校验与真实报告数据保持一致。
 
 ## 2026-08-04 — 曲风与语言消费层
