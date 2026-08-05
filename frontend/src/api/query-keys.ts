@@ -96,6 +96,12 @@ export const queryKeys = {
       ["settings", "music-metadata", "track-credits", "manual-changes"] as const,
   },
 
+  dataImport: {
+    all: ["data-import"] as const,
+    health: () => ["data-import", "health"] as const,
+    preflight: () => ["data-import", "preflight"] as const,
+  },
+
   metadata: {
     all: ["metadata"] as const,
     artistGenres: {

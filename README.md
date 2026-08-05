@@ -62,7 +62,7 @@ cd frontend
 npm run dev
 ```
 
-首次启动只会创建或迁移 SQLite 数据库，不会自动导入个人 JSON。打开前端后，进入「设置 → 数据导入」手动导入 Streaming History 和 Account Data。
+首次启动只会创建或迁移 SQLite 数据库，不会自动导入个人 JSON。打开前端后，进入「设置 → 数据导入」，先运行只读的「导入前检查」，再手动导入 Streaming History 和 Account Data；导入完成后可在同一区域查看「数据健康」报告。检查范围与状态含义见 [`docs/reference/data-import-and-health.md`](docs/reference/data-import-and-health.md)。
 
 浏览器访问 `http://localhost:5173`，API 文档访问 `http://localhost:8000/docs`。
 

@@ -1,8 +1,13 @@
+import { useEffect } from 'react'
+
 import { GlassCard } from '@/components/shared/GlassCard'
 import { Badge } from '@/components/ui/badge'
 import { CheckCircle2 } from 'lucide-react'
 import type { ImportJob } from '@/types/settings'
 import { CollapsibleSection, ImportProgressCard } from '@/features/settings/components/SettingsHelpers'
+import { DataHealthSummary } from '@/features/settings/components/DataHealthSummary'
+import { ImportPreflightPanel } from '@/features/settings/components/ImportPreflightPanel'
+import { useDataImportHealth } from '@/hooks/useDataImportHealth'
 
 export function DataImportSection({
   dbRecordCount,
@@ -16,10 +21,17 @@ export function DataImportSection({
   accountImported: boolean
   streamingJob: ImportJob | null
   accountJob: ImportJob | null
-  onStreamingImport: () => void
+  onStreamingImport: (confirmWarnings?: boolean) => void
   onAccountImport: () => void
 }) {
   const imported = dbRecordCount > 0 && accountImported
+  const dataHealth = useDataImportHealth()
+
+  useEffect(() => {
+    if (streamingJob?.status === 'done' || accountJob?.status === 'done') {
+      void dataHealth.refetchHealth()
+    }
+  }, [accountJob?.status, dataHealth.refetchHealth, streamingJob?.status])
 
   return (
     <GlassCard className="p-6">
@@ -37,7 +49,21 @@ export function DataImportSection({
           ) : undefined
         }
       >
-      <div className="grid grid-cols-1 gap-8 md:grid-cols-2">
+      <div className="space-y-4">
+        <DataHealthSummary
+          health={dataHealth.health}
+          loading={dataHealth.healthLoading}
+          error={dataHealth.healthError}
+          onRefresh={() => { void dataHealth.refetchHealth() }}
+        />
+        <ImportPreflightPanel
+          preflight={dataHealth.preflight}
+          loading={dataHealth.preflightLoading}
+          error={dataHealth.preflightError}
+          onRun={() => { void dataHealth.runPreflight() }}
+        />
+      </div>
+      <div className="mt-6 grid grid-cols-1 gap-8 md:grid-cols-2">
         <ImportProgressCard
           title="串流数据"
           label={`当前数据库记录数：${new Intl.NumberFormat('zh-CN').format(dbRecordCount)}`}

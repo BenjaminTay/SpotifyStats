@@ -92,10 +92,10 @@ class SettingsUpdateRequest(BaseModel):
 
 
 class ImportJobStatus(BaseModel):
-    """Import job progress."""
+    """Import job progress and preflight gate state."""
 
     job_id: str
-    status: str  # "running" | "done" | "error"
+    status: str  # "running" | "done" | "error" | "blocked" | "needs_confirmation"
     progress_pct: float
     message: str
     result: dict | None = None

@@ -8,6 +8,8 @@ import os
 import re
 from typing import Any
 
+from backend.domains.imports.source_inspector import record_fingerprint
+
 from .db import build_aggregations, ensure_schema, get_db, init_db
 from .utils import classify_platform, convert_to_local_time
 
@@ -250,6 +252,10 @@ def import_data(
     total_files = len(json_files)
     total_records = 0
     total_skipped = 0
+    duplicate_records_skipped = 0
+    source_records_processed = 0
+    seen_audio_records: set[str] = set()
+    seen_video_records: set[str] = set()
 
     for file_idx, filepath in enumerate(json_files):
         with open(filepath, encoding="utf-8") as f:
@@ -258,6 +264,12 @@ def import_data(
         plays_batch: list[tuple] = []
 
         for rec_idx, rec in enumerate(records):
+            source_records_processed += 1
+            fingerprint = record_fingerprint(rec)
+            if fingerprint in seen_audio_records:
+                duplicate_records_skipped += 1
+                continue
+            seen_audio_records.add(fingerprint)
             ts_raw = rec.get("ts", "")
             country = rec.get("conn_country", "CN")
             time_info = convert_to_local_time(ts_raw, country)
@@ -338,7 +350,7 @@ def import_data(
 
             # Progress: per-file granularity
             if progress_callback and total_records_est > 0:
-                processed = total_records + len(plays_batch)
+                processed = source_records_processed
                 pct = min(0.95, processed / total_records_est)
                 if processed % 5000 == 0:
                     progress_callback(
@@ -370,6 +382,12 @@ def import_data(
 
             plays_batch: list[tuple] = []
             for rec in records:
+                source_records_processed += 1
+                fingerprint = record_fingerprint(rec)
+                if fingerprint in seen_video_records:
+                    duplicate_records_skipped += 1
+                    continue
+                seen_video_records.add(fingerprint)
                 ts_raw = rec.get("ts", "")
                 country = rec.get("conn_country", "CN")
                 time_info = convert_to_local_time(ts_raw, country)
@@ -444,7 +462,7 @@ def import_data(
                     plays_batch.clear()
 
                 if progress_callback and total_records_est > 0:
-                    processed = total_records + video_total + len(plays_batch)
+                    processed = source_records_processed
                     pct = min(0.95, processed / total_records_est)
                     if processed % 5000 == 0:
                         progress_callback(
@@ -498,6 +516,7 @@ def import_data(
         "audio_records": total_records,
         "video_records": video_total,
         "total_skipped": total_skipped,
+        "duplicate_records_skipped": duplicate_records_skipped,
         "unique_artists": len(artist_cache),
         "unique_albums": len(album_cache),
         "unique_tracks": len(track_cache),

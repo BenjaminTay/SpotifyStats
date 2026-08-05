@@ -1736,6 +1736,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/import/preflight": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Import Preflight
+         * @description Inspect local Spotify export files without changing the database.
+         */
+        get: operations["get_import_preflight_api_import_preflight_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/import/health": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Import Health
+         * @description Return raw, relationship, metadata, and derived-data health.
+         */
+        get: operations["get_import_health_api_import_health_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/import/streaming": {
         parameters: {
             query?: never;
@@ -5904,6 +5944,137 @@ export interface components {
              */
             confirm_external_id_conflict: boolean;
         };
+        /** ImportDateOverlap */
+        ImportDateOverlap: {
+            /** Left File */
+            left_file: string;
+            /** Right File */
+            right_file: string;
+            /** Overlap Start */
+            overlap_start: string;
+            /** Overlap End */
+            overlap_end: string;
+            /** Overlap Days */
+            overlap_days: number;
+            /**
+             * Shared Record Count
+             * @default 0
+             */
+            shared_record_count: number;
+        };
+        /** ImportDuplicateFileGroup */
+        ImportDuplicateFileGroup: {
+            /** File Names */
+            file_names: string[];
+            /** Sha256 */
+            sha256: string;
+        };
+        /** ImportFileReport */
+        ImportFileReport: {
+            /** Source Key */
+            source_key: string;
+            /** Label */
+            label: string;
+            /** File Name */
+            file_name: string;
+            /** Required */
+            required: boolean;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "missing" | "ok" | "empty" | "invalid";
+            /**
+             * Size Bytes
+             * @default 0
+             */
+            size_bytes: number;
+            /**
+             * Record Count
+             * @default 0
+             */
+            record_count: number;
+            /**
+             * Duplicate Record Count
+             * @default 0
+             */
+            duplicate_record_count: number;
+            /** First Date */
+            first_date?: string | null;
+            /** Last Date */
+            last_date?: string | null;
+            /** Errors */
+            errors?: string[];
+            /** Warnings */
+            warnings?: string[];
+        };
+        /** ImportHealthIssue */
+        ImportHealthIssue: {
+            /** Code */
+            code: string;
+            /**
+             * Category
+             * @enum {string}
+             */
+            category: "database" | "relationship" | "metadata" | "derived";
+            /**
+             * Severity
+             * @enum {string}
+             */
+            severity: "critical" | "high" | "medium" | "low";
+            /** Title */
+            title: string;
+            /**
+             * Count
+             * @default 0
+             */
+            count: number;
+            /**
+             * Affected Play Count
+             * @default 0
+             */
+            affected_play_count: number;
+            /** Impact */
+            impact: string;
+            /** Recommended Action */
+            recommended_action: string;
+            /** Evidence */
+            evidence?: {
+                [key: string]: unknown;
+            };
+        };
+        /** ImportHealthResponse */
+        ImportHealthResponse: {
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "healthy" | "partial" | "blocked" | "stale" | "failed";
+            /** Checked At */
+            checked_at: string;
+            /** Database */
+            database?: {
+                [key: string]: unknown;
+            };
+            /** Relationships */
+            relationships?: {
+                [key: string]: unknown;
+            };
+            /** Metadata */
+            metadata?: {
+                [key: string]: unknown;
+            };
+            /** Derived */
+            derived?: {
+                [key: string]: unknown;
+            };
+            /** Issues */
+            issues?: components["schemas"]["ImportHealthIssue"][];
+            /** Blockers */
+            blockers?: string[];
+            /** Warnings */
+            warnings?: string[];
+        };
         /**
          * ImportJobCreateResponse
          * @description Response returned when an import job is scheduled.
@@ -5914,7 +6085,7 @@ export interface components {
         };
         /**
          * ImportJobStatus
-         * @description Import job progress.
+         * @description Import job progress and preflight gate state.
          */
         ImportJobStatus: {
             /** Job Id */
@@ -5929,6 +6100,26 @@ export interface components {
             result?: {
                 [key: string]: unknown;
             } | null;
+        };
+        /** ImportPreflightResponse */
+        ImportPreflightResponse: {
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "healthy" | "partial" | "blocked" | "stale" | "failed";
+            /** Streaming Files */
+            streaming_files?: components["schemas"]["ImportFileReport"][];
+            /** Account Files */
+            account_files?: components["schemas"]["ImportFileReport"][];
+            /** Duplicate File Groups */
+            duplicate_file_groups?: components["schemas"]["ImportDuplicateFileGroup"][];
+            /** Date Overlaps */
+            date_overlaps?: components["schemas"]["ImportDateOverlap"][];
+            /** Blockers */
+            blockers?: string[];
+            /** Warnings */
+            warnings?: string[];
         };
         /**
          * JobStatusResponse
@@ -12978,7 +13169,7 @@ export interface operations {
             };
         };
     };
-    start_streaming_import_api_import_streaming_post: {
+    get_import_preflight_api_import_preflight_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -12993,7 +13184,70 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
+                    "application/json": components["schemas"]["ImportPreflightResponse"];
+                };
+            };
+        };
+    };
+    get_import_health_api_import_health_get: {
+        parameters: {
+            query?: {
+                readonly?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportHealthResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    start_streaming_import_api_import_streaming_post: {
+        parameters: {
+            query?: {
+                /** @description 确认导入前警告后继续 */
+                confirm_warnings?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
                     "application/json": components["schemas"]["ImportJobCreateResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

@@ -163,3 +163,48 @@ def test_get_db_wal_reader_snapshot_survives_writer_commit(tmp_path, monkeypatch
             fresh_reader.close()
     finally:
         _clear_db_caches()
+
+
+def test_import_data_skips_exact_duplicates_per_content_type(tmp_path, monkeypatch):
+    from backend.core import db as db_mod
+    from backend.core import import_data as import_mod
+
+    db_path = tmp_path / "spotify_stats.db"
+    data_dir = tmp_path / "streaming"
+    data_dir.mkdir()
+    monkeypatch.setattr(db_mod, "DB_PATH", str(db_path))
+
+    record = {
+        "ts": "2026-01-01T00:00:00Z",
+        "conn_country": "CN",
+        "platform": "ios",
+        "ms_played": 210_000,
+        "master_metadata_track_name": "Signal Song",
+        "master_metadata_album_artist_name": "Main Artist",
+        "master_metadata_album_album_name": "Signal Album",
+        "spotify_track_uri": "spotify:track:signal",
+    }
+    (data_dir / "Streaming_History_Audio_2026_0.json").write_text(
+        json.dumps([record, record]), encoding="utf-8"
+    )
+    (data_dir / "Streaming_History_Audio_2026_1.json").write_text(
+        json.dumps([record]), encoding="utf-8"
+    )
+    (data_dir / "Streaming_History_Video_2026_0.json").write_text(
+        json.dumps([record]), encoding="utf-8"
+    )
+
+    try:
+        result = import_mod.import_data(str(data_dir), build_preaggregations=False)
+
+        assert result["total_records"] == 2
+        assert result["audio_records"] == 1
+        assert result["video_records"] == 1
+        assert result["duplicate_records_skipped"] == 2
+        conn = sqlite3.connect(db_path)
+        try:
+            assert conn.execute("SELECT COUNT(*) FROM plays").fetchone()[0] == 2
+        finally:
+            conn.close()
+    finally:
+        _clear_db_caches()

@@ -255,4 +255,117 @@ describe('Settings sections', () => {
     expect(screen.getByText('曲目元数据 +12')).toBeInTheDocument()
     expect(screen.getByText('专辑元数据 +4')).toBeInTheDocument()
   })
+
+  it('shows exact duplicate skips and a partial post-import health result', () => {
+    render(
+      <ImportProgressCard
+        title="串流数据"
+        label="当前数据库记录数：1,000"
+        job={{
+          job_id: 'fixture',
+          status: 'done',
+          progress_pct: 1,
+          message: '导入完成',
+          result: {
+            maintenance_status: 'ok',
+            duplicate_records_skipped: 57,
+            post_import_health: { status: 'partial' },
+          },
+        }}
+        onStart={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByText('导入完成，数据可用但有健康提醒')).toBeInTheDocument()
+    expect(screen.getByText('跳过重复记录 57')).toBeInTheDocument()
+  })
+
+  it('explains that a failed import was rolled back', () => {
+    render(
+      <ImportProgressCard
+        title="串流数据"
+        label="当前数据库记录数：1,000"
+        job={{
+          job_id: 'fixture',
+          status: 'error',
+          progress_pct: 0.4,
+          message: 'fixture import failure',
+          result: {
+            database_snapshot: { status: 'created' },
+            rollback: { status: 'restored' },
+          },
+        }}
+        onStart={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByText('fixture import failure')).toBeInTheDocument()
+    expect(screen.getByText('已恢复导入前数据库，原有播放数据保持不变。')).toBeInTheDocument()
+  })
+
+  it('explains that a failed first import was removed', () => {
+    render(
+      <ImportProgressCard
+        title="串流数据"
+        label="当前数据库记录数：0"
+        job={{
+          job_id: 'fixture',
+          status: 'error',
+          progress_pct: 0.2,
+          message: 'fixture first import failure',
+          result: {
+            database_snapshot: { status: 'skipped', reason: 'database_not_found' },
+            rollback: { status: 'removed_new_database' },
+          },
+        }}
+        onStart={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByText('首次导入未完成，已清理本次创建的半成品数据库。')).toBeInTheDocument()
+  })
+
+  it('asks for explicit confirmation before importing with warnings', () => {
+    const onStart = vi.fn()
+    render(
+      <ImportProgressCard
+        title="串流数据"
+        label="当前数据库记录数：1,000"
+        job={{
+          job_id: 'fixture',
+          status: 'needs_confirmation',
+          progress_pct: 0,
+          message: '导入需要确认：发现导入前警告，数据库尚未修改',
+          result: { preflight: { warnings: ['日期范围重叠'] }, import_started: false },
+        }}
+        onStart={onStart}
+      />,
+    )
+
+    expect(screen.getByText('数据库尚未修改；再次点击按钮表示你已核对这些警告并继续。')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '确认风险并导入' }))
+    expect(onStart).toHaveBeenCalledWith(true)
+  })
+
+  it('keeps a blocked import from looking like a completed job', () => {
+    const onStart = vi.fn()
+    render(
+      <ImportProgressCard
+        title="串流数据"
+        label="当前数据库记录数：1,000"
+        job={{
+          job_id: 'fixture',
+          status: 'blocked',
+          progress_pct: 0,
+          message: '导入已阻断：导入前检查发现硬性问题，数据库未修改',
+          result: { preflight: { blockers: ['存在完全重复文件'] }, import_started: false },
+        }}
+        onStart={onStart}
+      />,
+    )
+
+    expect(screen.getByText('导入已阻断：导入前检查发现硬性问题，数据库未修改')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '重新检查' }))
+    expect(onStart).toHaveBeenCalledWith(false)
+  })
 })

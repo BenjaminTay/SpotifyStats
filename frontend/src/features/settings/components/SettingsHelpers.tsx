@@ -144,8 +144,20 @@ function resultNumber(result: Record<string, unknown> | null, key: string) {
   return typeof value === 'number' && Number.isFinite(value) ? value : 0
 }
 
+function nestedResultStatus(result: Record<string, unknown> | null, key: string) {
+  const value = result?.[key]
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  const status = (value as Record<string, unknown>).status
+  return typeof status === 'string' ? status : null
+}
+
 function maintenanceLabel(job: ImportJob | null) {
   const status = resultString(job?.result ?? null, 'maintenance_status')
+  const health = job?.result?.post_import_health
+  const healthStatus = health && typeof health === 'object' && !Array.isArray(health)
+    ? (health as Record<string, unknown>).status
+    : null
+  if (healthStatus === 'partial' || healthStatus === 'stale') return '导入完成，数据可用但有健康提醒'
   if (status === 'partial') return '播放数据已导入，部分 Spotify 元数据待补全'
   if (status === 'ok') return '导入完成，派生数据已更新'
   return '导入完成'
@@ -158,6 +170,7 @@ function maintenanceChips(job: ImportJob | null) {
     ['albums_metadata_updated', '专辑元数据', '+'],
     ['unresolved_recent_tracks', '未解析曲目', ''],
     ['unresolved_recent_albums', '未解析专辑', ''],
+    ['duplicate_records_skipped', '跳过重复记录', ''],
   ]
     .map(([key, label, prefix]) => {
       const value = resultNumber(result, key)
@@ -178,7 +191,7 @@ export function ImportProgressCard({
   title: string
   label: string
   job: ImportJob | null
-  onStart: () => void
+  onStart: (confirmWarnings?: boolean) => void
   statusBadge?: React.ReactNode
   reimportLabel?: string
   helpLink?: { text: string; href: string }
@@ -186,7 +199,17 @@ export function ImportProgressCard({
   const isRunning = job?.status === 'running'
   const isDone = job?.status === 'done'
   const isError = job?.status === 'error'
+  const isBlocked = job?.status === 'blocked'
+  const needsConfirmation = job?.status === 'needs_confirmation'
+  const postHealth = job?.result?.post_import_health
+  const postHealthStatus = postHealth && typeof postHealth === 'object' && !Array.isArray(postHealth)
+    ? (postHealth as Record<string, unknown>).status
+    : null
   const isPartial = resultString(job?.result ?? null, 'maintenance_status') === 'partial'
+    || postHealthStatus === 'partial'
+    || postHealthStatus === 'stale'
+  const rollbackStatus = nestedResultStatus(job?.result ?? null, 'rollback')
+  const snapshotStatus = nestedResultStatus(job?.result ?? null, 'database_snapshot')
   const chips = maintenanceChips(job)
 
   return (
@@ -246,19 +269,53 @@ export function ImportProgressCard({
               ))}
             </div>
           )}
+          {snapshotStatus === 'created' && (
+            <p className="text-[12px] text-muted-foreground">导入前数据库快照已保留，可用于后续回滚。</p>
+          )}
         </div>
       )}
       {isError && (
-        <div className="flex items-center gap-1.5 text-[13px] text-accent-foreground">
-          <AlertCircle className="size-3.5" />
-          {job.message || '导入失败'}
+        <div className="space-y-1 text-[13px] text-accent-foreground">
+          <div className="flex items-center gap-1.5">
+            <AlertCircle className="size-3.5" />
+            {job.message || '导入失败'}
+          </div>
+          {rollbackStatus === 'restored' && (
+            <p className="pl-5 text-[12px] text-green-700 dark:text-green-300">
+              已恢复导入前数据库，原有播放数据保持不变。
+            </p>
+          )}
+          {rollbackStatus === 'removed_new_database' && (
+            <p className="pl-5 text-[12px] text-green-700 dark:text-green-300">
+              首次导入未完成，已清理本次创建的半成品数据库。
+            </p>
+          )}
+          {rollbackStatus === 'failed' && (
+            <p className="pl-5 text-[12px] font-medium text-red-700 dark:text-red-300">
+              自动回滚未完成，请先停止继续导入并检查数据库快照。
+            </p>
+          )}
+        </div>
+      )}
+      {(isBlocked || needsConfirmation) && (
+        <div className={cn(
+          'space-y-1 text-[13px]',
+          isBlocked ? 'text-red-700 dark:text-red-300' : 'text-amber-700 dark:text-amber-300',
+        )}>
+          <div className="flex items-center gap-1.5">
+            <AlertCircle className="size-3.5" />
+            {job.message}
+          </div>
+          {needsConfirmation && (
+            <p className="pl-5 text-[12px]">数据库尚未修改；再次点击按钮表示你已核对这些警告并继续。</p>
+          )}
         </div>
       )}
 
       <Button
         variant="outline"
         size="sm"
-        onClick={onStart}
+        onClick={() => onStart(needsConfirmation)}
         disabled={isRunning}
         className="w-fit gap-1.5"
       >
@@ -267,7 +324,15 @@ export function ImportProgressCard({
         ) : (
           <Upload className="size-3.5" />
         )}
-        {isRunning ? '导入中...' : isDone ? (reimportLabel || '重新导入') : '开始导入'}
+        {isRunning
+          ? '导入中...'
+          : needsConfirmation
+            ? '确认风险并导入'
+            : isDone
+              ? (reimportLabel || '重新导入')
+              : isBlocked
+                ? '重新检查'
+                : '开始导入'}
       </Button>
     </div>
   )

@@ -13,6 +13,8 @@ INFRASTRUCTURE_ROUTES = (
     ("GET", "/api/admin/cache-stats"),
     ("POST", "/api/import/streaming"),
     ("POST", "/api/import/account"),
+    ("GET", "/api/import/preflight"),
+    ("GET", "/api/import/health"),
     ("GET", "/api/import/status/{job_id}"),
     ("GET", "/api/jobs/{job_id}/status"),
 )

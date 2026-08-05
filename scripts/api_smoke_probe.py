@@ -259,6 +259,8 @@ DEFAULT_SAFE_GET_CASES: tuple[SmokeCase, ...] = (
         "version_collab_candidates", "/api/version-merge/track-group-candidates/collaboration"
     ),
     SmokeCase("import_status_missing", "/api/import/status/nonexistent"),
+    SmokeCase("import_preflight", "/api/import/preflight"),
+    SmokeCase("import_health", "/api/import/health"),
     SmokeCase("music_search", "/api/music/search", {"q": "Fixture", "limit_per_type": 3}),
     SmokeCase("music_track_stats", "/api/music/tracks/901/stats", DEFAULT_FILTERS),
     SmokeCase("music_album_stats", "/api/music/albums/Fixture Future LP/stats", DEFAULT_FILTERS),

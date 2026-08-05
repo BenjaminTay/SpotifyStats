@@ -19,7 +19,9 @@
 2. 在「下载你的数据」区域，勾选 **Extended Streaming History** 和 **Account Data**
 3. 点击「请求数据」，Spotify 会在 1-5 天内邮件通知你下载链接
 4. 下载的 ZIP 解压后，将 `Streaming_History_Audio_*.json` 放入 `data/streaming/`，`Account Data` 中所有 JSON 放入 `data/account/`
-5. 在应用设置页执行「导入数据」
+5. 在应用设置页先执行「导入前检查」，确认必需文件可读后，再执行「导入数据」；导入完成后可查看「数据健康」报告
+
+更完整的检查范围和状态含义见 [`docs/reference/data-import-and-health.md`](../docs/reference/data-import-and-health.md)。
 
 > ⚠️ **隐私提示**：播放历史数据包含 IP 地址和精确时间戳，属于个人隐私数据。`data/streaming/` 和 `data/account/` 已被 `.gitignore` 排除，请勿将原始 JSON 提交到版本控制。
 
@@ -237,24 +239,26 @@ Spotify 推断的用户兴趣标签，按类别分组：
 `backend/core/import_data.py` → `import_data()`：
 
 1. 扫描 `data/streaming/Streaming_History_Audio_*.json`（+ 可选 `Video_*.json`）
-2. 预读取所有文件计算总记录数（用于进度条）
-3. 清空旧播放数据（`plays`、预聚合表、`track_albums`）
-4. 逐文件逐记录解析：
+2. 导入前检查必需文件；完全重复文件会阻断导入，日期重叠只提示，完全相同的记录在导入时自动跳过
+3. 预读取所有文件计算总记录数（用于进度条）
+4. 创建数据库快照后清空旧播放数据（`plays`、预聚合表、`track_albums`）
+5. 逐文件逐记录解析：
    - 时区转换（`ts` UTC → 本地）
    - 平台归类（`platform` → `ios/android/desktop/web/other`）
    - Featured Artist 提取（从曲名中解析 `(feat. X)` / `(with Y)` 等模式）
    - 维度表去重插入（artists / albums / tracks）
    - track_artists 关联写入（primary + featured）
    - 保存播放当时的 `spotify_track_id_at_play`，避免后续曲目重命名或同名专辑搜索误伤
-5. 每 5000 条批量写入 `plays` 表
-6. 后置维护派生数据：
+6. 每 5000 条批量写入 `plays` 表，并在结果中返回 `duplicate_records_skipped`
+7. 后置维护派生数据：
    - 用 Spotify Web API 批量补齐新曲目的 `spotify_track_meta`
    - 根据 track API 返回的 Spotify album id 建立 `album_spotify_links` 证据
    - 批量补齐 `spotify_album_meta`，包括封面、发行类型、发行日期和曲目数
    - 重建 `album_projects` / `album_project_albums` / `album_project_tracks`
    - 重建 `agg_weekly_*` 与 `agg_weekly_track_sources`
    - 清理后端内存缓存并返回导入健康报告
-7. 返回统计摘要（`total_records`, `unique_artists`, `unique_albums`, `unique_tracks`）和维护状态（`maintenance_status`）
+8. 复核 SQLite 完整性、播放数量和播放→曲目/专辑关系；硬错误会恢复导入前快照，普通元数据缺口保留为 `partial`
+9. 返回统计摘要（`total_records`, `unique_artists`, `unique_albums`, `unique_tracks`, `duplicate_records_skipped`）和维护状态（`maintenance_status`）
 
 `maintenance_status=partial` 表示基础播放数据已经导入，但 Spotify API 凭据不可用、上游请求失败，或仍有近期曲目/专辑元数据未解析。此时播放记录仍可查询，封面、album project、专辑榜等派生结果可能需要补全后再刷新。
 

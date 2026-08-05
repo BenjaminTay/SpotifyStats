@@ -52,7 +52,7 @@ export type SettingsUpdatePayload = Partial<
 
 export interface ImportJob {
   job_id: string;
-  status: "running" | "done" | "error" | "not_found";
+  status: "running" | "done" | "error" | "blocked" | "needs_confirmation" | "not_found";
   progress_pct: number;
   message: string;
   result: Record<string, unknown> | null;

@@ -61,7 +61,7 @@ interface UseSettingsResult {
   updateApiKey: (apiKey: string, baseUrl?: string) => Promise<void>
   clearTranslationCache: () => Promise<ClearCacheResult>
   rebuildAgg: () => Promise<RebuildResult>
-  startStreamingImport: () => void
+  startStreamingImport: (confirmWarnings?: boolean) => void
   startAccountImport: () => void
   streamingJob: ImportJob | null
   accountJob: ImportJob | null
@@ -200,7 +200,7 @@ export function useSettings(): UseSettingsResult {
     const interval = setInterval(() => {
       api.get<ImportJob>(`/import/status/${jobId}`).then((status) => {
         setter(status)
-        if (status.status === 'done' || status.status === 'error') {
+        if (status.status === 'done' || status.status === 'error' || status.status === 'blocked' || status.status === 'needs_confirmation') {
           clearInterval(interval)
           pollRef.current.delete('streaming')
           if (status.status === 'done') refetch()
@@ -211,8 +211,9 @@ export function useSettings(): UseSettingsResult {
     pollRef.current.set('streaming', interval)
   }, [refetch])
 
-  const startStreamingImport = useCallback(() => {
-    api.post<{ job_id: string }>('/import/streaming').then(({ job_id }) => {
+  const startStreamingImport = useCallback((confirmWarnings = false) => {
+    const query = confirmWarnings ? '?confirm_warnings=true' : ''
+    api.post<{ job_id: string }>(`/import/streaming${query}`).then(({ job_id }) => {
       setStreamingJob({ job_id, status: 'running', progress_pct: 0, message: '初始化...', result: null })
       pollImport(job_id, setStreamingJob)
     })
@@ -225,7 +226,7 @@ export function useSettings(): UseSettingsResult {
       const interval = setInterval(() => {
         api.get<ImportJob>(`/import/status/${job_id}`).then((status) => {
           setAccountJob(status)
-          if (status.status === 'done' || status.status === 'error') {
+          if (status.status === 'done' || status.status === 'error' || status.status === 'blocked' || status.status === 'needs_confirmation') {
             clearInterval(interval)
             pollRef.current.delete('account')
             if (status.status === 'done') refetch()
