@@ -11,6 +11,8 @@ import {
   formatWeekStart,
 } from './MusicDetailPrimitives'
 import { MusicChartEmptyState } from './MusicChartEmptyState'
+import { useViewportMode } from '@/hooks/useViewportMode'
+import { MobileChartHistoryList } from '@/features/mobile/music/MobileMusicDetail'
 
 type ChartSummary = {
   peak_position: number
@@ -73,6 +75,7 @@ export function MusicChartOverviewSection({
   bestAlbumsOverlay?: { week: string; rank: number; album_name: string }[]
   effectivePlayCount?: number
 }) {
+  const isPhone = useViewportMode() === 'phone'
   if (!chartSummary) {
     return (
       <MusicChartEmptyState
@@ -84,7 +87,7 @@ export function MusicChartOverviewSection({
 
   return (
     <>
-      <div className="mb-8 grid grid-cols-2 gap-5">
+      <div className={cn('mb-8 grid grid-cols-2 gap-5', isPhone && 'mobile-detail-kpi-grid')}>
         <KpiCard
           label="最高排名"
           value={`#${chartSummary.peak_position}${chartSummary.peak_weeks > 1 ? ` (${chartSummary.peak_weeks}wks)` : ''}`}
@@ -114,7 +117,7 @@ export function MusicChartOverviewSection({
           <h3 className="mb-4 font-serif text-xl font-semibold">
             {kind === 'artist' ? '艺人排名趋势' : '专辑排名趋势'}
           </h3>
-          <GlassCard className="p-6">
+          <GlassCard className={cn('p-6', isPhone && 'mobile-detail-chart-card')}>
             <RankTrendChart
               data={weeklyHistory.map((entry) => ({
                 week: entry.week,
@@ -152,7 +155,16 @@ export function MusicChartOverviewSection({
       {weeklyHistory.length > 0 && (
         <div className="mb-8">
           <h3 className="mb-4 font-serif text-xl font-semibold">周榜历史</h3>
-          <GlassCard className="overflow-hidden p-0">
+          {isPhone ? (
+            <MobileChartHistoryList entries={weeklyHistory.map((entry) => ({
+              week: entry.week,
+              rank: entry.rank,
+              change: entry.change,
+              playCount: entry.play_count,
+              runningPeak: entry.running_peak,
+              runningWeeks: entry.running_wks,
+            }))} />
+          ) : <GlassCard className="overflow-hidden p-0">
             <table className="mx-7 my-0 w-[calc(100%-56px)] border-collapse">
               <thead>
                 <tr>
@@ -241,7 +253,7 @@ export function MusicChartOverviewSection({
                 })()}
               </tbody>
             </table>
-          </GlassCard>
+          </GlassCard>}
         </div>
       )}
     </>

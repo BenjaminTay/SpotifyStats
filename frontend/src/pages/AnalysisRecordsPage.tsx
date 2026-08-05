@@ -7,6 +7,8 @@ import { queryKeys } from '@/api/query-keys'
 import { Skeleton } from '@/components/ui/skeleton'
 import { AlertCircle } from 'lucide-react'
 import { PlaybackRecordsExperience } from '@/features/analysis/records/PlaybackRecordsExperience'
+import { MobilePageHeader } from '@/components/mobile'
+import { useViewportMode } from '@/hooks/useViewportMode'
 
 function LoadingSkeleton() {
   return (
@@ -22,6 +24,7 @@ function LoadingSkeleton() {
 }
 
 export function AnalysisRecordsPage() {
+  const isPhone = useViewportMode() === 'phone'
   const { filters, loading: filtersLoading } = useAnalysisFilters()
   const { apiParams } = useAnalysisQueryState()
 
@@ -68,14 +71,20 @@ export function AnalysisRecordsPage() {
   if (!data) return null
 
   return (
-    <div className="mx-auto max-w-[1200px]">
+    <div className={isPhone ? 'mobile-m4-page' : 'mx-auto max-w-[1200px]'} data-mobile-page={isPhone ? 'playback-records' : undefined}>
       {/* Page header — matches Billboard RecordsPage style */}
-      <section className="mt-6 mb-6">
+      {isPhone ? (
+        <MobilePageHeader
+          eyebrow="Playback Records"
+          title="播放记录"
+          description="从强烈高光到长线陪伴，用五个栏目回看个人听歌纪录。"
+        />
+      ) : <section className="mt-6 mb-6">
         <p className="mb-2 font-sans text-[11px] font-bold uppercase tracking-[1.5px] text-accent-foreground">Playback Records</p>
         <h2 className="font-serif text-[34px] font-bold leading-tight">
           播放记录
         </h2>
-      </section>
+      </section>}
 
       <PlaybackRecordsExperience data={data.records} />
     </div>

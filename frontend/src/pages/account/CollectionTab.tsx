@@ -23,8 +23,8 @@ export function CollectionTab({ insights }: { insights: CollectionInsights }) {
   }
 
   return (
-    <div className="space-y-8">
-      <h2 className="font-serif text-3xl font-bold tracking-tight">
+    <div className="mobile-account-section space-y-8">
+      <h2 className="font-serif text-3xl font-bold tracking-tight max-md:text-[24px]">
         你的收藏
       </h2>
 

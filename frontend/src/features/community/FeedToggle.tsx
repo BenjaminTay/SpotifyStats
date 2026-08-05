@@ -12,7 +12,7 @@ interface FeedToggleProps {
 
 export function FeedToggle({ active, onChange, highlightsCount, allCount, rightSlot }: FeedToggleProps) {
   return (
-    <div className="border-b border-white/10 bg-background">
+    <div className="community-feed-toggle border-b border-white/10 bg-background">
       <div className="flex min-h-[53px] flex-wrap items-center gap-2 py-2 sm:flex-nowrap sm:py-0">
         <button
           type="button"

@@ -23,6 +23,8 @@ import {
   type YearEndSortKey,
   type YearEndTab,
 } from './yearEndData'
+import { useViewportMode } from '@/hooks/useViewportMode'
+import { MobileYearEnd } from '@/features/mobile/billboard/MobileYearEnd'
 
 let cachedTab: YearEndTab = 'tracks'
 let cachedPage = 1
@@ -88,6 +90,7 @@ function coverageMessage(meta: BillboardYearEndMeta): string | null {
 }
 
 export function YearEndExperience() {
+  const isPhone = useViewportMode() === 'phone'
   const [searchParams, setSearchParams] = useSearchParams()
   const requestedYear = parseYear(searchParams.get('year'))
   const mergeLevel = parseMergeLevel(searchParams.get('merge_level'))
@@ -123,7 +126,6 @@ export function YearEndExperience() {
   useEffect(() => { cachedPage = page }, [page])
   useEffect(() => { cachedSortKey = sortKey }, [sortKey])
   useEffect(() => { cachedSortDir = sortDir }, [sortDir])
-  useEffect(() => { setPage(1) }, [activeTab, requestedYear, sortKey, sortDir])
 
   const rows = useMemo(() => rowsForTab(visibleData, activeTab), [activeTab, visibleData])
   const sortedRows = useMemo(
@@ -132,6 +134,7 @@ export function YearEndExperience() {
   )
 
   function handleYearChange(year: number) {
+    setPage(1)
     const next = new URLSearchParams(searchParams)
     next.set('year', String(year))
     setSearchParams(next)
@@ -140,6 +143,7 @@ export function YearEndExperience() {
   function handleTabChange(tab: YearEndTab) {
     const nextSort = defaultSortForTab(tab)
     setActiveTab(tab)
+    setPage(1)
     setSortKey(nextSort.key)
     setSortDir(nextSort.dir)
   }
@@ -148,6 +152,28 @@ export function YearEndExperience() {
     const nextDir = nextSortDir(sortKey, sortDir, key)
     setSortKey(key)
     setSortDir(nextDir)
+    setPage(1)
+  }
+
+  if (isPhone && visibleData) {
+    return (
+      <MobileYearEnd
+        data={visibleData}
+        selectedYear={selectedYear}
+        availableYears={availableYears}
+        coverageMessage={coverageMessage(visibleData.meta)}
+        activeTab={activeTab}
+        rows={sortedRows}
+        sortKey={sortKey}
+        sortDir={sortDir}
+        page={page}
+        pageSize={20}
+        onYearChange={handleYearChange}
+        onTabChange={handleTabChange}
+        onSortChange={handleSortChange}
+        onPageChange={setPage}
+      />
+    )
   }
 
   return (

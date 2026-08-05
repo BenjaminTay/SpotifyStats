@@ -33,6 +33,7 @@ const DEFAULT_ROUTES = [
   '/billboard',
   '/billboard/number-ones',
   '/billboard/all-time',
+  '/billboard/year-end',
   '/billboard/records',
   '/billboard/versus',
   '/community',
@@ -44,27 +45,28 @@ const DEFAULT_ROUTES = [
 const SLOW_ROUTES = new Set(['/analysis/records'])
 
 const ROUTE_READY_MARKERS = {
-  '/': ['DASHBOARD /', '总播放次数'],
+  '/': ['DASHBOARD /', '总播放次数', '播放次数'],
   '/analysis/stats': ['PLAYBACK / ANALYSIS', '播放统计'],
   '/analysis/charts': ['PLAYBACK RANKING', '播放排行'],
-  '/analysis/records': ['PLAYBACK RECORDS', '高光时刻'],
-  '/yearly-review': ['YEARLY SUMMARY', '听歌人格'],
+  '/analysis/records': ['播放记录', '高光时刻'],
+  '/yearly-review': ['年度总结', '听歌人格'],
   '/billboard': ['CHART / WEEKLY', 'Billboard 周榜'],
-  '/billboard/number-ones': ['CHART / NUMBER ONES', '每周冠军歌曲'],
-  '/billboard/all-time': ['CHART / ALL-TIME', 'Billboard 总榜'],
-  '/billboard/records': ['CHART / HALL OF FAME', '冠军圣殿'],
-  '/billboard/versus': ['CHART / VERSUS', '请搜索并添加歌曲开始对决'],
-  '/community': ['COMMUNITY / FEED', '榜单社区'],
+  '/billboard/number-ones': ['每周榜首'],
+  '/billboard/all-time': ['总榜'],
+  '/billboard/year-end': ['年榜'],
+  '/billboard/records': ['榜单记录'],
+  '/billboard/versus': ['对决'],
+  '/community': ['社区', '精选'],
   '/ai-insights': ['AI / INSIGHTS', 'AI 洞察'],
-  '/account': ['ACCOUNT CENTER', '你的收藏'],
-  '/settings': ['参数与配置', '01 · SPOTIFY 连接'],
+  '/account': ['账号中心', '播放'],
+  '/settings': ['参数与配置', '01 · SPOTIFY 连接', 'PREFERENCES / MOBILE', 'SETTINGS / MOBILE'],
 }
 
 const DYNAMIC_ROUTE_READY_MARKERS = [
-  { pattern: /^\/music\/tracks\/[^/]+$/, markers: ['单曲详情', '播放统计'] },
-  { pattern: /^\/music\/albums\/[^/]+$/, markers: ['专辑详情', '播放统计'] },
-  { pattern: /^\/music\/artists\/[^/]+$/, markers: ['艺人详情', '播放统计'] },
-  { pattern: /^\/community\/post\/[^/]+$/, markers: ['COMMUNITY / POST'] },
+  { pattern: /^\/music\/tracks\/[^/]+$/, markers: ['单曲详情', '统计'] },
+  { pattern: /^\/music\/albums\/[^/]+$/, markers: ['专辑详情', '统计'] },
+  { pattern: /^\/music\/artists\/[^/]+$/, markers: ['艺人详情', '统计'] },
+  { pattern: /^\/community\/post\/[^/]+$/, markers: ['COMMUNITY / POST', '回复'] },
   { pattern: /^\/community\/account\/[^/]+$/, markers: ['COMMUNITY / ACCOUNT', 'Posts'] },
 ]
 
@@ -150,7 +152,7 @@ Options:
 
 Checks:
   interactive control inventory validates missing accessible name, nested interactive control,
-  disabled but tabbable, input without label, and duplicate id issues.
+  disabled but tabbable, input without label, duplicate id, and mobile primary touch targets below 44px.
 `)
 }
 
@@ -330,6 +332,7 @@ async function evaluate(client, expression, awaitPromise = false) {
 
 async function waitForRouteReady(client, route, timeoutMs) {
   const markers = markersForRoute(route)
+  const minimumTextLength = route.split('?')[0] === '/settings' ? 60 : 80
   const effectiveTimeoutMs = waitMsForRoute(route, timeoutMs)
   const started = Date.now()
   let state = null
@@ -348,7 +351,7 @@ async function waitForRouteReady(client, route, timeoutMs) {
       })()`,
     )
     if (state.hasFatalText) throw new Error(`Fatal page text at ${route}`)
-    if (state.rootTextLength > 80 && (!markers.length || state.hasMarker)) return state
+    if (state.rootTextLength > minimumTextLength && (!markers.length || state.hasMarker)) return state
     await sleep(150)
   }
   throw new Error(`Timed out waiting for route content at ${route}: ${JSON.stringify(state)}`)
@@ -412,6 +415,46 @@ async function collectControlInventory(client) {
         '[role="combobox"]',
       ].join(',');
       const inputSelector = 'input:not([type="hidden"]):not([type="button"]):not([type="submit"]):not([type="reset"]), select, textarea, [role="combobox"]';
+      const primaryTouchSelector = [
+        '.mobile-wordmark',
+        '.mobile-bottom-nav-item',
+        '.mobile-top-bar button',
+        '.mobile-top-bar a',
+        '.mobile-time-range-trigger',
+        '.mobile-segmented button',
+        '.mobile-chart-series-button',
+        '.mobile-yearly-controls button',
+        '.mobile-yearly-chapters button',
+        '.mobile-year-chips button',
+        '.mobile-list-toolbar button',
+        '.mobile-versus-kind button',
+        '.mobile-versus-selector button',
+        '.community-feed-toggle button',
+        '.mobile-community-filter-bar',
+        '.mobile-community-search-field button',
+        '.mobile-ai-mode-switch button',
+        '[data-mobile-ai-reports="panel"] button',
+        '[data-mobile-ai-reports="panel"] select',
+        '[data-mobile-ai-reports="panel"] input',
+        '.mobile-account-tabs button',
+        '.mobile-settings-panel-header button',
+        '.mobile-settings-switch',
+        '.mobile-settings-select',
+        '.mobile-settings-segment button',
+        '.mobile-music-search-input input',
+        '.mobile-music-search-kinds button',
+        '.mobile-record-entity-toggle button',
+        '.mobile-recent-sort button',
+        '.mobile-recent-group-trigger',
+        '.mobile-primary-button',
+        '.mobile-secondary-button',
+        '.mobile-icon-button',
+        '.mobile-section-link',
+        '.mobile-filter-option',
+        '.mobile-time-option',
+        '.mobile-pagination button',
+        '.mobile-entity-row-interactive',
+      ].join(',');
       const isVisible = (el) => {
         const rect = el.getBoundingClientRect();
         const style = getComputedStyle(el);
@@ -452,6 +495,10 @@ async function collectControlInventory(client) {
         };
       };
       const controls = Array.from(document.querySelectorAll(interactiveSelector)).filter(isVisible);
+      const isPhone = document.querySelector('main[data-viewport-mode="phone"]') !== null;
+      const touchTargets = isPhone
+        ? Array.from(new Set(Array.from(document.querySelectorAll(primaryTouchSelector)))).filter(isVisible)
+        : [];
       const idCounts = controls.reduce((counts, el) => {
         if (el.id) counts[el.id] = (counts[el.id] || 0) + 1;
         return counts;
@@ -490,10 +537,25 @@ async function collectControlInventory(client) {
         }
       });
 
+      touchTargets.forEach((el, index) => {
+        const rect = el.getBoundingClientRect();
+        if (rect.width < 43.5 || rect.height < 43.5) {
+          violations.push({
+            type: 'undersized primary touch target',
+            index,
+            width: Math.round(rect.width * 10) / 10,
+            height: Math.round(rect.height * 10) / 10,
+            control: describe(el),
+          });
+        }
+      });
+
       return {
         totalControls: controls.length,
         namedControls: controls.filter((el) => Boolean(controlName(el))).length,
         inputControls: controls.filter((el) => el.matches(inputSelector)).length,
+        primaryTouchTargets: touchTargets.length,
+        undersizedTouchTargets: violations.filter((violation) => violation.type === 'undersized primary touch target').length,
         violations,
       };
     })()`,
@@ -601,7 +663,7 @@ async function run() {
         const inventory = await collectControlInventory(client)
         results.push({ route, viewport: viewportName, ...inventory })
         process.stderr.write(
-          `PASS control-inventory ${route} ${viewportName}: controls=${inventory.totalControls}, violations=${inventory.violations.length}\n`,
+          `PASS control-inventory ${route} ${viewportName}: controls=${inventory.totalControls}, touchTargets=${inventory.primaryTouchTargets}, violations=${inventory.violations.length}\n`,
         )
       }
     }
@@ -614,6 +676,8 @@ async function run() {
       routes,
       viewports: args.viewports,
       totalControls: results.reduce((sum, result) => sum + result.totalControls, 0),
+      primaryTouchTargets: results.reduce((sum, result) => sum + result.primaryTouchTargets, 0),
+      undersizedTouchTargets: results.reduce((sum, result) => sum + result.undersizedTouchTargets, 0),
       totalViolations: violations.length,
       violations,
       results,

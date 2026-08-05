@@ -1,0 +1,299 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light dark" />
+    <title>SpotifyStats · 移动端 M0 设计原型</title>
+    <link rel="icon" href="../../../frontend/public/favicon.svg" />
+    <link rel="stylesheet" href="./prototype.css" />
+  </head>
+  <body>
+    <div class="workbench">
+      <header class="workbench-bar">
+        <div class="workbench-title">
+          <span class="workbench-kicker">M0 · DESIGN FREEZE</span>
+          <strong>SpotifyStats 移动端原型</strong>
+        </div>
+
+        <nav class="screen-rail" aria-label="代表页面">
+          <button type="button" class="screen-tab is-active" data-screen="home">首页</button>
+          <button type="button" class="screen-tab" data-screen="stats">播放统计</button>
+          <button type="button" class="screen-tab" data-screen="ranking">播放排行</button>
+          <button type="button" class="screen-tab" data-screen="billboard">周榜</button>
+          <button type="button" class="screen-tab" data-screen="detail">音乐详情</button>
+          <button type="button" class="screen-tab" data-screen="ai">AI 问答</button>
+        </nav>
+
+        <div class="workbench-actions">
+          <div class="frame-switch" aria-label="原型宽度">
+            <button type="button" data-frame="360">360</button>
+            <button type="button" class="is-active" data-frame="390">390</button>
+            <button type="button" data-frame="430">430</button>
+          </div>
+          <button type="button" class="theme-button" id="themeButton" aria-label="切换明暗主题">
+            <span aria-hidden="true">◐</span>
+            主题
+          </button>
+        </div>
+      </header>
+
+      <main class="stage">
+        <section class="prototype-note" aria-label="设计方向">
+          <p class="note-index">01 / MOBILE WEB</p>
+          <h1>把桌面仪表盘<br />重写成掌上音乐手账</h1>
+          <p>
+            保留编辑风排版和液态玻璃材质，但把导航、榜单、筛选与详情改造成拇指可达的纵向体验。
+          </p>
+          <dl>
+            <div><dt>断点</dt><dd>&lt; 768px</dd></div>
+            <div><dt>基准</dt><dd>390 × 844</dd></div>
+            <div><dt>底部导航</dt><dd>5 个顶级区域</dd></div>
+          </dl>
+          <p class="note-hint">可点击栏目、时间范围、榜单行和底部导航体验关键交互。</p>
+        </section>
+
+        <div class="phone-wrap">
+          <div class="phone" id="phone" data-frame="390">
+            <div class="phone-speaker" aria-hidden="true"></div>
+            <div class="phone-viewport" id="phoneViewport"></div>
+          </div>
+          <p class="frame-caption"><span id="frameLabel">390 × 844</span> · 可交互高保真方向稿</p>
+        </div>
+
+        <aside class="decision-card">
+          <p class="note-index">FROZEN DECISIONS</p>
+          <ol>
+            <li><span>01</span>手机使用独立 Top Bar 与 Bottom Nav。</li>
+            <li><span>02</span>二级栏目和低频筛选进入 Bottom Sheet。</li>
+            <li><span>03</span>榜单采用移动行，不压缩桌面宽表。</li>
+            <li><span>04</span>详情与设置作为推入层，隐藏 Bottom Nav。</li>
+            <li><span>05</span>Top 3 只在原列表强化，不重复展示。</li>
+          </ol>
+        </aside>
+      </main>
+    </div>
+
+    <template id="screen-home">
+      <div class="mobile-app" data-current="home">
+        <header class="mobile-topbar">
+          <a class="mobile-brand" href="#" aria-label="SpotifyStats 首页">Spotify<span>Stats</span></a>
+          <div class="topbar-actions">
+            <button class="icon-button" type="button" data-screen="search" aria-label="搜索音乐">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6"></circle><path d="m16 16 4 4"></path></svg>
+            </button>
+            <button class="icon-button" type="button" data-open-sheet="settings" aria-label="打开设置摘要">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1A1.7 1.7 0 0 0 9 4.6 1.7 1.7 0 0 0 10 3V2.8h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1Z"></path></svg>
+            </button>
+          </div>
+        </header>
+
+        <div class="mobile-content home-content">
+          <section class="compact-hero reveal">
+            <p class="eyebrow">截至 2026 年 7 月 24 日</p>
+            <h2>你的聆听概览</h2>
+            <p>最近 12 个月，你的音乐重心正从深夜慢慢移回白天。</p>
+          </section>
+
+          <section class="kpi-grid reveal delay-1" aria-label="核心数据">
+            <article class="kpi-tile accent-tile"><span>播放次数</span><strong>64,986</strong><small>较去年同期 ↑ 12.5%</small></article>
+            <article class="kpi-tile"><span>播放时长</span><strong>4,111<em>h</em></strong><small>日均 2.8 小时</small></article>
+            <article class="kpi-tile"><span>独特歌曲</span><strong>5,504</strong><small>最近新增 86 首</small></article>
+            <article class="kpi-tile"><span>覆盖艺人</span><strong>801</strong><small>本月 42 位</small></article>
+          </section>
+
+          <section class="mobile-card trend-card reveal delay-2">
+            <div class="card-heading">
+              <div><p class="micro-label">MONTHLY PULSE</p><h3>月度播放趋势</h3></div>
+              <button type="button" class="text-button" data-open-sheet="chart">全屏</button>
+            </div>
+            <div class="chart-plot" aria-label="过去十二个月播放趋势示意">
+              <span class="chart-axis top">7k</span><span class="chart-axis bottom">0</span>
+              <div class="chart-area"></div>
+              <svg viewBox="0 0 320 120" preserveAspectRatio="none" aria-hidden="true">
+                <path class="area" d="M0 100 C25 92 34 70 60 76 S98 92 120 64 S155 42 180 52 S220 82 240 58 S275 18 320 30 L320 120 L0 120 Z"></path>
+                <path class="line" d="M0 100 C25 92 34 70 60 76 S98 92 120 64 S155 42 180 52 S220 82 240 58 S275 18 320 30"></path>
+                <circle cx="292" cy="25" r="5"></circle>
+              </svg>
+              <div class="month-row"><span>8月</span><span>11月</span><span>2月</span><span>5月</span><span>7月</span></div>
+            </div>
+            <p class="chart-insight"><i></i>十月仍是年度峰值，但最近四周的白天播放增长最明显。</p>
+          </section>
+
+          <section class="quick-grid reveal delay-3">
+            <button type="button" data-screen="ranking"><span>↗</span><b>看播放排行</b><small>歌曲、专辑与艺人</small></button>
+            <button type="button" data-screen="billboard"><span>♛</span><b>本周 Billboard</b><small>新入榜 16 首</small></button>
+          </section>
+        </div>
+
+        <nav class="mobile-bottom-nav" aria-label="移动端主导航">
+          <button type="button" class="is-active" data-screen="home"><span>⌂</span><b>首页</b></button>
+          <button type="button" data-screen="stats"><span>⌁</span><b>播放分析</b></button>
+          <button type="button" data-screen="billboard"><span>♛</span><b>榜单</b></button>
+          <button type="button" data-placeholder="社区"><span>◎</span><b>社区</b></button>
+          <button type="button" data-screen="ai"><span>✦</span><b>AI</b></button>
+        </nav>
+      </div>
+    </template>
+
+    <template id="screen-stats">
+      <div class="mobile-app" data-current="stats">
+        <header class="mobile-topbar title-topbar">
+          <div><span class="topbar-overline">播放分析</span><strong>播放统计</strong></div>
+          <div class="topbar-actions"><button class="icon-button" type="button" data-open-sheet="filters" aria-label="筛选"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M7 12h10M10 17h4"></path></svg></button></div>
+        </header>
+        <div class="mobile-content section-content">
+          <section class="context-row reveal">
+            <button type="button" class="context-button" data-open-sheet="analysis-sections">播放统计 <span>⌄</span></button>
+            <button type="button" class="context-button subtle" data-open-sheet="time">全部时间 <span>⌄</span></button>
+          </section>
+          <section class="section-intro reveal"><p class="eyebrow">PLAYBACK STATS</p><h2>你的时间，<br />如何流向音乐</h2></section>
+          <div class="segmented reveal delay-1" role="tablist" aria-label="统计指标"><button class="is-active" type="button">播放次数</button><button type="button">播放时长</button></div>
+          <section class="kpi-grid compact-kpis reveal delay-1">
+            <article class="kpi-tile accent-tile"><span>播放次数</span><strong>64,986</strong><small>1,467 个活跃日</small></article>
+            <article class="kpi-tile"><span>播放时间</span><strong>4,111<em>h</em></strong><small>日均 2.8 小时</small></article>
+            <article class="kpi-tile"><span>独特歌曲</span><strong>5,504</strong><small>来自 1,966 张专辑</small></article>
+            <article class="kpi-tile"><span>独特艺人</span><strong>801</strong><small>核心艺人 36 位</small></article>
+          </section>
+          <button class="disclosure reveal delay-2" type="button" data-open-sheet="more-stats"><span>更多数据</span><small>日均、专辑、活跃天数</small><b>＋</b></button>
+          <section class="mobile-card reveal delay-2">
+            <div class="card-heading"><div><p class="micro-label">DAILY RHYTHM</p><h3>每日播放</h3></div><div class="mini-switch"><button class="is-active">每日</button><button>累计</button></div></div>
+            <div class="bar-spark" aria-hidden="true">
+              <i style="--h:36%"></i><i style="--h:66%"></i><i style="--h:44%"></i><i style="--h:82%"></i><i style="--h:58%"></i><i style="--h:92%"></i><i style="--h:74%"></i><i style="--h:48%"></i><i style="--h:78%"></i><i style="--h:64%"></i><i style="--h:96%"></i><i style="--h:70%"></i>
+            </div>
+            <div class="chart-meta"><span>过去 12 个月</span><strong>最高 7,368 次</strong></div>
+          </section>
+          <section class="mobile-card distribution-card reveal delay-3">
+            <div class="card-heading"><div><p class="micro-label">DISTRIBUTION</p><h3>聆听分布</h3></div></div>
+            <div class="mini-switch wide"><button class="is-active">时钟</button><button>星期</button><button>月份</button><button>年份</button></div>
+            <div class="clock-viz"><div class="clock-ring"></div><strong>12:00</strong><span>午间峰值</span></div>
+          </section>
+        </div>
+        <nav class="mobile-bottom-nav" aria-label="移动端主导航">
+          <button type="button" data-screen="home"><span>⌂</span><b>首页</b></button>
+          <button type="button" class="is-active" data-screen="stats"><span>⌁</span><b>播放分析</b></button>
+          <button type="button" data-screen="billboard"><span>♛</span><b>榜单</b></button>
+          <button type="button" data-placeholder="社区"><span>◎</span><b>社区</b></button>
+          <button type="button" data-screen="ai"><span>✦</span><b>AI</b></button>
+        </nav>
+      </div>
+    </template>
+
+    <template id="screen-ranking">
+      <div class="mobile-app" data-current="ranking">
+        <header class="mobile-topbar title-topbar">
+          <div><span class="topbar-overline">播放分析</span><strong>播放排行</strong></div>
+          <div class="topbar-actions"><button class="icon-button" type="button" data-open-sheet="filters" aria-label="筛选"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M7 12h10M10 17h4"></path></svg></button></div>
+        </header>
+        <div class="mobile-content section-content">
+          <section class="context-row reveal"><button type="button" class="context-button" data-open-sheet="analysis-sections">播放排行 <span>⌄</span></button><button type="button" class="context-button subtle" data-open-sheet="time">全部时间 <span>⌄</span></button></section>
+          <section class="section-intro compact reveal"><p class="eyebrow">PERSONAL RANKING</p><h2>听得最多的<br />那些名字</h2></section>
+          <div class="toolbar-stack reveal delay-1">
+            <div class="segmented" role="tablist"><button class="is-active">歌曲</button><button>专辑</button><button>艺人</button></div>
+            <div class="search-field"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6"></circle><path d="m16 16 4 4"></path></svg><input aria-label="在当前榜单中搜索" placeholder="在当前榜单中搜索" /><button type="button" data-open-sheet="metric">次数⌄</button></div>
+          </div>
+          <section class="rank-list reveal delay-2" aria-label="歌曲播放排行">
+            <button class="rank-row" type="button" data-open-sheet="entity"><span class="rank-no hot">01</span><img src="../../../data/covers/albums/597.jpg" alt="vampire 封面" /><span class="rank-copy"><b>vampire</b><small>Olivia Rodrigo</small><i><u style="--value:100%"></u></i></span><span class="rank-value"><b>376</b><small>22.4h</small></span></button>
+            <button class="rank-row" type="button" data-open-sheet="entity"><span class="rank-no">02</span><img src="../../../data/covers/albums/52.jpg" alt="Anti-Hero 封面" /><span class="rank-copy"><b>Anti-Hero</b><small>Taylor Swift</small><i><u style="--value:84%"></u></i></span><span class="rank-value"><b>314</b><small>17.3h</small></span></button>
+            <button class="rank-row" type="button" data-open-sheet="entity"><span class="rank-no">03</span><img src="../../../data/covers/albums/53.jpg" alt="Cruel Summer 封面" /><span class="rank-copy"><b>Cruel Summer</b><small>Taylor Swift</small><i><u style="--value:83%"></u></i></span><span class="rank-value"><b>312</b><small>15.2h</small></span></button>
+            <button class="rank-row" type="button" data-open-sheet="entity"><span class="rank-no">04</span><span class="cover-fallback">O</span><span class="rank-copy"><b>Opalite</b><small>Taylor Swift</small><i><u style="--value:82%"></u></i></span><span class="rank-value"><b>308</b><small>19.7h</small></span></button>
+            <button class="rank-row" type="button" data-open-sheet="entity"><span class="rank-no">05</span><span class="cover-fallback gold">T</span><span class="rank-copy"><b>The Fate of Ophelia</b><small>Taylor Swift</small><i><u style="--value:75%"></u></i></span><span class="rank-value"><b>282</b><small>17.4h</small></span></button>
+          </section>
+          <div class="load-more"><span>1–5 / 5,491</span><button type="button">加载更多</button></div>
+        </div>
+        <nav class="mobile-bottom-nav" aria-label="移动端主导航">
+          <button type="button" data-screen="home"><span>⌂</span><b>首页</b></button><button type="button" class="is-active" data-screen="stats"><span>⌁</span><b>播放分析</b></button><button type="button" data-screen="billboard"><span>♛</span><b>榜单</b></button><button type="button" data-placeholder="社区"><span>◎</span><b>社区</b></button><button type="button" data-screen="ai"><span>✦</span><b>AI</b></button>
+        </nav>
+      </div>
+    </template>
+
+    <template id="screen-billboard">
+      <div class="mobile-app" data-current="billboard">
+        <header class="mobile-topbar title-topbar">
+          <div><span class="topbar-overline">个人 Billboard</span><strong>周榜</strong></div>
+          <div class="topbar-actions"><button class="icon-button" type="button" data-open-sheet="chart-help" aria-label="榜单说明">?</button></div>
+        </header>
+        <div class="mobile-content section-content">
+          <section class="context-row reveal"><button type="button" class="context-button" data-open-sheet="billboard-sections">周榜 <span>⌄</span></button><button type="button" class="context-button subtle" data-open-sheet="week">Week 29 <span>⌄</span></button></section>
+          <section class="week-hero reveal"><div><p class="eyebrow">17 JUL — 23 JUL</p><h2>本周榜单</h2></div><div class="week-arrows"><button type="button" aria-label="上一周">‹</button><button type="button" aria-label="下一周" disabled>›</button></div></section>
+          <div class="segmented reveal delay-1" role="tablist"><button class="is-active">歌曲</button><button>专辑</button><button>艺人</button></div>
+          <section class="chart-summary reveal delay-1"><div><strong>177</strong><small>总播放</small></div><div><strong class="blue">16</strong><small>新入榜</small></div><div><strong class="golden">9</strong><small>重回榜</small></div><div><strong>17</strong><small>最高播放</small></div></section>
+          <section class="chart-list reveal delay-2" aria-label="个人 Billboard 周榜">
+            <button class="chart-row podium" type="button" data-screen="detail"><span class="chart-position">01</span><span class="movement re">RE</span><img src="../../../data/covers/albums/1200.jpg" alt="我表示理解封面" /><span class="chart-copy"><b>我表示理解</b><small>单依纯</small><em>PK #1 · 6 周</em></span><span class="chart-value"><b>17</b><small>播放</small></span></button>
+            <button class="chart-row" type="button" data-open-sheet="entity"><span class="chart-position">02</span><span class="movement re">RE</span><img src="../../../data/covers/albums/1035.jpg" alt="珠玉封面" /><span class="chart-copy"><b>珠玉</b><small>单依纯</small><em>PK #2 · 12 周</em></span><span class="chart-value"><b>15</b><small>播放</small></span></button>
+            <button class="chart-row" type="button" data-open-sheet="entity"><span class="chart-position">03</span><span class="movement new">NEW</span><span class="cover-fallback red">有</span><span class="chart-copy"><b>有趣</b><small>单依纯</small><em>PK #3 · 1 周</em></span><span class="chart-value"><b>13</b><small>播放</small></span></button>
+            <button class="chart-row" type="button" data-open-sheet="entity"><span class="chart-position">04</span><span class="movement new">NEW</span><span class="cover-fallback blue-bg">还</span><span class="chart-copy"><b>还有什么更好的</b><small>单依纯</small><em>PK #4 · 1 周</em></span><span class="chart-value"><b>11</b><small>播放</small></span></button>
+            <button class="chart-row" type="button" data-open-sheet="entity"><span class="chart-position">05</span><span class="movement up">↑ 4</span><span class="cover-fallback gold">光</span><span class="chart-copy"><b>多少的光阴</b><small>单依纯</small><em>PK #5 · 3 周</em></span><span class="chart-value"><b>10</b><small>播放</small></span></button>
+          </section>
+          <div class="load-more"><span>1–5 / 30</span><button type="button">加载更多</button></div>
+        </div>
+        <nav class="mobile-bottom-nav" aria-label="移动端主导航">
+          <button type="button" data-screen="home"><span>⌂</span><b>首页</b></button><button type="button" data-screen="stats"><span>⌁</span><b>播放分析</b></button><button type="button" class="is-active" data-screen="billboard"><span>♛</span><b>榜单</b></button><button type="button" data-placeholder="社区"><span>◎</span><b>社区</b></button><button type="button" data-screen="ai"><span>✦</span><b>AI</b></button>
+        </nav>
+      </div>
+    </template>
+
+    <template id="screen-detail">
+      <div class="mobile-app push-layer" data-current="detail">
+        <header class="mobile-topbar detail-topbar">
+          <button class="back-button" type="button" data-screen="billboard" aria-label="返回榜单">‹</button>
+          <strong>单曲详情</strong>
+          <button class="icon-button" type="button" data-open-sheet="detail-more" aria-label="更多操作">•••</button>
+        </header>
+        <div class="mobile-content detail-content">
+          <section class="detail-hero reveal">
+            <div class="cover-stage"><img src="../../../data/covers/albums/597.jpg" alt="vampire 封面" /><span>2023</span></div>
+            <p class="eyebrow">OLIVIA RODRIGO · GUTS</p>
+            <h2>vampire</h2>
+            <p class="detail-meta">3:39 · Explicit · 首播于 2023-06-30</p>
+          </section>
+          <section class="detail-summary reveal delay-1">
+            <article><span>有效播放</span><strong>376</strong><small>22.4 小时</small></article>
+            <article class="chart-status"><span>个人榜最高</span><strong>#1</strong><small>在榜 48 周</small></article>
+          </section>
+          <nav class="detail-tabs reveal delay-1" aria-label="详情栏目"><button class="is-active">概览</button><button>统计</button><button>歌词</button></nav>
+          <section class="mobile-card story-card reveal delay-2"><p class="micro-label">LISTENING STORY</p><h3>三年里，它反复回到你的夏天</h3><p>第一次进入周榜后，vampire 在发行季形成首个高峰；2026 年夏季又出现一次明显回听。</p><div class="story-line"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><div class="story-years"><span>2023</span><span>2024</span><span>2025</span><span>2026</span></div></section>
+          <section class="mobile-card detail-facts reveal delay-3"><div class="card-heading"><div><p class="micro-label">CHART FACTS</p><h3>榜单成绩</h3></div><button class="text-button" data-open-sheet="entity">查看全部</button></div><dl><div><dt>首次入榜</dt><dd>2023-06-30</dd></div><div><dt>最高排名</dt><dd>#1</dd></div><div><dt>在榜周数</dt><dd>48 周</dd></div><div><dt>走势评分</dt><dd>2,841</dd></div></dl></section>
+        </div>
+      </div>
+    </template>
+
+    <template id="screen-ai">
+      <div class="mobile-app ai-app push-layer" data-current="ai">
+        <header class="mobile-topbar title-topbar">
+          <div><span class="topbar-overline">只读音乐分析</span><strong>AI 问答</strong></div>
+          <div class="topbar-actions"><button class="icon-button" type="button" data-open-sheet="history" aria-label="对话历史"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16M4 12h16M4 19h10"></path></svg></button></div>
+        </header>
+        <div class="mobile-content chat-content">
+          <div class="mode-switch reveal"><button type="button" data-placeholder="报告模式">报告</button><button type="button" class="is-active">问答</button></div>
+          <section class="chat-thread reveal delay-1">
+            <div class="user-message">我今年夏天听歌有什么明显变化？</div>
+            <article class="assistant-message">
+              <div class="assistant-mark">✦</div>
+              <div><p>和去年夏天相比，你今年的听歌时间更集中在白天，同时中文流行的占比明显上升。</p><ol><li><strong>午间播放成为新高峰</strong><span>12:00–14:00 的有效播放同比增加 28%。</span></li><li><strong>回听比发现更突出</strong><span>老歌播放占比从 54% 升到 63%。</span></li></ol></div>
+            </article>
+            <button class="evidence-card" type="button" data-open-sheet="evidence"><span>已核对 4 组证据</span><b>查看依据 →</b><small>时间分布 · 同期对比 · 曲目排行 · 语言分布</small></button>
+            <div class="followups"><button type="button">哪些老歌回归最多？</button><button type="button">和春天相比呢？</button></div>
+          </section>
+        </div>
+        <form class="chat-composer" onsubmit="return false">
+          <button type="button" aria-label="添加上下文">＋</button>
+          <textarea rows="1" aria-label="向 AI 提问" placeholder="继续追问你的听歌数据…"></textarea>
+          <button class="send-button" type="submit" aria-label="发送">↑</button>
+        </form>
+      </div>
+    </template>
+
+    <template id="sheet-template">
+      <div class="sheet-backdrop" data-close-sheet></div>
+      <section class="bottom-sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle">
+        <div class="sheet-handle" aria-hidden="true"></div>
+        <div class="sheet-heading"><div><p class="micro-label">MOBILE CONTROL</p><h3 id="sheetTitle">选择栏目</h3></div><button type="button" data-close-sheet aria-label="关闭">×</button></div>
+        <div class="sheet-body" id="sheetBody"></div>
+      </section>
+    </template>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    <script src="./prototype.js"></script>
+  </body>
+</html>

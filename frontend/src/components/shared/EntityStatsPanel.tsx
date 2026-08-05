@@ -14,6 +14,7 @@ import { analysisApi, useAnalysisFilters } from '@/hooks/useAnalysis'
 import { api } from '@/lib/api'
 import { getDefaultMergeLevel } from '@/lib/merge-level'
 import type { AlbumPersonalRankingResponse, AnalysisMetric, ArtistPersonalRankingResponse, EntityStatsResponse } from '@/types/analysis'
+import { useViewportMode } from '@/hooks/useViewportMode'
 
 const ARTIST_RANKING_PAGE_SIZE = 20
 const ALBUM_RANKING_PAGE_SIZE = 20
@@ -51,6 +52,7 @@ export function EntityStatsPanel({
   /** ISO date string (e.g. "2023-09-08") — used as the chart origin for album stats. */
   releaseDate?: string
 }) {
+  const isPhone = useViewportMode() === 'phone'
   const { filters, loading: filtersLoading } = useAnalysisFilters()
   const { period, metric, periodValue, startDate, endDate, setQuery, apiParams } = useAnalysisQueryState()
   const entityId = (trackId ?? albumName ?? artistName) != null ? String(trackId ?? albumName ?? artistName) : ''
@@ -144,7 +146,7 @@ export function EntityStatsPanel({
     const firstPlay = data.daily_trend[0].date
     if (!releaseDate) return firstPlay
     return releaseDate > firstPlay ? releaseDate : firstPlay
-  }, [releaseDate, data?.daily_trend])
+  }, [releaseDate, data])
 
   // Pad daily trend with zero-fill from chartOrigin to today.
   // Use UTC noon to avoid local-timezone date shifts.
@@ -162,7 +164,7 @@ export function EntityStatsPanel({
       cursor.setUTCDate(cursor.getUTCDate() + 1)
     }
     return result
-  }, [data?.daily_trend, chartOrigin])
+  }, [data, chartOrigin])
 
   // Pad cumulative trend: carry forward last known value from chartOrigin
   const paddedCumulative = useMemo(() => {
@@ -188,7 +190,7 @@ export function EntityStatsPanel({
       cursor.setDate(cursor.getDate() + 1)
     }
     return result
-  }, [data?.cumulative_trend])
+  }, [data, chartOrigin])
 
   if (queryError) return <GlassCard className="p-8 text-center text-destructive">加载失败：{queryError}</GlassCard>
   if (isPending || !data) return <Skeleton className="h-[560px] rounded-[16px]" />
@@ -197,15 +199,15 @@ export function EntityStatsPanel({
   const metricLabel = metric === 'plays' ? '次' : '小时'
 
   return (
-    <div className="space-y-8">
+    <div className="entity-stats-panel space-y-8">
       {/* Header */}
-      <div className="flex flex-wrap items-end justify-between gap-4">
+      <div className="entity-stats-controls flex flex-wrap items-end justify-between gap-4">
         <AnalysisTimeRangeSelector period={period} periodValue={periodValue} startDate={startDate} endDate={endDate} onChange={setQuery} quickFirst />
         <MetricToggle metric={metric} onChange={(next) => setQuery({ metric: next })} />
       </div>
 
       {/* KPIs Row 1: 播放概览 — 6 cards */}
-      <div className="grid gap-5 md:grid-cols-3 xl:grid-cols-6">
+      <div className="entity-stats-kpi-grid grid gap-5 md:grid-cols-3 xl:grid-cols-6">
         <KpiCard label="总播放次数" value={fmt(data.summary.total_plays)} />
         <KpiCard label="总播放时长" value={hours(data.summary.total_hours)} />
         <KpiCard label="日均播放" value={fmt(Math.round(data.daily_metrics.avg_daily_plays))} />
@@ -216,7 +218,7 @@ export function EntityStatsPanel({
 
       {/* KPIs Row 2: 个人排名 */}
       {data.ranks && (
-        <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
+        <div className="entity-stats-kpi-grid grid gap-5 md:grid-cols-2 xl:grid-cols-4">
           <KpiCard label="全时段排名" value={rankLabel(data.ranks.lifetime)} />
           <KpiCard label="近 6 个月排名" value={rankLabel(data.ranks.last_6_months)} />
           <KpiCard label="近 4 周排名" value={rankLabel(data.ranks.last_4_weeks)} />
@@ -226,7 +228,7 @@ export function EntityStatsPanel({
 
       {/* KPIs Row 3: Top 250 上榜 & 近期活跃 */}
       {(data.top250_counts || data.recent_50_count != null) && (
-        <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
+        <div className="entity-stats-kpi-grid grid gap-5 md:grid-cols-2 xl:grid-cols-4">
           {data.top250_counts && (
             <>
               <KpiCard label="全时段 Top 250 上榜" value={fmt(data.top250_counts.lifetime)} />
@@ -241,7 +243,7 @@ export function EntityStatsPanel({
       )}
 
       {/* 每日播放 — 全宽，含零值填充 */}
-      <GlassCard className="p-6">
+      <GlassCard className="entity-stats-chart-card p-6">
         <h3 className="mb-5 font-serif text-2xl font-semibold">每日播放</h3>
         <AnalysisTrendChart
           data={paddedDaily.map((item) => ({ label: item.date.slice(2), value: item[distributionKey] }))}
@@ -252,7 +254,7 @@ export function EntityStatsPanel({
 
       {/* 累计播放 — 全宽，含前值填充 */}
       {data.cumulative_trend.length > 0 && (
-        <GlassCard className="p-6">
+        <GlassCard className="entity-stats-chart-card p-6">
           <h3 className="mb-5 font-serif text-2xl font-semibold">累计播放</h3>
           <AnalysisTrendChart
             data={paddedCumulative.map((item) => ({
@@ -266,8 +268,8 @@ export function EntityStatsPanel({
       )}
 
       {/* 听歌时钟 + 三个分布图 — 2×2 */}
-      <div className="grid gap-6 xl:grid-cols-2">
-        <GlassCard className="p-6">
+      <div className="entity-stats-distributions grid gap-6 xl:grid-cols-2">
+        <GlassCard className="entity-stats-chart-card p-6">
           <h3 className="mb-3 font-serif text-2xl font-semibold">听歌时钟</h3>
           <ListeningClock
             data={data.hourly_distribution.map((item) => ({
@@ -279,7 +281,7 @@ export function EntityStatsPanel({
           />
         </GlassCard>
 
-        <GlassCard className="p-6">
+        <GlassCard className="entity-stats-chart-card p-6">
           <h3 className="mb-5 font-serif text-xl font-semibold">星期分布</h3>
           <AnalysisTrendChart
             data={data.weekday_distribution.map((item) => ({ label: item.day, value: item[distributionKey] }))}
@@ -287,7 +289,7 @@ export function EntityStatsPanel({
           />
         </GlassCard>
 
-        <GlassCard className="p-6">
+        <GlassCard className="entity-stats-chart-card p-6">
           <h3 className="mb-5 font-serif text-xl font-semibold">月度分布</h3>
           <AnalysisTrendChart
             data={data.month_distribution.map((item) => ({ label: `${item.month}月`, value: item[distributionKey] }))}
@@ -295,7 +297,7 @@ export function EntityStatsPanel({
           />
         </GlassCard>
 
-        <GlassCard className="p-6">
+        <GlassCard className="entity-stats-chart-card p-6">
           <h3 className="mb-5 font-serif text-xl font-semibold">年度分布</h3>
           <AnalysisTrendChart
             data={data.year_distribution.map((item) => ({ label: String(item.year), value: item[distributionKey] }))}
@@ -306,7 +308,7 @@ export function EntityStatsPanel({
 
       {/* 专辑项目曲目排行：服务端分页，20 首以内保持单页。 */}
       {kind === 'album' && (
-        <GlassCard className="p-6">
+        <GlassCard className="entity-stats-ranking-card p-6">
           <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
             <h3 className="font-serif text-2xl font-semibold">播放排行</h3>
             {(albumRanking?.total ?? 0) > ALBUM_RANKING_PAGE_SIZE && (
@@ -357,7 +359,7 @@ export function EntityStatsPanel({
 
       {/* 艺人个人排行：歌曲/专辑共享同一服务端分页工作区。 */}
       {kind === 'artist' && (
-        <GlassCard className="p-6">
+        <GlassCard className="entity-stats-ranking-card p-6">
           <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
             <h3 className="font-serif text-2xl font-semibold">播放排行</h3>
             <div className="flex flex-wrap items-center justify-end gap-2">
@@ -422,7 +424,7 @@ export function EntityStatsPanel({
       )}
 
       {/* 最近播放记录 — 全宽 */}
-      <GlassCard className="p-6">
+      <GlassCard className="entity-stats-recent-card p-6">
         <h3 className="mb-5 font-serif text-2xl font-semibold">最近播放记录</h3>
         <RecentPlaysSection
           kind={kind}
@@ -430,6 +432,7 @@ export function EntityStatsPanel({
           artistName={artistName}
           filters={filters}
           apiParams={apiParams}
+          mobile={isPhone}
           fetchPage={async (page, limit, search, date) => {
             if (kind === 'track' && trackId != null)
               return analysisApi.entityPlays('track', String(trackId), filters, { ...apiParams, limit, offset: (page - 1) * limit, search, date })

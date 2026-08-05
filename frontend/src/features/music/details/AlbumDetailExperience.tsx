@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { useParams, useSearchParams, useNavigate } from 'react-router-dom'
+import { Link, useParams, useSearchParams, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { queryKeys } from '@/api/query-keys'
@@ -20,6 +20,8 @@ import { AlbumEraSection } from './AlbumEraSection'
 import { VersionGroupSection } from './VersionGroupSection'
 import { useAnalysisFilters } from '@/hooks/useAnalysis'
 import { buildBillboardContextParams } from '@/features/billboard/billboardContext'
+import { useViewportMode } from '@/hooks/useViewportMode'
+import { MobileMusicDetailHero, MobileMusicDetailNav } from '@/features/mobile/music/MobileMusicDetail'
 
 type TabKey = 'stats' | 'era' | 'overview' | 'tracks'
 
@@ -37,14 +39,22 @@ function albumEnrichmentFromTask(task: AiTaskRun | null): AlbumEnrichmentRespons
 
 export function AlbumDetailExperience() {
   const { albumName } = useParams<{ albumName: string }>()
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
   const artistName = searchParams.get('artist') || ''
   const navigate = useNavigate()
   const mergeLevel = Number(searchParams.get('merge_level') ?? getDefaultMergeLevel())
   const { filters, loading: filtersLoading } = useAnalysisFilters()
   const billboardParams = buildBillboardContextParams({ ...filters, merge_level: mergeLevel })
 
-  const [activeTab, setActiveTab] = useState<TabKey>((searchParams.get('tab') as TabKey | null) ?? 'stats')
+  const requestedTab = searchParams.get('tab')
+  const activeTab: TabKey = TABS.some((tab) => tab.key === requestedTab) ? requestedTab as TabKey : 'stats'
+  const isPhone = useViewportMode() === 'phone'
+  const setActiveTab = (tab: TabKey) => {
+    const next = new URLSearchParams(searchParams)
+    if (tab === 'stats') next.delete('tab')
+    else next.set('tab', tab)
+    setSearchParams(next)
+  }
 
   const { data, isPending, error, refetch } = useQuery({
     queryKey: queryKeys.music.albumDetail(albumName ?? '', artistName, mergeLevel, billboardParams),
@@ -144,13 +154,48 @@ export function AlbumDetailExperience() {
             </div>
           ) : (
             <>
-              <AlbumDetailHero
-                data={data}
-                onBack={() => navigate(-1)}
-                projectTrackCount={data.album_project?.unique_canonical_songs}
-              />
+              {isPhone ? (
+                <div className="mobile-m5-page mobile-music-detail-page" data-mobile-page="album-detail">
+                  <MobileMusicDetailHero
+                    kind="album"
+                    eyebrow="Album / Personal Listening"
+                    title={displayName(data.album_name)}
+                    coverUrl={data.cover_url}
+                    subtitle={<Link to={`/music/artists/${encodeURIComponent(data.artist_name)}`}>{displayName(data.artist_name)}</Link>}
+                    meta={data.meta ? [
+                      data.meta.release_date,
+                      data.album_project?.unique_canonical_songs
+                        ? `${data.album_project.unique_canonical_songs} 首曲目`
+                        : data.meta.total_tracks ? `${data.meta.total_tracks} 首曲目` : null,
+                    ].filter(Boolean).join(' · ') : undefined}
+                    facts={[
+                      { label: '有效播放', value: `${(data.effective_play_count ?? 0).toLocaleString('zh-CN')} 次` },
+                      { label: '专辑榜', value: data.chart_summary ? `PK #${data.chart_summary.peak_position}` : '尚未入榜', accent: data.chart_summary?.peak_position === 1 },
+                      { label: '成员单曲', value: hasTrackChart ? `${data.tracks.length} 首入榜` : '暂无入榜' },
+                      { label: '走势排名', value: data.chart_summary?.power_rank ? `#${data.chart_summary.power_rank}` : '—' },
+                    ]}
+                  />
+                </div>
+              ) : (
+                <AlbumDetailHero
+                  data={data}
+                  onBack={() => navigate(-1)}
+                  projectTrackCount={data.album_project?.unique_canonical_songs}
+                />
+              )}
 
-              <DetailTabs tabs={TABS} activeTab={activeTab} onChange={setActiveTab} />
+              {isPhone ? (
+                <MobileMusicDetailNav
+                  activeTab={activeTab}
+                  primaryTabs={[
+                    { key: 'stats', label: '统计' },
+                    { key: 'overview', label: '榜单' },
+                    { key: 'tracks', label: '曲目' },
+                    { key: 'era', label: '时代' },
+                  ]}
+                  onChange={setActiveTab}
+                />
+              ) : <DetailTabs tabs={TABS} activeTab={activeTab} onChange={setActiveTab} />}
 
               {activeTab === 'overview' && (
                 <MusicChartOverviewSection
@@ -171,6 +216,7 @@ export function AlbumDetailExperience() {
                         kind="album"
                         data={data.meta.release_group}
                         sourceBreakdown={data.album_project?.source_breakdown ?? null}
+                        collapsible={isPhone}
                       />
                     </div>
                   )}

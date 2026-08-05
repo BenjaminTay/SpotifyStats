@@ -4,6 +4,8 @@ import { GlassCard } from '@/components/shared/GlassCard'
 import { displayName } from '@/lib/chinese'
 import { api } from '@/lib/api'
 import { formatDate } from '@/features/account/collection/utils/formatDate'
+import { MobileEntityRow } from '@/components/mobile'
+import { useViewportMode } from '@/hooks/useViewportMode'
 
 interface PlaylistRow {
   id: number
@@ -22,6 +24,7 @@ interface PlaylistTrackRow {
 }
 
 export function PlaylistsBrowser() {
+  const isPhone = useViewportMode() === 'phone'
   const [playlists, setPlaylists] = useState<PlaylistRow[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -113,6 +116,22 @@ export function PlaylistsBrowser() {
                     <p className="py-3 text-center font-sans text-[12px] text-muted-foreground">
                       该列表暂无曲目
                     </p>
+                  ) : isPhone ? (
+                    <div className="mobile-rank-list max-h-[360px] overflow-y-auto">
+                      {tracks.map((track) => (
+                        <MobileEntityRow
+                          key={track.track_uri}
+                          entityType="track"
+                          title={displayName(track.track_name)}
+                          subtitle={displayName(track.artist_name)}
+                          coverUrl={track.cover_url}
+                          metric={track.added_date ? formatDate(track.added_date) : '—'}
+                          metricLabel="加入"
+                          facts={track.album_name ? [{ label: '专辑', value: displayName(track.album_name) }] : []}
+                          to={`/music/tracks/${track.track_uri.replace('spotify:track:', '')}`}
+                        />
+                      ))}
+                    </div>
                   ) : (
                     <div className="max-h-[360px] overflow-y-auto">
                       <table className="w-full font-sans text-[12px]">

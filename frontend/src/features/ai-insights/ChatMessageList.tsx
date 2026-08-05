@@ -69,7 +69,7 @@ export function ChatMessageList({
   const hasMessages = messages.length > 0
 
   return (
-    <div className="min-h-[320px] max-h-[520px] sm:max-h-[640px] overflow-y-auto">
+    <div className="mobile-ai-message-list min-h-[320px] max-h-[520px] sm:max-h-[640px] overflow-y-auto">
       {sessionLoading && (
         <div className="flex items-center justify-center py-20">
           <div className="h-5 w-5 animate-spin rounded-full border-2 border-muted-foreground/30 border-t-muted-foreground" />

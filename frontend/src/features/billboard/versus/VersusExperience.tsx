@@ -12,6 +12,9 @@ import { VersusScoreboardSection } from './VersusScoreboardSection'
 import { VersusChartSection } from './VersusChartSection'
 import { VersusReleaseCycleSection } from './VersusReleaseCycleSection'
 import { buildBillboardContextParams, buildPersonalStatsParams } from '../billboardContext'
+import { MobilePageHeader } from '@/components/mobile'
+import { useViewportMode } from '@/hooks/useViewportMode'
+import { cn } from '@/lib/utils'
 
 const KIND_LABELS: Record<VersusKind, string> = { track: '歌曲', album: '专辑', artist: '艺人' }
 
@@ -45,6 +48,7 @@ function cacheQueue(k: VersusKind, q: EntityListItem[]) {
 }
 
 export function VersusExperience() {
+  const isPhone = useViewportMode() === 'phone'
   const [kind, setKindState] = useState<VersusKind>(cachedKind)
   const [queue, setQueue] = useState<EntityListItem[]>(cachedQueues[cachedKind])
   const { filters, loading: filtersLoading } = useAnalysisFilters()
@@ -103,10 +107,16 @@ export function VersusExperience() {
   const readyToCompare = queue.length >= 2
 
   return (
-    <>
-      <BillboardSubNav active="versus" />
+    <div className={cn(isPhone && 'mobile-m4-page')} data-mobile-page={isPhone ? 'billboard-versus' : undefined}>
+      {!isPhone && <BillboardSubNav active="versus" />}
 
-      <section className="mt-6 mb-6">
+      {isPhone ? (
+        <MobilePageHeader
+          eyebrow="Chart / Versus"
+          title="对决"
+          description={`分三步选择 2–${MAX_QUEUE_SIZE} 个实体，再用纵向成绩卡比较榜单、播放与发行周期。`}
+        />
+      ) : <section className="mt-6 mb-6">
         <p className="mb-4 font-sans text-[11px] font-bold uppercase tracking-[1.8px] text-accent-foreground">
           Chart / Versus
         </p>
@@ -116,10 +126,10 @@ export function VersusExperience() {
         <p className="mt-2 text-[13px] text-muted-foreground">
           选取 2-{MAX_QUEUE_SIZE} 个单曲、专辑或艺人，对比榜单表现、个人播放与发行周期
         </p>
-      </section>
+      </section>}
 
       {/* Selector */}
-      <GlassCard className="relative z-10 mb-8 p-6">
+      <GlassCard className={cn('relative z-10 mb-8 p-6', isPhone && 'mobile-versus-builder-card')}>
           <VersusSelectorSection
           key={kind}
           kind={kind}
@@ -187,6 +197,7 @@ export function VersusExperience() {
           )}
         </div>
       )}
-    </>
+      {isPhone && readyToCompare && <button type="button" className="mobile-versus-adjust" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>调整对决对象</button>}
+    </div>
   )
 }

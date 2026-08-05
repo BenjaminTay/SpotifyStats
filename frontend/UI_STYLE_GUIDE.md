@@ -304,12 +304,7 @@ className="rounded-[16px] border border-border bg-card backdrop-blur-[12px] shad
 
 ### 客户端缓存
 
-页面切换时避免重复请求，使用模块级变量缓存：
-- `useDashboard`：`let cachedData: DashboardFullResponse | null = null`
-- `useBillboard`：`let cachedBillboard: BillboardDataResponse | null = null`
-- 首次挂载：正常请求 API，结果写入缓存
-- 重新挂载：若有缓存数据则直接渲染（loading 初始为 false），不重复请求
-- `refetch()` 方法仍可手动强制刷新
+所有 GET 数据统一使用 TanStack React Query 与 `queryKeys`。Desktop/Phone presentation 必须复用同一 Route Container、查询结果、过滤指纹和 URL 状态；不得为移动端新增模块级 API 响应缓存或第二套请求。
 
 ## 动画与过渡
 
@@ -340,11 +335,49 @@ className="rounded-[16px] border border-border bg-card backdrop-blur-[12px] shad
 7. **页脚**：`font-serif text-[13px] italic text-muted-foreground mt-6`
 8. **三种状态**：loading（Skeleton）→ error（AlertCircle + 重试按钮）→ data（正式内容）
 
-## 响应式
+## 移动端网页规范
 
-当前针对桌面端设计（`max-w-[1200px]`）。后续新增页面可基于以下断点扩展：
-- 内容区 `grid-cols-[1fr_380px]` → 小屏可改为单列
-- KPI `grid-cols-4` → 小屏可改为 2 列
+移动端不是桌面页面等比缩小，而是共享业务状态的独立 presentation。`useViewportMode()` 将宽度划分为 Phone（`<768px`）、Compact（`768–1023px`）和 Desktop（`>=1024px`）；Phone 与 Desktop 的重图表、宽表和长列表必须互斥挂载，Compact 默认沿用桌面信息结构并做单列或紧凑排布。
+
+### Shell 与导航
+
+- Phone 使用 `MobileTopBar`、`MobileBottomNav` 和 `MobileSectionSwitcher`，不挂载桌面 Masthead；Desktop/Compact 不挂载 Phone Shell。
+- Bottom Nav 固定为首页、播放、榜单、社区、AI。播放分析和 Billboard 的二级栏目通过 Section Sheet 进入，当前栏目和返回目标继续由路由/URL 表达。
+- 音乐搜索、音乐详情、社区详情和 Settings 子页使用 Push Top Bar；按页面语义决定是否隐藏 Bottom Nav，禁止叠加第二套悬浮导航。
+- Top Bar、Bottom Nav、Sheet 和全屏层必须处理 `env(safe-area-inset-*)`；正文底部留出导航与安全区空间。
+
+### 信息重排
+
+- 桌面宽表在 Phone 转换为 `MobileEntityRow`、排名列表、时间线或纵向成绩卡；隐藏列不得改变原始排序、资格或固定排名。
+- KPI 通常使用 2×2 网格；筛选、排序、年份和字段选择优先使用 chips、segmented control 或 Bottom Sheet。
+- 手机详情保留高频栏目，低频栏目进入“更多”；栏目、实体、年份、排序、分页和筛选继续写入或恢复现有 URL 状态。
+- Desktop/Phone 共享同一 API、TanStack Query、row model、格式化函数和统计事实，只允许 presentation 层分叉。
+
+### 触控与图表
+
+- 主要可见操作的最小触控区域为 `44×44px`；图标按钮必须有 accessible name，输入框必须有可关联标签。
+- 关键能力不得依赖 hover。图表必须支持点击/触摸 disclosure；复杂图表提供 `MobileFullscreenChart`，打开后锁定背景滚动，关闭后把焦点还给触发按钮。
+- 页面滚动与图表拖动区域要有明确边界；仅在确有必要时启用 dataZoom，避免吞掉纵向页面手势。
+
+### Settings 能力边界
+
+- Phone 可完成主题、名称显示、播放过滤、合并级别、榜单参数、Spotify 日常连接/同步和当前 AI Profile 等低风险操作。
+- 文件导入、元数据归并、曲目署名、艺人身份、流派与语言审核、LLM 凭据和系统维护保留桌面工作台；手机只显示状态、目标摘要和“在电脑上管理”入口。
+- 普通消费页面不展示来源、证据、置信度、审核状态或内部 ID 等治理术语。
+
+### PWA 与独立窗口
+
+- 手机 Settings 首页可以展示一张 `App Mode / PWA` 安装卡；它属于访问方式，不新增第二套功能导航。
+- 安装卡沿用编辑风卡片、品牌强调色和至少 44px 操作目标；Chromium 提供安装按钮，iOS 提供 Safari 分享菜单说明，standalone 显示已安装状态。
+- PWA `theme-color` 必须随日/夜主题切换；standalone 继续使用同一 Phone Shell、safe area 与路由语义。
+- 离线状态只提供连接说明。不得缓存或伪造个人统计、榜单、账号、OAuth 或 AI 数据，也不得把“安装成功”表述为“离线数据可用”。
+
+### 移动质量门禁
+
+- 必测矩阵：360×800、390×844、430×932、768×1024、1280×800。
+- Phone 页面级横向溢出、console error/warning、无障碍控件库存违规、主要触控目标小于 44px 均为 0。
+- Chromium、Firefox、WebKit（Safari-family）均需通过 Shell 与核心交互 smoke；生产预览预算为 LCP <=2.5s、CLS <=0.1、TBT <=200ms、横向溢出 0。
+- 发布前使用 `frontend_route_smoke.mjs --viewport matrix`、移动 interaction/chart smoke、control inventory、long-list、cross-browser 与 Web Vitals probe 复核。
 
 ## 依赖关系
 
@@ -365,8 +398,12 @@ className="rounded-[16px] border border-border bg-card backdrop-blur-[12px] shad
 | `src/hooks/useDashboard.ts` | Dashboard 数据获取 + 缓存 |
 | `src/hooks/useBillboard.ts` | Billboard 数据获取 + 缓存 + 周导航 |
 | `src/hooks/useAnalysis.ts` | 播放统计、播放排行、实体播放统计 API hook |
-| `src/components/layout/AppLayout.tsx` | 全局布局壳（NoiseOverlay + 深色渐变 + Masthead + Outlet） |
+| `src/components/layout/AppLayout.tsx` | 按视口互斥挂载 Desktop/Phone Shell（NoiseOverlay + Masthead 或 Mobile Top/Bottom Bar + Outlet） |
 | `src/components/layout/Masthead.tsx` | 粘性顶栏（Logo + Nav + ThemeToggle） |
+| `src/components/layout/MobileTopBar.tsx` | Phone 页面顶栏、返回、栏目和更多操作入口 |
+| `src/components/layout/MobileBottomNav.tsx` | Phone 五项主导航与 safe-area 处理 |
+| `src/components/layout/MobileSectionSwitcher.tsx` | 播放分析/Billboard 二级栏目 Bottom Sheet |
+| `src/components/mobile/` | Mobile Sheet、实体行、图表卡、全屏图表、分页和状态原语 |
 | `src/components/layout/ThemeToggle.tsx` | 日/夜切换药丸 |
 | `src/components/shared/NoiseOverlay.tsx` | SVG 噪点纹理 |
 | `src/components/shared/GlassCard.tsx` | 毛玻璃卡片 |

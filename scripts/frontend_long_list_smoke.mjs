@@ -690,12 +690,23 @@ async function exercisePaginatedOrCappedList(options) {
 }
 
 async function exerciseCommunityFeed({ client, baseUrl, waitMs }) {
-  await navigate(client, baseUrl, '/community')
-  await waitForText(client, '榜单社区', waitMs)
-  await clickText(client, '全部', waitMs)
+  const openAllFeed = async () => {
+    await navigate(client, baseUrl, '/community')
+    await waitForText(client, '榜单社区', waitMs)
+    const clicked = await evaluate(client, `(() => {
+      const button = Array.from(document.querySelectorAll('.community-feed-toggle button'))
+        .find((item) => (item.innerText || item.textContent || '').trim().startsWith('全部'));
+      if (!button) return false;
+      button.click();
+      return true;
+    })()`)
+    if (!clicked) throw new Error('Community 全部 feed control was not ready')
+  }
+
+  await openAllFeed()
 
   // Wait for initial posts to render
-  const beforeRows = await waitForCondition(
+  const waitForPosts = () => waitForCondition(
     async () => {
       const rows = await getRowWindow(client, { rowSelector: 'article' })
       return rows.count > 0 ? rows : null
@@ -703,6 +714,13 @@ async function exerciseCommunityFeed({ client, baseUrl, waitMs }) {
     waitMs,
     'Community feed did not render posts',
   )
+  let beforeRows
+  try {
+    beforeRows = await waitForPosts()
+  } catch {
+    await openAllFeed()
+    beforeRows = await waitForPosts()
+  }
 
   // Track /api/community network responses via CDP
   const communityRequests = []

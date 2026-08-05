@@ -39,7 +39,7 @@ export function ChatComposer({
   }
 
   return (
-    <div className="border-t border-border/40 px-4 py-3">
+    <div data-mobile-input-mode="true" className="border-t border-border/40 px-4 py-3">
       <div className="mb-2 flex items-center justify-end gap-2">
         <span
           className="text-[10px] text-muted-foreground/40"

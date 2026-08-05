@@ -25,12 +25,12 @@ const DETAIL_ROUTE_FILTERS = {
 }
 
 const DEFAULT_ROUTES = [
-  { path: '/', markers: ['DASHBOARD /', '总播放次数'] },
-  { path: '/analysis/stats', markers: ['PLAYBACK / ANALYSIS', '播放统计'] },
-  { path: '/analysis/charts', markers: ['PLAYBACK RANKING', '播放排行'] },
-  { path: '/billboard/records', markers: ['CHART / HALL OF FAME', '冠军圣殿'] },
-  { path: '/ai-insights', markers: ['AI / INSIGHTS', 'AI 洞察'] },
-  { path: '/settings', markers: ['参数与配置', '01 · SPOTIFY 连接'] },
+  { path: '/', markers: ['播放次数'] },
+  { path: '/analysis/stats', markers: ['播放统计'] },
+  { path: '/analysis/charts', markers: ['播放排行'] },
+  { path: '/billboard/records', markers: ['冠军圣殿'] },
+  { path: '/ai-insights', markers: ['AI 洞察'] },
+  { path: '/settings', markers: ['Spotify 连接'] },
 ]
 
 const VIEWPORTS = {
@@ -154,34 +154,34 @@ async function resolveDetailRoutes(baseUrl, apiBaseUrl) {
   if (track) {
     routes.push({
       path: `/music/tracks/${encodeURIComponent(String(track.track_id))}`,
-      markers: ['单曲详情', '播放统计'],
+      markers: ['单曲详情'],
       dynamic: true,
     })
   }
   if (album) {
     routes.push({
       path: `/music/albums/${encodeURIComponent(album.album_name)}?artist=${encodeURIComponent(album.artist_name)}`,
-      markers: ['专辑详情', '播放统计'],
+      markers: ['专辑详情'],
       dynamic: true,
     })
   }
   if (artist) {
     routes.push({
       path: `/music/artists/${encodeURIComponent(artist.artist_name)}`,
-      markers: ['艺人详情', '播放统计'],
+      markers: ['艺人详情'],
       dynamic: true,
     })
   }
   if (post) {
     routes.push({
       path: `/community/post/${encodeURIComponent(post.id)}`,
-      markers: ['COMMUNITY / POST'],
+      markers: ['回复'],
       dynamic: true,
     })
     if (post.account_handle) {
       routes.push({
         path: `/community/account/${encodeURIComponent(post.account_handle)}`,
-        markers: ['COMMUNITY / ACCOUNT', 'Posts'],
+        markers: ['Posts'],
         dynamic: true,
       })
     }
@@ -456,12 +456,24 @@ def page_state(page):
                 theme: localStorage.getItem('theme'),
                 chineseStyle: localStorage.getItem('chineseStyle'),
                 isDark: document.documentElement.classList.contains('dark'),
+                path: location.pathname,
+                viewportMode: document.querySelector('main[data-viewport-mode]')?.getAttribute('data-viewport-mode') || null,
+                hasMobileTopBar: Boolean(document.querySelector('[data-mobile-shell="top-bar"]')),
+                hasMobileBottomNav: Boolean(document.querySelector('[data-mobile-shell="bottom-nav"]')),
+                hasDesktopMasthead: Boolean(document.querySelector('nav[aria-label="主导航"]')),
             };
         }"""
     )
 
 
-def assert_page_health(page, console_messages, page_errors):
+def route_should_have_mobile_bottom_nav(path: str) -> bool:
+    normalized = urlparse(path).path.rstrip("/") or "/"
+    if normalized in ("/", "/yearly-review", "/account", "/community", "/ai-insights"):
+        return True
+    return normalized.startswith("/analysis/") or normalized == "/analysis" or normalized.startswith("/billboard/") or normalized == "/billboard"
+
+
+def assert_page_health(page, console_messages, page_errors, viewport_name=None, route_path=None):
     state = page_state(page)
     if state["rootTextLength"] <= 20:
         raise SmokeFailure(f"Root text too short: {state['rootTextLength']}")
@@ -474,6 +486,23 @@ def assert_page_health(page, console_messages, page_errors):
         raise SmokeFailure("Page errors: " + " | ".join(page_errors[:5]))
     if console_messages:
         raise SmokeFailure("Console errors/warnings: " + " | ".join(console_messages[:5]))
+    if viewport_name == "mobile":
+        if not state["hasMobileTopBar"]:
+            raise SmokeFailure("Mobile top bar missing")
+        if state["hasDesktopMasthead"]:
+            raise SmokeFailure("Desktop masthead mounted in mobile viewport")
+        if state["viewportMode"] != "phone":
+            raise SmokeFailure(f"Viewport mode {state['viewportMode']!r} != 'phone'")
+        expected_bottom_nav = route_should_have_mobile_bottom_nav(route_path or state["path"])
+        if state["hasMobileBottomNav"] != expected_bottom_nav:
+            raise SmokeFailure(f"Mobile bottom nav state {state['hasMobileBottomNav']} != expected {expected_bottom_nav}")
+    elif viewport_name == "desktop":
+        if not state["hasDesktopMasthead"]:
+            raise SmokeFailure("Desktop masthead missing")
+        if state["hasMobileTopBar"] or state["hasMobileBottomNav"]:
+            raise SmokeFailure("Mobile shell mounted in desktop viewport")
+        if state["viewportMode"] != "desktop":
+            raise SmokeFailure(f"Viewport mode {state['viewportMode']!r} != 'desktop'")
     return state
 
 
@@ -515,7 +544,11 @@ def run_route_markers(browser):
                             page.wait_for_timeout(250)
                 if last_error:
                     raise last_error
-                assert_page_health(page, console_messages, page_errors)
+                wait_for_condition(
+                    lambda: page_state(page) if page_state(page)["rootTextLength"] > 20 else None,
+                    f"Route body did not become ready: {route['path']}",
+                )
+                assert_page_health(page, console_messages, page_errors, viewport_name, route["path"])
                 print(f"PASS route-markers {viewport_name} {route['path']}")
             finally:
                 close_page(page)
@@ -607,7 +640,7 @@ def run_settings_controls(browser):
         wait_for_text(page, "SPOTIFY 连接")
         wait_for_text(page, "数据与显示")
         wait_for_text(page, "榜单参数")
-        wait_for_text(page, "版本合并")
+        wait_for_text(page, "归并与版本")
         wait_for_text(page, "数据导入")
 
         click_switch_by_label(page, "动态阈值")

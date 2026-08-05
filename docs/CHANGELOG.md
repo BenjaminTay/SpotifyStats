@@ -1,5 +1,60 @@
 # 变更日志
 
+## 2026-08-06 — App 化 Phase A：可安装 PWA 基线
+
+- 增加 `manifest.webmanifest`、standalone 启动、192/512 maskable 图标、Apple Touch Icon、主题色和播放统计/排行/年度/搜索快捷入口。
+- 增加生产 Service Worker 和离线说明；只缓存 PWA 壳层与版本化静态资产，明确绕过 `/api`、`/covers` 和个人统计数据。
+- 手机 Settings 增加 App Mode 安装卡，支持 Chromium 安装提示、iOS Safari 添加到主屏幕说明及 standalone 已安装状态；日/夜主题同步浏览器状态栏颜色。
+- 390×844 Chromium 生产预览确认 Service Worker activated、Manifest 0 error、横向溢出 0；断网只显示无个人数据的离线页，console 0 error/warning。自动化环境唯一 installability 提示为 `in-incognito`。
+- 新增 PWA/Capacitor 路线规划，并将移动端 M0–M7 与 PWA Phase A 的交付证据收敛为一份综合报告；下一阶段先处理 HTTPS 远程 API、鉴权、持久化、备份和 Spotify OAuth，再进入真机与 Capacitor。
+
+## 2026-08-05 — 移动端网页 M7 质量门禁与发布收口
+
+- 播放统计移动图表接入真实全屏层；聆听时钟支持触摸、点击、焦点和键盘 disclosure，全屏打开锁定背景滚动、关闭恢复触发按钮焦点，关键图表不再依赖 hover。
+- 将榜单切换、年份、分页、搜索、社区、AI、账号、Settings 和最近播放等主要移动控件统一到至少 44×44px，并把触控尺寸纳入 control inventory 硬门禁。
+- route smoke 扩展为 360×800、390×844、430×932、768×1024、1280×800 五档矩阵；interaction/chart smoke 增加 Bottom Nav、Section Sheet、查询参数保留、时间筛选、触摸 tooltip 和全屏图表。
+- 全量控件库存覆盖 20 个路由 × desktop/mobile：开发/生产最终样本分别检查 1,807/1,690 个可见控件和 353/351 个主要移动触控目标，欠尺寸与 violation 均为 0；开发与生产 Chromium/Firefox/WebKit 3/3、长列表 7/7、API smoke 116/116、API boundary 101/101 均通过。
+- 生产预览 Web Vitals 12/12 通过：最终 LCP 最大 812ms、CLS 0、TBT 0ms、横向溢出 0；Phase 5 最低矩阵为 backend unit 852、contract 323、frontend 438，生产构建通过。
+- `frontend/UI_STYLE_GUIDE.md`、移动实施规划及 Agent 架构契约同步 M7；物理 iOS/Android 的安全区、软键盘、系统返回和 OAuth 回跳保留为真正部署前的现场复核，不冒充自动化真机结果。
+
+## 2026-08-05 — 移动端网页 M6 社区、AI、账号与设置
+
+- 社区首页改为手机全宽连续 Feed，搜索与时间筛选进入共享 Bottom Sheet，趋势入口由移动 Top Bar 承载；帖子和社区账号详情采用 Push Top Bar，不再与 Bottom Nav 叠放悬浮按钮。
+- AI 报告/问答增加手机分段切换；对话区使用剩余 `dvh`、消息区独立滚动和吸底输入框，输入聚焦时隐藏 Bottom Nav，历史记录进入共享 Sheet；报告筛选、Markdown 和任务状态适配单列阅读。
+- 账号中心增加编辑式身份 Hero、2×2 事实摘要和无障碍分段 Tab；收藏歌曲、排行和播放列表曲目在手机改为纵向实体行，习惯页将搜索、粉丝层级、播客、Marquee 和视频改为按需展开，桌面内容结构保持不变。
+- Settings 手机端改为七类任务 Landing；主题、中文显示、有效播放、合并级别、榜单参数、Spotify 同步、AI 开关和当前 Profile 可直接操作。数据导入、元数据治理、LLM 凭据和系统维护只显示状态及电脑端提示，详情页治理深链继续保留实体目标与 `return_to`。
+- 新增 M6 架构和组件测试；修复移动习惯组件导致的薄编排器护栏回归。Phase 5 最低矩阵通过：backend unit 849、contract 323、frontend 436，生产构建通过。
+- 社区、AI、账号、Settings desktop/mobile route smoke 8/8；12 个移动路由/子页共检查 82 个控件、0 violation，控制台 0 error/warning、页面级横向溢出 0px。
+
+## 2026-08-05 — 移动端网页 M5 音乐查找与详情
+
+- `/music/search` 在手机改为吸附搜索框、四类筛选 chips 与歌曲/专辑/艺人分组结果；结果卡保留有效播放、PK、在榜周数和走势排名，不展示冠军周数，中文输入法组合输入完成后才同步 `q` URL。
+- 单曲、专辑、艺人详情新增实体专属 Compact Hero：单曲使用封面与标题并排，专辑使用居中大封面，艺人使用圆形肖像；有效播放、实体自身榜单和子成绩保持独立事实。
+- 详情栏目改为 URL 驱动，刷新、分享和返回均保留当前栏目；单曲使用“统计 / 榜单 / 歌词”，专辑使用“统计 / 榜单 / 曲目 / 时代”，艺人常驻“统计 / 榜单 / 歌曲”，专辑/发行周期/艺人生涯进入更多栏目 Sheet。
+- 手机端曲目、专辑、榜单历史、个人排行和最近播放记录统一改为纵向实体卡，桌面宽表保留；专辑版本来源默认折叠，歌词增加移动阅读留白。
+- 详情 Top Bar“更多”统一承载分享、继续搜索与 Settings 精确治理深链，曲目署名、专辑版本、艺人身份均保留实体参数、锚点和 `return_to`，手机不直接渲染复杂治理工作台。
+- 修复已入榜艺人详情只在未入榜时加载个人统计、导致 `effective_play_count=0` 的契约错误；新增 charted artist contract test，真实 Taylor Swift 详情与播放统计现均为 16,513 次。
+- 四页 360/390/430/768/1280 共 20 个组合均为 0px 横向溢出；desktop/mobile route smoke 8/8、103 个控件 0 violation、控制台 0 error/warning；Phase 5 最低矩阵为 backend unit 849、contract 323、frontend 426 全通过。
+
+## 2026-08-05 — 移动端网页 M4 年度与记录页面
+
+- 年度总结改为最新年份优先、章节吸附导航和移动 Story Sections；保留原年度数据契约，并调整手机叙事顺序为总览、最爱、时间、品味、发现、深度、人格和对比。
+- 播放记录与 Billboard 记录共用栏目 Bottom Sheet；手机默认每项只展示 Top 3，可按需展开完整榜单，桌面分页与原记录族保持不变。
+- 每周榜首改为按年份筛选的纵向周冠军时间线和固定冠军榜；Billboard 年榜增加阶段年榜警示、荣誉卡、排序 Sheet 与固定 `year_end_rank` 列表。
+- Billboard 总榜采用固定 `power_rank`、字段组合 Sheet 与移动排序，搜索、分页、字段隐藏均不重新编号；走势、稳定性和跨层级指标继续来自原始总榜响应。
+- 对决上限收口为 2–4 个实体，手机使用三步式选择、胜负摘要、纵向成绩卡和底部调整入口；实测加入两首歌曲后可完整展示榜单与个人播放指标。
+- 修复年度专辑完成度卡片中的嵌套交互链接，将专辑与艺人入口改为并列语义链接；M4 七页 desktop/mobile 控件库存合计 1,123 个控件、0 violation。
+- 360/390/430/768/1280 五档均为 0px 页面级横向溢出；七页 desktop/mobile route smoke 14/14 通过，0 console error / warning；Phase 5 最低矩阵为 backend unit 849、contract 322、frontend 417 全通过。
+
+## 2026-08-05 — 移动端网页 M3 高频页面
+
+- 首页、播放统计、播放排行与 Billboard 周榜新增独立 Phone presentation；宽度低于 768px 时只挂载移动结构，768px 及以上继续使用桌面结构，不同时运行两套重图表或榜单。
+- 首页收口为紧凑内容头、2×2 KPI、单列月度趋势、聆听习惯摘要和移动快捷入口；播放统计改为指标分段、四项核心数据、可展开次级数据、单卡图表视图和实体化近期播放列表。
+- 播放排行在手机使用固定原始名次的实体列表；搜索、分页和指标切换只改变可见结果，不重新编号，歌曲、专辑和艺人继续进入既有详情页。
+- Billboard 周榜增加 44px 周次控制、按年份分组的周次 Bottom Sheet、2×2 摘要和含 PK/在榜周数/走势的移动行；同名专辑按专辑名与艺人共同识别，避免跨艺人误判榜单变动。
+- Billboard 的 `week` 与 `tab` 写入 URL；修复浏览器返回移除 `week` 后未恢复最新一周的问题，并增加 hook 回归测试。
+- 360/390/430/768/1280 五档真实浏览器验证均为 0px 页面级横向溢出，四页 desktop/mobile route smoke 8/8 通过，控制台 0 error / 0 warning；Phase 5 最低矩阵为 backend unit 849、contract 322、frontend 412 全通过。
+
 ## 2026-08-05 — 数据导入与健康检查第一轮
 
 - 串流导入对完全相同的音频记录和视频记录分别去重，保留稳定顺序中的第一次出现，并在任务结果显示 `duplicate_records_skipped`；不按日期重叠或歌曲名称做模糊合并。

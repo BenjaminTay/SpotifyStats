@@ -8,6 +8,9 @@ import { generateMonthlyInsight, generatePeakHourInsight } from '@/lib/insights'
 import { Skeleton } from '@/components/ui/skeleton'
 import { AlertCircle } from 'lucide-react'
 import { useMemo } from 'react'
+import { MobileDashboard } from '@/features/mobile/dashboard/MobileDashboard'
+import { MobileStatePanel } from '@/components/mobile'
+import { useViewportMode } from '@/hooks/useViewportMode'
 
 function formatNumber(n: number): string {
   return new Intl.NumberFormat('zh-CN').format(n)
@@ -47,6 +50,7 @@ function DashboardSkeleton() {
 
 export function DashboardPage() {
   const { data, loading, error, refetch } = useDashboard()
+  const isPhone = useViewportMode() === 'phone'
 
   const monthlyInsight = useMemo(
     () => (data ? generateMonthlyInsight(data.monthly_trend) : ''),
@@ -59,9 +63,11 @@ export function DashboardPage() {
 
   return (
     <>
-      {loading && <DashboardSkeleton />}
+      {loading && (isPhone ? <MobileStatePanel variant="loading" /> : <DashboardSkeleton />)}
 
-      {error && (
+      {error && (isPhone ? (
+        <MobileStatePanel variant="error" description="首页数据暂时无法加载。" actionLabel="重新加载" onAction={refetch} />
+      ) : (
         <div className="flex flex-col items-center gap-4 py-20 text-center">
           <AlertCircle className="h-8 w-8 text-accent-foreground" />
           <p className="text-muted-foreground">加载失败：{error}</p>
@@ -72,9 +78,18 @@ export function DashboardPage() {
             重新加载
           </button>
         </div>
+      ))}
+
+      {data && !loading && isPhone && (
+        <MobileDashboard
+          data={data}
+          monthlyInsight={monthlyInsight}
+          peakHour={peakHourInsight.peak}
+          peakHourText={peakHourInsight.text}
+        />
       )}
 
-      {data && !loading && (
+      {data && !loading && !isPhone && (
         <>
           {/* Hero */}
           <section className="mb-12">

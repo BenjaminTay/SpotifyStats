@@ -1,14 +1,12 @@
-import { useState } from 'react'
 import { useParams, useNavigate, useSearchParams, Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { queryKeys } from '@/api/query-keys'
 import type { TrackDetailResponse, LyricsData, TrackEnrichmentResponse } from '@/types/billboard'
 import { EntityStatsPanel } from '@/components/shared/EntityStatsPanel'
-import { displayName } from '@/lib/chinese'
 import { getBillboardName } from '@/lib/billboard-name'
 import { Skeleton } from '@/components/ui/skeleton'
-import { AlertCircle, ArrowLeft, Settings2 } from 'lucide-react'
+import { AlertCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { getDefaultMergeLevel } from '@/lib/merge-level'
 import { TrackOverviewSection } from './track/TrackOverviewSection'
@@ -16,13 +14,10 @@ import { TrackLyricsSection } from './track/TrackLyricsSection'
 import { VersionGroupSection } from './VersionGroupSection'
 import { useAnalysisFilters } from '@/hooks/useAnalysis'
 import { buildBillboardContextParams } from '@/features/billboard/billboardContext'
-
-function formatDuration(ms: number): string {
-  const totalSec = Math.floor(ms / 1000)
-  const min = Math.floor(totalSec / 60)
-  const sec = totalSec % 60
-  return `${min}:${sec.toString().padStart(2, '0')}`
-}
+import { useViewportMode } from '@/hooks/useViewportMode'
+import { MobileMusicDetailHero, MobileMusicDetailNav } from '@/features/mobile/music/MobileMusicDetail'
+import { TrackDetailHero } from './MusicDetailHeader'
+import { displayName } from '@/lib/chinese'
 
 type TabKey = 'stats' | 'lyrics' | 'overview'
 
@@ -61,10 +56,16 @@ function TrackDetailSkeleton() {
 export function TrackDetailExperience() {
   const { trackId } = useParams<{ trackId: string }>()
   const navigate = useNavigate()
-  const [searchParams] = useSearchParams()
-  const [activeTab, setActiveTab] = useState<TabKey>(
-    (searchParams.get('tab') as TabKey | null) ?? 'stats',
-  )
+  const [searchParams, setSearchParams] = useSearchParams()
+  const requestedTab = searchParams.get('tab')
+  const activeTab: TabKey = TABS.some((tab) => tab.key === requestedTab) ? requestedTab as TabKey : 'stats'
+  const isPhone = useViewportMode() === 'phone'
+  const setActiveTab = (tab: TabKey) => {
+    const next = new URLSearchParams(searchParams)
+    if (tab === 'stats') next.delete('tab')
+    else next.set('tab', tab)
+    setSearchParams(next)
+  }
   const mergeLevel = Number(searchParams.get('merge_level') ?? getDefaultMergeLevel())
   const { filters, loading: filtersLoading } = useAnalysisFilters()
   const billboardParams = buildBillboardContextParams({ ...filters, merge_level: mergeLevel })
@@ -125,81 +126,35 @@ export function TrackDetailExperience() {
             </div>
           ) : (
             <>
-              {/* Hero */}
-              <section className="mb-6">
-                <button
-                  onClick={() => navigate(-1)}
-                  className="mb-4 inline-flex items-center gap-1.5 font-sans text-[11px] font-bold uppercase tracking-[1.8px] text-muted-foreground transition-colors hover:text-accent-foreground"
-                >
-                  <ArrowLeft className="h-3 w-3" />
-                  Music / 单曲详情
-                </button>
-                <div className="flex min-w-0 flex-col gap-4 sm:flex-row sm:items-start sm:gap-6">
-                  {data.cover_url && (
-                    <img
-                      src={data.cover_url}
-                      alt={data.track_name}
-                      style={{ width: 120, height: 120 }}
-                      className="h-[120px] w-[120px] flex-shrink-0 rounded-[12px] object-cover shadow-lg"
-                    />
-                  )}
-                  <div className="min-w-0 max-w-full flex-1">
-                    <div className="flex min-w-0 items-start justify-between gap-3">
-                      <h1 className="min-w-0 break-words font-serif text-[44px] font-bold leading-[1.06] tracking-normal">
-                        {displayName(data.track_name)}
-                      </h1>
-                      <Link
-                        aria-label={`编辑 ${data.track_name} 的曲目信息`}
-                        title="编辑曲目信息"
-                        to={`/settings?metadata=track-credits&track_id=${encodeURIComponent(trackId ?? '')}&return_to=${encodeURIComponent(`/music/tracks/${trackId ?? ''}`)}#music-metadata-management`}
-                        className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-border px-2.5 text-[11px] font-semibold text-muted-foreground transition hover:border-accent-foreground/40 hover:text-foreground"
-                      >
-                        <Settings2 className="size-3.5" />
-                        <span className="hidden md:inline">编辑</span>
+              {isPhone ? (
+                <div className="mobile-m5-page mobile-music-detail-page" data-mobile-page="track-detail">
+                  <MobileMusicDetailHero
+                    kind="track"
+                    eyebrow="Track / Personal Listening"
+                    title={displayName(data.track_name)}
+                    coverUrl={data.cover_url}
+                    subtitle={(data.artist_names?.length ? data.artist_names : [data.artist_name]).map((name, index, artists) => (
+                      <span key={name}>
+                        <Link to={`/music/artists/${encodeURIComponent(name)}`}>{displayName(name)}</Link>
+                        {index < artists.length - 1 ? ' · ' : ''}
+                      </span>
+                    ))}
+                    meta={data.meta?.spotify_album_name ? (
+                      <Link to={`/music/albums/${encodeURIComponent(data.meta.spotify_album_name)}?artist=${encodeURIComponent(data.primary_artist_name ?? data.artist_names?.[0] ?? data.artist_name)}`}>
+                        {displayName(data.meta.spotify_album_name)}
                       </Link>
-                    </div>
-                    <p className="mt-2 font-sans text-[17px] text-muted-foreground">
-                      {(data.artist_names && data.artist_names.length > 1
-                        ? data.artist_names
-                        : [data.artist_name]
-                      ).map((name, idx, arr) => (
-                        <span key={name}>
-                          <Link
-                            to={`/music/artists/${encodeURIComponent(name)}`}
-                            className="transition-colors hover:text-accent-foreground"
-                          >
-                            {displayName(name)}
-                          </Link>
-                          {idx < arr.length - 1 && (
-                            <span className="text-muted-foreground/40">{' · '}</span>
-                          )}
-                        </span>
-                      ))}
-                    </p>
-                    {data.meta && (
-                      <p className="mt-1 break-words font-sans text-[14px] text-muted-foreground">
-                        {[
-                          data.meta.spotify_album_name && (
-                            <Link
-                              key="album"
-                              to={`/music/albums/${encodeURIComponent(data.meta.spotify_album_name)}?artist=${encodeURIComponent(data.primary_artist_name ?? data.artist_names?.[0] ?? data.artist_name)}`}
-                              className="transition-colors hover:text-accent-foreground"
-                            >
-                              {displayName(data.meta.spotify_album_name)}
-                            </Link>
-                          ),
-                          data.meta.track_number && `Track ${data.meta.track_number}`,
-                          data.meta.duration_ms && formatDuration(data.meta.duration_ms),
-                          data.meta.explicit ? '🅴 Explicit' : null,
-                        ].filter(Boolean).reduce<React.ReactNode[]>((acc, item, i) => {
-                          if (i === 0) return [item]
-                          return [...acc, ' · ', item]
-                        }, [])}
-                      </p>
-                    )}
-                  </div>
+                    ) : undefined}
+                    facts={[
+                      { label: '有效播放', value: `${(data.effective_play_count ?? data.summary?.total_plays ?? 0).toLocaleString('zh-CN')} 次` },
+                      { label: '单曲榜', value: data.summary ? `PK #${data.summary.peak_position}` : '尚未入榜', accent: data.summary?.peak_position === 1 },
+                      { label: '在榜', value: data.summary ? `${data.summary.weeks_on_chart} 周` : '—' },
+                      { label: '走势排名', value: data.summary?.power_rank ? `#${data.summary.power_rank}` : '—' },
+                    ]}
+                  />
                 </div>
-              </section>
+              ) : (
+                <TrackDetailHero data={data} trackId={trackId ?? ''} onBack={() => navigate(-1)} />
+              )}
 
               {/* Version Group */}
               {data.meta?.version_group && (
@@ -209,8 +164,17 @@ export function TrackDetailExperience() {
                 />
               )}
 
-              {/* Tabs */}
-              <div className="mb-6 flex gap-7 border-b border-border">
+              {isPhone ? (
+                <MobileMusicDetailNav
+                  activeTab={activeTab}
+                  primaryTabs={[
+                    { key: 'stats', label: '统计' },
+                    { key: 'overview', label: '榜单' },
+                    { key: 'lyrics', label: '歌词' },
+                  ]}
+                  onChange={setActiveTab}
+                />
+              ) : <div className="mb-6 flex gap-7 border-b border-border">
                 {TABS.map((tab) => (
                   <button
                     key={tab.key}
@@ -226,7 +190,7 @@ export function TrackDetailExperience() {
                     {tab.label}
                   </button>
                 ))}
-              </div>
+              </div>}
 
               {activeTab === 'overview' && <TrackOverviewSection data={data} />}
               {activeTab === 'stats' && <EntityStatsPanel kind="track" trackId={trackId} />}

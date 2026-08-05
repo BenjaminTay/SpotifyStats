@@ -1,5 +1,5 @@
-import { useCallback, useState } from 'react'
-import { MessageSquare } from 'lucide-react'
+import { useCallback, useEffect, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 
 import { useSettings } from '@/hooks/useSettings'
 import { useChatSessions, useDeleteSession } from '@/hooks/useAiInsights'
@@ -10,11 +10,18 @@ import { ChatSessionDrawer } from './ChatSessionDrawer'
 import { ChatSessionList } from './ChatSessionList'
 import { AiReportsPanel } from './AiReportsPanel'
 import { LlmNotConfiguredState } from './AiInsightsPrimitives'
+import { useViewportMode } from '@/hooks/useViewportMode'
+import { cn } from '@/lib/utils'
 
 export function AiInsightsExperience() {
+  const viewportMode = useViewportMode()
+  const isPhone = viewportMode === 'phone'
+  const isCompact = viewportMode === 'compact'
   const { settings } = useSettings()
   const llmAvailable = settings?.llm_enabled && settings?.has_llm_key
-  const [activeTab, setActiveTab] = useState<'reports' | 'chat'>('reports')
+  const [searchParams, setSearchParams] = useSearchParams()
+  const routeTab = searchParams.get('mode') === 'chat' ? 'chat' : 'reports'
+  const activeTab: 'reports' | 'chat' = routeTab
   const [activeSessionId, setActiveSessionId] = useState<number | null>(null)
   const [sessionDrawerOpen, setSessionDrawerOpen] = useState(false)
   const [chatResetKey, setChatResetKey] = useState(0)
@@ -24,12 +31,26 @@ export function AiInsightsExperience() {
   const { data: sessions = [], isLoading: sessionsLoading } = useChatSessions()
   const deleteSession = useDeleteSession()
 
+  const changeTab = useCallback((tab: 'reports' | 'chat') => {
+    setSearchParams((current) => {
+      const next = new URLSearchParams(current)
+      next.set('mode', tab)
+      return next
+    }, { replace: true })
+  }, [setSearchParams])
+
+  useEffect(() => {
+    const openHistory = () => setSessionDrawerOpen(true)
+    window.addEventListener('spotify-stats:open-ai-history', openHistory)
+    return () => window.removeEventListener('spotify-stats:open-ai-history', openHistory)
+  }, [])
+
   const handleFollowUp = useCallback((question: string, label: string, context: ReportType) => {
     setChatInitialQuestion(question)
     setChatContext(context)
     setChatContextLabel(label)
-    setActiveTab('chat')
-  }, [])
+    changeTab('chat')
+  }, [changeTab])
 
   const handleSessionSelect = useCallback((id: number) => {
     setActiveSessionId(id)
@@ -52,8 +73,8 @@ export function AiInsightsExperience() {
   }, [])
 
   return (
-    <div className="space-y-6">
-      <section className="mb-8">
+    <div className={cn('space-y-6', isPhone && 'mobile-ai-experience')} data-mobile-ai={activeTab}>
+      <section className="mb-8 hidden md:block">
         <p className="mb-4 font-sans text-[11px] font-bold uppercase tracking-[1.8px] text-accent-foreground">
           AI / Insights
         </p>
@@ -62,11 +83,12 @@ export function AiInsightsExperience() {
         </h1>
       </section>
 
-      <nav className="mb-7 flex gap-x-6 border-b border-border">
+      <nav className={cn('mb-7 flex gap-x-6 border-b border-border', isPhone && 'mobile-ai-mode-switch')} aria-label="AI 洞察模式">
         {(['reports', 'chat'] as const).map((tab) => (
           <button
             key={tab}
-            onClick={() => setActiveTab(tab)}
+            onClick={() => changeTab(tab)}
+            aria-pressed={activeTab === tab}
             className={`-mb-[1px] border-b-2 pb-2.5 font-sans text-[13px] font-medium transition-colors ${
               activeTab === tab
                 ? 'border-accent-foreground font-semibold text-foreground'
@@ -76,6 +98,15 @@ export function AiInsightsExperience() {
             {tab === 'reports' ? '报告' : '问答'}
           </button>
         ))}
+        {isCompact && activeTab === 'chat' && (
+          <button
+            type="button"
+            className="ml-auto -mb-px border-b-2 border-transparent pb-2.5 text-[12px] font-semibold text-muted-foreground"
+            onClick={() => setSessionDrawerOpen(true)}
+          >
+            对话历史
+          </button>
+        )}
       </nav>
 
       {!llmAvailable ? (
@@ -95,7 +126,7 @@ export function AiInsightsExperience() {
                   onQuestionConsumed={() => setChatInitialQuestion(null)}
                   reportContext={chatContext}
                   reportContextLabel={chatContextLabel}
-                  onBackToReport={() => setActiveTab('reports')}
+                  onBackToReport={() => changeTab('reports')}
                   sessionId={activeSessionId}
                   onSessionCreated={setActiveSessionId}
                 />
@@ -114,14 +145,6 @@ export function AiInsightsExperience() {
                 </div>
               </aside>
             </div>
-
-            <button
-              onClick={() => setSessionDrawerOpen(true)}
-              className="fixed bottom-6 right-6 z-30 flex h-11 w-11 items-center justify-center rounded-full border border-border bg-card/80 shadow-lg backdrop-blur-xl transition-colors hover:bg-card lg:hidden"
-              aria-label="对话历史"
-            >
-              <MessageSquare className="h-5 w-5 text-muted-foreground" />
-            </button>
 
             <ChatSessionDrawer
               open={sessionDrawerOpen}

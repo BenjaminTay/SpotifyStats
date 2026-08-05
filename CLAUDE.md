@@ -10,6 +10,10 @@ UI：「编辑风 × 液态玻璃」— Playfair Display + Inter，毛玻璃，�
 
 导航命名：顶级入口使用“播放分析”；二级 tab 固定为“播放统计 / 播放排行 / 年度总结 / 播放记录 / 账号中心”。年度总结与账号中心保持在播放分析 tab 行内，避免恢复独立顶级入口或重复下拉入口。
 
+移动网页架构：`<768px` 使用独立 Phone presentation，`768–1023px` 为 Compact，`>=1024px` 使用 Desktop；Phone/Desktop 的重图表、宽表与长列表必须互斥挂载，但继续共享 Route Container、React Router URL 状态、TanStack Query、过滤指纹、row model 和统计事实。Phone Shell 固定使用 `MobileTopBar`、五项 `MobileBottomNav` 与播放分析/Billboard `MobileSectionSwitcher`；Push 详情按路由语义隐藏 Bottom Nav。主要移动触控目标至少 44×44px，关键操作不得依赖 hover，复杂图表需提供触摸 disclosure 与可恢复焦点的全屏模式。Settings 手机端只开放低风险日常设置；导入、元数据治理、凭据和系统维护保留桌面工作台。新增消费页面必须通过 360/390/430/768/1280 route matrix、移动 control inventory、interaction/chart、long-list 与 Chromium/Firefox/WebKit 门禁。完整规范见 `frontend/UI_STYLE_GUIDE.md` 和 `docs/plans/2026-08-05-mobile-web-design-and-implementation-plan.md`。
+
+PWA/App 基线：生产构建通过 `/manifest.webmanifest`、PWA 图标和 `/sw.js` 提供安装能力，开发模式不注册 Service Worker；手机 Settings 安装卡支持 Chromium prompt、iOS 添加到主屏幕说明与 standalone 状态。Service Worker 只能缓存离线说明、PWA 图标和版本化静态资产，必须绕过 `/api`、`/covers` 与个人/凭据数据。路线按 PWA → HTTPS 安全部署与真机 → Capacitor 推进，见 `docs/plans/2026-08-06-appification-pwa-capacitor-plan.md`。
+
 音乐查找：Masthead 右侧提供全局搜索图标，`/music/search` 提供可分享的完整查找页；后端 `/api/music/search` 只搜索本地播放历史中的歌曲/专辑/艺人，并打开既有 `/music/{tracks|albums|artists}/...` 详情页。`include_chart=true` 时返回与详情页同口径的个人 Billboard 摘要，前端仅显示播放次数、`PK #`、在榜周数与走势排名；搜索弹层默认不高亮第一条结果。
 
 Billboard 对决：单曲、专辑、艺人对决及 entity lists 必须与详情页共享完整统计上下文（动态阈值、连续播放间隔、合并级别、榜单周边界、三类 Top N、年份范围、精选集设置），前端 query key 必须包含完整过滤指纹。专辑曲目归属复用详情的 album project + canonical artist 口径，艺人歌曲成绩复用 credited artist fan-out 并按 stable event + canonical artist 去重。
@@ -86,7 +90,9 @@ sh scripts/fullstack_verification_check.sh --backend-url http://127.0.0.1:8000 -
 .venv/bin/python scripts/runtime_resource_probe.py --backend-url http://127.0.0.1:8000 --frontend-url http://localhost:5173 --json-output /tmp/spotify_runtime_resources.json --max-total-rss-mb 1200 --max-total-cpu-percent 200
 
 # 前端 route/interaction/cross-browser smoke + Web Vitals lab 采样（需后端 8000 + 前端 5173）
-node scripts/frontend_route_smoke.mjs --viewport both --max-scroll-overflow 0 --fail-on-console-warning --include-detail-routes
+node scripts/frontend_route_smoke.mjs --viewport matrix --max-scroll-overflow 0 --fail-on-console-warning --include-detail-routes
+node scripts/frontend_interaction_smoke.mjs --viewport mobile --scenario mobile-bottom-navigation,mobile-section-sheet,mobile-time-filter
+node scripts/frontend_chart_interaction_smoke.mjs --viewport mobile --scenario mobile-tap-tooltip,mobile-fullscreen
 node scripts/frontend_interaction_smoke.mjs --base-url http://localhost:5173
 node scripts/frontend_interaction_smoke.mjs --base-url http://127.0.0.1:4173 --api-base-url http://127.0.0.1:8000
 node scripts/frontend_chart_interaction_smoke.mjs --base-url http://localhost:5173

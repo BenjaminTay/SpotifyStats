@@ -20,7 +20,7 @@ interface Props {
 
 export function TrackLyricsSection({ data, enrichment, lyrics, lyricsLoading }: Props) {
   return (
-    <div className="mb-8">
+    <div className="mobile-track-lyrics mb-8">
       {/* Genius Song Info */}
       {enrichment?.genius && (
         <div className="mb-6">
@@ -100,7 +100,7 @@ export function TrackLyricsSection({ data, enrichment, lyrics, lyricsLoading }: 
       )}
 
       {lyricsLoading ? (
-        <GlassCard className="p-8">
+        <GlassCard className="mobile-lyrics-card p-8">
           <div className="space-y-3">
             <Skeleton className="h-4 w-full" />
             <Skeleton className="h-4 w-5/6" />
@@ -112,7 +112,7 @@ export function TrackLyricsSection({ data, enrichment, lyrics, lyricsLoading }: 
           </div>
         </GlassCard>
       ) : lyrics && lyrics.found ? (
-        <GlassCard className="p-8">
+        <GlassCard className="mobile-lyrics-card p-8">
           <div>
             {lyrics.lyrics.split('\n').map((line, i) => {
               const trimmed = line.trim()
@@ -125,7 +125,7 @@ export function TrackLyricsSection({ data, enrichment, lyrics, lyricsLoading }: 
                       ? 'mt-6 mb-3 font-sans text-[11px] font-bold uppercase tracking-[1.8px] text-muted-foreground first:mt-0'
                       : line === ''
                         ? 'h-4'
-                        : 'font-serif text-[17px] leading-[1.85]'
+                        : 'mobile-lyric-line font-serif text-[17px] leading-[1.85]'
                   }
                 >
                   {isSection ? trimmed : (line || ' ')}
@@ -146,7 +146,7 @@ export function TrackLyricsSection({ data, enrichment, lyrics, lyricsLoading }: 
           </div>
         </GlassCard>
       ) : (
-        <GlassCard className="p-8 text-center">
+        <GlassCard className="mobile-lyrics-card p-8 text-center">
           <p className="font-sans text-[14px] text-muted-foreground">
             未找到 Genius 歌词
           </p>

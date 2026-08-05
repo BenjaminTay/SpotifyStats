@@ -126,3 +126,27 @@ def test_effective_play_threshold_controls_detail_eligibility(client, monkeypatc
     assert valid.status_code == 200
     assert valid.json()["chart_status"] == "not_charted"
     assert filtered.status_code == 404
+
+
+def test_charted_artist_detail_keeps_effective_play_count(client, monkeypatch):
+    _seed_six_low_volume_entities(monkeypatch)
+    artist_name = "Uncharted Fixture Artist 5"
+    response = client.get(
+        f"/api/billboard/artist/{artist_name}",
+        params={
+            "min_ms": 30_000,
+            "music_only": True,
+            "merge_enabled": True,
+            "dynamic_threshold": False,
+            "bb_top_n": 5,
+            "bb_album_top_n": 5,
+            "bb_artist_top_n": 5,
+            "merge_level": 2,
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["found"] is True
+    assert payload["chart_status"] == "charted"
+    assert payload["effective_play_count"] == 6

@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState } from 'react'
+import { createContext, useContext, useState } from 'react'
 import type { ComponentType, ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { Link } from 'react-router-dom'
@@ -9,6 +9,7 @@ import { GlassCard } from '@/components/shared/GlassCard'
 import { cn } from '@/lib/utils'
 import { displayName } from '@/lib/chinese'
 import { billboardDetailLink } from '@/lib/navigation'
+import { useViewportMode } from '@/hooks/useViewportMode'
 
 // ── helpers ──────────────────────────────────────────────────
 
@@ -31,17 +32,15 @@ export function WeekLink({ date }: { date: string }) {
 // ── shared sub-components ────────────────────────────────────
 
 export function CoverImg({ url }: { url?: string | null }) {
-  const [imgError, setImgError] = useState(false)
-  useEffect(() => { setImgError(false) }, [url])
-  if (url && !imgError) return <img src={url} alt="" className="h-10 w-10 shrink-0 rounded-[8px] object-cover" onError={() => setImgError(true)} loading="lazy" />
+  const [failedUrl, setFailedUrl] = useState<string | null>(null)
+  if (url && failedUrl !== url) return <img src={url} alt="" className="h-10 w-10 shrink-0 rounded-[8px] object-cover" onError={() => setFailedUrl(url)} loading="lazy" />
   return <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[8px] bg-muted text-base">🎵</div>
 }
 
 export function ArtistCoverImg({ url, size }: { url?: string | null; size?: 'sm' | 'md' }) {
-  const [imgError, setImgError] = useState(false)
-  useEffect(() => { setImgError(false) }, [url])
+  const [failedUrl, setFailedUrl] = useState<string | null>(null)
   const cls = size === 'sm' ? 'h-10 w-10' : 'h-14 w-14'
-  if (url && !imgError) return <img src={url} alt="" className={cn(cls, 'shrink-0 rounded-full object-cover')} onError={() => setImgError(true)} loading="lazy" />
+  if (url && failedUrl !== url) return <img src={url} alt="" className={cn(cls, 'shrink-0 rounded-full object-cover')} onError={() => setFailedUrl(url)} loading="lazy" />
   return <div className={cn(cls, 'flex shrink-0 items-center justify-center rounded-full bg-muted text-base')}>🎤</div>
 }
 
@@ -74,8 +73,9 @@ export function SectionHeader({ icon: Icon, title, subtitle }: { icon: Component
 export type EntityType = 'track' | 'album' | 'artist'
 
 export function TrackAlbumToggle({ value, onChange, showArtist }: { value: EntityType; onChange: (v: EntityType) => void; showArtist?: boolean }) {
+  const isPhone = useViewportMode() === 'phone'
   return (
-    <div className="flex items-center rounded-[6px] border border-border bg-muted/30 p-0.5">
+    <div className={cn('flex items-center rounded-[6px] border border-border bg-muted/30 p-0.5', isPhone && 'mobile-record-entity-toggle')}>
       <button onClick={() => onChange('track')} className={cn('rounded-[4px] px-2.5 py-1 font-sans text-[11px] font-medium transition-colors', value === 'track' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground')}>单曲</button>
       <button onClick={() => onChange('album')} className={cn('rounded-[4px] px-2.5 py-1 font-sans text-[11px] font-medium transition-colors', value === 'album' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground')}>专辑</button>
       {showArtist && <button onClick={() => onChange('artist')} className={cn('rounded-[4px] px-2.5 py-1 font-sans text-[11px] font-medium transition-colors', value === 'artist' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground')}>艺人</button>}
@@ -149,15 +149,40 @@ function Pagination({ page, totalPages, startIdx, endIdx, totalItems, onPageChan
 export function MiniRankTable<T extends object>({ rows, columns, emptyText = '暂无数据', fixed }: {
   rows: T[]; columns: { header: ReactNode; width?: string; align?: 'left' | 'right' | 'center'; render: (row: T, idx: number) => ReactNode }[]; emptyText?: string; fixed?: boolean
 }) {
+  const isPhone = useViewportMode() === 'phone'
+  const [mobileExpanded, setMobileExpanded] = useState(false)
   const PAGE_SIZE = 10
-  const [page, setPage] = useState(1)
+  const [paginationState, setPaginationState] = useState({ rows, page: 1 })
+  const page = paginationState.rows === rows ? paginationState.page : 1
+  const setPage = (next: number) => setPaginationState({ rows, page: next })
   const totalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE))
   const safePage = Math.min(page, totalPages)
-  useEffect(() => { setPage(1) }, [rows])
-
   const portalTarget = useContext(PaginationPortalCtx)
 
   if (rows.length === 0) return <p className="py-4 text-center font-sans text-[12px] text-muted-foreground">{emptyText}</p>
+
+  if (isPhone) {
+    const mobileRows = mobileExpanded ? rows : rows.slice(0, 3)
+    return (
+      <div className="mobile-record-rank-list">
+        {mobileRows.map((row, rowIndex) => (
+          <article key={rowIndex} className="mobile-record-rank-row">
+            {columns.map((column, columnIndex) => (
+              <div key={columnIndex} className={cn(columnIndex === 1 && 'mobile-record-rank-entity')}>
+                <small>{column.header}</small>
+                <span>{column.render(row, rowIndex)}</span>
+              </div>
+            ))}
+          </article>
+        ))}
+        {rows.length > 3 && (
+          <button type="button" className="mobile-record-expand" onClick={() => setMobileExpanded((expanded) => !expanded)}>
+            {mobileExpanded ? '收起完整榜单' : `展开完整榜单（${rows.length} 项）`}
+          </button>
+        )}
+      </div>
+    )
+  }
 
   const displayRows = rows.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE)
   const startIdx = (safePage - 1) * PAGE_SIZE + 1

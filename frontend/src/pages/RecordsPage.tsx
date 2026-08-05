@@ -10,6 +10,8 @@ import { cn } from '@/lib/utils'
 import type { BillboardRecords } from '@/types/billboard'
 import { buildCoverMaps } from '@/features/billboard/records/recordsData'
 import { ChampionshipSection } from '@/features/billboard/records/ChampionshipSection'
+import { MobilePageHeader, MobileSectionSwitcher } from '@/components/mobile'
+import { useViewportMode } from '@/hooks/useViewportMode'
 
 const LongevitySection = lazy(() =>
   import('@/features/billboard/records/LongevitySection').then((m) => ({
@@ -70,6 +72,7 @@ function SectionFallback() {
 }
 
 export function RecordsPage() {
+  const isPhone = useViewportMode() === 'phone'
   const [searchParams] = useSearchParams()
   const mergeLevel = Number(searchParams.get('merge_level') ?? getDefaultMergeLevel())
   const { data, loading, error } = useBillboard(undefined, mergeLevel)
@@ -96,15 +99,29 @@ export function RecordsPage() {
   const rec: BillboardRecords = data.records
 
   return (
-    <div className="mx-auto max-w-[1200px]">
-      <BillboardSubNav active="records" />
+    <div className={isPhone ? 'mobile-m4-page' : 'mx-auto max-w-[1200px]'} data-mobile-page={isPhone ? 'billboard-records' : undefined}>
+      {!isPhone && <BillboardSubNav active="records" />}
 
-      <section className="mt-6 mb-6">
+      {isPhone ? (
+        <MobilePageHeader
+          eyebrow="Chart / Hall of Fame"
+          title="榜单记录"
+          description="用六个纪录族整理冠军、长寿、爆发与趣味时刻。"
+        />
+      ) : <section className="mt-6 mb-6">
         <p className="mb-4 font-sans text-[11px] font-bold uppercase tracking-[1.8px] text-accent-foreground">Chart / Hall of Fame</p>
         <h1 className="font-serif text-[44px] font-bold leading-[1.06] tracking-[-1.2px]">榜单记录</h1>
-      </section>
+      </section>}
 
-      <nav className="mb-8 flex gap-7 border-b border-border" role="tablist">
+      {isPhone ? (
+        <MobileSectionSwitcher
+          value={activeTab}
+          options={RECORD_TABS.map((tab) => ({ value: tab.key, label: tab.label }))}
+          onChange={setActiveTab}
+          title="选择榜单记录族"
+          label="当前记录族"
+        />
+      ) : <nav className="mb-8 flex gap-7 border-b border-border" role="tablist">
         {RECORD_TABS.map((tab) => (
           <button
             key={tab.key}
@@ -121,8 +138,9 @@ export function RecordsPage() {
             {tab.label}
           </button>
         ))}
-      </nav>
+      </nav>}
 
+      <div className={cn(isPhone && 'mobile-records-stack')}>
       <Suspense fallback={<SectionFallback />}>
         {activeTab === 'championship' && <ChampionshipSection rec={rec} covers={covers} />}
         {activeTab === 'longevity' && <LongevitySection rec={rec} covers={covers} />}
@@ -138,6 +156,7 @@ export function RecordsPage() {
         )}
         {activeTab === 'market' && <MarketSection rec={rec} covers={covers} />}
       </Suspense>
+      </div>
     </div>
   )
 }

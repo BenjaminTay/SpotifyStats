@@ -22,14 +22,14 @@ pytestmark = pytest.mark.integration
 
 APPROVED_IDENTITIES = [
     ("SZA", 83, 7676, 1_109, "7tYKF4w9nC0nq9CsPZTHyP"),
-    ("Charli xcx", 177, 7664, 21, "25uiPmTg16RbhZWAqwLBy5"),
+    ("Charli xcx", 177, 7664, 46, "25uiPmTg16RbhZWAqwLBy5"),
     ("JAY-Z", 613, 7571, 17, "3nFkdlSjzX9mRTtwJOzDYB"),
     ("USHER", 589, 7690, 1, "23zg3TcAtWQy7J6upgbUnj"),
     ("Lily-Rose Depp", 344, 7667, 1, "1pBLC0qVRTB5zVMuteQ9jJ"),
     ("Lana Del Rey", 45, 7616, 1_240, "00FQb4jTyendYWaN8pK0wa"),
     ("A-Mei Chang", 21, 7683, 953, "6noxsCszBEEK04kCehugOp"),
     ("Eric Chou", 255, 7725, 303, "5fEQLwq1BWWQNR8GzhOIvi"),
-    ("Kesha", 80, 7627, 242, "6LqNN22kT3074XbTVUrhzX"),
+    ("Kesha", 80, 7627, 261, "6LqNN22kT3074XbTVUrhzX"),
     ("Ms. Lauryn Hill", 46, 7637, 22, "2Mu5NfyYm8n5iTomuKAEHl"),
     ("Kanye West", 176, 7583, 2, "5K4W6rqBFWDnAN6FQUkS6x"),
 ]

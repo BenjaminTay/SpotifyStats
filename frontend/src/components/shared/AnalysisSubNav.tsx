@@ -56,7 +56,9 @@ function TabLink({
 
 export function AnalysisSubNav({ right }: { right?: ReactNode }) {
   return (
-    <nav className="mb-7 flex min-h-9 min-w-0 flex-wrap items-end gap-x-6 gap-y-2 border-b border-border">
+    <>
+      {right && <div className="mb-4 flex justify-end md:hidden">{right}</div>}
+      <nav className="mb-7 hidden min-h-9 min-w-0 flex-wrap items-end gap-x-6 gap-y-2 border-b border-border md:flex">
       <div className="flex min-w-0 max-w-full gap-x-6 overflow-x-auto whitespace-nowrap" role="tablist">
         {NAV_ITEMS.map((item) => (
           <TabLink
@@ -72,6 +74,7 @@ export function AnalysisSubNav({ right }: { right?: ReactNode }) {
       ) : (
         <div aria-hidden="true" className="basis-full h-9 sm:hidden" />
       )}
-    </nav>
+      </nav>
+    </>
   )
 }

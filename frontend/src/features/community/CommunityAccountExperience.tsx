@@ -47,7 +47,7 @@ export function CommunityAccountExperience() {
   return (
     <>
       {/* Hero — same as other pages */}
-      <section className="mb-6">
+      <section className="mb-6 hidden md:block">
         <p className="mb-4 font-sans text-[11px] font-bold uppercase tracking-[1.8px] text-accent-foreground">
           Community / Account
         </p>
@@ -59,12 +59,12 @@ export function CommunityAccountExperience() {
       {/* Two-column layout */}
       <div className="flex gap-8">
         {/* Main: profile + feed */}
-        <div className="flex-1 max-w-[720px] min-h-[70vh]">
+        <div className="mobile-community-account flex-1 max-w-[720px] min-h-[70vh]">
           {/* Back button */}
           <div className="flex items-center gap-6 h-[53px] border-b border-white/10">
           <Link
             to="/community"
-            className="flex items-center justify-center w-9 h-9 rounded-full hover:bg-white/10 transition-colors -ml-1"
+            className="hidden md:flex items-center justify-center w-9 h-9 rounded-full hover:bg-white/10 transition-colors -ml-1"
             aria-label="Back"
           >
             <svg className="w-5 h-5 text-foreground" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -81,7 +81,7 @@ export function CommunityAccountExperience() {
         <div className="border-b border-white/10">
           {/* Banner area with real photo, CSS gradient fallback */}
           <div
-            className="relative h-48 overflow-hidden"
+            className="relative h-48 overflow-hidden max-md:h-32"
             style={{ background: account.banner_bg ?? account.avatar.bg_gradient }}
           >
             {account.banner_url && (

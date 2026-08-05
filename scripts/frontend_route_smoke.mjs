@@ -50,44 +50,54 @@ const DEFAULT_ROUTES = [
 ]
 
 const ROUTE_READY_MARKERS = {
-  '/': ['DASHBOARD /', '总播放次数'],
-  '/analysis': ['PLAYBACK STATS', '播放统计'],
-  '/analysis/stats': ['PLAYBACK STATS', '播放统计'],
-  '/analysis/charts': ['PLAYBACK RANKING', '播放排行'],
-  '/analysis/records': ['PLAYBACK RECORDS', '高光时刻'],
-  '/analysis/timeline': ['PLAYBACK STATS', '播放统计'],
-  '/analysis/leaderboard': ['PLAYBACK RANKING', '播放排行'],
-  '/analysis/behavior': ['PLAYBACK STATS', '播放统计'],
-  '/analysis/listening-hours': ['PLAYBACK STATS', '播放统计'],
-  '/analysis/artists': ['PLAYBACK RANKING', '播放排行'],
-  '/yearly-review': ['YEARLY SUMMARY', '听歌人格'],
-  '/billboard': ['CHART / WEEKLY', 'Billboard 周榜'],
-  '/billboard/number-ones': ['CHART / NUMBER ONES', '每周冠军歌曲'],
-  '/billboard/all-time': ['CHART / ALL-TIME', 'Billboard 总榜'],
-  '/billboard/year-end': ['CHART / YEAR-END', 'Billboard 年榜'],
-  '/billboard/records': ['CHART / HALL OF FAME', '冠军圣殿'],
-  '/billboard/versus': ['CHART / VERSUS', '请搜索并添加歌曲开始对决'],
-  '/community': ['COMMUNITY / FEED', '榜单社区'],
-  '/ai-insights': ['AI / INSIGHTS', 'AI 洞察'],
-  '/music/search': ['MUSIC / SEARCH', '音乐查找'],
-  '/account': ['ACCOUNT CENTER', '你的收藏'],
+  '/': ['播放次数', '月度播放趋势'],
+  '/analysis': ['播放统计'],
+  '/analysis/stats': ['播放统计', '最近播放记录'],
+  '/analysis/charts': ['播放排行'],
+  '/analysis/records': ['播放记录', '高光时刻'],
+  '/analysis/timeline': ['播放统计'],
+  '/analysis/leaderboard': ['播放排行'],
+  '/analysis/behavior': ['播放统计'],
+  '/analysis/listening-hours': ['播放统计'],
+  '/analysis/artists': ['播放排行'],
+  '/yearly-review': ['年度总结', '听歌人格'],
+  '/billboard': ['CHART / WEEKLY'],
+  '/billboard/number-ones': ['每周榜首'],
+  '/billboard/all-time': ['总榜'],
+  '/billboard/year-end': ['阶段领先单曲'],
+  '/billboard/records': ['冠军圣殿'],
+  '/billboard/versus': ['对决'],
+  '/community': ['社区', '精选'],
+  '/ai-insights': ['AI 洞察', '报告'],
+  '/music/search': ['音乐查找'],
+  '/account': ['账号中心', '播放'],
   '/settings': ['设置', 'Spotify 连接'],
 }
 
 const DYNAMIC_ROUTE_READY_MARKERS = [
-  { pattern: /^\/music\/tracks\/[^/]+$/, markers: ['单曲详情', '播放统计'] },
-  { pattern: /^\/music\/albums\/[^/]+$/, markers: ['专辑详情', '播放统计'] },
-  { pattern: /^\/music\/artists\/[^/]+$/, markers: ['艺人详情', '播放统计'] },
-  { pattern: /^\/community\/post\/[^/]+$/, markers: ['COMMUNITY / POST'] },
-  { pattern: /^\/community\/account\/[^/]+$/, markers: ['COMMUNITY / ACCOUNT', 'Posts'] },
+  { pattern: /^\/music\/tracks\/[^/]+$/, markers: ['单曲详情', '统计'] },
+  { pattern: /^\/music\/albums\/[^/]+$/, markers: ['专辑详情', '统计'] },
+  { pattern: /^\/music\/artists\/[^/]+$/, markers: ['艺人详情', '统计'] },
+  { pattern: /^\/community\/post\/[^/]+$/, markers: ['回复'] },
+  { pattern: /^\/community\/account\/[^/]+$/, markers: ['Posts'] },
 ]
 
 const VIEWPORTS = {
+  'phone-small': {
+    width: 360,
+    height: 800,
+    deviceScaleFactor: 3,
+    mobile: true,
+    expectedMode: 'phone',
+    userAgent:
+      'Mozilla/5.0 (Linux; Android 14; Pixel 7a) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126 Mobile Safari/537.36',
+  },
   desktop: {
     width: 1280,
-    height: 900,
+    height: 800,
     deviceScaleFactor: 1,
     mobile: false,
+    expectedMode: 'desktop',
     userAgent:
       'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126 Safari/537.36',
   },
@@ -96,8 +106,27 @@ const VIEWPORTS = {
     height: 844,
     deviceScaleFactor: 3,
     mobile: true,
+    expectedMode: 'phone',
     userAgent:
       'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
+  },
+  'phone-large': {
+    width: 430,
+    height: 932,
+    deviceScaleFactor: 3,
+    mobile: true,
+    expectedMode: 'phone',
+    userAgent:
+      'Mozilla/5.0 (Linux; Android 14; Pixel 8 Pro) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126 Mobile Safari/537.36',
+  },
+  tablet: {
+    width: 768,
+    height: 1024,
+    deviceScaleFactor: 2,
+    mobile: false,
+    expectedMode: 'compact',
+    userAgent:
+      'Mozilla/5.0 (iPad; CPU OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/604.1',
   },
 }
 
@@ -122,6 +151,10 @@ const PAGE_STATE_EXPRESSION = `
     bodyScrollWidth,
     documentScrollWidth,
     viewportWidth: window.innerWidth,
+    viewportMode: document.querySelector('main[data-viewport-mode]')?.getAttribute('data-viewport-mode') || null,
+    hasMobileTopBar: Boolean(document.querySelector('[data-mobile-shell="top-bar"]')),
+    hasMobileBottomNav: Boolean(document.querySelector('[data-mobile-shell="bottom-nav"]')),
+    hasDesktopMasthead: Boolean(document.querySelector('nav[aria-label="主导航"]')),
     hasDevOverlay: selectors.some((selector) => Boolean(document.querySelector(selector))),
     hasFatalText: /Internal Server Error|Failed to fetch dynamically imported module|ReferenceError|TypeError|Unhandled Runtime Error/.test(bodyText),
   };
@@ -151,7 +184,11 @@ function parseArgs(argv) {
     else if (arg === '--wait-ms') args.waitMs = Number(argv[++i])
     else if (arg === '--viewport') {
       const value = argv[++i]
-      args.viewports = value === 'both' ? ['desktop', 'mobile'] : [value]
+      args.viewports = value === 'both'
+        ? ['desktop', 'mobile']
+        : value === 'matrix'
+          ? ['phone-small', 'mobile', 'phone-large', 'tablet', 'desktop']
+          : [value]
     } else if (arg === '--output') args.output = argv[++i]
     else if (arg === '--chrome') args.chrome = argv[++i]
     else if (arg === '--max-scroll-overflow') args.maxScrollOverflow = Number(argv[++i])
@@ -186,7 +223,7 @@ Options:
   --base-url <url>              Frontend URL, default ${DEFAULT_BASE_URL}
   --api-base-url <url>          Rewrite same-origin /api and /covers requests to this API URL
   --routes <a,b,c>              Comma-separated route paths, default ${DEFAULT_ROUTES.join(',')}
-  --viewport <mode>             desktop, mobile, or both, default both
+  --viewport <mode>             phone-small, mobile, phone-large, tablet, desktop, both, or matrix; default both
   --wait-ms <ms>                Wait after load before reading page state, default ${DEFAULT_WAIT_MS}
   --max-scroll-overflow <px>    Allowed horizontal overflow over viewport width, default ${DEFAULT_MAX_SCROLL_OVERFLOW}
   --fail-on-console-warning     Treat console warnings as failures
@@ -251,6 +288,15 @@ function getRouteReadyMarkers(route) {
 function isDynamicRoute(route) {
   const normalized = normalizeRoute(route)
   return DYNAMIC_ROUTE_READY_MARKERS.some((entry) => entry.pattern.test(normalized))
+}
+
+function routeShouldHaveMobileBottomNav(route) {
+  const normalized = normalizeRoute(route)
+  if (normalized === '/' || normalized === '/yearly-review' || normalized === '/account') return true
+  if (normalized === '/community' || normalized === '/ai-insights') return true
+  if (normalized === '/analysis' || normalized.startsWith('/analysis/')) return true
+  if (normalized === '/billboard' || normalized.startsWith('/billboard/')) return true
+  return false
 }
 
 function routeWaitTime(route, waitMs) {
@@ -451,6 +497,7 @@ async function smokeRoute({
       mobile: viewport.mobile,
     })
     await client.send('Emulation.setUserAgentOverride', { userAgent: viewport.userAgent })
+    await client.send('Emulation.setTouchEmulationEnabled', { enabled: viewport.mobile, maxTouchPoints: viewport.mobile ? 5 : 1 })
 
     client.on('Runtime.exceptionThrown', (params) => {
       pageErrors.push(params.exceptionDetails?.text || params.exceptionDetails?.exception?.description || 'Runtime exception')
@@ -520,6 +567,21 @@ async function smokeRoute({
     if (scrollOverflow > maxScrollOverflow) {
       failures.push(`horizontal overflow ${scrollOverflow}px > ${maxScrollOverflow}px`)
     }
+    if (viewport.expectedMode === 'phone') {
+      if (!state.hasMobileTopBar) failures.push('mobile top bar missing')
+      if (state.hasDesktopMasthead) failures.push('desktop masthead mounted in mobile viewport')
+      if (state.viewportMode !== 'phone') failures.push(`viewport mode ${state.viewportMode || 'missing'} != phone`)
+      const expectedBottomNav = routeShouldHaveMobileBottomNav(route)
+      if (state.hasMobileBottomNav !== expectedBottomNav) {
+        failures.push(`mobile bottom nav ${state.hasMobileBottomNav ? 'visible' : 'hidden'}; expected ${expectedBottomNav ? 'visible' : 'hidden'}`)
+      }
+    } else {
+      if (!state.hasDesktopMasthead) failures.push('desktop masthead missing')
+      if (state.hasMobileTopBar || state.hasMobileBottomNav) failures.push('mobile shell mounted in desktop viewport')
+      if (state.viewportMode !== viewport.expectedMode) {
+        failures.push(`viewport mode ${state.viewportMode || 'missing'} != ${viewport.expectedMode}`)
+      }
+    }
 
     return {
       route,
@@ -534,6 +596,10 @@ async function smokeRoute({
       bodyScrollWidth: state.bodyScrollWidth,
       documentScrollWidth: state.documentScrollWidth,
       viewportWidth: state.viewportWidth,
+      viewportMode: state.viewportMode,
+      hasMobileTopBar: state.hasMobileTopBar,
+      hasMobileBottomNav: state.hasMobileBottomNav,
+      hasDesktopMasthead: state.hasDesktopMasthead,
       consoleErrorCount: consoleErrors.length,
       consoleWarningCount: consoleWarnings.length,
       pageErrorCount: pageErrors.length,

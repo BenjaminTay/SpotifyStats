@@ -7,7 +7,7 @@ import { AllTimeTable } from '@/features/billboard/all-time/AllTimeTable'
 import type { AllTimeRow, ColumnDef, MergedTrackRow } from '@/features/billboard/all-time/allTimeData'
 import { YearEndTable } from '@/features/billboard/year-end/YearEndTable'
 import { MiniRankTable } from '@/features/billboard/records/RecordsPrimitives'
-import { recentPlayRowKey } from '@/components/shared/RecentPlaysSection'
+import { recentPlayRowKey } from '@/components/shared/recentPlaysUtils'
 import type { RecentPlayRow } from '@/types/analysis'
 import type { BillboardYearEndTrackRow } from '@/types/billboard'
 

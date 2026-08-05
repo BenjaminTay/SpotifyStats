@@ -1250,18 +1250,20 @@ def get_artist_chart_detail(
             for _, r in album_summary.iterrows()
         ]
 
-    access_stats = None
-    if artist_chart_data.empty:
-        access_stats = _load_detail_access_stats(
-            "artist",
-            artist_name=artist_name,
-            min_ms=min_ms,
-            music_only=music_only,
-            merge_enabled=merge_enabled,
-            dynamic_threshold=dynamic_threshold,
-            max_merge_gap_minutes=max_merge_gap_minutes,
-            merge_level=merge_level,
-        )
+    # Detail access and the hero's effective-play total use the personal-play
+    # pipeline, regardless of whether the artist also qualifies for the chart.
+    # Loading this only for uncharted artists made charted detail responses
+    # incorrectly report ``effective_play_count=0``.
+    access_stats = _load_detail_access_stats(
+        "artist",
+        artist_name=artist_name,
+        min_ms=min_ms,
+        music_only=music_only,
+        merge_enabled=merge_enabled,
+        dynamic_threshold=dynamic_threshold,
+        max_merge_gap_minutes=max_merge_gap_minutes,
+        merge_level=merge_level,
+    )
 
     # Artist cover URL from weekly_artist data, falling back to personal facts
     artist_cover_url = None

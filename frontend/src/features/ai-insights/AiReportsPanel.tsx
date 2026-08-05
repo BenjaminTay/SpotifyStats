@@ -359,8 +359,8 @@ export function AiReportsPanel({ settings, onFollowUp }: AiReportsPanelProps) {
       : `${REPORT_LABELS.yearly} · ${year}`
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-center gap-4">
+    <div className="space-y-6" data-mobile-ai-reports="panel">
+      <div className="mobile-ai-report-controls flex flex-wrap items-center gap-4">
         <div className="flex gap-1 rounded-full border border-border bg-card/40 p-1 backdrop-blur-[8px]">
           {(Object.keys(REPORT_LABELS) as ReportType[]).map((type) => (
             <button

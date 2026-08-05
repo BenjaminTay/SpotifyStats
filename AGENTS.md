@@ -12,6 +12,10 @@ Spotify Extended Streaming History 数据分析 Web 应用的主项目提示词�
 
 **导航命名（2026-06-28）**：顶级入口使用“播放分析”；二级 tab 顺序固定为“播放统计 / 播放排行 / 年度总结 / 播放记录 / 账号中心”。年度总结与账号中心归属播放分析 tab 行，避免在 Masthead 中恢复独立顶级入口、重复下拉入口或第二套子导航。
 
+**移动网页架构（2026-08-05）**：`<768px` 使用独立 Phone presentation，`768–1023px` 为 Compact，`>=1024px` 使用 Desktop；Phone/Desktop 的重图表、宽表与长列表必须互斥挂载，但继续共享 Route Container、React Router URL 状态、TanStack Query、过滤指纹、row model 和统计事实。Phone Shell 固定使用 `MobileTopBar`、五项 `MobileBottomNav` 与播放分析/Billboard `MobileSectionSwitcher`；Push 详情按路由语义隐藏 Bottom Nav。主要移动触控目标至少 44×44px，关键操作不得依赖 hover，复杂图表需提供触摸 disclosure 与可恢复焦点的全屏模式。Settings 手机端只开放低风险日常设置；导入、元数据治理、凭据和系统维护保留桌面工作台。新增消费页面必须通过 360/390/430/768/1280 route matrix、移动 control inventory、interaction/chart、long-list 与 Chromium/Firefox/WebKit 门禁。完整规范见 `frontend/UI_STYLE_GUIDE.md` 和 `docs/plans/2026-08-05-mobile-web-design-and-implementation-plan.md`。
+
+**PWA / App 化基线（2026-08-06）**：生产前端通过 `/manifest.webmanifest`、192/512 maskable 图标、Apple Touch Icon 和 `/sw.js` 提供可安装 PWA；开发模式不得注册 Service Worker。手机 Settings 的安装卡只表达安装方式，不建立第二套导航。Service Worker 只缓存离线说明、PWA 图标和版本化静态 `/assets/`，必须绕过 `/api/`、`/covers/`、OAuth/LLM 凭据与所有个人统计数据；离线页不得伪装为可用数据页。现行 App 路线为 PWA → HTTPS 安全部署/真机 → Capacitor；在远程 API 鉴权、SQLite 持久化/备份和 Spotify OAuth 回跳完成前，不生成商店发布结论。完整路线见 `docs/plans/2026-08-06-appification-pwa-capacitor-plan.md`。
+
 **音乐查找（2026-07-03）**：Masthead 右侧提供全局音乐搜索图标，`/music/search` 是可分享的完整查找页；后端 `/api/music/search` 只读搜索本地播放历史中的歌曲/专辑/艺人，结果打开既有 `/music/tracks/:trackId`、`/music/albums/:albumName?artist=...`、`/music/artists/:artistName` 详情页。`include_chart=true` 时返回与详情页同口径的个人 Billboard 摘要，前端只展示播放次数、`PK #`、在榜周数与走势排名，不展示冠军周数；Masthead 弹层默认不预选第一条结果，只有 hover/focus 或方向键后才高亮。不要在“播放排行”页再放重复搜索框或按钮。
 
 **Billboard 对决一致性（2026-08-03）**：单曲、专辑、艺人对决及其 entity lists 必须与对应详情页共享完整统计上下文，包括动态阈值、连续播放间隔、合并级别、榜单周边界、三类 Top N、年份范围与精选集设置；前端 query key 必须包含完整过滤指纹。专辑对决按 `album project identity + canonical artist` 复用详情口径的 `track_per_album` / `album_track_counts`，不得退回 `release_groups` 或仅按 `album_name` 归属；艺人歌曲成绩按 credited artist fan-out 并以稳定播放事件与 canonical artist 去重。
@@ -155,7 +159,9 @@ sh scripts/fullstack_verification_check.sh --backend-url http://127.0.0.1:8000 -
 .venv/bin/python scripts/runtime_resource_probe.py --backend-url http://127.0.0.1:8000 --frontend-url http://localhost:5173 --json-output /tmp/spotify_runtime_resources.json --max-total-rss-mb 1200 --max-total-cpu-percent 200
 
 # 前端 route/interaction/cross-browser smoke + Web Vitals lab 采样（需后端 8000 + 前端 5173 已启动）
-node scripts/frontend_route_smoke.mjs --viewport both --max-scroll-overflow 0 --fail-on-console-warning --include-detail-routes
+node scripts/frontend_route_smoke.mjs --viewport matrix --max-scroll-overflow 0 --fail-on-console-warning --include-detail-routes
+node scripts/frontend_interaction_smoke.mjs --viewport mobile --scenario mobile-bottom-navigation,mobile-section-sheet,mobile-time-filter
+node scripts/frontend_chart_interaction_smoke.mjs --viewport mobile --scenario mobile-tap-tooltip,mobile-fullscreen
 node scripts/frontend_interaction_smoke.mjs --base-url http://localhost:5173
 node scripts/frontend_interaction_smoke.mjs --base-url http://127.0.0.1:4173 --api-base-url http://127.0.0.1:8000
 node scripts/frontend_chart_interaction_smoke.mjs --base-url http://localhost:5173

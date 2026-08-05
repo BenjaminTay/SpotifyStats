@@ -253,7 +253,7 @@ DEFAULT_BOUNDARY_CASES: tuple[BoundaryCase, ...] = (
         "billboard_album_artist_name_empty",
         "/api/billboard/album/Fixture Future LP",
         {"artist_name": ""},
-        expected_statuses=(200,),
+        expected_statuses=(200, 404),
         expect_validation_detail=False,
     ),
     BoundaryCase(

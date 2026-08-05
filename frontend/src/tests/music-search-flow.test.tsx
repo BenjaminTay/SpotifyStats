@@ -1,5 +1,5 @@
 import { act, fireEvent, render, screen } from '@testing-library/react'
-import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { Masthead } from '@/components/layout/Masthead'
@@ -98,6 +98,11 @@ function renderWithTheme(ui: React.ReactElement, path = '/') {
   )
 }
 
+function LocationSearchProbe() {
+  const location = useLocation()
+  return <output data-testid="location-search">{location.search}</output>
+}
+
 describe('music search flow', () => {
   beforeEach(() => {
     vi.useRealTimers()
@@ -122,6 +127,34 @@ describe('music search flow', () => {
     expect(screen.getByRole('searchbox', { name: '搜索歌曲、专辑或艺人' })).toHaveValue('love')
     expect(hookMocks.useMusicSearch).toHaveBeenCalledWith('love', undefined, 5, { includeChart: true })
     expect(screen.getByRole('link', { name: /Cruel Summer/ })).toHaveAttribute('href', '/music/tracks/42')
+  })
+
+  it('uses the compact mobile result hierarchy and waits for IME composition before updating q', () => {
+    vi.useFakeTimers()
+    mockMatchMedia(true)
+
+    renderWithTheme(
+      <Routes>
+        <Route path="/music/search" element={<><MusicSearchPage /><LocationSearchProbe /></>} />
+      </Routes>,
+      '/music/search?q=love',
+    )
+
+    const searchbox = screen.getByRole('searchbox', { name: '搜索歌曲、专辑或艺人' })
+    expect(screen.queryByRole('heading', { name: '音乐查找' })).not.toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /Cruel Summer/ })).toHaveTextContent('PK #1')
+    expect(screen.getByRole('link', { name: /Cruel Summer/ })).toHaveTextContent('走势 #8')
+
+    fireEvent.compositionStart(searchbox)
+    fireEvent.change(searchbox, { target: { value: '周杰伦' } })
+    act(() => vi.advanceTimersByTime(300))
+    expect(new URLSearchParams(screen.getByTestId('location-search').textContent ?? '').get('q')).toBe('love')
+
+    fireEvent.compositionEnd(searchbox)
+    act(() => vi.advanceTimersByTime(300))
+    expect(new URLSearchParams(screen.getByTestId('location-search').textContent ?? '').get('q')).toBe('周杰伦')
+
+    vi.useRealTimers()
   })
 
   it('opens Masthead quick search and links to the full search page', async () => {

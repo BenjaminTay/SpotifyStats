@@ -1,6 +1,6 @@
 export function AnalysisPageHeader() {
   return (
-    <section className="mb-6">
+    <section className="mb-6 hidden md:block">
       <p className="mb-4 font-sans text-[11px] font-bold uppercase tracking-[1.8px] text-accent-foreground">
         Playback / Analysis
       </p>

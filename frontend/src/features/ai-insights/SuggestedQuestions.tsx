@@ -26,7 +26,7 @@ export function SuggestedQuestions({ questions, onSelect, disabled, isLoading }:
   if (!questions.length) return null
 
   return (
-    <div className="flex flex-wrap gap-2">
+    <div className="mobile-ai-suggestions flex flex-wrap gap-2">
       {questions.map((q) => (
         <button
           key={q}

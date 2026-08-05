@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import { Link } from 'react-router'
 import { ChevronDown, ChevronUp, Disc, Layers } from 'lucide-react'
 import { GlassCard } from '@/components/shared/GlassCard'
@@ -10,6 +10,8 @@ interface Props {
   data: TrackVersionGroup | AlbumVersionGroup
   /** Per-bucket source breakdown from album project (album kind only). */
   sourceBreakdown?: AlbumSourceBreakdownItem[] | null
+  /** Keep advanced source details collapsed on compact presentations. */
+  collapsible?: boolean
 }
 
 const SCOPE_LABELS: Record<string, string> = {
@@ -41,12 +43,10 @@ const BUCKET_LABELS: Record<string, string> = {
   inferred: '推断来源',
 }
 
-export function VersionGroupSection({ kind, data, sourceBreakdown }: Props) {
+export function VersionGroupSection({ kind, data, sourceBreakdown, collapsible = false }: Props) {
   const [open, setOpen] = useState(false)
 
   const hasSourceBreakdown = kind === 'album' && sourceBreakdown && sourceBreakdown.length > 0
-  if (!hasSourceBreakdown && (!data.versions || data.versions.length < 2)) return null
-
   const scopeLabel = SCOPE_LABELS[data.scope] ?? data.scope
   const Chevron = open ? ChevronUp : ChevronDown
   const albumData = kind === 'album' ? (data as AlbumVersionGroup) : null
@@ -67,7 +67,7 @@ export function VersionGroupSection({ kind, data, sourceBreakdown }: Props) {
     trackId: number | null
     recordingKind: string | null
   }
-  const rows: Row[] = useMemo(() => {
+  const rows: Row[] = (() => {
     if (kind === 'album' && sourceBreakdown && sourceBreakdown.length > 0) {
       const versionById = new Map<number, (typeof data.versions)[number]>()
       for (const v of data.versions) {
@@ -92,7 +92,7 @@ export function VersionGroupSection({ kind, data, sourceBreakdown }: Props) {
       })
     }
     // Track mode or no sourceBreakdown: use raw versions
-    return data.versions.map((v: any) => ({
+    return data.versions.map((v) => ({
       key: String(v.album_id ?? v.track_id ?? ''),
       name: v.album_name ?? v.track_name ?? '',
       artist: v.artist_name ?? null,
@@ -106,9 +106,11 @@ export function VersionGroupSection({ kind, data, sourceBreakdown }: Props) {
       trackId: v.track_id ?? null,
       recordingKind: v.recording_kind ?? null,
     }))
-  }, [kind, sourceBreakdown, data.versions])
+  })()
 
-  const totalPlays = rows.reduce((s, r) => s + r.plays, 0) || data.total_plays || data.versions.reduce((s: number, v: any) => s + v.plays, 0)
+  const totalPlays = rows.reduce((s, r) => s + r.plays, 0) || data.total_plays || data.versions.reduce((s, v) => s + v.plays, 0)
+
+  if (!hasSourceBreakdown && (!data.versions || data.versions.length < 2)) return null
 
   const tableContent = (
     <div className={isAlbum ? 'px-4 py-3' : ''}>
@@ -221,11 +223,27 @@ export function VersionGroupSection({ kind, data, sourceBreakdown }: Props) {
   if (isAlbum) {
     return (
       <GlassCard className="mb-6">
-        <div className="flex items-center gap-2.5 px-4 py-3">
-          <Layers className="w-4 h-4 text-muted-foreground" />
-          <span className="font-medium text-sm">版本来源拆分</span>
-        </div>
-        {tableContent}
+        {collapsible ? (
+          <button
+            type="button"
+            className="flex w-full items-center justify-between rounded-xl px-4 py-3 text-left transition-colors hover:bg-black/5 dark:hover:bg-white/5"
+            aria-expanded={open}
+            onClick={() => setOpen(!open)}
+          >
+            <span className="flex items-center gap-2.5">
+              <Layers className="h-4 w-4 text-muted-foreground" />
+              <span className="text-sm font-medium">版本与来源</span>
+              <small className="text-xs text-muted-foreground">按需查看</small>
+            </span>
+            <Chevron className="h-4 w-4 text-muted-foreground" />
+          </button>
+        ) : (
+          <div className="flex items-center gap-2.5 px-4 py-3">
+            <Layers className="h-4 w-4 text-muted-foreground" />
+            <span className="text-sm font-medium">版本来源拆分</span>
+          </div>
+        )}
+        {(!collapsible || open) && tableContent}
       </GlassCard>
     )
   }

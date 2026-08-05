@@ -23,6 +23,14 @@ def test_api_smoke_probe_exposes_reusable_readonly_cases():
     assert cases_by_path["/api/community/post/nonexistent-smoke-post"].expected_statuses == (404,)
     assert cases_by_path["/api/settings/llm-profiles/999999"].expected_statuses == (404,)
     assert cases_by_path["/covers/albums/999999999.jpg"].expected_statuses == (404,)
+    assert cases_by_path["/api/billboard/artist/Fixture Artist Alpha"].expected_statuses == (
+        200,
+        404,
+    )
+    assert cases_by_path["/api/billboard/album/Fixture Future LP"].expected_statuses == (
+        200,
+        404,
+    )
     assert "/api/spotify/auth/playing" not in paths
 
 

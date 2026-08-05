@@ -1,0 +1,51 @@
+{
+  "id": "/",
+  "name": "Spotify Stats",
+  "short_name": "Stats",
+  "description": "查看个人 Spotify 播放统计、榜单、年度总结与音乐档案。",
+  "lang": "zh-CN",
+  "dir": "ltr",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#f7f3ec",
+  "theme_color": "#f7f3ec",
+  "categories": ["music", "lifestyle", "utilities"],
+  "icons": [
+    {
+      "src": "/pwa/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/pwa/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "播放统计",
+      "short_name": "统计",
+      "url": "/analysis/stats"
+    },
+    {
+      "name": "播放排行",
+      "short_name": "排行",
+      "url": "/analysis/charts"
+    },
+    {
+      "name": "年度总结",
+      "short_name": "年度",
+      "url": "/yearly-review"
+    },
+    {
+      "name": "音乐搜索",
+      "short_name": "搜索",
+      "url": "/music/search"
+    }
+  ]
+}

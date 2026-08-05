@@ -20,13 +20,23 @@ const DEFAULT_SCENARIOS = [
 ]
 const REWRITE_PATH_PREFIXES = ['/api', '/covers']
 
-const VIEWPORT = {
-  width: 1280,
-  height: 900,
-  deviceScaleFactor: 1,
-  mobile: false,
-  userAgent:
-    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126 Safari/537.36',
+const VIEWPORTS = {
+  desktop: {
+    width: 1280,
+    height: 900,
+    deviceScaleFactor: 1,
+    mobile: false,
+    userAgent:
+      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126 Safari/537.36',
+  },
+  mobile: {
+    width: 390,
+    height: 844,
+    deviceScaleFactor: 3,
+    mobile: true,
+    userAgent:
+      'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
+  },
 }
 
 function parseArgs(argv) {
@@ -34,6 +44,7 @@ function parseArgs(argv) {
     baseUrl: DEFAULT_BASE_URL,
     apiBaseUrl: null,
     scenarios: DEFAULT_SCENARIOS,
+    viewport: 'desktop',
     waitMs: DEFAULT_WAIT_MS,
     output: null,
     chrome: null,
@@ -43,6 +54,7 @@ function parseArgs(argv) {
     const arg = argv[i]
     if (arg === '--base-url') args.baseUrl = argv[++i]
     else if (arg === '--api-base-url') args.apiBaseUrl = argv[++i]
+    else if (arg === '--viewport') args.viewport = argv[++i]
     else if (arg === '--scenario' || arg === '--scenarios') {
       args.scenarios = argv[++i].split(',').map((scenario) => scenario.trim()).filter(Boolean)
     } else if (arg === '--wait-ms') args.waitMs = Number(argv[++i])
@@ -58,6 +70,7 @@ function parseArgs(argv) {
 
   if (args.scenarios.length === 0) throw new Error('--scenario must include at least one scenario')
   if (!Number.isFinite(args.waitMs) || args.waitMs < 250) throw new Error('--wait-ms must be at least 250')
+  if (!VIEWPORTS[args.viewport]) throw new Error(`Unsupported viewport: ${args.viewport}`)
   for (const scenario of args.scenarios) {
     if (!SCENARIOS[scenario]) throw new Error(`Unsupported scenario: ${scenario}`)
   }
@@ -72,6 +85,7 @@ function printHelp() {
 Options:
   --base-url <url>        Frontend URL, default ${DEFAULT_BASE_URL}
   --api-base-url <url>    Rewrite same-origin /api and /covers requests to this API URL
+  --viewport <mode>       desktop or mobile, default desktop
   --scenario <a,b,c>      Comma-separated scenarios, default ${DEFAULT_SCENARIOS.join(',')}
   --wait-ms <ms>          Max wait for route/text assertions, default ${DEFAULT_WAIT_MS}
   --output <path>         Write JSON results to a file
@@ -85,6 +99,9 @@ Scenarios:
   settings-controls       Toggle non-destructive settings controls and verify local display preference
   settings-data-import    Verify data import cards and import actions without starting jobs
   theme-toggle            Toggle light/dark theme buttons
+  mobile-bottom-navigation Verify mobile bottom navigation routes and active state
+  mobile-section-sheet    Open the mobile section sheet and preserve time query state
+  mobile-time-filter      Apply the mobile time-range sheet and verify URL state
 `)
 }
 
@@ -243,14 +260,14 @@ async function setupApiRequestRewrite(client, frontendBaseUrl, apiBaseUrl) {
   })
 }
 
-async function setupPage(client, baseUrl, apiBaseUrl) {
+async function setupPage(client, baseUrl, apiBaseUrl, viewport) {
   await client.send('Page.enable')
   await client.send('Runtime.enable')
   await client.send('Log.enable')
   await client.send('Network.enable')
   await setupApiRequestRewrite(client, baseUrl, apiBaseUrl)
-  await client.send('Emulation.setDeviceMetricsOverride', VIEWPORT)
-  await client.send('Emulation.setUserAgentOverride', { userAgent: VIEWPORT.userAgent })
+  await client.send('Emulation.setDeviceMetricsOverride', viewport)
+  await client.send('Emulation.setUserAgentOverride', { userAgent: viewport.userAgent })
 }
 
 async function navigate(client, baseUrl, path, waitMs) {
@@ -291,20 +308,62 @@ async function clickText(client, text, waitMs) {
 }
 
 async function clickByAriaLabel(client, label, waitMs) {
+  await waitForCondition(
+    async () => evaluate(client, `
+      (() => {
+        const targetLabel = ${JSON.stringify(label)};
+        const candidates = Array.from(document.querySelectorAll('button, a, [role="button"], [role="tab"], [role="option"]'))
+          .filter((el) => (el.getAttribute('aria-label') || '').trim() === targetLabel);
+        const el = candidates[0];
+        if (!el) return null;
+        el.scrollIntoView({ block: 'center', inline: 'center' });
+        el.click();
+        return { path: location.pathname };
+      })();
+    `),
+    waitMs,
+    `Clickable aria-label not found: ${label}`,
+  )
+  await sleep(Math.min(250, waitMs))
+}
+
+async function clickTextWithin(client, selector, text, waitMs) {
   const clicked = await evaluate(client, `
     (() => {
-      const targetLabel = ${JSON.stringify(label)};
-      const candidates = Array.from(document.querySelectorAll('button, a, [role="button"], [role="tab"], [role="option"]'))
-        .filter((el) => (el.getAttribute('aria-label') || '').trim() === targetLabel);
-      const el = candidates[0];
+      const root = document.querySelector(${JSON.stringify(selector)});
+      const targetText = ${JSON.stringify(text)};
+      if (!root) return false;
+      const candidates = Array.from(root.querySelectorAll('button, a, [role="button"], [role="tab"], [role="option"], [role="radio"]'));
+      const el = candidates.find((item) => {
+        const text = (item.innerText || item.textContent || '').trim();
+        return text === targetText || text.startsWith(targetText) || text.includes(targetText);
+      });
       if (!el) return false;
       el.scrollIntoView({ block: 'center', inline: 'center' });
       el.click();
       return true;
     })();
   `)
-  if (!clicked) throw new Error(`Clickable aria-label not found: ${label}`)
+  if (!clicked) throw new Error(`Clickable text not found in ${selector}: ${text}`)
   await sleep(Math.min(250, waitMs))
+}
+
+async function waitForSelector(client, selector, timeoutMs) {
+  return waitForCondition(
+    async () => evaluate(client, `
+      (() => {
+        const el = document.querySelector(${JSON.stringify(selector)});
+        if (!el) return null;
+        const rect = el.getBoundingClientRect();
+        const style = getComputedStyle(el);
+        return rect.width > 0 && rect.height > 0 && style.display !== 'none' && style.visibility !== 'hidden'
+          ? { path: location.pathname, selector: ${JSON.stringify(selector)} }
+          : null;
+      })();
+    `),
+    timeoutMs,
+    `Expected visible selector: ${selector}`,
+  )
 }
 
 async function fillInputByAriaLabel(client, label, value, waitMs) {
@@ -417,6 +476,7 @@ async function pageState(client) {
       chineseStyle: localStorage.getItem('chineseStyle'),
       scrollWidth: Math.max(document.body ? document.body.scrollWidth : 0, document.documentElement ? document.documentElement.scrollWidth : 0),
       viewportWidth: innerWidth,
+      search: location.search,
     }))();
   `)
 }
@@ -544,6 +604,17 @@ async function waitForPath(client, expectedPath, timeoutMs) {
   )
 }
 
+async function waitForSearchParam(client, key, expectedValue, timeoutMs) {
+  return waitForCondition(
+    async () => {
+      const state = await pageState(client)
+      return new URL(state.url).searchParams.get(key) === expectedValue ? state : null
+    },
+    timeoutMs,
+    `Expected search parameter ${key}=${expectedValue}`,
+  )
+}
+
 async function waitForCondition(check, timeoutMs, failureMessage) {
   const started = Date.now()
   let lastState = null
@@ -646,9 +717,8 @@ const SCENARIOS = {
     await waitForText(client, 'SPOTIFY 连接', waitMs)
     await waitForText(client, '数据与显示', waitMs)
     await waitForText(client, '榜单参数', waitMs)
-    await waitForText(client, '版本合并', waitMs)
+    await waitForText(client, '归并与版本', waitMs)
     await waitForText(client, '数据导入', waitMs)
-    await assertArtistLanguageHealthControls(client, waitMs)
 
     await clickSwitchByLabel(client, '动态阈值', waitMs)
     await clickSwitchByLabel(client, '动态阈值', waitMs)
@@ -678,6 +748,10 @@ const SCENARIOS = {
       'Chinese display preference did not reset to original',
     )
 
+    await clickText(client, '流派与语言', waitMs)
+    await waitForText(client, '流派与语言数据健康', waitMs)
+    await assertArtistLanguageHealthControls(client, waitMs)
+
     await waitForAnyText(client, ['连接 Spotify', '同步收藏时间'], waitMs)
   },
 
@@ -701,15 +775,57 @@ const SCENARIOS = {
     const light = await pageState(client)
     if (light.isDark || light.theme !== 'light') throw new Error('Light theme did not activate')
   },
+
+  'mobile-bottom-navigation': async ({ client, baseUrl, waitMs, viewportName }) => {
+    if (viewportName !== 'mobile') throw new Error('mobile-bottom-navigation requires --viewport mobile')
+    await navigate(client, baseUrl, '/', waitMs)
+    await waitForSelector(client, '[data-mobile-shell="bottom-nav"]', waitMs)
+    await clickTextWithin(client, '[data-mobile-shell="bottom-nav"]', '播放', waitMs)
+    await waitForPath(client, '/analysis/stats', waitMs)
+    await waitForCondition(
+      async () => evaluate(client, `(() => {
+        const link = Array.from(document.querySelectorAll('[data-mobile-shell="bottom-nav"] a'))
+          .find((item) => (item.innerText || item.textContent || '').trim() === '播放');
+        return link?.getAttribute('aria-current') === 'page' ? { path: location.pathname } : null;
+      })()`),
+      waitMs,
+      'Mobile 播放 navigation item did not become current',
+    )
+    await clickTextWithin(client, '[data-mobile-shell="bottom-nav"]', '榜单', waitMs)
+    await waitForPath(client, '/billboard', waitMs)
+  },
+
+  'mobile-section-sheet': async ({ client, baseUrl, waitMs, viewportName }) => {
+    if (viewportName !== 'mobile') throw new Error('mobile-section-sheet requires --viewport mobile')
+    await navigate(client, baseUrl, '/analysis/stats?period=year&period_value=2025', waitMs)
+    await waitForText(client, '播放统计', waitMs)
+    await clickByAriaLabel(client, '切换播放分析栏目，当前播放统计', waitMs)
+    await waitForSelector(client, '[data-mobile-sheet="section-switcher"]', waitMs)
+    await clickTextWithin(client, '[data-mobile-sheet="section-switcher"]', '播放排行', waitMs)
+    await waitForPath(client, '/analysis/charts', waitMs)
+    await waitForSearchParam(client, 'period', 'year', waitMs)
+    await waitForSearchParam(client, 'period_value', '2025', waitMs)
+  },
+
+  'mobile-time-filter': async ({ client, baseUrl, waitMs, viewportName }) => {
+    if (viewportName !== 'mobile') throw new Error('mobile-time-filter requires --viewport mobile')
+    await navigate(client, baseUrl, '/analysis/stats?period=lifetime', waitMs)
+    await waitForText(client, '播放统计', waitMs)
+    await clickByAriaLabel(client, '选择时间范围，当前全部时间', waitMs)
+    await waitForSelector(client, '[data-mobile-sheet="time-range"]', waitMs)
+    await clickTextWithin(client, '[data-mobile-sheet="time-range"]', '近 4 周', waitMs)
+    await clickTextWithin(client, '[data-mobile-sheet="time-range"]', '应用时间范围', waitMs)
+    await waitForSearchParam(client, 'period', 'last_4_weeks', waitMs)
+  },
 }
 
-async function runScenario({ port, baseUrl, apiBaseUrl, scenario, waitMs }) {
+async function runScenario({ port, baseUrl, apiBaseUrl, scenario, waitMs, viewportName }) {
   const client = await makeClient(port)
   const { consoleEntries, pageErrors } = collectConsole(client)
 
   try {
-    await setupPage(client, baseUrl, apiBaseUrl)
-    await SCENARIOS[scenario]({ client, baseUrl, waitMs })
+    await setupPage(client, baseUrl, apiBaseUrl, VIEWPORTS[viewportName])
+    await SCENARIOS[scenario]({ client, baseUrl, waitMs, viewportName })
     const consoleErrors = consoleEntries.filter((entry) => ['error', 'assert'].includes(entry.level))
     const consoleWarnings = consoleEntries.filter((entry) => ['warning', 'warn'].includes(entry.level))
     const finalState = await pageState(client)
@@ -717,9 +833,11 @@ async function runScenario({ port, baseUrl, apiBaseUrl, scenario, waitMs }) {
 
     return {
       scenario,
-      ok: consoleErrors.length === 0 && pageErrors.length === 0 && scrollOverflow === 0,
+      viewport: viewportName,
+      ok: consoleErrors.length === 0 && consoleWarnings.length === 0 && pageErrors.length === 0 && scrollOverflow === 0,
       failures: [
         ...(consoleErrors.length ? [`${consoleErrors.length} console error(s)`] : []),
+        ...(consoleWarnings.length ? [`${consoleWarnings.length} console warning(s)`] : []),
         ...(pageErrors.length ? [`${pageErrors.length} page error(s)`] : []),
         ...(scrollOverflow ? [`horizontal overflow ${scrollOverflow}px`] : []),
       ],
@@ -734,6 +852,7 @@ async function runScenario({ port, baseUrl, apiBaseUrl, scenario, waitMs }) {
   } catch (error) {
     return {
       scenario,
+      viewport: viewportName,
       ok: false,
       failures: [error instanceof Error ? error.message : String(error)],
       finalPath: null,
@@ -756,13 +875,13 @@ function renderMarkdown(results) {
     '',
     `> Generated: ${new Date().toISOString()}`,
     '',
-    '| Scenario | Status | Final path | Console errors | Warnings | Page errors | Scroll overflow |',
-    '| --- | --- | --- | ---: | ---: | ---: | ---: |',
+    '| Scenario | Viewport | Status | Final path | Console errors | Warnings | Page errors | Scroll overflow |',
+    '| --- | --- | --- | --- | ---: | ---: | ---: | ---: |',
   ]
 
   for (const row of results) {
     lines.push(
-      `| ${row.scenario} | ${row.ok ? 'PASS' : 'FAIL'} | \`${row.finalPath || '-'}\` | ${row.consoleErrorCount} | ${row.consoleWarningCount} | ${row.pageErrorCount} | ${row.scrollOverflow ?? '-'}px |`,
+      `| ${row.scenario} | ${row.viewport} | ${row.ok ? 'PASS' : 'FAIL'} | \`${row.finalPath || '-'}\` | ${row.consoleErrorCount} | ${row.consoleWarningCount} | ${row.pageErrorCount} | ${row.scrollOverflow ?? '-'}px |`,
     )
   }
 
@@ -833,6 +952,7 @@ async function main() {
         apiBaseUrl: args.apiBaseUrl,
         scenario,
         waitMs: args.waitMs,
+        viewportName: args.viewport,
       })
       results.push(result)
       process.stderr.write(`${result.ok ? 'PASS' : 'FAIL'}\n`)

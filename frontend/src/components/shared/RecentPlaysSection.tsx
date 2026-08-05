@@ -9,8 +9,11 @@ import { Calendar } from '@/components/ui/calendar'
 import { cn } from '@/lib/utils'
 import { displayName } from '@/lib/chinese'
 import type { RecentPlayRow, EntityPlaysResponse, AnalysisFilters, AnalysisPeriod } from '@/types/analysis'
+import { MobileEntityRow, MobilePagination, MobileStatePanel } from '@/components/mobile'
+import { recentPlayRowKey } from './recentPlaysUtils'
 
 const PAGE_SIZE = 50
+const EMPTY_RECENT_ROWS: RecentPlayRow[] = []
 
 function formatMinutes(n: number): string {
   const totalSec = Math.round(n * 3600)
@@ -47,52 +50,47 @@ interface RecentPlaysSectionProps {
   apiParams: { period: AnalysisPeriod; start_date?: string; end_date?: string }
   fetchPage: (page: number, limit: number, search?: string, date?: string) => Promise<EntityPlaysResponse>
   fetchPlayDates: () => Promise<PlayDateEntry[]>
+  mobile?: boolean
 }
 
-export function recentPlayRowKey(row: RecentPlayRow, index: number): string {
-  return [
-    row.play_id,
-    row.ts,
-    row.track_id ?? 'trackless',
-    row.artist_name,
-    index,
-  ].join(':')
+export function RecentPlaysSection(props: RecentPlaysSectionProps) {
+  return <RecentPlaysContent key={JSON.stringify(props.apiParams)} {...props} />
 }
 
-export function RecentPlaysSection({
-  kind: _kind,
-  entityId: _entityId,
-  artistName: _artistName,
+function RecentPlaysContent({
   apiParams,
   fetchPage,
   fetchPlayDates,
+  mobile = false,
 }: RecentPlaysSectionProps) {
   const [page, setPage] = useState(1)
-  const [rows, setRows] = useState<RecentPlayRow[]>([])
-  const [total, setTotal] = useState(0)
-  const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [sortKey, setSortKey] = useState<SortKey | null>(null)
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
-  const [expandedDates, setExpandedDates] = useState<Set<string>>(new Set())
+  const [expandedState, setExpandedState] = useState<{ rows: RecentPlayRow[]; dates: Set<string> }>({
+    rows: [],
+    dates: new Set(),
+  })
   const [calendarOpen, setCalendarOpen] = useState(false)
   const [playDates, setPlayDates] = useState<PlayDateEntry[]>([])
   const abortRef = useRef(0)
 
   const paramsKey = JSON.stringify(apiParams)
-
-  // Reset everything when apiParams change
-  useEffect(() => {
-    setSearch('')
-    setDebouncedSearch('')
-    setSelectedDate(null)
-    setPage(1)
-    setSortKey(null)
-    setSortDir('desc')
-  }, [paramsKey])
+  const requestKey = `${paramsKey}:${page}:${debouncedSearch}:${selectedDate ?? ''}`
+  const [resultState, setResultState] = useState<{
+    key: string
+    rows: RecentPlayRow[]
+    total: number
+  }>({ key: '', rows: [], total: 0 })
+  const isCurrentResult = resultState.key === requestKey
+  const rows = isCurrentResult ? resultState.rows : EMPTY_RECENT_ROWS
+  const total = isCurrentResult ? resultState.total : 0
+  const loading = !isCurrentResult
+  const defaultExpandedDates = useMemo(() => new Set(rows.map((row) => row.date)), [rows])
+  const expandedDates = expandedState.rows === rows ? expandedState.dates : defaultExpandedDates
 
   // Fetch play dates
   useEffect(() => {
@@ -108,19 +106,16 @@ export function RecentPlaysSection({
   useEffect(() => {
     let active = true
     const token = ++abortRef.current
-    setLoading(true)
     fetchPage(page, PAGE_SIZE, debouncedSearch || undefined, selectedDate || undefined).then((result) => {
       if (!active || token !== abortRef.current) return
-      setRows(result.rows)
-      setTotal(result.total)
-      setLoading(false)
+      setResultState({ key: requestKey, rows: result.rows, total: result.total })
     }).catch(() => {
       if (!active || token !== abortRef.current) return
-      setLoading(false)
+      setResultState({ key: requestKey, rows: [], total: 0 })
     })
     return () => { active = false }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [paramsKey, page, debouncedSearch, selectedDate])
+  }, [requestKey])
 
   // Debounced search
   useEffect(() => {
@@ -134,19 +129,12 @@ export function RecentPlaysSection({
     }
   }, [search])
 
-  // Initialize expanded dates
-  useEffect(() => {
-    const dates = new Set<string>()
-    for (const r of rows) dates.add(r.date)
-    setExpandedDates(dates)
-  }, [rows])
-
   const toggleDate = (date: string) => {
-    setExpandedDates((prev) => {
-      const next = new Set(prev)
+    setExpandedState(() => {
+      const next = new Set(expandedDates)
       if (next.has(date)) next.delete(date)
       else next.add(date)
-      return next
+      return { rows, dates: next }
     })
   }
 
@@ -209,7 +197,7 @@ export function RecentPlaysSection({
   return (
     <div className="space-y-4">
       {/* Toolbar: Search + Calendar */}
-      <div className="flex items-center gap-2">
+      <div className={cn('flex items-center gap-2', mobile && 'mobile-recent-toolbar')}>
         <div className="relative flex-1">
           <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
           <input
@@ -217,7 +205,10 @@ export function RecentPlaysSection({
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="搜索歌曲、艺人或专辑..."
-            className="w-full rounded-lg border border-border bg-background py-1.5 pl-9 pr-3 font-sans text-[13px] placeholder:text-muted-foreground/60 focus:outline-none focus:ring-1 focus:ring-accent-foreground/20"
+            className={cn(
+              'w-full rounded-lg border border-border bg-background py-1.5 pl-9 pr-3 font-sans text-[13px] placeholder:text-muted-foreground/60 focus:outline-none focus:ring-1 focus:ring-accent-foreground/20',
+              mobile && 'min-h-11 rounded-xl',
+            )}
           />
         </div>
         <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
@@ -225,6 +216,7 @@ export function RecentPlaysSection({
             <button
               className={cn(
                 'flex shrink-0 items-center gap-1.5 rounded-lg border border-border bg-background px-2.5 py-1.5 cursor-pointer transition-colors hover:border-foreground/20',
+                mobile && 'min-h-11 rounded-xl',
                 selectedDate && 'border-accent-foreground/40 bg-accent-foreground/5',
               )}
             >
@@ -256,8 +248,11 @@ export function RecentPlaysSection({
         )}
       </div>
 
-      {/* Table header */}
-      <div className="flex items-center border-b border-border pb-2 font-sans text-[11px] uppercase tracking-[1px] text-muted-foreground">
+      {/* Sort controls / desktop table header */}
+      <div className={cn(
+        'flex items-center border-b border-border pb-2 font-sans text-[11px] uppercase tracking-[1px] text-muted-foreground',
+        mobile && 'mobile-recent-sort',
+      )}>
         <button
           onClick={() => handleSort('ts')}
           className={cn(
@@ -267,8 +262,8 @@ export function RecentPlaysSection({
         >
           播放时间{sortArrow('ts')}
         </button>
-        <span className="flex-1 pl-4">歌曲</span>
-        <span className="flex-1 pl-4">专辑</span>
+        {!mobile && <span className="flex-1 pl-4">歌曲</span>}
+        {!mobile && <span className="flex-1 pl-4">专辑</span>}
         <button
           onClick={() => handleSort('ms_played')}
           className={cn(
@@ -282,18 +277,21 @@ export function RecentPlaysSection({
 
       {/* Content */}
       {loading ? (
-        <p className="py-10 text-center font-sans text-[13px] text-muted-foreground">加载中...</p>
+        mobile ? <MobileStatePanel variant="loading" compact /> : <p className="py-10 text-center font-sans text-[13px] text-muted-foreground">加载中...</p>
       ) : sortedGroups.length === 0 ? (
-        <p className="py-10 text-center font-sans text-[13px] text-muted-foreground">
-          {isFiltering ? '无匹配的播放记录' : '暂无播放记录'}
-        </p>
+        mobile
+          ? <MobileStatePanel variant="empty" compact title={isFiltering ? '无匹配的播放记录' : '暂无播放记录'} />
+          : <p className="py-10 text-center font-sans text-[13px] text-muted-foreground">{isFiltering ? '无匹配的播放记录' : '暂无播放记录'}</p>
       ) : (
         <div className="space-y-1">
           {sortedGroups.map((group) => (
             <div key={group.date}>
               <button
                 onClick={() => toggleDate(group.date)}
-                className="flex w-full items-center gap-2 rounded-[6px] px-2 py-1.5 cursor-pointer transition-colors hover:bg-muted/50"
+                className={cn(
+                  'flex w-full items-center gap-2 rounded-[6px] px-2 py-1.5 cursor-pointer transition-colors hover:bg-muted/50',
+                  mobile && 'mobile-recent-group-trigger',
+                )}
               >
                 {expandedDates.has(group.date) ? (
                   <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
@@ -305,6 +303,27 @@ export function RecentPlaysSection({
               </button>
 
               {expandedDates.has(group.date) && (
+                mobile ? (
+                  <div className="mobile-recent-rows">
+                    {group.rows.map((row, rowIndex) => (
+                      <MobileEntityRow
+                        key={recentPlayRowKey(row, rowIndex)}
+                        entityType="track"
+                        title={displayName(row.track_name)}
+                        subtitle={displayName((row.artist_names?.length ? row.artist_names.join('、') : row.artist_name) || '未知艺人')}
+                        coverUrl={row.cover_url}
+                        metric={formatTime(row.ts)}
+                        metricLabel="播放时间"
+                        facts={[
+                          { label: '专辑', value: displayName(row.album_name || '—') },
+                          { label: '时长', value: formatMinutes(row.hours) },
+                        ]}
+                        badges={row.platform ? [row.platform] : []}
+                        to={row.track_id ? `/music/tracks/${row.track_id}` : undefined}
+                      />
+                    ))}
+                  </div>
+                ) : (
                 <div className="overflow-x-auto">
                   <table className="w-full min-w-[660px] table-fixed border-collapse text-left font-sans text-[13px]">
                     <tbody>
@@ -368,6 +387,7 @@ export function RecentPlaysSection({
                     </tbody>
                   </table>
                 </div>
+                )
               )}
             </div>
           ))}
@@ -375,6 +395,15 @@ export function RecentPlaysSection({
       )}
 
       {/* Pagination */}
+      {mobile ? (
+        <MobilePagination
+          page={page}
+          pageCount={totalPages}
+          totalLabel={`共 ${total} 条`}
+          loading={loading}
+          onPageChange={setPage}
+        />
+      ) : (
       <div className="flex items-center justify-between pt-2">
         <span className="font-sans text-[12px] text-muted-foreground tabular-nums">
           共 {total} 条，第 {page}/{totalPages} 页
@@ -429,6 +458,7 @@ export function RecentPlaysSection({
           </button>
         </div>
       </div>
+      )}
     </div>
   )
 }

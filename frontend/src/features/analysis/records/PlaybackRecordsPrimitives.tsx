@@ -8,6 +8,7 @@ import { GlassCard } from '@/components/shared/GlassCard'
 import { displayName } from '@/lib/chinese'
 import { cn } from '@/lib/utils'
 import type { EntityRecordType, PlaybackRecordRow } from '@/types/analysis'
+import { useViewportMode } from '@/hooks/useViewportMode'
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Helpers
@@ -253,6 +254,8 @@ export function MiniRankTable({
   emptyText?: string
   fixed?: boolean
 }) {
+  const isPhone = useViewportMode() === 'phone'
+  const [mobileExpanded, setMobileExpanded] = useState(false)
   const [paginationState, setPaginationState] = useState({ rows, page: 0 })
   const page = paginationState.rows === rows ? paginationState.page : 0
   const setCurrentPage = (next: number | ((current: number) => number)) => {
@@ -276,6 +279,33 @@ export function MiniRankTable({
 
   if (rows.length === 0) {
     return <p className="py-4 text-center font-sans text-[12px] text-muted-foreground">{emptyText}</p>
+  }
+
+  if (isPhone) {
+    const mobileRows = mobileExpanded ? rows : rows.slice(0, 3)
+    return (
+      <div className="mobile-record-rank-list">
+        {mobileRows.map((row, rowIndex) => (
+          <article key={rowIndex} className="mobile-record-rank-row">
+            {columns.map((column, columnIndex) => (
+              <div key={`${column.header}:${columnIndex}`} className={cn(columnIndex === 1 && 'mobile-record-rank-entity')}>
+                <small>{column.header}</small>
+                <span>{column.render(row, rowIndex)}</span>
+              </div>
+            ))}
+          </article>
+        ))}
+        {rows.length > 3 && (
+          <button
+            type="button"
+            className="mobile-record-expand"
+            onClick={() => setMobileExpanded((expanded) => !expanded)}
+          >
+            {mobileExpanded ? '收起完整榜单' : `展开完整榜单（${rows.length} 项）`}
+          </button>
+        )}
+      </div>
+    )
   }
 
   const paginationBar = (

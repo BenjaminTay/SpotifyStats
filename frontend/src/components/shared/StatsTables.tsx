@@ -7,6 +7,8 @@ import { RankNumber } from '@/components/shared/RankNumber'
 import type { AnalysisChartRow } from '@/types/analysis'
 import { cn } from '@/lib/utils'
 import { displayName } from '@/lib/chinese'
+import { MobileRankList } from '@/components/mobile'
+import { useViewportMode } from '@/hooks/useViewportMode'
 
 const PAGE_SIZE = 50
 
@@ -49,6 +51,7 @@ function matchesPersonalRankSearch(
 }
 
 export function PersonalRankTable({ rows, entity, metric, pagination, searchQuery = '' }: { rows: AnalysisChartRow[]; entity: 'track' | 'album' | 'artist'; metric: 'plays' | 'hours'; pagination?: { total: number; page: number; pageSize: number; onPageChange: (page: number) => void }; searchQuery?: string }) {
+  const isPhone = useViewportMode() === 'phone'
   const [internalPageState, setInternalPageState] = useState({ rows, entity, searchQuery, page: 1 })
   const internalPage = internalPageState.rows === rows
     && internalPageState.entity === entity
@@ -70,6 +73,37 @@ export function PersonalRankTable({ rows, entity, metric, pagination, searchQuer
   const paged = pagination ? rows : filteredRows.slice((safePage - 1) * pageSize, safePage * pageSize)
   const maxPlays = Math.max(1, ...rows.map((r) => r.plays))
   const maxHours = Math.max(1, ...rows.map((r) => r.hours))
+
+  if (isPhone) {
+    return (
+      <MobileRankList
+        rows={paged.map((row) => {
+          const title = entity === 'track' ? row.track_name : entity === 'album' ? row.album_name : row.artist_name
+          const subtitle = entity === 'artist'
+            ? `${row.unique_tracks ?? 0} 首曲目`
+            : displayName(row.artist_name || '')
+          return {
+            entityType: entity,
+            title: displayName(title || '未知'),
+            subtitle,
+            rank: row.rank,
+            coverUrl: row.cover_url,
+            metric: metric === 'plays' ? formatNumber(row.plays) : formatHours(row.hours),
+            metricLabel: metric === 'plays' ? '播放次数' : '播放时长',
+            facts: [
+              { label: '首次', value: dateShort(row.first_played) },
+              { label: '最近', value: dateShort(row.last_played) },
+            ],
+            badges: [`占比 ${row.share_pct}%`],
+            to: entityLink(row, entity),
+          }
+        })}
+        page={safePage}
+        pageCount={totalPages}
+        onPageChange={totalPages > 1 ? goToPage : undefined}
+      />
+    )
+  }
 
   return (
     <div className="overflow-x-auto">

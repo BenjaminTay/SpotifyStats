@@ -15,6 +15,8 @@ import { SpotifyConnectionSection } from "@/features/settings/components/Spotify
 import { DataFilteringSection } from "@/features/settings/components/DataFilteringSection";
 import { BillboardParamsSection } from "@/features/settings/components/BillboardParamsSection";
 import { DataImportSection } from "@/features/settings/components/DataImportSection";
+import { useViewportMode } from "@/hooks/useViewportMode";
+import { MobileSettingsExperience } from "@/features/mobile/settings/MobileSettingsExperience";
 
 const MusicMetadataSection = lazy(() =>
   import("@/features/settings/components/MusicMetadataSection").then((m) => ({
@@ -28,6 +30,7 @@ const LLMTranslationSection = lazy(() =>
 );
 
 export function SettingsPage() {
+  const isPhone = useViewportMode() === "phone";
   const {
     settings,
     loading,
@@ -75,6 +78,20 @@ export function SettingsPage() {
   };
 
   if (loading) {
+    if (isPhone) {
+      return (
+        <div className="mobile-settings-page" aria-label="正在加载设置">
+          <div className="space-y-2 py-2">
+            <Skeleton className="h-3 w-28" />
+            <Skeleton className="h-9 w-24" />
+          </div>
+          <Skeleton className="h-11 w-full rounded-[14px]" />
+          {Array.from({ length: 5 }).map((_, i) => (
+            <Skeleton key={i} className="h-[76px] w-full rounded-[16px]" />
+          ))}
+        </div>
+      );
+    }
     return (
       <div className="mx-auto max-w-[900px] space-y-6 px-6 py-12">
         <div className="space-y-3">
@@ -113,6 +130,27 @@ export function SettingsPage() {
   if (!settings) return null;
 
   const rebuildPending = rebuildPendingOverride ?? settings.rebuild_pending;
+
+  if (isPhone) {
+    return (
+      <MobileSettingsExperience
+        settings={settings}
+        rebuildPending={rebuildPending}
+        chineseStyle={chineseStyle}
+        onChangeChineseStyle={(style) => {
+          setChineseStyleState(style);
+          setChineseStyle(style);
+        }}
+        onUpdate={updateSettings}
+        onRequiresRebuild={handleRequiresRebuild}
+        onSpotifyConnect={spotifyConnect}
+        onSpotifyDisconnect={spotifyDisconnect}
+        onSpotifySync={spotifySync}
+        onFetchProfiles={fetchProfiles}
+        onApplyProfile={applyProfile}
+      />
+    );
+  }
 
   return (
     <div className="mx-auto max-w-[900px] space-y-6 px-6 py-12">

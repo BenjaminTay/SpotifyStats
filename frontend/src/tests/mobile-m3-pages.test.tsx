@@ -1,0 +1,210 @@
+import { useState } from 'react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { MemoryRouter } from 'react-router-dom'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+
+import { MobileAnalysisStats } from '@/features/mobile/analysis/MobileAnalysisStats'
+import { MobilePersonalRankList } from '@/features/mobile/analysis/MobilePersonalRankList'
+import { MobileBillboardWeekly } from '@/features/mobile/billboard/MobileBillboardWeekly'
+import { MobileDashboard } from '@/features/mobile/dashboard/MobileDashboard'
+import { computeWeeklyRankChange } from '@/features/billboard/weekly/weeklyPresentation'
+import type { AnalysisChartsResponse, AnalysisMetric, LeaderboardEntity } from '@/types/analysis'
+import type { DashboardFullResponse } from '@/types/dashboard'
+import type { BillboardWeeklyResponse, WeeklyAlbumEntry, WeeklyTrackEntry } from '@/types/billboard'
+
+vi.mock('@/components/charts/MonthlyTrendChart', () => ({
+  MonthlyTrendChart: () => <div data-testid="monthly-trend-chart" />,
+}))
+vi.mock('@/components/charts/PlatformDistChart', () => ({
+  PlatformDistChart: () => <div data-testid="platform-chart" />,
+}))
+vi.mock('@/components/charts/AnalysisCharts', () => ({
+  AnalysisTrendChart: ({ data }: { data: unknown[] }) => <div data-testid="analysis-trend-chart">{data.length}</div>,
+}))
+vi.mock('@/components/charts/ListeningClock', () => ({
+  ListeningClock: () => <div data-testid="listening-clock" />,
+}))
+vi.mock('@/components/shared/RecentPlaysSection', () => ({
+  RecentPlaysSection: ({ mobile }: { mobile?: boolean }) => <div data-testid="recent-plays">{mobile ? 'mobile' : 'desktop'}</div>,
+}))
+
+afterEach(() => {
+  document.body.style.overflow = ''
+})
+
+function PersonalRankHarness({ data }: { data: AnalysisChartsResponse }) {
+  const [entity, setEntity] = useState<LeaderboardEntity>('track')
+  const [metric, setMetric] = useState<AnalysisMetric>('plays')
+  const [search, setSearch] = useState('')
+  return (
+    <MobilePersonalRankList
+      data={data}
+      loading={false}
+      entity={entity}
+      metric={metric}
+      searchQuery={search}
+      onEntityChange={setEntity}
+      onMetricChange={setMetric}
+      onSearchChange={setSearch}
+    />
+  )
+}
+
+describe('M3 mobile page presentations', () => {
+  it('renders the dashboard as four KPIs, one monthly chart, and mobile quick links', () => {
+    const data = {
+      summary: {
+        total_plays: 1234,
+        total_hours: 88,
+        total_tracks: 321,
+        total_artists: 42,
+        total_days: 120,
+      },
+      monthly_trend: [],
+      platform_dist: [],
+    } as unknown as DashboardFullResponse
+
+    render(
+      <MemoryRouter>
+        <MobileDashboard data={data} monthlyInsight="春天之后播放明显增加" peakHour={22} peakHourText="夜间是最集中的聆听窗口" />
+      </MemoryRouter>,
+    )
+
+    expect(screen.getByRole('heading', { name: '你的聆听概览' })).toBeInTheDocument()
+    expect(screen.getAllByRole('article')).toHaveLength(6)
+    expect(screen.getByTestId('monthly-trend-chart')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /播放排行/ })).toHaveAttribute('href', '/analysis/charts')
+  })
+
+  it('keeps original personal-chart ranks after mobile search filters the visible rows', async () => {
+    const user = userEvent.setup()
+    const data = {
+      period: { label: '全部时间' },
+      total: 2,
+      rows: [
+        { rank: 1, track_id: 1, track_name: 'Popular Song', artist_name: 'A', plays: 100, hours: 5, share_pct: 20 },
+        { rank: 41, track_id: 41, track_name: 'Rare Song', artist_name: 'B', plays: 8, hours: 1, share_pct: 1.6 },
+      ],
+    } as unknown as AnalysisChartsResponse
+
+    render(<MemoryRouter><PersonalRankHarness data={data} /></MemoryRouter>)
+    await user.type(screen.getByRole('searchbox', { name: '在当前播放排行中搜索' }), 'Rare')
+
+    const result = screen.getByRole('link', { name: /Rare Song/ })
+    expect(within(result).getByText('41')).toBeInTheDocument()
+    expect(screen.queryByText('Popular Song')).not.toBeInTheDocument()
+  })
+
+  it('shows the mobile stats hierarchy and switches trend views without refetching', async () => {
+    const user = userEvent.setup()
+    const data = {
+      period: { label: '2026 年' },
+      summary: {
+        total_plays: 100,
+        total_hours: 9.5,
+        unique_tracks: 40,
+        active_days: 12,
+        unique_albums: 20,
+        unique_artists: 10,
+      },
+      daily_metrics: { avg_daily_plays: 8.3, avg_daily_hours: 0.8 },
+      daily_trend: [{ date: '2026-08-01', plays: 10, hours: 1 }],
+      cumulative_trend: [{ date: '2026-08-01', cumulative_plays: 10, cumulative_hours: 1 }],
+      weekday_distribution: [{ day: '周一', plays: 10, hours: 1 }],
+      month_distribution: [{ month: 8, plays: 10, hours: 1 }],
+      year_distribution: [{ year: 2026, plays: 10, hours: 1 }],
+      hourly_distribution: [{ hour: 22, plays: 10, hours: 1 }],
+    }
+
+    render(
+      <MobileAnalysisStats
+        data={data as never}
+        metric="plays"
+        onMetricChange={vi.fn()}
+        filters={{} as never}
+        apiParams={{ period: 'year' }}
+        fetchPage={vi.fn()}
+        fetchPlayDates={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByRole('heading', { name: '这一段时间的聆听' })).toBeInTheDocument()
+    expect(screen.getByTestId('recent-plays')).toHaveTextContent('mobile')
+    await user.click(screen.getByRole('switch', { name: '累计' }))
+    expect(screen.getByRole('heading', { name: '累计播放' })).toBeInTheDocument()
+
+    const fullscreenTrigger = screen.getByRole('button', { name: '全屏查看累计播放' })
+    await user.click(fullscreenTrigger)
+    expect(screen.getByRole('dialog', { name: '累计播放' })).toBeInTheDocument()
+    expect(document.body.style.overflow).toBe('hidden')
+    await user.click(screen.getByRole('button', { name: '关闭累计播放全屏图表' }))
+    expect(screen.queryByRole('dialog', { name: '累计播放' })).not.toBeInTheDocument()
+    await waitFor(() => expect(fullscreenTrigger).toHaveFocus())
+  })
+
+  it('keeps same-named albums by different artists separate when computing movement', () => {
+    const current = { album_name: 'Home', artist_name: 'Artist A', rank: 4, play_count: 10 } as WeeklyAlbumEntry
+    const differentArtistPrevious = { album_name: 'Home', artist_name: 'Artist B', rank: 3, play_count: 11 } as WeeklyAlbumEntry
+    const sameArtistHistorical = { album_name: 'Home', artist_name: 'Artist A', rank: 8, play_count: 6 } as WeeklyAlbumEntry
+
+    expect(computeWeeklyRankChange(current, [differentArtistPrevious], [], 'albums')).toEqual({ type: 'new' })
+    expect(computeWeeklyRankChange(current, [differentArtistPrevious], [sameArtistHistorical], 'albums')).toEqual({ type: 're' })
+  })
+
+  it('exposes weekly PK and chart weeks and selects a historical week from the sheet', async () => {
+    const user = userEvent.setup()
+    const onGoToWeek = vi.fn()
+    const entry: WeeklyTrackEntry = {
+      billboard_week: '2026-08-03',
+      track_id: 7,
+      track_name: 'Current Song',
+      artist_name: 'Current Artist',
+      album_name: 'Current Album',
+      play_count: 28,
+      total_ms: 1,
+      rank: 4,
+      running_peak: 2,
+      running_wks: 7,
+      running_peak_wks: 1,
+      cover_url: null,
+    }
+    const data = {
+      meta: { all_weeks_desc: ['2026-08-03', '2026-07-27'] },
+      weekly: [entry],
+      weekly_album: [],
+      weekly_artist: [],
+    } as unknown as BillboardWeeklyResponse
+
+    render(
+      <MemoryRouter>
+        <MobileBillboardWeekly
+          data={data}
+          activeTab="tracks"
+          onTabChange={vi.fn()}
+          selectedWeek="2026-08-03"
+          currentIndex={0}
+          totalWeeks={2}
+          onPreviousWeek={vi.fn()}
+          onNextWeek={vi.fn()}
+          onGoToWeek={onGoToWeek}
+          entries={[entry]}
+          previousEntries={[]}
+          historicalEntries={[]}
+          summary={{ maxPlays: 28, totalPlays: 28, newCount: 1, reCount: 0, total: 1 }}
+          page={1}
+          totalPages={1}
+          pageSize={50}
+          onPageChange={vi.fn()}
+        />
+      </MemoryRouter>,
+    )
+
+    expect(screen.getByText('PK #2')).toBeInTheDocument()
+    expect(screen.getByText('在榜 7周')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /Week \d+, 2026/ }))
+    const dialog = screen.getByRole('dialog', { name: '选择榜单周次' })
+    await user.click(within(dialog).getByRole('button', { name: /2026年7月27日/ }))
+    expect(onGoToWeek).toHaveBeenCalledWith('2026-07-27')
+  })
+})

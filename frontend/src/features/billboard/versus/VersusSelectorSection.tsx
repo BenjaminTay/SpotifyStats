@@ -29,9 +29,9 @@ export function VersusSelectorSection({
   const atLimit = queue.length >= MAX_QUEUE_SIZE
 
   return (
-    <div>
+    <div className="mobile-versus-selector">
       {/* Entity type tabs */}
-      <div className="mb-5 flex items-center gap-1">
+      <div className="mb-5 flex items-center gap-1 mobile-versus-kind">
         {KIND_TABS.map((tab) => (
           <button
             key={tab.key}
@@ -49,9 +49,9 @@ export function VersusSelectorSection({
       </div>
 
       {/* Search + Queue side-by-side to avoid dropdown overlap */}
-      <div className="flex gap-6 items-start">
+      <div className="flex gap-6 items-start mobile-versus-builder">
         {/* Search */}
-        <div className="w-[38%] flex-shrink-0">
+        <div className="w-[38%] flex-shrink-0 mobile-versus-search">
           <SearchableAddSelect
             items={currentItems}
             alreadySelected={queue}
@@ -62,7 +62,7 @@ export function VersusSelectorSection({
         </div>
 
         {/* Queue */}
-        <div className="flex-1 min-w-0">
+        <div className="flex-1 min-w-0 mobile-versus-queue">
           <EntityQueue
             items={queue}
             onRemove={onRemove}

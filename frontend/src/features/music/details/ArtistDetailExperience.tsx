@@ -20,6 +20,8 @@ import { ArtistCareerSection } from './ArtistCareerSection'
 import { ArtistReleasesSection } from './ArtistReleasesSection'
 import { useAnalysisFilters } from '@/hooks/useAnalysis'
 import { buildBillboardContextParams } from '@/features/billboard/billboardContext'
+import { useViewportMode } from '@/hooks/useViewportMode'
+import { MobileMusicDetailHero, MobileMusicDetailNav } from '@/features/mobile/music/MobileMusicDetail'
 
 type TabKey = 'stats' | 'releases' | 'career' | 'overview' | 'tracks' | 'albums'
 
@@ -40,10 +42,16 @@ function artistEnrichmentFromTask(task: AiTaskRun | null): ArtistEnrichmentRespo
 export function ArtistDetailExperience() {
   const { artistName } = useParams<{ artistName: string }>()
   const navigate = useNavigate()
-  const [searchParams] = useSearchParams()
-  const [activeTab, setActiveTab] = useState<TabKey>(
-    (searchParams.get('tab') as TabKey | null) ?? 'stats',
-  )
+  const [searchParams, setSearchParams] = useSearchParams()
+  const requestedTab = searchParams.get('tab')
+  const activeTab: TabKey = TABS.some((tab) => tab.key === requestedTab) ? requestedTab as TabKey : 'stats'
+  const isPhone = useViewportMode() === 'phone'
+  const setActiveTab = (tab: TabKey) => {
+    const next = new URLSearchParams(searchParams)
+    if (tab === 'stats') next.delete('tab')
+    else next.set('tab', tab)
+    setSearchParams(next)
+  }
   const { filters, loading: filtersLoading } = useAnalysisFilters()
   const billboardParams = buildBillboardContextParams(filters)
 
@@ -149,8 +157,40 @@ export function ArtistDetailExperience() {
             </div>
           ) : (
             <>
-              <ArtistDetailHero data={data} onBack={() => navigate(-1)} />
-              <DetailTabs tabs={TABS} activeTab={activeTab} onChange={setActiveTab} />
+              {isPhone ? (
+                <div className="mobile-m5-page mobile-music-detail-page" data-mobile-page="artist-detail">
+                  <MobileMusicDetailHero
+                    kind="artist"
+                    eyebrow="Artist / Personal Listening"
+                    title={displayName(data.artist_name)}
+                    coverUrl={data.cover_url}
+                    meta={data.meta?.genres?.slice(0, 4).join(' · ') || undefined}
+                    facts={[
+                      { label: '有效播放', value: `${(data.effective_play_count ?? 0).toLocaleString('zh-CN')} 次` },
+                      { label: '艺人榜', value: data.chart_summary ? `PK #${data.chart_summary.peak_position}` : '尚未入榜', accent: data.chart_summary?.peak_position === 1 },
+                      { label: '入榜歌曲', value: hasTrackChart ? `${data.tracks.length} 首` : '暂无' },
+                      { label: '入榜专辑', value: hasAlbumChart ? `${data.albums.length} 张` : '暂无' },
+                    ]}
+                  />
+                </div>
+              ) : <ArtistDetailHero data={data} onBack={() => navigate(-1)} />}
+
+              {isPhone ? (
+                <MobileMusicDetailNav
+                  activeTab={activeTab}
+                  primaryTabs={[
+                    { key: 'stats', label: '统计' },
+                    { key: 'overview', label: '榜单' },
+                    { key: 'tracks', label: '歌曲' },
+                  ]}
+                  moreTabs={[
+                    { key: 'albums', label: '专辑', description: '专辑榜成绩与固定走势排名' },
+                    { key: 'releases', label: '发行周期', description: '按发行项目查看表现变化' },
+                    { key: 'career', label: '艺人生涯', description: '简介、档案与生涯信息' },
+                  ]}
+                  onChange={setActiveTab}
+                />
+              ) : <DetailTabs tabs={TABS} activeTab={activeTab} onChange={setActiveTab} />}
 
               {activeTab === 'overview' && (
                 <MusicChartOverviewSection

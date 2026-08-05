@@ -6,6 +6,8 @@ import { formatNumber, formatDateShort, formatWeekStart } from '../MusicDetailPr
 import { cn } from '@/lib/utils'
 import type { TrackDetailResponse } from '@/types/billboard'
 import { MusicChartEmptyState } from '../MusicChartEmptyState'
+import { useViewportMode } from '@/hooks/useViewportMode'
+import { MobileChartHistoryList } from '@/features/mobile/music/MobileMusicDetail'
 
 function parseChange(change: string | undefined): { type: 'up' | 'down' | 'same' | 'new' | 're'; delta?: number } {
   if (change === 'NEW') return { type: 'new' }
@@ -47,6 +49,7 @@ interface Props {
 }
 
 export function TrackOverviewSection({ data }: Props) {
+  const isPhone = useViewportMode() === 'phone'
   if (data.chart_status === 'not_charted' || !data.summary) {
     return (
       <MusicChartEmptyState
@@ -59,7 +62,7 @@ export function TrackOverviewSection({ data }: Props) {
   return (
     <>
       {/* KPI Row */}
-      <div className="mb-8 grid grid-cols-4 gap-x-10 gap-y-6 pb-8">
+      <div className={cn('mb-8 grid grid-cols-4 gap-x-10 gap-y-6 pb-8', isPhone && 'mobile-track-overview-kpis')}>
         <KpiItem
           label="入榜峰值"
           value={`#${data.summary.peak_position}${data.summary.weeks_at_peak > 0 ? ` (${data.summary.weeks_at_peak}wks)` : ''}`}
@@ -100,7 +103,7 @@ export function TrackOverviewSection({ data }: Props) {
       {data.chart_data.x.length > 0 && (
         <div className="mb-8">
           <h3 className="mb-4 font-serif text-xl font-semibold">排名趋势</h3>
-          <GlassCard className="p-6">
+          <GlassCard className={cn('p-6', isPhone && 'mobile-detail-chart-card')}>
             <RankTrendChart
               data={data.chart_data.x.map((x, i) => ({
                 week: x,
@@ -116,7 +119,16 @@ export function TrackOverviewSection({ data }: Props) {
       {/* History Table */}
       <div className="mb-8">
         <h3 className="mb-4 font-serif text-xl font-semibold">榜单历史</h3>
-        <GlassCard className="overflow-hidden p-0">
+        {isPhone ? (
+          <MobileChartHistoryList entries={data.history.map((entry) => ({
+            week: entry.week,
+            rank: entry.rank,
+            change: entry.change,
+            playCount: entry.play_count,
+            runningPeak: entry.running_peak,
+            runningWeeks: entry.running_wks,
+          }))} />
+        ) : <GlassCard className="overflow-hidden p-0">
           <table className="mx-7 my-0 w-[calc(100%-56px)] border-collapse">
             <thead>
               <tr>
@@ -202,7 +214,7 @@ export function TrackOverviewSection({ data }: Props) {
               })()}
             </tbody>
           </table>
-        </GlassCard>
+        </GlassCard>}
       </div>
 
       <p className="mt-6 font-serif text-[13px] italic text-muted-foreground">

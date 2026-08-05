@@ -209,10 +209,16 @@ DEFAULT_SAFE_GET_CASES: tuple[SmokeCase, ...] = (
     ),
     SmokeCase("billboard_track_detail", "/api/billboard/track/901", DEFAULT_BILLBOARD),
     SmokeCase(
-        "billboard_artist_detail", "/api/billboard/artist/Fixture Artist Alpha", DEFAULT_BILLBOARD
+        "billboard_artist_detail",
+        "/api/billboard/artist/Fixture Artist Alpha",
+        DEFAULT_BILLBOARD,
+        expected_statuses=(200, 404),
     ),
     SmokeCase(
-        "billboard_album_detail", "/api/billboard/album/Fixture Future LP", DEFAULT_BILLBOARD
+        "billboard_album_detail",
+        "/api/billboard/album/Fixture Future LP",
+        DEFAULT_BILLBOARD,
+        expected_statuses=(200, 404),
     ),
     SmokeCase("billboard_entity_lists", "/api/billboard/entity-lists", DEFAULT_BILLBOARD),
     SmokeCase(

@@ -9,6 +9,9 @@ import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { AnalysisPageHeader } from '@/components/shared/AnalysisPageHeader'
 import { AnalysisSubNav } from '@/components/shared/AnalysisSubNav'
+import { MobilePageHeader } from '@/components/mobile'
+import { MobileYearlyChapterNav } from '@/features/mobile/yearly/MobileYearlyChapterNav'
+import { useViewportMode } from '@/hooks/useViewportMode'
 
 // OfficialWrapped 懒加载
 const OfficialWrapped = lazy(() => import('@/pages/yearly-review/OfficialWrapped').then(m => ({ default: m.OfficialWrapped })))
@@ -78,6 +81,7 @@ function EmptyState({ year }: { year: number }) {
 type TabKey = 'custom' | 'official'
 
 export function YearlyReviewPage() {
+  const isPhone = useViewportMode() === 'phone'
   const [searchParams, setSearchParams] = useSearchParams()
   const [activeTab, setActiveTab] = useState<TabKey>('custom')
   const playYearsQuery = useQuery({
@@ -96,6 +100,7 @@ export function YearlyReviewPage() {
 
   // Per-tab available years
   const displayYears = activeTab === 'custom' ? playYears : wrappedYears
+  const yearOptions = isPhone ? [...displayYears].reverse() : displayYears
 
   // Determine current year: URL param > latest from active tab
   const yearParam = searchParams.get('year')
@@ -117,20 +122,26 @@ export function YearlyReviewPage() {
 
   return (
     <>
-      <AnalysisPageHeader />
-      <AnalysisSubNav />
+      {!isPhone && <AnalysisPageHeader />}
+      {!isPhone && <AnalysisSubNav />}
 
-      <section className="mb-8">
+      {isPhone ? (
+        <MobilePageHeader
+          eyebrow="Yearly Summary"
+          title="年度总结"
+          description="沿着章节回看这一年的年度最爱、时间习惯与音乐人格。"
+        />
+      ) : <section className="mb-8">
         <p className="mb-2 font-sans text-[11px] font-bold uppercase tracking-[1.5px] text-accent-foreground">
           Yearly Summary
         </p>
         <h2 className="font-serif text-[34px] font-bold leading-tight">年度总结</h2>
-      </section>
+      </section>}
 
       {/* 年份选择器 + Tab 导航 */}
-      <div className="flex items-center justify-between mb-8">
-        <div className="flex gap-2">
-          {displayYears.map(y => (
+      <div className={cn('mb-8 flex items-center justify-between', isPhone && 'mobile-yearly-controls')}>
+        <div className="flex max-w-full gap-2 overflow-x-auto pb-1">
+          {yearOptions.map(y => (
             <button
               key={y}
               onClick={() => setSearchParams({ year: String(y) })}
@@ -166,6 +177,8 @@ export function YearlyReviewPage() {
         </div>
       </div>
 
+      {isPhone && activeTab === 'custom' && data && !data.empty && <MobileYearlyChapterNav />}
+
       {/* 内容区域 */}
       <ErrorBoundary>
         {yearsLoading && <LoadingSkeleton />}
@@ -178,8 +191,10 @@ export function YearlyReviewPage() {
 
             {activeTab === 'custom' && data && !data.empty && (
               <>
-                <CustomSummary data={data} />
-                <ShareButton />
+                <div className={cn(isPhone && 'mobile-yearly-story')}>
+                  <CustomSummary data={data} />
+                  <ShareButton />
+                </div>
               </>
             )}
             {activeTab === 'official' && (

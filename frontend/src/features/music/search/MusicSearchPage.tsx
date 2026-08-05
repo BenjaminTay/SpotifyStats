@@ -2,7 +2,10 @@ import { Search } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 
+import { MobilePageHeader } from '@/components/mobile'
 import { useMusicSearch } from '@/hooks/useAnalysis'
+import { useViewportMode } from '@/hooks/useViewportMode'
+import { cn } from '@/lib/utils'
 import type { MusicSearchKind } from '@/types/music-search'
 
 import { MusicSearchResults } from './MusicSearchResults'
@@ -23,13 +26,14 @@ export function MusicSearchPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const qParam = searchParams.get('q') ?? ''
   const kindParam = parseKind(searchParams.get('kind'))
-  const [query, setQuery] = useState(qParam)
+  const [queryState, setQueryState] = useState({ source: qParam, value: qParam })
+  const query = queryState.source === qParam ? queryState.value : qParam
+  const setQuery = (value: string) => setQueryState({ source: qParam, value })
+  const [isComposing, setIsComposing] = useState(false)
+  const isPhone = useViewportMode() === 'phone'
 
   useEffect(() => {
-    setQuery(qParam)
-  }, [qParam])
-
-  useEffect(() => {
+    if (isComposing) return
     const timer = window.setTimeout(() => {
       const trimmed = trimSearchQuery(query)
       if (trimmed === qParam) return
@@ -39,10 +43,11 @@ export function MusicSearchPage() {
       setSearchParams(next, { replace: true })
     }, 250)
     return () => window.clearTimeout(timer)
-  }, [kindParam, qParam, query, setSearchParams])
+  }, [isComposing, kindParam, qParam, query, setSearchParams])
 
   const { data, loading, error } = useMusicSearch(query, kindParam, 5, { includeChart: true })
   const resultQuery = useMemo(() => trimSearchQuery(query), [query])
+  const hasQuery = resultQuery.length > 0
 
   const setKind = (kind: MusicSearchKind | 'all') => {
     const next = new URLSearchParams()
@@ -53,8 +58,16 @@ export function MusicSearchPage() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-[1100px] space-y-6">
-      <section>
+    <div className={cn('mx-auto w-full max-w-[1100px] space-y-6', isPhone && 'mobile-m5-page mobile-music-search-page', isPhone && hasQuery && 'mobile-music-search-active')}>
+      {isPhone ? (
+        !hasQuery && (
+          <MobilePageHeader
+            eyebrow="Music / Search"
+            title="音乐查找"
+            description="搜索本地播放记录里的歌曲、专辑和艺人，直接打开对应详情页。"
+          />
+        )
+      ) : <section>
         <p className="mb-4 font-sans text-[11px] font-bold uppercase tracking-[1.8px] text-accent-foreground">
           Music / Search
         </p>
@@ -68,10 +81,11 @@ export function MusicSearchPage() {
             </p>
           </div>
         </div>
-      </section>
+      </section>}
 
-      <section className="space-y-3" aria-label="音乐查找表单">
-        <div className="flex min-w-0 items-center gap-3 rounded-lg border border-border bg-card px-4 py-3 shadow-sm">
+      <section className={cn('space-y-3', isPhone && 'mobile-music-search-controls')} aria-label="音乐查找表单">
+        {isPhone && hasQuery && <p className="mobile-music-search-caption">在本地音乐库中查找</p>}
+        <div className={cn('flex min-w-0 items-center gap-3 rounded-lg border border-border bg-card px-4 py-3 shadow-sm', isPhone && 'mobile-music-search-input')}>
           <Search className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
           <input
             type="search"
@@ -79,11 +93,16 @@ export function MusicSearchPage() {
             aria-label="搜索歌曲、专辑或艺人"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
+            onCompositionStart={() => setIsComposing(true)}
+            onCompositionEnd={(event) => {
+              setQuery(event.currentTarget.value)
+              setIsComposing(false)
+            }}
             placeholder="输入歌曲、专辑或艺人名称"
             className="h-10 min-w-0 flex-1 bg-transparent text-base outline-none placeholder:text-muted-foreground"
           />
         </div>
-        <div className="flex flex-wrap gap-2" role="tablist" aria-label="音乐查找类型">
+        <div className={cn('flex flex-wrap gap-2', isPhone && 'mobile-music-search-kinds')} role="tablist" aria-label="音乐查找类型">
           {KIND_TABS.map((tab) => {
             const active = (kindParam ?? 'all') === tab.value
             return (
@@ -111,6 +130,7 @@ export function MusicSearchPage() {
         query={resultQuery}
         loading={loading}
         error={error}
+        mobile={isPhone}
       />
     </div>
   )

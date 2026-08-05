@@ -52,6 +52,11 @@ export function ListeningClock({
     }
   }, [])
 
+  const selectHour = useCallback((hour: number) => {
+    setHoveredHour(hour)
+    setTooltipPos({ x: 100, y: 100 })
+  }, [])
+
   const hoveredItem = hoveredHour !== null ? data.find((d) => d.hour === hoveredHour) ?? null : null
 
   return (
@@ -74,9 +79,22 @@ export function ListeningClock({
               fill={colors[0]}
               opacity={isHovered ? 0.95 : 0.12 + intensity * 0.78}
               className="cursor-pointer transition-all duration-150"
+              role="button"
+              tabIndex={0}
+              aria-label={`${h.hour}:00 · ${h.plays.toLocaleString()} ${metricLabel}`}
               onMouseEnter={(e) => handleMouseMove(e, h.hour)}
               onMouseMove={(e) => handleMouseMove(e, h.hour)}
               onMouseLeave={() => setHoveredHour(null)}
+              onClick={() => selectHour(h.hour)}
+              onTouchStart={() => selectHour(h.hour)}
+              onFocus={() => selectHour(h.hour)}
+              onBlur={() => setHoveredHour(null)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault()
+                  selectHour(h.hour)
+                }
+              }}
             />
           )
         })}

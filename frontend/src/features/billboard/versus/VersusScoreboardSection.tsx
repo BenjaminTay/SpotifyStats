@@ -7,6 +7,8 @@ import { GlassCard } from '@/components/shared/GlassCard'
 import type { VersusEntityData, EntityListItem } from '@/types/billboard'
 import type { EntityStatsResponse } from '@/types/analysis'
 import { METRIC_DEFS, METRIC_GROUPS, bestIndices, ENTITY_COLORS, type VersusKind, type MetricGroup } from './versusData'
+import { useViewportMode } from '@/hooks/useViewportMode'
+import { MobileVersusScoreboard, type MobileVersusMetricGroup } from '@/features/mobile/billboard/MobileVersusScoreboard'
 
 interface VersusScoreboardSectionProps {
   entities: VersusEntityData[] | null
@@ -39,6 +41,7 @@ export function VersusScoreboardSection({
   buildDetailLink,
   personalStatsParams,
 }: VersusScoreboardSectionProps) {
+  const isPhone = useViewportMode() === 'phone'
   // ── Personal stats (useQueries, only when versus data is ready) ──
   const personalResults = useQueries({
     queries: queue.map((q) => ({
@@ -154,6 +157,35 @@ export function VersusScoreboardSection({
   const hasPersonal = personalResults.some((r) => r.data)
 
   const detailLinks = queue.map((q) => buildDetailLink(q))
+
+  if (isPhone) {
+    const mobileGroups: MobileVersusMetricGroup[] = Array.from(grouped.entries()).map(([group, items]) => ({
+      label: group,
+      metrics: items.map((def) => {
+        const values = allMetrics.map((metrics) => metrics[def.key])
+        return {
+          label: def.label,
+          description: def.description,
+          values: values.map((value, index) => def.format(value, allMetrics[index])),
+          winners: bestIndices(values, def.higherIsBetter),
+        }
+      }),
+    }))
+    return (
+      <MobileVersusScoreboard
+        entities={entities}
+        detailLinks={detailLinks}
+        groups={mobileGroups}
+        personalMetrics={personalRows.map((row) => ({
+          label: row.label,
+          values: row.values.map(row.fmt),
+          winners: row.winners,
+        }))}
+        wins={wins}
+        personalLoading={personalResults.some((result) => result.isLoading)}
+      />
+    )
+  }
 
   return (
     <div>

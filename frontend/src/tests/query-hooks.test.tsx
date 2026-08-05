@@ -62,6 +62,28 @@ describe('Phase 5 query hook migration', () => {
     expect(result.current.selectedWeek).toBe('2026-05-24')
   })
 
+  it('follows weekly URL history and restores the latest week when the query is removed', async () => {
+    const client = createClient()
+    const weekly = {
+      meta: { all_weeks_desc: ['2026-08-03', '2026-07-27'] },
+      weekly: [],
+      weekly_album: [],
+      weekly_artist: [],
+    }
+    vi.spyOn(api, 'get').mockResolvedValue(weekly)
+
+    const { result, rerender } = renderHook(
+      ({ week }: { week: string | null }) => useBillboardWeekly(week),
+      { wrapper: wrapperFor(client), initialProps: { week: null as string | null } },
+    )
+
+    await waitFor(() => expect(result.current.selectedWeek).toBe('2026-08-03'))
+    rerender({ week: '2026-07-27' })
+    await waitFor(() => expect(result.current.selectedWeek).toBe('2026-07-27'))
+    rerender({ week: null })
+    await waitFor(() => expect(result.current.selectedWeek).toBe('2026-08-03'))
+  })
+
   it('stores settings in TanStack Query cache after the hook loads', async () => {
     const client = createClient()
     const settings = {

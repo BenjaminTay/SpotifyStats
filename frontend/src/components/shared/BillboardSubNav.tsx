@@ -16,7 +16,7 @@ interface BillboardSubNavProps {
 
 export function BillboardSubNav({ active }: BillboardSubNavProps) {
   return (
-    <nav className="flex max-w-full gap-6 overflow-x-auto border-b border-border" role="tablist">
+    <nav className="hidden max-w-full gap-6 overflow-x-auto border-b border-border md:flex" role="tablist">
       {NAV_ITEMS.map((item) => (
         <NavLink
           key={item.to}

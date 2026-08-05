@@ -92,7 +92,7 @@ export function ReportCard({
   if (!report && !artifact && !loading) {
     if (showGenerateAction && onGenerate) {
       return (
-        <div className="rounded-[16px] border border-border bg-card/40 p-6 backdrop-blur-[12px]">
+        <div className="mobile-ai-report-card rounded-[16px] border border-border bg-card/40 p-6 backdrop-blur-[12px]">
           <div className="flex flex-col items-center gap-4 py-12 text-center">
             <div className="space-y-1">
               <h2 className="font-serif text-[22px] font-bold">{title}</h2>
@@ -113,7 +113,7 @@ export function ReportCard({
       )
     }
     return (
-      <div className="rounded-[16px] border border-border bg-card/40 p-6 backdrop-blur-[12px] flex items-center justify-center py-16">
+      <div className="mobile-ai-report-card rounded-[16px] border border-border bg-card/40 p-6 backdrop-blur-[12px] flex items-center justify-center py-16">
         <p className="text-[13px] text-muted-foreground/60">该时间段暂无听歌数据</p>
       </div>
     )
@@ -152,9 +152,9 @@ export function ReportCard({
   }
 
   return (
-    <div className="rounded-[16px] border border-border bg-card/40 p-6 backdrop-blur-[12px]">
+    <div className="mobile-ai-report-card rounded-[16px] border border-border bg-card/40 p-6 backdrop-blur-[12px]">
       {/* Header */}
-      <div className="mb-4 flex items-center justify-between">
+      <div className="mobile-ai-report-header mb-4 flex items-center justify-between">
         <h2 className="font-serif text-[22px] font-bold">{title}</h2>
         <div className="flex items-center gap-2">
           {timeAgo && (

@@ -8,6 +8,10 @@
 
 **技术架构**：FastAPI 后端 + React 前端。项目是本地优先的单用户工具，不提供公共在线 Demo；你的播放历史和账号数据默认只保存在本机。
 
+**移动网页**：`<768px` 使用独立 Phone presentation（Top Bar、Bottom Nav、栏目 Sheet、纵向榜单和触控图表），`768–1023px` 为 Compact，`>=1024px` 保留桌面工作台。手机和 PC 共用路由、API、过滤口径与排名事实；数据导入、元数据治理、凭据和系统维护仍建议在电脑端完成。
+
+**App 化状态**：已完成可安装 PWA 基线（主屏幕图标、standalone、安装引导与不缓存个人数据的离线说明）。手机真实安装仍需要 HTTPS 和可访问的安全后端；路线按 PWA → 安全部署/真机 → Capacitor 推进，详见 [`docs/plans/2026-08-06-appification-pwa-capacitor-plan.md`](docs/plans/2026-08-06-appification-pwa-capacitor-plan.md)。
+
 ## 你可以用它做什么
 
 - **播放统计**：总览仪表盘、播放趋势、听歌时段、歌曲/专辑/艺人排行和播放记录
@@ -65,6 +69,17 @@ npm run dev
 首次启动只会创建或迁移 SQLite 数据库，不会自动导入个人 JSON。打开前端后，进入「设置 → 数据导入」，先运行只读的「导入前检查」，再手动导入 Streaming History 和 Account Data；导入完成后可在同一区域查看「数据健康」报告。检查范围与状态含义见 [`docs/reference/data-import-and-health.md`](docs/reference/data-import-and-health.md)。
 
 浏览器访问 `http://localhost:5173`，API 文档访问 `http://localhost:8000/docs`。
+
+查看手机效果时，可直接把浏览器响应式视口切换到 390×844，或缩窄到 768px 以下；完整发布矩阵可运行：
+
+```bash
+node scripts/frontend_route_smoke.mjs \
+  --base-url http://localhost:5173 \
+  --api-base-url http://127.0.0.1:8000 \
+  --viewport matrix \
+  --max-scroll-overflow 0 \
+  --fail-on-console-warning
+```
 
 ### Docker 部署
 

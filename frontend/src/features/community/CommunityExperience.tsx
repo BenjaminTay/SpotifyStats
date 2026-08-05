@@ -9,6 +9,11 @@ import { FeedToggle } from './FeedToggle'
 import type { FeedTab } from './FeedToggle'
 import { TimeFilter, ALL_PERIOD } from './TimeFilter'
 import type { TimePeriod } from './TimeFilter'
+import { useViewportMode } from '@/hooks/useViewportMode'
+import {
+  MobileCommunityFilterBar,
+  MobileCommunityFilters,
+} from '@/features/mobile/community/MobileCommunityFilters'
 
 // Module-level cache for UI state (permitted by Phase 5 rules)
 let cachedTab: FeedTab = 'highlights'
@@ -18,10 +23,14 @@ export function CommunityExperience() {
   const [activeTab, setActiveTab] = useState<FeedTab>(cachedTab)
   const [period, setPeriod] = useState<TimePeriod>(cachedPeriod)
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [filterOpen, setFilterOpen] = useState(false)
   const [searchInput, setSearchInput] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
   const searchTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
   const chartParams = useCommunityChartParams()
+  const viewportMode = useViewportMode()
+  const isPhone = viewportMode === 'phone'
+  const isCompact = viewportMode === 'compact'
 
   // Debounce search input → search query (300ms)
   const handleSearchChange = useCallback((value: string) => {
@@ -32,6 +41,12 @@ export function CommunityExperience() {
 
   useEffect(() => {
     return () => clearTimeout(searchTimer.current)
+  }, [])
+
+  useEffect(() => {
+    const openExplore = () => setSidebarOpen(true)
+    window.addEventListener('spotify-stats:open-community-explore', openExplore)
+    return () => window.removeEventListener('spotify-stats:open-community-explore', openExplore)
   }, [])
 
   // 精选 = newsworthy post types only, 全部 = no filter
@@ -68,7 +83,7 @@ export function CommunityExperience() {
   return (
     <>
       {/* Hero — same pattern as BillboardPage / NumberOnesPage */}
-      <section className="mb-6">
+      <section className="mb-6 hidden md:block">
         <p className="mb-4 font-sans text-[11px] font-bold uppercase tracking-[1.8px] text-accent-foreground">
           Community / Feed
         </p>
@@ -87,29 +102,50 @@ export function CommunityExperience() {
             onChange={handleTabChange}
             highlightsCount={activeTab === 'highlights' ? meta?.total : undefined}
             allCount={meta?.total_all}
-            rightSlot={
-              <div className="relative w-[calc(100vw-80px)] max-w-full sm:w-[240px]">
-                <svg
-                  className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground"
-                  viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
-                  strokeLinecap="round" strokeLinejoin="round"
-                >
-                  <circle cx="11" cy="11" r="8" />
-                  <line x1="21" y1="21" x2="16.65" y2="16.65" />
-                </svg>
-                <input
-                  type="text"
-                  value={searchInput}
-                  onChange={(e) => handleSearchChange(e.target.value)}
-                  placeholder="搜索帖子、账号、艺人..."
-                  className="w-full pl-9 pr-3 py-1.5 bg-white/[0.04] border border-white/10 rounded-full text-[13px] text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-accent-foreground/40 focus:bg-white/[0.06] transition-colors"
-                />
+            rightSlot={!isPhone ? (
+              <div className="flex items-center gap-2">
+                <div className="relative w-[calc(100vw-160px)] max-w-full sm:w-[240px]">
+                  <svg
+                    className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground"
+                    viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+                    strokeLinecap="round" strokeLinejoin="round"
+                  >
+                    <circle cx="11" cy="11" r="8" />
+                    <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                  </svg>
+                  <input
+                    type="text"
+                    value={searchInput}
+                    onChange={(e) => handleSearchChange(e.target.value)}
+                    placeholder="搜索帖子、账号、艺人..."
+                    className="w-full pl-9 pr-3 py-1.5 bg-white/[0.04] border border-white/10 rounded-full text-[13px] text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-accent-foreground/40 focus:bg-white/[0.06] transition-colors"
+                  />
+                </div>
+                {isCompact && (
+                  <button
+                    type="button"
+                    onClick={() => setSidebarOpen(true)}
+                    className="rounded-full border border-border px-3 py-1.5 text-[12px] font-semibold text-muted-foreground"
+                  >
+                    社区趋势
+                  </button>
+                )}
               </div>
-            }
+            ) : undefined}
           />
 
           {/* Time period filter */}
-          <TimeFilter selected={period} onChange={handlePeriodChange} />
+          {isPhone ? (
+            <div className="border-b border-border/60 py-2.5">
+              <MobileCommunityFilterBar
+                search={searchInput}
+                period={period}
+                onOpen={() => setFilterOpen(true)}
+              />
+            </div>
+          ) : (
+            <TimeFilter selected={period} onChange={handlePeriodChange} />
+          )}
 
           {/* Timeline content */}
           {(() => {
@@ -177,20 +213,6 @@ export function CommunityExperience() {
         </aside>
       </div>
 
-      {/* Mobile: floating button to open sidebar drawer */}
-      <button
-        type="button"
-        onClick={() => setSidebarOpen(true)}
-        className="lg:hidden fixed bottom-6 right-6 z-30 flex items-center justify-center w-12 h-12 rounded-full bg-accent-foreground text-primary-foreground shadow-lg hover:opacity-90 transition-opacity"
-        aria-label="Open sidebar"
-      >
-        <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <line x1="3" y1="12" x2="21" y2="12" />
-          <line x1="3" y1="6" x2="21" y2="6" />
-          <line x1="3" y1="18" x2="21" y2="18" />
-        </svg>
-      </button>
-
       {/* Mobile sidebar drawer */}
       <MobileSidebarDrawer
         posts={posts}
@@ -201,6 +223,15 @@ export function CommunityExperience() {
         latestDebut={trending?.latest_debut}
         open={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
+      />
+
+      <MobileCommunityFilters
+        open={filterOpen}
+        onOpenChange={setFilterOpen}
+        search={searchInput}
+        onSearchChange={handleSearchChange}
+        period={period}
+        onPeriodChange={handlePeriodChange}
       />
     </>
   )

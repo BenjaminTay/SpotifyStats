@@ -41,6 +41,20 @@ npm run build      # 生产构建
 
 详细设计规范见 [`UI_STYLE_GUIDE.md`](./UI_STYLE_GUIDE.md)。新增页面前务必阅读。
 
+### 移动网页
+
+- `<768px` 使用独立 Phone presentation；`768–1023px` 为 Compact；`>=1024px` 使用 Desktop。
+- Phone Shell 由 `MobileTopBar`、五项 `MobileBottomNav` 和栏目 `MobileSectionSwitcher` 构成，Phone/Desktop 重组件互斥挂载。
+- 手机和 PC 共用 Route Container、TanStack Query、URL 状态、过滤指纹和统计事实；Settings 的复杂治理工作台保留桌面端。
+- 本地查看可把浏览器响应式视口设为 390×844；发布前用 `node ../scripts/frontend_route_smoke.mjs --viewport matrix` 运行五档视口门禁。
+
+### PWA / App Mode
+
+- 生产构建会注册 `/sw.js`，Manifest 位于 `/manifest.webmanifest`；开发服务器不注册 Service Worker，避免缓存干扰热更新。
+- 手机 Settings 首页提供安装卡；Chromium 使用 `beforeinstallprompt`，iOS 显示 Safari“添加到主屏幕”说明。
+- Service Worker 只缓存 PWA 壳层和版本化静态资源，禁止缓存 `/api`、`/covers`、OAuth/LLM 凭据或个人统计响应。
+- `npm run build && npm run preview` 可验证 PWA 静态资源；真实手机安装需要 HTTPS 和手机可访问的后端。
+
 ## 目录结构
 
 ```
@@ -48,11 +62,13 @@ src/
 ├── components/
 │   ├── ui/          ← shadcn/ui 组件
 │   ├── charts/      ← 图表组件（ECharts + 纯 DOM，含 RankTrendChart 排名趋势图）
-│   ├── layout/      ← 布局（AppLayout, Masthead, ThemeToggle）
+│   ├── layout/      ← Desktop/Phone Shell（AppLayout, Masthead, MobileTopBar/BottomNav/SectionSwitcher）
+│   ├── mobile/      ← Sheet、实体行、移动图表/全屏、分页和状态原语
 │   └── shared/      ← 共享组件（GlassCard, KpiCard, WeekSelector, ChangeCell, CoverCell, BillboardSubNav 等）
-├── pages/           ← 页面组件
+├── features/        ← Feature-first Experience/Section/Primitives/Data 与移动 presentation
+├── pages/           ← 薄路由容器
 │   └── yearly-review/  ← 年度总结子组件（14 个：HeroSection, PersonalityReveal, TopCharts, GenrePanorama, TimeStory, HourClock, MusicMap, DiscoveryReturns, ListeningDepth, SpecialMoments, MonthlyDrilldown, YearComparison, ShareButton, OfficialWrapped）
-├── hooks/           ← 自定义 hooks（数据获取 + 客户端缓存，含 useYearlyReview 模块级 Map 缓存 + 序列化预取）
+├── hooks/           ← 自定义 hooks（GET 数据统一使用 TanStack Query + queryKeys）
 ├── lib/             ← API 客户端、工具函数、图表色盘、听歌人格主题、曲风地理映射
 └── types/           ← TypeScript 类型定义（dashboard, billboard, analysis, settings, yearly-review）
 ```
@@ -68,6 +84,7 @@ CSS 变量定义在 `src/index.css`：
 
 ## 性能
 
-- 模块级变量缓存 API 响应，页面切换不重复请求
+- GET 数据统一使用 TanStack Query；禁止新增模块级 API 响应缓存
+- Phone/Desktop 的重图表、宽表和长列表互斥挂载，避免同时请求和渲染两套 presentation
 - Dashboard `/full` 端点复用单个 `load_plays()` 调用（后端优化）
 - Billboard `compute_billboard_data()` 有 `@lru_cache` 缓存（后端优化）

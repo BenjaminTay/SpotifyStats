@@ -34,7 +34,7 @@ function PostCardInner({ post }: PostCardProps) {
   }, [navigate, post.id])
 
   return (
-    <article className="flex gap-3 py-3 border-b border-white/10">
+    <article className="mobile-community-post flex gap-3 py-3 border-b border-white/10">
       {/* Left: avatar — links to account profile */}
       <Link
         to={`/community/account/${encodeURIComponent(post.account_handle)}`}

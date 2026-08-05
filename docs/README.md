@@ -14,30 +14,37 @@
 
 ## 活跃文档
 
-### 实现计划 (`plans/`) — 2 个
+### 实现计划 (`plans/`) — 4 个
 
-只保留尚未完成的工作。
+只保留尚未完成的工作，或仍作为现行产品规格和后续迭代依据的完整计划。
 
 | 计划 | 内容 |
 |------|------|
+| [`plans/2026-08-06-appification-pwa-capacitor-plan.md`](plans/2026-08-06-appification-pwa-capacitor-plan.md) | App 化现行路线：PWA 基线、安全部署、真机验收与 Capacitor 决策门 |
+| [`plans/2026-08-05-mobile-web-design-and-implementation-plan.md`](plans/2026-08-05-mobile-web-design-and-implementation-plan.md) | 移动端网页现行产品规格、M0–M7 完成记录、长期架构契约与验收门禁 |
 | [`plans/2026-06-23-playback-records-plan.md`](plans/2026-06-23-playback-records-plan.md) | 播放记录功能规划（尚未实现） |
 | [`plans/2026-06-29-ai-agent-harness-quality-roadmap.md`](plans/2026-06-29-ai-agent-harness-quality-roadmap.md) | AI Agent Harness 质量路线图（持续指引，非单次任务） |
 
-### 设计规格 (`designs/`) — 2 个
+### 设计规格 (`designs/`) — 3 个
 
 只保留仍在活跃迭代的系统的设计。已稳定系统的设计归档到对应开发阶段。
 
 | 设计 | 内容 |
 |------|------|
+| [`designs/2026-08-05-mobile-web-m0-design-freeze.md`](designs/2026-08-05-mobile-web-m0-design-freeze.md) | 移动端 M0 冻结规格：真实基线、路由状态矩阵、Shell 决策、组件状态、六屏交互原型与 M1/M2 原子任务 |
 | [`designs/2026-07-04-ai-yearly-report-editorial-agent-pipeline-design.md`](designs/2026-07-04-ai-yearly-report-editorial-agent-pipeline-design.md) | 现行 Editorial Agent Pipeline 设计 |
 | [`designs/2026-07-04-genre-review-settings-design.md`](designs/2026-07-04-genre-review-settings-design.md) | Genre Review Settings 设计 |
 
-### 报告 (`reports/`) — 7 个
+### 报告 (`reports/`) — 11 个
 
 一次性验证/交付/审计报告。
 
 | 报告 | 内容 |
 |------|------|
+| [`reports/2026-08-06-mobile-web-and-pwa-delivery.md`](reports/2026-08-06-mobile-web-and-pwa-delivery.md) | 移动端 M0–M7 与 PWA Phase A 综合交付：阶段范围、架构契约、全栈门禁、PWA 证据和未完成边界 |
+| [`reports/2026-07-28-billboard-v3-sensitivity-analysis.md`](reports/2026-07-28-billboard-v3-sensitivity-analysis.md) | Billboard V3 年榜积分敏感性分析：竞争强度、个体统治力与纯排名反事实对照 |
+| [`reports/2026-07-16-genre-source-quality-audit.md`](reports/2026-07-16-genre-source-quality-audit.md) | Genre 来源可信度审核：高影响无链接 LLM 来源标签的证据与处置结果 |
+| [`reports/2026-07-15-genre-language-pre-review-execution.md`](reports/2026-07-15-genre-language-pre-review-execution.md) | Genre/Language 首轮预审：分轴解析、覆盖缺口与 suggested 审核队列 |
 | [`reports/2026-06-19-fullstack-verification-performance.md`](reports/2026-06-19-fullstack-verification-performance.md) | 全栈验证与性能收口执行计划 |
 | [`reports/2026-06-19-fullstack-verification.md`](reports/2026-06-19-fullstack-verification.md) | 全栈验证与性能收口最终报告 |
 | [`reports/2026-06-20-fix-branch-follow-up.md`](reports/2026-06-20-fix-branch-follow-up.md) | fix 分支修复验证跟进 |
@@ -102,7 +109,7 @@ AI Observable Agent Orchestrator、Universal Analytical Harness、证据链与�
 
 | 文件 | 内容 |
 |------|------|
-| [`archive/04-ai-agent-harness/2026-06-28-mobile-navigation-orientation.md`](archive/04-ai-agent-harness/2026-06-28-mobile-navigation-orientation.md) | 移动端导航与横竖屏适配 |
+| [`archive/04-ai-agent-harness/2026-06-28-mobile-navigation-orientation.md`](archive/04-ai-agent-harness/2026-06-28-mobile-navigation-orientation.md) | 旧移动导航增量方案；现行移动端设计已由 `plans/2026-08-05-mobile-web-design-and-implementation-plan.md` 取代 |
 | [`archive/04-ai-agent-harness/2026-06-28-ai-observable-agent-orchestrator.md`](archive/04-ai-agent-harness/2026-06-28-ai-observable-agent-orchestrator.md) | AI Observable Agent Orchestrator V2（plan） |
 | [`archive/04-ai-agent-harness/2026-06-28-ai-observable-agent-orchestrator-design.md`](archive/04-ai-agent-harness/2026-06-28-ai-observable-agent-orchestrator-design.md) | AI Observable Agent Orchestrator V2（design） |
 | [`archive/04-ai-agent-harness/2026-06-29-ai-agent-universal-analytical-harness.md`](archive/04-ai-agent-harness/2026-06-29-ai-agent-universal-analytical-harness.md) | 通用分析中间层（plan） |

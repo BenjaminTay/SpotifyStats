@@ -30,13 +30,23 @@ const MouseEvent = {
   mouseReleased: 'mouseReleased',
 }
 
-const VIEWPORT = {
-  width: 1280,
-  height: 900,
-  deviceScaleFactor: 1,
-  mobile: false,
-  userAgent:
-    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126 Safari/537.36',
+const VIEWPORTS = {
+  desktop: {
+    width: 1280,
+    height: 900,
+    deviceScaleFactor: 1,
+    mobile: false,
+    userAgent:
+      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126 Safari/537.36',
+  },
+  mobile: {
+    width: 390,
+    height: 844,
+    deviceScaleFactor: 3,
+    mobile: true,
+    userAgent:
+      'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
+  },
 }
 
 function parseArgs(argv) {
@@ -44,6 +54,7 @@ function parseArgs(argv) {
     baseUrl: DEFAULT_BASE_URL,
     apiBaseUrl: null,
     scenarios: DEFAULT_SCENARIOS,
+    viewport: 'desktop',
     waitMs: DEFAULT_WAIT_MS,
     output: null,
     chrome: null,
@@ -53,6 +64,7 @@ function parseArgs(argv) {
     const arg = argv[i]
     if (arg === '--base-url') args.baseUrl = argv[++i]
     else if (arg === '--api-base-url') args.apiBaseUrl = argv[++i]
+    else if (arg === '--viewport') args.viewport = argv[++i]
     else if (arg === '--scenario' || arg === '--scenarios') {
       args.scenarios = argv[++i].split(',').map((scenario) => scenario.trim()).filter(Boolean)
     } else if (arg === '--wait-ms') args.waitMs = Number(argv[++i])
@@ -68,6 +80,7 @@ function parseArgs(argv) {
 
   if (args.scenarios.length === 0) throw new Error('--scenario must include at least one scenario')
   if (!Number.isFinite(args.waitMs) || args.waitMs < 250) throw new Error('--wait-ms must be at least 250')
+  if (!VIEWPORTS[args.viewport]) throw new Error(`Unsupported viewport: ${args.viewport}`)
   for (const scenario of args.scenarios) {
     if (!SCENARIOS[scenario]) throw new Error(`Unsupported scenario: ${scenario}`)
   }
@@ -82,6 +95,7 @@ function printHelp() {
 Options:
   --base-url <url>        Frontend URL, default ${DEFAULT_BASE_URL}
   --api-base-url <url>    API URL for dynamic fixture discovery, defaults to --base-url
+  --viewport <mode>       desktop or mobile, default desktop
   --scenario <a,b,c>      Comma-separated scenarios, default ${DEFAULT_SCENARIOS.join(',')}
   --wait-ms <ms>          Max wait for route/text assertions, default ${DEFAULT_WAIT_MS}
   --output <path>         Write JSON results to a file
@@ -91,6 +105,8 @@ Scenarios:
   chart-hover-tooltip     Hover an ECharts canvas and require a visible tooltip
   legend-toggle           Click a canvas legend area and require a rendered canvas delta
   datazoom-drag           Switch a rank chart to detail mode and drag the dataZoom slider
+  mobile-tap-tooltip      Tap a mobile listening-clock segment and require its tooltip
+  mobile-fullscreen       Open and close a real mobile fullscreen chart with focus restoration
 `)
 }
 
@@ -247,13 +263,14 @@ async function makeClient(port) {
   return client
 }
 
-async function setupPage(client) {
+async function setupPage(client, viewport) {
   await client.send('Page.enable')
   await client.send('Runtime.enable')
   await client.send('Log.enable')
   await client.send('Network.enable')
-  await client.send('Emulation.setDeviceMetricsOverride', VIEWPORT)
-  await client.send('Emulation.setUserAgentOverride', { userAgent: VIEWPORT.userAgent })
+  await client.send('Emulation.setDeviceMetricsOverride', viewport)
+  await client.send('Emulation.setUserAgentOverride', { userAgent: viewport.userAgent })
+  await client.send('Emulation.setTouchEmulationEnabled', { enabled: viewport.mobile, maxTouchPoints: viewport.mobile ? 5 : 1 })
 }
 
 async function navigate(client, baseUrl, path) {
@@ -357,6 +374,47 @@ async function clickText(client, text, waitMs) {
   `)
   if (!clicked) throw new Error(`Clickable text not found: ${text}`)
   await sleep(Math.min(250, waitMs))
+}
+
+async function clickByAriaLabel(client, label, waitMs) {
+  return waitForCondition(
+    async () => evaluate(client, `
+      (() => {
+        const label = ${JSON.stringify(label)};
+        const el = Array.from(document.querySelectorAll('button, a, [role="button"]'))
+          .find((item) => item.getAttribute('aria-label') === label);
+        if (!el) return null;
+        el.scrollIntoView({ block: 'center', inline: 'center' });
+        el.click();
+        return { path: location.pathname };
+      })();
+    `),
+    waitMs,
+    `Clickable aria-label not found: ${label}`,
+  )
+}
+
+async function waitForSelector(client, selector, timeoutMs) {
+  return waitForCondition(
+    async () => evaluate(client, `
+      (() => {
+        const el = document.querySelector(${JSON.stringify(selector)});
+        if (!el) return null;
+        const rect = el.getBoundingClientRect();
+        return rect.width > 0 && rect.height > 0 ? { path: location.pathname } : null;
+      })();
+    `),
+    timeoutMs,
+    `Expected visible selector: ${selector}`,
+  )
+}
+
+async function waitForSelectorGone(client, selector, timeoutMs) {
+  return waitForCondition(
+    async () => evaluate(client, `document.querySelector(${JSON.stringify(selector)}) ? null : ({ path: location.pathname })`),
+    timeoutMs,
+    `Expected selector to close: ${selector}`,
+  )
 }
 
 async function waitForText(client, text, timeoutMs) {
@@ -492,6 +550,48 @@ async function hoverUntilTooltip(client, canvasIndex, waitMs) {
   throw new Error('ECharts tooltip did not appear after hovering the canvas')
 }
 
+async function tapListeningClockUntilTooltip(client, waitMs) {
+  const target = await waitForCondition(
+    async () => evaluate(client, `
+      (() => {
+        const el = document.querySelector('.mobile-chart-card svg path[role="button"][aria-label]');
+        if (!el) return null;
+        el.scrollIntoView({ block: 'center', inline: 'center' });
+        const rect = el.getBoundingClientRect();
+        if (rect.width <= 0 || rect.height <= 0) return null;
+        return {
+          path: location.pathname,
+          label: el.getAttribute('aria-label'),
+          x: rect.left + rect.width / 2,
+          y: rect.top + rect.height / 2,
+        };
+      })();
+    `),
+    waitMs,
+    'Mobile listening-clock touch target was not ready',
+  )
+  await client.send('Input.dispatchTouchEvent', {
+    type: 'touchStart',
+    touchPoints: [{ x: target.x, y: target.y, radiusX: 8, radiusY: 8, force: 1 }],
+  })
+  await client.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
+  await waitForCondition(
+    async () => evaluate(client, `
+      (() => {
+        const label = ${JSON.stringify(target.label)};
+        const el = Array.from(document.querySelectorAll('.mobile-chart-card div'))
+          .find((item) => (item.innerText || item.textContent || '').trim() === label);
+        if (!el) return null;
+        const rect = el.getBoundingClientRect();
+        return rect.width > 0 && rect.height > 0 ? { path: location.pathname, label } : null;
+      })();
+    `),
+    waitMs,
+    'Mobile chart tooltip did not appear after touch input',
+  )
+  return { tooltip: target.label, pointerType: 'touch', x: target.x, y: target.y }
+}
+
 async function clickCanvasPoint(client, rect, rx, ry) {
   const x = rect.left + rect.width * rx
   const y = rect.top + rect.height * ry
@@ -593,15 +693,49 @@ const SCENARIOS = {
     await waitForCanvasCount(client, 1, scenarioWaitMs)
     return { ...(await dragDataZoomUntilCanvasDelta(client, 0, scenarioWaitMs)), target: target.label }
   },
+
+  'mobile-tap-tooltip': async ({ client, baseUrl, waitMs, viewportName }) => {
+    if (viewportName !== 'mobile') throw new Error('mobile-tap-tooltip requires --viewport mobile')
+    await navigate(client, baseUrl, '/analysis/stats?period=lifetime')
+    await waitForText(client, '听歌时钟', waitMs)
+    return tapListeningClockUntilTooltip(client, waitMs)
+  },
+
+  'mobile-fullscreen': async ({ client, baseUrl, waitMs, viewportName }) => {
+    if (viewportName !== 'mobile') throw new Error('mobile-fullscreen requires --viewport mobile')
+    await navigate(client, baseUrl, '/analysis/stats?period=lifetime')
+    await waitForText(client, '每日播放', waitMs)
+    await clickByAriaLabel(client, '全屏查看每日播放', waitMs)
+    await waitForSelector(client, '[data-mobile-fullscreen="chart"]', waitMs)
+    const opened = await waitForCondition(
+      async () => evaluate(client, `(() => {
+        const dialog = document.querySelector('[data-mobile-fullscreen="chart"]');
+        const canvas = dialog?.querySelector('canvas');
+        return dialog && canvas && document.body.style.overflow === 'hidden'
+          ? { path: location.pathname, canvasCount: dialog.querySelectorAll('canvas').length, bodyOverflow: document.body.style.overflow }
+          : null;
+      })()`),
+      waitMs,
+      'Fullscreen chart did not render a locked interactive canvas',
+    )
+    await clickByAriaLabel(client, '关闭每日播放全屏图表', waitMs)
+    await waitForSelectorGone(client, '[data-mobile-fullscreen="chart"]', waitMs)
+    const restored = await waitForCondition(
+      async () => evaluate(client, `document.activeElement?.getAttribute('aria-label') === '全屏查看每日播放' ? ({ path: location.pathname }) : null`),
+      waitMs,
+      'Fullscreen chart did not restore focus to its trigger',
+    )
+    return { ...opened, focusRestored: Boolean(restored) }
+  },
 }
 
-async function runScenario({ port, baseUrl, apiBaseUrl, scenario, waitMs }) {
+async function runScenario({ port, baseUrl, apiBaseUrl, scenario, waitMs, viewportName }) {
   const client = await makeClient(port)
   const { consoleEntries, pageErrors } = collectConsole(client)
 
   try {
-    await setupPage(client)
-    const evidence = await SCENARIOS[scenario]({ client, baseUrl, apiBaseUrl, waitMs })
+    await setupPage(client, VIEWPORTS[viewportName])
+    const evidence = await SCENARIOS[scenario]({ client, baseUrl, apiBaseUrl, waitMs, viewportName })
     const consoleErrors = consoleEntries.filter((entry) => ['error', 'assert'].includes(entry.level))
     const consoleWarnings = consoleEntries.filter((entry) => ['warning', 'warn'].includes(entry.level))
     const finalState = await pageState(client)
@@ -609,6 +743,7 @@ async function runScenario({ port, baseUrl, apiBaseUrl, scenario, waitMs }) {
 
     return {
       scenario,
+      viewport: viewportName,
       ok: consoleErrors.length === 0 && consoleWarnings.length === 0 && pageErrors.length === 0 && scrollOverflow === 0,
       failures: [
         ...(consoleErrors.length ? [`${consoleErrors.length} console error(s)`] : []),
@@ -635,6 +770,7 @@ async function runScenario({ port, baseUrl, apiBaseUrl, scenario, waitMs }) {
 
     return {
       scenario,
+      viewport: viewportName,
       ok: false,
       failures: [error instanceof Error ? error.message : String(error)],
       finalPath: failureState?.path || null,
@@ -659,13 +795,13 @@ function renderMarkdown(results) {
     '',
     `> Generated: ${new Date().toISOString()}`,
     '',
-    '| Scenario | Status | Final path | Console errors | Warnings | Page errors | Scroll overflow |',
-    '| --- | --- | --- | ---: | ---: | ---: | ---: |',
+    '| Scenario | Viewport | Status | Final path | Console errors | Warnings | Page errors | Scroll overflow |',
+    '| --- | --- | --- | --- | ---: | ---: | ---: | ---: |',
   ]
 
   for (const row of results) {
     lines.push(
-      `| ${row.scenario} | ${row.ok ? 'PASS' : 'FAIL'} | \`${row.finalPath || '-'}\` | ${row.consoleErrorCount} | ${row.consoleWarningCount} | ${row.pageErrorCount} | ${row.scrollOverflow ?? '-'}px |`,
+      `| ${row.scenario} | ${row.viewport} | ${row.ok ? 'PASS' : 'FAIL'} | \`${row.finalPath || '-'}\` | ${row.consoleErrorCount} | ${row.consoleWarningCount} | ${row.pageErrorCount} | ${row.scrollOverflow ?? '-'}px |`,
     )
   }
 
@@ -736,6 +872,7 @@ async function main() {
         apiBaseUrl: args.apiBaseUrl || args.baseUrl,
         scenario,
         waitMs: args.waitMs,
+        viewportName: args.viewport,
       })
       results.push(result)
       process.stderr.write(`${result.ok ? 'PASS' : 'FAIL'}\n`)

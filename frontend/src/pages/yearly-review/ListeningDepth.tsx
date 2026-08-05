@@ -1,5 +1,4 @@
-import { useCallback } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { GlassCard } from '@/components/shared/GlassCard'
 import { displayName } from '@/lib/chinese'
 import type { ListeningDepth as ListeningDepthType } from '@/types/yearly-review'
@@ -19,25 +18,13 @@ function CoverImage({ url, alt }: { url: string; alt: string }) {
 }
 
 function ArtistLink({ artistName }: { artistName: string }) {
-  const navigate = useNavigate()
-  const handleClick = useCallback(
-    (e: React.MouseEvent) => {
-      e.preventDefault()
-      e.stopPropagation()
-      navigate(`/music/artists/${encodeURIComponent(artistName)}`)
-    },
-    [artistName, navigate],
-  )
   return (
-    <span
-      role="link"
-      tabIndex={0}
-      onClick={handleClick}
-      onKeyDown={(e) => { if (e.key === 'Enter') handleClick(e as unknown as React.MouseEvent) }}
+    <Link
+      to={`/music/artists/${encodeURIComponent(artistName)}`}
       className="font-sans text-[12px] text-muted-foreground truncate transition-colors hover:text-accent-foreground cursor-pointer block"
     >
       {displayName(artistName)}
-    </span>
+    </Link>
   )
 }
 
@@ -89,22 +76,24 @@ export function ListeningDepth({ listeningDepth }: ListeningDepthProps) {
             </GlassCard>
           ) : (
             listeningDepth.album_completion.map((album) => (
-              <Link key={album.name + album.artist_name} to={`/music/albums/${encodeURIComponent(album.name)}?artist=${encodeURIComponent(album.artist_name)}`}>
-                <GlassCard className="p-4 flex items-center gap-3 group hover:border-accent-foreground/20 transition-colors">
-                  <CoverImage url={album.cover_url} alt={album.name} />
-                  <div className="min-w-0 flex-1">
-                    <p className="font-sans text-[14px] font-semibold truncate group-hover:text-accent-foreground transition-colors">{displayName(album.name)}</p>
-                    <ArtistLink artistName={album.artist_name} />
-                    <div className="mt-1.5 h-1.5 bg-muted rounded-full overflow-hidden">
-                      <div
-                        className="h-full rounded-full bg-green-500 dark:bg-green-400 transition-all duration-700"
-                        style={{ width: `${album.completion_pct}%` }}
-                      />
-                    </div>
-                    <span className="font-sans text-[11px] text-muted-foreground tabular-nums">{album.completion_pct}% 完成</span>
+              <GlassCard key={album.name + album.artist_name} className="p-4 flex items-center gap-3 group hover:border-accent-foreground/20 transition-colors">
+                <Link to={`/music/albums/${encodeURIComponent(album.name)}?artist=${encodeURIComponent(album.artist_name)}`} aria-label={`查看专辑 ${displayName(album.name)}`}>
+                  <CoverImage url={album.cover_url} alt="" />
+                </Link>
+                <div className="min-w-0 flex-1">
+                  <Link to={`/music/albums/${encodeURIComponent(album.name)}?artist=${encodeURIComponent(album.artist_name)}`} className="font-sans text-[14px] font-semibold truncate group-hover:text-accent-foreground transition-colors block">
+                    {displayName(album.name)}
+                  </Link>
+                  <ArtistLink artistName={album.artist_name} />
+                  <div className="mt-1.5 h-1.5 bg-muted rounded-full overflow-hidden">
+                    <div
+                      className="h-full rounded-full bg-green-500 dark:bg-green-400 transition-all duration-700"
+                      style={{ width: `${album.completion_pct}%` }}
+                    />
                   </div>
-                </GlassCard>
-              </Link>
+                  <span className="font-sans text-[11px] text-muted-foreground tabular-nums">{album.completion_pct}% 完成</span>
+                </div>
+              </GlassCard>
             ))
           )}
         </div>

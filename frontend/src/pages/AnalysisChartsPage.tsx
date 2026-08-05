@@ -5,6 +5,8 @@ import { GlassCard } from '@/components/shared/GlassCard'
 import { PersonalRankTable } from '@/components/shared/StatsTables'
 import { Skeleton } from '@/components/ui/skeleton'
 import { analysisApi, useAnalysisFilters, useApiData } from '@/hooks/useAnalysis'
+import { MobilePersonalRankList } from '@/features/mobile/analysis/MobilePersonalRankList'
+import { useViewportMode } from '@/hooks/useViewportMode'
 
 const ENTITY_TITLE = {
   track: '歌曲榜',
@@ -13,6 +15,7 @@ const ENTITY_TITLE = {
 }
 
 export function AnalysisChartsPage() {
+  const isPhone = useViewportMode() === 'phone'
   const [searchQuery, setSearchQuery] = useState('')
   const { filters, loading: filtersLoading } = useAnalysisFilters()
   const { metric, entity, setQuery, apiParams } = useAnalysisQueryState('track')
@@ -27,6 +30,24 @@ export function AnalysisChartsPage() {
     [filters, apiParams, entity, metric],
     !filtersLoading,
   )
+
+  if (isPhone) {
+    return (
+      <MobilePersonalRankList
+        data={data}
+        loading={loading}
+        entity={entity}
+        metric={metric}
+        searchQuery={searchQuery}
+        onSearchChange={setSearchQuery}
+        onEntityChange={(next) => {
+          setSearchQuery('')
+          setQuery({ entity: next })
+        }}
+        onMetricChange={(next) => setQuery({ metric: next })}
+      />
+    )
+  }
 
   return (
     <div className="space-y-7">

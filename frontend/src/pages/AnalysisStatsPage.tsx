@@ -6,6 +6,9 @@ import { KpiCard } from '@/components/shared/KpiCard'
 import { RecentPlaysSection } from '@/components/shared/RecentPlaysSection'
 import { Skeleton } from '@/components/ui/skeleton'
 import { analysisApi, useAnalysisFilters, useApiData } from '@/hooks/useAnalysis'
+import { MobileAnalysisStats } from '@/features/mobile/analysis/MobileAnalysisStats'
+import { MobileStatePanel } from '@/components/mobile'
+import { useViewportMode } from '@/hooks/useViewportMode'
 
 function fmt(n: number): string {
   return new Intl.NumberFormat('zh-CN').format(n)
@@ -16,14 +19,31 @@ function fmtHours(n: number): string {
 }
 
 export function AnalysisStatsPage() {
+  const isPhone = useViewportMode() === 'phone'
   const { filters, loading: filtersLoading } = useAnalysisFilters()
   const { metric, setQuery, apiParams } = useAnalysisQueryState()
   const { data, loading } = useApiData(() => analysisApi.stats(filters, apiParams), [filters, apiParams], !filtersLoading)
 
-  if (loading || !data) return <Skeleton className="h-[640px] rounded-[16px]" />
+  if (loading || !data) return isPhone ? <MobileStatePanel variant="loading" /> : <Skeleton className="h-[640px] rounded-[16px]" />
 
   const metricKey = metric === 'plays' ? 'plays' : 'hours'
   const metricLabel = metric === 'plays' ? '次' : '小时'
+
+  if (isPhone) {
+    return (
+      <MobileAnalysisStats
+        data={data}
+        metric={metric}
+        onMetricChange={(next) => setQuery({ metric: next })}
+        filters={filters}
+        apiParams={apiParams}
+        fetchPage={(page, limit, search, date) =>
+          analysisApi.plays(filters, { ...apiParams, limit, offset: (page - 1) * limit, search, date })
+        }
+        fetchPlayDates={() => analysisApi.playDates(filters, apiParams)}
+      />
+    )
+  }
 
   return (
     <div className="space-y-8">

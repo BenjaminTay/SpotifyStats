@@ -348,7 +348,7 @@ describe('Phase 5 architecture guardrails', () => {
   })
 
   it('keeps playback analysis tab rows vertically stable across child pages', () => {
-    expect(analysisPageHeaderSource).toContain('<section className="mb-6">')
+    expect(analysisPageHeaderSource).toContain('<section className="mb-6 hidden md:block">')
     expect(analysisSubNavSource).toContain('min-h-9')
     expect(analysisSubNavSource).toContain('shrink-0 pb-2.5 font-sans text-[13px] font-medium border-b-2 transition-colors -mb-[1px]')
     expect(analysisSubNavSource).toContain('-translate-y-[3px]')

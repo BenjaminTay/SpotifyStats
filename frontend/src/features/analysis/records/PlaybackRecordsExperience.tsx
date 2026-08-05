@@ -2,6 +2,8 @@
 
 import { Suspense, lazy, useState } from 'react'
 import { cn } from '@/lib/utils'
+import { MobileSectionSwitcher } from '@/components/mobile'
+import { useViewportMode } from '@/hooks/useViewportMode'
 import type { PlaybackRecordsData } from '@/types/analysis'
 import { SectionFallback } from './PlaybackRecordsPrimitives'
 import { PLAYBACK_RECORD_SECTIONS, type PlaybackRecordSectionKey } from './recordsArchitecture'
@@ -17,12 +19,23 @@ interface Props {
 }
 
 export function PlaybackRecordsExperience({ data }: Props) {
+  const isPhone = useViewportMode() === 'phone'
   const [activeSection, setActiveSection] = useState<PlaybackRecordSectionKey>('highlights')
 
   return (
     <div>
-      {/* Section tabs — matches Billboard RecordsPage tab style */}
-      <nav className="mb-8 flex gap-7 border-b border-border" role="tablist" aria-label="播放记录分类">
+      {isPhone ? (
+        <MobileSectionSwitcher
+          value={activeSection}
+          options={PLAYBACK_RECORD_SECTIONS.map((section) => ({
+            value: section.key,
+            label: section.label,
+            description: `${section.modules.length} 组纪录`,
+          }))}
+          onChange={setActiveSection}
+          title="选择播放记录栏目"
+        />
+      ) : <nav className="mb-8 flex gap-7 border-b border-border" role="tablist" aria-label="播放记录分类">
         {PLAYBACK_RECORD_SECTIONS.map((s) => (
           <button
             key={s.key}
@@ -39,9 +52,10 @@ export function PlaybackRecordsExperience({ data }: Props) {
             {s.label}
           </button>
         ))}
-      </nav>
+      </nav>}
 
       {/* Section content */}
+      <div className={cn(isPhone && 'mobile-records-stack')}>
       <Suspense fallback={<SectionFallback />}>
         {activeSection === 'highlights' && <ObsessionSection data={data.obsession} reigns={data.reigns} behavior={data.behavior} />}
         {activeSection === 'reigns' && <ReignsSection data={data.reigns} />}
@@ -49,6 +63,7 @@ export function PlaybackRecordsExperience({ data }: Props) {
         {activeSection === 'timePatterns' && <TimePatternsSection data={data.time_patterns} />}
         {activeSection === 'discovery' && <DiscoverySection data={data.discovery} />}
       </Suspense>
+      </div>
     </div>
   )
 }

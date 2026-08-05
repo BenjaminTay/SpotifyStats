@@ -2,6 +2,7 @@ import { ArrowUpRight } from 'lucide-react'
 import { Link } from 'react-router-dom'
 
 import { CoverCell } from '@/components/shared/CoverCell'
+import { MobileEntityRow } from '@/components/mobile'
 import { cn } from '@/lib/utils'
 import type { MusicSearchKind, MusicSearchResponse, MusicSearchResult } from '@/types/music-search'
 
@@ -21,6 +22,7 @@ type MusicSearchResultsProps = {
   activeHref?: string | null
   onActiveHrefChange?: (href: string) => void
   onResultClick?: () => void
+  mobile?: boolean
 }
 
 const GROUP_PICKERS: Array<{
@@ -97,6 +99,7 @@ export function MusicSearchResults({
   activeHref = null,
   onActiveHrefChange,
   onResultClick,
+  mobile = false,
 }: MusicSearchResultsProps) {
   if (!hasSearchQuery(query)) {
     return (
@@ -168,6 +171,7 @@ export function MusicSearchResults({
           activeHref={activeHref}
           onActiveHrefChange={onActiveHrefChange}
           onResultClick={onResultClick}
+          mobile={mobile}
         />
       ))}
     </div>
@@ -181,6 +185,7 @@ type ResultGroupProps = {
   activeHref?: string | null
   onActiveHrefChange?: (href: string) => void
   onResultClick?: () => void
+  mobile: boolean
 }
 
 function ResultGroup({
@@ -190,7 +195,42 @@ function ResultGroup({
   activeHref,
   onActiveHrefChange,
   onResultClick,
+  mobile,
 }: ResultGroupProps) {
+  if (mobile) {
+    return (
+      <section aria-label={label} className="mobile-music-search-group">
+        <header>
+          <h2>{label.replace('结果', '')}</h2>
+          <span>{items.length}</span>
+        </header>
+        <div className="mobile-rank-rows">
+          {items.map((item) => {
+            const chart = item.chart
+            return (
+              <MobileEntityRow
+                key={`${item.kind}:${item.href}`}
+                entityType={item.kind}
+                title={item.label}
+                subtitle={visibleSubtitle(item) ?? undefined}
+                coverUrl={item.cover_url}
+                metric={formatPlayEvents(item.play_events)}
+                metricLabel="播放"
+                facts={chart?.peak_position && chart.weeks_on_chart ? [
+                  { label: 'PK', value: `#${chart.peak_position}` },
+                  { label: '在榜', value: `${chart.weeks_on_chart}周` },
+                ] : []}
+                badges={chart?.power_rank ? [`走势 #${chart.power_rank}`] : []}
+                to={item.href}
+                onClick={onResultClick}
+              />
+            )
+          })}
+        </div>
+      </section>
+    )
+  }
+
   return (
     <section
       aria-label={label}

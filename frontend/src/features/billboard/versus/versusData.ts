@@ -2,7 +2,7 @@ import type { VersusRankPoint } from '@/types/billboard'
 
 export type VersusKind = 'track' | 'album' | 'artist'
 
-export const MAX_QUEUE_SIZE = 5
+export const MAX_QUEUE_SIZE = 4
 
 export const KIND_TABS: { key: VersusKind; label: string }[] = [
   { key: 'track', label: '单曲' },
@@ -10,7 +10,7 @@ export const KIND_TABS: { key: VersusKind; label: string }[] = [
   { key: 'artist', label: '艺人' },
 ]
 
-/** Color palette for up to 5 entities in comparison charts/tables */
+/** Color palette for the 2–4 entities supported by the comparison flow. */
 export const ENTITY_COLORS = ['#D4836F', '#4A9C8C', '#7B9EC7', '#D4A857', '#9B7EC4']
 
 export type MetricGroup = '榜单成绩' | '单曲成绩' | '专辑成绩' | '其他'

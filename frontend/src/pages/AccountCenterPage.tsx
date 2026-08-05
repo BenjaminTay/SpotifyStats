@@ -8,6 +8,8 @@ import { AnalysisPageHeader } from '@/components/shared/AnalysisPageHeader'
 import { AnalysisSubNav } from '@/components/shared/AnalysisSubNav'
 import { AlertCircle } from 'lucide-react'
 import type { AccountSummary, ProfileData } from '@/types/account'
+import { useViewportMode } from '@/hooks/useViewportMode'
+import { MobileAccountHero } from '@/features/mobile/account/MobileAccountHero'
 
 const HabitsTab = lazy(() =>
   import('@/features/account/habits/HabitsTab').then((m) => ({ default: m.HabitsTab })),
@@ -31,6 +33,7 @@ function AccountHero({
   profileData: ProfileData | null
   collectionInsights?: AccountSummary['collection_insights'] | null
 }) {
+  const isPhone = useViewportMode() === 'phone'
   const profile = profileData?.profile
   const displayName = profile?.identity_displayName || profile?.identity_firstName || 'Spotify 用户'
   const imageUrl = profile?.identity_imageUrl
@@ -54,6 +57,22 @@ function AccountHero({
   const personality = collectionInsights?.available
     ? collectionInsights.personality
     : null
+
+  if (isPhone) {
+    return (
+      <MobileAccountHero
+        displayName={displayName}
+        imageUrl={imageUrl}
+        username={username}
+        country={country}
+        listeningYears={listeningYears}
+        startYear={startYear}
+        totalPlays={totalPlays}
+        followsCount={followsCount}
+        personality={personality}
+      />
+    )
+  }
 
   return (
     <>
@@ -230,7 +249,7 @@ function AccountPageShell({ children }: { children: ReactNode }) {
     <>
       <AnalysisPageHeader />
       <AnalysisSubNav />
-      <div className="mx-auto max-w-[900px] space-y-6 px-6 pb-12">{children}</div>
+      <div className="mx-auto max-w-[900px] space-y-6 px-0 pb-12 md:px-6">{children}</div>
     </>
   )
 }
@@ -276,11 +295,13 @@ export function AccountCenterPage() {
       <AccountHero profileData={profileForHero} collectionInsights={data.collection_insights} />
 
       {/* Tabs */}
-      <div className="flex gap-7 border-b border-border">
+      <div className="mobile-account-tabs flex gap-7 border-b border-border" role="tablist" aria-label="账号内容">
         {TABS.map((tab) => (
           <button
             key={tab.key}
             onClick={() => setActiveTab(tab.key)}
+            role="tab"
+            aria-selected={activeTab === tab.key}
             className={cn(
               '-mb-px cursor-pointer border-none bg-transparent px-0 pb-2.5 font-sans text-[13px] font-medium transition-[color,border] duration-200',
               'border-b-2',
@@ -295,7 +316,7 @@ export function AccountCenterPage() {
       </div>
 
       {/* Tab content */}
-      <div>
+      <div className="mobile-account-content">
         {activeTab === 'collection' && data.collection_insights?.available && (
           <CollectionTab insights={data.collection_insights} />
         )}

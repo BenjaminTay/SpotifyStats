@@ -311,8 +311,11 @@ if [ "$RUN_RESOURCE_SNAPSHOT" = "1" ]; then
 fi
 
 run node scripts/frontend_route_smoke.mjs --base-url "$FRONTEND_URL" --viewport both --max-scroll-overflow 0 --fail-on-console-warning --include-detail-routes
+run node scripts/frontend_route_smoke.mjs --base-url "$FRONTEND_URL" --routes /,/analysis/stats,/yearly-review,/billboard/records,/music/search,/settings --viewport matrix --wait-ms 3000 --max-scroll-overflow 0 --fail-on-console-warning
 run node scripts/frontend_interaction_smoke.mjs --base-url "$FRONTEND_URL"
+run node scripts/frontend_interaction_smoke.mjs --base-url "$FRONTEND_URL" --viewport mobile --scenarios mobile-bottom-navigation,mobile-section-sheet,mobile-time-filter
 run node scripts/frontend_chart_interaction_smoke.mjs --base-url "$FRONTEND_URL"
+run node scripts/frontend_chart_interaction_smoke.mjs --base-url "$FRONTEND_URL" --viewport mobile --scenarios mobile-tap-tooltip,mobile-fullscreen
 run node scripts/frontend_control_inventory_smoke.mjs --base-url "$FRONTEND_URL" --viewport both --include-detail-routes
 run node scripts/frontend_long_list_smoke.mjs --base-url "$FRONTEND_URL"
 
@@ -329,8 +332,11 @@ fi
 
 if [ -n "$PREVIEW_URL" ]; then
   run node scripts/frontend_route_smoke.mjs --base-url "$PREVIEW_URL" --api-base-url "$PREVIEW_API_URL" --viewport both --max-scroll-overflow 0 --fail-on-console-warning --include-detail-routes
+  run node scripts/frontend_route_smoke.mjs --base-url "$PREVIEW_URL" --api-base-url "$PREVIEW_API_URL" --routes /,/analysis/stats,/yearly-review,/billboard/records,/music/search,/settings --viewport matrix --wait-ms 3000 --max-scroll-overflow 0 --fail-on-console-warning
   run node scripts/frontend_interaction_smoke.mjs --base-url "$PREVIEW_URL" --api-base-url "$PREVIEW_API_URL"
+  run node scripts/frontend_interaction_smoke.mjs --base-url "$PREVIEW_URL" --api-base-url "$PREVIEW_API_URL" --viewport mobile --scenarios mobile-bottom-navigation,mobile-section-sheet,mobile-time-filter
   run node scripts/frontend_chart_interaction_smoke.mjs --base-url "$PREVIEW_URL" --api-base-url "$PREVIEW_API_URL"
+  run node scripts/frontend_chart_interaction_smoke.mjs --base-url "$PREVIEW_URL" --api-base-url "$PREVIEW_API_URL" --viewport mobile --scenarios mobile-tap-tooltip,mobile-fullscreen
   run node scripts/frontend_control_inventory_smoke.mjs --base-url "$PREVIEW_URL" --api-base-url "$PREVIEW_API_URL" --viewport both --include-detail-routes
   run node scripts/frontend_long_list_smoke.mjs --base-url "$PREVIEW_URL" --api-base-url "$PREVIEW_API_URL"
   if [ "$RUN_CROSS_BROWSER" = "1" ]; then

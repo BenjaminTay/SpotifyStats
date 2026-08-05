@@ -1,10 +1,12 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react'
 import { CoverCell } from '@/components/shared/CoverCell'
 import { ArtistLinks } from '@/components/shared/ArtistLinks'
 import { GlassCard } from '@/components/shared/GlassCard'
 import { displayName } from '@/lib/chinese'
+import { MobileRankList } from '@/components/mobile'
+import { useViewportMode } from '@/hooks/useViewportMode'
 import {
   KpiStrip,
   PlaysCell,
@@ -47,13 +49,57 @@ export function MusicTracksSection({
   info: TrackInfo
   tracks: TrackEntry[]
 }) {
-  const [page, setPage] = useState(1)
-  const totalPages = Math.max(1, Math.ceil(tracks.length / PAGE_SIZE))
+  const isPhone = useViewportMode() === 'phone'
+  const pageSize = isPhone ? 20 : PAGE_SIZE
+  const [pageState, setPageState] = useState({ source: tracks, page: 1 })
+  const page = pageState.source === tracks ? pageState.page : 1
+  const setPage = (next: number | ((page: number) => number)) => {
+    setPageState((current) => {
+      const currentPage = current.source === tracks ? current.page : 1
+      return { source: tracks, page: typeof next === 'function' ? next(currentPage) : next }
+    })
+  }
+  const totalPages = Math.max(1, Math.ceil(tracks.length / pageSize))
   const safePage = Math.min(page, totalPages)
 
-  useEffect(() => { setPage(1) }, [tracks])
+  const paged = tracks.slice((safePage - 1) * pageSize, safePage * pageSize)
+  if (isPhone) {
+    return (
+      <div className="mobile-detail-entity-section">
+        <KpiStrip
+          items={[
+            { label: '入榜曲目', value: formatNumber(info.total_tracks) },
+            { label: '#1 曲目', value: formatNumber(info.top1), accent: info.top1 > 0 },
+            { label: 'Top 10', value: formatNumber(info.top10) },
+            { label: '冠军周数', value: formatNumber(info.weeks_at_no1), accent: info.weeks_at_no1 > 0 },
+          ]}
+        />
+        <MobileRankList
+          title="单曲成绩"
+          eyebrow="Tracks / Chart"
+          rows={paged.map((track) => ({
+            entityType: 'track' as const,
+            title: displayName(track.track_name),
+            subtitle: (track.artist_names?.length ? track.artist_names : [artistName]).map(displayName).join(' · '),
+            rank: track.power_rank ?? undefined,
+            coverUrl: track.cover_url,
+            metric: `PK #${track.peak_position}`,
+            metricLabel: '最高排名',
+            facts: [
+              { label: '在榜', value: `${track.weeks_on_chart}周` },
+              { label: '走势', value: track.power_rank ? `#${track.power_rank}` : '—' },
+            ],
+            badges: [`${formatNumber(track.total_chart_plays)} 次上榜播放`],
+            to: `/music/tracks/${track.track_id}`,
+          }))}
+          page={safePage}
+          pageCount={totalPages}
+          onPageChange={totalPages > 1 ? (nextPage) => setPage(nextPage) : undefined}
+        />
+      </div>
+    )
+  }
 
-  const paged = tracks.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE)
   return (
     <div className="mb-8">
       <KpiStrip
@@ -183,7 +229,7 @@ export function MusicTracksSection({
           {totalPages > 1 && (
             <div className="flex items-center justify-between border-t border-border px-7 py-3">
               <span className="font-sans text-[12px] text-muted-foreground tabular-nums">
-                显示 {(safePage - 1) * PAGE_SIZE + 1}-{Math.min(safePage * PAGE_SIZE, tracks.length)} / 总数 {tracks.length} 条
+                显示 {(safePage - 1) * pageSize + 1}-{Math.min(safePage * pageSize, tracks.length)} / 总数 {tracks.length} 条
               </span>
               <div className="flex items-center gap-1">
                 <span className="mr-2 font-sans text-[12px] text-muted-foreground tabular-nums">

@@ -53,7 +53,7 @@ def test_frontend_interaction_smoke_script_covers_core_non_destructive_flows():
     assert "数据导入" in source
     assert "'串流数据'" in source
     assert "榜单参数" in source
-    assert "版本合并" in source
+    assert "归并与版本" in source
     assert "DATA & DISPLAY" not in source
     assert "DATA IMPORT" not in source
     assert "BILLBOARD PARAMETERS" not in source

@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom'
 import { ArrowLeft, Settings2 } from 'lucide-react'
-import type { AlbumDetailResponse, ArtistDetailResponse } from '@/types/billboard'
+import type { AlbumDetailResponse, ArtistDetailResponse, TrackDetailResponse } from '@/types/billboard'
 import { displayName } from '@/lib/chinese'
 import { cn } from '@/lib/utils'
 import { formatAlbumKind, formatArtistFollowers } from './MusicDetailFormatters'
@@ -24,6 +24,80 @@ function formatAlbumReleaseDate(iso: string): string {
   const mi = parseInt(m) - 1
   if (mi < 0 || mi >= 12) return iso
   return `${parseInt(d)} ${months[mi]} ${y}`
+}
+
+function formatTrackDuration(ms: number): string {
+  const totalSec = Math.floor(ms / 1000)
+  return `${Math.floor(totalSec / 60)}:${String(totalSec % 60).padStart(2, '0')}`
+}
+
+export function TrackDetailHero({
+  data,
+  trackId,
+  onBack,
+}: {
+  data: TrackDetailResponse
+  trackId: string
+  onBack: () => void
+}) {
+  const artists = data.artist_names?.length ? data.artist_names : [data.artist_name]
+  return (
+    <section className="mb-6">
+      <button
+        onClick={onBack}
+        className="mb-4 inline-flex items-center gap-1.5 font-sans text-[11px] font-bold uppercase tracking-[1.8px] text-muted-foreground transition-colors hover:text-accent-foreground"
+      >
+        <ArrowLeft className="h-3 w-3" />
+        Music / 单曲详情
+      </button>
+      <div className="flex min-w-0 flex-col gap-4 sm:flex-row sm:items-start sm:gap-6">
+        {data.cover_url && (
+          <img src={data.cover_url} alt={data.track_name} className="h-[120px] w-[120px] flex-shrink-0 rounded-[12px] object-cover shadow-lg" />
+        )}
+        <div className="min-w-0 max-w-full flex-1">
+          <div className="flex min-w-0 items-start justify-between gap-3">
+            <h1 className="min-w-0 break-words font-serif text-[44px] font-bold leading-[1.06] tracking-normal">
+              {displayName(data.track_name)}
+            </h1>
+            <Link
+              aria-label={`编辑 ${data.track_name} 的曲目信息`}
+              title="编辑曲目信息"
+              to={`/settings?metadata=track-credits&track_id=${encodeURIComponent(trackId)}&return_to=${encodeURIComponent(`/music/tracks/${trackId}`)}#music-metadata-management`}
+              className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-border px-2.5 text-[11px] font-semibold text-muted-foreground transition hover:border-accent-foreground/40 hover:text-foreground"
+            >
+              <Settings2 className="size-3.5" />
+              <span className="hidden md:inline">编辑</span>
+            </Link>
+          </div>
+          <p className="mt-2 font-sans text-[17px] text-muted-foreground">
+            {artists.map((name, index) => (
+              <span key={name}>
+                <Link to={`/music/artists/${encodeURIComponent(name)}`} className="transition-colors hover:text-accent-foreground">
+                  {displayName(name)}
+                </Link>
+                {index < artists.length - 1 && <span className="text-muted-foreground/40"> · </span>}
+              </span>
+            ))}
+          </p>
+          {data.meta && (
+            <p className="mt-1 break-words font-sans text-[14px] text-muted-foreground">
+              {data.meta.spotify_album_name && (
+                <Link
+                  to={`/music/albums/${encodeURIComponent(data.meta.spotify_album_name)}?artist=${encodeURIComponent(data.primary_artist_name ?? artists[0] ?? data.artist_name)}`}
+                  className="transition-colors hover:text-accent-foreground"
+                >
+                  {displayName(data.meta.spotify_album_name)}
+                </Link>
+              )}
+              {data.meta.track_number ? ` · Track ${data.meta.track_number}` : ''}
+              {data.meta.duration_ms ? ` · ${formatTrackDuration(data.meta.duration_ms)}` : ''}
+              {data.meta.explicit ? ' · 🅴 Explicit' : ''}
+            </p>
+          )}
+        </div>
+      </div>
+    </section>
+  )
 }
 
 export type MusicDetailTabOption<T extends string> = {

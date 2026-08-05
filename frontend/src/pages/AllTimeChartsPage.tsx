@@ -32,6 +32,8 @@ import { useBillboardAllTime } from '@/hooks/useBillboard'
 import { useAnalysisFilters } from '@/hooks/useAnalysis'
 import { buildBillboardContextParams } from '@/features/billboard/billboardContext'
 import { cn } from '@/lib/utils'
+import { useViewportMode } from '@/hooks/useViewportMode'
+import { MobileAllTime } from '@/features/mobile/billboard/MobileAllTime'
 
 let cachedEntityTab: EntityTab = 'tracks'
 let cachedPeakFilter: PeakFilter = 'all'
@@ -74,6 +76,7 @@ function ErrorState({ error, refetch }: { error: string; refetch: () => void }) 
 }
 
 export function AllTimeChartsPage() {
+  const isPhone = useViewportMode() === 'phone'
   const [searchParams, setSearchParams] = useSearchParams()
   const mergeLevel = Number(searchParams.get('merge_level') ?? getDefaultMergeLevel())
   const searchQuery = searchParams.get('q') ?? ''
@@ -157,6 +160,34 @@ export function AllTimeChartsPage() {
   if (loading || filtersLoading) return <SkeletonBlock />
   if (error) return <ErrorState error={error} refetch={refetch} />
   if (!data) return null
+
+  if (isPhone) {
+    return (
+      <MobileAllTime
+        activeTab={activeTab}
+        rows={displayRows.rows}
+        total={displayRows.total}
+        searchQuery={searchQuery}
+        peakFilter={peakFilter}
+        sortKey={sortKey}
+        sortDir={sortDir}
+        visibleColumnIds={visibleColumnsByTab[activeTab]}
+        page={page}
+        pageSize={20}
+        onTabChange={(tab) => {
+          cachedEntityTab = tab
+          setActiveTab(tab)
+          setPage(1)
+          updateSearchQuery('')
+        }}
+        onSearchChange={updateSearchQuery}
+        onPeakFilterChange={(filter) => { setPeakFilter(filter); setPage(1) }}
+        onSortChange={handleColumnClick}
+        onVisibleColumnsChange={updateVisibleColumns}
+        onPageChange={setPage}
+      />
+    )
+  }
 
   return (
     <>

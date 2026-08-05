@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 
 import { BillboardSubNav } from '@/components/shared/BillboardSubNav'
 import { useBillboardAllTime } from '@/hooks/useBillboard'
@@ -14,14 +14,14 @@ import {
   filterNumberOnesByYear,
   type SubTabKey,
 } from './numberOnesData'
-
-let cachedSubTab: SubTabKey = 'tracks'
-let cachedYear = 0
+import { useViewportMode } from '@/hooks/useViewportMode'
+import { MobileNumberOnes } from '@/features/mobile/billboard/MobileNumberOnes'
 
 export function NumberOnesExperience({ mergeLevel = 2 }: { mergeLevel?: number }) {
+  const isPhone = useViewportMode() === 'phone'
   const { data, loading, error } = useBillboardAllTime(mergeLevel)
-  const [activeTab, setActiveTab] = useState<SubTabKey>(cachedSubTab)
-  const [selectedYear, setSelectedYear] = useState(cachedYear)
+  const [activeTab, setActiveTab] = useState<SubTabKey>('tracks')
+  const [selectedYear, setSelectedYear] = useState(0)
 
   const computed = useMemo(() => buildNumberOnes(data), [data])
   const availableYears = useMemo(
@@ -29,27 +29,35 @@ export function NumberOnesExperience({ mergeLevel = 2 }: { mergeLevel?: number }
     [activeTab, computed],
   )
 
-  useEffect(() => {
-    if (availableYears.length === 0) return
-    if (!availableYears.includes(selectedYear)) {
-      cachedYear = availableYears[0]
-      setSelectedYear(availableYears[0])
-    }
-  }, [availableYears, selectedYear])
+  const effectiveSelectedYear = availableYears.includes(selectedYear)
+    ? selectedYear
+    : availableYears[0] ?? 0
 
   const yearFiltered = useMemo(
-    () => filterNumberOnesByYear(computed, selectedYear),
-    [computed, selectedYear],
+    () => filterNumberOnesByYear(computed, effectiveSelectedYear),
+    [computed, effectiveSelectedYear],
   )
 
   function handleTabChange(tab: SubTabKey) {
-    cachedSubTab = tab
     setActiveTab(tab)
   }
 
   function handleYearChange(year: number) {
-    cachedYear = year
     setSelectedYear(year)
+  }
+
+  if (isPhone && !loading && !error && data) {
+    return (
+      <MobileNumberOnes
+        activeTab={activeTab}
+        onTabChange={handleTabChange}
+        computed={computed}
+        yearFiltered={yearFiltered}
+        availableYears={availableYears}
+        selectedYear={effectiveSelectedYear}
+        onYearChange={handleYearChange}
+      />
+    )
   }
 
   return (
@@ -92,7 +100,7 @@ export function NumberOnesExperience({ mergeLevel = 2 }: { mergeLevel?: number }
           computed={computed}
           yearFiltered={yearFiltered}
           availableYears={availableYears}
-          selectedYear={selectedYear}
+          selectedYear={effectiveSelectedYear}
           onYearChange={handleYearChange}
         />
       )}
@@ -102,7 +110,7 @@ export function NumberOnesExperience({ mergeLevel = 2 }: { mergeLevel?: number }
           computed={computed}
           yearFiltered={yearFiltered}
           availableYears={availableYears}
-          selectedYear={selectedYear}
+          selectedYear={effectiveSelectedYear}
           onYearChange={handleYearChange}
         />
       )}
@@ -112,7 +120,7 @@ export function NumberOnesExperience({ mergeLevel = 2 }: { mergeLevel?: number }
           computed={computed}
           yearFiltered={yearFiltered}
           availableYears={availableYears}
-          selectedYear={selectedYear}
+          selectedYear={effectiveSelectedYear}
           onYearChange={handleYearChange}
         />
       )}

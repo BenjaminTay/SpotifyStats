@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { keepPreviousData, type QueryClient, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { queryClient } from '@/api/query-client'
@@ -62,19 +62,15 @@ function errorMessage(error: unknown): string | null {
 }
 
 function useInitialWeek(initialWeek: string | null | undefined, allWeeks: string[], setWeekIndex: (idx: number) => void) {
-  const initialWeekApplied = useRef(false)
-
   useEffect(() => {
-    if (initialWeek && !initialWeekApplied.current && allWeeks.length > 0) {
-      const idx = allWeeks.indexOf(initialWeek)
-      if (idx >= 0) setWeekIndex(idx)
-      initialWeekApplied.current = true
+    if (allWeeks.length === 0) return
+    if (!initialWeek) {
+      setWeekIndex(0)
+      return
     }
+    const idx = allWeeks.indexOf(initialWeek)
+    if (idx >= 0) setWeekIndex(idx)
   }, [initialWeek, allWeeks, setWeekIndex])
-
-  useEffect(() => {
-    initialWeekApplied.current = false
-  }, [initialWeek])
 }
 
 function selectCurrentWeekData(

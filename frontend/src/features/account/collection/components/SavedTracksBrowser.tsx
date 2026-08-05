@@ -3,6 +3,8 @@ import { Link } from 'react-router-dom'
 import { GlassCard } from '@/components/shared/GlassCard'
 import { displayName } from '@/lib/chinese'
 import { api } from '@/lib/api'
+import { MobileEntityRow, MobilePagination } from '@/components/mobile'
+import { useViewportMode } from '@/hooks/useViewportMode'
 
 interface SavedTrackRow {
   track_uri: string
@@ -22,6 +24,7 @@ interface SavedTracksPage {
 }
 
 export function SavedTracksBrowser() {
+  const isPhone = useViewportMode() === 'phone'
   const [page, setPage] = useState(1)
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
@@ -112,6 +115,23 @@ export function SavedTracksBrowser() {
               {debouncedSearch ? '没有匹配的曲目' : '暂无收藏曲目'}
             </div>
           ) : (
+            isPhone ? (
+              <div className="mobile-rank-list" aria-label="收藏曲目列表">
+                {data.tracks.map((track) => (
+                  <MobileEntityRow
+                    key={track.track_uri}
+                    entityType="track"
+                    title={displayName(track.track_name)}
+                    subtitle={displayName(track.artist_name)}
+                    coverUrl={track.cover_url}
+                    metric={track.added_date ? new Date(track.added_date).toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' }) : '—'}
+                    metricLabel="收藏"
+                    facts={track.album_name ? [{ label: '专辑', value: displayName(track.album_name) }] : []}
+                    to={`/music/tracks/${track.track_uri.replace('spotify:track:', '')}`}
+                  />
+                ))}
+              </div>
+            ) : (
             <div className="overflow-x-auto">
               <table className="w-full font-sans text-[13px]">
                 <thead>
@@ -158,9 +178,13 @@ export function SavedTracksBrowser() {
                 </tbody>
               </table>
             </div>
+            )
           )}
 
           {totalPages > 1 && (
+            isPhone ? (
+              <MobilePagination page={page} pageCount={totalPages} totalLabel={`${data.total} 首`} loading={loading} onPageChange={setPage} />
+            ) : (
             <div className="mt-4 flex items-center justify-between border-t border-border pt-3">
               <button
                 onClick={() => setPage((p) => Math.max(1, p - 1))}
@@ -180,6 +204,7 @@ export function SavedTracksBrowser() {
                 下一页
               </button>
             </div>
+            )
           )}
         </>
       )}

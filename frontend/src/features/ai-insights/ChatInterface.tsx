@@ -277,7 +277,7 @@ export function ChatInterface({
   }, [messages, asking])
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-4" data-mobile-chat="conversation">
       {reportContext && reportContextLabel && (
         <div className="flex items-center gap-2">
           <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-card/60 px-3 py-1 text-[11px] text-muted-foreground backdrop-blur-[4px]">
@@ -294,7 +294,7 @@ export function ChatInterface({
           )}
         </div>
       )}
-      <div className="rounded-[16px] border border-border bg-card/30 backdrop-blur-[12px] overflow-hidden">
+      <div className="mobile-ai-chat-card rounded-[16px] border border-border bg-card/30 backdrop-blur-[12px] overflow-hidden">
         <ChatMessageList
           messages={messages}
           asking={asking}
