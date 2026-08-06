@@ -49,7 +49,7 @@ beforeEach(() => {
   })
 })
 
-function renderSettings(initialEntry = '/settings') {
+function renderSettings(initialEntry = '/settings', rebuildPending = false) {
   const onUpdate = vi.fn().mockResolvedValue(undefined)
   const onRequiresRebuild = vi.fn()
   const onApplyProfile = vi.fn().mockResolvedValue({ status: 'ok', profile_id: 3 })
@@ -60,7 +60,7 @@ function renderSettings(initialEntry = '/settings') {
           <Route path="/settings" element={(
             <MobileSettingsExperience
               settings={settings}
-              rebuildPending={false}
+              rebuildPending={rebuildPending}
               chineseStyle="original"
               onChangeChineseStyle={vi.fn()}
               onUpdate={onUpdate}
@@ -133,6 +133,14 @@ describe('M6 mobile pages', () => {
     await user.click(screen.getByRole('switch', { name: '仅统计音乐' }))
     expect(onUpdate).toHaveBeenCalledWith({ music_only: false })
     expect(onRequiresRebuild).toHaveBeenCalled()
+  })
+
+  it('explains that pending rebuilds can leave mobile statistics stale', async () => {
+    const user = userEvent.setup()
+    renderSettings('/settings', true)
+    expect(screen.getByText('等待重建 · 统计可能不是最新')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /数据状态/ }))
+    expect(screen.getByText(/当前页面的聚合统计可能尚未反映最新参数/)).toBeInTheDocument()
   })
 
   it('turns metadata deep links into a target summary and preserves the return route', () => {

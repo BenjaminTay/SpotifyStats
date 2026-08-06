@@ -25,6 +25,17 @@ class WrappedFullHero(BaseModel):
     avg_minutes_per_day: float
 
 
+class WrappedReportingPeriod(BaseModel):
+    year: int
+    start_date: str | None = None
+    end_date: str | None = None
+    latest_data_date: str | None = None
+    active_days: int = 0
+    days_covered: int = 0
+    is_partial_year: bool = False
+    label: str
+
+
 class PersonalityDimension(BaseModel):
     label: str
     score: float
@@ -305,6 +316,7 @@ class YearComparison(BaseModel):
 class WrappedFullResponse(BaseModel):
     year: int
     empty: bool
+    reporting_period: WrappedReportingPeriod
     hero: WrappedFullHero | None = None
     personality: PersonalityResult | None = None
     top_lists: TopLists | None = None

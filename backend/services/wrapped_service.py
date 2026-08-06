@@ -15,6 +15,7 @@ from pathlib import Path
 import pandas as pd
 
 from backend.core.db import get_track_artist_names_map, load_plays, load_plays_for_artists
+from backend.domains.ai_reports.yearly_contract import build_reporting_period_from_frame
 from backend.domains.metadata.artist_genres import (
     ResolvedArtistGenres,
     compute_artist_genre_distribution,
@@ -349,10 +350,12 @@ def _build_wrapped_full(
     )
     year_df = df[df["ts_year"] == year]
     year_df_artists = df_artists[df_artists["ts_year"] == year]
+    reporting_period = build_reporting_period_from_frame(year_df, year)
     if year_df.empty:
         return {
             "year": year,
             "empty": True,
+            "reporting_period": reporting_period,
             "hero": None,
             "personality": None,
             "top_lists": None,
@@ -415,6 +418,7 @@ def _build_wrapped_full(
     return {
         "year": year,
         "empty": False,
+        "reporting_period": reporting_period,
         "hero": _build_hero(
             year_df, total_minutes, total_plays, unique_tracks, unique_artists, active_days
         ),

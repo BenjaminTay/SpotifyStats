@@ -84,7 +84,7 @@ describe('M3 mobile page presentations', () => {
       total: 2,
       rows: [
         { rank: 1, track_id: 1, track_name: 'Popular Song', artist_name: 'A', plays: 100, hours: 5, share_pct: 20 },
-        { rank: 41, track_id: 41, track_name: 'Rare Song', artist_name: 'B', plays: 8, hours: 1, share_pct: 1.6 },
+        { rank: 41, track_id: 41, track_name: 'Rare Song', artist_name: 'B', plays: 8, hours: 1, share_pct: 1.6, first_played: '2023-02-26' },
       ],
     } as unknown as AnalysisChartsResponse
 
@@ -93,6 +93,8 @@ describe('M3 mobile page presentations', () => {
 
     const result = screen.getByRole('link', { name: /Rare Song/ })
     expect(within(result).getByText('41')).toBeInTheDocument()
+    expect(result.querySelector('.mobile-entity-badges')).toHaveTextContent('始于 2023-02-26')
+    expect(result).toHaveClass('mobile-personal-rank-row')
     expect(screen.queryByText('Popular Song')).not.toBeInTheDocument()
   })
 

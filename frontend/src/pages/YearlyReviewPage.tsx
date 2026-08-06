@@ -11,6 +11,7 @@ import { AnalysisPageHeader } from '@/components/shared/AnalysisPageHeader'
 import { AnalysisSubNav } from '@/components/shared/AnalysisSubNav'
 import { MobilePageHeader } from '@/components/mobile'
 import { MobileYearlyChapterNav } from '@/features/mobile/yearly/MobileYearlyChapterNav'
+import { YearlyPeriodNotice } from '@/features/mobile/yearly/YearlyPeriodNotice'
 import { useViewportMode } from '@/hooks/useViewportMode'
 
 // OfficialWrapped 懒加载
@@ -176,6 +177,10 @@ export function YearlyReviewPage() {
           ))}
         </div>
       </div>
+
+      {activeTab === 'custom' && data?.reporting_period && (
+        <YearlyPeriodNotice period={data.reporting_period} />
+      )}
 
       {isPhone && activeTab === 'custom' && data && !data.empty && <MobileYearlyChapterNav />}
 

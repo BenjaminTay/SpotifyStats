@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Plus, Sparkles } from 'lucide-react'
 import { BillboardSubNav } from '@/components/shared/BillboardSubNav'
 import { GlassCard } from '@/components/shared/GlassCard'
 import { useEntityLists, useVersus } from '@/hooks/useBillboard'
@@ -45,6 +46,11 @@ function buildVersusBody(kind: VersusKind, queue: EntityListItem[]): Record<stri
 
 function cacheQueue(k: VersusKind, q: EntityListItem[]) {
   cachedQueues[k] = q
+}
+
+function entityKey(item: EntityListItem): string {
+  if (item.track_id != null) return `track:${item.track_id}`
+  return `${item.artist_name ?? ''}:${item.album_name ?? ''}`
 }
 
 export function VersusExperience() {
@@ -105,6 +111,9 @@ export function VersusExperience() {
 
   const entityNames = queue.map((q) => q.display)
   const readyToCompare = queue.length >= 2
+  const itemsForKind = kind === 'track' ? lists?.tracks : kind === 'album' ? lists?.albums : lists?.artists
+  const selectedKeys = new Set(queue.map(entityKey))
+  const quickAddItems = (itemsForKind ?? []).filter((item) => !selectedKeys.has(entityKey(item))).slice(0, 2)
 
   return (
     <div className={cn(isPhone && 'mobile-m4-page')} data-mobile-page={isPhone ? 'billboard-versus' : undefined}>
@@ -145,11 +154,31 @@ export function VersusExperience() {
 
       {/* Idle */}
       {!readyToCompare && (
-        <div className="py-12 text-center">
-          <p className="text-[13px] text-muted-foreground">
-            {queue.length === 0 ? `请搜索并添加${KIND_LABELS[kind]}开始对决` : `还需添加 ${2 - queue.length} 个${KIND_LABELS[kind]}开始对决`}
-          </p>
-        </div>
+        isPhone ? (
+          <section className="mobile-versus-idle" aria-label="对决准备">
+            <span className="mobile-versus-idle-icon" aria-hidden="true"><Sparkles /></span>
+            <div>
+              <strong>{queue.length === 0 ? `先添加 2 个${KIND_LABELS[kind]}` : `再添加 1 个${KIND_LABELS[kind]}`}</strong>
+              <p>{queue.length === 0 ? '可从上方搜索，也可以直接用下面的建议开始。' : '加入后会自动生成纵向成绩卡。'}</p>
+            </div>
+            {quickAddItems.length > 0 && (
+              <div className="mobile-versus-quick-add">
+                {quickAddItems.map((item) => (
+                  <button key={entityKey(item)} type="button" onClick={() => handleAdd(item)}>
+                    <Plus aria-hidden="true" />
+                    <span>{item.display}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </section>
+        ) : (
+          <div className="py-12 text-center">
+            <p className="text-[13px] text-muted-foreground">
+              {queue.length === 0 ? `请搜索并添加${KIND_LABELS[kind]}开始对决` : `还需添加 ${2 - queue.length} 个${KIND_LABELS[kind]}开始对决`}
+            </p>
+          </div>
+        )
       )}
 
       {/* Loading / Error */}

@@ -294,7 +294,7 @@ export function ChatInterface({
           )}
         </div>
       )}
-      <div className="mobile-ai-chat-card rounded-[16px] border border-border bg-card/30 backdrop-blur-[12px] overflow-hidden">
+      <div className="mobile-ai-chat-card rounded-[16px] border border-border bg-card/30 backdrop-blur-[12px] overflow-hidden" data-empty={messages.length === 0 && !sessionLoading}>
         <ChatMessageList
           messages={messages}
           asking={asking}

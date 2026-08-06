@@ -61,7 +61,7 @@ export function CommunityAccountExperience() {
         {/* Main: profile + feed */}
         <div className="mobile-community-account flex-1 max-w-[720px] min-h-[70vh]">
           {/* Back button */}
-          <div className="flex items-center gap-6 h-[53px] border-b border-white/10">
+          <div className="hidden md:flex items-center gap-6 h-[53px] border-b border-white/10">
           <Link
             to="/community"
             className="hidden md:flex items-center justify-center w-9 h-9 rounded-full hover:bg-white/10 transition-colors -ml-1"
@@ -150,7 +150,7 @@ export function CommunityAccountExperience() {
               type="button"
               className="flex-1 flex items-center justify-center h-[53px] relative text-[15px] font-semibold text-foreground"
             >
-              Posts
+              Posts <span className="ml-1 text-[12px] font-medium text-muted-foreground">{posts.length}</span>
               <span className="absolute bottom-0 left-1/2 -translate-x-1/2 w-12 h-1 rounded-full bg-accent-foreground" />
             </button>
           </div>

@@ -100,7 +100,7 @@ export function MobileTopBar() {
         return (
           <button
             type="button"
-            className="mobile-icon-button"
+            className="mobile-icon-button mobile-detail-actions-button"
             onClick={() => setDetailActionsOpen(true)}
             aria-label="打开详情更多操作"
             aria-haspopup="dialog"

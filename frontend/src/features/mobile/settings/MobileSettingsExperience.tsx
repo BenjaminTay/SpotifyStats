@@ -354,8 +354,8 @@ export function MobileSettingsExperience({
         <div className="mobile-settings-panel-card">
           <SettingRow label="播放记录" description="本地 SQLite 中的已导入记录"><strong>{settings.db_record_count.toLocaleString('zh-CN')} 条</strong></SettingRow>
           <SettingRow label="账号资料" description="收藏、搜索、播客与视频数据"><strong>{settings.account_data_imported ? '已导入' : '未导入'}</strong></SettingRow>
-          <SettingRow label="统计聚合" description="参数变更后的计算状态"><strong className={rebuildPending ? 'text-amber-500' : 'text-emerald-500'}>{rebuildPending ? '等待重建' : '已同步'}</strong></SettingRow>
-          <p className="mobile-settings-explanation">手机端提供状态检查；文件导入、聚合重建和故障排查请在电脑上完成。</p>
+          <SettingRow label="统计聚合" description="参数变更后的计算状态"><strong className={rebuildPending ? 'text-amber-500' : 'text-emerald-500'}>{rebuildPending ? '等待重建 · 统计可能不是最新' : '已同步'}</strong></SettingRow>
+          <p className="mobile-settings-explanation">{rebuildPending ? '当前页面的聚合统计可能尚未反映最新参数。' : '当前统计已经同步。'}文件导入、聚合重建和故障排查请在电脑上完成。</p>
         </div>
       )
     }
@@ -409,7 +409,7 @@ export function MobileSettingsExperience({
           ['数据导入', settings.account_data_imported ? '账号数据已导入' : '账号数据待导入'],
           ['音乐源数据管理', '归并、曲目署名、艺人身份、流派与语言'],
           ['LLM 完整配置', settings.has_llm_key ? '密钥已配置' : '密钥待配置'],
-          ['系统维护', rebuildPending ? '聚合表等待重建' : '当前无需重建'],
+          ['系统维护', rebuildPending ? '聚合表等待重建，统计可能不是最新' : '当前无需重建'],
         ].map(([title, status]) => (
           <div key={title} className="mobile-settings-advanced-card">
             <div><strong>{title}</strong><span>{status}</span></div>
@@ -439,7 +439,7 @@ export function MobileSettingsExperience({
       </header>
       <div className="mobile-settings-health-strip">
         <span><Database className="h-4 w-4" />{settings.db_record_count.toLocaleString('zh-CN')} 条播放</span>
-        <span className={rebuildPending ? 'text-amber-500' : 'text-emerald-500'}>{rebuildPending ? '等待重建' : '统计已同步'}</span>
+        <span className={rebuildPending ? 'text-amber-500' : 'text-emerald-500'}>{rebuildPending ? '等待重建 · 统计可能不是最新' : '统计已同步'}</span>
       </div>
       <PwaInstallCard />
       <div className="mobile-settings-categories">

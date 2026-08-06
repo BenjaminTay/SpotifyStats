@@ -134,6 +134,15 @@ def test_frontend_route_smoke_covers_the_m7_five_size_matrix():
     assert "expectedMode: 'compact'" in source
 
 
+def test_frontend_route_smoke_rejects_internal_mobile_rank_overlaps():
+    source = (ROOT / "scripts" / "frontend_route_smoke.mjs").read_text(encoding="utf-8")
+
+    assert ".mobile-personal-rank-row" in source
+    assert ".mobile-entity-badges" in source
+    assert "personalRankBadgeMetricOverlaps" in source
+    assert "personal rank badge/metric overlap(s)" in source
+
+
 def test_frontend_m7_smokes_cover_mobile_navigation_touch_and_fullscreen():
     interaction = (ROOT / "scripts" / "frontend_interaction_smoke.mjs").read_text(encoding="utf-8")
     chart = (ROOT / "scripts" / "frontend_chart_interaction_smoke.mjs").read_text(encoding="utf-8")

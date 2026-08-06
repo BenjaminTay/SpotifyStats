@@ -8870,6 +8870,7 @@ export interface components {
             year: number;
             /** Empty */
             empty: boolean;
+            reporting_period: components["schemas"]["WrappedReportingPeriod"];
             hero?: components["schemas"]["WrappedFullHero"] | null;
             personality?: components["schemas"]["PersonalityResult"] | null;
             top_lists?: components["schemas"]["TopLists"] | null;
@@ -8962,6 +8963,34 @@ export interface components {
             month: number;
             /** Hours */
             hours: number;
+        };
+        /** WrappedReportingPeriod */
+        WrappedReportingPeriod: {
+            /** Year */
+            year: number;
+            /** Start Date */
+            start_date?: string | null;
+            /** End Date */
+            end_date?: string | null;
+            /** Latest Data Date */
+            latest_data_date?: string | null;
+            /**
+             * Active Days
+             * @default 0
+             */
+            active_days: number;
+            /**
+             * Days Covered
+             * @default 0
+             */
+            days_covered: number;
+            /**
+             * Is Partial Year
+             * @default false
+             */
+            is_partial_year: boolean;
+            /** Label */
+            label: string;
         };
         /** WrappedTrackEntry */
         WrappedTrackEntry: {

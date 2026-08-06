@@ -41,7 +41,7 @@
 
 | 报告 | 内容 |
 |------|------|
-| [`reports/2026-08-06-mobile-web-and-pwa-delivery.md`](reports/2026-08-06-mobile-web-and-pwa-delivery.md) | 移动端 M0–M7 与 PWA Phase A 综合交付：阶段范围、架构契约、全栈门禁、PWA 证据和未完成边界 |
+| [`reports/2026-08-06-mobile-web-and-pwa-delivery.md`](reports/2026-08-06-mobile-web-and-pwa-delivery.md) | 移动端 M0–M7、PWA Phase A 与验收后修复综合交付：阶段范围、架构契约、全栈门禁、专项复验和未完成边界 |
 | [`reports/2026-07-28-billboard-v3-sensitivity-analysis.md`](reports/2026-07-28-billboard-v3-sensitivity-analysis.md) | Billboard V3 年榜积分敏感性分析：竞争强度、个体统治力与纯排名反事实对照 |
 | [`reports/2026-07-16-genre-source-quality-audit.md`](reports/2026-07-16-genre-source-quality-audit.md) | Genre 来源可信度审核：高影响无链接 LLM 来源标签的证据与处置结果 |
 | [`reports/2026-07-15-genre-language-pre-review-execution.md`](reports/2026-07-15-genre-language-pre-review-execution.md) | Genre/Language 首轮预审：分轴解析、覆盖缺口与 suggested 审核队列 |

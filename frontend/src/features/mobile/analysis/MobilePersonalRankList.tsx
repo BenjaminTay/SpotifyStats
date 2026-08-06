@@ -140,6 +140,7 @@ export function MobilePersonalRankList({
             ],
             badges: row.first_played ? [`始于 ${row.first_played.slice(0, 10)}`] : [],
             to: entityLink(row, entity),
+            className: 'mobile-personal-rank-row',
           }))}
           emptyTitle={searchQuery ? '没有匹配的榜单结果' : '当前范围没有排行数据'}
           page={safePage}

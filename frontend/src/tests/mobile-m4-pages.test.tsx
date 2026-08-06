@@ -9,6 +9,7 @@ import { MobileAllTime } from '@/features/mobile/billboard/MobileAllTime'
 import { MobileNumberOnes } from '@/features/mobile/billboard/MobileNumberOnes'
 import { MobileVersusScoreboard } from '@/features/mobile/billboard/MobileVersusScoreboard'
 import { MobileYearEnd } from '@/features/mobile/billboard/MobileYearEnd'
+import { YearlyPeriodNotice } from '@/features/mobile/yearly/YearlyPeriodNotice'
 import type { NumberOnesComputed, YearFilteredNumberOnes } from '@/features/billboard/number-ones/numberOnesData'
 import type { BillboardYearEndResponse, VersusEntityData } from '@/types/billboard'
 import type { PlaybackRecordRow } from '@/types/analysis'
@@ -30,6 +31,18 @@ beforeEach(() => {
 })
 
 describe('M4 mobile page presentations', () => {
+  it('shows the effective cutoff for a partial current year and stays silent for a full year', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-08-06T00:00:00Z'))
+    const { rerender } = render(<YearlyPeriodNotice period={{ year: 2026, start_date: '2026-01-01', end_date: '2026-07-24', latest_data_date: '2026-07-24', active_days: 205, days_covered: 205, is_partial_year: true, label: '2026 年截至 2026-07-24' }} />)
+    expect(screen.getByRole('complementary', { name: '年度数据范围' })).toHaveTextContent('年度进行中')
+    expect(screen.getByText('数据截至 2026-07-24')).toBeInTheDocument()
+
+    rerender(<YearlyPeriodNotice period={{ year: 2025, start_date: '2025-01-01', end_date: '2025-12-31', latest_data_date: '2025-12-31', active_days: 300, days_covered: 365, is_partial_year: false, label: '2025 年全年' }} />)
+    expect(screen.queryByRole('complementary', { name: '年度数据范围' })).not.toBeInTheDocument()
+    vi.useRealTimers()
+  })
+
   it('switches record families through the shared section sheet', async () => {
     const user = userEvent.setup()
     const onChange = vi.fn()

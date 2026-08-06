@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { AiInsightsTimeSelectors } from '@/features/ai-insights/AiInsightsTimeSelectors'
 import { ChatInterface } from '@/features/ai-insights/ChatInterface'
 import { ChatSessionList } from '@/features/ai-insights/ChatSessionList'
+import { SuggestedQuestions } from '@/features/ai-insights/SuggestedQuestions'
 import type { ChatSession } from '@/types/ai-insights'
 
 vi.mock('@/hooks/useAiInsights', () => ({
@@ -129,6 +130,21 @@ describe('ChatInterface', () => {
     })
 
     expect(screen.getByRole('button', { name: '发送问题' })).toBeEnabled()
+  })
+
+  it('presents starter questions as a labelled mobile-friendly group', () => {
+    const onSelect = vi.fn()
+    render(
+      <SuggestedQuestions
+        questions={['我今年听最多的艺人是谁？', '最近一个月的听歌习惯有什么变化？']}
+        onSelect={onSelect}
+        disabled={false}
+      />,
+    )
+
+    expect(screen.getByText('可以这样问')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '最近一个月的听歌习惯有什么变化？' }))
+    expect(onSelect).toHaveBeenCalledWith('最近一个月的听歌习惯有什么变化？')
   })
 })
 

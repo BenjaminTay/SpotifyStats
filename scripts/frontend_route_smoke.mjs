@@ -141,6 +141,16 @@ const PAGE_STATE_EXPRESSION = `
     'vite-error-overlay',
     '#webpack-dev-server-client-overlay',
   ];
+  const personalRankBadgeMetricOverlaps = Array.from(document.querySelectorAll('.mobile-personal-rank-row')).filter((row) => {
+    const badge = row.querySelector('.mobile-entity-badges');
+    const metric = row.querySelector('.mobile-entity-metric');
+    if (!badge || !metric) return false;
+    const badgeRect = badge.getBoundingClientRect();
+    const metricRect = metric.getBoundingClientRect();
+    const overlapWidth = Math.min(badgeRect.right, metricRect.right) - Math.max(badgeRect.left, metricRect.left);
+    const overlapHeight = Math.min(badgeRect.bottom, metricRect.bottom) - Math.max(badgeRect.top, metricRect.top);
+    return overlapWidth > 0.5 && overlapHeight > 0.5;
+  }).length;
 
   return {
     title: document.title,
@@ -157,6 +167,7 @@ const PAGE_STATE_EXPRESSION = `
     hasDesktopMasthead: Boolean(document.querySelector('nav[aria-label="主导航"]')),
     hasDevOverlay: selectors.some((selector) => Boolean(document.querySelector(selector))),
     hasFatalText: /Internal Server Error|Failed to fetch dynamically imported module|ReferenceError|TypeError|Unhandled Runtime Error/.test(bodyText),
+    personalRankBadgeMetricOverlaps,
   };
 })();
 `
@@ -567,6 +578,9 @@ async function smokeRoute({
     if (scrollOverflow > maxScrollOverflow) {
       failures.push(`horizontal overflow ${scrollOverflow}px > ${maxScrollOverflow}px`)
     }
+    if (viewport.expectedMode === 'phone' && normalizeRoute(route) === '/analysis/charts' && state.personalRankBadgeMetricOverlaps > 0) {
+      failures.push(`${state.personalRankBadgeMetricOverlaps} personal rank badge/metric overlap(s)`)
+    }
     if (viewport.expectedMode === 'phone') {
       if (!state.hasMobileTopBar) failures.push('mobile top bar missing')
       if (state.hasDesktopMasthead) failures.push('desktop masthead mounted in mobile viewport')
@@ -609,6 +623,7 @@ async function smokeRoute({
       missingRouteMarkers,
       bodyTextSample: state.bodyTextSample,
       attempts,
+      personalRankBadgeMetricOverlaps: state.personalRankBadgeMetricOverlaps,
     }
   } finally {
     client.close()

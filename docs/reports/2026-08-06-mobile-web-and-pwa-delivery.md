@@ -62,6 +62,19 @@ SpotifyStats 移动网页 M0–M7 已完成设计、实现和自动化质量收�
 
 音乐详情实施过程中修复了已入榜艺人详情 `effective_play_count` 错误返回 0 的问题。详情访问与 Hero 有效播放总数现在始终复用个人播放过滤链路，并由 contract test 锁定。该修复校正接口输出，没有改写底层播放统计规则。
 
+### 3.5 验收后修复与移动端再校准
+
+2026-08-06 按页面视觉验收结果完成一轮 P1/P2 收口：
+
+- 播放排行实体行将“首次播放”徽章独立成可换行区域，避免 360–430px 下与右侧播放指标重叠；route smoke 增加真实几何重叠硬检查，不再只依赖页面级横向溢出判断。
+- Wrapped `/api/wrapped/{year}/full` 新增基于有效年度播放帧计算的 `reporting_period`，返回起止日期、最新数据日期、活跃天数、覆盖天数、阶段年度状态和标签；当前年度未结束时，手机年度总结首屏明确显示“年度进行中 / 数据截至 YYYY-MM-DD”。
+- AI 问答空态改为完整单列建议，四个推荐问题均为 44px 触控行，输入框保持首屏可见；输入聚焦后 Bottom Nav 仍按原契约隐藏。
+- Billboard 对决空态增加清晰的两步指引和两项真实实体快捷建议，点击后直接进入选择队列；桌面交互和统计计算保持不变。
+- Settings 在聚合等待重建时同时显示状态与影响，明确“统计可能不是最新”；社区账号页移除手机端重复标题区，帖子数量合入单一 Posts 标签。
+- 音乐详情 Top Bar 的更多入口提高前景对比度和点击可见性，仍复用既有分享、搜索与治理深链动作。
+
+这一轮仍遵守同一路由、同一 Query/API/统计事实、仅 presentation 分叉的移动架构边界。
+
 ## 4. PWA Phase A
 
 - `manifest.webmanifest` 声明应用名称、scope、start URL、standalone、主题色、192/512 maskable 图标与四个快捷入口。
@@ -77,14 +90,16 @@ SpotifyStats 移动网页 M0–M7 已完成设计、实现和自动化质量收�
 
 | 门禁 | 最终结果 |
 |---|---:|
-| Backend full | 1,471 passed |
-| Backend unit | 852 passed |
+| Backend full | 1,472 passed |
+| Backend unit | 853 passed |
 | Backend contract | 323 passed |
-| Frontend Vitest（PWA 后最新） | 58 files / 442 tests passed |
+| Frontend Vitest（验收后修复最新） | 58 files / 445 tests passed |
 | Ruff + TypeScript/Vite production build | PASS |
 | Phase 5 最低矩阵 | PASS |
 
 Vite 仅保留既有大 chunk 提示；没有新增运行时 warning。
+
+`npm run lint` 不是当前 Phase 5 发布门禁，仓库全量 ESLint 仍有 194 个历史问题，集中在既有 `any`、React effect/ref 与 Fast Refresh 规则。本轮新增/调整且不含这些既有基线问题的 15 个 TS/TSX 文件已定向通过 ESLint；本次不顺带扩大为全仓 lint 治理。
 
 ### 5.2 路由、交互与可访问性
 
@@ -121,6 +136,21 @@ Vite 仅保留既有大 chunk 提示；没有新增运行时 warning。
 - 强制断网后进入专用离线页，控制台 0 error / 0 warning。
 - `/settings` production smoke 覆盖 320、390、430、768 与 1440px，全部 0 错误、0 告警、0 页面异常、0 横向溢出。
 - Manifest、图标、Service Worker 与离线页静态响应均为 HTTP 200，MIME 正确。
+
+### 5.5 验收后修复专项证据
+
+| 检查 | 结果 |
+|---|---:|
+| 7 个受影响页面 × 五档视口 | 35/35 PASS |
+| 全移动路由（含歌曲、专辑、艺人、帖子、社区账号详情） | 27/27 PASS |
+| 移动控件库存 | 20 个页面 / 640 个控件 / 305 个主要触控目标 / 0 violation |
+| 移动导航、栏目 Sheet、时间筛选 | 3/3 PASS |
+| 移动触摸 tooltip、全屏图表 | 2/2 PASS |
+| 桌面核心交互与图表回归 | 7/7 + 3/3 PASS |
+| 长列表分页与分段渲染 | 7/7 PASS |
+| Chromium / Firefox / WebKit 移动代表路由 | 3/3 引擎 PASS |
+
+上述有效场景均为 console error 0、console warning 0、page error 0、横向溢出 0px；个人排行内部徽章/指标几何重叠为 0。桌面专用交互和移动专用交互按脚本定义分别执行，不把桌面 hover 场景误作手机触控门禁。
 
 ## 6. 长期架构契约
 

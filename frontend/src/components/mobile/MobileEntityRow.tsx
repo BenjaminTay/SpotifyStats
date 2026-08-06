@@ -71,7 +71,11 @@ export function MobileEntityRow({
             {facts.slice(0, 2).map((fact) => (
               <span key={`${fact.label}:${fact.value}`}>{fact.label} {fact.value}</span>
             ))}
-            {badges.slice(0, 2).map((badge) => <em key={badge}>{badge}</em>)}
+            {badges.length > 0 && (
+              <span className="mobile-entity-badges">
+                {badges.slice(0, 2).map((badge) => <em key={badge}>{badge}</em>)}
+              </span>
+            )}
           </span>
         )}
       </span>

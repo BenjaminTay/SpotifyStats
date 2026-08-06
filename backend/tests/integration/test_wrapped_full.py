@@ -57,6 +57,12 @@ class TestWrappedFull:
         d = wrapped_2024_full
         assert d["year"] == 2024
         assert d["empty"] is False
+        period = d["reporting_period"]
+        assert period["year"] == 2024
+        assert period["start_date"]
+        assert period["end_date"]
+        assert period["latest_data_date"] == period["end_date"]
+        assert period["label"]
 
         # Hero - 使用真实数据阈值
         h = d["hero"]
@@ -161,6 +167,9 @@ class TestWrappedFull:
         """验证空年份返回"""
         d = wrapped_1999_full
         assert d["empty"] is True
+        assert d["reporting_period"]["year"] == 1999
+        assert d["reporting_period"]["start_date"] is None
+        assert d["reporting_period"]["end_date"] is None
         assert d["hero"] is None
         assert d["top_lists"] is None
 

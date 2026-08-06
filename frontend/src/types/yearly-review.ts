@@ -9,6 +9,17 @@ export interface WrappedFullHero {
   avg_minutes_per_day: number
 }
 
+export interface WrappedReportingPeriod {
+  year: number
+  start_date: string | null
+  end_date: string | null
+  latest_data_date: string | null
+  active_days: number
+  days_covered: number
+  is_partial_year: boolean
+  label: string
+}
+
 export interface PersonalityDimension {
   label: string
   score: number
@@ -295,6 +306,7 @@ export interface YearComparison {
 export interface WrappedFullResponse {
   year: number
   empty: boolean
+  reporting_period: WrappedReportingPeriod
   hero: WrappedFullHero | null
   personality: PersonalityResult | null
   top_lists: TopLists | null
