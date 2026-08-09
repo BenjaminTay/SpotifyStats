@@ -29,17 +29,23 @@ export function AnalysisTrendChart({
   data,
   mode = 'bar',
   showZoom = false,
+  height = 280,
+  detailWindowSize = 365,
+  detailWindowPosition = 'start',
 }: {
   data: TrendDatum[]
   mode?: 'bar' | 'line'
   showZoom?: boolean
+  height?: number
+  detailWindowSize?: number
+  detailWindowPosition?: 'start' | 'end'
 }) {
   const { isDark } = useTheme()
   const base = useMemo(() => buildChartBase(isDark), [isDark])
   const colors = useMemo(() => getChartColors(isDark), [isDark])
 
   // ── Zoom toggle: 全貌 / 细节（默认展示最近 365 天，从最左边开始）──
-  const WINDOW_SIZE = 365
+  const WINDOW_SIZE = detailWindowSize
   const [viewMode, setViewMode] = useState<'overview' | 'detail'>('overview')
   const showZoomToggle = showZoom && data.length > WINDOW_SIZE
   const textColor = isDark ? '#A09888' : '#6B5E58'
@@ -68,8 +74,12 @@ export function AnalysisTrendChart({
       ? [
           {
             type: 'slider' as const,
-            start: 0,
-            end: Math.min((WINDOW_SIZE / data.length) * 100, 100),
+            start: detailWindowPosition === 'end'
+              ? Math.max(0, 100 - Math.min((WINDOW_SIZE / data.length) * 100, 100))
+              : 0,
+            end: detailWindowPosition === 'end'
+              ? 100
+              : Math.min((WINDOW_SIZE / data.length) * 100, 100),
             zoomLock: true,
             handleSize: '80%',
             showDetail: false,
@@ -127,7 +137,7 @@ export function AnalysisTrendChart({
           }]
         : []),
     ],
-  }), [base, colors, data, mode, isDark, showZoomToggle, viewMode, textColor, WINDOW_SIZE])
+  }), [base, colors, data, mode, isDark, showZoomToggle, viewMode, textColor, WINDOW_SIZE, detailWindowPosition])
 
   return (
     <div>
@@ -168,7 +178,7 @@ export function AnalysisTrendChart({
           </div>
         </div>
       )}
-      <ChartShell option={option} />
+      <ChartShell option={option} height={height} />
     </div>
   )
 }

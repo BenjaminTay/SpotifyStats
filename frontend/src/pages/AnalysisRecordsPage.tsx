@@ -77,7 +77,6 @@ export function AnalysisRecordsPage() {
         <MobilePageHeader
           eyebrow="Playback Records"
           title="播放记录"
-          description="从强烈高光到长线陪伴，用五个栏目回看个人听歌纪录。"
         />
       ) : <section className="mt-6 mb-6">
         <p className="mb-2 font-sans text-[11px] font-bold uppercase tracking-[1.5px] text-accent-foreground">Playback Records</p>

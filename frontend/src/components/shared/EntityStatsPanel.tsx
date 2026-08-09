@@ -83,6 +83,8 @@ export function EntityStatsPanel({
   })
   const queryError = error instanceof Error ? error.message : error ? String(error) : null
 
+  const [mobileTrendView, setMobileTrendView] = useState<'daily' | 'cumulative'>('daily')
+  const [mobileDistributionView, setMobileDistributionView] = useState<'weekday' | 'month' | 'year'>('weekday')
   const [artistRankingKind, setArtistRankingKind] = useState<'track' | 'album'>('track')
   const artistRankingContext = `${period}:${periodValue}:${startDate}:${endDate}:${metric}:${artistName}`
   const [artistRankingPageState, setArtistRankingPageState] = useState({
@@ -197,6 +199,17 @@ export function EntityStatsPanel({
   if (!data.found) return <GlassCard className="p-8 text-muted-foreground">暂无个人播放统计。</GlassCard>
 
   const metricLabel = metric === 'plays' ? '次' : '小时'
+  const dailyChartData = paddedDaily.map((item) => ({ label: item.date.slice(2), value: item[distributionKey] }))
+  const cumulativeChartData = paddedCumulative.map((item) => ({
+    label: item.date.slice(2),
+    value: metric === 'plays' ? item.cumulative_plays : item.cumulative_hours,
+  }))
+  const mobileTrendData = mobileTrendView === 'daily' ? dailyChartData : cumulativeChartData
+  const mobileDistributionData = mobileDistributionView === 'weekday'
+    ? data.weekday_distribution.map((item) => ({ label: item.day, value: item[distributionKey] }))
+    : mobileDistributionView === 'month'
+      ? data.month_distribution.map((item) => ({ label: `${item.month}月`, value: item[distributionKey] }))
+      : data.year_distribution.map((item) => ({ label: String(item.year), value: item[distributionKey] }))
 
   return (
     <div className="entity-stats-panel space-y-8">
@@ -242,32 +255,44 @@ export function EntityStatsPanel({
         </div>
       )}
 
-      {/* 每日播放 — 全宽，含零值填充 */}
-      <GlassCard className="entity-stats-chart-card p-6">
-        <h3 className="mb-5 font-serif text-2xl font-semibold">每日播放</h3>
-        <AnalysisTrendChart
-          data={paddedDaily.map((item) => ({ label: item.date.slice(2), value: item[distributionKey] }))}
-          mode="line"
-          showZoom
-        />
-      </GlassCard>
-
-      {/* 累计播放 — 全宽，含前值填充 */}
-      {data.cumulative_trend.length > 0 && (
+      {isPhone ? (
         <GlassCard className="entity-stats-chart-card p-6">
-          <h3 className="mb-5 font-serif text-2xl font-semibold">累计播放</h3>
+          <div className="entity-stats-chart-heading">
+            <h3 className="font-serif text-2xl font-semibold">
+              {mobileTrendView === 'daily' ? '每日播放' : '累计播放'}
+            </h3>
+            <div className="entity-stats-chart-switcher" role="group" aria-label="播放趋势视图">
+              <button type="button" className={mobileTrendView === 'daily' ? 'active' : undefined} aria-pressed={mobileTrendView === 'daily'} onClick={() => setMobileTrendView('daily')}>每日</button>
+              <button type="button" className={mobileTrendView === 'cumulative' ? 'active' : undefined} aria-pressed={mobileTrendView === 'cumulative'} onClick={() => setMobileTrendView('cumulative')}>累计</button>
+            </div>
+          </div>
           <AnalysisTrendChart
-            data={paddedCumulative.map((item) => ({
-              label: item.date.slice(2),
-              value: metric === 'plays' ? item.cumulative_plays : item.cumulative_hours,
-            }))}
+            data={mobileTrendData}
             mode="line"
             showZoom
+            height={220}
+            detailWindowPosition="end"
           />
         </GlassCard>
+      ) : (
+        <>
+          {/* 每日播放 — 全宽，含零值填充 */}
+          <GlassCard className="entity-stats-chart-card p-6">
+            <h3 className="mb-5 font-serif text-2xl font-semibold">每日播放</h3>
+            <AnalysisTrendChart data={dailyChartData} mode="line" showZoom />
+          </GlassCard>
+
+          {/* 累计播放 — 全宽，含前值填充 */}
+          {data.cumulative_trend.length > 0 && (
+            <GlassCard className="entity-stats-chart-card p-6">
+              <h3 className="mb-5 font-serif text-2xl font-semibold">累计播放</h3>
+              <AnalysisTrendChart data={cumulativeChartData} mode="line" showZoom />
+            </GlassCard>
+          )}
+        </>
       )}
 
-      {/* 听歌时钟 + 三个分布图 — 2×2 */}
+      {/* 听歌时钟 + 分布图；手机端将三种分布收进同一张卡片。 */}
       <div className="entity-stats-distributions grid gap-6 xl:grid-cols-2">
         <GlassCard className="entity-stats-chart-card p-6">
           <h3 className="mb-3 font-serif text-2xl font-semibold">听歌时钟</h3>
@@ -278,32 +303,40 @@ export function EntityStatsPanel({
               hours: item.hours,
             }))}
             metricLabel={metricLabel}
+            maxWidth={isPhone ? 216 : 280}
           />
         </GlassCard>
 
-        <GlassCard className="entity-stats-chart-card p-6">
-          <h3 className="mb-5 font-serif text-xl font-semibold">星期分布</h3>
-          <AnalysisTrendChart
-            data={data.weekday_distribution.map((item) => ({ label: item.day, value: item[distributionKey] }))}
-            mode="bar"
-          />
-        </GlassCard>
-
-        <GlassCard className="entity-stats-chart-card p-6">
-          <h3 className="mb-5 font-serif text-xl font-semibold">月度分布</h3>
-          <AnalysisTrendChart
-            data={data.month_distribution.map((item) => ({ label: `${item.month}月`, value: item[distributionKey] }))}
-            mode="bar"
-          />
-        </GlassCard>
-
-        <GlassCard className="entity-stats-chart-card p-6">
-          <h3 className="mb-5 font-serif text-xl font-semibold">年度分布</h3>
-          <AnalysisTrendChart
-            data={data.year_distribution.map((item) => ({ label: String(item.year), value: item[distributionKey] }))}
-            mode="bar"
-          />
-        </GlassCard>
+        {isPhone ? (
+          <GlassCard className="entity-stats-chart-card p-6">
+            <div className="entity-stats-chart-heading">
+              <h3 className="font-serif text-xl font-semibold">
+                {mobileDistributionView === 'weekday' ? '星期分布' : mobileDistributionView === 'month' ? '月度分布' : '年度分布'}
+              </h3>
+              <div className="entity-stats-chart-switcher" role="group" aria-label="播放分布视图">
+                <button type="button" className={mobileDistributionView === 'weekday' ? 'active' : undefined} aria-pressed={mobileDistributionView === 'weekday'} onClick={() => setMobileDistributionView('weekday')}>星期</button>
+                <button type="button" className={mobileDistributionView === 'month' ? 'active' : undefined} aria-pressed={mobileDistributionView === 'month'} onClick={() => setMobileDistributionView('month')}>月度</button>
+                <button type="button" className={mobileDistributionView === 'year' ? 'active' : undefined} aria-pressed={mobileDistributionView === 'year'} onClick={() => setMobileDistributionView('year')}>年度</button>
+              </div>
+            </div>
+            <AnalysisTrendChart data={mobileDistributionData} mode="bar" height={216} />
+          </GlassCard>
+        ) : (
+          <>
+            <GlassCard className="entity-stats-chart-card p-6">
+              <h3 className="mb-5 font-serif text-xl font-semibold">星期分布</h3>
+              <AnalysisTrendChart data={data.weekday_distribution.map((item) => ({ label: item.day, value: item[distributionKey] }))} mode="bar" />
+            </GlassCard>
+            <GlassCard className="entity-stats-chart-card p-6">
+              <h3 className="mb-5 font-serif text-xl font-semibold">月度分布</h3>
+              <AnalysisTrendChart data={data.month_distribution.map((item) => ({ label: `${item.month}月`, value: item[distributionKey] }))} mode="bar" />
+            </GlassCard>
+            <GlassCard className="entity-stats-chart-card p-6">
+              <h3 className="mb-5 font-serif text-xl font-semibold">年度分布</h3>
+              <AnalysisTrendChart data={data.year_distribution.map((item) => ({ label: String(item.year), value: item[distributionKey] }))} mode="bar" />
+            </GlassCard>
+          </>
+        )}
       </div>
 
       {/* 专辑项目曲目排行：服务端分页，20 首以内保持单页。 */}

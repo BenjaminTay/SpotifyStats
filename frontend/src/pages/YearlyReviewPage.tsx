@@ -130,7 +130,6 @@ export function YearlyReviewPage() {
         <MobilePageHeader
           eyebrow="Yearly Summary"
           title="年度总结"
-          description="沿着章节回看这一年的年度最爱、时间习惯与音乐人格。"
         />
       ) : <section className="mb-8">
         <p className="mb-2 font-sans text-[11px] font-bold uppercase tracking-[1.5px] text-accent-foreground">

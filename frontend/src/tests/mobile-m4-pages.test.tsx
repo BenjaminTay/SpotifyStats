@@ -4,6 +4,8 @@ import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { MobileSectionSwitcher } from '@/components/mobile'
+import { ChartWeeksValue, MiniRankTable as BillboardMiniRankTable, PeakNum, RecordCard as BillboardRecordCard, TrackAlbumToggle } from '@/features/billboard/records/RecordsPrimitives'
+import { CuriositiesSection } from '@/features/billboard/records/CuriositiesSection'
 import { MiniRankTable as PlaybackMiniRankTable } from '@/features/analysis/records/PlaybackRecordsPrimitives'
 import { MobileAllTime } from '@/features/mobile/billboard/MobileAllTime'
 import { MobileNumberOnes } from '@/features/mobile/billboard/MobileNumberOnes'
@@ -11,7 +13,7 @@ import { MobileVersusScoreboard } from '@/features/mobile/billboard/MobileVersus
 import { MobileYearEnd } from '@/features/mobile/billboard/MobileYearEnd'
 import { YearlyPeriodNotice } from '@/features/mobile/yearly/YearlyPeriodNotice'
 import type { NumberOnesComputed, YearFilteredNumberOnes } from '@/features/billboard/number-ones/numberOnesData'
-import type { BillboardYearEndResponse, VersusEntityData } from '@/types/billboard'
+import type { ArtistTrackCounts, BillboardRecords, BillboardYearEndResponse, TrackSummary, VersusEntityData } from '@/types/billboard'
 import type { PlaybackRecordRow } from '@/types/analysis'
 
 beforeEach(() => {
@@ -70,6 +72,194 @@ describe('M4 mobile page presentations', () => {
     expect(screen.getAllByRole('article')).toHaveLength(5)
   })
 
+  it('opens Billboard record lists in a bounded full-screen sheet', async () => {
+    const user = userEvent.setup()
+    const rows = Array.from({ length: 45 }, (_, index) => ({
+      name: `榜单纪录 ${index + 1}`,
+      value: 100 - index,
+    }))
+
+    render(
+      <MemoryRouter initialEntries={['/billboard/records?family=market']}>
+        <BillboardRecordCard title="每周播放量排行 · Weekly Total Plays" subtitle="桌面说明文字">
+          <BillboardMiniRankTable rows={rows} columns={[
+            { header: '#', render: (_row, index) => String(index + 1).padStart(2, '0') },
+            { header: '周次', render: (row) => row.name },
+            { header: '总播放', render: (row) => row.value },
+          ]} />
+        </BillboardRecordCard>
+      </MemoryRouter>,
+    )
+
+    expect(screen.getByRole('heading', { name: '每周播放量排行' })).toBeInTheDocument()
+    expect(screen.queryByText('Weekly Total Plays')).not.toBeInTheDocument()
+    expect(screen.queryByText('桌面说明文字')).not.toBeInTheDocument()
+    expect(screen.getAllByRole('article')).toHaveLength(3)
+
+    await user.click(screen.getByRole('button', { name: /查看完整榜单/ }))
+    const dialog = screen.getByRole('dialog', { name: '每周播放量排行' })
+    expect(within(dialog).getAllByRole('article')).toHaveLength(20)
+    expect(within(dialog).getByRole('button', { name: /加载更多/ })).toBeInTheDocument()
+
+    await user.click(within(dialog).getByRole('button', { name: /加载更多/ }))
+    expect(within(dialog).getAllByRole('article')).toHaveLength(40)
+  })
+
+  it('keeps record entity controls compact and pairs two headline metrics on the right', () => {
+    render(
+      <MemoryRouter>
+        <BillboardRecordCard
+          title="冠军名人堂"
+          toggle={<TrackAlbumToggle value="track" onChange={vi.fn()} />}
+        >
+          <BillboardMiniRankTable
+            rows={[{ artist: 'Artist', count: 9, weeks: 15 }]}
+            columns={[
+              { header: '#', render: () => '04' },
+              { header: '艺人', render: (row) => row.artist },
+              { header: '冠军单曲', mobileRole: 'primary', render: (row) => row.count },
+              { header: '单曲冠周', mobileRole: 'secondary', render: (row) => `${row.weeks} 周` },
+            ]}
+          />
+        </BillboardRecordCard>
+      </MemoryRouter>,
+    )
+
+    expect(screen.getByRole('tablist', { name: '榜单实体类型' })).toHaveClass('mobile-record-entity-toggle')
+    expect(document.querySelector('.mobile-record-card-header .mobile-record-card-actions')).not.toBeNull()
+    expect(document.querySelector('.mobile-record-rank-primary')).toHaveTextContent('冠军单曲9')
+    expect(document.querySelector('.mobile-record-rank-secondary')).toHaveTextContent('单曲冠周15 周')
+    expect(document.querySelector('.mobile-record-rank-metrics')).toHaveClass('mobile-record-rank-metrics-paired')
+  })
+
+  it('shows natural Peak numbers and reuses the standard record week metric on phone', () => {
+    render(
+      <MemoryRouter>
+        <BillboardRecordCard title="全时段单曲排行">
+          <BillboardMiniRankTable
+            rows={[{ name: 'Song', peak: 3, weeks: 7 }]}
+            columns={[
+              { header: '#', render: () => '01' },
+              { header: '单曲', render: (row) => row.name },
+              { header: 'Peak', render: (row) => <PeakNum rank={row.peak} /> },
+              { header: '在榜', render: (row) => <ChartWeeksValue value={row.weeks} /> },
+            ]}
+          />
+        </BillboardRecordCard>
+      </MemoryRouter>,
+    )
+
+    const row = screen.getByRole('article')
+    expect(within(row).getByText('3')).toBeInTheDocument()
+    expect(within(row).queryByText('03')).not.toBeInTheDocument()
+    expect(row.querySelector('.mobile-record-value')).toHaveTextContent('7周')
+    expect(row.querySelector('.mobile-record-chart-weeks')).toBeNull()
+  })
+
+  it('allows selected record lists to preview four rows before opening the full sheet', () => {
+    const rows = Array.from({ length: 6 }, (_, index) => ({ name: `阻挡纪录 ${index + 1}`, value: 6 - index }))
+    render(
+      <MemoryRouter>
+        <BillboardRecordCard title="阻挡王">
+          <BillboardMiniRankTable
+            rows={rows}
+            mobilePreviewCount={4}
+            columns={[
+              { header: '#', render: (_row, index) => index + 1 },
+              { header: '歌曲', render: (row) => row.name },
+              { header: '阻挡数', render: (row) => row.value },
+            ]}
+          />
+        </BillboardRecordCard>
+      </MemoryRouter>,
+    )
+
+    expect(screen.getAllByRole('article')).toHaveLength(4)
+    expect(screen.getByRole('button', { name: /查看完整榜单/ })).toBeInTheDocument()
+  })
+
+  it('renders double and triple chart events as equal aligned achievement rows on phone', () => {
+    const records = {
+      week_total_plays: [
+        { billboard_week: '2026-06-12', total_plays: 126 },
+        { billboard_week: '2026-07-17', total_plays: 177 },
+      ],
+      double_debut: [{
+        debut_track_id: 1,
+        debut_track: 'stupid song',
+        debut_artist: 'Olivia Rodrigo',
+        debut_week: '2026-06-12',
+        debut_album: 'you seem pretty sad for a girl so in love',
+      }],
+      triple_no1: [{
+        billboard_week: '2026-07-17',
+        '艺人': '单依纯',
+        track_id: 2,
+        '歌曲': '我表示理解',
+        '专辑': '纯妹妹',
+      }],
+    } as unknown as BillboardRecords
+
+    render(
+      <MemoryRouter>
+        <CuriositiesSection
+          rec={records}
+          covers={{
+            track: new Map([[1, '/track-1.jpg'], [2, '/track-2.jpg']]),
+            album: new Map([['you seem pretty sad for a girl so in love', '/album-1.jpg'], ['纯妹妹', '/album-2.jpg']]),
+            artist: new Map([['单依纯', '/artist-1.jpg']]),
+          }}
+          trackSummary={[
+            {
+              track_id: 10, track_name: 'A', artist_name: 'First Artist', album_name: 'First Album',
+              peak_position: 1, weeks_on_chart: 3, weeks_at_peak: 1, first_week: '2022-01-07', last_week: '2022-01-21',
+              total_chart_plays: 20, total_plays: 20, weeks_at_no1: 1, first_peak_week: '2022-01-07', is_debut_no1: true,
+            },
+            {
+              track_id: 11, track_name: 'A very long track name', artist_name: 'Latest Artist', album_name: 'Latest Album',
+              peak_position: 2, weeks_on_chart: 2, weeks_at_peak: 1, first_week: '2026-07-17', last_week: '2026-07-24',
+              total_chart_plays: 10, total_plays: 10, weeks_at_no1: 0, first_peak_week: '2026-07-17', is_debut_no1: false,
+            },
+          ] satisfies TrackSummary[]}
+          artistTrackCounts={[
+            {
+              artist_name: 'Taylor Swift', total_tracks: 301, best_peak: 1, total_weeks: 1849, avg_weeks: 6,
+              top1: 34, top5: 80, top10: 120, best_peak_track: 'Opalite', weeks_at_no1: 50,
+              num_no1_albums: 10, album_no1_weeks: 30, artist_chart_no1_weeks: 20,
+            },
+          ] satisfies ArtistTrackCounts[]}
+        />
+      </MemoryRouter>,
+    )
+
+    expect(screen.getByRole('heading', { name: '双榜空降' })).toBeInTheDocument()
+    expect(screen.queryByText('同张专辑有两首歌曲空降入榜')).not.toBeInTheDocument()
+    const events = document.querySelectorAll('.mobile-curiosity-event')
+    expect(events).toHaveLength(2)
+    expect(events[0]?.querySelectorAll('.mobile-curiosity-achievement-row')).toHaveLength(2)
+    expect(events[1]?.querySelectorAll('.mobile-curiosity-achievement-row')).toHaveLength(3)
+    expect(events[0]?.querySelectorAll('.mobile-curiosity-chart-rank')).toHaveLength(2)
+    expect(events[1]?.querySelectorAll('.mobile-curiosity-chart-rank')).toHaveLength(3)
+    expect(within(events[1] as HTMLElement).getByRole('link', { name: '单曲榜冠军：我表示理解' })).toBeInTheDocument()
+    expect(within(events[1] as HTMLElement).getByRole('link', { name: '专辑榜冠军：纯妹妹' })).toBeInTheDocument()
+    expect(within(events[1] as HTMLElement).getByRole('link', { name: '艺人榜冠军：单依纯' })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: '最早上榜' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: '最新上榜' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: '最长歌名' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: '最短歌名' })).not.toBeInTheDocument()
+    expect(screen.getByText('最早入榜')).toBeInTheDocument()
+    expect(screen.getByText('最新入榜')).toBeInTheDocument()
+    expect(screen.getByText('最长歌名')).toBeInTheDocument()
+    expect(screen.getByText('最短歌名')).toBeInTheDocument()
+    const extremes = screen.getByRole('region', { name: '榜单极值纪录' })
+    expect(within(extremes).getAllByRole('link')).toHaveLength(4)
+    const prolificRow = screen.getByRole('link', { name: 'Taylor Swift' }).closest('article')
+    expect(prolificRow).not.toBeNull()
+    expect(prolificRow?.querySelectorAll('.mobile-record-value')).toHaveLength(3)
+    expect(prolificRow).toHaveTextContent('34')
+    expect(prolificRow).toHaveTextContent('1,849周')
+  })
+
   it('renders Number Ones as a year-scoped timeline plus fixed Top 10 ranks', () => {
     const computed = {
       trackNo1WeeksSorted: [{ track_id: 1, track_name: 'Champion', artist_name: 'Artist', cover_url: null, weeks_at_no1: 4, power_score: 10, total_no1_plays: 40, longest_streak: 3, no1_weeks: [] }],
@@ -78,13 +268,18 @@ describe('M4 mobile page presentations', () => {
       trackAnnualNo1: [], albumAnnualNo1: [], albumNo1WithPkWks: [], artistNo1WithPkWks: [], trackMaxPlays: 20, albumMaxPlays: 1, artistMaxPlays: 1,
     } as NumberOnesComputed
     const yearFiltered = {
-      tracks: [{ billboard_week: '2026-08-03', track_id: 1, track_name: 'Champion', artist_name: 'Artist', album_name: 'Album', play_count: 20, total_ms: 1, rank: 1, running_peak: 1, running_wks: 3, running_peak_wks: 2, cover_url: null }],
+      tracks: [{ billboard_week: '2026-08-03', track_id: 1, track_name: 'Champion', artist_name: 'Artist', album_name: 'Album', play_count: 20, total_ms: 1, rank: 1, running_peak: 1, running_wks: 3, running_peak_wks: 2, cover_url: '/covers/tracks/1.jpg' }],
       albums: [], artists: [], trackMaxPlays: 20, albumMaxPlays: 1, artistMaxPlays: 1, uniqueTrackCount: 1, uniqueAlbumCount: 0, uniqueArtistCount: 0,
     } as YearFilteredNumberOnes
     render(<MemoryRouter><MobileNumberOnes activeTab="tracks" onTabChange={vi.fn()} computed={computed} yearFiltered={yearFiltered} availableYears={[2026]} selectedYear={2026} onYearChange={vi.fn()} /></MemoryRouter>)
-    expect(screen.getByRole('heading', { name: '每周冠军时间线' })).toBeInTheDocument()
+    const timeline = screen.getByRole('heading', { name: '每周冠军' }).closest('section')
+    expect(timeline).not.toBeNull()
+    expect(within(timeline!).getByText('2026 独特冠军')).toBeInTheDocument()
+    expect(within(timeline!).getByLabelText('选择冠军年份')).toBeInTheDocument()
     expect(screen.getByText(/2026\/8\/3/)).toBeInTheDocument()
     expect(screen.getByText('最长连冠 3周')).toBeInTheDocument()
+    expect(screen.queryByText('全时段冠军')).not.toBeInTheDocument()
+    expect(document.querySelector('.mobile-number-one-timeline .mobile-entity-artwork-track img')).toHaveAttribute('src', '/covers/tracks/1.jpg')
   })
 
   it('keeps Year-End original rank while sorting controls live in a sheet', async () => {

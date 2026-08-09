@@ -17,6 +17,7 @@ interface MobileChartCardProps {
   chart: ReactNode
   conclusion?: string
   interactionHint?: string
+  controls?: ReactNode
   series?: MobileChartSeries[]
   onToggleSeries?: (id: string) => void
   onFullscreen?: () => void
@@ -33,6 +34,7 @@ export function MobileChartCard({
   chart,
   conclusion,
   interactionHint = '点击数据点查看详情',
+  controls,
   series = [],
   onToggleSeries,
   onFullscreen,
@@ -55,6 +57,8 @@ export function MobileChartCard({
           </button>
         )}
       </header>
+
+      {controls && <div className="mobile-chart-controls">{controls}</div>}
 
       {series.length > 0 && (
         <div className="mobile-chart-series" aria-label="图表系列">

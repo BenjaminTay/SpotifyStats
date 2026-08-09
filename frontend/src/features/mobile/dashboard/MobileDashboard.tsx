@@ -45,7 +45,6 @@ export function MobileDashboard({
       <MobilePageHeader
         eyebrow="Listening / Overview"
         title="你的聆听概览"
-        description={`从 ${formatNumber(data.summary.total_plays)} 次有效播放中，整理出最值得先看的趋势与习惯。`}
         meta={<><span>完整播放历史</span><span>{formatNumber(data.summary.total_days)} 个数据日</span></>}
       />
 

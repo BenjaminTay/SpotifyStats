@@ -252,7 +252,7 @@ describe('mobile primitives', () => {
   })
 
   it('covers page headers, loading/empty/error/config states, and list-end pagination', () => {
-    const { rerender } = render(<MobilePageHeader eyebrow="Analysis" title="播放统计" description="移动内容头不会重复顶部栏标题。" />)
+    const { rerender } = render(<MobilePageHeader eyebrow="Analysis" title="播放统计" />)
     expect(screen.getByRole('heading', { level: 1, name: '播放统计' })).toBeInTheDocument()
 
     rerender(<MobileStatePanel variant="loading" />)

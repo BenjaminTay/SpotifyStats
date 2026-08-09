@@ -1,4 +1,5 @@
 import { GlassCard } from '@/components/shared/GlassCard'
+import { cn } from '@/lib/utils'
 
 export function formatNumber(n: number): string {
   return new Intl.NumberFormat('zh-CN').format(n)
@@ -78,9 +79,15 @@ export function KpiCard({
   )
 }
 
-export function KpiStrip({ items }: { items: { label: string; value: string; accent?: boolean }[] }) {
+export function KpiStrip({
+  items,
+  compactFive = false,
+}: {
+  items: { label: string; value: string; accent?: boolean }[]
+  compactFive?: boolean
+}) {
   return (
-    <div className="mb-5 flex flex-wrap gap-x-6 gap-y-2 border-b border-border pb-5">
+    <div className={cn('mb-5 flex flex-wrap gap-x-6 gap-y-2 border-b border-border pb-5', compactFive && 'mobile-achievement-kpis')}>
       {items.map((item) => (
         <div key={item.label} className="flex items-baseline gap-1.5">
           <span className="font-sans text-[11px] font-bold uppercase tracking-[1px] text-muted-foreground">

@@ -17,6 +17,84 @@ interface WeekSelectorProps {
   onGoToWeek: (week: string) => void
 }
 
+interface BillboardWeekCalendarProps {
+  allWeeks: string[]
+  selectedWeek: string
+  onGoToWeek: (week: string) => void
+  onWeekSelected?: () => void
+  className?: string
+}
+
+export function BillboardWeekCalendar({
+  allWeeks,
+  selectedWeek,
+  onGoToWeek,
+  onWeekSelected,
+  className,
+}: BillboardWeekCalendarProps) {
+  const weekIntervals = useMemo(() => {
+    return allWeeks.map((w) => {
+      const start = parseISO(w)
+      return { start, end: addDays(start, 6) }
+    })
+  }, [allWeeks])
+
+  const bounds = useMemo(() => {
+    if (weekIntervals.length === 0) return { from: undefined, to: undefined }
+    return {
+      from: weekIntervals[weekIntervals.length - 1].start,
+      to: weekIntervals[0].start,
+    }
+  }, [weekIntervals])
+
+  const selectedWeekDays = useMemo(() => {
+    if (!selectedWeek) return undefined
+    const start = parseISO(selectedWeek)
+    return { from: start, to: addDays(start, 6) }
+  }, [selectedWeek])
+
+  const disabledMatcher = useMemo(() => {
+    if (weekIntervals.length === 0) return undefined
+    return (date: Date) => {
+      return !weekIntervals.some(({ start, end }) =>
+        isWithinInterval(date, { start, end }),
+      )
+    }
+  }, [weekIntervals])
+
+  function handleDayClick(day: Date) {
+    if (disabledMatcher?.(day)) return
+    const match = allWeeks.find((week) => {
+      const weekStart = parseISO(week)
+      return isWithinInterval(day, { start: weekStart, end: addDays(weekStart, 6) })
+    })
+    if (!match) return
+    onGoToWeek(match)
+    onWeekSelected?.()
+  }
+
+  return (
+    <Calendar
+      className={className}
+      mode="single"
+      month={selectedWeek ? parseISO(selectedWeek) : undefined}
+      startMonth={bounds.from}
+      endMonth={bounds.to}
+      disabled={disabledMatcher}
+      modifiers={
+        selectedWeekDays
+          ? { currentWeek: [selectedWeekDays] }
+          : undefined
+      }
+      modifiersClassNames={{
+        currentWeek: '!bg-accent-foreground/12 !text-accent-foreground font-semibold rounded-none first:rounded-l-full last:rounded-r-full',
+      }}
+      onDayClick={handleDayClick}
+      footer="点击日期跳转到对应周"
+    />
+  )
+}
+
 export function WeekSelector({
   weekLabel,
   dateRange,
@@ -29,50 +107,6 @@ export function WeekSelector({
   onGoToWeek,
 }: WeekSelectorProps) {
   const [open, setOpen] = useState(false)
-
-  const weekIntervals = useMemo(() => {
-    return allWeeks.map((w) => {
-      const start = parseISO(w)
-      return { start, end: addDays(start, 6) }
-    })
-  }, [allWeeks])
-
-  const bounds = useMemo(() => {
-    if (weekIntervals.length === 0) return { from: undefined, to: undefined }
-    return {
-      from: weekIntervals[weekIntervals.length - 1].start, // oldest
-      to: weekIntervals[0].start, // newest
-    }
-  }, [weekIntervals])
-
-  const selectedWeekDays = useMemo(() => {
-    if (!selectedWeek) return undefined
-    const start = parseISO(selectedWeek)
-    return { from: start, to: addDays(start, 6) }
-  }, [selectedWeek])
-
-  // Disable dates that don't belong to any Billboard week
-  const disabledMatcher = useMemo(() => {
-    if (weekIntervals.length === 0) return undefined
-    return (date: Date) => {
-      return !weekIntervals.some(({ start, end }) =>
-        isWithinInterval(date, { start, end }),
-      )
-    }
-  }, [weekIntervals])
-
-  function handleDayClick(day: Date) {
-    // Shouldn't be called for disabled days, but double-check
-    if (disabledMatcher?.(day)) return
-    const match = allWeeks.find((w) => {
-      const weekStart = parseISO(w)
-      return isWithinInterval(day, { start: weekStart, end: addDays(weekStart, 6) })
-    })
-    if (match) {
-      onGoToWeek(match)
-      setOpen(false)
-    }
-  }
 
   return (
     <div className="mb-6 flex items-center gap-3.5">
@@ -110,22 +144,11 @@ export function WeekSelector({
           sideOffset={12}
           alignOffset={-72}
         >
-          <Calendar
-            mode="single"
-            month={selectedWeek ? parseISO(selectedWeek) : undefined}
-            startMonth={bounds.from}
-            endMonth={bounds.to}
-            disabled={disabledMatcher}
-            modifiers={
-              selectedWeekDays
-                ? { currentWeek: [selectedWeekDays] }
-                : undefined
-            }
-            modifiersClassNames={{
-              currentWeek: '!bg-accent-foreground/12 !text-accent-foreground font-semibold rounded-none first:rounded-l-full last:rounded-r-full',
-            }}
-            onDayClick={handleDayClick}
-            footer="点击日期跳转到对应周"
+          <BillboardWeekCalendar
+            allWeeks={allWeeks}
+            selectedWeek={selectedWeek}
+            onGoToWeek={onGoToWeek}
+            onWeekSelected={() => setOpen(false)}
           />
         </PopoverContent>
       </Popover>

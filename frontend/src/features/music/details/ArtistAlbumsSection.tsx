@@ -37,16 +37,21 @@ export function ArtistAlbumsSection({
   }
   const totalPages = Math.max(1, Math.ceil(albums.length / pageSize))
   const safePage = Math.min(page, totalPages)
+  const top5Albums = albums.filter((album) => album.peak <= 5).length
+  const top10Albums = albums.filter((album) => album.peak <= 10).length
 
   const paged = albums.slice((safePage - 1) * pageSize, safePage * pageSize)
   if (isPhone) {
     return (
       <div className="mobile-detail-entity-section">
         <KpiStrip
+          compactFive
           items={[
-            { label: '#1 专辑', value: formatNumber(info.num_no1_albums), accent: info.num_no1_albums > 0 },
-            { label: '冠军周数', value: formatNumber(info.album_no1_weeks), accent: info.album_no1_weeks > 0 },
             { label: '入榜专辑', value: formatNumber(albums.length) },
+            { label: 'No.1专辑', value: formatNumber(info.num_no1_albums), accent: info.num_no1_albums > 0 },
+            { label: 'Top5专辑', value: formatNumber(top5Albums) },
+            { label: 'Top10专辑', value: formatNumber(top10Albums) },
+            { label: '冠军周数', value: formatNumber(info.album_no1_weeks), accent: info.album_no1_weeks > 0 },
           ]}
         />
         <MobileRankList
@@ -58,11 +63,12 @@ export function ArtistAlbumsSection({
             subtitle: displayName(artistName),
             rank: album.power_rank ?? undefined,
             coverUrl: album.cover_url,
-            metric: `PK #${album.peak}`,
-            metricLabel: '最高排名',
+            metric: `${album.peak}`,
+            metricLabel: 'Peak',
+            metricRank: album.peak,
             facts: [
               { label: '在榜', value: `${album.weeks}周` },
-              { label: '走势', value: album.power_rank ? `#${album.power_rank}` : '—' },
+              { label: '峰值', value: `${album.pk_wks}周` },
             ],
             badges: [`${formatNumber(album.total_plays)} 次上榜播放`],
             to: `/music/albums/${encodeURIComponent(album.album_name)}?artist=${encodeURIComponent(artistName)}`,

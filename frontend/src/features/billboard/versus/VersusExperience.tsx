@@ -123,7 +123,6 @@ export function VersusExperience() {
         <MobilePageHeader
           eyebrow="Chart / Versus"
           title="对决"
-          description={`分三步选择 2–${MAX_QUEUE_SIZE} 个实体，再用纵向成绩卡比较榜单、播放与发行周期。`}
         />
       ) : <section className="mt-6 mb-6">
         <p className="mb-4 font-sans text-[11px] font-bold uppercase tracking-[1.8px] text-accent-foreground">
@@ -132,9 +131,6 @@ export function VersusExperience() {
         <h1 className="font-serif text-[44px] font-bold leading-[1.06] tracking-[-1.2px]">
           对决
         </h1>
-        <p className="mt-2 text-[13px] text-muted-foreground">
-          选取 2-{MAX_QUEUE_SIZE} 个单曲、专辑或艺人，对比榜单表现、个人播放与发行周期
-        </p>
       </section>}
 
       {/* Selector */}

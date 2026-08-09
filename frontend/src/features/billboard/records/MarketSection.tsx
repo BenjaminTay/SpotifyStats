@@ -43,8 +43,8 @@ export function MarketSection({ rec, covers }: { rec: BillboardRecords; covers: 
         <MiniRankTable rows={rec.new_entry_ratio} columns={[
           { header: '#', width: '48px', align: 'center', render: (_, idx) => <RankNum rank={idx + 1} /> },
           { header: '周次', render: (r) => <WeekLink date={r.billboard_week} /> },
-          { header: '新入榜', width: '80px', align: 'center', render: (r) => <span className="font-sans text-[13px] tabular-nums text-muted-foreground">{r['新入榜歌曲数']}</span> },
-          { header: '新歌占比', width: '145px', align: 'right', render: (r) => <ValueBar value={Math.round(r['新歌占比'])} max={100} suffix="%" /> },
+          { header: '新入榜', width: '80px', align: 'center', mobileRole: 'fact', render: (r) => <span className="font-sans text-[13px] tabular-nums text-muted-foreground">{r['新入榜歌曲数']}</span> },
+          { header: '新歌占比', width: '145px', align: 'right', mobileRole: 'primary', render: (r) => <ValueBar value={Math.round(r['新歌占比'])} max={100} suffix="%" /> },
         ]} />
       </RecordCard>
     </div>

@@ -17,6 +17,9 @@ interface MobileSectionSwitcherProps<T extends string> {
   label?: string
   title?: string
   className?: string
+  compact?: boolean
+  sheetEyebrow?: string | null
+  sheetDescription?: string | null
 }
 
 export function MobileSectionSwitcher<T extends string>({
@@ -26,6 +29,9 @@ export function MobileSectionSwitcher<T extends string>({
   label = '当前栏目',
   title = '选择栏目',
   className,
+  compact = false,
+  sheetEyebrow = 'Section',
+  sheetDescription = '切换只改变当前页面的内容章节。',
 }: MobileSectionSwitcherProps<T>) {
   const [open, setOpen] = useState(false)
   const triggerRef = useRef<HTMLButtonElement>(null)
@@ -36,7 +42,7 @@ export function MobileSectionSwitcher<T extends string>({
       <button
         ref={triggerRef}
         type="button"
-        className={cn('mobile-section-switcher', className)}
+        className={cn('mobile-section-switcher', compact && 'mobile-section-switcher-compact', className)}
         onClick={() => setOpen(true)}
         aria-haspopup="dialog"
         aria-expanded={open}
@@ -52,8 +58,8 @@ export function MobileSectionSwitcher<T extends string>({
         open={open}
         onOpenChange={setOpen}
         title={title}
-        eyebrow="Section"
-        description="切换只改变当前页面的内容章节。"
+        eyebrow={sheetEyebrow ?? undefined}
+        description={sheetDescription ?? undefined}
         triggerRef={triggerRef}
         dataSheet="section-switcher"
       >

@@ -108,13 +108,19 @@ describe('mobile app shell', () => {
 
   it('moves music detail sharing and governance deep links into the top-bar More sheet', async () => {
     render(
-      <MemoryRouter initialEntries={['/music/tracks/4455?tab=overview']}>
+      <MemoryRouter initialEntries={[{
+        pathname: '/music/tracks/4455',
+        search: '?tab=overview',
+        state: { detailOrigin: { to: '/billboard?week=2025-10-03', label: '周榜' } },
+      }]}>
         <MobileTopBar />
       </MemoryRouter>,
     )
 
+    expect(screen.getByRole('link', { name: '返回首页' })).toHaveAttribute('href', '/')
     fireEvent.click(screen.getByRole('button', { name: '打开详情更多操作' }))
     const dialog = screen.getByRole('dialog', { name: '详情操作' })
+    expect(within(dialog).getByRole('link', { name: /返回周榜/ })).toHaveAttribute('href', '/billboard?week=2025-10-03')
     expect(within(dialog).getByRole('button', { name: /分享详情/ })).toBeInTheDocument()
     const manageLink = within(dialog).getByRole('link', { name: /管理曲目署名/ })
     expect(manageLink).toHaveAttribute('href', expect.stringContaining('metadata=track-credits'))

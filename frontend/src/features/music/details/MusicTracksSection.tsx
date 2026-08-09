@@ -67,10 +67,12 @@ export function MusicTracksSection({
     return (
       <div className="mobile-detail-entity-section">
         <KpiStrip
+          compactFive
           items={[
             { label: '入榜曲目', value: formatNumber(info.total_tracks) },
-            { label: '#1 曲目', value: formatNumber(info.top1), accent: info.top1 > 0 },
-            { label: 'Top 10', value: formatNumber(info.top10) },
+            { label: 'No.1曲目', value: formatNumber(info.top1), accent: info.top1 > 0 },
+            { label: 'Top5曲目', value: formatNumber(info.top5) },
+            { label: 'Top10曲目', value: formatNumber(info.top10) },
             { label: '冠军周数', value: formatNumber(info.weeks_at_no1), accent: info.weeks_at_no1 > 0 },
           ]}
         />
@@ -83,11 +85,12 @@ export function MusicTracksSection({
             subtitle: (track.artist_names?.length ? track.artist_names : [artistName]).map(displayName).join(' · '),
             rank: track.power_rank ?? undefined,
             coverUrl: track.cover_url,
-            metric: `PK #${track.peak_position}`,
-            metricLabel: '最高排名',
+            metric: `${track.peak_position}`,
+            metricLabel: 'Peak',
+            metricRank: track.peak_position,
             facts: [
               { label: '在榜', value: `${track.weeks_on_chart}周` },
-              { label: '走势', value: track.power_rank ? `#${track.power_rank}` : '—' },
+              { label: '峰值', value: `${track.weeks_at_peak}周` },
             ],
             badges: [`${formatNumber(track.total_chart_plays)} 次上榜播放`],
             to: `/music/tracks/${track.track_id}`,

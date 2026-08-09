@@ -100,6 +100,7 @@ describe('M3 mobile page presentations', () => {
 
   it('shows the mobile stats hierarchy and switches trend views without refetching', async () => {
     const user = userEvent.setup()
+    const onMetricChange = vi.fn()
     const data = {
       period: { label: '2026 年' },
       summary: {
@@ -123,7 +124,7 @@ describe('M3 mobile page presentations', () => {
       <MobileAnalysisStats
         data={data as never}
         metric="plays"
-        onMetricChange={vi.fn()}
+        onMetricChange={onMetricChange}
         filters={{} as never}
         apiParams={{ period: 'year' }}
         fetchPage={vi.fn()}
@@ -132,6 +133,15 @@ describe('M3 mobile page presentations', () => {
     )
 
     expect(screen.getByRole('heading', { name: '这一段时间的聆听' })).toBeInTheDocument()
+    expect(screen.getByText('Playback Stats')).toBeInTheDocument()
+    expect(screen.getAllByRole('article')).toHaveLength(8)
+    expect(screen.getByText('已听歌曲')).toBeInTheDocument()
+    expect(screen.getByText('已听专辑')).toBeInTheDocument()
+    expect(screen.getByText('已听艺人')).toBeInTheDocument()
+    expect(screen.queryByText('更多数据')).not.toBeInTheDocument()
+    expect(screen.queryByText('有效事件')).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: '播放时长' }))
+    expect(onMetricChange).toHaveBeenCalledWith('hours')
     expect(screen.getByTestId('recent-plays')).toHaveTextContent('mobile')
     await user.click(screen.getByRole('switch', { name: '累计' }))
     expect(screen.getByRole('heading', { name: '累计播放' })).toBeInTheDocument()
@@ -171,9 +181,18 @@ describe('M3 mobile page presentations', () => {
       running_peak_wks: 1,
       cover_url: null,
     }
+    const secondEntry: WeeklyTrackEntry = {
+      ...entry,
+      track_id: 8,
+      track_name: 'Second Song',
+      play_count: 12,
+      rank: 5,
+      running_peak: 5,
+      running_wks: 1,
+    }
     const data = {
       meta: { all_weeks_desc: ['2026-08-03', '2026-07-27'] },
-      weekly: [entry],
+      weekly: [entry, secondEntry],
       weekly_album: [],
       weekly_artist: [],
     } as unknown as BillboardWeeklyResponse
@@ -190,23 +209,60 @@ describe('M3 mobile page presentations', () => {
           onPreviousWeek={vi.fn()}
           onNextWeek={vi.fn()}
           onGoToWeek={onGoToWeek}
-          entries={[entry]}
+          entries={[entry, secondEntry]}
           previousEntries={[]}
           historicalEntries={[]}
-          summary={{ maxPlays: 28, totalPlays: 28, newCount: 1, reCount: 0, total: 1 }}
-          page={1}
-          totalPages={1}
-          pageSize={50}
-          onPageChange={vi.fn()}
+          summary={{ maxPlays: 28, totalPlays: 40, newCount: 2, reCount: 0, total: 2 }}
         />
       </MemoryRouter>,
     )
 
-    expect(screen.getByText('PK #2')).toBeInTheDocument()
-    expect(screen.getByText('在榜 7周')).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: /Week \d+, 2026/ }))
+    const row = screen.getByRole('link', { name: /Current Song/ })
+    expect(screen.getByRole('link', { name: /Second Song/ })).toBeInTheDocument()
+    expect(within(row).getByText('Peak 2')).toBeInTheDocument()
+    expect(within(row).getByText('在榜 7周')).toBeInTheDocument()
+    expect(within(row).getByText('峰值 1周')).toBeInTheDocument()
+    expect(within(row).getByText('NEW')).toHaveClass('text-[#3B5998]')
+    expect(document.querySelector('.mobile-billboard-summary-compact')).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { level: 2, name: '完整周榜' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('navigation', { name: '列表分页' })).not.toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 1, name: 'Week 32, 2026' })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { level: 1, name: '本周榜单' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /选择榜单周次：Week 32, 2026/ }))
     const dialog = screen.getByRole('dialog', { name: '选择榜单周次' })
-    await user.click(within(dialog).getByRole('button', { name: /2026年7月27日/ }))
+    await user.click(within(dialog).getByRole('button', { name: '上一个月' }))
+    await user.click(within(dialog).getByRole('button', { name: 'Monday, July 27th, 2026' }))
     expect(onGoToWeek).toHaveBeenCalledWith('2026-07-27')
+    expect(screen.queryByRole('dialog', { name: '选择榜单周次' })).not.toBeInTheDocument()
+  })
+
+  it('uses the selected week as the historical weekly-chart title too', () => {
+    const data = {
+      meta: { all_weeks_desc: ['2026-08-03', '2026-07-27'] },
+      weekly: [],
+      weekly_album: [],
+      weekly_artist: [],
+    } as unknown as BillboardWeeklyResponse
+    render(
+      <MemoryRouter>
+        <MobileBillboardWeekly
+          data={data}
+          activeTab="tracks"
+          onTabChange={vi.fn()}
+          selectedWeek="2026-07-27"
+          currentIndex={1}
+          totalWeeks={2}
+          onPreviousWeek={vi.fn()}
+          onNextWeek={vi.fn()}
+          onGoToWeek={vi.fn()}
+          entries={[]}
+          previousEntries={[]}
+          historicalEntries={[]}
+          summary={{ maxPlays: 0, totalPlays: 0, newCount: 0, reCount: 0, total: 0 }}
+        />
+      </MemoryRouter>,
+    )
+    expect(screen.getByRole('heading', { level: 1, name: 'Week 31, 2026' })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { level: 1, name: '本周榜单' })).not.toBeInTheDocument()
   })
 })

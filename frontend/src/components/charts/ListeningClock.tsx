@@ -29,9 +29,11 @@ function arcPath(cx: number, cy: number, innerR: number, outerR: number, startAn
 export function ListeningClock({
   data,
   metricLabel,
+  maxWidth = 280,
 }: {
   data: HourDatum[]
   metricLabel: string
+  maxWidth?: number
 }) {
   const { isDark } = useTheme()
   const colors = getChartColors(isDark)
@@ -61,7 +63,7 @@ export function ListeningClock({
 
   return (
     <div className="relative flex justify-center">
-      <svg ref={svgRef} viewBox="0 0 200 200" className="w-full max-w-[280px]">
+      <svg ref={svgRef} viewBox="0 0 200 200" className="w-full" style={{ maxWidth }}>
         {data.map((h) => {
           const intensity = h.plays > 0 ? h.plays / maxVal : 0
           const isHovered = hoveredHour === h.hour

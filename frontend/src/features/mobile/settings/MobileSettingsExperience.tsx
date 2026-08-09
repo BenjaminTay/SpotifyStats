@@ -435,7 +435,6 @@ export function MobileSettingsExperience({
       <header className="mobile-settings-landing-header">
         <p>Preferences / Mobile</p>
         <h1>设置</h1>
-        <span>日常参数可直接调整，高级数据治理会引导到电脑端。</span>
       </header>
       <div className="mobile-settings-health-strip">
         <span><Database className="h-4 w-4" />{settings.db_record_count.toLocaleString('zh-CN')} 条播放</span>

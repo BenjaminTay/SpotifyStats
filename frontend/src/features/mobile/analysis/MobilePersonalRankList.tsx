@@ -86,7 +86,6 @@ export function MobilePersonalRankList({
       <MobilePageHeader
         eyebrow="Playback / Ranking"
         title="你的高频播放"
-        description="搜索和分页只改变可见结果，左侧名次始终来自完整榜单。"
         meta={<span>{data?.period.label ?? '正在读取时间范围'}</span>}
       />
 

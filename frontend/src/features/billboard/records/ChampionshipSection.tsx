@@ -109,6 +109,8 @@ export function ChampionshipSection({ rec, covers }: { rec: BillboardRecords; co
   const no1MaxAlbums = Math.max(...rec.artist_most_no1.map(r => r['冠军专辑数'] ?? 0), 1)
   const no1MaxSongWeeks = Math.max(...rec.artist_most_no1.map(r => r['单曲冠军周数'] ?? 0), 1)
   const no1MaxAlbumWeeks = Math.max(...rec.artist_most_no1.map(r => r['专辑冠军周数'] ?? 0), 1)
+  const debutTrackMaxNo1Weeks = Math.max(...debutTrackSorted.map(r => r.weeks_at_no1 ?? 0), 1)
+  const debutAlbumMaxNo1Weeks = Math.max(...debutAlbumSorted.map(r => r.weeks_at_no1 ?? 0), 1)
 
   return (
     <div>
@@ -117,7 +119,7 @@ export function ChampionshipSection({ rec, covers }: { rec: BillboardRecords; co
       {/* 冠军名人堂 */}
       <RecordCard title="冠军名人堂" toggle={<TrackAlbumToggle value={no1Type} onChange={setNo1Type} />}>
         {no1Sorted.length > 0 && (
-          <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <div className="mobile-record-podium mb-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
             {no1Sorted.slice(0, 3).map((r, i) => (
               <FeaturedRecord key={r.artist_name}
                 label={['冠军之王', '亚军', '季军'][i]}
@@ -130,17 +132,17 @@ export function ChampionshipSection({ rec, covers }: { rec: BillboardRecords; co
             ))}
           </div>
         )}
-        <MiniRankTable rows={no1Sorted} columns={[
+        <MiniRankTable rows={no1Sorted} mobileSkip={3} columns={[
           { header: '#', width: '48px', align: 'center', render: (_, idx) => <RankNum rank={idx + 1} /> },
           { header: '艺人', render: (r) => <ArtistCell artistName={r.artist_name} coverUrl={covers.artist.get(r.artist_name)} /> },
           ...(no1Type === 'album'
             ? [
-              { header: '冠军专辑', width: '140px', align: 'right' as const, render: (r: typeof rec.artist_most_no1[number]) => <ValueBar value={r['冠军专辑数'] ?? 0} max={no1MaxAlbums} /> },
-              { header: '专辑冠周', width: '145px', align: 'right' as const, render: (r: typeof rec.artist_most_no1[number]) => <ValueBar value={r['专辑冠军周数'] ?? 0} max={no1MaxAlbumWeeks} suffix="周" /> },
+              { header: '冠军专辑', width: '140px', align: 'right' as const, mobileRole: 'primary' as const, render: (r: typeof rec.artist_most_no1[number]) => <ValueBar value={r['冠军专辑数'] ?? 0} max={no1MaxAlbums} suffix="张" /> },
+              { header: '专辑冠周', width: '145px', align: 'right' as const, mobileRole: 'secondary' as const, render: (r: typeof rec.artist_most_no1[number]) => <ValueBar value={r['专辑冠军周数'] ?? 0} max={no1MaxAlbumWeeks} suffix="周" /> },
             ]
             : [
-              { header: '冠军单曲', width: '140px', align: 'right' as const, render: (r: typeof rec.artist_most_no1[number]) => <ValueBar value={r['冠单数']} max={no1MaxSongs} /> },
-              { header: '单曲冠周', width: '145px', align: 'right' as const, render: (r: typeof rec.artist_most_no1[number]) => <ValueBar value={r['单曲冠军周数']} max={no1MaxSongWeeks} suffix="周" /> },
+              { header: '冠军单曲', width: '140px', align: 'right' as const, mobileRole: 'primary' as const, render: (r: typeof rec.artist_most_no1[number]) => <ValueBar value={r['冠单数']} max={no1MaxSongs} suffix="首" /> },
+              { header: '单曲冠周', width: '145px', align: 'right' as const, mobileRole: 'secondary' as const, render: (r: typeof rec.artist_most_no1[number]) => <ValueBar value={r['单曲冠军周数']} max={no1MaxSongWeeks} suffix="周" /> },
             ]
           ),
         ]} />
@@ -172,7 +174,7 @@ export function ChampionshipSection({ rec, covers }: { rec: BillboardRecords; co
             { header: '#', width: '48px', align: 'center', render: (_, idx) => <RankNum rank={idx + 1} /> },
             { header: '歌曲', render: (r) => <TrackCell trackId={r.track_id} trackName={r.track_name} artistName={r.artist_name} artistNames={r.artist_names} coverUrl={covers.track.get(r.track_id)} /> },
             { header: '空降日期', width: '110px', render: (r) => <WeekLink date={r.first_week} /> },
-            { header: '冠军周数', width: '105px', align: 'right', render: (r) => <span className="font-sans text-[13px] tabular-nums text-muted-foreground">{r.weeks_at_no1 > 0 ? `${r.weeks_at_no1} 周` : '—'}</span> },
+            { header: '冠军周数', width: '105px', align: 'right', render: (r) => r.weeks_at_no1 > 0 ? <ValueBar value={r.weeks_at_no1} max={debutTrackMaxNo1Weeks} suffix="周" /> : <span className="text-muted-foreground">—</span> },
             { header: '在榜', width: '140px', align: 'right', render: (r) => <ValueBar value={r.weeks_on_chart} max={debutTrackSorted[0]?.weeks_on_chart ?? 1} suffix="周" /> },
           ]} />
         ) : (
@@ -180,7 +182,7 @@ export function ChampionshipSection({ rec, covers }: { rec: BillboardRecords; co
             { header: '#', width: '48px', align: 'center', render: (_, idx) => <RankNum rank={idx + 1} /> },
             { header: '专辑', render: (r) => <AlbumCell albumName={r.album_name} artistName={r.artist_name} coverUrl={covers.album.get(r.album_name)} /> },
             { header: '空降日期', width: '110px', render: (r) => <WeekLink date={r.first_week} /> },
-            { header: '冠军周数', width: '105px', align: 'right', render: (r) => <span className="font-sans text-[13px] tabular-nums text-muted-foreground">{r.weeks_at_no1 > 0 ? `${r.weeks_at_no1} 周` : '—'}</span> },
+            { header: '冠军周数', width: '105px', align: 'right', render: (r) => r.weeks_at_no1 > 0 ? <ValueBar value={r.weeks_at_no1} max={debutAlbumMaxNo1Weeks} suffix="周" /> : <span className="text-muted-foreground">—</span> },
             { header: '在榜', width: '140px', align: 'right', render: (r) => <ValueBar value={r.weeks_on_chart} max={debutAlbumSorted[0]?.weeks_on_chart ?? 1} suffix="周" /> },
           ]} />
         )}
@@ -192,42 +194,42 @@ export function ChampionshipSection({ rec, covers }: { rec: BillboardRecords; co
           <MiniRankTable rows={rec.return_to_no1 as ReturnToNo1Record[]} columns={[
             { header: '#', width: '48px', align: 'center', render: (_, idx) => <RankNum rank={idx + 1} /> },
             { header: '歌曲', render: (r) => <TrackCell trackId={r.track_id} trackName={r.track_name} artistName={r.artist_name} artistNames={r.artist_names} coverUrl={covers.track.get(r.track_id)} /> },
-            { header: '首次夺冠', width: '105px', render: (r) => <WeekLink date={r['首次冠单']} /> },
-            { header: '回冠周', width: '105px', render: (r) => <WeekLink date={r['回冠日期']} /> },
-            { header: '间隔', width: '140px', align: 'right', render: (r) => <ValueBar value={r['间隔周数']} max={(rec.return_to_no1 as ReturnToNo1Record[])[0]?.['间隔周数'] ?? 1} suffix="周" /> },
+            { header: '首次夺冠', width: '105px', mobileRole: 'fact', render: (r) => <WeekLink date={r['首次冠单']} /> },
+            { header: '回冠周', width: '105px', mobileRole: 'fact', render: (r) => <WeekLink date={r['回冠日期']} /> },
+            { header: '间隔', width: '140px', align: 'right', mobileRole: 'primary', render: (r) => <ValueBar value={r['间隔周数']} max={(rec.return_to_no1 as ReturnToNo1Record[])[0]?.['间隔周数'] ?? 1} suffix="周" /> },
           ]} />
         ) : returnType === 'album' ? (
           <MiniRankTable rows={rec.return_to_no1_album as ReturnToNo1AlbumRecord[]} columns={[
             { header: '#', width: '48px', align: 'center', render: (_, idx) => <RankNum rank={idx + 1} /> },
             { header: '专辑', render: (r) => <AlbumCell albumName={r.album_name} artistName={r.artist_name} coverUrl={covers.album.get(r.album_name)} /> },
-            { header: '首次夺冠', width: '105px', render: (r) => <WeekLink date={r['首次冠专']} /> },
-            { header: '回冠周', width: '105px', render: (r) => <WeekLink date={r['回冠日期']} /> },
-            { header: '间隔', width: '140px', align: 'right', render: (r) => <ValueBar value={r['间隔周数']} max={(rec.return_to_no1_album as ReturnToNo1AlbumRecord[])[0]?.['间隔周数'] ?? 1} suffix="周" /> },
+            { header: '首次夺冠', width: '105px', mobileRole: 'fact', render: (r) => <WeekLink date={r['首次冠专']} /> },
+            { header: '回冠周', width: '105px', mobileRole: 'fact', render: (r) => <WeekLink date={r['回冠日期']} /> },
+            { header: '间隔', width: '140px', align: 'right', mobileRole: 'primary', render: (r) => <ValueBar value={r['间隔周数']} max={(rec.return_to_no1_album as ReturnToNo1AlbumRecord[])[0]?.['间隔周数'] ?? 1} suffix="周" /> },
           ]} />
         ) : (
           <MiniRankTable rows={rec.return_to_no1_artist as ReturnToNo1ArtistRecord[]} columns={[
             { header: '#', width: '48px', align: 'center', render: (_, idx) => <RankNum rank={idx + 1} /> },
             { header: '艺人', render: (r) => <ArtistCell artistName={r.artist_name} coverUrl={covers.artist.get(r.artist_name)} compact /> },
-            { header: '首次夺冠', width: '105px', render: (r) => <WeekLink date={r['首次夺艺冠']} /> },
-            { header: '回冠周', width: '105px', render: (r) => <WeekLink date={r['回冠日期']} /> },
-            { header: '间隔', width: '140px', align: 'right', render: (r) => <ValueBar value={r['间隔周数']} max={(rec.return_to_no1_artist as ReturnToNo1ArtistRecord[])[0]?.['间隔周数'] ?? 1} suffix="周" /> },
+            { header: '首次夺冠', width: '105px', mobileRole: 'fact', render: (r) => <WeekLink date={r['首次夺艺冠']} /> },
+            { header: '回冠周', width: '105px', mobileRole: 'fact', render: (r) => <WeekLink date={r['回冠日期']} /> },
+            { header: '间隔', width: '140px', align: 'right', mobileRole: 'primary', render: (r) => <ValueBar value={r['间隔周数']} max={(rec.return_to_no1_artist as ReturnToNo1ArtistRecord[])[0]?.['间隔周数'] ?? 1} suffix="周" /> },
           ]} />
         )}
       </RecordCard>
 
       {/* 冠军传承 */}
-      <RecordCard title="冠军传承 · Self-Replacement" subtitle="连续两周不同作品接力夺冠" toggle={<TrackAlbumToggle value={replaceType} onChange={setReplaceType} />}>
+      <RecordCard title="冠军传承 · Self-Replacement" subtitle="连续两周不同作品接力夺冠" mobileSubtitle="连续两周由不同作品接力夺冠" toggle={<TrackAlbumToggle value={replaceType} onChange={setReplaceType} />}>
         {replaceType === 'track' ? (
-          <MiniRankTable rows={rec.self_replacement_no1 as SelfReplacementRecord[]} columns={[
-            { header: '日期', width: '105px', render: (r) => <WeekLink date={r['周次']} /> },
+          <MiniRankTable rows={rec.self_replacement_no1 as SelfReplacementRecord[]} mobileRowClassName="mobile-record-replacement-row" columns={[
+            { header: '榜单周', width: '105px', render: (r) => <WeekLink date={r['周次']} /> },
             { header: '艺人', render: (r) => <ArtistCell artistName={r['艺人']} coverUrl={covers.artist.get(r['艺人'])} /> },
             { header: '前冠单', render: (r) => <TrackCell trackId={r['前冠单_id']} trackName={r['前冠单']} coverUrl={covers.track.get(r['前冠单_id'])} /> },
             { header: '', width: '32px', align: 'center', render: () => <span className="text-muted-foreground">→</span> },
             { header: '新冠单', render: (r) => <TrackCell trackId={r['新冠单_id']} trackName={r['新冠单']} coverUrl={covers.track.get(r['新冠单_id'])} /> },
           ]} />
         ) : (
-          <MiniRankTable rows={rec.self_replacement_no1_album as SelfReplacementAlbumRecord[]} columns={[
-            { header: '日期', width: '105px', render: (r) => <WeekLink date={r['周次']} /> },
+          <MiniRankTable rows={rec.self_replacement_no1_album as SelfReplacementAlbumRecord[]} mobileRowClassName="mobile-record-replacement-row" columns={[
+            { header: '榜单周', width: '105px', render: (r) => <WeekLink date={r['周次']} /> },
             { header: '艺人', render: (r) => <ArtistCell artistName={r['艺人']} coverUrl={covers.artist.get(r['艺人'])} /> },
             { header: '前冠专', render: (r) => <AlbumCell albumName={r['前冠专']} artistName={r['艺人']} coverUrl={covers.album.get(r['前冠专'])} /> },
             { header: '', width: '32px', align: 'center', render: () => <span className="text-muted-foreground">→</span> },
@@ -237,15 +239,15 @@ export function ChampionshipSection({ rec, covers }: { rec: BillboardRecords; co
       </RecordCard>
 
       {/* 阻挡王 */}
-      <RecordCard title="阻挡王 · Blocker King" subtitle="在 #1 期间阻挡最多 Peak #2 作品" toggle={<TrackAlbumToggle value={blockerType} onChange={setBlockerType} showArtist />}>
+      <RecordCard title="阻挡王 · Blocker King" subtitle="在 #1 期间阻挡最多 Peak #2 作品" mobileSubtitle="夺冠期间阻挡最多亚军作品" toggle={<TrackAlbumToggle value={blockerType} onChange={setBlockerType} showArtist />}>
         {blockerType === 'track' ? (
           <>
             {blockerKingSorted.length > 0 && (
-              <div className="mb-4">
+              <div className="mobile-record-blocker-featured mb-4">
                 <FeaturedRecord label="最强阻挡" value={blockerKingSorted[0]['阻挡数']} unit="首 Peak #2 歌曲被挡" caption={`${blockerKingSorted[0].track_name} — ${blockerKingSorted[0].artist_name}`} coverUrl={covers.track.get(blockerKingSorted[0].track_id)} linkTo={billboardDetailLink(`/music/tracks/${blockerKingSorted[0].track_id}`)} />
               </div>
             )}
-            <MiniRankTable fixed rows={blockerKingSorted} columns={[
+            <MiniRankTable fixed rows={blockerKingSorted} mobilePreviewCount={4} columns={[
               { header: '#', width: '48px', align: 'center', render: (_, idx) => <RankNum rank={idx + 1} /> },
               { header: '歌曲', width: '280px', render: (r) => <TrackCell trackId={r.track_id} trackName={r.track_name} artistName={r.artist_name} artistNames={r.artist_names} coverUrl={covers.track.get(r.track_id)} /> },
               { header: '阻挡数', width: '130px', align: 'right', render: (r) => <ValueBar value={r['阻挡数']} max={blockerKingSorted[0]?.['阻挡数'] ?? 1} /> },
@@ -259,11 +261,11 @@ export function ChampionshipSection({ rec, covers }: { rec: BillboardRecords; co
         ) : blockerType === 'album' ? (
           <>
             {blockerKingAlbumSorted.length > 0 && (
-              <div className="mb-4">
+              <div className="mobile-record-blocker-featured mb-4">
                 <FeaturedRecord label="最强阻挡" value={blockerKingAlbumSorted[0]['阻挡数']} unit="张 Peak #2 专辑被挡" caption={`${blockerKingAlbumSorted[0].album_name} — ${blockerKingAlbumSorted[0].artist_name}`} coverUrl={covers.album.get(blockerKingAlbumSorted[0].album_name)} linkTo={billboardDetailLink(`/music/albums/${encodeURIComponent(blockerKingAlbumSorted[0].album_name)}?artist=${encodeURIComponent(blockerKingAlbumSorted[0].artist_name)}`)} />
               </div>
             )}
-            <MiniRankTable fixed rows={blockerKingAlbumSorted} columns={[
+            <MiniRankTable fixed rows={blockerKingAlbumSorted} mobilePreviewCount={4} columns={[
               { header: '#', width: '48px', align: 'center', render: (_, idx) => <RankNum rank={idx + 1} /> },
               { header: '专辑', width: '280px', render: (r) => <AlbumCell albumName={r.album_name} artistName={r.artist_name} coverUrl={covers.album.get(r.album_name)} /> },
               { header: '阻挡数', width: '130px', align: 'right', render: (r) => <ValueBar value={r['阻挡数']} max={blockerKingAlbumSorted[0]?.['阻挡数'] ?? 1} /> },
@@ -278,11 +280,11 @@ export function ChampionshipSection({ rec, covers }: { rec: BillboardRecords; co
         ) : (
           <>
             {blockerKingArtistSorted.length > 0 && (
-              <div className="mb-4">
+              <div className="mobile-record-blocker-featured mb-4">
                 <FeaturedRecord label="最强阻挡" value={blockerKingArtistSorted[0]['阻挡数']} unit="位 Peak #2 艺人被挡" caption={`${blockerKingArtistSorted[0].artist_name}`} coverUrl={covers.artist.get(blockerKingArtistSorted[0].artist_name)} coverRound linkTo={billboardDetailLink(`/music/artists/${encodeURIComponent(blockerKingArtistSorted[0].artist_name)}`)} />
               </div>
             )}
-            <MiniRankTable fixed rows={blockerKingArtistSorted} columns={[
+            <MiniRankTable fixed rows={blockerKingArtistSorted} mobilePreviewCount={4} columns={[
               { header: '#', width: '48px', align: 'center', render: (_, idx) => <RankNum rank={idx + 1} /> },
               { header: '艺人', width: '280px', render: (r) => <ArtistCell artistName={r.artist_name} coverUrl={covers.artist.get(r.artist_name)} compact /> },
               { header: '阻挡数', width: '130px', align: 'right', render: (r) => <ValueBar value={r['阻挡数']} max={blockerKingArtistSorted[0]?.['阻挡数'] ?? 1} /> },
@@ -301,25 +303,25 @@ export function ChampionshipSection({ rec, covers }: { rec: BillboardRecords; co
           <MiniRankTable rows={rec.longest_to_no1 as ClimbToNo1Record[]} columns={[
             { header: '#', width: '48px', align: 'center', render: (_, idx) => <RankNum rank={idx + 1} /> },
             { header: '歌曲', render: (r) => <TrackCell trackId={r.track_id} trackName={r.track_name} artistName={r.artist_name} coverUrl={covers.track.get(r.track_id)} /> },
-            { header: '首次上榜', width: '105px', render: (r) => <WeekLink date={r.first_week} /> },
-            { header: '首次夺冠', width: '105px', render: (r) => <WeekLink date={r.first_peak_week} /> },
-            { header: '登顶周数', width: '130px', align: 'right', render: (r) => <ValueBar value={r['登顶周数']} max={rec.longest_to_no1[0]?.['登顶周数'] ?? 1} suffix="周" /> },
+            { header: '首次上榜', width: '105px', mobileRole: 'fact', render: (r) => <WeekLink date={r.first_week} /> },
+            { header: '首次夺冠', width: '105px', mobileRole: 'fact', render: (r) => <WeekLink date={r.first_peak_week} /> },
+            { header: '登顶周数', width: '130px', align: 'right', mobileRole: 'primary', render: (r) => <ValueBar value={r['登顶周数']} max={rec.longest_to_no1[0]?.['登顶周数'] ?? 1} suffix="周" /> },
           ]} />
         ) : climbType === 'album' ? (
           <MiniRankTable rows={rec.longest_to_no1_album as ClimbToNo1AlbumRecord[]} columns={[
             { header: '#', width: '48px', align: 'center', render: (_, idx) => <RankNum rank={idx + 1} /> },
             { header: '专辑', render: (r) => <AlbumCell albumName={r.album_name} artistName={r.artist_name} coverUrl={covers.album.get(r.album_name)} /> },
-            { header: '首次上榜', width: '105px', render: (r) => <WeekLink date={r.first_week} /> },
-            { header: '首次夺冠', width: '105px', render: (r) => <WeekLink date={r.first_peak_week} /> },
-            { header: '登顶周数', width: '130px', align: 'right', render: (r) => <ValueBar value={r['登顶周数']} max={rec.longest_to_no1_album[0]?.['登顶周数'] ?? 1} suffix="周" /> },
+            { header: '首次上榜', width: '105px', mobileRole: 'fact', render: (r) => <WeekLink date={r.first_week} /> },
+            { header: '首次夺冠', width: '105px', mobileRole: 'fact', render: (r) => <WeekLink date={r.first_peak_week} /> },
+            { header: '登顶周数', width: '130px', align: 'right', mobileRole: 'primary', render: (r) => <ValueBar value={r['登顶周数']} max={rec.longest_to_no1_album[0]?.['登顶周数'] ?? 1} suffix="周" /> },
           ]} />
         ) : (
           <MiniRankTable rows={rec.longest_to_no1_artist as ClimbToNo1ArtistRecord[]} columns={[
             { header: '#', width: '48px', align: 'center', render: (_, idx) => <RankNum rank={idx + 1} /> },
             { header: '艺人', render: (r) => <ArtistCell artistName={r.artist_name} coverUrl={covers.artist.get(r.artist_name)} compact /> },
-            { header: '首次上榜', width: '105px', render: (r) => <WeekLink date={r.first_week} /> },
-            { header: '首次夺冠', width: '105px', render: (r) => <WeekLink date={r.first_peak_week} /> },
-            { header: '登顶周数', width: '130px', align: 'right', render: (r) => <ValueBar value={r['登顶周数']} max={rec.longest_to_no1_artist[0]?.['登顶周数'] ?? 1} suffix="周" /> },
+            { header: '首次上榜', width: '105px', mobileRole: 'fact', render: (r) => <WeekLink date={r.first_week} /> },
+            { header: '首次夺冠', width: '105px', mobileRole: 'fact', render: (r) => <WeekLink date={r.first_peak_week} /> },
+            { header: '登顶周数', width: '130px', align: 'right', mobileRole: 'primary', render: (r) => <ValueBar value={r['登顶周数']} max={rec.longest_to_no1_artist[0]?.['登顶周数'] ?? 1} suffix="周" /> },
           ]} />
         )}
       </RecordCard>

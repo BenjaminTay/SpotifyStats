@@ -158,7 +158,6 @@ export function AlbumDetailExperience() {
                 <div className="mobile-m5-page mobile-music-detail-page" data-mobile-page="album-detail">
                   <MobileMusicDetailHero
                     kind="album"
-                    eyebrow="Album / Personal Listening"
                     title={displayName(data.album_name)}
                     coverUrl={data.cover_url}
                     subtitle={<Link to={`/music/artists/${encodeURIComponent(data.artist_name)}`}>{displayName(data.artist_name)}</Link>}

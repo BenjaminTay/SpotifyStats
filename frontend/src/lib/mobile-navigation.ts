@@ -11,6 +11,11 @@ interface MobileBackDecisionInput {
   fallback: string
 }
 
+export interface MobileDetailOrigin {
+  to: string
+  label: string
+}
+
 export function isSafeInternalReturnTo(value: unknown): value is string {
   if (typeof value !== 'string' || !value.startsWith('/') || value.startsWith('//')) return false
 
@@ -26,6 +31,23 @@ function returnToFromState(state: unknown): string | null {
   if (!state || typeof state !== 'object') return null
   const value = (state as { returnTo?: unknown }).returnTo
   return isSafeInternalReturnTo(value) ? value : null
+}
+
+export function isMusicDetailPath(pathname: string): boolean {
+  return pathname.startsWith('/music/tracks/')
+    || pathname.startsWith('/music/albums/')
+    || pathname.startsWith('/music/artists/')
+}
+
+export function mobileDetailOriginFromState(state: unknown): MobileDetailOrigin | null {
+  if (!state || typeof state !== 'object') return null
+  const origin = (state as { detailOrigin?: unknown }).detailOrigin
+  if (!origin || typeof origin !== 'object') return null
+  const to = (origin as { to?: unknown }).to
+  const label = (origin as { label?: unknown }).label
+  if (!isSafeInternalReturnTo(to) || typeof label !== 'string' || !label.trim()) return null
+  if (isMusicDetailPath(new URL(to, 'https://spotify-stats.local').pathname)) return null
+  return { to, label: label.trim() }
 }
 
 export function getMobileBackDecision({

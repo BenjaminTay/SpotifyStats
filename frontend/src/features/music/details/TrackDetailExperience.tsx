@@ -130,7 +130,6 @@ export function TrackDetailExperience() {
                 <div className="mobile-m5-page mobile-music-detail-page" data-mobile-page="track-detail">
                   <MobileMusicDetailHero
                     kind="track"
-                    eyebrow="Track / Personal Listening"
                     title={displayName(data.track_name)}
                     coverUrl={data.cover_url}
                     subtitle={(data.artist_names?.length ? data.artist_names : [data.artist_name]).map((name, index, artists) => (

@@ -14,6 +14,14 @@ interface OverlaySeries {
   name: string
 }
 
+interface EChartTooltipParam {
+  value: unknown
+  data?: { label?: string }
+  marker?: string
+  seriesName?: string
+  axisValue?: string
+}
+
 const OVERLAY_COLORS = [
   { light: '#4A7C59', dark: '#7BA587' },  // green
   { light: '#5B6EAD', dark: '#8B9FD4' },  // blue
@@ -24,6 +32,10 @@ interface RankTrendChartProps {
   topN: number
   peakPosition?: number
   overlays?: OverlaySeries[]
+  compact?: boolean
+  height?: number
+  detailWindowSize?: number
+  detailWindowPosition?: 'start' | 'end'
 }
 
 function parseWeek(str: string): Date | null {
@@ -109,6 +121,10 @@ export function RankTrendChart({
   topN,
   peakPosition,
   overlays,
+  compact = false,
+  height = 360,
+  detailWindowSize = 52,
+  detailWindowPosition = 'start',
 }: RankTrendChartProps) {
   const { isDark } = useTheme()
   const base = useMemo(() => buildChartBase(isDark), [isDark])
@@ -118,13 +134,14 @@ export function RankTrendChart({
   const labels = rawLabels.map(formatWeekDisplay)
   const totalPoints = values.length
 
-  // ── Zoom: overview vs detail (52-week window) ──
-  const WINDOW_SIZE = 52
+  // ── Zoom: overview vs detail ──
+  const WINDOW_SIZE = detailWindowSize
   const [viewMode, setViewMode] = useState<'overview' | 'detail'>('overview')
   const showZoomToggle = totalPoints > WINDOW_SIZE
   const effectiveTotal = viewMode === 'detail' && showZoomToggle
     ? Math.min(totalPoints, WINDOW_SIZE)
     : totalPoints
+  const showRoutineSymbols = !compact || effectiveTotal <= 36
 
   // Show sparse x-axis labels — only major time boundaries, not every data point
   const labelInterval =
@@ -142,7 +159,7 @@ export function RankTrendChart({
   const peakRuns = peakRank !== null ? findPeakRuns(values, peakRank) : []
   const multiWeekPeaks = peakRuns.filter((r) => r.length > 1)
 
-  const series: any[] = [
+  const series: Record<string, unknown>[] = [
     {
       name: '排名',
       type: 'line',
@@ -150,9 +167,9 @@ export function RankTrendChart({
       connectNulls: false,
       smooth: false,
       symbol: 'circle',
-      symbolSize: 7,
-      showSymbol: true,
-      showAllSymbol: true,
+      symbolSize: compact ? 5 : 7,
+      showSymbol: showRoutineSymbols,
+      showAllSymbol: showRoutineSymbols,
       z: 10,
       emphasis: {
         focus: 'none' as const,
@@ -213,7 +230,7 @@ export function RankTrendChart({
         ? {
             silent: true,
             symbol: 'pin',
-            symbolSize: 24,
+            symbolSize: compact ? 20 : 24,
             animation: false,
             label: { fontSize: 9, color: '#fff' },
             data: peakRuns.map((r) => ({
@@ -266,9 +283,9 @@ export function RankTrendChart({
         connectNulls: false,
         smooth: false,
         symbol: 'diamond',
-        symbolSize: 7,
-        showSymbol: true,
-        showAllSymbol: true,
+        symbolSize: compact ? 5 : 7,
+        showSymbol: showRoutineSymbols,
+        showAllSymbol: showRoutineSymbols,
         z: 1,
         emphasis: {
           focus: 'none' as const,
@@ -294,7 +311,7 @@ export function RankTrendChart({
           borderWidth: 2,
         },
         tooltip: {
-          formatter: (p: any) => {
+          formatter: (p: EChartTooltipParam) => {
             const val = p.value
             const lbl = p.data?.label
             const display = val === null || val === undefined
@@ -315,9 +332,9 @@ export function RankTrendChart({
     animationEasing: 'cubicOut',
     grid: {
       ...base.grid,
-      left: 8,
-      right: 20,
-      top: 32,
+      left: compact ? 4 : 8,
+      right: compact ? 10 : 20,
+      top: compact ? 24 : 32,
       bottom: showZoomToggle && viewMode === 'detail'
         ? 60
         : labels.length > 20 ? 40 : 8,
@@ -328,8 +345,8 @@ export function RankTrendChart({
       axisLabel: {
         ...base.xAxis.axisLabel,
         interval: labelInterval,
-        rotate: labels.length > 30 ? 45 : labels.length > 20 ? 30 : 0,
-        fontSize: 10,
+        rotate: compact ? 0 : labels.length > 30 ? 45 : labels.length > 20 ? 30 : 0,
+        fontSize: compact ? 9 : 10,
       },
     },
     yAxis: {
@@ -340,7 +357,7 @@ export function RankTrendChart({
       interval: undefined,
       axisLabel: {
         color: textColor,
-        fontSize: 11,
+        fontSize: compact ? 10 : 11,
         formatter: (v: number) => (v === 1 ? '#1' : `#${v}`),
       },
       splitLine: {
@@ -365,12 +382,12 @@ export function RankTrendChart({
       },
       padding: [10, 14],
       extraCssText: 'border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.12);',
-      formatter: (params: any) => {
+      formatter: (params: EChartTooltipParam | EChartTooltipParam[]) => {
         const items = Array.isArray(params) ? params : [params]
         if (!items.length) return ''
         const week = items[0].axisValue
         let html = `<div style="font-weight:600;font-size:13px;margin-bottom:6px;font-family:'Inter Variable',sans-serif">${week}</div>`
-        items.forEach((p: any) => {
+        items.forEach((p: EChartTooltipParam) => {
           const val = p.value
           const lbl = p.data?.label
           const display = val === null || val === undefined
@@ -397,8 +414,10 @@ export function RankTrendChart({
       ? [
           {
             type: 'slider' as const,
-            start: 0,
-            end: (WINDOW_SIZE / totalPoints) * 100,
+            start: detailWindowPosition === 'end'
+              ? Math.max(0, 100 - (WINDOW_SIZE / totalPoints) * 100)
+              : 0,
+            end: detailWindowPosition === 'end' ? 100 : (WINDOW_SIZE / totalPoints) * 100,
             zoomLock: true,
             handleSize: '80%',
             showDetail: false,
@@ -431,14 +450,16 @@ export function RankTrendChart({
       {showZoomToggle && (
         <div className="flex items-center justify-end mb-1">
           <div
-            className="inline-flex rounded-md border text-xs font-medium overflow-hidden"
+            className="rank-trend-mode-toggle inline-flex rounded-md border text-xs font-medium overflow-hidden"
             style={{
               borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)',
             }}
           >
             <button
+              type="button"
               onClick={() => setViewMode('overview')}
-              className="px-2.5 py-1 transition-colors cursor-pointer"
+              aria-pressed={viewMode === 'overview'}
+              className="rank-trend-mode-button px-2.5 py-1 transition-colors cursor-pointer"
               style={{
                 backgroundColor: viewMode === 'overview'
                   ? (isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)')
@@ -449,8 +470,10 @@ export function RankTrendChart({
               全貌
             </button>
             <button
+              type="button"
               onClick={() => setViewMode('detail')}
-              className="px-2.5 py-1 transition-colors cursor-pointer"
+              aria-pressed={viewMode === 'detail'}
+              className="rank-trend-mode-button px-2.5 py-1 transition-colors cursor-pointer"
               style={{
                 backgroundColor: viewMode === 'detail'
                   ? (isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)')
@@ -463,7 +486,7 @@ export function RankTrendChart({
           </div>
         </div>
       )}
-      <LazyEChart option={option} style={{ height: 360, isolation: 'isolate' } as CSSProperties} notMerge />
+      <LazyEChart option={option} style={{ height, isolation: 'isolate' } as CSSProperties} notMerge />
     </div>
   )
 }

@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom'
 
-import { MobilePageHeader, MobileRankList } from '@/components/mobile'
+import { MobileEntityArtwork, MobilePageHeader, MobileRankList } from '@/components/mobile'
 import { displayName } from '@/lib/chinese'
 import { billboardDetailLink, primaryArtistName } from '@/lib/navigation'
 import { cn } from '@/lib/utils'
@@ -96,16 +96,12 @@ export function MobileNumberOnes({
   onYearChange,
 }: MobileNumberOnesProps) {
   const uniqueCount = activeTab === 'tracks' ? yearFiltered.uniqueTrackCount : activeTab === 'albums' ? yearFiltered.uniqueAlbumCount : yearFiltered.uniqueArtistCount
-  const allTimeCount = activeTab === 'tracks' ? computed.trackNo1WeeksSorted.length : activeTab === 'albums' ? computed.albumNo1WeeksSorted.length : computed.artistNo1WeeksSorted.length
-  const topWeeks = activeTab === 'tracks' ? computed.trackNo1WeeksSorted[0]?.weeks_at_no1 ?? 0 : activeTab === 'albums' ? computed.albumNo1WeeksSorted[0]?.weeks_at_no1 ?? 0 : computed.artistNo1WeeksSorted[0]?.weeks_at_no1 ?? 0
-  const longest = activeTab === 'tracks' ? computed.trackLongest.streak : activeTab === 'albums' ? computed.albumLongest.streak : computed.artistLongest.streak
 
   return (
     <div className="mobile-m4-page" data-mobile-page="number-ones">
       <MobilePageHeader
         eyebrow="Chart / Number Ones"
         title="每周榜首"
-        description="按年份沿时间线回看每周的个人 Billboard 冠军。"
       />
 
       <div className="mobile-segmented" role="group" aria-label="冠军榜类型">
@@ -114,28 +110,33 @@ export function MobileNumberOnes({
         ))}
       </div>
 
-      <div className="mobile-year-chips" aria-label="选择冠军年份">
-        {availableYears.map((year) => (
-          <button key={year} type="button" className={cn(year === selectedYear && 'active')} aria-pressed={year === selectedYear} onClick={() => onYearChange(year)}>{year}</button>
-        ))}
-      </div>
-
-      <dl className="mobile-billboard-summary">
-        <div><dt>{selectedYear} 独特冠军</dt><dd>{uniqueCount}</dd></div>
-        <div><dt>全时段冠军</dt><dd>{allTimeCount}</dd></div>
-        <div><dt>最多冠军周</dt><dd>{topWeeks}</dd></div>
-        <div><dt>最长连冠</dt><dd>{longest}</dd></div>
-      </dl>
-
       <section className="mobile-number-one-timeline">
-        <header><p>{selectedYear} / Timeline</p><h2>每周冠军时间线</h2></header>
+        <header>
+          <div>
+            <p>{selectedYear} / Timeline</p>
+            <h2>每周冠军</h2>
+          </div>
+          <dl className="mobile-number-one-year-stat">
+            <div><dt>{selectedYear} 独特冠军</dt><dd>{uniqueCount}</dd></div>
+          </dl>
+        </header>
+
+        <div className="mobile-year-chips mobile-number-one-year-chips" aria-label="选择冠军年份">
+          {availableYears.map((year) => (
+            <button key={year} type="button" className={cn(year === selectedYear && 'active')} aria-pressed={year === selectedYear} onClick={() => onYearChange(year)}>{year}</button>
+          ))}
+        </div>
+
         {timelineRows(activeTab, yearFiltered).map((row, index) => (
           <div className="mobile-number-one-event" key={`${row.title}:${index}`}>
             <span aria-hidden="true" />
             <Link to={row.to ?? '#'}>
-              <strong>{row.title}</strong>
-              {row.subtitle && <small>{row.subtitle}</small>}
-              <em>{row.facts?.[0]?.value} · {row.metric} 次 · {row.facts?.[1]?.value}</em>
+              <MobileEntityArtwork type={row.entityType} coverUrl={row.coverUrl} />
+              <span className="mobile-number-one-copy">
+                <strong>{row.title}</strong>
+                {row.subtitle && <small>{row.subtitle}</small>}
+                <em>{row.facts?.[0]?.value} · {row.metric} 次 · {row.facts?.[1]?.value}</em>
+              </span>
             </Link>
           </div>
         ))}

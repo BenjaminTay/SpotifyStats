@@ -126,7 +126,8 @@ describe('M6 mobile pages', () => {
   it('shows settings categories first and exposes only lightweight playback controls', async () => {
     const user = userEvent.setup()
     const { onUpdate, onRequiresRebuild } = renderSettings()
-    expect(screen.getByText('日常参数可直接调整，高级数据治理会引导到电脑端。')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: '设置' })).toBeInTheDocument()
+    expect(screen.queryByText('日常参数可直接调整，高级数据治理会引导到电脑端。')).not.toBeInTheDocument()
     expect(screen.queryByText('音乐源数据管理')).not.toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: /播放统计/ }))
     expect(screen.getByRole('heading', { name: '播放统计' })).toBeInTheDocument()

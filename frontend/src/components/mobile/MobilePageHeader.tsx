@@ -5,7 +5,6 @@ import { cn } from '@/lib/utils'
 interface MobilePageHeaderProps {
   title: string
   eyebrow?: string
-  description?: string
   meta?: ReactNode
   actions?: ReactNode
   compact?: boolean
@@ -15,7 +14,6 @@ interface MobilePageHeaderProps {
 export function MobilePageHeader({
   title,
   eyebrow,
-  description,
   meta,
   actions,
   compact = false,
@@ -27,7 +25,6 @@ export function MobilePageHeader({
       <div className="min-w-0 flex-1">
         {eyebrow && <p className="mobile-page-eyebrow">{eyebrow}</p>}
         <h1 className="mobile-page-title">{title}</h1>
-        {description && <p className="mobile-page-description">{description}</p>}
         {meta && <div className="mobile-page-meta">{meta}</div>}
       </div>
       {actions && <div className="mobile-page-actions">{actions}</div>}

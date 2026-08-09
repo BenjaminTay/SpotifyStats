@@ -8,7 +8,6 @@ import {
   setChineseStyle,
   type ChineseStyle,
 } from "@/lib/chinese";
-import { getBillboardName } from "@/lib/billboard-name";
 import { SettingsOverview } from "@/features/settings/components/SettingsOverview";
 import { RebuildNotice } from "@/features/settings/components/RebuildNotice";
 import { SpotifyConnectionSection } from "@/features/settings/components/SpotifyConnectionSection";
@@ -162,10 +161,6 @@ export function SettingsPage() {
         <h1 className="font-serif text-[44px] font-bold tracking-[-1.2px] leading-[1.06]">
           参数与配置
         </h1>
-        <p className="mt-3 max-w-[520px] font-sans text-[17px] leading-relaxed text-muted-foreground">
-          管理 Spotify 连接、数据导入、播放过滤、{getBillboardName()}{" "}
-          参数、音乐元数据治理，以及 LLM 配置等全局设置。
-        </p>
       </section>
 
       <SettingsOverview

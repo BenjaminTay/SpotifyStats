@@ -111,6 +111,10 @@ export function TrackOverviewSection({ data }: Props) {
               }))}
               topN={data.chart_data.top_n}
               peakPosition={data.chart_data.peak_position}
+              compact={isPhone}
+              height={isPhone ? 248 : undefined}
+              detailWindowSize={isPhone ? 26 : undefined}
+              detailWindowPosition={isPhone ? 'end' : undefined}
             />
           </GlassCard>
         </div>
@@ -127,6 +131,7 @@ export function TrackOverviewSection({ data }: Props) {
             playCount: entry.play_count,
             runningPeak: entry.running_peak,
             runningWeeks: entry.running_wks,
+            runningPeakWeeks: entry.running_peak_wks,
           }))} />
         ) : <GlassCard className="overflow-hidden p-0">
           <table className="mx-7 my-0 w-[calc(100%-56px)] border-collapse">

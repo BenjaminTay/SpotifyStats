@@ -161,7 +161,6 @@ export function ArtistDetailExperience() {
                 <div className="mobile-m5-page mobile-music-detail-page" data-mobile-page="artist-detail">
                   <MobileMusicDetailHero
                     kind="artist"
-                    eyebrow="Artist / Personal Listening"
                     title={displayName(data.artist_name)}
                     coverUrl={data.cover_url}
                     meta={data.meta?.genres?.slice(0, 4).join(' · ') || undefined}
@@ -188,6 +187,7 @@ export function ArtistDetailExperience() {
                     { key: 'releases', label: '发行周期', description: '按发行项目查看表现变化' },
                     { key: 'career', label: '艺人生涯', description: '简介、档案与生涯信息' },
                   ]}
+                  scrollable
                   onChange={setActiveTab}
                 />
               ) : <DetailTabs tabs={TABS} activeTab={activeTab} onChange={setActiveTab} />}

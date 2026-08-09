@@ -128,7 +128,7 @@ export function MobileAllTime({
 
   return (
     <div className="mobile-m4-page" data-mobile-page="all-time">
-      <MobilePageHeader eyebrow="Chart / All-Time" title="个人总榜" description="固定排名依据完整总榜走势评分；搜索、分页和字段隐藏不会重排名次。" />
+      <MobilePageHeader eyebrow="Chart / All-Time" title="个人总榜" />
 
       <div className="mobile-segmented" role="group" aria-label="总榜实体类型">
         {TABS.map((tab) => <button key={tab.key} type="button" className={cn(tab.key === activeTab && 'active')} onClick={() => onTabChange(tab.key)}>{tab.label}</button>)}

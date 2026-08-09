@@ -125,6 +125,10 @@ export function MusicChartOverviewSection({
               }))}
               topN={30}
               peakPosition={chartSummary.peak_position}
+              compact={isPhone}
+              height={isPhone ? 248 : undefined}
+              detailWindowSize={isPhone ? 26 : undefined}
+              detailWindowPosition={isPhone ? 'end' : undefined}
               overlays={[
                 ...(bestSinglesOverlay.length > 0
                   ? [{
@@ -163,6 +167,7 @@ export function MusicChartOverviewSection({
               playCount: entry.play_count,
               runningPeak: entry.running_peak,
               runningWeeks: entry.running_wks,
+              runningPeakWeeks: entry.running_peak_wks,
             }))} />
           ) : <GlassCard className="overflow-hidden p-0">
             <table className="mx-7 my-0 w-[calc(100%-56px)] border-collapse">

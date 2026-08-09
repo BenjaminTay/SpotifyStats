@@ -5,13 +5,15 @@ import { Sparkles } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { displayName } from '@/lib/chinese'
 import { billboardDetailLink } from '@/lib/navigation'
-import type { ArtistTrackCounts, BillboardRecords, TrackSummary } from '@/types/billboard'
+import type { ArtistTrackCounts, BillboardRecords, DoubleDebutRecord, TrackSummary, TripleNo1Record } from '@/types/billboard'
+import { useViewportMode } from '@/hooks/useViewportMode'
 import type { CoverMaps } from './recordsData'
 import {
   AlbumCell,
   ArtistCell,
-  ArtistCoverImg,
+  CoverImg,
   FeaturedRecord,
+  fmtNum,
   MiniRankTable,
   PeakNum,
   RankNum,
@@ -24,6 +26,70 @@ import {
 } from './RecordsPrimitives'
 
 type DebutSortMode = 'date' | 'market'
+
+type MobileAchievement = {
+  chartLabel: '单曲榜' | '专辑榜' | '艺人榜'
+  name: string
+  supportingText?: string
+  coverUrl?: string | null
+  detailLink: string
+}
+
+function MobileChartAchievementRow({ achievement }: { achievement: MobileAchievement }) {
+  return (
+    <Link
+      to={achievement.detailLink}
+      className="mobile-curiosity-achievement-row"
+      aria-label={`${achievement.chartLabel}冠军：${displayName(achievement.name)}`}
+    >
+      <span className="mobile-curiosity-chart-label">{achievement.chartLabel}</span>
+      <CoverImg url={achievement.coverUrl} />
+      <span className="mobile-curiosity-entity-copy">
+        <strong>{displayName(achievement.name)}</strong>
+        <small aria-hidden={!achievement.supportingText}>
+          {achievement.supportingText ? displayName(achievement.supportingText) : '\u00A0'}
+        </small>
+      </span>
+      <span className="mobile-curiosity-chart-rank" aria-hidden="true">#1</span>
+    </Link>
+  )
+}
+
+function MobileCuriosityEvent({ week, marketPlays, achievements }: {
+  week: string
+  marketPlays: number
+  achievements: MobileAchievement[]
+}) {
+  return (
+    <article className="mobile-curiosity-event">
+      <header className="mobile-curiosity-event-header">
+        <WeekLink date={week} />
+        <span>当周播放 <strong>{fmtNum(marketPlays)}</strong></span>
+      </header>
+      <div className="mobile-curiosity-achievements">
+        {achievements.map((achievement) => (
+          <MobileChartAchievementRow key={achievement.chartLabel} achievement={achievement} />
+        ))}
+      </div>
+    </article>
+  )
+}
+
+function CuriosityMetricValue({ value, unit }: { value: number; unit?: string }) {
+  const isPhone = useViewportMode() === 'phone'
+  if (isPhone) {
+    return (
+      <span className="mobile-record-value">
+        {fmtNum(value)}{unit && <small>{unit}</small>}
+      </span>
+    )
+  }
+  return (
+    <span className="font-sans text-[13px] tabular-nums text-muted-foreground">
+      {fmtNum(value)}{unit && ` ${unit}`}
+    </span>
+  )
+}
 
 function SortToggle({ mode, desc, onChange, dateLabel }: { mode: DebutSortMode; desc: boolean; onChange: (m: DebutSortMode) => void; dateLabel?: string }) {
   const items: { key: DebutSortMode; label: string }[] = [
@@ -69,12 +135,9 @@ export function CuriositiesSection({ rec, covers, trackSummary, artistTrackCount
   const doubleDebutSorted = useMemo(() => {
     const rows = [...rec.double_debut]
     return rows.sort((a, b) => {
-      let cmp = 0
-      if (debutSort.mode === 'date') {
-        cmp = a.debut_week.localeCompare(b.debut_week)
-      } else {
-        cmp = (weekPlays.get(a.debut_week) ?? 0) - (weekPlays.get(b.debut_week) ?? 0)
-      }
+      const cmp = debutSort.mode === 'date'
+        ? a.debut_week.localeCompare(b.debut_week)
+        : (weekPlays.get(a.debut_week) ?? 0) - (weekPlays.get(b.debut_week) ?? 0)
       return debutSort.desc ? -cmp : cmp
     })
   }, [rec.double_debut, debutSort, weekPlays])
@@ -88,12 +151,9 @@ export function CuriositiesSection({ rec, covers, trackSummary, artistTrackCount
   const tripleSorted = useMemo(() => {
     const rows = [...rec.triple_no1]
     return rows.sort((a, b) => {
-      let cmp = 0
-      if (tripleSort.mode === 'date') {
-        cmp = a.billboard_week.localeCompare(b.billboard_week)
-      } else {
-        cmp = (weekPlays.get(a.billboard_week) ?? 0) - (weekPlays.get(b.billboard_week) ?? 0)
-      }
+      const cmp = tripleSort.mode === 'date'
+        ? a.billboard_week.localeCompare(b.billboard_week)
+        : (weekPlays.get(a.billboard_week) ?? 0) - (weekPlays.get(b.billboard_week) ?? 0)
       return tripleSort.desc ? -cmp : cmp
     })
   }, [rec.triple_no1, tripleSort, weekPlays])
@@ -114,45 +174,86 @@ export function CuriositiesSection({ rec, covers, trackSummary, artistTrackCount
     <div>
       <SectionHeader icon={Sparkles} title="奇趣纪录" subtitle="那些让人会心一笑的冷知识——数据里的彩蛋" />
 
-      <RecordCard title="双空冠 · Double Debut" subtitle="同一张专辑有两首歌空降入榜">
-        <div className="mb-3">
+      <RecordCard title="双榜空降 · Double Debut" subtitle="同一艺人的歌曲与专辑在同一周分别空降榜首">
+        <div className="mb-3 flex justify-end md:block">
           <SortToggle mode={debutSort.mode} desc={debutSort.desc} onChange={handleDebutSort} />
         </div>
-        <MiniRankTable rows={doubleDebutSorted} columns={[
+        <MiniRankTable<DoubleDebutRecord> rows={doubleDebutSorted} mobileRenderRow={(row) => (
+          <MobileCuriosityEvent
+            week={row.debut_week}
+            marketPlays={weekPlays.get(row.debut_week) ?? 0}
+            achievements={[
+              {
+                chartLabel: '单曲榜',
+                name: row.debut_track,
+                supportingText: row.debut_artist,
+                coverUrl: covers.track.get(row.debut_track_id),
+                detailLink: billboardDetailLink(`/music/tracks/${row.debut_track_id}`),
+              },
+              {
+                chartLabel: '专辑榜',
+                name: row.debut_album,
+                supportingText: row.debut_artist,
+                coverUrl: covers.album.get(row.debut_album),
+                detailLink: billboardDetailLink(`/music/albums/${encodeURIComponent(row.debut_album)}`),
+              },
+            ]}
+          />
+        )} columns={[
           { header: '#', width: '48px', align: 'center', render: (_, idx) => <RankNum rank={idx + 1} /> },
-          { header: '空降周', width: '110px', render: (r) => <WeekLink date={r.debut_week} /> },
-          { header: '歌曲', render: (r) => <TrackCell trackId={r.debut_track_id} trackName={r.debut_track} artistName={r.debut_artist} coverUrl={covers.track.get(r.debut_track_id)} /> },
+          { header: '空降周', width: '110px', mobileRole: 'primary', render: (r) => <WeekLink date={r.debut_week} /> },
+          { header: '歌曲', mobileRole: 'entity', render: (r) => <TrackCell trackId={r.debut_track_id} trackName={r.debut_track} artistName={r.debut_artist} coverUrl={covers.track.get(r.debut_track_id)} /> },
           { header: '专辑', render: (r) => <AlbumCell albumName={r.debut_album} artistName={r.debut_artist} coverUrl={covers.album.get(r.debut_album)} /> },
         ]} />
       </RecordCard>
 
       <RecordCard title="全榜单制霸 · Triple #1" subtitle="同一周单曲榜、专辑榜、艺人榜三榜 #1 同属一人">
-        <div className="mb-3">
+        <div className="mb-3 flex justify-end md:block">
           <SortToggle mode={tripleSort.mode} desc={tripleSort.desc} onChange={handleTripleSort} dateLabel="榜单周" />
         </div>
-        <MiniRankTable rows={tripleSorted} columns={[
+        <MiniRankTable<TripleNo1Record> rows={tripleSorted} mobileRenderRow={(row) => (
+          <MobileCuriosityEvent
+            week={row.billboard_week}
+            marketPlays={weekPlays.get(row.billboard_week) ?? 0}
+            achievements={[
+              {
+                chartLabel: '单曲榜',
+                name: row['歌曲'],
+                supportingText: row['艺人'],
+                coverUrl: covers.track.get(row.track_id),
+                detailLink: billboardDetailLink(`/music/tracks/${row.track_id}`),
+              },
+              {
+                chartLabel: '专辑榜',
+                name: row['专辑'],
+                supportingText: row['艺人'],
+                coverUrl: covers.album.get(row['专辑']),
+                detailLink: billboardDetailLink(`/music/albums/${encodeURIComponent(row['专辑'])}`),
+              },
+              {
+                chartLabel: '艺人榜',
+                name: row['艺人'],
+                coverUrl: covers.artist.get(row['艺人']),
+                detailLink: billboardDetailLink(`/music/artists/${encodeURIComponent(row['艺人'])}`),
+              },
+            ]}
+          />
+        )} columns={[
           { header: '#', width: '48px', align: 'center', render: (_, idx) => <RankNum rank={idx + 1} /> },
-          { header: '榜单周', width: '110px', render: (r) => <WeekLink date={r.billboard_week} /> },
-          { header: '艺人', render: (r) => <ArtistCell artistName={r['艺人']} coverUrl={covers.artist.get(r['艺人'])} compact /> },
+          { header: '榜单周', width: '110px', mobileRole: 'primary', render: (r) => <WeekLink date={r.billboard_week} /> },
+          { header: '艺人', mobileRole: 'entity', render: (r) => <ArtistCell artistName={r['艺人']} coverUrl={covers.artist.get(r['艺人'])} compact /> },
           { header: '歌曲', render: (r) => <TrackCell trackId={r.track_id} trackName={r['歌曲']} artistName={r['艺人']} coverUrl={covers.track.get(r.track_id)} /> },
           { header: '专辑', render: (r) => <AlbumCell albumName={r['专辑']} artistName={r['艺人']} coverUrl={covers.album.get(r['专辑'])} /> },
         ]} />
       </RecordCard>
 
-      <RecordCard title="一曲成名 · One-Hit Wonder" subtitle="仅一首歌上榜且直接夺冠">
-        {oneHitWonders.length > 0 ? (
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3">
-            {oneHitWonders.slice(0, 9).map((a) => (
-              <Link key={a.artist_name} to={billboardDetailLink(`/music/artists/${encodeURIComponent(a.artist_name)}`)} className="flex items-center gap-3 rounded-[10px] border border-border bg-muted/20 p-3 transition-colors hover:bg-muted/40">
-                <ArtistCoverImg url={covers.artist.get(a.artist_name)} />
-                <div className="min-w-0">
-                  <p className="truncate font-sans text-[13px] font-semibold">{displayName(a.artist_name)}</p>
-                  <p className="font-sans text-[11px] text-muted-foreground">{a.best_peak_track} · 冠周 {a.weeks_at_no1}</p>
-                </div>
-              </Link>
-            ))}
-          </div>
-        ) : <p className="py-4 text-center font-sans text-[12px] text-muted-foreground">暂无数据</p>}
+      <RecordCard title="一曲成名 · One-Hit Wonder" subtitle="仅一首歌上榜且直接夺冠" mobileSubtitle="仅一首歌上榜且直接夺冠">
+        <MiniRankTable rows={oneHitWonders} columns={[
+          { header: '#', width: '48px', align: 'center', render: (_, idx) => <RankNum rank={idx + 1} /> },
+          { header: '艺人', render: (r) => <ArtistCell artistName={r.artist_name} coverUrl={covers.artist.get(r.artist_name)} /> },
+          { header: '冠军单曲', mobileRole: 'fact', render: (r) => <span className="font-sans text-[12px] font-semibold">{displayName(r.best_peak_track)}</span> },
+          { header: '冠军周数', width: '110px', align: 'right', mobileRole: 'primary', render: (r) => <span className="font-sans text-[13px] tabular-nums text-muted-foreground">{r.weeks_at_no1} 周</span> },
+        ]} />
       </RecordCard>
 
       <RecordCard title="劳模歌手 · Most Prolific Artists" subtitle="上榜歌曲数最多的艺人">
@@ -161,8 +262,8 @@ export function CuriositiesSection({ rec, covers, trackSummary, artistTrackCount
           { header: '艺人', render: (r) => <ArtistCell artistName={r.artist_name} coverUrl={covers.artist.get(r.artist_name)} /> },
           { header: '上榜歌曲', width: '145px', align: 'right', render: (r) => <ValueBar value={r.total_tracks} max={prolificArtists[0]?.total_tracks ?? 1} suffix="首" /> },
           { header: '最佳Peak', width: '55px', align: 'center', render: (r) => <PeakNum rank={r.best_peak as number} /> },
-          { header: '冠单数', width: '60px', align: 'center', render: (r) => <span className="font-sans text-[13px] tabular-nums text-muted-foreground">{r.top1}</span> },
-          { header: '总周数', width: '110px', align: 'right', render: (r) => <span className="font-sans text-[13px] tabular-nums text-muted-foreground">{r.total_weeks} 周</span> },
+          { header: '冠单数', width: '60px', align: 'center', render: (r) => <CuriosityMetricValue value={r.top1} /> },
+          { header: '总周数', width: '110px', align: 'right', render: (r) => <CuriosityMetricValue value={r.total_weeks} unit="周" /> },
         ]} />
       </RecordCard>
 
@@ -183,23 +284,14 @@ export function CuriositiesSection({ rec, covers, trackSummary, artistTrackCount
         ) : <p className="py-4 text-center font-sans text-[12px] text-muted-foreground">暂无数据</p>}
       </RecordCard>
 
-      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
-        <RecordCard title="最早上榜 · Oldest Chart Entry">
+      <section className="mobile-curiosity-extremes" aria-label="榜单极值纪录">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-5">
           {oldestTrack && <FeaturedRecord label="最早入榜" value={fmtDate(oldestTrack.first_week)} caption={`${oldestTrack.track_name} — ${oldestTrack.artist_name}`} linkTo={billboardDetailLink(`/music/tracks/${oldestTrack.track_id}`)} />}
-        </RecordCard>
-        <RecordCard title="最新上榜 · Newest Chart Entry">
           {newestTrack && <FeaturedRecord label="最新入榜" value={fmtDate(newestTrack.first_week)} caption={`${newestTrack.track_name} — ${newestTrack.artist_name}`} linkTo={billboardDetailLink(`/music/tracks/${newestTrack.track_id}`)} />}
-        </RecordCard>
-      </div>
-
-      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
-        <RecordCard title="最长歌名 · Longest Track Name">
           {longestName && <FeaturedRecord label="最长歌名" value={longestName.track_name.length} unit="字" caption={`${longestName.track_name} — ${longestName.artist_name}`} linkTo={billboardDetailLink(`/music/tracks/${longestName.track_id}`)} />}
-        </RecordCard>
-        <RecordCard title="最短歌名 · Shortest Track Name">
           {shortestName && <FeaturedRecord label="最短歌名" value={shortestName.track_name.length} unit="字" caption={`${shortestName.track_name} — ${shortestName.artist_name}`} linkTo={billboardDetailLink(`/music/tracks/${shortestName.track_id}`)} />}
-        </RecordCard>
-      </div>
+        </div>
+      </section>
     </div>
   )
 }

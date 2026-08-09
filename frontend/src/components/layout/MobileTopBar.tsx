@@ -1,8 +1,10 @@
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   ArrowLeft,
   ChevronDown,
+  CornerUpLeft,
   History,
+  House,
   MoreHorizontal,
   Search,
   Settings,
@@ -14,8 +16,15 @@ import { Link, useLocation, useNavigate } from 'react-router-dom'
 
 import { getMastheadRouteContext } from './routeContext'
 import { MobileSectionSwitcher } from './MobileSectionSwitcher'
-import { navigateMobileBack } from '@/lib/mobile-navigation'
+import {
+  isMusicDetailPath,
+  mobileDetailOriginFromState,
+  navigateMobileBack,
+  type MobileDetailOrigin,
+} from '@/lib/mobile-navigation'
 import { MobileBottomSheet } from '@/components/mobile'
+
+let rememberedDetailOrigin: MobileDetailOrigin | null = null
 
 function currentLocationTarget(pathname: string, search: string): string {
   return `${pathname}${search}`
@@ -45,6 +54,33 @@ export function MobileTopBar() {
     () => ({ returnTo: currentLocationTarget(location.pathname, location.search) }),
     [location.pathname, location.search],
   )
+  const isMusicDetail = isMusicDetailPath(location.pathname)
+  const currentTarget = currentLocationTarget(location.pathname, location.search)
+  const currentNonDetailOrigin = useMemo<MobileDetailOrigin>(
+    () => ({ to: currentTarget, label: context.mobileTitle }),
+    [context.mobileTitle, currentTarget],
+  )
+  const detailOrigin = mobileDetailOriginFromState(location.state) ?? rememberedDetailOrigin
+
+  useEffect(() => {
+    if (isMusicDetail) return
+    rememberedDetailOrigin = currentNonDetailOrigin
+  }, [currentNonDetailOrigin, isMusicDetail])
+
+  useEffect(() => () => {
+    rememberedDetailOrigin = null
+  }, [])
+
+  useEffect(() => {
+    if (!isMusicDetail || mobileDetailOriginFromState(location.state) || !detailOrigin) return
+    const currentState = location.state && typeof location.state === 'object'
+      ? location.state as Record<string, unknown>
+      : {}
+    navigate(currentTarget, {
+      replace: true,
+      state: { ...currentState, detailOrigin },
+    })
+  }, [currentTarget, detailOrigin, isMusicDetail, location.state, navigate])
 
   const canShare = location.pathname.startsWith('/music/tracks/')
     || location.pathname.startsWith('/music/albums/')
@@ -98,16 +134,21 @@ export function MobileTopBar() {
       if (!canShare) return null
       if (musicDetailManagement) {
         return (
-          <button
-            type="button"
-            className="mobile-icon-button mobile-detail-actions-button"
-            onClick={() => setDetailActionsOpen(true)}
-            aria-label="打开详情更多操作"
-            aria-haspopup="dialog"
-            aria-expanded={detailActionsOpen}
-          >
-            <MoreHorizontal className="h-[19px] w-[19px]" aria-hidden="true" />
-          </button>
+          <div className="flex items-center gap-1">
+            <Link to="/" className="mobile-icon-button" aria-label="返回首页">
+              <House className="h-[18px] w-[18px]" aria-hidden="true" />
+            </Link>
+            <button
+              type="button"
+              className="mobile-icon-button mobile-detail-actions-button"
+              onClick={() => setDetailActionsOpen(true)}
+              aria-label="打开详情更多操作"
+              aria-haspopup="dialog"
+              aria-expanded={detailActionsOpen}
+            >
+              <MoreHorizontal className="h-[19px] w-[19px]" aria-hidden="true" />
+            </button>
+          </div>
         )
       }
       return (
@@ -220,10 +261,20 @@ export function MobileTopBar() {
           onOpenChange={setDetailActionsOpen}
           title="详情操作"
           eyebrow="Music / More"
-          description="分享当前详情，或进入电脑端更适合处理的音乐源数据管理区。"
+          description="快速退出详情层级，或继续分享、查找与管理音乐源数据。"
           dataSheet="music-detail-actions"
         >
           <div className="mobile-detail-action-list">
+            {detailOrigin && (
+              <Link
+                to={detailOrigin.to}
+                className="mobile-detail-action-row"
+                onClick={() => setDetailActionsOpen(false)}
+              >
+                <CornerUpLeft aria-hidden="true" />
+                <span><strong>返回{detailOrigin.label}</strong><small>跳过中间详情页，回到进入详情前的位置</small></span>
+              </Link>
+            )}
             <button
               type="button"
               className="mobile-detail-action-row"

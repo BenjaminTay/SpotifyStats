@@ -29,11 +29,11 @@ export function BreakthroughSection({ rec, covers }: { rec: BillboardRecords; co
           </div>
         )}
         {rec.artist_simul_list?.length > 0 && (
-          <MiniRankTable rows={rec.artist_simul_list} columns={[
+          <MiniRankTable rows={rec.artist_simul_list} mobileSkip={1} columns={[
             { header: '#', width: '48px', align: 'center', render: (_, idx) => <RankNum rank={idx + 1} /> },
             { header: '艺人', render: (r) => <ArtistCell artistName={r.artist_name} coverUrl={covers.artist.get(r.artist_name)} /> },
-            { header: '日期', width: '110px', render: (r) => <WeekLink date={r.billboard_week} /> },
-            { header: '上榜数', width: '145px', align: 'right', render: (r) => <ValueBar value={r.track_count} max={rec.artist_simul_list[0]?.track_count ?? 1} suffix="首" /> },
+            { header: '日期', width: '110px', mobileRole: 'fact', render: (r) => <WeekLink date={r.billboard_week} /> },
+            { header: '上榜数', width: '145px', align: 'right', mobileRole: 'primary', render: (r) => <ValueBar value={r.track_count} max={rec.artist_simul_list[0]?.track_count ?? 1} suffix="首" /> },
           ]} />
         )}
       </RecordCard>
@@ -45,11 +45,11 @@ export function BreakthroughSection({ rec, covers }: { rec: BillboardRecords; co
           </div>
         )}
         {rec.album_simul_list?.length > 0 && (
-          <MiniRankTable rows={rec.album_simul_list} columns={[
+          <MiniRankTable rows={rec.album_simul_list} mobileSkip={1} columns={[
             { header: '#', width: '48px', align: 'center', render: (_, idx) => <RankNum rank={idx + 1} /> },
             { header: '专辑', render: (r) => <AlbumCell albumName={r.album_name} artistName={r.artist_name} coverUrl={covers.album.get(r.album_name)} /> },
-            { header: '日期', width: '110px', render: (r) => <WeekLink date={r.billboard_week} /> },
-            { header: '上榜数', width: '145px', align: 'right', render: (r) => <ValueBar value={r.track_count} max={rec.album_simul_list[0]?.track_count ?? 1} suffix="首" /> },
+            { header: '日期', width: '110px', mobileRole: 'fact', render: (r) => <WeekLink date={r.billboard_week} /> },
+            { header: '上榜数', width: '145px', align: 'right', mobileRole: 'primary', render: (r) => <ValueBar value={r.track_count} max={rec.album_simul_list[0]?.track_count ?? 1} suffix="首" /> },
           ]} />
         )}
       </RecordCard>
@@ -75,9 +75,9 @@ export function BreakthroughSection({ rec, covers }: { rec: BillboardRecords; co
         <MiniRankTable rows={rec.fastest_exit_after_no1} columns={[
           { header: '#', width: '48px', align: 'center', render: (_, idx) => <RankNum rank={idx + 1} /> },
           { header: '歌曲', render: (r) => <TrackCell trackId={r.track_id} trackName={r.track_name} artistName={r.artist_name} artistNames={r.artist_names} coverUrl={covers.track.get(r.track_id)} /> },
-          { header: '夺冠日期', width: '110px', render: (r) => <WeekLink date={r.first_peak_week} /> },
+          { header: '夺冠日期', width: '110px', mobileRole: 'fact', render: (r) => <WeekLink date={r.first_peak_week} /> },
           { header: '出榜日期', width: '110px', render: (r) => <WeekLink date={r.last_week} /> },
-          { header: '巅后周数', width: '145px', align: 'right', render: (r) => <ValueBar value={r['巅峰后周数']} max={rec.fastest_exit_after_no1[0]?.['巅峰后周数'] ?? 1} suffix="周" /> },
+          { header: '巅后周数', width: '145px', align: 'right', mobileRole: 'primary', render: (r) => <ValueBar value={r['巅峰后周数']} max={rec.fastest_exit_after_no1[0]?.['巅峰后周数'] ?? 1} suffix="周" /> },
         ]} />
       </RecordCard>
 

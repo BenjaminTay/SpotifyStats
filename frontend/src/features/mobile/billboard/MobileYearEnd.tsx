@@ -108,7 +108,6 @@ export function MobileYearEnd({
       <MobilePageHeader
         eyebrow="Chart / Year-End"
         title="个人年榜"
-        description="年终排名依据每周榜单积分，不是简单的全年播放次数排序。"
         meta={<span>已统计 {data.meta.observed_weeks}/{data.meta.expected_weeks} 个榜单周</span>}
       />
 

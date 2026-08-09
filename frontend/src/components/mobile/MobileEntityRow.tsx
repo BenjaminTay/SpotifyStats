@@ -2,6 +2,7 @@ import { useState, type ReactNode } from 'react'
 import { Disc3, Mic2, Music2 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 
+import { rankToneClass } from '@/lib/rank-tone'
 import { cn } from '@/lib/utils'
 
 export type MobileEntityType = 'track' | 'album' | 'artist'
@@ -16,10 +17,13 @@ export interface MobileEntityRowProps {
   title: string
   subtitle?: string
   rank?: number
+  rankAdornment?: ReactNode
   coverUrl?: string | null
   metric: string
   metricLabel?: string
+  metricRank?: number
   facts?: MobileEntityFact[]
+  factsLimit?: number
   badges?: string[]
   to?: string
   onClick?: () => void
@@ -27,7 +31,7 @@ export interface MobileEntityRowProps {
   className?: string
 }
 
-function MobileEntityArtwork({ type, coverUrl }: { type: MobileEntityType; coverUrl?: string | null }) {
+export function MobileEntityArtwork({ type, coverUrl }: { type: MobileEntityType; coverUrl?: string | null }) {
   const [failed, setFailed] = useState(false)
   const fallback = type === 'artist'
     ? <Mic2 aria-hidden="true" />
@@ -49,10 +53,13 @@ export function MobileEntityRow({
   title,
   subtitle,
   rank,
+  rankAdornment,
   coverUrl,
   metric,
   metricLabel,
+  metricRank,
   facts = [],
+  factsLimit = 2,
   badges = [],
   to,
   onClick,
@@ -61,14 +68,21 @@ export function MobileEntityRow({
 }: MobileEntityRowProps) {
   const content = (
     <>
-      {rank !== undefined && <span className="mobile-entity-rank">{rank}</span>}
+      {rank !== undefined && (
+        rankAdornment ? (
+          <span className="mobile-entity-rank-cluster">
+            <span className="mobile-entity-rank">{String(rank).padStart(2, '0')}</span>
+            <span className="mobile-entity-rank-status">{rankAdornment}</span>
+          </span>
+        ) : <span className="mobile-entity-rank">{rank}</span>
+      )}
       <MobileEntityArtwork key={`${entityType}:${coverUrl ?? 'missing'}`} type={entityType} coverUrl={coverUrl} />
       <span className="mobile-entity-copy">
         <span className="mobile-entity-title">{title}</span>
         {subtitle && <span className="mobile-entity-subtitle">{subtitle}</span>}
         {(facts.length > 0 || badges.length > 0) && (
           <span className="mobile-entity-facts">
-            {facts.slice(0, 2).map((fact) => (
+            {facts.slice(0, factsLimit).map((fact) => (
               <span key={`${fact.label}:${fact.value}`}>{fact.label} {fact.value}</span>
             ))}
             {badges.length > 0 && (
@@ -80,7 +94,7 @@ export function MobileEntityRow({
         )}
       </span>
       <span className="mobile-entity-metric">
-        <strong>{metric}</strong>
+        <strong className={metricRank ? rankToneClass(metricRank, true) : undefined}>{metric}</strong>
         {metricLabel && <small>{metricLabel}</small>}
       </span>
       {trailing}

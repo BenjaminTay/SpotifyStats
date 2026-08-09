@@ -64,7 +64,6 @@ export function MusicSearchPage() {
           <MobilePageHeader
             eyebrow="Music / Search"
             title="音乐查找"
-            description="搜索本地播放记录里的歌曲、专辑和艺人，直接打开对应详情页。"
           />
         )
       ) : <section>
@@ -76,9 +75,6 @@ export function MusicSearchPage() {
             <h1 className="font-serif text-[44px] font-bold leading-[1.06] tracking-[-0.4px] sm:text-[56px]">
               音乐查找
             </h1>
-            <p className="mt-3 max-w-[620px] text-sm leading-6 text-muted-foreground">
-              搜索本地播放记录里的歌曲、专辑和艺人，直接打开对应详情页。
-            </p>
           </div>
         </div>
       </section>}

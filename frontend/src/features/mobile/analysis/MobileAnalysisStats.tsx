@@ -96,33 +96,21 @@ export function MobileAnalysisStats({
   return (
     <div className="mobile-m3-page" data-mobile-page="analysis-stats">
       <MobilePageHeader
-        eyebrow="Playback / Stats"
+        eyebrow="Playback Stats"
         title="这一段时间的聆听"
-        description="先看核心规模，再向下展开节奏、时段和最近播放。"
         meta={<span>{data.period.label}</span>}
       />
 
-      <div className="mobile-segmented" role="group" aria-label="播放统计指标">
-        <button type="button" className={cn(metric === 'plays' && 'active')} onClick={() => onMetricChange('plays')}>播放次数</button>
-        <button type="button" className={cn(metric === 'hours' && 'active')} onClick={() => onMetricChange('hours')}>播放时长</button>
-      </div>
-
-      <section className="mobile-kpi-grid" aria-label="播放统计核心数据">
-        <article className="mobile-kpi-tile"><p>播放次数</p><strong>{formatNumber(data.summary.total_plays)}</strong><small>有效事件</small></article>
-        <article className="mobile-kpi-tile"><p>播放时长</p><strong>{formatHours(data.summary.total_hours)}</strong><small>累计聆听</small></article>
-        <article className="mobile-kpi-tile"><p>独特歌曲</p><strong>{formatNumber(data.summary.unique_tracks)}</strong><small>曲目覆盖</small></article>
-        <article className="mobile-kpi-tile"><p>活跃天数</p><strong>{formatNumber(data.summary.active_days)}</strong><small>有播放记录</small></article>
+      <section className="mobile-kpi-grid mobile-analysis-kpi-grid" aria-label="播放统计核心数据">
+        <article className="mobile-kpi-tile"><p>播放次数</p><strong>{formatNumber(data.summary.total_plays)}</strong></article>
+        <article className="mobile-kpi-tile"><p>播放时长</p><strong>{formatHours(data.summary.total_hours)}</strong></article>
+        <article className="mobile-kpi-tile"><p>日均播放</p><strong>{formatNumber(Math.round(data.daily_metrics.avg_daily_plays))}</strong></article>
+        <article className="mobile-kpi-tile"><p>日均时长</p><strong>{formatHours(data.daily_metrics.avg_daily_hours)}</strong></article>
+        <article className="mobile-kpi-tile"><p>已听歌曲</p><strong>{formatNumber(data.summary.unique_tracks)}</strong></article>
+        <article className="mobile-kpi-tile"><p>已听专辑</p><strong>{formatNumber(data.summary.unique_albums)}</strong></article>
+        <article className="mobile-kpi-tile"><p>已听艺人</p><strong>{formatNumber(data.summary.unique_artists)}</strong></article>
+        <article className="mobile-kpi-tile"><p>活跃天数</p><strong>{formatNumber(data.summary.active_days)}</strong></article>
       </section>
-
-      <details className="mobile-more-stats">
-        <summary>更多数据</summary>
-        <dl>
-          <div><dt>日均播放</dt><dd>{formatNumber(Math.round(data.daily_metrics.avg_daily_plays))}</dd></div>
-          <div><dt>日均时长</dt><dd>{formatHours(data.daily_metrics.avg_daily_hours)}</dd></div>
-          <div><dt>独特专辑</dt><dd>{formatNumber(data.summary.unique_albums)}</dd></div>
-          <div><dt>独特艺人</dt><dd>{formatNumber(data.summary.unique_artists)}</dd></div>
-        </dl>
-      </details>
 
       <MobileChartCard
         eyebrow="Daily / Accumulated"
@@ -130,6 +118,13 @@ export function MobileAnalysisStats({
         description="两个视图复用同一份统计响应"
         chart={<AnalysisTrendChart data={trendData} mode="line" />}
         interactionHint="点击数据点查看日期与数值"
+        controls={(
+          <div className="mobile-chart-metric-toggle" role="group" aria-label="图表口径">
+            <span>图表口径</span>
+            <button type="button" className={cn(metric === 'plays' && 'active')} aria-pressed={metric === 'plays'} onClick={() => onMetricChange('plays')}>播放次数</button>
+            <button type="button" className={cn(metric === 'hours' && 'active')} aria-pressed={metric === 'hours'} onClick={() => onMetricChange('hours')}>播放时长</button>
+          </div>
+        )}
         series={[
           { id: 'daily', label: '每日', active: trendView === 'daily' },
           { id: 'cumulative', label: '累计', active: trendView === 'cumulative' },

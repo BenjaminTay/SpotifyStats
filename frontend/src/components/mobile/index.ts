@@ -2,6 +2,7 @@ export { MobileBottomSheet } from './MobileBottomSheet'
 export { MobileChartCard, type MobileChartSeries } from './MobileChartCard'
 export { MobileEntityDetailSheet } from './MobileEntityDetailSheet'
 export {
+  MobileEntityArtwork,
   MobileEntityRow,
   type MobileEntityFact,
   type MobileEntityRowProps,

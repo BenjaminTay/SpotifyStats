@@ -121,6 +121,7 @@ function Calendar({
           type="button"
           onClick={goPrev}
           disabled={!canGoPrev}
+          aria-label={viewMode === "calendar" ? "上一个月" : "上一年"}
           className={cn(
             "inline-flex h-8 w-8 items-center justify-center rounded-full",
             "text-muted-foreground transition-colors",
@@ -146,6 +147,7 @@ function Calendar({
           type="button"
           onClick={goNext}
           disabled={!canGoNext}
+          aria-label={viewMode === "calendar" ? "下一个月" : "下一年"}
           className={cn(
             "inline-flex h-8 w-8 items-center justify-center rounded-full",
             "text-muted-foreground transition-colors",

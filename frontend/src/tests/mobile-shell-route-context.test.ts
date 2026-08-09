@@ -2,7 +2,11 @@ import { describe, expect, it } from 'vitest'
 
 import { getMastheadRouteContext } from '@/components/layout/routeContext'
 import { viewportModeForWidth } from '@/hooks/useViewportMode'
-import { getMobileBackDecision, isSafeInternalReturnTo } from '@/lib/mobile-navigation'
+import {
+  getMobileBackDecision,
+  isSafeInternalReturnTo,
+  mobileDetailOriginFromState,
+} from '@/lib/mobile-navigation'
 
 describe('mobile shell route context', () => {
   it.each([
@@ -80,5 +84,17 @@ describe('mobile back navigation', () => {
       search: '?return_to=https%3A%2F%2Fexample.com',
       fallback: '/music/search',
     })).toEqual({ type: 'target', to: '/music/search' })
+  })
+
+  it('accepts only safe non-detail origins for a fast detail exit', () => {
+    expect(mobileDetailOriginFromState({
+      detailOrigin: { to: '/billboard?week=2025-10-03', label: '周榜' },
+    })).toEqual({ to: '/billboard?week=2025-10-03', label: '周榜' })
+    expect(mobileDetailOriginFromState({
+      detailOrigin: { to: '/music/artists/Taylor%20Swift', label: '艺人详情' },
+    })).toBeNull()
+    expect(mobileDetailOriginFromState({
+      detailOrigin: { to: 'https://example.com', label: '外部页面' },
+    })).toBeNull()
   })
 })

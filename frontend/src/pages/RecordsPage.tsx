@@ -1,4 +1,4 @@
-import { lazy, Suspense, useMemo, useState } from 'react'
+import { lazy, Suspense, useEffect, useMemo, useRef } from 'react'
 import { AlertCircle } from 'lucide-react'
 import { useSearchParams } from 'react-router-dom'
 
@@ -10,7 +10,6 @@ import { cn } from '@/lib/utils'
 import type { BillboardRecords } from '@/types/billboard'
 import { buildCoverMaps } from '@/features/billboard/records/recordsData'
 import { ChampionshipSection } from '@/features/billboard/records/ChampionshipSection'
-import { MobilePageHeader, MobileSectionSwitcher } from '@/components/mobile'
 import { useViewportMode } from '@/hooks/useViewportMode'
 
 const LongevitySection = lazy(() =>
@@ -50,6 +49,38 @@ const RECORD_TABS = [
 
 type TabKey = typeof RECORD_TABS[number]['key']
 
+function MobileRecordFamilyTabs({ value, onChange }: {
+  value: TabKey
+  onChange: (value: TabKey) => void
+}) {
+  const tabRefs = useRef(new Map<TabKey, HTMLButtonElement>())
+
+  useEffect(() => {
+    tabRefs.current.get(value)?.scrollIntoView({ block: 'nearest', inline: 'center' })
+  }, [value])
+
+  return (
+    <nav className="mobile-record-family-tabs" role="tablist" aria-label="榜单记录分类">
+      {RECORD_TABS.map((tab) => (
+        <button
+          key={tab.key}
+          ref={(node) => {
+            if (node) tabRefs.current.set(tab.key, node)
+            else tabRefs.current.delete(tab.key)
+          }}
+          type="button"
+          role="tab"
+          aria-selected={value === tab.key}
+          className={cn(value === tab.key && 'active')}
+          onClick={() => onChange(tab.key)}
+        >
+          {tab.label}
+        </button>
+      ))}
+    </nav>
+  )
+}
+
 function LoadingSkeleton() {
   return (
     <div className="mx-auto max-w-[1200px]">
@@ -73,10 +104,22 @@ function SectionFallback() {
 
 export function RecordsPage() {
   const isPhone = useViewportMode() === 'phone'
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
   const mergeLevel = Number(searchParams.get('merge_level') ?? getDefaultMergeLevel())
   const { data, loading, error } = useBillboard(undefined, mergeLevel)
-  const [activeTab, setActiveTab] = useState<TabKey>('championship')
+  const requestedFamily = searchParams.get('family')
+  const activeTab: TabKey = RECORD_TABS.some((tab) => tab.key === requestedFamily)
+    ? requestedFamily as TabKey
+    : 'championship'
+  const handleFamilyChange = (family: TabKey) => {
+    const next = new URLSearchParams(searchParams)
+    next.set('family', family)
+    next.delete('record')
+    setSearchParams(next)
+    window.requestAnimationFrame(() => {
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+    })
+  }
 
   const covers = useMemo(() => {
     if (!data) return { track: new Map(), artist: new Map(), album: new Map() }
@@ -102,32 +145,20 @@ export function RecordsPage() {
     <div className={isPhone ? 'mobile-m4-page' : 'mx-auto max-w-[1200px]'} data-mobile-page={isPhone ? 'billboard-records' : undefined}>
       {!isPhone && <BillboardSubNav active="records" />}
 
-      {isPhone ? (
-        <MobilePageHeader
-          eyebrow="Chart / Hall of Fame"
-          title="榜单记录"
-          description="用六个纪录族整理冠军、长寿、爆发与趣味时刻。"
-        />
-      ) : <section className="mt-6 mb-6">
+      {!isPhone && <section className="mt-6 mb-6">
         <p className="mb-4 font-sans text-[11px] font-bold uppercase tracking-[1.8px] text-accent-foreground">Chart / Hall of Fame</p>
         <h1 className="font-serif text-[44px] font-bold leading-[1.06] tracking-[-1.2px]">榜单记录</h1>
       </section>}
 
       {isPhone ? (
-        <MobileSectionSwitcher
-          value={activeTab}
-          options={RECORD_TABS.map((tab) => ({ value: tab.key, label: tab.label }))}
-          onChange={setActiveTab}
-          title="选择榜单记录族"
-          label="当前记录族"
-        />
+        <MobileRecordFamilyTabs value={activeTab} onChange={handleFamilyChange} />
       ) : <nav className="mb-8 flex gap-7 border-b border-border" role="tablist">
         {RECORD_TABS.map((tab) => (
           <button
             key={tab.key}
             role="tab"
             aria-selected={activeTab === tab.key}
-            onClick={() => setActiveTab(tab.key)}
+            onClick={() => handleFamilyChange(tab.key)}
             className={cn(
               '-mb-px border-none bg-transparent px-0 pb-2.5 font-sans text-[13px] font-medium transition-[color,border] duration-200 border-b-2',
               activeTab === tab.key
