@@ -3328,16 +3328,6 @@
   width: 100%;
 }
 
-.mobile-versus-selector::before {
-  display: block;
-  margin-bottom: 8px;
-  color: var(--accent-foreground);
-  content: '01 · 选类型  →  02 · 加实体  →  03 · 确认队列';
-  font-size: 9px;
-  font-weight: 800;
-  letter-spacing: 0.65px;
-}
-
 .mobile-versus-selector button,
 .mobile-versus-selector input {
   min-height: 44px;

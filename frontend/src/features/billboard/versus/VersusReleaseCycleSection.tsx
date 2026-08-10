@@ -34,8 +34,6 @@ export function VersusReleaseCycleSection({ albums, billboardParams }: VersusRel
   const metricRows: MetricRow[] = [
     { key: 'debut', label: '首发排名', higherIsBetter: false, getRaw: (c) => c.metrics?.debut_rank, fmt: (v) => v != null ? `#${v}` : '—' },
     { key: 'peak', label: '最高排名', higherIsBetter: false, getRaw: (c) => c.metrics?.peak_rank, fmt: (v) => v != null ? `#${v}` : '—' },
-    { key: 'weeks_to_peak', label: '到达峰值周数', higherIsBetter: false, getRaw: (c) => c.metrics?.weeks_to_peak, fmt: (v) => v != null ? String(v) : '—' },
-    { key: 'weeks_on_chart', label: '发行后 24 周窗口在榜周数', higherIsBetter: true, getRaw: (c) => c.metrics?.weeks_on_chart, fmt: (v) => v != null ? String(v) : '—' },
     { key: 'release_week_plays', label: '发行周播放', higherIsBetter: true, getRaw: (c) => c.metrics?.release_week_plays, fmt: (v) => v != null ? String(v) : '—' },
     { key: 'artist_impact', label: '艺人影响力', higherIsBetter: true, getRaw: (c) => c.metrics?.artist_impact, fmt: (v) => v != null ? `${Number(v).toFixed(1)}x` : '—' },
     { key: 'market_impact', label: '大盘影响力', higherIsBetter: true, getRaw: (c) => c.metrics?.market_impact, fmt: (v) => v != null ? `${Number(v).toFixed(1)}x` : '—' },
