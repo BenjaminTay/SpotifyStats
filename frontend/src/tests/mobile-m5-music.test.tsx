@@ -93,13 +93,13 @@ describe('M5 mobile music search and details', () => {
     expect(screen.getByText('2026-11-01')).toBeInTheDocument()
   })
 
-  it('unifies the five mobile achievement KPIs and removes duplicate trend labels', () => {
+  it('unifies the complete mobile achievement KPIs and removes duplicate trend labels', () => {
     render(
       <MemoryRouter>
         <section aria-label="单曲移动成绩">
           <MusicTracksSection
             artistName="Artist"
-            info={{ total_tracks: 6, top1: 1, top5: 4, top10: 6, weeks_at_no1: 3 }}
+            info={{ total_tracks: 6, top1: 1, top5: 4, top10: 6, weeks_at_no1: 3, total_weeks: 42, total_track_power: 680, track_power_rank: 4 }}
             tracks={[{
               track_id: 7,
               track_name: 'Chart Song',
@@ -120,7 +120,7 @@ describe('M5 mobile music search and details', () => {
         <section aria-label="专辑移动成绩">
           <ArtistAlbumsSection
             artistName="Artist"
-            info={{ num_no1_albums: 1, album_no1_weeks: 4 } as never}
+            info={{ num_no1_albums: 1, total_albums: 3, album_top5: 2, album_no1_weeks: 4, total_album_weeks: 14, total_album_power: 520, album_power_rank: 2 } as never}
             albums={[
               { album_name: 'Album One', cover_url: null, peak: 1, weeks: 8, pk_wks: 2, first_week: '', first_peak_week: '', last_week: '', total_plays: 80, power_score: 100, power_rank: 3 },
               { album_name: 'Album Five', cover_url: null, peak: 5, weeks: 4, pk_wks: 1, first_week: '', first_peak_week: '', last_week: '', total_plays: 40, power_score: 50, power_rank: 8 },
@@ -132,12 +132,27 @@ describe('M5 mobile music search and details', () => {
     )
 
     const tracks = screen.getByRole('region', { name: '单曲移动成绩' })
-    expect(within(tracks).getByText('Top5曲目')).toBeInTheDocument()
+    expect(tracks.querySelectorAll('.mobile-achievement-kpis > div')).toHaveLength(8)
+    expect(within(tracks).getByText('#1 曲目')).toBeInTheDocument()
+    expect(within(tracks).getByText('Top 5')).toBeInTheDocument()
+    expect(within(tracks).getByText('Top 10')).toBeInTheDocument()
+    expect(within(tracks).getByText('冠军周数')).toBeInTheDocument()
+    expect(within(tracks).getByText('总在榜周数')).toBeInTheDocument()
+    expect(within(tracks).getByText('歌曲总点数')).toBeInTheDocument()
+    const trackKpis = tracks.querySelectorAll('.mobile-achievement-kpis > div')
+    expect(trackKpis[7]).toHaveTextContent('总点数排名')
+    expect(trackKpis[7]).toHaveTextContent('4')
     expect(within(tracks).getByRole('link', { name: /Chart Song/ })).toHaveTextContent('Peak')
     expect(within(tracks).queryByText(/走势/)).not.toBeInTheDocument()
     const albums = screen.getByRole('region', { name: '专辑移动成绩' })
-    expect(within(albums).getByText('Top5专辑')).toBeInTheDocument()
-    expect(within(albums).getByText('Top10专辑')).toBeInTheDocument()
+    expect(albums.querySelectorAll('.mobile-achievement-kpis > div')).toHaveLength(7)
+    expect(within(albums).getByText('入榜专辑')).toBeInTheDocument()
+    expect(within(albums).getByText('Top 5')).toBeInTheDocument()
+    expect(within(albums).getByText('#1 专辑')).toBeInTheDocument()
+    expect(within(albums).getByText('冠军周数')).toBeInTheDocument()
+    expect(within(albums).getByText('总在榜周数')).toBeInTheDocument()
+    expect(within(albums).getByText('专辑总点数')).toBeInTheDocument()
+    expect(within(albums).queryByText('#2')).not.toBeInTheDocument()
     expect(within(albums).getAllByText('2')).not.toHaveLength(0)
     expect(within(albums).getAllByText('3')).not.toHaveLength(0)
     expect(within(albums).queryByText(/走势/)).not.toBeInTheDocument()

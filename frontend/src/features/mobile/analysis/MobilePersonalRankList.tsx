@@ -1,12 +1,12 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { Search, X } from 'lucide-react'
 
-import { MobilePageHeader, MobileRankList, MobileStatePanel } from '@/components/mobile'
+import { MobileRankList, MobileStatePanel } from '@/components/mobile'
 import { cn } from '@/lib/utils'
 import { displayName } from '@/lib/chinese'
 import type { AnalysisChartRow, AnalysisChartsResponse, AnalysisMetric, LeaderboardEntity } from '@/types/analysis'
 
-const PAGE_SIZE = 50
+const PAGE_SIZE = 20
 
 function formatNumber(value: number): string {
   return new Intl.NumberFormat('zh-CN').format(value)
@@ -58,7 +58,7 @@ interface MobilePersonalRankListProps {
   searchQuery: string
   onSearchChange: (value: string) => void
   onEntityChange: (value: LeaderboardEntity) => void
-  onMetricChange: (value: AnalysisMetric) => void
+  timeControl?: ReactNode
 }
 
 export function MobilePersonalRankList({
@@ -69,7 +69,7 @@ export function MobilePersonalRankList({
   searchQuery,
   onSearchChange,
   onEntityChange,
-  onMetricChange,
+  timeControl,
 }: MobilePersonalRankListProps) {
   const [pageState, setPageState] = useState({ data, entity, searchQuery, page: 1 })
   const page = pageState.data === data && pageState.entity === entity && pageState.searchQuery === searchQuery
@@ -83,11 +83,7 @@ export function MobilePersonalRankList({
 
   return (
     <div className="mobile-m3-page" data-mobile-page="analysis-charts">
-      <MobilePageHeader
-        eyebrow="Playback / Ranking"
-        title="你的高频播放"
-        meta={<span>{data?.period.label ?? '正在读取时间范围'}</span>}
-      />
+      {timeControl && <div className="mobile-analysis-floating-time-control">{timeControl}</div>}
 
       <div className="mobile-rank-controls">
         <div className="mobile-segmented" role="group" aria-label="排行实体类型">
@@ -96,10 +92,6 @@ export function MobilePersonalRankList({
               {value === 'track' ? '歌曲' : value === 'album' ? '专辑' : '艺人'}
             </button>
           ))}
-        </div>
-        <div className="mobile-segmented" role="group" aria-label="排行统计指标">
-          <button type="button" className={cn(metric === 'plays' && 'active')} onClick={() => onMetricChange('plays')}>次数</button>
-          <button type="button" className={cn(metric === 'hours' && 'active')} onClick={() => onMetricChange('hours')}>时长</button>
         </div>
       </div>
 
@@ -137,15 +129,16 @@ export function MobilePersonalRankList({
               { label: metric === 'plays' ? '时长' : '播放', value: metric === 'plays' ? formatHours(row.hours) : formatNumber(row.plays) },
               { label: '占比', value: `${row.share_pct}%` },
             ],
-            badges: row.first_played ? [`始于 ${row.first_played.slice(0, 10)}`] : [],
             to: entityLink(row, entity),
             className: 'mobile-personal-rank-row',
           }))}
           emptyTitle={searchQuery ? '没有匹配的榜单结果' : '当前范围没有排行数据'}
-          page={safePage}
-          pageCount={pageCount}
-          onPageChange={goToPage}
-        />
+        page={safePage}
+        pageCount={pageCount}
+        onPageChange={goToPage}
+        showTopPagination
+        showItemCount={false}
+      />
       )}
     </div>
   )

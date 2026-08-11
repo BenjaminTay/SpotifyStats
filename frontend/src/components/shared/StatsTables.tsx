@@ -10,7 +10,7 @@ import { displayName } from '@/lib/chinese'
 import { MobileRankList } from '@/components/mobile'
 import { useViewportMode } from '@/hooks/useViewportMode'
 
-const PAGE_SIZE = 50
+const PAGE_SIZE = 20
 
 function formatNumber(n: number): string {
   return new Intl.NumberFormat('zh-CN').format(n)
@@ -31,6 +31,99 @@ function entityLink(row: Pick<AnalysisChartRow, 'track_id' | 'track_name' | 'alb
   }
   if (entity === 'artist' && row.artist_name) return `/music/artists/${encodeURIComponent(row.artist_name)}`
   return '#'
+}
+
+export function PersonalRankPagination({
+  total,
+  pageSize,
+  page,
+  totalPages,
+  onPageChange,
+  compact = false,
+  className,
+}: {
+  total: number
+  pageSize: number
+  page: number
+  totalPages: number
+  onPageChange: (page: number) => void
+  compact?: boolean
+  className?: string
+}) {
+  if (compact) {
+    return (
+      <div className={cn('flex items-center justify-end', className)}>
+        <div className="inline-flex items-center gap-1 text-[12px] text-muted-foreground">
+          <button
+            type="button"
+            aria-label="上一页"
+            disabled={page <= 1}
+            onClick={() => onPageChange(Math.max(1, page - 1))}
+            className="rounded-lg border border-border px-2.5 py-1.5 disabled:opacity-30"
+          >
+            上一页
+          </button>
+          <span className="min-w-14 text-center tabular-nums">
+            {page} / {totalPages}
+          </span>
+          <button
+            type="button"
+            aria-label="下一页"
+            disabled={page >= totalPages}
+            onClick={() => onPageChange(Math.min(totalPages, page + 1))}
+            className="rounded-lg border border-border px-2.5 py-1.5 disabled:opacity-30"
+          >
+            下一页
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className={cn('flex items-center justify-between', className)}>
+      <span className="font-sans text-[12px] text-muted-foreground tabular-nums">
+        显示 {total === 0 ? 0 : (page - 1) * pageSize + 1}-{Math.min(page * pageSize, total)} / 总数 {total} 条
+      </span>
+      <div className="flex items-center gap-1">
+        <span className="mr-2 font-sans text-[12px] text-muted-foreground tabular-nums">
+          {page} / {totalPages}
+        </span>
+        <button
+          onClick={() => onPageChange(1)}
+          disabled={page <= 1}
+          aria-label="第一页"
+          className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:text-foreground disabled:opacity-30"
+        >
+          <ChevronsLeft className="h-4 w-4" />
+        </button>
+        <button
+          onClick={() => onPageChange(Math.max(1, page - 1))}
+          disabled={page <= 1}
+          aria-label="上一页"
+          className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:text-foreground disabled:opacity-30"
+        >
+          <ChevronLeft className="h-4 w-4" />
+        </button>
+        <button
+          onClick={() => onPageChange(Math.min(totalPages, page + 1))}
+          disabled={page >= totalPages}
+          aria-label="下一页"
+          className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:text-foreground disabled:opacity-30"
+        >
+          <ChevronRight className="h-4 w-4" />
+        </button>
+        <button
+          onClick={() => onPageChange(totalPages)}
+          disabled={page >= totalPages}
+          aria-label="最后一页"
+          className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:text-foreground disabled:opacity-30"
+        >
+          <ChevronsRight className="h-4 w-4" />
+        </button>
+      </div>
+    </div>
+  )
 }
 
 function matchesPersonalRankSearch(
@@ -192,48 +285,14 @@ export function PersonalRankTable({ rows, entity, metric, pagination, searchQuer
         </tbody>
       </table>
       {totalPages > 1 && (
-        <div className="mt-3 flex items-center justify-between">
-          <span className="font-sans text-[12px] text-muted-foreground tabular-nums">
-            显示 {total === 0 ? 0 : (safePage - 1) * pageSize + 1}-{Math.min(safePage * pageSize, total)} / 总数 {total} 条
-          </span>
-          <div className="flex items-center gap-1">
-            <span className="mr-2 font-sans text-[12px] text-muted-foreground tabular-nums">
-              {safePage} / {totalPages}
-            </span>
-            <button
-              onClick={() => goToPage(1)}
-              disabled={safePage <= 1}
-              aria-label="第一页"
-              className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:text-foreground disabled:opacity-30"
-            >
-              <ChevronsLeft className="h-4 w-4" />
-            </button>
-            <button
-              onClick={() => goToPage(Math.max(1, safePage - 1))}
-              disabled={safePage <= 1}
-              aria-label="上一页"
-              className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:text-foreground disabled:opacity-30"
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </button>
-            <button
-              onClick={() => goToPage(Math.min(totalPages, safePage + 1))}
-              disabled={safePage >= totalPages}
-              aria-label="下一页"
-              className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:text-foreground disabled:opacity-30"
-            >
-              <ChevronRight className="h-4 w-4" />
-            </button>
-            <button
-              onClick={() => goToPage(totalPages)}
-              disabled={safePage >= totalPages}
-              aria-label="最后一页"
-              className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:text-foreground disabled:opacity-30"
-            >
-              <ChevronsRight className="h-4 w-4" />
-            </button>
-          </div>
-        </div>
+        <PersonalRankPagination
+          total={total}
+          pageSize={pageSize}
+          page={safePage}
+          totalPages={totalPages}
+          onPageChange={goToPage}
+          className="mt-3"
+        />
       )}
     </div>
   )

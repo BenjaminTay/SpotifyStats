@@ -53,7 +53,7 @@ export function AlbumDetailExperience() {
     const next = new URLSearchParams(searchParams)
     if (tab === 'stats') next.delete('tab')
     else next.set('tab', tab)
-    setSearchParams(next)
+    setSearchParams(next, { replace: true })
   }
 
   const { data, isPending, error, refetch } = useQuery({

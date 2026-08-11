@@ -8,6 +8,7 @@ interface MobilePaginationProps {
   pageCount?: number
   totalLabel?: string
   onPageChange?: (page: number) => void
+  compact?: boolean
   hasMore?: boolean
   loading?: boolean
   onLoadMore?: () => void
@@ -20,6 +21,7 @@ export function MobilePagination({
   pageCount = 1,
   totalLabel,
   onPageChange,
+  compact = false,
   hasMore = false,
   loading = false,
   onLoadMore,
@@ -41,6 +43,31 @@ export function MobilePagination({
           <p className="mobile-pagination-end">— 已经到底了 —</p>
         )}
       </div>
+    )
+  }
+
+  if (compact) {
+    return (
+      <nav className={cn('mobile-pagination mobile-pagination-compact', className)} aria-label="列表分页">
+        <div className="mobile-pagination-compact-controls">
+          <button
+            type="button"
+            className="mobile-pagination-compact-button"
+            disabled={page <= 1 || loading}
+            onClick={() => onPageChange?.(page - 1)}
+          >
+            上一页
+          </button>
+          <button
+            type="button"
+            className="mobile-pagination-compact-button"
+            disabled={page >= pageCount || loading}
+            onClick={() => onPageChange?.(page + 1)}
+          >
+            下一页
+          </button>
+        </div>
+      </nav>
     )
   }
 

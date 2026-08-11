@@ -7,6 +7,7 @@ import { RecentPlaysSection } from '@/components/shared/RecentPlaysSection'
 import { Skeleton } from '@/components/ui/skeleton'
 import { analysisApi, useAnalysisFilters, useApiData } from '@/hooks/useAnalysis'
 import { MobileAnalysisStats } from '@/features/mobile/analysis/MobileAnalysisStats'
+import { MobileAnalysisTimeControl } from '@/features/mobile/analysis/MobileAnalysisTimeControl'
 import { MobileStatePanel } from '@/components/mobile'
 import { useViewportMode } from '@/hooks/useViewportMode'
 
@@ -21,7 +22,7 @@ function fmtHours(n: number): string {
 export function AnalysisStatsPage() {
   const isPhone = useViewportMode() === 'phone'
   const { filters, loading: filtersLoading } = useAnalysisFilters()
-  const { metric, setQuery, apiParams } = useAnalysisQueryState()
+  const { metric, period, periodValue, startDate, endDate, setQuery, apiParams } = useAnalysisQueryState()
   const { data, loading } = useApiData(() => analysisApi.stats(filters, apiParams), [filters, apiParams], !filtersLoading)
 
   if (loading || !data) return isPhone ? <MobileStatePanel variant="loading" /> : <Skeleton className="h-[640px] rounded-[16px]" />
@@ -31,10 +32,20 @@ export function AnalysisStatsPage() {
 
   if (isPhone) {
     return (
-      <MobileAnalysisStats
-        data={data}
-        metric={metric}
-        onMetricChange={(next) => setQuery({ metric: next })}
+        <MobileAnalysisStats
+          data={data}
+          metric={metric}
+          timeControl={(
+            <MobileAnalysisTimeControl
+              compact
+              period={period}
+              periodValue={periodValue}
+              startDate={startDate}
+              endDate={endDate}
+              metric={metric}
+              onChange={setQuery}
+            />
+          )}
         filters={filters}
         apiParams={apiParams}
         fetchPage={(page, limit, search, date) =>

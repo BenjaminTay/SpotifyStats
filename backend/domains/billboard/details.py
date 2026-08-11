@@ -1081,6 +1081,12 @@ def get_artist_chart_detail(
     ap_row = aps_sorted[aps_sorted["artist_name"] == artist_name]
     artist_power_score = int(ap_row.iloc[0]["power_score"]) if not ap_row.empty else 0
     artist_power_rank = int(ap_row.iloc[0].name) + 1 if not ap_row.empty else None
+    artist_power_metrics = ap_row.iloc[0] if not ap_row.empty else None
+
+    def _optional_int(row, column):
+        if row is None or column not in row.index or pd.isna(row[column]):
+            return None
+        return int(row[column])
 
     # Track power scores for this artist — match by track_id from fanned summary
     artist_track_ids = set(artist_summary[artist_summary["artist_name"] == artist_name]["track_id"])
@@ -1192,6 +1198,9 @@ def get_artist_chart_detail(
 
     # Album chart performance summary
     album_perf = []
+    album_total_weeks = 0
+    album_top5 = 0
+    album_count = 0
     if not artist_albums_all.empty:
         album_summary = (
             artist_albums_all.groupby("album_name")
@@ -1206,6 +1215,9 @@ def get_artist_chart_detail(
             .reset_index()
             .sort_values(["peak", "pk_wks", "weeks"], ascending=[True, False, False])
         )
+        album_count = int(len(album_summary))
+        album_total_weeks = int(album_summary["weeks"].sum())
+        album_top5 = int((album_summary["peak"] <= 5).sum())
         album_summary = album_summary.merge(
             artist_album_power[["album_name", "power_score", "power_rank"]],
             on="album_name",
@@ -1295,11 +1307,16 @@ def get_artist_chart_detail(
             "num_no1_albums": int(
                 artist_albums_all.loc[artist_albums_all["rank"] == 1, "album_name"].nunique()
             ),
+            "total_albums": album_count,
+            "album_top5": album_top5,
             "album_no1_weeks": int(
                 artist_albums_all.loc[artist_albums_all["rank"] == 1, "billboard_week"].nunique()
             ),
+            "total_album_weeks": album_total_weeks,
             "total_track_power": int(artist_track_power["power_score"].sum()),
             "total_album_power": int(artist_album_power["power_score"].sum()),
+            "track_power_rank": _optional_int(artist_power_metrics, "track_power_rank"),
+            "album_power_rank": _optional_int(artist_power_metrics, "album_power_rank"),
         },
         "chart_summary": chart_summary or None,
         "artist_weekly_history": [
@@ -1501,6 +1518,7 @@ def get_album_chart_detail(
     ]
     album_power_score = int(ap_row.iloc[0]["power_score"]) if not ap_row.empty else 0
     album_power_rank = int(ap_row.iloc[0].name) + 1 if not ap_row.empty else None
+    album_power_metrics = ap_row.iloc[0] if not ap_row.empty else None
 
     # Album's charting tracks
     alb_track_ids = set(
@@ -1624,7 +1642,20 @@ def get_album_chart_detail(
                 "top10": int(alb_row["top10"]),
                 "weeks_at_no1": int(alb_row["weeks_at_no1"]),
                 "album_chart_no1_weeks": int(alb_row.get("album_chart_no1_weeks", 0)),
-                "total_track_power": int(album_track_power["power_score"].sum()),
+                "total_track_power": int(
+                    album_power_metrics["track_power_sum"]
+                    if album_power_metrics is not None
+                    and "track_power_sum" in album_power_metrics.index
+                    and pd.notna(album_power_metrics["track_power_sum"])
+                    else album_track_power["power_score"].sum()
+                ),
+                "track_power_rank": (
+                    int(album_power_metrics["track_power_rank"])
+                    if album_power_metrics is not None
+                    and "track_power_rank" in album_power_metrics.index
+                    and pd.notna(album_power_metrics["track_power_rank"])
+                    else None
+                ),
             }
             if alb_row is not None
             else None

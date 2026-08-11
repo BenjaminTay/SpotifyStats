@@ -6,7 +6,7 @@ import pandas as pd
 
 from backend.domains.playback.records_behavior import _milestone_targets, _playback_milestones
 from backend.domains.playback.records_discovery import _discovery_day, _same_name_diff_artist
-from backend.domains.playback.records_obsession import _top_daily_entity
+from backend.domains.playback.records_obsession import _consecutive_marathon, _top_daily_entity
 from backend.domains.playback.records_output import _add_cover_urls_to_records
 from backend.domains.playback.records_time import _late_night_trajectory
 
@@ -106,6 +106,55 @@ def test_daily_top_track_keeps_real_member_track_id_for_detail_link():
     assert result["2026-01-01"]["top_track_entity_id"] == "101"
 
 
+def test_artist_marathon_uses_logical_event_continuity_across_featured_credits():
+    frame = pd.DataFrame(
+        [
+            {
+                "_artist_event_id": 0,
+                "play_id": 1,
+                "ts": "2026-01-01T00:00:00Z",
+                "ms_played": 180000,
+                "artist_name": "Taylor Swift",
+            },
+            {
+                "_artist_event_id": 1,
+                "play_id": 2,
+                "ts": "2026-01-01T00:03:00Z",
+                "ms_played": 180000,
+                "artist_name": "Taylor Swift",
+            },
+            {
+                "_artist_event_id": 1,
+                "play_id": 2,
+                "ts": "2026-01-01T00:03:00Z",
+                "ms_played": 180000,
+                "artist_name": "Lana Del Rey",
+            },
+            {
+                "_artist_event_id": 2,
+                "play_id": 3,
+                "ts": "2026-01-01T00:06:00Z",
+                "ms_played": 180000,
+                "artist_name": "Taylor Swift",
+            },
+        ]
+    )
+
+    result = _consecutive_marathon(
+        frame,
+        "artist_name",
+        "artist_name",
+        "artist_name",
+        "artist",
+    )
+
+    taylor = result[result["name"] == "Taylor Swift"].iloc[0]
+    lana = result[result["name"] == "Lana Del Rey"].iloc[0]
+    assert taylor["value"] == 3
+    assert taylor["secondary_value"] == 0.2
+    assert lana["value"] == 1
+
+
 def test_hourly_track_float_entity_id_resolves_album_cover(monkeypatch):
     conn = sqlite3.connect(":memory:")
     conn.row_factory = sqlite3.Row
@@ -145,6 +194,57 @@ def test_hourly_track_float_entity_id_resolves_album_cover(monkeypatch):
     _add_cover_urls_to_records(records)
 
     assert records["time_hourly_track"].iloc[0]["cover_url"] == "/covers/albums/18.jpg"
+
+
+def test_feat_track_name_fallback_adds_stable_track_id_and_cover(monkeypatch):
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.executescript(
+        """
+        CREATE TABLE artists (
+            artist_id INTEGER PRIMARY KEY,
+            artist_name TEXT,
+            image_path TEXT,
+            image_url TEXT
+        );
+        CREATE TABLE albums (
+            album_id INTEGER PRIMARY KEY,
+            album_name TEXT,
+            artist_id INTEGER,
+            image_path TEXT,
+            image_url TEXT
+        );
+        CREATE TABLE tracks (
+            track_id INTEGER PRIMARY KEY,
+            track_name TEXT,
+            artist_id INTEGER,
+            album_id INTEGER
+        );
+        INSERT INTO artists VALUES (1, 'Taylor Swift', NULL, NULL);
+        INSERT INTO albums VALUES (13, 'reputation', 1, '/tmp/reputation.jpg', NULL);
+        INSERT INTO tracks VALUES (221, 'End Game (feat. Ed Sheeran & Future)', 1, 13);
+        """
+    )
+    monkeypatch.setattr("backend.domains.playback.records_output.get_db", lambda: conn)
+    records = {
+        "discovery_feat_lover_track": pd.DataFrame(
+            [
+                {
+                    "rank": 1,
+                    "name": "End Game (feat. Ed Sheeran & Future)",
+                    "artist_name": "Taylor Swift",
+                    "value": 12,
+                    "unit": "次",
+                }
+            ]
+        )
+    }
+
+    _add_cover_urls_to_records(records)
+
+    row = records["discovery_feat_lover_track"].iloc[0]
+    assert row["entity_id"] == "221"
+    assert row["cover_url"] == "/covers/albums/13.jpg"
 
 
 def test_late_night_trajectory_applies_monthly_and_quarterly_sample_thresholds():

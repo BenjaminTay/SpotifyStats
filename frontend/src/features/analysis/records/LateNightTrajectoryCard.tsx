@@ -59,7 +59,7 @@ export function LateNightTrajectoryCard({ trajectory }: { trajectory?: Trajector
   }, [base, granularity, rows])
 
   const toggle = (
-    <div className="flex rounded-[6px] border border-border bg-muted/30 p-0.5" aria-label="深夜轨迹聚合方式">
+    <div className="mobile-record-segmented-toggle flex rounded-[6px] border border-border bg-muted/30 p-0.5" aria-label="深夜轨迹聚合方式">
       {(['monthly', 'quarterly'] as Granularity[]).map((key) => (
         <button key={key} type="button" aria-pressed={granularity === key} onClick={() => setGranularity(key)} className={`rounded-[4px] px-3 py-1 font-sans text-[11px] font-medium transition-colors ${granularity === key ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}>
           {key === 'monthly' ? '按月' : '按季度'}

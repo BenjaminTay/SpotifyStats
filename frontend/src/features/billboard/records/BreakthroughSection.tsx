@@ -18,6 +18,8 @@ import {
 } from './RecordsPrimitives'
 
 export function BreakthroughSection({ rec, covers }: { rec: BillboardRecords; covers: CoverMaps }) {
+  const fastestExitMaxWeeks = Math.max(...rec.fastest_exit_after_no1.map(r => r['巅峰后周数'] ?? 0), 1)
+
   return (
     <div>
       <SectionHeader icon={Zap} title="爆发时刻" subtitle="那些让人瞠目结舌的瞬间——榜单上最极致的爆发力" />
@@ -77,7 +79,7 @@ export function BreakthroughSection({ rec, covers }: { rec: BillboardRecords; co
           { header: '歌曲', render: (r) => <TrackCell trackId={r.track_id} trackName={r.track_name} artistName={r.artist_name} artistNames={r.artist_names} coverUrl={covers.track.get(r.track_id)} /> },
           { header: '夺冠日期', width: '110px', mobileRole: 'fact', render: (r) => <WeekLink date={r.first_peak_week} /> },
           { header: '出榜日期', width: '110px', render: (r) => <WeekLink date={r.last_week} /> },
-          { header: '巅后周数', width: '145px', align: 'right', mobileRole: 'primary', render: (r) => <ValueBar value={r['巅峰后周数']} max={rec.fastest_exit_after_no1[0]?.['巅峰后周数'] ?? 1} suffix="周" /> },
+          { header: '巅后周数', width: '145px', align: 'right', mobileRole: 'primary', render: (r) => <ValueBar value={r['巅峰后周数']} max={fastestExitMaxWeeks} suffix="周" /> },
         ]} />
       </RecordCard>
 

@@ -59,6 +59,16 @@ class TestArtistFanOutInvariant:
         shared_artists = artists[artists["track_name"] == "Fixture Shared Credit"]
         assert len(shared_artists) > len(shared_valid)
 
+    def test_artist_fanout_preserves_logical_event_identity(self, seed_conn):
+        """Every credited row from one logical play keeps the same event ordinal."""
+        artists = load_plays_for_artists(
+            seed_conn, min_ms=30000, music_only=True, merge_enabled=True
+        )
+        shared = artists[artists["track_name"] == "Fixture Shared Credit"]
+
+        assert "_artist_event_id" in artists.columns
+        assert shared.groupby("_artist_event_id").size().max() > 1
+
 
 class TestTrackAggregationInvariant:
     def test_track_groupby_preserves_valid_event_count(self, seed_conn):

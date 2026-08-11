@@ -9,7 +9,6 @@ import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { AnalysisPageHeader } from '@/components/shared/AnalysisPageHeader'
 import { AnalysisSubNav } from '@/components/shared/AnalysisSubNav'
-import { MobilePageHeader } from '@/components/mobile'
 import { MobileYearlyChapterNav } from '@/features/mobile/yearly/MobileYearlyChapterNav'
 import { YearlyPeriodNotice } from '@/features/mobile/yearly/YearlyPeriodNotice'
 import { useViewportMode } from '@/hooks/useViewportMode'
@@ -126,12 +125,7 @@ export function YearlyReviewPage() {
       {!isPhone && <AnalysisPageHeader />}
       {!isPhone && <AnalysisSubNav />}
 
-      {isPhone ? (
-        <MobilePageHeader
-          eyebrow="Yearly Summary"
-          title="年度总结"
-        />
-      ) : <section className="mb-8">
+      {!isPhone && <section className="mb-8">
         <p className="mb-2 font-sans text-[11px] font-bold uppercase tracking-[1.5px] text-accent-foreground">
           Yearly Summary
         </p>

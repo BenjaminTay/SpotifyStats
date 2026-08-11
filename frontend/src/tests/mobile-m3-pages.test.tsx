@@ -5,6 +5,7 @@ import { MemoryRouter } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { MobileAnalysisStats } from '@/features/mobile/analysis/MobileAnalysisStats'
+import { MobileAnalysisTimeControl } from '@/features/mobile/analysis/MobileAnalysisTimeControl'
 import { MobilePersonalRankList } from '@/features/mobile/analysis/MobilePersonalRankList'
 import { MobileBillboardWeekly } from '@/features/mobile/billboard/MobileBillboardWeekly'
 import { MobileDashboard } from '@/features/mobile/dashboard/MobileDashboard'
@@ -35,7 +36,7 @@ afterEach(() => {
 
 function PersonalRankHarness({ data }: { data: AnalysisChartsResponse }) {
   const [entity, setEntity] = useState<LeaderboardEntity>('track')
-  const [metric, setMetric] = useState<AnalysisMetric>('plays')
+  const metric: AnalysisMetric = 'plays'
   const [search, setSearch] = useState('')
   return (
     <MobilePersonalRankList
@@ -45,7 +46,6 @@ function PersonalRankHarness({ data }: { data: AnalysisChartsResponse }) {
       metric={metric}
       searchQuery={search}
       onEntityChange={setEntity}
-      onMetricChange={setMetric}
       onSearchChange={setSearch}
     />
   )
@@ -93,14 +93,43 @@ describe('M3 mobile page presentations', () => {
 
     const result = screen.getByRole('link', { name: /Rare Song/ })
     expect(within(result).getByText('41')).toBeInTheDocument()
-    expect(result.querySelector('.mobile-entity-badges')).toHaveTextContent('始于 2023-02-26')
+    expect(result).not.toHaveTextContent('始于 2023-02-26')
     expect(result).toHaveClass('mobile-personal-rank-row')
     expect(screen.queryByText('Popular Song')).not.toBeInTheDocument()
   })
 
+  it('uses 20 items per page and exposes pagination above and below the mobile ranking list', async () => {
+    const user = userEvent.setup()
+    const data = {
+      period: { label: '全部时间' },
+      total: 21,
+      rows: Array.from({ length: 21 }, (_, index) => ({
+        rank: index + 1,
+        track_id: index + 1,
+        track_name: `Song ${index + 1}`,
+        artist_name: 'Artist',
+        plays: 100 - index,
+        hours: 5,
+        share_pct: 1,
+      })),
+    } as unknown as AnalysisChartsResponse
+
+    render(<MemoryRouter><PersonalRankHarness data={data} /></MemoryRouter>)
+
+    expect(screen.queryByText('20 项')).not.toBeInTheDocument()
+    const rankHeader = screen.getByRole('heading', { name: '歌曲榜' }).closest('header')
+    expect(within(rankHeader!).getByRole('navigation', { name: '列表分页' })).toBeInTheDocument()
+    expect(within(rankHeader!).getByRole('navigation', { name: '列表分页' })).not.toHaveTextContent('/')
+    expect(screen.getAllByRole('navigation', { name: '列表分页' })).toHaveLength(2)
+    expect(screen.getAllByRole('button', { name: '下一页' })).toHaveLength(2)
+    await user.click(screen.getAllByRole('button', { name: '下一页' })[0])
+    expect(screen.getByText('Song 21')).toBeInTheDocument()
+    expect(screen.queryByText('Song 1')).not.toBeInTheDocument()
+  })
+
   it('shows the mobile stats hierarchy and switches trend views without refetching', async () => {
     const user = userEvent.setup()
-    const onMetricChange = vi.fn()
+    const onRangeChange = vi.fn()
     const data = {
       period: { label: '2026 年' },
       summary: {
@@ -124,7 +153,17 @@ describe('M3 mobile page presentations', () => {
       <MobileAnalysisStats
         data={data as never}
         metric="plays"
-        onMetricChange={onMetricChange}
+        timeControl={(
+          <MobileAnalysisTimeControl
+            compact
+            period="lifetime"
+            periodValue={null}
+            startDate=""
+            endDate=""
+            metric="plays"
+            onChange={onRangeChange}
+          />
+        )}
         filters={{} as never}
         apiParams={{ period: 'year' }}
         fetchPage={vi.fn()}
@@ -132,16 +171,28 @@ describe('M3 mobile page presentations', () => {
       />,
     )
 
-    expect(screen.getByRole('heading', { name: '这一段时间的聆听' })).toBeInTheDocument()
-    expect(screen.getByText('Playback Stats')).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: '播放统计' })).not.toBeInTheDocument()
+    expect(screen.queryByText('Playback Stats')).not.toBeInTheDocument()
     expect(screen.getAllByRole('article')).toHaveLength(8)
     expect(screen.getByText('已听歌曲')).toBeInTheDocument()
     expect(screen.getByText('已听专辑')).toBeInTheDocument()
     expect(screen.getByText('已听艺人')).toBeInTheDocument()
     expect(screen.queryByText('更多数据')).not.toBeInTheDocument()
     expect(screen.queryByText('有效事件')).not.toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: '播放时长' }))
-    expect(onMetricChange).toHaveBeenCalledWith('hours')
+    const timeTrigger = screen.getByRole('button', { name: '选择时间范围，当前全部时间' })
+    expect(timeTrigger).toHaveClass('mobile-time-range-trigger-compact')
+    expect(timeTrigger.closest('.mobile-analysis-floating-time-control')).not.toBeNull()
+    expect(screen.getByRole('heading', { name: '时间分布' })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: '星期分布' })).not.toBeInTheDocument()
+    const dailyChart = screen.getByRole('heading', { name: '每日播放' }).closest('.mobile-chart-card')
+    const page = document.querySelector('[data-mobile-page="analysis-stats"]')
+    expect([...page!.children].indexOf(dailyChart!)).toBeGreaterThan(0)
+    await user.click(screen.getByRole('button', { name: '选择时间范围，当前全部时间' }))
+    const timeDialog = screen.getByRole('dialog', { name: '时间范围' })
+    expect(within(timeDialog).getByRole('radiogroup', { name: '统计口径' })).toBeInTheDocument()
+    await user.click(within(timeDialog).getByRole('radio', { name: '播放时长' }))
+    await user.click(within(timeDialog).getByRole('button', { name: '应用时间范围' }))
+    expect(onRangeChange).toHaveBeenCalledWith(expect.objectContaining({ metric: 'hours' }))
     expect(screen.getByTestId('recent-plays')).toHaveTextContent('mobile')
     await user.click(screen.getByRole('switch', { name: '累计' }))
     expect(screen.getByRole('heading', { name: '累计播放' })).toBeInTheDocument()

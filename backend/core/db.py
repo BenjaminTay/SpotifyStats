@@ -1262,7 +1262,11 @@ def _load_plays_for_artists_cached(
         from backend.domains.metadata.artist_identity import canonicalize_artist_frame
 
         df = canonicalize_artist_frame(df, conn)
-        df = df.drop(columns=["_artist_event_id"], errors="ignore")
+
+        # Keep the stable logical-event ordinal after artist fan-out. A single
+        # play can produce several credited-artist rows; consumers that reason
+        # about sequence continuity must compare event ordinals rather than
+        # treating the additional credit rows as intervening plays.
 
         return _downcast_ints(df)
     finally:
@@ -1392,21 +1396,55 @@ def fan_out_weekly_for_artists(weekly_df: pd.DataFrame) -> pd.DataFrame:
         return weekly_df
 
     names_map = get_track_artist_names_map()
-    if not names_map:
+    if not names_map and "artist_names" not in weekly_df.columns:
         return weekly_df
 
-    import pandas as pd
+    expanded = weekly_df.copy()
+    existing_names = (
+        expanded["artist_names"] if "artist_names" in expanded.columns else [None] * len(expanded)
+    )
+    expanded["_credited_artist_names"] = [
+        existing
+        if isinstance(existing, list) and existing
+        else names_map.get(track_id, [artist_name])
+        for track_id, artist_name, existing in zip(
+            expanded["track_id"], expanded["artist_name"], existing_names
+        )
+    ]
+    expanded = expanded.explode("_credited_artist_names", ignore_index=True)
+    expanded["artist_name"] = expanded.pop("_credited_artist_names")
+    return expanded
 
-    rows = []
-    for _, row in weekly_df.iterrows():
-        tid = row["track_id"]
-        artists = names_map.get(tid, [row["artist_name"]])
-        for artist in artists:
-            new_row = row.to_dict()
-            new_row["artist_name"] = artist
-            rows.append(new_row)
 
-    return pd.DataFrame(rows)
+def primary_artist_names_for_tracks(df: pd.DataFrame) -> pd.DataFrame:
+    """Use the primary canonical artist for album-owner and primary joins.
+
+    Billboard record calculations may receive a frame after
+    :func:`enrich_track_artist_names`, where ``artist_name`` is intentionally a
+    comma-separated display label. Artist-level metrics should use
+    :func:`fan_out_weekly_for_artists` instead.
+    """
+    if df.empty or "track_id" not in df.columns or "artist_name" not in df.columns:
+        return df
+
+    names_map = get_track_artist_names_map()
+    if not names_map and "artist_names" not in df.columns:
+        return df
+
+    result = df.copy()
+
+    existing_names = (
+        result["artist_names"] if "artist_names" in result.columns else [None] * len(result)
+    )
+    result["artist_name"] = [
+        existing[0]
+        if isinstance(existing, list) and existing
+        else (names_map.get(track_id) or [artist_name])[0]
+        for track_id, artist_name, existing in zip(
+            result["track_id"], result["artist_name"], existing_names
+        )
+    ]
+    return result
 
 
 # ═══════════════════════════════════════════════════════════════════════════

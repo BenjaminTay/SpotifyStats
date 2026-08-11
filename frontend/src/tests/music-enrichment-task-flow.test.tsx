@@ -59,9 +59,14 @@ function artistDetail(): ArtistDetailResponse {
       top10: 1,
       weeks_at_no1: 1,
       num_no1_albums: 1,
+      total_albums: 1,
+      album_top5: 1,
       album_no1_weeks: 1,
+      total_album_weeks: 1,
       total_track_power: 10,
       total_album_power: 10,
+      track_power_rank: 1,
+      album_power_rank: 1,
     },
     chart_summary: {
       peak_position: 1,
@@ -108,6 +113,7 @@ function albumDetail(): AlbumDetailResponse {
       weeks_at_no1: 1,
       album_chart_no1_weeks: 1,
       total_track_power: 10,
+      track_power_rank: 1,
     },
     chart_summary: {
       peak_position: 1,

@@ -97,6 +97,42 @@ def test_artist_personal_rankings_are_server_paginated_and_stable(client):
     assert second["rows"][0]["rank"] == 2
 
 
+def test_artist_album_ranking_excludes_albums_owned_by_collaboration_partners(client):
+    base_params = {
+        "min_ms": 30000,
+        "music_only": True,
+        "merge_enabled": True,
+        "dynamic_threshold": False,
+        "metric": "plays",
+        "limit": 20,
+        "offset": 0,
+    }
+
+    tracks = client.get(
+        "/api/music/artists/Fixture Artist Beta/rankings",
+        params={**base_params, "entity": "track"},
+    ).json()
+    albums = client.get(
+        "/api/music/artists/Fixture Artist Beta/rankings",
+        params={**base_params, "entity": "album"},
+    ).json()
+    stats = client.get(
+        "/api/music/artists/Fixture Artist Beta/stats",
+        params=base_params,
+    ).json()
+
+    assert tracks["found"] is True
+    assert {row["track_name"] for row in tracks["rows"]} >= {
+        "Fixture Shared Credit",
+        "Fixture Lead Single Remix",
+    }
+    assert albums["found"] is True
+    assert albums["total"] == 0
+    assert albums["rows"] == []
+    assert stats["top_tracks"]
+    assert stats["top_albums"] == []
+
+
 def test_music_search_album_count_matches_detail_stats(client):
     params = {
         "q": "Fixture Future LP",

@@ -105,12 +105,14 @@ export function ChampionshipSection({ rec, covers }: { rec: BillboardRecords; co
     return rec.artist_most_no1
   }, [no1Type, rec.artist_most_no1])
 
-  const no1MaxSongs = rec.artist_most_no1[0]?.['冠单数'] ?? 1
+  const no1MaxSongs = Math.max(...rec.artist_most_no1.map(r => r['冠单数'] ?? 0), 1)
   const no1MaxAlbums = Math.max(...rec.artist_most_no1.map(r => r['冠军专辑数'] ?? 0), 1)
   const no1MaxSongWeeks = Math.max(...rec.artist_most_no1.map(r => r['单曲冠军周数'] ?? 0), 1)
   const no1MaxAlbumWeeks = Math.max(...rec.artist_most_no1.map(r => r['专辑冠军周数'] ?? 0), 1)
   const debutTrackMaxNo1Weeks = Math.max(...debutTrackSorted.map(r => r.weeks_at_no1 ?? 0), 1)
   const debutAlbumMaxNo1Weeks = Math.max(...debutAlbumSorted.map(r => r.weeks_at_no1 ?? 0), 1)
+  const debutTrackMaxChartWeeks = Math.max(...debutTrackSorted.map(r => r.weeks_on_chart ?? 0), 1)
+  const debutAlbumMaxChartWeeks = Math.max(...debutAlbumSorted.map(r => r.weeks_on_chart ?? 0), 1)
 
   return (
     <div>
@@ -175,7 +177,7 @@ export function ChampionshipSection({ rec, covers }: { rec: BillboardRecords; co
             { header: '歌曲', render: (r) => <TrackCell trackId={r.track_id} trackName={r.track_name} artistName={r.artist_name} artistNames={r.artist_names} coverUrl={covers.track.get(r.track_id)} /> },
             { header: '空降日期', width: '110px', render: (r) => <WeekLink date={r.first_week} /> },
             { header: '冠军周数', width: '105px', align: 'right', render: (r) => r.weeks_at_no1 > 0 ? <ValueBar value={r.weeks_at_no1} max={debutTrackMaxNo1Weeks} suffix="周" /> : <span className="text-muted-foreground">—</span> },
-            { header: '在榜', width: '140px', align: 'right', render: (r) => <ValueBar value={r.weeks_on_chart} max={debutTrackSorted[0]?.weeks_on_chart ?? 1} suffix="周" /> },
+            { header: '在榜', width: '140px', align: 'right', render: (r) => <ValueBar value={r.weeks_on_chart} max={debutTrackMaxChartWeeks} suffix="周" /> },
           ]} />
         ) : (
           <MiniRankTable rows={debutAlbumSorted} columns={[
@@ -183,7 +185,7 @@ export function ChampionshipSection({ rec, covers }: { rec: BillboardRecords; co
             { header: '专辑', render: (r) => <AlbumCell albumName={r.album_name} artistName={r.artist_name} coverUrl={covers.album.get(r.album_name)} /> },
             { header: '空降日期', width: '110px', render: (r) => <WeekLink date={r.first_week} /> },
             { header: '冠军周数', width: '105px', align: 'right', render: (r) => r.weeks_at_no1 > 0 ? <ValueBar value={r.weeks_at_no1} max={debutAlbumMaxNo1Weeks} suffix="周" /> : <span className="text-muted-foreground">—</span> },
-            { header: '在榜', width: '140px', align: 'right', render: (r) => <ValueBar value={r.weeks_on_chart} max={debutAlbumSorted[0]?.weeks_on_chart ?? 1} suffix="周" /> },
+            { header: '在榜', width: '140px', align: 'right', render: (r) => <ValueBar value={r.weeks_on_chart} max={debutAlbumMaxChartWeeks} suffix="周" /> },
           ]} />
         )}
       </RecordCard>

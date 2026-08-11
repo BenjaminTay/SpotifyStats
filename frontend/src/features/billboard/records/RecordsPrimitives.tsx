@@ -1,12 +1,16 @@
-import { createContext, Fragment, useContext, useRef, useState } from 'react'
+import { createContext, useContext, useState } from 'react'
 import type { ComponentType, ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { Link, useSearchParams } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 
 import { ArtistLinks } from '@/components/shared/ArtistLinks'
 import { GlassCard } from '@/components/shared/GlassCard'
-import { MobileBottomSheet } from '@/components/mobile/MobileBottomSheet'
+import {
+  MobileRecordTable,
+  type MobileRecordColumn,
+} from '@/components/mobile/MobileRecordTable'
+import { mobileRecordTitle } from '@/components/mobile/mobileRecordUtils'
 import { cn } from '@/lib/utils'
 import { displayName } from '@/lib/chinese'
 import { billboardDetailLink } from '@/lib/navigation'
@@ -19,10 +23,6 @@ export function fmtDate(iso: string): string {
   if (!iso) return ''
   const d = new Date(iso + 'T00:00:00')
   return `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}`
-}
-
-function mobileRecordTitle(title: string): string {
-  return title.split(' · ')[0]?.trim() || title
 }
 
 export function WeekLink({ date }: { date: string }) {
@@ -51,7 +51,11 @@ export function ArtistCoverImg({ url, size }: { url?: string | null; size?: 'sm'
 
 export function ValueBar({ value, max, suffix }: { value: number; max: number; suffix?: string }) {
   const isPhone = useViewportMode() === 'phone'
-  const pct = max > 0 ? Math.round((value / max) * 100) : 0
+  // Keep the visual fill bounded even when an upstream list is empty, unsorted,
+  // or temporarily supplies a value larger than its comparison baseline.
+  const safeValue = Number.isFinite(value) ? Math.max(value, 0) : 0
+  const safeMax = Number.isFinite(max) && max > 0 ? max : 1
+  const pct = Math.min(100, Math.round((safeValue / safeMax) * 100))
   if (isPhone) {
     return (
       <span className="mobile-record-value">
@@ -64,7 +68,7 @@ export function ValueBar({ value, max, suffix }: { value: number; max: number; s
       <span className="inline-block w-[52px] text-right font-sans text-[14px] font-semibold tabular-nums">
         {fmtNum(value)}{suffix && <span className="ml-0.5 text-[11px] font-normal text-muted-foreground">{suffix}</span>}
       </span>
-      <span className="inline-block h-[3px] w-[56px] rounded-[2px] bg-muted">
+      <span className="inline-block h-[3px] w-[56px] overflow-hidden rounded-[2px] bg-muted">
         <span className="block h-full rounded-[2px] bg-accent-foreground transition-[width] duration-300" style={{ width: `${pct}%` }} />
       </span>
     </span>
@@ -179,154 +183,9 @@ function Pagination({ page, totalPages, startIdx, endIdx, totalItems, onPageChan
   )
 }
 
-type MiniRankColumn<T> = {
-  header: ReactNode
+type MiniRankColumn<T extends object> = MobileRecordColumn<T> & {
   width?: string
   align?: 'left' | 'right' | 'center'
-  mobileRole?: 'entity' | 'primary' | 'secondary' | 'fact' | 'hidden'
-  render: (row: T, idx: number) => ReactNode
-}
-
-function MobileMiniRankTable<T extends object>({ rows, columns, mobileSkip, mobilePreviewCount, mobileRowClassName, mobileRenderRow }: {
-  rows: T[]
-  columns: MiniRankColumn<T>[]
-  mobileSkip: number
-  mobilePreviewCount: number
-  mobileRowClassName?: string
-  mobileRenderRow?: (row: T, idx: number) => ReactNode
-}) {
-  const mobileRecord = useContext(MobileRecordCardCtx)
-  const [searchParams, setSearchParams] = useSearchParams()
-  const fullListTriggerRef = useRef<HTMLButtonElement>(null)
-  const fullListOpen = Boolean(mobileRecord && searchParams.get('record') === mobileRecord.recordKey)
-  const [mobileVisibleState, setMobileVisibleState] = useState({ rows, fullListOpen, count: 20 })
-  const mobileVisibleCount = mobileVisibleState.rows === rows && mobileVisibleState.fullListOpen === fullListOpen
-    ? mobileVisibleState.count
-    : 20
-
-  const mobileRows = rows.slice(mobileSkip, mobileSkip + mobilePreviewCount)
-  const fullRows = rows.slice(0, mobileVisibleCount)
-  const hasRankColumn = columns[0]?.header === '#'
-  const rankIndex = hasRankColumn ? 0 : -1
-  const explicitEntityIndex = columns.findIndex((column) => column.mobileRole === 'entity')
-  const entityIndex = explicitEntityIndex >= 0 ? explicitEntityIndex : 1
-  const candidateIndexes = columns
-    .map((_column, index) => index)
-    .filter((index) => index !== rankIndex && index !== entityIndex && columns[index]?.mobileRole !== 'hidden')
-  const explicitPrimaryIndex = columns.findIndex((column) => column.mobileRole === 'primary')
-  const defaultPrimaryIndex = hasRankColumn ? 2 : 0
-  const primaryIndex = explicitPrimaryIndex >= 0
-    ? explicitPrimaryIndex
-    : candidateIndexes.includes(defaultPrimaryIndex) ? defaultPrimaryIndex : candidateIndexes[0]
-  const secondaryIndexes = candidateIndexes
-    .filter((index) => columns[index]?.mobileRole === 'secondary')
-  const entityColumn = columns[entityIndex]
-  const primaryColumn = primaryIndex == null ? undefined : columns[primaryIndex]
-  const secondaryColumns = secondaryIndexes.map((index) => columns[index])
-  const factColumns = candidateIndexes
-    .filter((index) => index !== primaryIndex && !secondaryIndexes.includes(index))
-    .map((index) => columns[index])
-  const renderMobileRows = (items: T[], startIndex: number, full = false) => (
-    <div className={cn('mobile-record-rank-list', full && 'mobile-record-rank-list-full')}>
-      {items.map((row, rowIndex) => {
-        const absoluteIndex = startIndex + rowIndex
-        if (mobileRenderRow) {
-          return <Fragment key={absoluteIndex}>{mobileRenderRow(row, absoluteIndex)}</Fragment>
-        }
-        return (
-            <article key={absoluteIndex} className={cn('mobile-record-rank-row', mobileRowClassName)}>
-              <div className="mobile-record-rank-number">
-                <span>{hasRankColumn ? columns[0]?.render(row, absoluteIndex) : <RankNum rank={absoluteIndex + 1} />}</span>
-              </div>
-              <div className="mobile-record-rank-entity">
-                <span>{entityColumn?.render(row, absoluteIndex)}</span>
-              </div>
-              {(primaryColumn || secondaryColumns.length > 0) && (
-                <div className={cn('mobile-record-rank-metrics', secondaryColumns.length > 0 && 'mobile-record-rank-metrics-paired')}>
-                  {primaryColumn && (
-                    <div className="mobile-record-rank-primary">
-                      <small>{primaryColumn.header}</small>
-                      <span>{primaryColumn.render(row, absoluteIndex)}</span>
-                    </div>
-                  )}
-                  {secondaryColumns.map((column, columnIndex) => (
-                    <div key={columnIndex} className="mobile-record-rank-secondary">
-                      <small>{column.header}</small>
-                      <span>{column.render(row, absoluteIndex)}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-              {factColumns.length > 0 && (
-                <div className="mobile-record-rank-facts">
-                  {factColumns.map((column, columnIndex) => (
-                  <div key={columnIndex}>
-                    <small>{column.header}</small>
-                    <span>{column.render(row, absoluteIndex)}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </article>
-        )
-      })}
-    </div>
-  )
-
-  const openFullList = () => {
-    if (!mobileRecord) return
-    setMobileVisibleState({ rows, fullListOpen: true, count: 20 })
-    const next = new URLSearchParams(searchParams)
-    next.set('record', mobileRecord.recordKey)
-    setSearchParams(next)
-  }
-
-  const closeFullList = () => {
-    setMobileVisibleState({ rows, fullListOpen: false, count: 20 })
-    const next = new URLSearchParams(searchParams)
-    next.delete('record')
-    setSearchParams(next, { replace: true })
-  }
-
-  return (
-    <>
-      {renderMobileRows(mobileRows, mobileSkip)}
-      {rows.length > mobileSkip + mobilePreviewCount && mobileRecord && (
-        <button ref={fullListTriggerRef} type="button" className="mobile-record-expand" onClick={openFullList}>
-          <span>查看完整榜单</span>
-          <small>{rows.length} 项</small>
-        </button>
-      )}
-      {mobileRecord && (
-        <MobileBottomSheet
-          open={fullListOpen}
-          onOpenChange={(open) => { if (!open) closeFullList() }}
-          title={mobileRecord.title}
-          description={`完整榜单 · ${rows.length} 项`}
-          triggerRef={fullListTriggerRef}
-          className="mobile-record-full-sheet"
-          contentClassName="mobile-record-full-content"
-          dataSheet="billboard-record-list"
-        >
-          {renderMobileRows(fullRows, 0, true)}
-          {mobileVisibleCount < rows.length && (
-            <button
-              type="button"
-              className="mobile-record-load-more"
-              onClick={() => setMobileVisibleState({
-                rows,
-                fullListOpen,
-                count: Math.min(mobileVisibleCount + 20, rows.length),
-              })}
-            >
-              加载更多
-              <small>{Math.min(mobileVisibleCount, rows.length)} / {rows.length}</small>
-            </button>
-          )}
-        </MobileBottomSheet>
-      )}
-    </>
-  )
 }
 
 export function MiniRankTable<T extends object>({ rows, columns, emptyText = '暂无数据', fixed, mobileSkip = 0, mobilePreviewCount = 3, mobileRowClassName, mobileRenderRow }: {
@@ -340,11 +199,24 @@ export function MiniRankTable<T extends object>({ rows, columns, emptyText = '�
   const totalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE))
   const safePage = Math.min(page, totalPages)
   const portalTarget = useContext(PaginationPortalCtx)
+  const mobileRecord = useContext(MobileRecordCardCtx)
 
   if (rows.length === 0) return <p className="py-4 text-center font-sans text-[12px] text-muted-foreground">{emptyText}</p>
 
   if (isPhone) {
-    return <MobileMiniRankTable rows={rows} columns={columns} mobileSkip={mobileSkip} mobilePreviewCount={mobilePreviewCount} mobileRowClassName={mobileRowClassName} mobileRenderRow={mobileRenderRow} />
+    return (
+      <MobileRecordTable
+        rows={rows}
+        columns={columns}
+        record={mobileRecord ? { title: mobileRecord.title, key: mobileRecord.recordKey } : null}
+        skip={mobileSkip}
+        previewCount={mobilePreviewCount}
+        rowClassName={mobileRowClassName}
+        renderRank={(rank) => <RankNum rank={rank} />}
+        renderRow={mobileRenderRow}
+        sheetDataName="billboard-record-list"
+      />
+    )
   }
 
   const displayRows = rows.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE)

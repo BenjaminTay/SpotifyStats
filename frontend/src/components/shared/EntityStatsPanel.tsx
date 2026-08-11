@@ -15,6 +15,8 @@ import { api } from '@/lib/api'
 import { getDefaultMergeLevel } from '@/lib/merge-level'
 import type { AlbumPersonalRankingResponse, AnalysisMetric, ArtistPersonalRankingResponse, EntityStatsResponse } from '@/types/analysis'
 import { useViewportMode } from '@/hooks/useViewportMode'
+import { MobileAnalysisTimeControl } from '@/features/mobile/analysis/MobileAnalysisTimeControl'
+import { cn } from '@/lib/utils'
 
 const ARTIST_RANKING_PAGE_SIZE = 20
 const ALBUM_RANKING_PAGE_SIZE = 20
@@ -214,9 +216,26 @@ export function EntityStatsPanel({
   return (
     <div className="entity-stats-panel space-y-8">
       {/* Header */}
-      <div className="entity-stats-controls flex flex-wrap items-end justify-between gap-4">
-        <AnalysisTimeRangeSelector period={period} periodValue={periodValue} startDate={startDate} endDate={endDate} onChange={setQuery} quickFirst />
-        <MetricToggle metric={metric} onChange={(next) => setQuery({ metric: next })} />
+      <div className={cn(
+        'entity-stats-controls flex flex-wrap items-end gap-4',
+        isPhone ? 'entity-stats-controls-mobile justify-end' : 'justify-between',
+      )}>
+        {isPhone ? (
+          <MobileAnalysisTimeControl
+            compact
+            period={period}
+            periodValue={periodValue}
+            startDate={startDate}
+            endDate={endDate}
+            metric={metric}
+            onChange={setQuery}
+          />
+        ) : (
+          <>
+            <AnalysisTimeRangeSelector period={period} periodValue={periodValue} startDate={startDate} endDate={endDate} onChange={setQuery} quickFirst />
+            <MetricToggle metric={metric} onChange={(next) => setQuery({ metric: next })} />
+          </>
+        )}
       </div>
 
       {/* KPIs Row 1: 播放概览 — 6 cards */}

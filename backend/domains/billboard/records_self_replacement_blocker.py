@@ -2,6 +2,8 @@
 
 import pandas as pd
 
+from backend.core.db import fan_out_weekly_for_artists
+
 
 def compute_self_replacement_blocker_records(
     records,
@@ -21,20 +23,25 @@ def compute_self_replacement_blocker_records(
         .drop_duplicates()
         .sort_values("billboard_week")
     )
+    no1_credits = fan_out_weekly_for_artists(weekly[weekly["rank"] == 1])[
+        ["billboard_week", "track_id", "artist_name"]
+    ].drop_duplicates()
+    artist_sets = (
+        no1_credits.groupby(["billboard_week", "track_id"])["artist_name"].agg(set).to_dict()
+    )
     replacements = []
     for i in range(1, len(no1_all)):
         prev = no1_all.iloc[i - 1]
         curr = no1_all.iloc[i]
         gap = (curr["billboard_week"] - prev["billboard_week"]).days
-        if (
-            gap <= 8
-            and prev["artist_name"] == curr["artist_name"]
-            and prev["track_id"] != curr["track_id"]
-        ):
+        shared_artists = artist_sets.get(
+            (prev["billboard_week"], prev["track_id"]), set()
+        ) & artist_sets.get((curr["billboard_week"], curr["track_id"]), set())
+        if gap <= 8 and shared_artists and prev["track_id"] != curr["track_id"]:
             replacements.append(
                 {
                     "周次": curr["billboard_week"],
-                    "艺人": curr["artist_name"],
+                    "艺人": ", ".join(sorted(shared_artists)),
                     "前冠单_id": prev["track_id"],
                     "前冠单": prev["track_name"],
                     "新冠单_id": curr["track_id"],

@@ -1,12 +1,14 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Search, X } from 'lucide-react'
 import { EntityTabs, MetricToggle, useAnalysisQueryState } from '@/components/shared/AnalysisControls'
 import { GlassCard } from '@/components/shared/GlassCard'
-import { PersonalRankTable } from '@/components/shared/StatsTables'
+import { PersonalRankPagination, PersonalRankTable } from '@/components/shared/StatsTables'
 import { Skeleton } from '@/components/ui/skeleton'
 import { analysisApi, useAnalysisFilters, useApiData } from '@/hooks/useAnalysis'
 import { MobilePersonalRankList } from '@/features/mobile/analysis/MobilePersonalRankList'
+import { MobileAnalysisTimeControl } from '@/features/mobile/analysis/MobileAnalysisTimeControl'
 import { useViewportMode } from '@/hooks/useViewportMode'
+import { matchesPersonalRankSearch, PERSONAL_RANK_PAGE_SIZE } from '@/lib/personal-rank'
 
 const ENTITY_TITLE = {
   track: '歌曲榜',
@@ -17,8 +19,9 @@ const ENTITY_TITLE = {
 export function AnalysisChartsPage() {
   const isPhone = useViewportMode() === 'phone'
   const [searchQuery, setSearchQuery] = useState('')
+  const [pageState, setPageState] = useState({ key: '', page: 1 })
   const { filters, loading: filtersLoading } = useAnalysisFilters()
-  const { metric, entity, setQuery, apiParams } = useAnalysisQueryState('track')
+  const { metric, entity, period, periodValue, startDate, endDate, setQuery, apiParams } = useAnalysisQueryState('track')
   const { data, loading } = useApiData(
     () => analysisApi.charts(filters, {
       ...apiParams,
@@ -30,6 +33,15 @@ export function AnalysisChartsPage() {
     [filters, apiParams, entity, metric],
     !filtersLoading,
   )
+  const filteredRows = useMemo(() => {
+    if (!data?.rows) return []
+    return searchQuery ? data.rows.filter((row) => matchesPersonalRankSearch(row, entity, searchQuery)) : data.rows
+  }, [data, entity, searchQuery])
+  const pageKey = JSON.stringify({ entity, metric, period, periodValue, startDate, endDate, searchQuery })
+  const totalPages = Math.max(1, Math.ceil(filteredRows.length / PERSONAL_RANK_PAGE_SIZE))
+  const page = pageState.key === pageKey ? Math.min(pageState.page, totalPages) : 1
+  const pageRows = filteredRows.slice((page - 1) * PERSONAL_RANK_PAGE_SIZE, page * PERSONAL_RANK_PAGE_SIZE)
+  const onPageChange = (nextPage: number) => setPageState({ key: pageKey, page: nextPage })
 
   if (isPhone) {
     return (
@@ -44,7 +56,17 @@ export function AnalysisChartsPage() {
           setSearchQuery('')
           setQuery({ entity: next })
         }}
-        onMetricChange={(next) => setQuery({ metric: next })}
+        timeControl={(
+          <MobileAnalysisTimeControl
+            compact
+            period={period}
+            periodValue={periodValue}
+            startDate={startDate}
+            endDate={endDate}
+            metric={metric}
+            onChange={setQuery}
+          />
+        )}
       />
     )
   }
@@ -69,7 +91,7 @@ export function AnalysisChartsPage() {
               {data ? `${data.period.label} · 共 ${data.total.toLocaleString('zh-CN')} 条记录` : '正在加载'}
             </p>
           </div>
-          <div className="flex w-full flex-wrap items-center justify-start gap-3 sm:w-auto sm:justify-end">
+          <div className="flex w-full flex-wrap items-center justify-start gap-3 sm:w-auto sm:justify-end lg:flex-nowrap">
             <label className="relative w-full sm:w-[260px]">
               <span className="sr-only">在当前播放排行中搜索</span>
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -95,12 +117,33 @@ export function AnalysisChartsPage() {
               setSearchQuery('')
               setQuery({ entity: next })
             }} />
+            {!loading && data && totalPages > 1 && (
+              <PersonalRankPagination
+                total={filteredRows.length}
+                pageSize={PERSONAL_RANK_PAGE_SIZE}
+                page={page}
+                totalPages={totalPages}
+                onPageChange={onPageChange}
+                compact
+                className="shrink-0"
+              />
+            )}
           </div>
         </div>
         {loading || !data ? (
           <Skeleton className="h-[520px] rounded-[12px]" />
         ) : (
-          <PersonalRankTable rows={data.rows} entity={entity} metric={metric} searchQuery={searchQuery} />
+          <PersonalRankTable
+            rows={pageRows}
+            entity={entity}
+            metric={metric}
+            pagination={{
+              total: filteredRows.length,
+              page,
+              pageSize: PERSONAL_RANK_PAGE_SIZE,
+              onPageChange,
+            }}
+          />
         )}
       </GlassCard>
     </div>

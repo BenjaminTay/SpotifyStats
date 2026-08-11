@@ -1,3 +1,4 @@
+import { Fragment, type CSSProperties } from 'react'
 import { Link } from 'react-router-dom'
 import { Crown } from 'lucide-react'
 
@@ -25,6 +26,45 @@ interface MobileVersusScoreboardProps {
   personalLoading: boolean
 }
 
+function entityStyle(index: number): CSSProperties {
+  return { '--entity-color': ENTITY_COLORS[index % ENTITY_COLORS.length] } as CSSProperties
+}
+
+function splitEntityName(name: string) {
+  const separatorIndex = name.indexOf(' — ')
+  if (separatorIndex < 0) return { title: name, subtitle: null }
+  return {
+    title: name.slice(0, separatorIndex),
+    subtitle: name.slice(separatorIndex + 3),
+  }
+}
+
+function MetricRows({ metrics, entityCount }: { metrics: MobileVersusMetric[]; entityCount: number }) {
+  return (
+    <>
+      {metrics.map((metric) => (
+        <tr key={metric.label} className="mobile-versus-matrix-row">
+          <th scope="row" className="mobile-versus-matrix-label">
+            <span title={metric.description}>{metric.label}</span>
+          </th>
+          {Array.from({ length: entityCount }, (_, index) => {
+            const isWinner = metric.winners.includes(index)
+            return (
+              <td
+                key={index}
+                className={`mobile-versus-matrix-value${isWinner ? ' winner' : ''}`}
+                style={entityStyle(index)}
+              >
+                {metric.values[index] ?? '—'}
+              </td>
+            )
+          })}
+        </tr>
+      ))}
+    </>
+  )
+}
+
 export function MobileVersusScoreboard({
   entities,
   detailLinks,
@@ -36,54 +76,79 @@ export function MobileVersusScoreboard({
   const maxWins = Math.max(...wins)
   const winnerIndices = wins.map((value, index) => value === maxWins ? index : -1).filter((index) => index >= 0)
   const winnerLabel = winnerIndices.length === 1 ? entities[winnerIndices[0]]?.name : '并列胜出'
+  const totalWinners = maxWins > 0 ? winnerIndices : []
 
   return (
-    <section className="mobile-versus-scoreboard">
+    <section className="mobile-versus-scoreboard" aria-label="移动端对决结果">
       <header className="mobile-versus-winner">
         <Crown aria-hidden="true" />
         <div><p>对决结果</p><h2>{winnerLabel}</h2><span>{maxWins > 0 ? `在 ${maxWins} 项指标中胜出` : '当前数据暂无明确胜者'}</span></div>
       </header>
 
-      <div className="mobile-versus-entity-cards">
-        {entities.map((entity, entityIndex) => (
-          <article key={`${entity.name}:${entityIndex}`} style={{ '--entity-color': ENTITY_COLORS[entityIndex % ENTITY_COLORS.length] } as React.CSSProperties}>
-            <header>
-              {entity.cover_url && <img src={entity.cover_url} alt="" loading="lazy" />}
-              <div>
-                <span>对决 {String(entityIndex + 1).padStart(2, '0')}</span>
-                {detailLinks[entityIndex] ? <Link to={detailLinks[entityIndex] ?? '#'}>{entity.name}</Link> : <strong>{entity.name}</strong>}
-              </div>
-              <em>{wins[entityIndex]} 胜</em>
-            </header>
+      <section className="mobile-versus-matrix-shell" aria-label="对决指标矩阵">
+        <div className="mobile-versus-matrix-scroll">
+          <table className="mobile-versus-matrix" aria-label="移动端对决指标矩阵">
+            <thead>
+              <tr>
+                <th scope="col" className="mobile-versus-matrix-label mobile-versus-matrix-corner">指标</th>
+                {entities.map((entity, index) => {
+                  const { title, subtitle } = splitEntityName(entity.name ?? '未命名实体')
+                  return (
+                    <th key={`${entity.name}:${index}`} scope="col" className="mobile-versus-matrix-entity" style={entityStyle(index)}>
+                      <span className="mobile-versus-matrix-entity-index">对决 {String(index + 1).padStart(2, '0')}</span>
+                      <div className="mobile-versus-matrix-entity-main">
+                        {entity.cover_url && <img src={entity.cover_url} alt="" loading="lazy" />}
+                        <div>
+                          {detailLinks[index] ? <Link to={detailLinks[index] ?? '#'} title={title}>{title}</Link> : <strong title={title}>{title}</strong>}
+                          {subtitle && <small>{subtitle}</small>}
+                        </div>
+                      </div>
+                      <em>{wins[index]} 胜</em>
+                    </th>
+                  )
+                })}
+              </tr>
+            </thead>
+            <tbody>
+              {groups.map((group) => (
+                <Fragment key={group.label}>
+                  <tr key={`${group.label}-heading`} className="mobile-versus-matrix-group">
+                    <th scope="colgroup" colSpan={entities.length + 1}>{group.label}</th>
+                  </tr>
+                  <MetricRows metrics={group.metrics} entityCount={entities.length} />
+                </Fragment>
+              ))}
 
-            {groups.map((group) => (
-              <details key={group.label} open={group.label === '榜单成绩'}>
-                <summary>{group.label}<span>{group.metrics.length} 项</span></summary>
-                <dl>
-                  {group.metrics.map((metric) => (
-                    <div key={metric.label} className={metric.winners.includes(entityIndex) ? 'winner' : undefined} title={metric.description}>
-                      <dt>{metric.label}</dt><dd>{metric.values[entityIndex] ?? '—'}</dd>
-                    </div>
-                  ))}
-                </dl>
-              </details>
-            ))}
+              {(personalMetrics.length > 0 || personalLoading) && (
+                <>
+                  <tr className="mobile-versus-matrix-group">
+                    <th scope="colgroup" colSpan={entities.length + 1}>个人播放</th>
+                  </tr>
+                  <MetricRows metrics={personalMetrics} entityCount={entities.length} />
+                  {personalLoading && (
+                    <tr>
+                      <td colSpan={entities.length + 1} className="mobile-versus-matrix-loading">个人数据加载中...</td>
+                    </tr>
+                  )}
+                </>
+              )}
 
-            {(personalMetrics.length > 0 || personalLoading) && (
-              <details>
-                <summary>个人播放<span>{personalLoading ? '加载中' : `${personalMetrics.length} 项`}</span></summary>
-                <dl>
-                  {personalMetrics.map((metric) => (
-                    <div key={metric.label} className={metric.winners.includes(entityIndex) ? 'winner' : undefined}>
-                      <dt>{metric.label}</dt><dd>{metric.values[entityIndex] ?? '—'}</dd>
-                    </div>
-                  ))}
-                </dl>
-              </details>
-            )}
-          </article>
-        ))}
-      </div>
+              <tr className="mobile-versus-matrix-group">
+                <th scope="colgroup" colSpan={entities.length + 1}>总分</th>
+              </tr>
+              <MetricRows
+                metrics={[{
+                  label: '胜出次数',
+                  values: wins.map(String),
+                  winners: totalWinners,
+                }]}
+                entityCount={entities.length}
+              />
+            </tbody>
+          </table>
+        </div>
+      </section>
+
     </section>
   )
 }

@@ -1,13 +1,14 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { useViewportMode } from '@/hooks/useViewportMode'
 import { displayName } from '@/lib/chinese'
 import type { EntityRecordFamily, EntityRecordType, PlaybackRecordRow } from '@/types/analysis'
 import { EntityRecordToggle, RecordCard } from './PlaybackRecordsPrimitives'
 
 const SEGMENTS = [
-  { label: '00:00–07:00', start: 0, end: 7 },
-  { label: '08:00–15:00', start: 8, end: 15 },
-  { label: '16:00–23:00', start: 16, end: 23 },
+  { label: '0:00-7:00', start: 0, end: 7 },
+  { label: '8:00-15:00', start: 8, end: 15 },
+  { label: '16:00-23:00', start: 16, end: 23 },
 ] as const
 
 const ENTITY_HEADERS: Record<EntityRecordType, string> = {
@@ -76,10 +77,13 @@ function HourEntity({ row, entity }: { row?: PlaybackRecordRow; entity: EntityRe
 }
 
 export function HourlySegmentsCard({ records }: { records: EntityRecordFamily }) {
+  const isPhone = useViewportMode() === 'phone'
   const available = (['track', 'album', 'artist'] as EntityRecordType[]).filter((key) => records[key]?.length > 0)
   const [selected, setSelected] = useState<EntityRecordType>(available[0] ?? 'track')
+  const [segmentIndex, setSegmentIndex] = useState(0)
   const active = available.includes(selected) ? selected : (available[0] ?? 'track')
   const byHour = useMemo(() => new Map((records[active] ?? []).map((row) => [hourOf(row), row])), [active, records])
+  const displayedSegments = isPhone ? [SEGMENTS[segmentIndex]] : SEGMENTS
 
   return (
     <RecordCard
@@ -91,6 +95,21 @@ export function HourlySegmentsCard({ records }: { records: EntityRecordFamily })
         <p className="py-6 text-center font-sans text-[12px] text-muted-foreground">暂无时段统计</p>
       ) : (
         <>
+          {isPhone && (
+            <div className="mobile-record-time-segments" role="tablist" aria-label="选择八小时时段">
+              {SEGMENTS.map((segment, index) => (
+                <button
+                  key={segment.label}
+                  type="button"
+                  role="tab"
+                  aria-selected={segmentIndex === index}
+                  onClick={() => setSegmentIndex(index)}
+                >
+                  {segment.label}
+                </button>
+              ))}
+            </div>
+          )}
           <div
             role="table"
             aria-label={`${ENTITY_HEADERS[active]}每小时时段冠军`}
@@ -123,7 +142,7 @@ export function HourlySegmentsCard({ records }: { records: EntityRecordFamily })
             )}
           </div>
           <div className="grid grid-cols-1 gap-4 lg:hidden">
-          {SEGMENTS.map((segment) => (
+          {displayedSegments.map((segment) => (
             <section key={segment.label} aria-label={`${segment.label} ${ENTITY_HEADERS[active]}时段冠军`} className="min-w-0 overflow-hidden rounded-[12px] border border-border/70 bg-muted/10">
               <table className="w-full table-fixed">
                 <colgroup><col className="w-[52px]" /><col /><col className="w-[44px]" /></colgroup>

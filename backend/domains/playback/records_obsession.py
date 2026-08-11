@@ -59,9 +59,24 @@ def _consecutive_marathon(frame, group_col, name_col, artist_col, entity_type="t
     """連續播放馬拉松：播放序列中連續出現同一 entity 的最長 run。"""
     if frame.empty:
         return pd.DataFrame()
-    df = frame.sort_values("ts").copy()
+    df = frame.copy()
     df["_entity"] = df[group_col].astype(str)
-    df["_group"] = (df["_entity"] != df["_entity"].shift(1)).cumsum()
+
+    if entity_type == "artist" and "_artist_event_id" in df.columns:
+        # Artist statistics fan one logical play out to every credited artist.
+        # A featured artist row must not break the primary artist's streak:
+        # continuity means that the artist is credited on adjacent logical
+        # events, not that their fan-out rows happen to be adjacent.
+        df = (
+            df.drop_duplicates(["_entity", "_artist_event_id"])
+            .sort_values(["_entity", "_artist_event_id", "ts"])
+            .copy()
+        )
+        event_gap = df.groupby("_entity", sort=False)["_artist_event_id"].diff()
+        df["_group"] = event_gap.ne(1).groupby(df["_entity"], sort=False).cumsum()
+    else:
+        df = df.sort_values("ts").copy()
+        df["_group"] = (df["_entity"] != df["_entity"].shift(1)).cumsum()
 
     gb_cols = ["_entity", "_group"]
     if name_col in df.columns and name_col not in gb_cols:

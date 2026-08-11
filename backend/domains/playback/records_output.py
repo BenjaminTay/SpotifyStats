@@ -109,39 +109,48 @@ def _add_cover_urls_to_records(records: dict) -> None:
 
     # Name-based track lookup for compound rows such as Daily Total Record.
     track_name_rows = conn.execute(
-        """SELECT t.track_name, a.artist_name, al.album_id, al.image_path, al.image_url
+        """SELECT t.track_id, t.track_name, a.artist_name,
+                  al.album_id, al.image_path, al.image_url
            FROM tracks t
            JOIN artists a ON t.artist_id = a.artist_id
            LEFT JOIN albums al ON t.album_id = al.album_id"""
     ).fetchall()
     track_name_cover_map = {}
+    track_name_id_map = {}
     for r in track_name_rows:
         key = (r["track_name"], r["artist_name"])
         url = _build_url(r["image_path"], r["image_url"], "albums", r["album_id"])
         if url or key not in track_name_cover_map:
             track_name_cover_map[key] = url
+            track_name_id_map[key] = str(r["track_id"])
 
     # Fallback: apply name-based cover lookup to track records that lack
     # track_id/entity_id (e.g. feat_lover_track which only has name+artist_name).
     for key, val in records.items():
         if not isinstance(val, pd.DataFrame) or val.empty:
             continue
-        if "cover_url" in val.columns:
-            continue  # already handled by ID-based lookup above
         if "name" not in val.columns or "artist_name" not in val.columns:
             continue
         if not _is_track_record(val, key):
             continue
         val = val.copy()
-        val["cover_url"] = val.apply(
-            lambda row: track_name_cover_map.get(
-                (
-                    str(row["name"]) if pd.notna(row["name"]) else "",
-                    str(row["artist_name"]) if pd.notna(row["artist_name"]) else "",
-                )
+        lookup_keys = val.apply(
+            lambda row: (
+                str(row["name"]) if pd.notna(row["name"]) else "",
+                str(row["artist_name"]) if pd.notna(row["artist_name"]) else "",
             ),
             axis=1,
         )
+        resolved_ids = lookup_keys.map(track_name_id_map)
+        resolved_covers = lookup_keys.map(track_name_cover_map)
+        if "entity_id" in val.columns:
+            val["entity_id"] = val["entity_id"].where(val["entity_id"].notna(), resolved_ids)
+        else:
+            val["entity_id"] = resolved_ids
+        if "cover_url" in val.columns:
+            val["cover_url"] = val["cover_url"].where(val["cover_url"].notna(), resolved_covers)
+        else:
+            val["cover_url"] = resolved_covers
         records[key] = val
 
     # ── Album cover lookup ──

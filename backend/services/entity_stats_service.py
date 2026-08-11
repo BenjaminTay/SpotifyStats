@@ -480,6 +480,44 @@ def get_album_personal_ranking(
     }
 
 
+def _filter_artist_owned_album_events(
+    conn: sqlite3.Connection,
+    df: pd.DataFrame,
+    artist_name: str,
+    *,
+    merge_level: int = 2,
+) -> pd.DataFrame:
+    """Keep only events whose canonical album project belongs to the artist.
+
+    Artist play frames are intentionally fanned out to every effective credited
+    artist so collaborations remain in track rankings. Album rankings have a
+    narrower ownership rule: a featured credit must not make the source album
+    part of the featured artist's discography.
+    """
+    if df.empty:
+        return df
+
+    from backend.domains.playback.album_projects import (
+        apply_canonical_song_keys,
+        load_album_project_membership,
+    )
+
+    keyed = apply_canonical_song_keys(df, conn, merge_level)
+    membership = load_album_project_membership(conn, merge_level=merge_level)
+    if membership.empty:
+        return keyed.iloc[0:0].copy()
+
+    owned_song_keys = set(
+        membership.loc[
+            membership["artist_name"] == artist_name,
+            "canonical_song_key",
+        ].dropna()
+    )
+    if not owned_song_keys:
+        return keyed.iloc[0:0].copy()
+    return keyed[keyed["canonical_song_key"].isin(owned_song_keys)].copy()
+
+
 def get_artist_stats(
     conn: sqlite3.Connection,
     artist_name: str,
@@ -514,7 +552,8 @@ def get_artist_stats(
     if entity_all.empty:
         return {"found": False}
     _, top_tracks = chart_rows(conn, entity_df, "track", "plays", 20, 0)
-    _, top_albums = chart_rows(conn, entity_df, "album", "plays", 20, 0)
+    owned_album_df = _filter_artist_owned_album_events(conn, entity_df, artist_name)
+    _, top_albums = chart_rows(conn, owned_album_df, "album", "plays", 20, 0)
     recent_50_all = all_df.sort_values("ts", ascending=False).head(50)
     data = _entity_base(all_df, entity_df)
     data.update(
@@ -582,6 +621,8 @@ def get_artist_personal_ranking(
             "rows": [],
         }
     artist_df = current_df[current_df["artist_name"] == artist_name]
+    if entity == "album":
+        artist_df = _filter_artist_owned_album_events(conn, artist_df, artist_name)
     total, rows = chart_rows(conn, artist_df, entity, metric, limit, offset)
     return {
         "found": True,

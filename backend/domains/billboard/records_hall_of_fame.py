@@ -2,6 +2,7 @@
 
 import pandas as pd
 
+from backend.core.db import primary_artist_names_for_tracks
 from backend.domains.billboard.chart_compute import compute_power_scores
 from backend.domains.billboard.data_loader import _load_album_metadata
 
@@ -82,7 +83,19 @@ def compute_hall_of_fame_records(
         release_dates = album_meta["release_date"][
             ["album_name", "artist_name", "release_date"]
         ].copy()
-        ts_decade = track_summary.merge(release_dates, on=["album_name", "artist_name"], how="left")
+        track_summary_for_album_join = primary_artist_names_for_tracks(track_summary).rename(
+            columns={"artist_name": "_primary_artist_name"}
+        )
+        release_dates = release_dates.rename(columns={"artist_name": "_primary_artist_name"})
+        ts_decade = track_summary.merge(
+            track_summary_for_album_join[["track_id", "_primary_artist_name"]],
+            on="track_id",
+            how="left",
+        ).merge(
+            release_dates,
+            on=["album_name", "_primary_artist_name"],
+            how="left",
+        )
     except Exception:
         ts_decade = track_summary.copy()
         ts_decade["release_date"] = None

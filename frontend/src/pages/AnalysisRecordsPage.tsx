@@ -7,14 +7,18 @@ import { queryKeys } from '@/api/query-keys'
 import { Skeleton } from '@/components/ui/skeleton'
 import { AlertCircle } from 'lucide-react'
 import { PlaybackRecordsExperience } from '@/features/analysis/records/PlaybackRecordsExperience'
-import { MobilePageHeader } from '@/components/mobile'
+import { MobileAnalysisTimeControl } from '@/features/mobile/analysis/MobileAnalysisTimeControl'
 import { useViewportMode } from '@/hooks/useViewportMode'
 
-function LoadingSkeleton() {
+function LoadingSkeleton({ isPhone = false }: { isPhone?: boolean }) {
   return (
     <div className="mx-auto max-w-[1200px]">
-      <Skeleton className="mb-4 h-3 w-32" />
-      <Skeleton className="mb-8 h-[44px] w-48" />
+      {!isPhone && (
+        <>
+          <Skeleton className="mb-4 h-3 w-32" />
+          <Skeleton className="mb-8 h-[44px] w-48" />
+        </>
+      )}
       <Skeleton className="mb-6 h-[40px] w-full rounded-[12px]" />
       {[1, 2, 3].map((i) => (
         <Skeleton key={i} className="mb-5 h-[200px] w-full rounded-[16px]" />
@@ -26,7 +30,7 @@ function LoadingSkeleton() {
 export function AnalysisRecordsPage() {
   const isPhone = useViewportMode() === 'phone'
   const { filters, loading: filtersLoading } = useAnalysisFilters()
-  const { apiParams } = useAnalysisQueryState()
+  const { period, periodValue, startDate, endDate, setQuery, apiParams } = useAnalysisQueryState()
 
   const params: Record<string, unknown> = {
     min_ms: filters.min_ms,
@@ -56,7 +60,7 @@ export function AnalysisRecordsPage() {
     gcTime: 30 * 60 * 1000,
   })
 
-  if (filtersLoading || isLoading) return <LoadingSkeleton />
+  if (filtersLoading || isLoading) return <LoadingSkeleton isPhone={isPhone} />
 
   if (error) {
     return (
@@ -72,12 +76,17 @@ export function AnalysisRecordsPage() {
 
   return (
     <div className={isPhone ? 'mobile-m4-page' : 'mx-auto max-w-[1200px]'} data-mobile-page={isPhone ? 'playback-records' : undefined}>
-      {/* Page header — matches Billboard RecordsPage style */}
       {isPhone ? (
-        <MobilePageHeader
-          eyebrow="Playback Records"
-          title="播放记录"
-        />
+        <div className="mobile-analysis-floating-time-control">
+          <MobileAnalysisTimeControl
+            compact
+            period={period}
+            periodValue={periodValue}
+            startDate={startDate}
+            endDate={endDate}
+            onChange={setQuery}
+          />
+        </div>
       ) : <section className="mt-6 mb-6">
         <p className="mb-2 font-sans text-[11px] font-bold uppercase tracking-[1.5px] text-accent-foreground">Playback Records</p>
         <h2 className="font-serif text-[34px] font-bold leading-tight">

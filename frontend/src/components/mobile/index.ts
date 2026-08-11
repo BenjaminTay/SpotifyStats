@@ -19,6 +19,12 @@ export { MobilePageHeader } from './MobilePageHeader'
 export { MobilePagination } from './MobilePagination'
 export { MobileRankList } from './MobileRankList'
 export {
+  MobileRecordTable,
+  type MobileRecordColumn,
+  type MobileRecordColumnRole,
+} from './MobileRecordTable'
+export { mobileRecordTitle } from './mobileRecordUtils'
+export {
   MobileSectionSwitcher,
   type MobileSectionOption,
 } from './MobileSectionSwitcher'

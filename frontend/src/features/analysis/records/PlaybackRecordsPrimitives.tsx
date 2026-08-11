@@ -4,6 +4,11 @@ import { createContext, type ReactNode, useCallback, useContext, useState } from
 import { createPortal } from 'react-dom'
 import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react'
 import { Link } from 'react-router-dom'
+import {
+  MobileRecordTable,
+  type MobileRecordColumnRole,
+} from '@/components/mobile/MobileRecordTable'
+import { mobileRecordTitle } from '@/components/mobile/mobileRecordUtils'
 import { GlassCard } from '@/components/shared/GlassCard'
 import { displayName } from '@/lib/chinese'
 import { cn } from '@/lib/utils'
@@ -65,6 +70,7 @@ function ArtistCoverImg({ url, size = 'sm' }: { url?: string | null; size?: 'sm'
 // ═══════════════════════════════════════════════════════════════════════════
 
 const PaginationPortalContext = createContext<HTMLElement | null>(null)
+const MobileRecordCardContext = createContext<{ title: string; recordKey: string } | null>(null)
 
 // ═══════════════════════════════════════════════════════════════════════════
 // SectionHeader
@@ -79,6 +85,9 @@ export function SectionHeader({
   title: string
   subtitle?: string
 }) {
+  const isPhone = useViewportMode() === 'phone'
+  if (isPhone) return null
+
   return (
     <div className="mb-6">
       <div className="mb-1 flex items-center gap-2">
@@ -109,14 +118,16 @@ export function EntityRecordToggle({
   available: EntityRecordType[]
   onChange: (v: EntityRecordType) => void
 }) {
+  const isPhone = useViewportMode() === 'phone'
   if (available.length <= 1) return null
   return (
-    <div className="flex items-center rounded-[6px] border border-border bg-muted/30 p-0.5">
+    <div role="tablist" aria-label="记录实体类型" className={cn('flex items-center rounded-[6px] border border-border bg-muted/30 p-0.5', isPhone && 'mobile-record-entity-toggle')}>
       {available.map((et) => (
         <button
           key={et}
           type="button"
-          aria-pressed={value === et}
+          role="tab"
+          aria-selected={value === et}
           onClick={() => onChange(et)}
           className={cn(
             'rounded-[4px] px-2.5 py-1 font-sans text-[11px] font-medium transition-colors',
@@ -139,37 +150,44 @@ export function EntityRecordToggle({
 export function RecordCard({
   title,
   subtitle,
+  mobileSubtitle,
   toggle,
   children,
 }: {
   title: string
   subtitle?: string
+  mobileSubtitle?: string
   toggle?: ReactNode
   children: ReactNode
 }) {
+  const isPhone = useViewportMode() === 'phone'
   const [portalTarget, setPortalTarget] = useState<HTMLDivElement | null>(null)
   const portalRef = useCallback((el: HTMLDivElement | null) => {
     setPortalTarget(el)
   }, [])
 
+  const displayTitle = isPhone ? mobileRecordTitle(title) : title
+
   return (
-    <PaginationPortalContext.Provider value={portalTarget}>
-      <GlassCard className="mb-5 p-5">
-        <div className="mb-4 flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
+    <MobileRecordCardContext.Provider value={{ title: displayTitle, recordKey: mobileRecordTitle(title) }}>
+      <PaginationPortalContext.Provider value={portalTarget}>
+      <GlassCard className={cn('mb-5 p-5', isPhone && 'mobile-record-card')}>
+        <div className={cn('mb-4 flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center', isPhone && 'mobile-record-card-header')}>
           <div className="min-w-0">
-            <h3 className="font-serif text-[18px] font-bold tracking-[-0.3px]">{title}</h3>
-            {subtitle && (
-              <p className="mt-0.5 font-sans text-[11px] text-muted-foreground">{subtitle}</p>
+            <h3 className={cn('font-serif text-[18px] font-bold tracking-[-0.3px]', isPhone && 'mobile-record-card-title')}>{displayTitle}</h3>
+            {(isPhone ? mobileSubtitle : subtitle) && (
+              <p className="mt-0.5 font-sans text-[11px] text-muted-foreground">{isPhone ? mobileSubtitle : subtitle}</p>
             )}
           </div>
-          <div className="flex w-full flex-wrap items-center justify-between gap-3 sm:w-auto sm:shrink-0 sm:justify-end">
+          <div className={cn('flex w-full flex-wrap items-center justify-between gap-3 sm:w-auto sm:shrink-0 sm:justify-end', isPhone && 'mobile-record-card-actions')}>
             {toggle}
             <div ref={portalRef} />
           </div>
         </div>
         {children}
       </GlassCard>
-    </PaginationPortalContext.Provider>
+      </PaginationPortalContext.Provider>
+    </MobileRecordCardContext.Provider>
   )
 }
 
@@ -237,9 +255,11 @@ export function FeaturedRecord({
 
 interface ColumnDef {
   header: string
+  mobileHeader?: ReactNode
   width?: string
   align?: 'left' | 'right' | 'center'
   verticalAlign?: 'top' | 'middle'
+  mobileRole?: MobileRecordColumnRole
   render: (row: PlaybackRecordRow, idx: number) => ReactNode
 }
 
@@ -248,14 +268,19 @@ export function MiniRankTable({
   columns,
   emptyText = '暂无数据',
   fixed,
+  mobilePreviewCount = 3,
+  mobileRowClassName,
+  mobileRenderRow,
 }: {
   rows: PlaybackRecordRow[]
   columns: ColumnDef[]
   emptyText?: string
   fixed?: boolean
+  mobilePreviewCount?: number
+  mobileRowClassName?: string
+  mobileRenderRow?: (row: PlaybackRecordRow, index: number) => ReactNode
 }) {
   const isPhone = useViewportMode() === 'phone'
-  const [mobileExpanded, setMobileExpanded] = useState(false)
   const [paginationState, setPaginationState] = useState({ rows, page: 0 })
   const page = paginationState.rows === rows ? paginationState.page : 0
   const setCurrentPage = (next: number | ((current: number) => number)) => {
@@ -276,35 +301,26 @@ export function MiniRankTable({
     ? `${columns.reduce((sum, col) => sum + Number.parseInt(col.width ?? '0', 10), 0)}px`
     : undefined
   const portalTarget = useContext(PaginationPortalContext)
+  const mobileRecord = useContext(MobileRecordCardContext)
 
   if (rows.length === 0) {
     return <p className="py-4 text-center font-sans text-[12px] text-muted-foreground">{emptyText}</p>
   }
 
   if (isPhone) {
-    const mobileRows = mobileExpanded ? rows : rows.slice(0, 3)
     return (
-      <div className="mobile-record-rank-list">
-        {mobileRows.map((row, rowIndex) => (
-          <article key={rowIndex} className="mobile-record-rank-row">
-            {columns.map((column, columnIndex) => (
-              <div key={`${column.header}:${columnIndex}`} className={cn(columnIndex === 1 && 'mobile-record-rank-entity')}>
-                <small>{column.header}</small>
-                <span>{column.render(row, rowIndex)}</span>
-              </div>
-            ))}
-          </article>
-        ))}
-        {rows.length > 3 && (
-          <button
-            type="button"
-            className="mobile-record-expand"
-            onClick={() => setMobileExpanded((expanded) => !expanded)}
-          >
-            {mobileExpanded ? '收起完整榜单' : `展开完整榜单（${rows.length} 项）`}
-          </button>
-        )}
-      </div>
+      <MobileRecordTable
+        rows={rows}
+        columns={columns}
+        record={mobileRecord
+          ? { title: mobileRecord.title, key: mobileRecord.recordKey }
+          : { title: '完整榜单', key: 'playback-record-list' }}
+        previewCount={mobilePreviewCount}
+        rowClassName={mobileRowClassName}
+        renderRank={(rank) => <RankNum rank={rank} />}
+        renderRow={mobileRenderRow}
+        sheetDataName="playback-record-list"
+      />
     )
   }
 
@@ -421,6 +437,25 @@ export function RankNum({ rank }: { rank: number }) {
   )
 }
 
+export function RecordDateValue({
+  value,
+  className,
+}: {
+  value?: string | null
+  className?: string
+}) {
+  return (
+    <span
+      className={cn(
+        'mobile-playback-record-date font-sans text-[14px] font-medium tabular-nums text-muted-foreground',
+        className,
+      )}
+    >
+      {value ?? '—'}
+    </span>
+  )
+}
+
 export function TrackCell({
   trackId,
   name,
@@ -508,9 +543,19 @@ export function ValueBar({
   suffix?: string
   label?: string
 }) {
+  const isPhone = useViewportMode() === 'phone'
   const safeValue = Number.isFinite(value) ? value : 0
   const safeMax = Number.isFinite(max) && max > 0 ? max : 1
   const pct = Math.max(0, Math.min((safeValue / safeMax) * 100, 100))
+
+  if (isPhone) {
+    return (
+      <span className="mobile-record-value">
+        {safeValue % 1 !== 0 ? safeValue.toFixed(1) : fmtNum(safeValue)}
+        {suffix && <small>{suffix}</small>}
+      </span>
+    )
+  }
 
   return (
     <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
@@ -550,6 +595,7 @@ export function EntityRecordCard({
   defaultEntity = 'track',
   columns,
   emptyText = '暂无数据',
+  mobileRowClassName,
 }: {
   title: string
   subtitle?: string
@@ -558,6 +604,7 @@ export function EntityRecordCard({
   defaultEntity?: EntityRecordType
   columns: (entity: EntityRecordType) => ColumnDef[]
   emptyText?: string
+  mobileRowClassName?: string
 }) {
   const allAvailable = (Object.keys(recordsByEntity) as EntityRecordType[]).filter(
     (k) => recordsByEntity[k] !== undefined,
@@ -585,7 +632,12 @@ export function EntityRecordCard({
         </div>
       }
     >
-      <MiniRankTable rows={rows} columns={columns(entity)} emptyText={emptyText} />
+      <MiniRankTable
+        rows={rows}
+        columns={columns(entity)}
+        emptyText={emptyText}
+        mobileRowClassName={mobileRowClassName}
+      />
     </RecordCard>
   )
 }

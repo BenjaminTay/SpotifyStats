@@ -2,6 +2,7 @@ import { createRef, useRef, useState } from 'react'
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
+import { format, parseISO, startOfWeek } from 'date-fns'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import {
@@ -142,11 +143,54 @@ describe('mobile primitives', () => {
     expect(screen.getAllByRole('radio')).toHaveLength(8)
     await user.click(screen.getByRole('radio', { name: /自定义/ }))
     expect(screen.getByRole('button', { name: '应用时间范围' })).toBeDisabled()
-    const inputs = screen.getAllByLabelText(/开始日期|结束日期/)
-    await user.type(inputs[0], '2025-01-02')
-    await user.type(inputs[1], '2025-02-03')
+    expect(screen.queryByRole('gridcell')).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: '打开日期范围选择器' }))
+    const calendarPopover = document.querySelector('[data-slot="popover-content"]') as HTMLElement
+    const selectableDayButtons = () => within(calendarPopover).getAllByRole('gridcell')
+      .filter((cell) => cell.querySelector('button:not([disabled])') && !cell.hasAttribute('data-outside'))
+      .map((cell) => cell.querySelector('button') as HTMLButtonElement)
+    await user.click(selectableDayButtons()[0])
+    expect(screen.getByRole('button', { name: '打开日期范围选择器' })).toHaveAttribute('aria-expanded', 'true')
+    await user.click(selectableDayButtons()[1])
+    expect(screen.getByRole('button', { name: '打开日期范围选择器' })).toHaveAttribute('aria-expanded', 'true')
+    await user.click(screen.getByRole('heading', { name: '时间范围' }))
+    expect(document.querySelector('[data-slot="popover-content"]')).not.toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: '应用时间范围' }))
-    expect(onApply).toHaveBeenCalledWith({ period: 'custom', start: '2025-01-02', end: '2025-02-03' })
+    expect(onApply).toHaveBeenCalledWith(expect.objectContaining({
+      period: 'custom',
+      start: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+      end: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+    }))
+  })
+
+  it('selects a whole Monday-based week from the calendar', async () => {
+    const user = userEvent.setup()
+    const onApply = vi.fn()
+    render(
+      <MobileTimeRangeSheet
+        open
+        onOpenChange={vi.fn()}
+        value={{ period: 'lifetime' }}
+        onApply={onApply}
+      />,
+    )
+
+    await user.click(screen.getByRole('radio', { name: /按周/ }))
+    expect(screen.queryByRole('gridcell')).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: '打开日期选择器' }))
+    const calendarPopover = document.querySelector('[data-slot="popover-content"]') as HTMLElement
+    const targetCell = within(calendarPopover).getAllByRole('gridcell').find((cell) =>
+      cell.getAttribute('data-day') && !cell.hasAttribute('data-outside') && cell.querySelector('button:not([disabled])'),
+    ) as HTMLElement
+    const selectedDay = parseISO(targetCell.getAttribute('data-day')!)
+    await user.click(targetCell.querySelector('button') as HTMLButtonElement)
+    expect(screen.getByRole('button', { name: '打开日期选择器' })).toHaveAttribute('aria-expanded', 'true')
+    await user.click(screen.getByRole('button', { name: '应用时间范围' }))
+
+    expect(onApply).toHaveBeenCalledWith(expect.objectContaining({
+      period: 'week',
+      periodValue: format(startOfWeek(selectedDay, { weekStartsOn: 1 }), 'yyyy-MM-dd'),
+    }))
   })
 
   it('renders long entity names, missing artwork, fixed ranks, and credited artists', () => {

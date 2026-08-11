@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, within } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, useLocation, useNavigationType } from 'react-router-dom'
 import { describe, expect, it, vi } from 'vitest'
 
 import { LongevitySection } from '@/features/analysis/records/LongevitySection'
@@ -89,6 +89,12 @@ function renderTimePatterns(data: PlaybackTimePatternRecords) {
   return render(<ThemeProvider><MemoryRouter><TimePatternsSection data={data} /></MemoryRouter></ThemeProvider>)
 }
 
+function RouterStateProbe() {
+  const location = useLocation()
+  const navigationType = useNavigationType()
+  return <output data-testid="router-state">{location.search}|{navigationType}</output>
+}
+
 describe('播放记录 UI', () => {
   it('以五个导航唯一承载迁移后的 20 个模块', () => {
     expect(PLAYBACK_RECORD_SECTIONS.map((section) => section.label)).toEqual([
@@ -132,6 +138,103 @@ describe('播放记录 UI', () => {
     expect(observed.size).toBe(20)
   })
 
+  it('移动端使用横向滑动栏目条，并省略重复的栏目标题和说明', async () => {
+    const matchMedia = vi.mocked(window.matchMedia)
+    matchMedia.mockImplementation((query: string) => ({
+      matches: query.includes('max-width: 767px'),
+      media: query,
+      onchange: null,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    }))
+
+    const data: PlaybackRecordsData = {
+      obsession: obsessionData(),
+      reigns: { daily_champion: emptyFamily(), monthly_reign: emptyFamily(), yearly_reign: emptyFamily(), fastest_milestone: emptyFamily(), consecutive_champion_days: emptyFamily() },
+      longevity: { longest_streak_days: emptyFamily(), longest_span: emptyFamily(), comeback_after_sleep: emptyFamily(), most_active_months: emptyFamily(), user_active_streak: [] },
+      time_patterns: {
+        hourly_dominance: {
+          ...emptyFamily(),
+          track: [row('零点冠军', 4, { date: '0:00' })],
+        },
+        monthly_peak: {
+          ...emptyFamily(),
+          track: [row('月度冠军', 8, { date: '2026-01' })],
+        },
+        yearly_peak: emptyFamily(),
+        late_night_peak_day: [],
+        weekday_preference: [],
+      },
+      discovery: { discovery_day: emptyFamily(), longest_no_repeat: emptyFamily(), album_completionist: emptyFamily(), same_name_diff_artist: [], feat_lover: emptyFamily() },
+      behavior: { skip_storm: emptyFamily(), shuffle_peak: [], platform_reign: [], platform_switch_day: [], playback_milestones: [] },
+    }
+
+    try {
+      render(<ThemeProvider><MemoryRouter><PlaybackRecordsExperience data={data} /></MemoryRouter></ThemeProvider>)
+
+      const tablist = screen.getByRole('tablist', { name: '播放记录分类' })
+      expect(tablist).toHaveClass('mobile-record-family-tabs')
+      expect(tablist.parentElement).toHaveClass('mobile-playback-records-experience')
+      expect(within(tablist).getAllByRole('tab').map((tab) => tab.textContent)).toEqual([
+        '高光时刻', '个人王朝', '长线陪伴', '时间习惯', '探索与品味',
+      ])
+      await screen.findByRole('heading', { name: '单日巅峰' })
+      expect(screen.queryByText('单个自然日内播放次数或累计听歌时长最高的歌曲、专辑与艺人')).not.toBeInTheDocument()
+      expect(screen.queryByRole('heading', { name: '高光时刻' })).not.toBeInTheDocument()
+      expect(screen.queryByText('把最强烈的一天、关键里程碑与最快达成纪录放在同一条个人音乐时间线上。')).not.toBeInTheDocument()
+
+      fireEvent.click(screen.getByRole('tab', { name: '时间习惯' }))
+      await screen.findByRole('heading', { name: '时段统计' })
+      expect(within(screen.getByRole('tablist', { name: '选择八小时时段' })).getAllByRole('tab').map((tab) => tab.textContent)).toEqual([
+        '0:00-7:00', '8:00-15:00', '16:00-23:00',
+      ])
+      expect(screen.queryByText(/^(凌晨|白天|夜间)$/)).not.toBeInTheDocument()
+      expect(screen.getByText('2026-01')).toHaveClass('mobile-playback-record-date')
+
+      fireEvent.click(screen.getByRole('tab', { name: '高光时刻' }))
+      const marathonHeading = await screen.findByRole('heading', { name: '连续播放马拉松' })
+      const marathonCard = marathonHeading.closest('.mobile-record-card') as HTMLElement
+      expect(screen.queryByText('连续次数')).not.toBeInTheDocument()
+      expect(within(marathonCard).getByText('马拉松冠军')).toBeInTheDocument()
+      expect(marathonCard.querySelector('.mobile-record-rank-primary > small')).toBeNull()
+      expect(marathonCard.querySelector('.mobile-record-value')).toHaveTextContent('10次连续播放')
+    } finally {
+      matchMedia.mockReturnValue({
+        matches: false,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      } as unknown as MediaQueryList)
+    }
+  })
+
+  it('从 URL 恢复栏目，并用 replace 保留其他筛选参数', async () => {
+    const data: PlaybackRecordsData = {
+      obsession: obsessionData(),
+      reigns: { daily_champion: emptyFamily(), monthly_reign: emptyFamily(), yearly_reign: emptyFamily(), fastest_milestone: emptyFamily(), consecutive_champion_days: emptyFamily() },
+      longevity: { longest_streak_days: emptyFamily(), longest_span: emptyFamily(), comeback_after_sleep: emptyFamily(), most_active_months: emptyFamily(), user_active_streak: [] },
+      time_patterns: { hourly_dominance: emptyFamily(), monthly_peak: emptyFamily(), yearly_peak: emptyFamily(), late_night_peak_day: [], weekday_preference: [] },
+      discovery: { discovery_day: emptyFamily(), longest_no_repeat: emptyFamily(), album_completionist: emptyFamily(), same_name_diff_artist: [], feat_lover: emptyFamily() },
+      behavior: { skip_storm: emptyFamily(), shuffle_peak: [], platform_reign: [], platform_switch_day: [], playback_milestones: [] },
+    }
+
+    render(
+      <ThemeProvider>
+        <MemoryRouter initialEntries={['/analysis/records?from=summary&family=longevity']}>
+          <PlaybackRecordsExperience data={data} />
+          <RouterStateProbe />
+        </MemoryRouter>
+      </ThemeProvider>,
+    )
+
+    expect(screen.getByRole('tab', { name: '长线陪伴' })).toHaveAttribute('aria-selected', 'true')
+    await screen.findByRole('heading', { name: /^最长连续播放天数/ })
+    fireEvent.click(screen.getByRole('tab', { name: '个人王朝' }))
+    expect(screen.getByTestId('router-state')).toHaveTextContent('?from=summary&family=reigns|REPLACE')
+  })
+
   it('把单日爆听与单日时长合为一张可切换榜单', () => {
     renderObsession()
 
@@ -155,7 +258,7 @@ describe('播放记录 UI', () => {
       .getByText('单日巅峰 · Daily Peak')
       .closest('.rounded-\\[16px\\]')
     expect(dailyPeakCard).not.toBeNull()
-    fireEvent.click(within(dailyPeakCard as HTMLElement).getByRole('button', { name: '专辑' }))
+    fireEvent.click(within(dailyPeakCard as HTMLElement).getByRole('tab', { name: '专辑' }))
 
     expect(screen.getByRole('link', { name: 'Album / Deluxe' })).toHaveAttribute(
       'href',
@@ -259,7 +362,7 @@ describe('播放记录 UI', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '下一页' }))
     expect(screen.getByText('歌曲 11')).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: '专辑' }))
+    fireEvent.click(screen.getByRole('tab', { name: '专辑' }))
 
     expect(screen.getByText('短榜专辑')).toBeInTheDocument()
     expect(screen.queryByText('歌曲 11')).not.toBeInTheDocument()
@@ -292,10 +395,10 @@ describe('播放记录 UI', () => {
     const { container, unmount } = renderTimePatterns(timeData)
     expect(screen.getByText('逐个自然月列出当月播放次数最高的歌曲/专辑/艺人')).toBeInTheDocument()
     expect(screen.getByText('逐月冠军')).toBeInTheDocument()
-    expect(screen.getByRole('region', { name: '00:00–07:00 歌曲时段冠军' })).toBeInTheDocument()
-    expect(screen.getByRole('region', { name: '08:00–15:00 歌曲时段冠军' })).toBeInTheDocument()
-    expect(screen.getByRole('region', { name: '16:00–23:00 歌曲时段冠军' })).toBeInTheDocument()
-    expect(screen.queryByRole('heading', { name: '00:00–07:00' })).not.toBeInTheDocument()
+    expect(screen.getByRole('region', { name: '0:00-7:00 歌曲时段冠军' })).toBeInTheDocument()
+    expect(screen.getByRole('region', { name: '8:00-15:00 歌曲时段冠军' })).toBeInTheDocument()
+    expect(screen.getByRole('region', { name: '16:00-23:00 歌曲时段冠军' })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: '0:00-7:00' })).not.toBeInTheDocument()
     expect(screen.getAllByText('凌晨完整长歌名不会被截断')).toHaveLength(2)
     expect(container.querySelector('img[src="/covers/albums/hour-0.jpg"]')).not.toBeNull()
     expect(container.querySelectorAll('[data-hour-offset="0"]')).toHaveLength(3)
@@ -385,9 +488,9 @@ describe('播放记录 UI', () => {
     expect(screen.getByRole('meter', { name: '2026-01-01新发现数量' }).querySelector('[data-value-bar-fill]')).toHaveStyle({ width: '100%' })
     expect(screen.getByRole('meter', { name: '2026-01-02新发现数量' }).querySelector('[data-value-bar-fill]')).toHaveStyle({ width: '50%' })
     const card = screen.getByText('发现日 · Discovery Day').parentElement?.parentElement?.parentElement as HTMLElement
-    fireEvent.click(within(card).getByRole('button', { name: '专辑' }))
+    fireEvent.click(within(card).getByRole('tab', { name: '专辑' }))
     expect(within(card).getByText('张新专辑')).toBeInTheDocument()
-    fireEvent.click(within(card).getByRole('button', { name: '艺人' }))
+    fireEvent.click(within(card).getByRole('tab', { name: '艺人' }))
     expect(within(card).getByText('位新艺人')).toBeInTheDocument()
   })
 
@@ -434,9 +537,9 @@ describe('播放记录 UI', () => {
     expect(screen.getByRole('meter', { name: '合作歌曲合作曲播放次数' }).querySelector('[data-value-bar-fill]')).toHaveStyle({ width: '100%' })
     expect((screen.getByRole('meter', { name: '合作歌曲二合作曲播放次数' }).querySelector('[data-value-bar-fill]') as HTMLElement).style.width).toMatch(/^49\./)
     const featCard = screen.getByText('合作曲排行 · Feat Ranking').parentElement?.parentElement?.parentElement as HTMLElement
-    fireEvent.click(within(featCard).getByRole('button', { name: '专辑' }))
+    fireEvent.click(within(featCard).getByRole('tab', { name: '专辑' }))
     expect(within(featCard).getByRole('meter', { name: '合作专辑合作曲播放次数' })).toBeInTheDocument()
-    fireEvent.click(within(featCard).getByRole('button', { name: '艺人' }))
+    fireEvent.click(within(featCard).getByRole('tab', { name: '艺人' }))
     expect(within(featCard).getByRole('meter', { name: '合作艺人合作曲播放次数' })).toBeInTheDocument()
   })
 

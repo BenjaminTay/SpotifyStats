@@ -2,6 +2,8 @@
 
 import pandas as pd
 
+from backend.core.db import fan_out_weekly_for_artists, primary_artist_names_for_tracks
+
 
 def compute_movement_records(records, weekly, track_summary, weekly_album=None, weekly_artist=None):
     """Populate movement records: biggest jump/drop, album simul, longest/fastest to #1, most top10 simul."""
@@ -37,7 +39,9 @@ def compute_movement_records(records, weekly, track_summary, weekly_album=None, 
     # ── 10. Same album most simultaneous entries ───────────────────────
     from backend.domains.billboard.version_merge import _normalize_album_column
 
-    _weekly_norm = _normalize_album_column(weekly.copy())
+    # Album ownership is keyed by the primary canonical artist, while the
+    # incoming weekly frame may already contain featured artists for display.
+    _weekly_norm = _normalize_album_column(primary_artist_names_for_tracks(weekly))
     album_weekly = (
         _weekly_norm.groupby(["billboard_week", "artist_name", "album_name"])
         .size()
@@ -56,9 +60,10 @@ def compute_movement_records(records, weekly, track_summary, weekly_album=None, 
         )
 
     top10_weekly = (
-        weekly[weekly["rank"] <= 10]
-        .groupby(["billboard_week", "artist_name"])
-        .size()
+        fan_out_weekly_for_artists(weekly)[lambda frame: frame["rank"] <= 10]
+        .drop_duplicates(["billboard_week", "track_id", "artist_name"])
+        .groupby(["billboard_week", "artist_name"])["track_id"]
+        .nunique()
         .reset_index(name="track_count")
     )
     if not top10_weekly.empty:

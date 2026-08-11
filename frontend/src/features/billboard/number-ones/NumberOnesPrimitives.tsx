@@ -5,7 +5,6 @@ import { AlertCircle } from 'lucide-react'
 import { buildChartBase } from '@/components/charts/EChartsTheme'
 import { LazyEChart } from '@/components/charts/LazyEChart'
 import { ArtistLinks } from '@/components/shared/ArtistLinks'
-import { GlassCard } from '@/components/shared/GlassCard'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useTheme } from '@/hooks/useTheme'
 import { displayName } from '@/lib/chinese'
@@ -160,7 +159,7 @@ export function NameWithCover({
   badge?: string
 }) {
   return (
-    <div className="flex items-center gap-3">
+    <div className="flex min-w-0 items-center gap-3">
       <CoverImg url={coverUrl} />
       <div className="min-w-0">
         <div className="flex items-center gap-2">
@@ -228,52 +227,6 @@ export function ArtistWithCover({
         </div>
       </div>
     </div>
-  )
-}
-
-export function AnnualSection({
-  title,
-  items,
-  unit = '首',
-}: {
-  title: string
-  items: { year: number; count: number; songs?: string; albums?: string }[]
-  unit?: string
-}) {
-  if (items.length === 0) return null
-  const maxCount = Math.max(...items.map((row) => row.count), 1)
-  return (
-    <GlassCard className="p-6">
-      <h2 className="mb-6 font-serif text-[22px] font-bold tracking-[-0.3px]">{title}</h2>
-      <div className="space-y-1">
-        {items.map((row) => (
-          <div
-            key={row.year}
-            className="group flex items-start gap-5 rounded-[10px] px-4 py-3.5 transition-colors hover:bg-muted/30"
-          >
-            <span className="w-[52px] shrink-0 pt-0.5 font-serif text-[28px] font-bold leading-none tracking-[-0.5px]">
-              {row.year}
-            </span>
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-3">
-                <span className="font-sans text-[18px] font-semibold tabular-nums">
-                  {row.count} {unit}
-                </span>
-                <span className="h-[4px] flex-1 rounded-[2px] bg-muted">
-                  <span
-                    className="block h-full rounded-[2px] bg-accent-foreground/50 transition-[width] duration-500"
-                    style={{ width: `${Math.round((row.count / maxCount) * 100)}%` }}
-                  />
-                </span>
-              </div>
-              <p className="mt-1.5 font-sans text-[13px] leading-relaxed text-muted-foreground">
-                {displayName(row.songs ?? row.albums ?? '')}
-              </p>
-            </div>
-          </div>
-        ))}
-      </div>
-    </GlassCard>
   )
 }
 

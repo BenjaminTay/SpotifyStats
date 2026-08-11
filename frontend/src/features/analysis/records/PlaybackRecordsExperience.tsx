@@ -1,8 +1,8 @@
 /** Playback Records Experience — section tab management + lazy loading, aligned with Billboard RecordsPage. */
 
-import { Suspense, lazy, useState } from 'react'
+import { Suspense, lazy, useEffect, useRef } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { cn } from '@/lib/utils'
-import { MobileSectionSwitcher } from '@/components/mobile'
 import { useViewportMode } from '@/hooks/useViewportMode'
 import type { PlaybackRecordsData } from '@/types/analysis'
 import { SectionFallback } from './PlaybackRecordsPrimitives'
@@ -20,28 +20,53 @@ interface Props {
 
 export function PlaybackRecordsExperience({ data }: Props) {
   const isPhone = useViewportMode() === 'phone'
-  const [activeSection, setActiveSection] = useState<PlaybackRecordSectionKey>('highlights')
+  const [searchParams, setSearchParams] = useSearchParams()
+  const requestedFamily = searchParams.get('family')
+  const activeSection: PlaybackRecordSectionKey = PLAYBACK_RECORD_SECTIONS.some(
+    (section) => section.key === requestedFamily,
+  ) ? requestedFamily as PlaybackRecordSectionKey : 'highlights'
+  const tabRefs = useRef(new Map<PlaybackRecordSectionKey, HTMLButtonElement>())
+
+  const handleSectionChange = (section: PlaybackRecordSectionKey) => {
+    const next = new URLSearchParams(searchParams)
+    next.set('family', section)
+    next.delete('record')
+    setSearchParams(next, { replace: true })
+  }
+
+  useEffect(() => {
+    tabRefs.current.get(activeSection)?.scrollIntoView?.({ block: 'nearest', inline: 'center' })
+  }, [activeSection])
 
   return (
-    <div>
+    <div className={cn(isPhone && 'mobile-playback-records-experience')}>
       {isPhone ? (
-        <MobileSectionSwitcher
-          value={activeSection}
-          options={PLAYBACK_RECORD_SECTIONS.map((section) => ({
-            value: section.key,
-            label: section.label,
-            description: `${section.modules.length} 组纪录`,
-          }))}
-          onChange={setActiveSection}
-          title="选择播放记录栏目"
-        />
+        <nav className="mobile-record-family-tabs" role="tablist" aria-label="播放记录分类">
+          {PLAYBACK_RECORD_SECTIONS.map((section) => (
+            <button
+              key={section.key}
+              ref={(node) => {
+                if (node) tabRefs.current.set(section.key, node)
+                else tabRefs.current.delete(section.key)
+              }}
+              type="button"
+              role="tab"
+              aria-selected={activeSection === section.key}
+              className={cn(activeSection === section.key && 'active')}
+              onClick={() => handleSectionChange(section.key)}
+            >
+              {section.label}
+            </button>
+          ))}
+        </nav>
       ) : <nav className="mb-8 flex gap-7 border-b border-border" role="tablist" aria-label="播放记录分类">
         {PLAYBACK_RECORD_SECTIONS.map((s) => (
           <button
             key={s.key}
+            type="button"
             role="tab"
             aria-selected={activeSection === s.key}
-            onClick={() => setActiveSection(s.key)}
+            onClick={() => handleSectionChange(s.key)}
             className={cn(
               '-mb-px border-none bg-transparent px-0 pb-2.5 font-sans text-[13px] font-medium transition-[color,border] duration-200 border-b-2',
               activeSection === s.key

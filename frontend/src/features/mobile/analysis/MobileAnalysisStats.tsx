@@ -1,10 +1,9 @@
-import { useRef, useState } from 'react'
+import { useRef, useState, type ReactNode } from 'react'
 
 import { AnalysisTrendChart } from '@/components/charts/AnalysisCharts'
 import { ListeningClock } from '@/components/charts/ListeningClock'
-import { MobileChartCard, MobileFullscreenChart, MobilePageHeader } from '@/components/mobile'
+import { MobileChartCard, MobileFullscreenChart } from '@/components/mobile'
 import { RecentPlaysSection } from '@/components/shared/RecentPlaysSection'
-import { cn } from '@/lib/utils'
 import type {
   AnalysisFilters,
   AnalysisMetric,
@@ -24,11 +23,11 @@ function formatHours(value: number): string {
 interface MobileAnalysisStatsProps {
   data: AnalysisStatsResponse
   metric: AnalysisMetric
-  onMetricChange: (metric: AnalysisMetric) => void
   filters: AnalysisFilters
   apiParams: { period: AnalysisPeriod; start_date?: string; end_date?: string }
   fetchPage: (page: number, limit: number, search?: string, date?: string) => Promise<EntityPlaysResponse>
   fetchPlayDates: () => Promise<Array<{ date: string; count: number }>>
+  timeControl?: ReactNode
 }
 
 type TrendView = 'daily' | 'cumulative'
@@ -38,11 +37,11 @@ type FullscreenChart = 'trend' | 'clock' | 'distribution'
 export function MobileAnalysisStats({
   data,
   metric,
-  onMetricChange,
   filters,
   apiParams,
   fetchPage,
   fetchPlayDates,
+  timeControl,
 }: MobileAnalysisStatsProps) {
   const [trendView, setTrendView] = useState<TrendView>('daily')
   const [distributionView, setDistributionView] = useState<DistributionView>('weekday')
@@ -69,11 +68,7 @@ export function MobileAnalysisStats({
     hours: item.hours,
   }))
   const trendTitle = trendView === 'daily' ? '每日播放' : '累计播放'
-  const distributionTitle = distributionView === 'weekday'
-    ? '星期分布'
-    : distributionView === 'month'
-      ? '月度分布'
-      : '年度分布'
+  const distributionTitle = '时间分布'
 
   const fullscreenContent = fullscreenChart === 'trend'
     ? <AnalysisTrendChart data={trendData} mode="line" />
@@ -95,11 +90,7 @@ export function MobileAnalysisStats({
 
   return (
     <div className="mobile-m3-page" data-mobile-page="analysis-stats">
-      <MobilePageHeader
-        eyebrow="Playback Stats"
-        title="这一段时间的聆听"
-        meta={<span>{data.period.label}</span>}
-      />
+      {timeControl && <div className="mobile-analysis-floating-time-control">{timeControl}</div>}
 
       <section className="mobile-kpi-grid mobile-analysis-kpi-grid" aria-label="播放统计核心数据">
         <article className="mobile-kpi-tile"><p>播放次数</p><strong>{formatNumber(data.summary.total_plays)}</strong></article>
@@ -118,13 +109,6 @@ export function MobileAnalysisStats({
         description="两个视图复用同一份统计响应"
         chart={<AnalysisTrendChart data={trendData} mode="line" />}
         interactionHint="点击数据点查看日期与数值"
-        controls={(
-          <div className="mobile-chart-metric-toggle" role="group" aria-label="图表口径">
-            <span>图表口径</span>
-            <button type="button" className={cn(metric === 'plays' && 'active')} aria-pressed={metric === 'plays'} onClick={() => onMetricChange('plays')}>播放次数</button>
-            <button type="button" className={cn(metric === 'hours' && 'active')} aria-pressed={metric === 'hours'} onClick={() => onMetricChange('hours')}>播放时长</button>
-          </div>
-        )}
         series={[
           { id: 'daily', label: '每日', active: trendView === 'daily' },
           { id: 'cumulative', label: '累计', active: trendView === 'cumulative' },

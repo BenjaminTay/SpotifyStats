@@ -2,15 +2,23 @@
 
 import pandas as pd
 
+from backend.core.db import fan_out_weekly_for_artists
+
 
 def compute_championship_records(
     records, weekly, track_summary, weekly_album=None, weekly_artist=None
 ):
     """Populate championship records: artist simul, most #1, return to #1, debut #1."""
 
+    credited_weekly = fan_out_weekly_for_artists(weekly).drop_duplicates(
+        ["billboard_week", "track_id", "artist_name"]
+    )
+
     # ── 1. Most simultaneous chart entries by artist (full chart) ──────
     artist_weekly = (
-        weekly.groupby(["billboard_week", "artist_name"]).size().reset_index(name="track_count")
+        credited_weekly.groupby(["billboard_week", "artist_name"])["track_id"]
+        .nunique()
+        .reset_index(name="track_count")
     )
     if not artist_weekly.empty:
         best_full = artist_weekly.sort_values("track_count", ascending=False).iloc[0]
@@ -24,7 +32,9 @@ def compute_championship_records(
         ).head(15)
 
     # ── 3. Most #1 songs by artist ─────────────────────────────────────
-    no1_tracks = weekly[weekly["rank"] == 1][["track_id", "artist_name"]].drop_duplicates()
+    no1_tracks = credited_weekly[credited_weekly["rank"] == 1][
+        ["track_id", "artist_name"]
+    ].drop_duplicates()
     artist_no1 = (
         no1_tracks.groupby("artist_name")
         .size()
@@ -34,7 +44,14 @@ def compute_championship_records(
     records["artist_most_no1"] = artist_no1.head(15)
 
     track_no1_weeks = (
-        track_summary.groupby("artist_name")["weeks_at_no1"].sum().reset_index(name="单曲冠军周数")
+        no1_tracks.merge(
+            track_summary[["track_id", "weeks_at_no1"]].drop_duplicates("track_id"),
+            on="track_id",
+            how="left",
+        )
+        .groupby("artist_name", as_index=False)["weeks_at_no1"]
+        .sum()
+        .rename(columns={"weeks_at_no1": "单曲冠军周数"})
     )
     records["artist_most_no1"] = records["artist_most_no1"].merge(
         track_no1_weeks, on="artist_name", how="left"

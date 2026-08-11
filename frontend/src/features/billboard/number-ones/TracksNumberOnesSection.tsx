@@ -4,9 +4,7 @@ import { GlassCard } from '@/components/shared/GlassCard'
 import { displayName } from '@/lib/chinese'
 import { billboardDetailLink, primaryArtistName } from '@/lib/navigation'
 import {
-  AnnualSection,
   NameWithCover,
-  No1BarChart,
   PlayCountCell,
   YearSwitcher,
 } from './NumberOnesPrimitives'
@@ -20,6 +18,32 @@ interface TracksNumberOnesSectionProps {
   onYearChange: (year: number) => void
 }
 
+function ChampionWeeksValue({ value, max }: { value: number; max: number }) {
+  const safeMax = Math.max(max, 1)
+  const percentage = Math.min(Math.max((value / safeMax) * 100, 0), 100)
+
+  return (
+    <span className="inline-flex w-full items-center justify-end gap-2">
+      <span
+        role="meter"
+        aria-label={`冠军周数：${value} 周`}
+        aria-valuemin={0}
+        aria-valuemax={safeMax}
+        aria-valuenow={value}
+        className="inline-block h-1 w-[72px] overflow-hidden rounded-full bg-muted"
+      >
+        <span
+          className="block h-full rounded-full bg-accent-foreground transition-[width] duration-300"
+          style={{ width: `${percentage}%` }}
+        />
+      </span>
+      <span className="w-[42px] text-right font-sans text-[13px] font-semibold tabular-nums">
+        {value} 周
+      </span>
+    </span>
+  )
+}
+
 export function TracksNumberOnesSection({
   computed,
   yearFiltered,
@@ -30,6 +54,7 @@ export function TracksNumberOnesSection({
   const longestTrack = computed.trackLongest.streak > 0
     ? computed.trackNo1WeeksSorted.find((track) => track.track_name === computed.trackLongest.name)
     : null
+  const maxChampionWeeks = computed.trackNo1WeeksSorted[0]?.weeks_at_no1 ?? 1
 
   return (
     <>
@@ -142,16 +167,16 @@ export function TracksNumberOnesSection({
         </div>
       </GlassCard>
 
-      <div className="mb-8 grid grid-cols-2 gap-6">
+      <div className="mb-8">
         <GlassCard className="overflow-hidden p-6">
           <h2 className="mb-5 font-serif text-[22px] font-bold tracking-[-0.3px]">冠单周数排行</h2>
           <div className="max-h-[500px] overflow-auto">
-            <table className="w-full border-collapse">
+            <table className="w-full table-fixed border-collapse">
               <thead>
                 <tr className="border-b border-border text-left">
-                  <th className="sticky top-0 bg-card pb-3 font-sans text-[11px] font-semibold uppercase tracking-[1px] text-muted-foreground">#</th>
+                  <th className="sticky top-0 w-[36px] bg-card pb-3 font-sans text-[11px] font-semibold uppercase tracking-[1px] text-muted-foreground">#</th>
                   <th className="sticky top-0 bg-card pb-3 font-sans text-[11px] font-semibold uppercase tracking-[1px] text-muted-foreground">曲目</th>
-                  <th className="sticky top-0 bg-card pb-3 text-right font-sans text-[11px] font-semibold uppercase tracking-[1px] text-muted-foreground">冠单周数</th>
+                  <th className="sticky top-0 w-[160px] whitespace-nowrap bg-card pb-3 text-right font-sans text-[11px] font-semibold uppercase tracking-[1px] text-muted-foreground">冠单周数</th>
                 </tr>
               </thead>
               <tbody>
@@ -168,7 +193,9 @@ export function TracksNumberOnesSection({
                         artistLink={billboardDetailLink(`/music/artists/${encodeURIComponent(primaryArtistName(entry))}`)}
                       />
                     </td>
-                    <td className="py-3 text-right font-sans text-[13px] font-semibold tabular-nums">{entry.weeks_at_no1}</td>
+                    <td className="py-3 text-right">
+                      <ChampionWeeksValue value={entry.weeks_at_no1} max={maxChampionWeeks} />
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -176,21 +203,6 @@ export function TracksNumberOnesSection({
           </div>
         </GlassCard>
 
-        <GlassCard className="p-6">
-          <h2 className="mb-5 font-serif text-[22px] font-bold tracking-[-0.3px]">单曲冠军周数 Top 15</h2>
-          <No1BarChart
-            label="冠单周数"
-            data={computed.trackNo1WeeksSorted.slice(0, 15).map((entry) => ({
-              name: entry.track_name,
-              value: entry.weeks_at_no1,
-              subtitle: entry.artist_name,
-            }))}
-          />
-        </GlassCard>
-      </div>
-
-      <div className="mb-8">
-        <AnnualSection title="每年独特冠单统计" items={computed.trackAnnualNo1} />
       </div>
 
     </>

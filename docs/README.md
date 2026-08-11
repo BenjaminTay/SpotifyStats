@@ -22,7 +22,7 @@
 |------|------|
 | [`plans/2026-08-06-appification-pwa-capacitor-plan.md`](plans/2026-08-06-appification-pwa-capacitor-plan.md) | App 化现行路线：PWA 基线、安全部署、真机验收与 Capacitor 决策门 |
 | [`plans/2026-08-05-mobile-web-design-and-implementation-plan.md`](plans/2026-08-05-mobile-web-design-and-implementation-plan.md) | 移动端网页现行产品规格、M0–M7 完成记录、长期架构契约与验收门禁 |
-| [`plans/2026-06-23-playback-records-plan.md`](plans/2026-06-23-playback-records-plan.md) | 播放记录功能规划（尚未实现） |
+| [`plans/2026-06-23-playback-records-plan.md`](plans/2026-06-23-playback-records-plan.md) | 播放记录的模块地图、统计定义与现行实现口径 |
 | [`plans/2026-06-29-ai-agent-harness-quality-roadmap.md`](plans/2026-06-29-ai-agent-harness-quality-roadmap.md) | AI Agent Harness 质量路线图（持续指引，非单次任务） |
 
 ### 设计规格 (`designs/`) — 3 个

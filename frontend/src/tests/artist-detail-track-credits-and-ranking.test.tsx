@@ -14,7 +14,7 @@ describe('艺人详情曲目署名与个人排行', () => {
       <MemoryRouter>
         <MusicTracksSection
           artistName="單依純"
-          info={{ total_tracks: 1, top1: 0, top5: 1, top10: 1, weeks_at_no1: 0 }}
+          info={{ total_tracks: 1, top1: 0, top5: 1, top10: 1, weeks_at_no1: 0, total_weeks: 1, total_track_power: 21, track_power_rank: 8 }}
           tracks={[{
             track_id: 10,
             track_name: '愛我的時候',

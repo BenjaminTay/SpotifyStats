@@ -4,7 +4,6 @@ import { GlassCard } from '@/components/shared/GlassCard'
 import { displayName } from '@/lib/chinese'
 import { billboardDetailLink } from '@/lib/navigation'
 import {
-  AnnualSection,
   NameWithCover,
   No1BarChart,
   PlayCountCell,
@@ -183,10 +182,6 @@ export function AlbumsNumberOnesSection({
             />
           )}
         </GlassCard>
-      </div>
-
-      <div className="mb-8">
-        <AnnualSection title="每年独特冠军专辑统计" items={computed.albumAnnualNo1} unit="张" />
       </div>
 
     </>

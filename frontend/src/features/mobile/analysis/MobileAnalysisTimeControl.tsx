@@ -1,8 +1,9 @@
 import { useRef, useState } from 'react'
 import { CalendarRange, ChevronRight } from 'lucide-react'
 
+import { cn } from '@/lib/utils'
 import { MobileTimeRangeSheet, type MobileTimeRangeValue } from '@/components/mobile'
-import type { AnalysisPeriod } from '@/types/analysis'
+import type { AnalysisMetric, AnalysisPeriod } from '@/types/analysis'
 
 const PERIOD_LABELS: Record<AnalysisPeriod, string> = {
   lifetime: '全部时间',
@@ -21,6 +22,8 @@ interface MobileAnalysisTimeControlProps {
   startDate: string
   endDate: string
   onChange: (patch: Record<string, string | undefined>) => void
+  metric?: AnalysisMetric
+  compact?: boolean
 }
 
 export function MobileAnalysisTimeControl({
@@ -29,12 +32,19 @@ export function MobileAnalysisTimeControl({
   startDate,
   endDate,
   onChange,
+  metric,
+  compact = false,
 }: MobileAnalysisTimeControlProps) {
   const [open, setOpen] = useState(false)
   const triggerRef = useRef<HTMLButtonElement>(null)
   const detail = period === 'custom'
     ? [startDate, endDate].filter(Boolean).join(' — ')
     : periodValue || '使用当前数据范围'
+  const compactLabel = period === 'custom'
+    ? detail || PERIOD_LABELS[period]
+    : period === 'lifetime'
+      ? PERIOD_LABELS[period]
+      : periodValue || PERIOD_LABELS[period]
 
   const apply = (value: MobileTimeRangeValue) => {
     onChange({
@@ -42,6 +52,7 @@ export function MobileAnalysisTimeControl({
       period_value: value.periodValue,
       start: value.start,
       end: value.end,
+      ...(metric ? { metric: value.metric ?? metric } : {}),
     })
   }
 
@@ -50,14 +61,18 @@ export function MobileAnalysisTimeControl({
       <button
         ref={triggerRef}
         type="button"
-        className="mobile-time-range-trigger"
+        className={cn(
+          'mobile-time-range-trigger',
+          compact && 'mobile-time-range-trigger-compact',
+        )}
         onClick={() => setOpen(true)}
         aria-label={`选择时间范围，当前${PERIOD_LABELS[period]}`}
+        title={compact ? detail : undefined}
       >
         <span className="mobile-time-range-icon"><CalendarRange aria-hidden="true" /></span>
         <span className="min-w-0 flex-1 text-left">
-          <strong>{PERIOD_LABELS[period]}</strong>
-          <small>{detail}</small>
+          <strong>{compact ? compactLabel : PERIOD_LABELS[period]}</strong>
+          {!compact && <small>{detail}</small>}
         </span>
         <ChevronRight className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
       </button>
@@ -70,6 +85,7 @@ export function MobileAnalysisTimeControl({
           periodValue: periodValue ?? undefined,
           start: startDate || undefined,
           end: endDate || undefined,
+          ...(metric ? { metric } : {}),
         }}
         onApply={apply}
       />

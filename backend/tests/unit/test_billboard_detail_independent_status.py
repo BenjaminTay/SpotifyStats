@@ -156,7 +156,14 @@ def test_artist_chart_track_and_album_statuses_are_independent(monkeypatch):
         "album_power_scores": [
             {"album_name": "Aggregate Album", "artist_name": "Aggregate Artist", "power_score": 9}
         ],
-        "artist_power_scores": [{"artist_name": "Aggregate Artist", "power_score": 12}],
+        "artist_power_scores": [
+            {
+                "artist_name": "Aggregate Artist",
+                "power_score": 12,
+                "track_power_rank": 3,
+                "album_power_rank": 4,
+            }
+        ],
     }
     monkeypatch.setattr(details, "compute_billboard_data", lambda *args, **kwargs: payload)
     monkeypatch.setattr(details, "fan_out_weekly_for_artists", lambda frame: frame.copy())
@@ -171,3 +178,7 @@ def test_artist_chart_track_and_album_statuses_are_independent(monkeypatch):
     assert result["album_chart_status"] == "charted"
     assert result["tracks"] == []
     assert [album["album_name"] for album in result["albums"]] == ["Aggregate Album"]
+    assert result["info"]["track_power_rank"] == 3
+    assert result["info"]["album_power_rank"] == 4
+    assert result["info"]["total_albums"] == 1
+    assert result["info"]["total_album_weeks"] == 1

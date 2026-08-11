@@ -2,6 +2,8 @@
 
 import pandas as pd
 
+from backend.core.db import fan_out_weekly_for_artists
+
 
 def compute_longevity_records(
     records, weekly, track_summary, weekly_album=None, weekly_artist=None
@@ -222,11 +224,14 @@ def compute_longevity_records(
         records["longest_streak_artist"] = pd.DataFrame()
 
     # ── 21. Longest Artist Chart Span (最长艺人生涯) ────────────────────
+    credited_weekly = fan_out_weekly_for_artists(weekly).drop_duplicates(
+        ["billboard_week", "track_id", "artist_name"]
+    )
     artist_span = (
-        track_summary.groupby("artist_name")
+        credited_weekly.groupby("artist_name")
         .agg(
-            首次上榜=("first_week", "min"),
-            最近上榜=("last_week", "max"),
+            首次上榜=("billboard_week", "min"),
+            最近上榜=("billboard_week", "max"),
             上榜歌曲数=("track_id", "nunique"),
         )
         .reset_index()

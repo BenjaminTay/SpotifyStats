@@ -37,8 +37,9 @@ export function ArtistAlbumsSection({
   }
   const totalPages = Math.max(1, Math.ceil(albums.length / pageSize))
   const safePage = Math.min(page, totalPages)
-  const top5Albums = albums.filter((album) => album.peak <= 5).length
-  const top10Albums = albums.filter((album) => album.peak <= 10).length
+  const top5Albums = info.album_top5 ?? albums.filter((album) => album.peak <= 5).length
+  const totalAlbums = info.total_albums ?? albums.length
+  const totalAlbumWeeks = info.total_album_weeks ?? albums.reduce((sum, album) => sum + album.weeks, 0)
 
   const paged = albums.slice((safePage - 1) * pageSize, safePage * pageSize)
   if (isPhone) {
@@ -47,11 +48,27 @@ export function ArtistAlbumsSection({
         <KpiStrip
           compactFive
           items={[
-            { label: '入榜专辑', value: formatNumber(albums.length) },
-            { label: 'No.1专辑', value: formatNumber(info.num_no1_albums), accent: info.num_no1_albums > 0 },
-            { label: 'Top5专辑', value: formatNumber(top5Albums) },
-            { label: 'Top10专辑', value: formatNumber(top10Albums) },
-            { label: '冠军周数', value: formatNumber(info.album_no1_weeks), accent: info.album_no1_weeks > 0 },
+            { label: '入榜专辑', value: formatNumber(totalAlbums) },
+            {
+              label: '#1 专辑',
+              value: formatNumber(info.num_no1_albums),
+              accent: info.num_no1_albums > 0,
+            },
+            { label: 'Top 5', value: formatNumber(top5Albums) },
+            {
+              label: '冠军周数',
+              value: formatNumber(info.album_no1_weeks),
+              accent: info.album_no1_weeks > 0,
+            },
+            { label: '总在榜周数', value: formatNumber(totalAlbumWeeks) },
+            {
+              label: '专辑总点数',
+              value: formatNumber(info.total_album_power ?? 0),
+            },
+            {
+              label: '总点数排名',
+              value: info.album_power_rank ? `${info.album_power_rank}` : '—',
+            },
           ]}
         />
         <MobileRankList
@@ -85,17 +102,27 @@ export function ArtistAlbumsSection({
     <div className="mb-8">
       <KpiStrip
         items={[
+          { label: '入榜专辑', value: formatNumber(totalAlbums) },
           {
             label: '#1 专辑',
             value: formatNumber(info.num_no1_albums),
             accent: info.num_no1_albums > 0,
           },
+          { label: 'Top 5', value: formatNumber(top5Albums) },
           {
             label: '冠军周数',
             value: formatNumber(info.album_no1_weeks),
             accent: info.album_no1_weeks > 0,
           },
-          { label: '入榜专辑', value: formatNumber(albums.length) },
+          { label: '总在榜周数', value: formatNumber(totalAlbumWeeks) },
+          {
+            label: '专辑总点数',
+            value: formatNumber(info.total_album_power ?? 0),
+          },
+          {
+            label: '总点数排名',
+            value: info.album_power_rank ? `${info.album_power_rank}` : '—',
+          },
         ]}
       />
 

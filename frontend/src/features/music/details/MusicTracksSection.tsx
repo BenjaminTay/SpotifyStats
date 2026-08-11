@@ -22,6 +22,9 @@ type TrackInfo = {
   top5: number
   top10: number
   weeks_at_no1: number
+  total_weeks?: number
+  total_track_power?: number
+  track_power_rank?: number | null
 }
 
 type TrackEntry = {
@@ -70,10 +73,19 @@ export function MusicTracksSection({
           compactFive
           items={[
             { label: '入榜曲目', value: formatNumber(info.total_tracks) },
-            { label: 'No.1曲目', value: formatNumber(info.top1), accent: info.top1 > 0 },
-            { label: 'Top5曲目', value: formatNumber(info.top5) },
-            { label: 'Top10曲目', value: formatNumber(info.top10) },
+            { label: '#1 曲目', value: formatNumber(info.top1), accent: info.top1 > 0 },
+            { label: 'Top 5', value: formatNumber(info.top5) },
+            { label: 'Top 10', value: formatNumber(info.top10) },
             { label: '冠军周数', value: formatNumber(info.weeks_at_no1), accent: info.weeks_at_no1 > 0 },
+            { label: '总在榜周数', value: formatNumber(info.total_weeks ?? 0) },
+            {
+              label: '歌曲总点数',
+              value: formatNumber(info.total_track_power ?? 0),
+            },
+            {
+              label: '总点数排名',
+              value: info.track_power_rank ? `${info.track_power_rank}` : '—',
+            },
           ]}
         />
         <MobileRankList
@@ -115,6 +127,15 @@ export function MusicTracksSection({
             label: '冠军周数',
             value: formatNumber(info.weeks_at_no1),
             accent: info.weeks_at_no1 > 0,
+          },
+          { label: '总在榜周数', value: formatNumber(info.total_weeks ?? 0) },
+          {
+            label: '歌曲总点数',
+            value: formatNumber(info.total_track_power ?? 0),
+          },
+          {
+            label: '总点数排名',
+            value: info.track_power_rank ? `${info.track_power_rank}` : '—',
           },
         ]}
       />

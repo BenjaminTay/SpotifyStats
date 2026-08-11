@@ -88,6 +88,19 @@ SpotifyStats 移动网页 M0–M7 已完成设计、实现和自动化质量收�
 
 本轮没有修改后端 API、数据库结构、统计规则或桌面信息架构；所有变化均限定在 Phone presentation、共享视觉工具和前端契约测试。
 
+### 3.7 2026-08-11 详情统计与播放记录收口
+
+本轮以歌曲/专辑/艺人详情和播放分析四页为主，补齐此前 Phone presentation 中尚未统一的导航、筛选和记录卡片：
+
+- 三类详情页内部 Tab 使用 replace 更新 `tab` 查询参数，保留刷新/分享状态但不堆叠浏览器历史；页面返回和浏览器回退统一离开详情页。
+- 三类详情统计复用播放统计的时间范围与统计口径 Sheet；播放统计、播放排行、播放记录的紧凑时间触发器统一悬浮在右下角，避免占据内容流。播放分析四页移除与 Phone Top Bar 重复的正文标题。
+- 播放记录改为五项横向滑动栏目，复用 Billboard 记录的纵向排名卡与完整榜单 Sheet；日期、月份、年份、小时段、主指标和控制器密度按 390–410px 实页重新校准。
+- 艺人详情的专辑排行新增 album-project owner 约束，合作曲仍可进入歌曲排行，但不会把其他艺人的专辑计入合作艺人的专辑排行。
+- 艺人连续播放马拉松改按稳定逻辑事件序号识别连续段，合作署名 fan-out 不再错误打断目标艺人；手机指标省略重复列标题，直接显示“36 次连续播放”。
+- Billboard 记录的艺人事实统一使用有效署名 fan-out，专辑归属类 join 使用主艺人；共享 `MobileRecordTable` 消除 Billboard 记录与播放记录的两套移动展开实现。
+
+这一轮包含必要的统计语义修复，但没有改写原始 `plays`、`tracks` 或 `track_artists` 数据；所有变化发生在只读派生计算、API 输出和 presentation 层。
+
 ## 4. PWA Phase A
 
 - `manifest.webmanifest` 声明应用名称、scope、start URL、standalone、主题色、192/512 maskable 图标与四个快捷入口。
@@ -109,6 +122,8 @@ SpotifyStats 移动网页 M0–M7 已完成设计、实现和自动化质量收�
 | Frontend Vitest（验收后修复最新） | 58 files / 445 tests passed |
 | Ruff + TypeScript/Vite production build | PASS |
 | Phase 5 最低矩阵 | PASS |
+
+2026-08-11 补充验收：后端相关 43 tests、前端全量 61 files / 470 tests、播放记录最新定向 16 tests 与 production build 通过；390px 连续播放卡和 410px 单日巅峰控制器实页检查均为 0 横向溢出、0 console error/warning。单日巅峰左侧统计口径按钮与右侧实体分段器均保留 44px 触控高度，可见按钮高度统一为 32px。
 
 Vite 仅保留既有大 chunk 提示；没有新增运行时 warning。
 

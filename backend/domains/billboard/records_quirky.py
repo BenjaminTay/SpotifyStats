@@ -2,6 +2,8 @@
 
 import pandas as pd
 
+from backend.core.db import fan_out_weekly_for_artists, primary_artist_names_for_tracks
+
 
 def compute_quirky_records(records, weekly, weekly_album=None, weekly_artist=None):
     """Populate quirky records: double debut #1, triple #1."""
@@ -15,6 +17,16 @@ def compute_quirky_records(records, weekly, weekly_album=None, weekly_artist=Non
             ["track_id", "track_name", "artist_name", "billboard_week"]
         ].copy()
         debut_tracks.columns = ["debut_track_id", "debut_track", "debut_artist", "debut_week"]
+        debut_track_keys = first_track_appear[first_track_appear["rank"] == 1][
+            [
+                column
+                for column in ["track_id", "artist_name", "artist_names"]
+                if column in first_track_appear
+            ]
+        ]
+        debut_tracks["debut_artist_key"] = primary_artist_names_for_tracks(debut_track_keys)[
+            "artist_name"
+        ].to_numpy()
 
         first_album_appear = (
             weekly_album.sort_values("billboard_week")
@@ -26,9 +38,10 @@ def compute_quirky_records(records, weekly, weekly_album=None, weekly_artist=Non
             ["album_name", "artist_name", "billboard_week"]
         ].copy()
         debut_albums.columns = ["debut_album", "debut_artist", "debut_week"]
+        debut_albums["debut_artist_key"] = debut_albums["debut_artist"]
 
         double_debut = debut_tracks.merge(
-            debut_albums, on=["debut_artist", "debut_week"], how="inner"
+            debut_albums, on=["debut_artist_key", "debut_week"], how="inner"
         ).sort_values("debut_week", ascending=False)
         if not double_debut.empty:
             double_debut["debut_week"] = double_debut["debut_week"].astype(str)
@@ -38,7 +51,7 @@ def compute_quirky_records(records, weekly, weekly_album=None, weekly_artist=Non
 
     # ── 28. Triple #1 (全榜单制霸) ──────────────────────────────────────
     if weekly_album is not None and weekly_artist is not None:
-        track_no1_w = weekly[weekly["rank"] == 1][
+        track_no1_w = fan_out_weekly_for_artists(weekly[weekly["rank"] == 1])[
             ["billboard_week", "artist_name", "track_id", "track_name"]
         ].drop_duplicates(subset=["billboard_week", "artist_name"])
         album_no1_w = weekly_album[weekly_album["rank"] == 1][

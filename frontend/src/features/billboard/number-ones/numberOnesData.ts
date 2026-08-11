@@ -48,18 +48,6 @@ export interface ArtistNo1Info {
 export type AlbumNo1WithPkWks = WeeklyAlbumEntry & { album_pk_wks: number }
 export type ArtistNo1WithPkWks = WeeklyArtistEntry & { artist_pk_wks: number }
 
-export interface AnnualTrackNo1 {
-  year: number
-  count: number
-  songs: string
-}
-
-export interface AnnualAlbumNo1 {
-  year: number
-  count: number
-  albums: string
-}
-
 export interface NumberOnesComputed {
   trackNo1List: WeeklyTrackEntry[]
   albumNo1List: WeeklyAlbumEntry[]
@@ -70,8 +58,6 @@ export interface NumberOnesComputed {
   trackNo1WeeksSorted: TrackNo1Info[]
   albumNo1WeeksSorted: AlbumNo1Info[]
   artistNo1WeeksSorted: ArtistNo1Info[]
-  trackAnnualNo1: AnnualTrackNo1[]
-  albumAnnualNo1: AnnualAlbumNo1[]
   albumNo1WithPkWks: AlbumNo1WithPkWks[]
   artistNo1WithPkWks: ArtistNo1WithPkWks[]
   trackMaxPlays: number
@@ -101,8 +87,6 @@ export const EMPTY_NUMBER_ONES: NumberOnesComputed = {
   trackNo1WeeksSorted: [],
   albumNo1WeeksSorted: [],
   artistNo1WeeksSorted: [],
-  trackAnnualNo1: [],
-  albumAnnualNo1: [],
   albumNo1WithPkWks: [],
   artistNo1WithPkWks: [],
   trackMaxPlays: 1,
@@ -257,8 +241,6 @@ export function buildNumberOnes(data: BillboardAllTimeResponse | null | undefine
   }
   artistNo1Infos.sort((a, b) => b.weeks_at_no1 - a.weeks_at_no1 || b.power_score - a.power_score)
 
-  const trackAnnualNo1 = buildTrackAnnual(trackNo1s)
-  const albumAnnualNo1 = buildAlbumAnnual(albumNo1s)
   const albumNo1WithPkWks = addAlbumPeakWeeks(albumNo1s)
   const artistNo1WithPkWks = addArtistPeakWeeks(artistNo1s)
 
@@ -272,50 +254,12 @@ export function buildNumberOnes(data: BillboardAllTimeResponse | null | undefine
     trackNo1WeeksSorted: trackNo1Infos,
     albumNo1WeeksSorted: albumNo1Infos,
     artistNo1WeeksSorted: artistNo1Infos,
-    trackAnnualNo1,
-    albumAnnualNo1,
     albumNo1WithPkWks,
     artistNo1WithPkWks,
     trackMaxPlays,
     albumMaxPlays,
     artistMaxPlays,
   }
-}
-
-function buildTrackAnnual(trackNo1s: WeeklyTrackEntry[]): AnnualTrackNo1[] {
-  const annualTrackMap = new Map<number, Set<number>>()
-  for (const entry of trackNo1s) {
-    const year = new Date(`${entry.billboard_week}T00:00:00`).getFullYear()
-    const set = annualTrackMap.get(year) ?? new Set()
-    set.add(entry.track_id)
-    annualTrackMap.set(year, set)
-  }
-  const annual: AnnualTrackNo1[] = []
-  for (const [year, ids] of annualTrackMap) {
-    const names = [...new Set(trackNo1s
-      .filter((entry) => new Date(`${entry.billboard_week}T00:00:00`).getFullYear() === year && ids.has(entry.track_id))
-      .map((entry) => entry.track_name))]
-    annual.push({ year, count: ids.size, songs: names.join('、') })
-  }
-  return annual.sort((a, b) => b.year - a.year)
-}
-
-function buildAlbumAnnual(albumNo1s: WeeklyAlbumEntry[]): AnnualAlbumNo1[] {
-  const annualAlbumMap = new Map<number, Set<string>>()
-  for (const entry of albumNo1s) {
-    const year = new Date(`${entry.billboard_week}T00:00:00`).getFullYear()
-    const set = annualAlbumMap.get(year) ?? new Set()
-    set.add(`${entry.album_name}|||${entry.artist_name}`)
-    annualAlbumMap.set(year, set)
-  }
-  const annual: AnnualAlbumNo1[] = []
-  for (const [year, keys] of annualAlbumMap) {
-    const names = [...new Set(albumNo1s
-      .filter((entry) => new Date(`${entry.billboard_week}T00:00:00`).getFullYear() === year && keys.has(`${entry.album_name}|||${entry.artist_name}`))
-      .map((entry) => entry.album_name))]
-    annual.push({ year, count: keys.size, albums: names.join('、') })
-  }
-  return annual.sort((a, b) => b.year - a.year)
 }
 
 function addAlbumPeakWeeks(albumNo1s: WeeklyAlbumEntry[]): AlbumNo1WithPkWks[] {

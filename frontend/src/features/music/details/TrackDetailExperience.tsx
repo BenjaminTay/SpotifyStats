@@ -64,7 +64,7 @@ export function TrackDetailExperience() {
     const next = new URLSearchParams(searchParams)
     if (tab === 'stats') next.delete('tab')
     else next.set('tab', tab)
-    setSearchParams(next)
+    setSearchParams(next, { replace: true })
   }
   const mergeLevel = Number(searchParams.get('merge_level') ?? getDefaultMergeLevel())
   const { filters, loading: filtersLoading } = useAnalysisFilters()

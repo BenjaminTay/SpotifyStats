@@ -14,6 +14,8 @@ interface MobileRankListProps {
   page?: number
   pageCount?: number
   onPageChange?: (page: number) => void
+  showTopPagination?: boolean
+  showItemCount?: boolean
   hasMore?: boolean
   loadingMore?: boolean
   onLoadMore?: () => void
@@ -30,21 +32,45 @@ export function MobileRankList({
   page,
   pageCount,
   onPageChange,
+  showTopPagination = false,
+  showItemCount = true,
   hasMore,
   loadingMore,
   onLoadMore,
 }: MobileRankListProps) {
   const paginationMode = onLoadMore ? 'load-more' : 'pages'
+  const canRenderPagination = !loading && !error && rows.length > 0 && (onPageChange || onLoadMore)
+  const hasTopPagination = showTopPagination && canRenderPagination
 
   return (
     <section className="mobile-rank-list">
       {(title || eyebrow) && (
-        <header className="mobile-rank-header">
+        <header
+          className={
+            hasTopPagination
+              ? 'mobile-rank-header mobile-rank-header-with-pagination'
+              : 'mobile-rank-header'
+          }
+        >
           <div>
             {eyebrow && <p>{eyebrow}</p>}
             {title && <h2>{title}</h2>}
           </div>
-          {!loading && !error && <span>{rows.length} 项</span>}
+          {hasTopPagination ? (
+            <MobilePagination
+              mode={paginationMode}
+              page={page}
+              pageCount={pageCount}
+              onPageChange={onPageChange}
+              compact
+              hasMore={hasMore}
+              loading={loadingMore}
+              onLoadMore={onLoadMore}
+              className="mobile-pagination-header"
+            />
+          ) : showItemCount && !loading && !error ? (
+            <span>{rows.length} 项</span>
+          ) : null}
         </header>
       )}
       {loading ? (
@@ -62,7 +88,7 @@ export function MobileRankList({
           ))}
         </div>
       )}
-      {!loading && !error && rows.length > 0 && (onPageChange || onLoadMore) && (
+      {canRenderPagination && (
         <MobilePagination
           mode={paginationMode}
           page={page}

@@ -1,12 +1,12 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { RankTrendChart } from '@/components/charts/RankTrendChart'
 import { EntityStatsPanel } from '@/components/shared/EntityStatsPanel'
 
-const mocks = vi.hoisted(() => ({ get: vi.fn() }))
+const mocks = vi.hoisted(() => ({ get: vi.fn(), setQuery: vi.fn() }))
 
 vi.mock('@/lib/api', () => ({ api: { get: mocks.get } }))
 vi.mock('@/hooks/useViewportMode', () => ({ useViewportMode: () => 'phone' }))
@@ -20,10 +20,10 @@ vi.mock('@/components/shared/AnalysisControls', () => ({
   useAnalysisQueryState: () => ({
     period: 'lifetime',
     metric: 'plays',
-    periodValue: 'lifetime',
-    startDate: null,
-    endDate: null,
-    setQuery: vi.fn(),
+    periodValue: null,
+    startDate: '',
+    endDate: '',
+    setQuery: mocks.setQuery,
     apiParams: { period: 'lifetime' },
   }),
 }))
@@ -74,12 +74,17 @@ const stats = {
   recent_plays: [],
 }
 
-function renderStatsPanel() {
+function renderStatsPanel(kind: 'track' | 'album' | 'artist' = 'track') {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
     <QueryClientProvider client={client}>
       <MemoryRouter>
-        <EntityStatsPanel kind="track" trackId={7} />
+        <EntityStatsPanel
+          kind={kind}
+          trackId={kind === 'track' ? 7 : undefined}
+          albumName={kind === 'album' ? 'Detail Album' : undefined}
+          artistName={kind === 'track' ? undefined : 'Detail Artist'}
+        />
       </MemoryRouter>
     </QueryClientProvider>,
   )
@@ -88,7 +93,36 @@ function renderStatsPanel() {
 describe('移动详情图表布局', () => {
   beforeEach(() => {
     mocks.get.mockReset()
-    mocks.get.mockResolvedValue(stats)
+    mocks.setQuery.mockReset()
+    mocks.get.mockImplementation((path: string) => path.endsWith('/rankings')
+      ? Promise.resolve({ found: true, total: 0, rows: [], entity: path.includes('/albums/') ? 'track' : 'album', metric: 'plays' })
+      : Promise.resolve(stats))
+  })
+
+  it.each(['track', 'album', 'artist'] as const)('%s detail uses the shared mobile time control', async (kind) => {
+    renderStatsPanel(kind)
+    expect(await screen.findByRole('button', { name: '选择时间范围，当前全部时间' })).toBeInTheDocument()
+  })
+
+  it('reuses the playback stats time and metric sheet above detail statistics', async () => {
+    renderStatsPanel()
+
+    const trigger = await screen.findByRole('button', { name: '选择时间范围，当前全部时间' })
+    expect(trigger).toHaveClass('mobile-time-range-trigger-compact')
+    expect(trigger).not.toHaveClass('mobile-time-range-trigger-icon-only')
+    expect(trigger.closest('.entity-stats-controls')).toHaveClass('entity-stats-controls-mobile', 'justify-end')
+    expect(screen.queryByText('图表指标')).not.toBeInTheDocument()
+    expect(screen.queryByText('时间范围')).not.toBeInTheDocument()
+
+    fireEvent.click(trigger)
+    const dialog = screen.getByRole('dialog', { name: '时间范围' })
+    fireEvent.click(within(dialog).getByRole('radio', { name: '播放时长' }))
+    fireEvent.click(within(dialog).getByRole('button', { name: '应用时间范围' }))
+
+    expect(mocks.setQuery).toHaveBeenCalledWith(expect.objectContaining({
+      period: 'lifetime',
+      metric: 'hours',
+    }))
   })
 
   it('merges trend and distribution charts into switchable compact cards', async () => {

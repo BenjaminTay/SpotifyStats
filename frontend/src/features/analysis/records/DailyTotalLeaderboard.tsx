@@ -1,5 +1,8 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { CalendarDays, ChevronLeft, ChevronRight, Clock3, ListMusic } from 'lucide-react'
+import { useSearchParams } from 'react-router-dom'
+import { MobileBottomSheet } from '@/components/mobile/MobileBottomSheet'
+import { useViewportMode } from '@/hooks/useViewportMode'
 import { cn } from '@/lib/utils'
 import type { PlaybackRecordRow } from '@/types/analysis'
 import { AlbumCell, ArtistCell, TrackCell } from './PlaybackRecordsPrimitives'
@@ -74,7 +77,7 @@ function DailyTotalRow({
     >
       <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-accent-foreground/55 to-transparent opacity-0 transition-opacity group-hover:opacity-100" />
 
-      <div className="mb-3 grid items-center gap-3 sm:grid-cols-[56px_minmax(0,1fr)_auto]">
+      <div className="mobile-daily-total-summary mb-3 grid items-center gap-3 sm:grid-cols-[56px_minmax(0,1fr)_auto]">
         <span
           className={cn(
             'font-serif text-[34px] font-bold leading-none tracking-[-1px] tabular-nums',
@@ -119,7 +122,7 @@ function DailyTotalRow({
         </div>
       </div>
 
-      <div className="mb-3 flex flex-wrap gap-2">
+      <div className="mobile-daily-total-facts mb-3 flex flex-wrap gap-2">
         <span className="inline-flex items-center gap-1.5 rounded-full border border-border/70 bg-muted/35 px-2.5 py-1 font-sans text-[11px] tabular-nums text-muted-foreground">
           <ListMusic className="h-3 w-3" aria-hidden="true" />
           {fmtMetric(row.total_plays, ' 次播放')}
@@ -133,7 +136,7 @@ function DailyTotalRow({
         </span>
       </div>
 
-      <div className="grid gap-px overflow-hidden rounded-[10px] border border-border/70 bg-border/70 md:grid-cols-3">
+      <div className="mobile-daily-total-entities grid gap-px overflow-hidden rounded-[10px] border border-border/70 bg-border/70 md:grid-cols-3">
         <DailyEntitySnapshot
           label="最高歌曲"
           type="track"
@@ -170,7 +173,11 @@ export function DailyTotalLeaderboard({
   rows: PlaybackRecordRow[]
   sortMode: DailyTotalSortMode
 }) {
+  const isPhone = useViewportMode() === 'phone'
+  const [searchParams, setSearchParams] = useSearchParams()
+  const fullListTriggerRef = useRef<HTMLButtonElement>(null)
   const [page, setPage] = useState(0)
+  const [visibleCount, setVisibleCount] = useState(20)
   const totalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE))
   const safePage = Math.min(page, totalPages - 1)
   const start = safePage * PAGE_SIZE
@@ -178,6 +185,71 @@ export function DailyTotalLeaderboard({
   const metricValue = (row: PlaybackRecordRow) =>
     sortMode === 'plays' ? (row.total_plays ?? row.value) : (row.total_hours ?? 0)
   const maxValue = Math.max(0, ...rows.map(metricValue))
+  const recordKey = '单日总量记录'
+  const fullListOpen = searchParams.get('record') === recordKey
+
+  const openFullList = () => {
+    setVisibleCount(20)
+    const next = new URLSearchParams(searchParams)
+    next.set('record', recordKey)
+    setSearchParams(next)
+  }
+
+  const closeFullList = () => {
+    const next = new URLSearchParams(searchParams)
+    next.delete('record')
+    setSearchParams(next, { replace: true })
+  }
+
+  if (isPhone) {
+    const renderRows = (items: PlaybackRecordRow[], startIndex = 0) => (
+      <ol className="mobile-daily-total-list space-y-3">
+        {items.map((row, index) => (
+          <DailyTotalRow
+            key={`${row.date ?? row.name}-${startIndex + index}`}
+            row={row}
+            rank={startIndex + index + 1}
+            sortMode={sortMode}
+            maxValue={maxValue}
+          />
+        ))}
+      </ol>
+    )
+
+    return (
+      <section aria-label="单日总量记录排行榜">
+        {renderRows(rows.slice(0, 3))}
+        {rows.length > 3 && (
+          <button ref={fullListTriggerRef} type="button" className="mobile-record-expand" onClick={openFullList}>
+            <span>查看完整榜单</span>
+            <small>{rows.length} 项</small>
+          </button>
+        )}
+        <MobileBottomSheet
+          open={fullListOpen}
+          onOpenChange={(open) => { if (!open) closeFullList() }}
+          title="单日总量记录"
+          description={`完整榜单 · ${rows.length} 项`}
+          triggerRef={fullListTriggerRef}
+          className="mobile-record-full-sheet"
+          contentClassName="mobile-record-full-content"
+          dataSheet="playback-daily-total-list"
+        >
+          {renderRows(rows.slice(0, visibleCount))}
+          {visibleCount < rows.length && (
+            <button
+              type="button"
+              className="mobile-record-load-more"
+              onClick={() => setVisibleCount((count) => Math.min(count + 20, rows.length))}
+            >
+              加载更多
+              <small>{Math.min(visibleCount, rows.length)} / {rows.length}</small>
+            </button>
+          )}
+        </MobileBottomSheet>
+      </section>
+    )
+  }
 
   return (
     <section aria-label="单日总量记录排行榜">

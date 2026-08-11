@@ -50,7 +50,7 @@ export function ArtistDetailExperience() {
     const next = new URLSearchParams(searchParams)
     if (tab === 'stats') next.delete('tab')
     else next.set('tab', tab)
-    setSearchParams(next)
+    setSearchParams(next, { replace: true })
   }
   const { filters, loading: filtersLoading } = useAnalysisFilters()
   const billboardParams = buildBillboardContextParams(filters)

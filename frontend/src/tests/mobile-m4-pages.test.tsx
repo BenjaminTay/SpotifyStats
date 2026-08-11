@@ -68,8 +68,8 @@ describe('M4 mobile page presentations', () => {
       </MemoryRouter>,
     )
     expect(screen.getAllByRole('article')).toHaveLength(3)
-    await user.click(screen.getByRole('button', { name: /展开完整榜单/ }))
-    expect(screen.getAllByRole('article')).toHaveLength(5)
+    await user.click(screen.getByRole('button', { name: /查看完整榜单/ }))
+    expect(within(screen.getByRole('dialog', { name: '完整榜单' })).getAllByRole('article')).toHaveLength(5)
   })
 
   it('opens Billboard record lists in a bounded full-screen sheet', async () => {
@@ -265,7 +265,7 @@ describe('M4 mobile page presentations', () => {
       trackNo1WeeksSorted: [{ track_id: 1, track_name: 'Champion', artist_name: 'Artist', cover_url: null, weeks_at_no1: 4, power_score: 10, total_no1_plays: 40, longest_streak: 3, no1_weeks: [] }],
       albumNo1WeeksSorted: [], artistNo1WeeksSorted: [], trackNo1List: [], albumNo1List: [], artistNo1List: [],
       trackLongest: { name: 'Champion', artist: 'Artist', streak: 3 }, albumLongest: { name: '', artist: '', streak: 0 }, artistLongest: { name: '', streak: 0 },
-      trackAnnualNo1: [], albumAnnualNo1: [], albumNo1WithPkWks: [], artistNo1WithPkWks: [], trackMaxPlays: 20, albumMaxPlays: 1, artistMaxPlays: 1,
+      albumNo1WithPkWks: [], artistNo1WithPkWks: [], trackMaxPlays: 20, albumMaxPlays: 1, artistMaxPlays: 1,
     } as NumberOnesComputed
     const yearFiltered = {
       tracks: [{ billboard_week: '2026-08-03', track_id: 1, track_name: 'Champion', artist_name: 'Artist', album_name: 'Album', play_count: 20, total_ms: 1, rank: 1, running_peak: 1, running_wks: 3, running_peak_wks: 2, cover_url: '/covers/tracks/1.jpg' }],
@@ -295,7 +295,7 @@ describe('M4 mobile page presentations', () => {
     expect(onSort).toHaveBeenCalledWith('peak_position')
   })
 
-  it('uses field presets for All-Time and vertical entity cards for Versus', () => {
+  it('uses field presets for All-Time and a comparison matrix for Versus', () => {
     const row = { track_id: 9, track_name: 'Fixed Rank', artist_name: 'Artist', album_name: 'Album', cover_url: null, weeks_on_chart: 7, peak_position: 3, weeks_at_peak: 1, weeks_top5: 3, weeks_top10: 5, power_score: 120, power_rank: 41, total_chart_plays: 90, is_debut_no1: false }
     const { rerender } = render(<MemoryRouter><MobileAllTime activeTab="tracks" rows={[row]} total={99} searchQuery="" peakFilter="all" sortKey="power_score" sortDir="desc" visibleColumnIds={['power_score', 'power_rank', 'weeks_on_chart']} page={1} pageSize={20} onTabChange={vi.fn()} onSearchChange={vi.fn()} onPeakFilterChange={vi.fn()} onSortChange={vi.fn()} onVisibleColumnsChange={vi.fn()} onPageChange={vi.fn()} /></MemoryRouter>)
     expect(screen.getByText('41')).toBeInTheDocument()
@@ -304,7 +304,10 @@ describe('M4 mobile page presentations', () => {
     const entities = [{ name: 'Winner', cover_url: null }, { name: 'Runner-up', cover_url: null }] as VersusEntityData[]
     rerender(<MemoryRouter><MobileVersusScoreboard entities={entities} detailLinks={['/one', '/two']} groups={[{ label: '榜单成绩', metrics: [{ label: '走势点数', values: ['120', '90'], winners: [0] }] }]} personalMetrics={[]} wins={[1, 0]} personalLoading={false} /></MemoryRouter>)
     expect(screen.getByRole('heading', { name: 'Winner' })).toBeInTheDocument()
-    expect(screen.getAllByRole('article')).toHaveLength(2)
-    expect(screen.queryByRole('table')).not.toBeInTheDocument()
+    const matrix = screen.getByRole('table', { name: '移动端对决指标矩阵' })
+    expect(within(matrix).getByText('走势点数')).toBeInTheDocument()
+    expect(within(matrix).getByText('120')).toBeInTheDocument()
+    expect(within(matrix).getByText('90')).toBeInTheDocument()
+    expect(screen.queryByText('实体详情')).not.toBeInTheDocument()
   })
 })

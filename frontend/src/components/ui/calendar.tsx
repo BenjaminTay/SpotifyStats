@@ -1,6 +1,6 @@
 import * as React from "react"
 import { useState, useEffect, useCallback } from "react"
-import { DayPicker } from "react-day-picker"
+import { DayPicker, type DateRange } from "react-day-picker"
 import "react-day-picker/style.css"
 import { ChevronLeft, ChevronRight } from "lucide-react"
 import { format } from "date-fns"
@@ -15,12 +15,14 @@ const MONTHS = [
 
 type ViewMode = "calendar" | "months"
 
-interface CalendarProps extends Omit<React.ComponentProps<typeof DayPicker>, 'month'> {
+type CalendarProps = Omit<React.ComponentProps<typeof DayPicker>, 'month' | 'selected'> & {
   month?: Date
   startMonth?: Date
   endMonth?: Date
   defaultView?: ViewMode
   onMonthSelect?: (monthIndex: number, year: number) => void
+  selected?: Date | DateRange | Date[]
+  onSelect?: (selected: Date | DateRange | Date[] | undefined) => void
 }
 
 function Calendar({
@@ -40,7 +42,7 @@ function Calendar({
   ...props
 }: CalendarProps) {
   const [viewMode, setViewMode] = useState<ViewMode>(defaultView || "calendar")
-  const [viewYear, setViewYear] = useState<number>(0) // displayed year in months view
+  const [viewYear, setViewYear] = useState<number>(controlledMonth?.getFullYear() ?? new Date().getFullYear())
   const [localMonth, setLocalMonth] = useState<Date>(() => {
     if (controlledMonth) return controlledMonth
     const now = new Date()

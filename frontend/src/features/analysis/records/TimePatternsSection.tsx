@@ -2,7 +2,7 @@
 
 import { Clock } from 'lucide-react'
 import type { PlaybackTimePatternRecords, PlaybackRecordRow } from '@/types/analysis'
-import { EntityRecordCard, TrackCell, ArtistCell, AlbumCell, SectionHeader } from './PlaybackRecordsPrimitives'
+import { EntityRecordCard, TrackCell, ArtistCell, AlbumCell, RecordDateValue, SectionHeader } from './PlaybackRecordsPrimitives'
 import { HourlySegmentsCard } from './HourlySegmentsCard'
 import { LateNightTrajectoryCard } from './LateNightTrajectoryCard'
 
@@ -11,6 +11,7 @@ interface Props { data: PlaybackTimePatternRecords }
 function entityNameCol(entity: string) {
   return {
     header: entity === 'track' ? '歌曲' : entity === 'album' ? '专辑' : '艺人',
+    mobileRole: 'entity' as const,
     render: (row: PlaybackRecordRow) => {
       if (entity === 'track') return <TrackCell trackId={row.entity_id} name={row.name} artistName={row.artist_name} coverUrl={row.cover_url} />
       if (entity === 'album') return <AlbumCell name={row.name} artistName={row.artist_name} coverUrl={row.cover_url} />
@@ -27,9 +28,9 @@ export function TimePatternsSection({ data }: Props) {
       <EntityRecordCard title="月度巅峰 · Monthly Peak" subtitle="逐个自然月列出当月播放次数最高的歌曲/专辑/艺人"
         recordsByEntity={{ track: data.monthly_peak?.track ?? [], album: data.monthly_peak?.album ?? [], artist: data.monthly_peak?.artist ?? [] }}
         columns={(entity) => [
-          { header: '月份', width: '84px', render: (row) => <span className="font-sans text-[14px] font-medium">{row.date ?? '—'}</span> },
+          { header: '月份', width: '84px', mobileRole: 'fact', render: (row) => <RecordDateValue value={row.date} /> },
           entityNameCol(entity),
-          { header: '次数', width: '80px', align: 'right', render: (row) => <span className="font-serif text-[20px] font-semibold tabular-nums">{row.value}</span> },
+          { header: '次数', width: '80px', align: 'right', mobileRole: 'primary', render: (row) => <span className="font-serif text-[20px] font-semibold tabular-nums">{row.value}</span> },
         ]} />
       <LateNightTrajectoryCard trajectory={data.late_night_trajectory} />
     </div>

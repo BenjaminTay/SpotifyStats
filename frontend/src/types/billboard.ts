@@ -920,9 +920,14 @@ export interface ArtistInfo {
   top10: number
   weeks_at_no1: number
   num_no1_albums: number
+  total_albums: number
+  album_top5: number
   album_no1_weeks: number
+  total_album_weeks: number
   total_track_power: number
   total_album_power: number
+  track_power_rank: number | null
+  album_power_rank: number | null
 }
 
 export interface ArtistWeeklyHistoryEntry {
@@ -1025,6 +1030,7 @@ export interface AlbumInfo {
   weeks_at_no1: number
   album_chart_no1_weeks: number
   total_track_power: number
+  track_power_rank: number | null
 }
 
 export interface AlbumWeeklyHistoryEntry {
