@@ -35,6 +35,7 @@ from backend.api.version_merge import router as version_merge_router
 from backend.api.video import router as video_router
 from backend.api.wrapped import router as wrapped_router
 from backend.api.wrapped_hub import router as wrapped_hub_router
+from backend.api.yearly_review import router as yearly_review_router
 
 api_router = APIRouter()
 
@@ -53,6 +54,7 @@ api_router.include_router(podcast_router)
 api_router.include_router(video_router)
 api_router.include_router(profile_router)
 api_router.include_router(wrapped_hub_router)
+api_router.include_router(yearly_review_router)
 api_router.include_router(settings_router)
 api_router.include_router(billboard_router)
 api_router.include_router(community_router)

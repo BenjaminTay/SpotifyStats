@@ -663,6 +663,24 @@ Billboard Year-End 年榜不是单纯的年度播放量榜。它先使用当前 
 - `track_power_rank` / `album_power_rank` 只在当前完整同类总榜实体集合中对正值使用 competition rank（并列共享最小名次）；零贡献显示 0，派生排名为 `null`。
 - 表内搜索、分页和列显示偏好只是客户端展示控制，不得改变 Power Score、上述聚合值或任何原始/派生排名。
 
+### 年度总结 V2 消费契约
+
+Desktop/Compact `/yearly-review` 使用确定性 `YearlyReviewV2`，Phone presentation 继续使用旧 Wrapped full 契约；“官方 Wrapped”页签继续读取官方导入数据。三个 presentation 必须互斥挂载，不得用 V2 覆盖 Phone 或改写官方 Wrapped。
+
+V2 统一继承当前 `music_only`、连续播放合并、动态阈值、`merge_level`、精选集、三类 Billboard Top N 与周边界。前端 query key、后端 cache key 和 records 分页必须使用同一过滤指纹，并包含版本化内容策略、display taxonomy 与艺人元数据 revision。
+
+展示语义：
+
+- “播放排行”同时保留播放次数与有效时长，两者不得混名。
+- “个人 Billboard 年榜”使用本文件 Billboard Year-End 规则，只能描述本地个人榜；不得写成 Spotify 或外部官方 Billboard。
+- 月度正文只有一条年度赛季/转折时间线；十二个月完整事实只在可展开账本中出现，不再复制第二套月度叙事。
+- 关系、回归、发现、纪录和品味迁移只有在对应 coverage/支持阈值成立时才生成；不足时降级为空态或限制说明，不得由 LLM 补写。
+- 主曲风只消费 `style`，地区流行只消费 `scene`，语言独立统计；`context` / `role` 不进入主图，unknown 必须保留为“尚未归类”并显示覆盖率。
+- YTD、完整年、部分年和空年份由实际播放范围与榜单周覆盖决定；YTD/partial 不得使用“完整年度冠军”等已结算措辞。
+- 主报告只携带 Top 50/30/30 和精选纪录；全部播放记录/Billboard 纪录通过分页 `/api/yearly-review/{year}/records` 下钻，客户端不得一次挂载数千行 DOM。
+
+当前缓存热响应预算为 250ms，未压缩主 JSON 预算为 512 KiB。冷态报告仍可能需要 76–88 秒，属于性能债；产品应通过缓存/预计算解决，不得改变统计口径或让浏览器静默吞掉本地 API 超时。
+
 ---
 
 ## 13. 数据关系要求

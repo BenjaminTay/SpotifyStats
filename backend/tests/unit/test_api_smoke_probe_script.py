@@ -19,6 +19,9 @@ def test_api_smoke_probe_exposes_reusable_readonly_cases():
     assert "/api/lyrics/-1/url" in paths
     assert "/api/community/post/nonexistent-smoke-post" in paths
     assert "/api/settings/llm-profiles/999999" in paths
+    assert "/api/yearly-review/available-years" in paths
+    assert "/api/yearly-review/2099" in paths
+    assert "/api/yearly-review/2099/records" in paths
     assert "/covers/albums/999999999.jpg" in paths
     assert cases_by_path["/api/community/post/nonexistent-smoke-post"].expected_statuses == (404,)
     assert cases_by_path["/api/settings/llm-profiles/999999"].expected_statuses == (404,)
@@ -48,3 +51,5 @@ def test_api_smoke_probe_accounts_for_openapi_get_paths():
     assert "/api/lyrics/{track_id}" in coverage.covered_paths
     assert "/api/lyrics/{track_id}/url" in coverage.covered_paths
     assert "/api/music/tracks/{track_id}/stats" in coverage.covered_paths
+    assert "/api/yearly-review/{year}" in coverage.covered_paths
+    assert "/api/yearly-review/{year}/records" in coverage.covered_paths

@@ -171,6 +171,7 @@ def update_settings(
     invalidate("billboard")
     invalidate("analysis")
     invalidate("db")
+    invalidate("yearly_review")
 
     return _build_settings_response(conn)
 

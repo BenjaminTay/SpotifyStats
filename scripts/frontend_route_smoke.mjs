@@ -60,7 +60,7 @@ const ROUTE_READY_MARKERS = {
   '/analysis/behavior': ['播放统计'],
   '/analysis/listening-hours': ['播放统计'],
   '/analysis/artists': ['播放排行'],
-  '/yearly-review': ['年度总结', '听歌人格'],
+  '/yearly-review': ['年度总结'],
   '/billboard': ['CHART / WEEKLY'],
   '/billboard/number-ones': ['每周榜首'],
   '/billboard/all-time': ['总榜'],

@@ -158,6 +158,15 @@ DEFAULT_SAFE_GET_CASES: tuple[SmokeCase, ...] = (
     SmokeCase("wrapped_years", "/api/wrapped/available-years"),
     SmokeCase("wrapped_2024", "/api/wrapped/2024", DEFAULT_FILTERS),
     SmokeCase("wrapped_2024_full", "/api/wrapped/2024/full", DEFAULT_FILTERS),
+    SmokeCase("yearly_review_v2_years", "/api/yearly-review/available-years"),
+    # Keep the broad safe-GET probe fast with an intentionally empty year.
+    # Observed-year and cold/hot matrices belong to yearly_review_v2_probe.py.
+    SmokeCase("yearly_review_v2_empty", "/api/yearly-review/2099", DEFAULT_BILLBOARD),
+    SmokeCase(
+        "yearly_review_v2_empty_records",
+        "/api/yearly-review/2099/records",
+        {**DEFAULT_BILLBOARD, "page": 1, "page_size": 5},
+    ),
     SmokeCase("library", "/api/library"),
     SmokeCase("library_playlists", "/api/library/playlists"),
     SmokeCase("library_playlist_tracks", "/api/library/playlists/1/tracks"),

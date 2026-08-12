@@ -15,16 +15,16 @@ export function prefetchYearlyReview(year: number): Promise<void> {
     .then(() => undefined)
 }
 
-export function useYearlyReview(year: number) {
+export function useYearlyReview(year: number, enabled = true) {
   const query = useQuery({
     queryKey: queryKeys.yearlyReview.full(year),
     queryFn: () => api.get<WrappedFullResponse>(`/wrapped/${year}/full`),
-    enabled: year > 0,
+    enabled: enabled && year > 0,
   })
 
   return {
     data: query.data ?? null,
-    loading: year > 0 ? query.isLoading : false,
+    loading: enabled && year > 0 ? query.isLoading : false,
     error: query.error instanceof Error ? query.error.message : null,
     refetch: () => void query.refetch(),
   }

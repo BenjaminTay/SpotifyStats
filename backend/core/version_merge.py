@@ -265,6 +265,7 @@ def _refresh_version_merge_dependents(conn=None) -> None:
             conn.close()
     invalidate("analysis")
     invalidate("billboard")
+    invalidate("yearly_review")
 
 
 def get_all_groups() -> pd.DataFrame:

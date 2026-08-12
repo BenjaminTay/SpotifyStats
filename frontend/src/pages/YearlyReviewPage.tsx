@@ -2,7 +2,9 @@ import { useState, useEffect, Suspense, lazy, Component } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useSearchParams } from 'react-router-dom'
 import { queryKeys } from '@/api/query-keys'
+import { useAnalysisFilters } from '@/hooks/useAnalysis'
 import { useYearlyReview } from '@/hooks/useYearlyReview'
+import { useYearlyReviewV2, useYearlyReviewV2AvailableYears } from '@/hooks/useYearlyReviewV2'
 import { CustomSummary } from '@/pages/yearly-review/CustomSummary'
 import { ShareButton } from '@/pages/yearly-review/ShareButton'
 import { api } from '@/lib/api'
@@ -12,6 +14,8 @@ import { AnalysisSubNav } from '@/components/shared/AnalysisSubNav'
 import { MobileYearlyChapterNav } from '@/features/mobile/yearly/MobileYearlyChapterNav'
 import { YearlyPeriodNotice } from '@/features/mobile/yearly/YearlyPeriodNotice'
 import { useViewportMode } from '@/hooks/useViewportMode'
+import { YearlyReviewDesktopExperience } from '@/features/yearly-review/YearlyReviewDesktopExperience'
+import { YearlyReviewV2Empty, YearlyReviewV2Error, YearlyReviewV2Loading } from '@/features/yearly-review/YearlyReviewStates'
 
 // OfficialWrapped 懒加载
 const OfficialWrapped = lazy(() => import('@/pages/yearly-review/OfficialWrapped').then(m => ({ default: m.OfficialWrapped })))
@@ -84,23 +88,29 @@ export function YearlyReviewPage() {
   const isPhone = useViewportMode() === 'phone'
   const [searchParams, setSearchParams] = useSearchParams()
   const [activeTab, setActiveTab] = useState<TabKey>('custom')
+  const { filters, loading: filtersLoading } = useAnalysisFilters()
   const playYearsQuery = useQuery({
     queryKey: queryKeys.yearlyReview.availableYears(),
     queryFn: () => api.get<{ years: number[] }>('/wrapped/available-years'),
+    enabled: isPhone && activeTab === 'custom',
   })
   const wrappedYearsQuery = useQuery({
     queryKey: queryKeys.yearlyReview.hubAvailableYears(),
     queryFn: () => api.get<{ years: number[] }>('/wrapped-hub/available-years'),
+    enabled: activeTab === 'official',
   })
+  const v2YearsQuery = useYearlyReviewV2AvailableYears(!isPhone && activeTab === 'custom')
 
   const playYears = playYearsQuery.data?.years ?? []
   const wrappedYears = wrappedYearsQuery.data?.years ?? []
-  const yearsLoading = playYearsQuery.isLoading || wrappedYearsQuery.isLoading
-  const yearsError = playYearsQuery.error instanceof Error ? playYearsQuery.error.message : null
+  const v2Years = v2YearsQuery.data?.years ?? []
 
   // Per-tab available years
-  const displayYears = activeTab === 'custom' ? playYears : wrappedYears
+  const displayYears = activeTab === 'custom' ? (isPhone ? playYears : v2Years) : wrappedYears
   const yearOptions = isPhone ? [...displayYears].reverse() : displayYears
+  const activeYearsQuery = activeTab === 'official' ? wrappedYearsQuery : isPhone ? playYearsQuery : v2YearsQuery
+  const yearsLoading = activeYearsQuery.isLoading
+  const yearsError = activeYearsQuery.error instanceof Error ? activeYearsQuery.error.message : null
 
   // Determine current year: URL param > latest from active tab
   const yearParam = searchParams.get('year')
@@ -116,9 +126,18 @@ export function YearlyReviewPage() {
     }
   }, [displayYears, setSearchParams, yearParam])
 
-  const { data, loading, error } = useYearlyReview(
+  const legacyReview = useYearlyReview(
     activeTab === 'custom' ? (currentYear ?? 0) : 0,
+    isPhone && activeTab === 'custom',
   )
+  const v2Review = useYearlyReviewV2(
+    activeTab === 'custom' ? (currentYear ?? 0) : 0,
+    filters,
+    !isPhone && activeTab === 'custom' && !filtersLoading,
+  )
+  const data = legacyReview.data
+  const v2Data = v2Review.data?.year === currentYear ? v2Review.data : null
+  const v2Pending = filtersLoading || v2Review.isLoading || v2Review.isPlaceholderData || (!v2Data && v2Review.isFetching)
 
   return (
     <>
@@ -171,7 +190,7 @@ export function YearlyReviewPage() {
         </div>
       </div>
 
-      {activeTab === 'custom' && data?.reporting_period && (
+      {isPhone && activeTab === 'custom' && data?.reporting_period && (
         <YearlyPeriodNotice period={data.reporting_period} />
       )}
 
@@ -184,10 +203,17 @@ export function YearlyReviewPage() {
 
         {!yearsLoading && !yearsError && (
           <>
-            {loading && <LoadingSkeleton />}
-            {error && <ErrorState message={error} />}
+            {isPhone && legacyReview.loading && <LoadingSkeleton />}
+            {isPhone && legacyReview.error && <ErrorState message={legacyReview.error} />}
+            {!isPhone && activeTab === 'custom' && v2Pending && <YearlyReviewV2Loading year={currentYear ?? new Date().getFullYear()} />}
+            {!isPhone && activeTab === 'custom' && !v2Pending && v2Review.error && (
+              <YearlyReviewV2Error
+                message={v2Review.error instanceof Error ? v2Review.error.message : '未知错误'}
+                onRetry={() => void v2Review.refetch()}
+              />
+            )}
 
-            {activeTab === 'custom' && data && !data.empty && (
+            {isPhone && activeTab === 'custom' && data && !data.empty && (
               <>
                 <div className={cn(isPhone && 'mobile-yearly-story')}>
                   <CustomSummary data={data} />
@@ -195,12 +221,19 @@ export function YearlyReviewPage() {
                 </div>
               </>
             )}
+            {!isPhone && activeTab === 'custom' && v2Data && v2Data.status !== 'empty' && (
+              <>
+                <YearlyReviewDesktopExperience report={v2Data} filters={filters} />
+                <ShareButton />
+              </>
+            )}
             {activeTab === 'official' && (
               <Suspense fallback={<LoadingSkeleton />}>
                 <OfficialWrapped />
               </Suspense>
             )}
-            {activeTab === 'custom' && data?.empty && <EmptyState year={currentYear ?? 0} />}
+            {isPhone && activeTab === 'custom' && data?.empty && <EmptyState year={currentYear ?? 0} />}
+            {!isPhone && activeTab === 'custom' && v2Data?.status === 'empty' && <YearlyReviewV2Empty year={currentYear ?? 0} />}
           </>
         )}
       </ErrorBoundary>

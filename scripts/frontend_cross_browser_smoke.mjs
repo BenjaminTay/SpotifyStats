@@ -28,9 +28,10 @@ const DEFAULT_ROUTES = [
   { path: '/', markers: ['播放次数'] },
   { path: '/analysis/stats', markers: ['播放统计'] },
   { path: '/analysis/charts', markers: ['播放排行'] },
+  { path: '/yearly-review', markers: ['年度总结'] },
   { path: '/billboard/records', markers: ['冠军圣殿'] },
   { path: '/ai-insights', markers: ['AI 洞察'] },
-  { path: '/settings', markers: ['Spotify 连接'] },
+  { path: '/settings', markers: ['设置'] },
 ]
 
 const VIEWPORTS = {
@@ -217,6 +218,7 @@ VIEWPORTS = json.loads(os.environ["FRONTEND_VIEWPORTS_JSON"])
 WAIT_MS = int(os.environ["FRONTEND_WAIT_MS"])
 DYNAMIC_ROUTE_WAIT_MS = int(os.environ["FRONTEND_DYNAMIC_ROUTE_WAIT_MS"])
 SLOW_PAGE_WAIT_MS = max(WAIT_MS, 20000)
+YEARLY_REVIEW_WAIT_MS = max(WAIT_MS, 120000)
 MAX_SCROLL_OVERFLOW = int(os.environ["FRONTEND_MAX_SCROLL_OVERFLOW"])
 HEADED = os.environ.get("FRONTEND_HEADED") == "1"
 BROWSER_NAME = sys.argv[1]
@@ -280,12 +282,25 @@ def install_guards(page):
     console_messages = []
     page_errors = []
 
-    def is_ignored_console_message(text: str) -> bool:
-        return any(pattern in text for pattern in IGNORED_CONSOLE_PATTERNS)
+    def is_ignored_console_message(text: str, source_url: str = "") -> bool:
+        if any(pattern in text for pattern in IGNORED_CONSOLE_PATTERNS):
+            return True
+        if "downloadable font: download failed" in text and "fonts.gstatic.com/" in text:
+            return True
+        return (
+            "Failed to load resource" in text
+            and (
+                source_url.startswith("https://fonts.gstatic.com/")
+                or source_url.startswith("https://i.scdn.co/image/")
+            )
+        )
 
     def on_console(message):
-        if message.type in ("error", "warning") and not is_ignored_console_message(message.text):
-            console_messages.append(f"{message.type}: {message.text}")
+        location = message.location or {}
+        source_url = location.get("url") or ""
+        if message.type in ("error", "warning") and not is_ignored_console_message(message.text, source_url):
+            suffix = f" @ {source_url}" if source_url else ""
+            console_messages.append(f"{message.type}: {message.text}{suffix}")
 
     def on_page_error(error):
         page_errors.append(str(error))
@@ -461,6 +476,9 @@ def page_state(page):
                 hasMobileTopBar: Boolean(document.querySelector('[data-mobile-shell="top-bar"]')),
                 hasMobileBottomNav: Boolean(document.querySelector('[data-mobile-shell="bottom-nav"]')),
                 hasDesktopMasthead: Boolean(document.querySelector('nav[aria-label="主导航"]')),
+                hasYearlyV2: Boolean(document.querySelector('.yearly-v2-experience')),
+                hasYearlyV2Loading: Boolean(document.querySelector('.yearly-v2-loading')),
+                hasLegacyYearly: Boolean(document.querySelector('.mobile-yearly-story')),
             };
         }"""
     )
@@ -496,6 +514,11 @@ def assert_page_health(page, console_messages, page_errors, viewport_name=None, 
         expected_bottom_nav = route_should_have_mobile_bottom_nav(route_path or state["path"])
         if state["hasMobileBottomNav"] != expected_bottom_nav:
             raise SmokeFailure(f"Mobile bottom nav state {state['hasMobileBottomNav']} != expected {expected_bottom_nav}")
+        if urlparse(route_path or state["path"]).path == "/yearly-review":
+            if state["hasYearlyV2"] or state["hasYearlyV2Loading"]:
+                raise SmokeFailure("Yearly Review V2 mounted in phone presentation")
+            if not state["hasLegacyYearly"]:
+                raise SmokeFailure("Legacy yearly summary missing in phone presentation")
     elif viewport_name == "desktop":
         if not state["hasDesktopMasthead"]:
             raise SmokeFailure("Desktop masthead missing")
@@ -503,6 +526,11 @@ def assert_page_health(page, console_messages, page_errors, viewport_name=None, 
             raise SmokeFailure("Mobile shell mounted in desktop viewport")
         if state["viewportMode"] != "desktop":
             raise SmokeFailure(f"Viewport mode {state['viewportMode']!r} != 'desktop'")
+        if urlparse(route_path or state["path"]).path == "/yearly-review":
+            if not (state["hasYearlyV2"] or state["hasYearlyV2Loading"]):
+                raise SmokeFailure("Yearly Review V2 experience/loading missing in desktop presentation")
+            if state["hasLegacyYearly"]:
+                raise SmokeFailure("Legacy yearly summary mounted in desktop presentation")
     return state
 
 
@@ -548,6 +576,22 @@ def run_route_markers(browser):
                     lambda: page_state(page) if page_state(page)["rootTextLength"] > 20 else None,
                     f"Route body did not become ready: {route['path']}",
                 )
+                if urlparse(route["path"]).path == "/yearly-review":
+                    if viewport_name == "mobile":
+                        wait_for_condition(
+                            lambda: page_state(page) if page_state(page)["hasLegacyYearly"] else None,
+                            "Phone legacy yearly summary did not become ready",
+                        )
+                    else:
+                        deadline = time.monotonic() + YEARLY_REVIEW_WAIT_MS / 1000
+                        yearly_state = None
+                        while time.monotonic() < deadline:
+                            yearly_state = page_state(page)
+                            if yearly_state["hasYearlyV2"] or yearly_state["hasYearlyV2Loading"]:
+                                break
+                            time.sleep(0.15)
+                        if not yearly_state or not (yearly_state["hasYearlyV2"] or yearly_state["hasYearlyV2Loading"]):
+                            raise SmokeFailure("Desktop Yearly Review V2 did not become ready")
                 assert_page_health(page, console_messages, page_errors, viewport_name, route["path"])
                 print(f"PASS route-markers {viewport_name} {route['path']}")
             finally:
@@ -637,7 +681,7 @@ def run_settings_controls(browser):
     try:
         page.goto(absolute_url("/settings"), wait_until="domcontentloaded", timeout=WAIT_MS + 10000)
         wait_for_text(page, "参数与配置")
-        wait_for_text(page, "SPOTIFY 连接")
+        wait_for_any_text(page, ["SPOTIFY 连接", "Spotify 连接"])
         wait_for_text(page, "数据与显示")
         wait_for_text(page, "榜单参数")
         wait_for_text(page, "归并与版本")
@@ -705,10 +749,70 @@ def run_theme_toggle(browser):
         close_page(page)
 
 
+def run_yearly_review(browser):
+    page, console_messages, page_errors = new_page(browser, "desktop")
+    try:
+        page.goto(absolute_url("/yearly-review?year=2026"), wait_until="domcontentloaded", timeout=YEARLY_REVIEW_WAIT_MS)
+        wait_for_text(page, "我的音乐年鉴", timeout_ms=YEARLY_REVIEW_WAIT_MS)
+        state = assert_page_health(page, console_messages, page_errors, "desktop", "/yearly-review")
+        if not state["hasYearlyV2"] or state["hasLegacyYearly"]:
+            raise SmokeFailure("Desktop yearly presentation boundary is incorrect")
+
+        album_tab = page.get_by_role("tab", name="专辑", exact=True).first
+        album_tab.scroll_into_view_if_needed(timeout=WAIT_MS)
+        album_tab.click(timeout=WAIT_MS)
+        if album_tab.get_attribute("aria-selected") != "true":
+            raise SmokeFailure("Yearly honors album tab did not select")
+
+        month_summary = page.get_by_text("展开十二个月事实账本", exact=False).first
+        month_summary.scroll_into_view_if_needed(timeout=WAIT_MS)
+        month_summary.click(timeout=WAIT_MS)
+        if not page.locator(".yearly-v2-month-grid").is_visible(timeout=WAIT_MS):
+            raise SmokeFailure("Yearly monthly ledger did not expand")
+
+        language_tab = page.get_by_role("tab", name="语言", exact=True).first
+        language_tab.scroll_into_view_if_needed(timeout=WAIT_MS)
+        language_tab.click(timeout=WAIT_MS)
+        if language_tab.get_attribute("aria-selected") != "true":
+            raise SmokeFailure("Yearly taste language tab did not select")
+
+        page.get_by_role("button", name="打开目录", exact=True).click(timeout=WAIT_MS)
+        record_nav = page.get_by_role("navigation", name="年度纪录分页")
+        record_nav.get_by_role("button", name="下一页", exact=True).click(timeout=YEARLY_REVIEW_WAIT_MS)
+        wait_for_text(page, "第 2 /", timeout_ms=YEARLY_REVIEW_WAIT_MS)
+
+        appendix_nav = page.get_by_role("navigation", name="年度附录分页")
+        appendix_nav.get_by_role("button", name="下一页", exact=True).click(timeout=WAIT_MS)
+        wait_for_condition(
+            lambda: page.evaluate("() => document.querySelector('[aria-label=\\"年度附录分页\\"]')?.textContent.includes('第 2 /')"),
+            "Yearly appendix did not advance to page 2",
+        )
+
+        page.get_by_role("button", name="官方 Wrapped", exact=True).click(timeout=WAIT_MS)
+        wait_for_text(page, "SPOTIFY WRAPPED", timeout_ms=YEARLY_REVIEW_WAIT_MS)
+        if page.locator(".yearly-v2-experience").count() != 0:
+            raise SmokeFailure("Yearly V2 remained mounted on Official Wrapped tab")
+        page.get_by_role("button", name="年度总结", exact=True).click(timeout=WAIT_MS)
+        wait_for_text(page, "我的音乐年鉴", timeout_ms=YEARLY_REVIEW_WAIT_MS)
+
+        detail_link = page.get_by_role("link", name=re.compile("查看详情")).first
+        detail_link.scroll_into_view_if_needed(timeout=WAIT_MS)
+        detail_link.click(timeout=WAIT_MS)
+        expect_url(page, r"/music/(tracks|albums|artists)/")
+        page.go_back(wait_until="domcontentloaded")
+        expect_url(page, r"/yearly-review")
+        wait_for_text(page, "我的音乐年鉴", timeout_ms=YEARLY_REVIEW_WAIT_MS)
+        assert_page_health(page, console_messages, page_errors, "desktop", "/yearly-review")
+        print("PASS core-interactions yearly-review")
+    finally:
+        close_page(page)
+
+
 def run_core_interactions(browser):
     run_analysis_tabs(browser)
     run_billboard_routing(browser)
     run_ai_insights_tabs(browser)
+    run_yearly_review(browser)
     run_settings_controls(browser)
     run_settings_data_import(browser)
     run_theme_toggle(browser)

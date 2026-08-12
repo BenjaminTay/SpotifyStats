@@ -76,6 +76,21 @@ class ParameterBoundaryAudit:
 
 
 BOUNDARY_EVIDENCE_BY_KEY: dict[tuple[str, str, str], ParameterEvidence] = {
+    ("path", "year", "integer|maximum=2100|minimum=2000"): ParameterEvidence(
+        "targeted_contract",
+        ("backend/tests/contract/test_yearly_review_v2_contract.py",),
+        "Yearly Review V2 contracts cover out-of-range year paths and structured 422 responses.",
+    ),
+    ("query", "page", "integer|minimum=1"): ParameterEvidence(
+        "targeted_contract",
+        ("backend/tests/contract/test_yearly_review_v2_contract.py",),
+        "Yearly Review records pagination rejects page zero through its endpoint contract.",
+    ),
+    ("query", "page_size", "integer|maximum=100|minimum=1"): ParameterEvidence(
+        "targeted_contract",
+        ("backend/tests/contract/test_yearly_review_v2_contract.py",),
+        "Yearly Review records pagination exposes and validates the 1-100 page-size bound.",
+    ),
     ("query", "entity", "string|enum=track,album"): ParameterEvidence(
         "targeted_contract",
         (),

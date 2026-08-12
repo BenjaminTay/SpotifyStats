@@ -1,5 +1,13 @@
 # 变更日志
 
+## 2026-08-12 — 年度总结 V2 完整内容重构
+
+- Desktop/Compact 自定义年度总结重建为八章个人音乐年鉴：报告护照、播放/时长双榜、个人 Billboard 年度赛季、唯一时间线、关系故事、收听生活、年度纪录、品味迁移与完整索引；Phone 继续使用 V1，官方 Wrapped 不变。
+- 新增 `/api/yearly-review/available-years`、`/{year}` 与 `/{year}/records`，统一过滤指纹、coverage、版本化策略、元数据修订缓存和分页纪录目录；解释性内容完全由确定性事实生成，不调用 LLM。
+- 2023–2026 四年真实 probe 通过：主响应 226–243 KiB、热响应 2.64–3.44ms；冷态 76–88 秒保留为后续预计算/共享中间结果性能债。
+- 验证通过全量 backend unit 1,043、contract 329、frontend 475、API smoke 119/119、OpenAPI 0 unaccounted、五视口年度 route matrix、30 组控件库存以及 Chromium/Firefox/WebKit 年度完整交互。
+- Spotify/Google 第三方封面或字体不可达时使用现有字体与实体首字母回退；应用自身资源和 API 错误仍由门禁拦截。
+
 ## 2026-08-11 — 详情统计与播放记录移动端收口
 
 - 歌曲、专辑、艺人详情页的子 Tab 改用 replace 导航；页内切换不再堆叠浏览器历史，返回按钮和浏览器回退会离开详情页并回到进入详情前的页面。

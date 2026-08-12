@@ -330,6 +330,7 @@ def rebuild_album_project_rows(auth: None = Depends(require_auth)):
         conn.close()
     invalidate("analysis")
     invalidate("billboard")
+    invalidate("yearly_review")
     return {"status": "ok"}
 
 

@@ -163,13 +163,17 @@ def patch_artist_language_review(
     conn: Connection = Depends(get_write_conn),
 ):
     try:
-        return decide_review(
+        result = decide_review(
             conn,
             review_id=review_id,
             action=request.action,
             resolution_note=request.resolution_note,
             reviewed_by="local_user",
         )
+        from backend.core.cache_manager import invalidate
+
+        invalidate("yearly_review")
+        return result
     except (
         ArtistLanguageNotFoundError,
         ArtistLanguageConflictError,

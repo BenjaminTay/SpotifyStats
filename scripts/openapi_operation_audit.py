@@ -63,6 +63,18 @@ class OperationAudit:
 
 TARGETED_CONTRACT_OPERATIONS: dict[tuple[str, str], OperationEvidence] = {
     **{
+        ("GET", path): OperationEvidence(
+            "targeted_contract",
+            "backend/tests/contract/test_yearly_review_v2_contract.py + scripts/yearly_review_v2_probe.py",
+            "Yearly Review V2 response models, empty state, pagination, request id, year bounds, and real-data invariants are covered.",
+        )
+        for path in (
+            "/api/yearly-review/available-years",
+            "/api/yearly-review/{year}",
+            "/api/yearly-review/{year}/records",
+        )
+    },
+    **{
         (method, path): OperationEvidence(
             "targeted_contract",
             "backend/tests/contract/test_track_credit_api.py + backend/tests/unit/test_track_credits.py",

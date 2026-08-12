@@ -49,7 +49,7 @@ const ROUTE_READY_MARKERS = {
   '/analysis/stats': ['PLAYBACK / ANALYSIS', '播放统计'],
   '/analysis/charts': ['PLAYBACK RANKING', '播放排行'],
   '/analysis/records': ['播放记录', '高光时刻'],
-  '/yearly-review': ['年度总结', '听歌人格'],
+  '/yearly-review': ['年度总结'],
   '/billboard': ['CHART / WEEKLY', 'Billboard 周榜'],
   '/billboard/number-ones': ['每周榜首'],
   '/billboard/all-time': ['总榜'],

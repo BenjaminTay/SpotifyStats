@@ -14,33 +14,36 @@
 
 ## 活跃文档
 
-### 实现计划 (`plans/`) — 4 个
+### 实现计划 (`plans/`) — 5 个
 
 只保留尚未完成的工作，或仍作为现行产品规格和后续迭代依据的完整计划。
 
 | 计划 | 内容 |
 |------|------|
+| [`plans/2026-08-12-yearly-review-v2-rebuild-plan.md`](plans/2026-08-12-yearly-review-v2-rebuild-plan.md) | 年度总结 V2 完整重构：数据审计、统一契约、内容编排、桌面体验、验证与回滚计划 |
 | [`plans/2026-08-06-appification-pwa-capacitor-plan.md`](plans/2026-08-06-appification-pwa-capacitor-plan.md) | App 化现行路线：PWA 基线、安全部署、真机验收与 Capacitor 决策门 |
 | [`plans/2026-08-05-mobile-web-design-and-implementation-plan.md`](plans/2026-08-05-mobile-web-design-and-implementation-plan.md) | 移动端网页现行产品规格、M0–M7 完成记录、长期架构契约与验收门禁 |
 | [`plans/2026-06-23-playback-records-plan.md`](plans/2026-06-23-playback-records-plan.md) | 播放记录的模块地图、统计定义与现行实现口径 |
 | [`plans/2026-06-29-ai-agent-harness-quality-roadmap.md`](plans/2026-06-29-ai-agent-harness-quality-roadmap.md) | AI Agent Harness 质量路线图（持续指引，非单次任务） |
 
-### 设计规格 (`designs/`) — 3 个
+### 设计规格 (`designs/`) — 4 个
 
 只保留仍在活跃迭代的系统的设计。已稳定系统的设计归档到对应开发阶段。
 
 | 设计 | 内容 |
 |------|------|
+| [`designs/2026-08-12-yearly-review-v2-content-data-contract.md`](designs/2026-08-12-yearly-review-v2-content-data-contract.md) | 年度总结 V2 内容与数据契约：个人音乐年鉴定位、章节职责、证据/覆盖规则与 Desktop/Phone 边界 |
 | [`designs/2026-08-05-mobile-web-m0-design-freeze.md`](designs/2026-08-05-mobile-web-m0-design-freeze.md) | 移动端 M0 冻结规格：真实基线、路由状态矩阵、Shell 决策、组件状态、六屏交互原型与 M1/M2 原子任务 |
 | [`designs/2026-07-04-ai-yearly-report-editorial-agent-pipeline-design.md`](designs/2026-07-04-ai-yearly-report-editorial-agent-pipeline-design.md) | 现行 Editorial Agent Pipeline 设计 |
 | [`designs/2026-07-04-genre-review-settings-design.md`](designs/2026-07-04-genre-review-settings-design.md) | Genre Review Settings 设计 |
 
-### 报告 (`reports/`) — 11 个
+### 报告 (`reports/`) — 12 个
 
 一次性验证/交付/审计报告。
 
 | 报告 | 内容 |
 |------|------|
+| [`reports/2026-08-12-yearly-review-v2-delivery.md`](reports/2026-08-12-yearly-review-v2-delivery.md) | 年度总结 V2 完整交付：M0–M6 审计、契约、适配、编排、API/缓存、桌面体验、四年真实性能与三浏览器最终验收 |
 | [`reports/2026-08-06-mobile-web-and-pwa-delivery.md`](reports/2026-08-06-mobile-web-and-pwa-delivery.md) | 移动端 M0–M7、PWA Phase A 与验收后修复综合交付：阶段范围、架构契约、全栈门禁、专项复验和未完成边界 |
 | [`reports/2026-07-28-billboard-v3-sensitivity-analysis.md`](reports/2026-07-28-billboard-v3-sensitivity-analysis.md) | Billboard V3 年榜积分敏感性分析：竞争强度、个体统治力与纯排名反事实对照 |
 | [`reports/2026-07-16-genre-source-quality-audit.md`](reports/2026-07-16-genre-source-quality-audit.md) | Genre 来源可信度审核：高影响无链接 LLM 来源标签的证据与处置结果 |

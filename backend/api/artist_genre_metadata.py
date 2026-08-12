@@ -192,12 +192,16 @@ def approve_artist_genre_review(
     conn: Connection = Depends(get_write_conn),
 ):
     try:
-        return review_suggestion(
+        result = review_suggestion(
             conn,
             review_id=review_id,
             decision="approve",
             resolution_note=request.resolution_note,
         )
+        from backend.core.cache_manager import invalidate
+
+        invalidate("yearly_review")
+        return result
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
