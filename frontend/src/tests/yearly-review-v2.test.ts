@@ -52,13 +52,17 @@ describe('Yearly Review V2 desktop contract', () => {
     })
   })
 
-  it('mounts V2 only outside phone while keeping official Wrapped isolated', () => {
+  it('shares V2 data across separate phone and desktop presentations while isolating official Wrapped', () => {
     expect(pageSource).toContain("isPhone && activeTab === 'custom'")
     expect(pageSource).toContain("!isPhone && activeTab === 'custom'")
+    expect(pageSource).toContain('<YearlyReviewPhoneExperience')
     expect(pageSource).toContain('<YearlyReviewDesktopExperience')
     expect(pageSource).toContain('<OfficialWrapped />')
-    expect(pageSource).toContain('<CustomSummary data={data} />')
+    expect(pageSource).not.toContain('<CustomSummary')
+    expect(pageSource).not.toContain('useYearlyReview(')
+    expect(pageSource).not.toContain("'/wrapped/available-years'")
     expect(pageSource).toContain("activeTab === 'custom'")
+    expect(pageSource).toContain("useYearlyReviewV2AvailableYears(activeTab === 'custom')")
     expect(pageSource).toContain('useYearlyReviewGenerationStatus(v2Years, filters, generationEnabled)')
     expect(pageSource).toContain('foreground_year: currentYear')
     expect(pageSource).toContain("currentGenerationTask?.state === 'queued'")
@@ -113,7 +117,7 @@ describe('Yearly Review V2 desktop contract', () => {
     expect(appendixChapterSource).not.toContain("'method'")
   })
 
-  it('defaults desktop V2 to the latest complete year and labels the current year', () => {
+  it('defaults custom V2 on every viewport to the latest complete year and labels the current year', () => {
     expect(pageSource).toContain("latestYear === new Date().getFullYear()")
     expect(pageSource).toContain('`${y} · 进行中`')
     expect(pageSource).toContain('sort((left, right) => left - right)')

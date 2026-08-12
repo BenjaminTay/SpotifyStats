@@ -25,7 +25,7 @@
 - “月度脉搏”和“月度回顾”合并为唯一年度赛季时间线。
 - 从播放记录和 Billboard records 中做年度精选，不把全部纪录直接堆进正文。
 - 曲风与语言从静态占比改为有覆盖边界的品味迁移。
-- 当前阶段只重建桌面内容与信息架构；Phone presentation 暂时保留 V1。
+- M0–M6 首次交付只重建桌面内容与信息架构；后续 Phone 迁移阶段复用同一 V2 数据契约，并以独立移动 presentation 落地。
 - “官方 Wrapped”Tab、`/wrapped-hub`、官方导入表和官方数据语义完全不改。
 
 ## 2. 调研与当前基线
@@ -632,8 +632,8 @@ frontend/src/features/yearly-review/
 要求：
 
 - `YearlyReviewPage` 继续负责年份、Tab 和 route container。
-- Desktop/Compact 的自定义总结使用 V2 experience。
-- Phone 暂时继续使用 V1 `CustomSummary`，不进行视觉或交互改造。
+- Desktop/Compact 的自定义总结使用 V2 desktop experience。
+- Phone 自定义总结使用同一 V2 数据、筛选与生成状态，但由独立 `YearlyReviewPhoneExperience` 组织移动 UI，不挂载桌面章节 DOM。
 - `OfficialWrapped` 的懒加载和数据请求保持不变。
 - 新 TanStack Query key 使用完整过滤指纹。
 - 新章节必须使用现有实体详情路由，不建立第二套详情页。
@@ -666,8 +666,8 @@ frontend/src/features/yearly-review/
 ## 13. 兼容与迁移
 
 - 保留 `GET /api/wrapped/{year}/full` 和 `WrappedFullResponse`。
-- 保留现有 V1 组件，供 Phone presentation 和迁移期间回退。
-- 新 Desktop V2 通过独立 hook 和类型接入。
+- 保留现有 V1 组件作为历史兼容代码，不再由自定义年度总结的 Phone/Desktop 路由挂载。
+- Desktop 与 Phone V2 通过同一 hook 和类型接入，presentation 互斥挂载。
 - V2 验收完成后，桌面不再挂载旧人格、TopCharts、TimeStory、DiscoveryReturns、ListeningDepth、SpecialMoments、MonthlyDrilldown 和 YearComparison 组合。
 - 不删除历史文档，旧年度总结设计继续保留在 `docs/archive/`。
 
@@ -700,7 +700,7 @@ frontend/src/features/yearly-review/
 ### 范围验收
 
 - 官方 Wrapped Tab 和 `/wrapped-hub` 无行为变化。
-- Phone presentation 无本轮 UI 改造。
+- Phone 与 Desktop/Compact 共享年度事实；Phone 必须通过独立 presentation 完成移动适配。
 - 核心年度总结不需要 LLM 配置。
 - 未修改个人 Billboard Power Score 公式。
 
@@ -710,7 +710,7 @@ frontend/src/features/yearly-review/
 - route container 保持轻量，章节组件 feature-first 拆分。
 - 纪录与完整榜单不产生超过 500 行的无分页 DOM。
 - 桌面 `/yearly-review` route smoke、control inventory 和 production build 通过。
-- 现有 Phone、Official Wrapped 和 V1 contract 测试不回归。
+- Phone V2、Desktop V2、Official Wrapped 和 V1 contract 测试不回归。
 
 ## 15. 完成定义
 
@@ -719,4 +719,17 @@ frontend/src/features/yearly-review/
 1. V2 骨架：报告护照、双榜荣誉、唯一时间线、纪录精选、完整榜单。
 2. 深度内容：关系故事、收听生活、品味迁移、同比与个人历史参照。
 
-AI 编辑、分享导出、播放列表和 Phone V2 属于后续阶段，不阻塞内容重构完成。
+AI 编辑、分享导出和播放列表属于后续阶段，不阻塞内容重构完成。
+
+## 16. Phone V2 迁移补充（2026-08-12）
+
+Phone 迁移不改变本文件定义的年度事实、章节顺序、过滤指纹、缓存 key 或内容版本。移动端只新增独立 presentation，并遵守以下契约：
+
+- 自定义总结在 Phone、Compact、Desktop 默认选择最近完整年度，显式 URL 年份继续优先。
+- Phone 进入页面时也提交全部可用年份的后台预生成；计时继续锚定服务端 `requested_at`。
+- 封面使用 2×3 KPI；完整年度隐藏状态，进行中显示截止日期。
+- 八章保持同一内容所有权，但时间线改为纵向、月份一次展开一个、关系与结语改为单列。
+- 年度纪录完整展示精选集合；完整榜单正文只预览 Top 5，全屏列表每页 10 条，不使用横向表格。
+- 章节目录使用 Bottom Sheet；全屏榜单必须支持背景滚动锁定、Escape/关闭和焦点恢复。
+- Phone 与 Desktop/Compact DOM 互斥挂载，主要触控目标至少 44×44px，360/390/430px 不得出现横向溢出。
+- 官方 Wrapped 的数据、路由和展示不变。

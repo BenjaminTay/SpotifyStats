@@ -50,15 +50,18 @@ export function EntityLink({
     </>
   )
   return entity.deep_link ? (
-    <Link className={className} to={entity.deep_link}>{body}</Link>
+    <Link className={className} data-entity-type={entity.entity_type} to={entity.deep_link}>{body}</Link>
   ) : (
-    <div className={className}>{body}</div>
+    <div className={className} data-entity-type={entity.entity_type}>{body}</div>
   )
 }
 
 export function EntityCover({ entity, size = 'medium' }: { entity: YearlyEntityRef; size?: 'small' | 'medium' }) {
   return (
-    <div className={cn('yearly-v2-entity-cover', size === 'small' && 'is-small')}>
+    <div
+      className={cn('yearly-v2-entity-cover', size === 'small' && 'is-small')}
+      data-entity-type={entity.entity_type}
+    >
       <span aria-hidden="true">{entity.name.slice(0, 1).toUpperCase()}</span>
       {entity.cover_url && (
         <img

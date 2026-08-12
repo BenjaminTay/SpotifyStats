@@ -478,6 +478,7 @@ def page_state(page):
                 hasDesktopMasthead: Boolean(document.querySelector('nav[aria-label="主导航"]')),
                 hasYearlyV2: Boolean(document.querySelector('.yearly-v2-experience')),
                 hasYearlyV2Loading: Boolean(document.querySelector('.yearly-v2-loading')),
+                hasPhoneYearlyV2: Boolean(document.querySelector('[data-yearly-presentation="phone-v2"]')),
                 hasLegacyYearly: Boolean(document.querySelector('.mobile-yearly-story')),
             };
         }"""
@@ -515,10 +516,12 @@ def assert_page_health(page, console_messages, page_errors, viewport_name=None, 
         if state["hasMobileBottomNav"] != expected_bottom_nav:
             raise SmokeFailure(f"Mobile bottom nav state {state['hasMobileBottomNav']} != expected {expected_bottom_nav}")
         if urlparse(route_path or state["path"]).path == "/yearly-review":
-            if state["hasYearlyV2"] or state["hasYearlyV2Loading"]:
-                raise SmokeFailure("Yearly Review V2 mounted in phone presentation")
-            if not state["hasLegacyYearly"]:
-                raise SmokeFailure("Legacy yearly summary missing in phone presentation")
+            if state["hasYearlyV2"]:
+                raise SmokeFailure("Desktop Yearly Review V2 mounted in phone presentation")
+            if not (state["hasPhoneYearlyV2"] or state["hasYearlyV2Loading"]):
+                raise SmokeFailure("Phone Yearly Review V2 experience/loading missing")
+            if state["hasLegacyYearly"]:
+                raise SmokeFailure("Legacy yearly summary mounted in phone presentation")
     elif viewport_name == "desktop":
         if not state["hasDesktopMasthead"]:
             raise SmokeFailure("Desktop masthead missing")
@@ -529,6 +532,8 @@ def assert_page_health(page, console_messages, page_errors, viewport_name=None, 
         if urlparse(route_path or state["path"]).path == "/yearly-review":
             if not (state["hasYearlyV2"] or state["hasYearlyV2Loading"]):
                 raise SmokeFailure("Yearly Review V2 experience/loading missing in desktop presentation")
+            if state["hasPhoneYearlyV2"]:
+                raise SmokeFailure("Phone Yearly Review V2 mounted in desktop presentation")
             if state["hasLegacyYearly"]:
                 raise SmokeFailure("Legacy yearly summary mounted in desktop presentation")
     return state
@@ -579,8 +584,8 @@ def run_route_markers(browser):
                 if urlparse(route["path"]).path == "/yearly-review":
                     if viewport_name == "mobile":
                         wait_for_condition(
-                            lambda: page_state(page) if page_state(page)["hasLegacyYearly"] else None,
-                            "Phone legacy yearly summary did not become ready",
+                            lambda: page_state(page) if page_state(page)["hasPhoneYearlyV2"] else None,
+                            "Phone Yearly Review V2 did not become ready",
                         )
                     else:
                         deadline = time.monotonic() + YEARLY_REVIEW_WAIT_MS / 1000

@@ -20,7 +20,7 @@
 
 | 计划 | 内容 |
 |------|------|
-| [`plans/2026-08-12-yearly-review-v2-rebuild-plan.md`](plans/2026-08-12-yearly-review-v2-rebuild-plan.md) | 年度总结 V2 完整重构：数据审计、统一契约、内容编排、桌面体验、验证与回滚计划 |
+| [`plans/2026-08-12-yearly-review-v2-rebuild-plan.md`](plans/2026-08-12-yearly-review-v2-rebuild-plan.md) | 年度总结 V2 完整重构：数据审计、统一契约、内容编排、桌面体验、Phone 迁移、验证与回滚计划 |
 | [`plans/2026-08-06-appification-pwa-capacitor-plan.md`](plans/2026-08-06-appification-pwa-capacitor-plan.md) | App 化现行路线：PWA 基线、安全部署、真机验收与 Capacitor 决策门 |
 | [`plans/2026-08-05-mobile-web-design-and-implementation-plan.md`](plans/2026-08-05-mobile-web-design-and-implementation-plan.md) | 移动端网页现行产品规格、M0–M7 完成记录、长期架构契约与验收门禁 |
 | [`plans/2026-06-23-playback-records-plan.md`](plans/2026-06-23-playback-records-plan.md) | 播放记录的模块地图、统计定义与现行实现口径 |
@@ -43,7 +43,7 @@
 
 | 报告 | 内容 |
 |------|------|
-| [`reports/2026-08-12-yearly-review-v2-delivery.md`](reports/2026-08-12-yearly-review-v2-delivery.md) | 年度总结 V2 唯一完整交付报告：审计、契约、编排、API/缓存、后台预生成、桌面体验、验收问题修复、四年真实性能与三浏览器证据 |
+| [`reports/2026-08-12-yearly-review-v2-delivery.md`](reports/2026-08-12-yearly-review-v2-delivery.md) | 年度总结 V2 唯一完整交付报告：审计、契约、编排、API/缓存、后台预生成、Desktop/Phone 双 presentation、验收问题修复、四年真实性能与三浏览器证据 |
 | [`reports/2026-08-06-mobile-web-and-pwa-delivery.md`](reports/2026-08-06-mobile-web-and-pwa-delivery.md) | 移动端 M0–M7、PWA Phase A 与验收后修复综合交付：阶段范围、架构契约、全栈门禁、专项复验和未完成边界 |
 | [`reports/2026-07-28-billboard-v3-sensitivity-analysis.md`](reports/2026-07-28-billboard-v3-sensitivity-analysis.md) | Billboard V3 年榜积分敏感性分析：竞争强度、个体统治力与纯排名反事实对照 |
 | [`reports/2026-07-16-genre-source-quality-audit.md`](reports/2026-07-16-genre-source-quality-audit.md) | Genre 来源可信度审核：高影响无链接 LLM 来源标签的证据与处置结果 |

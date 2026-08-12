@@ -2,13 +2,13 @@
 
 日期：2026-08-12
 依据：[`../designs/2026-08-12-yearly-review-v2-content-data-contract.md`](../designs/2026-08-12-yearly-review-v2-content-data-contract.md)
-状态：完成（M0–M6 已于 2026-08-12 完成）
+状态：完成（M0–M6 内容重构与 M7 Phone V2 迁移均已于 2026-08-12 完成）
 
 ## 1. 目标
 
 把 `/yearly-review` 的自定义年度总结从旧模块平铺，重建为一份确定性、可追溯、可下钻的个人音乐年鉴。
 
-完成后，桌面年度总结必须同时包含：
+完成后，自定义年度总结必须在 Desktop/Compact 与 Phone 同时包含：
 
 - 报告护照与三条年度头条。
 - 播放排行与个人 Billboard 年榜的双视角荣誉。
@@ -19,25 +19,25 @@
 - 品味迁移。
 - 同比、个人历史参照和完整年度索引。
 
-官方 Wrapped、Phone presentation、Power Score 和 AI 年报不属于本次实现范围。
+官方 Wrapped、Power Score 和 AI 年报不属于本次实现范围。Phone presentation 不属于原 M0–M6，已由后续 M7 迁移补齐。
 
 ## 2. 交付边界
 
-### 本计划交付
+### 原 M0–M6 交付
 
 - `YearlyReviewV2` 后端契约和 domain。
 - `GET /api/yearly-review/{year}`。
 - 必要的 available-years 和分页 records endpoint。
 - 完整过滤指纹、coverage、缓存和 revision。
 - Desktop/Compact 年度总结 V2 experience。
-- 旧 V1 兼容与 Phone 保留。
+- 旧 V1 兼容与首次交付时的 Phone 保留。
 - 定向测试、contract、真实数据 probe、桌面 browser smoke。
 - 文档地图、规则和项目提示同步。
 
-### 本计划不交付
+### 原 M0–M6 不交付
 
 - Official Wrapped 改动。
-- Phone V2 设计或实现。
+- Phone V2 设计或实现（后由 M7 完成）。
 - 分享长图、PDF、社交比较或播放列表。
 - LLM 导语或年度长文。
 - 新的 Power Score 公式。
@@ -747,7 +747,7 @@ Desktop V2 验收后，桌面不再挂载：
 - 附录分页。
 - 所有图表和按钮的可访问名称。
 
-**执行结果（2026-08-12）：完成。** Desktop/Compact 已互斥挂载 V2，Phone 继续 V1，Official Wrapped 原样保留；八章年鉴、120 秒冷构建等待态、错误/空态和客户端附录分页均已落地。records 兼容接口最初提供服务端目录分页，v2.11 起只返回与正文一致的精选集合，完整播放纪录与 Billboard 纪录继续由原独立页面承载。真实浏览器在 Desktop/Tablet/Mobile 下均为 0 console error/warning、0px 横向溢出，control inventory 165 controls / 0 violation。完整交付与视觉验收见统一交付报告第 8 节。
+**执行结果（2026-08-12）：完成。** M5 首次交付时 Desktop/Compact 互斥挂载 V2、Phone 保留 V1、Official Wrapped 原样保留；八章年鉴、120 秒冷构建等待态、错误/空态和客户端附录分页均已落地。records 兼容接口最初提供服务端目录分页，v2.11 起只返回与正文一致的精选集合，完整播放纪录与 Billboard 纪录继续由原独立页面承载。Phone 后续迁移结果见 M7。完整交付与视觉验收见统一交付报告第 8–9 节。
 
 ## 10. M6：测试与验收
 
@@ -794,7 +794,7 @@ Desktop V2 验收后，桌面不再挂载：
 
 验证：
 
-- Desktop V2 / Phone V1 互斥挂载。
+- M6 首次验收锁定 Desktop V2 / Phone V1 互斥挂载；M7 另行锁定 Desktop V2 / Phone V2 互斥挂载。
 - Official Wrapped 不回归。
 - 双榜语义标签正确。
 - 月度只出现一套。
@@ -871,22 +871,47 @@ node scripts/frontend_control_inventory_smoke.mjs \
 - 冷态报告经关系历史聚合与 frame 复用优化后为 9.80–15.43 秒，热响应 5.04–21.65ms；新进程持久命中 9.75–19.71ms，均满足预算。
 - 最终验收修复已锁定 aligned 同期窗口、自然日日均、Passport 规范实体、YTD 完整季度、公开纪录白名单、可证阶段、结语去重、统一深链和自动方法限制；完整证据见统一交付报告 9.5。
 
-## 11. 发布与回滚
+## 11. M7：Phone V2 迁移
+
+### 目标
+
+- Phone 自定义总结改为消费同一 `YearlyReviewV2` report、available years、generation status 与 prewarm。
+- 不缩放或复用桌面章节 DOM，建立独立“口袋音乐年鉴”presentation。
+- 保持官方 Wrapped 独立，不改变年度统计、内容版本或后端缓存语义。
+
+### 实施
+
+- `YearlyReviewPage` 统一 Desktop/Compact/Phone 的 V2 年份、报告与生成调度，并按断点互斥挂载 Phone/Desktop experience。
+- Phone 封面采用 2×3 KPI；章节导航采用 sticky 进度 + Bottom Sheet。
+- 荣誉、时间线、关系、收听生活、纪录、品味迁移、结语和完整榜单分别实现移动布局。
+- 月份一次只展示一个月；完整榜单正文 Top 5、全屏每页 10 条，无横向 table，关闭后恢复焦点。
+- 更新 route marker 与跨浏览器脚本，禁止 Phone V2 与 desktop/legacy 年度 DOM 同时出现。
+
+### 验收
+
+- Phone 章节组件、装配、全屏榜单和焦点恢复测试通过。
+- 360/390/430/768/1280 年度 route matrix 为 0 console error/warning、0px 横向溢出。
+- Chromium/Firefox/WebKit 的 Phone 年度 route marker 通过。
+- production build、全量前端测试、定向 ESLint 与 smoke 脚本单元测试通过。
+
+**执行结果（2026-08-12）：完成。** Phone 自定义总结已迁移到 V2，并保留独立移动信息架构；V1 组件不再由自定义年度路由挂载。人工验收进一步收口月份、关系、纪录、品味、结语与完整榜单的移动字体、间距和筛选层级；前端全量 66 files / 497 tests、production build、五视口 route matrix 与三浏览器 marker 通过。官方 Wrapped 未改。
+
+## 12. 发布与回滚
 
 ### 发布策略
 
-V2 默认只对 Desktop/Compact 生效。
+V2 对 Desktop/Compact 与 Phone 的自定义年度总结生效，两个 presentation 互斥挂载。
 
-M6 验收后不再引入短期 feature flag，避免稳定交付后继续维护两套桌面组合。V2 只在现有 Desktop/Compact presentation 分支挂载，Phone V1 与 Official Wrapped 仍是天然隔离边界。
+M7 验收后不再引入短期 feature flag。Desktop/Compact 与 Phone 使用同一 V2 数据层和不同 presentation，Official Wrapped 仍是天然隔离边界。
 
 ### 回滚边界
 
-- 如需回滚，只恢复 `YearlyReviewPage` 的桌面 V1 presentation 分支；不触碰 Phone V1 或 Official Wrapped。
+- 如需回滚 Phone 展示，只恢复 `YearlyReviewPage` 的 Phone presentation 分支；不要回退后端 V2 数据层，也不触碰 Official Wrapped。
 - V2 新 endpoint 和 domain 可保留，不影响旧 `/wrapped`。
 - 不做数据库 destructive migration。
 - 不重写原始 plays、tracks、track_artists 或 Billboard 聚合表。
 
-## 12. 完成门禁
+## 13. 完成门禁
 
 ### P0：新骨架完成
 
@@ -922,11 +947,11 @@ M6 验收后不再引入短期 feature flag，避免稳定交付后继续维护�
 - 完整报告长图和 PDF。
 - 年度播放列表。
 - 跨多年音乐生涯。
-- Phone V2 presentation。
+- 安全部署后的 Phone 真机与 PWA 安装验收。
 
 P2 不阻塞本次内容重构完成。
 
-## 13. Git 边界
+## 14. Git 边界
 
 - 每个阶段先核对 dirty worktree，保护用户已有修改。
 - 默认不自动提交；只有用户明确要求时才 commit。

@@ -665,7 +665,7 @@ Billboard Year-End 年榜不是单纯的年度播放量榜。它先使用当前 
 
 ### 年度总结 V2 消费契约
 
-Desktop/Compact `/yearly-review` 使用确定性 `YearlyReviewV2`，Phone presentation 继续使用旧 Wrapped full 契约；“官方 Wrapped”页签继续读取官方导入数据。三个 presentation 必须互斥挂载，不得用 V2 覆盖 Phone 或改写官方 Wrapped。
+Desktop/Compact 与 Phone 的 `/yearly-review` 自定义总结共用确定性 `YearlyReviewV2` 数据契约，但分别使用完整杂志年鉴与“口袋音乐年鉴”presentation；“官方 Wrapped”页签继续读取官方导入数据。Phone/Desktop 必须互斥挂载，自定义总结不得改写官方 Wrapped。
 
 V2 统一继承当前 `music_only`、连续播放合并、动态阈值、`merge_level`、精选集、三类 Billboard Top N 与周边界。前端主报告 query key、后端 cache key 和兼容 records 响应必须使用同一过滤指纹，并包含版本化内容策略、display taxonomy 与艺人元数据 revision。
 
@@ -692,7 +692,7 @@ V2 的 `schema_version` 与 `content_version` 分开治理：前者只描述对�
 - 新关系故事按实体类型分别使用“今年发现的新歌 / 今年新听的专辑 / 今年认识的新艺人”，不得用“新名字”指代歌曲或专辑。同一专辑或艺人多首进入个人榜单的纪录必须显示准确曲目数；分歧故事在宽屏使用两列，空间收窄时回到单列。
 - 所有正文章节统一使用紧凑纵向节奏；当前 Desktop/Compact section padding 为 `clamp(48px, 5.5vw, 80px)`，不得恢复为造成双倍大空白的超宽间距。
 
-当前缓存热响应预算为 250ms，未压缩主 JSON 预算为 512 KiB，真实重算预算为 30 秒。关系历史中的首次播放与回归前末次播放日期必须按实体类型一次性聚合，不得在逐实体循环中反复扫描和转换完整历史；年度播放纪录应复用编排层已经建立的年度事件与实体帧。最终 artifact 可以压缩持久化，但必须使用独立 sidecar SQLite，完整 cache key 继续包含稳定播放事实 revision、过滤指纹、content version、策略和元数据 revision；不得使用 SQLite main/WAL 物理 mtime 让无关写入造成缓存抖动，不得用旧 key 或近似 key 返回 stale 报告。持久缓存损坏时必须自动视为 miss 并重算。年度生成使用 `yearly_review_generation_v1`：相同精确 key 只允许一个任务，不同年份的缓存命中不得被冷构建阻塞；单工作线程优先生成当前年份，其余真实可用年份从近到远排队，revision 漂移时不得写入旧 key，失败只公开稳定错误码且可重试，终态任务表必须有界。设置变更、流式导入与应用启动继续预建最新默认年份；Desktop/Compact 进入年度总结后按当前完整筛选上下文批量预建全部可用年份，Phone V1 和 Official Wrapped 不触发。性能优化不得改变统计口径或让浏览器静默吞掉本地 API 超时。content v2.8 的 2023–2026 同进程真实重算为 10.65–16.54 秒、热响应为 26.56–29.85ms，跨进程持久命中为 10.20–21.07ms；probe v5 同时验证公开文案、封面/深链、YTD 措辞、精选证据、结语去重和阶段状态。
+当前缓存热响应预算为 250ms，未压缩主 JSON 预算为 512 KiB，真实重算预算为 30 秒。关系历史中的首次播放与回归前末次播放日期必须按实体类型一次性聚合，不得在逐实体循环中反复扫描和转换完整历史；年度播放纪录应复用编排层已经建立的年度事件与实体帧。最终 artifact 可以压缩持久化，但必须使用独立 sidecar SQLite，完整 cache key 继续包含稳定播放事实 revision、过滤指纹、content version、策略和元数据 revision；不得使用 SQLite main/WAL 物理 mtime 让无关写入造成缓存抖动，不得用旧 key 或近似 key 返回 stale 报告。持久缓存损坏时必须自动视为 miss 并重算。年度生成使用 `yearly_review_generation_v1`：相同精确 key 只允许一个任务，不同年份的缓存命中不得被冷构建阻塞；单工作线程优先生成当前年份，其余真实可用年份从近到远排队，revision 漂移时不得写入旧 key，失败只公开稳定错误码且可重试，终态任务表必须有界。设置变更、流式导入与应用启动继续预建最新默认年份；Desktop/Compact/Phone 进入自定义年度总结后按当前完整筛选上下文批量预建全部可用年份，Official Wrapped 不触发。性能优化不得改变统计口径或让浏览器静默吞掉本地 API 超时。content v2.8 的 2023–2026 同进程真实重算为 10.65–16.54 秒、热响应为 26.56–29.85ms，跨进程持久命中为 10.20–21.07ms；probe v5 同时验证公开文案、封面/深链、YTD 措辞、精选证据、结语去重和阶段状态。
 
 ---
 

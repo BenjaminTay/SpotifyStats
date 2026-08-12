@@ -7,7 +7,7 @@
 
 ## 1. 最终结论
 
-`/yearly-review` 的 Desktop/Compact 自定义年度总结已由旧模块平铺重建为确定性的八章个人音乐年鉴。新报告包含：
+`/yearly-review` 的 Desktop/Compact 与 Phone 自定义年度总结已由旧模块平铺重建为确定性的八章个人音乐年鉴。三档视口共享年度事实与生成链路，Desktop/Compact 使用完整杂志年鉴，Phone 使用独立“口袋音乐年鉴”presentation。新报告包含：
 
 1. 报告护照与年度头条。
 2. 播放次数、播放时长与个人 Billboard 双视角荣誉。
@@ -18,7 +18,7 @@
 7. 主曲风、地区流行、语言和发行年代迁移。
 8. 同比、个人历史参照、年度结语与完整榜单。
 
-所有解释性内容都由结构化事实、coverage 与版本化策略生成，不调用 LLM。Phone presentation 继续使用 V1，官方 Wrapped 继续读取官方导入数据；两条保留链路均未被 V2 替换或改写。
+所有解释性内容都由结构化事实、coverage 与版本化策略生成，不调用 LLM。Phone 自定义总结已经迁移到 V2，但没有照搬桌面 DOM；官方 Wrapped 继续读取官方导入数据，未被替换或改写。
 
 最终验收分为统计语义与用户展示两层。统计层继续保证同比只使用真实对齐窗口、Passport 与榜单共享规范实体粒度、YTD 品味只比较完整季度，公开纪录、阶段和结语只使用可核验事实；展示层不再把这些内部防御机制写给普通用户，而是使用日常中文、六项直观同比、实体封面、可点击详情、固定章节导航和单一“完整榜单”入口讲述年度故事。内容版本独立于 schema 版本，统计、编排或公开展示语义变化都必须提升 `content_version`，以同时分流进程 LRU 与持久 sidecar。
 
@@ -30,13 +30,12 @@
 - 播放双榜、个人 Billboard、两类纪录、时间与品味适配器。
 - 八章确定性内容 builder 和共享 Orchestrator。
 - 修订感知缓存、三条只读 API 和精选纪录兼容响应。
-- Desktop/Compact 年鉴体验、长加载、错误/空态和附录下钻。
+- Desktop/Compact 完整年鉴体验，以及 Phone 独立口袋年鉴、长加载、错误/空态和附录下钻。
 - 面向用户的简洁文案、全章实体封面、六项同比与章节导航。
 - API/OpenAPI、真实数据、五档视口和 Chromium/Firefox/WebKit 门禁。
 
 ### 明确未改
 
-- Phone V1 年度总结。
 - 官方 Wrapped。
 - AI 年报与 Power Score。
 - 原始 `plays`、`tracks`、`track_artists` 或数据库 schema。
@@ -255,7 +254,7 @@ API smoke 已纳入 available-years、空年份主报告与分页 records；真�
 | 新进程持久命中 | 35.24ms | 一致 | 一致 |
 | 同进程后续热命中 | 4.98ms | 一致 | 一致 |
 
-启动 warmup 会在既有播放/Billboard 热路径之后预建最新默认年份；统计设置变更与流式导入完成后也会刷新该年份。Desktop/Compact 打开自定义年度总结后，前端通过 `POST /api/yearly-review/prewarm` 按当前完整筛选上下文一次提交全部可用年份，并通过 `GET /api/yearly-review/generation-status` 读取状态。单 worker 优先处理当前年份，其余年份从近到远排队；用户点击 queued 年份会提升优先级。相同 exact key 只生成一次，缓存命中不经过冷构建全局锁，后台生成旧年份时已缓存年份仍可立即返回。Phone V1 与 Official Wrapped 不进入该队列。probe 默认保持 `recompute` 模式，以免持久命中掩盖真实计算性能；`persistent` 模式专门验证重启后的用户等待时间。
+启动 warmup 会在既有播放/Billboard 热路径之后预建最新默认年份；统计设置变更与流式导入完成后也会刷新该年份。Desktop/Compact/Phone 打开自定义年度总结后，前端通过 `POST /api/yearly-review/prewarm` 按当前完整筛选上下文一次提交全部可用年份，并通过 `GET /api/yearly-review/generation-status` 读取状态。单 worker 优先处理当前年份，其余年份从近到远排队；用户点击 queued 年份会提升优先级。相同 exact key 只生成一次，缓存命中不经过冷构建全局锁，后台生成旧年份时已缓存年份仍可立即返回。Official Wrapped 不进入该队列。probe 默认保持 `recompute` 模式，以免持久命中掩盖真实计算性能；`persistent` 模式专门验证重启后的用户等待时间。
 
 ### 9.4 前端门禁
 
@@ -328,6 +327,23 @@ API smoke 已纳入 available-years、空年份主报告与分页 records；真�
 - 移除跨年份全局 singleflight。自动测试锁定：相同 exact key 只 build 一次、queued promotion、revision drift 不写旧 key、失败可重试、后台冷建不阻塞另一 ready 年份、终态 registry 最多 32 条、只能预热真实可用年份。
 - 验证：后端全量 1,596 项通过；年度专项 116 项通过；前端全量 484 项通过；API smoke 120/120；production build、Ruff、定向 ESLint、OpenAPI 187 operations / 85 parameter obligations 均为 0 unaccounted。
 
+### 9.10 Phone V2 迁移复验
+
+- Phone 自定义总结与 Desktop/Compact 共用 `YearlyReviewV2` available years、report、generation status、prewarm 和过滤指纹；显式 URL 年份优先，无 URL 时默认最近完整年度。
+- `YearlyReviewPhoneExperience` 独立组织八章内容，没有挂载或缩放桌面章节 DOM。封面为 2×3 KPI，章节入口为 sticky 进度 + Bottom Sheet，阶段为纵向时间线，月份一次只展开一个。
+- 荣誉、关系、收听生活、纪录、品味迁移与结语全部改为单列/触控友好的卡片；年度纪录展示完整精选集合。完整榜单正文 Top 5，全屏每页 10 条且不使用 table，关闭后恢复焦点和原滚动位置。
+- route marker 明确禁止 Phone V2、Desktop V2 与 legacy `CustomSummary` 同时挂载；官方 Wrapped 继续走原独立组件和数据源。
+- 验证：前端全量 66 files / 497 tests、production build 与变更文件 ESLint 通过；年度 route matrix 在 360/390/430/768/1280 五档均为 0 console error/warning、0px 横向溢出；Chromium/Firefox/WebKit Phone route marker 全部通过；smoke 脚本单元测试 6 项通过。
+
+### 9.11 Phone 人工验收修复
+
+- 年度荣誉的多个称号由长句改为可换行标签；所有艺人实体使用圆形头像，歌曲与专辑封面保持方形。
+- 时间线只保留左侧红色月份，删除事件内部重复序号；实体行增加独立间距。月份账本改为横向月份胶囊、三列月度摘要和有留白的主角列表。
+- 收听生活和结语会检测正文是否已经写出主指标，避免同一数字紧接着再次出现。
+- 修复普通纪录实体链接误套黑色背景的问题，并为关系标题、纪录 kicker、品味标签和结语建立明确的移动字体层级。
+- 品味迁移改为一行四维切换、分布白卡和变化黑卡；完整榜单的播放榜/个人 Billboard 切换改为等宽双列。
+- 月卡用 JAN–DEC 替代重复月份标题；结语延续实体改为双列封面货架。完整榜单正文筛选移除深色外框，排名值改用年鉴衬线数字并缩小单位，全屏筛选继续保持清晰的紧凑选中态。
+
 ## 10. 交付文件地图
 
 核心后端：
@@ -343,6 +359,7 @@ API smoke 已纳入 available-years、空年份主报告与分页 records；真�
 - `frontend/src/types/yearly-review-v2.ts`
 - `frontend/src/hooks/useYearlyReviewV2.ts`
 - `frontend/src/features/yearly-review/`
+- `frontend/src/features/mobile/yearly-v2/`
 - `frontend/src/pages/YearlyReviewPage.tsx`
 
 审计与验证：
@@ -355,12 +372,12 @@ API smoke 已纳入 available-years、空年份主报告与分页 records；真�
 
 ## 11. 发布、回滚与后续
 
-M6 后不建立长期 feature flag 双轨。V2 只在 Desktop/Compact presentation 分支挂载；如需回滚，只恢复 `YearlyReviewPage` 的桌面 V1 分支，V2 只读 API/domain 可以保留，不触碰 Phone V1、Official Wrapped 或数据库。
+M7 后不建立长期 feature flag 双轨。V2 在 Desktop/Compact 与 Phone 自定义总结中共享数据层并互斥挂载独立 presentation；如需回滚 Phone 展示，只恢复 `YearlyReviewPage` 的 Phone presentation 分支，V2 只读 API/domain 可以保留，不触碰 Official Wrapped 或数据库。
 
 后续独立方向按优先级为：
 
-1. Phone V2 presentation。
-2. 分享/PDF、年度播放列表和 AI 编辑导语。
+1. 分享/PDF、年度播放列表和 AI 编辑导语。
+2. 安全部署后的 Phone 真机与 PWA 安装验收。
 3. 如真实数据规模继续增长，再评估 Billboard/播放纪录阶段缓存或后台预计算。
 
 冷态性能债已在不改变统计口径的前提下收口到 30 秒预算内；其余方向均不影响本次内容重构完成。

@@ -56,7 +56,10 @@ def test_frontend_cross_browser_smoke_script_covers_browser_families_and_flows()
     assert "path: '/yearly-review'" in source
     assert "run_yearly_review(browser)" in source
     assert "hasYearlyV2" in source
+    assert "hasPhoneYearlyV2" in source
     assert "hasLegacyYearly" in source
+    assert "Phone Yearly Review V2 did not become ready" in source
+    assert "Phone legacy yearly summary did not become ready" not in source
     assert "年度纪录分页" in source
     assert "年度附录分页" in source
     assert "expand_section_for_text" in source
