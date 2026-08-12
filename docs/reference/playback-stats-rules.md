@@ -111,6 +111,16 @@ logical_plays = full_plays + (1 if remainder >= effective_threshold else 0)
 - Billboard 周榜计算不跨 `billboard_week` 合并。
 - 普通周期统计可按自然日、统计 period 或显式 boundary 分组。
 
+### R4.1 逻辑播放事件身份
+
+连续播放合并和有效阈值过滤完成后，每一行最终逻辑播放事件必须获得一个稳定的、当前数据帧内唯一的 `_logical_event_id`，并在艺人署名扇出前生成。
+
+- 同一个逻辑事件展开到多个 credited artist 时，所有署名行共享同一个 `_logical_event_id`。
+- 一个原始 `play_id` 因连续播放合并而展开为多个逻辑事件时，这些事件必须拥有不同的 `_logical_event_id`，不能仅按 `play_id` 去重。
+- 艺人身份规范化时，优先按 `_logical_event_id + canonical artist_id` 去重；`_artist_event_id` 仅作为兼容旧消费者的别名。
+- 单曲、track-source 和专辑项目聚合均基于合并后的逻辑事件行；艺人预聚合必须与原始艺人路径保持相同的逻辑事件粒度。
+- 任何重建后的预聚合表都必须通过原始路径对账，至少覆盖艺人周榜的 `play_count` 与 `total_ms`。
+
 ### R5. 播放事件层不做版本合并
 
 无论 `merge_level` 是 L1、L2 还是 L3，播放事件层都不跨 `track_id` 合并。

@@ -15,6 +15,8 @@ data/account/
 data/spotify_stats.db
 data/spotify_stats.db-shm
 data/spotify_stats.db-wal
+# Timestamped local backups created before derived-data rebuilds
+data/*.db.pre-*
 data/yearly_review_cache.db*
 data/covers/
 

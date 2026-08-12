@@ -11,6 +11,7 @@ import os
 import shutil
 import tempfile
 
+import pandas as pd
 import pytest
 
 from backend.core.db import build_aggregations
@@ -152,6 +153,102 @@ class TestRawFallbackConsistency:
         shared = raw_artists[raw_artists["track_name"] == "Fixture Shared Credit"]
         # One play, two artists
         assert len(shared) == 2, f"Expected 2 artist rows, got {len(shared)}"
+
+    def test_preagg_and_raw_produce_same_artist_counts_for_expanded_events(self, isolated_seed_db):
+        """Artist pre-aggregation must retain multiple logical events from one play.
+
+        A long consecutive session can expand into multiple logical plays while
+        retaining the same source play_id.  The artist path must dedupe aliases
+        by logical event identity, not by source play_id.
+        """
+        from backend.core.db import get_db
+        from backend.domains.billboard.data_loader import (
+            _try_load_from_agg,
+            load_billboard_raw_for_artists,
+        )
+
+        conn = get_db(readonly=False)
+        try:
+            conn.executemany(
+                """INSERT INTO plays(
+                    ts, ts_year, ts_month, ts_week, ts_dow, ts_hour, ts_date,
+                    platform, ms_played, conn_country, track_id,
+                    reason_start, reason_end, shuffle, skipped, offline,
+                    incognito_mode, content_type, source_album_id
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                [
+                    (
+                        "2026-06-08T02:00:00Z",
+                        2026,
+                        6,
+                        24,
+                        0,
+                        10,
+                        "2026-06-08",
+                        "ios",
+                        600_000,
+                        "CN",
+                        902,
+                        "trackdone",
+                        "trackdone",
+                        0,
+                        0,
+                        0,
+                        0,
+                        "audio",
+                        None,
+                    ),
+                    (
+                        "2026-06-08T02:01:00Z",
+                        2026,
+                        6,
+                        24,
+                        0,
+                        10,
+                        "2026-06-08",
+                        "ios",
+                        600_000,
+                        "CN",
+                        902,
+                        "trackdone",
+                        "trackdone",
+                        0,
+                        0,
+                        0,
+                        0,
+                        "audio",
+                        None,
+                    ),
+                ],
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        build_aggregations(min_ms=30_000, music_only=True, week_start_dow=4, week_start_hour=0)
+        agg_tracks, _agg_albums, agg_artists = _try_load_from_agg(30_000, True, 4, 0)
+        raw_artists = load_billboard_raw_for_artists(30_000, True, 4, 0)
+
+        raw_long = raw_artists[raw_artists["track_name"] == "Fixture Long Track"]
+        agg_long = agg_tracks[agg_tracks["track_name"] == "Fixture Long Track"]
+        assert int(raw_long.groupby("billboard_week").size().sum()) == 3
+        assert int(agg_long["play_count"].sum()) == 3
+        assert int((raw_long["billboard_week"].astype(str) == "2026-06-05").sum()) == 2
+
+        raw_artist_counts = (
+            raw_artists.groupby(["billboard_week", "artist_id"], as_index=False)
+            .agg(play_count=("ms_played", "count"), total_ms=("ms_played", "sum"))
+            .assign(billboard_week=lambda frame: frame["billboard_week"].astype(str))
+            .sort_values(["billboard_week", "artist_id"])
+            .reset_index(drop=True)
+        )
+        agg_artist_counts = (
+            agg_artists[["billboard_week", "artist_id", "play_count", "total_ms"]]
+            .assign(billboard_week=lambda frame: frame["billboard_week"].astype(str))
+            .sort_values(["billboard_week", "artist_id"])
+            .reset_index(drop=True)
+        )
+        pd.testing.assert_frame_equal(raw_artist_counts, agg_artist_counts, check_dtype=False)
 
     def test_album_project_raw_and_track_source_preagg_match(self, isolated_seed_db):
         """Album project rankings must be identical from raw and track-source pre-agg.

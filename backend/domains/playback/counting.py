@@ -15,6 +15,29 @@ from __future__ import annotations
 import pandas as pd
 
 
+def assign_logical_event_id(
+    df: pd.DataFrame,
+    *,
+    preserve_legacy_artist_event_id: bool = False,
+) -> pd.DataFrame:
+    """Attach one stable ID to each post-merge logical play event.
+
+    The ID is assigned only after merge/filter has produced the final logical
+    event rows and before artist fan-out.  It is therefore intentionally a
+    frame-local ordinal: the same event keeps its ID across every credited
+    artist row, while two expanded events originating from one source play do
+    not collapse into one event during artist identity canonicalization.
+
+    ``_artist_event_id`` is retained as a compatibility alias for analysis
+    consumers that use it to reason about event continuity.
+    """
+    result = df.copy()
+    result["_logical_event_id"] = range(len(result))
+    if preserve_legacy_artist_event_id:
+        result["_artist_event_id"] = result["_logical_event_id"]
+    return result
+
+
 def effective_threshold(
     duration_ms: int | float | None,
     min_ms: int = 30_000,

@@ -1243,9 +1243,12 @@ def _load_plays_for_artists_cached(
                 df = filter_effective_plays(df, min_ms=min_ms, dynamic_threshold=dynamic_threshold)
 
         # Step 2: Fan out through the raw + manual effective credit resolver.
-        # Preserve effective-event identity across the many-to-many merge: a
-        # merged logical play can share its source play_id with another output.
-        df["_artist_event_id"] = range(len(df))
+        # Assign the event identity before the many-to-many merge.  A merged
+        # logical play can share its source play_id with another output, so
+        # play_id alone is not a valid artist dedupe key.
+        from backend.domains.playback.counting import assign_logical_event_id
+
+        df = assign_logical_event_id(df, preserve_legacy_artist_event_id=True)
         from backend.domains.metadata.track_credits import get_effective_track_credit_frame
 
         track_artists_df = get_effective_track_credit_frame(conn)
@@ -1542,6 +1545,9 @@ def build_aggregations(
             )
         conn.commit()
         conn.close()
+        from backend.core.cache_manager import invalidate_all
+
+        invalidate_all()
         return {"tracks": 0, "albums": 0, "track_sources": 0, "artists": 0}
 
     if progress_callback:
@@ -1577,6 +1583,9 @@ def build_aggregations(
         conn.execute("DELETE FROM agg_config")
         conn.commit()
         conn.close()
+        from backend.core.cache_manager import invalidate_all
+
+        invalidate_all()
         return {"tracks": 0, "albums": 0, "track_sources": 0, "artists": 0}
 
     # Clear old aggregations
@@ -1675,7 +1684,12 @@ def build_aggregations(
         get_effective_track_credit_frame,
         get_track_credit_revision,
     )
+    from backend.domains.playback.counting import assign_logical_event_id
 
+    # The track aggregation above operates on logical event rows.  Preserve
+    # that same grain through artist fan-out so canonicalization can collapse
+    # aliases without collapsing two expanded events from one source play.
+    df = assign_logical_event_id(df)
     track_artists_df = get_effective_track_credit_frame(conn)
     df_artists = df.merge(track_artists_df, on="track_id", how="inner", suffixes=("_primary", ""))
     df_artists["artist_id"] = df_artists["raw_artist_id"]
@@ -1731,6 +1745,13 @@ def build_aggregations(
         )
     conn.commit()
     conn.close()
+
+    # A rebuild changes the source of truth for every Billboard cache.  Clear
+    # registered runtime caches here so API-triggered rebuilds cannot continue
+    # serving the previous aggregate snapshot from the same process.
+    from backend.core.cache_manager import invalidate_all
+
+    invalidate_all()
 
     return results
 

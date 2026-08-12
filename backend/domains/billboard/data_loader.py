@@ -194,7 +194,9 @@ def load_billboard_raw_for_artists(
 
     # Step 2: Fan out through raw + manual effective credits. Keep each effective output row
     # distinct even when consecutive-play expansion reused a source play_id.
-    df["_artist_event_id"] = range(len(df))
+    from backend.domains.playback.counting import assign_logical_event_id
+
+    df = assign_logical_event_id(df)
     from backend.domains.metadata.track_credits import get_effective_track_credit_frame
 
     track_artists_df = get_effective_track_credit_frame(conn)
@@ -210,7 +212,7 @@ def load_billboard_raw_for_artists(
     from backend.domains.metadata.artist_identity import canonicalize_artist_frame
 
     df = canonicalize_artist_frame(df, conn)
-    df = df.drop(columns=["_artist_event_id"], errors="ignore")
+    df = df.drop(columns=["_logical_event_id"], errors="ignore")
     conn.close()
 
     return _downcast_ints(df)

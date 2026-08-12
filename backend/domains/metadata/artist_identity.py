@@ -169,14 +169,15 @@ def canonicalize_artist_frame(
             .fillna(result["artist_name"])
         )
     if dedupe:
-        if "_artist_event_id" in result.columns:
+        if "_logical_event_id" in result.columns:
+            event_columns = ["_logical_event_id"]
+        elif "_artist_event_id" in result.columns:
             event_columns = ["_artist_event_id"]
         elif "play_id" in result.columns:
             event_columns = ["play_id"]
             # A merged source event can expand back into multiple effective
-            # plays.  ``merge_consecutive_plays`` retains the original
-            # play_id and distinguishes those rows with _merge_seq, so keep
-            # that sequence in the stable event key when available.
+            # plays.  Keep the merge sequence in the fallback event key when
+            # a caller supplies it directly.
             if "_merge_seq" in result.columns:
                 event_columns.append("_merge_seq")
         else:
