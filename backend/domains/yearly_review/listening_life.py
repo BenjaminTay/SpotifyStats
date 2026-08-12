@@ -7,7 +7,9 @@ from typing import Any
 
 import pandas as pd
 
+from backend.domains.yearly_review.entity_links import entity_ref_from_row
 from backend.models.yearly_review import (
+    YearlyEntityRef,
     YearlyHeadline,
     YearlyHighlightCandidate,
     YearlyListeningLifeChapter,
@@ -26,6 +28,7 @@ def _headline(
     statement: str,
     metrics: Sequence[YearlyMetric],
     *source_refs: str,
+    entity_refs: Sequence[YearlyEntityRef] = (),
 ) -> YearlyHeadline:
     return YearlyHeadline(
         headline_id=headline_id,
@@ -33,6 +36,7 @@ def _headline(
         statement=statement,
         evidence_grade="B",
         primary_metric=metrics[0] if metrics else None,
+        entity_refs=list(entity_refs),
         source_refs=list(source_refs),
     )
 
@@ -90,6 +94,9 @@ def build_listening_life(
     if total_plays <= 0:
         return YearlyListeningLifeChapter()
 
+    complete = coverage.status == "complete"
+    period = "全年" if complete else "今年截至目前"
+    comparison_copy = "去年" if complete else "去年同期"
     metrics: list[YearlyMetric] = []
     observations: list[YearlyHeadline] = []
     hours = _hour_totals(stats)
@@ -105,7 +112,7 @@ def build_listening_life(
         _headline(
             "primary_listening_hour",
             "主要收听时段",
-            f"{peak_hour:02d}:00–{(peak_hour + 1) % 24:02d}:00 是播放最集中的一小时，共记录 {peak_plays:,} 次有效播放。",
+            f"{peak_hour:02d}–{(peak_hour + 1) % 24:02d} 点最常听歌，一共播放了 {peak_plays:,} 次。",
             peak_metrics,
             "stats.hourly_distribution",
         )
@@ -123,12 +130,12 @@ def build_listening_life(
             _metric("weekend_weekday_ratio", "周末/工作日", ratio, "倍"),
         ]
         metrics.extend(weekend_metrics)
-        comparison = "高于" if ratio > 1.05 else "低于" if ratio < 0.95 else "接近"
+        comparison = "更多" if ratio > 1.05 else "更少" if ratio < 0.95 else "差不多"
         observations.append(
             _headline(
                 "weekday_weekend_pattern",
                 "工作日与周末",
-                f"按每个自然日归一后，周末日均播放{comparison}工作日，比例为 {ratio:.2f} 倍。",
+                f"周末每天平均播放 {weekend_daily:.1f} 次，工作日为 {weekday_daily:.1f} 次，周末{comparison}。",
                 weekend_metrics,
                 "stats.weekday_distribution",
             )
@@ -152,14 +159,21 @@ def build_listening_life(
             value=late_night_pct,
             unit="%",
             comparison_value=baseline_late_pct,
-            comparison_label="可比基线" if baseline_late_pct is not None else None,
+            comparison_label=comparison_copy if baseline_late_pct is not None else None,
         ),
         _metric("late_night_plays", "深夜播放", late_night_plays, "次"),
     ]
     metrics.extend(late_metrics)
-    statement = f"00:00–06:00 共 {late_night_plays:,} 次有效播放，占全年 {late_night_pct:.1f}%。"
+    statement = f"凌晨 0–6 点一共播放 {late_night_plays:,} 次，占{period}的 {late_night_pct:.1f}%。"
     if baseline_late_pct is not None:
-        statement += f" 可比基线为 {baseline_late_pct:.1f}%。"
+        direction = (
+            "更多"
+            if late_night_pct > baseline_late_pct
+            else "更少"
+            if late_night_pct < baseline_late_pct
+            else "一样多"
+        )
+        statement += f" 比{comparison_copy}{direction}。"
     observations.append(
         _headline(
             "late_night_listening",
@@ -176,17 +190,18 @@ def build_listening_life(
         top = top_artist_rows[0]
         concentration = round(float(top.get("share_pct", 0)), 1)
         concentration_metrics = [
-            _metric("top_artist_share_pct", "头部艺人份额", concentration, "%"),
-            _metric("top_artist_plays", "头部艺人播放", int(top.get("plays", 0)), "次"),
+            _metric("top_artist_share_pct", "年度播放占比", concentration, "%"),
+            _metric("top_artist_plays", "播放次数", int(top.get("plays", 0)), "次"),
         ]
         metrics.extend(concentration_metrics)
         observations.append(
             _headline(
                 "artist_concentration",
-                "艺人集中度",
-                f"播放量最高艺人贡献全年 {concentration:.1f}% 的有效播放，共 {int(top.get('plays', 0)):,} 次。",
+                "最常听的艺人",
+                f"{top.get('artist_name')} 占{period}播放的 {concentration:.1f}%，一共听了 {int(top.get('plays', 0)):,} 次。",
                 concentration_metrics,
                 "play_rankings.artist.by_plays.0",
+                entity_refs=[ref] if (ref := entity_ref_from_row(top, "artist")) else [],
             )
         )
 
@@ -194,15 +209,15 @@ def build_listening_life(
         unique_tracks = int(event_frame["track_id"].nunique()) if "track_id" in event_frame else 0
         replay_rate = round(max(total_plays - unique_tracks, 0) / total_plays * 100, 1)
         replay_metrics = [
-            _metric("replay_rate_pct", "复听事件占比", replay_rate, "%"),
-            _metric("unique_tracks", "独立曲目", unique_tracks, "首"),
+            _metric("replay_rate_pct", "再次播放", replay_rate, "%"),
+            _metric("unique_tracks", "听过曲目", unique_tracks, "首"),
         ]
         metrics.extend(replay_metrics)
         observations.append(
             _headline(
                 "replay_pattern",
-                "复听与曲目宽度",
-                f"在 {total_plays:,} 次播放中覆盖 {unique_tracks:,} 首曲目，其余 {replay_rate:.1f}% 为同年内重复播放事件。",
+                "熟悉的歌，还是新鲜感",
+                f"{period}听过 {unique_tracks:,} 首歌，其中 {replay_rate:.1f}% 的播放是在重听今年已经听过的歌。",
                 replay_metrics,
                 "event_frame.track_id",
             )
@@ -218,15 +233,15 @@ def build_listening_life(
             discovered = len(annual_ids - prior_ids)
             discovery_rate = round(discovered / max(len(annual_ids), 1) * 100, 1)
             discovery_metrics = [
-                _metric("new_tracks", "首次发现曲目", discovered, "首"),
-                _metric("new_track_rate_pct", "新曲目占比", discovery_rate, "%"),
+                _metric("new_tracks", "第一次听到", discovered, "首"),
+                _metric("new_track_rate_pct", "新歌占比", discovery_rate, "%"),
             ]
             metrics.extend(discovery_metrics)
             observations.append(
                 _headline(
                     "discovery_pattern",
-                    "发现率",
-                    f"全年听到的不同曲目中，有 {discovered:,} 首此前从未出现在个人历史，占 {discovery_rate:.1f}%。",
+                    "今年认识的新歌",
+                    f"{period}第一次听到 {discovered:,} 首歌，占所有不同曲目的 {discovery_rate:.1f}%。",
                     discovery_metrics,
                     "event_frame.track_id",
                     "history_frame.track_id",
@@ -236,30 +251,44 @@ def build_listening_life(
     streak = _record_metric(record_candidates, "longevity.user_active_streak")
     if streak:
         candidate, streak_metric = streak
+        streak_value = float(streak_metric.value)
+        public_streak_metric = streak_metric.model_copy(
+            update={
+                "label": "最长连续活跃",
+                "value": int(streak_value) if streak_value.is_integer() else round(streak_value, 1),
+                "unit": "天",
+            }
+        )
         observations.append(
             _headline(
                 "active_listening_streak",
                 "活跃连续期",
-                f"年度播放记录中的最长活跃连续期为 {streak_metric.value}{streak_metric.unit or ''}。",
-                [streak_metric],
+                f"连续 {public_streak_metric.value} 天都有听歌记录，是{period}最长的一段。",
+                [public_streak_metric],
                 *candidate.source_refs,
             )
         )
-        metrics.append(streak_metric)
+        metrics.append(public_streak_metric)
 
     behavior = dict(stats.get("behavior_summary", {}))
     platform = str(behavior.get("primary_platform") or "")
+    platform_name = {
+        "ios": "iOS",
+        "android": "Android",
+        "desktop": "电脑",
+        "web_player": "网页播放器",
+    }.get(platform.casefold(), platform)
     platform_rate = float(behavior.get("primary_platform_rate", 0))
     if platform and platform != "unknown" and platform_rate >= 60:
         platform_metrics = [
             _metric("primary_platform_rate", "主要平台占比", round(platform_rate, 1), "%"),
-            _metric("total_plays", "有效播放", total_plays, "次"),
+            _metric("total_plays", "播放次数", total_plays, "次"),
         ]
         observations.append(
             _headline(
                 "primary_platform",
                 "主要播放平台",
-                f"{platform} 承载全年 {platform_rate:.1f}% 的有效播放。",
+                f"{period}有 {platform_rate:.1f}% 的音乐是在 {platform_name} 上播放的。",
                 platform_metrics,
                 "stats.behavior_summary",
             )

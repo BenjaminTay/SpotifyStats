@@ -9,12 +9,10 @@ export function SectionHeading({
   number,
   eyebrow,
   title,
-  description,
 }: {
   number: string
   eyebrow: string
   title: string
-  description: string
 }) {
   return (
     <header className="yearly-v2-section-heading">
@@ -22,7 +20,6 @@ export function SectionHeading({
       <div>
         <p>{eyebrow}</p>
         <h2>{title}</h2>
-        <span>{description}</span>
       </div>
     </header>
   )
@@ -72,6 +69,28 @@ export function EntityCover({ entity, size = 'medium' }: { entity: YearlyEntityR
         />
       )}
     </div>
+  )
+}
+
+export function EntityMediaLink({
+  entity,
+  size = 'small',
+  className,
+  meta,
+}: {
+  entity: YearlyEntityRef
+  size?: 'small' | 'medium'
+  className?: string
+  meta?: ReactNode
+}) {
+  return (
+    <EntityLink entity={entity} className={cn('yearly-v2-entity-media', className)}>
+      <EntityCover entity={entity} size={size} />
+      <span>
+        <strong>{entity.name}</strong>
+        {(meta || entitySubtitle(entity)) && <small>{meta || entitySubtitle(entity)}</small>}
+      </span>
+    </EntityLink>
   )
 }
 

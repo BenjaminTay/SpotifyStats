@@ -99,11 +99,11 @@ def test_passport_uses_canonical_ranking_counts_instead_of_raw_summary_counts() 
 
     metrics = {metric.key: metric for metric in passport.metrics}
     assert metrics["unique_tracks"].value == 2754
-    assert metrics["unique_tracks"].label == "规范曲目数"
+    assert metrics["unique_tracks"].label == "年度播放曲目"
     assert metrics["unique_albums"].value == 623
-    assert metrics["unique_albums"].label == "专辑项目数"
+    assert metrics["unique_albums"].label == "年度播放专辑"
     assert metrics["unique_artists"].value == 440
-    assert metrics["unique_artists"].label == "署名艺人数"
+    assert metrics["unique_artists"].label == "年度播放艺人"
 
 
 def test_no_baseline_never_invents_default_percentage() -> None:

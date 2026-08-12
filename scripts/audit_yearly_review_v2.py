@@ -42,8 +42,8 @@ from backend.services.wrapped_service import (  # noqa: E402
 )
 
 AUDIT_VERSION = "yearly_review_v2_audit_v1"
-RELATIONSHIP_POLICY_VERSION = "relationship_policy_v1"
-HIGHLIGHT_POLICY_VERSION = "highlight_policy_v1"
+RELATIONSHIP_POLICY_VERSION = "relationship_policy_v2"
+HIGHLIGHT_POLICY_VERSION = "highlight_policy_v2"
 SEASON_STAGE_POLICY_VERSION = "season_stage_v1"
 DEFAULT_TOP_SAMPLE = 12
 DEFAULT_MIN_SAMPLE_PLAYS = 10

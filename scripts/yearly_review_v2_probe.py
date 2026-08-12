@@ -31,7 +31,21 @@ from backend.services.yearly_review_service import (  # noqa: E402
     get_yearly_review_records,
 )
 
-PROBE_VERSION = "yearly_review_v2_probe_v4"
+PROBE_VERSION = "yearly_review_v2_probe_v5"
+
+CONSUMER_BANNED_COPY = (
+    "统计口径",
+    "可比基线",
+    "有效阈值",
+    "证据门槛",
+    "展示阈值",
+    "服务端分页",
+    "多实体结构性变化",
+    "事实差值",
+    "口径索引",
+    "有效播放",
+    "有效时长",
+)
 
 
 def _semantic_fingerprint(value: Any) -> str:
@@ -131,6 +145,84 @@ def _editorial_issues(payload: dict[str, Any]) -> list[str]:
         issues.append("stage_status_available_without_stages")
     if stage_status != "available" and stages:
         issues.append("stages_present_without_available_status")
+    timeline_statements = {item["statement"] for item in payload["season"]["turning_points"]}
+    record_statements = {item["statement"] for item in featured}
+    if timeline_statements & record_statements:
+        issues.append("records_duplicate_timeline")
+    return issues
+
+
+def _consumer_issues(payload: dict[str, Any]) -> list[str]:
+    issues: list[str] = []
+    strings: list[tuple[str, str]] = []
+
+    def add(path: str, value: Any) -> None:
+        if isinstance(value, str):
+            strings.append((path, value))
+
+    for metric in (payload.get("passport") or {}).get("metrics", []):
+        add(f"passport:{metric.get('key')}", metric.get("label"))
+    for section in ("headlines", "relationships"):
+        for index, item in enumerate(payload.get(section, [])):
+            add(f"{section}:{index}:title", item.get("title"))
+            add(f"{section}:{index}:statement", item.get("statement"))
+    for item in payload["honors"].get("annual_honors", []):
+        add(f"honors:{item.get('honor_id')}", item.get("title"))
+    for item in payload["season"].get("turning_points", []):
+        add(f"season:{item.get('point_id')}:title", item.get("title"))
+        add(f"season:{item.get('point_id')}:statement", item.get("statement"))
+    for item in payload["listening_life"].get("observations", []):
+        add(f"listening_life:{item.get('headline_id')}:title", item.get("title"))
+        add(f"listening_life:{item.get('headline_id')}:statement", item.get("statement"))
+    for item in payload["records"].get("featured", []):
+        add(f"records:{item.get('record_id')}:title", item.get("title"))
+        add(f"records:{item.get('record_id')}:statement", item.get("statement"))
+    for section in ("taste_migration", "epilogue"):
+        key = "observations" if section == "taste_migration" else "conclusions"
+        for index, item in enumerate(payload[section].get(key, [])):
+            add(f"{section}:{index}:title", item.get("title"))
+            add(f"{section}:{index}:statement", item.get("statement"))
+
+    for path, value in strings:
+        for token in CONSUMER_BANNED_COPY:
+            if token in value:
+                issues.append(f"consumer_copy:{path}:{token}")
+        if payload["status"] == "year_to_date" and "全年" in value:
+            issues.append(f"ytd_full_year_copy:{path}")
+        if re.search(r"\d+(?:\.\d+)?pp\b", value, re.IGNORECASE):
+            issues.append(f"consumer_pp_copy:{path}")
+
+    refs: list[dict[str, Any]] = []
+
+    def collect_refs(value: Any) -> None:
+        if isinstance(value, dict):
+            if value.get("entity_type") in {"track", "album", "artist"} and value.get("name"):
+                refs.append(value)
+            for child in value.values():
+                collect_refs(child)
+        elif isinstance(value, list):
+            for child in value:
+                collect_refs(child)
+
+    for key in (
+        "headlines",
+        "honors",
+        "season",
+        "relationships",
+        "listening_life",
+        "records",
+        "taste_migration",
+        "epilogue",
+    ):
+        collect_refs(payload[key])
+    if any(not ref.get("deep_link") for ref in refs):
+        issues.append("consumer_entity_link_missing")
+    if any(not ref.get("cover_url") for ref in refs):
+        issues.append("consumer_entity_cover_missing")
+    if len(payload["relationships"]) > 8:
+        issues.append(f"relationship_count:{len(payload['relationships'])}")
+    if payload["season"].get("stage_note"):
+        issues.append("consumer_stage_note_visible")
     return issues
 
 
@@ -166,7 +258,7 @@ def probe_year(
     if report.status != "empty" and not 6 <= len(report.season.turning_points) <= 10:
         issues.append(f"turning_point_count:{len(report.season.turning_points)}")
     featured = len(report.records.featured)
-    if records.total >= 8 and not 8 <= featured <= 12:
+    if records.total >= 6 and not 6 <= featured <= 8:
         issues.append(f"featured_record_count:{featured}")
     if len(encoded) > max_json_kib * 1024:
         issues.append(f"json_budget:{len(encoded)}")
@@ -177,6 +269,7 @@ def probe_year(
     issues.extend(_taste_issues(payload))
     issues.extend(_identity_issues(payload))
     issues.extend(_editorial_issues(payload))
+    issues.extend(_consumer_issues(payload))
     return {
         "year": year,
         "status": report.status,
@@ -213,9 +306,7 @@ def run_probe(
     missing = [year for year in years if year not in available.years]
     _build_cached_artifact.cache_clear()
     cache_scope = (
-        bypass_yearly_review_persistent_cache()
-        if cache_mode == "recompute"
-        else nullcontext()
+        bypass_yearly_review_persistent_cache() if cache_mode == "recompute" else nullcontext()
     )
     with cache_scope:
         results = [

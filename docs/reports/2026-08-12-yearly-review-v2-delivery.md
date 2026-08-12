@@ -1,7 +1,7 @@
 # 年度总结 V2 完整重构交付报告
 
 日期：2026-08-12
-状态：**PASS，内容重构、性能优化与验收问题修复全部完成（content `yearly_review_v2_6`）**
+状态：**PASS，内容重构、性能优化、统计验收与用户展示验收持续收口（content `yearly_review_v2_11`）**
 实施依据：[`../designs/2026-08-12-yearly-review-v2-content-data-contract.md`](../designs/2026-08-12-yearly-review-v2-content-data-contract.md)
 执行计划：[`../plans/2026-08-12-yearly-review-v2-rebuild-plan.md`](../plans/2026-08-12-yearly-review-v2-rebuild-plan.md)
 
@@ -10,17 +10,17 @@
 `/yearly-review` 的 Desktop/Compact 自定义年度总结已由旧模块平铺重建为确定性的八章个人音乐年鉴。新报告包含：
 
 1. 报告护照与年度头条。
-2. 播放次数、有效时长与个人 Billboard 双视角荣誉。
+2. 播放次数、播放时长与个人 Billboard 双视角荣誉。
 3. 唯一年度赛季时间线与可展开十二月事实账本。
 4. 陪伴、沉迷、深听、发现与回归关系。
 5. 收听生活与行为事实。
-6. 年度纪录精选与完整分页目录。
+6. 年度纪录精选；完整播放纪录与 Billboard 纪录留在原独立页面。
 7. 主曲风、地区流行、语言和发行年代迁移。
-8. 同比、个人历史参照、完整年度索引与方法说明。
+8. 同比、个人历史参照、年度结语与完整榜单。
 
 所有解释性内容都由结构化事实、coverage 与版本化策略生成，不调用 LLM。Phone presentation 继续使用 V1，官方 Wrapped 继续读取官方导入数据；两条保留链路均未被 V2 替换或改写。
 
-最终验收修复进一步收紧了四类边界：同比只使用真实对齐窗口；Passport 与榜单共享规范实体粒度；YTD 品味迁移只比较完整季度；公开纪录、阶段、结语与方法说明只呈现可核验且面向用户的事实。内容版本独立于 schema 版本，统计或编排语义变化必须提升 `content_version`，以同时分流进程 LRU 与持久 sidecar。
+最终验收分为统计语义与用户展示两层。统计层继续保证同比只使用真实对齐窗口、Passport 与榜单共享规范实体粒度、YTD 品味只比较完整季度，公开纪录、阶段和结语只使用可核验事实；展示层不再把这些内部防御机制写给普通用户，而是使用日常中文、六项直观同比、实体封面、可点击详情、固定章节导航和单一“完整榜单”入口讲述年度故事。内容版本独立于 schema 版本，统计、编排或公开展示语义变化都必须提升 `content_version`，以同时分流进程 LRU 与持久 sidecar。
 
 ## 2. 范围与不变量
 
@@ -29,8 +29,9 @@
 - `YearlyReviewV2` Pydantic 契约、统一过滤上下文与 Coverage Passport。
 - 播放双榜、个人 Billboard、两类纪录、时间与品味适配器。
 - 八章确定性内容 builder 和共享 Orchestrator。
-- 修订感知缓存、三条只读 API 和完整纪录服务端分页。
+- 修订感知缓存、三条只读 API 和精选纪录兼容响应。
 - Desktop/Compact 年鉴体验、长加载、错误/空态和附录下钻。
+- 面向用户的简洁文案、全章实体封面、六项同比与章节导航。
 - API/OpenAPI、真实数据、五档视口和 Chromium/Firefox/WebKit 门禁。
 
 ### 明确未改
@@ -39,7 +40,7 @@
 - 官方 Wrapped。
 - AI 年报与 Power Score。
 - 原始 `plays`、`tracks`、`track_artists` 或数据库 schema。
-- 分享长图/PDF、年度播放列表、全球 percentile 与跨用户比较。
+- 完整长图/PDF、年度播放列表、全球 percentile 与跨用户比较。
 
 ## 3. M0：真实数据审计与策略冻结
 
@@ -80,8 +81,8 @@
 
 coverage gate 冻结为：至少 70% 可生成核心结论，40%–69.99% 只能辅助观察，低于 40% 不生成迁移结论。版本化策略为：
 
-- `relationship_policy_v1`：关系资格、证据与角色配额。
-- `highlight_policy_v1`：纪录去重、评分与多样性。
+- `relationship_policy_v2`：关系资格、证据、角色配额与用户侧去重。
+- `highlight_policy_v2`：纪录白名单、去重、评分与 6–8 条多样性约束。
 - `season_stage_v1`：6–10 个转折节点、3–5 个可成立阶段及降级。
 
 ## 4. M1：契约、过滤上下文与 Coverage Passport
@@ -136,14 +137,14 @@ Year-End 不修改 Score 或 Power Score，原样保留 `semantics_version`、co
 内容 builder 将结构化事实编排为八章，且不重新计算另一套榜单、元数据或纪录：
 
 - 护照只陈述观察范围、状态与核心指标；头条最多三条并按主题去重。
-- 播放次数、有效时长和个人 Billboard 并列；不完整年榜只称“阶段领先”。
+- 播放次数、播放时长和个人 Billboard 并列；不完整年榜只称“阶段领先”。
 - 每个月在正文事实表中只出现一次；转折受月份唯一、事件配额和总量约束。
 - 每条解释性关系至少有两个指标，同一实体最多承担两个角色。
 - 收听生活使用归一化工作日/周末、时段、复听、探索、集中度和平台事实。
 - 纪录先资格过滤与语义去重，再按幅度、持续性、历史稀有度、比较、具体性和证据质量评分。
 - style、scene、language、release era 独立处理；unknown 进入分母，迁移需同时满足份额变化与具名驱动证据。
 
-真实 2025 报告生成 6 项护照指标、3 条头条、12 项 Year-End honors、6 条双榜分歧、12 个月事实、10 个转折节点、12 条关系、14 项生活指标和 12 条精选纪录。公开纪录使用显式 renderer 白名单；未知/internal key、blocked map、重复年榜首和缺少周期/数值证据的候选不会进入 UI。最终公开分页目录为 1,435 条，精选 12 条。
+真实 2025 报告生成 6 项护照指标、3 条头条、12 项 Year-End honors、6 条双榜分歧、12 个月事实、10 个转折节点、8 条关系、8 项生活观察和 7 条精选纪录。公开纪录使用显式 renderer 白名单；未知/internal key、blocked map、重复年榜首和缺少周期/数值证据的候选不会进入 UI。早期 v2.6 曾保留 1,435 条分页候选目录；v2.11 已删除该目录，只保留 7 条正文精选。
 
 时间线只接受具备单一日期或榜周锚点的事件，并使用事件优先级与族内归一化评分，原始大数值不能劫持排序；同月不同语义事件不会混并证据。阶段只在连续月份存在多数冠军时成立，无法证明时返回 `no_stable_phase` 和空 stages，不再等长强切月份。结语从全年节奏、陪伴主线、阶段/高峰与品味落点重新综合，不复制开篇 headline。
 
@@ -159,7 +160,7 @@ Year-End 不修改 Score 或 Power Score，原样保留 `semantics_version`、co
 
 ### 7.2 缓存与失效
 
-`yearly_review` 命名空间缓存内部 artifact，主报告和完整公开纪录目录共用。缓存键包含：年份、schema version、独立 `content_version`、filter fingerprint、三项策略版本、`year_end_v3`、display taxonomy、艺人/语言/身份/署名/track group/album project revisions 及稳定的播放事实 revision。
+`yearly_review` 命名空间缓存内部 artifact。v2.11 起 artifact 只保存主报告与同一组精选纪录，不再重复序列化上千条公开候选。缓存键包含：年份、schema version、独立 `content_version`、filter fingerprint、三项策略版本、`year_end_v3`、display taxonomy、艺人/语言/身份/署名/track group/album project revisions 及稳定的播放事实 revision。
 
 播放事实 revision 由 `plays` 的行数、最大 ID、最新时间与总时长，核心曲目/专辑/艺人表 cardinality 和 migration version 组成。它会因正常追加导入而变化，但不会因 AI task、job log 或 WAL checkpoint 等无关写入失效；治理元数据继续使用各自显式 revision。旧 artifact 因 content key 改变自然不可达，并由 sidecar 32 条上限逐步淘汰。
 
@@ -173,7 +174,7 @@ GET /api/yearly-review/{year}
 GET /api/yearly-review/{year}/records?page=1&page_size=50
 ```
 
-三条 endpoint 均有 Pydantic response model；年份 2000–2100，页大小 1–100。主响应只含精选纪录和目录计数，完整纪录由相同过滤指纹下的服务端分页接口提供。空年份返回合法 `empty` payload，`X-Request-ID` 继续由全局 middleware 处理。
+三条 endpoint 均有 Pydantic response model；年份 2000–2100，页大小 1–100。主响应只含精选纪录和候选计数；兼容 records endpoint 保留相同过滤指纹，但只返回与正文一致的精选集合。完整播放纪录和 Billboard 纪录由各自独立页面承载。空年份返回合法 `empty` payload，`X-Request-ID` 继续由全局 middleware 处理。
 
 ## 8. M5：Desktop/Compact 年鉴体验
 
@@ -181,11 +182,11 @@ GET /api/yearly-review/{year}/records?page=1&page_size=50
 
 前端新增 V2 类型、query hook、章节 feature 和编辑部年鉴样式。Query 参数完整继承分析设置，query key 使用稳定过滤上下文，后端 `filter_fingerprint` 作为报告身份与组件重置边界。
 
-主报告和完整纪录 timeout 为 120 秒；首次生成显示阶段性等待文案与已等待秒数，不伪造百分比。切换年份不会把上一年 placeholder 错显为当前年。
+主报告 timeout 为 120 秒；首次生成显示阶段性等待文案与已等待秒数，不伪造百分比。切换年份不会把上一年 placeholder 错显为当前年。
 
 ### 8.2 展示与边界
 
-Desktop/Compact 使用暖奶油纸张、深色唱片封面、期刊编号和不对称编辑排版。没有恢复旧“听歌人格”，完整附录每页 10 行，完整纪录每页 20 条。
+Desktop/Compact 使用暖奶油纸张、深色唱片封面、期刊编号和不对称编辑排版。没有恢复旧“听歌人格”，完整附录每页 10 行；年度纪录章只展示 6–8 条精选。
 
 `YearlyReviewPage` 互斥启用：
 
@@ -201,6 +202,15 @@ Desktop/Compact 使用暖奶油纸张、深色唱片封面、期刊编号和不�
 - 去除可点击纪录卡与实体深链的嵌套 `<a>`。
 - 纪录目录数量改用 `input_total`，不再把重叠 family counts 相加。
 - Spotify 封面失败时显示实体首字母占位。
+
+### 8.4 用户展示重构
+
+- 年报正文不显示统计口径、过滤指纹、策略版本、证据等级、coverage、limitations 或“可比基线”等审计术语；这些信息继续保留在后端契约、日志、测试和 probe 中。
+- 所有章标题只保留章节编号、栏目短名和主标题，不再附加解释性 subtitle；封面也移除说明段落。
+- 顶部六项指标改为“年度播放 / 年度时长 / 年度活跃天数 / 年度播放曲目 / 年度播放专辑 / 年度播放艺人”，同比只在数值右侧显示红/绿箭头和百分比。
+- 荣誉、时间线、关系、收听生活、纪录、品味变化、结语和完整榜单统一使用共享实体媒体组件；歌曲、专辑、艺人优先显示封面并链接既有详情页。
+- 附录只保留“播放榜 / 个人 Billboard”两个用户入口，标题统一为“完整榜单”；月份只在年度时间线的可展开明细出现，方法信息不进入消费界面。
+- 年份按钮由小到大排列，Desktop/Compact 默认打开最近一个完整年度；完整年度封面不重复显示状态和起止日期，当前年保留“进行中 · 截至日期”。封面三条头条和海报按钮均已移除。
 
 ## 9. M6：最终验证与性能
 
@@ -218,9 +228,9 @@ Desktop/Compact 使用暖奶油纸张、深色唱片封面、期刊编号和不�
 
 API smoke 已纳入 available-years、空年份主报告与分页 records；真实年份由专用 probe 负责，避免广域 smoke 重复触发高成本计算。
 
-### 9.2 四年真实数据、内容指纹与预算
+### 9.2 四年真实数据、内容指纹与预算（早期含完整目录基线）
 
-| 年份 | 状态 | 优化前冷响应 | 真实重算 | 跨进程持久命中 | 热响应 | JSON | 完整纪录目录 | 语义指纹前 12 位 |
+| 年份 | 状态 | 优化前冷响应 | 真实重算 | 跨进程持久命中 | 热响应 | JSON | 当时目录候选 | 语义指纹前 12 位 |
 | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
 | 2023 | complete | 79.62s | 15.94s | 12.29ms | 1.64ms | 236,380 B | 3,140 | `27be4fcebf59` |
 | 2024 | complete | 82.47s | 11.77s | 23.68ms | 1.87ms | 243,453 B | 3,246 | `9997dd971b0e` |
@@ -231,7 +241,7 @@ API smoke 已纳入 available-years、空年份主报告与分页 records；真�
 
 冷启动专项通过 `cProfile` 定位到关系历史计算：旧实现对每个年度实体重新扫描完整历史、重复执行 `astype(str)` 与 `to_datetime()`，2026 单章累计约 65.4 秒。现改为每种实体类型一次性聚合首次播放与报告年前末次播放日期，2026 单年独立冷启动从 88.74 秒降至 17.86 秒；最新四年同进程重算稳定在 9.95–15.94 秒，较原交付基线下降约 80%–87%。播放纪录同时复用编排层已有年度事件/实体帧，独立记录页仍保留原加载路径。
 
-`yearly_review_v2_probe_v4` 保留 coverage、身份去重、内容体积、30 秒真实重算预算以及主报告/完整纪录目录语义指纹，并新增 content version、公开文案、精选证据、结语去重和阶段状态不变量。`recompute` / `persistent` 双模式必须分别验证真实计算和新进程持久命中，后续同一数据 revision 下可直接用指纹识别内容漂移。
+`yearly_review_v2_probe_v4` 在当时保留 coverage、身份去重、内容体积、30 秒真实重算预算以及主报告/纪录目录语义指纹，并新增 content version、公开文案、精选证据、结语去重和阶段状态不变量。v2.11 删除完整目录后，records 指纹只代表与正文一致的精选集合。`recompute` / `persistent` 双模式仍分别验证真实计算和新进程持久命中，后续同一数据 revision 下可直接用指纹识别内容漂移。
 
 ### 9.3 跨进程持久缓存与后台预建
 
@@ -239,7 +249,7 @@ API smoke 已纳入 available-years、空年份主报告与分页 records；真�
 
 2026 先以 `--cache-mode recompute` 在独立进程强制重算并持久化，再启动第二个 Python 进程、清空内存 LRU，以 `--cache-mode persistent --max-cold-ms 1000` 验收：
 
-| 场景 | 响应 | 主报告指纹 | 完整纪录目录指纹 |
+| 场景 | 响应 | 主报告指纹 | 当时纪录目录指纹 |
 | --- | ---: | --- | --- |
 | 强制重算并写入 sidecar | 18.54s | `2067d274350c…` | 基线 |
 | 新进程持久命中 | 35.24ms | 一致 | 一致 |
@@ -258,9 +268,9 @@ API smoke 已纳入 available-years、空年份主报告与分页 records；真�
 | control inventory | 15 routes × desktop/mobile；1,533 controls；283 touch targets；0 violation |
 | Chromium / Firefox / WebKit | route markers + 七组 core interactions 全部 PASS |
 
-年度交互覆盖荣誉 Tab、十二月账本、品味轴切换、纪录/附录分页、Official Wrapped 隔离、实体详情深链与浏览器返回。全仓 `npm run lint` 仍有 181 个既有错误，主要位于旧 Billboard 类型、AI、Settings 与共享 UI；本次年度文件定向 ESLint 为 0 error。
+年度交互覆盖荣誉 Tab、十二月账本、品味轴切换、附录榜单分页、Official Wrapped 隔离、实体详情深链与浏览器返回。全仓 `npm run lint` 仍有 181 个既有错误，主要位于旧 Billboard 类型、AI、Settings 与共享 UI；本次年度文件定向 ESLint 为 0 error。
 
-### 9.5 验收问题修复复验（content v2.6）
+### 9.5 统计语义验收复验（content v2.6）
 
 | 门禁 | 结果 |
 | --- | --- |
@@ -276,6 +286,39 @@ API smoke 已纳入 available-years、空年份主报告与分页 records；真�
 | Chromium / Firefox / WebKit | route markers + 七组 core interactions 全部 PASS |
 
 真实 2025 的 Passport 为 2,754 首规范曲目、623 个专辑项目、440 位署名艺人；工作日/周末日均、同期比较、YTD 季度比较均由新增单元测试锁定。方法页只显示业务指标、周期、实体粒度与自动限制，不再暴露 schema/policy key、过滤指纹或 A/B/C 证据等级；实体深链由共享 builder 统一生成，fallback records 链接使用真实 `?family=` 参数。
+
+### 9.6 用户展示验收复验（content v2.8–v2.9）
+
+| 门禁 | 结果 |
+| --- | --- |
+| Yearly V2 unit + contract | 104 passed |
+| 前端 Yearly V2 Vitest | 9 passed |
+| Ruff + TypeScript + Vite build | PASS |
+| 2023–2026 真实重算 | 10.65–16.54s；热 26.56–29.85ms；全部 PASS |
+| 新进程持久命中 | 10.20–21.07ms；同进程热 4.83–5.85ms；全部 PASS |
+| 主 JSON | 224,135–239,178 B，低于 512 KiB 预算 |
+| `yearly_review_v2_probe_v5` | 用户文案、封面/深链、YTD 措辞、纪录重复、阶段状态全部 0 issue |
+| 1280 人工复验 | 年份升序、完整年度无状态/日期、YTD 截止日期保留、箭头颜色正确、0 横向溢出 |
+| 页面控制台 | 0 error / warning |
+
+真实 2025 首屏六项 KPI 显示红色向下/绿色向上箭头和百分比，不再显示“高/低”或绝对差值；完整年度状态和日期、三条头条与海报按钮均不出现。真实 2026 保留“进行中 · 截至 2026.07.24”。2025/2026 的 season、relationships、listening life、records、taste 和 epilogue 实体引用均已补齐封面与详情链接。内部 limitations 仍保留在 API artifact 中供诊断，但前端不渲染。
+
+### 9.7 人工验收细节复验（content v2.10）
+
+- KPI 可见文案只保留箭头与百分比，完整“比去年高/低”语义继续保留在 accessible label。
+- 荣誉分歧故事在 907px 实页为两列，在 800px 自动回到单列，两档均为 0 横向溢出。
+- 新关系标题按实体区分为“今年发现的新歌 / 今年新听的专辑 / 今年认识的新艺人”；真实 2025 两张专辑卡均显示“今年新听的专辑”，不再使用“新名字”。
+- 同专辑/艺人多首入榜的 renderer 强制要求 `track_count`。真实 2025 分别显示 The Life of a Showgirl 同周 12 首、Michael Wong 同周 17 首；缺少准确首数时该候选不公开。
+- 年度后端 106 项、前端全量 480 项（其中 Yearly V2 10 项）通过；真实 API 返回 `yearly_review_v2_10`，实页控制台 0 error/warning。
+
+### 9.8 年度纪录与章节节奏复验（content v2.11）
+
+- 删除年报中的“更多年度纪录”、展开状态、分页请求和相关样式；完整播放纪录与 Billboard 纪录继续由原有独立页面承载。
+- 后端仍从播放纪录与个人 Billboard 候选中确定性挑选精选，但 artifact 的 `record_catalog` 只保存最终精选，不再把上千条候选二次公开序列化。兼容 `/records` 返回与正文相同的集合。
+- 真实 2024 主报告为 7 条精选，兼容 records 响应同样为 7 条且 ID 完全一致。
+- 全部章节纵向 padding 最终从 `clamp(72px, 10vw, 138px)` 收紧为 `clamp(48px, 5.5vw, 80px)`；897px 下相邻内容到下一标题统一约 99px，较原约 179px 缩短约 45%。
+- 真实 897px 页面为 0 “更多年度纪录”控件、7 张精选卡、0 横向溢出、0 console error/warning。
+- 年度后端 106 项、前端全量 479 项与 production build 通过；2024 persistent probe v5 为 0 issue，v2.11 命中 81.20ms、同进程热响应 4.68ms。
 
 ## 10. 交付文件地图
 

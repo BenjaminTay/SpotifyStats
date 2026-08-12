@@ -341,9 +341,8 @@ describe('Phase 5 architecture guardrails', () => {
     )
     expect(yearlyReviewPageSource).toContain('AnalysisSubNav')
     expect(yearlyReviewPageSource.indexOf('<AnalysisSubNav')).toBeLessThan(
-      yearlyReviewPageSource.indexOf('Yearly Summary'),
+      yearlyReviewPageSource.indexOf('年份选择器 + Tab 导航'),
     )
-    expect(yearlyReviewPageSource).toContain('font-serif text-[34px] font-bold leading-tight')
     expect(accountCenterPageSource).toContain('AnalysisSubNav')
   })
 

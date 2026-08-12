@@ -111,8 +111,8 @@ M1–M5 不允许跨过 M0 的阈值审计直接写解释性故事。
 
 **执行结果（2026-08-12）：完成。** 已冻结：
 
-- `relationship_policy_v1`。
-- `highlight_policy_v1`。
+- `relationship_policy_v2`。
+- `highlight_policy_v2`。
 - `season_stage_v1`。
 - 品味覆盖门槛：≥70% 核心结论、40%–69.99% 次要观察、<40% 只提示覆盖不足。
 - 非完整年份和不足 90 天报告的关系/阶段降级规则。
@@ -439,7 +439,7 @@ cd frontend && npm run build
 - 类别无合格候选时返回空，不用低质量候选填满。
 - 专辑完成和完整回放使用可靠 album project track membership。
 
-**执行结果（2026-08-12）：完成。** 已实现九类关系候选及 `relationship_policy_v1`，每条入选故事至少有两个结构化指标，同一实体最多承担两个角色；真实 2025 数据生成 12 条合格关系故事。
+**执行结果（2026-08-12）：完成。** 已实现九类关系候选及 `relationship_policy_v2`，每条入选故事至少有两个结构化指标，同一实体最多承担两个角色；最终移除与荣誉重复的主线事实并限制为最多 8 条，真实 2025 输出 8 条关系故事。
 
 ### Task 3.5：收听生活
 
@@ -476,7 +476,7 @@ cd frontend && npm run build
 - semantic deduplication。
 - noteworthiness scoring。
 - category/entity diversity caps。
-- 8–12 条最终精选。
+- 6–8 条最终精选。
 
 测试 fixture 必须覆盖：
 
@@ -487,7 +487,7 @@ cd frontend && npm run build
 - 不完整年份无法生成特定纪录。
 - 无候选时保持空态。
 
-**执行结果（2026-08-12）：完成。** `highlight_policy_v1` 已实现资格过滤、语义去重、分量归一化评分、类别/实体/指标配额和 8–12 条选择；真实 2025 候选池 3,233 条，去重后 2,364 条，最终精选 12 条且无类别或实体垄断。
+**执行结果（2026-08-12）：完成。** `highlight_policy_v2` 已实现公开 renderer 白名单、资格过滤、语义去重、分量归一化评分和类别/实体/指标配额；真实 2025 候选池 3,233 条，公开去重目录 1,435 条，最终精选 7 条且无类别或实体垄断。
 
 ### Task 3.7：品味迁移
 
@@ -514,7 +514,7 @@ cd frontend && npm run build
 
 **执行结果（2026-08-12）：完成。** style、scene、language、release era 独立计算覆盖与迁移，并用受治理艺人事实或作品发行年定位驱动。真实 2025 中 style 92.29%、language 98.65%、release era 99.77% 可形成结论；scene 仅 48.12%，因此只展示“样本有限”，不生成强迁移叙事。
 
-### Task 3.8：终章与完整索引
+### Task 3.8：终章与完整榜单
 
 **新增：**
 
@@ -605,10 +605,10 @@ GET /api/yearly-review/{year}/records
 - 非法年份返回结构化 422。
 - 空年份返回合法 empty payload。
 - 主响应记录精选与 catalog count。
-- 完整 records endpoint 服务端分页。
+- records 兼容 endpoint 与主报告共享精选集合，不物化完整候选目录。
 - `X-Request-ID` 正常透传。
 
-**执行结果（2026-08-12）：完成。** 三条只读 endpoint 均有 response model；主响应保留精选与目录计数，完整 records 以 1–100 条服务端分页；年份限定 2000–2100，非法年份/页码/页大小返回结构化 422，空年份返回合法 `empty` V2 payload，Request ID contract 通过。
+**执行结果（2026-08-12）：完成。** 三条只读 endpoint 均有 response model；v2.11 起主响应和兼容 records endpoint 只保留相同的 6–8 条精选，artifact 不再序列化完整候选目录；年份限定 2000–2100，非法年份/页码/页大小返回结构化 422，空年份返回合法 `empty` V2 payload，Request ID contract 通过。
 
 ### Task 4.4：真实数据 Contract Probe
 
@@ -623,12 +623,12 @@ GET /api/yearly-review/{year}/records
 - 章节必填字段和数量上限。
 - 同一过滤指纹。
 - 双榜 canonical entity 对齐。
-- 8–12 条精选纪录。
+- 6–8 条精选纪录。
 - 6–10 个转折节点。
 - unknown/coverage 守恒。
 - 主响应 JSON 大小与热缓存响应时间。
 
-**执行结果（2026-08-12）：完成。** `scripts/yearly_review_v2_probe.py` 已对真实 2023–2026 全量执行：2023–2025 为 `complete`，2026 为 `year_to_date`；四年共享同一过滤指纹，均为 12 个月、7–10 个转折、12 条精选纪录，无 identity 重复、unknown 丢失或覆盖守恒问题。响应 226,609–243,453 bytes，热缓存 2.73–3.24 ms；冷构建 56.6–74.8 秒，作为 M5 加载体验与后续性能优化的显式边界。
+**执行结果（2026-08-12）：完成。** `yearly_review_v2_probe_v5` 已对真实 2023–2026 全量执行：2023–2025 为 `complete`，2026 为 `year_to_date`；四年共享同一过滤指纹，均为 12 个月、7–10 个转折和 7–8 条精选纪录，无用户文案、封面/深链、YTD 措辞、identity、重复结语或阶段状态问题。响应 224,135–239,178 bytes，真实重算 10.65–16.54 秒，跨进程持久命中 10.20–21.07ms。
 
 ## 9. M5：桌面前端重建
 
@@ -697,7 +697,7 @@ frontend/src/features/yearly-review/
 - `season`：阶段、转折点、唯一月度展开。
 - `relationships`：关系故事和证据摘要。
 - `listening-life`：时段与行为对比。
-- `records`：8–12 条年度精选。
+- `records`：6–8 条年度精选。
 - `taste-migration`：四维迁移与 coverage。
 - `epilogue`：三项总结变化。
 - `appendix`：分页或按需挂载完整榜单。
@@ -745,7 +745,7 @@ Desktop V2 验收后，桌面不再挂载：
 - 附录分页。
 - 所有图表和按钮的可访问名称。
 
-**执行结果（2026-08-12）：完成。** Desktop/Compact 已互斥挂载 V2，Phone 继续 V1，Official Wrapped 原样保留；八章年鉴、120 秒冷构建等待态、错误/空态、服务端纪录分页和客户端附录分页均已落地。真实浏览器在 Desktop/Tablet/Mobile 下均为 0 console error/warning、0px 横向溢出，control inventory 165 controls / 0 violation。完整交付与视觉验收见统一交付报告第 8 节。
+**执行结果（2026-08-12）：完成。** Desktop/Compact 已互斥挂载 V2，Phone 继续 V1，Official Wrapped 原样保留；八章年鉴、120 秒冷构建等待态、错误/空态和客户端附录分页均已落地。records 兼容接口最初提供服务端目录分页，v2.11 起只返回与正文一致的精选集合，完整播放纪录与 Billboard 纪录继续由原独立页面承载。真实浏览器在 Desktop/Tablet/Mobile 下均为 0 console error/warning、0px 横向溢出，control inventory 165 controls / 0 violation。完整交付与视觉验收见统一交付报告第 8 节。
 
 ## 10. M6：测试与验收
 
@@ -904,14 +904,20 @@ M6 验收后不再引入短期 feature flag，避免稳定交付后继续维护�
 - [x] 品味迁移。
 - [x] 同比与个人历史参照。
 - [x] 章节下钻、空态和 coverage 文案。
+- [x] 消费界面去除防御性/工程化文案与章节 subtitle。
+- [x] 六项年度 KPI 使用箭头与百分比展示同比，不重复显示“高/低”。
+- [x] 全章实体封面、详情深链、固定章节导航和完整榜单入口。
+- [x] Desktop/Compact 默认最近完整年度，当前年标注进行中。
 - [x] 全部定向、回归、browser 和性能门禁。
 
 只有 P0 + P1 全部完成，才将本计划状态改为“完成”，并把旧桌面 V1 组合视为已替代。
 
+**用户展示验收执行结果（2026-08-12）：完成。** content v2.11 已将严谨统计信息留在后端契约与 probe；年份按升序排列，完整年度隐藏重复状态/日期，封面三条头条和海报功能移除，六项同比压缩为箭头与百分比。新关系标题按歌曲/专辑/艺人区分，多首同时入榜纪录显示准确首数，分歧故事在宽屏两列、窄屏单列。年度纪录只显示精选并删除“更多年度纪录”，artifact 目录同步收敛到精选集合；章节间距最终较初版缩短约 45%。年度专项测试、production build 及真实 897px 页面复验通过，页面为 0 横向溢出、0 console error/warning。
+
 ### P2：后续独立计划
 
 - AI 编辑导语。
-- 分享卡和 PDF。
+- 完整报告长图和 PDF。
 - 年度播放列表。
 - 跨多年音乐生涯。
 - Phone V2 presentation。

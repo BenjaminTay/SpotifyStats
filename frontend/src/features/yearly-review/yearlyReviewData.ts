@@ -30,12 +30,12 @@ export function yearlyReviewFilterKey(params: YearlyReviewQueryParams): string {
     .join('|')
 }
 
-export const STATUS_COPY: Record<YearlyReviewStatus, { label: string; note: string }> = {
-  complete: { label: '完整年度', note: '覆盖自然年边界' },
-  year_to_date: { label: '年内进行中', note: '统计至最近一条有效播放' },
-  observed_range: { label: '观察区间', note: '只陈述当前可见数据范围' },
-  insufficient: { label: '样本有限', note: '不足以形成完整年度判断' },
-  empty: { label: '暂无数据', note: '该年度没有有效播放' },
+export const STATUS_COPY: Record<YearlyReviewStatus, { label: string }> = {
+  complete: { label: '完整年度' },
+  year_to_date: { label: '进行中' },
+  observed_range: { label: '年度回顾' },
+  insufficient: { label: '年度回顾' },
+  empty: { label: '暂无记录' },
 }
 
 export const ENTITY_LABELS = { track: '歌曲', album: '专辑', artist: '艺人' } as const
@@ -45,6 +45,30 @@ export function formatMetric(metric: YearlyMetric): string {
     ? metric.value.toLocaleString('zh-CN', { maximumFractionDigits: 1 })
     : metric.value
   return `${value}${metric.unit ?? ''}`
+}
+
+export type MetricComparison = {
+  direction: 'up' | 'down' | 'flat'
+  text: string
+  ariaLabel: string
+}
+
+export function formatMetricComparison(metric: YearlyMetric): MetricComparison | null {
+  if (typeof metric.value !== 'number' || typeof metric.comparison_value !== 'number') return null
+  const difference = metric.value - metric.comparison_value
+  const comparisonLabel = metric.comparison_label ?? '比去年'
+  if (difference === 0) {
+    return { direction: 'flat', text: '持平', ariaLabel: `${comparisonLabel}持平` }
+  }
+  if (metric.comparison_value === 0) return null
+  const percentage = Math.abs(difference / metric.comparison_value * 100).toFixed(1)
+  const direction = difference > 0 ? 'up' : 'down'
+  const changeLabel = difference > 0 ? '高' : '低'
+  return {
+    direction,
+    text: `${percentage}%`,
+    ariaLabel: `${comparisonLabel}${changeLabel} ${percentage}%`,
+  }
 }
 
 export function entitySubtitle(entity: YearlyEntityRef | null | undefined): string | null {

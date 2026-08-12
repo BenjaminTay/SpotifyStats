@@ -104,12 +104,9 @@ def _billboard() -> dict:
 def test_relationships_require_two_metrics_and_apply_entity_role_cap() -> None:
     result = build_relationships(2025, _coverage(), _frames(), _billboard())
 
-    assert {story.relationship_type for story in result} >= {
-        "mainline_artist",
-        "album_era",
-        "short_obsession",
-        "deep_album",
-    }
+    assert {story.relationship_type for story in result} >= {"short_obsession", "deep_album"}
+    assert len(result) <= 8
+    assert all("有效播放" not in story.statement for story in result)
     assert all(len(story.metrics) >= 2 for story in result)
     counts = Counter(
         f"{story.entity.entity_type}:{story.entity.entity_id or story.entity.name}"
@@ -175,6 +172,16 @@ def test_new_relationship_and_return_use_personal_history_dates() -> None:
     types = {story.relationship_type for story in result}
     assert "new_relationship" in types
     assert "return" in types
+    new_relationships = [story for story in result if story.relationship_type == "new_relationship"]
+    expected_titles = {
+        "track": "今年发现的新歌",
+        "album": "今年新听的专辑",
+        "artist": "今年认识的新艺人",
+    }
+    assert all(
+        story.title == expected_titles[story.entity.entity_type] for story in new_relationships
+    )
+    assert all("新名字" not in story.title for story in new_relationships)
 
 
 def test_relationship_history_parses_dates_once_per_entity_frame(monkeypatch) -> None:

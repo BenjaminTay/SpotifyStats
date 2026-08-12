@@ -74,7 +74,7 @@ def test_selector_deduplicates_and_enforces_diversity_caps() -> None:
         [candidates, [duplicate, insufficient, wrong_year]],
     )
 
-    assert 8 <= len(result.featured) <= 12
+    assert 6 <= len(result.featured) <= 8
     categories = Counter(item.category for item in result.featured)
     assert max(categories.values()) <= 2
     entities = Counter(item.entity_refs[0].name for item in result.featured if item.entity_refs)
@@ -113,3 +113,60 @@ def test_public_record_metric_localizes_legacy_units() -> None:
 
     assert presented is not None
     assert presented.metrics[0].unit == "天后回归"
+
+
+def test_simultaneous_chart_records_state_the_exact_track_count() -> None:
+    album_candidate = _candidate(50, "market", source="billboard_records").model_copy(
+        update={
+            "record_key": "market.album_simul_list",
+            "fact_type": "album_simul_list",
+            "entity_refs": [
+                YearlyEntityRef(
+                    entity_type="album",
+                    name="The Life of a Showgirl",
+                    artist_name="Taylor Swift",
+                )
+            ],
+            "primary_metric": None,
+            "raw_values": {
+                "billboard_week": "2025-10-10",
+                "track_count": 7,
+            },
+        }
+    )
+    artist_candidate = _candidate(51, "market", source="billboard_records").model_copy(
+        update={
+            "record_key": "market.artist_simul_list",
+            "fact_type": "artist_simul_list",
+            "entity_refs": [YearlyEntityRef(entity_type="artist", name="Taylor Swift")],
+            "primary_metric": None,
+            "raw_values": {
+                "billboard_week": "2025-10-10",
+                "track_count": 9,
+            },
+        }
+    )
+
+    album_record = present_record_candidate(album_candidate)
+    artist_record = present_record_candidate(artist_candidate)
+
+    assert album_record is not None
+    assert album_record.statement == (
+        "The Life of a Showgirl 在 2025-10-10 这一周共有 7 首歌曲同时进入个人榜单。"
+    )
+    assert artist_record is not None
+    assert artist_record.statement == (
+        "Taylor Swift 在 2025-10-10 这一周共有 9 首歌曲同时进入个人榜单。"
+    )
+
+
+def test_simultaneous_chart_records_without_a_count_are_not_public() -> None:
+    candidate = _candidate(52, "market", source="billboard_records").model_copy(
+        update={
+            "record_key": "market.album_simul_list",
+            "primary_metric": None,
+            "raw_values": {"billboard_week": "2025-10-10"},
+        }
+    )
+
+    assert present_record_candidate(candidate) is None

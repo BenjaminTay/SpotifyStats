@@ -68,8 +68,8 @@ def test_response_has_v2_schema_and_legal_empty_chapters() -> None:
     assert response.headlines == []
     assert response.season.turning_points == []
     assert response.records.featured == []
-    assert response.methodology.relationship_policy_version == "relationship_policy_v1"
-    assert response.methodology.content_version == "yearly_review_v2_6"
+    assert response.methodology.relationship_policy_version == "relationship_policy_v2"
+    assert response.methodology.content_version == "yearly_review_v2_11"
 
 
 def test_mutable_defaults_are_not_shared() -> None:

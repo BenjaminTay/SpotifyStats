@@ -26,6 +26,7 @@ from backend.models.yearly_review import (
     YearlyTasteComparison,
     YearlyTasteMigrationChapter,
 )
+from backend.services.play_service import _track_cover_urls
 from backend.services.wrapped_service import _fetch_track_release_years
 
 AXIS_SOURCE_KEYS = {
@@ -129,14 +130,28 @@ def build_taste_drivers(
     late = _artist_hours(conn, second_half)
     artist_ids = sorted(set(early) | set(late))
     names: dict[int, str] = {}
+    artist_covers: dict[int, str] = {}
     for offset in range(0, len(artist_ids), 500):
         chunk = artist_ids[offset : offset + 500]
         placeholders = ",".join("?" for _ in chunk)
-        rows = conn.execute(
-            f"SELECT artist_id, artist_name FROM artists WHERE artist_id IN ({placeholders})",
-            chunk,
-        ).fetchall()
+        try:
+            rows = conn.execute(
+                f"SELECT artist_id, artist_name, image_path, image_url FROM artists WHERE artist_id IN ({placeholders})",
+                chunk,
+            ).fetchall()
+        except sqlite3.Error:
+            rows = conn.execute(
+                f"SELECT artist_id, artist_name FROM artists WHERE artist_id IN ({placeholders})",
+                chunk,
+            ).fetchall()
         names.update({int(row[0]): str(row[1]) for row in rows})
+        artist_covers.update(
+            {
+                int(row[0]): f"/covers/artists/{int(row[0])}.jpg"
+                for row in rows
+                if len(row) > 3 and (row[2] or row[3])
+            }
+        )
     genre_facts = resolve_artist_genres_map(conn, list(names.values())) if names else {}
     language_facts = resolve_artist_languages_map(conn, artist_ids) if artist_ids else {}
     early_total = sum(early.values()) or 1.0
@@ -173,6 +188,7 @@ def build_taste_drivers(
                         "entity_type": "artist",
                         "entity_id": artist_id,
                         "name": name,
+                        "cover_url": artist_covers.get(artist_id),
                         "delta_share_pct": round(contribution, 3),
                         "deep_link": f"/music/artists/{quote(name, safe='')}",
                     }
@@ -184,6 +200,10 @@ def build_taste_drivers(
         "ms_played",
     }.issubset(second_half.columns):
         combined = pd.concat([first_half, second_half], ignore_index=True)
+        try:
+            track_covers = _track_cover_urls(conn, combined["track_id"])
+        except sqlite3.Error:
+            track_covers = {}
         pairs = [
             (str(track), str(artist))
             for track, artist in combined[["track_name", "artist_name"]]
@@ -223,6 +243,7 @@ def build_taste_drivers(
                     "track_id": int(track_id),
                     "name": str(track_name),
                     "artist_name": str(artist_name),
+                    "cover_url": track_covers.get(int(track_id)),
                     "delta_share_pct": round(delta, 3),
                     "deep_link": f"/music/tracks/{int(track_id)}",
                 }
@@ -394,8 +415,6 @@ def build_taste_migration(
         ref = _driver_ref(top_driver)
         if ref is None:
             continue
-        driver_share = float(top_driver.get("driver_share_pct", 0))
-        driver_kind = "单一实体短期驱动" if driver_share >= 60 else "多实体结构性变化"
         from_pct = float(strongest["from_pct"])
         to_pct = float(strongest["to_pct"])
         direction = "上升" if delta_pct > 0 else "下降"
@@ -403,13 +422,15 @@ def build_taste_migration(
             YearlyHeadline(
                 headline_id=f"taste_migration_{axis}",
                 title={
-                    "style": "主曲风迁移",
-                    "scene": "地区流行变化",
-                    "language": "语言分布变化",
+                    "style": "今年的曲风变化",
+                    "scene": "今年听歌地域的变化",
+                    "language": "今年常听语言的变化",
                     "release_era": "发行年代变化",
                 }[axis],
                 statement=(
-                    f"{strongest['label']} 从{comparison.from_label}的 {from_pct:.1f}% 变为{comparison.to_label}的 {to_pct:.1f}%（{direction} {abs(delta_pct):.1f} 个百分点），主要驱动为 {ref.name}；判定为{driver_kind}。"
+                    f"{strongest['label']} 从{comparison.from_label}的 {from_pct:.1f}% 变为"
+                    f"{comparison.to_label}的 {to_pct:.1f}%，{direction} {abs(delta_pct):.1f} 个百分点。"
+                    f"这一变化最明显地体现在 {ref.name} 身上。"
                 ),
                 evidence_grade="C",
                 primary_metric=YearlyMetric(

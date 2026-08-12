@@ -24,6 +24,7 @@ from backend.domains.yearly_review.coverage import (
     build_taste_coverage,
     build_yearly_review_coverage,
 )
+from backend.domains.yearly_review.entity_links import enrich_entity_ref_covers
 from backend.domains.yearly_review.epilogue import build_epilogue
 from backend.domains.yearly_review.honors import build_honors
 from backend.domains.yearly_review.listening_life import build_listening_life
@@ -36,11 +37,7 @@ from backend.domains.yearly_review.play_rankings import (
 from backend.domains.yearly_review.playback_records_adapter import (
     build_playback_record_candidates,
 )
-from backend.domains.yearly_review.record_presenters import present_record_candidate
-from backend.domains.yearly_review.records import (
-    qualified_yearly_candidates,
-    select_yearly_records,
-)
+from backend.domains.yearly_review.records import select_yearly_records
 from backend.domains.yearly_review.relationships import build_relationships
 from backend.domains.yearly_review.season import build_season
 from backend.domains.yearly_review.stats_adapter import build_yearly_stats
@@ -328,6 +325,7 @@ def build_yearly_review_artifact(
         list[YearlyHighlightCandidate], list(playback_records.get("candidates", []))
     )
     all_candidates = [*playback_candidates, *billboard_candidates]
+    enrich_entity_ref_covers(conn, all_candidates)
 
     honors = _safe_section(
         "honors",
@@ -343,6 +341,7 @@ def build_yearly_review_artifact(
             entity_frames=annual_entity_frames,
             baseline_monthly=(baseline_stats or {}).get("monthly_distribution"),
             record_candidates=all_candidates,
+            complete=coverage.status == "complete",
         ),
         YearlySeasonChapter,
         limitations,
@@ -393,6 +392,13 @@ def build_yearly_review_artifact(
         YearlyRecordsChapter,
         limitations,
     )
+    timeline_statements = {point.statement for point in season.turning_points}
+    selected_records.featured = [
+        record
+        for record in selected_records.featured
+        if record.statement not in timeline_statements
+    ][:8]
+    selected_records.catalog_counts["featured_total"] = len(selected_records.featured)
     taste_comparison = resolve_taste_comparison(stats, coverage)
     taste_from_events, taste_to_events = taste_comparison_frames(annual_events, taste_comparison)
     taste_migration = _safe_section(
@@ -454,10 +460,6 @@ def build_yearly_review_artifact(
             internal_diagnostics=limitations,
         ),
     )
-    catalog = []
-    for candidate in qualified_yearly_candidates(year, all_candidates):
-        featured = present_record_candidate(candidate)
-        if featured is None:
-            continue
-        catalog.append(featured.model_dump(mode="json"))
+    enrich_entity_ref_covers(conn, report)
+    catalog = [record.model_dump(mode="json") for record in selected_records.featured]
     return YearlyReviewBuildArtifact(report=report, record_catalog=catalog)

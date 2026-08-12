@@ -81,7 +81,8 @@ def test_listening_life_uses_normalized_baselines_and_never_infers_gap() -> None
     )
     assert weekday_metric.value == 1.9
     assert weekend_metric.value == 2.9
-    assert "1.51 倍" in weekend.statement
+    assert "周末每天平均播放 2.9 次" in weekend.statement
+    assert "工作日为 1.9 次" in weekend.statement
 
 
 def test_partial_window_uses_inclusive_calendar_denominators() -> None:

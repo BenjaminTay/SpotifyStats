@@ -3,8 +3,11 @@ import { describe, expect, it } from 'vitest'
 import desktopExperienceSource from '../features/yearly-review/YearlyReviewDesktopExperience.tsx?raw'
 import recordsChapterSource from '../features/yearly-review/records/RecordsChapter.tsx?raw'
 import appendixChapterSource from '../features/yearly-review/appendix/AppendixChapter.tsx?raw'
+import passportChapterSource from '../features/yearly-review/passport/PassportChapter.tsx?raw'
+import primitivesSource from '../features/yearly-review/YearlyReviewPrimitives.tsx?raw'
+import statesSource from '../features/yearly-review/YearlyReviewStates.tsx?raw'
 import pageSource from '../pages/YearlyReviewPage.tsx?raw'
-import { buildYearlyReviewParams, formatMetric, yearlyReviewFilterKey } from '../features/yearly-review/yearlyReviewData'
+import { buildYearlyReviewParams, formatMetric, formatMetricComparison, yearlyReviewFilterKey } from '../features/yearly-review/yearlyReviewData'
 import type { AnalysisFilters } from '../types/analysis'
 
 const filters: AnalysisFilters = {
@@ -42,6 +45,11 @@ describe('Yearly Review V2 desktop contract', () => {
   it('formats deterministic metrics without editorial inference', () => {
     expect(formatMetric({ key: 'plays', label: '播放', value: 1234, unit: '次', comparison_value: null, comparison_label: null })).toBe('1,234次')
     expect(formatMetric({ key: 'status', label: '状态', value: '完整年度', unit: null, comparison_value: null, comparison_label: null })).toBe('完整年度')
+    expect(formatMetricComparison({ key: 'plays', label: '年度播放', value: 90, unit: '次', comparison_value: 100, comparison_label: '比去年' })).toEqual({
+      direction: 'down',
+      text: '10.0%',
+      ariaLabel: '比去年低 10.0%',
+    })
   })
 
   it('mounts V2 only outside phone while keeping official Wrapped isolated', () => {
@@ -71,10 +79,44 @@ describe('Yearly Review V2 desktop contract', () => {
     }
   })
 
-  it('paginates both the complete record catalog and appendix tables', () => {
-    expect(recordsChapterSource).toContain('useYearlyReviewV2Records')
-    expect(recordsChapterSource).toContain('page, 20')
+  it('keeps only curated annual records while paginating appendix tables', () => {
+    expect(recordsChapterSource).not.toContain('useYearlyReviewV2Records')
+    expect(recordsChapterSource).not.toContain('更多年度纪录')
+    expect(recordsChapterSource).not.toContain('yearly-v2-catalog-toggle')
     expect(appendixChapterSource).toContain('const PAGE_SIZE = 10')
     expect(appendixChapterSource).toContain('rows.slice((page - 1) * PAGE_SIZE')
   })
+
+  it('keeps audit language out of the consumer-facing annual', () => {
+    const consumerSource = [passportChapterSource, appendixChapterSource, statesSource].join('\n')
+    for (const banned of ['统计口径', '可比基线', '有效阈值', '服务端分页', '方法与限制', '口径索引']) {
+      expect(consumerSource).not.toContain(banned)
+    }
+    expect(primitivesSource).not.toContain('description: string')
+    expect(passportChapterSource).not.toContain('yearly-v2-cover-deck')
+    expect(passportChapterSource).not.toContain('yearly-v2-cover-period-note')
+    expect(appendixChapterSource).toContain('title="完整榜单"')
+  })
+
+  it('renders comparisons and artwork across the passport and complete charts', () => {
+    expect(passportChapterSource).toContain('formatMetricComparison(metric)')
+    expect(passportChapterSource).toContain("comparison.direction === 'up' ? '↑'")
+    expect(passportChapterSource).not.toContain('report.headlines')
+    expect(appendixChapterSource).toContain('<EntityMediaLink')
+    expect(appendixChapterSource).not.toContain("'months'")
+    expect(appendixChapterSource).not.toContain("'method'")
+  })
+
+  it('defaults desktop V2 to the latest complete year and labels the current year', () => {
+    expect(pageSource).toContain("latestYear === new Date().getFullYear()")
+    expect(pageSource).toContain('`${y} · 进行中`')
+    expect(pageSource).toContain('sort((left, right) => left - right)')
+    expect(pageSource).not.toContain('ShareButton')
+  })
+
+  it('shows period status only for unfinished reports', () => {
+    expect(passportChapterSource).toContain("report.status !== 'complete'")
+    expect(passportChapterSource).not.toContain(`${'${report.year}'}.01.01`)
+  })
+
 })

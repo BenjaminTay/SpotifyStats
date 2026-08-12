@@ -13,6 +13,7 @@ from backend.domains.yearly_review.honors import entity_ref
 from backend.domains.yearly_review.policies import (
     MIN_RELATIONSHIP_SPAN_DAYS,
     RELATIONSHIP_ENTITY_CAP,
+    RELATIONSHIP_MAX_COUNT,
     RELATIONSHIP_PER_TYPE_CAP,
     RELATIONSHIP_POLICY_VERSION,
     RELATIONSHIP_THRESHOLDS,
@@ -94,6 +95,14 @@ def _entity_summary(
             )
         else:
             row.update(artist_name=str(group[name_column].iloc[0]))
+        if "cover_url" in group.columns:
+            covers = group["cover_url"].dropna()
+            if not covers.empty:
+                row["cover_url"] = str(covers.iloc[0])
+        if "deep_link" in group.columns:
+            links = group["deep_link"].dropna()
+            if not links.empty:
+                row["deep_link"] = str(links.iloc[0])
         rows.append(row)
     return rows
 
@@ -127,6 +136,8 @@ def _metric(
 
 def _threshold_candidates(
     summaries: Mapping[str, Sequence[dict[str, Any]]],
+    *,
+    complete: bool,
 ) -> list[_RelationshipCandidate]:
     candidates: list[_RelationshipCandidate] = []
     long_rule = RELATIONSHIP_THRESHOLDS["long_companion"]
@@ -145,8 +156,8 @@ def _threshold_candidates(
                         relationship_type="long_companion",
                         row=row,
                         metrics=[
-                            _metric("active_months", "活跃月份", row["active_months"], "个月"),
-                            _metric("span_days", "首末跨度", row["span_days"], "天"),
+                            _metric("active_months", "出现月份", row["active_months"], "个月"),
+                            _metric("span_days", "陪伴跨度", row["span_days"], "天"),
                             _metric(
                                 "consecutive_months",
                                 "最长连续活跃",
@@ -154,9 +165,10 @@ def _threshold_candidates(
                                 "个月",
                             ),
                         ],
-                        title="长期陪伴",
+                        title="陪你走过这一年",
                         statement=(
-                            f"全年在 {row['active_months']} 个月出现，首末播放相隔 {row['span_days']} 天。"
+                            f"{'全年' if complete else '今年截至目前'}有 {row['active_months']} 个月都在听，"
+                            f"第一次和最后一次播放相隔 {row['span_days']} 天。"
                         ),
                         source_refs=[f"relationship_summary:{entity_type}:{row['identity']}"],
                     )
@@ -178,12 +190,13 @@ def _threshold_candidates(
                                 row["peak_month_share_pct"],
                                 "%",
                             ),
-                            _metric("active_months", "活跃月份", row["active_months"], "个月"),
-                            _metric("plays", "有效播放", row["plays"], "次"),
+                            _metric("active_months", "出现月份", row["active_months"], "个月"),
+                            _metric("plays", "播放次数", row["plays"], "次"),
                         ],
-                        title="短期着迷",
+                        title="某个月反复在听",
                         statement=(
-                            f"{row['peak_month_share_pct']:.1f}% 的年度播放集中在同一个月，全年只活跃于 {row['active_months']} 个月。"
+                            f"{row['peak_month_share_pct']:.1f}% 的播放集中在同一个月，"
+                            f"这一年一共听了 {row['active_months']} 个月。"
                         ),
                         source_refs=[f"relationship_summary:{entity_type}:{row['identity']}"],
                     )
@@ -202,13 +215,13 @@ def _threshold_candidates(
                     relationship_type="deep_album",
                     row=row,
                     metrics=[
-                        _metric("unique_tracks", "独立曲目", row["unique_tracks"], "首"),
-                        _metric("active_days", "活跃天数", row["active_days"], "天"),
-                        _metric("plays", "有效播放", row["plays"], "次"),
+                        _metric("unique_tracks", "听过曲目", row["unique_tracks"], "首"),
+                        _metric("active_days", "播放天数", row["active_days"], "天"),
+                        _metric("plays", "播放次数", row["plays"], "次"),
                     ],
-                    title="深度专辑聆听",
+                    title="反复听完整张专辑",
                     statement=(
-                        f"覆盖 {row['unique_tracks']} 首曲目，并在 {row['active_days']} 个不同日期持续播放。"
+                        f"听过其中 {row['unique_tracks']} 首歌，并在 {row['active_days']} 天里反复回来播放。"
                     ),
                     source_refs=[f"relationship_summary:album:{row['identity']}"],
                 )
@@ -227,13 +240,14 @@ def _threshold_candidates(
                     relationship_type="broad_artist",
                     row=row,
                     metrics=[
-                        _metric("unique_tracks", "目录覆盖", row["unique_tracks"], "首"),
-                        _metric("active_months", "活跃月份", row["active_months"], "个月"),
-                        _metric("plays", "有效播放", row["plays"], "次"),
+                        _metric("unique_tracks", "听过曲目", row["unique_tracks"], "首"),
+                        _metric("active_months", "出现月份", row["active_months"], "个月"),
+                        _metric("plays", "播放次数", row["plays"], "次"),
                     ],
-                    title="广泛艺人聆听",
+                    title="听遍了 TA 的作品",
                     statement=(
-                        f"全年听过其 {row['unique_tracks']} 首不同曲目，并分布在 {row['active_months']} 个月。"
+                        f"{'全年' if complete else '今年截至目前'}听过 TA 的 {row['unique_tracks']} 首歌，"
+                        f"分布在 {row['active_months']} 个月。"
                     ),
                     source_refs=[f"relationship_summary:artist:{row['identity']}"],
                 )
@@ -253,6 +267,20 @@ def _history_candidates(
     new_rule = RELATIONSHIP_THRESHOLDS["new_relationship"]
     return_rule = RELATIONSHIP_THRESHOLDS["return"]
     frame_index = {"track": 0, "album": 1, "artist": 2}
+    new_relationship_copy = {
+        "track": (
+            "今年发现的新歌",
+            "今年第一次听到这首歌，之后 {span_days} 天里又播放了 {plays} 次。",
+        ),
+        "album": (
+            "今年新听的专辑",
+            "今年第一次听到这张专辑，之后 {span_days} 天里又播放了 {plays} 次。",
+        ),
+        "artist": (
+            "今年认识的新艺人",
+            "今年第一次听到这位艺人，之后 {span_days} 天里又播放了 {plays} 次。",
+        ),
+    }
     for entity_type, rows in summaries.items():
         history_frame = history_frames[frame_index[entity_type]]
         id_column = {
@@ -293,18 +321,21 @@ def _history_candidates(
                 and row["active_days"] >= new_rule["active_days"]
                 and row["span_days"] >= new_rule["span_days"]
             ):
+                title, statement_template = new_relationship_copy[entity_type]
                 result.append(
                     _RelationshipCandidate(
                         score=row["plays"] + row["span_days"] + row["active_days"] * 10,
                         relationship_type="new_relationship",
                         row=row,
                         metrics=[
-                            _metric("first_date", "首次播放", row["first_date"]),
-                            _metric("span_days", "留存跨度", row["span_days"], "天"),
-                            _metric("plays", "有效播放", row["plays"], "次"),
+                            _metric("first_date", "第一次听", row["first_date"]),
+                            _metric("span_days", "持续时间", row["span_days"], "天"),
+                            _metric("plays", "播放次数", row["plays"], "次"),
                         ],
-                        title="新关系",
-                        statement=f"首次播放发生在报告年，并在此后 {row['span_days']} 天内累计 {row['plays']} 次有效播放。",
+                        title=title,
+                        statement=statement_template.format(
+                            span_days=row["span_days"], plays=row["plays"]
+                        ),
                         source_refs=[f"history:{entity_type}:{row['identity']}"],
                     )
                 )
@@ -324,12 +355,14 @@ def _history_candidates(
                         relationship_type="return",
                         row=row,
                         metrics=[
-                            _metric("sleep_days", "沉寂跨度", sleep_days, "天"),
-                            _metric("plays", "回归后播放", row["plays"], "次"),
-                            _metric("active_days", "回归后活跃", row["active_days"], "天"),
+                            _metric("sleep_days", "久别时间", sleep_days, "天"),
+                            _metric("plays", "回来后播放", row["plays"], "次"),
+                            _metric("active_days", "回来后播放天数", row["active_days"], "天"),
                         ],
                         title="旧爱回归",
-                        statement=f"相隔 {sleep_days} 天后重新播放，并在报告年累计 {row['plays']} 次有效播放。",
+                        statement=(
+                            f"隔了 {sleep_days} 天再次听见，回来后又播放了 {row['plays']} 次。"
+                        ),
                         source_refs=[f"history:{entity_type}:{row['identity']}"],
                     )
                 )
@@ -430,10 +463,9 @@ def build_relationships(
     if coverage.play.natural_days_span < MIN_RELATIONSHIP_SPAN_DAYS:
         return []
     summaries = _summaries(entity_frames)
+    complete = coverage.status == "complete"
     candidates = [
-        *_mainline_candidates(billboard, coverage),
-        *_divergence_candidates(divergence_stories),
-        *_threshold_candidates(summaries),
+        *_threshold_candidates(summaries, complete=complete),
         *_history_candidates(year, summaries, history_frames),
     ]
     candidates.sort(
@@ -467,4 +499,6 @@ def build_relationships(
         )
         entity_counts[identity] += 1
         type_counts[candidate.relationship_type] += 1
+        if len(selected) == RELATIONSHIP_MAX_COUNT:
+            break
     return selected

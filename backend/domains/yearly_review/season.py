@@ -271,6 +271,8 @@ def _record_month(candidate: YearlyHighlightCandidate) -> tuple[int | None, str 
 def _candidate_events(
     months: Sequence[YearlyMonthSummary],
     record_candidates: Sequence[YearlyHighlightCandidate],
+    *,
+    complete: bool,
 ) -> list[_EventCandidate]:
     events: list[_EventCandidate] = []
     active = [month for month in months if month.plays > 0]
@@ -280,8 +282,11 @@ def _candidate_events(
             _EventCandidate(
                 month=peak.month,
                 event_type="listening_peak",
-                title="年度收听高峰",
-                statement=f"{peak.month} 月以 {peak.hours:.1f} 小时成为全年收听时长最高月份。",
+                title="听歌最多的月份",
+                statement=(
+                    f"{peak.month} 月听了 {peak.hours:.1f} 小时，"
+                    f"是{'全年' if complete else '今年截至目前'}最高峰。"
+                ),
                 score=100 + peak.hours,
                 refs=list(peak.leaders.values())[:2],
                 metrics=[
@@ -385,8 +390,11 @@ def _candidate_events(
             _EventCandidate(
                 month=month.month,
                 event_type="monthly_shift",
-                title="收听节奏变化",
-                statement=f"{month.month} 月收听时长较上月变化 {change:+.1f}%。",
+                title="这个月的听歌节奏变了",
+                statement=(
+                    f"{month.month} 月比上月{'多' if change >= 0 else '少'}听了 "
+                    f"{abs(change):.1f}%。"
+                ),
                 score=50 + abs(change),
                 refs=list(month.leaders.values())[:1],
                 metrics=[
@@ -441,6 +449,7 @@ def build_season(
     billboard_monthly_leaders: Mapping[int, Mapping[str, YearlyEntityRef]] | None = None,
     baseline_monthly: Sequence[Mapping[str, Any]] | None = None,
     record_candidates: Sequence[YearlyHighlightCandidate] = (),
+    complete: bool = True,
 ) -> YearlySeasonChapter:
     months = build_monthly_fact_table(
         stats,
@@ -450,15 +459,11 @@ def build_season(
     )
     stable_runs = _stable_runs(months)
     stage_status = "available" if stable_runs else "no_stable_phase"
-    stage_note = (
-        None
-        if stable_runs
-        else "月度冠军变化较频繁，没有足够稳定的连续阶段；本年不强行划分主导期。"
-    )
+    stage_note = None
     stage_rows = stable_runs
     if sum(month.plays > 0 for month in months) < 6:
         stage_status = "insufficient"
-        stage_note = "有效月份不足，暂不划分年度阶段。"
+        stage_note = None
     stages: list[YearlySeasonStage] = []
     for index, (start, end, _, ref) in enumerate(stage_rows, start=1):
         stage_id = f"stage-{index}"
@@ -503,7 +508,9 @@ def build_season(
             if start <= month.month <= end:
                 month.stage_id = stage_id
 
-    selected_events = _select_events(_candidate_events(months, record_candidates))
+    selected_events = _select_events(
+        _candidate_events(months, record_candidates, complete=complete)
+    )
     turning_points: list[YearlyTurningPoint] = []
     for index, event in enumerate(selected_events, start=1):
         event_id = f"{year}-{event.month:02d}-{event.event_type}-{index}"

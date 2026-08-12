@@ -7,6 +7,8 @@ import pandas as pd
 from backend.domains.yearly_review import orchestrator
 from backend.models.yearly_review import (
     YearlyBillboardCoverage,
+    YearlyFeaturedRecord,
+    YearlyRecordsChapter,
     YearlyReviewFilterContext,
 )
 
@@ -133,6 +135,19 @@ def test_orchestrator_loads_play_and_entity_frames_once(monkeypatch) -> None:
         "build_playback_record_candidates",
         lambda *_args, **_kwargs: {"catalog_counts": {"total": 0}, "candidates": []},
     )
+    curated_record = YearlyFeaturedRecord(
+        record_id="curated-record",
+        category="obsession",
+        fact_type="track",
+        title="年度精选",
+        statement="只保留进入年报正文的精选纪录。",
+        evidence_grade="A",
+    )
+    monkeypatch.setattr(
+        orchestrator,
+        "select_yearly_records",
+        lambda *_args, **_kwargs: YearlyRecordsChapter(featured=[curated_record]),
+    )
     monkeypatch.setattr(orchestrator, "build_taste_drivers", lambda *_args: {})
 
     result = orchestrator.build_yearly_review_artifact(
@@ -142,7 +157,7 @@ def test_orchestrator_loads_play_and_entity_frames_once(monkeypatch) -> None:
     assert calls == {"plays": 1, "entities": 1, "stats": 1}
     assert result.report.filter_context.filter_fingerprint == "fingerprint"
     assert len(result.report.season.months) == 12
-    assert result.record_catalog == []
+    assert result.record_catalog == [curated_record.model_dump(mode="json")]
 
 
 def test_orchestrator_passes_only_aligned_ytd_baseline_to_comparison_consumers(

@@ -43,11 +43,24 @@ def _metric_phrase(candidate: YearlyHighlightCandidate) -> str | None:
     metric = candidate.primary_metric
     if metric is None:
         return None
-    return f"{_format_value(metric.value)}{metric.unit or ''}"
+    unit = metric.unit or ""
+    separator = "" if unit in {"%", "倍"} else " " if unit else ""
+    return f"{_format_value(metric.value)}{separator}{unit}"
 
 
 def _metric_value(candidate: YearlyHighlightCandidate) -> str | None:
     return _format_value(candidate.primary_metric.value) if candidate.primary_metric else None
+
+
+def _positive_integer(candidate: YearlyHighlightCandidate, key: str) -> int | None:
+    value = candidate.raw_values.get(key)
+    if isinstance(value, bool):
+        return None
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed > 0 else None
 
 
 def _public_metric(metric: YearlyMetric) -> YearlyMetric:
@@ -70,16 +83,16 @@ def _copy(candidate: YearlyHighlightCandidate) -> tuple[str, str] | None:
     if "obsession.daily_binge" in key and value:
         return (
             f"单日沉迷最高{entity_label}",
-            f"{subject} 单日被播放 {value} 次，创下这一年的沉迷峰值。",
+            f"{subject} 在同一天被播放 {value} 次，是今年最集中的一次沉迷。",
         )
     if "obsession.daily_total_record" in key and value and date:
-        return "全年最密集的一天", f"{date} 共记录 {value} 次有效播放，是全年播放最密集的一天。"
+        return "听歌最多的一天", f"{date} 一共播放了 {value} 次，是今年听歌最多的一天。"
     if "obsession.consecutive_marathon" in key and value:
-        return "连续播放马拉松", f"{subject} 连续播放达到 {value} 次，形成年度最长的一段集中收听。"
+        return "连续播放马拉松", f"{subject} 连续播放了 {value} 次，是今年最长的一段集中收听。"
     if "reigns.daily_champion" in key and value:
         return (
             f"日榜冠军最多{entity_label}",
-            f"{subject} 共成为日榜冠军 {value} 天，是全年最常占据日榜首位的{entity_label}。",
+            f"{subject} 一共成为日榜冠军 {value} 天，是今年最常占据日榜首位的{entity_label}。",
         )
     if "longest_streak" in key and value:
         return (
@@ -87,13 +100,13 @@ def _copy(candidate: YearlyHighlightCandidate) -> tuple[str, str] | None:
             f"{subject} 连续收听达到 {value} 天，是这一年持续时间最长的同类纪录。",
         )
     if "user_active_streak" in key and value:
-        return "最长连续活跃", f"全年最长连续活跃达到 {value} 天。"
+        return "最长连续活跃", f"最长的一段连续活跃达到 {value} 天。"
     if "longest_span" in key and value:
-        return "贯穿全年的陪伴", f"{subject} 的首末次收听相隔 {value} 天，贯穿了这一年的多个阶段。"
+        return "一路陪伴", f"第一次和最后一次听到 {subject} 相隔 {value} 天。"
     if ("comeback" in key or "return" in key) and value:
         return "沉寂后的回归", f"{subject} 沉寂 {value} 天后重新出现，构成一次清晰的旧爱回归。"
     if "discovery.discovery_day" in key and metric and date:
-        return "发现最密集的一天", f"{date} 新发现达到 {metric}，是全年探索最集中的一天。"
+        return "发现新歌最多的一天", f"{date} 一共发现了 {metric}，是今年探索最多的一天。"
     if "discovery.same_name_diff_artist" in key and metric:
         return "同名歌曲巧合", f"名为 {subject} 的作品来自 {metric}，形成一次少见的同名相遇。"
     if "time_patterns.hourly_dominance" in key and value:
@@ -102,28 +115,42 @@ def _copy(candidate: YearlyHighlightCandidate) -> tuple[str, str] | None:
             f"{subject} 在个人高峰时段累计 {value} 次，是该时段最常出现的{entity_label}。",
         )
     if "late_night_peak_day" in key and value and date:
-        return "深夜浓度最高的一天", f"{date} 的深夜播放占比达到 {value}%，为全年最高。"
+        return "听到最晚的一天", f"{date} 的深夜播放占比达到 {value}%，是今年最高的一天。"
     if "late_night_trajectory.monthly" in key and metric:
         return "深夜月份", f"{subject} 的深夜播放占比为 {metric}。"
     if "late_night_trajectory.quarterly" in key and metric:
         return "深夜季度", f"{subject} 的深夜播放占比为 {metric}。"
     if "weekday_preference" in key and value:
-        return "一周中的收听高峰", f"{subject} 累计 {value} 次有效播放，是一周中播放最多的一天。"
+        return "一周中最常听歌的日子", f"{subject} 一共播放了 {value} 次，是一周中听歌最多的一天。"
     if "new_year_eve" in key and metric:
         return "跨年播放", f"{subject} 跨年时段记录了 {metric}。"
     if "behavior.playback_milestones" in key and value:
-        return "播放里程碑", f"{subject} 在这一年推动个人历史累计播放达到 {value} 次。"
+        return "播放里程碑", f"因为 {subject}，个人历史累计播放在今年达到 {value} 次。"
     if "behavior.skip_storm" in key and value:
         return (
             "快进率最高",
             f"{subject} 的快进率达到 {value}%；该纪录仅描述播放行为，不代表喜爱程度。",
         )
     if "triple_no1" in key and date:
-        return "三榜同时登顶", f"{subject} 在 {date} 所在榜周触发歌曲、专辑与艺人三榜联动冠军。"
-    if "album_simul_list" in key and date:
-        return "专辑同时占榜", f"{subject} 在 {date} 所在榜周有多首作品同时进入个人 Billboard。"
-    if "artist_simul_list" in key and date:
-        return "艺人同时占榜", f"{subject} 在 {date} 所在榜周以多首作品同时进入个人 Billboard。"
+        return "三榜同时登顶", f"{subject} 在 {date} 这一周同时带动歌曲、专辑和艺人登上冠军。"
+    if (
+        "album_simul_list" in key
+        and date
+        and (track_count := _positive_integer(candidate, "track_count"))
+    ):
+        return (
+            "同一张专辑多首入榜",
+            f"{subject} 在 {date} 这一周共有 {track_count} 首歌曲同时进入个人榜单。",
+        )
+    if (
+        "artist_simul_list" in key
+        and date
+        and (track_count := _positive_integer(candidate, "track_count"))
+    ):
+        return (
+            "同一位艺人多首入榜",
+            f"{subject} 在 {date} 这一周共有 {track_count} 首歌曲同时进入个人榜单。",
+        )
     if "biggest_jump" in key and metric:
         return "年度最大上升", f"{subject} 单周上升 {metric}，创下这一年最大的榜单跃升。"
     if "biggest_drop" in key and metric:

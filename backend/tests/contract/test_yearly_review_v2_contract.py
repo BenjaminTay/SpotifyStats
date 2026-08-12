@@ -61,34 +61,34 @@ def test_empty_year_returns_legal_v2_payload(client, monkeypatch) -> None:
     assert payload["year"] == 2099
     assert payload["status"] == "empty"
     assert payload["records"]["featured"] == []
-    assert payload["methodology"]["content_version"] == "yearly_review_v2_6"
+    assert payload["methodology"]["content_version"] == "yearly_review_v2_11"
     assert payload["filter_context"]["filter_fingerprint"]
 
 
-def test_records_endpoint_is_server_paginated(client, monkeypatch) -> None:
+def test_records_endpoint_keeps_a_curated_compatibility_response(client, monkeypatch) -> None:
     def fake_records(year, context, *, page, page_size):
         return YearlyReviewRecordsPage(
-            content_version="yearly_review_v2_6",
+            content_version="yearly_review_v2_11",
             year=year,
             filter_fingerprint=context.filter_fingerprint,
             page=page,
             page_size=page_size,
-            total=120,
-            total_pages=3,
+            total=7,
+            total_pages=1,
             items=[],
-            catalog_counts={"input_total": 120},
+            catalog_counts={"featured_total": 7},
         )
 
     monkeypatch.setattr(yearly_review_api, "get_yearly_review_records", fake_records)
-    response = client.get("/api/yearly-review/2025/records?page=2&page_size=50")
+    response = client.get("/api/yearly-review/2025/records?page=1&page_size=50")
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["page"] == 2
+    assert payload["page"] == 1
     assert payload["page_size"] == 50
-    assert payload["total"] == 120
-    assert payload["total_pages"] == 3
-    assert payload["content_version"] == "yearly_review_v2_6"
+    assert payload["total"] == 7
+    assert payload["total_pages"] == 1
+    assert payload["content_version"] == "yearly_review_v2_11"
 
 
 def test_invalid_year_and_pagination_return_structured_422(client) -> None:

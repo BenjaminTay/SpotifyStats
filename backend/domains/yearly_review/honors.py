@@ -66,10 +66,10 @@ def _play_honor(entity_type: str, row: Mapping[str, Any]) -> YearlyHonorItem:
         ],
         entity=ref,
         metrics=[
-            YearlyMetric(key="plays", label="有效播放", value=int(row.get("plays", 0)), unit="次"),
+            YearlyMetric(key="plays", label="播放次数", value=int(row.get("plays", 0)), unit="次"),
             YearlyMetric(
                 key="hours",
-                label="有效时长",
+                label="播放时长",
                 value=round(float(row.get("hours", 0)), 2),
                 unit="小时",
             ),
@@ -111,7 +111,7 @@ def _billboard_honor(
         metrics=[
             YearlyMetric(
                 key="year_end_score",
-                label="Year-End Score",
+                label="年度积分",
                 value=int(row.get("year_end_score", 0)),
             ),
             YearlyMetric(
@@ -153,7 +153,7 @@ def _annual_honor_item(
     metrics: list[YearlyMetric] = []
     for metric_key, label, unit in (
         ("year_end_rank", "年榜排名", "名"),
-        ("year_end_score", "Year-End Score", None),
+        ("year_end_score", "年度积分", None),
         ("weeks_on_chart", "在榜周数", "周"),
         ("weeks_at_no1", "冠军周数", "周"),
         ("peak_position", "最高排名", "名"),

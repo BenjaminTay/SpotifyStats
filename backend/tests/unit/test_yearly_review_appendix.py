@@ -35,7 +35,7 @@ def test_appendix_keeps_complete_indexes_without_new_narrative() -> None:
     assert result.record_catalog_counts == {"total": 20, "billboard_total": 9}
 
 
-def test_epilogue_selects_three_distinct_conclusions_and_optional_carryovers() -> None:
+def test_epilogue_does_not_fill_conclusions_without_supported_topics() -> None:
     artist = YearlyEntityRef(entity_type="artist", name="Artist")
     headlines = [
         YearlyHeadline(
@@ -53,10 +53,6 @@ def test_epilogue_selects_three_distinct_conclusions_and_optional_carryovers() -
         next_year_carryovers=[artist],
     )
 
-    assert len(result.conclusions) == 3
-    assert all(item.headline_id.startswith("epilogue_") for item in result.conclusions)
-    assert not {item.statement for item in result.conclusions} & {
-        item.statement for item in headlines
-    }
+    assert result.conclusions == []
     assert result.new_history_tops == [artist]
     assert result.next_year_carryovers == [artist]

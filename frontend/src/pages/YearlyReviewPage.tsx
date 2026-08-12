@@ -6,7 +6,6 @@ import { useAnalysisFilters } from '@/hooks/useAnalysis'
 import { useYearlyReview } from '@/hooks/useYearlyReview'
 import { useYearlyReviewV2, useYearlyReviewV2AvailableYears } from '@/hooks/useYearlyReviewV2'
 import { CustomSummary } from '@/pages/yearly-review/CustomSummary'
-import { ShareButton } from '@/pages/yearly-review/ShareButton'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { AnalysisPageHeader } from '@/components/shared/AnalysisPageHeader'
@@ -107,24 +106,29 @@ export function YearlyReviewPage() {
 
   // Per-tab available years
   const displayYears = activeTab === 'custom' ? (isPhone ? playYears : v2Years) : wrappedYears
-  const yearOptions = isPhone ? [...displayYears].reverse() : displayYears
+  const yearOptions = [...displayYears].sort((left, right) => left - right)
   const activeYearsQuery = activeTab === 'official' ? wrappedYearsQuery : isPhone ? playYearsQuery : v2YearsQuery
   const yearsLoading = activeYearsQuery.isLoading
   const yearsError = activeYearsQuery.error instanceof Error ? activeYearsQuery.error.message : null
 
   // Determine current year: URL param > latest from active tab
   const yearParam = searchParams.get('year')
+  const latestYear = displayYears.length > 0 ? Math.max(...displayYears) : null
+  const latestCompleteYear = latestYear === new Date().getFullYear() && displayYears.includes(latestYear - 1)
+    ? latestYear - 1
+    : latestYear
+  const preferredYear = !isPhone && activeTab === 'custom' ? latestCompleteYear : latestYear
   const currentYear = yearParam && displayYears.includes(parseInt(yearParam))
     ? parseInt(yearParam)
-    : displayYears[displayYears.length - 1] ?? null
+    : preferredYear
 
   // Keep the URL year valid for the active tab.
   useEffect(() => {
     const parsedYear = yearParam ? parseInt(yearParam) : null
     if (displayYears.length > 0 && (!parsedYear || !displayYears.includes(parsedYear))) {
-      setSearchParams({ year: String(displayYears[displayYears.length - 1]) })
+      setSearchParams({ year: String(preferredYear) })
     }
-  }, [displayYears, setSearchParams, yearParam])
+  }, [displayYears, preferredYear, setSearchParams, yearParam])
 
   const legacyReview = useYearlyReview(
     activeTab === 'custom' ? (currentYear ?? 0) : 0,
@@ -144,13 +148,6 @@ export function YearlyReviewPage() {
       {!isPhone && <AnalysisPageHeader />}
       {!isPhone && <AnalysisSubNav />}
 
-      {!isPhone && <section className="mb-8">
-        <p className="mb-2 font-sans text-[11px] font-bold uppercase tracking-[1.5px] text-accent-foreground">
-          Yearly Summary
-        </p>
-        <h2 className="font-serif text-[34px] font-bold leading-tight">年度总结</h2>
-      </section>}
-
       {/* 年份选择器 + Tab 导航 */}
       <div className={cn('mb-8 flex items-center justify-between', isPhone && 'mobile-yearly-controls')}>
         <div className="flex max-w-full gap-2 overflow-x-auto pb-1">
@@ -165,7 +162,7 @@ export function YearlyReviewPage() {
                   : 'bg-muted text-muted-foreground hover:text-foreground',
               )}
             >
-              {y}
+              {y === new Date().getFullYear() && activeTab === 'custom' ? `${y} · 进行中` : y}
             </button>
           ))}
         </div>
@@ -214,18 +211,12 @@ export function YearlyReviewPage() {
             )}
 
             {isPhone && activeTab === 'custom' && data && !data.empty && (
-              <>
-                <div className={cn(isPhone && 'mobile-yearly-story')}>
-                  <CustomSummary data={data} />
-                  <ShareButton />
-                </div>
-              </>
+              <div className={cn(isPhone && 'mobile-yearly-story')}>
+                <CustomSummary data={data} />
+              </div>
             )}
             {!isPhone && activeTab === 'custom' && v2Data && v2Data.status !== 'empty' && (
-              <>
-                <YearlyReviewDesktopExperience report={v2Data} filters={filters} />
-                <ShareButton />
-              </>
+              <YearlyReviewDesktopExperience report={v2Data} />
             )}
             {activeTab === 'official' && (
               <Suspense fallback={<LoadingSkeleton />}>

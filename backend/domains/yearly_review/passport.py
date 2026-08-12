@@ -76,9 +76,9 @@ def build_passport_and_headlines(
     rankings_authoritative = bool(play_rankings) and (play_rankings or {}).get("empty") is not True
     charts = dict((play_rankings or {}).get("charts", {}))
     entity_specs = {
-        "unique_tracks": ("track", "规范曲目数", "首"),
-        "unique_albums": ("album", "专辑项目数", "张"),
-        "unique_artists": ("artist", "署名艺人数", "位"),
+        "unique_tracks": ("track", "年度播放曲目", "首"),
+        "unique_albums": ("album", "年度播放专辑", "张"),
+        "unique_artists": ("artist", "年度播放艺人", "位"),
     }
     current_values = dict(summary)
     baseline_values: dict[str, Any] = dict(baseline_summary)
@@ -91,9 +91,9 @@ def build_passport_and_headlines(
         else:
             baseline_values.pop(key, None)
     definitions = (
-        ("total_plays", "有效播放", "次"),
-        ("total_hours", "有效时长", "小时"),
-        ("active_days", "活跃天数", "天"),
+        ("total_plays", "年度播放", "次"),
+        ("total_hours", "年度时长", "小时"),
+        ("active_days", "年度活跃天数", "天"),
         *((key, label, unit) for key, (_, label, unit) in entity_specs.items()),
     )
     metrics = [
@@ -105,7 +105,13 @@ def build_passport_and_headlines(
             comparison_value=(
                 baseline_values.get(key) if comparable and key in baseline_values else None
             ),
-            comparison_label=(f"{coverage.comparison.baseline_year} 同期" if comparable else None),
+            comparison_label=(
+                "比去年"
+                if comparable and coverage.status == "complete"
+                else "比去年同期"
+                if comparable
+                else None
+            ),
         )
         for key, label, unit in definitions
     ]
@@ -128,23 +134,30 @@ def build_passport_and_headlines(
     candidates: list[tuple[int, str, YearlyHeadline]] = []
     hours_change = _change(summary.get("total_hours"), baseline_summary.get("total_hours"))
     if comparable and hours_change is not None:
-        direction = "增加" if hours_change >= 0 else "减少"
+        current_hours = float(summary.get("total_hours") or 0)
+        baseline_hours = float(baseline_summary.get("total_hours") or 0)
+        absolute_change = round(abs(current_hours - baseline_hours), 1)
+        direction = "多" if hours_change >= 0 else "少"
+        comparison_copy = "比去年" if coverage.status == "complete" else "比去年同期"
         candidates.append(
             (
                 100 + int(abs(hours_change)),
                 "comparison",
                 YearlyHeadline(
                     headline_id="listening_time_change",
-                    title="这一年的收听总量",
-                    statement=f"有效收听时长较可比基线{direction} {abs(hours_change):.1f}%。",
+                    title="这一年的播放时长",
+                    statement=(
+                        f"{comparison_copy}{direction}听了 {absolute_change:.1f} 小时"
+                        f"（{hours_change:+.1f}%）。"
+                    ),
                     evidence_grade="B",
                     primary_metric=YearlyMetric(
                         key="total_hours_change_pct",
-                        label="有效时长变化",
+                        label="播放时长变化",
                         value=hours_change,
                         unit="%",
                         comparison_value=_number(baseline_summary.get("total_hours")),
-                        comparison_label=f"{coverage.comparison.baseline_year} 同期小时数",
+                        comparison_label=comparison_copy,
                     ),
                     source_refs=["stats.summary.total_hours", "coverage.comparison"],
                 ),
@@ -163,12 +176,13 @@ def build_passport_and_headlines(
                     headline_id="most_played_artist",
                     title="年度收听主角",
                     statement=(
-                        f"{leader['artist_name']} 以 {int(leader.get('plays', 0)):,} 次有效播放成为年度播放量最高艺人。"
+                        f"{leader['artist_name']} 以 {int(leader.get('plays', 0)):,} 次播放"
+                        f"成为{'全年' if coverage.status == 'complete' else '今年截至目前'}听得最多的艺人。"
                     ),
                     evidence_grade="A",
                     primary_metric=YearlyMetric(
                         key="plays",
-                        label="有效播放",
+                        label="播放次数",
                         value=int(leader.get("plays", 0)),
                         unit="次",
                     ),
@@ -187,8 +201,11 @@ def build_passport_and_headlines(
                 "time",
                 YearlyHeadline(
                     headline_id="peak_listening_month",
-                    title="收听高峰月",
-                    statement=f"{int(peak['month'])} 月以 {float(peak.get('hours', 0)):.1f} 小时成为全年收听时长最高月份。",
+                    title="听歌最多的月份",
+                    statement=(
+                        f"{int(peak['month'])} 月听了 {float(peak.get('hours', 0)):.1f} 小时，"
+                        f"是{'全年' if coverage.status == 'complete' else '今年截至目前'}最高峰。"
+                    ),
                     evidence_grade="A",
                     primary_metric=YearlyMetric(
                         key="monthly_hours",

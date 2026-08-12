@@ -266,7 +266,7 @@ class YearlyHighlightCandidate(BaseModel):
 
 
 class YearlyRecordsChapter(BaseModel):
-    policy_version: str = "highlight_policy_v1"
+    policy_version: str = "highlight_policy_v2"
     featured: list[YearlyFeaturedRecord] = Field(default_factory=list)
     catalog_counts: dict[str, int] = Field(default_factory=dict)
 
@@ -306,9 +306,9 @@ class YearlyAppendix(BaseModel):
 
 
 class YearlyMethodology(BaseModel):
-    content_version: str = "yearly_review_v2_6"
-    relationship_policy_version: str = "relationship_policy_v1"
-    highlight_policy_version: str = "highlight_policy_v1"
+    content_version: str = "yearly_review_v2_11"
+    relationship_policy_version: str = "relationship_policy_v2"
+    highlight_policy_version: str = "highlight_policy_v2"
     season_stage_policy_version: str = "season_stage_v1"
     metric_definitions: dict[str, str] = Field(default_factory=dict)
     comparison_periods: dict[str, str | None] = Field(default_factory=dict)
@@ -347,7 +347,7 @@ class YearlyReviewAvailableYearsResponse(BaseModel):
 
 
 class YearlyReviewRecordsPage(BaseModel):
-    content_version: str = "yearly_review_v2_6"
+    content_version: str = "yearly_review_v2_11"
     year: int = Field(ge=2000)
     filter_fingerprint: str
     page: int = Field(ge=1)
