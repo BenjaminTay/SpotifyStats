@@ -76,9 +76,10 @@ def _copy(candidate: YearlyHighlightCandidate) -> tuple[str, str] | None:
     metric = _metric_phrase(candidate)
     value = _metric_value(candidate)
     date = _date(candidate)
-    entity_label = {"track": "歌曲", "album": "专辑", "artist": "艺人"}.get(
-        candidate.fact_type, "对象"
+    entity_type = (
+        candidate.entity_refs[0].entity_type if candidate.entity_refs else candidate.fact_type
     )
+    entity_label = {"track": "歌曲", "album": "专辑", "artist": "艺人"}.get(entity_type, "对象")
 
     if "obsession.daily_binge" in key and value:
         return (
@@ -104,7 +105,13 @@ def _copy(candidate: YearlyHighlightCandidate) -> tuple[str, str] | None:
     if "longest_span" in key and value:
         return "一路陪伴", f"第一次和最后一次听到 {subject} 相隔 {value} 天。"
     if ("comeback" in key or "return" in key) and value:
-        return "沉寂后的回归", f"{subject} 沉寂 {value} 天后重新出现，构成一次清晰的旧爱回归。"
+        display_subject = (
+            f"{entity_label}《{subject}》" if entity_type != "artist" else f"艺人 {subject}"
+        )
+        return (
+            "沉寂后的回归",
+            f"{display_subject}沉寂 {value} 天后重新出现，构成一次清晰的旧爱回归。",
+        )
     if "discovery.discovery_day" in key and metric and date:
         return "发现新歌最多的一天", f"{date} 一共发现了 {metric}，是今年探索最多的一天。"
     if "discovery.same_name_diff_artist" in key and metric:

@@ -134,8 +134,6 @@ export const queryKeys = {
     all: ["yearly-review"] as const,
     full: (year: number) => ["yearly-review", "full", year] as const,
     availableYears: () => ["yearly-review", "available-years"] as const,
-    hubAvailableYears: () => ["yearly-review", "hub-available-years"] as const,
-    hub: () => ["yearly-review", "hub"] as const,
     v2AvailableYears: () => ["yearly-review", "v2", "available-years"] as const,
     v2Report: (year: number, filterKey: string) =>
       ["yearly-review", "v2", "report", year, filterKey] as const,

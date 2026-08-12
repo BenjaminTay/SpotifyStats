@@ -2,7 +2,7 @@ import { ExternalLink } from 'lucide-react'
 import { Link } from 'react-router-dom'
 
 import { EntityMediaLink } from '@/features/yearly-review/YearlyReviewPrimitives'
-import { formatMetric } from '@/features/yearly-review/yearlyReviewData'
+import { displayYearlyText, formatMetric } from '@/features/yearly-review/yearlyReviewData'
 import type { YearlyFeaturedRecord, YearlyReviewResponse } from '@/types/yearly-review-v2'
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -32,9 +32,9 @@ function MobileRecordCard({ record, featured }: { record: YearlyFeaturedRecord; 
         />
       )}
       <div className="mobile-yearly-v2-record-copy">
-        <p>{featured ? CATEGORY_LABELS[record.category] ?? '年度纪录' : record.title}</p>
-        <h3>{record.statement}</h3>
-        {featured && <span>{record.title}</span>}
+        <p>{featured ? CATEGORY_LABELS[record.category] ?? '年度纪录' : displayYearlyText(record.title)}</p>
+        <h3>{displayYearlyText(record.statement)}</h3>
+        {featured && <span>{displayYearlyText(record.title)}</span>}
       </div>
       {record.entity_refs.length > 1 && (
         <div className="mobile-yearly-v2-record-entities">
@@ -51,8 +51,8 @@ function MobileRecordCard({ record, featured }: { record: YearlyFeaturedRecord; 
         <dl className="mobile-yearly-v2-record-metrics">
           {record.metrics.slice(0, 3).map((metric) => (
             <div key={metric.key}>
-              <dt>{metric.label}</dt>
-              <dd>{formatMetric(metric)}</dd>
+              <dt>{displayYearlyText(metric.label)}</dt>
+              <dd>{displayYearlyText(formatMetric(metric))}</dd>
             </div>
           ))}
         </dl>
@@ -61,7 +61,7 @@ function MobileRecordCard({ record, featured }: { record: YearlyFeaturedRecord; 
         <Link
           to={record.deep_link}
           className="mobile-yearly-v2-record-link"
-          aria-label={`查看纪录：${record.title}`}
+          aria-label={`查看纪录：${displayYearlyText(record.title)}`}
         >
           <span>查看相关记录</span>
           <ExternalLink aria-hidden="true" />

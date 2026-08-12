@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { ArrowDownRight, ArrowUpRight } from 'lucide-react'
 
 import { EntityMediaLink } from '@/features/yearly-review/YearlyReviewPrimitives'
-import { numberValue, stringValue } from '@/features/yearly-review/yearlyReviewData'
+import { displayYearlyText, numberValue, stringValue } from '@/features/yearly-review/yearlyReviewData'
 import type { YearlyReviewResponse } from '@/types/yearly-review-v2'
 
 type TasteAxis = 'style' | 'scene' | 'language' | 'release_era'
@@ -95,8 +95,8 @@ export function MobileTasteMigrationChapter({ report }: { report: YearlyReviewRe
           </p>
           {observation && (
             <div className="mobile-yearly-v2-taste-story">
-              <h3>{observation.title}</h3>
-              <p>{observation.statement}</p>
+              <h3>{displayYearlyText(observation.title)}</h3>
+              <p>{displayYearlyText(observation.statement)}</p>
               {observation.entity_refs.map((entity) => (
                 <EntityMediaLink
                   key={`${entity.entity_type}-${entity.entity_id}-${entity.name}`}

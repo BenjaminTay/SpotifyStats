@@ -314,47 +314,6 @@ export interface ProfileData {
   banned_items: BannedItem[]
 }
 
-// --- Wrapped Hub (reused in Identity Tab) ---
-
-export interface WrappedClub {
-  club_name: string
-  percent_in_club: number
-  role: string
-  artist_name: string
-}
-
-export interface WrappedPartyMetric {
-  metric: string
-  value: number
-}
-
-export interface WrappedListeningAge {
-  age: number
-  window_start_year: number
-  decade_phase: string
-}
-
-export interface WrappedArchiveReport {
-  column_qualifier: string
-  title: string
-  description: string
-  reason: string
-  minutes_listened: number
-  filed_under_tags: string
-}
-
-export interface WrappedHubData {
-  available: boolean
-  empty?: boolean
-  top_artists: { rank: number; name: string; ms_played: number; percentile: number; cover_url: string }[]
-  top_tracks: { rank: number; name: string; play_count: number; ms_played: number; cover_url: string }[]
-  top_albums: { rank: number; name: string; play_count: number; ms_played: number; cover_url: string }[]
-  clubs: WrappedClub[]
-  party_metrics: WrappedPartyMetric[]
-  listening_age: WrappedListeningAge | null
-  archive_reports: WrappedArchiveReport[]
-}
-
 // --- Aggregated Account Data ---
 
 export interface AccountSummary {

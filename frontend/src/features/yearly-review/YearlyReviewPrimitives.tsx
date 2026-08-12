@@ -2,8 +2,9 @@ import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 
 import { cn } from '@/lib/utils'
+import { displayName } from '@/lib/chinese'
 import type { YearlyEntityRef, YearlyMetric } from '@/types/yearly-review-v2'
-import { entitySubtitle, formatMetric } from './yearlyReviewData'
+import { displayYearlyText, entitySubtitle, formatMetric } from './yearlyReviewData'
 
 export function SectionHeading({
   number,
@@ -28,8 +29,8 @@ export function SectionHeading({
 export function MetricLine({ metric, compact = false }: { metric: YearlyMetric; compact?: boolean }) {
   return (
     <div className={cn('yearly-v2-metric-line', compact && 'is-compact')}>
-      <span>{metric.label}</span>
-      <strong>{formatMetric(metric)}</strong>
+      <span>{displayYearlyText(metric.label)}</span>
+      <strong>{displayYearlyText(formatMetric(metric))}</strong>
     </div>
   )
 }
@@ -45,7 +46,7 @@ export function EntityLink({
 }) {
   const body = children ?? (
     <>
-      <strong>{entity.name}</strong>
+      <strong>{displayName(entity.name)}</strong>
       {entitySubtitle(entity) && <span>{entitySubtitle(entity)}</span>}
     </>
   )
@@ -57,12 +58,13 @@ export function EntityLink({
 }
 
 export function EntityCover({ entity, size = 'medium' }: { entity: YearlyEntityRef; size?: 'small' | 'medium' }) {
+  const displayEntityName = displayName(entity.name)
   return (
     <div
       className={cn('yearly-v2-entity-cover', size === 'small' && 'is-small')}
       data-entity-type={entity.entity_type}
     >
-      <span aria-hidden="true">{entity.name.slice(0, 1).toUpperCase()}</span>
+      <span aria-hidden="true">{displayEntityName.slice(0, 1).toUpperCase()}</span>
       {entity.cover_url && (
         <img
           src={entity.cover_url}
@@ -90,7 +92,7 @@ export function EntityMediaLink({
     <EntityLink entity={entity} className={cn('yearly-v2-entity-media', className)}>
       <EntityCover entity={entity} size={size} />
       <span>
-        <strong>{entity.name}</strong>
+        <strong>{displayName(entity.name)}</strong>
         {(meta || entitySubtitle(entity)) && <small>{meta || entitySubtitle(entity)}</small>}
       </span>
     </EntityLink>

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { ChevronDown } from 'lucide-react'
 
 import { EntityMediaLink } from '@/features/yearly-review/YearlyReviewPrimitives'
+import { displayYearlyText, ENTITY_LABELS } from '@/features/yearly-review/yearlyReviewData'
 import type { YearlyMonthSummary, YearlyReviewResponse } from '@/types/yearly-review-v2'
 
 const EVENT_LABELS: Record<string, string> = {
@@ -83,7 +84,7 @@ export function MobileSeasonChapter({ report }: { report: YearlyReviewResponse }
           {stages.map((stage) => (
             <article key={stage.stage_id} className="mobile-yearly-v2-stage-chip">
               <p>{String(stage.start_month).padStart(2, '0')}—{String(stage.end_month).padStart(2, '0')} 月</p>
-              <h3>{stage.label}</h3>
+              <h3>{displayYearlyText(stage.label)}</h3>
               {stage.entity_refs.map((entity) => (
                 <EntityMediaLink
                   key={`${entity.entity_type}-${entity.entity_id ?? entity.name}`}
@@ -105,8 +106,8 @@ export function MobileSeasonChapter({ report }: { report: YearlyReviewResponse }
             </div>
             <div className="mobile-yearly-v2-timeline-story">
               <p>{EVENT_LABELS[point.event_type] ?? '年度节点'}{point.date ? ` · ${point.date}` : ''}</p>
-              <h3>{point.title}</h3>
-              <p>{point.statement}</p>
+              <h3>{displayYearlyText(point.title)}</h3>
+              <p>{displayYearlyText(point.statement)}</p>
               {point.entity_refs.length > 0 && (
                 <div className="mobile-yearly-v2-timeline-entities">
                   {point.entity_refs.map((entity) => (
@@ -114,6 +115,7 @@ export function MobileSeasonChapter({ report }: { report: YearlyReviewResponse }
                       key={`${entity.entity_type}-${entity.entity_id ?? entity.name}`}
                       entity={entity}
                       className="mobile-yearly-v2-timeline-entity"
+                      meta={`${entity.artist_name ? `${displayYearlyText(entity.artist_name)} · ` : ''}${ENTITY_LABELS[entity.entity_type]}`}
                     />
                   ))}
                 </div>

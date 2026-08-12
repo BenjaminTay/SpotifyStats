@@ -2,6 +2,7 @@ import { ExternalLink } from 'lucide-react'
 import { Link } from 'react-router-dom'
 
 import { EntityMediaLink, EmptyChapter, MetricLine, SectionHeading } from '@/features/yearly-review/YearlyReviewPrimitives'
+import { displayYearlyText } from '@/features/yearly-review/yearlyReviewData'
 import type { YearlyFeaturedRecord, YearlyReviewResponse } from '@/types/yearly-review-v2'
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -28,8 +29,8 @@ function RecordCard({ record, featured = false }: { record: YearlyFeaturedRecord
       <header>
         <span>{CATEGORY_LABELS[record.category] ?? '年度纪录'}</span>
       </header>
-      <p>{record.title}</p>
-      <h3>{record.statement}</h3>
+      <p>{displayYearlyText(record.title)}</p>
+      <h3>{displayYearlyText(record.statement)}</h3>
       {record.entity_refs.length > 0 && (
         <div className="yearly-v2-record-entities">
           {record.entity_refs.slice(record.entity_refs[0] ? 1 : 0, 3).map((entity) => (
@@ -51,7 +52,7 @@ function RecordCard({ record, featured = false }: { record: YearlyFeaturedRecord
     <article className={featured ? 'yearly-v2-record-card is-featured' : 'yearly-v2-record-card'}>
       {content}
       {record.deep_link && (
-        <Link to={record.deep_link} className="yearly-v2-record-external" aria-label={`查看纪录：${record.title}`}>
+        <Link to={record.deep_link} className="yearly-v2-record-external" aria-label={`查看纪录：${displayYearlyText(record.title)}`}>
           <ExternalLink aria-hidden="true" />
         </Link>
       )}

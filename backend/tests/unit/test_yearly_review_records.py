@@ -115,6 +115,26 @@ def test_public_record_metric_localizes_legacy_units() -> None:
     assert presented.metrics[0].unit == "天后回归"
 
 
+def test_comeback_copy_names_the_entity_type() -> None:
+    candidate = _candidate(2, "longevity").model_copy(
+        update={
+            "record_key": "longevity.comeback_after_sleep.album",
+            "fact_type": "comeback_after_sleep",
+            "entity_refs": [
+                YearlyEntityRef(entity_type="album", name="認了吧", artist_name="Eason Chan")
+            ],
+            "primary_metric": YearlyMetric(
+                key="sleep_days", label="認了吧", value=243, unit="天后回归"
+            ),
+        }
+    )
+
+    presented = present_record_candidate(candidate)
+
+    assert presented is not None
+    assert presented.statement == ("专辑《認了吧》沉寂 243 天后重新出现，构成一次清晰的旧爱回归。")
+
+
 def test_simultaneous_chart_records_state_the_exact_track_count() -> None:
     album_candidate = _candidate(50, "market", source="billboard_records").model_copy(
         update={

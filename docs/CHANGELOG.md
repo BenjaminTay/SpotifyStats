@@ -13,12 +13,14 @@
 - 用户展示继续升级到 `content_version=yearly_review_v2_9`：年份按钮改为升序；完整年度隐藏状态与起止日期，进行中保留截止日期；移除封面三条头条和生成海报功能；六项同比改为红/绿箭头与高低百分比。
 - 人工验收细节升级到 `content_version=yearly_review_v2_10`：KPI 去掉重复的“高/低”字样；荣誉分歧在宽屏两列、窄屏单列；新关系标题区分歌曲、专辑和艺人；同专辑/艺人多首入榜纪录显示准确曲目数，缺少首数时不公开。
 - 人工验收继续升级到 `content_version=yearly_review_v2_11`：删除“更多年度纪录”及前端分页请求，年度 artifact 不再序列化上千条候选，兼容 records API 只返回与正文相同的精选集合；全章纵向间距统一缩短约 30%。
+- 年度人工验收升级到 `content_version=yearly_review_v2_12`：Phone/Compact/Desktop 首次进入默认最新可用年份；移动年份栏与封面间距收紧；年度动态文案和实体名称遵循全局简繁体偏好；回归事件明确歌曲、专辑或艺人类型，避免将专辑《认了吧》的 243 天回归误读为歌曲统计。
 - 年度冷生成升级为 `yearly_review_generation_v1`：Desktop/Compact 进入页面后以当前完整筛选上下文自动排队全部可用年份，当前年份优先、切换年份可提升 queued 任务；服务端时间戳让跨年份/跨路由等待计时连续，前端离开只取消 HTTP 等待，后台继续生成并写入持久缓存。
 - 移除年度 artifact 跨年份全局 singleflight，改由单 worker 对 exact cache key 去重；后台冷构建不再阻塞其他年份缓存命中，并补齐 revision 漂移、失败重试、终态 registry 上限、可用年份校验和 OpenAPI 审计。
 - Phone 自定义年度总结迁移到同一 `YearlyReviewV2` 数据与后台生成链路，并重做为独立“口袋音乐年鉴”：2×3 KPI、章节进度 Sheet、纵向时间线、单列故事、完整精选纪录，以及 Top 5 预览 + 每页 10 条的无宽表全屏榜单；Phone/Desktop 互斥挂载，官方 Wrapped 继续隔离。
 - Phone 人工验收继续收口：年度荣誉改为分行标签，艺人头像统一圆形，时间线删除重复序号并补足实体间距；月份账本重排为横向月份选择和编辑式月卡；收听生活/结语去除重复数字，纪录卡修复误套黑底，品味迁移与结语重做字体和层级，四项品味按钮及双榜按钮分别固定单行等宽。
 - Phone 尾部视觉继续精修：月卡使用 JAN–DEC 英文缩写避免重复月份，关系故事标题换用年鉴衬线字体，结语延续实体重做为深色双列封面货架；完整榜单正文筛选移除深色大框，弹层筛选保持紧凑明确，排行值使用年鉴衬线数字并弱化单位。
-- 验证通过后端全量 1,596 项、年度专项 116 项、前端全量 497 项、API smoke 120/120；OpenAPI 187 operations / 85 parameter obligations 均为 0 unaccounted，既有五视口年度 route matrix、30 组控件库存与 Chromium/Firefox/WebKit 年度完整交互继续通过。
+- 年度入口最终收敛为单一自有总结：PC 与 Phone 年份按钮只显示年份，删除“年度总结 / 官方 Wrapped”切换、官方 Wrapped 前端组件、查询键和展示类型；`/api/wrapped-hub`、官方导入表与读取服务转为只读兼容冻结，不再新增产品能力。
+- 各阶段验证通过后端全量 1,596 项、年度专项 116 项、API smoke 120/120；本轮收口复验年度后端非脚本专项 98 项、补充契约/模型/纪录 20 项、前端全量 498 项与 production build。OpenAPI 187 operations / 85 parameter obligations 均为 0 unaccounted，既有五视口年度 route matrix、30 组控件库存与 Chromium/Firefox/WebKit 年度完整交互继续通过。
 - Spotify/Google 第三方封面或字体不可达时使用现有字体与实体首字母回退；应用自身资源和 API 错误仍由门禁拦截。
 
 ## 2026-08-11 — 详情统计与播放记录移动端收口

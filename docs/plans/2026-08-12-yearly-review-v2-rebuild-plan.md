@@ -2,7 +2,7 @@
 
 日期：2026-08-12
 依据：[`../designs/2026-08-12-yearly-review-v2-content-data-contract.md`](../designs/2026-08-12-yearly-review-v2-content-data-contract.md)
-状态：完成（M0–M6 内容重构与 M7 Phone V2 迁移均已于 2026-08-12 完成）
+状态：完成（M0–M6 内容重构、M7 Phone V2 迁移与 M8 单一年度入口收口均已于 2026-08-12 完成）
 
 ## 1. 目标
 
@@ -19,7 +19,7 @@
 - 品味迁移。
 - 同比、个人历史参照和完整年度索引。
 
-官方 Wrapped、Power Score 和 AI 年报不属于本次实现范围。Phone presentation 不属于原 M0–M6，已由后续 M7 迁移补齐。
+Power Score 和 AI 年报不属于本次实现范围。Phone presentation 不属于原 M0–M6，已由后续 M7 迁移补齐；M8 按最终产品决策退役官方 Wrapped 前端展示，并冻结其后端兼容链路。
 
 ## 2. 交付边界
 
@@ -894,24 +894,43 @@ node scripts/frontend_control_inventory_smoke.mjs \
 - Chromium/Firefox/WebKit 的 Phone 年度 route marker 通过。
 - production build、全量前端测试、定向 ESLint 与 smoke 脚本单元测试通过。
 
-**执行结果（2026-08-12）：完成。** Phone 自定义总结已迁移到 V2，并保留独立移动信息架构；V1 组件不再由自定义年度路由挂载。人工验收进一步收口月份、关系、纪录、品味、结语与完整榜单的移动字体、间距和筛选层级；前端全量 66 files / 497 tests、production build、五视口 route matrix 与三浏览器 marker 通过。官方 Wrapped 未改。
+**执行结果（2026-08-12）：完成。** Phone 自定义总结已迁移到 V2，并保留独立移动信息架构；V1 组件不再由自定义年度路由挂载。人工验收进一步收口月份、关系、纪录、品味、结语与完整榜单的移动字体、间距和筛选层级；本轮前端全量 66 files / 498 tests、production build、五视口 route matrix 与三浏览器 marker 通过。官方 Wrapped 在 M7 阶段未改，随后由 M8 退役前端入口并冻结后端兼容接口。
 
-## 12. 发布与回滚
+## 12. M8：单一年度入口收口
+
+### 决策
+
+- `/yearly-review` 只展示自有年度总结，不再提供“年度总结 / 官方 Wrapped”模式切换。
+- Desktop/Compact/Phone 年份按钮只显示四位年份，不附加“进行中”；进行中状态只在报告封面保留截止日期。
+- 删除 `OfficialWrapped` 前端组件、`wrapped-hub` 查询键、展示类型与对应交互 smoke。
+- `/api/wrapped-hub`、官方导入表与读取服务不做破坏性删除，转为只读兼容冻结；原因是现有导入数据、API 契约与诊断能力仍需可回溯，而自有 `wrapped_service` 另被 AI 和统计适配层复用，不能按命名整体清理。
+
+### 验收
+
+- PC 与 Phone 页面均不存在官方 Wrapped 按钮、组件或网络请求。
+- 2026 年份按钮在所有视口只显示 `2026`，不显示状态后缀。
+- 当前年报告封面的“进行中 · 截至日期”继续表达数据范围。
+- 冻结接口继续保留 API smoke 与 response model contract，不新增消费端能力。
+
+**执行结果（2026-08-12）：完成。** 年度入口已收敛为单一 V2；定向 18 项测试、ESLint、production build 通过，真实 1280px 与 432px 页面均无官方 Wrapped 入口或年份状态后缀，432px 横向溢出为 0。
+
+## 13. 发布与回滚
 
 ### 发布策略
 
-V2 对 Desktop/Compact 与 Phone 的自定义年度总结生效，两个 presentation 互斥挂载。
+V2 对 Desktop/Compact 与 Phone 的年度总结生效，两个 presentation 互斥挂载。
 
-M7 验收后不再引入短期 feature flag。Desktop/Compact 与 Phone 使用同一 V2 数据层和不同 presentation，Official Wrapped 仍是天然隔离边界。
+M8 验收后不再引入短期 feature flag 或第二年度模式。Desktop/Compact 与 Phone 使用同一 V2 数据层和不同 presentation；官方 Wrapped 只保留冻结的后端兼容边界。
 
 ### 回滚边界
 
-- 如需回滚 Phone 展示，只恢复 `YearlyReviewPage` 的 Phone presentation 分支；不要回退后端 V2 数据层，也不触碰 Official Wrapped。
+- 如需回滚 Phone 展示，只恢复 `YearlyReviewPage` 的 Phone presentation 分支；不要回退后端 V2 数据层，也不要重新暴露官方 Wrapped UI。
 - V2 新 endpoint 和 domain 可保留，不影响旧 `/wrapped`。
+- `/wrapped-hub` 只读兼容接口可继续保留；除非另有数据迁移计划，不删除官方导入表。
 - 不做数据库 destructive migration。
 - 不重写原始 plays、tracks、track_artists 或 Billboard 聚合表。
 
-## 13. 完成门禁
+## 14. 完成门禁
 
 ### P0：新骨架完成
 
@@ -934,12 +953,13 @@ M7 验收后不再引入短期 feature flag。Desktop/Compact 与 Phone 使用�
 - [x] 消费界面去除防御性/工程化文案与章节 subtitle。
 - [x] 六项年度 KPI 使用箭头与百分比展示同比，不重复显示“高/低”。
 - [x] 全章实体封面、详情深链、固定章节导航和完整榜单入口。
-- [x] Desktop/Compact 默认最近完整年度，当前年标注进行中。
+- [x] 所有视口默认最新可用年度（包括进行中的当前年），年份按钮只显示年份；当前年状态仅在报告封面展示。
+- [x] 年度页面只保留自有 V2，不存在官方 Wrapped 切换或展示组件。
 - [x] 全部定向、回归、browser 和性能门禁。
 
 只有 P0 + P1 全部完成，才将本计划状态改为“完成”，并把旧桌面 V1 组合视为已替代。
 
-**用户展示验收执行结果（2026-08-12）：完成。** content v2.11 已将严谨统计信息留在后端契约与 probe；年份按升序排列，完整年度隐藏重复状态/日期，封面三条头条和海报功能移除，六项同比压缩为箭头与百分比。新关系标题按歌曲/专辑/艺人区分，多首同时入榜纪录显示准确首数，分歧故事在宽屏两列、窄屏单列。年度纪录只显示精选并删除“更多年度纪录”，artifact 目录同步收敛到精选集合；章节间距最终较初版缩短约 45%。年度专项测试、production build 及真实 897px 页面复验通过，页面为 0 横向溢出、0 console error/warning。
+**用户展示验收执行结果（2026-08-12）：完成。** content v2.12 已将严谨统计信息留在后端契约与 probe；年份按升序排列并默认最新可用年度，完整年度隐藏重复状态/日期，封面三条头条和海报功能移除，六项同比压缩为箭头与百分比。新关系标题按歌曲/专辑/艺人区分，多首同时入榜纪录显示准确首数，分歧故事在宽屏两列、窄屏单列。年度纪录只显示精选并删除“更多年度纪录”，artifact 目录同步收敛到精选集合；章节间距最终较初版缩短约 45%。年度动态文案与实体名称遵循全局简繁体偏好，时间线明确实体类型；年度专项测试、production build 及真实页面复验通过，页面为 0 横向溢出、0 console error/warning。
 
 ### P2：后续独立计划
 
@@ -951,7 +971,7 @@ M7 验收后不再引入短期 feature flag。Desktop/Compact 与 Phone 使用�
 
 P2 不阻塞本次内容重构完成。
 
-## 14. Git 边界
+## 15. Git 边界
 
 - 每个阶段先核对 dirty worktree，保护用户已有修改。
 - 默认不自动提交；只有用户明确要求时才 commit。

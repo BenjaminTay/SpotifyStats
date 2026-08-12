@@ -1,5 +1,6 @@
 import type { AnalysisFilters } from '@/types/analysis'
 import type { YearlyEntityRef, YearlyMetric, YearlyReviewStatus } from '@/types/yearly-review-v2'
+import { displayName } from '@/lib/chinese'
 
 export type YearlyReviewQueryParams = Record<string, string | number | boolean>
 
@@ -40,6 +41,10 @@ export const STATUS_COPY: Record<YearlyReviewStatus, { label: string }> = {
 
 export const ENTITY_LABELS = { track: '歌曲', album: '专辑', artist: '艺人' } as const
 
+export function displayYearlyText(value: string): string {
+  return displayName(value)
+}
+
 export function formatMetric(metric: YearlyMetric): string {
   const value = typeof metric.value === 'number'
     ? metric.value.toLocaleString('zh-CN', { maximumFractionDigits: 1 })
@@ -73,7 +78,7 @@ export function formatMetricComparison(metric: YearlyMetric): MetricComparison |
 
 export function entitySubtitle(entity: YearlyEntityRef | null | undefined): string | null {
   if (!entity) return null
-  return entity.artist_name || ENTITY_LABELS[entity.entity_type]
+  return entity.artist_name ? displayName(entity.artist_name) : ENTITY_LABELS[entity.entity_type]
 }
 
 export function numberValue(row: Record<string, unknown>, key: string): number {

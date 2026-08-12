@@ -1,4 +1,9 @@
-"""Official Spotify Wrapped Hub API endpoint."""
+"""Compatibility-frozen official Spotify Wrapped Hub API.
+
+The consumer UI was retired on 2026-08-12. These read-only endpoints remain
+available for imported-data compatibility and diagnostics, but receive no new
+product features.
+"""
 
 from sqlite3 import Connection
 

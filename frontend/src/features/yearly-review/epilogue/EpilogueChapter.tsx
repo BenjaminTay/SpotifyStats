@@ -1,6 +1,7 @@
 import { ArrowUpRight } from 'lucide-react'
 
 import { EntityCover, EntityLink, EntityMediaLink, SectionHeading } from '@/features/yearly-review/YearlyReviewPrimitives'
+import { displayYearlyText, ENTITY_LABELS } from '@/features/yearly-review/yearlyReviewData'
 import type { YearlyEntityRef, YearlyReviewResponse } from '@/types/yearly-review-v2'
 
 function EntityShelf({ title, entities }: { title: string; entities: YearlyEntityRef[] }) {
@@ -12,7 +13,7 @@ function EntityShelf({ title, entities }: { title: string; entities: YearlyEntit
         {entities.slice(0, 8).map((entity) => (
           <EntityLink key={`${entity.entity_type}-${entity.entity_id}-${entity.name}`} entity={entity} className="yearly-v2-epilogue-entity">
             <EntityCover entity={entity} size="small" />
-            <span><strong>{entity.name}</strong><small>{entity.artist_name ?? entity.entity_type}</small></span>
+            <span><strong>{displayYearlyText(entity.name)}</strong><small>{entity.artist_name ? displayYearlyText(entity.artist_name) : ENTITY_LABELS[entity.entity_type]}</small></span>
             <ArrowUpRight aria-hidden="true" />
           </EntityLink>
         ))}
@@ -35,8 +36,8 @@ export function EpilogueChapter({ report }: { report: YearlyReviewResponse }) {
           {report.epilogue.conclusions.map((conclusion, index) => (
             <article key={conclusion.headline_id}>
               <span>{String(index + 1).padStart(2, '0')}</span>
-              <p>{conclusion.title}</p>
-              <h3>{conclusion.statement}</h3>
+              <p>{displayYearlyText(conclusion.title)}</p>
+              <h3>{displayYearlyText(conclusion.statement)}</h3>
               {conclusion.primary_metric && <strong>{conclusion.primary_metric.label} · {conclusion.primary_metric.value}{conclusion.primary_metric.unit ?? ''}</strong>}
               {conclusion.entity_refs.map((entity) => <EntityMediaLink key={`${entity.entity_type}-${entity.entity_id}`} entity={entity} className="yearly-v2-conclusion-entity" />)}
             </article>

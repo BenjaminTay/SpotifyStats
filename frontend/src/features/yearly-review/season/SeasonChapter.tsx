@@ -1,6 +1,7 @@
 import { ChevronDown } from 'lucide-react'
 
 import { EntityMediaLink, SectionHeading } from '@/features/yearly-review/YearlyReviewPrimitives'
+import { displayYearlyText, ENTITY_LABELS } from '@/features/yearly-review/yearlyReviewData'
 import type { YearlyReviewResponse } from '@/types/yearly-review-v2'
 
 const EVENT_LABELS: Record<string, string> = {
@@ -20,7 +21,7 @@ export function SeasonChapter({ report }: { report: YearlyReviewResponse }) {
   return (
     <section className="yearly-v2-section" id="yearly-v2-season">
       <SectionHeading number="02" eyebrow="THE SEASON" title="这一年如何转弯" />
-      {stages.length > 0 && <div className="yearly-v2-stage-strip">{stages.map((stage) => stage.entity_refs[0] ? <EntityMediaLink key={stage.stage_id} entity={stage.entity_refs[0]} meta={`${stage.start_month}–${stage.end_month} 月 · ${stage.label}`} /> : null)}</div>}
+      {stages.length > 0 && <div className="yearly-v2-stage-strip">{stages.map((stage) => stage.entity_refs[0] ? <EntityMediaLink key={stage.stage_id} entity={stage.entity_refs[0]} meta={`${stage.start_month}–${stage.end_month} 月 · ${displayYearlyText(stage.label)}`} /> : null)}</div>}
       <div className="yearly-v2-timeline">
         {turning_points.map((point, index) => (
           <article key={point.point_id} className="yearly-v2-turning-point">
@@ -28,8 +29,8 @@ export function SeasonChapter({ report }: { report: YearlyReviewResponse }) {
             <div className="yearly-v2-turning-line"><i /><b>{String(index + 1).padStart(2, '0')}</b></div>
             <div className="yearly-v2-turning-copy">
               <p>{EVENT_LABELS[point.event_type] ?? '年度节点'}{point.date ? ` · ${point.date}` : ''}</p>
-              <h3>{point.title}</h3><span>{point.statement}</span>
-              {point.entity_refs.length > 0 && <div className="yearly-v2-turning-entities">{point.entity_refs.slice(0, 3).map((entity) => <EntityMediaLink key={`${entity.entity_type}-${entity.entity_id}-${entity.name}`} entity={entity} />)}</div>}
+              <h3>{displayYearlyText(point.title)}</h3><span>{displayYearlyText(point.statement)}</span>
+              {point.entity_refs.length > 0 && <div className="yearly-v2-turning-entities">{point.entity_refs.slice(0, 3).map((entity) => <EntityMediaLink key={`${entity.entity_type}-${entity.entity_id}-${entity.name}`} entity={entity} meta={`${entity.artist_name ? `${displayYearlyText(entity.artist_name)} · ` : ''}${ENTITY_LABELS[entity.entity_type]}`} />)}</div>}
             </div>
           </article>
         ))}

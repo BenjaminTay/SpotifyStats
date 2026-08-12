@@ -793,12 +793,10 @@ def run_yearly_review(browser):
             "Yearly appendix did not advance to page 2",
         )
 
-        page.get_by_role("button", name="官方 Wrapped", exact=True).click(timeout=WAIT_MS)
-        wait_for_text(page, "SPOTIFY WRAPPED", timeout_ms=YEARLY_REVIEW_WAIT_MS)
-        if page.locator(".yearly-v2-experience").count() != 0:
-            raise SmokeFailure("Yearly V2 remained mounted on Official Wrapped tab")
-        page.get_by_role("button", name="年度总结", exact=True).click(timeout=WAIT_MS)
-        wait_for_text(page, "我的音乐年鉴", timeout_ms=YEARLY_REVIEW_WAIT_MS)
+        if page.get_by_role("button", name="官方 Wrapped", exact=True).count() != 0:
+            raise SmokeFailure("Retired Official Wrapped switch is still visible")
+        if page.get_by_text(re.compile(r"^2026\s*·\s*进行中$")).count() != 0:
+            raise SmokeFailure("Current year selector still includes a status suffix")
 
         detail_link = page.get_by_role("link", name=re.compile("查看详情")).first
         detail_link.scroll_into_view_if_needed(timeout=WAIT_MS)

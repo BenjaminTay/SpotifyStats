@@ -28,5 +28,4 @@ export type {
   PodcastData,
   VideoData,
   ProfileData,
-  WrappedHubData,
 } from '@/types/account'

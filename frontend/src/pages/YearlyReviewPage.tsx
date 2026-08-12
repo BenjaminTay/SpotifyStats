@@ -1,7 +1,5 @@
-import { useState, useEffect, useRef, Suspense, lazy, Component } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useEffect, useRef, Component } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { queryKeys } from '@/api/query-keys'
 import { useAnalysisFilters } from '@/hooks/useAnalysis'
 import {
   usePrewarmYearlyReviews,
@@ -9,7 +7,6 @@ import {
   useYearlyReviewV2,
   useYearlyReviewV2AvailableYears,
 } from '@/hooks/useYearlyReviewV2'
-import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { AnalysisPageHeader } from '@/components/shared/AnalysisPageHeader'
 import { AnalysisSubNav } from '@/components/shared/AnalysisSubNav'
@@ -17,9 +14,6 @@ import { YearlyReviewPhoneExperience } from '@/features/mobile/yearly-v2/YearlyR
 import { useViewportMode } from '@/hooks/useViewportMode'
 import { YearlyReviewDesktopExperience } from '@/features/yearly-review/YearlyReviewDesktopExperience'
 import { YearlyReviewV2Empty, YearlyReviewV2Error, YearlyReviewV2Loading } from '@/features/yearly-review/YearlyReviewStates'
-
-// OfficialWrapped 懒加载
-const OfficialWrapped = lazy(() => import('@/pages/yearly-review/OfficialWrapped').then(m => ({ default: m.OfficialWrapped })))
 
 class ErrorBoundary extends Component<{ children: React.ReactNode }, { error: Error | null }> {
   constructor(props: { children: React.ReactNode }) {
@@ -74,57 +68,40 @@ function ErrorState({ message }: { message: string }) {
   )
 }
 
-type TabKey = 'custom' | 'official'
 const EMPTY_YEARS: number[] = []
 
 export function YearlyReviewPage() {
   const isPhone = useViewportMode() === 'phone'
   const [searchParams, setSearchParams] = useSearchParams()
-  const [activeTab, setActiveTab] = useState<TabKey>('custom')
   const { filters, loading: filtersLoading } = useAnalysisFilters()
-  const wrappedYearsQuery = useQuery({
-    queryKey: queryKeys.yearlyReview.hubAvailableYears(),
-    queryFn: () => api.get<{ years: number[] }>('/wrapped-hub/available-years'),
-    enabled: activeTab === 'official',
-  })
-  const v2YearsQuery = useYearlyReviewV2AvailableYears(activeTab === 'custom')
-
-  const wrappedYears = wrappedYearsQuery.data?.years ?? []
+  const v2YearsQuery = useYearlyReviewV2AvailableYears(true)
   const v2Years = v2YearsQuery.data?.years ?? EMPTY_YEARS
 
-  // Per-tab available years
-  const displayYears = activeTab === 'custom' ? v2Years : wrappedYears
-  const yearOptions = [...displayYears].sort((left, right) => left - right)
-  const activeYearsQuery = activeTab === 'official' ? wrappedYearsQuery : v2YearsQuery
-  const yearsLoading = activeYearsQuery.isLoading
-  const yearsError = activeYearsQuery.error instanceof Error ? activeYearsQuery.error.message : null
+  const yearOptions = [...v2Years].sort((left, right) => left - right)
+  const yearsLoading = v2YearsQuery.isLoading
+  const yearsError = v2YearsQuery.error instanceof Error ? v2YearsQuery.error.message : null
 
-  // Determine current year: URL param > latest from active tab
+  // Determine current year: valid URL param > newest available year.
   const yearParam = searchParams.get('year')
-  const latestYear = displayYears.length > 0 ? Math.max(...displayYears) : null
-  const latestCompleteYear = latestYear === new Date().getFullYear() && displayYears.includes(latestYear - 1)
-    ? latestYear - 1
-    : latestYear
-  const preferredYear = activeTab === 'custom' ? latestCompleteYear : latestYear
-  const currentYear = yearParam && displayYears.includes(parseInt(yearParam))
+  const latestYear = v2Years.length > 0 ? Math.max(...v2Years) : null
+  const currentYear = yearParam && v2Years.includes(parseInt(yearParam))
     ? parseInt(yearParam)
-    : preferredYear
+    : latestYear
 
-  // Keep the URL year valid for the active tab.
+  // Keep the URL year valid for the annual report.
   useEffect(() => {
     const parsedYear = yearParam ? parseInt(yearParam) : null
-    if (displayYears.length > 0 && (!parsedYear || !displayYears.includes(parsedYear))) {
-      setSearchParams({ year: String(preferredYear) })
+    if (v2Years.length > 0 && (!parsedYear || !v2Years.includes(parsedYear))) {
+      setSearchParams({ year: String(latestYear) })
     }
-  }, [displayYears, preferredYear, setSearchParams, yearParam])
+  }, [latestYear, setSearchParams, v2Years, yearParam])
 
   const v2Review = useYearlyReviewV2(
-    activeTab === 'custom' ? (currentYear ?? 0) : 0,
+    currentYear ?? 0,
     filters,
-    activeTab === 'custom' && !filtersLoading,
+    !filtersLoading,
   )
-  const generationEnabled = activeTab === 'custom'
-    && !filtersLoading
+  const generationEnabled = !filtersLoading
     && currentYear != null
     && v2Years.length > 0
   const generationStatus = useYearlyReviewGenerationStatus(v2Years, filters, generationEnabled)
@@ -178,8 +155,8 @@ export function YearlyReviewPage() {
       {!isPhone && <AnalysisPageHeader />}
       {!isPhone && <AnalysisSubNav />}
 
-      {/* 年份选择器 + Tab 导航 */}
-      <div className={cn('mb-8 flex items-center justify-between', isPhone && 'mobile-yearly-controls')}>
+      {/* 年份选择器 */}
+      <div className={cn('flex items-center', isPhone ? 'mobile-yearly-controls' : 'mb-8')}>
         <div className="flex max-w-full gap-2 overflow-x-auto pb-1">
           {yearOptions.map(y => (
             <button
@@ -192,26 +169,7 @@ export function YearlyReviewPage() {
                   : 'bg-muted text-muted-foreground hover:text-foreground',
               )}
             >
-              {y === new Date().getFullYear() && activeTab === 'custom' ? `${y} · 进行中` : y}
-            </button>
-          ))}
-        </div>
-        <div className="flex gap-6 border-b border-border">
-          {[
-            { key: 'custom' as TabKey, label: '年度总结' },
-            { key: 'official' as TabKey, label: '官方 Wrapped' },
-          ].map(tab => (
-            <button
-              key={tab.key}
-              onClick={() => setActiveTab(tab.key)}
-              className={cn(
-                'pb-2.5 font-sans text-[13px] font-medium border-b-2 transition-colors -mb-[1px]',
-                activeTab === tab.key
-                  ? 'border-accent-foreground text-foreground font-semibold'
-                  : 'border-transparent text-muted-foreground hover:text-foreground',
-              )}
-            >
-              {tab.label}
+              {y}
             </button>
           ))}
         </div>
@@ -224,34 +182,29 @@ export function YearlyReviewPage() {
 
         {!yearsLoading && !yearsError && (
           <>
-            {activeTab === 'custom' && v2Pending && (
+            {v2Pending && (
               <YearlyReviewV2Loading
                 year={currentYear ?? new Date().getFullYear()}
                 task={currentGenerationTask}
               />
             )}
-            {activeTab === 'custom' && !v2Pending && v2Review.error && (
+            {!v2Pending && v2Review.error && (
               <YearlyReviewV2Error
                 message={v2Review.error instanceof Error ? v2Review.error.message : '未知错误'}
                 onRetry={() => void v2Review.refetch()}
               />
             )}
 
-            {isPhone && activeTab === 'custom' && v2Data && v2Data.status !== 'empty' && (
+            {isPhone && v2Data && v2Data.status !== 'empty' && (
               <YearlyReviewPhoneExperience
                 key={`${v2Data.year}-${v2Data.filter_context.filter_fingerprint}`}
                 report={v2Data}
               />
             )}
-            {!isPhone && activeTab === 'custom' && v2Data && v2Data.status !== 'empty' && (
+            {!isPhone && v2Data && v2Data.status !== 'empty' && (
               <YearlyReviewDesktopExperience report={v2Data} />
             )}
-            {activeTab === 'official' && (
-              <Suspense fallback={<LoadingSkeleton />}>
-                <OfficialWrapped />
-              </Suspense>
-            )}
-            {activeTab === 'custom' && v2Data?.status === 'empty' && <YearlyReviewV2Empty year={currentYear ?? 0} />}
+            {v2Data?.status === 'empty' && <YearlyReviewV2Empty year={currentYear ?? 0} />}
           </>
         )}
       </ErrorBoundary>

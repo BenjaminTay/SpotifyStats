@@ -1,7 +1,7 @@
 # 年度总结 V2 完整重构交付报告
 
 日期：2026-08-12
-状态：**PASS，内容重构、性能优化、统计验收与用户展示验收持续收口（content `yearly_review_v2_11`）**
+状态：**PASS，内容重构、性能优化、统计验收与用户展示验收持续收口（content `yearly_review_v2_12`）**
 实施依据：[`../designs/2026-08-12-yearly-review-v2-content-data-contract.md`](../designs/2026-08-12-yearly-review-v2-content-data-contract.md)
 执行计划：[`../plans/2026-08-12-yearly-review-v2-rebuild-plan.md`](../plans/2026-08-12-yearly-review-v2-rebuild-plan.md)
 
@@ -18,7 +18,7 @@
 7. 主曲风、地区流行、语言和发行年代迁移。
 8. 同比、个人历史参照、年度结语与完整榜单。
 
-所有解释性内容都由结构化事实、coverage 与版本化策略生成，不调用 LLM。Phone 自定义总结已经迁移到 V2，但没有照搬桌面 DOM；官方 Wrapped 继续读取官方导入数据，未被替换或改写。
+所有解释性内容都由结构化事实、coverage 与版本化策略生成，不调用 LLM。Phone 年度总结已经迁移到 V2，但没有照搬桌面 DOM。最终产品入口只保留自有年度总结；官方 Wrapped 前端展示已退役，官方导入数据与 `/api/wrapped-hub` 仅作只读兼容冻结。
 
 最终验收分为统计语义与用户展示两层。统计层继续保证同比只使用真实对齐窗口、Passport 与榜单共享规范实体粒度、YTD 品味只比较完整季度，公开纪录、阶段和结语只使用可核验事实；展示层不再把这些内部防御机制写给普通用户，而是使用日常中文、六项直观同比、实体封面、可点击详情、固定章节导航和单一“完整榜单”入口讲述年度故事。内容版本独立于 schema 版本，统计、编排或公开展示语义变化都必须提升 `content_version`，以同时分流进程 LRU 与持久 sidecar。
 
@@ -36,7 +36,7 @@
 
 ### 明确未改
 
-- 官方 Wrapped。
+- 官方 Wrapped 导入表、只读兼容 API 和数据语义。
 - AI 年报与 Power Score。
 - 原始 `plays`、`tracks`、`track_artists` 或数据库 schema。
 - 完整长图/PDF、年度播放列表、全球 percentile 与跨用户比较。
@@ -187,13 +187,13 @@ GET /api/yearly-review/{year}/records?page=1&page_size=50
 
 Desktop/Compact 使用暖奶油纸张、深色唱片封面、期刊编号和不对称编辑排版。没有恢复旧“听歌人格”，完整附录每页 10 行；年度纪录章只展示 6–8 条精选。
 
-`YearlyReviewPage` 互斥启用：
+M5 首次交付时，`YearlyReviewPage` 互斥启用：
 
 - `<768px`：V1 available years、`/wrapped/{year}/full` 与 `CustomSummary`。
 - `>=768px`：V2 available years、`/yearly-review/{year}` 与 V2 experience。
-- Official tab：`/wrapped-hub/available-years` 与原 `OfficialWrapped`。
+- 冻结兼容：`/wrapped-hub/available-years` 与 `/wrapped-hub` 继续保留 contract 和 smoke，但不再有前端消费者。
 
-年份保留在 URL，切换 presentation/tab 时投影到目标数据源的合法年份。
+该阶段边界已被 M7/M8 替代：当前 Phone/Compact/Desktop 全部消费 V2，页面只保留自有年度总结；年份继续保留在 URL。
 
 ### 8.3 浏览器阶段修复
 
@@ -254,7 +254,7 @@ API smoke 已纳入 available-years、空年份主报告与分页 records；真�
 | 新进程持久命中 | 35.24ms | 一致 | 一致 |
 | 同进程后续热命中 | 4.98ms | 一致 | 一致 |
 
-启动 warmup 会在既有播放/Billboard 热路径之后预建最新默认年份；统计设置变更与流式导入完成后也会刷新该年份。Desktop/Compact/Phone 打开自定义年度总结后，前端通过 `POST /api/yearly-review/prewarm` 按当前完整筛选上下文一次提交全部可用年份，并通过 `GET /api/yearly-review/generation-status` 读取状态。单 worker 优先处理当前年份，其余年份从近到远排队；用户点击 queued 年份会提升优先级。相同 exact key 只生成一次，缓存命中不经过冷构建全局锁，后台生成旧年份时已缓存年份仍可立即返回。Official Wrapped 不进入该队列。probe 默认保持 `recompute` 模式，以免持久命中掩盖真实计算性能；`persistent` 模式专门验证重启后的用户等待时间。
+启动 warmup 会在既有播放/Billboard 热路径之后预建最新默认年份；统计设置变更与流式导入完成后也会刷新该年份。Desktop/Compact/Phone 打开年度总结后，前端通过 `POST /api/yearly-review/prewarm` 按当前完整筛选上下文一次提交全部可用年份，并通过 `GET /api/yearly-review/generation-status` 读取状态。单 worker 优先处理当前年份，其余年份从近到远排队；用户点击 queued 年份会提升优先级。相同 exact key 只生成一次，缓存命中不经过冷构建全局锁，后台生成旧年份时已缓存年份仍可立即返回。冻结的官方 Wrapped 兼容接口不进入该队列。probe 默认保持 `recompute` 模式，以免持久命中掩盖真实计算性能；`persistent` 模式专门验证重启后的用户等待时间。
 
 ### 9.4 前端门禁
 
@@ -267,7 +267,7 @@ API smoke 已纳入 available-years、空年份主报告与分页 records；真�
 | control inventory | 15 routes × desktop/mobile；1,533 controls；283 touch targets；0 violation |
 | Chromium / Firefox / WebKit | route markers + 七组 core interactions 全部 PASS |
 
-年度交互覆盖荣誉 Tab、十二月账本、品味轴切换、附录榜单分页、Official Wrapped 隔离、实体详情深链与浏览器返回。全仓 `npm run lint` 仍有 181 个既有错误，主要位于旧 Billboard 类型、AI、Settings 与共享 UI；本次年度文件定向 ESLint 为 0 error。
+年度交互覆盖荣誉 Tab、十二月账本、品味轴切换、附录榜单分页、单一年度模式、实体详情深链与浏览器返回。全仓 `npm run lint` 仍有 181 个既有错误，主要位于旧 Billboard 类型、AI、Settings 与共享 UI；本次年度文件定向 ESLint 为 0 error。
 
 ### 9.5 统计语义验收复验（content v2.6）
 
@@ -329,11 +329,12 @@ API smoke 已纳入 available-years、空年份主报告与分页 records；真�
 
 ### 9.10 Phone V2 迁移复验
 
-- Phone 自定义总结与 Desktop/Compact 共用 `YearlyReviewV2` available years、report、generation status、prewarm 和过滤指纹；显式 URL 年份优先，无 URL 时默认最近完整年度。
+- Phone 自定义总结与 Desktop/Compact 共用 `YearlyReviewV2` available years、report、generation status、prewarm 和过滤指纹；显式 URL 年份优先，无 URL 时默认最新可用年度，包括尚未结束的当前年。
+- content v2.12 将全局简繁体偏好应用到年度动态文案与实体名称；回归事件在正文和实体卡中明确歌曲、专辑、艺人类型。2025 年“認了吧”复核确认为 Eason Chan 的专辑回归：2024-08-31 与 2025-05-02 的有效播放形成 243 天间隔，艺人详情的歌曲区仅列个人 Billboard 入榜歌曲，而专辑区已有《認了吧》10 次播放，因此原问题是实体类型表达不清，并非播放事实丢失。
 - `YearlyReviewPhoneExperience` 独立组织八章内容，没有挂载或缩放桌面章节 DOM。封面为 2×3 KPI，章节入口为 sticky 进度 + Bottom Sheet，阶段为纵向时间线，月份一次只展开一个。
 - 荣誉、关系、收听生活、纪录、品味迁移与结语全部改为单列/触控友好的卡片；年度纪录展示完整精选集合。完整榜单正文 Top 5，全屏每页 10 条且不使用 table，关闭后恢复焦点和原滚动位置。
-- route marker 明确禁止 Phone V2、Desktop V2 与 legacy `CustomSummary` 同时挂载；官方 Wrapped 继续走原独立组件和数据源。
-- 验证：前端全量 66 files / 497 tests、production build 与变更文件 ESLint 通过；年度 route matrix 在 360/390/430/768/1280 五档均为 0 console error/warning、0px 横向溢出；Chromium/Firefox/WebKit Phone route marker 全部通过；smoke 脚本单元测试 6 项通过。
+- route marker 明确禁止 Phone V2、Desktop V2 与 legacy `CustomSummary` 同时挂载；页面不再挂载官方 Wrapped 组件。
+- 验证：本轮前端全量 66 files / 498 tests、production build 通过；年度后端非脚本专项 98 项、补充契约/模型/纪录测试 20 项通过。年度 route matrix 在 360/390/430/768/1280 五档均为 0 console error/warning、0px 横向溢出；Chromium/Firefox/WebKit Phone route marker 全部通过；smoke 脚本单元测试 6 项通过。
 
 ### 9.11 Phone 人工验收修复
 
@@ -343,6 +344,13 @@ API smoke 已纳入 available-years、空年份主报告与分页 records；真�
 - 修复普通纪录实体链接误套黑色背景的问题，并为关系标题、纪录 kicker、品味标签和结语建立明确的移动字体层级。
 - 品味迁移改为一行四维切换、分布白卡和变化黑卡；完整榜单的播放榜/个人 Billboard 切换改为等宽双列。
 - 月卡用 JAN–DEC 替代重复月份标题；结语延续实体改为双列封面货架。完整榜单正文筛选移除深色外框，排名值改用年鉴衬线数字并缩小单位，全屏筛选继续保持清晰的紧凑选中态。
+
+### 9.12 单一年度入口收口
+
+- Desktop/Compact/Phone 的年份按钮统一只显示年份，删除当前年份的“进行中”后缀；YTD 状态仍在报告封面显示截止日期。
+- 删除“年度总结 / 官方 Wrapped”模式切换、`OfficialWrapped` 组件、`wrapped-hub` 前端查询键和展示类型；年度路由不再请求官方数据。
+- 后端 `/api/wrapped-hub`、官方导入表和读取服务采用冻结而非删除：继续满足历史数据、API contract 和诊断回溯，但不再扩展产品能力。自有 `wrapped_service` 因仍被 AI 与年度统计适配层使用，不在清理范围内。
+- 定向 18 项测试、ESLint 与 production build 通过；真实 1280px 页面和 432px 页面均只显示 2022–2026 年份与自有年鉴，432px 横向溢出为 0。
 
 ## 10. 交付文件地图
 
@@ -372,7 +380,7 @@ API smoke 已纳入 available-years、空年份主报告与分页 records；真�
 
 ## 11. 发布、回滚与后续
 
-M7 后不建立长期 feature flag 双轨。V2 在 Desktop/Compact 与 Phone 自定义总结中共享数据层并互斥挂载独立 presentation；如需回滚 Phone 展示，只恢复 `YearlyReviewPage` 的 Phone presentation 分支，V2 只读 API/domain 可以保留，不触碰 Official Wrapped 或数据库。
+M8 后不建立长期 feature flag 或第二年度模式。V2 在 Desktop/Compact 与 Phone 中共享数据层并互斥挂载独立 presentation；如需回滚 Phone 展示，只恢复 `YearlyReviewPage` 的 Phone presentation 分支，V2 只读 API/domain 与冻结的 `/wrapped-hub` 兼容接口可以保留，不重新暴露官方 Wrapped UI，也不删除数据库中的官方导入数据。
 
 后续独立方向按优先级为：
 

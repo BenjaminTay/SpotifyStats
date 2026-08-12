@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest'
+import { waitFor } from '@testing-library/react'
+import { afterEach, describe, expect, it } from 'vitest'
 
 import desktopExperienceSource from '../features/yearly-review/YearlyReviewDesktopExperience.tsx?raw'
 import recordsChapterSource from '../features/yearly-review/records/RecordsChapter.tsx?raw'
@@ -7,7 +8,7 @@ import passportChapterSource from '../features/yearly-review/passport/PassportCh
 import primitivesSource from '../features/yearly-review/YearlyReviewPrimitives.tsx?raw'
 import statesSource from '../features/yearly-review/YearlyReviewStates.tsx?raw'
 import pageSource from '../pages/YearlyReviewPage.tsx?raw'
-import { buildYearlyReviewParams, formatMetric, formatMetricComparison, yearlyReviewFilterKey } from '../features/yearly-review/yearlyReviewData'
+import { buildYearlyReviewParams, displayYearlyText, formatMetric, formatMetricComparison, yearlyReviewFilterKey } from '../features/yearly-review/yearlyReviewData'
 import type { AnalysisFilters } from '../types/analysis'
 
 const filters: AnalysisFilters = {
@@ -26,6 +27,8 @@ const filters: AnalysisFilters = {
 }
 
 describe('Yearly Review V2 desktop contract', () => {
+  afterEach(() => localStorage.removeItem('chineseStyle'))
+
   it('serializes the complete statistical context into a stable query fingerprint', () => {
     const params = buildYearlyReviewParams(filters)
     expect(params).toMatchObject({
@@ -52,17 +55,24 @@ describe('Yearly Review V2 desktop contract', () => {
     })
   })
 
-  it('shares V2 data across separate phone and desktop presentations while isolating official Wrapped', () => {
-    expect(pageSource).toContain("isPhone && activeTab === 'custom'")
-    expect(pageSource).toContain("!isPhone && activeTab === 'custom'")
+  it('applies the global Chinese display preference to annual copy', async () => {
+    localStorage.setItem('chineseStyle', 'simplified')
+    await waitFor(() => expect(displayYearlyText('專輯《認了吧》重新出現')).toBe('专辑《认了吧》重新出现'))
+  })
+
+  it('shares V2 data across separate phone and desktop presentations without a second annual mode', () => {
+    expect(pageSource).toContain('isPhone && v2Data')
+    expect(pageSource).toContain('!isPhone && v2Data')
     expect(pageSource).toContain('<YearlyReviewPhoneExperience')
     expect(pageSource).toContain('<YearlyReviewDesktopExperience')
-    expect(pageSource).toContain('<OfficialWrapped />')
+    expect(pageSource).not.toContain('OfficialWrapped')
+    expect(pageSource).not.toContain('官方 Wrapped')
+    expect(pageSource).not.toContain('/wrapped-hub')
     expect(pageSource).not.toContain('<CustomSummary')
     expect(pageSource).not.toContain('useYearlyReview(')
     expect(pageSource).not.toContain("'/wrapped/available-years'")
-    expect(pageSource).toContain("activeTab === 'custom'")
-    expect(pageSource).toContain("useYearlyReviewV2AvailableYears(activeTab === 'custom')")
+    expect(pageSource).not.toContain('activeTab')
+    expect(pageSource).toContain('useYearlyReviewV2AvailableYears(true)')
     expect(pageSource).toContain('useYearlyReviewGenerationStatus(v2Years, filters, generationEnabled)')
     expect(pageSource).toContain('foreground_year: currentYear')
     expect(pageSource).toContain("currentGenerationTask?.state === 'queued'")
@@ -117,9 +127,12 @@ describe('Yearly Review V2 desktop contract', () => {
     expect(appendixChapterSource).not.toContain("'method'")
   })
 
-  it('defaults custom V2 on every viewport to the latest complete year and labels the current year', () => {
-    expect(pageSource).toContain("latestYear === new Date().getFullYear()")
-    expect(pageSource).toContain('`${y} · 进行中`')
+  it('defaults V2 on every viewport to the newest available year and keeps year labels concise', () => {
+    expect(pageSource).toContain(': latestYear')
+    expect(pageSource).toContain('setSearchParams({ year: String(latestYear) })')
+    expect(pageSource).not.toContain('latestCompleteYear')
+    expect(pageSource).toContain('{y}')
+    expect(pageSource).not.toContain('· 进行中')
     expect(pageSource).toContain('sort((left, right) => left - right)')
     expect(pageSource).not.toContain('ShareButton')
   })

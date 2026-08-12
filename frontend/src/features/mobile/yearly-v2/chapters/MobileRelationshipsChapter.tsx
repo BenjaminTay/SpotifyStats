@@ -1,4 +1,5 @@
 import { EntityMediaLink, MetricLine } from '@/features/yearly-review/YearlyReviewPrimitives'
+import { displayYearlyText } from '@/features/yearly-review/yearlyReviewData'
 import type { YearlyReviewResponse } from '@/types/yearly-review-v2'
 
 const RELATIONSHIP_LABELS: Record<string, string> = {
@@ -40,8 +41,8 @@ export function MobileRelationshipsChapter({ report }: { report: YearlyReviewRes
               <span>{String(index + 1).padStart(2, '0')}</span>
               <p>{RELATIONSHIP_LABELS[story.relationship_type] ?? '年度关系'}</p>
             </header>
-            <h3>{story.title}</h3>
-            <p>{story.statement}</p>
+            <h3>{displayYearlyText(story.title)}</h3>
+            <p>{displayYearlyText(story.statement)}</p>
             <EntityMediaLink
               entity={story.entity}
               size="medium"

@@ -70,7 +70,7 @@ src/
 
 Query Key 工厂在 `@/api/query-keys.ts`，按领域 namespace：dashboard / billboard / analysis / settings / account / yearlyReview / music / library / versionMerge / community / aiInsights / aiTasks。
 
-AppLayout 首屏渲染后延迟预取常用数据。Desktop/Compact/Phone 自定义年度总结进入页面后向后端一次提交全部可用年份，当前年份优先，其余年份由后端单 worker 依次生成；前端只轮询任务状态，不并发下载全部年度 artifact。等待计时以服务端 `requested_at` 为准，切年或离开路由后返回不得归零；官方 Wrapped 不触发该预生成。
+AppLayout 首屏渲染后延迟预取常用数据。Desktop/Compact/Phone 年度总结进入页面后向后端一次提交全部可用年份，当前年份优先，其余年份由后端单 worker 依次生成；前端只轮询任务状态，不并发下载全部年度 artifact。等待计时以服务端 `requested_at` 为准，切年或离开路由后返回不得归零。年度总结页面不再提供官方 Wrapped 模式；`/wrapped-hub` 只保留后端兼容。
 
 Community 列表、账号页、趋势侧栏和帖子详情必须通过 `useCommunityChartParams()` 带入当前榜单设置口径，并把这些参数放入 community query keys，避免不同 Top N、周起点、动态阈值、合并级别或精选集设置共用旧缓存。
 

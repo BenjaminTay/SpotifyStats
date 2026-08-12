@@ -1,5 +1,5 @@
 import { EntityMediaLink, MetricLine } from '@/features/yearly-review/YearlyReviewPrimitives'
-import { formatMetric } from '@/features/yearly-review/yearlyReviewData'
+import { displayYearlyText, formatMetric } from '@/features/yearly-review/yearlyReviewData'
 import type { YearlyHeadline, YearlyReviewResponse } from '@/types/yearly-review-v2'
 
 function metricRepeatsStatement(observation: YearlyHeadline) {
@@ -50,8 +50,8 @@ export function MobileListeningLifeChapter({ report }: { report: YearlyReviewRes
 
       {leadObservation && (
         <article className="mobile-yearly-v2-life-lead">
-          <p>{leadObservation.title}</p>
-          <h3>{leadObservation.statement}</h3>
+          <p>{displayYearlyText(leadObservation.title)}</p>
+          <h3>{displayYearlyText(leadObservation.statement)}</h3>
           {leadObservation.primary_metric && !metricRepeatsStatement(leadObservation) && (
             <MetricLine metric={leadObservation.primary_metric} compact />
           )}
@@ -75,9 +75,9 @@ export function MobileListeningLifeChapter({ report }: { report: YearlyReviewRes
             <article key={observation.headline_id} className="mobile-yearly-v2-life-observation">
               <header>
                 <span aria-hidden="true">{String(index + 2).padStart(2, '0')}</span>
-                <p>{observation.title}</p>
+                <p>{displayYearlyText(observation.title)}</p>
               </header>
-              <h3>{observation.statement}</h3>
+              <h3>{displayYearlyText(observation.statement)}</h3>
               {observation.primary_metric && !metricRepeatsStatement(observation) && (
                 <MetricLine metric={observation.primary_metric} compact />
               )}

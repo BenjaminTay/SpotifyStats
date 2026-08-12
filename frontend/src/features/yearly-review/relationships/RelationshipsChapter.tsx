@@ -1,4 +1,5 @@
 import { EntityMediaLink, MetricLine, SectionHeading } from '@/features/yearly-review/YearlyReviewPrimitives'
+import { displayYearlyText } from '@/features/yearly-review/yearlyReviewData'
 import type { YearlyReviewResponse } from '@/types/yearly-review-v2'
 
 const RELATIONSHIP_LABELS: Record<string, string> = {
@@ -22,7 +23,7 @@ export function RelationshipsChapter({ report }: { report: YearlyReviewResponse 
           {report.relationships.map((story, index) => (
             <article key={story.story_id} className={index % 5 === 0 ? 'is-featured' : undefined}>
               <div className="yearly-v2-relationship-top"><span>{RELATIONSHIP_LABELS[story.relationship_type] ?? '年度关系'}</span></div>
-              <h3>{story.title}</h3><p>{story.statement}</p>
+              <h3>{displayYearlyText(story.title)}</h3><p>{displayYearlyText(story.statement)}</p>
               <EntityMediaLink entity={story.entity} size="medium" className="yearly-v2-relationship-entity" />
               <div>{story.metrics.slice(0, 3).map((metric) => <MetricLine key={metric.key} metric={metric} compact />)}</div>
             </article>

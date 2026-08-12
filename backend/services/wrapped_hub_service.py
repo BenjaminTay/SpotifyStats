@@ -1,4 +1,4 @@
-"""Official Spotify Wrapped data service."""
+"""Compatibility-frozen reader for imported official Spotify Wrapped data."""
 
 import sqlite3
 from pathlib import Path

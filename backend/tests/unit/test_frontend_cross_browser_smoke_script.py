@@ -62,6 +62,8 @@ def test_frontend_cross_browser_smoke_script_covers_browser_families_and_flows()
     assert "Phone legacy yearly summary did not become ready" not in source
     assert "年度纪录分页" in source
     assert "年度附录分页" in source
+    assert "Retired Official Wrapped switch is still visible" in source
+    assert "Current year selector still includes a status suffix" in source
     assert "expand_section_for_text" in source
     assert "run_settings_controls(browser)" in source
     assert "run_settings_data_import(browser)" in source

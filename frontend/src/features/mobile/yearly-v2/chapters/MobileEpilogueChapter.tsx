@@ -1,7 +1,7 @@
 import { ArrowUpRight } from 'lucide-react'
 
 import { EntityCover, EntityLink, EntityMediaLink } from '@/features/yearly-review/YearlyReviewPrimitives'
-import { formatMetric } from '@/features/yearly-review/yearlyReviewData'
+import { displayYearlyText, ENTITY_LABELS, formatMetric } from '@/features/yearly-review/yearlyReviewData'
 import type { YearlyEntityRef, YearlyHeadline, YearlyReviewResponse } from '@/types/yearly-review-v2'
 
 function metricRepeatsStatement(conclusion: YearlyHeadline) {
@@ -25,8 +25,8 @@ function MobileEntityShelf({ title, entities }: { title: string; entities: Yearl
           >
             <EntityCover entity={entity} size="small" />
             <span>
-              <strong>{entity.name}</strong>
-              <small>{entity.artist_name ?? (entity.entity_type === 'track' ? '歌曲' : entity.entity_type === 'album' ? '专辑' : '艺人')}</small>
+              <strong>{displayYearlyText(entity.name)}</strong>
+              <small>{entity.artist_name ? displayYearlyText(entity.artist_name) : ENTITY_LABELS[entity.entity_type]}</small>
             </span>
             <ArrowUpRight aria-hidden="true" />
           </EntityLink>
@@ -62,10 +62,10 @@ export function MobileEpilogueChapter({ report }: { report: YearlyReviewResponse
                 {String(index + 1).padStart(2, '0')}
               </span>
               <div className="mobile-yearly-v2-conclusion-copy">
-                <p>{conclusion.title}</p>
-                <h3>{conclusion.statement}</h3>
+                <p>{displayYearlyText(conclusion.title)}</p>
+                <h3>{displayYearlyText(conclusion.statement)}</h3>
                 {conclusion.primary_metric && !metricRepeatsStatement(conclusion) && (
-                  <strong>{conclusion.primary_metric.label} · {formatMetric(conclusion.primary_metric)}</strong>
+                  <strong>{displayYearlyText(conclusion.primary_metric.label)} · {displayYearlyText(formatMetric(conclusion.primary_metric))}</strong>
                 )}
                 {conclusion.entity_refs.map((entity) => (
                   <EntityMediaLink

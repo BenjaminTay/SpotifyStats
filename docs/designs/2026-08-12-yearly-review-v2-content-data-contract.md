@@ -26,7 +26,7 @@
 - 从播放记录和 Billboard records 中做年度精选，不把全部纪录直接堆进正文。
 - 曲风与语言从静态占比改为有覆盖边界的品味迁移。
 - M0–M6 首次交付只重建桌面内容与信息架构；后续 Phone 迁移阶段复用同一 V2 数据契约，并以独立移动 presentation 落地。
-- “官方 Wrapped”Tab、`/wrapped-hub`、官方导入表和官方数据语义完全不改。
+- `/yearly-review` 只提供自有年度总结，不再展示“官方 Wrapped”Tab。`/wrapped-hub`、官方导入表和官方数据语义不删除，进入只读兼容冻结。
 
 ## 2. 调研与当前基线
 
@@ -113,7 +113,7 @@
 
 不包含：
 
-- 修改官方 Wrapped Tab 或官方数据导入。
+- 删除或改写已冻结的官方 Wrapped 导入表与 `/wrapped-hub` 兼容数据语义。
 - 本阶段重做 Phone presentation。
 - 修改个人 Billboard Power Score 公式。
 - 引入全球用户 percentile 或伪造平台级排名。
@@ -631,10 +631,10 @@ frontend/src/features/yearly-review/
 
 要求：
 
-- `YearlyReviewPage` 继续负责年份、Tab 和 route container。
+- `YearlyReviewPage` 继续负责年份和 route container，不再维护年度模式 Tab。
 - Desktop/Compact 的自定义总结使用 V2 desktop experience。
 - Phone 自定义总结使用同一 V2 数据、筛选与生成状态，但由独立 `YearlyReviewPhoneExperience` 组织移动 UI，不挂载桌面章节 DOM。
-- `OfficialWrapped` 的懒加载和数据请求保持不变。
+- 页面不导入或请求 `OfficialWrapped`；冻结的 `/wrapped-hub` 只由兼容测试和诊断工具访问。
 - 新 TanStack Query key 使用完整过滤指纹。
 - 新章节必须使用现有实体详情路由，不建立第二套详情页。
 - 桌面主报告避免将完整长表全部挂载；附录使用分页或按需挂载。
@@ -643,7 +643,7 @@ frontend/src/features/yearly-review/
 - 顶部六项 KPI 使用用户能直接理解的年度命名；存在同比时只在数值右侧显示箭头与百分比，不重复显示“高/低”，完整的比较语义通过 accessible label 保留。
 - 新关系公开标题按实体类型分别使用“今年发现的新歌 / 今年新听的专辑 / 今年认识的新艺人”。同专辑/艺人多首入榜必须携带并展示准确 `track_count`，缺少该字段时不得公开该条纪录。
 - 歌曲、专辑、艺人在荣誉、时间线、关系、生活、纪录、品味、结语和完整榜单中统一使用封面与既有详情深链；缺图使用稳定占位，不隐藏实体。
-- 年份按钮由小到大排列，Desktop/Compact 默认选择最近完整年度；完整年度封面不重复显示状态和起止日期，当前年显示“进行中 · 截至日期”。章节导航滚动后保持可见。
+- 年份按钮由小到大排列且只显示年份，所有视口默认选择最新可用年份（包括进行中的当前年）；完整年度封面不重复显示状态和起止日期，当前年报告仍在封面显示“进行中 · 截至日期”。章节导航滚动后保持可见。
 - 封面不显示三条年度头条，也不提供生成年度海报操作。
 
 ## 12. AI 边界
@@ -699,7 +699,7 @@ frontend/src/features/yearly-review/
 
 ### 范围验收
 
-- 官方 Wrapped Tab 和 `/wrapped-hub` 无行为变化。
+- 官方 Wrapped Tab 与前端展示组件已移除；`/wrapped-hub` 继续保持只读响应兼容，不进入消费页面。
 - Phone 与 Desktop/Compact 共享年度事实；Phone 必须通过独立 presentation 完成移动适配。
 - 核心年度总结不需要 LLM 配置。
 - 未修改个人 Billboard Power Score 公式。
@@ -710,7 +710,7 @@ frontend/src/features/yearly-review/
 - route container 保持轻量，章节组件 feature-first 拆分。
 - 纪录与完整榜单不产生超过 500 行的无分页 DOM。
 - 桌面 `/yearly-review` route smoke、control inventory 和 production build 通过。
-- Phone V2、Desktop V2、Official Wrapped 和 V1 contract 测试不回归。
+- Phone V2 与 Desktop V2 互斥挂载，页面不存在 Official Wrapped/V1 DOM；冻结的 `/wrapped-hub` contract 继续通过。
 
 ## 15. 完成定义
 
@@ -725,11 +725,11 @@ AI 编辑、分享导出和播放列表属于后续阶段，不阻塞内容重�
 
 Phone 迁移不改变本文件定义的年度事实、章节顺序、过滤指纹、缓存 key 或内容版本。移动端只新增独立 presentation，并遵守以下契约：
 
-- 自定义总结在 Phone、Compact、Desktop 默认选择最近完整年度，显式 URL 年份继续优先。
+- 自定义总结在 Phone、Compact、Desktop 默认选择最新可用年份，显式 URL 年份继续优先；年度动态文案与实体名称使用全局简繁体偏好，事件正文和实体卡明确歌曲、专辑、艺人类型。
 - Phone 进入页面时也提交全部可用年份的后台预生成；计时继续锚定服务端 `requested_at`。
 - 封面使用 2×3 KPI；完整年度隐藏状态，进行中显示截止日期。
 - 八章保持同一内容所有权，但时间线改为纵向、月份一次展开一个、关系与结语改为单列。
 - 年度纪录完整展示精选集合；完整榜单正文只预览 Top 5，全屏列表每页 10 条，不使用横向表格。
 - 章节目录使用 Bottom Sheet；全屏榜单必须支持背景滚动锁定、Escape/关闭和焦点恢复。
 - Phone 与 Desktop/Compact DOM 互斥挂载，主要触控目标至少 44×44px，360/390/430px 不得出现横向溢出。
-- 官方 Wrapped 的数据、路由和展示不变。
+- 官方 Wrapped 的前端展示退役；官方导入数据与 `/wrapped-hub` 路由冻结保留。
