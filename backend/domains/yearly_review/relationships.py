@@ -248,18 +248,45 @@ def _history_candidates(
 ) -> list[_RelationshipCandidate]:
     if history_frames is None:
         return []
-    historical = _summaries(history_frames)
     result: list[_RelationshipCandidate] = []
     year_start = pd.Timestamp(year=year, month=1, day=1)
     new_rule = RELATIONSHIP_THRESHOLDS["new_relationship"]
     return_rule = RELATIONSHIP_THRESHOLDS["return"]
+    frame_index = {"track": 0, "album": 1, "artist": 2}
     for entity_type, rows in summaries.items():
-        history_map = {row["identity"]: row for row in historical.get(entity_type, [])}
+        history_frame = history_frames[frame_index[entity_type]]
+        id_column = {
+            "track": (
+                "canonical_track_id" if "canonical_track_id" in history_frame else "track_id"
+            ),
+            "album": "album_project_id",
+            "artist": "artist_name",
+        }[entity_type]
+        if history_frame.empty or id_column not in history_frame or "ts_date" not in history_frame:
+            continue
+
+        # Resolve historical date bounds once per entity type.  The previous
+        # implementation filtered the entire history frame and reparsed every
+        # date once for every annual entity, which made this chapter quadratic
+        # in the number of entities (and dominated V2 cold starts).
+        history_dates = history_frame.loc[:, [id_column, "ts_date"]].dropna(subset=[id_column])
+        identities = history_dates[id_column].astype(str)
+        dates = pd.to_datetime(history_dates["ts_date"], errors="coerce")
+        valid = dates.notna()
+        if not valid.any():
+            continue
+        identities = identities[valid]
+        dates = dates[valid]
+        first_dates = dates.groupby(identities, sort=False).min().to_dict()
+        prior_mask = dates < year_start
+        prior_last_dates = (
+            dates[prior_mask].groupby(identities[prior_mask], sort=False).max().to_dict()
+        )
+
         for row in rows:
-            history = history_map.get(row["identity"])
-            if not history:
+            first_ever = first_dates.get(row["identity"])
+            if first_ever is None:
                 continue
-            first_ever = pd.Timestamp(history["first_date"])
             if (
                 first_ever >= year_start
                 and row["plays"] >= new_rule["plays"]
@@ -282,28 +309,10 @@ def _history_candidates(
                     )
                 )
                 continue
-            history_frame = history_frames[{"track": 0, "album": 1, "artist": 2}[entity_type]]
-            id_column = {
-                "track": "canonical_track_id"
-                if "canonical_track_id" in history_frame
-                else "track_id",
-                "album": "album_project_id",
-                "artist": "artist_name",
-            }[entity_type]
-            if id_column not in history_frame:
+            prior_last = prior_last_dates.get(row["identity"])
+            if prior_last is None:
                 continue
-            prior = history_frame[
-                (history_frame[id_column].astype(str) == row["identity"])
-                & (pd.to_datetime(history_frame["ts_date"], errors="coerce") < year_start)
-            ]
-            if prior.empty:
-                continue
-            sleep_days = int(
-                (
-                    pd.Timestamp(row["first_date"])
-                    - pd.to_datetime(prior["ts_date"], errors="coerce").max()
-                ).days
-            )
+            sleep_days = int((pd.Timestamp(row["first_date"]) - prior_last).days)
             if (
                 sleep_days >= return_rule["sleep_days"]
                 and row["plays"] >= return_rule["plays"]

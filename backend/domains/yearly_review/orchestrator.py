@@ -224,7 +224,13 @@ def build_yearly_review_artifact(
         if annual_events.empty
         else _safe_section(
             "playback_records",
-            lambda: build_playback_record_candidates(conn, year, context),
+            lambda: build_playback_record_candidates(
+                conn,
+                year,
+                context,
+                event_frame=annual_events,
+                entity_frames=annual_entity_frames,
+            ),
             lambda: {"catalog_counts": {"total": 0, "eligible": 0}, "candidates": []},
             limitations,
         )

@@ -175,3 +175,28 @@ def test_new_relationship_and_return_use_personal_history_dates() -> None:
     types = {story.relationship_type for story in result}
     assert "new_relationship" in types
     assert "return" in types
+
+
+def test_relationship_history_parses_dates_once_per_entity_frame(monkeypatch) -> None:
+    frames = _frames()
+    calls = 0
+    real_to_datetime = pd.to_datetime
+
+    def counted_to_datetime(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        return real_to_datetime(*args, **kwargs)
+
+    monkeypatch.setattr(pd, "to_datetime", counted_to_datetime)
+
+    build_relationships(
+        2025,
+        _coverage(),
+        frames,
+        _billboard(),
+        history_frames=frames,
+    )
+
+    # Three annual summaries plus three history date-bound aggregations. This
+    # guards against restoring per-entity full-history date parsing.
+    assert calls <= 6

@@ -181,6 +181,11 @@ def start_streaming_import(
                 raise PostImportHealthError(
                     "导入后健康检查未通过：" + "；".join(post_import_health["blockers"])
                 )
+            from backend.services.yearly_review_service import (
+                start_yearly_review_prewarm_thread,
+            )
+
+            start_yearly_review_prewarm_thread()
             _jobs[job_id]["status"] = "done"
             _jobs[job_id]["progress_pct"] = 1.0
             _jobs[job_id]["message"] = "导入完成"

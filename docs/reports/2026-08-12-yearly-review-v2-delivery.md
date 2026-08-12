@@ -200,9 +200,9 @@ Desktop/Compact 使用暖奶油纸张、深色唱片封面、期刊编号和不�
 
 | 门禁 | 结果 |
 | --- | --- |
-| Yearly V2 unit + contract | 79 passed |
+| Yearly V2 unit + contract | 87 passed |
 | Wrapped / Year-End / playback records 回归 | 28 passed |
-| 全量 unit | 1,043 passed |
+| 全量 unit | 1,051 passed |
 | 全量 contract | 329 passed |
 | OpenAPI operation audit | 185 operations，0 unaccounted |
 | OpenAPI parameter audit | 85 obligations，0 unaccounted |
@@ -210,20 +210,36 @@ Desktop/Compact 使用暖奶油纸张、深色唱片封面、期刊编号和不�
 
 API smoke 已纳入 available-years、空年份主报告与分页 records；真实年份由专用 probe 负责，避免广域 smoke 重复触发高成本计算。
 
-### 9.2 四年真实数据与预算
+### 9.2 四年真实数据、内容指纹与预算
 
-| 年份 | 状态 | 冷响应 | 热响应 | JSON | 完整纪录目录 |
-| --- | --- | ---: | ---: | ---: | ---: |
-| 2023 | complete | 79.62s | 2.73ms | 236,380 B | 3,140 |
-| 2024 | complete | 82.47s | 2.64ms | 243,453 B | 3,246 |
-| 2025 | complete | 80.94s | 3.44ms | 241,111 B | 3,233 |
-| 2026 | year_to_date | 76.27s | 2.78ms | 226,609 B | 2,979 |
+| 年份 | 状态 | 优化前冷响应 | 真实重算 | 跨进程持久命中 | 热响应 | JSON | 完整纪录目录 | 语义指纹前 12 位 |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| 2023 | complete | 79.62s | 15.94s | 12.29ms | 1.64ms | 236,380 B | 3,140 | `27be4fcebf59` |
+| 2024 | complete | 82.47s | 11.77s | 23.68ms | 1.87ms | 243,453 B | 3,246 | `9997dd971b0e` |
+| 2025 | complete | 80.94s | 12.25s | 12.48ms | 1.64ms | 241,111 B | 3,233 | `970d6be0dfc3` |
+| 2026 | year_to_date | 76.27s | 9.95s | 11.31ms | 1.63ms | 226,609 B | 2,979 | `2067d274350c` |
 
-冻结预算为未压缩主 JSON 不超过 512 KiB、热响应不超过 250ms；四年全部通过。2026 响应 gzip 为 27,805 B。
+冻结预算为未压缩主 JSON 不超过 512 KiB、真实冷响应不超过 30 秒、热响应不超过 250ms；四年全部通过。2026 响应 gzip 为 27,805 B。
 
-冷态 76–82.5 秒，设置变更后一次预热 88.33 秒，仍是明确性能债。它可能触发 WebKit/开发代理首请求超时；跨浏览器功能验收使用预热缓存和 `--api-base-url` 直连后端。下一阶段应通过共享中间结果、阶段缓存或后台预计算解决，不能放宽 API 错误门禁冒充优化。
+冷启动专项通过 `cProfile` 定位到关系历史计算：旧实现对每个年度实体重新扫描完整历史、重复执行 `astype(str)` 与 `to_datetime()`，2026 单章累计约 65.4 秒。现改为每种实体类型一次性聚合首次播放与报告年前末次播放日期，2026 单年独立冷启动从 88.74 秒降至 17.86 秒；最新四年同进程重算稳定在 9.95–15.94 秒，较原交付基线下降约 80%–87%。播放纪录同时复用编排层已有年度事件/实体帧，独立记录页仍保留原加载路径。
 
-### 9.3 前端门禁
+`yearly_review_v2_probe_v3` 保留 coverage、身份去重、内容体积、30 秒真实重算预算以及主报告/完整纪录目录语义指纹，并新增 `recompute` / `persistent` 双模式。四年 JSON 字节数、章节数量、关系故事数、精选纪录数和完整纪录目录数均与优化前一致；后续同一数据 revision 下可直接用指纹识别内容漂移。
+
+### 9.3 跨进程持久缓存与后台预建
+
+年度 artifact 使用独立 `data/yearly_review_cache.db` sidecar SQLite，不写入 `spotify_stats.db`，避免缓存写入改变主库文件 revision 后自我失效。持久层只接受完整 cache key 精确命中，payload 使用 zlib 压缩并限制解压后最大 64 MiB，最多保留 32 个 artifact；格式错误、尺寸异常或压缩损坏的行会删除并按 miss 重新生成，不返回 stale 数据。
+
+2026 先以 `--cache-mode recompute` 在独立进程强制重算并持久化，再启动第二个 Python 进程、清空内存 LRU，以 `--cache-mode persistent --max-cold-ms 1000` 验收：
+
+| 场景 | 响应 | 主报告指纹 | 完整纪录目录指纹 |
+| --- | ---: | --- | --- |
+| 强制重算并写入 sidecar | 18.54s | `2067d274350c…` | 基线 |
+| 新进程持久命中 | 35.24ms | 一致 | 一致 |
+| 同进程后续热命中 | 4.98ms | 一致 | 一致 |
+
+启动 warmup 会在既有播放/Billboard 热路径之后预建最新年份；统计设置变更与流式导入完成后会启动一个去重 daemon 线程刷新最新年份。同一时刻只允许一个年度预建线程，精确键缺失时普通 API 仍同步生成正确报告，不会为了速度返回旧数据。probe 默认保持 `recompute` 模式，以免持久命中掩盖真实计算性能；`persistent` 模式专门验证重启后的用户等待时间。
+
+### 9.4 前端门禁
 
 | 门禁 | 结果 |
 | --- | --- |
@@ -242,6 +258,7 @@ API smoke 已纳入 available-years、空年份主报告与分页 records；真�
 
 - `backend/models/yearly_review.py`
 - `backend/domains/yearly_review/`
+- `backend/domains/yearly_review/artifact_cache.py`
 - `backend/services/yearly_review_service.py`
 - `backend/api/yearly_review.py`
 
@@ -266,9 +283,9 @@ M6 后不建立长期 feature flag 双轨。V2 只在 Desktop/Compact presentati
 
 后续独立方向按优先级为：
 
-1. 冷态性能剖析、阶段缓存与后台预热。
-2. 真实内容人工复核。
-3. Phone V2 presentation。
-4. 分享/PDF、年度播放列表和 AI 编辑导语。
+1. 真实内容人工复核。
+2. Phone V2 presentation。
+3. 分享/PDF、年度播放列表和 AI 编辑导语。
+4. 如真实数据规模继续增长，再评估 Billboard/播放纪录阶段缓存或后台预计算。
 
-其中只有冷态性能是当前明确的产品体验债；其余均不影响本次内容重构完成。
+冷态性能债已在不改变统计口径的前提下收口到 30 秒预算内；其余方向均不影响本次内容重构完成。

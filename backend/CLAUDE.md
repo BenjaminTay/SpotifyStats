@@ -41,7 +41,7 @@ FastAPI 后端采用四层分离：**api/**（路由 + Depends 依赖注入）�
 | `core/auth.py` | `require_auth()` 依赖，本地模式放行，远程模式校验 Bearer Token |
 | `core/logging_config.py` | `SensitiveDataFilter` 脱敏敏感字段，全局 500 不泄露 stack trace |
 | `core/request_context.py` | Request ID 上下文（`ContextVar`），响应返回 `X-Request-ID`，日志包含 request id |
-| `core/warmup.py` | 启动后台预热 Billboard + Dashboard + artist fan-out 缓存；默认使用当前前端过滤口径（`dynamic_threshold=True`），`SPOTIFY_STATS_WARMUP=0` 可关闭 |
+| `core/warmup.py` | 启动后台预热 Billboard + Dashboard + artist fan-out，并以精确 key 持久预建最新年度总结；默认使用当前前端过滤口径（`dynamic_threshold=True`），`SPOTIFY_STATS_WARMUP=0` 可关闭 |
 | `core/job_queue.py` | 3 worker 线程池 + `background_jobs` 表持久化，enrichment 用 stale-cache+refresh 模式 |
 | `core/spotify_utils.py` | OAuth PKCE + Token 加密持久化 + 自动刷新 + 10 scope 全量数据拉取 |
 
@@ -53,6 +53,7 @@ FastAPI 后端采用四层分离：**api/**（路由 + Depends 依赖注入）�
 | `services/analysis_stats_service.py` | 总体统计 + 个人排行榜 + 时间范围解析 |
 | `services/entity_stats_service.py` | 歌曲/专辑/艺人个人播放统计 |
 | `services/wrapped_service.py` | 自定义年度总结（听歌人格/Top榜/曲风全景/发现回归等） |
+| `services/yearly_review_service.py` | 年度总结 V2 精确 cache key、进程内 LRU、独立 sidecar SQLite artifact 持久缓存与最新年份后台预建；不得返回 stale artifact |
 | `services/billboard_service.py` | Billboard facade（~100行），实现已迁入 `domains/billboard/` |
 | `services/release_cycle_service.py` | 发行周期分析 + Spotify API + 先行曲识别 |
 | `services/genius_service.py` | Genius 歌词获取 + SQLite 缓存，懒加载单例 |
@@ -67,6 +68,8 @@ FastAPI 后端采用四层分离：**api/**（路由 + Depends 依赖注入）�
 | `services/import_maintenance_service.py` | Streaming History 导入后的派生数据维护：Spotify 元数据刷新、album project 重建、周聚合重建、缓存失效与健康报告 |
 
 ## 领域层 (domains/)
+
+- `domains/yearly_review/artifact_cache.py` — 年度 V2 artifact 的 zlib 压缩 sidecar SQLite；损坏即 miss、32 条上限，不写入统计主库。
 
 - `domains/billboard/` — `data_loader.py` / `chart_compute.py`（编排/re-export/cache registration facade）+ `chart_load_rank.py`（共享 `_load_and_rank_cached`）+ `chart_ranking.py`（周榜排名）+ `chart_power_score.py`（走势评分，列级向量化）+ `chart_staged_cache.py`（weekly/power/summaries/records 分段缓存）+ `chart_staged_api.py`（公开 staged wrapper）+ `records.py`（facade）+ `records_*.py`（record 子模块）+ `details.py` / `versus.py` / `entity_lists.py` / `repository.py` / `version_merge.py`
 - `domains/settings/repository.py` — Settings 表 CRUD

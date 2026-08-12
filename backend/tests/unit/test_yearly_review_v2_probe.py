@@ -4,7 +4,12 @@ import argparse
 
 import pytest
 
-from scripts.yearly_review_v2_probe import _identity_issues, _taste_issues, parse_years
+from scripts.yearly_review_v2_probe import (
+    _identity_issues,
+    _semantic_fingerprint,
+    _taste_issues,
+    parse_years,
+)
 
 
 def test_parse_years_is_sorted_unique_and_bounded() -> None:
@@ -47,3 +52,8 @@ def test_probe_detects_unknown_loss_and_duplicate_identities() -> None:
     assert "unknown_bucket_missing:style" in taste
     assert "duplicate_play_identity:track_by_plays" in identities
     assert "billboard_album_identity_missing" in identities
+
+
+def test_semantic_fingerprint_is_key_order_independent_and_value_sensitive() -> None:
+    assert _semantic_fingerprint({"a": 1, "b": [2]}) == _semantic_fingerprint({"b": [2], "a": 1})
+    assert _semantic_fingerprint({"a": 1}) != _semantic_fingerprint({"a": 2})

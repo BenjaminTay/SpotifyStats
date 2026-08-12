@@ -131,7 +131,7 @@ def test_orchestrator_loads_play_and_entity_frames_once(monkeypatch) -> None:
     monkeypatch.setattr(
         orchestrator,
         "build_playback_record_candidates",
-        lambda *_args: {"catalog_counts": {"total": 0}, "candidates": []},
+        lambda *_args, **_kwargs: {"catalog_counts": {"total": 0}, "candidates": []},
     )
     monkeypatch.setattr(orchestrator, "build_taste_drivers", lambda *_args: {})
 
@@ -164,7 +164,7 @@ def test_noncritical_section_failure_degrades_without_losing_report(monkeypatch)
     monkeypatch.setattr(
         orchestrator,
         "build_playback_record_candidates",
-        lambda *_args: {"catalog_counts": {}, "candidates": []},
+        lambda *_args, **_kwargs: {"catalog_counts": {}, "candidates": []},
     )
     monkeypatch.setattr(
         orchestrator, "build_honors", lambda *_args: (_ for _ in ()).throw(RuntimeError("boom"))

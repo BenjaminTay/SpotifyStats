@@ -4,15 +4,26 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import math
 import os
+import threading
+from contextlib import contextmanager
+from contextvars import ContextVar
 from functools import lru_cache
+from types import SimpleNamespace
 from typing import Any
 
 from backend.core.cache import singleflight
 from backend.core.db import DB_PATH, get_db
 from backend.domains.billboard.year_end import YEAR_END_SEMANTICS_VERSION
 from backend.domains.metadata.artist_languages import artist_language_fact_revision
+from backend.domains.settings.repository import SettingsRepository
+from backend.domains.yearly_review.artifact_cache import (
+    load_persisted_artifact,
+    store_persisted_artifact,
+)
+from backend.domains.yearly_review.context import build_yearly_review_context
 from backend.domains.yearly_review.orchestrator import build_yearly_review_artifact
 from backend.domains.yearly_review.policies import (
     HIGHLIGHT_POLICY_VERSION,
@@ -27,6 +38,23 @@ from backend.models.yearly_review import (
 )
 
 YEARLY_REVIEW_SCHEMA_VERSION = "yearly_review_v2"
+logger = logging.getLogger(__name__)
+_persistent_cache_bypass: ContextVar[bool] = ContextVar(
+    "yearly_review_persistent_cache_bypass",
+    default=False,
+)
+_prewarm_lock = threading.Lock()
+_prewarm_thread: threading.Thread | None = None
+
+
+@contextmanager
+def bypass_yearly_review_persistent_cache():
+    """Force a true recompute while still refreshing the persistent artifact."""
+    token = _persistent_cache_bypass.set(True)
+    try:
+        yield
+    finally:
+        _persistent_cache_bypass.reset(token)
 
 
 def database_revision() -> str:
@@ -85,28 +113,108 @@ def _build_cached_artifact(
     year: int,
     context_json: str,
     cache_key: str,
+    db_revision: str,
 ) -> dict[str, Any]:
-    _ = cache_key
     context = YearlyReviewFilterContext.model_validate_json(context_json)
+    if not _persistent_cache_bypass.get():
+        try:
+            persisted = load_persisted_artifact(cache_key)
+        except Exception:
+            logger.exception("Yearly Review persistent cache read failed")
+        else:
+            if persisted is not None:
+                return persisted
+
     conn = get_db(readonly=True)
     try:
         artifact = build_yearly_review_artifact(conn, year, context)
-        return {
+        result = {
             "report": artifact.report.model_dump(mode="json"),
             "record_catalog": artifact.record_catalog,
         }
     finally:
         conn.close()
+    try:
+        store_persisted_artifact(
+            cache_key,
+            result,
+            year=year,
+            filter_fingerprint=context.filter_fingerprint,
+            source_db_revision=db_revision,
+        )
+    except Exception:
+        logger.exception("Yearly Review persistent cache write failed")
+    return result
 
 
 def _artifact(year: int, context: YearlyReviewFilterContext) -> dict[str, Any]:
+    db_revision = database_revision()
     key = build_yearly_review_cache_key(
         year,
         context,
         language_revision=_language_revision(),
-        db_revision=database_revision(),
+        db_revision=db_revision,
     )
-    return _build_cached_artifact(year, context.model_dump_json(), key)
+    return _build_cached_artifact(year, context.model_dump_json(), key, db_revision)
+
+
+def build_default_yearly_review_context() -> YearlyReviewFilterContext:
+    """Build the same default context used by an omitted-query API request."""
+    conn = get_db(readonly=True)
+    try:
+        settings = SettingsRepository(conn).load_all()
+        filters = SimpleNamespace(
+            min_ms=int(settings["min_ms"]),
+            music_only=bool(settings["music_only"]),
+            merge_enabled=bool(settings["merge_enabled"]),
+            dynamic_threshold=True,
+            max_merge_gap_minutes=None,
+            merge_level=2,
+            include_compilations=bool(settings["include_compilations"]),
+            bb_top_n=int(settings["bb_top_n"]),
+            bb_album_top_n=int(settings["bb_album_top_n"]),
+            bb_artist_top_n=int(settings["bb_artist_top_n"]),
+            bb_week_start_dow=int(settings["bb_week_start_dow"]),
+            bb_week_start_hour=int(settings["bb_week_start_hour"]),
+        )
+        return build_yearly_review_context(conn, filters)
+    finally:
+        conn.close()
+
+
+def prewarm_latest_yearly_review() -> int | None:
+    """Persist the latest report in a background-safe, exact-key cache."""
+    available = get_yearly_review_available_years()
+    if available.latest_year is None:
+        return None
+    get_yearly_review(available.latest_year, build_default_yearly_review_context())
+    return available.latest_year
+
+
+def start_yearly_review_prewarm_thread() -> threading.Thread | None:
+    """Start one deduplicated daemon rebuild for the latest default report."""
+    global _prewarm_thread
+    if "PYTEST_CURRENT_TEST" in os.environ:
+        return None
+    with _prewarm_lock:
+        if _prewarm_thread is not None and _prewarm_thread.is_alive():
+            return _prewarm_thread
+
+        def run() -> None:
+            try:
+                year = prewarm_latest_yearly_review()
+                if year is not None:
+                    logger.info("Yearly Review persistent cache prewarmed for %d", year)
+            except Exception:
+                logger.exception("Yearly Review persistent cache prewarm failed")
+
+        _prewarm_thread = threading.Thread(
+            target=run,
+            name="yearly-review-persistent-prewarm",
+            daemon=True,
+        )
+        _prewarm_thread.start()
+        return _prewarm_thread
 
 
 def get_yearly_review(

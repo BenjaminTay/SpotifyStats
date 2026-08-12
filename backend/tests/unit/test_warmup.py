@@ -35,6 +35,10 @@ class TestWarmup:
             calls.append(("get_account_summary", {}))
             return {}
 
+        def fake_yearly_review_prewarm():
+            calls.append(("prewarm_latest_yearly_review", {}))
+            return 2026
+
         class FakeConn:
             def close(self):
                 calls.append(("close", {}))
@@ -53,6 +57,10 @@ class TestWarmup:
         monkeypatch.setattr(
             "backend.core.warmup.compute_billboard_data", fake_compute_billboard_data
         )
+        monkeypatch.setattr(
+            "backend.services.yearly_review_service.prewarm_latest_yearly_review",
+            fake_yearly_review_prewarm,
+        )
 
         from backend.core import warmup
 
@@ -60,13 +68,14 @@ class TestWarmup:
 
         assert calls[0][0] == "load_plays"
         assert calls[1][0] == "load_plays_for_artists"
-        assert calls[-3][0] == "get_account_summary"
-        assert calls[-2][0] == "close"
-        assert calls[-1][0] == "compute_billboard_data"
+        assert calls[-4][0] == "get_account_summary"
+        assert calls[-3][0] == "close"
+        assert calls[-2][0] == "compute_billboard_data"
+        assert calls[-1][0] == "prewarm_latest_yearly_review"
         assert calls[0][1]["min_ms"] == 30000
         assert calls[0][1]["merge_enabled"] is True
         assert calls[0][1]["dynamic_threshold"] is True
         assert calls[1][1]["dynamic_threshold"] is True
-        assert calls[-1][1]["bb_top_n"] == 30
-        assert calls[-1][1]["dynamic_threshold"] is True
-        assert calls[-1][1]["merge_level"] == 2
+        assert calls[-2][1]["bb_top_n"] == 30
+        assert calls[-2][1]["dynamic_threshold"] is True
+        assert calls[-2][1]["merge_level"] == 2

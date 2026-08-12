@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import sqlite3
 
+import pandas as pd
+
+from backend.domains.yearly_review import playback_records_adapter
 from backend.domains.yearly_review.playback_records_adapter import (
     build_playback_record_candidates,
     normalize_record_catalog,
@@ -90,6 +93,41 @@ def test_build_adapter_uses_injected_annual_payload_without_exposing_it_as_main_
     assert result["catalog_counts"]["total"] == 3
     assert result["catalog_counts"]["eligible"] == 3
     assert result["period"]["start_date"] == "2025-01-01"
+
+
+def test_build_adapter_reuses_preloaded_yearly_frames(monkeypatch) -> None:
+    event_frame = pd.DataFrame([{"ts_date": "2025-01-01"}])
+    entity_frames = (pd.DataFrame(), pd.DataFrame(), pd.DataFrame())
+    captured = {}
+
+    def fake_records(**kwargs):
+        captured.update(kwargs)
+        return {
+            "period": {
+                "period": "custom",
+                "start_date": "2025-01-01",
+                "end_date": "2025-12-31",
+            },
+            "meta": {"total_plays": 1},
+            "records": {},
+        }
+
+    monkeypatch.setattr(
+        playback_records_adapter,
+        "_get_analysis_records_uncached",
+        fake_records,
+    )
+
+    build_playback_record_candidates(
+        sqlite3.connect(":memory:"),
+        2025,
+        _context(),
+        event_frame=event_frame,
+        entity_frames=entity_frames,
+    )
+
+    assert captured["preloaded_event_frame"] is event_frame
+    assert captured["preloaded_entity_frames"] is entity_frames
 
 
 def test_localized_billboard_record_keeps_track_reference() -> None:

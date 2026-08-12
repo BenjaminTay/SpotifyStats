@@ -4,9 +4,11 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import sys
 import time
+from contextlib import nullcontext
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -19,13 +21,26 @@ from backend.core.db import get_db  # noqa: E402
 from backend.domains.settings.repository import SettingsRepository  # noqa: E402
 from backend.domains.yearly_review.context import build_yearly_review_context  # noqa: E402
 from backend.services.yearly_review_service import (  # noqa: E402
+    _artifact,
     _build_cached_artifact,
+    bypass_yearly_review_persistent_cache,
     get_yearly_review,
     get_yearly_review_available_years,
     get_yearly_review_records,
 )
 
-PROBE_VERSION = "yearly_review_v2_probe_v1"
+PROBE_VERSION = "yearly_review_v2_probe_v3"
+
+
+def _semantic_fingerprint(value: Any) -> str:
+    encoded = json.dumps(
+        value,
+        ensure_ascii=True,
+        sort_keys=True,
+        separators=(",", ":"),
+        default=str,
+    ).encode()
+    return hashlib.sha256(encoded).hexdigest()
 
 
 def parse_years(value: str) -> list[int]:
@@ -90,7 +105,14 @@ def _identity_issues(payload: dict[str, Any]) -> list[str]:
     return issues
 
 
-def probe_year(year: int, context, *, max_json_kib: int, max_hot_ms: float) -> dict[str, Any]:
+def probe_year(
+    year: int,
+    context,
+    *,
+    max_json_kib: int,
+    max_cold_ms: float,
+    max_hot_ms: float,
+) -> dict[str, Any]:
     start = time.perf_counter()
     report = get_yearly_review(year, context)
     cold_ms = (time.perf_counter() - start) * 1000
@@ -98,6 +120,7 @@ def probe_year(year: int, context, *, max_json_kib: int, max_hot_ms: float) -> d
     hot_report = get_yearly_review(year, context)
     hot_ms = (time.perf_counter() - start) * 1000
     records = get_yearly_review_records(year, context, page=1, page_size=50)
+    full_artifact = _artifact(year, context)
     payload = report.model_dump(mode="json")
     encoded = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode()
     issues: list[str] = []
@@ -114,6 +137,8 @@ def probe_year(year: int, context, *, max_json_kib: int, max_hot_ms: float) -> d
         issues.append(f"featured_record_count:{featured}")
     if len(encoded) > max_json_kib * 1024:
         issues.append(f"json_budget:{len(encoded)}")
+    if cold_ms > max_cold_ms:
+        issues.append(f"cold_latency_budget:{cold_ms:.2f}")
     if hot_ms > max_hot_ms:
         issues.append(f"hot_latency_budget:{hot_ms:.2f}")
     issues.extend(_taste_issues(payload))
@@ -125,6 +150,8 @@ def probe_year(year: int, context, *, max_json_kib: int, max_hot_ms: float) -> d
         "cold_ms": round(cold_ms, 2),
         "hot_ms": round(hot_ms, 2),
         "json_bytes": len(encoded),
+        "semantic_fingerprint": _semantic_fingerprint(payload),
+        "record_catalog_fingerprint": _semantic_fingerprint(full_artifact["record_catalog"]),
         "headlines": len(report.headlines),
         "months": len(report.season.months),
         "turning_points": len(report.season.turning_points),
@@ -138,25 +165,51 @@ def probe_year(year: int, context, *, max_json_kib: int, max_hot_ms: float) -> d
     }
 
 
-def run_probe(years: list[int], *, max_json_kib: int, max_hot_ms: float) -> dict[str, Any]:
+def run_probe(
+    years: list[int],
+    *,
+    max_json_kib: int,
+    max_cold_ms: float,
+    max_hot_ms: float,
+    cache_mode: str = "recompute",
+) -> dict[str, Any]:
     context = _context()
     available = get_yearly_review_available_years()
     missing = [year for year in years if year not in available.years]
     _build_cached_artifact.cache_clear()
-    results = [
-        probe_year(year, context, max_json_kib=max_json_kib, max_hot_ms=max_hot_ms)
-        for year in years
-    ]
+    cache_scope = (
+        bypass_yearly_review_persistent_cache()
+        if cache_mode == "recompute"
+        else nullcontext()
+    )
+    with cache_scope:
+        results = [
+            probe_year(
+                year,
+                context,
+                max_json_kib=max_json_kib,
+                max_cold_ms=max_cold_ms,
+                max_hot_ms=max_hot_ms,
+            )
+            for year in years
+        ]
     issues = [f"available_year_missing:{year}" for year in missing]
     issues.extend(f"{result['year']}:{issue}" for result in results for issue in result["issues"])
     return {
         "probe_version": PROBE_VERSION,
         "read_only": True,
+        "read_only_scope": "source_database",
+        "persistent_cache_write": cache_mode == "recompute",
+        "cache_mode": cache_mode,
         "requested_years": years,
         "available_years": available.years,
         "latest_year": available.latest_year,
         "filter_fingerprint": context.filter_fingerprint,
-        "budgets": {"max_json_kib": max_json_kib, "max_hot_ms": max_hot_ms},
+        "budgets": {
+            "max_json_kib": max_json_kib,
+            "max_cold_ms": max_cold_ms,
+            "max_hot_ms": max_hot_ms,
+        },
         "cache_info": _build_cached_artifact.cache_info()._asdict(),
         "years": results,
         "issues": issues,
@@ -168,7 +221,14 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--years", type=parse_years, default=parse_years("2023,2024,2025,2026"))
     parser.add_argument("--max-json-kib", type=int, default=512)
+    parser.add_argument("--max-cold-ms", type=float, default=30_000.0)
     parser.add_argument("--max-hot-ms", type=float, default=250.0)
+    parser.add_argument(
+        "--cache-mode",
+        choices=("recompute", "persistent"),
+        default="recompute",
+        help="recompute measures true calculation cost; persistent measures restart-cache hits",
+    )
     parser.add_argument("--json-output", type=Path, required=True)
     return parser
 
@@ -178,7 +238,9 @@ def main() -> int:
     report = run_probe(
         args.years,
         max_json_kib=args.max_json_kib,
+        max_cold_ms=args.max_cold_ms,
         max_hot_ms=args.max_hot_ms,
+        cache_mode=args.cache_mode,
     )
     args.json_output.parent.mkdir(parents=True, exist_ok=True)
     args.json_output.write_text(

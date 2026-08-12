@@ -217,6 +217,8 @@ def build_playback_record_candidates(
     context: YearlyReviewFilterContext,
     *,
     payload: Mapping[str, Any] | None = None,
+    event_frame: pd.DataFrame | None = None,
+    entity_frames: tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame] | None = None,
 ) -> dict[str, Any]:
     """Compute the annual custom-range catalog and normalize it for M3."""
     if payload is None:
@@ -232,6 +234,8 @@ def build_playback_record_candidates(
             dynamic_threshold=context.dynamic_threshold,
             max_merge_gap_minutes=context.max_merge_gap_minutes,
             include_compilations=context.include_compilations,
+            preloaded_event_frame=event_frame,
+            preloaded_entity_frames=entity_frames,
         )
     candidates, family_counts = normalize_record_catalog(
         payload.get("records", {}),

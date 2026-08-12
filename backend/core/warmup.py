@@ -71,6 +71,13 @@ def warm_common_caches() -> None:
 
     compute_billboard_data(**DEFAULT_BILLBOARD_FILTERS)
 
+    # Persist the latest deterministic Yearly Review artifact after shared
+    # playback/Billboard caches are warm. This runs inside the existing daemon
+    # warmup thread and never blocks application startup.
+    from backend.services.yearly_review_service import prewarm_latest_yearly_review
+
+    prewarm_latest_yearly_review()
+
 
 def start_warmup_thread() -> threading.Thread:
     """Start cache warmup in the background and return the thread."""

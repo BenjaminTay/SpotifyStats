@@ -172,6 +172,12 @@ def update_settings(
     invalidate("analysis")
     invalidate("db")
     invalidate("yearly_review")
+    if updates.keys() & (_stats_keys | {"include_compilations"}):
+        from backend.services.yearly_review_service import (
+            start_yearly_review_prewarm_thread,
+        )
+
+        start_yearly_review_prewarm_thread()
 
     return _build_settings_response(conn)
 

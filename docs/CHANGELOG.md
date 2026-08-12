@@ -4,8 +4,9 @@
 
 - Desktop/Compact 自定义年度总结重建为八章个人音乐年鉴：报告护照、播放/时长双榜、个人 Billboard 年度赛季、唯一时间线、关系故事、收听生活、年度纪录、品味迁移与完整索引；Phone 继续使用 V1，官方 Wrapped 不变。
 - 新增 `/api/yearly-review/available-years`、`/{year}` 与 `/{year}/records`，统一过滤指纹、coverage、版本化策略、元数据修订缓存和分页纪录目录；解释性内容完全由确定性事实生成，不调用 LLM。
-- 2023–2026 四年真实 probe 通过：主响应 226–243 KiB、热响应 2.64–3.44ms；冷态 76–88 秒保留为后续预计算/共享中间结果性能债。
-- 验证通过全量 backend unit 1,043、contract 329、frontend 475、API smoke 119/119、OpenAPI 0 unaccounted、五视口年度 route matrix、30 组控件库存以及 Chromium/Firefox/WebKit 年度完整交互。
+- 关系历史日期边界改为按实体类型一次聚合，播放纪录复用年度事件/实体帧；2023–2026 四年真实重算由 76–82.5 秒降至 9.95–15.94 秒。
+- 新增独立 `data/yearly_review_cache.db` 压缩持久缓存，完整精确 key 命中才返回；设置变更、流式导入和启动 warmup 后台预建最新年份。四年跨进程持久命中 11.31–23.68ms，主报告和完整纪录目录指纹逐年一致。
+- 验证通过全量 backend unit 1,051、contract 329、frontend 475、API smoke 119/119、OpenAPI 0 unaccounted、五视口年度 route matrix、30 组控件库存以及 Chromium/Firefox/WebKit 年度完整交互。
 - Spotify/Google 第三方封面或字体不可达时使用现有字体与实体首字母回退；应用自身资源和 API 错误仍由门禁拦截。
 
 ## 2026-08-11 — 详情统计与播放记录移动端收口

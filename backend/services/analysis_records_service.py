@@ -189,18 +189,25 @@ def _get_analysis_records_uncached(
     dynamic_threshold: bool,
     max_merge_gap_minutes: int | None,
     include_compilations: bool,
+    *,
+    preloaded_event_frame: pd.DataFrame | None = None,
+    preloaded_entity_frames: tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame] | None = None,
 ) -> dict:
     """Compute playback records (uncached inner function)."""
 
-    # Load plays
-    event_frame = load_plays(
-        conn,
-        min_ms=min_ms,
-        music_only=music_only,
-        merge_enabled=merge_enabled,
-        dynamic_threshold=dynamic_threshold,
-        max_merge_gap_minutes=max_merge_gap_minutes,
-    )
+    # Yearly Review already owns a filtered play frame and canonical entity
+    # frames. Reuse those when provided; the standalone records page keeps the
+    # existing load/build path.
+    event_frame = preloaded_event_frame
+    if event_frame is None:
+        event_frame = load_plays(
+            conn,
+            min_ms=min_ms,
+            music_only=music_only,
+            merge_enabled=merge_enabled,
+            dynamic_threshold=dynamic_threshold,
+            max_merge_gap_minutes=max_merge_gap_minutes,
+        )
 
     # Period filtering
     period_start, period_end = resolve_period_dates(period, start_date, end_date)
@@ -254,18 +261,22 @@ def _get_analysis_records_uncached(
         "generated_at": datetime.utcnow().isoformat() + "Z",
     }
 
-    # Build entity frames
-    track_frame, album_frame, artist_frame = _build_entity_frames(
-        event_frame,
-        conn,
-        merge_level,
-        include_compilations,
-        min_ms=min_ms,
-        music_only=music_only,
-        merge_enabled=merge_enabled,
-        dynamic_threshold=dynamic_threshold,
-        max_merge_gap_minutes=max_merge_gap_minutes,
-    )
+    # Build entity frames only for standalone callers. Preloaded frames are
+    # already aligned to the same annual range by the Yearly Review orchestrator.
+    if preloaded_entity_frames is None:
+        track_frame, album_frame, artist_frame = _build_entity_frames(
+            event_frame,
+            conn,
+            merge_level,
+            include_compilations,
+            min_ms=min_ms,
+            music_only=music_only,
+            merge_enabled=merge_enabled,
+            dynamic_threshold=dynamic_threshold,
+            max_merge_gap_minutes=max_merge_gap_minutes,
+        )
+    else:
+        track_frame, album_frame, artist_frame = preloaded_entity_frames
 
     # Compute records
     raw_records = compute_playback_records(

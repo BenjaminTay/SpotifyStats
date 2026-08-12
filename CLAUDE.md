@@ -10,7 +10,7 @@ UI：「编辑风 × 液态玻璃」— Playfair Display + Inter，毛玻璃，�
 
 导航命名：顶级入口使用“播放分析”；二级 tab 固定为“播放统计 / 播放排行 / 年度总结 / 播放记录 / 账号中心”。年度总结与账号中心保持在播放分析 tab 行内，避免恢复独立顶级入口或重复下拉入口。
 
-年度总结 V2：`/yearly-review` 只在 Desktop/Compact 挂载确定性八章个人音乐年鉴，Phone 保留 V1，官方 Wrapped 保持独立。V2 通过 `/api/yearly-review/available-years|{year}|{year}/records` 消费统一过滤指纹、coverage、策略与元数据 revision；播放/时长榜和个人 Billboard 必须明确区分，月度正文只有一条转折时间线，十二月明细和完整纪录按需展开/分页。LLM 不生成年度事实。主 JSON 预算 512 KiB、热响应 250ms；当前冷态 76–88 秒是已知性能债，详见 `docs/reports/2026-08-12-yearly-review-v2-delivery.md`。
+年度总结 V2：`/yearly-review` 只在 Desktop/Compact 挂载确定性八章个人音乐年鉴，Phone 保留 V1，官方 Wrapped 保持独立。V2 通过 `/api/yearly-review/available-years|{year}|{year}/records` 消费统一过滤指纹、coverage、策略与元数据 revision；播放/时长榜和个人 Billboard 必须明确区分，月度正文只有一条转折时间线，十二月明细和完整纪录按需展开/分页。LLM 不生成年度事实。主 JSON 预算 512 KiB、热响应 250ms、真实重算预算 30s；关系历史禁止逐实体反复扫描全历史。最终 artifact 使用独立 sidecar SQLite 做精确键持久缓存，不返回 stale 数据；启动、设置变更和流式导入会后台预建最新年份。四年真实重算 9.95–15.94s、跨进程持久命中 11.31–23.68ms，主报告与完整纪录目录指纹逐年一致，详见 `docs/reports/2026-08-12-yearly-review-v2-delivery.md`。
 
 移动网页架构：`<768px` 使用独立 Phone presentation，`768–1023px` 为 Compact，`>=1024px` 使用 Desktop；Phone/Desktop 的重图表、宽表与长列表必须互斥挂载，但继续共享 Route Container、React Router URL 状态、TanStack Query、过滤指纹、row model 和统计事实。Phone Shell 固定使用 `MobileTopBar`、五项 `MobileBottomNav` 与播放分析/Billboard `MobileSectionSwitcher`；Push 详情按路由语义隐藏 Bottom Nav。主要移动触控目标至少 44×44px，关键操作不得依赖 hover，复杂图表需提供触摸 disclosure 与可恢复焦点的全屏模式。Settings 手机端只开放低风险日常设置；导入、元数据治理、凭据和系统维护保留桌面工作台。新增消费页面必须通过 360/390/430/768/1280 route matrix、移动 control inventory、interaction/chart、long-list 与 Chromium/Firefox/WebKit 门禁。完整规范见 `frontend/UI_STYLE_GUIDE.md` 和 `docs/plans/2026-08-05-mobile-web-design-and-implementation-plan.md`。
 
