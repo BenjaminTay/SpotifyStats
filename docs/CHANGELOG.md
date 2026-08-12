@@ -13,7 +13,9 @@
 - 用户展示继续升级到 `content_version=yearly_review_v2_9`：年份按钮改为升序；完整年度隐藏状态与起止日期，进行中保留截止日期；移除封面三条头条和生成海报功能；六项同比改为红/绿箭头与高低百分比。
 - 人工验收细节升级到 `content_version=yearly_review_v2_10`：KPI 去掉重复的“高/低”字样；荣誉分歧在宽屏两列、窄屏单列；新关系标题区分歌曲、专辑和艺人；同专辑/艺人多首入榜纪录显示准确曲目数，缺少首数时不公开。
 - 人工验收继续升级到 `content_version=yearly_review_v2_11`：删除“更多年度纪录”及前端分页请求，年度 artifact 不再序列化上千条候选，兼容 records API 只返回与正文相同的精选集合；全章纵向间距统一缩短约 30%。
-- 验证通过全量 backend unit 1,051、contract 329、frontend 475、API smoke 119/119、OpenAPI 0 unaccounted、五视口年度 route matrix、30 组控件库存以及 Chromium/Firefox/WebKit 年度完整交互。
+- 年度冷生成升级为 `yearly_review_generation_v1`：Desktop/Compact 进入页面后以当前完整筛选上下文自动排队全部可用年份，当前年份优先、切换年份可提升 queued 任务；服务端时间戳让跨年份/跨路由等待计时连续，前端离开只取消 HTTP 等待，后台继续生成并写入持久缓存。
+- 移除年度 artifact 跨年份全局 singleflight，改由单 worker 对 exact cache key 去重；后台冷构建不再阻塞其他年份缓存命中，并补齐 revision 漂移、失败重试、终态 registry 上限、可用年份校验和 OpenAPI 审计。
+- 验证通过后端全量 1,596 项、年度专项 116 项、前端全量 484 项、API smoke 120/120；OpenAPI 187 operations / 85 parameter obligations 均为 0 unaccounted，既有五视口年度 route matrix、30 组控件库存与 Chromium/Firefox/WebKit 年度完整交互继续通过。
 - Spotify/Google 第三方封面或字体不可达时使用现有字体与实体首字母回退；应用自身资源和 API 错误仍由门禁拦截。
 
 ## 2026-08-11 — 详情统计与播放记录移动端收口

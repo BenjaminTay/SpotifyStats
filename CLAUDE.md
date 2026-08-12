@@ -1,5 +1,7 @@
 # CLAUDE.md
 
+年度生成协调：在既有年度只读报告 API 外，新增 `/api/yearly-review/prewarm` 与 `/api/yearly-review/generation-status`。`yearly_review_generation_v1` 使用单工作线程优先级队列与 exact cache key 去重，当前年优先、其余可用年份从近到远后台预建，切年提升 queued 任务，等待时间使用服务端 `requested_at`，缓存命中不得被其他年份冷构建阻塞。前端离开页面只取消 HTTP 等待，不终止后台任务；Phone V1 和 Official Wrapped 不触发批量预建。
+
 > 完整项目上下文见 `AGENTS.md`。本文档保留常用命令、核心约束和架构要点作为速查。
 
 ## 项目概述

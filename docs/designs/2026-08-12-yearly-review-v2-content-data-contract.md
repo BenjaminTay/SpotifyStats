@@ -532,6 +532,8 @@ GET /api/yearly-review/{year}
 
 ```text
 GET /api/yearly-review/available-years
+POST /api/yearly-review/prewarm
+GET /api/yearly-review/generation-status
 GET /api/yearly-review/{year}/records
 ```
 

@@ -104,6 +104,24 @@ def load_persisted_artifact(
         conn.close()
 
 
+def has_persisted_artifact(
+    cache_key: str,
+    *,
+    cache_path: str | os.PathLike[str] | None = None,
+) -> bool:
+    """Check an exact persistent hit without inflating its payload."""
+    conn = _connect(cache_path)
+    try:
+        row = conn.execute(
+            """SELECT 1 FROM yearly_review_artifacts
+               WHERE cache_key=? AND cache_format_version=?""",
+            (cache_key, CACHE_FORMAT_VERSION),
+        ).fetchone()
+        return row is not None
+    finally:
+        conn.close()
+
+
 def store_persisted_artifact(
     cache_key: str,
     artifact: dict[str, Any],

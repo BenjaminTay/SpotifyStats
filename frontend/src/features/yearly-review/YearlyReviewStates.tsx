@@ -1,14 +1,31 @@
 import { useEffect, useState } from 'react'
 import { AlertTriangle, RotateCcw } from 'lucide-react'
+import type { YearlyReviewGenerationTaskStatus } from '@/types/yearly-review-v2'
 
-export function YearlyReviewV2Loading({ year }: { year: number }) {
-  const [elapsed, setElapsed] = useState(0)
+export function YearlyReviewV2Loading({
+  year,
+  task,
+}: {
+  year: number
+  task?: YearlyReviewGenerationTaskStatus | null
+}) {
+  const [clockNow, setClockNow] = useState(() => Date.now())
   useEffect(() => {
-    const startedAt = Date.now()
-    const timer = window.setInterval(() => setElapsed(Math.floor((Date.now() - startedAt) / 1000)), 1000)
+    if (task?.state !== 'queued' && task?.state !== 'running') return undefined
+    const timer = window.setInterval(() => setClockNow(Date.now()), 1_000)
     return () => window.clearInterval(timer)
-  }, [year])
-  const message = elapsed < 8 ? '正在整理你的年度音乐故事' : elapsed < 30 ? '正在回顾这一年的冠军与高光' : '正在装订最后几页'
+  }, [task?.requested_at, task?.state])
+  const requestedAt = task?.requested_at ? Date.parse(task.requested_at) : null
+  const elapsed = requestedAt == null || Number.isNaN(requestedAt)
+    ? 0
+    : Math.max(0, Math.floor((clockNow - requestedAt) / 1_000))
+  const message = task?.state === 'queued'
+    ? '正在等待整理这一年的音乐故事'
+    : elapsed < 8
+      ? '正在整理你的年度音乐故事'
+      : elapsed < 30
+        ? '正在回顾这一年的冠军与高光'
+        : '正在装订最后几页'
 
   return (
     <div className="yearly-v2-loading" role="status" aria-live="polite">
@@ -21,7 +38,7 @@ export function YearlyReviewV2Loading({ year }: { year: number }) {
   )
 }
 
-export function YearlyReviewV2Error({ message: _message, onRetry }: { message: string; onRetry: () => void }) {
+export function YearlyReviewV2Error({ onRetry }: { message: string; onRetry: () => void }) {
   return (
     <div className="yearly-v2-state-card is-error">
       <AlertTriangle aria-hidden="true" />

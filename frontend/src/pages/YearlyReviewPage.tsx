@@ -1,10 +1,15 @@
-import { useState, useEffect, Suspense, lazy, Component } from 'react'
+import { useState, useEffect, useRef, Suspense, lazy, Component } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useSearchParams } from 'react-router-dom'
 import { queryKeys } from '@/api/query-keys'
 import { useAnalysisFilters } from '@/hooks/useAnalysis'
 import { useYearlyReview } from '@/hooks/useYearlyReview'
-import { useYearlyReviewV2, useYearlyReviewV2AvailableYears } from '@/hooks/useYearlyReviewV2'
+import {
+  usePrewarmYearlyReviews,
+  useYearlyReviewGenerationStatus,
+  useYearlyReviewV2,
+  useYearlyReviewV2AvailableYears,
+} from '@/hooks/useYearlyReviewV2'
 import { CustomSummary } from '@/pages/yearly-review/CustomSummary'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
@@ -82,6 +87,7 @@ function EmptyState({ year }: { year: number }) {
 }
 
 type TabKey = 'custom' | 'official'
+const EMPTY_YEARS: number[] = []
 
 export function YearlyReviewPage() {
   const isPhone = useViewportMode() === 'phone'
@@ -102,7 +108,7 @@ export function YearlyReviewPage() {
 
   const playYears = playYearsQuery.data?.years ?? []
   const wrappedYears = wrappedYearsQuery.data?.years ?? []
-  const v2Years = v2YearsQuery.data?.years ?? []
+  const v2Years = v2YearsQuery.data?.years ?? EMPTY_YEARS
 
   // Per-tab available years
   const displayYears = activeTab === 'custom' ? (isPhone ? playYears : v2Years) : wrappedYears
@@ -139,9 +145,57 @@ export function YearlyReviewPage() {
     filters,
     !isPhone && activeTab === 'custom' && !filtersLoading,
   )
+  const generationEnabled = !isPhone
+    && activeTab === 'custom'
+    && !filtersLoading
+    && currentYear != null
+    && v2Years.length > 0
+  const generationStatus = useYearlyReviewGenerationStatus(v2Years, filters, generationEnabled)
+  const { mutate: prewarmYearlyReviews } = usePrewarmYearlyReviews(filters)
+  const lastPrewarmRequestRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (!generationEnabled || currentYear == null) return
+    const years = [...v2Years].sort((left, right) => left - right)
+    const requestKey = `${generationStatus.filterKey}|${years.join(',')}|${currentYear}`
+    if (lastPrewarmRequestRef.current === requestKey) return
+    lastPrewarmRequestRef.current = requestKey
+    prewarmYearlyReviews(
+      { years, foreground_year: currentYear },
+      {
+        onError: () => {
+          if (lastPrewarmRequestRef.current === requestKey) lastPrewarmRequestRef.current = null
+        },
+      },
+    )
+  }, [currentYear, generationEnabled, generationStatus.filterKey, prewarmYearlyReviews, v2Years])
   const data = legacyReview.data
   const v2Data = v2Review.data?.year === currentYear ? v2Review.data : null
-  const v2Pending = filtersLoading || v2Review.isLoading || v2Review.isPlaceholderData || (!v2Data && v2Review.isFetching)
+  const currentGenerationTask = generationStatus.tasks.find(task => task.year === currentYear) ?? null
+  const currentTaskIsActive = currentGenerationTask?.state === 'queued'
+    || currentGenerationTask?.state === 'running'
+  const refetchV2Review = v2Review.refetch
+  const previousTaskStateRef = useRef<Record<number, string | undefined>>({})
+  useEffect(() => {
+    if (currentYear == null || currentGenerationTask == null) return
+    const previousState = previousTaskStateRef.current[currentYear]
+    previousTaskStateRef.current[currentYear] = currentGenerationTask.state
+    if (
+      currentGenerationTask.state === 'ready'
+      && (
+        previousState === 'queued'
+        || previousState === 'running'
+        || (previousState == null && v2Review.isError)
+      )
+      && !v2Data
+    ) {
+      void refetchV2Review()
+    }
+  }, [currentGenerationTask, currentYear, refetchV2Review, v2Data, v2Review.isError])
+  const v2Pending = filtersLoading
+    || currentTaskIsActive
+    || v2Review.isLoading
+    || v2Review.isPlaceholderData
+    || (!v2Data && v2Review.isFetching)
 
   return (
     <>
@@ -202,7 +256,12 @@ export function YearlyReviewPage() {
           <>
             {isPhone && legacyReview.loading && <LoadingSkeleton />}
             {isPhone && legacyReview.error && <ErrorState message={legacyReview.error} />}
-            {!isPhone && activeTab === 'custom' && v2Pending && <YearlyReviewV2Loading year={currentYear ?? new Date().getFullYear()} />}
+            {!isPhone && activeTab === 'custom' && v2Pending && (
+              <YearlyReviewV2Loading
+                year={currentYear ?? new Date().getFullYear()}
+                task={currentGenerationTask}
+              />
+            )}
             {!isPhone && activeTab === 'custom' && !v2Pending && v2Review.error && (
               <YearlyReviewV2Error
                 message={v2Review.error instanceof Error ? v2Review.error.message : '未知错误'}

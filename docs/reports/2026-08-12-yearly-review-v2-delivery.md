@@ -182,7 +182,7 @@ GET /api/yearly-review/{year}/records?page=1&page_size=50
 
 前端新增 V2 类型、query hook、章节 feature 和编辑部年鉴样式。Query 参数完整继承分析设置，query key 使用稳定过滤上下文，后端 `filter_fingerprint` 作为报告身份与组件重置边界。
 
-主报告 timeout 为 120 秒；首次生成显示阶段性等待文案与已等待秒数，不伪造百分比。切换年份不会把上一年 placeholder 错显为当前年。
+主报告兼容 GET 的等待上限为 120 秒；首次生成显示阶段性等待文案与已等待秒数，不伪造百分比。`yearly_review_generation_v1` 以服务端 `requested_at` 作为计时锚点，切换年份或离开页面再返回不会从 0 重新计时，也不会把上一年 placeholder 错显为当前年。前端取消 HTTP 请求只停止当前等待，后台 worker 继续完成 artifact。
 
 ### 8.2 展示与边界
 
@@ -255,7 +255,7 @@ API smoke 已纳入 available-years、空年份主报告与分页 records；真�
 | 新进程持久命中 | 35.24ms | 一致 | 一致 |
 | 同进程后续热命中 | 4.98ms | 一致 | 一致 |
 
-启动 warmup 会在既有播放/Billboard 热路径之后预建最新年份；统计设置变更与流式导入完成后会启动一个去重 daemon 线程刷新最新年份。同一时刻只允许一个年度预建线程，精确键缺失时普通 API 仍同步生成正确报告，不会为了速度返回旧数据。probe 默认保持 `recompute` 模式，以免持久命中掩盖真实计算性能；`persistent` 模式专门验证重启后的用户等待时间。
+启动 warmup 会在既有播放/Billboard 热路径之后预建最新默认年份；统计设置变更与流式导入完成后也会刷新该年份。Desktop/Compact 打开自定义年度总结后，前端通过 `POST /api/yearly-review/prewarm` 按当前完整筛选上下文一次提交全部可用年份，并通过 `GET /api/yearly-review/generation-status` 读取状态。单 worker 优先处理当前年份，其余年份从近到远排队；用户点击 queued 年份会提升优先级。相同 exact key 只生成一次，缓存命中不经过冷构建全局锁，后台生成旧年份时已缓存年份仍可立即返回。Phone V1 与 Official Wrapped 不进入该队列。probe 默认保持 `recompute` 模式，以免持久命中掩盖真实计算性能；`persistent` 模式专门验证重启后的用户等待时间。
 
 ### 9.4 前端门禁
 
@@ -319,6 +319,14 @@ API smoke 已纳入 available-years、空年份主报告与分页 records；真�
 - 全部章节纵向 padding 最终从 `clamp(72px, 10vw, 138px)` 收紧为 `clamp(48px, 5.5vw, 80px)`；897px 下相邻内容到下一标题统一约 99px，较原约 179px 缩短约 45%。
 - 真实 897px 页面为 0 “更多年度纪录”控件、7 张精选卡、0 横向溢出、0 console error/warning。
 - 年度后端 106 项、前端全量 479 项与 production build 通过；2024 persistent probe v5 为 0 issue，v2.11 命中 81.20ms、同进程热响应 4.68ms。
+
+### 9.9 后台生成与连续计时复验（generation v1）
+
+- 新增 `yearly_review_generation_v1` 单 worker 协调器、202 Accepted 批量预热与只读状态接口；任务按完整 artifact key 去重，当前年份优先，其他年份从近到远排队。
+- 前端计时使用服务端 `requested_at`，年份 A → B → A 或离开年度路由再返回时保持累计等待；queued/running 状态优先于短暂 HTTP error，ready 后自动重新获取正文。
+- 报告 GET 消费 React Query AbortSignal，但取消请求不取消后台 task；兼容 GET 等待同一任务，120 秒后只返回 504，worker 仍继续。
+- 移除跨年份全局 singleflight。自动测试锁定：相同 exact key 只 build 一次、queued promotion、revision drift 不写旧 key、失败可重试、后台冷建不阻塞另一 ready 年份、终态 registry 最多 32 条、只能预热真实可用年份。
+- 验证：后端全量 1,596 项通过；年度专项 116 项通过；前端全量 484 项通过；API smoke 120/120；production build、Ruff、定向 ESLint、OpenAPI 187 operations / 85 parameter obligations 均为 0 unaccounted。
 
 ## 10. 交付文件地图
 

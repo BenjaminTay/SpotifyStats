@@ -53,7 +53,8 @@ FastAPI 后端采用四层分离：**api/**（路由 + Depends 依赖注入）�
 | `services/analysis_stats_service.py` | 总体统计 + 个人排行榜 + 时间范围解析 |
 | `services/entity_stats_service.py` | 歌曲/专辑/艺人个人播放统计 |
 | `services/wrapped_service.py` | 自定义年度总结（听歌人格/Top榜/曲风全景/发现回归等） |
-| `services/yearly_review_service.py` | 年度总结 V2 schema/content 双版本精确 cache key、稳定播放事实 revision、进程内 LRU、独立 sidecar SQLite artifact 持久缓存与最新年份后台预建；不得依赖 main/WAL 物理 mtime 或返回 stale artifact |
+| `services/yearly_review_service.py` | 年度总结 V2 schema/content 双版本精确 cache key、稳定播放事实 revision、进程内 LRU、独立 sidecar SQLite artifact 持久缓存，以及批量预热/状态查询入口；不得依赖 main/WAL 物理 mtime 或返回 stale artifact |
+| `services/yearly_review_generation.py` | `yearly_review_generation_v1` 单 worker 优先级队列；按完整 artifact key 去重，当前年份优先、queued 可提升，GET 超时或客户端离开不取消后台生成，缓存命中不得被其他年份冷任务阻塞 |
 | `services/billboard_service.py` | Billboard facade（~100行），实现已迁入 `domains/billboard/` |
 | `services/release_cycle_service.py` | 发行周期分析 + Spotify API + 先行曲识别 |
 | `services/genius_service.py` | Genius 歌词获取 + SQLite 缓存，懒加载单例 |

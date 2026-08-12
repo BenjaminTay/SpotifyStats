@@ -70,10 +70,16 @@ TARGETED_CONTRACT_OPERATIONS: dict[tuple[str, str], OperationEvidence] = {
         )
         for path in (
             "/api/yearly-review/available-years",
+            "/api/yearly-review/generation-status",
             "/api/yearly-review/{year}",
             "/api/yearly-review/{year}/records",
         )
     },
+    ("POST", "/api/yearly-review/prewarm"): OperationEvidence(
+        "targeted_contract",
+        "backend/tests/contract/test_yearly_review_v2_contract.py + backend/tests/unit/test_yearly_review_generation.py",
+        "Yearly Review background prewarm is bounded to available years, exact-key deduplicated, and priority-queued by contract tests.",
+    ),
     **{
         (method, path): OperationEvidence(
             "targeted_contract",

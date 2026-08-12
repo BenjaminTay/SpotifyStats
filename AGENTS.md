@@ -1,5 +1,9 @@
 # AGENTS.md
 
+## 年度生成协调（2026-08-12）
+
+在既有年度只读报告 API 外，新增 `/api/yearly-review/prewarm` 与 `/api/yearly-review/generation-status`。`yearly_review_generation_v1` 使用单工作线程优先级队列和精确 cache key 去重：当前年份优先，其他可用年份从近到远后台预建，切换年份可提升 queued 任务，计时锚定服务端 `requested_at`。缓存命中必须绕过冷构建锁，前端离开页面只能取消 HTTP 等待，不能取消后台任务；Phone V1 与官方 Wrapped 不得触发 V2 批量预建。
+
 Spotify Extended Streaming History 数据分析 Web 应用的主项目提示词文件，供 Claude Code 及其他 AI 编码助手共同使用。
 
 ---

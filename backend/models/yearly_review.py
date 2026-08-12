@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Any, Literal
+from datetime import datetime
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -344,6 +345,28 @@ class YearlyReviewResponse(BaseModel):
 class YearlyReviewAvailableYearsResponse(BaseModel):
     years: list[int] = Field(default_factory=list)
     latest_year: int | None = None
+
+
+YearlyReviewGenerationState = Literal["queued", "running", "ready", "failed"]
+
+
+class YearlyReviewGenerationTask(BaseModel):
+    year: int = Field(ge=2000, le=2100)
+    state: YearlyReviewGenerationState
+    requested_at: datetime
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+    error: str | None = None
+
+
+class YearlyReviewPrewarmRequest(BaseModel):
+    years: list[Annotated[int, Field(ge=2000, le=2100)]] = Field(min_length=1, max_length=20)
+    foreground_year: int | None = Field(default=None, ge=2000, le=2100)
+
+
+class YearlyReviewGenerationResponse(BaseModel):
+    protocol_version: Literal["yearly_review_generation_v1"] = "yearly_review_generation_v1"
+    tasks: list[YearlyReviewGenerationTask] = Field(default_factory=list)
 
 
 class YearlyReviewRecordsPage(BaseModel):

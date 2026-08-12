@@ -139,6 +139,8 @@ export const queryKeys = {
     v2AvailableYears: () => ["yearly-review", "v2", "available-years"] as const,
     v2Report: (year: number, filterKey: string) =>
       ["yearly-review", "v2", "report", year, filterKey] as const,
+    v2GenerationStatus: (yearsKey: string, filterKey: string) =>
+      ["yearly-review", "v2", "generation-status", yearsKey, filterKey] as const,
   },
 
   music: {

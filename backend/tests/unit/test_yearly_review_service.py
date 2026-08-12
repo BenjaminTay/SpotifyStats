@@ -61,6 +61,43 @@ def test_cache_key_changes_with_content_version(monkeypatch) -> None:
     )
 
 
+def test_batch_preparation_reuses_shared_source_revisions(monkeypatch) -> None:
+    calls = {"database": 0, "language": 0}
+
+    def database():
+        calls["database"] += 1
+        return "db-a"
+
+    def language():
+        calls["language"] += 1
+        return "lang-a"
+
+    monkeypatch.setattr(yearly_review_service, "database_revision", database)
+    monkeypatch.setattr(yearly_review_service, "_language_revision", language)
+
+    prepared = yearly_review_service._prepare_artifacts([2023, 2024, 2025], _context())
+
+    assert list(prepared) == [2023, 2024, 2025]
+    assert calls == {"database": 1, "language": 1}
+
+
+def test_prewarm_rejects_years_not_present_in_playback_data(monkeypatch) -> None:
+    monkeypatch.setattr(
+        yearly_review_service,
+        "get_yearly_review_available_years",
+        lambda: yearly_review_service.YearlyReviewAvailableYearsResponse(
+            years=[2024, 2025], latest_year=2025
+        ),
+    )
+
+    try:
+        yearly_review_service.prewarm_yearly_reviews([2024, 2099], _context(), foreground_year=2099)
+    except ValueError as exc:
+        assert str(exc) == "unavailable_years:2099"
+    else:
+        raise AssertionError("unavailable years must be rejected")
+
+
 def test_database_revision_ignores_unrelated_writes_but_tracks_imports(
     monkeypatch, tmp_path
 ) -> None:

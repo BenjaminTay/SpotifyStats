@@ -253,6 +253,27 @@ export interface YearlyReviewAvailableYearsResponse {
   latest_year: number | null
 }
 
+export type YearlyReviewGenerationState = 'queued' | 'running' | 'ready' | 'failed'
+
+export interface YearlyReviewGenerationTaskStatus {
+  year: number
+  state: YearlyReviewGenerationState
+  requested_at: string | null
+  started_at: string | null
+  finished_at: string | null
+  error: string | null
+}
+
+export interface YearlyReviewGenerationStatusResponse {
+  protocol_version: 'yearly_review_generation_v1'
+  tasks: YearlyReviewGenerationTaskStatus[]
+}
+
+export interface YearlyReviewPrewarmRequest {
+  years: number[]
+  foreground_year: number | null
+}
+
 export interface YearlyReviewRecordsPage {
   content_version: string
   year: number

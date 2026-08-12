@@ -14,12 +14,12 @@ from functools import lru_cache
 from types import SimpleNamespace
 from typing import Any
 
-from backend.core.cache import singleflight
 from backend.core.db import get_db
 from backend.domains.billboard.year_end import YEAR_END_SEMANTICS_VERSION
 from backend.domains.metadata.artist_languages import artist_language_fact_revision
 from backend.domains.settings.repository import SettingsRepository
 from backend.domains.yearly_review.artifact_cache import (
+    has_persisted_artifact,
     load_persisted_artifact,
     store_persisted_artifact,
 )
@@ -37,8 +37,13 @@ from backend.domains.yearly_review.versions import (
 from backend.models.yearly_review import (
     YearlyReviewAvailableYearsResponse,
     YearlyReviewFilterContext,
+    YearlyReviewGenerationResponse,
     YearlyReviewRecordsPage,
     YearlyReviewResponse,
+)
+from backend.services.yearly_review_generation import (
+    PreparedYearlyReview,
+    YearlyReviewGenerationCoordinator,
 )
 
 logger = logging.getLogger(__name__)
@@ -132,7 +137,6 @@ def build_yearly_review_cache_key(
     return hashlib.sha256(encoded.encode()).hexdigest()
 
 
-@singleflight
 @lru_cache(maxsize=16)
 def _build_cached_artifact(
     year: int,
@@ -172,15 +176,98 @@ def _build_cached_artifact(
     return result
 
 
-def _artifact(year: int, context: YearlyReviewFilterContext) -> dict[str, Any]:
+def _prepare_artifact(year: int, context: YearlyReviewFilterContext) -> PreparedYearlyReview:
     db_revision = database_revision()
+    return _prepare_artifact_with_revisions(
+        year,
+        context,
+        db_revision=db_revision,
+        language_revision=_language_revision(),
+    )
+
+
+def _prepare_artifact_with_revisions(
+    year: int,
+    context: YearlyReviewFilterContext,
+    *,
+    db_revision: str,
+    language_revision: str,
+) -> PreparedYearlyReview:
     key = build_yearly_review_cache_key(
         year,
         context,
-        language_revision=_language_revision(),
+        language_revision=language_revision,
         db_revision=db_revision,
     )
-    return _build_cached_artifact(year, context.model_dump_json(), key, db_revision)
+    return PreparedYearlyReview(
+        year=year,
+        context=context,
+        context_json=context.model_dump_json(),
+        cache_key=key,
+        db_revision=db_revision,
+    )
+
+
+def _prepare_artifacts(
+    years: list[int], context: YearlyReviewFilterContext
+) -> dict[int, PreparedYearlyReview]:
+    db_revision = database_revision()
+    language_revision = _language_revision()
+    return {
+        year: _prepare_artifact_with_revisions(
+            year,
+            context,
+            db_revision=db_revision,
+            language_revision=language_revision,
+        )
+        for year in dict.fromkeys(years)
+    }
+
+
+def _refresh_prepared_artifact(prepared: PreparedYearlyReview) -> PreparedYearlyReview:
+    filters = SimpleNamespace(
+        min_ms=prepared.context.min_ms,
+        music_only=prepared.context.music_only,
+        merge_enabled=prepared.context.merge_enabled,
+        dynamic_threshold=prepared.context.dynamic_threshold,
+        max_merge_gap_minutes=prepared.context.max_merge_gap_minutes,
+        merge_level=prepared.context.merge_level,
+        include_compilations=prepared.context.include_compilations,
+        bb_top_n=prepared.context.bb_top_n,
+        bb_album_top_n=prepared.context.bb_album_top_n,
+        bb_artist_top_n=prepared.context.bb_artist_top_n,
+        bb_week_start_dow=prepared.context.bb_week_start_dow,
+        bb_week_start_hour=prepared.context.bb_week_start_hour,
+    )
+    conn = get_db(readonly=True)
+    try:
+        context = build_yearly_review_context(conn, filters)
+    finally:
+        conn.close()
+    return _prepare_artifact(prepared.year, context)
+
+
+def _build_prepared_artifact(prepared: PreparedYearlyReview) -> dict[str, Any]:
+    return _build_cached_artifact(
+        prepared.year,
+        prepared.context_json,
+        prepared.cache_key,
+        prepared.db_revision,
+    )
+
+
+_generation_coordinator = YearlyReviewGenerationCoordinator(
+    prepare=_prepare_artifact,
+    refresh=_refresh_prepared_artifact,
+    build=_build_prepared_artifact,
+    is_ready=has_persisted_artifact,
+)
+
+
+def _artifact(year: int, context: YearlyReviewFilterContext) -> dict[str, Any]:
+    if _persistent_cache_bypass.get():
+        return _build_prepared_artifact(_prepare_artifact(year, context))
+    return _generation_coordinator.get_or_build(year, context)
 
 
 def build_default_yearly_review_context() -> YearlyReviewFilterContext:
@@ -214,6 +301,55 @@ def prewarm_latest_yearly_review() -> int | None:
         return None
     get_yearly_review(available.latest_year, build_default_yearly_review_context())
     return available.latest_year
+
+
+def prewarm_yearly_reviews(
+    years: list[int],
+    context: YearlyReviewFilterContext,
+    *,
+    foreground_year: int | None = None,
+) -> YearlyReviewGenerationResponse:
+    """Queue exact-context reports, putting the visible year ahead of background work."""
+    requested = list(dict.fromkeys(years))
+    if foreground_year is not None and foreground_year not in requested:
+        requested.append(foreground_year)
+    available = set(get_yearly_review_available_years().years)
+    unavailable = [year for year in requested if year not in available]
+    if unavailable:
+        joined = ",".join(str(year) for year in unavailable)
+        raise ValueError(f"unavailable_years:{joined}")
+    prepared = _prepare_artifacts(requested, context)
+    if foreground_year is not None:
+        _generation_coordinator.enqueue_prepared(
+            prepared[foreground_year],
+            foreground=True,
+        )
+    for year in sorted((year for year in requested if year != foreground_year), reverse=True):
+        _generation_coordinator.enqueue_prepared(
+            prepared[year],
+            foreground=False,
+        )
+    tasks = []
+    for year in requested:
+        status = _generation_coordinator.status_prepared(prepared[year])
+        if status is not None:
+            tasks.append(status)
+    return YearlyReviewGenerationResponse(tasks=tasks)
+
+
+def get_yearly_review_generation_status(
+    context: YearlyReviewFilterContext,
+    *,
+    years: list[int] | None = None,
+) -> YearlyReviewGenerationResponse:
+    requested = years if years is not None else get_yearly_review_available_years().years
+    prepared = _prepare_artifacts(requested, context)
+    tasks = []
+    for year in dict.fromkeys(requested):
+        status = _generation_coordinator.status_prepared(prepared[year])
+        if status is not None:
+            tasks.append(status)
+    return YearlyReviewGenerationResponse(tasks=tasks)
 
 
 def start_yearly_review_prewarm_thread() -> threading.Thread | None:

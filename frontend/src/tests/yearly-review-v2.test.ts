@@ -58,6 +58,12 @@ describe('Yearly Review V2 desktop contract', () => {
     expect(pageSource).toContain('<YearlyReviewDesktopExperience')
     expect(pageSource).toContain('<OfficialWrapped />')
     expect(pageSource).toContain('<CustomSummary data={data} />')
+    expect(pageSource).toContain("activeTab === 'custom'")
+    expect(pageSource).toContain('useYearlyReviewGenerationStatus(v2Years, filters, generationEnabled)')
+    expect(pageSource).toContain('foreground_year: currentYear')
+    expect(pageSource).toContain("currentGenerationTask?.state === 'queued'")
+    expect(pageSource).toContain("currentGenerationTask.state === 'ready'")
+    expect(pageSource).toContain('void refetchV2Review()')
   })
 
   it('keeps the eight chapters in one editorial order', () => {

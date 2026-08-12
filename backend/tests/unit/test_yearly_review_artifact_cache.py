@@ -5,6 +5,7 @@ import threading
 from types import SimpleNamespace
 
 from backend.domains.yearly_review.artifact_cache import (
+    has_persisted_artifact,
     load_persisted_artifact,
     store_persisted_artifact,
 )
@@ -59,6 +60,8 @@ def test_persistent_artifact_round_trip_and_prunes_old_entries(tmp_path) -> None
     assert load_persisted_artifact("key-2", cache_path=cache_path) == _artifact(2)
     assert load_persisted_artifact("key-1", cache_path=cache_path) == _artifact(1)
     assert load_persisted_artifact("key-0", cache_path=cache_path) is None
+    assert has_persisted_artifact("key-2", cache_path=cache_path)
+    assert not has_persisted_artifact("key-0", cache_path=cache_path)
 
 
 def test_corrupt_persistent_artifact_is_deleted_and_treated_as_miss(tmp_path) -> None:

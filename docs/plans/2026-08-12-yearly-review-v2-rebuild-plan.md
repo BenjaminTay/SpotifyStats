@@ -578,7 +578,7 @@ cd frontend && npm run build
 
 提供 cache clear registration，并纳入导入、元数据审核和归并修改后的失效路径。
 
-**执行结果（2026-08-12）：完成。** 新增 `yearly_review` LRU 命名空间与 singleflight；缓存键包含年份、schema、独立 content version、过滤指纹、三类政策版本、Billboard `year_end_v3`、display taxonomy、artist/language/identity/credit/group/project 修订和稳定播放事实 revision。事实 revision 响应追加导入但忽略无关任务日志/WAL checkpoint；Settings、版本归并、album project 重建、genre approve 和 language review decision 已显式失效年度缓存。
+**执行结果（2026-08-12）：完成并在用户验收后扩展。** 新增 `yearly_review` LRU 命名空间；缓存键包含年份、schema、独立 content version、过滤指纹、三类政策版本、Billboard `year_end_v3`、display taxonomy、artist/language/identity/credit/group/project 修订和稳定播放事实 revision。事实 revision 响应追加导入但忽略无关任务日志/WAL checkpoint；Settings、版本归并、album project 重建、genre approve 和 language review decision 已显式失效年度缓存。后续 `yearly_review_generation_v1` 用 exact-key 协调器替代跨年份全局 singleflight：单 worker 串行冷构建，当前年份可提升 queued 优先级，缓存命中走无阻塞快路径，revision 漂移不会写入旧 key，终态 registry 有界。
 
 ### Task 4.3：API Router 与 Contract
 
@@ -595,6 +595,8 @@ Endpoints：
 
 ```text
 GET /api/yearly-review/available-years
+POST /api/yearly-review/prewarm
+GET /api/yearly-review/generation-status
 GET /api/yearly-review/{year}
 GET /api/yearly-review/{year}/records
 ```
@@ -608,7 +610,7 @@ GET /api/yearly-review/{year}/records
 - records 兼容 endpoint 与主报告共享精选集合，不物化完整候选目录。
 - `X-Request-ID` 正常透传。
 
-**执行结果（2026-08-12）：完成。** 三条只读 endpoint 均有 response model；v2.11 起主响应和兼容 records endpoint 只保留相同的 6–8 条精选，artifact 不再序列化完整候选目录；年份限定 2000–2100，非法年份/页码/页大小返回结构化 422，空年份返回合法 `empty` V2 payload，Request ID contract 通过。
+**执行结果（2026-08-12）：完成并扩展。** 三条只读报告 endpoint 均有 response model；v2.11 起主响应和兼容 records endpoint 只保留相同的 6–8 条精选，artifact 不再序列化完整候选目录。生成协调新增幂等 `POST /prewarm`（202）与只读 `GET /generation-status`，共享同一过滤上下文，只允许真实可用年份，并返回 `yearly_review_generation_v1` typed task snapshot。年份限定 2000–2100，非法年份/页码/页大小返回结构化 422，空年份返回合法 `empty` V2 payload，Request ID contract 通过。
 
 ### Task 4.4：真实数据 Contract Probe
 
@@ -862,10 +864,10 @@ node scripts/frontend_control_inventory_smoke.mjs \
 
 ### M6 执行结果（2026-08-12）
 
-- 后端 Yearly V2 定向 79 passed，旧 Wrapped/Billboard Year-End/播放纪录回归 28 passed，全量 unit 1,043 passed、contract 329 passed。
-- API smoke 119/119，OpenAPI 185 operations 与 85 parameter obligations 均为 0 unaccounted。
+- 后端全量 1,596 项、Yearly V2 专项 116 项通过。
+- API smoke 120/120，OpenAPI 187 operations 与 85 parameter obligations 均为 0 unaccounted。
 - 2023–2026 四年真实 probe 全通过；主 JSON 226–243 KiB、热响应 2.64–3.44ms，满足 512 KiB / 250ms 冻结预算。
-- 前端 62 files / 475 tests、production build、变更文件 ESLint、年度五视口 route matrix、30 组 control inventory 和 Chromium/Firefox/WebKit 均通过。
+- 前端 63 files / 484 tests、production build、变更文件 ESLint、年度五视口 route matrix、30 组 control inventory 和 Chromium/Firefox/WebKit 均通过。
 - 冷态报告经关系历史聚合与 frame 复用优化后为 9.80–15.43 秒，热响应 5.04–21.65ms；新进程持久命中 9.75–19.71ms，均满足预算。
 - 最终验收修复已锁定 aligned 同期窗口、自然日日均、Passport 规范实体、YTD 完整季度、公开纪录白名单、可证阶段、结语去重、统一深链和自动方法限制；完整证据见统一交付报告 9.5。
 
