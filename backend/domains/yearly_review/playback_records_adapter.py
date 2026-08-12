@@ -23,6 +23,24 @@ from backend.models.yearly_review import (
 from backend.services.analysis_records_service import _get_analysis_records_uncached
 
 CandidateSource = Literal["playback_records", "billboard_records"]
+PLAYBACK_FAMILY_TABS = {
+    "obsession": "highlights",
+    "behavior": "highlights",
+    "reigns": "reigns",
+    "longevity": "longevity",
+    "time_patterns": "timePatterns",
+    "discovery": "discovery",
+}
+BILLBOARD_FAMILY_TABS = {
+    "championship": "championship",
+    "longevity": "longevity",
+    "endurance": "endurance",
+    "movement": "breakthrough",
+    "hall_of_fame": "halloffame",
+    "market": "market",
+    "quirky": "curiosities",
+    "self_replacement_blocker": "selfReplacement",
+}
 
 _METRIC_FIELDS: tuple[tuple[str, str, str | None], ...] = (
     ("plays", "播放次数", "次"),
@@ -72,12 +90,26 @@ def _iter_record_rows(value: Any, path: tuple[str, ...] = ()):
                 yield path, index, dict(row)
 
 
-def _entity_refs(row: Mapping[str, Any]) -> list[YearlyEntityRef]:
+def _entity_refs(
+    row: Mapping[str, Any], fact_type: str | None = None, record_key: str = ""
+) -> list[YearlyEntityRef]:
     track_id = row.get("track_id") or row.get("debut_track_id")
     track_name = row.get("track_name") or row.get("歌曲") or row.get("debut_track")
     album_name = row.get("album_name") or row.get("专辑") or row.get("debut_album")
     artist_name = row.get("artist_name") or row.get("艺人")
     cover_url = row.get("cover_url")
+
+    metric_subject = str(row.get("name") or "")
+    if "discovery.discovery_day" in record_key:
+        return []
+    if "behavior.playback_milestones" in record_key and track_id is None:
+        return []
+    if fact_type == "track" and track_id is None:
+        return []
+    if fact_type == "album" and not album_name and metric_subject:
+        album_name = metric_subject
+    if fact_type == "artist" and not artist_name and metric_subject:
+        artist_name = metric_subject
 
     if track_id is not None and track_name:
         track_id = int(track_id)
@@ -184,11 +216,16 @@ def normalize_record_catalog(
         family = path[0]
         record_key = ".".join(path)
         row = _json_value(raw_row)
-        refs = _entity_refs(row)
+        refs = _entity_refs(row, path[-1], record_key)
         metric = _primary_metric(row)
         structurally_eligible = bool(row)
         reasons = ["source_service_qualified"] if structurally_eligible else ["empty_record_row"]
-        deep_link = refs[0].deep_link if refs else f"{fallback_base}#{quote(family, safe='')}"
+        if refs:
+            deep_link = refs[0].deep_link
+        elif source == "playback_records":
+            deep_link = f"{fallback_base}?family={PLAYBACK_FAMILY_TABS.get(family, 'highlights')}"
+        else:
+            deep_link = f"{fallback_base}?family={BILLBOARD_FAMILY_TABS.get(family, 'curiosities')}"
         candidates.append(
             YearlyHighlightCandidate(
                 candidate_id=_candidate_id(source, record_key, index, row),

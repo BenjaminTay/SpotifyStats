@@ -7,12 +7,22 @@ import { useYearlyReviewV2Records } from '@/hooks/useYearlyReviewV2'
 import type { AnalysisFilters } from '@/types/analysis'
 import type { YearlyFeaturedRecord, YearlyReviewResponse } from '@/types/yearly-review-v2'
 
+const CATEGORY_LABELS: Record<string, string> = {
+  obsession: '沉迷高峰',
+  championship: '冠军时刻',
+  discovery: '发现与回归',
+  market: '榜单占位',
+  behavior: '播放行为',
+  time_patterns: '时间模式',
+  longevity: '长久陪伴',
+  movement: '榜单变化',
+}
+
 function RecordCard({ record, featured = false }: { record: YearlyFeaturedRecord; featured?: boolean }) {
   const content = (
     <>
       <header>
-        <span>{record.category.replaceAll('_', ' ')}</span>
-        <b>证据 {record.evidence_grade}</b>
+        <span>{CATEGORY_LABELS[record.category] ?? '年度纪录'}</span>
       </header>
       <p>{record.title}</p>
       <h3>{record.statement}</h3>
@@ -71,7 +81,7 @@ export function RecordsChapter({ report, filters }: { report: YearlyReviewRespon
       <div className="yearly-v2-catalog-toggle">
         <div>
           <BookOpen aria-hidden="true" />
-          <span><strong>完整年度纪录目录</strong><small>{report.records.catalog_counts.input_total ?? report.records.catalog_counts.eligible_total ?? 0} 条候选事实，服务端分页加载</small></span>
+          <span><strong>公开年度纪录目录</strong><small>仅收录具备正式文案与可核验证据的纪录，服务端分页加载</small></span>
         </div>
         <button type="button" aria-expanded={catalogOpen} onClick={() => { setPage(1); setCatalogOpen((open) => !open) }}>
           {catalogOpen ? '收起目录' : '打开目录'}

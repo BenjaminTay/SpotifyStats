@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import sqlite3
 from typing import Any
-from urllib.parse import quote
 
 import pandas as pd
 
 from backend.core.db import load_plays
+from backend.domains.yearly_review.entity_links import entity_deep_link
 from backend.models.yearly_review import YearlyReviewFilterContext
 from backend.services.analysis_records_service import _build_entity_frames
 from backend.services.analysis_stats_service import chart_rows
@@ -46,15 +46,12 @@ def _identity_key(entity: str, row: dict[str, Any]) -> str:
 
 
 def _deep_link(entity: str, row: dict[str, Any]) -> str | None:
-    if entity == "track" and row.get("track_id") is not None:
-        return f"/music/tracks/{row['track_id']}"
-    if entity == "album" and row.get("album_name"):
-        album = quote(str(row["album_name"]), safe="")
-        artist = quote(str(row.get("artist_name") or ""), safe="")
-        return f"/music/albums/{album}?artist={artist}"
-    if entity == "artist" and row.get("artist_name"):
-        return f"/music/artists/{quote(str(row['artist_name']), safe='')}"
-    return None
+    return entity_deep_link(
+        entity,
+        entity_id=row.get("track_id") if entity == "track" else row.get("album_project_id"),
+        name=row.get(f"{entity}_name"),
+        artist_name=row.get("artist_name") if entity != "artist" else None,
+    )
 
 
 def _activity_maps(
@@ -200,3 +197,30 @@ def build_play_rankings(
         "limits": dict(PLAY_RANKING_LIMITS),
         "charts": charts,
     }
+
+
+def build_play_ranking_counts(
+    conn: sqlite3.Connection,
+    context: YearlyReviewFilterContext,
+    *,
+    event_frame: pd.DataFrame,
+    entity_frames: tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame],
+) -> dict[str, int]:
+    """Count canonical entities without materializing a second set of top lists."""
+    if event_frame.empty:
+        return {entity: 0 for entity in PLAY_RANKING_LIMITS}
+    _, _, artist_frame = entity_frames
+    sources = {"track": event_frame, "album": event_frame, "artist": artist_frame}
+    counts: dict[str, int] = {}
+    for entity, source in sources.items():
+        total, _ = chart_rows(
+            conn,
+            source,
+            entity,
+            "plays",
+            limit=1,
+            merge_level=context.merge_level,
+            include_compilations=context.include_compilations,
+        )
+        counts[entity] = int(total)
+    return counts

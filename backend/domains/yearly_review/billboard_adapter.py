@@ -10,6 +10,7 @@ from typing import Any
 from backend.domains.billboard.chart_staged_api import compute_records_staged
 from backend.domains.billboard.chart_year_end_api import compute_year_end_staged
 from backend.domains.yearly_review.coverage import build_billboard_coverage
+from backend.domains.yearly_review.entity_links import ensure_row_deep_link
 from backend.domains.yearly_review.playback_records_adapter import normalize_record_catalog
 from backend.models.yearly_review import YearlyReviewFilterContext
 
@@ -167,9 +168,13 @@ def build_billboard_source(
         "coverage": build_billboard_coverage(meta),
         "meta": meta,
         "charts": {
-            "track": [dict(row) for row in year_end_payload.get("tracks", [])],
-            "album": albums,
-            "artist": [dict(row) for row in year_end_payload.get("artists", [])],
+            "track": [
+                ensure_row_deep_link(row, "track") for row in year_end_payload.get("tracks", [])
+            ],
+            "album": [ensure_row_deep_link(row, "album") for row in albums],
+            "artist": [
+                ensure_row_deep_link(row, "artist") for row in year_end_payload.get("artists", [])
+            ],
         },
         "honors": dict(year_end_payload.get("honors", {})),
         "record_semantics": {

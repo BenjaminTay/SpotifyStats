@@ -15,7 +15,7 @@ from types import SimpleNamespace
 from typing import Any
 
 from backend.core.cache import singleflight
-from backend.core.db import DB_PATH, get_db
+from backend.core.db import get_db
 from backend.domains.billboard.year_end import YEAR_END_SEMANTICS_VERSION
 from backend.domains.metadata.artist_languages import artist_language_fact_revision
 from backend.domains.settings.repository import SettingsRepository
@@ -30,6 +30,10 @@ from backend.domains.yearly_review.policies import (
     RELATIONSHIP_POLICY_VERSION,
     SEASON_STAGE_POLICY_VERSION,
 )
+from backend.domains.yearly_review.versions import (
+    YEARLY_REVIEW_CONTENT_VERSION,
+    YEARLY_REVIEW_SCHEMA_VERSION,
+)
 from backend.models.yearly_review import (
     YearlyReviewAvailableYearsResponse,
     YearlyReviewFilterContext,
@@ -37,7 +41,6 @@ from backend.models.yearly_review import (
     YearlyReviewResponse,
 )
 
-YEARLY_REVIEW_SCHEMA_VERSION = "yearly_review_v2"
 logger = logging.getLogger(__name__)
 _persistent_cache_bypass: ContextVar[bool] = ContextVar(
     "yearly_review_persistent_cache_bypass",
@@ -58,15 +61,36 @@ def bypass_yearly_review_persistent_cache():
 
 
 def database_revision() -> str:
-    """Fingerprint SQLite main/WAL file state so imports cannot reuse old reports."""
-    parts: list[str] = []
-    for path in (DB_PATH, f"{DB_PATH}-wal"):
-        try:
-            stat = os.stat(path)
-            parts.append(f"{os.path.basename(path)}:{stat.st_size}:{stat.st_mtime_ns}")
-        except FileNotFoundError:
-            parts.append(f"{os.path.basename(path)}:missing")
-    return hashlib.sha256("|".join(parts).encode()).hexdigest()[:20]
+    """Fingerprint report source facts without reacting to unrelated SQLite writes.
+
+    File mtimes and WAL sizes also change when jobs, task logs, or cache rows are
+    written.  Keying the annual artifact on those physical details caused a hot
+    request to rebuild even though no playback fact had changed.  Imports are
+    append-only in normal operation, so stable core-table cardinalities, maxima,
+    total duration, and the schema migration version form the source revision;
+    governed metadata has its own explicit revisions in the cache key.
+    """
+    conn = get_db(readonly=True)
+    try:
+        row = conn.execute(
+            """SELECT
+                   (SELECT COUNT(*) FROM plays) AS play_count,
+                   (SELECT COALESCE(MAX(play_id), 0) FROM plays) AS max_play_id,
+                   (SELECT COALESCE(MAX(ts), '') FROM plays) AS latest_play_ts,
+                   (SELECT COALESCE(SUM(ms_played), 0) FROM plays) AS total_ms,
+                   (SELECT COUNT(*) FROM tracks) AS track_count,
+                   (SELECT COALESCE(MAX(track_id), 0) FROM tracks) AS max_track_id,
+                   (SELECT COUNT(*) FROM albums) AS album_count,
+                   (SELECT COALESCE(MAX(album_id), 0) FROM albums) AS max_album_id,
+                   (SELECT COUNT(*) FROM artists) AS artist_count,
+                   (SELECT COALESCE(MAX(artist_id), 0) FROM artists) AS max_artist_id,
+                   (SELECT COALESCE(MAX(version), 0) FROM schema_migrations)
+                       AS schema_version"""
+        ).fetchone()
+        encoded = json.dumps(list(row), ensure_ascii=True, separators=(",", ":"))
+        return hashlib.sha256(encoded.encode()).hexdigest()[:20]
+    finally:
+        conn.close()
 
 
 def _language_revision() -> str:
@@ -89,6 +113,7 @@ def build_yearly_review_cache_key(
     payload = {
         "year": year,
         "schema_version": YEARLY_REVIEW_SCHEMA_VERSION,
+        "content_version": YEARLY_REVIEW_CONTENT_VERSION,
         "filter_fingerprint": context.filter_fingerprint,
         "relationship_policy_version": RELATIONSHIP_POLICY_VERSION,
         "highlight_policy_version": HIGHLIGHT_POLICY_VERSION,
@@ -239,6 +264,9 @@ def get_yearly_review_records(
     items = catalog[start : start + page_size] if start < total else []
     report = artifact["report"]
     return YearlyReviewRecordsPage(
+        content_version=report.get("methodology", {}).get(
+            "content_version", YEARLY_REVIEW_CONTENT_VERSION
+        ),
         year=year,
         filter_fingerprint=context.filter_fingerprint,
         page=page,

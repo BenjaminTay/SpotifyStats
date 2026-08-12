@@ -16,6 +16,10 @@ from backend.domains.yearly_review.policies import (
     HIGHLIGHT_RELAXED_CATEGORY_CAP,
     HIGHLIGHT_WEIGHTS,
 )
+from backend.domains.yearly_review.record_presenters import (
+    has_public_record_copy,
+    present_record_candidate,
+)
 from backend.models.yearly_review import (
     YearlyFeaturedRecord,
     YearlyHighlightCandidate,
@@ -101,7 +105,7 @@ def _eligible(candidate: YearlyHighlightCandidate, year: int) -> bool:
         return False
     if "year_end_no1" in candidate.record_key:
         return False
-    return True
+    return has_public_record_copy(candidate)
 
 
 def _component(
@@ -191,41 +195,33 @@ def _narrative_family(candidate: YearlyHighlightCandidate) -> str:
     return "other"
 
 
-def _title(candidate: YearlyHighlightCandidate) -> str:
-    if candidate.entity_refs:
-        return f"{candidate.entity_refs[0].name} · {candidate.fact_type.replace('_', ' ')}"
-    name = candidate.raw_values.get("name")
-    return str(name or candidate.fact_type.replace("_", " "))
-
-
-def _statement(candidate: YearlyHighlightCandidate) -> str:
-    metric = candidate.primary_metric
-    if metric:
-        entity = candidate.entity_refs[0].name if candidate.entity_refs else "该年度事实"
-        return f"{entity} 的{metric.label}为 {metric.value}{metric.unit or ''}。"
-    date = candidate.raw_values.get("date") or candidate.raw_values.get("billboard_week")
-    if date:
-        return f"在 {str(date)[:10]} 记录到 {candidate.record_key.replace('.', ' / ')}。"
-    return f"记录到 {candidate.record_key.replace('.', ' / ')} 的年度事实。"
-
-
 def record_candidate_to_featured(candidate: YearlyHighlightCandidate) -> YearlyFeaturedRecord:
     """Project an internal candidate into the stable public record contract."""
-    metrics = ([candidate.primary_metric] if candidate.primary_metric else []) + list(
-        candidate.secondary_metrics
-    )
-    return YearlyFeaturedRecord(
-        record_id=candidate.candidate_id,
-        category=candidate.source_family,
-        fact_type=candidate.fact_type,
-        title=_title(candidate),
-        statement=_statement(candidate),
-        evidence_grade=candidate.evidence_grade,
-        entity_refs=list(candidate.entity_refs),
-        metrics=metrics,
-        source_refs=list(candidate.source_refs),
-        deep_link=candidate.deep_link,
-    )
+    featured = present_record_candidate(candidate)
+    if featured is None:
+        raise ValueError(f"unsupported public record: {candidate.record_key}")
+    return featured
+
+
+def qualified_yearly_candidates(
+    year: int, candidates: Sequence[YearlyHighlightCandidate]
+) -> list[YearlyHighlightCandidate]:
+    eligible = [candidate for candidate in candidates if _eligible(candidate, year)]
+    deduped: dict[str, YearlyHighlightCandidate] = {}
+    for candidate in eligible:
+        key = _semantic_key(candidate)
+        existing = deduped.get(key)
+        if existing is None or (
+            candidate.evidence_grade,
+            -len(candidate.source_refs),
+            candidate.candidate_id,
+        ) < (
+            existing.evidence_grade,
+            -len(existing.source_refs),
+            existing.candidate_id,
+        ):
+            deduped[key] = candidate
+    return list(deduped.values())
 
 
 def _choose(
@@ -269,13 +265,7 @@ def select_yearly_records(
 ) -> YearlyRecordsChapter:
     pool = [candidate for group in candidate_groups for candidate in group]
     eligible = [candidate for candidate in pool if _eligible(candidate, year)]
-    deduped: dict[str, YearlyHighlightCandidate] = {}
-    for candidate in eligible:
-        key = _semantic_key(candidate)
-        existing = deduped.get(key)
-        if existing is None or candidate.evidence_grade < existing.evidence_grade:
-            deduped[key] = candidate
-    candidates = list(deduped.values())
+    candidates = qualified_yearly_candidates(year, pool)
     scores = _normalized_scores(candidates)
     ordered = sorted(
         candidates,

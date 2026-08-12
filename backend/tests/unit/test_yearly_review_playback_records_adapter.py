@@ -71,7 +71,7 @@ def test_normalizes_nested_catalog_with_stable_provenance() -> None:
     assert first[0].primary_metric.key == "plays"
     assert first[0].raw_values["date"] == "2025-03-01"
     assert first[1].eligible is True
-    assert first[1].deep_link == "/analysis/records#longevity"
+    assert first[1].deep_link == "/analysis/records?family=longevity"
     assert first[2].primary_metric.label == "深夜播放"
     assert first[2].primary_metric.unit == "次"
 

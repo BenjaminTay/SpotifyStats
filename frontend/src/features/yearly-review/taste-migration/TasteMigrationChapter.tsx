@@ -25,6 +25,10 @@ export function TasteMigrationChapter({ report }: { report: YearlyReviewResponse
   const changes = report.taste_migration.changes[axis] ?? []
   const maxShare = Math.max(...rows.map((row) => numberValue(row, 'share_pct')), 1)
   const observation = report.taste_migration.observations.find((item) => item.headline_id === `taste_migration_${axis}`)
+  const comparison = report.taste_migration.comparison
+  const comparisonLabel = comparison.status === 'available'
+    ? `${comparison.from_label} → ${comparison.to_label}`
+    : '仅展示年度分布'
 
   return (
     <section className="yearly-v2-section" id="yearly-v2-taste">
@@ -32,7 +36,7 @@ export function TasteMigrationChapter({ report }: { report: YearlyReviewResponse
         number="06"
         eyebrow="TASTE MIGRATION"
         title="品味并非静止不动"
-        description="年度分布回答你听了什么；上下半年迁移回答这一年结束时，你已经走到了哪里。"
+        description="年度分布回答你听了什么；仅在两个完整且可比较的阶段之间解释品味变化。"
       />
       <div className="yearly-v2-taste-tabs" role="tablist" aria-label="切换品味维度">
         {AXES.map((item) => (
@@ -62,20 +66,20 @@ export function TasteMigrationChapter({ report }: { report: YearlyReviewResponse
             })}
           </div>
           <aside className="yearly-v2-taste-change">
-            <p>上半年 → 下半年</p>
+            <p>{comparisonLabel}</p>
             {observation ? (
               <div className="yearly-v2-taste-story">
                 <h3>{observation.title}</h3>
                 <span>{observation.statement}</span>
                 {observation.entity_refs.map((entity) => <EntityLink key={`${entity.entity_type}-${entity.entity_id}`} entity={entity} className="yearly-v2-inline-entity" />)}
               </div>
-            ) : <small>变化未达到结论门槛，以下仅列事实差值。</small>}
+            ) : <small>{comparison.status === 'available' ? '变化未达到结论门槛，以下仅列事实差值。' : '当前尚无两个完整的可比阶段，不计算迁移差值。'}</small>}
             <div className="yearly-v2-change-list">
               {changes.slice(0, 6).map((row) => {
                 const delta = numberValue(row, 'delta_pct')
                 return (
                   <div key={`${axis}-${stringValue(row, 'key')}`}>
-                    <span>{stringValue(row, 'key')}</span>
+                    <span>{stringValue(row, 'label') || stringValue(row, 'key')}</span>
                     <small>{numberValue(row, 'from_pct').toFixed(1)}% → {numberValue(row, 'to_pct').toFixed(1)}%</small>
                     <strong className={delta >= 0 ? 'is-up' : 'is-down'}>{delta >= 0 ? <ArrowUpRight aria-hidden="true" /> : <ArrowDownRight aria-hidden="true" />}{Math.abs(delta).toFixed(1)}pp</strong>
                   </div>

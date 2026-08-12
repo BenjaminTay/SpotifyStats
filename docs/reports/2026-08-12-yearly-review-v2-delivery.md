@@ -1,7 +1,7 @@
 # 年度总结 V2 完整重构交付报告
 
 日期：2026-08-12
-状态：**PASS，内容重构与 M0–M6 验收全部完成**
+状态：**PASS，内容重构、性能优化与验收问题修复全部完成（content `yearly_review_v2_6`）**
 实施依据：[`../designs/2026-08-12-yearly-review-v2-content-data-contract.md`](../designs/2026-08-12-yearly-review-v2-content-data-contract.md)
 执行计划：[`../plans/2026-08-12-yearly-review-v2-rebuild-plan.md`](../plans/2026-08-12-yearly-review-v2-rebuild-plan.md)
 
@@ -19,6 +19,8 @@
 8. 同比、个人历史参照、完整年度索引与方法说明。
 
 所有解释性内容都由结构化事实、coverage 与版本化策略生成，不调用 LLM。Phone presentation 继续使用 V1，官方 Wrapped 继续读取官方导入数据；两条保留链路均未被 V2 替换或改写。
+
+最终验收修复进一步收紧了四类边界：同比只使用真实对齐窗口；Passport 与榜单共享规范实体粒度；YTD 品味迁移只比较完整季度；公开纪录、阶段、结语与方法说明只呈现可核验且面向用户的事实。内容版本独立于 schema 版本，统计或编排语义变化必须提升 `content_version`，以同时分流进程 LRU 与持久 sidecar。
 
 ## 2. 范围与不变量
 
@@ -103,6 +105,8 @@ Coverage Passport 分开记录：
 - Comparison 检查上一年是否覆盖同一对齐窗口，不可比时给原因而非伪 `0%`。
 - Taste 使用 M0 冻结门槛。
 
+同比计算不会只在文案层标记“同期”：Orchestrator 会把当前观察范围映射到上一年、处理闰日 clamp，并在 baseline coverage 不足时把 `baseline_stats` 置空。工作日/周末日均以观察区间内真实自然日数量为分母，不使用固定 `/5`、`/2`，也不使用活跃日数量。
+
 即使自然年首末日期完整，`internal_gap_status=unknown` 也独立保留，不能生成“最长未听歌空窗”等不可核验结论。
 
 ## 5. M2：现有数据能力适配
@@ -123,7 +127,7 @@ Year-End 不修改 Score 或 Power Score，原样保留 `semantics_version`、co
 
 ### 5.3 时间与品味
 
-日、小时、星期、月、累计与行为事实复用播放统计 service；taste 只调用 `build_consumer_taste_profile()`，不复制 genre/language resolver。切片固定为 Q1–Q4、上半年、下半年，空季度也保留合法空态。
+日、小时、星期、月、累计与行为事实复用播放统计 service；taste 只调用 `build_consumer_taste_profile()`，不复制 genre/language resolver。完整年比较上半年与下半年；YTD 仅比较最近两个完整季度，不足两个完整季度时只展示全年分布，不生成伪迁移。驱动实体与份额变化使用同一日期切片。
 
 真实 2025 探针得到 2,754 首歌曲、623 个专辑项目、440 位艺人；Year-End 为 `year_end_v3`、52/52 周、50/30/30 行，专辑 project 对齐 30/30；Billboard/播放纪录内部候选分别为 976/2,257。
 
@@ -139,7 +143,9 @@ Year-End 不修改 Score 或 Power Score，原样保留 `semantics_version`、co
 - 纪录先资格过滤与语义去重，再按幅度、持续性、历史稀有度、比较、具体性和证据质量评分。
 - style、scene、language、release era 独立处理；unknown 进入分母，迁移需同时满足份额变化与具名驱动证据。
 
-真实 2025 报告生成 6 项护照指标、3 条头条、12 项 Year-End honors、6 条双榜分歧、12 个月事实、10 个转折节点、12 条关系、14 项生活指标和 12 条精选纪录。3,233 条纪录输入经资格/去重后保留 2,364 条公开目录候选。
+真实 2025 报告生成 6 项护照指标、3 条头条、12 项 Year-End honors、6 条双榜分歧、12 个月事实、10 个转折节点、12 条关系、14 项生活指标和 12 条精选纪录。公开纪录使用显式 renderer 白名单；未知/internal key、blocked map、重复年榜首和缺少周期/数值证据的候选不会进入 UI。最终公开分页目录为 1,435 条，精选 12 条。
+
+时间线只接受具备单一日期或榜周锚点的事件，并使用事件优先级与族内归一化评分，原始大数值不能劫持排序；同月不同语义事件不会混并证据。阶段只在连续月份存在多数冠军时成立，无法证明时返回 `no_stable_phase` 和空 stages，不再等长强切月份。结语从全年节奏、陪伴主线、阶段/高峰与品味落点重新综合，不复制开篇 headline。
 
 品味方面，style 92.29%、language 98.65%、release era 99.77% 可形成核心观察；scene 48.12% 只作辅助。最终只生成有驱动证据的 Pop 与 2010s 份额变化，不用覆盖不足的 scene 编故事。
 
@@ -153,7 +159,9 @@ Year-End 不修改 Score 或 Power Score，原样保留 `semantics_version`、co
 
 ### 7.2 缓存与失效
 
-`yearly_review` 命名空间缓存内部 artifact，主报告和完整公开纪录目录共用。缓存键包含：年份、filter fingerprint、三项策略版本、`year_end_v3`、display taxonomy、艺人/语言/身份/署名/track group/album project revisions 及 SQLite main/WAL revision。
+`yearly_review` 命名空间缓存内部 artifact，主报告和完整公开纪录目录共用。缓存键包含：年份、schema version、独立 `content_version`、filter fingerprint、三项策略版本、`year_end_v3`、display taxonomy、艺人/语言/身份/署名/track group/album project revisions 及稳定的播放事实 revision。
+
+播放事实 revision 由 `plays` 的行数、最大 ID、最新时间与总时长，核心曲目/专辑/艺人表 cardinality 和 migration version 组成。它会因正常追加导入而变化，但不会因 AI task、job log 或 WAL checkpoint 等无关写入失效；治理元数据继续使用各自显式 revision。旧 artifact 因 content key 改变自然不可达，并由 sidecar 32 条上限逐步淘汰。
 
 导入、身份/署名 rebuild、统计设置、版本归并、album project 重建、genre approve 与 language review decision 都会使年度缓存失效。
 
@@ -223,7 +231,7 @@ API smoke 已纳入 available-years、空年份主报告与分页 records；真�
 
 冷启动专项通过 `cProfile` 定位到关系历史计算：旧实现对每个年度实体重新扫描完整历史、重复执行 `astype(str)` 与 `to_datetime()`，2026 单章累计约 65.4 秒。现改为每种实体类型一次性聚合首次播放与报告年前末次播放日期，2026 单年独立冷启动从 88.74 秒降至 17.86 秒；最新四年同进程重算稳定在 9.95–15.94 秒，较原交付基线下降约 80%–87%。播放纪录同时复用编排层已有年度事件/实体帧，独立记录页仍保留原加载路径。
 
-`yearly_review_v2_probe_v3` 保留 coverage、身份去重、内容体积、30 秒真实重算预算以及主报告/完整纪录目录语义指纹，并新增 `recompute` / `persistent` 双模式。四年 JSON 字节数、章节数量、关系故事数、精选纪录数和完整纪录目录数均与优化前一致；后续同一数据 revision 下可直接用指纹识别内容漂移。
+`yearly_review_v2_probe_v4` 保留 coverage、身份去重、内容体积、30 秒真实重算预算以及主报告/完整纪录目录语义指纹，并新增 content version、公开文案、精选证据、结语去重和阶段状态不变量。`recompute` / `persistent` 双模式必须分别验证真实计算和新进程持久命中，后续同一数据 revision 下可直接用指纹识别内容漂移。
 
 ### 9.3 跨进程持久缓存与后台预建
 
@@ -251,6 +259,23 @@ API smoke 已纳入 available-years、空年份主报告与分页 records；真�
 | Chromium / Firefox / WebKit | route markers + 七组 core interactions 全部 PASS |
 
 年度交互覆盖荣誉 Tab、十二月账本、品味轴切换、纪录/附录分页、Official Wrapped 隔离、实体详情深链与浏览器返回。全仓 `npm run lint` 仍有 181 个既有错误，主要位于旧 Billboard 类型、AI、Settings 与共享 UI；本次年度文件定向 ESLint 为 0 error。
+
+### 9.5 验收问题修复复验（content v2.6）
+
+| 门禁 | 结果 |
+| --- | --- |
+| Yearly V2 unit + contract | 103 passed |
+| 前端 Yearly V2 Vitest | 5 passed |
+| Ruff + TypeScript + Vite build | PASS |
+| 2023–2026 真实重算 | 9.80–15.43s；热 5.04–21.65ms；全部 PASS |
+| 新进程持久命中 | 9.75–19.71ms；热 4.64–5.28ms；全部 PASS |
+| 真实 API | 2022 observed_range / 2025 complete / 2026 YTD / 2099 empty，均返回 v2.6 |
+| 五档 route matrix | 360/390/430/768/1280，0 error/warning/overflow |
+| 1023 Compact 人工检查 | 正文完整、实体/附录深链可用、0 overflow |
+| 控件库存 | desktop/mobile 共 160 controls，0 violation |
+| Chromium / Firefox / WebKit | route markers + 七组 core interactions 全部 PASS |
+
+真实 2025 的 Passport 为 2,754 首规范曲目、623 个专辑项目、440 位署名艺人；工作日/周末日均、同期比较、YTD 季度比较均由新增单元测试锁定。方法页只显示业务指标、周期、实体粒度与自动限制，不再暴露 schema/policy key、过滤指纹或 A/B/C 证据等级；实体深链由共享 builder 统一生成，fallback records 链接使用真实 `?family=` 参数。
 
 ## 10. 交付文件地图
 
@@ -283,9 +308,8 @@ M6 后不建立长期 feature flag 双轨。V2 只在 Desktop/Compact presentati
 
 后续独立方向按优先级为：
 
-1. 真实内容人工复核。
-2. Phone V2 presentation。
-3. 分享/PDF、年度播放列表和 AI 编辑导语。
-4. 如真实数据规模继续增长，再评估 Billboard/播放纪录阶段缓存或后台预计算。
+1. Phone V2 presentation。
+2. 分享/PDF、年度播放列表和 AI 编辑导语。
+3. 如真实数据规模继续增长，再评估 Billboard/播放纪录阶段缓存或后台预计算。
 
 冷态性能债已在不改变统计口径的前提下收口到 30 秒预算内；其余方向均不影响本次内容重构完成。

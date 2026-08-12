@@ -67,27 +67,43 @@ def build_passport_and_headlines(
     *,
     baseline_stats: Mapping[str, Any] | None = None,
     play_rankings: Mapping[str, Any] | None = None,
+    baseline_entity_counts: Mapping[str, int] | None = None,
 ) -> tuple[YearlyReportPassport, list[YearlyHeadline]]:
     """Build the report scope card and at most three evidence-backed headlines."""
     summary = dict(stats.get("summary", {}))
     baseline_summary = dict((baseline_stats or {}).get("summary", {}))
     comparable = coverage.comparison.comparable and bool(baseline_stats)
+    rankings_authoritative = bool(play_rankings) and (play_rankings or {}).get("empty") is not True
+    charts = dict((play_rankings or {}).get("charts", {}))
+    entity_specs = {
+        "unique_tracks": ("track", "规范曲目数", "首"),
+        "unique_albums": ("album", "专辑项目数", "张"),
+        "unique_artists": ("artist", "署名艺人数", "位"),
+    }
+    current_values = dict(summary)
+    baseline_values: dict[str, Any] = dict(baseline_summary)
+    for key, (entity, _, _) in entity_specs.items():
+        available = dict(charts.get(entity, {})).get("available_count")
+        if rankings_authoritative and available is not None:
+            current_values[key] = int(available)
+        if baseline_entity_counts is not None and entity in baseline_entity_counts:
+            baseline_values[key] = int(baseline_entity_counts[entity])
+        else:
+            baseline_values.pop(key, None)
     definitions = (
         ("total_plays", "有效播放", "次"),
         ("total_hours", "有效时长", "小时"),
         ("active_days", "活跃天数", "天"),
-        ("unique_tracks", "曲目数", "首"),
-        ("unique_albums", "专辑数", "张"),
-        ("unique_artists", "艺人数", "位"),
+        *((key, label, unit) for key, (_, label, unit) in entity_specs.items()),
     )
     metrics = [
         YearlyMetric(
             key=key,
             label=label,
-            value=summary.get(key, 0),
+            value=current_values.get(key, 0),
             unit=unit,
             comparison_value=(
-                baseline_summary.get(key) if comparable and key in baseline_summary else None
+                baseline_values.get(key) if comparable and key in baseline_values else None
             ),
             comparison_label=(f"{coverage.comparison.baseline_year} 同期" if comparable else None),
         )
@@ -135,7 +151,6 @@ def build_passport_and_headlines(
             )
         )
 
-    charts = dict((play_rankings or {}).get("charts", {}))
     artist_rows = dict(charts.get("artist", {})).get("by_plays", [])
     if artist_rows:
         leader = artist_rows[0]

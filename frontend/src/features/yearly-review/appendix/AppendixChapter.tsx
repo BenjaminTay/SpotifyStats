@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { Link } from 'react-router-dom'
 
 import { SectionHeading } from '@/features/yearly-review/YearlyReviewPrimitives'
 import { ENTITY_LABELS, numberValue, stringValue } from '@/features/yearly-review/yearlyReviewData'
@@ -74,12 +75,12 @@ export function AppendixChapter({ report }: { report: YearlyReviewResponse }) {
                   if (tab === 'months') {
                     const leaders = row.leaders && typeof row.leaders === 'object' ? row.leaders as Record<string, Record<string, unknown>> : {}
                     const leader = leaders.play_track ?? leaders.billboard_track
-                    return <tr key={`month-${numberValue(row, 'month')}`}><td>{absoluteIndex + 1}</td><td>{numberValue(row, 'month')} 月</td><td>{leader ? firstText(leader, ['name', 'track_name']) : '—'}</td><td>{numberValue(row, 'plays').toLocaleString()} 次</td></tr>
+                    return <tr key={`month-${numberValue(row, 'month')}`}><td>{absoluteIndex + 1}</td><td>{numberValue(row, 'month')} 月</td><td>{leader ? (stringValue(leader, 'deep_link') ? <Link to={stringValue(leader, 'deep_link')}>{firstText(leader, ['name', 'track_name'])}</Link> : firstText(leader, ['name', 'track_name'])) : '—'}</td><td>{numberValue(row, 'plays').toLocaleString()} 次</td></tr>
                   }
                   return (
                     <tr key={`${tab}-${entity}-${absoluteIndex}-${firstText(row, ['name', 'track_name', 'album_name', 'artist_name'])}`}>
                       <td>{rankValue(row, absoluteIndex)}</td>
-                      <td>{firstText(row, ['name', 'track_name', 'album_name', 'artist_name'])}</td>
+                      <td>{stringValue(row, 'deep_link') ? <Link to={stringValue(row, 'deep_link')}>{firstText(row, ['name', 'track_name', 'album_name', 'artist_name'])}</Link> : firstText(row, ['name', 'track_name', 'album_name', 'artist_name'])}</td>
                       <td>{firstText(row, ['artist_name', 'entity_type'])}</td>
                       <td>{tab === 'billboard' ? numberValue(row, 'year_end_score').toLocaleString(undefined, { maximumFractionDigits: 1 }) : metric === 'hours' ? `${numberValue(row, 'hours').toLocaleString(undefined, { maximumFractionDigits: 1 })} 小时` : `${numberValue(row, 'plays').toLocaleString()} 次`}</td>
                     </tr>
@@ -99,10 +100,11 @@ export function AppendixChapter({ report }: { report: YearlyReviewResponse }) {
 
       {tab === 'method' && (
         <div className="yearly-v2-method-grid">
-          <article><p>报告版本</p><h3>{report.schema_version}</h3><span>关系 {report.methodology.relationship_policy_version}<br />高光 {report.methodology.highlight_policy_version}<br />赛季 {report.methodology.season_stage_policy_version}</span></article>
-          <article><p>当前统计口径</p><h3>{report.filter_context.dynamic_threshold ? '动态有效阈值' : `${report.filter_context.min_ms / 1000} 秒固定阈值`}</h3><span>L{report.filter_context.merge_level} 归并 · 个人 Billboard Top {report.filter_context.bb_top_n}<br />指纹 {report.filter_context.filter_fingerprint.slice(0, 12)}</span></article>
+          <article><p>有效播放</p><h3>{report.filter_context.dynamic_threshold ? '按歌曲动态判断' : `${report.filter_context.min_ms / 1000} 秒固定阈值`}</h3><span>{report.methodology.metric_definitions['有效播放']}</span></article>
+          <article><p>同期比较</p><h3>{report.coverage.comparison.comparable ? '同日起止窗口' : '本年不展示同比'}</h3><span>{report.methodology.comparison_periods.current_start ?? '—'} 至 {report.methodology.comparison_periods.current_end ?? '—'}<br />基线 {report.methodology.comparison_periods.baseline_start ?? '—'} 至 {report.methodology.comparison_periods.baseline_end ?? '—'}</span></article>
+          <article className="is-wide"><p>实体口径</p><ul>{Object.entries(report.methodology.entity_grains).map(([label, value]) => <li key={label}><strong>{label}：</strong>{value}</li>)}</ul></article>
           <article className="is-wide"><p>方法说明</p><ul>{report.methodology.notes.map((note) => <li key={note}>{note}</li>)}</ul></article>
-          <article className="is-wide"><p>已知限制</p><ul>{report.methodology.limitations.map((limit) => <li key={limit}>{limit}</li>)}</ul></article>
+          <article className="is-wide"><p>覆盖与限制</p>{report.methodology.coverage_caveats.length > 0 ? <ul>{report.methodology.coverage_caveats.map((limit) => <li key={limit}>{limit}</li>)}</ul> : <span>当前未发现需要额外披露的覆盖限制。</span>}</article>
         </div>
       )}
     </section>

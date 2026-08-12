@@ -1,6 +1,7 @@
 import { CalendarRange, Fingerprint } from 'lucide-react'
 
 import { STATUS_COPY } from '@/features/yearly-review/yearlyReviewData'
+import { EntityLink } from '@/features/yearly-review/YearlyReviewPrimitives'
 import type { YearlyReviewResponse } from '@/types/yearly-review-v2'
 
 export function PassportChapter({ report }: { report: YearlyReviewResponse }) {
@@ -42,7 +43,7 @@ export function PassportChapter({ report }: { report: YearlyReviewResponse }) {
           {report.headlines.map((headline, index) => (
             <article key={headline.headline_id}>
               <span>0{index + 1}</span>
-              <div><p>{headline.title}</p><h3>{headline.statement}</h3></div>
+              <div><p>{headline.title}</p><h3>{headline.statement}</h3>{headline.entity_refs.slice(0, 1).map((entity) => <EntityLink key={`${entity.entity_type}-${entity.entity_id}-${entity.name}`} entity={entity} className="yearly-v2-inline-entity" />)}</div>
             </article>
           ))}
         </div>

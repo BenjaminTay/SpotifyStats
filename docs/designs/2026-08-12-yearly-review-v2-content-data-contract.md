@@ -474,7 +474,7 @@ M0 冻结 `highlight_policy_v1`：
 - 前端 query key 包含年份与完整过滤指纹。
 - 后端所有 builder 接收同一个已解析 context，不分别读取默认值。
 - 播放排行、个人 Billboard、纪录和品味统计不得使用不同口径。
-- 缓存键包含 filter fingerprint、契约版本和所有相关元数据 revision。
+- 缓存键包含 filter fingerprint、schema version、独立 content version、稳定播放事实 revision 和所有相关元数据 revision。content version 每次统计/编排语义变化都必须提升，不能借 sidecar 压缩格式版本表达内容变化。
 
 ## 8. 覆盖契约
 
@@ -669,7 +669,7 @@ frontend/src/features/yearly-review/
 - 30 秒内可读到报告范围、三条头条和年度冠军。
 - 播放冠军与个人 Billboard 冠军明确区分。
 - 正文只有一套月度时间线。
-- 时间线包含 6–10 个可核验转折节点。
+- 时间线优先包含 6–10 个可核验转折节点；证据不足时允许 4–8 个高质量节点，不得为了数量混入无日期年度汇总。
 - 年度纪录正文精选 8–12 条，且没有单一实体或类别垄断。
 - 每条解释性故事都能追溯到数值、周期和实体。
 - 完整播放榜和个人 Billboard 年榜可在附录查看。
@@ -684,6 +684,9 @@ frontend/src/features/yearly-review/
 - 无同比基线时不显示默认变化百分比。
 - 曲风、语言、年代保留 unknown 和各自覆盖率。
 - 专辑使用 album project identity；艺人使用有效署名与 canonical identity。
+- 同比必须裁剪到真实 aligned window，基线覆盖不足时不向章节传递 baseline stats。
+- 工作日/周末日均使用观察区间内真实自然日数量；YTD 品味只比较两个完整季度，不足时为 distribution-only。
+- `stage_status` 与 stages 必须一致；无法证明稳定阶段时 stages 为空。
 
 ### 范围验收
 

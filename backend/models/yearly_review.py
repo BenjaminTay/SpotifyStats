@@ -19,6 +19,8 @@ TasteCoverageLevel = Literal["core", "secondary", "insufficient", "unavailable"]
 EvidenceGrade = Literal["A", "B", "C"]
 EvidenceDisplayStatus = Literal["sufficient", "limited", "unavailable"]
 HighlightCandidateSource = Literal["playback_records", "billboard_records"]
+TasteComparisonMode = Literal["half_years", "completed_quarters", "distribution_only"]
+TasteComparisonStatus = Literal["available", "insufficient_completed_periods"]
 
 
 class YearlyReviewFilterContext(BaseModel):
@@ -197,6 +199,8 @@ class YearlyMonthSummary(BaseModel):
 
 class YearlySeasonChapter(BaseModel):
     policy_version: str = "season_stage_v1"
+    stage_status: Literal["available", "no_stable_phase", "insufficient"] = "insufficient"
+    stage_note: str | None = None
     stages: list[YearlySeasonStage] = Field(default_factory=list)
     turning_points: list[YearlyTurningPoint] = Field(default_factory=list)
     months: list[YearlyMonthSummary] = Field(default_factory=list)
@@ -267,7 +271,21 @@ class YearlyRecordsChapter(BaseModel):
     catalog_counts: dict[str, int] = Field(default_factory=dict)
 
 
+class YearlyTasteComparison(BaseModel):
+    mode: TasteComparisonMode = "distribution_only"
+    status: TasteComparisonStatus = "insufficient_completed_periods"
+    from_slice_key: str | None = None
+    to_slice_key: str | None = None
+    from_label: str | None = None
+    to_label: str | None = None
+    from_start: str | None = None
+    from_end: str | None = None
+    to_start: str | None = None
+    to_end: str | None = None
+
+
 class YearlyTasteMigrationChapter(BaseModel):
+    comparison: YearlyTasteComparison = Field(default_factory=YearlyTasteComparison)
     observations: list[YearlyHeadline] = Field(default_factory=list)
     distributions: dict[str, list[dict[str, Any]]] = Field(default_factory=dict)
     changes: dict[str, list[dict[str, Any]]] = Field(default_factory=dict)
@@ -288,9 +306,16 @@ class YearlyAppendix(BaseModel):
 
 
 class YearlyMethodology(BaseModel):
+    content_version: str = "yearly_review_v2_6"
     relationship_policy_version: str = "relationship_policy_v1"
     highlight_policy_version: str = "highlight_policy_v1"
     season_stage_policy_version: str = "season_stage_v1"
+    metric_definitions: dict[str, str] = Field(default_factory=dict)
+    comparison_periods: dict[str, str | None] = Field(default_factory=dict)
+    entity_grains: dict[str, str] = Field(default_factory=dict)
+    coverage_caveats: list[str] = Field(default_factory=list)
+    internal_versions: dict[str, str] = Field(default_factory=dict)
+    internal_diagnostics: list[str] = Field(default_factory=list)
     notes: list[str] = Field(default_factory=list)
     limitations: list[str] = Field(default_factory=list)
 
@@ -322,6 +347,7 @@ class YearlyReviewAvailableYearsResponse(BaseModel):
 
 
 class YearlyReviewRecordsPage(BaseModel):
+    content_version: str = "yearly_review_v2_6"
     year: int = Field(ge=2000)
     filter_fingerprint: str
     page: int = Field(ge=1)

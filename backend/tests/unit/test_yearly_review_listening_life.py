@@ -17,6 +17,8 @@ def _coverage() -> YearlyReviewCoverage:
         status="complete",
         play=YearlyPlayCoverage(
             status="complete",
+            observed_start="2025-01-01",
+            observed_end="2025-12-31",
             natural_days_span=365,
             import_coverage_status="unknown",
             internal_gap_status="unknown",
@@ -71,4 +73,25 @@ def test_listening_life_uses_normalized_baselines_and_never_infers_gap() -> None
     weekend = next(
         item for item in result.observations if item.headline_id == "weekday_weekend_pattern"
     )
-    assert "1.50 倍" in weekend.statement
+    weekday_metric = next(
+        metric for metric in result.metrics if metric.key == "weekday_daily_plays"
+    )
+    weekend_metric = next(
+        metric for metric in result.metrics if metric.key == "weekend_daily_plays"
+    )
+    assert weekday_metric.value == 1.9
+    assert weekend_metric.value == 2.9
+    assert "1.51 倍" in weekend.statement
+
+
+def test_partial_window_uses_inclusive_calendar_denominators() -> None:
+    coverage = _coverage()
+    coverage.status = "observed_range"
+    coverage.play.status = "observed_range"
+    coverage.play.observed_start = "2025-01-01"
+    coverage.play.observed_end = "2025-01-07"
+    result = build_listening_life(_stats(), coverage)
+
+    metrics = {metric.key: metric.value for metric in result.metrics}
+    assert metrics["weekday_daily_plays"] == 100.0
+    assert metrics["weekend_daily_plays"] == 150.0

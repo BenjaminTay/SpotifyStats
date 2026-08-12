@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 import sys
 import time
 from contextlib import nullcontext
@@ -20,6 +21,7 @@ if str(ROOT) not in sys.path:
 from backend.core.db import get_db  # noqa: E402
 from backend.domains.settings.repository import SettingsRepository  # noqa: E402
 from backend.domains.yearly_review.context import build_yearly_review_context  # noqa: E402
+from backend.domains.yearly_review.versions import YEARLY_REVIEW_CONTENT_VERSION  # noqa: E402
 from backend.services.yearly_review_service import (  # noqa: E402
     _artifact,
     _build_cached_artifact,
@@ -29,7 +31,7 @@ from backend.services.yearly_review_service import (  # noqa: E402
     get_yearly_review_records,
 )
 
-PROBE_VERSION = "yearly_review_v2_probe_v3"
+PROBE_VERSION = "yearly_review_v2_probe_v4"
 
 
 def _semantic_fingerprint(value: Any) -> str:
@@ -105,6 +107,33 @@ def _identity_issues(payload: dict[str, Any]) -> list[str]:
     return issues
 
 
+def _editorial_issues(payload: dict[str, Any]) -> list[str]:
+    issues: list[str] = []
+    featured = payload["records"]["featured"]
+    banned = ("年度事实", "记录到 championship", "记录到 endurance", " / ")
+    for item in featured:
+        text = f"{item['title']} {item['statement']}"
+        if any(token in text for token in banned):
+            issues.append(f"featured_internal_copy:{item['record_id']}")
+        has_date = bool(re.search(r"\b20\d{2}-\d{2}-\d{2}\b", item["statement"]))
+        if not item["metrics"] and not has_date:
+            issues.append(f"featured_missing_evidence:{item['record_id']}")
+    for point in payload["season"]["turning_points"]:
+        if any(token in point["statement"] for token in banned):
+            issues.append(f"timeline_internal_copy:{point['point_id']}")
+    opening = {item["statement"] for item in payload["headlines"]}
+    closing = {item["statement"] for item in payload["epilogue"]["conclusions"]}
+    if opening & closing:
+        issues.append("epilogue_duplicates_opening")
+    stage_status = payload["season"]["stage_status"]
+    stages = payload["season"]["stages"]
+    if stage_status == "available" and not stages:
+        issues.append("stage_status_available_without_stages")
+    if stage_status != "available" and stages:
+        issues.append("stages_present_without_available_status")
+    return issues
+
+
 def probe_year(
     year: int,
     context,
@@ -128,6 +157,10 @@ def probe_year(
         issues.append("hot_filter_fingerprint_mismatch")
     if records.filter_fingerprint != context.filter_fingerprint:
         issues.append("records_filter_fingerprint_mismatch")
+    if report.methodology.content_version != YEARLY_REVIEW_CONTENT_VERSION:
+        issues.append("report_content_version_mismatch")
+    if records.content_version != YEARLY_REVIEW_CONTENT_VERSION:
+        issues.append("records_content_version_mismatch")
     if len(report.season.months) != 12:
         issues.append(f"month_count:{len(report.season.months)}")
     if report.status != "empty" and not 6 <= len(report.season.turning_points) <= 10:
@@ -143,10 +176,12 @@ def probe_year(
         issues.append(f"hot_latency_budget:{hot_ms:.2f}")
     issues.extend(_taste_issues(payload))
     issues.extend(_identity_issues(payload))
+    issues.extend(_editorial_issues(payload))
     return {
         "year": year,
         "status": report.status,
         "filter_fingerprint": context.filter_fingerprint,
+        "content_version": report.methodology.content_version,
         "cold_ms": round(cold_ms, 2),
         "hot_ms": round(hot_ms, 2),
         "json_bytes": len(encoded),
@@ -197,6 +232,7 @@ def run_probe(
     issues.extend(f"{result['year']}:{issue}" for result in results for issue in result["issues"])
     return {
         "probe_version": PROBE_VERSION,
+        "content_version": YEARLY_REVIEW_CONTENT_VERSION,
         "read_only": True,
         "read_only_scope": "source_database",
         "persistent_cache_write": cache_mode == "recompute",

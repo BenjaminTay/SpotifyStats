@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import sqlite3
+
 from backend.models.yearly_review import YearlyReviewFilterContext
+from backend.services import yearly_review_service
 from backend.services.yearly_review_service import build_yearly_review_cache_key
 
 
@@ -44,3 +47,58 @@ def test_cache_key_changes_with_language_database_and_filter_revisions() -> None
     assert base != build_yearly_review_cache_key(
         2025, changed, language_revision="lang-a", db_revision="db-a"
     )
+
+
+def test_cache_key_changes_with_content_version(monkeypatch) -> None:
+    context = _context()
+    base = build_yearly_review_cache_key(
+        2025, context, language_revision="lang-a", db_revision="db-a"
+    )
+    monkeypatch.setattr(yearly_review_service, "YEARLY_REVIEW_CONTENT_VERSION", "next")
+
+    assert base != build_yearly_review_cache_key(
+        2025, context, language_revision="lang-a", db_revision="db-a"
+    )
+
+
+def test_database_revision_ignores_unrelated_writes_but_tracks_imports(
+    monkeypatch, tmp_path
+) -> None:
+    db_path = tmp_path / "revision.db"
+    conn = sqlite3.connect(db_path)
+    conn.executescript(
+        """CREATE TABLE plays (
+               play_id INTEGER PRIMARY KEY, ts TEXT NOT NULL, ms_played INTEGER NOT NULL
+           );
+           CREATE TABLE tracks (track_id INTEGER PRIMARY KEY);
+           CREATE TABLE albums (album_id INTEGER PRIMARY KEY);
+           CREATE TABLE artists (artist_id INTEGER PRIMARY KEY);
+           CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY);
+           CREATE TABLE task_logs (id INTEGER PRIMARY KEY, message TEXT);
+           INSERT INTO tracks VALUES (1);
+           INSERT INTO albums VALUES (1);
+           INSERT INTO artists VALUES (1);
+           INSERT INTO schema_migrations VALUES (30);
+           INSERT INTO plays VALUES (1, '2025-01-01T00:00:00Z', 60000);"""
+    )
+    conn.commit()
+    conn.close()
+
+    def connect(*, readonly=True):
+        connection = sqlite3.connect(db_path)
+        connection.row_factory = sqlite3.Row
+        return connection
+
+    monkeypatch.setattr(yearly_review_service, "get_db", connect)
+    base = yearly_review_service.database_revision()
+    conn = sqlite3.connect(db_path)
+    conn.execute("INSERT INTO task_logs(message) VALUES ('unrelated')")
+    conn.commit()
+    conn.close()
+    assert yearly_review_service.database_revision() == base
+
+    conn = sqlite3.connect(db_path)
+    conn.execute("INSERT INTO plays VALUES (2, '2025-01-02T00:00:00Z', 70000)")
+    conn.commit()
+    conn.close()
+    assert yearly_review_service.database_revision() != base

@@ -6,6 +6,8 @@
 - 新增 `/api/yearly-review/available-years`、`/{year}` 与 `/{year}/records`，统一过滤指纹、coverage、版本化策略、元数据修订缓存和分页纪录目录；解释性内容完全由确定性事实生成，不调用 LLM。
 - 关系历史日期边界改为按实体类型一次聚合，播放纪录复用年度事件/实体帧；2023–2026 四年真实重算由 76–82.5 秒降至 9.95–15.94 秒。
 - 新增独立 `data/yearly_review_cache.db` 压缩持久缓存，完整精确 key 命中才返回；设置变更、流式导入和启动 warmup 后台预建最新年份。四年跨进程持久命中 11.31–23.68ms，主报告和完整纪录目录指纹逐年一致。
+- 最终验收修复将同比裁到真实同期窗口，工作日/周末改为自然日日均，Passport 统一规范实体粒度，YTD 品味只比较完整季度；公开纪录改为显式 renderer，阶段不再强切，结语不再复制开篇，方法页隐藏内部 key 并自动披露数据限制。
+- 年度缓存增加独立 `content_version=yearly_review_v2_6`，播放事实 revision 不再使用 SQLite main/WAL 物理 mtime，避免后台任务日志或 checkpoint 触发无关重算；最新四年真实重算 9.80–15.43 秒、热响应 5.04–21.65ms、新进程持久命中 9.75–19.71ms。
 - 验证通过全量 backend unit 1,051、contract 329、frontend 475、API smoke 119/119、OpenAPI 0 unaccounted、五视口年度 route matrix、30 组控件库存以及 Chromium/Firefox/WebKit 年度完整交互。
 - Spotify/Google 第三方封面或字体不可达时使用现有字体与实体首字母回退；应用自身资源和 API 错误仍由门禁拦截。
 

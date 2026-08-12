@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections import Counter
 
+from backend.domains.yearly_review.record_presenters import present_record_candidate
 from backend.domains.yearly_review.records import select_yearly_records
 from backend.models.yearly_review import (
     YearlyEntityRef,
@@ -24,7 +25,17 @@ def _candidate(
         candidate_id=f"candidate-{source}-{index}-{family}",
         source=source,
         source_family=family,
-        record_key=f"{family}.fact_{index}.artist",
+        record_key=f"{family}.daily_binge.artist"
+        if family == "obsession"
+        else (
+            f"{family}.longest_streak_days.artist"
+            if family == "longevity"
+            else (
+                f"{family}.discovery_day.artist"
+                if family == "discovery"
+                else f"{family}.playback_milestones"
+            )
+        ),
         category=family,
         fact_type=f"fact_{index}",
         entity_refs=[
@@ -78,3 +89,27 @@ def test_empty_candidate_pool_keeps_legal_empty_state() -> None:
 
     assert result.featured == []
     assert result.catalog_counts["featured_total"] == 0
+
+
+def test_unknown_record_key_is_not_projected_by_generic_fallback() -> None:
+    candidate = _candidate(1, "obsession").model_copy(update={"record_key": "internal.unknown.key"})
+
+    result = select_yearly_records(2025, [[candidate]])
+
+    assert result.featured == []
+
+
+def test_public_record_metric_localizes_legacy_units() -> None:
+    candidate = _candidate(1, "longevity").model_copy(
+        update={
+            "record_key": "longevity.comeback_after_sleep.artist",
+            "primary_metric": YearlyMetric(
+                key="sleep_days", label="旧爱", value=328, unit="天後回歸"
+            ),
+        }
+    )
+
+    presented = present_record_candidate(candidate)
+
+    assert presented is not None
+    assert presented.metrics[0].unit == "天后回归"

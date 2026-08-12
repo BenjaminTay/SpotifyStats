@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
+from backend.domains.yearly_review.entity_links import entity_ref_from_row
 from backend.domains.yearly_review.policies import DIVERGENCE_RANK_GAPS
 from backend.models.yearly_review import (
     YearlyDivergenceStory,
@@ -41,35 +42,7 @@ def _entity_type(row: Mapping[str, Any]) -> str | None:
 
 
 def entity_ref(row: Mapping[str, Any], entity_type: str | None = None) -> YearlyEntityRef | None:
-    entity_type = entity_type or _entity_type(row)
-    if entity_type == "track" and row.get("track_name"):
-        return YearlyEntityRef(
-            entity_type="track",
-            entity_id=row.get("track_id"),
-            name=str(row["track_name"]),
-            artist_name=str(row.get("artist_name")) if row.get("artist_name") else None,
-            cover_url=row.get("cover_url"),
-            deep_link=row.get("deep_link")
-            or (f"/music/tracks/{row['track_id']}" if row.get("track_id") is not None else None),
-        )
-    if entity_type == "album" and row.get("album_name"):
-        return YearlyEntityRef(
-            entity_type="album",
-            entity_id=row.get("album_project_id"),
-            name=str(row["album_name"]),
-            artist_name=str(row.get("artist_name")) if row.get("artist_name") else None,
-            cover_url=row.get("cover_url"),
-            deep_link=row.get("deep_link"),
-        )
-    if entity_type == "artist" and row.get("artist_name"):
-        return YearlyEntityRef(
-            entity_type="artist",
-            entity_id=row.get("artist_id"),
-            name=str(row["artist_name"]),
-            cover_url=row.get("cover_url"),
-            deep_link=row.get("deep_link"),
-        )
-    return None
+    return entity_ref_from_row(row, entity_type or _entity_type(row))
 
 
 def identity_key(row: Mapping[str, Any], entity_type: str) -> str:

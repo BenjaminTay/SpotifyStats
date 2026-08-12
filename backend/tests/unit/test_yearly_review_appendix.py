@@ -54,7 +54,9 @@ def test_epilogue_selects_three_distinct_conclusions_and_optional_carryovers() -
     )
 
     assert len(result.conclusions) == 3
-    assert result.conclusions[0].headline_id == "headline-0"
-    assert result.conclusions[1].headline_id == "headline-2"
+    assert all(item.headline_id.startswith("epilogue_") for item in result.conclusions)
+    assert not {item.statement for item in result.conclusions} & {
+        item.statement for item in headlines
+    }
     assert result.new_history_tops == [artist]
     assert result.next_year_carryovers == [artist]

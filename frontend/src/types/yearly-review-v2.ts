@@ -160,6 +160,8 @@ export interface YearlyReviewResponse {
   }
   season: {
     policy_version: string
+    stage_status: 'available' | 'no_stable_phase' | 'insufficient'
+    stage_note: string | null
     stages: Array<{
       stage_id: string
       label: string
@@ -202,6 +204,18 @@ export interface YearlyReviewResponse {
     catalog_counts: Record<string, number>
   }
   taste_migration: {
+    comparison: {
+      mode: 'half_years' | 'completed_quarters' | 'distribution_only'
+      status: 'available' | 'insufficient_completed_periods'
+      from_slice_key: string | null
+      to_slice_key: string | null
+      from_label: string | null
+      to_label: string | null
+      from_start: string | null
+      from_end: string | null
+      to_start: string | null
+      to_end: string | null
+    }
     observations: YearlyHeadline[]
     distributions: Record<string, Array<Record<string, unknown>>>
     changes: Record<string, Array<Record<string, unknown>>>
@@ -219,9 +233,16 @@ export interface YearlyReviewResponse {
     record_catalog_counts: Record<string, number>
   }
   methodology: {
+    content_version: string
     relationship_policy_version: string
     highlight_policy_version: string
     season_stage_policy_version: string
+    metric_definitions: Record<string, string>
+    comparison_periods: Record<string, string | null>
+    entity_grains: Record<string, string>
+    coverage_caveats: string[]
+    internal_versions: Record<string, string>
+    internal_diagnostics: string[]
     notes: string[]
     limitations: string[]
   }
@@ -233,6 +254,7 @@ export interface YearlyReviewAvailableYearsResponse {
 }
 
 export interface YearlyReviewRecordsPage {
+  content_version: string
   year: number
   filter_fingerprint: string
   page: number

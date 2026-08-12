@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from collections import defaultdict
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -19,6 +20,7 @@ from backend.domains.yearly_review.policies import (
     SEASON_MIN_TURNING_POINTS,
     SEASON_STAGE_POLICY_VERSION,
 )
+from backend.domains.yearly_review.record_presenters import present_record_candidate
 from backend.models.yearly_review import (
     YearlyEntityRef,
     YearlyHighlightCandidate,
@@ -217,7 +219,38 @@ def _stable_runs(
         return []
     if any(end - start + 1 < SEASON_MIN_STAGE_MONTHS for start, end, _, _ in runs):
         return []
-    return [(int(start), int(end), str(key), ref) for start, end, key, ref in runs]
+    resolved = []
+    for start, end, _, _ in runs:
+        segment = [item for item in champions if start <= item[0] <= end]
+        counts: dict[str, tuple[int, YearlyEntityRef]] = {}
+        for _, key, ref in segment:
+            count, _ = counts.get(key, (0, ref))
+            counts[key] = (count + 1, ref)
+        key, (_, ref) = max(counts.items(), key=lambda item: (item[1][0], item[0]))
+        if counts[key][0] / max(end - start + 1, 1) <= 0.5:
+            return []
+        resolved.append((int(start), int(end), key, ref))
+    return resolved
+
+
+def _timeline_eligible(candidate: YearlyHighlightCandidate) -> bool:
+    key = candidate.record_key.casefold()
+    return any(
+        token in key
+        for token in (
+            "daily_total_record",
+            "late_night_peak_day",
+            "new_year_eve",
+            "discovery_day",
+            "comeback",
+            "return_to_no1",
+            "playback_milestones",
+            "triple_no1",
+            "biggest_jump",
+            "biggest_drop",
+            "consecutive_marathon",
+        )
+    )
 
 
 def _record_month(candidate: YearlyHighlightCandidate) -> tuple[int | None, str | None]:
@@ -296,8 +329,13 @@ def _candidate_events(
     for candidate in record_candidates:
         if not candidate.eligible or candidate.coverage_status == "unavailable":
             continue
+        if not _timeline_eligible(candidate):
+            continue
         record_month, date = _record_month(candidate)
         if record_month is None:
+            continue
+        presented = present_record_candidate(candidate)
+        if presented is None:
             continue
         family = candidate.source_family
         event_type = (
@@ -318,19 +356,14 @@ def _candidate_events(
             _EventCandidate(
                 month=record_month,
                 event_type=event_type,
-                title={
-                    "discovery_peak": "发现高光",
-                    "return": "旧爱回归",
-                    "obsession_peak": "沉迷高峰",
-                    "sustained_record": "持续性纪录",
-                    "listening_pattern": "收听模式高光",
-                    "record_moment": "年度纪录时刻",
-                }[event_type],
-                statement=(
-                    f"{record_month} 月出现了 {candidate.record_key.replace('.', ' / ')} 的年度纪录事实。"
-                ),
+                title=presented.title,
+                statement=presented.statement,
                 score=70
-                + (float(metric.value) if metric and isinstance(metric.value, (int, float)) else 0),
+                + (
+                    math.log1p(abs(float(metric.value)))
+                    if metric and isinstance(metric.value, (int, float))
+                    else 0
+                ),
                 refs=list(candidate.entity_refs),
                 metrics=[metric] if metric else [],
                 date=date,
@@ -370,9 +403,6 @@ def _candidate_events(
 
 
 def _select_events(candidates: Sequence[_EventCandidate]) -> list[_EventCandidate]:
-    by_month: dict[int, list[_EventCandidate]] = defaultdict(list)
-    for candidate in candidates:
-        by_month[candidate.month].append(candidate)
     type_caps = {
         "listening_peak": 1,
         "leader_change": SEASON_LEADER_CHANGE_CAP,
@@ -398,20 +428,6 @@ def _select_events(candidates: Sequence[_EventCandidate]) -> list[_EventCandidat
         type_counts[candidate.event_type] += 1
         if len(selected) == SEASON_MAX_TURNING_POINTS:
             break
-    for primary in selected:
-        extras = sorted(
-            by_month[primary.month], key=lambda item: (-item.score, item.event_type, item.title)
-        )
-        seen_refs = {(ref.entity_type, ref.entity_id, ref.name) for ref in primary.refs}
-        for extra in extras:
-            if extra is primary:
-                continue
-            for ref in extra.refs:
-                key = (ref.entity_type, ref.entity_id, ref.name)
-                if key not in seen_refs:
-                    primary.refs.append(ref)
-                    seen_refs.add(key)
-            primary.metrics.extend(extra.metrics[:1])
     if len(selected) < SEASON_MIN_TURNING_POINTS:
         return sorted(selected, key=lambda item: item.month)
     return sorted(selected, key=lambda item: item.month)
@@ -432,9 +448,28 @@ def build_season(
         billboard_monthly_leaders=billboard_monthly_leaders,
         baseline_monthly=baseline_monthly,
     )
+    stable_runs = _stable_runs(months)
+    stage_status = "available" if stable_runs else "no_stable_phase"
+    stage_note = (
+        None
+        if stable_runs
+        else "月度冠军变化较频繁，没有足够稳定的连续阶段；本年不强行划分主导期。"
+    )
+    stage_rows = stable_runs
+    if sum(month.plays > 0 for month in months) < 6:
+        stage_status = "insufficient"
+        stage_note = "有效月份不足，暂不划分年度阶段。"
     stages: list[YearlySeasonStage] = []
-    for index, (start, end, _, ref) in enumerate(_stable_runs(months), start=1):
+    for index, (start, end, _, ref) in enumerate(stage_rows, start=1):
         stage_id = f"stage-{index}"
+        stage_months = end - start + 1
+        champion_months = sum(
+            1
+            for month in months
+            if start <= month.month <= end
+            and month.leaders.get("play_artist")
+            and month.leaders["play_artist"].name.casefold() == ref.name.casefold()
+        )
         stages.append(
             YearlySeasonStage(
                 stage_id=stage_id,
@@ -446,9 +481,21 @@ def build_season(
                     YearlyMetric(
                         key="stage_months",
                         label="阶段长度",
-                        value=end - start + 1,
+                        value=stage_months,
                         unit="个月",
-                    )
+                    ),
+                    YearlyMetric(
+                        key="champion_months",
+                        label="阶段内月冠军",
+                        value=champion_months,
+                        unit="个月",
+                    ),
+                    YearlyMetric(
+                        key="champion_month_share_pct",
+                        label="阶段月冠军占比",
+                        value=round(champion_months / stage_months * 100, 1),
+                        unit="%",
+                    ),
                 ],
             )
         )
@@ -476,6 +523,8 @@ def build_season(
         months[event.month - 1].event_ids.append(event_id)
     return YearlySeasonChapter(
         policy_version=SEASON_STAGE_POLICY_VERSION,
+        stage_status=stage_status,
+        stage_note=stage_note,
         stages=stages,
         turning_points=turning_points,
         months=months,

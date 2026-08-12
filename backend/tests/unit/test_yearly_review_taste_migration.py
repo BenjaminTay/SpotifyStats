@@ -244,3 +244,55 @@ def test_driver_builder_uses_governed_genre_and_language_resolvers(monkeypatch) 
     assert result["language"]["zh"][0]["name"] == "Late"
     assert result["release_era"]["2020s"][0]["name"] == "New Song"
     assert result["release_era"]["2020s"][0]["delta_share_pct"] == 100.0
+
+
+def test_ytd_taste_migration_compares_completed_quarters_not_partial_half() -> None:
+    stats = {
+        "year": 2026,
+        "taste_profile": _profile(60, 30, 50),
+        "taste_slices": [
+            {"slice_key": "q1", "taste_profile": _profile(40, 20, 30)},
+            {"slice_key": "q2", "taste_profile": _profile(70, 50, 60)},
+            {"slice_key": "first_half", "taste_profile": _profile(55, 35, 45)},
+            {"slice_key": "second_half", "taste_profile": _profile(100, 100, 100)},
+        ],
+    }
+    coverage = _coverage()
+    coverage.status = "year_to_date"
+    coverage.play.status = "year_to_date"
+    coverage.play.observed_start = "2026-01-01"
+    coverage.play.observed_end = "2026-07-24"
+
+    result = build_taste_migration(stats, coverage)
+
+    assert result.comparison.mode == "completed_quarters"
+    assert result.comparison.status == "available"
+    assert result.comparison.from_slice_key == "q1"
+    assert result.comparison.to_slice_key == "q2"
+    assert result.comparison.from_label == "第一季度"
+    assert result.comparison.to_label == "第二季度"
+    assert result.comparison.from_start == "2026-01-01"
+    assert result.comparison.to_end == "2026-06-30"
+    assert result.changes["style"][0]["delta_pct"] == 30.0
+
+
+def test_early_ytd_taste_migration_is_distribution_only() -> None:
+    stats = {
+        "year": 2026,
+        "taste_profile": _profile(60, 30, 50),
+        "taste_slices": [
+            {"slice_key": "q1", "taste_profile": _profile(40, 20, 30)},
+        ],
+    }
+    coverage = _coverage()
+    coverage.status = "year_to_date"
+    coverage.play.status = "year_to_date"
+    coverage.play.observed_start = "2026-01-01"
+    coverage.play.observed_end = "2026-04-15"
+
+    result = build_taste_migration(stats, coverage)
+
+    assert result.comparison.mode == "distribution_only"
+    assert result.comparison.status == "insufficient_completed_periods"
+    assert result.observations == []
+    assert all(rows == [] for rows in result.changes.values())

@@ -43,7 +43,7 @@
 
 | 报告 | 内容 |
 |------|------|
-| [`reports/2026-08-12-yearly-review-v2-delivery.md`](reports/2026-08-12-yearly-review-v2-delivery.md) | 年度总结 V2 完整交付：M0–M6 审计、契约、适配、编排、API/缓存、桌面体验、四年真实性能与三浏览器最终验收 |
+| [`reports/2026-08-12-yearly-review-v2-delivery.md`](reports/2026-08-12-yearly-review-v2-delivery.md) | 年度总结 V2 唯一完整交付报告：审计、契约、编排、API/缓存、桌面体验、验收问题修复、四年真实性能与三浏览器证据 |
 | [`reports/2026-08-06-mobile-web-and-pwa-delivery.md`](reports/2026-08-06-mobile-web-and-pwa-delivery.md) | 移动端 M0–M7、PWA Phase A 与验收后修复综合交付：阶段范围、架构契约、全栈门禁、专项复验和未完成边界 |
 | [`reports/2026-07-28-billboard-v3-sensitivity-analysis.md`](reports/2026-07-28-billboard-v3-sensitivity-analysis.md) | Billboard V3 年榜积分敏感性分析：竞争强度、个体统治力与纯排名反事实对照 |
 | [`reports/2026-07-16-genre-source-quality-audit.md`](reports/2026-07-16-genre-source-quality-audit.md) | Genre 来源可信度审核：高影响无链接 LLM 来源标签的证据与处置结果 |

@@ -5,6 +5,7 @@ import argparse
 import pytest
 
 from scripts.yearly_review_v2_probe import (
+    _editorial_issues,
     _identity_issues,
     _semantic_fingerprint,
     _taste_issues,
@@ -57,3 +58,27 @@ def test_probe_detects_unknown_loss_and_duplicate_identities() -> None:
 def test_semantic_fingerprint_is_key_order_independent_and_value_sensitive() -> None:
     assert _semantic_fingerprint({"a": 1, "b": [2]}) == _semantic_fingerprint({"b": [2], "a": 1})
     assert _semantic_fingerprint({"a": 1}) != _semantic_fingerprint({"a": 2})
+
+
+def test_editorial_probe_rejects_internal_copy_and_repeated_epilogue() -> None:
+    payload = {
+        "headlines": [{"statement": "same"}],
+        "records": {
+            "featured": [
+                {
+                    "record_id": "bad",
+                    "title": "internal",
+                    "statement": "记录到 championship / triple_no1 的年度事实。",
+                    "metrics": [],
+                }
+            ]
+        },
+        "season": {"stage_status": "no_stable_phase", "stages": [], "turning_points": []},
+        "epilogue": {"conclusions": [{"statement": "same"}]},
+    }
+
+    issues = _editorial_issues(payload)
+
+    assert "featured_internal_copy:bad" in issues
+    assert "featured_missing_evidence:bad" in issues
+    assert "epilogue_duplicates_opening" in issues

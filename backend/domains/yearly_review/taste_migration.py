@@ -23,6 +23,7 @@ from backend.models.yearly_review import (
     YearlyMetric,
     YearlyReviewCoverage,
     YearlyTasteAxisCoverage,
+    YearlyTasteComparison,
     YearlyTasteMigrationChapter,
 )
 from backend.services.wrapped_service import _fetch_track_release_years
@@ -33,6 +34,80 @@ AXIS_SOURCE_KEYS = {
     "language": "language_dist",
     "release_era": "release_era",
 }
+SLICE_PERIODS: dict[str, tuple[str, tuple[int, ...]]] = {
+    "q1": ("第一季度", (1, 2, 3)),
+    "q2": ("第二季度", (4, 5, 6)),
+    "q3": ("第三季度", (7, 8, 9)),
+    "q4": ("第四季度", (10, 11, 12)),
+    "first_half": ("上半年", (1, 2, 3, 4, 5, 6)),
+    "second_half": ("下半年", (7, 8, 9, 10, 11, 12)),
+}
+
+
+def resolve_taste_comparison(
+    stats: Mapping[str, Any], coverage: YearlyReviewCoverage
+) -> YearlyTasteComparison:
+    observed_start = coverage.play.observed_start
+    year = int(stats.get("year") or (observed_start[:4] if observed_start else 2000))
+    if coverage.status == "complete":
+        from_key, to_key, mode = "first_half", "second_half", "half_years"
+    elif coverage.status == "year_to_date" and coverage.play.observed_end:
+        observed_end = pd.Timestamp(coverage.play.observed_end).date()
+        completed = [
+            quarter
+            for quarter in range(1, 5)
+            if (pd.Timestamp(year=year, month=quarter * 3, day=1) + pd.offsets.MonthEnd(0)).date()
+            <= observed_end
+        ]
+        if len(completed) < 2:
+            return YearlyTasteComparison()
+        from_key, to_key, mode = f"q{completed[-2]}", f"q{completed[-1]}", "completed_quarters"
+    else:
+        return YearlyTasteComparison()
+
+    from_label, from_months = SLICE_PERIODS[from_key]
+    to_label, to_months = SLICE_PERIODS[to_key]
+
+    def month_end(month: int) -> str:
+        return (
+            (pd.Timestamp(year=year, month=month, day=1) + pd.offsets.MonthEnd(0))
+            .date()
+            .isoformat()
+        )
+
+    return YearlyTasteComparison(
+        mode=mode,
+        status="available",
+        from_slice_key=from_key,
+        to_slice_key=to_key,
+        from_label=from_label,
+        to_label=to_label,
+        from_start=f"{year}-{from_months[0]:02d}-01",
+        from_end=month_end(from_months[-1]),
+        to_start=f"{year}-{to_months[0]:02d}-01",
+        to_end=month_end(to_months[-1]),
+    )
+
+
+def taste_comparison_frames(
+    frame: pd.DataFrame, comparison: YearlyTasteComparison
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    if (
+        comparison.status != "available"
+        or not comparison.from_slice_key
+        or not comparison.to_slice_key
+    ):
+        empty = frame.iloc[0:0].copy()
+        return empty, empty
+    months = (
+        pd.to_numeric(frame["ts_month"], errors="coerce")
+        if "ts_month" in frame.columns
+        else pd.to_datetime(frame["ts_date"], errors="coerce").dt.month
+    )
+    return (
+        frame[months.isin(SLICE_PERIODS[comparison.from_slice_key][1])].copy(),
+        frame[months.isin(SLICE_PERIODS[comparison.to_slice_key][1])].copy(),
+    )
 
 
 def _artist_hours(conn: sqlite3.Connection, frame: pd.DataFrame) -> dict[int, float]:
@@ -183,6 +258,13 @@ def _shares(rows: Sequence[Mapping[str, Any]]) -> dict[str, float]:
     return {str(row.get("key") or row.get("label")): float(row.get("share_pct", 0)) for row in rows}
 
 
+def _labels(rows: Sequence[Mapping[str, Any]]) -> dict[str, str]:
+    return {
+        str(row.get("key") or row.get("label")): str(row.get("label") or row.get("key"))
+        for row in rows
+    }
+
+
 def _slice_profile(stats: Mapping[str, Any], key: str) -> Mapping[str, Any] | None:
     return next(
         (
@@ -232,10 +314,12 @@ def build_taste_migration(
     *,
     drivers: Mapping[str, Mapping[str, Sequence[Mapping[str, Any]]]] | None = None,
     release_era_profiles: Mapping[str, Mapping[str, Any]] | None = None,
+    comparison: YearlyTasteComparison | None = None,
 ) -> YearlyTasteMigrationChapter:
     annual_profile = dict(stats.get("taste_profile", {}))
-    first_half = _slice_profile(stats, "first_half") or {}
-    second_half = _slice_profile(stats, "second_half") or {}
+    comparison = comparison or resolve_taste_comparison(stats, coverage)
+    early_profile = _slice_profile(stats, comparison.from_slice_key or "") or {}
+    late_profile = _slice_profile(stats, comparison.to_slice_key or "") or {}
     release_era_profiles = release_era_profiles or {}
 
     distributions: dict[str, list[dict[str, Any]]] = {}
@@ -249,25 +333,27 @@ def build_taste_migration(
             annual_source = release_era_profiles.get("annual") or {
                 "release_era": stats.get("release_era_profile", {})
             }
-            early_source = release_era_profiles.get("first_half") or {
-                "release_era": _slice_release_era(stats, "first_half") or {}
+            early_source = release_era_profiles.get(comparison.from_slice_key or "") or {
+                "release_era": _slice_release_era(stats, comparison.from_slice_key or "") or {}
             }
-            late_source = release_era_profiles.get("second_half") or {
-                "release_era": _slice_release_era(stats, "second_half") or {}
+            late_source = release_era_profiles.get(comparison.to_slice_key or "") or {
+                "release_era": _slice_release_era(stats, comparison.to_slice_key or "") or {}
             }
             annual_rows = _buckets(annual_source, axis)
             early_rows = _buckets(early_source, axis)
             late_rows = _buckets(late_source, axis)
         else:
             annual_rows = _buckets(annual_profile, axis)
-            early_rows = _buckets(first_half, axis)
-            late_rows = _buckets(second_half, axis)
+            early_rows = _buckets(early_profile, axis)
+            late_rows = _buckets(late_profile, axis)
         distributions[axis] = annual_rows
         early = _shares(early_rows)
         late = _shares(late_rows)
+        labels = {**_labels(early_rows), **_labels(late_rows)}
         axis_changes: list[dict[str, float | str]] = [
             {
                 "key": key,
+                "label": labels.get(key, key),
                 "from_pct": round(early.get(key, 0), 1),
                 "to_pct": round(late.get(key, 0), 1),
                 "delta_pct": round(late.get(key, 0) - early.get(key, 0), 1),
@@ -284,7 +370,11 @@ def build_taste_migration(
             if axis_coverage.level == "secondary"
             else "暂无法判断"
         )
-        if not axis_coverage.conclusion_allowed or not axis_changes:
+        if (
+            comparison.status != "available"
+            or not axis_coverage.conclusion_allowed
+            or not axis_changes
+        ):
             continue
         strongest = next(
             (row for row in axis_changes if (drivers or {}).get(axis, {}).get(str(row["key"]), [])),
@@ -319,7 +409,7 @@ def build_taste_migration(
                     "release_era": "发行年代变化",
                 }[axis],
                 statement=(
-                    f"{strongest['key']} 从上半年的 {from_pct:.1f}% 变为下半年的 {to_pct:.1f}%（{direction} {abs(delta_pct):.1f} 个百分点），主要驱动为 {ref.name}；判定为{driver_kind}。"
+                    f"{strongest['label']} 从{comparison.from_label}的 {from_pct:.1f}% 变为{comparison.to_label}的 {to_pct:.1f}%（{direction} {abs(delta_pct):.1f} 个百分点），主要驱动为 {ref.name}；判定为{driver_kind}。"
                 ),
                 evidence_grade="C",
                 primary_metric=YearlyMetric(
@@ -330,13 +420,14 @@ def build_taste_migration(
                 ),
                 entity_refs=[ref],
                 source_refs=[
-                    f"stats.taste_slices.first_half.{axis}",
-                    f"stats.taste_slices.second_half.{axis}",
+                    f"stats.taste_slices.{comparison.from_slice_key}.{axis}",
+                    f"stats.taste_slices.{comparison.to_slice_key}.{axis}",
                     f"taste_drivers.{axis}.{strongest['key']}",
                 ],
             )
         )
     return YearlyTasteMigrationChapter(
+        comparison=comparison,
         observations=observations,
         distributions=distributions,
         changes=changes,

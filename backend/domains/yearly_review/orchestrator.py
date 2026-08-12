@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import sqlite3
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, Callable, TypeVar, cast
 
@@ -12,6 +13,10 @@ import pandas as pd
 from backend.core.db import load_plays
 from backend.domains.yearly_review.appendix import build_appendix
 from backend.domains.yearly_review.billboard_adapter import build_billboard_source
+from backend.domains.yearly_review.comparison_window import (
+    aligned_comparison_frames,
+    filter_date_range,
+)
 from backend.domains.yearly_review.coverage import (
     build_billboard_coverage,
     build_comparison_coverage,
@@ -22,13 +27,18 @@ from backend.domains.yearly_review.coverage import (
 from backend.domains.yearly_review.epilogue import build_epilogue
 from backend.domains.yearly_review.honors import build_honors
 from backend.domains.yearly_review.listening_life import build_listening_life
+from backend.domains.yearly_review.methodology import build_methodology
 from backend.domains.yearly_review.passport import build_passport_and_headlines
-from backend.domains.yearly_review.play_rankings import build_play_rankings
+from backend.domains.yearly_review.play_rankings import (
+    build_play_ranking_counts,
+    build_play_rankings,
+)
 from backend.domains.yearly_review.playback_records_adapter import (
     build_playback_record_candidates,
 )
+from backend.domains.yearly_review.record_presenters import present_record_candidate
 from backend.domains.yearly_review.records import (
-    record_candidate_to_featured,
+    qualified_yearly_candidates,
     select_yearly_records,
 )
 from backend.domains.yearly_review.relationships import build_relationships
@@ -37,6 +47,8 @@ from backend.domains.yearly_review.stats_adapter import build_yearly_stats
 from backend.domains.yearly_review.taste_migration import (
     build_taste_drivers,
     build_taste_migration,
+    resolve_taste_comparison,
+    taste_comparison_frames,
 )
 from backend.models.yearly_review import (
     YearlyAppendix,
@@ -112,6 +124,40 @@ def _empty_play_rankings(year: int) -> dict[str, Any]:
     }
 
 
+def _history_top_refs(
+    candidates: list[YearlyHighlightCandidate],
+) -> list[Any]:
+    refs = []
+    seen: set[tuple[str, str]] = set()
+    for candidate in candidates:
+        if not (
+            candidate.raw_values.get("is_personal_best")
+            or candidate.raw_values.get("all_time_rank") == 1
+        ):
+            continue
+        for ref in candidate.entity_refs:
+            key = (ref.entity_type, str(ref.entity_id or ref.name).casefold())
+            if key not in seen:
+                refs.append(ref)
+                seen.add(key)
+    return refs[:6]
+
+
+def _carryover_refs(season: YearlySeasonChapter) -> list[Any]:
+    active = [month for month in season.months if month.plays > 0]
+    if len(active) < 2:
+        return []
+    recent = active[-2:]
+    by_identity: dict[tuple[str, str], tuple[int, Any]] = {}
+    for month in recent:
+        for ref in month.leaders.values():
+            key = (ref.entity_type, str(ref.entity_id or ref.name).casefold())
+            count, _ = by_identity.get(key, (0, ref))
+            by_identity[key] = (count + 1, ref)
+    ordered = sorted(by_identity.values(), key=lambda item: (-item[0], item[1].name))
+    return [ref for count, ref in ordered if count >= 2][:6]
+
+
 def build_yearly_review_artifact(
     conn: sqlite3.Connection,
     year: int,
@@ -131,7 +177,7 @@ def build_yearly_review_artifact(
             max_merge_gap_minutes=context.max_merge_gap_minutes,
         )
     annual_events = _year_frame(event_frame, year)
-    baseline_events = _year_frame(event_frame, year - 1)
+    baseline_year_events = _year_frame(event_frame, year - 1)
 
     entity_frames: tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]
     if annual_events.empty:
@@ -161,14 +207,34 @@ def build_yearly_review_artifact(
 
     # Stats and play coverage are the report spine; failure here should surface.
     stats = build_yearly_stats(conn, year, context, event_frame=event_frame)
-    baseline_stats = (
-        build_yearly_stats(conn, year - 1, context, event_frame=event_frame)
-        if not baseline_events.empty
-        else None
-    )
     play_coverage = build_play_coverage(annual_events, year=year)
     baseline_coverage = (
-        build_play_coverage(baseline_events, year=year - 1) if not baseline_events.empty else None
+        build_play_coverage(baseline_year_events, year=year - 1)
+        if not baseline_year_events.empty
+        else None
+    )
+    comparison_coverage = build_comparison_coverage(
+        report_year=year,
+        current=play_coverage,
+        baseline=baseline_coverage,
+    )
+    aligned = None
+    if (
+        comparison_coverage.comparable
+        and play_coverage.observed_start
+        and play_coverage.observed_end
+    ):
+        aligned = aligned_comparison_frames(
+            event_frame,
+            report_year=year,
+            observed_start=play_coverage.observed_start,
+            observed_end=play_coverage.observed_end,
+        )
+    baseline_events = aligned.baseline if aligned is not None else baseline_year_events.iloc[0:0]
+    baseline_stats = (
+        build_yearly_stats(conn, year - 1, context, event_frame=baseline_events)
+        if not baseline_events.empty
+        else None
     )
 
     if annual_events.empty:
@@ -204,20 +270,40 @@ def build_yearly_review_artifact(
             if isinstance(billboard.get("coverage"), YearlyBillboardCoverage)
             else build_billboard_coverage(billboard.get("meta"))
         ),
-        comparison=build_comparison_coverage(
-            report_year=year,
-            current=play_coverage,
-            baseline=baseline_coverage,
-        ),
+        comparison=comparison_coverage,
         taste=taste_coverage,
     )
 
+    baseline_entity_counts: Mapping[str, int] | None = None
+    if aligned is not None and not baseline_events.empty:
+        baseline_entity_frames = tuple(
+            filter_date_range(frame, aligned.baseline_start, aligned.baseline_end)
+            for frame in entity_frames
+        )
+        baseline_entity_counts = cast(
+            Mapping[str, int],
+            _safe_section(
+                "baseline_entity_counts",
+                lambda: build_play_ranking_counts(
+                    conn,
+                    context,
+                    event_frame=baseline_events,
+                    entity_frames=cast(
+                        tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame],
+                        baseline_entity_frames,
+                    ),
+                ),
+                dict,
+                limitations,
+            ),
+        )
     passport, headlines = build_passport_and_headlines(
         year,
         coverage,
         stats,
         baseline_stats=baseline_stats,
         play_rankings=play_rankings,
+        baseline_entity_counts=baseline_entity_counts,
     )
     playback_records: dict[str, Any] = (
         {"catalog_counts": {"total": 0, "eligible": 0}, "candidates": []}
@@ -307,6 +393,8 @@ def build_yearly_review_artifact(
         YearlyRecordsChapter,
         limitations,
     )
+    taste_comparison = resolve_taste_comparison(stats, coverage)
+    taste_from_events, taste_to_events = taste_comparison_frames(annual_events, taste_comparison)
     taste_migration = _safe_section(
         "taste_migration",
         lambda: build_taste_migration(
@@ -314,13 +402,10 @@ def build_yearly_review_artifact(
             coverage,
             drivers=build_taste_drivers(
                 conn,
-                annual_events[pd.to_numeric(annual_events.get("ts_month"), errors="coerce") <= 6]
-                if not annual_events.empty
-                else annual_events,
-                annual_events[pd.to_numeric(annual_events.get("ts_month"), errors="coerce") >= 7]
-                if not annual_events.empty
-                else annual_events,
+                taste_from_events,
+                taste_to_events,
             ),
+            comparison=taste_comparison,
         ),
         YearlyTasteMigrationChapter,
         limitations,
@@ -340,11 +425,8 @@ def build_yearly_review_artifact(
         "epilogue",
         lambda: build_epilogue(
             [*headlines, *listening_life.observations, *taste_migration.observations],
-            new_history_tops=[
-                story.entity
-                for story in relationships
-                if story.relationship_type == "new_relationship"
-            ],
+            new_history_tops=_history_top_refs(all_candidates),
+            next_year_carryovers=_carryover_refs(season),
         ),
         YearlyEpilogue,
         limitations,
@@ -365,17 +447,17 @@ def build_yearly_review_artifact(
         taste_migration=taste_migration,
         epilogue=epilogue,
         appendix=appendix,
-        methodology={
-            "notes": [
-                "single_shared_effective_play_frame",
-                "single_shared_entity_frame_set",
-            ],
-            "limitations": limitations,
-        },
+        methodology=build_methodology(
+            coverage,
+            taste_comparison,
+            billboard_record_semantics=billboard.get("record_semantics"),
+            internal_diagnostics=limitations,
+        ),
     )
-    catalog = [
-        record_candidate_to_featured(candidate).model_dump(mode="json")
-        for candidate in all_candidates
-        if candidate.eligible
-    ]
+    catalog = []
+    for candidate in qualified_yearly_candidates(year, all_candidates):
+        featured = present_record_candidate(candidate)
+        if featured is None:
+            continue
+        catalog.append(featured.model_dump(mode="json"))
     return YearlyReviewBuildArtifact(report=report, record_catalog=catalog)

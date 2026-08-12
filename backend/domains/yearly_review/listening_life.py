@@ -47,6 +47,24 @@ def _weekday_totals(stats: Mapping[str, Any]) -> list[int]:
     return [int(row.get("plays", 0)) for row in stats.get("weekday_distribution", [])]
 
 
+def _calendar_day_counts(
+    coverage: YearlyReviewCoverage,
+    event_frame: pd.DataFrame | None,
+) -> tuple[int, int]:
+    start = coverage.play.observed_start
+    end = coverage.play.observed_end
+    if (not start or not end) and event_frame is not None and not event_frame.empty:
+        dates = pd.to_datetime(event_frame.get("ts_date"), errors="coerce").dropna()
+        if not dates.empty:
+            start = dates.min().date().isoformat()
+            end = dates.max().date().isoformat()
+    if not start or not end:
+        return 0, 0
+    days = pd.date_range(start=start, end=end, freq="D")
+    weekday_days = int((days.dayofweek < 5).sum())
+    return weekday_days, int(len(days) - weekday_days)
+
+
 def _record_metric(
     candidates: Sequence[YearlyHighlightCandidate],
     pattern: str,
@@ -95,8 +113,9 @@ def build_listening_life(
 
     weekday = _weekday_totals(stats)
     if len(weekday) == 7:
-        weekday_daily = sum(weekday[:5]) / 5
-        weekend_daily = sum(weekday[5:]) / 2
+        weekday_days, weekend_days = _calendar_day_counts(coverage, event_frame)
+        weekday_daily = sum(weekday[:5]) / weekday_days if weekday_days else 0.0
+        weekend_daily = sum(weekday[5:]) / weekend_days if weekend_days else 0.0
         ratio = round(weekend_daily / weekday_daily, 2) if weekday_daily else 0.0
         weekend_metrics = [
             _metric("weekday_daily_plays", "工作日平均播放", round(weekday_daily, 1), "次/日"),

@@ -139,10 +139,62 @@ def test_orchestrator_loads_play_and_entity_frames_once(monkeypatch) -> None:
         sqlite3.connect(":memory:"), 2025, _context()
     )
 
-    assert calls == {"plays": 1, "entities": 1, "stats": 2}
+    assert calls == {"plays": 1, "entities": 1, "stats": 1}
     assert result.report.filter_context.filter_fingerprint == "fingerprint"
     assert len(result.report.season.months) == 12
     assert result.record_catalog == []
+
+
+def test_orchestrator_passes_only_aligned_ytd_baseline_to_comparison_consumers(
+    monkeypatch,
+) -> None:
+    frame = pd.DataFrame(
+        [
+            {"ts_year": 2026, "ts_date": "2026-01-01", "ts_month": 1, "ms_played": 1},
+            {"ts_year": 2026, "ts_date": "2026-07-24", "ts_month": 7, "ms_played": 2},
+            {"ts_year": 2025, "ts_date": "2025-01-01", "ts_month": 1, "ms_played": 3},
+            {"ts_year": 2025, "ts_date": "2025-07-24", "ts_month": 7, "ms_played": 4},
+            {"ts_year": 2025, "ts_date": "2025-12-31", "ts_month": 12, "ms_played": 100},
+        ]
+    )
+    captured: dict[str, int] = {}
+
+    def fake_stats(_conn, year, _context, *, event_frame):
+        captured[f"stats_{year}"] = int(event_frame["ms_played"].sum())
+        stats = _stats(year)
+        stats["summary"]["total_plays"] = len(event_frame)
+        stats["summary"]["total_hours"] = float(event_frame["ms_played"].sum())
+        return stats
+
+    monkeypatch.setattr(
+        orchestrator,
+        "_build_entity_frames",
+        lambda *_args, **_kwargs: (frame.copy(), frame.copy(), frame.copy()),
+    )
+    monkeypatch.setattr(orchestrator, "build_yearly_stats", fake_stats)
+    monkeypatch.setattr(
+        orchestrator,
+        "build_play_rankings",
+        lambda *_args, **_kwargs: orchestrator._empty_play_rankings(2026),
+    )
+    monkeypatch.setattr(orchestrator, "build_play_ranking_counts", lambda *_args, **_kwargs: {})
+    monkeypatch.setattr(orchestrator, "build_billboard_source", lambda *_args: _billboard(2026))
+    monkeypatch.setattr(
+        orchestrator,
+        "build_playback_record_candidates",
+        lambda *_args, **_kwargs: {"catalog_counts": {}, "candidates": []},
+    )
+    monkeypatch.setattr(orchestrator, "build_taste_drivers", lambda *_args: {})
+
+    result = orchestrator.build_yearly_review_artifact(
+        sqlite3.connect(":memory:"), 2026, _context(), event_frame=frame
+    )
+
+    assert result.report.coverage.comparison.comparable is True
+    assert result.report.coverage.comparison.aligned_end == "2025-07-24"
+    assert captured["stats_2025"] == 7
+    hours = next(metric for metric in result.report.passport.metrics if metric.key == "total_hours")
+    assert hours.comparison_value == 7.0
 
 
 def test_noncritical_section_failure_degrades_without_losing_report(monkeypatch) -> None:
@@ -188,9 +240,7 @@ def test_noncritical_section_failure_degrades_without_losing_report(monkeypatch)
     assert result.report.listening_life.observations == []
     assert any(
         item.startswith("section_unavailable:honors")
-        for item in result.report.methodology.limitations
+        for item in result.report.methodology.internal_diagnostics
     )
-    assert any(
-        item.startswith("section_unavailable:listening_life")
-        for item in result.report.methodology.limitations
-    )
+    assert any("年度荣誉" in item for item in result.report.methodology.limitations)
+    assert any("收听生活" in item for item in result.report.methodology.limitations)
