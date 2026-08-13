@@ -111,6 +111,8 @@ describe('正式首页 V1', () => {
     expect(screen.queryByRole('link', { name: /搜索/ })).not.toBeInTheDocument()
     expect(screen.queryByRole('navigation', { name: '更多功能' })).not.toBeInTheDocument()
     expect(screen.getByText('最近 4 周')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /查看最近播放/ })).toHaveAttribute('href', pinnedRecentRoute)
+    expect(screen.getByRole('link', { name: '音乐详情' })).toHaveAttribute('href', track.deep_link)
     expect(screen.getByRole('link', { name: /完整播放分析/ })).toHaveAttribute('href', pinnedRecentRoute)
     expect(document.querySelector('[data-home-presentation="phone"]')).toBeInTheDocument()
     expect(document.querySelector('[data-home-presentation="desktop"]')).not.toBeInTheDocument()

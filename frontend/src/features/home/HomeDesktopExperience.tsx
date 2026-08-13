@@ -17,7 +17,7 @@ function ArchivePassport({ data }: { data: HomeOverviewResponse }) {
     { label: '记录跨度', value: (data.coverage.first_source_date ?? data.coverage.first_play_date) ? `${(data.coverage.first_source_date ?? data.coverage.first_play_date)?.slice(0, 4)}—${(data.coverage.source_latest_date ?? data.coverage.latest_play_date)?.slice(0, 4)}` : '—' },
     { label: '有效播放', value: formatHomeNumber(data.archive.total_plays) },
     { label: '播放时长', value: `${formatHomeHours(data.archive.total_hours)}h` },
-    { label: '独特歌曲', value: formatHomeNumber(data.archive.unique_tracks) },
+    { label: '不同歌曲', value: formatHomeNumber(data.archive.unique_tracks) },
   ]
   return (
     <dl className="home-archive-passport" aria-label="个人音乐档案">
@@ -193,7 +193,7 @@ export function HomeDesktopExperience({ data }: { data: HomeOverviewResponse }) 
     <div className="home-experience home-desktop-experience" data-home-presentation="desktop">
       <section className="home-hero">
         <div className="home-hero-copy">
-          <span className="home-hero-kicker">Today&apos;s listening headline</span>
+          <span className="home-hero-kicker">Your listening headline</span>
           <h1>{displayName(data.headline.title)}</h1>
           <p>{displayName(data.headline.statement)}</p>
           <div className="home-hero-actions">

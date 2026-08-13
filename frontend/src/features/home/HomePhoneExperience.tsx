@@ -59,20 +59,21 @@ export function HomePhoneExperience({ data }: { data: HomeOverviewResponse }) {
           <div className="home-phone-record" aria-hidden="true" />
           <HomeEntityArtwork entity={data.headline.entity} eager />
         </div>
-        <span>Today&apos;s listening headline</span>
+        <span>Your listening headline</span>
         <h1>{displayName(data.headline.title)}</h1>
         <p>{displayName(data.headline.statement)}</p>
-        {data.headline.entity?.deep_link ? (
-          <Link to={data.headline.entity.deep_link}>查看详情 <ArrowRight aria-hidden="true" /></Link>
-        ) : (
-          <Link to={recentAnalysisRoute}>查看播放分析 <ArrowRight aria-hidden="true" /></Link>
-        )}
+        <div className="home-phone-hero-actions">
+          <Link to={recentAnalysisRoute}>查看最近播放 <ArrowRight aria-hidden="true" /></Link>
+          {data.headline.entity?.deep_link && (
+            <Link to={data.headline.entity.deep_link} className="is-secondary">音乐详情</Link>
+          )}
+        </div>
       </section>
 
       <dl className="home-phone-passport">
         <div><dt>有效播放</dt><dd>{formatHomeNumber(data.archive.total_plays)}</dd></div>
         <div><dt>播放时长</dt><dd>{formatHomeHours(data.archive.total_hours)}h</dd></div>
-        <div><dt>独特歌曲</dt><dd>{formatHomeNumber(data.archive.unique_tracks)}</dd></div>
+        <div><dt>不同歌曲</dt><dd>{formatHomeNumber(data.archive.unique_tracks)}</dd></div>
         <div><dt>记录跨度</dt><dd>{(data.coverage.first_source_date ?? data.coverage.first_play_date)?.slice(0, 4) ?? '—'}—{(data.coverage.source_latest_date ?? data.coverage.latest_play_date)?.slice(0, 4) ?? '—'}</dd></div>
       </dl>
 

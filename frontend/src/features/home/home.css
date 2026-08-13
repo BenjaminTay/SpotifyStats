@@ -202,7 +202,7 @@
 }
 
 .home-section {
-  padding-block: clamp(62px, 7vw, 92px);
+  padding-block: clamp(56px, 6.2vw, 80px);
   border-bottom: 1px solid var(--home-rule);
 }
 
@@ -211,7 +211,7 @@
   align-items: flex-end;
   justify-content: space-between;
   gap: 32px;
-  margin-bottom: 36px;
+  margin-bottom: 32px;
 }
 
 .home-section-heading-copy { display: flex; align-items: flex-start; gap: 18px; }
@@ -317,13 +317,16 @@
 .home-phone-hero { padding: 36px 0 38px; border-bottom: 1px solid var(--home-rule); }
 .home-phone-hero-art { position: relative; width: min(92%, 350px); aspect-ratio: 1 / .78; margin: 0 auto 30px; }
 .home-phone-record { position: absolute; top: 7%; right: 0; width: 70%; aspect-ratio: 1; border-radius: 50%; background: repeating-radial-gradient(circle, color-mix(in oklch, var(--foreground) 91%, var(--background)) 0 2px, color-mix(in oklch, var(--foreground) 74%, var(--background)) 3px 5px); box-shadow: 0 22px 50px color-mix(in oklch, var(--foreground) 20%, transparent); }
+.dark .home-phone-record { background: repeating-radial-gradient(circle, oklch(.32 .006 270) 0 2px, oklch(.21 .005 270) 3px 5px); box-shadow: 0 22px 50px color-mix(in oklch, black 58%, transparent), inset 0 0 0 1px color-mix(in oklch, white 8%, transparent); }
 .home-phone-record::before { position: absolute; inset: 40%; border-radius: 50%; background: var(--accent-foreground); box-shadow: inset 0 0 0 8px color-mix(in oklch, var(--background) 40%, transparent); content: ''; }
 .home-phone-hero-art .home-entity-artwork { position: absolute; z-index: 2; bottom: 0; left: 0; width: 62%; aspect-ratio: 1; border: 5px solid color-mix(in oklch, var(--background) 86%, transparent); border-radius: 2px; box-shadow: 0 22px 58px color-mix(in oklch, var(--foreground) 26%, transparent); transform: rotate(-4deg); }
 .home-phone-hero > span { color: var(--accent-foreground); font-size: 9px; font-weight: 800; letter-spacing: 1.8px; text-transform: uppercase; }
 .home-phone-hero h1 { margin-top: 10px; font-family: var(--font-serif); font-size: clamp(38px, 11.3vw, 51px); font-weight: 700; letter-spacing: -1.8px; line-height: 1.01; text-wrap: balance; }
 .home-phone-hero p { margin-top: 16px; color: var(--muted-foreground); font-family: var(--font-serif); font-size: 15px; font-style: italic; line-height: 1.65; }
-.home-phone-hero > a { display: inline-flex; min-height: 44px; align-items: center; gap: 10px; margin-top: 18px; color: var(--accent-foreground); font-size: 11px; font-weight: 750; }
-.home-phone-hero > a svg { width: 14px; height: 14px; }
+.home-phone-hero-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0 22px; margin-top: 18px; }
+.home-phone-hero-actions a { display: inline-flex; min-height: 44px; align-items: center; gap: 10px; color: var(--accent-foreground); font-size: 11px; font-weight: 750; }
+.home-phone-hero-actions a.is-secondary { border-bottom: 1px solid currentColor; color: var(--foreground); }
+.home-phone-hero-actions svg { width: 14px; height: 14px; }
 
 .home-phone-passport { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); border-bottom: 1px solid var(--home-rule); }
 .home-phone-passport > div { padding: 20px 14px 20px 0; }
@@ -332,10 +335,10 @@
 .home-phone-passport dt { color: var(--muted-foreground); font-size: 9px; font-weight: 700; letter-spacing: .8px; }
 .home-phone-passport dd { margin-top: 7px; font-family: var(--font-serif); font-size: clamp(25px, 8vw, 34px); font-weight: 650; letter-spacing: -1px; }
 
-.home-phone-section { padding-block: 44px; border-bottom: 1px solid var(--home-rule); }
-.home-phone-section > header { display: flex; align-items: flex-start; gap: 13px; margin-bottom: 24px; }
+.home-phone-section { padding-block: 40px; border-bottom: 1px solid var(--home-rule); }
+.home-phone-section > header { display: flex; align-items: flex-start; gap: 13px; margin-bottom: 22px; }
 .home-phone-section > header > span { padding-top: 3px; color: var(--accent-foreground); font-family: var(--font-serif); font-size: 12px; font-style: italic; }
-.home-phone-section > header p { color: var(--accent-foreground); font-size: 8px; font-weight: 800; letter-spacing: 1.5px; text-transform: uppercase; }
+.home-phone-section > header p { color: var(--accent-foreground); font-size: 9px; font-weight: 800; letter-spacing: 1.35px; text-transform: uppercase; }
 .home-phone-section > header h2 { margin-top: 2px; font-family: var(--font-serif); font-size: 30px; font-weight: 650; letter-spacing: -1px; }
 .home-phone-recent-summary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); border-block: 1px solid var(--home-soft-rule); }
 .home-phone-recent-summary > div { display: flex; min-width: 0; flex-direction: column; padding: 15px 12px 15px 0; }
@@ -350,7 +353,7 @@
 .home-phone-entity-row { display: grid; min-width: 0; min-height: 76px; grid-template-columns: 46px minmax(0, 1fr) auto; align-items: center; gap: 12px; border-bottom: 1px solid var(--home-soft-rule); }
 .home-phone-entity-row .home-entity-artwork { width: 46px; height: 46px; border-radius: 2px; font-size: 15px; }
 .home-phone-entity-row > span { display: flex; min-width: 0; flex-direction: column; }
-.home-phone-entity-row small { color: var(--accent-foreground); font-size: 7px; font-style: normal; font-weight: 800; letter-spacing: .8px; }
+.home-phone-entity-row small { color: var(--accent-foreground); font-size: 9px; font-style: normal; font-weight: 800; letter-spacing: .5px; }
 .home-phone-entity-row strong, .home-phone-entity-row em { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .home-phone-entity-row strong { margin-top: 2px; font-family: var(--font-serif); font-size: 14px; }
 .home-phone-entity-row em { margin-top: 2px; color: var(--muted-foreground); font-size: 9px; font-style: normal; }
@@ -365,30 +368,30 @@
 .home-phone-chart-no { font-family: var(--font-serif); font-size: 18px; font-style: italic; }
 .home-phone-chart-row .home-entity-artwork { width: 50px; height: 50px; border-radius: 2px; font-size: 16px; }
 .home-phone-chart-row > span:nth-child(3) { display: flex; min-width: 0; flex-direction: column; }
-.home-phone-chart-row small { color: var(--accent-foreground); font-size: 7px; font-style: normal; font-weight: 800; letter-spacing: .7px; }
+.home-phone-chart-row small { color: var(--accent-foreground); font-size: 9px; font-style: normal; font-weight: 800; letter-spacing: .5px; }
 .home-phone-chart-row strong, .home-phone-chart-row em { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .home-phone-chart-row strong { margin-top: 2px; font-family: var(--font-serif); font-size: 14px; }
 .home-phone-chart-row em { margin-top: 2px; color: var(--muted-foreground); font-size: 9px; font-style: normal; }
-.home-phone-chart-row b { color: var(--accent-foreground); font-size: 9px; }
+.home-phone-chart-row b { color: var(--accent-foreground); font-size: 10px; }
 
 .home-phone-yearly { position: relative; display: grid; min-height: 265px; grid-template-columns: minmax(0, 1fr) 40%; overflow: hidden; padding: 24px; background: var(--foreground); color: var(--background); }
 .home-phone-yearly::before { position: absolute; inset: 0; background: radial-gradient(circle at 90% 0, color-mix(in oklch, var(--accent-foreground) 52%, transparent), transparent 50%); content: ''; }
 .home-phone-yearly > span { position: absolute; z-index: 1; top: 14px; left: 20px; font-family: var(--font-serif); font-size: 53px; font-style: italic; font-weight: 700; opacity: .17; }
 .home-phone-yearly > div { position: relative; z-index: 2; align-self: end; }
-.home-phone-yearly small { font-size: 8px; font-weight: 800; letter-spacing: 1.3px; text-transform: uppercase; }
-.home-phone-yearly h3 { margin-top: 10px; font-family: var(--font-serif); font-size: 23px; line-height: 1.1; }
+.home-phone-yearly small { font-size: 9px; font-weight: 800; letter-spacing: 1.1px; text-transform: uppercase; }
+.home-phone-yearly h3 { margin-top: 10px; font-family: var(--font-serif); font-size: 23px; line-height: 1.1; text-wrap: balance; }
 .home-phone-yearly p { margin-top: 8px; color: color-mix(in oklch, var(--background) 65%, transparent); font-size: 9px; line-height: 1.55; }
 .home-phone-yearly .home-entity-artwork { position: relative; z-index: 1; width: 125%; aspect-ratio: 1; align-self: center; border-radius: 2px; box-shadow: -20px 22px 50px color-mix(in oklch, black 45%, transparent); transform: rotate(5deg) translateX(9%); }
 .home-phone-yearly > svg { position: absolute; z-index: 3; right: 18px; bottom: 18px; width: 15px; height: 15px; }
 
 .home-phone-rediscovery { display: grid; min-width: 0; min-height: 90px; grid-template-columns: 54px minmax(0, 1fr) auto; align-items: center; gap: 12px; margin-top: 16px; border-block: 1px solid var(--home-rule); padding-block: 16px; }
-.home-phone-rediscovery > div:first-child { display: flex; grid-column: 1 / -1; align-items: center; gap: 6px; color: var(--accent-foreground); font-size: 8px; font-weight: 800; letter-spacing: 1px; text-transform: uppercase; }
+.home-phone-rediscovery > div:first-child { display: flex; grid-column: 1 / -1; align-items: center; gap: 6px; color: var(--accent-foreground); font-size: 9px; font-weight: 800; letter-spacing: .8px; text-transform: uppercase; }
 .home-phone-rediscovery > div:first-child svg { width: 13px; height: 13px; }
 .home-phone-rediscovery .home-entity-artwork { width: 54px; height: 54px; border-radius: 2px; font-size: 17px; }
 .home-phone-rediscovery > span { display: flex; min-width: 0; flex-direction: column; }
 .home-phone-rediscovery strong, .home-phone-rediscovery small, .home-phone-rediscovery em { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .home-phone-rediscovery strong { font-family: var(--font-serif); font-size: 15px; }
-.home-phone-rediscovery small, .home-phone-rediscovery em { margin-top: 2px; color: var(--muted-foreground); font-size: 8px; font-style: normal; }
+.home-phone-rediscovery small, .home-phone-rediscovery em { margin-top: 2px; color: var(--muted-foreground); font-size: 9px; font-style: normal; }
 .home-phone-rediscovery > svg { width: 14px; height: 14px; }
 /* Loading, error and empty states */
 .home-desktop-loading, .home-phone-loading { width: 100%; }
