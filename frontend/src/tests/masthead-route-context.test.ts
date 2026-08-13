@@ -31,7 +31,7 @@ describe('masthead route context', () => {
 
     expect(getMastheadRouteContext('/account', '')).toMatchObject({
       activeNavTo: '/analysis',
-      contextSegments: ['播放分析', '账号中心'],
+      contextSegments: ['播放分析', '音乐档案'],
       title: null,
       showMobileContext: true,
     })

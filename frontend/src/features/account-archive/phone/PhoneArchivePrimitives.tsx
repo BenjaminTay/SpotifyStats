@@ -3,22 +3,16 @@ import { Link } from 'react-router-dom'
 
 export function PhoneChapterHeading({
   number,
-  eyebrow,
   title,
-  description,
 }: {
   number: string
-  eyebrow: string
   title: string
-  description: string
 }) {
   return (
     <header className="phone-archive-heading">
       <span>{number}</span>
       <div>
-        <p>{eyebrow}</p>
         <h2>{title}</h2>
-        <small>{description}</small>
       </div>
     </header>
   )
@@ -62,11 +56,13 @@ export function PhoneEntityCard({
         {coverUrl ? <img src={coverUrl} alt="" loading="lazy" /> : <Disc3 aria-hidden="true" />}
       </span>
       <span className="phone-archive-entity-copy">
-        {ordinal ? <small>No. {String(ordinal).padStart(2, '0')}</small> : null}
+        {ordinal ? <small>{String(ordinal).padStart(2, '0')}</small> : null}
         <strong>{name}</strong>
-        <span>{artist}</span>
+        <span className="phone-archive-entity-details">
+          <span>{artist}</span>
+          {meta ? <em>{meta}</em> : null}
+        </span>
       </span>
-      {meta ? <em>{meta}</em> : null}
     </>
   )
   return href ? <Link to={href} className="phone-archive-entity">{content}</Link> : <div className="phone-archive-entity">{content}</div>

@@ -6,22 +6,16 @@ import { cn } from '@/lib/utils'
 
 export function ArchiveSectionHeading({
   number,
-  eyebrow,
   title,
-  description,
 }: {
   number: string
-  eyebrow: string
   title: string
-  description: string
 }) {
   return (
     <header className="archive-section-heading">
       <div className="archive-section-number" aria-hidden="true">{number}</div>
       <div>
-        <p className="archive-kicker">{eyebrow}</p>
         <h2>{title}</h2>
-        <p className="archive-section-deck">{description}</p>
       </div>
     </header>
   )
@@ -76,10 +70,14 @@ export function ArchiveEntityRow({
       {href && <ArrowUpRight className="archive-entity-arrow" aria-hidden="true" />}
     </>
   )
+  const rowClassName = cn(
+    'archive-entity-row',
+    index === undefined && 'archive-entity-row-no-index',
+  )
   return href ? (
-    <Link className="archive-entity-row" to={href}>{content}</Link>
+    <Link className={rowClassName} to={href}>{content}</Link>
   ) : (
-    <div className="archive-entity-row">{content}</div>
+    <div className={rowClassName}>{content}</div>
   )
 }
 

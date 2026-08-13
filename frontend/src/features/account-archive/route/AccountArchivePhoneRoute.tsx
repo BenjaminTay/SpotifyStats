@@ -16,8 +16,8 @@ import '../phone/phoneArchive.css'
 
 function PhoneArchiveState({ kind, onRetry }: { kind: 'loading' | 'error' | 'empty'; onRetry?: () => void }) {
   if (kind === 'loading') return <div className="phone-archive-page-state"><LoaderCircle className="animate-spin" /><p>正在打开口袋音乐档案</p></div>
-  if (kind === 'error') return <div className="phone-archive-page-state"><AlertCircle /><h1>档案暂时无法打开</h1><p>本地数据接口没有正常响应，你的导出文件不会因此改变。</p><button type="button" onClick={onRetry}>重新读取</button></div>
-  return <div className="phone-archive-page-state"><Archive /><h1>档案柜还是空的</h1><p>导入 Spotify 账号数据后即可形成音乐档案，打开页面不需要 Spotify 在线授权。</p><Link to="/settings">前往设置导入</Link></div>
+  if (kind === 'error') return <div className="phone-archive-page-state"><AlertCircle /><h1>档案暂时无法打开</h1><p>请确认本地服务正在运行后重试。</p><button type="button" onClick={onRetry}>重新读取</button></div>
+  return <div className="phone-archive-page-state"><Archive /><h1>档案柜还是空的</h1><p>导入 Spotify 账号数据后，可以浏览收藏、歌单与搜索档案。</p><Link to="/settings">前往设置导入</Link></div>
 }
 
 export function AccountArchivePhoneRoute() {
@@ -38,7 +38,6 @@ export function AccountArchivePhoneRoute() {
         <PhoneLibraryChapter />
         <PhoneOtherMediaChapter />
       </main>
-      <footer className="phone-archive-colophon"><span>Spotify Stats</span><strong>End of file</strong><span>Private · Local</span></footer>
     </div>
   )
 }

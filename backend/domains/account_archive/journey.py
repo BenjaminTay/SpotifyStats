@@ -14,7 +14,6 @@ from backend.core.cache import ttl_cached
 from backend.core.cache_manager import register_ttl
 from backend.domains.account_archive.overview import (
     _database_path,
-    _featured_items,
     _pct,
     load_saved_track_rows,
 )
@@ -105,6 +104,44 @@ def _release_years(rows: list[dict[str, Any]]) -> list[int]:
     return years
 
 
+def _collection_milestones(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    dated = sorted(
+        (row for row in rows if _parse_timestamp(row.get("added_date")) is not None),
+        key=lambda row: (
+            _parse_timestamp(row.get("added_date")),
+            str(row.get("track_uri") or ""),
+        ),
+    )
+    targets: list[int] = []
+    target = 100
+    while target <= len(dated) and len(targets) < 8:
+        targets.append(target)
+        target *= 2
+
+    milestones: list[dict[str, Any]] = []
+    for ordinal in targets:
+        row = dated[ordinal - 1]
+        local_album_id = row.get("local_album_id")
+        local_track_id = row.get("local_track_id")
+        cover_url = None
+        if local_album_id is not None and (row.get("image_path") or row.get("image_url")):
+            cover_url = f"/covers/albums/{int(local_album_id)}.jpg"
+        milestones.append(
+            {
+                "ordinal": ordinal,
+                "track_name": row.get("track_name") or "",
+                "artist_name": row.get("artist_name") or "",
+                "album_name": row.get("album_name"),
+                "added_date": row.get("added_date"),
+                "cover_url": cover_url,
+                "deep_link": (
+                    f"/music/tracks/{int(local_track_id)}" if local_track_id is not None else None
+                ),
+            }
+        )
+    return milestones
+
+
 def build_collection_journey(
     conn: sqlite3.Connection, context: ArchiveFilterContext
 ) -> dict[str, Any]:
@@ -120,12 +157,9 @@ def build_collection_journey(
     else:
         status = "partial"
 
-    milestones = [
-        item for item in _featured_items(rows) if item["role"] in {"first_saved", "latest_saved"}
-    ]
     return {
-        "schema_version": "account_archive_journey_v1",
-        "content_version": "account_archive_journey_v1_0",
+        "schema_version": "account_archive_journey_v2",
+        "content_version": "account_archive_journey_v2_0",
         "data_revision": context.source_revision,
         "status": status,
         "filter_context": context.model_dump(mode="json"),
@@ -143,7 +177,7 @@ def build_collection_journey(
         },
         "annual_growth": annual,
         "quarterly_growth": quarterly,
-        "milestones": milestones,
+        "milestones": _collection_milestones(rows),
     }
 
 

@@ -11,7 +11,7 @@ export function ArchiveIndex({
 }) {
   return (
     <nav className="archive-index" aria-label="音乐档案章节">
-      <p>Archive Index</p>
+      <p>章节目录</p>
       <ol>
         {ARCHIVE_SECTIONS.map((section) => (
           <li key={section.key}>
@@ -28,11 +28,6 @@ export function ArchiveIndex({
           </li>
         ))}
       </ol>
-      <div className="archive-index-note">
-        <span aria-hidden="true" />
-        本地档案
-        <small>无需 Spotify 在线授权</small>
-      </div>
     </nav>
   )
 }

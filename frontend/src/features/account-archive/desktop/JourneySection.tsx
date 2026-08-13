@@ -20,9 +20,7 @@ export function JourneySection() {
     <section id="archive-journey" className="archive-chapter" data-archive-section="journey">
       <ArchiveSectionHeading
         number="01"
-        eyebrow="The collection grows"
         title="收藏旅程"
-        description="这不是已经离开收藏库的完整历史，而是今天仍留在库中的音乐，沿着收藏日期留下的年轮。"
       />
       {query.isLoading && <ArchiveLoading />}
       {query.isError && <ArchiveError onRetry={() => void query.refetch()} />}
@@ -33,8 +31,7 @@ export function JourneySection() {
         <div className="archive-journey-layout">
           <div className="archive-growth-panel">
             <div className="archive-growth-caption">
-              <span>每年新增</span>
-              <span>当前仍在收藏</span>
+              <span>每年收藏的歌曲</span>
             </div>
             <ol className="archive-growth-chart" aria-label="年度收藏增长">
               {query.data.annual_growth.map((point) => {
@@ -43,7 +40,6 @@ export function JourneySection() {
                   <li key={point.period}>
                     <div className="archive-growth-value">
                       <strong>{formatArchiveNumber(point.saved_tracks)}</strong>
-                      <small>累计 {formatArchiveNumber(point.cumulative_saved_tracks)}</small>
                     </div>
                     <div className="archive-growth-track">
                       <span style={{ width: `${Math.max((point.saved_tracks / max) * 100, 2)}%` }} />
@@ -53,17 +49,13 @@ export function JourneySection() {
                 )
               })}
             </ol>
-            <p className="archive-method-note">
-              年度新增只统计具有有效收藏日期、且目前仍在收藏快照中的歌曲。
-            </p>
           </div>
 
           <aside className="archive-journey-aside">
             <div className="archive-metric-grid archive-metric-grid-two">
               <ArchiveMetric
                 value={formatArchiveHours(query.data.duration.known_duration_ms)}
-                label="准确收藏总时长"
-                note={`${query.data.coverage.duration_coverage_pct.toFixed(1)}% 曲长覆盖`}
+                label="收藏歌曲总时长"
                 tone="red"
               />
               <ArchiveMetric
@@ -76,10 +68,11 @@ export function JourneySection() {
               />
             </div>
             <div className="archive-story-stack">
-              {query.data.milestones.map((item, index) => (
+              <p className="archive-milestone-title">收藏里程碑</p>
+              {query.data.milestones.map((item) => (
                 <ArchiveEntityRow
-                  key={`${item.role}-${item.track_name}`}
-                  index={index + 1}
+                  key={`${item.ordinal}-${item.track_name}`}
+                  index={item.ordinal}
                   name={item.track_name}
                   artist={item.artist_name}
                   coverUrl={item.cover_url}

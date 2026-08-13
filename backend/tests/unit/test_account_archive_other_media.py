@@ -26,11 +26,21 @@ def _media_conn() -> sqlite3.Connection:
         CREATE TABLE saved_tracks (track_uri TEXT PRIMARY KEY, added_date TEXT);
         CREATE TABLE saved_albums (album_uri TEXT PRIMARY KEY);
         CREATE TABLE saved_artists (artist_uri TEXT PRIMARY KEY);
-        CREATE TABLE saved_shows (show_uri TEXT PRIMARY KEY);
+        CREATE TABLE saved_shows (
+            show_uri TEXT PRIMARY KEY,
+            show_name TEXT,
+            publisher TEXT,
+            image_url TEXT
+        );
         CREATE TABLE playlists (playlist_id INTEGER PRIMARY KEY);
         CREATE TABLE playlist_tracks (playlist_id INTEGER, track_uri TEXT);
         CREATE TABLE artists (artist_id INTEGER PRIMARY KEY, artist_name TEXT);
-        CREATE TABLE albums (album_id INTEGER PRIMARY KEY, album_name TEXT);
+        CREATE TABLE albums (
+            album_id INTEGER PRIMARY KEY,
+            album_name TEXT,
+            image_path TEXT,
+            image_url TEXT
+        );
         CREATE TABLE tracks (
             track_id INTEGER PRIMARY KEY,
             track_name TEXT,
@@ -62,8 +72,12 @@ def _media_conn() -> sqlite3.Connection:
             play_hour INTEGER
         );
 
+        INSERT INTO artists VALUES (1, 'Media Artist');
+        INSERT INTO albums VALUES (1, 'Media Album', '/tmp/media.jpg', NULL);
         INSERT INTO tracks VALUES (1, 'Media Track', 1, 1, 'media', 180000);
         INSERT INTO spotify_track_meta VALUES ('media', 180000);
+        INSERT INTO saved_shows VALUES
+            ('spotify:show:a', 'Show A', 'Publisher A', 'https://images.test/show-a.jpg');
         INSERT INTO plays VALUES
             (1, '2024-01-01T00:00:20Z', 20000, 1, 1, 'audio', '2024-01-01'),
             (2, '2024-01-01T00:00:40Z', 20000, 1, 1, 'audio', '2024-01-01'),
@@ -110,10 +124,17 @@ def test_other_media_uses_shared_audio_video_filters_and_minimal_podcast_facts()
     assert response.podcast.active_months == 2
     assert response.podcast.returning_shows == 1
     assert response.podcast.top_shows[0].show_name == "Show A"
+    assert response.podcast.top_shows[0].publisher == "Publisher A"
+    assert response.podcast.top_shows[0].cover_url == "https://images.test/show-a.jpg"
     assert response.video.source_rows == 2
     assert response.video.effective_events == 1
     assert response.video.effective_ms == 50000
     assert response.video.first_effective_at == "2024-01-01T23:59:50Z"
+    assert len(response.video.top_tracks) == 1
+    assert response.video.top_tracks[0].track_name == "Media Track"
+    assert response.video.top_tracks[0].artist_name == "Media Artist"
+    assert response.video.top_tracks[0].cover_url == "/covers/albums/1.jpg"
+    assert response.video.top_tracks[0].effective_events == 1
     assert response.audio_video_comparison.audio_effective_events == 1
     assert response.audio_video_comparison.audio_effective_ms == 40000
     assert response.audio_video_comparison.video_effective_events == 1
@@ -136,6 +157,24 @@ def test_other_media_revision_changes_with_podcast_content() -> None:
     conn.close()
 
     assert first.data_revision != second.data_revision
+
+
+def test_other_media_revision_changes_with_saved_show_metadata() -> None:
+    conn = _media_conn()
+    first = ArchiveOtherMediaResponse.model_validate(
+        build_archive_other_media(conn, _context(conn))
+    )
+    conn.execute(
+        "UPDATE saved_shows SET publisher = 'Publisher B' WHERE show_uri = ?", ("spotify:show:a",)
+    )
+    conn.commit()
+    second = ArchiveOtherMediaResponse.model_validate(
+        build_archive_other_media(conn, _context(conn))
+    )
+    conn.close()
+
+    assert first.data_revision != second.data_revision
+    assert second.podcast.top_shows[0].publisher == "Publisher B"
 
 
 def test_other_media_keeps_unmapped_video_but_does_not_count_it_as_mapped_track() -> None:
@@ -169,6 +208,7 @@ def test_other_media_keeps_video_when_local_track_catalog_is_absent() -> None:
     assert response.video.effective_events == 1
     assert response.video.effective_ms == 40000
     assert response.video.unique_tracks == 0
+    assert response.video.top_tracks == []
     assert response.audio_video_comparison.audio_effective_events == 0
 
 
@@ -182,6 +222,6 @@ def test_other_media_route_returns_strict_filter_context() -> None:
     conn.close()
 
     assert response.status_code == 200
-    assert response.json()["schema_version"] == "account_archive_other_media_v1"
+    assert response.json()["schema_version"] == "account_archive_other_media_v2"
     assert response.json()["filter_context"]["merge_enabled"] is False
     assert response.json()["audio_video_comparison"]["audio_effective_events"] == 0

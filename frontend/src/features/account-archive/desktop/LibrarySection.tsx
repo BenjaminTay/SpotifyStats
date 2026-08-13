@@ -81,9 +81,7 @@ export function LibrarySection() {
     <section ref={ref} id="archive-library" className="archive-chapter" data-archive-section="library">
       <ArchiveSectionHeading
         number="06"
-        eyebrow="The working catalogue"
         title="收藏库"
-        description="这是当前收藏快照的工具型索引。搜索、排序和翻页都在服务端完成，不一次性把整个收藏库送进浏览器。"
       />
       <div className="archive-library-shell">
         <div className="archive-library-toolbar">

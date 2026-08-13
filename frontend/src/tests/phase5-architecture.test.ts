@@ -332,7 +332,7 @@ describe('Phase 5 architecture guardrails', () => {
     expect(analysisSubNavSource).toContain("label: '播放统计'")
     expect(analysisSubNavSource).toContain("label: '播放排行'")
     expect(analysisSubNavSource).toContain("label: '年度总结'")
-    expect(analysisSubNavSource).toContain("label: '账号中心'")
+    expect(analysisSubNavSource).toContain("label: '音乐档案'")
     expect(analysisSubNavSource.indexOf("to: '/analysis/charts'")).toBeLessThan(
       analysisSubNavSource.indexOf("to: '/yearly-review'"),
     )

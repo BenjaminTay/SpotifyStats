@@ -15,7 +15,7 @@ describe('mobile shell route context', () => {
     ['/analysis/charts', 'section', 'analysis', true, 'analysis', '播放排行'],
     ['/yearly-review', 'section', 'analysis', true, 'analysis', '年度总结'],
     ['/analysis/records', 'section', 'analysis', true, 'analysis', '播放记录'],
-    ['/account', 'section', 'analysis', true, 'analysis', '账号中心'],
+    ['/account', 'section', 'analysis', true, 'analysis', '音乐档案'],
     ['/billboard', 'section', 'billboard', true, 'billboard', '周榜'],
     ['/billboard/number-ones', 'section', 'billboard', true, 'billboard', '每周榜首'],
     ['/billboard/year-end', 'section', 'billboard', true, 'billboard', '年榜'],

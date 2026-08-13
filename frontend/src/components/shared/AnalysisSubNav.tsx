@@ -7,7 +7,7 @@ const NAV_ITEMS = [
   { to: '/analysis/charts', label: '播放排行', preserveTimeRange: true },
   { to: '/yearly-review', label: '年度总结', preserveTimeRange: false },
   { to: '/analysis/records', label: '播放记录', preserveTimeRange: true },
-  { to: '/account', label: '账号中心', preserveTimeRange: false },
+  { to: '/account', label: '音乐档案', preserveTimeRange: false },
 ]
 
 const TIME_RANGE_PARAMS = ['period', 'period_value', 'start', 'end']

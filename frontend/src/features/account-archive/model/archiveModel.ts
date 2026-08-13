@@ -12,10 +12,10 @@ export const ARCHIVE_SECTIONS: Array<{
 }> = [
   { key: 'cover', number: '00', label: '档案封面', shortLabel: '封面' },
   { key: 'journey', number: '01', label: '收藏旅程', shortLabel: '旅程' },
-  { key: 'cohorts', number: '02', label: '从遇见到收藏', shortLabel: '遇见收藏' },
-  { key: 'relationships', number: '03', label: '收藏之后', shortLabel: '收藏之后' },
+  { key: 'cohorts', number: '02', label: '播放多久后收藏', shortLabel: '播放到收藏' },
+  { key: 'relationships', number: '03', label: '收藏后再次播放', shortLabel: '再次播放' },
   { key: 'returns', number: '04', label: '找回音乐', shortLabel: '找回音乐' },
-  { key: 'discovery', number: '05', label: '发现路径', shortLabel: '发现路径' },
+  { key: 'discovery', number: '05', label: '搜索与发现', shortLabel: '搜索发现' },
   { key: 'library', number: '06', label: '收藏库', shortLabel: '收藏库' },
   { key: 'other-media', number: '07', label: '音乐之外', shortLabel: '音乐之外' },
 ]

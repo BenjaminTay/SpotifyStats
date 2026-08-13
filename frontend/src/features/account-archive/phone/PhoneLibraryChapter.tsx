@@ -52,8 +52,11 @@ function PhoneLibrarySearch({ initialValue, label, onSearch }: { initialValue: s
 export function PhoneLibraryChapter() {
   const { ref, enabled } = useArchiveSection()
   const [searchParams, setSearchParams] = useSearchParams()
+  const [pageJumpOpen, setPageJumpOpen] = useState(false)
+  const [pageJumpValue, setPageJumpValue] = useState('1')
   const openerRef = useRef<HTMLButtonElement>(null)
   const closeRef = useRef<HTMLButtonElement>(null)
+  const pageJumpOpenRef = useRef(false)
   const entityType = isLibraryEntity(searchParams.get('library')) ? searchParams.get('library') as ArchiveLibraryEntityType : 'tracks'
   const page = Math.max(Number(searchParams.get('page')) || 1, 1)
   const search = searchParams.get('search') ?? ''
@@ -73,6 +76,17 @@ export function PhoneLibraryChapter() {
   useEffect(() => {
     patchUrlRef.current = patchUrl
   }, [patchUrl])
+  useEffect(() => {
+    pageJumpOpenRef.current = pageJumpOpen
+  }, [pageJumpOpen])
+  const goToPage = useCallback((nextPage: number) => {
+    patchUrl({ page: nextPage > 1 ? String(nextPage) : null })
+    setPageJumpOpen(false)
+    window.requestAnimationFrame(() => {
+      const list = document.querySelector<HTMLElement>('.phone-library-dialog > main')
+      if (typeof list?.scrollTo === 'function') list.scrollTo({ top: 0 })
+    })
+  }, [patchUrl])
 
   useEffect(() => {
     if (!open) return undefined
@@ -83,7 +97,9 @@ export function PhoneLibraryChapter() {
     appRoot?.setAttribute('inert', '')
     closeRef.current?.focus()
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') patchUrlRef.current({ library_view: null })
+      if (event.key !== 'Escape') return
+      if (pageJumpOpenRef.current) setPageJumpOpen(false)
+      else patchUrlRef.current({ library_view: null })
     }
     window.addEventListener('keydown', onKeyDown)
     return () => {
@@ -96,12 +112,12 @@ export function PhoneLibraryChapter() {
 
   return (
     <section ref={ref} id="archive-library" className="phone-archive-chapter" data-archive-section="library">
-      <PhoneChapterHeading number="06" eyebrow="The working catalogue" title="收藏库" description="正文只预览几条；完整目录在独立全屏工具中搜索、排序和翻页。" />
+      <PhoneChapterHeading number="06" title="收藏库" />
       {!enabled || query.isLoading ? <PhoneArchiveLoading label="正在打开收藏目录" /> : null}
       {query.isError ? <PhoneArchiveError onRetry={() => void query.refetch()} /> : null}
       {query.data ? (
         <div className="phone-library-preview">
-          <div className="phone-library-preview-head"><span>当前收藏快照</span><strong>{formatArchiveNumber(query.data.total)} 条</strong></div>
+          <div className="phone-library-preview-head"><span>收藏内容</span><strong>{formatArchiveNumber(query.data.total)} 条</strong></div>
           {query.data.items.slice(0, 5).map((item, index) => <PhoneLibraryRow key={item.item_key} item={item} index={index + 1} />)}
           <button ref={openerRef} type="button" className="phone-library-open" onClick={() => patchUrl({ library_view: 'full' }, false)}><SlidersHorizontal />打开完整收藏库</button>
         </div>
@@ -110,8 +126,8 @@ export function PhoneLibraryChapter() {
       {open && query.data ? createPortal((
         <div className="phone-library-dialog" role="dialog" aria-modal="true" aria-labelledby="phone-library-title">
           <header>
-            <div><p>Personal archive catalogue</p><h2 id="phone-library-title">收藏库</h2></div>
-            <button ref={closeRef} type="button" aria-label="关闭完整收藏库" onClick={() => patchUrl({ library_view: null })}><X /></button>
+            <div><h2 id="phone-library-title">收藏库</h2></div>
+            <button ref={closeRef} type="button" aria-label="关闭完整收藏库" onClick={() => { setPageJumpOpen(false); patchUrl({ library_view: null }) }}><X /></button>
           </header>
           <div className="phone-library-tabs" role="tablist" aria-label="收藏库类型">
             {(Object.keys(LIBRARY_LABELS) as ArchiveLibraryEntityType[]).map(type => (
@@ -128,9 +144,44 @@ export function PhoneLibraryChapter() {
             {query.data.items.length ? query.data.items.map((item, index) => <PhoneLibraryRow key={item.item_key} item={item} index={(page - 1) * 10 + index + 1} />) : <p className="phone-library-empty">没有找到匹配的收藏</p>}
           </main>
           <footer aria-label="收藏库分页">
-            <button type="button" aria-label="上一页" disabled={page <= 1} onClick={() => patchUrl({ page: String(page - 1) })}><ChevronLeft /></button>
-            <span>第 {page} / {Math.max(query.data.total_pages, 1)} 页</span>
-            <button type="button" aria-label="下一页" disabled={page >= query.data.total_pages} onClick={() => patchUrl({ page: String(page + 1) })}><ChevronRight /></button>
+            {pageJumpOpen ? (
+              <form
+                id="phone-library-page-jump"
+                className="phone-library-page-jump"
+                onSubmit={(event) => {
+                  event.preventDefault()
+                  const totalPages = Math.max(query.data.total_pages, 1)
+                  const requestedPage = Math.min(Math.max(Number(pageJumpValue) || 1, 1), totalPages)
+                  setPageJumpValue(String(requestedPage))
+                  goToPage(requestedPage)
+                }}
+              >
+                <label htmlFor="phone-library-page-input">跳转到</label>
+                <input
+                  id="phone-library-page-input"
+                  type="number"
+                  inputMode="numeric"
+                  min={1}
+                  max={Math.max(query.data.total_pages, 1)}
+                  value={pageJumpValue}
+                  onChange={event => setPageJumpValue(event.target.value)}
+                />
+                <span>/ {Math.max(query.data.total_pages, 1)} 页</span>
+                <button type="submit">跳转</button>
+              </form>
+            ) : null}
+            <button type="button" aria-label="上一页" disabled={page <= 1} onClick={() => goToPage(page - 1)}><ChevronLeft /></button>
+            <button
+              type="button"
+              className="phone-library-page-toggle"
+              aria-expanded={pageJumpOpen}
+              aria-controls={pageJumpOpen ? 'phone-library-page-jump' : undefined}
+              onClick={() => {
+                if (!pageJumpOpen) setPageJumpValue(String(page))
+                setPageJumpOpen(current => !current)
+              }}
+            >第 {page} / {Math.max(query.data.total_pages, 1)} 页</button>
+            <button type="button" aria-label="下一页" disabled={page >= query.data.total_pages} onClick={() => goToPage(page + 1)}><ChevronRight /></button>
           </footer>
         </div>
       ), document.body) : null}

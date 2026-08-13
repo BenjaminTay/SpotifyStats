@@ -4181,16 +4181,16 @@ export interface components {
         ArchiveCohortsResponse: {
             /**
              * Schema Version
-             * @default account_archive_cohorts_v1
+             * @default account_archive_cohorts_v2
              * @constant
              */
-            schema_version: "account_archive_cohorts_v1";
+            schema_version: "account_archive_cohorts_v2";
             /**
              * Content Version
-             * @default account_archive_cohorts_v1_0
+             * @default account_archive_cohorts_v2_0
              * @constant
              */
-            content_version: "account_archive_cohorts_v1_0";
+            content_version: "account_archive_cohorts_v2_0";
             /** Data Revision */
             data_revision: string;
             /**
@@ -4204,9 +4204,28 @@ export interface components {
             symmetric_30_day_window: components["schemas"]["ArchiveSymmetricWindow"];
             /** Return Windows */
             return_windows?: components["schemas"]["ArchiveReturnWindow"][];
+            /** Vitality Metrics */
+            vitality_metrics?: components["schemas"]["ArchiveVitalityMetric"][];
             /** Aligned Weeks */
             aligned_weeks?: components["schemas"]["ArchiveAlignedWeek"][];
             relationship_matrix: components["schemas"]["ArchiveRelationshipMatrix"];
+        };
+        /** ArchiveCollectionMilestone */
+        ArchiveCollectionMilestone: {
+            /** Ordinal */
+            ordinal: number;
+            /** Track Name */
+            track_name: string;
+            /** Artist Name */
+            artist_name: string;
+            /** Album Name */
+            album_name?: string | null;
+            /** Added Date */
+            added_date: string;
+            /** Cover Url */
+            cover_url?: string | null;
+            /** Deep Link */
+            deep_link?: string | null;
         };
         /** ArchiveCounts */
         ArchiveCounts: {
@@ -4438,6 +4457,8 @@ export interface components {
              * @default 0
              */
             effective_plays: number;
+            /** Days To Save */
+            days_to_save?: number | null;
         };
         /** ArchiveFeaturedItem */
         ArchiveFeaturedItem: {
@@ -4551,16 +4572,16 @@ export interface components {
         ArchiveJourneyResponse: {
             /**
              * Schema Version
-             * @default account_archive_journey_v1
+             * @default account_archive_journey_v2
              * @constant
              */
-            schema_version: "account_archive_journey_v1";
+            schema_version: "account_archive_journey_v2";
             /**
              * Content Version
-             * @default account_archive_journey_v1_0
+             * @default account_archive_journey_v2_0
              * @constant
              */
-            content_version: "account_archive_journey_v1_0";
+            content_version: "account_archive_journey_v2_0";
             /** Data Revision */
             data_revision: string;
             /**
@@ -4576,7 +4597,7 @@ export interface components {
             /** Quarterly Growth */
             quarterly_growth?: components["schemas"]["ArchiveGrowthPoint"][];
             /** Milestones */
-            milestones?: components["schemas"]["ArchiveFeaturedItem"][];
+            milestones?: components["schemas"]["ArchiveCollectionMilestone"][];
         };
         /** ArchiveLibraryAlbumItem */
         ArchiveLibraryAlbumItem: {
@@ -4717,16 +4738,16 @@ export interface components {
         ArchiveOtherMediaResponse: {
             /**
              * Schema Version
-             * @default account_archive_other_media_v1
+             * @default account_archive_other_media_v2
              * @constant
              */
-            schema_version: "account_archive_other_media_v1";
+            schema_version: "account_archive_other_media_v2";
             /**
              * Content Version
-             * @default account_archive_other_media_v1_0
+             * @default account_archive_other_media_v2_0
              * @constant
              */
-            content_version: "account_archive_other_media_v1_0";
+            content_version: "account_archive_other_media_v2_0";
             /** Data Revision */
             data_revision: string;
             /**
@@ -4784,6 +4805,10 @@ export interface components {
         ArchivePodcastShowPreview: {
             /** Show Name */
             show_name: string;
+            /** Publisher */
+            publisher?: string | null;
+            /** Cover Url */
+            cover_url?: string | null;
             /** Effective Events */
             effective_events: number;
             /** Effective Ms */
@@ -5020,6 +5045,48 @@ export interface components {
             first_effective_at?: string | null;
             /** Latest Effective At */
             latest_effective_at?: string | null;
+            /** Top Tracks */
+            top_tracks?: components["schemas"]["ArchiveVideoTrackPreview"][];
+        };
+        /** ArchiveVideoTrackPreview */
+        ArchiveVideoTrackPreview: {
+            /** Track Name */
+            track_name: string;
+            /** Artist Name */
+            artist_name: string;
+            /** Album Name */
+            album_name?: string | null;
+            /** Cover Url */
+            cover_url?: string | null;
+            /** Deep Link */
+            deep_link?: string | null;
+            /** Effective Events */
+            effective_events: number;
+            /** Effective Ms */
+            effective_ms: number;
+        };
+        /** ArchiveVitalityMetric */
+        ArchiveVitalityMetric: {
+            /**
+             * Key
+             * @enum {string}
+             */
+            key: "within_7d" | "days_8_30" | "after_180d" | "after_365d";
+            /** Start Day */
+            start_day: number;
+            /** End Day */
+            end_day?: number | null;
+            /** Eligible Entities */
+            eligible_entities: number;
+            /** Returned Entities */
+            returned_entities: number;
+            /** Return Rate Pct */
+            return_rate_pct?: number | null;
+            /**
+             * Display Status
+             * @enum {string}
+             */
+            display_status: "stable_rate" | "count_only" | "unavailable";
         };
         /** ArtistAlbumBreakdown */
         ArtistAlbumBreakdown: {

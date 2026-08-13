@@ -1,12 +1,8 @@
 import { Link } from 'react-router-dom'
-import { ArrowDown, Database, Disc3 } from 'lucide-react'
+import { ArrowDown, Disc3 } from 'lucide-react'
 
 import type { ArchiveFeaturedItem, ArchiveOverview } from '@/types/accountArchive'
-import {
-  formatArchiveHours,
-  formatArchiveMonth,
-  formatArchiveNumber,
-} from '@/features/account-archive/model/archiveModel'
+import { formatArchiveNumber } from '@/features/account-archive/model/archiveModel'
 
 const ROLE_LABELS: Record<ArchiveFeaturedItem['role'], string> = {
   first_saved: '最早收藏',
@@ -38,31 +34,16 @@ function ArchiveSleeve({ item, index }: { item: ArchiveFeaturedItem; index: numb
 }
 
 export function ArchiveCover({ overview }: { overview: ArchiveOverview }) {
-  const period = `${formatArchiveMonth(overview.period.first_saved_at)}—${formatArchiveMonth(overview.period.latest_saved_at)}`
   return (
     <section id="archive-cover" className="archive-cover" data-archive-section="cover">
       <div className="archive-cover-copy">
-        <div className="archive-cover-overline">
-          <span>Personal Music Archive</span>
-          <span>No. {overview.data_revision.slice(0, 6).toUpperCase()}</span>
-        </div>
         <h1>音乐档案</h1>
-        <p className="archive-cover-question">哪些音乐只是路过，哪些真正留了下来？</p>
-        <p className="archive-cover-intro">
-          一份关于收藏、回访与重新相遇的长期记录。这里不替你定义人格，只保存可以被数据证明的关系。
-        </p>
 
         <div className="archive-cover-facts" aria-label="档案概览">
-          <div><strong>{formatArchiveNumber(overview.counts.saved_tracks)}</strong><span>首当前收藏</span></div>
-          <div><strong>{formatArchiveNumber(overview.counts.playlists)}</strong><span>个歌单</span></div>
-          <div><strong>{overview.coverage.saved_tracks_linked_to_history_pct.toFixed(1)}%</strong><span>可关联播放</span></div>
-          <div><strong>{formatArchiveHours(overview.coverage.known_duration_ms)}</strong><span>已知收藏时长</span></div>
-        </div>
-
-        <div className="archive-cover-footer">
-          <span><Database aria-hidden="true" />收藏记录 {period}</span>
-          <span>播放数据截至 {formatArchiveMonth(overview.period.latest_play_date)}</span>
-          <Link to="/settings">查看数据状态</Link>
+          <div><strong>{formatArchiveNumber(overview.counts.saved_tracks)}</strong><span>收藏歌曲</span></div>
+          <div><strong>{formatArchiveNumber(overview.counts.saved_albums)}</strong><span>收藏专辑</span></div>
+          <div><strong>{formatArchiveNumber(overview.counts.saved_artists)}</strong><span>收藏艺人</span></div>
+          <div><strong>{formatArchiveNumber(overview.counts.playlists)}</strong><span>歌单</span></div>
         </div>
       </div>
 

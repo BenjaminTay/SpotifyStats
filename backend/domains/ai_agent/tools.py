@@ -491,6 +491,7 @@ def _compact_archive_summary(
             "status": cohorts.get("status"),
             "coverage": cohorts.get("coverage", {}),
             "return_windows": cohorts.get("return_windows", []),
+            "vitality_metrics": cohorts.get("vitality_metrics", []),
             "relationship_counts": relationship.get("counts", {})
             if isinstance(relationship, dict)
             else {},
@@ -533,6 +534,7 @@ def _compact_archive_collection(
             "encounter_to_save": cohorts.get("encounter_to_save", {}),
             "symmetric_30_day_window": cohorts.get("symmetric_30_day_window", {}),
             "return_windows": cohorts.get("return_windows", []),
+            "vitality_metrics": cohorts.get("vitality_metrics", []),
             "counts": relationship.get("counts", {}) if isinstance(relationship, dict) else {},
         },
         "returns": {

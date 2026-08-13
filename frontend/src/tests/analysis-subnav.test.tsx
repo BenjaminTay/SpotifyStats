@@ -32,9 +32,9 @@ describe('analysis sub navigation', () => {
       'href',
       '/analysis/records?period=month&period_value=2026-06',
     )
-    expect(screen.getByRole('tab', { name: '账号中心' })).toHaveAttribute('href', '/account')
+    expect(screen.getByRole('tab', { name: '音乐档案' })).toHaveAttribute('href', '/account')
 
     const tabNames = screen.getAllByRole('tab').map((tab) => tab.textContent)
-    expect(tabNames).toEqual(['播放统计', '播放排行', '年度总结', '播放记录', '账号中心'])
+    expect(tabNames).toEqual(['播放统计', '播放排行', '年度总结', '播放记录', '音乐档案'])
   })
 })

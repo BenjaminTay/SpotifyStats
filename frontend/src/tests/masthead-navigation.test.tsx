@@ -52,7 +52,7 @@ describe('masthead navigation', () => {
     expect(within(nav).queryByRole('button', { name: '播放分析' })).not.toBeInTheDocument()
     expect(within(nav).queryByRole('button', { name: '榜单' })).not.toBeInTheDocument()
     expect(within(nav).queryByRole('link', { name: '年度总结' })).not.toBeInTheDocument()
-    expect(within(nav).queryByRole('link', { name: '账号中心' })).not.toBeInTheDocument()
+    expect(within(nav).queryByRole('link', { name: '音乐档案' })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: '搜索音乐详情' })).toBeInTheDocument()
   })
 

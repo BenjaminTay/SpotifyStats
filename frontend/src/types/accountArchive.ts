@@ -87,11 +87,22 @@ export interface ArchiveEntityPreview {
   first_play_at: string | null
   last_play_at: string | null
   effective_plays: number
+  days_to_save: number | null
+}
+
+export interface ArchiveCollectionMilestone {
+  ordinal: number
+  track_name: string
+  artist_name: string
+  album_name: string | null
+  added_date: string
+  cover_url: string | null
+  deep_link: string | null
 }
 
 export interface ArchiveJourney {
-  schema_version: 'account_archive_journey_v1'
-  content_version: 'account_archive_journey_v1_0'
+  schema_version: 'account_archive_journey_v2'
+  content_version: 'account_archive_journey_v2_0'
   data_revision: string
   status: ArchiveChapterStatus
   filter_context: ArchiveFilterContext
@@ -109,7 +120,7 @@ export interface ArchiveJourney {
   }
   annual_growth: ArchiveGrowthPoint[]
   quarterly_growth: ArchiveGrowthPoint[]
-  milestones: ArchiveFeaturedItem[]
+  milestones: ArchiveCollectionMilestone[]
 }
 
 export interface ArchiveGrowthPoint {
@@ -121,8 +132,8 @@ export interface ArchiveGrowthPoint {
 }
 
 export interface ArchiveCohorts {
-  schema_version: 'account_archive_cohorts_v1'
-  content_version: 'account_archive_cohorts_v1_0'
+  schema_version: 'account_archive_cohorts_v2'
+  content_version: 'account_archive_cohorts_v2_0'
   data_revision: string
   status: ArchiveChapterStatus
   filter_context: ArchiveFilterContext
@@ -156,6 +167,15 @@ export interface ArchiveCohorts {
   }
   return_windows: Array<{
     horizon_days: 7 | 30 | 90 | 365
+    eligible_entities: number
+    returned_entities: number
+    return_rate_pct: number | null
+    display_status: ArchiveDisplayStatus
+  }>
+  vitality_metrics: Array<{
+    key: 'within_7d' | 'days_8_30' | 'after_180d' | 'after_365d'
+    start_day: number
+    end_day: number | null
     eligible_entities: number
     returned_entities: number
     return_rate_pct: number | null
@@ -347,8 +367,8 @@ export interface ArchiveLibraryPage {
 }
 
 export interface ArchiveOtherMedia {
-  schema_version: 'account_archive_other_media_v1'
-  content_version: 'account_archive_other_media_v1_0'
+  schema_version: 'account_archive_other_media_v2'
+  content_version: 'account_archive_other_media_v2_0'
   data_revision: string
   status: ArchiveChapterStatus
   filter_context: ArchiveFilterContext
@@ -362,7 +382,13 @@ export interface ArchiveOtherMedia {
     returning_shows: number
     first_effective_at: string | null
     latest_effective_at: string | null
-    top_shows: Array<{ show_name: string; effective_events: number; effective_ms: number }>
+    top_shows: Array<{
+      show_name: string
+      publisher: string | null
+      cover_url: string | null
+      effective_events: number
+      effective_ms: number
+    }>
   }
   video: {
     source_rows: number
@@ -372,6 +398,15 @@ export interface ArchiveOtherMedia {
     active_days: number
     first_effective_at: string | null
     latest_effective_at: string | null
+    top_tracks: Array<{
+      track_name: string
+      artist_name: string
+      album_name: string | null
+      cover_url: string | null
+      deep_link: string | null
+      effective_events: number
+      effective_ms: number
+    }>
   }
   audio_video_comparison: {
     audio_effective_events: number

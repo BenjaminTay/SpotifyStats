@@ -62,7 +62,10 @@ def _count_before(times: list[pd.Timestamp], start: pd.Timestamp, end: pd.Timest
 
 
 def _saved_preview(
-    entity: dict[str, Any], times: list[pd.Timestamp], effective_plays: int | None = None
+    entity: dict[str, Any],
+    times: list[pd.Timestamp],
+    effective_plays: int | None = None,
+    days_to_save: int | None = None,
 ) -> dict[str, Any]:
     cover_url = None
     if entity.get("local_album_id") is not None and (
@@ -79,6 +82,7 @@ def _saved_preview(
         "first_play_at": times[0].isoformat().replace("+00:00", "Z") if times else None,
         "last_play_at": times[-1].isoformat().replace("+00:00", "Z") if times else None,
         "effective_plays": len(times) if effective_plays is None else effective_plays,
+        "days_to_save": days_to_save,
     }
 
 
@@ -127,8 +131,8 @@ def _encounter_to_save(
         {"key": key, "entities": counts[key], "share_pct": _pct(counts[key], total)} for key in keys
     ]
     examples = [
-        _saved_preview(entity, times)
-        for _, entity, times in sorted(eligible, key=lambda item: item[0], reverse=True)[:5]
+        _saved_preview(entity, times, days_to_save=day_gap)
+        for day_gap, entity, times in sorted(eligible, key=lambda item: item[0], reverse=True)[:5]
     ]
     return (
         {
@@ -225,6 +229,62 @@ def _return_windows(
             }
         )
     return windows
+
+
+def _vitality_metrics(
+    entities: list[dict[str, Any]],
+    times_by_track: dict[int, list[pd.Timestamp]],
+    first_observation: pd.Timestamp | None,
+    latest_observation: pd.Timestamp | None,
+) -> list[dict[str, Any]]:
+    definitions: tuple[tuple[str, int, int | None], ...] = (
+        ("within_7d", 0, 7),
+        ("days_8_30", 7, 30),
+        ("after_180d", 180, None),
+        ("after_365d", 365, None),
+    )
+    metrics: list[dict[str, Any]] = []
+    for key, start_day, end_day in definitions:
+        eligible = 0
+        returned = 0
+        if first_observation is not None and latest_observation is not None:
+            for entity in entities:
+                saved_at = _timestamp(entity.get("added_date"))
+                if saved_at is None or saved_at < first_observation:
+                    continue
+                start = saved_at + pd.Timedelta(days=start_day)
+                end = (
+                    saved_at + pd.Timedelta(days=end_day)
+                    if end_day is not None
+                    else latest_observation
+                )
+                if start > latest_observation or end > latest_observation:
+                    continue
+                eligible += 1
+                times = times_by_track.get(int(entity["archive_track_id"]), [])
+                if _count_after(times, start, end) > 0:
+                    returned += 1
+        if eligible == 0:
+            display_status = "unavailable"
+            rate = None
+        elif eligible < MIN_STABLE_RATE_SAMPLE:
+            display_status = "count_only"
+            rate = None
+        else:
+            display_status = "stable_rate"
+            rate = _pct(returned, eligible)
+        metrics.append(
+            {
+                "key": key,
+                "start_day": start_day,
+                "end_day": end_day,
+                "eligible_entities": eligible,
+                "returned_entities": returned,
+                "return_rate_pct": rate,
+                "display_status": display_status,
+            }
+        )
+    return metrics
 
 
 def _aligned_weeks(
@@ -384,8 +444,8 @@ def build_collection_cohorts(
         status = "available"
 
     return {
-        "schema_version": "account_archive_cohorts_v1",
-        "content_version": "account_archive_cohorts_v1_0",
+        "schema_version": "account_archive_cohorts_v2",
+        "content_version": "account_archive_cohorts_v2_0",
         "data_revision": context.source_revision,
         "status": status,
         "filter_context": context.model_dump(mode="json"),
@@ -403,6 +463,12 @@ def build_collection_cohorts(
             latest_observation,
         ),
         "return_windows": _return_windows(
+            entities,
+            times_by_track,
+            first_observation,
+            latest_observation,
+        ),
+        "vitality_metrics": _vitality_metrics(
             entities,
             times_by_track,
             first_observation,

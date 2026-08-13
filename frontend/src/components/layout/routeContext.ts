@@ -114,7 +114,7 @@ export function getMastheadRouteContext(pathname: string, search = ''): Masthead
   if (pathname === '/analysis/records') return analysisContext('播放记录')
   if (pathname.startsWith('/analysis/')) return analysisContext('播放分析', '分析')
   if (pathname === '/yearly-review') return analysisContext('年度总结')
-  if (pathname === '/account') return analysisContext('账号中心')
+  if (pathname === '/account') return analysisContext('音乐档案')
 
   if (pathname === '/billboard') return billboardContext('周榜')
   if (pathname === '/billboard/number-ones') return billboardContext('每周榜首', '冠军')

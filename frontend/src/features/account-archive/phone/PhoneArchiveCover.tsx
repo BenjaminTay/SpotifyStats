@@ -1,9 +1,7 @@
-import { ArrowDown, Database, Disc3 } from 'lucide-react'
+import { ArrowDown, Disc3 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 
 import {
-  formatArchiveHours,
-  formatArchiveMonth,
   formatArchiveNumber,
 } from '@/features/account-archive/model/archiveModel'
 import type { ArchiveOverview } from '@/types/accountArchive'
@@ -19,10 +17,6 @@ export function PhoneArchiveCover({ overview }: { overview: ArchiveOverview }) {
   const featured = overview.featured_items.slice(0, 2)
   return (
     <section id="archive-cover" className="phone-archive-cover" data-archive-section="cover">
-      <div className="phone-archive-cover-topline">
-        <span>POCKET MUSIC ARCHIVE</span>
-        <span>NO. {overview.data_revision.slice(0, 6).toUpperCase()}</span>
-      </div>
       <div className="phone-archive-cover-art" aria-label="收藏封面故事">
         <div className="phone-archive-record" aria-hidden="true" />
         {featured.map((item, index) => {
@@ -40,19 +34,13 @@ export function PhoneArchiveCover({ overview }: { overview: ArchiveOverview }) {
         })}
       </div>
       <div className="phone-archive-cover-copy">
-        <p>Personal music archive</p>
         <h1>音乐<br />档案</h1>
-        <blockquote>哪些音乐只是路过，<br />哪些真正留了下来？</blockquote>
       </div>
       <div className="phone-archive-cover-facts" aria-label="档案概览">
-        <div><strong>{formatArchiveNumber(overview.counts.saved_tracks)}</strong><span>首当前收藏</span></div>
-        <div><strong>{formatArchiveNumber(overview.counts.playlists)}</strong><span>个歌单</span></div>
-        <div><strong>{overview.coverage.saved_tracks_linked_to_history_pct.toFixed(1)}%</strong><span>可关联播放</span></div>
-        <div><strong>{formatArchiveHours(overview.coverage.known_duration_ms)}</strong><span>收藏总时长</span></div>
-      </div>
-      <div className="phone-archive-cover-meta">
-        <span><Database />{formatArchiveMonth(overview.period.first_saved_at)}—{formatArchiveMonth(overview.period.latest_saved_at)}</span>
-        <Link to="/settings">数据状态</Link>
+        <div><strong>{formatArchiveNumber(overview.counts.saved_tracks)}</strong><span>收藏歌曲</span></div>
+        <div><strong>{formatArchiveNumber(overview.counts.saved_albums)}</strong><span>收藏专辑</span></div>
+        <div><strong>{formatArchiveNumber(overview.counts.saved_artists)}</strong><span>收藏艺人</span></div>
+        <div><strong>{formatArchiveNumber(overview.counts.playlists)}</strong><span>歌单</span></div>
       </div>
       <button
         type="button"

@@ -12,10 +12,14 @@ from backend.api.account import router as account_router
 from backend.dependencies import get_conn
 from backend.domains.account_archive.cohorts import (
     _return_windows,
+    _vitality_metrics,
     build_collection_cohorts,
 )
 from backend.domains.account_archive.context import build_archive_filter_context
-from backend.domains.account_archive.journey import build_collection_journey
+from backend.domains.account_archive.journey import (
+    _collection_milestones,
+    build_collection_journey,
+)
 from backend.domains.account_archive.returns import (
     _build_return_metrics,
     build_archive_returns,
@@ -180,7 +184,35 @@ def test_collection_journey_uses_exact_dates_durations_and_strict_contract() -> 
     assert response.duration.known_duration_ms == 900000
     assert response.duration.release_year_start == 2001
     assert sum(point.saved_tracks for point in response.annual_growth) == 4
-    assert len(response.milestones) == 2
+    assert response.milestones == []
+
+
+def test_collection_journey_uses_progressive_hundred_song_milestones() -> None:
+    rows = [
+        {
+            "track_uri": f"spotify:track:{index:04d}",
+            "track_name": f"Track {index}",
+            "artist_name": "Archive Artist",
+            "album_name": "Archive Album",
+            "added_date": (
+                pd.Timestamp("2024-01-01T00:00:00Z") + pd.Timedelta(hours=index - 1)
+            ).isoformat(),
+            "local_track_id": index,
+            "local_album_id": 1,
+            "image_path": "/tmp/cover.jpg",
+        }
+        for index in range(1, 801)
+    ]
+
+    milestones = _collection_milestones(rows)
+
+    assert [item["ordinal"] for item in milestones] == [100, 200, 400, 800]
+    assert [item["track_name"] for item in milestones] == [
+        "Track 100",
+        "Track 200",
+        "Track 400",
+        "Track 800",
+    ]
 
 
 def test_collection_cohorts_excludes_save_triggering_play_and_right_censors() -> None:
@@ -212,6 +244,13 @@ def test_collection_cohorts_excludes_save_triggering_play_and_right_censors() ->
     assert windows[30].returned_entities == 1
     assert windows[90].eligible_entities == 0
 
+    vitality = {item.key: item for item in response.vitality_metrics}
+    assert vitality["within_7d"].eligible_entities == 2
+    assert vitality["within_7d"].returned_entities == 1
+    assert vitality["days_8_30"].eligible_entities == 2
+    assert vitality["days_8_30"].returned_entities == 0
+    assert vitality["after_180d"].eligible_entities == 0
+
     symmetric = response.symmetric_30_day_window
     assert symmetric.eligible_entities == 2
     assert symmetric.before_events == 2
@@ -236,6 +275,29 @@ def test_return_rate_requires_thirty_complete_entities() -> None:
     assert stable["return_rate_pct"] == 100.0
 
 
+def test_vitality_metrics_separate_early_return_from_long_term_survival() -> None:
+    first = pd.Timestamp("2022-01-01T00:00:00Z")
+    latest = pd.Timestamp("2025-01-01T00:00:00Z")
+    entities = [
+        {"archive_track_id": index, "added_date": "2023-01-01T00:00:00Z"} for index in range(30)
+    ]
+    times = {
+        index: [
+            pd.Timestamp("2023-01-03T00:00:00Z"),
+            pd.Timestamp("2023-01-20T00:00:00Z"),
+            pd.Timestamp("2024-02-01T00:00:00Z"),
+        ]
+        for index in range(30)
+    }
+
+    metrics = {item["key"]: item for item in _vitality_metrics(entities, times, first, latest)}
+
+    assert metrics["within_7d"]["return_rate_pct"] == 100.0
+    assert metrics["days_8_30"]["return_rate_pct"] == 100.0
+    assert metrics["after_180d"]["return_rate_pct"] == 100.0
+    assert metrics["after_365d"]["return_rate_pct"] == 100.0
+
+
 def test_journey_and_cohorts_routes_return_strict_json() -> None:
     conn = _relationship_conn()
     app = FastAPI()
@@ -248,11 +310,11 @@ def test_journey_and_cohorts_routes_return_strict_json() -> None:
     conn.close()
 
     assert journey.status_code == 200
-    assert journey.json()["schema_version"] == "account_archive_journey_v1"
+    assert journey.json()["schema_version"] == "account_archive_journey_v2"
     assert journey.json()["filter_context"]["merge_level"] == 1
     assert cohorts.status_code == 200
-    assert cohorts.json()["schema_version"] == "account_archive_cohorts_v1"
-    assert cohorts.json()["return_windows"][0]["horizon_days"] == 7
+    assert cohorts.json()["schema_version"] == "account_archive_cohorts_v2"
+    assert cohorts.json()["vitality_metrics"][0]["key"] == "within_7d"
 
 
 def test_return_metrics_detect_gap_and_current_sleeping_without_overlap() -> None:

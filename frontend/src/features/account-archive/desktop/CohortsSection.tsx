@@ -17,6 +17,13 @@ const ENCOUNTER_LABELS = {
   days_90_plus: '90 天以上',
 }
 
+const VITALITY_LABELS = {
+  within_7d: '收藏后 7 天内又听',
+  days_8_30: '收藏后第 8–30 天仍听',
+  after_180d: '收藏半年后还在听',
+  after_365d: '收藏一年后还在听',
+}
+
 export function CohortsSection() {
   const { ref, enabled } = useArchiveSection()
   const query = useArchiveCohorts(enabled)
@@ -30,14 +37,12 @@ export function CohortsSection() {
     >
       <ArchiveSectionHeading
         number="02"
-        eyebrow="From encounter to keeping"
-        title="从遇见到收藏"
-        description="以记录期内第一次有效播放为起点，观察一首歌经过多久进入当前收藏；没有被记录到的更早相遇不会被假装成不存在。"
+        title="播放多久后收藏"
       />
       {!enabled || query.isLoading ? <ArchiveLoading /> : null}
       {query.isError && <ArchiveError onRetry={() => void query.refetch()} />}
       {query.data?.status === 'unavailable' && (
-        <ArchiveUnavailable>收藏与播放暂时无法稳定关联，本章不生成推测性结论。</ArchiveUnavailable>
+        <ArchiveUnavailable>暂时没有可展示的收藏与播放关联数据。</ArchiveUnavailable>
       )}
       {query.data && query.data.status !== 'unavailable' && (
         <>
@@ -45,10 +50,10 @@ export function CohortsSection() {
             <div className="archive-encounter-panel">
               <div className="archive-panel-heading">
                 <div>
-                  <p>记录期首次播放 → 收藏</p>
-                  <strong>{formatArchiveNumber(query.data.encounter_to_save.eligible_entities)} 首可计算</strong>
+                  <p>从首次播放记录到收藏</p>
+                  <strong>共 {formatArchiveNumber(query.data.encounter_to_save.eligible_entities)} 首</strong>
                 </div>
-                <span>{formatArchiveNumber(query.data.encounter_to_save.no_observed_pre_save_play)} 首未观察到收藏前播放</span>
+                <span>{formatArchiveNumber(query.data.encounter_to_save.no_observed_pre_save_play)} 首收藏前没有播放记录</span>
               </div>
               <ol className="archive-encounter-bars">
                 {query.data.encounter_to_save.bins.map((bin) => (
@@ -66,19 +71,17 @@ export function CohortsSection() {
 
             <aside className="archive-window-note">
               <span className="archive-red-rule" aria-hidden="true" />
-              <p>收藏前后各 30 天</p>
-              <strong>{formatArchiveNumber(query.data.symmetric_30_day_window.after_events)}</strong>
-              <span>次收藏后有效播放</span>
-              <small>
-                对照收藏前 {formatArchiveNumber(query.data.symmetric_30_day_window.before_events)} 次；
-                只使用左右窗口都完整的 {formatArchiveNumber(query.data.symmetric_30_day_window.eligible_entities)} 首收藏。
-              </small>
+              <p>收藏前后 30 天</p>
+              <div className="archive-window-comparison">
+                <div><span>收藏前</span><strong>{formatArchiveNumber(query.data.symmetric_30_day_window.before_events)}</strong><small>次播放</small></div>
+                <div><span>收藏后</span><strong>{formatArchiveNumber(query.data.symmetric_30_day_window.after_events)}</strong><small>次播放</small></div>
+              </div>
             </aside>
           </div>
 
           {query.data.encounter_to_save.examples.length > 0 && (
             <div className="archive-story-preview">
-              <p className="archive-kicker">Archive notes</p>
+              <p className="archive-kicker">首次播放后，隔了最久才收藏</p>
               {query.data.encounter_to_save.examples.slice(0, 3).map((item, index) => (
                 <ArchiveEntityRow
                   key={`${item.track_name}-${item.artist_name}`}
@@ -87,7 +90,7 @@ export function CohortsSection() {
                   artist={item.artist_name}
                   coverUrl={item.cover_url}
                   href={item.deep_link}
-                  meta={`${item.effective_plays} 次有效播放`}
+                  meta={`相隔 ${formatArchiveNumber(item.days_to_save ?? 0)} 天`}
                 />
               ))}
             </div>
@@ -100,33 +103,30 @@ export function CohortsSection() {
           >
             <ArchiveSectionHeading
               number="03"
-              eyebrow="What happened after saving"
-              title="收藏之后"
-              description="每个回访节点只使用已经完整经历对应天数的收藏。高比例只描述当前仍在收藏的歌曲，不代表所有历史收藏的留存。"
+              title="收藏后再次播放"
             />
             <div className="archive-return-milestones">
-              {query.data.return_windows.map((window) => (
-                <div key={window.horizon_days}>
-                  <span>{window.horizon_days === 365 ? '1 年' : `${window.horizon_days} 天`}</span>
+              {query.data.vitality_metrics.map((metric) => (
+                <div key={metric.key}>
+                  <span>{VITALITY_LABELS[metric.key]}</span>
                   <strong>
-                    {window.return_rate_pct !== null
-                      ? `${window.return_rate_pct.toFixed(1)}%`
-                      : `${formatArchiveNumber(window.returned_entities)} 首`}
+                    {metric.return_rate_pct !== null
+                      ? `${metric.return_rate_pct.toFixed(1)}%`
+                      : `${formatArchiveNumber(metric.returned_entities)} 首`}
                   </strong>
-                  <small>{formatArchiveNumber(window.eligible_entities)} 首可观察</small>
+                  <small>{formatArchiveNumber(metric.returned_entities)} / {formatArchiveNumber(metric.eligible_entities)} 首有播放</small>
                 </div>
               ))}
             </div>
 
             <div className="archive-relationship-grid">
               {[
-                ['近期活跃收藏', query.data.relationship_matrix.counts.recent_active_saved, '最近 90 天仍有有效播放'],
-                ['沉睡收藏', query.data.relationship_matrix.counts.sleeping_saved, '收藏满 90 天，近期没有播放'],
-                ['常听未收藏', query.data.relationship_matrix.counts.frequent_unsaved, '近期至少 5 次，但不在当前收藏'],
-                ['暂时无法关联', query.data.relationship_matrix.counts.unmatched_saved_tracks, '保留在快照，不参与关系分母'],
-              ].map(([label, value, note]) => (
+                ['近 90 天听过的收藏', query.data.relationship_matrix.counts.recent_active_saved],
+                ['近 90 天没听的收藏', query.data.relationship_matrix.counts.sleeping_saved],
+                ['近 90 天常听但未收藏', query.data.relationship_matrix.counts.frequent_unsaved],
+              ].map(([label, value]) => (
                 <div key={String(label)}>
-                  <span>{label}</span><strong>{formatArchiveNumber(Number(value))}</strong><small>{note}</small>
+                  <span>{label}</span><strong>{formatArchiveNumber(Number(value))}</strong>
                 </div>
               ))}
             </div>

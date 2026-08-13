@@ -1053,6 +1053,7 @@ def test_account_collection_tool_uses_evidence_backed_archive_facts(
             "encounter_to_save": {"eligible_entities": 80},
             "symmetric_30_day_window": {"window_days": 30},
             "return_windows": [{"horizon_days": 30, "return_rate_pct": 75.0}],
+            "vitality_metrics": [{"key": "after_365d", "return_rate_pct": 68.0}],
             "relationship_matrix": {"counts": {"sleeping_saved": 12}},
         },
     )
@@ -1076,6 +1077,7 @@ def test_account_collection_tool_uses_evidence_backed_archive_facts(
     assert "sleeping=12" in result["result_summary"]
     assert result["data"]["schema_version"] == "account_agent_collection_v2"
     assert result["data"]["relationship"]["counts"]["sleeping_saved"] == 12
+    assert result["data"]["relationship"]["vitality_metrics"][0]["key"] == "after_365d"
     assert "personality" not in result["data"]
     assert db_observed["connections"][0].closed is True
 

@@ -13,7 +13,6 @@ import { OtherMediaSection } from '@/features/account-archive/desktop/OtherMedia
 import { ReturnsSection } from '@/features/account-archive/desktop/ReturnsSection'
 import { useArchiveOverview } from '@/features/account-archive/hooks/useAccountArchive'
 import { useArchiveNavigation } from '@/features/account-archive/hooks/useArchiveNavigation'
-import { ARCHIVE_SECTIONS } from '@/features/account-archive/model/archiveModel'
 
 import '../accountArchive.css'
 
@@ -35,7 +34,7 @@ function ArchivePageError({ onRetry }: { onRetry: () => void }) {
     <div className="archive-page-state" role="alert">
       <AlertCircle aria-hidden="true" />
       <h1>档案暂时无法打开</h1>
-      <p>本地数据接口没有正常响应。你的导出文件不会因此发生任何变化。</p>
+      <p>请确认本地服务正在运行后重试。</p>
       <button type="button" onClick={onRetry}>重新读取</button>
     </div>
   )
@@ -45,9 +44,8 @@ function ArchiveEmptyState() {
   return (
     <div className="archive-page-state">
       <Archive aria-hidden="true" />
-      <p className="archive-kicker">Personal Music Archive</p>
       <h1>档案柜还是空的</h1>
-      <p>导入 Spotify 账号数据后，可以浏览当前收藏、收藏日期、歌单与搜索档案；打开页面不需要 Spotify 在线授权。</p>
+      <p>导入 Spotify 账号数据后，可以浏览收藏、歌单与搜索档案。</p>
       <Link to="/settings">前往设置导入数据</Link>
     </div>
   )
@@ -78,10 +76,6 @@ export function AccountArchiveDesktopRoute() {
               <DiscoverySection />
               <LibrarySection />
               <OtherMediaSection />
-              <footer className="archive-colophon">
-                <span>End of file</span>
-                <strong>{ARCHIVE_SECTIONS.length} 个章节 · 数据留在本地</strong>
-              </footer>
             </div>
           </div>
         </main>

@@ -18,7 +18,7 @@ const ANALYSIS_ITEMS: SectionItem[] = [
   { to: '/analysis/charts', label: '播放排行', description: '歌曲、专辑与艺人排行', preserve: 'time' },
   { to: '/yearly-review', label: '年度总结', description: '年度回顾与音乐档案', preserve: 'none' },
   { to: '/analysis/records', label: '播放记录', description: '里程碑与极值记录', preserve: 'time' },
-  { to: '/account', label: '账号中心', description: '收藏、播客与账号概览', preserve: 'none' },
+  { to: '/account', label: '音乐档案', description: '收藏、回访与发现', preserve: 'none' },
 ]
 
 const BILLBOARD_ITEMS: SectionItem[] = [

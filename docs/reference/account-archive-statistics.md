@@ -1,6 +1,6 @@
 # 音乐档案统计规则
 
-版本：`account_archive_filter_v1` / `account_archive_cohorts_v1_0` / `account_archive_returns_v1_0` / `account_archive_discovery_v1_0` / `account_archive_library_v1_0` / `account_archive_other_media_v1_0`
+版本：`account_archive_filter_v1` / `account_archive_journey_v2_0` / `account_archive_cohorts_v2_0` / `account_archive_returns_v1_0` / `account_archive_discovery_v1_0` / `account_archive_library_v1_0` / `account_archive_other_media_v2_0`
 日期：2026-08-13
 
 ## 1. 适用范围
@@ -33,6 +33,7 @@
 - 时间线表示当前收藏快照中各曲目的收藏时间分布，不等于历史库容量；已经取消收藏的曲目不可见。
 - 收藏总时长只求和真实 `spotify_track_meta.duration_ms`；缺失曲长保留 coverage，不做“数量 × 平均分钟”估算。
 - 发行年份取本地专辑或 Spotify 专辑元数据中可验证的 `release_date`。
+- 收藏里程碑把所有有效 `added_date` 按时间、Spotify track URI 稳定排序，返回不超过 8 个倍增节点：第 100、200、400、800、1600……首；少于 100 首时不编造里程碑。封面的最早/最近收藏不在本章重复。
 
 ## 5. 记录期内首次播放到收藏
 
@@ -48,6 +49,8 @@
 
 没有观察到收藏前播放的实体单列为 `no_observed_pre_save_play`；这不代表用户未曾播放，可能只是发生在数据起点之前或匹配失败。
 
+示例歌曲按上述自然日差从大到小排序，正式含义为“记录期内首次播放后，隔了最久才收藏”。每个示例返回 `days_to_save`，消费 UI 必须直接显示间隔天数，不使用含义不明的“代表歌曲”。
+
 ## 6. 对称 30 天窗口
 
 只有同时满足 `save_at - 30d >= first_play_at` 与 `save_at + 30d <= latest_play_at` 的规范收藏实体进入分母。
@@ -57,7 +60,7 @@
 
 返回前后有效事件总数，以及 `more_before / equal / more_after` 三种互斥实体计数。后窗更多只能描述观察到的关联，不能写成收藏导致播放增加。
 
-## 7. 固定窗回访
+## 7. 收藏后再次播放与生命力
 
 对 `h ∈ {7, 30, 90, 365}`：
 
@@ -73,7 +76,16 @@ R(h) = returned(h) / eligible(h)
 
 分母少于 30 时只返回数量，`return_rate_pct=null` 且 `display_status=count_only`；没有合格实体时为 `unavailable`。30 是产品展示护栏，不冒充跨场景统计显著性标准。
 
-由于输入只包含当前仍在收藏的歌曲，`R(h)` 的正式名称是“当前收藏固定窗回访率”，不是收藏留存率。
+由于输入只包含当前仍在收藏的歌曲，`R(h)` 的正式名称是“当前收藏固定窗回访率”，不是收藏留存率。`return_windows` 继续作为底层分析兼容字段保留，但消费页面不再并排展示四个单调累积的“多少天内”指标。
+
+消费页面使用 `vitality_metrics` 的四个互补窗口：
+
+- `within_7d`：`(save_at, save_at + 7d]`，表示收藏后 7 天内又听；
+- `days_8_30`：`(save_at + 7d, save_at + 30d]`，表示第 8–30 天仍听；
+- `after_180d`：`(save_at + 180d, latest_play_at]`，表示收藏半年后还在听；
+- `after_365d`：`(save_at + 365d, latest_play_at]`，表示收藏一年后还在听。
+
+有上界的窗口只有在完整观察到上界时才进入分母；“半年后 / 一年后”只有达到对应周年且仍处于观察期时才进入分母。四项继续使用至少 30 个合格实体才展示比例的护栏，否则只展示数量。
 
 ## 8. 90 天回归与当前沉睡
 
@@ -154,7 +166,8 @@ track interaction burst
 ### 播客
 
 - 来源为 `podcast_plays`；有效事件要求 `ms_played >= filter_context.min_ms`；
-- 返回有效时长、事件数、节目数、活跃月份、首末有效时间，以及按有效时长排序的最多 3 个节目摘要；
+- 返回有效时长、事件数、节目数、活跃月份、首末有效时间，以及按有效时长排序的最多 3 个节目摘要；消费 UI 统一标为“播放最多的电台和播客”；
+- Top 3 可按规范化节目名补充本地 `saved_shows` 中的 publisher 与直接图片 URL；没有本地封面时不生成占位封面，也不为补图发起外网请求；
 - `returning_shows` 表示至少在两个不同自然日有有效播放的节目，不是订阅、留存或回访率；
 - 导出没有可靠的单集总时长，不能计算完成率，也不能对动态阈值作曲长归一化；
 - 响应不得返回单集名称、原始平台字段或播放明细。
@@ -164,13 +177,14 @@ track interaction burst
 - 音频和视频从同一 `plays` 观察窗加载，共享静态/动态阈值、连续合并和最大合并间隔；`content_type` 是强制合并边界，音频与视频不能互相合并；
 - 视频保留未映射本地曲目的播放行；动态阈值无法取得曲长时自然回退到统一最短时长。音频对照只统计可映射本地音乐曲目的有效逻辑事件；
 - 视频的 `effective_events` 是连续合并和长片段拆分后的逻辑事件数，可能高于或低于“原始行中时长超过 30 秒”的数量；产品比较优先使用有效时长，不比较未经同口径处理的原始行数；
+- 视频 Top 3 只对能映射到本地 `tracks.track_id` 的有效视频事件按次数降序排列，同次数优先有本地封面的歌曲、再按有效时长和稳定 ID 排序；未映射视频仍进入视频总次数与总时长，但不伪造名称、封面或详情链接；
 - 音频/视频观察期锚定同一个 `filter_context.first_play_at / latest_play_at`，不能用服务器今天或两个不同窗口。
 
 只有来源行和有效事件都覆盖两类媒体时状态才为 `available`；部分缺失或全部被过滤时为 `partial`；没有播客和视频来源时为 `unavailable`。
 
 ## 15. 缓存与契约
 
-缓存键包含：最短时长、连续合并、动态阈值、最大合并间隔、merge level、UTC 观察边界、播放/收藏 source revision、track group revision 和账号导入/日期 provenance revision。`discovery` 另对搜索内容生成不暴露原文的精确 revision；`other-media` 另对播客内容生成精确 revision；即使行数不变，相关内容变化也会失效缓存。收藏库使用短 SQL 分页直接读取，并通过内容 revision 表达快照变化。
+缓存键包含：最短时长、连续合并、动态阈值、最大合并间隔、merge level、UTC 观察边界、播放/收藏 source revision、track group revision 和账号导入/日期 provenance revision。`discovery` 另对搜索内容生成不暴露原文的精确 revision；`other-media` 另对播客内容及本地节目元数据生成精确 revision；即使行数不变，相关内容变化也会失效缓存。收藏库使用短 SQL 分页直接读取，并通过内容 revision 表达快照变化。
 
 所有正式响应使用 `extra="forbid"` 的 Pydantic 白名单模型；不得返回 profile、原始搜索词、prompts、inferences、banned items、Spotify URI 或未分页实体全集。
 
@@ -180,7 +194,7 @@ Phase 4 已删除旧 `GET /api/account`、`GET /api/account/collection-insights`
 
 AI Agent 暂时保留 `account_summary` 与 `account_collection_insights` 两个工具名，原因是它们属于既有问答编排与 golden harness 的稳定标识，不代表旧 API 仍存在：
 
-- `account_summary` 组合 archive overview，并按参数补充固定窗关系和隐私白名单 discovery 摘要；
+- `account_summary` 组合 archive overview，并按参数补充固定窗、生命力关系和隐私白名单 discovery 摘要；
 - `account_collection_insights` 组合 overview、journey、cohorts 与 returns；
 - 两者都不得返回收藏人格、chemistry、关键词迁移、Marquee 转化、粉丝等级或原始搜索词；
 - 项目语境版本为 `spotify-stats-project-context-v2`，最终回答必须保留“当前收藏快照”和观察窗边界。

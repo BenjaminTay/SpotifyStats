@@ -124,9 +124,19 @@ class ArchiveDurationFacts(StrictArchiveModel):
     release_year_end: int | None = None
 
 
+class ArchiveCollectionMilestone(StrictArchiveModel):
+    ordinal: int = Field(ge=1)
+    track_name: str
+    artist_name: str
+    album_name: str | None = None
+    added_date: str
+    cover_url: str | None = None
+    deep_link: str | None = None
+
+
 class ArchiveJourneyResponse(StrictArchiveModel):
-    schema_version: Literal["account_archive_journey_v1"] = "account_archive_journey_v1"
-    content_version: Literal["account_archive_journey_v1_0"] = "account_archive_journey_v1_0"
+    schema_version: Literal["account_archive_journey_v2"] = "account_archive_journey_v2"
+    content_version: Literal["account_archive_journey_v2_0"] = "account_archive_journey_v2_0"
     data_revision: str
     status: ArchiveChapterStatus
     filter_context: ArchiveFilterContext
@@ -134,7 +144,7 @@ class ArchiveJourneyResponse(StrictArchiveModel):
     duration: ArchiveDurationFacts
     annual_growth: list[ArchiveGrowthPoint] = Field(default_factory=list)
     quarterly_growth: list[ArchiveGrowthPoint] = Field(default_factory=list)
-    milestones: list[ArchiveFeaturedItem] = Field(default_factory=list, max_length=2)
+    milestones: list[ArchiveCollectionMilestone] = Field(default_factory=list, max_length=8)
 
 
 class ArchiveEntityPreview(StrictArchiveModel):
@@ -147,6 +157,7 @@ class ArchiveEntityPreview(StrictArchiveModel):
     first_play_at: str | None = None
     last_play_at: str | None = None
     effective_plays: int = Field(default=0, ge=0)
+    days_to_save: int | None = Field(default=None, ge=0)
 
 
 class ArchiveCohortCoverage(StrictArchiveModel):
@@ -190,6 +201,16 @@ class ArchiveReturnWindow(StrictArchiveModel):
     display_status: ArchiveMetricDisplayStatus
 
 
+class ArchiveVitalityMetric(StrictArchiveModel):
+    key: Literal["within_7d", "days_8_30", "after_180d", "after_365d"]
+    start_day: int = Field(ge=0)
+    end_day: int | None = Field(default=None, ge=1)
+    eligible_entities: int = Field(ge=0)
+    returned_entities: int = Field(ge=0)
+    return_rate_pct: float | None = Field(default=None, ge=0, le=100)
+    display_status: ArchiveMetricDisplayStatus
+
+
 class ArchiveAlignedWeek(StrictArchiveModel):
     week_index: int = Field(ge=-4, le=12)
     eligible_entities: int = Field(ge=0)
@@ -219,8 +240,8 @@ class ArchiveRelationshipMatrix(StrictArchiveModel):
 
 
 class ArchiveCohortsResponse(StrictArchiveModel):
-    schema_version: Literal["account_archive_cohorts_v1"] = "account_archive_cohorts_v1"
-    content_version: Literal["account_archive_cohorts_v1_0"] = "account_archive_cohorts_v1_0"
+    schema_version: Literal["account_archive_cohorts_v2"] = "account_archive_cohorts_v2"
+    content_version: Literal["account_archive_cohorts_v2_0"] = "account_archive_cohorts_v2_0"
     data_revision: str
     status: ArchiveChapterStatus
     filter_context: ArchiveFilterContext
@@ -228,6 +249,9 @@ class ArchiveCohortsResponse(StrictArchiveModel):
     encounter_to_save: ArchiveEncounterToSave
     symmetric_30_day_window: ArchiveSymmetricWindow
     return_windows: list[ArchiveReturnWindow] = Field(
+        default_factory=list, min_length=4, max_length=4
+    )
+    vitality_metrics: list[ArchiveVitalityMetric] = Field(
         default_factory=list, min_length=4, max_length=4
     )
     aligned_weeks: list[ArchiveAlignedWeek] = Field(default_factory=list)
@@ -453,6 +477,8 @@ class ArchiveMediaObservationWindow(StrictArchiveModel):
 
 class ArchivePodcastShowPreview(StrictArchiveModel):
     show_name: str
+    publisher: str | None = None
+    cover_url: str | None = None
     effective_events: int = Field(ge=0)
     effective_ms: int = Field(ge=0)
 
@@ -469,6 +495,16 @@ class ArchivePodcastSummary(StrictArchiveModel):
     top_shows: list[ArchivePodcastShowPreview] = Field(default_factory=list, max_length=3)
 
 
+class ArchiveVideoTrackPreview(StrictArchiveModel):
+    track_name: str
+    artist_name: str
+    album_name: str | None = None
+    cover_url: str | None = None
+    deep_link: str | None = None
+    effective_events: int = Field(ge=0)
+    effective_ms: int = Field(ge=0)
+
+
 class ArchiveVideoSummary(StrictArchiveModel):
     source_rows: int = Field(ge=0)
     effective_events: int = Field(ge=0)
@@ -477,6 +513,7 @@ class ArchiveVideoSummary(StrictArchiveModel):
     active_days: int = Field(ge=0)
     first_effective_at: str | None = None
     latest_effective_at: str | None = None
+    top_tracks: list[ArchiveVideoTrackPreview] = Field(default_factory=list, max_length=3)
 
 
 class ArchiveAudioVideoComparison(StrictArchiveModel):
@@ -487,9 +524,9 @@ class ArchiveAudioVideoComparison(StrictArchiveModel):
 
 
 class ArchiveOtherMediaResponse(StrictArchiveModel):
-    schema_version: Literal["account_archive_other_media_v1"] = "account_archive_other_media_v1"
-    content_version: Literal["account_archive_other_media_v1_0"] = (
-        "account_archive_other_media_v1_0"
+    schema_version: Literal["account_archive_other_media_v2"] = "account_archive_other_media_v2"
+    content_version: Literal["account_archive_other_media_v2_0"] = (
+        "account_archive_other_media_v2_0"
     )
     data_revision: str
     status: ArchiveChapterStatus

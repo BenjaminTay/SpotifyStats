@@ -2,7 +2,7 @@
 
 > 日期：2026-08-13
 > 分支：`codex/account-archive-rebuild`
-> 范围：旧账号 UI、重型聚合服务、HTTP 兼容路由、AI 消费者、预热、OpenAPI 与项目文档；不包含与首页分支合并
+> 范围：旧账号 UI、重型聚合服务、HTTP 兼容路由、AI 消费者、预热、OpenAPI 与项目文档；分支合并状态在本记录末尾补记
 
 ## 1. 交付结论
 
@@ -24,7 +24,7 @@ Spotify OAuth 仍只是 Settings 中可选的收藏日期补全能力。打开 `
 
 - `/api/profile`、`/api/insights/tiers`、`/api/insights/marquee`、Podcast、Video 与 Wrapped Hub 等独立只读兼容/透明度接口；它们不再是音乐档案页面依赖；
 - AI 工具名 `account_summary` 与 `account_collection_insights`，仅作为既有 planner、recipe 和 golden harness 的稳定标识；
-- `/account` 路由和二级导航“账号中心”，避免在本分支制造跨页面导航冲突；页面正文继续使用“音乐档案”。
+- `/account` 路由继续保留；后续人工验收已将二级导航和页面正文统一命名为“音乐档案”。
 
 架构测试新增反向护栏：旧 account、mobile account 和 page account 模块树必须保持为空；Phone route 不能导入 `useProfile` 或旧 `useAccount`。
 
@@ -60,6 +60,6 @@ Project Context 提升为 `spotify-stats-project-context-v2`，明确当前收�
 - 生成的 OpenAPI snapshot 与 TypeScript types 已刷新，旧两条路径和旧 response model 不再出现。
 - 既有 Phone / Desktop 实页证据继续成立：五视口 route matrix、可访问控件、长列表、Chromium / Firefox / WebKit 均已通过，页面请求日志未命中旧聚合或 `/api/profile`。
 
-## 6. 分支状态
+## 6. 集成状态
 
-本批次只在 `/Users/benjaminlei/Code/202605-SpotifyStats-account-archive` 的 `codex/account-archive-rebuild` 上工作，没有同步、rebase、合并或改动首页工作树。后续等待首页分支也完成后，再单独做冲突预检和合并。
+本批次最初在 `/Users/benjaminlei/Code/202605-SpotifyStats-account-archive` 的 `codex/account-archive-rebuild` 上独立完成。首页完成后，两边通过单独的冲突预检合并进入 `main`；其后的 Desktop / Phone 人工验收修复均在合并后的工作树继续收口。
