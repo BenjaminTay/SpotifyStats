@@ -50,6 +50,7 @@ def test_production_web_image_uses_the_hardened_nginx_config() -> None:
     assert "NGINX_CONFIG=deploy/production/nginx.conf" in workflow
     assert 'X-Frame-Options "DENY"' in nginx
     assert "location = /sw.js" in nginx
+    assert "default_type application/manifest+json" in nginx
     assert "proxy_pass http://backend:8000/api/;" in nginx
 
 

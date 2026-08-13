@@ -37,12 +37,13 @@
 | [`designs/2026-07-04-ai-yearly-report-editorial-agent-pipeline-design.md`](designs/2026-07-04-ai-yearly-report-editorial-agent-pipeline-design.md) | 现行 Editorial Agent Pipeline 设计 |
 | [`designs/2026-07-04-genre-review-settings-design.md`](designs/2026-07-04-genre-review-settings-design.md) | Genre Review Settings 设计 |
 
-### 报告 (`reports/`) — 13 个
+### 报告 (`reports/`) — 14 个
 
 一次性验证/交付/审计报告。
 
 | 报告 | 内容 |
 |------|------|
+| [`reports/2026-08-13-private-cloud-pwa-delivery.md`](reports/2026-08-13-private-cloud-pwa-delivery.md) | 个人私有云与 PWA Phase B：Tailscale 私网架构、SHA 自动发布、脱敏数据迁移、生产验收、备份与手机剩余边界 |
 | [`reports/2026-08-13-billboard-artist-aggregate-fix.md`](reports/2026-08-13-billboard-artist-aggregate-fix.md) | 艺人榜逻辑播放事件预聚合修复：根因、影响范围、真实数据库重建、原始/预聚合对账与回归验证 |
 | [`reports/2026-08-12-yearly-review-v2-delivery.md`](reports/2026-08-12-yearly-review-v2-delivery.md) | 年度总结 V2 唯一完整交付报告：审计、契约、编排、API/缓存、后台预生成、Desktop/Phone 双 presentation、验收问题修复、四年真实性能与三浏览器证据 |
 | [`reports/2026-08-06-mobile-web-and-pwa-delivery.md`](reports/2026-08-06-mobile-web-and-pwa-delivery.md) | 移动端 M0–M7、PWA Phase A 与验收后修复综合交付：阶段范围、架构契约、全栈门禁、专项复验和未完成边界 |
