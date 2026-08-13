@@ -10,6 +10,9 @@ pytestmark = pytest.mark.contract
 ACCOUNT_CENTER_ROUTES = (
     ("GET", "/api/account"),
     ("GET", "/api/account/collection-insights"),
+    ("GET", "/api/account/archive-overview"),
+    ("GET", "/api/account/collection-journey"),
+    ("GET", "/api/account/collection-cohorts"),
     ("GET", "/api/search-history"),
     ("GET", "/api/insights/tiers"),
     ("GET", "/api/insights/marquee"),

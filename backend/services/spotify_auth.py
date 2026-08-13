@@ -3,6 +3,7 @@
 import secrets
 import sqlite3
 
+from backend.core.cache_manager import invalidate
 from backend.core.spotify_utils import (
     build_auth_url,
     exchange_code_for_tokens,
@@ -19,6 +20,7 @@ from backend.core.spotify_utils import (
     store_user_tokens,
     sync_all_spotify_data,
 )
+from backend.domains.account_archive.revision import bump_archive_revision
 
 # In-memory state → code_verifier mapping (single-user local app)
 _pkce_store: dict[str, str] = {}
@@ -130,14 +132,32 @@ def fetch_saved_tracks(conn: sqlite3.Connection) -> dict:
         if uri and added_at:
             uri_date_map[uri] = added_at
 
+    saved_track_columns = {
+        row["name"] if isinstance(row, sqlite3.Row) else row[1]
+        for row in conn.execute("PRAGMA table_info(saved_tracks)").fetchall()
+    }
+    has_date_source = "added_date_source" in saved_track_columns
     updated = 0
     for uri, added_at in uri_date_map.items():
-        cur = conn.execute(
-            "UPDATE saved_tracks SET added_date = ? WHERE track_uri = ? AND (added_date IS NULL OR added_date = '')",
-            (added_at, uri),
-        )
+        if has_date_source:
+            cur = conn.execute(
+                "UPDATE saved_tracks SET added_date = ?, added_date_source = 'oauth' "
+                "WHERE track_uri = ? AND (added_date IS NULL OR TRIM(added_date) = '')",
+                (added_at, uri),
+            )
+        else:
+            cur = conn.execute(
+                "UPDATE saved_tracks SET added_date = ? "
+                "WHERE track_uri = ? AND (added_date IS NULL OR TRIM(added_date) = '')",
+                (added_at, uri),
+            )
         updated += cur.rowcount
+    if updated:
+        bump_archive_revision(conn, "collection_date")
     conn.commit()
+    if updated:
+        invalidate("account")
+        invalidate("account_archive")
 
     total_local = conn.execute("SELECT COUNT(*) FROM saved_tracks").fetchone()[0]
     matched = conn.execute(
