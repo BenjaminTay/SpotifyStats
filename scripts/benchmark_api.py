@@ -30,6 +30,7 @@ ENDPOINTS = [
     "/api/billboard/power-scores",
     "/api/billboard/summaries",
     "/api/billboard/all-time",
+    "/api/home/overview",
     "/api/dashboard/full",
     "/api/health",
 ]

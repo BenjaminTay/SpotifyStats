@@ -12,6 +12,7 @@ def test_api_smoke_probe_exposes_reusable_readonly_cases():
     assert len(DEFAULT_SAFE_GET_CASES) >= 50
     cases_by_path = {case.path: case for case in DEFAULT_SAFE_GET_CASES}
     paths = set(cases_by_path)
+    assert "/api/home/overview" in paths
     assert "/api/dashboard/full" in paths
     assert "/api/billboard/summaries" in paths
     assert "/api/spotify/auth/status" in paths
@@ -53,3 +54,4 @@ def test_api_smoke_probe_accounts_for_openapi_get_paths():
     assert "/api/music/tracks/{track_id}/stats" in coverage.covered_paths
     assert "/api/yearly-review/{year}" in coverage.covered_paths
     assert "/api/yearly-review/{year}/records" in coverage.covered_paths
+    assert "/api/home/overview" in coverage.covered_paths

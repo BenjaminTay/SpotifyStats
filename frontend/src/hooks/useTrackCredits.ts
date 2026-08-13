@@ -91,6 +91,7 @@ export function useTrackCredits(
   });
 
   const invalidate = async () => {
+    await queryClient.invalidateQueries({ queryKey: queryKeys.home.all });
     await queryClient.invalidateQueries();
   };
   const preview = useMutation({

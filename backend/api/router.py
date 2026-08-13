@@ -16,6 +16,7 @@ from backend.api.billboard import router as billboard_router
 from backend.api.chat import router as chat_router
 from backend.api.community import router as community_router
 from backend.api.dashboard import router as dashboard_router
+from backend.api.home import router as home_router
 from backend.api.import_ import router as import_router
 from backend.api.insights import router as insights_router
 from backend.api.jobs import router as jobs_router
@@ -40,6 +41,7 @@ from backend.api.yearly_review import router as yearly_review_router
 api_router = APIRouter()
 
 api_router.include_router(analysis_router)
+api_router.include_router(home_router)
 api_router.include_router(dashboard_router)
 api_router.include_router(timeline_router)
 api_router.include_router(leaderboard_router)

@@ -370,9 +370,11 @@ describe('Phase 5 architecture guardrails', () => {
     expect(appLayoutSource).toContain('overflow-x-clip')
   })
 
-  it('keeps dashboard loading skeletons within the mobile content column', () => {
-    expect(dashboardPageSource).not.toContain('h-5 w-96')
-    expect(dashboardPageSource).toContain('w-full max-w-96')
+  it('keeps the home route container thin and mounts phone/desktop presentations exclusively', () => {
+    expect(dashboardPageSource).toContain("useViewportMode() === 'phone'")
+    expect(dashboardPageSource).toContain('<HomePhoneExperience data={query.data} />')
+    expect(dashboardPageSource).toContain('<HomeDesktopExperience data={query.data} />')
+    expect(dashboardPageSource).not.toContain('MonthlyTrendChart')
   })
 
   it('keeps legacy analysis aliases outside the lazy AnalysisLayout route', () => {

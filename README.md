@@ -1,10 +1,8 @@
 # Spotify Stats
 
-个人 Spotify 播放历史分析仪表盘：把 Spotify 导出的播放记录和账号数据导入本地 SQLite，查看播放统计、年度总结、个人 Billboard 榜单和音乐实体详情。
+个人 Spotify 播放历史档案：把 Spotify 导出的播放记录和账号数据导入本地 SQLite，在个人音乐头版中回看近期变化，再深入播放分析、年度总结、个人 Billboard 榜单和音乐实体详情。
 
 [![Phase 5 Baseline](https://github.com/BenjaminTay/SpotifyStats/actions/workflows/phase5-baseline.yml/badge.svg)](https://github.com/BenjaminTay/SpotifyStats/actions/workflows/phase5-baseline.yml)
-
-![Spotify Stats Dashboard](docs/assets/dashboard.png)
 
 **技术架构**：FastAPI 后端 + React 前端。项目是本地优先的单用户工具，不提供公共在线 Demo；你的播放历史和账号数据默认只保存在本机。
 
@@ -14,7 +12,8 @@
 
 ## 你可以用它做什么
 
-- **播放统计**：总览仪表盘、播放趋势、听歌时段、歌曲/专辑/艺人排行和播放记录
+- **个人音乐头版**：用真实播放记录生成每日头条、音乐档案、最近 4 周、最新个人 Billboard、年度年鉴入口与旧爱重听；Desktop 与 Phone 使用各自的编辑式编排
+- **播放统计**：播放趋势、听歌时段、歌曲/专辑/艺人排行和播放记录
 - **年度总结**：Desktop/Compact 与 Phone 共用同一套八章年度事实和后台预生成链路；桌面呈现完整杂志年鉴，Phone 使用独立“口袋音乐年鉴”编排、纵向时间线、章节 Sheet 与无宽表的全屏榜单。切换页面不会重置等待时间，页面只保留自有年度总结
 - **个人 Billboard**：歌曲、专辑、艺人周榜与年榜、走势总榜、榜单记录、对决和发行周期分析
 - **音乐详情**：歌曲、专辑和艺人详情，整合个人播放统计、榜单成绩、歌词与百科信息

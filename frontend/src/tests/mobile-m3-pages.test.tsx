@@ -8,18 +8,10 @@ import { MobileAnalysisStats } from '@/features/mobile/analysis/MobileAnalysisSt
 import { MobileAnalysisTimeControl } from '@/features/mobile/analysis/MobileAnalysisTimeControl'
 import { MobilePersonalRankList } from '@/features/mobile/analysis/MobilePersonalRankList'
 import { MobileBillboardWeekly } from '@/features/mobile/billboard/MobileBillboardWeekly'
-import { MobileDashboard } from '@/features/mobile/dashboard/MobileDashboard'
 import { computeWeeklyRankChange } from '@/features/billboard/weekly/weeklyPresentation'
 import type { AnalysisChartsResponse, AnalysisMetric, LeaderboardEntity } from '@/types/analysis'
-import type { DashboardFullResponse } from '@/types/dashboard'
 import type { BillboardWeeklyResponse, WeeklyAlbumEntry, WeeklyTrackEntry } from '@/types/billboard'
 
-vi.mock('@/components/charts/MonthlyTrendChart', () => ({
-  MonthlyTrendChart: () => <div data-testid="monthly-trend-chart" />,
-}))
-vi.mock('@/components/charts/PlatformDistChart', () => ({
-  PlatformDistChart: () => <div data-testid="platform-chart" />,
-}))
 vi.mock('@/components/charts/AnalysisCharts', () => ({
   AnalysisTrendChart: ({ data }: { data: unknown[] }) => <div data-testid="analysis-trend-chart">{data.length}</div>,
 }))
@@ -52,31 +44,6 @@ function PersonalRankHarness({ data }: { data: AnalysisChartsResponse }) {
 }
 
 describe('M3 mobile page presentations', () => {
-  it('renders the dashboard as four KPIs, one monthly chart, and mobile quick links', () => {
-    const data = {
-      summary: {
-        total_plays: 1234,
-        total_hours: 88,
-        total_tracks: 321,
-        total_artists: 42,
-        total_days: 120,
-      },
-      monthly_trend: [],
-      platform_dist: [],
-    } as unknown as DashboardFullResponse
-
-    render(
-      <MemoryRouter>
-        <MobileDashboard data={data} monthlyInsight="春天之后播放明显增加" peakHour={22} peakHourText="夜间是最集中的聆听窗口" />
-      </MemoryRouter>,
-    )
-
-    expect(screen.getByRole('heading', { name: '你的聆听概览' })).toBeInTheDocument()
-    expect(screen.getAllByRole('article')).toHaveLength(6)
-    expect(screen.getByTestId('monthly-trend-chart')).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: /播放排行/ })).toHaveAttribute('href', '/analysis/charts')
-  })
-
   it('keeps original personal-chart ranks after mobile search filters the visible rows', async () => {
     const user = userEvent.setup()
     const data = {

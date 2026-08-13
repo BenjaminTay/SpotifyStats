@@ -1,0 +1,22 @@
+"""Personal music front-page API."""
+
+from __future__ import annotations
+
+from sqlite3 import Connection
+
+from fastapi import APIRouter, Depends
+
+from backend.dependencies import get_conn, get_yearly_review_context
+from backend.models.home import HomeOverviewResponse
+from backend.models.yearly_review import YearlyReviewFilterContext
+from backend.services.home_service import get_home_overview
+
+router = APIRouter(prefix="/home", tags=["Home"])
+
+
+@router.get("/overview", response_model=HomeOverviewResponse)
+def home_overview(
+    context: YearlyReviewFilterContext = Depends(get_yearly_review_context),
+    conn: Connection = Depends(get_conn),
+) -> HomeOverviewResponse:
+    return get_home_overview(conn, context)

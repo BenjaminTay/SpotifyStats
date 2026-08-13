@@ -127,6 +127,7 @@ DEFAULT_SAFE_GET_CASES: tuple[SmokeCase, ...] = (
         "/api/analysis/records",
         {**DEFAULT_FILTERS, "period": "lifetime", "merge_level": 2},
     ),
+    SmokeCase("home_overview", "/api/home/overview", DEFAULT_BILLBOARD),
     SmokeCase("dashboard_summary", "/api/dashboard/summary", DEFAULT_FILTERS),
     SmokeCase("dashboard_full", "/api/dashboard/full", DEFAULT_FILTERS),
     SmokeCase("dashboard_top_tracks", "/api/dashboard/top-tracks", {**DEFAULT_FILTERS, "n": 5}),

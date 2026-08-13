@@ -120,34 +120,18 @@ Inter 通过 `@fontsource-variable/inter` npm 包加载。Playfair Display 通�
 - 内边距：`px-10 py-10`（40px）
 - Masthead 内边距：`px-10 py-4`（40px / 16px）
 
-### 仪表盘页面布局 (DashboardPage)
+### 个人音乐头版布局 (DashboardPage)
 
 ```
-┌─ Hero 区 ────────────────────────────────────┐
-│ kicker (11px 全大写 accent)                   │
-│ 标题 (52px serif)                             │
-│ 副标题 (17px sans, muted, max-w-[520px])      │
-└──────────────────────────────────────────────┘
-┌─ KPI 行 ─────────────────────────────────────┐
-│ grid grid-cols-4 gap-10                       │
-│ border-b border-border pb-10 mb-10            │
-│ ┌──────┐ ┌──────┐ ┌──────┐ ┌──────┐         │
-│ │ 数值  │ │ 数值  │ │ 数值  │ │ 数值  │         │
-│ │ 标签  │ │ 标签  │ │ 标签  │ │ 标签  │         │
-│ └──────┘ └──────┘ └──────┘ └──────┘         │
-└──────────────────────────────────────────────┘
-┌─ 内容区 grid grid-cols-[1fr_380px] gap-10 ──┐
-│ ┌─ 左：月度趋势图表 ───────────────────────┐  │
-│ │ 标题 (20px serif)                       │  │
-│ │ ECharts 柱状图 (240px)                  │  │
-│ │ 注释 (14px serif italic, 左边 accent 线) │  │
-│ └────────────────────────────────────────┘  │
-│ ┌─ 右：侧边栏 space-y-6 ──────────────────┐  │
-│ │ GlassCard: 平台分布 (进度条)             │  │
-│ │ GlassCard: 聆听高峰 (32px serif)        │  │
-│ └────────────────────────────────────────┘  │
-└──────────────────────────────────────────────┘
+┌─ 当日头条：叙事标题 + 主封面与两张辅助封面 ──┐
+├─ 档案护照：记录跨度 / 有效播放 / 时长 / 歌曲 ┤
+├─ 01 最近一章 ────────────────────────────────┤
+│  最近 4 周摘要 + 轻量趋势 + 歌曲/专辑/艺人主角 │
+├─ 02 最新个人 Billboard：三类冠军快照 ────────┤
+└─ 03 长期记忆：年度年鉴入口 + 旧爱重听 ───────┘
 ```
+
+头条由统计规则确定性生成，不调用 LLM。首页不重复放置数据更新时间、音乐搜索、数据陈旧提醒或账号/AI/社区/更新数据快捷入口，这些能力继续由全局导航和对应页面承载。Phone presentation 使用独立单列“口袋头版”，不挂载桌面拼贴；两端共享同一响应、过滤指纹与实体深链。
 
 ### Billboard 页面布局 (BillboardPage)
 
@@ -288,7 +272,7 @@ className="rounded-[16px] border border-border bg-card backdrop-blur-[12px] shad
 
 每个页面有对应的 Skeleton 组件，使用 shadcn/ui 的 `<Skeleton>` 组件：
 
-- **DashboardSkeleton**：模仿 Hero + KPI 4 列 + 月度图表 + 侧边卡片的骨架布局
+- **HomeLoading**：分别模仿 Desktop 头版和 Phone 口袋头版的首屏骨架
 - **BillboardSkeleton**：模仿 Hero + Tabs + 周选择器 + 摘要条 + 表格的骨架布局
 
 ### 错误态
@@ -426,7 +410,7 @@ className="rounded-[16px] border border-border bg-card backdrop-blur-[12px] shad
 | `src/App.tsx` | 路由定义（`/` + `/analysis` + `/billboard` + `/music/*`） |
 | `src/lib/theme.ts` | 图表色盘常量 + `getChartColors()` |
 | `src/hooks/useTheme.tsx` | ThemeProvider + useTheme hook |
-| `src/hooks/useDashboard.ts` | Dashboard 数据获取 + 缓存 |
+| `src/hooks/useHome.ts` | 首页聚合数据获取 + 完整过滤 query key |
 | `src/hooks/useBillboard.ts` | Billboard 数据获取 + 缓存 + 周导航 |
 | `src/hooks/useAnalysis.ts` | 播放统计、播放排行、实体播放统计 API hook |
 | `src/components/layout/AppLayout.tsx` | 按视口互斥挂载 Desktop/Phone Shell（NoiseOverlay + Masthead 或 Mobile Top/Bottom Bar + Outlet） |
@@ -453,7 +437,9 @@ className="rounded-[16px] border border-border bg-card backdrop-blur-[12px] shad
 | `src/components/charts/MonthlyTrendChart.tsx` | 月度趋势柱状图 |
 | `src/components/charts/PlatformDistChart.tsx` | 平台分布进度条 |
 | `src/components/charts/ReleaseTimelineChart.tsx` | 发行周期排名趋势图 |
-| `src/pages/DashboardPage.tsx` | 总览仪表盘页面 |
+| `src/pages/DashboardPage.tsx` | 首页薄路由容器，互斥挂载 Desktop/Phone presentation |
+| `src/features/home/` | 首页两套 presentation、共享原语、加载/空/错误状态与样式 |
+| `src/types/home.ts` | 首页聚合响应类型 |
 | `src/pages/BillboardPage.tsx` | Billboard 周榜页面 |
 | `src/types/dashboard.ts` | Dashboard 类型定义 |
 | `src/types/billboard.ts` | Billboard 类型定义 |

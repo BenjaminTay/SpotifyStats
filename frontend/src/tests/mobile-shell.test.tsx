@@ -7,9 +7,6 @@ import { MobileBottomNav } from '@/components/layout/MobileBottomNav'
 import { MobileTopBar } from '@/components/layout/MobileTopBar'
 import { ThemeProvider } from '@/hooks/useTheme'
 
-vi.mock('@/hooks/useDashboard', () => ({ preloadDashboardData: vi.fn() }))
-vi.mock('@/hooks/useBillboard', () => ({ preloadWeeklyData: vi.fn(), preloadAllTimeData: vi.fn() }))
-
 type ChangeListener = (event: MediaQueryListEvent) => void
 
 let viewportWidth = 390

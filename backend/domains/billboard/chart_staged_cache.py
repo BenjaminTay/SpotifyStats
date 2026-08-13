@@ -29,6 +29,7 @@ from backend.domains.billboard.data_loader import (
     DOW_SHORT,
     load_track_album_map,
 )
+from backend.domains.billboard.latest_snapshot_cache import snapshot_key, store_latest_snapshot
 from backend.domains.billboard.year_end import (
     YEAR_END_ALBUM_TOP_N,
     YEAR_END_ARTIST_TOP_N,
@@ -114,7 +115,7 @@ def _compute_weekly_data_cached(
     weekly = enrich_track_artist_names(weekly)
 
     date_cols_week = ["billboard_week"]
-    return {
+    result = {
         "meta": {
             "total_weeks": len(all_weeks_asc),
             "total_filtered_records": _filtered_record_count(df_filtered),
@@ -132,6 +133,25 @@ def _compute_weekly_data_cached(
         "weekly_album": _df_to_json(weekly_album, date_cols_week),
         "weekly_artist": _df_to_json(weekly_artist, date_cols_week),
     }
+    store_latest_snapshot(
+        snapshot_key(
+            min_ms,
+            music_only,
+            bb_top_n,
+            bb_album_top_n,
+            bb_artist_top_n,
+            bb_week_start_dow,
+            bb_week_start_hour,
+            year_start,
+            year_end,
+            merge_level,
+            dynamic_threshold,
+            max_merge_gap_minutes,
+            include_compilations,
+        ),
+        result,
+    )
+    return result
 
 
 @lru_cache(maxsize=4)

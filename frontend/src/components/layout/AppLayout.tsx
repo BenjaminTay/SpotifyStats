@@ -1,12 +1,9 @@
-import { useEffect } from 'react'
 import { Outlet, useLocation } from 'react-router-dom'
 import { Masthead } from './Masthead'
 import { MobileTopBar } from './MobileTopBar'
 import { MobileBottomNav } from './MobileBottomNav'
 import { getMastheadRouteContext } from './routeContext'
 import { NoiseOverlay } from '@/components/shared/NoiseOverlay'
-import { preloadWeeklyData, preloadAllTimeData } from '@/hooks/useBillboard'
-import { preloadDashboardData } from '@/hooks/useDashboard'
 import { useChineseTextVersion } from '@/lib/chinese'
 import { useBillboardNameVersion } from '@/lib/billboard-name'
 import { useViewportMode } from '@/hooks/useViewportMode'
@@ -19,16 +16,6 @@ export function AppLayout() {
   const location = useLocation()
   const isPhone = viewportMode === 'phone'
   const routeContext = getMastheadRouteContext(location.pathname, location.search)
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => {
-      preloadDashboardData()
-      preloadWeeklyData()
-      preloadAllTimeData()
-    }, 600)
-
-    return () => window.clearTimeout(timer)
-  }, [])
 
   return (
     <div className="relative flex min-h-screen flex-col overflow-x-clip">

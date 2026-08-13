@@ -24,7 +24,7 @@ npm run build      # 生产构建
 
 | 路由 | 页面 | 说明 |
 |------|------|------|
-| `/` | DashboardPage | 总览仪表盘：KPI 行、月度趋势图、平台分布、动态数据洞察（月度季节分析 + 聆听高峰） |
+| `/` | DashboardPage | 个人音乐头版：确定性头条、档案护照、最近 4 周、最新个人 Billboard、年度年鉴入口与旧爱重听；Desktop/Phone 独立编排 |
 | `/analysis` | AnalysisLayout | 播放分析：二级 tab 收敛 `/stats`（播放统计 + 最近播放 + 时钟图）、`/charts`（播放排行 track/album/artist × plays/hours）、`/yearly-review`（年度总结）、`/analysis/records`（播放记录）与 `/account`（账号中心） |
 | `/yearly-review` | YearlyReviewPage | 年度总结：2 Tab（自定义年度总结 + 官方 Wrapped 2025）、年份选择器、序列化预取（避免 SQLite 并发锁）、ErrorBoundary 容错 |
 | `/billboard` | BillboardPage | Billboard 周榜：单曲/专辑/艺人三榜、周切换（含 URL 参数 `?week=`）、排名表（含 CoverCell 封面 + 跳转详情链接）、Tab 选择跨页面记忆保持 |
@@ -66,6 +66,7 @@ src/
 │   ├── mobile/      ← Sheet、实体行、移动图表/全屏、分页和状态原语
 │   └── shared/      ← 共享组件（GlassCard, KpiCard, WeekSelector, ChangeCell, CoverCell, BillboardSubNav 等）
 ├── features/        ← Feature-first Experience/Section/Primitives/Data 与移动 presentation
+│   └── home/        ← 首页 Desktop/Phone presentation、共享原语、状态与样式
 ├── pages/           ← 薄路由容器
 │   └── yearly-review/  ← 年度总结子组件（14 个：HeroSection, PersonalityReveal, TopCharts, GenrePanorama, TimeStory, HourClock, MusicMap, DiscoveryReturns, ListeningDepth, SpecialMoments, MonthlyDrilldown, YearComparison, ShareButton, OfficialWrapped）
 ├── hooks/           ← 自定义 hooks（GET 数据统一使用 TanStack Query + queryKeys）
@@ -86,5 +87,6 @@ CSS 变量定义在 `src/index.css`：
 
 - GET 数据统一使用 TanStack Query；禁止新增模块级 API 响应缓存
 - Phone/Desktop 的重图表、宽表和长列表互斥挂载，避免同时请求和渲染两套 presentation
-- Dashboard `/full` 端点复用单个 `load_plays()` 调用（后端优化）
+- 首页 `/home/overview` 使用完整过滤指纹；年度预览与 Billboard 摘要只读既有精确缓存，首页请求不触发年度或榜单冷构建
+- App Shell 不再无条件预取旧 Dashboard、周榜和总榜；各页面按自身语义发起查询
 - Billboard `compute_billboard_data()` 有 `@lru_cache` 缓存（后端优化）

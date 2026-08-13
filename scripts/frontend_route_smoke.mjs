@@ -50,7 +50,7 @@ const DEFAULT_ROUTES = [
 ]
 
 const ROUTE_READY_MARKERS = {
-  '/': ['播放次数', '月度播放趋势'],
+  '/': ['最近一章', '最新个人 Billboard'],
   '/analysis': ['播放统计'],
   '/analysis/stats': ['播放统计', '最近播放记录'],
   '/analysis/charts': ['播放排行'],

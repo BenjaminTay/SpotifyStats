@@ -61,6 +61,7 @@ export function useArtistIdentities(search: string) {
   })
 
   const invalidateIdentityChange = async () => {
+    await queryClient.invalidateQueries({ queryKey: queryKeys.home.all })
     await queryClient.invalidateQueries()
   }
   const preview = useMutation({

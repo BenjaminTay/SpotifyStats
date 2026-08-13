@@ -4,6 +4,7 @@ import logging
 import threading
 
 from backend.core.db import get_db, load_plays, load_plays_for_artists
+from backend.domains.settings.repository import SETTINGS_DEFAULTS, SettingsRepository
 from backend.services.account_service import get_account_summary
 from backend.services.analysis_stats_service import get_analysis_charts, get_analysis_stats
 from backend.services.billboard_service import compute_billboard_data
@@ -34,16 +35,48 @@ DEFAULT_BILLBOARD_FILTERS = {
 }
 
 
+def _configured_warmup_filters(conn) -> tuple[dict, dict]:
+    """Resolve the same persisted defaults used by omitted-query API calls."""
+    try:
+        settings = SettingsRepository(conn).load_all()
+    except Exception:
+        settings = dict(SETTINGS_DEFAULTS)
+    play = {
+        "min_ms": int(settings["min_ms"]),
+        "music_only": bool(settings["music_only"]),
+        "merge_enabled": bool(settings["merge_enabled"]),
+        "dynamic_threshold": True,
+        "max_merge_gap_minutes": None,
+    }
+    billboard = {
+        "min_ms": play["min_ms"],
+        "music_only": play["music_only"],
+        "bb_top_n": int(settings["bb_top_n"]),
+        "bb_album_top_n": int(settings["bb_album_top_n"]),
+        "bb_artist_top_n": int(settings["bb_artist_top_n"]),
+        "bb_week_start_dow": int(settings["bb_week_start_dow"]),
+        "bb_week_start_hour": int(settings["bb_week_start_hour"]),
+        "year_start": None,
+        "year_end": None,
+        "dynamic_threshold": True,
+        "max_merge_gap_minutes": None,
+        "merge_level": 2,
+        "include_compilations": bool(settings["include_compilations"]),
+    }
+    return play, billboard
+
+
 def warm_common_caches() -> None:
     """Prime expensive default caches used by first-page navigation."""
     conn = get_db()
     try:
-        load_plays(conn, **DEFAULT_PLAY_FILTERS)
-        load_plays_for_artists(conn, **DEFAULT_PLAY_FILTERS)
-        get_analysis_stats(conn, **DEFAULT_PLAY_FILTERS, period="lifetime")
+        play_filters, billboard_filters = _configured_warmup_filters(conn)
+        load_plays(conn, **play_filters)
+        load_plays_for_artists(conn, **play_filters)
+        get_analysis_stats(conn, **play_filters, period="lifetime")
         get_analysis_charts(
             conn,
-            **DEFAULT_PLAY_FILTERS,
+            **play_filters,
             period="lifetime",
             entity="track",
             metric="plays",
@@ -51,7 +84,7 @@ def warm_common_caches() -> None:
         )
         get_analysis_charts(
             conn,
-            **DEFAULT_PLAY_FILTERS,
+            **play_filters,
             period="lifetime",
             entity="album",
             metric="plays",
@@ -59,7 +92,7 @@ def warm_common_caches() -> None:
         )
         get_analysis_charts(
             conn,
-            **DEFAULT_PLAY_FILTERS,
+            **play_filters,
             period="lifetime",
             entity="artist",
             metric="plays",
@@ -69,7 +102,11 @@ def warm_common_caches() -> None:
     finally:
         conn.close()
 
-    compute_billboard_data(**DEFAULT_BILLBOARD_FILTERS)
+    compute_billboard_data(**billboard_filters)
+
+    from backend.services.home_service import prewarm_default_home_overview
+
+    prewarm_default_home_overview()
 
     # Persist the latest deterministic Yearly Review artifact after shared
     # playback/Billboard caches are warm. This runs inside the existing daemon

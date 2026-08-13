@@ -85,6 +85,10 @@ export function useAnalysisQueryState(defaultEntity: LeaderboardEntity = 'track'
   }
 
   const apiParams = useMemo(() => {
+    // 首页等有明确数据截止日的入口仍显示“最近4周”，但沿用入口给出的同一 28 天窗口。
+    if (period === 'last_4_weeks' && startDate && endDate) {
+      return { period: 'custom' as AnalysisPeriod, start_date: startDate, end_date: endDate }
+    }
     // Named periods: send period directly to backend
     if (period === 'lifetime' || period === 'last_6_months' || period === 'last_4_weeks') {
       return { period }

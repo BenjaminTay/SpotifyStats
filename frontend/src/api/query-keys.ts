@@ -1,6 +1,12 @@
 /** Canonical query keys for TanStack Query, organized by domain. */
 
 export const queryKeys = {
+  home: {
+    all: ["home"] as const,
+    overview: (params: Record<string, unknown>) =>
+      [...queryKeys.home.all, "overview", params] as const,
+  },
+
   dashboard: {
     all: ["dashboard"] as const,
     full: () => [...queryKeys.dashboard.all, "full"] as const,

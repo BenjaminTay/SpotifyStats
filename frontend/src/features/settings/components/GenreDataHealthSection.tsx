@@ -638,6 +638,7 @@ export function GenreDataHealthSection({ embedded = false }: { embedded?: boolea
   useEffect(() => {
     if (!activeTaskId || !isTerminalStatus(activeTask.task?.status as string | null | undefined)) return
     void queryClient.invalidateQueries({ queryKey: queryKeys.metadata.artistGenres.all })
+    void queryClient.invalidateQueries({ queryKey: queryKeys.home.all })
     void queryClient.invalidateQueries({ queryKey: queryKeys.yearlyReview.all })
   }, [activeTask.task?.status, activeTaskId, queryClient])
 

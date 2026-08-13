@@ -134,6 +134,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/home/overview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Home Overview */
+        get: operations["home_overview_api_home_overview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/dashboard/summary": {
         parameters: {
             query?: never;
@@ -787,6 +804,91 @@ export interface paths {
         };
         /** Wrapped Hub */
         get: operations["wrapped_hub_api_wrapped_hub_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/yearly-review/available-years": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Available Years */
+        get: operations["available_years_api_yearly_review_available_years_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/yearly-review/prewarm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Prewarm */
+        post: operations["prewarm_api_yearly_review_prewarm_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/yearly-review/generation-status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Generation Status */
+        get: operations["generation_status_api_yearly_review_generation_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/yearly-review/{year}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Yearly Review */
+        get: operations["yearly_review_api_yearly_review__year__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/yearly-review/{year}/records": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Yearly Review Records */
+        get: operations["yearly_review_records_api_yearly_review__year__records_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -5826,6 +5928,222 @@ export interface components {
             /** Y */
             y: string[];
         };
+        /** HomeArchive */
+        HomeArchive: {
+            /** Total Plays */
+            total_plays: number;
+            /** Total Hours */
+            total_hours: number;
+            /** Unique Tracks */
+            unique_tracks: number;
+            /** Unique Artists */
+            unique_artists: number;
+            /** Unique Albums */
+            unique_albums: number;
+            /** Active Days */
+            active_days: number;
+        };
+        /** HomeBillboard */
+        HomeBillboard: {
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "ready" | "unavailable";
+            /** Week */
+            week?: string | null;
+            track?: components["schemas"]["HomeChartChampion"] | null;
+            album?: components["schemas"]["HomeChartChampion"] | null;
+            artist?: components["schemas"]["HomeChartChampion"] | null;
+        };
+        /** HomeChartChampion */
+        HomeChartChampion: {
+            entity: components["schemas"]["HomeEntityRef"];
+            /**
+             * Rank
+             * @default 1
+             * @constant
+             */
+            rank: 1;
+            /** Plays */
+            plays: number;
+            /** Hours */
+            hours: number;
+            /** Previous Rank */
+            previous_rank?: number | null;
+            /** Rank Change */
+            rank_change?: number | null;
+        };
+        /** HomeCoverage */
+        HomeCoverage: {
+            /** First Source Date */
+            first_source_date?: string | null;
+            /** Source Latest Date */
+            source_latest_date?: string | null;
+            /** First Effective Play Date */
+            first_effective_play_date?: string | null;
+            /** Latest Effective Play Date */
+            latest_effective_play_date?: string | null;
+            /** First Play Date */
+            first_play_date?: string | null;
+            /** Latest Play Date */
+            latest_play_date?: string | null;
+            /**
+             * Freshness
+             * @default unknown
+             * @enum {string}
+             */
+            freshness: "recent" | "aging" | "old" | "unknown";
+            /**
+             * Has Account Data
+             * @default false
+             */
+            has_account_data: boolean;
+        };
+        /** HomeEntityMetric */
+        HomeEntityMetric: {
+            entity: components["schemas"]["HomeEntityRef"];
+            /** Plays */
+            plays: number;
+            /** Hours */
+            hours: number;
+        };
+        /** HomeEntityRef */
+        HomeEntityRef: {
+            /**
+             * Entity Type
+             * @enum {string}
+             */
+            entity_type: "track" | "album" | "artist";
+            /** Entity Id */
+            entity_id?: number | string | null;
+            /** Name */
+            name: string;
+            /** Artist Name */
+            artist_name?: string | null;
+            /** Cover Url */
+            cover_url?: string | null;
+            /** Deep Link */
+            deep_link: string;
+        };
+        /** HomeHeadline */
+        HomeHeadline: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "comeback" | "discovery" | "surge" | "habit_shift" | "leader" | "archive";
+            /** Title */
+            title: string;
+            /** Statement */
+            statement: string;
+            entity?: components["schemas"]["HomeEntityRef"] | null;
+        };
+        /** HomeOverviewResponse */
+        HomeOverviewResponse: {
+            /**
+             * Schema Version
+             * @default home_overview_v1
+             * @constant
+             */
+            schema_version: "home_overview_v1";
+            /** Generated At */
+            generated_at: string;
+            /** Filter Fingerprint */
+            filter_fingerprint: string;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "ready" | "limited" | "empty";
+            coverage: components["schemas"]["HomeCoverage"];
+            archive: components["schemas"]["HomeArchive"];
+            headline: components["schemas"]["HomeHeadline"];
+            recent?: components["schemas"]["HomeRecent"] | null;
+            billboard: components["schemas"]["HomeBillboard"];
+            yearly_review: components["schemas"]["HomeYearlyReview"];
+            rediscovery?: components["schemas"]["HomeRediscovery"] | null;
+        };
+        /** HomePeriod */
+        HomePeriod: {
+            /** Start Date */
+            start_date: string;
+            /** End Date */
+            end_date: string;
+            /** Label */
+            label: string;
+        };
+        /** HomeRecent */
+        HomeRecent: {
+            period?: components["schemas"]["HomePeriod"] | null;
+            comparison_period?: components["schemas"]["HomePeriod"] | null;
+            /**
+             * Comparison Available
+             * @default false
+             */
+            comparison_available: boolean;
+            summary: components["schemas"]["HomeRecentSummary"];
+            /** Trend */
+            trend?: components["schemas"]["HomeTrendPoint"][];
+            leaders?: components["schemas"]["HomeRecentLeaders"];
+        };
+        /** HomeRecentLeaders */
+        HomeRecentLeaders: {
+            track?: components["schemas"]["HomeEntityMetric"] | null;
+            album?: components["schemas"]["HomeEntityMetric"] | null;
+            artist?: components["schemas"]["HomeEntityMetric"] | null;
+        };
+        /** HomeRecentSummary */
+        HomeRecentSummary: {
+            /** Plays */
+            plays: number;
+            /** Hours */
+            hours: number;
+            /** Active Days */
+            active_days: number;
+            /** Plays Delta Pct */
+            plays_delta_pct?: number | null;
+            /** Hours Delta Pct */
+            hours_delta_pct?: number | null;
+            /** Late Night Pct */
+            late_night_pct: number;
+            /** Weekend Pct */
+            weekend_pct: number;
+        };
+        /** HomeRediscovery */
+        HomeRediscovery: {
+            entity: components["schemas"]["HomeEntityRef"];
+            /** Last Played */
+            last_played: string;
+            /** Total Plays */
+            total_plays: number;
+            /** Days Since Last Play */
+            days_since_last_play: number;
+        };
+        /** HomeTrendPoint */
+        HomeTrendPoint: {
+            /** Date */
+            date: string;
+            /** Plays */
+            plays: number;
+            /** Hours */
+            hours: number;
+        };
+        /** HomeYearlyReview */
+        HomeYearlyReview: {
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "ready" | "not_generated" | "unavailable";
+            /** Year */
+            year?: number | null;
+            /** Headline */
+            headline?: string | null;
+            /** Statement */
+            statement?: string | null;
+            entity?: components["schemas"]["HomeEntityRef"] | null;
+        };
         /**
          * HourlyDist
          * @description Hourly play count distribution.
@@ -9014,12 +9332,725 @@ export interface components {
                 [key: string]: components["schemas"]["TopVsAlltimeMark"][];
             };
         };
+        /** YearlyAppendix */
+        YearlyAppendix: {
+            /** Play Charts */
+            play_charts?: {
+                [key: string]: {
+                    [key: string]: unknown;
+                }[];
+            };
+            /** Billboard Charts */
+            billboard_charts?: {
+                [key: string]: {
+                    [key: string]: unknown;
+                }[];
+            };
+            /** Monthly Champions */
+            monthly_champions?: {
+                [key: string]: unknown;
+            }[];
+            /** Record Catalog Counts */
+            record_catalog_counts?: {
+                [key: string]: number;
+            };
+        };
+        /** YearlyBillboardCoverage */
+        YearlyBillboardCoverage: {
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "complete" | "year_to_date" | "observed_range" | "insufficient" | "empty";
+            /** Source Status */
+            source_status: string;
+            /**
+             * Observed Weeks
+             * @default 0
+             */
+            observed_weeks: number;
+            /**
+             * Expected Weeks
+             * @default 0
+             */
+            expected_weeks: number;
+            /** Has Internal Gaps */
+            has_internal_gaps?: boolean | null;
+            /** First Billboard Week */
+            first_billboard_week?: string | null;
+            /** Last Billboard Week */
+            last_billboard_week?: string | null;
+            /** Reason */
+            reason?: string | null;
+        };
+        /** YearlyComparisonCoverage */
+        YearlyComparisonCoverage: {
+            /** Baseline Year */
+            baseline_year?: number | null;
+            /** Aligned Start */
+            aligned_start?: string | null;
+            /** Aligned End */
+            aligned_end?: string | null;
+            /**
+             * Comparable
+             * @default false
+             */
+            comparable: boolean;
+            /** Reason */
+            reason?: string | null;
+        };
+        /** YearlyDivergenceStory */
+        YearlyDivergenceStory: {
+            entity: components["schemas"]["YearlyEntityRef"];
+            /** Play Rank */
+            play_rank: number;
+            /** Billboard Year End Rank */
+            billboard_year_end_rank: number;
+            /** Rank Gap */
+            rank_gap: number;
+            /**
+             * Interpretation
+             * @enum {string}
+             */
+            interpretation: "season_more_persistent" | "volume_more_concentrated";
+            /**
+             * Evidence Grade
+             * @default B
+             * @enum {string}
+             */
+            evidence_grade: "A" | "B" | "C";
+        };
+        /** YearlyEntityRef */
+        YearlyEntityRef: {
+            /**
+             * Entity Type
+             * @enum {string}
+             */
+            entity_type: "track" | "album" | "artist";
+            /** Entity Id */
+            entity_id?: number | string | null;
+            /** Name */
+            name: string;
+            /** Artist Name */
+            artist_name?: string | null;
+            /** Cover Url */
+            cover_url?: string | null;
+            /** Deep Link */
+            deep_link?: string | null;
+        };
+        /** YearlyEpilogue */
+        YearlyEpilogue: {
+            /** Conclusions */
+            conclusions?: components["schemas"]["YearlyHeadline"][];
+            /** New History Tops */
+            new_history_tops?: components["schemas"]["YearlyEntityRef"][];
+            /** Next Year Carryovers */
+            next_year_carryovers?: components["schemas"]["YearlyEntityRef"][];
+        };
+        /** YearlyFeaturedRecord */
+        YearlyFeaturedRecord: {
+            /** Record Id */
+            record_id: string;
+            /** Category */
+            category: string;
+            /** Fact Type */
+            fact_type: string;
+            /** Title */
+            title: string;
+            /** Statement */
+            statement: string;
+            /**
+             * Evidence Grade
+             * @enum {string}
+             */
+            evidence_grade: "A" | "B" | "C";
+            /** Entity Refs */
+            entity_refs?: components["schemas"]["YearlyEntityRef"][];
+            /** Metrics */
+            metrics?: components["schemas"]["YearlyMetric"][];
+            /** Source Refs */
+            source_refs?: string[];
+            /** Deep Link */
+            deep_link?: string | null;
+        };
+        /** YearlyHeadline */
+        YearlyHeadline: {
+            /** Headline Id */
+            headline_id: string;
+            /** Title */
+            title: string;
+            /** Statement */
+            statement: string;
+            /**
+             * Evidence Grade
+             * @enum {string}
+             */
+            evidence_grade: "A" | "B" | "C";
+            /**
+             * Evidence Status
+             * @default sufficient
+             * @enum {string}
+             */
+            evidence_status: "sufficient" | "limited" | "unavailable";
+            primary_metric?: components["schemas"]["YearlyMetric"] | null;
+            /** Entity Refs */
+            entity_refs?: components["schemas"]["YearlyEntityRef"][];
+            /** Source Refs */
+            source_refs?: string[];
+        };
         /** YearlyHeatmapEntry */
         YearlyHeatmapEntry: {
             /** Year */
             year: number;
             /** Z */
             z: number[][];
+        };
+        /** YearlyHonorItem */
+        YearlyHonorItem: {
+            /** Honor Id */
+            honor_id: string;
+            /** Title */
+            title: string;
+            entity?: components["schemas"]["YearlyEntityRef"] | null;
+            /** Metrics */
+            metrics?: components["schemas"]["YearlyMetric"][];
+            /**
+             * Evidence Grade
+             * @default A
+             * @enum {string}
+             */
+            evidence_grade: "A" | "B" | "C";
+        };
+        /** YearlyHonorsChapter */
+        YearlyHonorsChapter: {
+            /** Play Leaders */
+            play_leaders?: {
+                [key: string]: components["schemas"]["YearlyHonorItem"];
+            };
+            /** Billboard Leaders */
+            billboard_leaders?: {
+                [key: string]: components["schemas"]["YearlyHonorItem"];
+            };
+            /** Divergence Stories */
+            divergence_stories?: components["schemas"]["YearlyDivergenceStory"][];
+            /** Annual Honors */
+            annual_honors?: components["schemas"]["YearlyHonorItem"][];
+        };
+        /** YearlyListeningLifeChapter */
+        YearlyListeningLifeChapter: {
+            /** Metrics */
+            metrics?: components["schemas"]["YearlyMetric"][];
+            /** Observations */
+            observations?: components["schemas"]["YearlyHeadline"][];
+        };
+        /** YearlyMethodology */
+        YearlyMethodology: {
+            /**
+             * Content Version
+             * @default yearly_review_v2_12
+             */
+            content_version: string;
+            /**
+             * Relationship Policy Version
+             * @default relationship_policy_v2
+             */
+            relationship_policy_version: string;
+            /**
+             * Highlight Policy Version
+             * @default highlight_policy_v2
+             */
+            highlight_policy_version: string;
+            /**
+             * Season Stage Policy Version
+             * @default season_stage_v1
+             */
+            season_stage_policy_version: string;
+            /** Metric Definitions */
+            metric_definitions?: {
+                [key: string]: string;
+            };
+            /** Comparison Periods */
+            comparison_periods?: {
+                [key: string]: string | null;
+            };
+            /** Entity Grains */
+            entity_grains?: {
+                [key: string]: string;
+            };
+            /** Coverage Caveats */
+            coverage_caveats?: string[];
+            /** Internal Versions */
+            internal_versions?: {
+                [key: string]: string;
+            };
+            /** Internal Diagnostics */
+            internal_diagnostics?: string[];
+            /** Notes */
+            notes?: string[];
+            /** Limitations */
+            limitations?: string[];
+        };
+        /** YearlyMetric */
+        YearlyMetric: {
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+            /** Value */
+            value: number | string;
+            /** Unit */
+            unit?: string | null;
+            /** Comparison Value */
+            comparison_value?: number | null;
+            /** Comparison Label */
+            comparison_label?: string | null;
+        };
+        /** YearlyMonthSummary */
+        YearlyMonthSummary: {
+            /** Month */
+            month: number;
+            /**
+             * Plays
+             * @default 0
+             */
+            plays: number;
+            /**
+             * Hours
+             * @default 0
+             */
+            hours: number;
+            /**
+             * Active Days
+             * @default 0
+             */
+            active_days: number;
+            /** Leaders */
+            leaders?: {
+                [key: string]: components["schemas"]["YearlyEntityRef"];
+            };
+            /** Comparisons */
+            comparisons?: components["schemas"]["YearlyMetric"][];
+            /** Stage Id */
+            stage_id?: string | null;
+            /** Event Ids */
+            event_ids?: string[];
+        };
+        /** YearlyPlayCoverage */
+        YearlyPlayCoverage: {
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "complete" | "year_to_date" | "observed_range" | "insufficient" | "empty";
+            /** Observed Start */
+            observed_start?: string | null;
+            /** Observed End */
+            observed_end?: string | null;
+            /**
+             * Active Days
+             * @default 0
+             */
+            active_days: number;
+            /**
+             * Natural Days Span
+             * @default 0
+             */
+            natural_days_span: number;
+            /**
+             * Import Coverage Status
+             * @default unknown
+             * @enum {string}
+             */
+            import_coverage_status: "verified_complete" | "verified_partial" | "unknown";
+            /**
+             * Internal Gap Status
+             * @default unknown
+             * @enum {string}
+             */
+            internal_gap_status: "verified_complete" | "verified_gaps" | "unknown";
+            /**
+             * Is Calendar Start Observed
+             * @default false
+             */
+            is_calendar_start_observed: boolean;
+            /**
+             * Is Calendar End Observed
+             * @default false
+             */
+            is_calendar_end_observed: boolean;
+            /** Latest Data Date */
+            latest_data_date?: string | null;
+            /** Reason */
+            reason?: string | null;
+        };
+        /** YearlyRecordsChapter */
+        YearlyRecordsChapter: {
+            /**
+             * Policy Version
+             * @default highlight_policy_v2
+             */
+            policy_version: string;
+            /** Featured */
+            featured?: components["schemas"]["YearlyFeaturedRecord"][];
+            /** Catalog Counts */
+            catalog_counts?: {
+                [key: string]: number;
+            };
+        };
+        /** YearlyRelationshipStory */
+        YearlyRelationshipStory: {
+            /** Story Id */
+            story_id: string;
+            /** Relationship Type */
+            relationship_type: string;
+            /** Title */
+            title: string;
+            /** Statement */
+            statement: string;
+            entity: components["schemas"]["YearlyEntityRef"];
+            /**
+             * Evidence Grade
+             * @default C
+             * @constant
+             */
+            evidence_grade: "C";
+            /**
+             * Evidence Status
+             * @default sufficient
+             * @enum {string}
+             */
+            evidence_status: "sufficient" | "limited" | "unavailable";
+            /** Metrics */
+            metrics?: components["schemas"]["YearlyMetric"][];
+            /** Source Refs */
+            source_refs?: string[];
+        };
+        /** YearlyReportPassport */
+        YearlyReportPassport: {
+            /** Year */
+            year: number;
+            /** Label */
+            label: string;
+            /** Observed Start */
+            observed_start?: string | null;
+            /** Observed End */
+            observed_end?: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "complete" | "year_to_date" | "observed_range" | "insufficient" | "empty";
+            /** Metrics */
+            metrics?: components["schemas"]["YearlyMetric"][];
+        };
+        /** YearlyReviewAvailableYearsResponse */
+        YearlyReviewAvailableYearsResponse: {
+            /** Years */
+            years?: number[];
+            /** Latest Year */
+            latest_year?: number | null;
+        };
+        /** YearlyReviewCoverage */
+        YearlyReviewCoverage: {
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "complete" | "year_to_date" | "observed_range" | "insufficient" | "empty";
+            play: components["schemas"]["YearlyPlayCoverage"];
+            billboard: components["schemas"]["YearlyBillboardCoverage"];
+            comparison: components["schemas"]["YearlyComparisonCoverage"];
+            taste: components["schemas"]["YearlyTasteCoverage"];
+        };
+        /**
+         * YearlyReviewFilterContext
+         * @description Every semantic input and revision shared by all report builders.
+         */
+        YearlyReviewFilterContext: {
+            /** Min Ms */
+            min_ms: number;
+            /** Music Only */
+            music_only: boolean;
+            /** Merge Enabled */
+            merge_enabled: boolean;
+            /** Dynamic Threshold */
+            dynamic_threshold: boolean;
+            /** Max Merge Gap Minutes */
+            max_merge_gap_minutes?: number | null;
+            /** Merge Level */
+            merge_level: number;
+            /** Include Compilations */
+            include_compilations: boolean;
+            /** Bb Top N */
+            bb_top_n: number;
+            /** Bb Album Top N */
+            bb_album_top_n: number;
+            /** Bb Artist Top N */
+            bb_artist_top_n: number;
+            /** Bb Week Start Dow */
+            bb_week_start_dow: number;
+            /** Bb Week Start Hour */
+            bb_week_start_hour: number;
+            /** Display Taxonomy Version */
+            display_taxonomy_version: string;
+            /** Artist Metadata Revision */
+            artist_metadata_revision: string;
+            /** Artist Identity Revision */
+            artist_identity_revision: number;
+            /** Track Credit Revision */
+            track_credit_revision: number;
+            /** Track Group Revision */
+            track_group_revision: string;
+            /** Album Project Revision */
+            album_project_revision: string;
+            /** Filter Fingerprint */
+            filter_fingerprint: string;
+        };
+        /** YearlyReviewGenerationResponse */
+        YearlyReviewGenerationResponse: {
+            /**
+             * Protocol Version
+             * @default yearly_review_generation_v1
+             * @constant
+             */
+            protocol_version: "yearly_review_generation_v1";
+            /** Tasks */
+            tasks?: components["schemas"]["YearlyReviewGenerationTask"][];
+        };
+        /** YearlyReviewGenerationTask */
+        YearlyReviewGenerationTask: {
+            /** Year */
+            year: number;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "queued" | "running" | "ready" | "failed";
+            /**
+             * Requested At
+             * Format: date-time
+             */
+            requested_at: string;
+            /** Started At */
+            started_at?: string | null;
+            /** Finished At */
+            finished_at?: string | null;
+            /** Error */
+            error?: string | null;
+        };
+        /** YearlyReviewPrewarmRequest */
+        YearlyReviewPrewarmRequest: {
+            /** Years */
+            years: number[];
+            /** Foreground Year */
+            foreground_year?: number | null;
+        };
+        /** YearlyReviewRecordsPage */
+        YearlyReviewRecordsPage: {
+            /**
+             * Content Version
+             * @default yearly_review_v2_12
+             */
+            content_version: string;
+            /** Year */
+            year: number;
+            /** Filter Fingerprint */
+            filter_fingerprint: string;
+            /** Page */
+            page: number;
+            /** Page Size */
+            page_size: number;
+            /** Total */
+            total: number;
+            /** Total Pages */
+            total_pages: number;
+            /** Items */
+            items?: components["schemas"]["YearlyFeaturedRecord"][];
+            /** Catalog Counts */
+            catalog_counts?: {
+                [key: string]: number;
+            };
+        };
+        /** YearlyReviewResponse */
+        YearlyReviewResponse: {
+            /**
+             * Schema Version
+             * @default yearly_review_v2
+             * @constant
+             */
+            schema_version: "yearly_review_v2";
+            /** Year */
+            year: number;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "complete" | "year_to_date" | "observed_range" | "insufficient" | "empty";
+            filter_context: components["schemas"]["YearlyReviewFilterContext"];
+            coverage: components["schemas"]["YearlyReviewCoverage"];
+            passport?: components["schemas"]["YearlyReportPassport"] | null;
+            /** Headlines */
+            headlines?: components["schemas"]["YearlyHeadline"][];
+            honors?: components["schemas"]["YearlyHonorsChapter"];
+            season?: components["schemas"]["YearlySeasonChapter"];
+            /** Relationships */
+            relationships?: components["schemas"]["YearlyRelationshipStory"][];
+            listening_life?: components["schemas"]["YearlyListeningLifeChapter"];
+            records?: components["schemas"]["YearlyRecordsChapter"];
+            taste_migration?: components["schemas"]["YearlyTasteMigrationChapter"];
+            epilogue?: components["schemas"]["YearlyEpilogue"];
+            appendix?: components["schemas"]["YearlyAppendix"];
+            methodology?: components["schemas"]["YearlyMethodology"];
+        };
+        /** YearlySeasonChapter */
+        YearlySeasonChapter: {
+            /**
+             * Policy Version
+             * @default season_stage_v1
+             */
+            policy_version: string;
+            /**
+             * Stage Status
+             * @default insufficient
+             * @enum {string}
+             */
+            stage_status: "available" | "no_stable_phase" | "insufficient";
+            /** Stage Note */
+            stage_note?: string | null;
+            /** Stages */
+            stages?: components["schemas"]["YearlySeasonStage"][];
+            /** Turning Points */
+            turning_points?: components["schemas"]["YearlyTurningPoint"][];
+            /** Months */
+            months?: components["schemas"]["YearlyMonthSummary"][];
+        };
+        /** YearlySeasonStage */
+        YearlySeasonStage: {
+            /** Stage Id */
+            stage_id: string;
+            /** Label */
+            label: string;
+            /** Start Month */
+            start_month: number;
+            /** End Month */
+            end_month: number;
+            /** Entity Refs */
+            entity_refs?: components["schemas"]["YearlyEntityRef"][];
+            /** Evidence */
+            evidence?: components["schemas"]["YearlyMetric"][];
+        };
+        /** YearlyTasteAxisCoverage */
+        YearlyTasteAxisCoverage: {
+            /**
+             * Known Pct
+             * @default 0
+             */
+            known_pct: number;
+            /**
+             * Unknown Hours
+             * @default 0
+             */
+            unknown_hours: number;
+            /**
+             * Level
+             * @default unavailable
+             * @enum {string}
+             */
+            level: "core" | "secondary" | "insufficient" | "unavailable";
+            /**
+             * Conclusion Allowed
+             * @default false
+             */
+            conclusion_allowed: boolean;
+            /**
+             * Caveat Required
+             * @default true
+             */
+            caveat_required: boolean;
+        };
+        /** YearlyTasteComparison */
+        YearlyTasteComparison: {
+            /**
+             * Mode
+             * @default distribution_only
+             * @enum {string}
+             */
+            mode: "half_years" | "completed_quarters" | "distribution_only";
+            /**
+             * Status
+             * @default insufficient_completed_periods
+             * @enum {string}
+             */
+            status: "available" | "insufficient_completed_periods";
+            /** From Slice Key */
+            from_slice_key?: string | null;
+            /** To Slice Key */
+            to_slice_key?: string | null;
+            /** From Label */
+            from_label?: string | null;
+            /** To Label */
+            to_label?: string | null;
+            /** From Start */
+            from_start?: string | null;
+            /** From End */
+            from_end?: string | null;
+            /** To Start */
+            to_start?: string | null;
+            /** To End */
+            to_end?: string | null;
+        };
+        /** YearlyTasteCoverage */
+        YearlyTasteCoverage: {
+            style?: components["schemas"]["YearlyTasteAxisCoverage"];
+            scene?: components["schemas"]["YearlyTasteAxisCoverage"];
+            language?: components["schemas"]["YearlyTasteAxisCoverage"];
+            release_era?: components["schemas"]["YearlyTasteAxisCoverage"];
+        };
+        /** YearlyTasteMigrationChapter */
+        YearlyTasteMigrationChapter: {
+            comparison?: components["schemas"]["YearlyTasteComparison"];
+            /** Observations */
+            observations?: components["schemas"]["YearlyHeadline"][];
+            /** Distributions */
+            distributions?: {
+                [key: string]: {
+                    [key: string]: unknown;
+                }[];
+            };
+            /** Changes */
+            changes?: {
+                [key: string]: {
+                    [key: string]: unknown;
+                }[];
+            };
+            /** Coverage Notes */
+            coverage_notes?: {
+                [key: string]: string;
+            };
+        };
+        /** YearlyTurningPoint */
+        YearlyTurningPoint: {
+            /** Point Id */
+            point_id: string;
+            /** Month */
+            month: number;
+            /** Date */
+            date?: string | null;
+            /** Event Type */
+            event_type: string;
+            /** Title */
+            title: string;
+            /** Statement */
+            statement: string;
+            /**
+             * Evidence Grade
+             * @enum {string}
+             */
+            evidence_grade: "A" | "B" | "C";
+            /** Entity Refs */
+            entity_refs?: components["schemas"]["YearlyEntityRef"][];
+            /** Metrics */
+            metrics?: components["schemas"]["YearlyMetric"][];
         };
         /** YearlyWrapped */
         YearlyWrapped: {
@@ -9394,6 +10425,56 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PlaybackRecordsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    home_overview_api_home_overview_get: {
+        parameters: {
+            query?: {
+                /** @description 最短播放时长 (毫秒) */
+                min_ms?: number | null;
+                /** @description 仅音乐 */
+                music_only?: boolean | null;
+                /** @description 合并连续播放 */
+                merge_enabled?: boolean | null;
+                /** @description 使用动态有效播放阈值 */
+                dynamic_threshold?: boolean;
+                /** @description 连续播放最大合并间隔 (分钟) */
+                max_merge_gap_minutes?: number | null;
+                /** @description 版本合并严格度 */
+                merge_level?: number;
+                /** @description 专辑榜包含精选集 */
+                include_compilations?: boolean | null;
+                bb_top_n?: number | null;
+                bb_album_top_n?: number | null;
+                bb_artist_top_n?: number | null;
+                bb_week_start_dow?: number | null;
+                bb_week_start_hour?: number | null;
+                readonly?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HomeOverviewResponse"];
                 };
             };
             /** @description Validation Error */
@@ -10786,6 +11867,240 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WrappedHubResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    available_years_api_yearly_review_available_years_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["YearlyReviewAvailableYearsResponse"];
+                };
+            };
+        };
+    };
+    prewarm_api_yearly_review_prewarm_post: {
+        parameters: {
+            query?: {
+                /** @description 最短播放时长 (毫秒) */
+                min_ms?: number | null;
+                /** @description 仅音乐 */
+                music_only?: boolean | null;
+                /** @description 合并连续播放 */
+                merge_enabled?: boolean | null;
+                /** @description 使用动态有效播放阈值 */
+                dynamic_threshold?: boolean;
+                /** @description 连续播放最大合并间隔 (分钟) */
+                max_merge_gap_minutes?: number | null;
+                /** @description 版本合并严格度 */
+                merge_level?: number;
+                /** @description 专辑榜包含精选集 */
+                include_compilations?: boolean | null;
+                bb_top_n?: number | null;
+                bb_album_top_n?: number | null;
+                bb_artist_top_n?: number | null;
+                bb_week_start_dow?: number | null;
+                bb_week_start_hour?: number | null;
+                readonly?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["YearlyReviewPrewarmRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["YearlyReviewGenerationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    generation_status_api_yearly_review_generation_status_get: {
+        parameters: {
+            query?: {
+                /** @description 可选的逗号分隔报告年份；省略时返回全部可用年份 */
+                years?: string | null;
+                /** @description 最短播放时长 (毫秒) */
+                min_ms?: number | null;
+                /** @description 仅音乐 */
+                music_only?: boolean | null;
+                /** @description 合并连续播放 */
+                merge_enabled?: boolean | null;
+                /** @description 使用动态有效播放阈值 */
+                dynamic_threshold?: boolean;
+                /** @description 连续播放最大合并间隔 (分钟) */
+                max_merge_gap_minutes?: number | null;
+                /** @description 版本合并严格度 */
+                merge_level?: number;
+                /** @description 专辑榜包含精选集 */
+                include_compilations?: boolean | null;
+                bb_top_n?: number | null;
+                bb_album_top_n?: number | null;
+                bb_artist_top_n?: number | null;
+                bb_week_start_dow?: number | null;
+                bb_week_start_hour?: number | null;
+                readonly?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["YearlyReviewGenerationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    yearly_review_api_yearly_review__year__get: {
+        parameters: {
+            query?: {
+                /** @description 最短播放时长 (毫秒) */
+                min_ms?: number | null;
+                /** @description 仅音乐 */
+                music_only?: boolean | null;
+                /** @description 合并连续播放 */
+                merge_enabled?: boolean | null;
+                /** @description 使用动态有效播放阈值 */
+                dynamic_threshold?: boolean;
+                /** @description 连续播放最大合并间隔 (分钟) */
+                max_merge_gap_minutes?: number | null;
+                /** @description 版本合并严格度 */
+                merge_level?: number;
+                /** @description 专辑榜包含精选集 */
+                include_compilations?: boolean | null;
+                bb_top_n?: number | null;
+                bb_album_top_n?: number | null;
+                bb_artist_top_n?: number | null;
+                bb_week_start_dow?: number | null;
+                bb_week_start_hour?: number | null;
+                readonly?: boolean;
+            };
+            header?: never;
+            path: {
+                /** @description 报告年份 */
+                year: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["YearlyReviewResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    yearly_review_records_api_yearly_review__year__records_get: {
+        parameters: {
+            query?: {
+                page?: number;
+                page_size?: number;
+                /** @description 最短播放时长 (毫秒) */
+                min_ms?: number | null;
+                /** @description 仅音乐 */
+                music_only?: boolean | null;
+                /** @description 合并连续播放 */
+                merge_enabled?: boolean | null;
+                /** @description 使用动态有效播放阈值 */
+                dynamic_threshold?: boolean;
+                /** @description 连续播放最大合并间隔 (分钟) */
+                max_merge_gap_minutes?: number | null;
+                /** @description 版本合并严格度 */
+                merge_level?: number;
+                /** @description 专辑榜包含精选集 */
+                include_compilations?: boolean | null;
+                bb_top_n?: number | null;
+                bb_album_top_n?: number | null;
+                bb_artist_top_n?: number | null;
+                bb_week_start_dow?: number | null;
+                bb_week_start_hour?: number | null;
+                readonly?: boolean;
+            };
+            header?: never;
+            path: {
+                /** @description 报告年份 */
+                year: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["YearlyReviewRecordsPage"];
                 };
             };
             /** @description Validation Error */

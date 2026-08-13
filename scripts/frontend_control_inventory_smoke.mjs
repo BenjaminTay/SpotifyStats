@@ -45,7 +45,7 @@ const DEFAULT_ROUTES = [
 const SLOW_ROUTES = new Set(['/analysis/records'])
 
 const ROUTE_READY_MARKERS = {
-  '/': ['DASHBOARD /', '总播放次数', '播放次数'],
+  '/': ['最近一章', '最新个人 Billboard'],
   '/analysis/stats': ['PLAYBACK / ANALYSIS', '播放统计'],
   '/analysis/charts': ['PLAYBACK RANKING', '播放排行'],
   '/analysis/records': ['播放记录', '高光时刻'],

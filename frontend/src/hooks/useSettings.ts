@@ -95,9 +95,10 @@ export function useSettings(): UseSettingsResult {
 
   // Cleanup polling on unmount
   useEffect(() => {
+    const pollingIntervals = pollRef.current
     return () => {
-      pollRef.current.forEach((interval) => clearInterval(interval))
-      pollRef.current.clear()
+      pollingIntervals.forEach((interval) => clearInterval(interval))
+      pollingIntervals.clear()
     }
   }, [])
 
@@ -105,6 +106,7 @@ export function useSettings(): UseSettingsResult {
     const updated = await api.put<SettingsData>('/settings', payload)
     queryClient.setQueryData(queryKeys.settings.data(), updated)
     if (touchesStatsSettings(payload)) {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.home.all })
       void queryClient.invalidateQueries({ queryKey: queryKeys.billboard.all })
       void queryClient.invalidateQueries({ queryKey: queryKeys.analysis.all })
       void queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.all })
@@ -282,13 +284,15 @@ export function useVersionMerge(): UseVersionMergeResult {
     queryFn: () => api.get<ReleaseGroup[]>('/version-merge/groups'),
     enabled: false,
   })
+  const { refetch: refetchGroups } = groupsQuery
 
   const fetchGroups = useCallback(() => {
-    return groupsQuery.refetch().then((r) => r.data ?? [])
-  }, [groupsQuery.refetch])
+    return refetchGroups().then((r) => r.data ?? [])
+  }, [refetchGroups])
 
   const invalidateMergeDependents = useCallback(() => {
     void queryClient.invalidateQueries({ queryKey: queryKeys.versionMerge.all })
+    void queryClient.invalidateQueries({ queryKey: queryKeys.home.all })
     void queryClient.invalidateQueries({ queryKey: queryKeys.analysis.all })
     void queryClient.invalidateQueries({ queryKey: queryKeys.billboard.all })
     void queryClient.invalidateQueries({ queryKey: queryKeys.music.all })

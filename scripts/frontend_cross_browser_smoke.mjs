@@ -25,7 +25,7 @@ const DETAIL_ROUTE_FILTERS = {
 }
 
 const DEFAULT_ROUTES = [
-  { path: '/', markers: ['播放次数'] },
+  { path: '/', markers: ['最近一章', '最新个人 Billboard'] },
   { path: '/analysis/stats', markers: ['播放统计'] },
   { path: '/analysis/charts', markers: ['播放排行'] },
   { path: '/yearly-review', markers: ['年度总结'] },

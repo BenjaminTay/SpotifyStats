@@ -385,6 +385,39 @@ def get_yearly_review(
     return YearlyReviewResponse.model_validate(_artifact(year, context)["report"])
 
 
+def get_cached_yearly_review_artifact(
+    year: int,
+    context: YearlyReviewFilterContext,
+) -> dict[str, Any] | None:
+    """Return an exact persistent hit without queueing or building a report.
+
+    Lightweight consumers such as the home page must never turn a preview read
+    into a 10+ second annual-report generation.  This helper deliberately
+    bypasses both the generation coordinator and the in-process builder cache.
+    """
+    prepared = _prepare_artifact(year, context)
+    try:
+        if not has_persisted_artifact(prepared.cache_key):
+            return None
+        return load_persisted_artifact(prepared.cache_key)
+    except Exception:
+        logger.exception("Yearly Review cache-only preview read failed")
+        return None
+
+
+def yearly_review_cache_state(context: YearlyReviewFilterContext) -> str:
+    """Cheap exact-key readiness token for lightweight composite caches."""
+    latest = get_yearly_review_available_years().latest_year
+    if latest is None:
+        return "unavailable"
+    prepared = _prepare_artifact(latest, context)
+    try:
+        ready = has_persisted_artifact(prepared.cache_key)
+    except Exception:
+        ready = False
+    return f"{latest}:{prepared.cache_key}:{int(ready)}"
+
+
 def get_yearly_review_records(
     year: int,
     context: YearlyReviewFilterContext,

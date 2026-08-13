@@ -51,6 +51,7 @@ from backend.domains.billboard.data_loader import (
     DOW_SHORT,
     load_track_album_map,
 )
+from backend.domains.billboard.latest_snapshot_cache import snapshot_key, store_latest_snapshot
 
 
 @lru_cache(maxsize=8)
@@ -168,6 +169,25 @@ def _compute_billboard_data_cached(
         "album_power_scores": _df_to_json(album_power_scores),
         "artist_power_scores": _df_to_json(artist_power_scores),
     }
+
+    store_latest_snapshot(
+        snapshot_key(
+            min_ms,
+            music_only,
+            bb_top_n,
+            bb_album_top_n,
+            bb_artist_top_n,
+            bb_week_start_dow,
+            bb_week_start_hour,
+            year_start,
+            year_end,
+            merge_level,
+            dynamic_threshold,
+            max_merge_gap_minutes,
+            include_compilations,
+        ),
+        result,
+    )
 
     return result
 

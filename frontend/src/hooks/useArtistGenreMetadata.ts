@@ -17,6 +17,7 @@ import type { AiTaskCreatePayload } from '@/types/ai-tasks'
 
 function invalidateArtistGenreConsumers(queryClient: ReturnType<typeof useQueryClient>) {
   void queryClient.invalidateQueries({ queryKey: queryKeys.metadata.artistGenres.all })
+  void queryClient.invalidateQueries({ queryKey: queryKeys.home.all })
   void queryClient.invalidateQueries({ queryKey: queryKeys.yearlyReview.all })
   void queryClient.invalidateQueries({ queryKey: queryKeys.account.all })
   void queryClient.invalidateQueries({ queryKey: queryKeys.billboard.all })
