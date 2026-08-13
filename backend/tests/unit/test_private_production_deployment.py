@@ -66,6 +66,8 @@ def test_production_web_image_uses_the_hardened_nginx_config() -> None:
     assert "ai-insights" in public_nginx
     assert "versus/(track|album|artist)|release-cycle/compare" in public_nginx
     assert "limit_except GET HEAD OPTIONS {" in public_nginx
+    assert "location = /docs" in public_nginx
+    assert "location = /openapi.json" in public_nginx
 
 
 def test_deployment_scripts_keep_release_and_restore_guardrails() -> None:
