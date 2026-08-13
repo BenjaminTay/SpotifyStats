@@ -12,6 +12,8 @@ UI：「编辑风 × 液态玻璃」— Playfair Display + Inter，毛玻璃，�
 
 导航命名：顶级入口使用“播放分析”；二级 tab 固定为“播放统计 / 播放排行 / 年度总结 / 播放记录 / 账号中心”。年度总结与账号中心保持在播放分析 tab 行内，避免恢复独立顶级入口或重复下拉入口。
 
+音乐档案：`/account` 保留路由和导航名，正文使用本地优先“音乐档案”；Desktop/Compact 与 Phone presentation 互斥挂载，共享 `account_archive` 严格事实。不得恢复旧人格、chemistry、Habits、Marquee 或粉丝等级页面，不得从页面请求 `/api/profile`、旧 `/api/account` 或 `/api/account/collection-insights`。AI 的两个 account 工具名只作编排兼容，证据来自 archive overview / journey / cohorts / returns / discovery。
+
 年度总结 V2：`/yearly-review` 只展示自有年度总结。Desktop/Compact 与 Phone 共享确定性八章数据、过滤指纹、coverage、缓存和生成任务，但使用互斥的独立 presentation；桌面是完整杂志年鉴，Phone 是“口袋音乐年鉴”、2×3 KPI、章节进度 Sheet、纵向时间线和无宽表全屏榜单。官方 Wrapped 页签与前端组件已删除，`/api/wrapped-hub` 和官方导入数据仅作只读兼容冻结。V2 通过 `/api/yearly-review/available-years|{year}|{year}/records` 消费统一过滤指纹、coverage、策略与元数据 revision；播放/时长榜和个人 Billboard 必须明确区分，月度正文只有一条转折时间线，十二月明细按需展开。同比使用真实 aligned window，工作日/周末使用自然日日均，Passport 使用规范实体粒度，YTD 品味只比较完整季度；公开纪录、阶段和结语均受显式证据规则约束。消费 UI 不展示口径、指纹、策略、证据等级、coverage 或 limitations，只使用普通用户文案；六项 KPI 只显示红/绿箭头与百分比，实体故事和完整榜单优先显示封面/深链，大标题无解释性 subtitle。年份升序排列、只显示年份并默认最新可用年份（包括进行中的当前年）；完整年度封面隐藏状态/日期，进行中报告仍保留截止日期；封面三条头条与海报功能均不展示。年度动态文案和实体名称遵循全局简繁体偏好，时间线必须明确歌曲、专辑或艺人类型。新关系标题必须区分歌曲、专辑、艺人；同专辑/艺人多首入榜必须显示准确曲目数；宽屏分歧故事使用两列，窄屏回到单列。年度纪录只展示精选集合，不提供完整目录展开；兼容 records API 只返回同一精选集合，artifact 不再序列化全部候选。桌面章节间距使用统一紧凑节奏；Phone 触控目标至少 44×44px，榜单正文 Top 5、全屏每页 10 条并恢复关闭焦点。LLM 不生成年度事实。schema/content version 分开治理，统计、编排或公开展示语义变化必须提升 content version。当前 content 为 v2.12；v2.8 四年性能基线为真实重算 10.65–16.54s、热响应 26.56–29.85ms、跨进程持久命中 10.20–21.07ms，probe v5 同时锁定公开文案、封面/深链、YTD 措辞、精选证据、结语去重与阶段状态，详见 `docs/reports/2026-08-12-yearly-review-v2-delivery.md`。
 
 移动网页架构：`<768px` 使用独立 Phone presentation，`768–1023px` 为 Compact，`>=1024px` 使用 Desktop；Phone/Desktop 的重图表、宽表与长列表必须互斥挂载，但继续共享 Route Container、React Router URL 状态、TanStack Query、过滤指纹、row model 和统计事实。Phone Shell 固定使用 `MobileTopBar`、五项 `MobileBottomNav` 与播放分析/Billboard `MobileSectionSwitcher`；Push 详情按路由语义隐藏 Bottom Nav。主要移动触控目标至少 44×44px，关键操作不得依赖 hover，复杂图表需提供触摸 disclosure 与可恢复焦点的全屏模式。Settings 手机端只开放低风险日常设置；导入、元数据治理、凭据和系统维护保留桌面工作台。新增消费页面必须通过 360/390/430/768/1280 route matrix、移动 control inventory、interaction/chart、long-list 与 Chromium/Firefox/WebKit 门禁。完整规范见 `frontend/UI_STYLE_GUIDE.md` 和 `docs/plans/2026-08-05-mobile-web-design-and-implementation-plan.md`。
@@ -135,9 +137,9 @@ conventional commit 前缀 + 4-7 条中文 bullet。
 JSON → import → SQLite → FastAPI (backend/) → React (frontend/)
 ```
 
-**后端**：api/ → services/ → domains/（billboard/playback/settings/enrichment/community/chat/ai_agent/ai_tasks）→ core/，辅以 infrastructure/http/ + providers/（spotify/genius/wikipedia/llm）
+**后端**：api/ → services/ → domains/（account_archive/billboard/playback/settings/enrichment/community/chat/ai_agent/ai_tasks）→ core/，辅以 infrastructure/http/ + providers/（spotify/genius/wikipedia/llm）
 
-**前端**：pages/（route container，≤450 行）→ features/（analysis/records/Experience|6 Section|Primitives|Data、billboard/records|number-ones|all-time、community/Experience|Account|FeedToggle|TimeFilter|PostCard|Timeline|Sidebar|PostDetailExperience|MobileSidebarDrawer|communityData、ai-insights/Experience|ReportsPanel|ReportCard|ChatInterface|ChatComposer|ChatSessionList|ChatSessionDrawer|SuggestedQuestions|Primitives|Data、ai-tasks/Progress|ToolTrace|ResultShell、music/details 与 music/search、settings/components、account/collection）→ components/（ui/charts/layout/shared）
+**前端**：pages/（route container，≤450 行）→ features/（analysis/records/Experience|6 Section|Primitives|Data、billboard/records|number-ones|all-time、community/Experience|Account|FeedToggle|TimeFilter|PostCard|Timeline|Sidebar|PostDetailExperience|MobileSidebarDrawer|communityData、ai-insights/Experience|ReportsPanel|ReportCard|ChatInterface|ChatComposer|ChatSessionList|ChatSessionDrawer|SuggestedQuestions|Primitives|Data、ai-tasks/Progress|ToolTrace|ResultShell、music/details 与 music/search、settings/components、account-archive/route|desktop|phone|hooks|model）→ components/（ui/charts/layout/shared）
 
 **Phase 5 架构模式**：
 

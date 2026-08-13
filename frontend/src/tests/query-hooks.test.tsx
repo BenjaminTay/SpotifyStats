@@ -17,7 +17,6 @@ import {
 import { useSettings } from '@/hooks/useSettings'
 import { analysisApi, musicSearchApi } from '@/hooks/useAnalysis'
 import { queryClient } from '@/api/query-client'
-import { useProfile } from '@/hooks/useAccount'
 import {
   useArchiveLibrary,
   useArchiveOverview,
@@ -216,28 +215,6 @@ describe('Phase 5 query hook migration', () => {
     })
 
     expect(api.get).toHaveBeenCalledWith('/behavior', { music_only: false })
-  })
-
-  it('stores account profile hero data separately from the heavy account summary', async () => {
-    const client = createClient()
-    const profile = {
-      profile: { identity_displayName: 'Taylor Listener' },
-      follows: [{ type: 'artist', name: 'Taylor Swift' }],
-      prompts: [],
-      stats: { first_play_date: '2022-01-01', total_audio_plays: 1234 },
-      banned_items: [],
-    }
-    vi.spyOn(api, 'get').mockResolvedValue(profile)
-
-    const { result } = renderHook(() => useProfile(), {
-      wrapper: wrapperFor(client),
-    })
-
-    await waitFor(() => expect(result.current.loading).toBe(false))
-
-    expect(api.get).toHaveBeenCalledWith('/profile')
-    expect(client.getQueryData(queryKeys.account.profile())).toBe(profile)
-    expect(result.current.data?.profile.identity_displayName).toBe('Taylor Listener')
   })
 
   it('stores the local-first archive overview without requesting the legacy account summary', async () => {

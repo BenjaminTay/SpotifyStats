@@ -2,7 +2,7 @@
 
 > 日期：2026-08-13
 > 分支：`codex/account-archive-rebuild`
-> 范围：`/account` 的独立 Phone presentation、全屏曲线与收藏库、移动门禁；不包含旧兼容链路删除与分支合并
+> 范围：`/account` 的独立 Phone presentation、全屏曲线与收藏库、移动门禁；旧兼容链路已由后续 Phase 4 删除，仍不包含分支合并
 
 ## 1. 交付结论
 
@@ -49,6 +49,6 @@ Phone 已从旧账号 Hero 和桌面内容折叠壳切换为独立“口袋音�
 - `output/playwright/account-archive-phone-library-430.png`
 - `output/playwright/account-archive-phone-chart-390.png`
 
-## 5. 仍未完成
+## 5. 后续状态
 
-下一阶段是 Phase 4：盘点并删除不再被消费的旧人格、Marquee、粉丝等级、关键词迁移和 chemistry UI，确认旧 `/api/account` 的其他消费者后再决定兼容 facade 的移除顺序，并同步 API 台账与项目提示文件。当前分支继续与首页工作树隔离，不同步、rebase 或合并。
+Phase 4 已完成：旧人格、Marquee、粉丝等级、关键词迁移和 chemistry UI 已删除，旧 `/api/account` 聚合消费者已迁移，兼容 facade 与重型 service 已移除，API 台账和项目提示文件已同步。当前分支继续与首页工作树隔离，不同步、rebase 或合并。

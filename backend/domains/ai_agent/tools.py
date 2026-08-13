@@ -9,6 +9,12 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from backend.core.db import get_db
+from backend.domains.account_archive.cohorts import get_collection_cohorts
+from backend.domains.account_archive.context import build_archive_filter_context
+from backend.domains.account_archive.discovery import get_archive_discovery
+from backend.domains.account_archive.journey import get_collection_journey
+from backend.domains.account_archive.overview import get_archive_overview
+from backend.domains.account_archive.returns import get_archive_returns
 from backend.domains.ai_agent.comparison import summarize_entity_comparison
 from backend.domains.ai_agent.entity_resolver import resolve_entities
 from backend.domains.ai_agent.tool_registry import AgentToolDefinition, AgentToolResult
@@ -16,7 +22,6 @@ from backend.domains.billboard import details as billboard_details
 from backend.domains.community import feed_generator as community_feed_generator
 from backend.domains.community.post_types import HIGHLIGHT_POST_TYPES
 from backend.services import (
-    account_service,
     analysis_records_service,
     analysis_stats_service,
     entity_stats_service,
@@ -416,27 +421,25 @@ def _comparison_result_summary(data: dict[str, Any]) -> str:
 
 
 def _account_summary_result_summary(data: dict[str, Any]) -> str:
-    library = data.get("library") if isinstance(data.get("library"), dict) else {}
-    search = data.get("search") if isinstance(data.get("search"), dict) else {}
-    collection = (
-        data.get("collection_insights") if isinstance(data.get("collection_insights"), dict) else {}
-    )
+    counts = data.get("counts") if isinstance(data.get("counts"), dict) else {}
+    coverage = data.get("coverage") if isinstance(data.get("coverage"), dict) else {}
     return (
-        f"has_account_data={str(bool(data.get('has_account_data'))).lower()}, "
-        f"saved_tracks={int(library.get('saved_tracks') or 0)}, "
-        f"total_searches={int(search.get('total_searches') or 0)}, "
-        f"collection_available={str(bool(collection.get('available'))).lower()}"
+        f"status={data.get('status') or 'empty'}, "
+        f"saved_tracks={int(counts.get('saved_tracks') or 0)}, "
+        f"linked_pct={float(coverage.get('saved_tracks_linked_to_history_pct') or 0):.1f}, "
+        f"dated_pct={float(coverage.get('saved_tracks_with_date_pct') or 0):.1f}"
     )
 
 
 def _collection_result_summary(data: dict[str, Any]) -> str:
-    overview = data.get("overview") if isinstance(data.get("overview"), dict) else {}
-    personality = data.get("personality") if isinstance(data.get("personality"), dict) else {}
+    counts = data.get("counts") if isinstance(data.get("counts"), dict) else {}
+    returns = data.get("returns") if isinstance(data.get("returns"), dict) else {}
+    returns_summary = returns.get("summary") if isinstance(returns.get("summary"), dict) else {}
     return (
-        f"available={str(bool(data.get('available'))).lower()}, "
-        f"saved_tracks={int(overview.get('saved_tracks') or 0)}, "
-        f"saved_albums={int(overview.get('saved_albums') or 0)}, "
-        f"personality={personality.get('type') or 'n/a'}"
+        f"status={data.get('status') or 'empty'}, "
+        f"saved_tracks={int(counts.get('saved_tracks') or 0)}, "
+        f"saved_albums={int(counts.get('saved_albums') or 0)}, "
+        f"sleeping={int(returns_summary.get('current_sleeping_entities') or 0)}"
     )
 
 
@@ -467,62 +470,80 @@ def _community_trending_result_summary(data: dict[str, Any]) -> str:
     )
 
 
-def _compact_account_summary(data: dict[str, Any], parsed: AccountSummaryParams) -> dict[str, Any]:
-    compact: dict[str, Any] = {"has_account_data": data.get("has_account_data")}
-    library = data.get("library")
-    if isinstance(library, dict):
-        compact["library"] = {
-            key: library.get(key)
-            for key in (
-                "available",
-                "saved_tracks",
-                "saved_albums",
-                "saved_artists",
-                "playlists",
-                "coverage_pct",
-                "forgotten_count",
-            )
-            if key in library
-        }
-        artist_comparison = library.get("artist_comparison")
-        if isinstance(artist_comparison, list):
-            compact["library"]["artist_comparison"] = artist_comparison[:10]
-    if parsed.include_collection and isinstance(data.get("collection_insights"), dict):
-        compact["collection_insights"] = _compact_collection_insights(
-            data["collection_insights"],
-            limit=6,
-        )
-    if parsed.include_search and isinstance(data.get("search"), dict):
-        compact["search"] = _compact_search_stats(data["search"], limit=6)
-    return compact
-
-
-def _compact_collection_insights(data: dict[str, Any], *, limit: int) -> dict[str, Any]:
+def _compact_archive_summary(
+    overview: dict[str, Any],
+    parsed: AccountSummaryParams,
+    *,
+    cohorts: dict[str, Any] | None = None,
+    discovery: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     compact: dict[str, Any] = {
-        "available": data.get("available"),
-        "empty": data.get("empty"),
+        "schema_version": "account_agent_summary_v2",
+        "status": overview.get("status"),
+        "counts": overview.get("counts", {}),
+        "coverage": overview.get("coverage", {}),
+        "period": overview.get("period", {}),
+        "capabilities": overview.get("capabilities", {}),
     }
-    for key in (
-        "personality",
-        "overview",
-        "first_save_story",
-        "lifecycle",
-        "lifecycle_top_tracks",
-    ):
-        value = data.get(key)
-        if isinstance(value, (dict, list)):
-            compact[key] = value[:limit] if isinstance(value, list) else value
-    for key in (
-        "honeymoon_examples",
-        "cooling_examples",
-        "settling_examples",
-        "forgotten_tracks",
-        "artist_comparison",
-    ):
-        value = data.get(key)
-        if isinstance(value, list):
-            compact[key] = value[:limit]
+    if parsed.include_collection and cohorts:
+        relationship = cohorts.get("relationship_matrix")
+        compact["collection"] = {
+            "status": cohorts.get("status"),
+            "coverage": cohorts.get("coverage", {}),
+            "return_windows": cohorts.get("return_windows", []),
+            "relationship_counts": relationship.get("counts", {})
+            if isinstance(relationship, dict)
+            else {},
+        }
+    if parsed.include_search and discovery:
+        compact["discovery"] = {
+            "status": discovery.get("status"),
+            "period": discovery.get("period", {}),
+            "coverage": discovery.get("coverage", {}),
+            "funnel": discovery.get("funnel", {}),
+        }
     return compact
+
+
+def _compact_archive_collection(
+    overview: dict[str, Any],
+    journey: dict[str, Any],
+    cohorts: dict[str, Any],
+    returns: dict[str, Any],
+    *,
+    limit: int,
+) -> dict[str, Any]:
+    relationship = cohorts.get("relationship_matrix")
+    return {
+        "schema_version": "account_agent_collection_v2",
+        "status": overview.get("status"),
+        "counts": overview.get("counts", {}),
+        "coverage": overview.get("coverage", {}),
+        "period": overview.get("period", {}),
+        "journey": {
+            "status": journey.get("status"),
+            "coverage": journey.get("coverage", {}),
+            "duration": journey.get("duration", {}),
+            "annual_growth": journey.get("annual_growth", []),
+            "milestones": journey.get("milestones", [])[:limit],
+        },
+        "relationship": {
+            "status": cohorts.get("status"),
+            "coverage": cohorts.get("coverage", {}),
+            "encounter_to_save": cohorts.get("encounter_to_save", {}),
+            "symmetric_30_day_window": cohorts.get("symmetric_30_day_window", {}),
+            "return_windows": cohorts.get("return_windows", []),
+            "counts": relationship.get("counts", {}) if isinstance(relationship, dict) else {},
+        },
+        "returns": {
+            "status": returns.get("status"),
+            "coverage": returns.get("coverage", {}),
+            "summary": returns.get("summary", {}),
+            "latest_returns": returns.get("latest_returns", [])[:limit],
+            "longest_returns": returns.get("longest_returns", [])[:limit],
+            "sleeping_recommendations": returns.get("sleeping_recommendations", [])[:limit],
+        },
+    }
 
 
 def _compact_search_stats(
@@ -1165,10 +1186,18 @@ def account_summary_handler(params: BaseModel) -> AgentToolResult:
     )
     conn = get_db(readonly=True)
     try:
-        raw_data = account_service.get_account_summary(conn)
+        overview = get_archive_overview(conn)
+        context = build_archive_filter_context(conn, {})
+        cohorts = get_collection_cohorts(conn, context) if parsed.include_collection else None
+        discovery = get_archive_discovery(conn, context) if parsed.include_search else None
     finally:
         conn.close()
-    data = _compact_account_summary(raw_data, parsed)
+    data = _compact_archive_summary(
+        overview,
+        parsed,
+        cohorts=cohorts,
+        discovery=discovery,
+    )
     return AgentToolResult(
         data=data,
         result_summary=_account_summary_result_summary(data),
@@ -1184,10 +1213,20 @@ def account_collection_insights_handler(params: BaseModel) -> AgentToolResult:
     )
     conn = get_db(readonly=True)
     try:
-        raw_data = account_service.get_collection_insights(conn)
+        overview = get_archive_overview(conn)
+        context = build_archive_filter_context(conn, {})
+        journey = get_collection_journey(conn, context)
+        cohorts = get_collection_cohorts(conn, context)
+        returns = get_archive_returns(conn, context)
     finally:
         conn.close()
-    data = _compact_collection_insights(raw_data, limit=parsed.limit)
+    data = _compact_archive_collection(
+        overview,
+        journey,
+        cohorts,
+        returns,
+        limit=parsed.limit,
+    )
     return AgentToolResult(
         data=data,
         result_summary=_collection_result_summary(data),
@@ -1433,7 +1472,10 @@ COMPARE_ENTITIES_TOOL = AgentToolDefinition(
 
 ACCOUNT_SUMMARY_TOOL = AgentToolDefinition(
     name="account_summary",
-    description="Read compact account-center overview including library, collection, and search signals.",
+    description=(
+        "Read a compact privacy-whitelisted music archive overview with library counts, "
+        "coverage, relationship windows, and aggregate discovery signals."
+    ),
     read_only=True,
     params_model=AccountSummaryParams,
     handler=account_summary_handler,
@@ -1441,7 +1483,10 @@ ACCOUNT_SUMMARY_TOOL = AgentToolDefinition(
 
 ACCOUNT_COLLECTION_INSIGHTS_TOOL = AgentToolDefinition(
     name="account_collection_insights",
-    description="Read compact saved-library and collection-versus-playback insights.",
+    description=(
+        "Read evidence-backed saved-library journey, fixed-window playback relationships, "
+        "returns, and sleeping collection facts."
+    ),
     read_only=True,
     params_model=AccountCollectionInsightsParams,
     handler=account_collection_insights_handler,

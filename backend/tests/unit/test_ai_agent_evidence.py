@@ -177,7 +177,7 @@ def test_scoped_ranking_defaults_to_concise_answer_style() -> None:
     assert payload["analytical_brief"]["concise_shape"] == (
         "一句直接结论 + 两条关键数字 + 一句必要口径"
     )
-    assert payload["project_context_version"] == "spotify-stats-project-context-v1"
+    assert payload["project_context_version"] == "spotify-stats-project-context-v2"
 
 
 def test_final_user_content_includes_project_context_version() -> None:
@@ -211,7 +211,7 @@ def test_final_user_content_includes_project_context_version() -> None:
     )
 
     payload = json.loads(content)
-    assert payload["project_context_version"] == "spotify-stats-project-context-v1"
+    assert payload["project_context_version"] == "spotify-stats-project-context-v2"
 
 
 def test_final_payload_projects_temporal_guard_into_simple_ranking_recipe() -> None:

@@ -126,8 +126,6 @@ export const queryKeys = {
 
   account: {
     all: ["account"] as const,
-    summary: () => ["account", "summary"] as const,
-    profile: () => ["account", "profile"] as const,
     archiveOverview: () => ["account", "archive", "overview"] as const,
     archiveJourney: (filters: Record<string, unknown>) =>
       ["account", "archive", "journey", filters] as const,

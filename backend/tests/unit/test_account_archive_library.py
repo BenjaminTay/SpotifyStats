@@ -278,4 +278,5 @@ def test_library_route_validates_entity_sort_and_page_bounds() -> None:
     assert len(valid.json()["items"]) == 2
     assert invalid_entity.status_code == 422
     assert invalid_sort.status_code == 422
+    assert invalid_sort.json()["detail"][0]["loc"] == ["query", "sort"]
     assert invalid_limit.status_code == 422

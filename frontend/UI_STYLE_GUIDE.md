@@ -229,6 +229,7 @@ className="rounded-[16px] border border-border bg-card backdrop-blur-[12px] shad
 - Phone 收藏库必须进入覆盖 Shell 的全屏层，服务端每页 10 条；搜索、类型、排序和页码恢复到 URL，支持 ESC、背景滚动锁定与焦点恢复。
 - 收藏后逐周趋势在 Phone 通过 `MobileFullscreenChart` 查看；普通正文只保留 7 / 30 / 90 / 365 天里程碑，不内嵌桌面宽图。
 - 发现路径只显示去重后的星期分布、24 小时时段带和有限事件链；不得向消费 UI 暴露原始搜索词、身份资料、人格推断或 OAuth 凭据。
+- 数据读取只允许 `queryKeys.account.archive*` 对应的分拆接口；旧 `/api/account`、`/api/account/collection-insights`、`/api/profile` 及旧 account/habits 组件树均已退役，不得重新作为页面依赖。
 
 ### WeekSelector（周选择器）
 

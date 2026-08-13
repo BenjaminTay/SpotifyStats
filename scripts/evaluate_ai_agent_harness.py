@@ -203,16 +203,20 @@ def _tool_result_from_call(tool_call: dict[str, Any]) -> dict[str, Any]:
     elif tool_name == "account_collection_insights":
         data.update(
             {
-                "available": True,
-                "personality": {"type": "均衡型收藏者"},
-                "overview": {"saved_tracks": 100, "saved_albums": 20},
+                "schema_version": "account_agent_collection_v2",
+                "status": "ready",
+                "counts": {"saved_tracks": 100, "saved_albums": 20},
+                "coverage": {"saved_tracks_linked_to_history_pct": 88.0},
+                "relationship": {"counts": {"sleeping_saved": 12}},
             }
         )
     elif tool_name == "account_summary":
         data.update(
             {
-                "has_account_data": True,
-                "library": {"saved_tracks": 100, "saved_albums": 20},
+                "schema_version": "account_agent_summary_v2",
+                "status": "ready",
+                "counts": {"saved_tracks": 100, "saved_albums": 20},
+                "coverage": {"saved_tracks_with_date_pct": 90.0},
             }
         )
     elif tool_name == "search_history":

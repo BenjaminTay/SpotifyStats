@@ -8,7 +8,7 @@
 
 本批次已建立可继续重构的本地优先底座：重复导入 `YourLibrary.json` 不再清掉已有收藏日期；收藏日期明确记录为 `oauth / manual / legacy`；新接口只返回音乐档案首屏所需白名单字段，不包含 profile、原始搜索词、prompts、inferences 或 banned item 明细；接口运行时不调用 Spotify Web API。
 
-旧 `/api/account` 与 `/api/account/collection-insights` 暂时保留作兼容，新页面后续只消费分拆后的严格接口。
+本阶段曾暂时保留旧 `/api/account` 与 `/api/account/collection-insights` 作兼容；新页面从一开始只消费分拆后的严格接口。两条旧路由现已在 Phase 4 正式删除，见同日 Phase 4 交付记录。
 
 ## 已落地
 
@@ -67,4 +67,4 @@
 1. 建立统一 account archive 过滤上下文，固定有效播放、连续合并、merge level、时区与 observation window。
 2. 实现 `collection-journey` 与 `collection-cohorts`，明确右删失和 7/30/90/365 天合格分母。
 3. 实现 returns / discovery / library 分页接口，再进入 Desktop / Compact / Phone presentation。
-4. 正式页面切换后退役旧重型 `/api/account` 消费链，但暂不删除兼容端点。
+4. 正式页面切换后退役旧重型 `/api/account` 消费链；该项现已在 Phase 4 完成。

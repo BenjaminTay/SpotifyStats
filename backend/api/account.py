@@ -1,11 +1,10 @@
-"""Account center API — aggregated endpoints for the /account page."""
+"""Local-first music archive endpoints for the /account page."""
 
 from __future__ import annotations
 
 from sqlite3 import Connection
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
 
 from backend.dependencies import get_conn
 from backend.domains.account_archive.cohorts import get_collection_cohorts
@@ -19,7 +18,6 @@ from backend.domains.account_archive.library import (
 from backend.domains.account_archive.other_media import get_archive_other_media
 from backend.domains.account_archive.overview import get_archive_overview
 from backend.domains.account_archive.returns import get_archive_returns
-from backend.domains.metadata.artist_identity import canonicalize_artist_payload
 from backend.models.account_archive import (
     ArchiveCohortsResponse,
     ArchiveDiscoveryResponse,
@@ -31,7 +29,6 @@ from backend.models.account_archive import (
     ArchiveOverviewResponse,
     ArchiveReturnsResponse,
 )
-from backend.services.account_service import get_account_summary, get_collection_insights
 
 router = APIRouter(prefix="/account", tags=["Account"])
 
@@ -54,29 +51,6 @@ class AccountArchiveFilters:
         self.dynamic_threshold = dynamic_threshold
         self.max_merge_gap_minutes = max_merge_gap_minutes
         self.merge_level = merge_level
-
-
-class AccountSummaryResponse(BaseModel):
-    model_config = {"extra": "allow"}
-    has_account_data: bool | None = None
-
-
-class CollectionInsightsResponse(BaseModel):
-    model_config = {"extra": "allow"}
-    available: bool | None = None
-    empty: bool | None = None
-
-
-@router.get("", response_model=AccountSummaryResponse)
-def account_summary(conn: Connection = Depends(get_conn)):
-    """聚合账号中心所有数据（library + search + insights + podcast + video + profile + collection insights）。"""
-    return canonicalize_artist_payload(get_account_summary(conn), conn)
-
-
-@router.get("/collection-insights", response_model=CollectionInsightsResponse)
-def collection_insights(conn: Connection = Depends(get_conn)):
-    """收藏×播放交叉分析洞察。"""
-    return canonicalize_artist_payload(get_collection_insights(conn), conn)
 
 
 @router.get("/archive-overview", response_model=ArchiveOverviewResponse)
@@ -138,7 +112,14 @@ def archive_library(
     if sort is not None and sort not in ALLOWED_SORTS[entity_type]:
         raise HTTPException(
             status_code=422,
-            detail=f"sort={sort} is not supported for entity_type={entity_type}",
+            detail=[
+                {
+                    "type": "value_error",
+                    "loc": ["query", "sort"],
+                    "msg": f"sort={sort} is not supported for entity_type={entity_type}",
+                    "input": sort,
+                }
+            ],
         )
     return build_archive_library_page(
         conn,

@@ -22,14 +22,6 @@ import accountArchivePhoneRouteSource from '../features/account-archive/route/Ac
 import accountArchiveHooksSource from '../features/account-archive/hooks/useAccountArchive.ts?raw'
 import accountArchiveLibrarySource from '../features/account-archive/desktop/LibrarySection.tsx?raw'
 import accountArchivePhoneLibrarySource from '../features/account-archive/phone/PhoneLibraryChapter.tsx?raw'
-import habitsTabSource from '../features/account/habits/HabitsTab.tsx?raw'
-import habitsPersonalityHeroSource from '../features/account/habits/HabitsPersonalityHero.tsx?raw'
-import searchHistorySectionSource from '../features/account/habits/SearchHistorySection.tsx?raw'
-import fanTiersSectionSource from '../features/account/habits/FanTiersSection.tsx?raw'
-import podcastSectionSource from '../features/account/habits/PodcastSection.tsx?raw'
-import marqueeSectionSource from '../features/account/habits/MarqueeSection.tsx?raw'
-import videoSectionSource from '../features/account/habits/VideoSection.tsx?raw'
-import collectionTabSource from '../pages/account/CollectionTab.tsx?raw'
 import aiInsightsPageSource from '../pages/AiInsightsPage.tsx?raw'
 import communityPageSource from '../pages/CommunityPage.tsx?raw'
 import communityAccountPageSource from '../pages/CommunityAccountPage.tsx?raw'
@@ -75,9 +67,12 @@ import rankTrendChartSource from '../components/charts/RankTrendChart.tsx?raw'
 import releaseTimelineChartSource from '../components/charts/ReleaseTimelineChart.tsx?raw'
 import versusRankChartSource from '../components/charts/VersusRankChart.tsx?raw'
 import numberOnesPrimitivesChartSource from '../features/billboard/number-ones/NumberOnesPrimitives.tsx?raw'
-import collectionOverviewBlockSource from '../features/account/collection/components/CollectionOverviewBlock.tsx?raw'
-import saveLifecycleBlockSource from '../features/account/collection/components/SaveLifecycleBlock.tsx?raw'
-import chemistryBlockSource from '../features/account/collection/components/ChemistryBlock.tsx?raw'
+
+const retiredAccountModules = import.meta.glob([
+  '../features/account/**/*.{ts,tsx}',
+  '../features/mobile/account/**/*.{ts,tsx}',
+  '../pages/account/**/*.{ts,tsx}',
+])
 
 describe('Phase 5 architecture guardrails', () => {
   it.each([
@@ -437,16 +432,9 @@ describe('Phase 5 architecture guardrails', () => {
     ['ReleaseTimelineChart.tsx', releaseTimelineChartSource],
     ['VersusRankChart.tsx', versusRankChartSource],
     ['NumberOnesPrimitives.tsx', numberOnesPrimitivesChartSource],
-    ['CollectionOverviewBlock.tsx', collectionOverviewBlockSource],
-    ['SaveLifecycleBlock.tsx', saveLifecycleBlockSource],
   ])('%s uses the shared lightweight ECharts wrapper', (_path, content) => {
     expect(content).not.toContain("import('echarts-for-react')")
     expect(content).toContain('LazyEChart')
-  })
-
-  it('keeps account chemistry examples capped for initial render', () => {
-    expect(chemistryBlockSource).toContain('MAX_CHEMISTRY_EXAMPLES')
-    expect(chemistryBlockSource).toMatch(/\.slice\(0,\s*MAX_CHEMISTRY_EXAMPLES\)/)
   })
 
   it('keeps the Phone archive local-first instead of reviving profile and legacy summary reads', () => {
@@ -615,35 +603,8 @@ describe('Phase 5 architecture guardrails', () => {
     expect(accountArchivePhoneLibrarySource).not.toContain('<table')
   })
 
-  it('keeps HabitsTab as a thin orchestrator in features/account/habits', () => {
-    expect(habitsTabSource.split('\n').length).toBeLessThanOrEqual(100)
-    expect(habitsTabSource).toContain('HabitsPersonalityHero')
-    expect(habitsTabSource).toContain('SearchHistorySection')
-    expect(habitsTabSource).toContain('FanTiersSection')
-    expect(habitsTabSource).toContain('PodcastSection')
-    expect(habitsTabSource).toContain('MarqueeSection')
-    expect(habitsTabSource).toContain('VideoSection')
-    expect(habitsTabSource).not.toContain('function inferPersonality')
-    expect(habitsTabSource).not.toContain('const medalBorder')
-  })
-
-  it('keeps habits sections within size caps and JSX-only', () => {
-    expect(habitsPersonalityHeroSource.split('\n').length).toBeLessThanOrEqual(60)
-    expect(searchHistorySectionSource.split('\n').length).toBeLessThanOrEqual(250)
-    expect(fanTiersSectionSource.split('\n').length).toBeLessThanOrEqual(170)
-    expect(podcastSectionSource.split('\n').length).toBeLessThanOrEqual(90)
-    expect(marqueeSectionSource.split('\n').length).toBeLessThanOrEqual(80)
-    expect(videoSectionSource.split('\n').length).toBeLessThanOrEqual(120)
-  })
-
-  it('keeps habitsData pure logic without JSX', () => {
-    expect(searchHistorySectionSource).not.toContain('function inferPersonality')
-    expect(fanTiersSectionSource).not.toContain('function getMostActiveDay')
-  })
-
-  it('keeps CollectionTab as a thin page-level tab delegate', () => {
-    expect(collectionTabSource.split('\n').length).toBeLessThanOrEqual(100)
-    expect(collectionTabSource).not.toContain('<table')
+  it('keeps the legacy account, habits, and personality page trees retired', () => {
+    expect(Object.keys(retiredAccountModules)).toEqual([])
   })
 
   // ── Cross-cutting: no module-level API response caches ───────────────────
@@ -655,7 +616,6 @@ describe('Phase 5 architecture guardrails', () => {
     ['CommunityAccountExperience.tsx', communityAccountExperienceSource],
     ['PostDetailExperience.tsx', postDetailExperienceSource],
     ['VersusExperience.tsx', versusExperienceSource],
-    ['HabitsTab.tsx', habitsTabSource],
     ['BillboardPage.tsx', billboardPageSource],
     ['AccountCenterPage.tsx', accountCenterPageSource],
     ['TrackDetailPage.tsx', trackDetailSource],

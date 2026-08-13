@@ -15,6 +15,26 @@ export interface SpotifyConnectResult {
   error?: string
 }
 
+function readSpotifyOAuthCallback() {
+  if (typeof window === 'undefined') {
+    return { notice: '', error: '', shouldCleanUrl: false }
+  }
+  const params = new URLSearchParams(window.location.search)
+  const errorCode = params.get('spotify_error')
+  const error = errorCode === 'invalid_state'
+    ? '安全校验失败，请重试'
+    : errorCode === 'token_exchange_failed'
+      ? '令牌交换失败，请重试'
+      : errorCode
+        ? `授权失败: ${errorCode}`
+        : ''
+  return {
+    notice: params.get('spotify_connected') === 'true' ? 'Spotify 账号连接成功' : '',
+    error,
+    shouldCleanUrl: params.has('spotify_connected') || params.has('spotify_error'),
+  }
+}
+
 export function SpotifyConnectionSection({
   connected,
   profile,
@@ -28,33 +48,22 @@ export function SpotifyConnectionSection({
   onDisconnect: () => Promise<void>
   onSync: () => Promise<SpotifyConnectResult>
 }) {
+  const [oauthCallback] = useState(readSpotifyOAuthCallback)
   const [connecting, setConnecting] = useState(false)
   const [syncing, setSyncing] = useState(false)
   const [syncResult, setSyncResult] = useState<SpotifyConnectResult | null>(null)
-  const [syncError, setSyncError] = useState('')
-  const [notice, setNotice] = useState('')
+  const [syncError, setSyncError] = useState(oauthCallback.error)
+  const [notice, setNotice] = useState(oauthCallback.notice)
 
   // Check URL params for OAuth callback
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search)
-    if (params.get('spotify_connected') === 'true') {
-      setNotice('Spotify 账号连接成功')
-      // Clean URL
+    if (oauthCallback.shouldCleanUrl) {
       const url = new URL(window.location.href)
       url.searchParams.delete('spotify_connected')
       url.searchParams.delete('spotify_error')
       window.history.replaceState({}, '', url.toString())
     }
-    const err = params.get('spotify_error')
-    if (err) {
-      setSyncError(err === 'invalid_state' ? '安全校验失败，请重试' :
-        err === 'token_exchange_failed' ? '令牌交换失败，请重试' : `授权失败: ${err}`)
-      const url = new URL(window.location.href)
-      url.searchParams.delete('spotify_connected')
-      url.searchParams.delete('spotify_error')
-      window.history.replaceState({}, '', url.toString())
-    }
-  }, [])
+  }, [oauthCallback])
 
   const handleConnect = async () => {
     setConnecting(true)
@@ -203,7 +212,7 @@ export function SpotifyConnectionSection({
       {/* Note about what this enables */}
       {connected && (
         <p className="mt-4 font-sans text-[12px] text-muted-foreground leading-relaxed">
-          连接后可同步 Spotify Library 中每首歌的收藏日期（added_at），让 CollectionTab 的生命周期分析、化学反应等模块从全零数据变为真实分析。如需导入 Extended Streaming History JSON 数据，请前往「02 · 数据导入」。
+          连接后可同步 Spotify Library 中每首歌的收藏日期（added_at），让音乐档案中的收藏旅程与回访分析建立在真实日期上。如需导入 Extended Streaming History JSON 数据，请前往「02 · 数据导入」。
         </p>
       )}
       </CollapsibleSection>

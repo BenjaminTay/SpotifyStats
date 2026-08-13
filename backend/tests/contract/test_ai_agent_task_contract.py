@@ -83,14 +83,14 @@ def test_chat_agent_prompts_include_project_context(monkeypatch) -> None:
     assert len(llm_calls) >= 2
     planner_prompt = llm_calls[0][0]
     final_prompt = llm_calls[1][0]
-    assert "spotify-stats-project-context-v1" in planner_prompt
+    assert "spotify-stats-project-context-v2" in planner_prompt
     assert "Tool Playbook" in planner_prompt
     assert "不要编造工具、SQL、URL" in planner_prompt
-    assert "spotify-stats-project-context-v1" in final_prompt
+    assert "spotify-stats-project-context-v2" in final_prompt
     assert "Answer Philosophy" in final_prompt
     assert "本地个人 Billboard" in final_prompt
     assert fake_repo.result is not None
-    assert fake_repo.result["project_context_version"] == "spotify-stats-project-context-v1"
+    assert fake_repo.result["project_context_version"] == "spotify-stats-project-context-v2"
 
 
 def test_chat_task_endpoint_uses_static_route_before_task_id(client, monkeypatch):
@@ -363,7 +363,7 @@ def test_chat_agent_thinking_mode_uses_deeper_fallback_and_review_stage(
     assert "analysis_charts" in dispatched_tools
     assert "thinking_mode" in llm_calls[0][1]
     thinking_final_prompt = llm_calls[1][0]
-    assert "spotify-stats-project-context-v1" in thinking_final_prompt
+    assert "spotify-stats-project-context-v2" in thinking_final_prompt
     assert "Answer Philosophy" in thinking_final_prompt
     assert "Thinking Mode Note" in thinking_final_prompt
     assert "思考模式只表示工具核对更充分" in thinking_final_prompt
@@ -400,7 +400,7 @@ def test_chat_agent_retries_final_answer_when_it_contradicts_found_album_evidenc
             )
         assert "上一版回答与工具证据或回答契约矛盾" in user_content
         assert "project_context_version" in user_content
-        assert "spotify-stats-project-context-v1" in user_content
+        assert "spotify-stats-project-context-v2" in user_content
         assert "Project Context 的项目语境要求" in user_content
         assert "answer_style" in user_content
         assert "The Life of a Showgirl" in user_content

@@ -5,7 +5,7 @@
 
 ## 1. 适用范围
 
-本文约束 `/api/account/collection-journey`、`/api/account/collection-cohorts`、`/api/account/returns`、`/api/account/discovery`、`/api/account/library/{entity_type}` 与 `/api/account/other-media`。音乐档案只分析本地导入数据，不在读取或计算时调用 Spotify Web API。
+本文约束 `/api/account/archive-overview`、`/api/account/collection-journey`、`/api/account/collection-cohorts`、`/api/account/returns`、`/api/account/discovery`、`/api/account/library/{entity_type}` 与 `/api/account/other-media`。音乐档案只分析本地导入数据，不在读取或计算时调用 Spotify Web API。
 
 `YourLibrary.json` 是“导出时仍在收藏”的当前快照，不包含取消收藏历史。因此本文中的“收藏”始终指 **当前仍在收藏的曲目**；回访率不能解释为全部历史收藏的留存率，也不能用于推断收藏行为造成了后续播放。
 
@@ -173,3 +173,16 @@ track interaction burst
 缓存键包含：最短时长、连续合并、动态阈值、最大合并间隔、merge level、UTC 观察边界、播放/收藏 source revision、track group revision 和账号导入/日期 provenance revision。`discovery` 另对搜索内容生成不暴露原文的精确 revision；`other-media` 另对播客内容生成精确 revision；即使行数不变，相关内容变化也会失效缓存。收藏库使用短 SQL 分页直接读取，并通过内容 revision 表达快照变化。
 
 所有正式响应使用 `extra="forbid"` 的 Pydantic 白名单模型；不得返回 profile、原始搜索词、prompts、inferences、banned items、Spotify URI 或未分页实体全集。
+
+## 16. 旧契约退役与 AI 兼容边界
+
+Phase 4 已删除旧 `GET /api/account`、`GET /api/account/collection-insights` 与 `backend/services/account_service.py`。调用这两个 HTTP 路径必须得到 404；OpenAPI 中不得再发布对应 operation 或宽松 response model。前端旧 `features/account/`、`features/mobile/account/`、`pages/account/`、`hooks/useAccount.ts` 与 `types/account.ts` 也已删除。
+
+AI Agent 暂时保留 `account_summary` 与 `account_collection_insights` 两个工具名，原因是它们属于既有问答编排与 golden harness 的稳定标识，不代表旧 API 仍存在：
+
+- `account_summary` 组合 archive overview，并按参数补充固定窗关系和隐私白名单 discovery 摘要；
+- `account_collection_insights` 组合 overview、journey、cohorts 与 returns；
+- 两者都不得返回收藏人格、chemistry、关键词迁移、Marquee 转化、粉丝等级或原始搜索词；
+- 项目语境版本为 `spotify-stats-project-context-v2`，最终回答必须保留“当前收藏快照”和观察窗边界。
+
+启动 warmup 只预热 `archive-overview`，不再构建整页聚合。独立的 `/api/profile`、`/api/insights/tiers`、`/api/insights/marquee` 等只读兼容/透明度接口仍可由其他消费者使用，但不属于音乐档案页面数据链，也不能重新接回消费 UI。

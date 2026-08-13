@@ -1,7 +1,7 @@
 # 账号中心重构方案：从“人格橱窗”到“个人音乐档案”
 
 > 日期：2026-08-13
-> 状态：实施中；本地统计接口、Desktop / Compact / Phone 音乐档案与服务端收藏库已完成，旧链路退役待实施
+> 状态：已完成；本地统计、Desktop / Compact / Phone 音乐档案、旧链路退役与文档收口均已交付
 > 范围：`/account` 的产品定位、统计语义、内容架构、Desktop / Compact / Phone UI、API 契约、性能、隐私与迁移计划
 > 原调研轮次不包含页面代码、数据库迁移、导航改名和生产部署；后续实施进度按下方交付记录更新
 
@@ -11,6 +11,7 @@
 - `docs/reports/2026-08-13-account-archive-journey-cohorts-delivery.md`
 - `docs/reports/2026-08-13-account-archive-desktop-delivery.md`
 - `docs/reports/2026-08-13-account-archive-phone-delivery.md`
+- `docs/reports/2026-08-13-account-archive-phase-4-delivery.md`
 - `docs/reference/account-archive-statistics.md`
 
 ## 1. 结论先行
@@ -54,7 +55,7 @@
 
 这造成了两个直接问题。第一，“账号中心”这个名称让用户预期看到登录、授权、资料和安全设置，但这些实际在 Settings；第二，收藏与行为分析又被两张大型人格卡统领，使可靠事实反而埋在页面下方。
 
-旧内容顺序可见 `frontend/src/pages/account/CollectionTab.tsx` 和 `frontend/src/features/account/habits/HabitsTab.tsx`。当前 `/account` 已不再消费这套页面树，Desktop / Compact 与 Phone 分别进入独立档案 presentation；旧组件留待 Phase 4 在所有兼容消费者核清后删除。
+旧内容顺序曾由 `frontend/src/pages/account/CollectionTab.tsx` 和 `frontend/src/features/account/habits/HabitsTab.tsx` 承载。Phase 4 已在核清消费者后删除整套旧页面树；当前 `/account` 的 Desktop / Compact 与 Phone 只进入独立档案 presentation。
 
 ### 3.2 本地数据能力
 
@@ -81,7 +82,7 @@
 
 #### A. 收藏主查询
 
-`backend/services/account_service.py` 的 `get_collection_insights()` 当前存在以下问题：
+重构前 `backend/services/account_service.py` 的 `get_collection_insights()` 存在以下问题；该服务现已在 Phase 4 删除：
 
 1. `LEFT JOIN` 后使用 `COUNT(*)` 作为总播放数，未匹配播放的收藏也可能被计为 1 次。
 2. 使用日粒度 `p.ts_date` 与带具体时间的 `added_date` 比较，同一天的播放会被错误分到收藏前或收藏后。
@@ -560,7 +561,7 @@ Desktop / Phone 共用同一 URL、TanStack Query、过滤指纹、row model 和
 - 将 AI Agent、Dashboard、Community 从重型 page summary 解耦；
 - 增加 cache revision、单飞和性能 probe。
 
-完成条件：契约、语义、隐私、性能测试通过；旧 `/api/account` 仅作为短期兼容 facade，不再被新页面调用。
+完成条件：契约、语义、隐私、性能测试通过；旧 `/api/account` 在 Phase 1 期间只作为短期兼容 facade，新页面不再调用，并已于 Phase 4 正式删除。
 
 ### Phase 2：Desktop / Compact 信息架构与 UI（P1）
 
@@ -593,30 +594,32 @@ Desktop / Phone 共用同一 URL、TanStack Query、过滤指纹、row model 和
 
 完成条件：仓库中不再有新页面对退役字段的消费，旧契约有明确移除记录，文档名称与导航一致。
 
+交付状态：已完成。旧前端页面树、宽松类型和 hooks 已删除；旧重型 service 与两条聚合 HTTP 路由已退役；AI 工具名保留但已迁到档案白名单事实；OpenAPI、smoke 台账、项目提示和统计 reference 已同步。完整证据见 `docs/reports/2026-08-13-account-archive-phase-4-delivery.md`。
+
 ## 12. 验收矩阵
 
 ### 12.1 统计语义
 
-- [ ] 未匹配收藏的播放次数不会因 `LEFT JOIN COUNT(*)` 虚增。
-- [ ] 收藏前后使用精确时间戳和统一时区，同日事件不会整日错分。
-- [ ] 7 / 30 / 90 / 365 天结果各自使用完整观察窗分母。
-- [ ] 缓存和回归判断锚定 `latest_play_date`，不是服务器今天。
-- [ ] “当前仍在收藏”“记录期内首次听到”等文案正确表达快照和左截断。
-- [ ] 搜索漏斗只在可映射 interaction 样本上计算。
-- [ ] 播客 / 视频按对齐覆盖期的分钟比较，不声称完播率。
+- [x] 未匹配收藏的播放次数不会因 `LEFT JOIN COUNT(*)` 虚增。
+- [x] 收藏前后使用精确时间戳和统一时区，同日事件不会整日错分。
+- [x] 7 / 30 / 90 / 365 天结果各自使用完整观察窗分母。
+- [x] 缓存和回归判断锚定 `latest_play_date`，不是服务器今天。
+- [x] “当前仍在收藏”“记录期内首次听到”等文案正确表达快照和左截断。
+- [x] 搜索漏斗只在可映射 interaction 样本上计算。
+- [x] 播客 / 视频按对齐覆盖期的分钟比较，不声称完播率。
 
 ### 12.2 产品边界
 
-- [ ] 页面没有人格、心理、年龄、冷门度和全球百分位推断。
-- [ ] 没有重复完整播放排行、年度榜单、Billboard 成绩或曲风语言大章。
-- [ ] Marquee / Inferences 若保留，只在主动打开的数据透明度区域出现。
-- [ ] 每个动态故事都能跳到实体或解释其样本范围。
+- [x] 页面没有人格、心理、年龄、冷门度和全球百分位推断。
+- [x] 没有重复完整播放排行、年度榜单、Billboard 成绩或曲风语言大章。
+- [x] Marquee / Inferences 若保留，只在独立兼容/透明度接口，不进入音乐档案消费页。
+- [x] 每个动态故事都能跳到实体或解释其样本范围。
 
 ### 12.3 隐私与部署
 
-- [ ] overview API 不返回 birthdate、postal code、payment、family、prompts、raw queries。
-- [ ] 页面在没有 Spotify Client ID、token 和外网访问时仍能加载当前 SQLite 已支持的本地章节；缺少收藏日期时只按章节降级。
-- [ ] 封面远程失败不阻塞 LCP 或内容；本地缺图有稳定占位。
+- [x] overview API 不返回 birthdate、postal code、payment、family、prompts、raw queries。
+- [x] 页面在没有 Spotify Client ID、token 和外网访问时仍能加载当前 SQLite 已支持的本地章节；缺少收藏日期时只按章节降级。
+- [x] 封面远程失败不阻塞 LCP 或内容；本地缺图有稳定占位。
 - [ ] 生产部署位于全站认证之后，API、SQLite、原始导出和封面不裸露。
 
 ### 12.4 UI 与可访问性

@@ -31,8 +31,8 @@ class TestWarmup:
             calls.append(("get_analysis_charts", kwargs))
             return {}
 
-        def fake_account_summary(conn):
-            calls.append(("get_account_summary", {}))
+        def fake_archive_overview(conn):
+            calls.append(("get_archive_overview", {}))
             return {}
 
         def fake_yearly_review_prewarm():
@@ -53,7 +53,7 @@ class TestWarmup:
         )
         monkeypatch.setattr("backend.core.warmup.get_analysis_stats", fake_analysis_stats)
         monkeypatch.setattr("backend.core.warmup.get_analysis_charts", fake_analysis_charts)
-        monkeypatch.setattr("backend.core.warmup.get_account_summary", fake_account_summary)
+        monkeypatch.setattr("backend.core.warmup.get_archive_overview", fake_archive_overview)
         monkeypatch.setattr(
             "backend.core.warmup.compute_billboard_data", fake_compute_billboard_data
         )
@@ -68,7 +68,7 @@ class TestWarmup:
 
         assert calls[0][0] == "load_plays"
         assert calls[1][0] == "load_plays_for_artists"
-        assert calls[-4][0] == "get_account_summary"
+        assert calls[-4][0] == "get_archive_overview"
         assert calls[-3][0] == "close"
         assert calls[-2][0] == "compute_billboard_data"
         assert calls[-1][0] == "prewarm_latest_yearly_review"

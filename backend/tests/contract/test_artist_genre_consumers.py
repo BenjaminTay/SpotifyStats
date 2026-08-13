@@ -13,7 +13,6 @@ from backend.domains.billboard import details as billboard_details
 from backend.domains.billboard import versus as billboard_versus
 from backend.domains.metadata.artist_genres import upsert_genre_source
 from backend.services import wrapped_service
-from backend.services.account_service import get_collection_insights
 from backend.services.wrapped_service import get_wrapped_full
 
 pytestmark = pytest.mark.contract
@@ -269,37 +268,6 @@ def test_wrapped_cache_reflects_newly_approved_artist_genre_source(
     assert "hip hop/rap" in second_names
     assert second["genre_panorama"]["coverage"]["source_hours"]["llm"] == 0.1
     assert second["genre_panorama"]["coverage"]["unknown_hours"] == 0.0
-
-
-def test_account_collection_genre_migration_uses_resolved_fallback(
-    artist_genre_consumer_conn,
-):
-    artist_genre_consumer_conn.execute(
-        "UPDATE spotify_artist_meta SET genres=? WHERE artist_name='Spotify Genre Artist'",
-        (json.dumps(["mandopop"]),),
-    )
-    upsert_genre_source(
-        artist_genre_consumer_conn,
-        artist_name="Spotify Genre Artist",
-        spotify_artist_id="sp-artist",
-        source="external_consensus",
-        source_key="style-axis-fixture",
-        raw_genres=["rock"],
-        normalized_genres=["rock"],
-        primary_genre="rock",
-        language=None,
-        region=None,
-        confidence=0.9,
-        evidence_url="https://example.test/spotify-genre-artist",
-        evidence_summary="approved style for an artist whose Spotify label is scene-only",
-        status="approved",
-    )
-    artist_genre_consumer_conn.commit()
-
-    result = get_collection_insights(artist_genre_consumer_conn)
-
-    assert "rock/alternative" in result["genre_migration"]["2024"]
-    assert "pop" in result["genre_migration"]["2024"]
 
 
 def test_artist_detail_metadata_returns_resolved_genre_source_and_confidence(
