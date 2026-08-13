@@ -39,7 +39,7 @@ loopback Docker 网关，不会自动恢复 Tailscale、Funnel 或其他公网�
 
 ## 数据部署事实
 
-当前 `dual` 不是两套应用数据：两个 Web 网关都进入同一个 Backend，Backend 使用
+`dual` 模式不是两套应用数据：两个 Web 网关都进入同一个 Backend，Backend 使用
 同一个 `/opt/spotify-stats/data` 持久目录。两种运行面的 schema、缓存 key 和统计
 语义因此保持一致。
 
@@ -74,5 +74,22 @@ cd /opt/spotify-stats
 - 对本地真实 `spotify_stats.db` 与 `yearly_review_cache.db` 执行代表性公开读取、
   被拒写入、AI/未知路由隐藏和未可信入口测试，前后 SHA-256 完全一致。
 
-服务器最终部署 SHA、三模式实切与回到目标模式后的状态，在 GitHub Actions 发布成功后
-补入本报告；在这些证据生成前，只将当前状态描述为“实现和发布前验证已完成”。
+线上发布与真实服务器验收：
+
+- 主分支发布 SHA：`71839871452811993a4c6b8ecd61a43483c28104`；
+- [Phase 5 Baseline](https://github.com/BenjaminTay/SpotifyStats/actions/runs/31703679803)
+  与 [生产部署流水线](https://github.com/BenjaminTay/SpotifyStats/actions/runs/31703679954)
+  均成功，三模式矩阵、镜像构建和服务器部署全部通过；
+- 在服务器依次实切 `dual -> showcase -> full`，每个模式的 `verify.sh` 均通过；
+- `dual` 下私人面为 `private-admin/full`、展示面为
+  `public-readonly/showcase`，两端的 release SHA 和 policy version 一致；
+- 展示面设置写入返回 `403`，AI 与未知 GET 返回 `404`；代表性公开读取前后，
+  `spotify_stats.db` 与 `yearly_review_cache.db` 的 SHA-256 均未变化；
+- `showcase` 下只监听 `127.0.0.1:3002`，`full` 下只监听
+  `127.0.0.1:3001`，Backend 的 `8000` 未映射到宿主机；
+- 最终已恢复 `full`，公开 3002 端口关闭，Tailscale 保持 `Stopped`，未恢复任何
+  外部分享入口；
+- 主数据库和年度缓存执行 `PRAGMA quick_check` 均为 `ok`，发布前在线备份已生成。
+
+GitHub Actions 当前仅有 actions 运行时 Node.js 20 被强制升级到 Node.js 24 的弃用提示，
+不影响本次门禁、构建与部署结果；后续可随上游 action 大版本升级单独处理。
