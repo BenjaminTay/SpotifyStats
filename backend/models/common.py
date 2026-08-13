@@ -56,12 +56,21 @@ class RuntimeCapabilitiesResponse(BaseModel):
     """Features available through the current trusted reverse-proxy surface."""
 
     surface: Literal["private-admin", "public-readonly"]
+    profile: Literal["full", "showcase"]
+    policy_version: str
+    release_sha: str
     settings: bool
     editing: bool
     imports: bool
     ai: bool
     spotify_oauth: bool
     lyrics: bool
+    metadata_governance: bool
+    data_rebuild: bool
+    yearly_generation: bool
+    community_write: bool
+    cover_enrichment: bool
+    account_connection: bool
 
 
 class RebuildAggregationsResponse(BaseModel):

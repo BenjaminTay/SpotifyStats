@@ -14,12 +14,13 @@
 
 ## 活跃文档
 
-### 实现计划 (`plans/`) — 5 个
+### 实现计划 (`plans/`) — 6 个
 
 只保留尚未完成的工作，或仍作为现行产品规格和后续迭代依据的完整计划。
 
 | 计划 | 内容 |
 |------|------|
+| [`plans/2026-08-13-dual-deployment-profile-plan.md`](plans/2026-08-13-dual-deployment-profile-plan.md) | 双运行面部署规格：可信网关、公共只读、full/showcase/dual 模式、自动发布和多服务器 SQLite 边界 |
 | [`plans/2026-08-12-yearly-review-v2-rebuild-plan.md`](plans/2026-08-12-yearly-review-v2-rebuild-plan.md) | 年度总结 V2 完整重构：数据审计、统一契约、内容编排、桌面体验、Phone 迁移、验证与回滚计划 |
 | [`plans/2026-08-06-appification-pwa-capacitor-plan.md`](plans/2026-08-06-appification-pwa-capacitor-plan.md) | App 化现行路线：PWA 基线、安全部署、真机验收与 Capacitor 决策门 |
 | [`plans/2026-08-05-mobile-web-design-and-implementation-plan.md`](plans/2026-08-05-mobile-web-design-and-implementation-plan.md) | 移动端网页现行产品规格、M0–M7 完成记录、长期架构契约与验收门禁 |
@@ -37,12 +38,13 @@
 | [`designs/2026-07-04-ai-yearly-report-editorial-agent-pipeline-design.md`](designs/2026-07-04-ai-yearly-report-editorial-agent-pipeline-design.md) | 现行 Editorial Agent Pipeline 设计 |
 | [`designs/2026-07-04-genre-review-settings-design.md`](designs/2026-07-04-genre-review-settings-design.md) | Genre Review Settings 设计 |
 
-### 报告 (`reports/`) — 14 个
+### 报告 (`reports/`) — 15 个
 
 一次性验证/交付/审计报告。
 
 | 报告 | 内容 |
 |------|------|
+| [`reports/2026-08-13-dual-deployment-profile-delivery.md`](reports/2026-08-13-dual-deployment-profile-delivery.md) | 完全版与简化版双运行面交付：同一 SHA/Backend/SQLite、可信网关、模式切换与 CI 门禁 |
 | [`reports/2026-08-13-private-cloud-pwa-delivery.md`](reports/2026-08-13-private-cloud-pwa-delivery.md) | 个人私有云与 PWA Phase B：Tailscale 私网架构、SHA 自动发布、脱敏数据迁移、生产验收、备份与手机剩余边界 |
 | [`reports/2026-08-13-billboard-artist-aggregate-fix.md`](reports/2026-08-13-billboard-artist-aggregate-fix.md) | 艺人榜逻辑播放事件预聚合修复：根因、影响范围、真实数据库重建、原始/预聚合对账与回归验证 |
 | [`reports/2026-08-12-yearly-review-v2-delivery.md`](reports/2026-08-12-yearly-review-v2-delivery.md) | 年度总结 V2 唯一完整交付报告：审计、契约、编排、API/缓存、后台预生成、Desktop/Phone 双 presentation、验收问题修复、四年真实性能与三浏览器证据 |

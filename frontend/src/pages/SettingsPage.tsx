@@ -16,6 +16,7 @@ import { BillboardParamsSection } from "@/features/settings/components/Billboard
 import { DataImportSection } from "@/features/settings/components/DataImportSection";
 import { useViewportMode } from "@/hooks/useViewportMode";
 import { MobileSettingsExperience } from "@/features/mobile/settings/MobileSettingsExperience";
+import { CapabilityGate } from "@/components/capabilities/CapabilityGate";
 
 const MusicMetadataSection = lazy(() =>
   import("@/features/settings/components/MusicMetadataSection").then((m) => ({
@@ -173,105 +174,119 @@ export function SettingsPage() {
         rebuildPending={rebuildPending}
       />
 
-      <RebuildNotice
-        pending={rebuildPending}
-        loading={rebuildLoading}
-        message={rebuildMsg}
-        onRebuild={handleRebuild}
-        onDismiss={() => setRebuildMsg("")}
-      />
+      <CapabilityGate require="editing">
+        <RebuildNotice
+          pending={rebuildPending}
+          loading={rebuildLoading}
+          message={rebuildMsg}
+          onRebuild={handleRebuild}
+          onDismiss={() => setRebuildMsg("")}
+        />
+      </CapabilityGate>
 
       {/* Section 1: Spotify Connection */}
-      <SpotifyConnectionSection
-        connected={settings.spotify_connected}
-        profile={settings.spotify_profile ?? null}
-        onConnect={spotifyConnect}
-        onDisconnect={spotifyDisconnect}
-        onSync={spotifySync}
-      />
+      <CapabilityGate require="spotify_oauth">
+        <SpotifyConnectionSection
+          connected={settings.spotify_connected}
+          profile={settings.spotify_profile ?? null}
+          onConnect={spotifyConnect}
+          onDisconnect={spotifyDisconnect}
+          onSync={spotifySync}
+        />
+      </CapabilityGate>
 
       {/* Section 2: Data Import */}
-      <DataImportSection
-        dbRecordCount={settings.db_record_count}
-        accountImported={settings.account_data_imported}
-        streamingJob={streamingJob}
-        accountJob={accountJob}
-        onStreamingImport={startStreamingImport}
-        onAccountImport={startAccountImport}
-      />
+      <CapabilityGate require="imports">
+        <DataImportSection
+          dbRecordCount={settings.db_record_count}
+          accountImported={settings.account_data_imported}
+          streamingJob={streamingJob}
+          accountJob={accountJob}
+          onStreamingImport={startStreamingImport}
+          onAccountImport={startAccountImport}
+        />
+      </CapabilityGate>
 
       {/* Section 3: Data & Display */}
-      <DataFilteringSection
-        settings={{
-          min_ms: settings.min_ms,
-          music_only: settings.music_only,
-          merge_enabled: settings.merge_enabled,
-        }}
-        onUpdate={updateSettings}
-        onRequiresRebuild={handleRequiresRebuild}
-        chineseStyle={chineseStyle}
-        onChangeChineseStyle={(s: string | null) => {
-          const style = (s as ChineseStyle) || "original";
-          setChineseStyleState(style);
-          setChineseStyle(style);
-        }}
-      />
-
-      {/* Section 4: Billboard Params */}
-      <BillboardParamsSection
-        settings={{
-          bb_top_n: settings.bb_top_n,
-          bb_album_top_n: settings.bb_album_top_n,
-          bb_artist_top_n: settings.bb_artist_top_n,
-          bb_week_start_dow: settings.bb_week_start_dow,
-          bb_week_start_hour: settings.bb_week_start_hour,
-          include_compilations: settings.include_compilations,
-        }}
-        onUpdate={updateSettings}
-        onRequiresRebuild={handleRequiresRebuild}
-      />
-
-      {/* Section 5: Music Metadata Management */}
-      <Suspense
-        fallback={
-          <div className="rounded-[16px] border border-border bg-card p-6">
-            <Skeleton className="mb-4 h-3 w-36" />
-            <Skeleton className="mb-1 h-3 w-64" />
-            <Skeleton className="h-24 w-full" />
-          </div>
-        }
-      >
-        <MusicMetadataSection />
-      </Suspense>
-
-      {/* Section 6: LLM Translation */}
-      <Suspense
-        fallback={
-          <div className="rounded-[16px] border border-border bg-card p-6">
-            <Skeleton className="mb-4 h-3 w-36" />
-            <Skeleton className="mb-1 h-3 w-64" />
-            <Skeleton className="h-24 w-full" />
-          </div>
-        }
-      >
-        <LLMTranslationSection
+      <CapabilityGate require="editing">
+        <DataFilteringSection
           settings={{
-            llm_enabled: settings.llm_enabled,
-            llm_provider: settings.llm_provider,
-            llm_model: settings.llm_model,
+            min_ms: settings.min_ms,
+            music_only: settings.music_only,
+            merge_enabled: settings.merge_enabled,
           }}
           onUpdate={updateSettings}
-          onClearCache={clearTranslationCache}
-          hasLlmKey={settings.has_llm_key}
-          activeProfileId={settings.llm_active_profile_id}
-          activeProfileName={settings.llm_active_profile_name}
-          onFetchProfiles={fetchProfiles}
-          onApplyProfile={applyProfile}
-          onCreateProfile={createProfile}
-          onDeleteProfile={deleteProfile}
-          onRefetch={refetch}
+          onRequiresRebuild={handleRequiresRebuild}
+          chineseStyle={chineseStyle}
+          onChangeChineseStyle={(s: string | null) => {
+            const style = (s as ChineseStyle) || "original";
+            setChineseStyleState(style);
+            setChineseStyle(style);
+          }}
         />
-      </Suspense>
+      </CapabilityGate>
+
+      {/* Section 4: Billboard Params */}
+      <CapabilityGate require="editing">
+        <BillboardParamsSection
+          settings={{
+            bb_top_n: settings.bb_top_n,
+            bb_album_top_n: settings.bb_album_top_n,
+            bb_artist_top_n: settings.bb_artist_top_n,
+            bb_week_start_dow: settings.bb_week_start_dow,
+            bb_week_start_hour: settings.bb_week_start_hour,
+            include_compilations: settings.include_compilations,
+          }}
+          onUpdate={updateSettings}
+          onRequiresRebuild={handleRequiresRebuild}
+        />
+      </CapabilityGate>
+
+      {/* Section 5: Music Metadata Management */}
+      <CapabilityGate require={["editing", "metadata_governance"]}>
+        <Suspense
+          fallback={
+            <div className="rounded-[16px] border border-border bg-card p-6">
+              <Skeleton className="mb-4 h-3 w-36" />
+              <Skeleton className="mb-1 h-3 w-64" />
+              <Skeleton className="h-24 w-full" />
+            </div>
+          }
+        >
+          <MusicMetadataSection />
+        </Suspense>
+      </CapabilityGate>
+
+      {/* Section 6: LLM Translation */}
+      <CapabilityGate require="ai">
+        <Suspense
+          fallback={
+            <div className="rounded-[16px] border border-border bg-card p-6">
+              <Skeleton className="mb-4 h-3 w-36" />
+              <Skeleton className="mb-1 h-3 w-64" />
+              <Skeleton className="h-24 w-full" />
+            </div>
+          }
+        >
+          <LLMTranslationSection
+            settings={{
+              llm_enabled: settings.llm_enabled,
+              llm_provider: settings.llm_provider,
+              llm_model: settings.llm_model,
+            }}
+            onUpdate={updateSettings}
+            onClearCache={clearTranslationCache}
+            hasLlmKey={settings.has_llm_key}
+            activeProfileId={settings.llm_active_profile_id}
+            activeProfileName={settings.llm_active_profile_name}
+            onFetchProfiles={fetchProfiles}
+            onApplyProfile={applyProfile}
+            onCreateProfile={createProfile}
+            onDeleteProfile={deleteProfile}
+            onRefetch={refetch}
+          />
+        </Suspense>
+      </CapabilityGate>
     </div>
   );
 }

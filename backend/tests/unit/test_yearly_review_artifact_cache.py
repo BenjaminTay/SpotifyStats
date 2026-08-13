@@ -4,6 +4,10 @@ import sqlite3
 import threading
 from types import SimpleNamespace
 
+from backend.core.access_surface import (
+    reset_public_readonly_db_guard,
+    set_public_readonly_db_guard,
+)
 from backend.domains.yearly_review.artifact_cache import (
     has_persisted_artifact,
     load_persisted_artifact,
@@ -89,6 +93,42 @@ def test_corrupt_persistent_artifact_is_deleted_and_treated_as_miss(tmp_path) ->
             "SELECT COUNT(*) FROM yearly_review_artifacts WHERE cache_key='broken'"
         ).fetchone()[0]
         == 0
+    )
+    conn.close()
+
+
+def test_public_corrupt_artifact_is_cache_miss_without_sidecar_write(tmp_path) -> None:
+    cache_path = tmp_path / "yearly.db"
+    store_persisted_artifact(
+        "broken-public",
+        _artifact(1),
+        year=2025,
+        filter_fingerprint="filters",
+        source_db_revision="db",
+        cache_path=cache_path,
+    )
+    conn = sqlite3.connect(cache_path)
+    conn.execute(
+        "UPDATE yearly_review_artifacts SET payload=?, uncompressed_bytes=10 WHERE cache_key=?",
+        (b"not-zlib", "broken-public"),
+    )
+    conn.commit()
+    conn.close()
+
+    token = set_public_readonly_db_guard(True)
+    try:
+        assert load_persisted_artifact("broken-public", cache_path=cache_path) is None
+        assert not has_persisted_artifact("missing", cache_path=tmp_path / "missing.db")
+    finally:
+        reset_public_readonly_db_guard(token)
+
+    assert not (tmp_path / "missing.db").exists()
+    conn = sqlite3.connect(cache_path)
+    assert (
+        conn.execute(
+            "SELECT COUNT(*) FROM yearly_review_artifacts WHERE cache_key='broken-public'"
+        ).fetchone()[0]
+        == 1
     )
     conn.close()
 

@@ -7,6 +7,7 @@ import json
 import os
 import sqlite3
 from functools import lru_cache
+from pathlib import Path
 from typing import Any
 
 from backend.core.cache import singleflight
@@ -805,9 +806,18 @@ CREATE TABLE IF NOT EXISTS wikipedia_cache (
 
 def get_db(readonly: bool = True) -> sqlite3.Connection:
     """Get a database connection."""
+    # A public-readonly request must remain read-only even if a legacy service
+    # explicitly asks for ``readonly=False``.  ContextVars are propagated by
+    # Starlette/AnyIO into sync endpoint worker threads, so this is a genuine
+    # request-level final defence rather than a convention at individual APIs.
+    from backend.core.access_surface import public_readonly_db_guard_active
+
+    public_request = public_readonly_db_guard_active()
+    effective_readonly = readonly or public_request
+
     # Ensure parent directory exists — CI and fresh checkouts may not have data/
     db_dir = os.path.dirname(DB_PATH)
-    if db_dir and not os.path.exists(db_dir):
+    if not public_request and db_dir and not os.path.exists(db_dir):
         try:
             os.makedirs(db_dir, exist_ok=True)
         except OSError:
@@ -818,7 +828,15 @@ def get_db(readonly: bool = True) -> sqlite3.Connection:
     # 该任务可能运行在不同于创建连接的线程中（即使只是 close() 也会报错）。
     # 由于每个请求都创建独立的连接，不存在真正的跨线程并发使用同一连接，
     # 因此禁用线程检查是安全的。
-    if readonly:
+    if public_request:
+        # URI ``mode=ro`` prevents SQLite from creating the database, journal,
+        # or WAL as a side effect of a public request. ``query_only`` remains a
+        # second guard against accidental writes through the open connection.
+        db_uri = f"{Path(DB_PATH).resolve().as_uri()}?mode=ro"
+        conn = sqlite3.connect(db_uri, uri=True, timeout=30, check_same_thread=False)
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA query_only = ON")
+    elif effective_readonly:
         conn = sqlite3.connect(DB_PATH, timeout=30, check_same_thread=False)
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA query_only = ON")
@@ -827,6 +845,33 @@ def get_db(readonly: bool = True) -> sqlite3.Connection:
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA journal_mode = WAL")
     return conn
+
+
+def connect_sqlite_path(
+    path: str | os.PathLike[str],
+    *,
+    timeout: float = 30,
+    check_same_thread: bool = False,
+) -> sqlite3.Connection:
+    """Open an auxiliary SQLite path with the public request guard applied.
+
+    Some cached readers reopen a path derived from an injected connection.
+    Centralising those opens prevents them from bypassing public ``mode=ro``.
+    """
+
+    from backend.core.access_surface import public_readonly_db_guard_active
+
+    if public_readonly_db_guard_active():
+        uri = f"{Path(path).resolve().as_uri()}?mode=ro"
+        conn = sqlite3.connect(
+            uri,
+            uri=True,
+            timeout=timeout,
+            check_same_thread=check_same_thread,
+        )
+        conn.execute("PRAGMA query_only = ON")
+        return conn
+    return sqlite3.connect(path, timeout=timeout, check_same_thread=check_same_thread)
 
 
 def init_db() -> None:

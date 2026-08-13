@@ -16,10 +16,16 @@ from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 
 from backend.api.router import api_router
 from backend.core.access_surface import (
+    PRIVATE_ADMIN_SURFACE,
+    PUBLIC_READONLY_SURFACE,
     SURFACE_HEADER,
     capabilities_for_request,
     is_public_readonly,
     public_policy_decision,
+    reset_public_readonly_db_guard,
+    set_public_readonly_db_guard,
+    trusted_gateway_required,
+    trusted_request_surface,
 )
 from backend.core.config import FRONTEND_ORIGIN
 from backend.core.db import DB_PATH
@@ -123,27 +129,49 @@ app.add_middleware(
 
 @app.middleware("http")
 async def public_readonly_surface_middleware(request: Request, call_next):
-    """Enforce the public showcase boundary independently of frontend state."""
-    if not is_public_readonly(request):
-        return await call_next(request)
+    """Authenticate the ingress and enforce the public showcase boundary."""
 
-    decision = public_policy_decision(request.method, request.url.path)
-    if decision == "disabled":
-        return JSONResponse(status_code=404, content={"detail": "Not found"})
-    if decision == "readonly":
+    # Container health checks intentionally bypass gateway authentication.
+    # No other route may fall back to a privileged surface when enforcement is
+    # enabled and proxy headers are absent, malformed, or forged.
+    health_exempt = request.url.path == "/api/health"
+    surface = trusted_request_surface(request)
+    if surface is None and trusted_gateway_required() and not health_exempt:
         return JSONResponse(
             status_code=403,
             content={
                 "detail": {
-                    "error": "public_readonly",
-                    "message": "This operation is unavailable on the public showcase.",
+                    "error": "untrusted_gateway",
+                    "message": "This request did not come through a trusted application gateway.",
                 }
             },
         )
+    if surface is None:
+        surface = PRIVATE_ADMIN_SURFACE
 
-    response = await call_next(request)
-    response.headers[SURFACE_HEADER] = "public-readonly"
-    return response
+    request.state.spotify_stats_surface = surface
+    db_guard_token = set_public_readonly_db_guard(surface == PUBLIC_READONLY_SURFACE)
+    try:
+        if surface == PUBLIC_READONLY_SURFACE:
+            decision = public_policy_decision(request.method, request.url.path)
+            if decision == "disabled":
+                return JSONResponse(status_code=404, content={"detail": "Not found"})
+            if decision == "readonly":
+                return JSONResponse(
+                    status_code=403,
+                    content={
+                        "detail": {
+                            "error": "public_readonly",
+                            "message": "This operation is unavailable on the public showcase.",
+                        }
+                    },
+                )
+
+        response = await call_next(request)
+        response.headers[SURFACE_HEADER] = surface
+        return response
+    finally:
+        reset_public_readonly_db_guard(db_guard_token)
 
 
 @app.middleware("http")

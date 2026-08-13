@@ -1,7 +1,7 @@
-import { lazy, Suspense, useEffect, useRef, type ReactNode } from 'react'
+import { lazy, Suspense, useEffect, useRef } from 'react'
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigationType, useParams } from 'react-router-dom'
 import { AppLayout } from '@/components/layout/AppLayout'
-import { useRuntimeCapabilities } from '@/hooks/useRuntimeCapabilities'
+import { CapabilityRoute } from '@/components/capabilities/CapabilityGate'
 
 const DashboardPage = lazy(() => import('@/pages/DashboardPage').then((m) => ({ default: m.DashboardPage })))
 const BillboardPage = lazy(() => import('@/pages/BillboardPage').then((m) => ({ default: m.BillboardPage })))
@@ -49,16 +49,6 @@ function RouteFallback() {
   )
 }
 
-function PrivateFeatureRoute({ feature, children }: {
-  feature: 'settings' | 'ai'
-  children: ReactNode
-}) {
-  const { capabilities, loading } = useRuntimeCapabilities()
-  if (loading) return <RouteFallback />
-  if (!capabilities[feature]) return <Navigate to="/" replace />
-  return children
-}
-
 export function ScrollToTop() {
   const { pathname } = useLocation()
   const navigationType = useNavigationType()
@@ -96,7 +86,7 @@ function App() {
           <Route path="/community" element={<Suspense fallback={<RouteFallback />}><CommunityPage /></Suspense>} />
           <Route path="/community/post/:postId" element={<Suspense fallback={<RouteFallback />}><PostDetailPage /></Suspense>} />
           <Route path="/community/account/:handle" element={<Suspense fallback={<RouteFallback />}><CommunityAccountPage /></Suspense>} />
-          <Route path="/ai-insights" element={<PrivateFeatureRoute feature="ai"><Suspense fallback={<RouteFallback />}><AiInsightsPage /></Suspense></PrivateFeatureRoute>} />
+          <Route path="/ai-insights" element={<CapabilityRoute require="ai" loadingFallback={<RouteFallback />}><Suspense fallback={<RouteFallback />}><AiInsightsPage /></Suspense></CapabilityRoute>} />
           <Route path="/analysis/timeline" element={<Navigate to="/analysis/stats" replace />} />
           <Route path="/analysis/leaderboard" element={<Navigate to="/analysis/charts" replace />} />
           <Route path="/analysis/behavior" element={<Navigate to="/analysis/stats" replace />} />
@@ -108,7 +98,7 @@ function App() {
             <Route path="charts" element={<Suspense fallback={<RouteFallback />}><AnalysisChartsPage /></Suspense>} />
             <Route path="records" element={<Suspense fallback={<RouteFallback />}><AnalysisRecordsPage /></Suspense>} />
           </Route>
-          <Route path="/settings" element={<PrivateFeatureRoute feature="settings"><Suspense fallback={<RouteFallback />}><SettingsPage /></Suspense></PrivateFeatureRoute>} />
+          <Route path="/settings" element={<CapabilityRoute require="settings" loadingFallback={<RouteFallback />}><Suspense fallback={<RouteFallback />}><SettingsPage /></Suspense></CapabilityRoute>} />
           <Route path="/yearly-review" element={<Suspense fallback={<RouteFallback />}><YearlyReviewPage /></Suspense>} />
           <Route path="/account" element={<Suspense fallback={<RouteFallback />}><AccountCenterPage /></Suspense>} />
           <Route path="*" element={<Suspense fallback={<RouteFallback />}><NotFoundPage /></Suspense>} />

@@ -19,6 +19,7 @@ import { MobileMusicDetailHero, MobileMusicDetailNav } from '@/features/mobile/m
 import { TrackDetailHero } from './MusicDetailHeader'
 import { displayName } from '@/lib/chinese'
 import { useRuntimeCapabilities } from '@/hooks/useRuntimeCapabilities'
+import { CapabilityGate } from '@/components/capabilities/CapabilityGate'
 
 type TabKey = 'stats' | 'lyrics' | 'overview'
 
@@ -88,7 +89,7 @@ export function TrackDetailExperience() {
             data!.primary_artist_name ?? data!.artist_names?.[0] ?? data!.artist_name,
         },
       ),
-    enabled: capabilities.lyrics && activeTab === 'lyrics' && !!data?.found,
+    enabled: capabilities.lyrics && capabilities.cover_enrichment && activeTab === 'lyrics' && !!data?.found,
   })
 
   const { data: lyrics = null, isPending: lyricsLoading } = useQuery({
@@ -196,13 +197,15 @@ export function TrackDetailExperience() {
 
               {activeTab === 'overview' && <TrackOverviewSection data={data} />}
               {activeTab === 'stats' && <EntityStatsPanel kind="track" trackId={trackId} />}
-              {capabilities.lyrics && activeTab === 'lyrics' && (
-                <TrackLyricsSection
-                  data={data}
-                  enrichment={enrichment}
-                  lyrics={lyrics}
-                  lyricsLoading={lyricsLoading}
-                />
+              {activeTab === 'lyrics' && (
+                <CapabilityGate require="lyrics">
+                  <TrackLyricsSection
+                    data={data}
+                    enrichment={enrichment}
+                    lyrics={lyrics}
+                    lyricsLoading={lyricsLoading}
+                  />
+                </CapabilityGate>
               )}
             </>
           )}

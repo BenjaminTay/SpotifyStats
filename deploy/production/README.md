@@ -1,76 +1,165 @@
-# SpotifyStats 个人云双入口部署
+# SpotifyStats 双运行面生产部署
 
-本目录用于单用户长期运行，同一份应用和数据通过两个彼此隔离的入口提供：
+本目录用一套代码、同一组 commit SHA 镜像、一个 FastAPI Backend 和一份
+SQLite 数据目录提供两种运行面：
 
-- `https://<node>.<tailnet>.ts.net`：Tailscale Serve → `127.0.0.1:3001`，仅私人 tailnet 可达，保留设置、导入、编辑、AI 与 Spotify OAuth。
-- `https://<node>.<tailnet>.ts.net:8443`：Tailscale Funnel → `127.0.0.1:3002`，互联网可达，只展示已批准的本地统计能力。
+| 运行面 | Compose 服务 | loopback 端口 | 能力 |
+|---|---|---:|---|
+| `private-admin` | `web` | 3001 | 设置、导入、编辑、AI、Spotify OAuth 等完整功能 |
+| `public-readonly` | `public-web` | 3002 | 经后端白名单批准的统计、榜单和详情浏览 |
 
-FastAPI 只存在于 Docker 私网。两个宿主端口也只监听 loopback，因此不能通过伪造请求头绕过公开网关。公开 Nginx 与后端共同执行只读边界；前端的“公开展示”标识和入口隐藏只用于呈现，不作为授权依据。
+两个 Web 网关都只绑定宿主机 loopback；Backend 不映射宿主端口。外部 HTTPS
+入口是独立的运维层，可以是 Tailscale Serve、域名反向代理或其他受控入口。
+部署和模式切换脚本不会自动启用、关闭或修改任何 Tailscale、Funnel、域名、
+证书或云防火墙配置。
+
+## 部署模式
+
+`.env` 中的 `DEPLOYMENT_MODE` 决定保持哪些 loopback 网关运行：
+
+| 模式 | 运行服务 | 用途 |
+|---|---|---|
+| `full` | `backend + web` | 只保留完全版 |
+| `showcase` | `backend + public-web` | 只保留简化版 |
+| `dual` | `backend + web + public-web` | 同一服务器同时提供两种入口 |
+
+快速切换：
+
+```bash
+./set-deployment-mode.sh full
+./set-deployment-mode.sh showcase
+./set-deployment-mode.sh dual
+```
+
+切换复用当前 `IMAGE_TAG`，不会重建数据库，也不会触碰外部 HTTPS 入口。脚本会
+停止非目标 Web 容器、验证目标运行面的能力和端口边界；失败时恢复原模式。
 
 ## 首次部署
 
 1. 在服务器创建 `/opt/spotify-stats/{data,backups}`，目录权限设为 `700`。
-2. 将本目录文件放到 `/opt/spotify-stats/`，复制 `.env.example` 为 `.env`，
-   设置私人 `APP_PUBLIC_URL`、公开 `PUBLIC_SHOWCASE_URL` 和独立的
-   `SPOTIFY_STATS_TOKEN_KEY`。
-3. 使用 SQLite backup API 生成一致性 `spotify_stats.db`，再把数据库、`covers/`、
-   `account/`、`streaming/` 和 seed JSON 传入 `/opt/spotify-stats/data/`。
-4. 运行 `./deploy.sh <commit-sha>`。
-5. 安装并登录 Tailscale，在 tailnet 中启用 MagicDNS 与 HTTPS，再运行
-   `./configure-tailscale.sh` 建立私人入口。管理设备必须登录同一 tailnet。
-6. 先执行 `./verify.sh`，确认 3001 私人入口与 3002 公共只读网关均健康，
-   公共能力发现为 `public-readonly`，写操作返回 403。
-7. 运行 `./configure-public-funnel.sh`，只把 8443 映射到 3002；按 Tailscale
-   提示在管理页批准 Funnel 后，朋友无需安装 Tailscale 即可访问
-   `PUBLIC_SHOWCASE_URL`。
-8. 运行 `./install-backup-timer.sh` 安装每日 SQLite 在线备份，并从私人入口
-   与公网入口分别完成一次真机验收。
+2. 将本目录文件放到 `/opt/spotify-stats/`，复制 `.env.example` 为 `.env`。
+3. 至少填写 `APP_PUBLIC_URL`、独立的 `SPOTIFY_STATS_TOKEN_KEY`、镜像仓库配置，
+   并选择 `DEPLOYMENT_MODE`。
+4. 使用 SQLite Online Backup API 生成一致性 `spotify_stats.db`，再把数据库、
+   `covers/`、`account/`、`streaming/` 和 seed JSON 传入
+   `/opt/spotify-stats/data/`。
+5. 执行 `./deploy.sh <commit-sha>`，再运行 `./verify.sh`。
+6. 最后按需单独配置外部 HTTPS 入口。Tailscale 是可选项；只有明确需要时才运行
+   `configure-tailscale.sh` 或 `configure-public-funnel.sh`。
+7. 运行 `./install-backup-timer.sh` 安装每日 SQLite 在线备份，并配置异机备份。
+
+建议预先生成网关密钥：
+
+```bash
+openssl rand -hex 32
+```
+
+将结果写入 `SPOTIFY_STATS_GATEWAY_TOKEN`。为兼容现有服务器，`deploy.sh` 在该项
+完全缺失时会用服务器上的 OpenSSL 本地生成，不会输出密钥；旧部署没有
+`DEPLOYMENT_MODE` 时按旧版两个 Web 容器均运行的事实迁移为 `dual`。
+
+## 可信网关边界
+
+生产环境设置：
+
+```dotenv
+SPOTIFY_STATS_TRUSTED_GATEWAY_REQUIRED=1
+SPOTIFY_STATS_GATEWAY_TOKEN=<32-128 位 base64url 安全随机值>
+```
+
+Compose 把同一密钥注入 Backend 和 Nginx 官方镜像的 runtime template。模板仅在
+容器启动时生成实际配置，密钥不写入 Git、Docker 镜像或 Actions 构建产物；
+`NGINX_ENVSUBST_FILTER` 只允许替换该密钥，避免改写 `$host`、`$uri` 等 Nginx
+变量。部署脚本限制密钥字符集，避免配置注入。
+
+Compose 同时把不可变 `IMAGE_TAG` 作为 `SPOTIFY_STATS_RELEASE_SHA` 注入 Backend，
+能力响应因此可以直接核对两个运行面是否确实来自同一 Git commit。
+
+两个网关分别强制覆盖：
+
+```text
+X-SpotifyStats-Surface: private-admin | public-readonly
+X-SpotifyStats-Gateway-Token: <server-local secret>
+```
+
+浏览器提供的同名 Header 会被覆盖。Backend 同时校验运行面与网关密钥；缺少或
+伪造凭据不能获得完全版权限。`public-readonly` 的前端隐藏只改善体验，后端显式
+API 白名单、写操作阻断和只读数据连接才是最终安全边界。
+
+## 数据边界
+
+- `.dockerignore` 排除整个 `data/`、备份和环境密钥；镜像中不得含 SQLite、封面
+  或 Spotify 原始导出。
+- `./data:/app/data` 是宿主持久挂载，两种运行面在**同一 Backend 进程组**中读取
+  同一 SQLite 文件，因此统计口径和 schema 始终一致。
+- 同一服务器的两个 Web 网关不各自打开 SQLite；所有请求都进入同一个 Backend。
+- **不能把 SQLite 文件通过 NFS、SMB、对象存储挂载或双向文件同步给多台在线
+  Backend 共享写入。**SQLite 的文件锁、WAL 和崩溃一致性不适合这种部署。
+- 如果未来将公开版部署到另一台服务器，应使用经过裁剪的只读快照并做单向、原子
+  替换；如果需要多服务器实时读写，应迁移到 PostgreSQL 等客户端/服务器数据库。
 
 ## 安全边界
 
-- `.dockerignore` 排除整个 `data/`；镜像仓库中不得存在 SQLite、封面或 Spotify 导出。
-- 两个 Web 网关都只监听 loopback，Backend 只在 Docker 私网可达；3000、3001、
-  3002 和 8000 都不得在云防火墙或宿主防火墙中直接开放。
-- `SPOTIFY_STATS_REQUIRE_AUTH` 在该模式下关闭，因为它只保护部分写端点；整站边界由
-  私人入口的 Tailscale 身份与公共入口的后端访问面策略分别提供。
-- 私人 Nginx 强制写入 `private-admin`，公开 Nginx 强制写入 `public-readonly`。
-  公共面禁用设置、编辑、导入、AI、Spotify OAuth、歌词、元数据治理、后台任务、
-  搜索历史和所有非白名单写操作；仅保留查询和几个无副作用的结构化对决 POST。
-- 公共设置响应会移除 Spotify 与 LLM 连接信息；公共年度总结只读精确缓存；公共封面
-  只使用已有文件或已知 CDN 地址，不触发 Spotify 搜索、写库或后台下载。
-- `X-Robots-Tag: noindex` 只用于降低搜索引擎收录概率，不是访问控制。公开链接可被
-  转发，任何持有者都能查看其中的数据。
-- 需要停止分享时运行 `sudo tailscale funnel reset`；私人 Serve 仍可继续使用。
-- `*.ts.net` 证书名称会进入 Certificate Transparency 日志，机器名不要包含隐私信息。
+- Backend 只在 Docker 私网可达；3000、3001、3002、8000 均不得直接开放公网。
+- `SPOTIFY_STATS_REQUIRE_AUTH` 只保护部分写接口，不能代替整站身份边界。
+- 完全版的外部入口必须另有身份认证，例如私有 tailnet 或带身份验证的反向代理。
+- 简化版禁用设置、编辑、导入、AI、Spotify OAuth、歌词、元数据治理、后台任务和
+  未批准的写操作；安全的结构化分析 POST 仍可按白名单执行只读计算。
+- 简化版年度总结只读取精确持久缓存，封面请求不得触发外部搜索、写库或后台下载。
+- `X-Robots-Tag: noindex` 只降低收录概率，不是身份验证；公开链接可被转发。
 
-## 备份与恢复
+## 发布、回滚与 GitHub Actions
 
-- `./backup.sh` 使用 SQLite Online Backup API，并对备份执行 `integrity_check`。
-- `.env` 的 `BACKUP_RETENTION_DAYS` 控制服务器本地保留天数。
-- `spotify-stats-backup.timer` 每天执行一次在线备份，错过计划时间后会补跑。
-- 服务器内备份不能替代异机备份；应定期把 `/opt/spotify-stats/backups/` 加密同步到
-  另一处存储。
-- 恢复命令为 `./restore.sh backups/<file>.db --confirm`。脚本会先备份当前数据库、
-  停止 Backend、替换数据库并重新执行健康检查。
+GitHub Actions 的流程是：
 
-## 发布与回滚
+```text
+push main
+→ 后端/前端测试
+→ full/showcase/dual 静态部署矩阵
+→ 构建同一 SHA 的 API/Web 镜像
+→ 推送 TCR
+→ SSH 执行 deploy.sh <sha>
+```
 
-- GitHub Actions 使用 commit SHA 构建不可变 API/Web 镜像，再通过 SSH 执行
-  `deploy.sh`。
-- 发布前自动在线备份；新版本健康检查失败时自动回到上一 SHA。
-- 手动回滚使用 `./rollback.sh`，也可显式提供目标 SHA。
-- 若回滚目标早于公共只读能力，脚本会关闭 Funnel 并以私人入口模式恢复，避免旧后端
-  被公开网关继续暴露；升级到兼容版本后再重新执行 `configure-public-funnel.sh`。
+服务器调用不带 `--mode`，因此自动发布只更新当前 `.env` 记录的模式，不会因代码
+发布重新开启已经停止的完全版、简化版或任何外部入口。
 
-## 日常验证
+发布前自动执行 SQLite 在线备份。新镜像或目标模式未通过健康检查、数据库完整性、
+loopback 端口、运行面能力和简化版 403 验证时，自动恢复上一 SHA 和上一模式。
+
+手动命令：
+
+```bash
+./deploy.sh <commit-sha>
+./deploy.sh <commit-sha> --mode dual
+./rollback.sh
+./rollback.sh <commit-sha>
+./validate-deployment-config.sh all
+```
+
+不带 SHA 的 `rollback.sh` 会同时恢复上一次镜像和上一次模式；显式提供目标 SHA
+时，由于没有该 SHA 对应模式的可靠记录，只回滚镜像并保留当前模式。
+
+## 验证
 
 ```bash
 ./verify.sh
-curl -sS "$PUBLIC_SHOWCASE_URL/api/runtime/capabilities"
-curl -o /dev/null -w '%{http_code}\n' -X PUT \
-  "$PUBLIC_SHOWCASE_URL/api/settings" \
-  -H 'Content-Type: application/json' -d '{}'
+VERIFY_EXTERNAL_INGRESS=1 ./verify.sh  # 仅在确实配置了外部入口时使用
 ```
 
-预期能力响应的 `surface` 为 `public-readonly`，写操作状态码为 403。公开入口异常时，
-先关闭 Funnel，再通过 3002 loopback 检查网关；不要把 Backend 或私人 3001 临时暴露到公网。
+`verify.sh` 依据当前模式验证：
+
+- 目标容器运行；
+- 端口只监听 loopback；
+- 非目标 Web 端口没有监听；
+- 能力响应分别为 `private-admin` / `public-readonly`；
+- 简化版设置写操作返回 403；
+- SQLite `PRAGMA integrity_check` 返回 `ok`。
+
+静态发布门禁可在开发机或 CI 执行：
+
+```bash
+./validate-deployment-config.sh full
+./validate-deployment-config.sh showcase
+./validate-deployment-config.sh dual
+```

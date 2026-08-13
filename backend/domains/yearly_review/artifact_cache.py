@@ -9,6 +9,7 @@ import zlib
 from pathlib import Path
 from typing import Any
 
+from backend.core.access_surface import public_readonly_db_guard_active
 from backend.core.db import DB_PATH
 
 CACHE_FORMAT_VERSION = 1
@@ -22,6 +23,14 @@ YEARLY_REVIEW_CACHE_PATH = os.environ.get(
 
 def _connect(cache_path: str | os.PathLike[str] | None = None) -> sqlite3.Connection:
     path = Path(cache_path or YEARLY_REVIEW_CACHE_PATH)
+    if public_readonly_db_guard_active():
+        if not path.is_file():
+            raise FileNotFoundError(path)
+        conn = sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro", uri=True, timeout=30)
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA query_only = ON")
+        return conn
+
     path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(path, timeout=30)
     conn.row_factory = sqlite3.Row
@@ -85,20 +94,27 @@ def load_persisted_artifact(
     cache_path: str | os.PathLike[str] | None = None,
 ) -> dict[str, Any] | None:
     """Return an exact persistent-cache hit, deleting corrupt rows safely."""
-    conn = _connect(cache_path)
     try:
-        row = conn.execute(
-            """SELECT payload, uncompressed_bytes, cache_format_version
-               FROM yearly_review_artifacts WHERE cache_key=?""",
-            (cache_key,),
-        ).fetchone()
+        conn = _connect(cache_path)
+    except (FileNotFoundError, sqlite3.Error):
+        return None
+    try:
+        try:
+            row = conn.execute(
+                """SELECT payload, uncompressed_bytes, cache_format_version
+                   FROM yearly_review_artifacts WHERE cache_key=?""",
+                (cache_key,),
+            ).fetchone()
+        except sqlite3.Error:
+            return None
         if row is None or int(row["cache_format_version"]) != CACHE_FORMAT_VERSION:
             return None
         try:
             return _decode_artifact(bytes(row["payload"]), int(row["uncompressed_bytes"]))
         except (ValueError, TypeError, json.JSONDecodeError, zlib.error):
-            conn.execute("DELETE FROM yearly_review_artifacts WHERE cache_key=?", (cache_key,))
-            conn.commit()
+            if not public_readonly_db_guard_active():
+                conn.execute("DELETE FROM yearly_review_artifacts WHERE cache_key=?", (cache_key,))
+                conn.commit()
             return None
     finally:
         conn.close()
@@ -110,13 +126,19 @@ def has_persisted_artifact(
     cache_path: str | os.PathLike[str] | None = None,
 ) -> bool:
     """Check an exact persistent hit without inflating its payload."""
-    conn = _connect(cache_path)
     try:
-        row = conn.execute(
-            """SELECT 1 FROM yearly_review_artifacts
-               WHERE cache_key=? AND cache_format_version=?""",
-            (cache_key, CACHE_FORMAT_VERSION),
-        ).fetchone()
+        conn = _connect(cache_path)
+    except (FileNotFoundError, sqlite3.Error):
+        return False
+    try:
+        try:
+            row = conn.execute(
+                """SELECT 1 FROM yearly_review_artifacts
+                   WHERE cache_key=? AND cache_format_version=?""",
+                (cache_key, CACHE_FORMAT_VERSION),
+            ).fetchone()
+        except sqlite3.Error:
+            return False
         return row is not None
     finally:
         conn.close()

@@ -9,9 +9,12 @@ services:
       PYTHONUNBUFFERED: "1"
       PYTHONDONTWRITEBYTECODE: "1"
       SPOTIFY_STATS_WARMUP: ${SPOTIFY_STATS_WARMUP:-1}
+      SPOTIFY_STATS_RELEASE_SHA: ${IMAGE_TAG:?请在 .env 中设置 IMAGE_TAG}
       FRONTEND_ORIGIN: ${APP_PUBLIC_URL:?请在 .env 中设置 APP_PUBLIC_URL}
       SPOTIFY_REDIRECT_URI: ${APP_PUBLIC_URL}/api/spotify/auth/callback
       SPOTIFY_STATS_REQUIRE_AUTH: "0"
+      SPOTIFY_STATS_TRUSTED_GATEWAY_REQUIRED: ${SPOTIFY_STATS_TRUSTED_GATEWAY_REQUIRED:-1}
+      SPOTIFY_STATS_GATEWAY_TOKEN: ${SPOTIFY_STATS_GATEWAY_TOKEN:?请在 .env 中设置 SPOTIFY_STATS_GATEWAY_TOKEN}
       SPOTIFY_STATS_TOKEN_KEY: ${SPOTIFY_STATS_TOKEN_KEY:?请在 .env 中设置 SPOTIFY_STATS_TOKEN_KEY}
       SPOTIFY_CLIENT_ID: ${SPOTIFY_CLIENT_ID:-}
       SPOTIFY_CLIENT_SECRET: ${SPOTIFY_CLIENT_SECRET:-}
@@ -39,6 +42,7 @@ services:
       - no-new-privileges:true
 
   web:
+    profiles: ["full", "dual"]
     image: ${TCR_REGISTRY:-ccr.ccs.tencentyun.com}/${TCR_NAMESPACE:-teacher-honor}/${WEB_REPOSITORY:-spotify-stats-web}:${IMAGE_TAG:?请在 .env 中设置 IMAGE_TAG}
     restart: unless-stopped
     init: true
@@ -46,8 +50,13 @@ services:
       backend:
         condition: service_healthy
     ports:
-      # Tailscale Serve terminates private HTTPS and proxies to this loopback-only port.
+      # The private HTTPS ingress is configured separately and proxies here.
       - "127.0.0.1:${APP_GATEWAY_PORT:-3001}:3000"
+    environment:
+      NGINX_ENVSUBST_FILTER: ^SPOTIFY_STATS_GATEWAY_TOKEN$
+      SPOTIFY_STATS_GATEWAY_TOKEN: ${SPOTIFY_STATS_GATEWAY_TOKEN:?请在 .env 中设置 SPOTIFY_STATS_GATEWAY_TOKEN}
+    volumes:
+      - ./private-nginx.conf.template:/etc/nginx/templates/default.conf.template:ro
     networks:
       - application
     healthcheck:
@@ -60,6 +69,7 @@ services:
       - no-new-privileges:true
 
   public-web:
+    profiles: ["showcase", "dual"]
     image: ${TCR_REGISTRY:-ccr.ccs.tencentyun.com}/${TCR_NAMESPACE:-teacher-honor}/${WEB_REPOSITORY:-spotify-stats-web}:${IMAGE_TAG:?请在 .env 中设置 IMAGE_TAG}
     restart: unless-stopped
     init: true
@@ -67,10 +77,13 @@ services:
       backend:
         condition: service_healthy
     ports:
-      # Tailscale Funnel terminates public HTTPS on 8443 and proxies here.
+      # The public HTTPS ingress is configured separately and proxies here.
       - "127.0.0.1:${PUBLIC_GATEWAY_PORT:-3002}:3000"
+    environment:
+      NGINX_ENVSUBST_FILTER: ^SPOTIFY_STATS_GATEWAY_TOKEN$
+      SPOTIFY_STATS_GATEWAY_TOKEN: ${SPOTIFY_STATS_GATEWAY_TOKEN:?请在 .env 中设置 SPOTIFY_STATS_GATEWAY_TOKEN}
     volumes:
-      - ./public-nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./public-nginx.conf.template:/etc/nginx/templates/default.conf.template:ro
     networks:
       - application
     healthcheck:

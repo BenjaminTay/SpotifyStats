@@ -42,11 +42,12 @@ function artistEnrichmentFromTask(task: AiTaskRun | null): ArtistEnrichmentRespo
 
 export function ArtistDetailExperience() {
   const { capabilities } = useRuntimeCapabilities()
+  const enrichmentEnabled = capabilities.ai && capabilities.cover_enrichment
   const { artistName } = useParams<{ artistName: string }>()
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const requestedTab = searchParams.get('tab')
-  const availableTabs = capabilities.ai ? TABS : TABS.filter((tab) => tab.key !== 'career')
+  const availableTabs = enrichmentEnabled ? TABS : TABS.filter((tab) => tab.key !== 'career')
   const activeTab: TabKey = availableTabs.some((tab) => tab.key === requestedTab) ? requestedTab as TabKey : 'stats'
   const isPhone = useViewportMode() === 'phone'
   const setActiveTab = (tab: TabKey) => {
@@ -105,7 +106,7 @@ export function ArtistDetailExperience() {
   }, [artistName, data?.artist_name, data?.found, navigate, searchParams])
 
   useEffect(() => {
-    if (!capabilities.ai || activeTab !== 'career' || !data?.found) return
+    if (!enrichmentEnabled || activeTab !== 'career' || !data?.found) return
     const artist = data.artist_name.trim()
     if (!artist || artistEnrichmentStartedKeyRef.current === artist) return
 
@@ -126,7 +127,7 @@ export function ArtistDetailExperience() {
     return () => {
       ignored = true
     }
-  }, [activeTab, capabilities.ai, data?.artist_name, data?.found, startArtistEnrichmentTask])
+  }, [activeTab, data?.artist_name, data?.found, enrichmentEnabled, startArtistEnrichmentTask])
 
   return (
     <>
@@ -188,7 +189,7 @@ export function ArtistDetailExperience() {
                   moreTabs={[
                     { key: 'albums', label: '专辑', description: '专辑榜成绩与固定走势排名' },
                     { key: 'releases', label: '发行周期', description: '按发行项目查看表现变化' },
-                    ...(capabilities.ai ? [{ key: 'career' as const, label: '艺人生涯', description: '简介、档案与生涯信息' }] : []),
+                    ...(enrichmentEnabled ? [{ key: 'career' as const, label: '艺人生涯', description: '简介、档案与生涯信息' }] : []),
                   ]}
                   scrollable
                   onChange={setActiveTab}
@@ -252,7 +253,7 @@ export function ArtistDetailExperience() {
                 />
               )}
 
-              {capabilities.ai && activeTab === 'career' && (
+              {enrichmentEnabled && activeTab === 'career' && (
                 <ArtistCareerSection
                   enrichment={enrichment}
                   enrichmentLoading={enrichmentLoading}

@@ -1,0 +1,76 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+DEPLOY_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+COMPOSE_FILE="$DEPLOY_DIR/compose.yml"
+ENV_TEMPLATE="$DEPLOY_DIR/.env.example"
+requested_mode="${1:-all}"
+
+usage() {
+  echo "用法：$0 [full|showcase|dual|all]" >&2
+}
+
+if [[ "$requested_mode" != "all" && "$requested_mode" != "full" && \
+      "$requested_mode" != "showcase" && "$requested_mode" != "dual" ]]; then
+  usage
+  exit 2
+fi
+
+for script in "$DEPLOY_DIR"/*.sh; do
+  bash -n "$script"
+done
+
+for template in "$DEPLOY_DIR/private-nginx.conf.template" \
+                "$DEPLOY_DIR/public-nginx.conf.template"; do
+  grep -q 'X-SpotifyStats-Gateway-Token "${SPOTIFY_STATS_GATEWAY_TOKEN}"' "$template"
+  if grep -Eq 'replace-with|example-tailnet' "$template"; then
+    echo "网关模板包含占位密钥或环境地址：$template" >&2
+    exit 1
+  fi
+done
+
+validate_mode() {
+  local mode="$1"
+  local expected="$2"
+  local services rendered
+
+  services="$(
+    IMAGE_TAG=0123456789abcdef \
+    APP_PUBLIC_URL=https://private.invalid \
+    SPOTIFY_STATS_TOKEN_KEY=0123456789abcdef0123456789abcdef \
+    SPOTIFY_STATS_GATEWAY_TOKEN=0123456789abcdef0123456789abcdef \
+      docker compose --env-file "$ENV_TEMPLATE" -f "$COMPOSE_FILE" \
+        --profile "$mode" config --services | sort | paste -sd ' ' -
+  )"
+  if [[ "$services" != "$expected" ]]; then
+    echo "$mode 服务矩阵错误：得到 [$services]，预期 [$expected]。" >&2
+    return 1
+  fi
+
+  rendered="$(
+    IMAGE_TAG=0123456789abcdef \
+    APP_PUBLIC_URL=https://private.invalid \
+    SPOTIFY_STATS_TOKEN_KEY=0123456789abcdef0123456789abcdef \
+    SPOTIFY_STATS_GATEWAY_TOKEN=0123456789abcdef0123456789abcdef \
+      docker compose --env-file "$ENV_TEMPLATE" -f "$COMPOSE_FILE" \
+        --profile "$mode" config
+  )"
+  grep -q 'SPOTIFY_STATS_TRUSTED_GATEWAY_REQUIRED: "1"' <<<"$rendered"
+  grep -q 'SPOTIFY_STATS_RELEASE_SHA: 0123456789abcdef' <<<"$rendered"
+  if grep -Eq '0\.0\.0\.0:(3000|3001|3002|8000)|published: "8000"' <<<"$rendered"; then
+    echo "$mode 渲染配置暴露了禁止的宿主端口。" >&2
+    return 1
+  fi
+}
+
+if [[ "$requested_mode" == "all" || "$requested_mode" == "full" ]]; then
+  validate_mode full "backend web"
+fi
+if [[ "$requested_mode" == "all" || "$requested_mode" == "showcase" ]]; then
+  validate_mode showcase "backend public-web"
+fi
+if [[ "$requested_mode" == "all" || "$requested_mode" == "dual" ]]; then
+  validate_mode dual "backend public-web web"
+fi
+
+echo "部署配置验证通过：$requested_mode"

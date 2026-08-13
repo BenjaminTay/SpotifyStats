@@ -44,17 +44,25 @@ compose stop backend
 install -m 600 "$BACKUP_PATH" data/spotify_stats.db.restore
 mv data/spotify_stats.db.restore data/spotify_stats.db
 rm -f data/spotify_stats.db-wal data/spotify_stats.db-shm
-compose up -d backend web
 
-gateway_port="$(sed -n 's/^APP_GATEWAY_PORT=//p' "$ENV_FILE" | tail -n 1)"
-gateway_port="${gateway_port:-3001}"
-for _ in $(seq 1 48); do
-  if curl --fail --silent --max-time 5 "http://127.0.0.1:$gateway_port/api/health" >/dev/null; then
-    echo "数据库恢复并重新启动完成：$BACKUP_PATH"
-    exit 0
-  fi
-  sleep 5
-done
+mode="$(sed -n 's/^DEPLOYMENT_MODE=//p' "$ENV_FILE" | tail -n 1)"
+case "$mode" in
+  full) services=(backend web) ;;
+  showcase) services=(backend public-web) ;;
+  dual) services=(backend web public-web) ;;
+  *)
+    echo "DEPLOYMENT_MODE 无效：$mode" >&2
+    exit 1
+    ;;
+esac
+
+docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" --profile "$mode" \
+  up -d "${services[@]}"
+
+if "$DEPLOY_DIR/verify.sh"; then
+  echo "数据库恢复并按 $mode 模式重新启动完成：$BACKUP_PATH"
+  exit 0
+fi
 
 echo "恢复后健康检查失败，需要人工检查。" >&2
 exit 1

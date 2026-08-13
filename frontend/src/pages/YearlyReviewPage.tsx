@@ -103,7 +103,7 @@ export function YearlyReviewPage() {
     filters,
     !filtersLoading,
   )
-  const generationEnabled = capabilities.settings
+  const generationEnabled = capabilities.yearly_generation
     && !filtersLoading
     && currentYear != null
     && v2Years.length > 0

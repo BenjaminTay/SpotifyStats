@@ -8,6 +8,8 @@ import { AlbumDetailExperience } from '@/features/music/details/AlbumDetailExper
 import { ArtistDetailExperience } from '@/features/music/details/ArtistDetailExperience'
 import { api } from '@/lib/api'
 import type { AlbumDetailResponse, ArtistDetailResponse, ReleaseCycleAlbumDetailResponse } from '@/types/billboard'
+import { RuntimeCapabilitiesProvider } from '@/hooks/useRuntimeCapabilities'
+import { FULL_CAPABILITIES } from '@/hooks/runtimeCapabilities'
 
 vi.mock('@/components/charts/ReleaseTimelineChart', () => ({
   ReleaseTimelineChart: () => <div>release cycle chart ready</div>,
@@ -23,14 +25,17 @@ function createClient() {
 }
 
 function wrapperFor(client: QueryClient, initialEntry: string) {
+  client.setQueryData(['runtime', 'capabilities'], FULL_CAPABILITIES)
   return function Wrapper({ children }: { children: ReactNode }) {
     return (
       <MemoryRouter initialEntries={[initialEntry]}>
         <QueryClientProvider client={client}>
-          <Routes>
-            <Route path="/music/artists/:artistName" element={children} />
-            <Route path="/music/albums/:albumName" element={children} />
-          </Routes>
+          <RuntimeCapabilitiesProvider>
+            <Routes>
+              <Route path="/music/artists/:artistName" element={children} />
+              <Route path="/music/albums/:albumName" element={children} />
+            </Routes>
+          </RuntimeCapabilitiesProvider>
         </QueryClientProvider>
       </MemoryRouter>
     )

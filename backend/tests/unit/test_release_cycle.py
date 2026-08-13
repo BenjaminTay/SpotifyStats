@@ -128,3 +128,33 @@ def test_advance_singles_cover_uses_shared_track_spotify_album_meta(monkeypatch)
             "cover_url": "/covers/albums/11.jpg",
         }
     ]
+
+
+def test_public_release_cycle_metadata_is_local_cache_only(monkeypatch):
+    import backend.services.release_cycle_service as svc
+    from backend.core.access_surface import (
+        reset_public_readonly_db_guard,
+        set_public_readonly_db_guard,
+    )
+
+    provider_called = False
+
+    class FailingSpotifyProvider:
+        def get_cc_token(self):
+            nonlocal provider_called
+            provider_called = True
+            raise AssertionError("public release-cycle request attempted Spotify access")
+
+    monkeypatch.setattr(svc, "SpotifyProvider", FailingSpotifyProvider)
+    monkeypatch.setattr(svc, "get_db", lambda *args, **kwargs: (_ for _ in ()).throw(OSError()))
+    svc._get_spotify_token.cache_clear()
+    svc._spotify_search_album.cache_clear()
+
+    token = set_public_readonly_db_guard(True)
+    try:
+        assert svc._spotify_search_album("Missing Album", "Missing Artist") is None
+    finally:
+        reset_public_readonly_db_guard(token)
+        svc._spotify_search_album.cache_clear()
+
+    assert provider_called is False

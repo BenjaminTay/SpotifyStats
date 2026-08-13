@@ -5,6 +5,7 @@ from pathlib import Path
 
 from backend.core.cache import ttl_cached
 from backend.core.cache_manager import register_ttl
+from backend.core.db import connect_sqlite_path
 
 PROFILE_CACHE_TTL = 300
 
@@ -22,7 +23,7 @@ def _database_file_path(conn: sqlite3.Connection):
 
 @ttl_cached(PROFILE_CACHE_TTL, namespace="profile")
 def _get_profile_cached(db_path: str) -> dict:
-    conn = sqlite3.connect(db_path, timeout=30, check_same_thread=False)
+    conn = connect_sqlite_path(db_path, timeout=30, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     try:
         return _build_profile(conn)

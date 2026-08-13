@@ -11,6 +11,8 @@ import { TrackOverviewSection } from '@/features/music/details/track/TrackOvervi
 import { TrackDetailExperience } from '@/features/music/details/TrackDetailExperience'
 import { api } from '@/lib/api'
 import type { TrackDetailResponse } from '@/types/billboard'
+import { RuntimeCapabilitiesProvider } from '@/hooks/useRuntimeCapabilities'
+import { FULL_CAPABILITIES } from '@/hooks/runtimeCapabilities'
 
 vi.mock('@/hooks/useAnalysis', () => ({
   useAnalysisFilters: () => ({
@@ -37,15 +39,18 @@ vi.mock('@/components/shared/EntityStatsPanel', () => ({
 
 function detailWrapper(initialEntry: string) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  client.setQueryData(['runtime', 'capabilities'], FULL_CAPABILITIES)
   return function Wrapper({ children }: { children: ReactNode }) {
     return (
       <MemoryRouter initialEntries={[initialEntry]}>
         <QueryClientProvider client={client}>
-          <Routes>
-            <Route path="/music/albums/:albumName" element={children} />
-            <Route path="/music/artists/:artistName" element={children} />
-            <Route path="/music/tracks/:trackId" element={children} />
-          </Routes>
+          <RuntimeCapabilitiesProvider>
+            <Routes>
+              <Route path="/music/albums/:albumName" element={children} />
+              <Route path="/music/artists/:artistName" element={children} />
+              <Route path="/music/tracks/:trackId" element={children} />
+            </Routes>
+          </RuntimeCapabilitiesProvider>
         </QueryClientProvider>
       </MemoryRouter>
     )

@@ -10,6 +10,7 @@ import type {
   YearlyReviewPrewarmRequest,
   YearlyReviewResponse,
 } from '@/types/yearly-review-v2'
+import { useRuntimeCapabilities } from '@/hooks/useRuntimeCapabilities'
 
 const YEARLY_REVIEW_COLD_TIMEOUT = 120_000
 const GENERATION_POLL_INTERVAL = 1_000
@@ -56,6 +57,7 @@ export function useYearlyReviewGenerationStatus(
   filters: AnalysisFilters,
   enabled: boolean,
 ) {
+  const { capabilities } = useRuntimeCapabilities()
   const params = buildYearlyReviewParams(filters)
   const filterKey = yearlyReviewFilterKey(params)
   const yearsKey = generationYearsKey(years)
@@ -67,7 +69,7 @@ export function useYearlyReviewGenerationStatus(
       undefined,
       signal,
     ),
-    enabled: enabled && yearsKey.length > 0,
+    enabled: capabilities.yearly_generation && enabled && yearsKey.length > 0,
     refetchInterval: queryState => queryState.state.data?.tasks.some(
       task => task.state === 'queued' || task.state === 'running',
     ) ? GENERATION_POLL_INTERVAL : false,
@@ -76,19 +78,25 @@ export function useYearlyReviewGenerationStatus(
 }
 
 export function usePrewarmYearlyReviews(filters: AnalysisFilters) {
+  const { capabilities } = useRuntimeCapabilities()
   const queryClient = useQueryClient()
   const params = buildYearlyReviewParams(filters)
   const filterKey = yearlyReviewFilterKey(params)
 
   return useMutation({
-    mutationFn: (payload: YearlyReviewPrewarmRequest) => api.postWithParams<YearlyReviewGenerationStatusResponse>(
-      '/yearly-review/prewarm',
-      {
-        years: normalizedYears(payload.years),
-        foreground_year: payload.foreground_year,
-      },
-      params,
-    ),
+    mutationFn: (payload: YearlyReviewPrewarmRequest) => {
+      if (!capabilities.yearly_generation) {
+        return Promise.reject(new Error('当前部署未开放年度总结生成'))
+      }
+      return api.postWithParams<YearlyReviewGenerationStatusResponse>(
+        '/yearly-review/prewarm',
+        {
+          years: normalizedYears(payload.years),
+          foreground_year: payload.foreground_year,
+        },
+        params,
+      )
+    },
     onSuccess: (response, payload) => {
       const yearsKey = generationYearsKey(payload.years)
       queryClient.setQueryData(

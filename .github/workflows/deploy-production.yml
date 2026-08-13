@@ -50,10 +50,24 @@ jobs:
           npm test
           npm run build
       - name: Production deployment contract
-        run: .venv/bin/pytest backend/tests/unit/test_private_production_deployment.py -q
+        run: |
+          .venv/bin/pytest backend/tests/unit/test_private_production_deployment.py -q
+          deploy/production/validate-deployment-config.sh all
+
+  deployment-profile-matrix:
+    needs: verify
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [full, showcase, dual]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate ${{ matrix.mode }} deployment profile
+        run: deploy/production/validate-deployment-config.sh "${{ matrix.mode }}"
 
   build:
-    needs: verify
+    needs: [verify, deployment-profile-matrix]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -116,9 +130,11 @@ jobs:
           SERVER_USER: ${{ secrets.SERVER_USER }}
         run: |
           tar -C deploy/production -czf "$RUNNER_TEMP/spotify-stats-deploy.tgz" \
-            compose.yml nginx.conf public-nginx.conf .env.example deploy.sh backup.sh rollback.sh \
+            compose.yml nginx.conf private-nginx.conf.template \
+            public-nginx.conf.template .env.example deploy.sh backup.sh rollback.sh \
             restore.sh configure-tailscale.sh configure-public-funnel.sh \
-            install-backup-timer.sh verify.sh README.md
+            install-backup-timer.sh verify.sh set-deployment-mode.sh \
+            validate-deployment-config.sh README.md
           scp -P "$SERVER_PORT" -i "$RUNNER_TEMP/spotify-stats-deploy-key" \
             "$RUNNER_TEMP/spotify-stats-deploy.tgz" \
             "$SERVER_USER@$SERVER_HOST:/tmp/spotify-stats-deploy.tgz"

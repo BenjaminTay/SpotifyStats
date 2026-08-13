@@ -91,7 +91,7 @@ export function MobileTopBar() {
     || location.pathname.startsWith('/community/account/')
 
   const musicDetailManagement = useMemo(() => {
-    if (!capabilities.editing) return null
+    if (!capabilities.editing || !capabilities.metadata_governance) return null
     const returnTo = currentLocationTarget(location.pathname, location.search)
     if (location.pathname.startsWith('/music/tracks/')) {
       const trackId = location.pathname.split('/')[3] ?? ''
@@ -116,7 +116,7 @@ export function MobileTopBar() {
       }
     }
     return null
-  }, [capabilities.editing, location.pathname, location.search])
+  }, [capabilities.editing, capabilities.metadata_governance, location.pathname, location.search])
 
   const handleShare = async () => {
     try {

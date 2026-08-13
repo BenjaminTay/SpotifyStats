@@ -40,6 +40,7 @@ function albumEnrichmentFromTask(task: AiTaskRun | null): AlbumEnrichmentRespons
 
 export function AlbumDetailExperience() {
   const { capabilities } = useRuntimeCapabilities()
+  const enrichmentEnabled = capabilities.ai && capabilities.cover_enrichment
   const { albumName } = useParams<{ albumName: string }>()
   const [searchParams, setSearchParams] = useSearchParams()
   const artistName = searchParams.get('artist') || ''
@@ -99,7 +100,7 @@ export function AlbumDetailExperience() {
     (Boolean(albumEnrichmentTaskId) && albumEnrichmentTask.loading && !albumEnrichmentTask.task)
 
   useEffect(() => {
-    if (!capabilities.ai || activeTab !== 'era' || !data?.found) return
+    if (!enrichmentEnabled || activeTab !== 'era' || !data?.found) return
     const album = data.album_name.trim()
     const artist = data.artist_name.trim()
     const key = `${artist}\u0000${album}`
@@ -122,7 +123,7 @@ export function AlbumDetailExperience() {
     return () => {
       ignored = true
     }
-  }, [activeTab, capabilities.ai, data?.album_name, data?.artist_name, data?.found, startAlbumEnrichmentTask])
+  }, [activeTab, data?.album_name, data?.artist_name, data?.found, enrichmentEnabled, startAlbumEnrichmentTask])
 
   return (
     <>

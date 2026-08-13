@@ -48,7 +48,8 @@ server {
         return 404;
     }
 
-    # Defence in depth: the backend enforces the same disabled feature families.
+    # Defence in depth: the backend owns the authoritative allowlist. These
+    # blocks keep older images from exposing known private feature families.
     location ~ ^/api/(admin|ai-insights|ai/tasks|artist-identities|billboard/enrichment|chat|import|jobs|lyrics|metadata/artist-genres|metadata/artist-languages|music-metadata/track-credits|profile|search-history|spotify/auth|version-merge)(/|$) {
         return 404;
     }
@@ -57,9 +58,6 @@ server {
         return 404;
     }
 
-    # The public product has four analytical POST operations. Keep this exact
-    # allowlist in Nginx as well as the backend so a rollback cannot expose a
-    # write route through an older application image.
     location ~ ^/api/billboard/(versus/(track|album|artist)|release-cycle/compare)$ {
         limit_req zone=public_showcase_api burst=30 nodelay;
         limit_except GET HEAD OPTIONS POST {
@@ -68,6 +66,7 @@ server {
         proxy_pass http://backend:8000;
         proxy_http_version 1.1;
         proxy_set_header X-SpotifyStats-Surface public-readonly;
+        proxy_set_header X-SpotifyStats-Gateway-Token "${SPOTIFY_STATS_GATEWAY_TOKEN}";
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -84,6 +83,7 @@ server {
         proxy_pass http://backend:8000/api/;
         proxy_http_version 1.1;
         proxy_set_header X-SpotifyStats-Surface public-readonly;
+        proxy_set_header X-SpotifyStats-Gateway-Token "${SPOTIFY_STATS_GATEWAY_TOKEN}";
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -99,6 +99,7 @@ server {
         proxy_pass http://backend:8000/covers/;
         proxy_http_version 1.1;
         proxy_set_header X-SpotifyStats-Surface public-readonly;
+        proxy_set_header X-SpotifyStats-Gateway-Token "${SPOTIFY_STATS_GATEWAY_TOKEN}";
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;

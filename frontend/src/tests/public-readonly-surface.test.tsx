@@ -7,18 +7,15 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { Masthead } from '@/components/layout/Masthead'
 import { MobileBottomNav } from '@/components/layout/MobileBottomNav'
 import { MobileTopBar } from '@/components/layout/MobileTopBar'
-import { RuntimeCapabilitiesProvider, type RuntimeCapabilities } from '@/hooks/useRuntimeCapabilities'
+import { RuntimeCapabilitiesProvider } from '@/hooks/useRuntimeCapabilities'
+import { PUBLIC_CAPABILITIES as FAIL_CLOSED_CAPABILITIES, type RuntimeCapabilities } from '@/hooks/runtimeCapabilities'
 import { ThemeProvider } from '@/hooks/useTheme'
 import { api } from '@/lib/api'
 
 const PUBLIC_CAPABILITIES: RuntimeCapabilities = {
-  surface: 'public-readonly',
-  settings: false,
-  editing: false,
-  imports: false,
-  ai: false,
-  spotify_oauth: false,
-  lyrics: false,
+  ...FAIL_CLOSED_CAPABILITIES,
+  policy_version: 'access-policy-v1',
+  release_sha: 'test-showcase',
 }
 
 function installMatchMedia() {

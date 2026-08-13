@@ -7,6 +7,7 @@ import pandas as pd
 
 from backend.core.cache import ttl_cached
 from backend.core.cache_manager import register_ttl
+from backend.core.db import connect_sqlite_path
 
 SEARCH_CACHE_TTL = 120
 
@@ -89,7 +90,7 @@ def _build_search_stats(conn: sqlite3.Connection) -> dict:
 
 @ttl_cached(SEARCH_CACHE_TTL, namespace="search")
 def _get_search_stats_cached(db_path: str) -> dict:
-    conn = sqlite3.connect(db_path, timeout=30, check_same_thread=False)
+    conn = connect_sqlite_path(db_path, timeout=30, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     try:
         return _build_search_stats(conn)

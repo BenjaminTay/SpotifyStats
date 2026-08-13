@@ -6,6 +6,7 @@ from functools import lru_cache
 import numpy as np
 import pandas as pd
 
+from backend.core.access_surface import public_readonly_db_guard_active
 from backend.core.cache import ttl_cached
 from backend.core.db import get_db
 from backend.core.version_merge import normalize_album_name
@@ -74,7 +75,7 @@ def _verify_album_artists(spotify_album_ids, artist_name):
         if sid not in db_ids:
             need_api.append(sid)
 
-    if need_api:
+    if need_api and not public_readonly_db_guard_active():
         api_verified = _fetch_album_artists_from_api(need_api, artist_name)
         verified.update(api_verified)
 
@@ -84,6 +85,8 @@ def _verify_album_artists(spotify_album_ids, artist_name):
 def _fetch_album_artists_from_api(spotify_album_ids, artist_name):
     """Batch fetch album artists via Spotify /v1/albums?ids= and persist to DB."""
     if not spotify_album_ids:
+        return set()
+    if public_readonly_db_guard_active():
         return set()
 
     token = _get_spotify_token()
@@ -208,6 +211,11 @@ def _spotify_search_album(album_name, artist_name, skip_db_check=False):
                 }
         except Exception:
             pass
+
+    # Public presentation requests are cache-only. They must not turn a GET
+    # into a Spotify API call or metadata persistence side effect.
+    if public_readonly_db_guard_active():
+        return None
 
     token = _get_spotify_token()
     if not token:

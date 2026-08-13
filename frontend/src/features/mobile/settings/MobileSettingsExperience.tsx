@@ -25,6 +25,8 @@ import type { ChineseStyle } from '@/lib/chinese'
 import type { LLMProfile, SettingsData, SettingsUpdatePayload } from '@/types/settings'
 import { cn } from '@/lib/utils'
 import { PwaInstallCard } from './PwaInstallCard'
+import { useRuntimeCapabilities } from '@/hooks/useRuntimeCapabilities'
+import type { RuntimeCapabilities } from '@/hooks/runtimeCapabilities'
 
 type Panel = 'appearance' | 'playback' | 'billboard' | 'spotify' | 'data' | 'ai' | 'advanced'
 
@@ -49,6 +51,20 @@ interface Category {
   status: string
   icon: ComponentType<{ className?: string }>
   advanced?: boolean
+}
+
+function isPanelAllowed(capabilities: RuntimeCapabilities, candidate: Panel | null): candidate is Panel {
+  if (!candidate) return false
+  if (candidate === 'playback' || candidate === 'billboard') return capabilities.editing
+  if (candidate === 'spotify') return capabilities.spotify_oauth
+  if (candidate === 'ai') return capabilities.ai
+  if (candidate === 'advanced') {
+    return capabilities.imports
+      || capabilities.metadata_governance
+      || capabilities.ai
+      || capabilities.editing
+  }
+  return true
 }
 
 function storedBool(key: string, fallback: boolean): boolean {
@@ -130,10 +146,12 @@ export function MobileSettingsExperience({
   onFetchProfiles,
   onApplyProfile,
 }: MobileSettingsExperienceProps) {
+  const { capabilities } = useRuntimeCapabilities()
   const [searchParams, setSearchParams] = useSearchParams()
   const metadataTarget = searchParams.get('metadata')
   const routePanel = searchParams.get('panel') as Panel | null
-  const panel = metadataTarget ? 'advanced' : routePanel
+  const requestedPanel = metadataTarget ? 'advanced' : routePanel
+  const panel = isPanelAllowed(capabilities, requestedPanel) ? requestedPanel : null
   const { theme, setTheme } = useTheme()
   const [dynamicThreshold, setDynamicThresholdState] = useState(() => storedBool('spotify_stats_dynamic_threshold', true))
   const [mergeLevel, setMergeLevel] = useState(getDefaultMergeLevel)
@@ -196,7 +214,7 @@ export function MobileSettingsExperience({
     }, { replace: true })
   }
 
-  const categories = useMemo<Category[]>(() => [
+  const categories = useMemo<Category[]>(() => ([
     { id: 'appearance', title: '外观与名称', description: '主题、中文显示和榜单名称', status: theme === 'dark' ? '深色' : '浅色', icon: Palette },
     { id: 'playback', title: '播放统计', description: '有效播放、合并与内容过滤', status: dynamicThreshold ? '动态阈值' : `${settings.min_ms / 1000}s`, icon: SlidersHorizontal },
     { id: 'billboard', title: '榜单参数', description: 'Top N、周边界与精选集', status: `单曲 Top ${settings.bb_top_n}`, icon: BarChart3 },
@@ -204,7 +222,7 @@ export function MobileSettingsExperience({
     { id: 'data', title: '数据状态', description: '播放记录、账号数据与待重建状态', status: `${settings.db_record_count.toLocaleString('zh-CN')} 条`, icon: Database },
     { id: 'ai', title: 'AI 洞察', description: '启用状态与当前配置档案', status: settings.llm_enabled ? '已启用' : '未启用', icon: Bot },
     { id: 'advanced', title: '高级数据管理', description: '导入、归并、署名、元数据与系统维护', status: rebuildPending ? '有待处理项' : '电脑端管理', icon: ShieldCheck, advanced: true },
-  ], [dynamicThreshold, rebuildPending, settings, theme])
+  ] as Category[]).filter((category) => isPanelAllowed(capabilities, category.id)), [capabilities, dynamicThreshold, rebuildPending, settings, theme])
 
   const updateAndRebuild = (payload: SettingsUpdatePayload) => {
     void onUpdate(payload)

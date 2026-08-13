@@ -7,6 +7,7 @@ import pandas as pd
 
 from backend.core.cache import ttl_cached
 from backend.core.cache_manager import register_ttl
+from backend.core.db import connect_sqlite_path
 from backend.domains.metadata.artist_spotify_meta import resolve_artist_image_url
 
 WRAPPED_HUB_CACHE_TTL = 600
@@ -132,7 +133,7 @@ def _database_file_path(conn: sqlite3.Connection):
 
 @ttl_cached(WRAPPED_HUB_CACHE_TTL, namespace="wrapped")
 def _get_wrapped_hub_cached(db_path: str) -> dict:
-    conn = sqlite3.connect(db_path, timeout=30, check_same_thread=False)
+    conn = connect_sqlite_path(db_path, timeout=30, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     try:
         return _build_wrapped_hub(conn)

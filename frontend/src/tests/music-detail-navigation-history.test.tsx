@@ -8,6 +8,8 @@ import { AlbumDetailExperience } from '@/features/music/details/AlbumDetailExper
 import { ArtistDetailExperience } from '@/features/music/details/ArtistDetailExperience'
 import { TrackDetailExperience } from '@/features/music/details/TrackDetailExperience'
 import { api } from '@/lib/api'
+import { RuntimeCapabilitiesProvider } from '@/hooks/useRuntimeCapabilities'
+import { FULL_CAPABILITIES } from '@/hooks/runtimeCapabilities'
 
 vi.mock('@/hooks/useAnalysis', () => ({
   useAnalysisFilters: () => ({
@@ -87,6 +89,7 @@ const ARTIST_DETAIL = {
 
 function renderWithHistory(path: string, routePath: string, element: ReactElement) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  client.setQueryData(['runtime', 'capabilities'], FULL_CAPABILITIES)
   const router = createMemoryRouter(
     [
       { path: '/source', element: <div>进入详情前的页面</div> },
@@ -96,7 +99,7 @@ function renderWithHistory(path: string, routePath: string, element: ReactElemen
   )
   render(
     <QueryClientProvider client={client}>
-      <RouterProvider router={router} />
+      <RuntimeCapabilitiesProvider><RouterProvider router={router} /></RuntimeCapabilitiesProvider>
     </QueryClientProvider>,
   )
   return router

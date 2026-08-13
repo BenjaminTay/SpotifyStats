@@ -14,7 +14,12 @@ from pathlib import Path
 
 import pandas as pd
 
-from backend.core.db import get_track_artist_names_map, load_plays, load_plays_for_artists
+from backend.core.db import (
+    connect_sqlite_path,
+    get_track_artist_names_map,
+    load_plays,
+    load_plays_for_artists,
+)
 from backend.domains.ai_reports.yearly_contract import build_reporting_period_from_frame
 from backend.domains.metadata.artist_genres import (
     ResolvedArtistGenres,
@@ -266,7 +271,7 @@ def _get_wrapped_full_cached(
     merge_level: int = 1,
 ) -> dict:
     _ = artist_metadata_revision
-    conn = sqlite3.connect(db_path, timeout=30, check_same_thread=False)
+    conn = connect_sqlite_path(db_path, timeout=30, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     try:
         return _build_wrapped_full(

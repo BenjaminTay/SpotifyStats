@@ -5,6 +5,7 @@ import { queryKeys } from '@/api/query-keys'
 import { api } from '@/lib/api'
 import type { AiTaskCreatePayload, AiTaskEventsPayload, AiTaskRun } from '@/types/ai-tasks'
 import type { ReportType } from '@/types/ai-insights'
+import { useRuntimeCapabilities } from '@/hooks/useRuntimeCapabilities'
 
 const POLL_INTERVAL_MS = 1_000
 
@@ -66,37 +67,56 @@ export interface AlbumEnrichmentTaskRequest {
 }
 
 export function useStartReportTask() {
+  const { capabilities } = useRuntimeCapabilities()
   return useMutation({
-    mutationFn: (payload: ReportTaskRequest) =>
-      api.post<AiTaskCreatePayload>('/ai/tasks/report', payload),
+    mutationFn: (payload: ReportTaskRequest) => {
+      if (!capabilities.ai) return Promise.reject(new Error('当前部署未开放 AI 功能'))
+      return api.post<AiTaskCreatePayload>('/ai/tasks/report', payload)
+    },
   })
 }
 
 export function useStartChatAgentTask() {
+  const { capabilities } = useRuntimeCapabilities()
   return useMutation({
-    mutationFn: (payload: ChatAgentTaskRequest) =>
-      api.post<AiTaskCreatePayload>('/ai/tasks/chat', payload),
+    mutationFn: (payload: ChatAgentTaskRequest) => {
+      if (!capabilities.ai) return Promise.reject(new Error('当前部署未开放 AI 功能'))
+      return api.post<AiTaskCreatePayload>('/ai/tasks/chat', payload)
+    },
   })
 }
 
 export function useStartArtistEnrichmentTask() {
+  const { capabilities } = useRuntimeCapabilities()
   return useMutation({
-    mutationFn: (payload: ArtistEnrichmentTaskRequest) =>
-      api.post<AiTaskCreatePayload>('/ai/tasks/enrichment/artist', payload),
+    mutationFn: (payload: ArtistEnrichmentTaskRequest) => {
+      if (!capabilities.ai || !capabilities.cover_enrichment) {
+        return Promise.reject(new Error('当前部署未开放艺人增强'))
+      }
+      return api.post<AiTaskCreatePayload>('/ai/tasks/enrichment/artist', payload)
+    },
   })
 }
 
 export function useStartAlbumEnrichmentTask() {
+  const { capabilities } = useRuntimeCapabilities()
   return useMutation({
-    mutationFn: (payload: AlbumEnrichmentTaskRequest) =>
-      api.post<AiTaskCreatePayload>('/ai/tasks/enrichment/album', payload),
+    mutationFn: (payload: AlbumEnrichmentTaskRequest) => {
+      if (!capabilities.ai || !capabilities.cover_enrichment) {
+        return Promise.reject(new Error('当前部署未开放专辑增强'))
+      }
+      return api.post<AiTaskCreatePayload>('/ai/tasks/enrichment/album', payload)
+    },
   })
 }
 
 export function useCancelAiTask() {
+  const { capabilities } = useRuntimeCapabilities()
   return useMutation({
-    mutationFn: (taskId: string) =>
-      api.post<AiTaskRun>(`/ai/tasks/${taskId}/cancel`),
+    mutationFn: (taskId: string) => {
+      if (!capabilities.ai) return Promise.reject(new Error('当前部署未开放 AI 功能'))
+      return api.post<AiTaskRun>(`/ai/tasks/${taskId}/cancel`)
+    },
   })
 }
 

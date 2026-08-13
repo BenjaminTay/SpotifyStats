@@ -4,7 +4,7 @@ import type { AlbumDetailResponse, ArtistDetailResponse, TrackDetailResponse } f
 import { displayName } from '@/lib/chinese'
 import { cn } from '@/lib/utils'
 import { formatAlbumKind, formatArtistFollowers } from './MusicDetailFormatters'
-import { useRuntimeCapabilities } from '@/hooks/useRuntimeCapabilities'
+import { CapabilityGate } from '@/components/capabilities/CapabilityGate'
 
 function formatAlbumReleaseDate(iso: string): string {
   const [y, m, d] = iso.split('-')
@@ -41,7 +41,6 @@ export function TrackDetailHero({
   trackId: string
   onBack: () => void
 }) {
-  const { capabilities } = useRuntimeCapabilities()
   const artists = data.artist_names?.length ? data.artist_names : [data.artist_name]
   return (
     <section className="mb-6">
@@ -61,7 +60,7 @@ export function TrackDetailHero({
             <h1 className="min-w-0 break-words font-serif text-[44px] font-bold leading-[1.06] tracking-normal">
               {displayName(data.track_name)}
             </h1>
-            {capabilities.editing && (
+            <CapabilityGate require={['editing', 'metadata_governance']}>
               <Link
                 aria-label={`编辑 ${data.track_name} 的曲目信息`}
                 title="编辑曲目信息"
@@ -71,7 +70,7 @@ export function TrackDetailHero({
                 <Settings2 className="size-3.5" />
                 <span className="hidden md:inline">编辑</span>
               </Link>
-            )}
+            </CapabilityGate>
           </div>
           <p className="mt-2 font-sans text-[17px] text-muted-foreground">
             {artists.map((name, index) => (
@@ -116,7 +115,6 @@ export function ArtistDetailHero({
   data: ArtistDetailResponse
   onBack: () => void
 }) {
-  const { capabilities } = useRuntimeCapabilities()
   return (
     <section className="mb-6">
       <button
@@ -140,7 +138,7 @@ export function ArtistDetailHero({
             <h1 className="min-w-0 break-words font-serif text-[44px] font-bold leading-[1.06] tracking-normal">
               {displayName(data.artist_name)}
             </h1>
-            {capabilities.editing && (
+            <CapabilityGate require={['editing', 'metadata_governance']}>
               <Link
                 aria-label={`管理 ${data.artist_name} 的艺人身份`}
                 title="管理艺人身份"
@@ -150,7 +148,7 @@ export function ArtistDetailHero({
                 <Settings2 className="size-3.5" />
                 <span className="hidden md:inline">管理</span>
               </Link>
-            )}
+            </CapabilityGate>
           </div>
           {data.meta && (
             <div className="mt-2 font-sans text-[14px] text-muted-foreground">
@@ -206,7 +204,6 @@ export function AlbumDetailHero({
   onBack: () => void
   projectTrackCount?: number
 }) {
-  const { capabilities } = useRuntimeCapabilities()
   const showDualTrackCount =
     projectTrackCount != null &&
     data.meta?.total_tracks != null &&
@@ -235,7 +232,7 @@ export function AlbumDetailHero({
             <h1 className="min-w-0 break-words font-serif text-[44px] font-bold leading-[1.06] tracking-normal">
               {displayName(data.album_name)}
             </h1>
-            {capabilities.editing && (
+            <CapabilityGate require={['editing', 'metadata_governance']}>
               <Link
                 aria-label={`管理 ${data.album_name} 的专辑版本`}
                 title="管理专辑版本"
@@ -245,7 +242,7 @@ export function AlbumDetailHero({
                 <Settings2 className="size-3.5" />
                 <span className="hidden md:inline">管理</span>
               </Link>
-            )}
+            </CapabilityGate>
           </div>
           <p className="mt-2 font-sans text-[17px] text-muted-foreground">
             <Link
