@@ -1,11 +1,11 @@
 # 音乐档案统计规则
 
-版本：`account_archive_filter_v1` / `account_archive_cohorts_v1_0` / `account_archive_returns_v1_0`
+版本：`account_archive_filter_v1` / `account_archive_cohorts_v1_0` / `account_archive_returns_v1_0` / `account_archive_discovery_v1_0`
 日期：2026-08-13
 
 ## 1. 适用范围
 
-本文约束 `/api/account/collection-journey`、`/api/account/collection-cohorts` 与 `/api/account/returns`。音乐档案只分析本地导入数据，不在读取或计算时调用 Spotify Web API。
+本文约束 `/api/account/collection-journey`、`/api/account/collection-cohorts`、`/api/account/returns` 与 `/api/account/discovery`。音乐档案只分析本地导入数据，不在读取或计算时调用 Spotify Web API。
 
 `YourLibrary.json` 是“导出时仍在收藏”的当前快照，不包含取消收藏历史。因此本文中的“收藏”始终指 **当前仍在收藏的曲目**；回访率不能解释为全部历史收藏的留存率，也不能用于推断收藏行为造成了后续播放。
 
@@ -108,8 +108,35 @@ R(h) = returned(h) / eligible(h)
 
 “至少 5 次”是版本化展示阈值。普通 UI 不能把沉睡写成“不喜欢/遗忘”，也不能把常听未收藏写成“拒绝收藏”。
 
-## 11. 缓存与契约
+## 11. 搜索去重与 burst
 
-缓存键包含：最短时长、连续合并、动态阈值、最大合并间隔、merge level、UTC 观察边界、播放/收藏 source revision、track group revision 和账号导入/日期 provenance revision。
+Spotify 搜索导出会记录输入过程，不能把每一行都解释成一次完整搜索。`discovery` 先执行以下确定性处理：
+
+1. 查询词使用 Unicode NFKC、`casefold()`、首尾空白清理和连续空白折叠，仅用于内存去重和唯一数量统计；
+2. 规范查询、UTC 时间、platform、interaction URI 四项完全相同的行只保留一条；
+3. 按有效 UTC 时间排序，相邻事件间隔不超过 5 分钟归入同一 burst，超过 5 分钟才开启新 burst；
+4. platform 不作为 burst 边界，因为输入过程中的大量行没有 platform，同一段搜索中该字段并不稳定；
+5. 星期和小时分布使用每个 burst 的首事件，并转换为 `Asia/Shanghai`，避免输入字符越多的搜索获得越高权重。
+
+响应只返回原始行数、去重行数、规范查询种类数、burst 数、覆盖期和分布；永不返回原始查询词或规范查询词。
+
+## 12. 有限发现漏斗
+
+导入器只保留每条搜索记录的第一个 interaction URI。艺人、专辑、歌单和节目 interaction 无法无歧义归属到某首曲目，因此漏斗只使用 `spotify:track:*`：
+
+```text
+track interaction burst
+→ interaction URI 可映射本地规范曲目
+→ (interaction_at, interaction_at + 1h] 出现对应有效播放开始事件
+→ played_at <= added_date <= interaction_at + 30d，且该曲目仍在当前收藏快照
+```
+
+每一级按 burst 去重；同一 burst 内多条曲目 interaction 只计一次。播放事件继续复用全局有效播放、连续同曲合并和 L1/L2/L3 归并口径。
+
+最后一级正式名称为“观察到播放后 30 天内进入当前收藏”，不是搜索转化率。原因包括：interaction URI 覆盖很低；只保留第一个 URI；当前收藏快照看不到已经取消收藏的曲目；缺少明确的收藏快照截止时间。接口因此只返回数量，`display_status=count_only`，不返回百分比或因果文案。
+
+## 13. 缓存与契约
+
+缓存键包含：最短时长、连续合并、动态阈值、最大合并间隔、merge level、UTC 观察边界、播放/收藏 source revision、track group revision 和账号导入/日期 provenance revision。`discovery` 另对搜索内容生成不暴露原文的精确 revision；即使行数不变，查询、时间、平台或 interaction URI 变化也会失效缓存。
 
 所有正式响应使用 `extra="forbid"` 的 Pydantic 白名单模型；不得返回 profile、原始搜索词、prompts、inferences、banned items、Spotify URI 或未分页实体全集。

@@ -14,7 +14,7 @@ from backend.domains.playback.track_groups import load_track_group_keys
 from backend.models.account_archive import ArchiveFilterContext
 
 
-def _track_group_map(conn: sqlite3.Connection, merge_level: int) -> dict[int, int]:
+def load_track_group_map(conn: sqlite3.Connection, merge_level: int) -> dict[int, int]:
     if merge_level <= 1:
         return {}
     try:
@@ -40,7 +40,7 @@ def load_saved_track_entities(
     current-snapshot save date represents that canonical relationship.
     """
     rows = load_saved_track_rows(conn)
-    group_map = _track_group_map(conn, context.merge_level)
+    group_map = load_track_group_map(conn, context.merge_level)
     matched_rows = [row for row in rows if row.get("local_track_id") is not None]
     for row in matched_rows:
         local_id = int(row["local_track_id"])
@@ -142,7 +142,7 @@ def load_effective_archive_plays(
     frame["event_at"] = frame["ts_utc"] - pd.to_timedelta(
         frame["ms_played"].clip(lower=0), unit="ms"
     )
-    group_map = _track_group_map(conn, context.merge_level)
+    group_map = load_track_group_map(conn, context.merge_level)
     frame["archive_track_id"] = (
         frame["track_id"].astype(int).map(group_map).fillna(frame["track_id"]).astype(int)
     )

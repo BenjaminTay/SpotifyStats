@@ -292,3 +292,83 @@ class ArchiveReturnsResponse(StrictArchiveModel):
     latest_returns: list[ArchiveReturnStory] = Field(default_factory=list, max_length=5)
     longest_returns: list[ArchiveReturnStory] = Field(default_factory=list, max_length=5)
     sleeping_recommendations: list[ArchiveSleepingStory] = Field(default_factory=list, max_length=5)
+
+
+class ArchiveDiscoveryPeriod(StrictArchiveModel):
+    first_search_at: str | None = None
+    latest_search_at: str | None = None
+    active_days: int = Field(ge=0)
+
+
+class ArchiveDiscoveryCoverage(StrictArchiveModel):
+    normalization_version: Literal["nfkc_casefold_ws_v1"] = "nfkc_casefold_ws_v1"
+    burst_gap_minutes: Literal[5] = 5
+    raw_search_rows: int = Field(ge=0)
+    deduplicated_search_rows: int = Field(ge=0)
+    invalid_timestamp_rows: int = Field(ge=0)
+    unique_normalized_queries: int = Field(ge=0)
+    search_bursts: int = Field(ge=0)
+    interaction_records: int = Field(ge=0)
+    interaction_bursts: int = Field(ge=0)
+
+
+class ArchiveInteractionTypeCounts(StrictArchiveModel):
+    track: int = Field(ge=0)
+    artist: int = Field(ge=0)
+    album: int = Field(ge=0)
+    playlist: int = Field(ge=0)
+    show: int = Field(ge=0)
+    episode: int = Field(ge=0)
+    other: int = Field(ge=0)
+
+
+class ArchiveDiscoveryFunnel(StrictArchiveModel):
+    display_status: Literal["count_only", "unavailable"]
+    playback_window_minutes: Literal[60] = 60
+    save_window_days: Literal[30] = 30
+    track_interaction_bursts: int = Field(ge=0)
+    mapped_track_interaction_bursts: int = Field(ge=0)
+    played_within_1h_bursts: int = Field(ge=0)
+    currently_saved_within_30d_bursts: int = Field(ge=0)
+
+
+class ArchiveDiscoveryWeekdayPoint(StrictArchiveModel):
+    weekday: int = Field(ge=0, le=6)
+    bursts: int = Field(ge=0)
+
+
+class ArchiveDiscoveryHourPoint(StrictArchiveModel):
+    hour: int = Field(ge=0, le=23)
+    bursts: int = Field(ge=0)
+
+
+class ArchiveDiscoveryTrackPreview(StrictArchiveModel):
+    track_name: str
+    artist_name: str
+    album_name: str | None = None
+    cover_url: str | None = None
+    deep_link: str | None = None
+    interaction_at: str
+    played_at: str
+    added_date: str
+
+
+class ArchiveDiscoveryResponse(StrictArchiveModel):
+    schema_version: Literal["account_archive_discovery_v1"] = "account_archive_discovery_v1"
+    content_version: Literal["account_archive_discovery_v1_0"] = "account_archive_discovery_v1_0"
+    data_revision: str
+    status: ArchiveChapterStatus
+    filter_context: ArchiveFilterContext
+    period: ArchiveDiscoveryPeriod
+    coverage: ArchiveDiscoveryCoverage
+    interaction_types: ArchiveInteractionTypeCounts
+    funnel: ArchiveDiscoveryFunnel
+    weekday_distribution: list[ArchiveDiscoveryWeekdayPoint] = Field(
+        default_factory=list, min_length=7, max_length=7
+    )
+    hour_distribution: list[ArchiveDiscoveryHourPoint] = Field(
+        default_factory=list, min_length=24, max_length=24
+    )
+    observed_saved_examples: list[ArchiveDiscoveryTrackPreview] = Field(
+        default_factory=list, max_length=5
+    )

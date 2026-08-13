@@ -1,8 +1,8 @@
-# 音乐档案 Journey / Cohorts / Returns 交付记录
+# 音乐档案 Journey / Cohorts / Returns / Discovery 交付记录
 
 日期：2026-08-13
 分支：`codex/account-archive-rebuild`
-范围：统一统计上下文、收藏旅程、收藏前后关系、固定窗回访、关系矩阵和 90 天回归；不包含正式页面 UI。
+范围：统一统计上下文、收藏旅程、收藏前后关系、固定窗回访、关系矩阵、90 天回归和有限发现路径；不包含正式页面 UI。
 
 ## 已落地
 
@@ -10,6 +10,7 @@
 - `GET /api/account/collection-journey`：年度/季度收藏增长、准确曲长、发行年份跨度、首次/最近收藏里程碑。
 - `GET /api/account/collection-cohorts`：记录期内首次播放到收藏、对称 30 天事件窗、7/30/90/365 天右删失回访、-4…12 周事件曲线和互斥关系状态。
 - `GET /api/account/returns`：相邻有效播放至少间隔 90 天、且后一事件发生在收藏后的回归；最近回归、最长间隔和当前沉睡推荐均按规范实体去重。
+- `GET /api/account/discovery`：NFKC 查询去重、5 分钟搜索 burst、burst 级时段分布、interaction 类型覆盖和严格顺序的曲目发现有限漏斗。
 - Extended Streaming History 的 `ts` 按播放停止时间解释；关系窗口使用 `ts - ms_played` 作为逻辑事件开始时间，避免把按下收藏时正在播放的同一次事件算作回访。
 - 两个接口均为严格 Pydantic 白名单、revision-keyed TTL cache，不调用在线 provider。
 
@@ -71,6 +72,21 @@
 
 回归事件要求后一事件严格晚于收藏时间。收藏时正在播放、但逻辑开始时间早于 `added_date` 的同一次播放不会被误计为回归。历史上发生过回归的实体仍可能在当前锚点再次进入沉睡，两者不是互斥的终身标签。
 
+### 发现路径
+
+| 指标 | 结果 |
+|---|---:|
+| 原始搜索行 / 精确去重后 | 2,239 / 2,235 |
+| NFKC + casefold + 空白规范查询 | 1,023 |
+| 5 分钟搜索 burst | 235 |
+| 去重 interaction 记录 / 所在 burst | 84 / 76 |
+| 曲目 interaction burst | 28 |
+| 可映射本地规范曲目 | 24 |
+| 1 小时内出现对应有效播放 | 20 |
+| 严格按“搜索→播放→30 天内进入当前收藏” | 1 |
+
+时段分布按 burst 首事件统计，不按 2,235 条输入过程行加权。最终一级只表示当前收藏快照中仍可观察到、且事件顺序完整的证据，不输出转化率。
+
 ## 必须保留的解释边界
 
 这些高回访率没有被人为压低，因为计算结果应忠实反映数据；但输入只包含“导出时仍在收藏”的幸存曲目，缺少已取消收藏历史，存在明显幸存者偏差。正式 UI 必须使用“当前收藏回访率”，不能写“收藏留存率”“收藏让播放增长”或概括所有历史收藏。
@@ -85,12 +101,13 @@
 |---|---:|---:|---:|
 | `collection-journey` | 3,429 bytes | 约 53 ms | 约 27.5 ms |
 | `collection-cohorts` | 10,681 bytes | 约 566 ms | 约 27.7 ms |
-| `returns` | 5,889 bytes | 约 515 ms | 约 29.8 ms |
+| `returns` | 5,913 bytes | 约 515 ms | 约 29.8 ms |
+| `discovery` | 2,472 bytes | 约 539 ms | 约 48.2 ms |
 
-`collection-cohorts` 低于 120 KB / 1.5 s 预算；`returns` 低于 80 KB / 1.5 s 预算；三个接口热响应低于 75 ms。
+`collection-cohorts` 低于 120 KB / 1.5 s 预算；`returns` 与 `discovery` 均低于 80 KB / 1.5 s 预算；四个接口热响应低于 75 ms。
 
 ## 下一批
 
-1. 实现 `discovery` 的查询去重/burst/interaction URI 有限漏斗。
-2. 实现收藏库服务端分页和 `other-media` 最小摘要。
-3. 等首页形成稳定提交后，同步 `main`，再进入共享 URL row model 与 Desktop / Compact / Phone UI。
+1. 实现收藏库服务端分页和 `other-media` 最小摘要。
+2. 继续在账号分支独立完成 Desktop / Compact / Phone UI，不提前同步 `main`。
+3. 两边开发与验收都完成后，再集中解决共享入口冲突并合并。

@@ -10,12 +10,14 @@ from pydantic import BaseModel
 from backend.dependencies import get_conn
 from backend.domains.account_archive.cohorts import get_collection_cohorts
 from backend.domains.account_archive.context import build_archive_filter_context
+from backend.domains.account_archive.discovery import get_archive_discovery
 from backend.domains.account_archive.journey import get_collection_journey
 from backend.domains.account_archive.overview import get_archive_overview
 from backend.domains.account_archive.returns import get_archive_returns
 from backend.domains.metadata.artist_identity import canonicalize_artist_payload
 from backend.models.account_archive import (
     ArchiveCohortsResponse,
+    ArchiveDiscoveryResponse,
     ArchiveJourneyResponse,
     ArchiveOverviewResponse,
     ArchiveReturnsResponse,
@@ -102,3 +104,13 @@ def archive_returns(
     """返回至少沉睡 90 天后的回归事件和当前沉睡收藏。"""
     context = build_archive_filter_context(conn, filters)
     return get_archive_returns(conn, context)
+
+
+@router.get("/discovery", response_model=ArchiveDiscoveryResponse)
+def archive_discovery(
+    filters: AccountArchiveFilters = Depends(),
+    conn: Connection = Depends(get_conn),
+):
+    """返回隐私安全的搜索 burst、时段分布和有限曲目发现漏斗。"""
+    context = build_archive_filter_context(conn, filters)
+    return get_archive_discovery(conn, context)
