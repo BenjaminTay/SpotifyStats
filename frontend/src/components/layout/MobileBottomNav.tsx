@@ -4,6 +4,7 @@ import { Link, useLocation } from 'react-router-dom'
 
 import { getMastheadRouteContext, type MobileBottomNavItem } from './routeContext'
 import { cn } from '@/lib/utils'
+import { useRuntimeCapabilities } from '@/hooks/useRuntimeCapabilities'
 
 const NAV_ITEMS: Array<{
   id: MobileBottomNavItem
@@ -24,6 +25,7 @@ function inputModeActive(): boolean {
 }
 
 export function MobileBottomNav() {
+  const { capabilities } = useRuntimeCapabilities()
   const location = useLocation()
   const [inputFocused, setInputFocused] = useState(false)
   const context = useMemo(
@@ -52,7 +54,7 @@ export function MobileBottomNav() {
   return (
     <nav className="mobile-bottom-nav" aria-label="移动主导航" data-mobile-shell="bottom-nav">
       <div className="mobile-bottom-nav-inner">
-        {NAV_ITEMS.map((item) => {
+        {NAV_ITEMS.filter((item) => item.id !== 'ai' || capabilities.ai).map((item) => {
           const active = context.mobileBottomNavItem === item.id
           const Icon = item.icon
           return (

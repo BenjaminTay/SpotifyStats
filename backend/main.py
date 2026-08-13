@@ -15,13 +15,19 @@ from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 
 from backend.api.router import api_router
+from backend.core.access_surface import (
+    SURFACE_HEADER,
+    capabilities_for_request,
+    is_public_readonly,
+    public_policy_decision,
+)
 from backend.core.config import FRONTEND_ORIGIN
 from backend.core.db import DB_PATH
 from backend.core.logging_config import setup_logging
 from backend.core.migrations import run_migrations
 from backend.core.request_context import REQUEST_ID_HEADER, reset_request_id, set_request_id
 from backend.core.warmup import start_warmup_thread
-from backend.models.common import HealthResponse
+from backend.models.common import HealthResponse, RuntimeCapabilitiesResponse
 from backend.providers.base import (
     ProviderAuthError,
     ProviderError,
@@ -113,6 +119,31 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def public_readonly_surface_middleware(request: Request, call_next):
+    """Enforce the public showcase boundary independently of frontend state."""
+    if not is_public_readonly(request):
+        return await call_next(request)
+
+    decision = public_policy_decision(request.method, request.url.path)
+    if decision == "disabled":
+        return JSONResponse(status_code=404, content={"detail": "Not found"})
+    if decision == "readonly":
+        return JSONResponse(
+            status_code=403,
+            content={
+                "detail": {
+                    "error": "public_readonly",
+                    "message": "This operation is unavailable on the public showcase.",
+                }
+            },
+        )
+
+    response = await call_next(request)
+    response.headers[SURFACE_HEADER] = "public-readonly"
+    return response
 
 
 @app.middleware("http")
@@ -332,7 +363,7 @@ def _search_spotify_cover(cover_type: str, entity_id: int) -> str | None:
 
 
 @app.get("/covers/{cover_type}/{entity_id}.jpg")
-async def get_cover(cover_type: str, entity_id: int):
+async def get_cover(request: Request, cover_type: str, entity_id: int):
     """封面图片服务，四级回退链：
 
     1. 本地缓存命中 → 直接返回文件（最快）
@@ -352,16 +383,21 @@ async def get_cover(cover_type: str, entity_id: int):
     # ② 本地缺失，尝试从 DB CDN URL 获取
     cdn_url = _get_cover_cdn_url(cover_type, entity_id)
 
-    # ③ DB 也无 URL，尝试通过 Spotify API 搜索
-    if not cdn_url:
+    # Public showcase requests may only use already-known cover sources. They
+    # must not trigger Spotify lookups, database writes, or background jobs.
+    public_readonly = is_public_readonly(request)
+
+    # ③ DB 也无 URL，私有管理入口可尝试通过 Spotify API 搜索
+    if not cdn_url and not public_readonly:
         cdn_url = _search_spotify_cover(cover_type, entity_id)
 
     if cdn_url:
-        from backend.core.job_queue import Job, get_job_queue
+        if not public_readonly:
+            from backend.core.job_queue import Job, get_job_queue
 
-        # 后台静默下载到本地，下次请求直接走缓存
-        job = Job.create("cover_download", cover_type, str(entity_id), cdn_url=cdn_url)
-        get_job_queue().enqueue_if_not_pending(job)
+            # 后台静默下载到本地，下次请求直接走缓存
+            job = Job.create("cover_download", cover_type, str(entity_id), cdn_url=cdn_url)
+            get_job_queue().enqueue_if_not_pending(job)
         return RedirectResponse(url=cdn_url)
 
     # ④ 无数据
@@ -371,6 +407,12 @@ async def get_cover(cover_type: str, entity_id: int):
 # ── API 路由 ─────────────────────────────────────────────────────────────
 
 app.include_router(api_router, prefix="/api")
+
+
+@app.get("/api/runtime/capabilities", response_model=RuntimeCapabilitiesResponse)
+async def runtime_capabilities(request: Request):
+    """Return presentation capabilities for the trusted ingress surface."""
+    return capabilities_for_request(request).as_dict()
 
 
 @app.get("/docs", include_in_schema=False)

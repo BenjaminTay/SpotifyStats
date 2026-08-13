@@ -89,9 +89,11 @@ docker compose up -d
 
 Docker 部署后，前端访问 `http://localhost:3000`，后端访问 `http://localhost:8000`。Spotify OAuth、LLM 和封面/百科增强需要额外配置环境变量，详见开发文档。
 
-### 个人私有云部署
+### 个人云双入口部署
 
-单用户长期运行使用 [`deploy/production/`](deploy/production/README.md) 中的独立生产配置：API 只存在于 Docker 私网，Web 只绑定服务器 `127.0.0.1:3001`，再由 Tailscale Serve 提供仅私人 tailnet 可达的 HTTPS PWA。不要启用 Tailscale Funnel，也不要把 3000、8000 或 3001 开放到公网。
+单用户长期运行使用 [`deploy/production/`](deploy/production/README.md) 中的独立生产配置：API 只存在于 Docker 私网；`127.0.0.1:3001` 由 Tailscale Serve 提供私人管理入口，`127.0.0.1:3002` 由 Tailscale Funnel 的 8443 端口提供公开只读展示。两个 Web 网关都会覆盖受信任的访问面标头，后端在公开面拒绝设置、编辑、导入、AI、Spotify OAuth、歌词、元数据治理及其他写操作，前端同时隐藏相应入口。
+
+3000、3001、3002 和 8000 均不得直接监听公网。公开入口允许持有链接的任何人查看个人统计，因此它不是身份认证，也不能代替对分享内容本身的隐私判断；可随时关闭 Funnel 而不影响私人管理入口。
 
 `.dockerignore` 会排除整个 `data/` 和备份目录；SQLite 必须使用 Online Backup API 生成一致性副本后单独迁移。生产脚本提供每日备份、完整性检查、显式恢复、SHA 镜像发布和失败回滚。首次部署与手机验收步骤见生产目录说明。
 

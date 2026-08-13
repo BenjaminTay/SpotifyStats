@@ -22,6 +22,7 @@ import { useAnalysisFilters } from '@/hooks/useAnalysis'
 import { buildBillboardContextParams } from '@/features/billboard/billboardContext'
 import { useViewportMode } from '@/hooks/useViewportMode'
 import { MobileMusicDetailHero, MobileMusicDetailNav } from '@/features/mobile/music/MobileMusicDetail'
+import { useRuntimeCapabilities } from '@/hooks/useRuntimeCapabilities'
 
 type TabKey = 'stats' | 'releases' | 'career' | 'overview' | 'tracks' | 'albums'
 
@@ -40,11 +41,13 @@ function artistEnrichmentFromTask(task: AiTaskRun | null): ArtistEnrichmentRespo
 }
 
 export function ArtistDetailExperience() {
+  const { capabilities } = useRuntimeCapabilities()
   const { artistName } = useParams<{ artistName: string }>()
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const requestedTab = searchParams.get('tab')
-  const activeTab: TabKey = TABS.some((tab) => tab.key === requestedTab) ? requestedTab as TabKey : 'stats'
+  const availableTabs = capabilities.ai ? TABS : TABS.filter((tab) => tab.key !== 'career')
+  const activeTab: TabKey = availableTabs.some((tab) => tab.key === requestedTab) ? requestedTab as TabKey : 'stats'
   const isPhone = useViewportMode() === 'phone'
   const setActiveTab = (tab: TabKey) => {
     const next = new URLSearchParams(searchParams)
@@ -102,7 +105,7 @@ export function ArtistDetailExperience() {
   }, [artistName, data?.artist_name, data?.found, navigate, searchParams])
 
   useEffect(() => {
-    if (activeTab !== 'career' || !data?.found) return
+    if (!capabilities.ai || activeTab !== 'career' || !data?.found) return
     const artist = data.artist_name.trim()
     if (!artist || artistEnrichmentStartedKeyRef.current === artist) return
 
@@ -123,7 +126,7 @@ export function ArtistDetailExperience() {
     return () => {
       ignored = true
     }
-  }, [activeTab, data?.artist_name, data?.found, startArtistEnrichmentTask])
+  }, [activeTab, capabilities.ai, data?.artist_name, data?.found, startArtistEnrichmentTask])
 
   return (
     <>
@@ -185,12 +188,12 @@ export function ArtistDetailExperience() {
                   moreTabs={[
                     { key: 'albums', label: '专辑', description: '专辑榜成绩与固定走势排名' },
                     { key: 'releases', label: '发行周期', description: '按发行项目查看表现变化' },
-                    { key: 'career', label: '艺人生涯', description: '简介、档案与生涯信息' },
+                    ...(capabilities.ai ? [{ key: 'career' as const, label: '艺人生涯', description: '简介、档案与生涯信息' }] : []),
                   ]}
                   scrollable
                   onChange={setActiveTab}
                 />
-              ) : <DetailTabs tabs={TABS} activeTab={activeTab} onChange={setActiveTab} />}
+              ) : <DetailTabs tabs={availableTabs} activeTab={activeTab} onChange={setActiveTab} />}
 
               {activeTab === 'overview' && (
                 <MusicChartOverviewSection
@@ -249,7 +252,7 @@ export function ArtistDetailExperience() {
                 />
               )}
 
-              {activeTab === 'career' && (
+              {capabilities.ai && activeTab === 'career' && (
                 <ArtistCareerSection
                   enrichment={enrichment}
                   enrichmentLoading={enrichmentLoading}

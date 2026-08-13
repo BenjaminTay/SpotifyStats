@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from sqlite3 import Connection
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
+from backend.core.access_surface import is_public_readonly
 from backend.core.auth import require_auth
 from backend.core.spotify_utils import get_user_profile, is_user_connected
 from backend.dependencies import get_conn
@@ -118,9 +119,23 @@ def _build_settings_response(conn: Connection) -> dict:
 
 
 @router.get("", response_model=SettingsResponse)
-def get_settings(conn: Connection = Depends(get_conn)):
+def get_settings(request: Request, conn: Connection = Depends(get_conn)):
     """Get current settings and database status. API key is never returned."""
-    return _build_settings_response(conn)
+    response = _build_settings_response(conn)
+    if is_public_readonly(request):
+        response.update(
+            {
+                "spotify_connected": False,
+                "spotify_profile": None,
+                "llm_enabled": False,
+                "llm_provider": "",
+                "llm_model": "",
+                "has_llm_key": False,
+                "llm_active_profile_id": None,
+                "llm_active_profile_name": None,
+            }
+        )
+    return response
 
 
 @router.put("", response_model=SettingsResponse)

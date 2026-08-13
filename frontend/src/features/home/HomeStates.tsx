@@ -1,5 +1,6 @@
 import { AlertCircle, ArrowRight, BarChart3, CalendarRange, Trophy } from 'lucide-react'
 import { Link } from 'react-router-dom'
+import { useRuntimeCapabilities } from '@/hooks/useRuntimeCapabilities'
 
 export function HomeLoading({ phone = false }: { phone?: boolean }) {
   return (
@@ -33,13 +34,16 @@ const FEATURES = [
 ]
 
 export function HomeEmpty({ phone = false }: { phone?: boolean }) {
+  const { capabilities } = useRuntimeCapabilities()
   return (
     <section className={phone ? 'home-empty home-empty-phone' : 'home-empty'}>
       <header>
         <p>Your personal music archive</p>
         <h1>把 Spotify 历史<br />变成你的音乐档案</h1>
         <span>导入官方 Extended Streaming History，SpotifyStats 会从真实播放记录中重建你的音乐生活。</span>
-        <Link to="/settings#data-import">导入 Spotify 数据 <ArrowRight aria-hidden="true" /></Link>
+        {capabilities.imports && (
+          <Link to="/settings#data-import">导入 Spotify 数据 <ArrowRight aria-hidden="true" /></Link>
+        )}
       </header>
       <div className="home-empty-features">
         {FEATURES.map(({ icon: Icon, label, note }, index) => (

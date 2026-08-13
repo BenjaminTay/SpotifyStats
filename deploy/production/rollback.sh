@@ -13,4 +13,5 @@ if [[ ! "$target_tag" =~ ^[0-9a-f]{7,64}$ ]]; then
   exit 2
 fi
 
+export ALLOW_PRIVATE_ONLY_RELEASE=1
 exec "$DEPLOY_DIR/deploy.sh" "$target_tag"

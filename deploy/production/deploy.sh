@@ -26,6 +26,8 @@ fi
 current_tag="$(sed -n 's/^IMAGE_TAG=//p' "$ENV_FILE" | tail -n 1)"
 gateway_port="$(sed -n 's/^APP_GATEWAY_PORT=//p' "$ENV_FILE" | tail -n 1)"
 gateway_port="${gateway_port:-3001}"
+public_gateway_port="$(sed -n 's/^PUBLIC_GATEWAY_PORT=//p' "$ENV_FILE" | tail -n 1)"
+public_gateway_port="${public_gateway_port:-3002}"
 
 set_image_tag() {
   local tag="$1"
@@ -40,11 +42,23 @@ compose() {
   docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" "$@"
 }
 
+disable_public_funnel_for_private_only_release() {
+  if [[ "${ALLOW_PRIVATE_ONLY_RELEASE:-0}" != "1" ]]; then
+    return 1
+  fi
+  if command -v tailscale >/dev/null 2>&1; then
+    sudo tailscale funnel reset
+  fi
+  echo "目标版本不支持公共只读能力，已关闭 Funnel，仅保留私人入口。" >&2
+  return 0
+}
+
 wait_until_healthy() {
+  local port="$1"
   local attempts=48
   while (( attempts > 0 )); do
     if curl --fail --silent --show-error --max-time 5 \
-      "http://127.0.0.1:$gateway_port/api/health" >/dev/null; then
+      "http://127.0.0.1:$port/api/health" >/dev/null; then
       return 0
     fi
     attempts=$((attempts - 1))
@@ -54,7 +68,7 @@ wait_until_healthy() {
 }
 
 release_is_safe() {
-  wait_until_healthy || return 1
+  wait_until_healthy "$gateway_port" || return 1
 
   if ! ss -lnt | awk '{print $4}' | grep -qx "127.0.0.1:$gateway_port"; then
     echo "网关端口未限制在 127.0.0.1:$gateway_port，拒绝发布。" >&2
@@ -72,6 +86,30 @@ finally:
 if result != "ok":
     raise SystemExit(f"database integrity_check failed: {result}")
 PY
+
+  if ! wait_until_healthy "$public_gateway_port"; then
+    echo "公共只读网关健康检查失败。" >&2
+    disable_public_funnel_for_private_only_release && return 0
+    return 1
+  fi
+
+  if ! ss -lnt | awk '{print $4}' | grep -qx "127.0.0.1:$public_gateway_port"; then
+    echo "公共网关端口未限制在 127.0.0.1:$public_gateway_port，拒绝发布。" >&2
+    disable_public_funnel_for_private_only_release && return 0
+    return 1
+  fi
+
+  local public_surface
+  if ! public_surface="$(curl --fail --silent --show-error --max-time 5 \
+    "http://127.0.0.1:$public_gateway_port/api/runtime/capabilities")"; then
+    disable_public_funnel_for_private_only_release && return 0
+    return 1
+  fi
+  if [[ "$public_surface" != *'"surface":"public-readonly"'* ]]; then
+    echo "公共网关未进入只读模式，拒绝发布。" >&2
+    disable_public_funnel_for_private_only_release && return 0
+    return 1
+  fi
 }
 
 if compose ps --status running --services 2>/dev/null | grep -qx backend; then
@@ -86,7 +124,7 @@ if ! compose pull || ! compose up -d --remove-orphans || ! release_is_safe; then
   if [[ "$current_tag" =~ ^[0-9a-f]{7,64}$ && "$current_tag" != "$NEW_TAG" ]]; then
     echo "正在回滚到：$current_tag" >&2
     set_image_tag "$current_tag"
-    if ! compose pull || ! compose up -d --remove-orphans || ! release_is_safe; then
+    if ! compose pull || ! compose up -d --remove-orphans || ! ALLOW_PRIVATE_ONLY_RELEASE=1 release_is_safe; then
       echo "回滚后的健康检查仍未通过，需要人工检查。" >&2
     fi
   fi

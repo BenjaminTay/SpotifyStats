@@ -325,7 +325,7 @@
 .mobile-bottom-nav-inner {
   display: grid;
   min-height: var(--mobile-bottom-nav-height);
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
   align-items: stretch;
   padding-inline: 8px;
 }

@@ -23,6 +23,7 @@ import {
   type MobileDetailOrigin,
 } from '@/lib/mobile-navigation'
 import { MobileBottomSheet } from '@/components/mobile'
+import { useRuntimeCapabilities } from '@/hooks/useRuntimeCapabilities'
 
 let rememberedDetailOrigin: MobileDetailOrigin | null = null
 
@@ -39,6 +40,7 @@ function decodePathSegment(value: string): string {
 }
 
 export function MobileTopBar() {
+  const { capabilities } = useRuntimeCapabilities()
   const location = useLocation()
   const navigate = useNavigate()
   const [sectionOpen, setSectionOpen] = useState(false)
@@ -89,6 +91,7 @@ export function MobileTopBar() {
     || location.pathname.startsWith('/community/account/')
 
   const musicDetailManagement = useMemo(() => {
+    if (!capabilities.editing) return null
     const returnTo = currentLocationTarget(location.pathname, location.search)
     if (location.pathname.startsWith('/music/tracks/')) {
       const trackId = location.pathname.split('/')[3] ?? ''
@@ -113,7 +116,7 @@ export function MobileTopBar() {
       }
     }
     return null
-  }, [location.pathname, location.search])
+  }, [capabilities.editing, location.pathname, location.search])
 
   const handleShare = async () => {
     try {
@@ -189,9 +192,11 @@ export function MobileTopBar() {
         <Link to="/music/search" state={searchState} className="mobile-icon-button" aria-label="查找音乐">
           <Search className="h-[18px] w-[18px]" aria-hidden="true" />
         </Link>
-        <Link to="/settings" state={searchState} className="mobile-icon-button" aria-label="打开设置">
-          <Settings className="h-[18px] w-[18px]" aria-hidden="true" />
-        </Link>
+        {capabilities.settings && (
+          <Link to="/settings" state={searchState} className="mobile-icon-button" aria-label="打开设置">
+            <Settings className="h-[18px] w-[18px]" aria-hidden="true" />
+          </Link>
+        )}
       </div>
     )
   })()
@@ -212,6 +217,11 @@ export function MobileTopBar() {
           ) : context.mobileTopBarMode === 'root' && location.pathname === '/' ? (
             <Link to="/" className="mobile-wordmark" aria-label="Spotify Stats 首页">
               Spotify <em>Stats</em>
+              {capabilities.surface === 'public-readonly' && (
+                <span className="ml-1.5 rounded-full border border-accent-foreground/25 px-1.5 py-0.5 align-middle text-[8px] font-bold not-italic tracking-[0.6px] text-accent-foreground">
+                  公开
+                </span>
+              )}
             </Link>
           ) : (
             <span aria-hidden="true" className="mobile-topbar-rule" />

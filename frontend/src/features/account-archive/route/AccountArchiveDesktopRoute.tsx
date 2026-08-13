@@ -13,6 +13,7 @@ import { OtherMediaSection } from '@/features/account-archive/desktop/OtherMedia
 import { ReturnsSection } from '@/features/account-archive/desktop/ReturnsSection'
 import { useArchiveOverview } from '@/features/account-archive/hooks/useAccountArchive'
 import { useArchiveNavigation } from '@/features/account-archive/hooks/useArchiveNavigation'
+import { useRuntimeCapabilities } from '@/hooks/useRuntimeCapabilities'
 
 import '../accountArchive.css'
 
@@ -41,12 +42,13 @@ function ArchivePageError({ onRetry }: { onRetry: () => void }) {
 }
 
 function ArchiveEmptyState() {
+  const { capabilities } = useRuntimeCapabilities()
   return (
     <div className="archive-page-state">
       <Archive aria-hidden="true" />
       <h1>档案柜还是空的</h1>
       <p>导入 Spotify 账号数据后，可以浏览收藏、歌单与搜索档案。</p>
-      <Link to="/settings">前往设置导入数据</Link>
+      {capabilities.imports && <Link to="/settings">前往设置导入数据</Link>}
     </div>
   )
 }

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -50,6 +50,18 @@ class SettingsResponse(BaseModel):
     llm_active_profile_id: int | None = None
     llm_active_profile_name: str | None = None
     rebuild_pending: bool = False
+
+
+class RuntimeCapabilitiesResponse(BaseModel):
+    """Features available through the current trusted reverse-proxy surface."""
+
+    surface: Literal["private-admin", "public-readonly"]
+    settings: bool
+    editing: bool
+    imports: bool
+    ai: bool
+    spotify_oauth: bool
+    lyrics: bool
 
 
 class RebuildAggregationsResponse(BaseModel):

@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request, status
 
+from backend.core.access_surface import is_public_readonly
 from backend.dependencies import get_yearly_review_context
 from backend.models.yearly_review import (
     YearlyReviewAvailableYearsResponse,
@@ -17,6 +18,8 @@ from backend.models.yearly_review import (
 )
 from backend.services.yearly_review_generation import YearlyReviewGenerationTimeoutError
 from backend.services.yearly_review_service import (
+    get_cached_yearly_review,
+    get_cached_yearly_review_records,
     get_yearly_review,
     get_yearly_review_available_years,
     get_yearly_review_generation_status,
@@ -84,9 +87,18 @@ def generation_status(
 
 @router.get("/{year}", response_model=YearlyReviewResponse)
 def yearly_review(
+    request: Request,
     year: YearPath,
     context: YearlyReviewFilterContext = Depends(get_yearly_review_context),
 ) -> YearlyReviewResponse:
+    if is_public_readonly(request):
+        cached = get_cached_yearly_review(year, context)
+        if cached is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="年度总结尚未由管理入口生成",
+            )
+        return cached
     try:
         return get_yearly_review(year, context)
     except YearlyReviewGenerationTimeoutError as exc:
@@ -98,11 +110,25 @@ def yearly_review(
 
 @router.get("/{year}/records", response_model=YearlyReviewRecordsPage)
 def yearly_review_records(
+    request: Request,
     year: YearPath,
     page: Annotated[int, Query(ge=1)] = 1,
     page_size: Annotated[int, Query(ge=1, le=100)] = 50,
     context: YearlyReviewFilterContext = Depends(get_yearly_review_context),
 ) -> YearlyReviewRecordsPage:
+    if is_public_readonly(request):
+        cached = get_cached_yearly_review_records(
+            year,
+            context,
+            page=page,
+            page_size=page_size,
+        )
+        if cached is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="年度总结尚未由管理入口生成",
+            )
+        return cached
     return get_yearly_review_records(
         year,
         context,

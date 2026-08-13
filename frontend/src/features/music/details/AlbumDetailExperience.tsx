@@ -22,6 +22,7 @@ import { useAnalysisFilters } from '@/hooks/useAnalysis'
 import { buildBillboardContextParams } from '@/features/billboard/billboardContext'
 import { useViewportMode } from '@/hooks/useViewportMode'
 import { MobileMusicDetailHero, MobileMusicDetailNav } from '@/features/mobile/music/MobileMusicDetail'
+import { useRuntimeCapabilities } from '@/hooks/useRuntimeCapabilities'
 
 type TabKey = 'stats' | 'era' | 'overview' | 'tracks'
 
@@ -38,6 +39,7 @@ function albumEnrichmentFromTask(task: AiTaskRun | null): AlbumEnrichmentRespons
 }
 
 export function AlbumDetailExperience() {
+  const { capabilities } = useRuntimeCapabilities()
   const { albumName } = useParams<{ albumName: string }>()
   const [searchParams, setSearchParams] = useSearchParams()
   const artistName = searchParams.get('artist') || ''
@@ -97,7 +99,7 @@ export function AlbumDetailExperience() {
     (Boolean(albumEnrichmentTaskId) && albumEnrichmentTask.loading && !albumEnrichmentTask.task)
 
   useEffect(() => {
-    if (activeTab !== 'era' || !data?.found) return
+    if (!capabilities.ai || activeTab !== 'era' || !data?.found) return
     const album = data.album_name.trim()
     const artist = data.artist_name.trim()
     const key = `${artist}\u0000${album}`
@@ -120,7 +122,7 @@ export function AlbumDetailExperience() {
     return () => {
       ignored = true
     }
-  }, [activeTab, data?.album_name, data?.artist_name, data?.found, startAlbumEnrichmentTask])
+  }, [activeTab, capabilities.ai, data?.album_name, data?.artist_name, data?.found, startAlbumEnrichmentTask])
 
   return (
     <>

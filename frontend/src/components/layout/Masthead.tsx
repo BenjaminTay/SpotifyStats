@@ -5,6 +5,7 @@ import { ThemeToggle } from './ThemeToggle'
 import { cn } from '@/lib/utils'
 import { getMastheadRouteContext, type MastheadNavTo } from './routeContext'
 import { MusicSearchDialog } from '@/features/music/search/MusicSearchDialog'
+import { useRuntimeCapabilities } from '@/hooks/useRuntimeCapabilities'
 
 type NavItem = {
   to: MastheadNavTo
@@ -20,6 +21,7 @@ const primaryNavItems: NavItem[] = [
 ]
 
 export function Masthead() {
+  const { capabilities } = useRuntimeCapabilities()
   const location = useLocation()
   const activeNavRef = useRef<HTMLElement | null>(null)
   const [searchOpen, setSearchOpen] = useState(false)
@@ -62,17 +64,24 @@ export function Masthead() {
   return (
     <header className="sticky top-0 z-50 border-b border-border bg-card/45 backdrop-blur-[12px] transition-[background,border] duration-400">
       <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-3 sm:flex-nowrap sm:gap-8 sm:px-10 sm:py-4">
-        <div className="shrink-0 font-serif text-[22px] font-bold tracking-[-0.3px]">
-          Spotify{' '}
-          <span className="italic text-accent-foreground transition-colors duration-400">
-            Stats
+        <div className="flex shrink-0 items-center gap-2 font-serif text-[22px] font-bold tracking-[-0.3px]">
+          <span>
+            Spotify{' '}
+            <span className="italic text-accent-foreground transition-colors duration-400">
+              Stats
+            </span>
           </span>
+          {capabilities.surface === 'public-readonly' && (
+            <span className="rounded-full border border-accent-foreground/25 bg-accent-foreground/8 px-2 py-0.5 font-sans text-[9px] font-bold uppercase tracking-[1px] text-accent-foreground">
+              公开展示
+            </span>
+          )}
         </div>
         <nav
           aria-label="主导航"
           className="order-3 flex w-full min-w-0 max-w-full basis-full gap-2 overflow-x-auto whitespace-nowrap pb-1 sm:order-none sm:w-auto sm:max-w-none sm:basis-auto sm:gap-5 sm:pb-0"
         >
-          {primaryNavItems.map((item) => {
+          {primaryNavItems.filter((item) => item.to !== '/ai-insights' || capabilities.ai).map((item) => {
             const active = isNavActive(item.to)
             return (
               <Link
@@ -97,13 +106,15 @@ export function Masthead() {
             <Search className="h-4.5 w-4.5" aria-hidden="true" />
           </button>
           <ThemeToggle />
-          <Link
-            to="/settings"
-            aria-label="偏好设置"
-            className={utilityLinkClassName(routeContext.activeNavTo === '/settings')}
-          >
-            <Settings className="h-4.5 w-4.5" aria-hidden="true" />
-          </Link>
+          {capabilities.settings && (
+            <Link
+              to="/settings"
+              aria-label="偏好设置"
+              className={utilityLinkClassName(routeContext.activeNavTo === '/settings')}
+            >
+              <Settings className="h-4.5 w-4.5" aria-hidden="true" />
+            </Link>
+          )}
         </div>
       </div>
       {searchOpen && <MusicSearchDialog open={searchOpen} onOpenChange={setSearchOpen} />}

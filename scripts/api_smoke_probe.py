@@ -87,6 +87,7 @@ DEFAULT_EXCLUDED_GET_PATHS: frozenset[str] = frozenset(
 
 DEFAULT_SAFE_GET_CASES: tuple[SmokeCase, ...] = (
     SmokeCase("health", "/api/health"),
+    SmokeCase("runtime_capabilities", "/api/runtime/capabilities"),
     SmokeCase("openapi", "/openapi.json"),
     SmokeCase("track_credit_status", "/api/music-metadata/track-credits/status"),
     SmokeCase(

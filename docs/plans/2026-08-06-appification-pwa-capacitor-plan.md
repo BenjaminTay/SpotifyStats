@@ -1,6 +1,6 @@
 # SpotifyStats App 化路线：PWA → 安全部署 → Capacitor
 
-> 状态：Phase A 可安装 PWA 基线和 Phase B 私人云服务器 + Tailscale 私网 HTTPS 已完成；等待 Spotify OAuth 与手机真机安装验收<br>
+> 状态：Phase A 可安装 PWA、Phase B 私人管理入口和公共只读展示入口已完成；等待双入口手机真机安装验收<br>
 > 日期：2026-08-06<br>
 > 前置阶段：[`2026-08-05-mobile-web-design-and-implementation-plan.md`](2026-08-05-mobile-web-design-and-implementation-plan.md)
 
@@ -40,10 +40,11 @@
 
 PWA 安装并不会自动让手机访问 Mac 上的 SQLite。必须先在以下两种部署形态中选择一种：
 
-### B1. 个人长期部署（推荐）
+### B1. 个人长期部署（当前方案）
 
-- 当前选择为私人云服务器 + Tailscale：生产 Web 只绑定服务器 loopback，FastAPI 只在 Docker 私网可达；Tailscale Serve 在私人 tailnet 内提供同源 HTTPS `/api` 与 `/covers`。
-- 不启用 Tailscale Funnel，不开放 3000/8000/3001 公网端口。`SPOTIFY_STATS_REQUIRE_AUTH` 只保护部分写端点，不能替代整站边界；当前整站访问身份由 tailnet 提供。
+- 私人云服务器使用双入口：Tailscale Serve 将私人 HTTPS 映射到 loopback 3001，保留完整管理能力；Tailscale Funnel 8443 将公共 HTTPS 映射到独立的 loopback 3002，只展示只读数据。
+- FastAPI 只在 Docker 私网可达；两个 Nginx 覆盖访问面标头，后端按公共能力白名单拒绝设置、编辑、导入、AI、OAuth、歌词、元数据治理、后台任务和其他写操作。前端能力发现只负责隐藏相应 UI。
+- 不开放 3000/3001/3002/8000 公网端口。`SPOTIFY_STATS_REQUIRE_AUTH` 只保护部分写端点，不能替代整站边界；私人入口身份由 tailnet 提供，公开链接则对任何持有者可见。
 - 为 SQLite、封面与导入目录配置持久卷和定期备份。
 - 设置真实 `FRONTEND_ORIGIN`、`SPOTIFY_REDIRECT_URI` 与 Spotify Dashboard 回调地址。
 - `.dockerignore` 排除整个个人数据目录；镜像只含代码和依赖，服务器使用独立 `/opt/spotify-stats/data/` 与 `/opt/spotify-stats/backups/`。

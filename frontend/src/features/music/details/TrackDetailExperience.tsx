@@ -18,6 +18,7 @@ import { useViewportMode } from '@/hooks/useViewportMode'
 import { MobileMusicDetailHero, MobileMusicDetailNav } from '@/features/mobile/music/MobileMusicDetail'
 import { TrackDetailHero } from './MusicDetailHeader'
 import { displayName } from '@/lib/chinese'
+import { useRuntimeCapabilities } from '@/hooks/useRuntimeCapabilities'
 
 type TabKey = 'stats' | 'lyrics' | 'overview'
 
@@ -54,11 +55,13 @@ function TrackDetailSkeleton() {
 }
 
 export function TrackDetailExperience() {
+  const { capabilities } = useRuntimeCapabilities()
   const { trackId } = useParams<{ trackId: string }>()
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const requestedTab = searchParams.get('tab')
-  const activeTab: TabKey = TABS.some((tab) => tab.key === requestedTab) ? requestedTab as TabKey : 'stats'
+  const availableTabs = capabilities.lyrics ? TABS : TABS.filter((tab) => tab.key !== 'lyrics')
+  const activeTab: TabKey = availableTabs.some((tab) => tab.key === requestedTab) ? requestedTab as TabKey : 'stats'
   const isPhone = useViewportMode() === 'phone'
   const setActiveTab = (tab: TabKey) => {
     const next = new URLSearchParams(searchParams)
@@ -85,13 +88,13 @@ export function TrackDetailExperience() {
             data!.primary_artist_name ?? data!.artist_names?.[0] ?? data!.artist_name,
         },
       ),
-    enabled: activeTab === 'lyrics' && !!data?.found,
+    enabled: capabilities.lyrics && activeTab === 'lyrics' && !!data?.found,
   })
 
   const { data: lyrics = null, isPending: lyricsLoading } = useQuery({
     queryKey: queryKeys.music.trackLyrics(trackId ?? ''),
     queryFn: () => api.get<LyricsData>('/lyrics/' + trackId!),
-    enabled: activeTab === 'lyrics' && !!trackId,
+    enabled: capabilities.lyrics && activeTab === 'lyrics' && !!trackId,
   })
 
   return (
@@ -169,12 +172,12 @@ export function TrackDetailExperience() {
                   primaryTabs={[
                     { key: 'stats', label: '统计' },
                     { key: 'overview', label: '榜单' },
-                    { key: 'lyrics', label: '歌词' },
+                    ...(capabilities.lyrics ? [{ key: 'lyrics' as const, label: '歌词' }] : []),
                   ]}
                   onChange={setActiveTab}
                 />
               ) : <div className="mb-6 flex gap-7 border-b border-border">
-                {TABS.map((tab) => (
+                {availableTabs.map((tab) => (
                   <button
                     key={tab.key}
                     onClick={() => setActiveTab(tab.key)}
@@ -193,7 +196,7 @@ export function TrackDetailExperience() {
 
               {activeTab === 'overview' && <TrackOverviewSection data={data} />}
               {activeTab === 'stats' && <EntityStatsPanel kind="track" trackId={trackId} />}
-              {activeTab === 'lyrics' && (
+              {capabilities.lyrics && activeTab === 'lyrics' && (
                 <TrackLyricsSection
                   data={data}
                   enrichment={enrichment}

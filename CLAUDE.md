@@ -2,7 +2,7 @@
 
 年度生成协调：在既有年度只读报告 API 外，新增 `/api/yearly-review/prewarm` 与 `/api/yearly-review/generation-status`。`yearly_review_generation_v1` 使用单工作线程优先级队列与 exact cache key 去重，当前年优先、其余可用年份从近到远后台预建，切年提升 queued 任务，等待时间使用服务端 `requested_at`，缓存命中不得被其他年份冷构建阻塞。前端离开页面只取消 HTTP 等待，不终止后台任务；Desktop/Compact/Phone 年度总结共用批量预建。
 
-个人私有云部署：单用户生产使用 `deploy/production/`；Backend 不映射宿主机端口，Web 只绑定 `127.0.0.1:3001`，由 Tailscale Serve 在私人 tailnet 内提供 HTTPS，禁止 Funnel 或公网开放 3000/8000/3001。`.dockerignore` 必须排除整个 `data/`、备份和密钥；个人数据只走 `/opt/spotify-stats/data/` 持久化迁移。生产使用 commit SHA 镜像、上线前 SQLite Online Backup、每日备份、健康检查和失败回滚。`SPOTIFY_STATS_REQUIRE_AUTH` 不是整站认证；当前整站身份边界由 tailnet 提供。OAuth 回调精确使用生产 `https://*.ts.net/api/spotify/auth/callback`，生产设置新 `SPOTIFY_STATS_TOKEN_KEY` 并重新连接 Spotify。
+个人云双入口部署：Backend 不映射宿主机端口；私人 Web 绑定 `127.0.0.1:3001`，由 Tailscale Serve 提供完整管理能力；公开 Web 绑定 `127.0.0.1:3002`，由 Tailscale Funnel 8443 提供只读展示。两个 Nginx 必须覆盖访问面标头，后端公共策略负责拒绝设置、编辑、导入、AI、OAuth、歌词、元数据治理、后台任务与非白名单写操作；前端能力隐藏不是安全边界。公共年度总结仅可读精确缓存，公共封面不得触发外部请求或写入。3000/3001/3002/8000 均不得直接开放公网；关闭 Funnel 不影响私人 Serve。`.dockerignore` 必须排除数据、备份和密钥；生产继续使用 SHA 镜像、上线前 Online Backup、每日备份、健康检查与失败回滚。`SPOTIFY_STATS_REQUIRE_AUTH` 不是整站认证；私人入口由 tailnet 认证，公开链接则对任何持有者开放。OAuth 回调只使用私人生产地址。
 
 > 完整项目上下文见 `AGENTS.md`。本文档保留常用命令、核心约束和架构要点作为速查。
 

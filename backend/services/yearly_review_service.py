@@ -405,6 +405,16 @@ def get_cached_yearly_review_artifact(
         return None
 
 
+def get_cached_yearly_review(
+    year: int,
+    context: YearlyReviewFilterContext,
+) -> YearlyReviewResponse | None:
+    artifact = get_cached_yearly_review_artifact(year, context)
+    if artifact is None:
+        return None
+    return YearlyReviewResponse.model_validate(artifact["report"])
+
+
 def yearly_review_cache_state(context: YearlyReviewFilterContext) -> str:
     """Cheap exact-key readiness token for lightweight composite caches."""
     latest = get_yearly_review_available_years().latest_year
@@ -426,6 +436,42 @@ def get_yearly_review_records(
     page_size: int,
 ) -> YearlyReviewRecordsPage:
     artifact = _artifact(year, context)
+    return _records_page_from_artifact(
+        artifact,
+        year=year,
+        context=context,
+        page=page,
+        page_size=page_size,
+    )
+
+
+def get_cached_yearly_review_records(
+    year: int,
+    context: YearlyReviewFilterContext,
+    *,
+    page: int,
+    page_size: int,
+) -> YearlyReviewRecordsPage | None:
+    artifact = get_cached_yearly_review_artifact(year, context)
+    if artifact is None:
+        return None
+    return _records_page_from_artifact(
+        artifact,
+        year=year,
+        context=context,
+        page=page,
+        page_size=page_size,
+    )
+
+
+def _records_page_from_artifact(
+    artifact: dict[str, Any],
+    *,
+    year: int,
+    context: YearlyReviewFilterContext,
+    page: int,
+    page_size: int,
+) -> YearlyReviewRecordsPage:
     catalog = list(artifact["record_catalog"])
     total = len(catalog)
     total_pages = math.ceil(total / page_size) if total else 0

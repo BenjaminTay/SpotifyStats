@@ -12,6 +12,7 @@ import { AnalysisPageHeader } from '@/components/shared/AnalysisPageHeader'
 import { AnalysisSubNav } from '@/components/shared/AnalysisSubNav'
 import { YearlyReviewPhoneExperience } from '@/features/mobile/yearly-v2/YearlyReviewPhoneExperience'
 import { useViewportMode } from '@/hooks/useViewportMode'
+import { useRuntimeCapabilities } from '@/hooks/useRuntimeCapabilities'
 import { YearlyReviewDesktopExperience } from '@/features/yearly-review/YearlyReviewDesktopExperience'
 import { YearlyReviewV2Empty, YearlyReviewV2Error, YearlyReviewV2Loading } from '@/features/yearly-review/YearlyReviewStates'
 
@@ -71,6 +72,7 @@ function ErrorState({ message }: { message: string }) {
 const EMPTY_YEARS: number[] = []
 
 export function YearlyReviewPage() {
+  const { capabilities } = useRuntimeCapabilities()
   const isPhone = useViewportMode() === 'phone'
   const [searchParams, setSearchParams] = useSearchParams()
   const { filters, loading: filtersLoading } = useAnalysisFilters()
@@ -101,7 +103,8 @@ export function YearlyReviewPage() {
     filters,
     !filtersLoading,
   )
-  const generationEnabled = !filtersLoading
+  const generationEnabled = capabilities.settings
+    && !filtersLoading
     && currentYear != null
     && v2Years.length > 0
   const generationStatus = useYearlyReviewGenerationStatus(v2Years, filters, generationEnabled)
