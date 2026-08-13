@@ -13,6 +13,7 @@ ACCOUNT_CENTER_ROUTES = (
     ("GET", "/api/account/archive-overview"),
     ("GET", "/api/account/collection-journey"),
     ("GET", "/api/account/collection-cohorts"),
+    ("GET", "/api/account/returns"),
     ("GET", "/api/search-history"),
     ("GET", "/api/insights/tiers"),
     ("GET", "/api/insights/marquee"),

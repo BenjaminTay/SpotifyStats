@@ -1,11 +1,11 @@
 # 音乐档案统计规则
 
-版本：`account_archive_filter_v1` / `account_archive_cohorts_v1_0`
+版本：`account_archive_filter_v1` / `account_archive_cohorts_v1_0` / `account_archive_returns_v1_0`
 日期：2026-08-13
 
 ## 1. 适用范围
 
-本文约束 `/api/account/collection-journey` 与 `/api/account/collection-cohorts`。音乐档案只分析本地导入数据，不在读取或计算时调用 Spotify Web API。
+本文约束 `/api/account/collection-journey`、`/api/account/collection-cohorts` 与 `/api/account/returns`。音乐档案只分析本地导入数据，不在读取或计算时调用 Spotify Web API。
 
 `YourLibrary.json` 是“导出时仍在收藏”的当前快照，不包含取消收藏历史。因此本文中的“收藏”始终指 **当前仍在收藏的曲目**；回访率不能解释为全部历史收藏的留存率，也不能用于推断收藏行为造成了后续播放。
 
@@ -75,11 +75,27 @@ R(h) = returned(h) / eligible(h)
 
 由于输入只包含当前仍在收藏的歌曲，`R(h)` 的正式名称是“当前收藏固定窗回访率”，不是收藏留存率。
 
-## 8. 事件对齐周曲线
+## 8. 90 天回归与当前沉睡
+
+回归只分析可匹配、具有有效收藏时间的当前收藏规范实体。对同一实体按逻辑事件开始时间排序；相邻两次有效播放的间隔不少于 90×24 小时，且后一事件严格晚于收藏时间时，记为一次 `return episode`。
+
+- `returned_entities` 按规范实体去重；
+- `return_episodes` 保留同一实体的多次回归；
+- `return_eligible_entities` 指至少存在一对“后一事件发生在收藏后”的相邻有效播放，只用于说明可分析覆盖，不生成回归率；
+- 最近 30/90 天回归按每个实体最后一次回归时间和 `latest_play_at` 判断；
+- 最新回归与最长间隔榜单均先按实体去重，每类最多返回 5 个例子。
+
+收藏触发播放的逻辑开始时间若早于 `added_date`，即使与前一事件相隔 90 天以上，也不能算收藏后的回归。
+
+`current_sleeping_entities` 与关系矩阵保持一致：收藏已满 90 天，且 `(latest_play_at - 90d, latest_play_at]` 没有有效播放。沉睡天数从 `max(added_date, last_play_at)` 计算；没有有效播放时从收藏时间计算。回归与当前沉睡不是互斥的终身标签：一首歌可以历史上回归过，但在当前锚点再次沉睡。
+
+回归只说明观察到的播放间隔，不能推断用户遗忘、重新喜欢或由收藏行为造成回归。
+
+## 9. 事件对齐周曲线
 
 返回 `week_index=-4…12`。负周使用 `[start,end)`，非负周使用 `(start,end]`，避免相邻窗口重复。每一周独立检查左右观察边界，并返回合格实体数、至少一次播放的实体数、有效事件数和每合格实体事件数。
 
-## 9. 关系矩阵
+## 10. 关系矩阵
 
 锚点为数据库 `latest_play_at`：
 
@@ -92,7 +108,7 @@ R(h) = returned(h) / eligible(h)
 
 “至少 5 次”是版本化展示阈值。普通 UI 不能把沉睡写成“不喜欢/遗忘”，也不能把常听未收藏写成“拒绝收藏”。
 
-## 10. 缓存与契约
+## 11. 缓存与契约
 
 缓存键包含：最短时长、连续合并、动态阈值、最大合并间隔、merge level、UTC 观察边界、播放/收藏 source revision、track group revision 和账号导入/日期 provenance revision。
 

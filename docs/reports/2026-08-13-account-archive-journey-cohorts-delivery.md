@@ -1,14 +1,15 @@
-# 音乐档案 Journey / Cohorts 交付记录
+# 音乐档案 Journey / Cohorts / Returns 交付记录
 
 日期：2026-08-13
 分支：`codex/account-archive-rebuild`
-范围：统一统计上下文、收藏旅程、收藏前后关系、固定窗回访和关系矩阵；不包含正式页面 UI。
+范围：统一统计上下文、收藏旅程、收藏前后关系、固定窗回访、关系矩阵和 90 天回归；不包含正式页面 UI。
 
 ## 已落地
 
 - `account_archive_filter_v1`：统一 `min_ms`、连续合并、动态阈值、最大合并间隔、L1/L2/L3、UTC 观察边界、北京时间展示日期和数据 revision。
 - `GET /api/account/collection-journey`：年度/季度收藏增长、准确曲长、发行年份跨度、首次/最近收藏里程碑。
 - `GET /api/account/collection-cohorts`：记录期内首次播放到收藏、对称 30 天事件窗、7/30/90/365 天右删失回访、-4…12 周事件曲线和互斥关系状态。
+- `GET /api/account/returns`：相邻有效播放至少间隔 90 天、且后一事件发生在收藏后的回归；最近回归、最长间隔和当前沉睡推荐均按规范实体去重。
 - Extended Streaming History 的 `ts` 按播放停止时间解释；关系窗口使用 `ts - ms_played` 作为逻辑事件开始时间，避免把按下收藏时正在播放的同一次事件算作回访。
 - 两个接口均为严格 Pydantic 白名单、revision-keyed TTL cache，不调用在线 provider。
 
@@ -56,6 +57,20 @@
 
 当前关系状态：最近 90 天活跃收藏 513，沉睡收藏 249，最近 90 天至少 5 次但未收藏的规范曲目 94，无法关联收藏 38。
 
+### 找回音乐
+
+| 指标 | 结果 |
+|---|---:|
+| 可进行相邻事件分析的收藏实体 | 761 |
+| 至少一次 90 天回归的实体 | 526 |
+| 回归事件总数 | 1,188 |
+| 多次回归实体 | 302 |
+| 最近 30 / 90 天回归实体 | 53 / 196 |
+| 当前沉睡实体 | 249 |
+| 已观察最长回归间隔 | 643 天 |
+
+回归事件要求后一事件严格晚于收藏时间。收藏时正在播放、但逻辑开始时间早于 `added_date` 的同一次播放不会被误计为回归。历史上发生过回归的实体仍可能在当前锚点再次进入沉睡，两者不是互斥的终身标签。
+
 ## 必须保留的解释边界
 
 这些高回访率没有被人为压低，因为计算结果应忠实反映数据；但输入只包含“导出时仍在收藏”的幸存曲目，缺少已取消收藏历史，存在明显幸存者偏差。正式 UI 必须使用“当前收藏回访率”，不能写“收藏留存率”“收藏让播放增长”或概括所有历史收藏。
@@ -70,11 +85,12 @@
 |---|---:|---:|---:|
 | `collection-journey` | 3,429 bytes | 约 53 ms | 约 27.5 ms |
 | `collection-cohorts` | 10,681 bytes | 约 566 ms | 约 27.7 ms |
+| `returns` | 5,889 bytes | 约 515 ms | 约 29.8 ms |
 
-`collection-cohorts` 低于 120 KB / 1.5 s 预算；两个接口热响应低于 75 ms。
+`collection-cohorts` 低于 120 KB / 1.5 s 预算；`returns` 低于 80 KB / 1.5 s 预算；三个接口热响应低于 75 ms。
 
 ## 下一批
 
-1. 实现 `returns`，复用同一事件开始时间、90 天 gap 和 `latest_play_at` 锚点。
-2. 实现 `discovery` 的查询去重/burst/interaction URI 有限漏斗。
-3. 实现收藏库服务端分页，再进入共享 URL row model 与 Desktop / Compact / Phone UI。
+1. 实现 `discovery` 的查询去重/burst/interaction URI 有限漏斗。
+2. 实现收藏库服务端分页和 `other-media` 最小摘要。
+3. 等首页形成稳定提交后，同步 `main`，再进入共享 URL row model 与 Desktop / Compact / Phone UI。

@@ -12,11 +12,13 @@ from backend.domains.account_archive.cohorts import get_collection_cohorts
 from backend.domains.account_archive.context import build_archive_filter_context
 from backend.domains.account_archive.journey import get_collection_journey
 from backend.domains.account_archive.overview import get_archive_overview
+from backend.domains.account_archive.returns import get_archive_returns
 from backend.domains.metadata.artist_identity import canonicalize_artist_payload
 from backend.models.account_archive import (
     ArchiveCohortsResponse,
     ArchiveJourneyResponse,
     ArchiveOverviewResponse,
+    ArchiveReturnsResponse,
 )
 from backend.services.account_service import get_account_summary, get_collection_insights
 
@@ -90,3 +92,13 @@ def collection_cohorts(
     """返回有完整观察窗的收藏前后关系与固定窗回访。"""
     context = build_archive_filter_context(conn, filters)
     return get_collection_cohorts(conn, context)
+
+
+@router.get("/returns", response_model=ArchiveReturnsResponse)
+def archive_returns(
+    filters: AccountArchiveFilters = Depends(),
+    conn: Connection = Depends(get_conn),
+):
+    """返回至少沉睡 90 天后的回归事件和当前沉睡收藏。"""
+    context = build_archive_filter_context(conn, filters)
+    return get_archive_returns(conn, context)

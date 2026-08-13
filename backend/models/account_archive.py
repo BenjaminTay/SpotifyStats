@@ -232,3 +232,63 @@ class ArchiveCohortsResponse(StrictArchiveModel):
     )
     aligned_weeks: list[ArchiveAlignedWeek] = Field(default_factory=list)
     relationship_matrix: ArchiveRelationshipMatrix
+
+
+class ArchiveReturnsCoverage(StrictArchiveModel):
+    saved_tracks: int = Field(ge=0)
+    matched_saved_tracks: int = Field(ge=0)
+    unmatched_saved_tracks: int = Field(ge=0)
+    canonical_saved_entities: int = Field(ge=0)
+    dated_canonical_entities: int = Field(ge=0)
+    invalid_added_dates: int = Field(ge=0)
+    entities_with_effective_history: int = Field(ge=0)
+    return_eligible_entities: int = Field(ge=0)
+    effective_play_events: int = Field(ge=0)
+
+
+class ArchiveReturnsSummary(StrictArchiveModel):
+    gap_threshold_days: Literal[90] = 90
+    return_episodes: int = Field(ge=0)
+    returned_entities: int = Field(ge=0)
+    multiple_return_entities: int = Field(ge=0)
+    recent_30_day_return_entities: int = Field(ge=0)
+    recent_90_day_return_entities: int = Field(ge=0)
+    current_sleeping_entities: int = Field(ge=0)
+
+
+class ArchiveReturnStory(StrictArchiveModel):
+    track_name: str
+    artist_name: str
+    album_name: str | None = None
+    cover_url: str | None = None
+    deep_link: str | None = None
+    added_date: str
+    previous_play_at: str
+    returned_at: str
+    dormant_days: int = Field(ge=90)
+    return_count: int = Field(ge=1)
+
+
+class ArchiveSleepingStory(StrictArchiveModel):
+    track_name: str
+    artist_name: str
+    album_name: str | None = None
+    cover_url: str | None = None
+    deep_link: str | None = None
+    added_date: str
+    last_play_at: str | None = None
+    dormant_days: int = Field(ge=90)
+    effective_plays: int = Field(ge=0)
+
+
+class ArchiveReturnsResponse(StrictArchiveModel):
+    schema_version: Literal["account_archive_returns_v1"] = "account_archive_returns_v1"
+    content_version: Literal["account_archive_returns_v1_0"] = "account_archive_returns_v1_0"
+    data_revision: str
+    status: ArchiveChapterStatus
+    filter_context: ArchiveFilterContext
+    coverage: ArchiveReturnsCoverage
+    summary: ArchiveReturnsSummary
+    latest_returns: list[ArchiveReturnStory] = Field(default_factory=list, max_length=5)
+    longest_returns: list[ArchiveReturnStory] = Field(default_factory=list, max_length=5)
+    sleeping_recommendations: list[ArchiveSleepingStory] = Field(default_factory=list, max_length=5)

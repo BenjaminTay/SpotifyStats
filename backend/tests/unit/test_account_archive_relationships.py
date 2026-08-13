@@ -16,7 +16,15 @@ from backend.domains.account_archive.cohorts import (
 )
 from backend.domains.account_archive.context import build_archive_filter_context
 from backend.domains.account_archive.journey import build_collection_journey
-from backend.models.account_archive import ArchiveCohortsResponse, ArchiveJourneyResponse
+from backend.domains.account_archive.returns import (
+    _build_return_metrics,
+    build_archive_returns,
+)
+from backend.models.account_archive import (
+    ArchiveCohortsResponse,
+    ArchiveJourneyResponse,
+    ArchiveReturnsResponse,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -245,3 +253,90 @@ def test_journey_and_cohorts_routes_return_strict_json() -> None:
     assert cohorts.status_code == 200
     assert cohorts.json()["schema_version"] == "account_archive_cohorts_v1"
     assert cohorts.json()["return_windows"][0]["horizon_days"] == 7
+
+
+def test_return_metrics_detect_gap_and_current_sleeping_without_overlap() -> None:
+    def entity(track_id: int, saved_at: str) -> dict[str, object]:
+        return {
+            "archive_track_id": track_id,
+            "added_date": saved_at,
+            "track_name": f"Track {track_id}",
+            "artist_name": "Archive Artist",
+            "album_name": "Archive Album",
+            "deep_link": f"/music/tracks/{track_id}",
+        }
+
+    entities = [
+        entity(1, "2024-01-01T00:00:00Z"),
+        entity(2, "2024-01-01T00:00:00Z"),
+        entity(3, "2024-01-01T00:00:00Z"),
+        entity(4, "2024-06-01T00:00:00Z"),
+        entity(5, "2024-03-28T00:05:00Z"),
+    ]
+    times = {
+        1: [pd.Timestamp("2024-01-02T00:00:00Z"), pd.Timestamp("2024-04-02T00:00:00Z")],
+        2: [
+            pd.Timestamp("2023-12-01T00:00:00Z"),
+            pd.Timestamp("2024-03-01T00:00:00Z"),
+            pd.Timestamp("2024-07-01T00:00:00Z"),
+        ],
+        3: [pd.Timestamp("2024-01-02T00:00:00Z"), pd.Timestamp("2024-02-01T00:00:00Z")],
+        4: [pd.Timestamp("2024-06-02T00:00:00Z")],
+        # The long gap ends before Save and must not become a return episode.
+        5: [pd.Timestamp("2023-12-01T00:00:00Z"), pd.Timestamp("2024-03-28T00:04:00Z")],
+    }
+
+    result = _build_return_metrics(entities, times, pd.Timestamp("2024-07-20T00:00:00Z"))
+
+    assert result["return_eligible_entities"] == 3
+    assert result["summary"] == {
+        "gap_threshold_days": 90,
+        "return_episodes": 3,
+        "returned_entities": 2,
+        "multiple_return_entities": 1,
+        "recent_30_day_return_entities": 1,
+        "recent_90_day_return_entities": 1,
+        "current_sleeping_entities": 3,
+    }
+    assert result["latest_returns"][0]["track_name"] == "Track 2"
+    assert all(item["dormant_days"] >= 90 for item in result["longest_returns"])
+    assert {item["track_name"] for item in result["sleeping_recommendations"]} == {
+        "Track 1",
+        "Track 3",
+        "Track 5",
+    }
+
+
+def test_archive_returns_route_uses_event_start_and_strict_private_contract() -> None:
+    conn = _relationship_conn()
+    conn.execute(
+        "INSERT INTO plays VALUES (?, ?, ?, ?, ?, ?)",
+        (8, "2024-04-11T00:03:00Z", 180000, 1, 1, "2024-04-11"),
+    )
+    conn.commit()
+
+    result = build_archive_returns(conn, _context(conn))
+    response = ArchiveReturnsResponse.model_validate(result)
+    cohorts = ArchiveCohortsResponse.model_validate(build_collection_cohorts(conn, _context(conn)))
+    serialized = json.dumps(result)
+
+    app = FastAPI()
+    app.include_router(account_router, prefix="/api")
+    app.dependency_overrides[get_conn] = lambda: conn
+    route_response = TestClient(app).get("/api/account/returns?merge_level=1")
+    conn.close()
+
+    assert response.summary.returned_entities == 1
+    assert response.summary.return_episodes == 1
+    assert response.latest_returns[0].dormant_days == 90
+    assert response.latest_returns[0].returned_at == "2024-04-11T00:00:00Z"
+    assert (
+        response.summary.current_sleeping_entities
+        == cohorts.relationship_matrix.counts.sleeping_saved
+    )
+    assert "track_uri" not in serialized
+    assert "query_text" not in serialized
+    assert "profile" not in serialized
+    assert route_response.status_code == 200
+    assert route_response.json()["schema_version"] == "account_archive_returns_v1"
+    assert route_response.json()["filter_context"]["merge_level"] == 1

@@ -18,10 +18,12 @@ from backend.domains.account_archive.cohorts import build_collection_cohorts  # 
 from backend.domains.account_archive.context import build_archive_filter_context  # noqa: E402
 from backend.domains.account_archive.journey import build_collection_journey  # noqa: E402
 from backend.domains.account_archive.overview import build_archive_overview  # noqa: E402
+from backend.domains.account_archive.returns import build_archive_returns  # noqa: E402
 from backend.models.account_archive import (  # noqa: E402
     ArchiveCohortsResponse,
     ArchiveJourneyResponse,
     ArchiveOverviewResponse,
+    ArchiveReturnsResponse,
 )
 
 
@@ -70,6 +72,11 @@ def main() -> int:
         cohorts = build_collection_cohorts(conn, context)
         cohorts_ms = round((time.perf_counter() - started) * 1000, 2)
         validated_cohorts = ArchiveCohortsResponse.model_validate(cohorts).model_dump(mode="json")
+
+        started = time.perf_counter()
+        returns = build_archive_returns(conn, context)
+        returns_ms = round((time.perf_counter() - started) * 1000, 2)
+        validated_returns = ArchiveReturnsResponse.model_validate(returns).model_dump(mode="json")
     finally:
         conn.close()
     elapsed_ms = round((time.perf_counter() - total_started) * 1000, 2)
@@ -83,10 +90,13 @@ def main() -> int:
         "cohorts": len(
             json.dumps(validated_cohorts, ensure_ascii=False, separators=(",", ":")).encode()
         ),
+        "returns": len(
+            json.dumps(validated_returns, ensure_ascii=False, separators=(",", ":")).encode()
+        ),
     }
 
     output = {
-        "probe_version": "account_archive_probe_v2",
+        "probe_version": "account_archive_probe_v3",
         "database": str(args.db_path.resolve()),
         "elapsed_ms": elapsed_ms,
         "stage_ms": {
@@ -94,11 +104,13 @@ def main() -> int:
             "overview": overview_ms,
             "journey": journey_ms,
             "cohorts": cohorts_ms,
+            "returns": returns_ms,
         },
         "raw_bytes": raw_bytes,
         "overview": validated_overview,
         "journey": validated_journey,
         "cohorts": validated_cohorts,
+        "returns": validated_returns,
     }
     print(json.dumps(output, ensure_ascii=False, indent=2))
 
@@ -123,10 +135,14 @@ def main() -> int:
         failures.append(f"archive-overview raw size {raw_bytes['overview']} exceeds 40000 bytes")
     if raw_bytes["cohorts"] > 120_000:
         failures.append(f"collection-cohorts raw size {raw_bytes['cohorts']} exceeds 120000 bytes")
+    if raw_bytes["returns"] > 80_000:
+        failures.append(f"returns raw size {raw_bytes['returns']} exceeds 80000 bytes")
     if context_ms + cohorts_ms > 1_500:
         failures.append(
             f"collection-cohorts cold build {context_ms + cohorts_ms:.2f}ms exceeds 1500ms"
         )
+    if context_ms + returns_ms > 1_500:
+        failures.append(f"returns cold build {context_ms + returns_ms:.2f}ms exceeds 1500ms")
     if failures:
         for failure in failures:
             print(f"FAIL: {failure}", file=sys.stderr)

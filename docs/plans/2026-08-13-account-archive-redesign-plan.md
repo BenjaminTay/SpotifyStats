@@ -1,7 +1,7 @@
 # 账号中心重构方案：从“人格橱窗”到“个人音乐档案”
 
 > 日期：2026-08-13
-> 状态：实施中；Phase 0、archive-overview、collection-journey、collection-cohorts 已完成
+> 状态：实施中；Phase 0、archive-overview、collection-journey、collection-cohorts、returns 已完成
 > 范围：`/account` 的产品定位、统计语义、内容架构、Desktop / Compact / Phone UI、API 契约、性能、隐私与迁移计划
 > 原调研轮次不包含页面代码、数据库迁移、导航改名和生产部署；后续实施进度按下方交付记录更新
 
