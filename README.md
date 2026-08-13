@@ -8,7 +8,7 @@
 
 **移动网页**：`<768px` 使用独立 Phone presentation（Top Bar、Bottom Nav、栏目 Sheet、纵向榜单和触控图表），`768–1023px` 为 Compact，`>=1024px` 保留桌面工作台。手机和 PC 共用路由、API、过滤口径与排名事实；数据导入、元数据治理、凭据和系统维护仍建议在电脑端完成。
 
-**App 化状态**：已完成可安装 PWA 基线（主屏幕图标、standalone、安装引导与不缓存个人数据的离线说明）。手机真实安装仍需要 HTTPS 和可访问的安全后端；路线按 PWA → 安全部署/真机 → Capacitor 推进，详见 [`docs/plans/2026-08-06-appification-pwa-capacitor-plan.md`](docs/plans/2026-08-06-appification-pwa-capacitor-plan.md)。
+**App 化状态**：已完成可安装 PWA 基线（主屏幕图标、standalone、安装引导与不缓存个人数据的离线说明），并建立单用户私人云生产配置。生产容器只在服务器 loopback 暴露 Web，由 Tailscale Serve 向私人 tailnet 提供 HTTPS；个人数据通过宿主持久目录迁移，不进入 Docker 镜像或镜像仓库。路线继续按私有部署 → 手机真机验收 → Capacitor 决策推进，详见 [`docs/plans/2026-08-06-appification-pwa-capacitor-plan.md`](docs/plans/2026-08-06-appification-pwa-capacitor-plan.md)。
 
 ## 你可以用它做什么
 
@@ -88,6 +88,12 @@ docker compose up -d
 ```
 
 Docker 部署后，前端访问 `http://localhost:3000`，后端访问 `http://localhost:8000`。Spotify OAuth、LLM 和封面/百科增强需要额外配置环境变量，详见开发文档。
+
+### 个人私有云部署
+
+单用户长期运行使用 [`deploy/production/`](deploy/production/README.md) 中的独立生产配置：API 只存在于 Docker 私网，Web 只绑定服务器 `127.0.0.1:3001`，再由 Tailscale Serve 提供仅私人 tailnet 可达的 HTTPS PWA。不要启用 Tailscale Funnel，也不要把 3000、8000 或 3001 开放到公网。
+
+`.dockerignore` 会排除整个 `data/` 和备份目录；SQLite 必须使用 Online Backup API 生成一致性副本后单独迁移。生产脚本提供每日备份、完整性检查、显式恢复、SHA 镜像发布和失败回滚。首次部署与手机验收步骤见生产目录说明。
 
 ## 数据与隐私
 

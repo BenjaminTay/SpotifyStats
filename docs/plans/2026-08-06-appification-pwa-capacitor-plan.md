@@ -1,6 +1,6 @@
 # SpotifyStats App 化路线：PWA → 安全部署 → Capacitor
 
-> 状态：Phase A 可安装 PWA 基线已完成；Phase B 等待部署方式确认<br>
+> 状态：Phase A 可安装 PWA 基线已完成；Phase B 已选择私人云服务器 + Tailscale 私网 HTTPS，正在执行首次部署<br>
 > 日期：2026-08-06<br>
 > 前置阶段：[`2026-08-05-mobile-web-design-and-implementation-plan.md`](2026-08-05-mobile-web-design-and-implementation-plan.md)
 
@@ -42,11 +42,12 @@ PWA 安装并不会自动让手机访问 Mac 上的 SQLite。必须先在以下�
 
 ### B1. 个人长期部署（推荐）
 
-- 前后端部署在同一 HTTPS 域名，继续使用同源 `/api` 与 `/covers`。
-- 开启 `SPOTIFY_STATS_REQUIRE_AUTH=1`，使用独立高强度 API token；不得把 token 写进公开仓库或 Service Worker cache。
+- 当前选择为私人云服务器 + Tailscale：生产 Web 只绑定服务器 loopback，FastAPI 只在 Docker 私网可达；Tailscale Serve 在私人 tailnet 内提供同源 HTTPS `/api` 与 `/covers`。
+- 不启用 Tailscale Funnel，不开放 3000/8000/3001 公网端口。`SPOTIFY_STATS_REQUIRE_AUTH` 只保护部分写端点，不能替代整站边界；当前整站访问身份由 tailnet 提供。
 - 为 SQLite、封面与导入目录配置持久卷和定期备份。
 - 设置真实 `FRONTEND_ORIGIN`、`SPOTIFY_REDIRECT_URI` 与 Spotify Dashboard 回调地址。
-- 反向代理限制请求体、超时和外部访问面；Settings 高风险能力仍保留管理员边界。
+- `.dockerignore` 排除整个个人数据目录；镜像只含代码和依赖，服务器使用独立 `/opt/spotify-stats/data/` 与 `/opt/spotify-stats/backups/`。
+- 发布采用 commit SHA 不可变镜像、上线前 SQLite Online Backup、健康检查和失败回滚；服务器本地每日备份还需再配一份异机备份。
 
 ### B2. 同一局域网临时真机验收
 

@@ -4,6 +4,10 @@
 
 在既有年度只读报告 API 外，新增 `/api/yearly-review/prewarm` 与 `/api/yearly-review/generation-status`。`yearly_review_generation_v1` 使用单工作线程优先级队列和精确 cache key 去重：当前年份优先，其他可用年份从近到远后台预建，切换年份可提升 queued 任务，计时锚定服务端 `requested_at`。缓存命中必须绕过冷构建锁，前端离开页面只能取消 HTTP 等待，不能取消后台任务；Desktop/Compact/Phone 的年度总结共用该链路。
 
+## 个人私有云部署（2026-08-13）
+
+单用户生产路线使用 `deploy/production/`：Backend 不映射宿主机端口，Web 只绑定 `127.0.0.1:3001`，由 Tailscale Serve 在私人 tailnet 内终止 HTTPS；禁止启用 Funnel 或向公网开放 3000/8000/3001。`.dockerignore` 必须持续排除整个 `data/`、备份和环境密钥，SQLite、封面及原始导出只通过 `/opt/spotify-stats/data/` 持久化迁移。生产发布使用 commit SHA 镜像、发布前 Online Backup、健康检查和失败回滚；每日服务器内备份不能替代异机备份。`SPOTIFY_STATS_REQUIRE_AUTH` 只保护部分写接口，不能被描述为整站认证；当前整站身份边界由 tailnet 提供。Spotify OAuth 回调必须精确使用生产 `https://*.ts.net/api/spotify/auth/callback`，生产使用新 `SPOTIFY_STATS_TOKEN_KEY` 并重新连接 Spotify。
+
 Spotify Extended Streaming History 数据分析 Web 应用的主项目提示词文件，供 Claude Code 及其他 AI 编码助手共同使用。
 
 ---

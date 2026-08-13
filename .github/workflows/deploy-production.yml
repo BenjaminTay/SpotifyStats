@@ -1,0 +1,141 @@
+name: Deploy private production
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - "**/*.md"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: spotify-stats-private-production
+  cancel-in-progress: false
+
+env:
+  TCR_REGISTRY: ccr.ccs.tencentyun.com
+  API_IMAGE: ccr.ccs.tencentyun.com/teacher-honor/spotify-stats-api
+  WEB_IMAGE: ccr.ccs.tencentyun.com/teacher-honor/spotify-stats-web
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.9"
+      - name: Install backend dependencies
+        run: |
+          python -m venv .venv
+          .venv/bin/pip install --upgrade pip
+          .venv/bin/pip install -r requirements.txt
+      - name: Backend checks
+        run: |
+          .venv/bin/pytest -m unit -q
+          .venv/bin/pytest -m contract -q
+          .venv/bin/ruff check backend/
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Frontend checks
+        working-directory: frontend
+        run: |
+          npm ci --legacy-peer-deps
+          npm test
+          npm run build
+      - name: Production deployment contract
+        run: .venv/bin/pytest backend/tests/unit/test_private_production_deployment.py -q
+
+  build:
+    needs: verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.TCR_REGISTRY }}
+          username: ${{ secrets.TCR_USERNAME }}
+          password: ${{ secrets.TCR_PASSWORD }}
+      - name: Build and push API image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          target: backend
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ${{ env.API_IMAGE }}:${{ github.sha }}
+            ${{ env.API_IMAGE }}:main
+          cache-from: type=gha,scope=spotify-stats-api
+          cache-to: type=gha,mode=max,scope=spotify-stats-api
+      - name: Build and push Web image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          target: frontend-server
+          platforms: linux/amd64
+          build-args: |
+            NGINX_CONFIG=deploy/production/nginx.conf
+          push: true
+          tags: |
+            ${{ env.WEB_IMAGE }}:${{ github.sha }}
+            ${{ env.WEB_IMAGE }}:main
+          cache-from: type=gha,scope=spotify-stats-web
+          cache-to: type=gha,mode=max,scope=spotify-stats-web
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure SSH
+        env:
+          SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+          SERVER_KNOWN_HOSTS: ${{ secrets.SERVER_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d "$HOME/.ssh"
+          printf '%s\n' "$SERVER_SSH_KEY" > "$RUNNER_TEMP/spotify-stats-deploy-key"
+          chmod 600 "$RUNNER_TEMP/spotify-stats-deploy-key"
+          printf '%s\n' "$SERVER_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+          chmod 600 "$HOME/.ssh/known_hosts"
+      - name: Upload deployment files
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_PORT: ${{ secrets.SERVER_PORT }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+        run: |
+          tar -C deploy/production -czf "$RUNNER_TEMP/spotify-stats-deploy.tgz" \
+            compose.yml nginx.conf .env.example deploy.sh backup.sh rollback.sh \
+            restore.sh configure-tailscale.sh install-backup-timer.sh verify.sh README.md
+          scp -P "$SERVER_PORT" -i "$RUNNER_TEMP/spotify-stats-deploy-key" \
+            "$RUNNER_TEMP/spotify-stats-deploy.tgz" \
+            "$SERVER_USER@$SERVER_HOST:/tmp/spotify-stats-deploy.tgz"
+          ssh -p "$SERVER_PORT" -i "$RUNNER_TEMP/spotify-stats-deploy-key" \
+            "$SERVER_USER@$SERVER_HOST" \
+            'sudo install -d -m 700 -o "$USER" -g "$USER" /opt/spotify-stats /opt/spotify-stats/data /opt/spotify-stats/backups && tar -xzf /tmp/spotify-stats-deploy.tgz -C /opt/spotify-stats && chmod 700 /opt/spotify-stats/*.sh && rm -f /tmp/spotify-stats-deploy.tgz'
+      - name: Deploy commit
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_PORT: ${{ secrets.SERVER_PORT }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          TCR_USERNAME: ${{ secrets.TCR_USERNAME }}
+          TCR_PASSWORD: ${{ secrets.TCR_PASSWORD }}
+        run: |
+          printf '%s' "$TCR_PASSWORD" | \
+            ssh -p "$SERVER_PORT" -i "$RUNNER_TEMP/spotify-stats-deploy-key" \
+              "$SERVER_USER@$SERVER_HOST" \
+              "docker login '$TCR_REGISTRY' --username '$TCR_USERNAME' --password-stdin"
+          ssh -p "$SERVER_PORT" -i "$RUNNER_TEMP/spotify-stats-deploy-key" \
+            "$SERVER_USER@$SERVER_HOST" \
+            "cd /opt/spotify-stats && ./deploy.sh '${{ github.sha }}'"

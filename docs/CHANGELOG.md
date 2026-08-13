@@ -1,5 +1,13 @@
 # 变更日志
 
+## 2026-08-13 — 个人私有云与 PWA 生产基线
+
+- 建立 `deploy/production/` 单用户生产配置：Backend 仅在 Docker 私网可达，Web 只绑定服务器 `127.0.0.1:3001`，预留 Tailscale Serve 私网 HTTPS 入口，不占用既有公网 80，也不开放应用端口。
+- 新增 `.dockerignore` 并从 Backend 镜像移除 `COPY data/`；Spotify SQLite、原始导出、封面、年度缓存、备份和 `.env` 不再进入 Docker 构建上下文或镜像仓库。
+- 新增 SQLite Online Backup、完整性检查、每日 systemd timer、显式确认恢复、commit SHA 发布、健康检查与失败自动回滚脚本；生产数据挂载到 `/opt/spotify-stats/data/`，备份写入独立目录。
+- 新增 GitHub Actions 私有生产发布流程，按 Linux amd64 构建 API/Web 不可变镜像并通过独立 SSH key 部署；生产 Nginx 补齐 PWA 缓存、安全响应头和长报告超时。
+- 新增生产部署契约测试，锁定个人数据排除、loopback 端口、持久化卷、OAuth HTTPS 回调、备份/恢复和 Tailscale Serve 非 Funnel 边界。
+
 ## 2026-08-13 — 个人音乐首页 V1
 
 - 将 `/` 从临时统计仪表盘重构为个人音乐头版：Desktop 使用编辑式头条、档案护照、最近一章、个人 Billboard 与长期记忆，Phone 使用互斥挂载的独立口袋头版。

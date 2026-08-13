@@ -4,10 +4,11 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY backend/ ./backend/
-COPY data/ ./data/
 COPY scripts/ ./scripts/
+RUN mkdir -p /app/data
 
 ENV PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1
 ENV SPOTIFY_STATS_WARMUP=1
 
 EXPOSE 8000
@@ -22,7 +23,8 @@ COPY frontend/ ./
 RUN npm run build
 
 FROM nginx:alpine AS frontend-server
+ARG NGINX_CONFIG=nginx.conf
 COPY --from=frontend /app/dist /usr/share/nginx/html
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+COPY ${NGINX_CONFIG} /etc/nginx/conf.d/default.conf
 EXPOSE 3000
 CMD ["nginx", "-g", "daemon off;"]

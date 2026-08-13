@@ -1,0 +1,63 @@
+name: spotify-stats-production
+
+services:
+  backend:
+    image: ${TCR_REGISTRY:-ccr.ccs.tencentyun.com}/${TCR_NAMESPACE:-teacher-honor}/${API_REPOSITORY:-spotify-stats-api}:${IMAGE_TAG:?请在 .env 中设置 IMAGE_TAG}
+    restart: unless-stopped
+    init: true
+    environment:
+      PYTHONUNBUFFERED: "1"
+      PYTHONDONTWRITEBYTECODE: "1"
+      SPOTIFY_STATS_WARMUP: ${SPOTIFY_STATS_WARMUP:-1}
+      FRONTEND_ORIGIN: ${APP_PUBLIC_URL:?请在 .env 中设置 APP_PUBLIC_URL}
+      SPOTIFY_REDIRECT_URI: ${APP_PUBLIC_URL}/api/spotify/auth/callback
+      SPOTIFY_STATS_REQUIRE_AUTH: "0"
+      SPOTIFY_STATS_TOKEN_KEY: ${SPOTIFY_STATS_TOKEN_KEY:?请在 .env 中设置 SPOTIFY_STATS_TOKEN_KEY}
+      SPOTIFY_CLIENT_ID: ${SPOTIFY_CLIENT_ID:-}
+      SPOTIFY_CLIENT_SECRET: ${SPOTIFY_CLIENT_SECRET:-}
+      GENIUS_ACCESS_TOKEN: ${GENIUS_ACCESS_TOKEN:-}
+      GENIUS_PROXY: ${GENIUS_PROXY:-}
+      LASTFM_API_KEY: ${LASTFM_API_KEY:-}
+      HTTPS_PROXY: ${HTTPS_PROXY:-}
+      HTTP_PROXY: ${HTTP_PROXY:-}
+    volumes:
+      - ./data:/app/data
+      - ./backups:/var/backups/spotify-stats
+    networks:
+      - application
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=5)"
+      interval: 10s
+      timeout: 6s
+      retries: 18
+      start_period: 90s
+    security_opt:
+      - no-new-privileges:true
+
+  web:
+    image: ${TCR_REGISTRY:-ccr.ccs.tencentyun.com}/${TCR_NAMESPACE:-teacher-honor}/${WEB_REPOSITORY:-spotify-stats-web}:${IMAGE_TAG:?请在 .env 中设置 IMAGE_TAG}
+    restart: unless-stopped
+    init: true
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      # Tailscale Serve terminates private HTTPS and proxies to this loopback-only port.
+      - "127.0.0.1:${APP_GATEWAY_PORT:-3001}:3000"
+    networks:
+      - application
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:3000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    security_opt:
+      - no-new-privileges:true
+
+networks:
+  application:
