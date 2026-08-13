@@ -2,7 +2,7 @@
 
 > 日期：2026-08-13
 >
-> 发布提交：`df7dc68b224afb30673586dd7e1d3f130c50fe1a`
+> 当前生产提交：`4bd6eb7135230d9df30fe4a22d8a025357902509`
 >
 > GitHub Actions：`Deploy private production` run `31685472071`
 
@@ -10,7 +10,7 @@
 
 个人私有云生产基线已经部署到既有腾讯云 Ubuntu 服务器，与教师项目隔离运行。SpotifyStats Backend 不映射宿主机端口，Web 只绑定 `127.0.0.1:3001`；服务器公网 80 继续由教师项目占用。个人 SQLite、封面和原始导出位于 `/opt/spotify-stats/data/`，不进入 Git、Docker 构建上下文或镜像仓库。
 
-代码验证、SHA 镜像发布、SSH 部署、容器健康、SQLite 完整性、真实数据计数、PWA 静态文件和首份在线备份均已通过。Tailscale 节点已加入私人 tailnet；私网 HTTPS Serve 的 tailnet 开关和手机实体设备安装仍需要账号侧最终确认，因此不能把物理手机验收写成已完成。
+代码验证、SHA 镜像发布、SSH 部署、容器健康、SQLite 完整性、真实数据计数、PWA 静态文件、首份在线备份和 Tailscale 私网 HTTPS 均已通过。Tailscale Serve 明确标记为 `tailnet only`，没有启用 Funnel。手机实体设备安装仍需要同一 tailnet 内的真实设备确认，因此不能把物理手机验收写成已完成。
 
 ## 2. 生产结构
 
@@ -55,7 +55,10 @@
 | 真实播放数 | `91,286` |
 | 生产 Spotify token | `0` 条，需要从生产 HTTPS 入口重新连接 |
 | 封面文件 | `3,552` |
-| PWA 文件 | 首页、`manifest.webmanifest`、`sw.js` 均返回 200 |
+| 私网 HTTPS | 首页和健康接口返回 200，健康正文为 `{"status":"ok"}` |
+| TLS 证书 | Let's Encrypt，SAN 精确为 `spotify-stats.tail8916b1.ts.net` |
+| PWA 文件 | 首页、`manifest.webmanifest`、`sw.js` 均返回 200；manifest 为 `application/manifest+json` |
+| 公网隔离 | 公网 IP 的 3001 连接超时，宿主机仍只监听 `127.0.0.1:3001` |
 | 既有教师项目 | Web/API 继续健康，公网首页返回 200 |
 
 首次服务器在线备份为 `spotify-stats-20260813T100842Z.db`，大小 84,500,480 字节，`integrity_check=ok`，包含 91,286 条播放。`spotify-stats-backup.timer` 已启用，每日 03:20 后随机延迟最多 20 分钟执行，`Persistent=true`。

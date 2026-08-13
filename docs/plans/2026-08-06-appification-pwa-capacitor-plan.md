@@ -1,6 +1,6 @@
 # SpotifyStats App 化路线：PWA → 安全部署 → Capacitor
 
-> 状态：Phase A 可安装 PWA 基线已完成；Phase B 已选择私人云服务器 + Tailscale 私网 HTTPS，正在执行首次部署<br>
+> 状态：Phase A 可安装 PWA 基线和 Phase B 私人云服务器 + Tailscale 私网 HTTPS 已完成；等待 Spotify OAuth 与手机真机安装验收<br>
 > 日期：2026-08-06<br>
 > 前置阶段：[`2026-08-05-mobile-web-design-and-implementation-plan.md`](2026-08-05-mobile-web-design-and-implementation-plan.md)
 

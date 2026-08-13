@@ -8,7 +8,7 @@
 
 **移动网页**：`<768px` 使用独立 Phone presentation（Top Bar、Bottom Nav、栏目 Sheet、纵向榜单和触控图表），`768–1023px` 为 Compact，`>=1024px` 保留桌面工作台。手机和 PC 共用路由、API、过滤口径与排名事实；数据导入、元数据治理、凭据和系统维护仍建议在电脑端完成。
 
-**App 化状态**：已完成可安装 PWA 基线（主屏幕图标、standalone、安装引导与不缓存个人数据的离线说明），并建立单用户私人云生产配置。生产容器只在服务器 loopback 暴露 Web，由 Tailscale Serve 向私人 tailnet 提供 HTTPS；个人数据通过宿主持久目录迁移，不进入 Docker 镜像或镜像仓库。路线继续按私有部署 → 手机真机验收 → Capacitor 决策推进，详见 [`docs/plans/2026-08-06-appification-pwa-capacitor-plan.md`](docs/plans/2026-08-06-appification-pwa-capacitor-plan.md)。
+**App 化状态**：已完成可安装 PWA 基线（主屏幕图标、standalone、安装引导与不缓存个人数据的离线说明）和单用户私人云部署。生产容器只在服务器 loopback 暴露 Web，由 Tailscale Serve 向私人 tailnet 提供已验收的 HTTPS；个人数据通过宿主持久目录迁移，不进入 Docker 镜像或镜像仓库。路线继续按 Spotify OAuth/手机真机验收 → Capacitor 决策推进，详见 [`docs/plans/2026-08-06-appification-pwa-capacitor-plan.md`](docs/plans/2026-08-06-appification-pwa-capacitor-plan.md)。
 
 ## 你可以用它做什么
 
