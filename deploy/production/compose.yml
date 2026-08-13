@@ -84,6 +84,7 @@ services:
       SPOTIFY_STATS_GATEWAY_TOKEN: ${SPOTIFY_STATS_GATEWAY_TOKEN:?请在 .env 中设置 SPOTIFY_STATS_GATEWAY_TOKEN}
     volumes:
       - ./public-nginx.conf.template:/etc/nginx/templates/default.conf.template:ro
+      - ./secrets/showcase.htpasswd:/etc/nginx/auth/showcase.htpasswd:ro
     networks:
       - application
     healthcheck:

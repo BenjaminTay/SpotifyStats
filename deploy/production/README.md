@@ -13,6 +13,11 @@ SQLite 数据目录提供两种运行面：
 部署和模式切换脚本不会自动启用、关闭或修改任何 Tailscale、Funnel、域名、
 证书或云防火墙配置。
 
+`public-web` 还强制使用独立的 HTTP Basic Auth。健康检查端点不返回个人数据，
+可在无凭据时访问；页面、静态资源、能力声明、公开 API 与封面都必须先通过密码
+门禁。密码门禁是“朋友分享”层，后端 public-readonly 白名单和 SQLite 只读连接
+仍是不可绕过的最终数据安全边界。
+
 ## 部署模式
 
 `.env` 中的 `DEPLOYMENT_MODE` 决定保持哪些 loopback 网关运行：
@@ -33,6 +38,44 @@ SQLite 数据目录提供两种运行面：
 
 切换复用当前 `IMAGE_TAG`，不会重建数据库，也不会触碰外部 HTTPS 入口。脚本会
 停止非目标 Web 容器、验证目标运行面的能力和端口边界；失败时恢复原模式。
+
+## 展示入口密码
+
+首次进入 `showcase` 或 `dual` 时，部署脚本会在服务器本地生成 32 位随机密码：
+
+```bash
+./showcase-auth.sh ensure
+./showcase-auth.sh show
+./showcase-auth.sh rotate viewer
+```
+
+明文凭据保存为 `secrets/showcase.credentials`（`600`），Nginx 只读挂载
+`secrets/showcase.htpasswd`。两者均不得上传 Git、镜像或 Actions artifact；仓库
+`.gitignore` 已排除整个生产 secrets 目录。`rotate` 后需重启 `public-web` 或重新
+执行当前模式切换，旧密码才会从运行中网关撤销。
+
+## 无域名临时 HTTPS 分享
+
+短期手机和朋友验收可以使用 Cloudflare Quick Tunnel：
+
+```bash
+./temporary-showcase.sh start
+./temporary-showcase.sh status
+./showcase-auth.sh show
+
+# 分享结束后
+./temporary-showcase.sh stop
+./set-deployment-mode.sh full
+```
+
+`start` 会先切换 `dual`，然后下载固定版本的 Cloudflare 官方二进制并校验 SHA-256，
+只把随机 `trycloudflare.com` HTTPS 地址转发到 `127.0.0.1:3002`。它不会占用宿主机
+80/443，不会启用 Tailscale，也不会暴露 3001/3002/8000。systemd unit 故意不设
+开机自启，因此服务器重启不会静默创建新的分享地址；代码自动部署也不会启动它。
+
+Quick Tunnel 只用于临时测试：URL 在隧道重启后可能变化，官方限制最多 200 个并发
+中的请求，并且不支持 SSE。长期分享应改用自有域名和正式受管理 Tunnel/反向代理，
+但仍只允许其访问展示端口 3002。
 
 ## 首次部署
 
@@ -107,6 +150,8 @@ API 白名单、写操作阻断和只读数据连接才是最终安全边界。
   未批准的写操作；安全的结构化分析 POST 仍可按白名单执行只读计算。
 - 简化版年度总结只读取精确持久缓存，封面请求不得触发外部搜索、写库或后台下载。
 - `X-Robots-Tag: noindex` 只降低收录概率，不是身份验证；公开链接可被转发。
+- HTTP Basic Auth 必须使用 HTTPS；Quick Tunnel 或正式 TLS 入口负责传输加密。不要
+  通过服务器 IP 的明文 HTTP 暴露展示密码。
 
 ## 发布、回滚与 GitHub Actions
 

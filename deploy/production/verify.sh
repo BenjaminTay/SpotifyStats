@@ -23,6 +23,7 @@ public_gateway_port="$(get_env PUBLIC_GATEWAY_PORT)"
 public_gateway_port="${public_gateway_port:-3002}"
 private_url="$(get_env APP_PUBLIC_URL)"
 showcase_url="$(get_env PUBLIC_SHOWCASE_URL)"
+showcase_credentials_file="$DEPLOY_DIR/secrets/showcase.credentials"
 
 if [[ "$mode" != "full" && "$mode" != "showcase" && "$mode" != "dual" ]]; then
   echo "DEPLOYMENT_MODE 无效：$mode" >&2
@@ -49,13 +50,19 @@ port_is_closed() {
 check_surface() {
   local port="$1"
   local expected="$2"
+  local -a auth_args=()
   local response
   curl --fail --silent --show-error --max-time 5 "http://127.0.0.1:$port/api/health" >/dev/null
   port_is_loopback_only "$port" || {
     echo "FAIL: $port 未严格限制在 loopback。" >&2
     return 1
   }
+  if [[ "$expected" == "public-readonly" ]]; then
+    load_showcase_credentials
+    auth_args=(--user "$showcase_username:$showcase_password")
+  fi
   response="$(curl --fail --silent --show-error --max-time 5 \
+    "${auth_args[@]}" \
     "http://127.0.0.1:$port/api/runtime/capabilities")"
   [[ "$response" == *"\"surface\":\"$expected\""* ]] || {
     echo "FAIL: $port 未进入 $expected。" >&2
@@ -63,9 +70,31 @@ check_surface() {
   }
 }
 
-check_showcase_write_block() {
+load_showcase_credentials() {
+  if [[ ! -f "$showcase_credentials_file" ]]; then
+    echo "FAIL: 缺少展示入口凭据。" >&2
+    return 1
+  fi
+  showcase_username="$(sed -n 's/^SHOWCASE_USERNAME=//p' "$showcase_credentials_file" | tail -n 1)"
+  showcase_password="$(sed -n 's/^SHOWCASE_PASSWORD=//p' "$showcase_credentials_file" | tail -n 1)"
+  [[ -n "$showcase_username" && -n "$showcase_password" ]]
+}
+
+check_showcase_auth_boundary() {
   local status
   status="$(curl --silent --output /dev/null --write-out '%{http_code}' \
+    --max-time 5 "http://127.0.0.1:$public_gateway_port/api/runtime/capabilities")"
+  [[ "$status" == "401" ]] || {
+    echo "FAIL: 简化版未认证请求返回 HTTP $status，预期 401。" >&2
+    return 1
+  }
+}
+
+check_showcase_write_block() {
+  local status
+  load_showcase_credentials
+  status="$(curl --silent --output /dev/null --write-out '%{http_code}' \
+    --user "$showcase_username:$showcase_password" \
     --max-time 5 -X PUT "http://127.0.0.1:$public_gateway_port/api/settings" \
     -H 'Content-Type: application/json' -d '{}')"
   [[ "$status" == "403" ]] || {
@@ -86,6 +115,7 @@ case "$mode" in
     ;;
   showcase)
     check_surface "$public_gateway_port" public-readonly
+    check_showcase_auth_boundary
     check_showcase_write_block
     port_is_closed "$gateway_port" || {
       echo "FAIL: showcase 模式不应监听 $gateway_port。" >&2
@@ -95,6 +125,7 @@ case "$mode" in
   dual)
     check_surface "$gateway_port" private-admin
     check_surface "$public_gateway_port" public-readonly
+    check_showcase_auth_boundary
     check_showcase_write_block
     ;;
 esac
@@ -117,6 +148,10 @@ if [[ "${VERIFY_EXTERNAL_INGRESS:-0}" == "1" ]]; then
   fi
   if [[ ( "$mode" == "showcase" || "$mode" == "dual" ) && -n "$showcase_url" ]]; then
     curl --fail --silent --show-error --max-time 15 "$showcase_url/api/health" >/dev/null
+    load_showcase_credentials
+    curl --fail --silent --show-error --max-time 15 \
+      --user "$showcase_username:$showcase_password" \
+      "$showcase_url/api/runtime/capabilities" >/dev/null
   fi
 fi
 

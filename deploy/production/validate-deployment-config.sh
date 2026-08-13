@@ -20,6 +20,14 @@ for script in "$DEPLOY_DIR"/*.sh; do
   bash -n "$script"
 done
 
+grep -q 'auth_basic "SpotifyStats Showcase"' "$DEPLOY_DIR/public-nginx.conf.template"
+grep -q 'auth_basic_user_file /etc/nginx/auth/showcase.htpasswd' \
+  "$DEPLOY_DIR/public-nginx.conf.template"
+grep -q 'location = /api/health' "$DEPLOY_DIR/public-nginx.conf.template"
+grep -q 'auth_basic off' "$DEPLOY_DIR/public-nginx.conf.template"
+grep -q './secrets/showcase.htpasswd:/etc/nginx/auth/showcase.htpasswd:ro' \
+  "$COMPOSE_FILE"
+
 for template in "$DEPLOY_DIR/private-nginx.conf.template" \
                 "$DEPLOY_DIR/public-nginx.conf.template"; do
   grep -q 'X-SpotifyStats-Gateway-Token "${SPOTIFY_STATS_GATEWAY_TOKEN}"' "$template"

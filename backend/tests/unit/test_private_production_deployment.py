@@ -43,6 +43,10 @@ def test_production_compose_exposes_only_profile_selected_loopback_ports() -> No
         "./public-nginx.conf.template:/etc/nginx/templates/default.conf.template:ro"
         in services["public-web"]["volumes"]
     )
+    assert (
+        "./secrets/showcase.htpasswd:/etc/nginx/auth/showcase.htpasswd:ro"
+        in services["public-web"]["volumes"]
+    )
 
 
 def test_production_data_is_one_host_persistent_mount_and_one_backend() -> None:
@@ -92,6 +96,10 @@ def test_public_gateway_keeps_defence_in_depth_rules() -> None:
     assert "limit_except GET HEAD OPTIONS {" in public_nginx
     assert "location = /docs" in public_nginx
     assert "location = /openapi.json" in public_nginx
+    assert 'auth_basic "SpotifyStats Showcase"' in public_nginx
+    assert "auth_basic_user_file /etc/nginx/auth/showcase.htpasswd" in public_nginx
+    assert "location = /api/health" in public_nginx
+    assert "auth_basic off" in public_nginx
 
 
 def test_deployment_scripts_manage_modes_without_external_ingress() -> None:
@@ -111,6 +119,8 @@ def test_deployment_scripts_manage_modes_without_external_ingress() -> None:
     assert "private-admin" in deploy
     assert "PRAGMA integrity_check" in deploy
     assert "HTTP $write_status，预期 403" in deploy
+    assert "unauthenticated_status" in deploy
+    assert "showcase-auth.sh" in deploy
 
     for source in (deploy, verify, rollback, switch):
         assert "tailscale " not in source.lower()
@@ -150,9 +160,29 @@ def test_workflow_builds_one_sha_and_uploads_profile_runtime_files() -> None:
     assert "private-nginx.conf.template" in workflow
     assert "public-nginx.conf.template" in workflow
     assert "set-deployment-mode.sh" in workflow
+    assert "showcase-auth.sh" in workflow
+    assert "temporary-showcase.sh" in workflow
     assert "validate-deployment-config.sh" in workflow
     assert "./deploy.sh '${{ github.sha }}'" in workflow
     assert "--mode" not in workflow.split("Deploy commit", 1)[1]
+
+
+def test_temporary_showcase_is_pinned_password_protected_and_not_persistent() -> None:
+    auth = (PRODUCTION / "showcase-auth.sh").read_text()
+    tunnel = (PRODUCTION / "temporary-showcase.sh").read_text()
+
+    assert "openssl rand -hex 16" in auth
+    assert "showcase.credentials" in auth
+    assert "showcase.htpasswd" in auth
+    assert "chmod 600" in auth
+    assert "chmod 644" in auth
+    assert 'CLOUDFLARED_VERSION="2026.8.0"' in tunnel
+    assert 'CLOUDFLARED_SHA256="14ecae0d' in tunnel
+    assert "127.0.0.1:3002" in tunnel
+    assert 'set-deployment-mode.sh" dual' in tunnel
+    assert 'systemctl disable "$SERVICE_NAME"' in tunnel
+    assert "systemctl enable" not in tunnel
+    assert "tailscale " not in tunnel.lower()
 
 
 def test_production_environment_template_contains_no_real_secret() -> None:

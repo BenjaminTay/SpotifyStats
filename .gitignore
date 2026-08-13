@@ -28,6 +28,7 @@ data/covers/
 
 # Environment secrets (Spotify API credentials, etc.)
 .env
+deploy/production/secrets/
 
 # Node dependencies
 node_modules/

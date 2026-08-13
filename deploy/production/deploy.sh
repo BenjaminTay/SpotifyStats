@@ -96,6 +96,9 @@ if ! valid_mode "$target_mode"; then
   echo "无效部署模式：$target_mode（只能是 full、showcase 或 dual）。" >&2
   exit 2
 fi
+if [[ "$target_mode" == "showcase" || "$target_mode" == "dual" ]]; then
+  "$DEPLOY_DIR/showcase-auth.sh" ensure
+fi
 
 gateway_port="$(get_env APP_GATEWAY_PORT)"
 gateway_port="${gateway_port:-3001}"
@@ -175,13 +178,30 @@ port_is_closed() {
 assert_surface() {
   local port="$1"
   local expected="$2"
+  local -a auth_args=()
   local response
+  if [[ "$expected" == "public-readonly" ]]; then
+    load_showcase_credentials || return 1
+    auth_args=(--user "$showcase_username:$showcase_password")
+  fi
   response="$(curl --fail --silent --show-error --max-time 5 \
+    "${auth_args[@]}" \
     "http://127.0.0.1:$port/api/runtime/capabilities")" || return 1
   if [[ "$response" != *"\"surface\":\"$expected\""* ]]; then
     echo "端口 $port 的运行面不是 $expected。" >&2
     return 1
   fi
+}
+
+load_showcase_credentials() {
+  local credentials_file="$DEPLOY_DIR/secrets/showcase.credentials"
+  if [[ ! -f "$credentials_file" ]]; then
+    echo "缺少展示入口凭据：$credentials_file" >&2
+    return 1
+  fi
+  showcase_username="$(sed -n 's/^SHOWCASE_USERNAME=//p' "$credentials_file" | tail -n 1)"
+  showcase_password="$(sed -n 's/^SHOWCASE_PASSWORD=//p' "$credentials_file" | tail -n 1)"
+  [[ -n "$showcase_username" && -n "$showcase_password" ]]
 }
 
 verify_private_gateway() {
@@ -201,8 +221,18 @@ verify_showcase_gateway() {
   fi
   assert_surface "$public_gateway_port" public-readonly || return 1
 
+  local unauthenticated_status
+  unauthenticated_status="$(curl --silent --output /dev/null --write-out '%{http_code}' \
+    --max-time 5 "http://127.0.0.1:$public_gateway_port/api/runtime/capabilities")"
+  if [[ "$unauthenticated_status" != "401" ]]; then
+    echo "简化版未认证请求返回 HTTP $unauthenticated_status，预期 401。" >&2
+    return 1
+  fi
+
   local write_status
+  load_showcase_credentials || return 1
   write_status="$(curl --silent --output /dev/null --write-out '%{http_code}' \
+    --user "$showcase_username:$showcase_password" \
     --max-time 5 -X PUT "http://127.0.0.1:$public_gateway_port/api/settings" \
     -H 'Content-Type: application/json' -d '{}')"
   if [[ "$write_status" != "403" ]]; then
