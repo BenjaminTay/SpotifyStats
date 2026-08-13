@@ -958,6 +958,38 @@ def migrate_030(conn: sqlite3.Connection):
     )
 
 
+@migration(31, "account_archive_provenance")
+def migrate_031(conn: sqlite3.Connection):
+    """Preserve collection-date provenance and revision account archive inputs."""
+    saved_track_columns = {
+        row["name"] if isinstance(row, sqlite3.Row) else row[1]
+        for row in conn.execute("PRAGMA table_info(saved_tracks)").fetchall()
+    }
+    if "added_date_source" not in saved_track_columns:
+        conn.execute(
+            "ALTER TABLE saved_tracks ADD COLUMN added_date_source TEXT "
+            "CHECK(added_date_source IN ('oauth', 'manual', 'legacy'))"
+        )
+    conn.execute(
+        "UPDATE saved_tracks SET added_date_source = 'legacy' "
+        "WHERE added_date IS NOT NULL AND TRIM(added_date) != '' "
+        "AND added_date_source IS NULL"
+    )
+    conn.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS account_archive_state (
+            state_id INTEGER PRIMARY KEY CHECK (state_id = 1),
+            account_import_revision INTEGER NOT NULL DEFAULT 0,
+            collection_date_revision INTEGER NOT NULL DEFAULT 0,
+            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        INSERT OR IGNORE INTO account_archive_state(
+            state_id, account_import_revision, collection_date_revision
+        ) VALUES (1, 0, 0);
+        """
+    )
+
+
 # ── Runner ────────────────────────────────────────────────────────────────
 
 

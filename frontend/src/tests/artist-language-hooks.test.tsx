@@ -131,6 +131,7 @@ describe('artist language metadata hooks', () => {
     )
     expect(invalidateSpy.mock.calls.map(([options]) => options!.queryKey)).toEqual([
       queryKeys.metadata.artistLanguages.all,
+      queryKeys.home.all,
       queryKeys.yearlyReview.all,
       queryKeys.analysis.all,
     ])
@@ -168,6 +169,7 @@ describe('artist language metadata hooks', () => {
     expect(api.put).toHaveBeenCalledWith('/metadata/artist-languages/reviews/12/source', source)
     expect(invalidateSpy.mock.calls.map(([options]) => options!.queryKey)).toEqual([
       queryKeys.metadata.artistLanguages.all,
+      queryKeys.home.all,
       queryKeys.yearlyReview.all,
       queryKeys.analysis.all,
     ])
@@ -198,6 +200,7 @@ describe('artist language metadata hooks', () => {
     expect(api.patch).toHaveBeenCalledWith('/metadata/artist-languages/reviews/12', decision)
     expect(invalidateSpy.mock.calls.map(([options]) => options!.queryKey)).toEqual([
       queryKeys.metadata.artistLanguages.all,
+      queryKeys.home.all,
       queryKeys.yearlyReview.all,
       queryKeys.analysis.all,
     ])

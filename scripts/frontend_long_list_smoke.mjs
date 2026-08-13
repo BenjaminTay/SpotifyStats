@@ -83,7 +83,7 @@ Scenarios:
   year-end-table          Click Billboard Year-End pagination, or verify the capped table when only one page exists
   community-feed          Scroll Community Feed to trigger infinite loading
   recent-plays            Click Analysis Recent Plays pagination
-  saved-tracks            Click Account Saved Tracks pagination
+  saved-tracks            Click Account Archive library pagination
   personal-rank-table     Click Analysis Personal Rank pagination
 `)
 }
@@ -528,7 +528,10 @@ async function clickFirstEnabledPaginationButtonNearText(client, patternSource, 
         const buttons = Array.from(container.querySelectorAll('button'))
           .filter((button) => !button.disabled && button.getAttribute('aria-disabled') !== 'true');
         if (buttons.length > 0) {
-          const nextTextButton = buttons.find((button) => normalize(button.innerText || button.textContent || '').includes('下一页'));
+          const buttonName = (button) => normalize(
+            button.getAttribute('aria-label') || button.getAttribute('title') || button.innerText || button.textContent || '',
+          );
+          const nextTextButton = buttons.find((button) => buttonName(button).includes('下一页'));
           const numericNextButton = pageInfo
             ? buttons.find((button) => {
                 const text = normalize(button.innerText || button.textContent || '');
@@ -549,7 +552,7 @@ async function clickFirstEnabledPaginationButtonNearText(client, patternSource, 
           return {
             ok: true,
             pageText,
-            buttonText: normalize(button.innerText || button.textContent || ''),
+            buttonText: buttonName(button),
             x,
             y,
             pointText: pointEl ? normalize(pointEl.innerText || pointEl.textContent || pointEl.getAttribute('aria-label') || '') : '',
@@ -601,6 +604,7 @@ async function exercisePaginatedList({
   pagePattern,
   focusText,
   rowSelector = 'tbody tr',
+  nextButtonSelector = null,
 }) {
   await navigate(client, baseUrl, route)
   await waitForText(client, readyText, waitMs)
@@ -614,7 +618,18 @@ async function exercisePaginatedList({
     waitMs,
     'Before row window was empty',
   )
-  const clickResult = await clickFirstEnabledPaginationButtonNearText(client, pagePattern, focusText)
+  const clickResult = nextButtonSelector
+    ? await evaluate(client, `(() => {
+        const button = document.querySelector(${JSON.stringify(nextButtonSelector)});
+        if (!(button instanceof HTMLButtonElement) || button.disabled) {
+          return { ok: false, reason: 'configured next-page button was not ready' };
+        }
+        button.scrollIntoView({ block: 'center', inline: 'center' });
+        button.click();
+        return { ok: true, buttonText: button.getAttribute('aria-label') || button.innerText || '' };
+      })()`)
+    : await clickFirstEnabledPaginationButtonNearText(client, pagePattern, focusText)
+  if (!clickResult.ok) throw new Error(clickResult.reason || 'Could not click pagination button')
   let afterRows
   try {
     afterRows = await waitForCondition(
@@ -814,9 +829,11 @@ const SCENARIOS = {
   'saved-tracks': (ctx) => exercisePaginatedList({
     ...ctx,
     route: '/account',
-    readyText: '收藏曲目',
+    readyText: '收藏库',
     pagePattern: '第\\s*\\d+\\s*/\\s*\\d+\\s*页',
-    focusText: '收藏曲目',
+    focusText: '收藏库',
+    rowSelector: '.archive-library-row',
+    nextButtonSelector: '.archive-pagination button[aria-label="下一页"]',
   }),
   'personal-rank-table': (ctx) => exercisePaginatedList({
     ...ctx,

@@ -29,6 +29,7 @@ const DEFAULT_ROUTES = [
   { path: '/analysis/stats', markers: ['播放统计'] },
   { path: '/analysis/charts', markers: ['播放排行'] },
   { path: '/yearly-review', markers: ['年度总结'] },
+  { path: '/account', markers: ['音乐档案'] },
   { path: '/billboard/records', markers: ['冠军圣殿'] },
   { path: '/ai-insights', markers: ['AI 洞察'] },
   { path: '/settings', markers: ['设置'] },
@@ -52,6 +53,7 @@ function parseArgs(argv) {
     python: DEFAULT_PYTHON,
     headed: false,
     includeDetailRoutes: false,
+    routes: null,
   }
 
   for (let i = 0; i < argv.length; i += 1) {
@@ -70,6 +72,9 @@ function parseArgs(argv) {
     else if (arg === '--output') args.output = argv[++i]
     else if (arg === '--python') args.python = argv[++i]
     else if (arg === '--headed') args.headed = true
+    else if (arg === '--route' || arg === '--routes') {
+      args.routes = argv[++i].split(',').map((route) => route.trim()).filter(Boolean)
+    }
     else if (arg === '--include-detail-routes') args.includeDetailRoutes = true
     else if (arg === '--help' || arg === '-h') {
       printHelp()
@@ -115,6 +120,7 @@ Options:
   --wait-ms <ms>                Max wait for route/text assertions, default ${DEFAULT_WAIT_MS}; dynamic detail routes use at least ${DYNAMIC_ROUTE_WAIT_MS}
   --max-scroll-overflow <px>    Allowed horizontal overflow over viewport width, default ${DEFAULT_MAX_SCROLL_OVERFLOW}
   --include-detail-routes       Resolve and append music/community detail routes from local API data
+  --route <path,...>            Run only the selected configured routes
   --output <path>               Write JSON results to a file
   --python <path>               Python executable with playwright.sync_api, default ${DEFAULT_PYTHON}
   --headed                      Run headed browsers
@@ -914,6 +920,12 @@ async function main() {
       return true
     })
     process.stderr.write(`Resolved cross-browser detail routes: ${detailRoutes.map((route) => route.path).join(', ')}\n`)
+  }
+  if (args.routes) {
+    const selected = new Set(args.routes)
+    routes = routes.filter((route) => selected.has(route.path))
+    const missing = args.routes.filter((path) => !routes.some((route) => route.path === path))
+    if (missing.length > 0) throw new Error(`Unknown or unresolved routes: ${missing.join(', ')}`)
   }
 
   const routeConfig = JSON.stringify(routes)

@@ -4,8 +4,8 @@ import logging
 import threading
 
 from backend.core.db import get_db, load_plays, load_plays_for_artists
+from backend.domains.account_archive.overview import get_archive_overview
 from backend.domains.settings.repository import SETTINGS_DEFAULTS, SettingsRepository
-from backend.services.account_service import get_account_summary
 from backend.services.analysis_stats_service import get_analysis_charts, get_analysis_stats
 from backend.services.billboard_service import compute_billboard_data
 
@@ -98,7 +98,7 @@ def warm_common_caches() -> None:
             metric="plays",
             limit=250,
         )
-        get_account_summary(conn)
+        get_archive_overview(conn)
     finally:
         conn.close()
 

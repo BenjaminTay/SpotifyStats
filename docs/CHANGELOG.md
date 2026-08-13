@@ -9,6 +9,15 @@
 - 删除重复的数据更新时间、音乐搜索、陈旧提醒及账号/AI/社区/更新数据快捷模块；App Shell 同时移除旧 Dashboard、周榜和总榜的无条件全局预取。
 - 同步 OpenAPI 生成类型、首页测试、API/benchmark/route/control/cross-browser smoke marker、README、UI 规范与项目提示词；真实浏览器复核 Desktop/Phone 结构、最近 4 周数据对齐和首页到播放分析的跳转语义。
 
+## 2026-08-13 — 账号中心重构为本地音乐档案
+
+- `/account` 正文重构为“音乐档案”：Desktop/Compact 使用私人唱片档案布局，Phone 使用独立口袋档案；共享严格统计事实、URL 与 TanStack Query，但互斥挂载 presentation。
+- 新增 archive overview、收藏旅程、固定窗关系、回归、隐私安全发现统计、服务端收藏库与其他媒体接口；Spotify OAuth 只负责 Settings 中可选的收藏日期补全，页面运行时不请求 Spotify Web API。
+- 删除收藏人格、习惯人格、chemistry、Marquee、粉丝等级、关键词迁移等旧消费 UI，以及旧 account/habits/mobile 页面树、类型和 hooks。
+- 删除重型 `account_service.py`、`GET /api/account` 与 `GET /api/account/collection-insights`；AI 工具名保留作编排兼容，但已迁到 overview/journey/cohorts/returns/discovery 白名单事实，Project Context 提升至 v2。
+- 首屏从约 456 KB、冷响应 1.8–4.2 秒的聚合收敛到 1,936 bytes、约 157–200 ms 的 archive overview；长列表改为服务端分页，重章节渐进加载。
+- Phase 4 定向验收为后端 58 项、扩展档案 + AI 82 项；项目基线 unit 876 passed / 2 skipped、contract 325 passed、前端 68 files / 496 tests 和生产构建通过。OpenAPI 192 operations / 89 parameter obligations 均为 0 unaccounted，旧路径和 response models 已从生成类型中移除；收藏库不支持排序的 422 同步改为标准 validation detail。
+
 ## 2026-08-13 — 修复艺人榜逻辑播放事件预聚合
 
 - 修复连续播放合并后同一 `play_id` 展开为多个逻辑事件，却在艺人预聚合阶段被错误按 `play_id` 折叠的问题；艺人扇出现在统一使用 `_logical_event_id` 保持与单曲/原始路径一致的事件粒度。

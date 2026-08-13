@@ -8,8 +8,13 @@ from backend.main import app
 pytestmark = pytest.mark.contract
 
 ACCOUNT_CENTER_ROUTES = (
-    ("GET", "/api/account"),
-    ("GET", "/api/account/collection-insights"),
+    ("GET", "/api/account/archive-overview"),
+    ("GET", "/api/account/collection-journey"),
+    ("GET", "/api/account/collection-cohorts"),
+    ("GET", "/api/account/returns"),
+    ("GET", "/api/account/discovery"),
+    ("GET", "/api/account/library/{entity_type}"),
+    ("GET", "/api/account/other-media"),
     ("GET", "/api/search-history"),
     ("GET", "/api/insights/tiers"),
     ("GET", "/api/insights/marquee"),
@@ -51,10 +56,10 @@ def test_account_center_routes_publish_openapi_response_schema():
         )
 
 
-def test_collection_insights_route_returns_json_without_server_error(client):
-    response = client.get("/api/account/collection-insights")
+def test_legacy_account_aggregate_routes_are_retired(client):
+    schema = app.openapi()
 
-    assert response.status_code == 200
-    payload = response.json()
-    assert isinstance(payload, dict)
-    assert "available" in payload
+    assert "/api/account" not in schema["paths"]
+    assert "/api/account/collection-insights" not in schema["paths"]
+    assert client.get("/api/account").status_code == 404
+    assert client.get("/api/account/collection-insights").status_code == 404

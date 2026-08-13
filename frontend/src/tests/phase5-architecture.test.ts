@@ -17,14 +17,11 @@ import obsessionSectionSource from '../features/analysis/records/ObsessionSectio
 import dailyTotalLeaderboardSource from '../features/analysis/records/DailyTotalLeaderboard.tsx?raw'
 import yearlyReviewPageSource from '../pages/YearlyReviewPage.tsx?raw'
 import accountCenterPageSource from '../pages/AccountCenterPage.tsx?raw'
-import habitsTabSource from '../features/account/habits/HabitsTab.tsx?raw'
-import habitsPersonalityHeroSource from '../features/account/habits/HabitsPersonalityHero.tsx?raw'
-import searchHistorySectionSource from '../features/account/habits/SearchHistorySection.tsx?raw'
-import fanTiersSectionSource from '../features/account/habits/FanTiersSection.tsx?raw'
-import podcastSectionSource from '../features/account/habits/PodcastSection.tsx?raw'
-import marqueeSectionSource from '../features/account/habits/MarqueeSection.tsx?raw'
-import videoSectionSource from '../features/account/habits/VideoSection.tsx?raw'
-import collectionTabSource from '../pages/account/CollectionTab.tsx?raw'
+import accountArchiveRouteSource from '../features/account-archive/route/AccountArchiveDesktopRoute.tsx?raw'
+import accountArchivePhoneRouteSource from '../features/account-archive/route/AccountArchivePhoneRoute.tsx?raw'
+import accountArchiveHooksSource from '../features/account-archive/hooks/useAccountArchive.ts?raw'
+import accountArchiveLibrarySource from '../features/account-archive/desktop/LibrarySection.tsx?raw'
+import accountArchivePhoneLibrarySource from '../features/account-archive/phone/PhoneLibraryChapter.tsx?raw'
 import aiInsightsPageSource from '../pages/AiInsightsPage.tsx?raw'
 import communityPageSource from '../pages/CommunityPage.tsx?raw'
 import communityAccountPageSource from '../pages/CommunityAccountPage.tsx?raw'
@@ -70,9 +67,12 @@ import rankTrendChartSource from '../components/charts/RankTrendChart.tsx?raw'
 import releaseTimelineChartSource from '../components/charts/ReleaseTimelineChart.tsx?raw'
 import versusRankChartSource from '../components/charts/VersusRankChart.tsx?raw'
 import numberOnesPrimitivesChartSource from '../features/billboard/number-ones/NumberOnesPrimitives.tsx?raw'
-import collectionOverviewBlockSource from '../features/account/collection/components/CollectionOverviewBlock.tsx?raw'
-import saveLifecycleBlockSource from '../features/account/collection/components/SaveLifecycleBlock.tsx?raw'
-import chemistryBlockSource from '../features/account/collection/components/ChemistryBlock.tsx?raw'
+
+const retiredAccountModules = import.meta.glob([
+  '../features/account/**/*.{ts,tsx}',
+  '../features/mobile/account/**/*.{ts,tsx}',
+  '../pages/account/**/*.{ts,tsx}',
+])
 
 describe('Phase 5 architecture guardrails', () => {
   it.each([
@@ -343,7 +343,7 @@ describe('Phase 5 architecture guardrails', () => {
     expect(yearlyReviewPageSource.indexOf('<AnalysisSubNav')).toBeLessThan(
       yearlyReviewPageSource.indexOf('年份选择器'),
     )
-    expect(accountCenterPageSource).toContain('AnalysisSubNav')
+    expect(accountArchiveRouteSource).toContain('AnalysisSubNav')
   })
 
   it('keeps playback analysis tab rows vertically stable across child pages', () => {
@@ -354,7 +354,7 @@ describe('Phase 5 architecture guardrails', () => {
     expect(analysisSubNavSource).toContain('basis-full h-9 sm:hidden')
     expect(analysisSubNavSource).not.toContain('inline-flex h-9')
     expect(yearlyReviewPageSource).not.toContain('你的年度音乐档案，用数据讲述这一年的听觉故事。')
-    expect(accountCenterPageSource).toContain('AnalysisPageHeader')
+    expect(accountArchiveRouteSource).toContain('AnalysisPageHeader')
   })
 
   it('keeps mobile masthead orientation explicit without duplicating detail breadcrumbs', () => {
@@ -434,22 +434,16 @@ describe('Phase 5 architecture guardrails', () => {
     ['ReleaseTimelineChart.tsx', releaseTimelineChartSource],
     ['VersusRankChart.tsx', versusRankChartSource],
     ['NumberOnesPrimitives.tsx', numberOnesPrimitivesChartSource],
-    ['CollectionOverviewBlock.tsx', collectionOverviewBlockSource],
-    ['SaveLifecycleBlock.tsx', saveLifecycleBlockSource],
   ])('%s uses the shared lightweight ECharts wrapper', (_path, content) => {
     expect(content).not.toContain("import('echarts-for-react')")
     expect(content).toContain('LazyEChart')
   })
 
-  it('keeps account chemistry examples capped for initial render', () => {
-    expect(chemistryBlockSource).toContain('MAX_CHEMISTRY_EXAMPLES')
-    expect(chemistryBlockSource).toMatch(/\.slice\(0,\s*MAX_CHEMISTRY_EXAMPLES\)/)
-  })
-
-  it('keeps AccountCenterPage hero progressive while the heavy account summary loads', () => {
-    expect(accountCenterPageSource).toContain('useProfile()')
-    expect(accountCenterPageSource).toContain('profileForHero')
-    expect(accountCenterPageSource).toContain('AccountContentSkeleton')
+  it('keeps the Phone archive local-first instead of reviving profile and legacy summary reads', () => {
+    expect(accountCenterPageSource).toContain('AccountArchivePhoneRoute')
+    expect(accountArchivePhoneRouteSource).toContain('useArchiveOverview')
+    expect(accountArchivePhoneRouteSource).not.toContain('useProfile')
+    expect(accountArchivePhoneRouteSource).not.toContain("from '@/hooks/useAccount'")
   })
 
   it('keeps artist release archive outside ArtistDetailExperience', () => {
@@ -583,42 +577,36 @@ describe('Phase 5 architecture guardrails', () => {
 
   // ── Account Habits (migrated to feature) ──────────────────────────────
 
-  it('keeps AccountCenterPage as a tab-composing route container', () => {
+  it('routes Desktop and Compact separately from the independent Phone archive presentation', () => {
     expect(accountCenterPageSource.split('\n').length).toBeLessThanOrEqual(450)
+    expect(accountCenterPageSource).toContain('AccountArchiveDesktopRoute')
+    expect(accountCenterPageSource).toContain('AccountArchivePhoneRoute')
+    expect(accountCenterPageSource).toContain("mode === 'phone'")
     expect(accountCenterPageSource).not.toContain('<table')
     expect(accountCenterPageSource).not.toContain('function inferPersonality')
     expect(accountCenterPageSource).not.toContain('function SearchHeatmap')
   })
 
-  it('keeps HabitsTab as a thin orchestrator in features/account/habits', () => {
-    expect(habitsTabSource.split('\n').length).toBeLessThanOrEqual(100)
-    expect(habitsTabSource).toContain('HabitsPersonalityHero')
-    expect(habitsTabSource).toContain('SearchHistorySection')
-    expect(habitsTabSource).toContain('FanTiersSection')
-    expect(habitsTabSource).toContain('PodcastSection')
-    expect(habitsTabSource).toContain('MarqueeSection')
-    expect(habitsTabSource).toContain('VideoSection')
-    expect(habitsTabSource).not.toContain('function inferPersonality')
-    expect(habitsTabSource).not.toContain('const medalBorder')
+  it('keeps the Desktop archive route thin and its GET reads under account query keys', () => {
+    expect(accountArchiveRouteSource.split('\n').length).toBeLessThanOrEqual(180)
+    expect(accountArchiveRouteSource).toContain('ArchiveCover')
+    expect(accountArchiveRouteSource).toContain('ArchiveIndex')
+    expect(accountArchiveRouteSource).not.toContain("api.get<AccountSummary>('/account')")
+    expect(accountArchiveHooksSource).toContain('queryKeys.account.archiveOverview')
+    expect(accountArchiveHooksSource).toContain('queryKeys.account.archiveLibrary')
   })
 
-  it('keeps habits sections within size caps and JSX-only', () => {
-    expect(habitsPersonalityHeroSource.split('\n').length).toBeLessThanOrEqual(60)
-    expect(searchHistorySectionSource.split('\n').length).toBeLessThanOrEqual(250)
-    expect(fanTiersSectionSource.split('\n').length).toBeLessThanOrEqual(170)
-    expect(podcastSectionSource.split('\n').length).toBeLessThanOrEqual(90)
-    expect(marqueeSectionSource.split('\n').length).toBeLessThanOrEqual(80)
-    expect(videoSectionSource.split('\n').length).toBeLessThanOrEqual(120)
+  it('keeps archive library server-paginated and capped at twenty rows', () => {
+    expect(accountArchiveLibrarySource).toContain('limit: 20')
+    expect(accountArchiveLibrarySource).toContain('useArchiveLibrary')
+    expect(accountArchiveLibrarySource).not.toContain('<table')
+    expect(accountArchivePhoneLibrarySource).toContain('limit: 10')
+    expect(accountArchivePhoneLibrarySource).toContain('role="dialog"')
+    expect(accountArchivePhoneLibrarySource).not.toContain('<table')
   })
 
-  it('keeps habitsData pure logic without JSX', () => {
-    expect(searchHistorySectionSource).not.toContain('function inferPersonality')
-    expect(fanTiersSectionSource).not.toContain('function getMostActiveDay')
-  })
-
-  it('keeps CollectionTab as a thin page-level tab delegate', () => {
-    expect(collectionTabSource.split('\n').length).toBeLessThanOrEqual(100)
-    expect(collectionTabSource).not.toContain('<table')
+  it('keeps the legacy account, habits, and personality page trees retired', () => {
+    expect(Object.keys(retiredAccountModules)).toEqual([])
   })
 
   // ── Cross-cutting: no module-level API response caches ───────────────────
@@ -630,7 +618,6 @@ describe('Phase 5 architecture guardrails', () => {
     ['CommunityAccountExperience.tsx', communityAccountExperienceSource],
     ['PostDetailExperience.tsx', postDetailExperienceSource],
     ['VersusExperience.tsx', versusExperienceSource],
-    ['HabitsTab.tsx', habitsTabSource],
     ['BillboardPage.tsx', billboardPageSource],
     ['AccountCenterPage.tsx', accountCenterPageSource],
     ['TrackDetailPage.tsx', trackDetailSource],

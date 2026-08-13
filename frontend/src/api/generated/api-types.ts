@@ -2182,7 +2182,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/account": {
+    "/api/account/archive-overview": {
         parameters: {
             query?: never;
             header?: never;
@@ -2190,10 +2190,10 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Account Summary
-         * @description 聚合账号中心所有数据（library + search + insights + podcast + video + profile + collection insights）。
+         * Archive Overview
+         * @description 返回音乐档案首屏所需的本地事实，不触发 Spotify 在线请求。
          */
-        get: operations["account_summary_api_account_get"];
+        get: operations["archive_overview_api_account_archive_overview_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2202,7 +2202,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/account/collection-insights": {
+    "/api/account/collection-journey": {
         parameters: {
             query?: never;
             header?: never;
@@ -2210,10 +2210,110 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Collection Insights
-         * @description 收藏×播放交叉分析洞察。
+         * Collection Journey
+         * @description 返回当前收藏快照的增长时间线与准确档案事实。
          */
-        get: operations["collection_insights_api_account_collection_insights_get"];
+        get: operations["collection_journey_api_account_collection_journey_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/account/collection-cohorts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Collection Cohorts
+         * @description 返回有完整观察窗的收藏前后关系与固定窗回访。
+         */
+        get: operations["collection_cohorts_api_account_collection_cohorts_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/account/returns": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Archive Returns
+         * @description 返回至少沉睡 90 天后的回归事件和当前沉睡收藏。
+         */
+        get: operations["archive_returns_api_account_returns_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/account/discovery": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Archive Discovery
+         * @description 返回隐私安全的搜索 burst、时段分布和有限曲目发现漏斗。
+         */
+        get: operations["archive_discovery_api_account_discovery_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/account/library/{entity_type}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Archive Library
+         * @description 返回歌曲、专辑、艺人或歌单的服务端搜索、排序和分页结果。
+         */
+        get: operations["archive_library_api_account_library__entity_type__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/account/other-media": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Archive Other Media
+         * @description 返回播客与视频的最小档案事实和同口径音视频时长。
+         */
+        get: operations["archive_other_media_api_account_other_media_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -3276,13 +3376,6 @@ export interface components {
             /** Video Plays */
             video_plays: number;
         };
-        /** AccountSummaryResponse */
-        AccountSummaryResponse: {
-            /** Has Account Data */
-            has_account_data?: boolean | null;
-        } & {
-            [key: string]: unknown;
-        };
         /** AddMessageRequest */
         AddMessageRequest: {
             /**
@@ -4024,6 +4117,909 @@ export interface components {
             created_count: number;
             /** Skipped Count */
             skipped_count: number;
+        };
+        /** ArchiveAlignedWeek */
+        ArchiveAlignedWeek: {
+            /** Week Index */
+            week_index: number;
+            /** Eligible Entities */
+            eligible_entities: number;
+            /** Entities With Play */
+            entities_with_play: number;
+            /** Effective Play Events */
+            effective_play_events: number;
+            /** Events Per Eligible */
+            events_per_eligible: number;
+        };
+        /** ArchiveAudioVideoComparison */
+        ArchiveAudioVideoComparison: {
+            /** Audio Effective Events */
+            audio_effective_events: number;
+            /** Audio Effective Ms */
+            audio_effective_ms: number;
+            /** Video Effective Events */
+            video_effective_events: number;
+            /** Video Effective Ms */
+            video_effective_ms: number;
+        };
+        /** ArchiveCapabilities */
+        ArchiveCapabilities: {
+            /**
+             * Collection Browse
+             * @enum {string}
+             */
+            collection_browse: "available" | "partial" | "unavailable";
+            /**
+             * Collection Timeline
+             * @enum {string}
+             */
+            collection_timeline: "available" | "partial" | "unavailable";
+            /**
+             * Playback Cross Analysis
+             * @enum {string}
+             */
+            playback_cross_analysis: "available" | "partial" | "unavailable";
+        };
+        /** ArchiveCohortCoverage */
+        ArchiveCohortCoverage: {
+            /** Saved Tracks */
+            saved_tracks: number;
+            /** Matched Saved Tracks */
+            matched_saved_tracks: number;
+            /** Unmatched Saved Tracks */
+            unmatched_saved_tracks: number;
+            /** Canonical Saved Entities */
+            canonical_saved_entities: number;
+            /** Dated Canonical Entities */
+            dated_canonical_entities: number;
+            /** Invalid Added Dates */
+            invalid_added_dates: number;
+            /** Effective Play Events */
+            effective_play_events: number;
+        };
+        /** ArchiveCohortsResponse */
+        ArchiveCohortsResponse: {
+            /**
+             * Schema Version
+             * @default account_archive_cohorts_v1
+             * @constant
+             */
+            schema_version: "account_archive_cohorts_v1";
+            /**
+             * Content Version
+             * @default account_archive_cohorts_v1_0
+             * @constant
+             */
+            content_version: "account_archive_cohorts_v1_0";
+            /** Data Revision */
+            data_revision: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "available" | "partial" | "unavailable";
+            filter_context: components["schemas"]["ArchiveFilterContext"];
+            coverage: components["schemas"]["ArchiveCohortCoverage"];
+            encounter_to_save: components["schemas"]["ArchiveEncounterToSave"];
+            symmetric_30_day_window: components["schemas"]["ArchiveSymmetricWindow"];
+            /** Return Windows */
+            return_windows?: components["schemas"]["ArchiveReturnWindow"][];
+            /** Aligned Weeks */
+            aligned_weeks?: components["schemas"]["ArchiveAlignedWeek"][];
+            relationship_matrix: components["schemas"]["ArchiveRelationshipMatrix"];
+        };
+        /** ArchiveCounts */
+        ArchiveCounts: {
+            /** Saved Tracks */
+            saved_tracks: number;
+            /** Saved Albums */
+            saved_albums: number;
+            /** Saved Artists */
+            saved_artists: number;
+            /** Saved Shows */
+            saved_shows: number;
+            /** Playlists */
+            playlists: number;
+            /** Playlist Items */
+            playlist_items: number;
+        };
+        /** ArchiveCoverage */
+        ArchiveCoverage: {
+            /** Saved Tracks With Date */
+            saved_tracks_with_date: number;
+            /** Saved Tracks With Date Pct */
+            saved_tracks_with_date_pct: number;
+            /** Saved Tracks Linked To History */
+            saved_tracks_linked_to_history: number;
+            /** Saved Tracks Linked To History Pct */
+            saved_tracks_linked_to_history_pct: number;
+            /** Saved Tracks With Known Duration */
+            saved_tracks_with_known_duration: number;
+            /** Saved Tracks With Known Duration Pct */
+            saved_tracks_with_known_duration_pct: number;
+            /** Known Duration Ms */
+            known_duration_ms: number;
+        };
+        /** ArchiveDateProvenance */
+        ArchiveDateProvenance: {
+            /** Oauth */
+            oauth: number;
+            /** Manual */
+            manual: number;
+            /** Legacy */
+            legacy: number;
+            /** Missing */
+            missing: number;
+        };
+        /** ArchiveDiscoveryCoverage */
+        ArchiveDiscoveryCoverage: {
+            /**
+             * Normalization Version
+             * @default nfkc_casefold_ws_v1
+             * @constant
+             */
+            normalization_version: "nfkc_casefold_ws_v1";
+            /**
+             * Burst Gap Minutes
+             * @default 5
+             * @constant
+             */
+            burst_gap_minutes: 5;
+            /** Raw Search Rows */
+            raw_search_rows: number;
+            /** Deduplicated Search Rows */
+            deduplicated_search_rows: number;
+            /** Invalid Timestamp Rows */
+            invalid_timestamp_rows: number;
+            /** Unique Normalized Queries */
+            unique_normalized_queries: number;
+            /** Search Bursts */
+            search_bursts: number;
+            /** Interaction Records */
+            interaction_records: number;
+            /** Interaction Bursts */
+            interaction_bursts: number;
+        };
+        /** ArchiveDiscoveryFunnel */
+        ArchiveDiscoveryFunnel: {
+            /**
+             * Display Status
+             * @enum {string}
+             */
+            display_status: "count_only" | "unavailable";
+            /**
+             * Playback Window Minutes
+             * @default 60
+             * @constant
+             */
+            playback_window_minutes: 60;
+            /**
+             * Save Window Days
+             * @default 30
+             * @constant
+             */
+            save_window_days: 30;
+            /** Track Interaction Bursts */
+            track_interaction_bursts: number;
+            /** Mapped Track Interaction Bursts */
+            mapped_track_interaction_bursts: number;
+            /** Played Within 1H Bursts */
+            played_within_1h_bursts: number;
+            /** Currently Saved Within 30D Bursts */
+            currently_saved_within_30d_bursts: number;
+        };
+        /** ArchiveDiscoveryHourPoint */
+        ArchiveDiscoveryHourPoint: {
+            /** Hour */
+            hour: number;
+            /** Bursts */
+            bursts: number;
+        };
+        /** ArchiveDiscoveryPeriod */
+        ArchiveDiscoveryPeriod: {
+            /** First Search At */
+            first_search_at?: string | null;
+            /** Latest Search At */
+            latest_search_at?: string | null;
+            /** Active Days */
+            active_days: number;
+        };
+        /** ArchiveDiscoveryResponse */
+        ArchiveDiscoveryResponse: {
+            /**
+             * Schema Version
+             * @default account_archive_discovery_v1
+             * @constant
+             */
+            schema_version: "account_archive_discovery_v1";
+            /**
+             * Content Version
+             * @default account_archive_discovery_v1_0
+             * @constant
+             */
+            content_version: "account_archive_discovery_v1_0";
+            /** Data Revision */
+            data_revision: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "available" | "partial" | "unavailable";
+            filter_context: components["schemas"]["ArchiveFilterContext"];
+            period: components["schemas"]["ArchiveDiscoveryPeriod"];
+            coverage: components["schemas"]["ArchiveDiscoveryCoverage"];
+            interaction_types: components["schemas"]["ArchiveInteractionTypeCounts"];
+            funnel: components["schemas"]["ArchiveDiscoveryFunnel"];
+            /** Weekday Distribution */
+            weekday_distribution?: components["schemas"]["ArchiveDiscoveryWeekdayPoint"][];
+            /** Hour Distribution */
+            hour_distribution?: components["schemas"]["ArchiveDiscoveryHourPoint"][];
+            /** Observed Saved Examples */
+            observed_saved_examples?: components["schemas"]["ArchiveDiscoveryTrackPreview"][];
+        };
+        /** ArchiveDiscoveryTrackPreview */
+        ArchiveDiscoveryTrackPreview: {
+            /** Track Name */
+            track_name: string;
+            /** Artist Name */
+            artist_name: string;
+            /** Album Name */
+            album_name?: string | null;
+            /** Cover Url */
+            cover_url?: string | null;
+            /** Deep Link */
+            deep_link?: string | null;
+            /** Interaction At */
+            interaction_at: string;
+            /** Played At */
+            played_at: string;
+            /** Added Date */
+            added_date: string;
+        };
+        /** ArchiveDiscoveryWeekdayPoint */
+        ArchiveDiscoveryWeekdayPoint: {
+            /** Weekday */
+            weekday: number;
+            /** Bursts */
+            bursts: number;
+        };
+        /** ArchiveDurationFacts */
+        ArchiveDurationFacts: {
+            /** Known Duration Ms */
+            known_duration_ms: number;
+            /** Release Year Start */
+            release_year_start?: number | null;
+            /** Release Year End */
+            release_year_end?: number | null;
+        };
+        /** ArchiveEncounterBin */
+        ArchiveEncounterBin: {
+            /**
+             * Key
+             * @enum {string}
+             */
+            key: "same_day" | "days_1_7" | "days_8_30" | "days_31_90" | "days_90_plus";
+            /** Entities */
+            entities: number;
+            /** Share Pct */
+            share_pct: number;
+        };
+        /** ArchiveEncounterToSave */
+        ArchiveEncounterToSave: {
+            /** Eligible Entities */
+            eligible_entities: number;
+            /** No Observed Pre Save Play */
+            no_observed_pre_save_play: number;
+            /** Bins */
+            bins?: components["schemas"]["ArchiveEncounterBin"][];
+            /** Examples */
+            examples?: components["schemas"]["ArchiveEntityPreview"][];
+        };
+        /** ArchiveEntityPreview */
+        ArchiveEntityPreview: {
+            /** Track Name */
+            track_name: string;
+            /** Artist Name */
+            artist_name: string;
+            /** Album Name */
+            album_name?: string | null;
+            /** Cover Url */
+            cover_url?: string | null;
+            /** Deep Link */
+            deep_link?: string | null;
+            /** Added Date */
+            added_date?: string | null;
+            /** First Play At */
+            first_play_at?: string | null;
+            /** Last Play At */
+            last_play_at?: string | null;
+            /**
+             * Effective Plays
+             * @default 0
+             */
+            effective_plays: number;
+        };
+        /** ArchiveFeaturedItem */
+        ArchiveFeaturedItem: {
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "first_saved" | "latest_saved" | "oldest_release" | "newest_release";
+            /** Track Name */
+            track_name: string;
+            /** Artist Name */
+            artist_name: string;
+            /** Album Name */
+            album_name?: string | null;
+            /** Added Date */
+            added_date?: string | null;
+            /** Release Date */
+            release_date?: string | null;
+            /** Cover Url */
+            cover_url?: string | null;
+            /** Deep Link */
+            deep_link?: string | null;
+        };
+        /** ArchiveFilterContext */
+        ArchiveFilterContext: {
+            /**
+             * Context Version
+             * @default account_archive_filter_v1
+             * @constant
+             */
+            context_version: "account_archive_filter_v1";
+            /** Min Ms */
+            min_ms: number;
+            /**
+             * Music Only
+             * @default true
+             * @constant
+             */
+            music_only: true;
+            /** Merge Enabled */
+            merge_enabled: boolean;
+            /** Dynamic Threshold */
+            dynamic_threshold: boolean;
+            /** Max Merge Gap Minutes */
+            max_merge_gap_minutes?: number | null;
+            /** Merge Level */
+            merge_level: number;
+            /**
+             * Timezone
+             * @default Asia/Shanghai
+             * @constant
+             */
+            timezone: "Asia/Shanghai";
+            /** First Play At */
+            first_play_at?: string | null;
+            /** Latest Play At */
+            latest_play_at?: string | null;
+            /** Latest Play Date */
+            latest_play_date?: string | null;
+            /** Source Revision */
+            source_revision: string;
+            /** Track Group Revision */
+            track_group_revision: string;
+            /** Filter Fingerprint */
+            filter_fingerprint: string;
+        };
+        /** ArchiveGrowthPoint */
+        ArchiveGrowthPoint: {
+            /** Period */
+            period: string;
+            /** Year */
+            year: number;
+            /** Quarter */
+            quarter?: number | null;
+            /** Saved Tracks */
+            saved_tracks: number;
+            /** Cumulative Saved Tracks */
+            cumulative_saved_tracks: number;
+        };
+        /** ArchiveInteractionTypeCounts */
+        ArchiveInteractionTypeCounts: {
+            /** Track */
+            track: number;
+            /** Artist */
+            artist: number;
+            /** Album */
+            album: number;
+            /** Playlist */
+            playlist: number;
+            /** Show */
+            show: number;
+            /** Episode */
+            episode: number;
+            /** Other */
+            other: number;
+        };
+        /** ArchiveJourneyCoverage */
+        ArchiveJourneyCoverage: {
+            /** Saved Tracks */
+            saved_tracks: number;
+            /** Saved Tracks With Date */
+            saved_tracks_with_date: number;
+            /** Invalid Added Dates */
+            invalid_added_dates: number;
+            /** Saved Tracks With Known Duration */
+            saved_tracks_with_known_duration: number;
+            /** Duration Coverage Pct */
+            duration_coverage_pct: number;
+        };
+        /** ArchiveJourneyResponse */
+        ArchiveJourneyResponse: {
+            /**
+             * Schema Version
+             * @default account_archive_journey_v1
+             * @constant
+             */
+            schema_version: "account_archive_journey_v1";
+            /**
+             * Content Version
+             * @default account_archive_journey_v1_0
+             * @constant
+             */
+            content_version: "account_archive_journey_v1_0";
+            /** Data Revision */
+            data_revision: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "available" | "partial" | "unavailable";
+            filter_context: components["schemas"]["ArchiveFilterContext"];
+            coverage: components["schemas"]["ArchiveJourneyCoverage"];
+            duration: components["schemas"]["ArchiveDurationFacts"];
+            /** Annual Growth */
+            annual_growth?: components["schemas"]["ArchiveGrowthPoint"][];
+            /** Quarterly Growth */
+            quarterly_growth?: components["schemas"]["ArchiveGrowthPoint"][];
+            /** Milestones */
+            milestones?: components["schemas"]["ArchiveFeaturedItem"][];
+        };
+        /** ArchiveLibraryAlbumItem */
+        ArchiveLibraryAlbumItem: {
+            /**
+             * Entity Type
+             * @default album
+             * @constant
+             */
+            entity_type: "album";
+            /** Item Key */
+            item_key: string;
+            /** Album Name */
+            album_name: string;
+            /** Artist Name */
+            artist_name: string;
+            /** Cover Url */
+            cover_url?: string | null;
+            /** Deep Link */
+            deep_link?: string | null;
+        };
+        /** ArchiveLibraryArtistItem */
+        ArchiveLibraryArtistItem: {
+            /**
+             * Entity Type
+             * @default artist
+             * @constant
+             */
+            entity_type: "artist";
+            /** Item Key */
+            item_key: string;
+            /** Artist Name */
+            artist_name: string;
+            /** Cover Url */
+            cover_url?: string | null;
+            /** Deep Link */
+            deep_link?: string | null;
+        };
+        /** ArchiveLibraryPageResponse */
+        ArchiveLibraryPageResponse: {
+            /**
+             * Schema Version
+             * @default account_archive_library_v1
+             * @constant
+             */
+            schema_version: "account_archive_library_v1";
+            /**
+             * Content Version
+             * @default account_archive_library_v1_0
+             * @constant
+             */
+            content_version: "account_archive_library_v1_0";
+            /** Data Revision */
+            data_revision: string;
+            /**
+             * Entity Type
+             * @enum {string}
+             */
+            entity_type: "tracks" | "albums" | "artists" | "playlists";
+            /** Page */
+            page: number;
+            /** Limit */
+            limit: number;
+            /** Total */
+            total: number;
+            /** Total Pages */
+            total_pages: number;
+            /**
+             * Sort
+             * @enum {string}
+             */
+            sort: "recent" | "oldest" | "name" | "artist" | "tracks";
+            /** Search Applied */
+            search_applied: boolean;
+            /** Items */
+            items?: (components["schemas"]["ArchiveLibraryTrackItem"] | components["schemas"]["ArchiveLibraryAlbumItem"] | components["schemas"]["ArchiveLibraryArtistItem"] | components["schemas"]["ArchiveLibraryPlaylistItem"])[];
+        };
+        /** ArchiveLibraryPlaylistItem */
+        ArchiveLibraryPlaylistItem: {
+            /**
+             * Entity Type
+             * @default playlist
+             * @constant
+             */
+            entity_type: "playlist";
+            /** Item Key */
+            item_key: string;
+            /** Playlist Id */
+            playlist_id: number;
+            /** Playlist Name */
+            playlist_name: string;
+            /** Last Modified Date */
+            last_modified_date?: string | null;
+            /** Track Count */
+            track_count: number;
+            /** Follower Count */
+            follower_count: number;
+            /** Preview Tracks */
+            preview_tracks?: components["schemas"]["ArchiveLibraryPlaylistTrackPreview"][];
+        };
+        /** ArchiveLibraryPlaylistTrackPreview */
+        ArchiveLibraryPlaylistTrackPreview: {
+            /** Track Name */
+            track_name: string;
+            /** Artist Name */
+            artist_name: string;
+        };
+        /** ArchiveLibraryTrackItem */
+        ArchiveLibraryTrackItem: {
+            /**
+             * Entity Type
+             * @default track
+             * @constant
+             */
+            entity_type: "track";
+            /** Item Key */
+            item_key: string;
+            /** Track Name */
+            track_name: string;
+            /** Artist Name */
+            artist_name: string;
+            /** Album Name */
+            album_name?: string | null;
+            /** Added Date */
+            added_date?: string | null;
+            /** Cover Url */
+            cover_url?: string | null;
+            /** Deep Link */
+            deep_link?: string | null;
+        };
+        /** ArchiveMediaObservationWindow */
+        ArchiveMediaObservationWindow: {
+            /** First Play At */
+            first_play_at?: string | null;
+            /** Latest Play At */
+            latest_play_at?: string | null;
+        };
+        /** ArchiveOtherMediaResponse */
+        ArchiveOtherMediaResponse: {
+            /**
+             * Schema Version
+             * @default account_archive_other_media_v1
+             * @constant
+             */
+            schema_version: "account_archive_other_media_v1";
+            /**
+             * Content Version
+             * @default account_archive_other_media_v1_0
+             * @constant
+             */
+            content_version: "account_archive_other_media_v1_0";
+            /** Data Revision */
+            data_revision: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "available" | "partial" | "unavailable";
+            filter_context: components["schemas"]["ArchiveFilterContext"];
+            observation_window: components["schemas"]["ArchiveMediaObservationWindow"];
+            podcast: components["schemas"]["ArchivePodcastSummary"];
+            video: components["schemas"]["ArchiveVideoSummary"];
+            audio_video_comparison: components["schemas"]["ArchiveAudioVideoComparison"];
+        };
+        /** ArchiveOverviewResponse */
+        ArchiveOverviewResponse: {
+            /**
+             * Schema Version
+             * @default account_archive_v1
+             * @constant
+             */
+            schema_version: "account_archive_v1";
+            /**
+             * Content Version
+             * @default account_archive_v1_0
+             * @constant
+             */
+            content_version: "account_archive_v1_0";
+            /** Data Revision */
+            data_revision: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "ready" | "partial" | "empty";
+            counts: components["schemas"]["ArchiveCounts"];
+            coverage: components["schemas"]["ArchiveCoverage"];
+            period: components["schemas"]["ArchivePeriod"];
+            date_provenance: components["schemas"]["ArchiveDateProvenance"];
+            capabilities: components["schemas"]["ArchiveCapabilities"];
+            /** Featured Items */
+            featured_items?: components["schemas"]["ArchiveFeaturedItem"][];
+        };
+        /** ArchivePeriod */
+        ArchivePeriod: {
+            /** First Saved At */
+            first_saved_at?: string | null;
+            /** Latest Saved At */
+            latest_saved_at?: string | null;
+            /** First Play Date */
+            first_play_date?: string | null;
+            /** Latest Play Date */
+            latest_play_date?: string | null;
+        };
+        /** ArchivePodcastShowPreview */
+        ArchivePodcastShowPreview: {
+            /** Show Name */
+            show_name: string;
+            /** Effective Events */
+            effective_events: number;
+            /** Effective Ms */
+            effective_ms: number;
+        };
+        /** ArchivePodcastSummary */
+        ArchivePodcastSummary: {
+            /** Source Rows */
+            source_rows: number;
+            /** Effective Events */
+            effective_events: number;
+            /** Effective Ms */
+            effective_ms: number;
+            /** Unique Shows */
+            unique_shows: number;
+            /** Active Months */
+            active_months: number;
+            /** Returning Shows */
+            returning_shows: number;
+            /** First Effective At */
+            first_effective_at?: string | null;
+            /** Latest Effective At */
+            latest_effective_at?: string | null;
+            /** Top Shows */
+            top_shows?: components["schemas"]["ArchivePodcastShowPreview"][];
+        };
+        /** ArchiveRelationshipCounts */
+        ArchiveRelationshipCounts: {
+            /** Recent Active Saved */
+            recent_active_saved: number;
+            /** Sleeping Saved */
+            sleeping_saved: number;
+            /** Recently Saved Without Recent Play */
+            recently_saved_without_recent_play: number;
+            /** Saved Without Date */
+            saved_without_date: number;
+            /** Frequent Unsaved */
+            frequent_unsaved: number;
+            /** Unmatched Saved Tracks */
+            unmatched_saved_tracks: number;
+        };
+        /** ArchiveRelationshipMatrix */
+        ArchiveRelationshipMatrix: {
+            /**
+             * Recent Window Days
+             * @default 90
+             * @constant
+             */
+            recent_window_days: 90;
+            /**
+             * Frequent Unsaved Min Plays
+             * @default 5
+             * @constant
+             */
+            frequent_unsaved_min_plays: 5;
+            counts: components["schemas"]["ArchiveRelationshipCounts"];
+            /** Recent Active Examples */
+            recent_active_examples?: components["schemas"]["ArchiveEntityPreview"][];
+            /** Sleeping Examples */
+            sleeping_examples?: components["schemas"]["ArchiveEntityPreview"][];
+            /** Frequent Unsaved Examples */
+            frequent_unsaved_examples?: components["schemas"]["ArchiveEntityPreview"][];
+        };
+        /** ArchiveReturnStory */
+        ArchiveReturnStory: {
+            /** Track Name */
+            track_name: string;
+            /** Artist Name */
+            artist_name: string;
+            /** Album Name */
+            album_name?: string | null;
+            /** Cover Url */
+            cover_url?: string | null;
+            /** Deep Link */
+            deep_link?: string | null;
+            /** Added Date */
+            added_date: string;
+            /** Previous Play At */
+            previous_play_at: string;
+            /** Returned At */
+            returned_at: string;
+            /** Dormant Days */
+            dormant_days: number;
+            /** Return Count */
+            return_count: number;
+        };
+        /** ArchiveReturnWindow */
+        ArchiveReturnWindow: {
+            /**
+             * Horizon Days
+             * @enum {integer}
+             */
+            horizon_days: 7 | 30 | 90 | 365;
+            /** Eligible Entities */
+            eligible_entities: number;
+            /** Returned Entities */
+            returned_entities: number;
+            /** Return Rate Pct */
+            return_rate_pct?: number | null;
+            /**
+             * Display Status
+             * @enum {string}
+             */
+            display_status: "stable_rate" | "count_only" | "unavailable";
+        };
+        /** ArchiveReturnsCoverage */
+        ArchiveReturnsCoverage: {
+            /** Saved Tracks */
+            saved_tracks: number;
+            /** Matched Saved Tracks */
+            matched_saved_tracks: number;
+            /** Unmatched Saved Tracks */
+            unmatched_saved_tracks: number;
+            /** Canonical Saved Entities */
+            canonical_saved_entities: number;
+            /** Dated Canonical Entities */
+            dated_canonical_entities: number;
+            /** Invalid Added Dates */
+            invalid_added_dates: number;
+            /** Entities With Effective History */
+            entities_with_effective_history: number;
+            /** Return Eligible Entities */
+            return_eligible_entities: number;
+            /** Effective Play Events */
+            effective_play_events: number;
+        };
+        /** ArchiveReturnsResponse */
+        ArchiveReturnsResponse: {
+            /**
+             * Schema Version
+             * @default account_archive_returns_v1
+             * @constant
+             */
+            schema_version: "account_archive_returns_v1";
+            /**
+             * Content Version
+             * @default account_archive_returns_v1_0
+             * @constant
+             */
+            content_version: "account_archive_returns_v1_0";
+            /** Data Revision */
+            data_revision: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "available" | "partial" | "unavailable";
+            filter_context: components["schemas"]["ArchiveFilterContext"];
+            coverage: components["schemas"]["ArchiveReturnsCoverage"];
+            summary: components["schemas"]["ArchiveReturnsSummary"];
+            /** Latest Returns */
+            latest_returns?: components["schemas"]["ArchiveReturnStory"][];
+            /** Longest Returns */
+            longest_returns?: components["schemas"]["ArchiveReturnStory"][];
+            /** Sleeping Recommendations */
+            sleeping_recommendations?: components["schemas"]["ArchiveSleepingStory"][];
+        };
+        /** ArchiveReturnsSummary */
+        ArchiveReturnsSummary: {
+            /**
+             * Gap Threshold Days
+             * @default 90
+             * @constant
+             */
+            gap_threshold_days: 90;
+            /** Return Episodes */
+            return_episodes: number;
+            /** Returned Entities */
+            returned_entities: number;
+            /** Multiple Return Entities */
+            multiple_return_entities: number;
+            /** Recent 30 Day Return Entities */
+            recent_30_day_return_entities: number;
+            /** Recent 90 Day Return Entities */
+            recent_90_day_return_entities: number;
+            /** Current Sleeping Entities */
+            current_sleeping_entities: number;
+        };
+        /** ArchiveSleepingStory */
+        ArchiveSleepingStory: {
+            /** Track Name */
+            track_name: string;
+            /** Artist Name */
+            artist_name: string;
+            /** Album Name */
+            album_name?: string | null;
+            /** Cover Url */
+            cover_url?: string | null;
+            /** Deep Link */
+            deep_link?: string | null;
+            /** Added Date */
+            added_date: string;
+            /** Last Play At */
+            last_play_at?: string | null;
+            /** Dormant Days */
+            dormant_days: number;
+            /** Effective Plays */
+            effective_plays: number;
+        };
+        /** ArchiveSymmetricWindow */
+        ArchiveSymmetricWindow: {
+            /**
+             * Window Days
+             * @default 30
+             * @constant
+             */
+            window_days: 30;
+            /** Eligible Entities */
+            eligible_entities: number;
+            /** Before Events */
+            before_events: number;
+            /** After Events */
+            after_events: number;
+            /** More Before */
+            more_before: number;
+            /** Equal */
+            equal: number;
+            /** More After */
+            more_after: number;
+        };
+        /** ArchiveVideoSummary */
+        ArchiveVideoSummary: {
+            /** Source Rows */
+            source_rows: number;
+            /** Effective Events */
+            effective_events: number;
+            /** Effective Ms */
+            effective_ms: number;
+            /** Unique Tracks */
+            unique_tracks: number;
+            /** Active Days */
+            active_days: number;
+            /** First Effective At */
+            first_effective_at?: string | null;
+            /** Latest Effective At */
+            latest_effective_at?: string | null;
         };
         /** ArtistAlbumBreakdown */
         ArtistAlbumBreakdown: {
@@ -5394,15 +6390,6 @@ export interface components {
             status: string;
             /** Deleted Count */
             deleted_count: number;
-        };
-        /** CollectionInsightsResponse */
-        CollectionInsightsResponse: {
-            /** Available */
-            available?: boolean | null;
-            /** Empty */
-            empty?: boolean | null;
-        } & {
-            [key: string]: unknown;
         };
         /** CommunityFeedResponse */
         CommunityFeedResponse: {
@@ -15307,7 +16294,7 @@ export interface operations {
             };
         };
     };
-    account_summary_api_account_get: {
+    archive_overview_api_account_archive_overview_get: {
         parameters: {
             query?: {
                 readonly?: boolean;
@@ -15324,7 +16311,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["AccountSummaryResponse"];
+                    "application/json": components["schemas"]["ArchiveOverviewResponse"];
                 };
             };
             /** @description Validation Error */
@@ -15338,9 +16325,19 @@ export interface operations {
             };
         };
     };
-    collection_insights_api_account_collection_insights_get: {
+    collection_journey_api_account_collection_journey_get: {
         parameters: {
             query?: {
+                /** @description 最短有效播放时长 */
+                min_ms?: number | null;
+                /** @description 合并连续同曲播放 */
+                merge_enabled?: boolean | null;
+                /** @description 使用动态有效播放阈值 */
+                dynamic_threshold?: boolean;
+                /** @description 连续播放最大合并间隔 */
+                max_merge_gap_minutes?: number | null;
+                /** @description 曲目版本归并级别 */
+                merge_level?: number;
                 readonly?: boolean;
             };
             header?: never;
@@ -15355,7 +16352,208 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["CollectionInsightsResponse"];
+                    "application/json": components["schemas"]["ArchiveJourneyResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    collection_cohorts_api_account_collection_cohorts_get: {
+        parameters: {
+            query?: {
+                /** @description 最短有效播放时长 */
+                min_ms?: number | null;
+                /** @description 合并连续同曲播放 */
+                merge_enabled?: boolean | null;
+                /** @description 使用动态有效播放阈值 */
+                dynamic_threshold?: boolean;
+                /** @description 连续播放最大合并间隔 */
+                max_merge_gap_minutes?: number | null;
+                /** @description 曲目版本归并级别 */
+                merge_level?: number;
+                readonly?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArchiveCohortsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    archive_returns_api_account_returns_get: {
+        parameters: {
+            query?: {
+                /** @description 最短有效播放时长 */
+                min_ms?: number | null;
+                /** @description 合并连续同曲播放 */
+                merge_enabled?: boolean | null;
+                /** @description 使用动态有效播放阈值 */
+                dynamic_threshold?: boolean;
+                /** @description 连续播放最大合并间隔 */
+                max_merge_gap_minutes?: number | null;
+                /** @description 曲目版本归并级别 */
+                merge_level?: number;
+                readonly?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArchiveReturnsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    archive_discovery_api_account_discovery_get: {
+        parameters: {
+            query?: {
+                /** @description 最短有效播放时长 */
+                min_ms?: number | null;
+                /** @description 合并连续同曲播放 */
+                merge_enabled?: boolean | null;
+                /** @description 使用动态有效播放阈值 */
+                dynamic_threshold?: boolean;
+                /** @description 连续播放最大合并间隔 */
+                max_merge_gap_minutes?: number | null;
+                /** @description 曲目版本归并级别 */
+                merge_level?: number;
+                readonly?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArchiveDiscoveryResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    archive_library_api_account_library__entity_type__get: {
+        parameters: {
+            query?: {
+                page?: number;
+                limit?: number;
+                search?: string;
+                sort?: ("recent" | "oldest" | "name" | "artist" | "tracks") | null;
+                readonly?: boolean;
+            };
+            header?: never;
+            path: {
+                entity_type: "tracks" | "albums" | "artists" | "playlists";
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArchiveLibraryPageResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    archive_other_media_api_account_other_media_get: {
+        parameters: {
+            query?: {
+                /** @description 最短有效播放时长 */
+                min_ms?: number | null;
+                /** @description 合并连续同曲播放 */
+                merge_enabled?: boolean | null;
+                /** @description 使用动态有效播放阈值 */
+                dynamic_threshold?: boolean;
+                /** @description 连续播放最大合并间隔 */
+                max_merge_gap_minutes?: number | null;
+                /** @description 曲目版本归并级别 */
+                merge_level?: number;
+                readonly?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArchiveOtherMediaResponse"];
                 };
             };
             /** @description Validation Error */

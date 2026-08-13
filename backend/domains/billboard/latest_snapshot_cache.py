@@ -72,7 +72,9 @@ def store_latest_snapshot_for_args(args: tuple[Any, ...], payload: dict[str, Any
     store_latest_snapshot(snapshot_key(*args), payload)
 
 
-def store_latest_snapshot_for_locals(values: dict[str, Any], payload: dict[str, Any]) -> None:
+def store_latest_snapshot_for_locals(
+    values: dict[str, Any], payload: dict[str, Any]
+) -> dict[str, Any]:
     names = (
         "min_ms",
         "music_only",
@@ -89,6 +91,7 @@ def store_latest_snapshot_for_locals(values: dict[str, Any], payload: dict[str, 
         "include_compilations",
     )
     store_latest_snapshot_for_args(tuple(values[name] for name in names), payload)
+    return payload
 
 
 def get_latest_snapshot_if_cached(key: tuple[Any, ...]) -> dict[str, Any] | None:

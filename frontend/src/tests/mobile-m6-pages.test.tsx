@@ -4,7 +4,6 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ThemeProvider } from '@/hooks/useTheme'
-import { MobileAccountHero } from '@/features/mobile/account/MobileAccountHero'
 import {
   MobileCommunityFilterBar,
   MobileCommunityFilters,
@@ -100,27 +99,6 @@ describe('M6 mobile pages', () => {
     expect(onPeriodChange).toHaveBeenCalledWith(PERIODS.find((period) => period.label === '2025'))
     rerender(<MobileCommunityFilterBar search="Taylor" period={PERIODS[1]} onOpen={vi.fn()} />)
     expect(screen.getByRole('button', { name: '打开社区搜索与时间筛选' })).toHaveTextContent('Taylor')
-  })
-
-  it('renders a compact account identity with the three primary facts', () => {
-    render(
-      <MobileAccountHero
-        displayName="Benjamin"
-        username="listener"
-        country="CN"
-        listeningYears={4}
-        startYear={2022}
-        totalPlays={91_286}
-        followsCount={3}
-        personality={{ icon: '🎵', type: '均衡型收藏者' }}
-      />,
-    )
-    expect(screen.getByRole('heading', { name: 'Benjamin' })).toBeInTheDocument()
-    expect(screen.getByText('均衡型收藏者')).toBeInTheDocument()
-    expect(screen.getByText('收听年数')).toBeInTheDocument()
-    expect(screen.getByText('播放')).toBeInTheDocument()
-    expect(screen.getByText('起点')).toBeInTheDocument()
-    expect(screen.getByText('关注')).toBeInTheDocument()
   })
 
   it('shows settings categories first and exposes only lightweight playback controls', async () => {

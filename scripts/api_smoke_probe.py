@@ -314,8 +314,37 @@ DEFAULT_SAFE_GET_CASES: tuple[SmokeCase, ...] = (
     ),
     SmokeCase("lyrics_missing", "/api/lyrics/-1"),
     SmokeCase("lyrics_url_missing", "/api/lyrics/-1/url"),
-    SmokeCase("account", "/api/account"),
-    SmokeCase("account_collection", "/api/account/collection-insights"),
+    SmokeCase("account_archive_overview", "/api/account/archive-overview"),
+    SmokeCase(
+        "account_archive_journey",
+        "/api/account/collection-journey",
+        {"min_ms": 30000, "merge_enabled": True, "dynamic_threshold": True, "merge_level": 2},
+    ),
+    SmokeCase(
+        "account_archive_cohorts",
+        "/api/account/collection-cohorts",
+        {"min_ms": 30000, "merge_enabled": True, "dynamic_threshold": True, "merge_level": 2},
+    ),
+    SmokeCase(
+        "account_archive_returns",
+        "/api/account/returns",
+        {"min_ms": 30000, "merge_enabled": True, "dynamic_threshold": True, "merge_level": 2},
+    ),
+    SmokeCase(
+        "account_archive_discovery",
+        "/api/account/discovery",
+        {"min_ms": 30000, "merge_enabled": True, "dynamic_threshold": True, "merge_level": 2},
+    ),
+    SmokeCase(
+        "account_archive_library_tracks",
+        "/api/account/library/tracks",
+        {"page": 1, "limit": 5, "sort": "recent"},
+    ),
+    SmokeCase(
+        "account_archive_other_media",
+        "/api/account/other-media",
+        {"min_ms": 30000, "merge_enabled": True, "dynamic_threshold": True},
+    ),
     SmokeCase(
         "ai_task_missing",
         "/api/ai/tasks/nonexistent-smoke-task",

@@ -1017,34 +1017,66 @@ def test_tool_call_identity_keeps_period_specific_followups_distinct() -> None:
     )
 
 
-def test_account_collection_tool_compacts_collection_insights(
+def test_account_collection_tool_uses_evidence_backed_archive_facts(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     db_observed = _patch_readonly_db(monkeypatch)
-
-    def fake_collection_insights(conn: FakeReadonlyConn) -> dict[str, Any]:
-        assert conn in db_observed["connections"]
-        return {
-            "available": True,
-            "personality": {"type": "均衡型收藏者", "metrics": {"retention_pct": 88.1}},
-            "overview": {"saved_tracks": 100, "saved_albums": 20},
-            "first_save_story": {"track_name": "First", "artist_name": "Artist"},
-            "lifecycle": {"fate": {"evergreen_pct": 40.0}},
-            "huge_unused_section": [{"x": index} for index in range(100)],
-        }
-
+    context = object()
     monkeypatch.setattr(
-        tools.account_service,
-        "get_collection_insights",
-        fake_collection_insights,
+        tools,
+        "get_archive_overview",
+        lambda conn: {
+            "status": "ready",
+            "counts": {"saved_tracks": 100, "saved_albums": 20},
+            "coverage": {"saved_tracks_linked_to_history_pct": 88.1},
+            "period": {"first_saved_at": "2020-01-01"},
+        },
+    )
+    monkeypatch.setattr(tools, "build_archive_filter_context", lambda conn, filters: context)
+    monkeypatch.setattr(
+        tools,
+        "get_collection_journey",
+        lambda conn, value: {
+            "status": "available",
+            "coverage": {"saved_tracks": 100},
+            "duration": {"known_duration_ms": 1_000},
+            "annual_growth": [{"year": 2024, "saved_tracks": 20}],
+            "milestones": [{"track_name": "First"}],
+        },
+    )
+    monkeypatch.setattr(
+        tools,
+        "get_collection_cohorts",
+        lambda conn, value: {
+            "status": "available",
+            "coverage": {"matched_saved_tracks": 88},
+            "encounter_to_save": {"eligible_entities": 80},
+            "symmetric_30_day_window": {"window_days": 30},
+            "return_windows": [{"horizon_days": 30, "return_rate_pct": 75.0}],
+            "relationship_matrix": {"counts": {"sleeping_saved": 12}},
+        },
+    )
+    monkeypatch.setattr(
+        tools,
+        "get_archive_returns",
+        lambda conn, value: {
+            "status": "available",
+            "coverage": {"return_eligible_entities": 70},
+            "summary": {"current_sleeping_entities": 12},
+            "latest_returns": [{"track_name": "Return"}],
+            "longest_returns": [],
+            "sleeping_recommendations": [{"track_name": "Sleep"}],
+        },
     )
 
     result = tool_registry.dispatch_tool("account_collection_insights", {})
 
     assert result["tool_name"] == "account_collection_insights"
-    assert "available=true" in result["result_summary"]
-    assert result["data"]["personality"]["type"] == "均衡型收藏者"
-    assert "huge_unused_section" not in result["data"]
+    assert "status=ready" in result["result_summary"]
+    assert "sleeping=12" in result["result_summary"]
+    assert result["data"]["schema_version"] == "account_agent_collection_v2"
+    assert result["data"]["relationship"]["counts"]["sleeping_saved"] == 12
+    assert "personality" not in result["data"]
     assert db_observed["connections"][0].closed is True
 
 

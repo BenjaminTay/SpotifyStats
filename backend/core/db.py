@@ -614,10 +614,21 @@ CREATE TABLE IF NOT EXISTS saved_tracks (
     artist_name TEXT,
     album_name TEXT,
     added_date TEXT,
-    spotify_track_id TEXT
+    spotify_track_id TEXT,
+    added_date_source TEXT CHECK(added_date_source IN ('oauth', 'manual', 'legacy'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_saved_tracks_spotify_track_id ON saved_tracks(spotify_track_id);
+
+CREATE TABLE IF NOT EXISTS account_archive_state (
+    state_id INTEGER PRIMARY KEY CHECK (state_id = 1),
+    account_import_revision INTEGER NOT NULL DEFAULT 0,
+    collection_date_revision INTEGER NOT NULL DEFAULT 0,
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+INSERT OR IGNORE INTO account_archive_state(
+    state_id, account_import_revision, collection_date_revision
+) VALUES (1, 0, 0);
 
 CREATE TABLE IF NOT EXISTS saved_albums (
     album_uri TEXT PRIMARY KEY,

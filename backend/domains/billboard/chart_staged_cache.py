@@ -29,7 +29,7 @@ from backend.domains.billboard.data_loader import (
     DOW_SHORT,
     load_track_album_map,
 )
-from backend.domains.billboard.latest_snapshot_cache import snapshot_key, store_latest_snapshot
+from backend.domains.billboard.latest_snapshot_cache import store_latest_snapshot_for_locals
 from backend.domains.billboard.year_end import (
     YEAR_END_ALBUM_TOP_N,
     YEAR_END_ARTIST_TOP_N,
@@ -114,7 +114,6 @@ def _compute_weekly_data_cached(
     weekly, weekly_album, weekly_artist = _add_cover_urls(weekly, weekly_album, weekly_artist)
     weekly = enrich_track_artist_names(weekly)
 
-    date_cols_week = ["billboard_week"]
     result = {
         "meta": {
             "total_weeks": len(all_weeks_asc),
@@ -129,29 +128,11 @@ def _compute_weekly_data_cached(
             "week_start_dow": bb_week_start_dow,
             "week_start_hour": bb_week_start_hour,
         },
-        "weekly": _df_to_json(weekly, date_cols_week),
-        "weekly_album": _df_to_json(weekly_album, date_cols_week),
-        "weekly_artist": _df_to_json(weekly_artist, date_cols_week),
+        "weekly": _df_to_json(weekly, ["billboard_week"]),
+        "weekly_album": _df_to_json(weekly_album, ["billboard_week"]),
+        "weekly_artist": _df_to_json(weekly_artist, ["billboard_week"]),
     }
-    store_latest_snapshot(
-        snapshot_key(
-            min_ms,
-            music_only,
-            bb_top_n,
-            bb_album_top_n,
-            bb_artist_top_n,
-            bb_week_start_dow,
-            bb_week_start_hour,
-            year_start,
-            year_end,
-            merge_level,
-            dynamic_threshold,
-            max_merge_gap_minutes,
-            include_compilations,
-        ),
-        result,
-    )
-    return result
+    return store_latest_snapshot_for_locals(locals(), result)
 
 
 @lru_cache(maxsize=4)

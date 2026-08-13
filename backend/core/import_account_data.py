@@ -10,6 +10,8 @@ import json
 import os
 from typing import Any
 
+from backend.domains.account_archive.revision import bump_archive_revision
+
 from .db import get_db
 from .utils import convert_to_local_time
 
@@ -180,7 +182,12 @@ def import_wrapped_2025(data_dir: str | None = None, conn=None) -> dict:
 
 
 def import_your_library(data_dir: str | None = None, conn=None) -> dict:
-    """Import YourLibrary.json into saved_* and banned_items tables."""
+    """Import YourLibrary.json without discarding previously known save dates.
+
+    Spotify's Your Library export is a current snapshot and normally does not
+    include ``added_at``.  Existing dates are therefore carried forward by
+    ``track_uri`` instead of being destroyed by the snapshot replacement.
+    """
     if data_dir is None:
         data_dir = ACCOUNT_DATA_DIR
     filepath = os.path.join(data_dir, "YourLibrary.json")
@@ -194,20 +201,52 @@ def import_your_library(data_dir: str | None = None, conn=None) -> dict:
     if close_conn:
         conn = get_db(readonly=False)
 
-    # saved tracks
+    saved_track_columns = {
+        row["name"] if hasattr(row, "keys") else row[1]
+        for row in conn.execute("PRAGMA table_info(saved_tracks)").fetchall()
+    }
+    has_date_source = "added_date_source" in saved_track_columns
+    source_expression = "added_date_source" if has_date_source else "NULL"
+    existing_dates = {
+        row[0]: (row[1], row[2] or "legacy")
+        for row in conn.execute(
+            f"SELECT track_uri, added_date, {source_expression} FROM saved_tracks "
+            "WHERE added_date IS NOT NULL AND TRIM(added_date) != ''"
+        ).fetchall()
+    }
+
+    # saved tracks: replace the snapshot while carrying forward date evidence.
     conn.execute("DELETE FROM saved_tracks")
     count_tracks = 0
+    preserved_added_dates = 0
     for item in data.get("tracks", []):
-        conn.execute(
-            "INSERT INTO saved_tracks(track_uri, track_name, artist_name, album_name, spotify_track_id) VALUES (?, ?, ?, ?, ?)",
-            (
-                item.get("uri", ""),
-                item.get("track", ""),
-                item.get("artist", ""),
-                item.get("album", ""),
-                item.get("uri", "").replace("spotify:track:", ""),
-            ),
+        track_uri = item.get("uri", "")
+        added_date, added_date_source = existing_dates.get(track_uri, (None, None))
+        if added_date:
+            preserved_added_dates += 1
+        values = (
+            track_uri,
+            item.get("track", ""),
+            item.get("artist", ""),
+            item.get("album", ""),
+            track_uri.replace("spotify:track:", ""),
+            added_date,
         )
+        if has_date_source:
+            conn.execute(
+                "INSERT INTO saved_tracks("
+                "track_uri, track_name, artist_name, album_name, spotify_track_id, "
+                "added_date, added_date_source"
+                ") VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (*values, added_date_source),
+            )
+        else:
+            conn.execute(
+                "INSERT INTO saved_tracks("
+                "track_uri, track_name, artist_name, album_name, spotify_track_id, added_date"
+                ") VALUES (?, ?, ?, ?, ?, ?)",
+                values,
+            )
         count_tracks += 1
 
     # saved albums
@@ -256,6 +295,7 @@ def import_your_library(data_dir: str | None = None, conn=None) -> dict:
         )
         count_banned += 1
 
+    bump_archive_revision(conn, "account_import")
     conn.commit()
     if close_conn:
         conn.close()
@@ -265,6 +305,8 @@ def import_your_library(data_dir: str | None = None, conn=None) -> dict:
         "artists": count_artists,
         "shows": count_shows,
         "banned": count_banned,
+        "preserved_added_dates": preserved_added_dates,
+        "missing_added_dates": count_tracks - preserved_added_dates,
     }
 
 
@@ -849,6 +891,9 @@ def import_all(
         except FileNotFoundError:
             results[name] = "skipped (file not found)"
         except Exception as e:
+            # Do not let a failed DELETE + INSERT importer leak partial state
+            # into the next importer, which may otherwise commit it.
+            conn.rollback()
             results[name] = f"error: {e}"
 
     conn.close()

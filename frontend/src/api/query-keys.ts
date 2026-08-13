@@ -132,8 +132,19 @@ export const queryKeys = {
 
   account: {
     all: ["account"] as const,
-    summary: () => ["account", "summary"] as const,
-    profile: () => ["account", "profile"] as const,
+    archiveOverview: () => ["account", "archive", "overview"] as const,
+    archiveJourney: (filters: Record<string, unknown>) =>
+      ["account", "archive", "journey", filters] as const,
+    archiveCohorts: (filters: Record<string, unknown>) =>
+      ["account", "archive", "cohorts", filters] as const,
+    archiveReturns: (filters: Record<string, unknown>) =>
+      ["account", "archive", "returns", filters] as const,
+    archiveDiscovery: (filters: Record<string, unknown>) =>
+      ["account", "archive", "discovery", filters] as const,
+    archiveLibrary: (entityType: string, params: Record<string, unknown>) =>
+      ["account", "archive", "library", entityType, params] as const,
+    archiveOtherMedia: (filters: Record<string, unknown>) =>
+      ["account", "archive", "other-media", filters] as const,
   },
 
   yearlyReview: {

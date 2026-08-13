@@ -15,7 +15,7 @@ const TOOL_LABELS: Record<string, string> = {
   resolve_entity: '实体解析',
   compare_entities: '实体比较',
   account_summary: '账号概览',
-  account_collection_insights: '收藏分析',
+  account_collection_insights: '音乐档案',
   search_history: '搜索历史',
   community_feed_search: '社区搜索',
   community_trending: '社区趋势',
