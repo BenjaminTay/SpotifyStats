@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest'
 
 import accountPageSource from '../pages/AccountCenterPage.tsx?raw'
+import phoneArchiveRouteSource from '../features/account-archive/route/AccountArchivePhoneRoute.tsx?raw'
+import phoneArchiveNavSource from '../features/account-archive/phone/PhoneArchiveNav.tsx?raw'
+import phoneArchiveLibrarySource from '../features/account-archive/phone/PhoneLibraryChapter.tsx?raw'
 import aiExperienceSource from '../features/ai-insights/AiInsightsExperience.tsx?raw'
 import chatComposerSource from '../features/ai-insights/ChatComposer.tsx?raw'
 import chatDrawerSource from '../features/ai-insights/ChatSessionDrawer.tsx?raw'
@@ -9,11 +12,6 @@ import communityDrawerSource from '../features/community/MobileSidebarDrawer.tsx
 import routeContextSource from '../components/layout/routeContext.ts?raw'
 import settingsPageSource from '../pages/SettingsPage.tsx?raw'
 import mobileSettingsSource from '../features/mobile/settings/MobileSettingsExperience.tsx?raw'
-import savedTracksSource from '../features/account/collection/components/SavedTracksBrowser.tsx?raw'
-import accountLeaderboardSource from '../features/account/collection/components/LeaderboardBlock.tsx?raw'
-import playlistBrowserSource from '../features/account/collection/components/PlaylistsBrowser.tsx?raw'
-import habitsTabSource from '../features/account/habits/HabitsTab.tsx?raw'
-import mobileHabitSectionSource from '../features/mobile/account/MobileHabitSection.tsx?raw'
 
 describe('M6 mobile community, AI, account and settings architecture', () => {
   it('consolidates community controls into sheets without a competing floating action', () => {
@@ -35,17 +33,14 @@ describe('M6 mobile community, AI, account and settings architecture', () => {
     expect(aiExperienceSource).toContain('mobile-ai-mode-switch')
   })
 
-  it('gives account center a dedicated phone hero and accessible tab presentation', () => {
-    expect(accountPageSource).toContain('MobileAccountHero')
-    expect(accountPageSource).toContain('role="tablist"')
-    expect(accountPageSource).toContain('aria-selected={activeTab === tab.key}')
-    for (const source of [savedTracksSource, accountLeaderboardSource, playlistBrowserSource]) {
-      expect(source).toContain('MobileEntityRow')
-      expect(source).toContain("useViewportMode() === 'phone'")
-      expect(source).toContain('<table')
-    }
-    expect(habitsTabSource).toContain('MobileHabitSection')
-    expect(mobileHabitSectionSource).toContain('aria-expanded={open}')
+  it('gives account center an independent pocket archive and full-screen mobile library', () => {
+    expect(accountPageSource).toContain('AccountArchivePhoneRoute')
+    expect(phoneArchiveRouteSource).toContain('data-account-presentation="phone-archive"')
+    expect(phoneArchiveRouteSource).toContain('PhoneArchiveCover')
+    expect(phoneArchiveNavSource).toContain('aria-label="音乐档案章节"')
+    expect(phoneArchiveLibrarySource).toContain('aria-modal="true"')
+    expect(phoneArchiveLibrarySource).toContain('limit: 10')
+    expect(phoneArchiveLibrarySource).not.toContain('<table')
   })
 
   it('short-circuits phone settings before desktop governance workbenches mount', () => {

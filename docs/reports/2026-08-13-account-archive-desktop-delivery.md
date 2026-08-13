@@ -2,7 +2,7 @@
 
 > 日期：2026-08-13
 > 分支：`codex/account-archive-rebuild`
-> 范围：`/account` 的 Desktop / Compact 页面、前端数据层、收藏库交互与真实浏览器验收；Phone 暂时保留原 presentation
+> 范围：`/account` 的 Desktop / Compact 页面、前端数据层、收藏库交互与真实浏览器验收；Phone 的后续交付见同日独立记录
 
 ## 1. 交付结论
 
@@ -23,7 +23,7 @@ Desktop 与 Compact 已从旧“账号中心”切换为本地优先的“音乐
 
 ## 3. 前端结构与状态
 
-- `AccountCenterPage` 只负责 presentation 分流：Phone 暂时使用旧组件，Desktop / Compact 进入新 route container。
+- `AccountCenterPage` 只负责 presentation 分流；本记录交付时 Phone 尚使用旧组件，现已由 `AccountArchivePhoneRoute` 接管，见 Phone 交付记录。
 - 所有 GET 读取通过 TanStack Query 和 `queryKeys.account.archive*`；默认 `staleTime=5min`、`gcTime=30min`。
 - 各章节使用 IntersectionObserver 渐进加载；直接打开 `?section=library` 时会在请求和布局变化结束前保持章节锚点，避免 URL 被错误回写到前一章。
 - 收藏库使用 `library`、`sort`、`search`、`page` 查询参数，可分享并支持浏览器前进/后退。
@@ -50,4 +50,4 @@ Desktop 与 Compact 已从旧“账号中心”切换为本地优先的“音乐
 
 ## 5. 尚未完成
 
-下一阶段只处理独立 Phone presentation，包括手机封面、章节切换、纵向故事卡、全屏收藏库、触控目标和 360 / 390 / 430 真机尺寸验收。两条 Git 分支仍不做同步、rebase 或合并，待首页与音乐档案各自完成后统一处理冲突。
+本记录中的 Phone 待办已在 `docs/reports/2026-08-13-account-archive-phone-delivery.md` 完成。下一阶段转入旧链路退役与文档/API 台账收口；两条 Git 分支仍不做同步、rebase 或合并，待首页与音乐档案各自完成后统一处理冲突。

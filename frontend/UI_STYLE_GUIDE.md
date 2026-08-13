@@ -220,6 +220,16 @@ className="rounded-[16px] border border-border bg-card backdrop-blur-[12px] shad
   - 下降：`text-accent-foreground`
   - 持平：`text-muted-foreground`
 
+### 音乐档案（`/account`）
+
+- 页面内容名称使用“音乐档案”，路由保留 `/account`；二级导航在全站命名统一前继续显示既有“账号中心”。
+- 视觉采用私人唱片档案：暖纸底、细档案线、编辑红、唱片封套与大号衬线数字；玻璃只用于导航、筛选和临时工具层，不给每段正文套玻璃卡。
+- Desktop 使用档案封面与粘性纵向章节索引；Compact 使用横向章节条；Phone 是独立“口袋音乐档案”，不得缩放或同时挂载 Desktop DOM。
+- Phone 封面使用两张有明确角色的收藏封套与黑胶拼贴，首屏事实固定为 2×2；章节正文实体只预览 Top 3–5。
+- Phone 收藏库必须进入覆盖 Shell 的全屏层，服务端每页 10 条；搜索、类型、排序和页码恢复到 URL，支持 ESC、背景滚动锁定与焦点恢复。
+- 收藏后逐周趋势在 Phone 通过 `MobileFullscreenChart` 查看；普通正文只保留 7 / 30 / 90 / 365 天里程碑，不内嵌桌面宽图。
+- 发现路径只显示去重后的星期分布、24 小时时段带和有限事件链；不得向消费 UI 暴露原始搜索词、身份资料、人格推断或 OAuth 凭据。
+
 ### WeekSelector（周选择器）
 
 - 布局：`flex items-center gap-3.5`

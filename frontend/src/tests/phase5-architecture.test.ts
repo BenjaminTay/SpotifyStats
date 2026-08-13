@@ -18,8 +18,10 @@ import dailyTotalLeaderboardSource from '../features/analysis/records/DailyTotal
 import yearlyReviewPageSource from '../pages/YearlyReviewPage.tsx?raw'
 import accountCenterPageSource from '../pages/AccountCenterPage.tsx?raw'
 import accountArchiveRouteSource from '../features/account-archive/route/AccountArchiveDesktopRoute.tsx?raw'
+import accountArchivePhoneRouteSource from '../features/account-archive/route/AccountArchivePhoneRoute.tsx?raw'
 import accountArchiveHooksSource from '../features/account-archive/hooks/useAccountArchive.ts?raw'
 import accountArchiveLibrarySource from '../features/account-archive/desktop/LibrarySection.tsx?raw'
+import accountArchivePhoneLibrarySource from '../features/account-archive/phone/PhoneLibraryChapter.tsx?raw'
 import habitsTabSource from '../features/account/habits/HabitsTab.tsx?raw'
 import habitsPersonalityHeroSource from '../features/account/habits/HabitsPersonalityHero.tsx?raw'
 import searchHistorySectionSource from '../features/account/habits/SearchHistorySection.tsx?raw'
@@ -346,7 +348,7 @@ describe('Phase 5 architecture guardrails', () => {
     expect(yearlyReviewPageSource.indexOf('<AnalysisSubNav')).toBeLessThan(
       yearlyReviewPageSource.indexOf('年份选择器'),
     )
-    expect(accountCenterPageSource).toContain('AnalysisSubNav')
+    expect(accountArchiveRouteSource).toContain('AnalysisSubNav')
   })
 
   it('keeps playback analysis tab rows vertically stable across child pages', () => {
@@ -357,7 +359,7 @@ describe('Phase 5 architecture guardrails', () => {
     expect(analysisSubNavSource).toContain('basis-full h-9 sm:hidden')
     expect(analysisSubNavSource).not.toContain('inline-flex h-9')
     expect(yearlyReviewPageSource).not.toContain('你的年度音乐档案，用数据讲述这一年的听觉故事。')
-    expect(accountCenterPageSource).toContain('AnalysisPageHeader')
+    expect(accountArchiveRouteSource).toContain('AnalysisPageHeader')
   })
 
   it('keeps mobile masthead orientation explicit without duplicating detail breadcrumbs', () => {
@@ -447,10 +449,11 @@ describe('Phase 5 architecture guardrails', () => {
     expect(chemistryBlockSource).toMatch(/\.slice\(0,\s*MAX_CHEMISTRY_EXAMPLES\)/)
   })
 
-  it('keeps the legacy Phone account hero progressive while the heavy account summary loads', () => {
-    expect(accountCenterPageSource).toContain('useProfile()')
-    expect(accountCenterPageSource).toContain('profileForHero')
-    expect(accountCenterPageSource).toContain('AccountContentSkeleton')
+  it('keeps the Phone archive local-first instead of reviving profile and legacy summary reads', () => {
+    expect(accountCenterPageSource).toContain('AccountArchivePhoneRoute')
+    expect(accountArchivePhoneRouteSource).toContain('useArchiveOverview')
+    expect(accountArchivePhoneRouteSource).not.toContain('useProfile')
+    expect(accountArchivePhoneRouteSource).not.toContain("from '@/hooks/useAccount'")
   })
 
   it('keeps artist release archive outside ArtistDetailExperience', () => {
@@ -584,9 +587,10 @@ describe('Phase 5 architecture guardrails', () => {
 
   // ── Account Habits (migrated to feature) ──────────────────────────────
 
-  it('routes Desktop and Compact to the local-first archive while retaining the legacy Phone presentation', () => {
+  it('routes Desktop and Compact separately from the independent Phone archive presentation', () => {
     expect(accountCenterPageSource.split('\n').length).toBeLessThanOrEqual(450)
     expect(accountCenterPageSource).toContain('AccountArchiveDesktopRoute')
+    expect(accountCenterPageSource).toContain('AccountArchivePhoneRoute')
     expect(accountCenterPageSource).toContain("mode === 'phone'")
     expect(accountCenterPageSource).not.toContain('<table')
     expect(accountCenterPageSource).not.toContain('function inferPersonality')
@@ -606,6 +610,9 @@ describe('Phase 5 architecture guardrails', () => {
     expect(accountArchiveLibrarySource).toContain('limit: 20')
     expect(accountArchiveLibrarySource).toContain('useArchiveLibrary')
     expect(accountArchiveLibrarySource).not.toContain('<table')
+    expect(accountArchivePhoneLibrarySource).toContain('limit: 10')
+    expect(accountArchivePhoneLibrarySource).toContain('role="dialog"')
+    expect(accountArchivePhoneLibrarySource).not.toContain('<table')
   })
 
   it('keeps HabitsTab as a thin orchestrator in features/account/habits', () => {

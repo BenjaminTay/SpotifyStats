@@ -1,7 +1,7 @@
 # 账号中心重构方案：从“人格橱窗”到“个人音乐档案”
 
 > 日期：2026-08-13
-> 状态：实施中；本地统计接口、Desktop / Compact 音乐档案与服务端收藏库已完成，独立 Phone presentation 待实施
+> 状态：实施中；本地统计接口、Desktop / Compact / Phone 音乐档案与服务端收藏库已完成，旧链路退役待实施
 > 范围：`/account` 的产品定位、统计语义、内容架构、Desktop / Compact / Phone UI、API 契约、性能、隐私与迁移计划
 > 原调研轮次不包含页面代码、数据库迁移、导航改名和生产部署；后续实施进度按下方交付记录更新
 
@@ -10,6 +10,7 @@
 - `docs/reports/2026-08-13-account-archive-phase-0-delivery.md`
 - `docs/reports/2026-08-13-account-archive-journey-cohorts-delivery.md`
 - `docs/reports/2026-08-13-account-archive-desktop-delivery.md`
+- `docs/reports/2026-08-13-account-archive-phone-delivery.md`
 - `docs/reference/account-archive-statistics.md`
 
 ## 1. 结论先行
@@ -23,7 +24,7 @@
 最终产品决策如下：
 
 1. 保留路由 `/account`，避免破坏已有深链、测试和 AI 工具调用。
-2. 页面标题和二级导航建议统一改为“音乐档案”；实施前同步更新项目导航规范，不保留“账号中心 / 音乐档案”两套名称。
+2. 页面内容标题使用“音乐档案”；二级导航暂按项目既有固定契约保留“账号中心”，待全站导航治理时统一处理，当前不在本分支制造跨页面命名冲突。
 3. 页面核心只使用本地已导入的播放、收藏、歌单和搜索数据；Spotify OAuth 只作为可选的数据补全能力，不作为打开页面或计算核心指标的前提。
 4. 删除收藏人格、习惯人格、粉丝等级、Marquee 转化、歌曲标题关键词迁移、估算收藏总时长等不可靠模块。
 5. 新页面围绕“档案概览 → 收藏旅程 → 收藏后的关系 → 发现路径 → 找回音乐 → 收藏库 → 音乐之外”组织。
@@ -53,7 +54,7 @@
 
 这造成了两个直接问题。第一，“账号中心”这个名称让用户预期看到登录、授权、资料和安全设置，但这些实际在 Settings；第二，收藏与行为分析又被两张大型人格卡统领，使可靠事实反而埋在页面下方。
 
-现有内容顺序可见 `frontend/src/pages/account/CollectionTab.tsx` 和 `frontend/src/features/account/habits/HabitsTab.tsx`。手机端虽然有独立 Hero 和折叠外壳，但重内容仍沿用同一组件树，尚未形成真正独立的 Phone presentation。
+旧内容顺序可见 `frontend/src/pages/account/CollectionTab.tsx` 和 `frontend/src/features/account/habits/HabitsTab.tsx`。当前 `/account` 已不再消费这套页面树，Desktop / Compact 与 Phone 分别进入独立档案 presentation；旧组件留待 Phase 4 在所有兼容消费者核清后删除。
 
 ### 3.2 本地数据能力
 
@@ -150,7 +151,7 @@ Spotify 的大规模研究进一步指出，探索会随生命周期和季节形
 
 ### 5.1 命名
 
-- 页面与导航名称：**音乐档案**
+- 页面内容名称：**音乐档案**；二级导航当前保留既有 **账号中心** 契约
 - 路由：继续使用 `/account`
 - 英文小标题：`PERSONAL MUSIC ARCHIVE`
 - 首屏主问句：**“哪些音乐只是路过，哪些真正留了下来？”**
@@ -405,12 +406,12 @@ Phone 不重复 Top Bar 已显示的页面 H1。正文结构为：
 
 ```text
 ┌──────────────────────────────┐
-│ PERSONAL MUSIC ARCHIVE · 04  │
-│ 哪些音乐真正留了下来？        │
-│ [四封面横向档案带]            │
+│ POCKET MUSIC ARCHIVE · NO.   │
+│ 音乐档案                      │
+│ [两张唱片封套 + 黑胶拼贴]     │
 │ 800 收藏     27 歌单          │
 │ 95.3% 关联   54.3h            │
-│ [打开章节目录] [打开收藏库]   │
+│ [开始翻阅]                    │
 └──────────────────────────────┘
 
 01 收藏旅程
@@ -427,7 +428,7 @@ Phone 不重复 Top Bar 已显示的页面 H1。正文结构为：
 ```
 
 - 首屏使用 2×2 档案事实，不展示人格徽章、头像大卡和四个重复账号 KPI。
-- 档案封面横向带一次只露出 2.4 张，支持触摸和键盘；不自动轮播。
+- 档案封面用两张可核验收藏封套与黑胶形成静态拼贴，不自动轮播；章节由紧凑、粘性的横向编号条直接进入。
 - 生命周期宽图替换成 7 / 30 / 90 / 365 天四个里程碑；完整曲线进入 `MobileFullscreenChart`。
 - 实体列表正文只预览 Top 3–5；完整列表每页 10 条，进入全屏列表，关闭后恢复焦点。
 - 搜索热图在手机只显示“星期分布 + 时段带”；完整 7×24 图进入全屏。
@@ -573,13 +574,15 @@ Desktop / Phone 共用同一 URL、TanStack Query、过滤指纹、row model 和
 
 ### Phase 3：Phone presentation（P1）
 
-- 独立口袋档案 Hero、2×2 事实、章节 Sheet；
+- 独立口袋档案 Hero、2×2 事实、粘性横向章节条；
 - 四里程碑替代宽生命周期图；
 - 完整曲线和收藏库进入全屏层；
 - Top 3–5 预览、每页 10 条、焦点恢复和滚动锁定；
 - Phone / Desktop 重图表和长列表互斥挂载。
 
 完成条件：360 / 390 / 430 / 768 / 1280 route matrix、control inventory、interaction、chart、long-list、Chromium / Firefox / WebKit 全部通过。
+
+交付状态：已完成。Phone 使用独立组件树；全屏曲线与收藏库具备 ESC、滚动锁定和焦点恢复，正文预览 Top 5、完整收藏库每页 10 条。完整证据见 `docs/reports/2026-08-13-account-archive-phone-delivery.md`。
 
 ### Phase 4：退役旧链路与文档收口（P2）
 
@@ -618,12 +621,12 @@ Desktop / Phone 共用同一 URL、TanStack Query、过滤指纹、row model 和
 
 ### 12.4 UI 与可访问性
 
-- [ ] Desktop / Compact / Phone presentation 互斥挂载。
-- [ ] 所有主要操作至少 44×44px，图标按钮有 accessible name。
-- [ ] Tab / Sheet / full-screen list 支持键盘、ESC、背景锁定和焦点恢复。
-- [ ] 浅色 / 深色文本和图表满足对比度要求。
-- [ ] `prefers-reduced-motion` 下无非必要动画。
-- [ ] 360 / 390 / 430px 无页面级横向滚动。
+- [x] Desktop / Compact / Phone presentation 互斥挂载。
+- [x] 所有主要操作至少 44×44px，图标按钮有 accessible name。
+- [x] Tab / full-screen chart / full-screen list 支持键盘、ESC、背景锁定和焦点恢复。
+- [x] 浅色 / 深色文本和图表完成生产预览检查。
+- [x] `prefers-reduced-motion` 下无非必要动画。
+- [x] 360 / 390 / 430px 无页面级横向滚动。
 
 ## 13. 退役、保留与迁移清单
 
