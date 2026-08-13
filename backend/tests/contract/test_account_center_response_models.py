@@ -15,6 +15,8 @@ ACCOUNT_CENTER_ROUTES = (
     ("GET", "/api/account/collection-cohorts"),
     ("GET", "/api/account/returns"),
     ("GET", "/api/account/discovery"),
+    ("GET", "/api/account/library/{entity_type}"),
+    ("GET", "/api/account/other-media"),
     ("GET", "/api/search-history"),
     ("GET", "/api/insights/tiers"),
     ("GET", "/api/insights/marquee"),

@@ -91,6 +91,14 @@ def _revision_payload(conn: sqlite3.Connection) -> dict[str, Any]:
                 "total_play_ms": int(row[2] or 0),
             }
         )
+        if "content_type" in play_columns:
+            payload["play_content_types"] = [
+                [row[0] or "", int(row[1] or 0), int(row[2] or 0)]
+                for row in conn.execute(
+                    "SELECT content_type, COUNT(*), COALESCE(SUM(ms_played), 0) "
+                    "FROM plays GROUP BY content_type ORDER BY content_type"
+                ).fetchall()
+            ]
     for table in ("artist_identity_state", "track_credit_state"):
         if _table_exists(conn, table):
             row = conn.execute(

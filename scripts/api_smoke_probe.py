@@ -337,6 +337,16 @@ DEFAULT_SAFE_GET_CASES: tuple[SmokeCase, ...] = (
         {"min_ms": 30000, "merge_enabled": True, "dynamic_threshold": True, "merge_level": 2},
     ),
     SmokeCase(
+        "account_archive_library_tracks",
+        "/api/account/library/tracks",
+        {"page": 1, "limit": 5, "sort": "recent"},
+    ),
+    SmokeCase(
+        "account_archive_other_media",
+        "/api/account/other-media",
+        {"min_ms": 30000, "merge_enabled": True, "dynamic_threshold": True},
+    ),
+    SmokeCase(
         "ai_task_missing",
         "/api/ai/tasks/nonexistent-smoke-task",
         expected_json={"found": False},

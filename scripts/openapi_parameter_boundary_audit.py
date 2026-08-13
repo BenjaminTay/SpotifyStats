@@ -76,6 +76,15 @@ class ParameterBoundaryAudit:
 
 
 BOUNDARY_EVIDENCE_BY_KEY: dict[tuple[str, str, str], ParameterEvidence] = {
+    (
+        "path",
+        "entity_type",
+        "string|enum=tracks,albums,artists,playlists",
+    ): ParameterEvidence(
+        "boundary_probe",
+        ("account_library_invalid_entity",),
+        "account archive library rejects unsupported entity types",
+    ),
     ("path", "year", "integer|maximum=2100|minimum=2000"): ParameterEvidence(
         "targeted_contract",
         ("backend/tests/contract/test_yearly_review_v2_contract.py",),
@@ -180,6 +189,11 @@ BOUNDARY_EVIDENCE_BY_KEY: dict[tuple[str, str, str], ParameterEvidence] = {
         "pagination limit bound is validated on a representative paginated route",
         contract_paths=("backend/tests/contract/test_artist_language_metadata_api.py",),
     ),
+    ("query", "limit", "integer|maximum=50|minimum=1"): ParameterEvidence(
+        "boundary_probe",
+        ("account_library_limit_low", "account_library_limit_high"),
+        "account archive library validates the 1-50 page-size bounds",
+    ),
     ("query", "limit", "integer|maximum=5000|minimum=1"): ParameterEvidence(
         "boundary_probe",
         ("analysis_charts_limit_zero", "analysis_charts_limit_too_high"),
@@ -236,6 +250,20 @@ BOUNDARY_EVIDENCE_BY_KEY: dict[tuple[str, str, str], ParameterEvidence] = {
         "boundary_probe",
         ("music_search_q_too_long",),
         "music search query rejects overlong search strings",
+    ),
+    ("query", "search", "string|maxLength=120"): ParameterEvidence(
+        "boundary_probe",
+        ("account_library_search_too_long", "account_library_special_search"),
+        "account archive library bounds search length and safely handles special characters",
+    ),
+    (
+        "query",
+        "sort",
+        "string|enum=recent,oldest,name,artist,tracks",
+    ): ParameterEvidence(
+        "boundary_probe",
+        ("account_library_invalid_sort_enum", "account_library_invalid_sort_for_entity"),
+        "account archive library rejects unknown and entity-incompatible sort modes",
     ),
     ("query", "overlap_threshold", "number|maximum=1.0|minimum=0.1"): ParameterEvidence(
         "controlled_stateful_or_external",

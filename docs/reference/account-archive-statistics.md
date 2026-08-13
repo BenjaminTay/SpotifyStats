@@ -1,11 +1,11 @@
 # 音乐档案统计规则
 
-版本：`account_archive_filter_v1` / `account_archive_cohorts_v1_0` / `account_archive_returns_v1_0` / `account_archive_discovery_v1_0`
+版本：`account_archive_filter_v1` / `account_archive_cohorts_v1_0` / `account_archive_returns_v1_0` / `account_archive_discovery_v1_0` / `account_archive_library_v1_0` / `account_archive_other_media_v1_0`
 日期：2026-08-13
 
 ## 1. 适用范围
 
-本文约束 `/api/account/collection-journey`、`/api/account/collection-cohorts`、`/api/account/returns` 与 `/api/account/discovery`。音乐档案只分析本地导入数据，不在读取或计算时调用 Spotify Web API。
+本文约束 `/api/account/collection-journey`、`/api/account/collection-cohorts`、`/api/account/returns`、`/api/account/discovery`、`/api/account/library/{entity_type}` 与 `/api/account/other-media`。音乐档案只分析本地导入数据，不在读取或计算时调用 Spotify Web API。
 
 `YourLibrary.json` 是“导出时仍在收藏”的当前快照，不包含取消收藏历史。因此本文中的“收藏”始终指 **当前仍在收藏的曲目**；回访率不能解释为全部历史收藏的留存率，也不能用于推断收藏行为造成了后续播放。
 
@@ -135,8 +135,41 @@ track interaction burst
 
 最后一级正式名称为“观察到播放后 30 天内进入当前收藏”，不是搜索转化率。原因包括：interaction URI 覆盖很低；只保留第一个 URI；当前收藏快照看不到已经取消收藏的曲目；缺少明确的收藏快照截止时间。接口因此只返回数量，`display_status=count_only`，不返回百分比或因果文案。
 
-## 13. 缓存与契约
+## 13. 当前收藏库浏览
 
-缓存键包含：最短时长、连续合并、动态阈值、最大合并间隔、merge level、UTC 观察边界、播放/收藏 source revision、track group revision 和账号导入/日期 provenance revision。`discovery` 另对搜索内容生成不暴露原文的精确 revision；即使行数不变，查询、时间、平台或 interaction URI 变化也会失效缓存。
+`library/{entity_type}` 只浏览账号导出中的当前快照，支持 `tracks / albums / artists / playlists` 四类：
+
+- 后端 SQL 分页，默认每页 20 条、最大 50 条；搜索中的 `%`、`_` 和反斜杠按普通字符转义，不能扩大匹配范围；
+- 歌曲可按最近收藏、最早收藏、名称或艺人排序；专辑可按名称或艺人排序；艺人按名称排序；歌单可按名称、最近修改或实际成员数排序；不适用的排序返回 422；
+- 歌单曲目数优先从 `playlist_tracks` 实际成员计算，不信任导出元数据中的声明数量；每个歌单最多返回 3 条无 URI 预览；
+- 只有能映射到本地音乐实体时才返回本站封面和详情深链。缺少 `tracks / albums / artists` 本地目录时，账号导出仍可分页浏览，但不编造详情链接；
+- `data_revision` 对收藏表和歌单成员内容做确定性哈希。名称、日期或成员变化即使不改变行数，也必须使 revision 变化。
+
+响应不得返回 Spotify URI、provider ID 或未分页的实体全集。`item_key` 在没有本地实体 ID 时使用不可逆短哈希，只用于列表稳定渲染。
+
+## 14. 播客与视频档案
+
+`other-media` 是辅助摘要，不把播客或视频伪装成完整音乐收藏统计。
+
+### 播客
+
+- 来源为 `podcast_plays`；有效事件要求 `ms_played >= filter_context.min_ms`；
+- 返回有效时长、事件数、节目数、活跃月份、首末有效时间，以及按有效时长排序的最多 3 个节目摘要；
+- `returning_shows` 表示至少在两个不同自然日有有效播放的节目，不是订阅、留存或回访率；
+- 导出没有可靠的单集总时长，不能计算完成率，也不能对动态阈值作曲长归一化；
+- 响应不得返回单集名称、原始平台字段或播放明细。
+
+### 音频与视频
+
+- 音频和视频从同一 `plays` 观察窗加载，共享静态/动态阈值、连续合并和最大合并间隔；`content_type` 是强制合并边界，音频与视频不能互相合并；
+- 视频保留未映射本地曲目的播放行；动态阈值无法取得曲长时自然回退到统一最短时长。音频对照只统计可映射本地音乐曲目的有效逻辑事件；
+- 视频的 `effective_events` 是连续合并和长片段拆分后的逻辑事件数，可能高于或低于“原始行中时长超过 30 秒”的数量；产品比较优先使用有效时长，不比较未经同口径处理的原始行数；
+- 音频/视频观察期锚定同一个 `filter_context.first_play_at / latest_play_at`，不能用服务器今天或两个不同窗口。
+
+只有来源行和有效事件都覆盖两类媒体时状态才为 `available`；部分缺失或全部被过滤时为 `partial`；没有播客和视频来源时为 `unavailable`。
+
+## 15. 缓存与契约
+
+缓存键包含：最短时长、连续合并、动态阈值、最大合并间隔、merge level、UTC 观察边界、播放/收藏 source revision、track group revision 和账号导入/日期 provenance revision。`discovery` 另对搜索内容生成不暴露原文的精确 revision；`other-media` 另对播客内容生成精确 revision；即使行数不变，相关内容变化也会失效缓存。收藏库使用短 SQL 分页直接读取，并通过内容 revision 表达快照变化。
 
 所有正式响应使用 `extra="forbid"` 的 Pydantic 白名单模型；不得返回 profile、原始搜索词、prompts、inferences、banned items、Spotify URI 或未分页实体全集。

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Literal, Union
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -372,3 +372,129 @@ class ArchiveDiscoveryResponse(StrictArchiveModel):
     observed_saved_examples: list[ArchiveDiscoveryTrackPreview] = Field(
         default_factory=list, max_length=5
     )
+
+
+ArchiveLibraryEntityType = Literal["tracks", "albums", "artists", "playlists"]
+ArchiveLibrarySort = Literal["recent", "oldest", "name", "artist", "tracks"]
+
+
+class ArchiveLibraryTrackItem(StrictArchiveModel):
+    entity_type: Literal["track"] = "track"
+    item_key: str
+    track_name: str
+    artist_name: str
+    album_name: str | None = None
+    added_date: str | None = None
+    cover_url: str | None = None
+    deep_link: str | None = None
+
+
+class ArchiveLibraryAlbumItem(StrictArchiveModel):
+    entity_type: Literal["album"] = "album"
+    item_key: str
+    album_name: str
+    artist_name: str
+    cover_url: str | None = None
+    deep_link: str | None = None
+
+
+class ArchiveLibraryArtistItem(StrictArchiveModel):
+    entity_type: Literal["artist"] = "artist"
+    item_key: str
+    artist_name: str
+    cover_url: str | None = None
+    deep_link: str | None = None
+
+
+class ArchiveLibraryPlaylistTrackPreview(StrictArchiveModel):
+    track_name: str
+    artist_name: str
+
+
+class ArchiveLibraryPlaylistItem(StrictArchiveModel):
+    entity_type: Literal["playlist"] = "playlist"
+    item_key: str
+    playlist_id: int = Field(ge=1)
+    playlist_name: str
+    last_modified_date: str | None = None
+    track_count: int = Field(ge=0)
+    follower_count: int = Field(ge=0)
+    preview_tracks: list[ArchiveLibraryPlaylistTrackPreview] = Field(
+        default_factory=list, max_length=3
+    )
+
+
+ArchiveLibraryItem = Union[
+    ArchiveLibraryTrackItem,
+    ArchiveLibraryAlbumItem,
+    ArchiveLibraryArtistItem,
+    ArchiveLibraryPlaylistItem,
+]
+
+
+class ArchiveLibraryPageResponse(StrictArchiveModel):
+    schema_version: Literal["account_archive_library_v1"] = "account_archive_library_v1"
+    content_version: Literal["account_archive_library_v1_0"] = "account_archive_library_v1_0"
+    data_revision: str
+    entity_type: ArchiveLibraryEntityType
+    page: int = Field(ge=1)
+    limit: int = Field(ge=1, le=50)
+    total: int = Field(ge=0)
+    total_pages: int = Field(ge=0)
+    sort: ArchiveLibrarySort
+    search_applied: bool
+    items: list[ArchiveLibraryItem] = Field(default_factory=list)
+
+
+class ArchiveMediaObservationWindow(StrictArchiveModel):
+    first_play_at: str | None = None
+    latest_play_at: str | None = None
+
+
+class ArchivePodcastShowPreview(StrictArchiveModel):
+    show_name: str
+    effective_events: int = Field(ge=0)
+    effective_ms: int = Field(ge=0)
+
+
+class ArchivePodcastSummary(StrictArchiveModel):
+    source_rows: int = Field(ge=0)
+    effective_events: int = Field(ge=0)
+    effective_ms: int = Field(ge=0)
+    unique_shows: int = Field(ge=0)
+    active_months: int = Field(ge=0)
+    returning_shows: int = Field(ge=0)
+    first_effective_at: str | None = None
+    latest_effective_at: str | None = None
+    top_shows: list[ArchivePodcastShowPreview] = Field(default_factory=list, max_length=3)
+
+
+class ArchiveVideoSummary(StrictArchiveModel):
+    source_rows: int = Field(ge=0)
+    effective_events: int = Field(ge=0)
+    effective_ms: int = Field(ge=0)
+    unique_tracks: int = Field(ge=0)
+    active_days: int = Field(ge=0)
+    first_effective_at: str | None = None
+    latest_effective_at: str | None = None
+
+
+class ArchiveAudioVideoComparison(StrictArchiveModel):
+    audio_effective_events: int = Field(ge=0)
+    audio_effective_ms: int = Field(ge=0)
+    video_effective_events: int = Field(ge=0)
+    video_effective_ms: int = Field(ge=0)
+
+
+class ArchiveOtherMediaResponse(StrictArchiveModel):
+    schema_version: Literal["account_archive_other_media_v1"] = "account_archive_other_media_v1"
+    content_version: Literal["account_archive_other_media_v1_0"] = (
+        "account_archive_other_media_v1_0"
+    )
+    data_revision: str
+    status: ArchiveChapterStatus
+    filter_context: ArchiveFilterContext
+    observation_window: ArchiveMediaObservationWindow
+    podcast: ArchivePodcastSummary
+    video: ArchiveVideoSummary
+    audio_video_comparison: ArchiveAudioVideoComparison
