@@ -13,10 +13,11 @@ SQLite 数据目录提供两种运行面：
 部署和模式切换脚本不会自动启用、关闭或修改任何 Tailscale、Funnel、域名、
 证书或云防火墙配置。
 
-`public-web` 还强制使用独立的 HTTP Basic Auth。健康检查端点不返回个人数据，
-可在无凭据时访问；页面、静态资源、能力声明、公开 API 与封面都必须先通过密码
-门禁。密码门禁是“朋友分享”层，后端 public-readonly 白名单和 SQLite 只读连接
-仍是不可绕过的最终数据安全边界。
+`public-web` 的人类访问门禁可在 `protected` 和 `public` 之间显式切换。
+`protected` 强制 HTTP Basic Auth；`public` 打开链接即可访问，适合明确愿意
+对外展示数据的场景。该开关只控制“能否看到”；后端 public-readonly 白名单、
+写操作阻断和 SQLite 只读连接始终是不可绕过的数据完整性边界。健康检查
+端点不返回个人数据，两种模式下都可无凭据访问。
 
 ## 部署模式
 
@@ -41,7 +42,20 @@ SQLite 数据目录提供两种运行面：
 
 ## 展示入口密码
 
-首次进入 `showcase` 或 `dual` 时，部署脚本会在服务器本地生成 32 位随机密码：
+切换简化版访问方式：
+
+```bash
+./set-showcase-access-mode.sh protected
+./set-showcase-access-mode.sh public
+```
+
+当 `showcase` 或 `dual` 正在运行时，脚本只会重建 `public-web` 并执行完整
+边界验收；验收失败会自动恢复原模式。它不修改完全版、数据库、
+Tailscale、Tunnel、域名或防火墙。非法配置会让展示网关启动失败，不会
+退化为意外公开。
+
+首次进入 `showcase` 或 `dual` 时，部署脚本会在服务器本地准备 32 位
+随机密码，供 `protected` 模式使用：
 
 ```bash
 ./showcase-auth.sh ensure
@@ -68,7 +82,8 @@ SQLite 数据目录提供两种运行面：
 ./set-deployment-mode.sh full
 ```
 
-`start` 会先切换 `dual`，然后下载固定版本的 Cloudflare 官方二进制并校验 SHA-256，
+`start` 会先切换 `dual`，并沿用当前 `SHOWCASE_ACCESS_MODE`，然后下载固定
+版本的 Cloudflare 官方二进制并校验 SHA-256，
 只把随机 `trycloudflare.com` HTTPS 地址转发到 `127.0.0.1:3002`。它不会占用宿主机
 80/443，不会启用 Tailscale，也不会暴露 3001/3002/8000。systemd unit 故意不设
 开机自启，因此服务器重启不会静默创建新的分享地址；代码自动部署也不会启动它。
@@ -76,6 +91,15 @@ SQLite 数据目录提供两种运行面：
 Quick Tunnel 只用于临时测试：URL 在隧道重启后可能变化，官方限制最多 200 个并发
 中的请求，并且不支持 SSE。长期分享应改用自有域名和正式受管理 Tunnel/反向代理，
 但仍只允许其访问展示端口 3002。
+
+## 封面缓存
+
+封面使用标准 HTTP 浏览器缓存，而不进入 Service Worker 的离线个人数据
+缓存。当前有效期为 7 天，同时允许 30 天 `stale-while-revalidate`；本地文件
+支持 ETag 条件请求和 `304 Not Modified`。两种访问模式都返回 `private` 缓存
+指令：同一浏览器会复用封面，但共享 CDN 不会保留可能在切回 `protected`
+后仍可被绕过访问的旧副本。若未来使用可编程清理的正式 CDN，再单独开启共享
+封面缓存。`/api/` 个人统计仍不由 Service Worker 持久化。
 
 ## 首次部署
 

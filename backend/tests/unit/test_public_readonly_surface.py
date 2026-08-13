@@ -213,3 +213,31 @@ def test_public_cover_miss_never_triggers_spotify_lookup(monkeypatch) -> None:
 
     assert response.status_code == 404
     assert called is False
+
+
+def test_local_cover_uses_browser_cache_and_etag_revalidation(monkeypatch, tmp_path) -> None:
+    import backend.main as main_module
+
+    cover_dir = tmp_path / "albums"
+    cover_dir.mkdir()
+    (cover_dir / "42.jpg").write_bytes(b"local-cover-bytes")
+    monkeypatch.setattr(main_module, "_COVERS_DIR", str(tmp_path))
+
+    with TestClient(app) as client:
+        first = client.get("/covers/albums/42.jpg")
+        revalidated = client.get(
+            "/covers/albums/42.jpg",
+            headers={"If-None-Match": f"W/{first.headers['etag']}"},
+        )
+
+    assert first.status_code == 200
+    assert first.content == b"local-cover-bytes"
+    assert first.headers["cache-control"] == (
+        "private, max-age=604800, stale-while-revalidate=2592000"
+    )
+    assert first.headers["etag"]
+    assert first.headers["last-modified"]
+    assert revalidated.status_code == 304
+    assert revalidated.content == b""
+    assert revalidated.headers["etag"] == first.headers["etag"]
+    assert revalidated.headers["cache-control"] == first.headers["cache-control"]

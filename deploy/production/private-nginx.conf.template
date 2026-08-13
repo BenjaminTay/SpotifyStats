@@ -47,6 +47,9 @@ server {
     }
 
     location /covers/ {
+        proxy_hide_header Cache-Control;
+        add_header Cache-Control "private, max-age=604800, stale-while-revalidate=2592000" always;
+        add_header X-Content-Type-Options "nosniff" always;
         proxy_pass http://backend:8000/covers/;
         proxy_http_version 1.1;
         proxy_set_header X-SpotifyStats-Surface private-admin;

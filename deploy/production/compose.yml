@@ -82,9 +82,11 @@ services:
     environment:
       NGINX_ENVSUBST_FILTER: ^SPOTIFY_STATS_GATEWAY_TOKEN$
       SPOTIFY_STATS_GATEWAY_TOKEN: ${SPOTIFY_STATS_GATEWAY_TOKEN:?请在 .env 中设置 SPOTIFY_STATS_GATEWAY_TOKEN}
+      SHOWCASE_ACCESS_MODE: ${SHOWCASE_ACCESS_MODE:-protected}
     volumes:
       - ./public-nginx.conf.template:/etc/nginx/templates/default.conf.template:ro
       - ./secrets/showcase.htpasswd:/etc/nginx/auth/showcase.htpasswd:ro
+      - ./showcase-access-entrypoint.sh:/docker-entrypoint.d/15-showcase-access.sh:ro
     networks:
       - application
     healthcheck:

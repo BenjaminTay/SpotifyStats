@@ -133,8 +133,9 @@ jobs:
             compose.yml nginx.conf private-nginx.conf.template \
             public-nginx.conf.template .env.example deploy.sh backup.sh rollback.sh \
             restore.sh configure-tailscale.sh configure-public-funnel.sh \
-            showcase-auth.sh temporary-showcase.sh install-backup-timer.sh \
-            verify.sh set-deployment-mode.sh \
+            showcase-auth.sh showcase-access-entrypoint.sh temporary-showcase.sh \
+            install-backup-timer.sh verify.sh set-deployment-mode.sh \
+            set-showcase-access-mode.sh \
             validate-deployment-config.sh README.md
           scp -P "$SERVER_PORT" -i "$RUNNER_TEMP/spotify-stats-deploy-key" \
             "$RUNNER_TEMP/spotify-stats-deploy.tgz" \

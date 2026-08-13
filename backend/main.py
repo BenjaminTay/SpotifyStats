@@ -12,7 +12,7 @@ from fastapi.exceptions import HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.openapi.docs import get_swagger_ui_html
-from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response
 
 from backend.api.router import api_router
 from backend.core.access_surface import (
@@ -240,6 +240,43 @@ async def global_exception_handler(_request: Request, exc: Exception):
 # ── 智能封面端点 ───────────────────────────────────────────────────────
 
 
+_COVER_BROWSER_CACHE_CONTROL = "private, max-age=604800, stale-while-revalidate=2592000"
+
+
+def _etag_matches(if_none_match: str, etag: str) -> bool:
+    """Compare strong or weak validators by their opaque ETag value."""
+
+    expected = etag.removeprefix("W/")
+    return any(
+        candidate == "*" or candidate.removeprefix("W/") == expected
+        for candidate in (part.strip() for part in if_none_match.split(","))
+    )
+
+
+def _local_cover_response(request: Request, filepath: str) -> Response:
+    """Return a local cover with explicit browser caching and 304 support."""
+
+    stat_result = os.stat(filepath)
+    response = FileResponse(
+        filepath,
+        media_type="image/jpeg",
+        stat_result=stat_result,
+        headers={"Cache-Control": _COVER_BROWSER_CACHE_CONTROL},
+    )
+    etag = response.headers["etag"]
+    if_none_match = request.headers.get("if-none-match")
+    if if_none_match and _etag_matches(if_none_match, etag):
+        return Response(
+            status_code=304,
+            headers={
+                "Cache-Control": _COVER_BROWSER_CACHE_CONTROL,
+                "ETag": etag,
+                "Last-Modified": response.headers["last-modified"],
+            },
+        )
+    return response
+
+
 def _get_cover_cdn_url(cover_type: str, entity_id: int) -> str | None:
     """从数据库查询 Spotify CDN URL 作为回退源。"""
     from backend.core.db import get_db
@@ -406,7 +443,7 @@ async def get_cover(request: Request, cover_type: str, entity_id: int):
 
     # ① 本地缓存命中
     if os.path.isfile(filepath):
-        return FileResponse(filepath, media_type="image/jpeg")
+        return _local_cover_response(request, filepath)
 
     # ② 本地缺失，尝试从 DB CDN URL 获取
     cdn_url = _get_cover_cdn_url(cover_type, entity_id)

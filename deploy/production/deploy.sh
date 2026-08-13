@@ -61,6 +61,10 @@ valid_mode() {
   [[ "$1" == "full" || "$1" == "showcase" || "$1" == "dual" ]]
 }
 
+valid_showcase_access_mode() {
+  [[ "$1" == "protected" || "$1" == "public" ]]
+}
+
 ensure_gateway_token() {
   local token
   token="$(get_env SPOTIFY_STATS_GATEWAY_TOKEN)"
@@ -89,6 +93,12 @@ if ! valid_mode "$current_mode"; then
   current_mode="dual"
   set_env DEPLOYMENT_MODE "$current_mode"
   echo "旧部署未记录 DEPLOYMENT_MODE；按原有双网关行为迁移为 dual。"
+fi
+showcase_access_mode="$(get_env SHOWCASE_ACCESS_MODE)"
+if ! valid_showcase_access_mode "$showcase_access_mode"; then
+  showcase_access_mode="protected"
+  set_env SHOWCASE_ACCESS_MODE "$showcase_access_mode"
+  echo "旧部署未记录 SHOWCASE_ACCESS_MODE；安全迁移为 protected。"
 fi
 
 target_mode="${MODE_OVERRIDE:-$current_mode}"
@@ -180,7 +190,7 @@ assert_surface() {
   local expected="$2"
   local -a auth_args=()
   local response
-  if [[ "$expected" == "public-readonly" ]]; then
+  if [[ "$expected" == "public-readonly" && "$showcase_access_mode" == "protected" ]]; then
     load_showcase_credentials || return 1
     auth_args=(--user "$showcase_username:$showcase_password")
   fi
@@ -221,18 +231,27 @@ verify_showcase_gateway() {
   fi
   assert_surface "$public_gateway_port" public-readonly || return 1
 
-  local unauthenticated_status
+  local unauthenticated_status expected_status
   unauthenticated_status="$(curl --silent --output /dev/null --write-out '%{http_code}' \
     --max-time 5 "http://127.0.0.1:$public_gateway_port/api/runtime/capabilities")"
-  if [[ "$unauthenticated_status" != "401" ]]; then
-    echo "简化版未认证请求返回 HTTP $unauthenticated_status，预期 401。" >&2
+  if [[ "$showcase_access_mode" == "protected" ]]; then
+    expected_status="401"
+  else
+    expected_status="200"
+  fi
+  if [[ "$unauthenticated_status" != "$expected_status" ]]; then
+    echo "简化版 $showcase_access_mode 请求返回 HTTP $unauthenticated_status，预期 $expected_status。" >&2
     return 1
   fi
 
   local write_status
-  load_showcase_credentials || return 1
+  local -a auth_args=()
+  if [[ "$showcase_access_mode" == "protected" ]]; then
+    load_showcase_credentials || return 1
+    auth_args=(--user "$showcase_username:$showcase_password")
+  fi
   write_status="$(curl --silent --output /dev/null --write-out '%{http_code}' \
-    --user "$showcase_username:$showcase_password" \
+    "${auth_args[@]}" \
     --max-time 5 -X PUT "http://127.0.0.1:$public_gateway_port/api/settings" \
     -H 'Content-Type: application/json' -d '{}')"
   if [[ "$write_status" != "403" ]]; then
@@ -314,5 +333,5 @@ fi
 printf '%s\n' "$NEW_TAG" > .current-image-tag
 printf '%s\n' "$target_mode" > .current-deployment-mode
 
-echo "部署完成：$NEW_TAG（模式：$target_mode）"
+echo "部署完成：$NEW_TAG（模式：$target_mode，简化版访问：$showcase_access_mode）"
 echo "外部 HTTPS 入口未被修改；如需对外访问，请单独配置受控入口。"

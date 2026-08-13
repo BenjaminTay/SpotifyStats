@@ -47,6 +47,13 @@ def test_production_compose_exposes_only_profile_selected_loopback_ports() -> No
         "./secrets/showcase.htpasswd:/etc/nginx/auth/showcase.htpasswd:ro"
         in services["public-web"]["volumes"]
     )
+    assert (
+        "./showcase-access-entrypoint.sh:/docker-entrypoint.d/15-showcase-access.sh:ro"
+        in services["public-web"]["volumes"]
+    )
+    assert services["public-web"]["environment"]["SHOWCASE_ACCESS_MODE"] == (
+        "${SHOWCASE_ACCESS_MODE:-protected}"
+    )
 
 
 def test_production_data_is_one_host_persistent_mount_and_one_backend() -> None:
@@ -96,10 +103,16 @@ def test_public_gateway_keeps_defence_in_depth_rules() -> None:
     assert "limit_except GET HEAD OPTIONS {" in public_nginx
     assert "location = /docs" in public_nginx
     assert "location = /openapi.json" in public_nginx
-    assert 'auth_basic "SpotifyStats Showcase"' in public_nginx
-    assert "auth_basic_user_file /etc/nginx/auth/showcase.htpasswd" in public_nginx
+    assert "include /etc/nginx/includes/showcase-access.conf" in public_nginx
     assert "location = /api/health" in public_nginx
     assert "auth_basic off" in public_nginx
+    assert "proxy_hide_header Cache-Control" in public_nginx
+    assert 'add_header Cache-Control "private, max-age=604800' in public_nginx
+
+    access_entrypoint = (PRODUCTION / "showcase-access-entrypoint.sh").read_text()
+    assert 'mode="${SHOWCASE_ACCESS_MODE:-protected}"' in access_entrypoint
+    assert 'auth_basic "SpotifyStats Showcase"' in access_entrypoint
+    assert "auth_basic off" in access_entrypoint
 
 
 def test_deployment_scripts_manage_modes_without_external_ingress() -> None:
@@ -107,6 +120,7 @@ def test_deployment_scripts_manage_modes_without_external_ingress() -> None:
     verify = (PRODUCTION / "verify.sh").read_text()
     rollback = (PRODUCTION / "rollback.sh").read_text()
     switch = (PRODUCTION / "set-deployment-mode.sh").read_text()
+    access_switch = (PRODUCTION / "set-showcase-access-mode.sh").read_text()
 
     assert "full|showcase|dual" in deploy
     assert "SPOTIFY_STATS_GATEWAY_TOKEN" in deploy
@@ -121,8 +135,12 @@ def test_deployment_scripts_manage_modes_without_external_ingress() -> None:
     assert "HTTP $write_status，预期 403" in deploy
     assert "unauthenticated_status" in deploy
     assert "showcase-auth.sh" in deploy
+    assert "SHOWCASE_ACCESS_MODE" in deploy
+    assert "protected|public" in access_switch
+    assert "force-recreate public-web" in access_switch
+    assert "verify.sh" in access_switch
 
-    for source in (deploy, verify, rollback, switch):
+    for source in (deploy, verify, rollback, switch, access_switch):
         assert "tailscale " not in source.lower()
         assert " funnel " not in source.lower()
 
@@ -161,13 +179,15 @@ def test_workflow_builds_one_sha_and_uploads_profile_runtime_files() -> None:
     assert "public-nginx.conf.template" in workflow
     assert "set-deployment-mode.sh" in workflow
     assert "showcase-auth.sh" in workflow
+    assert "showcase-access-entrypoint.sh" in workflow
+    assert "set-showcase-access-mode.sh" in workflow
     assert "temporary-showcase.sh" in workflow
     assert "validate-deployment-config.sh" in workflow
     assert "./deploy.sh '${{ github.sha }}'" in workflow
     assert "--mode" not in workflow.split("Deploy commit", 1)[1]
 
 
-def test_temporary_showcase_is_pinned_password_protected_and_not_persistent() -> None:
+def test_temporary_showcase_is_pinned_access_aware_and_not_persistent() -> None:
     auth = (PRODUCTION / "showcase-auth.sh").read_text()
     tunnel = (PRODUCTION / "temporary-showcase.sh").read_text()
 
@@ -180,6 +200,8 @@ def test_temporary_showcase_is_pinned_password_protected_and_not_persistent() ->
     assert 'CLOUDFLARED_SHA256="14ecae0d' in tunnel
     assert "127.0.0.1:3002" in tunnel
     assert 'set-deployment-mode.sh" dual' in tunnel
+    assert "SHOWCASE_ACCESS_MODE" in tunnel
+    assert 'access_mode" == "public"' in tunnel
     assert 'systemctl disable "$SERVICE_NAME"' in tunnel
     assert "systemctl enable" not in tunnel
     assert "tailscale " not in tunnel.lower()
@@ -189,6 +211,7 @@ def test_production_environment_template_contains_no_real_secret() -> None:
     template = (PRODUCTION / ".env.example").read_text()
 
     assert "DEPLOYMENT_MODE=full" in template
+    assert "SHOWCASE_ACCESS_MODE=protected" in template
     assert "SPOTIFY_STATS_TOKEN_KEY=replace-with" in template
     assert "SPOTIFY_STATS_GATEWAY_TOKEN=replace-with" in template
     assert "SPOTIFY_STATS_TRUSTED_GATEWAY_REQUIRED=1" in template

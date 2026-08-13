@@ -20,13 +20,30 @@ for script in "$DEPLOY_DIR"/*.sh; do
   bash -n "$script"
 done
 
-grep -q 'auth_basic "SpotifyStats Showcase"' "$DEPLOY_DIR/public-nginx.conf.template"
-grep -q 'auth_basic_user_file /etc/nginx/auth/showcase.htpasswd' \
+grep -q 'include /etc/nginx/includes/showcase-access.conf' \
   "$DEPLOY_DIR/public-nginx.conf.template"
 grep -q 'location = /api/health' "$DEPLOY_DIR/public-nginx.conf.template"
 grep -q 'auth_basic off' "$DEPLOY_DIR/public-nginx.conf.template"
+grep -q 'add_header Cache-Control "private, max-age=604800' \
+  "$DEPLOY_DIR/public-nginx.conf.template"
 grep -q './secrets/showcase.htpasswd:/etc/nginx/auth/showcase.htpasswd:ro' \
   "$COMPOSE_FILE"
+grep -q './showcase-access-entrypoint.sh:/docker-entrypoint.d/15-showcase-access.sh:ro' \
+  "$COMPOSE_FILE"
+
+access_config="$(mktemp)"
+trap 'rm -f "$access_config"' EXIT
+SHOWCASE_ACCESS_MODE=protected SHOWCASE_ACCESS_CONFIG_PATH="$access_config" \
+  sh "$DEPLOY_DIR/showcase-access-entrypoint.sh"
+grep -q 'auth_basic "SpotifyStats Showcase"' "$access_config"
+SHOWCASE_ACCESS_MODE=public SHOWCASE_ACCESS_CONFIG_PATH="$access_config" \
+  sh "$DEPLOY_DIR/showcase-access-entrypoint.sh"
+grep -q '^auth_basic off;' "$access_config"
+if SHOWCASE_ACCESS_MODE=invalid SHOWCASE_ACCESS_CONFIG_PATH="$access_config" \
+     sh "$DEPLOY_DIR/showcase-access-entrypoint.sh" >/dev/null 2>&1; then
+  echo "非法 SHOWCASE_ACCESS_MODE 未能 fail closed。" >&2
+  exit 1
+fi
 
 for template in "$DEPLOY_DIR/private-nginx.conf.template" \
                 "$DEPLOY_DIR/public-nginx.conf.template"; do
@@ -65,6 +82,9 @@ validate_mode() {
   )"
   grep -q 'SPOTIFY_STATS_TRUSTED_GATEWAY_REQUIRED: "1"' <<<"$rendered"
   grep -q 'SPOTIFY_STATS_RELEASE_SHA: 0123456789abcdef' <<<"$rendered"
+  if [[ "$mode" == "showcase" || "$mode" == "dual" ]]; then
+    grep -q 'SHOWCASE_ACCESS_MODE: protected' <<<"$rendered"
+  fi
   if grep -Eq '0\.0\.0\.0:(3000|3001|3002|8000)|published: "8000"' <<<"$rendered"; then
     echo "$mode 渲染配置暴露了禁止的宿主端口。" >&2
     return 1

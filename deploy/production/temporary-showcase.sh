@@ -15,7 +15,7 @@ usage() {
   cat >&2 <<'EOF'
 用法：temporary-showcase.sh start|status|stop
 
-start   切换到 dual、确认展示密码、启动临时 TryCloudflare HTTPS 地址
+start   切换到 dual，按 SHOWCASE_ACCESS_MODE 启动临时 TryCloudflare HTTPS 地址
 status  显示服务状态和当前临时地址
 stop    立即停止并禁用临时外部入口；不会修改 Docker 部署模式
 
@@ -108,7 +108,12 @@ case "$action" in
       exit 1
     fi
     printf '临时展示地址：%s\n' "$url"
-    echo "访问需要运行 ./showcase-auth.sh show 所显示的用户名和密码。"
+    access_mode="$(sed -n 's/^SHOWCASE_ACCESS_MODE=//p' "$DEPLOY_DIR/.env" | tail -n 1)"
+    if [[ "$access_mode" == "public" ]]; then
+      echo "当前为 public：打开链接即可访问，链接持有者都能查看简化版数据。"
+    else
+      echo "当前为 protected：访问需要 ./showcase-auth.sh show 所显示的凭据。"
+    fi
     ;;
   status)
     state="$(systemctl is-active "$SERVICE_NAME" 2>/dev/null || true)"
