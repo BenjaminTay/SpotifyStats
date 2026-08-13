@@ -17,6 +17,9 @@ import obsessionSectionSource from '../features/analysis/records/ObsessionSectio
 import dailyTotalLeaderboardSource from '../features/analysis/records/DailyTotalLeaderboard.tsx?raw'
 import yearlyReviewPageSource from '../pages/YearlyReviewPage.tsx?raw'
 import accountCenterPageSource from '../pages/AccountCenterPage.tsx?raw'
+import accountArchiveRouteSource from '../features/account-archive/route/AccountArchiveDesktopRoute.tsx?raw'
+import accountArchiveHooksSource from '../features/account-archive/hooks/useAccountArchive.ts?raw'
+import accountArchiveLibrarySource from '../features/account-archive/desktop/LibrarySection.tsx?raw'
 import habitsTabSource from '../features/account/habits/HabitsTab.tsx?raw'
 import habitsPersonalityHeroSource from '../features/account/habits/HabitsPersonalityHero.tsx?raw'
 import searchHistorySectionSource from '../features/account/habits/SearchHistorySection.tsx?raw'
@@ -444,7 +447,7 @@ describe('Phase 5 architecture guardrails', () => {
     expect(chemistryBlockSource).toMatch(/\.slice\(0,\s*MAX_CHEMISTRY_EXAMPLES\)/)
   })
 
-  it('keeps AccountCenterPage hero progressive while the heavy account summary loads', () => {
+  it('keeps the legacy Phone account hero progressive while the heavy account summary loads', () => {
     expect(accountCenterPageSource).toContain('useProfile()')
     expect(accountCenterPageSource).toContain('profileForHero')
     expect(accountCenterPageSource).toContain('AccountContentSkeleton')
@@ -581,11 +584,28 @@ describe('Phase 5 architecture guardrails', () => {
 
   // ── Account Habits (migrated to feature) ──────────────────────────────
 
-  it('keeps AccountCenterPage as a tab-composing route container', () => {
+  it('routes Desktop and Compact to the local-first archive while retaining the legacy Phone presentation', () => {
     expect(accountCenterPageSource.split('\n').length).toBeLessThanOrEqual(450)
+    expect(accountCenterPageSource).toContain('AccountArchiveDesktopRoute')
+    expect(accountCenterPageSource).toContain("mode === 'phone'")
     expect(accountCenterPageSource).not.toContain('<table')
     expect(accountCenterPageSource).not.toContain('function inferPersonality')
     expect(accountCenterPageSource).not.toContain('function SearchHeatmap')
+  })
+
+  it('keeps the Desktop archive route thin and its GET reads under account query keys', () => {
+    expect(accountArchiveRouteSource.split('\n').length).toBeLessThanOrEqual(180)
+    expect(accountArchiveRouteSource).toContain('ArchiveCover')
+    expect(accountArchiveRouteSource).toContain('ArchiveIndex')
+    expect(accountArchiveRouteSource).not.toContain("api.get<AccountSummary>('/account')")
+    expect(accountArchiveHooksSource).toContain('queryKeys.account.archiveOverview')
+    expect(accountArchiveHooksSource).toContain('queryKeys.account.archiveLibrary')
+  })
+
+  it('keeps archive library server-paginated and capped at twenty rows', () => {
+    expect(accountArchiveLibrarySource).toContain('limit: 20')
+    expect(accountArchiveLibrarySource).toContain('useArchiveLibrary')
+    expect(accountArchiveLibrarySource).not.toContain('<table')
   })
 
   it('keeps HabitsTab as a thin orchestrator in features/account/habits', () => {

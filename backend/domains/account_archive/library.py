@@ -200,9 +200,10 @@ def _track_page(
     items = [
         {
             "entity_type": "track",
-            "item_key": (
-                f"track:{int(row[5])}" if row[5] is not None else _opaque_key("saved-track", row[0])
-            ),
+            # The saved snapshot URI is the row identity. Multiple Spotify
+            # variants may resolve to one local catalogue track, so the local
+            # track id cannot safely serve as a React/list key.
+            "item_key": _opaque_key("saved-track", row[0]),
             "track_name": row[1] or "",
             "artist_name": row[2] or "",
             "album_name": row[3],
@@ -274,9 +275,7 @@ def _album_page(
     return total, [
         {
             "entity_type": "album",
-            "item_key": (
-                f"album:{int(row[3])}" if row[3] is not None else _opaque_key("saved-album", row[0])
-            ),
+            "item_key": _opaque_key("saved-album", row[0]),
             "album_name": row[1] or "",
             "artist_name": row[2] or "",
             "cover_url": _cover("albums", row[3], row[4], row[5]),
@@ -334,11 +333,7 @@ def _artist_page(
     return total, [
         {
             "entity_type": "artist",
-            "item_key": (
-                f"artist:{int(row[2])}"
-                if row[2] is not None
-                else _opaque_key("saved-artist", row[0])
-            ),
+            "item_key": _opaque_key("saved-artist", row[0]),
             "artist_name": row[1] or "",
             "cover_url": _cover("artists", row[2], row[3], row[4]),
             "deep_link": (

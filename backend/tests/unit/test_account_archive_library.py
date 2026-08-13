@@ -182,6 +182,41 @@ def test_library_revision_changes_when_content_changes_without_count_change() ->
     assert first.data_revision != second.data_revision
 
 
+def test_saved_variants_keep_unique_item_keys_when_catalogue_identity_is_shared() -> None:
+    conn = _library_conn()
+    conn.execute(
+        "INSERT INTO saved_tracks VALUES (?, ?, ?, ?, ?, ?)",
+        (
+            "spotify:track:alpha-variant",
+            "Alpha Song",
+            "Alpha Artist",
+            "Alpha Album",
+            "2024-03-01T00:00:00Z",
+            "alpha",
+        ),
+    )
+    conn.execute(
+        "INSERT INTO saved_albums VALUES (?, ?, ?)",
+        ("spotify:album:alpha-variant", "Alpha Album", "Alpha Artist"),
+    )
+    conn.execute(
+        "INSERT INTO saved_artists VALUES (?, ?)",
+        ("spotify:artist:alpha-variant", "Alpha Artist"),
+    )
+    conn.commit()
+
+    pages = [
+        build_archive_library_page(conn, "tracks", limit=20),
+        build_archive_library_page(conn, "albums", limit=20),
+        build_archive_library_page(conn, "artists", limit=20),
+    ]
+    conn.close()
+
+    for page in pages:
+        item_keys = [item["item_key"] for item in page["items"]]
+        assert len(item_keys) == len(set(item_keys))
+
+
 def test_library_browses_account_export_without_local_music_catalog() -> None:
     conn = sqlite3.connect(":memory:")
     conn.row_factory = sqlite3.Row

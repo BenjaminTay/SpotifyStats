@@ -10,6 +10,7 @@ import { AlertCircle } from 'lucide-react'
 import type { AccountSummary, ProfileData } from '@/types/account'
 import { useViewportMode } from '@/hooks/useViewportMode'
 import { MobileAccountHero } from '@/features/mobile/account/MobileAccountHero'
+import { AccountArchiveDesktopRoute } from '@/features/account-archive/route/AccountArchiveDesktopRoute'
 
 const HabitsTab = lazy(() =>
   import('@/features/account/habits/HabitsTab').then((m) => ({ default: m.HabitsTab })),
@@ -254,7 +255,7 @@ function AccountPageShell({ children }: { children: ReactNode }) {
   )
 }
 
-export function AccountCenterPage() {
+function LegacyPhoneAccountPage() {
   const { data, loading, error, refetch } = useAccount()
   const { data: profileData } = useProfile()
   const [activeTab, setActiveTab] = useState<TabKey>('collection')
@@ -342,4 +343,9 @@ export function AccountCenterPage() {
       </div>
     </AccountPageShell>
   )
+}
+
+export function AccountCenterPage() {
+  const mode = useViewportMode()
+  return mode === 'phone' ? <LegacyPhoneAccountPage /> : <AccountArchiveDesktopRoute />
 }

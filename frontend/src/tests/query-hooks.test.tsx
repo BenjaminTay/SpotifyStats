@@ -18,6 +18,10 @@ import { useSettings } from '@/hooks/useSettings'
 import { analysisApi, musicSearchApi } from '@/hooks/useAnalysis'
 import { queryClient } from '@/api/query-client'
 import { useProfile } from '@/hooks/useAccount'
+import {
+  useArchiveLibrary,
+  useArchiveOverview,
+} from '@/features/account-archive/hooks/useAccountArchive'
 
 function createClient() {
   return new QueryClient({
@@ -234,6 +238,58 @@ describe('Phase 5 query hook migration', () => {
     expect(api.get).toHaveBeenCalledWith('/profile')
     expect(client.getQueryData(queryKeys.account.profile())).toBe(profile)
     expect(result.current.data?.profile.identity_displayName).toBe('Taylor Listener')
+  })
+
+  it('stores the local-first archive overview without requesting the legacy account summary', async () => {
+    const client = createClient()
+    const overview = {
+      schema_version: 'account_archive_v1',
+      content_version: 'account_archive_v1_0',
+      data_revision: 'archive-revision',
+      status: 'ready',
+      counts: { saved_tracks: 800, saved_albums: 250, saved_artists: 59, saved_shows: 0, playlists: 27, playlist_items: 681 },
+      coverage: { saved_tracks_with_date: 800, saved_tracks_with_date_pct: 100, saved_tracks_linked_to_history: 762, saved_tracks_linked_to_history_pct: 95.3, saved_tracks_with_known_duration: 800, saved_tracks_with_known_duration_pct: 100, known_duration_ms: 195475714 },
+      period: { first_saved_at: '2022-01-01', latest_saved_at: '2026-01-01', first_play_date: '2022-01-01', latest_play_date: '2026-07-24' },
+      date_provenance: { oauth: 0, manual: 0, legacy: 800, missing: 0 },
+      capabilities: { collection_browse: 'available', collection_timeline: 'available', playback_cross_analysis: 'partial' },
+      featured_items: [],
+    }
+    vi.spyOn(api, 'get').mockResolvedValue(overview)
+
+    const { result } = renderHook(() => useArchiveOverview(), { wrapper: wrapperFor(client) })
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+
+    expect(api.get).toHaveBeenCalledWith('/account/archive-overview')
+    expect(api.get).not.toHaveBeenCalledWith('/account')
+    expect(client.getQueryData(queryKeys.account.archiveOverview())).toBe(overview)
+  })
+
+  it('keys archive library pages by entity, search, sort and page', async () => {
+    const client = createClient()
+    const page = {
+      schema_version: 'account_archive_library_v1',
+      content_version: 'account_archive_library_v1_0',
+      data_revision: 'library-revision',
+      entity_type: 'tracks',
+      page: 2,
+      limit: 20,
+      total: 21,
+      total_pages: 2,
+      sort: 'recent',
+      search_applied: true,
+      items: [],
+    }
+    vi.spyOn(api, 'get').mockResolvedValue(page)
+    const params = { entityType: 'tracks' as const, page: 2, limit: 20, search: 'love', sort: 'recent' as const }
+
+    const { result } = renderHook(() => useArchiveLibrary(params, true), {
+      wrapper: wrapperFor(client),
+    })
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+
+    const request = { page: 2, limit: 20, search: 'love', sort: 'recent' }
+    expect(api.get).toHaveBeenCalledWith('/account/library/tracks', request)
+    expect(client.getQueryData(queryKeys.account.archiveLibrary('tracks', request))).toBe(page)
   })
 
   it('stores local music search data under music query keys', async () => {
