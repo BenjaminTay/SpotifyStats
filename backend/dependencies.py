@@ -48,14 +48,20 @@ class PlayFilters:
         merge_enabled: bool = Query(default=True, description="合并连续播放"),
         dynamic_threshold: bool = Query(default=True, description="使用动态有效播放阈值"),
         max_merge_gap_minutes: int | None = Query(
-            default=None, ge=1, le=240, description="连续播放最大合并间隔 (分钟)"
+            default=None,
+            ge=1,
+            le=240,
+            description="连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟）",
         ),
     ):
+        settings = _load_filter_settings()
         self.min_ms = min_ms
         self.music_only = music_only
         self.merge_enabled = merge_enabled
         self.dynamic_threshold = dynamic_threshold
-        self.max_merge_gap_minutes = max_merge_gap_minutes
+        self.max_merge_gap_minutes = _filter_value(
+            max_merge_gap_minutes, settings, "max_merge_gap_minutes"
+        )
 
 
 class BillboardFilters:
@@ -78,7 +84,10 @@ class BillboardFilters:
         year_end: int | None = Query(default=None, description="结束年份 (含)"),
         dynamic_threshold: bool = Query(default=True, description="使用动态有效播放阈值"),
         max_merge_gap_minutes: int | None = Query(
-            default=None, ge=1, le=240, description="连续播放最大合并间隔 (分钟)"
+            default=None,
+            ge=1,
+            le=240,
+            description="连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟）",
         ),
     ):
         settings = _load_filter_settings()
@@ -93,7 +102,9 @@ class BillboardFilters:
         self.year_start = year_start
         self.year_end = year_end
         self.dynamic_threshold = dynamic_threshold
-        self.max_merge_gap_minutes = max_merge_gap_minutes
+        self.max_merge_gap_minutes = _filter_value(
+            max_merge_gap_minutes, settings, "max_merge_gap_minutes"
+        )
 
 
 class MergeConfig:
@@ -120,7 +131,10 @@ class YearlyReviewFilters:
         merge_enabled: bool | None = Query(default=None, description="合并连续播放"),
         dynamic_threshold: bool = Query(default=True, description="使用动态有效播放阈值"),
         max_merge_gap_minutes: int | None = Query(
-            default=None, ge=1, le=240, description="连续播放最大合并间隔 (分钟)"
+            default=None,
+            ge=1,
+            le=240,
+            description="连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟）",
         ),
         merge_level: int = Query(default=2, ge=1, le=3, description="版本合并严格度"),
         include_compilations: bool | None = Query(default=None, description="专辑榜包含精选集"),
@@ -147,7 +161,9 @@ class YearlyReviewFilters:
         self.music_only = _filter_value(music_only, settings, "music_only")
         self.merge_enabled = _filter_value(merge_enabled, settings, "merge_enabled")
         self.dynamic_threshold = dynamic_threshold
-        self.max_merge_gap_minutes = max_merge_gap_minutes
+        self.max_merge_gap_minutes = _filter_value(
+            max_merge_gap_minutes, settings, "max_merge_gap_minutes"
+        )
         self.merge_level = merge_level
         self.include_compilations = _filter_value(
             include_compilations, settings, "include_compilations"

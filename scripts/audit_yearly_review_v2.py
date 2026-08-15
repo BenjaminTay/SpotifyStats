@@ -952,6 +952,8 @@ def run_audit(
     conn = get_db(readonly=True)
     try:
         settings = SettingsRepository(conn).load_all()
+        if max_merge_gap_minutes is None:
+            max_merge_gap_minutes = int(settings.get("max_merge_gap_minutes", 5))
         all_plays = load_plays(
             conn,
             min_ms=int(settings["min_ms"]),

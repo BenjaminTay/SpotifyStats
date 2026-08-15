@@ -24,7 +24,7 @@ def snapshot_key(
     year_end=None,
     merge_level=2,
     dynamic_threshold=False,
-    max_merge_gap_minutes=None,
+    max_merge_gap_minutes=5,
     include_compilations=False,
 ) -> tuple[Any, ...]:
     return (

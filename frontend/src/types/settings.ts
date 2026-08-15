@@ -19,6 +19,7 @@ export interface SettingsData {
   min_ms: number;
   music_only: boolean;
   merge_enabled: boolean;
+  max_merge_gap_minutes: number;
   bb_top_n: number;
   bb_album_top_n: number;
   bb_artist_top_n: number;

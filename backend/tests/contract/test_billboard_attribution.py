@@ -341,7 +341,7 @@ class TestAggParamHash:
         from backend.core.db import _agg_param_hash
 
         h_default = _agg_param_hash(30_000, True, 4, 0)
-        h_with_gap = _agg_param_hash(30_000, True, 4, 0, max_merge_gap_minutes=5)
+        h_with_gap = _agg_param_hash(30_000, True, 4, 0, max_merge_gap_minutes=15)
         assert h_default != h_with_gap, (
             "Different max_merge_gap_minutes must produce different hashes"
         )
@@ -368,20 +368,15 @@ class TestAggParamHash:
 
 
 class TestBillboardWeekBoundary:
-    def test_cross_week_fragments_not_merged(self, seed_conn):
-        """R23/P2: merge_consecutive_plays must use billboard_week as a boundary
-        so that short fragments straddling a week boundary are not merged into
-        a single valid play attributed to the earlier week.
+    def test_idle_gap_prevents_cross_week_merge(self, seed_conn):
+        """The 5-minute session boundary applies independently of chart weeks.
 
         Fixture Fragment Song (track 901, duration=40000) has 4 plays:
         - 2 fragments on Jun 1 (same week) → should still merge → 1 valid play
         - 2 fragments on May 27 23:55 / May 28 00:05 Beijing → straddle Thu
           boundary.  With week_start_dow=3 (Thursday), they land in different
-          billboard_weeks.  Without the fix they'd merge to 40000ms (1 play);
-          with the fix each stays at 20000ms (below 30s) and both drop.
-
-        Total before fix: 2 valid plays (both pairs merge).
-        Total after fix:  1 valid play (only the same-week Jun 1 pair merges).
+          billboard_weeks. Their actual idle gap is 9m40s, so the default
+          5-minute policy keeps them separate and both remain invalid.
         """
         from backend.domains.billboard.data_loader import load_billboard_raw
 
@@ -399,13 +394,12 @@ class TestBillboardWeekBoundary:
             "(billboard_week=2026-05-28), not from the cross-week pair"
         )
 
-    def test_same_week_fragments_still_merged(self, seed_conn):
-        """Same-week fragments of the same track should still merge normally.
-        With default week_start_dow=4 (Friday), both the Jun 1 pair and the
-        May 27-28 pair are each within the same billboard_week → both merge."""
-        raw = load_billboard_raw(30_000, True, 4, 0)
+    def test_cross_week_session_is_merged_then_attributed(self, seed_conn):
+        """A report boundary never breaks an otherwise valid listening run."""
+        raw = load_billboard_raw(30_000, True, 3, 0, False, 15)
 
         frag_rows = raw[raw["track_name"] == "Fixture Fragment Song"]
-        assert len(frag_rows) == 2, (
-            f"Expected 2 valid plays (both same-week pairs merge), got {len(frag_rows)}"
-        )
+        assert len(frag_rows) == 2, f"Expected both 40s sessions to count, got {len(frag_rows)}"
+        cross_boundary = frag_rows[frag_rows["ts"] == "2026-05-27T16:05:00Z"]
+        assert len(cross_boundary) == 1
+        assert str(cross_boundary.iloc[0]["billboard_week"]) == "2026-05-28"

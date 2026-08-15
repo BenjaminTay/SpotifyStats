@@ -23,17 +23,6 @@ function getStoredBool(key: string, fallback: boolean): boolean {
   return fallback
 }
 
-function getStoredNumber(key: string): number | undefined {
-  try {
-    const v = localStorage.getItem(key)
-    if (v != null) {
-      const n = parseInt(v, 10)
-      if (!Number.isNaN(n) && n >= 1 && n <= 240) return n
-    }
-  } catch { /* localStorage unavailable */ }
-  return undefined
-}
-
 export function useCommunityChartParams(): Record<string, string | number | boolean> {
   const { settings } = useSettings()
 
@@ -42,8 +31,6 @@ export function useCommunityChartParams(): Record<string, string | number | bool
       merge_level: getDefaultMergeLevel(),
       dynamic_threshold: getStoredBool('spotify_stats_dynamic_threshold', true),
     }
-    const maxGap = getStoredNumber('spotify_stats_max_merge_gap_minutes')
-    if (maxGap != null) params.max_merge_gap_minutes = maxGap
     if (settings) {
       params.min_ms = settings.min_ms
       params.music_only = settings.music_only
@@ -53,6 +40,9 @@ export function useCommunityChartParams(): Record<string, string | number | bool
       params.bb_week_start_dow = settings.bb_week_start_dow
       params.bb_week_start_hour = settings.bb_week_start_hour
       params.include_compilations = settings.include_compilations
+      params.max_merge_gap_minutes = settings.max_merge_gap_minutes
+    } else {
+      params.max_merge_gap_minutes = 5
     }
     return params
   }, [settings])

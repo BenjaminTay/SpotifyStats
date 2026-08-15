@@ -94,7 +94,7 @@ def test_report_cache_key_changes_with_effective_filters(monkeypatch):
         week_start="2026-05-01",
         week_end="2026-05-07",
         dynamic_threshold=False,
-        max_merge_gap_minutes=None,
+        max_merge_gap_minutes=5,
     )
     svc.generate_weekly_digest(
         conn=None,

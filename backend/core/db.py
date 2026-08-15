@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from backend.core.cache import singleflight
+from backend.domains.playback.logical_timeline import reconstruct_logical_plays
 
 # Column downcast map: common int64 columns → int32 (safe within typical data sizes)
 _INT32_COLUMNS = frozenset(
@@ -923,103 +924,23 @@ def base_filters(
 def merge_consecutive_plays(
     df: pd.DataFrame,
     min_ms: int,
-    max_gap_minutes: int | None = None,
+    max_gap_minutes: int | None = 5,
     boundary_column: str | list[str] | None = None,
+    dynamic_threshold: bool = False,
 ) -> pd.DataFrame:
-    """Merge consecutive plays of the same track into logical play counts.
+    """Compatibility facade for logical-play timeline reconstruction.
 
-    Consecutive rows with the same track_id are treated as one listening session.
-    Logical play count = total_ms // duration_ms + (1 if remainder >= min_ms else 0).
-
-    Group boundaries are introduced by:
-    - track_id change (always)
-    - timestamp gap > max_gap_minutes (when provided)
-    - boundary_column value change (when provided, e.g. source_album_id).
-      Accepts a single column name or a list of column names; when a list is
-      given, a change in ANY column starts a new merge group (OR semantics).
-
-    Rows with NULL/0 duration_ms are passed through unchanged (can't merge).
-    Requires DataFrame sorted by ts, with columns: track_id, ms_played, duration_ms.
+    ``max_gap_minutes`` now measures actual idle time between the previous
+    stop and the next inferred start. Date/month/Billboard boundaries must not
+    be supplied here; temporal attribution happens after reconstruction.
     """
-    import numpy as np
-    import pandas as pd
-
-    if df.empty:
-        return df
-
-    df = df.copy()
-
-    track_changed = df["track_id"] != df["track_id"].shift(1)
-
-    gap_changed = pd.Series(False, index=df.index)
-    if max_gap_minutes is not None and "ts" in df.columns:
-        ts = pd.to_datetime(df["ts"])
-        gap_changed = ts.diff().dt.total_seconds().gt(max_gap_minutes * 60).fillna(False)
-
-    boundary_changed = pd.Series(False, index=df.index)
-    if boundary_column:
-        columns = [boundary_column] if isinstance(boundary_column, str) else boundary_column
-        for col in columns:
-            if col in df.columns:
-                col_vals = df[col].fillna(-1)
-                boundary_changed = boundary_changed | (col_vals != col_vals.shift(1))
-
-    df["_merge_group"] = (track_changed | gap_changed | boundary_changed).cumsum()
-
-    grouped = df.groupby("_merge_group", sort=False)
-    first_rows = grouped.head(1).set_index("_merge_group", drop=False)
-    group_totals = grouped["ms_played"].sum()
-    group_durations = first_rows["duration_ms"]
-
-    valid_duration = group_durations.notna() & group_durations.ne(0)
-    result_frames = []
-
-    valid_group_ids = group_durations.index[valid_duration]
-    if len(valid_group_ids) > 0:
-        totals = group_totals.loc[valid_group_ids].astype("int64")
-        durations = group_durations.loc[valid_group_ids].astype("int64")
-        full_plays = totals // durations
-        remainders = totals % durations
-        output_counts = full_plays + remainders.ge(min_ms).astype("int64")
-        output_counts = output_counts[output_counts > 0]
-
-        if not output_counts.empty:
-            repeated_group_ids = np.repeat(output_counts.index.to_numpy(), output_counts.to_numpy())
-            output_seq = np.concatenate(
-                [np.arange(count, dtype="int64") for count in output_counts.to_numpy()]
-            )
-            repeated_rows = first_rows.loc[repeated_group_ids].copy()
-            repeated_rows["_merge_seq"] = output_seq
-
-            repeated_full_plays = np.repeat(
-                full_plays.loc[output_counts.index].to_numpy(), output_counts.to_numpy()
-            )
-            repeated_durations = np.repeat(
-                durations.loc[output_counts.index].to_numpy(), output_counts.to_numpy()
-            )
-            repeated_remainders = np.repeat(
-                remainders.loc[output_counts.index].to_numpy(), output_counts.to_numpy()
-            )
-            repeated_rows["ms_played"] = np.where(
-                output_seq < repeated_full_plays,
-                repeated_durations,
-                repeated_remainders,
-            )
-            result_frames.append(repeated_rows)
-
-    invalid_group_ids = group_durations.index[~valid_duration]
-    if len(invalid_group_ids) > 0:
-        invalid_rows = df[df["_merge_group"].isin(invalid_group_ids)].copy()
-        invalid_rows["_merge_seq"] = invalid_rows.groupby("_merge_group", sort=False).cumcount()
-        result_frames.append(invalid_rows)
-
-    if not result_frames:
-        return df.iloc[0:0].drop(columns=["_merge_group"], errors="ignore")
-
-    result = pd.concat(result_frames, axis=0, ignore_index=True, sort=False)
-    result = result.sort_values(["_merge_group", "_merge_seq"], kind="stable")
-    result = result.drop(columns=["_merge_group", "_merge_seq"], errors="ignore")
-    return result.reset_index(drop=True)
+    return reconstruct_logical_plays(
+        df,
+        min_ms,
+        dynamic_threshold=dynamic_threshold,
+        max_gap_minutes=max_gap_minutes,
+        boundary_column=boundary_column,
+    )
 
 
 def _write_agg_batch(
@@ -1034,6 +955,55 @@ def _write_agg_batch(
     for i in range(0, len(rows), 5000):
         conn.executemany(sql, rows[i : i + 5000])
     conn.commit()
+
+
+_AGG_SHADOW_TABLES = {
+    "agg_weekly_tracks": "agg_weekly_tracks_shadow",
+    "agg_weekly_albums": "agg_weekly_albums_shadow",
+    "agg_weekly_track_sources": "agg_weekly_track_sources_shadow",
+    "agg_weekly_artists": "agg_weekly_artists_shadow",
+}
+
+
+def _prepare_aggregation_shadows(conn: sqlite3.Connection) -> None:
+    """Create connection-local staging tables without touching live aggregates."""
+    for live_table, shadow_table in _AGG_SHADOW_TABLES.items():
+        conn.execute(f'DROP TABLE IF EXISTS temp."{shadow_table}"')
+        conn.execute(
+            f'CREATE TEMP TABLE "{shadow_table}" AS SELECT * FROM main."{live_table}" WHERE 0'
+        )
+    conn.commit()
+
+
+def _publish_aggregation_shadows(
+    conn: sqlite3.Connection,
+    *,
+    param_hash: str,
+) -> None:
+    """Atomically replace every live aggregate table with one staged snapshot."""
+    conn.execute("BEGIN IMMEDIATE")
+    try:
+        for live_table, shadow_table in _AGG_SHADOW_TABLES.items():
+            conn.execute(f'DELETE FROM main."{live_table}"')
+            conn.execute(f'INSERT INTO main."{live_table}" SELECT * FROM temp."{shadow_table}"')
+        conn.execute("DELETE FROM agg_config")
+        conn.execute(
+            "INSERT INTO agg_config(key, value) VALUES ('param_hash', ?)",
+            (param_hash,),
+        )
+        if conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='track_credit_state'"
+        ).fetchone():
+            conn.execute(
+                """UPDATE track_credit_state
+                   SET active_aggregate_revision=current_revision,
+                       rebuild_status='ready', last_error=NULL, updated_at=datetime('now')
+                   WHERE state_id=1"""
+            )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
 
 
 def query_plays(
@@ -1084,7 +1054,7 @@ def _load_plays_cached(
     extra_where: str,
     extra_params: tuple,
     dynamic_threshold: bool = False,
-    max_merge_gap_minutes: int | None = None,
+    max_merge_gap_minutes: int | None = 5,
     boundary_column: str | None = None,
 ) -> pd.DataFrame:
     """Cacheable inner loader — connection is created internally so it
@@ -1147,6 +1117,7 @@ def _load_plays_cached(
                 min_ms,
                 max_gap_minutes=max_merge_gap_minutes,
                 boundary_column=boundary_column,
+                dynamic_threshold=dynamic_threshold,
             )
             if min_ms > 0:
                 from backend.domains.playback.counting import filter_effective_plays
@@ -1176,7 +1147,7 @@ def load_plays(
     filtered: bool = True,
     merge_enabled: bool = True,
     dynamic_threshold: bool = False,
-    max_merge_gap_minutes: int | None = None,
+    max_merge_gap_minutes: int | None = 5,
     boundary_column: str | None = "source_album_id",
 ):
     """统一的播放数据加载函数，所有统计页面复用。
@@ -1222,7 +1193,7 @@ def _load_plays_for_artists_cached(
     extra_where: str,
     extra_params: tuple,
     dynamic_threshold: bool = False,
-    max_merge_gap_minutes: int | None = None,
+    max_merge_gap_minutes: int | None = 5,
     boundary_column: str | None = None,
     identity_revision: int = 0,
     track_credit_revision: int = 0,
@@ -1292,6 +1263,7 @@ def _load_plays_for_artists_cached(
                 min_ms,
                 max_gap_minutes=max_merge_gap_minutes,
                 boundary_column=boundary_column,
+                dynamic_threshold=dynamic_threshold,
             )
             if min_ms > 0:
                 from backend.domains.playback.counting import filter_effective_plays
@@ -1343,7 +1315,7 @@ def load_plays_for_artists(
     filtered: bool = True,
     merge_enabled: bool = True,
     dynamic_threshold: bool = False,
-    max_merge_gap_minutes: int | None = None,
+    max_merge_gap_minutes: int | None = 5,
     boundary_column: str | None = "source_album_id",
 ):
     """Load plays with multi-artist fan-out for artist-statistics queries.
@@ -1517,13 +1489,16 @@ def _agg_param_hash(
     week_start_dow: int,
     week_start_hour: int,
     dynamic_threshold: bool = False,
-    max_merge_gap_minutes: int | None = None,
+    max_merge_gap_minutes: int | None = 5,
     identity_revision: int = 0,
     track_credit_revision: int = 0,
 ) -> str:
     """Compute a content-hash of the parameters that affect aggregation results."""
+    from backend.domains.playback.logical_timeline import PLAYBACK_EVENT_POLICY_VERSION
+
     payload = json.dumps(
         [
+            PLAYBACK_EVENT_POLICY_VERSION,
             min_ms,
             music_only,
             week_start_dow,
@@ -1554,12 +1529,13 @@ def build_aggregations(
     week_start_hour: int = 0,
     progress_callback=None,
     dynamic_threshold: bool = False,
-    max_merge_gap_minutes: int | None = None,
+    max_merge_gap_minutes: int | None = 5,
 ) -> dict[str, int]:
     """Build all 3 pre-aggregated weekly Billboard tables from the plays table.
 
-    Called after import_data() completes. Drops existing agg data and rebuilds.
-    Uses pandas pipeline to apply merge_consecutive_plays() before aggregation.
+    Called after import_data() completes. Builds connection-local shadow tables
+    and publishes all four live tables in one transaction, so readers observe
+    either the old complete snapshot or the new complete snapshot.
     Returns row counts for each agg table.
     """
     import pandas as pd
@@ -1609,13 +1585,6 @@ def build_aggregations(
     if progress_callback:
         progress_callback("合并连续播放...", 0.0)
 
-    # Compute billboard_week in pandas
-    df["days_back"] = (df["ts_dow"] - week_start_dow) % 7
-    mask_before = (df["ts_dow"] == week_start_dow) & (df["ts_hour"] < week_start_hour)
-    df.loc[mask_before, "days_back"] = 7
-    df["ts_date_dt"] = pd.to_datetime(df["ts_date"])
-    df["billboard_week"] = (df["ts_date_dt"] - pd.to_timedelta(df["days_back"], unit="D")).dt.date
-
     # Store source_album_id for album-level aggregation before dropping
     df["_source_album_id"] = df["source_album_id"].fillna(0).astype(int)
 
@@ -1624,7 +1593,8 @@ def build_aggregations(
         df,
         min_ms,
         max_gap_minutes=max_merge_gap_minutes,
-        boundary_column=["source_album_id", "billboard_week"],
+        boundary_column="source_album_id",
+        dynamic_threshold=dynamic_threshold,
     )
     if min_ms > 0:
         from backend.domains.playback.counting import filter_effective_plays
@@ -1644,13 +1614,16 @@ def build_aggregations(
         invalidate_all()
         return {"tracks": 0, "albums": 0, "track_sources": 0, "artists": 0}
 
-    # Clear old aggregations
-    conn.execute("DELETE FROM agg_weekly_tracks")
-    conn.execute("DELETE FROM agg_weekly_albums")
-    conn.execute("DELETE FROM agg_weekly_track_sources")
-    conn.execute("DELETE FROM agg_weekly_artists")
-    conn.execute("DELETE FROM agg_config")
-    conn.commit()
+    event_df = df.copy()
+    from backend.domains.playback.logical_timeline import build_billboard_weighted_frame
+
+    df = build_billboard_weighted_frame(
+        event_df,
+        week_start_dow=week_start_dow,
+        week_start_hour=week_start_hour,
+    )
+
+    _prepare_aggregation_shadows(conn)
 
     results = {}
 
@@ -1659,7 +1632,7 @@ def build_aggregations(
         progress_callback("预聚合: 单曲...", 0.0)
     tracks_agg = (
         df.groupby(["billboard_week", "track_id"])
-        .agg(play_count=("ms_played", "count"), total_ms=("ms_played", "sum"))
+        .agg(play_count=("play_count", "sum"), total_ms=("total_ms", "sum"))
         .reset_index()
     )
     t_rows = [
@@ -1667,7 +1640,10 @@ def build_aggregations(
         for r in tracks_agg.itertuples(index=False)
     ]
     _write_agg_batch(
-        conn, "agg_weekly_tracks", t_rows, ["billboard_week", "track_id", "play_count", "total_ms"]
+        conn,
+        _AGG_SHADOW_TABLES["agg_weekly_tracks"],
+        t_rows,
+        ["billboard_week", "track_id", "play_count", "total_ms"],
     )
     results["tracks"] = len(t_rows)
     if progress_callback:
@@ -1681,7 +1657,7 @@ def build_aggregations(
     df["_source_album_id"] = df["_source_album_id"].fillna(0).astype(int)
     track_sources_agg = (
         df.groupby(["billboard_week", "ts_date", "track_id", "_source_album_id"])
-        .agg(play_count=("ms_played", "count"), total_ms=("ms_played", "sum"))
+        .agg(play_count=("play_count", "sum"), total_ms=("total_ms", "sum"))
         .reset_index()
         .rename(columns={"ts_date": "play_date", "_source_album_id": "source_album_id"})
     )
@@ -1698,7 +1674,7 @@ def build_aggregations(
     ]
     _write_agg_batch(
         conn,
-        "agg_weekly_track_sources",
+        _AGG_SHADOW_TABLES["agg_weekly_track_sources"],
         ts_rows,
         ["billboard_week", "play_date", "track_id", "source_album_id", "play_count", "total_ms"],
     )
@@ -1713,7 +1689,7 @@ def build_aggregations(
     if not df_album.empty:
         albums_agg = (
             df_album.groupby(["billboard_week", "_album_id_for_agg"])
-            .agg(play_count=("ms_played", "count"), total_ms=("ms_played", "sum"))
+            .agg(play_count=("play_count", "sum"), total_ms=("total_ms", "sum"))
             .reset_index()
             .rename(columns={"_album_id_for_agg": "album_id"})
         )
@@ -1723,7 +1699,7 @@ def build_aggregations(
         ]
         _write_agg_batch(
             conn,
-            "agg_weekly_albums",
+            _AGG_SHADOW_TABLES["agg_weekly_albums"],
             a_rows,
             ["billboard_week", "album_id", "play_count", "total_ms"],
         )
@@ -1745,9 +1721,11 @@ def build_aggregations(
     # The track aggregation above operates on logical event rows.  Preserve
     # that same grain through artist fan-out so canonicalization can collapse
     # aliases without collapsing two expanded events from one source play.
-    df = assign_logical_event_id(df)
+    df_artists = assign_logical_event_id(event_df)
     track_artists_df = get_effective_track_credit_frame(conn)
-    df_artists = df.merge(track_artists_df, on="track_id", how="inner", suffixes=("_primary", ""))
+    df_artists = df_artists.merge(
+        track_artists_df, on="track_id", how="inner", suffixes=("_primary", "")
+    )
     df_artists["artist_id"] = df_artists["raw_artist_id"]
     df_artists = df_artists.drop(columns=["raw_artist_id"])
     from backend.domains.metadata.artist_identity import (
@@ -1756,9 +1734,14 @@ def build_aggregations(
     )
 
     df_artists = canonicalize_artist_frame(df_artists, conn)
+    df_artists = build_billboard_weighted_frame(
+        df_artists,
+        week_start_dow=week_start_dow,
+        week_start_hour=week_start_hour,
+    )
     artists_agg = (
         df_artists.groupby(["billboard_week", "artist_id"])
-        .agg(play_count=("ms_played", "count"), total_ms=("ms_played", "sum"))
+        .agg(play_count=("play_count", "sum"), total_ms=("total_ms", "sum"))
         .reset_index()
     )
     ar_rows = [
@@ -1767,7 +1750,7 @@ def build_aggregations(
     ]
     _write_agg_batch(
         conn,
-        "agg_weekly_artists",
+        _AGG_SHADOW_TABLES["agg_weekly_artists"],
         ar_rows,
         ["billboard_week", "artist_id", "play_count", "total_ms"],
     )
@@ -1786,20 +1769,7 @@ def build_aggregations(
         identity_revision=get_identity_revision(conn),
         track_credit_revision=get_track_credit_revision(conn),
     )
-    conn.execute(
-        "INSERT OR REPLACE INTO agg_config(key, value) VALUES ('param_hash', ?)",
-        (param_hash,),
-    )
-    if conn.execute(
-        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='track_credit_state'"
-    ).fetchone():
-        conn.execute(
-            """UPDATE track_credit_state
-               SET active_aggregate_revision=current_revision,
-                   rebuild_status='ready', last_error=NULL, updated_at=datetime('now')
-               WHERE state_id=1"""
-        )
-    conn.commit()
+    _publish_aggregation_shadows(conn, param_hash=param_hash)
     conn.close()
 
     # A rebuild changes the source of truth for every Billboard cache.  Clear

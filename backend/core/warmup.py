@@ -16,7 +16,7 @@ DEFAULT_PLAY_FILTERS = {
     "music_only": True,
     "merge_enabled": True,
     "dynamic_threshold": True,
-    "max_merge_gap_minutes": None,
+    "max_merge_gap_minutes": 5,
 }
 
 DEFAULT_BILLBOARD_FILTERS = {
@@ -30,7 +30,7 @@ DEFAULT_BILLBOARD_FILTERS = {
     "year_start": None,
     "year_end": None,
     "dynamic_threshold": True,
-    "max_merge_gap_minutes": None,
+    "max_merge_gap_minutes": 5,
     "merge_level": 2,
 }
 
@@ -46,7 +46,7 @@ def _configured_warmup_filters(conn) -> tuple[dict, dict]:
         "music_only": bool(settings["music_only"]),
         "merge_enabled": bool(settings["merge_enabled"]),
         "dynamic_threshold": True,
-        "max_merge_gap_minutes": None,
+        "max_merge_gap_minutes": int(settings["max_merge_gap_minutes"]),
     }
     billboard = {
         "min_ms": play["min_ms"],
@@ -59,7 +59,7 @@ def _configured_warmup_filters(conn) -> tuple[dict, dict]:
         "year_start": None,
         "year_end": None,
         "dynamic_threshold": True,
-        "max_merge_gap_minutes": None,
+        "max_merge_gap_minutes": int(settings["max_merge_gap_minutes"]),
         "merge_level": 2,
         "include_compilations": bool(settings["include_compilations"]),
     }

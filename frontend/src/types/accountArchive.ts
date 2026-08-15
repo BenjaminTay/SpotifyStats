@@ -61,12 +61,12 @@ export interface ArchiveOverview {
 }
 
 export interface ArchiveFilterContext {
-  context_version: 'account_archive_filter_v1'
+  context_version: 'account_archive_filter_v2'
   min_ms: number
   music_only: true
   merge_enabled: boolean
   dynamic_threshold: boolean
-  max_merge_gap_minutes: number | null
+  max_merge_gap_minutes: number
   merge_level: number
   timezone: 'Asia/Shanghai'
   first_play_at: string | null

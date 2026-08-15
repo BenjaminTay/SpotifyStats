@@ -56,7 +56,7 @@ def main() -> int:
                 "min_ms": None,
                 "merge_enabled": None,
                 "dynamic_threshold": True,
-                "max_merge_gap_minutes": None,
+                "max_merge_gap_minutes": 5,
                 "merge_level": 2,
             },
         )

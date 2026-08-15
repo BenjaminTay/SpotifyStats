@@ -31,7 +31,7 @@ def main() -> int:
             merge_enabled=True,
             year=args.year,
             dynamic_threshold=True,
-            max_merge_gap_minutes=None,
+            max_merge_gap_minutes=5,
         )
     finally:
         conn.close()

@@ -14,7 +14,7 @@ from backend.domains.account_archive.overview import archive_data_revision
 from backend.domains.settings.repository import SETTINGS_DEFAULTS, SettingsRepository
 from backend.models.account_archive import ArchiveFilterContext
 
-ACCOUNT_ARCHIVE_FILTER_VERSION = "account_archive_filter_v1"
+ACCOUNT_ARCHIVE_FILTER_VERSION = "account_archive_filter_v2"
 ACCOUNT_ARCHIVE_TIMEZONE = "Asia/Shanghai"
 
 
@@ -91,6 +91,7 @@ def build_archive_filter_context(
     settings = SettingsRepository(conn).load_all()
     min_ms = _value(filters, "min_ms")
     merge_enabled = _value(filters, "merge_enabled")
+    max_merge_gap_minutes = _value(filters, "max_merge_gap_minutes")
     values: dict[str, Any] = {
         "min_ms": int(settings.get("min_ms", SETTINGS_DEFAULTS["min_ms"]))
         if min_ms is None
@@ -100,7 +101,11 @@ def build_archive_filter_context(
         if merge_enabled is None
         else bool(merge_enabled),
         "dynamic_threshold": bool(_value(filters, "dynamic_threshold", True)),
-        "max_merge_gap_minutes": _value(filters, "max_merge_gap_minutes"),
+        "max_merge_gap_minutes": int(
+            settings.get("max_merge_gap_minutes", SETTINGS_DEFAULTS["max_merge_gap_minutes"])
+        )
+        if max_merge_gap_minutes is None
+        else int(max_merge_gap_minutes),
         "merge_level": int(_value(filters, "merge_level", 2)),
         "timezone": ACCOUNT_ARCHIVE_TIMEZONE,
     }

@@ -97,6 +97,26 @@ def test_artist_personal_rankings_are_server_paginated_and_stable(client):
     assert second["rows"][0]["rank"] == 2
 
 
+def test_artist_album_rankings_keep_album_specific_play_dates(client):
+    data = client.get(
+        "/api/music/artists/Fixture Artist Alpha/rankings",
+        params={
+            "entity": "album",
+            "metric": "plays",
+            "limit": 20,
+            "offset": 0,
+            "min_ms": 30000,
+            "music_only": True,
+            "merge_enabled": True,
+            "dynamic_threshold": False,
+        },
+    ).json()
+
+    future_lp = next(row for row in data["rows"] if row["album_name"] == "Fixture Future LP")
+    assert future_lp["first_played"] == "2026-01-10T02:00:00Z"
+    assert future_lp["last_played"] == "2026-03-02T02:00:00Z"
+
+
 def test_artist_album_ranking_excludes_albums_owned_by_collaboration_partners(client):
     base_params = {
         "min_ms": 30000,

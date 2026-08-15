@@ -176,7 +176,7 @@ describe('AiInsightsExperience report task flow', () => {
       music_only: true,
       merge_enabled: true,
       dynamic_threshold: true,
-      max_merge_gap_minutes: null,
+      max_merge_gap_minutes: 5,
     })
     expect(calledLegacyReportEndpoint(getSpy)).toBe(false)
 
@@ -193,7 +193,7 @@ describe('AiInsightsExperience report task flow', () => {
       music_only: true,
       merge_enabled: true,
       dynamic_threshold: true,
-      max_merge_gap_minutes: null,
+      max_merge_gap_minutes: 5,
     })
     expect(getSpy).toHaveBeenCalledWith('/ai/tasks/task-generate')
     expect(await screen.findByText('生成后的周报')).toBeInTheDocument()
@@ -278,7 +278,7 @@ describe('AiInsightsExperience report task flow', () => {
       music_only: true,
       merge_enabled: true,
       dynamic_threshold: true,
-      max_merge_gap_minutes: null,
+      max_merge_gap_minutes: 5,
     })
     expect(await screen.findByText('刚刚')).toBeInTheDocument()
     expect(screen.getByText('缓存命中的周报')).toBeInTheDocument()
@@ -549,7 +549,7 @@ describe('AiInsightsExperience report task flow', () => {
       music_only: true,
       merge_enabled: true,
       dynamic_threshold: true,
-      max_merge_gap_minutes: null,
+      max_merge_gap_minutes: 5,
     })
 
     fireEvent.click(screen.getByRole('button', { name: '上月' }))
@@ -563,7 +563,7 @@ describe('AiInsightsExperience report task flow', () => {
       music_only: true,
       merge_enabled: true,
       dynamic_threshold: true,
-      max_merge_gap_minutes: null,
+      max_merge_gap_minutes: 5,
     })
   })
 

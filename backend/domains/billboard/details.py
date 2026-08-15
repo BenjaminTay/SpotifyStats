@@ -790,7 +790,7 @@ def _load_album_project_detail_events(
     year_start,
     year_end,
     dynamic_threshold=False,
-    max_merge_gap_minutes=None,
+    max_merge_gap_minutes=5,
 ) -> pd.DataFrame:
     from backend.domains.billboard.data_loader import _try_load_from_agg, load_billboard_raw
 
@@ -836,7 +836,7 @@ def get_track_history(
     year_start,
     year_end,
     dynamic_threshold=False,
-    max_merge_gap_minutes=None,
+    max_merge_gap_minutes=5,
     merge_enabled=True,
     merge_level=2,
     include_compilations=False,
@@ -986,7 +986,7 @@ def get_artist_chart_detail(
     year_start,
     year_end,
     dynamic_threshold=False,
-    max_merge_gap_minutes=None,
+    max_merge_gap_minutes=5,
     merge_enabled=True,
     merge_level=2,
     include_compilations=False,
@@ -1412,7 +1412,7 @@ def get_album_chart_detail(
     year_start,
     year_end,
     dynamic_threshold=False,
-    max_merge_gap_minutes=None,
+    max_merge_gap_minutes=5,
     merge_enabled=True,
     merge_level=2,
     include_compilations=False,

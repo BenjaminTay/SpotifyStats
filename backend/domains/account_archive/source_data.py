@@ -128,6 +128,7 @@ def load_effective_archive_plays(
             context.min_ms,
             max_gap_minutes=context.max_merge_gap_minutes,
             boundary_column="source_album_id",
+            dynamic_threshold=context.dynamic_threshold,
         )
     frame = filter_effective_plays(
         frame,
@@ -139,9 +140,12 @@ def load_effective_archive_plays(
     # Spotify Extended Streaming History `ts` records when playback stopped.
     # Anchor relationship windows at the logical event start so the play
     # during which Save was pressed is not misclassified as a later revisit.
-    frame["event_at"] = frame["ts_utc"] - pd.to_timedelta(
-        frame["ms_played"].clip(lower=0), unit="ms"
-    )
+    if "event_start_at" in frame.columns:
+        frame["event_at"] = pd.to_datetime(frame["event_start_at"], errors="coerce", utc=True)
+    else:
+        frame["event_at"] = frame["ts_utc"] - pd.to_timedelta(
+            frame["ms_played"].clip(lower=0), unit="ms"
+        )
     group_map = load_track_group_map(conn, context.merge_level)
     frame["archive_track_id"] = (
         frame["track_id"].astype(int).map(group_map).fillna(frame["track_id"]).astype(int)

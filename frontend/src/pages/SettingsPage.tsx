@@ -214,6 +214,7 @@ export function SettingsPage() {
             min_ms: settings.min_ms,
             music_only: settings.music_only,
             merge_enabled: settings.merge_enabled,
+            max_merge_gap_minutes: settings.max_merge_gap_minutes,
           }}
           onUpdate={updateSettings}
           onRequiresRebuild={handleRequiresRebuild}

@@ -19,7 +19,7 @@ def compute_year_end_staged(
     year=None,
     merge_level=2,
     dynamic_threshold=False,
-    max_merge_gap_minutes=None,
+    max_merge_gap_minutes=5,
     include_compilations=False,
     year_end_top_n=YEAR_END_TRACK_TOP_N,
     year_end_album_top_n=YEAR_END_ALBUM_TOP_N,

@@ -151,6 +151,7 @@ def update_settings(
         "min_ms",
         "music_only",
         "merge_enabled",
+        "max_merge_gap_minutes",
         "bb_top_n",
         "bb_album_top_n",
         "bb_artist_top_n",
@@ -171,6 +172,7 @@ def update_settings(
         "min_ms",
         "music_only",
         "merge_enabled",
+        "max_merge_gap_minutes",
         "bb_top_n",
         "bb_album_top_n",
         "bb_artist_top_n",
@@ -202,7 +204,12 @@ def rebuild_aggregations(
     conn: Connection = Depends(get_conn),
     auth: None = Depends(require_auth),
     dynamic_threshold: bool = Query(default=True),
-    max_merge_gap_minutes: int | None = Query(default=None, ge=1, le=240),
+    max_merge_gap_minutes: int | None = Query(
+        default=None,
+        ge=1,
+        le=240,
+        description="连续同曲播放的最大实际空闲时间；未传时使用设置值",
+    ),
 ):
     """Rebuild pre-aggregated weekly Billboard tables."""
     _ensure_current()
@@ -210,20 +217,25 @@ def rebuild_aggregations(
 
     write_conn = get_db(readonly=False)
     try:
+        resolved_gap = int(
+            max_merge_gap_minutes
+            if max_merge_gap_minutes is not None
+            else _current.get("max_merge_gap_minutes", 5)
+        )
         result = build_aggregations(
             min_ms=_current["min_ms"],
             music_only=_current["music_only"],
             week_start_dow=_current["bb_week_start_dow"],
             week_start_hour=_current["bb_week_start_hour"],
             dynamic_threshold=dynamic_threshold,
-            max_merge_gap_minutes=max_merge_gap_minutes,
+            max_merge_gap_minutes=resolved_gap,
         )
         _current["rebuild_pending"] = False
         _save_setting_to_db("rebuild_pending", "false")
         return {
             "status": "done",
             "dynamic_threshold": dynamic_threshold,
-            "max_merge_gap_minutes": max_merge_gap_minutes,
+            "max_merge_gap_minutes": resolved_gap,
             **result,
         }
     finally:

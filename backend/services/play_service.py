@@ -33,7 +33,7 @@ def _load_filtered_plays(
     music_only: bool,
     merge_enabled: bool,
     dynamic_threshold: bool = False,
-    max_merge_gap_minutes: int | None = None,
+    max_merge_gap_minutes: int | None = 5,
     *,
     artist_fanout: bool = False,
 ) -> pd.DataFrame:
@@ -110,7 +110,7 @@ def get_dashboard_summary(
     music_only: bool,
     merge_enabled: bool,
     dynamic_threshold: bool = False,
-    max_merge_gap_minutes: int | None = None,
+    max_merge_gap_minutes: int | None = 5,
     df: pd.DataFrame | None = None,
 ) -> dict:
     """Compute dashboard KPIs from plays data."""
@@ -173,7 +173,7 @@ def get_monthly_trend(
     music_only: bool,
     merge_enabled: bool,
     dynamic_threshold: bool = False,
-    max_merge_gap_minutes: int | None = None,
+    max_merge_gap_minutes: int | None = 5,
     df: pd.DataFrame | None = None,
 ) -> list[dict]:
     """Get monthly plays/hours trend."""
@@ -204,7 +204,7 @@ def get_hourly_dist(
     music_only: bool,
     merge_enabled: bool,
     dynamic_threshold: bool = False,
-    max_merge_gap_minutes: int | None = None,
+    max_merge_gap_minutes: int | None = 5,
     df: pd.DataFrame | None = None,
 ) -> list[dict]:
     """Get hourly play count distribution."""
@@ -226,7 +226,7 @@ def get_top_tracks(
     merge_enabled: bool,
     n: int = 10,
     dynamic_threshold: bool = False,
-    max_merge_gap_minutes: int | None = None,
+    max_merge_gap_minutes: int | None = 5,
     df: pd.DataFrame | None = None,
 ) -> list[dict]:
     """Get top N most-played tracks."""
@@ -262,7 +262,7 @@ def get_platform_dist(
     music_only: bool,
     merge_enabled: bool,
     dynamic_threshold: bool = False,
-    max_merge_gap_minutes: int | None = None,
+    max_merge_gap_minutes: int | None = 5,
     df: pd.DataFrame | None = None,
 ) -> list[dict]:
     """Get platform distribution."""
@@ -283,7 +283,7 @@ def get_dow_dist(
     music_only: bool,
     merge_enabled: bool,
     dynamic_threshold: bool = False,
-    max_merge_gap_minutes: int | None = None,
+    max_merge_gap_minutes: int | None = 5,
     df: pd.DataFrame | None = None,
 ) -> list[dict]:
     """Get day-of-week distribution."""
@@ -304,7 +304,7 @@ def get_random_track(
     music_only: bool,
     merge_enabled: bool,
     dynamic_threshold: bool = False,
-    max_merge_gap_minutes: int | None = None,
+    max_merge_gap_minutes: int | None = 5,
     df: pd.DataFrame | None = None,
 ) -> dict | None:
     """Get a random track for nostalgic recommendation."""
@@ -339,7 +339,7 @@ def get_annual_timeline(
     music_only: bool,
     merge_enabled: bool,
     dynamic_threshold: bool = False,
-    max_merge_gap_minutes: int | None = None,
+    max_merge_gap_minutes: int | None = 5,
 ) -> list[dict]:
     """Annual breakdown: plays, hours, unique tracks/artists, and top track per year."""
     df = _load_filtered_plays(
@@ -389,7 +389,7 @@ def get_monthly_timeline_drilldown(
     merge_enabled: bool,
     period: str | None = None,
     dynamic_threshold: bool = False,
-    max_merge_gap_minutes: int | None = None,
+    max_merge_gap_minutes: int | None = 5,
 ) -> dict:
     """Monthly timeline with optional top-5 drilldown for a specific period."""
     df = _load_filtered_plays(
@@ -453,7 +453,7 @@ def get_weekly_timeline(
     merge_enabled: bool,
     week_label: str | None = None,
     dynamic_threshold: bool = False,
-    max_merge_gap_minutes: int | None = None,
+    max_merge_gap_minutes: int | None = 5,
 ) -> dict:
     """Weekly timeline with optional top-5 drilldown for a specific week."""
     df = _load_filtered_plays(
@@ -526,7 +526,7 @@ def get_leaderboard(
     include_compilations: bool = False,
     merge_level: int = 2,
     dynamic_threshold: bool = False,
-    max_merge_gap_minutes: int | None = None,
+    max_merge_gap_minutes: int | None = 5,
 ) -> dict:
     """Get top-N leaderboard for tracks/artists/albums."""
     if entity == "artist":
@@ -690,7 +690,7 @@ def get_wrapped_data(
     merge_enabled: bool,
     year: int,
     dynamic_threshold: bool = False,
-    max_merge_gap_minutes: int | None = None,
+    max_merge_gap_minutes: int | None = 5,
     merge_level: int = 1,
 ) -> dict:
     """Generate a custom yearly wrapped report for a given year."""
@@ -986,7 +986,7 @@ def get_listening_heatmap(
     music_only: bool,
     merge_enabled: bool,
     dynamic_threshold: bool = False,
-    max_merge_gap_minutes: int | None = None,
+    max_merge_gap_minutes: int | None = 5,
 ) -> dict:
     """Day-of-week x Hour heatmap data."""
     df = _load_filtered_plays(
@@ -1019,7 +1019,7 @@ def get_yearly_heatmaps(
     music_only: bool,
     merge_enabled: bool,
     dynamic_threshold: bool = False,
-    max_merge_gap_minutes: int | None = None,
+    max_merge_gap_minutes: int | None = 5,
 ) -> list[dict]:
     """Year-by-year listening heatmaps."""
     df = _load_filtered_plays(
@@ -1050,7 +1050,7 @@ def get_late_night_ratio(
     music_only: bool,
     merge_enabled: bool,
     dynamic_threshold: bool = False,
-    max_merge_gap_minutes: int | None = None,
+    max_merge_gap_minutes: int | None = 5,
 ) -> list[dict]:
     """Late night (0-5) listening ratio by year."""
     df = _load_filtered_plays(
@@ -1072,7 +1072,7 @@ def get_late_night_top_tracks(
     music_only: bool,
     merge_enabled: bool,
     dynamic_threshold: bool = False,
-    max_merge_gap_minutes: int | None = None,
+    max_merge_gap_minutes: int | None = 5,
     limit: int = 20,
 ) -> dict:
     """Top tracks during late night hours (0-5)."""
@@ -1123,7 +1123,7 @@ def get_weekday_weekend_comparison(
     music_only: bool,
     merge_enabled: bool,
     dynamic_threshold: bool = False,
-    max_merge_gap_minutes: int | None = None,
+    max_merge_gap_minutes: int | None = 5,
 ) -> dict:
     """Weekend vs workday hourly listening comparison."""
     df = _load_filtered_plays(
@@ -1154,7 +1154,7 @@ def get_platform_hourly_listening(
     music_only: bool,
     merge_enabled: bool,
     dynamic_threshold: bool = False,
-    max_merge_gap_minutes: int | None = None,
+    max_merge_gap_minutes: int | None = 5,
 ) -> dict:
     """Platform × hour listening distribution (stacked area + normalized %)."""
     df = _load_filtered_plays(
@@ -1239,7 +1239,7 @@ def get_artist_deep_dive(
     merge_enabled: bool,
     artist_name: str,
     dynamic_threshold: bool = False,
-    max_merge_gap_minutes: int | None = None,
+    max_merge_gap_minutes: int | None = 5,
     merge_level: int = 1,
 ) -> dict:
     """In-depth analysis for a single artist."""

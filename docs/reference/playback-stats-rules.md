@@ -1,6 +1,6 @@
 # 播放统计与版本合并规则：最新版
 
-> 创建日期：2026-06-18
+> 创建日期：2026-06-18；最近修订：2026-08-15
 > 状态：规则源文件，作为后续实现与验收依据
 > 来源：整合 `docs/playback-stats/2026-06-12-playback-stats-rules.md`、`docs/playback-stats/implementation-plan.md`，以及 2026-06-18 对歌曲/专辑多版本语义的最新确认。
 
@@ -81,11 +81,12 @@ ms_played >= 30000
 
 ### R3. 连续播放合并
 
-连续播放合并只处理相邻的同一 `track_id`：
+连续播放合并只处理相邻、来源一致且属于同一 session 的同一 `track_id`：
 
 | 情况 | 是否合并 |
 |------|:--:|
 | 同一 `track_id` 连续出现 | 是 |
+| 同一 `track_id`，但 `source_album_id` 改变 | 否 |
 | 不同 `track_id`，即使属于同一 recording/composition group | 否 |
 | A -> B -> A 这种非连续回到 A | 否 |
 
@@ -102,16 +103,30 @@ logical_plays = full_plays + (1 if remainder >= effective_threshold else 0)
 
 - 完整播放事件：`ms_played = duration_ms`
 - 余数事件：`ms_played = remainder`
+- 每个展开事件都拥有独立 `counted_at`，不再继承合并组首行或末行时间。
+- 第 `k` 个完整事件在累计有效收听达到 `k * duration_ms` 时成立。
+- 余数事件在累计有效收听达到 `full_plays * duration_ms + effective_threshold` 时成立。
 
 ### R4. 连续播放边界
 
 连续播放合并必须受 session 边界约束：
 
-- 超过 `max_merge_gap_minutes` 的相邻同曲记录不合并。
-- Billboard 周榜计算不跨 `billboard_week` 合并。
-- 普通周期统计可按自然日、统计 period 或显式 boundary 分组。
+- 默认 `max_merge_gap_minutes = 5`，并由服务端 Settings 作为唯一事实源；桌面与手机使用同一设置。
+- 间隔按“下一行推断开始时间 - 上一行停止时间”的实际空闲时间计算，不按两个停止时间直接相减。因而一首 6 分钟歌曲无缝重播不会被误判为超过 5 分钟。
+- 实际空闲时间 `<= 5 分钟` 可继续合并；超过 5 分钟立即开启新 session。
+- 原始行的推断重叠不超过 2 秒时视为时间戳舍入噪声并调整为单调时间线；更大的重叠开启新 session，避免生成不可能的播放顺序。
+- 自然日、月份、年份和 Billboard 周不再作为合并边界。先在完整时间线上重建逻辑事件，再做时间归属，保证改变查询分区不会改变事件数量。
 
-### R4.1 逻辑播放事件身份
+### R4.1 次数时间与收听时长归属
+
+逻辑事件同时维护两个互不混用的时间语义：
+
+1. **播放次数**归到 `counted_at`：即该次完整播放或余数播放刚刚达到成立条件的时刻。`ts`、`ts_date`、`ts_year`、`ts_month`、`ts_week`、`ts_dow`、`ts_hour` 均由 `counted_at` 按 `Asia/Shanghai` 重建。
+2. **收听时长**归到推断收听区间：每条原始记录以 `[ts - ms_played, ts)` 近似，跨小时、自然日或 Billboard 周边界时按边界切片。
+
+因此，一次跨午夜完成的播放可以在次日增加 1 次播放，同时把午夜前后的收听分钟分别计入两天。Billboard 预聚合使用独立 `play_count` / `total_ms` 权重：事件行只贡献次数，切片行只贡献时长；任何消费者不得用切片行数代替播放次数。
+
+### R4.2 逻辑播放事件身份
 
 连续播放合并和有效阈值过滤完成后，每一行最终逻辑播放事件必须获得一个稳定的、当前数据帧内唯一的 `_logical_event_id`，并在艺人署名扇出前生成。
 
@@ -120,6 +135,7 @@ logical_plays = full_plays + (1 if remainder >= effective_threshold else 0)
 - 艺人身份规范化时，优先按 `_logical_event_id + canonical artist_id` 去重；`_artist_event_id` 仅作为兼容旧消费者的别名。
 - 单曲、track-source 和专辑项目聚合均基于合并后的逻辑事件行；艺人预聚合必须与原始艺人路径保持相同的逻辑事件粒度。
 - 任何重建后的预聚合表都必须通过原始路径对账，至少覆盖艺人周榜的 `play_count` 与 `total_ms`。
+- 预聚合先写入连接级影子表，再在一个事务内同时发布单曲、专辑、track-source、艺人和参数指纹；构建或发布失败时继续保留上一份完整快照。
 
 ### R5. 播放事件层不做版本合并
 

@@ -6,7 +6,7 @@
 
 ## 已落地
 
-- `account_archive_filter_v1`：统一 `min_ms`、连续合并、动态阈值、最大合并间隔、L1/L2/L3、UTC 观察边界、北京时间展示日期和数据 revision。
+- `account_archive_filter_v2`：统一 `min_ms`、连续合并、动态阈值、默认 5 分钟实际空闲边界、L1/L2/L3、UTC 观察边界、北京时间展示日期和数据 revision。
 - `GET /api/account/collection-journey`：年度/季度收藏增长、准确曲长、发行年份跨度和第 100 / 200 / 400 / 800 首等倍增收藏里程碑。
 - `GET /api/account/collection-cohorts`：记录期内首次播放到收藏、对称 30 天事件窗、四个互补生命力窗口、兼容固定窗回访、-4…12 周事件曲线和互斥关系状态。
 - `GET /api/account/returns`：相邻有效播放至少间隔 90 天、且后一事件发生在收藏后的回归；最近回归、最长间隔和当前沉睡推荐均按规范实体去重。
@@ -20,7 +20,7 @@
 
 ## 真实 SQLite 只读结果
 
-默认上下文：`min_ms=30000`、`merge_enabled=true`、`dynamic_threshold=true`、`max_merge_gap_minutes=null`、`merge_level=2`。
+原交付快照使用旧的无界上下文；2026-08-15 起默认上下文改为 `min_ms=30000`、`merge_enabled=true`、`dynamic_threshold=true`、`max_merge_gap_minutes=5`、`merge_level=2`。下列历史数值尚未按新口径重写，不应与当前页面直接对账。
 
 ### 收藏旅程
 

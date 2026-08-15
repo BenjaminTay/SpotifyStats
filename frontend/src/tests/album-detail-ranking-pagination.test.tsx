@@ -10,7 +10,7 @@ const mocks = vi.hoisted(() => ({
     music_only: true,
     merge_enabled: true,
     dynamic_threshold: true,
-    max_merge_gap_minutes: null as number | null,
+    max_merge_gap_minutes: 5,
   },
   get: vi.fn(),
 }))
@@ -95,7 +95,7 @@ describe('专辑详情播放排行分页', () => {
       music_only: true,
       merge_enabled: true,
       dynamic_threshold: true,
-      max_merge_gap_minutes: null,
+      max_merge_gap_minutes: 5,
     }
     mocks.get.mockReset()
   })

@@ -20,9 +20,9 @@ class TestMergeBeforeFilter:
     def test_short_fragments_merge_to_valid_event(self, seed_conn):
         """Two adjacent 20s plays of a 40s track merge into one valid 40s event.
 
-        Fixture has two separate sessions for track 901 (Fixture Fragment Song):
-        one at the week boundary and one in the dedicated scenario — each session
-        has two 20s fragments that merge to one 40s valid event.
+        Fixture has two candidate sessions for track 901. The dedicated pair
+        has no idle gap and merges; the week-boundary pair has 9m40s actual
+        idle time and is split by the default 5-minute policy.
         """
         df = load_plays(
             seed_conn,
@@ -32,7 +32,7 @@ class TestMergeBeforeFilter:
             boundary_column=None,
         )
         row = df[df["track_name"] == "Fixture Fragment Song"]
-        assert len(row) == 2, f"Expected 2 merged rows (two sessions), got {len(row)}"
+        assert len(row) == 1, f"Expected only the within-boundary session, got {len(row)}"
         assert (row["ms_played"] == 40000).all()
 
     def test_short_fragments_dropped_when_merge_disabled(self, seed_conn):

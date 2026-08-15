@@ -10,7 +10,7 @@ describe('Settings sections', () => {
     render(
       <>
         <DataFilteringSection
-          settings={{ min_ms: 30000, music_only: true, merge_enabled: true }}
+          settings={{ min_ms: 30000, music_only: true, merge_enabled: true, max_merge_gap_minutes: 5 }}
           onUpdate={vi.fn()}
           onRequiresRebuild={vi.fn()}
           chineseStyle="original"
@@ -40,7 +40,7 @@ describe('Settings sections', () => {
   it('renders data filtering controls without internal rebuild button', () => {
     render(
       <DataFilteringSection
-        settings={{ min_ms: 30000, music_only: true, merge_enabled: true }}
+        settings={{ min_ms: 30000, music_only: true, merge_enabled: true, max_merge_gap_minutes: 5 }}
         onUpdate={vi.fn()}
         onRequiresRebuild={vi.fn()}
         chineseStyle="original"
@@ -59,7 +59,7 @@ describe('Settings sections', () => {
 
     render(
       <DataFilteringSection
-        settings={{ min_ms: 30000, music_only: true, merge_enabled: true }}
+        settings={{ min_ms: 30000, music_only: true, merge_enabled: true, max_merge_gap_minutes: 5 }}
         onUpdate={onUpdate}
         onRequiresRebuild={onRequiresRebuild}
         chineseStyle="original"

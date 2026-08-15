@@ -20,6 +20,7 @@ const STATS_SETTING_KEYS = new Set<keyof SettingsUpdatePayload>([
   'min_ms',
   'music_only',
   'merge_enabled',
+  'max_merge_gap_minutes',
   'bb_top_n',
   'bb_album_top_n',
   'bb_artist_top_n',
@@ -39,17 +40,6 @@ function getStoredBool(key: string, fallback: boolean): boolean {
     if (v === 'false') return false
   } catch { /* localStorage unavailable */ }
   return fallback
-}
-
-function getStoredNumber(key: string): number | undefined {
-  try {
-    const v = localStorage.getItem(key)
-    if (v != null) {
-      const n = parseInt(v, 10)
-      if (!Number.isNaN(n) && n >= 1 && n <= 240) return n
-    }
-  } catch { /* localStorage unavailable */ }
-  return undefined
 }
 
 interface UseSettingsResult {
@@ -125,8 +115,6 @@ export function useSettings(): UseSettingsResult {
   const rebuildAgg = useCallback(() => {
     const params = new URLSearchParams()
     params.set('dynamic_threshold', String(getStoredBool('spotify_stats_dynamic_threshold', true)))
-    const maxGap = getStoredNumber('spotify_stats_max_merge_gap_minutes')
-    if (maxGap != null) params.set('max_merge_gap_minutes', String(maxGap))
     return api.post<RebuildResult>(`/settings/rebuild-agg?${params.toString()}`, undefined, 120_000)
   }, [])
 

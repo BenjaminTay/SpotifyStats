@@ -14,7 +14,7 @@ def _context() -> YearlyReviewFilterContext:
         music_only=True,
         merge_enabled=True,
         dynamic_threshold=True,
-        max_merge_gap_minutes=None,
+        max_merge_gap_minutes=5,
         merge_level=2,
         include_compilations=False,
         bb_top_n=30,

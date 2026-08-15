@@ -42,7 +42,10 @@ class AccountArchiveFilters:
         merge_enabled: bool | None = Query(default=None, description="合并连续同曲播放"),
         dynamic_threshold: bool = Query(default=True, description="使用动态有效播放阈值"),
         max_merge_gap_minutes: int | None = Query(
-            default=None, ge=1, le=240, description="连续播放最大合并间隔"
+            default=None,
+            ge=1,
+            le=240,
+            description="连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟）",
         ),
         merge_level: int = Query(default=2, ge=1, le=3, description="曲目版本归并级别"),
     ):

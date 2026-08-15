@@ -67,7 +67,7 @@ def _compute_billboard_data_cached(
     year_end=None,
     merge_level=2,
     dynamic_threshold=False,
-    max_merge_gap_minutes=None,
+    max_merge_gap_minutes=5,
     include_compilations=False,
 ):
     """Compute full Billboard payload with normalized staged load/rank cache."""
@@ -185,7 +185,7 @@ def compute_billboard_data(
     year_end=None,
     merge_level=2,
     dynamic_threshold=False,
-    max_merge_gap_minutes=None,
+    max_merge_gap_minutes=5,
     include_compilations=False,
 ):
     """Compute all Billboard data with normalized cache keys."""

@@ -31,7 +31,7 @@ class YearlyReviewFilterContext(BaseModel):
     music_only: bool
     merge_enabled: bool
     dynamic_threshold: bool
-    max_merge_gap_minutes: int | None = Field(default=None, ge=1, le=240)
+    max_merge_gap_minutes: int = Field(default=5, ge=1, le=240)
     merge_level: int = Field(ge=1, le=3)
     include_compilations: bool
     bb_top_n: int = Field(ge=5, le=100)
@@ -307,7 +307,7 @@ class YearlyAppendix(BaseModel):
 
 
 class YearlyMethodology(BaseModel):
-    content_version: str = "yearly_review_v2_12"
+    content_version: str = "yearly_review_v2_13"
     relationship_policy_version: str = "relationship_policy_v2"
     highlight_policy_version: str = "highlight_policy_v2"
     season_stage_policy_version: str = "season_stage_v1"
@@ -370,7 +370,7 @@ class YearlyReviewGenerationResponse(BaseModel):
 
 
 class YearlyReviewRecordsPage(BaseModel):
-    content_version: str = "yearly_review_v2_12"
+    content_version: str = "yearly_review_v2_13"
     year: int = Field(ge=2000)
     filter_fingerprint: str
     page: int = Field(ge=1)

@@ -18,7 +18,7 @@ import {
 import { Link, useSearchParams } from 'react-router-dom'
 
 import { useTheme } from '@/hooks/useTheme'
-import { setDynamicThreshold, setMaxMergeGapMinutes } from '@/hooks/useAnalysis'
+import { setDynamicThreshold } from '@/hooks/useAnalysis'
 import { getDefaultMergeLevel, setDefaultMergeLevel } from '@/lib/merge-level'
 import { getBillboardName, setBillboardName } from '@/lib/billboard-name'
 import type { ChineseStyle } from '@/lib/chinese'
@@ -74,10 +74,6 @@ function storedBool(key: string, fallback: boolean): boolean {
   } catch {
     return fallback
   }
-}
-
-function storedGap(): string {
-  try { return localStorage.getItem('spotify_stats_max_merge_gap_minutes') ?? '' } catch { return '' }
 }
 
 function SettingRow({
@@ -155,7 +151,6 @@ export function MobileSettingsExperience({
   const { theme, setTheme } = useTheme()
   const [dynamicThreshold, setDynamicThresholdState] = useState(() => storedBool('spotify_stats_dynamic_threshold', true))
   const [mergeLevel, setMergeLevel] = useState(getDefaultMergeLevel)
-  const [mergeGap, setMergeGap] = useState(storedGap)
   const [billboardDisplayName, setBillboardDisplayName] = useState(() => getBillboardName())
   const [spotifyBusy, setSpotifyBusy] = useState<'connect' | 'sync' | 'disconnect' | null>(null)
   const [spotifyMessage, setSpotifyMessage] = useState('')
@@ -283,19 +278,15 @@ export function MobileSettingsExperience({
             </SelectField>
           </SettingRow>
           {settings.merge_enabled && (
-            <label className="mobile-settings-field mobile-settings-field-block">
-              <span>连续播放最大间隔（分钟）</span>
-              <input
-                type="number" min={1} max={240} value={mergeGap} placeholder="无限制"
-                onChange={(event) => {
-                  const value = event.target.value
-                  setMergeGap(value)
-                  const parsed = Number(value)
-                  setMaxMergeGapMinutes(parsed >= 1 && parsed <= 240 ? parsed : undefined)
-                  onRequiresRebuild()
-                }}
-              />
-            </label>
+            <SettingRow label="暂停容忍时间" description="超过后开始新的连续收听段">
+              <SelectField
+                value={settings.max_merge_gap_minutes}
+                onChange={(event) => updateAndRebuild({ max_merge_gap_minutes: Number(event.target.value) })}
+                aria-label="连续播放暂停容忍时间"
+              >
+                <option value={1}>1 分钟</option><option value={5}>5 分钟</option><option value={15}>15 分钟</option><option value={30}>30 分钟</option>
+              </SelectField>
+            </SettingRow>
           )}
         </div>
       )

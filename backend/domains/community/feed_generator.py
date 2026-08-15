@@ -84,7 +84,7 @@ def _generate_core_posts(
     year_start: int | None = None,
     year_end: int | None = None,
     dynamic_threshold: bool = False,
-    max_merge_gap_minutes: int | None = None,
+    max_merge_gap_minutes: int | None = 5,
     merge_level: int = 2,
     include_compilations: bool = False,
 ) -> tuple[list[CommunityPost], HistoricalState]:
@@ -560,7 +560,7 @@ def generate_all_posts(
     year_start: int | None = None,
     year_end: int | None = None,
     dynamic_threshold: bool = False,
-    max_merge_gap_minutes: int | None = None,
+    max_merge_gap_minutes: int | None = 5,
     merge_level: int = 2,
     include_compilations: bool = False,
 ) -> list[CommunityPost]:

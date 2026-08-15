@@ -31,6 +31,7 @@ class SettingsResponse(BaseModel):
     min_ms: int
     music_only: bool
     merge_enabled: bool
+    max_merge_gap_minutes: int = Field(default=5, ge=1, le=240)
     bb_top_n: int
     bb_album_top_n: int
     bb_artist_top_n: int
@@ -78,7 +79,7 @@ class RebuildAggregationsResponse(BaseModel):
 
     status: str
     dynamic_threshold: bool
-    max_merge_gap_minutes: int | None = None
+    max_merge_gap_minutes: int = 5
     tracks: int
     albums: int
     track_sources: int
@@ -98,6 +99,7 @@ class SettingsUpdateRequest(BaseModel):
     min_ms: int | None = Field(default=None, ge=0)
     music_only: bool | None = None
     merge_enabled: bool | None = None
+    max_merge_gap_minutes: int | None = Field(default=None, ge=1, le=240)
     bb_top_n: int | None = Field(default=None, ge=5, le=100)
     bb_album_top_n: int | None = Field(default=None, ge=5, le=100)
     bb_artist_top_n: int | None = Field(default=None, ge=5, le=100)

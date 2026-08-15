@@ -13,6 +13,7 @@ from backend.domains.playback.album_projects import (
 )
 from backend.domains.playback.records_discovery import _album_full_replays
 from backend.services.analysis_records_service import _build_entity_frames
+from backend.services.analysis_stats_service import chart_rows
 
 pytestmark = pytest.mark.contract
 
@@ -29,6 +30,28 @@ def test_l2_album_project_counts_lead_single_and_deluxe_once(seed_conn):
     row = result[result["album_project_name"] == "Fixture Future LP"].iloc[0]
     assert int(row["play_count"]) == 9
     assert int(row["unique_canonical_songs"]) == 3
+
+
+def test_album_project_chart_rows_keep_project_specific_play_dates(seed_conn):
+    df = load_plays(seed_conn, min_ms=30000, music_only=True, merge_enabled=True)
+
+    _total, rows = chart_rows(
+        seed_conn,
+        df,
+        entity="album",
+        metric="plays",
+        limit=100,
+        offset=0,
+        merge_level=2,
+    )
+
+    future_lp = next(
+        row
+        for row in rows
+        if row["album_name"] == "Fixture Future LP" and row["artist_name"] == "Fixture Artist Alpha"
+    )
+    assert future_lp["first_played"] == "2026-01-10T02:00:00Z"
+    assert future_lp["last_played"] == "2026-03-02T02:00:00Z"
 
 
 def test_source_breakdown_sums_to_album_project_total(seed_conn):

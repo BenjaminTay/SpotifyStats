@@ -273,7 +273,7 @@ def test_gather_yearly_data_preserves_names_and_marks_partial_year(
         merge_enabled=True,
         year=2026,
         dynamic_threshold=True,
-        max_merge_gap_minutes=None,
+        max_merge_gap_minutes=5,
     )
 
     assert data["reporting_period"]["start_date"] == "2026-01-01"
@@ -352,7 +352,7 @@ def test_gather_yearly_data_includes_albums_billboard_and_editorial_brief(
         merge_enabled=True,
         year=2026,
         dynamic_threshold=True,
-        max_merge_gap_minutes=None,
+        max_merge_gap_minutes=5,
     )
 
     assert data["top_albums"][0]["name"] == "The Life of a Showgirl"
@@ -1304,7 +1304,7 @@ def test_yearly_report_cache_key_includes_contract_version():
         music_only=True,
         merge_enabled=True,
         dynamic_threshold=True,
-        max_merge_gap_minutes=None,
+        max_merge_gap_minutes=5,
         year=2026,
     )
 

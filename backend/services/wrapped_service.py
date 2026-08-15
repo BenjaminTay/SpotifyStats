@@ -267,7 +267,7 @@ def _get_wrapped_full_cached(
     merge_enabled: bool,
     year: int,
     dynamic_threshold: bool = False,
-    max_merge_gap_minutes=None,
+    max_merge_gap_minutes=5,
     merge_level: int = 1,
 ) -> dict:
     _ = artist_metadata_revision
@@ -295,7 +295,7 @@ def get_wrapped_full(
     merge_enabled: bool,
     year: int,
     dynamic_threshold: bool = False,
-    max_merge_gap_minutes=None,
+    max_merge_gap_minutes=5,
     merge_level: int = 1,
 ) -> dict:
     """Generate the full multi-module yearly Wrapped report.
@@ -333,7 +333,7 @@ def _build_wrapped_full(
     merge_enabled: bool,
     year: int,
     dynamic_threshold: bool = False,
-    max_merge_gap_minutes=None,
+    max_merge_gap_minutes=5,
     merge_level: int = 1,
 ) -> dict:
     df = load_plays(

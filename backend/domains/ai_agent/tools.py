@@ -52,7 +52,7 @@ class AnalysisStatsParams(BaseModel):
     music_only: bool = True
     merge_enabled: bool = True
     dynamic_threshold: bool = True
-    max_merge_gap_minutes: int | None = Field(default=None, ge=1, le=240)
+    max_merge_gap_minutes: int | None = Field(default=5, ge=1, le=240)
     period: PeriodName = "lifetime"
     start_date: str | None = None
     end_date: str | None = None
@@ -93,7 +93,7 @@ class WrappedYearlyParams(BaseModel):
     music_only: bool = True
     merge_enabled: bool = True
     dynamic_threshold: bool = True
-    max_merge_gap_minutes: int | None = Field(default=None, ge=1, le=240)
+    max_merge_gap_minutes: int | None = Field(default=5, ge=1, le=240)
     merge_level: int = Field(default=1, ge=1, le=3)
 
 
@@ -130,7 +130,7 @@ class BillboardEntityDetailParams(BaseModel):
     year_start: int | None = Field(default=None, ge=2000, le=2100)
     year_end: int | None = Field(default=None, ge=2000, le=2100)
     dynamic_threshold: bool = True
-    max_merge_gap_minutes: int | None = Field(default=None, ge=1, le=240)
+    max_merge_gap_minutes: int | None = Field(default=5, ge=1, le=240)
     merge_level: int = Field(default=2, ge=1, le=3)
 
     @model_validator(mode="after")
@@ -160,7 +160,7 @@ class ListeningHoursParams(BaseModel):
     music_only: bool = True
     merge_enabled: bool = True
     dynamic_threshold: bool = True
-    max_merge_gap_minutes: int | None = Field(default=None, ge=1, le=240)
+    max_merge_gap_minutes: int | None = Field(default=5, ge=1, le=240)
 
 
 class ResolveEntityParams(BaseModel):
@@ -176,7 +176,7 @@ class CompareEntitiesParams(BaseModel):
     music_only: bool = True
     merge_enabled: bool = True
     dynamic_threshold: bool = True
-    max_merge_gap_minutes: int | None = Field(default=None, ge=1, le=240)
+    max_merge_gap_minutes: int | None = Field(default=5, ge=1, le=240)
     merge_level: int = Field(default=2, ge=1, le=3)
 
     @field_validator("names")
@@ -220,7 +220,7 @@ class CommunityFeedSearchParams(BaseModel):
     year_start: int | None = Field(default=None, ge=2000, le=2100)
     year_end: int | None = Field(default=None, ge=2000, le=2100)
     dynamic_threshold: bool = True
-    max_merge_gap_minutes: int | None = Field(default=None, ge=1, le=240)
+    max_merge_gap_minutes: int | None = Field(default=5, ge=1, le=240)
     merge_level: int = Field(default=2, ge=1, le=3)
     include_compilations: bool = False
 

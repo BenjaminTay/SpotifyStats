@@ -736,7 +736,7 @@ def _gather_weekly_data(
     week_start: str,
     week_end: str,
     dynamic_threshold: bool = False,
-    max_merge_gap_minutes: Optional[int] = None,
+    max_merge_gap_minutes: Optional[int] = 5,
 ) -> dict:
     """Gather structured data for a weekly digest."""
     from backend.services.analysis_stats_service import (
@@ -834,7 +834,7 @@ def _gather_monthly_data(
     month: str,  # YYYY-MM
     year: int,
     dynamic_threshold: bool = False,
-    max_merge_gap_minutes: Optional[int] = None,
+    max_merge_gap_minutes: Optional[int] = 5,
 ) -> dict:
     """Gather structured data for a monthly personality report."""
     from backend.services.analysis_stats_service import (
@@ -908,7 +908,7 @@ def _gather_yearly_data(
     merge_enabled: bool,
     year: int,
     dynamic_threshold: bool = False,
-    max_merge_gap_minutes: Optional[int] = None,
+    max_merge_gap_minutes: Optional[int] = 5,
 ) -> dict:
     """Gather structured data for a yearly story."""
     from backend.services.wrapped_service import get_wrapped_full
@@ -1269,7 +1269,7 @@ def generate_weekly_digest(
     week_end: str,
     force: bool = False,
     dynamic_threshold: bool = False,
-    max_merge_gap_minutes: Optional[int] = None,
+    max_merge_gap_minutes: Optional[int] = 5,
     cache_result: bool = True,
     progress_callback: ReportProgressCallback | None = None,
     should_continue: ReportContinueCallback | None = None,
@@ -1380,7 +1380,7 @@ def generate_monthly_personality(
     year: int,
     force: bool = False,
     dynamic_threshold: bool = False,
-    max_merge_gap_minutes: Optional[int] = None,
+    max_merge_gap_minutes: Optional[int] = 5,
     cache_result: bool = True,
     progress_callback: ReportProgressCallback | None = None,
     should_continue: ReportContinueCallback | None = None,
@@ -1488,7 +1488,7 @@ def generate_yearly_story(
     year: int,
     force: bool = False,
     dynamic_threshold: bool = False,
-    max_merge_gap_minutes: Optional[int] = None,
+    max_merge_gap_minutes: Optional[int] = 5,
     cache_result: bool = True,
     progress_callback: ReportProgressCallback | None = None,
     should_continue: ReportContinueCallback | None = None,
@@ -1699,7 +1699,7 @@ def _fetch_data_for_intent(
     merge_enabled: bool,
     intent_result: dict,
     dynamic_threshold: bool = False,
-    max_merge_gap_minutes: Optional[int] = None,
+    max_merge_gap_minutes: Optional[int] = 5,
     merge_level: int = 1,
 ) -> dict:
     """Fetch relevant data based on parsed intent. Returns a dict to feed the LLM."""
@@ -1814,7 +1814,7 @@ def answer_question(
     question: str,
     conversation_history: Optional[list[dict[str, str]]] = None,
     dynamic_threshold: bool = False,
-    max_merge_gap_minutes: Optional[int] = None,
+    max_merge_gap_minutes: Optional[int] = 5,
     merge_level: int = 1,
 ) -> dict:
     """Answer a natural-language question about the user's listening history.

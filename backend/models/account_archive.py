@@ -86,12 +86,12 @@ class ArchiveOverviewResponse(StrictArchiveModel):
 
 
 class ArchiveFilterContext(StrictArchiveModel):
-    context_version: Literal["account_archive_filter_v1"] = "account_archive_filter_v1"
+    context_version: Literal["account_archive_filter_v2"] = "account_archive_filter_v2"
     min_ms: int = Field(ge=0)
     music_only: Literal[True] = True
     merge_enabled: bool
     dynamic_threshold: bool
-    max_merge_gap_minutes: int | None = Field(default=None, ge=1, le=240)
+    max_merge_gap_minutes: int = Field(default=5, ge=1, le=240)
     merge_level: int = Field(ge=1, le=3)
     timezone: Literal["Asia/Shanghai"] = "Asia/Shanghai"
     first_play_at: str | None = None

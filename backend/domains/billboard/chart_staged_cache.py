@@ -52,7 +52,7 @@ def _load_and_rank(
     year_end=None,
     merge_level=2,
     dynamic_threshold=False,
-    max_merge_gap_minutes=None,
+    max_merge_gap_minutes=5,
     include_compilations=False,
 ):
     return _copy_load_and_rank_result(
@@ -87,7 +87,7 @@ def _compute_weekly_data_cached(
     year_end=None,
     merge_level=2,
     dynamic_threshold=False,
-    max_merge_gap_minutes=None,
+    max_merge_gap_minutes=5,
     include_compilations=False,
     _revision_state=(0, 0, 0, 0, "ready:ready"),
 ):
@@ -148,7 +148,7 @@ def _compute_power_scores_cached(
     year_end=None,
     merge_level=2,
     dynamic_threshold=False,
-    max_merge_gap_minutes=None,
+    max_merge_gap_minutes=5,
     include_compilations=False,
 ):
     weekly, weekly_album, weekly_artist, *_all_weeks, df_filtered, album_total_map = _load_and_rank(
@@ -212,7 +212,7 @@ def _compute_summaries_cached(
     year_end=None,
     merge_level=2,
     dynamic_threshold=False,
-    max_merge_gap_minutes=None,
+    max_merge_gap_minutes=5,
     include_compilations=False,
 ):
     weekly, weekly_album, weekly_artist, *_all_weeks, df_filtered, _album_tm = _load_and_rank(
@@ -266,7 +266,7 @@ def _compute_records_cached(
     year_end=None,
     merge_level=2,
     dynamic_threshold=False,
-    max_merge_gap_minutes=None,
+    max_merge_gap_minutes=5,
 ):
     weekly, weekly_album, weekly_artist, *_all_weeks, df_filtered, _album_tm = _load_and_rank(
         min_ms,
@@ -319,7 +319,7 @@ def _compute_year_end_cached(
     year=None,
     merge_level=2,
     dynamic_threshold=False,
-    max_merge_gap_minutes=None,
+    max_merge_gap_minutes=5,
     include_compilations=False,
     year_end_top_n=YEAR_END_TRACK_TOP_N,
     year_end_album_top_n=YEAR_END_ALBUM_TOP_N,

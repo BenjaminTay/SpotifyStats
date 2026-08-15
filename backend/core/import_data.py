@@ -173,7 +173,7 @@ def import_data(
     agg_week_start_dow: int = 4,
     agg_week_start_hour: int = 0,
     agg_dynamic_threshold: bool = True,
-    agg_max_merge_gap_minutes: int | None = None,
+    agg_max_merge_gap_minutes: int | None = 5,
     build_preaggregations: bool = True,
 ) -> dict[str, Any]:
     """Import all JSON streaming history files into the SQLite database.

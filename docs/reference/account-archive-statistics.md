@@ -1,7 +1,7 @@
 # 音乐档案统计规则
 
-版本：`account_archive_filter_v1` / `account_archive_journey_v2_0` / `account_archive_cohorts_v2_0` / `account_archive_returns_v1_0` / `account_archive_discovery_v1_0` / `account_archive_library_v1_0` / `account_archive_other_media_v2_0`
-日期：2026-08-13
+版本：`account_archive_filter_v2` / `account_archive_journey_v2_0` / `account_archive_cohorts_v2_0` / `account_archive_returns_v1_0` / `account_archive_discovery_v1_0` / `account_archive_library_v1_0` / `account_archive_other_media_v2_0`
+日期：2026-08-15
 
 ## 1. 适用范围
 
@@ -17,7 +17,7 @@
 - 观察期锚定数据库原始播放的 `MIN(ts)` / `MAX(ts)`，不使用服务器今天。
 - `latest_play_date` 是 `MAX(ts)` 转换为北京时间后的自然日。
 
-连续片段先调用全局 `merge_consecutive_plays()`，再调用 `filter_effective_plays()` 应用静态或动态阈值。若一个合并组产生多个逻辑播放，现有全局合并器只保留组首时间；关系统计因此采取保守时间定位，不为缺失的组内时间编造事件时间。
+连续片段先调用全局 `merge_consecutive_plays()`，再调用 `filter_effective_plays()` 应用静态或动态阈值。默认只合并实际空闲时间不超过 5 分钟的相邻同曲同来源记录。一个合并组产生多个逻辑播放时，每次播放都使用 `logical_event_time_v2` 重建的独立 `counted_at`；关系窗口继续使用该事件的 `event_start_at`，不再退回组首时间。
 
 ## 3. 实体粒度与匹配
 

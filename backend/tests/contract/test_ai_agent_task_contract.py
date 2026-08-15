@@ -733,7 +733,7 @@ def test_chat_agent_replans_scoped_ranking_after_global_chart_miss(
             "music_only": True,
             "merge_enabled": True,
             "dynamic_threshold": True,
-            "max_merge_gap_minutes": None,
+            "max_merge_gap_minutes": 5,
             "merge_level": 1,
         },
     )

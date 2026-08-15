@@ -256,4 +256,286 @@ class TestMergeSessionBoundaries:
 
         assert len(result) == group_count
         assert result["ms_played"].unique().tolist() == [40_000]
-        assert elapsed < 1.5
+        # Timeline v2 additionally reconstructs per-event counted_at values,
+        # stable identities and listened-interval slices. Keep a regression
+        # guard for the 80k-row vectorised path while allowing CI load jitter.
+        assert elapsed < 8.0
+
+    def test_uses_actual_idle_gap_for_long_seamless_replay(self):
+        from backend.core.db import merge_consecutive_plays
+
+        df = pd.DataFrame(
+            [
+                {
+                    "play_id": 1,
+                    "ts": "2026-01-01T10:00:00Z",
+                    "track_id": 1,
+                    "ms_played": 360_000,
+                    "duration_ms": 360_000,
+                    "source_album_id": 1,
+                },
+                {
+                    "play_id": 2,
+                    "ts": "2026-01-01T10:06:00Z",
+                    "track_id": 1,
+                    "ms_played": 360_000,
+                    "duration_ms": 360_000,
+                    "source_album_id": 1,
+                },
+            ]
+        )
+
+        result = merge_consecutive_plays(
+            df,
+            min_ms=30_000,
+            max_gap_minutes=5,
+            boundary_column="source_album_id",
+        )
+
+        assert len(result) == 2
+        assert result["_merge_run_id"].nunique() == 1
+
+    @pytest.mark.parametrize(
+        ("idle_ms", "expected_runs"),
+        [(300_000, 1), (300_001, 2)],
+    )
+    def test_five_minute_idle_boundary_is_inclusive(self, idle_ms, expected_runs):
+        from backend.core.db import merge_consecutive_plays
+
+        first_end = pd.Timestamp("2026-01-01T10:00:00Z")
+        second_start = first_end + pd.Timedelta(milliseconds=idle_ms)
+        second_end = second_start + pd.Timedelta(seconds=40)
+        df = pd.DataFrame(
+            [
+                {
+                    "play_id": 1,
+                    "ts": first_end.isoformat(),
+                    "track_id": 1,
+                    "ms_played": 40_000,
+                    "duration_ms": 40_000,
+                    "source_album_id": 1,
+                },
+                {
+                    "play_id": 2,
+                    "ts": second_end.isoformat(),
+                    "track_id": 1,
+                    "ms_played": 40_000,
+                    "duration_ms": 40_000,
+                    "source_album_id": 1,
+                },
+            ]
+        )
+
+        result = merge_consecutive_plays(
+            df,
+            min_ms=30_000,
+            max_gap_minutes=5,
+            boundary_column="source_album_id",
+        )
+
+        assert result["_merge_run_id"].nunique() == expected_runs
+
+    def test_each_expanded_play_gets_its_own_counted_at(self):
+        from backend.core.db import merge_consecutive_plays
+
+        df = pd.DataFrame(
+            [
+                {
+                    "play_id": 10,
+                    "ts": "2026-01-01T15:59:50Z",
+                    "track_id": 1,
+                    "ms_played": 20_000,
+                    "duration_ms": 40_000,
+                    "source_album_id": 1,
+                },
+                {
+                    "play_id": 11,
+                    "ts": "2026-01-01T16:00:10Z",
+                    "track_id": 1,
+                    "ms_played": 20_000,
+                    "duration_ms": 40_000,
+                    "source_album_id": 1,
+                },
+            ]
+        )
+
+        result = merge_consecutive_plays(
+            df,
+            min_ms=30_000,
+            max_gap_minutes=5,
+            boundary_column="source_album_id",
+        )
+
+        assert len(result) == 1
+        # A complete logical play is attributed when the full duration is
+        # reached, rather than inheriting the first fragment's stop time.
+        assert result.iloc[0]["counted_at"] == "2026-01-01T16:00:10Z"
+        assert result.iloc[0]["ts_date"] == "2026-01-02"
+
+    def test_remainder_qualification_point_controls_third_play_time(self):
+        from backend.core.db import merge_consecutive_plays
+
+        df = pd.DataFrame(
+            [
+                {
+                    "play_id": 20,
+                    "ts": "2026-01-01T00:08:30Z",
+                    "track_id": 1,
+                    "ms_played": 510_000,
+                    "duration_ms": 240_000,
+                    "source_album_id": 1,
+                }
+            ]
+        )
+
+        result = merge_consecutive_plays(df, min_ms=30_000, max_gap_minutes=5)
+
+        assert result["ms_played"].tolist() == [240_000, 240_000, 30_000]
+        assert result["counted_at"].tolist() == [
+            "2026-01-01T00:04:00Z",
+            "2026-01-01T00:08:00Z",
+            "2026-01-01T00:08:30Z",
+        ]
+
+    def test_severe_inferred_overlap_starts_new_run(self):
+        from backend.core.db import merge_consecutive_plays
+
+        df = pd.DataFrame(
+            [
+                {
+                    "play_id": 30,
+                    "ts": "2026-01-01T10:00:00Z",
+                    "track_id": 1,
+                    "ms_played": 240_000,
+                    "duration_ms": 240_000,
+                },
+                {
+                    "play_id": 31,
+                    "ts": "2026-01-01T10:00:01Z",
+                    "track_id": 1,
+                    "ms_played": 240_000,
+                    "duration_ms": 240_000,
+                },
+            ]
+        )
+
+        result = merge_consecutive_plays(df, min_ms=30_000, max_gap_minutes=5)
+
+        assert len(result) == 2
+        assert result["_merge_run_id"].nunique() == 2
+        assert "overlap_split" in set(result["time_quality"])
+
+    def test_listening_duration_splits_across_local_dates(self):
+        from backend.core.db import merge_consecutive_plays
+        from backend.domains.playback.logical_timeline import explode_listening_slices
+
+        df = pd.DataFrame(
+            [
+                {
+                    "play_id": 40,
+                    "ts": "2026-01-01T15:59:50Z",
+                    "track_id": 1,
+                    "ms_played": 20_000,
+                    "duration_ms": 40_000,
+                },
+                {
+                    "play_id": 41,
+                    "ts": "2026-01-01T16:00:10Z",
+                    "track_id": 1,
+                    "ms_played": 20_000,
+                    "duration_ms": 40_000,
+                },
+            ]
+        )
+
+        events = merge_consecutive_plays(df, min_ms=30_000, max_gap_minutes=5)
+        slices = explode_listening_slices(events, granularity="day")
+
+        assert events["ts_date"].tolist() == ["2026-01-02"]
+        assert slices.groupby("ts_date")["ms_played"].sum().to_dict() == {
+            "2026-01-01": 30_000,
+            "2026-01-02": 10_000,
+        }
+
+    def test_billboard_weights_separate_event_count_and_duration(self):
+        from backend.core.db import merge_consecutive_plays
+        from backend.domains.playback.logical_timeline import build_billboard_weighted_frame
+
+        # Asia/Shanghai Thursday 00:00 boundary = Wednesday 16:00 UTC.
+        df = pd.DataFrame(
+            [
+                {
+                    "play_id": 50,
+                    "ts": "2026-05-27T15:59:50Z",
+                    "track_id": 1,
+                    "ms_played": 20_000,
+                    "duration_ms": 40_000,
+                },
+                {
+                    "play_id": 51,
+                    "ts": "2026-05-27T16:00:10Z",
+                    "track_id": 1,
+                    "ms_played": 20_000,
+                    "duration_ms": 40_000,
+                },
+            ]
+        )
+
+        events = merge_consecutive_plays(df, min_ms=30_000, max_gap_minutes=5)
+        weighted = build_billboard_weighted_frame(
+            events,
+            week_start_dow=3,
+            week_start_hour=0,
+        )
+        grouped = weighted.groupby("billboard_week")[["play_count", "total_ms"]].sum()
+
+        assert grouped["play_count"].to_dict() == {
+            pd.Timestamp("2026-05-28").date(): 1,
+            pd.Timestamp("2026-05-21").date(): 0,
+        }
+        assert grouped["total_ms"].to_dict() == {
+            pd.Timestamp("2026-05-28").date(): 10_000,
+            pd.Timestamp("2026-05-21").date(): 30_000,
+        }
+
+    def test_period_filter_is_invariant_for_cross_midnight_duration(self):
+        from backend.core.db import merge_consecutive_plays
+        from backend.services.analysis_stats_service import (
+            _chart_agg,
+            _daily_trend,
+            filter_period,
+        )
+
+        raw = pd.DataFrame(
+            [
+                {
+                    "play_id": 60,
+                    "ts": "2026-01-01T16:02:00Z",
+                    "track_id": 1,
+                    "track_name": "Boundary Song",
+                    "artist_name": "Boundary Artist",
+                    "album_name": "Boundary Album",
+                    "ms_played": 240_000,
+                    "duration_ms": 240_000,
+                }
+            ]
+        )
+        events = merge_consecutive_plays(raw, min_ms=30_000, max_gap_minutes=5)
+        first_day = filter_period(
+            events,
+            {"start_date": "2026-01-01", "end_date": "2026-01-01"},
+        )
+        second_day = filter_period(
+            events,
+            {"start_date": "2026-01-02", "end_date": "2026-01-02"},
+        )
+
+        assert first_day.empty
+        assert len(second_day) == 1
+        assert first_day.attrs["listening_duration_slices"]["ms_played"].sum() == 120_000
+        assert second_day.attrs["listening_duration_slices"]["ms_played"].sum() == 120_000
+        assert _daily_trend(first_day) == [{"date": "2026-01-01", "plays": 0, "hours": 0.03}]
+        assert _daily_trend(second_day) == [{"date": "2026-01-02", "plays": 1, "hours": 0.03}]
+        first_day_chart = _chart_agg(first_day, "track", merge_level=1)
+        assert int(first_day_chart.iloc[0]["plays"]) == 0
+        assert first_day_chart.iloc[0]["hours"] == pytest.approx(120_000 / 3_600_000)

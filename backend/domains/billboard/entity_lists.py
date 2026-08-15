@@ -15,7 +15,7 @@ def get_billboard_entity_lists(
     year_end,
     search=None,
     dynamic_threshold=False,
-    max_merge_gap_minutes=None,
+    max_merge_gap_minutes=5,
     merge_level=2,
     include_compilations=False,
 ):

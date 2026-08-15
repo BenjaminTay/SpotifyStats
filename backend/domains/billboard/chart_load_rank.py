@@ -69,7 +69,7 @@ def _load_and_rank_cached_by_revision(
     year_end=None,
     merge_level=2,
     dynamic_threshold=False,
-    max_merge_gap_minutes=None,
+    max_merge_gap_minutes=5,
     include_compilations=False,
     _revision_state=(0, 0, 0, 0, "ready:ready"),
 ):
@@ -102,7 +102,7 @@ def _load_and_rank_cached(
     year_end=None,
     merge_level=2,
     dynamic_threshold=False,
-    max_merge_gap_minutes=None,
+    max_merge_gap_minutes=5,
     include_compilations=False,
 ):
     revision_state = billboard_revision_state()
@@ -174,7 +174,7 @@ def _load_and_rank_uncached(
     year_end=None,
     merge_level=2,
     dynamic_threshold=False,
-    max_merge_gap_minutes=None,
+    max_merge_gap_minutes=5,
     include_compilations=False,
 ):
     _agg_tracks, _agg_albums, _agg_artists = _try_load_from_agg(
@@ -257,12 +257,7 @@ def _load_and_rank_uncached(
             dynamic_threshold=dynamic_threshold,
             max_merge_gap_minutes=max_merge_gap_minutes,
         )
-        df_artists = df_artists.copy()
-        df_artists["_year"] = df_artists["billboard_week"].apply(lambda x: x.year)
-        if year_start is not None:
-            df_artists = df_artists[df_artists["_year"] >= year_start]
-        if year_end is not None:
-            df_artists = df_artists[df_artists["_year"] <= year_end]
+        df_artists = _filter_billboard_years(df_artists, year_start, year_end)
         weekly_artist = compute_artist_weekly_rankings(df_artists, bb_artist_top_n)
 
     weekly_album, weekly_artist = _attach_charting_entity_counts(
@@ -402,6 +397,21 @@ def _filter_billboard_years(
         years = years.loc[out.index]
     if year_end is not None:
         out = out[years <= year_end]
+    from backend.domains.playback.logical_timeline import (
+        attach_billboard_weighted_frame,
+        get_billboard_weighted_frame,
+    )
+
+    weighted = get_billboard_weighted_frame(df)
+    if weighted is not None and not weighted.empty:
+        weighted_years = pd.to_datetime(weighted["billboard_week"]).dt.year
+        weighted_out = weighted
+        if year_start is not None:
+            weighted_out = weighted_out[weighted_years >= year_start]
+            weighted_years = weighted_years.loc[weighted_out.index]
+        if year_end is not None:
+            weighted_out = weighted_out[weighted_years <= year_end]
+        attach_billboard_weighted_frame(out, weighted_out.copy())
     return out
 
 

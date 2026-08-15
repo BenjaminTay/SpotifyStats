@@ -103,7 +103,7 @@ class ReportTaskRequest(BaseModel):
     music_only: bool = True
     merge_enabled: bool = True
     dynamic_threshold: bool = True
-    max_merge_gap_minutes: int | None = Field(default=None, ge=1, le=240)
+    max_merge_gap_minutes: int | None = Field(default=5, ge=1, le=240)
 
     @model_validator(mode="after")
     def validate_report_period(self) -> ReportTaskRequest:
@@ -126,7 +126,7 @@ class ChatAgentTaskRequest(BaseModel):
     music_only: bool = True
     merge_enabled: bool = True
     dynamic_threshold: bool = True
-    max_merge_gap_minutes: int | None = Field(default=None, ge=1, le=240)
+    max_merge_gap_minutes: int | None = Field(default=5, ge=1, le=240)
     merge_level: int = Field(default=1, ge=1, le=3)
 
 

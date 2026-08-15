@@ -207,7 +207,7 @@ def _artist_hours(conn: sqlite3.Connection) -> dict[str, float]:
         music_only=True,
         merge_enabled=True,
         dynamic_threshold=True,
-        max_merge_gap_minutes=None,
+        max_merge_gap_minutes=5,
     )
     artist_ms, _ = build_primary_artist_ms(conn, plays)
     if not artist_ms:

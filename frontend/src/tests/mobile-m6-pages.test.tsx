@@ -17,6 +17,7 @@ const settings: SettingsData = {
   min_ms: 30_000,
   music_only: true,
   merge_enabled: true,
+  max_merge_gap_minutes: 5,
   bb_top_n: 30,
   bb_album_top_n: 20,
   bb_artist_top_n: 20,

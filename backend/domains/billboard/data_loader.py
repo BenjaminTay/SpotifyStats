@@ -17,7 +17,7 @@ def _try_load_from_agg(
     week_start_dow,
     week_start_hour,
     dynamic_threshold=False,
-    max_merge_gap_minutes=None,
+    max_merge_gap_minutes=5,
 ):
     """Try to load pre-aggregated weekly data from agg tables.
 
@@ -81,7 +81,7 @@ def load_billboard_raw(
     week_start_dow,
     week_start_hour,
     dynamic_threshold=False,
-    max_merge_gap_minutes=None,
+    max_merge_gap_minutes=5,
 ):
     """Load filtered plays and compute billboard_week with configurable boundary."""
     conn = get_db()
@@ -106,20 +106,14 @@ def load_billboard_raw(
         conn,
         params=_fp,
     )
-    # Billboard week: configurable boundary
-    df["days_back"] = (df["ts_dow"] - week_start_dow) % 7
-    mask_before = (df["ts_dow"] == week_start_dow) & (df["ts_hour"] < week_start_hour)
-    df.loc[mask_before, "days_back"] = 7
-    df["ts_date_dt"] = pd.to_datetime(df["ts_date"])
-    df["billboard_week"] = (df["ts_date_dt"] - pd.to_timedelta(df["days_back"], unit="D")).dt.date
-
-    # Merge consecutive same-track plays (with source_album + billboard_week boundary),
-    # then apply ms_played threshold.  billboard_week prevents cross-week fragment merging (R23).
+    # Reconstruct the global logical timeline first. Reporting boundaries are
+    # attribution boundaries, never merge-session boundaries.
     df = merge_consecutive_plays(
         df,
         min_ms,
         max_gap_minutes=max_merge_gap_minutes,
-        boundary_column=["source_album_id", "billboard_week"],
+        boundary_column="source_album_id",
+        dynamic_threshold=dynamic_threshold,
     )
     if min_ms > 0:
         from backend.domains.playback.counting import filter_effective_plays
@@ -129,6 +123,23 @@ def load_billboard_raw(
     from backend.domains.metadata.artist_identity import canonicalize_artist_frame
 
     df = canonicalize_artist_frame(df, conn, dedupe=False)
+    from backend.domains.playback.logical_timeline import (
+        attach_billboard_weighted_frame,
+        billboard_week_for_timestamps,
+        build_billboard_weighted_frame,
+    )
+
+    weighted = build_billboard_weighted_frame(
+        df,
+        week_start_dow=week_start_dow,
+        week_start_hour=week_start_hour,
+    )
+    df["billboard_week"] = billboard_week_for_timestamps(
+        df["counted_at"],
+        week_start_dow=week_start_dow,
+        week_start_hour=week_start_hour,
+    )
+    attach_billboard_weighted_frame(df, weighted)
     conn.close()
 
     return _downcast_ints(df)
@@ -141,7 +152,7 @@ def load_billboard_raw_for_artists(
     week_start_dow,
     week_start_hour,
     dynamic_threshold=False,
-    max_merge_gap_minutes=None,
+    max_merge_gap_minutes=5,
 ):
     """Same as load_billboard_raw but fans out through track_artists for multi-artist
     attribution. Merge happens before fan-out to keep merge_consecutive_plays correct.
@@ -173,19 +184,13 @@ def load_billboard_raw_for_artists(
         params=_fp,
     )
 
-    # Billboard week computation
-    df["days_back"] = (df["ts_dow"] - week_start_dow) % 7
-    mask_before = (df["ts_dow"] == week_start_dow) & (df["ts_hour"] < week_start_hour)
-    df.loc[mask_before, "days_back"] = 7
-    df["ts_date_dt"] = pd.to_datetime(df["ts_date"])
-    df["billboard_week"] = (df["ts_date_dt"] - pd.to_timedelta(df["days_back"], unit="D")).dt.date
-
     # Merge before fan-out, then filter to align with pre-aggregation path
     df = merge_consecutive_plays(
         df,
         min_ms,
         max_gap_minutes=max_merge_gap_minutes,
-        boundary_column=["source_album_id", "billboard_week"],
+        boundary_column="source_album_id",
+        dynamic_threshold=dynamic_threshold,
     )
     if min_ms > 0:
         from backend.domains.playback.counting import filter_effective_plays
@@ -212,7 +217,23 @@ def load_billboard_raw_for_artists(
     from backend.domains.metadata.artist_identity import canonicalize_artist_frame
 
     df = canonicalize_artist_frame(df, conn)
-    df = df.drop(columns=["_logical_event_id"], errors="ignore")
+    from backend.domains.playback.logical_timeline import (
+        attach_billboard_weighted_frame,
+        billboard_week_for_timestamps,
+        build_billboard_weighted_frame,
+    )
+
+    weighted = build_billboard_weighted_frame(
+        df,
+        week_start_dow=week_start_dow,
+        week_start_hour=week_start_hour,
+    )
+    df["billboard_week"] = billboard_week_for_timestamps(
+        df["counted_at"],
+        week_start_dow=week_start_dow,
+        week_start_hour=week_start_hour,
+    )
+    attach_billboard_weighted_frame(df, weighted)
     conn.close()
 
     return _downcast_ints(df)

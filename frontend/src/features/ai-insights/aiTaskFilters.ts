@@ -5,7 +5,7 @@ export interface AiTaskFilterPayload {
   music_only: boolean
   merge_enabled: boolean
   dynamic_threshold: boolean
-  max_merge_gap_minutes: number | null
+  max_merge_gap_minutes: number
 }
 
 export interface ChatAgentFilterPayload extends AiTaskFilterPayload {
@@ -32,17 +32,6 @@ function getStoredDynamicThreshold(): boolean | null {
   }
 }
 
-function getStoredMaxMergeGapMinutes(): number | null {
-  try {
-    const value = localStorage.getItem('spotify_stats_max_merge_gap_minutes')
-    if (value == null) return null
-    const parsed = Number.parseInt(value, 10)
-    return Number.isFinite(parsed) && parsed >= 1 && parsed <= 240 ? parsed : null
-  } catch {
-    return null
-  }
-}
-
 export function getSettingsDynamicThreshold(settings: unknown): boolean {
   if (isRecord(settings) && typeof settings.dynamic_threshold === 'boolean') {
     return settings.dynamic_threshold
@@ -50,11 +39,11 @@ export function getSettingsDynamicThreshold(settings: unknown): boolean {
   return getStoredDynamicThreshold() ?? true
 }
 
-export function getSettingsMaxMergeGapMinutes(settings: unknown): number | null {
+export function getSettingsMaxMergeGapMinutes(settings: unknown): number {
   if (isRecord(settings) && typeof settings.max_merge_gap_minutes === 'number') {
     return settings.max_merge_gap_minutes
   }
-  return getStoredMaxMergeGapMinutes()
+  return 5
 }
 
 export function buildAiTaskFilterPayload(settings: unknown): AiTaskFilterPayload {

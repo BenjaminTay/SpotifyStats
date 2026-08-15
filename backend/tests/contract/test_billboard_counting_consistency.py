@@ -67,6 +67,48 @@ def isolated_seed_db(use_seed_db):
 
 
 class TestRawFallbackConsistency:
+    def test_aggregation_publish_rolls_back_as_one_snapshot(self, isolated_seed_db):
+        from backend.core.db import (
+            _AGG_SHADOW_TABLES,
+            _prepare_aggregation_shadows,
+            _publish_aggregation_shadows,
+            get_db,
+        )
+
+        conn = get_db(readonly=False)
+        try:
+            before_counts = {
+                table: conn.execute(f'SELECT COUNT(*) FROM "{table}"').fetchone()[0]
+                for table in _AGG_SHADOW_TABLES
+            }
+            before_hash = conn.execute(
+                "SELECT value FROM agg_config WHERE key='param_hash'"
+            ).fetchone()[0]
+            _prepare_aggregation_shadows(conn)
+            for live_table, shadow_table in _AGG_SHADOW_TABLES.items():
+                conn.execute(f'INSERT INTO temp."{shadow_table}" SELECT * FROM main."{live_table}"')
+            conn.commit()
+            conn.execute(
+                """CREATE TEMP TRIGGER abort_album_publish
+                   BEFORE INSERT ON agg_weekly_albums
+                   BEGIN SELECT RAISE(ABORT, 'forced publish failure'); END"""
+            )
+
+            with pytest.raises(Exception, match="forced publish failure"):
+                _publish_aggregation_shadows(conn, param_hash="should-not-publish")
+
+            after_counts = {
+                table: conn.execute(f'SELECT COUNT(*) FROM "{table}"').fetchone()[0]
+                for table in _AGG_SHADOW_TABLES
+            }
+            after_hash = conn.execute(
+                "SELECT value FROM agg_config WHERE key='param_hash'"
+            ).fetchone()[0]
+            assert after_counts == before_counts
+            assert after_hash == before_hash
+        finally:
+            conn.close()
+
     def test_l2_endpoints_bootstrap_album_projects_without_readonly_500(self, isolated_seed_db):
         """Cold L2 Billboard endpoints may need to build album projects lazily."""
         from fastapi.testclient import TestClient

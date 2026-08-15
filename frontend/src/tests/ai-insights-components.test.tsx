@@ -21,7 +21,7 @@ vi.mock('@/hooks/useSettings', () => ({
       music_only: true,
       merge_enabled: true,
       dynamic_threshold: true,
-      max_merge_gap_minutes: null,
+      max_merge_gap_minutes: 5,
     },
   }),
 }))

@@ -293,7 +293,7 @@ def get_analysis_overview(
     music_only: bool,
     merge_enabled: bool,
     dynamic_threshold: bool = False,
-    max_merge_gap_minutes: int | None = None,
+    max_merge_gap_minutes: int | None = 5,
     merge_level: int = 1,
 ) -> dict:
     """Build the playback analysis landing-page aggregate."""

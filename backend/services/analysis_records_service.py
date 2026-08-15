@@ -54,7 +54,7 @@ def _build_entity_frames(
     music_only: bool = True,
     merge_enabled: bool = True,
     dynamic_threshold: bool = False,
-    max_merge_gap_minutes: int | None = None,
+    max_merge_gap_minutes: int | None = 5,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """Build track, album, and artist entity frames with canonicalization.
 
@@ -422,7 +422,7 @@ def get_analysis_records(
     end_date: str | None = None,
     merge_level: int = 2,
     dynamic_threshold: bool = False,
-    max_merge_gap_minutes: int | None = None,
+    max_merge_gap_minutes: int | None = 5,
     include_compilations: bool = False,
 ) -> dict:
     """Get all playback records for the analysis/records page."""

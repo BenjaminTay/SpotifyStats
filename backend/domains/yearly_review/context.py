@@ -11,10 +11,11 @@ from typing import Any
 from backend.domains.metadata.artist_identity import get_identity_revision
 from backend.domains.metadata.genre_display_taxonomy import GENRE_DISPLAY_TAXONOMY_VERSION
 from backend.domains.metadata.track_credits import get_track_credit_revision
+from backend.domains.settings.repository import SETTINGS_DEFAULTS, SettingsRepository
 from backend.models.yearly_review import YearlyReviewFilterContext
 from backend.services.wrapped_service import _artist_metadata_revision
 
-FILTER_FINGERPRINT_VERSION = "yearly_review_filter_v1"
+FILTER_FINGERPRINT_VERSION = "yearly_review_filter_v2"
 
 FILTER_FIELDS = (
     "min_ms",
@@ -151,6 +152,14 @@ def build_yearly_review_context(
         raise ValueError(f"missing yearly-review revisions: {sorted(missing_revisions)}")
 
     values = {key: _value(filters, key) for key in FILTER_FIELDS}
+    if values["max_merge_gap_minutes"] is None:
+        settings = SettingsRepository(conn).load_all()
+        values["max_merge_gap_minutes"] = int(
+            settings.get(
+                "max_merge_gap_minutes",
+                SETTINGS_DEFAULTS["max_merge_gap_minutes"],
+            )
+        )
     values.update({key: revisions[key] for key in REVISION_FIELDS})
     fingerprint = fingerprint_filter_values(values)
     return YearlyReviewFilterContext(**values, filter_fingerprint=fingerprint)

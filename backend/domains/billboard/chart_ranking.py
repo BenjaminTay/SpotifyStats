@@ -5,6 +5,7 @@ import pandas as pd
 from backend.domains.billboard.album_display import choose_representative_album
 from backend.domains.billboard.data_loader import _load_album_metadata
 from backend.domains.billboard.version_merge import _apply_album_release_groups
+from backend.domains.playback.logical_timeline import get_billboard_weighted_frame
 
 
 def compute_weekly_rankings(_df, top_n, pre_agg=None, merge_level: int = 2):
@@ -32,17 +33,26 @@ def compute_weekly_rankings(_df, top_n, pre_agg=None, merge_level: int = 2):
         )
         weekly = weekly.merge(album_choice, on=group_cols, how="left")
     else:
-        df = _df.copy()
+        weighted = get_billboard_weighted_frame(_df)
+        df = weighted.copy() if weighted is not None else _df.copy()
         _apply_track_groups(df, merge_level=merge_level)
         group_cols = ["billboard_week", "track_id", "track_name", "artist_name"]
         album_choice = choose_representative_album(df, group_cols)
-        weekly = (
-            df.groupby(group_cols)
-            .agg(play_count=("ms_played", "count"), total_ms=("ms_played", "sum"))
-            .reset_index()
-        )
+        if {"play_count", "total_ms"} <= set(df.columns):
+            weekly = (
+                df.groupby(group_cols)
+                .agg(play_count=("play_count", "sum"), total_ms=("total_ms", "sum"))
+                .reset_index()
+            )
+        else:
+            weekly = (
+                df.groupby(group_cols)
+                .agg(play_count=("ms_played", "count"), total_ms=("ms_played", "sum"))
+                .reset_index()
+            )
         weekly = weekly.merge(album_choice, on=group_cols, how="left")
 
+    weekly = weekly[weekly["play_count"] > 0]
     # Tiebreaker: sort by play_count DESC, then total_ms DESC
     weekly = weekly.sort_values(
         ["billboard_week", "play_count", "total_ms"],
@@ -139,7 +149,8 @@ def compute_album_weekly_rankings(
             include_compilations=include_compilations,
         )
     else:
-        df = _df.copy()
+        weighted = get_billboard_weighted_frame(_df)
+        df = weighted.copy() if weighted is not None else _df.copy()
 
     if df.empty:
         return pd.DataFrame()
@@ -159,6 +170,9 @@ def compute_album_weekly_rankings(
     finally:
         conn.close()
 
+    if ranked.empty:
+        return pd.DataFrame()
+    ranked = ranked[ranked["play_count"] > 0]
     if ranked.empty:
         return pd.DataFrame()
 
@@ -246,18 +260,31 @@ def compute_artist_weekly_rankings(_df, top_n, pre_agg=None):
         # play_count, total_ms
         weekly_artist["tracks_count"] = 0
     else:
-        df = _df.copy()
+        weighted = get_billboard_weighted_frame(_df)
+        df = weighted.copy() if weighted is not None else _df.copy()
         df = df.dropna(subset=["artist_name"])
-        weekly_artist = (
-            df.groupby(["billboard_week", "artist_name"])
-            .agg(
-                play_count=("ms_played", "count"),
-                total_ms=("ms_played", "sum"),
-                tracks_count=("track_id", "nunique"),
+        if {"play_count", "total_ms"} <= set(df.columns):
+            weekly_artist = (
+                df.groupby(["billboard_week", "artist_name"])
+                .agg(
+                    play_count=("play_count", "sum"),
+                    total_ms=("total_ms", "sum"),
+                    tracks_count=("track_id", "nunique"),
+                )
+                .reset_index()
             )
-            .reset_index()
-        )
+        else:
+            weekly_artist = (
+                df.groupby(["billboard_week", "artist_name"])
+                .agg(
+                    play_count=("ms_played", "count"),
+                    total_ms=("ms_played", "sum"),
+                    tracks_count=("track_id", "nunique"),
+                )
+                .reset_index()
+            )
 
+    weekly_artist = weekly_artist[weekly_artist["play_count"] > 0]
     weekly_artist = weekly_artist.sort_values(
         ["billboard_week", "play_count", "total_ms"],
         ascending=[True, False, False],

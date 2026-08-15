@@ -280,7 +280,7 @@ def build_default_yearly_review_context() -> YearlyReviewFilterContext:
             music_only=bool(settings["music_only"]),
             merge_enabled=bool(settings["merge_enabled"]),
             dynamic_threshold=True,
-            max_merge_gap_minutes=None,
+            max_merge_gap_minutes=5,
             merge_level=2,
             include_compilations=bool(settings["include_compilations"]),
             bb_top_n=int(settings["bb_top_n"]),

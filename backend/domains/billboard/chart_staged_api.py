@@ -19,7 +19,7 @@ def compute_weekly_data(
     year_end=None,
     merge_level=2,
     dynamic_threshold=False,
-    max_merge_gap_minutes=None,
+    max_merge_gap_minutes=5,
     include_compilations=False,
 ):
     args = (
@@ -52,7 +52,7 @@ def compute_power_scores_staged(
     year_end=None,
     merge_level=2,
     dynamic_threshold=False,
-    max_merge_gap_minutes=None,
+    max_merge_gap_minutes=5,
     include_compilations=False,
 ):
     return _compute_power_scores_cached(
@@ -84,7 +84,7 @@ def compute_summaries_staged(
     year_end=None,
     merge_level=2,
     dynamic_threshold=False,
-    max_merge_gap_minutes=None,
+    max_merge_gap_minutes=5,
     include_compilations=False,
 ):
     return _compute_summaries_cached(
@@ -116,7 +116,7 @@ def compute_records_staged(
     year_end=None,
     merge_level=2,
     dynamic_threshold=False,
-    max_merge_gap_minutes=None,
+    max_merge_gap_minutes=5,
 ):
     return _compute_records_cached(
         min_ms,

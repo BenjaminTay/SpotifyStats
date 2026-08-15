@@ -7,7 +7,7 @@ export interface YearlyReviewFilterContext {
   music_only: boolean
   merge_enabled: boolean
   dynamic_threshold: boolean
-  max_merge_gap_minutes: number | null
+  max_merge_gap_minutes: number
   merge_level: number
   include_compilations: boolean
   bb_top_n: number

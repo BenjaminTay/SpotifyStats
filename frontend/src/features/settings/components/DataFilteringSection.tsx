@@ -5,7 +5,7 @@ import { Separator } from '@/components/ui/separator'
 import { type ChineseStyle } from '@/lib/chinese'
 import { setBillboardName } from '@/lib/billboard-name'
 import type { SettingsUpdatePayload } from '@/types/settings'
-import { setDynamicThreshold, setMaxMergeGapMinutes } from '@/hooks/useAnalysis'
+import { setDynamicThreshold } from '@/hooks/useAnalysis'
 import { CollapsibleSection, Toggle, FieldLabel, InlineNotice } from '@/features/settings/components/SettingsHelpers'
 
 const MIN_MS_OPTIONS = [
@@ -16,17 +16,6 @@ const MIN_MS_OPTIONS = [
   { value: 120000, label: '120s' },
 ]
 
-function getStoredMaxMergeGap(): string {
-  try {
-    const v = localStorage.getItem('spotify_stats_max_merge_gap_minutes')
-    if (v != null) {
-      const n = parseInt(v, 10)
-      if (!isNaN(n) && n >= 1 && n <= 240) return String(n)
-    }
-  } catch { /* localStorage unavailable */ }
-  return ''
-}
-
 export function DataFilteringSection({
   settings,
   onUpdate,
@@ -34,7 +23,12 @@ export function DataFilteringSection({
   chineseStyle,
   onChangeChineseStyle,
 }: {
-  settings: { min_ms: number; music_only: boolean; merge_enabled: boolean }
+  settings: {
+    min_ms: number
+    music_only: boolean
+    merge_enabled: boolean
+    max_merge_gap_minutes: number
+  }
   onUpdate: (p: SettingsUpdatePayload) => void
   onRequiresRebuild: () => void
   chineseStyle: ChineseStyle
@@ -44,7 +38,6 @@ export function DataFilteringSection({
   const [dynamicThreshold, setDynamicThresholdLocal] = useState(() => {
     try { return localStorage.getItem('spotify_stats_dynamic_threshold') !== 'false' } catch { return true }
   })
-  const [mergeGapMinutes, setMergeGapMinutes] = useState(getStoredMaxMergeGap)
   const [billboardName, setBillboardNameState] = useState(() => {
     try { return localStorage.getItem('spotify_stats_billboard_name') || '' } catch { return '' }
   })
@@ -61,17 +54,6 @@ export function DataFilteringSection({
 
   const updateAndRequireRebuild = (p: SettingsUpdatePayload) => {
     update(p)
-    onRequiresRebuild()
-  }
-
-  const handleMergeGapChange = (value: string) => {
-    setMergeGapMinutes(value)
-    const n = parseInt(value, 10)
-    if (!isNaN(n) && n >= 1 && n <= 240) {
-      setMaxMergeGapMinutes(n)
-    } else {
-      setMaxMergeGapMinutes(undefined)
-    }
     onRequiresRebuild()
   }
 
@@ -158,19 +140,24 @@ export function DataFilteringSection({
       {settings.merge_enabled && (
         <div className="mt-5">
           <div className="space-y-1.5">
-            <FieldLabel label="合并最大间隔" />
+            <FieldLabel label="连续播放暂停容忍时间" />
             <p className="text-[12px] text-muted-foreground">
-              两次播放之间允许的最大间隔分钟数（1–240），留空表示无限制
+              相邻同曲播放的实际空闲时间超过此值后，将开始新的连续收听段
             </p>
-            <input
-              type="number"
-              min={1}
-              max={240}
-              value={mergeGapMinutes}
-              onChange={(e) => handleMergeGapChange(e.target.value)}
-              placeholder="无限制"
-              className="mt-1 block w-full max-w-[160px] rounded-lg border border-border bg-muted/40 px-3 py-2 font-mono text-[13px] text-foreground placeholder:text-muted-foreground/60 focus:border-accent-foreground focus:outline-none"
-            />
+            <Select
+              value={String(settings.max_merge_gap_minutes)}
+              onValueChange={(value) => updateAndRequireRebuild({ max_merge_gap_minutes: Number(value) })}
+            >
+              <SelectTrigger className="mt-1 w-[180px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="1">1 分钟</SelectItem>
+                <SelectItem value="5">5 分钟（默认）</SelectItem>
+                <SelectItem value="15">15 分钟</SelectItem>
+                <SelectItem value="30">30 分钟</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         </div>
       )}

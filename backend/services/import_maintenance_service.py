@@ -9,6 +9,7 @@ from backend.core.db import build_aggregations, get_db
 from backend.domains.metadata.import_health import build_import_health_report
 from backend.domains.metadata.spotify_refresh import refresh_missing_spotify_metadata
 from backend.domains.playback.album_projects import rebuild_album_projects
+from backend.domains.settings.repository import SettingsRepository
 from backend.providers.spotify.client import SpotifyProvider
 
 
@@ -39,13 +40,14 @@ def run_post_streaming_import_maintenance(progress_callback=None) -> dict[str, A
         rebuild_album_projects(conn)
 
         _progress(progress_callback, "重建 Billboard 预聚合...", 0.9)
+        settings = SettingsRepository(conn).load_all()
         agg_results = build_aggregations(
-            min_ms=30000,
-            music_only=True,
-            week_start_dow=4,
-            week_start_hour=0,
+            min_ms=int(settings.get("min_ms", 30_000)),
+            music_only=bool(settings.get("music_only", True)),
+            week_start_dow=int(settings.get("bb_week_start_dow", 4)),
+            week_start_hour=int(settings.get("bb_week_start_hour", 0)),
             dynamic_threshold=True,
-            max_merge_gap_minutes=None,
+            max_merge_gap_minutes=int(settings.get("max_merge_gap_minutes", 5)),
         )
 
         _progress(progress_callback, "核验导入派生数据...", 0.96)

@@ -61,7 +61,7 @@ def _create_task(base_url: str, year: int, timeout: float) -> dict:
         "music_only": True,
         "merge_enabled": True,
         "dynamic_threshold": True,
-        "max_merge_gap_minutes": None,
+        "max_merge_gap_minutes": 5,
     }
     return _fetch_json(base_url, "/api/ai/tasks/report", timeout, method="POST", payload=payload)
 
@@ -103,7 +103,9 @@ def _summarize(
         result.get("fact_validation") if isinstance(result.get("fact_validation"), dict) else {}
     )
     tool_calls = (
-        events_payload.get("tool_calls") if isinstance(events_payload.get("tool_calls"), list) else []
+        events_payload.get("tool_calls")
+        if isinstance(events_payload.get("tool_calls"), list)
+        else []
     )
     tool_names = [
         str(call.get("tool_name") or "")

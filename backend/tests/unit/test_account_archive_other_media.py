@@ -128,7 +128,7 @@ def test_other_media_uses_shared_audio_video_filters_and_minimal_podcast_facts()
     assert response.podcast.top_shows[0].cover_url == "https://images.test/show-a.jpg"
     assert response.video.source_rows == 2
     assert response.video.effective_events == 1
-    assert response.video.effective_ms == 50000
+    assert response.video.effective_ms == 40000
     assert response.video.first_effective_at == "2024-01-01T23:59:50Z"
     assert len(response.video.top_tracks) == 1
     assert response.video.top_tracks[0].track_name == "Media Track"
@@ -138,7 +138,7 @@ def test_other_media_uses_shared_audio_video_filters_and_minimal_podcast_facts()
     assert response.audio_video_comparison.audio_effective_events == 1
     assert response.audio_video_comparison.audio_effective_ms == 40000
     assert response.audio_video_comparison.video_effective_events == 1
-    assert response.audio_video_comparison.video_effective_ms == 50000
+    assert response.audio_video_comparison.video_effective_ms == 40000
     assert "episode_name" not in serialized
     assert "Private Episode" not in serialized
     assert "platform" not in serialized
@@ -192,7 +192,7 @@ def test_other_media_keeps_unmapped_video_but_does_not_count_it_as_mapped_track(
 
     assert response.video.source_rows == 3
     assert response.video.effective_events == 2
-    assert response.video.effective_ms == 85000
+    assert response.video.effective_ms == 75000
     assert response.video.unique_tracks == 1
 
 

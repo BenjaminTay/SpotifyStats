@@ -38,12 +38,13 @@
 | [`designs/2026-07-04-ai-yearly-report-editorial-agent-pipeline-design.md`](designs/2026-07-04-ai-yearly-report-editorial-agent-pipeline-design.md) | 现行 Editorial Agent Pipeline 设计 |
 | [`designs/2026-07-04-genre-review-settings-design.md`](designs/2026-07-04-genre-review-settings-design.md) | Genre Review Settings 设计 |
 
-### 报告 (`reports/`) — 15 个
+### 报告 (`reports/`) — 16 个
 
 一次性验证/交付/审计报告。
 
 | 报告 | 内容 |
 |------|------|
+| [`reports/2026-08-15-playback-logical-timeline-v2-delivery.md`](reports/2026-08-15-playback-logical-timeline-v2-delivery.md) | 连续播放逻辑时间线 V2：5 分钟实际空闲边界、次数/时长双轨归属、原子预聚合与真实数据库验收 |
 | [`reports/2026-08-13-dual-deployment-profile-delivery.md`](reports/2026-08-13-dual-deployment-profile-delivery.md) | 完全版与简化版双运行面交付：同一 SHA/Backend/SQLite、可信网关、模式切换与 CI 门禁 |
 | [`reports/2026-08-13-private-cloud-pwa-delivery.md`](reports/2026-08-13-private-cloud-pwa-delivery.md) | 个人私有云与 PWA Phase B：Tailscale 私网架构、SHA 自动发布、脱敏数据迁移、生产验收、备份与手机剩余边界 |
 | [`reports/2026-08-13-billboard-artist-aggregate-fix.md`](reports/2026-08-13-billboard-artist-aggregate-fix.md) | 艺人榜逻辑播放事件预聚合修复：根因、影响范围、真实数据库重建、原始/预聚合对账与回归验证 |
@@ -66,7 +67,7 @@
 
 | 参考 | 内容 |
 |------|------|
-| [`reference/playback-stats-rules.md`](reference/playback-stats-rules.md) | 播放统计规则权威定义：三级合并、Session 边界、Album Projects |
+| [`reference/playback-stats-rules.md`](reference/playback-stats-rules.md) | 播放统计规则权威定义：逻辑事件时间线、次数/时长双轨归属、Session 边界、三级合并与 Album Projects |
 | [`reference/music-metadata-management.md`](reference/music-metadata-management.md) | 音乐源数据管理：有效曲目署名、人工覆盖、审计撤销、统一归并工作区与深链规则 |
 | [`reference/2026-07-04-artist-genre-taxonomy.md`](reference/2026-07-04-artist-genre-taxonomy.md) | Artist Genre Taxonomy：来源优先级、四轴治理、consumer_v1 展示映射与审计边界 |
 | [`reference/data-import-and-health.md`](reference/data-import-and-health.md) | 导入前文件预检、导入后数据库健康报告与当前精简边界 |

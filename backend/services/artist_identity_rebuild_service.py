@@ -28,7 +28,7 @@ def handle_artist_identity_rebuild(job: Job) -> None:
         week_start_dow = int(settings.get("bb_week_start_dow", 4))
         week_start_hour = int(settings.get("bb_week_start_hour", 0))
         dynamic_threshold = True
-        max_merge_gap_minutes = None
+        max_merge_gap_minutes = int(settings.get("max_merge_gap_minutes", 5))
 
         invalidate_all()
         frame = load_billboard_raw_for_artists(
@@ -39,12 +39,23 @@ def handle_artist_identity_rebuild(job: Job) -> None:
             dynamic_threshold,
             max_merge_gap_minutes,
         )
+        from backend.domains.playback.logical_timeline import (
+            get_billboard_weighted_frame,
+        )
+
+        weighted = get_billboard_weighted_frame(frame)
+        if weighted is None:
+            weighted = frame
+        if not weighted.empty and not {"play_count", "total_ms"} <= set(weighted.columns):
+            weighted = weighted.copy()
+            weighted["play_count"] = 1
+            weighted["total_ms"] = weighted["ms_played"]
         grouped = (
-            frame.groupby(["billboard_week", "artist_id"], as_index=False).agg(
-                play_count=("ms_played", "count"), total_ms=("ms_played", "sum")
+            weighted.groupby(["billboard_week", "artist_id"], as_index=False).agg(
+                play_count=("play_count", "sum"), total_ms=("total_ms", "sum")
             )
-            if not frame.empty
-            else frame
+            if not weighted.empty
+            else weighted
         )
         rows = (
             [

@@ -224,6 +224,7 @@ def _effective_media_frames(
             context.min_ms,
             max_gap_minutes=context.max_merge_gap_minutes,
             boundary_column=["source_album_id", "content_type"],
+            dynamic_threshold=context.dynamic_threshold,
         )
     frame = filter_effective_plays(
         frame,

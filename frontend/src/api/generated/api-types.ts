@@ -3341,6 +3341,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/runtime/capabilities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Runtime Capabilities
+         * @description Return presentation capabilities for the trusted ingress surface.
+         */
+        get: operations["runtime_capabilities_api_runtime_capabilities_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/health": {
         parameters: {
             query?: never;
@@ -4486,10 +4506,10 @@ export interface components {
         ArchiveFilterContext: {
             /**
              * Context Version
-             * @default account_archive_filter_v1
+             * @default account_archive_filter_v2
              * @constant
              */
-            context_version: "account_archive_filter_v1";
+            context_version: "account_archive_filter_v2";
             /** Min Ms */
             min_ms: number;
             /**
@@ -4502,8 +4522,11 @@ export interface components {
             merge_enabled: boolean;
             /** Dynamic Threshold */
             dynamic_threshold: boolean;
-            /** Max Merge Gap Minutes */
-            max_merge_gap_minutes?: number | null;
+            /**
+             * Max Merge Gap Minutes
+             * @default 5
+             */
+            max_merge_gap_minutes: number;
             /** Merge Level */
             merge_level: number;
             /**
@@ -6384,8 +6407,11 @@ export interface components {
              * @default true
              */
             dynamic_threshold: boolean;
-            /** Max Merge Gap Minutes */
-            max_merge_gap_minutes?: number | null;
+            /**
+             * Max Merge Gap Minutes
+             * @default 5
+             */
+            max_merge_gap_minutes: number | null;
             /**
              * Merge Level
              * @default 1
@@ -8943,8 +8969,11 @@ export interface components {
             status: string;
             /** Dynamic Threshold */
             dynamic_threshold: boolean;
-            /** Max Merge Gap Minutes */
-            max_merge_gap_minutes?: number | null;
+            /**
+             * Max Merge Gap Minutes
+             * @default 5
+             */
+            max_merge_gap_minutes: number;
             /** Tracks */
             tracks: number;
             /** Albums */
@@ -9168,8 +9197,11 @@ export interface components {
              * @default true
              */
             dynamic_threshold: boolean;
-            /** Max Merge Gap Minutes */
-            max_merge_gap_minutes?: number | null;
+            /**
+             * Max Merge Gap Minutes
+             * @default 5
+             */
+            max_merge_gap_minutes: number | null;
         };
         /** ReturningTrack */
         ReturningTrack: {
@@ -9185,6 +9217,50 @@ export interface components {
             release_year: number;
             /** Cover Url */
             cover_url: string;
+        };
+        /**
+         * RuntimeCapabilitiesResponse
+         * @description Features available through the current trusted reverse-proxy surface.
+         */
+        RuntimeCapabilitiesResponse: {
+            /**
+             * Surface
+             * @enum {string}
+             */
+            surface: "private-admin" | "public-readonly";
+            /**
+             * Profile
+             * @enum {string}
+             */
+            profile: "full" | "showcase";
+            /** Policy Version */
+            policy_version: string;
+            /** Release Sha */
+            release_sha: string;
+            /** Settings */
+            settings: boolean;
+            /** Editing */
+            editing: boolean;
+            /** Imports */
+            imports: boolean;
+            /** Ai */
+            ai: boolean;
+            /** Spotify Oauth */
+            spotify_oauth: boolean;
+            /** Lyrics */
+            lyrics: boolean;
+            /** Metadata Governance */
+            metadata_governance: boolean;
+            /** Data Rebuild */
+            data_rebuild: boolean;
+            /** Yearly Generation */
+            yearly_generation: boolean;
+            /** Community Write */
+            community_write: boolean;
+            /** Cover Enrichment */
+            cover_enrichment: boolean;
+            /** Account Connection */
+            account_connection: boolean;
         };
         /** SavedShowResponse */
         SavedShowResponse: {
@@ -9321,6 +9397,11 @@ export interface components {
             music_only: boolean;
             /** Merge Enabled */
             merge_enabled: boolean;
+            /**
+             * Max Merge Gap Minutes
+             * @default 5
+             */
+            max_merge_gap_minutes: number;
             /** Bb Top N */
             bb_top_n: number;
             /** Bb Album Top N */
@@ -9390,6 +9471,8 @@ export interface components {
             music_only?: boolean | null;
             /** Merge Enabled */
             merge_enabled?: boolean | null;
+            /** Max Merge Gap Minutes */
+            max_merge_gap_minutes?: number | null;
             /** Bb Top N */
             bb_top_n?: number | null;
             /** Bb Album Top N */
@@ -10080,10 +10163,6 @@ export interface components {
             msg: string;
             /** Error Type */
             type: string;
-            /** Input */
-            input?: unknown;
-            /** Context */
-            ctx?: Record<string, never>;
         };
         /** VersusEntity */
         VersusEntity: {
@@ -10482,7 +10561,7 @@ export interface components {
              */
             entity_type: "track" | "album" | "artist";
             /** Entity Id */
-            entity_id?: number | string | null;
+            entity_id?: string | number | null;
             /** Name */
             name: string;
             /** Artist Name */
@@ -10601,7 +10680,7 @@ export interface components {
         YearlyMethodology: {
             /**
              * Content Version
-             * @default yearly_review_v2_12
+             * @default yearly_review_v2_13
              */
             content_version: string;
             /**
@@ -10829,8 +10908,11 @@ export interface components {
             merge_enabled: boolean;
             /** Dynamic Threshold */
             dynamic_threshold: boolean;
-            /** Max Merge Gap Minutes */
-            max_merge_gap_minutes?: number | null;
+            /**
+             * Max Merge Gap Minutes
+             * @default 5
+             */
+            max_merge_gap_minutes: number;
             /** Merge Level */
             merge_level: number;
             /** Include Compilations */
@@ -10903,7 +10985,7 @@ export interface components {
         YearlyReviewRecordsPage: {
             /**
              * Content Version
-             * @default yearly_review_v2_12
+             * @default yearly_review_v2_13
              */
             content_version: string;
             /** Year */
@@ -11226,7 +11308,7 @@ export interface operations {
                 merge_enabled?: boolean;
                 /** @description 使用动态有效播放阈值 */
                 dynamic_threshold?: boolean;
-                /** @description 连续播放最大合并间隔 (分钟) */
+                /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
                 max_merge_gap_minutes?: number | null;
                 readonly?: boolean;
             };
@@ -11270,7 +11352,7 @@ export interface operations {
                 merge_enabled?: boolean;
                 /** @description 使用动态有效播放阈值 */
                 dynamic_threshold?: boolean;
-                /** @description 连续播放最大合并间隔 (分钟) */
+                /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
                 max_merge_gap_minutes?: number | null;
                 readonly?: boolean;
             };
@@ -11320,7 +11402,7 @@ export interface operations {
                 merge_enabled?: boolean;
                 /** @description 使用动态有效播放阈值 */
                 dynamic_threshold?: boolean;
-                /** @description 连续播放最大合并间隔 (分钟) */
+                /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
                 max_merge_gap_minutes?: number | null;
                 /** @description 版本合并严格度 */
                 merge_level?: number;
@@ -11370,7 +11452,7 @@ export interface operations {
                 merge_enabled?: boolean;
                 /** @description 使用动态有效播放阈值 */
                 dynamic_threshold?: boolean;
-                /** @description 连续播放最大合并间隔 (分钟) */
+                /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
                 max_merge_gap_minutes?: number | null;
                 readonly?: boolean;
             };
@@ -11414,7 +11496,7 @@ export interface operations {
                 merge_enabled?: boolean;
                 /** @description 使用动态有效播放阈值 */
                 dynamic_threshold?: boolean;
-                /** @description 连续播放最大合并间隔 (分钟) */
+                /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
                 max_merge_gap_minutes?: number | null;
                 readonly?: boolean;
             };
@@ -11460,7 +11542,7 @@ export interface operations {
                 merge_enabled?: boolean;
                 /** @description 使用动态有效播放阈值 */
                 dynamic_threshold?: boolean;
-                /** @description 连续播放最大合并间隔 (分钟) */
+                /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
                 max_merge_gap_minutes?: number | null;
                 /** @description 版本合并严格度 */
                 merge_level?: number;
@@ -11503,7 +11585,7 @@ export interface operations {
                 merge_enabled?: boolean | null;
                 /** @description 使用动态有效播放阈值 */
                 dynamic_threshold?: boolean;
-                /** @description 连续播放最大合并间隔 (分钟) */
+                /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
                 max_merge_gap_minutes?: number | null;
                 /** @description 版本合并严格度 */
                 merge_level?: number;
@@ -11553,7 +11635,7 @@ export interface operations {
                 merge_enabled?: boolean;
                 /** @description 使用动态有效播放阈值 */
                 dynamic_threshold?: boolean;
-                /** @description 连续播放最大合并间隔 (分钟) */
+                /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
                 max_merge_gap_minutes?: number | null;
                 readonly?: boolean;
             };
@@ -11594,7 +11676,7 @@ export interface operations {
                 merge_enabled?: boolean;
                 /** @description 使用动态有效播放阈值 */
                 dynamic_threshold?: boolean;
-                /** @description 连续播放最大合并间隔 (分钟) */
+                /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
                 max_merge_gap_minutes?: number | null;
                 readonly?: boolean;
             };
@@ -11636,7 +11718,7 @@ export interface operations {
                 merge_enabled?: boolean;
                 /** @description 使用动态有效播放阈值 */
                 dynamic_threshold?: boolean;
-                /** @description 连续播放最大合并间隔 (分钟) */
+                /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
                 max_merge_gap_minutes?: number | null;
                 readonly?: boolean;
             };
@@ -11677,7 +11759,7 @@ export interface operations {
                 merge_enabled?: boolean;
                 /** @description 使用动态有效播放阈值 */
                 dynamic_threshold?: boolean;
-                /** @description 连续播放最大合并间隔 (分钟) */
+                /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
                 max_merge_gap_minutes?: number | null;
                 readonly?: boolean;
             };
@@ -11718,7 +11800,7 @@ export interface operations {
                 merge_enabled?: boolean;
                 /** @description 使用动态有效播放阈值 */
                 dynamic_threshold?: boolean;
-                /** @description 连续播放最大合并间隔 (分钟) */
+                /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
                 max_merge_gap_minutes?: number | null;
                 readonly?: boolean;
             };
@@ -11759,7 +11841,7 @@ export interface operations {
                 merge_enabled?: boolean;
                 /** @description 使用动态有效播放阈值 */
                 dynamic_threshold?: boolean;
-                /** @description 连续播放最大合并间隔 (分钟) */
+                /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
                 max_merge_gap_minutes?: number | null;
                 readonly?: boolean;
             };
@@ -11800,7 +11882,7 @@ export interface operations {
                 merge_enabled?: boolean;
                 /** @description 使用动态有效播放阈值 */
                 dynamic_threshold?: boolean;
-                /** @description 连续播放最大合并间隔 (分钟) */
+                /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
                 max_merge_gap_minutes?: number | null;
                 readonly?: boolean;
             };
@@ -11843,7 +11925,7 @@ export interface operations {
                 merge_enabled?: boolean;
                 /** @description 使用动态有效播放阈值 */
                 dynamic_threshold?: boolean;
-                /** @description 连续播放最大合并间隔 (分钟) */
+                /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
                 max_merge_gap_minutes?: number | null;
                 readonly?: boolean;
             };
@@ -11886,7 +11968,7 @@ export interface operations {
                 merge_enabled?: boolean;
                 /** @description 使用动态有效播放阈值 */
                 dynamic_threshold?: boolean;
-                /** @description 连续播放最大合并间隔 (分钟) */
+                /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
                 max_merge_gap_minutes?: number | null;
                 readonly?: boolean;
             };
@@ -11938,7 +12020,7 @@ export interface operations {
                 merge_enabled?: boolean;
                 /** @description 使用动态有效播放阈值 */
                 dynamic_threshold?: boolean;
-                /** @description 连续播放最大合并间隔 (分钟) */
+                /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
                 max_merge_gap_minutes?: number | null;
                 readonly?: boolean;
             };
@@ -12012,7 +12094,7 @@ export interface operations {
                 merge_enabled?: boolean;
                 /** @description 使用动态有效播放阈值 */
                 dynamic_threshold?: boolean;
-                /** @description 连续播放最大合并间隔 (分钟) */
+                /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
                 max_merge_gap_minutes?: number | null;
                 readonly?: boolean;
             };
@@ -12053,7 +12135,7 @@ export interface operations {
                 merge_enabled?: boolean;
                 /** @description 使用动态有效播放阈值 */
                 dynamic_threshold?: boolean;
-                /** @description 连续播放最大合并间隔 (分钟) */
+                /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
                 max_merge_gap_minutes?: number | null;
                 readonly?: boolean;
             };
@@ -12094,7 +12176,7 @@ export interface operations {
                 merge_enabled?: boolean;
                 /** @description 使用动态有效播放阈值 */
                 dynamic_threshold?: boolean;
-                /** @description 连续播放最大合并间隔 (分钟) */
+                /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
                 max_merge_gap_minutes?: number | null;
                 readonly?: boolean;
             };
@@ -12135,7 +12217,7 @@ export interface operations {
                 merge_enabled?: boolean;
                 /** @description 使用动态有效播放阈值 */
                 dynamic_threshold?: boolean;
-                /** @description 连续播放最大合并间隔 (分钟) */
+                /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
                 max_merge_gap_minutes?: number | null;
                 readonly?: boolean;
             };
@@ -12176,7 +12258,7 @@ export interface operations {
                 merge_enabled?: boolean;
                 /** @description 使用动态有效播放阈值 */
                 dynamic_threshold?: boolean;
-                /** @description 连续播放最大合并间隔 (分钟) */
+                /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
                 max_merge_gap_minutes?: number | null;
                 readonly?: boolean;
             };
@@ -12251,7 +12333,7 @@ export interface operations {
                 merge_enabled?: boolean;
                 /** @description 使用动态有效播放阈值 */
                 dynamic_threshold?: boolean;
-                /** @description 连续播放最大合并间隔 (分钟) */
+                /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
                 max_merge_gap_minutes?: number | null;
                 readonly?: boolean;
             };
@@ -12326,7 +12408,7 @@ export interface operations {
                 merge_enabled?: boolean;
                 /** @description 使用动态有效播放阈值 */
                 dynamic_threshold?: boolean;
-                /** @description 连续播放最大合并间隔 (分钟) */
+                /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
                 max_merge_gap_minutes?: number | null;
                 readonly?: boolean;
             };
@@ -12370,7 +12452,7 @@ export interface operations {
                 merge_enabled?: boolean;
                 /** @description 使用动态有效播放阈值 */
                 dynamic_threshold?: boolean;
-                /** @description 连续播放最大合并间隔 (分钟) */
+                /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
                 max_merge_gap_minutes?: number | null;
                 readonly?: boolean;
             };
@@ -12965,7 +13047,7 @@ export interface operations {
                 merge_enabled?: boolean | null;
                 /** @description 使用动态有效播放阈值 */
                 dynamic_threshold?: boolean;
-                /** @description 连续播放最大合并间隔 (分钟) */
+                /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
                 max_merge_gap_minutes?: number | null;
                 /** @description 版本合并严格度 */
                 merge_level?: number;
@@ -13021,7 +13103,7 @@ export interface operations {
                 merge_enabled?: boolean | null;
                 /** @description 使用动态有效播放阈值 */
                 dynamic_threshold?: boolean;
-                /** @description 连续播放最大合并间隔 (分钟) */
+                /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
                 max_merge_gap_minutes?: number | null;
                 /** @description 版本合并严格度 */
                 merge_level?: number;
@@ -13071,7 +13153,7 @@ export interface operations {
                 merge_enabled?: boolean | null;
                 /** @description 使用动态有效播放阈值 */
                 dynamic_threshold?: boolean;
-                /** @description 连续播放最大合并间隔 (分钟) */
+                /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
                 max_merge_gap_minutes?: number | null;
                 /** @description 版本合并严格度 */
                 merge_level?: number;
@@ -13126,7 +13208,7 @@ export interface operations {
                 merge_enabled?: boolean | null;
                 /** @description 使用动态有效播放阈值 */
                 dynamic_threshold?: boolean;
-                /** @description 连续播放最大合并间隔 (分钟) */
+                /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
                 max_merge_gap_minutes?: number | null;
                 /** @description 版本合并严格度 */
                 merge_level?: number;
@@ -13238,6 +13320,7 @@ export interface operations {
         parameters: {
             query?: {
                 dynamic_threshold?: boolean;
+                /** @description 连续同曲播放的最大实际空闲时间；未传时使用设置值 */
                 max_merge_gap_minutes?: number | null;
                 readonly?: boolean;
             };
@@ -13508,7 +13591,7 @@ export interface operations {
                 year_end?: number | null;
                 /** @description 使用动态有效播放阈值 */
                 dynamic_threshold?: boolean;
-                /** @description 连续播放最大合并间隔 (分钟) */
+                /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
                 max_merge_gap_minutes?: number | null;
                 /** @description 版本合并严格度 */
                 merge_level?: number;
@@ -13566,7 +13649,7 @@ export interface operations {
                 year_end?: number | null;
                 /** @description 使用动态有效播放阈值 */
                 dynamic_threshold?: boolean;
-                /** @description 连续播放最大合并间隔 (分钟) */
+                /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
                 max_merge_gap_minutes?: number | null;
                 /** @description 版本合并严格度 */
                 merge_level?: number;
@@ -13622,7 +13705,7 @@ export interface operations {
                 year_end?: number | null;
                 /** @description 使用动态有效播放阈值 */
                 dynamic_threshold?: boolean;
-                /** @description 连续播放最大合并间隔 (分钟) */
+                /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
                 max_merge_gap_minutes?: number | null;
                 /** @description 版本合并严格度 */
                 merge_level?: number;
@@ -13680,7 +13763,7 @@ export interface operations {
                 year_end?: number | null;
                 /** @description 使用动态有效播放阈值 */
                 dynamic_threshold?: boolean;
-                /** @description 连续播放最大合并间隔 (分钟) */
+                /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
                 max_merge_gap_minutes?: number | null;
                 /** @description 版本合并严格度 */
                 merge_level?: number;
@@ -13738,7 +13821,7 @@ export interface operations {
                 year_end?: number | null;
                 /** @description 使用动态有效播放阈值 */
                 dynamic_threshold?: boolean;
-                /** @description 连续播放最大合并间隔 (分钟) */
+                /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
                 max_merge_gap_minutes?: number | null;
                 /** @description 版本合并严格度 */
                 merge_level?: number;
@@ -13796,7 +13879,7 @@ export interface operations {
                 year_end?: number | null;
                 /** @description 使用动态有效播放阈值 */
                 dynamic_threshold?: boolean;
-                /** @description 连续播放最大合并间隔 (分钟) */
+                /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
                 max_merge_gap_minutes?: number | null;
                 /** @description 版本合并严格度 */
                 merge_level?: number;
@@ -13856,7 +13939,7 @@ export interface operations {
                 year_end?: number | null;
                 /** @description 使用动态有效播放阈值 */
                 dynamic_threshold?: boolean;
-                /** @description 连续播放最大合并间隔 (分钟) */
+                /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
                 max_merge_gap_minutes?: number | null;
                 /** @description 版本合并严格度 */
                 merge_level?: number;
@@ -13912,7 +13995,7 @@ export interface operations {
                 year_end?: number | null;
                 /** @description 使用动态有效播放阈值 */
                 dynamic_threshold?: boolean;
-                /** @description 连续播放最大合并间隔 (分钟) */
+                /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
                 max_merge_gap_minutes?: number | null;
             };
             header?: never;
@@ -13970,7 +14053,7 @@ export interface operations {
                 year_end?: number | null;
                 /** @description 使用动态有效播放阈值 */
                 dynamic_threshold?: boolean;
-                /** @description 连续播放最大合并间隔 (分钟) */
+                /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
                 max_merge_gap_minutes?: number | null;
                 /** @description 版本合并严格度 */
                 merge_level?: number;
@@ -14033,7 +14116,7 @@ export interface operations {
                 year_end?: number | null;
                 /** @description 使用动态有效播放阈值 */
                 dynamic_threshold?: boolean;
-                /** @description 连续播放最大合并间隔 (分钟) */
+                /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
                 max_merge_gap_minutes?: number | null;
                 /** @description 版本合并严格度 */
                 merge_level?: number;
@@ -14093,7 +14176,7 @@ export interface operations {
                 year_end?: number | null;
                 /** @description 使用动态有效播放阈值 */
                 dynamic_threshold?: boolean;
-                /** @description 连续播放最大合并间隔 (分钟) */
+                /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
                 max_merge_gap_minutes?: number | null;
                 /** @description 版本合并严格度 */
                 merge_level?: number;
@@ -14154,7 +14237,7 @@ export interface operations {
                 year_end?: number | null;
                 /** @description 使用动态有效播放阈值 */
                 dynamic_threshold?: boolean;
-                /** @description 连续播放最大合并间隔 (分钟) */
+                /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
                 max_merge_gap_minutes?: number | null;
                 /** @description 版本合并严格度 */
                 merge_level?: number;
@@ -14220,7 +14303,7 @@ export interface operations {
                 year_end?: number | null;
                 /** @description 使用动态有效播放阈值 */
                 dynamic_threshold?: boolean;
-                /** @description 连续播放最大合并间隔 (分钟) */
+                /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
                 max_merge_gap_minutes?: number | null;
                 /** @description 版本合并严格度 */
                 merge_level?: number;
@@ -14288,7 +14371,7 @@ export interface operations {
                 year_end?: number | null;
                 /** @description 使用动态有效播放阈值 */
                 dynamic_threshold?: boolean;
-                /** @description 连续播放最大合并间隔 (分钟) */
+                /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
                 max_merge_gap_minutes?: number | null;
                 /** @description 版本合并严格度 */
                 merge_level?: number;
@@ -14356,7 +14439,7 @@ export interface operations {
                 year_end?: number | null;
                 /** @description 使用动态有效播放阈值 */
                 dynamic_threshold?: boolean;
-                /** @description 连续播放最大合并间隔 (分钟) */
+                /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
                 max_merge_gap_minutes?: number | null;
                 /** @description 版本合并严格度 */
                 merge_level?: number;
@@ -14417,7 +14500,7 @@ export interface operations {
                 year_end?: number | null;
                 /** @description 使用动态有效播放阈值 */
                 dynamic_threshold?: boolean;
-                /** @description 连续播放最大合并间隔 (分钟) */
+                /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
                 max_merge_gap_minutes?: number | null;
                 /** @description 版本合并严格度 */
                 merge_level?: number;
@@ -14474,7 +14557,7 @@ export interface operations {
                 year_end?: number | null;
                 /** @description 使用动态有效播放阈值 */
                 dynamic_threshold?: boolean;
-                /** @description 连续播放最大合并间隔 (分钟) */
+                /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
                 max_merge_gap_minutes?: number | null;
                 /** @description 版本合并严格度 */
                 merge_level?: number;
@@ -14543,7 +14626,7 @@ export interface operations {
                 year_end?: number | null;
                 /** @description 使用动态有效播放阈值 */
                 dynamic_threshold?: boolean;
-                /** @description 连续播放最大合并间隔 (分钟) */
+                /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
                 max_merge_gap_minutes?: number | null;
                 /** @description 版本合并严格度 */
                 merge_level?: number;
@@ -14600,7 +14683,7 @@ export interface operations {
                 year_end?: number | null;
                 /** @description 使用动态有效播放阈值 */
                 dynamic_threshold?: boolean;
-                /** @description 连续播放最大合并间隔 (分钟) */
+                /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
                 max_merge_gap_minutes?: number | null;
                 /** @description 版本合并严格度 */
                 merge_level?: number;
@@ -14665,7 +14748,7 @@ export interface operations {
                 year_end?: number | null;
                 /** @description 使用动态有效播放阈值 */
                 dynamic_threshold?: boolean;
-                /** @description 连续播放最大合并间隔 (分钟) */
+                /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
                 max_merge_gap_minutes?: number | null;
                 /** @description 版本合并严格度 */
                 merge_level?: number;
@@ -14722,7 +14805,7 @@ export interface operations {
                 year_end?: number | null;
                 /** @description 使用动态有效播放阈值 */
                 dynamic_threshold?: boolean;
-                /** @description 连续播放最大合并间隔 (分钟) */
+                /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
                 max_merge_gap_minutes?: number | null;
                 /** @description 版本合并严格度 */
                 merge_level?: number;
@@ -14908,7 +14991,7 @@ export interface operations {
                 year_end?: number | null;
                 /** @description 使用动态有效播放阈值 */
                 dynamic_threshold?: boolean;
-                /** @description 连续播放最大合并间隔 (分钟) */
+                /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
                 max_merge_gap_minutes?: number | null;
                 /** @description 版本合并严格度 */
                 merge_level?: number;
@@ -14973,7 +15056,7 @@ export interface operations {
                 year_end?: number | null;
                 /** @description 使用动态有效播放阈值 */
                 dynamic_threshold?: boolean;
-                /** @description 连续播放最大合并间隔 (分钟) */
+                /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
                 max_merge_gap_minutes?: number | null;
                 /** @description 版本合并严格度 */
                 merge_level?: number;
@@ -15032,7 +15115,7 @@ export interface operations {
                 year_end?: number | null;
                 /** @description 使用动态有效播放阈值 */
                 dynamic_threshold?: boolean;
-                /** @description 连续播放最大合并间隔 (分钟) */
+                /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
                 max_merge_gap_minutes?: number | null;
                 /** @description 版本合并严格度 */
                 merge_level?: number;
@@ -15781,7 +15864,7 @@ export interface operations {
                 merge_enabled?: boolean | null;
                 /** @description 使用动态有效播放阈值 */
                 dynamic_threshold?: boolean;
-                /** @description 连续播放最大合并间隔 (分钟) */
+                /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
                 max_merge_gap_minutes?: number | null;
                 /** @description 单曲榜 Top N */
                 bb_top_n?: number | null;
@@ -15841,7 +15924,7 @@ export interface operations {
                 merge_enabled?: boolean;
                 /** @description 使用动态有效播放阈值 */
                 dynamic_threshold?: boolean;
-                /** @description 连续播放最大合并间隔 (分钟) */
+                /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
                 max_merge_gap_minutes?: number | null;
                 readonly?: boolean;
             };
@@ -15890,7 +15973,7 @@ export interface operations {
                 merge_enabled?: boolean;
                 /** @description 使用动态有效播放阈值 */
                 dynamic_threshold?: boolean;
-                /** @description 连续播放最大合并间隔 (分钟) */
+                /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
                 max_merge_gap_minutes?: number | null;
                 readonly?: boolean;
             };
@@ -15936,7 +16019,7 @@ export interface operations {
                 merge_enabled?: boolean;
                 /** @description 使用动态有效播放阈值 */
                 dynamic_threshold?: boolean;
-                /** @description 连续播放最大合并间隔 (分钟) */
+                /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
                 max_merge_gap_minutes?: number | null;
                 readonly?: boolean;
             };
@@ -15987,7 +16070,7 @@ export interface operations {
                 merge_enabled?: boolean;
                 /** @description 使用动态有效播放阈值 */
                 dynamic_threshold?: boolean;
-                /** @description 连续播放最大合并间隔 (分钟) */
+                /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
                 max_merge_gap_minutes?: number | null;
                 readonly?: boolean;
             };
@@ -16037,7 +16120,7 @@ export interface operations {
                 merge_enabled?: boolean;
                 /** @description 使用动态有效播放阈值 */
                 dynamic_threshold?: boolean;
-                /** @description 连续播放最大合并间隔 (分钟) */
+                /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
                 max_merge_gap_minutes?: number | null;
                 readonly?: boolean;
             };
@@ -16087,7 +16170,7 @@ export interface operations {
                 merge_enabled?: boolean;
                 /** @description 使用动态有效播放阈值 */
                 dynamic_threshold?: boolean;
-                /** @description 连续播放最大合并间隔 (分钟) */
+                /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
                 max_merge_gap_minutes?: number | null;
                 readonly?: boolean;
             };
@@ -16139,7 +16222,7 @@ export interface operations {
                 merge_enabled?: boolean;
                 /** @description 使用动态有效播放阈值 */
                 dynamic_threshold?: boolean;
-                /** @description 连续播放最大合并间隔 (分钟) */
+                /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
                 max_merge_gap_minutes?: number | null;
                 readonly?: boolean;
             };
@@ -16189,7 +16272,7 @@ export interface operations {
                 merge_enabled?: boolean;
                 /** @description 使用动态有效播放阈值 */
                 dynamic_threshold?: boolean;
-                /** @description 连续播放最大合并间隔 (分钟) */
+                /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
                 max_merge_gap_minutes?: number | null;
                 readonly?: boolean;
             };
@@ -16235,7 +16318,7 @@ export interface operations {
                 merge_enabled?: boolean;
                 /** @description 使用动态有效播放阈值 */
                 dynamic_threshold?: boolean;
-                /** @description 连续播放最大合并间隔 (分钟) */
+                /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
                 max_merge_gap_minutes?: number | null;
                 readonly?: boolean;
             };
@@ -16283,7 +16366,7 @@ export interface operations {
                 merge_enabled?: boolean;
                 /** @description 使用动态有效播放阈值 */
                 dynamic_threshold?: boolean;
-                /** @description 连续播放最大合并间隔 (分钟) */
+                /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
                 max_merge_gap_minutes?: number | null;
                 readonly?: boolean;
             };
@@ -16329,7 +16412,7 @@ export interface operations {
                 merge_enabled?: boolean;
                 /** @description 使用动态有效播放阈值 */
                 dynamic_threshold?: boolean;
-                /** @description 连续播放最大合并间隔 (分钟) */
+                /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
                 max_merge_gap_minutes?: number | null;
                 readonly?: boolean;
             };
@@ -16401,7 +16484,7 @@ export interface operations {
                 merge_enabled?: boolean | null;
                 /** @description 使用动态有效播放阈值 */
                 dynamic_threshold?: boolean;
-                /** @description 连续播放最大合并间隔 */
+                /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
                 max_merge_gap_minutes?: number | null;
                 /** @description 曲目版本归并级别 */
                 merge_level?: number;
@@ -16442,7 +16525,7 @@ export interface operations {
                 merge_enabled?: boolean | null;
                 /** @description 使用动态有效播放阈值 */
                 dynamic_threshold?: boolean;
-                /** @description 连续播放最大合并间隔 */
+                /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
                 max_merge_gap_minutes?: number | null;
                 /** @description 曲目版本归并级别 */
                 merge_level?: number;
@@ -16483,7 +16566,7 @@ export interface operations {
                 merge_enabled?: boolean | null;
                 /** @description 使用动态有效播放阈值 */
                 dynamic_threshold?: boolean;
-                /** @description 连续播放最大合并间隔 */
+                /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
                 max_merge_gap_minutes?: number | null;
                 /** @description 曲目版本归并级别 */
                 merge_level?: number;
@@ -16524,7 +16607,7 @@ export interface operations {
                 merge_enabled?: boolean | null;
                 /** @description 使用动态有效播放阈值 */
                 dynamic_threshold?: boolean;
-                /** @description 连续播放最大合并间隔 */
+                /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
                 max_merge_gap_minutes?: number | null;
                 /** @description 曲目版本归并级别 */
                 merge_level?: number;
@@ -16602,7 +16685,7 @@ export interface operations {
                 merge_enabled?: boolean | null;
                 /** @description 使用动态有效播放阈值 */
                 dynamic_threshold?: boolean;
-                /** @description 连续播放最大合并间隔 */
+                /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
                 max_merge_gap_minutes?: number | null;
                 /** @description 曲目版本归并级别 */
                 merge_level?: number;
@@ -16651,7 +16734,7 @@ export interface operations {
                 merge_enabled?: boolean;
                 /** @description 使用动态有效播放阈值 */
                 dynamic_threshold?: boolean;
-                /** @description 连续播放最大合并间隔 (分钟) */
+                /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
                 max_merge_gap_minutes?: number | null;
                 readonly?: boolean;
             };
@@ -16698,7 +16781,7 @@ export interface operations {
                 merge_enabled?: boolean;
                 /** @description 使用动态有效播放阈值 */
                 dynamic_threshold?: boolean;
-                /** @description 连续播放最大合并间隔 (分钟) */
+                /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
                 max_merge_gap_minutes?: number | null;
                 readonly?: boolean;
             };
@@ -16746,7 +16829,7 @@ export interface operations {
                 merge_enabled?: boolean;
                 /** @description 使用动态有效播放阈值 */
                 dynamic_threshold?: boolean;
-                /** @description 连续播放最大合并间隔 (分钟) */
+                /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
                 max_merge_gap_minutes?: number | null;
                 readonly?: boolean;
             };
@@ -16788,7 +16871,7 @@ export interface operations {
                 merge_enabled?: boolean;
                 /** @description 使用动态有效播放阈值 */
                 dynamic_threshold?: boolean;
-                /** @description 连续播放最大合并间隔 (分钟) */
+                /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
                 max_merge_gap_minutes?: number | null;
                 readonly?: boolean;
             };
@@ -17123,7 +17206,7 @@ export interface operations {
                 merge_enabled?: boolean;
                 /** @description 使用动态有效播放阈值 */
                 dynamic_threshold?: boolean;
-                /** @description 连续播放最大合并间隔 (分钟) */
+                /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
                 max_merge_gap_minutes?: number | null;
                 readonly?: boolean;
             };
@@ -17164,7 +17247,7 @@ export interface operations {
                 merge_enabled?: boolean;
                 /** @description 使用动态有效播放阈值 */
                 dynamic_threshold?: boolean;
-                /** @description 连续播放最大合并间隔 (分钟) */
+                /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
                 max_merge_gap_minutes?: number | null;
                 readonly?: boolean;
             };
@@ -17207,7 +17290,7 @@ export interface operations {
                 merge_enabled?: boolean;
                 /** @description 使用动态有效播放阈值 */
                 dynamic_threshold?: boolean;
-                /** @description 连续播放最大合并间隔 (分钟) */
+                /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
                 max_merge_gap_minutes?: number | null;
                 readonly?: boolean;
             };
@@ -17421,7 +17504,7 @@ export interface operations {
                 merge_enabled?: boolean;
                 /** @description 使用动态有效播放阈值 */
                 dynamic_threshold?: boolean;
-                /** @description 连续播放最大合并间隔 (分钟) */
+                /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
                 max_merge_gap_minutes?: number | null;
                 readonly?: boolean;
             };
@@ -17495,7 +17578,7 @@ export interface operations {
                 merge_enabled?: boolean;
                 /** @description 使用动态有效播放阈值 */
                 dynamic_threshold?: boolean;
-                /** @description 连续播放最大合并间隔 (分钟) */
+                /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
                 max_merge_gap_minutes?: number | null;
             };
             header?: never;
@@ -18717,6 +18800,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SpotifySyncAllResponse"];
+                };
+            };
+        };
+    };
+    runtime_capabilities_api_runtime_capabilities_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RuntimeCapabilitiesResponse"];
                 };
             };
         };

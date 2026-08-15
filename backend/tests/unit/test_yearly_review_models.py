@@ -22,7 +22,7 @@ def _filter_context() -> YearlyReviewFilterContext:
         music_only=True,
         merge_enabled=True,
         dynamic_threshold=True,
-        max_merge_gap_minutes=None,
+        max_merge_gap_minutes=5,
         merge_level=2,
         include_compilations=False,
         bb_top_n=30,
@@ -69,7 +69,7 @@ def test_response_has_v2_schema_and_legal_empty_chapters() -> None:
     assert response.season.turning_points == []
     assert response.records.featured == []
     assert response.methodology.relationship_policy_version == "relationship_policy_v2"
-    assert response.methodology.content_version == "yearly_review_v2_12"
+    assert response.methodology.content_version == "yearly_review_v2_13"
 
 
 def test_mutable_defaults_are_not_shared() -> None:

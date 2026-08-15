@@ -59,7 +59,7 @@ def _base_params(settings: dict[str, Any], merge_level: int) -> dict[str, Any]:
         "bb_week_start_hour": int(settings["bb_week_start_hour"]),
         "merge_level": merge_level,
         "dynamic_threshold": True,
-        "max_merge_gap_minutes": None,
+        "max_merge_gap_minutes": 5,
         "include_compilations": bool(settings["include_compilations"]),
     }
 

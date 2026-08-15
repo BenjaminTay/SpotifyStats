@@ -77,7 +77,7 @@ def _load_validation_data(year: int) -> dict:
             merge_enabled=True,
             year=year,
             dynamic_threshold=True,
-            max_merge_gap_minutes=None,
+            max_merge_gap_minutes=5,
         )
     finally:
         conn.close()

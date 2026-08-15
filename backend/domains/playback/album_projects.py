@@ -233,15 +233,27 @@ def compute_album_project_plays(
     if merged.empty:
         return _empty_album_project_frame()
 
+    aggregations = {
+        **_play_weight_aggs(merged),
+        "unique_canonical_songs": ("canonical_song_key", "nunique"),
+    }
+    # Keep the observation window attached to each album project.  Some
+    # callers use pre-aggregated frames without an event timestamp, so only
+    # add these fields when the source frame can support them.
+    if "ts" in merged.columns:
+        aggregations.update(
+            {
+                "first_played": ("ts", "min"),
+                "last_played": ("ts", "max"),
+            }
+        )
+
     result = (
         merged.groupby(
             ["project_id", "album_project_name", "artist_name_project", "release_date"],
             dropna=False,
         )
-        .agg(
-            **_play_weight_aggs(merged),
-            unique_canonical_songs=("canonical_song_key", "nunique"),
-        )
+        .agg(**aggregations)
         .reset_index()
         .rename(
             columns={
@@ -1026,6 +1038,8 @@ def _empty_album_project_frame() -> pd.DataFrame:
             "total_ms",
             "unique_canonical_songs",
             "release_date",
+            "first_played",
+            "last_played",
         ]
     )
 

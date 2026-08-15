@@ -264,7 +264,7 @@ def test_analysis_charts_dispatches_to_service_with_bounded_params(
         "offset": 5,
         "merge_level": 3,
         "dynamic_threshold": True,
-        "max_merge_gap_minutes": None,
+        "max_merge_gap_minutes": 5,
         "include_compilations": True,
     }
 
@@ -321,7 +321,7 @@ def test_playback_records_dispatches_to_readonly_records_service(
         "end_date": "2026-12-31",
         "merge_level": 3,
         "dynamic_threshold": True,
-        "max_merge_gap_minutes": None,
+        "max_merge_gap_minutes": 5,
         "include_compilations": True,
     }
 
@@ -434,7 +434,7 @@ def test_entity_stats_dispatches_to_entity_specific_readonly_service(
         "start_date": None,
         "end_date": None,
         "dynamic_threshold": True,
-        "max_merge_gap_minutes": None,
+        "max_merge_gap_minutes": 5,
         "merge_level": 3,
     }
 
@@ -520,7 +520,7 @@ def test_billboard_entity_detail_dispatches_with_default_billboard_bounds(
     )
     assert service_observed["kwargs"] == {
         "dynamic_threshold": True,
-        "max_merge_gap_minutes": None,
+        "max_merge_gap_minutes": 5,
         "merge_level": 3,
     }
 

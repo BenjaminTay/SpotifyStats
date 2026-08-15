@@ -32,9 +32,22 @@ def assign_logical_event_id(
     consumers that use it to reason about event continuity.
     """
     result = df.copy()
-    result["_logical_event_id"] = range(len(result))
+    if "_logical_event_id" not in result.columns:
+        if "play_id" in result.columns:
+            fallback_ids = pd.Series(result.index, index=result.index)
+            source_ids = result["play_id"].where(result["play_id"].notna(), fallback_ids)
+            duplicate_ordinals = source_ids.groupby(source_ids, sort=False).cumcount()
+            result["_logical_event_id"] = [
+                f"raw_play_v1:{source_id}:{ordinal}"
+                for source_id, ordinal in zip(source_ids, duplicate_ordinals)
+            ]
+        else:
+            result["_logical_event_id"] = [f"frame_event_v1:{index}" for index in result.index]
     if preserve_legacy_artist_event_id:
-        result["_artist_event_id"] = result["_logical_event_id"]
+        # Legacy record consumers use numeric adjacency (``diff() == 1``) to
+        # detect artist streaks. Keep that compatibility projection while the
+        # canonical logical identity remains the stable string above.
+        result["_artist_event_id"] = pd.factorize(result["_logical_event_id"], sort=False)[0]
     return result
 
 

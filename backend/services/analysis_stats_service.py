@@ -190,7 +190,46 @@ def filter_period(df: pd.DataFrame, resolved: dict) -> pd.DataFrame:
         out = out[out["ts_date"].astype(str) >= start]
     if end:
         out = out[out["ts_date"].astype(str) <= end]
+    # Counts belong to logical-event completion time, while duration belongs
+    # to the local wall-clock slices where listening occurred. Build slices
+    # from the unfiltered timeline so a session crossing a query boundary does
+    # not lose the portion on either side.
+    from backend.domains.playback.logical_timeline import explode_listening_slices
+
+    duration_slices = explode_listening_slices(df, granularity="hour")
+    if start:
+        duration_slices = duration_slices[duration_slices["ts_date"].astype(str) >= start]
+    if end:
+        duration_slices = duration_slices[duration_slices["ts_date"].astype(str) <= end]
+    out = out.copy()
+    out.attrs["listening_duration_slices"] = duration_slices.reset_index(drop=True)
     return out
+
+
+def _duration_frame(df: pd.DataFrame, *, granularity: str = "day") -> pd.DataFrame:
+    slices = df.attrs.get("listening_duration_slices")
+    if isinstance(slices, pd.DataFrame):
+        return slices
+    from backend.domains.playback.logical_timeline import explode_listening_slices
+
+    return explode_listening_slices(df, granularity=granularity)
+
+
+def _analysis_weighted_frame(df: pd.DataFrame) -> pd.DataFrame:
+    """Combine event-count rows with independently attributed duration rows."""
+    events = df.copy()
+    events["play_count"] = 1
+    events["total_ms"] = 0
+    slices = _duration_frame(df, granularity="hour")
+    if slices.empty:
+        events["total_ms"] = pd.to_numeric(events["ms_played"], errors="coerce").fillna(0)
+        return events
+    slices = slices.copy()
+    slices["play_count"] = 0
+    slices["total_ms"] = pd.to_numeric(slices["ms_played"], errors="coerce").fillna(0)
+    # Slices retain their source event timestamp so first/last-play facts stay
+    # tied to counted events rather than inferred interval starts.
+    return pd.concat([events, slices], ignore_index=True, sort=False)
 
 
 def load_period_plays(
@@ -202,7 +241,7 @@ def load_period_plays(
     start_date: str | None = None,
     end_date: str | None = None,
     dynamic_threshold: bool = False,
-    max_merge_gap_minutes: int | None = None,
+    max_merge_gap_minutes: int | None = 5,
     _loader=None,
 ) -> tuple[pd.DataFrame, pd.DataFrame, dict]:
     loader = _loader or load_plays
@@ -230,15 +269,16 @@ def _zero_summary() -> dict:
 
 
 def _summary(df: pd.DataFrame) -> dict:
-    if df.empty:
+    duration_frame = _duration_frame(df, granularity="day")
+    if df.empty and duration_frame.empty:
         return _zero_summary()
     return {
         "total_plays": int(len(df)),
-        "total_hours": round(float(df["ms_played"].sum() / 3_600_000), 1),
-        "unique_tracks": int(df["track_id"].nunique()),
-        "unique_albums": int(df["album_name"].dropna().nunique()),
-        "unique_artists": int(df["artist_name"].dropna().nunique()),
-        "active_days": int(df["ts_date"].nunique()),
+        "total_hours": round(float(duration_frame["ms_played"].sum() / 3_600_000), 1),
+        "unique_tracks": int(df["track_id"].nunique()) if not df.empty else 0,
+        "unique_albums": int(df["album_name"].dropna().nunique()) if not df.empty else 0,
+        "unique_artists": int(df["artist_name"].dropna().nunique()) if not df.empty else 0,
+        "active_days": int(duration_frame["ts_date"].nunique()),
     }
 
 
@@ -253,12 +293,12 @@ def _daily_metrics(summary: dict) -> dict:
 
 
 def _hourly_distribution(df: pd.DataFrame) -> list[dict]:
-    if df.empty:
-        counts = pd.Series(dtype=int)
-        hours = pd.Series(dtype=float)
+    counts = df.groupby("ts_hour").size() if not df.empty else pd.Series(dtype=int)
+    duration_frame = _duration_frame(df, granularity="hour")
+    if not duration_frame.empty:
+        hours = duration_frame.groupby("ts_hour")["ms_played"].sum() / 3_600_000
     else:
-        counts = df.groupby("ts_hour").size()
-        hours = df.groupby("ts_hour")["ms_played"].sum() / 3_600_000
+        hours = pd.Series(dtype=float)
     return [
         {"hour": h, "plays": int(counts.get(h, 0)), "hours": round(float(hours.get(h, 0)), 2)}
         for h in range(24)
@@ -266,14 +306,21 @@ def _hourly_distribution(df: pd.DataFrame) -> list[dict]:
 
 
 def _daily_trend(df: pd.DataFrame) -> list[dict]:
-    if df.empty:
+    duration_frame = _duration_frame(df, granularity="day")
+    if df.empty and duration_frame.empty:
         return []
-    daily = (
-        df.groupby("ts_date")
-        .agg(plays=("play_id", "count"), hours=("ms_played", _hours))
-        .reset_index()
-        .sort_values("ts_date")
+    counts = (
+        df.groupby("ts_date").size().rename("plays")
+        if not df.empty
+        else pd.Series(dtype="int64", name="plays")
     )
+    counts.index.name = "ts_date"
+    hours = (
+        duration_frame.groupby("ts_date")["ms_played"].sum().div(3_600_000).rename("hours")
+        if not duration_frame.empty
+        else pd.Series(dtype="float64", name="hours")
+    )
+    daily = pd.concat([counts, hours], axis=1).fillna(0).reset_index().sort_values("ts_date")
     return [
         {"date": str(r.ts_date), "plays": int(r.plays), "hours": round(float(r.hours), 2)}
         for r in daily.itertuples(index=False)
@@ -300,11 +347,11 @@ def _cumulative_trend(daily: list[dict]) -> list[dict]:
 def _weekday_distribution(df: pd.DataFrame) -> list[dict]:
     labels = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]
     counts = df.groupby("ts_dow").size() if not df.empty else pd.Series(dtype=int)
-    hours = (
-        df.groupby("ts_dow")["ms_played"].sum() / 3_600_000
-        if not df.empty
-        else pd.Series(dtype=float)
-    )
+    duration_frame = _duration_frame(df, granularity="day")
+    if not duration_frame.empty:
+        hours = duration_frame.groupby("ts_dow")["ms_played"].sum() / 3_600_000
+    else:
+        hours = pd.Series(dtype=float)
     return [
         {
             "day": labels[d],
@@ -317,11 +364,11 @@ def _weekday_distribution(df: pd.DataFrame) -> list[dict]:
 
 def _month_distribution(df: pd.DataFrame) -> list[dict]:
     counts = df.groupby("ts_month").size() if not df.empty else pd.Series(dtype=int)
-    hours = (
-        df.groupby("ts_month")["ms_played"].sum() / 3_600_000
-        if not df.empty
-        else pd.Series(dtype=float)
-    )
+    duration_frame = _duration_frame(df, granularity="day")
+    if not duration_frame.empty:
+        hours = duration_frame.groupby("ts_month")["ms_played"].sum() / 3_600_000
+    else:
+        hours = pd.Series(dtype=float)
     return [
         {"month": m, "plays": int(counts.get(m, 0)), "hours": round(float(hours.get(m, 0)), 2)}
         for m in range(1, 13)
@@ -329,14 +376,21 @@ def _month_distribution(df: pd.DataFrame) -> list[dict]:
 
 
 def _year_distribution(df: pd.DataFrame) -> list[dict]:
-    if df.empty:
+    duration_frame = _duration_frame(df, granularity="day")
+    if df.empty and duration_frame.empty:
         return []
-    yearly = (
-        df.groupby("ts_year")
-        .agg(plays=("play_id", "count"), hours=("ms_played", _hours))
-        .reset_index()
-        .sort_values("ts_year")
+    counts = (
+        df.groupby("ts_year").size().rename("plays")
+        if not df.empty
+        else pd.Series(dtype="int64", name="plays")
     )
+    counts.index.name = "ts_year"
+    hours = (
+        duration_frame.groupby("ts_year")["ms_played"].sum().div(3_600_000).rename("hours")
+        if not duration_frame.empty
+        else pd.Series(dtype="float64", name="hours")
+    )
+    yearly = pd.concat([counts, hours], axis=1).fillna(0).reset_index().sort_values("ts_year")
     return [
         {"year": int(r.ts_year), "plays": int(r.plays), "hours": round(float(r.hours), 2)}
         for r in yearly.itertuples(index=False)
@@ -405,7 +459,7 @@ def get_analysis_stats(
     start_date: str | None = None,
     end_date: str | None = None,
     dynamic_threshold: bool = False,
-    max_merge_gap_minutes: int | None = None,
+    max_merge_gap_minutes: int | None = 5,
 ) -> dict:
     if conn is not None:
         from backend.services.wrapped_service import _artist_metadata_revision
@@ -432,7 +486,7 @@ def _get_analysis_stats_cached(
     start_date: str | None = None,
     end_date: str | None = None,
     dynamic_threshold: bool = False,
-    max_merge_gap_minutes: int | None = None,
+    max_merge_gap_minutes: int | None = 5,
     artist_metadata_revision: str = "",
 ) -> dict:
     _ = artist_metadata_revision
@@ -462,7 +516,7 @@ def _build_analysis_stats(
     start_date: str | None = None,
     end_date: str | None = None,
     dynamic_threshold: bool = False,
-    max_merge_gap_minutes: int | None = None,
+    max_merge_gap_minutes: int | None = 5,
 ) -> dict:
     _, df, resolved = load_period_plays(
         conn,
@@ -500,8 +554,9 @@ def _chart_agg(
     merge_level: int = 2,
     include_compilations: bool = False,
 ) -> pd.DataFrame:
+    weighted = _analysis_weighted_frame(df)
     if entity == "track":
-        df_agg = df.copy()
+        df_agg = weighted
         group_cols = ["track_id", "track_name", "artist_name", "album_name"]
 
         # Apply track group canonicalization before grouping
@@ -531,8 +586,8 @@ def _chart_agg(
         return (
             df_agg.groupby(group_cols)
             .agg(
-                plays=("play_id", "count"),
-                hours=("ms_played", _hours),
+                plays=("play_count", "sum"),
+                hours=("total_ms", _hours),
                 first_played=("ts", "min"),
                 last_played=("ts", "max"),
             )
@@ -543,7 +598,7 @@ def _chart_agg(
             from backend.domains.playback.album_projects import compute_album_project_plays
 
             project_rows = compute_album_project_plays(
-                df,
+                weighted,
                 conn,
                 merge_level=merge_level,
                 include_compilations=include_compilations,
@@ -561,11 +616,9 @@ def _chart_agg(
                 hours=lambda x: x["total_ms"] / 3_600_000,
                 unique_tracks=lambda x: x["unique_canonical_songs"],
                 unique_albums=1,
-                first_played=df["ts"].min(),
-                last_played=df["ts"].max(),
             )
 
-        df_agg = df.copy()
+        df_agg = weighted
         if conn is not None:
             df_agg["_album_container_id"] = _album_container_ids(df_agg)
             identity = _album_identity_lookup(conn)
@@ -589,8 +642,8 @@ def _chart_agg(
                     dropna=False,
                 )
                 .agg(
-                    plays=("play_id", "count"),
-                    hours=("ms_played", _hours),
+                    plays=("play_count", "sum"),
+                    hours=("total_ms", _hours),
                     unique_tracks=("track_id", "nunique"),
                     first_played=("ts", "min"),
                     last_played=("ts", "max"),
@@ -607,8 +660,8 @@ def _chart_agg(
         return (
             df_agg.groupby(["album_name", "artist_name"])
             .agg(
-                plays=("play_id", "count"),
-                hours=("ms_played", _hours),
+                plays=("play_count", "sum"),
+                hours=("total_ms", _hours),
                 unique_tracks=("track_id", "nunique"),
                 first_played=("ts", "min"),
                 last_played=("ts", "max"),
@@ -617,10 +670,10 @@ def _chart_agg(
         )
     if entity == "artist":
         return (
-            df.groupby("artist_name")
+            weighted.groupby("artist_name")
             .agg(
-                plays=("play_id", "count"),
-                hours=("ms_played", _hours),
+                plays=("play_count", "sum"),
+                hours=("total_ms", _hours),
                 unique_tracks=("track_id", "nunique"),
                 unique_albums=("album_name", "nunique"),
                 first_played=("ts", "min"),
@@ -641,7 +694,8 @@ def chart_rows(
     merge_level: int = 2,
     include_compilations: bool = False,
 ) -> tuple[int, list[dict]]:
-    if df.empty:
+    duration_frame = _duration_frame(df, granularity="hour")
+    if df.empty and duration_frame.empty:
         return 0, []
     entity = entity if entity in {"track", "album", "artist"} else "track"
     metric = metric if metric in {"plays", "hours"} else "plays"
@@ -652,6 +706,13 @@ def chart_rows(
         merge_level=merge_level,
         include_compilations=include_compilations,
     )
+    if agg.empty:
+        return 0, []
+
+    if metric == "plays":
+        agg = agg[pd.to_numeric(agg["plays"], errors="coerce").fillna(0) > 0]
+    else:
+        agg = agg[pd.to_numeric(agg["hours"], errors="coerce").fillna(0) > 0]
     if agg.empty:
         return 0, []
 
@@ -672,7 +733,7 @@ def chart_rows(
         return 0, []
 
     total_plays = max(int(df.shape[0]), 1)
-    total_hours = max(float(df["ms_played"].sum() / 3_600_000), 0.000001)
+    total_hours = max(float(duration_frame["ms_played"].sum() / 3_600_000), 0.000001)
     sort_col = "plays" if metric == "plays" else "hours"
     agg = agg.sort_values([sort_col, "plays"], ascending=False).reset_index(drop=True)
     total = int(len(agg))
@@ -690,7 +751,10 @@ def chart_rows(
     )
     album_covers = _album_cover_lookup(conn) if entity == "album" else {}
     artist_covers = _artist_cover_lookup(conn) if entity == "artist" else {}
-    active_days = max(int(df["ts_date"].nunique()), 1)
+    active_days = max(
+        int(duration_frame["ts_date"].nunique()) if not duration_frame.empty else 0,
+        1,
+    )
 
     track_names_map = get_track_artist_names_map() if entity == "track" else {}
 
@@ -774,7 +838,7 @@ def get_analysis_charts(
     offset: int = 0,
     merge_level: int = 2,
     dynamic_threshold: bool = False,
-    max_merge_gap_minutes: int | None = None,
+    max_merge_gap_minutes: int | None = 5,
     include_compilations: bool = False,
 ) -> dict:
     if conn is not None:
@@ -810,7 +874,7 @@ def _get_analysis_charts_cached(
     offset: int = 0,
     merge_level: int = 2,
     dynamic_threshold: bool = False,
-    max_merge_gap_minutes: int | None = None,
+    max_merge_gap_minutes: int | None = 5,
     include_compilations: bool = False,
 ) -> dict:
     conn = get_db()
@@ -850,7 +914,7 @@ def _build_analysis_charts(
     offset: int = 0,
     merge_level: int = 2,
     dynamic_threshold: bool = False,
-    max_merge_gap_minutes: int | None = None,
+    max_merge_gap_minutes: int | None = 5,
     include_compilations: bool = False,
 ) -> dict:
     _, df, resolved = load_period_plays(

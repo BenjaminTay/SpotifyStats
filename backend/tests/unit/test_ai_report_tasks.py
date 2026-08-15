@@ -92,7 +92,7 @@ def _base_report_request(**overrides: Any) -> dict[str, Any]:
         "music_only": True,
         "merge_enabled": True,
         "dynamic_threshold": True,
-        "max_merge_gap_minutes": None,
+        "max_merge_gap_minutes": 5,
     }
     request.update(overrides)
     return request
@@ -295,7 +295,7 @@ def test_visual_yearly_report_cache_key_includes_writer_pipeline(
         "music_only": True,
         "merge_enabled": True,
         "dynamic_threshold": True,
-        "max_merge_gap_minutes": None,
+        "max_merge_gap_minutes": 5,
         "report_mode": "visual_yearly_artifact",
         "year": 2026,
     }

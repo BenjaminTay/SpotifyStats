@@ -480,7 +480,7 @@ def search_music_entities(
     music_only: bool = True,
     merge_enabled: bool = True,
     dynamic_threshold: bool = True,
-    max_merge_gap_minutes: int | None = None,
+    max_merge_gap_minutes: int | None = 5,
     merge_level: int = 2,
     use_filtered_counts: bool = True,
     include_chart: bool = False,

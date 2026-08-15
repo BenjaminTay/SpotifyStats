@@ -27,7 +27,7 @@ def _load_chart_data(
     year_start,
     year_end,
     dynamic_threshold=False,
-    max_merge_gap_minutes=None,
+    max_merge_gap_minutes=5,
     merge_level=2,
     include_compilations=False,
 ):

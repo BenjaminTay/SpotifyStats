@@ -96,7 +96,7 @@ def test_empty_state_preserves_raw_source_freshness(monkeypatch):
         music_only=True,
         merge_enabled=True,
         dynamic_threshold=True,
-        max_merge_gap_minutes=None,
+        max_merge_gap_minutes=5,
     )
 
     payload = overview.build_home_overview(conn, context)

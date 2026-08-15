@@ -102,7 +102,7 @@ def get_versus_track(
     year_start,
     year_end,
     dynamic_threshold=False,
-    max_merge_gap_minutes=None,
+    max_merge_gap_minutes=5,
     merge_level=2,
     include_compilations=False,
 ):
@@ -204,7 +204,7 @@ def get_versus_album(
     year_start,
     year_end,
     dynamic_threshold=False,
-    max_merge_gap_minutes=None,
+    max_merge_gap_minutes=5,
     merge_level=2,
     include_compilations=False,
 ):
@@ -332,7 +332,7 @@ def get_versus_artist(
     year_start,
     year_end,
     dynamic_threshold=False,
-    max_merge_gap_minutes=None,
+    max_merge_gap_minutes=5,
     merge_level=2,
     include_compilations=False,
 ):
@@ -756,7 +756,7 @@ def get_versus_track_multi(
     year_start,
     year_end,
     dynamic_threshold=False,
-    max_merge_gap_minutes=None,
+    max_merge_gap_minutes=5,
     merge_level=2,
     include_compilations=False,
 ):
@@ -804,7 +804,7 @@ def get_versus_album_multi(
     year_start,
     year_end,
     dynamic_threshold=False,
-    max_merge_gap_minutes=None,
+    max_merge_gap_minutes=5,
     merge_level=2,
     include_compilations=False,
 ):
@@ -870,7 +870,7 @@ def get_versus_artist_multi(
     year_start,
     year_end,
     dynamic_threshold=False,
-    max_merge_gap_minutes=None,
+    max_merge_gap_minutes=5,
     merge_level=2,
     include_compilations=False,
 ):

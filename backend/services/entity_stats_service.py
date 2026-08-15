@@ -172,7 +172,7 @@ def get_track_stats(
     start_date: str | None = None,
     end_date: str | None = None,
     dynamic_threshold: bool = False,
-    max_merge_gap_minutes: int | None = None,
+    max_merge_gap_minutes: int | None = 5,
 ) -> dict:
     all_df, current_df, resolved = load_period_plays(
         conn,
@@ -313,7 +313,7 @@ def get_album_stats(
     start_date: str | None = None,
     end_date: str | None = None,
     dynamic_threshold: bool = False,
-    max_merge_gap_minutes: int | None = None,
+    max_merge_gap_minutes: int | None = 5,
     merge_level: int = 2,
 ) -> dict:
     from backend.domains.playback.album_projects import apply_canonical_song_keys
@@ -415,7 +415,7 @@ def get_album_personal_ranking(
     start_date: str | None = None,
     end_date: str | None = None,
     dynamic_threshold: bool = False,
-    max_merge_gap_minutes: int | None = None,
+    max_merge_gap_minutes: int | None = 5,
     merge_level: int = 2,
 ) -> dict:
     """Return a stable server-paginated track ranking for one album project."""
@@ -528,7 +528,7 @@ def get_artist_stats(
     start_date: str | None = None,
     end_date: str | None = None,
     dynamic_threshold: bool = False,
-    max_merge_gap_minutes: int | None = None,
+    max_merge_gap_minutes: int | None = 5,
 ) -> dict:
     from backend.domains.metadata.artist_identity import resolve_artist_name
 
@@ -591,7 +591,7 @@ def get_artist_personal_ranking(
     start_date: str | None = None,
     end_date: str | None = None,
     dynamic_threshold: bool = False,
-    max_merge_gap_minutes: int | None = None,
+    max_merge_gap_minutes: int | None = 5,
 ) -> dict:
     """Return a stable server-paginated personal track/album ranking for an artist."""
     from backend.domains.metadata.artist_identity import resolve_artist_name
@@ -651,7 +651,7 @@ def get_entity_plays(
     start_date: str | None = None,
     end_date: str | None = None,
     dynamic_threshold: bool = False,
-    max_merge_gap_minutes: int | None = None,
+    max_merge_gap_minutes: int | None = 5,
     search: str | None = None,
     date: str | None = None,
     limit: int = 50,
@@ -785,7 +785,7 @@ def get_entity_play_dates(
     start_date: str | None = None,
     end_date: str | None = None,
     dynamic_threshold: bool = False,
-    max_merge_gap_minutes: int | None = None,
+    max_merge_gap_minutes: int | None = 5,
 ) -> list[dict[str, Any]]:
     """Return [{date, count}] for calendar highlighting."""
     _, df, _ = load_period_plays(

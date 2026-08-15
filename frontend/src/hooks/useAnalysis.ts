@@ -62,13 +62,12 @@ export function useAnalysisFilters() {
 
   const filters = useMemo<AnalysisFilters>(() => {
     const storedThreshold = getStoredBool('spotify_stats_dynamic_threshold', true)
-    const storedGap = getStoredNumber('spotify_stats_max_merge_gap_minutes')
     return {
       min_ms: settings?.min_ms ?? 30000,
       music_only: settings?.music_only ?? true,
       merge_enabled: settings?.merge_enabled ?? true,
       dynamic_threshold: storedThreshold,
-      max_merge_gap_minutes: storedGap,
+      max_merge_gap_minutes: settings?.max_merge_gap_minutes ?? 5,
       merge_level: getDefaultMergeLevel(),
       include_compilations: settings?.include_compilations ?? false,
       bb_top_n: settings?.bb_top_n ?? 30,
@@ -91,26 +90,8 @@ function getStoredBool(key: string, fallback: boolean): boolean {
   return fallback
 }
 
-function getStoredNumber(key: string): number | undefined {
-  try {
-    const v = localStorage.getItem(key)
-    if (v != null) {
-      const n = parseInt(v, 10)
-      if (!isNaN(n) && n >= 1 && n <= 240) return n
-    }
-  } catch { /* localStorage unavailable */ }
-  return undefined
-}
-
 export function setDynamicThreshold(value: boolean) {
   try { localStorage.setItem('spotify_stats_dynamic_threshold', String(value)) } catch { /* */ }
-}
-
-export function setMaxMergeGapMinutes(value: number | undefined) {
-  try {
-    if (value == null) localStorage.removeItem('spotify_stats_max_merge_gap_minutes')
-    else localStorage.setItem('spotify_stats_max_merge_gap_minutes', String(value))
-  } catch { /* */ }
 }
 
 export function loadAnalysisOverview(filters: AnalysisFilters, force = false): Promise<AnalysisOverviewResponse> {

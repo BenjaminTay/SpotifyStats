@@ -1,7 +1,7 @@
 # 年度总结 V2 完整重构交付报告
 
 日期：2026-08-12
-状态：**PASS，内容重构、性能优化、统计验收与用户展示验收持续收口（content `yearly_review_v2_12`）**
+状态：**PASS，内容重构、性能优化、统计验收与用户展示验收持续收口（当前 content `yearly_review_v2_13`）**
 实施依据：[`../designs/2026-08-12-yearly-review-v2-content-data-contract.md`](../designs/2026-08-12-yearly-review-v2-content-data-contract.md)
 执行计划：[`../plans/2026-08-12-yearly-review-v2-rebuild-plan.md`](../plans/2026-08-12-yearly-review-v2-rebuild-plan.md)
 
@@ -21,6 +21,8 @@
 所有解释性内容都由结构化事实、coverage 与版本化策略生成，不调用 LLM。Phone 年度总结已经迁移到 V2，但没有照搬桌面 DOM。最终产品入口只保留自有年度总结；官方 Wrapped 前端展示已退役，官方导入数据与 `/api/wrapped-hub` 仅作只读兼容冻结。
 
 最终验收分为统计语义与用户展示两层。统计层继续保证同比只使用真实对齐窗口、Passport 与榜单共享规范实体粒度、YTD 品味只比较完整季度，公开纪录、阶段和结语只使用可核验事实；展示层不再把这些内部防御机制写给普通用户，而是使用日常中文、六项直观同比、实体封面、可点击详情、固定章节导航和单一“完整榜单”入口讲述年度故事。内容版本独立于 schema 版本，统计、编排或公开展示语义变化都必须提升 `content_version`，以同时分流进程 LRU 与持久 sidecar。
+
+2026-08-15 的播放时间归属修复将 content 提升到 `yearly_review_v2_13`：连续同曲默认只在实际空闲不超过 5 分钟时合并；每次逻辑播放按达到成立条件的 `counted_at` 归属年份，收听时长按北京时间区间切片。旧 v2.12 缓存不会被新报告复用。
 
 ## 2. 范围与不变量
 
