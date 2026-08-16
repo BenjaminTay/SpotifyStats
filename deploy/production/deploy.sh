@@ -275,17 +275,21 @@ prepare_images_for_tag() {
 create_offline_backup() {
   local image="$1"
   local output_path="$2"
-  local output_dir output_name
+  local output_dir output_name host_uid host_gid
   output_dir="$(cd -- "$(dirname -- "$output_path")" && pwd)"
   output_name="$(basename -- "$output_path")"
   if [[ -e "$output_path" ]]; then
     echo "离线备份目标已存在，拒绝覆盖：$output_path" >&2
     return 1
   fi
-  docker run --rm --init \
-    --mount "type=bind,src=$DEPLOY_DIR/data,dst=/source,readonly" \
-    --mount "type=bind,src=$output_dir,dst=/backup" \
-    "$image" python - "/backup/$output_name" <<'PY'
+  host_uid="$(id -u)"
+  host_gid="$(id -g)"
+  install -m 600 /dev/null "$output_path"
+  if ! docker run --rm --init -i \
+      --user "$host_uid:$host_gid" \
+      --mount "type=bind,src=$DEPLOY_DIR/data,dst=/source,readonly" \
+      --mount "type=bind,src=$output_dir,dst=/backup" \
+      "$image" python - "/backup/$output_name" <<'PY'
 import sqlite3
 import sys
 
@@ -299,7 +303,15 @@ source.close()
 if integrity != "ok":
     raise SystemExit(f"backup integrity_check failed: {integrity}")
 PY
+  then
+    rm -f -- "$output_path" "$output_path-journal" \
+      "$output_path-wal" "$output_path-shm"
+    echo "离线备份容器执行失败；已移除未完成副本。" >&2
+    return 1
+  fi
   if [[ ! -s "$output_path" ]]; then
+    rm -f -- "$output_path" "$output_path-journal" \
+      "$output_path-wal" "$output_path-shm"
     echo "离线备份未生成有效数据库文件。" >&2
     return 1
   fi
