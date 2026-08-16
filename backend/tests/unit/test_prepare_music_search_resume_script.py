@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import shutil
 import sqlite3
+import stat
 import subprocess
 import sys
 from pathlib import Path
@@ -80,6 +81,7 @@ def test_resume_artifact_is_reused_only_for_the_same_search_source(tmp_path: Pat
     first = _run(baseline, resume, first_report)
     assert first.returncode == 0, first.stderr
     assert json.loads(first_report.read_text(encoding="utf-8"))["resume_reused"] is False
+    assert stat.S_IMODE(first_report.stat().st_mode) == 0o644
 
     second_report = tmp_path / "second.json"
     second = _run(baseline, resume, second_report)

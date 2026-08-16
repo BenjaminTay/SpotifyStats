@@ -194,8 +194,12 @@ import json
 import re
 import sys
 
-with open(sys.argv[1], encoding="utf-8") as handle:
-    payload = json.load(handle)
+try:
+    with open(sys.argv[1], encoding="utf-8") as handle:
+        payload = json.load(handle)
+except (OSError, json.JSONDecodeError):
+    print("音乐搜索续建副本判定摘要不可读", file=sys.stderr)
+    raise SystemExit(0)
 reason = str(payload.get("reason") or "unknown")
 if not re.fullmatch(r"[a-z0-9_]{1,96}", reason):
     reason = "redacted"

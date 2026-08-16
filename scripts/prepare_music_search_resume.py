@@ -151,6 +151,7 @@ def _write_json_atomic(path: Path, payload: dict[str, Any]) -> None:
             handle.flush()
             os.fsync(handle.fileno())
         os.replace(temporary, path)
+        os.chmod(path, 0o644)
     except BaseException:
         try:
             os.unlink(temporary)
