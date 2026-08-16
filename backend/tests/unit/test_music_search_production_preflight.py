@@ -367,6 +367,8 @@ def test_production_deploy_stages_search_before_atomic_database_promotion() -> N
     assert "--phase after" in preflight
     assert '--name "$container_name"' in preflight
     assert "prepare_music_search_resume.py" in preflight
+    assert "音乐搜索续建副本判定" in preflight
+    assert "ready_snapshot_rows" in preflight
     assert "--resume-db" in deploy
     assert "检测到仍在运行的音乐搜索副本重建容器" in preflight
     assert "音乐搜索候选维护与统计复用校验仍在运行" in preflight

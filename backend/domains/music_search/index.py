@@ -86,6 +86,53 @@ def music_search_source_revision(conn: sqlite3.Connection) -> str:
     ).hexdigest()
 
 
+def legacy_v2_music_search_source_revision(
+    conn: sqlite3.Connection,
+    *,
+    normalization_version: str,
+) -> str:
+    """Audit the pre-split candidate source during one-time v2 adoption."""
+    digest = hashlib.sha256()
+    digest.update(b"music_search_index_v2")
+    digest.update(normalization_version.encode())
+    for table, id_column in (
+        ("plays", "play_id"),
+        ("tracks", "track_id"),
+        ("albums", "album_id"),
+        ("artists", "artist_id"),
+        ("album_projects", "project_id"),
+        ("album_project_albums", "project_id"),
+        ("album_project_tracks", "project_id"),
+    ):
+        if not _table_exists(conn, table):
+            digest.update(f"{table}:missing\n".encode())
+            continue
+        row = conn.execute(
+            f'SELECT COUNT(*), COALESCE(MAX("{id_column}"), 0) FROM "{table}"'
+        ).fetchone()
+        digest.update(f"{table}:{int(row[0])}:{int(row[1])}\n".encode())
+    digest.update(f"identity:{get_identity_revision(conn)}\n".encode())
+    digest.update(f"credits:{get_track_credit_revision(conn)}\n".encode())
+    for table in ("track_groups", "track_group_members"):
+        if not _table_exists(conn, table):
+            digest.update(f"{table}:missing\n".encode())
+            continue
+        columns = [str(row[1]) for row in conn.execute(f'PRAGMA table_info("{table}")')]
+        quoted = ", ".join(f'"{column}"' for column in columns)
+        digest.update(f"{table}:".encode())
+        for row in conn.execute(f'SELECT {quoted} FROM "{table}" ORDER BY {quoted}'):
+            digest.update(
+                json.dumps(
+                    list(row),
+                    ensure_ascii=True,
+                    separators=(",", ":"),
+                    default=str,
+                ).encode()
+            )
+            digest.update(b"\n")
+    return digest.hexdigest()
+
+
 def candidate_index_version(*, source_revision: str, tokenizer: str) -> str:
     payload = {
         "builder": INDEX_SCHEMA_VERSION,

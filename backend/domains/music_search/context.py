@@ -73,6 +73,21 @@ def _digest_payload(payload: Mapping[str, Any], length: int | None = None) -> st
     return digest[:length] if length else digest
 
 
+def music_search_variant_fingerprint(
+    semantic_base_key: str,
+    *,
+    merge_level: int,
+    dynamic_threshold: bool,
+) -> str:
+    return _digest_payload(
+        {
+            "semantic_base_key": semantic_base_key,
+            "merge_level": int(merge_level),
+            "dynamic_threshold": bool(dynamic_threshold),
+        }
+    )
+
+
 def playback_source_revision(conn: sqlite3.Connection) -> str:
     """Offline audit digest; request-time context construction must not call it."""
     row = conn.execute(
@@ -154,12 +169,10 @@ def build_music_search_filter_context(
             **semantic_values,
         }
     )
-    fingerprint = _digest_payload(
-        {
-            "semantic_base_key": semantic_base_key,
-            "merge_level": values["merge_level"],
-            "dynamic_threshold": values["dynamic_threshold"],
-        }
+    fingerprint = music_search_variant_fingerprint(
+        semantic_base_key,
+        merge_level=values["merge_level"],
+        dynamic_threshold=values["dynamic_threshold"],
     )
     source_revision = _digest_payload(
         {
@@ -217,11 +230,31 @@ def legacy_v2_statistics_identity(
             **semantic_values,
         }
     )
-    fingerprint = _digest_payload(
-        {
-            "semantic_base_key": base,
-            "merge_level": context.merge_level,
-            "dynamic_threshold": context.dynamic_threshold,
-        }
+    fingerprint = music_search_variant_fingerprint(
+        base,
+        merge_level=context.merge_level,
+        dynamic_threshold=context.dynamic_threshold,
     )
     return base, fingerprint
+
+
+def legacy_v2_statistics_source_revision(
+    conn: sqlite3.Connection,
+    context: MusicSearchFilterContext,
+) -> str:
+    """Reconstruct the v2 source digest without its random generation id."""
+    from backend.domains.music_search.index import get_music_search_index_state
+
+    index_revision = str(get_music_search_index_state(conn).get("source_revision") or "unavailable")
+    return _digest_payload(
+        {
+            "playback": context.playback_revision,
+            "billboard": context.billboard_aggregation_revision,
+            "metadata": context.metadata_revision,
+            "settings": context.settings_revision,
+            "index": index_revision,
+            "identity": context.artist_identity_revision,
+            "credits": context.track_credit_revision,
+        },
+        20,
+    )

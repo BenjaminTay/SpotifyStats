@@ -189,6 +189,25 @@ docker run --rm --init \
     --baseline-db "/baseline/$db_copy_name" \
     --resume-db "/resume/$resume_db_name" \
     --json-output /preflight/resume-report.json
+python3 - "$work_dir/resume-report.json" <<'PY'
+import json
+import re
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as handle:
+    payload = json.load(handle)
+reason = str(payload.get("reason") or "unknown")
+if not re.fullmatch(r"[a-z0-9_]{1,96}", reason):
+    reason = "redacted"
+validation = payload.get("validation") or {}
+print(
+    "音乐搜索续建副本判定："
+    f"reused={str(bool(payload.get('resume_reused'))).lower()} "
+    f"reason={reason} "
+    f"ready_rows={int(validation.get('ready_snapshot_rows') or 0)}",
+    file=sys.stderr,
+)
+PY
 
 existing_preflight="$(
   for container_id in $(docker ps -q); do

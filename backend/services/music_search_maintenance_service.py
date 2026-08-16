@@ -14,10 +14,13 @@ from backend.domains.music_search.context import (
     MusicSearchFilterContext,
     build_music_search_filter_context,
     legacy_v2_statistics_identity,
+    legacy_v2_statistics_source_revision,
+    music_search_variant_fingerprint,
 )
 from backend.domains.music_search.index import (
     expected_candidate_index_version,
     get_music_search_index_state,
+    legacy_v2_music_search_source_revision,
     music_search_source_revision,
     rebuild_music_search_index,
 )
@@ -138,28 +141,37 @@ def _adopt_legacy_v2_snapshot_set(
     rows = conn.execute(
         f"""SELECT snapshot_key, filter_fingerprint, status, builder_version,
                    merge_level, dynamic_threshold, created_at, activated_at,
-                   last_accessed_at
+                   last_accessed_at, source_revision, semantic_base_key
             FROM music_search_snapshot_meta
             WHERE filter_fingerprint IN ({placeholders})""",
         tuple(legacy_fingerprints),
     ).fetchall()
     by_fingerprint = {str(row[1]): row for row in rows}
-    if len(by_fingerprint) != len(contexts):
-        return False
-    if any(
-        str(by_fingerprint[fingerprint][2]) != "ready"
-        or str(by_fingerprint[fingerprint][3]) != MUSIC_SEARCH_SNAPSHOT_BUILDER_VERSION
-        for fingerprint in legacy_fingerprints
+    selected_rows = [by_fingerprint.get(fingerprint) for fingerprint in legacy_fingerprints]
+    if any(row is None for row in selected_rows) or any(
+        str(row[2]) != "ready" or str(row[3]) != MUSIC_SEARCH_SNAPSHOT_BUILDER_VERSION
+        for row in selected_rows
+        if row is not None
     ):
+        selected_rows = _source_equivalent_legacy_v2_rows(conn, contexts)
+    if selected_rows is None or any(row is None for row in selected_rows):
         return False
 
     with conn:
-        for context, (_legacy_base, legacy_fingerprint) in zip(contexts, legacy):
-            row = by_fingerprint[legacy_fingerprint]
+        for context, row in zip(contexts, selected_rows):
+            assert row is not None
             old_snapshot_key = str(row[0])
             new_snapshot_key = context.filter_fingerprint
             if old_snapshot_key == new_snapshot_key:
                 continue
+            conn.execute(
+                "DELETE FROM music_search_entity_context WHERE snapshot_key=?",
+                (new_snapshot_key,),
+            )
+            conn.execute(
+                "DELETE FROM music_search_snapshot_meta WHERE snapshot_key=?",
+                (new_snapshot_key,),
+            )
             conn.execute(
                 """INSERT INTO music_search_snapshot_meta(
                        snapshot_key, filter_fingerprint, source_revision, status,
@@ -190,6 +202,81 @@ def _adopt_legacy_v2_snapshot_set(
                 (old_snapshot_key,),
             )
     return True
+
+
+def _source_equivalent_legacy_v2_rows(
+    conn: sqlite3.Connection,
+    contexts: tuple[MusicSearchFilterContext, ...],
+) -> list[sqlite3.Row | tuple[Any, ...]] | None:
+    """Find one complete v2 set whose statistical inputs are still exact.
+
+    The old opaque base included a random candidate generation id.  A changed
+    generation must not force statistical recalculation when the persistent
+    revisions, candidate source, builders, and full six-variant matrix remain
+    identical.
+    """
+    if not contexts:
+        return None
+    index_state = get_music_search_index_state(conn)
+    stored_index_source = str(index_state.get("source_revision") or "")
+    normalization_version = str(index_state.get("normalization_version") or "")
+    if not stored_index_source or not normalization_version:
+        return None
+    if stored_index_source != legacy_v2_music_search_source_revision(
+        conn,
+        normalization_version=normalization_version,
+    ):
+        return None
+    expected_source = legacy_v2_statistics_source_revision(conn, contexts[0])
+    current_base = contexts[0].semantic_base_key
+    base_rows = conn.execute(
+        """SELECT semantic_base_key,
+                  MAX(COALESCE(activated_at, created_at, '')) AS latest_at
+           FROM music_search_snapshot_meta
+           WHERE source_revision=? AND status='ready' AND builder_version=?
+             AND semantic_base_key IS NOT NULL AND semantic_base_key!=?
+           GROUP BY semantic_base_key
+           HAVING COUNT(*)=6
+           ORDER BY latest_at DESC""",
+        (expected_source, MUSIC_SEARCH_SNAPSHOT_BUILDER_VERSION, current_base),
+    ).fetchall()
+    expected_variants = {(context.merge_level, context.dynamic_threshold) for context in contexts}
+    for base_row in base_rows:
+        base = str(base_row[0])
+        rows = conn.execute(
+            """SELECT snapshot_key, filter_fingerprint, status, builder_version,
+                      merge_level, dynamic_threshold, created_at, activated_at,
+                      last_accessed_at, source_revision, semantic_base_key
+               FROM music_search_snapshot_meta
+               WHERE semantic_base_key=?""",
+            (base,),
+        ).fetchall()
+        by_variant: dict[tuple[int, bool], sqlite3.Row | tuple[Any, ...]] = {}
+        valid = len(rows) == 6
+        for row in rows:
+            variant = (int(row[4]), bool(row[5]))
+            fingerprint = str(row[1])
+            if (
+                variant in by_variant
+                or str(row[0]) != fingerprint
+                or str(row[2]) != "ready"
+                or str(row[3]) != MUSIC_SEARCH_SNAPSHOT_BUILDER_VERSION
+                or str(row[9]) != expected_source
+                or fingerprint
+                != music_search_variant_fingerprint(
+                    base,
+                    merge_level=variant[0],
+                    dynamic_threshold=variant[1],
+                )
+            ):
+                valid = False
+                break
+            by_variant[variant] = row
+        if valid and set(by_variant) == expected_variants:
+            return [
+                by_variant[(context.merge_level, context.dynamic_threshold)] for context in contexts
+            ]
+    return None
 
 
 def rebuild_current_music_search_derived_data(

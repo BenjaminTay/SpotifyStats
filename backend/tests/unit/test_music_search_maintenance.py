@@ -684,6 +684,125 @@ def test_current_legacy_v2_set_is_adopted_without_statistics_recalculation(
     assert all(variant["duration_ms"] == 0 for variant in report["snapshot_set"]["variants"])
 
 
+def test_source_equivalent_legacy_set_survives_candidate_generation_change(
+    monkeypatch,
+) -> None:
+    conn = _conn()
+    maintenance.rebuild_music_search_index(conn)
+    state = maintenance.get_music_search_index_state(conn)
+    legacy_index_source = maintenance.legacy_v2_music_search_source_revision(
+        conn,
+        normalization_version=str(state["normalization_version"]),
+    )
+    conn.execute(
+        "UPDATE music_search_index_state SET source_revision=?",
+        (legacy_index_source,),
+    )
+    contexts = build_music_search_variant_contexts(
+        conn,
+        maintenance._current_filter_values(conn),
+    )
+    legacy = [maintenance.legacy_v2_statistics_identity(conn, context) for context in contexts]
+    legacy_source = maintenance.legacy_v2_statistics_source_revision(conn, contexts[0])
+    for context, (legacy_base, legacy_fingerprint) in zip(contexts, legacy):
+        conn.execute(
+            """INSERT INTO music_search_snapshot_meta(
+                   snapshot_key, filter_fingerprint, source_revision, status,
+                   semantic_base_key, merge_level, dynamic_threshold, builder_version
+               ) VALUES (?, ?, ?, 'ready', ?, ?, ?, ?)""",
+            (
+                legacy_fingerprint,
+                legacy_fingerprint,
+                legacy_source,
+                legacy_base,
+                context.merge_level,
+                int(context.dynamic_threshold),
+                MUSIC_SEARCH_SNAPSHOT_BUILDER_VERSION,
+            ),
+        )
+        conn.execute(
+            """INSERT INTO music_search_entity_context(
+                   snapshot_key, entity_key, play_events, total_ms
+               ) VALUES (?, 'track:3', 1, 180000)""",
+            (legacy_fingerprint,),
+        )
+    conn.commit()
+    old_generation = maintenance.get_music_search_index_state(conn)["active_generation_id"]
+    conn.execute(
+        "UPDATE music_search_index_state SET active_generation_id='replacement-generation'"
+    )
+    conn.commit()
+    assert maintenance.get_music_search_index_state(conn)["active_generation_id"] != old_generation
+    monkeypatch.setattr(
+        maintenance,
+        "build_music_search_snapshot_set",
+        lambda *_args, **_kwargs: pytest.fail("source-equivalent statistics were recalculated"),
+    )
+
+    report = maintenance.rebuild_current_music_search_derived_data(
+        conn,
+        statistics_reuse_only=True,
+    )
+
+    assert report["snapshot_set"]["revalidated"] is True
+    assert report["snapshot_set"]["duration_ms"] == 0
+    assert all(
+        maintenance.get_ready_music_search_snapshot_key(conn, context.filter_fingerprint)
+        is not None
+        for context in contexts
+    )
+
+
+def test_source_equivalent_legacy_adoption_rejects_wrong_source_revision(monkeypatch) -> None:
+    conn = _conn()
+    maintenance.rebuild_music_search_index(conn)
+    state = maintenance.get_music_search_index_state(conn)
+    legacy_index_source = maintenance.legacy_v2_music_search_source_revision(
+        conn,
+        normalization_version=str(state["normalization_version"]),
+    )
+    conn.execute(
+        "UPDATE music_search_index_state SET source_revision=?",
+        (legacy_index_source,),
+    )
+    contexts = build_music_search_variant_contexts(
+        conn,
+        maintenance._current_filter_values(conn),
+    )
+    legacy = [maintenance.legacy_v2_statistics_identity(conn, context) for context in contexts]
+    for context, (legacy_base, legacy_fingerprint) in zip(contexts, legacy):
+        conn.execute(
+            """INSERT INTO music_search_snapshot_meta(
+                   snapshot_key, filter_fingerprint, source_revision, status,
+                   semantic_base_key, merge_level, dynamic_threshold, builder_version
+               ) VALUES (?, ?, 'wrong-source', 'ready', ?, ?, ?, ?)""",
+            (
+                legacy_fingerprint,
+                legacy_fingerprint,
+                legacy_base,
+                context.merge_level,
+                int(context.dynamic_threshold),
+                MUSIC_SEARCH_SNAPSHOT_BUILDER_VERSION,
+            ),
+        )
+    conn.commit()
+    conn.execute(
+        "UPDATE music_search_index_state SET active_generation_id='replacement-generation'"
+    )
+    conn.commit()
+    monkeypatch.setattr(
+        maintenance,
+        "build_music_search_snapshot_set",
+        lambda *_args, **_kwargs: pytest.fail("wrong-source statistics were recalculated"),
+    )
+
+    with pytest.raises(maintenance.MusicSearchStatisticsReuseRequiredError):
+        maintenance.rebuild_current_music_search_derived_data(
+            conn,
+            statistics_reuse_only=True,
+        )
+
+
 def test_enqueue_does_not_cross_from_temporary_connection_into_main_queue(
     monkeypatch,
 ) -> None:
