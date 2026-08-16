@@ -10,6 +10,11 @@ output
 node_modules
 frontend/node_modules
 frontend/dist
+# Tests are verified in CI from the source checkout and must not invalidate or
+# enter production image layers.
+backend/tests
+frontend/src/tests
+frontend/**/*.test.*
 __pycache__
 **/__pycache__
 *.pyc

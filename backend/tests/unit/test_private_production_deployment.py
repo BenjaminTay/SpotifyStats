@@ -22,6 +22,9 @@ def test_docker_build_context_excludes_all_personal_data() -> None:
     assert "data" in lines
     assert "backups" in lines
     assert ".env" in lines
+    assert "backend/tests" in lines
+    assert "frontend/src/tests" in lines
+    assert "frontend/**/*.test.*" in lines
     assert {
         "**/*.db",
         "**/*.db-wal",

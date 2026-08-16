@@ -183,17 +183,23 @@ def test_build_artifact_uses_oci_config_digest_for_loaded_image_identity(
     }
     index = json.loads((layout / "index.json").read_text())
     oci_configs = {}
+    oci_manifests = {}
     for descriptor in index["manifests"]:
         descriptor_name = descriptor["digest"].removeprefix("sha256:")
         oci_manifest = json.loads((layout / "blobs" / "sha256" / descriptor_name).read_text())
-        oci_configs[descriptor["annotations"]["io.containerd.image.name"]] = oci_manifest["config"][
-            "digest"
-        ]
+        ref = descriptor["annotations"]["io.containerd.image.name"]
+        oci_configs[ref] = oci_manifest["config"]["digest"]
+        oci_manifests[ref] = descriptor["digest"]
 
     for image in manifest["images"]:
         ref = image["archive_ref"]
         assert image["image_id"] == oci_configs[ref]
         assert image["config_digest"] == oci_configs[ref]
+        assert image["manifest_digest"] == oci_manifests[ref]
+        assert set(image["accepted_image_ids"]) == {
+            oci_configs[ref],
+            oci_manifests[ref],
+        }
         assert image["image_id"] != legacy_configs[ref]
 
 
@@ -283,7 +289,19 @@ def test_release_activation_keeps_loadable_current_and_previous(tmp_path: Path) 
         image_transport.plan_transfer(staging, releases, revision, "release", digest)
         _upload_missing(artifact, staging)
         manifest = image_transport.materialize(staging, releases, revision, "release", digest)
-        ids = {image["role"]: image["image_id"] for image in manifest["images"]}
+        id_field = "config_digest" if revision.startswith("d") else "manifest_digest"
+        ids = {image["role"]: image[id_field] for image in manifest["images"]}
+        if revision.startswith("d"):
+            with pytest.raises(image_transport.TransportError, match="不属于 OCI"):
+                image_transport.record_load(
+                    staging,
+                    releases,
+                    revision,
+                    "release",
+                    digest,
+                    "sha256:" + "0" * 64,
+                    ids["web"],
+                )
         image_transport.record_load(
             staging, releases, revision, "release", digest, ids["api"], ids["web"]
         )

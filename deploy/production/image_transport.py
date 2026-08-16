@@ -246,7 +246,9 @@ def _validate_layout_json(
                 "role": role,
                 "archive_ref": repo_tags[0],
                 "config_digest": f"sha256:{config_name}",
+                "manifest_digest": f"sha256:{config_name}",
                 "image_id": f"sha256:{config_name}",
+                "accepted_image_ids": [f"sha256:{config_name}"],
             }
         )
 
@@ -328,7 +330,11 @@ def _validate_layout_json(
                 raise TransportError(f"OCI layer size 不匹配：{role}")
             referenced_blobs.add(layer_name)
         images_by_role[role]["config_digest"] = f"sha256:{config_name}"
+        images_by_role[role]["manifest_digest"] = f"sha256:{descriptor_name}"
         images_by_role[role]["image_id"] = f"sha256:{config_name}"
+        images_by_role[role]["accepted_image_ids"] = sorted(
+            {f"sha256:{config_name}", f"sha256:{descriptor_name}"}
+        )
 
     if descriptor_roles != set(expected_refs):
         raise TransportError("index.json 未包含完整 API/Web descriptor")
@@ -511,10 +517,12 @@ def _validate_manifest_records(manifest: Mapping[str, Any], layout: Path) -> Non
             "role",
             "archive_ref",
             "config_digest",
+            "manifest_digest",
             "image_id",
+            "accepted_image_ids",
         }:
             raise TransportError("transport manifest image record 无效")
-        for field in ("config_digest", "image_id"):
+        for field in ("config_digest", "manifest_digest", "image_id"):
             value = image[field]
             if (
                 not isinstance(value, str)
@@ -522,6 +530,26 @@ def _validate_manifest_records(manifest: Mapping[str, Any], layout: Path) -> Non
                 or not DIGEST_RE.fullmatch(value.removeprefix("sha256:"))
             ):
                 raise TransportError(f"transport manifest image {field} 无效")
+        accepted_image_ids = image["accepted_image_ids"]
+        if (
+            not isinstance(accepted_image_ids, list)
+            or not accepted_image_ids
+            or len(accepted_image_ids) > 2
+            or accepted_image_ids != sorted(set(accepted_image_ids))
+        ):
+            raise TransportError("transport manifest accepted_image_ids 无效")
+        for value in accepted_image_ids:
+            if (
+                not isinstance(value, str)
+                or not value.startswith("sha256:")
+                or not DIGEST_RE.fullmatch(value.removeprefix("sha256:"))
+            ):
+                raise TransportError("transport manifest accepted image ID 无效")
+        if {
+            image["config_digest"],
+            image["manifest_digest"],
+        } != set(accepted_image_ids) or image["image_id"] != image["config_digest"]:
+            raise TransportError("transport manifest OCI image ID 集合不一致")
 
 
 def _blob_is_valid(path: Path, digest: str, size: int) -> bool:
@@ -715,12 +743,11 @@ def record_load(
     web_image_id: str,
 ) -> dict[str, Any]:
     manifest = load_transport_manifest(staging / "transport-manifest.json", digest, revision, mode)
-    expected_ids = {image["role"]: image["image_id"] for image in manifest["images"]}
     actual_ids = {"api": api_image_id, "web": web_image_id}
-    if actual_ids != expected_ids:
-        raise TransportError(
-            f"docker load image IDs 不匹配：expected={expected_ids} actual={actual_ids}"
-        )
+    accepted_ids = {image["role"]: set(image["accepted_image_ids"]) for image in manifest["images"]}
+    for role, actual_id in actual_ids.items():
+        if actual_id not in accepted_ids[role]:
+            raise TransportError(f"docker load {role} image ID 不属于 OCI config/manifest")
     receipt: dict[str, Any] = {
         "schema_version": 1,
         "revision": revision,
@@ -820,9 +847,10 @@ def seed_bootstrap(
     if validated_images != manifest["images"]:
         raise TransportError("bootstrap OCI 镜像身份与 manifest 不一致")
     actual_ids = {"api": api_image_id, "web": web_image_id}
-    expected_ids = {image["role"]: image["image_id"] for image in manifest["images"]}
-    if actual_ids != expected_ids:
-        raise TransportError("bootstrap current image IDs 与 Docker save config digest 不一致")
+    accepted_ids = {image["role"]: set(image["accepted_image_ids"]) for image in manifest["images"]}
+    for role, actual_id in actual_ids.items():
+        if actual_id not in accepted_ids[role]:
+            raise TransportError("bootstrap current image ID 不属于 OCI config/manifest")
     locks = releases_root / "locks"
     locks.mkdir(parents=True, exist_ok=True, mode=0o700)
     with (locks / "cas.lock").open("a+b") as cache_lock:
