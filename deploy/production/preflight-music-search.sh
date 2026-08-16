@@ -237,6 +237,35 @@ else
   rebuild_status="$?"
   rebuild_pid=""
   echo "音乐搜索候选维护与统计复用校验失败：exit=$rebuild_status" >&2
+  python3 - "$work_dir/rebuild-report.json" <<'PY'
+import json
+import re
+import sys
+
+
+def safe_token(value: object) -> str:
+    token = str(value or "unknown")
+    return token if re.fullmatch(r"[A-Za-z0-9_.-]{1,96}", token) else "redacted"
+
+
+try:
+    with open(sys.argv[1], encoding="utf-8") as handle:
+        payload = json.load(handle)
+except (OSError, json.JSONDecodeError):
+    print("音乐搜索预检失败摘要不可读", file=sys.stderr)
+else:
+    error = payload.get("error") if isinstance(payload, dict) else None
+    resources = payload.get("resources") if isinstance(payload, dict) else None
+    print(
+        "音乐搜索预检失败摘要："
+        f"status={safe_token(payload.get('status'))} "
+        f"stage={safe_token(error.get('stage') if isinstance(error, dict) else None)} "
+        f"type={safe_token(error.get('type') if isinstance(error, dict) else None)} "
+        f"elapsed_ms={float(payload.get('total_elapsed_ms') or 0):.3f} "
+        f"peak_rss_mib={float(resources.get('peak_rss_mib') or 0):.3f}",
+        file=sys.stderr,
+    )
+PY
   exit "$rebuild_status"
 fi
 rebuild_pid=""

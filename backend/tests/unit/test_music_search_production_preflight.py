@@ -370,6 +370,10 @@ def test_production_deploy_stages_search_before_atomic_database_promotion() -> N
     assert "--resume-db" in deploy
     assert "检测到仍在运行的音乐搜索副本重建容器" in preflight
     assert "音乐搜索候选维护与统计复用校验仍在运行" in preflight
+    assert "音乐搜索预检失败摘要" in preflight
+    assert "error.get('stage')" in preflight
+    assert "error.get('type')" in preflight
+    assert "error.get('message')" not in preflight
     assert "trap terminate HUP INT TERM" in preflight
     assert "verify-music-search-runtime.py" in verify
     assert "version=36" in runtime_gate
