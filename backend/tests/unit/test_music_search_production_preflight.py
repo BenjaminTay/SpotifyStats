@@ -354,6 +354,9 @@ def test_production_deploy_stages_search_before_atomic_database_promotion() -> N
     assert "src=$staged_database,dst=/staged.db" in deploy
     assert 'install -m 600 /dev/null "$output_path"' in deploy
     assert "docker run --rm --init --network none" in deploy
+    assert 'source_dir = Path("/tmp/offline-source")' in deploy
+    assert '"spotify_stats.db-wal"' in deploy
+    assert '"spotify_stats.db-shm"' in deploy
     assert 'target_path = "/tmp/spotify_stats.backup.db"' in deploy
     assert "sys.stdout.buffer.write(chunk)" in deploy
     assert "离线备份容器执行失败；已移除未完成副本" in deploy

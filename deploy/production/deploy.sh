@@ -285,8 +285,22 @@ create_offline_backup() {
       "$image" python -c '
 import sqlite3
 import sys
+from pathlib import Path
+from shutil import copyfile
 
-source = sqlite3.connect("file:/source/spotify_stats.db?mode=ro", uri=True, timeout=30)
+source_dir = Path("/tmp/offline-source")
+source_dir.mkdir()
+for name in (
+    "spotify_stats.db",
+    "spotify_stats.db-wal",
+    "spotify_stats.db-shm",
+):
+    mounted = Path("/source") / name
+    if mounted.exists():
+        copyfile(mounted, source_dir / name)
+source = sqlite3.connect(
+    "file:/tmp/offline-source/spotify_stats.db?mode=ro", uri=True, timeout=30
+)
 target_path = "/tmp/spotify_stats.backup.db"
 target = sqlite3.connect(target_path)
 with target:
