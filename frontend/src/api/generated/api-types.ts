@@ -1995,6 +1995,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/music/search/context": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Music Search Context
+         * @description Read the exact derived context without queuing or rebuilding work.
+         */
+        get: operations["music_search_context_api_music_search_context_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/music/tracks/{track_id}/stats": {
         parameters: {
             query?: never;
@@ -8062,6 +8082,86 @@ export interface components {
                 [key: string]: unknown;
             }[];
         };
+        /** MusicSearchCandidateResponse */
+        MusicSearchCandidateResponse: {
+            /**
+             * Response Version
+             * @default music_search_v2
+             * @constant
+             */
+            response_version: "music_search_v2";
+            /** Query */
+            query: string;
+            /** Normalized Query */
+            normalized_query: string;
+            /**
+             * Snapshot Status
+             * @enum {string}
+             */
+            snapshot_status: "ready" | "warming" | "unavailable" | "stale" | "failed";
+            /** Filter Fingerprint */
+            filter_fingerprint?: string | null;
+            /** Kind */
+            kind?: ("track" | "album" | "artist") | null;
+            /**
+             * Page
+             * @default 1
+             */
+            page: number;
+            /**
+             * Page Size
+             * @default 5
+             */
+            page_size: number;
+            /**
+             * Total
+             * @default 0
+             */
+            total: number;
+            total_by_kind?: components["schemas"]["MusicSearchKindTotals"];
+            /** Tracks */
+            tracks?: components["schemas"]["MusicSearchCandidateResult"][];
+            /** Albums */
+            albums?: components["schemas"]["MusicSearchCandidateResult"][];
+            /** Artists */
+            artists?: components["schemas"]["MusicSearchCandidateResult"][];
+        };
+        /** MusicSearchCandidateResult */
+        MusicSearchCandidateResult: {
+            /** Entity Key */
+            entity_key: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "track" | "album" | "artist";
+            /** Label */
+            label: string;
+            /** Subtitle */
+            subtitle?: string | null;
+            /** Href */
+            href: string;
+            /** Track Id */
+            track_id?: number | null;
+            /** Artist Id */
+            artist_id?: number | null;
+            /** Album Name */
+            album_name?: string | null;
+            /** Artist Name */
+            artist_name?: string | null;
+            /** Cover Url */
+            cover_url?: string | null;
+            /**
+             * Match Field
+             * @enum {string}
+             */
+            match_field: "label" | "artist" | "album" | "alias";
+            /**
+             * Match Quality
+             * @enum {string}
+             */
+            match_quality: "exact" | "prefix" | "token" | "substring";
+        };
         /** MusicSearchChartSummary */
         MusicSearchChartSummary: {
             /** Peak Position */
@@ -8082,6 +8182,52 @@ export interface components {
             latest_week?: string | null;
             /** First Peak Week */
             first_peak_week?: string | null;
+        };
+        /** MusicSearchContextItem */
+        MusicSearchContextItem: {
+            /** Play Events */
+            play_events: number;
+            /** Total Ms */
+            total_ms: number;
+            chart?: components["schemas"]["MusicSearchChartSummary"] | null;
+        };
+        /** MusicSearchContextResponse */
+        MusicSearchContextResponse: {
+            /**
+             * Response Version
+             * @default music_search_context_v1
+             * @constant
+             */
+            response_version: "music_search_context_v1";
+            /**
+             * Snapshot Status
+             * @enum {string}
+             */
+            snapshot_status: "ready" | "warming" | "unavailable" | "stale" | "failed";
+            /** Filter Fingerprint */
+            filter_fingerprint?: string | null;
+            /** Items */
+            items?: {
+                [key: string]: components["schemas"]["MusicSearchContextItem"];
+            };
+        };
+        /** MusicSearchKindTotals */
+        MusicSearchKindTotals: {
+            /**
+             * Track
+             * @default 0
+             */
+            track: number;
+            /**
+             * Album
+             * @default 0
+             */
+            album: number;
+            /**
+             * Artist
+             * @default 0
+             */
+            artist: number;
         };
         /** MusicSearchResponse */
         MusicSearchResponse: {
@@ -10163,6 +10309,10 @@ export interface components {
             msg: string;
             /** Error Type */
             type: string;
+            /** Input */
+            input?: unknown;
+            /** Context */
+            ctx?: Record<string, never>;
         };
         /** VersusEntity */
         VersusEntity: {
@@ -10561,7 +10711,7 @@ export interface components {
              */
             entity_type: "track" | "album" | "artist";
             /** Entity Id */
-            entity_id?: string | number | null;
+            entity_id?: number | string | null;
             /** Name */
             name: string;
             /** Artist Name */
@@ -13683,6 +13833,8 @@ export interface operations {
     get_billboard_records_api_billboard_records_get: {
         parameters: {
             query?: {
+                /** @description Include compilation albums in album chart (R14) */
+                include_compilations?: boolean;
                 /** @description 最短播放时长 (毫秒) */
                 min_ms?: number | null;
                 /** @description 仅音乐 */
@@ -15856,6 +16008,10 @@ export interface operations {
                 limit_per_type?: number;
                 /** @description Include personal Billboard chart summary */
                 include_chart?: boolean;
+                response_mode?: "legacy" | "candidates";
+                eligibility?: "current" | "any_local";
+                page?: number;
+                page_size?: number;
                 /** @description 最短播放时长 (毫秒) */
                 min_ms?: number | null;
                 /** @description 仅音乐 */
@@ -15896,7 +16052,65 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["MusicSearchResponse"];
+                    "application/json": components["schemas"]["MusicSearchResponse"] | components["schemas"]["MusicSearchCandidateResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    music_search_context_api_music_search_context_get: {
+        parameters: {
+            query?: {
+                entity_key?: string[];
+                /** @description 最短播放时长 (毫秒) */
+                min_ms?: number | null;
+                /** @description 仅音乐 */
+                music_only?: boolean | null;
+                /** @description 合并连续播放 */
+                merge_enabled?: boolean | null;
+                /** @description 使用动态有效播放阈值 */
+                dynamic_threshold?: boolean;
+                /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
+                max_merge_gap_minutes?: number | null;
+                /** @description 单曲榜 Top N */
+                bb_top_n?: number | null;
+                /** @description 专辑榜 Top N */
+                bb_album_top_n?: number | null;
+                /** @description 艺人榜 Top N */
+                bb_artist_top_n?: number | null;
+                /** @description 周起始星期 (0=周一) */
+                bb_week_start_dow?: number | null;
+                /** @description 周起始小时 */
+                bb_week_start_hour?: number | null;
+                /** @description 起始年份 (含) */
+                year_start?: number | null;
+                /** @description 结束年份 (含) */
+                year_end?: number | null;
+                /** @description 版本合并严格度 */
+                merge_level?: number;
+                readonly?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MusicSearchContextResponse"];
                 };
             };
             /** @description Validation Error */

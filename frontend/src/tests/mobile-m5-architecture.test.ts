@@ -16,9 +16,11 @@ describe('M5 mobile music architecture', () => {
     expect(searchPageSource).toContain('useSearchParams')
     expect(searchPageSource).toContain('onCompositionStart')
     expect(searchPageSource).toContain('onCompositionEnd')
-    expect(searchPageSource).toContain("next.set('kind', kindParam)")
+    expect(searchPageSource).toContain('useMusicSearchCandidates')
+    expect(searchPageSource).toContain('useMusicSearchContext')
     expect(searchResultsSource).toContain('MobileEntityRow')
-    expect(searchPageSource).toContain('includeChart: true')
+    expect(searchPageSource).toContain('pageSize = kindParam ? 20 : 5')
+    expect(searchPageSource).not.toContain('includeChart: true')
     expect(searchResultsSource).not.toContain('weeks_at_no1')
   })
 

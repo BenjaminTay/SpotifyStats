@@ -8,7 +8,7 @@ import { join } from 'node:path'
 const DEFAULT_BASE_URL = 'http://localhost:5173'
 const DEFAULT_PYTHON = process.env.PYTHON_PLAYWRIGHT || 'python'
 const DEFAULT_BROWSERS = ['chromium', 'firefox', 'webkit']
-const DEFAULT_SCENARIOS = ['route-markers', 'core-interactions']
+const DEFAULT_SCENARIOS = ['route-markers', 'core-interactions', 'music-search']
 const DEFAULT_WAIT_MS = 12000
 const DYNAMIC_ROUTE_WAIT_MS = 20000
 const DEFAULT_MAX_SCROLL_OVERFLOW = 0
@@ -30,6 +30,7 @@ const DEFAULT_ROUTES = [
   { path: '/analysis/charts', markers: ['播放排行'] },
   { path: '/yearly-review', markers: ['年度总结'] },
   { path: '/account', markers: ['音乐档案'] },
+  { path: '/music/search?q=love', markers: ['音乐查找', '查看全部'] },
   { path: '/billboard/records', markers: ['冠军圣殿'] },
   { path: '/ai-insights', markers: ['AI 洞察'] },
   { path: '/settings', markers: ['设置'] },
@@ -97,7 +98,7 @@ function parseArgs(argv) {
   }
   for (const scenario of args.scenarios) {
     if (!DEFAULT_SCENARIOS.includes(scenario)) {
-      throw new Error(`Unsupported scenario: ${scenario}. Use route-markers or core-interactions.`)
+      throw new Error(`Unsupported scenario: ${scenario}. Use route-markers, core-interactions, or music-search.`)
     }
   }
   for (const viewport of args.viewports) {
@@ -115,7 +116,7 @@ Options:
   --base-url <url>              Frontend URL, default ${DEFAULT_BASE_URL}
   --api-base-url <url>          Rewrite same-origin /api and /covers requests to this API URL
   --browser <a,b,c>             Browser engines: chromium,firefox,webkit; default ${DEFAULT_BROWSERS.join(',')}
-  --scenario <a,b>              Scenarios: route-markers,core-interactions; default ${DEFAULT_SCENARIOS.join(',')}
+  --scenario <a,b>              Scenarios: route-markers,core-interactions,music-search; default ${DEFAULT_SCENARIOS.join(',')}
   --viewport <mode>             desktop, mobile, or both, default both
   --wait-ms <ms>                Max wait for route/text assertions, default ${DEFAULT_WAIT_MS}; dynamic detail routes use at least ${DYNAMIC_ROUTE_WAIT_MS}
   --max-scroll-overflow <px>    Allowed horizontal overflow over viewport width, default ${DEFAULT_MAX_SCROLL_OVERFLOW}
@@ -827,6 +828,81 @@ def run_core_interactions(browser):
     run_theme_toggle(browser)
 
 
+def run_music_search(browser):
+    page, console_messages, page_errors = new_page(browser, "desktop")
+    try:
+        page.goto(absolute_url("/music/search"), wait_until="domcontentloaded", timeout=WAIT_MS + 10000)
+        wait_for_text(page, "音乐查找")
+        page.get_by_role("heading", name="音乐查找").click(timeout=WAIT_MS)
+        shortcut = "Meta+k" if sys.platform == "darwin" else "Control+k"
+        page.keyboard.press(shortcut)
+        dialog = page.get_by_role("dialog")
+        dialog.wait_for(state="visible", timeout=WAIT_MS)
+        combobox = dialog.get_by_role("combobox", name="搜索歌曲、专辑或艺人")
+        if combobox.get_attribute("aria-activedescendant") is not None:
+            raise SmokeFailure("Quick Open selected a result before keyboard navigation")
+        combobox.fill("love")
+        wait_for_text(page, "查看全部")
+        if combobox.get_attribute("aria-activedescendant") is not None:
+            raise SmokeFailure("Quick Open selected the first result after loading")
+        wait_for_condition(
+            lambda: combobox if combobox.get_attribute("aria-expanded") == "true" else None,
+            "Quick Open candidates did not become available",
+        )
+        page.keyboard.press("ArrowDown")
+        if not combobox.get_attribute("aria-activedescendant"):
+            raise SmokeFailure("Quick Open ArrowDown did not activate a result")
+        for _ in range(12):
+            page.keyboard.press("Tab")
+            page.wait_for_timeout(25)
+        page.wait_for_timeout(50)
+        focus_inside = page.evaluate(
+            "() => Boolean(document.activeElement && document.activeElement.closest('[role=dialog]'))"
+        )
+        if not focus_inside:
+            raise SmokeFailure("Quick Open focus escaped the dialog")
+        page.keyboard.press("Escape")
+        dialog.wait_for(state="hidden", timeout=WAIT_MS)
+        if page.evaluate("() => document.activeElement?.getAttribute('aria-label')") != "搜索音乐详情":
+            raise SmokeFailure("Quick Open did not restore focus to its trigger")
+        assert_page_health(page, console_messages, page_errors, "desktop", "/music/search")
+        print("PASS music-search desktop shortcut-focus")
+    finally:
+        close_page(page)
+
+    page = browser.new_page(viewport=VIEWPORTS["mobile"], reduced_motion="reduce")
+    install_request_rewrite(page)
+    console_messages, page_errors = install_guards(page)
+    try:
+        page.goto(absolute_url("/"), wait_until="domcontentloaded", timeout=WAIT_MS + 10000)
+        search_link = page.get_by_role("link", name="查找音乐")
+        search_link.wait_for(state="visible", timeout=WAIT_MS)
+        search_link.click(timeout=WAIT_MS)
+        expect_url(page, r"/music/search(?:\\?|$)")
+        searchbox = page.get_by_role("searchbox", name="搜索歌曲、专辑或艺人")
+        searchbox.wait_for(state="visible", timeout=WAIT_MS)
+        if page.evaluate("() => document.activeElement?.getAttribute('aria-label')") != "搜索歌曲、专辑或艺人":
+            raise SmokeFailure("Explicit phone search entry did not focus the searchbox")
+        if page.evaluate("() => Boolean(history.state?.usr?.autofocusSearch)"):
+            raise SmokeFailure("One-shot phone autofocus intent was not cleared")
+        searchbox.fill("love")
+        wait_for_text(page, "查看全部")
+        undersized_tabs = page.evaluate(
+            """() => Array.from(document.querySelectorAll('[role=tab]'))
+                .filter((el) => {
+                    const rect = el.getBoundingClientRect();
+                    return rect.width > 0 && rect.height > 0 && (rect.width < 44 || rect.height < 44);
+                })
+                .map((el) => ({ text: el.textContent?.trim(), width: el.getBoundingClientRect().width, height: el.getBoundingClientRect().height }))"""
+        )
+        if undersized_tabs:
+            raise SmokeFailure(f"Phone search tabs below 44px: {undersized_tabs}")
+        assert_page_health(page, console_messages, page_errors, "mobile", "/music/search")
+        print("PASS music-search mobile autofocus-reduced-motion")
+    finally:
+        close_page(page)
+
+
 def main():
     with sync_playwright() as playwright:
         browser_type = getattr(playwright, BROWSER_NAME)
@@ -836,6 +912,8 @@ def main():
                 run_route_markers(browser)
             if "core-interactions" in SCENARIOS:
                 run_core_interactions(browser)
+            if "music-search" in SCENARIOS:
+                run_music_search(browser)
         finally:
             browser.close()
 

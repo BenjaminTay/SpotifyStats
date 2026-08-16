@@ -313,7 +313,7 @@ describe('Phase 5 query hook migration', () => {
 
     const result = await musicSearchApi.search(filters, ' love ', 'track', 3, { includeChart: true })
 
-    expect(api.get).toHaveBeenCalledWith('/music/search', params)
+    expect(api.get).toHaveBeenCalledWith('/music/search', params, undefined, expect.any(AbortSignal))
     expect(result).toBe(response)
     expect(queryClient.getQueryData(queryKeys.music.search(params))).toBe(response)
   })
@@ -345,9 +345,12 @@ describe('Phase 5 query hook migration', () => {
 
     await musicSearchApi.search(filters, ' love ')
 
-    expect(api.get).toHaveBeenCalledWith('/music/search', expect.not.objectContaining({
-      include_chart: true,
-    }))
+    expect(api.get).toHaveBeenCalledWith(
+      '/music/search',
+      expect.not.objectContaining({ include_chart: true }),
+      undefined,
+      expect.any(AbortSignal),
+    )
   })
 })
 

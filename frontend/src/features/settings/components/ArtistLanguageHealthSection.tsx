@@ -10,7 +10,9 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { ArtistLanguageReviewDialog } from '@/features/settings/components/ArtistLanguageReviewDialog'
-import { useAnalysisFilters, useMusicSearch } from '@/hooks/useAnalysis'
+import { useMusicSearchInputController } from '@/features/music/search/searchInputController'
+import { useMusicSearchCandidates } from '@/features/music/search/useMusicSearch'
+import { useAnalysisFilters } from '@/hooks/useAnalysis'
 import {
   useArtistLanguageCoverage,
   useArtistLanguageReviews,
@@ -21,7 +23,7 @@ import type {
   ArtistLanguageReviewItem,
   ArtistLanguageReviewStatus,
 } from '@/types/artist-language-metadata'
-import type { MusicSearchResult } from '@/types/music-search'
+import type { MusicSearchCandidate } from '@/types/music-search'
 
 const STATUS_OPTIONS: Array<{ value: ArtistLanguageReviewStatus; label: string }> = [
   { value: 'open', label: '待审核' },
@@ -93,8 +95,9 @@ function LanguageCollapsibleSection({
 export function ArtistLanguageHealthSection() {
   const { filters } = useAnalysisFilters()
   const [reviewStatus, setReviewStatus] = useState<ArtistLanguageReviewStatus>('open')
-  const [artistQuery, setArtistQuery] = useState('')
-  const [selectedArtist, setSelectedArtist] = useState<MusicSearchResult | null>(null)
+  const artistInput = useMusicSearchInputController('')
+  const artistQuery = artistInput.draft
+  const [selectedArtist, setSelectedArtist] = useState<MusicSearchCandidate | null>(null)
   const [activeReview, setActiveReview] = useState<ArtistLanguageReviewItem | null>(null)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
@@ -103,7 +106,13 @@ export function ArtistLanguageHealthSection() {
   const reviewsQuery = useArtistLanguageReviews(reviewStatus, 100)
   const openReviewsQuery = useArtistLanguageReviews('open', 100)
   const startReview = useStartArtistLanguageReview(filters)
-  const artistSearch = useMusicSearch(artistQuery, 'artist', 5)
+  const artistSearch = useMusicSearchCandidates({
+    query: artistInput.canSearch ? artistInput.settledQuery : '',
+    filters,
+    kind: 'artist',
+    pageSize: 5,
+    eligibility: 'any_local',
+  })
 
   const coverage = coverageQuery.data
   const reviews = reviewsQuery.data?.items ?? []
@@ -136,7 +145,7 @@ export function ArtistLanguageHealthSection() {
     if (reviewStatus !== 'open') void openReviewsQuery.refetch()
   }
 
-  const searchResults = artistQuery.trim() ? (artistSearch.data?.artists ?? []) : []
+  const searchResults = artistInput.canSearch ? (artistSearch.data?.artists ?? []) : []
   const loading = coverageQuery.isLoading || reviewsQuery.isLoading
   const loadError = coverageQuery.error ?? reviewsQuery.error
 
@@ -194,15 +203,17 @@ export function ArtistLanguageHealthSection() {
                 aria-label="查找待审核艺人"
                 className="h-9 w-full rounded-[8px] border border-input bg-background pl-8 pr-3 text-[13px] outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30"
                 onChange={(event) => {
-                  setArtistQuery(event.target.value)
+                  artistInput.setDraft(event.target.value)
                   setSelectedArtist(null)
                 }}
+                onCompositionStart={artistInput.onCompositionStart}
+                onCompositionEnd={(event) => artistInput.onCompositionEnd(event.currentTarget.value)}
                 placeholder="按艺人名查找"
                 type="search"
                 value={artistQuery}
               />
             </div>
-            {artistSearch.loading && artistQuery.trim() && (
+            {artistSearch.initialLoading && artistQuery.trim() && (
               <p className="mt-2 text-[12px] text-muted-foreground">正在查找…</p>
             )}
             {searchResults.length > 0 && !selectedArtist && (
@@ -216,9 +227,7 @@ export function ArtistLanguageHealthSection() {
                     type="button"
                   >
                     <span className="min-w-0 truncate text-foreground">{artist.label}</span>
-                    <span className="shrink-0 font-mono text-[11px] text-muted-foreground">
-                      {formatHours(artist.total_ms / 3_600_000)}
-                    </span>
+                    <span className="shrink-0 text-[11px] text-muted-foreground">本地艺人</span>
                   </button>
                 ))}
               </div>

@@ -2,28 +2,43 @@ import { Search, X } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 
-import { useMusicSearch } from '@/hooks/useAnalysis'
-import type { MusicSearchResponse, MusicSearchResult } from '@/types/music-search'
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { useAnalysisFilters } from '@/hooks/useAnalysis'
+import { useRuntimeCapabilities } from '@/hooks/useRuntimeCapabilities'
+import type { MusicSearchCandidate, MusicSearchCandidateResponse } from '@/types/music-search'
 
 import { MusicSearchResults } from './MusicSearchResults'
-import { fullSearchHref, trimSearchQuery } from './musicSearchUtils'
+import { RecentMusicEntityList } from './RecentMusicEntityList'
+import { fullSearchHref, musicSearchOptionId, trimSearchQuery } from './musicSearchUtils'
+import { useRecentMusicEntities } from './recentMusicEntities'
+import { useMusicSearchInputController } from './searchInputController'
+import { useMusicSearchCandidates, useMusicSearchContext } from './useMusicSearch'
 
 type MusicSearchDialogProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
 }
 
-function flattenSearchResults(data: MusicSearchResponse | null): MusicSearchResult[] {
+function flattenSearchResults(data: MusicSearchCandidateResponse | null): MusicSearchCandidate[] {
   if (!data) return []
   return [...data.tracks, ...data.albums, ...data.artists]
 }
 
 export function MusicSearchDialog({ open, onOpenChange }: MusicSearchDialogProps) {
-  const [query, setQuery] = useState('')
-  const [debouncedQuery, setDebouncedQuery] = useState('')
-  const [activeIndex, setActiveIndex] = useState(-1)
+  const input = useMusicSearchInputController('')
+  const query = input.draft
+  const [activeEntityKey, setActiveEntityKey] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement | null>(null)
   const navigate = useNavigate()
+  const { filters, loading: filtersLoading } = useAnalysisFilters()
+  const { capabilities } = useRuntimeCapabilities()
+  const recent = useRecentMusicEntities(capabilities.surface === 'private-admin')
 
   useEffect(() => {
     if (!open) return
@@ -31,36 +46,39 @@ export function MusicSearchDialog({ open, onOpenChange }: MusicSearchDialogProps
     return () => window.clearTimeout(focusTimer)
   }, [open])
 
-  useEffect(() => {
-    const timer = window.setTimeout(() => setDebouncedQuery(trimSearchQuery(query)), 250)
-    return () => window.clearTimeout(timer)
-  }, [query])
-
-  const { data, loading, error } = useMusicSearch(debouncedQuery, undefined, 5, { includeChart: true })
-  const resultItems = useMemo(() => flattenSearchResults(data), [data])
-  const activeItem = activeIndex >= 0 ? resultItems[activeIndex] : undefined
-  const resultsKey = useMemo(() => resultItems.map((item) => item.href).join('\u0000'), [resultItems])
+  const requestQuery = open && input.canSearch ? input.settledQuery : ''
+  const candidates = useMusicSearchCandidates({
+    query: requestQuery,
+    filters,
+    filtersLoading,
+    pageSize: 3,
+  })
+  const resultItems = useMemo(() => flattenSearchResults(candidates.data), [candidates.data])
+  const entityKeys = useMemo(() => resultItems.map((item) => item.entity_key), [resultItems])
+  const context = useMusicSearchContext({
+    entityKeys,
+    filterFingerprint: candidates.data?.filter_fingerprint ?? null,
+    filters,
+    enabled: candidates.data?.snapshot_status === 'ready' && !candidates.isPlaceholderData,
+  })
+  const activeItem = activeEntityKey
+    ? resultItems.find((item) => item.entity_key === activeEntityKey)
+    : undefined
   const fullHref = fullSearchHref(query)
-
-  useEffect(() => {
-    setActiveIndex(-1)
-  }, [query, debouncedQuery, loading, open, resultItems.length, resultsKey])
+  const listboxId = 'music-search-dialog-results'
 
   const moveActiveResult = (direction: 1 | -1) => {
     if (resultItems.length === 0) return
-    setActiveIndex((current) => {
-      if (current < 0) return direction === 1 ? 0 : resultItems.length - 1
-      return (current + direction + resultItems.length) % resultItems.length
-    })
+    const current = activeEntityKey
+      ? resultItems.findIndex((item) => item.entity_key === activeEntityKey)
+      : -1
+    const nextIndex = current < 0
+      ? direction === 1 ? 0 : resultItems.length - 1
+      : (current + direction + resultItems.length) % resultItems.length
+    setActiveEntityKey(resultItems[nextIndex]?.entity_key ?? null)
   }
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
-    const isSearchInput = event.target === inputRef.current
-    if (event.key === 'Escape') {
-      event.preventDefault()
-      onOpenChange(false)
-      return
-    }
     if (event.key === 'ArrowDown') {
       event.preventDefault()
       moveActiveResult(1)
@@ -71,80 +89,105 @@ export function MusicSearchDialog({ open, onOpenChange }: MusicSearchDialogProps
       moveActiveResult(-1)
       return
     }
-    if (event.key === 'Enter' && activeItem && isSearchInput) {
+    if (event.key === 'Enter' && activeItem && event.target === inputRef.current) {
       event.preventDefault()
+      recent.record(activeItem)
       onOpenChange(false)
       navigate(activeItem.href)
     }
   }
 
-  const handleActiveHrefChange = (href: string) => {
-    const nextIndex = resultItems.findIndex((item) => item.href === href)
-    if (nextIndex >= 0) setActiveIndex(nextIndex)
-  }
-
-  if (!open) return null
-
   return (
-    <div className="fixed inset-0 z-[80] flex items-start justify-center bg-background/70 px-3 py-16 backdrop-blur-[10px] sm:py-20">
-      <button
-        type="button"
-        aria-label="关闭搜索"
-        className="absolute inset-0 cursor-default"
-        onClick={() => onOpenChange(false)}
-      />
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label="搜索音乐详情"
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent
+        showCloseButton={false}
         onKeyDown={handleKeyDown}
-        className="relative w-full max-w-[820px] rounded-lg border border-border bg-card shadow-2xl"
+        className="!top-16 !max-h-[min(82dvh,720px)] w-[calc(100%-1.5rem)] max-w-[820px] !translate-y-0 gap-0 overflow-hidden p-0"
       >
+        <DialogTitle className="sr-only">搜索音乐详情</DialogTitle>
+        <DialogDescription className="sr-only">查找本地播放历史中的歌曲、专辑或艺人</DialogDescription>
         <div className="flex items-center gap-3 border-b border-border px-4 py-3">
           <Search className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
           <input
             ref={inputRef}
             type="search"
-            role="searchbox"
+            role="combobox"
             aria-label="搜索歌曲、专辑或艺人"
+            aria-autocomplete="list"
+            aria-controls={listboxId}
+            aria-expanded={resultItems.length > 0}
+            aria-activedescendant={activeEntityKey ? musicSearchOptionId(activeEntityKey) : undefined}
             value={query}
-            onChange={(event) => setQuery(event.target.value)}
+            onChange={(event) => {
+              setActiveEntityKey(null)
+              input.setDraft(event.target.value)
+            }}
+            onCompositionStart={input.onCompositionStart}
+            onCompositionEnd={(event) => {
+              setActiveEntityKey(null)
+              input.onCompositionEnd(event.currentTarget.value)
+            }}
             placeholder="搜索歌曲、专辑或艺人"
             className="h-10 min-w-0 flex-1 bg-transparent text-base outline-none placeholder:text-muted-foreground"
           />
-          <button
-            type="button"
-            aria-label="关闭搜索"
-            onClick={() => onOpenChange(false)}
-            className="flex size-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-          >
+          <DialogClose className="flex size-9 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground" aria-label="关闭搜索">
             <X className="size-4" aria-hidden="true" />
-          </button>
+          </DialogClose>
         </div>
-        <div className="max-h-[min(68vh,620px)] overflow-y-auto p-3 sm:p-4">
+        <div className="max-h-[min(68dvh,620px)] overflow-y-auto overscroll-contain p-3 sm:p-4">
+          <p className="sr-only" role="status" aria-live="polite">
+            {candidates.data?.snapshot_status === 'ready'
+              ? `找到 ${candidates.data.total} 个结果`
+              : candidates.initialLoading
+                ? '正在搜索'
+                : ''}
+          </p>
           <MusicSearchResults
-            data={data}
-            query={debouncedQuery}
-            loading={loading}
-            error={error}
+            data={candidates.data}
+            contextData={context.data}
+            query={input.settledQuery}
+            initialLoading={candidates.initialLoading}
+            updating={candidates.updating}
+            contextLoading={context.loading}
+            error={candidates.error}
+            contextError={context.error}
+            onRetry={candidates.refetch}
+            maintenanceHref={capabilities.settings && capabilities.metadata_governance
+              ? '/settings#music-metadata-management'
+              : null}
+            publicReadonly={capabilities.surface === 'public-readonly'}
             compact
-            activeHref={activeItem?.href}
-            onActiveHrefChange={handleActiveHrefChange}
-            onResultClick={() => onOpenChange(false)}
+            activeEntityKey={activeEntityKey}
+            onActiveEntityKeyChange={setActiveEntityKey}
+            onResultClick={(item) => {
+              recent.record(item)
+              onOpenChange(false)
+            }}
+            listboxId={listboxId}
           />
+          {!trimSearchQuery(query) && (
+            <div className="mt-3">
+              <RecentMusicEntityList
+                items={recent.items}
+                onClear={recent.clear}
+                onOpen={() => onOpenChange(false)}
+                compact
+              />
+            </div>
+          )}
         </div>
         {trimSearchQuery(query) && (
           <div className="flex justify-end border-t border-border px-4 py-3">
             <Link
               to={fullHref}
               onClick={() => onOpenChange(false)}
-              className="rounded-lg px-3 py-1.5 text-sm font-semibold text-accent-foreground transition-colors hover:bg-muted"
+              className="min-h-11 rounded-lg px-3 py-2.5 text-sm font-semibold text-accent-foreground transition-colors hover:bg-muted"
             >
               查看全部结果
             </Link>
           </div>
         )}
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   )
 }

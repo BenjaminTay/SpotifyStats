@@ -18,7 +18,22 @@ vi.mock('@/hooks/useArtistLanguageMetadata', () => ({
 }))
 
 vi.mock('@/hooks/useAnalysis', () => ({
-  useMusicSearch: useMusicSearchMock,
+  useAnalysisFilters: () => ({
+    filters: {
+      min_ms: 30000,
+      music_only: true,
+      merge_enabled: true,
+      dynamic_threshold: true,
+      max_merge_gap_minutes: 5,
+      merge_level: 2,
+      include_compilations: false,
+    },
+    loading: false,
+  }),
+}))
+
+vi.mock('@/features/music/search/useMusicSearch', () => ({
+  useMusicSearchCandidates: useMusicSearchMock,
 }))
 
 const review: ArtistLanguageReviewItem = {
@@ -40,28 +55,38 @@ const review: ArtistLanguageReviewItem = {
 function installSearchMock() {
   useMusicSearchMock.mockReturnValue({
     data: {
+      response_version: 'music_search_v2',
       query: 'Video Games',
-      limit_per_type: 5,
+      normalized_query: 'video games',
+      snapshot_status: 'ready',
+      filter_fingerprint: null,
+      kind: 'track',
+      page: 1,
+      page_size: 5,
       total: 1,
+      total_by_kind: { track: 1, album: 0, artist: 0 },
       tracks: [
         {
+          entity_key: 'track:77',
           kind: 'track',
           label: 'Video Games',
           subtitle: 'Lana Del Rey',
           href: '/music/tracks/77',
-          play_events: 20,
-          total_ms: 200000,
           track_id: 77,
           artist_id: 101,
           album_name: 'Born to Die',
           artist_name: 'Lana Del Rey',
           cover_url: null,
+          match_field: 'label',
+          match_quality: 'exact',
         },
       ],
       albums: [],
       artists: [],
     },
-    loading: false,
+    initialLoading: false,
+    updating: false,
+    isPlaceholderData: false,
     error: null,
     refetch: vi.fn(),
   })

@@ -52,9 +52,18 @@ export function MobileTopBar() {
     [location.pathname, location.search],
   )
 
-  const searchState = useMemo(
-    () => ({ returnTo: currentLocationTarget(location.pathname, location.search) }),
+  const returnState = useMemo(
+    () => ({
+      returnTo: currentLocationTarget(location.pathname, location.search),
+    }),
     [location.pathname, location.search],
+  )
+  const searchState = useMemo(
+    () => ({
+      ...returnState,
+      autofocusSearch: true,
+    }),
+    [returnState],
   )
   const isMusicDetail = isMusicDetailPath(location.pathname)
   const currentTarget = currentLocationTarget(location.pathname, location.search)
@@ -193,7 +202,7 @@ export function MobileTopBar() {
           <Search className="h-[18px] w-[18px]" aria-hidden="true" />
         </Link>
         {capabilities.settings && (
-          <Link to="/settings" state={searchState} className="mobile-icon-button" aria-label="打开设置">
+          <Link to="/settings" state={returnState} className="mobile-icon-button" aria-label="打开设置">
             <Settings className="h-[18px] w-[18px]" aria-hidden="true" />
           </Link>
         )}

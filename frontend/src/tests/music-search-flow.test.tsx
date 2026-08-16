@@ -1,35 +1,79 @@
 import { act, fireEvent, render, screen } from '@testing-library/react'
-import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
+import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { Masthead } from '@/components/layout/Masthead'
 import { MusicSearchPage } from '@/features/music/search/MusicSearchPage'
 import { ThemeProvider } from '@/hooks/useTheme'
-import type { MusicSearchResponse } from '@/types/music-search'
+import type { AnalysisFilters } from '@/types/analysis'
+import type { MusicSearchCandidateResponse, MusicSearchContextResponse } from '@/types/music-search'
+
+const filters: AnalysisFilters = {
+  min_ms: 30_000,
+  music_only: true,
+  merge_enabled: true,
+  dynamic_threshold: true,
+  max_merge_gap_minutes: 5,
+  merge_level: 2,
+  include_compilations: false,
+  bb_top_n: 30,
+  bb_album_top_n: 20,
+  bb_artist_top_n: 20,
+  bb_week_start_dow: 4,
+  bb_week_start_hour: 12,
+}
 
 const hookMocks = vi.hoisted(() => ({
-  useMusicSearch: vi.fn(),
+  useAnalysisFilters: vi.fn(),
+  useMusicSearchCandidates: vi.fn(),
+  useMusicSearchContext: vi.fn(),
 }))
 
-vi.mock('@/hooks/useAnalysis', () => hookMocks)
+vi.mock('@/hooks/useAnalysis', () => ({
+  useAnalysisFilters: hookMocks.useAnalysisFilters,
+}))
+vi.mock('@/features/music/search/useMusicSearch', () => ({
+  useMusicSearchCandidates: hookMocks.useMusicSearchCandidates,
+  useMusicSearchContext: hookMocks.useMusicSearchContext,
+}))
 
-const sampleResults: MusicSearchResponse = {
+const sampleResults: MusicSearchCandidateResponse = {
+  response_version: 'music_search_v2',
   query: 'love',
-  limit_per_type: 5,
+  normalized_query: 'love',
+  snapshot_status: 'ready',
+  filter_fingerprint: 'fingerprint',
+  kind: null,
+  page: 1,
+  page_size: 5,
   total: 1,
-  tracks: [
-    {
-      kind: 'track',
-      label: 'Cruel Summer',
-      subtitle: 'Taylor Swift · Lover',
-      href: '/music/tracks/42',
+  total_by_kind: { track: 1, album: 0, artist: 0 },
+  tracks: [{
+    entity_key: 'track:42',
+    kind: 'track',
+    label: 'Cruel Summer',
+    subtitle: 'Taylor Swift · Lover',
+    href: '/music/tracks/42',
+    track_id: 42,
+    artist_id: null,
+    album_name: 'Lover',
+    artist_name: 'Taylor Swift',
+    cover_url: null,
+    match_field: 'label',
+    match_quality: 'substring',
+  }],
+  albums: [],
+  artists: [],
+}
+
+const sampleContext: MusicSearchContextResponse = {
+  response_version: 'music_search_context_v1',
+  snapshot_status: 'ready',
+  filter_fingerprint: 'fingerprint',
+  items: {
+    'track:42': {
       play_events: 17,
-      total_ms: 3100000,
-      track_id: 42,
-      artist_id: null,
-      album_name: 'Lover',
-      artist_name: 'Taylor Swift',
-      cover_url: null,
+      total_ms: 3_100_000,
       chart: {
         peak_position: 1,
         peak_weeks: 2,
@@ -42,35 +86,32 @@ const sampleResults: MusicSearchResponse = {
         first_peak_week: '2026-01-09',
       },
     },
-  ],
-  albums: [],
-  artists: [],
+  },
 }
 
-const keyboardResults: MusicSearchResponse = {
+const keyboardResults: MusicSearchCandidateResponse = {
   ...sampleResults,
   total: 2,
+  total_by_kind: { track: 2, album: 0, artist: 0 },
   tracks: [
     sampleResults.tracks[0],
     {
       ...sampleResults.tracks[0],
+      entity_key: 'track:43',
       label: 'Lover',
       href: '/music/tracks/43',
       track_id: 43,
-      play_events: 9,
-      chart: {
-        peak_position: 3,
-        peak_weeks: 1,
-        weeks_on_chart: 4,
-        weeks_at_no1: 0,
-        power_score: 820,
-        power_rank: 18,
-        first_week: '2026-02-06',
-        latest_week: '2026-02-27',
-        first_peak_week: '2026-02-13',
-      },
     },
   ],
+}
+
+const pagedTrackResults: MusicSearchCandidateResponse = {
+  ...sampleResults,
+  kind: 'track',
+  page: 2,
+  page_size: 20,
+  total: 255,
+  total_by_kind: { track: 255, album: 0, artist: 0 },
 }
 
 function mockMatchMedia(matches = false) {
@@ -103,36 +144,53 @@ function LocationSearchProbe() {
   return <output data-testid="location-search">{location.search}</output>
 }
 
+function BackButton() {
+  const navigate = useNavigate()
+  return <button type="button" onClick={() => navigate(-1)}>返回搜索</button>
+}
+
 describe('music search flow', () => {
   beforeEach(() => {
     vi.useRealTimers()
     vi.clearAllMocks()
+    sessionStorage.clear()
     mockMatchMedia()
-    hookMocks.useMusicSearch.mockReturnValue({
+    hookMocks.useAnalysisFilters.mockReturnValue({ filters, loading: false })
+    hookMocks.useMusicSearchCandidates.mockReturnValue({
       data: sampleResults,
-      loading: false,
+      initialLoading: false,
+      updating: false,
+      isPlaceholderData: false,
       error: null,
       refetch: vi.fn(),
     })
+    hookMocks.useMusicSearchContext.mockReturnValue({
+      data: sampleContext,
+      loading: false,
+      updating: false,
+      error: null,
+    })
   })
 
-  it('hydrates the full search page from the q URL parameter', () => {
+  it('hydrates q/kind/page from URL and uses 20-row kind pagination', () => {
     renderWithTheme(
       <Routes>
         <Route path="/music/search" element={<MusicSearchPage />} />
       </Routes>,
-      '/music/search?q=love',
+      '/music/search?q=love&kind=track&page=2',
     )
 
     expect(screen.getByRole('searchbox', { name: '搜索歌曲、专辑或艺人' })).toHaveValue('love')
-    expect(hookMocks.useMusicSearch).toHaveBeenCalledWith('love', undefined, 5, { includeChart: true })
-    expect(screen.getByRole('link', { name: /Cruel Summer/ })).toHaveAttribute('href', '/music/tracks/42')
+    expect(hookMocks.useMusicSearchCandidates).toHaveBeenCalledWith(expect.objectContaining({
+      query: 'love',
+      kind: 'track',
+      page: 2,
+      pageSize: 20,
+    }))
   })
 
-  it('uses the compact mobile result hierarchy and waits for IME composition before updating q', () => {
+  it('does not publish a composition query until compositionend plus debounce', () => {
     vi.useFakeTimers()
-    mockMatchMedia(true)
-
     renderWithTheme(
       <Routes>
         <Route path="/music/search" element={<><MusicSearchPage /><LocationSearchProbe /></>} />
@@ -141,114 +199,182 @@ describe('music search flow', () => {
     )
 
     const searchbox = screen.getByRole('searchbox', { name: '搜索歌曲、专辑或艺人' })
-    expect(screen.queryByRole('heading', { name: '音乐查找' })).not.toBeInTheDocument()
-    expect(screen.getByRole('link', { name: /Cruel Summer/ })).toHaveTextContent('PK #1')
-    expect(screen.getByRole('link', { name: /Cruel Summer/ })).toHaveTextContent('走势 #8')
-
     fireEvent.compositionStart(searchbox)
     fireEvent.change(searchbox, { target: { value: '周杰伦' } })
     act(() => vi.advanceTimersByTime(300))
     expect(new URLSearchParams(screen.getByTestId('location-search').textContent ?? '').get('q')).toBe('love')
+    expect(hookMocks.useMusicSearchCandidates).not.toHaveBeenLastCalledWith(expect.objectContaining({ query: '周杰伦' }))
 
     fireEvent.compositionEnd(searchbox)
     act(() => vi.advanceTimersByTime(300))
     expect(new URLSearchParams(screen.getByTestId('location-search').textContent ?? '').get('q')).toBe('周杰伦')
-
+    expect(hookMocks.useMusicSearchCandidates).toHaveBeenLastCalledWith(expect.objectContaining({ query: '周杰伦' }))
     vi.useRealTimers()
   })
 
-  it('opens Masthead quick search and links to the full search page', async () => {
-    vi.useFakeTimers()
+  it('opens with Cmd/Ctrl+K, excludes editable targets, and restores trigger focus', () => {
+    renderWithTheme(<><input aria-label="editable" /><Masthead /></>)
+    const editable = screen.getByRole('textbox', { name: 'editable' })
+    fireEvent.keyDown(editable, { key: 'k', metaKey: true })
+    expect(screen.queryByRole('dialog', { name: '搜索音乐详情' })).not.toBeInTheDocument()
 
-    renderWithTheme(<Masthead />)
-
-    fireEvent.click(screen.getByRole('button', { name: '搜索音乐详情' }))
+    fireEvent.keyDown(window, { key: 'k', metaKey: true })
     expect(screen.getByRole('dialog', { name: '搜索音乐详情' })).toBeInTheDocument()
-
-    fireEvent.change(screen.getByRole('searchbox', { name: '搜索歌曲、专辑或艺人' }), {
-      target: { value: 'love' },
-    })
-
-    act(() => {
-      vi.advanceTimersByTime(260)
-    })
-
-    expect(screen.getByRole('link', { name: /Cruel Summer/ })).toBeInTheDocument()
-    expect(screen.getByText('PK #1')).toBeInTheDocument()
-    expect(screen.getByText('在榜 12周')).toBeInTheDocument()
-    expect(screen.getByText('走势 #8')).toBeInTheDocument()
-    expect(screen.queryByText('冠军 3 周')).not.toBeInTheDocument()
-    expect(hookMocks.useMusicSearch).toHaveBeenCalledWith('love', undefined, 5, { includeChart: true })
-    expect(screen.getByRole('link', { name: '查看全部结果' })).toHaveAttribute('href', '/music/search?q=love')
-
-    vi.useRealTimers()
+    fireEvent.click(screen.getByRole('button', { name: '关闭搜索' }))
+    expect(screen.getByRole('button', { name: '搜索音乐详情' })).toHaveFocus()
   })
 
-  it('shows a clear loading message while quick search is waiting for chart results', () => {
+  it('keeps no default active option and supports Arrow/Enter navigation', () => {
     vi.useFakeTimers()
-    hookMocks.useMusicSearch.mockReturnValue({
-      data: null,
-      loading: true,
-      error: null,
-      refetch: vi.fn(),
-    })
-
-    renderWithTheme(<Masthead />)
-
-    fireEvent.click(screen.getByRole('button', { name: '搜索音乐详情' }))
-    fireEvent.change(screen.getByRole('searchbox', { name: '搜索歌曲、专辑或艺人' }), {
-      target: { value: 'love' },
-    })
-
-    act(() => {
-      vi.advanceTimersByTime(260)
-    })
-
-    expect(screen.getByText('正在加载搜索结果…')).toBeInTheDocument()
-
-    vi.useRealTimers()
-  })
-
-  it('lets keyboard users select quick search results and open the active result', () => {
-    vi.useFakeTimers()
-    hookMocks.useMusicSearch.mockReturnValue({
+    hookMocks.useMusicSearchCandidates.mockReturnValue({
       data: keyboardResults,
-      loading: false,
+      initialLoading: false,
+      updating: false,
+      isPlaceholderData: false,
       error: null,
       refetch: vi.fn(),
     })
-
     renderWithTheme(
       <Routes>
         <Route path="/" element={<Masthead />} />
         <Route path="/music/tracks/43" element={<div>Track 43 reached</div>} />
       </Routes>,
     )
-
     fireEvent.click(screen.getByRole('button', { name: '搜索音乐详情' }))
-    const searchbox = screen.getByRole('searchbox', { name: '搜索歌曲、专辑或艺人' })
-    fireEvent.change(searchbox, {
-      target: { value: 'love' },
-    })
+    const combobox = screen.getByRole('combobox', { name: '搜索歌曲、专辑或艺人' })
+    fireEvent.change(combobox, { target: { value: 'love' } })
+    act(() => vi.advanceTimersByTime(260))
 
-    act(() => {
-      vi.advanceTimersByTime(260)
-    })
-
-    const firstResult = screen.getByRole('link', { name: /Cruel Summer/ })
-    const secondResult = screen.getByRole('link', { name: /PK #3/ })
-    expect(firstResult).not.toHaveAttribute('aria-current')
-    expect(secondResult).not.toHaveAttribute('aria-current')
-
-    fireEvent.keyDown(searchbox, { key: 'ArrowDown' })
-    expect(firstResult).toHaveAttribute('aria-current', 'true')
-
-    fireEvent.keyDown(searchbox, { key: 'ArrowDown' })
-    expect(secondResult).toHaveAttribute('aria-current', 'true')
-
-    fireEvent.keyDown(searchbox, { key: 'Enter' })
+    const options = screen.getAllByRole('option')
+    expect(options[0]).toHaveAttribute('aria-selected', 'false')
+    expect(options[1]).toHaveAttribute('aria-selected', 'false')
+    fireEvent.keyDown(combobox, { key: 'ArrowDown' })
+    expect(options[0]).toHaveAttribute('aria-selected', 'true')
+    fireEvent.keyDown(combobox, { key: 'ArrowDown' })
+    expect(options[1]).toHaveAttribute('aria-selected', 'true')
+    fireEvent.keyDown(combobox, { key: 'Enter' })
     expect(screen.getByText('Track 43 reached')).toBeInTheDocument()
-
     vi.useRealTimers()
+  })
+
+  it('unmounts the Quick Open candidate observer when the dialog closes', () => {
+    vi.useFakeTimers()
+    renderWithTheme(<Masthead />)
+    fireEvent.click(screen.getByRole('button', { name: '搜索音乐详情' }))
+    const combobox = screen.getByRole('combobox', { name: '搜索歌曲、专辑或艺人' })
+    fireEvent.change(combobox, { target: { value: 'love' } })
+    act(() => vi.advanceTimersByTime(260))
+    expect(hookMocks.useMusicSearchCandidates).toHaveBeenLastCalledWith(expect.objectContaining({
+      query: 'love',
+    }))
+
+    fireEvent.click(screen.getByRole('button', { name: '关闭搜索' }))
+    expect(screen.queryByRole('dialog', { name: '搜索音乐详情' })).not.toBeInTheDocument()
+    vi.useRealTimers()
+  })
+
+  it('restores a POP result position only after deferred candidates make the page scrollable', () => {
+    let candidateResult: ReturnType<typeof hookMocks.useMusicSearchCandidates> = {
+      data: pagedTrackResults,
+      initialLoading: false,
+      updating: false,
+      isPlaceholderData: false,
+      error: null,
+      refetch: vi.fn(),
+    }
+    hookMocks.useMusicSearchCandidates.mockImplementation(() => candidateResult)
+
+    const scrollTo = vi.fn()
+    const animationFrames: FrameRequestCallback[] = []
+    let scrollHeight = 700
+    vi.stubGlobal('scrollY', 600)
+    vi.stubGlobal('innerHeight', 800)
+    vi.stubGlobal('scrollTo', scrollTo)
+    vi.stubGlobal('requestAnimationFrame', vi.fn((callback: FrameRequestCallback) => {
+      animationFrames.push(callback)
+      return animationFrames.length
+    }))
+    vi.stubGlobal('cancelAnimationFrame', vi.fn())
+    Object.defineProperty(document.documentElement, 'scrollHeight', {
+      configurable: true,
+      get: () => scrollHeight,
+    })
+
+    const renderTree = () => (
+      <ThemeProvider>
+        <MemoryRouter initialEntries={['/music/search?q=love&kind=track&page=2']}>
+          <Routes>
+            <Route path="/music/search" element={<MusicSearchPage />} />
+            <Route path="/music/tracks/42" element={<BackButton />} />
+          </Routes>
+        </MemoryRouter>
+      </ThemeProvider>
+    )
+    const view = render(renderTree())
+
+    fireEvent.click(screen.getByRole('link', { name: /Cruel Summer/ }))
+    expect(sessionStorage.getItem(
+      'spotify-stats:music-search-scroll:/music/search?q=love&kind=track&page=2',
+    )).toBe('600')
+
+    candidateResult = {
+      data: null,
+      initialLoading: true,
+      updating: false,
+      isPlaceholderData: false,
+      error: null,
+      refetch: vi.fn(),
+    }
+    fireEvent.click(screen.getByRole('button', { name: '返回搜索' }))
+    expect(screen.getByTestId('music-search-loading-message')).toBeInTheDocument()
+    expect(scrollTo).not.toHaveBeenCalled()
+
+    candidateResult = {
+      data: pagedTrackResults,
+      initialLoading: false,
+      updating: false,
+      isPlaceholderData: false,
+      error: null,
+      refetch: vi.fn(),
+    }
+    view.rerender(renderTree())
+
+    expect(screen.getByText('21–40 / 255 · 第 2 / 13 页')).toBeInTheDocument()
+    expect(scrollTo).not.toHaveBeenCalled()
+    act(() => animationFrames.shift()?.(0))
+    expect(scrollTo).not.toHaveBeenCalled()
+
+    scrollHeight = 2_000
+    act(() => animationFrames.shift()?.(16))
+    expect(scrollTo).toHaveBeenCalledTimes(1)
+    expect(scrollTo).toHaveBeenCalledWith({ top: 600, behavior: 'auto' })
+
+    view.unmount()
+    Reflect.deleteProperty(document.documentElement, 'scrollHeight')
+    vi.unstubAllGlobals()
+  })
+
+  it('does not reuse a saved position for ordinary kind navigation', () => {
+    sessionStorage.setItem(
+      'spotify-stats:music-search-scroll:/music/search?q=love&kind=album',
+      '600',
+    )
+    const scrollTo = vi.fn()
+    vi.stubGlobal('scrollTo', scrollTo)
+
+    const view = renderWithTheme(
+      <Routes>
+        <Route path="/music/search" element={<><MusicSearchPage /><LocationSearchProbe /></>} />
+      </Routes>,
+      '/music/search?q=love&kind=track',
+    )
+
+    fireEvent.click(screen.getByRole('tab', { name: '专辑' }))
+
+    expect(screen.getByTestId('location-search')).toHaveTextContent('?q=love&kind=album')
+    expect(scrollTo).not.toHaveBeenCalled()
+
+    view.unmount()
+    vi.unstubAllGlobals()
   })
 })

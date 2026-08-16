@@ -162,6 +162,33 @@ export const queryKeys = {
     all: ["music"] as const,
     search: (params: Record<string, unknown>) =>
       ["music", "search", params] as const,
+    searchCandidates: (
+      semanticFilterKey: string,
+      normalizedQuery: string,
+      kind: string | undefined,
+      page: number,
+      pageSize: number,
+      eligibility: string,
+    ) =>
+      [
+        "music",
+        "search",
+        "candidates",
+        semanticFilterKey,
+        normalizedQuery,
+        kind ?? "all",
+        page,
+        pageSize,
+        eligibility,
+      ] as const,
+    searchContext: (filterFingerprint: string, entityKeys: readonly string[]) =>
+      [
+        "music",
+        "search",
+        "context",
+        filterFingerprint,
+        [...new Set(entityKeys)].sort(),
+      ] as const,
     artistDetail: (artistName: string, params: Record<string, unknown> = {}) =>
       ["music", "artist-detail", artistName, params] as const,
     artistRankings: (artistName: string, params: Record<string, unknown> = {}) =>

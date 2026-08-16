@@ -20,10 +20,17 @@ const primaryNavItems: NavItem[] = [
   { to: '/ai-insights', label: 'AI' },
 ]
 
+function isEditableTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false
+  return target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName)
+}
+
 export function Masthead() {
   const { capabilities } = useRuntimeCapabilities()
   const location = useLocation()
   const activeNavRef = useRef<HTMLElement | null>(null)
+  const searchTriggerRef = useRef<HTMLButtonElement | null>(null)
+  const restoreSearchFocusRef = useRef(false)
   const [searchOpen, setSearchOpen] = useState(false)
   const routeContext = useMemo(
     () => getMastheadRouteContext(location.pathname, location.search),
@@ -43,6 +50,28 @@ export function Masthead() {
       inline: 'center',
     })
   }, [routeContext.activeNavTo])
+
+  useEffect(() => {
+    const handleShortcut = (event: KeyboardEvent) => {
+      if (event.key.toLowerCase() !== 'k' || (!event.metaKey && !event.ctrlKey)) return
+      if (event.altKey || isEditableTarget(event.target)) return
+      event.preventDefault()
+      setSearchOpen(true)
+    }
+    window.addEventListener('keydown', handleShortcut)
+    return () => window.removeEventListener('keydown', handleShortcut)
+  }, [])
+
+  useEffect(() => {
+    if (searchOpen || !restoreSearchFocusRef.current) return
+    restoreSearchFocusRef.current = false
+    searchTriggerRef.current?.focus()
+  }, [searchOpen])
+
+  const handleSearchOpenChange = useCallback((open: boolean) => {
+    if (!open) restoreSearchFocusRef.current = true
+    setSearchOpen(open)
+  }, [])
 
   const isNavActive = (to: MastheadNavTo) => {
     if (routeContext.activeNavTo) return routeContext.activeNavTo === to
@@ -98,8 +127,10 @@ export function Masthead() {
         </nav>
         <div className="flex shrink-0 items-center gap-2 sm:order-none">
           <button
+            ref={searchTriggerRef}
             type="button"
             aria-label="搜索音乐详情"
+            aria-keyshortcuts="Meta+K Control+K"
             onClick={() => setSearchOpen(true)}
             className={utilityLinkClassName(location.pathname === '/music/search')}
           >
@@ -117,7 +148,7 @@ export function Masthead() {
           )}
         </div>
       </div>
-      {searchOpen && <MusicSearchDialog open={searchOpen} onOpenChange={setSearchOpen} />}
+      {searchOpen && <MusicSearchDialog open onOpenChange={handleSearchOpenChange} />}
     </header>
   )
 }

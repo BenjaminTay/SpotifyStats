@@ -1,4 +1,7 @@
 export type MusicSearchKind = 'track' | 'album' | 'artist'
+export type MusicSearchSnapshotStatus = 'ready' | 'warming' | 'unavailable' | 'stale' | 'failed'
+export type MusicSearchMatchField = 'label' | 'artist' | 'album' | 'alias'
+export type MusicSearchMatchQuality = 'exact' | 'prefix' | 'token' | 'substring'
 
 export interface MusicSearchChartSummary {
   peak_position: number | null
@@ -34,4 +37,58 @@ export interface MusicSearchResponse {
   tracks: MusicSearchResult[]
   albums: MusicSearchResult[]
   artists: MusicSearchResult[]
+}
+
+export interface MusicSearchCandidate {
+  entity_key: string
+  kind: MusicSearchKind
+  label: string
+  subtitle: string | null
+  href: string
+  track_id: number | null
+  artist_id: number | null
+  album_name: string | null
+  artist_name: string | null
+  cover_url: string | null
+  match_field: MusicSearchMatchField
+  match_quality: MusicSearchMatchQuality
+}
+
+export interface MusicSearchKindTotals {
+  track: number
+  album: number
+  artist: number
+}
+
+export interface MusicSearchCandidateResponse {
+  response_version: 'music_search_v2'
+  query: string
+  normalized_query: string
+  snapshot_status: MusicSearchSnapshotStatus
+  filter_fingerprint: string | null
+  kind: MusicSearchKind | null
+  page: number
+  page_size: number
+  total: number
+  total_by_kind: MusicSearchKindTotals
+  tracks: MusicSearchCandidate[]
+  albums: MusicSearchCandidate[]
+  artists: MusicSearchCandidate[]
+}
+
+export interface MusicSearchContextItem {
+  play_events: number
+  total_ms: number
+  chart: MusicSearchChartSummary | null
+}
+
+export interface MusicSearchContextResponse {
+  response_version: 'music_search_context_v1'
+  snapshot_status: MusicSearchSnapshotStatus
+  filter_fingerprint: string | null
+  items: Record<string, MusicSearchContextItem>
+}
+
+export interface MusicSearchCandidateView extends MusicSearchCandidate {
+  context: MusicSearchContextItem | null
 }

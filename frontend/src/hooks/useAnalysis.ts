@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import type { DependencyList } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { keepPreviousData, useQuery } from '@tanstack/react-query'
 
 import { queryClient } from '@/api/query-client'
 import { queryKeys } from '@/api/query-keys'
@@ -450,10 +450,11 @@ export const musicSearchApi = {
       ...(options.includeChart ? musicSearchChartParams(filters) : {}),
     }
     if (kind) params.kind = kind
-    return fetchQuery(
-      queryKeys.music.search(params),
-      () => api.get<MusicSearchResponse>('/music/search', params),
-    )
+    return queryClient.fetchQuery({
+      queryKey: queryKeys.music.search(params),
+      queryFn: ({ signal }) => api.get<MusicSearchResponse>('/music/search', params, undefined, signal),
+      retry: 0,
+    })
   },
 }
 
@@ -480,13 +481,17 @@ export function useMusicSearch(
   const enabled = trimmed.length > 0 && !filtersLoading
   const searchQuery = useQuery({
     queryKey: queryKeys.music.search(params),
-    queryFn: () => api.get<MusicSearchResponse>('/music/search', params),
+    queryFn: ({ signal }) => api.get<MusicSearchResponse>('/music/search', params, undefined, signal),
     enabled,
+    retry: 0,
+    placeholderData: keepPreviousData,
   })
 
   return {
     data: searchQuery.data ?? null,
-    loading: trimmed.length > 0 ? filtersLoading || searchQuery.isLoading : false,
+    loading: trimmed.length > 0 ? filtersLoading || searchQuery.isPending : false,
+    updating: searchQuery.isFetching && !searchQuery.isPending,
+    isPlaceholderData: searchQuery.isPlaceholderData,
     error: errorMessage(searchQuery.error),
     refetch: () => void searchQuery.refetch(),
   }

@@ -3,6 +3,7 @@ import { apiClient } from '@/api/client'
 import {
   ApiError,
   AuthRequiredError,
+  CancelError,
   NetworkError,
   TimeoutError,
 } from '@/api/errors'
@@ -12,6 +13,33 @@ afterEach(() => {
 })
 
 describe('apiClient error responses', () => {
+  it('serializes array parameters as repeated query keys', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response('{}', {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await apiClient.get('/music/search/context', {
+      entity_key: ['track:1', 'artist:2'],
+    })
+
+    const requestedUrl = new URL(String(fetchMock.mock.calls[0][0]))
+    expect(requestedUrl.searchParams.getAll('entity_key')).toEqual(['track:1', 'artist:2'])
+  })
+
+  it('rejects a pre-aborted external signal before calling fetch', async () => {
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+    const controller = new AbortController()
+    controller.abort()
+
+    await expect(
+      apiClient.get('/music/search', undefined, undefined, controller.signal),
+    ).rejects.toBeInstanceOf(CancelError)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
   it('preserves structured detail objects for readable validation errors', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({
       detail: {

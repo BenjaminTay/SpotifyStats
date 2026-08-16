@@ -35,7 +35,10 @@ vi.mock('@/hooks/useAnalysis', () => ({
     },
     loading: false,
   }),
-  useMusicSearch: useMusicSearchMock,
+}))
+
+vi.mock('@/features/music/search/useMusicSearch', () => ({
+  useMusicSearchCandidates: useMusicSearchMock,
 }))
 
 vi.mock('@/features/settings/components/ArtistLanguageReviewDialog', () => ({
@@ -118,28 +121,38 @@ function installMocks() {
   startReviewMock.mockResolvedValue(openReview)
   useMusicSearchMock.mockReturnValue({
     data: {
+      response_version: 'music_search_v2',
       query: 'search',
-      limit_per_type: 5,
+      normalized_query: 'search',
+      snapshot_status: 'ready',
+      filter_fingerprint: null,
+      kind: 'artist',
+      page: 1,
+      page_size: 5,
       total: 1,
+      total_by_kind: { track: 0, album: 0, artist: 1 },
       tracks: [],
       albums: [],
       artists: [
         {
           kind: 'artist',
+          entity_key: 'artist:909',
           label: 'Search Artist',
           subtitle: null,
           href: '/music/artists/Search%20Artist',
-          play_events: 10,
-          total_ms: 120000,
           track_id: null,
           artist_id: 909,
           album_name: null,
           artist_name: 'Search Artist',
           cover_url: null,
+          match_field: 'label',
+          match_quality: 'exact',
         },
       ],
     },
-    loading: false,
+    initialLoading: false,
+    updating: false,
+    isPlaceholderData: false,
     error: null,
     refetch: vi.fn(),
   })
@@ -198,6 +211,7 @@ describe('ArtistLanguageHealthSection', () => {
 
     await user.click(screen.getByRole('button', { name: /艺人语言数据/ }))
     await user.type(screen.getByRole('searchbox', { name: '查找待审核艺人' }), 'Search Artist')
+    await waitFor(() => expect(useMusicSearchMock).toHaveBeenLastCalledWith(expect.objectContaining({ eligibility: 'any_local' })))
     await user.click(await screen.findByRole('button', { name: '选择艺人 Search Artist' }))
     await user.click(screen.getByRole('button', { name: '开始审核 Search Artist' }))
 

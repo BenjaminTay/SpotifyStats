@@ -1,4 +1,4 @@
-import type { MusicSearchKind, MusicSearchResponse } from '@/types/music-search'
+import type { MusicSearchKind } from '@/types/music-search'
 
 export const MUSIC_SEARCH_KIND_LABELS: Record<MusicSearchKind, string> = {
   track: '单曲',
@@ -20,16 +20,24 @@ export function hasSearchQuery(query: string): boolean {
   return trimSearchQuery(query).length > 0
 }
 
-export function groupedSearchTotal(data: MusicSearchResponse | null): number {
-  if (!data) return 0
-  return data.tracks.length + data.albums.length + data.artists.length
-}
-
-export function fullSearchHref(query: string): string {
+export function fullSearchHref(
+  query: string,
+  kind?: MusicSearchKind,
+  page = 1,
+): string {
   const trimmed = trimSearchQuery(query)
-  return trimmed ? `/music/search?q=${encodeURIComponent(trimmed)}` : '/music/search'
+  const params = new URLSearchParams()
+  if (trimmed) params.set('q', trimmed)
+  if (kind) params.set('kind', kind)
+  if (kind && page > 1) params.set('page', String(page))
+  const search = params.toString()
+  return search ? `/music/search?${search}` : '/music/search'
 }
 
 export function formatPlayEvents(count: number): string {
   return `${count.toLocaleString('zh-CN')} 次播放`
+}
+
+export function musicSearchOptionId(entityKey: string): string {
+  return `music-search-option-${entityKey.replace(/[^a-z0-9_-]/gi, '-')}`
 }

@@ -3,10 +3,13 @@ import { ApiError, AuthRequiredError, CancelError, NetworkError, TimeoutError } 
 const BASE_URL = '/api'
 const DEFAULT_TIMEOUT = 30_000
 
+export type ApiQueryPrimitive = string | number | boolean
+export type ApiQueryParam = ApiQueryPrimitive | readonly ApiQueryPrimitive[]
+
 interface RequestOptions {
   method?: string
   body?: unknown
-  params?: Record<string, string | number | boolean>
+  params?: Record<string, ApiQueryParam>
   timeout?: number
   signal?: AbortSignal
 }
@@ -19,11 +22,15 @@ function buildHeaders(body: unknown): HeadersInit | undefined {
   return Object.keys(headers).length > 0 ? headers : undefined
 }
 
-function buildUrl(path: string, params?: Record<string, string | number | boolean>): URL {
+function buildUrl(path: string, params?: Record<string, ApiQueryParam>): URL {
   const url = new URL(`${BASE_URL}${path}`, window.location.origin)
   if (params) {
     Object.entries(params).forEach(([k, v]) => {
-      if (v !== undefined && v !== null) url.searchParams.set(k, String(v))
+      if (Array.isArray(v)) {
+        v.forEach((item) => url.searchParams.append(k, String(item)))
+      } else if (v !== undefined && v !== null) {
+        url.searchParams.set(k, String(v))
+      }
     })
   }
   return url
@@ -43,6 +50,10 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   const { method = 'GET', body, params, timeout = DEFAULT_TIMEOUT, signal: externalSignal } = options
 
   const url = buildUrl(path, params)
+
+  if (externalSignal?.aborted) {
+    throw new CancelError(new DOMException('The operation was aborted.', 'AbortError'))
+  }
 
   const controller = new AbortController()
   const timeoutId = timeout > 0 ? setTimeout(() => controller.abort(), timeout) : null
@@ -88,13 +99,13 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
 }
 
 export interface ApiClientOptions {
-  params?: Record<string, string | number | boolean>
+  params?: Record<string, ApiQueryParam>
   timeout?: number
   signal?: AbortSignal
 }
 
 export const apiClient = {
-  get: <T>(path: string, params?: Record<string, string | number | boolean>, timeout?: number, signal?: AbortSignal) =>
+  get: <T>(path: string, params?: Record<string, ApiQueryParam>, timeout?: number, signal?: AbortSignal) =>
     request<T>(path, { params, timeout, signal }),
   put: <T>(path: string, body?: unknown, timeout?: number) =>
     request<T>(path, { method: 'PUT', body, timeout }),
@@ -103,7 +114,7 @@ export const apiClient = {
   postWithParams: <T>(
     path: string,
     body: unknown,
-    params: Record<string, string | number | boolean>,
+    params: Record<string, ApiQueryParam>,
     timeout?: number,
     signal?: AbortSignal,
   ) => request<T>(path, { method: 'POST', body, params, timeout, signal }),

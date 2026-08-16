@@ -19,7 +19,9 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
-import { useMusicSearch } from '@/hooks/useAnalysis'
+import { useMusicSearchInputController } from '@/features/music/search/searchInputController'
+import { useMusicSearchCandidates } from '@/features/music/search/useMusicSearch'
+import { useAnalysisFilters } from '@/hooks/useAnalysis'
 import {
   useDecideArtistLanguageReview,
   useSaveArtistLanguageSource,
@@ -164,9 +166,17 @@ function EvidenceEditor({
   onChange: (value: EvidenceDraft) => void
   onRemove: () => void
 }) {
-  const [trackQuery, setTrackQuery] = useState('')
-  const trackSearch = useMusicSearch(trackQuery, 'track', 5)
-  const tracks = trackQuery.trim() ? (trackSearch.data?.tracks ?? []) : []
+  const trackInput = useMusicSearchInputController('')
+  const trackQuery = trackInput.draft
+  const { filters } = useAnalysisFilters()
+  const trackSearch = useMusicSearchCandidates({
+    query: trackInput.canSearch ? trackInput.settledQuery : '',
+    filters,
+    kind: 'track',
+    pageSize: 5,
+    eligibility: 'any_local',
+  })
+  const tracks = trackInput.canSearch ? (trackSearch.data?.tracks ?? []) : []
   const update = <K extends keyof EvidenceDraft>(key: K, value: EvidenceDraft[K]) => {
     onChange({ ...evidence, [key]: value })
   }
@@ -298,7 +308,9 @@ function EvidenceEditor({
             aria-label={`查找证据曲目 ${index + 1}`}
             className="h-9 w-full min-w-0 rounded-[8px] border border-input bg-background pl-8 pr-3 text-[12.5px] outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30"
             id={`track-search-${evidence.client_id}`}
-            onChange={(event) => setTrackQuery(event.target.value)}
+            onChange={(event) => trackInput.setDraft(event.target.value)}
+            onCompositionStart={trackInput.onCompositionStart}
+            onCompositionEnd={(event) => trackInput.onCompositionEnd(event.currentTarget.value)}
             placeholder="可选，按曲名查找"
             type="search"
             value={trackQuery}
@@ -313,7 +325,7 @@ function EvidenceEditor({
                 key={`${track.track_id}:${track.label}`}
                 onClick={() => {
                   update('local_track_id', track.track_id)
-                  setTrackQuery('')
+                  trackInput.setDraft('')
                 }}
                 type="button"
               >

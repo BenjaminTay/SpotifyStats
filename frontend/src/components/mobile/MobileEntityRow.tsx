@@ -14,8 +14,8 @@ export interface MobileEntityFact {
 
 export interface MobileEntityRowProps {
   entityType: MobileEntityType
-  title: string
-  subtitle?: string
+  title: ReactNode
+  subtitle?: ReactNode
   rank?: number
   rankAdornment?: ReactNode
   coverUrl?: string | null
