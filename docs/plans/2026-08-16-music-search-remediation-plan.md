@@ -6,6 +6,11 @@
 > 适用范围：搜索快照覆盖、统计语义、候选热路径、Quick Open、`/music/search`、公开只读与生产门禁
 > 关联文档：`docs/plans/2026-08-16-music-search-performance-and-experience-optimization-plan.md`、`docs/reports/2026-08-16-music-search-optimization-delivery.md`
 
+> 2026-08-16 后续调整：本文的六变体统计语义与历史验收证据继续有效，但“每个新 SHA 都在一次性
+> 工作副本中冷建候选索引和六变体”的发布策略已被
+> `2026-08-16-music-search-direction-realignment.md` 取代。新实现按确定性候选版本与统计 fingerprint
+> 分别复用，随机 generation ID 不再触发统计重建；本地 A–D 已通过，远程生产状态仍按对应 SHA 判定。
+
 ## 0. 执行摘要
 
 最终结果为 **Pass**。migration 34、持久 revision state、六变体 snapshot-set、Billboard 非默认
@@ -474,7 +479,7 @@ P95 ≤20ms，响应 ≤8KiB。
 最终同规模六变体为 983,317.824ms（约 16 分 23.3 秒）、峰值 RSS 876.758MiB、数据库增量约
 31.43MiB、WAL 0；同一 ready 副本重复校验为 313.549ms 且 DB/WAL 增量为 0。生产门禁据此冻结为
 MemAvailable ≥1,280MiB（峰值之上约 403MiB/46% 余量）、可用磁盘 ≥`max(1GiB, DB × 4)`；目标
-服务器每次新 SHA 仍必须重新实测。
+服务器只有在候选版本或统计 fingerprint 实际变化时才执行对应重建；普通新 SHA 只做精确复用校验。
 
 ### 10.4 发布门禁
 
@@ -485,8 +490,8 @@ MemAvailable ≥1,280MiB（峰值之上约 403MiB/46% 余量）、可用磁盘 �
 - full/showcase/dual config validation；
 - public GET 前后逐表/`total_changes`/job count 零变化；
 - migration 33→34、Online Backup、旧镜像只读兼容和回滚演练；
-- 新 SHA 在明确数据库副本上关闭 startup rebuild，执行 `--require-all-ready`；
-- 精确六 fingerprint、migration 34、builder v2、搜索 context orphan=0 与容量门禁；
+- 新 SHA 在明确数据库副本上关闭 startup rebuild，执行自适应 `--require-all-ready`；
+- 精确六 fingerprint、migration 36、builder v2、搜索 context orphan=0 与容量门禁；
 - 停服后的第二份 Online Backup 必须与预检源一致，否则拒绝替换；
 - 失败时 SQLite、镜像 SHA 与 deployment mode 联合回滚；远程结果按 production workflow 判定。
 
@@ -494,7 +499,7 @@ MemAvailable ≥1,280MiB（峰值之上约 403MiB/46% 余量）、可用磁盘 �
 
 | 风险 | 缓解 |
 |---|---|
-| 六变体构建耗时或内存过高 | 变体间清理重缓存，主播放帧与艺人 fan-out 顺序计算；生产新 SHA 先在副本 one-shot，1,280MiB/4× 磁盘门禁 fail closed；ready 集合重复执行只校验不重建 |
+| 六变体构建耗时或内存过高 | 只在统计 fingerprint 真实变化时构建；精确 ready 逐变体复用，持久 resume artifact 续建未完成部分；1,280MiB/4× 磁盘门禁继续 fail closed |
 | Billboard 增加 merge flag 引发缓存串线 | 所有 facade/staged/LRU key 同步增加参数并加 key-separation test |
 | revision 漏接 mutation | 集中 helper、失效矩阵 contract、禁止业务代码直接手写 stale SQL |
 | 旧 snapshot 被新代码误读 | fingerprint/builder version v2，migration 后旧 snapshot 统一 stale |

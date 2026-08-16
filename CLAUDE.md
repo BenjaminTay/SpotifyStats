@@ -169,6 +169,7 @@ JSON → import → SQLite → FastAPI (backend/) → React (frontend/)
 - **新增 GET hook → TanStack Query + `queryKeys`；禁止模块级 `new Map()` 数据缓存**
 - **ECharts 图表 → `LazyEChart`；禁止直接 `import('echarts-for-react')` 默认入口**
 - **简繁转换 → `displayName()`；禁止直接导入默认 `opencc-js` full 包，也禁止模块初始化时预取已保存偏好的大字典**
+- **音乐查找候选/统计必须独立版本化**：随机 generation ID、Git SHA、纯前端/部署/查询排序修改不得触发六变体统计重建；候选版本变化只重建候选，统计 fingerprint 变化才重建对应变体。发布前维护复用精确 ready 与 source-equivalent resume artifact，并继续执行 Online Backup、漂移拒绝、orphan=0、原子替换和联合回滚。查询使用确定性简繁扩展与短 CJK n-gram；只有主路径零命中且长度至少 4 时才进入最多 50 条 trigram 候选池与有界编辑距离。详见 `docs/plans/2026-08-16-music-search-direction-realignment.md`。
 - 账号页长图片列表必须有预览上限或分页，并使用 `loading="lazy"` / `decoding="async"`
 - **新增外部 HTTP 调用 → Provider/HttpClient；禁止直接 `urllib.request.Request`/`urlopen`**
 - **AI Agent 工具必须后端 allowlist + read_only**；不得提供任意 SQL、任意 URL、settings/import/cache/playlist 写工具；最终回答只能基于 persisted tool results 和 coverage；曲风/语种问题没有结构化证据时必须保守说明限制

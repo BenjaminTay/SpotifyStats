@@ -8,6 +8,12 @@
 > 取代边界：保留旧方案的入口归属、详情深链、统计一致性和“不在播放排行重复放搜索框”等产品决策；取代“每次搜索同步计算过滤后播放统计与完整 Billboard payload”的性能实现
 > 交付证据：`docs/reports/2026-08-16-music-search-optimization-delivery.md`
 > 修复计划：`docs/plans/2026-08-16-music-search-remediation-plan.md`
+> 后续方向：`docs/plans/2026-08-16-music-search-direction-realignment.md`（候选/统计身份解耦、发布续建、简繁与有限模糊匹配）
+
+2026-08-16 后续实现已将随机索引 generation 从统计 fingerprint 移除，并以确定性
+`candidate_index_version` 单独治理候选索引。真实副本首次只重建候选索引 4.62 秒，六个统计变体
+全部 0ms 复用；重复维护 0.41 秒。本文 M0–M5 的两阶段结构与统计一致性结论继续有效，但“普通新
+SHA 也必须冷建六变体”的发布假设已由后续方向文档取代。
 
 首轮交付后发现的 L1/L3、动态阈值关闭、非默认 Billboard 参数和高命中查询缺口已经按 remediation
 plan 全部修复。真实维护链路现有六个精确 ready 变体；七类查询各 60 次的 HTTP 候选 P50/P95 为
@@ -1083,9 +1089,9 @@ cd frontend && npm run build
 
 ## 16. 后续可选能力
 
-以下能力不属于本计划完成门禁，只有在 M0–M5 稳定后再单独评估：
+以下首项已由后续方向实现，其余能力仍不属于本计划完成门禁：
 
-- 有界拼写纠错和“你是否想找”；
+- [x] 有界拼写纠错、确定性简繁体扩展与短 CJK fallback；
 - 拼音/罗马字检索；
 - 搜索结果快捷预览面板；
 - 系统级 Spotlight/快捷指令集成；

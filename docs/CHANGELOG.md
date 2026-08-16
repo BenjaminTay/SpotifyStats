@@ -1,5 +1,20 @@
 # 变更日志
 
+## 2026-08-16 — 音乐查找候选/统计解耦与容错匹配
+
+> 本地实现与真实 Online Backup 副本验收通过；远程生产状态仍以对应 SHA 的 deployment 记录为准。
+
+- migration 35/36 拆分候选 revision、确定性 `candidate_index_version` 与统计 fingerprint；随机
+  generation ID 不再触发六套播放/Billboard 统计重建。
+- 发布前维护改为自适应复用并加入持久 resume artifact；中断后可按 source marker 续建，仍保留
+  Online Backup、数据漂移拒绝、原子替换、精确六变体、orphan=0 与联合回滚。
+- 查询加入 OpenCC 0.1.7 确定性简繁扩展、短 CJK n-gram，以及仅在主路径零命中时启用的最多 50 条
+  trigram 候选池与有界编辑距离；前端显式标注简繁/近似匹配。
+- 真实副本首次升级只重建 45,269 个候选文档和 188,673 条 n-gram，4.62 秒、峰值 RSS
+  318.984MiB；六个统计变体全部 0ms 复用。第二次维护 0.41 秒，40 个混合查询样本 P95 26.467ms。
+- 完整方向、阶段状态和远程待验证边界见
+  [`plans/2026-08-16-music-search-direction-realignment.md`](plans/2026-08-16-music-search-direction-realignment.md)。
+
 ## 2026-08-16 — 音乐查找候选索引、精确快照与交互重构
 
 > 最终验收状态：Pass。首轮发现的 L1/L3、动态阈值关闭、非默认 Billboard 参数和高命中热路径

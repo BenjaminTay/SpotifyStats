@@ -357,4 +357,5 @@ frontend/src/
 - Token 加密密钥优先级：`SPOTIFY_STATS_TOKEN_KEY` 环境变量 → 内置密钥（仅限单用户本地）
 - **业务层新增外部 HTTP 调用必须走 Provider/HttpClient**；service 层和 core Spotify 路径不得直接 `urllib.request.Request`/`urlopen`
 - **新增 GET hook 必须使用 TanStack Query + `queryKeys`**；禁止模块级 `new Map()` 数据缓存
+- **音乐查找候选/统计必须独立版本化**：随机 generation ID、Git SHA、纯前端/部署/查询排序修改不得触发六变体统计重建；候选版本变化只重建候选，统计 fingerprint 变化才重建对应变体。发布前维护复用精确 ready 与 source-equivalent resume artifact，并继续执行 Online Backup、漂移拒绝、orphan=0、原子替换和联合回滚。查询使用确定性简繁扩展与短 CJK n-gram；只有主路径零命中且长度至少 4 时才进入最多 50 条 trigram 候选池与有界编辑距离。详见 `docs/plans/2026-08-16-music-search-direction-realignment.md`。
 - **页面容器只做路由入口**，业务逻辑和渲染细节必须在 `features/` 中

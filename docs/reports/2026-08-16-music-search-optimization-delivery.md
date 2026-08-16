@@ -10,6 +10,12 @@
 Pass。远程生产是否已运行某个版本，必须以对应 commit SHA 的 GitHub Actions production deployment
 记录为准，不能由本地报告或镜像构建结果代替。
 
+> 后续实现状态：本文记录的两阶段搜索、六变体统计事实和历史性能证据继续有效；其中“每个新 SHA
+> 都执行完整六变体 one-shot”的发布策略已被
+> `docs/plans/2026-08-16-music-search-direction-realignment.md` 取代。当前本地实现以 migration 35/36
+> 拆分确定性候选版本与统计 fingerprint，并加入可续建发布、简繁、短 CJK 与有限模糊匹配；远程
+> 生产仍需对应 SHA 验证后才能更新本文结论。
+
 ## 1. 交付结果
 
 音乐查找已从“每次输入同步加载 lifetime 播放帧并计算完整 Billboard”改为两阶段读取：
@@ -109,9 +115,9 @@ RSS 1,569.547MiB；真实服务器只有 1,349MiB `MemAvailable`，2,560MiB 门�
 DataFrame 同时驻留。变体独立发布后释放 `billboard/db` cache 并 GC，再将两类帧改为顺序计算后，
 最终同规模 one-shot 为 983,317.824ms（约 16 分 23.3 秒），snapshot 979,524.788ms，峰值 RSS
 876.758MiB，较初版降低约 44%。SQLite 由 172,511,232 B 增至 205,463,552 B（增量
-32,952,320 B，约 31.43MiB），WAL 最终为 0，六变体实体数量与契约保持一致。两次独立索引重建会
-生成不同的 generation ID，因此 semantic base 与 fingerprint 按设计隔离；每次报告中的六个
-fingerprint 都与该次工作副本的 exact-ready 数据库行逐项一致。
+32,952,320 B，约 31.43MiB），WAL 最终为 0，六变体实体数量与契约保持一致。历史实现中两次独立
+索引重建会生成不同 generation ID 并隔离 semantic base；该行为现已被解耦实现取代。generation ID
+只用于候选索引原子发布和诊断，不再进入统计 semantic base/fingerprint。
 
 默认容量门禁据最终实测改为 1,280MiB，相对峰值保留约 403MiB（约 46%）余量；真实服务器样本
 1,349MiB 相对峰值约有 472MiB 余量，低于 1,280MiB 时仍 fail closed。磁盘继续要求
@@ -190,7 +196,7 @@ fingerprint 都与该次工作副本的 exact-ready 数据库行逐项一致。
 | 风险 | 当前证据 | 发布条件 | 推荐处理 |
 |---|---|---|---|
 | 变更面与审查边界 | 搜索、Billboard、前端、部署与文档跨层修改 | 合并历史必须可按领域审查，干净 checkout 重跑门禁 | 保留“后端语义 / 前端体验 / 生产门禁 / 文档”四个逻辑提交，不把 119 个文件压成一个不可审查提交 |
-| 六变体重建资源 | 最终生产镜像副本预建约 16 分 23.3 秒，峰值 RSS 876.758MiB，DB 增长约 31.43MiB；重复校验 313.549ms、零写入 | 目标服务器在每个新 SHA 发布时仍须通过同一自动容量和副本预建门禁 | 保持默认 MemAvailable ≥1,280MiB（约 403MiB/46% 实测余量）、disk ≥max(1GiB, DB×4)；不足时 fail closed，未重新实测不得继续调低 |
+| 六变体重建资源 | 历史完整冷建约 16 分 23.3 秒、峰值 RSS 876.758MiB；新实现真实副本仅候选重建 4.62 秒且六变体 0ms 复用 | 只有统计 fingerprint 真实变化才允许承担完整六变体成本；普通 SHA 必须走复用 | 保持 MemAvailable/disk fail-closed；使用持久 resume artifact 续建，禁止以延长 timeout 掩盖索引与统计耦合 |
 | 既有外键债务 | 搜索孤儿为 0，但全库仍有 7,831 条非搜索违规 | 不得把历史违规误归因于 migration 34，也不得在搜索发布中盲删 | 单独建立数据治理任务，按缺失父表分类、回溯来源、设计修复/保留策略；修复前另做 Online Backup，并逐类对账详情页和统计 |
 | 静态检查基线 | 本轮变更范围 ESLint/mypy 通过；全仓仍有既有 ESLint/mypy 错误 | CI 必须能区分既有债务与本次新增错误 | 继续对 changed files 硬门禁，新增 baseline ratchet；全仓清零作为独立治理，不把无关大修混入搜索发布 |
 | 前端依赖安全 | Web build 的 npm audit 仍报告 15 项，其中 10 项 high | 公共入口发布前必须完成 direct/transitive、runtime/dev-only 和可利用性分类 | 先执行 `npm audit --json` 与依赖路径核对；优先无破坏升级 direct runtime 依赖，对需要 major upgrade 的项目建立带回归矩阵的独立修复，不直接使用 `--force` |
@@ -214,5 +220,6 @@ fingerprint 都与该次工作副本的 exact-ready 数据库行逐项一致。
 7. 快照裁剪不得依赖连接级 `PRAGMA foreign_keys`；必须显式先删 context 再删 meta，并保留
    foreign_keys=OFF 回归。
 8. 生产镜像必须继续执行 SQLite 文件名与 magic-header 双门禁；嵌套 fixture 不能重新进入镜像。
-9. 生产新 SHA 必须先在 Online Backup 副本执行精确六变体 one-shot；不得直接在 live DB 冷构建。
+9. 生产新 SHA 必须先在 Online Backup 副本执行自适应精确门禁：候选版本变化只重建候选，统计
+   fingerprint 变化才构建对应变体；不得直接在 live DB 冷构建。
 10. startup catch-up 与 cache warmup 必须保持独立；副本预建关闭前者，正常 private 生产默认开启。
