@@ -7,6 +7,11 @@ on:
       - main
     paths-ignore:
       - "**/*.md"
+      - ".github/workflows/deploy-production.yml"
+      - ".github/workflows/smoke-production-image-transport.yml"
+      - "deploy/production/load-release-images.sh"
+      - "deploy/production/publish-release-images.sh"
+      - "backend/tests/unit/test_production_image_transport.py"
 
 permissions:
   contents: read

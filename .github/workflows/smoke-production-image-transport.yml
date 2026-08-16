@@ -1,0 +1,248 @@
+name: Smoke production image transport
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: spotify-stats-image-transport-smoke
+  cancel-in-progress: false
+
+env:
+  TCR_REGISTRY: ccr.ccs.tencentyun.com
+  STAGING_ROOT: /opt/spotify-stats/releases/incoming
+  LOCAL_API_IMAGE: spotify-stats-api:transport-smoke-${{ github.sha }}
+  LOCAL_WEB_IMAGE: spotify-stats-web:transport-smoke-${{ github.sha }}
+
+jobs:
+  build_archive_upload:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      archive_bytes: ${{ steps.archive.outputs.archive_bytes }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Initialize build and archive summary
+        run: |
+          started_at="$(date +%s)"
+          printf 'JOB_STARTED_AT=%s\n' "$started_at" > "$RUNNER_TEMP/image-transport-timings"
+          {
+            echo "## Build and private Artifact"
+            echo
+            echo "| Stage | Elapsed (seconds) | Archive bytes |"
+            echo "| --- | ---: | ---: |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Mark API build start
+        run: echo "API_BUILD_STARTED_AT=$(date +%s)" >> "$RUNNER_TEMP/image-transport-timings"
+
+      - name: Build linux/amd64 API smoke image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          target: backend
+          platforms: linux/amd64
+          load: true
+          provenance: false
+          tags: ${{ env.LOCAL_API_IMAGE }}
+          labels: org.opencontainers.image.revision=${{ github.sha }}
+          cache-from: type=gha,scope=spotify-stats-api
+
+      - name: Record API build elapsed
+        run: |
+          source "$RUNNER_TEMP/image-transport-timings"
+          elapsed="$(( $(date +%s) - API_BUILD_STARTED_AT ))"
+          printf '| API build | %s | - |\n' "$elapsed" >> "$GITHUB_STEP_SUMMARY"
+          echo "WEB_BUILD_STARTED_AT=$(date +%s)" >> "$RUNNER_TEMP/image-transport-timings"
+
+      - name: Build linux/amd64 Web smoke image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          target: frontend-server
+          platforms: linux/amd64
+          build-args: NGINX_CONFIG=deploy/production/nginx.conf
+          load: true
+          provenance: false
+          tags: ${{ env.LOCAL_WEB_IMAGE }}
+          labels: org.opencontainers.image.revision=${{ github.sha }}
+          cache-from: type=gha,scope=spotify-stats-web
+
+      - name: Record Web build elapsed
+        run: |
+          source "$RUNNER_TEMP/image-transport-timings"
+          elapsed="$(( $(date +%s) - WEB_BUILD_STARTED_AT ))"
+          printf '| Web build | %s | - |\n' "$elapsed" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Create compressed Docker archive and sidecars
+        id: archive
+        run: |
+          started_at="$(date +%s)"
+          archive="$RUNNER_TEMP/spotify-stats-images-${GITHUB_SHA}.tar.gz"
+          docker image save "$LOCAL_API_IMAGE" "$LOCAL_WEB_IMAGE" | gzip -1 > "$archive"
+          sha256sum "$archive" | cut -d ' ' -f 1 > "$archive.sha256"
+          stat --format='%s' "$archive" > "$archive.bytes"
+          archive_bytes="$(<"$archive.bytes")"
+          elapsed="$(( $(date +%s) - started_at ))"
+          printf '| Docker archive | %s | %s |\n' "$elapsed" "$archive_bytes" >> "$GITHUB_STEP_SUMMARY"
+          echo "archive_bytes=$archive_bytes" >> "$GITHUB_OUTPUT"
+          echo "ARCHIVE_BYTES=$archive_bytes" >> "$GITHUB_ENV"
+
+      - name: Mark private Artifact upload start
+        run: echo "ARTIFACT_STARTED_AT=$(date +%s)" >> "$RUNNER_TEMP/image-transport-timings"
+
+      - name: Upload one-day private smoke Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: spotify-stats-image-transport-smoke-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/spotify-stats-images-${{ github.sha }}.tar.gz
+            ${{ runner.temp }}/spotify-stats-images-${{ github.sha }}.tar.gz.sha256
+            ${{ runner.temp }}/spotify-stats-images-${{ github.sha }}.tar.gz.bytes
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+
+      - name: Record private Artifact upload elapsed
+        run: |
+          source "$RUNNER_TEMP/image-transport-timings"
+          elapsed="$(( $(date +%s) - ARTIFACT_STARTED_AT ))"
+          printf '| Private Artifact upload | %s | %s |\n' "$elapsed" "$ARCHIVE_BYTES" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Record bounded build job total
+        if: always()
+        run: |
+          source "$RUNNER_TEMP/image-transport-timings"
+          elapsed="$(( $(date +%s) - JOB_STARTED_AT ))"
+          printf '| **Build job total** | **%s** | **%s** |\n' "$elapsed" "${ARCHIVE_BYTES:--}" >> "$GITHUB_STEP_SUMMARY"
+
+  transfer:
+    needs: build_archive_upload
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    environment: production
+    env:
+      ARCHIVE_BYTES: ${{ needs.build_archive_upload.outputs.archive_bytes }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Initialize transfer summary
+        run: |
+          started_at="$(date +%s)"
+          printf 'JOB_STARTED_AT=%s\n' "$started_at" > "$RUNNER_TEMP/image-transport-timings"
+          echo "ARTIFACT_DOWNLOAD_STARTED_AT=$started_at" >> "$RUNNER_TEMP/image-transport-timings"
+          {
+            echo "## Artifact download and server round trip"
+            echo
+            echo "| Stage | Elapsed (seconds) | Archive bytes |"
+            echo "| --- | ---: | ---: |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Download private smoke Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: spotify-stats-image-transport-smoke-${{ github.sha }}
+          path: ${{ runner.temp }}/image-transport-artifact
+
+      - name: Record private Artifact download elapsed
+        run: |
+          source "$RUNNER_TEMP/image-transport-timings"
+          elapsed="$(( $(date +%s) - ARTIFACT_DOWNLOAD_STARTED_AT ))"
+          printf '| Private Artifact download | %s | %s |\n' "$elapsed" "$ARCHIVE_BYTES" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Configure pinned SSH host identity
+        env:
+          SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+          SERVER_KNOWN_HOSTS: ${{ secrets.SERVER_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d "$HOME/.ssh"
+          printf '%s\n' "$SERVER_SSH_KEY" > "$RUNNER_TEMP/spotify-stats-transport-key"
+          chmod 600 "$RUNNER_TEMP/spotify-stats-transport-key"
+          printf '%s\n' "$SERVER_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+          chmod 600 "$HOME/.ssh/known_hosts"
+
+      - name: Transfer, load, publish, pull, and verify smoke images
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_PORT: ${{ secrets.SERVER_PORT }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          TCR_USERNAME: ${{ secrets.TCR_USERNAME }}
+          TCR_PASSWORD: ${{ secrets.TCR_PASSWORD }}
+        run: |
+          started_at="$(date +%s)"
+          artifact_dir="$RUNNER_TEMP/image-transport-artifact"
+          ssh_args=(-p "$SERVER_PORT" -i "$RUNNER_TEMP/spotify-stats-transport-key")
+          remote="$SERVER_USER@$SERVER_HOST"
+          staging_dir="$STAGING_ROOT/$GITHUB_SHA"
+
+          test "$(<"$artifact_dir/spotify-stats-images-$GITHUB_SHA.tar.gz.bytes")" = "$ARCHIVE_BYTES"
+          ssh "${ssh_args[@]}" "$remote" bash -s -- "$GITHUB_SHA" "$ARCHIVE_BYTES" <<'REMOTE'
+          set -Eeuo pipefail
+          revision="$1"
+          archive_bytes="$2"
+          [[ "$revision" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$archive_bytes" =~ ^[1-9][0-9]*$ ]]
+          for tool in rsync docker sha256sum gzip df timeout; do
+            if ! command -v "$tool" >/dev/null 2>&1; then
+              echo "服务器缺少 image transport smoke 必需命令：$tool" >&2
+              exit 1
+            fi
+          done
+          staging_dir="/opt/spotify-stats/releases/incoming/$revision"
+          sudo install -d -m 700 -o "$USER" -g "$USER" "$staging_dir"
+          available_bytes="$(df --output=avail -B1 "$staging_dir" | tail -n 1 | tr -d ' ')"
+          required_bytes="$((archive_bytes + 1073741824))"
+          if (( available_bytes < required_bytes )); then
+            echo "incoming 文件系统容量不足：available=$available_bytes required=$required_bytes" >&2
+            exit 1
+          fi
+          docker ps --no-trunc --format '{{.ID}}\t{{.Image}}\t{{.Names}}' | LC_ALL=C sort > "$staging_dir/live-containers.before"
+          REMOTE
+
+          rsync --archive --partial --append-verify --chmod=F600,D700 \
+            -e "ssh -p $SERVER_PORT -i $RUNNER_TEMP/spotify-stats-transport-key" \
+            "$artifact_dir/spotify-stats-images-$GITHUB_SHA.tar.gz" \
+            "$artifact_dir/spotify-stats-images-$GITHUB_SHA.tar.gz.sha256" \
+            "$artifact_dir/spotify-stats-images-$GITHUB_SHA.tar.gz.bytes" \
+            deploy/production/load-release-images.sh \
+            deploy/production/publish-release-images.sh \
+            "$remote:$staging_dir/"
+
+          ssh "${ssh_args[@]}" "$remote" \
+            "bash '$staging_dir/load-release-images.sh' '$GITHUB_SHA'"
+          printf '%s' "$TCR_PASSWORD" | ssh "${ssh_args[@]}" "$remote" \
+            "timeout --signal=TERM --kill-after=10s 1m docker login '$TCR_REGISTRY' --username '$TCR_USERNAME' --password-stdin"
+          ssh "${ssh_args[@]}" "$remote" \
+            "bash '$staging_dir/publish-release-images.sh' '$GITHUB_SHA'"
+          ssh "${ssh_args[@]}" "$remote" bash -s -- "$GITHUB_SHA" <<'REMOTE'
+          set -Eeuo pipefail
+          revision="$1"
+          [[ "$revision" =~ ^[0-9a-f]{40}$ ]]
+          staging_dir="/opt/spotify-stats/releases/incoming/$revision"
+          [[ "$staging_dir" == /opt/spotify-stats/releases/incoming/* ]]
+          docker ps --no-trunc --format '{{.ID}}\t{{.Image}}\t{{.Names}}' | LC_ALL=C sort > "$staging_dir/live-containers.after"
+          if ! cmp --silent "$staging_dir/live-containers.before" "$staging_dir/live-containers.after"; then
+            echo "smoke 前后 live 容器集合发生变化，拒绝清理并保留 staging。" >&2
+            diff --unified "$staging_dir/live-containers.before" "$staging_dir/live-containers.after" >&2 || true
+            exit 1
+          fi
+          find "$staging_dir" -depth -mindepth 1 -delete
+          rmdir -- "$staging_dir"
+          REMOTE
+
+          elapsed="$(( $(date +%s) - started_at ))"
+          printf '| Server transfer and TCR round trip | %s | %s |\n' "$elapsed" "$ARCHIVE_BYTES" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Record bounded transfer job total
+        if: always()
+        run: |
+          source "$RUNNER_TEMP/image-transport-timings"
+          elapsed="$(( $(date +%s) - JOB_STARTED_AT ))"
+          printf '| **Transfer job total** | **%s** | **%s** |\n' "$elapsed" "$ARCHIVE_BYTES" >> "$GITHUB_STEP_SUMMARY"
