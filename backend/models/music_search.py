@@ -11,7 +11,8 @@ from backend.domains.music_search.contracts import parse_music_search_entity_key
 MusicSearchKind = Literal["track", "album", "artist"]
 MusicSearchSnapshotStatus = Literal["ready", "warming", "unavailable", "stale", "failed"]
 MusicSearchMatchField = Literal["label", "artist", "album", "alias"]
-MusicSearchMatchQuality = Literal["exact", "prefix", "token", "substring"]
+MusicSearchMatchQuality = Literal["exact", "prefix", "token", "substring", "fuzzy"]
+MusicSearchMatchType = Literal["original", "simplified", "traditional", "fuzzy"]
 
 
 class MusicSearchChartSummary(BaseModel):
@@ -69,6 +70,7 @@ class MusicSearchCandidateResult(BaseModel):
     cover_url: str | None = None
     match_field: MusicSearchMatchField
     match_quality: MusicSearchMatchQuality
+    match_type: MusicSearchMatchType = "original"
 
     @model_validator(mode="after")
     def validate_entity_key_kind(self):
@@ -88,6 +90,7 @@ class MusicSearchCandidateResponse(BaseModel):
     normalized_query: str
     snapshot_status: MusicSearchSnapshotStatus
     filter_fingerprint: str | None = None
+    candidate_index_version: str | None = None
     kind: MusicSearchKind | None = None
     page: int = Field(default=1, ge=1)
     page_size: int = Field(default=5, ge=1, le=100)

@@ -23,10 +23,12 @@ from backend.domains.metadata.track_credits import (
 from backend.domains.music_search.contracts import make_music_search_entity_key
 from backend.domains.music_search.normalization import (
     SEARCH_NORMALIZATION_VERSION,
+    cjk_search_ngrams,
     normalize_search_text,
 )
+from backend.domains.music_search.revisions import get_music_search_revision_state
 
-INDEX_SCHEMA_VERSION = "music_search_index_v2"
+INDEX_SCHEMA_VERSION = "music_search_candidate_index_v3"
 
 
 @dataclass(frozen=True)
@@ -72,44 +74,48 @@ def inspect_search_index_runtime(conn: sqlite3.Connection) -> SearchIndexRuntime
 
 
 def music_search_source_revision(conn: sqlite3.Connection) -> str:
+    """Return the O(1) candidate source revision, independent of plays."""
+    revisions = get_music_search_revision_state(conn)
+    payload = {
+        "candidate_revision": revisions.candidate_revision,
+        "identity_revision": get_identity_revision(conn),
+        "track_credit_revision": get_track_credit_revision(conn),
+    }
+    return hashlib.sha256(
+        json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+
+
+def candidate_index_version(*, source_revision: str, tokenizer: str) -> str:
+    payload = {
+        "builder": INDEX_SCHEMA_VERSION,
+        "normalization": SEARCH_NORMALIZATION_VERSION,
+        "tokenizer": tokenizer,
+        "source_revision": source_revision,
+    }
+    return hashlib.sha256(
+        json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+
+
+def expected_candidate_index_version(conn: sqlite3.Connection) -> str:
+    runtime = inspect_search_index_runtime(conn)
+    return candidate_index_version(
+        source_revision=music_search_source_revision(conn),
+        tokenizer=runtime.tokenizer,
+    )
+
+
+def _document_content_digest(documents: list[dict[str, Any]]) -> str:
     digest = hashlib.sha256()
-    digest.update(INDEX_SCHEMA_VERSION.encode())
-    digest.update(SEARCH_NORMALIZATION_VERSION.encode())
-    for table, id_column in (
-        ("plays", "play_id"),
-        ("tracks", "track_id"),
-        ("albums", "album_id"),
-        ("artists", "artist_id"),
-        ("album_projects", "project_id"),
-        ("album_project_albums", "project_id"),
-        ("album_project_tracks", "project_id"),
+    for document in sorted(
+        documents,
+        key=lambda item: (str(item["entity_key"]), int(item["merge_level"])),
     ):
-        if not _table_exists(conn, table):
-            digest.update(f"{table}:missing\n".encode())
-            continue
-        row = conn.execute(
-            f'SELECT COUNT(*), COALESCE(MAX("{id_column}"), 0) FROM "{table}"'
-        ).fetchone()
-        digest.update(f"{table}:{int(row[0])}:{int(row[1])}\n".encode())
-    digest.update(f"identity:{get_identity_revision(conn)}\n".encode())
-    digest.update(f"credits:{get_track_credit_revision(conn)}\n".encode())
-    for table in ("track_groups", "track_group_members"):
-        if not _table_exists(conn, table):
-            digest.update(f"{table}:missing\n".encode())
-            continue
-        columns = [str(row[1]) for row in conn.execute(f'PRAGMA table_info("{table}")')]
-        quoted = ", ".join(f'"{column}"' for column in columns)
-        digest.update(f"{table}:".encode())
-        for row in conn.execute(f'SELECT {quoted} FROM "{table}" ORDER BY {quoted}'):
-            digest.update(
-                json.dumps(
-                    list(row),
-                    ensure_ascii=True,
-                    separators=(",", ":"),
-                    default=str,
-                ).encode()
-            )
-            digest.update(b"\n")
+        digest.update(
+            json.dumps(document, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode()
+        )
+        digest.update(b"\n")
     return digest.hexdigest()
 
 
@@ -204,7 +210,6 @@ def build_music_search_documents(conn: sqlite3.Connection) -> list[dict[str, Any
         raw_names_by_canonical[canonical_id].append(str(row["artist_name"]))
 
     credits_by_track: dict[int, list[tuple[int, str]]] = defaultdict(list)
-    tracks_by_canonical_artist: dict[int, set[int]] = defaultdict(set)
     for credit in get_effective_track_credits(conn):
         track_id = int(credit["track_id"])
         raw_artist_id = int(credit["artist_id"])
@@ -221,15 +226,7 @@ def build_music_search_documents(conn: sqlite3.Connection) -> list[dict[str, Any
                 credits_by_track[track_id].insert(0, item)
             else:
                 credits_by_track[track_id].append(item)
-        tracks_by_canonical_artist[canonical_id].add(track_id)
 
-    play_count_by_track = {
-        int(row["track_id"]): int(row["play_count"])
-        for row in conn.execute(
-            """SELECT track_id, COUNT(*) AS play_count FROM plays
-               WHERE track_id IS NOT NULL GROUP BY track_id"""
-        ).fetchall()
-    }
     documents: list[dict[str, Any]] = []
     track_rows = conn.execute(
         """SELECT t.track_id, t.track_name, t.album_id, t.artist_id,
@@ -273,9 +270,6 @@ def build_music_search_documents(conn: sqlite3.Connection) -> list[dict[str, Any
                 for member in member_rows
                 if str(member["track_name"]) != label
             ]
-            popularity = sum(
-                play_count_by_track.get(int(member["track_id"]), 0) for member in member_rows
-            )
             documents.append(
                 _document(
                     entity_key=make_music_search_entity_key("track", entity_id),
@@ -283,7 +277,7 @@ def build_music_search_documents(conn: sqlite3.Connection) -> list[dict[str, Any
                     label=label,
                     secondary=secondary,
                     aliases=aliases,
-                    popularity=popularity,
+                    popularity=0,
                     href=f"/music/tracks/{entity_id}",
                     cover_url=_cover_url(
                         "albums", int(row["album_id"]) if row["album_id"] else None
@@ -297,20 +291,6 @@ def build_music_search_documents(conn: sqlite3.Connection) -> list[dict[str, Any
                 )
             )
 
-    album_popularity = {
-        int(row["album_id"]): int(row["play_count"])
-        for row in conn.execute(
-            """WITH sources AS (
-                   SELECT play_id, source_album_id AS album_id FROM plays
-                   WHERE source_album_id IS NOT NULL AND source_album_id != 0
-                   UNION
-                   SELECT p.play_id, t.album_id FROM plays p
-                   JOIN tracks t ON t.track_id=p.track_id
-                   WHERE t.album_id IS NOT NULL
-               )
-               SELECT album_id, COUNT(*) AS play_count FROM sources GROUP BY album_id"""
-        ).fetchall()
-    }
     for row in conn.execute(
         "SELECT album_id, album_name, artist_id FROM albums ORDER BY album_id"
     ).fetchall():
@@ -334,7 +314,7 @@ def build_music_search_documents(conn: sqlite3.Connection) -> list[dict[str, Any
                 label=album_name,
                 secondary=artist_name,
                 aliases=None,
-                popularity=album_popularity.get(album_id, 0),
+                popularity=0,
                 href=_album_href(album_name, artist_name),
                 cover_url=_cover_url("albums", album_id),
                 album_id=album_id,
@@ -345,15 +325,6 @@ def build_music_search_documents(conn: sqlite3.Connection) -> list[dict[str, Any
         )
 
     if _table_exists(conn, "album_projects"):
-        project_popularity = {
-            int(row["project_id"]): int(row["play_count"])
-            for row in conn.execute(
-                """SELECT apt.project_id, COUNT(DISTINCT p.play_id) AS play_count
-                   FROM album_project_tracks apt
-                   JOIN plays p ON p.track_id=apt.track_id
-                   GROUP BY apt.project_id"""
-            ).fetchall()
-        }
         for row in conn.execute(
             """SELECT ap.project_id, ap.canonical_name, ap.artist_id,
                       ap.primary_album_id, ar.artist_name
@@ -379,7 +350,7 @@ def build_music_search_documents(conn: sqlite3.Connection) -> list[dict[str, Any
                     label=album_name,
                     secondary=artist_name,
                     aliases=None,
-                    popularity=project_popularity.get(project_id, 0),
+                    popularity=0,
                     href=_album_href(album_name, artist_name),
                     cover_url=_cover_url(
                         "albums",
@@ -400,10 +371,6 @@ def build_music_search_documents(conn: sqlite3.Connection) -> list[dict[str, Any
             if resolution
             else str(artist_rows.get(canonical_id, {}).get("artist_name") or aliases[0])
         )
-        popularity = sum(
-            play_count_by_track.get(track_id, 0)
-            for track_id in tracks_by_canonical_artist.get(canonical_id, set())
-        )
         documents.append(
             _document(
                 entity_key=make_music_search_entity_key("artist", canonical_id),
@@ -411,7 +378,7 @@ def build_music_search_documents(conn: sqlite3.Connection) -> list[dict[str, Any
                 label=display_name,
                 secondary=None,
                 aliases=[alias for alias in aliases if alias != display_name],
-                popularity=popularity,
+                popularity=0,
                 href=f"/music/artists/{quote(display_name, safe='')}",
                 cover_url=_cover_url("artists", canonical_id),
                 artist_id=canonical_id,
@@ -427,6 +394,10 @@ def rebuild_music_search_index(conn: sqlite3.Connection) -> dict[str, Any]:
         datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S") + "-" + uuid.uuid4().hex[:12]
     )
     source_revision = music_search_source_revision(conn)
+    index_version = candidate_index_version(
+        source_revision=source_revision,
+        tokenizer=runtime.tokenizer,
+    )
     conn.execute(
         """UPDATE music_search_index_state
            SET status='building', last_error=NULL, updated_at=datetime('now')
@@ -435,6 +406,7 @@ def rebuild_music_search_index(conn: sqlite3.Connection) -> dict[str, Any]:
     conn.commit()
     try:
         documents = build_music_search_documents(conn)
+        content_digest = _document_content_digest(documents)
         entity_keys = [(str(item["entity_key"]), int(item["merge_level"])) for item in documents]
         if len(entity_keys) != len(set(entity_keys)):
             raise ValueError("duplicate music-search entity keys")
@@ -464,6 +436,24 @@ def rebuild_music_search_index(conn: sqlite3.Connection) -> dict[str, Any]:
             "artist_name",
         )
         rows = [(generation_id, *(item[column] for column in columns[1:])) for item in documents]
+        ngram_rows = sorted(
+            {
+                (
+                    generation_id,
+                    str(item["entity_key"]),
+                    int(item["merge_level"]),
+                    field,
+                    ngram,
+                )
+                for item in documents
+                for field, value in (
+                    ("label", item["normalized_label"]),
+                    ("secondary", item["normalized_secondary"]),
+                    ("alias", item["normalized_alias"]),
+                )
+                for ngram in cjk_search_ngrams(str(value))
+            }
+        )
         previous = conn.execute(
             "SELECT active_generation_id FROM music_search_index_state WHERE state_id=1"
         ).fetchone()
@@ -473,6 +463,12 @@ def rebuild_music_search_index(conn: sqlite3.Connection) -> dict[str, Any]:
             conn.executemany(
                 f"INSERT INTO music_search_documents({','.join(columns)}) VALUES ({placeholders})",
                 rows,
+            )
+            conn.executemany(
+                """INSERT INTO music_search_document_ngrams(
+                       generation_id, entity_key, merge_level, field, ngram
+                   ) VALUES (?, ?, ?, ?, ?)""",
+                ngram_rows,
             )
             if runtime.status == "ready":
                 conn.executemany(
@@ -493,6 +489,7 @@ def rebuild_music_search_index(conn: sqlite3.Connection) -> dict[str, Any]:
                 """UPDATE music_search_index_state
                    SET active_generation_id=?, previous_generation_id=?, status=?,
                        tokenizer=?, normalization_version=?, source_revision=?,
+                       candidate_index_version=?, content_digest=?,
                        document_count=?, built_at=datetime('now'), last_error=NULL,
                        updated_at=datetime('now') WHERE state_id=1""",
                 (
@@ -502,6 +499,8 @@ def rebuild_music_search_index(conn: sqlite3.Connection) -> dict[str, Any]:
                     runtime.tokenizer,
                     SEARCH_NORMALIZATION_VERSION,
                     source_revision,
+                    index_version,
+                    content_digest,
                     len(documents),
                 ),
             )
@@ -509,6 +508,11 @@ def rebuild_music_search_index(conn: sqlite3.Connection) -> dict[str, Any]:
             placeholders = ",".join("?" for _ in keep)
             conn.execute(
                 f"DELETE FROM music_search_documents WHERE generation_id NOT IN ({placeholders})",
+                keep,
+            )
+            conn.execute(
+                f"""DELETE FROM music_search_document_ngrams
+                    WHERE generation_id NOT IN ({placeholders})""",
                 keep,
             )
             if runtime.status == "ready":
@@ -522,6 +526,9 @@ def rebuild_music_search_index(conn: sqlite3.Connection) -> dict[str, Any]:
             "previous_generation_id": previous_id,
             "document_count": len(documents),
             "source_revision": source_revision,
+            "candidate_index_version": index_version,
+            "content_digest": content_digest,
+            "ngram_count": len(ngram_rows),
             "tokenizer": runtime.tokenizer,
         }
     except Exception as exc:

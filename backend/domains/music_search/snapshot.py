@@ -342,6 +342,8 @@ def prepare_music_search_snapshot_set(
         raise ValueError("music-search snapshot variants must share one semantic base")
     with conn:
         for context in contexts:
+            if get_ready_music_search_snapshot_key(conn, context.filter_fingerprint) is not None:
+                continue
             conn.execute(
                 """INSERT INTO music_search_snapshot_meta(
                        snapshot_key, filter_fingerprint, source_revision, status,
@@ -490,28 +492,51 @@ def build_music_search_snapshot_set(
     failed_count = 0
     for context in contexts:
         variant_started = time.perf_counter()
-        try:
-            report = build_music_search_snapshot(conn, context)
-            ready_count += 1
-        except Exception as exc:
-            failed_count += 1
+        existing_snapshot_key = get_ready_music_search_snapshot_key(
+            conn, context.filter_fingerprint
+        )
+        if existing_snapshot_key is not None:
+            entity_count = int(
+                conn.execute(
+                    """SELECT COUNT(*) FROM music_search_entity_context
+                       WHERE snapshot_key=?""",
+                    (existing_snapshot_key,),
+                ).fetchone()[0]
+            )
             report = {
-                "status": "failed",
-                "snapshot_key": context.filter_fingerprint,
+                "status": "ready",
+                "snapshot_key": existing_snapshot_key,
                 "filter_fingerprint": context.filter_fingerprint,
-                "entity_count": 0,
+                "entity_count": entity_count,
                 "source_revision": context.source_revision,
-                "error_type": type(exc).__name__,
+                "revalidated": True,
+                "reuse_reason": "exact_statistics_fingerprint_ready",
             }
-        finally:
-            # A full snapshot set spans six heavyweight DataFrame/Chart cache
-            # keys. Keeping every completed variant alive makes peak RSS grow
-            # with the matrix even though later variants cannot reuse those
-            # exact semantics. Release both namespaces after each independent
-            # publish so the one-shot remains viable on the production host.
-            invalidate("billboard")
-            invalidate("db")
-            gc.collect()
+            ready_count += 1
+        else:
+            try:
+                report = build_music_search_snapshot(conn, context)
+                report["revalidated"] = False
+                report["reuse_reason"] = None
+                ready_count += 1
+            except Exception as exc:
+                failed_count += 1
+                report = {
+                    "status": "failed",
+                    "snapshot_key": context.filter_fingerprint,
+                    "filter_fingerprint": context.filter_fingerprint,
+                    "entity_count": 0,
+                    "source_revision": context.source_revision,
+                    "error_type": type(exc).__name__,
+                    "revalidated": False,
+                    "reuse_reason": None,
+                }
+            finally:
+                # Each heavyweight variant is independent.  Release its cache
+                # before continuing so a resumed set stays within host limits.
+                invalidate("billboard")
+                invalidate("db")
+                gc.collect()
         report.update(
             {
                 "semantic_base_key": context.semantic_base_key,
@@ -574,5 +599,6 @@ def mark_music_search_derived_data_dirty(
     if documents:
         conn.execute(
             """UPDATE music_search_index_state
-               SET source_revision=NULL, updated_at=datetime('now') WHERE state_id=1"""
+               SET source_revision=NULL, candidate_index_version=NULL,
+                   updated_at=datetime('now') WHERE state_id=1"""
         )

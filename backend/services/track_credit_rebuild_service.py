@@ -126,7 +126,7 @@ def handle_track_credit_rebuild(job: Job) -> None:
         mark_music_search_for_rebuild(
             reason="track credit aggregate published",
             documents=True,
-            revision_kinds=("metadata",),
+            revision_kinds=("metadata", "candidate"),
             conn=conn,
         )
         enqueue_music_search_snapshot_rebuild(

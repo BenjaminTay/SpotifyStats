@@ -12,9 +12,9 @@ from backend.services.music_search_maintenance_service import _current_filter_va
 def main() -> int:
     conn = get_db(readonly=True)
     try:
-        migration = conn.execute("SELECT 1 FROM schema_migrations WHERE version=34").fetchone()
+        migration = conn.execute("SELECT 1 FROM schema_migrations WHERE version=36").fetchone()
         if migration is None:
-            raise SystemExit("music-search runtime gate failed: migration 34 missing")
+            raise SystemExit("music-search runtime gate failed: migration 36 missing")
 
         contexts = build_music_search_variant_contexts(conn, _current_filter_values(conn))
         semantic_base_key = contexts[0].semantic_base_key
@@ -55,7 +55,7 @@ def main() -> int:
 
     print(
         "Music-search runtime gate passed: "
-        "migration=34 variants=6/6 builder=music_search_snapshot_v2 orphans=0"
+        "migration=36 variants=6/6 builder=music_search_snapshot_v2 orphans=0"
     )
     return 0
 

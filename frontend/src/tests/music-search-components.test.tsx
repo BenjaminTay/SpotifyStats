@@ -264,4 +264,23 @@ describe('MusicSearchResults', () => {
     expect(screen.getByText('匹配别名', { exact: false })).toBeInTheDocument()
     expect(screen.queryByText('swiftie')).not.toBeInTheDocument()
   })
+
+  it('explains deterministic Chinese variants and fuzzy matches', () => {
+    const { unmount } = renderResults({
+      ...sampleResults,
+      tracks: [{ ...sampleResults.tracks[0], match_type: 'traditional' }],
+    }, '周杰伦', null)
+    expect(screen.getByText('简繁匹配', { exact: false })).toBeInTheDocument()
+    unmount()
+
+    renderResults({
+      ...sampleResults,
+      tracks: [{
+        ...sampleResults.tracks[0],
+        match_quality: 'fuzzy',
+        match_type: 'fuzzy',
+      }],
+    }, 'cardgan', null)
+    expect(screen.getByText('近似匹配', { exact: false })).toBeInTheDocument()
+  })
 })

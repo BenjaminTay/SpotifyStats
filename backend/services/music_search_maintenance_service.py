@@ -10,10 +10,13 @@ from backend.core.job_queue import Job, get_job_queue, queue_targets_connection
 from backend.domains.metadata.artist_identity import get_identity_state
 from backend.domains.metadata.track_credits import get_track_credit_state
 from backend.domains.music_search.context import (
+    MUSIC_SEARCH_SNAPSHOT_BUILDER_VERSION,
     MusicSearchFilterContext,
     build_music_search_filter_context,
+    legacy_v2_statistics_identity,
 )
 from backend.domains.music_search.index import (
+    expected_candidate_index_version,
     get_music_search_index_state,
     music_search_source_revision,
     rebuild_music_search_index,
@@ -117,6 +120,74 @@ def _revalidated_snapshot_set_report(
     }
 
 
+def _adopt_legacy_v2_snapshot_set(
+    conn: sqlite3.Connection,
+    contexts: tuple[MusicSearchFilterContext, ...],
+) -> bool:
+    """Re-key an exact current v2 set without recalculating statistics."""
+    legacy = [legacy_v2_statistics_identity(conn, context) for context in contexts]
+    legacy_bases = {base for base, _fingerprint in legacy}
+    if len(legacy_bases) != 1:
+        return False
+    legacy_fingerprints = [fingerprint for _base, fingerprint in legacy]
+    placeholders = ",".join("?" for _ in legacy_fingerprints)
+    rows = conn.execute(
+        f"""SELECT snapshot_key, filter_fingerprint, status, builder_version,
+                   merge_level, dynamic_threshold, created_at, activated_at,
+                   last_accessed_at
+            FROM music_search_snapshot_meta
+            WHERE filter_fingerprint IN ({placeholders})""",
+        tuple(legacy_fingerprints),
+    ).fetchall()
+    by_fingerprint = {str(row[1]): row for row in rows}
+    if len(by_fingerprint) != len(contexts):
+        return False
+    if any(
+        str(by_fingerprint[fingerprint][2]) != "ready"
+        or str(by_fingerprint[fingerprint][3]) != MUSIC_SEARCH_SNAPSHOT_BUILDER_VERSION
+        for fingerprint in legacy_fingerprints
+    ):
+        return False
+
+    with conn:
+        for context, (_legacy_base, legacy_fingerprint) in zip(contexts, legacy):
+            row = by_fingerprint[legacy_fingerprint]
+            old_snapshot_key = str(row[0])
+            new_snapshot_key = context.filter_fingerprint
+            if old_snapshot_key == new_snapshot_key:
+                continue
+            conn.execute(
+                """INSERT INTO music_search_snapshot_meta(
+                       snapshot_key, filter_fingerprint, source_revision, status,
+                       created_at, activated_at, last_accessed_at, last_error,
+                       semantic_base_key, merge_level, dynamic_threshold,
+                       builder_version
+                   ) VALUES (?, ?, ?, 'ready', ?, ?, ?, NULL, ?, ?, ?, ?)""",
+                (
+                    new_snapshot_key,
+                    new_snapshot_key,
+                    context.source_revision,
+                    row[6],
+                    row[7],
+                    row[8],
+                    context.semantic_base_key,
+                    context.merge_level,
+                    int(context.dynamic_threshold),
+                    str(row[3]),
+                ),
+            )
+            conn.execute(
+                """UPDATE music_search_entity_context SET snapshot_key=?
+                   WHERE snapshot_key=?""",
+                (new_snapshot_key, old_snapshot_key),
+            )
+            conn.execute(
+                "DELETE FROM music_search_snapshot_meta WHERE snapshot_key=?",
+                (old_snapshot_key,),
+            )
+    return True
+
+
 def rebuild_current_music_search_derived_data(
     conn: sqlite3.Connection,
     *,
@@ -124,25 +195,43 @@ def rebuild_current_music_search_derived_data(
 ) -> dict[str, Any]:
     if not _search_metadata_dependencies_ready(conn):
         raise RuntimeError("music-search metadata aggregate dependency is not ready")
+    contexts = build_music_search_variant_contexts(conn, _current_filter_values(conn))
+    snapshot_set_report = _revalidated_snapshot_set_report(conn, contexts)
+    if snapshot_set_report is None and _adopt_legacy_v2_snapshot_set(conn, contexts):
+        snapshot_set_report = _revalidated_snapshot_set_report(conn, contexts)
+
     state = get_music_search_index_state(conn)
     expected_source = music_search_source_revision(conn)
+    expected_index_version = expected_candidate_index_version(conn)
     index_report: dict[str, Any] | None = None
-    if (
-        rebuild_documents
-        or not state.get("active_generation_id")
-        or state.get("source_revision") != expected_source
-    ):
+    index_rebuild_reasons = []
+    if rebuild_documents:
+        index_rebuild_reasons.append("explicit_rebuild_requested")
+    if not state.get("active_generation_id"):
+        index_rebuild_reasons.append("candidate_generation_missing")
+    if state.get("source_revision") != expected_source:
+        index_rebuild_reasons.append("candidate_source_revision_changed")
+    if state.get("candidate_index_version") != expected_index_version:
+        index_rebuild_reasons.append("candidate_index_version_changed")
+    if index_rebuild_reasons:
         index_report = rebuild_music_search_index(conn)
-    contexts = build_music_search_variant_contexts(conn, _current_filter_values(conn))
-    snapshot_set_report = None
-    if index_report is None and not rebuild_documents:
-        snapshot_set_report = _revalidated_snapshot_set_report(conn, contexts)
+    # Index generation changes do not invalidate statistics.  Only the exact
+    # statistics fingerprint controls whether the six variants are reused.
+    snapshot_set_report = snapshot_set_report or _revalidated_snapshot_set_report(conn, contexts)
     if snapshot_set_report is None:
         snapshot_set_report = build_music_search_snapshot_set(conn, contexts)
     default_snapshot = snapshot_set_report["variants"][0]
+    final_index_state = get_music_search_index_state(conn)
     return {
         "status": snapshot_set_report["status"],
         "index": index_report,
+        "candidate_index": {
+            "action": "rebuilt" if index_report is not None else "revalidated",
+            "reasons": index_rebuild_reasons or ["exact_candidate_index_version_ready"],
+            "candidate_index_version": final_index_state.get("candidate_index_version"),
+            "content_digest": final_index_state.get("content_digest"),
+            "generation_id": final_index_state.get("active_generation_id"),
+        },
         # Compatibility for callers that report the default L2/dynamic result.
         "snapshot": default_snapshot,
         "snapshot_set": snapshot_set_report,
@@ -176,15 +265,23 @@ def mark_music_search_for_rebuild(
     documents: bool = False,
     revision_kinds: tuple[MusicSearchRevisionKind, ...] = (),
     conn: sqlite3.Connection | None = None,
+    statistics: bool | None = None,
 ) -> None:
     """Fail closed immediately while an upstream rebuild is still pending."""
     target = conn or get_db(readonly=False)
     try:
         if revision_kinds:
             bump_music_search_revisions(target, *revision_kinds)
+        statistic_kinds = {"playback", "billboard", "metadata", "settings"}
+        invalidate_statistics = (
+            statistics
+            if statistics is not None
+            else bool(set(revision_kinds) & statistic_kinds) or not revision_kinds
+        )
         mark_music_search_derived_data_dirty(
             target,
             reason=reason,
+            snapshots=invalidate_statistics,
             documents=documents,
         )
         target.commit()
@@ -202,10 +299,12 @@ def _music_search_rebuild_job_key(
     try:
         state = get_music_search_index_state(target)
         expected_source = music_search_source_revision(target)
+        expected_index_version = expected_candidate_index_version(target)
         if (
             rebuild_documents
             or not state.get("active_generation_id")
             or state.get("source_revision") != expected_source
+            or state.get("candidate_index_version") != expected_index_version
         ):
             return f"documents:{expected_source}"
         context = build_music_search_filter_context(

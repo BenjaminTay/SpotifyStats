@@ -12,9 +12,13 @@ import unicodedata
 from collections.abc import Iterable
 from dataclasses import dataclass
 from enum import Enum
+from functools import lru_cache
 from typing import Protocol
 
+from opencc import OpenCC
+
 SEARCH_NORMALIZATION_VERSION = "nfkc_casefold_ws_punctuation_v1"
+CHINESE_SEARCH_EXPANSION_VERSION = "opencc_0.1.7_s2t_t2s_v1"
 
 
 # NFKC already converts most full-width ASCII punctuation.  This table covers
@@ -109,6 +113,28 @@ class SearchQueryAnalysis:
     character_length: int
     minimum_length: int
     eligible: bool
+
+
+@lru_cache(maxsize=2)
+def _opencc_converter(configuration: str) -> OpenCC:
+    return OpenCC(configuration)
+
+
+def expand_chinese_search_variants(normalized_text: str) -> tuple[str, ...]:
+    """Return deterministic Simplified/Traditional variants, bounded to two."""
+    if not normalized_text or classify_query_script(normalized_text) is not QueryScriptCategory.CJK:
+        return ()
+    return (
+        _opencc_converter("t2s").convert(normalized_text),
+        _opencc_converter("s2t").convert(normalized_text),
+    )
+
+
+def build_default_search_text_variants(text: str) -> SearchTextVariants:
+    return build_search_text_variants(
+        text,
+        chinese_variant_expander=expand_chinese_search_variants,
+    )
 
 
 def normalize_search_text(text: str) -> str:
@@ -229,6 +255,33 @@ def is_search_query_eligible(text: str) -> bool:
     """Return whether a query is long enough to request remote candidates."""
 
     return analyze_search_query(text).eligible
+
+
+def cjk_search_ngrams(text: str, *, sizes: tuple[int, ...] = (1, 2)) -> tuple[str, ...]:
+    """Build deterministic short CJK n-grams without crossing script boundaries."""
+    normalized = normalize_search_text(text)
+    runs: list[str] = []
+    current: list[str] = []
+    for character in normalized:
+        if _is_cjk_character(character):
+            current.append(character)
+        elif current:
+            runs.append("".join(current))
+            current = []
+    if current:
+        runs.append("".join(current))
+    values: list[str] = []
+    seen: set[str] = set()
+    for run in runs:
+        for size in sizes:
+            if size < 1:
+                raise ValueError("CJK n-gram sizes must be positive")
+            for offset in range(0, len(run) - size + 1):
+                value = run[offset : offset + size]
+                if value not in seen:
+                    seen.add(value)
+                    values.append(value)
+    return tuple(values)
 
 
 def _is_latin_character(character: str) -> bool:

@@ -7,11 +7,14 @@ from typing import cast
 import pytest
 
 from backend.domains.music_search.normalization import (
+    CHINESE_SEARCH_EXPANSION_VERSION,
     SEARCH_NORMALIZATION_VERSION,
     ChineseSearchVariantExpander,
     QueryScriptCategory,
     analyze_search_query,
+    build_default_search_text_variants,
     build_search_text_variants,
+    cjk_search_ngrams,
     classify_query_script,
     is_search_query_eligible,
     minimum_query_length,
@@ -20,6 +23,25 @@ from backend.domains.music_search.normalization import (
 )
 
 pytestmark = pytest.mark.unit
+
+
+def test_default_chinese_expansion_is_deterministic_and_deduplicated() -> None:
+    simplified = build_default_search_text_variants("周杰伦")
+    traditional = build_default_search_text_variants("周杰倫")
+
+    assert CHINESE_SEARCH_EXPANSION_VERSION == "opencc_0.1.7_s2t_t2s_v1"
+    assert simplified.variants == ("周杰伦", "周杰倫")
+    assert traditional.variants == ("周杰倫", "周杰伦")
+
+
+def test_short_cjk_ngrams_do_not_cross_non_cjk_boundaries() -> None:
+    assert cjk_search_ngrams("周杰伦 · Taylor") == (
+        "周",
+        "杰",
+        "伦",
+        "周杰",
+        "杰伦",
+    )
 
 
 @pytest.mark.parametrize(

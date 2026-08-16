@@ -1,7 +1,8 @@
 export type MusicSearchKind = 'track' | 'album' | 'artist'
 export type MusicSearchSnapshotStatus = 'ready' | 'warming' | 'unavailable' | 'stale' | 'failed'
 export type MusicSearchMatchField = 'label' | 'artist' | 'album' | 'alias'
-export type MusicSearchMatchQuality = 'exact' | 'prefix' | 'token' | 'substring'
+export type MusicSearchMatchQuality = 'exact' | 'prefix' | 'token' | 'substring' | 'fuzzy'
+export type MusicSearchMatchType = 'original' | 'simplified' | 'traditional' | 'fuzzy'
 
 export interface MusicSearchChartSummary {
   peak_position: number | null
@@ -52,6 +53,7 @@ export interface MusicSearchCandidate {
   cover_url: string | null
   match_field: MusicSearchMatchField
   match_quality: MusicSearchMatchQuality
+  match_type?: MusicSearchMatchType
 }
 
 export interface MusicSearchKindTotals {
@@ -66,6 +68,7 @@ export interface MusicSearchCandidateResponse {
   normalized_query: string
   snapshot_status: MusicSearchSnapshotStatus
   filter_fingerprint: string | null
+  candidate_index_version?: string | null
   kind: MusicSearchKind | null
   page: number
   page_size: number

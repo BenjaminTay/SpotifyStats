@@ -57,7 +57,7 @@ def run_post_streaming_import_maintenance(progress_callback=None) -> dict[str, A
         mark_music_search_for_rebuild(
             reason="streaming import maintenance published",
             documents=True,
-            revision_kinds=("playback", "billboard", "metadata"),
+            revision_kinds=("playback", "billboard", "metadata", "candidate"),
             conn=conn,
         )
 

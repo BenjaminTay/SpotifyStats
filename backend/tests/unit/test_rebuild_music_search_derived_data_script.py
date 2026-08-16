@@ -186,6 +186,8 @@ def test_success_report_is_complete_and_privacy_safe(monkeypatch) -> None:
         "fingerprint",
         "entity_count",
         "elapsed_ms",
+        "reused",
+        "reuse_reason",
     }
     assert "private-query" not in serialized
     assert "Private Artist" not in serialized

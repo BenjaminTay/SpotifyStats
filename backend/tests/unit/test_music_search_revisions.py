@@ -4,8 +4,9 @@ import sqlite3
 
 import pytest
 
-from backend.core.migrations import migrate_032, migrate_034
+from backend.core.migrations import migrate_032, migrate_034, migrate_035
 from backend.domains.music_search.context import build_music_search_filter_context
+from backend.domains.music_search.index import expected_candidate_index_version
 from backend.domains.music_search.revisions import (
     bump_music_search_revisions,
     get_music_search_revision_state,
@@ -23,6 +24,7 @@ def _conn() -> sqlite3.Connection:
     conn.row_factory = sqlite3.Row
     migrate_032(conn)
     migrate_034(conn)
+    migrate_035(conn)
     conn.execute(
         """UPDATE music_search_index_state
            SET active_generation_id='generation-v2', status='ready',
@@ -92,3 +94,28 @@ def test_six_variants_share_base_and_have_unique_fingerprints() -> None:
         (variant.merge_level, variant.dynamic_threshold)
         for variant in MUSIC_SEARCH_SNAPSHOT_VARIANTS
     ]
+
+
+def test_random_index_generation_does_not_change_statistics_fingerprint() -> None:
+    conn = _conn()
+    first = build_music_search_filter_context(conn, _filters())
+    conn.execute(
+        "UPDATE music_search_index_state SET active_generation_id='another-random-generation'"
+    )
+    second = build_music_search_filter_context(conn, _filters())
+
+    assert first.semantic_base_key == second.semantic_base_key
+    assert first.filter_fingerprint == second.filter_fingerprint
+
+
+def test_candidate_revision_changes_index_version_but_not_statistics() -> None:
+    conn = _conn()
+    before_statistics = build_music_search_filter_context(conn, _filters())
+    before_index = expected_candidate_index_version(conn)
+
+    bump_music_search_revisions(conn, "candidate")
+
+    after_statistics = build_music_search_filter_context(conn, _filters())
+    after_index = expected_candidate_index_version(conn)
+    assert before_statistics.filter_fingerprint == after_statistics.filter_fingerprint
+    assert before_index != after_index

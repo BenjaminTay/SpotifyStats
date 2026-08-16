@@ -6,6 +6,7 @@ VALIDATOR="$DEPLOY_DIR/validate-music-search-preflight.py"
 CAPACITY_PROBE="$DEPLOY_DIR/music_search_preflight_capacity.py"
 db_copy_input=""
 json_report_input=""
+resume_db_input=""
 image=""
 
 usage() {
@@ -30,6 +31,10 @@ while (( $# > 0 )); do
       ;;
     --image)
       image="${2:-}"
+      shift 2
+      ;;
+    --resume-db)
+      resume_db_input="${2:-}"
       shift 2
       ;;
     -h|--help)
@@ -95,6 +100,14 @@ if [[ -e "$json_report_path" ]]; then
   echo "JSON 报告已存在，拒绝覆盖：$json_report_path" >&2
   exit 2
 fi
+if [[ -n "$resume_db_input" ]]; then
+  if ! resume_db_path="$(resolve_output_path "$resume_db_input")"; then
+    echo "续建数据库父目录不存在或路径无法完整解析。" >&2
+    exit 2
+  fi
+else
+  resume_db_path="${db_copy_path}.music-search-resume"
+fi
 
 production_data_dir="$(python3 - "$DEPLOY_DIR/data" <<'PY'
 from pathlib import Path
@@ -105,6 +118,12 @@ PY
 case "$db_copy_path" in
   "$production_data_dir"|"$production_data_dir"/*)
     echo "拒绝把生产 data/ 中的真实数据库作为预检目标；请先创建明确副本。" >&2
+    exit 2
+    ;;
+esac
+case "$resume_db_path" in
+  "$production_data_dir"|"$production_data_dir"/*)
+    echo "拒绝把生产 data/ 作为续建数据库位置。" >&2
     exit 2
     ;;
 esac
@@ -149,7 +168,26 @@ python3 "$CAPACITY_PROBE" \
   --json-output "$capacity_report"
 
 work_dir="$(mktemp -d "$db_copy_dir/.spotify-stats-search-preflight.XXXXXX")"
-cp -- "$db_copy_path" "$work_dir/spotify_stats.db"
+resume_db_dir="$(dirname -- "$resume_db_path")"
+resume_db_name="$(basename -- "$resume_db_path")"
+db_copy_name="$(basename -- "$db_copy_path")"
+
+if docker container inspect "$container_name" >/dev/null 2>&1; then
+  echo "检测到未清理的音乐搜索预检容器：$container_name" >&2
+  exit 1
+fi
+
+docker run --rm --init \
+  -e SPOTIFY_STATS_WARMUP=0 \
+  -e SPOTIFY_STATS_SEARCH_STARTUP_REBUILD=0 \
+  --mount "type=bind,src=$db_copy_dir,dst=/baseline,readonly" \
+  --mount "type=bind,src=$resume_db_dir,dst=/resume" \
+  --mount "type=bind,src=$work_dir,dst=/preflight" \
+  "$image" \
+  python scripts/prepare_music_search_resume.py \
+    --baseline-db "/baseline/$db_copy_name" \
+    --resume-db "/resume/$resume_db_name" \
+    --json-output /preflight/resume-report.json
 
 existing_preflight="$(
   for container_id in $(docker ps -q); do
@@ -157,7 +195,7 @@ existing_preflight="$(
       docker inspect --format '{{.Path}} {{join .Args " "}}' "$container_id" 2>/dev/null || true
     )"
     case "$container_command" in
-      *scripts/rebuild_music_search_derived_data.py*"--db-path /preflight/spotify_stats.db"*)
+      *scripts/rebuild_music_search_derived_data.py*"--db-path /resume/"*)
         printf '%s\n' "$container_id"
         ;;
     esac
@@ -167,20 +205,16 @@ if [[ -n "$existing_preflight" ]]; then
   echo "检测到仍在运行的音乐搜索副本重建容器，拒绝并发预检：$existing_preflight" >&2
   exit 1
 fi
-if docker container inspect "$container_name" >/dev/null 2>&1; then
-  echo "检测到未清理的音乐搜索预检容器：$container_name" >&2
-  exit 1
-fi
-
 echo "音乐搜索副本重建开始；生产服务保持在线。" >&2
 rebuild_started="$SECONDS"
 docker run --name "$container_name" --rm --init \
   -e SPOTIFY_STATS_WARMUP=0 \
   -e SPOTIFY_STATS_SEARCH_STARTUP_REBUILD=0 \
+  --mount "type=bind,src=$resume_db_dir,dst=/resume" \
   --mount "type=bind,src=$work_dir,dst=/preflight" \
   "$image" \
   python scripts/rebuild_music_search_derived_data.py \
-    --db-path /preflight/spotify_stats.db --json --require-all-ready \
+    --db-path "/resume/$resume_db_name" --json --require-all-ready \
     > "$work_dir/rebuild-report.json" &
 rebuild_pid="$!"
 while kill -0 "$rebuild_pid" >/dev/null 2>&1; do
@@ -218,7 +252,7 @@ if not isinstance(payload, dict):
     raise SystemExit("music-search rebuild stdout is not one JSON object")
 PY
 
-python3 - "$work_dir/spotify_stats.db" <<'PY'
+python3 - "$resume_db_path" <<'PY'
 import sqlite3
 import sys
 
@@ -229,19 +263,20 @@ conn.close()
 PY
 
 python3 "$CAPACITY_PROBE" \
-  --db-path "$work_dir/spotify_stats.db" \
+  --db-path "$resume_db_path" \
   --min-available-mib "$minimum_available_mib" \
   --phase after \
   --previous-report "$capacity_report" \
   --json-output "$capacity_report"
 
 python3 "$VALIDATOR" \
-  --db-path "$work_dir/spotify_stats.db" \
+  --db-path "$resume_db_path" \
   --rebuild-report "$work_dir/rebuild-report.json" \
+  --resume-report "$work_dir/resume-report.json" \
   --capacity-report "$capacity_report" \
   --json-output "$report_temporary"
 
-install -m 600 "$work_dir/spotify_stats.db" "$replacement_path"
+install -m 600 "$resume_db_path" "$replacement_path"
 mv -f -- "$replacement_path" "$db_copy_path"
 mv -f -- "$report_temporary" "$json_report_path"
 trap - EXIT

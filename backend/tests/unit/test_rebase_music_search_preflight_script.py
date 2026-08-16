@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from backend.core.migrations import migrate_032, migrate_034
+from backend.core.migrations import migrate_032, migrate_034, migrate_035
 from backend.domains.music_search.context import MUSIC_SEARCH_SNAPSHOT_BUILDER_VERSION
 from backend.domains.music_search.index import music_search_source_revision
 from backend.domains.music_search.variants import build_music_search_variant_contexts
@@ -36,6 +36,7 @@ def _create_baseline(path: Path) -> None:
     conn.execute("INSERT INTO schema_migrations VALUES (34, 'search variants')")
     migrate_032(conn)
     migrate_034(conn)
+    migrate_035(conn)
     conn.execute(
         """UPDATE music_search_index_state
            SET active_generation_id='baseline-generation', status='ready',

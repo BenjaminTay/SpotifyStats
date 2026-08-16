@@ -419,3 +419,65 @@ def test_migration_034_adds_revision_state_and_invalidates_legacy_snapshots(empt
     assert tuple(snapshot) == ("stale", "music search snapshot schema upgraded")
     indexes = {row[1] for row in empty_db.execute("PRAGMA index_list(music_search_snapshot_meta)")}
     assert "idx_music_search_snapshot_meta_variant" in indexes
+
+
+def test_migration_035_splits_candidate_identity_without_discarding_snapshots(empty_db):
+    from backend.core import migrations
+
+    migrations.migrate_032(empty_db)
+    migrations.migrate_034(empty_db)
+    empty_db.execute(
+        """INSERT INTO music_search_snapshot_meta(
+               snapshot_key, filter_fingerprint, source_revision, status,
+               semantic_base_key, merge_level, dynamic_threshold, builder_version
+           ) VALUES ('current', 'current', 'source', 'ready', 'base', 2, 1,
+                     'music_search_snapshot_v2')"""
+    )
+
+    migrations.migrate_035(empty_db)
+    migrations.migrate_035(empty_db)
+
+    revision_columns = {
+        row[1] for row in empty_db.execute("PRAGMA table_info(music_search_revision_state)")
+    }
+    index_columns = {
+        row[1] for row in empty_db.execute("PRAGMA table_info(music_search_index_state)")
+    }
+    assert "candidate_revision" in revision_columns
+    assert {"candidate_index_version", "content_digest"} <= index_columns
+    assert (
+        empty_db.execute(
+            "SELECT status FROM music_search_snapshot_meta WHERE snapshot_key='current'"
+        ).fetchone()[0]
+        == "ready"
+    )
+
+
+def test_migration_036_repairs_a_partially_applied_candidate_schema(empty_db):
+    from backend.core import migrations
+
+    migrations.migrate_032(empty_db)
+    migrations.migrate_034(empty_db)
+    migrations.migrate_035(empty_db)
+    empty_db.execute(
+        """UPDATE music_search_index_state
+           SET candidate_index_version='old', content_digest='old', status='ready'
+           WHERE state_id=1"""
+    )
+    empty_db.execute("DROP TABLE music_search_document_ngrams")
+
+    migrations.migrate_036(empty_db)
+    migrations.migrate_036(empty_db)
+
+    assert empty_db.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='music_search_document_ngrams'"
+    ).fetchone()
+    indexes = {
+        row[1] for row in empty_db.execute("PRAGMA index_list(music_search_document_ngrams)")
+    }
+    assert "idx_music_search_document_ngrams_lookup" in indexes
+    state = empty_db.execute(
+        """SELECT candidate_index_version, content_digest, status
+           FROM music_search_index_state WHERE state_id=1"""
+    ).fetchone()
+    assert tuple(state) == (None, None, "missing")

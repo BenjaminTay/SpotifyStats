@@ -5,8 +5,9 @@ import sqlite3
 import pandas as pd
 import pytest
 
-from backend.core.migrations import migrate_032, migrate_034
+from backend.core.migrations import migrate_032, migrate_034, migrate_035
 from backend.domains.music_search.context import (
+    MUSIC_SEARCH_SNAPSHOT_BUILDER_VERSION,
     MusicSearchFilterContext,
     build_music_search_filter_context,
 )
@@ -56,6 +57,7 @@ def _conn() -> sqlite3.Connection:
     )
     migrate_032(conn)
     migrate_034(conn)
+    migrate_035(conn)
     conn.execute(
         """UPDATE music_search_index_state
            SET active_generation_id='g1', status='ready', source_revision='index-r1'"""
@@ -166,7 +168,6 @@ def _context(
         billboard_aggregation_revision=1,
         metadata_revision=1,
         settings_revision=1,
-        search_index_revision="index-r1",
         artist_identity_revision=0,
         track_credit_revision=0,
         semantic_base_key="base-r1",
@@ -332,6 +333,61 @@ def test_snapshot_set_releases_heavy_caches_after_every_variant(monkeypatch) -> 
     assert report["ready_count"] == 3
     assert released == ["billboard", "db"] * 3
     assert collected == [True, True, True]
+
+
+def test_snapshot_set_resumes_by_skipping_each_exact_ready_variant(monkeypatch) -> None:
+    conn = _conn()
+    from backend.domains.music_search import snapshot as snapshot_module
+
+    contexts = tuple(
+        _context(
+            merge_level=merge_level,
+            dynamic_threshold=dynamic,
+            filter_fingerprint=f"resume-{merge_level}-{int(dynamic)}",
+        )
+        for merge_level, dynamic in (
+            (2, True),
+            (1, True),
+            (3, True),
+            (2, False),
+            (1, False),
+            (3, False),
+        )
+    )
+    first = contexts[0]
+    conn.execute(
+        """INSERT INTO music_search_snapshot_meta(
+               snapshot_key, filter_fingerprint, source_revision, status,
+               semantic_base_key, merge_level, dynamic_threshold, builder_version
+           ) VALUES (?, ?, ?, 'ready', ?, ?, ?, ?)""",
+        (
+            first.filter_fingerprint,
+            first.filter_fingerprint,
+            first.source_revision,
+            first.semantic_base_key,
+            first.merge_level,
+            int(first.dynamic_threshold),
+            MUSIC_SEARCH_SNAPSHOT_BUILDER_VERSION,
+        ),
+    )
+    built: list[str] = []
+
+    def fake_build(_conn, context):
+        built.append(context.filter_fingerprint)
+        return {
+            "status": "ready",
+            "snapshot_key": context.filter_fingerprint,
+            "filter_fingerprint": context.filter_fingerprint,
+            "entity_count": 1,
+            "source_revision": context.source_revision,
+        }
+
+    monkeypatch.setattr(snapshot_module, "build_music_search_snapshot", fake_build)
+    report = build_music_search_snapshot_set(conn, contexts)
+
+    assert built == [context.filter_fingerprint for context in contexts[1:]]
+    assert report["variants"][0]["revalidated"] is True
+    assert report["variants"][0]["reuse_reason"] == "exact_statistics_fingerprint_ready"
 
 
 def test_metric_maps_load_primary_and_artist_frames_sequentially(monkeypatch) -> None:

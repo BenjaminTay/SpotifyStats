@@ -47,7 +47,13 @@ def _build_preflight_fixture(
         );
         """
     )
-    conn.execute("INSERT INTO schema_migrations(version, name) VALUES (34, 'search variants')")
+    conn.executemany(
+        "INSERT INTO schema_migrations(version, name) VALUES (?, ?)",
+        (
+            (35, "search identity split"),
+            (36, "search candidate ngram index"),
+        ),
+    )
     for index, (merge_level, dynamic_threshold) in enumerate(VARIANTS):
         snapshot_key = f"snapshot-{index}"
         fingerprint = f"fingerprint-{index}"
@@ -112,10 +118,10 @@ def _build_preflight_fixture(
             "duplicate_fingerprint_count": 0,
         },
         migration={
-            "applied_version": 34,
-            "target_version": 34,
-            "applied_count": 34,
-            "expected_count": 34,
+            "applied_version": 36,
+            "target_version": 36,
+            "applied_count": 36,
+            "expected_count": 36,
             "missing_count": 0,
             "up_to_date": True,
         },
@@ -188,7 +194,7 @@ def test_preflight_validator_requires_migration_variants_builder_and_zero_orphan
         "builder_version": BUILDER_VERSION,
         "context_orphan_count": 0,
         "integrity_check": "ok",
-        "migration_34": True,
+        "migration_36": True,
         "ready_variants": 6,
         "required_variants": 6,
     }
@@ -359,11 +365,13 @@ def test_production_deploy_stages_search_before_atomic_database_promotion() -> N
     assert "--phase before" in preflight
     assert "--phase after" in preflight
     assert '--name "$container_name"' in preflight
+    assert "prepare_music_search_resume.py" in preflight
+    assert "--resume-db" in deploy
     assert "检测到仍在运行的音乐搜索副本重建容器" in preflight
     assert "音乐搜索副本重建仍在运行" in preflight
     assert "trap terminate HUP INT TERM" in preflight
     assert "verify-music-search-runtime.py" in verify
-    assert "version=34" in runtime_gate
+    assert "version=36" in runtime_gate
     assert "filter_fingerprint" in runtime_gate
     assert "context orphan count is not zero" in runtime_gate
 

@@ -37,9 +37,10 @@ def _database(path) -> None:
             billboard_revision INTEGER NOT NULL DEFAULT 0,
             metadata_revision INTEGER NOT NULL DEFAULT 0,
             settings_revision INTEGER NOT NULL DEFAULT 0,
+            candidate_revision INTEGER NOT NULL DEFAULT 0,
             updated_at TEXT
         );
-        INSERT INTO music_search_revision_state VALUES (1, 0, 0, 0, 0, NULL);
+        INSERT INTO music_search_revision_state VALUES (1, 0, 0, 0, 0, 0, NULL);
         CREATE TABLE music_search_snapshot_meta (
             snapshot_key TEXT PRIMARY KEY,
             status TEXT NOT NULL,
@@ -49,9 +50,10 @@ def _database(path) -> None:
             state_id INTEGER PRIMARY KEY,
             active_generation_id TEXT,
             source_revision TEXT,
+            candidate_index_version TEXT,
             updated_at TEXT
         );
-        INSERT INTO music_search_index_state VALUES (1, NULL, NULL, NULL);
+        INSERT INTO music_search_index_state VALUES (1, NULL, NULL, NULL, NULL);
         """
     )
     conn.commit()

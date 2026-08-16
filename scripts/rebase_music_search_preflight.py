@@ -16,6 +16,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+from backend.core.migrations import migrate_035, migrate_036  # noqa: E402
 from backend.domains.metadata.artist_identity import get_identity_revision  # noqa: E402
 from backend.domains.metadata.track_credits import get_track_credit_revision  # noqa: E402
 from backend.domains.music_search.context import (  # noqa: E402
@@ -38,6 +39,7 @@ from backend.services.music_search_maintenance_service import (  # noqa: E402
 
 DERIVED_TABLES = (
     "music_search_documents_fts",
+    "music_search_document_ngrams",
     "music_search_documents",
     "music_search_index_state",
     "music_search_snapshot_meta",
@@ -82,6 +84,7 @@ def source_marker(path: Path) -> dict[str, Any]:
                 "billboard": revisions.billboard_revision,
                 "metadata": revisions.metadata_revision,
                 "settings": revisions.settings_revision,
+                "candidate": revisions.candidate_revision,
             },
             "playback_audit": playback_source_revision(conn),
             "billboard_audit": billboard_aggregation_revision(conn),
@@ -90,6 +93,28 @@ def source_marker(path: Path) -> dict[str, Any]:
             "track_credit_revision": get_track_credit_revision(conn),
             "filters": _current_filter_values(conn),
         }
+    finally:
+        conn.close()
+
+
+def _ensure_identity_split_schema(path: Path) -> None:
+    conn = _connect(path, readonly=False)
+    try:
+        columns = {
+            str(row[1]) for row in conn.execute("PRAGMA table_info(music_search_index_state)")
+        }
+        if "candidate_index_version" not in columns:
+            migrate_035(conn)
+            conn.execute(
+                """INSERT OR IGNORE INTO schema_migrations(version, name)
+                   VALUES (35, 'music_search_candidate_statistics_identity_split')"""
+            )
+        migrate_036(conn)
+        conn.execute(
+            """INSERT OR IGNORE INTO schema_migrations(version, name)
+               VALUES (36, 'music_search_candidate_ngram_index')"""
+        )
+        conn.commit()
     finally:
         conn.close()
 
@@ -118,6 +143,7 @@ def _copy_derived_tables(quiescent: Path, staged: Path) -> None:
                 "music_search_entity_context",
                 "music_search_snapshot_meta",
                 "music_search_documents_fts",
+                "music_search_document_ngrams",
                 "music_search_documents",
                 "music_search_index_state",
             ):
@@ -125,6 +151,7 @@ def _copy_derived_tables(quiescent: Path, staged: Path) -> None:
             for table in (
                 "music_search_index_state",
                 "music_search_documents",
+                "music_search_document_ngrams",
                 "music_search_documents_fts",
                 "music_search_snapshot_meta",
                 "music_search_entity_context",
@@ -215,6 +242,7 @@ def main() -> int:
     args = parse_args()
     try:
         baseline_marker = source_marker(args.baseline_db)
+        _ensure_identity_split_schema(args.quiescent_db)
         quiescent_marker = source_marker(args.quiescent_db)
         changed = sorted(
             key for key in baseline_marker if baseline_marker[key] != quiescent_marker[key]

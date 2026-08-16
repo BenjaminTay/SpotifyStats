@@ -6,7 +6,7 @@ import sqlite3
 from dataclasses import asdict, dataclass
 from typing import Literal
 
-MusicSearchRevisionKind = Literal["playback", "billboard", "metadata", "settings"]
+MusicSearchRevisionKind = Literal["playback", "billboard", "metadata", "settings", "candidate"]
 
 
 @dataclass(frozen=True)
@@ -15,6 +15,7 @@ class MusicSearchRevisionState:
     billboard_revision: int = 0
     metadata_revision: int = 0
     settings_revision: int = 0
+    candidate_revision: int = 0
     updated_at: str | None = None
 
     def values(self) -> dict[str, int | str | None]:
@@ -42,10 +43,16 @@ def get_music_search_revision_state(
     """
     if not _table_exists(conn):
         return MusicSearchRevisionState()
+    columns = {
+        str(row[1]) for row in conn.execute("PRAGMA table_info(music_search_revision_state)")
+    }
+    candidate_expression = (
+        "candidate_revision" if "candidate_revision" in columns else "0 AS candidate_revision"
+    )
     row = conn.execute(
-        """SELECT playback_revision, billboard_revision, metadata_revision,
-                  settings_revision, updated_at
-           FROM music_search_revision_state WHERE state_id=1"""
+        f"""SELECT playback_revision, billboard_revision, metadata_revision,
+                   settings_revision, {candidate_expression}, updated_at
+            FROM music_search_revision_state WHERE state_id=1"""
     ).fetchone()
     if row is None:
         return MusicSearchRevisionState()
@@ -54,7 +61,8 @@ def get_music_search_revision_state(
         billboard_revision=int(row[1]),
         metadata_revision=int(row[2]),
         settings_revision=int(row[3]),
-        updated_at=str(row[4]) if row[4] is not None else None,
+        candidate_revision=int(row[4]),
+        updated_at=str(row[5]) if row[5] is not None else None,
     )
 
 
@@ -71,11 +79,17 @@ def bump_music_search_revisions(
     selected = tuple(dict.fromkeys(kinds))
     if not selected:
         return get_music_search_revision_state(conn)
-    invalid = set(selected) - {"playback", "billboard", "metadata", "settings"}
+    invalid = set(selected) - {
+        "playback",
+        "billboard",
+        "metadata",
+        "settings",
+        "candidate",
+    }
     if invalid:
         raise ValueError(f"unsupported music-search revision kinds: {sorted(invalid)}")
     if not _table_exists(conn):
-        raise RuntimeError("music_search_revision_state requires migration 34")
+        raise RuntimeError("music_search_revision_state requires migration 35")
 
     assignments = [f"{kind}_revision={kind}_revision+1" for kind in selected]
     assignments.append("updated_at=datetime('now')")

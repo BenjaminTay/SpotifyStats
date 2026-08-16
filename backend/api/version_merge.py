@@ -48,7 +48,7 @@ def _refresh_music_search_derived_data(reason: str) -> None:
         mark_music_search_for_rebuild(
             reason=reason,
             documents=True,
-            revision_kinds=("metadata",),
+            revision_kinds=("metadata", "candidate"),
             conn=conn,
         )
         enqueue_music_search_snapshot_rebuild(

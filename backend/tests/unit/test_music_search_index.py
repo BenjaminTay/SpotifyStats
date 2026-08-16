@@ -4,7 +4,7 @@ import sqlite3
 
 import pytest
 
-from backend.core.migrations import migrate_032
+from backend.core.migrations import migrate_032, migrate_034, migrate_035
 from backend.domains.music_search.index import (
     get_music_search_index_state,
     rebuild_music_search_index,
@@ -75,6 +75,8 @@ def _conn() -> sqlite3.Connection:
         """
     )
     migrate_032(conn)
+    migrate_034(conn)
+    migrate_035(conn)
     conn.commit()
     return conn
 
@@ -88,6 +90,8 @@ def test_rebuild_publishes_one_valid_generation_with_fts_or_fallback() -> None:
     assert report["document_count"] == (3 * 3) + 2 + 2
     assert state["active_generation_id"] == report["generation_id"]
     assert state["normalization_version"] == "nfkc_casefold_ws_punctuation_v1"
+    assert state["candidate_index_version"] == report["candidate_index_version"]
+    assert state["content_digest"] == report["content_digest"]
     assert (
         conn.execute(
             "SELECT COUNT(*) FROM music_search_documents WHERE generation_id=?",
@@ -95,6 +99,16 @@ def test_rebuild_publishes_one_valid_generation_with_fts_or_fallback() -> None:
         ).fetchone()[0]
         == 13
     )
+
+
+def test_rebuild_generation_is_random_but_candidate_version_is_deterministic() -> None:
+    conn = _conn()
+    first = rebuild_music_search_index(conn)
+    second = rebuild_music_search_index(conn)
+
+    assert first["generation_id"] != second["generation_id"]
+    assert first["candidate_index_version"] == second["candidate_index_version"]
+    assert first["content_digest"] == second["content_digest"]
 
 
 def test_track_candidates_follow_l1_l2_merge_semantics_and_keep_version_aliases() -> None:
@@ -156,6 +170,63 @@ def test_repository_ranks_primary_prefix_and_cross_field_tokens() -> None:
     )
     assert [item.entity_key for item in cross_field.tracks] == ["track:101"]
     assert cross_field.tracks[0].match_quality == "token"
+
+
+def test_repository_matches_simplified_traditional_and_short_cjk() -> None:
+    conn = _conn()
+    conn.execute("INSERT INTO artists VALUES (3, '周杰倫')")
+    rebuild_music_search_index(conn)
+
+    simplified = search_music_index(
+        conn,
+        query="周杰伦",
+        kind="artist",
+        page=1,
+        page_size=20,
+        merge_level=2,
+    )
+    short = search_music_index(
+        conn,
+        query="伦",
+        kind="artist",
+        page=1,
+        page_size=20,
+        merge_level=2,
+    )
+
+    assert [item.entity_key for item in simplified.artists] == ["artist:3"]
+    assert simplified.artists[0].match_type == "traditional"
+    assert simplified.artists[0].label == "周杰倫"
+    assert [item.entity_key for item in short.artists] == ["artist:3"]
+    assert short.artists[0].match_type == "traditional"
+
+
+def test_repository_uses_bounded_fuzzy_only_when_primary_match_is_empty() -> None:
+    conn = _conn()
+    rebuild_music_search_index(conn)
+
+    fuzzy = search_music_index(
+        conn,
+        query="cardgan",
+        kind="track",
+        page=1,
+        page_size=20,
+        merge_level=2,
+    )
+    primary = search_music_index(
+        conn,
+        query="card",
+        kind="track",
+        page=1,
+        page_size=20,
+        merge_level=2,
+    )
+
+    assert [item.entity_key for item in fuzzy.tracks] == ["track:100"]
+    assert fuzzy.tracks[0].match_quality == "fuzzy"
+    assert fuzzy.tracks[0].match_type == "fuzzy"
+    assert primary.tracks[0].match_quality == "prefix"
+    assert primary.tracks[0].match_type == "original"
 
 
 def test_repository_returns_exact_totals_and_stable_pages() -> None:

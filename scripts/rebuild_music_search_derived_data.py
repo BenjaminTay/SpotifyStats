@@ -48,7 +48,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--snapshot-only",
         action="store_true",
-        help="Reuse a current document generation when its source revision matches",
+        help="Deprecated compatibility flag; adaptive reuse is now the default",
+    )
+    parser.add_argument(
+        "--rebuild-documents",
+        action="store_true",
+        help="Force a candidate-index generation rebuild; statistics still reuse exact fingerprints",
     )
     parser.add_argument(
         "--json",
@@ -60,7 +65,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Exit non-zero unless exactly all six supported variants are ready",
     )
-    return parser.parse_args(argv)
+    args = parser.parse_args(argv)
+    if args.snapshot_only and args.rebuild_documents:
+        parser.error("--snapshot-only and --rebuild-documents cannot be combined")
+    return args
 
 
 def _file_bytes(path: Path) -> int:
@@ -166,6 +174,12 @@ def _safe_variant(raw: dict[str, Any]) -> dict[str, Any]:
         "fingerprint": fingerprint,
         "entity_count": max(0, int(raw.get("entity_count") or 0)),
         "elapsed_ms": max(0.0, round(float(raw.get("duration_ms") or 0.0), 3)),
+        "reused": bool(raw.get("revalidated")),
+        "reuse_reason": (
+            str(raw.get("reuse_reason") or "exact_statistics_fingerprint_ready")
+            if raw.get("revalidated")
+            else None
+        ),
     }
     if report["status"] != "ready" and raw.get("error_type"):
         report["failure_type"] = str(raw["error_type"])
@@ -211,16 +225,21 @@ def _idempotency_report(
     documents_rebuilt: bool,
 ) -> dict[str, Any]:
     reused_ready_count = sum(
-        prior_inventory.get(str(variant["fingerprint"]), {}).get("status") == "ready"
-        and prior_inventory.get(str(variant["fingerprint"]), {}).get("builder_version")
-        == MUSIC_SEARCH_SNAPSHOT_BUILDER_VERSION
+        bool(variant.get("reused"))
+        or (
+            prior_inventory.get(str(variant["fingerprint"]), {}).get("status") == "ready"
+            and prior_inventory.get(str(variant["fingerprint"]), {}).get("builder_version")
+            == MUSIC_SEARCH_SNAPSHOT_BUILDER_VERSION
+        )
         for variant in variants
     )
     all_preexisting = bool(variants) and reused_ready_count == len(variants)
     repeat_safe = base_counts["duplicate_fingerprint_count"] == 0 and base_counts[
         "unique_fingerprint_count"
     ] == len(variants)
-    if all_preexisting and not documents_rebuilt:
+    if all_preexisting and documents_rebuilt:
+        classification = "rebuilt_candidate_index_revalidated_statistics"
+    elif all_preexisting:
         classification = "revalidated_existing_snapshot_set"
     elif documents_rebuilt:
         classification = "rebuilt_documents_and_snapshot_set"
@@ -270,6 +289,16 @@ def _success_report(
     return {
         "status": status,
         "semantic_base_key": semantic_base_key,
+        "candidate_index": raw_report.get("candidate_index")
+        or {
+            "action": "rebuilt" if raw_report.get("index") is not None else "revalidated",
+            "reasons": [],
+            "candidate_index_version": (raw_report.get("index") or {}).get(
+                "candidate_index_version"
+            ),
+            "content_digest": (raw_report.get("index") or {}).get("content_digest"),
+            "generation_id": (raw_report.get("index") or {}).get("generation_id"),
+        },
         "builder": {
             "filter_fingerprint_version": MUSIC_SEARCH_FILTER_FINGERPRINT_VERSION,
             "snapshot_builder_version": MUSIC_SEARCH_SNAPSHOT_BUILDER_VERSION,
@@ -371,7 +400,7 @@ def main(argv: list[str] | None = None) -> int:
         stage = "derived_rebuild"
         raw_report = rebuild_current_music_search_derived_data(
             conn,
-            rebuild_documents=not args.snapshot_only,
+            rebuild_documents=args.rebuild_documents,
         )
         semantic_base_key = str(
             (raw_report.get("snapshot_set") or {}).get("semantic_base_key") or ""

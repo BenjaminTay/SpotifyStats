@@ -11,12 +11,14 @@ from typing import Any
 
 from backend.domains.metadata.artist_identity import get_identity_revision
 from backend.domains.metadata.track_credits import get_track_credit_revision
-from backend.domains.music_search.index import get_music_search_index_state
 from backend.domains.music_search.revisions import get_music_search_revision_state
 
-MUSIC_SEARCH_FILTER_FINGERPRINT_VERSION = "music_search_filter_v2"
+MUSIC_SEARCH_STATISTICS_FINGERPRINT_VERSION = "music_search_statistics_v3"
+# Compatibility name used by existing reports and API terminology.
+MUSIC_SEARCH_FILTER_FINGERPRINT_VERSION = MUSIC_SEARCH_STATISTICS_FINGERPRINT_VERSION
 MUSIC_SEARCH_SNAPSHOT_BUILDER_VERSION = "music_search_snapshot_v2"
 MUSIC_SEARCH_CHART_BUILDER_VERSION = "music_search_chart_v2"
+LEGACY_MUSIC_SEARCH_FILTER_FINGERPRINT_VERSION = "music_search_filter_v2"
 
 
 @dataclass(frozen=True)
@@ -39,7 +41,6 @@ class MusicSearchFilterContext:
     billboard_aggregation_revision: int
     metadata_revision: int
     settings_revision: int
-    search_index_revision: str
     artist_identity_revision: int
     track_credit_revision: int
     semantic_base_key: str
@@ -118,8 +119,6 @@ def build_music_search_filter_context(
     filters: Mapping[str, Any] | object,
 ) -> MusicSearchFilterContext:
     revisions = get_music_search_revision_state(conn)
-    index_state = get_music_search_index_state(conn)
-    index_revision = str(index_state.get("source_revision") or "unavailable")
     values: dict[str, Any] = {
         "min_ms": int(_value(filters, "min_ms", 30000)),
         "music_only": bool(_value(filters, "music_only", True)),
@@ -139,7 +138,6 @@ def build_music_search_filter_context(
         "billboard_aggregation_revision": revisions.billboard_revision,
         "metadata_revision": revisions.metadata_revision,
         "settings_revision": revisions.settings_revision,
-        "search_index_revision": index_revision,
         "artist_identity_revision": get_identity_revision(conn),
         "track_credit_revision": get_track_credit_revision(conn),
     }
@@ -153,8 +151,6 @@ def build_music_search_filter_context(
             "version": MUSIC_SEARCH_FILTER_FINGERPRINT_VERSION,
             "snapshot_builder": MUSIC_SEARCH_SNAPSHOT_BUILDER_VERSION,
             "chart_builder": MUSIC_SEARCH_CHART_BUILDER_VERSION,
-            "index_generation": str(index_state.get("active_generation_id") or "unavailable"),
-            "index_normalization": str(index_state.get("normalization_version") or "unavailable"),
             **semantic_values,
         }
     )
@@ -171,7 +167,6 @@ def build_music_search_filter_context(
             "billboard": revisions.billboard_revision,
             "metadata": revisions.metadata_revision,
             "settings": revisions.settings_revision,
-            "index": index_revision,
             "identity": values["artist_identity_revision"],
             "credits": values["track_credit_revision"],
         },
@@ -183,3 +178,50 @@ def build_music_search_filter_context(
         filter_fingerprint=fingerprint,
         source_revision=source_revision,
     )
+
+
+def legacy_v2_statistics_identity(
+    conn: sqlite3.Connection,
+    context: MusicSearchFilterContext,
+) -> tuple[str, str]:
+    """Reconstruct the exact pre-split identity for one-time safe adoption.
+
+    This is intentionally not used by request readers.  Maintenance may use
+    it to prove that a current v2 row was built from the still-active index
+    generation before re-keying its stable entity-key payload to v3.
+    """
+    from backend.domains.music_search.index import get_music_search_index_state
+
+    index_state = get_music_search_index_state(conn)
+    generation_id = str(index_state.get("active_generation_id") or "unavailable")
+    index_revision = str(index_state.get("source_revision") or "unavailable")
+    normalization_version = str(index_state.get("normalization_version") or "unavailable")
+    values = {
+        key: value
+        for key, value in context.filter_values().items()
+        if key not in {"semantic_base_key", "filter_fingerprint", "source_revision"}
+    }
+    values["search_index_revision"] = index_revision
+    semantic_values = {
+        key: value
+        for key, value in values.items()
+        if key not in {"merge_level", "dynamic_threshold"}
+    }
+    base = _digest_payload(
+        {
+            "version": LEGACY_MUSIC_SEARCH_FILTER_FINGERPRINT_VERSION,
+            "snapshot_builder": MUSIC_SEARCH_SNAPSHOT_BUILDER_VERSION,
+            "chart_builder": MUSIC_SEARCH_CHART_BUILDER_VERSION,
+            "index_generation": generation_id,
+            "index_normalization": normalization_version,
+            **semantic_values,
+        }
+    )
+    fingerprint = _digest_payload(
+        {
+            "semantic_base_key": base,
+            "merge_level": context.merge_level,
+            "dynamic_threshold": context.dynamic_threshold,
+        }
+    )
+    return base, fingerprint

@@ -429,11 +429,13 @@ if [[ "$current_tag" != "$NEW_TAG" ]]; then
   staged_database="$release_stage_dir/spotify_stats.db"
   cp -- "$release_backup_path" "$staged_database"
   preflight_report="$DEPLOY_DIR/backups/music-search-preflight-${NEW_TAG:0:12}-${release_stamp}.json"
+  search_resume_database="$DEPLOY_DIR/backups/music-search-resume.db"
   search_preflight_min_mib="$(get_env SEARCH_PREFLIGHT_MIN_AVAILABLE_MIB)"
   search_preflight_min_mib="${search_preflight_min_mib:-1280}"
   if ! SEARCH_PREFLIGHT_MIN_AVAILABLE_MIB="$search_preflight_min_mib" \
       "$DEPLOY_DIR/preflight-music-search.sh" \
       --db-copy "$staged_database" \
+      --resume-db "$search_resume_database" \
       --json-report "$preflight_report" \
       --image "$target_backend_image"; then
     echo "目标镜像的音乐搜索数据库副本预检失败；线上服务和数据库保持原状。" >&2

@@ -1237,6 +1237,80 @@ def migrate_034(conn: sqlite3.Connection):
     )
 
 
+@migration(35, "music_search_candidate_statistics_identity_split")
+def migrate_035(conn: sqlite3.Connection):
+    """Version candidate documents independently from statistics snapshots.
+
+    Generation ids remain an atomic-publication detail.  The deterministic
+    candidate version is populated by the next index revalidation/rebuild;
+    existing statistics rows are deliberately preserved for compatibility
+    adoption by the maintenance path instead of being discarded here.
+    """
+    revision_columns = {
+        str(row[1]) for row in conn.execute("PRAGMA table_info(music_search_revision_state)")
+    }
+    if "candidate_revision" not in revision_columns:
+        conn.execute(
+            "ALTER TABLE music_search_revision_state "
+            "ADD COLUMN candidate_revision INTEGER NOT NULL DEFAULT 0"
+        )
+
+    index_columns = {
+        str(row[1]) for row in conn.execute("PRAGMA table_info(music_search_index_state)")
+    }
+    if "candidate_index_version" not in index_columns:
+        conn.execute("ALTER TABLE music_search_index_state ADD COLUMN candidate_index_version TEXT")
+    if "content_digest" not in index_columns:
+        conn.execute("ALTER TABLE music_search_index_state ADD COLUMN content_digest TEXT")
+    conn.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS music_search_document_ngrams (
+            generation_id TEXT NOT NULL,
+            entity_key TEXT NOT NULL,
+            merge_level INTEGER NOT NULL,
+            field TEXT NOT NULL CHECK (field IN ('label', 'secondary', 'alias')),
+            ngram TEXT NOT NULL,
+            PRIMARY KEY(generation_id, entity_key, merge_level, field, ngram)
+        );
+        CREATE INDEX IF NOT EXISTS idx_music_search_document_ngrams_lookup
+            ON music_search_document_ngrams(
+                generation_id, ngram, merge_level, entity_key, field
+            );
+        """
+    )
+
+
+@migration(36, "music_search_candidate_ngram_index")
+def migrate_036(conn: sqlite3.Connection):
+    """Ensure the bounded CJK/fuzzy candidate recall index exists."""
+    conn.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS music_search_document_ngrams (
+            generation_id TEXT NOT NULL,
+            entity_key TEXT NOT NULL,
+            merge_level INTEGER NOT NULL,
+            field TEXT NOT NULL CHECK (field IN ('label', 'secondary', 'alias')),
+            ngram TEXT NOT NULL,
+            PRIMARY KEY(generation_id, entity_key, merge_level, field, ngram)
+        );
+        CREATE INDEX IF NOT EXISTS idx_music_search_document_ngrams_lookup
+            ON music_search_document_ngrams(
+                generation_id, ngram, merge_level, entity_key, field
+            );
+        """
+    )
+    # The previous candidate generation may predate the n-gram side index.
+    # Invalidate only candidate identity so the next maintenance pass rebuilds
+    # documents; statistics snapshots remain reusable by their own fingerprint.
+    conn.execute(
+        """UPDATE music_search_index_state
+           SET candidate_index_version=NULL, content_digest=NULL,
+               status=CASE WHEN status='ready' THEN 'missing' ELSE status END,
+               updated_at=datetime('now')
+           WHERE state_id=1"""
+    )
+
+
 # ── Runner ────────────────────────────────────────────────────────────────
 
 

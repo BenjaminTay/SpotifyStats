@@ -27,6 +27,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--db-path", type=Path, required=True)
     parser.add_argument("--rebuild-report", type=Path, required=True)
     parser.add_argument("--capacity-report", type=Path, required=True)
+    parser.add_argument("--resume-report", type=Path)
     parser.add_argument("--json-output", type=Path, required=True)
     return parser.parse_args()
 
@@ -63,8 +64,8 @@ def validate_rebuild_report(
     migration = payload.get("migration")
     require(isinstance(migration, dict), "missing migration report")
     require(
-        migration.get("up_to_date") is True and int(migration.get("applied_version") or 0) >= 34,
-        "migration report does not include migration 34",
+        migration.get("up_to_date") is True and int(migration.get("applied_version") or 0) >= 36,
+        "migration report does not include migration 36",
     )
     gate = payload.get("gate")
     require(isinstance(gate, dict), "missing rebuild gate report")
@@ -140,7 +141,7 @@ def validate_database(
     conn = sqlite3.connect(db_uri, uri=True)
     try:
         integrity = str(conn.execute("PRAGMA integrity_check").fetchone()[0])
-        migration_34 = conn.execute("SELECT 1 FROM schema_migrations WHERE version=34").fetchone()
+        migration_36 = conn.execute("SELECT 1 FROM schema_migrations WHERE version=36").fetchone()
         rows = conn.execute(
             """SELECT merge_level, dynamic_threshold, filter_fingerprint,
                       status, builder_version
@@ -165,7 +166,7 @@ def validate_database(
         conn.close()
 
     require(integrity == "ok", "database integrity_check failed")
-    require(migration_34 is not None, "migration 34 is not applied")
+    require(migration_36 is not None, "migration 36 is not applied")
     require(len(rows) == 6, "database does not contain exactly six current variants")
     db_variants = {(int(row[0]), bool(row[1])): str(row[2]) for row in rows}
     require(set(db_variants) == EXPECTED_VARIANTS, "database variant matrix is invalid")
@@ -181,7 +182,7 @@ def validate_database(
     require(orphan_count == 0, "music-search context orphan count is not zero")
     return {
         "integrity_check": integrity,
-        "migration_34": True,
+        "migration_36": True,
         "ready_variants": len(rows),
         "required_variants": 6,
         "builder_version": EXPECTED_BUILDER_VERSION,
@@ -214,6 +215,8 @@ def main() -> int:
     host_capacity = load_capacity_report(args.capacity_report)
     validation = validate_database(args.db_path, semantic_base_key, reported_variants)
     output = dict(rebuild)
+    if args.resume_report is not None:
+        output["resume"] = load_rebuild_report(args.resume_report)
     output["host_capacity"] = host_capacity
     output["production_validation"] = validation
     write_json_atomic(
@@ -222,7 +225,7 @@ def main() -> int:
     )
     print(
         "Music-search production preflight passed: "
-        "migration=34 variants=6/6 builder=music_search_snapshot_v2 orphans=0"
+        "migration=36 variants=6/6 builder=music_search_snapshot_v2 orphans=0"
     )
     return 0
 

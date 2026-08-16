@@ -190,6 +190,7 @@ def search_music_candidates(
             normalized_query=analysis.normalized_query,
             snapshot_status="ready",
             filter_fingerprint=filter_fingerprint,
+            candidate_index_version=indexed.candidate_index_version,
             kind=selected_kind,
             page=page,
             page_size=page_size,

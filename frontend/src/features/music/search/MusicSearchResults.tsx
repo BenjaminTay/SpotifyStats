@@ -152,6 +152,8 @@ function snapshotMessage(
 }
 
 function matchExplanation(item: MusicSearchCandidate): string | null {
+  if (item.match_type === 'fuzzy') return '近似匹配'
+  if (item.match_type === 'simplified' || item.match_type === 'traditional') return '简繁匹配'
   return item.match_field === 'artist'
     ? '匹配艺人'
     : item.match_field === 'album'
