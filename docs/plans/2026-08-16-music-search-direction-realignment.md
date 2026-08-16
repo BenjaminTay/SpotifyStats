@@ -1,7 +1,7 @@
 # 音乐查找方向重新指引：轻量候选索引与统计快照解耦
 
 > 创建日期：2026-08-16
-> 状态：阶段 A–D 已完成本地实现与真实副本验收；阶段 E 阻塞于 GitHub 托管 runner 向 TCR 上传镜像，远程生产未切换
+> 状态：已完成；阶段 A–E 已通过本地、真实副本、CI 与生产验收
 > 适用范围：Masthead Quick Open、`/music/search`、候选索引、搜索统计、模糊匹配、简繁体匹配与生产发布
 > 关联文档：`2026-08-16-music-search-performance-and-experience-optimization-plan.md`、`2026-08-16-music-search-remediation-plan.md`、`../reports/2026-08-16-music-search-optimization-delivery.md`
 
@@ -22,8 +22,8 @@ L1/L2/L3 × 动态阈值开/关六个统计变体。
 5. 只有播放数据或统计语义真正变化时才重建六套统计；只改前端、部署脚本或查询匹配规则时，
    不得连带重算六套统计。
 
-现有生产实现仍是迁移期间的有效基线。没有通过新契约、性能和回滚门禁前，不直接删除六变体快照
-或放松当前公开只读边界。
+六变体快照和公开只读边界继续保留；新的生产实现只改变两层的版本、失效和发布复用边界，
+不把统计计算重新放回查询请求。
 
 ### 0.1 当前实施进度（更新于 2026-08-17）
 
@@ -36,20 +36,23 @@ L1/L2/L3 × 动态阈值开/关六个统计变体。
 - 真实主库 Online Backup 副本首次升级只重建候选索引，耗时 4.62 秒、峰值 RSS 318.984MiB、
   45,269 个文档与 188,673 条 n-gram；六个统计变体全部复用且各为 0ms。第二次运行 0.41 秒，
   候选与六变体均复用。40 个简繁/CJK/拼写/高命中混合样本 P95 为 26.467ms。
-- 本地副本、自动化测试和构建已通过，但远程服务器尚未以本次实现 SHA 完成部署验收；因此本文件
-  暂不标记“全部已实施”。远程 workflow `31950983242` 的两次尝试均在 GitHub eastus runner 向
-  TCR 执行 API image layer push 时静默停滞，Web build 与 deploy 均未开始；第二次在预设 30 分钟
-  观察边界安全取消。
-- workflow `31954513187` 已把 build 与 push 拆开，并加入单次 10 分钟、最多 3 次的有界重试和远端
-  manifest 校验；verify 与 full/showcase/dual matrix 均通过，但三次 TCR push 后明确失败，deploy
-  跳过。随后 `70cd5351` 把生产依赖拆为 analytics/API/features 小层并排除 pytest/ruff；workflow
-  `31956683140` 的镜像构建通过，首轮成功上传 10 个新层，后两轮均精确复用，但固定剩余 5 个层的
-  TCR 会话仍超时。目标 SHA manifest 不存在，TCR `main` 未被覆盖，生产服务器、SQLite、远程候选
-  索引与六套统计均未触碰。
-- 远程阻塞发生在任何 SSH/Online Backup/搜索预建之前，不能通过延长搜索重建 timeout 解决。下一步
-  应把镜像构建/推送迁到与 TCR 同地域的受控 runner；备选是先推送到 GitHub 可稳定写入的 registry，
-  再由生产侧按 digest 受控镜像同步。两种方案都必须继续保留 commit SHA、镜像 digest、Online Backup、
-  漂移拒绝、runtime exact gate 与联合回滚，不得退回手工覆盖 `main`。
+- 部署回归由两个独立成本叠加：旧耦合路径每次 SHA 可能冷建六套统计，本地约 16 分 23 秒；GitHub
+  托管 runner 直推 TCR 又会在少数大层长期停滞。前者解释搜索改造后新增的固定计算成本，后者解释
+  总时长进一步放大到 30–40 分钟甚至超时；单纯延长任何一侧 timeout 都不是修复。
+- 镜像链路已改为 GitHub 构建 `linux/amd64`、上传一天保留的私有 CAS Artifact、仅将服务器缺失 blob
+  用可续传 rsync 传到现有生产机、校验后 `docker load`，再由服务器本地网络推送 TCR 并按 digest
+  拉回核验。全部镜像传输完成后才允许 Online Backup、搜索预检、停服和数据库原子替换。
+- 一次性生产统计引导 workflow `31972521511` 成功建立 migration 36 与六个 exact-ready 变体，耗时
+  约 24 分钟，其中六变体 1,391,706ms；这是旧生产库首次升级成本，不属于正常发布预算。
+- 首个正常发布 workflow `31977767545` 以 SHA `898c3d60` 成功切换，端到端约 10 分钟；搜索预检
+  `reused=true`，六套统计精确复用，候选维护与统计校验仅 2 秒。三模式、Online Backup、漂移拒绝、
+  runtime exact gate、public 只读和联合回滚边界均保留。
+- 正常发布容量门禁与一次性统计冷建分开：严格统计复用路径使用 640MiB 候选预算，统计不匹配会在
+  任何重建前失败；独立引导仍保持 1280MiB 冷建预算。两者分别基于 318.984/876.758MiB 实测峰值，
+  不通过降低冷建安全余量换取发布速度。
+- 最终 production workflow `31979057642` 以 SHA `cf2270f1` 在 9 分 57 秒完成，deploy job 为
+  2 分 46 秒；58 个镜像 blob 命中 52 个，只续传 6 个/29,801 B。生产只读语义 smoke 验证精确、
+  模糊、简繁和短 CJK 全部命中，耗时 574.827ms；CAS 同时保留当前版与上一版 archive/image IDs。
 
 ## 1. 为什么曾经需要提前计算
 
@@ -88,7 +91,7 @@ V2 在后台提前生成统计快照，让用户输入时只执行轻量索引�
 
 ### 2.2 每个新 SHA 都可能付出完整冷构建成本
 
-当前生产流程对新 SHA 在 Online Backup 副本执行完整索引与六变体 one-shot。即使只修改前端、部署
+旧生产流程对新 SHA 在 Online Backup 副本执行完整索引与六变体 one-shot。即使只修改前端、部署
 脚本或查询匹配逻辑，也可能生成新的索引 generation 和 semantic base，从而重新计算全部统计。
 
 当前真实规模的本地 `linux/amd64` 实测：
@@ -102,8 +105,15 @@ V2 在后台提前生成统计快照，让用户输入时只执行轻量索引�
 
 ### 2.3 超时后缺少可复用进度
 
-六个变体虽逐个发布到工作副本，但工作副本属于单次临时发布目录。workflow 超时或被取消后，下次
-发布仍可能从头开始，已经完成的变体不能安全复用。
+旧路径的六个变体虽逐个发布到工作副本，但工作副本属于单次临时发布目录。workflow 超时或被取消后，
+下次发布仍可能从头开始，已经完成的变体不能安全复用。
+
+### 2.4 镜像跨境上传是另一条独立慢路径
+
+搜索重建之外，旧 workflow 还要求 GitHub 托管 runner 直接向 TCR 上传全部镜像层。搜索加入 OpenCC
+和新后端代码后首次出现新层，暴露了这条链路对少数大层的长期停滞；即使拆层和串行上传，固定剩余
+层仍会超时。因此部署变慢与搜索改动有时间相关性，但不是“搜索查询本身拖慢 Docker push”。最终
+方案将 GitHub 到生产机的传输与生产机到 TCR 的发布分开，并以内容寻址 blob 复用消除重复整包传输。
 
 ## 3. 新的目标架构
 
@@ -282,7 +292,7 @@ FTS5 trigram 对一至两个字符的查询能力有限，短 CJK 查询应使�
 
 ### 阶段 A：先解耦重建语义
 
-状态：本地完成。
+状态：已完成并通过生产复用验收。
 
 - 从 `statistics_fingerprint` 移除随机 index generation ID；
 - 引入独立、确定性的 `candidate_index_version`；
@@ -293,7 +303,7 @@ FTS5 trigram 对一至两个字符的查询能力有限，短 CJK 查询应使�
 
 ### 阶段 B：发布复用与断点续建
 
-状态：本地完成，待远程取消/续建演练形成生产证据。
+状态：已完成。一次性引导成功续建六变体；正常发布精确复用并在 2 秒内完成搜索预检。
 
 - 让工作副本或可恢复派生 artifact 按 semantic base 保存进度；
 - 每个变体独立校验、发布和复用；
@@ -304,7 +314,7 @@ FTS5 trigram 对一至两个字符的查询能力有限，短 CJK 查询应使�
 
 ### 阶段 C：简繁体匹配
 
-状态：本地完成。
+状态：已完成并纳入生产只读语义门禁。
 
 - 后端统一查询扩展；
 - 原文、简体、繁体去重和排序；
@@ -315,7 +325,7 @@ FTS5 trigram 对一至两个字符的查询能力有限，短 CJK 查询应使�
 
 ### 阶段 D：有限模糊搜索
 
-状态：本地完成。
+状态：已完成并纳入生产只读语义门禁。
 
 - trigram 有界召回；
 - 候选池内编辑距离重排；
@@ -326,21 +336,22 @@ FTS5 trigram 对一至两个字符的查询能力有限，短 CJK 查询应使�
 
 ### 阶段 E：生产门禁与文档收口
 
-状态：**Blocked**。本地门禁与文档已更新；远程 workflow 的 verify、三模式 matrix 与 API image build
-通过，但 GitHub 托管 runner 到 TCR 的 layer upload 连续、有界失败，deploy 未执行。运行时搜索及
-远程回滚证据仍待更换镜像上传路径后补齐。
+状态：**Pass**。私有 Artifact、内容寻址增量传输、服务器侧 TCR 发布和正常 production workflow
+均已通过；生产运行 migration 36、当前精确六变体和 builder v2，搜索 context orphan 为 0。
 
 - schema/索引/统计三类变更分别演练；
 - Online Backup、漂移拒绝、原子切换和联合回滚继续通过；
 - 更新现有优化计划、remediation、交付报告、CHANGELOG 与项目提示词中的重建边界；
 - 只有真实服务器证据通过后才把本文件状态改为“已实施”。
 
-解除阻塞的推荐顺序：
+生产证据：
 
-1. 首选在与 TCR 同地域的受控 `linux/amd64` runner 构建并推送，GitHub 托管 runner 继续负责测试；
-2. 若不能部署受控 runner，再评估 GHCR/同类中转 registry，并由服务器侧按 digest 同步到 TCR；
-3. 任一方案先以非生产标签做 API/Web 双镜像 push/pull smoke，再恢复 production workflow；
-4. 首次成功部署必须证明候选层按版本自适应重建、六套统计按 fingerprint 复用，而不是只证明容器启动。
+1. 非生产 transport smoke 已验证 archive → Artifact → CAS missing blobs → `docker load` → 服务器侧
+   TCR push/pull → manifest/revision；smoke 不调用 deploy、backup 或搜索预检。
+2. 一次性引导只用于 schema 33 旧库建立 migration 36 和首套六变体，之后正常发布不得重复承担。
+3. workflow `31977767545` 和最终 `31979057642` 证明镜像和数据库联合发布成功、搜索统计 0 重建、
+   旧 Backend 在切换前持续在线；后者另验证四类真实搜索语义和 CAS `current/previous`。失败演练均
+   在门禁处保持或恢复旧服务，没有以不完整副本覆盖生产库。
 
 ## 9. 必须保留的现有成果
 

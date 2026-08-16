@@ -186,32 +186,47 @@ push main
 → 后端/前端测试
 → full/showcase/dual 静态部署矩阵
 → 构建同一 SHA 的 API/Web 镜像
-→ 推送 TCR
+→ 上传一天保留的私有 CAS Artifact
+→ rsync 仅传服务器缺失的镜像 blob
+→ 服务器 docker load、推送 TCR 并按 digest 拉回核验
 → SSH 执行 deploy.sh <sha>
 ```
 
 服务器调用不带 `--mode`，因此自动发布只更新当前 `.env` 记录的模式，不会因代码
 发布重新开启已经停止的完全版、简化版或任何外部入口。
 
+镜像 Artifact 不得包含数据库、`data/`、密钥或原始导出。服务器按 SHA 使用独立
+`releases/incoming/<sha>/`，逐 blob 校验文件名 SHA256、镜像 `linux/amd64`、revision label、
+image ID 和 manifest；成功发布后才把 CAS retention 的 `current` 滚动为 `previous`。镜像传输、
+TCR manifest 核验任一步失败，均不得进入数据库备份和停服阶段；搜索容量检查失败可以保留已完成的
+Online Backup，但不得停服或替换数据库。
+
 每个新 SHA 的数据库切换固定为以下 staged 流程：
 
-1. 拉取目标 API/Web 镜像，使用旧 Backend 创建发布前 SQLite Online Backup；
+1. 使用已完成身份核验的目标 API/Web 镜像，由旧 Backend 创建发布前 SQLite Online Backup；
 2. 将备份复制到 `backups/.release-stage.*`，在目标 API 镜像中关闭
    `SPOTIFY_STATS_SEARCH_STARTUP_REBUILD`，执行一次
-   `rebuild_music_search_derived_data.py --require-all-ready`；
-3. 只有 migration 34、当前语义精确六个 fingerprint、builder v2、搜索 context orphan=0、
+   `rebuild_music_search_derived_data.py --require-all-ready --statistics-reuse-only`；候选版本变化时只重建
+   候选，统计 fingerprint 没有变化时六个变体必须精确复用；
+3. 只有 migration 36、当前语义精确六个 fingerprint、builder v2、搜索 context orphan=0、
    `integrity_check=ok` 以及宿主容量全部通过，才保留预检副本；报告写入
    `backups/music-search-preflight-<sha>-<timestamp>.json`；
 4. 停止 Backend 后再创建一份 quiescent Online Backup，并与第一份源备份逐字节比较；若预检期间
    数据发生变化，恢复旧服务并拒绝用旧副本覆盖；
-5. 原子替换 SQLite 后启动新 SHA，执行 runtime 精确六变体、网关、端口、能力与写操作门禁；
+5. 原子替换 SQLite 后启动新 SHA，执行 runtime 精确六变体、精确/模糊/简繁/短 CJK 搜索、网关、
+   端口、能力与写操作门禁；
 6. 任一新版本验收失败，同时恢复发布前 SQLite、上一 SHA 和上一 deployment mode。
 
-容量默认要求 `MemAvailable >= 1280MiB`，可用磁盘
-`>= max(1GiB, 数据库大小 × 4)`；只有经过容量评估后才能在 `.env` 中调整
-`SEARCH_PREFLIGHT_MIN_AVAILABLE_MIB`。当前阈值来自同目标镜像真实规模六变体峰值 876.758MiB，
-保留约 403MiB（约 46%）余量；不得在没有新实测的情况下继续调低。发布脚本不会在 live DB 上执行
-首次六变体冷构建，也不会启用或关闭任何外部 HTTPS 入口。
+旧生产库第一次升级到 migration 36 时，先单独运行手动
+`bootstrap-production-music-search.yml` 建立六套统计；该 workflow 不部署应用。完成一次性引导后，
+正常 UI、部署脚本、查询匹配或 Git SHA 变化不得再次冷建六套统计。
+
+一次性统计引导默认要求 `MemAvailable >= 1280MiB`；正常发布固定使用
+`--statistics-reuse-only`，统计不能精确复用时会在任何候选/统计重建前失败，因此独立使用
+`SEARCH_PREFLIGHT_REUSE_MIN_AVAILABLE_MIB=640` 的候选索引预算。前者来自六变体峰值
+876.758MiB，后者相对候选重建峰值 318.984MiB 保留超过 2 倍预算；两者都不得在没有新实测的
+情况下继续调低。可用磁盘始终要求 `>= max(1GiB, 数据库大小 × 4)`。发布脚本不会在 live DB 上
+执行首次六变体冷构建，也不会启用或关闭任何外部 HTTPS 入口。
 
 手动命令：
 

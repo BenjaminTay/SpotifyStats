@@ -1,7 +1,7 @@
 # 音乐查找验收缺口完整修复规划
 
 > 创建日期：2026-08-16
-> 状态：已完成（实现、真实主库维护、生产副本预建与联合回滚门禁均通过；远程状态按 SHA workflow 判定）
+> 状态：已完成（实现、真实主库维护、生产副本预建、联合回滚与远程生产均通过）
 > 前置结论：实施前仅默认 L2 + 动态阈值开启场景可用；该 Partial 基线已被本轮修复取代
 > 适用范围：搜索快照覆盖、统计语义、候选热路径、Quick Open、`/music/search`、公开只读与生产门禁
 > 关联文档：`docs/plans/2026-08-16-music-search-performance-and-experience-optimization-plan.md`、`docs/reports/2026-08-16-music-search-optimization-delivery.md`
@@ -9,8 +9,10 @@
 > 2026-08-16 后续调整：本文的六变体统计语义与历史验收证据继续有效，但“每个新 SHA 都在一次性
 > 工作副本中冷建候选索引和六变体”的发布策略已被
 > `2026-08-16-music-search-direction-realignment.md` 取代。新实现按确定性候选版本与统计 fingerprint
-> 分别复用，随机 generation ID 不再触发统计重建；本地 A–D 已通过。2026-08-17 的对应 SHA
-> workflow 在 TCR image layer upload 阶段有界失败，deploy 未执行，远程生产仍为旧版本。
+> 分别复用，随机 generation ID 不再触发统计重建；阶段 A–E 已完成。镜像经私有 CAS Artifact
+> 增量传输到现有服务器，再由服务器推送 TCR；正常 production workflow `31977767545` 已成功切换，
+> 最终 workflow `31979057642` 以 SHA `cf2270f1` 在 9 分 57 秒完成，六套统计精确复用，搜索预检
+> 仅 2 秒，生产精确/模糊/简繁/短 CJK 语义门禁通过。
 
 ## 0. 执行摘要
 
@@ -24,8 +26,9 @@ full/showcase/dual、本地生产镜像、schema 33→34、Online Backup 与恢�
 验收中另外发现并修复了三项计划外但同范围的问题：SQLite `foreign_keys=OFF` 时旧快照 context
 不会随 meta 裁剪、Firefox 缺少可构造 `Intl.Segmenter` 会空白页、Docker 构建上下文会带入嵌套
 `seed.db`。真实库 15,175 条搜索 context 孤儿已在 165MiB 在线备份保护下定点清理为 0；其余
-7,831 条历史外键问题不属于本轮，未修改。生产发布现由 GitHub Actions 在每个目标 SHA 上执行
-副本预建与 runtime exact gate；远程是否已运行该 SHA，以 production deployment 记录为准。
+7,831 条历史外键问题不属于本轮，未修改。生产发布由 GitHub Actions 在每个目标 SHA 上执行
+自适应副本预检与 runtime exact gate；远程是否已运行该 SHA，仍只以 production deployment 记录
+为准。
 
 本轮修复不推翻已经完成的两阶段搜索架构。候选索引、context 快照、IME、请求取消、分页、
 Quick Open、Phone presentation 和公开只读边界继续保留。需要修复的是三个尚未闭合的基础契约：
@@ -479,8 +482,10 @@ P95 ≤20ms，响应 ≤8KiB。
 仅有 1,349MiB 可用时被门禁正确拦截。完成变体间 cache/GC 与主播放帧、艺人 fan-out 顺序计算后，
 最终同规模六变体为 983,317.824ms（约 16 分 23.3 秒）、峰值 RSS 876.758MiB、数据库增量约
 31.43MiB、WAL 0；同一 ready 副本重复校验为 313.549ms 且 DB/WAL 增量为 0。生产门禁据此冻结为
-MemAvailable ≥1,280MiB（峰值之上约 403MiB/46% 余量）、可用磁盘 ≥`max(1GiB, DB × 4)`；目标
-服务器只有在候选版本或统计 fingerprint 实际变化时才执行对应重建；普通新 SHA 只做精确复用校验。
+一次性统计冷建为 MemAvailable ≥1,280MiB（峰值之上约 403MiB/46% 余量）；普通发布固定严格复用
+统计，使用 ≥640MiB 的候选预算（候选峰值 318.984MiB 的 2 倍以上）。可用磁盘均要求
+≥`max(1GiB, DB × 4)`；目标服务器只有在候选版本或统计 fingerprint 实际变化时才执行对应独立维护，
+普通新 SHA 只做精确复用校验。
 
 ### 10.4 发布门禁
 

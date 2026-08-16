@@ -2,20 +2,21 @@
 
 日期：2026-08-16
 范围：M0–M5
-结论：**Pass — M0–M5、remediation 与生产发布前门禁通过**
+结论：**Pass — M0–M5、remediation、方向调整与远程生产发布通过**
 
 首轮验收发现的六变体覆盖、`merge_enabled / include_compilations` 语义和高命中热路径缺口，已按
 `docs/plans/2026-08-16-music-search-remediation-plan.md` 完整修复。真实主库六个支持变体全部 ready，
 无 pending/running 重建任务；代码、数据迁移、浏览器、生产镜像、受控副本预建与联合回滚结论均为
-Pass。远程生产是否已运行某个版本，必须以对应 commit SHA 的 GitHub Actions production deployment
-记录为准，不能由本地报告或镜像构建结果代替。
+Pass。远程生产运行状态仍只以对应 commit SHA 的 GitHub Actions production deployment 记录为准，
+不能由本地报告或镜像构建结果代替。
 
 > 后续实现状态：本文记录的两阶段搜索、六变体统计事实和历史性能证据继续有效；其中“每个新 SHA
 > 都执行完整六变体 one-shot”的发布策略已被
 > `docs/plans/2026-08-16-music-search-direction-realignment.md` 取代。当前本地实现以 migration 35/36
-> 拆分确定性候选版本与统计 fingerprint，并加入可续建发布、简繁、短 CJK 与有限模糊匹配；远程
-> 生产仍需对应 SHA 验证后才能更新本文结论。2026-08-17 的远程尝试在 GitHub 托管 runner 向 TCR
-> 上传 API image layers 时有界失败，deploy 未执行，生产仍运行旧版本。
+> 拆分确定性候选版本与统计 fingerprint，并加入可续建发布、简繁、短 CJK 与有限模糊匹配。镜像
+> 发布已改为私有 CAS Artifact → 缺失 blob 续传 → 服务器侧 TCR push/pull；一次性旧库统计引导后，
+> production workflow `31977767545` 首次成功，最终 workflow `31979057642` 已发布 SHA
+> `cf2270f1`，端到端 9 分 57 秒，正常搜索预检只耗时 2 秒。
 
 ## 1. 交付结果
 
@@ -106,6 +107,11 @@ FTS5/trigram runtime 可用。probe 覆盖 exact、prefix、多 token、高命�
 context P95 ≤20ms、响应 ≤8KiB 全部通过。SQL trace 确认候选/context 不访问 `plays` 或 Billboard
 aggregate，不加载完整 eligible set；窗口函数在一个有界 SQL 中完成排序、准确总数和分页。
 
+候选/统计解耦及 CJK/模糊匹配落地后的 v3 复验进一步得到：candidate warm/cold P95 分别为
+10.885/16.458ms，context warm/cold 为 0.112/0.513ms，HTTP candidates P95 为 15.795ms；40 个
+简繁、短 CJK、错拼和高命中混合样本 P95 为 26.467ms。新增能力没有把交互热路径拉回旧的秒级
+计算。
+
 真实副本六变体首次完整构建总计 978,623.54ms（约 16 分 19 秒），按 L2T/L1T/L3T/L2F/L1F/L3F
 分别约 79.57/326.52/48.71/56.57/398.67/68.59 秒，峰值 RSS 约 1.22GiB。该重任务只在显式维护链
 运行，不进入 GET；默认变体优先发布，其余变体逐个可用。
@@ -120,9 +126,10 @@ DataFrame 同时驻留。变体独立发布后释放 `billboard/db` cache 并 GC
 索引重建会生成不同 generation ID 并隔离 semantic base；该行为现已被解耦实现取代。generation ID
 只用于候选索引原子发布和诊断，不再进入统计 semantic base/fingerprint。
 
-默认容量门禁据最终实测改为 1,280MiB，相对峰值保留约 403MiB（约 46%）余量；真实服务器样本
-1,349MiB 相对峰值约有 472MiB 余量，低于 1,280MiB 时仍 fail closed。磁盘继续要求
-`max(1GiB, DB × 4)`。对同一 ready 副本再次运行 `--snapshot-only --require-all-ready` 仅
+一次性统计引导容量门禁据最终实测保持 1,280MiB，相对峰值保留约 403MiB（约 46%）余量；正常
+发布固定为 statistics-reuse-only，统计不匹配会在任何重建前失败，独立使用 640MiB 候选预算，
+相对候选重建峰值 318.984MiB 保留超过 2 倍空间。磁盘继续要求 `max(1GiB, DB × 4)`。对同一 ready
+副本再次运行 `--snapshot-only --require-all-ready` 仅
 313.549ms，snapshot elapsed 为 0、DB/WAL 增量为 0，分类为
 `revalidated_existing_snapshot_set`。
 
@@ -161,15 +168,25 @@ DataFrame 同时驻留。变体独立发布后释放 `billboard/db` cache 并 GC
 - 真实库定点清理前新增 Online Backup：
   `data/backups/spotify-stats-before-search-orphan-cleanup-20260816T080700Z.db`（165MiB）；备份保留
   15,175 条旧搜索孤儿、六个 ready 变体和 61,145 条 context，可直接恢复清理前状态。
-- 生产脚本现在先拉取目标 SHA 镜像并做发布前 Online Backup，再在明确的非 production DB 副本中
-  关闭 startup rebuild 执行 one-shot；只有 migration 34、精确 6/6 fingerprint、builder v2、全表
-  context orphan=0、完整性与容量全部通过，才允许进入切换阶段。
+- GitHub runner 不再直推 TCR；同一 SHA 的 API/Web 镜像先形成一天保留的私有 CAS Artifact，服务器
+  只接收缺失 blob，经 SHA256、`linux/amd64`、revision/image ID 校验后 `docker load`，再由服务器
+  推送 TCR 并按 digest 拉回。镜像传输和核验完成前不会执行 Online Backup、搜索预检或停服。
+- 生产脚本在明确的非 production DB 副本中关闭 startup rebuild，执行自适应维护；只有 migration
+  36、候选版本、精确 6/6 statistics fingerprint、builder v2、全表 context orphan=0、完整性与容量
+  全部通过，才允许进入切换阶段。普通 SHA、前端、部署或查询匹配变化必须复用六套统计。
 - 副本预建期间旧 Backend 保持服务。真正切换前先停 Backend、再做第二份 quiescent Online Backup；
   两份源备份逐字节不一致即拒绝以旧副本覆盖，要求静默维护窗口重试。新版本验收失败会同时恢复
   发布前 SQLite、旧镜像 SHA 与旧 deployment mode。
 - 真实后端容器在一份发布候选副本上连续启动两次，active search jobs 始终为 0；candidate/context
   均返回同一 ready fingerprint。前后完整逻辑 dump SHA 相同，background job 总数与数据库内容均
   未变化，证明 ready 状态下 startup catch-up 和 public GET 不写库。
+- 一次性统计引导 workflow `31972521511` 成功完成旧生产库 migration 36 和 6/6 exact-ready；正常
+  workflow `31977767545` 随后以 SHA `898c3d60` 成功切换，端到端约 10 分钟，搜索预检
+  `reused=true` 且仅 2 秒。一次性约 24 分钟引导不属于正常发布预算。
+- 最终 workflow `31979057642` 以 SHA `cf2270f1` 在 9 分 57 秒完成，build/deploy jobs 分别为
+  51 秒/2 分 46 秒；CAS 58 个 blob 命中 52 个，仅续传 6 个、29,801 B，成功后
+  `current/previous` 同时保留可加载 archive、manifest 和 image IDs。生产只读搜索语义门禁的
+  exact/fuzzy/简繁/短 CJK 全部通过，耗时 574.827ms。
 
 远程发布由 GitHub Actions 通过既有 SSH secrets 执行，且不改变外部 HTTPS 入口。最终运行状态、
 目标 deployment mode 与服务器容量是否通过，以对应 commit SHA 的 production deployment job 为
@@ -177,37 +194,39 @@ DataFrame 同时驻留。变体独立发布后释放 `billboard/db` cache 并 GC
 
 ## 8. 自动化验证
 
-- 后端：`pytest -m unit` 1,032 passed；`pytest -m contract` 356 passed。session 级 fixture 在本地从
+- 后端：最终 production workflow `31979057642` 为 unit 1,086 passed / 2 skipped、contract 356 passed；
+  session 级 fixture 在本地从
   真实库做 Online Backup、在 clean CI 显式从 portable seed 建立临时库；两者都不会让测试 job/
   generation 写入真实主库。
 - API：safe smoke 128/128，boundary probe 111/111；OpenAPI GET 127/140 covered、13 个明确排除、
   0 unaccounted，parameter audit 91 obligations / 0 unaccounted；生成类型已刷新。
-- 前端：全量 Vitest 73 files / 541 tests，
+- 前端：全量 Vitest 73 files / 542 tests，
   production build、变更范围 ESLint 和 `git diff --check -- frontend` 通过。
 - 质量：Ruff check/format、12 个本轮 Python 文件 targeted mypy、detect-secrets 与全仓
   `git diff --check` 通过。全仓既有 ESLint（177 项）和 mypy（136 项）债务未在本轮扩域修复；
   本轮变更范围没有新增对应错误。
-- 生产：API/Web `linux/amd64` 构建、镜像 SQLite 内容门禁、FTS5/trigram doctor、
-  `validate-deployment-config.sh all/full/showcase/dual` 与三浏览器 smoke 通过。
+- 生产：API/Web `linux/amd64` 构建、镜像 SQLite 内容门禁、FTS5/trigram doctor、私有 CAS Artifact、
+  缺失 blob 续传、服务器侧 TCR push/pull、`validate-deployment-config.sh all/full/showcase/dual` 与
+  三浏览器 smoke 通过。
 
-## 9. 远程发布前置条件
+## 9. 远程发布结果与剩余治理
 
-本地 Pass 不等于可以无条件切换远程生产。发布前按以下风险分级处理：
+本地 Pass 不等于远程生产已完成；本轮已用对应 SHA workflow 补齐发布证据。风险现状如下：
 
 | 风险 | 当前证据 | 发布条件 | 推荐处理 |
 |---|---|---|---|
 | 变更面与审查边界 | 搜索、Billboard、前端、部署与文档跨层修改 | 合并历史必须可按领域审查，干净 checkout 重跑门禁 | 保留“后端语义 / 前端体验 / 生产门禁 / 文档”四个逻辑提交，不把 119 个文件压成一个不可审查提交 |
-| 六变体重建资源 | 历史完整冷建约 16 分 23.3 秒、峰值 RSS 876.758MiB；新实现真实副本仅候选重建 4.62 秒且六变体 0ms 复用 | 只有统计 fingerprint 真实变化才允许承担完整六变体成本；普通 SHA 必须走复用 | 保持 MemAvailable/disk fail-closed；使用持久 resume artifact 续建，禁止以延长 timeout 掩盖索引与统计耦合 |
+| 六变体重建资源 | 历史完整冷建约 16 分 23.3 秒、峰值 RSS 876.758MiB；新实现真实副本仅候选重建 4.62 秒、峰值 318.984MiB 且六变体 0ms 复用 | 只有统计 fingerprint 真实变化才允许承担完整六变体成本；普通 SHA 必须走严格复用 | 一次性冷建保持 1280MiB，普通复用/候选路径为 640MiB；使用持久 resume artifact 续建，禁止以延长 timeout 掩盖索引与统计耦合 |
 | 既有外键债务 | 搜索孤儿为 0，但全库仍有 7,831 条非搜索违规 | 不得把历史违规误归因于 migration 34，也不得在搜索发布中盲删 | 单独建立数据治理任务，按缺失父表分类、回溯来源、设计修复/保留策略；修复前另做 Online Backup，并逐类对账详情页和统计 |
 | 静态检查基线 | 本轮变更范围 ESLint/mypy 通过；全仓仍有既有 ESLint/mypy 错误 | CI 必须能区分既有债务与本次新增错误 | 继续对 changed files 硬门禁，新增 baseline ratchet；全仓清零作为独立治理，不把无关大修混入搜索发布 |
 | 前端依赖安全 | Web build 的 npm audit 仍报告 15 项，其中 10 项 high | 公共入口发布前必须完成 direct/transitive、runtime/dev-only 和可利用性分类 | 先执行 `npm audit --json` 与依赖路径核对；优先无破坏升级 direct runtime 依赖，对需要 major upgrade 的项目建立带回归矩阵的独立修复，不直接使用 `--force` |
-| 远程运行面 | 本地 staged/rollback 与真实容器零写入已通过；run `31954513187`、`31956683140` 的 verify/profile matrix/API build 通过，但 TCR layer push 三次有界失败，deploy 均跳过；目标 SHA manifest 不存在且 `main` 未覆盖 | 先解除 runner→TCR 上传阻塞，再要求对应 SHA 的 build、双镜像 manifest、SSH deploy、runtime exact gate 全绿 | 首选同地域受控 runner；备选受信 registry 中转并由生产侧按 digest 同步。继续按 commit SHA 发布并保留 workflow 记录；不得手工覆盖 `main`、绕过容量/漂移/六变体/网关/健康门禁或开放 3000/3001/3002/8000 公网端口 |
+| 远程运行面 | 旧 runner→TCR 直推路径已由私有 CAS Artifact、缺失 blob rsync 与服务器侧 TCR push/pull 取代；最终 run `31979057642` 在 9 分 57 秒完成双镜像 manifest、SSH deploy、数据库切换、搜索语义和 runtime exact gate | 后续发布继续要求对应 SHA 的 build、manifest/digest、Online Backup、搜索复用、runtime 与三模式门禁全绿 | 保留有界 timeout、每 SHA 隔离 staging、`current/previous` archive 与 registry 双回滚；不得手工覆盖 `main`、绕过容量/漂移/网关/健康门禁或开放 3000/3001/3002/8000 公网端口 |
 
-因此，本轮搜索代码和发布机制已具备按 SHA 的本地/CI 前置条件，但远程生产发布当前为
-**Blocked — TCR upload**，不能表述为已经部署。阻塞早于 SSH 与搜索预建，不影响 A–D 的实现结论，
-也不能通过延长搜索重建 timeout 处理。目标服务器容量、数据漂移与运行时语义仍由 workflow 自动
-fail closed，不能靠人工口头确认放行。历史外键、依赖安全分类与全仓静态债务必须有独立台账和
-不新增门禁，但不应与本轮搜索代码混合修复。
+因此，本轮搜索代码、镜像传输和生产发布为 **Pass**。一次性引导的约 24 分钟用于把旧生产库升级
+并建立首套六变体，不代表正常发布；最终正常 workflow 为 9 分 57 秒，且搜索预检只做 2 秒精确
+复用。目标服务器容量、数据漂移与运行时语义继续由 workflow 自动 fail closed，不能靠人工口头确认
+放行。历史外键、依赖安全分类与全仓静态债务仍需独立台账和不新增门禁，但不应与本轮搜索代码混合
+修复。
 
 ## 10. 后续维护规则
 

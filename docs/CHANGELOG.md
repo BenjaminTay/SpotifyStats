@@ -1,18 +1,29 @@
 # 变更日志
 
-## 2026-08-17 — 音乐查找远程发布链路有界收口
+## 2026-08-17 — 音乐查找生产发布与增量镜像传输收口
 
-> 搜索阶段 A–D 本地 Pass；阶段 E Blocked 于 GitHub 托管 runner 向 TCR 上传镜像层，生产未切换。
+> 搜索阶段 A–E Pass；候选/统计解耦、容错匹配和正常生产发布均已完成。
 
-- 将 API/Web 镜像 build 与 push 拆开，关闭额外 provenance manifest；每次 push 最多 10 分钟、最多
-  3 次，成功后必须读取远端 manifest，build job 总时限 45 分钟，避免静默无限悬挂。
-- 后端生产依赖按 analytics/API/features 拆为稳定小层，开发入口继续组合全部运行依赖并追加
-  pytest/ruff；生产镜像不再携带测试与静态检查工具。
-- workflow `31954513187` 与 `31956683140` 的 verify、full/showcase/dual matrix 和 API image build
-  均通过；后一轮首批完成 10 个新层、重试精确复用，但固定剩余 5 个 TCR layer 会话仍超时。
-- 两次 deploy 均未执行；目标 SHA manifest 不存在，TCR `main` 未被覆盖，服务器、SQLite、候选索引
-  和六套统计均未触碰。下一步首选同地域受控 runner，备选受信 registry 中转后按 digest 同步；禁止
-  通过延长搜索重建 timeout 或手工覆盖 `main` 绕过。
+- 确认部署变慢由两条独立链路叠加：旧搜索发布把任意 SHA/index generation 变化误判为六套统计
+  冷建，本地成本约 16 分 23 秒；GitHub 托管 runner 直推 TCR 又会在固定大层长期停滞。禁止继续
+  通过无限延长 timeout 或反复拆层掩盖两类问题。
+- 镜像改为 GitHub 构建 `linux/amd64` 后生成一天保留的私有 CAS Artifact，只用带 checksum 的可续传
+  rsync 将服务器缺失 blob 传到现有生产机；服务器校验 SHA256、platform、revision、image ID 后
+  `docker load`，再从本地网络推送 TCR 并按 digest 拉回核验。完成镜像链路前不会备份、预检或停服。
+- 服务器为每个 SHA 保留可加载 archive、manifest 和 image IDs，只有 deploy 成功后才滚动
+  `current → previous`；registry 与本地镜像共同支持上一版回滚。后端依赖拆为稳定
+  analytics/API/features/search 层，生产镜像排除 pytest/ruff 和全部 SQLite 文件。
+- 一次性统计引导 workflow `31972521511` 将旧生产库升级为 migration 36 并建立 6/6 exact-ready，
+  总耗时约 24 分钟；它不部署应用，也不进入正常发布预算。
+- 正常 production workflow `31977767545` 以 SHA `898c3d60` 成功发布，端到端约 10 分钟；搜索
+  预检精确复用六套统计，只耗时 2 秒。发布前 Online Backup、停服后复核备份、数据漂移拒绝、
+  runtime exact gate、三模式健康检查、public 只读与失败联合回滚均保留。
+- 容量门禁按工作量拆分：一次性统计冷建继续要求 1280MiB；正常发布以
+  `--statistics-reuse-only` 在任何统计重建前 fail-fast，使用 640MiB 候选预算。两档分别覆盖
+  876.758MiB 六变体峰值与 318.984MiB 候选峰值。
+- 最终 production workflow `31979057642` 以 SHA `cf2270f1` 在 9 分 57 秒完成；build/deploy 为
+  51 秒/2 分 46 秒，58 个 CAS blob 命中 52 个，仅续传 6 个/29,801 B。搜索预检严格复用六统计且
+  仅 2 秒；生产 exact/fuzzy/简繁/短 CJK 语义 smoke 全部通过，CAS 保留 current 与 previous 两版。
 
 ## 2026-08-16 — 音乐查找候选/统计解耦与容错匹配
 
@@ -26,7 +37,7 @@
   trigram 候选池与有界编辑距离；前端显式标注简繁/近似匹配。
 - 真实副本首次升级只重建 45,269 个候选文档和 188,673 条 n-gram，4.62 秒、峰值 RSS
   318.984MiB；六个统计变体全部 0ms 复用。第二次维护 0.41 秒，40 个混合查询样本 P95 26.467ms。
-- 完整方向、阶段状态和远程待验证边界见
+- 完整方向、阶段状态和生产证据见
   [`plans/2026-08-16-music-search-direction-realignment.md`](plans/2026-08-16-music-search-direction-realignment.md)。
 
 ## 2026-08-16 — 音乐查找候选索引、精确快照与交互重构

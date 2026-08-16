@@ -1111,7 +1111,9 @@ cd frontend && npm run build
 - [x] 旧入口归属、详情深链、默认不预选和搜索 badge 展示规则未回归
 - [x] remediation plan 的阻断项已修复并由新证据证明，不再提前声明 Pass
 
-后续已获授权进入远程 production workflow，但 2026-08-17 的运行在 GitHub 托管 runner 向 TCR
-上传 API image layers 时连续、有界失败；SSH deploy 未执行，服务器、SQLite、部署模式和外部 HTTPS
-入口均未改变。这不影响上述代码、数据迁移、本地生产镜像与回滚门禁结论，但远程生产必须继续标记
-为 Blocked，直至更换镜像上传路径并取得对应 SHA 的 runtime exact gate 证据。
+后续方向已按
+[`2026-08-16-music-search-direction-realignment.md`](2026-08-16-music-search-direction-realignment.md)
+完成：候选版本与统计 fingerprint 解耦，简繁、短 CJK 和有限模糊匹配已上线；镜像改经私有 CAS
+Artifact 将缺失 blob 续传到现有服务器，再由服务器推送 TCR。一次性旧库统计引导后，正常 production
+workflow `31977767545` 首次成功；最终 workflow `31979057642` 在 9 分 57 秒内完成，搜索预检精确
+复用六变体且仅耗时 2 秒，生产精确/模糊/简繁/短 CJK 语义门禁全绿，远程状态不再 Blocked。

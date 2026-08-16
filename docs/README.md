@@ -20,7 +20,7 @@
 
 | 计划 | 内容 |
 |------|------|
-| [`plans/2026-08-16-music-search-direction-realignment.md`](plans/2026-08-16-music-search-direction-realignment.md) | 音乐查找当前方向：候选索引与统计 fingerprint 解耦、可续建发布、简繁/短 CJK/有限模糊匹配及生产证据边界 |
+| [`plans/2026-08-16-music-search-direction-realignment.md`](plans/2026-08-16-music-search-direction-realignment.md) | 音乐查找现行架构：候选索引与统计 fingerprint 解耦、可续建发布、简繁/短 CJK/有限模糊匹配及生产证据 |
 | [`plans/2026-08-16-music-search-remediation-plan.md`](plans/2026-08-16-music-search-remediation-plan.md) | 已完成的音乐查找验收修复：六种语义快照、榜单参数贯穿、持久 revision、热路径 SQL 下推与发布门禁 |
 | [`plans/2026-08-16-music-search-performance-and-experience-optimization-plan.md`](plans/2026-08-16-music-search-performance-and-experience-optimization-plan.md) | 已完成的音乐查找 M0–M5 优化规格、实施路径与最终验收清单 |
 | [`plans/2026-08-13-dual-deployment-profile-plan.md`](plans/2026-08-13-dual-deployment-profile-plan.md) | 双运行面部署规格：可信网关、公共只读、full/showcase/dual 模式、自动发布和多服务器 SQLite 边界 |
