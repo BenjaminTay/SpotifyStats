@@ -14,13 +14,16 @@
 
 ## 活跃文档
 
-### 实现计划 (`plans/`) — 6 个
+### 实现计划 (`plans/`) — 9 个
 
 只保留尚未完成的工作，或仍作为现行产品规格和后续迭代依据的完整计划。
 
 | 计划 | 内容 |
 |------|------|
+| [`plans/2026-08-16-music-search-remediation-plan.md`](plans/2026-08-16-music-search-remediation-plan.md) | 已完成的音乐查找验收修复：六种语义快照、榜单参数贯穿、持久 revision、热路径 SQL 下推与发布门禁 |
+| [`plans/2026-08-16-music-search-performance-and-experience-optimization-plan.md`](plans/2026-08-16-music-search-performance-and-experience-optimization-plan.md) | 已完成的音乐查找 M0–M5 优化规格、实施路径与最终验收清单 |
 | [`plans/2026-08-13-dual-deployment-profile-plan.md`](plans/2026-08-13-dual-deployment-profile-plan.md) | 双运行面部署规格：可信网关、公共只读、full/showcase/dual 模式、自动发布和多服务器 SQLite 边界 |
+| [`plans/2026-08-13-account-archive-redesign-plan.md`](plans/2026-08-13-account-archive-redesign-plan.md) | 音乐档案重构：严格统计事实、Desktop/Phone 互斥 presentation、收藏旅程与隐私白名单 |
 | [`plans/2026-08-12-yearly-review-v2-rebuild-plan.md`](plans/2026-08-12-yearly-review-v2-rebuild-plan.md) | 年度总结 V2 完整重构：数据审计、统一契约、内容编排、桌面体验、Phone 迁移、验证与回滚计划 |
 | [`plans/2026-08-06-appification-pwa-capacitor-plan.md`](plans/2026-08-06-appification-pwa-capacitor-plan.md) | App 化现行路线：PWA 基线、安全部署、真机验收与 Capacitor 决策门 |
 | [`plans/2026-08-05-mobile-web-design-and-implementation-plan.md`](plans/2026-08-05-mobile-web-design-and-implementation-plan.md) | 移动端网页现行产品规格、M0–M7 完成记录、长期架构契约与验收门禁 |
@@ -38,12 +41,14 @@
 | [`designs/2026-07-04-ai-yearly-report-editorial-agent-pipeline-design.md`](designs/2026-07-04-ai-yearly-report-editorial-agent-pipeline-design.md) | 现行 Editorial Agent Pipeline 设计 |
 | [`designs/2026-07-04-genre-review-settings-design.md`](designs/2026-07-04-genre-review-settings-design.md) | Genre Review Settings 设计 |
 
-### 报告 (`reports/`) — 16 个
+### 报告 (`reports/`) — 18 个
 
 一次性验证/交付/审计报告。
 
 | 报告 | 内容 |
 |------|------|
+| [`reports/2026-08-16-music-search-optimization-delivery.md`](reports/2026-08-16-music-search-optimization-delivery.md) | 音乐查找 M0–M5 与 remediation 最终 Pass 证据：性能、六变体、浏览器、生产镜像和迁移回滚 |
+| [`reports/2026-08-16-music-search-m0-baseline.md`](reports/2026-08-16-music-search-m0-baseline.md) | 音乐查找 M0 基线：只读性能探针、真实数据库冷/热耗时、FTS5/trigram runtime、API 契约与公开只读安全评审 |
 | [`reports/2026-08-15-playback-logical-timeline-v2-delivery.md`](reports/2026-08-15-playback-logical-timeline-v2-delivery.md) | 连续播放逻辑时间线 V2：5 分钟实际空闲边界、次数/时长双轨归属、原子预聚合与真实数据库验收 |
 | [`reports/2026-08-13-dual-deployment-profile-delivery.md`](reports/2026-08-13-dual-deployment-profile-delivery.md) | 完全版与简化版双运行面交付：同一 SHA/Backend/SQLite、可信网关、模式切换与 CI 门禁 |
 | [`reports/2026-08-13-private-cloud-pwa-delivery.md`](reports/2026-08-13-private-cloud-pwa-delivery.md) | 个人私有云与 PWA Phase B：Tailscale 私网架构、SHA 自动发布、脱敏数据迁移、生产验收、备份与手机剩余边界 |

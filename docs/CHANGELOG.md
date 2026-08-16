@@ -1,5 +1,27 @@
 # 变更日志
 
+## 2026-08-16 — 音乐查找候选索引、精确快照与交互重构
+
+> 最终验收状态：Pass。首轮发现的 L1/L3、动态阈值关闭、非默认 Billboard 参数和高命中热路径
+> 缺口已按 `plans/2026-08-16-music-search-remediation-plan.md` 修复；未执行远程部署。
+
+- 将交互搜索拆为轻量候选与精确 context 两阶段：候选 GET 不再加载 lifetime 播放帧或计算完整 Billboard，旧 response 保持兼容。
+- 新增版本化 FTS5 trigram 派生索引、L1/L2/L3 歌曲文档、album project/canonical artist/alias 检索、准确总数和每页 20 条的单类型分页。
+- 新增完整过滤指纹上下文快照及导入、设置、版本归并、艺人身份、曲目署名失效重建；public-readonly 只读 fail-closed，不写库、不排队。
+- migration 34 新增 O(1) 持久 revision state、`semantic_base_key` 与 builder version；维护链路按
+  L2T/L1T/L3T/L2F/L1F/L3F 顺序发布六变体 snapshot-set，旧/错 builder 一律 fail-closed。
+- 候选热路径把快照资格 join、准确总数、稳定排序与分页下推到有界 SQL；Billboard raw/staged/LRU
+  全链补齐 `merge_enabled` 与 `include_compilations`，非默认设置与详情契约一致。
+- Quick Open 与完整页统一 AbortSignal、`retry: 0`、220ms 防抖、IME 门禁、keep-previous-data；补齐 Cmd/Ctrl+K、焦点陷阱/归还、Phone 一次性聚焦、Back 滚动恢复、安全高亮和私有最近查看。
+- warming/stale 只按 2/4/8/10 秒退避观察，终态/错误/隐藏/卸载停止；高亮按后端 match field 映射回
+  原始 grapheme，并为没有可构造 `Intl.Segmenter` 的 Firefox 环境提供 Unicode 安全 fallback。
+- 七类查询共 420 个 HTTP 候选样本 P50/P95 为 15.780/40.741ms，HTTP context 为 6.034/6.921ms；
+  Chromium/Firefox/WebKit、360–1280px、200% reflow、生产镜像 FTS5/trigram、full/showcase/dual、
+  migration 33→34 与 Online Backup 恢复门禁通过。
+- 修复快照 meta 裁剪在 `foreign_keys=OFF` 下遗留 context 的问题；真实库搜索孤儿在 165MiB 在线备份
+  保护下由 15,175 清为 0。生产镜像新增 SQLite 文件名 + magic-header 双门禁，嵌套 `seed.db` 不再入镜。
+- 完整证据见 [`reports/2026-08-16-music-search-optimization-delivery.md`](reports/2026-08-16-music-search-optimization-delivery.md)。
+
 ## 2026-08-15 — 连续播放时间归属与 5 分钟 session 边界
 
 - 连续同曲合并改为按实际空闲时间判断，默认边界为 5 分钟并由服务端 Settings 统一管理；相邻停止时间相差较长但实际无缝重播的长歌曲仍能正确合并，桌面与手机不再各自保存间隔值。

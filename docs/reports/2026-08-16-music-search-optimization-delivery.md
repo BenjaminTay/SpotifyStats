@@ -1,0 +1,183 @@
+# 音乐查找性能与体验优化交付报告
+
+日期：2026-08-16
+范围：M0–M5
+结论：**Pass — M0–M5 与 remediation 全部本地门禁通过**
+
+首轮验收发现的六变体覆盖、`merge_enabled / include_compilations` 语义和高命中热路径缺口，已按
+`docs/plans/2026-08-16-music-search-remediation-plan.md` 完整修复。真实主库六个支持变体全部 ready，
+无 pending/running 重建任务；本地代码、数据迁移、浏览器、生产镜像与回滚结论均为 Pass。没有连接
+或修改远程生产服务器，因此这里的 Pass 不代表已经远程部署。
+
+## 1. 交付结果
+
+音乐查找已从“每次输入同步加载 lifetime 播放帧并计算完整 Billboard”改为两阶段读取：
+
+1. `response_mode=candidates` 从版本化派生索引返回轻量候选、准确总数、分页和稳定
+   `entity_key`；
+2. `/api/music/search/context` 只从精确筛选快照读取播放次数与个人 Billboard 摘要。
+
+候选请求不再调用 `load_period_plays()` 或 `compute_billboard_data()`。上下文未就绪时显式返回
+`warming / stale / unavailable / failed`，前端不会把“未加载”伪装成 0 次播放。旧 response 默认保持
+兼容，Settings 治理消费者显式使用只限私有运行面的 `eligibility=any_local`。
+
+## 2. 数据层与语义
+
+- migration 32/33 建立索引、FTS5 trigram、快照 metadata 和 entity context；migration 34 新增 O(1)
+  `music_search_revision_state`、`semantic_base_key`、变体诊断列和 builder version，并把旧快照统一标记
+  stale。派生表可删除重建，不改原始音乐表。
+- 搜索文档覆盖歌曲 L1/L2/L3、album project、专辑 fallback、canonical artist、已批准 alias、
+  有效署名艺人和专辑 secondary text。
+- 标准化事实源执行 NFKC、Unicode casefold、空白折叠及常见引号、破折号、CJK 全角标点统一；
+  默认不猜简繁体，只接受可注入、可版本化的显式扩展。
+- 排序固定为名称 exact、prefix、token、secondary/alias、trigram substring；播放热度仅作同层
+  tie-breaker。
+- `current` 资格只接受同一 `semantic_base_key`、精确变体、`ready` 且 builder v2 的 snapshot；最终
+  fingerprint 叠加 merge level 与动态阈值，基础语义包含 5 分钟间隔、精选集、三类 Top N、榜单
+  周边界及播放/榜单/元数据/设置/身份/署名/索引 revision。
+- 歌曲、专辑、艺人在 L1/L2/L3 下逐项对照详情统计和 Billboard 详情。专辑使用 album project +
+  canonical artist，不再以旧搜索的原始专辑名称计数作为权威事实。
+- Billboard raw、staged、LRU 和 latest snapshot cache 全链纳入 `merge_enabled`；关闭合并时强制走
+  精确 raw 路径，`include_compilations` 同样贯穿搜索 lookup。六变体 × 三实体及非默认设置契约通过。
+
+## 3. 失效、重建与公开只读
+
+- 导入维护、统计设置、版本归并、艺人身份和曲目署名变化显式 bump 持久 revision，统一失效搜索
+  documents 与六变体 snapshot；失败 mutation 不 bump。每个 `semantic_base_key` 只排一个
+  `snapshot-set` job，按 L2T/L1T/L3T/L2F/L1F/L3F 顺序独立发布，单变体失败不回滚已 ready 结果。
+- 启动时 private-admin 只排缺失或过期的 snapshot-set；已有精确 ready 直接命中。公开 GET 从不冷
+  构建、不排队、不写库，候选冲突基础参数明确返回 `unsupported_candidate_filter` 422。
+- public-readonly 显式允许候选与 context GET，但拒绝 `any_local`；契约测试在请求前后逐表比对
+  index、snapshot 与 background job 状态，确认零副作用。
+- `scripts/rebuild_music_search_index.py`、`scripts/rebuild_music_search_derived_data.py` 支持显式维护；
+  `scripts/music_search_performance_probe.py` 以 URI `mode=ro` + `query_only` 运行，并隐藏原始查询与
+  实体内容。
+- 验收发现普通连接 `foreign_keys=OFF` 时旧 meta 裁剪不会级联删除 context；prune 已改为先显式删
+  context 再删 meta，并补回归。真实库 15,175 条搜索孤儿在 165MiB Online Backup 保护下清为 0；
+  其余 7,831 条历史非搜索外键问题未纳入本轮。
+
+## 4. 前端体验
+
+- 完整页和 Quick Open 共用 220ms 防抖、IME composition 门禁、短查询策略、AbortSignal、
+  `retry: 0`、语义 query key 与 keep-previous-data。
+- 只有 successful `warming / stale` 会按 2/4/8/10 秒退避观察；`ready / unavailable / failed`、网络
+  error、页面隐藏和卸载都会停止。候选 placeholder 只允许同一完整 filter key，context 还要求
+  ready + fingerprint + 排序去重 entity keys，旧变体统计不会串到新候选。
+- Quick Open 每类最多 3 条，默认不选首条；支持 Cmd/Ctrl+K、editable target 排除、方向键、Enter、
+  Escape、focus trap、live count 和关闭后焦点归还。
+- `/music/search` 的全部视图每类预览 5 条并显示准确总数；单类型每页 20 条，URL 完整保存
+  `q / kind / page`，显示例如 `21–40 / 255 · 第 2 / 13 页`。
+- 候选与 context 独立加载，旧候选在更新时保留；统计区域预留固定高度，context 不可用不影响
+  深链，不显示虚假的 0 次播放。
+- Phone 显式入口使用一次性 autofocus intent；从详情 Back 不重新弹键盘，并恢复查询、页码和
+  结果区滚动位置。
+- 匹配文本使用 React `<mark>` 节点安全高亮，不使用 `innerHTML`；label、subtitle 与 alias 根据后端
+  `match_field` 显示。高亮沿用 NFKC/casefold/标点规则并映射回原始 grapheme；Firefox 等没有可构造
+  `Intl.Segmenter` 的环境使用组合符、variation selector、Emoji modifier 与 ZWJ 安全 fallback。
+  private-admin 最近查看最多 6 条，public capability 下不读取也不写入相关 localStorage。
+
+## 5. 真实性能
+
+真实主库事实副本：91,286 条播放、12,362 首歌曲、5,316 张专辑、1,189 位艺人；SQLite 3.51.0，
+FTS5/trigram runtime 可用。probe 覆盖 exact、prefix、多 token、高命中、Unicode、CJK 和单类型第 2 页
+七类固定非敏感查询，每类热身后重复 60 次，共 420 个样本：
+
+| 路径 | M0 基线 | 最终 P50 | 最终 P95 | 最大响应 |
+|---|---:|---:|---:|---:|
+| Service candidates | 214.479ms | 15.499ms | 67.271ms | 5,490 B |
+| HTTP candidates | — | 15.780ms | 40.741ms | 5,490 B |
+| Service context | unavailable | 0.168ms | 0.295ms | 3,998 B |
+| HTTP context | unavailable | 6.034ms | 6.921ms | 3,998 B |
+| 旧完整搜索 warm | 6,466.721ms | 不再进入交互热路径 | — | — |
+| 旧完整搜索 cold | 13,951.602ms | 不再进入交互热路径 | — | — |
+
+候选 SQL phase P95 为 66.601ms，HTTP context snapshot lookup P95 为 0.417ms；候选 P95 ≤80ms、
+context P95 ≤20ms、响应 ≤8KiB 全部通过。SQL trace 确认候选/context 不访问 `plays` 或 Billboard
+aggregate，不加载完整 eligible set；窗口函数在一个有界 SQL 中完成排序、准确总数和分页。
+
+真实副本六变体首次完整构建总计 978,623.54ms（约 16 分 19 秒），按 L2T/L1T/L3T/L2F/L1F/L3F
+分别约 79.57/326.52/48.71/56.57/398.67/68.59 秒，峰值 RSS 约 1.22GiB。该重任务只在显式维护链
+运行，不进入 GET；默认变体优先发布，其余变体逐个可用。
+
+机器可读 probe 在验收临时目录生成，报告不含 raw query、实体内容或播放历史行；大体积临时数据库
+与采样文件在结果写入本文后清理，不作为仓库产物提交。
+
+## 6. 浏览器与视觉验收
+
+- Chromium、Firefox、Playwright WebKit（Safari-family）均通过 Desktop Quick Open 与 Phone 搜索：
+  快捷键、默认无选择、ArrowDown、Tab focus trap、Escape、焦点归还、显式 Phone autofocus、
+  reduced-motion 和零横向溢出。
+- 首轮 R5 在 Firefox 捕获 `Intl.Segmenter is not a constructor` 空白页；能力探测/fallback 修复后，
+  三引擎整组重新通过，不以单次 Chromium 成功替代跨浏览器结论。
+- 360 / 390 / 430 / 640（1280 设备 200% reflow 等价）/ 768 / 1024 / 1280 均为 0px 页面横溢；
+  分页按钮均为 44×44px。
+- 真实 Back 验收从 `page=2` 的 600px 位置点击当前视口内结果进入详情后返回，URL、
+  `21–40 / 255` 页码和 600px 滚动位置全部恢复；普通 query/kind/page PUSH/REPLACE 不复用旧位置。
+- 截图：`output/playwright/music-search-2026-08-16/search-desktop-1280.png`、
+  `search-phone-390.png`；最终三浏览器 JSON 为
+  `output/playwright/music-search-r5/cross-browser-final.json`。
+
+## 7. 生产与回滚门禁
+
+- `linux/amd64` API/Web 生产目标重新构建通过，镜像 ID 分别为 `5974fa7a6987`（约 409MB）与
+  `a6d23a181fc7`（约 67.8MB）。API 中 SQLite 3.46.1、`ENABLE_FTS5=true`，trigram 建表、写入和
+  `MATCH` 实测通过；build proxy 未进入最终镜像环境或 history。
+- 首轮镜像内容门禁发现 `/app/backend/tests/fixtures/seed.db` 被带入。`.dockerignore` 已递归排除
+  `.db/.sqlite/.sqlite3` 与 WAL/SHM/journal 旁车，构建期 `validate_container_image.py` 同时按文件名
+  和 SQLite magic header 阻断伪装数据库；重建后 `/app` 扫描通过。
+- `deploy/production/validate-deployment-config.sh all` 验证 full、showcase、dual 三模式服务矩阵、
+  loopback 端口、可信网关与 public access 配置，结果通过。
+- 首轮 M5 的旧 HEAD `48210b28` 镜像读取 migration 33 数据证据继续有效；本轮另用 schema 33 在线
+  备份演练 33→34、幂等重跑、34→33 restore，均为 `quick_check=ok`。恢复后的 plays/meta/context/job
+  计数与备份时点逐项一致。
+- 真实库定点清理前新增 Online Backup：
+  `data/backups/spotify-stats-before-search-orphan-cleanup-20260816T080700Z.db`（165MiB）；备份保留
+  15,175 条旧搜索孤儿、六个 ready 变体和 61,145 条 context，可直接恢复清理前状态。
+
+本轮没有连接或修改远程生产服务器，也没有切换真实 deployment mode；远程发布仍须由明确的服务器
+目标与发布授权触发，并继续执行既有 SHA、Online Backup、三模式健康检查和失败回滚流程。
+
+## 8. 自动化验证
+
+- 后端：`pytest -m unit` 1,013 passed；`pytest -m contract` 353 passed。session 级 Online Backup fixture
+  将测试定向到临时数据库，真实主库不再产生测试 job/generation。
+- API：safe smoke 128/128，boundary probe 111/111；OpenAPI GET 127/140 covered、13 个明确排除、
+  0 unaccounted，parameter audit 91 obligations / 0 unaccounted；生成类型已刷新。
+- 前端：全量 Vitest 73 files / 541 tests，
+  production build、变更范围 ESLint 和 `git diff --check -- frontend` 通过。
+- 质量：Ruff check/format、15 个本轮 Python 源文件 targeted mypy、detect-secrets 与全仓
+  `git diff --check` 通过。全仓既有 ESLint（177 项）和 mypy（136 项）债务未在本轮扩域修复；
+  本轮变更范围没有新增对应错误。
+- 生产：API/Web `linux/amd64` 构建、镜像 SQLite 内容门禁、FTS5/trigram doctor、
+  `validate-deployment-config.sh all/full/showcase/dual` 与三浏览器 smoke 通过。
+
+## 9. 远程发布前置条件
+
+本地 Pass 不等于可以无条件切换远程生产。发布前按以下风险分级处理：
+
+| 风险 | 当前证据 | 发布条件 | 推荐处理 |
+|---|---|---|---|
+| 变更面与审查边界 | 搜索、Billboard、前端、部署与文档跨层修改 | 合并历史必须可按领域审查，干净 checkout 重跑门禁 | 保留“后端语义 / 前端体验 / 生产门禁 / 文档”四个逻辑提交，不把 119 个文件压成一个不可审查提交 |
+| 六变体重建资源 | 真实副本首次构建约 16 分 19 秒，峰值 RSS 约 1.22GiB | 目标服务器必须完成同镜像、同规模数据的内存/时长预演 | 发布窗口前做 Online Backup；在数据库副本上执行 `--require-all-ready`，记录容器峰值内存、磁盘增量和六变体耗时；容量不足时先扩容，不在真实服务高峰试错 |
+| 既有外键债务 | 搜索孤儿为 0，但全库仍有 7,831 条非搜索违规 | 不得把历史违规误归因于 migration 34，也不得在搜索发布中盲删 | 单独建立数据治理任务，按缺失父表分类、回溯来源、设计修复/保留策略；修复前另做 Online Backup，并逐类对账详情页和统计 |
+| 静态检查基线 | 本轮变更范围 ESLint/mypy 通过；全仓仍有既有 ESLint/mypy 错误 | CI 必须能区分既有债务与本次新增错误 | 继续对 changed files 硬门禁，新增 baseline ratchet；全仓清零作为独立治理，不把无关大修混入搜索发布 |
+| 前端依赖安全 | Web build 的 npm audit 仍报告 15 项，其中 10 项 high | 公共入口发布前必须完成 direct/transitive、runtime/dev-only 和可利用性分类 | 先执行 `npm audit --json` 与依赖路径核对；优先无破坏升级 direct runtime 依赖，对需要 major upgrade 的项目建立带回归矩阵的独立修复，不直接使用 `--force` |
+| 远程运行面 | 只完成本地镜像、三模式配置和回滚演练 | 必须获得明确服务器与发布授权，并验证真实网关、只读边界和健康检查 | 按 commit SHA 发布；发布前备份，发布后逐一验证 full/showcase/dual、public 零写入、六变体 ready 和错误回滚；不得开放 3000/3001/3002/8000 公网端口 |
+
+因此，本轮代码可以进入合并阶段；远程发布的真正阻断项是目标服务器容量预演、依赖安全分类和明确
+发布授权。历史外键与全仓静态债务必须有独立台账和不新增门禁，但不应与本轮搜索代码混合修复。
+
+## 10. 后续维护规则
+
+1. 不得让候选 GET 重新调用完整播放帧或 Billboard 计算。
+2. 新增影响详情事实的设置或治理 mutation，必须 bump 对应持久 revision，并同步扩展 semantic base、
+   六变体 snapshot-set 和失效矩阵。
+3. public 新 GET 默认不开放；搜索公开路径继续保持纯读取和 fail-closed。
+4. 搜索 schema、标准化、排序或 context 语义改变时提升对应版本；reader 必须同时校验 ready 与当前
+   builder version，先构建新 generation/snapshot-set 再切换。
+5. 性能回归使用只读 probe；候选 warm P95 超过 80ms 或响应超过 8KiB 时阻止发布。
+6. rebuild 只能写入与调用连接相同的 JobQueue 数据库；精确 ready 快照必须直接命中，禁止启动或
+   热重载重复排队。
+7. 快照裁剪不得依赖连接级 `PRAGMA foreign_keys`；必须显式先删 context 再删 meta，并保留
+   foreign_keys=OFF 回归。
+8. 生产镜像必须继续执行 SQLite 文件名与 magic-header 双门禁；嵌套 fixture 不能重新进入镜像。

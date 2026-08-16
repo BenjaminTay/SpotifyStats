@@ -21,6 +21,7 @@ src/
 │   ├── ai-insights/        ← AiInsightsExperience + ReportsPanel + ReportCard + ChatInterface + ChatComposer + ChatSessionList + ChatSessionDrawer + SuggestedQuestions + Primitives + Data
 │   ├── ai-tasks/           ← AITaskProgress + AIEvidenceCards + AIToolTrace + AIResultShell，共享 AI task 进度/证据/工具轨迹 UI
 │   ├── music/details/     ← Artist/Album Experience + Header/Tabs + Skeletons + Overview/Tracks/Albums/Career/AlbumEra 子 sections + ReleaseCycle sections + Primitives
+│   ├── music/search/      ← Quick Open + 完整页 + candidate/context hooks + 输入/IME 控制 + private recent
 │   ├── settings/components/  ← 7 配置 Section 组件
 │   └── account/collection/   ← 收藏分析组件
 ├── components/
@@ -73,6 +74,8 @@ Query Key 工厂在 `@/api/query-keys.ts`，按领域 namespace：dashboard / bi
 AppLayout 首屏渲染后延迟预取常用数据。Desktop/Compact/Phone 年度总结进入页面后向后端一次提交全部可用年份，当前年份优先，其余年份由后端单 worker 依次生成；前端只轮询任务状态，不并发下载全部年度 artifact。等待计时以服务端 `requested_at` 为准，切年或离开路由后返回不得归零。年度总结页面不再提供官方 Wrapped 模式；`/wrapped-hub` 只保留后端兼容。
 
 Community 列表、账号页、趋势侧栏和帖子详情必须通过 `useCommunityChartParams()` 带入当前榜单设置口径，并把这些参数放入 community query keys，避免不同 Top N、周起点、动态阈值、合并级别或精选集设置共用旧缓存。
+
+音乐查找消费层只使用 `features/music/search/useMusicSearch.ts` 的 candidate/context hooks。候选请求必须消费 AbortSignal、`retry: 0` 并保留同一完整 filter key 的上一批结果；只有 successful warming/stale 按 2/4/8/10 秒退避观察，终态、error、页面隐藏和卸载停止。context key 使用 ready filter fingerprint + 排序去重 entity keys，未加载 context 不得显示 0 次播放。Quick Open 和完整页共用 `searchInputController.ts` 的 220ms 防抖、IME composition 与短查询门禁；高亮必须复用标准化规则并在 `Intl.Segmenter` 不可用时保持 Unicode/grapheme 安全。URL、焦点和仅 POP 的延迟滚动恢复由完整页负责，private recent 必须受 runtime capability 控制。
 
 **Phase 5 强制约束**：
 - 新增 GET hook 必须使用 `queryKeys` + `useQuery`
@@ -162,5 +165,5 @@ node scripts/frontend_web_vitals_probe.mjs --routes /,/analysis/stats,/analysis/
 `frontend_chart_interaction_smoke.mjs` 覆盖 ECharts tooltip hover、legend toggle 与 dataZoom drag，默认从真实 `/api/billboard/all-time` 响应动态选择长榜艺人；生产 preview 用 `--api-base-url http://127.0.0.1:8000` 分离静态页面与后端 API。dev server 和生产 preview 都应保持 0 console error/warning、0 page error、0 横向溢出。
 `frontend_control_inventory_smoke.mjs` 覆盖 13 个默认路由 + 5 个动态详情路由 × 桌面/390px 移动端，检查可见交互控件缺少可访问名称、嵌套交互控件、disabled 仍可 tab、输入控件无标签和重复 id；`--include-detail-routes` 若解析不到 5 个详情样本会失败，生产 preview 用 `--api-base-url http://127.0.0.1:8000` 转发 `/api` 与 `/covers`。
 `frontend_long_list_smoke.mjs` 覆盖 Records mini-rank、Billboard All-Time、Community Feed infinite load、RecentPlays、SavedTracks、PersonalRankTable 6 个长列表分页/分段渲染场景，要求点击或滚动后可见窗口变化，并保持 0 console error/warning、0 page error、0 横向溢出；生产 preview 用 `--api-base-url http://127.0.0.1:8000` 将 `/api` 与 `/covers` 请求转发到后端。
-`frontend_cross_browser_smoke.mjs` 使用 Python Playwright API 跑 Chromium、Firefox、WebKit（Safari-family）三引擎；`--include-detail-routes` 会从本地 API 动态追加歌曲/专辑/艺人/社区帖子/社区账号 5 个详情路由；生产 preview 用 `--api-base-url http://127.0.0.1:8000` 通过 Playwright request fetch/fulfill 代理 `/api` 与 `/covers`，避免 4173 非 CORS 白名单 origin 削弱证据。若默认 `python` 不能 `import playwright.sync_api`，用 `PYTHON_PLAYWRIGHT=/path/to/python` 或 `--python` 指定。
+`frontend_cross_browser_smoke.mjs` 使用 Python Playwright API 跑 Chromium、Firefox、WebKit（Safari-family）三引擎；`music-search` scenario 覆盖 Quick Open 快捷键、默认无选择、方向键、focus trap/归还，以及 Phone 显式 autofocus、reduced-motion 和 44px tab；`--include-detail-routes` 会从本地 API 动态追加歌曲/专辑/艺人/社区帖子/社区账号 5 个详情路由。生产 preview 用 `--api-base-url http://127.0.0.1:8000` 通过 Playwright request fetch/fulfill 代理 `/api` 与 `/covers`，避免 4173 非 CORS 白名单 origin 削弱证据。若默认 `python` 不能 `import playwright.sync_api`，用 `PYTHON_PLAYWRIGHT=/path/to/python` 或 `--python` 指定。
 `frontend_web_vitals_probe.mjs` 采集 LCP/CLS/合成 FID/TBT lab 指标，并记录 resource count 与 encoded resource KB；生产 preview 用 `--api-base-url http://127.0.0.1:8000` 将 `/api` 与 `/covers` 请求转发到后端，避免只测到静态 preview 壳；可选 `--max-lcp-ms`、`--max-cls`、`--max-tbt-ms`、`--max-resource-count`、`--max-encoded-resource-kb` 会在任一路由/视口超预算时保留报告并以退出码 1 失败。

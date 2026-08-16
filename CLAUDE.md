@@ -26,7 +26,7 @@ UI：「编辑风 × 液态玻璃」— Playfair Display + Inter，毛玻璃，�
 
 PWA/App 基线：生产构建通过 `/manifest.webmanifest`、PWA 图标和 `/sw.js` 提供安装能力，开发模式不注册 Service Worker；手机 Settings 安装卡支持 Chromium prompt、iOS 添加到主屏幕说明与 standalone 状态。Service Worker 只能缓存离线说明、PWA 图标和版本化静态资产，必须绕过 `/api`、`/covers` 与个人/凭据数据。路线按 PWA → HTTPS 安全部署与真机 → Capacitor 推进，见 `docs/plans/2026-08-06-appification-pwa-capacitor-plan.md`。
 
-音乐查找：Masthead 右侧提供全局搜索图标，`/music/search` 提供可分享的完整查找页；后端 `/api/music/search` 只搜索本地播放历史中的歌曲/专辑/艺人，并打开既有 `/music/{tracks|albums|artists}/...` 详情页。`include_chart=true` 时返回与详情页同口径的个人 Billboard 摘要，前端仅显示播放次数、`PK #`、在榜周数与走势排名；搜索弹层默认不高亮第一条结果。
+音乐查找 V2：Quick Open 与 `/music/search` 使用 `response_mode=candidates` 读取版本化 FTS5 trigram 派生索引，再由 `/api/music/search/context` 按稳定 `entity_key` 渐进读取同一完整过滤指纹的精确播放/榜单快照；候选热路径禁止加载 lifetime 播放帧或计算完整 Billboard。服务端基础设置维护 L1/L2/L3 × 动态阈值开/关六个变体，由单个 `snapshot-set` job 顺序构建；GET 只读持久 revision state，reader 必须校验 ready、精确 fingerprint 和当前 builder version。Quick Open 每类 3 条且默认不选首条，全部页每类 5 条，单类型每页 20 条并把 `q/kind/page` 放入 URL；输入统一使用 220ms 防抖、IME 门禁、AbortSignal、`retry: 0`、keep-previous-data，只有 warming/stale 退避观察。Unicode 高亮在 `Intl.Segmenter` 缺失或不可构造时必须安全降级；context 未加载不得伪装为 0 次播放。public 只允许 `current` 且 GET 不写库、不排队、不冷构建，`any_local` 仅供 private Settings。导入、设置、版本归并、艺人身份和署名变化必须 bump 持久 revision 并重建六变体。候选/context warm P95 预算为 80/20ms，见 `docs/reports/2026-08-16-music-search-optimization-delivery.md`。
 
 Billboard 对决：单曲、专辑、艺人对决及 entity lists 必须与详情页共享完整统计上下文（动态阈值、连续播放间隔、合并级别、榜单周边界、三类 Top N、年份范围、精选集设置），前端 query key 必须包含完整过滤指纹。专辑曲目归属复用详情的 album project + canonical artist 口径，艺人歌曲成绩复用 credited artist fan-out 并按 stable event + canonical artist 去重。
 
