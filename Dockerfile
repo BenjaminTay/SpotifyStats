@@ -1,8 +1,12 @@
 FROM python:3.9-slim AS backend
 
 WORKDIR /app
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+COPY requirements-analytics.txt .
+RUN pip install --no-cache-dir -r requirements-analytics.txt
+COPY requirements-api.txt .
+RUN pip install --no-cache-dir -r requirements-api.txt
+COPY requirements-features.txt .
+RUN pip install --no-cache-dir -r requirements-features.txt
 COPY backend/ ./backend/
 COPY scripts/ ./scripts/
 RUN python scripts/validate_container_image.py /app

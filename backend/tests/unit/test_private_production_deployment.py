@@ -242,6 +242,26 @@ def test_workflow_builds_one_sha_and_uploads_profile_runtime_files() -> None:
     assert "--mode" not in workflow.split("Deploy commit", 1)[1]
 
 
+def test_backend_image_uses_split_runtime_dependency_layers() -> None:
+    dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
+    development = (ROOT / "requirements.txt").read_text(encoding="utf-8")
+
+    runtime_files = (
+        "requirements-analytics.txt",
+        "requirements-api.txt",
+        "requirements-features.txt",
+    )
+    for requirement_file in runtime_files:
+        assert f"COPY {requirement_file} ." in dockerfile
+        assert f"RUN pip install --no-cache-dir -r {requirement_file}" in dockerfile
+        assert f"-r {requirement_file}" in development
+
+    backend_stage = dockerfile.split("FROM node:22-alpine AS frontend", 1)[0]
+    assert "pytest" not in backend_stage
+    assert "ruff" not in backend_stage
+    assert "COPY requirements.txt" not in backend_stage
+
+
 def test_temporary_showcase_is_pinned_access_aware_and_not_persistent() -> None:
     auth = (PRODUCTION / "showcase-auth.sh").read_text()
     tunnel = (PRODUCTION / "temporary-showcase.sh").read_text()
