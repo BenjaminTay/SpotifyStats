@@ -118,15 +118,29 @@ fi
 db_copy_dir="$(dirname -- "$db_copy_path")"
 capacity_report="$(mktemp "$db_copy_dir/.music-search-capacity.XXXXXX")"
 work_dir=""
+rebuild_pid=""
+container_name="spotify-stats-search-preflight"
 replacement_path="${db_copy_path}.preflight-ready.$$"
 report_temporary="$(mktemp "$(dirname -- "$json_report_path")/.music-search-preflight.XXXXXX")"
 cleanup() {
+  if [[ -n "$container_name" ]]; then
+    docker rm -f "$container_name" >/dev/null 2>&1 || true
+  fi
+  if [[ -n "$rebuild_pid" ]]; then
+    kill "$rebuild_pid" >/dev/null 2>&1 || true
+  fi
   if [[ -n "$work_dir" && -d "$work_dir" ]]; then
     rm -rf -- "$work_dir"
   fi
   rm -f -- "$replacement_path" "$report_temporary" "$capacity_report"
 }
+terminate() {
+  trap - EXIT HUP INT TERM
+  cleanup
+  exit 130
+}
 trap cleanup EXIT
+trap terminate HUP INT TERM
 
 python3 "$CAPACITY_PROBE" \
   --db-path "$db_copy_path" \
@@ -137,14 +151,61 @@ python3 "$CAPACITY_PROBE" \
 work_dir="$(mktemp -d "$db_copy_dir/.spotify-stats-search-preflight.XXXXXX")"
 cp -- "$db_copy_path" "$work_dir/spotify_stats.db"
 
-docker run --rm --init \
+existing_preflight="$(
+  for container_id in $(docker ps -q); do
+    container_command="$(
+      docker inspect --format '{{.Path}} {{join .Args " "}}' "$container_id" 2>/dev/null || true
+    )"
+    case "$container_command" in
+      *scripts/rebuild_music_search_derived_data.py*"--db-path /preflight/spotify_stats.db"*)
+        printf '%s\n' "$container_id"
+        ;;
+    esac
+  done
+)"
+if [[ -n "$existing_preflight" ]]; then
+  echo "检测到仍在运行的音乐搜索副本重建容器，拒绝并发预检：$existing_preflight" >&2
+  exit 1
+fi
+if docker container inspect "$container_name" >/dev/null 2>&1; then
+  echo "检测到未清理的音乐搜索预检容器：$container_name" >&2
+  exit 1
+fi
+
+echo "音乐搜索副本重建开始；生产服务保持在线。" >&2
+rebuild_started="$SECONDS"
+docker run --name "$container_name" --rm --init \
   -e SPOTIFY_STATS_WARMUP=0 \
   -e SPOTIFY_STATS_SEARCH_STARTUP_REBUILD=0 \
   --mount "type=bind,src=$work_dir,dst=/preflight" \
   "$image" \
   python scripts/rebuild_music_search_derived_data.py \
     --db-path /preflight/spotify_stats.db --json --require-all-ready \
-    > "$work_dir/rebuild-report.json"
+    > "$work_dir/rebuild-report.json" &
+rebuild_pid="$!"
+while kill -0 "$rebuild_pid" >/dev/null 2>&1; do
+  for _heartbeat_second in {1..60}; do
+    sleep 1 &
+    wait "$!" || true
+    if ! kill -0 "$rebuild_pid" >/dev/null 2>&1; then
+      break
+    fi
+  done
+  if kill -0 "$rebuild_pid" >/dev/null 2>&1; then
+    echo "音乐搜索副本重建仍在运行：elapsed=$((SECONDS - rebuild_started))s" >&2
+  fi
+done
+if wait "$rebuild_pid"; then
+  rebuild_status=0
+else
+  rebuild_status="$?"
+  rebuild_pid=""
+  echo "音乐搜索副本重建失败：exit=$rebuild_status" >&2
+  exit "$rebuild_status"
+fi
+rebuild_pid=""
+container_name=""
+echo "音乐搜索副本重建完成：elapsed=$((SECONDS - rebuild_started))s" >&2
 
 # The captured stdout must be exactly one JSON document; logs belong on stderr.
 python3 - "$work_dir/rebuild-report.json" <<'PY'

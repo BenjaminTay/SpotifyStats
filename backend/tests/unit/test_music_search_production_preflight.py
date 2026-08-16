@@ -356,6 +356,10 @@ def test_production_deploy_stages_search_before_atomic_database_promotion() -> N
     assert "SEARCH_PREFLIGHT_MIN_AVAILABLE_MIB" in preflight
     assert "--phase before" in preflight
     assert "--phase after" in preflight
+    assert '--name "$container_name"' in preflight
+    assert "检测到仍在运行的音乐搜索副本重建容器" in preflight
+    assert "音乐搜索副本重建仍在运行" in preflight
+    assert "trap terminate HUP INT TERM" in preflight
     assert "verify-music-search-runtime.py" in verify
     assert "version=34" in runtime_gate
     assert "filter_fingerprint" in runtime_gate
@@ -375,7 +379,7 @@ def test_production_compose_and_workflow_ship_search_release_gates() -> None:
     workflow = (ROOT / ".github" / "workflows" / "deploy-production.yml").read_text(
         encoding="utf-8"
     )
-    assert "timeout-minutes: 60" in workflow
+    assert "timeout-minutes: 180" in workflow
     assert "preflight-music-search.sh" in workflow
     assert "validate-music-search-preflight.py" in workflow
     assert "music_search_preflight_capacity.py" in workflow

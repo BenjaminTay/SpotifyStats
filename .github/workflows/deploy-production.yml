@@ -112,7 +112,9 @@ jobs:
   deploy:
     needs: build
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    # The target host is intentionally small; the exact six-variant rebuild runs
+    # on an Online Backup while the previous release remains available.
+    timeout-minutes: 180
     environment: production
     steps:
       - uses: actions/checkout@v4
