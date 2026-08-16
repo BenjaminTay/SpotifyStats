@@ -18,6 +18,7 @@ pytestmark = pytest.mark.unit
 
 ROOT = Path(__file__).resolve().parents[3]
 SCRIPT = ROOT / "scripts" / "prepare_music_search_resume.py"
+BOOTSTRAP_SCRIPT = ROOT / "deploy" / "production" / "prepare-music-search-bootstrap-resume.py"
 SEED = ROOT / "backend" / "tests" / "fixtures" / "seed.db"
 
 
@@ -26,6 +27,24 @@ def _run(baseline: Path, resume: Path, report: Path) -> subprocess.CompletedProc
         [
             sys.executable,
             str(SCRIPT),
+            "--baseline-db",
+            str(baseline),
+            "--resume-db",
+            str(resume),
+            "--json-output",
+            str(report),
+        ],
+        capture_output=True,
+        check=False,
+        text=True,
+    )
+
+
+def _run_bootstrap(baseline: Path, resume: Path, report: Path) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [
+            sys.executable,
+            str(BOOTSTRAP_SCRIPT),
             "--baseline-db",
             str(baseline),
             "--resume-db",
@@ -110,3 +129,50 @@ def test_resume_artifact_is_reused_only_for_the_same_search_source(tmp_path: Pat
     assert fourth_payload["resume_reused"] is False
     assert fourth_payload["reason"] == "resume_source_changed"
     assert fourth_payload["validation"]["context_orphan_count"] == 0
+
+
+def test_bootstrap_resume_preserves_source_equivalent_partial_statistics(tmp_path: Path) -> None:
+    baseline = tmp_path / "baseline.db"
+    resume = tmp_path / "resume.db"
+    shutil.copy2(SEED, baseline)
+
+    first_report = tmp_path / "bootstrap-first.json"
+    first = _run_bootstrap(baseline, resume, first_report)
+    assert first.returncode == 0, first.stderr
+    assert json.loads(first_report.read_text(encoding="utf-8"))["resume_reused"] is False
+
+    conn = sqlite3.connect(resume)
+    conn.row_factory = sqlite3.Row
+    context = build_music_search_variant_contexts(conn, _current_filter_values(conn))[0]
+    conn.execute(
+        """INSERT INTO music_search_snapshot_meta(
+               snapshot_key, filter_fingerprint, source_revision, status,
+               semantic_base_key, merge_level, dynamic_threshold, builder_version
+           ) VALUES (?, ?, ?, 'ready', ?, ?, ?, ?)""",
+        (
+            context.filter_fingerprint,
+            context.filter_fingerprint,
+            context.source_revision,
+            context.semantic_base_key,
+            context.merge_level,
+            int(context.dynamic_threshold),
+            MUSIC_SEARCH_SNAPSHOT_BUILDER_VERSION,
+        ),
+    )
+    conn.commit()
+    conn.close()
+
+    second_report = tmp_path / "bootstrap-second.json"
+    second = _run_bootstrap(baseline, resume, second_report)
+    assert second.returncode == 0, second.stderr
+    payload = json.loads(second_report.read_text(encoding="utf-8"))
+    assert payload["resume_reused"] is True
+    assert payload["reason"] == "source_equivalent_partial_statistics_resume"
+    assert payload["validation"]["ready_snapshot_rows"] == 1
+
+    conn = sqlite3.connect(resume)
+    assert conn.execute(
+        "SELECT status FROM music_search_snapshot_meta WHERE snapshot_key=?",
+        (context.filter_fingerprint,),
+    ).fetchone() == ("ready",)
+    conn.close()

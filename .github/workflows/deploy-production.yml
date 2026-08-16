@@ -9,6 +9,10 @@ on:
       - "**/*.md"
       - ".github/workflows/deploy-production.yml"
       - ".github/workflows/smoke-production-image-transport.yml"
+      - ".github/workflows/bootstrap-production-music-search.yml"
+      - "deploy/production/bootstrap-music-search-statistics.sh"
+      - "deploy/production/prepare-music-search-bootstrap-resume.py"
+      - "deploy/production/validate-deployment-config.sh"
       - "deploy/production/load-release-images.sh"
       - "deploy/production/publish-release-images.sh"
       - "deploy/production/image_transport.py"
@@ -18,6 +22,8 @@ on:
       - "deploy/production/activate-release-images.sh"
       - "backend/tests/unit/test_production_image_transport.py"
       - "backend/tests/unit/test_image_transport_cas.py"
+      - "backend/tests/unit/test_music_search_production_preflight.py"
+      - "backend/tests/unit/test_prepare_music_search_resume_script.py"
 
 permissions:
   contents: read

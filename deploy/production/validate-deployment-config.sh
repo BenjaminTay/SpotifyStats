@@ -52,6 +52,13 @@ grep -q 'context_orphan_count' "$DEPLOY_DIR/validate-music-search-preflight.py"
 grep -q 'required_disk_bytes' "$DEPLOY_DIR/music_search_preflight_capacity.py"
 grep -q 'verify-music-search-runtime.py' "$DEPLOY_DIR/verify.sh"
 grep -q 'preflight-music-search.sh' "$DEPLOY_DIR/deploy.sh"
+grep -q 'Online Backup' "$DEPLOY_DIR/bootstrap-music-search-statistics.sh"
+grep -q -- '--statistics-reuse-only' "$DEPLOY_DIR/preflight-music-search.sh"
+if grep -q -- '--statistics-reuse-only' \
+  "$DEPLOY_DIR/bootstrap-music-search-statistics.sh"; then
+  echo "一次性搜索 bootstrap 不得启用 statistics-reuse-only。" >&2
+  exit 1
+fi
 
 access_config="$(mktemp)"
 trap 'rm -f "$access_config"' EXIT

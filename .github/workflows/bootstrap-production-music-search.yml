@@ -1,0 +1,137 @@
+name: Bootstrap production music-search statistics
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_sha:
+        description: Existing exact API image commit SHA to run against an Online Backup
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: spotify-stats-production
+  cancel-in-progress: false
+
+env:
+  TCR_REGISTRY: ccr.ccs.tencentyun.com
+
+jobs:
+  bootstrap:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate target revision
+        env:
+          TARGET_SHA: ${{ inputs.target_sha }}
+        run: '[[ "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]]'
+
+      - name: Configure SSH
+        env:
+          SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+          SERVER_KNOWN_HOSTS: ${{ secrets.SERVER_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d "$HOME/.ssh"
+          printf '%s\n' "$SERVER_SSH_KEY" > "$RUNNER_TEMP/spotify-stats-bootstrap-key"
+          chmod 600 "$RUNNER_TEMP/spotify-stats-bootstrap-key"
+          printf '%s\n' "$SERVER_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+          chmod 600 "$HOME/.ssh/known_hosts"
+
+      - name: Install bounded bootstrap helpers
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_PORT: ${{ secrets.SERVER_PORT }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+        run: |
+          rsync --archive --checksum --partial --partial-dir=.bootstrap-scripts-partial \
+            --delay-updates --timeout=300 \
+            -e "ssh -p $SERVER_PORT -i $RUNNER_TEMP/spotify-stats-bootstrap-key" \
+            deploy/production/bootstrap-music-search-statistics.sh \
+            deploy/production/prepare-music-search-bootstrap-resume.py \
+            deploy/production/validate-music-search-preflight.py \
+            deploy/production/music_search_preflight_capacity.py \
+            "$SERVER_USER@$SERVER_HOST:/opt/spotify-stats/"
+          ssh -p "$SERVER_PORT" -i "$RUNNER_TEMP/spotify-stats-bootstrap-key" \
+            "$SERVER_USER@$SERVER_HOST" \
+            'chmod 700 /opt/spotify-stats/bootstrap-music-search-statistics.sh && chmod 600 /opt/spotify-stats/prepare-music-search-bootstrap-resume.py /opt/spotify-stats/validate-music-search-preflight.py /opt/spotify-stats/music_search_preflight_capacity.py'
+
+      - name: Login to TCR without changing production
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_PORT: ${{ secrets.SERVER_PORT }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          TCR_USERNAME: ${{ secrets.TCR_USERNAME }}
+          TCR_PASSWORD: ${{ secrets.TCR_PASSWORD }}
+        run: |
+          printf '%s' "$TCR_PASSWORD" | ssh -p "$SERVER_PORT" \
+            -i "$RUNNER_TEMP/spotify-stats-bootstrap-key" "$SERVER_USER@$SERVER_HOST" \
+            "timeout --signal=TERM --kill-after=10s 1m docker login '$TCR_REGISTRY' --username '$TCR_USERNAME' --password-stdin"
+
+      - name: Build six statistics variants on a resumable Online Backup
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_PORT: ${{ secrets.SERVER_PORT }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          TARGET_SHA: ${{ inputs.target_sha }}
+        run: |
+          report="/opt/spotify-stats/backups/music-search-bootstrap-${TARGET_SHA:0:12}-${GITHUB_RUN_ID}.json"
+          printf 'REPORT_PATH=%s\n' "$report" >> "$GITHUB_ENV"
+          ssh -p "$SERVER_PORT" -i "$RUNNER_TEMP/spotify-stats-bootstrap-key" \
+            "$SERVER_USER@$SERVER_HOST" bash -s -- "$TARGET_SHA" "$report" <<'REMOTE'
+          set -Eeuo pipefail
+          revision="$1"
+          report="$2"
+          [[ "$revision" =~ ^[0-9a-f]{40}$ ]]
+          before="$(mktemp)"
+          after="$(mktemp)"
+          trap 'rm -f "$before" "$after"' EXIT
+          docker ps --no-trunc --format '{{.ID}}\t{{.Image}}\t{{.Names}}' | LC_ALL=C sort > "$before"
+          timeout --signal=TERM --kill-after=30s 38m \
+            /opt/spotify-stats/bootstrap-music-search-statistics.sh \
+              --revision "$revision" --json-report "$report"
+          docker ps --no-trunc --format '{{.ID}}\t{{.Image}}\t{{.Names}}' | LC_ALL=C sort > "$after"
+          cmp --silent "$before" "$after"
+          REMOTE
+
+      - name: Download privacy-safe bootstrap report
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_PORT: ${{ secrets.SERVER_PORT }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+        run: |
+          scp -P "$SERVER_PORT" -i "$RUNNER_TEMP/spotify-stats-bootstrap-key" \
+            "$SERVER_USER@$SERVER_HOST:$REPORT_PATH" \
+            "$RUNNER_TEMP/music-search-bootstrap-report.json"
+          python3 - "$RUNNER_TEMP/music-search-bootstrap-report.json" <<'PY'
+          import json
+          import sys
+
+          payload = json.load(open(sys.argv[1], encoding="utf-8"))
+          gate = payload["gate"]
+          production = payload["production_validation"]
+          resources = payload["resources"]
+          assert payload["status"] == "ready"
+          assert gate["all_six_ready"] is True
+          assert production["context_orphan_count"] == 0
+          with open(sys.argv[1] + ".summary", "w", encoding="utf-8") as handle:
+              handle.write("## One-time music-search statistics bootstrap\n\n")
+              handle.write(f"- Variants: {gate['ready_variant_count']}/6 ready\n")
+              handle.write(f"- Snapshot elapsed: {payload['snapshot_elapsed_ms'] / 1000:.3f}s\n")
+              handle.write(f"- Peak RSS: {resources['peak_rss_mib']:.3f} MiB\n")
+              handle.write("- Production containers: unchanged\n")
+          PY
+          cat "$RUNNER_TEMP/music-search-bootstrap-report.json.summary" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload one-day bootstrap evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: music-search-bootstrap-${{ inputs.target_sha }}
+          path: ${{ runner.temp }}/music-search-bootstrap-report.json
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0

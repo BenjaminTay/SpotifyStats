@@ -401,3 +401,38 @@ def test_production_compose_and_workflow_ship_search_release_gates() -> None:
     assert "validate-music-search-preflight.py" in workflow
     assert "music_search_preflight_capacity.py" in workflow
     assert "verify-music-search-runtime.py" in workflow
+
+
+def test_one_time_statistics_bootstrap_is_manual_resumable_and_never_deploys() -> None:
+    bootstrap = (PRODUCTION / "bootstrap-music-search-statistics.sh").read_text(encoding="utf-8")
+    helper = (PRODUCTION / "prepare-music-search-bootstrap-resume.py").read_text(encoding="utf-8")
+    workflow = (ROOT / ".github" / "workflows" / "bootstrap-production-music-search.yml").read_text(
+        encoding="utf-8"
+    )
+    production_workflow = (ROOT / ".github" / "workflows" / "deploy-production.yml").read_text(
+        encoding="utf-8"
+    )
+
+    assert "workflow_dispatch:" in workflow
+    assert "push:" not in workflow
+    assert "timeout-minutes: 45" in workflow
+    assert "timeout --signal=TERM --kill-after=30s 38m" in workflow
+    assert "docker ps --no-trunc" in workflow
+    assert "cmp --silent" in workflow
+    assert "retention-days: 1" in workflow
+    assert "bootstrap-production-music-search.yml" in production_workflow
+    assert "bootstrap-music-search-statistics.sh" in production_workflow
+    assert "prepare-music-search-bootstrap-resume.py" in production_workflow
+
+    assert "source.backup(target)" in bootstrap
+    assert "--require-all-ready" in bootstrap
+    assert "--statistics-reuse-only" not in bootstrap
+    assert "compose_all stop" not in bootstrap
+    assert "replace_live_database" not in bootstrap
+    assert "deploy.sh" not in bootstrap
+    assert "music-search-resume.db" in bootstrap
+    assert "同源部分成果" in bootstrap
+    assert "src=$DEPLOY_DIR,dst=/bootstrap" not in bootstrap
+    assert "src=$PREPARE_HELPER" in bootstrap
+    assert "source_equivalent_partial_statistics_resume" in helper
+    assert "ALLOWED_PARTIAL_STATUSES" in helper
