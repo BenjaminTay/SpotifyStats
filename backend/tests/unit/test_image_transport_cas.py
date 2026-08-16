@@ -37,6 +37,7 @@ def _docker_save_archive(
     web_ref: str | None = None,
     extra_tag: bool = False,
     divergent_oci_config: bool = False,
+    docker_hub_qualified_annotations: bool = False,
 ) -> Path:
     layout = temporary_path / "source-layout"
     layout.mkdir(parents=True)
@@ -102,7 +103,11 @@ def _docker_save_archive(
                 "digest": f"sha256:{descriptor_digest}",
                 "size": descriptor_size,
                 "annotations": {
-                    "io.containerd.image.name": image_ref,
+                    "io.containerd.image.name": (
+                        f"docker.io/library/{image_ref}"
+                        if docker_hub_qualified_annotations and "/" not in image_ref
+                        else image_ref
+                    ),
                     "org.opencontainers.image.ref.name": tag,
                 },
             }
@@ -190,6 +195,17 @@ def test_build_artifact_uses_oci_config_digest_for_loaded_image_identity(
         assert image["image_id"] == oci_configs[ref]
         assert image["config_digest"] == oci_configs[ref]
         assert image["image_id"] != legacy_configs[ref]
+
+
+def test_build_artifact_accepts_only_standard_docker_hub_short_name_expansion(
+    tmp_path: Path,
+) -> None:
+    revision = "2" * 40
+    archive = _docker_save_archive(
+        tmp_path / "qualified", revision, docker_hub_qualified_annotations=True
+    )
+    manifest = image_transport.build_artifact(archive, tmp_path / "artifact", revision, "smoke")
+    assert [image["role"] for image in manifest["images"]] == ["api", "web"]
 
 
 def test_cas_first_plan_misses_then_second_plan_hits_and_rebuilds_archive(tmp_path: Path) -> None:

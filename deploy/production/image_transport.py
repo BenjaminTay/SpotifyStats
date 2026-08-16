@@ -174,6 +174,13 @@ def _blob_name_from_digest(value: Any, label: str) -> str:
     return name
 
 
+def _normalized_archive_ref(value: str) -> str:
+    for prefix in ("docker.io/library/", "index.docker.io/library/"):
+        if value.startswith(prefix):
+            return value.removeprefix(prefix)
+    return value
+
+
 def _validate_image_config(layout: Path, config_name: str, role: str, revision: str) -> None:
     config_path = layout / "blobs" / "sha256" / config_name
     if sha256_path(config_path) != config_name:
@@ -206,6 +213,9 @@ def _validate_layout_json(
     if not isinstance(manifest, list) or len(manifest) != 2:
         raise TransportError("manifest.json 必须恰好包含 API/Web 两张镜像")
     expected_by_ref = {value: role for role, value in expected_refs.items()}
+    normalized_expected_by_ref = {
+        _normalized_archive_ref(value): role for role, value in expected_refs.items()
+    }
     seen_roles: set[str] = set()
     referenced_blobs: set[str] = set()
     images: list[dict[str, str]] = []
@@ -262,7 +272,11 @@ def _validate_layout_json(
         image_ref = (
             annotations.get("io.containerd.image.name") if isinstance(annotations, dict) else None
         )
-        role = expected_by_ref.get(image_ref) if isinstance(image_ref, str) else None
+        role = (
+            normalized_expected_by_ref.get(_normalized_archive_ref(image_ref))
+            if isinstance(image_ref, str)
+            else None
+        )
         if role is None or role in descriptor_roles:
             raise TransportError("index.json descriptor 未精确映射 API/Web archive ref")
         descriptor_roles.add(role)
