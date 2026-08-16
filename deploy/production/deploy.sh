@@ -449,9 +449,23 @@ if [[ "$current_tag" != "$NEW_TAG" ]]; then
       exit 1
     fi
     if ! cmp -s -- "$release_backup_path" "$quiescent_database"; then
-      activate_mode "$current_mode" || true
-      echo "预检期间生产数据库发生变化，拒绝以旧副本覆盖；请在静默维护窗口重试。" >&2
-      exit 1
+      rebase_report="$DEPLOY_DIR/backups/music-search-rebase-${NEW_TAG:0:12}-${release_stamp}.json"
+      release_backup_relative="$(basename -- "$release_backup_path")"
+      release_stage_relative="$(basename -- "$release_stage_dir")"
+      if ! docker run --rm --init \
+          --mount "type=bind,src=$DEPLOY_DIR/backups,dst=/release" \
+          "$target_backend_image" \
+          python scripts/rebase_music_search_preflight.py \
+            --baseline-db "/release/$release_backup_relative" \
+            --quiescent-db "/release/$release_stage_relative/quiescent-source.db" \
+            --staged-db "/release/$release_stage_relative/spotify_stats.db" \
+            --json-output "/release/$(basename -- "$rebase_report")"; then
+        activate_mode "$current_mode" || true
+        echo "预检期间搜索源发生变化或派生表重基失败；没有替换生产数据库。" >&2
+        exit 1
+      fi
+      staged_database="$quiescent_database"
+      echo "生产数据库仅发生非搜索写入；已保留最新备份并移植验证过的搜索派生表。"
     fi
   fi
 

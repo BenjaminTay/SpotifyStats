@@ -338,6 +338,8 @@ def test_production_deploy_stages_search_before_atomic_database_promotion() -> N
     assert 'preflight-music-search.sh"' in deploy
     assert "compose_all stop backend" in deploy
     assert "cmp -s" in deploy
+    assert "rebase_music_search_preflight.py" in deploy
+    assert "生产数据库仅发生非搜索写入" in deploy
     assert "replace_live_database" in deploy
     assert "database_promoted" in deploy
     assert "正在恢复发布前 SQLite 备份" in deploy
