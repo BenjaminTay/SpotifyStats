@@ -23,7 +23,15 @@ fi
 
 mkdir -p backups
 chmod 700 backups
-backup_name="spotify-stats-$(date -u +%Y%m%dT%H%M%SZ).db"
+backup_name="${SPOTIFY_STATS_BACKUP_NAME:-spotify-stats-$(date -u +%Y%m%dT%H%M%SZ).db}"
+if [[ ! "$backup_name" =~ ^spotify-stats-[A-Za-z0-9._-]+\.db$ ]]; then
+  echo "SPOTIFY_STATS_BACKUP_NAME 必须是安全的 spotify-stats-*.db 文件名。" >&2
+  exit 2
+fi
+if [[ -e "backups/$backup_name" ]]; then
+  echo "备份目标已存在，拒绝覆盖：$DEPLOY_DIR/backups/$backup_name" >&2
+  exit 1
+fi
 
 compose exec -T backend python - "/var/backups/spotify-stats/$backup_name" <<'PY'
 import sqlite3

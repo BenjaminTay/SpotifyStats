@@ -156,6 +156,9 @@ if result != "ok":
     raise SystemExit(f"database integrity_check failed: {result}")
 PY
 
+compose_all exec -T backend python - \
+  < "$DEPLOY_DIR/verify-music-search-runtime.py"
+
 if [[ "${VERIFY_EXTERNAL_INGRESS:-0}" == "1" ]]; then
   if [[ ( "$mode" == "full" || "$mode" == "dual" ) && -n "$private_url" ]]; then
     curl --fail --silent --show-error --max-time 15 "$private_url/api/health" >/dev/null

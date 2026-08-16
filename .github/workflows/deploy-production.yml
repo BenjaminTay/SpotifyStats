@@ -51,7 +51,8 @@ jobs:
           npm run build
       - name: Production deployment contract
         run: |
-          .venv/bin/pytest backend/tests/unit/test_private_production_deployment.py -q
+          .venv/bin/pytest backend/tests/unit/test_private_production_deployment.py \
+            backend/tests/unit/test_music_search_production_preflight.py -q
           deploy/production/validate-deployment-config.sh all
 
   deployment-profile-matrix:
@@ -109,7 +110,7 @@ jobs:
   deploy:
     needs: build
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 60
     environment: production
     steps:
       - uses: actions/checkout@v4
@@ -136,7 +137,9 @@ jobs:
             showcase-auth.sh showcase-access-entrypoint.sh temporary-showcase.sh \
             install-backup-timer.sh verify.sh set-deployment-mode.sh \
             set-showcase-access-mode.sh \
-            validate-deployment-config.sh README.md
+            validate-deployment-config.sh preflight-music-search.sh \
+            validate-music-search-preflight.py music_search_preflight_capacity.py \
+            verify-music-search-runtime.py README.md
           scp -P "$SERVER_PORT" -i "$RUNNER_TEMP/spotify-stats-deploy-key" \
             "$RUNNER_TEMP/spotify-stats-deploy.tgz" \
             "$SERVER_USER@$SERVER_HOST:/tmp/spotify-stats-deploy.tgz"

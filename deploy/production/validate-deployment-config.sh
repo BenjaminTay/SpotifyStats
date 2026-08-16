@@ -40,6 +40,17 @@ grep -q './secrets/showcase.htpasswd:/etc/nginx/auth/showcase.htpasswd:ro' \
   "$COMPOSE_FILE"
 grep -q './showcase-access-entrypoint.sh:/docker-entrypoint.d/15-showcase-access.sh:ro' \
   "$COMPOSE_FILE"
+grep -q 'SPOTIFY_STATS_SEARCH_STARTUP_REBUILD: ${SPOTIFY_STATS_SEARCH_STARTUP_REBUILD:-1}' \
+  "$COMPOSE_FILE"
+grep -q '^SPOTIFY_STATS_SEARCH_STARTUP_REBUILD=1$' "$ENV_TEMPLATE"
+grep -q '^SEARCH_PREFLIGHT_MIN_AVAILABLE_MIB=2560$' "$ENV_TEMPLATE"
+grep -q -- '--require-all-ready' "$DEPLOY_DIR/preflight-music-search.sh"
+grep -q 'SPOTIFY_STATS_SEARCH_STARTUP_REBUILD=0' \
+  "$DEPLOY_DIR/preflight-music-search.sh"
+grep -q 'context_orphan_count' "$DEPLOY_DIR/validate-music-search-preflight.py"
+grep -q 'required_disk_bytes' "$DEPLOY_DIR/music_search_preflight_capacity.py"
+grep -q 'verify-music-search-runtime.py' "$DEPLOY_DIR/verify.sh"
+grep -q 'preflight-music-search.sh' "$DEPLOY_DIR/deploy.sh"
 
 access_config="$(mktemp)"
 trap 'rm -f "$access_config"' EXIT
@@ -92,6 +103,7 @@ validate_mode() {
   )"
   grep -q 'SPOTIFY_STATS_TRUSTED_GATEWAY_REQUIRED: "1"' <<<"$rendered"
   grep -q 'SPOTIFY_STATS_RELEASE_SHA: 0123456789abcdef' <<<"$rendered"
+  grep -q 'SPOTIFY_STATS_SEARCH_STARTUP_REBUILD: "1"' <<<"$rendered"
   if [[ "$mode" == "showcase" || "$mode" == "dual" ]]; then
     grep -q 'SHOWCASE_ACCESS_MODE: protected' <<<"$rendered"
   fi

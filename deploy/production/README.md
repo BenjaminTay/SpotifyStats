@@ -193,8 +193,24 @@ push main
 服务器调用不带 `--mode`，因此自动发布只更新当前 `.env` 记录的模式，不会因代码
 发布重新开启已经停止的完全版、简化版或任何外部入口。
 
-发布前自动执行 SQLite 在线备份。新镜像或目标模式未通过健康检查、数据库完整性、
-loopback 端口、运行面能力和简化版 403 验证时，自动恢复上一 SHA 和上一模式。
+每个新 SHA 的数据库切换固定为以下 staged 流程：
+
+1. 拉取目标 API/Web 镜像，使用旧 Backend 创建发布前 SQLite Online Backup；
+2. 将备份复制到 `backups/.release-stage.*`，在目标 API 镜像中关闭
+   `SPOTIFY_STATS_SEARCH_STARTUP_REBUILD`，执行一次
+   `rebuild_music_search_derived_data.py --require-all-ready`；
+3. 只有 migration 34、当前语义精确六个 fingerprint、builder v2、搜索 context orphan=0、
+   `integrity_check=ok` 以及宿主容量全部通过，才保留预检副本；报告写入
+   `backups/music-search-preflight-<sha>-<timestamp>.json`；
+4. 停止 Backend 后再创建一份 quiescent Online Backup，并与第一份源备份逐字节比较；若预检期间
+   数据发生变化，恢复旧服务并拒绝用旧副本覆盖；
+5. 原子替换 SQLite 后启动新 SHA，执行 runtime 精确六变体、网关、端口、能力与写操作门禁；
+6. 任一新版本验收失败，同时恢复发布前 SQLite、上一 SHA 和上一 deployment mode。
+
+容量默认要求 `MemAvailable >= 2560MiB`，可用磁盘
+`>= max(1GiB, 数据库大小 × 4)`；只有经过容量评估后才能在 `.env` 中调整
+`SEARCH_PREFLIGHT_MIN_AVAILABLE_MIB`，不得为绕过失败临时调低。发布脚本不会在 live DB 上执行
+首次六变体冷构建，也不会启用或关闭任何外部 HTTPS 入口。
 
 手动命令：
 
@@ -205,6 +221,17 @@ loopback 端口、运行面能力和简化版 403 验证时，自动恢复上一
 ./rollback.sh <commit-sha>
 ./validate-deployment-config.sh all
 ```
+
+需要单独复核副本时，必须传入非 `deploy/production/data/` 的明确 DB 副本和全新报告路径：
+
+```bash
+./preflight-music-search.sh \
+  --db-copy /safe/staging/spotify_stats.db \
+  --json-report /safe/staging/music-search-preflight.json \
+  --image <target-backend-image>
+```
+
+脚本只在全部门禁通过后原子更新该副本；拒绝真实 production data 路径、已有报告路径和不安全镜像名。
 
 不带 SHA 的 `rollback.sh` 会同时恢复上一次镜像和上一次模式；显式提供目标 SHA
 时，由于没有该 SHA 对应模式的可靠记录，只回滚镜像并保留当前模式。
@@ -224,6 +251,8 @@ VERIFY_EXTERNAL_INGRESS=1 ./verify.sh  # 仅在确实配置了外部入口时使
 - 能力响应分别为 `private-admin` / `public-readonly`；
 - 简化版设置写操作返回 403；
 - SQLite `PRAGMA integrity_check` 返回 `ok`。
+- 当前服务端 Settings 推导出的六个搜索 fingerprint 精确存在且全部 `ready + builder v2`；
+- `music_search_entity_context` 不存在指向已删除 snapshot meta 的孤儿。
 
 静态发布门禁可在开发机或 CI 执行：
 

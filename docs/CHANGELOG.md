@@ -3,7 +3,8 @@
 ## 2026-08-16 — 音乐查找候选索引、精确快照与交互重构
 
 > 最终验收状态：Pass。首轮发现的 L1/L3、动态阈值关闭、非默认 Billboard 参数和高命中热路径
-> 缺口已按 `plans/2026-08-16-music-search-remediation-plan.md` 修复；未执行远程部署。
+> 缺口已按 `plans/2026-08-16-music-search-remediation-plan.md` 修复；远程运行状态以对应 SHA 的
+> production deployment 记录为准。
 
 - 将交互搜索拆为轻量候选与精确 context 两阶段：候选 GET 不再加载 lifetime 播放帧或计算完整 Billboard，旧 response 保持兼容。
 - 新增版本化 FTS5 trigram 派生索引、L1/L2/L3 歌曲文档、album project/canonical artist/alias 检索、准确总数和每页 20 条的单类型分页。
@@ -20,6 +21,10 @@
   migration 33→34 与 Online Backup 恢复门禁通过。
 - 修复快照 meta 裁剪在 `foreign_keys=OFF` 下遗留 context 的问题；真实库搜索孤儿在 165MiB 在线备份
   保护下由 15,175 清为 0。生产镜像新增 SQLite 文件名 + magic-header 双门禁，嵌套 `seed.db` 不再入镜。
+- 搜索 startup catch-up 新增独立开关，精确六变体 ready 时维护入口只校验不重建；重复 one-shot 在
+  真实副本上为 313.549ms、DB/WAL 零增量。
+- 生产新 SHA 先在 Online Backup 副本执行六变体 one-shot 和内存/磁盘门禁，再以停服后的第二份
+  Online Backup 检查数据漂移；新版本失败会联合恢复发布前 SQLite、旧镜像 SHA 与旧运行模式。
 - 完整证据见 [`reports/2026-08-16-music-search-optimization-delivery.md`](reports/2026-08-16-music-search-optimization-delivery.md)。
 
 ## 2026-08-15 — 连续播放时间归属与 5 分钟 session 边界

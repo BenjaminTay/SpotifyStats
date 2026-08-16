@@ -48,6 +48,11 @@ setup_logging()
 logger = logging.getLogger(__name__)
 
 
+def _music_search_startup_rebuild_enabled() -> bool:
+    """Return whether lifespan should enqueue the search catch-up job."""
+    return os.environ.get("SPOTIFY_STATS_SEARCH_STARTUP_REBUILD", "1") != "0"
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     run_migrations()
@@ -108,11 +113,10 @@ async def lifespan(_app: FastAPI):
             )
         )
 
-    if (
-        os.environ.get("SPOTIFY_STATS_WARMUP", "1") != "0"
-        and "PYTEST_CURRENT_TEST" not in os.environ
-    ):
+    outside_pytest = "PYTEST_CURRENT_TEST" not in os.environ
+    if _music_search_startup_rebuild_enabled() and outside_pytest:
         enqueue_music_search_snapshot_rebuild()
+    if os.environ.get("SPOTIFY_STATS_WARMUP", "1") != "0" and outside_pytest:
         start_warmup_thread()
     yield
     job_queue.stop()

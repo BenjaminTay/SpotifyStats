@@ -172,6 +172,59 @@ def test_enqueue_skips_an_existing_ready_exact_snapshot(monkeypatch) -> None:
     assert len(captured) == 1
 
 
+def test_snapshot_only_revalidates_an_existing_exact_set_without_rebuilding(
+    monkeypatch,
+) -> None:
+    conn = _conn()
+    expected_source = maintenance.music_search_source_revision(conn)
+    conn.execute(
+        """UPDATE music_search_index_state
+           SET active_generation_id='g1', status='ready', source_revision=?""",
+        (expected_source,),
+    )
+    contexts = build_music_search_variant_contexts(
+        conn,
+        maintenance._current_filter_values(conn),
+    )
+    conn.executemany(
+        """INSERT INTO music_search_snapshot_meta(
+               snapshot_key, filter_fingerprint, source_revision, status,
+               semantic_base_key, merge_level, dynamic_threshold, builder_version
+           ) VALUES (?, ?, ?, 'ready', ?, ?, ?, ?)""",
+        [
+            (
+                context.filter_fingerprint,
+                context.filter_fingerprint,
+                context.source_revision,
+                context.semantic_base_key,
+                context.merge_level,
+                int(context.dynamic_threshold),
+                MUSIC_SEARCH_SNAPSHOT_BUILDER_VERSION,
+            )
+            for context in contexts
+        ],
+    )
+    conn.commit()
+
+    monkeypatch.setattr(
+        maintenance,
+        "build_music_search_snapshot_set",
+        lambda *_args, **_kwargs: pytest.fail("ready snapshot set was rebuilt"),
+    )
+
+    report = maintenance.rebuild_current_music_search_derived_data(
+        conn,
+        rebuild_documents=False,
+    )
+
+    assert report["status"] == "ready"
+    assert report["index"] is None
+    assert report["snapshot_set"]["revalidated"] is True
+    assert report["snapshot_set"]["ready_count"] == 6
+    assert all(variant["revalidated"] for variant in report["snapshot_set"]["variants"])
+    assert all(variant["duration_ms"] == 0 for variant in report["snapshot_set"]["variants"])
+
+
 def test_enqueue_does_not_cross_from_temporary_connection_into_main_queue(
     monkeypatch,
 ) -> None:

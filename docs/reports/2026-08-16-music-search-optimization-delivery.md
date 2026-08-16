@@ -2,12 +2,13 @@
 
 日期：2026-08-16
 范围：M0–M5
-结论：**Pass — M0–M5 与 remediation 全部本地门禁通过**
+结论：**Pass — M0–M5、remediation 与生产发布前门禁通过**
 
 首轮验收发现的六变体覆盖、`merge_enabled / include_compilations` 语义和高命中热路径缺口，已按
 `docs/plans/2026-08-16-music-search-remediation-plan.md` 完整修复。真实主库六个支持变体全部 ready，
-无 pending/running 重建任务；本地代码、数据迁移、浏览器、生产镜像与回滚结论均为 Pass。没有连接
-或修改远程生产服务器，因此这里的 Pass 不代表已经远程部署。
+无 pending/running 重建任务；代码、数据迁移、浏览器、生产镜像、受控副本预建与联合回滚结论均为
+Pass。远程生产是否已运行某个版本，必须以对应 commit SHA 的 GitHub Actions production deployment
+记录为准，不能由本地报告或镜像构建结果代替。
 
 ## 1. 交付结果
 
@@ -52,6 +53,9 @@
 - `scripts/rebuild_music_search_index.py`、`scripts/rebuild_music_search_derived_data.py` 支持显式维护；
   `scripts/music_search_performance_probe.py` 以 URI `mode=ro` + `query_only` 运行，并隐藏原始查询与
   实体内容。
+- 启动 catch-up 由 `SPOTIFY_STATS_SEARCH_STARTUP_REBUILD` 独立控制，不再借用缓存 warmup 开关；生产
+  默认开启，副本预建容器显式关闭。精确六变体已经 ready 时，维护入口只做校验，不重建 context，
+  重启也不会重复排队。
 - 验收发现普通连接 `foreign_keys=OFF` 时旧 meta 裁剪不会级联删除 context；prune 已改为先显式删
   context 再删 meta，并补回归。真实库 15,175 条搜索孤儿在 165MiB Online Backup 保护下清为 0；
   其余 7,831 条历史非搜索外键问题未纳入本轮。
@@ -99,6 +103,14 @@ aggregate，不加载完整 eligible set；窗口函数在一个有界 SQL 中�
 分别约 79.57/326.52/48.71/56.57/398.67/68.59 秒，峰值 RSS 约 1.22GiB。该重任务只在显式维护链
 运行，不进入 GET；默认变体优先发布，其余变体逐个可用。
 
+最终生产目标 `linux/amd64` 镜像又在 Online Backup 副本上完成一次发布前 one-shot：总计
+892,501.479ms（约 14 分 52.5 秒），snapshot 888,693.619ms，进程峰值 RSS 1,569.547MiB，SQLite
+由 172,511,232 B 增至 205,381,632 B（增量 32,870,400 B，约 31.35MiB），WAL 最终为 0。宿主
+前后可用内存为 6,879/6,492MiB，可用磁盘为 12,711/12,204MiB，均通过默认 2,560MiB 内存和
+`max(1GiB, DB × 4)` 磁盘门禁。对同一 ready 副本再次运行 `--snapshot-only --require-all-ready` 仅
+313.549ms，snapshot elapsed 为 0、DB/WAL 增量为 0，分类为
+`revalidated_existing_snapshot_set`。
+
 机器可读 probe 在验收临时目录生成，报告不含 raw query、实体内容或播放历史行；大体积临时数据库
 与采样文件在结果写入本文后清理，不作为仓库产物提交。
 
@@ -119,7 +131,8 @@ aggregate，不加载完整 eligible set；窗口函数在一个有界 SQL 中�
 
 ## 7. 生产与回滚门禁
 
-- `linux/amd64` API/Web 生产目标重新构建通过，镜像 ID 分别为 `5974fa7a6987`（约 409MB）与
+- `linux/amd64` API/Web 生产目标重新构建通过；最终本地 release API 镜像 ID 为 `20ba481c1c66`
+  （约 409MB），Web 镜像 ID 为
   `a6d23a181fc7`（约 67.8MB）。API 中 SQLite 3.46.1、`ENABLE_FTS5=true`，trigram 建表、写入和
   `MATCH` 实测通过；build proxy 未进入最终镜像环境或 history。
 - 首轮镜像内容门禁发现 `/app/backend/tests/fixtures/seed.db` 被带入。`.dockerignore` 已递归排除
@@ -133,19 +146,29 @@ aggregate，不加载完整 eligible set；窗口函数在一个有界 SQL 中�
 - 真实库定点清理前新增 Online Backup：
   `data/backups/spotify-stats-before-search-orphan-cleanup-20260816T080700Z.db`（165MiB）；备份保留
   15,175 条旧搜索孤儿、六个 ready 变体和 61,145 条 context，可直接恢复清理前状态。
+- 生产脚本现在先拉取目标 SHA 镜像并做发布前 Online Backup，再在明确的非 production DB 副本中
+  关闭 startup rebuild 执行 one-shot；只有 migration 34、精确 6/6 fingerprint、builder v2、全表
+  context orphan=0、完整性与容量全部通过，才允许进入切换阶段。
+- 副本预建期间旧 Backend 保持服务。真正切换前先停 Backend、再做第二份 quiescent Online Backup；
+  两份源备份逐字节不一致即拒绝以旧副本覆盖，要求静默维护窗口重试。新版本验收失败会同时恢复
+  发布前 SQLite、旧镜像 SHA 与旧 deployment mode。
+- 真实后端容器在一份发布候选副本上连续启动两次，active search jobs 始终为 0；candidate/context
+  均返回同一 ready fingerprint。前后完整逻辑 dump SHA 相同，background job 总数与数据库内容均
+  未变化，证明 ready 状态下 startup catch-up 和 public GET 不写库。
 
-本轮没有连接或修改远程生产服务器，也没有切换真实 deployment mode；远程发布仍须由明确的服务器
-目标与发布授权触发，并继续执行既有 SHA、Online Backup、三模式健康检查和失败回滚流程。
+远程发布由 GitHub Actions 通过既有 SSH secrets 执行，且不改变外部 HTTPS 入口。最终运行状态、
+目标 deployment mode 与服务器容量是否通过，以对应 commit SHA 的 production deployment job 为
+唯一权威证据。
 
 ## 8. 自动化验证
 
-- 后端：`pytest -m unit` 1,013 passed；`pytest -m contract` 353 passed。session 级 Online Backup fixture
+- 后端：`pytest -m unit` 1,032 passed；`pytest -m contract` 356 passed。session 级 Online Backup fixture
   将测试定向到临时数据库，真实主库不再产生测试 job/generation。
 - API：safe smoke 128/128，boundary probe 111/111；OpenAPI GET 127/140 covered、13 个明确排除、
   0 unaccounted，parameter audit 91 obligations / 0 unaccounted；生成类型已刷新。
 - 前端：全量 Vitest 73 files / 541 tests，
   production build、变更范围 ESLint 和 `git diff --check -- frontend` 通过。
-- 质量：Ruff check/format、15 个本轮 Python 源文件 targeted mypy、detect-secrets 与全仓
+- 质量：Ruff check/format、12 个本轮 Python 文件 targeted mypy、detect-secrets 与全仓
   `git diff --check` 通过。全仓既有 ESLint（177 项）和 mypy（136 项）债务未在本轮扩域修复；
   本轮变更范围没有新增对应错误。
 - 生产：API/Web `linux/amd64` 构建、镜像 SQLite 内容门禁、FTS5/trigram doctor、
@@ -158,14 +181,15 @@ aggregate，不加载完整 eligible set；窗口函数在一个有界 SQL 中�
 | 风险 | 当前证据 | 发布条件 | 推荐处理 |
 |---|---|---|---|
 | 变更面与审查边界 | 搜索、Billboard、前端、部署与文档跨层修改 | 合并历史必须可按领域审查，干净 checkout 重跑门禁 | 保留“后端语义 / 前端体验 / 生产门禁 / 文档”四个逻辑提交，不把 119 个文件压成一个不可审查提交 |
-| 六变体重建资源 | 真实副本首次构建约 16 分 19 秒，峰值 RSS 约 1.22GiB | 目标服务器必须完成同镜像、同规模数据的内存/时长预演 | 发布窗口前做 Online Backup；在数据库副本上执行 `--require-all-ready`，记录容器峰值内存、磁盘增量和六变体耗时；容量不足时先扩容，不在真实服务高峰试错 |
+| 六变体重建资源 | 生产目标镜像副本预建 14 分 52.5 秒，峰值 RSS 1,569.547MiB，DB 增长约 31.35MiB；重复校验 313.549ms、零写入 | 目标服务器在每个新 SHA 发布时仍须通过同一自动容量和副本预建门禁 | 保持默认 MemAvailable ≥2,560MiB、disk ≥max(1GiB, DB×4)；不足时 fail closed 并先扩容，不降低阈值后在线试错 |
 | 既有外键债务 | 搜索孤儿为 0，但全库仍有 7,831 条非搜索违规 | 不得把历史违规误归因于 migration 34，也不得在搜索发布中盲删 | 单独建立数据治理任务，按缺失父表分类、回溯来源、设计修复/保留策略；修复前另做 Online Backup，并逐类对账详情页和统计 |
 | 静态检查基线 | 本轮变更范围 ESLint/mypy 通过；全仓仍有既有 ESLint/mypy 错误 | CI 必须能区分既有债务与本次新增错误 | 继续对 changed files 硬门禁，新增 baseline ratchet；全仓清零作为独立治理，不把无关大修混入搜索发布 |
 | 前端依赖安全 | Web build 的 npm audit 仍报告 15 项，其中 10 项 high | 公共入口发布前必须完成 direct/transitive、runtime/dev-only 和可利用性分类 | 先执行 `npm audit --json` 与依赖路径核对；优先无破坏升级 direct runtime 依赖，对需要 major upgrade 的项目建立带回归矩阵的独立修复，不直接使用 `--force` |
-| 远程运行面 | 只完成本地镜像、三模式配置和回滚演练 | 必须获得明确服务器与发布授权，并验证真实网关、只读边界和健康检查 | 按 commit SHA 发布；发布前备份，发布后逐一验证 full/showcase/dual、public 零写入、六变体 ready 和错误回滚；不得开放 3000/3001/3002/8000 公网端口 |
+| 远程运行面 | 本地 staged/rollback 与真实容器零写入已通过；远程只能由 production workflow 访问 | 对应 SHA 的 build、profile matrix、SSH deploy、runtime exact gate 全绿 | 按 commit SHA 发布并保留 workflow 记录；任何容量、数据漂移、六变体、网关或健康门禁失败都不手工绕过；不得开放 3000/3001/3002/8000 公网端口 |
 
-因此，本轮代码可以进入合并阶段；远程发布的真正阻断项是目标服务器容量预演、依赖安全分类和明确
-发布授权。历史外键与全仓静态债务必须有独立台账和不新增门禁，但不应与本轮搜索代码混合修复。
+因此，本轮搜索代码和发布机制可以进入按 SHA 的生产流程；目标服务器容量、数据漂移与运行时语义
+由 workflow 自动 fail closed，不能靠人工口头确认放行。历史外键、依赖安全分类与全仓静态债务必须
+有独立台账和不新增门禁，但不应与本轮搜索代码混合修复。
 
 ## 10. 后续维护规则
 
@@ -181,3 +205,5 @@ aggregate，不加载完整 eligible set；窗口函数在一个有界 SQL 中�
 7. 快照裁剪不得依赖连接级 `PRAGMA foreign_keys`；必须显式先删 context 再删 meta，并保留
    foreign_keys=OFF 回归。
 8. 生产镜像必须继续执行 SQLite 文件名与 magic-header 双门禁；嵌套 fixture 不能重新进入镜像。
+9. 生产新 SHA 必须先在 Online Backup 副本执行精确六变体 one-shot；不得直接在 live DB 冷构建。
+10. startup catch-up 与 cache warmup 必须保持独立；副本预建关闭前者，正常 private 生产默认开启。

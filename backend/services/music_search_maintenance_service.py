@@ -9,7 +9,10 @@ from backend.core.db import get_db
 from backend.core.job_queue import Job, get_job_queue, queue_targets_connection
 from backend.domains.metadata.artist_identity import get_identity_state
 from backend.domains.metadata.track_credits import get_track_credit_state
-from backend.domains.music_search.context import build_music_search_filter_context
+from backend.domains.music_search.context import (
+    MusicSearchFilterContext,
+    build_music_search_filter_context,
+)
 from backend.domains.music_search.index import (
     get_music_search_index_state,
     music_search_source_revision,
@@ -61,6 +64,59 @@ def _current_filter_values(conn: sqlite3.Connection) -> dict[str, Any]:
     }
 
 
+def _revalidated_snapshot_set_report(
+    conn: sqlite3.Connection,
+    contexts: tuple[MusicSearchFilterContext, ...],
+) -> dict[str, Any] | None:
+    """Return the exact ready set without rebuilding any persisted rows."""
+    if not all(
+        get_ready_music_search_snapshot_key(conn, context.filter_fingerprint) is not None
+        for context in contexts
+    ):
+        return None
+
+    rows = conn.execute(
+        """SELECT meta.snapshot_key, meta.filter_fingerprint, meta.status,
+                  meta.builder_version,
+                  (SELECT COUNT(*) FROM music_search_entity_context context
+                   WHERE context.snapshot_key=meta.snapshot_key) AS entity_count
+           FROM music_search_snapshot_meta meta
+           WHERE meta.filter_fingerprint IN ({})""".format(",".join("?" for _ in contexts)),
+        tuple(context.filter_fingerprint for context in contexts),
+    ).fetchall()
+    rows_by_fingerprint = {str(row[1]): row for row in rows}
+    if len(rows_by_fingerprint) != len(contexts):
+        return None
+
+    variants = []
+    for context in contexts:
+        row = rows_by_fingerprint[context.filter_fingerprint]
+        variants.append(
+            {
+                "status": "ready",
+                "snapshot_key": str(row[0]),
+                "filter_fingerprint": context.filter_fingerprint,
+                "entity_count": int(row[4]),
+                "source_revision": context.source_revision,
+                "semantic_base_key": context.semantic_base_key,
+                "merge_level": context.merge_level,
+                "dynamic_threshold": context.dynamic_threshold,
+                "builder_version": str(row[3]),
+                "duration_ms": 0.0,
+                "revalidated": True,
+            }
+        )
+    return {
+        "status": "ready",
+        "semantic_base_key": contexts[0].semantic_base_key,
+        "ready_count": len(variants),
+        "failed_count": 0,
+        "duration_ms": 0.0,
+        "variants": variants,
+        "revalidated": True,
+    }
+
+
 def rebuild_current_music_search_derived_data(
     conn: sqlite3.Connection,
     *,
@@ -78,7 +134,11 @@ def rebuild_current_music_search_derived_data(
     ):
         index_report = rebuild_music_search_index(conn)
     contexts = build_music_search_variant_contexts(conn, _current_filter_values(conn))
-    snapshot_set_report = build_music_search_snapshot_set(conn, contexts)
+    snapshot_set_report = None
+    if index_report is None and not rebuild_documents:
+        snapshot_set_report = _revalidated_snapshot_set_report(conn, contexts)
+    if snapshot_set_report is None:
+        snapshot_set_report = build_music_search_snapshot_set(conn, contexts)
     default_snapshot = snapshot_set_report["variants"][0]
     return {
         "status": snapshot_set_report["status"],

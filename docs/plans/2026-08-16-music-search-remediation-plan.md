@@ -1,7 +1,7 @@
 # 音乐查找验收缺口完整修复规划
 
 > 创建日期：2026-08-16
-> 状态：已完成（本地实现、真实主库维护、本地生产与回滚门禁均通过）
+> 状态：已完成（实现、真实主库维护、生产副本预建与联合回滚门禁均通过；远程状态按 SHA workflow 判定）
 > 前置结论：实施前仅默认 L2 + 动态阈值开启场景可用；该 Partial 基线已被本轮修复取代
 > 适用范围：搜索快照覆盖、统计语义、候选热路径、Quick Open、`/music/search`、公开只读与生产门禁
 > 关联文档：`docs/plans/2026-08-16-music-search-performance-and-experience-optimization-plan.md`、`docs/reports/2026-08-16-music-search-optimization-delivery.md`
@@ -18,7 +18,8 @@ full/showcase/dual、本地生产镜像、schema 33→34、Online Backup 与恢�
 验收中另外发现并修复了三项计划外但同范围的问题：SQLite `foreign_keys=OFF` 时旧快照 context
 不会随 meta 裁剪、Firefox 缺少可构造 `Intl.Segmenter` 会空白页、Docker 构建上下文会带入嵌套
 `seed.db`。真实库 15,175 条搜索 context 孤儿已在 165MiB 在线备份保护下定点清理为 0；其余
-7,831 条历史外键问题不属于本轮，未修改。远程服务器没有获得发布授权，因此未部署。
+7,831 条历史外键问题不属于本轮，未修改。生产发布现由 GitHub Actions 在每个目标 SHA 上执行
+副本预建与 runtime exact gate；远程是否已运行该 SHA，以 production deployment 记录为准。
 
 本轮修复不推翻已经完成的两阶段搜索架构。候选索引、context 快照、IME、请求取消、分页、
 Quick Open、Phone presentation 和公开只读边界继续保留。需要修复的是三个尚未闭合的基础契约：
@@ -468,8 +469,10 @@ P95 ≤20ms，响应 ≤8KiB。
 | GET database writes/background jobs | 0 |
 | 单 base 同时运行的 snapshot-set job | ≤1 |
 
-另记录六变体完整构建总时长、单变体时长、峰值 RSS、数据库/WAL 增量；这些数据在真实主库上实测后再
-冻结预算，不提前编造数字。
+最终生产 `linux/amd64` 镜像在真实 Online Backup 副本上的一次完整构建为 14 分 52.5 秒，峰值 RSS
+1,569.547MiB，数据库增量约 31.35MiB，WAL 最终为 0；同一 ready 副本重复校验为 313.549ms 且
+DB/WAL 增量为 0。生产容量门禁冻结为 MemAvailable ≥2,560MiB、可用磁盘
+≥`max(1GiB, DB × 4)`，目标服务器每次新 SHA 仍必须重新实测。
 
 ### 10.4 发布门禁
 
@@ -480,13 +483,16 @@ P95 ≤20ms，响应 ≤8KiB。
 - full/showcase/dual config validation；
 - public GET 前后逐表/`total_changes`/job count 零变化；
 - migration 33→34、Online Backup、旧镜像只读兼容和回滚演练；
-- 远程部署仍需独立服务器目标和明确发布授权。
+- 新 SHA 在明确数据库副本上关闭 startup rebuild，执行 `--require-all-ready`；
+- 精确六 fingerprint、migration 34、builder v2、搜索 context orphan=0 与容量门禁；
+- 停服后的第二份 Online Backup 必须与预检源一致，否则拒绝替换；
+- 失败时 SQLite、镜像 SHA 与 deployment mode 联合回滚；远程结果按 production workflow 判定。
 
 ## 11. 风险与缓解
 
 | 风险 | 缓解 |
 |---|---|
-| 六变体构建耗时过长 | 单 job 顺序构建、默认优先、共享过滤帧/缓存、逐变体发布 |
+| 六变体构建耗时过长 | 生产新 SHA 先在副本 one-shot，2.5GiB/4× 磁盘门禁 fail closed；ready 集合重复执行只校验不重建 |
 | Billboard 增加 merge flag 引发缓存串线 | 所有 facade/staged/LRU key 同步增加参数并加 key-separation test |
 | revision 漏接 mutation | 集中 helper、失效矩阵 contract、禁止业务代码直接手写 stale SQL |
 | 旧 snapshot 被新代码误读 | fingerprint/builder version v2，migration 后旧 snapshot 统一 stale |
@@ -509,4 +515,5 @@ P95 ≤20ms，响应 ≤8KiB。
 - [x] 真实主库、生产镜像、三浏览器、三模式和回滚门禁通过；
 - [x] 全量测试在隔离数据库运行，没有新增主库 job/generation；
 - [x] 原规划和交付报告根据新证据更新，不再提前声明 Pass；
-- [x] 未获得远程发布授权时，不把本地生产镜像通过描述成真实生产已部署。
+- [x] 生产新 SHA 的副本预建、容量、精确六变体和联合回滚门禁已落地；
+- [x] 远程运行状态只按对应 SHA 的 production deployment 记录表述，不以本地镜像代替。

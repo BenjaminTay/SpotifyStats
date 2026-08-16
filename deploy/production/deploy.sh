@@ -126,6 +126,14 @@ compose_mode() {
   docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" --profile "$mode" "$@"
 }
 
+compose_mode_for_tag() {
+  local tag="$1"
+  local mode="$2"
+  shift 2
+  IMAGE_TAG="$tag" docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" \
+    --profile "$mode" "$@"
+}
+
 services_for_mode() {
   case "$1" in
     full) printf '%s\n' backend web ;;
@@ -156,6 +164,64 @@ pull_mode() {
   local -a services
   mapfile -t services < <(services_for_mode "$mode")
   compose_mode "$mode" pull "${services[@]}"
+}
+
+pull_mode_for_tag() {
+  local tag="$1"
+  local mode="$2"
+  local -a services
+  mapfile -t services < <(services_for_mode "$mode")
+  compose_mode_for_tag "$tag" "$mode" pull "${services[@]}"
+}
+
+backend_image_for_tag() {
+  local tag="$1"
+  local registry namespace repository
+  registry="$(get_env TCR_REGISTRY)"
+  namespace="$(get_env TCR_NAMESPACE)"
+  repository="$(get_env API_REPOSITORY)"
+  registry="${registry:-ccr.ccs.tencentyun.com}"
+  namespace="${namespace:-teacher-honor}"
+  repository="${repository:-spotify-stats-api}"
+  printf '%s/%s/%s:%s\n' "${registry%/}" "$namespace" "$repository" "$tag"
+}
+
+create_offline_backup() {
+  local image="$1"
+  local output_path="$2"
+  local output_dir output_name
+  output_dir="$(cd -- "$(dirname -- "$output_path")" && pwd)"
+  output_name="$(basename -- "$output_path")"
+  if [[ -e "$output_path" ]]; then
+    echo "离线备份目标已存在，拒绝覆盖：$output_path" >&2
+    return 1
+  fi
+  docker run --rm --init \
+    --mount "type=bind,src=$DEPLOY_DIR/data,dst=/source,readonly" \
+    --mount "type=bind,src=$output_dir,dst=/backup" \
+    "$image" python - "/backup/$output_name" <<'PY'
+import sqlite3
+import sys
+
+source = sqlite3.connect("file:/source/spotify_stats.db?mode=ro", uri=True, timeout=30)
+target = sqlite3.connect(sys.argv[1])
+with target:
+    source.backup(target)
+integrity = target.execute("PRAGMA integrity_check").fetchone()[0]
+target.close()
+source.close()
+if integrity != "ok":
+    raise SystemExit(f"backup integrity_check failed: {integrity}")
+PY
+}
+
+replace_live_database() {
+  local source_path="$1"
+  install -m 600 "$source_path" "$DEPLOY_DIR/data/spotify_stats.db.release"
+  mv -f -- "$DEPLOY_DIR/data/spotify_stats.db.release" \
+    "$DEPLOY_DIR/data/spotify_stats.db"
+  rm -f -- "$DEPLOY_DIR/data/spotify_stats.db-wal" \
+    "$DEPLOY_DIR/data/spotify_stats.db-shm"
 }
 
 wait_until_healthy() {
@@ -262,6 +328,7 @@ verify_showcase_gateway() {
 
 release_is_safe() {
   local mode="$1"
+  local require_search_gate="${2:-1}"
 
   compose_mode "$mode" exec -T backend python - <<'PY'
 import sqlite3
@@ -274,6 +341,11 @@ finally:
 if result != "ok":
     raise SystemExit(f"database integrity_check failed: {result}")
 PY
+
+  if [[ "$require_search_gate" == "1" ]]; then
+    compose_mode "$mode" exec -T backend python - \
+      < "$DEPLOY_DIR/verify-music-search-runtime.py"
+  fi
 
   case "$mode" in
     full)
@@ -298,6 +370,12 @@ PY
 }
 
 restore_previous_release() {
+  compose_all stop backend >/dev/null 2>&1 || true
+  if [[ "$database_promoted" == "true" && -n "$release_backup_path" && \
+        -f "$release_backup_path" ]]; then
+    echo "正在恢复发布前 SQLite 备份：$release_backup_path" >&2
+    replace_live_database "$release_backup_path" || return 1
+  fi
   if [[ ! "$current_tag" =~ ^[0-9a-f]{7,64}$ ]]; then
     echo "没有合法的上一镜像 SHA，无法自动回滚。" >&2
     return 1
@@ -305,18 +383,92 @@ restore_previous_release() {
   echo "正在恢复镜像 $current_tag 和部署模式 $current_mode。" >&2
   set_env IMAGE_TAG "$current_tag"
   set_env DEPLOYMENT_MODE "$current_mode"
-  pull_mode "$current_mode" && activate_mode "$current_mode" && release_is_safe "$current_mode"
+  pull_mode "$current_mode" && activate_mode "$current_mode" && \
+    release_is_safe "$current_mode" 0
 }
 
-if compose_all ps --status running --services 2>/dev/null | grep -qx backend && \
-  [[ "$current_tag" != "$NEW_TAG" ]]; then
-  "$DEPLOY_DIR/backup.sh"
+backend_was_running="false"
+if compose_all ps --status running --services 2>/dev/null | grep -qx backend; then
+  backend_was_running="true"
+fi
+
+release_backup_path=""
+database_promoted="false"
+release_stage_dir=""
+cleanup_release_stage() {
+  if [[ -n "$release_stage_dir" && -d "$release_stage_dir" ]]; then
+    rm -rf -- "$release_stage_dir"
+  fi
+}
+trap cleanup_release_stage EXIT
+
+if ! pull_mode_for_tag "$NEW_TAG" "$target_mode"; then
+  echo "目标镜像拉取失败，生产容器和数据库均未切换。" >&2
+  exit 1
+fi
+
+if [[ "$current_tag" != "$NEW_TAG" ]]; then
+  mkdir -p "$DEPLOY_DIR/backups"
+  chmod 700 "$DEPLOY_DIR/backups"
+  release_stamp="$(date -u +%Y%m%dT%H%M%SZ)"
+  release_backup_name="spotify-stats-pre-release-${NEW_TAG:0:12}-${release_stamp}.db"
+  release_backup_path="$DEPLOY_DIR/backups/$release_backup_name"
+  target_backend_image="$(backend_image_for_tag "$NEW_TAG")"
+
+  if [[ "$backend_was_running" == "true" ]]; then
+    SPOTIFY_STATS_BACKUP_NAME="$release_backup_name" "$DEPLOY_DIR/backup.sh"
+  else
+    if [[ ! -f "$DEPLOY_DIR/data/spotify_stats.db" ]]; then
+      echo "缺少 $DEPLOY_DIR/data/spotify_stats.db，无法执行数据库预检。" >&2
+      exit 1
+    fi
+    create_offline_backup "$target_backend_image" "$release_backup_path"
+  fi
+
+  release_stage_dir="$(mktemp -d "$DEPLOY_DIR/backups/.release-stage.XXXXXX")"
+  staged_database="$release_stage_dir/spotify_stats.db"
+  cp -- "$release_backup_path" "$staged_database"
+  preflight_report="$DEPLOY_DIR/backups/music-search-preflight-${NEW_TAG:0:12}-${release_stamp}.json"
+  search_preflight_min_mib="$(get_env SEARCH_PREFLIGHT_MIN_AVAILABLE_MIB)"
+  search_preflight_min_mib="${search_preflight_min_mib:-2560}"
+  if ! SEARCH_PREFLIGHT_MIN_AVAILABLE_MIB="$search_preflight_min_mib" \
+      "$DEPLOY_DIR/preflight-music-search.sh" \
+      --db-copy "$staged_database" \
+      --json-report "$preflight_report" \
+      --image "$target_backend_image"; then
+    echo "目标镜像的音乐搜索数据库副本预检失败；线上服务和数据库保持原状。" >&2
+    exit 1
+  fi
+
+  if [[ "$backend_was_running" == "true" ]]; then
+    compose_all stop backend
+    quiescent_database="$release_stage_dir/quiescent-source.db"
+    if ! create_offline_backup "$target_backend_image" "$quiescent_database"; then
+      activate_mode "$current_mode" || true
+      echo "停服后的源数据库复核备份失败；没有替换生产数据库。" >&2
+      exit 1
+    fi
+    if ! cmp -s -- "$release_backup_path" "$quiescent_database"; then
+      activate_mode "$current_mode" || true
+      echo "预检期间生产数据库发生变化，拒绝以旧副本覆盖；请在静默维护窗口重试。" >&2
+      exit 1
+    fi
+  fi
+
+  if ! replace_live_database "$staged_database"; then
+    if [[ "$backend_was_running" == "true" ]]; then
+      activate_mode "$current_mode" || true
+    fi
+    echo "预检副本未能原子发布，生产镜像保持原版本。" >&2
+    exit 1
+  fi
+  database_promoted="true"
 fi
 
 set_env IMAGE_TAG "$NEW_TAG"
 set_env DEPLOYMENT_MODE "$target_mode"
 
-if ! pull_mode "$target_mode" || ! activate_mode "$target_mode" || ! release_is_safe "$target_mode"; then
+if ! activate_mode "$target_mode" || ! release_is_safe "$target_mode"; then
   echo "新版本或部署模式验收失败：$NEW_TAG / $target_mode" >&2
   compose_all logs --tail 160 >&2 || true
   if ! restore_previous_release; then

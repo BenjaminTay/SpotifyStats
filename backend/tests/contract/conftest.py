@@ -11,8 +11,9 @@ import pytest
 
 @pytest.fixture(scope="function", autouse=True)
 def disable_warmup(monkeypatch):
-    """Disable backend warmup thread — contract tests must not pollute caches."""
+    """Disable independent startup catch-up work unless a test opts in."""
     monkeypatch.setenv("SPOTIFY_STATS_WARMUP", "0")
+    monkeypatch.setenv("SPOTIFY_STATS_SEARCH_STARTUP_REBUILD", "0")
 
 
 @pytest.fixture(scope="function")
