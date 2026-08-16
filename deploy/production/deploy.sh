@@ -275,23 +275,20 @@ prepare_images_for_tag() {
 create_offline_backup() {
   local image="$1"
   local output_path="$2"
-  local output_dir output_name
-  output_dir="$(cd -- "$(dirname -- "$output_path")" && pwd)"
-  output_name="$(basename -- "$output_path")"
   if [[ -e "$output_path" ]]; then
     echo "离线备份目标已存在，拒绝覆盖：$output_path" >&2
     return 1
   fi
   install -m 600 /dev/null "$output_path"
-  if ! docker run --rm --init -i \
+  if ! docker run --rm --init --network none \
       --mount "type=bind,src=$DEPLOY_DIR/data,dst=/source,readonly" \
-      --mount "type=bind,src=$output_dir,dst=/backup" \
-      "$image" python - "/backup/$output_name" <<'PY'
+      "$image" python -c '
 import sqlite3
 import sys
 
 source = sqlite3.connect("file:/source/spotify_stats.db?mode=ro", uri=True, timeout=30)
-target = sqlite3.connect(sys.argv[1])
+target_path = "/tmp/spotify_stats.backup.db"
+target = sqlite3.connect(target_path)
 with target:
     source.backup(target)
 integrity = target.execute("PRAGMA integrity_check").fetchone()[0]
@@ -299,7 +296,10 @@ target.close()
 source.close()
 if integrity != "ok":
     raise SystemExit(f"backup integrity_check failed: {integrity}")
-PY
+with open(target_path, "rb") as stream:
+    while chunk := stream.read(1024 * 1024):
+        sys.stdout.buffer.write(chunk)
+' > "$output_path"
   then
     rm -f -- "$output_path" "$output_path-journal" \
       "$output_path-wal" "$output_path-shm"
