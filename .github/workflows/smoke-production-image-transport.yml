@@ -3,8 +3,12 @@ name: Smoke production image transport
 on:
   workflow_dispatch:
     inputs:
-      seed_revision:
-        description: Optional verified transport-smoke revision used to seed the server CAS
+      resume_revision:
+        description: Optional failed smoke revision whose fully uploaded staging should be recovered
+        required: false
+        default: ""
+      resume_manifest_sha256:
+        description: Out-of-band manifest SHA-256 for resume_revision
         required: false
         default: ""
 
@@ -177,7 +181,7 @@ jobs:
           printf '%s\n' "$SERVER_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
           chmod 600 "$HOME/.ssh/known_hosts"
 
-      - name: Install CAS seed helper without changing live services
+      - name: Prepare shared CAS ownership without changing live services
         env:
           SERVER_HOST: ${{ secrets.SERVER_HOST }}
           SERVER_PORT: ${{ secrets.SERVER_PORT }}
@@ -187,11 +191,16 @@ jobs:
             --delay-updates --timeout=300 \
             -e "ssh -p $SERVER_PORT -i $RUNNER_TEMP/spotify-stats-transport-key" \
             deploy/production/image_transport.py \
-            deploy/production/seed-verified-smoke-images.sh \
             "$SERVER_USER@$SERVER_HOST:/opt/spotify-stats/"
           ssh -p "$SERVER_PORT" -i "$RUNNER_TEMP/spotify-stats-transport-key" \
-            "$SERVER_USER@$SERVER_HOST" \
-            'chmod 700 /opt/spotify-stats/seed-verified-smoke-images.sh'
+            "$SERVER_USER@$SERVER_HOST" bash -s <<'REMOTE'
+          set -Eeuo pipefail
+          releases=/opt/spotify-stats/releases
+          sudo install -d -m 700 -o "$USER" -g "$USER" \
+            "$releases" "$releases/blobs" "$releases/blobs/sha256" \
+            "$releases/locks" "$releases/records" "$releases/state" \
+            "$releases/incoming"
+          REMOTE
 
       - name: Verify current production image identity read-only
         env:
@@ -247,23 +256,35 @@ jobs:
           fi
           REMOTE
 
-      - name: Optionally seed server CAS from a verified smoke revision
-        if: ${{ inputs.seed_revision != '' }}
+      - name: Optionally recover a digest-bound completed upload into CAS
+        if: ${{ inputs.resume_revision != '' || inputs.resume_manifest_sha256 != '' }}
         env:
-          SEED_REVISION: ${{ inputs.seed_revision }}
+          RESUME_REVISION: ${{ inputs.resume_revision }}
+          RESUME_MANIFEST_SHA256: ${{ inputs.resume_manifest_sha256 }}
           SERVER_HOST: ${{ secrets.SERVER_HOST }}
           SERVER_PORT: ${{ secrets.SERVER_PORT }}
           SERVER_USER: ${{ secrets.SERVER_USER }}
-          TCR_USERNAME: ${{ secrets.TCR_USERNAME }}
-          TCR_PASSWORD: ${{ secrets.TCR_PASSWORD }}
         run: |
-          [[ "$SEED_REVISION" =~ ^[0-9a-f]{40}$ ]]
-          printf '%s' "$TCR_PASSWORD" | ssh -p "$SERVER_PORT" \
-            -i "$RUNNER_TEMP/spotify-stats-transport-key" "$SERVER_USER@$SERVER_HOST" \
-            "timeout --signal=TERM --kill-after=10s 1m docker login '$TCR_REGISTRY' --username '$TCR_USERNAME' --password-stdin"
+          [[ "$RESUME_REVISION" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$RESUME_MANIFEST_SHA256" =~ ^[0-9a-f]{64}$ ]]
           ssh -p "$SERVER_PORT" -i "$RUNNER_TEMP/spotify-stats-transport-key" \
             "$SERVER_USER@$SERVER_HOST" \
-            "bash /opt/spotify-stats/seed-verified-smoke-images.sh '$SEED_REVISION'"
+            "python3 /opt/spotify-stats/image_transport.py materialize \
+              --staging '/opt/spotify-stats/releases/incoming/$RESUME_REVISION/smoke' \
+              --releases-root /opt/spotify-stats/releases \
+              --revision '$RESUME_REVISION' --mode smoke \
+              --manifest-sha256 '$RESUME_MANIFEST_SHA256'"
+          ssh -p "$SERVER_PORT" -i "$RUNNER_TEMP/spotify-stats-transport-key" \
+            "$SERVER_USER@$SERVER_HOST" bash -s -- "$RESUME_REVISION" <<'REMOTE'
+          set -Eeuo pipefail
+          revision="$1"
+          [[ "$revision" =~ ^[0-9a-f]{40}$ ]]
+          staging="/opt/spotify-stats/releases/incoming/$revision/smoke"
+          [[ -d "$staging" && ! -L "$staging" ]]
+          find "$staging" -depth -mindepth 1 -delete
+          rmdir -- "$staging"
+          sudo rmdir --ignore-fail-on-non-empty "/opt/spotify-stats/releases/incoming/$revision"
+          REMOTE
 
       - name: Transfer only missing CAS blobs and load smoke images
         env:

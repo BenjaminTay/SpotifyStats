@@ -25,9 +25,11 @@ def test_smoke_workflow_uses_private_cas_artifact_without_production_mutation() 
     assert "actions/upload-artifact@v4" in workflow
     assert "actions/download-artifact@v4" in workflow
     assert "retention-days: 1" in workflow
-    assert "seed_revision:" in workflow
+    assert "resume_revision:" in workflow
+    assert "resume_manifest_sha256:" in workflow
     assert "Verify current production image identity read-only" in workflow
-    assert "seed-verified-smoke-images.sh '$SEED_REVISION'" in workflow
+    assert "Optionally recover a digest-bound completed upload into CAS" in workflow
+    assert "--manifest-sha256 '$RESUME_MANIFEST_SHA256'" in workflow
     assert "transfer-image-artifact.sh" in workflow
     assert "missing_bytes" in workflow
     assert "transferred_wire_bytes" in workflow
@@ -64,6 +66,8 @@ def test_shared_transfer_only_sends_deterministic_missing_blob_shards() -> None:
     assert "layout/blobs/sha256/[0-9a-f]{64}" in transfer
     assert "transferred_wire_bytes" in transfer
     assert "for tool in rsync docker sha256sum gzip df timeout python3 tar" in transfer
+    assert '"$releases_root/locks"' in transfer
+    assert '"$releases_root/blobs/sha256"' in transfer
 
 
 def test_release_workflow_bootstraps_old_current_then_activates_only_after_deploy() -> None:
@@ -74,8 +78,7 @@ def test_release_workflow_bootstraps_old_current_then_activates_only_after_deplo
     assert "bootstrap-current-release-images.sh" in workflow
     assert "--allow-registry-only-legacy" in workflow
     assert 'bootstrap_status" -eq 3' in workflow
-    assert "seed-verified-smoke-images.sh" in workflow
-    assert "continue-on-error: true" in workflow
+    assert "seed-verified-smoke-images.sh" not in workflow
     assert "transfer-image-artifact.sh" in workflow
     assert "prepare-local-release-images.sh" in workflow
     assert "publish-release-images.sh' '$GITHUB_SHA' release" in workflow
@@ -135,7 +138,6 @@ def test_all_image_transport_shell_scripts_have_valid_syntax_and_reject_bad_inpu
         "prepare-local-release-images.sh",
         "bootstrap-current-release-images.sh",
         "activate-release-images.sh",
-        "seed-verified-smoke-images.sh",
     )
     for name in scripts:
         script = PRODUCTION / name

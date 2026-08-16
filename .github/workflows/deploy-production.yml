@@ -16,7 +16,6 @@ on:
       - "deploy/production/prepare-local-release-images.sh"
       - "deploy/production/bootstrap-current-release-images.sh"
       - "deploy/production/activate-release-images.sh"
-      - "deploy/production/seed-verified-smoke-images.sh"
       - "backend/tests/unit/test_production_image_transport.py"
       - "backend/tests/unit/test_image_transport_cas.py"
 
@@ -251,11 +250,10 @@ jobs:
             deploy/production/bootstrap-current-release-images.sh \
             deploy/production/prepare-local-release-images.sh \
             deploy/production/activate-release-images.sh \
-            deploy/production/seed-verified-smoke-images.sh \
             "$SERVER_USER@$SERVER_HOST:/opt/spotify-stats/"
           ssh -p "$SERVER_PORT" -i "$RUNNER_TEMP/spotify-stats-deploy-key" \
             "$SERVER_USER@$SERVER_HOST" \
-            'chmod 700 /opt/spotify-stats/bootstrap-current-release-images.sh /opt/spotify-stats/prepare-local-release-images.sh /opt/spotify-stats/activate-release-images.sh /opt/spotify-stats/seed-verified-smoke-images.sh'
+            'chmod 700 /opt/spotify-stats/bootstrap-current-release-images.sh /opt/spotify-stats/prepare-local-release-images.sh /opt/spotify-stats/activate-release-images.sh'
 
       - name: Bootstrap current production images into shared CAS
         env:
@@ -274,22 +272,6 @@ jobs:
           elif [[ "$bootstrap_status" -ne 0 ]]; then
             exit "$bootstrap_status"
           fi
-
-      - name: Optionally seed CAS from verified TCR smoke images
-        continue-on-error: true
-        env:
-          SERVER_HOST: ${{ secrets.SERVER_HOST }}
-          SERVER_PORT: ${{ secrets.SERVER_PORT }}
-          SERVER_USER: ${{ secrets.SERVER_USER }}
-          TCR_USERNAME: ${{ secrets.TCR_USERNAME }}
-          TCR_PASSWORD: ${{ secrets.TCR_PASSWORD }}
-        run: |
-          printf '%s' "$TCR_PASSWORD" | ssh -p "$SERVER_PORT" \
-            -i "$RUNNER_TEMP/spotify-stats-deploy-key" "$SERVER_USER@$SERVER_HOST" \
-            "timeout --signal=TERM --kill-after=10s 1m docker login '$TCR_REGISTRY' --username '$TCR_USERNAME' --password-stdin"
-          ssh -p "$SERVER_PORT" -i "$RUNNER_TEMP/spotify-stats-deploy-key" \
-            "$SERVER_USER@$SERVER_HOST" \
-            "bash /opt/spotify-stats/seed-verified-smoke-images.sh '$GITHUB_SHA'"
 
       - name: Transfer only missing CAS blobs and load release images
         env:
@@ -368,8 +350,7 @@ jobs:
             verify-music-search-runtime.py image_transport.py \
             load-release-images.sh publish-release-images.sh \
             transfer-image-artifact.sh prepare-local-release-images.sh \
-            bootstrap-current-release-images.sh activate-release-images.sh \
-            seed-verified-smoke-images.sh README.md
+            bootstrap-current-release-images.sh activate-release-images.sh README.md
           scp -P "$SERVER_PORT" -i "$RUNNER_TEMP/spotify-stats-deploy-key" \
             "$RUNNER_TEMP/spotify-stats-deploy.tgz" \
             "$SERVER_USER@$SERVER_HOST:/tmp/spotify-stats-deploy.tgz"
