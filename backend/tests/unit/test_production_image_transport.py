@@ -25,6 +25,7 @@ def test_smoke_workflow_uses_private_cas_artifact_without_production_mutation() 
     assert "actions/upload-artifact@v4" in workflow
     assert "actions/download-artifact@v4" in workflow
     assert "retention-days: 1" in workflow
+    assert workflow.count("cache-to: type=gha,mode=max") == 2
     assert "resume_revision:" in workflow
     assert "resume_manifest_sha256:" in workflow
     assert "Verify current production image identity read-only" in workflow

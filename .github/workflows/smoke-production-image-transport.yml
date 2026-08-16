@@ -62,6 +62,7 @@ jobs:
           tags: ${{ env.LOCAL_API_IMAGE }}
           labels: org.opencontainers.image.revision=${{ github.sha }}
           cache-from: type=gha,scope=spotify-stats-api
+          cache-to: type=gha,mode=max,scope=spotify-stats-api
 
       - name: Record API build elapsed
         run: |
@@ -83,6 +84,7 @@ jobs:
           tags: ${{ env.LOCAL_WEB_IMAGE }}
           labels: org.opencontainers.image.revision=${{ github.sha }}
           cache-from: type=gha,scope=spotify-stats-web
+          cache-to: type=gha,mode=max,scope=spotify-stats-web
 
       - name: Record Web build elapsed
         run: |
