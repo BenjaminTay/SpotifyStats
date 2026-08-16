@@ -16,7 +16,8 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from backend.core.migrations import migrate_035, migrate_036  # noqa: E402
+from backend.core import db as db_mod  # noqa: E402
+from backend.core.migrations import migrate_035, migrate_036, run_migrations  # noqa: E402
 from backend.domains.metadata.artist_identity import get_identity_revision  # noqa: E402
 from backend.domains.metadata.track_credits import get_track_credit_revision  # noqa: E402
 from backend.domains.music_search.context import (  # noqa: E402
@@ -98,6 +99,19 @@ def source_marker(path: Path) -> dict[str, Any]:
 
 
 def _ensure_identity_split_schema(path: Path) -> None:
+    conn = _connect(path, readonly=False)
+    try:
+        has_variant_schema = _migration_34_ready(conn)
+    finally:
+        conn.close()
+    if not has_variant_schema:
+        # A still-running pre-search production image can only produce a
+        # schema-33 quiescent backup.  Migrate that disposable copy in full;
+        # the immutable rollback backup remains untouched.
+        db_mod.DB_PATH = str(path.resolve())
+        run_migrations()
+        return
+
     conn = _connect(path, readonly=False)
     try:
         columns = {
@@ -241,7 +255,13 @@ def _write_json_atomic(path: Path, payload: dict[str, Any]) -> None:
 def main() -> int:
     args = parse_args()
     try:
-        baseline_marker = source_marker(args.baseline_db)
+        if not args.baseline_db.is_file():
+            raise ValueError("baseline rollback backup is missing")
+        # The staged DB is the exact, already-validated representation of the
+        # online baseline after migrations.  Compare its source marker with a
+        # fully migrated quiescent copy so schema-33 production can upgrade
+        # without ever mutating the rollback backup.
+        baseline_marker = source_marker(args.staged_db)
         _ensure_identity_split_schema(args.quiescent_db)
         quiescent_marker = source_marker(args.quiescent_db)
         changed = sorted(

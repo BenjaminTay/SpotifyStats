@@ -9,7 +9,14 @@ from pathlib import Path
 
 import pytest
 
-from backend.core.migrations import migrate_032, migrate_034, migrate_035
+from backend.core import db as db_mod
+from backend.core.migrations import (
+    MIGRATIONS,
+    migrate_032,
+    migrate_034,
+    migrate_035,
+    run_migrations,
+)
 from backend.domains.music_search.context import MUSIC_SEARCH_SNAPSHOT_BUILDER_VERSION
 from backend.domains.music_search.index import music_search_source_revision
 from backend.domains.music_search.variants import build_music_search_variant_contexts
@@ -91,6 +98,35 @@ def _fixture_paths(tmp_path: Path) -> tuple[Path, Path, Path]:
     return baseline, quiescent, staged
 
 
+def _create_schema_33(path: Path) -> None:
+    conn = sqlite3.connect(path)
+    conn.execute(
+        """CREATE TABLE schema_migrations(
+               version INTEGER PRIMARY KEY,
+               name TEXT NOT NULL,
+               applied_at TEXT NOT NULL DEFAULT (datetime('now'))
+           )"""
+    )
+    for version, name, migration in MIGRATIONS:
+        if version > 33:
+            break
+        try:
+            migration(conn)
+        except sqlite3.OperationalError as exc:
+            message = str(exc).lower()
+            if not any(
+                fragment in message
+                for fragment in ("already exists", "duplicate column name", "duplicate index name")
+            ):
+                raise
+        conn.execute(
+            "INSERT INTO schema_migrations(version, name) VALUES (?, ?)",
+            (version, name),
+        )
+        conn.commit()
+    conn.close()
+
+
 def _run_rebase(
     baseline: Path,
     quiescent: Path,
@@ -168,3 +204,35 @@ def test_rebase_fails_closed_when_search_source_revision_changes(tmp_path: Path)
         == "baseline-generation"
     )
     conn.close()
+
+
+def test_rebase_migrates_schema_33_quiescent_copy_without_touching_rollback(
+    tmp_path: Path,
+) -> None:
+    baseline = tmp_path / "schema-33-rollback.db"
+    quiescent = tmp_path / "schema-33-quiescent.db"
+    staged = tmp_path / "validated-staged.db"
+    _create_schema_33(baseline)
+    shutil.copy2(baseline, quiescent)
+    shutil.copy2(baseline, staged)
+    db_mod.DB_PATH = str(staged)
+    run_migrations()
+    _populate_staged(staged)
+    output = tmp_path / "rebase-schema-33.json"
+
+    completed = _run_rebase(baseline, quiescent, staged, output)
+
+    assert completed.returncode == 0, completed.stderr
+    assert json.loads(output.read_text(encoding="utf-8"))["source_equivalent"] is True
+    rollback = sqlite3.connect(baseline)
+    assert rollback.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0] == 33
+    rollback.close()
+    promoted = sqlite3.connect(quiescent)
+    assert promoted.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0] == 36
+    assert (
+        promoted.execute(
+            "SELECT COUNT(*) FROM music_search_snapshot_meta WHERE status='ready'"
+        ).fetchone()[0]
+        == 6
+    )
+    promoted.close()
