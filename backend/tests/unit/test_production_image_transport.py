@@ -1,3 +1,4 @@
+import stat
 import subprocess
 from pathlib import Path
 
@@ -138,6 +139,7 @@ def test_all_image_transport_shell_scripts_have_valid_syntax_and_reject_bad_inpu
     )
     for name in scripts:
         script = PRODUCTION / name
+        assert script.stat().st_mode & stat.S_IXUSR
         subprocess.run(["bash", "-n", str(script)], check=True, cwd=ROOT)
 
     for name in ("load-release-images.sh", "publish-release-images.sh"):
