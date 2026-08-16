@@ -434,5 +434,7 @@ def test_one_time_statistics_bootstrap_is_manual_resumable_and_never_deploys() -
     assert "同源部分成果" in bootstrap
     assert "src=$DEPLOY_DIR,dst=/bootstrap" not in bootstrap
     assert "src=$PREPARE_HELPER" in bootstrap
+    assert 'sudo chown -- "$host_uid:$host_gid" "$baseline_path"' in bootstrap
+    assert bootstrap.count('--user "$host_uid:$host_gid"') == 2
     assert "source_equivalent_partial_statistics_resume" in helper
     assert "ALLOWED_PARTIAL_STATUSES" in helper

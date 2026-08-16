@@ -146,6 +146,8 @@ stamp="$(date -u +%Y%m%dT%H%M%SZ)"
 baseline_name="spotify-stats-search-bootstrap-${revision:0:12}-$stamp.db"
 baseline_path="$DEPLOY_DIR/backups/$baseline_name"
 resume_path="$DEPLOY_DIR/backups/music-search-resume.db"
+host_uid="$(id -u)"
+host_gid="$(id -g)"
 if [[ -e "$baseline_path" ]]; then
   echo "Online Backup 目标已存在，拒绝覆盖。" >&2
   exit 1
@@ -166,6 +168,10 @@ source.close()
 if integrity != "ok":
     raise SystemExit("bootstrap backup integrity_check failed")
 PY
+sudo chown -- "$host_uid:$host_gid" "$baseline_path"
+if [[ -e "$resume_path" ]]; then
+  sudo chown -- "$host_uid:$host_gid" "$resume_path"
+fi
 
 minimum_available_mib="${SEARCH_PREFLIGHT_MIN_AVAILABLE_MIB:-$(get_env SEARCH_PREFLIGHT_MIN_AVAILABLE_MIB)}"
 minimum_available_mib="${minimum_available_mib:-1280}"
@@ -182,7 +188,7 @@ baseline_dir="$(dirname -- "$baseline_path")"
 baseline_file="$(basename -- "$baseline_path")"
 resume_dir="$(dirname -- "$resume_path")"
 resume_file="$(basename -- "$resume_path")"
-docker run --rm --init \
+docker run --rm --init --user "$host_uid:$host_gid" \
   -e SPOTIFY_STATS_WARMUP=0 -e SPOTIFY_STATS_SEARCH_STARTUP_REBUILD=0 \
   --mount "type=bind,src=$baseline_dir,dst=/baseline,readonly" \
   --mount "type=bind,src=$resume_dir,dst=/resume" \
@@ -210,7 +216,7 @@ PY
 
 echo "一次性六变体统计构建开始；失败或超时会保留同源部分成果供下次续建。" >&2
 rebuild_started="$SECONDS"
-docker run --name "$container_name" --rm --init \
+docker run --name "$container_name" --rm --init --user "$host_uid:$host_gid" \
   -e SPOTIFY_STATS_WARMUP=0 -e SPOTIFY_STATS_SEARCH_STARTUP_REBUILD=0 \
   --mount "type=bind,src=$resume_dir,dst=/resume" \
   "$image" python scripts/rebuild_music_search_derived_data.py \
