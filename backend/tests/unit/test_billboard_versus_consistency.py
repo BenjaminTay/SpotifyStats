@@ -89,11 +89,15 @@ def test_album_versus_uses_detail_project_membership(monkeypatch):
 
 
 @pytest.mark.parametrize(
-    ("dynamic", "gap", "merge_level", "include_compilations"),
-    [(False, None, 1, False), (True, 45, 2, False), (True, 90, 3, True)],
+    ("dynamic", "gap", "merge_level", "include_compilations", "merge_enabled"),
+    [
+        (False, None, 1, False, False),
+        (True, 45, 2, False, True),
+        (True, 90, 3, True, True),
+    ],
 )
 def test_versus_forwards_complete_filter_context(
-    monkeypatch, dynamic, gap, merge_level, include_compilations
+    monkeypatch, dynamic, gap, merge_level, include_compilations, merge_enabled
 ):
     captured = {}
 
@@ -121,6 +125,7 @@ def test_versus_forwards_complete_filter_context(
         gap,
         merge_level,
         include_compilations,
+        merge_enabled,
     )
 
     assert captured == {
@@ -129,6 +134,7 @@ def test_versus_forwards_complete_filter_context(
         "max_merge_gap_minutes": gap,
         "merge_level": merge_level,
         "include_compilations": include_compilations,
+        "merge_enabled": merge_enabled,
     }
 
 

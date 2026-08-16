@@ -173,6 +173,16 @@ BOUNDARY_EVIDENCE_BY_KEY: dict[tuple[str, str, str], ParameterEvidence] = {
         ("music_search_kind_invalid",),
         "music search kind enum rejects unsupported values",
     ),
+    ("query", "eligibility", "string|enum=current,any_local"): ParameterEvidence(
+        "boundary_probe",
+        ("music_search_eligibility_invalid",),
+        "music search eligibility rejects unsupported local/public modes",
+    ),
+    ("query", "response_mode", "string|enum=legacy,candidates"): ParameterEvidence(
+        "boundary_probe",
+        ("music_search_response_mode_invalid",),
+        "music search response mode rejects unsupported protocols",
+    ),
     ("query", "album_id_a", "integer"): ParameterEvidence(
         "boundary_probe",
         ("version_compare_album_id_a_nonint",),

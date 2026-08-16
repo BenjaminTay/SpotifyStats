@@ -118,7 +118,21 @@ def handle_track_credit_rebuild(job: Job) -> None:
                    updated_at=datetime('now') WHERE state_id=1""",
             (revision,),
         )
-        conn.commit()
+        from backend.services.music_search_maintenance_service import (
+            enqueue_music_search_snapshot_rebuild,
+            mark_music_search_for_rebuild,
+        )
+
+        mark_music_search_for_rebuild(
+            reason="track credit aggregate published",
+            documents=True,
+            revision_kinds=("metadata",),
+            conn=conn,
+        )
+        enqueue_music_search_snapshot_rebuild(
+            rebuild_documents=True,
+            conn=conn,
+        )
     except Exception as exc:
         conn.rollback()
         conn.execute(

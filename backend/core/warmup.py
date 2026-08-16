@@ -22,6 +22,7 @@ DEFAULT_PLAY_FILTERS = {
 DEFAULT_BILLBOARD_FILTERS = {
     "min_ms": 30000,
     "music_only": True,
+    "merge_enabled": True,
     "bb_top_n": 30,
     "bb_album_top_n": 20,
     "bb_artist_top_n": 20,
@@ -51,6 +52,7 @@ def _configured_warmup_filters(conn) -> tuple[dict, dict]:
     billboard = {
         "min_ms": play["min_ms"],
         "music_only": play["music_only"],
+        "merge_enabled": play["merge_enabled"],
         "bb_top_n": int(settings["bb_top_n"]),
         "bb_album_top_n": int(settings["bb_album_top_n"]),
         "bb_artist_top_n": int(settings["bb_artist_top_n"]),

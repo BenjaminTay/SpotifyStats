@@ -471,6 +471,7 @@ def _billboard(context: YearlyReviewFilterContext) -> dict[str, Any]:
                 context.dynamic_threshold,
                 context.max_merge_gap_minutes,
                 context.include_compilations,
+                context.merge_enabled,
             )
         )
         if data is None:

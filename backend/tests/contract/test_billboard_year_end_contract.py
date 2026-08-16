@@ -114,7 +114,9 @@ def test_year_end_endpoint_returns_response_shape(monkeypatch):
 
     monkeypatch.setattr(api_year_end, "compute_year_end_staged", fake_compute_year_end_staged)
 
-    response = TestClient(app).get("/api/billboard/year-end?year=2025")
+    response = TestClient(app).get(
+        "/api/billboard/year-end?year=2025&merge_enabled=false&include_compilations=true"
+    )
 
     assert response.status_code == 200
     data = response.json()
@@ -130,6 +132,8 @@ def test_year_end_endpoint_returns_response_shape(monkeypatch):
     assert captured_kwargs["year_end_top_n"] == 50
     assert captured_kwargs["year_end_album_top_n"] == 30
     assert captured_kwargs["year_end_artist_top_n"] == 30
+    assert captured_kwargs["merge_enabled"] is False
+    assert captured_kwargs["include_compilations"] is True
 
 
 def test_year_end_query_cutoffs_do_not_change_output_limits(monkeypatch):

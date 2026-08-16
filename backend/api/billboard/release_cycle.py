@@ -70,6 +70,7 @@ def _get_weekly_data(
         filters.bb_week_start_hour,
         dynamic_threshold=filters.dynamic_threshold,
         max_merge_gap_minutes=filters.max_merge_gap_minutes,
+        merge_enabled=filters.merge_enabled,
     )
     df_raw = _filter_billboard_years(df_raw, filters)
 
@@ -80,6 +81,7 @@ def _get_weekly_data(
         filters.bb_week_start_hour,
         dynamic_threshold=filters.dynamic_threshold,
         max_merge_gap_minutes=filters.max_merge_gap_minutes,
+        merge_enabled=filters.merge_enabled,
     )
     df_artists = _filter_billboard_years(df_artists, filters)
 
@@ -247,6 +249,7 @@ def get_artist_list(filters: BillboardFilters = Depends()):
         filters.bb_week_start_hour,
         dynamic_threshold=filters.dynamic_threshold,
         max_merge_gap_minutes=filters.max_merge_gap_minutes,
+        merge_enabled=filters.merge_enabled,
     )
     df_raw = _filter_billboard_years(df_raw, filters)
     return load_artist_list(df_raw)

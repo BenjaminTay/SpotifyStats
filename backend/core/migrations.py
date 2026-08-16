@@ -990,6 +990,253 @@ def migrate_031(conn: sqlite3.Connection):
     )
 
 
+@migration(32, "music_search_derived_index_and_context")
+def migrate_032(conn: sqlite3.Connection):
+    """Create rebuildable search documents and exact-context snapshot tables."""
+    conn.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS music_search_index_state (
+            state_id INTEGER PRIMARY KEY CHECK (state_id = 1),
+            active_generation_id TEXT,
+            previous_generation_id TEXT,
+            status TEXT NOT NULL DEFAULT 'missing'
+                CHECK (status IN ('missing', 'building', 'ready', 'degraded', 'failed')),
+            tokenizer TEXT,
+            normalization_version TEXT NOT NULL,
+            source_revision TEXT,
+            document_count INTEGER NOT NULL DEFAULT 0,
+            built_at TEXT,
+            last_error TEXT,
+            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        CREATE TABLE IF NOT EXISTS music_search_documents (
+            generation_id TEXT NOT NULL,
+            entity_key TEXT NOT NULL,
+            kind TEXT NOT NULL CHECK (kind IN ('track', 'album', 'album_project', 'artist')),
+            merge_level INTEGER NOT NULL DEFAULT 0 CHECK (merge_level BETWEEN 0 AND 3),
+            label TEXT NOT NULL,
+            normalized_label TEXT NOT NULL,
+            secondary TEXT,
+            normalized_secondary TEXT NOT NULL DEFAULT '',
+            alias_text TEXT NOT NULL DEFAULT '',
+            normalized_alias TEXT NOT NULL DEFAULT '',
+            search_text TEXT NOT NULL,
+            popularity_tiebreaker INTEGER NOT NULL DEFAULT 0,
+            href TEXT NOT NULL,
+            cover_url TEXT,
+            track_id INTEGER,
+            album_id INTEGER,
+            album_project_id INTEGER,
+            artist_id INTEGER,
+            album_name TEXT,
+            artist_name TEXT,
+            PRIMARY KEY(generation_id, entity_key, merge_level)
+        );
+        CREATE INDEX IF NOT EXISTS idx_music_search_documents_generation_kind
+            ON music_search_documents(
+                generation_id, kind, merge_level, normalized_label, entity_key
+            );
+        CREATE INDEX IF NOT EXISTS idx_music_search_documents_generation_secondary
+            ON music_search_documents(
+                generation_id, kind, merge_level, normalized_secondary, entity_key
+            );
+        CREATE INDEX IF NOT EXISTS idx_music_search_documents_entity_key
+            ON music_search_documents(entity_key, generation_id, merge_level);
+
+        CREATE TABLE IF NOT EXISTS music_search_snapshot_meta (
+            snapshot_key TEXT PRIMARY KEY,
+            filter_fingerprint TEXT NOT NULL UNIQUE,
+            source_revision TEXT NOT NULL,
+            status TEXT NOT NULL
+                CHECK (status IN ('pending', 'running', 'ready', 'failed', 'stale')),
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            activated_at TEXT,
+            last_accessed_at TEXT,
+            last_error TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_music_search_snapshot_meta_status
+            ON music_search_snapshot_meta(status, activated_at DESC);
+
+        CREATE TABLE IF NOT EXISTS music_search_entity_context (
+            snapshot_key TEXT NOT NULL REFERENCES music_search_snapshot_meta(snapshot_key)
+                ON DELETE CASCADE,
+            entity_key TEXT NOT NULL,
+            play_events INTEGER NOT NULL DEFAULT 0,
+            total_ms INTEGER NOT NULL DEFAULT 0,
+            peak_position INTEGER,
+            peak_weeks INTEGER,
+            weeks_on_chart INTEGER,
+            weeks_at_no1 INTEGER,
+            power_score INTEGER,
+            power_rank INTEGER,
+            first_week TEXT,
+            latest_week TEXT,
+            first_peak_week TEXT,
+            PRIMARY KEY(snapshot_key, entity_key)
+        );
+        CREATE INDEX IF NOT EXISTS idx_music_search_context_entity
+            ON music_search_entity_context(entity_key, snapshot_key);
+        """
+    )
+    conn.execute(
+        """INSERT OR IGNORE INTO music_search_index_state(
+               state_id, normalization_version
+           ) VALUES (1, 'nfkc_casefold_ws_punctuation_v1')"""
+    )
+    # FTS is an acceleration layer, not a migration prerequisite. A runtime
+    # without FTS5/trigram remains usable through the bounded SQL fallback.
+    try:
+        conn.execute(
+            """CREATE VIRTUAL TABLE IF NOT EXISTS music_search_documents_fts
+               USING fts5(
+                   generation_id UNINDEXED,
+                   entity_key UNINDEXED,
+                   merge_level UNINDEXED,
+                   search_text,
+                   tokenize='trigram'
+               )"""
+        )
+    except sqlite3.OperationalError:
+        conn.execute(
+            """UPDATE music_search_index_state
+               SET status='degraded', tokenizer='fallback', updated_at=datetime('now')
+               WHERE state_id=1 AND active_generation_id IS NOT NULL"""
+        )
+
+
+@migration(33, "music_search_merge_level_documents")
+def migrate_033(conn: sqlite3.Connection):
+    """Invalidate the rebuildable v1 index and add per-level track documents."""
+    columns = {str(row[1]) for row in conn.execute("PRAGMA table_info(music_search_documents)")}
+    if "merge_level" in columns:
+        return
+    conn.execute("DROP TABLE IF EXISTS music_search_documents_fts")
+    conn.execute("DROP TABLE IF EXISTS music_search_documents")
+    conn.executescript(
+        """
+        CREATE TABLE music_search_documents (
+            generation_id TEXT NOT NULL,
+            entity_key TEXT NOT NULL,
+            kind TEXT NOT NULL CHECK (kind IN ('track', 'album', 'album_project', 'artist')),
+            merge_level INTEGER NOT NULL DEFAULT 0 CHECK (merge_level BETWEEN 0 AND 3),
+            label TEXT NOT NULL,
+            normalized_label TEXT NOT NULL,
+            secondary TEXT,
+            normalized_secondary TEXT NOT NULL DEFAULT '',
+            alias_text TEXT NOT NULL DEFAULT '',
+            normalized_alias TEXT NOT NULL DEFAULT '',
+            search_text TEXT NOT NULL,
+            popularity_tiebreaker INTEGER NOT NULL DEFAULT 0,
+            href TEXT NOT NULL,
+            cover_url TEXT,
+            track_id INTEGER,
+            album_id INTEGER,
+            album_project_id INTEGER,
+            artist_id INTEGER,
+            album_name TEXT,
+            artist_name TEXT,
+            PRIMARY KEY(generation_id, entity_key, merge_level)
+        );
+        CREATE INDEX idx_music_search_documents_generation_kind
+            ON music_search_documents(
+                generation_id, kind, merge_level, normalized_label, entity_key
+            );
+        CREATE INDEX idx_music_search_documents_generation_secondary
+            ON music_search_documents(
+                generation_id, kind, merge_level, normalized_secondary, entity_key
+            );
+        CREATE INDEX idx_music_search_documents_entity_key
+            ON music_search_documents(entity_key, generation_id, merge_level);
+        """
+    )
+    try:
+        conn.execute(
+            """CREATE VIRTUAL TABLE music_search_documents_fts
+               USING fts5(
+                   generation_id UNINDEXED,
+                   entity_key UNINDEXED,
+                   merge_level UNINDEXED,
+                   search_text,
+                   tokenize='trigram'
+               )"""
+        )
+    except sqlite3.OperationalError:
+        pass
+    conn.execute(
+        """UPDATE music_search_index_state
+           SET active_generation_id=NULL, previous_generation_id=NULL,
+               status='missing', source_revision=NULL, document_count=0,
+               built_at=NULL, last_error=NULL, updated_at=datetime('now')
+           WHERE state_id=1"""
+    )
+    conn.execute(
+        """UPDATE music_search_snapshot_meta
+           SET status='stale', last_error='search index schema upgraded'
+           WHERE status IN ('ready', 'pending')"""
+    )
+
+
+@migration(34, "music_search_revision_state_and_snapshot_variants")
+def migrate_034(conn: sqlite3.Connection):
+    """Persist search revisions and make snapshot variants diagnosable.
+
+    Existing snapshots were fingerprinted from table scans and did not encode
+    their merge-level / dynamic-threshold variant explicitly.  They therefore
+    cannot be proven compatible with the v2 reader and must fail closed until
+    the six-variant snapshot set has been rebuilt.
+    """
+    conn.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS music_search_revision_state (
+            state_id INTEGER PRIMARY KEY CHECK (state_id = 1),
+            playback_revision INTEGER NOT NULL DEFAULT 0,
+            billboard_revision INTEGER NOT NULL DEFAULT 0,
+            metadata_revision INTEGER NOT NULL DEFAULT 0,
+            settings_revision INTEGER NOT NULL DEFAULT 0,
+            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        INSERT OR IGNORE INTO music_search_revision_state(
+            state_id, playback_revision, billboard_revision,
+            metadata_revision, settings_revision
+        ) VALUES (1, 0, 0, 0, 0);
+        """
+    )
+
+    snapshot_columns = {
+        str(row[1]) for row in conn.execute("PRAGMA table_info(music_search_snapshot_meta)")
+    }
+    additions = (
+        ("semantic_base_key", "TEXT"),
+        ("merge_level", "INTEGER"),
+        ("dynamic_threshold", "INTEGER"),
+        ("builder_version", "TEXT"),
+    )
+    for column, column_type in additions:
+        if column not in snapshot_columns:
+            conn.execute(
+                f"ALTER TABLE music_search_snapshot_meta ADD COLUMN {column} {column_type}"
+            )
+
+    conn.execute(
+        """CREATE INDEX IF NOT EXISTS idx_music_search_snapshot_meta_variant
+           ON music_search_snapshot_meta(
+               semantic_base_key, status, merge_level, dynamic_threshold
+           )"""
+    )
+    conn.execute(
+        """UPDATE music_search_snapshot_meta
+           SET status='stale', last_error='music search snapshot schema upgraded'
+           WHERE status IN ('ready', 'pending', 'running')
+             AND (
+                 semantic_base_key IS NULL
+                 OR merge_level IS NULL
+                 OR dynamic_threshold IS NULL
+                 OR builder_version IS NULL
+             )"""
+    )
+
+
 # ── Runner ────────────────────────────────────────────────────────────────
 
 

@@ -21,6 +21,7 @@ def compute_weekly_data(
     dynamic_threshold=False,
     max_merge_gap_minutes=5,
     include_compilations=False,
+    merge_enabled=True,
 ):
     args = (
         min_ms,
@@ -36,6 +37,7 @@ def compute_weekly_data(
         dynamic_threshold,
         max_merge_gap_minutes,
         include_compilations,
+        merge_enabled,
     )
     return call_with_billboard_revision_cache(_compute_weekly_data_cached, args)
 
@@ -54,6 +56,7 @@ def compute_power_scores_staged(
     dynamic_threshold=False,
     max_merge_gap_minutes=5,
     include_compilations=False,
+    merge_enabled=True,
 ):
     return _compute_power_scores_cached(
         min_ms,
@@ -69,6 +72,7 @@ def compute_power_scores_staged(
         dynamic_threshold=dynamic_threshold,
         max_merge_gap_minutes=max_merge_gap_minutes,
         include_compilations=include_compilations,
+        merge_enabled=merge_enabled,
     )
 
 
@@ -86,6 +90,7 @@ def compute_summaries_staged(
     dynamic_threshold=False,
     max_merge_gap_minutes=5,
     include_compilations=False,
+    merge_enabled=True,
 ):
     return _compute_summaries_cached(
         min_ms,
@@ -101,37 +106,13 @@ def compute_summaries_staged(
         dynamic_threshold=dynamic_threshold,
         max_merge_gap_minutes=max_merge_gap_minutes,
         include_compilations=include_compilations,
+        merge_enabled=merge_enabled,
     )
 
 
-def compute_records_staged(
-    min_ms=30000,
-    music_only=True,
-    bb_top_n=30,
-    bb_album_top_n=20,
-    bb_artist_top_n=20,
-    bb_week_start_dow=4,
-    bb_week_start_hour=0,
-    year_start=None,
-    year_end=None,
-    merge_level=2,
-    dynamic_threshold=False,
-    max_merge_gap_minutes=5,
-):
-    return _compute_records_cached(
-        min_ms,
-        music_only,
-        bb_top_n,
-        bb_album_top_n,
-        bb_artist_top_n,
-        bb_week_start_dow,
-        bb_week_start_hour,
-        year_start,
-        year_end,
-        merge_level,
-        dynamic_threshold=dynamic_threshold,
-        max_merge_gap_minutes=max_merge_gap_minutes,
-    )
+def compute_records_staged(*args, **kwargs):
+    """Return the records slice while preserving the cached facade contract."""
+    return _compute_records_cached(*args, **kwargs)
 
 
 compute_weekly_data.cache_clear = _compute_weekly_data_cached.cache_clear  # type: ignore[attr-defined]

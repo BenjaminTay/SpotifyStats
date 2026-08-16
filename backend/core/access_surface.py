@@ -237,6 +237,7 @@ PUBLIC_SAFE_GET_TEMPLATES = frozenset(
         "/api/community/trending",
         "/api/community/post/{post_id}",
         "/api/music/search",
+        "/api/music/search/context",
         "/api/music/tracks/{track_id}/stats",
         "/api/music/albums/{album_name}/stats",
         "/api/music/artists/{artist_name}/stats",

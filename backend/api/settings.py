@@ -190,10 +190,25 @@ def update_settings(
     invalidate("db")
     invalidate("yearly_review")
     if updates.keys() & (_stats_keys | {"include_compilations"}):
+        from backend.core.db import get_db
+        from backend.services.music_search_maintenance_service import (
+            enqueue_music_search_snapshot_rebuild,
+            mark_music_search_for_rebuild,
+        )
         from backend.services.yearly_review_service import (
             start_yearly_review_prewarm_thread,
         )
 
+        search_conn = get_db(readonly=False)
+        try:
+            mark_music_search_for_rebuild(
+                reason="search settings changed",
+                revision_kinds=("settings",),
+                conn=search_conn,
+            )
+            enqueue_music_search_snapshot_rebuild(conn=search_conn)
+        finally:
+            search_conn.close()
         start_yearly_review_prewarm_thread()
 
     return _build_settings_response(conn)
@@ -232,6 +247,17 @@ def rebuild_aggregations(
         )
         _current["rebuild_pending"] = False
         _save_setting_to_db("rebuild_pending", "false")
+        from backend.services.music_search_maintenance_service import (
+            enqueue_music_search_snapshot_rebuild,
+            mark_music_search_for_rebuild,
+        )
+
+        mark_music_search_for_rebuild(
+            reason="billboard aggregations rebuilt",
+            revision_kinds=("billboard",),
+            conn=write_conn,
+        )
+        enqueue_music_search_snapshot_rebuild(conn=write_conn)
         return {
             "status": "done",
             "dynamic_threshold": dynamic_threshold,

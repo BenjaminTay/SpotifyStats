@@ -129,25 +129,30 @@ def test_ambiguous_album_project_name_does_not_invent_identity() -> None:
 
 
 def test_live_adapter_passes_integer_annual_range_to_billboard_records(monkeypatch) -> None:
-    captured = {}
-    monkeypatch.setattr(
-        billboard_adapter,
-        "compute_year_end_staged",
-        lambda **_kwargs: {
+    captured_year_end = {}
+    captured_records = {}
+
+    def fake_year_end(**kwargs):
+        captured_year_end.update(kwargs)
+        return {
             "meta": {"coverage_status": "empty", "semantics_version": "year_end_v3"},
             "tracks": [],
             "albums": [],
             "artists": [],
             "honors": {},
-        },
-    )
+        }
 
     def fake_records(**kwargs):
-        captured.update(kwargs)
+        captured_records.update(kwargs)
         return {"records": {}}
 
+    monkeypatch.setattr(billboard_adapter, "compute_year_end_staged", fake_year_end)
     monkeypatch.setattr(billboard_adapter, "compute_records_staged", fake_records)
-    build_billboard_source(_conn(), 2025, _context())
+    context = _context().model_copy(update={"merge_enabled": False, "include_compilations": True})
+    build_billboard_source(_conn(), 2025, context)
 
-    assert captured["year_start"] == 2025
-    assert captured["year_end"] == 2025
+    assert captured_records["year_start"] == 2025
+    assert captured_records["year_end"] == 2025
+    for captured in (captured_year_end, captured_records):
+        assert captured["merge_enabled"] is False
+        assert captured["include_compilations"] is True

@@ -162,6 +162,65 @@ class TestRawFallbackConsistency:
         # Each session (two 20s fragments) → one 40s valid event after merge
         assert len(fragment_rows) > 0, "Fragments should merge into valid events"
 
+    def test_merge_disabled_bypasses_preaggregation_and_preserves_raw_row_eligibility(
+        self, isolated_seed_db
+    ):
+        """The aggregate represents only the merge-enabled logical timeline."""
+        build_aggregations(min_ms=30_000, music_only=True, week_start_dow=4, week_start_hour=0)
+
+        from backend.domains.billboard.data_loader import (
+            _try_load_from_agg,
+            load_billboard_raw,
+        )
+
+        merged = load_billboard_raw(30_000, True, 4, 0, merge_enabled=True)
+        unmerged = load_billboard_raw(30_000, True, 4, 0, merge_enabled=False)
+        aggregate = _try_load_from_agg(30_000, True, 4, 0, merge_enabled=False)
+
+        assert aggregate == (None, None, None)
+        assert len(merged[merged["track_name"] == "Fixture Fragment Song"]) == 1
+        assert unmerged[unmerged["track_name"] == "Fixture Fragment Song"].empty
+
+    def test_billboard_weekly_endpoint_separates_merge_enabled_cache_keys(self, isolated_seed_db):
+        from fastapi.testclient import TestClient
+
+        from backend.main import app
+
+        _clear_billboard_runtime_caches()
+        with TestClient(app) as client:
+            merged = client.get(
+                "/api/billboard/weekly",
+                params={
+                    "merge_enabled": "true",
+                    "dynamic_threshold": "false",
+                    "bb_top_n": 100,
+                },
+            )
+            unmerged = client.get(
+                "/api/billboard/weekly",
+                params={
+                    "merge_enabled": "false",
+                    "dynamic_threshold": "false",
+                    "bb_top_n": 100,
+                },
+            )
+            merged_again = client.get(
+                "/api/billboard/weekly",
+                params={
+                    "merge_enabled": "true",
+                    "dynamic_threshold": "false",
+                    "bb_top_n": 100,
+                },
+            )
+
+        assert merged.status_code == 200, merged.text
+        assert unmerged.status_code == 200, unmerged.text
+        merged_tracks = {row["track_name"] for row in merged.json()["weekly"]}
+        unmerged_tracks = {row["track_name"] for row in unmerged.json()["weekly"]}
+        assert "Fixture Fragment Song" in merged_tracks
+        assert "Fixture Fragment Song" not in unmerged_tracks
+        assert merged_again.json() == merged.json()
+
     def test_preagg_and_raw_produce_same_track_counts(self, isolated_seed_db):
         """Build aggregations, then compare raw fallback per-track counts."""
         build_aggregations(min_ms=30_000, music_only=True, week_start_dow=4, week_start_hour=0)

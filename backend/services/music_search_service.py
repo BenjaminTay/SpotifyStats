@@ -11,6 +11,7 @@ import pandas as pd
 
 from backend.core.db import load_plays_for_artists
 from backend.domains.ai_agent.entity_resolver import EntityType, resolve_entities
+from backend.domains.music_search.timing import MusicSearchTiming, measure_search_phase
 from backend.models.music_search import (
     MusicSearchChartSummary,
     MusicSearchResponse,
@@ -337,6 +338,8 @@ def _build_chart_lookup(
     merge_level: int,
     dynamic_threshold: bool,
     max_merge_gap_minutes: int | None,
+    merge_enabled: bool,
+    include_compilations: bool,
 ) -> dict[str, dict[Any, MusicSearchChartSummary]]:
     try:
         data = compute_billboard_data(
@@ -352,6 +355,8 @@ def _build_chart_lookup(
             merge_level=merge_level,
             dynamic_threshold=dynamic_threshold,
             max_merge_gap_minutes=max_merge_gap_minutes,
+            merge_enabled=merge_enabled,
+            include_compilations=include_compilations,
         )
     except sqlite3.OperationalError as exc:
         if "no such" in str(exc).lower():
@@ -491,6 +496,8 @@ def search_music_entities(
     bb_week_start_hour: int = 0,
     year_start: int | None = None,
     year_end: int | None = None,
+    include_compilations: bool = False,
+    timing: MusicSearchTiming | None = None,
 ) -> MusicSearchResponse:
     bounded_limit = _bounded_limit(limit_per_type)
     selected_kinds = _valid_kinds(kinds)
@@ -513,61 +520,72 @@ def search_music_entities(
     plays_df = None
     artist_plays_df = None
     if use_filtered_counts:
-        plays_df, artist_plays_df = _load_filtered_search_frames(
-            conn,
-            selected_kinds,
-            min_ms=min_ms,
-            music_only=music_only,
-            merge_enabled=merge_enabled,
-            dynamic_threshold=dynamic_threshold,
-            max_merge_gap_minutes=max_merge_gap_minutes,
-        )
+        with measure_search_phase(timing, "filtered_frames"):
+            plays_df, artist_plays_df = _load_filtered_search_frames(
+                conn,
+                selected_kinds,
+                min_ms=min_ms,
+                music_only=music_only,
+                merge_enabled=merge_enabled,
+                dynamic_threshold=dynamic_threshold,
+                max_merge_gap_minutes=max_merge_gap_minutes,
+            )
 
-    chart_lookup = (
-        _build_chart_lookup(
-            min_ms=min_ms,
-            music_only=music_only,
-            bb_top_n=bb_top_n,
-            bb_album_top_n=bb_album_top_n,
-            bb_artist_top_n=bb_artist_top_n,
-            bb_week_start_dow=bb_week_start_dow,
-            bb_week_start_hour=bb_week_start_hour,
-            year_start=year_start,
-            year_end=year_end,
-            merge_level=merge_level,
-            dynamic_threshold=dynamic_threshold,
-            max_merge_gap_minutes=max_merge_gap_minutes,
+    with measure_search_phase(timing, "chart_lookup"):
+        chart_lookup = (
+            _build_chart_lookup(
+                min_ms=min_ms,
+                music_only=music_only,
+                bb_top_n=bb_top_n,
+                bb_album_top_n=bb_album_top_n,
+                bb_artist_top_n=bb_artist_top_n,
+                bb_week_start_dow=bb_week_start_dow,
+                bb_week_start_hour=bb_week_start_hour,
+                year_start=year_start,
+                year_end=year_end,
+                merge_level=merge_level,
+                dynamic_threshold=dynamic_threshold,
+                max_merge_gap_minutes=max_merge_gap_minutes,
+                merge_enabled=merge_enabled,
+                include_compilations=include_compilations,
+            )
+            if include_chart
+            else {key: value.copy() for key, value in _EMPTY_CHART_LOOKUP.items()}
         )
-        if include_chart
-        else {key: value.copy() for key, value in _EMPTY_CHART_LOOKUP.items()}
-    )
 
     for kind in selected_kinds:
-        resolved = resolve_entities(conn, query=query, entity_type=kind, limit=bounded_limit)
+        with measure_search_phase(timing, f"resolve_{kind}"):
+            resolved = resolve_entities(
+                conn,
+                query=query,
+                entity_type=kind,
+                limit=bounded_limit,
+            )
         rows = []
-        for candidate in resolved.get("candidates", []):
-            metrics = (
-                _filtered_metrics(
-                    conn,
+        with measure_search_phase(timing, f"assemble_{kind}"):
+            for candidate in resolved.get("candidates", []):
+                metrics = (
+                    _filtered_metrics(
+                        conn,
+                        kind,
+                        candidate,
+                        plays_df=plays_df,
+                        artist_plays_df=artist_plays_df,
+                        merge_level=merge_level,
+                    )
+                    if use_filtered_counts
+                    else None
+                )
+                if metrics is not None and metrics[0] <= 0:
+                    continue
+                item = _convert(
                     kind,
                     candidate,
-                    plays_df=plays_df,
-                    artist_plays_df=artist_plays_df,
-                    merge_level=merge_level,
+                    metrics,
+                    _chart_for_candidate(kind, candidate, chart_lookup) if include_chart else None,
                 )
-                if use_filtered_counts
-                else None
-            )
-            if metrics is not None and metrics[0] <= 0:
-                continue
-            item = _convert(
-                kind,
-                candidate,
-                metrics,
-                _chart_for_candidate(kind, candidate, chart_lookup) if include_chart else None,
-            )
-            if item is not None:
-                rows.append(item)
+                if item is not None:
+                    rows.append(item)
         grouped[kind] = rows
 
     return MusicSearchResponse(

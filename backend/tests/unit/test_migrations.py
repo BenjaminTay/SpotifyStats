@@ -288,3 +288,134 @@ def test_migration_027_adds_pre_review_fields_to_both_review_queues(empty_db):
     for table in ("artist_genre_review_queue", "artist_language_review_queue"):
         columns = {row[1] for row in empty_db.execute(f"PRAGMA table_info({table})")}
         assert required <= columns
+
+
+def test_migration_033_invalidates_old_search_documents_without_touching_source_data(empty_db):
+    from backend.core import migrations
+
+    empty_db.executescript(
+        """
+        CREATE TABLE music_search_index_state (
+            state_id INTEGER PRIMARY KEY,
+            active_generation_id TEXT,
+            previous_generation_id TEXT,
+            status TEXT NOT NULL,
+            tokenizer TEXT,
+            normalization_version TEXT NOT NULL,
+            source_revision TEXT,
+            document_count INTEGER NOT NULL DEFAULT 0,
+            built_at TEXT,
+            last_error TEXT,
+            updated_at TEXT NOT NULL
+        );
+        INSERT INTO music_search_index_state VALUES (
+            1, 'old-generation', NULL, 'ready', 'trigram', 'v1', 'old-source',
+            1, '2026-08-16', NULL, '2026-08-16'
+        );
+        CREATE TABLE music_search_documents (
+            generation_id TEXT NOT NULL,
+            entity_key TEXT NOT NULL,
+            kind TEXT NOT NULL,
+            label TEXT NOT NULL,
+            normalized_label TEXT NOT NULL,
+            secondary TEXT,
+            normalized_secondary TEXT NOT NULL DEFAULT '',
+            alias_text TEXT NOT NULL DEFAULT '',
+            normalized_alias TEXT NOT NULL DEFAULT '',
+            search_text TEXT NOT NULL,
+            popularity_tiebreaker INTEGER NOT NULL DEFAULT 0,
+            href TEXT NOT NULL,
+            cover_url TEXT,
+            track_id INTEGER,
+            album_id INTEGER,
+            album_project_id INTEGER,
+            artist_id INTEGER,
+            album_name TEXT,
+            artist_name TEXT,
+            PRIMARY KEY(generation_id, entity_key)
+        );
+        INSERT INTO music_search_documents(
+            generation_id, entity_key, kind, label, normalized_label, search_text, href
+        ) VALUES ('old-generation', 'track:1', 'track', 'Old', 'old', 'old', '/old');
+        CREATE TABLE music_search_snapshot_meta (
+            snapshot_key TEXT PRIMARY KEY,
+            filter_fingerprint TEXT NOT NULL UNIQUE,
+            source_revision TEXT NOT NULL,
+            status TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            activated_at TEXT,
+            last_accessed_at TEXT,
+            last_error TEXT
+        );
+        INSERT INTO music_search_snapshot_meta VALUES (
+            'snapshot', 'fingerprint', 'old-source', 'ready', '2026-08-16',
+            '2026-08-16', NULL, NULL
+        );
+        CREATE TABLE music_search_entity_context (
+            snapshot_key TEXT NOT NULL,
+            entity_key TEXT NOT NULL,
+            play_events INTEGER NOT NULL DEFAULT 0,
+            total_ms INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY(snapshot_key, entity_key)
+        );
+        """
+    )
+
+    migrations.migrate_033(empty_db)
+
+    columns = {row[1] for row in empty_db.execute("PRAGMA table_info(music_search_documents)")}
+    assert "merge_level" in columns
+    assert empty_db.execute("SELECT COUNT(*) FROM music_search_documents").fetchone()[0] == 0
+    state = empty_db.execute(
+        "SELECT active_generation_id, status, source_revision FROM music_search_index_state"
+    ).fetchone()
+    assert tuple(state) == (None, "missing", None)
+    snapshot = empty_db.execute(
+        "SELECT status, last_error FROM music_search_snapshot_meta"
+    ).fetchone()
+    assert tuple(snapshot) == ("stale", "search index schema upgraded")
+
+
+def test_migration_034_adds_revision_state_and_invalidates_legacy_snapshots(empty_db):
+    from backend.core import migrations
+
+    empty_db.executescript(
+        """
+        CREATE TABLE music_search_snapshot_meta (
+            snapshot_key TEXT PRIMARY KEY,
+            filter_fingerprint TEXT NOT NULL UNIQUE,
+            source_revision TEXT NOT NULL,
+            status TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            activated_at TEXT,
+            last_accessed_at TEXT,
+            last_error TEXT
+        );
+        INSERT INTO music_search_snapshot_meta VALUES (
+            'legacy', 'legacy', 'source', 'ready', '2026-08-16',
+            '2026-08-16', NULL, NULL
+        );
+        """
+    )
+
+    migrations.migrate_034(empty_db)
+    migrations.migrate_034(empty_db)
+
+    columns = {row[1] for row in empty_db.execute("PRAGMA table_info(music_search_snapshot_meta)")}
+    assert {
+        "semantic_base_key",
+        "merge_level",
+        "dynamic_threshold",
+        "builder_version",
+    } <= columns
+    revision = empty_db.execute(
+        """SELECT playback_revision, billboard_revision, metadata_revision,
+                  settings_revision FROM music_search_revision_state WHERE state_id=1"""
+    ).fetchone()
+    assert tuple(revision) == (0, 0, 0, 0)
+    snapshot = empty_db.execute(
+        "SELECT status, last_error FROM music_search_snapshot_meta WHERE snapshot_key='legacy'"
+    ).fetchone()
+    assert tuple(snapshot) == ("stale", "music search snapshot schema upgraded")
+    indexes = {row[1] for row in empty_db.execute("PRAGMA index_list(music_search_snapshot_meta)")}
+    assert "idx_music_search_snapshot_meta_variant" in indexes

@@ -2,14 +2,30 @@
 
 from __future__ import annotations
 
+import logging
 from sqlite3 import Connection
-from typing import Literal
+from typing import Literal, Union
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from pydantic import BaseModel
 
+from backend.core.access_surface import is_public_readonly
 from backend.dependencies import BillboardFilters, MergeConfig, PlayFilters, get_conn
-from backend.models.music_search import MusicSearchResponse
+from backend.domains.music_search.context import build_music_search_filter_context
+from backend.domains.music_search.contracts import parse_music_search_entity_key
+from backend.domains.music_search.index import get_music_search_index_state
+from backend.domains.music_search.snapshot import (
+    get_music_search_snapshot_status,
+    get_ready_music_search_snapshot_key,
+    lookup_music_search_context,
+)
+from backend.domains.music_search.timing import MusicSearchTiming
+from backend.domains.settings.repository import SettingsRepository
+from backend.models.music_search import (
+    MusicSearchCandidateResponse,
+    MusicSearchContextResponse,
+    MusicSearchResponse,
+)
 from backend.services.entity_stats_service import (
     get_album_personal_ranking,
     get_album_stats,
@@ -19,9 +35,92 @@ from backend.services.entity_stats_service import (
     get_entity_plays,
     get_track_stats,
 )
+from backend.services.music_search_candidate_service import search_music_candidates
 from backend.services.music_search_service import search_music_entities
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/music", tags=["Music"])
+
+
+def _search_filter_context(
+    conn: Connection,
+    filters: PlayFilters,
+    merge_cfg: MergeConfig,
+):
+    settings = SettingsRepository(conn).load_all()
+    return build_music_search_filter_context(
+        conn,
+        {
+            # Candidate V2 supports exactly the six maintained
+            # merge-level/dynamic variants.  Every other semantic value comes
+            # from the server settings snapshot used by the builder.
+            "min_ms": settings.get("min_ms", 30000),
+            "music_only": settings.get("music_only", True),
+            "merge_enabled": settings.get("merge_enabled", True),
+            "dynamic_threshold": filters.dynamic_threshold,
+            "max_merge_gap_minutes": settings.get("max_merge_gap_minutes", 5),
+            "merge_level": merge_cfg.merge_level,
+            "include_compilations": bool(settings.get("include_compilations", False)),
+            "bb_top_n": settings.get("bb_top_n", 30),
+            "bb_album_top_n": settings.get("bb_album_top_n", 20),
+            "bb_artist_top_n": settings.get("bb_artist_top_n", 20),
+            "bb_week_start_dow": settings.get("bb_week_start_dow", 4),
+            "bb_week_start_hour": settings.get("bb_week_start_hour", 0),
+            "year_start": None,
+            "year_end": None,
+        },
+    )
+
+
+_CANDIDATE_BASE_FILTERS = {
+    "min_ms",
+    "music_only",
+    "merge_enabled",
+    "max_merge_gap_minutes",
+    "bb_top_n",
+    "bb_album_top_n",
+    "bb_artist_top_n",
+    "bb_week_start_dow",
+    "bb_week_start_hour",
+}
+
+
+def _reject_unsupported_candidate_filters(
+    request: Request,
+    *,
+    conn: Connection,
+    filters: PlayFilters,
+    billboard_filters: BillboardFilters,
+) -> None:
+    """Reject semantic combinations that the six-variant builder never creates."""
+
+    settings = SettingsRepository(conn).load_all()
+    resolved = {
+        "min_ms": filters.min_ms,
+        "music_only": filters.music_only,
+        "merge_enabled": filters.merge_enabled,
+        "max_merge_gap_minutes": filters.max_merge_gap_minutes,
+        "bb_top_n": billboard_filters.bb_top_n,
+        "bb_album_top_n": billboard_filters.bb_album_top_n,
+        "bb_artist_top_n": billboard_filters.bb_artist_top_n,
+        "bb_week_start_dow": billboard_filters.bb_week_start_dow,
+        "bb_week_start_hour": billboard_filters.bb_week_start_hour,
+    }
+    unsupported = [
+        name
+        for name in sorted(_CANDIDATE_BASE_FILTERS)
+        if name in request.query_params and resolved[name] != settings.get(name)
+    ]
+    unsupported.extend(name for name in ("year_start", "year_end") if name in request.query_params)
+    if unsupported:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail={
+                "error": "unsupported_candidate_filter",
+                "parameters": unsupported,
+            },
+        )
 
 
 class EntityStatsResponse(BaseModel):
@@ -85,8 +184,13 @@ class AlbumPersonalRankingResponse(BaseModel):
     rows: list[dict]
 
 
-@router.get("/search", response_model=MusicSearchResponse)
+@router.get(
+    "/search",
+    response_model=Union[MusicSearchResponse, MusicSearchCandidateResponse],
+)
 def music_search(
+    request: Request,
+    response: Response,
     q: str = Query(default="", max_length=120, description="Local track, album, or artist query"),
     kind: Literal["track", "album", "artist"] | None = Query(
         default=None,
@@ -96,31 +200,161 @@ def music_search(
     include_chart: bool = Query(
         default=False, description="Include personal Billboard chart summary"
     ),
+    response_mode: Literal["legacy", "candidates"] = Query(default="legacy"),
+    eligibility: Literal["current", "any_local"] = Query(default="current"),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=5, ge=1, le=100),
     filters: PlayFilters = Depends(),
     billboard_filters: BillboardFilters = Depends(),
     merge_cfg: MergeConfig = Depends(),
     conn: Connection = Depends(get_conn),
 ):
-    return search_music_entities(
-        conn,
-        query=q,
-        kinds=(kind,) if kind else None,
-        limit_per_type=limit_per_type,
-        min_ms=filters.min_ms,
-        music_only=filters.music_only,
-        merge_enabled=filters.merge_enabled,
-        dynamic_threshold=filters.dynamic_threshold,
-        max_merge_gap_minutes=filters.max_merge_gap_minutes,
-        merge_level=merge_cfg.merge_level,
-        include_chart=include_chart,
-        bb_top_n=billboard_filters.bb_top_n,
-        bb_album_top_n=billboard_filters.bb_album_top_n,
-        bb_artist_top_n=billboard_filters.bb_artist_top_n,
-        bb_week_start_dow=billboard_filters.bb_week_start_dow,
-        bb_week_start_hour=billboard_filters.bb_week_start_hour,
-        year_start=billboard_filters.year_start,
-        year_end=billboard_filters.year_end,
+    timing = MusicSearchTiming()
+    result: Union[MusicSearchResponse, MusicSearchCandidateResponse]
+    with timing.measure("total"):
+        if response_mode == "candidates":
+            _reject_unsupported_candidate_filters(
+                request,
+                conn=conn,
+                filters=filters,
+                billboard_filters=billboard_filters,
+            )
+            if eligibility == "any_local" and is_public_readonly(request):
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="public-readonly 仅允许 current 搜索资格",
+                )
+            with timing.measure("fingerprint"):
+                search_context = _search_filter_context(
+                    conn,
+                    filters,
+                    merge_cfg,
+                )
+                snapshot_status = get_music_search_snapshot_status(
+                    conn,
+                    search_context.filter_fingerprint,
+                )
+                snapshot_key = get_ready_music_search_snapshot_key(
+                    conn,
+                    search_context.filter_fingerprint,
+                )
+            result = search_music_candidates(
+                conn,
+                query=q,
+                kinds=(kind,) if kind else None,
+                page=page,
+                page_size=page_size,
+                eligibility=eligibility,
+                filter_fingerprint=search_context.filter_fingerprint,
+                snapshot_status=snapshot_status,
+                merge_level=merge_cfg.merge_level,
+                snapshot_key=snapshot_key,
+                timing=timing,
+            )
+        else:
+            result = search_music_entities(
+                conn,
+                query=q,
+                kinds=(kind,) if kind else None,
+                limit_per_type=limit_per_type,
+                min_ms=filters.min_ms,
+                music_only=filters.music_only,
+                merge_enabled=filters.merge_enabled,
+                dynamic_threshold=filters.dynamic_threshold,
+                max_merge_gap_minutes=filters.max_merge_gap_minutes,
+                merge_level=merge_cfg.merge_level,
+                include_chart=include_chart,
+                bb_top_n=billboard_filters.bb_top_n,
+                bb_album_top_n=billboard_filters.bb_album_top_n,
+                bb_artist_top_n=billboard_filters.bb_artist_top_n,
+                bb_week_start_dow=billboard_filters.bb_week_start_dow,
+                bb_week_start_hour=billboard_filters.bb_week_start_hour,
+                year_start=billboard_filters.year_start,
+                year_end=billboard_filters.year_end,
+                include_compilations=bool(
+                    SettingsRepository(conn).load_all().get("include_compilations", False)
+                ),
+                timing=timing,
+            )
+    response.headers["Server-Timing"] = timing.server_timing_header()
+    search_snapshot_status = getattr(result, "snapshot_status", "legacy")
+    generation_id = (
+        get_music_search_index_state(conn).get("active_generation_id")
+        if response_mode == "candidates"
+        else None
     )
+    logger.info(
+        "Music search completed: mode=%s query_length=%d kind=%s results=%d "
+        "include_chart=%s snapshot_status=%s index_generation=%s timing_ms=%s",
+        response_mode,
+        len(q.strip()),
+        kind or "all",
+        result.total,
+        include_chart if response_mode == "legacy" else False,
+        search_snapshot_status,
+        str(generation_id)[:12] if generation_id else "none",
+        timing.as_dict(),
+    )
+    return result
+
+
+@router.get("/search/context", response_model=MusicSearchContextResponse)
+def music_search_context(
+    request: Request,
+    response: Response,
+    entity_key: list[str] = Query(default=[]),
+    filters: PlayFilters = Depends(),
+    billboard_filters: BillboardFilters = Depends(),
+    merge_cfg: MergeConfig = Depends(),
+    conn: Connection = Depends(get_conn),
+) -> MusicSearchContextResponse:
+    """Read the exact derived context without queuing or rebuilding work."""
+
+    _reject_unsupported_candidate_filters(
+        request,
+        conn=conn,
+        filters=filters,
+        billboard_filters=billboard_filters,
+    )
+    if len(entity_key) > 30:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="entity_key 最多 30 个",
+        )
+    try:
+        for value in dict.fromkeys(entity_key):
+            parse_music_search_entity_key(value)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="entity_key 格式无效",
+        ) from exc
+    timing = MusicSearchTiming()
+    with timing.measure("total"):
+        with timing.measure("fingerprint"):
+            search_context = _search_filter_context(
+                conn,
+                filters,
+                merge_cfg,
+            )
+        with timing.measure("snapshot_lookup"):
+            result = lookup_music_search_context(
+                conn,
+                filter_fingerprint=search_context.filter_fingerprint,
+                entity_keys=entity_key,
+            )
+        with timing.measure("serialize"):
+            result.model_dump(mode="json")
+    response.headers["Server-Timing"] = timing.server_timing_header()
+    logger.info(
+        "Music search context completed: requested_keys=%d returned_items=%d "
+        "snapshot_status=%s timing_ms=%s",
+        len(dict.fromkeys(entity_key)),
+        len(result.items),
+        result.snapshot_status,
+        timing.as_dict(),
+    )
+    return result
 
 
 @router.get("/tracks/{track_id}/stats", response_model=EntityStatsResponse)

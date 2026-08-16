@@ -119,6 +119,7 @@ def _params(filters: BillboardFilters) -> dict[str, Any]:
     return {
         "min_ms": filters.min_ms,
         "music_only": filters.music_only,
+        "merge_enabled": filters.merge_enabled,
         "bb_top_n": filters.bb_top_n,
         "bb_album_top_n": filters.bb_album_top_n,
         "bb_artist_top_n": filters.bb_artist_top_n,

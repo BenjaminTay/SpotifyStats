@@ -38,6 +38,7 @@ def test_public_allowlist_only_references_registered_routes() -> None:
 
 def test_public_policy_keeps_only_explicit_analytical_posts() -> None:
     assert public_policy_decision("GET", "/api/home/overview") == "allow"
+    assert public_policy_decision("GET", "/api/music/search") == "allow"
     assert public_policy_decision("GET", "/api/music/tracks/42/stats") == "allow"
     assert public_policy_decision("GET", "/api/billboard/artist/A/B") == "allow"
     assert public_policy_decision("POST", "/api/billboard/versus/track") == "allow"

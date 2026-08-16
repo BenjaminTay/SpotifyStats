@@ -71,6 +71,7 @@ def _load_and_rank_cached_by_revision(
     dynamic_threshold=False,
     max_merge_gap_minutes=5,
     include_compilations=False,
+    merge_enabled=True,
     _revision_state=(0, 0, 0, 0, "ready:ready"),
 ):
     return _load_and_rank_uncached(
@@ -87,6 +88,7 @@ def _load_and_rank_cached_by_revision(
         dynamic_threshold,
         max_merge_gap_minutes,
         include_compilations,
+        merge_enabled,
     )
 
 
@@ -104,6 +106,7 @@ def _load_and_rank_cached(
     dynamic_threshold=False,
     max_merge_gap_minutes=5,
     include_compilations=False,
+    merge_enabled=True,
 ):
     revision_state = billboard_revision_state()
     ready = (
@@ -125,6 +128,7 @@ def _load_and_rank_cached(
         dynamic_threshold,
         max_merge_gap_minutes,
         include_compilations,
+        merge_enabled,
     )
     # Pending fallbacks are correct but deliberately short-lived: never let an
     # in-flight rebuild result become the stable ready-generation LRU value.
@@ -176,6 +180,7 @@ def _load_and_rank_uncached(
     dynamic_threshold=False,
     max_merge_gap_minutes=5,
     include_compilations=False,
+    merge_enabled=True,
 ):
     _agg_tracks, _agg_albums, _agg_artists = _try_load_from_agg(
         min_ms,
@@ -184,6 +189,7 @@ def _load_and_rank_uncached(
         bb_week_start_hour,
         dynamic_threshold=dynamic_threshold,
         max_merge_gap_minutes=max_merge_gap_minutes,
+        merge_enabled=merge_enabled,
     )
 
     if _agg_tracks is not None:
@@ -199,6 +205,7 @@ def _load_and_rank_uncached(
             bb_week_start_hour,
             dynamic_threshold=dynamic_threshold,
             max_merge_gap_minutes=max_merge_gap_minutes,
+            merge_enabled=merge_enabled,
         )
         df_filtered = _filter_billboard_years(df_raw.copy(), year_start, year_end)
 
@@ -256,6 +263,7 @@ def _load_and_rank_uncached(
             bb_week_start_hour,
             dynamic_threshold=dynamic_threshold,
             max_merge_gap_minutes=max_merge_gap_minutes,
+            merge_enabled=merge_enabled,
         )
         df_artists = _filter_billboard_years(df_artists, year_start, year_end)
         weekly_artist = compute_artist_weekly_rankings(df_artists, bb_artist_top_n)

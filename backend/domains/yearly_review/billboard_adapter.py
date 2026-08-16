@@ -132,6 +132,7 @@ def build_billboard_source(
             dynamic_threshold=context.dynamic_threshold,
             max_merge_gap_minutes=context.max_merge_gap_minutes,
             include_compilations=context.include_compilations,
+            merge_enabled=context.merge_enabled,
             year_end_top_n=50,
             year_end_album_top_n=30,
             year_end_artist_top_n=30,
@@ -150,6 +151,8 @@ def build_billboard_source(
             merge_level=context.merge_level,
             dynamic_threshold=context.dynamic_threshold,
             max_merge_gap_minutes=context.max_merge_gap_minutes,
+            include_compilations=context.include_compilations,
+            merge_enabled=context.merge_enabled,
         )
 
     meta = dict(year_end_payload.get("meta", {}))

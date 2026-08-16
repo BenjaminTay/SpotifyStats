@@ -239,6 +239,16 @@ DEFAULT_BOUNDARY_CASES: tuple[BoundaryCase, ...] = (
         "music_search_kind_invalid", "/api/music/search", {"q": "Fixture", "kind": "playlist"}
     ),
     BoundaryCase(
+        "music_search_response_mode_invalid",
+        "/api/music/search",
+        {"q": "Fixture", "response_mode": "fast"},
+    ),
+    BoundaryCase(
+        "music_search_eligibility_invalid",
+        "/api/music/search",
+        {"q": "Fixture", "response_mode": "candidates", "eligibility": "all"},
+    ),
+    BoundaryCase(
         "music_search_limit_low", "/api/music/search", {"q": "Fixture", "limit_per_type": 0}
     ),
     BoundaryCase(

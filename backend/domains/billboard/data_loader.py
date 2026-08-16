@@ -11,6 +11,37 @@ DOW_NAMES = {0: "周一", 1: "周二", 2: "周三", 3: "周四", 4: "周五", 5:
 DOW_SHORT = {0: "Mon", 1: "Tue", 2: "Wed", 3: "Thu", 4: "Fri", 5: "Sat", 6: "Sun"}
 
 
+def _attach_unmerged_listening_intervals(frame: pd.DataFrame) -> pd.DataFrame:
+    """Represent each eligible raw row as one independent chart event.
+
+    The Billboard duration splitter needs inferred listened intervals even
+    when continuous-play merging is disabled.  Keeping one interval per input
+    row preserves raw-row play counts while still attributing duration across
+    week boundaries exactly.
+    """
+    from backend.domains.playback.logical_timeline import LISTENING_INTERVALS_COLUMN
+
+    result = frame.copy()
+    result["counted_at"] = result.get("ts", pd.Series(dtype=object))
+    if result.empty:
+        result[LISTENING_INTERVALS_COLUMN] = pd.Series(dtype=object)
+        return result
+
+    timestamps = pd.to_datetime(result["ts"], errors="coerce", utc=True, format="mixed")
+    played_ms = (
+        pd.to_numeric(result["ms_played"], errors="coerce").fillna(0).clip(lower=0).astype("int64")
+    )
+    intervals: list[tuple[tuple[int, int], ...]] = []
+    for timestamp, duration_ms in zip(timestamps, played_ms):
+        if pd.isna(timestamp) or duration_ms <= 0:
+            intervals.append(())
+            continue
+        end_ns = int(timestamp.value)
+        intervals.append(((end_ns - int(duration_ms) * 1_000_000, end_ns),))
+    result[LISTENING_INTERVALS_COLUMN] = intervals
+    return result
+
+
 def _try_load_from_agg(
     min_ms,
     music_only,
@@ -18,6 +49,7 @@ def _try_load_from_agg(
     week_start_hour,
     dynamic_threshold=False,
     max_merge_gap_minutes=5,
+    merge_enabled=True,
 ):
     """Try to load pre-aggregated weekly data from agg tables.
 
@@ -25,6 +57,11 @@ def _try_load_from_agg(
     or (None, None, None) if parameters don't match or tables are empty.
     Each DataFrame is pre-grouped (play_count + total_ms) but NOT ranked.
     """
+    # The persisted aggregate is built from the merge-enabled logical
+    # timeline.  It cannot answer the raw-row (merge disabled) contract.
+    if not merge_enabled:
+        return None, None, None
+
     from backend.core.db import (
         _agg_param_hash,
         check_agg_valid,
@@ -82,11 +119,15 @@ def load_billboard_raw(
     week_start_hour,
     dynamic_threshold=False,
     max_merge_gap_minutes=5,
+    merge_enabled=True,
 ):
     """Load filtered plays and compute billboard_week with configurable boundary."""
     conn = get_db()
-    # Load with min_ms=0 to preserve short fragments for merge-then-filter
-    _f, _fp = base_filters(min_ms=0, music_only=music_only)
+    # Merge-enabled mode must preserve short fragments until the logical
+    # timeline is reconstructed.  Merge-disabled mode follows the same raw
+    # row eligibility used by ``load_plays(..., merge_enabled=False)``.
+    source_min_ms = 0 if merge_enabled else min_ms
+    _f, _fp = base_filters(min_ms=source_min_ms, music_only=music_only)
     _w = f"WHERE {_f}" if _f else ""
     df = pd.read_sql_query(
         f"""SELECT p.play_id, p.ts, p.ts_date, p.ts_dow, p.ts_hour, p.ms_played, p.track_id,
@@ -106,19 +147,22 @@ def load_billboard_raw(
         conn,
         params=_fp,
     )
-    # Reconstruct the global logical timeline first. Reporting boundaries are
-    # attribution boundaries, never merge-session boundaries.
-    df = merge_consecutive_plays(
-        df,
-        min_ms,
-        max_gap_minutes=max_merge_gap_minutes,
-        boundary_column="source_album_id",
-        dynamic_threshold=dynamic_threshold,
-    )
-    if min_ms > 0:
-        from backend.domains.playback.counting import filter_effective_plays
+    if merge_enabled:
+        # Reconstruct the global logical timeline first. Reporting boundaries
+        # are attribution boundaries, never merge-session boundaries.
+        df = merge_consecutive_plays(
+            df,
+            min_ms,
+            max_gap_minutes=max_merge_gap_minutes,
+            boundary_column="source_album_id",
+            dynamic_threshold=dynamic_threshold,
+        )
+        if min_ms > 0:
+            from backend.domains.playback.counting import filter_effective_plays
 
-        df = filter_effective_plays(df, min_ms=min_ms, dynamic_threshold=dynamic_threshold)
+            df = filter_effective_plays(df, min_ms=min_ms, dynamic_threshold=dynamic_threshold)
+    else:
+        df = _attach_unmerged_listening_intervals(df)
 
     from backend.domains.metadata.artist_identity import canonicalize_artist_frame
 
@@ -153,6 +197,7 @@ def load_billboard_raw_for_artists(
     week_start_hour,
     dynamic_threshold=False,
     max_merge_gap_minutes=5,
+    merge_enabled=True,
 ):
     """Same as load_billboard_raw but fans out through track_artists for multi-artist
     attribution. Merge happens before fan-out to keep merge_consecutive_plays correct.
@@ -160,8 +205,8 @@ def load_billboard_raw_for_artists(
     Only use for artist-grouped Billboard computations.
     """
     conn = get_db()
-    # Load with min_ms=0 to preserve short fragments for merge-then-filter
-    _f, _fp = base_filters(min_ms=0, music_only=music_only)
+    source_min_ms = 0 if merge_enabled else min_ms
+    _f, _fp = base_filters(min_ms=source_min_ms, music_only=music_only)
     _w = f"WHERE {_f}" if _f else ""
 
     # Step 1: Load single-artist data (same as load_billboard_raw)
@@ -184,18 +229,21 @@ def load_billboard_raw_for_artists(
         params=_fp,
     )
 
-    # Merge before fan-out, then filter to align with pre-aggregation path
-    df = merge_consecutive_plays(
-        df,
-        min_ms,
-        max_gap_minutes=max_merge_gap_minutes,
-        boundary_column="source_album_id",
-        dynamic_threshold=dynamic_threshold,
-    )
-    if min_ms > 0:
-        from backend.domains.playback.counting import filter_effective_plays
+    if merge_enabled:
+        # Merge before fan-out, then filter to align with pre-aggregation path.
+        df = merge_consecutive_plays(
+            df,
+            min_ms,
+            max_gap_minutes=max_merge_gap_minutes,
+            boundary_column="source_album_id",
+            dynamic_threshold=dynamic_threshold,
+        )
+        if min_ms > 0:
+            from backend.domains.playback.counting import filter_effective_plays
 
-        df = filter_effective_plays(df, min_ms=min_ms, dynamic_threshold=dynamic_threshold)
+            df = filter_effective_plays(df, min_ms=min_ms, dynamic_threshold=dynamic_threshold)
+    else:
+        df = _attach_unmerged_listening_intervals(df)
 
     # Step 2: Fan out through raw + manual effective credits. Keep each effective output row
     # distinct even when consecutive-play expansion reused a source play_id.

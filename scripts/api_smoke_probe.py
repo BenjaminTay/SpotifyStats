@@ -280,6 +280,7 @@ DEFAULT_SAFE_GET_CASES: tuple[SmokeCase, ...] = (
     SmokeCase("import_preflight", "/api/import/preflight"),
     SmokeCase("import_health", "/api/import/health"),
     SmokeCase("music_search", "/api/music/search", {"q": "Fixture", "limit_per_type": 3}),
+    SmokeCase("music_search_context", "/api/music/search/context", DEFAULT_BILLBOARD),
     SmokeCase("music_track_stats", "/api/music/tracks/901/stats", DEFAULT_FILTERS),
     SmokeCase("music_album_stats", "/api/music/albums/Fixture Future LP/stats", DEFAULT_FILTERS),
     SmokeCase(

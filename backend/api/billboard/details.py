@@ -283,6 +283,7 @@ def entity_lists(
         search=search,
         dynamic_threshold=filters.dynamic_threshold,
         max_merge_gap_minutes=filters.max_merge_gap_minutes,
+        merge_enabled=filters.merge_enabled,
         merge_level=merge.merge_level,
         include_compilations=include_compilations,
     )
@@ -314,6 +315,7 @@ def versus_track(
         year_end=filters.year_end,
         dynamic_threshold=filters.dynamic_threshold,
         max_merge_gap_minutes=filters.max_merge_gap_minutes,
+        merge_enabled=filters.merge_enabled,
         merge_level=merge.merge_level,
         include_compilations=include_compilations,
     )
@@ -346,6 +348,7 @@ def versus_album(
         year_end=filters.year_end,
         dynamic_threshold=filters.dynamic_threshold,
         max_merge_gap_minutes=filters.max_merge_gap_minutes,
+        merge_enabled=filters.merge_enabled,
         merge_level=merge.merge_level,
         include_compilations=include_compilations,
     )
@@ -374,6 +377,7 @@ def versus_artist(
         year_end=filters.year_end,
         dynamic_threshold=filters.dynamic_threshold,
         max_merge_gap_minutes=filters.max_merge_gap_minutes,
+        merge_enabled=filters.merge_enabled,
         merge_level=merge.merge_level,
         include_compilations=include_compilations,
     )
@@ -403,6 +407,7 @@ def versus_track_multi(
         year_end=filters.year_end,
         dynamic_threshold=filters.dynamic_threshold,
         max_merge_gap_minutes=filters.max_merge_gap_minutes,
+        merge_enabled=filters.merge_enabled,
         merge_level=merge.merge_level,
         include_compilations=include_compilations,
     )
@@ -429,6 +434,7 @@ def versus_album_multi(
         year_end=filters.year_end,
         dynamic_threshold=filters.dynamic_threshold,
         max_merge_gap_minutes=filters.max_merge_gap_minutes,
+        merge_enabled=filters.merge_enabled,
         merge_level=merge.merge_level,
         include_compilations=include_compilations,
     )
@@ -455,6 +461,7 @@ def versus_artist_multi(
         year_end=filters.year_end,
         dynamic_threshold=filters.dynamic_threshold,
         max_merge_gap_minutes=filters.max_merge_gap_minutes,
+        merge_enabled=filters.merge_enabled,
         merge_level=merge.merge_level,
         include_compilations=include_compilations,
     )

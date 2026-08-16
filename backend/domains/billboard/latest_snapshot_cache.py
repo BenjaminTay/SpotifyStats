@@ -26,6 +26,7 @@ def snapshot_key(
     dynamic_threshold=False,
     max_merge_gap_minutes=5,
     include_compilations=False,
+    merge_enabled=True,
 ) -> tuple[Any, ...]:
     return (
         min_ms,
@@ -41,6 +42,7 @@ def snapshot_key(
         dynamic_threshold,
         max_merge_gap_minutes,
         include_compilations,
+        merge_enabled,
     )
 
 
@@ -89,6 +91,7 @@ def store_latest_snapshot_for_locals(
         "dynamic_threshold",
         "max_merge_gap_minutes",
         "include_compilations",
+        "merge_enabled",
     )
     store_latest_snapshot_for_args(tuple(values[name] for name in names), payload)
     return payload

@@ -20,9 +20,20 @@ import uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from os.path import realpath
 from typing import Any
 
 logger = logging.getLogger(__name__)
+
+
+def queue_targets_connection(queue_instance: object, conn: sqlite3.Connection) -> bool:
+    """Return whether a persistent queue and connection use the same database."""
+    queue_path = getattr(queue_instance, "database_path", None)
+    if not queue_path:
+        return True
+    row = conn.execute("PRAGMA database_list").fetchone()
+    connection_path = str(row[2] or "") if row is not None else ""
+    return bool(connection_path) and realpath(connection_path) == realpath(str(queue_path))
 
 
 # ── Data model ───────────────────────────────────────────────────────────
@@ -84,6 +95,11 @@ class JobQueue:
 
     def register(self, job_type: str, handler: Callable[[Job], None]):
         self._handlers[job_type] = handler
+
+    @property
+    def database_path(self) -> str | None:
+        """Return the persistence target used by this queue instance."""
+        return self._db_path
 
     # ── Lifecycle ──────────────────────────────────────────────────────
 

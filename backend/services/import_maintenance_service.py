@@ -11,6 +11,10 @@ from backend.domains.metadata.spotify_refresh import refresh_missing_spotify_met
 from backend.domains.playback.album_projects import rebuild_album_projects
 from backend.domains.settings.repository import SettingsRepository
 from backend.providers.spotify.client import SpotifyProvider
+from backend.services.music_search_maintenance_service import (
+    mark_music_search_for_rebuild,
+    rebuild_current_music_search_derived_data,
+)
 
 
 def _progress(progress_callback, message: str, pct: float) -> None:
@@ -50,6 +54,25 @@ def run_post_streaming_import_maintenance(progress_callback=None) -> dict[str, A
             max_merge_gap_minutes=int(settings.get("max_merge_gap_minutes", 5)),
         )
 
+        mark_music_search_for_rebuild(
+            reason="streaming import maintenance published",
+            documents=True,
+            revision_kinds=("playback", "billboard", "metadata"),
+            conn=conn,
+        )
+
+        _progress(progress_callback, "重建音乐查找索引与精确快照...", 0.94)
+        search_report = rebuild_current_music_search_derived_data(
+            conn,
+            rebuild_documents=True,
+        )
+        if search_report["status"] != "ready":
+            snapshot_set = search_report["snapshot_set"]
+            raise RuntimeError(
+                "music-search snapshot set incomplete after import: "
+                f"ready={snapshot_set['ready_count']} failed={snapshot_set['failed_count']}"
+            )
+
         _progress(progress_callback, "核验导入派生数据...", 0.96)
         health = build_import_health_report(conn)
         invalidate_all()
@@ -74,6 +97,11 @@ def run_post_streaming_import_maintenance(progress_callback=None) -> dict[str, A
             "agg_track_wks": agg_results.get("tracks", 0),
             "agg_album_wks": agg_results.get("albums", 0),
             "agg_artist_wks": agg_results.get("artists", 0),
+            "music_search_index_status": (search_report.get("index") or {}).get("status", "ready"),
+            "music_search_snapshot_status": search_report["snapshot"]["status"],
+            "music_search_snapshot_entities": search_report["snapshot"]["entity_count"],
+            "music_search_snapshot_ready_count": search_report["snapshot_set"]["ready_count"],
+            "music_search_snapshot_failed_count": search_report["snapshot_set"]["failed_count"],
             **health,
         }
     finally:

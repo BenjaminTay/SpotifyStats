@@ -69,6 +69,7 @@ def _compute_billboard_data_cached(
     dynamic_threshold=False,
     max_merge_gap_minutes=5,
     include_compilations=False,
+    merge_enabled=True,
 ):
     """Compute full Billboard payload with normalized staged load/rank cache."""
     # ── Load, filter, rank (shared with staged functions) ─────────────
@@ -87,6 +88,7 @@ def _compute_billboard_data_cached(
             dynamic_threshold=dynamic_threshold,
             max_merge_gap_minutes=max_merge_gap_minutes,
             include_compilations=include_compilations,
+            merge_enabled=merge_enabled,
         )
     )
 
@@ -187,6 +189,7 @@ def compute_billboard_data(
     dynamic_threshold=False,
     max_merge_gap_minutes=5,
     include_compilations=False,
+    merge_enabled=True,
 ):
     """Compute all Billboard data with normalized cache keys."""
     return _compute_billboard_data_cached(
@@ -203,6 +206,7 @@ def compute_billboard_data(
         dynamic_threshold=dynamic_threshold,
         max_merge_gap_minutes=max_merge_gap_minutes,
         include_compilations=include_compilations,
+        merge_enabled=merge_enabled,
     )
 
 

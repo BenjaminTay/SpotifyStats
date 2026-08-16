@@ -105,6 +105,7 @@ def get_versus_track(
     max_merge_gap_minutes=5,
     merge_level=2,
     include_compilations=False,
+    merge_enabled=True,
 ):
     """Compare two tracks side-by-side."""
     result = get_versus_track_multi(
@@ -122,6 +123,7 @@ def get_versus_track(
         max_merge_gap_minutes,
         merge_level,
         include_compilations,
+        merge_enabled,
     )
     if result.get("found"):
         return {
@@ -207,6 +209,7 @@ def get_versus_album(
     max_merge_gap_minutes=5,
     merge_level=2,
     include_compilations=False,
+    merge_enabled=True,
 ):
     """Compare two albums side-by-side."""
     result = get_versus_album_multi(
@@ -227,6 +230,7 @@ def get_versus_album(
         max_merge_gap_minutes,
         merge_level,
         include_compilations,
+        merge_enabled,
     )
     if result.get("found"):
         return {
@@ -335,6 +339,7 @@ def get_versus_artist(
     max_merge_gap_minutes=5,
     merge_level=2,
     include_compilations=False,
+    merge_enabled=True,
 ):
     """Compare two artists side-by-side."""
     result = get_versus_artist_multi(
@@ -352,6 +357,7 @@ def get_versus_artist(
         max_merge_gap_minutes,
         merge_level,
         include_compilations,
+        merge_enabled,
     )
     if result.get("found"):
         return {
@@ -759,6 +765,7 @@ def get_versus_track_multi(
     max_merge_gap_minutes=5,
     merge_level=2,
     include_compilations=False,
+    merge_enabled=True,
 ):
     """Compare multiple tracks.  track_ids is a list of int (2–5)."""
     if len(track_ids) < 2:
@@ -778,6 +785,7 @@ def get_versus_track_multi(
         max_merge_gap_minutes=max_merge_gap_minutes,
         merge_level=merge_level,
         include_compilations=include_compilations,
+        merge_enabled=merge_enabled,
     )
     weekly = pd.DataFrame(data["weekly"])
     power_scores = pd.DataFrame(data["power_scores"])
@@ -807,6 +815,7 @@ def get_versus_album_multi(
     max_merge_gap_minutes=5,
     merge_level=2,
     include_compilations=False,
+    merge_enabled=True,
 ):
     """Compare multiple albums.  albums is a list of {album_name, artist_name} (2–5)."""
     if len(albums) < 2:
@@ -826,6 +835,7 @@ def get_versus_album_multi(
         max_merge_gap_minutes=max_merge_gap_minutes,
         merge_level=merge_level,
         include_compilations=include_compilations,
+        merge_enabled=merge_enabled,
     )
     weekly_album = pd.DataFrame(data["weekly_album"])
     album_power_scores = pd.DataFrame(data["album_power_scores"])
@@ -873,6 +883,7 @@ def get_versus_artist_multi(
     max_merge_gap_minutes=5,
     merge_level=2,
     include_compilations=False,
+    merge_enabled=True,
 ):
     """Compare multiple artists.  artist_names is a list of str (2–5)."""
     if len(artist_names) < 2:
@@ -906,6 +917,7 @@ def get_versus_artist_multi(
         max_merge_gap_minutes=max_merge_gap_minutes,
         merge_level=merge_level,
         include_compilations=include_compilations,
+        merge_enabled=merge_enabled,
     )
     weekly_artist = pd.DataFrame(data["weekly_artist"])
     weekly_album = pd.DataFrame(data["weekly_album"])

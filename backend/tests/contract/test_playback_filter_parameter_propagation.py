@@ -124,6 +124,25 @@ class TestPlayFilterPropagation:
 
 
 class TestReleaseCycleFilterPropagation:
+    def test_release_cycle_artist_list_forwards_merge_enabled(self, monkeypatch):
+        import pandas as pd
+
+        from backend.api.billboard import release_cycle
+        from backend.dependencies import BillboardFilters
+
+        captured = {}
+
+        def fake_load(*args, **kwargs):
+            captured.update(kwargs)
+            return pd.DataFrame(columns=["billboard_week"])
+
+        monkeypatch.setattr(release_cycle, "load_billboard_raw_for_artists", fake_load)
+        monkeypatch.setattr(release_cycle, "load_artist_list", lambda _frame: [])
+
+        filters = BillboardFilters(merge_enabled=False)
+        assert release_cycle.get_artist_list(filters) == []
+        assert captured["merge_enabled"] is False
+
     def test_release_cycle_weekly_data_uses_filters_and_year_bounds(self, seed_conn):
         from backend.api.billboard.release_cycle import _get_weekly_data
         from backend.dependencies import BillboardFilters

@@ -35,6 +35,30 @@ from backend.dependencies import get_conn
 
 router = APIRouter(prefix="/version-merge", tags=["Version Merge"])
 
+
+def _refresh_music_search_derived_data(reason: str) -> None:
+    from backend.core.db import get_db
+    from backend.services.music_search_maintenance_service import (
+        enqueue_music_search_snapshot_rebuild,
+        mark_music_search_for_rebuild,
+    )
+
+    conn = get_db(readonly=False)
+    try:
+        mark_music_search_for_rebuild(
+            reason=reason,
+            documents=True,
+            revision_kinds=("metadata",),
+            conn=conn,
+        )
+        enqueue_music_search_snapshot_rebuild(
+            rebuild_documents=True,
+            conn=conn,
+        )
+    finally:
+        conn.close()
+
+
 # ── Request models ───────────────────────────────────────────────────────────
 
 
@@ -266,17 +290,20 @@ def create_new_group(body: CreateGroupRequest, auth: None = Depends(require_auth
     )
     if group_id is None:
         return {"status": "error", "message": "Failed to create group"}
+    _refresh_music_search_derived_data("release group created")
     return {"status": "ok", "group_id": group_id}
 
 
 @router.post("/track-groups/confirm", response_model=TrackGroupConfirmResponse)
 def confirm_track_group(body: TrackGroupConfirmRequest, auth: None = Depends(require_auth)):
     """Confirm a track candidate and rebuild album project rows."""
-    return confirm_track_group_candidate(
+    result = confirm_track_group_candidate(
         original_track_id=body.original_track_id,
         candidate_track_id=body.candidate_track_id,
         scope=body.scope,
     )
+    _refresh_music_search_derived_data("track group confirmed")
+    return result
 
 
 @router.post("/album-relations/confirm", response_model=AlbumRelationConfirmResponse)
@@ -285,7 +312,7 @@ def confirm_album_relation(
     auth: None = Depends(require_auth),
 ):
     """Confirm an album-level relation and derive matching track relations."""
-    return confirm_album_relation_bundle(
+    result = confirm_album_relation_bundle(
         canonical_name=body.canonical_name,
         primary_album_id=body.primary_album_id,
         member_album_ids=body.member_album_ids,
@@ -293,12 +320,16 @@ def confirm_album_relation(
         relation_type=body.relation_type,
         confirm_track_pairs=body.confirm_track_pairs,
     )
+    _refresh_music_search_derived_data("album relation confirmed")
+    return result
 
 
 @router.put("/groups/{group_id}/members", response_model=StatusResponse)
 def update_members(group_id: int, body: UpdateMembersRequest, auth: None = Depends(require_auth)):
     """Add or remove members from a release group."""
     ok = update_group_members(group_id, body.add_ids, body.remove_ids)
+    if ok:
+        _refresh_music_search_derived_data("release group members changed")
     return {"status": "ok" if ok else "error"}
 
 
@@ -306,6 +337,8 @@ def update_members(group_id: int, body: UpdateMembersRequest, auth: None = Depen
 def set_primary_album(group_id: int, body: SetPrimaryRequest, auth: None = Depends(require_auth)):
     """Change the primary album of a release group."""
     ok = set_primary(group_id, body.album_id)
+    if ok:
+        _refresh_music_search_derived_data("release group primary changed")
     return {"status": "ok" if ok else "error"}
 
 
@@ -313,6 +346,8 @@ def set_primary_album(group_id: int, body: SetPrimaryRequest, auth: None = Depen
 def remove_group(group_id: int, auth: None = Depends(require_auth)):
     """Delete a release group and its member relationships."""
     ok = delete_group(group_id)
+    if ok:
+        _refresh_music_search_derived_data("release group deleted")
     return {"status": "ok" if ok else "error"}
 
 
@@ -331,6 +366,7 @@ def rebuild_album_project_rows(auth: None = Depends(require_auth)):
     invalidate("analysis")
     invalidate("billboard")
     invalidate("yearly_review")
+    _refresh_music_search_derived_data("album projects rebuilt")
     return {"status": "ok"}
 
 
@@ -357,6 +393,8 @@ def apply_detection(detection_result: dict, auth: None = Depends(require_auth)):
         return {"status": "ok", "created_count": 0}
 
     created_count = apply_detected_groups(df)
+    if created_count:
+        _refresh_music_search_derived_data("detected release groups applied")
     # Convert numpy types
     return {
         "status": "ok",

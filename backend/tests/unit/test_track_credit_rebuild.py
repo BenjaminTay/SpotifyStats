@@ -24,9 +24,13 @@ def _database(path) -> None:
         INSERT INTO track_credit_state VALUES (1, 4, 3, 'pending', NULL, NULL);
         CREATE TABLE artist_identity_state (
             state_id INTEGER PRIMARY KEY,
-            current_revision INTEGER NOT NULL
+            current_revision INTEGER NOT NULL,
+            active_aggregate_revision INTEGER NOT NULL,
+            rebuild_status TEXT NOT NULL,
+            last_error TEXT,
+            updated_at TEXT
         );
-        INSERT INTO artist_identity_state VALUES (1, 9);
+        INSERT INTO artist_identity_state VALUES (1, 9, 9, 'ready', NULL, NULL);
         CREATE TABLE agg_weekly_artists (
             billboard_week TEXT NOT NULL,
             artist_id INTEGER NOT NULL,
@@ -36,6 +40,27 @@ def _database(path) -> None:
         );
         INSERT INTO agg_weekly_artists VALUES ('2026-01-02', 99, 7, 7000);
         CREATE TABLE agg_config (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+        CREATE TABLE music_search_revision_state (
+            state_id INTEGER PRIMARY KEY,
+            playback_revision INTEGER NOT NULL DEFAULT 0,
+            billboard_revision INTEGER NOT NULL DEFAULT 0,
+            metadata_revision INTEGER NOT NULL DEFAULT 0,
+            settings_revision INTEGER NOT NULL DEFAULT 0,
+            updated_at TEXT
+        );
+        INSERT INTO music_search_revision_state VALUES (1, 0, 0, 0, 0, NULL);
+        CREATE TABLE music_search_snapshot_meta (
+            snapshot_key TEXT PRIMARY KEY,
+            status TEXT NOT NULL,
+            last_error TEXT
+        );
+        CREATE TABLE music_search_index_state (
+            state_id INTEGER PRIMARY KEY,
+            active_generation_id TEXT,
+            source_revision TEXT,
+            updated_at TEXT
+        );
+        INSERT INTO music_search_index_state VALUES (1, NULL, NULL, NULL);
         """
     )
     conn.commit()
@@ -91,6 +116,9 @@ def test_track_credit_shadow_rebuild_atomically_switches_artist_aggregates(tmp_p
     state = conn.execute("SELECT * FROM track_credit_state").fetchone()
     assert state["active_aggregate_revision"] == 4
     assert state["rebuild_status"] == "ready"
+    assert (
+        conn.execute("SELECT metadata_revision FROM music_search_revision_state").fetchone()[0] == 1
+    )
     conn.close()
 
 
@@ -119,4 +147,7 @@ def test_track_credit_failed_rebuild_keeps_old_aggregate_and_realtime_revision(
     assert state["active_aggregate_revision"] == 3
     assert state["rebuild_status"] == "failed"
     assert "simulated credit rebuild failure" in state["last_error"]
+    assert (
+        conn.execute("SELECT metadata_revision FROM music_search_revision_state").fetchone()[0] == 0
+    )
     conn.close()

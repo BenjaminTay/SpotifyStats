@@ -138,6 +138,7 @@ def _billboard_params(filters: BillboardFilters):
     return dict(
         min_ms=filters.min_ms,
         music_only=filters.music_only,
+        merge_enabled=filters.merge_enabled,
         bb_top_n=filters.bb_top_n,
         bb_album_top_n=filters.bb_album_top_n,
         bb_artist_top_n=filters.bb_artist_top_n,
@@ -193,12 +194,19 @@ def get_billboard_weekly(
 def get_billboard_records(
     filters: BillboardFilters = Depends(),
     merge_cfg: MergeConfig = Depends(),
+    include_compilations: bool = Query(
+        default=False, description="Include compilation albums in album chart (R14)"
+    ),
 ):
     """Billboard records only — used by RecordsPage.
 
     Returns all 37 records across 6 sections.
     """
-    return compute_records_staged(**_billboard_params(filters), merge_level=merge_cfg.merge_level)
+    return compute_records_staged(
+        **_billboard_params(filters),
+        merge_level=merge_cfg.merge_level,
+        include_compilations=include_compilations,
+    )
 
 
 @router.get("/power-scores", response_model=BillboardPowerScoresResponse)

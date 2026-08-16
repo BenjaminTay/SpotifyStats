@@ -18,6 +18,7 @@ def get_billboard_entity_lists(
     max_merge_gap_minutes=5,
     merge_level=2,
     include_compilations=False,
+    merge_enabled=True,
 ):
     """Return entity lists for versus search pickers (tracks, albums, artists)."""
     data = compute_billboard_data(
@@ -34,6 +35,7 @@ def get_billboard_entity_lists(
         max_merge_gap_minutes=max_merge_gap_minutes,
         merge_level=merge_level,
         include_compilations=include_compilations,
+        merge_enabled=merge_enabled,
     )
 
     track_rows = sorted(

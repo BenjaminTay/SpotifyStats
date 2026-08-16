@@ -791,6 +791,7 @@ def _load_album_project_detail_events(
     year_end,
     dynamic_threshold=False,
     max_merge_gap_minutes=5,
+    merge_enabled=True,
 ) -> pd.DataFrame:
     from backend.domains.billboard.data_loader import _try_load_from_agg, load_billboard_raw
 
@@ -801,6 +802,7 @@ def _load_album_project_detail_events(
         bb_week_start_hour,
         dynamic_threshold=dynamic_threshold,
         max_merge_gap_minutes=max_merge_gap_minutes,
+        merge_enabled=merge_enabled,
     )
     if album_sources is not None and "track_id" in album_sources.columns:
         df = album_sources.copy()
@@ -812,6 +814,7 @@ def _load_album_project_detail_events(
             bb_week_start_hour,
             dynamic_threshold=dynamic_threshold,
             max_merge_gap_minutes=max_merge_gap_minutes,
+            merge_enabled=merge_enabled,
         )
     if df.empty:
         return df
@@ -856,6 +859,7 @@ def get_track_history(
         dynamic_threshold=dynamic_threshold,
         max_merge_gap_minutes=max_merge_gap_minutes,
         include_compilations=include_compilations,
+        merge_enabled=merge_enabled,
     )
     weekly = pd.DataFrame(data["weekly"])
     track_summary = pd.DataFrame(data["track_summary"])
@@ -1015,6 +1019,7 @@ def get_artist_chart_detail(
         dynamic_threshold=dynamic_threshold,
         max_merge_gap_minutes=max_merge_gap_minutes,
         include_compilations=include_compilations,
+        merge_enabled=merge_enabled,
     )
     weekly = pd.DataFrame(data["weekly"])
     weekly_artist = pd.DataFrame(data["weekly_artist"])
@@ -1432,6 +1437,7 @@ def get_album_chart_detail(
         dynamic_threshold=dynamic_threshold,
         max_merge_gap_minutes=max_merge_gap_minutes,
         include_compilations=include_compilations,
+        merge_enabled=merge_enabled,
     )
     weekly = pd.DataFrame(data["weekly"])
     weekly_album = pd.DataFrame(data["weekly_album"])
@@ -1611,6 +1617,7 @@ def get_album_chart_detail(
         year_end,
         dynamic_threshold=dynamic_threshold,
         max_merge_gap_minutes=max_merge_gap_minutes,
+        merge_enabled=merge_enabled,
     )
     album_project = _get_album_project_payload(
         resolved_album,

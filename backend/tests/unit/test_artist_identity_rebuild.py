@@ -31,6 +31,27 @@ def _database(path) -> None:
         );
         INSERT INTO agg_weekly_artists VALUES ('2026-01-02', 99, 7, 7000);
         CREATE TABLE agg_config (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+        CREATE TABLE music_search_revision_state (
+            state_id INTEGER PRIMARY KEY,
+            playback_revision INTEGER NOT NULL DEFAULT 0,
+            billboard_revision INTEGER NOT NULL DEFAULT 0,
+            metadata_revision INTEGER NOT NULL DEFAULT 0,
+            settings_revision INTEGER NOT NULL DEFAULT 0,
+            updated_at TEXT
+        );
+        INSERT INTO music_search_revision_state VALUES (1, 0, 0, 0, 0, NULL);
+        CREATE TABLE music_search_snapshot_meta (
+            snapshot_key TEXT PRIMARY KEY,
+            status TEXT NOT NULL,
+            last_error TEXT
+        );
+        CREATE TABLE music_search_index_state (
+            state_id INTEGER PRIMARY KEY,
+            active_generation_id TEXT,
+            source_revision TEXT,
+            updated_at TEXT
+        );
+        INSERT INTO music_search_index_state VALUES (1, NULL, NULL, NULL);
         """
     )
     conn.commit()
@@ -86,6 +107,9 @@ def test_shadow_rebuild_atomically_switches_artist_aggregates(tmp_path, monkeypa
     state = conn.execute("SELECT * FROM artist_identity_state").fetchone()
     assert state["active_aggregate_revision"] == 4
     assert state["rebuild_status"] == "ready"
+    assert (
+        conn.execute("SELECT metadata_revision FROM music_search_revision_state").fetchone()[0] == 1
+    )
     conn.close()
 
 
@@ -112,4 +136,7 @@ def test_failed_rebuild_keeps_active_aggregate_and_marks_realtime_fallback(tmp_p
     assert state["active_aggregate_revision"] == 3
     assert state["rebuild_status"] == "failed"
     assert "simulated rebuild failure" in state["last_error"]
+    assert (
+        conn.execute("SELECT metadata_revision FROM music_search_revision_state").fetchone()[0] == 0
+    )
     conn.close()

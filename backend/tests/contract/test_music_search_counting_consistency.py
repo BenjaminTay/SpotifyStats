@@ -235,6 +235,82 @@ def test_music_search_track_chart_matches_billboard_detail(client):
     assert chart["first_peak_week"] == detail["summary"]["first_peak_week"]
 
 
+def test_music_search_and_billboard_detail_share_merge_disabled_semantics(client):
+    params = {
+        "q": "Fixture Fragment Song",
+        "kind": "track",
+        "limit_per_type": 5,
+        "include_chart": True,
+        "min_ms": 30000,
+        "music_only": True,
+        "dynamic_threshold": False,
+        "merge_level": 2,
+        "bb_top_n": 100,
+    }
+
+    merged_search = client.get("/api/music/search", params={**params, "merge_enabled": True}).json()
+    merged_detail = client.get("/api/billboard/track/901", params={**params, "merge_enabled": True})
+    unmerged_search = client.get(
+        "/api/music/search", params={**params, "merge_enabled": False}
+    ).json()
+    unmerged_detail = client.get(
+        "/api/billboard/track/901", params={**params, "merge_enabled": False}
+    )
+
+    assert merged_detail.status_code == 200
+    assert (
+        merged_search["tracks"][0]["chart"]["peak_position"]
+        == merged_detail.json()["summary"]["peak_position"]
+    )
+    assert unmerged_search["tracks"] == []
+    assert unmerged_detail.status_code == 404
+
+
+def test_search_chart_lookup_respects_compilation_semantics(client):
+    from backend.services.music_search_service import _build_chart_lookup
+
+    chart_params = {
+        "min_ms": 30000,
+        "music_only": True,
+        "bb_top_n": 100,
+        "bb_album_top_n": 100,
+        "bb_artist_top_n": 100,
+        "bb_week_start_dow": 4,
+        "bb_week_start_hour": 0,
+        "year_start": None,
+        "year_end": None,
+        "merge_level": 2,
+        "dynamic_threshold": False,
+        "max_merge_gap_minutes": 5,
+        "merge_enabled": True,
+    }
+    album_key = ("Fixture Compilation Plus", "Fixture Artist Alpha")
+
+    excluded = _build_chart_lookup(**chart_params, include_compilations=False)
+    included = _build_chart_lookup(**chart_params, include_compilations=True)
+    detail_params = {
+        **{key: value for key, value in chart_params.items() if value is not None},
+        "artist_name": "Fixture Artist Alpha",
+    }
+    excluded_detail = client.get(
+        "/api/billboard/album/Fixture Compilation Plus",
+        params={**detail_params, "include_compilations": False},
+    )
+    included_detail = client.get(
+        "/api/billboard/album/Fixture Compilation Plus",
+        params={**detail_params, "include_compilations": True},
+    )
+
+    assert album_key not in excluded["album"]
+    assert album_key in included["album"]
+    assert excluded_detail.status_code == 200
+    assert excluded_detail.json()["chart_summary"] is None
+    assert included_detail.status_code == 200
+    detail_chart = included_detail.json()["chart_summary"]
+    assert included["album"][album_key].peak_position == detail_chart["peak_position"]
+    assert included["album"][album_key].weeks_on_chart == detail_chart["weeks_on_chart"]
+
+
 @pytest.mark.parametrize("merge_level", [1, 2, 3])
 def test_music_search_album_chart_matches_billboard_detail(client, merge_level):
     params = {

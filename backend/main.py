@@ -15,6 +15,7 @@ from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response
 
 from backend.api.router import api_router
+from backend.core import db as db_module
 from backend.core.access_surface import (
     PRIVATE_ADMIN_SURFACE,
     PUBLIC_READONLY_SURFACE,
@@ -28,7 +29,6 @@ from backend.core.access_surface import (
     trusted_request_surface,
 )
 from backend.core.config import FRONTEND_ORIGIN
-from backend.core.db import DB_PATH
 from backend.core.logging_config import setup_logging
 from backend.core.migrations import run_migrations
 from backend.core.request_context import REQUEST_ID_HEADER, reset_request_id, set_request_id
@@ -60,6 +60,10 @@ async def lifespan(_app: FastAPI):
         handle_wikipedia_enrich,
     )
     from backend.services.artist_identity_rebuild_service import handle_artist_identity_rebuild
+    from backend.services.music_search_maintenance_service import (
+        enqueue_music_search_snapshot_rebuild,
+        handle_music_search_snapshot_rebuild,
+    )
     from backend.services.track_credit_rebuild_service import handle_track_credit_rebuild
 
     job_queue = get_job_queue()
@@ -68,7 +72,12 @@ async def lifespan(_app: FastAPI):
     job_queue.register("genius_lyrics", handle_genius_lyrics)
     job_queue.register("artist_identity_rebuild", handle_artist_identity_rebuild)
     job_queue.register("track_credit_rebuild", handle_track_credit_rebuild)
-    job_queue.start(DB_PATH)
+    job_queue.register("music_search_snapshot_rebuild", handle_music_search_snapshot_rebuild)
+    # Resolve the configured database at lifespan start. Tests and maintenance
+    # tools intentionally replace ``db_module.DB_PATH`` with an isolated copy;
+    # importing the string at module load would make the persistent JobQueue
+    # silently keep targeting the user's real database.
+    job_queue.start(db_module.DB_PATH)
     from backend.core.db import get_db
     from backend.core.job_queue import Job
     from backend.domains.metadata.artist_identity import get_identity_state
@@ -103,6 +112,7 @@ async def lifespan(_app: FastAPI):
         os.environ.get("SPOTIFY_STATS_WARMUP", "1") != "0"
         and "PYTEST_CURRENT_TEST" not in os.environ
     ):
+        enqueue_music_search_snapshot_rebuild()
         start_warmup_thread()
     yield
     job_queue.stop()

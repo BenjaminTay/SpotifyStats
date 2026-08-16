@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 from backend.core.auth import require_auth
 from backend.core.cache_manager import invalidate_all
 from backend.core.db import get_db
-from backend.core.job_queue import Job, get_job_queue
+from backend.core.job_queue import Job, get_job_queue, queue_targets_connection
 from backend.dependencies import get_conn
 from backend.domains.metadata.artist_identity import (
     create_artist_identity_group,
@@ -83,9 +83,25 @@ def _mutation_error(exc: ValueError) -> HTTPException:
 
 
 def _enqueue_rebuild(revision: int) -> str | None:
+    from backend.services.music_search_maintenance_service import (
+        mark_music_search_for_rebuild,
+    )
+
     invalidate_all()
+    queue = get_job_queue()
+    search_conn = get_db(readonly=False)
+    try:
+        mark_music_search_for_rebuild(
+            reason="artist identity revision changed",
+            documents=True,
+            conn=search_conn,
+        )
+        if not queue_targets_connection(queue, search_conn):
+            return None
+    finally:
+        search_conn.close()
     job = Job.create("artist_identity_rebuild", "artist_identity", "global", revision=revision)
-    return get_job_queue().enqueue_if_not_pending(job)
+    return queue.enqueue_if_not_pending(job)
 
 
 @router.get("", response_model=dict[str, Any])

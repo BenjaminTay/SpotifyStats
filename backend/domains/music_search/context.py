@@ -1,0 +1,185 @@
+"""Exact semantic filter context and lightweight source revisions for search."""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import sqlite3
+from collections.abc import Mapping
+from dataclasses import asdict, dataclass
+from typing import Any
+
+from backend.domains.metadata.artist_identity import get_identity_revision
+from backend.domains.metadata.track_credits import get_track_credit_revision
+from backend.domains.music_search.index import get_music_search_index_state
+from backend.domains.music_search.revisions import get_music_search_revision_state
+
+MUSIC_SEARCH_FILTER_FINGERPRINT_VERSION = "music_search_filter_v2"
+MUSIC_SEARCH_SNAPSHOT_BUILDER_VERSION = "music_search_snapshot_v2"
+MUSIC_SEARCH_CHART_BUILDER_VERSION = "music_search_chart_v2"
+
+
+@dataclass(frozen=True)
+class MusicSearchFilterContext:
+    min_ms: int
+    music_only: bool
+    merge_enabled: bool
+    dynamic_threshold: bool
+    max_merge_gap_minutes: int
+    merge_level: int
+    include_compilations: bool
+    bb_top_n: int
+    bb_album_top_n: int
+    bb_artist_top_n: int
+    bb_week_start_dow: int
+    bb_week_start_hour: int
+    year_start: int | None
+    year_end: int | None
+    playback_revision: int
+    billboard_aggregation_revision: int
+    metadata_revision: int
+    settings_revision: int
+    search_index_revision: str
+    artist_identity_revision: int
+    track_credit_revision: int
+    semantic_base_key: str
+    filter_fingerprint: str
+    source_revision: str
+
+    def filter_values(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+def _value(source: Mapping[str, Any] | object, key: str, default: Any = None) -> Any:
+    if isinstance(source, Mapping):
+        return source.get(key, default)
+    return getattr(source, key, default)
+
+
+def _table_exists(conn: sqlite3.Connection, table_name: str) -> bool:
+    return (
+        conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
+            (table_name,),
+        ).fetchone()
+        is not None
+    )
+
+
+def _digest_payload(payload: Mapping[str, Any], length: int | None = None) -> str:
+    encoded = json.dumps(payload, ensure_ascii=True, sort_keys=True, separators=(",", ":"))
+    digest = hashlib.sha256(encoded.encode()).hexdigest()
+    return digest[:length] if length else digest
+
+
+def playback_source_revision(conn: sqlite3.Connection) -> str:
+    """Offline audit digest; request-time context construction must not call it."""
+    row = conn.execute(
+        """SELECT COUNT(*) AS play_count,
+                  COALESCE(MAX(play_id), 0) AS max_play_id,
+                  COALESCE(MAX(ts), '') AS latest_play_ts,
+                  COALESCE(SUM(ms_played), 0) AS total_ms,
+                  COUNT(DISTINCT track_id) AS played_tracks
+           FROM plays"""
+    ).fetchone()
+    return _digest_payload(
+        {
+            "play_count": int(row[0]),
+            "max_play_id": int(row[1]),
+            "latest_play_ts": str(row[2]),
+            "total_ms": int(row[3]),
+            "played_tracks": int(row[4]),
+        },
+        20,
+    )
+
+
+def billboard_aggregation_revision(conn: sqlite3.Connection) -> str:
+    """Offline audit digest; request-time context construction must not call it."""
+    payload: dict[str, Any] = {}
+    for table in ("agg_track_wks", "agg_album_wks", "agg_artist_wks", "agg_weekly_track_sources"):
+        if not _table_exists(conn, table):
+            payload[table] = "missing"
+            continue
+        columns = {str(row[1]) for row in conn.execute(f'PRAGMA table_info("{table}")')}
+        week_column = "billboard_week" if "billboard_week" in columns else None
+        play_column = "play_count" if "play_count" in columns else None
+        select = ["COUNT(*)"]
+        if week_column:
+            select.append(f"COALESCE(MAX({week_column}), '')")
+        if play_column:
+            select.append(f"COALESCE(SUM({play_column}), 0)")
+        payload[table] = list(conn.execute(f'SELECT {", ".join(select)} FROM "{table}"').fetchone())
+    return _digest_payload(payload, 20)
+
+
+def build_music_search_filter_context(
+    conn: sqlite3.Connection,
+    filters: Mapping[str, Any] | object,
+) -> MusicSearchFilterContext:
+    revisions = get_music_search_revision_state(conn)
+    index_state = get_music_search_index_state(conn)
+    index_revision = str(index_state.get("source_revision") or "unavailable")
+    values: dict[str, Any] = {
+        "min_ms": int(_value(filters, "min_ms", 30000)),
+        "music_only": bool(_value(filters, "music_only", True)),
+        "merge_enabled": bool(_value(filters, "merge_enabled", True)),
+        "dynamic_threshold": bool(_value(filters, "dynamic_threshold", True)),
+        "max_merge_gap_minutes": int(_value(filters, "max_merge_gap_minutes", 5) or 5),
+        "merge_level": int(_value(filters, "merge_level", 2)),
+        "include_compilations": bool(_value(filters, "include_compilations", False)),
+        "bb_top_n": int(_value(filters, "bb_top_n", 30)),
+        "bb_album_top_n": int(_value(filters, "bb_album_top_n", 20)),
+        "bb_artist_top_n": int(_value(filters, "bb_artist_top_n", 20)),
+        "bb_week_start_dow": int(_value(filters, "bb_week_start_dow", 4)),
+        "bb_week_start_hour": int(_value(filters, "bb_week_start_hour", 0)),
+        "year_start": _value(filters, "year_start"),
+        "year_end": _value(filters, "year_end"),
+        "playback_revision": revisions.playback_revision,
+        "billboard_aggregation_revision": revisions.billboard_revision,
+        "metadata_revision": revisions.metadata_revision,
+        "settings_revision": revisions.settings_revision,
+        "search_index_revision": index_revision,
+        "artist_identity_revision": get_identity_revision(conn),
+        "track_credit_revision": get_track_credit_revision(conn),
+    }
+    semantic_values = {
+        key: value
+        for key, value in values.items()
+        if key not in {"merge_level", "dynamic_threshold"}
+    }
+    semantic_base_key = _digest_payload(
+        {
+            "version": MUSIC_SEARCH_FILTER_FINGERPRINT_VERSION,
+            "snapshot_builder": MUSIC_SEARCH_SNAPSHOT_BUILDER_VERSION,
+            "chart_builder": MUSIC_SEARCH_CHART_BUILDER_VERSION,
+            "index_generation": str(index_state.get("active_generation_id") or "unavailable"),
+            "index_normalization": str(index_state.get("normalization_version") or "unavailable"),
+            **semantic_values,
+        }
+    )
+    fingerprint = _digest_payload(
+        {
+            "semantic_base_key": semantic_base_key,
+            "merge_level": values["merge_level"],
+            "dynamic_threshold": values["dynamic_threshold"],
+        }
+    )
+    source_revision = _digest_payload(
+        {
+            "playback": revisions.playback_revision,
+            "billboard": revisions.billboard_revision,
+            "metadata": revisions.metadata_revision,
+            "settings": revisions.settings_revision,
+            "index": index_revision,
+            "identity": values["artist_identity_revision"],
+            "credits": values["track_credit_revision"],
+        },
+        20,
+    )
+    return MusicSearchFilterContext(
+        **values,
+        semantic_base_key=semantic_base_key,
+        filter_fingerprint=fingerprint,
+        source_revision=source_revision,
+    )
