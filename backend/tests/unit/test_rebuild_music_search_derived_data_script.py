@@ -277,6 +277,53 @@ def test_snapshot_only_second_run_is_reported_as_idempotent_revalidation(
     assert second["gate"]["passed"] is True
 
 
+def test_statistics_reuse_only_is_forwarded_to_maintenance(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    database = tmp_path / "reuse-only-copy.db"
+    _create_gate_database(database)
+    monkeypatch.setattr(rebuild_script.db_mod, "DB_PATH", str(database))
+    monkeypatch.setattr(rebuild_script, "run_migrations", lambda: None)
+    monkeypatch.setattr(
+        rebuild_script,
+        "get_db",
+        lambda readonly=False: sqlite3.connect(database),
+    )
+    captured: dict[str, bool] = {}
+
+    def rebuild(
+        conn: sqlite3.Connection,
+        *,
+        rebuild_documents: bool = False,
+        statistics_reuse_only: bool = False,
+    ) -> dict[str, Any]:
+        captured["rebuild_documents"] = rebuild_documents
+        captured["statistics_reuse_only"] = statistics_reuse_only
+        return _publish_fake_snapshot_set(conn)
+
+    monkeypatch.setattr(rebuild_script, "rebuild_current_music_search_derived_data", rebuild)
+
+    exit_code = rebuild_script.main(
+        [
+            "--db-path",
+            str(database),
+            "--json",
+            "--require-all-ready",
+            "--statistics-reuse-only",
+        ]
+    )
+    report = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 0
+    assert report["gate"]["passed"] is True
+    assert captured == {
+        "rebuild_documents": False,
+        "statistics_reuse_only": True,
+    }
+
+
 def test_main_returns_nonzero_for_any_non_ready_variant_without_strict_flag(
     tmp_path: Path,
     monkeypatch,

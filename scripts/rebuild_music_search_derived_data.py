@@ -65,6 +65,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Exit non-zero unless exactly all six supported variants are ready",
     )
+    parser.add_argument(
+        "--statistics-reuse-only",
+        action="store_true",
+        help=(
+            "Fail before rebuilding candidates or statistics unless all six exact "
+            "statistics variants can be reused"
+        ),
+    )
     args = parser.parse_args(argv)
     if args.snapshot_only and args.rebuild_documents:
         parser.error("--snapshot-only and --rebuild-documents cannot be combined")
@@ -398,10 +406,12 @@ def main(argv: list[str] | None = None) -> int:
         migration = _migration_report(conn)
         prior_inventory = _snapshot_inventory(conn)
         stage = "derived_rebuild"
-        raw_report = rebuild_current_music_search_derived_data(
-            conn,
-            rebuild_documents=args.rebuild_documents,
-        )
+        rebuild_options: dict[str, bool] = {
+            "rebuild_documents": args.rebuild_documents,
+        }
+        if args.statistics_reuse_only:
+            rebuild_options["statistics_reuse_only"] = True
+        raw_report = rebuild_current_music_search_derived_data(conn, **rebuild_options)
         semantic_base_key = str(
             (raw_report.get("snapshot_set") or {}).get("semantic_base_key") or ""
         )

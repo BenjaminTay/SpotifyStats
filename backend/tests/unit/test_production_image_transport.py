@@ -2,118 +2,143 @@ import subprocess
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
-WORKFLOW = ROOT / ".github" / "workflows" / "smoke-production-image-transport.yml"
+PRODUCTION = ROOT / "deploy" / "production"
+SMOKE_WORKFLOW = ROOT / ".github" / "workflows" / "smoke-production-image-transport.yml"
 PRODUCTION_WORKFLOW = ROOT / ".github" / "workflows" / "deploy-production.yml"
-LOAD = ROOT / "deploy" / "production" / "load-release-images.sh"
-PUBLISH = ROOT / "deploy" / "production" / "publish-release-images.sh"
 
 
-def test_smoke_workflow_is_manual_bounded_and_non_production() -> None:
-    workflow = WORKFLOW.read_text(encoding="utf-8")
-    production_workflow = PRODUCTION_WORKFLOW.read_text(encoding="utf-8")
+def test_smoke_workflow_uses_private_cas_artifact_without_production_mutation() -> None:
+    workflow = SMOKE_WORKFLOW.read_text(encoding="utf-8")
 
     assert "workflow_dispatch:" in workflow
     assert "push:" not in workflow
     assert "build_archive_upload:" in workflow
-    assert "transfer:" in workflow
     assert "needs: build_archive_upload" in workflow
-    assert "timeout-minutes: 30" in workflow
-    assert "timeout-minutes: 35" in workflow
     assert "environment: production" in workflow
     assert workflow.count("platforms: linux/amd64") == 2
     assert workflow.count("org.opencontainers.image.revision=${{ github.sha }}") == 2
-    assert "docker image save" in workflow
-    assert "gzip -1" in workflow
-    assert "retention-days: 1" in workflow
-    assert "compression-level: 0" in workflow
+    assert "spotify-stats-api:transport-${{ github.sha }}" in workflow
+    assert "spotify-stats-web:transport-${{ github.sha }}" in workflow
+    assert "build-artifact" in workflow
+    assert "transport-manifest.json" in workflow
+    assert "actions/upload-artifact@v4" in workflow
     assert "actions/download-artifact@v4" in workflow
-    assert workflow.index("actions/upload-artifact@v4") < workflow.index(
-        "actions/download-artifact@v4"
-    )
-    assert "rsync --archive --partial --append-verify" in workflow
-    assert "/opt/spotify-stats/releases/incoming/$revision" in workflow
-    assert "/opt/spotify-stats/releases/incoming/$GITHUB_SHA" not in workflow
-    assert "LOCAL_API_IMAGE: spotify-stats-api:transport-smoke-${{ github.sha }}" in workflow
-    assert "LOCAL_WEB_IMAGE: spotify-stats-web:transport-smoke-${{ github.sha }}" in workflow
-    assert "GITHUB_STEP_SUMMARY" in workflow
-    assert "Archive bytes" in workflow
-    assert "Build job total" in workflow
-    assert "Transfer job total" in workflow
-    assert "for tool in rsync docker sha256sum gzip df timeout" in workflow
-    assert workflow.index("for tool in rsync docker sha256sum gzip df timeout") < workflow.index(
-        "sudo install -d"
-    )
-    assert "docker ps --no-trunc --format '{{.ID}}\\t{{.Image}}\\t{{.Names}}'" in workflow
-    assert "live-containers.before" in workflow
-    assert "live-containers.after" in workflow
+    assert "retention-days: 1" in workflow
+    assert "seed_revision:" in workflow
+    assert "Verify current production image identity read-only" in workflow
+    assert "seed-verified-smoke-images.sh '$SEED_REVISION'" in workflow
+    assert "transfer-image-artifact.sh" in workflow
+    assert "missing_bytes" in workflow
+    assert "transferred_wire_bytes" in workflow
+    assert "publish-release-images.sh' '$GITHUB_SHA' smoke" in workflow
     assert "cmp --silent" in workflow
-    assert 'find "$staging_dir" -depth -mindepth 1 -delete' in workflow
-    assert 'rmdir -- "$staging_dir"' in workflow
-    assert "rm -rf" not in workflow
+    assert "sudo rmdir --ignore-fail-on-non-empty" in workflow
 
-    forbidden = (
+    for forbidden in (
         "deploy.sh",
         "backup.sh",
         "preflight-music-search.sh",
         "docker compose",
         "docker stop",
         "systemctl stop",
-    )
-    for command in forbidden:
-        assert command not in workflow
-
-    for bootstrap_path in (
-        ".github/workflows/deploy-production.yml",
-        ".github/workflows/smoke-production-image-transport.yml",
-        "deploy/production/load-release-images.sh",
-        "deploy/production/publish-release-images.sh",
-        "backend/tests/unit/test_production_image_transport.py",
+        "rm -rf",
     ):
-        assert f'- "{bootstrap_path}"' in production_workflow
+        assert forbidden not in workflow
 
 
-def test_loader_locks_archive_integrity_capacity_platform_and_revision() -> None:
-    loader = LOAD.read_text(encoding="utf-8")
+def test_shared_transfer_only_sends_deterministic_missing_blob_shards() -> None:
+    transfer = (PRODUCTION / "transfer-image-artifact.sh").read_text(encoding="utf-8")
 
-    assert 'RELEASES_ROOT="/opt/spotify-stats/releases/incoming"' in loader
-    assert "spotify-stats-images-$REVISION.tar.gz" in loader
-    assert "sha256sum" in loader
-    assert "archive_bytes" in loader
+    assert "missing-blobs.$shard.txt" in transfer
+    assert "for shard in 0 1 2 3" in transfer
+    assert 'pids+=("$!")' in transfer
+    assert 'wait "$pid"' in transfer
+    assert '--files-from="$list"' in transfer
+    assert "--checksum --compress" in transfer
+    assert '--partial-dir=".rsync-partial-$shard"' in transfer
+    assert "--delay-updates" in transfer
+    assert "--checksum" in transfer
+    assert "--ignore-existing" not in transfer
+    assert "--inplace" not in transfer
+    assert "layout/blobs/sha256/[0-9a-f]{64}" in transfer
+    assert "transferred_wire_bytes" in transfer
+    assert "for tool in rsync docker sha256sum gzip df timeout python3 tar" in transfer
+
+
+def test_release_workflow_bootstraps_old_current_then_activates_only_after_deploy() -> None:
+    workflow = PRODUCTION_WORKFLOW.read_text(encoding="utf-8")
+
+    assert "build-artifact" in workflow
+    assert "--mode release" in workflow
+    assert "bootstrap-current-release-images.sh" in workflow
+    assert "seed-verified-smoke-images.sh" in workflow
+    assert "continue-on-error: true" in workflow
+    assert "transfer-image-artifact.sh" in workflow
+    assert "prepare-local-release-images.sh" in workflow
+    assert "publish-release-images.sh' '$GITHUB_SHA' release" in workflow
+    assert "./deploy.sh '${{ github.sha }}' --image-source registry" in workflow
+    assert "activate-release-images.sh" in workflow
+    deploy_job = workflow.split("\n  deploy:\n", 1)[1]
+    assert deploy_job.index("Bootstrap current production images") < deploy_job.index(
+        "Transfer only missing CAS blobs"
+    )
+    assert deploy_job.index("Prepare exact registry-style local") < deploy_job.index(
+        "Deploy commit"
+    )
+    assert workflow.index(
+        "./deploy.sh '${{ github.sha }}' --image-source registry"
+    ) < workflow.index("Activate CAS current and previous retention after successful deploy")
+    assert "sudo rmdir --ignore-fail-on-non-empty" in workflow
+
+
+def test_loader_and_publishers_bind_platform_revision_digest_and_retention() -> None:
+    loader = (PRODUCTION / "load-release-images.sh").read_text(encoding="utf-8")
+    publisher = (PRODUCTION / "publish-release-images.sh").read_text(encoding="utf-8")
+    prepare_local = (PRODUCTION / "prepare-local-release-images.sh").read_text(encoding="utf-8")
+    bootstrap = (PRODUCTION / "bootstrap-current-release-images.sh").read_text(encoding="utf-8")
+
+    assert "materialize" in loader
+    assert "record-load" in loader
+    assert "transport-$REVISION" in loader
     assert "DockerRootDir" in loader
-    assert "gzip --test" in loader
-    assert "docker load" in loader
-    assert "linux" in loader and "amd64" in loader
     assert "org.opencontainers.image.revision" in loader
-    assert "transport-smoke-$REVISION" in loader
-    assert ':$REVISION"' not in loader
-    assert "rm -f" not in loader
+    assert "docker load --input" in loader
 
-
-def test_publisher_only_uses_smoke_tags_and_verifies_tcr_round_trip() -> None:
-    publisher = PUBLISH.read_text(encoding="utf-8")
-
-    assert 'SMOKE_TAG="transport-smoke-$REVISION"' in publisher
-    assert "docker push" in publisher
-    assert "timeout --signal=TERM --kill-after=30s 5m docker push" in publisher
     assert "for attempt in 1 2" in publisher
-    assert "attempt $attempt/2" in publisher
-    assert "attempt $attempt/3" not in publisher
-    assert "docker manifest inspect" in publisher
-    assert "docker pull --platform linux/amd64" in publisher
-    assert "org.opencontainers.image.revision" in publisher
-    assert "linux/amd64" in publisher
-    assert 'image_ref" == *":main"' in publisher
-    assert 'image_ref" == *":latest"' in publisher
-    assert "deploy.sh" not in publisher
-    assert "docker compose" not in publisher
-    assert "docker stop" not in publisher
+    assert "5m docker push" in publisher
+    assert "docker manifest inspect --verbose" in publisher
+    assert 'digest_ref="$repository@$manifest_digest"' in publisher
+    assert 'docker pull --platform linux/amd64 "$digest_ref"' in publisher
+    assert "transport-smoke-$REVISION" in publisher
+    assert 'IMAGE_TAG="$REVISION"' in publisher
+
+    assert "docker tag" in prepare_local
+    assert "未登录或访问 registry" in prepare_local
+    assert "image ID 不同，拒绝覆盖" in prepare_local
+    assert "docker image save" in bootstrap
+    assert "seed-bootstrap" in bootstrap
+    assert "has-current" in bootstrap
+    assert "sudo install -d -m 700" in bootstrap
+    assert "sudo rmdir --ignore-fail-on-non-empty" in bootstrap
 
 
-def test_transport_scripts_have_valid_bash_syntax_and_reject_bad_revision() -> None:
-    for script in (LOAD, PUBLISH):
+def test_all_image_transport_shell_scripts_have_valid_syntax_and_reject_bad_input() -> None:
+    scripts = (
+        "load-release-images.sh",
+        "publish-release-images.sh",
+        "transfer-image-artifact.sh",
+        "prepare-local-release-images.sh",
+        "bootstrap-current-release-images.sh",
+        "activate-release-images.sh",
+        "seed-verified-smoke-images.sh",
+    )
+    for name in scripts:
+        script = PRODUCTION / name
         subprocess.run(["bash", "-n", str(script)], check=True, cwd=ROOT)
+
+    for name in ("load-release-images.sh", "publish-release-images.sh"):
         result = subprocess.run(
-            ["bash", str(script), "main"],
+            ["bash", str(PRODUCTION / name), "main"],
             check=False,
             cwd=ROOT,
             capture_output=True,

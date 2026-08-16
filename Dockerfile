@@ -7,6 +7,8 @@ COPY requirements-api.txt .
 RUN pip install --no-cache-dir -r requirements-api.txt
 COPY requirements-features.txt .
 RUN pip install --no-cache-dir -r requirements-features.txt
+COPY requirements-search.txt .
+RUN pip install --no-cache-dir -r requirements-search.txt
 COPY backend/ ./backend/
 COPY scripts/ ./scripts/
 RUN python scripts/validate_container_image.py /app

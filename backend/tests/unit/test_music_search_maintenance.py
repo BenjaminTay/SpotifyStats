@@ -5,7 +5,11 @@ import sqlite3
 import pytest
 
 from backend.core.migrations import migrate_032, migrate_034, migrate_035
+from backend.domains.music_search import context as context_module
+from backend.domains.music_search import index as index_module
+from backend.domains.music_search import normalization as normalization_module
 from backend.domains.music_search.context import MUSIC_SEARCH_SNAPSHOT_BUILDER_VERSION
+from backend.domains.music_search.revisions import bump_music_search_revisions
 from backend.domains.music_search.variants import build_music_search_variant_contexts
 from backend.services import music_search_maintenance_service as maintenance
 
@@ -50,6 +54,64 @@ def _conn() -> sqlite3.Connection:
     migrate_035(conn)
     conn.commit()
     return conn
+
+
+def _seed_ready_candidate_and_statistics(
+    conn: sqlite3.Connection,
+) -> tuple:
+    maintenance.rebuild_music_search_index(conn)
+    contexts = build_music_search_variant_contexts(
+        conn,
+        maintenance._current_filter_values(conn),
+    )
+    conn.executemany(
+        """INSERT INTO music_search_snapshot_meta(
+               snapshot_key, filter_fingerprint, source_revision, status,
+               semantic_base_key, merge_level, dynamic_threshold, builder_version
+           ) VALUES (?, ?, ?, 'ready', ?, ?, ?, ?)""",
+        [
+            (
+                context.filter_fingerprint,
+                context.filter_fingerprint,
+                context.source_revision,
+                context.semantic_base_key,
+                context.merge_level,
+                int(context.dynamic_threshold),
+                MUSIC_SEARCH_SNAPSHOT_BUILDER_VERSION,
+            )
+            for context in contexts
+        ],
+    )
+    conn.commit()
+    return contexts
+
+
+def _built_snapshot_set_report(contexts: tuple) -> dict:
+    variants = [
+        {
+            "status": "ready",
+            "snapshot_key": context.filter_fingerprint,
+            "filter_fingerprint": context.filter_fingerprint,
+            "entity_count": 1,
+            "source_revision": context.source_revision,
+            "semantic_base_key": context.semantic_base_key,
+            "merge_level": context.merge_level,
+            "dynamic_threshold": context.dynamic_threshold,
+            "builder_version": context_module.MUSIC_SEARCH_SNAPSHOT_BUILDER_VERSION,
+            "duration_ms": 1.0,
+            "revalidated": False,
+        }
+        for context in contexts
+    ]
+    return {
+        "status": "ready",
+        "semantic_base_key": contexts[0].semantic_base_key,
+        "ready_count": len(variants),
+        "failed_count": 0,
+        "duration_ms": 6.0,
+        "variants": variants,
+        "revalidated": False,
+    }
 
 
 def test_mark_for_rebuild_fails_closed_and_invalidates_document_revision() -> None:
@@ -268,6 +330,297 @@ def test_forced_candidate_rebuild_reuses_exact_statistics_set(monkeypatch) -> No
 
     assert report["index"]["generation_id"] != old_generation
     assert report["snapshot_set"]["revalidated"] is True
+
+
+@pytest.mark.parametrize("component", ("source", "builder", "normalization", "tokenizer"))
+def test_candidate_version_drift_rebuilds_only_candidates(
+    monkeypatch,
+    component,
+) -> None:
+    conn = _conn()
+    contexts = _seed_ready_candidate_and_statistics(conn)
+    before_generation = maintenance.get_music_search_index_state(conn)["active_generation_id"]
+    before_fingerprints = [context.filter_fingerprint for context in contexts]
+
+    if component == "source":
+        bump_music_search_revisions(conn, "candidate")
+        conn.commit()
+    elif component == "builder":
+        monkeypatch.setattr(index_module, "INDEX_SCHEMA_VERSION", "candidate-builder-next")
+    elif component == "normalization":
+        monkeypatch.setattr(index_module, "SEARCH_NORMALIZATION_VERSION", "normalization-next")
+    else:
+        monkeypatch.setattr(
+            index_module,
+            "inspect_search_index_runtime",
+            lambda _conn: index_module.SearchIndexRuntime(
+                fts5=False,
+                trigram=False,
+                status="degraded",
+                tokenizer="tokenizer-next",
+            ),
+        )
+    monkeypatch.setattr(
+        maintenance,
+        "build_music_search_snapshot_set",
+        lambda *_args, **_kwargs: pytest.fail("candidate drift recalculated statistics"),
+    )
+
+    report = maintenance.rebuild_current_music_search_derived_data(
+        conn,
+        statistics_reuse_only=True,
+    )
+
+    after_contexts = build_music_search_variant_contexts(
+        conn,
+        maintenance._current_filter_values(conn),
+    )
+    assert report["candidate_index"]["action"] == "rebuilt"
+    assert report["index"]["generation_id"] != before_generation
+    assert [context.filter_fingerprint for context in after_contexts] == before_fingerprints
+    assert report["snapshot_set"]["revalidated"] is True
+    assert report["snapshot_set"]["duration_ms"] == 0
+    assert all(variant["duration_ms"] == 0 for variant in report["snapshot_set"]["variants"])
+
+
+def test_query_only_change_revalidates_candidate_and_statistics(monkeypatch) -> None:
+    conn = _conn()
+    _seed_ready_candidate_and_statistics(conn)
+    before_state = maintenance.get_music_search_index_state(conn)
+    monkeypatch.setattr(
+        normalization_module,
+        "CHINESE_SEARCH_EXPANSION_VERSION",
+        "query-only-expansion-next",
+    )
+    monkeypatch.setattr(
+        maintenance,
+        "rebuild_music_search_index",
+        lambda *_args, **_kwargs: pytest.fail("query-only change rebuilt candidate index"),
+    )
+    monkeypatch.setattr(
+        maintenance,
+        "build_music_search_snapshot_set",
+        lambda *_args, **_kwargs: pytest.fail("query-only change rebuilt statistics"),
+    )
+
+    report = maintenance.rebuild_current_music_search_derived_data(
+        conn,
+        statistics_reuse_only=True,
+    )
+
+    assert report["candidate_index"]["action"] == "revalidated"
+    assert report["candidate_index"]["generation_id"] == before_state["active_generation_id"]
+    assert report["snapshot_set"]["revalidated"] is True
+    assert report["snapshot_set"]["duration_ms"] == 0
+
+
+def test_ordinary_repeated_maintenance_reuses_all_six_statistics_at_zero_ms(
+    monkeypatch,
+) -> None:
+    conn = _conn()
+    contexts = _seed_ready_candidate_and_statistics(conn)
+    monkeypatch.setattr(
+        maintenance,
+        "rebuild_music_search_index",
+        lambda *_args, **_kwargs: pytest.fail("ordinary maintenance rebuilt candidate index"),
+    )
+    monkeypatch.setattr(
+        maintenance,
+        "build_music_search_snapshot_set",
+        lambda *_args, **_kwargs: pytest.fail("ordinary maintenance rebuilt statistics"),
+    )
+
+    first = maintenance.rebuild_current_music_search_derived_data(
+        conn,
+        statistics_reuse_only=True,
+    )
+    second = maintenance.rebuild_current_music_search_derived_data(
+        conn,
+        statistics_reuse_only=True,
+    )
+
+    assert first["index"] is None
+    assert second["index"] is None
+    for report in (first, second):
+        snapshot_set = report["snapshot_set"]
+        assert snapshot_set["ready_count"] == len(contexts) == 6
+        assert snapshot_set["revalidated"] is True
+        assert snapshot_set["duration_ms"] == 0
+        assert all(variant["revalidated"] for variant in snapshot_set["variants"])
+        assert all(variant["duration_ms"] == 0 for variant in snapshot_set["variants"])
+
+
+def test_candidate_only_invalidation_keeps_statistics_ready() -> None:
+    conn = _conn()
+    contexts = _seed_ready_candidate_and_statistics(conn)
+
+    maintenance.mark_music_search_for_rebuild(
+        reason="candidate names changed",
+        documents=True,
+        revision_kinds=("candidate",),
+        conn=conn,
+    )
+
+    assert {
+        row[0]
+        for row in conn.execute(
+            "SELECT status FROM music_search_snapshot_meta WHERE semantic_base_key=?",
+            (contexts[0].semantic_base_key,),
+        )
+    } == {"ready"}
+    state = maintenance.get_music_search_index_state(conn)
+    assert state["source_revision"] is None
+    assert state["candidate_index_version"] is None
+
+
+def test_statistics_reuse_only_fails_before_any_expensive_rebuild(monkeypatch) -> None:
+    conn = _conn()
+    monkeypatch.setattr(
+        maintenance,
+        "rebuild_music_search_index",
+        lambda *_args, **_kwargs: pytest.fail("reuse-only failure rebuilt candidate index"),
+    )
+    monkeypatch.setattr(
+        maintenance,
+        "build_music_search_snapshot_set",
+        lambda *_args, **_kwargs: pytest.fail("reuse-only failure rebuilt statistics"),
+    )
+
+    with pytest.raises(maintenance.MusicSearchStatisticsReuseRequiredError):
+        maintenance.rebuild_current_music_search_derived_data(
+            conn,
+            statistics_reuse_only=True,
+        )
+
+
+@pytest.mark.parametrize("revision_kind", ("playback", "billboard", "metadata", "settings"))
+def test_statistics_revision_drift_rebuilds_only_statistics(
+    monkeypatch,
+    revision_kind,
+) -> None:
+    conn = _conn()
+    old_contexts = _seed_ready_candidate_and_statistics(conn)
+    old_generation = maintenance.get_music_search_index_state(conn)["active_generation_id"]
+    bump_music_search_revisions(conn, revision_kind)
+    conn.commit()
+    captured = []
+    monkeypatch.setattr(
+        maintenance,
+        "rebuild_music_search_index",
+        lambda *_args, **_kwargs: pytest.fail("statistics revision rebuilt candidate index"),
+    )
+
+    def build_statistics(_conn, contexts):
+        captured.extend(contexts)
+        return _built_snapshot_set_report(contexts)
+
+    monkeypatch.setattr(maintenance, "build_music_search_snapshot_set", build_statistics)
+
+    report = maintenance.rebuild_current_music_search_derived_data(conn)
+
+    assert report["index"] is None
+    assert maintenance.get_music_search_index_state(conn)["active_generation_id"] == old_generation
+    assert len(captured) == 6
+    assert captured[0].semantic_base_key != old_contexts[0].semantic_base_key
+    assert report["snapshot_set"]["revalidated"] is False
+
+
+@pytest.mark.parametrize(
+    ("table_name", "create_sql"),
+    (
+        (
+            "artist_identity_state",
+            """CREATE TABLE artist_identity_state(
+                   state_id INTEGER PRIMARY KEY,
+                   current_revision INTEGER NOT NULL,
+                   active_aggregate_revision INTEGER NOT NULL,
+                   rebuild_status TEXT NOT NULL,
+                   last_error TEXT,
+                   updated_at TEXT
+               )""",
+        ),
+        (
+            "track_credit_state",
+            """CREATE TABLE track_credit_state(
+                   state_id INTEGER PRIMARY KEY,
+                   current_revision INTEGER NOT NULL,
+                   active_aggregate_revision INTEGER NOT NULL,
+                   rebuild_status TEXT NOT NULL,
+                   last_error TEXT,
+                   updated_at TEXT
+               )""",
+        ),
+    ),
+)
+def test_identity_or_credit_revision_rebuilds_both_required_layers(
+    monkeypatch,
+    table_name,
+    create_sql,
+) -> None:
+    conn = _conn()
+    conn.execute(create_sql)
+    conn.execute(
+        f"""INSERT INTO {table_name}(
+               state_id, current_revision, active_aggregate_revision, rebuild_status
+           ) VALUES (1, 0, 0, 'ready')"""
+    )
+    old_contexts = _seed_ready_candidate_and_statistics(conn)
+    old_generation = maintenance.get_music_search_index_state(conn)["active_generation_id"]
+    conn.execute(
+        f"""UPDATE {table_name}
+            SET current_revision=1, active_aggregate_revision=1
+            WHERE state_id=1"""
+    )
+    conn.commit()
+    captured = []
+
+    def build_statistics(_conn, contexts):
+        captured.extend(contexts)
+        return _built_snapshot_set_report(contexts)
+
+    monkeypatch.setattr(maintenance, "build_music_search_snapshot_set", build_statistics)
+
+    report = maintenance.rebuild_current_music_search_derived_data(conn)
+
+    assert report["candidate_index"]["action"] == "rebuilt"
+    assert report["index"]["generation_id"] != old_generation
+    assert len(captured) == 6
+    assert captured[0].semantic_base_key != old_contexts[0].semantic_base_key
+    assert report["snapshot_set"]["revalidated"] is False
+
+
+@pytest.mark.parametrize(
+    "constant_name",
+    ("MUSIC_SEARCH_SNAPSHOT_BUILDER_VERSION", "MUSIC_SEARCH_CHART_BUILDER_VERSION"),
+)
+def test_statistics_builder_drift_rebuilds_only_statistics(
+    monkeypatch,
+    constant_name,
+) -> None:
+    conn = _conn()
+    old_contexts = _seed_ready_candidate_and_statistics(conn)
+    old_generation = maintenance.get_music_search_index_state(conn)["active_generation_id"]
+    monkeypatch.setattr(context_module, constant_name, "statistics-builder-next")
+    captured = []
+    monkeypatch.setattr(
+        maintenance,
+        "rebuild_music_search_index",
+        lambda *_args, **_kwargs: pytest.fail("statistics builder rebuilt candidate index"),
+    )
+
+    def build_statistics(_conn, contexts):
+        captured.extend(contexts)
+        return _built_snapshot_set_report(contexts)
+
+    monkeypatch.setattr(maintenance, "build_music_search_snapshot_set", build_statistics)
+
+    report = maintenance.rebuild_current_music_search_derived_data(conn)
+
+    assert report["index"] is None
+    assert maintenance.get_music_search_index_state(conn)["active_generation_id"] == old_generation
+    assert len(captured) == 6
+    assert captured[0].semantic_base_key != old_contexts[0].semantic_base_key
+    assert report["snapshot_set"]["revalidated"] is False
 
 
 def test_current_legacy_v2_set_is_adopted_without_statistics_recalculation(

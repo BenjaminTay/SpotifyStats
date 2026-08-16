@@ -358,6 +358,7 @@ def test_production_deploy_stages_search_before_atomic_database_promotion() -> N
     )
 
     assert "--require-all-ready" in preflight
+    assert "--statistics-reuse-only" in preflight
     assert "SPOTIFY_STATS_SEARCH_STARTUP_REBUILD=0" in preflight
     assert "--db-copy" in preflight
     assert '"$production_data_dir"/*' in preflight
@@ -368,7 +369,7 @@ def test_production_deploy_stages_search_before_atomic_database_promotion() -> N
     assert "prepare_music_search_resume.py" in preflight
     assert "--resume-db" in deploy
     assert "检测到仍在运行的音乐搜索副本重建容器" in preflight
-    assert "音乐搜索副本重建仍在运行" in preflight
+    assert "音乐搜索候选维护与统计复用校验仍在运行" in preflight
     assert "trap terminate HUP INT TERM" in preflight
     assert "verify-music-search-runtime.py" in verify
     assert "version=36" in runtime_gate
@@ -389,7 +390,7 @@ def test_production_compose_and_workflow_ship_search_release_gates() -> None:
     workflow = (ROOT / ".github" / "workflows" / "deploy-production.yml").read_text(
         encoding="utf-8"
     )
-    assert "timeout-minutes: 180" in workflow
+    assert "timeout-minutes: 35" in workflow
     assert "preflight-music-search.sh" in workflow
     assert "validate-music-search-preflight.py" in workflow
     assert "music_search_preflight_capacity.py" in workflow

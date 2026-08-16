@@ -174,7 +174,15 @@ def test_deployment_scripts_manage_modes_without_external_ingress() -> None:
     assert "openssl rand -hex 32" in deploy
     assert "previous-image-tag" in deploy
     assert "previous-deployment-mode" in deploy
-    assert 'deploy.sh" "$target_tag" --mode "$target_mode"' in rollback
+    assert "previous-image-source" in deploy
+    assert "current-image-source" in deploy
+    assert "--image-source registry|local" in deploy
+    assert 'compose_mode "$mode" up -d --pull never' in deploy
+    assert "verify_local_release_image" in deploy
+    assert 'rollback_image_source="local"' in deploy
+    assert "local 发布前无法验证当前版本的本机回滚镜像" in deploy
+    assert 'exec "$DEPLOY_DIR/deploy.sh" "$target_tag"' in rollback
+    assert '--image-source "$target_image_source"' in rollback
     assert 'exec "$DEPLOY_DIR/deploy.sh" "$image_tag" --mode "$mode"' in switch
     assert "public-readonly" in deploy
     assert "private-admin" in deploy
@@ -216,23 +224,31 @@ def test_release_restore_and_backup_guardrails_remain() -> None:
     assert "spotify-stats-backup.timer" in timer
 
 
-def test_workflow_builds_one_sha_and_uploads_profile_runtime_files() -> None:
+def test_workflow_transports_one_exact_sha_before_touching_production() -> None:
     workflow = (ROOT / ".github" / "workflows" / "deploy-production.yml").read_text()
 
     assert "NGINX_CONFIG=deploy/production/nginx.conf" in workflow
-    assert "timeout-minutes: 45" in workflow
+    assert "timeout-minutes: 20" in workflow
+    assert "timeout-minutes: 35" in workflow
     assert workflow.count("load: true") == 2
     assert workflow.count("provenance: false") == 2
-    assert workflow.count("Push API image with bounded retries") == 1
-    assert workflow.count("Push Web image with bounded retries") == 1
-    assert workflow.count("timeout --signal=TERM --kill-after=30s 10m docker push") == 2
-    assert workflow.count('docker manifest inspect "$image_ref"') == 2
-    assert workflow.count("Configure serial registry uploads") == 1
-    assert workflow.count('{"max-concurrent-uploads": 1}') == 2
-    assert "systemctl restart docker" in workflow
-    assert workflow.index("Configure serial registry uploads") < workflow.index(
-        "docker/setup-buildx-action@v3"
-    )
+    assert workflow.count("org.opencontainers.image.revision=${{ github.sha }}") == 2
+    assert "docker image save" in workflow
+    assert "actions/upload-artifact@v4" in workflow
+    assert "actions/download-artifact@v4" in workflow
+    assert "retention-days: 1" in workflow
+    assert "build-artifact" in workflow
+    assert "transfer-image-artifact.sh" in workflow
+    assert "manifest_sha256" in workflow
+    assert "missing_bytes" in workflow
+    assert "transferred_wire_bytes" in workflow
+    assert "publish-release-images.sh' '$GITHUB_SHA' release" in workflow
+    assert "live-containers.before" in workflow
+    assert "live-containers.after" in workflow
+    assert "cmp --silent" in workflow
+    assert "Configure serial registry uploads" not in workflow
+    assert "max-concurrent-uploads" not in workflow
+    assert "docker/login-action" not in workflow
     assert "push: true" not in workflow
     assert "deployment-profile-matrix:" in workflow
     assert "mode: [full, showcase, dual]" in workflow
@@ -244,28 +260,63 @@ def test_workflow_builds_one_sha_and_uploads_profile_runtime_files() -> None:
     assert "set-showcase-access-mode.sh" in workflow
     assert "temporary-showcase.sh" in workflow
     assert "validate-deployment-config.sh" in workflow
-    assert "./deploy.sh '${{ github.sha }}'" in workflow
+    assert "./deploy.sh '${{ github.sha }}' --image-source registry" in workflow
     assert "--mode" not in workflow.split("Deploy commit", 1)[1]
+    assert workflow.index("Transfer only missing CAS blobs") < workflow.index("Deploy commit")
+    assert workflow.index("Publish and digest-pull exact TCR release images") < workflow.index(
+        "Deploy commit"
+    )
+    assert workflow.index("Deploy commit") < workflow.index(
+        "Activate CAS current and previous retention after successful deploy"
+    )
+    assert workflow.index(
+        "Activate CAS current and previous retention after successful deploy"
+    ) < workflow.index("Clean successful release staging directory")
 
 
 def test_backend_image_uses_split_runtime_dependency_layers() -> None:
     dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
     development = (ROOT / "requirements.txt").read_text(encoding="utf-8")
+    workflow = (ROOT / ".github" / "workflows" / "deploy-production.yml").read_text(
+        encoding="utf-8"
+    )
 
     runtime_files = (
         "requirements-analytics.txt",
         "requirements-api.txt",
         "requirements-features.txt",
+        "requirements-search.txt",
     )
     for requirement_file in runtime_files:
         assert f"COPY {requirement_file} ." in dockerfile
         assert f"RUN pip install --no-cache-dir -r {requirement_file}" in dockerfile
         assert f"-r {requirement_file}" in development
 
+    layer_offsets = [dockerfile.index(f"COPY {path} .") for path in runtime_files]
+    assert layer_offsets == sorted(layer_offsets)
+    assert dockerfile.index("COPY requirements-search.txt .") < dockerfile.index(
+        "COPY backend/ ./backend/"
+    )
+
+    search = (ROOT / "requirements-search.txt").read_text(encoding="utf-8")
+    assert search.splitlines() == ["opencc-python-reimplemented==0.1.7"]
+    assert all(
+        "opencc-python-reimplemented" not in (ROOT / path).read_text(encoding="utf-8")
+        for path in runtime_files[:-1]
+    )
+    runtime_requirements = "\n".join(
+        (ROOT / path).read_text(encoding="utf-8") for path in runtime_files
+    )
+    assert "pytest" not in runtime_requirements
+    assert "ruff" not in runtime_requirements
+
     backend_stage = dockerfile.split("FROM node:22-alpine AS frontend", 1)[0]
     assert "pytest" not in backend_stage
     assert "ruff" not in backend_stage
     assert "COPY requirements.txt" not in backend_stage
+    assert "pytest>=8.0.0" in development
+    assert "ruff>=0.1.0" in development
+    assert ".venv/bin/pip install -r requirements.txt" in workflow
 
 
 def test_temporary_showcase_is_pinned_access_aware_and_not_persistent() -> None:

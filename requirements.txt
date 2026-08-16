@@ -1,6 +1,7 @@
 -r requirements-analytics.txt
 -r requirements-api.txt
 -r requirements-features.txt
+-r requirements-search.txt
 
 pytest>=8.0.0
 ruff>=0.1.0

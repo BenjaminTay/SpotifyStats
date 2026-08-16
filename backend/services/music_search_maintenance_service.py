@@ -36,6 +36,10 @@ from backend.domains.settings.repository import SettingsRepository
 MUSIC_SEARCH_SNAPSHOT_JOB_TYPE = "music_search_snapshot_rebuild"
 
 
+class MusicSearchStatisticsReuseRequiredError(RuntimeError):
+    """Raised when a reuse-only maintenance pass cannot reuse all six variants."""
+
+
 def _search_metadata_dependencies_ready(conn: sqlite3.Connection) -> bool:
     for state in (get_identity_state(conn), get_track_credit_state(conn)):
         if state.get("rebuild_status") != "ready":
@@ -192,6 +196,7 @@ def rebuild_current_music_search_derived_data(
     conn: sqlite3.Connection,
     *,
     rebuild_documents: bool = False,
+    statistics_reuse_only: bool = False,
 ) -> dict[str, Any]:
     if not _search_metadata_dependencies_ready(conn):
         raise RuntimeError("music-search metadata aggregate dependency is not ready")
@@ -199,6 +204,10 @@ def rebuild_current_music_search_derived_data(
     snapshot_set_report = _revalidated_snapshot_set_report(conn, contexts)
     if snapshot_set_report is None and _adopt_legacy_v2_snapshot_set(conn, contexts):
         snapshot_set_report = _revalidated_snapshot_set_report(conn, contexts)
+    if snapshot_set_report is None and statistics_reuse_only:
+        raise MusicSearchStatisticsReuseRequiredError(
+            "all six exact music-search statistics variants must be maintained separately"
+        )
 
     state = get_music_search_index_state(conn)
     expected_source = music_search_source_revision(conn)

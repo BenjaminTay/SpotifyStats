@@ -11,7 +11,14 @@ on:
       - ".github/workflows/smoke-production-image-transport.yml"
       - "deploy/production/load-release-images.sh"
       - "deploy/production/publish-release-images.sh"
+      - "deploy/production/image_transport.py"
+      - "deploy/production/transfer-image-artifact.sh"
+      - "deploy/production/prepare-local-release-images.sh"
+      - "deploy/production/bootstrap-current-release-images.sh"
+      - "deploy/production/activate-release-images.sh"
+      - "deploy/production/seed-verified-smoke-images.sh"
       - "backend/tests/unit/test_production_image_transport.py"
+      - "backend/tests/unit/test_image_transport_cas.py"
 
 permissions:
   contents: read
@@ -22,8 +29,6 @@ concurrency:
 
 env:
   TCR_REGISTRY: ccr.ccs.tencentyun.com
-  API_IMAGE: ccr.ccs.tencentyun.com/teacher-honor/spotify-stats-api
-  WEB_IMAGE: ccr.ccs.tencentyun.com/teacher-honor/spotify-stats-web
 
 jobs:
   verify:
@@ -77,29 +82,30 @@ jobs:
   build:
     needs: [verify, deployment-profile-matrix]
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 20
+    outputs:
+      artifact_bytes: ${{ steps.artifact.outputs.artifact_bytes }}
+      manifest_sha256: ${{ steps.artifact.outputs.manifest_sha256 }}
     steps:
       - uses: actions/checkout@v4
-      - name: Configure serial registry uploads
+
+      - name: Initialize release image summary
         run: |
-          daemon_config="$(mktemp)"
-          if [ -f /etc/docker/daemon.json ]; then
-            sudo cat /etc/docker/daemon.json | \
-              jq '. + {"max-concurrent-uploads": 1}' > "$daemon_config"
-          else
-            jq -n '{"max-concurrent-uploads": 1}' > "$daemon_config"
-          fi
-          sudo install -m 644 "$daemon_config" /etc/docker/daemon.json
-          sudo systemctl restart docker
-          sudo systemctl is-active --quiet docker
-          sudo jq -e '.["max-concurrent-uploads"] == 1' /etc/docker/daemon.json
+          started_at="$(date +%s)"
+          printf 'JOB_STARTED_AT=%s\n' "$started_at" > "$RUNNER_TEMP/release-image-timings"
+          {
+            echo "## Release images and private CAS Artifact"
+            echo
+            echo "| Stage | Elapsed (seconds) | Artifact bytes |"
+            echo "| --- | ---: | ---: |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - uses: docker/setup-buildx-action@v3
-      - uses: docker/login-action@v3
-        with:
-          registry: ${{ env.TCR_REGISTRY }}
-          username: ${{ secrets.TCR_USERNAME }}
-          password: ${{ secrets.TCR_PASSWORD }}
-      - name: Build API image
+
+      - name: Mark API build start
+        run: echo "API_BUILD_STARTED_AT=$(date +%s)" >> "$RUNNER_TEMP/release-image-timings"
+
+      - name: Build linux/amd64 API release image
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -108,33 +114,19 @@ jobs:
           platforms: linux/amd64
           load: true
           provenance: false
-          tags: ${{ env.API_IMAGE }}:${{ github.sha }}
+          tags: spotify-stats-api:transport-${{ github.sha }}
+          labels: org.opencontainers.image.revision=${{ github.sha }}
           cache-from: type=gha,scope=spotify-stats-api
           cache-to: type=gha,mode=max,scope=spotify-stats-api
-      - name: Push API image with bounded retries
-        env:
-          IMAGE: ${{ env.API_IMAGE }}
-          IMAGE_SHA: ${{ github.sha }}
+
+      - name: Record API build elapsed
         run: |
-          push_with_retry() {
-            local image_ref="$1"
-            local attempt
-            for attempt in 1 2 3; do
-              echo "Pushing $image_ref (attempt $attempt/3)"
-              if timeout --signal=TERM --kill-after=30s 10m docker push "$image_ref"; then
-                docker manifest inspect "$image_ref" >/dev/null
-                return 0
-              fi
-              if [ "$attempt" -lt 3 ]; then
-                sleep "$((attempt * 15))"
-              fi
-            done
-            return 1
-          }
-          push_with_retry "$IMAGE:$IMAGE_SHA"
-          docker tag "$IMAGE:$IMAGE_SHA" "$IMAGE:main"
-          push_with_retry "$IMAGE:main"
-      - name: Build Web image
+          source "$RUNNER_TEMP/release-image-timings"
+          elapsed="$(( $(date +%s) - API_BUILD_STARTED_AT ))"
+          printf '| API build | %s | - |\n' "$elapsed" >> "$GITHUB_STEP_SUMMARY"
+          echo "WEB_BUILD_STARTED_AT=$(date +%s)" >> "$RUNNER_TEMP/release-image-timings"
+
+      - name: Build linux/amd64 Web release image
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -145,42 +137,96 @@ jobs:
             NGINX_CONFIG=deploy/production/nginx.conf
           load: true
           provenance: false
-          tags: ${{ env.WEB_IMAGE }}:${{ github.sha }}
+          tags: spotify-stats-web:transport-${{ github.sha }}
+          labels: org.opencontainers.image.revision=${{ github.sha }}
           cache-from: type=gha,scope=spotify-stats-web
           cache-to: type=gha,mode=max,scope=spotify-stats-web
-      - name: Push Web image with bounded retries
-        env:
-          IMAGE: ${{ env.WEB_IMAGE }}
-          IMAGE_SHA: ${{ github.sha }}
+
+      - name: Record Web build elapsed
         run: |
-          push_with_retry() {
-            local image_ref="$1"
-            local attempt
-            for attempt in 1 2 3; do
-              echo "Pushing $image_ref (attempt $attempt/3)"
-              if timeout --signal=TERM --kill-after=30s 10m docker push "$image_ref"; then
-                docker manifest inspect "$image_ref" >/dev/null
-                return 0
-              fi
-              if [ "$attempt" -lt 3 ]; then
-                sleep "$((attempt * 15))"
-              fi
-            done
-            return 1
-          }
-          push_with_retry "$IMAGE:$IMAGE_SHA"
-          docker tag "$IMAGE:$IMAGE_SHA" "$IMAGE:main"
-          push_with_retry "$IMAGE:main"
+          source "$RUNNER_TEMP/release-image-timings"
+          elapsed="$(( $(date +%s) - WEB_BUILD_STARTED_AT ))"
+          printf '| Web build | %s | - |\n' "$elapsed" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Create validated Docker-save CAS Artifact
+        id: artifact
+        run: |
+          started_at="$(date +%s)"
+          archive="$RUNNER_TEMP/docker-save-${GITHUB_SHA}.tar"
+          artifact="$RUNNER_TEMP/image-bundle"
+          docker image save "spotify-stats-api:transport-$GITHUB_SHA" \
+            "spotify-stats-web:transport-$GITHUB_SHA" --output "$archive"
+          python3 deploy/production/image_transport.py build-artifact \
+            --archive "$archive" --artifact "$artifact" \
+            --revision "$GITHUB_SHA" --mode release
+          manifest_sha256="$(sha256sum "$artifact/transport-manifest.json" | cut -d ' ' -f 1)"
+          artifact_bytes="$(du --bytes --summarize "$artifact" | cut -f 1)"
+          elapsed="$(( $(date +%s) - started_at ))"
+          printf '| Docker-save CAS layout | %s | %s |\n' "$elapsed" "$artifact_bytes" >> "$GITHUB_STEP_SUMMARY"
+          echo "manifest_sha256=$manifest_sha256" >> "$GITHUB_OUTPUT"
+          echo "artifact_bytes=$artifact_bytes" >> "$GITHUB_OUTPUT"
+          echo "ARTIFACT_BYTES=$artifact_bytes" >> "$GITHUB_ENV"
+
+      - name: Mark private Artifact upload start
+        run: echo "ARTIFACT_STARTED_AT=$(date +%s)" >> "$RUNNER_TEMP/release-image-timings"
+
+      - name: Upload one-day private release CAS Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: spotify-stats-release-${{ github.sha }}
+          path: ${{ runner.temp }}/image-bundle
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+
+      - name: Record private Artifact upload elapsed
+        run: |
+          source "$RUNNER_TEMP/release-image-timings"
+          elapsed="$(( $(date +%s) - ARTIFACT_STARTED_AT ))"
+          printf '| Private CAS Artifact upload | %s | %s |\n' "$elapsed" "$ARTIFACT_BYTES" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Record bounded build job total
+        if: always()
+        run: |
+          source "$RUNNER_TEMP/release-image-timings"
+          elapsed="$(( $(date +%s) - JOB_STARTED_AT ))"
+          printf '| **Build job total** | **%s** | **%s** |\n' "$elapsed" "${ARTIFACT_BYTES:--}" >> "$GITHUB_STEP_SUMMARY"
 
   deploy:
     needs: build
     runs-on: ubuntu-latest
-    # The target host is intentionally small. Candidate and statistics artifacts
-    # are validated independently on an Online Backup; only stale layers rebuild.
-    timeout-minutes: 180
+    timeout-minutes: 35
     environment: production
+    env:
+      ARTIFACT_BYTES: ${{ needs.build.outputs.artifact_bytes }}
+      MANIFEST_SHA256: ${{ needs.build.outputs.manifest_sha256 }}
     steps:
       - uses: actions/checkout@v4
+
+      - name: Initialize transfer and deployment summary
+        run: |
+          started_at="$(date +%s)"
+          printf 'JOB_STARTED_AT=%s\n' "$started_at" > "$RUNNER_TEMP/release-deploy-timings"
+          echo "ARTIFACT_DOWNLOAD_STARTED_AT=$started_at" >> "$RUNNER_TEMP/release-deploy-timings"
+          {
+            echo "## Server image transport and deployment"
+            echo
+            echo "| Stage | Elapsed (seconds) | Bytes |"
+            echo "| --- | ---: | ---: |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Download private release Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: spotify-stats-release-${{ github.sha }}
+          path: ${{ runner.temp }}/image-bundle
+
+      - name: Record private Artifact download elapsed
+        run: |
+          source "$RUNNER_TEMP/release-deploy-timings"
+          elapsed="$(( $(date +%s) - ARTIFACT_DOWNLOAD_STARTED_AT ))"
+          printf '| Private CAS Artifact download | %s | %s |\n' "$elapsed" "$ARTIFACT_BYTES" >> "$GITHUB_STEP_SUMMARY"
+
       - name: Configure SSH
         env:
           SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
@@ -191,6 +237,111 @@ jobs:
           chmod 600 "$RUNNER_TEMP/spotify-stats-deploy-key"
           printf '%s\n' "$SERVER_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
           chmod 600 "$HOME/.ssh/known_hosts"
+
+      - name: Install CAS bootstrap and local image helpers
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_PORT: ${{ secrets.SERVER_PORT }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+        run: |
+          rsync --archive --checksum --partial --partial-dir=.cas-scripts-partial \
+            --delay-updates --timeout=300 \
+            -e "ssh -p $SERVER_PORT -i $RUNNER_TEMP/spotify-stats-deploy-key" \
+            deploy/production/image_transport.py \
+            deploy/production/bootstrap-current-release-images.sh \
+            deploy/production/prepare-local-release-images.sh \
+            deploy/production/activate-release-images.sh \
+            deploy/production/seed-verified-smoke-images.sh \
+            "$SERVER_USER@$SERVER_HOST:/opt/spotify-stats/"
+          ssh -p "$SERVER_PORT" -i "$RUNNER_TEMP/spotify-stats-deploy-key" \
+            "$SERVER_USER@$SERVER_HOST" \
+            'chmod 700 /opt/spotify-stats/bootstrap-current-release-images.sh /opt/spotify-stats/prepare-local-release-images.sh /opt/spotify-stats/activate-release-images.sh /opt/spotify-stats/seed-verified-smoke-images.sh'
+
+      - name: Bootstrap current production images into shared CAS
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_PORT: ${{ secrets.SERVER_PORT }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+        run: |
+          ssh -p "$SERVER_PORT" -i "$RUNNER_TEMP/spotify-stats-deploy-key" \
+            "$SERVER_USER@$SERVER_HOST" \
+            "bash /opt/spotify-stats/bootstrap-current-release-images.sh"
+
+      - name: Optionally seed CAS from verified TCR smoke images
+        continue-on-error: true
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_PORT: ${{ secrets.SERVER_PORT }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          TCR_USERNAME: ${{ secrets.TCR_USERNAME }}
+          TCR_PASSWORD: ${{ secrets.TCR_PASSWORD }}
+        run: |
+          printf '%s' "$TCR_PASSWORD" | ssh -p "$SERVER_PORT" \
+            -i "$RUNNER_TEMP/spotify-stats-deploy-key" "$SERVER_USER@$SERVER_HOST" \
+            "timeout --signal=TERM --kill-after=10s 1m docker login '$TCR_REGISTRY' --username '$TCR_USERNAME' --password-stdin"
+          ssh -p "$SERVER_PORT" -i "$RUNNER_TEMP/spotify-stats-deploy-key" \
+            "$SERVER_USER@$SERVER_HOST" \
+            "bash /opt/spotify-stats/seed-verified-smoke-images.sh '$GITHUB_SHA'"
+
+      - name: Transfer only missing CAS blobs and load release images
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_PORT: ${{ secrets.SERVER_PORT }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+        run: |
+          started_at="$(date +%s)"
+          result="$RUNNER_TEMP/cas-transfer-result"
+          deploy/production/transfer-image-artifact.sh \
+            "$RUNNER_TEMP/image-bundle" "$GITHUB_SHA" release "$MANIFEST_SHA256" \
+            "$SERVER_USER@$SERVER_HOST" "$SERVER_PORT" \
+            "$RUNNER_TEMP/spotify-stats-deploy-key" "$result"
+          source "$result"
+          elapsed="$(( $(date +%s) - started_at ))"
+          printf '| CAS missing blobs (%s files) | %s | %s |\n' "$missing_count" "$elapsed" "$missing_bytes" >> "$GITHUB_STEP_SUMMARY"
+          printf '| rsync wire bytes (up to 4 shards) | %s | %s |\n' "$elapsed" "$transferred_wire_bytes" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Prepare exact registry-style local disaster-recovery refs
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_PORT: ${{ secrets.SERVER_PORT }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+        run: |
+          ssh -p "$SERVER_PORT" -i "$RUNNER_TEMP/spotify-stats-deploy-key" \
+            "$SERVER_USER@$SERVER_HOST" \
+            "bash /opt/spotify-stats/prepare-local-release-images.sh '$GITHUB_SHA'"
+
+      - name: Publish and digest-pull exact TCR release images
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_PORT: ${{ secrets.SERVER_PORT }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          TCR_USERNAME: ${{ secrets.TCR_USERNAME }}
+          TCR_PASSWORD: ${{ secrets.TCR_PASSWORD }}
+        run: |
+          staging_dir="/opt/spotify-stats/releases/incoming/$GITHUB_SHA/release"
+          printf '%s' "$TCR_PASSWORD" | ssh -p "$SERVER_PORT" \
+            -i "$RUNNER_TEMP/spotify-stats-deploy-key" "$SERVER_USER@$SERVER_HOST" \
+            "timeout --signal=TERM --kill-after=10s 1m docker login '$TCR_REGISTRY' --username '$TCR_USERNAME' --password-stdin"
+          ssh -p "$SERVER_PORT" -i "$RUNNER_TEMP/spotify-stats-deploy-key" \
+            "$SERVER_USER@$SERVER_HOST" \
+            "bash '$staging_dir/publish-release-images.sh' '$GITHUB_SHA' release"
+
+      - name: Prove image transport did not change live containers
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_PORT: ${{ secrets.SERVER_PORT }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+        run: |
+          ssh -p "$SERVER_PORT" -i "$RUNNER_TEMP/spotify-stats-deploy-key" \
+            "$SERVER_USER@$SERVER_HOST" bash -s -- "$GITHUB_SHA" <<'REMOTE'
+          set -Eeuo pipefail
+          revision="$1"
+          [[ "$revision" =~ ^[0-9a-f]{40}$ ]]
+          staging_dir="/opt/spotify-stats/releases/incoming/$revision/release"
+          docker ps --no-trunc --format '{{.ID}}\t{{.Image}}\t{{.Names}}' | LC_ALL=C sort > "$staging_dir/live-containers.after"
+          cmp --silent "$staging_dir/live-containers.before" "$staging_dir/live-containers.after"
+          REMOTE
+
       - name: Upload deployment files
         env:
           SERVER_HOST: ${{ secrets.SERVER_HOST }}
@@ -206,7 +357,11 @@ jobs:
             set-showcase-access-mode.sh \
             validate-deployment-config.sh preflight-music-search.sh \
             validate-music-search-preflight.py music_search_preflight_capacity.py \
-            verify-music-search-runtime.py README.md
+            verify-music-search-runtime.py image_transport.py \
+            load-release-images.sh publish-release-images.sh \
+            transfer-image-artifact.sh prepare-local-release-images.sh \
+            bootstrap-current-release-images.sh activate-release-images.sh \
+            seed-verified-smoke-images.sh README.md
           scp -P "$SERVER_PORT" -i "$RUNNER_TEMP/spotify-stats-deploy-key" \
             "$RUNNER_TEMP/spotify-stats-deploy.tgz" \
             "$SERVER_USER@$SERVER_HOST:/tmp/spotify-stats-deploy.tgz"
@@ -218,13 +373,42 @@ jobs:
           SERVER_HOST: ${{ secrets.SERVER_HOST }}
           SERVER_PORT: ${{ secrets.SERVER_PORT }}
           SERVER_USER: ${{ secrets.SERVER_USER }}
-          TCR_USERNAME: ${{ secrets.TCR_USERNAME }}
-          TCR_PASSWORD: ${{ secrets.TCR_PASSWORD }}
         run: |
-          printf '%s' "$TCR_PASSWORD" | \
-            ssh -p "$SERVER_PORT" -i "$RUNNER_TEMP/spotify-stats-deploy-key" \
-              "$SERVER_USER@$SERVER_HOST" \
-              "docker login '$TCR_REGISTRY' --username '$TCR_USERNAME' --password-stdin"
           ssh -p "$SERVER_PORT" -i "$RUNNER_TEMP/spotify-stats-deploy-key" \
             "$SERVER_USER@$SERVER_HOST" \
-            "cd /opt/spotify-stats && ./deploy.sh '${{ github.sha }}'"
+            "cd /opt/spotify-stats && ./deploy.sh '${{ github.sha }}' --image-source registry"
+
+      - name: Activate CAS current and previous retention after successful deploy
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_PORT: ${{ secrets.SERVER_PORT }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+        run: |
+          ssh -p "$SERVER_PORT" -i "$RUNNER_TEMP/spotify-stats-deploy-key" \
+            "$SERVER_USER@$SERVER_HOST" \
+            "bash /opt/spotify-stats/activate-release-images.sh '$GITHUB_SHA' '$MANIFEST_SHA256'"
+
+      - name: Clean successful release staging directory
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_PORT: ${{ secrets.SERVER_PORT }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+        run: |
+          ssh -p "$SERVER_PORT" -i "$RUNNER_TEMP/spotify-stats-deploy-key" \
+            "$SERVER_USER@$SERVER_HOST" bash -s -- "$GITHUB_SHA" <<'REMOTE'
+          set -Eeuo pipefail
+          revision="$1"
+          [[ "$revision" =~ ^[0-9a-f]{40}$ ]]
+          staging_dir="/opt/spotify-stats/releases/incoming/$revision/release"
+          [[ "$staging_dir" == /opt/spotify-stats/releases/incoming/* ]]
+          find "$staging_dir" -depth -mindepth 1 -delete
+          rmdir -- "$staging_dir"
+          sudo rmdir --ignore-fail-on-non-empty "/opt/spotify-stats/releases/incoming/$revision"
+          REMOTE
+
+      - name: Record bounded deployment job total
+        if: always()
+        run: |
+          source "$RUNNER_TEMP/release-deploy-timings"
+          elapsed="$(( $(date +%s) - JOB_STARTED_AT ))"
+          printf '| **Deploy job total** | **%s** | **%s** |\n' "$elapsed" "$ARTIFACT_BYTES" >> "$GITHUB_STEP_SUMMARY"

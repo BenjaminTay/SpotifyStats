@@ -14,8 +14,9 @@ usage() {
 用法：preflight-music-search.sh --db-copy <明确的数据库副本> \
   --json-report <新报告路径> --image <目标 backend 镜像>
 
-脚本拒绝 production data/ 下的数据库和未解析路径。只有临时工作副本通过
-六变体 --require-all-ready 及数据库契约校验后，才会原子更新传入副本。
+脚本拒绝 production data/ 下的数据库和未解析路径。常规发布只允许精确复用
+六套统计；若统计语义真实变化则快速失败，必须先执行独立维护。只有临时工作
+副本通过复用与数据库契约校验后，才会原子更新传入副本。
 EOF
 }
 
@@ -205,7 +206,7 @@ if [[ -n "$existing_preflight" ]]; then
   echo "检测到仍在运行的音乐搜索副本重建容器，拒绝并发预检：$existing_preflight" >&2
   exit 1
 fi
-echo "音乐搜索副本重建开始；生产服务保持在线。" >&2
+echo "音乐搜索候选维护与统计复用校验开始；生产服务保持在线。" >&2
 rebuild_started="$SECONDS"
 docker run --name "$container_name" --rm --init \
   -e SPOTIFY_STATS_WARMUP=0 \
@@ -215,6 +216,7 @@ docker run --name "$container_name" --rm --init \
   "$image" \
   python scripts/rebuild_music_search_derived_data.py \
     --db-path "/resume/$resume_db_name" --json --require-all-ready \
+    --statistics-reuse-only \
     > "$work_dir/rebuild-report.json" &
 rebuild_pid="$!"
 while kill -0 "$rebuild_pid" >/dev/null 2>&1; do
@@ -226,7 +228,7 @@ while kill -0 "$rebuild_pid" >/dev/null 2>&1; do
     fi
   done
   if kill -0 "$rebuild_pid" >/dev/null 2>&1; then
-    echo "音乐搜索副本重建仍在运行：elapsed=$((SECONDS - rebuild_started))s" >&2
+    echo "音乐搜索候选维护与统计复用校验仍在运行：elapsed=$((SECONDS - rebuild_started))s" >&2
   fi
 done
 if wait "$rebuild_pid"; then
@@ -234,12 +236,12 @@ if wait "$rebuild_pid"; then
 else
   rebuild_status="$?"
   rebuild_pid=""
-  echo "音乐搜索副本重建失败：exit=$rebuild_status" >&2
+  echo "音乐搜索候选维护与统计复用校验失败：exit=$rebuild_status" >&2
   exit "$rebuild_status"
 fi
 rebuild_pid=""
 container_name=""
-echo "音乐搜索副本重建完成：elapsed=$((SECONDS - rebuild_started))s" >&2
+echo "音乐搜索候选维护与统计复用校验完成：elapsed=$((SECONDS - rebuild_started))s" >&2
 
 # The captured stdout must be exactly one JSON document; logs belong on stderr.
 python3 - "$work_dir/rebuild-report.json" <<'PY'

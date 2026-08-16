@@ -6,22 +6,38 @@ ENV_FILE="$DEPLOY_DIR/.env"
 COMPOSE_FILE="$DEPLOY_DIR/compose.yml"
 NEW_TAG="${1:-}"
 MODE_OVERRIDE=""
+IMAGE_SOURCE_OVERRIDE=""
 
 usage() {
   cat >&2 <<'EOF'
-用法：deploy.sh <git-commit-sha> [--mode full|showcase|dual]
+用法：deploy.sh <git-commit-sha> [--mode full|showcase|dual] [--image-source registry|local]
 
 不提供 --mode 时沿用 .env 中的 DEPLOYMENT_MODE。部署只管理 Docker
 loopback 网关，不会启用或关闭 Tailscale、Funnel、域名或云防火墙入口。
+registry 会先拉取精确 SHA 镜像；local 只接受已校验并载入本机的精确 SHA 镜像，
+且启动和回滚均禁止访问 registry。
 EOF
 }
 
-if [[ "${2:-}" == "--mode" && -n "${3:-}" && -z "${4:-}" ]]; then
-  MODE_OVERRIDE="$3"
-elif [[ -n "${2:-}" ]]; then
-  usage
-  exit 2
-fi
+shift || true
+while (( $# > 0 )); do
+  case "$1" in
+    --mode)
+      [[ $# -ge 2 && -z "$MODE_OVERRIDE" ]] || { usage; exit 2; }
+      MODE_OVERRIDE="$2"
+      shift 2
+      ;;
+    --image-source)
+      [[ $# -ge 2 && -z "$IMAGE_SOURCE_OVERRIDE" ]] || { usage; exit 2; }
+      IMAGE_SOURCE_OVERRIDE="$2"
+      shift 2
+      ;;
+    *)
+      usage
+      exit 2
+      ;;
+  esac
+done
 
 cd "$DEPLOY_DIR"
 umask 077
@@ -61,6 +77,10 @@ valid_mode() {
   [[ "$1" == "full" || "$1" == "showcase" || "$1" == "dual" ]]
 }
 
+valid_image_source() {
+  [[ "$1" == "registry" || "$1" == "local" ]]
+}
+
 valid_showcase_access_mode() {
   [[ "$1" == "protected" || "$1" == "public" ]]
 }
@@ -88,6 +108,14 @@ ensure_gateway_token
 
 current_tag="$(get_env IMAGE_TAG)"
 current_mode="$(get_env DEPLOYMENT_MODE)"
+current_image_source="registry"
+if [[ -f "$DEPLOY_DIR/.current-image-source" ]]; then
+  current_image_source="$(<"$DEPLOY_DIR/.current-image-source")"
+fi
+if ! valid_image_source "$current_image_source"; then
+  echo "当前镜像来源记录无效：$current_image_source" >&2
+  exit 1
+fi
 if ! valid_mode "$current_mode"; then
   # Releases before deployment profiles always started both loopback gateways.
   current_mode="dual"
@@ -104,6 +132,17 @@ fi
 target_mode="${MODE_OVERRIDE:-$current_mode}"
 if ! valid_mode "$target_mode"; then
   echo "无效部署模式：$target_mode（只能是 full、showcase 或 dual）。" >&2
+  exit 2
+fi
+if [[ -n "$IMAGE_SOURCE_OVERRIDE" ]]; then
+  target_image_source="$IMAGE_SOURCE_OVERRIDE"
+elif [[ "$current_tag" == "$NEW_TAG" ]]; then
+  target_image_source="$current_image_source"
+else
+  target_image_source="registry"
+fi
+if ! valid_image_source "$target_image_source"; then
+  echo "无效镜像来源：$target_image_source（只能是 registry 或 local）。" >&2
   exit 2
 fi
 if [[ "$target_mode" == "showcase" || "$target_mode" == "dual" ]]; then
@@ -144,6 +183,7 @@ services_for_mode() {
 
 activate_mode() {
   local mode="$1"
+  local image_source="${2:-registry}"
   local -a services
   mapfile -t services < <(services_for_mode "$mode")
 
@@ -156,7 +196,11 @@ activate_mode() {
       ;;
   esac
 
-  compose_mode "$mode" up -d --remove-orphans "${services[@]}"
+  if [[ "$image_source" == "local" ]]; then
+    compose_mode "$mode" up -d --pull never --remove-orphans "${services[@]}"
+  else
+    compose_mode "$mode" up -d --remove-orphans "${services[@]}"
+  fi
 }
 
 pull_mode() {
@@ -184,6 +228,48 @@ backend_image_for_tag() {
   namespace="${namespace:-teacher-honor}"
   repository="${repository:-spotify-stats-api}"
   printf '%s/%s/%s:%s\n' "${registry%/}" "$namespace" "$repository" "$tag"
+}
+
+web_image_for_tag() {
+  local tag="$1"
+  local registry namespace repository
+  registry="$(get_env TCR_REGISTRY)"
+  namespace="$(get_env TCR_NAMESPACE)"
+  repository="$(get_env WEB_REPOSITORY)"
+  registry="${registry:-ccr.ccs.tencentyun.com}"
+  namespace="${namespace:-teacher-honor}"
+  repository="${repository:-spotify-stats-web}"
+  printf '%s/%s/%s:%s\n' "${registry%/}" "$namespace" "$repository" "$tag"
+}
+
+verify_local_release_image() {
+  local image="$1"
+  local expected_revision="$2"
+  local architecture operating_system revision
+  docker image inspect "$image" >/dev/null 2>&1 || {
+    echo "本机缺少精确发布镜像：$image" >&2
+    return 1
+  }
+  architecture="$(docker image inspect --format '{{.Architecture}}' "$image")"
+  operating_system="$(docker image inspect --format '{{.Os}}' "$image")"
+  revision="$(docker image inspect --format '{{index .Config.Labels \"org.opencontainers.image.revision\"}}' "$image")"
+  if [[ "$operating_system/$architecture" != "linux/amd64" || \
+        "$revision" != "$expected_revision" ]]; then
+    echo "本机发布镜像身份不正确：$image platform=$operating_system/$architecture revision=$revision" >&2
+    return 1
+  fi
+}
+
+prepare_images_for_tag() {
+  local tag="$1"
+  local mode="$2"
+  local image_source="$3"
+  if [[ "$image_source" == "registry" ]]; then
+    pull_mode_for_tag "$tag" "$mode"
+    return
+  fi
+  verify_local_release_image "$(backend_image_for_tag "$tag")" "$tag"
+  verify_local_release_image "$(web_image_for_tag "$tag")" "$tag"
 }
 
 create_offline_backup() {
@@ -383,7 +469,8 @@ restore_previous_release() {
   echo "正在恢复镜像 $current_tag 和部署模式 $current_mode。" >&2
   set_env IMAGE_TAG "$current_tag"
   set_env DEPLOYMENT_MODE "$current_mode"
-  pull_mode "$current_mode" && activate_mode "$current_mode" && \
+  prepare_images_for_tag "$current_tag" "$current_mode" "$rollback_image_source" && \
+    activate_mode "$current_mode" "$rollback_image_source" && \
     release_is_safe "$current_mode" 0
 }
 
@@ -402,9 +489,18 @@ cleanup_release_stage() {
 }
 trap cleanup_release_stage EXIT
 
-if ! pull_mode_for_tag "$NEW_TAG" "$target_mode"; then
-  echo "目标镜像拉取失败，生产容器和数据库均未切换。" >&2
+if ! prepare_images_for_tag "$NEW_TAG" "$target_mode" "$target_image_source"; then
+  echo "目标镜像准备失败（source=$target_image_source），生产容器和数据库均未切换。" >&2
   exit 1
+fi
+
+rollback_image_source="$current_image_source"
+if [[ "$target_image_source" == "local" && "$current_tag" =~ ^[0-9a-f]{7,64}$ ]]; then
+  if ! prepare_images_for_tag "$current_tag" "$current_mode" local; then
+    echo "local 发布前无法验证当前版本的本机回滚镜像，拒绝进入备份或停服阶段。" >&2
+    exit 1
+  fi
+  rollback_image_source="local"
 fi
 
 if [[ "$current_tag" != "$NEW_TAG" ]]; then
@@ -446,7 +542,7 @@ if [[ "$current_tag" != "$NEW_TAG" ]]; then
     compose_all stop backend
     quiescent_database="$release_stage_dir/quiescent-source.db"
     if ! create_offline_backup "$target_backend_image" "$quiescent_database"; then
-      activate_mode "$current_mode" || true
+      activate_mode "$current_mode" "$rollback_image_source" || true
       echo "停服后的源数据库复核备份失败；没有替换生产数据库。" >&2
       exit 1
     fi
@@ -462,7 +558,7 @@ if [[ "$current_tag" != "$NEW_TAG" ]]; then
             --quiescent-db "/release/$release_stage_relative/quiescent-source.db" \
             --staged-db "/release/$release_stage_relative/spotify_stats.db" \
             --json-output "/release/$(basename -- "$rebase_report")"; then
-        activate_mode "$current_mode" || true
+        activate_mode "$current_mode" "$rollback_image_source" || true
         echo "预检期间搜索源发生变化或派生表重基失败；没有替换生产数据库。" >&2
         exit 1
       fi
@@ -473,7 +569,7 @@ if [[ "$current_tag" != "$NEW_TAG" ]]; then
 
   if ! replace_live_database "$staged_database"; then
     if [[ "$backend_was_running" == "true" ]]; then
-      activate_mode "$current_mode" || true
+      activate_mode "$current_mode" "$rollback_image_source" || true
     fi
     echo "预检副本未能原子发布，生产镜像保持原版本。" >&2
     exit 1
@@ -484,7 +580,7 @@ fi
 set_env IMAGE_TAG "$NEW_TAG"
 set_env DEPLOYMENT_MODE "$target_mode"
 
-if ! activate_mode "$target_mode" || ! release_is_safe "$target_mode"; then
+if ! activate_mode "$target_mode" "$target_image_source" || ! release_is_safe "$target_mode"; then
   echo "新版本或部署模式验收失败：$NEW_TAG / $target_mode" >&2
   compose_all logs --tail 160 >&2 || true
   if ! restore_previous_release; then
@@ -494,12 +590,15 @@ if ! activate_mode "$target_mode" || ! release_is_safe "$target_mode"; then
 fi
 
 if [[ "$current_tag" =~ ^[0-9a-f]{7,64}$ && \
-      ( "$current_tag" != "$NEW_TAG" || "$current_mode" != "$target_mode" ) ]]; then
+      ( "$current_tag" != "$NEW_TAG" || "$current_mode" != "$target_mode" || \
+        "$current_image_source" != "$target_image_source" ) ]]; then
   printf '%s\n' "$current_tag" > .previous-image-tag
   printf '%s\n' "$current_mode" > .previous-deployment-mode
+  printf '%s\n' "$rollback_image_source" > .previous-image-source
 fi
 printf '%s\n' "$NEW_TAG" > .current-image-tag
 printf '%s\n' "$target_mode" > .current-deployment-mode
+printf '%s\n' "$target_image_source" > .current-image-source
 
-echo "部署完成：$NEW_TAG（模式：$target_mode，简化版访问：$showcase_access_mode）"
+echo "部署完成：$NEW_TAG（模式：$target_mode，镜像来源：$target_image_source，简化版访问：$showcase_access_mode）"
 echo "外部 HTTPS 入口未被修改；如需对外访问，请单独配置受控入口。"

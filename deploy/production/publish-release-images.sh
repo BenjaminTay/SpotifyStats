@@ -4,10 +4,11 @@ set -Eeuo pipefail
 readonly PRODUCTION_DIR="/opt/spotify-stats"
 readonly ENV_FILE="$PRODUCTION_DIR/.env"
 readonly REVISION="${1:-}"
-readonly SMOKE_TAG="transport-smoke-$REVISION"
+readonly MODE="${2:-smoke}"
 
-if [[ "$#" -ne 1 || ! "$REVISION" =~ ^[0-9a-f]{40}$ ]]; then
-  echo "用法：publish-release-images.sh <40-char-git-commit-sha>" >&2
+if (( $# < 1 || $# > 2 )) || ! "$REVISION" =~ ^[0-9a-f]{40}$ ||
+   [[ "$MODE" != "smoke" && "$MODE" != "release" ]]; then
+  echo "用法：publish-release-images.sh <40-char-git-commit-sha> [smoke|release]" >&2
   exit 2
 fi
 if [[ ! -f "$ENV_FILE" ]]; then
@@ -36,15 +37,27 @@ if [[ ! "$registry" =~ ^[A-Za-z0-9.-]+(:[0-9]+)?$ ]] ||
   exit 1
 fi
 
-readonly API_LOCAL_IMAGE="spotify-stats-api:$SMOKE_TAG"
-readonly WEB_LOCAL_IMAGE="spotify-stats-web:$SMOKE_TAG"
-readonly API_REMOTE_IMAGE="${registry%/}/$namespace/$api_repository:$SMOKE_TAG"
-readonly WEB_REMOTE_IMAGE="${registry%/}/$namespace/$web_repository:$SMOKE_TAG"
+if [[ "$MODE" == "smoke" ]]; then
+  readonly IMAGE_TAG="transport-smoke-$REVISION"
+else
+  readonly IMAGE_TAG="$REVISION"
+fi
+readonly API_LOCAL_IMAGE="spotify-stats-api:transport-$REVISION"
+readonly WEB_LOCAL_IMAGE="spotify-stats-web:transport-$REVISION"
+readonly API_REMOTE_IMAGE="${registry%/}/$namespace/$api_repository:$IMAGE_TAG"
+readonly WEB_REMOTE_IMAGE="${registry%/}/$namespace/$web_repository:$IMAGE_TAG"
 
 for image_ref in "$API_REMOTE_IMAGE" "$WEB_REMOTE_IMAGE"; do
-  if [[ "$image_ref" != *":transport-smoke-$REVISION" ]] ||
-     [[ "$image_ref" == *":$REVISION" || "$image_ref" == *":main" || "$image_ref" == *":latest" ]]; then
-    echo "拒绝向生产标签发布 smoke 镜像：$image_ref" >&2
+  if [[ "$image_ref" == *":main" || "$image_ref" == *":latest" ]]; then
+    echo "拒绝覆盖可变镜像标签：$image_ref" >&2
+    exit 1
+  fi
+  if [[ "$MODE" == "smoke" && "$image_ref" != *":transport-smoke-$REVISION" ]]; then
+    echo "非生产 smoke 标签不正确：$image_ref" >&2
+    exit 1
+  fi
+  if [[ "$MODE" == "release" && "$image_ref" != *":$REVISION" ]]; then
+    echo "生产发布必须使用精确 commit SHA 标签：$image_ref" >&2
     exit 1
   fi
 done
@@ -68,9 +81,26 @@ verify_image() {
 
 push_with_retry() {
   local image_ref="$1"
-  local attempt
+  local attempt existing_manifest existing_digest existing_ref source_id existing_id
+  if existing_manifest="$(timeout --signal=TERM --kill-after=10s 1m docker manifest inspect --verbose "$image_ref" 2>/dev/null)"; then
+    existing_digest="$(python3 -c 'import json,sys; print(json.load(sys.stdin)["Descriptor"]["digest"])' <<<"$existing_manifest")"
+    if [[ ! "$existing_digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+      echo "远端已有 tag，但 manifest digest 无法验证：$image_ref" >&2
+      return 1
+    fi
+    existing_ref="${image_ref%:*}@$existing_digest"
+    timeout --signal=TERM --kill-after=30s 5m docker pull --platform linux/amd64 "$existing_ref"
+    source_id="$(docker image inspect --format '{{.Id}}' "$image_ref")"
+    existing_id="$(docker image inspect --format '{{.Id}}' "$existing_ref")"
+    if [[ "$source_id" != "$existing_id" ]]; then
+      echo "远端精确 tag 已存在但 image ID 不同，拒绝覆盖：$image_ref" >&2
+      return 1
+    fi
+    echo "远端精确 tag 已存在且内容一致，跳过 push：$image_ref"
+    return 0
+  fi
   for attempt in 1 2; do
-    echo "Pushing non-production smoke image $image_ref (attempt $attempt/2)"
+    echo "Pushing $MODE image $image_ref (attempt $attempt/2)"
     if timeout --signal=TERM --kill-after=30s 5m docker push "$image_ref" &&
        timeout --signal=TERM --kill-after=10s 1m docker manifest inspect "$image_ref" >/dev/null; then
       return 0
@@ -84,10 +114,20 @@ push_with_retry() {
 
 pull_and_verify() {
   local image_ref="$1"
+  local repository manifest_json manifest_digest digest_ref
+  manifest_json="$(timeout --signal=TERM --kill-after=10s 1m docker manifest inspect --verbose "$image_ref")"
+  manifest_digest="$(python3 -c 'import json,sys; print(json.load(sys.stdin)["Descriptor"]["digest"])' <<<"$manifest_json")"
+  if [[ ! "$manifest_digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+    echo "无法取得远端不可变 manifest digest：$image_ref" >&2
+    return 1
+  fi
+  repository="${image_ref%:*}"
+  digest_ref="$repository@$manifest_digest"
   docker image rm "$image_ref" >/dev/null 2>&1 || true
-  timeout --signal=TERM --kill-after=30s 5m docker pull --platform linux/amd64 "$image_ref"
-  timeout --signal=TERM --kill-after=10s 1m docker manifest inspect "$image_ref" >/dev/null
-  verify_image "$image_ref"
+  timeout --signal=TERM --kill-after=30s 5m docker pull --platform linux/amd64 "$digest_ref"
+  timeout --signal=TERM --kill-after=10s 1m docker manifest inspect "$digest_ref" >/dev/null
+  verify_image "$digest_ref"
+  docker tag "$digest_ref" "$image_ref"
 }
 
 verify_image "$API_LOCAL_IMAGE"
@@ -99,7 +139,9 @@ push_with_retry "$WEB_REMOTE_IMAGE"
 pull_and_verify "$API_REMOTE_IMAGE"
 pull_and_verify "$WEB_REMOTE_IMAGE"
 
-for image_ref in "$API_REMOTE_IMAGE" "$WEB_REMOTE_IMAGE" "$API_LOCAL_IMAGE" "$WEB_LOCAL_IMAGE"; do
-  docker image rm "$image_ref" >/dev/null 2>&1 || true
-done
-echo "TCR 非生产 smoke 镜像已完成 push、pull、manifest、platform 与 revision 校验。"
+if [[ "$MODE" == "smoke" ]]; then
+  for image_ref in "$API_REMOTE_IMAGE" "$WEB_REMOTE_IMAGE" "$API_LOCAL_IMAGE" "$WEB_LOCAL_IMAGE"; do
+    docker image rm "$image_ref" >/dev/null 2>&1 || true
+  done
+fi
+echo "TCR 镜像已完成 push、pull、manifest、platform 与 revision 校验：mode=$MODE"

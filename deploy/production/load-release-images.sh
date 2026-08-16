@@ -1,90 +1,108 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-readonly RELEASES_ROOT="/opt/spotify-stats/releases/incoming"
+readonly RELEASES_ROOT="/opt/spotify-stats/releases"
 readonly REVISION="${1:-}"
-readonly MAX_ARCHIVE_BYTES=21474836480
-readonly MIN_DOCKER_HEADROOM_BYTES=1073741824
+readonly MODE="${2:-}"
+readonly MANIFEST_SHA256="${3:-}"
+readonly MIN_HEADROOM_BYTES=1073741824
 
 usage() {
-  echo "用法：load-release-images.sh <40-char-git-commit-sha>" >&2
+  echo "用法：load-release-images.sh <40-char-git-commit-sha> <smoke|release> <manifest-sha256>" >&2
 }
 
-if [[ "$#" -ne 1 || ! "$REVISION" =~ ^[0-9a-f]{40}$ ]]; then
+if [[ "$#" -ne 3 || ! "$REVISION" =~ ^[0-9a-f]{40}$ ]] ||
+   [[ "$MODE" != "smoke" && "$MODE" != "release" ]] ||
+   [[ ! "$MANIFEST_SHA256" =~ ^[0-9a-f]{64}$ ]]; then
   usage
   exit 2
 fi
 
-readonly STAGING_DIR="$RELEASES_ROOT/$REVISION"
-readonly ARCHIVE_PATH="$STAGING_DIR/spotify-stats-images-$REVISION.tar.gz"
-readonly SHA256_PATH="$ARCHIVE_PATH.sha256"
-readonly BYTES_PATH="$ARCHIVE_PATH.bytes"
-readonly API_IMAGE="spotify-stats-api:transport-smoke-$REVISION"
-readonly WEB_IMAGE="spotify-stats-web:transport-smoke-$REVISION"
+readonly STAGING_DIR="$RELEASES_ROOT/incoming/$REVISION/$MODE"
+readonly TRANSPORT_HELPER="$STAGING_DIR/image_transport.py"
+readonly ARCHIVE_PATH="$STAGING_DIR/docker-save.tar"
+readonly API_IMAGE="spotify-stats-api:transport-$REVISION"
+readonly WEB_IMAGE="spotify-stats-web:transport-$REVISION"
 
-for path in "$STAGING_DIR" "$ARCHIVE_PATH" "$SHA256_PATH" "$BYTES_PATH"; do
+for path in "$STAGING_DIR" "$TRANSPORT_HELPER" "$STAGING_DIR/transport-manifest.json"; do
   if [[ -L "$path" ]]; then
     echo "拒绝符号链接：$path" >&2
     exit 1
   fi
 done
-if [[ ! -d "$STAGING_DIR" || ! -f "$ARCHIVE_PATH" || ! -f "$SHA256_PATH" || ! -f "$BYTES_PATH" ]]; then
-  echo "incoming 目录缺少镜像归档或完整性 sidecar：$STAGING_DIR" >&2
+if [[ ! -d "$STAGING_DIR" || ! -f "$TRANSPORT_HELPER" ]]; then
+  echo "incoming 目录缺少 CAS transport helper：$STAGING_DIR" >&2
   exit 1
 fi
 
-expected_sha256="$(tr -d '[:space:]' < "$SHA256_PATH")"
-expected_bytes="$(tr -d '[:space:]' < "$BYTES_PATH")"
-if [[ ! "$expected_sha256" =~ ^[0-9a-f]{64}$ ]] ||
-   [[ ! "$expected_bytes" =~ ^[1-9][0-9]*$ ]] ||
-   (( expected_bytes > MAX_ARCHIVE_BYTES )); then
-  echo "镜像归档 sidecar 格式无效或归档超过 20 GiB 安全上限。" >&2
+read -r total_blob_bytes missing_bytes < <(
+  python3 - "$STAGING_DIR/transport-manifest.json" "$STAGING_DIR/plan-result.json" <<'PY'
+import json
+import sys
+
+manifest = json.load(open(sys.argv[1], encoding="utf-8"))
+plan = json.load(open(sys.argv[2], encoding="utf-8"))
+print(manifest["total_blob_bytes"], plan["missing_bytes"])
+PY
+)
+if [[ ! "$total_blob_bytes" =~ ^[1-9][0-9]*$ || ! "$missing_bytes" =~ ^[0-9]+$ ]]; then
+  echo "CAS 容量元数据无效。" >&2
   exit 1
 fi
 
-actual_sha256="$(sha256sum "$ARCHIVE_PATH" | cut -d ' ' -f 1)"
+available_release_bytes="$(df --output=avail -B1 "$RELEASES_ROOT" | tail -n 1 | tr -d ' ')"
+required_release_bytes="$((total_blob_bytes + MIN_HEADROOM_BYTES))"
+if (( available_release_bytes < required_release_bytes )); then
+  echo "release CAS 重建空间不足：available=$available_release_bytes required=$required_release_bytes" >&2
+  exit 1
+fi
+
+python3 "$TRANSPORT_HELPER" materialize \
+  --staging "$STAGING_DIR" \
+  --releases-root "$RELEASES_ROOT" \
+  --revision "$REVISION" \
+  --mode "$MODE" \
+  --manifest-sha256 "$MANIFEST_SHA256"
+
 archive_bytes="$(stat --format='%s' "$ARCHIVE_PATH")"
-if [[ "$actual_sha256" != "$expected_sha256" ]]; then
-  echo "镜像归档 SHA-256 不匹配。" >&2
-  exit 1
-fi
-if [[ "$archive_bytes" != "$expected_bytes" ]]; then
-  echo "镜像归档容量不匹配：actual=$archive_bytes expected=$expected_bytes" >&2
-  exit 1
-fi
-gzip --test "$ARCHIVE_PATH"
-
 docker_root="$(docker info --format '{{.DockerRootDir}}')"
 if [[ -z "$docker_root" || ! -d "$docker_root" ]]; then
   echo "无法解析 DockerRootDir。" >&2
   exit 1
 fi
-available_bytes="$(df --output=avail -B1 "$docker_root" | tail -n 1 | tr -d ' ')"
-if [[ ! "$available_bytes" =~ ^[0-9]+$ ]]; then
-  echo "无法读取 Docker 存储可用容量。" >&2
-  exit 1
-fi
-required_bytes="$((archive_bytes * 4 + MIN_DOCKER_HEADROOM_BYTES))"
-if (( available_bytes < required_bytes )); then
-  echo "Docker 存储空间不足：available=$available_bytes required=$required_bytes" >&2
+available_docker_bytes="$(df --output=avail -B1 "$docker_root" | tail -n 1 | tr -d ' ')"
+required_docker_bytes="$((archive_bytes * 2 + MIN_HEADROOM_BYTES))"
+if (( available_docker_bytes < required_docker_bytes )); then
+  echo "Docker 存储空间不足：available=$available_docker_bytes required=$required_docker_bytes" >&2
   exit 1
 fi
 
-timeout --signal=TERM --kill-after=30s 20m \
-  bash -o pipefail -c 'gzip --decompress --stdout "$1" | docker load' _ "$ARCHIVE_PATH"
-for image in "$API_IMAGE" "$WEB_IMAGE"; do
-  docker image inspect "$image" >/dev/null
-  architecture="$(docker image inspect --format '{{.Architecture}}' "$image")"
-  operating_system="$(docker image inspect --format '{{.Os}}' "$image")"
-  revision="$(docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$image")"
-  if [[ "$architecture" != "amd64" || "$operating_system" != "linux" ]]; then
-    echo "镜像平台不正确：$image ($operating_system/$architecture)" >&2
-    exit 1
-  fi
-  if [[ "$revision" != "$REVISION" ]]; then
-    echo "镜像 revision label 不正确：$image ($revision)" >&2
-    exit 1
-  fi
-done
+timeout --signal=TERM --kill-after=30s 20m docker load --input "$ARCHIVE_PATH"
 
-echo "非生产 smoke 镜像归档已校验并载入：revision=$REVISION bytes=$archive_bytes"
+verify_image() {
+  local image_ref="$1"
+  local architecture operating_system revision
+  docker image inspect "$image_ref" >/dev/null
+  architecture="$(docker image inspect --format '{{.Architecture}}' "$image_ref")"
+  operating_system="$(docker image inspect --format '{{.Os}}' "$image_ref")"
+  revision="$(docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$image_ref")"
+  if [[ "$operating_system/$architecture" != "linux/amd64" || "$revision" != "$REVISION" ]]; then
+    echo "载入镜像身份不正确：$image_ref platform=$operating_system/$architecture revision=$revision" >&2
+    return 1
+  fi
+}
+
+verify_image "$API_IMAGE"
+verify_image "$WEB_IMAGE"
+api_image_id="$(docker image inspect --format '{{.Id}}' "$API_IMAGE")"
+web_image_id="$(docker image inspect --format '{{.Id}}' "$WEB_IMAGE")"
+python3 "$TRANSPORT_HELPER" record-load \
+  --staging "$STAGING_DIR" \
+  --releases-root "$RELEASES_ROOT" \
+  --revision "$REVISION" \
+  --mode "$MODE" \
+  --manifest-sha256 "$MANIFEST_SHA256" \
+  --api-image-id "$api_image_id" \
+  --web-image-id "$web_image_id"
+
+echo "CAS Docker save 已重建并载入：mode=$MODE revision=$REVISION archive_bytes=$archive_bytes missing_bytes=$missing_bytes"

@@ -45,6 +45,7 @@ grep -q 'SPOTIFY_STATS_SEARCH_STARTUP_REBUILD: ${SPOTIFY_STATS_SEARCH_STARTUP_RE
 grep -q '^SPOTIFY_STATS_SEARCH_STARTUP_REBUILD=1$' "$ENV_TEMPLATE"
 grep -q '^SEARCH_PREFLIGHT_MIN_AVAILABLE_MIB=1280$' "$ENV_TEMPLATE"
 grep -q -- '--require-all-ready' "$DEPLOY_DIR/preflight-music-search.sh"
+grep -q -- '--statistics-reuse-only' "$DEPLOY_DIR/preflight-music-search.sh"
 grep -q 'SPOTIFY_STATS_SEARCH_STARTUP_REBUILD=0' \
   "$DEPLOY_DIR/preflight-music-search.sh"
 grep -q 'context_orphan_count' "$DEPLOY_DIR/validate-music-search-preflight.py"
