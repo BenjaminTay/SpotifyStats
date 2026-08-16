@@ -220,6 +220,14 @@ def test_workflow_builds_one_sha_and_uploads_profile_runtime_files() -> None:
     workflow = (ROOT / ".github" / "workflows" / "deploy-production.yml").read_text()
 
     assert "NGINX_CONFIG=deploy/production/nginx.conf" in workflow
+    assert "timeout-minutes: 45" in workflow
+    assert workflow.count("load: true") == 2
+    assert workflow.count("provenance: false") == 2
+    assert workflow.count("Push API image with bounded retries") == 1
+    assert workflow.count("Push Web image with bounded retries") == 1
+    assert workflow.count("timeout --signal=TERM --kill-after=30s 10m docker push") == 2
+    assert workflow.count('docker manifest inspect "$image_ref"') == 2
+    assert "push: true" not in workflow
     assert "deployment-profile-matrix:" in workflow
     assert "mode: [full, showcase, dual]" in workflow
     assert "private-nginx.conf.template" in workflow

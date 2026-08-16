@@ -72,6 +72,7 @@ jobs:
   build:
     needs: [verify, deployment-profile-matrix]
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
@@ -80,20 +81,42 @@ jobs:
           registry: ${{ env.TCR_REGISTRY }}
           username: ${{ secrets.TCR_USERNAME }}
           password: ${{ secrets.TCR_PASSWORD }}
-      - name: Build and push API image
+      - name: Build API image
         uses: docker/build-push-action@v6
         with:
           context: .
           file: Dockerfile
           target: backend
           platforms: linux/amd64
-          push: true
-          tags: |
-            ${{ env.API_IMAGE }}:${{ github.sha }}
-            ${{ env.API_IMAGE }}:main
+          load: true
+          provenance: false
+          tags: ${{ env.API_IMAGE }}:${{ github.sha }}
           cache-from: type=gha,scope=spotify-stats-api
           cache-to: type=gha,mode=max,scope=spotify-stats-api
-      - name: Build and push Web image
+      - name: Push API image with bounded retries
+        env:
+          IMAGE: ${{ env.API_IMAGE }}
+          IMAGE_SHA: ${{ github.sha }}
+        run: |
+          push_with_retry() {
+            local image_ref="$1"
+            local attempt
+            for attempt in 1 2 3; do
+              echo "Pushing $image_ref (attempt $attempt/3)"
+              if timeout --signal=TERM --kill-after=30s 10m docker push "$image_ref"; then
+                docker manifest inspect "$image_ref" >/dev/null
+                return 0
+              fi
+              if [ "$attempt" -lt 3 ]; then
+                sleep "$((attempt * 15))"
+              fi
+            done
+            return 1
+          }
+          push_with_retry "$IMAGE:$IMAGE_SHA"
+          docker tag "$IMAGE:$IMAGE_SHA" "$IMAGE:main"
+          push_with_retry "$IMAGE:main"
+      - name: Build Web image
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -102,18 +125,40 @@ jobs:
           platforms: linux/amd64
           build-args: |
             NGINX_CONFIG=deploy/production/nginx.conf
-          push: true
-          tags: |
-            ${{ env.WEB_IMAGE }}:${{ github.sha }}
-            ${{ env.WEB_IMAGE }}:main
+          load: true
+          provenance: false
+          tags: ${{ env.WEB_IMAGE }}:${{ github.sha }}
           cache-from: type=gha,scope=spotify-stats-web
           cache-to: type=gha,mode=max,scope=spotify-stats-web
+      - name: Push Web image with bounded retries
+        env:
+          IMAGE: ${{ env.WEB_IMAGE }}
+          IMAGE_SHA: ${{ github.sha }}
+        run: |
+          push_with_retry() {
+            local image_ref="$1"
+            local attempt
+            for attempt in 1 2 3; do
+              echo "Pushing $image_ref (attempt $attempt/3)"
+              if timeout --signal=TERM --kill-after=30s 10m docker push "$image_ref"; then
+                docker manifest inspect "$image_ref" >/dev/null
+                return 0
+              fi
+              if [ "$attempt" -lt 3 ]; then
+                sleep "$((attempt * 15))"
+              fi
+            done
+            return 1
+          }
+          push_with_retry "$IMAGE:$IMAGE_SHA"
+          docker tag "$IMAGE:$IMAGE_SHA" "$IMAGE:main"
+          push_with_retry "$IMAGE:main"
 
   deploy:
     needs: build
     runs-on: ubuntu-latest
-    # The target host is intentionally small; the exact six-variant rebuild runs
-    # on an Online Backup while the previous release remains available.
+    # The target host is intentionally small. Candidate and statistics artifacts
+    # are validated independently on an Online Backup; only stale layers rebuild.
     timeout-minutes: 180
     environment: production
     steps:
