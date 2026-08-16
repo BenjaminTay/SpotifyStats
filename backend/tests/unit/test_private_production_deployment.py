@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import re
+import sqlite3
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -19,9 +22,53 @@ def test_docker_build_context_excludes_all_personal_data() -> None:
     assert "data" in lines
     assert "backups" in lines
     assert ".env" in lines
+    assert {
+        "**/*.db",
+        "**/*.db-wal",
+        "**/*.db-shm",
+        "**/*.db-journal",
+        "**/*.sqlite",
+        "**/*.sqlite-wal",
+        "**/*.sqlite-shm",
+        "**/*.sqlite-journal",
+        "**/*.sqlite.pre-*",
+        "**/*.sqlite3",
+        "**/*.sqlite3-wal",
+        "**/*.sqlite3-shm",
+        "**/*.sqlite3-journal",
+        "**/*.sqlite3.pre-*",
+    } <= lines
 
     dockerfile = (ROOT / "Dockerfile").read_text()
     assert "COPY data/" not in dockerfile
+    assert "python scripts/validate_container_image.py /app" in dockerfile
+
+
+def test_container_image_gate_detects_sqlite_payload(tmp_path: Path) -> None:
+    gate = ROOT / "scripts" / "validate_container_image.py"
+    clean = subprocess.run(
+        [sys.executable, str(gate), str(tmp_path)],
+        capture_output=True,
+        check=False,
+        text=True,
+    )
+    assert clean.returncode == 0
+
+    database = tmp_path / "nested" / "fixture.bin"
+    database.parent.mkdir()
+    conn = sqlite3.connect(database)
+    conn.execute("CREATE TABLE facts(value TEXT)")
+    conn.commit()
+    conn.close()
+
+    dirty = subprocess.run(
+        [sys.executable, str(gate), str(tmp_path)],
+        capture_output=True,
+        check=False,
+        text=True,
+    )
+    assert dirty.returncode == 1
+    assert "nested/fixture.bin" in dirty.stderr
 
 
 def test_production_compose_exposes_only_profile_selected_loopback_ports() -> None:

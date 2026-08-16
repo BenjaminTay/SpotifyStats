@@ -5,6 +5,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY backend/ ./backend/
 COPY scripts/ ./scripts/
+RUN python scripts/validate_container_image.py /app
 RUN mkdir -p /app/data
 
 ENV PYTHONUNBUFFERED=1

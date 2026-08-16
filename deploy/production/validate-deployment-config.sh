@@ -2,6 +2,7 @@
 set -Eeuo pipefail
 
 DEPLOY_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd -- "$DEPLOY_DIR/../.." && pwd)"
 COMPOSE_FILE="$DEPLOY_DIR/compose.yml"
 ENV_TEMPLATE="$DEPLOY_DIR/.env.example"
 requested_mode="${1:-all}"
@@ -18,6 +19,15 @@ fi
 
 for script in "$DEPLOY_DIR"/*.sh; do
   bash -n "$script"
+done
+
+grep -q 'python scripts/validate_container_image.py /app' "$PROJECT_ROOT/Dockerfile"
+for pattern in '**/*.db' '**/*.db-wal' '**/*.db-shm' '**/*.db-journal' \
+               '**/*.sqlite' '**/*.sqlite-wal' '**/*.sqlite-shm' \
+               '**/*.sqlite-journal' '**/*.sqlite.pre-*' '**/*.sqlite3' \
+               '**/*.sqlite3-wal' '**/*.sqlite3-shm' '**/*.sqlite3-journal' \
+               '**/*.sqlite3.pre-*'; do
+  grep -Fxq "$pattern" "$PROJECT_ROOT/.dockerignore"
 done
 
 grep -q 'include /etc/nginx/includes/showcase-access.conf' \
