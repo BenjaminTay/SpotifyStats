@@ -109,6 +109,10 @@ if [[ -n "$resume_db_input" ]]; then
 else
   resume_db_path="${db_copy_path}.music-search-resume"
 fi
+if [[ -L "$resume_db_path" ]]; then
+  echo "拒绝续建数据库符号链接。" >&2
+  exit 2
+fi
 
 production_data_dir="$(python3 - "$DEPLOY_DIR/data" <<'PY'
 from pathlib import Path
@@ -172,13 +176,18 @@ work_dir="$(mktemp -d "$db_copy_dir/.spotify-stats-search-preflight.XXXXXX")"
 resume_db_dir="$(dirname -- "$resume_db_path")"
 resume_db_name="$(basename -- "$resume_db_path")"
 db_copy_name="$(basename -- "$db_copy_path")"
+host_uid="$(id -u)"
+host_gid="$(id -g)"
+if [[ -e "$resume_db_path" && ( ! -r "$resume_db_path" || ! -w "$resume_db_path" ) ]]; then
+  sudo chown -- "$host_uid:$host_gid" "$resume_db_path"
+fi
 
 if docker container inspect "$container_name" >/dev/null 2>&1; then
   echo "检测到未清理的音乐搜索预检容器：$container_name" >&2
   exit 1
 fi
 
-docker run --rm --init \
+docker run --rm --init --user "$host_uid:$host_gid" \
   -e SPOTIFY_STATS_WARMUP=0 \
   -e SPOTIFY_STATS_SEARCH_STARTUP_REBUILD=0 \
   --mount "type=bind,src=$db_copy_dir,dst=/baseline,readonly" \
@@ -218,11 +227,10 @@ existing_preflight="$(
     container_command="$(
       docker inspect --format '{{.Path}} {{join .Args " "}}' "$container_id" 2>/dev/null || true
     )"
-    case "$container_command" in
-      *scripts/rebuild_music_search_derived_data.py*"--db-path /resume/"*)
-        printf '%s\n' "$container_id"
-        ;;
-    esac
+    if [[ "$container_command" == *scripts/rebuild_music_search_derived_data.py* && \
+          "$container_command" == *"--db-path /resume/"* ]]; then
+      printf '%s\n' "$container_id"
+    fi
   done
 )"
 if [[ -n "$existing_preflight" ]]; then
@@ -231,7 +239,7 @@ if [[ -n "$existing_preflight" ]]; then
 fi
 echo "音乐搜索候选维护与统计复用校验开始；生产服务保持在线。" >&2
 rebuild_started="$SECONDS"
-docker run --name "$container_name" --rm --init \
+docker run --name "$container_name" --rm --init --user "$host_uid:$host_gid" \
   -e SPOTIFY_STATS_WARMUP=0 \
   -e SPOTIFY_STATS_SEARCH_STARTUP_REBUILD=0 \
   --mount "type=bind,src=$resume_db_dir,dst=/resume" \

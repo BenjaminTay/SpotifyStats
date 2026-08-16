@@ -377,6 +377,10 @@ def test_production_deploy_stages_search_before_atomic_database_promotion() -> N
     assert "error.get('type')" in preflight
     assert "error.get('message')" not in preflight
     assert "trap terminate HUP INT TERM" in preflight
+    assert 'sudo chown -- "$host_uid:$host_gid" "$resume_db_path"' in preflight
+    assert '! -r "$resume_db_path" || ! -w "$resume_db_path"' in preflight
+    assert preflight.count('--user "$host_uid:$host_gid"') == 2
+    assert '[[ -L "$resume_db_path" ]]' in preflight
     assert "verify-music-search-runtime.py" in verify
     assert "version=36" in runtime_gate
     assert "filter_fingerprint" in runtime_gate
