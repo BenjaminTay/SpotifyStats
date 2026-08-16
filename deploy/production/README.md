@@ -207,9 +207,10 @@ push main
 5. 原子替换 SQLite 后启动新 SHA，执行 runtime 精确六变体、网关、端口、能力与写操作门禁；
 6. 任一新版本验收失败，同时恢复发布前 SQLite、上一 SHA 和上一 deployment mode。
 
-容量默认要求 `MemAvailable >= 2560MiB`，可用磁盘
+容量默认要求 `MemAvailable >= 1280MiB`，可用磁盘
 `>= max(1GiB, 数据库大小 × 4)`；只有经过容量评估后才能在 `.env` 中调整
-`SEARCH_PREFLIGHT_MIN_AVAILABLE_MIB`，不得为绕过失败临时调低。发布脚本不会在 live DB 上执行
+`SEARCH_PREFLIGHT_MIN_AVAILABLE_MIB`。当前阈值来自同目标镜像真实规模六变体峰值 876.758MiB，
+保留约 403MiB（约 46%）余量；不得在没有新实测的情况下继续调低。发布脚本不会在 live DB 上执行
 首次六变体冷构建，也不会启用或关闭任何外部 HTTPS 入口。
 
 手动命令：

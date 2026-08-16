@@ -109,7 +109,7 @@ case "$db_copy_path" in
     ;;
 esac
 
-minimum_available_mib="${SEARCH_PREFLIGHT_MIN_AVAILABLE_MIB:-2560}"
+minimum_available_mib="${SEARCH_PREFLIGHT_MIN_AVAILABLE_MIB:-1280}"
 if [[ ! "$minimum_available_mib" =~ ^[1-9][0-9]*$ ]]; then
   echo "SEARCH_PREFLIGHT_MIN_AVAILABLE_MIB 必须是正整数。" >&2
   exit 2

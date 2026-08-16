@@ -370,7 +370,7 @@ def test_production_compose_and_workflow_ship_search_release_gates() -> None:
     )
     env_template = (PRODUCTION / ".env.example").read_text(encoding="utf-8")
     assert "SPOTIFY_STATS_SEARCH_STARTUP_REBUILD=1" in env_template
-    assert "SEARCH_PREFLIGHT_MIN_AVAILABLE_MIB=2560" in env_template
+    assert "SEARCH_PREFLIGHT_MIN_AVAILABLE_MIB=1280" in env_template
 
     workflow = (ROOT / ".github" / "workflows" / "deploy-production.yml").read_text(
         encoding="utf-8"

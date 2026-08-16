@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sqlite3
 
+import pandas as pd
 import pytest
 
 from backend.core.migrations import migrate_032, migrate_034
@@ -296,6 +297,90 @@ def test_snapshot_set_keeps_ready_variants_when_one_variant_fails(monkeypatch) -
     assert statuses[(3, True)] == "ready"
     assert statuses[(2, False)] == "ready"
     assert get_music_search_snapshot_status(conn, "fp-1-1") == "failed"
+
+
+def test_snapshot_set_releases_heavy_caches_after_every_variant(monkeypatch) -> None:
+    conn = _conn()
+    from backend.domains.music_search import snapshot as snapshot_module
+
+    released: list[str] = []
+    collected: list[bool] = []
+    monkeypatch.setattr(
+        snapshot_module,
+        "build_music_search_snapshot",
+        lambda _conn, context: {
+            "status": "ready",
+            "snapshot_key": context.filter_fingerprint,
+            "filter_fingerprint": context.filter_fingerprint,
+            "entity_count": 1,
+            "source_revision": context.source_revision,
+        },
+    )
+    monkeypatch.setattr(snapshot_module, "invalidate", released.append)
+    monkeypatch.setattr(snapshot_module.gc, "collect", lambda: collected.append(True))
+    contexts = tuple(
+        _context(
+            merge_level=merge_level,
+            dynamic_threshold=dynamic,
+            filter_fingerprint=f"release-{merge_level}-{int(dynamic)}",
+        )
+        for merge_level, dynamic in ((2, True), (1, True), (3, False))
+    )
+
+    report = build_music_search_snapshot_set(conn, contexts)
+
+    assert report["ready_count"] == 3
+    assert released == ["billboard", "db"] * 3
+    assert collected == [True, True, True]
+
+
+def test_metric_maps_load_primary_and_artist_frames_sequentially(monkeypatch) -> None:
+    conn = _conn()
+    from backend.domains.music_search import snapshot as snapshot_module
+
+    load_order: list[tuple[str, ...]] = []
+    released: list[str] = []
+    primary = pd.DataFrame(
+        {
+            "track_id": [1, 1],
+            "ms_played": [1000, 2000],
+        }
+    )
+    artist = pd.DataFrame(
+        {
+            "artist_id": [3, 3, 4],
+            "ms_played": [1000, 2000, 500],
+        }
+    )
+
+    def load_frames(_conn, selected_kinds, **_kwargs):
+        load_order.append(selected_kinds)
+        if selected_kinds == ("track", "album"):
+            return primary.copy(), None
+        if selected_kinds == ("artist",):
+            return None, artist.copy()
+        raise AssertionError(selected_kinds)
+
+    monkeypatch.setattr(snapshot_module, "_load_filtered_search_frames", load_frames)
+    monkeypatch.setattr(
+        snapshot_module,
+        "compute_album_project_plays",
+        lambda *_args, **_kwargs: pd.DataFrame(
+            {"album_project_id": [2], "play_count": [2], "total_ms": [3000]}
+        ),
+    )
+    monkeypatch.setattr(snapshot_module, "invalidate", released.append)
+    monkeypatch.setattr(snapshot_module.gc, "collect", lambda: 0)
+
+    track_metrics, album_metrics, artist_metrics = snapshot_module._metric_maps(
+        conn, _context(merge_level=1)
+    )
+
+    assert load_order == [("track", "album"), ("artist",)]
+    assert track_metrics == {1: (2, 3000)}
+    assert album_metrics == {2: (2, 3000)}
+    assert artist_metrics == {3: (2, 3000), 4: (1, 500)}
+    assert released == ["db", "db"]
 
 
 def test_legacy_ready_snapshot_is_fail_closed_when_builder_version_mismatches() -> None:

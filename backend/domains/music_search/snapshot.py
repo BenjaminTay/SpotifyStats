@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import gc
 import sqlite3
 import time
 from typing import Any, Literal, cast
 
 import pandas as pd
 
+from backend.core.cache_manager import invalidate
 from backend.domains.music_search.context import (
     MUSIC_SEARCH_SNAPSHOT_BUILDER_VERSION,
     MusicSearchFilterContext,
@@ -153,9 +155,9 @@ def _metric_maps(
     conn: sqlite3.Connection,
     context: MusicSearchFilterContext,
 ) -> tuple[dict[int, tuple[int, int]], dict[int, tuple[int, int]], dict[int, tuple[int, int]]]:
-    plays_df, artist_df = _load_filtered_search_frames(
+    plays_df, _artist_df = _load_filtered_search_frames(
         conn,
-        ("track", "album", "artist"),
+        ("track", "album"),
         min_ms=context.min_ms,
         music_only=context.music_only,
         merge_enabled=context.merge_enabled,
@@ -163,7 +165,6 @@ def _metric_maps(
         max_merge_gap_minutes=context.max_merge_gap_minutes,
     )
     plays_df = plays_df if plays_df is not None else pd.DataFrame()
-    artist_df = artist_df if artist_df is not None else pd.DataFrame()
     if not plays_df.empty and context.merge_level > 1:
         group_keys = load_track_group_keys(conn, context.merge_level)
         if not group_keys.empty:
@@ -181,14 +182,6 @@ def _metric_maps(
         if not plays_df.empty
         else {}
     )
-    artist_metrics = (
-        {
-            int(cast(Any, artist_id)): (int(len(group)), int(group["ms_played"].sum()))
-            for artist_id, group in artist_df.groupby("artist_id")
-        }
-        if not artist_df.empty
-        else {}
-    )
     album_frame = compute_album_project_plays(
         plays_df,
         conn,
@@ -199,6 +192,34 @@ def _metric_maps(
         int(row["album_project_id"]): (int(row["play_count"]), int(row["total_ms"]))
         for _, row in album_frame.iterrows()
     }
+
+    # Artist fan-out can be substantially larger than the primary play frame.
+    # The three metric maps are compact, so release the primary cache before
+    # loading fan-out instead of holding both lifetime DataFrames concurrently.
+    del plays_df, album_frame
+    invalidate("db")
+    gc.collect()
+    _plays_df, artist_df = _load_filtered_search_frames(
+        conn,
+        ("artist",),
+        min_ms=context.min_ms,
+        music_only=context.music_only,
+        merge_enabled=context.merge_enabled,
+        dynamic_threshold=context.dynamic_threshold,
+        max_merge_gap_minutes=context.max_merge_gap_minutes,
+    )
+    artist_df = artist_df if artist_df is not None else pd.DataFrame()
+    artist_metrics = (
+        {
+            int(cast(Any, artist_id)): (int(len(group)), int(group["ms_played"].sum()))
+            for artist_id, group in artist_df.groupby("artist_id")
+        }
+        if not artist_df.empty
+        else {}
+    )
+    del artist_df
+    invalidate("db")
+    gc.collect()
     return track_metrics, album_metrics, artist_metrics
 
 
@@ -482,6 +503,15 @@ def build_music_search_snapshot_set(
                 "source_revision": context.source_revision,
                 "error_type": type(exc).__name__,
             }
+        finally:
+            # A full snapshot set spans six heavyweight DataFrame/Chart cache
+            # keys. Keeping every completed variant alive makes peak RSS grow
+            # with the matrix even though later variants cannot reuse those
+            # exact semantics. Release both namespaces after each independent
+            # publish so the one-shot remains viable on the production host.
+            invalidate("billboard")
+            invalidate("db")
+            gc.collect()
         report.update(
             {
                 "semantic_base_key": context.semantic_base_key,

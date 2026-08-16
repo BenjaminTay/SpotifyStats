@@ -25,6 +25,8 @@
   真实副本上为 313.549ms、DB/WAL 零增量。
 - 生产新 SHA 先在 Online Backup 副本执行六变体 one-shot 和内存/磁盘门禁，再以停服后的第二份
   Online Backup 检查数据漂移；新版本失败会联合恢复发布前 SQLite、旧镜像 SHA 与旧运行模式。
+- 六变体构建改为逐变体释放 Billboard/DB cache，并将主播放帧与艺人 fan-out 顺序计算；真实规模
+  `linux/amd64` 峰值从 1,569.547MiB 降至 876.758MiB，1,280MiB 门禁仍保留约 403MiB 实测余量。
 - 完整证据见 [`reports/2026-08-16-music-search-optimization-delivery.md`](reports/2026-08-16-music-search-optimization-delivery.md)。
 
 ## 2026-08-15 — 连续播放时间归属与 5 分钟 session 边界

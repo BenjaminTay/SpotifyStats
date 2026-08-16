@@ -430,7 +430,7 @@ if [[ "$current_tag" != "$NEW_TAG" ]]; then
   cp -- "$release_backup_path" "$staged_database"
   preflight_report="$DEPLOY_DIR/backups/music-search-preflight-${NEW_TAG:0:12}-${release_stamp}.json"
   search_preflight_min_mib="$(get_env SEARCH_PREFLIGHT_MIN_AVAILABLE_MIB)"
-  search_preflight_min_mib="${search_preflight_min_mib:-2560}"
+  search_preflight_min_mib="${search_preflight_min_mib:-1280}"
   if ! SEARCH_PREFLIGHT_MIN_AVAILABLE_MIB="$search_preflight_min_mib" \
       "$DEPLOY_DIR/preflight-music-search.sh" \
       --db-copy "$staged_database" \

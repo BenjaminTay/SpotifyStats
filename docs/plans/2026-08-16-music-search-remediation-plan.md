@@ -469,10 +469,12 @@ P95 ≤20ms，响应 ≤8KiB。
 | GET database writes/background jobs | 0 |
 | 单 base 同时运行的 snapshot-set job | ≤1 |
 
-最终生产 `linux/amd64` 镜像在真实 Online Backup 副本上的一次完整构建为 14 分 52.5 秒，峰值 RSS
-1,569.547MiB，数据库增量约 31.35MiB，WAL 最终为 0；同一 ready 副本重复校验为 313.549ms 且
-DB/WAL 增量为 0。生产容量门禁冻结为 MemAvailable ≥2,560MiB、可用磁盘
-≥`max(1GiB, DB × 4)`，目标服务器每次新 SHA 仍必须重新实测。
+初版生产 `linux/amd64` 镜像在真实 Online Backup 副本上的完整构建峰值为 1,569.547MiB，真实服务器
+仅有 1,349MiB 可用时被门禁正确拦截。完成变体间 cache/GC 与主播放帧、艺人 fan-out 顺序计算后，
+最终同规模六变体为 983,317.824ms（约 16 分 23.3 秒）、峰值 RSS 876.758MiB、数据库增量约
+31.43MiB、WAL 0；同一 ready 副本重复校验为 313.549ms 且 DB/WAL 增量为 0。生产门禁据此冻结为
+MemAvailable ≥1,280MiB（峰值之上约 403MiB/46% 余量）、可用磁盘 ≥`max(1GiB, DB × 4)`；目标
+服务器每次新 SHA 仍必须重新实测。
 
 ### 10.4 发布门禁
 
@@ -492,7 +494,7 @@ DB/WAL 增量为 0。生产容量门禁冻结为 MemAvailable ≥2,560MiB、可�
 
 | 风险 | 缓解 |
 |---|---|
-| 六变体构建耗时过长 | 生产新 SHA 先在副本 one-shot，2.5GiB/4× 磁盘门禁 fail closed；ready 集合重复执行只校验不重建 |
+| 六变体构建耗时或内存过高 | 变体间清理重缓存，主播放帧与艺人 fan-out 顺序计算；生产新 SHA 先在副本 one-shot，1,280MiB/4× 磁盘门禁 fail closed；ready 集合重复执行只校验不重建 |
 | Billboard 增加 merge flag 引发缓存串线 | 所有 facade/staged/LRU key 同步增加参数并加 key-separation test |
 | revision 漏接 mutation | 集中 helper、失效矩阵 contract、禁止业务代码直接手写 stale SQL |
 | 旧 snapshot 被新代码误读 | fingerprint/builder version v2，migration 后旧 snapshot 统一 stale |

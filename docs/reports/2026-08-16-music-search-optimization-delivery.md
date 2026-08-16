@@ -103,11 +103,19 @@ aggregate，不加载完整 eligible set；窗口函数在一个有界 SQL 中�
 分别约 79.57/326.52/48.71/56.57/398.67/68.59 秒，峰值 RSS 约 1.22GiB。该重任务只在显式维护链
 运行，不进入 GET；默认变体优先发布，其余变体逐个可用。
 
-最终生产目标 `linux/amd64` 镜像又在 Online Backup 副本上完成一次发布前 one-shot：总计
-892,501.479ms（约 14 分 52.5 秒），snapshot 888,693.619ms，进程峰值 RSS 1,569.547MiB，SQLite
-由 172,511,232 B 增至 205,381,632 B（增量 32,870,400 B，约 31.35MiB），WAL 最终为 0。宿主
-前后可用内存为 6,879/6,492MiB，可用磁盘为 12,711/12,204MiB，均通过默认 2,560MiB 内存和
-`max(1GiB, DB × 4)` 磁盘门禁。对同一 ready 副本再次运行 `--snapshot-only --require-all-ready` 仅
+初版生产目标 `linux/amd64` 镜像在 Online Backup 副本上的发布前 one-shot 为 892,501.479ms，峰值
+RSS 1,569.547MiB；真实服务器只有 1,349MiB `MemAvailable`，2,560MiB 门禁在写库/停服前正确
+拦截。审计确认六个不同语义的 Pandas/Billboard cache 会累积，且主播放帧与艺人 fan-out lifetime
+DataFrame 同时驻留。变体独立发布后释放 `billboard/db` cache 并 GC，再将两类帧改为顺序计算后，
+最终同规模 one-shot 为 983,317.824ms（约 16 分 23.3 秒），snapshot 979,524.788ms，峰值 RSS
+876.758MiB，较初版降低约 44%。SQLite 由 172,511,232 B 增至 205,463,552 B（增量
+32,952,320 B，约 31.43MiB），WAL 最终为 0，六变体实体数量与契约保持一致。两次独立索引重建会
+生成不同的 generation ID，因此 semantic base 与 fingerprint 按设计隔离；每次报告中的六个
+fingerprint 都与该次工作副本的 exact-ready 数据库行逐项一致。
+
+默认容量门禁据最终实测改为 1,280MiB，相对峰值保留约 403MiB（约 46%）余量；真实服务器样本
+1,349MiB 相对峰值约有 472MiB 余量，低于 1,280MiB 时仍 fail closed。磁盘继续要求
+`max(1GiB, DB × 4)`。对同一 ready 副本再次运行 `--snapshot-only --require-all-ready` 仅
 313.549ms，snapshot elapsed 为 0、DB/WAL 增量为 0，分类为
 `revalidated_existing_snapshot_set`。
 
@@ -182,7 +190,7 @@ aggregate，不加载完整 eligible set；窗口函数在一个有界 SQL 中�
 | 风险 | 当前证据 | 发布条件 | 推荐处理 |
 |---|---|---|---|
 | 变更面与审查边界 | 搜索、Billboard、前端、部署与文档跨层修改 | 合并历史必须可按领域审查，干净 checkout 重跑门禁 | 保留“后端语义 / 前端体验 / 生产门禁 / 文档”四个逻辑提交，不把 119 个文件压成一个不可审查提交 |
-| 六变体重建资源 | 生产目标镜像副本预建 14 分 52.5 秒，峰值 RSS 1,569.547MiB，DB 增长约 31.35MiB；重复校验 313.549ms、零写入 | 目标服务器在每个新 SHA 发布时仍须通过同一自动容量和副本预建门禁 | 保持默认 MemAvailable ≥2,560MiB、disk ≥max(1GiB, DB×4)；不足时 fail closed 并先扩容，不降低阈值后在线试错 |
+| 六变体重建资源 | 最终生产镜像副本预建约 16 分 23.3 秒，峰值 RSS 876.758MiB，DB 增长约 31.43MiB；重复校验 313.549ms、零写入 | 目标服务器在每个新 SHA 发布时仍须通过同一自动容量和副本预建门禁 | 保持默认 MemAvailable ≥1,280MiB（约 403MiB/46% 实测余量）、disk ≥max(1GiB, DB×4)；不足时 fail closed，未重新实测不得继续调低 |
 | 既有外键债务 | 搜索孤儿为 0，但全库仍有 7,831 条非搜索违规 | 不得把历史违规误归因于 migration 34，也不得在搜索发布中盲删 | 单独建立数据治理任务，按缺失父表分类、回溯来源、设计修复/保留策略；修复前另做 Online Backup，并逐类对账详情页和统计 |
 | 静态检查基线 | 本轮变更范围 ESLint/mypy 通过；全仓仍有既有 ESLint/mypy 错误 | CI 必须能区分既有债务与本次新增错误 | 继续对 changed files 硬门禁，新增 baseline ratchet；全仓清零作为独立治理，不把无关大修混入搜索发布 |
 | 前端依赖安全 | Web build 的 npm audit 仍报告 15 项，其中 10 项 high | 公共入口发布前必须完成 direct/transitive、runtime/dev-only 和可利用性分类 | 先执行 `npm audit --json` 与依赖路径核对；优先无破坏升级 direct runtime 依赖，对需要 major upgrade 的项目建立带回归矩阵的独立修复，不直接使用 `--force` |
