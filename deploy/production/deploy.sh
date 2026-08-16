@@ -275,18 +275,15 @@ prepare_images_for_tag() {
 create_offline_backup() {
   local image="$1"
   local output_path="$2"
-  local output_dir output_name host_uid host_gid
+  local output_dir output_name
   output_dir="$(cd -- "$(dirname -- "$output_path")" && pwd)"
   output_name="$(basename -- "$output_path")"
   if [[ -e "$output_path" ]]; then
     echo "离线备份目标已存在，拒绝覆盖：$output_path" >&2
     return 1
   fi
-  host_uid="$(id -u)"
-  host_gid="$(id -g)"
   install -m 600 /dev/null "$output_path"
   if ! docker run --rm --init -i \
-      --user "$host_uid:$host_gid" \
       --mount "type=bind,src=$DEPLOY_DIR/data,dst=/source,readonly" \
       --mount "type=bind,src=$output_dir,dst=/backup" \
       "$image" python - "/backup/$output_name" <<'PY'

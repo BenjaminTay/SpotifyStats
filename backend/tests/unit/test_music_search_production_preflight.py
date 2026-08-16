@@ -354,7 +354,6 @@ def test_production_deploy_stages_search_before_atomic_database_promotion() -> N
     assert "src=$staged_database,dst=/staged.db" in deploy
     assert 'install -m 600 /dev/null "$output_path"' in deploy
     assert "docker run --rm --init -i" in deploy
-    assert '--user "$host_uid:$host_gid"' in deploy
     assert "离线备份容器执行失败；已移除未完成副本" in deploy
     assert "replace_live_database" in deploy
     assert "database_promoted" in deploy
