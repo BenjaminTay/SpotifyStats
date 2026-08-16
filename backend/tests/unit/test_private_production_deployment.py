@@ -227,6 +227,12 @@ def test_workflow_builds_one_sha_and_uploads_profile_runtime_files() -> None:
     assert workflow.count("Push Web image with bounded retries") == 1
     assert workflow.count("timeout --signal=TERM --kill-after=30s 10m docker push") == 2
     assert workflow.count('docker manifest inspect "$image_ref"') == 2
+    assert workflow.count("Configure serial registry uploads") == 1
+    assert workflow.count('{"max-concurrent-uploads": 1}') == 2
+    assert "systemctl restart docker" in workflow
+    assert workflow.index("Configure serial registry uploads") < workflow.index(
+        "docker/setup-buildx-action@v3"
+    )
     assert "push: true" not in workflow
     assert "deployment-profile-matrix:" in workflow
     assert "mode: [full, showcase, dual]" in workflow
