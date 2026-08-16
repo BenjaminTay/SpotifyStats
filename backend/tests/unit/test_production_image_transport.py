@@ -155,3 +155,14 @@ def test_all_image_transport_shell_scripts_have_valid_syntax_and_reject_bad_inpu
         )
         assert result.returncode == 2
         assert "40-char-git-commit-sha" in result.stderr
+
+    publisher = subprocess.run(
+        ["bash", str(PRODUCTION / "publish-release-images.sh"), "a" * 40, "invalid"],
+        check=False,
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+    )
+    assert publisher.returncode == 2
+    assert "40-char-git-commit-sha" in publisher.stderr
+    assert "command not found" not in publisher.stderr

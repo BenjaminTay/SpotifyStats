@@ -6,7 +6,7 @@ readonly ENV_FILE="$PRODUCTION_DIR/.env"
 readonly REVISION="${1:-}"
 readonly MODE="${2:-smoke}"
 
-if (( $# < 1 || $# > 2 )) || ! "$REVISION" =~ ^[0-9a-f]{40}$ ||
+if (( $# < 1 || $# > 2 )) || [[ ! "$REVISION" =~ ^[0-9a-f]{40}$ ]] ||
    [[ "$MODE" != "smoke" && "$MODE" != "release" ]]; then
   echo "用法：publish-release-images.sh <40-char-git-commit-sha> [smoke|release]" >&2
   exit 2
