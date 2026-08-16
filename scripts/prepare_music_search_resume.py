@@ -19,6 +19,15 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from backend.core import db as db_mod  # noqa: E402
 from backend.core.migrations import run_migrations  # noqa: E402
+from backend.domains.music_search.context import (  # noqa: E402
+    MUSIC_SEARCH_SNAPSHOT_BUILDER_VERSION,
+)
+from backend.domains.music_search.variants import (  # noqa: E402
+    build_music_search_variant_contexts,
+)
+from backend.services.music_search_maintenance_service import (  # noqa: E402
+    _current_filter_values,
+)
 from scripts.rebase_music_search_preflight import (  # noqa: E402
     DERIVED_TABLES,
     _copy_derived_tables,
@@ -87,6 +96,49 @@ def _recover_resume_artifact(path: Path) -> None:
         conn.close()
 
 
+def _has_exact_reusable_statistics(path: Path) -> bool:
+    """Only a complete current stable-fingerprint set may replace baseline data."""
+    conn = sqlite3.connect(path)
+    conn.row_factory = sqlite3.Row
+    try:
+        contexts = build_music_search_variant_contexts(conn, _current_filter_values(conn))
+        if len(contexts) != 6:
+            return False
+        fingerprints = tuple(context.filter_fingerprint for context in contexts)
+        if len(set(fingerprints)) != 6:
+            return False
+        placeholders = ",".join("?" for _ in fingerprints)
+        rows = conn.execute(
+            f"""SELECT snapshot_key, filter_fingerprint, status, builder_version,
+                       merge_level, dynamic_threshold
+                FROM music_search_snapshot_meta
+                WHERE filter_fingerprint IN ({placeholders})""",
+            fingerprints,
+        ).fetchall()
+        expected = {
+            (context.merge_level, context.dynamic_threshold): context.filter_fingerprint
+            for context in contexts
+        }
+        actual: dict[tuple[int, bool], str] = {}
+        for row in rows:
+            fingerprint = str(row[1])
+            if (
+                str(row[0]) != fingerprint
+                or str(row[2]) != "ready"
+                or str(row[3]) != MUSIC_SEARCH_SNAPSHOT_BUILDER_VERSION
+            ):
+                return False
+            variant = (int(row[4]), bool(row[5]))
+            if variant in actual:
+                return False
+            actual[variant] = fingerprint
+        return actual == expected
+    except (sqlite3.Error, TypeError, ValueError):
+        return False
+    finally:
+        conn.close()
+
+
 def _write_json_atomic(path: Path, payload: dict[str, Any]) -> None:
     if path.exists():
         raise ValueError("JSON output already exists")
@@ -129,9 +181,12 @@ def main(argv: list[str] | None = None) -> int:
                 _recover_resume_artifact(args.resume_db)
                 resume_marker = source_marker(args.resume_db)
                 if resume_marker == baseline_marker:
-                    _copy_derived_tables(temporary, args.resume_db)
-                    reused = True
-                    reuse_reason = "source_equivalent_resume_artifact"
+                    if _has_exact_reusable_statistics(args.resume_db):
+                        _copy_derived_tables(temporary, args.resume_db)
+                        reused = True
+                        reuse_reason = "source_equivalent_exact_statistics_resume"
+                    else:
+                        reuse_reason = "resume_statistics_not_exact"
                 else:
                     reuse_reason = "resume_source_changed"
             except (OSError, sqlite3.Error, ValueError):
