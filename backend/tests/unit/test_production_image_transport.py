@@ -68,6 +68,7 @@ def test_shared_transfer_only_sends_deterministic_missing_blob_shards() -> None:
     assert "for tool in rsync docker sha256sum gzip df timeout python3 tar" in transfer
     assert '"$releases_root/locks"' in transfer
     assert '"$releases_root/blobs/sha256"' in transfer
+    assert 'revision_dir="$releases_root/incoming/$revision"' in transfer
 
 
 def test_release_workflow_bootstraps_old_current_then_activates_only_after_deploy() -> None:

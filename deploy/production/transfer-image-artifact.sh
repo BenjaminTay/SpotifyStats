@@ -44,7 +44,8 @@ for tool in rsync docker sha256sum gzip df timeout python3 tar; do
   fi
 done
 releases_root="/opt/spotify-stats/releases"
-staging_dir="$releases_root/incoming/$revision/$mode"
+revision_dir="$releases_root/incoming/$revision"
+staging_dir="$revision_dir/$mode"
 if [[ -L "$staging_dir" ]]; then
   echo "拒绝 staging 符号链接：$staging_dir" >&2
   exit 1
@@ -52,7 +53,8 @@ fi
 sudo install -d -m 700 -o "$USER" -g "$USER" \
   "$releases_root" "$releases_root/blobs" "$releases_root/blobs/sha256" \
   "$releases_root/locks" "$releases_root/records" "$releases_root/state" \
-  "$releases_root/incoming" "$staging_dir" "$staging_dir/layout" "$staging_dir/upload"
+  "$releases_root/incoming" "$revision_dir" "$staging_dir" \
+  "$staging_dir/layout" "$staging_dir/upload"
 docker ps --no-trunc --format '{{.ID}}\t{{.Image}}\t{{.Names}}' | LC_ALL=C sort > "$staging_dir/live-containers.before"
 REMOTE_PREPARE
 

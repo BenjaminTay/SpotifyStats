@@ -282,7 +282,7 @@ jobs:
           staging="/opt/spotify-stats/releases/incoming/$revision/smoke"
           [[ -d "$staging" && ! -L "$staging" ]]
           find "$staging" -depth -mindepth 1 -delete
-          rmdir -- "$staging"
+          sudo rmdir -- "$staging"
           sudo rmdir --ignore-fail-on-non-empty "/opt/spotify-stats/releases/incoming/$revision"
           REMOTE
 
