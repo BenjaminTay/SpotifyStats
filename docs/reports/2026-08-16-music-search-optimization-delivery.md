@@ -162,8 +162,9 @@ aggregate，不加载完整 eligible set；窗口函数在一个有界 SQL 中�
 
 ## 8. 自动化验证
 
-- 后端：`pytest -m unit` 1,032 passed；`pytest -m contract` 356 passed。session 级 Online Backup fixture
-  将测试定向到临时数据库，真实主库不再产生测试 job/generation。
+- 后端：`pytest -m unit` 1,032 passed；`pytest -m contract` 356 passed。session 级 fixture 在本地从
+  真实库做 Online Backup、在 clean CI 显式从 portable seed 建立临时库；两者都不会让测试 job/
+  generation 写入真实主库。
 - API：safe smoke 128/128，boundary probe 111/111；OpenAPI GET 127/140 covered、13 个明确排除、
   0 unaccounted，parameter audit 91 obligations / 0 unaccounted；生成类型已刷新。
 - 前端：全量 Vitest 73 files / 541 tests，

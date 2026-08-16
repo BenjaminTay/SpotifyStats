@@ -1,13 +1,15 @@
 """Shared fixtures for backend tests.
 
-Integration tests keep the production-shaped data distribution, but never
-connect writable services or the persistent JobQueue to the user's real
-database.  A session-scoped SQLite Online Backup is the authoritative test
-copy; contract tests may temporarily replace it with their smaller seed DB.
+When the local production-shaped database exists, integration tests preserve
+its data distribution without connecting writable services or the persistent
+JobQueue to the user's real file.  Clean CI checkouts fall back to the tracked
+portable seed.  Either source is copied into a session-scoped SQLite database;
+contract tests may temporarily replace it with their own function-scoped copy.
 """
 
 from __future__ import annotations
 
+import os
 import sqlite3
 from pathlib import Path
 from unittest.mock import patch
@@ -19,6 +21,19 @@ from fastapi.testclient import TestClient
 from backend.main import app
 
 pytestmark = pytest.mark.integration
+
+
+def _resolve_test_database_source(configured_path: str) -> Path:
+    """Choose an existing read-only source without creating the live DB path."""
+    configured = Path(configured_path).resolve()
+    if configured.is_file():
+        return configured
+    seed = Path(__file__).resolve().parent / "fixtures" / "seed.db"
+    if seed.is_file():
+        return seed
+    raise FileNotFoundError(
+        f"backend test database source is missing: configured={configured} fallback={seed}"
+    )
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -33,10 +48,12 @@ def isolated_test_database(tmp_path_factory: pytest.TempPathFactory):
     from backend.core import db as db_mod
 
     original_path = str(Path(db_mod.DB_PATH).resolve())
-    if not Path(original_path).is_file():
-        pytest.fail(f"backend test source database not found: {original_path}")
+    configured_source = os.environ.get("SPOTIFY_STATS_TEST_SOURCE_DB", original_path)
+    source_path = _resolve_test_database_source(configured_source)
     isolated_path = tmp_path_factory.mktemp("backend-session-db") / "spotify_stats-test.db"
-    source_uri = f"file:{quote(original_path, safe='/')}?mode=ro"
+    seed_path = (Path(__file__).resolve().parent / "fixtures" / "seed.db").resolve()
+    immutable = "&immutable=1" if source_path == seed_path else ""
+    source_uri = f"file:{quote(str(source_path), safe='/')}?mode=ro{immutable}"
     source = sqlite3.connect(source_uri, uri=True)
     target = sqlite3.connect(isolated_path)
     try:
