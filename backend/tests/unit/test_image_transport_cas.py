@@ -36,6 +36,7 @@ def _docker_save_archive(
     api_ref: str | None = None,
     web_ref: str | None = None,
     extra_tag: bool = False,
+    divergent_oci_config: bool = False,
 ) -> Path:
     layout = temporary_path / "source-layout"
     layout.mkdir(parents=True)
@@ -54,6 +55,11 @@ def _docker_save_archive(
             "rootfs": {"type": "layers", "diff_ids": []},
         }
         config_digest, config_size = _write_blob(layout, _canonical(config))
+        oci_config_digest = config_digest
+        oci_config_size = config_size
+        if divergent_oci_config:
+            oci_config = {**config, "history": [{"created_by": f"oci-{role}"}]}
+            oci_config_digest, oci_config_size = _write_blob(layout, _canonical(oci_config))
         repo_tags = [image_ref]
         if role == "api" and extra_tag:
             repo_tags.append("spotify-stats-api:main")
@@ -71,8 +77,8 @@ def _docker_save_archive(
             "mediaType": "application/vnd.oci.image.manifest.v1+json",
             "config": {
                 "mediaType": "application/vnd.oci.image.config.v1+json",
-                "digest": f"sha256:{config_digest}",
-                "size": config_size,
+                "digest": f"sha256:{oci_config_digest}",
+                "size": oci_config_size,
             },
             "layers": [
                 {
@@ -156,6 +162,34 @@ def test_build_artifact_rejects_path_traversal_and_extra_tags(tmp_path: Path) ->
     archive = _docker_save_archive(tmp_path / "extra", revision, extra_tag=True)
     with pytest.raises(image_transport.TransportError, match="RepoTags"):
         image_transport.build_artifact(archive, tmp_path / "extra-artifact", revision, "smoke")
+
+
+def test_build_artifact_uses_oci_config_digest_for_loaded_image_identity(
+    tmp_path: Path,
+) -> None:
+    revision = "1" * 40
+    archive = _docker_save_archive(tmp_path / "divergent", revision, divergent_oci_config=True)
+    artifact = tmp_path / "artifact"
+    manifest = image_transport.build_artifact(archive, artifact, revision, "smoke")
+    layout = artifact / "layout"
+    legacy_entries = json.loads((layout / "manifest.json").read_text())
+    legacy_configs = {
+        entry["RepoTags"][0]: f"sha256:{Path(entry['Config']).name}" for entry in legacy_entries
+    }
+    index = json.loads((layout / "index.json").read_text())
+    oci_configs = {}
+    for descriptor in index["manifests"]:
+        descriptor_name = descriptor["digest"].removeprefix("sha256:")
+        oci_manifest = json.loads((layout / "blobs" / "sha256" / descriptor_name).read_text())
+        oci_configs[descriptor["annotations"]["io.containerd.image.name"]] = oci_manifest["config"][
+            "digest"
+        ]
+
+    for image in manifest["images"]:
+        ref = image["archive_ref"]
+        assert image["image_id"] == oci_configs[ref]
+        assert image["config_digest"] == oci_configs[ref]
+        assert image["image_id"] != legacy_configs[ref]
 
 
 def test_cas_first_plan_misses_then_second_plan_hits_and_rebuilds_archive(tmp_path: Path) -> None:

@@ -165,6 +165,32 @@ def _blob_name_from_path(value: Any) -> str:
     return parts[2]
 
 
+def _blob_name_from_digest(value: Any, label: str) -> str:
+    if not isinstance(value, str) or not value.startswith("sha256:"):
+        raise TransportError(f"{label} digest 无效")
+    name = value.removeprefix("sha256:")
+    if not DIGEST_RE.fullmatch(name):
+        raise TransportError(f"{label} digest 无效")
+    return name
+
+
+def _validate_image_config(layout: Path, config_name: str, role: str, revision: str) -> None:
+    config_path = layout / "blobs" / "sha256" / config_name
+    if sha256_path(config_path) != config_name:
+        raise TransportError(f"镜像 config digest 不匹配：{role}")
+    config = read_json(config_path)
+    if not isinstance(config, dict):
+        raise TransportError(f"镜像 config JSON 格式无效：{role}")
+    config_section = config.get("config", {})
+    if not isinstance(config_section, dict):
+        raise TransportError(f"镜像 config.config 格式无效：{role}")
+    labels = config_section.get("Labels", {})
+    if config.get("os") != "linux" or config.get("architecture") != "amd64":
+        raise TransportError(f"镜像 config 平台不是 linux/amd64：{role}")
+    if not isinstance(labels, dict) or labels.get("org.opencontainers.image.revision") != revision:
+        raise TransportError(f"镜像 revision label 不匹配：{role}")
+
+
 def _validate_layout_json(
     layout: Path,
     revision: str,
@@ -204,23 +230,7 @@ def _validate_layout_json(
         layer_names = [_blob_name_from_path(value) for value in layers]
         referenced_blobs.update([config_name, *layer_names])
         if require_blob_contents:
-            config_path = layout / "blobs" / "sha256" / config_name
-            if sha256_path(config_path) != config_name:
-                raise TransportError(f"镜像 config digest 不匹配：{role}")
-            config = read_json(config_path)
-            if not isinstance(config, dict):
-                raise TransportError(f"镜像 config JSON 格式无效：{role}")
-            config_section = config.get("config", {})
-            if not isinstance(config_section, dict):
-                raise TransportError(f"镜像 config.config 格式无效：{role}")
-            labels = config_section.get("Labels", {})
-            if config.get("os") != "linux" or config.get("architecture") != "amd64":
-                raise TransportError(f"镜像 config 平台不是 linux/amd64：{role}")
-            if (
-                not isinstance(labels, dict)
-                or labels.get("org.opencontainers.image.revision") != revision
-            ):
-                raise TransportError(f"镜像 revision label 不匹配：{role}")
+            _validate_image_config(layout, config_name, role, revision)
         images.append(
             {
                 "role": role,
@@ -232,6 +242,7 @@ def _validate_layout_json(
 
     if seen_roles != set(expected_refs):
         raise TransportError("Docker save 未包含完整 API/Web 镜像集合")
+    images_by_role = {image["role"]: image for image in images}
 
     index = read_json(layout / "index.json")
     descriptors = index.get("manifests") if isinstance(index, dict) else None
@@ -242,17 +253,71 @@ def _validate_layout_json(
         or len(descriptors) != 2
     ):
         raise TransportError("index.json 必须恰好描述 API/Web 两张镜像")
+    descriptor_roles: set[str] = set()
     for descriptor in descriptors:
         if not isinstance(descriptor, dict):
             raise TransportError("index.json descriptor 格式无效")
-        digest = descriptor.get("digest")
+        descriptor_name = _blob_name_from_digest(descriptor.get("digest"), "index.json descriptor")
+        annotations = descriptor.get("annotations")
+        image_ref = (
+            annotations.get("io.containerd.image.name") if isinstance(annotations, dict) else None
+        )
+        role = expected_by_ref.get(image_ref) if isinstance(image_ref, str) else None
+        if role is None or role in descriptor_roles:
+            raise TransportError("index.json descriptor 未精确映射 API/Web archive ref")
+        descriptor_roles.add(role)
+        referenced_blobs.add(descriptor_name)
+        if not require_blob_contents:
+            continue
+
+        descriptor_path = layout / "blobs" / "sha256" / descriptor_name
+        if sha256_path(descriptor_path) != descriptor_name:
+            raise TransportError(f"OCI manifest digest 不匹配：{role}")
+        descriptor_size = descriptor.get("size")
         if (
-            not isinstance(digest, str)
-            or not digest.startswith("sha256:")
-            or not DIGEST_RE.fullmatch(digest.removeprefix("sha256:"))
+            not isinstance(descriptor_size, int)
+            or descriptor_size <= 0
+            or descriptor_path.stat().st_size != descriptor_size
         ):
-            raise TransportError("index.json descriptor digest 无效")
-        referenced_blobs.add(digest.removeprefix("sha256:"))
+            raise TransportError(f"OCI manifest size 不匹配：{role}")
+        oci_manifest = read_json(descriptor_path)
+        if not isinstance(oci_manifest, dict) or oci_manifest.get("schemaVersion") != 2:
+            raise TransportError(f"OCI manifest 格式无效：{role}")
+        config_descriptor = oci_manifest.get("config")
+        layer_descriptors = oci_manifest.get("layers")
+        if not isinstance(config_descriptor, dict) or not isinstance(layer_descriptors, list):
+            raise TransportError(f"OCI manifest config/layers 格式无效：{role}")
+        if not layer_descriptors:
+            raise TransportError(f"OCI manifest 缺少 layers：{role}")
+        config_name = _blob_name_from_digest(config_descriptor.get("digest"), f"OCI config {role}")
+        config_path = layout / "blobs" / "sha256" / config_name
+        config_size = config_descriptor.get("size")
+        if (
+            not isinstance(config_size, int)
+            or config_size <= 0
+            or config_path.stat().st_size != config_size
+        ):
+            raise TransportError(f"OCI config size 不匹配：{role}")
+        _validate_image_config(layout, config_name, role, revision)
+        referenced_blobs.add(config_name)
+        for layer_descriptor in layer_descriptors:
+            if not isinstance(layer_descriptor, dict):
+                raise TransportError(f"OCI layer descriptor 格式无效：{role}")
+            layer_name = _blob_name_from_digest(layer_descriptor.get("digest"), f"OCI layer {role}")
+            layer_path = layout / "blobs" / "sha256" / layer_name
+            layer_size = layer_descriptor.get("size")
+            if (
+                not isinstance(layer_size, int)
+                or layer_size <= 0
+                or layer_path.stat().st_size != layer_size
+            ):
+                raise TransportError(f"OCI layer size 不匹配：{role}")
+            referenced_blobs.add(layer_name)
+        images_by_role[role]["config_digest"] = f"sha256:{config_name}"
+        images_by_role[role]["image_id"] = f"sha256:{config_name}"
+
+    if descriptor_roles != set(expected_refs):
+        raise TransportError("index.json 未包含完整 API/Web descriptor")
 
     repositories = read_json(layout / "repositories")
     if not isinstance(repositories, dict) or set(repositories) != {
@@ -572,7 +637,11 @@ def materialize(
                 name = record["digest"].removeprefix("sha256:")
                 os.link(cache_root / name, rebuilt_blobs / name)
             expected_refs = {image["role"]: image["archive_ref"] for image in manifest["images"]}
-            _validate_layout_json(rebuilt, revision, expected_refs, require_blob_contents=True)
+            validated_images, _referenced_blobs = _validate_layout_json(
+                rebuilt, revision, expected_refs, require_blob_contents=True
+            )
+            if validated_images != manifest["images"]:
+                raise TransportError("CAS 重建后的 OCI 镜像身份与 manifest 不一致")
             rebuilt_records = _blob_records(rebuilt, verify_contents=True)
             if rebuilt_records != manifest["blobs"]:
                 raise TransportError("CAS 重建后的 blob 集合与 manifest 不一致")
@@ -731,7 +800,11 @@ def seed_bootstrap(
     )
     _validate_manifest_records(manifest, artifact / "layout")
     expected_refs = {image["role"]: image["archive_ref"] for image in manifest["images"]}
-    _validate_layout_json(artifact / "layout", revision, expected_refs, require_blob_contents=True)
+    validated_images, _referenced_blobs = _validate_layout_json(
+        artifact / "layout", revision, expected_refs, require_blob_contents=True
+    )
+    if validated_images != manifest["images"]:
+        raise TransportError("bootstrap OCI 镜像身份与 manifest 不一致")
     actual_ids = {"api": api_image_id, "web": web_image_id}
     expected_ids = {image["role"]: image["image_id"] for image in manifest["images"]}
     if actual_ids != expected_ids:
@@ -789,7 +862,11 @@ def seed_cache(artifact: Path, releases_root: Path, revision: str, digest: str) 
     )
     _validate_manifest_records(manifest, artifact / "layout")
     expected_refs = {image["role"]: image["archive_ref"] for image in manifest["images"]}
-    _validate_layout_json(artifact / "layout", revision, expected_refs, require_blob_contents=True)
+    validated_images, _referenced_blobs = _validate_layout_json(
+        artifact / "layout", revision, expected_refs, require_blob_contents=True
+    )
+    if validated_images != manifest["images"]:
+        raise TransportError("seed OCI 镜像身份与 manifest 不一致")
     locks = releases_root / "locks"
     locks.mkdir(parents=True, exist_ok=True, mode=0o700)
     added = 0
