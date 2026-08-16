@@ -1,7 +1,7 @@
 # 音乐查找方向重新指引：轻量候选索引与统计快照解耦
 
 > 创建日期：2026-08-16
-> 状态：阶段 A–D 已完成本地实现与真实副本验收；阶段 E 远程生产待对应 SHA 证据
+> 状态：阶段 A–D 已完成本地实现与真实副本验收；阶段 E 阻塞于 GitHub 托管 runner 向 TCR 上传镜像，远程生产未切换
 > 适用范围：Masthead Quick Open、`/music/search`、候选索引、搜索统计、模糊匹配、简繁体匹配与生产发布
 > 关联文档：`2026-08-16-music-search-performance-and-experience-optimization-plan.md`、`2026-08-16-music-search-remediation-plan.md`、`../reports/2026-08-16-music-search-optimization-delivery.md`
 
@@ -25,7 +25,7 @@ L1/L2/L3 × 动态阈值开/关六个统计变体。
 现有生产实现仍是迁移期间的有效基线。没有通过新契约、性能和回滚门禁前，不直接删除六变体快照
 或放松当前公开只读边界。
 
-### 0.1 当前实施进度（2026-08-16）
+### 0.1 当前实施进度（更新于 2026-08-17）
 
 - migration 35/36 已把候选 revision、确定性 `candidate_index_version`、统计 fingerprint 与 CJK
   n-gram 物理索引拆开；随机 generation ID 不再进入统计身份。
@@ -37,7 +37,19 @@ L1/L2/L3 × 动态阈值开/关六个统计变体。
   45,269 个文档与 188,673 条 n-gram；六个统计变体全部复用且各为 0ms。第二次运行 0.41 秒，
   候选与六变体均复用。40 个简繁/CJK/拼写/高命中混合样本 P95 为 26.467ms。
 - 本地副本、自动化测试和构建已通过，但远程服务器尚未以本次实现 SHA 完成部署验收；因此本文件
-  暂不标记“全部已实施”。
+  暂不标记“全部已实施”。远程 workflow `31950983242` 的两次尝试均在 GitHub eastus runner 向
+  TCR 执行 API image layer push 时静默停滞，Web build 与 deploy 均未开始；第二次在预设 30 分钟
+  观察边界安全取消。
+- workflow `31954513187` 已把 build 与 push 拆开，并加入单次 10 分钟、最多 3 次的有界重试和远端
+  manifest 校验；verify 与 full/showcase/dual matrix 均通过，但三次 TCR push 后明确失败，deploy
+  跳过。随后 `70cd5351` 把生产依赖拆为 analytics/API/features 小层并排除 pytest/ruff；workflow
+  `31956683140` 的镜像构建通过，首轮成功上传 10 个新层，后两轮均精确复用，但固定剩余 5 个层的
+  TCR 会话仍超时。目标 SHA manifest 不存在，TCR `main` 未被覆盖，生产服务器、SQLite、远程候选
+  索引与六套统计均未触碰。
+- 远程阻塞发生在任何 SSH/Online Backup/搜索预建之前，不能通过延长搜索重建 timeout 解决。下一步
+  应把镜像构建/推送迁到与 TCR 同地域的受控 runner；备选是先推送到 GitHub 可稳定写入的 registry，
+  再由生产侧按 digest 受控镜像同步。两种方案都必须继续保留 commit SHA、镜像 digest、Online Backup、
+  漂移拒绝、runtime exact gate 与联合回滚，不得退回手工覆盖 `main`。
 
 ## 1. 为什么曾经需要提前计算
 
@@ -314,12 +326,21 @@ FTS5 trigram 对一至两个字符的查询能力有限，短 CJK 查询应使�
 
 ### 阶段 E：生产门禁与文档收口
 
-状态：本地门禁与文档已更新，远程对应 SHA 发布、运行时搜索及回滚证据待补。
+状态：**Blocked**。本地门禁与文档已更新；远程 workflow 的 verify、三模式 matrix 与 API image build
+通过，但 GitHub 托管 runner 到 TCR 的 layer upload 连续、有界失败，deploy 未执行。运行时搜索及
+远程回滚证据仍待更换镜像上传路径后补齐。
 
 - schema/索引/统计三类变更分别演练；
 - Online Backup、漂移拒绝、原子切换和联合回滚继续通过；
 - 更新现有优化计划、remediation、交付报告、CHANGELOG 与项目提示词中的重建边界；
 - 只有真实服务器证据通过后才把本文件状态改为“已实施”。
+
+解除阻塞的推荐顺序：
+
+1. 首选在与 TCR 同地域的受控 `linux/amd64` runner 构建并推送，GitHub 托管 runner 继续负责测试；
+2. 若不能部署受控 runner，再评估 GHCR/同类中转 registry，并由服务器侧按 digest 同步到 TCR；
+3. 任一方案先以非生产标签做 API/Web 双镜像 push/pull smoke，再恢复 production workflow；
+4. 首次成功部署必须证明候选层按版本自适应重建、六套统计按 fingerprint 复用，而不是只证明容器启动。
 
 ## 9. 必须保留的现有成果
 

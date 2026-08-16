@@ -1,5 +1,19 @@
 # 变更日志
 
+## 2026-08-17 — 音乐查找远程发布链路有界收口
+
+> 搜索阶段 A–D 本地 Pass；阶段 E Blocked 于 GitHub 托管 runner 向 TCR 上传镜像层，生产未切换。
+
+- 将 API/Web 镜像 build 与 push 拆开，关闭额外 provenance manifest；每次 push 最多 10 分钟、最多
+  3 次，成功后必须读取远端 manifest，build job 总时限 45 分钟，避免静默无限悬挂。
+- 后端生产依赖按 analytics/API/features 拆为稳定小层，开发入口继续组合全部运行依赖并追加
+  pytest/ruff；生产镜像不再携带测试与静态检查工具。
+- workflow `31954513187` 与 `31956683140` 的 verify、full/showcase/dual matrix 和 API image build
+  均通过；后一轮首批完成 10 个新层、重试精确复用，但固定剩余 5 个 TCR layer 会话仍超时。
+- 两次 deploy 均未执行；目标 SHA manifest 不存在，TCR `main` 未被覆盖，服务器、SQLite、候选索引
+  和六套统计均未触碰。下一步首选同地域受控 runner，备选受信 registry 中转后按 digest 同步；禁止
+  通过延长搜索重建 timeout 或手工覆盖 `main` 绕过。
+
 ## 2026-08-16 — 音乐查找候选/统计解耦与容错匹配
 
 > 本地实现与真实 Online Backup 副本验收通过；远程生产状态仍以对应 SHA 的 deployment 记录为准。

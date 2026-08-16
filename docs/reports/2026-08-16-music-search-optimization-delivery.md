@@ -14,7 +14,8 @@ Pass。远程生产是否已运行某个版本，必须以对应 commit SHA 的 
 > 都执行完整六变体 one-shot”的发布策略已被
 > `docs/plans/2026-08-16-music-search-direction-realignment.md` 取代。当前本地实现以 migration 35/36
 > 拆分确定性候选版本与统计 fingerprint，并加入可续建发布、简繁、短 CJK 与有限模糊匹配；远程
-> 生产仍需对应 SHA 验证后才能更新本文结论。
+> 生产仍需对应 SHA 验证后才能更新本文结论。2026-08-17 的远程尝试在 GitHub 托管 runner 向 TCR
+> 上传 API image layers 时有界失败，deploy 未执行，生产仍运行旧版本。
 
 ## 1. 交付结果
 
@@ -200,11 +201,13 @@ DataFrame 同时驻留。变体独立发布后释放 `billboard/db` cache 并 GC
 | 既有外键债务 | 搜索孤儿为 0，但全库仍有 7,831 条非搜索违规 | 不得把历史违规误归因于 migration 34，也不得在搜索发布中盲删 | 单独建立数据治理任务，按缺失父表分类、回溯来源、设计修复/保留策略；修复前另做 Online Backup，并逐类对账详情页和统计 |
 | 静态检查基线 | 本轮变更范围 ESLint/mypy 通过；全仓仍有既有 ESLint/mypy 错误 | CI 必须能区分既有债务与本次新增错误 | 继续对 changed files 硬门禁，新增 baseline ratchet；全仓清零作为独立治理，不把无关大修混入搜索发布 |
 | 前端依赖安全 | Web build 的 npm audit 仍报告 15 项，其中 10 项 high | 公共入口发布前必须完成 direct/transitive、runtime/dev-only 和可利用性分类 | 先执行 `npm audit --json` 与依赖路径核对；优先无破坏升级 direct runtime 依赖，对需要 major upgrade 的项目建立带回归矩阵的独立修复，不直接使用 `--force` |
-| 远程运行面 | 本地 staged/rollback 与真实容器零写入已通过；远程只能由 production workflow 访问 | 对应 SHA 的 build、profile matrix、SSH deploy、runtime exact gate 全绿 | 按 commit SHA 发布并保留 workflow 记录；任何容量、数据漂移、六变体、网关或健康门禁失败都不手工绕过；不得开放 3000/3001/3002/8000 公网端口 |
+| 远程运行面 | 本地 staged/rollback 与真实容器零写入已通过；run `31954513187`、`31956683140` 的 verify/profile matrix/API build 通过，但 TCR layer push 三次有界失败，deploy 均跳过；目标 SHA manifest 不存在且 `main` 未覆盖 | 先解除 runner→TCR 上传阻塞，再要求对应 SHA 的 build、双镜像 manifest、SSH deploy、runtime exact gate 全绿 | 首选同地域受控 runner；备选受信 registry 中转并由生产侧按 digest 同步。继续按 commit SHA 发布并保留 workflow 记录；不得手工覆盖 `main`、绕过容量/漂移/六变体/网关/健康门禁或开放 3000/3001/3002/8000 公网端口 |
 
-因此，本轮搜索代码和发布机制可以进入按 SHA 的生产流程；目标服务器容量、数据漂移与运行时语义
-由 workflow 自动 fail closed，不能靠人工口头确认放行。历史外键、依赖安全分类与全仓静态债务必须
-有独立台账和不新增门禁，但不应与本轮搜索代码混合修复。
+因此，本轮搜索代码和发布机制已具备按 SHA 的本地/CI 前置条件，但远程生产发布当前为
+**Blocked — TCR upload**，不能表述为已经部署。阻塞早于 SSH 与搜索预建，不影响 A–D 的实现结论，
+也不能通过延长搜索重建 timeout 处理。目标服务器容量、数据漂移与运行时语义仍由 workflow 自动
+fail closed，不能靠人工口头确认放行。历史外键、依赖安全分类与全仓静态债务必须有独立台账和
+不新增门禁，但不应与本轮搜索代码混合修复。
 
 ## 10. 后续维护规则
 

@@ -9,7 +9,8 @@
 > 2026-08-16 后续调整：本文的六变体统计语义与历史验收证据继续有效，但“每个新 SHA 都在一次性
 > 工作副本中冷建候选索引和六变体”的发布策略已被
 > `2026-08-16-music-search-direction-realignment.md` 取代。新实现按确定性候选版本与统计 fingerprint
-> 分别复用，随机 generation ID 不再触发统计重建；本地 A–D 已通过，远程生产状态仍按对应 SHA 判定。
+> 分别复用，随机 generation ID 不再触发统计重建；本地 A–D 已通过。2026-08-17 的对应 SHA
+> workflow 在 TCR image layer upload 阶段有界失败，deploy 未执行，远程生产仍为旧版本。
 
 ## 0. 执行摘要
 
