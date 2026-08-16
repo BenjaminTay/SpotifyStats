@@ -399,6 +399,11 @@ def test_production_deploy_stages_search_before_atomic_database_promotion() -> N
     assert "version=36" in runtime_gate
     assert "filter_fingerprint" in runtime_gate
     assert "context orphan count is not zero" in runtime_gate
+    assert "_verify_live_search_semantics" in runtime_gate
+    assert 'target.match_quality == "fuzzy"' in runtime_gate
+    assert "expand_chinese_search_variants" in runtime_gate
+    assert '"short_cjk": short_cjk_status' in runtime_gate
+    assert "semantic_smoke_ms" in runtime_gate
 
 
 def test_production_compose_and_workflow_ship_search_release_gates() -> None:
