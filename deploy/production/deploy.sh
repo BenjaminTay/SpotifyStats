@@ -299,6 +299,10 @@ source.close()
 if integrity != "ok":
     raise SystemExit(f"backup integrity_check failed: {integrity}")
 PY
+  if [[ ! -s "$output_path" ]]; then
+    echo "离线备份未生成有效数据库文件。" >&2
+    return 1
+  fi
 }
 
 replace_live_database() {
@@ -546,18 +550,27 @@ if [[ "$current_tag" != "$NEW_TAG" ]]; then
       echo "停服后的源数据库复核备份失败；没有替换生产数据库。" >&2
       exit 1
     fi
-    if ! cmp -s -- "$release_backup_path" "$quiescent_database"; then
+    if cmp -s -- "$release_backup_path" "$quiescent_database"; then
+      :
+    else
+      compare_status="$?"
+      if [[ "$compare_status" -ne 1 ]]; then
+        activate_mode "$current_mode" "$rollback_image_source" || true
+        echo "停服后的源数据库副本无法比较；没有替换生产数据库。" >&2
+        exit 1
+      fi
       rebase_report="$DEPLOY_DIR/backups/music-search-rebase-${NEW_TAG:0:12}-${release_stamp}.json"
-      release_backup_relative="$(basename -- "$release_backup_path")"
-      release_stage_relative="$(basename -- "$release_stage_dir")"
       if ! docker run --rm --init \
-          --mount "type=bind,src=$DEPLOY_DIR/backups,dst=/release" \
+          --mount "type=bind,src=$release_backup_path,dst=/baseline.db,readonly" \
+          --mount "type=bind,src=$quiescent_database,dst=/quiescent.db" \
+          --mount "type=bind,src=$staged_database,dst=/staged.db" \
+          --mount "type=bind,src=$DEPLOY_DIR/backups,dst=/reports" \
           "$target_backend_image" \
           python scripts/rebase_music_search_preflight.py \
-            --baseline-db "/release/$release_backup_relative" \
-            --quiescent-db "/release/$release_stage_relative/quiescent-source.db" \
-            --staged-db "/release/$release_stage_relative/spotify_stats.db" \
-            --json-output "/release/$(basename -- "$rebase_report")"; then
+            --baseline-db /baseline.db \
+            --quiescent-db /quiescent.db \
+            --staged-db /staged.db \
+            --json-output "/reports/$(basename -- "$rebase_report")"; then
         activate_mode "$current_mode" "$rollback_image_source" || true
         echo "预检期间搜索源发生变化或派生表重基失败；没有替换生产数据库。" >&2
         exit 1

@@ -346,6 +346,12 @@ def test_production_deploy_stages_search_before_atomic_database_promotion() -> N
     assert "cmp -s" in deploy
     assert "rebase_music_search_preflight.py" in deploy
     assert "生产数据库仅发生非搜索写入" in deploy
+    assert 'compare_status="$?"' in deploy
+    assert '"$compare_status" -ne 1' in deploy
+    assert "停服后的源数据库副本无法比较" in deploy
+    assert "src=$release_backup_path,dst=/baseline.db,readonly" in deploy
+    assert "src=$quiescent_database,dst=/quiescent.db" in deploy
+    assert "src=$staged_database,dst=/staged.db" in deploy
     assert "replace_live_database" in deploy
     assert "database_promoted" in deploy
     assert "正在恢复发布前 SQLite 备份" in deploy
