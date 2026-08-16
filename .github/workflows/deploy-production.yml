@@ -263,9 +263,17 @@ jobs:
           SERVER_PORT: ${{ secrets.SERVER_PORT }}
           SERVER_USER: ${{ secrets.SERVER_USER }}
         run: |
+          set +e
           ssh -p "$SERVER_PORT" -i "$RUNNER_TEMP/spotify-stats-deploy-key" \
             "$SERVER_USER@$SERVER_HOST" \
-            "bash /opt/spotify-stats/bootstrap-current-release-images.sh"
+            "bash /opt/spotify-stats/bootstrap-current-release-images.sh --allow-registry-only-legacy"
+          bootstrap_status="$?"
+          set -e
+          if [[ "$bootstrap_status" -eq 3 ]]; then
+            echo "::notice::Legacy current images have no revision labels; this rollout keeps registry rollback and starts CAS retention with the first labeled release."
+          elif [[ "$bootstrap_status" -ne 0 ]]; then
+            exit "$bootstrap_status"
+          fi
 
       - name: Optionally seed CAS from verified TCR smoke images
         continue-on-error: true

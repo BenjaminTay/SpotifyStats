@@ -71,6 +71,8 @@ def test_release_workflow_bootstraps_old_current_then_activates_only_after_deplo
     assert "build-artifact" in workflow
     assert "--mode release" in workflow
     assert "bootstrap-current-release-images.sh" in workflow
+    assert "--allow-registry-only-legacy" in workflow
+    assert 'bootstrap_status" -eq 3' in workflow
     assert "seed-verified-smoke-images.sh" in workflow
     assert "continue-on-error: true" in workflow
     assert "transfer-image-artifact.sh" in workflow
@@ -120,6 +122,8 @@ def test_loader_and_publishers_bind_platform_revision_digest_and_retention() -> 
     assert "has-current" in bootstrap
     assert "sudo install -d -m 700" in bootstrap
     assert "sudo rmdir --ignore-fail-on-non-empty" in bootstrap
+    assert "当前旧镜像缺少 revision label；保留 registry 回滚" in bootstrap
+    assert "exit 3" in bootstrap
 
 
 def test_all_image_transport_shell_scripts_have_valid_syntax_and_reject_bad_input() -> None:

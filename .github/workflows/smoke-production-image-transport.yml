@@ -218,6 +218,7 @@ jobs:
           web_repository="${web_repository:-spotify-stats-web}"
           [[ "$revision" =~ ^[0-9a-f]{40}$ ]]
           status=0
+          legacy_unlabeled=0
           for role_and_ref in \
             "api|${registry%/}/$namespace/$api_repository:$revision" \
             "web|${registry%/}/$namespace/$web_repository:$revision"; do
@@ -230,12 +231,20 @@ jobs:
             fi
             label="$(docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$image_ref")"
             printf '%s current image identity: platform=%s revision=%s\n' "$role" "$platform" "${label:-<missing>}"
-            if [[ "$platform" != linux/amd64 || "$label" != "$revision" ]]; then
+            if [[ "$platform" != linux/amd64 ]]; then
+              status=1
+            elif [[ -z "$label" ]]; then
+              legacy_unlabeled=1
+            elif [[ "$label" != "$revision" ]]; then
               status=1
             fi
           done
           (( status == 0 ))
-          printf 'current production images are bootstrap-safe: revision=%s platform=linux/amd64\n' "$revision"
+          if (( legacy_unlabeled != 0 )); then
+            printf 'legacy current images remain registry-only until the first labeled release: revision=%s\n' "$revision"
+          else
+            printf 'current production images are bootstrap-safe: revision=%s platform=linux/amd64\n' "$revision"
+          fi
           REMOTE
 
       - name: Optionally seed server CAS from a verified smoke revision

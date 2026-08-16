@@ -5,9 +5,11 @@ readonly PRODUCTION_DIR="/opt/spotify-stats"
 readonly RELEASES_ROOT="$PRODUCTION_DIR/releases"
 readonly ENV_FILE="$PRODUCTION_DIR/.env"
 readonly HELPER="$PRODUCTION_DIR/image_transport.py"
+readonly ALLOW_REGISTRY_ONLY_LEGACY="${1:-}"
 
-if [[ "$#" -ne 0 ]]; then
-  echo "用法：bootstrap-current-release-images.sh" >&2
+if (( $# > 1 )) ||
+  [[ -n "$ALLOW_REGISTRY_ONLY_LEGACY" && "$ALLOW_REGISTRY_ONLY_LEGACY" != "--allow-registry-only-legacy" ]]; then
+  echo "用法：bootstrap-current-release-images.sh [--allow-registry-only-legacy]" >&2
   exit 2
 fi
 if [[ ! -f "$ENV_FILE" || -L "$ENV_FILE" || ! -f "$HELPER" || -L "$HELPER" ]]; then
@@ -50,13 +52,39 @@ verify_current() {
   docker image inspect "$image_ref" >/dev/null
   platform="$(docker image inspect --format '{{.Os}}/{{.Architecture}}' "$image_ref")"
   label="$(docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$image_ref")"
-  if [[ "$platform" != "linux/amd64" || "$label" != "$revision" ]]; then
+  if [[ "$platform" != "linux/amd64" ]]; then
     echo "当前 exact ref 无法作为离线 previous：$image_ref platform=$platform revision=$label" >&2
     return 1
   fi
+  if [[ -z "$label" ]]; then
+    return 3
+  fi
+  if [[ "$label" != "$revision" ]]; then
+    echo "当前 exact ref 的 revision label 与 IMAGE_TAG 冲突：$image_ref revision=$label" >&2
+    return 1
+  fi
 }
-verify_current "$api_ref"
-verify_current "$web_ref"
+legacy_unlabeled=0
+for image_ref in "$api_ref" "$web_ref"; do
+  if verify_current "$image_ref"; then
+    continue
+  else
+    verify_status="$?"
+  fi
+  if [[ "$verify_status" -eq 3 ]]; then
+    legacy_unlabeled=1
+    continue
+  fi
+  exit "$verify_status"
+done
+if (( legacy_unlabeled != 0 )); then
+  if [[ "$ALLOW_REGISTRY_ONLY_LEGACY" == "--allow-registry-only-legacy" ]]; then
+    echo "当前旧镜像缺少 revision label；保留 registry 回滚且不写入 CAS previous。" >&2
+    exit 3
+  fi
+  echo "当前旧镜像缺少 revision label，拒绝将其写入 CAS previous。" >&2
+  exit 1
+fi
 
 api_id="$(docker image inspect --format '{{.Id}}' "$api_ref")"
 web_id="$(docker image inspect --format '{{.Id}}' "$web_ref")"
