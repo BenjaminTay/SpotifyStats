@@ -395,6 +395,9 @@ def test_production_deploy_stages_search_before_atomic_database_promotion() -> N
     assert '! -r "$resume_db_path" || ! -w "$resume_db_path"' in preflight
     assert preflight.count('--user "$host_uid:$host_gid"') == 2
     assert '[[ -L "$resume_db_path" ]]' in preflight
+    assert "--statistics-reuse-only" in preflight
+    assert "SEARCH_PREFLIGHT_REUSE_MIN_AVAILABLE_MIB" in deploy
+    assert "${search_preflight_min_mib:-640}" in deploy
     assert "verify-music-search-runtime.py" in verify
     assert "version=36" in runtime_gate
     assert "filter_fingerprint" in runtime_gate
@@ -415,6 +418,7 @@ def test_production_compose_and_workflow_ship_search_release_gates() -> None:
     env_template = (PRODUCTION / ".env.example").read_text(encoding="utf-8")
     assert "SPOTIFY_STATS_SEARCH_STARTUP_REBUILD=1" in env_template
     assert "SEARCH_PREFLIGHT_MIN_AVAILABLE_MIB=1280" in env_template
+    assert "SEARCH_PREFLIGHT_REUSE_MIN_AVAILABLE_MIB=640" in env_template
 
     workflow = (ROOT / ".github" / "workflows" / "deploy-production.yml").read_text(
         encoding="utf-8"

@@ -553,8 +553,12 @@ if [[ "$current_tag" != "$NEW_TAG" ]]; then
   cp -- "$release_backup_path" "$staged_database"
   preflight_report="$DEPLOY_DIR/backups/music-search-preflight-${NEW_TAG:0:12}-${release_stamp}.json"
   search_resume_database="$DEPLOY_DIR/backups/music-search-resume.db"
-  search_preflight_min_mib="$(get_env SEARCH_PREFLIGHT_MIN_AVAILABLE_MIB)"
-  search_preflight_min_mib="${search_preflight_min_mib:-1280}"
+  # Normal releases run with --statistics-reuse-only and fail before any
+  # candidate/statistics rebuild if the six exact snapshots cannot be reused.
+  # Keep their candidate-only capacity budget independent from the larger
+  # one-time statistics bootstrap budget.
+  search_preflight_min_mib="$(get_env SEARCH_PREFLIGHT_REUSE_MIN_AVAILABLE_MIB)"
+  search_preflight_min_mib="${search_preflight_min_mib:-640}"
   if ! SEARCH_PREFLIGHT_MIN_AVAILABLE_MIB="$search_preflight_min_mib" \
       "$DEPLOY_DIR/preflight-music-search.sh" \
       --db-copy "$staged_database" \
