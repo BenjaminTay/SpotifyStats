@@ -42,12 +42,13 @@
 | [`designs/2026-07-04-ai-yearly-report-editorial-agent-pipeline-design.md`](designs/2026-07-04-ai-yearly-report-editorial-agent-pipeline-design.md) | 现行 Editorial Agent Pipeline 设计 |
 | [`designs/2026-07-04-genre-review-settings-design.md`](designs/2026-07-04-genre-review-settings-design.md) | Genre Review Settings 设计 |
 
-### 报告 (`reports/`) — 18 个
+### 报告 (`reports/`) — 19 个
 
 一次性验证/交付/审计报告。
 
 | 报告 | 内容 |
 |------|------|
+| [`reports/2026-08-17-music-detail-statistics-fix-delivery.md`](reports/2026-08-17-music-detail-statistics-fix-delivery.md) | 歌曲、专辑、艺人详情时长、时长排行、最近 50 次与版本拆分修复及真实数据验证 |
 | [`reports/2026-08-16-music-search-optimization-delivery.md`](reports/2026-08-16-music-search-optimization-delivery.md) | 音乐查找 M0–M5 与 remediation 最终 Pass 证据：性能、六变体、浏览器、生产镜像和迁移回滚 |
 | [`reports/2026-08-16-music-search-m0-baseline.md`](reports/2026-08-16-music-search-m0-baseline.md) | 音乐查找 M0 基线：只读性能探针、真实数据库冷/热耗时、FTS5/trigram runtime、API 契约与公开只读安全评审 |
 | [`reports/2026-08-15-playback-logical-timeline-v2-delivery.md`](reports/2026-08-15-playback-logical-timeline-v2-delivery.md) | 连续播放逻辑时间线 V2：5 分钟实际空闲边界、次数/时长双轨归属、原子预聚合与真实数据库验收 |

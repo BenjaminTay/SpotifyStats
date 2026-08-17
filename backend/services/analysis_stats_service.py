@@ -127,6 +127,8 @@ def resolve_period(
     """Resolve a named period to inclusive local-date boundaries."""
     period = period if period in PERIOD_LABELS else "lifetime"
     today = date.today()
+    latest_data_date = str(df["ts_date"].max()) if not df.empty else today.isoformat()
+    latest_data = date.fromisoformat(latest_data_date)
 
     if period == "lifetime":
         start = str(df["ts_date"].min()) if not df.empty else None
@@ -140,11 +142,11 @@ def resolve_period(
         start = date(today.year, 1, 1).isoformat()
         end = today.isoformat()
     elif period == "last_4_weeks":
-        start = (today - timedelta(days=27)).isoformat()
-        end = today.isoformat()
+        start = (latest_data - timedelta(days=27)).isoformat()
+        end = latest_data.isoformat()
     elif period == "last_6_months":
-        start = (today - timedelta(days=182)).isoformat()
-        end = today.isoformat()
+        start = (latest_data - timedelta(days=182)).isoformat()
+        end = latest_data.isoformat()
     else:
         start = start_date
         end = end_date
@@ -180,6 +182,34 @@ def resolve_period_dates(
         return start_date, end_date
 
 
+def build_duration_frame(
+    df: pd.DataFrame,
+    resolved: dict | None = None,
+) -> pd.DataFrame:
+    """Build duration slices from an explicitly scoped logical-event frame.
+
+    ``DataFrame.attrs`` is intentionally not consulted here.  Pandas preserves
+    attrs when filtering a frame, which previously allowed a track, album, or
+    artist detail response to inherit the full-library duration slices.
+    ``df`` must therefore already be scoped to the entity whose duration is
+    being calculated.  The full entity lifetime frame should be supplied when
+    a period boundary must retain a slice from a session crossing that
+    boundary.
+    """
+    from backend.domains.playback.logical_timeline import explode_listening_slices
+
+    slices = explode_listening_slices(df, granularity="hour")
+    if slices.empty or resolved is None:
+        return slices.reset_index(drop=True)
+    start = resolved.get("start_date")
+    end = resolved.get("end_date")
+    if start:
+        slices = slices[slices["ts_date"].astype(str) >= str(start)]
+    if end:
+        slices = slices[slices["ts_date"].astype(str) <= str(end)]
+    return slices.reset_index(drop=True)
+
+
 def filter_period(df: pd.DataFrame, resolved: dict) -> pd.DataFrame:
     if df.empty:
         return df
@@ -194,13 +224,7 @@ def filter_period(df: pd.DataFrame, resolved: dict) -> pd.DataFrame:
     # to the local wall-clock slices where listening occurred. Build slices
     # from the unfiltered timeline so a session crossing a query boundary does
     # not lose the portion on either side.
-    from backend.domains.playback.logical_timeline import explode_listening_slices
-
-    duration_slices = explode_listening_slices(df, granularity="hour")
-    if start:
-        duration_slices = duration_slices[duration_slices["ts_date"].astype(str) >= start]
-    if end:
-        duration_slices = duration_slices[duration_slices["ts_date"].astype(str) <= end]
+    duration_slices = build_duration_frame(df, resolved)
     out = out.copy()
     out.attrs["listening_duration_slices"] = duration_slices.reset_index(drop=True)
     return out
@@ -215,12 +239,18 @@ def _duration_frame(df: pd.DataFrame, *, granularity: str = "day") -> pd.DataFra
     return explode_listening_slices(df, granularity=granularity)
 
 
-def _analysis_weighted_frame(df: pd.DataFrame) -> pd.DataFrame:
+def _analysis_weighted_frame(
+    df: pd.DataFrame,
+    *,
+    duration_frame: pd.DataFrame | None = None,
+) -> pd.DataFrame:
     """Combine event-count rows with independently attributed duration rows."""
     events = df.copy()
     events["play_count"] = 1
     events["total_ms"] = 0
-    slices = _duration_frame(df, granularity="hour")
+    slices = (
+        duration_frame if duration_frame is not None else _duration_frame(df, granularity="hour")
+    )
     if slices.empty:
         events["total_ms"] = pd.to_numeric(events["ms_played"], errors="coerce").fillna(0)
         return events
@@ -268,8 +298,10 @@ def _zero_summary() -> dict:
     }
 
 
-def _summary(df: pd.DataFrame) -> dict:
-    duration_frame = _duration_frame(df, granularity="day")
+def _summary(df: pd.DataFrame, duration_frame: pd.DataFrame | None = None) -> dict:
+    duration_frame = (
+        duration_frame if duration_frame is not None else _duration_frame(df, granularity="day")
+    )
     if df.empty and duration_frame.empty:
         return _zero_summary()
     return {
@@ -292,9 +324,13 @@ def _daily_metrics(summary: dict) -> dict:
     }
 
 
-def _hourly_distribution(df: pd.DataFrame) -> list[dict]:
+def _hourly_distribution(
+    df: pd.DataFrame, duration_frame: pd.DataFrame | None = None
+) -> list[dict]:
     counts = df.groupby("ts_hour").size() if not df.empty else pd.Series(dtype=int)
-    duration_frame = _duration_frame(df, granularity="hour")
+    duration_frame = (
+        duration_frame if duration_frame is not None else _duration_frame(df, granularity="hour")
+    )
     if not duration_frame.empty:
         hours = duration_frame.groupby("ts_hour")["ms_played"].sum() / 3_600_000
     else:
@@ -305,8 +341,10 @@ def _hourly_distribution(df: pd.DataFrame) -> list[dict]:
     ]
 
 
-def _daily_trend(df: pd.DataFrame) -> list[dict]:
-    duration_frame = _duration_frame(df, granularity="day")
+def _daily_trend(df: pd.DataFrame, duration_frame: pd.DataFrame | None = None) -> list[dict]:
+    duration_frame = (
+        duration_frame if duration_frame is not None else _duration_frame(df, granularity="day")
+    )
     if df.empty and duration_frame.empty:
         return []
     counts = (
@@ -344,10 +382,14 @@ def _cumulative_trend(daily: list[dict]) -> list[dict]:
     return rows
 
 
-def _weekday_distribution(df: pd.DataFrame) -> list[dict]:
+def _weekday_distribution(
+    df: pd.DataFrame, duration_frame: pd.DataFrame | None = None
+) -> list[dict]:
     labels = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]
     counts = df.groupby("ts_dow").size() if not df.empty else pd.Series(dtype=int)
-    duration_frame = _duration_frame(df, granularity="day")
+    duration_frame = (
+        duration_frame if duration_frame is not None else _duration_frame(df, granularity="day")
+    )
     if not duration_frame.empty:
         hours = duration_frame.groupby("ts_dow")["ms_played"].sum() / 3_600_000
     else:
@@ -362,9 +404,11 @@ def _weekday_distribution(df: pd.DataFrame) -> list[dict]:
     ]
 
 
-def _month_distribution(df: pd.DataFrame) -> list[dict]:
+def _month_distribution(df: pd.DataFrame, duration_frame: pd.DataFrame | None = None) -> list[dict]:
     counts = df.groupby("ts_month").size() if not df.empty else pd.Series(dtype=int)
-    duration_frame = _duration_frame(df, granularity="day")
+    duration_frame = (
+        duration_frame if duration_frame is not None else _duration_frame(df, granularity="day")
+    )
     if not duration_frame.empty:
         hours = duration_frame.groupby("ts_month")["ms_played"].sum() / 3_600_000
     else:
@@ -375,8 +419,10 @@ def _month_distribution(df: pd.DataFrame) -> list[dict]:
     ]
 
 
-def _year_distribution(df: pd.DataFrame) -> list[dict]:
-    duration_frame = _duration_frame(df, granularity="day")
+def _year_distribution(df: pd.DataFrame, duration_frame: pd.DataFrame | None = None) -> list[dict]:
+    duration_frame = (
+        duration_frame if duration_frame is not None else _duration_frame(df, granularity="day")
+    )
     if df.empty and duration_frame.empty:
         return []
     counts = (
@@ -553,8 +599,9 @@ def _chart_agg(
     conn: sqlite3.Connection | None = None,
     merge_level: int = 2,
     include_compilations: bool = False,
+    duration_frame: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
-    weighted = _analysis_weighted_frame(df)
+    weighted = _analysis_weighted_frame(df, duration_frame=duration_frame)
     if entity == "track":
         df_agg = weighted
         group_cols = ["track_id", "track_name", "artist_name", "album_name"]
@@ -693,8 +740,11 @@ def chart_rows(
     offset: int = 0,
     merge_level: int = 2,
     include_compilations: bool = False,
+    duration_frame: pd.DataFrame | None = None,
 ) -> tuple[int, list[dict]]:
-    duration_frame = _duration_frame(df, granularity="hour")
+    duration_frame = (
+        duration_frame if duration_frame is not None else _duration_frame(df, granularity="hour")
+    )
     if df.empty and duration_frame.empty:
         return 0, []
     entity = entity if entity in {"track", "album", "artist"} else "track"
@@ -705,6 +755,7 @@ def chart_rows(
         conn=conn,
         merge_level=merge_level,
         include_compilations=include_compilations,
+        duration_frame=duration_frame,
     )
     if agg.empty:
         return 0, []

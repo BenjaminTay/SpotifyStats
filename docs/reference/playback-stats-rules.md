@@ -641,6 +641,16 @@ Billboard Year-End 年榜不是单纯的年度播放量榜。它先使用当前 
 
 专辑自身榜单成绩必须优先按 album project identity + canonical artist 匹配 `weekly_album`；成员曲的 `album_track_counts` / `track_per_album` 只服务“单曲成绩”，不得作为专辑是否入榜的前置条件。
 
+### 详情页统计实现约束
+
+歌曲、专辑和艺人详情页的播放次数与收听时长必须在实体范围内分别计算：
+
+- 播放次数来自实体过滤后的逻辑播放事件行；收听时长来自同一实体逻辑事件推断出的 `[ts - ms_played, ts)` 时长切片。不得复用全库 `DataFrame.attrs` 或其他隐式携带的全局切片。
+- 详情页摘要、小时/日期/星期/月/年分布，以及歌曲/专辑/艺人详情内的时长排行，都必须显式传入实体范围的时长帧；实体没有播放时不能因全局切片而出现非零时长。
+- 艺人“最近 50 次”按稳定 `_logical_event_id` 去重后计数；艺人 fan-out 行数不能直接当作最近事件数。
+- 歌曲版本组与专辑发行组的版本播放量和时长必须复用 Billboard 逻辑播放加权帧的 `play_count` / `total_ms`，不能回退到原始 `plays` 表的静态 `ms_played` 阈值计数。
+- `last_4_weeks` 与 `last_6_months` 在播放分析/详情统计中以当前有效播放帧的最新数据日为结束日，避免数据源停止更新后相对窗口全部落在空白日期。
+
 ### R37. 歌曲详情页
 
 歌曲详情页在非 L1 下应展示：
@@ -853,7 +863,7 @@ GUTS (spilled) / 2024-03-22
 
 ## 17. Implementation Status
 
-截至 2026-06-18，album statistics 已在 analysis charts、leaderboards、Billboard album charts 和 album detail pages 使用 album project 语义。
+截至 2026-08-17，album statistics 已在 analysis charts、leaderboards、Billboard album charts 和 album detail pages 使用 album project 语义；歌曲、专辑、艺人详情统计已统一采用实体范围时长帧和逻辑播放加权版本拆分。
 
 已落地的不变式：
 
@@ -866,6 +876,9 @@ GUTS (spilled) / 2024-03-22
 - 精选集独有曲目可以形成 compilation-exclusive project。
 - track-source weekly pre-aggregation 与 raw fallback 在新 album project 口径下一致。
 - 专辑详情页返回 `album_project` payload，并展示来源拆分与项目曲目集合。
+- 详情页摘要、分布和时长排行不会从全库时长切片继承时长；实体播放次数与收听时长保持双轨归属。
+- 艺人最近 50 次按逻辑播放事件去重，版本组和发行组展示复用 Billboard `play_count` / `total_ms` 加权帧。
+- 相对窗口 `last_4_weeks` / `last_6_months` 以最新有效数据日锚定；修复证据见 `docs/reports/2026-08-17-music-detail-statistics-fix-delivery.md`。
 
 ---
 

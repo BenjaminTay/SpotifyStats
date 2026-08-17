@@ -20,6 +20,7 @@ from backend.services.analysis_stats_service import (
     _summary,
     _weekday_distribution,
     _year_distribution,
+    build_duration_frame,
     chart_rows,
     filter_period,
     load_period_plays,
@@ -33,18 +34,26 @@ from backend.services.play_service import (
 )
 
 
-def _entity_base(df: pd.DataFrame, entity_df: pd.DataFrame) -> dict:
-    summary = _summary(entity_df)
-    daily = _daily_trend(entity_df)
+def _entity_base(
+    df: pd.DataFrame,
+    entity_df: pd.DataFrame,
+    resolved: dict,
+    duration_frame: pd.DataFrame | None = None,
+) -> dict:
+    duration_frame = (
+        duration_frame if duration_frame is not None else build_duration_frame(df, resolved)
+    )
+    summary = _summary(entity_df, duration_frame)
+    daily = _daily_trend(entity_df, duration_frame)
     return {
         "summary": summary,
         "daily_metrics": _daily_metrics(summary),
-        "hourly_distribution": _hourly_distribution(entity_df),
+        "hourly_distribution": _hourly_distribution(entity_df, duration_frame),
         "daily_trend": daily,
         "cumulative_trend": _cumulative_trend(daily),
-        "weekday_distribution": _weekday_distribution(entity_df),
-        "month_distribution": _month_distribution(entity_df),
-        "year_distribution": _year_distribution(entity_df),
+        "weekday_distribution": _weekday_distribution(entity_df, duration_frame),
+        "month_distribution": _month_distribution(entity_df, duration_frame),
+        "year_distribution": _year_distribution(entity_df, duration_frame),
     }
 
 
@@ -194,7 +203,8 @@ def get_track_stats(
     all_artists = get_track_artist_names_map()
     artist_names = all_artists.get(int(track_id), [primary_artist])
     display_artist = ", ".join(artist_names) if len(artist_names) > 1 else primary_artist
-    data = _entity_base(all_df, entity_df)
+    entity_duration = build_duration_frame(entity_all, resolved)
+    data = _entity_base(all_df, entity_df, resolved, entity_duration)
     data.update(
         {
             "found": True,
@@ -363,10 +373,19 @@ def get_album_stats(
         ]
     if entity_all.empty:
         return {"found": False}
-    data = _entity_base(all_df, entity_df)
+    entity_duration = build_duration_frame(entity_all, resolved)
+    data = _entity_base(all_df, entity_df, resolved, entity_duration)
     # Keep the legacy summary payload bounded; the detail UI uses the dedicated
     # rankings endpoint for every page instead of downloading the full project.
-    _, breakdown = chart_rows(conn, entity_df, "track", "plays", 20, 0)
+    _, breakdown = chart_rows(
+        conn,
+        entity_df,
+        "track",
+        "plays",
+        20,
+        0,
+        duration_frame=build_duration_frame(entity_all, resolved),
+    )
     data.update(
         {
             "found": True,
@@ -465,7 +484,15 @@ def get_album_personal_ranking(
             "offset": offset,
             "rows": [],
         }
-    total, rows = chart_rows(conn, entity_df, "track", metric, limit, offset)
+    total, rows = chart_rows(
+        conn,
+        entity_df,
+        "track",
+        metric,
+        limit,
+        offset,
+        duration_frame=build_duration_frame(entity_all, resolved),
+    )
     return {
         "found": True,
         "album_name": album_name,
@@ -551,11 +578,43 @@ def get_artist_stats(
     entity_df = current_df[current_df["artist_name"] == artist_name]
     if entity_all.empty:
         return {"found": False}
-    _, top_tracks = chart_rows(conn, entity_df, "track", "plays", 20, 0)
+    entity_duration = build_duration_frame(entity_all, resolved)
+    _, top_tracks = chart_rows(
+        conn,
+        entity_df,
+        "track",
+        "plays",
+        20,
+        0,
+        duration_frame=entity_duration,
+    )
+    owned_album_all = _filter_artist_owned_album_events(conn, entity_all, artist_name)
     owned_album_df = _filter_artist_owned_album_events(conn, entity_df, artist_name)
-    _, top_albums = chart_rows(conn, owned_album_df, "album", "plays", 20, 0)
-    recent_50_all = all_df.sort_values("ts", ascending=False).head(50)
-    data = _entity_base(all_df, entity_df)
+    owned_album_duration = build_duration_frame(owned_album_all, resolved)
+    _, top_albums = chart_rows(
+        conn,
+        owned_album_df,
+        "album",
+        "plays",
+        20,
+        0,
+        duration_frame=owned_album_duration,
+    )
+    if "_logical_event_id" in all_df.columns:
+        recent_ids = (
+            all_df.sort_values("ts", ascending=False)
+            .drop_duplicates("_logical_event_id")
+            .head(50)["_logical_event_id"]
+        )
+        recent_50_all = all_df[all_df["_logical_event_id"].isin(set(recent_ids))]
+    else:
+        recent_50_all = all_df.sort_values("ts", ascending=False).head(50)
+    recent_50_artist_rows = recent_50_all[recent_50_all["artist_name"] == artist_name]
+    if "_logical_event_id" in recent_50_artist_rows.columns:
+        recent_50_count = int(recent_50_artist_rows["_logical_event_id"].nunique())
+    else:
+        recent_50_count = int(len(recent_50_artist_rows))
+    data = _entity_base(all_df, entity_df, resolved, entity_duration)
     data.update(
         {
             "found": True,
@@ -568,7 +627,7 @@ def get_artist_stats(
             "last_played": str(entity_all["ts"].max()),
             "ranks": _ranks(conn, all_df, current_df, "artist", artist_name=artist_name),
             "top250_counts": _top250_counts(conn, all_df, artist_name=artist_name),
-            "recent_50_count": int((recent_50_all["artist_name"] == artist_name).sum()),
+            "recent_50_count": recent_50_count,
             "top_tracks": top_tracks,
             "top_albums": top_albums,
             "recent_plays": recent_plays(conn, entity_df, 50),
@@ -620,10 +679,20 @@ def get_artist_personal_ranking(
             "offset": offset,
             "rows": [],
         }
+    artist_all = all_df[all_df["artist_name"] == artist_name]
     artist_df = current_df[current_df["artist_name"] == artist_name]
     if entity == "album":
+        artist_all = _filter_artist_owned_album_events(conn, artist_all, artist_name)
         artist_df = _filter_artist_owned_album_events(conn, artist_df, artist_name)
-    total, rows = chart_rows(conn, artist_df, entity, metric, limit, offset)
+    total, rows = chart_rows(
+        conn,
+        artist_df,
+        entity,
+        metric,
+        limit,
+        offset,
+        duration_frame=build_duration_frame(artist_all, resolved),
+    )
     return {
         "found": True,
         "artist_name": artist_name,

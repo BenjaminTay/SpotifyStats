@@ -317,6 +317,23 @@ class TestVersionGroupDetailSQL:
         assert "Fixture Recording Song" in names
         assert "Fixture Recording Song - Remastered" in names
 
+    def test_track_version_group_uses_weighted_logical_counts(self, seed_conn):
+        from backend.domains.billboard.details import _get_track_spotify_meta
+
+        weighted = pd.DataFrame(
+            [
+                {"track_id": 905, "play_count": 2, "total_ms": 80_000},
+                {"track_id": 906, "play_count": 1, "total_ms": 35_000},
+            ]
+        )
+        meta = _get_track_spotify_meta(905, 2, weighted)
+        versions = {row["track_id"]: row for row in meta["version_group"]["versions"]}
+
+        assert versions[905]["plays"] == 2
+        assert versions[905]["total_ms"] == 80_000
+        assert versions[906]["plays"] == 1
+        assert meta["version_group"]["total_plays"] == 3
+
     def test_album_release_group_sql_does_not_crash(self, seed_conn):
         """Directly test _attach_album_release_group with seed release group data."""
         from backend.domains.billboard.details import _attach_album_release_group
@@ -329,3 +346,34 @@ class TestVersionGroupDetailSQL:
             rg = meta["release_group"]
             assert rg["group_id"] == 1
             assert len(rg["versions"]) >= 2
+
+    def test_album_release_group_uses_weighted_logical_counts(self, seed_conn):
+        from backend.domains.billboard.details import _attach_album_release_group
+
+        album_ids = [
+            row["album_id"]
+            for row in seed_conn.execute(
+                "SELECT album_id FROM release_group_members WHERE group_id = 1 ORDER BY album_id"
+            ).fetchall()
+        ]
+        weighted = pd.DataFrame(
+            [
+                {"source_album_id": album_ids[0], "play_count": 3, "total_ms": 90_000},
+                {"source_album_id": album_ids[1], "play_count": 1, "total_ms": 40_000},
+            ]
+        )
+        meta = {}
+        _attach_album_release_group(
+            seed_conn,
+            "Alpha Debut",
+            "Alpha",
+            meta,
+            2,
+            weighted,
+        )
+        versions = {row["album_id"]: row for row in meta["release_group"]["versions"]}
+
+        assert versions[album_ids[0]]["plays"] == 3
+        assert versions[album_ids[0]]["total_ms"] == 90_000
+        assert versions[album_ids[1]]["plays"] == 1
+        assert meta["release_group"]["total_plays"] == 4

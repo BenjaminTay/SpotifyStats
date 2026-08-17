@@ -90,6 +90,32 @@ def _effective_play_count(stats: dict) -> int:
     return int((stats.get("summary") or {}).get("total_plays") or 0)
 
 
+def _load_detail_weighted_frame(
+    *,
+    min_ms: int,
+    music_only: bool,
+    week_start_dow: int,
+    week_start_hour: int,
+    dynamic_threshold: bool,
+    max_merge_gap_minutes: int | None,
+    merge_enabled: bool,
+) -> pd.DataFrame | None:
+    """Load the same logical-event weighted frame used by Billboard charts."""
+    from backend.domains.billboard.data_loader import load_billboard_raw
+    from backend.domains.playback.logical_timeline import get_billboard_weighted_frame
+
+    events = load_billboard_raw(
+        min_ms,
+        music_only,
+        week_start_dow,
+        week_start_hour,
+        dynamic_threshold,
+        max_merge_gap_minutes,
+        merge_enabled,
+    )
+    return get_billboard_weighted_frame(events)
+
+
 def _compute_change_column(hist_df):
     """Compute NEW/RE/▲n/▼n/─ change column for a sorted weekly history DataFrame."""
     hist = hist_df.sort_values("billboard_week").copy()
@@ -139,7 +165,7 @@ def _build_gapped_chart_data(hist_df):
     return x_vals, y_vals, texts
 
 
-def _get_track_spotify_meta(track_id, merge_level=2):
+def _get_track_spotify_meta(track_id, merge_level=2, weighted_frame=None):
     """Fetch Spotify metadata for a track by local track_id."""
     conn = get_db()
     row = conn.execute(
@@ -173,7 +199,7 @@ def _get_track_spotify_meta(track_id, merge_level=2):
         meta["spotify_album_name"] = row["spotify_album_name"]
 
     # Version group: if this track belongs to a track_group, include all versions
-    _attach_track_version_group(conn, track_id, meta, merge_level)
+    _attach_track_version_group(conn, track_id, meta, merge_level, weighted_frame)
 
     conn.close()
     return meta if meta else None
@@ -206,7 +232,13 @@ def _classify_recording_kind(track_name: str) -> str | None:
     return None
 
 
-def _attach_track_version_group(conn, track_id, meta, merge_level=2):
+def _attach_track_version_group(
+    conn,
+    track_id,
+    meta,
+    merge_level=2,
+    weighted_frame: pd.DataFrame | None = None,
+):
     """If the track belongs to a track_group, attach version_group to meta.
 
     merge_level=1: no version group (R31 L1)
@@ -250,13 +282,6 @@ def _attach_track_version_group(conn, track_id, meta, merge_level=2):
 
     effective_group_id = group_row["effective_group_id"]
 
-    # NOTE: Version-level play counts use a simplified SQL filter (ms_played >= 30000
-    # without merge-before-filter or dynamic threshold). These counts serve as
-    # version distribution metadata — they may differ from the aggregate counts
-    # shown in charts which go through the full counting pipeline (merge →
-    # effective_threshold → track_group aggregation). This is an intentional
-    # trade-off: per-version detail is display-only and doesn't need full-counting
-    # precision.
     if merge_level >= 3:
         versions = conn.execute(
             """SELECT t.track_id, t.track_name, al.album_name, al.album_id,
@@ -299,6 +324,24 @@ def _attach_track_version_group(conn, track_id, meta, merge_level=2):
 
     if len(versions) < 2:
         return
+
+    versions = [dict(version) for version in versions]
+    if weighted_frame is not None and {"track_id", "play_count", "total_ms"}.issubset(
+        weighted_frame.columns
+    ):
+        version_ids = {int(version["track_id"]) for version in versions}
+        scoped = weighted_frame[weighted_frame["track_id"].isin(version_ids)]
+        weighted_counts = (
+            scoped.groupby("track_id", dropna=False)[["play_count", "total_ms"]]
+            .sum()
+            .to_dict("index")
+            if not scoped.empty
+            else {}
+        )
+        for version in versions:
+            counts = weighted_counts.get(int(version["track_id"]), {})
+            version["plays"] = int(counts.get("play_count", 0))
+            version["total_ms"] = int(counts.get("total_ms", 0))
 
     total_plays = sum(v["plays"] for v in versions)
     meta["version_group"] = {
@@ -357,7 +400,12 @@ def _get_artist_spotify_meta(artist_name):
     return meta if meta else None
 
 
-def _get_album_spotify_meta(album_name, artist_name, merge_level=2):
+def _get_album_spotify_meta(
+    album_name,
+    artist_name,
+    merge_level=2,
+    weighted_frame: pd.DataFrame | None = None,
+):
     """Fetch Spotify metadata for an album by name + artist."""
     conn = get_db()
     # Prefer album_spotify_links (confidence-scored) over the old track-chain path.
@@ -432,13 +480,27 @@ def _get_album_spotify_meta(album_name, artist_name, merge_level=2):
             meta["total_tracks"] = tc["cnt"]
 
     # Release group: if this album belongs to a release_group, include all versions
-    _attach_album_release_group(conn, album_name, artist_name, meta, merge_level)
+    _attach_album_release_group(
+        conn,
+        album_name,
+        artist_name,
+        meta,
+        merge_level,
+        weighted_frame,
+    )
 
     conn.close()
     return meta if meta else None
 
 
-def _attach_album_release_group(conn, album_name, artist_name, meta, merge_level=2):
+def _attach_album_release_group(
+    conn,
+    album_name,
+    artist_name,
+    meta,
+    merge_level=2,
+    weighted_frame: pd.DataFrame | None = None,
+):
     """If the album belongs to a release_group, attach release_group to meta.
 
     merge_level=1: no release group (R31 L1)
@@ -486,7 +548,6 @@ def _attach_album_release_group(conn, album_name, artist_name, meta, merge_level
 
     effective_group_id = group_row["effective_group_id"]
 
-    # NOTE: Same simplified counting caveat as _attach_track_version_group above.
     if merge_level >= 3:
         versions = conn.execute(
             """SELECT al.album_id, al.album_name, ar.artist_name,
@@ -532,6 +593,28 @@ def _attach_album_release_group(conn, album_name, artist_name, meta, merge_level
     if len(versions) < 2:
         return
 
+    versions = [dict(version) for version in versions]
+    if weighted_frame is not None and {"source_album_id", "play_count", "total_ms"}.issubset(
+        weighted_frame.columns
+    ):
+        album_id_set = {int(version["album_id"]) for version in versions}
+        scoped = weighted_frame.copy()
+        scoped["_detail_album_id"] = pd.to_numeric(scoped["source_album_id"], errors="coerce")
+        scoped = scoped[scoped["_detail_album_id"].isin(album_id_set)]
+        weighted_counts = (
+            scoped.groupby("_detail_album_id", dropna=False)[["play_count", "total_ms"]]
+            .sum()
+            .to_dict("index")
+            if not scoped.empty
+            else {}
+        )
+        for version in versions:
+            counts = weighted_counts.get(float(version["album_id"]), {})
+            if not counts:
+                counts = weighted_counts.get(int(version["album_id"]), {})
+            version["plays"] = int(counts.get("play_count", 0))
+            version["total_ms"] = int(counts.get("total_ms", 0))
+
     # Track coverage matrix: which tracks appear in which version (R30.3/R30.4)
     album_ids = [v["album_id"] for v in versions]
     placeholders = ",".join("?" for _ in album_ids)
@@ -545,7 +628,7 @@ def _attach_album_release_group(conn, album_name, artist_name, meta, merge_level
     ).fetchall()
 
     # Build track → set of album_ids for coverage computation
-    track_albums_map: dict[str, set[int]] = {}
+    track_albums_map: dict[int, set[int]] = {}
     track_id_to_name: dict[int, str] = {}
     for tr in track_rows:
         tid = tr["track_id"]
@@ -864,6 +947,15 @@ def get_track_history(
     weekly = pd.DataFrame(data["weekly"])
     track_summary = pd.DataFrame(data["track_summary"])
     power_scores = pd.DataFrame(data["power_scores"])
+    detail_weighted_frame = _load_detail_weighted_frame(
+        min_ms=min_ms,
+        music_only=music_only,
+        week_start_dow=bb_week_start_dow,
+        week_start_hour=bb_week_start_hour,
+        dynamic_threshold=dynamic_threshold,
+        max_merge_gap_minutes=max_merge_gap_minutes,
+        merge_enabled=merge_enabled,
+    )
 
     track_hist = weekly[weekly["track_id"] == track_id]
     if track_hist.empty:
@@ -892,7 +984,7 @@ def get_track_history(
                 int(entity["track_id"]), str(entity["artist_name"])
             ),
             "cover_url": entity.get("cover_url"),
-            "meta": _get_track_spotify_meta(track_id, merge_level),
+            "meta": _get_track_spotify_meta(track_id, merge_level, detail_weighted_frame),
             "summary": None,
             "history": [],
             "chart_data": {"x": [], "y": [], "texts": [], "top_n": bb_top_n},
@@ -935,7 +1027,7 @@ def get_track_history(
         "artist_names": artist_names,
         "primary_artist_name": _track_primary_artist_name(track_id, primary_artist),
         "cover_url": cover_url if pd.notna(cover_url) else None,
-        "meta": _get_track_spotify_meta(track_id, merge_level),
+        "meta": _get_track_spotify_meta(track_id, merge_level, detail_weighted_frame),
         "summary": {
             "peak_position": int(info.get("peak_position", 0)),
             "weeks_on_chart": int(info.get("weeks_on_chart", 0)),
@@ -1625,6 +1717,15 @@ def get_album_chart_detail(
         album_project_events,
         merge_level,
     )
+    detail_weighted_frame = _load_detail_weighted_frame(
+        min_ms=min_ms,
+        music_only=music_only,
+        week_start_dow=bb_week_start_dow,
+        week_start_hour=bb_week_start_hour,
+        dynamic_threshold=dynamic_threshold,
+        max_merge_gap_minutes=max_merge_gap_minutes,
+        merge_enabled=merge_enabled,
+    )
 
     return {
         "found": True,
@@ -1637,7 +1738,12 @@ def get_album_chart_detail(
         "album_name": resolved_album,
         "artist_name": resolved_artist,
         "cover_url": album_cover_url,
-        "meta": _get_album_spotify_meta(resolved_album, resolved_artist, merge_level),
+        "meta": _get_album_spotify_meta(
+            resolved_album,
+            resolved_artist,
+            merge_level,
+            detail_weighted_frame,
+        ),
         "info": (
             {
                 "total_tracks": int(alb_row["total_tracks"]),

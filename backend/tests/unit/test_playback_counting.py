@@ -539,3 +539,64 @@ class TestMergeSessionBoundaries:
         first_day_chart = _chart_agg(first_day, "track", merge_level=1)
         assert int(first_day_chart.iloc[0]["plays"]) == 0
         assert first_day_chart.iloc[0]["hours"] == pytest.approx(120_000 / 3_600_000)
+
+    def test_entity_duration_does_not_inherit_global_duration_attrs(self):
+        from backend.core.db import merge_consecutive_plays
+        from backend.services.analysis_stats_service import (
+            _summary,
+            build_duration_frame,
+            filter_period,
+        )
+
+        raw = pd.DataFrame(
+            [
+                {
+                    "play_id": 70,
+                    "ts": "2026-01-01T01:00:00Z",
+                    "track_id": 1,
+                    "track_name": "Track One",
+                    "artist_name": "Artist",
+                    "album_name": "Album",
+                    "ms_played": 3_600_000,
+                    "duration_ms": 3_600_000,
+                },
+                {
+                    "play_id": 71,
+                    "ts": "2026-01-02T01:00:00Z",
+                    "track_id": 2,
+                    "track_name": "Track Two",
+                    "artist_name": "Artist",
+                    "album_name": "Album",
+                    "ms_played": 7_200_000,
+                    "duration_ms": 7_200_000,
+                },
+            ]
+        )
+        events = merge_consecutive_plays(raw, min_ms=30_000, max_gap_minutes=5)
+        filtered = filter_period(
+            events,
+            {"start_date": "2026-01-01", "end_date": "2026-01-02"},
+        )
+        entity = filtered[filtered["track_id"] == 1]
+
+        summary = _summary(entity, build_duration_frame(entity))
+
+        assert summary["total_plays"] == 1
+        assert summary["total_hours"] == pytest.approx(1.0)
+        assert summary["active_days"] == 1
+
+    def test_relative_periods_anchor_to_latest_data_date(self):
+        from backend.services.analysis_stats_service import resolve_period
+
+        df = pd.DataFrame(
+            {
+                "ts_date": ["2026-07-20", "2026-07-24"],
+            }
+        )
+
+        assert resolve_period(df, "last_4_weeks", None, None) == {
+            "period": "last_4_weeks",
+            "label": "最近 4 周",
+            "start_date": "2026-06-27",
+            "end_date": "2026-07-24",
+        }
