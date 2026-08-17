@@ -1,17 +1,21 @@
-name: Phase 5 Baseline
+name: Reusable quality checks
 
 on:
-  pull_request:
-  push:
-    branches:
-      - main
-      - "codex/**"
-      - "fix/**"
+  workflow_call:
+    inputs:
+      include_production_contract:
+        description: Run production deployment contract checks in addition to the shared quality checks
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
 
 jobs:
-  verify:
+  checks:
+    name: Backend, frontend and build checks
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -32,6 +36,8 @@ jobs:
         run: .venv/bin/python scripts/docs_audit.py --include-archive
 
       - name: Backend unit and contract checks
+        env:
+          SPOTIFY_STATS_TEST_SOURCE_DB: backend/tests/fixtures/seed.db
         run: |
           .venv/bin/pytest -m unit -q
           .venv/bin/pytest -m contract -q
@@ -44,12 +50,16 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
-      - name: Install frontend dependencies
-        working-directory: frontend
-        run: npm ci --legacy-peer-deps
-
       - name: Frontend checks
         working-directory: frontend
         run: |
+          npm ci --legacy-peer-deps
           npm test
           npm run build
+
+      - name: Production deployment contract checks
+        if: ${{ inputs.include_production_contract }}
+        run: |
+          .venv/bin/pytest backend/tests/unit/test_private_production_deployment.py \
+            backend/tests/unit/test_music_search_production_preflight.py -q
+          deploy/production/validate-deployment-config.sh --common-only

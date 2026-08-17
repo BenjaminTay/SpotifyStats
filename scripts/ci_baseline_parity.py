@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+# ruff: noqa: UP045
 import argparse
+from collections.abc import Iterable, Sequence
 from pathlib import Path
-from typing import Iterable, Optional, Sequence, Tuple
-
+from typing import Optional
 
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_WORKFLOW = ROOT / ".github/workflows/phase5-baseline.yml"
+DEFAULT_WORKFLOW = ROOT / ".github/workflows/reusable-quality-checks.yml"
 DEFAULT_LOCAL_SCRIPT = ROOT / "scripts/phase5_check.sh"
 
 CHECK_PREFIXES = (
@@ -20,10 +21,11 @@ IGNORED_PREFIXES = (
     "python -m pip ",
     "pip install ",
     "npm ci ",
+    "pytest backend/tests/unit/test_private_production_deployment.py ",
 )
 
 
-def _unique(commands: Iterable[str]) -> Tuple[str, ...]:
+def _unique(commands: Iterable[str]) -> tuple[str, ...]:
     seen = set()
     result = []
     for command in commands:
@@ -58,7 +60,7 @@ def normalize_check_command(command: str) -> Optional[str]:
     return None
 
 
-def _extract_workflow_run_lines(workflow_path: Path) -> Tuple[str, ...]:
+def _extract_workflow_run_lines(workflow_path: Path) -> tuple[str, ...]:
     lines = workflow_path.read_text(encoding="utf-8").splitlines()
     commands = []
     index = 0
@@ -83,7 +85,7 @@ def _extract_workflow_run_lines(workflow_path: Path) -> Tuple[str, ...]:
     return tuple(commands)
 
 
-def get_workflow_check_commands(workflow_path: Path = DEFAULT_WORKFLOW) -> Tuple[str, ...]:
+def get_workflow_check_commands(workflow_path: Path = DEFAULT_WORKFLOW) -> tuple[str, ...]:
     return _unique(
         command
         for command in (
@@ -93,7 +95,7 @@ def get_workflow_check_commands(workflow_path: Path = DEFAULT_WORKFLOW) -> Tuple
     )
 
 
-def get_local_check_commands(script_path: Path = DEFAULT_LOCAL_SCRIPT) -> Tuple[str, ...]:
+def get_local_check_commands(script_path: Path = DEFAULT_LOCAL_SCRIPT) -> tuple[str, ...]:
     lines = script_path.read_text(encoding="utf-8").splitlines()
     return _unique(
         command
@@ -104,14 +106,14 @@ def get_local_check_commands(script_path: Path = DEFAULT_LOCAL_SCRIPT) -> Tuple[
 
 def get_missing_local_commands(
     workflow_commands: Sequence[str], local_commands: Sequence[str]
-) -> Tuple[str, ...]:
+) -> tuple[str, ...]:
     local_command_set = set(local_commands)
     return tuple(command for command in workflow_commands if command not in local_command_set)
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Verify local Phase 5 checks cover GitHub Actions baseline commands."
+        description="Verify local checks cover the shared GitHub Actions quality commands."
     )
     parser.add_argument("--workflow", type=Path, default=DEFAULT_WORKFLOW)
     parser.add_argument("--local-script", type=Path, default=DEFAULT_LOCAL_SCRIPT)
@@ -134,7 +136,7 @@ def main() -> int:
             print(f"- {command}")
         return 1
 
-    print("Local Phase 5 script covers GitHub Actions baseline checks.")
+    print("Local CI script covers shared GitHub Actions quality checks.")
     return 0
 
 

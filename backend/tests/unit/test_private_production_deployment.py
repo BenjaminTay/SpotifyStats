@@ -228,7 +228,7 @@ def test_release_restore_and_backup_guardrails_remain() -> None:
 
 
 def test_workflow_transports_one_exact_sha_before_touching_production() -> None:
-    workflow = (ROOT / ".github" / "workflows" / "deploy-production.yml").read_text()
+    workflow = (ROOT / ".github" / "workflows" / "production-release.yml").read_text()
 
     assert "NGINX_CONFIG=deploy/production/nginx.conf" in workflow
     assert "timeout-minutes: 20" in workflow
@@ -253,7 +253,7 @@ def test_workflow_transports_one_exact_sha_before_touching_production() -> None:
     assert "max-concurrent-uploads" not in workflow
     assert "docker/login-action" not in workflow
     assert "push: true" not in workflow
-    assert "deployment-profile-matrix:" in workflow
+    assert "validate_deployment_profiles:" in workflow
     assert "mode: [full, showcase, dual]" in workflow
     assert "private-nginx.conf.template" in workflow
     assert "public-nginx.conf.template" in workflow
@@ -280,7 +280,7 @@ def test_workflow_transports_one_exact_sha_before_touching_production() -> None:
 def test_backend_image_uses_split_runtime_dependency_layers() -> None:
     dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
     development = (ROOT / "requirements.txt").read_text(encoding="utf-8")
-    workflow = (ROOT / ".github" / "workflows" / "deploy-production.yml").read_text(
+    quality_workflow = (ROOT / ".github" / "workflows" / "reusable-quality-checks.yml").read_text(
         encoding="utf-8"
     )
 
@@ -319,7 +319,7 @@ def test_backend_image_uses_split_runtime_dependency_layers() -> None:
     assert "COPY requirements.txt" not in backend_stage
     assert "pytest>=8.0.0" in development
     assert "ruff>=0.1.0" in development
-    assert ".venv/bin/pip install -r requirements.txt" in workflow
+    assert ".venv/bin/pip install -r requirements.txt" in quality_workflow
 
 
 def test_temporary_showcase_is_pinned_access_aware_and_not_persistent() -> None:

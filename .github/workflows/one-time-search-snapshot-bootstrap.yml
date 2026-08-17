@@ -1,10 +1,14 @@
-name: Bootstrap production music-search statistics
+name: One-time Production Search Snapshot Bootstrap - Break Glass
 
 on:
   workflow_dispatch:
     inputs:
       target_sha:
         description: Existing exact API image commit SHA to run against an Online Backup
+        required: true
+        type: string
+      confirm_bootstrap:
+        description: Type INITIALIZE_SEARCH_SNAPSHOTS to confirm this one-time operation
         required: true
         type: string
 
@@ -19,7 +23,8 @@ env:
   TCR_REGISTRY: ccr.ccs.tencentyun.com
 
 jobs:
-  bootstrap:
+  initialize_search_snapshots:
+    name: Initialize six search snapshot variants
     runs-on: ubuntu-latest
     timeout-minutes: 45
     environment: production
@@ -30,6 +35,11 @@ jobs:
         env:
           TARGET_SHA: ${{ inputs.target_sha }}
         run: '[[ "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]]'
+
+      - name: Require explicit break-glass confirmation
+        env:
+          CONFIRM_BOOTSTRAP: ${{ inputs.confirm_bootstrap }}
+        run: '[[ "$CONFIRM_BOOTSTRAP" == "INITIALIZE_SEARCH_SNAPSHOTS" ]]'
 
       - name: Configure SSH
         env:
@@ -72,7 +82,7 @@ jobs:
             -i "$RUNNER_TEMP/spotify-stats-bootstrap-key" "$SERVER_USER@$SERVER_HOST" \
             "timeout --signal=TERM --kill-after=10s 1m docker login '$TCR_REGISTRY' --username '$TCR_USERNAME' --password-stdin"
 
-      - name: Build six statistics variants on a resumable Online Backup
+      - name: Build six statistics variants on a resumable Online Backup without deployment
         env:
           SERVER_HOST: ${{ secrets.SERVER_HOST }}
           SERVER_PORT: ${{ secrets.SERVER_PORT }}

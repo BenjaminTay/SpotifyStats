@@ -4,8 +4,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
 PRODUCTION = ROOT / "deploy" / "production"
-SMOKE_WORKFLOW = ROOT / ".github" / "workflows" / "smoke-production-image-transport.yml"
-PRODUCTION_WORKFLOW = ROOT / ".github" / "workflows" / "deploy-production.yml"
+SMOKE_WORKFLOW = ROOT / ".github" / "workflows" / "production-image-transport-rehearsal.yml"
+PRODUCTION_WORKFLOW = ROOT / ".github" / "workflows" / "production-release.yml"
 
 
 def test_smoke_workflow_uses_private_cas_artifact_without_production_mutation() -> None:
@@ -13,8 +13,8 @@ def test_smoke_workflow_uses_private_cas_artifact_without_production_mutation() 
 
     assert "workflow_dispatch:" in workflow
     assert "push:" not in workflow
-    assert "build_archive_upload:" in workflow
-    assert "needs: build_archive_upload" in workflow
+    assert "build_and_package_transport_artifact:" in workflow
+    assert "needs: build_and_package_transport_artifact" in workflow
     assert "environment: production" in workflow
     assert workflow.count("platforms: linux/amd64") == 2
     assert workflow.count("org.opencontainers.image.revision=${{ github.sha }}") == 2
@@ -86,7 +86,7 @@ def test_release_workflow_bootstraps_old_current_then_activates_only_after_deplo
     assert "publish-release-images.sh' '$GITHUB_SHA' release" in workflow
     assert "./deploy.sh '${{ github.sha }}' --image-source registry" in workflow
     assert "activate-release-images.sh" in workflow
-    deploy_job = workflow.split("\n  deploy:\n", 1)[1]
+    deploy_job = workflow.split("\n  deploy_release:\n", 1)[1]
     assert deploy_job.index("Bootstrap current production images") < deploy_job.index(
         "Transfer only missing CAS blobs"
     )

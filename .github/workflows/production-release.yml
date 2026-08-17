@@ -1,4 +1,4 @@
-name: Deploy SpotifyStats production
+name: Production Release - Verify, build and deploy
 
 on:
   workflow_dispatch:
@@ -7,9 +7,12 @@ on:
       - main
     paths-ignore:
       - "**/*.md"
-      - ".github/workflows/deploy-production.yml"
-      - ".github/workflows/smoke-production-image-transport.yml"
-      - ".github/workflows/bootstrap-production-music-search.yml"
+      - ".github/workflows/ci-quality.yml"
+      - ".github/workflows/reusable-quality-checks.yml"
+      - ".github/workflows/production-release.yml"
+      - ".github/workflows/production-image-transport-rehearsal.yml"
+      - ".github/workflows/one-time-search-snapshot-bootstrap.yml"
+      - ".github/workflows/production-deployment-contract.yml"
       - "deploy/production/bootstrap-music-search-statistics.sh"
       - "deploy/production/prepare-music-search-bootstrap-resume.py"
       - "deploy/production/validate-deployment-config.sh"
@@ -36,44 +39,15 @@ env:
   TCR_REGISTRY: ccr.ccs.tencentyun.com
 
 jobs:
-  verify:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.9"
-      - name: Install backend dependencies
-        run: |
-          python -m venv .venv
-          .venv/bin/pip install --upgrade pip
-          .venv/bin/pip install -r requirements.txt
-      - name: Backend checks
-        env:
-          SPOTIFY_STATS_TEST_SOURCE_DB: backend/tests/fixtures/seed.db
-        run: |
-          .venv/bin/pytest -m unit -q
-          .venv/bin/pytest -m contract -q
-          .venv/bin/ruff check backend/
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
-      - name: Frontend checks
-        working-directory: frontend
-        run: |
-          npm ci --legacy-peer-deps
-          npm test
-          npm run build
-      - name: Production deployment contract
-        run: |
-          .venv/bin/pytest backend/tests/unit/test_private_production_deployment.py \
-            backend/tests/unit/test_music_search_production_preflight.py -q
-          deploy/production/validate-deployment-config.sh all
+  quality_gate:
+    name: Shared quality and production contract checks
+    uses: ./.github/workflows/reusable-quality-checks.yml
+    with:
+      include_production_contract: true
 
-  deployment-profile-matrix:
-    needs: verify
+  validate_deployment_profiles:
+    needs: quality_gate
+    name: Validate ${{ matrix.mode }} deployment profile
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -81,11 +55,12 @@ jobs:
         mode: [full, showcase, dual]
     steps:
       - uses: actions/checkout@v4
-      - name: Validate ${{ matrix.mode }} deployment profile
-        run: deploy/production/validate-deployment-config.sh "${{ matrix.mode }}"
+      - name: Validate profile-specific deployment contract
+        run: deploy/production/validate-deployment-config.sh --profile-only "${{ matrix.mode }}"
 
-  build:
-    needs: [verify, deployment-profile-matrix]
+  build_release_images:
+    needs: [quality_gate, validate_deployment_profiles]
+    name: Build and package release images
     runs-on: ubuntu-latest
     timeout-minutes: 20
     outputs:
@@ -197,14 +172,15 @@ jobs:
           elapsed="$(( $(date +%s) - JOB_STARTED_AT ))"
           printf '| **Build job total** | **%s** | **%s** |\n' "$elapsed" "${ARTIFACT_BYTES:--}" >> "$GITHUB_STEP_SUMMARY"
 
-  deploy:
-    needs: build
+  deploy_release:
+    needs: build_release_images
+    name: Deploy verified release
     runs-on: ubuntu-latest
     timeout-minutes: 35
     environment: production
     env:
-      ARTIFACT_BYTES: ${{ needs.build.outputs.artifact_bytes }}
-      MANIFEST_SHA256: ${{ needs.build.outputs.manifest_sha256 }}
+      ARTIFACT_BYTES: ${{ needs.build_release_images.outputs.artifact_bytes }}
+      MANIFEST_SHA256: ${{ needs.build_release_images.outputs.manifest_sha256 }}
     steps:
       - uses: actions/checkout@v4
 

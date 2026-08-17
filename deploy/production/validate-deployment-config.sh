@@ -5,21 +5,34 @@ DEPLOY_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd -- "$DEPLOY_DIR/../.." && pwd)"
 COMPOSE_FILE="$DEPLOY_DIR/compose.yml"
 ENV_TEMPLATE="$DEPLOY_DIR/.env.example"
+validation_scope="all"
 requested_mode="${1:-all}"
 
+case "${1:-}" in
+  --common-only)
+    validation_scope="common"
+    requested_mode="all"
+    ;;
+  --profile-only)
+    validation_scope="profile"
+    requested_mode="${2:-}"
+    ;;
+esac
+
 usage() {
-  echo "用法：$0 [full|showcase|dual|all]" >&2
+  echo "用法：$0 [full|showcase|dual|all] | --common-only | --profile-only <full|showcase|dual>" >&2
 }
 
-if [[ "$requested_mode" != "all" && "$requested_mode" != "full" && \
+if [[ "$validation_scope" != "common" && "$requested_mode" != "all" && "$requested_mode" != "full" && \
       "$requested_mode" != "showcase" && "$requested_mode" != "dual" ]]; then
   usage
   exit 2
 fi
 
-for script in "$DEPLOY_DIR"/*.sh; do
-  bash -n "$script"
-done
+if [[ "$validation_scope" != "profile" ]]; then
+  for script in "$DEPLOY_DIR"/*.sh; do
+    bash -n "$script"
+  done
 
 grep -q 'python scripts/validate_container_image.py /app' "$PROJECT_ROOT/Dockerfile"
 for pattern in '**/*.db' '**/*.db-wal' '**/*.db-shm' '**/*.db-journal' \
@@ -75,14 +88,20 @@ if SHOWCASE_ACCESS_MODE=invalid SHOWCASE_ACCESS_CONFIG_PATH="$access_config" \
   exit 1
 fi
 
-for template in "$DEPLOY_DIR/private-nginx.conf.template" \
-                "$DEPLOY_DIR/public-nginx.conf.template"; do
-  grep -q 'X-SpotifyStats-Gateway-Token "${SPOTIFY_STATS_GATEWAY_TOKEN}"' "$template"
-  if grep -Eq 'replace-with|example-tailnet' "$template"; then
-    echo "网关模板包含占位密钥或环境地址：$template" >&2
-    exit 1
-  fi
-done
+  for template in "$DEPLOY_DIR/private-nginx.conf.template" \
+                  "$DEPLOY_DIR/public-nginx.conf.template"; do
+    grep -q 'X-SpotifyStats-Gateway-Token "${SPOTIFY_STATS_GATEWAY_TOKEN}"' "$template"
+    if grep -Eq 'replace-with|example-tailnet' "$template"; then
+      echo "网关模板包含占位密钥或环境地址：$template" >&2
+      exit 1
+    fi
+  done
+fi
+
+if [[ "$validation_scope" == "common" ]]; then
+  echo "部署公共配置验证通过：common"
+  exit 0
+fi
 
 validate_mode() {
   local mode="$1"

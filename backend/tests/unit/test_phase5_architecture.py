@@ -244,14 +244,16 @@ def test_chart_staged_public_api_is_split_from_chart_compute_facade():
     assert len(staged_api_source.splitlines()) <= 140
 
 
-def test_phase5_github_actions_checks_are_covered_by_local_script():
+def test_shared_github_actions_checks_are_covered_by_local_script():
     from scripts.ci_baseline_parity import (
         get_local_check_commands,
         get_missing_local_commands,
         get_workflow_check_commands,
     )
 
-    workflow_checks = get_workflow_check_commands(ROOT / ".github/workflows/phase5-baseline.yml")
+    workflow_checks = get_workflow_check_commands(
+        ROOT / ".github/workflows/reusable-quality-checks.yml"
+    )
     local_checks = get_local_check_commands(ROOT / "scripts/phase5_check.sh")
 
     assert "pytest -m unit -q" in workflow_checks

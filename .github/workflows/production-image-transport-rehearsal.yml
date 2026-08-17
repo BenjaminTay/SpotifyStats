@@ -1,4 +1,4 @@
-name: Smoke production image transport
+name: Production Image Transport Rehearsal - No Deploy
 
 on:
   workflow_dispatch:
@@ -16,7 +16,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: spotify-stats-image-transport-smoke
+  group: spotify-stats-image-transport-rehearsal
   cancel-in-progress: false
 
 env:
@@ -25,7 +25,8 @@ env:
   LOCAL_WEB_IMAGE: spotify-stats-web:transport-${{ github.sha }}
 
 jobs:
-  build_archive_upload:
+  build_and_package_transport_artifact:
+    name: Build and package transport artifact
     runs-on: ubuntu-latest
     timeout-minutes: 30
     outputs:
@@ -118,7 +119,7 @@ jobs:
       - name: Upload one-day private CAS Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: spotify-stats-image-transport-smoke-${{ github.sha }}
+          name: spotify-stats-image-transport-rehearsal-${{ github.sha }}
           path: ${{ runner.temp }}/image-bundle
           if-no-files-found: error
           retention-days: 1
@@ -137,14 +138,15 @@ jobs:
           elapsed="$(( $(date +%s) - JOB_STARTED_AT ))"
           printf '| **Build job total** | **%s** | **%s** |\n' "$elapsed" "${ARTIFACT_BYTES:--}" >> "$GITHUB_STEP_SUMMARY"
 
-  transfer:
-    needs: build_archive_upload
+  rehearse_transport_without_deploy:
+    needs: build_and_package_transport_artifact
+    name: Rehearse transport without deployment
     runs-on: ubuntu-latest
     timeout-minutes: 35
     environment: production
     env:
-      ARTIFACT_BYTES: ${{ needs.build_archive_upload.outputs.artifact_bytes }}
-      MANIFEST_SHA256: ${{ needs.build_archive_upload.outputs.manifest_sha256 }}
+      ARTIFACT_BYTES: ${{ needs.build_and_package_transport_artifact.outputs.artifact_bytes }}
+      MANIFEST_SHA256: ${{ needs.build_and_package_transport_artifact.outputs.manifest_sha256 }}
     steps:
       - uses: actions/checkout@v4
 
@@ -163,7 +165,7 @@ jobs:
       - name: Download private CAS Artifact
         uses: actions/download-artifact@v4
         with:
-          name: spotify-stats-image-transport-smoke-${{ github.sha }}
+          name: spotify-stats-image-transport-rehearsal-${{ github.sha }}
           path: ${{ runner.temp }}/image-bundle
 
       - name: Record private Artifact download elapsed

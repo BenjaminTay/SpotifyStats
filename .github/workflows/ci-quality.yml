@@ -1,0 +1,16 @@
+name: CI - Backend, frontend and build checks
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - "codex/**"
+      - "fix/**"
+
+jobs:
+  quality_gate:
+    name: Shared quality checks
+    uses: ./.github/workflows/reusable-quality-checks.yml
+    with:
+      include_production_contract: false

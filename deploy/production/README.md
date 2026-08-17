@@ -179,11 +179,16 @@ API 白名单、写操作阻断和只读数据连接才是最终安全边界。
 
 ## 发布、回滚与 GitHub Actions
 
-GitHub Actions 的流程是：
+GitHub Actions 分为日常质量检查、部署契约检查和正式发布三条边界：
+
+- `ci-quality.yml`：Pull Request 和常规分支 push 的后端、前端、文档与构建检查。
+- `production-deployment-contract.yml`：只在 Docker、部署脚本、生产测试或 workflow 变化时运行；只做契约检查，不连接服务器、不部署。
+- `production-release.yml`：`main` push 或手动触发的正式发布。
+- `production-image-transport-rehearsal.yml`：手动镜像传输演练；不部署、不重启线上服务。
 
 ```text
 push main
-→ 后端/前端测试
+→ CI 质量检查
 → full/showcase/dual 静态部署矩阵
 → 构建同一 SHA 的 API/Web 镜像
 → 上传一天保留的私有 CAS Artifact
@@ -218,7 +223,8 @@ Online Backup，但不得停服或替换数据库。
 6. 任一新版本验收失败，同时恢复发布前 SQLite、上一 SHA 和上一 deployment mode。
 
 旧生产库第一次升级到 migration 36 时，先单独运行手动
-`bootstrap-production-music-search.yml` 建立六套统计；该 workflow 不部署应用。完成一次性引导后，
+`one-time-search-snapshot-bootstrap.yml` 建立六套统计；该 workflow 需要显式输入
+`INITIALIZE_SEARCH_SNAPSHOTS`，且不部署应用。完成一次性引导后，
 正常 UI、部署脚本、查询匹配或 Git SHA 变化不得再次冷建六套统计。
 
 一次性统计引导默认要求 `MemAvailable >= 1280MiB`；正常发布固定使用
@@ -236,6 +242,10 @@ Online Backup，但不得停服或替换数据库。
 ./rollback.sh
 ./rollback.sh <commit-sha>
 ./validate-deployment-config.sh all
+./validate-deployment-config.sh --common-only
+./validate-deployment-config.sh --profile-only full
+./validate-deployment-config.sh --profile-only showcase
+./validate-deployment-config.sh --profile-only dual
 ```
 
 需要单独复核副本时，必须传入非 `deploy/production/data/` 的明确 DB 副本和全新报告路径：

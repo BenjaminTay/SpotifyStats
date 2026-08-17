@@ -13,7 +13,7 @@
   <a href="deploy/production/README.md">部署指南</a>
 </p>
 
-[![Phase 5 Baseline](https://github.com/BenjaminTay/SpotifyStats/actions/workflows/phase5-baseline.yml/badge.svg)](https://github.com/BenjaminTay/SpotifyStats/actions/workflows/phase5-baseline.yml)
+[![CI - Backend, frontend and build checks](https://github.com/BenjaminTay/SpotifyStats/actions/workflows/ci-quality.yml/badge.svg)](https://github.com/BenjaminTay/SpotifyStats/actions/workflows/ci-quality.yml)
 [![Python 3.9+](https://img.shields.io/badge/Python-3.9%2B-3776AB?logo=python&logoColor=white)](requirements.txt)
 [![Node.js 22+](https://img.shields.io/badge/Node.js-22%2B-339933?logo=nodedotjs&logoColor=white)](frontend/package.json)
 [![License: MIT](https://img.shields.io/badge/License-MIT-F15B4A.svg)](LICENSE)

@@ -420,7 +420,7 @@ def test_production_compose_and_workflow_ship_search_release_gates() -> None:
     assert "SEARCH_PREFLIGHT_MIN_AVAILABLE_MIB=1280" in env_template
     assert "SEARCH_PREFLIGHT_REUSE_MIN_AVAILABLE_MIB=640" in env_template
 
-    workflow = (ROOT / ".github" / "workflows" / "deploy-production.yml").read_text(
+    workflow = (ROOT / ".github" / "workflows" / "production-release.yml").read_text(
         encoding="utf-8"
     )
     assert "timeout-minutes: 35" in workflow
@@ -433,10 +433,10 @@ def test_production_compose_and_workflow_ship_search_release_gates() -> None:
 def test_one_time_statistics_bootstrap_is_manual_resumable_and_never_deploys() -> None:
     bootstrap = (PRODUCTION / "bootstrap-music-search-statistics.sh").read_text(encoding="utf-8")
     helper = (PRODUCTION / "prepare-music-search-bootstrap-resume.py").read_text(encoding="utf-8")
-    workflow = (ROOT / ".github" / "workflows" / "bootstrap-production-music-search.yml").read_text(
-        encoding="utf-8"
-    )
-    production_workflow = (ROOT / ".github" / "workflows" / "deploy-production.yml").read_text(
+    workflow = (
+        ROOT / ".github" / "workflows" / "one-time-search-snapshot-bootstrap.yml"
+    ).read_text(encoding="utf-8")
+    production_workflow = (ROOT / ".github" / "workflows" / "production-release.yml").read_text(
         encoding="utf-8"
     )
 
@@ -447,7 +447,8 @@ def test_one_time_statistics_bootstrap_is_manual_resumable_and_never_deploys() -
     assert "docker ps --no-trunc" in workflow
     assert "cmp --silent" in workflow
     assert "retention-days: 1" in workflow
-    assert "bootstrap-production-music-search.yml" in production_workflow
+    assert "one-time-search-snapshot-bootstrap.yml" in production_workflow
+    assert "INITIALIZE_SEARCH_SNAPSHOTS" in workflow
     assert "bootstrap-music-search-statistics.sh" in production_workflow
     assert "prepare-music-search-bootstrap-resume.py" in production_workflow
 

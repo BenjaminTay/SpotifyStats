@@ -1,0 +1,53 @@
+name: Production Deployment Contract - No Deploy
+
+on:
+  pull_request:
+    paths:
+      - ".dockerignore"
+      - "Dockerfile"
+      - ".github/workflows/**"
+      - "deploy/production/**"
+      - "backend/tests/unit/test_private_production_deployment.py"
+      - "backend/tests/unit/test_production_image_transport.py"
+      - "backend/tests/unit/test_image_transport_cas.py"
+      - "backend/tests/unit/test_music_search_production_preflight.py"
+      - "backend/tests/unit/test_prepare_music_search_resume_script.py"
+  push:
+    branches:
+      - main
+      - "codex/**"
+      - "fix/**"
+    paths:
+      - ".dockerignore"
+      - "Dockerfile"
+      - ".github/workflows/**"
+      - "deploy/production/**"
+      - "backend/tests/unit/test_private_production_deployment.py"
+      - "backend/tests/unit/test_production_image_transport.py"
+      - "backend/tests/unit/test_image_transport_cas.py"
+      - "backend/tests/unit/test_music_search_production_preflight.py"
+      - "backend/tests/unit/test_prepare_music_search_resume_script.py"
+
+permissions:
+  contents: read
+
+jobs:
+  quality_gate:
+    name: Shared quality and production contract checks
+    uses: ./.github/workflows/reusable-quality-checks.yml
+    with:
+      include_production_contract: true
+
+  validate_deployment_profiles:
+    needs: quality_gate
+    name: Validate ${{ matrix.mode }} deployment profile
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [full, showcase, dual]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Validate profile-specific deployment contract
+        run: deploy/production/validate-deployment-config.sh --profile-only "${{ matrix.mode }}"
