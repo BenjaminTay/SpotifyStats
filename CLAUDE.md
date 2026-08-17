@@ -28,6 +28,8 @@ PWA/App 基线：生产构建通过 `/manifest.webmanifest`、PWA 图标和 `/sw
 
 音乐查找 V2：Quick Open 与 `/music/search` 使用 `response_mode=candidates` 读取版本化 FTS5 trigram 派生索引，再由 `/api/music/search/context` 按稳定 `entity_key` 渐进读取同一完整过滤指纹的精确播放/榜单快照；候选热路径禁止加载 lifetime 播放帧或计算完整 Billboard。确定性 `candidate_index_version` 与不含随机 generation/Git SHA 的 `statistics_fingerprint` 独立；查询支持固定 OpenCC 简繁扩展、短 CJK n-gram 和主路径零命中后的有界 trigram + 编辑距离。服务端基础设置维护 L1/L2/L3 × 动态阈值开/关六个变体，由单个 `snapshot-set` job 顺序构建；GET 只读持久 revision state，reader 必须校验 ready、精确 fingerprint 和当前 builder version。Quick Open 每类 3 条且默认不选首条，全部页每类 5 条，单类型每页 20 条并把 `q/kind/page` 放入 URL；输入统一使用 220ms 防抖、IME 门禁、AbortSignal、`retry: 0`、keep-previous-data，只有 warming/stale 退避观察。Unicode 高亮在 `Intl.Segmenter` 缺失或不可构造时必须安全降级；context 未加载不得伪装为 0 次播放。public 只允许 `current` 且 GET 不写库、不排队、不冷构建，`any_local` 仅供 private Settings。导入、设置、版本归并、艺人身份和署名变化必须 bump 持久 revision，并按依赖分别失效候选或统计；普通 SHA 和查询匹配变化不得重建六变体。startup catch-up 使用独立开关，private 生产默认开启，副本 one-shot 显式关闭；精确 ready 集合必须只校验不重复构建。候选/context warm P95 预算为 80/20ms，见 `docs/plans/2026-08-16-music-search-direction-realignment.md` 与 `docs/reports/2026-08-16-music-search-optimization-delivery.md`。
 
+音乐查找展示规则：匹配字段只供排序、高亮、测试和诊断，普通界面不展示匹配对象、简繁匹配或近似匹配等工程标签；搜索名称、副标题、封面辅助文字和最近查看列表跟随全局简繁体偏好，且不改变稳定键、详情深链或保存的原始值。
+
 Billboard 对决：单曲、专辑、艺人对决及 entity lists 必须与详情页共享完整统计上下文（动态阈值、连续播放间隔、合并级别、榜单周边界、三类 Top N、年份范围、精选集设置），前端 query key 必须包含完整过滤指纹。专辑曲目归属复用详情的 album project + canonical artist 口径，艺人歌曲成绩复用 credited artist fan-out 并按 stable event + canonical artist 去重。
 
 Billboard 总榜：专辑成员歌曲及艺人歌曲/专辑的跨层级走势点数统一走 `cross_level_power.py`；排名基于完整当前同类实体集合，零贡献不排名，客户端搜索、分页和字段配置不得重排。三榜字段配置独立持久化，名称和当前排名固定；实体走势评分与走势排名相邻且均可独立显示。

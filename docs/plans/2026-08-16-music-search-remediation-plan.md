@@ -332,7 +332,8 @@ exact/prefix；fallback 必须返回准确状态，不把前 10 条数量冒充 
 
 `HighlightedSearchText` 使用与 query key 相同的 NFKC、标点和稳定 lowercase 规则，并维护规范化字符到
 原始 grapheme 范围的映射；继续输出 React text/`<mark>`，禁止 `innerHTML`。根据 `match_field` 在 label
-或 subtitle 中高亮，alias 命中但不可直接显示时保留轻量“匹配别名”说明。
+或 subtitle 中高亮；alias 命中仍可参与排序和诊断，但消费界面不展示“匹配别名”等内部标签。结果名称
+与副标题必须跟随全局简繁体偏好，深链和最近查看的持久化值继续保留原始实体数据。
 
 覆盖弯引号、全角 Latin、Unicode 空白、`ß -> ss` 和 CJK 标点；浏览器 locale 不得改变 query key 或高亮。
 

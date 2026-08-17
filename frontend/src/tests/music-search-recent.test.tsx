@@ -1,6 +1,8 @@
-import { act, renderHook, waitFor } from '@testing-library/react'
+import { act, render, renderHook, screen, waitFor } from '@testing-library/react'
+import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { RecentMusicEntityList } from '@/features/music/search/RecentMusicEntityList'
 import { useRecentMusicEntities } from '@/features/music/search/recentMusicEntities'
 import type { MusicSearchCandidate } from '@/types/music-search'
 
@@ -59,5 +61,27 @@ describe('private recent music entities', () => {
     act(() => result.current.clear())
     expect(result.current.items).toEqual([])
     expect(localStorage.getItem('spotify_stats_recent_music_entities_v1')).toBeNull()
+  })
+
+  it('applies the global Chinese display preference to recent entities', async () => {
+    localStorage.setItem('chineseStyle', 'simplified')
+    render(
+      <MemoryRouter>
+        <RecentMusicEntityList
+          items={[{
+            entity_key: 'track:1',
+            label: '認了吧',
+            kind: 'track',
+            href: '/music/tracks/1',
+            viewed_at: '2026-08-17T00:00:00Z',
+          }]}
+          onClear={vi.fn()}
+        />
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => expect(screen.getByText('认了吧')).toBeInTheDocument())
+    expect(screen.queryByText('認了吧')).not.toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /认了吧/ })).toHaveAttribute('href', '/music/tracks/1')
   })
 })

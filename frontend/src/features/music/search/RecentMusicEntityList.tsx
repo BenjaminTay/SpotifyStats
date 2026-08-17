@@ -1,6 +1,8 @@
 import { Clock3, X } from 'lucide-react'
 import { Link } from 'react-router-dom'
 
+import { displayName, useChineseTextVersion } from '@/lib/chinese'
+
 import { MUSIC_SEARCH_KIND_LABELS } from './musicSearchUtils'
 import type { RecentMusicEntity } from './recentMusicEntities'
 
@@ -15,6 +17,8 @@ export function RecentMusicEntityList({
   onOpen?: () => void
   compact?: boolean
 }) {
+  useChineseTextVersion()
+
   if (items.length === 0) return null
   return (
     <section className="overflow-hidden rounded-lg border border-border bg-card/80" aria-label="最近查看的音乐">
@@ -37,7 +41,7 @@ export function RecentMusicEntityList({
               <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground">
                 {MUSIC_SEARCH_KIND_LABELS[item.kind]}
               </span>
-              <span className="min-w-0 truncate text-sm font-medium text-foreground">{item.label}</span>
+              <span className="min-w-0 truncate text-sm font-medium text-foreground">{displayName(item.label)}</span>
             </Link>
           </li>
         ))}

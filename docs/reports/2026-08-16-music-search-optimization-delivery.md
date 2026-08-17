@@ -83,8 +83,10 @@ Pass。远程生产运行状态仍只以对应 commit SHA 的 GitHub Actions pro
   深链，不显示虚假的 0 次播放。
 - Phone 显式入口使用一次性 autofocus intent；从详情 Back 不重新弹键盘，并恢复查询、页码和
   结果区滚动位置。
-- 匹配文本使用 React `<mark>` 节点安全高亮，不使用 `innerHTML`；label、subtitle 与 alias 根据后端
-  `match_field` 显示。高亮沿用 NFKC/casefold/标点规则并映射回原始 grapheme；Firefox 等没有可构造
+- 匹配文本使用 React `<mark>` 节点安全高亮，不使用 `innerHTML`；label 与 subtitle 根据后端
+  `match_field` 高亮，但“匹配艺人/专辑/别名”“简繁匹配”“近似匹配”等内部诊断不进入消费界面。
+  结果名称、副标题、封面辅助文字与最近查看列表跟随全局简繁体偏好，深链和持久化值保留原始实体数据。
+  高亮沿用 NFKC/casefold/标点规则并映射回原始 grapheme；Firefox 等没有可构造
   `Intl.Segmenter` 的环境使用组合符、variation selector、Emoji modifier 与 ZWJ 安全 fallback。
   private-admin 最近查看最多 6 条，public capability 下不读取也不写入相关 localStorage。
 

@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom'
 
 import { MobileEntityRow } from '@/components/mobile'
 import { CoverCell } from '@/components/shared/CoverCell'
+import { displayName, useChineseTextVersion } from '@/lib/chinese'
 import { cn } from '@/lib/utils'
 import type {
   MusicSearchCandidate,
@@ -151,36 +152,20 @@ function snapshotMessage(
   }
 }
 
-function matchExplanation(item: MusicSearchCandidate): string | null {
-  if (item.match_type === 'fuzzy') return '近似匹配'
-  if (item.match_type === 'simplified' || item.match_type === 'traditional') return '简繁匹配'
-  return item.match_field === 'artist'
-    ? '匹配艺人'
-    : item.match_field === 'album'
-      ? '匹配专辑'
-      : item.match_field === 'alias'
-        ? '匹配别名'
-        : null
-}
-
 function resultTitle(item: MusicSearchCandidate, query: string): ReactNode {
+  const label = displayName(item.label)
   return item.match_field === 'label'
-    ? <HighlightedSearchText text={item.label} query={query} />
-    : item.label
+    ? <HighlightedSearchText text={label} query={displayName(query)} />
+    : label
 }
 
 function resultSubtitle(item: MusicSearchCandidate, query: string): ReactNode | null {
-  const explanation = matchExplanation(item)
   const shouldHighlight = item.match_field === 'artist' || item.match_field === 'album'
-  if (!item.subtitle) return explanation
-  return (
-    <>
-      {explanation && <>{explanation}<span aria-hidden="true"> · </span></>}
-      {shouldHighlight
-        ? <HighlightedSearchText text={item.subtitle} query={query} />
-        : item.subtitle}
-    </>
-  )
+  if (!item.subtitle) return null
+  const subtitle = displayName(item.subtitle)
+  return shouldHighlight
+    ? <HighlightedSearchText text={subtitle} query={displayName(query)} />
+    : subtitle
 }
 
 function SnapshotNotice({
@@ -242,6 +227,8 @@ export function MusicSearchResults({
   maintenanceHref = null,
   publicReadonly = false,
 }: MusicSearchResultsProps) {
+  useChineseTextVersion()
+
   if (!hasSearchQuery(query)) {
     return (
       <div className={cn('rounded-lg border border-dashed border-border bg-muted/30 px-4 py-8 text-center', compact && 'py-6')}>
@@ -462,7 +449,7 @@ function ResultRow({
           isActive && 'bg-muted/50 ring-1 ring-accent-foreground/25',
         )}
       >
-        <CoverCell index={index} coverUrl={item.cover_url} className={compact ? 'size-9 shrink-0' : 'size-11 shrink-0'} label={item.label} />
+        <CoverCell index={index} coverUrl={item.cover_url} className={compact ? 'size-9 shrink-0' : 'size-11 shrink-0'} label={displayName(item.label)} />
         <span className="min-w-0 flex-1">
           <span className="block truncate text-sm font-semibold text-foreground">
             {resultTitle(item, query)}

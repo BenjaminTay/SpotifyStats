@@ -1,9 +1,10 @@
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { MusicSearchResults } from '@/features/music/search/MusicSearchResults'
 import { HighlightedSearchText } from '@/features/music/search/HighlightedSearchText'
+import { setChineseStyle } from '@/lib/chinese'
 import type { MusicSearchCandidateResponse, MusicSearchContextResponse } from '@/types/music-search'
 
 const sampleResults: MusicSearchCandidateResponse = {
@@ -112,6 +113,8 @@ function replaceIntlSegmenter(value: unknown): () => void {
 }
 
 describe('MusicSearchResults', () => {
+  afterEach(() => localStorage.removeItem('chineseStyle'))
+
   it('renders exact totals and progressive context without exposing championship weeks', () => {
     renderResults(sampleResults)
 
@@ -245,7 +248,7 @@ describe('MusicSearchResults', () => {
     }
   })
 
-  it('highlights the matched subtitle field and labels invisible alias matches', () => {
+  it('highlights the matched subtitle field without showing match diagnostics', () => {
     const artistMatch = {
       ...sampleResults,
       query: 'taylor',
@@ -254,23 +257,23 @@ describe('MusicSearchResults', () => {
     }
     const { container, unmount } = renderResults(artistMatch, 'taylor', null)
     expect(container.querySelector('mark')).toHaveTextContent('Taylor')
-    expect(screen.getByText('匹配艺人', { exact: false })).toBeInTheDocument()
+    expect(screen.queryByText('匹配艺人', { exact: false })).not.toBeInTheDocument()
     unmount()
 
     renderResults({
       ...sampleResults,
       tracks: [{ ...sampleResults.tracks[0], match_field: 'alias' }],
     }, 'swiftie', null)
-    expect(screen.getByText('匹配别名', { exact: false })).toBeInTheDocument()
+    expect(screen.queryByText('匹配别名', { exact: false })).not.toBeInTheDocument()
     expect(screen.queryByText('swiftie')).not.toBeInTheDocument()
   })
 
-  it('explains deterministic Chinese variants and fuzzy matches', () => {
+  it('does not expose Chinese-variant or fuzzy-match diagnostics', () => {
     const { unmount } = renderResults({
       ...sampleResults,
       tracks: [{ ...sampleResults.tracks[0], match_type: 'traditional' }],
     }, '周杰伦', null)
-    expect(screen.getByText('简繁匹配', { exact: false })).toBeInTheDocument()
+    expect(screen.queryByText('简繁匹配', { exact: false })).not.toBeInTheDocument()
     unmount()
 
     renderResults({
@@ -281,6 +284,38 @@ describe('MusicSearchResults', () => {
         match_type: 'fuzzy',
       }],
     }, 'cardgan', null)
-    expect(screen.getByText('近似匹配', { exact: false })).toBeInTheDocument()
+    expect(screen.queryByText('近似匹配', { exact: false })).not.toBeInTheDocument()
+  })
+
+  it('follows global Chinese display preference changes without changing links', async () => {
+    const traditionalResult: MusicSearchCandidateResponse = {
+      ...sampleResults,
+      query: '認了吧',
+      normalized_query: '認了吧',
+      total: 1,
+      total_by_kind: { track: 1, album: 0, artist: 0 },
+      tracks: [{
+        ...sampleResults.tracks[0],
+        label: '認了吧',
+        subtitle: '陳奕迅 · 認了吧',
+        href: '/music/tracks/42?title=%E8%AA%8D%E4%BA%86%E5%90%A7',
+      }],
+      albums: [],
+      artists: [],
+    }
+
+    const { container } = renderResults(traditionalResult, '認了吧', null)
+    expect(container).toHaveTextContent('陳奕迅 · 認了吧')
+
+    act(() => setChineseStyle('simplified'))
+
+    await waitFor(() => expect(container).toHaveTextContent('认了吧'))
+    expect(container).toHaveTextContent('陈奕迅 · 认了吧')
+    expect(container).not.toHaveTextContent('認了吧')
+    expect(screen.getByRole('link', { name: /认了吧/ })).toHaveAttribute(
+      'href',
+      '/music/tracks/42?title=%E8%AA%8D%E4%BA%86%E5%90%A7',
+    )
+    expect(screen.getByRole('img', { name: '认了吧 封面' })).toBeInTheDocument()
   })
 })
