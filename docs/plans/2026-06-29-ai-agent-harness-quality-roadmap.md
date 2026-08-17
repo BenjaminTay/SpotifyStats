@@ -1,5 +1,7 @@
 # AI Agent Harness Quality Roadmap Implementation Plan
 
+> 状态：持续维护路线；已完成部分以当前代码、测试和交付报告为准
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Upgrade the current read-only AI chat Agent from a single-pass tool runner into a evidence-driven analysis harness that can answer broad listening-data questions with stable, inspectable quality.

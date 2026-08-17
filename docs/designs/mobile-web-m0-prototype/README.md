@@ -42,4 +42,4 @@ http://127.0.0.1:8765/docs/designs/mobile-web-m0-prototype/
 - 正式实现必须复用现有 API、TanStack Query、过滤指纹和实体链接规则。
 - 社区、年度总结、播放记录等页面已纳入完整设计规格，但不在六屏原型中重复制作。
 
-对应冻结规格：[`../2026-08-05-mobile-web-m0-design-freeze.md`](../2026-08-05-mobile-web-m0-design-freeze.md)。
+对应冻结规格：[`../2026-08-05-mobile-web-m0-design-freeze.md`](../../archive/06-productization-closeout/2026-08-05-mobile-web-m0-design-freeze.md)。

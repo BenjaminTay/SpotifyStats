@@ -107,7 +107,7 @@ export function CommunityAccountExperience() {
             <div
               className="absolute right-6 -bottom-4 select-none pointer-events-none"
               style={{
-                fontFamily: "'Playfair Display', serif",
+                fontFamily: 'var(--font-serif)',
                 fontSize: '120px',
                 fontWeight: 900,
                 lineHeight: 1,

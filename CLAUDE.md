@@ -1,185 +1,92 @@
-# CLAUDE.md
+# SpotifyStats 项目工作约定
 
-年度生成协调：在既有年度只读报告 API 外，新增 `/api/yearly-review/prewarm` 与 `/api/yearly-review/generation-status`。`yearly_review_generation_v1` 使用单工作线程优先级队列与 exact cache key 去重，当前年优先、其余可用年份从近到远后台预建，切年提升 queued 任务，等待时间使用服务端 `requested_at`，缓存命中不得被其他年份冷构建阻塞。前端离开页面只取消 HTTP 等待，不终止后台任务；Desktop/Compact/Phone 年度总结共用批量预建。
+本文档是 AI 与开发工具共用的当前项目速查。`AGENTS.md` 与 `CLAUDE.md` 必须保持完全一致；详细规则只在对应参考文档维护，不在这里复制完整历史。
 
-个人云双运行面部署：同一 SHA、Backend 和 SQLite 通过 `DEPLOYMENT_MODE=full|showcase|dual` 提供 `private-admin` 与 `public-readonly`，两个 Web 仅绑定 `127.0.0.1:3001/3002`，Backend 不映射宿主端口。Tailscale 或域名代理是独立可选入口，部署脚本不得自动操作。Nginx runtime template 强制覆盖运行面并注入网关密钥，Backend 生产环境除 health 外 fail closed；公共 API 使用显式白名单，新 GET 默认私有，公共主库和年度 sidecar 强制 `mode=ro + query_only`，年度、封面和 release-cycle 不得由公开访问触发构建、外部补全、写库或任务。前端 capability 不是安全边界。数据、备份和密钥不得进入镜像；GitHub 构建的 SHA 镜像经短期私有 CAS Artifact 将缺失 blob 续传到现有服务器，校验后由服务器推送 TCR，镜像传输完成前不得进入备份或停服。发布使用 Online Backup、三模式门禁，并把 SHA、模式和发布前 SQLite 一起回滚。搜索预检在明确 DB 副本执行 migration 36、独立候选版本、精确六变体和 orphan=0 门禁；普通 SHA、前端、部署或查询匹配变化不得冷建六套统计，源数据漂移即拒绝替换，禁止在 live DB 首次冷构建。3000/3001/3002/8000 不得开放公网；完全版外部入口必须另有身份认证，OAuth 回调使用完全版 HTTPS 地址。详见 `docs/reports/2026-08-13-dual-deployment-profile-delivery.md`。
+## 交流语言
 
-> 完整项目上下文见 `AGENTS.md`。本文档保留常用命令、核心约束和架构要点作为速查。
+始终使用中文与项目协作者交流。结论必须区分：已实现、已验证、依赖外部条件、仍有边界。
 
-## 项目概述
+## 网络代理
 
-Spotify Extended Streaming History 数据分析 Web 应用 — **FastAPI 后端 + React 前端**。
+访问 GitHub 等外网资源遇到网络问题时，可先设置 `HTTP_PROXY`、`HTTPS_PROXY`、`ALL_PROXY` 及其小写变量为本机代理 `http://127.0.0.1:7897` / `socks5://127.0.0.1:7897`。若 Codex 命令出现 `connect EPERM`、DNS 或 registry 失败，还需检查 Codex 的 workspace network access 配置；修改后须重启 Codex Desktop。
 
-UI：「编辑风 × 液态玻璃」— Playfair Display + Inter，毛玻璃，日/夜双皮肤。
+## 文档阅读顺序
 
-个人音乐首页 V1：`/` 是个人音乐头版，不再承载播放统计仪表盘。Desktop/Phone 使用互斥的杂志头版与口袋头版，不重复展示数据更新时间、音乐搜索、数据陈旧提醒或账号/AI/社区/更新数据快捷入口；两端共享 `/api/home/overview`、完整过滤指纹和实体深链。头条及最近 4 周事实均为确定性生成。新鲜度读取原始音乐源最新日期，最近窗口以最新有效播放日锚定为两个连续 28 个自然日并补齐零播放日；首页近期入口显式选择 `last_4_weeks` 并携带同一窗口起止日，不改变播放分析页的全部时间默认值。年度预览与 Billboard 摘要只能读精确缓存，打开首页不得触发冷构建；App Shell 不再全局预取旧 Dashboard、周榜或总榜。
+- 项目介绍与启动：[README.md](README.md)
+- 文档地图：[docs/README.md](docs/README.md)
+- 当前统计规则：[docs/reference/playback-stats-rules.md](docs/reference/playback-stats-rules.md)
+- 音乐档案规则：[docs/reference/account-archive-statistics.md](docs/reference/account-archive-statistics.md)
+- 元数据治理：[docs/reference/music-metadata-management.md](docs/reference/music-metadata-management.md)
+- 流派与语言：[docs/reference/2026-07-04-artist-genre-taxonomy.md](docs/reference/2026-07-04-artist-genre-taxonomy.md)、[docs/reference/artist-language-statistics.md](docs/reference/artist-language-statistics.md)
+- 导入健康：[docs/reference/data-import-and-health.md](docs/reference/data-import-and-health.md)
+- 生产运行：[deploy/production/README.md](deploy/production/README.md)
+- 交付证据：[docs/reports/README.md](docs/reports/README.md)
 
-导航命名：顶级入口使用“播放分析”；二级 tab 固定为“播放统计 / 播放排行 / 年度总结 / 播放记录 / 音乐档案”。年度总结与音乐档案保持在播放分析 tab 行内，避免恢复独立顶级入口或重复下拉入口。
+## 项目定位
 
-音乐档案：`/account` 保留路由，二级导航与正文统一使用“音乐档案”；Desktop/Compact 与 Phone presentation 互斥挂载，共享 `account_archive` 严格事实。封面不显示数据范围、截止日期或数据状态；章节标题不附解释性 subtitle，普通界面不展示“可观察”“可验证”或方法口径。收藏旅程使用第 100 / 200 / 400 / 800 首等倍增里程碑；收藏后再次播放使用“7 天内 / 第 8–30 天 / 半年后 / 一年后”互补窗口；视频卡展示带封面的本地可识别 Top 3。不得恢复旧人格、chemistry、Habits、Marquee 或粉丝等级页面，不得从页面请求 `/api/profile`、旧 `/api/account` 或 `/api/account/collection-insights`。AI 的两个 account 工具名只作编排兼容，证据来自 archive overview / journey / cohorts / returns / discovery。
+SpotifyStats 是本地优先的单用户 Spotify Extended Streaming History 分析应用：FastAPI 后端 + React 前端 + SQLite。原始播放记录、账号导出、数据库、封面和备份默认属于本地数据，不得提交到 Git 或打入镜像。
 
-年度总结 V2：`/yearly-review` 只展示自有年度总结。Desktop/Compact 与 Phone 共享确定性八章数据、过滤指纹、coverage、缓存和生成任务，但使用互斥的独立 presentation；桌面是完整杂志年鉴，Phone 是“口袋音乐年鉴”、2×3 KPI、章节进度 Sheet、纵向时间线和无宽表全屏榜单。官方 Wrapped 页签与前端组件已删除，`/api/wrapped-hub` 和官方导入数据仅作只读兼容冻结。V2 通过 `/api/yearly-review/available-years|{year}|{year}/records` 消费统一过滤指纹、coverage、策略与元数据 revision；播放/时长榜和个人 Billboard 必须明确区分，月度正文只有一条转折时间线，十二月明细按需展开。同比使用真实 aligned window，工作日/周末使用自然日日均，Passport 使用规范实体粒度，YTD 品味只比较完整季度；公开纪录、阶段和结语均受显式证据规则约束。消费 UI 不展示口径、指纹、策略、证据等级、coverage 或 limitations，只使用普通用户文案；六项 KPI 只显示红/绿箭头与百分比，实体故事和完整榜单优先显示封面/深链，大标题无解释性 subtitle。年份升序排列、只显示年份并默认最新可用年份（包括进行中的当前年）；完整年度封面隐藏状态/日期，进行中报告仍保留截止日期；封面三条头条与海报功能均不展示。年度动态文案和实体名称遵循全局简繁体偏好，时间线必须明确歌曲、专辑或艺人类型。新关系标题必须区分歌曲、专辑、艺人；同专辑/艺人多首入榜必须显示准确曲目数；宽屏分歧故事使用两列，窄屏回到单列。年度纪录只展示精选集合，不提供完整目录展开；兼容 records API 只返回同一精选集合，artifact 不再序列化全部候选。桌面章节间距使用统一紧凑节奏；Phone 触控目标至少 44×44px，榜单正文 Top 5、全屏每页 10 条并恢复关闭焦点。LLM 不生成年度事实。schema/content version 分开治理，统计、编排或公开展示语义变化必须提升 content version。当前 content 为 v2.13；v2.8 四年性能基线为真实重算 10.65–16.54s、热响应 26.56–29.85ms、跨进程持久命中 10.20–21.07ms，probe v5 同时锁定公开文案、封面/深链、YTD 措辞、精选证据、结语去重与阶段状态，详见 `docs/reports/2026-08-12-yearly-review-v2-delivery.md`。
+## 当前产品边界
 
-逻辑播放时间线 V2：连续同曲同来源只在实际空闲不超过服务端默认 5 分钟时合并；自然日、月、年和 Billboard 周不能切断 session。次数按每个逻辑事件达到成立条件的 `counted_at` 归属，时长按推断收听区间切片；Billboard 使用独立 `play_count`、`total_ms` 权重，预聚合通过影子表和单事务发布。歌曲、专辑、艺人详情页的摘要、分布和时长排行必须从实体范围重新生成时长切片，不能继承全库 `DataFrame.attrs`；艺人最近 50 次按 `_logical_event_id` 去重，歌曲版本组/专辑发行组复用同一加权帧；`last_4_weeks` / `last_6_months` 以最新有效数据日锚定。详见 `docs/reference/playback-stats-rules.md` 与 `docs/reports/2026-08-17-music-detail-statistics-fix-delivery.md`。
+- `/` 是个人音乐头版，不再是旧版播放统计 Dashboard；首页事实由确定性后端生成，不因打开首页触发年度或 Billboard 冷构建。
+- 顶级入口使用“播放分析”，二级顺序固定为“播放统计 / 播放排行 / 年度总结 / 播放记录 / 音乐档案”。
+- `/account` 的产品名称是“音乐档案”；旧人格、chemistry、Habits、Marquee、粉丝等级和旧重型 account 聚合不得恢复。
+- `/yearly-review` 是自有年度总结唯一消费入口；官方 Wrapped 仅保留兼容数据和只读接口，不新增消费 UI。
+- 音乐查找使用 Quick Open + `/music/search` 两阶段链路：候选索引与完整统计快照分离，搜索 GET 不得冷建 lifetime 播放统计或完整 Billboard。
+- Phone、Compact、Desktop 使用互斥 presentation，但共享 URL、Query、过滤指纹、统计事实和实体深链。Phone 主要触控目标至少 44×44px，宽表和重图表不得与桌面 DOM 同时挂载。
 
-移动网页架构：`<768px` 使用独立 Phone presentation，`768–1023px` 为 Compact，`>=1024px` 使用 Desktop；Phone/Desktop 的重图表、宽表与长列表必须互斥挂载，但继续共享 Route Container、React Router URL 状态、TanStack Query、过滤指纹、row model 和统计事实。Phone Shell 固定使用 `MobileTopBar`、五项 `MobileBottomNav` 与播放分析/Billboard `MobileSectionSwitcher`；Push 详情按路由语义隐藏 Bottom Nav。主要移动触控目标至少 44×44px，关键操作不得依赖 hover，复杂图表需提供触摸 disclosure 与可恢复焦点的全屏模式。Settings 手机端只开放低风险日常设置；导入、元数据治理、凭据和系统维护保留桌面工作台。新增消费页面必须通过 360/390/430/768/1280 route matrix、移动 control inventory、interaction/chart、long-list 与 Chromium/Firefox/WebKit 门禁。完整规范见 `frontend/UI_STYLE_GUIDE.md` 和 `docs/plans/2026-08-05-mobile-web-design-and-implementation-plan.md`。
+## 统计和数据原则
 
-PWA/App 基线：生产构建通过 `/manifest.webmanifest`、PWA 图标和 `/sw.js` 提供安装能力，开发模式不注册 Service Worker；手机 Settings 安装卡支持 Chromium prompt、iOS 添加到主屏幕说明与 standalone 状态。Service Worker 只能缓存离线说明、PWA 图标和版本化静态资产，必须绕过 `/api`、`/covers` 与个人/凭据数据。路线按 PWA → HTTPS 安全部署与真机 → Capacitor 推进，见 `docs/plans/2026-08-06-appification-pwa-capacitor-plan.md`。
+- 播放次数与收听时长是两条轨道：逻辑事件贡献次数，推断收听区间切片贡献时长。
+- 连续同曲合并使用服务端 `max_merge_gap_minutes`，默认边界和时间归属以 `playback-stats-rules.md` 为准，前端不得维护独立默认值。
+- L2/L3 专辑统计必须使用 album project membership；source album 只用于来源拆分解释。
+- 艺人统计必须使用有效曲目署名、canonical artist 和稳定逻辑事件去重；featured artist 不得未经规则 fan-out。
+- 元数据人工治理不得重写原始 `plays`、`tracks`、`track_artists`，必须通过独立覆盖层、revision 和审计事件实现。
+- 语言和流派事实必须保留 unknown、未归属时长及审核边界，不得使用艺人名称或 genre 做启发式补齐。
 
-音乐查找 V2：Quick Open 与 `/music/search` 使用 `response_mode=candidates` 读取版本化 FTS5 trigram 派生索引，再由 `/api/music/search/context` 按稳定 `entity_key` 渐进读取同一完整过滤指纹的精确播放/榜单快照；候选热路径禁止加载 lifetime 播放帧或计算完整 Billboard。确定性 `candidate_index_version` 与不含随机 generation/Git SHA 的 `statistics_fingerprint` 独立；查询支持固定 OpenCC 简繁扩展、短 CJK n-gram 和主路径零命中后的有界 trigram + 编辑距离。服务端基础设置维护 L1/L2/L3 × 动态阈值开/关六个变体，由单个 `snapshot-set` job 顺序构建；GET 只读持久 revision state，reader 必须校验 ready、精确 fingerprint 和当前 builder version。Quick Open 每类 3 条且默认不选首条，全部页每类 5 条，单类型每页 20 条并把 `q/kind/page` 放入 URL；输入统一使用 220ms 防抖、IME 门禁、AbortSignal、`retry: 0`、keep-previous-data，只有 warming/stale 退避观察。Unicode 高亮在 `Intl.Segmenter` 缺失或不可构造时必须安全降级；context 未加载不得伪装为 0 次播放。public 只允许 `current` 且 GET 不写库、不排队、不冷构建，`any_local` 仅供 private Settings。导入、设置、版本归并、艺人身份和署名变化必须 bump 持久 revision，并按依赖分别失效候选或统计；普通 SHA 和查询匹配变化不得重建六变体。startup catch-up 使用独立开关，private 生产默认开启，副本 one-shot 显式关闭；精确 ready 集合必须只校验不重复构建。候选/context warm P95 预算为 80/20ms，见 `docs/plans/2026-08-16-music-search-direction-realignment.md` 与 `docs/reports/2026-08-16-music-search-optimization-delivery.md`。
+## AI 边界
 
-音乐查找展示规则：匹配字段只供排序、高亮、测试和诊断，普通界面不展示匹配对象、简繁匹配或近似匹配等工程标签；搜索名称、副标题、封面辅助文字和最近查看列表跟随全局简繁体偏好，且不改变稳定键、详情深链或保存的原始值。
+- AI 报告和问答采用 cache-first / 手动生成，不因打开页面自动调用 LLM。
+- 年度视觉报告默认使用 `visual_yearly_artifact` 与 `agent_synthesis_v2`；图表数据、统计事实和校验必须来自确定性后端 builder/validator，LLM 不生成事实或图表数据。
+- Agent 只能调用后端注册的 read-only 工具，禁止任意 SQL、任意 URL、设置/导入/缓存/歌单写入和未审核路由透传。
+- LLM API Key 永不返回前端；日志必须经过敏感信息脱敏。
 
-Billboard 对决：单曲、专辑、艺人对决及 entity lists 必须与详情页共享完整统计上下文（动态阈值、连续播放间隔、合并级别、榜单周边界、三类 Top N、年份范围、精选集设置），前端 query key 必须包含完整过滤指纹。专辑曲目归属复用详情的 album project + canonical artist 口径，艺人歌曲成绩复用 credited artist fan-out 并按 stable event + canonical artist 去重。
+## 后端约束
 
-Billboard 总榜：专辑成员歌曲及艺人歌曲/专辑的跨层级走势点数统一走 `cross_level_power.py`；排名基于完整当前同类实体集合，零贡献不排名，客户端搜索、分页和字段配置不得重排。三榜字段配置独立持久化，名称和当前排名固定；实体走势评分与走势排名相邻且均可独立显示。
+- 新增外部 HTTP 必须经过 `HttpClient` 或对应 Provider，业务 service 不得直接新增 `urllib.request.Request`/`urlopen`。
+- 环境变量统一从 `backend/core/config.py` 读取，业务代码不得直接 `os.getenv()`。
+- 昂贵计算使用规范化 wrapper、缓存和 `singleflight()`，不得在热路径恢复逐行 `apply(axis=1)`、`iterrows()` 或整表重复扫描。
+- 开发后端使用 `uvicorn backend.main:app --reload --reload-dir backend`，避免扫描 `.venv`、`node_modules` 和 `data`。
 
-音乐详情存在资格与成绩：Billboard Top-N 和 versus picker 不是详情页存在条件；当前有效播放口径下有播放或已有榜单事实的歌曲、专辑、艺人均可打开详情。详情固定 Tab 始终存在，`chart_status` 仅描述实体自身榜单；专辑和艺人的单曲/专辑子成绩使用独立状态与空态，专辑自身入榜不得依赖成员歌曲入榜。真正无有效播放且无法解析的请求才返回 404。
+## 前端约束
 
-曲风与语言消费层：底层 `style/scene/context/role` 四轴 facts 与 Settings 治理保持不变；年度总结通过版本化 `genre_display_taxonomy.py` 只展示“主曲风 / 地区流行 / 语言”，unknown 使用“尚未归类”，不展示审核、证据、置信度或内部 ID。`context/role` 与 Music Map heuristic 不进入年度消费页，播放统计页也不放曲风/语言模块。Wrapped、AI 报告缓存需包含 display taxonomy 与艺人元数据 revision。
+- 所有 GET 数据通过 TanStack Query 和 `queryKeys` 获取，禁止模块级 Map 缓存 API 响应。
+- 页面容器只做路由入口，业务内容放在 `features/`；新增长列表必须分页、分段、无限查询或虚拟化。
+- ECharts 必须通过 `LazyEChart` 按需加载；外部 Markdown 必须使用 `react-markdown` + `rehype-sanitize`。
+- 简繁转换使用 `displayName()` 和按需 OpenCC 子包，不得模块初始化时加载完整大字典。
+- 新页面必须遵守 [frontend/UI_STYLE_GUIDE.md](frontend/UI_STYLE_GUIDE.md) 和移动端真实视口/浏览器验收矩阵。
 
-**当前状态**：Phase 5 产品化收口完成 + AI Observable Agent Orchestrator V2。AI 报告已改为缓存优先、手动生成并显示任务进度；年度叙事默认走 `visual_yearly_artifact` + `writer_pipeline=agent_synthesis_v2`，在只读 Report Agent 证据、deterministic chart data builder 和 fact validator 基础上用 `report_agent.py` Agent 多轮工具调用（含 web_search）+ 直接写报告，图表数据仍由确定性后端生成；保留 `_compose_sections()` 确定性 fallback 作为安全网；年报和 Chat 默认启用 DeepSeek 思考模式；`agentic_longform`、`basic_summary` 和 `editorial_agent_v1` 保留为兼容/回退模式。AI 问答通过后端只读 Agent 工具查询数据，支持思考模式、工具轨迹、coverage 自检、answer obligations、矛盾回答重试，以及账号收藏/搜索历史/社区数据域工具；相对时间会以 `question_time`/`timezone` grounding，并把 temporal guard 校正后的 custom range 投影到 EvidenceRecipe/AnalyticalBrief；艺人与专辑详情 enrichment 已接入可观察任务。当前本地验证基线随迭代变化，AI harness 定向基线见 `docs/reports/2026-07-03-ai-question-matrix-test-report.md`，年度图文报告回归可用 `scripts/probe_visual_yearly_report_artifact.py --mode changed`，大范围 live 问答回归可用 `scripts/evaluate_ai_question_matrix.py --mode changed|full`。开发台账与验证细节见 `AGENTS.md`、`docs/plans/`、`docs/reports/`、`docs/designs/` 和 `docs/CHANGELOG.md`。
+## 生产部署边界
 
-## 常用命令
+- `DEPLOYMENT_MODE=full|showcase|dual` 只决定 loopback Web 网关；Backend 不映射宿主公网端口。
+- 3000、3001、3002、8000 不得直接开放公网；完全版外部入口必须另有身份边界，公开展示入口是持链接者可访问，不等于整站认证。
+- `data/`、备份和密钥不得进入镜像；发布必须使用 commit SHA、Online Backup、三模式门禁、健康检查和联合回滚。
+- 搜索六变体首次冷建只能在明确数据库副本执行；正常发布必须精确复用 ready snapshot，源数据漂移时拒绝替换。
+- Tailscale、域名代理和外部 HTTPS 入口是部署外层，脚本不得擅自启用或关闭。
 
-```bash
-# 后端（只监听 backend/）
-source .venv/bin/activate && uvicorn backend.main:app --reload --reload-dir backend
-# 关闭预热
-source .venv/bin/activate && SPOTIFY_STATS_WARMUP=0 uvicorn backend.main:app --reload --reload-dir backend
+## 验证入口
 
-# 前端
-cd frontend && npm run dev
+- 后端：`.venv/bin/pytest -m unit -q`、`.venv/bin/pytest -m contract -q`
+- 前端：`cd frontend && npm test`、`cd frontend && npm run build`
+- 文档：`python3 scripts/docs_audit.py`
+- Phase 5：`sh scripts/phase5_check.sh`
+- 全栈：`sh scripts/fullstack_verification_check.sh --backend-url http://127.0.0.1:8000 --frontend-url http://127.0.0.1:5173`
 
-# ngrok（Spotify OAuth 需要 HTTPS）
-ngrok http --url=stuffing-nebula-tamer.ngrok-free.dev 5173
-.venv/bin/python scripts/spotify_oauth_external_probe.py --json-output /tmp/spotify_oauth_external_probe.json
+只读审计、真实数据库探针、浏览器验收和生产发布证据必须分别报告，不得把本地单元测试描述成真实部署已通过。
 
-# 测试
-source .venv/bin/activate && pytest -m unit -v         # ~5秒
-source .venv/bin/activate && pytest -m contract -v      # ~1秒
-source .venv/bin/activate && pytest -m integration -v   # ~80秒
-cd frontend && npm test
+## 文档和 Git 约定
 
-# 代码质量
-ruff check backend/ && ruff format --check backend/
-pre-commit run --all-files
-
-# Phase 5 验证矩阵
-sh scripts/phase5_check.sh
-.venv/bin/python scripts/ci_baseline_parity.py
-
-# AI 问答矩阵检查（static 不调用 LLM；live 模式需后端 8000 与 LLM 已配置）
-.venv/bin/python scripts/evaluate_ai_question_matrix.py
-.venv/bin/python scripts/evaluate_ai_question_matrix.py --mode changed --backend-url http://127.0.0.1:8000 --question-time 2026-07-03T09:00:00+08:00
-.venv/bin/python scripts/evaluate_ai_question_matrix.py --mode full --backend-url http://127.0.0.1:8000 --question-time 2026-07-03T09:00:00+08:00
-
-# 全栈非破坏性验收矩阵（需后端 8000 + 前端 5173；资源数量/体积预算需同时启动 preview 4173）
-# 跨浏览器 smoke 会自动检测可 import playwright.sync_api 的 Python，也可显式设置 PYTHON_PLAYWRIGHT
-sh scripts/fullstack_verification_check.sh --backend-url http://127.0.0.1:8000 --frontend-url http://localhost:5173
-sh scripts/fullstack_verification_check.sh --backend-url http://127.0.0.1:8000 --frontend-url http://localhost:5173 --preview-url http://127.0.0.1:4173 --preview-api-url http://127.0.0.1:8000 --quickstart-preflight --quickstart-json /tmp/spotify_quickstart_timing.json --web-vitals --resource-snapshot --resource-max-total-rss-mb 1200 --resource-max-total-cpu-percent 200 --web-vitals-max-lcp-ms 3000 --web-vitals-max-cls 0.01 --web-vitals-max-tbt-ms 100 --web-vitals-max-resource-count 120 --web-vitals-max-encoded-resource-kb 11000 --web-vitals-max-scroll-overflow-px 0
-
-# 一键启动冒烟（自动启动/复用后端 8000 + 前端 5173，验证 health/docs/前端壳/API 代理后清理，并输出时序 JSON）
-.venv/bin/python scripts/quickstart_smoke.py --json-output /tmp/spotify_quickstart_timing.json
-
-# 修复已导入 Streaming History 后缺失的 Spotify 元数据、album projects 与榜单聚合
-.venv/bin/python scripts/refresh_import_derived_data.py --json-output /tmp/spotify_import_maintenance.json
-
-# 本地只读 API smoke（101 个 GET + OpenAPI GET 核算）
-.venv/bin/python scripts/api_smoke_probe.py
-
-# 非破坏性 API 边界 probe（95 个 GET）
-.venv/bin/python scripts/api_boundary_probe.py
-
-# OpenAPI 全操作覆盖归属核算（144 operation，0 unaccounted）
-.venv/bin/python scripts/openapi_operation_audit.py --json-output /tmp/spotify_openapi_operation_audit.json
-
-# OpenAPI 参数边界覆盖归属核算（64 obligations，0 unaccounted）
-.venv/bin/python scripts/openapi_parameter_boundary_audit.py --json-output /tmp/spotify_openapi_parameter_boundary_audit.json
-
-# API 性能 benchmark（需后端 8000 已启动）
-.venv/bin/python scripts/benchmark_api.py --base-url http://127.0.0.1:8000 --runs 3 --slow-ms 500 --json-output /tmp/spotify_api_benchmark.json
-
-# 本地服务 CPU/RSS 快照（需后端 8000 + 前端 5173 已启动）
-.venv/bin/python scripts/runtime_resource_probe.py --backend-url http://127.0.0.1:8000 --frontend-url http://localhost:5173 --json-output /tmp/spotify_runtime_resources.json --max-total-rss-mb 1200 --max-total-cpu-percent 200
-
-# 前端 route/interaction/cross-browser smoke + Web Vitals lab 采样（需后端 8000 + 前端 5173）
-node scripts/frontend_route_smoke.mjs --viewport matrix --max-scroll-overflow 0 --fail-on-console-warning --include-detail-routes
-node scripts/frontend_interaction_smoke.mjs --viewport mobile --scenario mobile-bottom-navigation,mobile-section-sheet,mobile-time-filter
-node scripts/frontend_chart_interaction_smoke.mjs --viewport mobile --scenario mobile-tap-tooltip,mobile-fullscreen
-node scripts/frontend_interaction_smoke.mjs --base-url http://localhost:5173
-node scripts/frontend_interaction_smoke.mjs --base-url http://127.0.0.1:4173 --api-base-url http://127.0.0.1:8000
-node scripts/frontend_chart_interaction_smoke.mjs --base-url http://localhost:5173
-node scripts/frontend_chart_interaction_smoke.mjs --base-url http://127.0.0.1:4173 --api-base-url http://127.0.0.1:8000
-node scripts/frontend_control_inventory_smoke.mjs --base-url http://localhost:5173 --viewport both --include-detail-routes
-node scripts/frontend_control_inventory_smoke.mjs --base-url http://127.0.0.1:4173 --api-base-url http://127.0.0.1:8000 --viewport both --include-detail-routes
-node scripts/frontend_long_list_smoke.mjs --base-url http://localhost:5173
-node scripts/frontend_long_list_smoke.mjs --base-url http://127.0.0.1:4173 --api-base-url http://127.0.0.1:8000
-node scripts/frontend_cross_browser_smoke.mjs --base-url http://localhost:5173 --include-detail-routes
-node scripts/frontend_cross_browser_smoke.mjs --base-url http://127.0.0.1:4173 --api-base-url http://127.0.0.1:8000 --include-detail-routes
-node scripts/frontend_web_vitals_probe.mjs --routes /,/analysis/stats,/analysis/charts,/analysis/records,/billboard/number-ones,/account,/settings --viewport both --wait-ms 5000
-node scripts/frontend_web_vitals_probe.mjs --base-url http://127.0.0.1:4173 --api-base-url http://127.0.0.1:8000 --routes /,/analysis/stats,/analysis/charts,/analysis/records,/billboard/number-ones,/account,/settings --viewport both --wait-ms 5000
-node scripts/frontend_web_vitals_probe.mjs --routes /,/analysis/stats,/analysis/charts,/analysis/records,/billboard/number-ones,/account,/settings --viewport both --wait-ms 5000 --max-lcp-ms 3000 --max-cls 0.01 --max-tbt-ms 100 --max-resource-count 120 --max-encoded-resource-kb 11000 --max-scroll-overflow-px 0
-
-# 其他
-cd frontend && npm run build
-```
-
-## Git 提交规范
-
-```text
-<type>: <中文概括标题>
-
-- 后端/数据层改动：...
-- 前端/UI 改动：...
-- 性能/稳定性改动：...
-- 测试验证：...
-- 文档同步：...
-```
-
-conventional commit 前缀 + 4-7 条中文 bullet。
-
-## 架构速览
-
-```
-JSON → import → SQLite → FastAPI (backend/) → React (frontend/)
-```
-
-**后端**：api/ → services/ → domains/（account_archive/billboard/playback/settings/enrichment/community/chat/ai_agent/ai_tasks）→ core/，辅以 infrastructure/http/ + providers/（spotify/genius/wikipedia/llm）
-
-**前端**：pages/（route container，≤450 行）→ features/（analysis/records/Experience|6 Section|Primitives|Data、billboard/records|number-ones|all-time、community/Experience|Account|FeedToggle|TimeFilter|PostCard|Timeline|Sidebar|PostDetailExperience|MobileSidebarDrawer|communityData、ai-insights/Experience|ReportsPanel|ReportCard|ChatInterface|ChatComposer|ChatSessionList|ChatSessionDrawer|SuggestedQuestions|Primitives|Data、ai-tasks/Progress|ToolTrace|ResultShell、music/details 与 music/search、settings/components、account-archive/route|desktop|phone|hooks|model）→ components/（ui/charts/layout/shared）
-
-**Phase 5 架构模式**：
-
-| 层级 | 位置 | 行上限 | 禁含 |
-|------|------|--------|------|
-| Route Container | `pages/` | 450 | `<table>`, `function KpiCard` |
-| Experience | `features/*/XXXExperience.tsx` | 目标 450 | shared primitives；音乐详情仍在按 section 逐轮收敛 |
-| Section | `features/*/XXXSection.tsx` | 300 | — |
-| Primitives | `features/*/XXXPrimitives.tsx` | 350 | — |
-| Data | `features/*/xxxData.ts` | — | JSX |
-
-## 技术约束
-
-- Python 3.9：`Optional[X]` 非 `X | None`；后端绝对导入：`from backend.core.db`
-- SQLite `data/spotify_stats.db`（gitignore 排除）
-- `ttl_cached()` 不缓存 `None`；`singleflight()` 防并发重复
-- 默认启动 warmup 必须使用当前前端默认过滤口径（`dynamic_threshold=True`，`max_merge_gap_minutes=5`），避免预热旧缓存并与首屏请求抢 CPU
-- 环境变量统一 `core/config.py`；禁止业务代码直接 `os.getenv()`
-- Token 加密：`SPOTIFY_STATS_TOKEN_KEY` 环境变量 → 内置密钥
-- Streaming History 导入必须在 `done` 前运行派生数据维护；`maintenance_status=partial` 只表示 Spotify 元数据仍有缺口，不代表基础播放导入失败
-- **新增 GET hook → TanStack Query + `queryKeys`；禁止模块级 `new Map()` 数据缓存**
-- **ECharts 图表 → `LazyEChart`；禁止直接 `import('echarts-for-react')` 默认入口**
-- **简繁转换 → `displayName()`；禁止直接导入默认 `opencc-js` full 包，也禁止模块初始化时预取已保存偏好的大字典**
-- **音乐查找候选/统计必须独立版本化**：随机 generation ID、Git SHA、纯前端/部署/查询排序修改不得触发六变体统计重建；候选版本变化只重建候选，统计 fingerprint 变化才重建对应变体。发布前维护复用精确 ready 与 source-equivalent resume artifact，并继续执行 Online Backup、漂移拒绝、orphan=0、原子替换和联合回滚。查询使用确定性简繁扩展与短 CJK n-gram；只有主路径零命中且长度至少 4 时才进入最多 50 条 trigram 候选池与有界编辑距离。详见 `docs/plans/2026-08-16-music-search-direction-realignment.md`。
-- 账号页长图片列表必须有预览上限或分页，并使用 `loading="lazy"` / `decoding="async"`
-- **新增外部 HTTP 调用 → Provider/HttpClient；禁止直接 `urllib.request.Request`/`urlopen`**
-- **AI Agent 工具必须后端 allowlist + read_only**；不得提供任意 SQL、任意 URL、settings/import/cache/playlist 写工具；最终回答只能基于 persisted tool results 和 coverage；曲风/语种问题没有结构化证据时必须保守说明限制
-- **艺人语言元数据以 `artist_id` 为主体并独立于 genre**；统计只使用 `tracks.artist_id` 主艺人归属，禁止 track-artist fan-out 或 genre-to-language 推断；legacy、LLM 和未审核 seed 只能 suggested，显式 reviewed seed 仅可在 evidence、`reviewed_by`、`resolution_note` 齐全并通过同一 validator/state machine 时批准，禁止自动猜测批准；只有 approved fact 进入统计，`unknown`、`multilingual`、`instrumental` 与未归属时长必须保留并可审计
-- **人工曲目署名不得修改原始事实**；统一使用 `track_credit_overrides`/events/revision 和 `backend/domains/metadata/track_credits.py` resolver，以稳定本地 `artist_id` 保存，先 canonicalize 再按播放事件去重。Settings“音乐源数据管理”是单管理员直接编辑入口，理由/证据不必填，普通修改直接应用而底层 revision/idempotency/undo/rebuild 继续强制；详情页仅精准深链，聚合 revision 落后时必须走实时 resolver，重建失败不得回退旧署名
-- **AI 年度叙事 → `visual_yearly_artifact_service.py` + `report_agent.py` + `visual_chart_data.py` + `visual_yearly_critic.py`**；默认年度报告必须返回 `visual_yearly_artifact` 且走 `writer_pipeline=agent_synthesis_v2`，Agent 多轮调用本地数据工具 + web_search 后直接输出报告 JSON（无中间摘要），图表数据只能由 deterministic backend builder 生成；年报和 Chat 默认启用 DeepSeek 思考模式；`editorial_agent_v1` 映射到新路径，旧 `yearly_contract.py` / `yearly_validator.py` / 确定性 fallback 只作为事实安全网和 `basic_summary` 回退
-- **页面容器只做路由入口；业务逻辑在 `features/`**
-- 架构护栏测试 `phase5-architecture.test.ts` 对上述约定做负面断言强制执行
-- 使用 `PlayFilters` / `BillboardFilters` 的统计端点必须透传 `dynamic_threshold` 与 `max_merge_gap_minutes` 到最终计数管线；Community feed/trending/post detail 也必须使用 `BillboardFilters` + `MergeConfig`，并把 `merge_level` / `include_compilations` 纳入生成参数和 query key；新增入口要补传播测试或复用已有 service
-
-完整架构、模块表、数据库结构、过滤策略见 `AGENTS.md`；后端细节见 `backend/CLAUDE.md`；前端细节见 `frontend/CLAUDE.md`。
+- 规则写入 `docs/reference/`，未完成路线写入 `docs/plans/`，设计决策写入 `docs/designs/`，交付证据写入 `docs/reports/`，已完成或取代内容写入 `docs/archive/`。
+- 新增或移动文档后更新 [docs/README.md](docs/README.md)，并运行文档审计。
+- 未经明确要求不执行 `git commit` 或 `git push`。
+- 若用户明确要求提交，先检查 README、AGENTS、CLAUDE、docs 地图和 CHANGELOG 是否需要同步，再运行 `git diff --check`、测试和项目 hooks。

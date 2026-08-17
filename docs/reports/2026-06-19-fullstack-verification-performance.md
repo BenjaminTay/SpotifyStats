@@ -18,7 +18,7 @@
 - Read: `backend/CLAUDE.md`
 - Read: `frontend/CLAUDE.md`
 - Read: `frontend/UI_STYLE_GUIDE.md`
-- Modify: `docs/verification/2026-06-19-fullstack-verification.md`
+- Modify: `docs/reports/2026-06-19-fullstack-verification.md`
 
 - [ ] **Step 1: Confirm branch and clean worktree**
 
@@ -64,7 +64,7 @@ Expected: `dist/` exists and Vite build succeeds without TypeScript errors.
 
 - [ ] **Step 4: Create the working report**
 
-Create `docs/verification/2026-06-19-fullstack-verification.md` with sections:
+Create `docs/reports/2026-06-19-fullstack-verification.md` with sections:
 
 ```markdown
 # Fullstack Verification And Performance Report
@@ -376,7 +376,7 @@ Expected: the focused regression test, full frontend tests, and build pass.
 **Files:**
 - Modify only after measured bottleneck: the smallest backend or frontend module responsible for the measured hotspot.
 - Test: matching backend pytest or frontend Vitest test when behavior can regress.
-- Report: `docs/verification/2026-06-19-fullstack-verification.md`
+- Report: `docs/reports/2026-06-19-fullstack-verification.md`
 
 - [ ] **Step 1: Identify slow sampled APIs**
 
@@ -428,7 +428,7 @@ Expected: unit, contract, ruff, frontend tests, and build all pass.
 ### Task 6: Documentation, Commit, And Final Handoff
 
 **Files:**
-- Modify: `docs/verification/2026-06-19-fullstack-verification.md`
+- Modify: `docs/reports/2026-06-19-fullstack-verification.md`
 - Modify if needed: `README.md`
 - Modify if needed: `AGENTS.md`
 - Modify if needed: `CLAUDE.md`

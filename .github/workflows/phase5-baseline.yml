@@ -28,6 +28,9 @@ jobs:
           .venv/bin/pip install --upgrade pip
           .venv/bin/pip install -r requirements.txt
 
+      - name: Documentation checks
+        run: .venv/bin/python scripts/docs_audit.py --include-archive
+
       - name: Backend unit and contract checks
         run: |
           .venv/bin/pytest -m unit -q

@@ -1,144 +1,63 @@
-# 文档地图
+# SpotifyStats 文档地图
 
-只有两类文档：**活跃文档**（仍被引用或仍在推进）和**历史归档**（已完成，只供回溯）。
+本目录按“当前规则、进行中的计划、已确认设计、交付证据、历史归档”分层。阅读时先判断文档状态，再判断它属于规则、计划还是证据；历史文件不会自动代表当前实现。
 
-## 总览
+## 从哪里开始
 
-| 文档 | 目标读者 | 内容 |
-|------|---------|------|
-| [`../README.md`](../README.md) | 使用者 | 项目介绍、功能列表、快速开始、技术栈 |
-| [`../AGENTS.md`](../AGENTS.md) | AI Agent | 完整项目上下文、架构细节、所有约定 |
-| [`../CLAUDE.md`](../CLAUDE.md) | 开发者（速查） | 常用命令、核心约束清单 |
-| [`CHANGELOG.md`](CHANGELOG.md) | 所有人 | 变更日志 |
-| [`../data/README.md`](../data/README.md) | 数据使用者 | Spotify 官方数据格式说明 |
+| 目的 | 入口 |
+|---|---|
+| 了解项目、安装和启动 | [`../README.md`](../README.md) |
+| AI/开发工作约定 | [`../AGENTS.md`](../AGENTS.md) / [`../CLAUDE.md`](../CLAUDE.md) |
+| 后端开发 | [`../backend/CLAUDE.md`](../backend/CLAUDE.md) |
+| 前端开发 | [`../frontend/README.md`](../frontend/README.md) / [`../frontend/CLAUDE.md`](../frontend/CLAUDE.md) |
+| UI 设计系统 | [`../frontend/UI_STYLE_GUIDE.md`](../frontend/UI_STYLE_GUIDE.md) |
+| 数据准备与导入 | [`../data/README.md`](../data/README.md) |
+| 生产部署 | [`../deploy/production/README.md`](../deploy/production/README.md) |
+| 最近变更 | [`CHANGELOG.md`](CHANGELOG.md) |
+| 完整交付证据 | [`reports/README.md`](reports/README.md) |
 
-## 活跃文档
+## 当前有效参考规则
 
-### 实现计划 (`plans/`) — 10 个
+`reference/` 是当前统计和数据契约的权威入口。代码、测试或部署运行手册若与这里冲突，应先核对实际实现和证据，再更新规则文档。
 
-只保留尚未完成的工作，或仍作为现行产品规格和后续迭代依据的完整计划。
+- [`reference/playback-stats-rules.md`](reference/playback-stats-rules.md)：逻辑播放事件、收听时长、版本合并、专辑项目和 Billboard 统计
+- [`reference/account-archive-statistics.md`](reference/account-archive-statistics.md)：音乐档案、收藏旅程、回归、发现和其他媒体统计
+- [`reference/music-metadata-management.md`](reference/music-metadata-management.md)：版本归并、曲目署名、艺人身份和人工治理
+- [`reference/2026-07-04-artist-genre-taxonomy.md`](reference/2026-07-04-artist-genre-taxonomy.md)：流派四轴与消费展示 taxonomy
+- [`reference/artist-language-statistics.md`](reference/artist-language-statistics.md)：艺人语言事实、审核和播放语言统计
+- [`reference/data-import-and-health.md`](reference/data-import-and-health.md)：导入前检查、导入后健康报告和数据库边界
 
-| 计划 | 内容 |
-|------|------|
-| [`plans/2026-08-16-music-search-direction-realignment.md`](plans/2026-08-16-music-search-direction-realignment.md) | 音乐查找现行架构：候选索引与统计 fingerprint 解耦、可续建发布、简繁/短 CJK/有限模糊匹配及生产证据 |
-| [`plans/2026-08-16-music-search-remediation-plan.md`](plans/2026-08-16-music-search-remediation-plan.md) | 已完成的音乐查找验收修复：六种语义快照、榜单参数贯穿、持久 revision、热路径 SQL 下推与发布门禁 |
-| [`plans/2026-08-16-music-search-performance-and-experience-optimization-plan.md`](plans/2026-08-16-music-search-performance-and-experience-optimization-plan.md) | 已完成的音乐查找 M0–M5 优化规格、实施路径与最终验收清单 |
-| [`plans/2026-08-13-dual-deployment-profile-plan.md`](plans/2026-08-13-dual-deployment-profile-plan.md) | 双运行面部署规格：可信网关、公共只读、full/showcase/dual 模式、自动发布和多服务器 SQLite 边界 |
-| [`plans/2026-08-13-account-archive-redesign-plan.md`](plans/2026-08-13-account-archive-redesign-plan.md) | 音乐档案重构：严格统计事实、Desktop/Phone 互斥 presentation、收藏旅程与隐私白名单 |
-| [`plans/2026-08-12-yearly-review-v2-rebuild-plan.md`](plans/2026-08-12-yearly-review-v2-rebuild-plan.md) | 年度总结 V2 完整重构：数据审计、统一契约、内容编排、桌面体验、Phone 迁移、验证与回滚计划 |
-| [`plans/2026-08-06-appification-pwa-capacitor-plan.md`](plans/2026-08-06-appification-pwa-capacitor-plan.md) | App 化现行路线：PWA 基线、安全部署、真机验收与 Capacitor 决策门 |
-| [`plans/2026-08-05-mobile-web-design-and-implementation-plan.md`](plans/2026-08-05-mobile-web-design-and-implementation-plan.md) | 移动端网页现行产品规格、M0–M7 完成记录、长期架构契约与验收门禁 |
-| [`plans/2026-06-23-playback-records-plan.md`](plans/2026-06-23-playback-records-plan.md) | 播放记录的模块地图、统计定义与现行实现口径 |
-| [`plans/2026-06-29-ai-agent-harness-quality-roadmap.md`](plans/2026-06-29-ai-agent-harness-quality-roadmap.md) | AI Agent Harness 质量路线图（持续指引，非单次任务） |
+## 当前进行中的计划
 
-### 设计规格 (`designs/`) — 4 个
+`plans/` 只保留尚未完成、仍需外部验收或持续维护的路线。已完成计划已经移入 [`archive/06-productization-closeout/`](archive/06-productization-closeout/)。
 
-只保留仍在活跃迭代的系统的设计。已稳定系统的设计归档到对应开发阶段。
+- [`plans/2026-06-23-playback-records-plan.md`](plans/2026-06-23-playback-records-plan.md)：播放记录方案，需继续核对计划与当前实现的差异
+- [`plans/2026-06-29-ai-agent-harness-quality-roadmap.md`](plans/2026-06-29-ai-agent-harness-quality-roadmap.md)：AI Agent Harness 持续质量路线
+- [`plans/2026-08-06-appification-pwa-capacitor-plan.md`](plans/2026-08-06-appification-pwa-capacitor-plan.md)：PWA、远程部署、真机验收和 Capacitor 决策
+- [`plans/2026-08-16-music-search-direction-realignment.md`](plans/2026-08-16-music-search-direction-realignment.md)：音乐查找候选索引、统计快照和生产复用方向
 
-| 设计 | 内容 |
-|------|------|
-| [`designs/2026-08-12-yearly-review-v2-content-data-contract.md`](designs/2026-08-12-yearly-review-v2-content-data-contract.md) | 年度总结 V2 内容与数据契约：个人音乐年鉴定位、章节职责、证据/覆盖规则与 Desktop/Phone 边界 |
-| [`designs/2026-08-05-mobile-web-m0-design-freeze.md`](designs/2026-08-05-mobile-web-m0-design-freeze.md) | 移动端 M0 冻结规格：真实基线、路由状态矩阵、Shell 决策、组件状态、六屏交互原型与 M1/M2 原子任务 |
-| [`designs/2026-07-04-ai-yearly-report-editorial-agent-pipeline-design.md`](designs/2026-07-04-ai-yearly-report-editorial-agent-pipeline-design.md) | 现行 Editorial Agent Pipeline 设计 |
-| [`designs/2026-07-04-genre-review-settings-design.md`](designs/2026-07-04-genre-review-settings-design.md) | Genre Review Settings 设计 |
+## 已确认但仍有实现参考价值的设计
 
-### 报告 (`reports/`) — 19 个
+- [`designs/2026-07-04-genre-review-settings-design.md`](designs/2026-07-04-genre-review-settings-design.md)：Settings 流派审核面板
+- [`designs/2026-08-12-yearly-review-v2-content-data-contract.md`](designs/2026-08-12-yearly-review-v2-content-data-contract.md)：年度总结 V2 内容与数据契约
+- [`designs/mobile-web-m0-prototype/README.md`](designs/mobile-web-m0-prototype/README.md)：移动端 M0 视觉原型
 
-一次性验证/交付/审计报告。
+## 交付与验证报告
 
-| 报告 | 内容 |
-|------|------|
-| [`reports/2026-08-17-music-detail-statistics-fix-delivery.md`](reports/2026-08-17-music-detail-statistics-fix-delivery.md) | 歌曲、专辑、艺人详情时长、时长排行、最近 50 次与版本拆分修复及真实数据验证 |
-| [`reports/2026-08-16-music-search-optimization-delivery.md`](reports/2026-08-16-music-search-optimization-delivery.md) | 音乐查找 M0–M5 与 remediation 最终 Pass 证据：性能、六变体、浏览器、生产镜像和迁移回滚 |
-| [`reports/2026-08-16-music-search-m0-baseline.md`](reports/2026-08-16-music-search-m0-baseline.md) | 音乐查找 M0 基线：只读性能探针、真实数据库冷/热耗时、FTS5/trigram runtime、API 契约与公开只读安全评审 |
-| [`reports/2026-08-15-playback-logical-timeline-v2-delivery.md`](reports/2026-08-15-playback-logical-timeline-v2-delivery.md) | 连续播放逻辑时间线 V2：5 分钟实际空闲边界、次数/时长双轨归属、原子预聚合与真实数据库验收 |
-| [`reports/2026-08-13-dual-deployment-profile-delivery.md`](reports/2026-08-13-dual-deployment-profile-delivery.md) | 完全版与简化版双运行面交付：同一 SHA/Backend/SQLite、可信网关、模式切换与 CI 门禁 |
-| [`reports/2026-08-13-private-cloud-pwa-delivery.md`](reports/2026-08-13-private-cloud-pwa-delivery.md) | 个人私有云与 PWA Phase B：Tailscale 私网架构、SHA 自动发布、脱敏数据迁移、生产验收、备份与手机剩余边界 |
-| [`reports/2026-08-13-billboard-artist-aggregate-fix.md`](reports/2026-08-13-billboard-artist-aggregate-fix.md) | 艺人榜逻辑播放事件预聚合修复：根因、影响范围、真实数据库重建、原始/预聚合对账与回归验证 |
-| [`reports/2026-08-12-yearly-review-v2-delivery.md`](reports/2026-08-12-yearly-review-v2-delivery.md) | 年度总结 V2 唯一完整交付报告：审计、契约、编排、API/缓存、后台预生成、Desktop/Phone 双 presentation、验收问题修复、四年真实性能与三浏览器证据 |
-| [`reports/2026-08-06-mobile-web-and-pwa-delivery.md`](reports/2026-08-06-mobile-web-and-pwa-delivery.md) | 移动端 M0–M7、PWA Phase A 与验收后修复综合交付：阶段范围、架构契约、全栈门禁、专项复验和未完成边界 |
-| [`reports/2026-07-28-billboard-v3-sensitivity-analysis.md`](reports/2026-07-28-billboard-v3-sensitivity-analysis.md) | Billboard V3 年榜积分敏感性分析：竞争强度、个体统治力与纯排名反事实对照 |
-| [`reports/2026-07-16-genre-source-quality-audit.md`](reports/2026-07-16-genre-source-quality-audit.md) | Genre 来源可信度审核：高影响无链接 LLM 来源标签的证据与处置结果 |
-| [`reports/2026-07-15-genre-language-pre-review-execution.md`](reports/2026-07-15-genre-language-pre-review-execution.md) | Genre/Language 首轮预审：分轴解析、覆盖缺口与 suggested 审核队列 |
-| [`reports/2026-06-19-fullstack-verification-performance.md`](reports/2026-06-19-fullstack-verification-performance.md) | 全栈验证与性能收口执行计划 |
-| [`reports/2026-06-19-fullstack-verification.md`](reports/2026-06-19-fullstack-verification.md) | 全栈验证与性能收口最终报告 |
-| [`reports/2026-06-20-fix-branch-follow-up.md`](reports/2026-06-20-fix-branch-follow-up.md) | fix 分支修复验证跟进 |
-| [`reports/2026-06-22-phase5-delivery-report.md`](reports/2026-06-22-phase5-delivery-report.md) | Phase 5 最终交付报告 — 零缺陷验证、性能对比、10 分钟快速验证指南 |
-| [`reports/2026-07-03-ai-question-test-matrix.md`](reports/2026-07-03-ai-question-test-matrix.md) | AI 问答测试问题清单；可用 `scripts/evaluate_ai_question_matrix.py` 做静态完整性检查 |
-| [`reports/2026-07-03-ai-question-matrix-test-report.md`](reports/2026-07-03-ai-question-matrix-test-report.md) | AI 问答矩阵验收执行报告、失败样本、修复建议与实施记录 |
-| [`reports/2026-07-05-artist-genre-seed-audit.md`](reports/2026-07-05-artist-genre-seed-audit.md) | Artist Genre Seed 准确性审计 |
+报告按主题和日期保存，完整入口见 [`reports/README.md`](reports/README.md)。报告中的性能、测试数量、数据库数量和生产 SHA 都是带日期的证据快照，不应直接当成当前基线。
 
-### 参考文档 (`reference/`) — 4 个
+## 历史归档
 
-规则定义与权威口径，被 CLAUDE.md/AGENTS.md 引用。
+所有已完成或被取代的计划、设计和实施记录均保留在 [`archive/`](archive/)。
 
-| 参考 | 内容 |
-|------|------|
-| [`reference/playback-stats-rules.md`](reference/playback-stats-rules.md) | 播放统计规则权威定义：逻辑事件时间线、次数/时长双轨归属、Session 边界、三级合并与 Album Projects |
-| [`reference/music-metadata-management.md`](reference/music-metadata-management.md) | 音乐源数据管理：有效曲目署名、人工覆盖、审计撤销、统一归并工作区与深链规则 |
-| [`reference/2026-07-04-artist-genre-taxonomy.md`](reference/2026-07-04-artist-genre-taxonomy.md) | Artist Genre Taxonomy：来源优先级、四轴治理、consumer_v1 展示映射与审计边界 |
-| [`reference/data-import-and-health.md`](reference/data-import-and-health.md) | 导入前文件预检、导入后数据库健康报告与当前精简边界 |
+- [`archive/README.md`](archive/README.md)：归档阅读规则与阶段目录
+- [`archive/06-productization-closeout/`](archive/06-productization-closeout/)：最近一次产品化收口阶段
+- [`archive/01-streamlit-mvp/`](archive/01-streamlit-mvp/) 至 [`archive/05-yearly-report-genre/`](archive/05-yearly-report-genre/)：早期开发阶段
 
-## 历史归档 (`archive/`)
+## 文档维护规则
 
-按项目开发阶段组织，已实现或被取代的文档均保留对应阶段目录下，供回溯上下文。
-
-### 01 · Streamlit MVP（2026-05）
-
-全功能 Streamlit 原型：Billboard 周榜、发行周期、封面系统、版本合并引擎。
-
-| 目录 | 内容 |
-|------|------|
-| [`archive/01-streamlit-mvp/phase1-2-streamlit/`](archive/01-streamlit-mvp/phase1-2-streamlit/) | Streamlit 版本功能清单 |
-| [`archive/01-streamlit-mvp/phase3-frontend/`](archive/01-streamlit-mvp/phase3-frontend/) | React 前端迁移页面规划 |
-| [`archive/01-streamlit-mvp/phase4-architecture/`](archive/01-streamlit-mvp/phase4-architecture/) | 架构优化白皮书与 Phase 4 验收报告 |
-| [`archive/01-streamlit-mvp/features/account-center/`](archive/01-streamlit-mvp/features/account-center/) | 账号中心设计 |
-| [`archive/01-streamlit-mvp/features/release-cycle/`](archive/01-streamlit-mvp/features/release-cycle/) | 发行周期分析设计 |
-| [`archive/01-streamlit-mvp/features/yearly-review/`](archive/01-streamlit-mvp/features/yearly-review/) | 年度总结设计 |
-| [`archive/01-streamlit-mvp/features/enhancements/`](archive/01-streamlit-mvp/features/enhancements/) | 早期增强功能设计 |
-
-### 02 · React 产品化（2026-06-08~18）
-
-React 重写、大文件拆分、API 契约硬化、AI Insights 模块、播放统计规则引擎。
-
-| 文件/目录 | 内容 |
-|------|------|
-| [`archive/02-react-productization/2026-06-08-phase5-baseline.md`](archive/02-react-productization/2026-06-08-phase5-baseline.md) | Phase 5 产品化基线台账 |
-| [`archive/02-react-productization/2026-06-11-ai-insights.md`](archive/02-react-productization/2026-06-11-ai-insights.md) | AI Insights 模块设计 |
-| [`archive/02-react-productization/playback-stats/`](archive/02-react-productization/playback-stats/) | 播放统计实现计划、Album Project、规则 v1 |
-
-### 03 · 全栈质量门禁（2026-06-19~27）
-
-61 个 commits：验证矩阵、性能收口、Billboard 年榜、Settings UX 打磨。
-
-| 文件 | 内容 |
-|------|------|
-| [`archive/03-quality-gate/2026-06-22-settings-page-ux-polish.md`](archive/03-quality-gate/2026-06-22-settings-page-ux-polish.md) | Settings 页面 UX 打磨 |
-| [`archive/03-quality-gate/2026-06-24-import-derived-data-maintenance.md`](archive/03-quality-gate/2026-06-24-import-derived-data-maintenance.md) | 导入派生数据维护方案 |
-| [`archive/03-quality-gate/2026-06-26-billboard-year-end.md`](archive/03-quality-gate/2026-06-26-billboard-year-end.md) | Billboard 个人年榜实现计划 |
-| [`archive/03-quality-gate/2026-06-26-billboard-year-end-design.md`](archive/03-quality-gate/2026-06-26-billboard-year-end-design.md) | Billboard 年榜设计规格 |
-
-### 04 · AI Agent 中间层（2026-06-28~07-03）
-
-AI Observable Agent Orchestrator、Universal Analytical Harness、证据链与回答契约。
-
-| 文件 | 内容 |
-|------|------|
-| [`archive/04-ai-agent-harness/2026-06-28-mobile-navigation-orientation.md`](archive/04-ai-agent-harness/2026-06-28-mobile-navigation-orientation.md) | 旧移动导航增量方案；现行移动端设计已由 `plans/2026-08-05-mobile-web-design-and-implementation-plan.md` 取代 |
-| [`archive/04-ai-agent-harness/2026-06-28-ai-observable-agent-orchestrator.md`](archive/04-ai-agent-harness/2026-06-28-ai-observable-agent-orchestrator.md) | AI Observable Agent Orchestrator V2（plan） |
-| [`archive/04-ai-agent-harness/2026-06-28-ai-observable-agent-orchestrator-design.md`](archive/04-ai-agent-harness/2026-06-28-ai-observable-agent-orchestrator-design.md) | AI Observable Agent Orchestrator V2（design） |
-| [`archive/04-ai-agent-harness/2026-06-29-ai-agent-universal-analytical-harness.md`](archive/04-ai-agent-harness/2026-06-29-ai-agent-universal-analytical-harness.md) | 通用分析中间层（plan） |
-| [`archive/04-ai-agent-harness/2026-06-29-ai-agent-universal-analytical-harness-design.md`](archive/04-ai-agent-harness/2026-06-29-ai-agent-universal-analytical-harness-design.md) | 通用分析中间层（design） |
-| [`archive/04-ai-agent-harness/2026-06-29-ai-project-context-prompt.md`](archive/04-ai-agent-harness/2026-06-29-ai-project-context-prompt.md) | Project Context Prompt（plan） |
-| [`archive/04-ai-agent-harness/2026-06-29-ai-project-context-prompt-design.md`](archive/04-ai-agent-harness/2026-06-29-ai-project-context-prompt-design.md) | Project Context Prompt（design） |
-| [`archive/04-ai-agent-harness/2026-07-03-ai-harness-matrix-fixes.md`](archive/04-ai-agent-harness/2026-07-03-ai-harness-matrix-fixes.md) | Harness 矩阵验收后修复 |
-
-### 05 · AI 年报与流派（2026-07-03~05）
-
-图文年度报告 12 轮迭代、Music Search、Genre Taxonomy 体系。
-
-| 目录 | 内容 |
-|------|------|
-| [`archive/05-yearly-report-genre/ai-yearly-report/`](archive/05-yearly-report-genre/ai-yearly-report/) | 年报完整迭代链：agentic_longform → visual_artifact → editorial_agent → final_quality_gate |
-| [`archive/05-yearly-report-genre/music-search/`](archive/05-yearly-report-genre/music-search/) | 音乐查找入口与榜单摘要 |
-| [`archive/05-yearly-report-genre/genre-taxonomy/`](archive/05-yearly-report-genre/genre-taxonomy/) | Genre 解析、Taxonomy v2、Axis Confidence 早期迭代 |
+- 当前文档必须说明状态、适用范围和替代关系。
+- 规则写入 `reference/`，计划写入 `plans/`，设计写入 `designs/`，证据写入 `reports/`。
+- 已完成计划不得继续留在 `plans/`；被替代的设计必须标记替代入口。
+- 根目录 `AGENTS.md` 与 `CLAUDE.md` 保持一致，详细领域规则通过链接引用。
+- 新增或移动文档后运行 `python3 scripts/docs_audit.py`。

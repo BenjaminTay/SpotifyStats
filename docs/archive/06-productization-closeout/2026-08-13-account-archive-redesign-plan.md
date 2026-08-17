@@ -1,5 +1,7 @@
 # 账号中心重构方案：从“人格橱窗”到“个人音乐档案”
 
+> 状态：历史归档；当前入口见 `docs/archive/06-productization-closeout/README.md`
+
 > 日期：2026-08-13
 > 状态：已完成；本地统计、Desktop / Compact / Phone 音乐档案、旧链路退役与文档收口均已交付
 > 范围：`/account` 的产品定位、统计语义、内容架构、Desktop / Compact / Phone UI、API 契约、性能、隐私与迁移计划
@@ -7,12 +9,12 @@
 
 实施证据见：
 
-- `docs/reports/2026-08-13-account-archive-phase-0-delivery.md`
-- `docs/reports/2026-08-13-account-archive-journey-cohorts-delivery.md`
-- `docs/reports/2026-08-13-account-archive-desktop-delivery.md`
-- `docs/reports/2026-08-13-account-archive-phone-delivery.md`
-- `docs/reports/2026-08-13-account-archive-phase-4-delivery.md`
-- `docs/reference/account-archive-statistics.md`
+- `../../reports/2026-08-13-account-archive-phase-0-delivery.md`
+- `../../reports/2026-08-13-account-archive-journey-cohorts-delivery.md`
+- `../../reports/2026-08-13-account-archive-desktop-delivery.md`
+- `../../reports/2026-08-13-account-archive-phone-delivery.md`
+- `../../reports/2026-08-13-account-archive-phase-4-delivery.md`
+- `../../reference/account-archive-statistics.md`
 
 ## 1. 结论先行
 
@@ -582,7 +584,7 @@ Desktop / Phone 共用同一 URL、TanStack Query、过滤指纹、row model 和
 
 完成条件：360 / 390 / 430 / 768 / 1280 route matrix、control inventory、interaction、chart、long-list、Chromium / Firefox / WebKit 全部通过。
 
-交付状态：已完成。Phone 使用独立组件树；收藏库具备 ESC、滚动锁定、直接跳页和焦点恢复，正文预览 Top 5、完整收藏库每页 10 条。完整证据见 `docs/reports/2026-08-13-account-archive-phone-delivery.md`。
+交付状态：已完成。Phone 使用独立组件树；收藏库具备 ESC、滚动锁定、直接跳页和焦点恢复，正文预览 Top 5、完整收藏库每页 10 条。完整证据见 `../../reports/2026-08-13-account-archive-phone-delivery.md`。
 
 ### Phase 4：退役旧链路与文档收口（P2）
 
@@ -593,7 +595,7 @@ Desktop / Phone 共用同一 URL、TanStack Query、过滤指纹、row model 和
 
 完成条件：仓库中不再有新页面对退役字段的消费，旧契约有明确移除记录，文档名称与导航一致。
 
-交付状态：已完成。旧前端页面树、宽松类型和 hooks 已删除；旧重型 service 与两条聚合 HTTP 路由已退役；AI 工具名保留但已迁到档案白名单事实；OpenAPI、smoke 台账、项目提示和统计 reference 已同步。完整证据见 `docs/reports/2026-08-13-account-archive-phase-4-delivery.md`。
+交付状态：已完成。旧前端页面树、宽松类型和 hooks 已删除；旧重型 service 与两条聚合 HTTP 路由已退役；AI 工具名保留但已迁到档案白名单事实；OpenAPI、smoke 台账、项目提示和统计 reference 已同步。完整证据见 `../../reports/2026-08-13-account-archive-phase-4-delivery.md`。
 
 ## 12. 验收矩阵
 

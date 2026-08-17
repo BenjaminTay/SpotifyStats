@@ -1,92 +1,78 @@
-# Spotify Stats — React 前端
+# SpotifyStats 前端开发说明
 
-## 技术栈
+前端位于 `frontend/`，使用 React、TypeScript、Vite、Tailwind CSS、React Router、TanStack React Query、ECharts 和 Vitest。
 
-- **框架**：React 19 + TypeScript 6.0
-- **构建**：Vite 8（开发端口 5173，`/api` 代理至后端 8000）
-- **样式**：Tailwind CSS v4 + shadcn/ui v4（base-nova）
-- **路由**：React Router v7
-- **图表**：ECharts 6 + echarts-for-react
-- **图标**：lucide-react
-- **字体**：Inter Variable（sans）+ Playfair Display（serif，Google Fonts CDN）
-
-## 快速启动
+## 快速开始
 
 ```bash
-npm install
-npm run dev        # http://localhost:5173
-npm run build      # 生产构建
+npm ci --legacy-peer-deps
+npm run dev
+npm test
+npm run build
 ```
 
-确保后端已启动（`uvicorn backend.main:app --reload`，端口 8000）。
+默认开发地址为 `http://localhost:5173`，API 由 Vite proxy 转发到 `http://127.0.0.1:8000`。
 
-## 页面
+## 路由入口
 
-| 路由 | 页面 | 说明 |
-|------|------|------|
-| `/` | DashboardPage | 个人音乐头版：确定性头条、档案护照、最近 4 周、最新个人 Billboard、年度年鉴入口与旧爱重听；Desktop/Phone 独立编排 |
-| `/analysis` | AnalysisLayout | 播放分析：二级 tab 收敛 `/stats`（播放统计 + 最近播放 + 时钟图）、`/charts`（播放排行 track/album/artist × plays/hours）、`/yearly-review`（年度总结）、`/analysis/records`（播放记录）与 `/account`（账号中心） |
-| `/yearly-review` | YearlyReviewPage | 年度总结：2 Tab（自定义年度总结 + 官方 Wrapped 2025）、年份选择器、序列化预取（避免 SQLite 并发锁）、ErrorBoundary 容错 |
-| `/billboard` | BillboardPage | Billboard 周榜：单曲/专辑/艺人三榜、周切换（含 URL 参数 `?week=`）、排名表（含 CoverCell 封面 + 跳转详情链接）、Tab 选择跨页面记忆保持 |
-| `/billboard/number-ones` | NumberOnesPage | 每周榜首：3 子 Tab（单曲/专辑/艺人）、年度筛选 + KPI 卡片 + 冠单表 + 排行柱状图 + 空冠统计、子 Tab 和年份选择跨页面记忆保持 |
-| `/billboard/all-time` | AllTimeChartsPage | Billboard 总榜：3 实体 Tab（歌曲/专辑/艺人）、富数据表格（走势评分/排名峰值/在榜周数等）、列头排序、排名峰值筛选（全部/#1/Top5/Top10/空冠）、可拖拽列宽（localStorage 记忆）、翻页、Tab/筛选/排序/翻页均跨页面记忆保持 |
-| `/music/tracks/:trackId` | TrackDetailPage | 单曲详情：封面 Hero、KPI 卡片行、排名趋势图（含断档填充 + 全貌/细节缩放 + 峰值标记 + 连续冠周色带）、榜单历史表（含播放条、PK/PK Wks/在榜滚动统计）、艺人名和专辑名可点击跳转对应详情 |
-| `/music/artists/:artistName` | ArtistDetailPage | 艺人详情：4 Tab（榜单表现/单曲成绩/专辑成绩/歌手生涯）、封面 Hero、6 KPI 卡片、排名趋势图 + 最佳单曲叠加线、视觉播放条、走势点数/排名、Popularity 视觉进度条 |
-| `/music/albums/:albumName` | AlbumDetailPage | 专辑详情：3 Tab（榜单表现/曲目表现/专辑百科）、封面 Hero、6 KPI 卡片、排名趋势图 + 最佳单曲叠加线、视觉播放条、走势点数/排名、艺人名可点击跳转艺人详情 |
-| `/settings` | SettingsPage | 设置：5 区块（Data & Display / LLM Translation / Billboard Parameters / Version Merge / Data Import，含 LLM 配置档案管理） |
+| 路由 | 当前职责 |
+|---|---|
+| `/` | 个人音乐头版 |
+| `/analysis/stats` | 播放统计 |
+| `/analysis/charts` | 播放排行 |
+| `/analysis/records` | 播放记录 |
+| `/yearly-review` | 自有年度总结 |
+| `/billboard` | 个人 Billboard |
+| `/music/tracks/:trackId` | 歌曲详情 |
+| `/music/albums/:albumName` | 专辑详情 |
+| `/music/artists/:artistName` | 艺人详情 |
+| `/account` | 音乐档案 |
+| `/settings` | 数据、统计、元数据和系统设置 |
 
-## UI 风格
+官方 Wrapped 只保留后端兼容边界，不再作为前端消费页面。旧 Billboard 详情路径只负责兼容跳转到 `/music/*`。
 
-**编辑风 × 液态玻璃** — 杂志式排版 + 毛玻璃材质 + 日/夜双皮肤。
-
-详细设计规范见 [`UI_STYLE_GUIDE.md`](./UI_STYLE_GUIDE.md)。新增页面前务必阅读。
-
-### 移动网页
-
-- `<768px` 使用独立 Phone presentation；`768–1023px` 为 Compact；`>=1024px` 使用 Desktop。
-- Phone Shell 由 `MobileTopBar`、五项 `MobileBottomNav` 和栏目 `MobileSectionSwitcher` 构成，Phone/Desktop 重组件互斥挂载。
-- 手机和 PC 共用 Route Container、TanStack Query、URL 状态、过滤指纹和统计事实；Settings 的复杂治理工作台保留桌面端。
-- 本地查看可把浏览器响应式视口设为 390×844；发布前用 `node ../scripts/frontend_route_smoke.mjs --viewport matrix` 运行五档视口门禁。
-
-### PWA / App Mode
-
-- 生产构建会注册 `/sw.js`，Manifest 位于 `/manifest.webmanifest`；开发服务器不注册 Service Worker，避免缓存干扰热更新。
-- 手机 Settings 首页提供安装卡；Chromium 使用 `beforeinstallprompt`，iOS 显示 Safari“添加到主屏幕”说明。
-- Service Worker 只缓存 PWA 壳层和版本化静态资源，禁止缓存 `/api`、`/covers`、OAuth/LLM 凭据或个人统计响应。
-- `npm run build && npm run preview` 可验证 PWA 静态资源；真实手机安装需要 HTTPS 和手机可访问的后端。
+播放分析二级顺序固定为“播放统计 / 播放排行 / 年度总结 / 播放记录 / 音乐档案”。Phone、Compact、Desktop 共享路由状态、Query、过滤指纹和统计事实，但使用互斥 presentation。
 
 ## 目录结构
 
-```
+```text
 src/
-├── components/
-│   ├── ui/          ← shadcn/ui 组件
-│   ├── charts/      ← 图表组件（ECharts + 纯 DOM，含 RankTrendChart 排名趋势图）
-│   ├── layout/      ← Desktop/Phone Shell（AppLayout, Masthead, MobileTopBar/BottomNav/SectionSwitcher）
-│   ├── mobile/      ← Sheet、实体行、移动图表/全屏、分页和状态原语
-│   └── shared/      ← 共享组件（GlassCard, KpiCard, WeekSelector, ChangeCell, CoverCell, BillboardSubNav 等）
-├── features/        ← Feature-first Experience/Section/Primitives/Data 与移动 presentation
-│   └── home/        ← 首页 Desktop/Phone presentation、共享原语、状态与样式
-├── pages/           ← 薄路由容器
-│   └── yearly-review/  ← 年度总结子组件（14 个：HeroSection, PersonalityReveal, TopCharts, GenrePanorama, TimeStory, HourClock, MusicMap, DiscoveryReturns, ListeningDepth, SpecialMoments, MonthlyDrilldown, YearComparison, ShareButton, OfficialWrapped）
-├── hooks/           ← 自定义 hooks（GET 数据统一使用 TanStack Query + queryKeys）
-├── lib/             ← API 客户端、工具函数、图表色盘、听歌人格主题、曲风地理映射
-└── types/           ← TypeScript 类型定义（dashboard, billboard, analysis, settings, yearly-review）
+├── api/              API 客户端、QueryClient、queryKeys 和类型
+├── features/         按业务域组织的页面内容
+├── components/       UI、图表、布局和共享 primitives
+├── pages/             路由级容器，只负责组合
+├── hooks/             领域 hooks
+├── lib/               日期、主题、简繁转换等基础工具
+├── tests/             单元、组件和架构护栏测试
+└── types/             展示层 TypeScript 类型
 ```
 
-## 主题
+详细架构约束见 [`CLAUDE.md`](CLAUDE.md)，视觉规范见 [`UI_STYLE_GUIDE.md`](UI_STYLE_GUIDE.md)。
 
-CSS 变量定义在 `src/index.css`：
-- `@theme inline` — 结构变量（字体、圆角、shadcn 引用）
-- `:root` — 浅色主题颜色
-- `.dark` — 深色主题颜色
+## 数据获取规则
 
-`useTheme()` hook 管理主题切换，localStorage 持久化，系统偏好回退。
+- 所有 GET 请求使用 TanStack Query 和 `queryKeys`。
+- 禁止模块级 `Map` 缓存 API 响应。
+- 默认 Query 配置为 stale time 5 分钟、gc time 30 分钟、retry 2 次；搜索候选请求按搜索专用规则使用 `retry: 0`。
+- 音乐搜索先请求候选，再按稳定实体 key 请求精确统计 context；未加载 context 不得显示为 0。
+- 页面离开只取消当前 HTTP 等待，不取消服务端后台任务。
 
-## 性能
+## 页面与组件约束
 
-- GET 数据统一使用 TanStack Query；禁止新增模块级 API 响应缓存
-- Phone/Desktop 的重图表、宽表和长列表互斥挂载，避免同时请求和渲染两套 presentation
-- 首页 `/home/overview` 使用完整过滤指纹；年度预览与 Billboard 摘要只读既有精确缓存，首页请求不触发年度或榜单冷构建
-- App Shell 不再无条件预取旧 Dashboard、周榜和总榜；各页面按自身语义发起查询
-- Billboard `compute_billboard_data()` 有 `@lru_cache` 缓存（后端优化）
+- `pages/` 只做路由容器，业务逻辑放在 `features/`。
+- 新增长列表必须分页、分段、无限查询或虚拟化。
+- ECharts 必须通过 `components/charts/LazyEChart.tsx` 按需加载。
+- 外部 Markdown 必须通过 `react-markdown` 与 `rehype-sanitize` 渲染。
+- 简繁转换使用 `displayName()` 和按需 OpenCC 子包。
+- Phone 主要触控目标至少 44×44px，页面不得产生全局横向滚动。
+
+## 验证
+
+```bash
+npm test
+npm run build
+node ../scripts/frontend_route_smoke.mjs --viewport both --max-scroll-overflow 0 --fail-on-console-warning --include-detail-routes
+node ../scripts/frontend_cross_browser_smoke.mjs --include-detail-routes
+```
+
+真实浏览器、生产 preview 和后端 API 的完整验证入口见根目录 `CLAUDE.md` 与 `scripts/fullstack_verification_check.sh`。

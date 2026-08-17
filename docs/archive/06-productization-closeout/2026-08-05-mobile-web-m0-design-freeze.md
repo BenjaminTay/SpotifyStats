@@ -1,9 +1,11 @@
 # SpotifyStats 移动端网页 M0 设计冻结规格
 
+> 状态：历史归档；当前入口见 `docs/archive/06-productization-closeout/README.md`
+
 > 状态：**M0 Frozen / M1–M2 已完成，可以进入 M3**<br>
 > 日期：2026-08-05<br>
-> 上位规划：[`../plans/2026-08-05-mobile-web-design-and-implementation-plan.md`](../plans/2026-08-05-mobile-web-design-and-implementation-plan.md)<br>
-> 可交互原型：[`mobile-web-m0-prototype/index.html`](mobile-web-m0-prototype/index.html)<br>
+> 上位规划：[`2026-08-05-mobile-web-design-and-implementation-plan.md`](2026-08-05-mobile-web-design-and-implementation-plan.md)<br>
+> 可交互原型：[`mobile-web-m0-prototype/index.html`](../../designs/mobile-web-m0-prototype/index.html)<br>
 > 适用范围：手机端网页 `<768px`；768px 及以上继续使用桌面/紧凑桌面壳
 
 ## 1. 冻结结论
@@ -248,7 +250,7 @@ Top Bar 与页面内容不得再次完整重复同一 H1。Root 页面允许正�
 
 ## 7. 六个代表页面设计签字
 
-可交互原型位于 [`mobile-web-m0-prototype/index.html`](mobile-web-m0-prototype/index.html)。六个画板不是独立产品分支，而是以下通用结构的样板。
+可交互原型位于 [`mobile-web-m0-prototype/index.html`](../../designs/mobile-web-m0-prototype/index.html)。六个画板不是独立产品分支，而是以下通用结构的样板。
 
 ### 7.1 首页
 
@@ -402,8 +404,8 @@ M1-01 → M1-02 → M1-03
 
 ## 13. M1–M2 验收与下一实施动作
 
-M1 已于 2026-08-05 完成，完整证据见 [`../reports/2026-08-06-mobile-web-and-pwa-delivery.md`](../reports/2026-08-06-mobile-web-and-pwa-delivery.md)：Phase 5 最低矩阵通过，54 个 desktop/mobile 路由组合最终通过，19 个移动路由共 772 个控件为 0 violation。
+M1 已于 2026-08-05 完成，完整证据见 [`../reports/2026-08-06-mobile-web-and-pwa-delivery.md`](../../reports/2026-08-06-mobile-web-and-pwa-delivery.md)：Phase 5 最低矩阵通过，54 个 desktop/mobile 路由组合最终通过，19 个移动路由共 772 个控件为 0 violation。
 
-M2 也已于 2026-08-05 完成，完整证据见 [`../reports/2026-08-06-mobile-web-and-pwa-delivery.md`](../reports/2026-08-06-mobile-web-and-pwa-delivery.md)：11 类通用移动组件全部落地，栏目切换器迁移到统一 Bottom Sheet，50 个前端测试文件共 406 个用例通过，360px 明暗主题与横屏全屏图表通过真实浏览器验收。
+M2 也已于 2026-08-05 完成，完整证据见 [`../reports/2026-08-06-mobile-web-and-pwa-delivery.md`](../../reports/2026-08-06-mobile-web-and-pwa-delivery.md)：11 类通用移动组件全部落地，栏目切换器迁移到统一 Bottom Sheet，50 个前端测试文件共 406 个用例通过，360px 明暗主题与横屏全屏图表通过真实浏览器验收。
 
 下一步进入 M3。以首页、播放统计、播放排行和 Billboard 周榜为首批真实页面样板，接入 M2 组件但继续复用原查询数据、URL 状态和过滤指纹；一种音乐详情页随 M5 统一改造，M3 不提前复制详情业务逻辑。

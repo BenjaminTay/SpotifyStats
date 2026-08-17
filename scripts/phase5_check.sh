@@ -9,6 +9,7 @@ if [ -d ".venv" ]; then
   . ".venv/bin/activate"
 fi
 
+python scripts/docs_audit.py --include-archive
 python scripts/ci_baseline_parity.py
 pytest -m unit -q
 pytest -m contract -q

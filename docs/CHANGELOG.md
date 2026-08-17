@@ -1,5 +1,7 @@
 # 变更日志
 
+本文件只记录按日期排列的变更摘要。详细实施、验收和真实数据证据见 [`reports/README.md`](reports/README.md)；当前规则见 [`reference/`](reference/)。历史条目中的数字和路径仅代表当时状态。
+
 ## 2026-08-17 — 音乐查找展示收口
 
 - 搜索结果不再向普通用户展示“匹配艺人/专辑/别名”“简繁匹配”“近似匹配”等内部诊断；匹配字段继续用于排序、高亮、测试和排障。
@@ -57,7 +59,7 @@
 ## 2026-08-16 — 音乐查找候选索引、精确快照与交互重构
 
 > 最终验收状态：Pass。首轮发现的 L1/L3、动态阈值关闭、非默认 Billboard 参数和高命中热路径
-> 缺口已按 `plans/2026-08-16-music-search-remediation-plan.md` 修复；远程运行状态以对应 SHA 的
+> 缺口已按 `archive/06-productization-closeout/2026-08-16-music-search-remediation-plan.md` 修复；远程运行状态以对应 SHA 的
 > production deployment 记录为准。
 
 - 将交互搜索拆为轻量候选与精确 context 两阶段：候选 GET 不再加载 lifetime 播放帧或计算完整 Billboard，旧 response 保持兼容。
@@ -680,7 +682,7 @@
 - Frontend long-list smoke：7/7 passed
 - in-app Browser 真实问答：收藏问题调用账号工具；删除播放记录请求被只读边界拒绝
 
-详见 [`docs/verification/2026-07-03-ai-question-matrix-test-report.md`](verification/2026-07-03-ai-question-matrix-test-report.md)。
+详见 [`reports/2026-07-03-ai-question-matrix-test-report.md`](reports/2026-07-03-ai-question-matrix-test-report.md)。
 
 ---
 
@@ -838,7 +840,7 @@
 - Backend full 694、unit 322、contract 172、frontend 134、完整 fullstack verification PASS
 - 2026-06-21 复核：固定域名 ngrok HTTPS tunnel 已可建立，外部 health、Spotify login URL、invalid-state callback 回跳和 auth data 入口通过；真实 Spotify 用户 consent 点击仍需人工确认
 
-详见 [`docs/verification/2026-06-20-fix-branch-follow-up.md`](verification/2026-06-20-fix-branch-follow-up.md)。
+详见 [`reports/2026-06-20-fix-branch-follow-up.md`](reports/2026-06-20-fix-branch-follow-up.md)。
 
 ---
 
@@ -876,7 +878,7 @@
 - 会话列表嵌套按钮、周快捷项重复 key console error、音乐详情隐藏 tab 挂载图表导致的 ECharts 零尺寸 warning
 - Billboard/Records/AllTime/WeekSelector/音乐详情分页图标按钮与 Settings Slider 内部输入控件缺少可访问名称
 
-详见 [`docs/verification/2026-06-19-fullstack-verification.md`](verification/2026-06-19-fullstack-verification.md)。
+详见 [`reports/2026-06-19-fullstack-verification.md`](reports/2026-06-19-fullstack-verification.md)。
 
 ---
 
@@ -899,7 +901,7 @@
 - Dashboard/Leaderboard/Timeline/Wrapped/Listening Hours/Music Entity/Release Cycle 统一传递 `dynamic_threshold` 与 `max_merge_gap_minutes`
 - R24b + 过滤传播合约测试
 
-详见 [`docs/playback-stats/rules.md`](playback-stats/rules.md)。
+详见 [`reference/playback-stats-rules.md`](reference/playback-stats-rules.md)。
 
 ---
 
@@ -914,7 +916,7 @@
 - **G**：TrackDetail 歌词 Query 漏网修复
 - **H**：Cross-cutting — 架构护栏 105+ 测试 + CI 基线
 
-详见 [`docs/productization/2026-06-08-phase5-baseline.md`](productization/2026-06-08-phase5-baseline.md)。
+详见 [`archive/02-react-productization/2026-06-08-phase5-baseline.md`](archive/02-react-productization/2026-06-08-phase5-baseline.md)。
 
 ---
 

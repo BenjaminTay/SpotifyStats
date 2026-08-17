@@ -124,7 +124,7 @@ data/
 3. **连续播放合并**：相邻的音频播放（同一 track_id + 间隔 ≤ 阈值）合并为一次有效 session，过滤碎片记录
 4. **动态阈值**：短播放（< 阈值）若连续出现，视为异常跳过而非有效播放
 
-详见 [`docs/playback-stats/rules.md`](../docs/playback-stats/rules.md)。
+详见 [`docs/reference/playback-stats-rules.md`](../docs/reference/playback-stats-rules.md)。
 
 ### 视频记录
 

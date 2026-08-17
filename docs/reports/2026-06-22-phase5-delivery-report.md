@@ -233,8 +233,8 @@
 - `CLAUDE.md` — 速查化
 - `docs/README.md` — **新建** 文档地图
 - `docs/CHANGELOG.md` — **新建** 变更日志
-- `docs/productization/2026-06-22-phase5-delivery-report.md` — **新建** 本交付报告
-- `docs/verification/2026-06-20-fix-branch-follow-up.md` — **新建** fix 分支验证报告
+- `docs/reports/2026-06-22-phase5-delivery-report.md` — **新建** 本交付报告
+- `docs/reports/2026-06-20-fix-branch-follow-up.md` — **新建** fix 分支验证报告
 
 ---
 
@@ -249,8 +249,8 @@
 | `CLAUDE.md` | 速查化 | 60 行 Phase 5 开发日志压缩为 4 行摘要 + 链接；保留常用命令和核心约束 |
 | `docs/README.md` | **新建** | 文档地图：总览 / 架构 / 播放统计规则 / 验证报告 / 产品化台账 / 历史归档 7 大板块 |
 | `docs/CHANGELOG.md` | **新建** | 完整变更日志：2026-06-20 fix 分支 / 2026-06-19 全栈验证与性能收口 / 2026-06-18 播放统计规则引擎 |
-| `docs/productization/2026-06-22-phase5-delivery-report.md` | **新建** | 本交付报告 |
-| `docs/verification/2026-06-20-fix-branch-follow-up.md` | **新建** | fix 分支验证跟进报告 |
+| `docs/reports/2026-06-22-phase5-delivery-report.md` | **新建** | 本交付报告 |
+| `docs/reports/2026-06-20-fix-branch-follow-up.md` | **新建** | fix 分支验证跟进报告 |
 | `docs/archive/` | 重组 | 旧 features/ 目录移至 `archive/features/`，历史阶段归档整理 |
 
 ---

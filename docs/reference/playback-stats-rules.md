@@ -2,7 +2,7 @@
 
 > 创建日期：2026-06-18；最近修订：2026-08-15
 > 状态：规则源文件，作为后续实现与验收依据
-> 来源：整合 `docs/playback-stats/2026-06-12-playback-stats-rules.md`、`docs/playback-stats/implementation-plan.md`，以及 2026-06-18 对歌曲/专辑多版本语义的最新确认。
+> 来源：整合 [`docs/archive/02-react-productization/playback-stats/2026-06-12-playback-stats-rules-v1.md`](../archive/02-react-productization/playback-stats/2026-06-12-playback-stats-rules-v1.md)、[`docs/archive/02-react-productization/playback-stats/2026-06-12-playback-stats-implementation-plan.md`](../archive/02-react-productization/playback-stats/2026-06-12-playback-stats-implementation-plan.md)，以及后续对歌曲/专辑多版本语义的确认。
 
 ---
 

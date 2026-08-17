@@ -1,5 +1,7 @@
 # Genre Review Settings Panel Design
 
+> 状态：已确认；当前实现和审核规则以 `docs/reference/` 及 Settings 代码为准
+
 ## Goal
 
 Add an in-app Genre 数据健康 panel to Settings so artist genre fallback data can be reviewed without terminal commands.

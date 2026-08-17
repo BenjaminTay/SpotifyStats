@@ -1,8 +1,8 @@
 # SpotifyStats App 化路线：PWA → 安全部署 → Capacitor
 
-> 状态：Phase A 可安装 PWA、Phase B 私人管理入口和公共只读展示入口已完成；等待双入口手机真机安装验收<br>
+> 状态：部分完成；PWA、私人管理入口和公共只读展示入口已完成，等待双入口手机真机安装验收，Capacitor 尚未决策<br>
 > 日期：2026-08-06<br>
-> 前置阶段：[`2026-08-05-mobile-web-design-and-implementation-plan.md`](2026-08-05-mobile-web-design-and-implementation-plan.md)
+> 前置阶段：[`2026-08-05-mobile-web-design-and-implementation-plan.md`](../archive/06-productization-closeout/2026-08-05-mobile-web-design-and-implementation-plan.md)
 
 ## 1. 路线结论
 

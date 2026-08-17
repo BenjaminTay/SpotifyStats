@@ -1,5 +1,7 @@
 # AI Yearly Report Editorial Agent Pipeline Design
 
+> 状态：历史归档；当前入口见 `docs/archive/06-productization-closeout/README.md`
+
 > 创建日期：2026-07-04
 > 状态：设计稿，待人工确认后进入 implementation plan
 > 相关模块：`backend/domains/ai_reports/`、`backend/services/ai_task_service.py`、`backend/services/yearly_report_agent_service.py`、`backend/providers/llm/`、`frontend/src/features/ai-insights/yearly-artifact/`

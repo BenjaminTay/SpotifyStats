@@ -1,5 +1,7 @@
 # Genre Axis Supplement 与 Metadata 预审核设计
 
+> 状态：历史归档；当前入口见 `docs/archive/06-productization-closeout/README.md`
+
 ## 目标
 
 在不覆盖 Spotify 原始标签、不从 genre 推断语言、也不自动批准 AI 候选的前提下：

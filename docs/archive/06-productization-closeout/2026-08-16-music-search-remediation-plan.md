@@ -1,10 +1,12 @@
 # 音乐查找验收缺口完整修复规划
 
+> 状态：历史归档；当前入口见 `docs/archive/06-productization-closeout/README.md`
+
 > 创建日期：2026-08-16
 > 状态：已完成（实现、真实主库维护、生产副本预建、联合回滚与远程生产均通过）
 > 前置结论：实施前仅默认 L2 + 动态阈值开启场景可用；该 Partial 基线已被本轮修复取代
 > 适用范围：搜索快照覆盖、统计语义、候选热路径、Quick Open、`/music/search`、公开只读与生产门禁
-> 关联文档：`docs/plans/2026-08-16-music-search-performance-and-experience-optimization-plan.md`、`docs/reports/2026-08-16-music-search-optimization-delivery.md`
+> 关联文档：`2026-08-16-music-search-performance-and-experience-optimization-plan.md`、`../../reports/2026-08-16-music-search-optimization-delivery.md`
 
 > 2026-08-16 后续调整：本文的六变体统计语义与历史验收证据继续有效，但“每个新 SHA 都在一次性
 > 工作副本中冷建候选索引和六变体”的发布策略已被

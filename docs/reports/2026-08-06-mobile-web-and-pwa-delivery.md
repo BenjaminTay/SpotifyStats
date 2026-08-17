@@ -2,9 +2,9 @@
 
 > 状态：**PASS / 本地移动网页发布候选与可安装 PWA 基线完成**<br>
 > 日期：2026-08-06<br>
-> 产品与实施规划：[`../plans/2026-08-05-mobile-web-design-and-implementation-plan.md`](../plans/2026-08-05-mobile-web-design-and-implementation-plan.md)<br>
+> 产品与实施规划：[`../archive/06-productization-closeout/2026-08-05-mobile-web-design-and-implementation-plan.md`](../archive/06-productization-closeout/2026-08-05-mobile-web-design-and-implementation-plan.md)<br>
 > App 化路线：[`../plans/2026-08-06-appification-pwa-capacitor-plan.md`](../plans/2026-08-06-appification-pwa-capacitor-plan.md)<br>
-> 设计冻结：[`../designs/2026-08-05-mobile-web-m0-design-freeze.md`](../designs/2026-08-05-mobile-web-m0-design-freeze.md)
+> 设计冻结：[`../archive/06-productization-closeout/2026-08-05-mobile-web-m0-design-freeze.md`](../archive/06-productization-closeout/2026-08-05-mobile-web-m0-design-freeze.md)
 
 ## 1. 交付结论
 

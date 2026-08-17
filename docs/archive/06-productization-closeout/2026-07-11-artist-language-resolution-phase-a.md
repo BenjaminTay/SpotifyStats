@@ -1,5 +1,7 @@
 # Artist Language Resolution Phase A Implementation Plan
 
+> 状态：历史归档；当前入口见 `docs/archive/06-productization-closeout/README.md`
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Build an auditable artist-level language metadata workflow, truthful primary-artist language statistics, a Settings review UI, and a yearly-review consumer that no longer infers language from genre.

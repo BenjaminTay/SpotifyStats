@@ -1,12 +1,14 @@
 # SpotifyStats 移动端网页完整设计与实施规划
 
+> 状态：历史归档；当前入口见 `docs/archive/06-productization-closeout/README.md`
+
 > 创建日期：2026-08-05<br>
 > 状态：M0–M7 已完成；移动网页进入可发布候选状态，物理 iOS/Android 仅保留上线前现场复核<br>
 > 适用范围：`frontend/` 移动端网页体验；必要时包含少量 API 输出适配，但不改变统计口径<br>
 > 目标设备：手机浏览器与后续 PWA/Capacitor 容器<br>
 > 主要断点：`<768px` 手机、`768–1023px` 平板、`>=1024px` PC<br>
 > 取代关系：本计划取代 `docs/archive/04-ai-agent-harness/2026-06-28-mobile-navigation-orientation.md` 作为现行移动端产品设计；旧文档保留为历史增量方案，不删除<br>
-> 关联文档：`frontend/UI_STYLE_GUIDE.md`、`docs/reports/2026-06-19-fullstack-verification.md`、`docs/reference/playback-stats-rules.md`、`docs/reference/music-metadata-management.md`
+> 关联文档：`frontend/UI_STYLE_GUIDE.md`、`../../reports/2026-06-19-fullstack-verification.md`、`../../reference/playback-stats-rules.md`、`../../reference/music-metadata-management.md`
 
 ## 0. 执行摘要
 
@@ -1013,7 +1015,7 @@ type MobileRouteContext = {
 
 ## Phase M0：设计冻结与基线记录
 
-> **已完成（2026-08-05）**：冻结结论、真实移动基线、完整路由状态矩阵、六屏交互原型、组件状态规范与 M1/M2 原子任务见 [`../designs/2026-08-05-mobile-web-m0-design-freeze.md`](../designs/2026-08-05-mobile-web-m0-design-freeze.md)。
+> **已完成（2026-08-05）**：冻结结论、真实移动基线、完整路由状态矩阵、六屏交互原型、组件状态规范与 M1/M2 原子任务见 [`2026-08-05-mobile-web-m0-design-freeze.md`](2026-08-05-mobile-web-m0-design-freeze.md)。
 
 ### 目标
 
@@ -1035,7 +1037,7 @@ type MobileRouteContext = {
 
 ## Phase M1：全局 Mobile Shell
 
-> **已完成（2026-08-05）**：独立 Phone Shell、路由状态、栏目 Sheet、稳定返回、AI/社区冲突处理、测试与浏览器门禁均已落地。交付证据见 [`../reports/2026-08-06-mobile-web-and-pwa-delivery.md`](../reports/2026-08-06-mobile-web-and-pwa-delivery.md)。
+> **已完成（2026-08-05）**：独立 Phone Shell、路由状态、栏目 Sheet、稳定返回、AI/社区冲突处理、测试与浏览器门禁均已落地。交付证据见 [`../reports/2026-08-06-mobile-web-and-pwa-delivery.md`](../../reports/2026-08-06-mobile-web-and-pwa-delivery.md)。
 
 ### 目标
 
@@ -1103,7 +1105,7 @@ type MobileRouteContext = {
 
 ### 完成记录
 
-M2 已于 2026-08-05 完成，交付边界、组件地图和验证证据见 [`../reports/2026-08-06-mobile-web-and-pwa-delivery.md`](../reports/2026-08-06-mobile-web-and-pwa-delivery.md)。本阶段只建立通用 presentation 原语；首页、播放统计、播放排行与 Billboard 周榜的真实页面重排属于 M3。
+M2 已于 2026-08-05 完成，交付边界、组件地图和验证证据见 [`../reports/2026-08-06-mobile-web-and-pwa-delivery.md`](../../reports/2026-08-06-mobile-web-and-pwa-delivery.md)。本阶段只建立通用 presentation 原语；首页、播放统计、播放排行与 Billboard 周榜的真实页面重排属于 M3。
 
 ## Phase M3：高频数据页面
 
@@ -1130,7 +1132,7 @@ M2 已于 2026-08-05 完成，交付边界、组件地图和验证证据见 [`..
 
 ### 完成记录
 
-M3 已于 2026-08-05 完成：首页、播放统计、播放排行与 Billboard 周榜均采用 Phone/Desktop presentation 互斥挂载，继续消费原 API、filters 与 TanStack Query。360/390/430/768/1280 五档、URL 周次历史、固定原始排名、实体跳转和 Phase 5 最低矩阵均已验收。实现边界与证据见 [`../reports/2026-08-06-mobile-web-and-pwa-delivery.md`](../reports/2026-08-06-mobile-web-and-pwa-delivery.md)。
+M3 已于 2026-08-05 完成：首页、播放统计、播放排行与 Billboard 周榜均采用 Phone/Desktop presentation 互斥挂载，继续消费原 API、filters 与 TanStack Query。360/390/430/768/1280 五档、URL 周次历史、固定原始排名、实体跳转和 Phase 5 最低矩阵均已验收。实现边界与证据见 [`../reports/2026-08-06-mobile-web-and-pwa-delivery.md`](../../reports/2026-08-06-mobile-web-and-pwa-delivery.md)。
 
 ## Phase M4：年度与记录页面
 
@@ -1162,7 +1164,7 @@ M3 已于 2026-08-05 完成：首页、播放统计、播放排行与 Billboard 
 
 ### 完成记录
 
-M4 已于 2026-08-05 完成：七个页面均使用面向手机的信息重排，同时继续复用原 API、过滤指纹、榜单事实与详情路由。年度总结采用章节式长页；两类记录页采用栏目切换与 Top 3 渐进展开；每周榜首、年榜和总榜分别采用时间线、固定年榜排名列表和固定全榜排名列表；对决支持 2–4 个实体与纵向成绩卡。360/390/430/768/1280 五档、桌面/手机 route smoke、控件库存与 Phase 5 最低矩阵均已验收。实现边界与证据见 [`../reports/2026-08-06-mobile-web-and-pwa-delivery.md`](../reports/2026-08-06-mobile-web-and-pwa-delivery.md)。
+M4 已于 2026-08-05 完成：七个页面均使用面向手机的信息重排，同时继续复用原 API、过滤指纹、榜单事实与详情路由。年度总结采用章节式长页；两类记录页采用栏目切换与 Top 3 渐进展开；每周榜首、年榜和总榜分别采用时间线、固定年榜排名列表和固定全榜排名列表；对决支持 2–4 个实体与纵向成绩卡。360/390/430/768/1280 五档、桌面/手机 route smoke、控件库存与 Phase 5 最低矩阵均已验收。实现边界与证据见 [`../reports/2026-08-06-mobile-web-and-pwa-delivery.md`](../../reports/2026-08-06-mobile-web-and-pwa-delivery.md)。
 
 ## Phase M5：音乐搜索与详情
 
@@ -1191,7 +1193,7 @@ M4 已于 2026-08-05 完成：七个页面均使用面向手机的信息重排�
 
 ### 完成记录
 
-M5 已于 2026-08-05 完成：全局音乐查找采用吸附搜索与歌曲/专辑/艺人分组结果，中文输入法组合阶段不会提前改写 URL；三类详情均使用实体专属 Compact Hero、URL 驱动的栏目状态和移动纵向列表。艺人高频三栏常驻，专辑、发行周期与生涯信息进入“更多详情栏目”；版本来源在手机默认折叠，署名/版本/身份治理入口统一进入 Top Bar“更多”，并保留精确 `return_to`。同时修复已入榜艺人详情错误返回 0 次有效播放的接口问题。四页 360/390/430/768/1280 共 20 组均为 0px 横向溢出，desktop/mobile route smoke 8/8、控件库存 103 个控件/0 violation，Phase 5 最低矩阵全部通过。实现边界与证据见 [`../reports/2026-08-06-mobile-web-and-pwa-delivery.md`](../reports/2026-08-06-mobile-web-and-pwa-delivery.md)。
+M5 已于 2026-08-05 完成：全局音乐查找采用吸附搜索与歌曲/专辑/艺人分组结果，中文输入法组合阶段不会提前改写 URL；三类详情均使用实体专属 Compact Hero、URL 驱动的栏目状态和移动纵向列表。艺人高频三栏常驻，专辑、发行周期与生涯信息进入“更多详情栏目”；版本来源在手机默认折叠，署名/版本/身份治理入口统一进入 Top Bar“更多”，并保留精确 `return_to`。同时修复已入榜艺人详情错误返回 0 次有效播放的接口问题。四页 360/390/430/768/1280 共 20 组均为 0px 横向溢出，desktop/mobile route smoke 8/8、控件库存 103 个控件/0 violation，Phase 5 最低矩阵全部通过。实现边界与证据见 [`../reports/2026-08-06-mobile-web-and-pwa-delivery.md`](../../reports/2026-08-06-mobile-web-and-pwa-delivery.md)。
 
 ## Phase M6：社区、AI、账号与设置
 
@@ -1213,7 +1215,7 @@ M5 已于 2026-08-05 完成：全局音乐查找采用吸附搜索与歌曲/专�
 
 ### 完成记录
 
-M6 已于 2026-08-05 完成：社区改为全宽连续 Feed，搜索/时间筛选和趋势进入共享 Bottom Sheet，帖子与社区账号详情使用 Push Top Bar；AI 报告/问答采用手机分段切换，对话区按剩余 `dvh` 布局，输入聚焦时隐藏 Bottom Nav，历史记录进入 Top Bar Sheet；账号中心增加编辑式身份 Hero、2×2 事实、无障碍分段 Tab、纵向收藏/排行列表和按需加载的习惯折叠区；Settings 首屏改为七类任务入口，日常主题、播放、榜单、Spotify 与 AI Profile 可在手机完成，文件导入、元数据治理、凭据和系统维护明确引导到电脑端，实体治理深链仍保留目标与返回地址。六类 M6 路由在 360/390/430/768/1280 共 30 组均为 0px 横向溢出，desktop/mobile route smoke 8/8、移动控件库存 82 个控件/0 violation，Phase 5 最低矩阵全部通过。实现边界与证据见 [`../reports/2026-08-06-mobile-web-and-pwa-delivery.md`](../reports/2026-08-06-mobile-web-and-pwa-delivery.md)。
+M6 已于 2026-08-05 完成：社区改为全宽连续 Feed，搜索/时间筛选和趋势进入共享 Bottom Sheet，帖子与社区账号详情使用 Push Top Bar；AI 报告/问答采用手机分段切换，对话区按剩余 `dvh` 布局，输入聚焦时隐藏 Bottom Nav，历史记录进入 Top Bar Sheet；账号中心增加编辑式身份 Hero、2×2 事实、无障碍分段 Tab、纵向收藏/排行列表和按需加载的习惯折叠区；Settings 首屏改为七类任务入口，日常主题、播放、榜单、Spotify 与 AI Profile 可在手机完成，文件导入、元数据治理、凭据和系统维护明确引导到电脑端，实体治理深链仍保留目标与返回地址。六类 M6 路由在 360/390/430/768/1280 共 30 组均为 0px 横向溢出，desktop/mobile route smoke 8/8、移动控件库存 82 个控件/0 violation，Phase 5 最低矩阵全部通过。实现边界与证据见 [`../reports/2026-08-06-mobile-web-and-pwa-delivery.md`](../../reports/2026-08-06-mobile-web-and-pwa-delivery.md)。
 
 ## Phase M7：质量门禁与发布收口
 
@@ -1263,7 +1265,7 @@ M6 已于 2026-08-05 完成：社区改为全宽连续 Feed，搜索/时间筛�
 
 ### 完成记录
 
-M7 已于 2026-08-05 完成自动化质量与发布收口：五档视口矩阵、完整 desktop/mobile 控件库存、Bottom Nav/Section Sheet/时间筛选、触摸 tooltip、全屏图表、长列表、API、性能、Web Vitals 和 Chromium/Firefox/WebKit 均纳入可重复门禁。生产预览 12/12 Web Vitals 样本满足 LCP <=2.5s、CLS <=0.1、TBT <=200ms；最终聚合运行中，开发/生产控件库存分别检查 1,807/1,690 个可见控件与 353/351 个主要移动触控目标，违规和欠尺寸目标均为 0。发布证据和物理设备边界见 [`../reports/2026-08-06-mobile-web-and-pwa-delivery.md`](../reports/2026-08-06-mobile-web-and-pwa-delivery.md)。
+M7 已于 2026-08-05 完成自动化质量与发布收口：五档视口矩阵、完整 desktop/mobile 控件库存、Bottom Nav/Section Sheet/时间筛选、触摸 tooltip、全屏图表、长列表、API、性能、Web Vitals 和 Chromium/Firefox/WebKit 均纳入可重复门禁。生产预览 12/12 Web Vitals 样本满足 LCP <=2.5s、CLS <=0.1、TBT <=200ms；最终聚合运行中，开发/生产控件库存分别检查 1,807/1,690 个可见控件与 353/351 个主要移动触控目标，违规和欠尺寸目标均为 0。发布证据和物理设备边界见 [`../reports/2026-08-06-mobile-web-and-pwa-delivery.md`](../../reports/2026-08-06-mobile-web-and-pwa-delivery.md)。
 
 物理 iOS Safari 与 Android Chrome 的安全区、软键盘和系统返回仍建议在真正对外部署前各做一次现场复核；当前由 WebKit Safari-family、Chromium Android UA/触控模拟和移动输入聚焦 smoke 代替，不把模拟结果描述成真机结果。
 

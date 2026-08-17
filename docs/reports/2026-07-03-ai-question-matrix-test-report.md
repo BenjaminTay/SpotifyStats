@@ -1,7 +1,7 @@
 # AI 问答与全应用功能测试报告
 
 > 日期：2026-07-03  
-> 测试依据：`docs/verification/2026-07-03-ai-question-test-matrix.md`  
+> 测试依据：`docs/reports/2026-07-03-ai-question-test-matrix.md`
 > 运行环境：后端 `http://127.0.0.1:8000`，前端 `http://localhost:5173`，LLM provider `deepseek`，model `deepseek-v4-flash`。
 
 ## 总体结论
@@ -151,11 +151,11 @@ P0 快速回归：
 
 - 单轮 AI 结果 JSON：`/tmp/spotify_ai_question_full_results.json`
 - 多轮 AI 结果 JSON：`/tmp/spotify_ai_multiturn_results.json`
-- 本报告：`docs/verification/2026-07-03-ai-question-matrix-test-report.md`
+- 本报告：`docs/reports/2026-07-03-ai-question-matrix-test-report.md`
 
 ## 2026-07-03 修复实施记录
 
-本报告中的 P0/P1 主要问题已按 `docs/superpowers/plans/2026-07-03-ai-harness-matrix-fixes.md` 做定向修复，当前结论是：**修复前完整矩阵为 Partial Pass；修复后 AI harness 定向回归通过，完整真实浏览器矩阵仍建议作为发布前复测执行。**
+本报告中的 P0/P1 主要问题已按 `docs/archive/04-ai-agent-harness/2026-07-03-ai-harness-matrix-fixes.md` 做定向修复，当前结论是：**修复前完整矩阵为 Partial Pass；修复后 AI harness 定向回归通过，完整真实浏览器矩阵仍建议作为发布前复测执行。**
 
 已完成修复：
 

@@ -1,8 +1,10 @@
 # SpotifyStats 双运行面实施规划
 
+> 状态：历史归档；当前入口见 `docs/archive/06-productization-closeout/README.md`
+
 日期：2026-08-13  
 状态：已实施，最终证据见
-`docs/reports/2026-08-13-dual-deployment-profile-delivery.md`
+`../../reports/2026-08-13-dual-deployment-profile-delivery.md`
 
 ## 目标与非目标
 

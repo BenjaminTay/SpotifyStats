@@ -64,10 +64,10 @@ Spotify Stats 前端的设计系统文档。本文档描述已落地的 UI 风�
 
 | Token | 字体栈 | 用途 |
 |-------|--------|------|
-| `--font-serif` / `--font-heading` | `'Playfair Display', Georgia, 'Times New Roman', serif` | 标题、大数字、KPI 值 |
-| `--font-sans` | `'Inter Variable', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif` | 正文、标签、导航、表格内容 |
+| `--font-serif` / `--font-heading` | `'Playfair Display Variable', 'Playfair Display', 'Songti SC', 'STSong', 'Noto Serif CJK SC', 'Noto Serif SC', 'SimSun', Georgia, serif` | 标题、大数字、KPI 值 |
+| `--font-sans` | `'Inter Variable', 'Inter', -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', sans-serif` | 正文、标签、导航、表格内容 |
 
-Inter 通过 `@fontsource-variable/inter` npm 包加载。Playfair Display 通过 Google Fonts CDN 在 `index.html` 中加载（含 400-800 字重 + 斜体）。
+Inter 与 Playfair Display 都通过 `@fontsource-variable/*` npm 包本地加载（Playfair Display Variable 含 400-800 字重 + 斜体）。中文字符使用显式 CJK 回退链，优先保持 macOS 与 iPhone 的宋体标题风格一致。
 
 ### 排版规格
 

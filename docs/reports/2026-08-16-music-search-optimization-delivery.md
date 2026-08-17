@@ -5,7 +5,7 @@
 结论：**Pass — M0–M5、remediation、方向调整与远程生产发布通过**
 
 首轮验收发现的六变体覆盖、`merge_enabled / include_compilations` 语义和高命中热路径缺口，已按
-`docs/plans/2026-08-16-music-search-remediation-plan.md` 完整修复。真实主库六个支持变体全部 ready，
+`docs/archive/06-productization-closeout/2026-08-16-music-search-remediation-plan.md` 完整修复。真实主库六个支持变体全部 ready，
 无 pending/running 重建任务；代码、数据迁移、浏览器、生产镜像、受控副本预建与联合回滚结论均为
 Pass。远程生产运行状态仍只以对应 commit SHA 的 GitHub Actions production deployment 记录为准，
 不能由本地报告或镜像构建结果代替。

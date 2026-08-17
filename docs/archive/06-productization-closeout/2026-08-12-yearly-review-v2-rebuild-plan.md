@@ -1,7 +1,9 @@
 # 年度总结 V2 完整重构实施计划
 
+> 状态：历史归档；当前入口见 `docs/archive/06-productization-closeout/README.md`
+
 日期：2026-08-12
-依据：[`../designs/2026-08-12-yearly-review-v2-content-data-contract.md`](../designs/2026-08-12-yearly-review-v2-content-data-contract.md)
+依据：[`../designs/2026-08-12-yearly-review-v2-content-data-contract.md`](../../designs/2026-08-12-yearly-review-v2-content-data-contract.md)
 状态：完成（M0–M6 内容重构、M7 Phone V2 迁移与 M8 单一年度入口收口均已于 2026-08-12 完成）
 
 ## 1. 目标
@@ -57,7 +59,7 @@ Power Score 和 AI 年报不属于本次实现范围。Phone presentation 不属
 
 M1–M5 不允许跨过 M0 的阈值审计直接写解释性故事。
 
-当前状态：**M0–M6 已于 2026-08-12 全部完成。** 全阶段交付、真实数据性能与剩余边界统一见 [`../reports/2026-08-12-yearly-review-v2-delivery.md`](../reports/2026-08-12-yearly-review-v2-delivery.md)。
+当前状态：**M0–M6 已于 2026-08-12 全部完成。** 全阶段交付、真实数据性能与剩余边界统一见 [`../reports/2026-08-12-yearly-review-v2-delivery.md`](../../reports/2026-08-12-yearly-review-v2-delivery.md)。
 
 ## 4. M0：数据与策略冻结
 
@@ -854,7 +856,7 @@ node scripts/frontend_control_inventory_smoke.mjs \
 
 - `docs/README.md`
 - `docs/CHANGELOG.md`
-- `docs/reference/playback-stats-rules.md`
+- `../../reference/playback-stats-rules.md`
 - `README.md` 的年度总结功能说明
 - `AGENTS.md`
 - `CLAUDE.md`

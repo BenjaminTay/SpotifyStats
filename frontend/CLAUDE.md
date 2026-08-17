@@ -63,7 +63,7 @@ src/
 
 播放分析子页面通过 URL search params 自动保留 `period`/`period_value`/`start`/`end` 参数。
 
-播放分析二级 tab 顺序固定为“播放统计 / 播放排行 / 年度总结 / 播放记录 / 账号中心”。`/yearly-review` 与 `/account` 仍是独立路由，但在导航语义上归属播放分析，避免在 Masthead 下再增加下拉或重复入口。
+播放分析二级 tab 顺序固定为“播放统计 / 播放排行 / 年度总结 / 播放记录 / 音乐档案”。`/yearly-review` 与 `/account` 仍是独立路由，但在导航语义上归属播放分析，避免在 Masthead 下再增加下拉或重复入口。
 
 ## 数据获取 (TanStack React Query)
 
@@ -121,7 +121,7 @@ Community 列表、账号页、趋势侧栏和帖子详情必须通过 `useCommu
 - 外部文本（LLM、Wikipedia、翻译）必须经 `react-markdown` + `rehype-sanitize` 渲染，禁止 `dangerouslySetInnerHTML`；AI 报告/问答正文统一复用 `features/ai-insights/AiMarkdown.tsx`，保留 GFM 表格但必须包裹横向滚动容器
 - 后端 SQLite 风格时间戳（`YYYY-MM-DD HH:mm:ss`）默认视为 UTC；对话历史等相对时间显示必须通过 `lib/datetime.ts` 的 `formatRelativeTimeZh()`，避免本地时区偏移
 - LLM API Key 永不对前端返回明文，通过 `POST /apply` 端点让服务端直接写入
-- AI 报告页面必须 cache-first，不因打开页面或切换报告类型自动调用 LLM；无缓存时显示明确的手动生成动作；年度叙事刷新/生成请求必须带 `report_mode=visual_yearly_artifact` 与 `writer_pipeline=editorial_agent_v1`
+- AI 报告页面必须 cache-first，不因打开页面或切换报告类型自动调用 LLM；无缓存时显示明确的手动生成动作；年度叙事刷新/生成请求必须带 `report_mode=visual_yearly_artifact` 与 `writer_pipeline=agent_synthesis_v2`。`editorial_agent_v1` 只允许作为兼容输入，不得作为默认消费路径。
 - AI 问答和音乐详情 enrichment 的长耗时流程必须通过 `features/ai-tasks` 展示 task progress；问答完成后必须保留 assistant message `meta.evidence_cards` 并展示 evidence cards 与 tool trace
 - AI comparison evidence cards 必须在 390px 移动端保持单列可读，宽屏可用双列矩阵；长专辑名、维度胜者和限制说明不得造成横向滚动或卡片内文字溢出
 - 图表组件不能 SSR，必须 lazy load

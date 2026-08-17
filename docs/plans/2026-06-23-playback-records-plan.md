@@ -1,9 +1,9 @@
 # 播放记录（Playback Records）完整规划
 
 > 创建日期：2026-06-23  
-> 状态：产品与技术规划，尚未实现  
+> 状态：待核对；本文是历史规划，需以当前 `/analysis/records` 实现和交付证据重新确认
 > 目标位置：`/analysis/records`  
-> 关联规则：`docs/playback-stats/rules.md`、`docs/playback-stats/album-project.md`、`docs/productization/2026-06-22-phase5-delivery-report.md`
+> 关联规则：`docs/reference/playback-stats-rules.md`、`docs/archive/02-react-productization/playback-stats/2026-06-18-album-project.md`、`docs/reports/2026-06-22-phase5-delivery-report.md`
 
 ## 1. 模块定位
 
@@ -566,7 +566,7 @@ interface EntityRecordCardProps {
 交付：
 
 - 本规划文档。
-- 后续实现前可单独补 `docs/playback-stats/records.md` 作为统计口径说明。
+- 后续实现前应先补充 `docs/reference/playback-stats-rules.md` 的播放记录章节，避免另建重复规则入口。
 - 明确 P0/P1/P2，不在第一版引入元数据依赖型记录。
 
 验收：
