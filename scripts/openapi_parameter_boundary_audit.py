@@ -76,6 +76,24 @@ class ParameterBoundaryAudit:
 
 
 BOUNDARY_EVIDENCE_BY_KEY: dict[tuple[str, str, str], ParameterEvidence] = {
+    ("query", "view", "string|enum=full,summary,overview"): ParameterEvidence(
+        "targeted_contract",
+        (),
+        "track detail view allowlist rejects unsupported delivery shapes",
+        ("backend/tests/contract/test_billboard_detail_views_contract.py",),
+    ),
+    ("query", "view", "string|enum=full,summary,overview,tracks,albums"): ParameterEvidence(
+        "targeted_contract",
+        (),
+        "artist detail view allowlist rejects unsupported delivery shapes",
+        ("backend/tests/contract/test_billboard_detail_views_contract.py",),
+    ),
+    ("query", "view", "string|enum=full,summary,overview,tracks,project"): ParameterEvidence(
+        "targeted_contract",
+        (),
+        "album detail view allowlist rejects unsupported delivery shapes",
+        ("backend/tests/contract/test_billboard_detail_views_contract.py",),
+    ),
     (
         "path",
         "entity_type",

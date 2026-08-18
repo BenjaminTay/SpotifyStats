@@ -33,6 +33,7 @@ SpotifyStats 是本地优先的单用户 Spotify Extended Streaming History 分�
 - `/account` 的产品名称是“音乐档案”；旧人格、chemistry、Habits、Marquee、粉丝等级和旧重型 account 聚合不得恢复。
 - `/yearly-review` 是自有年度总结唯一消费入口；官方 Wrapped 仅保留兼容数据和只读接口，不新增消费 UI。
 - 音乐查找使用 Quick Open + `/music/search` 两阶段链路：候选索引与完整统计快照分离，搜索 GET 不得冷建 lifetime 播放统计或完整 Billboard。
+- 音乐详情首屏使用摘要与播放统计并行加载，其他子视图进入页签后按需请求；歌曲歌词、专辑发行档案、艺人发行周期和艺人生涯暂不作为前端消费入口，旧页签深链回到播放统计。
 - Phone、Compact、Desktop 使用互斥 presentation，但共享 URL、Query、过滤指纹、统计事实和实体深链。Phone 主要触控目标至少 44×44px，宽表和重图表不得与桌面 DOM 同时挂载。
 
 ## 统计和数据原则

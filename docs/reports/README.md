@@ -6,6 +6,7 @@
 
 ### 播放统计与详情
 
+- [`2026-08-19-music-detail-performance-delivery.md`](2026-08-19-music-detail-performance-delivery.md)
 - [`2026-08-17-music-detail-statistics-fix-delivery.md`](2026-08-17-music-detail-statistics-fix-delivery.md)
 - [`2026-08-15-playback-logical-timeline-v2-delivery.md`](2026-08-15-playback-logical-timeline-v2-delivery.md)
 - [`2026-08-13-billboard-artist-aggregate-fix.md`](2026-08-13-billboard-artist-aggregate-fix.md)

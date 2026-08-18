@@ -10,16 +10,75 @@ import { PersonalRankTable } from '@/components/shared/StatsTables'
 import { RecentPlaysSection } from '@/components/shared/RecentPlaysSection'
 import { Skeleton } from '@/components/ui/skeleton'
 import { queryKeys } from '@/api/query-keys'
+import type { ApiQueryParam } from '@/api/client'
 import { analysisApi, useAnalysisFilters } from '@/hooks/useAnalysis'
 import { api } from '@/lib/api'
 import { getDefaultMergeLevel } from '@/lib/merge-level'
-import type { AlbumPersonalRankingResponse, AnalysisMetric, ArtistPersonalRankingResponse, EntityStatsResponse } from '@/types/analysis'
+import type { AlbumPersonalRankingResponse, AnalysisFilters, AnalysisMetric, ArtistPersonalRankingResponse, EntityStatsResponse } from '@/types/analysis'
 import { useViewportMode } from '@/hooks/useViewportMode'
 import { MobileAnalysisTimeControl } from '@/features/mobile/analysis/MobileAnalysisTimeControl'
 import { cn } from '@/lib/utils'
 
 const ARTIST_RANKING_PAGE_SIZE = 20
 const ALBUM_RANKING_PAGE_SIZE = 20
+
+type EntityStatsTarget = {
+  kind: 'track' | 'album' | 'artist'
+  trackId?: number | string
+  albumName?: string
+  artistName?: string
+  mergeLevel?: number
+}
+
+function entityStatsRequest(
+  target: EntityStatsTarget,
+  filters: AnalysisFilters,
+  apiParams: Record<string, ApiQueryParam>,
+) {
+  const { kind, trackId, albumName, artistName, mergeLevel } = target
+  const entityId = (trackId ?? albumName ?? artistName) != null ? String(trackId ?? albumName ?? artistName) : ''
+  const resolvedMergeLevel = mergeLevel ?? getDefaultMergeLevel()
+  const statsParams = {
+    ...filters,
+    ...apiParams,
+    ...(kind === 'album'
+      ? { merge_level: resolvedMergeLevel, ...(artistName ? { artist: artistName } : {}) }
+      : {}),
+  }
+  return {
+    entityId,
+    resolvedMergeLevel,
+    queryKey: queryKeys.music.entityStats(kind, entityId, statsParams),
+    queryFn: () => {
+      if (kind === 'track' && trackId != null) {
+        return api.get<EntityStatsResponse>(`/music/tracks/${trackId}/stats`, { ...filters, ...apiParams })
+      }
+      if (kind === 'album' && albumName) {
+        return api.get<EntityStatsResponse>(
+          `/music/albums/${encodeURIComponent(albumName)}/stats`,
+          { ...filters, ...apiParams, ...(artistName ? { artist: artistName } : {}), merge_level: resolvedMergeLevel },
+        )
+      }
+      if (kind === 'artist' && artistName) {
+        return api.get<EntityStatsResponse>(`/music/artists/${encodeURIComponent(artistName)}/stats`, { ...filters, ...apiParams })
+      }
+      return Promise.resolve({ found: false } as EntityStatsResponse)
+    },
+  }
+}
+
+/** Start the exact shared statistics query before the detail shell has loaded. */
+export function EntityStatsPrefetch(target: EntityStatsTarget) {
+  const { filters, loading: filtersLoading } = useAnalysisFilters()
+  const { apiParams } = useAnalysisQueryState()
+  const request = entityStatsRequest(target, filters, apiParams)
+  useQuery({
+    queryKey: request.queryKey,
+    queryFn: request.queryFn,
+    enabled: !filtersLoading && request.entityId !== '',
+  })
+  return null
+}
 
 function fmt(n: number | null | undefined): string {
   if (n == null) return '—'
@@ -45,42 +104,22 @@ export function EntityStatsPanel({
   artistName,
   mergeLevel,
   releaseDate,
-}: {
-  kind: 'track' | 'album' | 'artist'
-  trackId?: number | string
-  albumName?: string
-  artistName?: string
-  mergeLevel?: number
+}: EntityStatsTarget & {
   /** ISO date string (e.g. "2023-09-08") — used as the chart origin for album stats. */
   releaseDate?: string
 }) {
   const isPhone = useViewportMode() === 'phone'
   const { filters, loading: filtersLoading } = useAnalysisFilters()
   const { period, metric, periodValue, startDate, endDate, setQuery, apiParams } = useAnalysisQueryState()
-  const entityId = (trackId ?? albumName ?? artistName) != null ? String(trackId ?? albumName ?? artistName) : ''
-  const resolvedMergeLevel = mergeLevel ?? getDefaultMergeLevel()
-  const statsParams = {
-    ...filters,
-    ...apiParams,
-    ...(kind === 'album' ? { merge_level: resolvedMergeLevel } : {}),
-  }
+  const request = entityStatsRequest(
+    { kind, trackId, albumName, artistName, mergeLevel },
+    filters,
+    apiParams,
+  )
+  const { entityId, resolvedMergeLevel } = request
   const { data, isPending, error } = useQuery({
-    queryKey: queryKeys.music.entityStats(kind, entityId, statsParams),
-    queryFn: () => {
-      if (kind === 'track' && trackId != null) {
-        return api.get<EntityStatsResponse>(`/music/tracks/${trackId}/stats`, { ...filters, ...apiParams })
-      }
-      if (kind === 'album' && albumName) {
-        return api.get<EntityStatsResponse>(
-          `/music/albums/${encodeURIComponent(albumName)}/stats`,
-          { ...filters, ...apiParams, ...(artistName ? { artist: artistName } : {}), merge_level: resolvedMergeLevel },
-        )
-      }
-      if (kind === 'artist' && artistName) {
-        return api.get<EntityStatsResponse>(`/music/artists/${encodeURIComponent(artistName)}/stats`, { ...filters, ...apiParams })
-      }
-      return Promise.resolve({ found: false } as EntityStatsResponse)
-    },
+    queryKey: request.queryKey,
+    queryFn: request.queryFn,
     enabled: !filtersLoading && entityId !== '',
   })
   const queryError = error instanceof Error ? error.message : error ? String(error) : null
@@ -111,7 +150,7 @@ export function EntityStatsPanel({
     queryFn: () => api.get<ArtistPersonalRankingResponse>(
       `/music/artists/${encodeURIComponent(artistName!)}/rankings`, artistRankingParams,
     ),
-    enabled: kind === 'artist' && !!artistName && !filtersLoading,
+    enabled: kind === 'artist' && !!artistName && !filtersLoading && data?.found === true,
   })
 
   const albumRankingContext = JSON.stringify({ albumName, artistName, metric, resolvedMergeLevel, ...filters, ...apiParams })
@@ -136,7 +175,7 @@ export function EntityStatsPanel({
     queryFn: () => api.get<AlbumPersonalRankingResponse>(
       `/music/albums/${encodeURIComponent(albumName!)}/rankings`, albumRankingParams,
     ),
-    enabled: kind === 'album' && !!albumName && !filtersLoading,
+    enabled: kind === 'album' && !!albumName && !filtersLoading && data?.found === true,
   })
 
   const metricKey: AnalysisMetric = metric

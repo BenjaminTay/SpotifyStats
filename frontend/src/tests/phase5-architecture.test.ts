@@ -39,7 +39,6 @@ import yearEndDataSource from '../features/billboard/year-end/yearEndData.ts?raw
 import versusExperienceSource from '../features/billboard/versus/VersusExperience.tsx?raw'
 import artistDetailExperienceSource from '../features/music/details/ArtistDetailExperience.tsx?raw'
 import albumDetailExperienceSource from '../features/music/details/AlbumDetailExperience.tsx?raw'
-import albumEraSectionSource from '../features/music/details/AlbumEraSection.tsx?raw'
 import versionGroupSectionSource from '../features/music/details/VersionGroupSection.tsx?raw'
 import communityExperienceSource from '../features/community/CommunityExperience.tsx?raw'
 import communityAccountExperienceSource from '../features/community/CommunityAccountExperience.tsx?raw'
@@ -50,7 +49,6 @@ import chatInterfaceSource from '../features/ai-insights/ChatInterface.tsx?raw'
 import aiInsightsTimeSelectorsSource from '../features/ai-insights/AiInsightsTimeSelectors.tsx?raw'
 import chatMessageListSource from '../features/ai-insights/ChatMessageList.tsx?raw'
 import trackOverviewSectionSource from '../features/music/details/track/TrackOverviewSection.tsx?raw'
-import trackLyricsSectionSource from '../features/music/details/track/TrackLyricsSection.tsx?raw'
 
 import mastheadSource from '../components/layout/Masthead.tsx?raw'
 import appLayoutSource from '../components/layout/AppLayout.tsx?raw'
@@ -267,14 +265,15 @@ describe('Phase 5 architecture guardrails', () => {
     expect(albumDetailExperienceSource).not.toContain('上榜播放')
   })
 
-  it('keeps album release era section outside AlbumDetailExperience', () => {
+  it('keeps retired release archive and enrichment surfaces out of detail experiences', () => {
     expect(albumDetailExperienceSource.split('\n').length).toBeLessThanOrEqual(340)
-    expect(albumDetailExperienceSource).not.toContain('发行概览')
-    expect(albumDetailExperienceSource).not.toContain('发行走势')
-    expect(albumDetailExperienceSource).not.toContain('发行构成')
-    expect(albumDetailExperienceSource).not.toContain('收听展开')
-    expect(albumDetailExperienceSource).not.toContain('外溢影响')
-    expect(albumDetailExperienceSource).not.toContain('你的收听故事')
+    expect(albumDetailExperienceSource).not.toContain('AlbumEraSection')
+    expect(albumDetailExperienceSource).not.toContain('albumReleaseCycle')
+    expect(albumDetailExperienceSource).not.toContain('startAlbumEnrichmentTask')
+    expect(artistDetailExperienceSource).not.toContain('ArtistReleasesSection')
+    expect(artistDetailExperienceSource).not.toContain('ArtistCareerSection')
+    expect(artistDetailExperienceSource).not.toContain('artistReleaseCycle')
+    expect(artistDetailExperienceSource).not.toContain('startArtistEnrichmentTask')
   })
 
   it('keeps version group + source breakdown merged in VersionGroupSection', () => {
@@ -285,16 +284,6 @@ describe('Phase 5 architecture guardrails', () => {
 
   it('renders VersionGroupSection inside stats tab, not between hero and tabs', () => {
     expect(albumDetailExperienceSource).toContain('VersionGroupSection')
-  })
-
-  it('keeps AlbumEraSection as orchestration instead of a monolithic release archive', () => {
-    expect(albumEraSectionSource.split('\n').length).toBeLessThanOrEqual(180)
-    expect(albumEraSectionSource).not.toContain('ReleaseTimelineChart')
-    expect(albumEraSectionSource).not.toContain('AlbumEnrichmentView')
-    expect(albumEraSectionSource).not.toContain('<table')
-    expect(albumEraSectionSource).not.toContain('发行构成')
-    expect(albumEraSectionSource).not.toContain('收听展开')
-    expect(albumEraSectionSource).not.toContain('外溢影响')
   })
 
   it('keeps community search responsive instead of fixed-width on mobile', () => {
@@ -472,10 +461,11 @@ describe('Phase 5 architecture guardrails', () => {
   it('keeps TrackDetailExperience using queryKeys for data fetching and delegating sections', () => {
     expect(trackDetailExperienceSource.split('\n').length).toBeLessThanOrEqual(250)
     expect(trackDetailExperienceSource).toContain('queryKeys.music.trackDetail')
-    expect(trackDetailExperienceSource).toContain('queryKeys.music.trackEnrichment')
-    expect(trackDetailExperienceSource).toContain('queryKeys.music.trackLyrics')
     expect(trackDetailExperienceSource).toContain('TrackOverviewSection')
-    expect(trackDetailExperienceSource).toContain('TrackLyricsSection')
+    expect(trackDetailExperienceSource).not.toContain('queryKeys.music.trackEnrichment')
+    expect(trackDetailExperienceSource).not.toContain('queryKeys.music.trackLyrics')
+    expect(trackDetailExperienceSource).not.toContain('TrackLyricsSection')
+    expect(trackDetailExperienceSource).not.toContain("key: 'lyrics'")
     expect(trackDetailExperienceSource).not.toContain('function KpiItem')
     expect(trackDetailExperienceSource).not.toContain('function parseChange')
     expect(trackDetailExperienceSource).not.toContain('setLyrics')
@@ -486,12 +476,6 @@ describe('Phase 5 architecture guardrails', () => {
     expect(trackOverviewSectionSource.split('\n').length).toBeLessThanOrEqual(300)
     expect(trackOverviewSectionSource).toContain('<table')
     expect(trackOverviewSectionSource).not.toContain('function TrackDetailSkeleton')
-  })
-
-  it('keeps TrackLyricsSection under section cap with enrichment and lyrics display', () => {
-    expect(trackLyricsSectionSource.split('\n').length).toBeLessThanOrEqual(300)
-    expect(trackLyricsSectionSource).not.toContain('function TrackDetailSkeleton')
-    expect(trackLyricsSectionSource).not.toContain('queryKeys')
   })
 
   // ── BillboardPage ────────────────────────────────────────────────────────

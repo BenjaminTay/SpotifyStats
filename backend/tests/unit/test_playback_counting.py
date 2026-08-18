@@ -600,3 +600,79 @@ class TestMergeSessionBoundaries:
             "start_date": "2026-06-27",
             "end_date": "2026-07-24",
         }
+
+
+class TestEntityStatsPerformanceBoundaries:
+    def test_event_only_period_load_skips_duration_slice_construction(self, monkeypatch):
+        from backend.services import analysis_stats_service as service
+
+        frame = pd.DataFrame(
+            {
+                "ts_date": ["2026-07-20", "2026-07-24"],
+                "track_id": [1, 2],
+            }
+        )
+
+        def loader(_conn, **_kwargs):
+            return frame
+
+        def unexpected_duration_build(*_args, **_kwargs):
+            raise AssertionError("event-only filtering must not build duration slices")
+
+        monkeypatch.setattr(service, "build_duration_frame", unexpected_duration_build)
+
+        all_df, current_df, resolved = service.load_period_plays(
+            object(),
+            30_000,
+            True,
+            True,
+            "last_4_weeks",
+            dynamic_threshold=True,
+            _loader=loader,
+            attach_duration_slices=False,
+        )
+
+        assert all_df is frame
+        assert current_df["track_id"].tolist() == [1, 2]
+        assert "listening_duration_slices" not in current_df.attrs
+        assert resolved["start_date"] == "2026-06-27"
+
+    def test_play_ranks_reuse_scope_and_pass_no_duration_rows(self, monkeypatch):
+        from backend.services import entity_stats_service as service
+        from backend.services.analysis_stats_service import resolve_period
+
+        all_df = pd.DataFrame(
+            {
+                "ts_date": ["2022-06-30", "2026-07-20", "2026-07-24"],
+                "track_id": [1, 1, 1],
+            }
+        )
+        current_resolved = resolve_period(all_df, "lifetime", None, None)
+        calls = []
+
+        def fake_chart_rows(_conn, frame, entity, metric, limit, offset, **kwargs):
+            duration_frame = kwargs["duration_frame"]
+            calls.append((len(frame), entity, metric, limit, offset, duration_frame.copy()))
+            return 1, [{"rank": 1, "track_id": 1}]
+
+        monkeypatch.setattr(service, "chart_rows", fake_chart_rows)
+
+        ranks = service._ranks(
+            object(),
+            all_df,
+            all_df.copy(),
+            current_resolved,
+            "track",
+            track_id=1,
+        )
+
+        assert ranks == {
+            "lifetime": 1,
+            "last_6_months": 1,
+            "last_4_weeks": 1,
+            "current_period": 1,
+        }
+        assert len(calls) == 3
+        assert all(call[2] == "plays" for call in calls)
+        assert all(call[5].empty for call in calls)
+        assert all(set(call[5].columns) == {"ms_played", "ts_date"} for call in calls)

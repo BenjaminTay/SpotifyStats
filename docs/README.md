@@ -46,6 +46,8 @@
 
 报告按主题和日期保存，完整入口见 [`reports/README.md`](reports/README.md)。报告中的性能、测试数量、数据库数量和生产 SHA 都是带日期的证据快照，不应直接当成当前基线。
 
+- [`reports/2026-08-19-music-detail-performance-delivery.md`](reports/2026-08-19-music-detail-performance-delivery.md)：音乐详情按需加载、旧子页收口与优化前后数据等价性证据
+
 ## 历史归档
 
 所有已完成或被取代的计划、设计和实施记录均保留在 [`archive/`](archive/)。

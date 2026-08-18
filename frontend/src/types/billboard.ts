@@ -1000,6 +1000,10 @@ export interface ArtistDetailResponse {
   best_singles_overlay: { week: string; rank: number; track_name: string }[]
   best_albums_overlay: { week: string; rank: number; album_name: string }[]
   tracks: ArtistTrackEntry[]
+  tracks_total?: number
+  tracks_limit?: number
+  tracks_offset?: number
+  tracks_max_chart_plays?: number
   albums: ArtistAlbumEntry[]
 }
 

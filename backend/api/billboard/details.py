@@ -21,10 +21,10 @@ from pydantic import BaseModel
 
 from backend.dependencies import BillboardFilters, MergeConfig
 from backend.services.billboard_service import (
-    get_album_chart_detail,
-    get_artist_chart_detail,
+    get_album_detail_view,
+    get_artist_detail_view,
     get_billboard_entity_lists,
-    get_track_history,
+    get_track_detail_view,
     get_versus_album,
     get_versus_album_multi,
     get_versus_artist,
@@ -34,6 +34,10 @@ from backend.services.billboard_service import (
 )
 
 router = APIRouter()
+
+TrackDetailView = Literal["full", "summary", "overview"]
+AlbumDetailView = Literal["full", "summary", "overview", "tracks", "project"]
+ArtistDetailView = Literal["full", "summary", "overview", "tracks", "albums"]
 
 
 class TrackHistoryResponse(BaseModel):
@@ -166,24 +170,26 @@ def track_history(
     filters: BillboardFilters = Depends(),
     merge: MergeConfig = Depends(),
     include_compilations: bool = Query(False),
+    view: TrackDetailView = Query("full"),
 ):
     """Get detailed track chart history with change column and gapped chart data."""
-    result = get_track_history(
-        track_id=track_id,
-        min_ms=filters.min_ms,
-        music_only=filters.music_only,
-        bb_top_n=filters.bb_top_n,
-        bb_album_top_n=filters.bb_album_top_n,
-        bb_artist_top_n=filters.bb_artist_top_n,
-        bb_week_start_dow=filters.bb_week_start_dow,
-        bb_week_start_hour=filters.bb_week_start_hour,
-        year_start=filters.year_start,
-        year_end=filters.year_end,
-        dynamic_threshold=filters.dynamic_threshold,
-        max_merge_gap_minutes=filters.max_merge_gap_minutes,
-        merge_enabled=filters.merge_enabled,
-        merge_level=merge.merge_level,
-        include_compilations=include_compilations,
+    result = get_track_detail_view(
+        track_id,
+        filters.min_ms,
+        filters.music_only,
+        filters.bb_top_n,
+        filters.bb_album_top_n,
+        filters.bb_artist_top_n,
+        filters.bb_week_start_dow,
+        filters.bb_week_start_hour,
+        filters.year_start,
+        filters.year_end,
+        filters.dynamic_threshold,
+        filters.max_merge_gap_minutes,
+        filters.merge_enabled,
+        merge.merge_level,
+        include_compilations,
+        view=view,
     )
     if not result.get("found"):
         raise HTTPException(status_code=404, detail="Track not found")
@@ -200,24 +206,30 @@ def artist_chart_detail(
     filters: BillboardFilters = Depends(),
     merge: MergeConfig = Depends(),
     include_compilations: bool = Query(False),
+    view: ArtistDetailView = Query("full"),
+    limit: int = Query(50, ge=1, le=100),
+    offset: int = Query(0, ge=0),
 ):
     """Get detailed artist chart data: weekly history, track/album performances, trend overlay."""
-    result = get_artist_chart_detail(
-        artist_name=artist_name,
-        min_ms=filters.min_ms,
-        music_only=filters.music_only,
-        bb_top_n=filters.bb_top_n,
-        bb_album_top_n=filters.bb_album_top_n,
-        bb_artist_top_n=filters.bb_artist_top_n,
-        bb_week_start_dow=filters.bb_week_start_dow,
-        bb_week_start_hour=filters.bb_week_start_hour,
-        year_start=filters.year_start,
-        year_end=filters.year_end,
-        dynamic_threshold=filters.dynamic_threshold,
-        max_merge_gap_minutes=filters.max_merge_gap_minutes,
-        merge_enabled=filters.merge_enabled,
-        merge_level=merge.merge_level,
-        include_compilations=include_compilations,
+    result = get_artist_detail_view(
+        artist_name,
+        filters.min_ms,
+        filters.music_only,
+        filters.bb_top_n,
+        filters.bb_album_top_n,
+        filters.bb_artist_top_n,
+        filters.bb_week_start_dow,
+        filters.bb_week_start_hour,
+        filters.year_start,
+        filters.year_end,
+        filters.dynamic_threshold,
+        filters.max_merge_gap_minutes,
+        filters.merge_enabled,
+        merge.merge_level,
+        include_compilations,
+        view=view,
+        limit=limit,
+        offset=offset,
     )
     if not result.get("found"):
         raise HTTPException(status_code=404, detail="Artist not found")
@@ -235,25 +247,27 @@ def album_chart_detail(
     filters: BillboardFilters = Depends(),
     merge: MergeConfig = Depends(),
     include_compilations: bool = Query(False),
+    view: AlbumDetailView = Query("full"),
 ):
     """Get detailed album chart data: weekly history, track performances, trend overlay."""
-    result = get_album_chart_detail(
-        album_name=album_name,
-        artist_name=artist_name,
-        min_ms=filters.min_ms,
-        music_only=filters.music_only,
-        bb_top_n=filters.bb_top_n,
-        bb_album_top_n=filters.bb_album_top_n,
-        bb_artist_top_n=filters.bb_artist_top_n,
-        bb_week_start_dow=filters.bb_week_start_dow,
-        bb_week_start_hour=filters.bb_week_start_hour,
-        year_start=filters.year_start,
-        year_end=filters.year_end,
-        dynamic_threshold=filters.dynamic_threshold,
-        max_merge_gap_minutes=filters.max_merge_gap_minutes,
-        merge_enabled=filters.merge_enabled,
-        merge_level=merge.merge_level,
-        include_compilations=include_compilations,
+    result = get_album_detail_view(
+        album_name,
+        artist_name,
+        filters.min_ms,
+        filters.music_only,
+        filters.bb_top_n,
+        filters.bb_album_top_n,
+        filters.bb_artist_top_n,
+        filters.bb_week_start_dow,
+        filters.bb_week_start_hour,
+        filters.year_start,
+        filters.year_end,
+        filters.dynamic_threshold,
+        filters.max_merge_gap_minutes,
+        filters.merge_enabled,
+        merge.merge_level,
+        include_compilations,
+        view=view,
     )
     if not result.get("found"):
         raise HTTPException(status_code=404, detail="Album not found")

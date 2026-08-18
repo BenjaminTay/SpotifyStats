@@ -1,54 +1,40 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { queryKeys } from '@/api/query-keys'
-import type { ArtistDetailResponse, ArtistEnrichmentResponse, ReleaseCycleArtistOverviewResponse } from '@/types/billboard'
-import type { AiTaskRun } from '@/types/ai-tasks'
-import { EntityStatsPanel } from '@/components/shared/EntityStatsPanel'
+import type { ArtistDetailResponse } from '@/types/billboard'
+import { EntityStatsPanel, EntityStatsPrefetch } from '@/components/shared/EntityStatsPanel'
+import { Skeleton } from '@/components/ui/skeleton'
 import { displayName } from '@/lib/chinese'
 import { getBillboardName } from '@/lib/billboard-name'
 import { AlertCircle } from 'lucide-react'
-import { useAiTask, useStartArtistEnrichmentTask } from '@/hooks/useAiTasks'
 import { ArtistDetailHero, DetailTabs } from './MusicDetailHeader'
 import { ArtistDetailSkeleton } from './MusicDetailSkeletons'
 import { MusicChartOverviewSection } from './MusicChartOverviewSection'
 import { MusicChartEmptyState } from './MusicChartEmptyState'
 import { MusicTracksSection } from './MusicTracksSection'
 import { ArtistAlbumsSection } from './ArtistAlbumsSection'
-import { ArtistCareerSection } from './ArtistCareerSection'
-import { ArtistReleasesSection } from './ArtistReleasesSection'
 import { useAnalysisFilters } from '@/hooks/useAnalysis'
 import { buildBillboardContextParams } from '@/features/billboard/billboardContext'
 import { useViewportMode } from '@/hooks/useViewportMode'
 import { MobileMusicDetailHero, MobileMusicDetailNav } from '@/features/mobile/music/MobileMusicDetail'
-import { useRuntimeCapabilities } from '@/hooks/useRuntimeCapabilities'
 
-type TabKey = 'stats' | 'releases' | 'career' | 'overview' | 'tracks' | 'albums'
+type TabKey = 'stats' | 'overview' | 'tracks' | 'albums'
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: 'stats', label: '播放统计' },
-  { key: 'releases', label: '发行周期' },
-  { key: 'career', label: '艺人生涯' },
   { key: 'overview', label: '榜单成绩' },
   { key: 'tracks', label: '单曲成绩' },
   { key: 'albums', label: '专辑成绩' },
 ]
 
-function artistEnrichmentFromTask(task: AiTaskRun | null): ArtistEnrichmentResponse | null {
-  if (task?.status !== 'done' || !task.result || Array.isArray(task.result)) return null
-  return task.result as ArtistEnrichmentResponse
-}
-
 export function ArtistDetailExperience() {
-  const { capabilities } = useRuntimeCapabilities()
-  const enrichmentEnabled = capabilities.ai && capabilities.cover_enrichment
   const { artistName } = useParams<{ artistName: string }>()
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const requestedTab = searchParams.get('tab')
-  const availableTabs = enrichmentEnabled ? TABS : TABS.filter((tab) => tab.key !== 'career')
-  const activeTab: TabKey = availableTabs.some((tab) => tab.key === requestedTab) ? requestedTab as TabKey : 'stats'
+  const activeTab: TabKey = TABS.some((tab) => tab.key === requestedTab) ? requestedTab as TabKey : 'stats'
   const isPhone = useViewportMode() === 'phone'
   const setActiveTab = (tab: TabKey) => {
     const next = new URLSearchParams(searchParams)
@@ -58,43 +44,36 @@ export function ArtistDetailExperience() {
   }
   const { filters, loading: filtersLoading } = useAnalysisFilters()
   const billboardParams = buildBillboardContextParams(filters)
+  const trackPageSize = isPhone ? 20 : 50
+  const trackPageContext = `${artistName ?? ''}:${trackPageSize}`
+  const [trackPageState, setTrackPageState] = useState({ context: trackPageContext, page: 1 })
+  const trackPage = trackPageState.context === trackPageContext ? trackPageState.page : 1
+  const setTrackPage = (page: number) => setTrackPageState({ context: trackPageContext, page })
 
+  const summaryParams = { ...billboardParams, view: 'summary' }
   const { data, isPending, error, refetch } = useQuery({
-    queryKey: queryKeys.music.artistDetail(artistName ?? '', billboardParams),
-    queryFn: () => api.get<ArtistDetailResponse>('/billboard/artist/' + artistName!, billboardParams),
+    queryKey: queryKeys.music.artistDetail(artistName ?? '', summaryParams),
+    queryFn: () => api.get<ArtistDetailResponse>('/billboard/artist/' + artistName!, summaryParams),
     enabled: !!artistName && !filtersLoading,
   })
-  const isCharted = data?.chart_status === 'charted' || !!data?.chart_summary
-  const hasTrackChart = data?.track_chart_status === 'charted' || Boolean(data?.tracks.length)
-  const hasAlbumChart = data?.album_chart_status === 'charted' || Boolean(data?.albums.length)
-
-  const [artistEnrichmentTaskId, setArtistEnrichmentTaskId] = useState<string | null>(null)
-  const artistEnrichmentStartedKeyRef = useRef<string | null>(null)
-  const {
-    mutateAsync: startArtistEnrichmentTask,
-    isPending: artistEnrichmentStarting,
-  } = useStartArtistEnrichmentTask()
-  const artistEnrichmentTask = useAiTask(artistEnrichmentTaskId)
-
-  const releaseCycleParams = { ...billboardParams, weeks_before: 4, weeks_after: 24, cover_version: 2 }
-  const {
-    data: releaseCycle = null,
-    isFetching: releaseCycleLoading,
-    error: releaseCycleQueryError,
-  } = useQuery({
-    queryKey: queryKeys.music.artistReleaseCycle(data?.artist_name ?? '', releaseCycleParams),
-    queryFn: () =>
-      api.get<ReleaseCycleArtistOverviewResponse>(
-        '/billboard/release-cycle/artist/' + encodeURIComponent(data!.artist_name),
-        releaseCycleParams,
-      ),
-    enabled: activeTab === 'releases' && !!data?.found,
+  const { data: overviewData, isPending: overviewPending } = useQuery({
+    queryKey: queryKeys.music.artistDetail(artistName ?? '', { ...billboardParams, view: 'overview' }),
+    queryFn: () => api.get<ArtistDetailResponse>('/billboard/artist/' + artistName!, { ...billboardParams, view: 'overview' }),
+    enabled: activeTab === 'overview' && !!artistName && !filtersLoading,
   })
-  const releaseCycleError = releaseCycleQueryError?.message || null
-  const enrichment = artistEnrichmentFromTask(artistEnrichmentTask.task)
-  const enrichmentLoading =
-    artistEnrichmentStarting ||
-    (Boolean(artistEnrichmentTaskId) && artistEnrichmentTask.loading && !artistEnrichmentTask.task)
+  const { data: tracksData, isPending: tracksPending } = useQuery({
+    queryKey: queryKeys.music.artistDetail(artistName ?? '', { ...billboardParams, view: 'tracks', limit: trackPageSize, offset: (trackPage - 1) * trackPageSize }),
+    queryFn: () => api.get<ArtistDetailResponse>('/billboard/artist/' + artistName!, { ...billboardParams, view: 'tracks', limit: trackPageSize, offset: (trackPage - 1) * trackPageSize }),
+    enabled: activeTab === 'tracks' && !!artistName && !filtersLoading,
+  })
+  const { data: albumsData, isPending: albumsPending } = useQuery({
+    queryKey: queryKeys.music.artistDetail(artistName ?? '', { ...billboardParams, view: 'albums' }),
+    queryFn: () => api.get<ArtistDetailResponse>('/billboard/artist/' + artistName!, { ...billboardParams, view: 'albums' }),
+    enabled: activeTab === 'albums' && !!artistName && !filtersLoading,
+  })
+  const isCharted = data?.chart_status === 'charted' || !!data?.chart_summary
+  const hasTrackChart = data?.track_chart_status === 'charted'
+  const hasAlbumChart = data?.album_chart_status === 'charted'
 
   useEffect(() => {
     if (!data?.found || !artistName || data.artist_name === artistName) return
@@ -106,31 +85,17 @@ export function ArtistDetailExperience() {
   }, [artistName, data?.artist_name, data?.found, navigate, searchParams])
 
   useEffect(() => {
-    if (!enrichmentEnabled || activeTab !== 'career' || !data?.found) return
-    const artist = data.artist_name.trim()
-    if (!artist || artistEnrichmentStartedKeyRef.current === artist) return
-
-    let ignored = false
-    artistEnrichmentStartedKeyRef.current = artist
-    setArtistEnrichmentTaskId(null)
-
-    startArtistEnrichmentTask({ artist_name: artist })
-      .then((task) => {
-        if (!ignored) setArtistEnrichmentTaskId(task.task_id)
-      })
-      .catch(() => {
-        if (!ignored && artistEnrichmentStartedKeyRef.current === artist) {
-          artistEnrichmentStartedKeyRef.current = null
-        }
-      })
-
-    return () => {
-      ignored = true
-    }
-  }, [activeTab, data?.artist_name, data?.found, enrichmentEnabled, startArtistEnrichmentTask])
+    if (!requestedTab || TABS.some((tab) => tab.key === requestedTab)) return
+    const next = new URLSearchParams(searchParams)
+    next.delete('tab')
+    setSearchParams(next, { replace: true })
+  }, [requestedTab, searchParams, setSearchParams])
 
   return (
     <>
+      {activeTab === 'stats' && artistName && (
+        <EntityStatsPrefetch kind="artist" artistName={artistName} />
+      )}
       {isPending && <ArtistDetailSkeleton />}
 
       {error && (
@@ -171,8 +136,8 @@ export function ArtistDetailExperience() {
                     facts={[
                       { label: '有效播放', value: `${(data.effective_play_count ?? 0).toLocaleString('zh-CN')} 次` },
                       { label: '艺人榜', value: data.chart_summary ? `PK #${data.chart_summary.peak_position}` : '尚未入榜', accent: data.chart_summary?.peak_position === 1 },
-                      { label: '入榜歌曲', value: hasTrackChart ? `${data.tracks.length} 首` : '暂无' },
-                      { label: '入榜专辑', value: hasAlbumChart ? `${data.albums.length} 张` : '暂无' },
+                      { label: '入榜歌曲', value: hasTrackChart ? `${data.info?.total_tracks ?? 0} 首` : '暂无' },
+                      { label: '入榜专辑', value: hasAlbumChart ? `${data.info?.total_albums ?? 0} 张` : '暂无' },
                     ]}
                   />
                 </div>
@@ -188,23 +153,23 @@ export function ArtistDetailExperience() {
                   ]}
                   moreTabs={[
                     { key: 'albums', label: '专辑', description: '专辑榜成绩与固定走势排名' },
-                    { key: 'releases', label: '发行周期', description: '按发行项目查看表现变化' },
-                    ...(enrichmentEnabled ? [{ key: 'career' as const, label: '艺人生涯', description: '简介、档案与生涯信息' }] : []),
                   ]}
                   scrollable
                   onChange={setActiveTab}
                 />
-              ) : <DetailTabs tabs={availableTabs} activeTab={activeTab} onChange={setActiveTab} />}
+              ) : <DetailTabs tabs={TABS} activeTab={activeTab} onChange={setActiveTab} />}
 
               {activeTab === 'overview' && (
-                <MusicChartOverviewSection
-                  kind="artist"
-                  chartSummary={data.chart_summary}
-                  weeklyHistory={data.artist_weekly_history}
-                  bestSinglesOverlay={data.best_singles_overlay}
-                  bestAlbumsOverlay={data.best_albums_overlay}
-                  effectivePlayCount={data.effective_play_count}
-                />
+                overviewPending || !overviewData
+                  ? <Skeleton className="h-[420px] w-full rounded-[16px]" />
+                  : <MusicChartOverviewSection
+                      kind="artist"
+                      chartSummary={overviewData.chart_summary}
+                      weeklyHistory={overviewData.artist_weekly_history}
+                      bestSinglesOverlay={overviewData.best_singles_overlay}
+                      bestAlbumsOverlay={overviewData.best_albums_overlay}
+                      effectivePlayCount={overviewData.effective_play_count}
+                    />
               )}
 
               {/* ═══ Tab 2: 单曲成绩 ═══ */}
@@ -213,11 +178,20 @@ export function ArtistDetailExperience() {
               )}
 
               {activeTab === 'tracks' && (
-                hasTrackChart && data.info ? (
+                tracksPending || !tracksData ? (
+                  <Skeleton className="h-[420px] w-full rounded-[16px]" />
+                ) : hasTrackChart && tracksData.info ? (
                   <MusicTracksSection
-                    artistName={data.artist_name}
-                    info={data.info}
-                    tracks={data.tracks}
+                    artistName={tracksData.artist_name}
+                    info={tracksData.info}
+                    tracks={tracksData.tracks}
+                    maxChartPlays={tracksData.tracks_max_chart_plays}
+                    pagination={{
+                      total: tracksData.tracks_total ?? tracksData.tracks.length,
+                      page: trackPage,
+                      pageSize: trackPageSize,
+                      onPageChange: setTrackPage,
+                    }}
                   />
                 ) : (
                   <MusicChartEmptyState
@@ -229,11 +203,13 @@ export function ArtistDetailExperience() {
 
               {/* ═══ Tab 3: 专辑成绩 ═══ */}
               {activeTab === 'albums' && (
-                hasAlbumChart && data.info ? (
+                albumsPending || !albumsData ? (
+                  <Skeleton className="h-[420px] w-full rounded-[16px]" />
+                ) : hasAlbumChart && albumsData.info ? (
                   <ArtistAlbumsSection
-                    artistName={data.artist_name}
-                    info={data.info}
-                    albums={data.albums}
+                    artistName={albumsData.artist_name}
+                    info={albumsData.info}
+                    albums={albumsData.albums}
                   />
                 ) : (
                   <MusicChartEmptyState
@@ -241,26 +217,6 @@ export function ArtistDetailExperience() {
                     description="该艺人目前没有专辑进入当前专辑榜统计范围。"
                   />
                 )
-              )}
-
-              {/* ═══ Tab 4: 发行周期 ═══ */}
-              {activeTab === 'releases' && (
-                <ArtistReleasesSection
-                  artistName={data.artist_name}
-                  releaseCycle={releaseCycle}
-                  releaseCycleLoading={releaseCycleLoading}
-                  releaseCycleError={releaseCycleError}
-                />
-              )}
-
-              {enrichmentEnabled && activeTab === 'career' && (
-                <ArtistCareerSection
-                  enrichment={enrichment}
-                  enrichmentLoading={enrichmentLoading}
-                  enrichmentTask={artistEnrichmentTask.task}
-                  enrichmentTaskEvents={artistEnrichmentTask.events}
-                  meta={data.meta}
-                />
               )}
 
               <p className="mt-6 font-serif text-[13px] italic text-muted-foreground">

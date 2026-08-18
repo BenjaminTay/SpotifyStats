@@ -22,7 +22,7 @@ from backend.services.analysis_stats_service import (
     _year_distribution,
     build_duration_frame,
     chart_rows,
-    filter_period,
+    filter_period_events,
     load_period_plays,
     recent_plays,
     resolve_period,
@@ -84,6 +84,7 @@ def _ranks(
     conn: sqlite3.Connection,
     all_df: pd.DataFrame,
     current_df: pd.DataFrame,
+    current_resolved: dict,
     entity: str,
     track_id=None,
     album_name=None,
@@ -95,9 +96,27 @@ def _ranks(
         "last_6_months": resolve_period(all_df, "last_6_months", None, None),
         "last_4_weeks": resolve_period(all_df, "last_4_weeks", None, None),
     }
+    rows_by_scope: dict[tuple[str | None, str | None], list[dict]] = {}
+    empty_duration = pd.DataFrame(columns=["ms_played", "ts_date"])
+
+    def rows_for(resolved: dict, frame: pd.DataFrame | None = None) -> list[dict]:
+        scope = (resolved.get("start_date"), resolved.get("end_date"))
+        if scope not in rows_by_scope:
+            scoped = frame if frame is not None else filter_period_events(all_df, resolved)
+            _, rows_by_scope[scope] = chart_rows(
+                conn,
+                scoped,
+                entity,
+                "plays",
+                None,
+                0,
+                duration_frame=empty_duration,
+            )
+        return rows_by_scope[scope]
+
     result = {}
     for key, resolved in periods.items():
-        _, rows = chart_rows(conn, filter_period(all_df, resolved), entity, "plays", None, 0)
+        rows = rows_for(resolved)
         result[key] = _rank_for(
             rows,
             entity,
@@ -106,7 +125,7 @@ def _ranks(
             album_names=album_names,
             artist_name=artist_name,
         )
-    _, rows = chart_rows(conn, current_df, entity, "plays", None, 0)
+    rows = rows_for(current_resolved, current_df)
     result["current_period"] = _rank_for(
         rows,
         entity,
@@ -126,7 +145,18 @@ def _top250_count(
     album_names: list[str] | None = None,
     artist_name: str | None = None,
 ) -> int:
-    _, rows = chart_rows(conn, df, "track", "plays", 250, 0)
+    # This helper only consumes play rank and entity identity.  Supplying an
+    # explicit empty duration frame avoids an otherwise-unused full timeline
+    # slice expansion while preserving the counted-event ordering.
+    _, rows = chart_rows(
+        conn,
+        df,
+        "track",
+        "plays",
+        250,
+        0,
+        duration_frame=pd.DataFrame(columns=["ms_played", "ts_date"]),
+    )
     count = 0
     for row in rows:
         row_album = row.get("album_name")
@@ -156,14 +186,14 @@ def _top250_counts(
         ),
         "last_6_months": _top250_count(
             conn,
-            filter_period(all_df, resolve_period(all_df, "last_6_months", None, None)),
+            filter_period_events(all_df, resolve_period(all_df, "last_6_months", None, None)),
             album_name=album_name,
             album_names=album_names,
             artist_name=artist_name,
         ),
         "last_4_weeks": _top250_count(
             conn,
-            filter_period(all_df, resolve_period(all_df, "last_4_weeks", None, None)),
+            filter_period_events(all_df, resolve_period(all_df, "last_4_weeks", None, None)),
             album_name=album_name,
             album_names=album_names,
             artist_name=artist_name,
@@ -193,6 +223,7 @@ def get_track_stats(
         end_date,
         dynamic_threshold=dynamic_threshold,
         max_merge_gap_minutes=max_merge_gap_minutes,
+        attach_duration_slices=False,
     )
     entity_all = all_df[all_df["track_id"] == track_id]
     entity_df = current_df[current_df["track_id"] == track_id]
@@ -219,7 +250,14 @@ def get_track_stats(
             },
             "first_played": str(entity_all["ts"].min()),
             "last_played": str(entity_all["ts"].max()),
-            "ranks": _ranks(conn, all_df, current_df, "track", track_id=int(track_id)),
+            "ranks": _ranks(
+                conn,
+                all_df,
+                current_df,
+                resolved,
+                "track",
+                track_id=int(track_id),
+            ),
             "recent_plays": recent_plays(conn, entity_df, 50),
         }
     )
@@ -338,6 +376,7 @@ def get_album_stats(
         end_date,
         dynamic_threshold=dynamic_threshold,
         max_merge_gap_minutes=max_merge_gap_minutes,
+        attach_duration_slices=False,
     )
     artist_name = artist
     if not artist_name:
@@ -401,6 +440,7 @@ def get_album_stats(
                 conn,
                 all_df,
                 current_df,
+                resolved,
                 "album",
                 album_name=album_name,
                 album_names=album_names,
@@ -450,6 +490,7 @@ def get_album_personal_ranking(
         end_date,
         dynamic_threshold=dynamic_threshold,
         max_merge_gap_minutes=max_merge_gap_minutes,
+        attach_duration_slices=False,
     )
     artist_name = artist
     if not artist_name:
@@ -572,6 +613,7 @@ def get_artist_stats(
         end_date,
         dynamic_threshold=dynamic_threshold,
         max_merge_gap_minutes=max_merge_gap_minutes,
+        attach_duration_slices=False,
         _loader=load_plays_for_artists,
     )
     entity_all = all_df[all_df["artist_name"] == artist_name]
@@ -625,7 +667,14 @@ def get_artist_stats(
             },
             "first_played": str(entity_all["ts"].min()),
             "last_played": str(entity_all["ts"].max()),
-            "ranks": _ranks(conn, all_df, current_df, "artist", artist_name=artist_name),
+            "ranks": _ranks(
+                conn,
+                all_df,
+                current_df,
+                resolved,
+                "artist",
+                artist_name=artist_name,
+            ),
             "top250_counts": _top250_counts(conn, all_df, artist_name=artist_name),
             "recent_50_count": recent_50_count,
             "top_tracks": top_tracks,
@@ -668,6 +717,7 @@ def get_artist_personal_ranking(
         end_date,
         dynamic_threshold=dynamic_threshold,
         max_merge_gap_minutes=max_merge_gap_minutes,
+        attach_duration_slices=False,
         _loader=load_plays_for_artists,
     )
     if all_df[all_df["artist_name"] == artist_name].empty:
@@ -738,6 +788,7 @@ def get_entity_plays(
         dynamic_threshold=dynamic_threshold,
         max_merge_gap_minutes=max_merge_gap_minutes,
         _loader=load_plays_for_artists if entity == "artist" else None,
+        attach_duration_slices=False,
     )
     df = _filter_entity_rows(
         df, entity, track_id, album_name, artist_name, conn=conn, merge_level=merge_level
@@ -868,6 +919,7 @@ def get_entity_play_dates(
         dynamic_threshold=dynamic_threshold,
         max_merge_gap_minutes=max_merge_gap_minutes,
         _loader=load_plays_for_artists if entity == "artist" else None,
+        attach_duration_slices=False,
     )
     df = _filter_entity_rows(
         df, entity, track_id, album_name, artist_name, conn=conn, merge_level=merge_level

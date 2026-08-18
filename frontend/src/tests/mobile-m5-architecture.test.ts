@@ -32,7 +32,9 @@ describe('M5 mobile music architecture', () => {
       expect(source).toContain('setSearchParams')
     }
     expect(artistDetailSource).toContain("{ key: 'albums', label: '专辑'")
-    expect(artistDetailSource).toContain("{ key: 'career', label: '艺人生涯'")
+    expect(artistDetailSource).not.toContain("{ key: 'releases'")
+    expect(artistDetailSource).not.toContain("{ key: 'career'")
+    expect(albumDetailSource).not.toContain("{ key: 'era'")
   })
 
   it('keeps mobile detail lists vertical while preserving desktop tables', () => {

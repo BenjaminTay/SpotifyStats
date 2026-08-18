@@ -47,25 +47,41 @@ export function MusicTracksSection({
   artistName,
   info,
   tracks,
+  maxChartPlays,
+  pagination,
 }: {
   artistName: string
   info: TrackInfo
   tracks: TrackEntry[]
+  maxChartPlays?: number
+  pagination?: {
+    total: number
+    page: number
+    pageSize: number
+    onPageChange: (page: number) => void
+  }
 }) {
   const isPhone = useViewportMode() === 'phone'
-  const pageSize = isPhone ? 20 : PAGE_SIZE
+  const pageSize = pagination?.pageSize ?? (isPhone ? 20 : PAGE_SIZE)
   const [pageState, setPageState] = useState({ source: tracks, page: 1 })
-  const page = pageState.source === tracks ? pageState.page : 1
+  const page = pagination?.page ?? (pageState.source === tracks ? pageState.page : 1)
   const setPage = (next: number | ((page: number) => number)) => {
+    if (pagination) {
+      pagination.onPageChange(typeof next === 'function' ? next(page) : next)
+      return
+    }
     setPageState((current) => {
       const currentPage = current.source === tracks ? current.page : 1
       return { source: tracks, page: typeof next === 'function' ? next(currentPage) : next }
     })
   }
-  const totalPages = Math.max(1, Math.ceil(tracks.length / pageSize))
+  const totalCount = pagination?.total ?? tracks.length
+  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize))
   const safePage = Math.min(page, totalPages)
 
-  const paged = tracks.slice((safePage - 1) * pageSize, safePage * pageSize)
+  const paged = pagination
+    ? tracks
+    : tracks.slice((safePage - 1) * pageSize, safePage * pageSize)
   if (isPhone) {
     return (
       <div className="mobile-detail-entity-section">
@@ -179,7 +195,7 @@ export function MusicTracksSection({
           </thead>
           <tbody>
             {(() => {
-              const maxPlays = Math.max(...tracks.map((track) => track.total_chart_plays), 1)
+              const maxPlays = maxChartPlays ?? Math.max(...tracks.map((track) => track.total_chart_plays), 1)
               return paged.map((track, index) => (
                 <tr key={track.track_id} className="transition-colors hover:bg-muted/50">
                   <td className="py-3.5 pr-2">
@@ -253,7 +269,7 @@ export function MusicTracksSection({
           {totalPages > 1 && (
             <div className="flex items-center justify-between border-t border-border px-7 py-3">
               <span className="font-sans text-[12px] text-muted-foreground tabular-nums">
-                显示 {(safePage - 1) * pageSize + 1}-{Math.min(safePage * pageSize, tracks.length)} / 总数 {tracks.length} 条
+                显示 {(safePage - 1) * pageSize + 1}-{Math.min(safePage * pageSize, totalCount)} / 总数 {totalCount} 条
               </span>
               <div className="flex items-center gap-1">
                 <span className="mr-2 font-sans text-[12px] text-muted-foreground tabular-nums">

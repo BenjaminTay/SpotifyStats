@@ -47,7 +47,7 @@ describe('M5 mobile music search and details', () => {
     expect(screen.queryByRole('table')).not.toBeInTheDocument()
   })
 
-  it('keeps all artist detail tabs visible in one horizontal scroller', async () => {
+  it('keeps the current artist detail tabs visible in one horizontal scroller', async () => {
     const user = userEvent.setup()
     const onChange = vi.fn()
     render(
@@ -60,8 +60,6 @@ describe('M5 mobile music search and details', () => {
         ]}
         moreTabs={[
           { key: 'albums', label: '专辑', description: '专辑榜成绩与固定走势排名' },
-          { key: 'releases', label: '发行周期' },
-          { key: 'career', label: '艺人生涯', description: '简介、档案与生涯信息' },
         ]}
         scrollable
         onChange={onChange}
@@ -70,7 +68,7 @@ describe('M5 mobile music search and details', () => {
 
     expect(screen.getByRole('navigation', { name: '详情栏目' })).toHaveClass('mobile-music-detail-nav-scroll')
     expect(screen.queryByRole('button', { name: '更多' })).not.toBeInTheDocument()
-    expect(screen.getAllByRole('button')).toHaveLength(6)
+    expect(screen.getAllByRole('button')).toHaveLength(4)
     await user.click(screen.getByRole('button', { name: '专辑' }))
     expect(onChange).toHaveBeenCalledWith('albums')
   })

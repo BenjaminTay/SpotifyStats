@@ -219,7 +219,7 @@ describe('deployment profile capability contract', () => {
     expect(prewarm).not.toHaveBeenCalled()
   })
 
-  it('normalizes a public artist career deep link without starting enrichment', async () => {
+  it('normalizes a retired artist career deep link without starting enrichment', async () => {
     const post = vi.spyOn(api, 'post')
     const get = vi.spyOn(api, 'get').mockImplementation(async (path: string) => {
       if (path === '/runtime/capabilities') return publicResponse()

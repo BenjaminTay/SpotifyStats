@@ -1,8 +1,8 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { EntityStatsPanel } from '@/components/shared/EntityStatsPanel'
+import { EntityStatsPanel, EntityStatsPrefetch } from '@/components/shared/EntityStatsPanel'
 
 const mocks = vi.hoisted(() => ({
   filters: {
@@ -98,6 +98,49 @@ describe('专辑详情播放排行分页', () => {
       max_merge_gap_minutes: 5,
     }
     mocks.get.mockReset()
+  })
+
+  it('预取与面板复用同一个统计请求，不重复计算', async () => {
+    mocks.get.mockImplementation((path: string) => path.endsWith('/rankings')
+      ? Promise.resolve({ found: true, entity: 'track', metric: 'plays', total: 0, limit: 20, offset: 0, rows: [] })
+      : Promise.resolve(stats))
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter>
+          <EntityStatsPrefetch kind="album" albumName="Merged Project" artistName="Primary Artist" mergeLevel={2} />
+          <EntityStatsPanel kind="album" albumName="Merged Project" artistName="Primary Artist" mergeLevel={2} />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    )
+
+    await waitFor(() => expect(
+      mocks.get.mock.calls.filter(([path]) => path === '/music/albums/Merged%20Project/stats'),
+    ).toHaveLength(1))
+  })
+
+  it('主统计返回前不并发启动排行计算', async () => {
+    let resolveStats!: (value: typeof stats) => void
+    const statsPromise = new Promise<typeof stats>((resolve) => {
+      resolveStats = resolve
+    })
+    mocks.get.mockImplementation((path: string) => path.endsWith('/rankings')
+      ? Promise.resolve({ found: true, entity: 'track', metric: 'plays', total: 1, limit: 20, offset: 0, rows: [rankingRow(1)] })
+      : statsPromise)
+
+    renderPanel()
+
+    await waitFor(() => expect(mocks.get).toHaveBeenCalledWith(
+      '/music/albums/Merged%20Project/stats',
+      expect.any(Object),
+    ))
+    expect(mocks.get.mock.calls.some(([path]) => String(path).endsWith('/rankings'))).toBe(false)
+
+    await act(async () => resolveStats(stats))
+
+    expect(await screen.findByText('项目歌曲 1')).toBeInTheDocument()
+    expect(mocks.get.mock.calls.some(([path]) => String(path).endsWith('/rankings'))).toBe(true)
   })
 
   it('20首以内保持单页且不显示分页控件', async () => {

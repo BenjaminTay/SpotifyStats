@@ -8101,6 +8101,8 @@ export interface components {
             snapshot_status: "ready" | "warming" | "unavailable" | "stale" | "failed";
             /** Filter Fingerprint */
             filter_fingerprint?: string | null;
+            /** Candidate Index Version */
+            candidate_index_version?: string | null;
             /** Kind */
             kind?: ("track" | "album" | "artist") | null;
             /**
@@ -8160,7 +8162,13 @@ export interface components {
              * Match Quality
              * @enum {string}
              */
-            match_quality: "exact" | "prefix" | "token" | "substring";
+            match_quality: "exact" | "prefix" | "token" | "substring" | "fuzzy";
+            /**
+             * Match Type
+             * @default original
+             * @enum {string}
+             */
+            match_type: "original" | "simplified" | "traditional" | "fuzzy";
         };
         /** MusicSearchChartSummary */
         MusicSearchChartSummary: {
@@ -14367,6 +14375,7 @@ export interface operations {
         parameters: {
             query?: {
                 include_compilations?: boolean;
+                view?: "full" | "summary" | "overview";
                 /** @description 最短播放时长 (毫秒) */
                 min_ms?: number | null;
                 /** @description 仅音乐 */
@@ -14433,6 +14442,9 @@ export interface operations {
         parameters: {
             query?: {
                 include_compilations?: boolean;
+                view?: "full" | "summary" | "overview" | "tracks" | "albums";
+                limit?: number;
+                offset?: number;
                 /** @description 最短播放时长 (毫秒) */
                 min_ms?: number | null;
                 /** @description 仅音乐 */
@@ -14501,6 +14513,7 @@ export interface operations {
                 /** @description Artist name for disambiguation */
                 artist_name?: string;
                 include_compilations?: boolean;
+                view?: "full" | "summary" | "overview" | "tracks" | "project";
                 /** @description 最短播放时长 (毫秒) */
                 min_ms?: number | null;
                 /** @description 仅音乐 */

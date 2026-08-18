@@ -1,16 +1,16 @@
+import { useEffect } from 'react'
 import { useParams, useNavigate, useSearchParams, Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { queryKeys } from '@/api/query-keys'
-import type { TrackDetailResponse, LyricsData, TrackEnrichmentResponse } from '@/types/billboard'
-import { EntityStatsPanel } from '@/components/shared/EntityStatsPanel'
+import type { TrackDetailResponse } from '@/types/billboard'
+import { EntityStatsPanel, EntityStatsPrefetch } from '@/components/shared/EntityStatsPanel'
 import { getBillboardName } from '@/lib/billboard-name'
 import { Skeleton } from '@/components/ui/skeleton'
 import { AlertCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { getDefaultMergeLevel } from '@/lib/merge-level'
 import { TrackOverviewSection } from './track/TrackOverviewSection'
-import { TrackLyricsSection } from './track/TrackLyricsSection'
 import { VersionGroupSection } from './VersionGroupSection'
 import { useAnalysisFilters } from '@/hooks/useAnalysis'
 import { buildBillboardContextParams } from '@/features/billboard/billboardContext'
@@ -18,14 +18,11 @@ import { useViewportMode } from '@/hooks/useViewportMode'
 import { MobileMusicDetailHero, MobileMusicDetailNav } from '@/features/mobile/music/MobileMusicDetail'
 import { TrackDetailHero } from './MusicDetailHeader'
 import { displayName } from '@/lib/chinese'
-import { useRuntimeCapabilities } from '@/hooks/useRuntimeCapabilities'
-import { CapabilityGate } from '@/components/capabilities/CapabilityGate'
 
-type TabKey = 'stats' | 'lyrics' | 'overview'
+type TabKey = 'stats' | 'overview'
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: 'stats', label: '播放统计' },
-  { key: 'lyrics', label: '歌词' },
   { key: 'overview', label: '榜单成绩' },
 ]
 
@@ -56,13 +53,11 @@ function TrackDetailSkeleton() {
 }
 
 export function TrackDetailExperience() {
-  const { capabilities } = useRuntimeCapabilities()
   const { trackId } = useParams<{ trackId: string }>()
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const requestedTab = searchParams.get('tab')
-  const availableTabs = capabilities.lyrics ? TABS : TABS.filter((tab) => tab.key !== 'lyrics')
-  const activeTab: TabKey = availableTabs.some((tab) => tab.key === requestedTab) ? requestedTab as TabKey : 'stats'
+  const activeTab: TabKey = TABS.some((tab) => tab.key === requestedTab) ? requestedTab as TabKey : 'stats'
   const isPhone = useViewportMode() === 'phone'
   const setActiveTab = (tab: TabKey) => {
     const next = new URLSearchParams(searchParams)
@@ -74,32 +69,27 @@ export function TrackDetailExperience() {
   const { filters, loading: filtersLoading } = useAnalysisFilters()
   const billboardParams = buildBillboardContextParams({ ...filters, merge_level: mergeLevel })
 
+  const summaryParams = { ...billboardParams, view: 'summary' }
   const { data, isPending, error, refetch } = useQuery({
-    queryKey: queryKeys.music.trackDetail(trackId ?? '', mergeLevel, billboardParams),
-    queryFn: () => api.get<TrackDetailResponse>('/billboard/track/' + trackId!, billboardParams),
+    queryKey: queryKeys.music.trackDetail(trackId ?? '', mergeLevel, summaryParams),
+    queryFn: () => api.get<TrackDetailResponse>('/billboard/track/' + trackId!, summaryParams),
     enabled: !!trackId && !filtersLoading,
   })
-  const { data: enrichment = null } = useQuery({
-    queryKey: queryKeys.music.trackEnrichment(data?.track_name ?? '', data?.artist_name ?? ''),
-    queryFn: () =>
-      api.get<TrackEnrichmentResponse>(
-        '/billboard/enrichment/track/' + encodeURIComponent(data!.track_name),
-        {
-          artist_name:
-            data!.primary_artist_name ?? data!.artist_names?.[0] ?? data!.artist_name,
-        },
-      ),
-    enabled: capabilities.lyrics && capabilities.cover_enrichment && activeTab === 'lyrics' && !!data?.found,
+  const { data: overviewData, isPending: overviewPending } = useQuery({
+    queryKey: queryKeys.music.trackDetail(trackId ?? '', mergeLevel, { ...billboardParams, view: 'overview' }),
+    queryFn: () => api.get<TrackDetailResponse>('/billboard/track/' + trackId!, { ...billboardParams, view: 'overview' }),
+    enabled: activeTab === 'overview' && !!trackId && !filtersLoading,
   })
-
-  const { data: lyrics = null, isPending: lyricsLoading } = useQuery({
-    queryKey: queryKeys.music.trackLyrics(trackId ?? ''),
-    queryFn: () => api.get<LyricsData>('/lyrics/' + trackId!),
-    enabled: capabilities.lyrics && activeTab === 'lyrics' && !!trackId,
-  })
+  useEffect(() => {
+    if (!requestedTab || TABS.some((tab) => tab.key === requestedTab)) return
+    const next = new URLSearchParams(searchParams)
+    next.delete('tab')
+    setSearchParams(next, { replace: true })
+  }, [requestedTab, searchParams, setSearchParams])
 
   return (
     <>
+      {activeTab === 'stats' && trackId && <EntityStatsPrefetch kind="track" trackId={trackId} />}
       {isPending && <TrackDetailSkeleton />}
 
       {error && (
@@ -173,12 +163,11 @@ export function TrackDetailExperience() {
                   primaryTabs={[
                     { key: 'stats', label: '统计' },
                     { key: 'overview', label: '榜单' },
-                    ...(capabilities.lyrics ? [{ key: 'lyrics' as const, label: '歌词' }] : []),
                   ]}
                   onChange={setActiveTab}
                 />
               ) : <div className="mb-6 flex gap-7 border-b border-border">
-                {availableTabs.map((tab) => (
+                {TABS.map((tab) => (
                   <button
                     key={tab.key}
                     onClick={() => setActiveTab(tab.key)}
@@ -195,18 +184,12 @@ export function TrackDetailExperience() {
                 ))}
               </div>}
 
-              {activeTab === 'overview' && <TrackOverviewSection data={data} />}
-              {activeTab === 'stats' && <EntityStatsPanel kind="track" trackId={trackId} />}
-              {activeTab === 'lyrics' && (
-                <CapabilityGate require="lyrics">
-                  <TrackLyricsSection
-                    data={data}
-                    enrichment={enrichment}
-                    lyrics={lyrics}
-                    lyricsLoading={lyricsLoading}
-                  />
-                </CapabilityGate>
+              {activeTab === 'overview' && (
+                overviewPending || !overviewData
+                  ? <Skeleton className="h-[420px] w-full rounded-[16px]" />
+                  : <TrackOverviewSection data={overviewData} />
               )}
+              {activeTab === 'stats' && <EntityStatsPanel kind="track" trackId={trackId} />}
             </>
           )}
         </>

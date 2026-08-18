@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -35,6 +35,7 @@ vi.mock('@/hooks/useAnalysis', () => ({
 
 vi.mock('@/components/shared/EntityStatsPanel', () => ({
   EntityStatsPanel: () => <div>播放统计内容</div>,
+  EntityStatsPrefetch: () => null,
 }))
 
 function detailWrapper(initialEntry: string) {
@@ -139,7 +140,7 @@ describe('未入榜实体详情', () => {
     expect(screen.queryByText(/最高排名/)).not.toBeInTheDocument()
   })
 
-  it('CONFESSIONS II 保留四个固定 Tab，并分开显示专辑榜与单曲榜成绩', async () => {
+  it('CONFESSIONS II 保留三个当前 Tab，并分开显示专辑榜与单曲榜成绩', async () => {
     vi.spyOn(api, 'get').mockImplementation((path: string) => {
       if (path === '/billboard/album/CONFESSIONS II') {
         return Promise.resolve({
@@ -177,16 +178,17 @@ describe('未入榜实体详情', () => {
       wrapper: detailWrapper('/music/albums/CONFESSIONS%20II?artist=Madonna'),
     })
 
-    for (const name of ['播放统计', '发行档案', '榜单成绩', '单曲成绩']) {
+    for (const name of ['播放统计', '榜单成绩', '单曲成绩']) {
       expect(await screen.findByRole('button', { name })).toBeInTheDocument()
     }
+    expect(screen.queryByRole('button', { name: '发行档案' })).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: '榜单成绩' }))
     expect(await screen.findByText('#4')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: '单曲成绩' }))
     expect(await screen.findByRole('status')).toHaveTextContent('暂无歌曲进入单曲榜')
   })
 
-  it('未入榜艺人仍保留六个固定 Tab，并分别显示三类成绩空态', async () => {
+  it('未入榜艺人仍保留四个当前 Tab，并分别显示三类成绩空态', async () => {
     vi.spyOn(api, 'get').mockImplementation((path: string) => {
       if (path === '/billboard/artist/Quiet Artist') {
         return Promise.resolve({
@@ -216,14 +218,90 @@ describe('未入榜实体详情', () => {
       wrapper: detailWrapper('/music/artists/Quiet%20Artist'),
     })
 
-    for (const name of ['播放统计', '发行周期', '艺人生涯', '榜单成绩', '单曲成绩', '专辑成绩']) {
+    for (const name of ['播放统计', '榜单成绩', '单曲成绩', '专辑成绩']) {
       expect(await screen.findByRole('button', { name })).toBeInTheDocument()
     }
+    expect(screen.queryByRole('button', { name: '发行周期' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '艺人生涯' })).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: '榜单成绩' }))
     expect(await screen.findByRole('status')).toHaveTextContent('暂未进入艺人榜')
     fireEvent.click(screen.getByRole('button', { name: '单曲成绩' }))
     expect(await screen.findByRole('status')).toHaveTextContent('暂无歌曲进入单曲榜')
     fireEvent.click(screen.getByRole('button', { name: '专辑成绩' }))
     expect(await screen.findByRole('status')).toHaveTextContent('暂无专辑进入专辑榜')
+  })
+
+  it('艺人单曲成绩按页向后端请求，不在浏览器一次挂载完整列表', async () => {
+    const get = vi.spyOn(api, 'get').mockImplementation((path: string, params?: Record<string, unknown>) => {
+      if (path !== '/billboard/artist/Paged Artist') {
+        return Promise.reject(new Error(`unexpected GET ${path}`))
+      }
+      const common = {
+        found: true,
+        chart_status: 'charted',
+        track_chart_status: 'charted',
+        album_chart_status: 'not_charted',
+        effective_play_count: 100,
+        artist_name: 'Paged Artist',
+        cover_url: null,
+        meta: null,
+        info: {
+          total_tracks: 51,
+          top1: 0,
+          top5: 1,
+          top10: 1,
+          weeks_at_no1: 0,
+        },
+        chart_summary: { peak_position: 5, weeks_on_chart: 2 },
+        artist_weekly_history: [],
+        artist_no1_by_week: [],
+        week_no1_albums: [],
+        best_singles_overlay: [],
+        best_albums_overlay: [],
+        albums: [],
+      }
+      if (params?.view === 'tracks') {
+        const offset = Number(params.offset ?? 0)
+        return Promise.resolve({
+          ...common,
+          tracks_total: 51,
+          tracks_limit: 50,
+          tracks_offset: offset,
+          tracks_max_chart_plays: 100,
+          tracks: [{
+            track_id: offset + 1,
+            track_name: `分页歌曲 ${offset + 1}`,
+            artist_names: ['Paged Artist'],
+            cover_url: null,
+            peak_position: 5,
+            weeks_on_chart: 2,
+            weeks_at_peak: 1,
+            first_week: '2026-01-01',
+            first_peak_week: '2026-01-08',
+            last_week: '2026-01-08',
+            total_chart_plays: 100 - offset,
+            power_score: 10,
+            power_rank: offset + 1,
+          }],
+        })
+      }
+      return Promise.resolve({ ...common, tracks: [] })
+    })
+
+    render(<ArtistDetailExperience />, {
+      wrapper: detailWrapper('/music/artists/Paged%20Artist?tab=tracks'),
+    })
+
+    expect(await screen.findByText('分页歌曲 1')).toBeInTheDocument()
+    expect(get).toHaveBeenCalledWith(
+      '/billboard/artist/Paged Artist',
+      expect.objectContaining({ view: 'tracks', limit: 50, offset: 0 }),
+    )
+    fireEvent.click(screen.getByRole('button', { name: '下一页' }))
+    await waitFor(() => expect(get).toHaveBeenCalledWith(
+      '/billboard/artist/Paged Artist',
+      expect.objectContaining({ view: 'tracks', limit: 50, offset: 50 }),
+    ))
+    expect(await screen.findByText('分页歌曲 51')).toBeInTheDocument()
   })
 })

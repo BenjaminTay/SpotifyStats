@@ -30,6 +30,11 @@ from backend.domains.billboard.data_loader import (
     load_billboard_raw_for_artists,  # noqa: F401 — re-exported for API layer
     load_track_album_map,
 )
+from backend.domains.billboard.detail_views import (
+    get_album_detail_view,
+    get_artist_detail_view,
+    get_track_detail_view,
+)
 from backend.domains.billboard.details import (
     _build_gapped_chart_data,
     _compute_change_column,
@@ -104,6 +109,9 @@ __all__ = [
     "get_album_chart_detail",
     "get_artist_chart_detail",
     "get_track_history",
+    "get_track_detail_view",
+    "get_album_detail_view",
+    "get_artist_detail_view",
     # versus
     "_get_ps_rank",
     "get_versus_album",

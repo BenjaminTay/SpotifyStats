@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ChangeCell } from '@/components/shared/ChangeCell'
 import { GlassCard } from '@/components/shared/GlassCard'
@@ -76,6 +77,18 @@ export function MusicChartOverviewSection({
   effectivePlayCount?: number
 }) {
   const isPhone = useViewportMode() === 'phone'
+  const historyPageSize = 50
+  const [historyPageState, setHistoryPageState] = useState({ source: weeklyHistory, page: 1 })
+  const historyPage = historyPageState.source === weeklyHistory ? historyPageState.page : 1
+  const historyPageCount = Math.max(1, Math.ceil(weeklyHistory.length / historyPageSize))
+  const safeHistoryPage = Math.min(historyPage, historyPageCount)
+  const pagedWeeklyHistory = weeklyHistory.slice(
+    (safeHistoryPage - 1) * historyPageSize,
+    safeHistoryPage * historyPageSize,
+  )
+  const setHistoryPage = (page: number) => {
+    setHistoryPageState({ source: weeklyHistory, page })
+  }
   if (!chartSummary) {
     return (
       <MusicChartEmptyState
@@ -199,7 +212,7 @@ export function MusicChartOverviewSection({
               <tbody>
                 {(() => {
                   const maxPlays = Math.max(...weeklyHistory.map((entry) => entry.play_count), 1)
-                  return weeklyHistory.map((entry) => {
+                  return pagedWeeklyHistory.map((entry) => {
                     const change = parseChange(entry.change)
 
                     return (
@@ -258,6 +271,34 @@ export function MusicChartOverviewSection({
                 })()}
               </tbody>
             </table>
+            {historyPageCount > 1 && (
+              <div className="flex items-center justify-between border-t border-border px-7 py-3">
+                <span className="text-[12px] text-muted-foreground tabular-nums">
+                  显示 {(safeHistoryPage - 1) * historyPageSize + 1}–{Math.min(safeHistoryPage * historyPageSize, weeklyHistory.length)} / 总数 {weeklyHistory.length} 周
+                </span>
+                <div className="flex items-center gap-2 text-[12px]">
+                  <button
+                    type="button"
+                    disabled={safeHistoryPage <= 1}
+                    onClick={() => setHistoryPage(Math.max(1, safeHistoryPage - 1))}
+                    className="rounded-lg border border-border px-3 py-1.5 disabled:opacity-30"
+                  >
+                    上一页
+                  </button>
+                  <span className="min-w-14 text-center text-muted-foreground tabular-nums">
+                    {safeHistoryPage} / {historyPageCount}
+                  </span>
+                  <button
+                    type="button"
+                    disabled={safeHistoryPage >= historyPageCount}
+                    onClick={() => setHistoryPage(Math.min(historyPageCount, safeHistoryPage + 1))}
+                    className="rounded-lg border border-border px-3 py-1.5 disabled:opacity-30"
+                  >
+                    下一页
+                  </button>
+                </div>
+              </div>
+            )}
           </GlassCard>}
         </div>
       )}

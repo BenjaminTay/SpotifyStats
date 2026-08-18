@@ -32,6 +32,7 @@ vi.mock('@/hooks/useAnalysis', () => ({
 
 vi.mock('@/components/shared/EntityStatsPanel', () => ({
   EntityStatsPanel: () => <div>播放统计内容</div>,
+  EntityStatsPrefetch: () => null,
 }))
 
 const TRACK_DETAIL = {

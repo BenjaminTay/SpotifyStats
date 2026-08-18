@@ -210,7 +210,13 @@ def build_duration_frame(
     return slices.reset_index(drop=True)
 
 
-def filter_period(df: pd.DataFrame, resolved: dict) -> pd.DataFrame:
+def filter_period_events(df: pd.DataFrame, resolved: dict) -> pd.DataFrame:
+    """Filter logical events without constructing listening-duration slices.
+
+    Callers that only need event counts, identifiers, or timestamps should use
+    this path.  Building duration slices walks the full logical timeline and is
+    intentionally reserved for consumers that actually report listening time.
+    """
     if df.empty:
         return df
     start = resolved.get("start_date")
@@ -220,12 +226,18 @@ def filter_period(df: pd.DataFrame, resolved: dict) -> pd.DataFrame:
         out = out[out["ts_date"].astype(str) >= start]
     if end:
         out = out[out["ts_date"].astype(str) <= end]
+    return out.copy()
+
+
+def filter_period(df: pd.DataFrame, resolved: dict) -> pd.DataFrame:
+    out = filter_period_events(df, resolved)
+    if df.empty:
+        return out
     # Counts belong to logical-event completion time, while duration belongs
     # to the local wall-clock slices where listening occurred. Build slices
     # from the unfiltered timeline so a session crossing a query boundary does
     # not lose the portion on either side.
     duration_slices = build_duration_frame(df, resolved)
-    out = out.copy()
     out.attrs["listening_duration_slices"] = duration_slices.reset_index(drop=True)
     return out
 
@@ -273,6 +285,7 @@ def load_period_plays(
     dynamic_threshold: bool = False,
     max_merge_gap_minutes: int | None = 5,
     _loader=None,
+    attach_duration_slices: bool = True,
 ) -> tuple[pd.DataFrame, pd.DataFrame, dict]:
     loader = _loader or load_plays
     df = loader(
@@ -284,7 +297,12 @@ def load_period_plays(
         max_merge_gap_minutes=max_merge_gap_minutes,
     )
     resolved = resolve_period(df, period, start_date, end_date)
-    return df, filter_period(df, resolved), resolved
+    current = (
+        filter_period(df, resolved)
+        if attach_duration_slices
+        else filter_period_events(df, resolved)
+    )
+    return df, current, resolved
 
 
 def _zero_summary() -> dict:
