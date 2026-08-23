@@ -1,6 +1,6 @@
 # Spotify 串流数据增量导入开发规划
 
-> 状态：实施中；Phase A–C、Phase D1、Phase D2a–D2b 已实现，Phase D2c–E 待实施
+> 状态：实施中；Phase A–D 已实现，Phase E 待实施
 >
 > 创建日期：2026-08-23
 >
@@ -422,7 +422,7 @@ Settings 导入前检查展示自然语言摘要，例如：
 
 验收：首页和完整周榜优先恢复；旧年度 artifact 保持命中；无关缓存不抖动。
 
-实现说明：事实发布事务会从实际写入代际生成并持久化 `PlaybackChangeSet`，记录本地实体、Spotify 实体、日期、年份、开放周和语义 revision；维护完成前运行状态为 `maintenance_pending`，中断后仍保留恢复依据。增量维护只刷新相关元数据和封面，同时带有界历史失败扫尾；封面任务支持重启恢复、全流程失败记录、来源 URL 哈希和过期任务 CAS。年度总结使用逐年直接/前缀 digest 与报告年前缀可达的元数据、流派、曲目组和 Album Project 依赖摘要，普通最新年追加不会使旧年度播放分区抖动。播放事实提交和聚合发布都会精确失效播放相关缓存，聚合构建绑定活动代际并在发布事务再次核对，避免旧计算冒充新代际。Album Project 仍全量重建，但推断项目 ID 已稳定复用；Billboard 的精确尾部周分区已在 Phase D1 实现，同一开放周的搜索六套 snapshot delta 已在 Phase D2b 实现。92,908 条真实数据库副本加 1 条尾部记录的范围与耗时证据见 [`../reports/2026-08-23-incremental-import-phase-c.md`](../reports/2026-08-23-incremental-import-phase-c.md)、[`../reports/2026-08-23-incremental-import-phase-d1.md`](../reports/2026-08-23-incremental-import-phase-d1.md) 与 [`../reports/2026-08-23-incremental-import-phase-d2.md`](../reports/2026-08-23-incremental-import-phase-d2.md)。
+实现说明：事实发布事务会从实际写入代际生成并持久化 `PlaybackChangeSet`，记录本地实体、Spotify 实体、日期、年份、开放周和语义 revision；维护完成前运行状态为 `maintenance_pending`，中断后仍保留恢复依据。增量维护只刷新相关元数据和封面，同时带有界历史失败扫尾；封面任务支持重启恢复、全流程失败记录、来源 URL 哈希和过期任务 CAS。年度总结使用逐年直接/前缀 digest 与报告年前缀可达的元数据、流派、曲目组和 Album Project 依赖摘要，普通最新年追加不会使旧年度播放分区抖动。播放事实提交和聚合发布都会精确失效播放相关缓存，聚合构建绑定活动代际并在发布事务再次核对，避免旧计算冒充新代际。Album Project 仍全量重建，但推断项目 ID 已稳定复用；Billboard 的精确尾部周分区已在 Phase D1 实现，搜索六套 snapshot 对同周和恰好跨一个开放周的尾部追加均已在 Phase D2 实现增量发布。92,908 条真实数据库副本加 1 条尾部记录的范围与耗时证据见 [`../reports/2026-08-23-incremental-import-phase-c.md`](../reports/2026-08-23-incremental-import-phase-c.md)、[`../reports/2026-08-23-incremental-import-phase-d1.md`](../reports/2026-08-23-incremental-import-phase-d1.md) 与 [`../reports/2026-08-23-incremental-import-phase-d2.md`](../reports/2026-08-23-incremental-import-phase-d2.md)。
 
 ### Phase D1：Billboard 周分区与搜索共享全量（已实现，2026-08-23）
 
@@ -432,14 +432,15 @@ Settings 导入前检查展示自然语言摘要，例如：
 
 验收：尾部变化的四张 Billboard 聚合与全量重建逐表一致；六套 shared-full 与 ordinary build 逐列一致，并且不再为每个变体独立扫描完整历史。真实副本证据见 [`../reports/2026-08-23-incremental-import-phase-d1.md`](../reports/2026-08-23-incremental-import-phase-d1.md)。
 
-### Phase D2：搜索快照实体级增量（部分实现，2026-08-23）
+### Phase D2：搜索快照实体级增量（已实现，2026-08-23）
 
 - D2a 已完成：migration 42 持久化六套 snapshot lineage 和稳定实体键周账本；shared-full 负责引导兼容基线。自动推断 Album Project 按语义键复用 ID，membership 精确替换，人工项目不受影响。
 - D2b 已完成：对于完全位于同一个当前开放榜单周、没有影响已发布完整周的精确尾部追加，从兼容的上一 ready snapshot 复制六套 context 和周账本，只更新 ChangeSet 关联的歌曲、L1 专辑、L2/L3 Album Project 与有效署名艺人的 lifetime metrics；执行过程不扫描完整 lifetime 播放事实。
 - D2b 发布前后复核活动数据集、基础 snapshot 标识/激活时间/行数、候选与统计语义依赖，六套结果和 lineage 在一个事务激活；任何门禁失败都回退 D1 shared-full。
-- D2c 待实施：替换受影响完整周的紧凑账本，并从紧凑上下文重算 chart summary 与全局 Power rank，使跨周尾部追加也能保持 snapshot delta。
+- D2c 已完成：对于恰好跨一个开放周的精确尾部追加，有界读取新完成周及连续播放链闭包，替换六套对应周账本；合并历史账本后按稳定实体 ID 全局重算 chart summary 与 Power score/rank。当前开放周仍不发布，同名不同 ID 的专辑/艺人保持分离。
+- 多周跳跃、历史增删、闭包超过 100,000 行或任何 lineage/候选/依赖/发布栅栏不兼容时继续回退 D1 shared-full，不用不完整证据强行增量。
 
-当前验收：92,908 条真实数据库副本加 1 条同开放周尾部记录，六套搜索上下文与六套周账本和 shared-full 全列双向 `EXCEPT=0`；delta 1.111 秒、shared-full 21.824 秒，单轮观察约 19.6×。跨完整周场景尚未达到本 Phase 的最终完成定义，证据见 [`../reports/2026-08-23-incremental-import-phase-d2.md`](../reports/2026-08-23-incremental-import-phase-d2.md)。
+当前验收：92,908 条真实数据库副本加 1 条尾部记录，同周场景 delta 1.093 秒、shared-full 26.416 秒；跨一周场景 delta 6.500 秒、shared-full 26.339 秒。两场景的六套搜索上下文与六套周账本均全列双向 `EXCEPT=0`；跨周场景还证明旧历史周不变、新完成周发布、当前开放周排除。证据见 [`../reports/2026-08-23-incremental-import-phase-d2.md`](../reports/2026-08-23-incremental-import-phase-d2.md)。
 
 ### Phase E：历史修正与局部连续链（可选，4–6 人日）
 
@@ -450,7 +451,7 @@ Settings 导入前检查展示自然语言摘要，例如：
 
 验收：历史修正场景等价；无法建立闭包时安全回退全量。
 
-实用版本完成 Phase A–D，预计 10–14 人日；包括历史修正局部化的完整版本预计 14–20 人日。第一批可独立上线的 Phase A–B 约 4–5 人日。
+实用版本 Phase A–D 已完成；Phase E 将继续处理历史修正局部化、定向 Album Project 与恢复/压力验收。原始工作量估计保留为规划依据，不再代表当前剩余开发量。
 
 ## 17. 建议提交拆分
 

@@ -435,8 +435,29 @@ def test_shared_publish_rechecks_dependency_under_write_lock(monkeypatch) -> Non
     )
 
 
+@pytest.mark.parametrize(
+    ("previous_open_week", "current_open_week", "billboard_weeks", "chart_strategy"),
+    [
+        (
+            "2026-01-02",
+            "2026-01-02",
+            {"2026-01-02"},
+            "clone_unchanged_open_week",
+        ),
+        (
+            "2026-01-02",
+            "2026-01-09",
+            {"2026-01-02", "2026-01-09"},
+            "replace_affected_completed_weeks",
+        ),
+    ],
+)
 def test_incremental_snapshot_delta_clones_base_and_applies_lifetime_metrics(
     monkeypatch,
+    previous_open_week: str,
+    current_open_week: str,
+    billboard_weeks: set[str],
+    chart_strategy: str,
 ) -> None:
     conn = _conn()
     from backend.domains.music_search import snapshot as snapshot_module
@@ -506,6 +527,25 @@ def test_incremental_snapshot_delta_clones_base_and_applies_lifetime_metrics(
         "_artist_delta_map",
         lambda *_args, **_kwargs: {3: (1, 2000)},
     )
+    if previous_open_week != current_open_week:
+        monkeypatch.setattr(
+            "backend.domains.music_search.snapshot_week_delta."
+            "build_affected_complete_week_ledger_rows",
+            lambda _conn, contexts, **_kwargs: {
+                context.filter_fingerprint: [
+                    (
+                        "track",
+                        previous_open_week,
+                        "track:1",
+                        1,
+                        1,
+                        1000,
+                        '{"artist_name":"Artist","entity_id":1,"track_name":"Track"}',
+                    )
+                ]
+                for context in contexts
+            },
+        )
 
     incremental_plan = delta_module.build_music_search_incremental_plan(
         SimpleNamespace(
@@ -514,9 +554,9 @@ def test_incremental_snapshot_delta_clones_base_and_applies_lifetime_metrics(
             billboard_scope_exact=True,
             previous_dataset_digest="dataset-g2",
             generation_id="import-g3",
-            previous_open_week="2026-01-02",
-            current_open_week="2026-01-02",
-            billboard_weeks={"2026-01-02"},
+            previous_open_week=previous_open_week,
+            current_open_week=current_open_week,
+            billboard_weeks=billboard_weeks,
             added_count=1,
         )
     )
@@ -531,6 +571,7 @@ def test_incremental_snapshot_delta_clones_base_and_applies_lifetime_metrics(
     assert report["strategy"] == "incremental_snapshot_delta"
     assert report["lifetime_scan"] is False
     assert report["ready_count"] == 6
+    assert report["chart_strategy"] == chart_strategy
     for context in target_contexts:
         metrics = {
             str(row[0]): (int(row[1]), int(row[2]))
@@ -620,6 +661,62 @@ def test_incremental_snapshot_plan_rejects_tampering() -> None:
     plan["billboard_weeks"] = ["2025-12-26"]
 
     assert _validated_incremental_plan(plan) is None
+
+
+def test_incremental_snapshot_plan_accepts_exact_one_week_transition() -> None:
+    from backend.domains.music_search.snapshot_delta import (
+        _validated_incremental_plan,
+        build_music_search_incremental_plan,
+    )
+
+    plan = build_music_search_incremental_plan(
+        SimpleNamespace(
+            strategy="incremental",
+            removed_count=0,
+            billboard_scope_exact=True,
+            previous_dataset_digest="dataset-g2",
+            generation_id="import-g3",
+            previous_open_week="2026-01-02",
+            current_open_week="2026-01-09",
+            billboard_weeks={"2026-01-02", "2026-01-09"},
+            added_count=1,
+        )
+    )
+
+    assert plan is not None
+    assert plan["schema_version"] == "music_search_incremental_snapshot_plan_v2"
+    assert plan["affected_completed_weeks"] == ["2026-01-02"]
+    assert _validated_incremental_plan(plan) == plan
+
+
+@pytest.mark.parametrize(
+    ("current_open_week", "billboard_weeks"),
+    [
+        ("2026-01-16", {"2026-01-02", "2026-01-09", "2026-01-16"}),
+        ("not-a-date", {"2026-01-02", "not-a-date"}),
+    ],
+)
+def test_incremental_snapshot_plan_rejects_unbounded_week_transition(
+    current_open_week: str,
+    billboard_weeks: set[str],
+) -> None:
+    from backend.domains.music_search.snapshot_delta import build_music_search_incremental_plan
+
+    plan = build_music_search_incremental_plan(
+        SimpleNamespace(
+            strategy="incremental",
+            removed_count=0,
+            billboard_scope_exact=True,
+            previous_dataset_digest="dataset-g2",
+            generation_id="import-g3",
+            previous_open_week="2026-01-02",
+            current_open_week=current_open_week,
+            billboard_weeks=billboard_weeks,
+            added_count=1,
+        )
+    )
+
+    assert plan is None
 
 
 def test_incremental_snapshot_delta_rejects_disabled_logical_merge() -> None:
@@ -1061,9 +1158,9 @@ def test_shared_frame_snapshot_matches_exact_context_rows(monkeypatch) -> None:
         lambda *_args, **_kwargs: dict(metric_maps),
     )
     chart_lookup: dict[str, dict[Any, MusicSearchChartSummary]] = {
-        "track": {1: MusicSearchChartSummary(power_score=90, power_rank=1)},
+        "track": {},
         "album": {},
-        "artist": {"Artist": MusicSearchChartSummary(power_score=80, power_rank=2)},
+        "artist": {},
     }
     monkeypatch.setattr(
         "backend.domains.music_search.snapshot._load_shared_logical_frames",
@@ -1525,7 +1622,7 @@ def test_shared_full_failure_never_partially_activates_variants(monkeypatch) -> 
         "_context_rows",
         lambda _conn, context, **_kwargs: [
             (
-                f"track:{context.merge_level}:{int(context.dynamic_threshold)}",
+                "track:1",
                 1,
                 1000,
                 *(None,) * 9,

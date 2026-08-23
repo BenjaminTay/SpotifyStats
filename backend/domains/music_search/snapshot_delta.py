@@ -7,6 +7,7 @@ import json
 import logging
 import sqlite3
 import time
+from datetime import date, timedelta
 from typing import Any, Literal, cast
 
 import pandas as pd
@@ -42,13 +43,7 @@ def _incremental_plan_digest(payload: dict[str, Any]) -> str:
 
 
 def build_music_search_incremental_plan(change_set: Any) -> dict[str, Any] | None:
-    """Serialize the bounded proof accepted by the D2b MVP.
-
-    The first delta path intentionally handles only appends that stay inside
-    the same still-open Billboard week.  Weekly chart facts are therefore
-    unchanged and can be cloned exactly; cross-week publication falls back to
-    the shared-full builder until affected-week replacement is implemented.
-    """
+    """Serialize a bounded proof for same-week or one-boundary appends."""
     if getattr(change_set, "strategy", None) != "incremental":
         return None
     if int(getattr(change_set, "removed_count", 0) or 0) != 0:
@@ -59,25 +54,34 @@ def build_music_search_incremental_plan(change_set: Any) -> dict[str, Any] | Non
     generation_id = str(getattr(change_set, "generation_id", None) or "")
     previous_open = str(getattr(change_set, "previous_open_week", None) or "")
     current_open = str(getattr(change_set, "current_open_week", None) or "")
-    if (
-        not previous_digest
-        or not generation_id
-        or not current_open
-        or previous_open != current_open
-    ):
+    if not previous_digest or not generation_id or not previous_open or not current_open:
         return None
     weeks = sorted(str(value) for value in getattr(change_set, "billboard_weeks", ()) or ())
-    if weeks != [current_open]:
+    try:
+        previous_open_date = date.fromisoformat(previous_open)
+        current_open_date = date.fromisoformat(current_open)
+    except ValueError:
+        return None
+    if current_open_date == previous_open_date:
+        expected_weeks = [current_open]
+        affected_completed_weeks: list[str] = []
+    elif current_open_date == previous_open_date + timedelta(days=7):
+        expected_weeks = [previous_open, current_open]
+        affected_completed_weeks = [previous_open]
+    else:
+        return None
+    if weeks != expected_weeks:
         return None
     added_count = int(getattr(change_set, "added_count", 0) or 0)
     if added_count <= 0 or added_count > 10_000:
         return None
     payload = {
-        "schema_version": "music_search_incremental_snapshot_plan_v1",
+        "schema_version": "music_search_incremental_snapshot_plan_v2",
         "source_generation_id": generation_id,
         "previous_dataset_digest": previous_digest,
         "added_count": added_count,
         "billboard_weeks": weeks,
+        "affected_completed_weeks": affected_completed_weeks,
         "previous_open_week": previous_open,
         "current_open_week": current_open,
     }
@@ -86,7 +90,7 @@ def build_music_search_incremental_plan(change_set: Any) -> dict[str, Any] | Non
 
 
 def _validated_incremental_plan(plan: dict[str, Any]) -> dict[str, Any] | None:
-    if plan.get("schema_version") != "music_search_incremental_snapshot_plan_v1":
+    if plan.get("schema_version") != "music_search_incremental_snapshot_plan_v2":
         return None
     generation_id = str(plan.get("source_generation_id") or "")
     previous_digest = str(plan.get("previous_dataset_digest") or "")
@@ -95,24 +99,39 @@ def _validated_incremental_plan(plan: dict[str, Any]) -> dict[str, Any] | None:
     try:
         added_count = int(plan.get("added_count") or 0)
         weeks = sorted(str(value) for value in plan.get("billboard_weeks", ()))
+        affected_completed_weeks = sorted(
+            str(value) for value in plan.get("affected_completed_weeks", ())
+        )
+        previous_open_date = date.fromisoformat(previous_open)
+        current_open_date = date.fromisoformat(current_open)
     except (TypeError, ValueError):
+        return None
+    if current_open_date == previous_open_date:
+        expected_weeks = [current_open]
+        expected_completed_weeks: list[str] = []
+    elif current_open_date == previous_open_date + timedelta(days=7):
+        expected_weeks = [previous_open, current_open]
+        expected_completed_weeks = [previous_open]
+    else:
         return None
     if (
         not generation_id
         or not previous_digest
+        or not previous_open
         or not current_open
-        or previous_open != current_open
         or added_count <= 0
         or added_count > 10_000
-        or weeks != [current_open]
+        or weeks != expected_weeks
+        or affected_completed_weeks != expected_completed_weeks
     ):
         return None
     payload = {
-        "schema_version": "music_search_incremental_snapshot_plan_v1",
+        "schema_version": "music_search_incremental_snapshot_plan_v2",
         "source_generation_id": generation_id,
         "previous_dataset_digest": previous_digest,
         "added_count": added_count,
         "billboard_weeks": weeks,
+        "affected_completed_weeks": affected_completed_weeks,
         "previous_open_week": previous_open,
         "current_open_week": current_open,
     }
@@ -370,6 +389,51 @@ def _clone_and_apply_context_rows(
     ]
 
 
+def _candidate_keys_for_context(
+    conn: sqlite3.Connection,
+    context: MusicSearchFilterContext,
+    *,
+    candidate_generation: str,
+) -> set[str]:
+    return {
+        str(row[0])
+        for row in conn.execute(
+            """SELECT entity_key FROM music_search_documents
+               WHERE generation_id=? AND (kind!='track' OR merge_level=?)""",
+            (candidate_generation, context.merge_level),
+        ).fetchall()
+    }
+
+
+def _base_weekly_ledger_rows(
+    conn: sqlite3.Connection,
+    snapshot_key: str,
+    *,
+    excluded_weeks: set[str],
+) -> list[tuple[str, str, str, int, int, int, str]]:
+    rows = conn.execute(
+        """SELECT family, week, entity_key, rank, play_count, total_ms,
+                  stable_sort_key
+           FROM music_search_weekly_chart_context
+           WHERE snapshot_key=?
+           ORDER BY family, week, rank, entity_key""",
+        (snapshot_key,),
+    ).fetchall()
+    return [
+        (
+            str(row[0]),
+            str(row[1]),
+            str(row[2]),
+            int(row[3]),
+            int(row[4]),
+            int(row[5]),
+            str(row[6]),
+        )
+        for row in rows
+        if str(row[1]) not in excluded_weeks
+    ]
+
+
 def build_incremental_music_search_snapshot_set(
     conn: sqlite3.Connection,
     contexts: tuple[MusicSearchFilterContext, ...],
@@ -415,6 +479,7 @@ def build_incremental_music_search_snapshot_set(
     physical_by_threshold: dict[bool, pd.DataFrame] = {}
     projected_by_variant: dict[tuple[int, bool], pd.DataFrame] = {}
     rows_by_fingerprint: dict[str, list[tuple[Any, ...]]] = {}
+    weekly_rows_by_fingerprint: dict[str, list[tuple[str, str, str, int, int, int, str]]] = {}
     for dynamic_threshold in {context.dynamic_threshold for context in contexts}:
         maps = _track_delta_maps(
             conn,
@@ -438,6 +503,66 @@ def build_incremental_music_search_snapshot_set(
         if rows is None:
             return None
         rows_by_fingerprint[context.filter_fingerprint] = rows
+
+    affected_completed_weeks = set(validated_plan["affected_completed_weeks"])
+    if affected_completed_weeks:
+        from backend.domains.music_search.snapshot_ledger import (
+            WeeklyLedgerValidationError,
+            rebuild_context_rows_from_weekly_ledger,
+        )
+        from backend.domains.music_search.snapshot_week_delta import (
+            MusicSearchWeekDeltaIncompatibleError,
+            build_affected_complete_week_ledger_rows,
+        )
+
+        try:
+            replacement_rows = build_affected_complete_week_ledger_rows(
+                conn,
+                contexts,
+                change_generation_id=generation_id,
+                affected_weeks=set(validated_plan["billboard_weeks"]),
+                current_open_week=str(validated_plan["current_open_week"]),
+            )
+            candidate_generation = str(
+                get_music_search_index_state(conn).get("active_generation_id") or ""
+            )
+            if not candidate_generation:
+                return None
+            for context in contexts:
+                snapshot_key = context.filter_fingerprint
+                base_key = base_keys[snapshot_key]
+                combined_ledger = _base_weekly_ledger_rows(
+                    conn,
+                    base_key,
+                    excluded_weeks=affected_completed_weeks,
+                )
+                combined_ledger.extend(replacement_rows[snapshot_key])
+                lifetime_metrics = {
+                    str(row[0]): (int(row[1]), int(row[2]))
+                    for row in rows_by_fingerprint[snapshot_key]
+                }
+                rows_by_fingerprint[snapshot_key] = list(
+                    rebuild_context_rows_from_weekly_ledger(
+                        combined_ledger,
+                        lifetime_metrics,
+                        _candidate_keys_for_context(
+                            conn,
+                            context,
+                            candidate_generation=candidate_generation,
+                        ),
+                        track_top_n=context.bb_top_n,
+                        album_top_n=context.bb_album_top_n,
+                        artist_top_n=context.bb_artist_top_n,
+                    )
+                )
+                weekly_rows_by_fingerprint[snapshot_key] = combined_ledger
+        except (MusicSearchWeekDeltaIncompatibleError, WeeklyLedgerValidationError, KeyError):
+            logger.info(
+                "Incremental music-search completed-week replacement was incompatible; "
+                "using shared-full fallback",
+                exc_info=True,
+            )
+            return None
 
     from backend.domains.music_search.snapshot import (
         _assert_shared_full_publish_fence,
@@ -492,16 +617,25 @@ def build_incremental_music_search_snapshot_set(
                 "DELETE FROM music_search_weekly_chart_context WHERE snapshot_key=?",
                 (snapshot_key,),
             )
-            conn.execute(
-                """INSERT INTO music_search_weekly_chart_context(
-                       snapshot_key, family, week, entity_key, rank,
-                       play_count, total_ms, stable_sort_key
-                   )
-                   SELECT ?, family, week, entity_key, rank,
-                          play_count, total_ms, stable_sort_key
-                   FROM music_search_weekly_chart_context WHERE snapshot_key=?""",
-                (snapshot_key, base_key),
-            )
+            if affected_completed_weeks:
+                conn.executemany(
+                    """INSERT INTO music_search_weekly_chart_context(
+                           snapshot_key, family, week, entity_key, rank,
+                           play_count, total_ms, stable_sort_key
+                       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                    [(snapshot_key, *row) for row in weekly_rows_by_fingerprint[snapshot_key]],
+                )
+            else:
+                conn.execute(
+                    """INSERT INTO music_search_weekly_chart_context(
+                           snapshot_key, family, week, entity_key, rank,
+                           play_count, total_ms, stable_sort_key
+                       )
+                       SELECT ?, family, week, entity_key, rank,
+                              play_count, total_ms, stable_sort_key
+                       FROM music_search_weekly_chart_context WHERE snapshot_key=?""",
+                    (snapshot_key, base_key),
+                )
             conn.execute(
                 """UPDATE music_search_snapshot_meta
                    SET status='ready', activated_at=datetime('now'), last_error=NULL,
@@ -557,6 +691,11 @@ def build_incremental_music_search_snapshot_set(
         "strategy": "incremental_snapshot_delta",
         "base_snapshot_count": 6,
         "lifetime_scan": False,
-        "chart_strategy": "clone_unchanged_open_week",
+        "chart_strategy": (
+            "replace_affected_completed_weeks"
+            if affected_completed_weeks
+            else "clone_unchanged_open_week"
+        ),
+        "affected_completed_week_count": len(affected_completed_weeks),
         "prune_status": prune_status,
     }

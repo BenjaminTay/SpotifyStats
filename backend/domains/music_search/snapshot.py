@@ -1367,6 +1367,34 @@ def build_shared_full_music_search_snapshot_set(
                         metric_maps=metric_maps[variant],
                         chart_lookup=chart_lookups[variant],
                     )
+                    if ledger_complete[variant]:
+                        # The compact ledger carries stable entity IDs. Rebuild
+                        # chart summaries from it so shared-full and completed-week
+                        # deltas use the same identity semantics; display-name
+                        # collisions must never merge distinct albums or artists.
+                        from backend.domains.music_search.snapshot_ledger import (
+                            rebuild_context_rows_from_weekly_ledger,
+                        )
+
+                        candidate_keys = {
+                            str(row[0])
+                            for row in conn.execute(
+                                """SELECT entity_key FROM music_search_documents
+                                   WHERE generation_id=?
+                                     AND (kind!='track' OR merge_level=?)""",
+                                (candidate_generation_id, context.merge_level),
+                            ).fetchall()
+                        }
+                        rows = list(
+                            rebuild_context_rows_from_weekly_ledger(
+                                ledger_rows[variant],
+                                {str(row[0]): (int(row[1]), int(row[2])) for row in rows},
+                                candidate_keys,
+                                track_top_n=context.bb_top_n,
+                                album_top_n=context.bb_album_top_n,
+                                artist_top_n=context.bb_artist_top_n,
+                            )
+                        )
                     _validate_context_rows(rows)
                     rows_by_fingerprint[context.filter_fingerprint] = rows
                     weekly_rows_by_fingerprint[context.filter_fingerprint] = ledger_rows[variant]
