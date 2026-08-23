@@ -8,7 +8,10 @@ from backend.core.migrations import migrate_032, migrate_034, migrate_035
 from backend.domains.music_search import context as context_module
 from backend.domains.music_search import index as index_module
 from backend.domains.music_search import normalization as normalization_module
-from backend.domains.music_search.context import build_music_search_filter_context
+from backend.domains.music_search.context import (
+    build_music_search_filter_context,
+    music_search_snapshot_policy_key,
+)
 from backend.domains.music_search.index import expected_candidate_index_version
 from backend.domains.music_search.revisions import (
     bump_music_search_revisions,
@@ -97,6 +100,25 @@ def test_six_variants_share_base_and_have_unique_fingerprints() -> None:
         (variant.merge_level, variant.dynamic_threshold)
         for variant in MUSIC_SEARCH_SNAPSHOT_VARIANTS
     ]
+
+
+def test_snapshot_policy_key_ignores_data_revisions_but_keeps_variant_semantics() -> None:
+    conn = _conn()
+    before = build_music_search_filter_context(conn, _filters())
+
+    bump_music_search_revisions(conn, "playback", "billboard", "metadata", "settings")
+    after_data_change = build_music_search_filter_context(conn, _filters())
+
+    assert after_data_change.filter_fingerprint != before.filter_fingerprint
+    assert music_search_snapshot_policy_key(after_data_change) == music_search_snapshot_policy_key(
+        before
+    )
+
+    changed_filters = {**_filters(), "bb_top_n": 31}
+    changed_policy = build_music_search_filter_context(conn, changed_filters)
+    assert music_search_snapshot_policy_key(changed_policy) != music_search_snapshot_policy_key(
+        before
+    )
 
 
 def test_random_index_generation_does_not_change_statistics_fingerprint() -> None:

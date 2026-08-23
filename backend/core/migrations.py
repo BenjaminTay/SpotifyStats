@@ -20,6 +20,7 @@ from backend.core.db import SCHEMA
 logger = logging.getLogger(__name__)
 
 MIGRATIONS: list[tuple[int, str, Callable[[sqlite3.Connection], None]]] = []
+LATEST_SCHEMA_VERSION = 42
 
 _IDEMPOTENT_OPERATIONAL_ERRORS = (
     "already exists",
@@ -1487,6 +1488,66 @@ def migrate_041(conn: sqlite3.Connection):
         # relabelled as V2. An empty state fails safely to the global database
         # revision and bootstraps exact prefixes on the next import.
         conn.execute("DELETE FROM playback_year_partition_state")
+
+
+@migration(42, "music_search_incremental_snapshot_lineage")
+def migrate_042(conn: sqlite3.Connection):
+    """Persist the proof and compact weekly ledger required by snapshot delta.
+
+    Existing snapshots remain readable.  Their nullable lineage fields and
+    absent weekly rows make them ineligible as incremental bases without
+    forcing a cold rebuild during migration.
+    """
+    snapshot_columns = {
+        row["name"] if isinstance(row, sqlite3.Row) else row[1]
+        for row in conn.execute("PRAGMA table_info(music_search_snapshot_meta)").fetchall()
+    }
+    additions = (
+        ("policy_key", "TEXT"),
+        ("source_generation_id", "TEXT"),
+        ("source_dataset_digest", "TEXT"),
+        (
+            "base_snapshot_key",
+            "TEXT REFERENCES music_search_snapshot_meta(snapshot_key) ON DELETE SET NULL",
+        ),
+        ("build_strategy", "TEXT"),
+        ("dependency_digest", "TEXT"),
+        ("change_set_digest", "TEXT"),
+    )
+    for column, column_type in additions:
+        if column not in snapshot_columns:
+            conn.execute(
+                f"ALTER TABLE music_search_snapshot_meta ADD COLUMN {column} {column_type}"
+            )
+
+    conn.executescript(
+        """
+        CREATE INDEX IF NOT EXISTS idx_music_search_snapshot_meta_lineage
+            ON music_search_snapshot_meta(
+                policy_key, dependency_digest, status, activated_at DESC
+            );
+        CREATE INDEX IF NOT EXISTS idx_music_search_snapshot_meta_base
+            ON music_search_snapshot_meta(base_snapshot_key);
+
+        CREATE TABLE IF NOT EXISTS music_search_weekly_chart_context (
+            snapshot_key TEXT NOT NULL REFERENCES music_search_snapshot_meta(snapshot_key)
+                ON DELETE CASCADE,
+            family TEXT NOT NULL CHECK (family IN ('track', 'album', 'artist')),
+            week TEXT NOT NULL,
+            entity_key TEXT NOT NULL,
+            rank INTEGER NOT NULL CHECK (rank > 0),
+            play_count INTEGER NOT NULL CHECK (play_count >= 0),
+            total_ms INTEGER NOT NULL CHECK (total_ms >= 0),
+            stable_sort_key TEXT NOT NULL,
+            PRIMARY KEY(snapshot_key, family, week, entity_key),
+            UNIQUE(snapshot_key, family, week, rank)
+        );
+        CREATE INDEX IF NOT EXISTS idx_music_search_weekly_chart_context_entity
+            ON music_search_weekly_chart_context(
+                snapshot_key, family, entity_key, week
+            );
+        """
+    )
 
 
 # ── Runner ────────────────────────────────────────────────────────────────

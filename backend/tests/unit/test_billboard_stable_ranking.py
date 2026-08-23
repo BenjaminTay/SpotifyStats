@@ -85,6 +85,38 @@ def test_artist_weekly_ties_use_artist_id_not_input_order() -> None:
     pd.testing.assert_frame_equal(expected.reset_index(drop=True), actual.reset_index(drop=True))
 
 
+def test_raw_artist_weekly_ranking_preserves_stable_artist_id() -> None:
+    frame = pd.DataFrame(
+        [
+            {
+                "billboard_week": pd.Timestamp("2026-08-07"),
+                "track_id": 1,
+                "artist_id": 3,
+                "artist_name": "Artist",
+                "ms_played": 1000,
+            },
+            {
+                "billboard_week": pd.Timestamp("2026-08-07"),
+                "track_id": 2,
+                "artist_id": 3,
+                "artist_name": "Artist",
+                "ms_played": 2000,
+            },
+        ]
+    )
+
+    result = compute_artist_weekly_rankings(frame, 20)
+
+    assert result[["artist_id", "artist_name", "play_count", "total_ms"]].to_dict("records") == [
+        {
+            "artist_id": 3,
+            "artist_name": "Artist",
+            "play_count": 2,
+            "total_ms": 3000,
+        }
+    ]
+
+
 def test_album_weekly_ties_use_album_project_id_not_input_order(monkeypatch) -> None:
     frame = pd.DataFrame(
         [

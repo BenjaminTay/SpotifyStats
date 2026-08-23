@@ -306,9 +306,12 @@ def compute_artist_weekly_rankings(_df, top_n, pre_agg=None):
         weighted = get_billboard_weighted_frame(_df)
         df = weighted.copy() if weighted is not None else _df.copy()
         df = df.dropna(subset=["artist_name"])
+        artist_group_cols = ["billboard_week", "artist_name"]
+        if "artist_id" in df.columns:
+            artist_group_cols = ["billboard_week", "artist_id", "artist_name"]
         if {"play_count", "total_ms"} <= set(df.columns):
             weekly_artist = (
-                df.groupby(["billboard_week", "artist_name"])
+                df.groupby(artist_group_cols)
                 .agg(
                     play_count=("play_count", "sum"),
                     total_ms=("total_ms", "sum"),
@@ -318,7 +321,7 @@ def compute_artist_weekly_rankings(_df, top_n, pre_agg=None):
             )
         else:
             weekly_artist = (
-                df.groupby(["billboard_week", "artist_name"])
+                df.groupby(artist_group_cols)
                 .agg(
                     play_count=("ms_played", "count"),
                     total_ms=("ms_played", "sum"),

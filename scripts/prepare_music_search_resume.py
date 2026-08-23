@@ -68,7 +68,8 @@ def _validate_partial(path: Path) -> dict[str, Any]:
         ready_variants = int(
             conn.execute(
                 """SELECT COUNT(*) FROM music_search_snapshot_meta
-                   WHERE status='ready' AND builder_version='music_search_snapshot_v2'"""
+                   WHERE status='ready' AND builder_version=?""",
+                (MUSIC_SEARCH_SNAPSHOT_BUILDER_VERSION,),
             ).fetchone()[0]
         )
         counts = {

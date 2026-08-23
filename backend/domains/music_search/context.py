@@ -16,8 +16,9 @@ from backend.domains.music_search.revisions import get_music_search_revision_sta
 MUSIC_SEARCH_STATISTICS_FINGERPRINT_VERSION = "music_search_statistics_v3"
 # Compatibility name used by existing reports and API terminology.
 MUSIC_SEARCH_FILTER_FINGERPRINT_VERSION = MUSIC_SEARCH_STATISTICS_FINGERPRINT_VERSION
-MUSIC_SEARCH_SNAPSHOT_BUILDER_VERSION = "music_search_snapshot_v2"
+MUSIC_SEARCH_SNAPSHOT_BUILDER_VERSION = "music_search_snapshot_v3"
 MUSIC_SEARCH_CHART_BUILDER_VERSION = "music_search_chart_v4"
+MUSIC_SEARCH_SNAPSHOT_POLICY_VERSION = "music_search_snapshot_policy_v1"
 LEGACY_MUSIC_SEARCH_FILTER_FINGERPRINT_VERSION = "music_search_filter_v2"
 
 
@@ -84,6 +85,36 @@ def music_search_variant_fingerprint(
             "semantic_base_key": semantic_base_key,
             "merge_level": int(merge_level),
             "dynamic_threshold": bool(dynamic_threshold),
+        }
+    )
+
+
+def music_search_snapshot_policy_key(context: MusicSearchFilterContext) -> str:
+    """Return the variant semantics that remain stable across data appends.
+
+    Playback, Billboard, metadata and settings revisions identify one exact
+    snapshot and therefore intentionally remain in ``filter_fingerprint``.
+    They are excluded here so maintenance can look up a prior compatible
+    generation.  The actual filter values and governance revisions stay in
+    the policy key; changing any of them makes a previous snapshot ineligible
+    as an incremental base.
+    """
+    values = context.filter_values()
+    excluded = {
+        "playback_revision",
+        "billboard_aggregation_revision",
+        "metadata_revision",
+        "settings_revision",
+        "semantic_base_key",
+        "filter_fingerprint",
+        "source_revision",
+    }
+    return _digest_payload(
+        {
+            "version": MUSIC_SEARCH_SNAPSHOT_POLICY_VERSION,
+            "snapshot_builder": MUSIC_SEARCH_SNAPSHOT_BUILDER_VERSION,
+            "chart_builder": MUSIC_SEARCH_CHART_BUILDER_VERSION,
+            **{key: value for key, value in values.items() if key not in excluded},
         }
     )
 

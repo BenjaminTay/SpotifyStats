@@ -11,7 +11,7 @@
 1. 串流数据导入读取 `data/streaming/Streaming_History_Audio_*.json`，写入基础播放、曲目、专辑和艺人数据。
 2. 账号数据导入读取 `data/account/` 下的 Account Data JSON，补充收藏、歌单、Wrapped、搜索记录等非播放数据。
 3. 串流导入完成后继续执行 Spotify 曲目、专辑和艺人元数据维护，补齐本地实体的封面 URL，并为播放历史中有 URL 但缺文件的专辑和艺人排队下载。
-4. Album Project 和 Billboard 预聚合发布后，先预热最新完整榜单与首页；六套音乐查找精确统计快照随后转入后台逐套构建，年度总结预热等精确快照完成后再启动，避免与首屏争抢资源。
+4. Album Project 和 Billboard 预聚合发布后，先预热最新完整榜单与首页；六套音乐查找精确统计快照随后转入后台维护，兼容的同一开放周尾部追加可走 snapshot delta，其余情况整组六套 shared-full 重建；年度总结预热等精确快照完成后再启动，避免与首屏争抢资源。
 5. 封面下载按“实体类型 + 实体 ID”去重，校验 HTTP 状态、图片签名和最小大小，采用临时文件原子替换；失败会真实记录并在上限内重试，不再把下载失败记作完成。
 6. 快照未完成时搜索候选和详情深链仍可用，精确播放/榜单摘要显示为 warming，不显示虚假的 0。健康报告重新读取数据库状态，帮助判断维护是否完成；它不改变以上导入语义。
 
@@ -28,7 +28,7 @@
 - 完全重复文件会进入 `blockers`；文件内重复记录、日期范围重叠和跨文件共同记录进入 `warnings`。导入时只对完全相同的记录自动去重，保留同一内容在稳定文件顺序中的第一次出现；日期重叠不会被当成重复，也不会自动合并。源 JSON 永远不会被修改。
 - `POST /api/import/streaming` 会在后台任务真正创建快照前再次执行这份预检：有 `blockers` 时任务状态为 `blocked`；只有 `warnings` 且未传 `confirm_warnings=true` 时状态为 `needs_confirmation`；确认后才会进入计划执行。
 
-增量导入 Phase A–D1 使用以下证据与执行规则：
+增量导入 Phase A–D2b 使用以下证据与执行规则：
 
 - migration 37 为播放事实预留版本化源记录指纹和导入代际，并建立单例活动状态与导入运行记录表；升级前已有播放不会从不完整的数据库列反推原始 JSON 指纹。
 - 预检会从音频、视频记录生成与文件名、文件顺序和重新分包无关的 dataset digest，并返回指纹基线状态、账号身份匹配状态、输入与活动数据集的关系、增删复用数量、日期范围和预计影响的周/年数。
@@ -42,8 +42,10 @@
 - noop 只更新导入状态摘要并记录运行结果，不提升播放或派生 revision，不重建 Billboard、搜索快照、年度结果或封面任务。
 - append 完成基础事实发布后，会在同一事务生成并持久化 `PlaybackChangeSet`。Spotify 曲目、专辑、艺人元数据和封面只处理相关实体，同时从全局缺失事实中有界抽取历史失败项重试；年度播放分区只从最早受影响年份向后更新，旧年度仍可复用。
 - 已证明的尾部追加会为 Billboard 扩展旧、新连续播放链和跨周时长贡献闭包，只重算受影响完整周；非尾部变化、闭包证据不足、依赖不兼容或受影响周超过 25% 时回退完整聚合。四张周聚合在影子表中共同校验并原子发布。
-- 搜索候选仍整体重建。六套精确搜索上下文目前使用 `shared_full_snapshot_rebuild`：两个阈值作用域各自复用逻辑帧并在三个 merge level 间共享计算，六套全部成功后才共同激活。它消除了六次独立历史扫描，但仍是完整 lifetime 重建，不是按 ChangeSet 复制、更新旧 snapshot 的 delta。
-- Album Project 目前仍完整重建。当前不能把基础追加、scoped 元数据或 Billboard 局部耗时等同于整个导入任务耗时；搜索 snapshot delta 和 Album Project 定向维护仍待后续阶段。
+- 搜索候选仍整体重建。migration 42 为六套精确搜索上下文增加稳定策略键、来源代际、数据集 digest、基础 snapshot、构建策略与依赖 digest，并保存按候选实体键归一化的周榜账本；第一次兼容构建仍使用 `shared_full_snapshot_rebuild`，两个阈值作用域各自复用逻辑帧并在三个 merge level 间共享计算，六套全部成功后才共同激活。
+- 已证明的尾部追加如果完全落在同一个当前开放榜单周、没有影响任何已发布完整周，并且六套基础 snapshot、周账本、候选与统计语义依赖全部兼容，则复制旧上下文和周账本，只把新增逻辑播放贡献应用到歌曲、L1 专辑、L2/L3 Album Project 和有效署名艺人的 lifetime 指标，再整组六套原子激活。执行前后都会复核基础 snapshot 与活动事实代际，报告策略为 `incremental_snapshot_delta`，且不扫描完整 lifetime 播放事实。
+- 跨开放周、影响已发布完整周、存在删除/历史修正、缺少兼容 lineage/账本、依赖变化、合并关闭或成本超限时，搜索会安全回退 D1 `shared_full_snapshot_rebuild`；当前尚未实现受影响完整周账本替换与 Power 全局重排，因此不能把 D2b 描述为所有尾部追加都已增量。
+- Album Project 目前仍完整重建，但自动推断项目会按稳定语义键复用 ID，并精确替换 membership，避免相同输入重建导致搜索实体身份漂移。当前不能把基础追加、scoped 元数据、Billboard 局部耗时或同周搜索 delta 等同于整个导入任务耗时；跨周搜索 delta 和 Album Project 定向维护仍待后续阶段。
 
 检查不会把文件导入数据库，也不会启动后台 Job。确认文件后，用户仍需显式点击已有的「导入串流数据」或「导入账号数据」。
 
@@ -96,11 +98,11 @@
 - 串流导入成功结果还包含 `duplicate_records_skipped` 和 `post_import_health`。后者只复核 SQLite 完整性、播放记录数量和播放→曲目/专辑关系；这些硬指标失败会按导入异常进入已有回滚路径，普通元数据缺口仍只显示为 `partial` 提醒。
 - 回滚后会清空运行时统计缓存，避免页面继续使用失败导入产生的旧派生结果。
 
-本轮建立“失败可恢复 + 确定重复不重复计数 + 导入后硬指标复核”的最小边界，并完成增量导入 Phase A–B 的功能路径。写入任务仍保留 SQLite Online Backup；append 在一个事务中批量写入，并在同一次提交内精确核对实际输入/新增指纹、发布活动事实代际；导入器异常时显式 rollback 并关闭写连接，随后才允许快照恢复。
+本轮建立“失败可恢复 + 确定重复不重复计数 + 导入后硬指标复核”的最小边界，并完成增量导入 Phase A–D2b 的功能路径。写入任务仍保留 SQLite Online Backup；append 在一个事务中批量写入，并在同一次提交内精确核对实际输入/新增指纹、发布活动事实代际；导入器异常时显式 rollback 并关闭写连接，随后才允许快照恢复。
 
-派生维护仍在活动事实发布后执行。事实、活动代际、年度分区和紧凑 ChangeSet 会在同一事务提交；维护完成前导入运行记录保持 `maintenance_pending`。播放缓存会在事实提交后立即失效，Billboard 聚合只能在活动代际未变化时原子发布。封面后台任务会在进程重启后恢复 pending/orphan running，过期 URL 任务不能覆盖新来源。六套搜索快照已经具备整组原子发布和代际栅栏，但复制旧 snapshot 的实体级 delta、启动恢复和完整替换的硬中止恢复仍属于 Phase D2–E；当前完整替换仍依赖导入前快照。
+派生维护仍在活动事实发布后执行。事实、活动代际、年度分区和紧凑 ChangeSet 会在同一事务提交；维护完成前导入运行记录保持 `maintenance_pending`。播放缓存会在事实提交后立即失效，Billboard 聚合只能在活动代际未变化时原子发布。封面后台任务会在进程重启后恢复 pending/orphan running，过期 URL 任务不能覆盖新来源。六套搜索快照已经具备整组原子发布、代际栅栏和同一开放周的实体级 delta；跨完整周账本替换、启动恢复和完整替换的硬中止恢复仍属于 Phase D2c–E，当前完整替换仍依赖导入前快照。
 
-Billboard 四张预聚合已经支持精确尾部变化的周分区更新：局部旧/新逻辑帧包含可合并的完整前序链，时长贡献按周切片，变化以有符号差值应用到四张影子表；无法证明闭包时仍安全回退全量。六套搜索统计目前只完成 shared-full 精确复用，尚未实现 snapshot delta。年度分区已经额外覆盖跨年收听区间和可合并的前序连续链。
+Billboard 四张预聚合已经支持精确尾部变化的周分区更新：局部旧/新逻辑帧包含可合并的完整前序链，时长贡献按周切片，变化以有符号差值应用到四张影子表；固定与动态阈值证明的影响周取并集，无法证明闭包时仍安全回退全量。六套搜索统计已完成同一开放周追加的 snapshot delta；一旦影响已发布完整周仍回退 shared-full。年度分区已经额外覆盖跨年收听区间和可合并的前序连续链。
 
 ## 相关代码
 
@@ -109,6 +111,8 @@ Billboard 四张预聚合已经支持精确尾部变化的周分区更新：局�
 - Phase B 执行动作：`backend/domains/imports/execution.py`
 - 指纹基线与运行记录：`backend/domains/imports/state.py`
 - ChangeSet 与年度播放分区：`backend/domains/imports/change_set.py`
+- 搜索 snapshot lineage、周账本与增量发布：`backend/domains/music_search/snapshot_lineage.py`、`backend/domains/music_search/snapshot_delta.py`
+- 尾部逻辑播放差值：`backend/domains/playback/logical_delta.py`
 - 增量元数据与封面维护：`backend/domains/metadata/spotify_refresh.py`、`backend/services/cover_cache_service.py`
 - 只读导入计划：`backend/services/import_plan_service.py`
 - 导入快照与回滚：`backend/domains/imports/database_snapshot.py`

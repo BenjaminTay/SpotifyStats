@@ -39,6 +39,10 @@ from backend.domains.music_search.snapshot import (
     mark_music_search_derived_data_dirty,
     prepare_music_search_snapshot_set,
 )
+from backend.domains.music_search.snapshot_delta import (
+    build_incremental_music_search_snapshot_set,
+    build_music_search_incremental_plan,
+)
 from backend.domains.music_search.variants import build_music_search_variant_contexts
 from backend.domains.playback.logical_timeline import PLAYBACK_EVENT_POLICY_VERSION
 from backend.domains.settings.repository import SettingsRepository
@@ -171,9 +175,10 @@ def build_shared_full_music_search_plan(
     ):
         return None
     return {
-        "schema_version": "music_search_shared_full_snapshot_v1",
+        "schema_version": "music_search_shared_full_snapshot_v2",
         "source_generation_id": str(change_set.generation_id),
         "semantic_revisions": semantic,
+        "incremental_snapshot_plan": build_music_search_incremental_plan(change_set),
     }
 
 
@@ -445,22 +450,38 @@ def rebuild_current_music_search_derived_data(
     # statistics fingerprint controls whether the six variants are reused.
     snapshot_set_report = snapshot_set_report or _revalidated_snapshot_set_report(conn, contexts)
     shared_frame_fallback_reason: str | None = None
+    delta_fallback_reason: str | None = None
     if snapshot_set_report is None:
-        if (
-            shared_full_snapshot_plan is not None
-            and shared_full_snapshot_plan.get("schema_version")
-            == "music_search_shared_full_snapshot_v1"
-        ):
+        if shared_full_snapshot_plan is not None and shared_full_snapshot_plan.get(
+            "schema_version"
+        ) in {"music_search_shared_full_snapshot_v1", "music_search_shared_full_snapshot_v2"}:
+            incremental_plan = shared_full_snapshot_plan.get("incremental_snapshot_plan")
+            if isinstance(incremental_plan, dict):
+                try:
+                    snapshot_set_report = build_incremental_music_search_snapshot_set(
+                        conn,
+                        contexts,
+                        incremental_plan,
+                    )
+                    if snapshot_set_report is None:
+                        delta_fallback_reason = "incompatible_incremental_snapshot_base"
+                except Exception as exc:
+                    delta_fallback_reason = type(exc).__name__
+                    logger.exception(
+                        "Incremental music-search snapshot publish failed; "
+                        "falling back to shared-full"
+                    )
             try:
-                snapshot_set_report = build_shared_full_music_search_snapshot_set(
-                    conn,
-                    contexts,
-                    source_generation_id=str(
-                        shared_full_snapshot_plan.get("source_generation_id") or ""
-                    ),
-                )
                 if snapshot_set_report is None:
-                    shared_frame_fallback_reason = "incompatible_shared_full_plan"
+                    snapshot_set_report = build_shared_full_music_search_snapshot_set(
+                        conn,
+                        contexts,
+                        source_generation_id=str(
+                            shared_full_snapshot_plan.get("source_generation_id") or ""
+                        ),
+                    )
+                    if snapshot_set_report is None:
+                        shared_frame_fallback_reason = "incompatible_shared_full_plan"
             except Exception as exc:
                 shared_frame_fallback_reason = type(exc).__name__
                 logger.exception(
@@ -473,6 +494,10 @@ def rebuild_current_music_search_derived_data(
             contexts = build_music_search_variant_contexts(conn, _current_filter_values(conn))
             snapshot_set_report = _revalidated_snapshot_set_report(conn, contexts)
         snapshot_set_report = snapshot_set_report or build_music_search_snapshot_set(conn, contexts)
+        if delta_fallback_reason is not None and snapshot_set_report.get("strategy") == (
+            "shared_full_snapshot_rebuild"
+        ):
+            snapshot_set_report["delta_fallback_reason"] = delta_fallback_reason
         if shared_frame_fallback_reason is not None:
             snapshot_set_report["strategy"] = "full_fallback"
             snapshot_set_report["fallback_reason"] = shared_frame_fallback_reason

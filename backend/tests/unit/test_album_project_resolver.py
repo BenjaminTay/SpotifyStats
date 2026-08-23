@@ -80,7 +80,6 @@ def test_album_project_plays_accepts_preaggregated_weighted_rows():
                 {
                     "track_id": 1,
                     "track_name": "Song",
-                    "artist_name": "Artist",
                     "album_name": "Album",
                     "source_album_id": 1,
                     "play_count": 3,

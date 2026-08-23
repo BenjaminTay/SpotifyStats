@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import gc
+import json
 import sqlite3
 import time
 from typing import Any, Literal, cast
@@ -30,8 +31,14 @@ from backend.domains.music_search.context import (
     MUSIC_SEARCH_SNAPSHOT_BUILDER_VERSION,
     MusicSearchFilterContext,
     build_music_search_filter_context,
+    music_search_snapshot_policy_key,
 )
+from backend.domains.music_search.contracts import make_music_search_entity_key
 from backend.domains.music_search.index import get_music_search_index_state
+from backend.domains.music_search.snapshot_lineage import (
+    active_playback_lineage,
+    music_search_snapshot_dependency_digest,
+)
 from backend.domains.music_search.variants import MUSIC_SEARCH_SNAPSHOT_VARIANTS
 from backend.domains.playback.album_projects import compute_album_project_plays
 from backend.domains.playback.logical_timeline import build_billboard_weighted_frame
@@ -51,6 +58,7 @@ from backend.services.music_search_service import (
 )
 
 SnapshotBuildStatus = Literal["pending", "running", "ready", "failed", "stale"]
+WeeklyLedgerRow = tuple[str, str, str, int, int, int, str]
 
 
 def _snapshot_public_status(status: str | None) -> MusicSearchSnapshotStatus:
@@ -438,10 +446,125 @@ def _ordinary_album_chart_has_track_fallback(
     return source_rows_exist is not None
 
 
+def _weekly_ledger_rows(
+    conn: sqlite3.Connection,
+    context: MusicSearchFilterContext,
+    weekly: pd.DataFrame,
+    weekly_album: pd.DataFrame,
+    weekly_artist: pd.DataFrame,
+) -> tuple[list[WeeklyLedgerRow], bool]:
+    """Encode ranked weekly frames against active candidate entity keys."""
+    generation_id = str(get_music_search_index_state(conn).get("active_generation_id") or "")
+    if not generation_id:
+        return [], False
+    candidate_keys = {
+        str(row[0])
+        for row in conn.execute(
+            """SELECT entity_key FROM music_search_documents
+               WHERE generation_id=? AND (kind!='track' OR merge_level=?)""",
+            (generation_id, context.merge_level),
+        ).fetchall()
+    }
+    rows: list[WeeklyLedgerRow] = []
+    complete = True
+
+    def append_row(
+        family: str,
+        ranked_row: Any,
+        entity_key: str | None,
+        stable_payload: dict[str, Any],
+    ) -> None:
+        nonlocal complete
+        if not entity_key or entity_key not in candidate_keys:
+            complete = False
+            return
+        rows.append(
+            (
+                family,
+                str(ranked_row.billboard_week),
+                entity_key,
+                int(ranked_row.rank),
+                int(ranked_row.play_count),
+                int(ranked_row.total_ms),
+                json.dumps(
+                    stable_payload,
+                    ensure_ascii=True,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                    default=str,
+                ),
+            )
+        )
+
+    for row in weekly.itertuples(index=False):
+        track_id = int(cast(Any, row.track_id))
+        append_row(
+            "track",
+            row,
+            make_music_search_entity_key("track", track_id),
+            {
+                "entity_id": track_id,
+                "track_name": getattr(row, "track_name", None),
+                "artist_name": getattr(row, "artist_name", None),
+            },
+        )
+    album_kind: Literal["album", "album_project"] = (
+        "album" if context.merge_level <= 1 else "album_project"
+    )
+    for row in weekly_album.itertuples(index=False):
+        project_id = int(cast(Any, row.album_project_id))
+        append_row(
+            "album",
+            row,
+            make_music_search_entity_key(album_kind, project_id),
+            {
+                "entity_id": project_id,
+                "album_name": getattr(row, "album_name", None),
+                "artist_name": getattr(row, "artist_name", None),
+            },
+        )
+    for row in weekly_artist.itertuples(index=False):
+        artist_id = getattr(row, "artist_id", None)
+        entity_key = (
+            make_music_search_entity_key("artist", int(artist_id))
+            if artist_id is not None and not pd.isna(artist_id)
+            else None
+        )
+        append_row(
+            "artist",
+            row,
+            entity_key,
+            {
+                "entity_id": int(artist_id)
+                if artist_id is not None and not pd.isna(artist_id)
+                else None,
+                "artist_name": getattr(row, "artist_name", None),
+            },
+        )
+    # L1 album rankings may contain the same album identity more than once
+    # when legacy source rows fan into one candidate album.  The ledger is a
+    # set of ranked facts, so byte-identical duplicates are safe to collapse.
+    # Conflicting facts for one identity are not a valid delta base: retain one
+    # deterministically so shared-full publication remains usable, but mark the
+    # ledger incomplete and omit reusable lineage at the caller boundary.
+    unique_rows: dict[tuple[str, str, str], WeeklyLedgerRow] = {}
+    for ledger_row in rows:
+        identity = (ledger_row[0], ledger_row[1], ledger_row[2])
+        existing = unique_rows.get(identity)
+        if existing is None:
+            unique_rows[identity] = ledger_row
+        elif existing != ledger_row:
+            complete = False
+            unique_rows[identity] = min(existing, ledger_row)
+    return list(unique_rows.values()), complete
+
+
 def _shared_chart_lookups(
     conn: sqlite3.Connection,
     contexts: tuple[MusicSearchFilterContext, ...],
     shared_frames: dict[bool, tuple[pd.DataFrame, pd.DataFrame]],
+    *,
+    weekly_ledger: dict[tuple[int, bool], tuple[list[WeeklyLedgerRow], bool]] | None = None,
 ) -> dict[tuple[int, bool], dict[str, dict[Any, MusicSearchChartSummary]]]:
     """Recompute each chart family globally from shared compact weekly rows."""
     result: dict[tuple[int, bool], dict[str, dict[Any, MusicSearchChartSummary]]] = {}
@@ -566,6 +689,10 @@ def _shared_chart_lookups(
                     else []
                 ),
             }
+            if weekly_ledger is not None:
+                weekly_ledger[(context.merge_level, context.dynamic_threshold)] = (
+                    _weekly_ledger_rows(conn, context, weekly, weekly_album, weekly_artist)
+                )
             result[(context.merge_level, context.dynamic_threshold)] = {
                 "track": _track_chart_map(data),
                 "album": _album_chart_map(data),
@@ -826,6 +953,39 @@ def _prune_old_music_search_snapshot_bases(
                 )""",
             tuple(keep),
         )
+        if conn.execute(
+            """SELECT 1 FROM sqlite_master
+               WHERE type='table' AND name='music_search_weekly_chart_context'"""
+        ).fetchone():
+            conn.execute(
+                f"""DELETE FROM music_search_weekly_chart_context
+                    WHERE snapshot_key IN (
+                        SELECT snapshot_key
+                        FROM music_search_snapshot_meta
+                        WHERE (semantic_base_key IS NULL
+                               OR semantic_base_key NOT IN ({placeholders}))
+                          AND status NOT IN ('pending', 'running')
+                    )""",
+                tuple(keep),
+            )
+        snapshot_columns = {
+            str(row[1]) for row in conn.execute("PRAGMA table_info(music_search_snapshot_meta)")
+        }
+        if "base_snapshot_key" in snapshot_columns:
+            # Application connections may have foreign keys disabled, so
+            # mirror ON DELETE SET NULL before removing an older lineage base.
+            conn.execute(
+                f"""UPDATE music_search_snapshot_meta
+                    SET base_snapshot_key=NULL
+                    WHERE base_snapshot_key IN (
+                        SELECT snapshot_key
+                        FROM music_search_snapshot_meta
+                        WHERE (semantic_base_key IS NULL
+                               OR semantic_base_key NOT IN ({placeholders}))
+                          AND status NOT IN ('pending', 'running')
+                    )""",
+                tuple(keep),
+            )
         conn.execute(
             f"""DELETE FROM music_search_snapshot_meta
                 WHERE (semantic_base_key IS NULL OR semantic_base_key NOT IN ({placeholders}))
@@ -980,10 +1140,13 @@ def _publish_shared_full_snapshot_set(
     conn: sqlite3.Connection,
     contexts: tuple[MusicSearchFilterContext, ...],
     rows_by_fingerprint: dict[str, list[tuple[Any, ...]]],
+    weekly_rows_by_fingerprint: dict[str, list[WeeklyLedgerRow]],
     *,
     source_generation_id: str,
     candidate_generation_id: str,
     semantic_base_key: str,
+    source_dataset_digest: str | None,
+    dependency_digest: str | None,
 ) -> None:
     """Fence and activate the exact six variants in one write transaction."""
     conn.execute("BEGIN IMMEDIATE")
@@ -995,6 +1158,19 @@ def _publish_shared_full_snapshot_set(
             candidate_generation_id=candidate_generation_id,
             semantic_base_key=semantic_base_key,
         )
+        if source_dataset_digest is not None:
+            current_generation_id, current_dataset_digest = active_playback_lineage(conn)
+            if (
+                current_generation_id != source_generation_id
+                or current_dataset_digest != source_dataset_digest
+            ):
+                raise RuntimeError("playback lineage changed during shared-full snapshot build")
+            if dependency_digest is None or (
+                music_search_snapshot_dependency_digest(conn) != dependency_digest
+            ):
+                raise RuntimeError(
+                    "snapshot dependencies changed during shared-full snapshot build"
+                )
         conn.execute(
             """UPDATE music_search_snapshot_meta SET status='running', last_error=NULL
                WHERE snapshot_key IN ({})""".format(",".join("?" for _ in contexts)),
@@ -1014,6 +1190,39 @@ def _publish_shared_full_snapshot_set(
                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 [(snapshot_key, *row) for row in rows_by_fingerprint[snapshot_key]],
             )
+            ledger_table_exists = conn.execute(
+                """SELECT 1 FROM sqlite_master
+                   WHERE type='table' AND name='music_search_weekly_chart_context'"""
+            ).fetchone()
+            if ledger_table_exists:
+                conn.execute(
+                    "DELETE FROM music_search_weekly_chart_context WHERE snapshot_key=?",
+                    (snapshot_key,),
+                )
+                conn.executemany(
+                    """INSERT INTO music_search_weekly_chart_context(
+                           snapshot_key, family, week, entity_key, rank,
+                           play_count, total_ms, stable_sort_key
+                       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                    [
+                        (snapshot_key, *row)
+                        for row in weekly_rows_by_fingerprint.get(snapshot_key, [])
+                    ],
+                )
+                conn.execute(
+                    """UPDATE music_search_snapshot_meta
+                       SET policy_key=?, source_generation_id=?, source_dataset_digest=?,
+                           base_snapshot_key=NULL, build_strategy='shared_full',
+                           dependency_digest=?, change_set_digest=NULL
+                       WHERE snapshot_key=?""",
+                    (
+                        music_search_snapshot_policy_key(context),
+                        source_generation_id,
+                        source_dataset_digest,
+                        dependency_digest,
+                        snapshot_key,
+                    ),
+                )
         conn.execute(
             """UPDATE music_search_snapshot_meta
                SET status='ready', activated_at=datetime('now'), last_error=NULL
@@ -1051,8 +1260,17 @@ def build_shared_full_music_search_snapshot_set(
         return None
     started = time.perf_counter()
     rows_by_fingerprint: dict[str, list[tuple[Any, ...]]] = {}
+    weekly_rows_by_fingerprint: dict[str, list[WeeklyLedgerRow]] = {}
     duration_by_fingerprint: dict[str, float] = {}
     reports: list[dict[str, Any]] = []
+    lineage_generation_id, source_dataset_digest = active_playback_lineage(conn)
+    lineage_ready = lineage_generation_id == source_generation_id and bool(source_dataset_digest)
+    dependency_digest: str | None = None
+    if lineage_ready:
+        try:
+            dependency_digest = music_search_snapshot_dependency_digest(conn)
+        except Exception:
+            lineage_ready = False
     try:
         prepare_music_search_snapshot_set(conn, contexts)
         for dynamic_threshold in dict.fromkeys(context.dynamic_threshold for context in contexts):
@@ -1063,6 +1281,14 @@ def build_shared_full_music_search_snapshot_set(
             chart_lookups: dict[
                 tuple[int, bool], dict[str, dict[Any, MusicSearchChartSummary]]
             ] = {}
+            ledger_rows: dict[tuple[int, bool], list[WeeklyLedgerRow]] = {
+                (context.merge_level, context.dynamic_threshold): []
+                for context in threshold_contexts
+            }
+            ledger_complete: dict[tuple[int, bool], bool] = {
+                (context.merge_level, context.dynamic_threshold): True
+                for context in threshold_contexts
+            }
             artist_frames = _load_shared_logical_frames(
                 conn,
                 threshold_contexts,
@@ -1074,11 +1300,16 @@ def build_shared_full_music_search_snapshot_set(
                     threshold_contexts,
                     shared_frames=artist_frames,
                 )
+                artist_ledger: dict[tuple[int, bool], tuple[list[WeeklyLedgerRow], bool]] = {}
                 artist_charts = _shared_chart_lookups(
                     conn,
                     threshold_contexts,
                     artist_frames,
+                    weekly_ledger=artist_ledger,
                 )
+                for variant, (variant_rows, complete) in artist_ledger.items():
+                    ledger_rows[variant].extend(variant_rows)
+                    ledger_complete[variant] = ledger_complete[variant] and complete
                 for variant, (
                     _track_metrics,
                     _album_metrics,
@@ -1108,11 +1339,16 @@ def build_shared_full_music_search_snapshot_set(
                     threshold_contexts,
                     shared_frames=primary_frames,
                 )
+                primary_ledger: dict[tuple[int, bool], tuple[list[WeeklyLedgerRow], bool]] = {}
                 primary_charts = _shared_chart_lookups(
                     conn,
                     threshold_contexts,
                     primary_frames,
+                    weekly_ledger=primary_ledger,
                 )
+                for variant, (variant_rows, complete) in primary_ledger.items():
+                    ledger_rows[variant].extend(variant_rows)
+                    ledger_complete[variant] = ledger_complete[variant] and complete
                 for context in threshold_contexts:
                     variant_started = time.perf_counter()
                     variant = (context.merge_level, context.dynamic_threshold)
@@ -1133,6 +1369,9 @@ def build_shared_full_music_search_snapshot_set(
                     )
                     _validate_context_rows(rows)
                     rows_by_fingerprint[context.filter_fingerprint] = rows
+                    weekly_rows_by_fingerprint[context.filter_fingerprint] = ledger_rows[variant]
+                    if not ledger_complete[variant]:
+                        lineage_ready = False
                     duration_by_fingerprint[context.filter_fingerprint] = round(
                         (time.perf_counter() - variant_started) * 1000,
                         3,
@@ -1148,9 +1387,12 @@ def build_shared_full_music_search_snapshot_set(
             conn,
             contexts,
             rows_by_fingerprint,
+            weekly_rows_by_fingerprint,
             source_generation_id=source_generation_id,
             candidate_generation_id=candidate_generation_id,
             semantic_base_key=semantic_base_key,
+            source_dataset_digest=source_dataset_digest if lineage_ready else None,
+            dependency_digest=dependency_digest if lineage_ready else None,
         )
         for context in contexts:
             rows = rows_by_fingerprint[context.filter_fingerprint]
@@ -1184,6 +1426,7 @@ def build_shared_full_music_search_snapshot_set(
         raise
     finally:
         rows_by_fingerprint.clear()
+        weekly_rows_by_fingerprint.clear()
         duration_by_fingerprint.clear()
         invalidate_except("billboard", {"latest_snapshot"})
         invalidate("db")
@@ -1199,6 +1442,7 @@ def build_shared_full_music_search_snapshot_set(
         "strategy": "shared_full_snapshot_rebuild",
         "shared_logical_frame_sets": len({context.dynamic_threshold for context in contexts}),
         "chart_strategy": "full_family_recompute",
+        "weekly_ledger_ready": lineage_ready,
     }
 
 

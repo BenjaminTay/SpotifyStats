@@ -9,6 +9,7 @@ from collections.abc import Iterable
 from typing import Any
 
 from backend.core.db import get_db
+from backend.core.migrations import LATEST_SCHEMA_VERSION
 from backend.domains.music_search.context import MUSIC_SEARCH_SNAPSHOT_BUILDER_VERSION
 from backend.domains.music_search.normalization import expand_chinese_search_variants
 from backend.domains.music_search.repository import (
@@ -134,9 +135,14 @@ def main() -> int:
     started_at = time.perf_counter()
     conn = get_db(readonly=True)
     try:
-        migration = conn.execute("SELECT 1 FROM schema_migrations WHERE version=36").fetchone()
+        migration = conn.execute(
+            "SELECT 1 FROM schema_migrations WHERE version=?",
+            (LATEST_SCHEMA_VERSION,),
+        ).fetchone()
         if migration is None:
-            raise SystemExit("music-search runtime gate failed: migration 36 missing")
+            raise SystemExit(
+                f"music-search runtime gate failed: migration {LATEST_SCHEMA_VERSION} missing"
+            )
 
         contexts = build_music_search_variant_contexts(conn, _current_filter_values(conn))
         semantic_base_key = contexts[0].semantic_base_key
@@ -159,7 +165,7 @@ def main() -> int:
         if any(str(row[3]) != "ready" for row in rows):
             raise SystemExit("music-search runtime gate failed: a current variant is not ready")
         if any(str(row[4]) != MUSIC_SEARCH_SNAPSHOT_BUILDER_VERSION for row in rows):
-            raise SystemExit("music-search runtime gate failed: builder is not v2")
+            raise SystemExit("music-search runtime gate failed: builder is not current")
 
         orphan_count = int(
             conn.execute(
@@ -193,7 +199,8 @@ def main() -> int:
     elapsed_ms = (time.perf_counter() - started_at) * 1000
     print(
         "Music-search runtime gate passed: "
-        "migration=36 variants=6/6 builder=music_search_snapshot_v2 orphans=0 "
+        f"migration={LATEST_SCHEMA_VERSION} variants=6/6 "
+        f"builder={MUSIC_SEARCH_SNAPSHOT_BUILDER_VERSION} orphans=0 "
         f"exact={search_status['exact']} fuzzy={search_status['fuzzy']} "
         f"cjk={search_status['cjk']} short_cjk={search_status['short_cjk']} "
         f"semantic_smoke_ms={elapsed_ms:.3f}"

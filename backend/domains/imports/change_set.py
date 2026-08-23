@@ -166,16 +166,22 @@ def build_playback_change_set(
     billboard_scope_exact = False
     if strategy == "incremental":
         try:
-            weeks = _logical_billboard_contribution_weeks(
-                conn,
-                generation_id=generation_id,
-                min_ms=int(settings.get("min_ms", 30_000)),
-                music_only=bool(settings.get("music_only", True)),
-                dynamic_threshold=True,
-                max_gap_minutes=int(settings.get("max_merge_gap_minutes", 5)),
-                week_start_dow=week_start_dow,
-                week_start_hour=week_start_hour,
-            )
+            weeks: set[str] = set()
+            # Search snapshots publish both fixed and duration-aware threshold
+            # variants.  The safe affected scope is the union of both proofs.
+            for dynamic_threshold in (False, True):
+                weeks.update(
+                    _logical_billboard_contribution_weeks(
+                        conn,
+                        generation_id=generation_id,
+                        min_ms=int(settings.get("min_ms", 30_000)),
+                        music_only=bool(settings.get("music_only", True)),
+                        dynamic_threshold=dynamic_threshold,
+                        max_gap_minutes=int(settings.get("max_merge_gap_minutes", 5)),
+                        week_start_dow=week_start_dow,
+                        week_start_hour=week_start_hour,
+                    )
+                )
             billboard_scope_exact = True
         except Exception:
             logger.exception(

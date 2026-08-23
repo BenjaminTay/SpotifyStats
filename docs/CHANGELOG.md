@@ -2,6 +2,13 @@
 
 本文件只记录按日期排列的变更摘要。详细实施、验收和真实数据证据见 [`reports/README.md`](reports/README.md)；当前规则见 [`reference/`](reference/)。历史条目中的数字和路径仅代表当时状态。
 
+## 2026-08-23 — 增量导入 Phase D2b
+
+- migration 42 为六套搜索精确上下文增加稳定策略键、来源数据集/代际、基础 snapshot、构建策略、依赖 digest 和按候选实体键归一化的周榜账本；shared-full 整组六套原子发布时同步引导可复用 lineage。
+- 精确尾部追加完全位于同一个当前开放榜单周、且没有影响已发布完整周时，可复制兼容的六套上下文和周账本，仅应用新增逻辑播放的歌曲、L1 专辑、L2/L3 Album Project 与有效署名艺人 lifetime 差值；执行不扫描完整 lifetime 播放事实。门禁或发布栅栏失败会自动回退 D1 shared-full。
+- 自动推断 Album Project 按稳定语义键复用 ID 并精确替换 membership；同时修复同名不同 Spotify 专辑的 L1 元数据串联，以及稀疏增量帧缺少 `artist_name` 时的 Album Project 投影。
+- 92,908 条真实库副本加 1 条同开放周尾部记录：delta 1.111 秒、shared-full 21.824 秒，六套实体上下文与六套周账本全列双向 `EXCEPT=0`，单轮观察约 19.6×。跨完整周账本替换与 Power 全局重排仍属 D2c，因此本阶段状态为 Partial。详见 [`reports/2026-08-23-incremental-import-phase-d2.md`](reports/2026-08-23-incremental-import-phase-d2.md)。
+
 ## 2026-08-23 — 增量导入 Phase D1
 
 - 已证明的尾部追加会扩展完整连续播放链与跨周时长闭包，只对受影响完整周应用新旧贡献差值；四张 Billboard 聚合影子表共同校验并原子发布，依赖不兼容或受影响周超过 25% 时回退全量。

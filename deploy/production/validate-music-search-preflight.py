@@ -11,7 +11,11 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-EXPECTED_BUILDER_VERSION = "music_search_snapshot_v2"
+# This validator is also shipped as a standalone host-side file, so it cannot
+# import the backend package in production.  Keep this release contract in
+# lockstep with MUSIC_SEARCH_SNAPSHOT_BUILDER_VERSION.
+EXPECTED_BUILDER_VERSION = "music_search_snapshot_v3"
+REQUIRED_MIGRATION_VERSION = 42
 EXPECTED_VARIANTS = {
     (1, False),
     (1, True),
@@ -59,13 +63,14 @@ def validate_rebuild_report(
     require(isinstance(builder, dict), "missing builder report")
     require(
         builder.get("snapshot_builder_version") == EXPECTED_BUILDER_VERSION,
-        "snapshot report builder version is not v2",
+        "snapshot report builder version is not current",
     )
     migration = payload.get("migration")
     require(isinstance(migration, dict), "missing migration report")
     require(
-        migration.get("up_to_date") is True and int(migration.get("applied_version") or 0) >= 36,
-        "migration report does not include migration 36",
+        migration.get("up_to_date") is True
+        and int(migration.get("applied_version") or 0) >= REQUIRED_MIGRATION_VERSION,
+        f"migration report does not include migration {REQUIRED_MIGRATION_VERSION}",
     )
     gate = payload.get("gate")
     require(isinstance(gate, dict), "missing rebuild gate report")
@@ -141,7 +146,10 @@ def validate_database(
     conn = sqlite3.connect(db_uri, uri=True)
     try:
         integrity = str(conn.execute("PRAGMA integrity_check").fetchone()[0])
-        migration_36 = conn.execute("SELECT 1 FROM schema_migrations WHERE version=36").fetchone()
+        required_migration = conn.execute(
+            "SELECT 1 FROM schema_migrations WHERE version=?",
+            (REQUIRED_MIGRATION_VERSION,),
+        ).fetchone()
         rows = conn.execute(
             """SELECT merge_level, dynamic_threshold, filter_fingerprint,
                       status, builder_version
@@ -166,7 +174,10 @@ def validate_database(
         conn.close()
 
     require(integrity == "ok", "database integrity_check failed")
-    require(migration_36 is not None, "migration 36 is not applied")
+    require(
+        required_migration is not None,
+        f"migration {REQUIRED_MIGRATION_VERSION} is not applied",
+    )
     require(len(rows) == 6, "database does not contain exactly six current variants")
     db_variants = {(int(row[0]), bool(row[1])): str(row[2]) for row in rows}
     require(set(db_variants) == EXPECTED_VARIANTS, "database variant matrix is invalid")
@@ -177,12 +188,13 @@ def validate_database(
     require(all(row[3] == "ready" for row in rows), "database has a non-ready variant")
     require(
         all(row[4] == EXPECTED_BUILDER_VERSION for row in rows),
-        "database has a non-v2 snapshot builder",
+        "database has a non-current snapshot builder",
     )
     require(orphan_count == 0, "music-search context orphan count is not zero")
     return {
         "integrity_check": integrity,
-        "migration_36": True,
+        "required_migration_version": REQUIRED_MIGRATION_VERSION,
+        "required_migration_applied": True,
         "ready_variants": len(rows),
         "required_variants": 6,
         "builder_version": EXPECTED_BUILDER_VERSION,
@@ -225,7 +237,8 @@ def main() -> int:
     )
     print(
         "Music-search production preflight passed: "
-        "migration=36 variants=6/6 builder=music_search_snapshot_v2 orphans=0"
+        f"migration={REQUIRED_MIGRATION_VERSION} variants=6/6 "
+        f"builder={EXPECTED_BUILDER_VERSION} orphans=0"
     )
     return 0
 

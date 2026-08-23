@@ -79,29 +79,63 @@ def ensure_album_projects(conn: sqlite3.Connection) -> None:
 
 def bootstrap_album_projects(conn: sqlite3.Connection) -> None:
     """Populate album project tables without deleting user-maintained rows."""
-    _bootstrap_from_release_groups(conn)
-    _bootstrap_standalone_album_projects(conn)
-    _bootstrap_compilation_exclusive_projects(conn)
+    _populate_album_projects(conn)
     conn.commit()
 
 
 def rebuild_album_projects(conn: sqlite3.Connection) -> None:
-    """Rebuild inferred album project rows while preserving manual projects."""
+    """Rebuild inferred projects without changing stable semantic identities."""
     ensure_album_project_schema(conn)
-    conn.execute(
-        """DELETE FROM album_project_tracks
-           WHERE project_id IN (
-               SELECT project_id FROM album_projects WHERE is_manual = 0
-           )"""
-    )
-    conn.execute(
-        """DELETE FROM album_project_albums
-           WHERE project_id IN (
-               SELECT project_id FROM album_projects WHERE is_manual = 0
-           )"""
-    )
-    conn.execute("DELETE FROM album_projects WHERE is_manual = 0")
-    bootstrap_album_projects(conn)
+    conn.execute("SAVEPOINT rebuild_album_projects")
+    try:
+        # Membership is derived state. Clear it first so reused project IDs do not
+        # retain albums or tracks that disappeared from the latest source graph.
+        conn.execute(
+            """DELETE FROM album_project_tracks
+               WHERE project_id IN (
+                   SELECT project_id FROM album_projects WHERE is_manual = 0
+               )"""
+        )
+        conn.execute(
+            """DELETE FROM album_project_albums
+               WHERE project_id IN (
+                   SELECT project_id FROM album_projects WHERE is_manual = 0
+               )"""
+        )
+
+        seen_project_ids: set[int] = set()
+        _populate_album_projects(conn, seen_project_ids=seen_project_ids)
+
+        # Delete only inferred identities that no longer exist. Child rows were
+        # already cleared, which also keeps this correct when foreign keys are off.
+        existing_inferred_ids = {
+            int(row["project_id"])
+            for row in conn.execute(
+                "SELECT project_id FROM album_projects WHERE is_manual = 0"
+            ).fetchall()
+        }
+        stale_project_ids = sorted(existing_inferred_ids - seen_project_ids)
+        conn.executemany(
+            "DELETE FROM album_projects WHERE project_id = ? AND is_manual = 0",
+            ((project_id,) for project_id in stale_project_ids),
+        )
+        conn.execute("RELEASE SAVEPOINT rebuild_album_projects")
+    except Exception:
+        conn.execute("ROLLBACK TO SAVEPOINT rebuild_album_projects")
+        conn.execute("RELEASE SAVEPOINT rebuild_album_projects")
+        raise
+    conn.commit()
+
+
+def _populate_album_projects(
+    conn: sqlite3.Connection,
+    *,
+    seen_project_ids: set[int] | None = None,
+) -> None:
+    """Populate inferred projects and optionally record identities used this pass."""
+    _bootstrap_from_release_groups(conn, seen_project_ids=seen_project_ids)
+    _bootstrap_standalone_album_projects(conn, seen_project_ids=seen_project_ids)
+    _bootstrap_compilation_exclusive_projects(conn, seen_project_ids=seen_project_ids)
 
 
 def apply_canonical_song_keys(
@@ -228,6 +262,7 @@ def compute_album_project_plays(
         how="inner",
         suffixes=("", "_project"),
     )
+    merged = _normalise_project_artist_column(merged)
     if billboard_mode:
         merged = _filter_to_project_release_date(merged)
     if merged.empty:
@@ -304,6 +339,7 @@ def compute_album_project_weekly_plays(
         how="inner",
         suffixes=("", "_project"),
     )
+    merged = _normalise_project_artist_column(merged)
     if billboard_mode:
         merged = _filter_to_project_release_date(merged)
     if merged.empty:
@@ -336,6 +372,15 @@ def compute_album_project_weekly_plays(
         ["billboard_week", "play_count", "total_ms"],
         ascending=[True, False, False],
     )
+
+
+def _normalise_project_artist_column(merged: pd.DataFrame) -> pd.DataFrame:
+    """Expose the project owner under one schema for sparse event frames."""
+    if "artist_name_project" in merged.columns:
+        return merged
+    if "artist_name" not in merged.columns:
+        raise ValueError("album project membership is missing its artist name")
+    return merged.rename(columns={"artist_name": "artist_name_project"})
 
 
 def compute_album_source_breakdown(
@@ -378,7 +423,11 @@ def compute_album_source_breakdown(
     )
 
 
-def _bootstrap_from_release_groups(conn: sqlite3.Connection) -> None:
+def _bootstrap_from_release_groups(
+    conn: sqlite3.Connection,
+    *,
+    seen_project_ids: set[int] | None = None,
+) -> None:
     groups = conn.execute(
         """SELECT rg.group_id, rg.canonical_name, rg.artist_id, rg.primary_album_id, rg.scope,
                   sam.release_date, sam.album_type, sam.total_tracks
@@ -430,6 +479,10 @@ def _bootstrap_from_release_groups(conn: sqlite3.Connection) -> None:
             include_in_charts=1,
             is_manual=0,
         )
+        if project_id is None:
+            continue
+        if seen_project_ids is not None:
+            seen_project_ids.add(project_id)
         for album_id in member_ids:
             _insert_project_album(
                 conn,
@@ -496,7 +549,11 @@ def _resolve_standalone_album_type(
     return "unknown"
 
 
-def _bootstrap_standalone_album_projects(conn: sqlite3.Connection) -> None:
+def _bootstrap_standalone_album_projects(
+    conn: sqlite3.Connection,
+    *,
+    seen_project_ids: set[int] | None = None,
+) -> None:
     albums = conn.execute(
         """SELECT al.album_id, al.album_name, al.artist_id, ar.artist_name,
                   sam.album_type, sam.total_tracks, sam.release_date,
@@ -573,6 +630,10 @@ def _bootstrap_standalone_album_projects(conn: sqlite3.Connection) -> None:
             include_in_charts=1,
             is_manual=0,
         )
+        if project_id is None:
+            continue
+        if seen_project_ids is not None:
+            seen_project_ids.add(project_id)
         _insert_project_album(
             conn,
             project_id=project_id,
@@ -616,7 +677,11 @@ def _best_spotify_album_for_local_album(conn: sqlite3.Connection, album_id: int)
         return None
 
 
-def _bootstrap_compilation_exclusive_projects(conn: sqlite3.Connection) -> None:
+def _bootstrap_compilation_exclusive_projects(
+    conn: sqlite3.Connection,
+    *,
+    seen_project_ids: set[int] | None = None,
+) -> None:
     compilations = conn.execute(
         """SELECT al.album_id, al.album_name, al.artist_id, sam.release_date
            FROM albums al
@@ -645,6 +710,10 @@ def _bootstrap_compilation_exclusive_projects(conn: sqlite3.Connection) -> None:
             include_in_charts=1,
             is_manual=0,
         )
+        if project_id is None:
+            continue
+        if seen_project_ids is not None:
+            seen_project_ids.add(project_id)
         _insert_project_album(
             conn,
             project_id=project_id,
@@ -673,28 +742,54 @@ def _upsert_project(
     project_type: str,
     include_in_charts: int,
     is_manual: int,
-) -> int:
-    conn.execute(
-        """INSERT OR IGNORE INTO album_projects
-           (canonical_name, artist_id, primary_album_id, release_date, scope,
-            project_type, include_in_charts, is_manual)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-        (
-            canonical_name,
-            artist_id,
-            primary_album_id,
-            release_date,
-            scope,
-            project_type,
-            include_in_charts,
-            is_manual,
-        ),
-    )
+) -> int | None:
     row = conn.execute(
-        """SELECT project_id FROM album_projects
+        """SELECT project_id, is_manual FROM album_projects
            WHERE canonical_name = ? AND artist_id = ? AND scope = ?""",
         (canonical_name, artist_id, scope),
     ).fetchone()
+    if row is None:
+        conn.execute(
+            """INSERT INTO album_projects
+               (canonical_name, artist_id, primary_album_id, release_date, scope,
+                project_type, include_in_charts, is_manual)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                canonical_name,
+                artist_id,
+                primary_album_id,
+                release_date,
+                scope,
+                project_type,
+                include_in_charts,
+                is_manual,
+            ),
+        )
+        row = conn.execute(
+            """SELECT project_id, is_manual FROM album_projects
+               WHERE canonical_name = ? AND artist_id = ? AND scope = ?""",
+            (canonical_name, artist_id, scope),
+        ).fetchone()
+    if row is None:
+        raise RuntimeError("album project insert did not produce an identity")
+    if int(row["is_manual"] or 0) != 0 and is_manual == 0:
+        # A manual project owns this semantic key. Do not let inferred rebuilds
+        # mutate either its metadata or its hand-maintained memberships.
+        return None
+    conn.execute(
+        """UPDATE album_projects
+           SET primary_album_id = ?, release_date = ?, project_type = ?,
+               include_in_charts = ?, is_manual = ?
+           WHERE project_id = ?""",
+        (
+            primary_album_id,
+            release_date,
+            project_type,
+            include_in_charts,
+            is_manual,
+            row["project_id"],
+        ),
+    )
     return int(row["project_id"])
 
 
@@ -896,20 +991,7 @@ def _compute_l1_album_container_plays(
     if events.empty:
         return _empty_album_project_frame()
     album_ids = [int(v) for v in events["_album_id"].dropna().unique().tolist()]
-    placeholders = ",".join("?" for _ in album_ids)
-    meta = pd.read_sql_query(
-        f"""SELECT al.album_id,
-                  al.album_name AS meta_album_name,
-                  ar.artist_name AS meta_artist_name,
-                  sam.release_date,
-                  sam.album_type
-            FROM albums al
-            JOIN artists ar ON ar.artist_id = al.artist_id
-            LEFT JOIN spotify_album_meta sam ON lower(sam.album_name) = lower(al.album_name)
-            WHERE al.album_id IN ({placeholders})""",
-        conn,
-        params=tuple(album_ids),
-    )
+    meta = _load_l1_album_metadata(conn, album_ids)
     events = events.merge(meta, left_on="_album_id", right_on="album_id", how="left")
     if not include_compilations:
         events = events[events["album_type"].fillna("").str.lower() != "compilation"]
@@ -948,20 +1030,7 @@ def _compute_l1_album_container_weekly_plays(
     if events.empty:
         return _empty_album_project_weekly_frame()
     album_ids = [int(v) for v in events["_album_id"].dropna().unique().tolist()]
-    placeholders = ",".join("?" for _ in album_ids)
-    meta = pd.read_sql_query(
-        f"""SELECT al.album_id,
-                  al.album_name AS meta_album_name,
-                  ar.artist_name AS meta_artist_name,
-                  sam.release_date,
-                  sam.album_type
-            FROM albums al
-            JOIN artists ar ON ar.artist_id = al.artist_id
-            LEFT JOIN spotify_album_meta sam ON lower(sam.album_name) = lower(al.album_name)
-            WHERE al.album_id IN ({placeholders})""",
-        conn,
-        params=tuple(album_ids),
-    )
+    meta = _load_l1_album_metadata(conn, album_ids)
     events = events.merge(meta, left_on="_album_id", right_on="album_id", how="left")
     if not include_compilations:
         events = events[events["album_type"].fillna("").str.lower() != "compilation"]
@@ -992,6 +1061,136 @@ def _compute_l1_album_container_weekly_plays(
         ["billboard_week", "play_count", "total_ms"],
         ascending=[True, False, False],
     )
+
+
+def _load_l1_album_metadata(
+    conn: sqlite3.Connection,
+    album_ids: list[int],
+) -> pd.DataFrame:
+    """Load one unambiguous metadata row per physical album container.
+
+    Album names are not identities: different artists and editions can share
+    the same title. Production databases therefore resolve Spotify metadata
+    through the scored ``album_spotify_links`` relation. Minimal legacy/test
+    schemas without that relation may use a normalized-name fallback only when
+    the title is unique in both local albums and Spotify metadata; ambiguous
+    titles keep local/unknown metadata instead of guessing.
+    """
+    if not album_ids:
+        return pd.DataFrame(
+            columns=[
+                "album_id",
+                "meta_album_name",
+                "meta_artist_name",
+                "release_date",
+                "album_type",
+            ]
+        )
+    album_columns = {str(row[1]) for row in conn.execute("PRAGMA table_info(albums)").fetchall()}
+    has_spotify_identity = "spotify_album_id" in album_columns
+    has_local_release = "release_date" in album_columns
+    has_local_type = "album_type" in album_columns
+    has_album_links = (
+        conn.execute(
+            """SELECT 1 FROM sqlite_master
+               WHERE type='table' AND name='album_spotify_links'"""
+        ).fetchone()
+        is not None
+    )
+    if has_spotify_identity:
+        release_expression = (
+            "COALESCE(sam.release_date, al.release_date)"
+            if has_local_release
+            else "sam.release_date"
+        )
+        type_expression = (
+            "COALESCE(sam.album_type, al.album_type)" if has_local_type else "sam.album_type"
+        )
+        spotify_join = (
+            "LEFT JOIN spotify_album_meta sam ON sam.spotify_album_id = al.spotify_album_id"
+        )
+    elif has_album_links:
+        release_expression = (
+            "COALESCE(sam.release_date, legacy_sam.release_date, al.release_date)"
+            if has_local_release
+            else "COALESCE(sam.release_date, legacy_sam.release_date)"
+        )
+        type_expression = (
+            "COALESCE(sam.album_type, legacy_sam.album_type, al.album_type)"
+            if has_local_type
+            else "COALESCE(sam.album_type, legacy_sam.album_type)"
+        )
+        spotify_join = """LEFT JOIN (
+                SELECT album_id, spotify_album_id
+                FROM (
+                    SELECT scored.*,
+                           ROW_NUMBER() OVER (
+                               PARTITION BY scored.album_id
+                               ORDER BY scored.play_count DESC,
+                                        scored.track_count DESC,
+                                        scored.confidence DESC,
+                                        scored.spotify_album_id ASC
+                           ) AS link_rank
+                    FROM (
+                        SELECT album_id, spotify_album_id,
+                               SUM(COALESCE(play_count, 0)) AS play_count,
+                               MAX(COALESCE(track_count, 0)) AS track_count,
+                               MAX(COALESCE(confidence, 0.0)) AS confidence
+                        FROM album_spotify_links
+                        GROUP BY album_id, spotify_album_id
+                    ) scored
+                ) ranked
+                WHERE link_rank = 1
+            ) best_link ON best_link.album_id = al.album_id
+            LEFT JOIN spotify_album_meta sam
+              ON sam.spotify_album_id = best_link.spotify_album_id
+            LEFT JOIN spotify_album_meta legacy_sam
+              ON best_link.spotify_album_id IS NULL
+             AND lower(trim(legacy_sam.album_name)) = lower(trim(al.album_name))
+             AND 1 = (
+                 SELECT COUNT(*) FROM spotify_album_meta same_meta
+                 WHERE lower(trim(same_meta.album_name)) = lower(trim(al.album_name))
+             )
+             AND 1 = (
+                 SELECT COUNT(*) FROM albums same_album
+                 WHERE lower(trim(same_album.album_name)) = lower(trim(al.album_name))
+             )"""
+    else:
+        release_expression = (
+            "COALESCE(sam.release_date, al.release_date)"
+            if has_local_release
+            else "sam.release_date"
+        )
+        type_expression = (
+            "COALESCE(sam.album_type, al.album_type)" if has_local_type else "sam.album_type"
+        )
+        spotify_join = """LEFT JOIN spotify_album_meta sam
+            ON lower(trim(sam.album_name)) = lower(trim(al.album_name))
+           AND 1 = (
+               SELECT COUNT(*) FROM spotify_album_meta same_meta
+               WHERE lower(trim(same_meta.album_name)) = lower(trim(al.album_name))
+           )
+           AND 1 = (
+               SELECT COUNT(*) FROM albums same_album
+               WHERE lower(trim(same_album.album_name)) = lower(trim(al.album_name))
+           )"""
+    placeholders = ",".join("?" for _ in album_ids)
+    metadata = pd.read_sql_query(
+        f"""SELECT al.album_id,
+                   al.album_name AS meta_album_name,
+                   ar.artist_name AS meta_artist_name,
+                   {release_expression} AS release_date,
+                   {type_expression} AS album_type
+            FROM albums al
+            JOIN artists ar ON ar.artist_id = al.artist_id
+            {spotify_join}
+            WHERE al.album_id IN ({placeholders})""",
+        conn,
+        params=tuple(album_ids),
+    )
+    if metadata["album_id"].duplicated().any():
+        raise RuntimeError("physical album metadata identity is not unique")
+    return metadata
 
 
 def _attach_l1_album_id(df: pd.DataFrame) -> pd.DataFrame:

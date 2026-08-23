@@ -11,13 +11,15 @@ from pathlib import Path
 import pytest
 import yaml  # type: ignore[import-untyped]
 
+from backend.core.migrations import LATEST_SCHEMA_VERSION
+from backend.domains.music_search.context import MUSIC_SEARCH_SNAPSHOT_BUILDER_VERSION
 from scripts.rebuild_music_search_derived_data import _success_report
 
 pytestmark = pytest.mark.unit
 
 ROOT = Path(__file__).resolve().parents[3]
 PRODUCTION = ROOT / "deploy" / "production"
-BUILDER_VERSION = "music_search_snapshot_v2"
+BUILDER_VERSION = MUSIC_SEARCH_SNAPSHOT_BUILDER_VERSION
 VARIANTS = ((2, True), (1, True), (3, True), (2, False), (1, False), (3, False))
 
 
@@ -52,6 +54,7 @@ def _build_preflight_fixture(
         (
             (35, "search identity split"),
             (36, "search candidate ngram index"),
+            (LATEST_SCHEMA_VERSION, "current schema"),
         ),
     )
     for index, (merge_level, dynamic_threshold) in enumerate(VARIANTS):
@@ -118,10 +121,10 @@ def _build_preflight_fixture(
             "duplicate_fingerprint_count": 0,
         },
         migration={
-            "applied_version": 36,
-            "target_version": 36,
-            "applied_count": 36,
-            "expected_count": 36,
+            "applied_version": LATEST_SCHEMA_VERSION,
+            "target_version": LATEST_SCHEMA_VERSION,
+            "applied_count": LATEST_SCHEMA_VERSION,
+            "expected_count": LATEST_SCHEMA_VERSION,
             "missing_count": 0,
             "up_to_date": True,
         },
@@ -194,7 +197,8 @@ def test_preflight_validator_requires_migration_variants_builder_and_zero_orphan
         "builder_version": BUILDER_VERSION,
         "context_orphan_count": 0,
         "integrity_check": "ok",
-        "migration_36": True,
+        "required_migration_version": LATEST_SCHEMA_VERSION,
+        "required_migration_applied": True,
         "ready_variants": 6,
         "required_variants": 6,
     }
@@ -223,6 +227,37 @@ def test_preflight_validator_fails_on_context_orphan(tmp_path: Path) -> None:
 
     assert completed.returncode == 1
     assert "context orphan count is not zero" in completed.stderr
+    assert not output.exists()
+
+
+def test_preflight_validator_requires_current_database_migration(tmp_path: Path) -> None:
+    database, rebuild_report, capacity_report = _build_preflight_fixture(tmp_path)
+    conn = sqlite3.connect(database)
+    conn.execute("DELETE FROM schema_migrations WHERE version=?", (LATEST_SCHEMA_VERSION,))
+    conn.commit()
+    conn.close()
+    output = tmp_path / "missing-current-migration.json"
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(PRODUCTION / "validate-music-search-preflight.py"),
+            "--db-path",
+            str(database),
+            "--rebuild-report",
+            str(rebuild_report),
+            "--capacity-report",
+            str(capacity_report),
+            "--json-output",
+            str(output),
+        ],
+        capture_output=True,
+        check=False,
+        text=True,
+    )
+
+    assert completed.returncode == 1
+    assert f"migration {LATEST_SCHEMA_VERSION} is not applied" in completed.stderr
     assert not output.exists()
 
 
@@ -399,7 +434,8 @@ def test_production_deploy_stages_search_before_atomic_database_promotion() -> N
     assert "SEARCH_PREFLIGHT_REUSE_MIN_AVAILABLE_MIB" in deploy
     assert "${search_preflight_min_mib:-640}" in deploy
     assert "verify-music-search-runtime.py" in verify
-    assert "version=36" in runtime_gate
+    assert "LATEST_SCHEMA_VERSION" in runtime_gate
+    assert "version=?" in runtime_gate
     assert "filter_fingerprint" in runtime_gate
     assert "context orphan count is not zero" in runtime_gate
     assert "_verify_live_search_semantics" in runtime_gate

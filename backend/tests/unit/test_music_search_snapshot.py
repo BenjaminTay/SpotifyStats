@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import sqlite3
+from dataclasses import replace
+from types import SimpleNamespace
 from typing import Any
 
 import pandas as pd
 import pytest
 
-from backend.core.migrations import migrate_032, migrate_034, migrate_035
+from backend.core.migrations import migrate_032, migrate_034, migrate_035, migrate_042
 from backend.domains.music_search.context import (
     MUSIC_SEARCH_SNAPSHOT_BUILDER_VERSION,
     MusicSearchFilterContext,
@@ -98,6 +100,28 @@ def _conn() -> sqlite3.Connection:
         ),
         (
             "g1",
+            "album:2",
+            "album",
+            1,
+            "Album",
+            "album",
+            "Artist",
+            "artist",
+            "",
+            "",
+            "album artist",
+            1,
+            "/music/albums/2",
+            None,
+            None,
+            2,
+            None,
+            3,
+            "Album",
+            "Artist",
+        ),
+        (
+            "g1",
             "album_project:2",
             "album_project",
             0,
@@ -149,6 +173,24 @@ def _conn() -> sqlite3.Connection:
                album_id, album_project_id, artist_id, album_name, artist_name
            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         documents,
+    )
+    conn.execute(
+        """INSERT INTO music_search_documents
+           SELECT generation_id, entity_key, kind, 1, label, normalized_label,
+                  secondary, normalized_secondary, alias_text, normalized_alias,
+                  search_text, popularity_tiebreaker, href, cover_url, track_id,
+                  album_id, album_project_id, artist_id, album_name, artist_name
+           FROM music_search_documents
+           WHERE generation_id='g1' AND entity_key='track:1' AND merge_level=2"""
+    )
+    conn.execute(
+        """INSERT INTO music_search_documents
+           SELECT generation_id, entity_key, kind, 3, label, normalized_label,
+                  secondary, normalized_secondary, alias_text, normalized_alias,
+                  search_text, popularity_tiebreaker, href, cover_url, track_id,
+                  album_id, album_project_id, artist_id, album_name, artist_name
+           FROM music_search_documents
+           WHERE generation_id='g1' AND entity_key='track:1' AND merge_level=2"""
     )
     conn.commit()
     return conn
@@ -203,6 +245,523 @@ def test_filter_fingerprint_changes_with_semantics_and_playback_revision() -> No
 
     assert baseline.filter_fingerprint != changed_filter.filter_fingerprint
     assert baseline.filter_fingerprint != changed_data.filter_fingerprint
+
+
+def test_weekly_ledger_uses_candidate_entity_keys() -> None:
+    conn = _conn()
+    from backend.domains.music_search import snapshot as snapshot_module
+
+    context = _context(merge_level=2, dynamic_threshold=True)
+    weekly = pd.DataFrame(
+        {
+            "billboard_week": ["2026-01-02"],
+            "track_id": [1],
+            "track_name": ["Track"],
+            "artist_name": ["Artist"],
+            "rank": [1],
+            "play_count": [2],
+            "total_ms": [2000],
+        }
+    )
+    weekly_album = pd.DataFrame(
+        {
+            "billboard_week": ["2026-01-02"],
+            "album_project_id": [2],
+            "album_name": ["Album"],
+            "artist_name": ["Artist"],
+            "rank": [1],
+            "play_count": [2],
+            "total_ms": [2000],
+        }
+    )
+    weekly_artist = pd.DataFrame(
+        {
+            "billboard_week": ["2026-01-02"],
+            "artist_id": [3],
+            "artist_name": ["Artist"],
+            "rank": [1],
+            "play_count": [2],
+            "total_ms": [2000],
+        }
+    )
+
+    rows, complete = snapshot_module._weekly_ledger_rows(
+        conn,
+        context,
+        weekly,
+        weekly_album,
+        weekly_artist,
+    )
+
+    assert complete is True
+    assert [(row[0], row[2]) for row in rows] == [
+        ("track", "track:1"),
+        ("album", "album_project:2"),
+        ("artist", "artist:3"),
+    ]
+
+
+def test_weekly_ledger_deduplicates_identical_facts_and_rejects_conflicts() -> None:
+    conn = _conn()
+    from backend.domains.music_search import snapshot as snapshot_module
+
+    context = _context(merge_level=1, dynamic_threshold=True)
+    album_row = {
+        "billboard_week": "2026-01-02",
+        "album_project_id": 2,
+        "album_name": "Album",
+        "artist_name": "Artist",
+        "rank": 1,
+        "play_count": 2,
+        "total_ms": 2000,
+    }
+    exact_duplicate = pd.DataFrame([album_row, album_row])
+
+    rows, complete = snapshot_module._weekly_ledger_rows(
+        conn,
+        context,
+        pd.DataFrame(),
+        exact_duplicate,
+        pd.DataFrame(),
+    )
+
+    assert complete is True
+    assert len(rows) == 1
+    assert rows[0][0:3] == ("album", "2026-01-02", "album:2")
+
+    conflicting = pd.DataFrame([album_row, {**album_row, "rank": 2}])
+    rows, complete = snapshot_module._weekly_ledger_rows(
+        conn,
+        context,
+        pd.DataFrame(),
+        conflicting,
+        pd.DataFrame(),
+    )
+
+    assert complete is False
+    assert len(rows) == 1
+    assert rows[0][3] == 1
+
+
+def test_shared_publish_persists_six_variant_lineage_and_weekly_ledger(monkeypatch) -> None:
+    conn = _conn()
+    from backend.domains.music_search import snapshot as snapshot_module
+
+    migrate_042(conn)
+    conn.execute("ALTER TABLE playback_import_state ADD COLUMN dataset_digest TEXT")
+    conn.execute("UPDATE playback_import_state SET dataset_digest='dataset-g2' WHERE state_id=1")
+    contexts = _shared_contexts(conn)
+    snapshot_module.prepare_music_search_snapshot_set(conn, contexts)
+    rows_by_fingerprint: dict[str, list[tuple[Any, ...]]] = {
+        context.filter_fingerprint: [] for context in contexts
+    }
+    weekly_by_fingerprint: dict[str, list[tuple[str, str, str, int, int, int, str]]] = {
+        context.filter_fingerprint: [] for context in contexts
+    }
+    weekly_by_fingerprint[contexts[0].filter_fingerprint] = [
+        (
+            "track",
+            "2026-01-02",
+            "track:1",
+            1,
+            2,
+            2000,
+            '{"entity_id":1}',
+        )
+    ]
+    monkeypatch.setattr(
+        snapshot_module,
+        "music_search_snapshot_dependency_digest",
+        lambda _conn: "dependency-g2",
+    )
+
+    snapshot_module._publish_shared_full_snapshot_set(
+        conn,
+        contexts,
+        rows_by_fingerprint,
+        weekly_by_fingerprint,
+        source_generation_id="import-g2",
+        candidate_generation_id="g1",
+        semantic_base_key=contexts[0].semantic_base_key,
+        source_dataset_digest="dataset-g2",
+        dependency_digest="dependency-g2",
+    )
+
+    lineage = conn.execute(
+        """SELECT COUNT(*), COUNT(DISTINCT policy_key),
+                  COUNT(DISTINCT source_generation_id),
+                  COUNT(DISTINCT source_dataset_digest),
+                  COUNT(DISTINCT dependency_digest),
+                  COUNT(DISTINCT build_strategy)
+           FROM music_search_snapshot_meta WHERE status='ready'"""
+    ).fetchone()
+    assert tuple(lineage) == (6, 6, 1, 1, 1, 1)
+    assert conn.execute("SELECT COUNT(*) FROM music_search_weekly_chart_context").fetchone()[0] == 1
+
+
+def test_shared_publish_rechecks_dependency_under_write_lock(monkeypatch) -> None:
+    conn = _conn()
+    from backend.domains.music_search import snapshot as snapshot_module
+
+    migrate_042(conn)
+    conn.execute("ALTER TABLE playback_import_state ADD COLUMN dataset_digest TEXT")
+    conn.execute("UPDATE playback_import_state SET dataset_digest='dataset-g2' WHERE state_id=1")
+    contexts = _shared_contexts(conn)
+    snapshot_module.prepare_music_search_snapshot_set(conn, contexts)
+    monkeypatch.setattr(
+        snapshot_module,
+        "music_search_snapshot_dependency_digest",
+        lambda _conn: "dependency-changed",
+    )
+
+    with pytest.raises(RuntimeError, match="dependencies changed"):
+        snapshot_module._publish_shared_full_snapshot_set(
+            conn,
+            contexts,
+            {context.filter_fingerprint: [] for context in contexts},
+            {context.filter_fingerprint: [] for context in contexts},
+            source_generation_id="import-g2",
+            candidate_generation_id="g1",
+            semantic_base_key=contexts[0].semantic_base_key,
+            source_dataset_digest="dataset-g2",
+            dependency_digest="dependency-g2",
+        )
+
+    assert (
+        conn.execute(
+            "SELECT COUNT(*) FROM music_search_snapshot_meta WHERE status='ready'"
+        ).fetchone()[0]
+        == 0
+    )
+
+
+def test_incremental_snapshot_delta_clones_base_and_applies_lifetime_metrics(
+    monkeypatch,
+) -> None:
+    conn = _conn()
+    from backend.domains.music_search import snapshot as snapshot_module
+    from backend.domains.music_search import snapshot_delta as delta_module
+
+    migrate_042(conn)
+    conn.execute("ALTER TABLE playback_import_state ADD COLUMN dataset_digest TEXT")
+    conn.execute("UPDATE playback_import_state SET dataset_digest='dataset-g2' WHERE state_id=1")
+    base_contexts = _shared_contexts(conn)
+    snapshot_module.prepare_music_search_snapshot_set(conn, base_contexts)
+    base_rows: dict[str, list[tuple[Any, ...]]] = {
+        context.filter_fingerprint: [("track:1", 1, 1000, *(None for _ in range(9)))]
+        for context in base_contexts
+    }
+    empty_ledger: dict[str, list[tuple[str, str, str, int, int, int, str]]] = {
+        context.filter_fingerprint: [] for context in base_contexts
+    }
+    monkeypatch.setattr(
+        snapshot_module,
+        "music_search_snapshot_dependency_digest",
+        lambda _conn: "dependency-stable",
+    )
+    snapshot_module._publish_shared_full_snapshot_set(
+        conn,
+        base_contexts,
+        base_rows,
+        empty_ledger,
+        source_generation_id="import-g2",
+        candidate_generation_id="g1",
+        semantic_base_key=base_contexts[0].semantic_base_key,
+        source_dataset_digest="dataset-g2",
+        dependency_digest="dependency-stable",
+    )
+    bump_music_search_revisions(conn, "playback", "billboard")
+    conn.execute(
+        """UPDATE playback_import_state
+           SET active_generation_id='import-g3', dataset_digest='dataset-g3'
+           WHERE state_id=1"""
+    )
+    conn.commit()
+    target_contexts = _shared_contexts(conn)
+    physical = pd.DataFrame(
+        {
+            "track_id": [1],
+            "source_album_id": pd.Series([2], dtype="Int64"),
+            "play_events": [1],
+            "total_ms": [2000],
+        }
+    )
+    monkeypatch.setattr(
+        delta_module,
+        "music_search_snapshot_dependency_digest",
+        lambda _conn: "dependency-stable",
+    )
+    monkeypatch.setattr(
+        delta_module,
+        "_track_delta_maps",
+        lambda *_args, **_kwargs: {1: physical, 2: physical, 3: physical},
+    )
+    monkeypatch.setattr(
+        delta_module,
+        "_album_delta_map",
+        lambda *_args, **_kwargs: {2: (1, 2000)},
+    )
+    monkeypatch.setattr(
+        delta_module,
+        "_artist_delta_map",
+        lambda *_args, **_kwargs: {3: (1, 2000)},
+    )
+
+    incremental_plan = delta_module.build_music_search_incremental_plan(
+        SimpleNamespace(
+            strategy="incremental",
+            removed_count=0,
+            billboard_scope_exact=True,
+            previous_dataset_digest="dataset-g2",
+            generation_id="import-g3",
+            previous_open_week="2026-01-02",
+            current_open_week="2026-01-02",
+            billboard_weeks={"2026-01-02"},
+            added_count=1,
+        )
+    )
+    assert incremental_plan is not None
+    report = delta_module.build_incremental_music_search_snapshot_set(
+        conn,
+        target_contexts,
+        incremental_plan,
+    )
+
+    assert report is not None
+    assert report["strategy"] == "incremental_snapshot_delta"
+    assert report["lifetime_scan"] is False
+    assert report["ready_count"] == 6
+    for context in target_contexts:
+        metrics = {
+            str(row[0]): (int(row[1]), int(row[2]))
+            for row in conn.execute(
+                """SELECT entity_key, play_events, total_ms
+                   FROM music_search_entity_context WHERE snapshot_key=?""",
+                (context.filter_fingerprint,),
+            ).fetchall()
+        }
+        assert metrics["track:1"] == (2, 3000)
+        expected_album_key = "album:2" if context.merge_level == 1 else "album_project:2"
+        assert metrics[expected_album_key] == (1, 2000)
+        assert metrics["artist:3"] == (1, 2000)
+        lineage = conn.execute(
+            """SELECT build_strategy, base_snapshot_key, source_dataset_digest,
+                      change_set_digest
+               FROM music_search_snapshot_meta WHERE snapshot_key=?""",
+            (context.filter_fingerprint,),
+        ).fetchone()
+        base_context = next(
+            base
+            for base in base_contexts
+            if base.merge_level == context.merge_level
+            and base.dynamic_threshold == context.dynamic_threshold
+        )
+        assert tuple(lineage) == (
+            "delta",
+            base_context.filter_fingerprint,
+            "dataset-g3",
+            incremental_plan["change_set_digest"],
+        )
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"strategy": "full"},
+        {"removed_count": 1},
+        {"billboard_scope_exact": False},
+        {"previous_open_week": "2025-12-26"},
+        {"billboard_weeks": set()},
+        {"billboard_weeks": {"2025-12-26", "2026-01-02"}},
+        {"billboard_weeks": {"2026-01-09"}},
+        {"added_count": 0},
+        {"added_count": 10_001},
+    ],
+)
+def test_incremental_snapshot_plan_fails_closed(overrides: dict[str, Any]) -> None:
+    from backend.domains.music_search.snapshot_delta import build_music_search_incremental_plan
+
+    values: dict[str, Any] = {
+        "strategy": "incremental",
+        "removed_count": 0,
+        "billboard_scope_exact": True,
+        "previous_dataset_digest": "dataset-g2",
+        "generation_id": "import-g3",
+        "previous_open_week": "2026-01-02",
+        "current_open_week": "2026-01-02",
+        "billboard_weeks": {"2026-01-02"},
+        "added_count": 1,
+    }
+    values.update(overrides)
+
+    assert build_music_search_incremental_plan(SimpleNamespace(**values)) is None
+
+
+def test_incremental_snapshot_plan_rejects_tampering() -> None:
+    from backend.domains.music_search.snapshot_delta import (
+        _validated_incremental_plan,
+        build_music_search_incremental_plan,
+    )
+
+    plan = build_music_search_incremental_plan(
+        SimpleNamespace(
+            strategy="incremental",
+            removed_count=0,
+            billboard_scope_exact=True,
+            previous_dataset_digest="dataset-g2",
+            generation_id="import-g3",
+            previous_open_week="2026-01-02",
+            current_open_week="2026-01-02",
+            billboard_weeks={"2026-01-02"},
+            added_count=1,
+        )
+    )
+    assert plan is not None
+    plan["billboard_weeks"] = ["2025-12-26"]
+
+    assert _validated_incremental_plan(plan) is None
+
+
+def test_incremental_snapshot_delta_rejects_disabled_logical_merge() -> None:
+    from backend.domains.music_search.snapshot_delta import (
+        build_incremental_music_search_snapshot_set,
+        build_music_search_incremental_plan,
+    )
+
+    conn = _conn()
+    contexts = tuple(replace(context, merge_enabled=False) for context in _shared_contexts(conn))
+    plan = build_music_search_incremental_plan(
+        SimpleNamespace(
+            strategy="incremental",
+            removed_count=0,
+            billboard_scope_exact=True,
+            previous_dataset_digest="dataset-g2",
+            generation_id="import-g3",
+            previous_open_week="2026-01-02",
+            current_open_week="2026-01-02",
+            billboard_weeks={"2026-01-02"},
+            added_count=1,
+        )
+    )
+    assert plan is not None
+
+    assert build_incremental_music_search_snapshot_set(conn, contexts, plan) is None
+
+
+@pytest.mark.parametrize(
+    ("album_type", "include_compilations", "expected"),
+    [
+        ("album", False, {2: (1, 2000)}),
+        ("single", True, {}),
+        ("compilation", False, {}),
+        ("compilation", True, {2: (1, 2000)}),
+    ],
+)
+def test_l1_album_delta_matches_full_album_type_filters(
+    album_type: str,
+    include_compilations: bool,
+    expected: dict[int, tuple[int, int]],
+) -> None:
+    from backend.domains.music_search.snapshot_delta import _album_delta_map
+
+    conn = _conn()
+    conn.execute(
+        """CREATE TABLE spotify_album_meta(
+               spotify_album_id TEXT PRIMARY KEY, album_name TEXT,
+               release_date TEXT, album_type TEXT
+           )"""
+    )
+    conn.execute(
+        """CREATE TABLE album_spotify_links(
+               album_id INTEGER NOT NULL, spotify_album_id TEXT NOT NULL,
+               evidence TEXT NOT NULL, confidence REAL NOT NULL DEFAULT 0.0,
+               play_count INTEGER NOT NULL DEFAULT 0,
+               track_count INTEGER NOT NULL DEFAULT 0,
+               PRIMARY KEY(album_id, spotify_album_id, evidence)
+           )"""
+    )
+    conn.execute(
+        """INSERT INTO spotify_album_meta
+           VALUES ('spotify-album-2', 'Album', '2026-01-01', ?)""",
+        (album_type,),
+    )
+    conn.execute(
+        """INSERT INTO spotify_album_meta
+           VALUES ('spotify-album-decoy', 'Album', '2025-01-01', 'album')"""
+    )
+    conn.execute(
+        """INSERT INTO album_spotify_links
+           VALUES (2, 'spotify-album-2', 'play_track_meta', 0.9, 4, 1)"""
+    )
+    conn.execute("INSERT INTO artists VALUES (4, 'Other Artist')")
+    conn.execute("INSERT INTO albums VALUES (4, 'Album', 4)")
+    conn.execute(
+        """INSERT INTO album_spotify_links
+           VALUES (4, 'spotify-album-decoy', 'play_track_meta', 0.9, 3, 1)"""
+    )
+    physical_delta = pd.DataFrame(
+        {
+            "track_id": [1],
+            "source_album_id": pd.Series([2], dtype="Int64"),
+            "play_events": [1],
+            "total_ms": [2000],
+        }
+    )
+
+    assert (
+        _album_delta_map(
+            conn,
+            physical_delta,
+            merge_level=1,
+            include_compilations=include_compilations,
+        )
+        == expected
+    )
+
+
+def test_l1_album_delta_only_uses_unambiguous_legacy_name_metadata() -> None:
+    from backend.domains.music_search.snapshot_delta import _album_delta_map
+
+    conn = _conn()
+    conn.execute(
+        """CREATE TABLE spotify_album_meta(
+               spotify_album_id TEXT PRIMARY KEY, album_name TEXT,
+               release_date TEXT, album_type TEXT
+           )"""
+    )
+    conn.execute(
+        """INSERT INTO spotify_album_meta
+           VALUES ('spotify-album-single', 'Album', '2026-01-01', 'single')"""
+    )
+    physical_delta = pd.DataFrame(
+        {
+            "track_id": [1],
+            "source_album_id": pd.Series([2], dtype="Int64"),
+            "play_events": [1],
+            "total_ms": [2000],
+        }
+    )
+
+    assert (
+        _album_delta_map(
+            conn,
+            physical_delta,
+            merge_level=1,
+            include_compilations=True,
+        )
+        == {}
+    )
+
+    conn.execute(
+        """INSERT INTO spotify_album_meta
+           VALUES ('spotify-album-decoy', 'Album', '2025-01-01', 'album')"""
+    )
+    assert _album_delta_map(
+        conn,
+        physical_delta,
+        merge_level=1,
+        include_compilations=True,
+    ) == {2: (1, 2000)}
 
 
 def test_snapshot_build_is_exact_lookup_and_stale_never_masquerades_as_ready(
@@ -902,7 +1461,7 @@ def test_shared_full_releases_each_threshold_before_loading_next(monkeypatch) ->
     monkeypatch.setattr(
         snapshot_module,
         "_shared_chart_lookups",
-        lambda _conn, threshold_contexts, _frames: {
+        lambda _conn, threshold_contexts, _frames, **_kwargs: {
             (context.merge_level, context.dynamic_threshold): {
                 "track": {},
                 "album": {},
@@ -952,7 +1511,7 @@ def test_shared_full_failure_never_partially_activates_variants(monkeypatch) -> 
     monkeypatch.setattr(
         snapshot_module,
         "_shared_chart_lookups",
-        lambda _conn, threshold_contexts, _frames: {
+        lambda _conn, threshold_contexts, _frames, **_kwargs: {
             (context.merge_level, context.dynamic_threshold): {
                 "track": {},
                 "album": {},
@@ -1030,7 +1589,7 @@ def test_shared_full_publish_fence_rejects_mid_build_drift(monkeypatch, drift: s
     monkeypatch.setattr(
         snapshot_module,
         "_shared_chart_lookups",
-        lambda _conn, threshold_contexts, _frames: {
+        lambda _conn, threshold_contexts, _frames, **_kwargs: {
             (context.merge_level, context.dynamic_threshold): {
                 "track": {},
                 "album": {},

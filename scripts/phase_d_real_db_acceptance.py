@@ -674,6 +674,31 @@ def _worker_main(args: argparse.Namespace) -> int:
             strategy = "ordinary_full_snapshot_set"
         variants = _safe_worker_variants(raw)
         variant_set = {(item["merge_level"], item["dynamic_threshold"]) for item in variants}
+        ledger_table_exists = conn.execute(
+            """SELECT 1 FROM sqlite_master
+               WHERE type='table' AND name='music_search_weekly_chart_context'"""
+        ).fetchone()
+        weekly_ledger_rows = (
+            int(
+                conn.execute("SELECT COUNT(*) FROM music_search_weekly_chart_context").fetchone()[0]
+            )
+            if ledger_table_exists
+            else 0
+        )
+        lineage_ready_count = (
+            int(
+                conn.execute(
+                    """SELECT COUNT(*) FROM music_search_snapshot_meta
+                       WHERE status='ready' AND policy_key IS NOT NULL
+                         AND source_generation_id IS NOT NULL
+                         AND source_dataset_digest IS NOT NULL
+                         AND dependency_digest IS NOT NULL
+                         AND build_strategy='shared_full'"""
+                ).fetchone()[0]
+            )
+            if ledger_table_exists
+            else 0
+        )
         report = {
             "status": str(raw.get("status") or "unknown"),
             "strategy": strategy,
@@ -683,6 +708,9 @@ def _worker_main(args: argparse.Namespace) -> int:
             "helper_elapsed_ms": round((time.perf_counter() - started) * 1000, 3),
             "peak_rss_bytes": _peak_rss_bytes(),
             "shared_logical_frame_sets": raw.get("shared_logical_frame_sets"),
+            "weekly_ledger_ready": bool(raw.get("weekly_ledger_ready", False)),
+            "weekly_ledger_rows": weekly_ledger_rows,
+            "lineage_ready_count": lineage_ready_count,
             "exact_variant_set": variant_set == EXPECTED_VARIANTS,
             "variants": variants,
         }
@@ -700,6 +728,9 @@ def _worker_main(args: argparse.Namespace) -> int:
                 or report["strategy"] == "shared_full_snapshot_rebuild"
             )
             and (args._worker_strategy != "shared" or report["shared_logical_frame_sets"] == 2)
+            and (args._worker_strategy != "shared" or report["weekly_ledger_ready"])
+            and (args._worker_strategy != "shared" or report["weekly_ledger_rows"] > 0)
+            and (args._worker_strategy != "shared" or report["lineage_ready_count"] == 6)
         )
     except Exception as exc:
         report = {

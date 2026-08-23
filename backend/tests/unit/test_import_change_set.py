@@ -330,6 +330,48 @@ def test_tail_billboard_events_honor_static_and_dynamic_threshold_modes() -> Non
     assert dynamic.empty
 
 
+def test_change_set_unions_fixed_and_dynamic_billboard_scopes(monkeypatch) -> None:
+    import backend.domains.imports.change_set as change_set_module
+
+    conn = _connection()
+    try:
+        incoming = [_record("a", "2026-01-03T00:00:00Z")]
+        conn.execute("INSERT INTO tracks(track_id, album_id, artist_id) VALUES (1, 1, 1)")
+        conn.execute(
+            """INSERT INTO plays(
+                   play_id, ts, ts_date, ts_year, ts_month, track_id,
+                   source_album_id, ms_played, content_type, source_fingerprint,
+                   source_fingerprint_version, import_generation_id
+               ) VALUES (1, '2026-01-03T00:00:00Z', '2026-01-03', 2026, 1,
+                         1, 1, 30000, 'audio', ?, 1, 'append')""",
+            ("a" * 64,),
+        )
+        modes: list[bool] = []
+
+        def affected_weeks(*_args, dynamic_threshold: bool, **_kwargs) -> set[str]:
+            modes.append(dynamic_threshold)
+            return {"2025-12-19" if dynamic_threshold else "2025-12-26"}
+
+        monkeypatch.setattr(
+            change_set_module,
+            "_logical_billboard_contribution_weeks",
+            affected_weeks,
+        )
+
+        change_set = build_playback_change_set(
+            conn,
+            generation_id="append",
+            strategy="incremental",
+            plan=build_import_plan(incoming, existing_records=[]),
+        )
+
+        assert modes == [False, True]
+        assert {"2025-12-19", "2025-12-26"} <= change_set.billboard_weeks
+        assert change_set.billboard_scope_exact is True
+    finally:
+        conn.close()
+
+
 def test_played_credit_digest_excludes_new_only_tracks_but_detects_existing_track_credit() -> None:
     conn = _connection()
     try:

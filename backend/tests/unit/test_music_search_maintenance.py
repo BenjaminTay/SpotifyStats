@@ -589,6 +589,58 @@ def test_shared_frame_failure_falls_back_to_full_snapshot_set(monkeypatch) -> No
     assert report["snapshot_set"]["semantic_base_key"] == new_contexts[0].semantic_base_key
 
 
+def test_incompatible_delta_falls_back_to_shared_full_snapshot_set(monkeypatch) -> None:
+    conn = _conn()
+    _seed_ready_candidate_and_statistics(conn)
+    maintenance.mark_music_search_for_rebuild(
+        reason="append published",
+        revision_kinds=("playback", "billboard"),
+        conn=conn,
+    )
+    calls: list[str] = []
+
+    def reject_delta(*_args, **_kwargs):
+        calls.append("delta")
+        return None
+
+    def build_shared(_conn, contexts, **_kwargs):
+        calls.append("shared")
+        report = _built_snapshot_set_report(contexts)
+        report["strategy"] = "shared_full_snapshot_rebuild"
+        return report
+
+    monkeypatch.setattr(
+        maintenance,
+        "build_incremental_music_search_snapshot_set",
+        reject_delta,
+    )
+    monkeypatch.setattr(
+        maintenance,
+        "build_shared_full_music_search_snapshot_set",
+        build_shared,
+    )
+    monkeypatch.setattr(
+        maintenance,
+        "build_music_search_snapshot_set",
+        lambda *_args, **_kwargs: pytest.fail("shared fallback unexpectedly used ordinary full"),
+    )
+
+    report = maintenance.rebuild_current_music_search_derived_data(
+        conn,
+        shared_full_snapshot_plan={
+            "schema_version": "music_search_shared_full_snapshot_v2",
+            "source_generation_id": "import-g2",
+            "incremental_snapshot_plan": {"schema_version": "invalid-test-plan"},
+        },
+    )
+
+    assert calls == ["delta", "shared"]
+    assert report["snapshot_set"]["strategy"] == "shared_full_snapshot_rebuild"
+    assert (
+        report["snapshot_set"]["delta_fallback_reason"] == "incompatible_incremental_snapshot_base"
+    )
+
+
 def test_shared_full_plan_rejects_settings_drift() -> None:
     conn = _conn()
     _seed_ready_candidate_and_statistics(conn)
