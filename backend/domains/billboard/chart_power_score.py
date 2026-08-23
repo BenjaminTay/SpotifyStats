@@ -1,8 +1,11 @@
 """Power score computation for tracks, albums, and artists."""
 
 import math
+import unicodedata
 
 import numpy as np
+
+BILLBOARD_POWER_SCORE_VERSION = "billboard_power_score_v2"
 
 # ── Power Score 参数 ────────────────────────────────────────────────────
 # 榜单统治力评分 = Σ(每周基础分 × 竞争权重) + peak_bonus + 周数奖励 + 持续性加成 + 空降加成
@@ -109,6 +112,63 @@ def _normalize_group_cols(group_cols):
     return [group_cols] if isinstance(group_cols, str) else list(group_cols)
 
 
+def _normalised_power_key(value):
+    if value is None:
+        return ""
+    try:
+        if np.isnan(value):
+            return ""
+    except TypeError:
+        pass
+    return unicodedata.normalize("NFKC", str(value)).casefold()
+
+
+def _stable_power_input(frame, *, id_columns=(), text_columns=()):
+    """Canonicalize history order before group-wise score calculations."""
+    ordered = frame.copy()
+    sort_columns = ["billboard_week"]
+    stable_columns = [column for column in id_columns if column in ordered.columns]
+    temporary_columns = []
+    sort_columns.extend(stable_columns)
+    for index, column in enumerate(text_columns):
+        if column not in ordered.columns:
+            continue
+        normalised_key = f"_stable_power_input_{index}"
+        original_key = f"_stable_power_input_original_{index}"
+        ordered[normalised_key] = ordered[column].map(_normalised_power_key)
+        ordered[original_key] = ordered[column].fillna("").astype(str)
+        temporary_columns.extend((normalised_key, original_key))
+    sort_columns.extend(temporary_columns)
+    ordered = ordered.sort_values(sort_columns, kind="stable").reset_index(drop=True)
+    return ordered.drop(columns=temporary_columns)
+
+
+def _stable_power_rank(result, *, id_columns=(), text_columns=()):
+    """Assign unique Power ranks with a deterministic final tie-breaker."""
+    ranked = result.copy()
+    sort_columns = ["power_score"]
+    ascending = [False]
+    stable_columns = [column for column in id_columns if column in ranked.columns]
+    sort_columns.extend(stable_columns)
+    ascending.extend([True] * len(stable_columns))
+    temporary_columns = []
+    for index, column in enumerate(text_columns):
+        if column not in ranked.columns:
+            continue
+        normalised_key = f"_stable_power_key_{index}"
+        original_key = f"_stable_power_original_{index}"
+        ranked[normalised_key] = ranked[column].map(_normalised_power_key)
+        ranked[original_key] = ranked[column].fillna("").astype(str)
+        temporary_columns.extend((normalised_key, original_key))
+    sort_columns.extend(temporary_columns)
+    ascending.extend([True] * len(temporary_columns))
+    ranked = ranked.sort_values(sort_columns, ascending=ascending, kind="stable").reset_index(
+        drop=True
+    )
+    ranked["power_rank"] = range(1, len(ranked) + 1)
+    return ranked.drop(columns=[column for column in ranked if column.startswith("_stable_power_")])
+
+
 def _aggregate_scored_rows(scored, group_cols):
     keys = _normalize_group_cols(group_cols)
     scored = scored.copy()
@@ -129,6 +189,11 @@ def _aggregate_scored_rows(scored, group_cols):
 
 def compute_power_scores(weekly, top_n):
     """Compute comprehensive power scores for all tracks."""
+    weekly = _stable_power_input(
+        weekly,
+        id_columns=("track_id",),
+        text_columns=("artist_name", "track_name"),
+    )
     w = _score_ranked_rows(weekly)
     weekly_scores = _aggregate_scored_rows(w, "track_id")
     first_rank = w.groupby("track_id", sort=False)["rank"].first().reset_index(name="_first_rank")
@@ -152,8 +217,11 @@ def compute_power_scores(weekly, top_n):
 
     dims = w[["track_id", "track_name", "artist_name"]].drop_duplicates(subset=["track_id"])
     result = weekly_scores.merge(dims, on="track_id", how="left")
-    result = result.sort_values("power_score", ascending=False).reset_index(drop=True)
-    result["power_rank"] = range(1, len(result) + 1)
+    result = _stable_power_rank(
+        result,
+        id_columns=("track_id",),
+        text_columns=("artist_name", "track_name"),
+    )
 
     return result[
         [
@@ -173,6 +241,11 @@ def compute_power_scores(weekly, top_n):
 
 def compute_album_power_scores(weekly_album, top_n):
     """Compute power scores for albums (no Top 5/10 bonuses, uses #1 bonus)."""
+    weekly_album = _stable_power_input(
+        weekly_album,
+        id_columns=("album_project_id", "album_id"),
+        text_columns=("artist_name", "album_name"),
+    )
     wa = _score_ranked_rows(weekly_album)
     group_cols = ["album_name", "artist_name"]
     weekly_scores = _aggregate_scored_rows(wa, group_cols)
@@ -196,8 +269,10 @@ def compute_album_power_scores(weekly_album, top_n):
         .astype(int)
     )
 
-    result = weekly_scores.sort_values("power_score", ascending=False).reset_index(drop=True)
-    result["power_rank"] = range(1, len(result) + 1)
+    result = _stable_power_rank(
+        weekly_scores,
+        text_columns=("artist_name", "album_name"),
+    )
     return result[
         [
             "album_name",
@@ -215,6 +290,11 @@ def compute_album_power_scores(weekly_album, top_n):
 
 def compute_artist_power_scores(weekly_artist, top_n):
     """Compute power scores for artists."""
+    weekly_artist = _stable_power_input(
+        weekly_artist,
+        id_columns=("artist_id",),
+        text_columns=("artist_name",),
+    )
     war = _score_ranked_rows(weekly_artist)
     weekly_scores = _aggregate_scored_rows(war, "artist_name")
 
@@ -238,8 +318,7 @@ def compute_artist_power_scores(weekly_artist, top_n):
         .astype(int)
     )
 
-    result = weekly_scores.sort_values("power_score", ascending=False).reset_index(drop=True)
-    result["power_rank"] = range(1, len(result) + 1)
+    result = _stable_power_rank(weekly_scores, text_columns=("artist_name",))
     return result[
         [
             "artist_name",

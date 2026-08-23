@@ -2,6 +2,13 @@
 
 本文件只记录按日期排列的变更摘要。详细实施、验收和真实数据证据见 [`reports/README.md`](reports/README.md)；当前规则见 [`reference/`](reference/)。历史条目中的数字和路径仅代表当时状态。
 
+## 2026-08-23 — 增量导入 Phase D1
+
+- 已证明的尾部追加会扩展完整连续播放链与跨周时长闭包，只对受影响完整周应用新旧贡献差值；四张 Billboard 聚合影子表共同校验并原子发布，依赖不兼容或受影响周超过 25% 时回退全量。
+- 周榜和 Power 排名补齐稳定 identity / 规范化文本裁决键，避免并列实体随底层行顺序漂移。
+- 六套搜索精确上下文改为两个阈值作用域共享逻辑帧、跨 L1/L2/L3 复用计算，并作为整组六套原子激活；primary/artist 顺序处理且跳过未消费的时长切片，降低重复计算。
+- 92,908 条真实库副本加 1 条尾部记录：Billboard 局部 0.511 秒、全量 3.258 秒，四表双向 `EXCEPT=0`；搜索 shared-full 24.935 秒、ordinary 66.046 秒，48,242 条 payload 与 6 条 meta 全列一致。搜索仍是完整 lifetime 重建，真正 snapshot delta 留待 Phase D2。详见 [`reports/2026-08-23-incremental-import-phase-d1.md`](reports/2026-08-23-incremental-import-phase-d1.md)。
+
 ## 2026-08-23 — 增量导入 Phase B
 
 - 串流导入新增 `auto|append|replace` 执行模式：已有播放但无基线的旧库需确认完整替换，相同输入在快照前 noop，已证明的完整超集或具备共同记录、账号与时间证据的尾部增量只追加新播放；零重合包需明确请求 fail-closed 尾部验证。

@@ -10,12 +10,31 @@ from typing import Any, Literal, cast
 import pandas as pd
 
 from backend.core.cache_manager import invalidate, invalidate_except
+from backend.domains.ai_agent.entity_resolver import EntityType
+from backend.domains.billboard.chart_power_score import (
+    compute_album_power_scores,
+    compute_artist_power_scores,
+    compute_power_scores,
+)
+from backend.domains.billboard.chart_ranking import (
+    compute_album_weekly_rankings,
+    compute_artist_weekly_rankings,
+    compute_weekly_rankings,
+)
+from backend.domains.billboard.chart_summaries import compute_track_summary
+from backend.domains.billboard.week_coverage import (
+    current_open_billboard_week,
+    keep_complete_billboard_weeks,
+)
 from backend.domains.music_search.context import (
     MUSIC_SEARCH_SNAPSHOT_BUILDER_VERSION,
     MusicSearchFilterContext,
+    build_music_search_filter_context,
 )
 from backend.domains.music_search.index import get_music_search_index_state
+from backend.domains.music_search.variants import MUSIC_SEARCH_SNAPSHOT_VARIANTS
 from backend.domains.playback.album_projects import compute_album_project_plays
+from backend.domains.playback.logical_timeline import build_billboard_weighted_frame
 from backend.domains.playback.track_groups import load_track_group_keys
 from backend.models.music_search import (
     MusicSearchChartSummary,
@@ -24,8 +43,11 @@ from backend.models.music_search import (
     MusicSearchSnapshotStatus,
 )
 from backend.services.music_search_service import (
+    _album_chart_map,
+    _artist_chart_map,
     _build_chart_lookup,
     _load_filtered_search_frames,
+    _track_chart_map,
 )
 
 SnapshotBuildStatus = Literal["pending", "running", "ready", "failed", "stale"]
@@ -227,6 +249,331 @@ def _metric_maps(
     return track_metrics, album_metrics, artist_metrics
 
 
+def _load_shared_logical_frames(
+    conn: sqlite3.Connection,
+    contexts: tuple[MusicSearchFilterContext, ...],
+    selected_kinds: tuple[EntityType, ...],
+) -> dict[bool, tuple[pd.DataFrame, pd.DataFrame]]:
+    thresholds = {context.dynamic_threshold for context in contexts}
+    if len(thresholds) != 1:
+        raise ValueError("shared logical frames must be loaded for one threshold at a time")
+    frames: dict[bool, tuple[pd.DataFrame, pd.DataFrame]] = {}
+    for dynamic_threshold in dict.fromkeys(context.dynamic_threshold for context in contexts):
+        representative = next(
+            context for context in contexts if context.dynamic_threshold == dynamic_threshold
+        )
+        plays_df, artist_df = _load_filtered_search_frames(
+            conn,
+            selected_kinds,
+            min_ms=representative.min_ms,
+            music_only=representative.music_only,
+            merge_enabled=representative.merge_enabled,
+            dynamic_threshold=dynamic_threshold,
+            max_merge_gap_minutes=representative.max_merge_gap_minutes,
+        )
+        frames[dynamic_threshold] = (
+            plays_df if plays_df is not None else pd.DataFrame(),
+            artist_df if artist_df is not None else pd.DataFrame(),
+        )
+    return frames
+
+
+def _shared_metric_maps(
+    conn: sqlite3.Connection,
+    contexts: tuple[MusicSearchFilterContext, ...],
+    *,
+    shared_frames: dict[bool, tuple[pd.DataFrame, pd.DataFrame]] | None = None,
+) -> dict[tuple[int, bool], tuple[dict[int, tuple[int, int]], ...]]:
+    """Build six metric variants from one logical-frame set per threshold."""
+    if shared_frames is None:
+        result: dict[tuple[int, bool], tuple[dict[int, tuple[int, int]], ...]] = {}
+        for dynamic_threshold in dict.fromkeys(context.dynamic_threshold for context in contexts):
+            threshold_contexts = tuple(
+                context for context in contexts if context.dynamic_threshold == dynamic_threshold
+            )
+            artist_frames = _load_shared_logical_frames(
+                conn,
+                threshold_contexts,
+                ("artist",),
+            )
+            try:
+                artist_result = _shared_metric_maps(
+                    conn,
+                    threshold_contexts,
+                    shared_frames=artist_frames,
+                )
+            finally:
+                artist_frames.clear()
+                invalidate("db")
+                gc.collect()
+            primary_frames = _load_shared_logical_frames(
+                conn,
+                threshold_contexts,
+                ("track", "album"),
+            )
+            try:
+                primary_result = _shared_metric_maps(
+                    conn,
+                    threshold_contexts,
+                    shared_frames=primary_frames,
+                )
+                for variant_key, (
+                    variant_track_metrics,
+                    variant_album_metrics,
+                    _artist_metrics,
+                ) in primary_result.items():
+                    result[variant_key] = (
+                        variant_track_metrics,
+                        variant_album_metrics,
+                        artist_result[variant_key][2],
+                    )
+            finally:
+                primary_frames.clear()
+                invalidate("db")
+                gc.collect()
+        return result
+
+    frames = shared_frames
+    metric_result: dict[tuple[int, bool], tuple[dict[int, tuple[int, int]], ...]] = {}
+    for dynamic_threshold in dict.fromkeys(context.dynamic_threshold for context in contexts):
+        primary, artists = frames[dynamic_threshold]
+        artist_metrics: dict[int, tuple[int, int]] = {}
+        if not artists.empty:
+            grouped = artists.groupby("artist_id", sort=False)["ms_played"].agg(
+                play_events="size", total_ms="sum"
+            )
+            artist_metrics = {
+                int(cast(Any, artist_id)): (int(row.play_events), int(row.total_ms))
+                for artist_id, row in grouped.iterrows()
+            }
+        for context in (item for item in contexts if item.dynamic_threshold == dynamic_threshold):
+            primary_variant = primary.copy()
+            if not primary_variant.empty and context.merge_level > 1:
+                group_keys = load_track_group_keys(conn, context.merge_level)
+                if not group_keys.empty:
+                    primary_variant = primary_variant.merge(
+                        group_keys[["track_id", "track_agg_id"]],
+                        on="track_id",
+                        how="left",
+                    )
+                    primary_variant["track_id"] = primary_variant["track_agg_id"].fillna(
+                        primary_variant["track_id"]
+                    )
+            track_metrics: dict[int, tuple[int, int]] = {}
+            if not primary_variant.empty:
+                grouped = primary_variant.groupby("track_id", sort=False)["ms_played"].agg(
+                    play_events="size", total_ms="sum"
+                )
+                track_metrics = {
+                    int(cast(Any, track_id)): (int(row.play_events), int(row.total_ms))
+                    for track_id, row in grouped.iterrows()
+                }
+            album_frame = compute_album_project_plays(
+                primary_variant,
+                conn,
+                merge_level=context.merge_level,
+                include_compilations=context.include_compilations,
+            )
+            album_metrics = {
+                int(row.album_project_id): (int(row.play_count), int(row.total_ms))
+                for row in album_frame.itertuples(index=False)
+            }
+            metric_result[(context.merge_level, context.dynamic_threshold)] = (
+                track_metrics,
+                album_metrics,
+                artist_metrics,
+            )
+    return metric_result
+
+
+def _ordinary_chart_uses_aggregates(
+    conn: sqlite3.Connection,
+    context: MusicSearchFilterContext,
+) -> bool:
+    """Mirror whether the ordinary builder selects current weekly aggregates."""
+    if not context.merge_enabled:
+        return False
+    from backend.core.db import _agg_param_hash, check_agg_valid
+    from backend.domains.metadata.artist_identity import get_identity_revision
+    from backend.domains.metadata.track_credits import (
+        get_track_credit_revision,
+        get_track_credit_state,
+    )
+
+    credit_state = get_track_credit_state(conn)
+    if credit_state.get("current_revision", 0) != credit_state.get("active_aggregate_revision", 0):
+        return False
+    param_hash = _agg_param_hash(
+        context.min_ms,
+        context.music_only,
+        context.bb_week_start_dow,
+        context.bb_week_start_hour,
+        dynamic_threshold=context.dynamic_threshold,
+        max_merge_gap_minutes=context.max_merge_gap_minutes,
+        identity_revision=get_identity_revision(conn),
+        track_credit_revision=get_track_credit_revision(conn),
+    )
+    if not check_agg_valid(conn, param_hash):
+        return False
+    try:
+        tracks_exist = conn.execute("SELECT 1 FROM agg_weekly_tracks LIMIT 1").fetchone()
+    except sqlite3.OperationalError:
+        return False
+    return tracks_exist is not None
+
+
+def _ordinary_album_chart_has_track_fallback(
+    conn: sqlite3.Connection,
+    context: MusicSearchFilterContext,
+) -> bool:
+    """Mirror whether ordinary album charts select source-aware aggregates."""
+    if not _ordinary_chart_uses_aggregates(conn, context):
+        return False
+    try:
+        source_rows_exist = conn.execute(
+            "SELECT 1 FROM agg_weekly_track_sources LIMIT 1"
+        ).fetchone()
+    except sqlite3.OperationalError:
+        return False
+    return source_rows_exist is not None
+
+
+def _shared_chart_lookups(
+    conn: sqlite3.Connection,
+    contexts: tuple[MusicSearchFilterContext, ...],
+    shared_frames: dict[bool, tuple[pd.DataFrame, pd.DataFrame]],
+) -> dict[tuple[int, bool], dict[str, dict[Any, MusicSearchChartSummary]]]:
+    """Recompute each chart family globally from shared compact weekly rows."""
+    result: dict[tuple[int, bool], dict[str, dict[Any, MusicSearchChartSummary]]] = {}
+    for dynamic_threshold, (primary, artists) in shared_frames.items():
+        representative = next(
+            context for context in contexts if context.dynamic_threshold == dynamic_threshold
+        )
+        ordinary_uses_aggregates = _ordinary_chart_uses_aggregates(conn, representative)
+        ordinary_has_track_fallback = _ordinary_album_chart_has_track_fallback(conn, representative)
+        # Period loaders may carry a DataFrame-valued weighted-frame attr.
+        # pandas.concat compares attrs for equality, and DataFrame equality is
+        # not scalar.  The chart builder consumes the explicit logical-event
+        # columns, so do not forward cache metadata into a fresh weighted frame.
+        primary_events = primary.copy(deep=False)
+        primary_events.attrs = {}
+        # Match the two ordinary chart sources.  The general playback loader
+        # keeps the track container in ``track_album_id`` and its name in
+        # ``album_name``.  Billboard either falls back to raw rows, which have
+        # no track-album fallback column, or uses a valid source-aware
+        # aggregate that retains ``track_album_id``.  Mixing these schemas
+        # changes L1 album eligibility for legacy rows whose source_album_id is
+        # absent and shifts weekly ranks.
+        if "source_album_name" in primary_events.columns:
+            primary_events["album_name"] = primary_events["source_album_name"].fillna(
+                primary_events.get("album_name")
+            )
+        if not ordinary_has_track_fallback:
+            primary_events = primary_events.drop(columns=["track_album_id"], errors="ignore")
+        artist_events = artists.copy(deep=False)
+        artist_events.attrs = {}
+        if "source_album_name" in artist_events.columns:
+            artist_events["album_name"] = artist_events["source_album_name"].fillna(
+                artist_events.get("album_name")
+            )
+        if not ordinary_has_track_fallback:
+            artist_events = artist_events.drop(columns=["track_album_id"], errors="ignore")
+        weighted = build_billboard_weighted_frame(
+            primary_events,
+            week_start_dow=representative.bb_week_start_dow,
+            week_start_hour=representative.bb_week_start_hour,
+        )
+        artist_pre_agg: pd.DataFrame | None = None
+        if ordinary_uses_aggregates and not artist_events.empty:
+            if {"billboard_week", "play_count", "total_ms"} <= set(artist_events.columns):
+                artist_weighted = artist_events
+            else:
+                from backend.core.db import load_agg_weekly_artists
+
+                artist_weighted = load_agg_weekly_artists(conn)
+            artist_pre_agg = artist_weighted
+        else:
+            artist_weighted = build_billboard_weighted_frame(
+                artist_events,
+                week_start_dow=representative.bb_week_start_dow,
+                week_start_hour=representative.bb_week_start_hour,
+            )
+        open_week = current_open_billboard_week(
+            week_start_dow=representative.bb_week_start_dow,
+            week_start_hour=representative.bb_week_start_hour,
+        )
+        weighted = keep_complete_billboard_weeks(weighted, open_week=open_week)
+        artist_weighted = keep_complete_billboard_weeks(artist_weighted, open_week=open_week)
+        if artist_pre_agg is not None:
+            artist_pre_agg = artist_weighted
+        for context in (item for item in contexts if item.dynamic_threshold == dynamic_threshold):
+            weekly = (
+                compute_weekly_rankings(
+                    weighted,
+                    context.bb_top_n,
+                    pre_agg=weighted,
+                    merge_level=context.merge_level,
+                )
+                if not weighted.empty
+                else pd.DataFrame()
+            )
+            weekly_album = (
+                compute_album_weekly_rankings(
+                    weighted,
+                    context.bb_album_top_n,
+                    pre_agg=weighted,
+                    merge_level=context.merge_level,
+                    include_compilations=context.include_compilations,
+                )
+                if not weighted.empty
+                else pd.DataFrame()
+            )
+            weekly_artist = (
+                compute_artist_weekly_rankings(
+                    artist_weighted,
+                    context.bb_artist_top_n,
+                    pre_agg=artist_pre_agg,
+                )
+                if not artist_weighted.empty
+                else pd.DataFrame()
+            )
+            data = {
+                "weekly": weekly.to_dict("records"),
+                "track_summary": (
+                    compute_track_summary(weekly, weighted).to_dict("records")
+                    if not weighted.empty
+                    else []
+                ),
+                "weekly_album": weekly_album.to_dict("records"),
+                "weekly_artist": weekly_artist.to_dict("records"),
+                "power_scores": (
+                    compute_power_scores(weekly, context.bb_top_n).to_dict("records")
+                    if not weekly.empty
+                    else []
+                ),
+                "album_power_scores": (
+                    compute_album_power_scores(weekly_album, context.bb_album_top_n).to_dict(
+                        "records"
+                    )
+                    if not weekly_album.empty
+                    else []
+                ),
+                "artist_power_scores": (
+                    compute_artist_power_scores(weekly_artist, context.bb_artist_top_n).to_dict(
+                        "records"
+                    )
+                    if not weekly_artist.empty
+                    else []
+                ),
+            }
+            result[(context.merge_level, context.dynamic_threshold)] = {
+                "track": _track_chart_map(data),
+                "album": _album_chart_map(data),
+                "artist": _artist_chart_map(data),
+            }
+    return result
+
+
 def _chart_has_fact(chart: MusicSearchChartSummary | None) -> bool:
     return chart is not None and any(
         value is not None
@@ -242,13 +589,16 @@ def _chart_has_fact(chart: MusicSearchChartSummary | None) -> bool:
 def _context_rows(
     conn: sqlite3.Connection,
     context: MusicSearchFilterContext,
+    *,
+    metric_maps: tuple[dict[int, tuple[int, int]], ...] | None = None,
+    chart_lookup: dict[str, dict[Any, MusicSearchChartSummary]] | None = None,
 ) -> list[tuple[Any, ...]]:
     state = get_music_search_index_state(conn)
     generation_id = state.get("active_generation_id")
     if not generation_id:
         raise RuntimeError("music-search index generation is unavailable")
-    track_metrics, album_metrics, artist_metrics = _metric_maps(conn, context)
-    chart_lookup = _build_chart_lookup(
+    track_metrics, album_metrics, artist_metrics = metric_maps or _metric_maps(conn, context)
+    chart_lookup = chart_lookup or _build_chart_lookup(
         min_ms=context.min_ms,
         music_only=context.music_only,
         bb_top_n=context.bb_top_n,
@@ -564,6 +914,291 @@ def build_music_search_snapshot_set(
         "failed_count": failed_count,
         "duration_ms": round((time.perf_counter() - started) * 1000, 3),
         "variants": reports,
+    }
+
+
+def _validate_shared_full_contexts(
+    contexts: tuple[MusicSearchFilterContext, ...],
+) -> str:
+    expected_variants = {
+        (variant.merge_level, variant.dynamic_threshold)
+        for variant in MUSIC_SEARCH_SNAPSHOT_VARIANTS
+    }
+    actual_variants = {(context.merge_level, context.dynamic_threshold) for context in contexts}
+    if len(contexts) != len(expected_variants) or actual_variants != expected_variants:
+        raise ValueError("shared-full snapshot requires the exact six supported variants")
+    semantic_base_keys = {context.semantic_base_key for context in contexts}
+    if len(semantic_base_keys) != 1:
+        raise ValueError("shared-full snapshot variants must share one semantic base")
+    fingerprints = {context.filter_fingerprint for context in contexts}
+    if len(fingerprints) != len(expected_variants):
+        raise ValueError("shared-full snapshot variants must have unique fingerprints")
+    return next(iter(semantic_base_keys))
+
+
+def _active_playback_generation(conn: sqlite3.Connection) -> str | None:
+    table_exists = conn.execute(
+        """SELECT 1 FROM sqlite_master
+           WHERE type='table' AND name='playback_import_state'"""
+    ).fetchone()
+    if table_exists is None:
+        return None
+    row = conn.execute(
+        "SELECT active_generation_id FROM playback_import_state WHERE state_id=1"
+    ).fetchone()
+    return str(row[0]) if row is not None and row[0] else None
+
+
+def _assert_shared_full_publish_fence(
+    conn: sqlite3.Connection,
+    contexts: tuple[MusicSearchFilterContext, ...],
+    *,
+    source_generation_id: str,
+    candidate_generation_id: str,
+    semantic_base_key: str,
+) -> None:
+    if _active_playback_generation(conn) != source_generation_id:
+        raise RuntimeError("playback generation changed during shared-full snapshot build")
+    index_state = get_music_search_index_state(conn)
+    if str(
+        index_state.get("active_generation_id") or ""
+    ) != candidate_generation_id or index_state.get("status") not in {"ready", "degraded"}:
+        raise RuntimeError("candidate index generation changed during shared-full snapshot build")
+    for context in contexts:
+        current = build_music_search_filter_context(conn, context.filter_values())
+        if (
+            current.semantic_base_key != semantic_base_key
+            or current.filter_fingerprint != context.filter_fingerprint
+            or current.source_revision != context.source_revision
+        ):
+            raise RuntimeError(
+                "music-search semantic base changed during shared-full snapshot build"
+            )
+
+
+def _publish_shared_full_snapshot_set(
+    conn: sqlite3.Connection,
+    contexts: tuple[MusicSearchFilterContext, ...],
+    rows_by_fingerprint: dict[str, list[tuple[Any, ...]]],
+    *,
+    source_generation_id: str,
+    candidate_generation_id: str,
+    semantic_base_key: str,
+) -> None:
+    """Fence and activate the exact six variants in one write transaction."""
+    conn.execute("BEGIN IMMEDIATE")
+    try:
+        _assert_shared_full_publish_fence(
+            conn,
+            contexts,
+            source_generation_id=source_generation_id,
+            candidate_generation_id=candidate_generation_id,
+            semantic_base_key=semantic_base_key,
+        )
+        conn.execute(
+            """UPDATE music_search_snapshot_meta SET status='running', last_error=NULL
+               WHERE snapshot_key IN ({})""".format(",".join("?" for _ in contexts)),
+            tuple(context.filter_fingerprint for context in contexts),
+        )
+        for context in contexts:
+            snapshot_key = context.filter_fingerprint
+            conn.execute(
+                "DELETE FROM music_search_entity_context WHERE snapshot_key=?",
+                (snapshot_key,),
+            )
+            conn.executemany(
+                """INSERT INTO music_search_entity_context(
+                       snapshot_key, entity_key, play_events, total_ms,
+                       peak_position, peak_weeks, weeks_on_chart, weeks_at_no1,
+                       power_score, power_rank, first_week, latest_week, first_peak_week
+                   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                [(snapshot_key, *row) for row in rows_by_fingerprint[snapshot_key]],
+            )
+        conn.execute(
+            """UPDATE music_search_snapshot_meta
+               SET status='ready', activated_at=datetime('now'), last_error=NULL
+               WHERE snapshot_key IN ({})""".format(",".join("?" for _ in contexts)),
+            tuple(context.filter_fingerprint for context in contexts),
+        )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+
+
+def build_shared_full_music_search_snapshot_set(
+    conn: sqlite3.Connection,
+    contexts: tuple[MusicSearchFilterContext, ...],
+    *,
+    source_generation_id: str,
+) -> dict[str, Any] | None:
+    """Fully rebuild six variants from two shared logical-frame sets.
+
+    No prior snapshot rows are cloned. This path is safe without structured
+    source metadata on legacy snapshot rows, while eliminating the repeated
+    lifetime loads formerly performed once per variant.
+    """
+    if not contexts or not source_generation_id:
+        return None
+    semantic_base_key = _validate_shared_full_contexts(contexts)
+    if _active_playback_generation(conn) != source_generation_id:
+        return None
+    index_state = get_music_search_index_state(conn)
+    if index_state.get("status") not in {"ready", "degraded"}:
+        return None
+    candidate_generation_id = str(index_state.get("active_generation_id") or "")
+    if not candidate_generation_id:
+        return None
+    started = time.perf_counter()
+    rows_by_fingerprint: dict[str, list[tuple[Any, ...]]] = {}
+    duration_by_fingerprint: dict[str, float] = {}
+    reports: list[dict[str, Any]] = []
+    try:
+        prepare_music_search_snapshot_set(conn, contexts)
+        for dynamic_threshold in dict.fromkeys(context.dynamic_threshold for context in contexts):
+            threshold_contexts = tuple(
+                context for context in contexts if context.dynamic_threshold == dynamic_threshold
+            )
+            metric_maps: dict[tuple[int, bool], tuple[dict[int, tuple[int, int]], ...]] = {}
+            chart_lookups: dict[
+                tuple[int, bool], dict[str, dict[Any, MusicSearchChartSummary]]
+            ] = {}
+            artist_frames = _load_shared_logical_frames(
+                conn,
+                threshold_contexts,
+                ("artist",),
+            )
+            try:
+                artist_metrics = _shared_metric_maps(
+                    conn,
+                    threshold_contexts,
+                    shared_frames=artist_frames,
+                )
+                artist_charts = _shared_chart_lookups(
+                    conn,
+                    threshold_contexts,
+                    artist_frames,
+                )
+                for variant, (
+                    _track_metrics,
+                    _album_metrics,
+                    artist_metric_map,
+                ) in artist_metrics.items():
+                    metric_maps[variant] = ({}, {}, artist_metric_map)
+                for variant, lookup in artist_charts.items():
+                    chart_lookups[variant] = {
+                        "track": {},
+                        "album": {},
+                        "artist": lookup["artist"],
+                    }
+            finally:
+                artist_frames.clear()
+                invalidate_except("billboard", {"latest_snapshot"})
+                invalidate("db")
+                gc.collect()
+
+            primary_frames = _load_shared_logical_frames(
+                conn,
+                threshold_contexts,
+                ("track", "album"),
+            )
+            try:
+                primary_metrics = _shared_metric_maps(
+                    conn,
+                    threshold_contexts,
+                    shared_frames=primary_frames,
+                )
+                primary_charts = _shared_chart_lookups(
+                    conn,
+                    threshold_contexts,
+                    primary_frames,
+                )
+                for context in threshold_contexts:
+                    variant_started = time.perf_counter()
+                    variant = (context.merge_level, context.dynamic_threshold)
+                    _, _, artist_metric_map = metric_maps[variant]
+                    track_metrics, album_metrics, _ = primary_metrics[variant]
+                    metric_maps[variant] = (
+                        track_metrics,
+                        album_metrics,
+                        artist_metric_map,
+                    )
+                    chart_lookups[variant]["track"] = primary_charts[variant]["track"]
+                    chart_lookups[variant]["album"] = primary_charts[variant]["album"]
+                    rows = _context_rows(
+                        conn,
+                        context,
+                        metric_maps=metric_maps[variant],
+                        chart_lookup=chart_lookups[variant],
+                    )
+                    _validate_context_rows(rows)
+                    rows_by_fingerprint[context.filter_fingerprint] = rows
+                    duration_by_fingerprint[context.filter_fingerprint] = round(
+                        (time.perf_counter() - variant_started) * 1000,
+                        3,
+                    )
+            finally:
+                primary_frames.clear()
+                metric_maps.clear()
+                chart_lookups.clear()
+                invalidate_except("billboard", {"latest_snapshot"})
+                invalidate("db")
+                gc.collect()
+        _publish_shared_full_snapshot_set(
+            conn,
+            contexts,
+            rows_by_fingerprint,
+            source_generation_id=source_generation_id,
+            candidate_generation_id=candidate_generation_id,
+            semantic_base_key=semantic_base_key,
+        )
+        for context in contexts:
+            rows = rows_by_fingerprint[context.filter_fingerprint]
+            reports.append(
+                {
+                    "status": "ready",
+                    "snapshot_key": context.filter_fingerprint,
+                    "filter_fingerprint": context.filter_fingerprint,
+                    "entity_count": len(rows),
+                    "source_revision": context.source_revision,
+                    "strategy": "shared_full_snapshot_rebuild",
+                    "semantic_base_key": context.semantic_base_key,
+                    "merge_level": context.merge_level,
+                    "dynamic_threshold": context.dynamic_threshold,
+                    "builder_version": MUSIC_SEARCH_SNAPSHOT_BUILDER_VERSION,
+                    "duration_ms": duration_by_fingerprint[context.filter_fingerprint],
+                    "revalidated": False,
+                    "reuse_reason": "shared_full_logical_frames",
+                }
+            )
+    except Exception:
+        conn.execute(
+            """UPDATE music_search_snapshot_meta
+               SET status='failed', last_error='shared_full_snapshot_failed'
+               WHERE snapshot_key IN ({}) AND status IN ('pending', 'running')""".format(
+                ",".join("?" for _ in contexts)
+            ),
+            tuple(context.filter_fingerprint for context in contexts),
+        )
+        conn.commit()
+        raise
+    finally:
+        rows_by_fingerprint.clear()
+        duration_by_fingerprint.clear()
+        invalidate_except("billboard", {"latest_snapshot"})
+        invalidate("db")
+        gc.collect()
+    _prune_old_music_search_snapshot_bases(conn, contexts[0].semantic_base_key)
+    return {
+        "status": "ready",
+        "semantic_base_key": contexts[0].semantic_base_key,
+        "ready_count": len(reports),
+        "failed_count": 0,
+        "duration_ms": round((time.perf_counter() - started) * 1000, 3),
+        "variants": reports,
+        "strategy": "shared_full_snapshot_rebuild",
+        "shared_logical_frame_sets": len({context.dynamic_threshold for context in contexts}),
+        "chart_strategy": "full_family_recompute",
     }
 
 

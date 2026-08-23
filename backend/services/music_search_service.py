@@ -470,6 +470,7 @@ def _load_filtered_search_frames(
             None,
             dynamic_threshold=dynamic_threshold,
             max_merge_gap_minutes=max_merge_gap_minutes,
+            attach_duration_slices=False,
         )
     if "artist" in selected_kinds:
         _, artist_plays_df, _ = load_period_plays(
@@ -483,6 +484,7 @@ def _load_filtered_search_frames(
             dynamic_threshold=dynamic_threshold,
             max_merge_gap_minutes=max_merge_gap_minutes,
             _loader=load_plays_for_artists,
+            attach_duration_slices=False,
         )
     return plays_df, artist_plays_df
 

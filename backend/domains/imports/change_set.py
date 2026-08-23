@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import sqlite3
 from dataclasses import asdict, dataclass
 from datetime import date, datetime, timedelta
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 import pandas as pd
 
@@ -27,6 +28,8 @@ from backend.domains.settings.repository import SettingsRepository
 
 ImportWriteStrategy = Literal["incremental", "full"]
 
+logger = logging.getLogger(__name__)
+
 
 @dataclass(frozen=True)
 class PlaybackChangeSet:
@@ -34,6 +37,7 @@ class PlaybackChangeSet:
 
     generation_id: str
     strategy: ImportWriteStrategy
+    previous_dataset_digest: str | None
     added_count: int
     removed_count: int
     earliest_changed_ts: str | None
@@ -72,7 +76,7 @@ class PlaybackChangeSet:
             "billboard_weeks",
         ):
             payload[key] = sorted(payload[key])
-        payload["schema_version"] = "playback_change_set_v1"
+        payload["schema_version"] = "playback_change_set_v2"
         payload["entity_count"] = self.entity_count
         return payload
 
@@ -159,11 +163,37 @@ def build_playback_change_set(
 
     week_start_dow = int(settings.get("bb_week_start_dow", 4))
     week_start_hour = int(settings.get("bb_week_start_hour", 0))
-    weeks = _billboard_weeks(
-        timestamps,
-        week_start_dow=week_start_dow,
-        week_start_hour=week_start_hour,
-    )
+    billboard_scope_exact = False
+    if strategy == "incremental":
+        try:
+            weeks = _logical_billboard_contribution_weeks(
+                conn,
+                generation_id=generation_id,
+                min_ms=int(settings.get("min_ms", 30_000)),
+                music_only=bool(settings.get("music_only", True)),
+                dynamic_threshold=True,
+                max_gap_minutes=int(settings.get("max_merge_gap_minutes", 5)),
+                week_start_dow=week_start_dow,
+                week_start_hour=week_start_hour,
+            )
+            billboard_scope_exact = True
+        except Exception:
+            logger.exception(
+                "Unable to prove exact Billboard contribution scope for generation %s; "
+                "downstream maintenance must use a full rebuild.",
+                generation_id,
+            )
+            weeks = _billboard_weeks(
+                timestamps,
+                week_start_dow=week_start_dow,
+                week_start_hour=week_start_hour,
+            )
+    else:
+        weeks = _billboard_weeks(
+            timestamps,
+            week_start_dow=week_start_dow,
+            week_start_hour=week_start_hour,
+        )
     previous_open = open_billboard_week_for_latest_timestamp(
         plan.existing_latest_ts,
         week_start_dow=week_start_dow,
@@ -184,6 +214,7 @@ def build_playback_change_set(
     return PlaybackChangeSet(
         generation_id=generation_id,
         strategy=strategy,
+        previous_dataset_digest=plan.previous_digest,
         added_count=plan.added_count if strategy == "incremental" else plan.incoming_count,
         removed_count=plan.removed_count,
         earliest_changed_ts=min(changed_timestamps) if changed_timestamps else None,
@@ -198,11 +229,258 @@ def build_playback_change_set(
         months=frozenset(months),
         years=frozenset(years),
         billboard_weeks=frozenset(weeks),
-        billboard_scope_exact=False,
+        billboard_scope_exact=billboard_scope_exact,
         previous_open_week=_date_string(previous_open),
         current_open_week=_date_string(current_open),
         semantic_revisions=_semantic_revisions(conn, settings),
     )
+
+
+def _logical_billboard_contribution_weeks(
+    conn: sqlite3.Connection,
+    *,
+    generation_id: str,
+    min_ms: int,
+    music_only: bool,
+    dynamic_threshold: bool,
+    max_gap_minutes: int,
+    week_start_dow: int,
+    week_start_hour: int,
+) -> set[str]:
+    """Compare a proven tail closure's old/new logical contributions."""
+    old_events, new_events = build_billboard_tail_contribution_frames(
+        conn,
+        generation_id=generation_id,
+        min_ms=min_ms,
+        music_only=music_only,
+        dynamic_threshold=dynamic_threshold,
+        max_gap_minutes=max_gap_minutes,
+    )
+    old = _logical_billboard_contribution_signature(
+        old_events,
+        week_start_dow=week_start_dow,
+        week_start_hour=week_start_hour,
+    )
+    new = _logical_billboard_contribution_signature(
+        new_events,
+        week_start_dow=week_start_dow,
+        week_start_hour=week_start_hour,
+    )
+    changed_keys = {key for key in old.keys() | new.keys() if old.get(key) != new.get(key)}
+    return {str(key[0]) for key in changed_keys}
+
+
+def build_billboard_tail_contribution_frames(
+    conn: sqlite3.Connection,
+    *,
+    generation_id: str,
+    min_ms: int,
+    music_only: bool,
+    dynamic_threshold: bool,
+    max_gap_minutes: int,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Return exact old/new logical frames for one proven tail append."""
+    new_rows = _generation_billboard_rows(
+        conn,
+        generation_id=generation_id,
+        music_only=music_only,
+    )
+    if not new_rows:
+        empty = pd.DataFrame()
+        return empty, empty.copy()
+    earliest = new_rows[0]
+    if conn.execute(
+        """SELECT 1
+           FROM plays p JOIN tracks t ON p.track_id=t.track_id
+           WHERE COALESCE(p.import_generation_id, '') != ?
+             AND (p.ts > ? OR (p.ts = ? AND p.play_id > ?))
+           LIMIT 1""",
+        (generation_id, earliest["ts"], earliest["ts"], earliest["play_id"]),
+    ).fetchone():
+        raise RuntimeError("new playback generation is not a provable tail append")
+
+    old_rows = _preceding_merge_chain(
+        conn,
+        earliest,
+        generation_id=generation_id,
+        max_gap_minutes=max_gap_minutes,
+    )
+    old_events = _logical_billboard_events(
+        old_rows,
+        min_ms=min_ms,
+        dynamic_threshold=dynamic_threshold,
+        max_gap_minutes=max_gap_minutes,
+    )
+    new_events = _logical_billboard_events(
+        [*old_rows, *new_rows],
+        min_ms=min_ms,
+        dynamic_threshold=dynamic_threshold,
+        max_gap_minutes=max_gap_minutes,
+    )
+    return old_events, new_events
+
+
+_BILLBOARD_CHAIN_PAGE_SIZE = 256
+
+
+def _generation_billboard_rows(
+    conn: sqlite3.Connection,
+    *,
+    generation_id: str,
+    music_only: bool,
+) -> list[dict[str, Any]]:
+    music_clause = "AND p.track_id IS NOT NULL" if music_only else ""
+    rows = conn.execute(
+        f"""SELECT p.play_id, p.ts, p.ts_date, p.ts_dow, p.ts_hour,
+                   p.ms_played, p.track_id, p.source_album_id,
+                   t.album_id, t.artist_id, stm.duration_ms
+            FROM plays p
+            JOIN tracks t ON p.track_id=t.track_id
+            LEFT JOIN spotify_track_meta stm
+              ON t.spotify_track_id=stm.spotify_track_id
+            WHERE p.import_generation_id=? {music_clause}
+            ORDER BY p.ts, p.play_id""",
+        (generation_id,),
+    ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def _preceding_merge_chain(
+    conn: sqlite3.Connection,
+    earliest_new: dict[str, Any],
+    *,
+    generation_id: str,
+    max_gap_minutes: int,
+) -> list[dict[str, Any]]:
+    """Walk backward until the first deterministic logical-run boundary."""
+    cursor = earliest_new
+    descending: list[dict[str, Any]] = []
+    while True:
+        rows = conn.execute(
+            """SELECT p.play_id, p.ts, p.ts_date, p.ts_dow, p.ts_hour,
+                      p.ms_played, p.track_id, p.source_album_id,
+                      t.album_id, t.artist_id, stm.duration_ms
+               FROM plays p
+               JOIN tracks t ON p.track_id=t.track_id
+               LEFT JOIN spotify_track_meta stm
+                 ON t.spotify_track_id=stm.spotify_track_id
+               WHERE COALESCE(p.import_generation_id, '') != ?
+                 AND (p.ts < ? OR (p.ts = ? AND p.play_id < ?))
+               ORDER BY p.ts DESC, p.play_id DESC
+               LIMIT ?""",
+            (
+                generation_id,
+                cursor["ts"],
+                cursor["ts"],
+                cursor["play_id"],
+                _BILLBOARD_CHAIN_PAGE_SIZE,
+            ),
+        ).fetchall()
+        if not rows:
+            break
+        page_exhausted = True
+        for raw_prior in rows:
+            prior = dict(raw_prior)
+            if not _rows_share_merge_run(
+                prior,
+                cursor,
+                max_gap_minutes=max_gap_minutes,
+            ):
+                page_exhausted = False
+                break
+            descending.append(prior)
+            cursor = prior
+        if not page_exhausted or len(rows) < _BILLBOARD_CHAIN_PAGE_SIZE:
+            break
+    descending.reverse()
+    return descending
+
+
+def _rows_share_merge_run(
+    prior: dict[str, Any],
+    following: dict[str, Any],
+    *,
+    max_gap_minutes: int,
+) -> bool:
+    if prior["track_id"] != following["track_id"]:
+        return False
+    if prior["source_album_id"] != following["source_album_id"]:
+        return False
+    prior_end = _timestamp(prior["ts"])
+    following_end = _timestamp(following["ts"])
+    if prior_end is None or following_end is None:
+        return False
+    following_start = following_end - pd.to_timedelta(
+        max(int(following["ms_played"] or 0), 0), unit="ms"
+    )
+    gap_seconds = (following_start - prior_end).total_seconds()
+    return gap_seconds <= max_gap_minutes * 60 and gap_seconds >= -OVERLAP_TOLERANCE_SECONDS
+
+
+def _logical_billboard_events(
+    rows: list[dict[str, Any]],
+    *,
+    min_ms: int,
+    dynamic_threshold: bool,
+    max_gap_minutes: int,
+) -> pd.DataFrame:
+    from backend.domains.playback.counting import filter_effective_plays
+    from backend.domains.playback.logical_timeline import reconstruct_logical_plays
+
+    frame = pd.DataFrame.from_records(rows)
+    if frame.empty:
+        return frame
+    frame["_source_album_id"] = frame["source_album_id"].fillna(0).astype(int)
+    events = reconstruct_logical_plays(
+        frame,
+        min_ms,
+        dynamic_threshold=dynamic_threshold,
+        max_gap_minutes=max_gap_minutes,
+        boundary_column="source_album_id",
+    )
+    if min_ms > 0:
+        events = filter_effective_plays(
+            events,
+            min_ms=min_ms,
+            dynamic_threshold=dynamic_threshold,
+        )
+    return events
+
+
+def _logical_billboard_contribution_signature(
+    events: pd.DataFrame,
+    *,
+    week_start_dow: int,
+    week_start_hour: int,
+) -> dict[tuple[str, str, int, int], tuple[int, int]]:
+    from backend.domains.playback.logical_timeline import build_billboard_weighted_frame
+
+    if events.empty:
+        return {}
+    weighted = build_billboard_weighted_frame(
+        events,
+        week_start_dow=week_start_dow,
+        week_start_hour=week_start_hour,
+    )
+    weighted["_source_album_id"] = weighted["_source_album_id"].fillna(0).astype(int)
+    grouped = (
+        weighted.groupby(
+            ["billboard_week", "ts_date", "track_id", "_source_album_id"],
+            dropna=False,
+        )
+        .agg(play_count=("play_count", "sum"), total_ms=("total_ms", "sum"))
+        .reset_index()
+        .rename(columns={"_source_album_id": "source_album_id"})
+    )
+    return {
+        (
+            str(row.billboard_week),
+            str(row.ts_date),
+            int(cast(Any, row.track_id)),
+            int(cast(Any, row.source_album_id)),
+        ): (int(cast(Any, row.play_count)), int(cast(Any, row.total_ms)))
+        for row in grouped.itertuples(index=False)
+    }
 
 
 def publish_year_partition_state(
@@ -360,7 +638,7 @@ def _row_interval_years(row: sqlite3.Row) -> set[int]:
 
 
 def _timestamp(value: object) -> pd.Timestamp | None:
-    parsed = pd.to_datetime(value, utc=True, errors="coerce")
+    parsed = pd.to_datetime(cast(Any, value), utc=True, errors="coerce")
     return None if pd.isna(parsed) else pd.Timestamp(parsed)
 
 

@@ -1,6 +1,6 @@
 # Spotify 串流数据增量导入开发规划
 
-> 状态：实施中；Phase A–C 已实现，Phase D–E 待实施
+> 状态：实施中；Phase A–C、Phase D1 已实现，Phase D2–E 待实施
 >
 > 创建日期：2026-08-23
 >
@@ -226,7 +226,7 @@ staging 在活动数据发布前可丢弃，不写入 Git，不作为长期数�
 | Spotify metadata | 只请求新增/缺失实体 | 接收 `changed_entity_ids`，失败按现有队列重试 | Provider/builder 语义变化不要求全量，只重新评估缺口 |
 | 封面 | 继续缺失扫描和幂等排队 | 只扫描新增、URL 变化和失败待重试实体 | 不因播放导入全量清空 |
 | Album Project | 首轮继续全量重建 | 按受影响艺人和发行项目重建 | membership/identity/人工治理 revision 变化 |
-| Billboard 聚合 | 首轮仍允许全量 3.3 秒构建 | 影子表复制未变周，只替换受影响周 | 设置、播放策略、署名、身份、Album Project revision 变化；受影响周比例过高 |
+| Billboard 聚合 | 已实现精确尾部变化的周分区 | 影子表复制活动聚合并应用受影响周贡献差值 | 设置、播放策略、署名、身份、时长或有效 credit membership 变化；受影响周比例过高 |
 | 周排名 | 从受影响周重新排名 | 只重排对应周的全部入榜候选 | Top N/排序语义变化 |
 | Power/纪录/年榜 | 从紧凑周数据重算 | 只失效受影响年份；跨年总纪录从周聚合重算 | Year-End/Power builder 变化 |
 | 搜索候选 | 继续整体重建，当前成本低 | 观察到成本后再考虑 generation clone/upsert | normalization、alias、Album Project 文档规则变化 |
@@ -254,16 +254,18 @@ staging 在活动数据发布前可丢弃，不写入 Git，不作为长期数�
 4. 对 track、album、track source、artist 四张表做主键唯一性和非负校验。
 5. 在一个 `BEGIN IMMEDIATE` 中替换四张活动表并更新 `agg_config`。
 
-`agg_config` 增加逻辑键：
+`agg_config` 已增加并校验以下逻辑依赖：
 
 - `data_generation_id`
 - `playback_policy_version`
 - `identity_revision`
 - `track_credit_revision`
-- `album_project_revision`
+- `source_dataset_digest`
+- `duration_digest`
+- `effective_credit_membership_digest`
 - `build_strategy=full|partition`
 
-若任一依赖与活动聚合不一致，不得复制旧周。
+Album Project membership 在这四张基础周聚合之后应用，不作为四表复用门禁。若任一实际依赖与活动聚合不一致，不得复制旧周。
 
 周分区验收不仅比较 Top N，还要比较四张聚合表的全部行、完整周集合、同分稳定排序、Power Score、纪录和 Year-End 输入。
 
@@ -420,16 +422,24 @@ Settings 导入前检查展示自然语言摘要，例如：
 
 验收：首页和完整周榜优先恢复；旧年度 artifact 保持命中；无关缓存不抖动。
 
-实现说明：事实发布事务会从实际写入代际生成并持久化 `PlaybackChangeSet`，记录本地实体、Spotify 实体、日期、年份、开放周和语义 revision；维护完成前运行状态为 `maintenance_pending`，中断后仍保留恢复依据。增量维护只刷新相关元数据和封面，同时带有界历史失败扫尾；封面任务支持重启恢复、全流程失败记录、来源 URL 哈希和过期任务 CAS。年度总结使用逐年直接/前缀 digest 与报告年前缀可达的元数据、流派、曲目组和 Album Project 依赖摘要，普通最新年追加不会使旧年度播放分区抖动。播放事实提交和聚合发布都会精确失效播放相关缓存，聚合构建绑定活动代际并在发布事务再次核对，避免旧计算冒充新代际。Album Project 与 Billboard 仍全量重建，榜单周影响范围暂标记为非精确；这些成本和六套搜索快照属于 Phase D。92,908 条真实数据库副本加 1 条尾部记录的范围与耗时证据见 [`../reports/2026-08-23-incremental-import-phase-c.md`](../reports/2026-08-23-incremental-import-phase-c.md)。
+实现说明：事实发布事务会从实际写入代际生成并持久化 `PlaybackChangeSet`，记录本地实体、Spotify 实体、日期、年份、开放周和语义 revision；维护完成前运行状态为 `maintenance_pending`，中断后仍保留恢复依据。增量维护只刷新相关元数据和封面，同时带有界历史失败扫尾；封面任务支持重启恢复、全流程失败记录、来源 URL 哈希和过期任务 CAS。年度总结使用逐年直接/前缀 digest 与报告年前缀可达的元数据、流派、曲目组和 Album Project 依赖摘要，普通最新年追加不会使旧年度播放分区抖动。播放事实提交和聚合发布都会精确失效播放相关缓存，聚合构建绑定活动代际并在发布事务再次核对，避免旧计算冒充新代际。Album Project 仍全量重建；Billboard 的精确尾部周分区已在 Phase D1 实现，搜索六套 snapshot 仍需 Phase D2 的实体级 delta。92,908 条真实数据库副本加 1 条尾部记录的范围与耗时证据见 [`../reports/2026-08-23-incremental-import-phase-c.md`](../reports/2026-08-23-incremental-import-phase-c.md) 与 [`../reports/2026-08-23-incremental-import-phase-d1.md`](../reports/2026-08-23-incremental-import-phase-d1.md)。
 
-### Phase D：Billboard 周分区与搜索快照增量（3–5 人日）
+### Phase D1：Billboard 周分区与搜索共享全量（已实现，2026-08-23）
 
 - `build_aggregations_for_weeks()` 与聚合代际依赖。
 - 受影响周分区替换、排名和 Year-End 范围失效。
-- 六套 snapshot 复制/更新/全局 power rank 重排。
 - 两套逻辑播放帧在三个 merge level 间复用。
 
-验收：所有必测场景的增量—全量聚合和搜索上下文完全一致；增量导入不再重复六次扫描完整播放历史。
+验收：尾部变化的四张 Billboard 聚合与全量重建逐表一致；六套 shared-full 与 ordinary build 逐列一致，并且不再为每个变体独立扫描完整历史。真实副本证据见 [`../reports/2026-08-23-incremental-import-phase-d1.md`](../reports/2026-08-23-incremental-import-phase-d1.md)。
+
+### Phase D2：搜索快照实体级增量（待实施）
+
+- 从兼容的上一 ready snapshot 复制六套 context。
+- 只更新 ChangeSet 关联的歌曲、Album Project、有效署名艺人和受影响周排名实体。
+- 从紧凑上下文重排全局 Power rank，不重新加载完整 lifetime 播放历史。
+- 依赖不兼容、缺少 ready snapshot 或等价性校验失败时回退 D1 shared-full。
+
+验收：所有必测尾部追加场景的增量—全量六套搜索上下文完全一致；增量路径不扫描完整 lifetime 播放事实，并明显低于 D1 的时间和内存成本。
 
 ### Phase E：历史修正与局部连续链（可选，4–6 人日）
 

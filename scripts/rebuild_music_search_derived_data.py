@@ -406,12 +406,17 @@ def main(argv: list[str] | None = None) -> int:
         migration = _migration_report(conn)
         prior_inventory = _snapshot_inventory(conn)
         stage = "derived_rebuild"
-        rebuild_options: dict[str, bool] = {
-            "rebuild_documents": args.rebuild_documents,
-        }
         if args.statistics_reuse_only:
-            rebuild_options["statistics_reuse_only"] = True
-        raw_report = rebuild_current_music_search_derived_data(conn, **rebuild_options)
+            raw_report = rebuild_current_music_search_derived_data(
+                conn,
+                rebuild_documents=args.rebuild_documents,
+                statistics_reuse_only=True,
+            )
+        else:
+            raw_report = rebuild_current_music_search_derived_data(
+                conn,
+                rebuild_documents=args.rebuild_documents,
+            )
         semantic_base_key = str(
             (raw_report.get("snapshot_set") or {}).get("semantic_base_key") or ""
         )

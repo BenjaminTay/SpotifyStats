@@ -1,11 +1,51 @@
 """Weekly ranking computation and running metrics."""
 
+import unicodedata
+
 import pandas as pd
 
 from backend.domains.billboard.album_display import choose_representative_album
 from backend.domains.billboard.data_loader import _load_album_metadata
 from backend.domains.billboard.version_merge import _apply_album_release_groups
 from backend.domains.playback.logical_timeline import get_billboard_weighted_frame
+
+BILLBOARD_RANKING_VERSION = "billboard_ranking_v2"
+
+
+def _normalised_text_key(value: object) -> str:
+    if pd.isna(value):
+        return ""
+    return unicodedata.normalize("NFKC", str(value)).casefold()
+
+
+def _stable_weekly_sort(
+    frame: pd.DataFrame,
+    *,
+    id_columns: tuple[str, ...],
+    text_columns: tuple[str, ...],
+) -> pd.DataFrame:
+    """Sort weekly candidates with an explicit, input-order-independent tie key."""
+    result = frame.copy()
+    sort_columns = ["billboard_week", "play_count", "total_ms"]
+    ascending = [True, False, False]
+    stable_columns = [column for column in id_columns if column in result.columns]
+    sort_columns.extend(stable_columns)
+    ascending.extend([True] * len(stable_columns))
+    # Text keys remain a deterministic fallback for rows whose stable ID is
+    # absent, and a harmless final discriminator when an ID is present.
+    temporary_columns: list[str] = []
+    for index, column in enumerate(text_columns):
+        if column not in result.columns:
+            continue
+        normalised_key = f"_stable_text_key_{index}"
+        original_key = f"_stable_text_original_{index}"
+        result[normalised_key] = result[column].map(_normalised_text_key)
+        result[original_key] = result[column].fillna("").astype(str)
+        temporary_columns.extend((normalised_key, original_key))
+    sort_columns.extend(temporary_columns)
+    ascending.extend([True] * len(temporary_columns))
+    result = result.sort_values(sort_columns, ascending=ascending, kind="stable")
+    return result.drop(columns=[column for column in result if column.startswith("_stable_text_")])
 
 
 def compute_weekly_rankings(_df, top_n, pre_agg=None, merge_level: int = 2):
@@ -54,9 +94,10 @@ def compute_weekly_rankings(_df, top_n, pre_agg=None, merge_level: int = 2):
 
     weekly = weekly[weekly["play_count"] > 0]
     # Tiebreaker: sort by play_count DESC, then total_ms DESC
-    weekly = weekly.sort_values(
-        ["billboard_week", "play_count", "total_ms"],
-        ascending=[True, False, False],
+    weekly = _stable_weekly_sort(
+        weekly,
+        id_columns=("track_id",),
+        text_columns=("artist_name", "track_name"),
     )
     weekly["rank"] = weekly.groupby("billboard_week").cumcount() + 1
     weekly = weekly[weekly["rank"] <= top_n]
@@ -182,9 +223,10 @@ def compute_album_weekly_rankings(
             "unique_canonical_songs": "tracks_count",
         }
     )
-    weekly_album = weekly_album.sort_values(
-        ["billboard_week", "play_count", "total_ms"],
-        ascending=[True, False, False],
+    weekly_album = _stable_weekly_sort(
+        weekly_album,
+        id_columns=("album_project_id", "album_id"),
+        text_columns=("artist_name", "album_name"),
     )
     weekly_album["rank"] = weekly_album.groupby("billboard_week").cumcount() + 1
     return weekly_album[weekly_album["rank"] <= top_n]
@@ -200,9 +242,10 @@ def _legacy_album_weekly_rankings_from_album_preagg(
     weekly_album = pre_agg.copy()
     weekly_album["tracks_count"] = 0
     weekly_album = _apply_album_release_groups(weekly_album, merge_level=merge_level)
-    weekly_album = weekly_album.sort_values(
-        ["billboard_week", "play_count", "total_ms"],
-        ascending=[True, False, False],
+    weekly_album = _stable_weekly_sort(
+        weekly_album,
+        id_columns=("album_project_id", "album_id"),
+        text_columns=("artist_name", "album_name"),
     )
     album_meta = _load_album_metadata()
     weekly_album = weekly_album.merge(
@@ -285,9 +328,10 @@ def compute_artist_weekly_rankings(_df, top_n, pre_agg=None):
             )
 
     weekly_artist = weekly_artist[weekly_artist["play_count"] > 0]
-    weekly_artist = weekly_artist.sort_values(
-        ["billboard_week", "play_count", "total_ms"],
-        ascending=[True, False, False],
+    weekly_artist = _stable_weekly_sort(
+        weekly_artist,
+        id_columns=("artist_id",),
+        text_columns=("artist_name",),
     )
     weekly_artist["rank"] = weekly_artist.groupby("billboard_week").cumcount() + 1
     weekly_artist = weekly_artist[weekly_artist["rank"] <= top_n]

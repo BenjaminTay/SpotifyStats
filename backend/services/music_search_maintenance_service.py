@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
+import logging
 import sqlite3
+from collections.abc import Mapping
 from typing import Any
 
 from backend.core.db import get_db
@@ -30,14 +34,17 @@ from backend.domains.music_search.revisions import (
 )
 from backend.domains.music_search.snapshot import (
     build_music_search_snapshot_set,
+    build_shared_full_music_search_snapshot_set,
     get_ready_music_search_snapshot_key,
     mark_music_search_derived_data_dirty,
     prepare_music_search_snapshot_set,
 )
 from backend.domains.music_search.variants import build_music_search_variant_contexts
+from backend.domains.playback.logical_timeline import PLAYBACK_EVENT_POLICY_VERSION
 from backend.domains.settings.repository import SettingsRepository
 
 MUSIC_SEARCH_SNAPSHOT_JOB_TYPE = "music_search_snapshot_rebuild"
+logger = logging.getLogger(__name__)
 
 
 class MusicSearchStatisticsReuseRequiredError(RuntimeError):
@@ -125,6 +132,48 @@ def _revalidated_snapshot_set_report(
         "duration_ms": 0.0,
         "variants": variants,
         "revalidated": True,
+    }
+
+
+def build_shared_full_music_search_plan(
+    conn: sqlite3.Connection,
+    *,
+    change_set: Any,
+) -> dict[str, Any] | None:
+    """Validate append semantics and serialize a bounded shared-rebuild plan."""
+    if getattr(change_set, "strategy", None) != "incremental":
+        return None
+    semantic = dict(getattr(change_set, "semantic_revisions", {}) or {})
+    filters = _current_filter_values(conn)
+    setting_keys = (
+        "min_ms",
+        "music_only",
+        "merge_enabled",
+        "max_merge_gap_minutes",
+        "bb_week_start_dow",
+        "bb_week_start_hour",
+        "include_compilations",
+    )
+    encoded = json.dumps(
+        {key: filters.get(key) for key in setting_keys},
+        ensure_ascii=True,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    settings_digest = hashlib.sha256(encoded.encode()).hexdigest()[:20]
+    contexts = build_music_search_variant_contexts(conn, filters)
+    current = contexts[0]
+    if (
+        semantic.get("playback_policy") != PLAYBACK_EVENT_POLICY_VERSION
+        or semantic.get("settings") != settings_digest
+        or int(semantic.get("artist_identity", -1)) != current.artist_identity_revision
+        or int(semantic.get("track_credit", -1)) != current.track_credit_revision
+    ):
+        return None
+    return {
+        "schema_version": "music_search_shared_full_snapshot_v1",
+        "source_generation_id": str(change_set.generation_id),
+        "semantic_revisions": semantic,
     }
 
 
@@ -317,6 +366,7 @@ def schedule_current_music_search_derived_data_rebuild(
     *,
     rebuild_documents: bool = False,
     prewarm_yearly_review: bool = False,
+    shared_full_snapshot_plan: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Publish candidates now and defer the six expensive exact snapshots."""
     if not _search_metadata_dependencies_ready(conn):
@@ -343,6 +393,8 @@ def schedule_current_music_search_derived_data_rebuild(
     enqueue_options: dict[str, Any] = {"conn": conn}
     if prewarm_yearly_review:
         enqueue_options["prewarm_yearly_review"] = True
+    if shared_full_snapshot_plan is not None:
+        enqueue_options["shared_full_snapshot_plan"] = dict(shared_full_snapshot_plan)
     job_id = enqueue_music_search_snapshot_rebuild(**enqueue_options)
     default_context = contexts[0]
     return {
@@ -372,6 +424,7 @@ def rebuild_current_music_search_derived_data(
     *,
     rebuild_documents: bool = False,
     statistics_reuse_only: bool = False,
+    shared_full_snapshot_plan: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     if not _search_metadata_dependencies_ready(conn):
         raise RuntimeError("music-search metadata aggregate dependency is not ready")
@@ -391,8 +444,38 @@ def rebuild_current_music_search_derived_data(
     # Index generation changes do not invalidate statistics.  Only the exact
     # statistics fingerprint controls whether the six variants are reused.
     snapshot_set_report = snapshot_set_report or _revalidated_snapshot_set_report(conn, contexts)
+    shared_frame_fallback_reason: str | None = None
     if snapshot_set_report is None:
-        snapshot_set_report = build_music_search_snapshot_set(conn, contexts)
+        if (
+            shared_full_snapshot_plan is not None
+            and shared_full_snapshot_plan.get("schema_version")
+            == "music_search_shared_full_snapshot_v1"
+        ):
+            try:
+                snapshot_set_report = build_shared_full_music_search_snapshot_set(
+                    conn,
+                    contexts,
+                    source_generation_id=str(
+                        shared_full_snapshot_plan.get("source_generation_id") or ""
+                    ),
+                )
+                if snapshot_set_report is None:
+                    shared_frame_fallback_reason = "incompatible_shared_full_plan"
+            except Exception as exc:
+                shared_frame_fallback_reason = type(exc).__name__
+                logger.exception(
+                    "Shared-frame music-search snapshot publish failed; falling back to full"
+                )
+        if shared_frame_fallback_reason is not None:
+            # The shared build may have been fenced out by a concurrent import,
+            # settings revision, or candidate generation.  Never feed its stale
+            # context tuple into the compatibility full builder.
+            contexts = build_music_search_variant_contexts(conn, _current_filter_values(conn))
+            snapshot_set_report = _revalidated_snapshot_set_report(conn, contexts)
+        snapshot_set_report = snapshot_set_report or build_music_search_snapshot_set(conn, contexts)
+        if shared_frame_fallback_reason is not None:
+            snapshot_set_report["strategy"] = "full_fallback"
+            snapshot_set_report["fallback_reason"] = shared_frame_fallback_reason
     default_snapshot = snapshot_set_report["variants"][0]
     return {
         "status": snapshot_set_report["status"],
@@ -410,6 +493,11 @@ def handle_music_search_snapshot_rebuild(job: Job) -> None:
         report = rebuild_current_music_search_derived_data(
             conn,
             rebuild_documents=bool(job.payload.get("rebuild_documents", False)),
+            shared_full_snapshot_plan=(
+                job.payload.get("shared_full_snapshot_plan")
+                if isinstance(job.payload.get("shared_full_snapshot_plan"), dict)
+                else None
+            ),
         )
         # A setting/import mutation may land while a long six-variant build is
         # running.  Its exact base key differs, so enqueue one follow-up set;
@@ -493,6 +581,7 @@ def enqueue_music_search_snapshot_rebuild(
     entity_id: str | None = None,
     conn: sqlite3.Connection | None = None,
     prewarm_yearly_review: bool = False,
+    shared_full_snapshot_plan: Mapping[str, Any] | None = None,
 ) -> str | None:
     queue = get_job_queue()
     if conn is not None and not queue_targets_connection(queue, conn):
@@ -529,5 +618,8 @@ def enqueue_music_search_snapshot_rebuild(
         exact_key,
         rebuild_documents=rebuild_documents,
         prewarm_yearly_review=prewarm_yearly_review,
+        shared_full_snapshot_plan=(
+            dict(shared_full_snapshot_plan) if shared_full_snapshot_plan is not None else None
+        ),
     )
     return queue.enqueue_if_not_pending(job)

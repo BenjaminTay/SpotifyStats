@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 import sqlite3
 from functools import lru_cache
@@ -12,6 +13,8 @@ from typing import Any
 
 from backend.core.cache import singleflight
 from backend.domains.playback.logical_timeline import reconstruct_logical_plays
+
+logger = logging.getLogger(__name__)
 
 # Column downcast map: common int64 columns → int32 (safe within typical data sizes)
 _INT32_COLUMNS = frozenset(
@@ -964,6 +967,8 @@ _AGG_SHADOW_TABLES = {
     "agg_weekly_artists": "agg_weekly_artists_shadow",
 }
 
+_BILLBOARD_AGGREGATION_BUILDER_VERSION = "billboard_aggregation_v2"
+
 
 def _prepare_aggregation_shadows(conn: sqlite3.Connection) -> None:
     """Create connection-local staging tables without touching live aggregates."""
@@ -975,11 +980,60 @@ def _prepare_aggregation_shadows(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
+def _copy_unaffected_aggregation_weeks(
+    conn: sqlite3.Connection,
+    affected_weeks: set[str],
+) -> None:
+    """Seed every shadow with live rows outside the exact replacement scope."""
+    params = sorted(affected_weeks)
+    for live_table, shadow_table in _AGG_SHADOW_TABLES.items():
+        if params:
+            placeholders = ",".join("?" for _ in params)
+            conn.execute(
+                f'INSERT INTO temp."{shadow_table}" '
+                f'SELECT * FROM main."{live_table}" '
+                f"WHERE billboard_week NOT IN ({placeholders})",
+                params,
+            )
+        else:
+            conn.execute(f'INSERT INTO temp."{shadow_table}" SELECT * FROM main."{live_table}"')
+    conn.commit()
+
+
+def _validate_aggregation_shadows(conn: sqlite3.Connection) -> None:
+    """Reject corrupt staged partitions before the atomic four-table publish."""
+    keys = {
+        "agg_weekly_tracks": ("billboard_week", "track_id"),
+        "agg_weekly_albums": ("billboard_week", "album_id"),
+        "agg_weekly_track_sources": (
+            "billboard_week",
+            "play_date",
+            "track_id",
+            "source_album_id",
+        ),
+        "agg_weekly_artists": ("billboard_week", "artist_id"),
+    }
+    for live_table, shadow_table in _AGG_SHADOW_TABLES.items():
+        key_sql = ", ".join(keys[live_table])
+        duplicate = conn.execute(
+            f'SELECT 1 FROM temp."{shadow_table}" GROUP BY {key_sql} HAVING COUNT(*) > 1 LIMIT 1'
+        ).fetchone()
+        invalid_weight = conn.execute(
+            f'SELECT 1 FROM temp."{shadow_table}" WHERE play_count < 0 OR total_ms < 0 LIMIT 1'
+        ).fetchone()
+        if duplicate or invalid_weight:
+            raise RuntimeError(f"invalid staged Billboard aggregate: {live_table}")
+
+
 def _publish_aggregation_shadows(
     conn: sqlite3.Connection,
     *,
     param_hash: str,
     data_generation_id: str | None,
+    data_digest: str | None = None,
+    build_strategy: str = "full",
+    base_generation_id: str | None = None,
+    semantic_dependencies: dict[str, str] | None = None,
 ) -> None:
     """Atomically replace every live aggregate table with one staged snapshot."""
     conn.execute("BEGIN IMMEDIATE")
@@ -989,6 +1043,8 @@ def _publish_aggregation_shadows(
             raise RuntimeError(
                 "playback generation changed while Billboard aggregates were building"
             )
+        if data_digest is not None and _active_playback_dataset_digest(conn) != data_digest:
+            raise RuntimeError("playback dataset changed while Billboard aggregates were building")
         for live_table, shadow_table in _AGG_SHADOW_TABLES.items():
             conn.execute(f'DELETE FROM main."{live_table}"')
             conn.execute(f'INSERT INTO main."{live_table}" SELECT * FROM temp."{shadow_table}"')
@@ -1002,6 +1058,25 @@ def _publish_aggregation_shadows(
                 """INSERT INTO agg_config(key, value)
                    VALUES ('data_generation_id', ?)""",
                 (data_generation_id,),
+            )
+        if data_digest is not None:
+            conn.execute(
+                "INSERT INTO agg_config(key, value) VALUES ('source_dataset_digest', ?)",
+                (data_digest,),
+            )
+        conn.execute(
+            "INSERT INTO agg_config(key, value) VALUES ('build_strategy', ?)",
+            (build_strategy,),
+        )
+        if base_generation_id is not None:
+            conn.execute(
+                "INSERT INTO agg_config(key, value) VALUES ('base_generation_id', ?)",
+                (base_generation_id,),
+            )
+        for key, value in sorted((semantic_dependencies or {}).items()):
+            conn.execute(
+                "INSERT INTO agg_config(key, value) VALUES (?, ?)",
+                (key, value),
             )
         if conn.execute(
             "SELECT 1 FROM sqlite_master WHERE type='table' AND name='track_credit_state'"
@@ -1030,6 +1105,154 @@ def _active_playback_generation(conn: sqlite3.Connection) -> str | None:
            WHERE state_id=1"""
     ).fetchone()
     return str(row[0]) if row is not None and row[0] else None
+
+
+def _active_playback_dataset_digest(conn: sqlite3.Connection) -> str | None:
+    """Return the exact fingerprint-set digest bound to active playback facts."""
+    if not conn.execute(
+        """SELECT 1 FROM sqlite_master
+           WHERE type='table' AND name='playback_import_state'"""
+    ).fetchone():
+        return None
+    row = conn.execute(
+        "SELECT dataset_digest FROM playback_import_state WHERE state_id=1"
+    ).fetchone()
+    return str(row[0]) if row is not None and row[0] else None
+
+
+def _aggregation_config(conn: sqlite3.Connection) -> dict[str, str]:
+    try:
+        return {
+            str(row[0]): str(row[1])
+            for row in conn.execute("SELECT key, value FROM agg_config").fetchall()
+        }
+    except sqlite3.OperationalError:
+        return {}
+
+
+def _partition_base_generation(
+    conn: sqlite3.Connection,
+    *,
+    param_hash: str,
+    previous_dataset_digest: str | None,
+    semantic_dependencies: dict[str, str],
+) -> str | None:
+    """Return a reusable aggregate generation only when its facts are proven."""
+    if previous_dataset_digest is None:
+        return None
+    config = _aggregation_config(conn)
+    if config.get("param_hash") != param_hash:
+        return None
+    if config.get("source_dataset_digest") != previous_dataset_digest:
+        return None
+    if any(config.get(key) != value for key, value in semantic_dependencies.items()):
+        return None
+    generation_id = config.get("data_generation_id")
+    return generation_id or None
+
+
+def _played_track_duration_revision(
+    conn: sqlite3.Connection,
+    *,
+    excluded_generation_id: str | None = None,
+) -> str:
+    """Hash duration semantics for every track reachable from playback facts."""
+    digest = hashlib.sha256(b"spotifystats-played-track-duration-v1\0")
+    exclusion = "AND COALESCE(import_generation_id, '') != ?" if excluded_generation_id else ""
+    params = (excluded_generation_id,) if excluded_generation_id else ()
+    rows = conn.execute(
+        f"""SELECT t.track_id, t.spotify_track_id, stm.duration_ms
+           FROM tracks t
+           JOIN (SELECT DISTINCT track_id FROM plays
+                 WHERE track_id IS NOT NULL {exclusion}) p
+             ON p.track_id=t.track_id
+           LEFT JOIN spotify_track_meta stm
+             ON stm.spotify_track_id=t.spotify_track_id
+           ORDER BY t.track_id""",
+        params,
+    ).fetchall()
+    for row in rows:
+        digest.update(json.dumps(list(row), ensure_ascii=True, separators=(",", ":")).encode())
+        digest.update(b"\n")
+    return digest.hexdigest()[:20]
+
+
+def _played_track_credit_membership_revision(
+    conn: sqlite3.Connection,
+    *,
+    excluded_generation_id: str | None = None,
+) -> str:
+    """Hash canonical artist memberships for tracks reachable from playback facts.
+
+    Excluding one append generation removes only tracks that have no older
+    playback rows. Existing tracks remain in the base digest, so a newly added
+    raw or manual credit cannot silently reuse historical artist aggregates.
+    """
+    exclusion = "AND COALESCE(import_generation_id, '') != ?" if excluded_generation_id else ""
+    params = (excluded_generation_id,) if excluded_generation_id else ()
+    played_track_ids = {
+        int(row[0])
+        for row in conn.execute(
+            f"""SELECT DISTINCT track_id FROM plays
+                WHERE track_id IS NOT NULL {exclusion}""",
+            params,
+        ).fetchall()
+    }
+    digest = hashlib.sha256(b"spotifystats-played-canonical-credit-membership-v1\0")
+    if not played_track_ids:
+        return digest.hexdigest()[:20]
+
+    from backend.domains.metadata.track_credits import get_effective_track_credits
+
+    memberships = sorted(
+        (int(row["track_id"]), int(row["artist_id"]))
+        for row in get_effective_track_credits(conn)
+        if int(row["track_id"]) in played_track_ids
+    )
+    for track_id, artist_id in memberships:
+        digest.update(f"{track_id}:{artist_id}\n".encode("ascii"))
+    return digest.hexdigest()[:20]
+
+
+def _aggregation_fact_dependencies(
+    conn: sqlite3.Connection,
+    *,
+    excluded_generation_id: str | None = None,
+) -> dict[str, str]:
+    from backend.domains.playback.logical_timeline import PLAYBACK_EVENT_POLICY_VERSION
+
+    return {
+        "builder_version": _BILLBOARD_AGGREGATION_BUILDER_VERSION,
+        "playback_policy_version": PLAYBACK_EVENT_POLICY_VERSION,
+        "duration_revision": _played_track_duration_revision(
+            conn,
+            excluded_generation_id=excluded_generation_id,
+        ),
+        "credit_membership_revision": _played_track_credit_membership_revision(
+            conn,
+            excluded_generation_id=excluded_generation_id,
+        ),
+    }
+
+
+def _aggregation_semantic_dependencies(
+    conn: sqlite3.Connection,
+    *,
+    identity_revision: int,
+    track_credit_revision: int,
+    excluded_generation_id: str | None = None,
+) -> dict[str, str]:
+    from backend.domains.yearly_review.context import _album_project_semantic_revision
+
+    return {
+        **_aggregation_fact_dependencies(
+            conn,
+            excluded_generation_id=excluded_generation_id,
+        ),
+        "identity_revision": str(identity_revision),
+        "track_credit_revision": str(track_credit_revision),
+        "album_project_revision": _album_project_semantic_revision(conn),
+    }
 
 
 def _clear_aggregations_for_generation(
@@ -1570,26 +1793,34 @@ def _agg_param_hash(
 
 
 def check_agg_valid(conn: sqlite3.Connection, param_hash: str) -> bool:
-    """Check if the stored aggregation matches the current parameter hash."""
+    """Check that the aggregate is bound to current facts and fact semantics."""
     try:
-        row = conn.execute("SELECT value FROM agg_config WHERE key = 'param_hash'").fetchone()
-        if row is None or row[0] != param_hash:
+        config = _aggregation_config(conn)
+        if config.get("param_hash") != param_hash:
             return False
-        if not conn.execute(
+        has_playback_state = conn.execute(
             """SELECT 1 FROM sqlite_master
                WHERE type='table' AND name='playback_import_state'"""
-        ).fetchone():
-            return True
-        active = conn.execute(
-            """SELECT active_generation_id FROM playback_import_state
-               WHERE state_id=1"""
         ).fetchone()
-        if active is None or not active[0]:
+        active_generation: str | None = None
+        active_digest: str | None = None
+        if has_playback_state:
+            active_generation = _active_playback_generation(conn)
+            if (
+                active_generation is not None
+                and config.get("data_generation_id") != active_generation
+            ):
+                return False
+            active_digest = _active_playback_dataset_digest(conn)
+            if config.get("source_dataset_digest") != active_digest:
+                return False
+        if active_generation is None and active_digest is None and "builder_version" not in config:
+            # Transitional compatibility for pre-generation databases. Once
+            # facts are bound or a v2 aggregate is published, every semantic
+            # dependency below becomes mandatory.
             return True
-        aggregate = conn.execute(
-            "SELECT value FROM agg_config WHERE key='data_generation_id'"
-        ).fetchone()
-        return aggregate is not None and str(aggregate[0]) == str(active[0])
+        current_dependencies = _aggregation_fact_dependencies(conn)
+        return all(config.get(key) == value for key, value in current_dependencies.items())
     except sqlite3.OperationalError:
         return False
 
@@ -1603,7 +1834,7 @@ def build_aggregations(
     dynamic_threshold: bool = False,
     max_merge_gap_minutes: int | None = 5,
     expected_generation_id: str | None = None,
-) -> dict[str, int]:
+) -> dict[str, int | str]:
     """Build all 3 pre-aggregated weekly Billboard tables from the plays table.
 
     Called after import_data() completes. Builds connection-local shadow tables
@@ -1615,11 +1846,33 @@ def build_aggregations(
 
     conn = get_db(readonly=False)
     build_generation_id = _active_playback_generation(conn)
+    build_dataset_digest = _active_playback_dataset_digest(conn)
     if expected_generation_id is not None and build_generation_id != expected_generation_id:
         conn.close()
         raise RuntimeError(
             "active playback generation does not match the requested aggregate generation"
         )
+
+    from backend.domains.metadata.artist_identity import get_identity_revision
+    from backend.domains.metadata.track_credits import get_track_credit_revision
+
+    identity_revision = get_identity_revision(conn)
+    track_credit_revision = get_track_credit_revision(conn)
+    semantic_dependencies = _aggregation_semantic_dependencies(
+        conn,
+        identity_revision=identity_revision,
+        track_credit_revision=track_credit_revision,
+    )
+    param_hash = _agg_param_hash(
+        min_ms,
+        music_only,
+        week_start_dow,
+        week_start_hour,
+        dynamic_threshold=dynamic_threshold,
+        max_merge_gap_minutes=max_merge_gap_minutes,
+        identity_revision=identity_revision,
+        track_credit_revision=track_credit_revision,
+    )
 
     f, fp = base_filters(min_ms=0, music_only=music_only)
     where = f"WHERE {f}" if f else ""
@@ -1780,7 +2033,6 @@ def build_aggregations(
         progress_callback("预聚合: 艺人...", 0.66)
     from backend.domains.metadata.track_credits import (
         get_effective_track_credit_frame,
-        get_track_credit_revision,
     )
     from backend.domains.playback.counting import assign_logical_event_id
 
@@ -1796,7 +2048,6 @@ def build_aggregations(
     df_artists = df_artists.drop(columns=["raw_artist_id"])
     from backend.domains.metadata.artist_identity import (
         canonicalize_artist_frame,
-        get_identity_revision,
     )
 
     df_artists = canonicalize_artist_frame(df_artists, conn)
@@ -1824,22 +2075,26 @@ def build_aggregations(
     if progress_callback:
         progress_callback("预聚合: 艺人完成", 1.0)
 
-    # Store param hash
-    param_hash = _agg_param_hash(
-        min_ms,
-        music_only,
-        week_start_dow,
-        week_start_hour,
-        dynamic_threshold=dynamic_threshold,
-        max_merge_gap_minutes=max_merge_gap_minutes,
-        identity_revision=get_identity_revision(conn),
-        track_credit_revision=get_track_credit_revision(conn),
-    )
+    _validate_aggregation_shadows(conn)
     _publish_aggregation_shadows(
         conn,
         param_hash=param_hash,
         data_generation_id=build_generation_id,
+        data_digest=build_dataset_digest,
+        build_strategy="full",
+        semantic_dependencies=semantic_dependencies,
     )
+    for result_key, live_table in (
+        ("tracks", "agg_weekly_tracks"),
+        ("albums", "agg_weekly_albums"),
+        ("track_sources", "agg_weekly_track_sources"),
+        ("artists", "agg_weekly_artists"),
+    ):
+        results[result_key] = int(
+            conn.execute(f'SELECT COUNT(*) FROM "{live_table}"').fetchone()[0]
+        )
+    results["build_strategy"] = "full"
+    results["affected_weeks"] = 0
     conn.close()
 
     # A rebuild changes the source of truth for every Billboard cache.  Clear
@@ -1849,6 +2104,321 @@ def build_aggregations(
 
     invalidate_playback_caches()
 
+    return results
+
+
+def _weekly_aggregate_map(
+    frame: pd.DataFrame,
+    group_columns: list[str],
+) -> dict[tuple[Any, ...], tuple[int, int]]:
+    if frame.empty:
+        return {}
+    grouped = (
+        frame.groupby(group_columns, dropna=False)
+        .agg(play_count=("play_count", "sum"), total_ms=("total_ms", "sum"))
+        .reset_index()
+    )
+    result: dict[tuple[Any, ...], tuple[int, int]] = {}
+    for row in grouped.to_dict("records"):
+        key: list[Any] = []
+        for column in group_columns:
+            value = row[column]
+            if column in {"billboard_week", "play_date", "ts_date"}:
+                key.append(str(value))
+            else:
+                key.append(int(value))
+        result[tuple(key)] = (int(row["play_count"]), int(row["total_ms"]))
+    return result
+
+
+def _billboard_aggregate_maps(
+    conn: sqlite3.Connection,
+    events: pd.DataFrame,
+    *,
+    week_start_dow: int,
+    week_start_hour: int,
+) -> dict[str, tuple[tuple[str, ...], dict[tuple[Any, ...], tuple[int, int]]]]:
+    import pandas as pd
+
+    key_columns = {
+        "agg_weekly_tracks": ("billboard_week", "track_id"),
+        "agg_weekly_albums": ("billboard_week", "album_id"),
+        "agg_weekly_track_sources": (
+            "billboard_week",
+            "play_date",
+            "track_id",
+            "source_album_id",
+        ),
+        "agg_weekly_artists": ("billboard_week", "artist_id"),
+    }
+    if events.empty:
+        return {table: (columns, {}) for table, columns in key_columns.items()}
+
+    from backend.domains.playback.logical_timeline import build_billboard_weighted_frame
+
+    weighted = build_billboard_weighted_frame(
+        events,
+        week_start_dow=week_start_dow,
+        week_start_hour=week_start_hour,
+    )
+    weighted["source_album_id"] = weighted["_source_album_id"].fillna(0).astype(int)
+    track_map = _weekly_aggregate_map(weighted, ["billboard_week", "track_id"])
+    source_map = _weekly_aggregate_map(
+        weighted,
+        ["billboard_week", "ts_date", "track_id", "source_album_id"],
+    )
+    source_map = {
+        (week, play_date, track_id, source_album_id): values
+        for (week, play_date, track_id, source_album_id), values in source_map.items()
+    }
+
+    album_weighted = weighted.copy()
+    fallback_album = pd.to_numeric(album_weighted["album_id"], errors="coerce").astype("Int64")
+    source_album = pd.to_numeric(album_weighted["source_album_id"], errors="coerce").astype("Int64")
+    album_weighted["album_id"] = source_album.where(source_album.fillna(0) != 0, fallback_album)
+    album_weighted = album_weighted[album_weighted["album_id"].notna()].copy()
+    album_map = _weekly_aggregate_map(album_weighted, ["billboard_week", "album_id"])
+
+    from backend.domains.metadata.artist_identity import canonicalize_artist_frame
+    from backend.domains.metadata.track_credits import get_effective_track_credit_frame
+    from backend.domains.playback.counting import assign_logical_event_id
+
+    artist_events = assign_logical_event_id(events)
+    credits = get_effective_track_credit_frame(conn)
+    artist_events = artist_events.merge(
+        credits,
+        on="track_id",
+        how="inner",
+        suffixes=("_primary", ""),
+    )
+    if artist_events.empty:
+        artist_map: dict[tuple[Any, ...], tuple[int, int]] = {}
+    else:
+        artist_events["artist_id"] = artist_events["raw_artist_id"]
+        artist_events = artist_events.drop(columns=["raw_artist_id"])
+        artist_events = canonicalize_artist_frame(artist_events, conn)
+        artist_weighted = build_billboard_weighted_frame(
+            artist_events,
+            week_start_dow=week_start_dow,
+            week_start_hour=week_start_hour,
+        )
+        artist_map = _weekly_aggregate_map(
+            artist_weighted,
+            ["billboard_week", "artist_id"],
+        )
+
+    return {
+        "agg_weekly_tracks": (key_columns["agg_weekly_tracks"], track_map),
+        "agg_weekly_albums": (key_columns["agg_weekly_albums"], album_map),
+        "agg_weekly_track_sources": (
+            key_columns["agg_weekly_track_sources"],
+            source_map,
+        ),
+        "agg_weekly_artists": (key_columns["agg_weekly_artists"], artist_map),
+    }
+
+
+def _apply_aggregate_map_delta(
+    conn: sqlite3.Connection,
+    *,
+    shadow_table: str,
+    key_columns: tuple[str, ...],
+    old: dict[tuple[Any, ...], tuple[int, int]],
+    new: dict[tuple[Any, ...], tuple[int, int]],
+) -> None:
+    where = " AND ".join(f"{column}=?" for column in key_columns)
+    insert_columns = [*key_columns, "play_count", "total_ms"]
+    placeholders = ",".join("?" for _ in insert_columns)
+    for key in sorted(old.keys() | new.keys()):
+        old_count, old_ms = old.get(key, (0, 0))
+        new_count, new_ms = new.get(key, (0, 0))
+        count_delta = new_count - old_count
+        ms_delta = new_ms - old_ms
+        if count_delta == 0 and ms_delta == 0:
+            continue
+        cursor = conn.execute(
+            f'UPDATE temp."{shadow_table}" '
+            f"SET play_count=play_count+?, total_ms=total_ms+? WHERE {where}",
+            (count_delta, ms_delta, *key),
+        )
+        if cursor.rowcount == 0:
+            if old_count or old_ms:
+                raise RuntimeError(f"Billboard base partition missing row in {shadow_table}")
+            conn.execute(
+                f'INSERT INTO temp."{shadow_table}" '
+                f"({','.join(insert_columns)}) VALUES ({placeholders})",
+                (*key, new_count, new_ms),
+            )
+    conn.execute(f'DELETE FROM temp."{shadow_table}" WHERE play_count=0 AND total_ms=0')
+
+
+def build_aggregations_for_weeks(
+    affected_weeks: set[str] | frozenset[str],
+    *,
+    change_generation_id: str,
+    previous_dataset_digest: str | None,
+    billboard_scope_exact: bool,
+    min_ms: int = 30000,
+    music_only: bool = True,
+    week_start_dow: int = 4,
+    week_start_hour: int = 0,
+    progress_callback=None,
+    dynamic_threshold: bool = False,
+    max_merge_gap_minutes: int | None = 5,
+    expected_generation_id: str | None = None,
+) -> dict[str, int | str]:
+    """Apply a proven tail contribution delta or safely fall back to full."""
+
+    def full_fallback(reason: str) -> dict[str, int | str]:
+        result = build_aggregations(
+            min_ms=min_ms,
+            music_only=music_only,
+            week_start_dow=week_start_dow,
+            week_start_hour=week_start_hour,
+            progress_callback=progress_callback,
+            dynamic_threshold=dynamic_threshold,
+            max_merge_gap_minutes=max_merge_gap_minutes,
+            expected_generation_id=expected_generation_id,
+        )
+        result["fallback_reason"] = reason
+        return result
+
+    if not billboard_scope_exact or max_merge_gap_minutes is None:
+        return full_fallback("billboard_scope_not_proven")
+
+    conn = get_db(readonly=False)
+    build_generation_id = _active_playback_generation(conn)
+    build_dataset_digest = _active_playback_dataset_digest(conn)
+    if expected_generation_id is not None and build_generation_id != expected_generation_id:
+        conn.close()
+        raise RuntimeError(
+            "active playback generation does not match the requested aggregate generation"
+        )
+    from backend.domains.metadata.artist_identity import get_identity_revision
+    from backend.domains.metadata.track_credits import get_track_credit_revision
+
+    identity_revision = get_identity_revision(conn)
+    credit_revision = get_track_credit_revision(conn)
+    current_dependencies = _aggregation_semantic_dependencies(
+        conn,
+        identity_revision=identity_revision,
+        track_credit_revision=credit_revision,
+    )
+    base_dependencies = _aggregation_semantic_dependencies(
+        conn,
+        identity_revision=identity_revision,
+        track_credit_revision=credit_revision,
+        excluded_generation_id=change_generation_id,
+    )
+    # Album Project membership is applied from track-source rows at read time;
+    # it is recorded for audit but is not baked into these four aggregate tables.
+    base_dependencies.pop("album_project_revision", None)
+    param_hash = _agg_param_hash(
+        min_ms,
+        music_only,
+        week_start_dow,
+        week_start_hour,
+        dynamic_threshold=dynamic_threshold,
+        max_merge_gap_minutes=max_merge_gap_minutes,
+        identity_revision=identity_revision,
+        track_credit_revision=credit_revision,
+    )
+    base_generation_id = _partition_base_generation(
+        conn,
+        param_hash=param_hash,
+        previous_dataset_digest=previous_dataset_digest,
+        semantic_dependencies=base_dependencies,
+    )
+    weeks = {str(week) for week in affected_weeks}
+    live_weeks = {
+        str(row[0])
+        for row in conn.execute("SELECT DISTINCT billboard_week FROM agg_weekly_tracks").fetchall()
+    }
+    total_weeks = live_weeks | weeks
+    if base_generation_id is None:
+        conn.close()
+        return full_fallback("billboard_base_incompatible")
+    if total_weeks and len(weeks & total_weeks) / len(total_weeks) > 0.25:
+        conn.close()
+        return full_fallback("affected_week_ratio_exceeded")
+
+    try:
+        from backend.domains.imports.change_set import (
+            build_billboard_tail_contribution_frames,
+        )
+
+        old_events, new_events = build_billboard_tail_contribution_frames(
+            conn,
+            generation_id=change_generation_id,
+            min_ms=min_ms,
+            music_only=music_only,
+            dynamic_threshold=dynamic_threshold,
+            max_gap_minutes=int(max_merge_gap_minutes),
+        )
+        old_maps = _billboard_aggregate_maps(
+            conn,
+            old_events,
+            week_start_dow=week_start_dow,
+            week_start_hour=week_start_hour,
+        )
+        new_maps = _billboard_aggregate_maps(
+            conn,
+            new_events,
+            week_start_dow=week_start_dow,
+            week_start_hour=week_start_hour,
+        )
+        delta_weeks: set[str] = set()
+        for table in _AGG_SHADOW_TABLES:
+            old_values = old_maps[table][1]
+            new_values = new_maps[table][1]
+            delta_weeks.update(
+                str(key[0])
+                for key in old_values.keys() | new_values.keys()
+                if old_values.get(key) != new_values.get(key)
+            )
+        if not delta_weeks.issubset(weeks):
+            raise RuntimeError("Billboard delta escaped the proven affected-week closure")
+
+        _prepare_aggregation_shadows(conn)
+        _copy_unaffected_aggregation_weeks(conn, set())
+        for table, shadow_table in _AGG_SHADOW_TABLES.items():
+            _apply_aggregate_map_delta(
+                conn,
+                shadow_table=shadow_table,
+                key_columns=old_maps[table][0],
+                old=old_maps[table][1],
+                new=new_maps[table][1],
+            )
+        _validate_aggregation_shadows(conn)
+        conn.commit()
+        _publish_aggregation_shadows(
+            conn,
+            param_hash=param_hash,
+            data_generation_id=build_generation_id,
+            data_digest=build_dataset_digest,
+            build_strategy="partition",
+            base_generation_id=base_generation_id,
+            semantic_dependencies=current_dependencies,
+        )
+        results: dict[str, int | str] = {
+            "tracks": int(conn.execute("SELECT COUNT(*) FROM agg_weekly_tracks").fetchone()[0]),
+            "albums": int(conn.execute("SELECT COUNT(*) FROM agg_weekly_albums").fetchone()[0]),
+            "track_sources": int(
+                conn.execute("SELECT COUNT(*) FROM agg_weekly_track_sources").fetchone()[0]
+            ),
+            "artists": int(conn.execute("SELECT COUNT(*) FROM agg_weekly_artists").fetchone()[0]),
+            "build_strategy": "partition",
+            "affected_weeks": len(weeks),
+        }
+        conn.close()
+    except Exception as exc:
+        logger.exception("Billboard partition build failed; falling back to full rebuild.")
+        conn.close()
+        return full_fallback(f"partition_proof_failed:{type(exc).__name__}:{str(exc)[:120]}")
+
+    from backend.core.cache_manager import invalidate_playback_caches
+
+    invalidate_playback_caches()
     return results
 
 

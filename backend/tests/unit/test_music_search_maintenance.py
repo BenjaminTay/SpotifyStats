@@ -553,6 +553,68 @@ def test_statistics_revision_drift_rebuilds_only_statistics(
     assert report["snapshot_set"]["revalidated"] is False
 
 
+def test_shared_frame_failure_falls_back_to_full_snapshot_set(monkeypatch) -> None:
+    conn = _conn()
+    _seed_ready_candidate_and_statistics(conn)
+    maintenance.mark_music_search_for_rebuild(
+        reason="append published",
+        revision_kinds=("playback", "billboard"),
+        conn=conn,
+    )
+    new_contexts = build_music_search_variant_contexts(
+        conn,
+        maintenance._current_filter_values(conn),
+    )
+    monkeypatch.setattr(
+        maintenance,
+        "build_shared_full_music_search_snapshot_set",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("shared failed")),
+    )
+    monkeypatch.setattr(
+        maintenance,
+        "build_music_search_snapshot_set",
+        lambda _conn, contexts: _built_snapshot_set_report(contexts),
+    )
+
+    report = maintenance.rebuild_current_music_search_derived_data(
+        conn,
+        shared_full_snapshot_plan={
+            "schema_version": "music_search_shared_full_snapshot_v1",
+            "source_generation_id": "import-g2",
+        },
+    )
+
+    assert report["snapshot_set"]["strategy"] == "full_fallback"
+    assert report["snapshot_set"]["fallback_reason"] == "RuntimeError"
+    assert report["snapshot_set"]["semantic_base_key"] == new_contexts[0].semantic_base_key
+
+
+def test_shared_full_plan_rejects_settings_drift() -> None:
+    conn = _conn()
+    _seed_ready_candidate_and_statistics(conn)
+
+    class ChangeSet:
+        strategy = "incremental"
+        generation_id = "import-g2"
+        track_ids = frozenset({3})
+        album_ids = frozenset({2})
+        artist_ids = frozenset({1})
+        semantic_revisions = {
+            "playback_policy": maintenance.PLAYBACK_EVENT_POLICY_VERSION,
+            "settings": "wrong-settings",
+            "artist_identity": 0,
+            "track_credit": 0,
+        }
+
+    assert (
+        maintenance.build_shared_full_music_search_plan(
+            conn,
+            change_set=ChangeSet(),
+        )
+        is None
+    )
+
+
 @pytest.mark.parametrize(
     ("table_name", "create_sql"),
     (

@@ -5,7 +5,7 @@ from __future__ import annotations
 import time
 from typing import Any
 
-from backend.core.db import build_aggregations, get_db
+from backend.core.db import build_aggregations, build_aggregations_for_weeks, get_db
 from backend.domains.imports.change_set import PlaybackChangeSet
 from backend.domains.metadata.import_health import build_import_health_report
 from backend.domains.metadata.spotify_refresh import (
@@ -18,6 +18,7 @@ from backend.domains.settings.repository import SettingsRepository
 from backend.providers.spotify.client import SpotifyProvider
 from backend.services.cover_cache_service import enqueue_missing_cover_downloads
 from backend.services.music_search_maintenance_service import (
+    build_shared_full_music_search_plan,
     mark_music_search_for_rebuild,
     rebuild_current_music_search_derived_data,
     schedule_current_music_search_derived_data_rebuild,
@@ -84,15 +85,36 @@ def run_post_streaming_import_maintenance(
         _progress(progress_callback, "重建 Billboard 预聚合...", 0.9)
         settings = SettingsRepository(conn).load_all()
         aggregations_started = time.perf_counter()
-        agg_results = build_aggregations(
-            min_ms=int(settings.get("min_ms", 30_000)),
-            music_only=bool(settings.get("music_only", True)),
-            week_start_dow=int(settings.get("bb_week_start_dow", 4)),
-            week_start_hour=int(settings.get("bb_week_start_hour", 0)),
-            dynamic_threshold=True,
-            max_merge_gap_minutes=int(settings.get("max_merge_gap_minutes", 5)),
-            expected_generation_id=(change_set.generation_id if change_set is not None else None),
-        )
+        min_ms = int(settings.get("min_ms", 30_000))
+        music_only = bool(settings.get("music_only", True))
+        week_start_dow = int(settings.get("bb_week_start_dow", 4))
+        week_start_hour = int(settings.get("bb_week_start_hour", 0))
+        max_merge_gap_minutes = int(settings.get("max_merge_gap_minutes", 5))
+        expected_generation_id = change_set.generation_id if change_set is not None else None
+        if change_set is not None and change_set.strategy == "incremental":
+            agg_results = build_aggregations_for_weeks(
+                set(change_set.billboard_weeks),
+                change_generation_id=change_set.generation_id,
+                previous_dataset_digest=change_set.previous_dataset_digest,
+                billboard_scope_exact=change_set.billboard_scope_exact,
+                min_ms=min_ms,
+                music_only=music_only,
+                week_start_dow=week_start_dow,
+                week_start_hour=week_start_hour,
+                dynamic_threshold=True,
+                max_merge_gap_minutes=max_merge_gap_minutes,
+                expected_generation_id=expected_generation_id,
+            )
+        else:
+            agg_results = build_aggregations(
+                min_ms=min_ms,
+                music_only=music_only,
+                week_start_dow=week_start_dow,
+                week_start_hour=week_start_hour,
+                dynamic_threshold=True,
+                max_merge_gap_minutes=max_merge_gap_minutes,
+                expected_generation_id=expected_generation_id,
+            )
         aggregations_seconds = time.perf_counter() - aggregations_started
 
         revision_kinds: list[MusicSearchRevisionKind] = [
@@ -116,6 +138,14 @@ def run_post_streaming_import_maintenance(
             revision_kinds=tuple(revision_kinds),
             conn=conn,
         )
+        shared_full_search_plan = (
+            build_shared_full_music_search_plan(
+                conn,
+                change_set=change_set,
+            )
+            if change_set is not None
+            else None
+        )
 
         _progress(progress_callback, "核验导入派生数据...", 0.93)
         health = build_import_health_report(conn)
@@ -134,12 +164,14 @@ def run_post_streaming_import_maintenance(
                 conn,
                 rebuild_documents=True,
                 prewarm_yearly_review=True,
+                shared_full_snapshot_plan=shared_full_search_plan,
             )
         else:
             _progress(progress_callback, "重建音乐查找索引与精确快照...", 0.98)
             search_report = rebuild_current_music_search_derived_data(
                 conn,
                 rebuild_documents=True,
+                shared_full_snapshot_plan=shared_full_search_plan,
             )
         if search_report["status"] not in {"ready", "warming"}:
             snapshot_set = search_report["snapshot_set"]
@@ -190,12 +222,15 @@ def run_post_streaming_import_maintenance(
             "agg_track_wks": agg_results.get("tracks", 0),
             "agg_album_wks": agg_results.get("albums", 0),
             "agg_artist_wks": agg_results.get("artists", 0),
+            "aggregation_build_strategy": agg_results.get("build_strategy", "full"),
+            "aggregation_fallback_reason": agg_results.get("fallback_reason"),
             "music_search_index_status": (search_report.get("index") or {}).get("status", "ready"),
             "music_search_snapshot_status": search_report["snapshot"]["status"],
             "music_search_snapshot_entities": search_report["snapshot"]["entity_count"],
             "music_search_snapshot_ready_count": search_report["snapshot_set"]["ready_count"],
             "music_search_snapshot_failed_count": search_report["snapshot_set"]["failed_count"],
             "music_search_snapshot_job_id": search_report.get("job_id"),
+            "music_search_snapshot_strategy": search_report["snapshot_set"].get("strategy", "full"),
             **health,
         }
     finally:

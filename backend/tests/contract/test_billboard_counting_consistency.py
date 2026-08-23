@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import os
 import shutil
+import sqlite3
 import tempfile
 
 import pandas as pd
@@ -67,6 +68,172 @@ def isolated_seed_db(use_seed_db):
 
 
 class TestRawFallbackConsistency:
+    @pytest.mark.parametrize("dynamic_threshold", [False, True])
+    def test_tail_partition_build_matches_full_rebuild_for_all_four_tables(
+        self,
+        isolated_seed_db,
+        dynamic_threshold,
+    ):
+        import backend.core.db as db_mod
+        from backend.core.db import build_aggregations_for_weeks, get_db
+        from backend.core.migrations import run_migrations
+        from backend.domains.imports.change_set import (
+            _logical_billboard_contribution_weeks,
+        )
+
+        run_migrations()
+        conn = get_db(readonly=False)
+        conn.execute(
+            """UPDATE playback_import_state
+               SET active_generation_id='base-generation',
+                   dataset_digest='base-digest'
+               WHERE state_id=1"""
+        )
+        conn.commit()
+        conn.close()
+        baseline = build_aggregations(
+            min_ms=30_000,
+            music_only=True,
+            week_start_dow=4,
+            week_start_hour=0,
+            dynamic_threshold=dynamic_threshold,
+            max_merge_gap_minutes=5,
+            expected_generation_id="base-generation",
+        )
+        assert baseline["build_strategy"] == "full"
+
+        fd, full_path = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        source = sqlite3.connect(isolated_seed_db)
+        destination = sqlite3.connect(full_path)
+        source.backup(destination)
+        source.close()
+        destination.close()
+
+        def append_tail(path: str) -> set[str]:
+            db_mod.DB_PATH = path
+            local_conn = get_db(readonly=False)
+            local_conn.row_factory = sqlite3.Row
+            last = local_conn.execute(
+                """SELECT p.* FROM plays p
+                   JOIN tracks t ON t.track_id=p.track_id
+                   WHERE p.track_id IS NOT NULL
+                   ORDER BY p.ts DESC, p.play_id DESC LIMIT 1"""
+            ).fetchone()
+            assert last is not None
+            end = pd.Timestamp(last["ts"]).tz_convert("UTC") + pd.Timedelta(days=1)
+            local = end.tz_convert("Asia/Shanghai")
+            values = dict(last)
+            values.update(
+                {
+                    "ts": end.isoformat().replace("+00:00", "Z"),
+                    "ts_date": str(local.date()),
+                    "ts_year": int(local.year),
+                    "ts_month": int(local.month),
+                    "ts_week": int(local.isocalendar().week),
+                    "ts_dow": int(local.dayofweek),
+                    "ts_hour": int(local.hour),
+                    "ms_played": 60_000,
+                    "content_type": "audio",
+                    "source_fingerprint": "f" * 64,
+                    "source_fingerprint_version": 1,
+                    "import_generation_id": "append-generation",
+                }
+            )
+            columns = [
+                str(row[1])
+                for row in local_conn.execute("PRAGMA table_info(plays)").fetchall()
+                if str(row[1]) != "play_id"
+            ]
+            local_conn.execute(
+                f"INSERT INTO plays({','.join(columns)}) VALUES ({','.join('?' for _ in columns)})",
+                [values.get(column) for column in columns],
+            )
+            local_conn.execute(
+                """UPDATE playback_import_state
+                   SET active_generation_id='append-generation',
+                       dataset_digest='append-digest'
+                   WHERE state_id=1"""
+            )
+            local_conn.commit()
+            weeks = _logical_billboard_contribution_weeks(
+                local_conn,
+                generation_id="append-generation",
+                min_ms=30_000,
+                music_only=True,
+                dynamic_threshold=dynamic_threshold,
+                max_gap_minutes=5,
+                week_start_dow=4,
+                week_start_hour=0,
+            )
+            local_conn.close()
+            return weeks
+
+        try:
+            affected_weeks = append_tail(isolated_seed_db)
+            partition = build_aggregations_for_weeks(
+                affected_weeks,
+                change_generation_id="append-generation",
+                previous_dataset_digest="base-digest",
+                billboard_scope_exact=True,
+                min_ms=30_000,
+                music_only=True,
+                week_start_dow=4,
+                week_start_hour=0,
+                dynamic_threshold=dynamic_threshold,
+                max_merge_gap_minutes=5,
+                expected_generation_id="append-generation",
+            )
+            assert partition.get("fallback_reason") is None
+            assert partition["build_strategy"] == "partition"
+
+            append_tail(full_path)
+            full = build_aggregations(
+                min_ms=30_000,
+                music_only=True,
+                week_start_dow=4,
+                week_start_hour=0,
+                dynamic_threshold=dynamic_threshold,
+                max_merge_gap_minutes=5,
+                expected_generation_id="append-generation",
+            )
+            assert full["build_strategy"] == "full"
+
+            partition_conn = sqlite3.connect(isolated_seed_db)
+            full_conn = sqlite3.connect(full_path)
+            for table in (
+                "agg_weekly_tracks",
+                "agg_weekly_albums",
+                "agg_weekly_track_sources",
+                "agg_weekly_artists",
+            ):
+                partition_rows = partition_conn.execute(
+                    f'SELECT * FROM "{table}" ORDER BY 1, 2, 3'
+                ).fetchall()
+                full_rows = full_conn.execute(
+                    f'SELECT * FROM "{table}" ORDER BY 1, 2, 3'
+                ).fetchall()
+                assert partition_rows == full_rows, table
+            config = dict(partition_conn.execute("SELECT key, value FROM agg_config"))
+            assert config["data_generation_id"] == "append-generation"
+            assert config["source_dataset_digest"] == "append-digest"
+            assert config["build_strategy"] == "partition"
+            for key in (
+                "builder_version",
+                "playback_policy_version",
+                "identity_revision",
+                "track_credit_revision",
+                "album_project_revision",
+                "duration_revision",
+                "credit_membership_revision",
+            ):
+                assert config[key]
+            partition_conn.close()
+            full_conn.close()
+        finally:
+            db_mod.DB_PATH = isolated_seed_db
+            os.unlink(full_path)
+
     def test_aggregation_publish_rolls_back_as_one_snapshot(self, isolated_seed_db):
         from backend.core.db import (
             _AGG_SHADOW_TABLES,
