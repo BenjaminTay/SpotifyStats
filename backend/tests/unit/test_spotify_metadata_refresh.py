@@ -18,7 +18,8 @@ def _conn():
             source_album_id INTEGER,
             ts_date TEXT,
             spotify_track_id_at_play TEXT,
-            spotify_album_id_at_play TEXT
+            spotify_album_id_at_play TEXT,
+            import_generation_id TEXT
         );
         CREATE TABLE artists(
             artist_id INTEGER PRIMARY KEY,
@@ -34,6 +35,11 @@ def _conn():
             track_id INTEGER PRIMARY KEY,
             artist_id INTEGER,
             spotify_track_id TEXT
+        );
+        CREATE TABLE track_artists(
+            track_id INTEGER,
+            artist_id INTEGER,
+            role TEXT
         );
         CREATE TABLE albums(
             album_id INTEGER PRIMARY KEY,
@@ -293,3 +299,311 @@ def test_refresh_missing_spotify_metadata_without_token_returns_partial_report()
     assert report.album_links_backfilled >= 1
     link = conn.execute("SELECT * FROM album_spotify_links").fetchone()
     assert link["album_id"] == 10
+
+
+def test_scoped_refresh_does_not_request_unrelated_missing_tracks():
+    from backend.domains.metadata.spotify_refresh import (
+        MetadataRefreshScope,
+        refresh_missing_spotify_metadata,
+    )
+
+    conn = _conn()
+    conn.executemany(
+        "INSERT INTO artists(artist_id, artist_name) VALUES (?, ?)",
+        [(1, "Scoped"), (2, "Unrelated")],
+    )
+    conn.executemany(
+        "INSERT INTO tracks(track_id, artist_id, spotify_track_id) VALUES (?, ?, ?)",
+        [(1, 1, "track-scoped"), (2, 2, "track-unrelated")],
+    )
+    conn.execute(
+        """INSERT INTO spotify_track_meta(
+               spotify_track_id, track_name, spotify_album_id
+           ) VALUES ('track-unrelated', 'Unrelated', NULL)"""
+    )
+    conn.execute(
+        """INSERT INTO plays(
+               play_id, track_id, ts_date, spotify_track_id_at_play,
+               import_generation_id
+           ) VALUES (1, 1, '2026-08-23', 'track-scoped', 'generation-new')"""
+    )
+
+    class Provider:
+        requested: list[str] = []
+
+        def get_tracks(self, ids, token):
+            self.requested.extend(ids)
+            return {
+                "tracks": [
+                    {"id": value, "name": value, "artists": [], "album": {}} for value in ids
+                ]
+            }
+
+        def get_albums(self, ids, token):
+            return {"albums": []}
+
+        def get_artists_by_ids(self, ids, token):
+            return {"artists": []}
+
+    provider = Provider()
+    report = refresh_missing_spotify_metadata(
+        conn,
+        provider=provider,
+        access_token="token",
+        scope=MetadataRefreshScope(
+            generation_id="generation-new",
+            track_ids=frozenset({1}),
+            artist_ids=frozenset({1}),
+        ),
+    )
+
+    assert provider.requested == ["track-scoped"]
+    assert report.tracks_requested == 1
+
+
+def test_scoped_track_candidates_union_play_time_and_canonical_ids_and_link_artist():
+    from backend.domains.metadata.spotify_refresh import (
+        MetadataRefreshScope,
+        refresh_missing_spotify_metadata,
+    )
+
+    conn = _conn()
+    conn.execute("INSERT INTO artists(artist_id, artist_name) VALUES (1, 'Exact Artist')")
+    conn.execute(
+        """INSERT INTO tracks(track_id, artist_id, spotify_track_id)
+           VALUES (1, 1, 'canonical-track')"""
+    )
+    conn.executemany(
+        """INSERT INTO plays(
+               play_id, track_id, ts_date, spotify_track_id_at_play,
+               import_generation_id
+           ) VALUES (?, ?, '2026-08-23', ?, 'generation-new')""",
+        [(1, 1, "play-time-track"), (2, None, "play-only-track")],
+    )
+
+    class Provider:
+        requested: list[str] = []
+
+        def get_tracks(self, ids, token):
+            self.requested.extend(ids)
+            return {
+                "tracks": [
+                    {
+                        "id": value,
+                        "name": value,
+                        "artists": (
+                            [{"id": "artist-exact", "name": "Exact Artist"}]
+                            if value == "play-time-track"
+                            else []
+                        ),
+                        "album": {},
+                    }
+                    for value in ids
+                ]
+            }
+
+        def get_albums(self, ids, token):
+            return {"albums": []}
+
+        def get_artists_by_ids(self, ids, token):
+            return {"artists": []}
+
+    provider = Provider()
+    refresh_missing_spotify_metadata(
+        conn,
+        provider=provider,
+        access_token="token",
+        scope=MetadataRefreshScope(
+            generation_id="generation-new",
+            track_ids=frozenset({1}),
+            artist_ids=frozenset({1}),
+        ),
+    )
+
+    assert provider.requested == ["canonical-track", "play-only-track", "play-time-track"]
+    artist = conn.execute("SELECT spotify_artist_id FROM artists WHERE artist_id=1").fetchone()
+    assert artist[0] == "artist-exact"
+
+
+def test_scoped_album_candidates_union_generation_play_track_meta_and_links():
+    from backend.domains.metadata.spotify_refresh import (
+        MetadataRefreshScope,
+        _scoped_album_candidates,
+    )
+
+    conn = _conn()
+    conn.execute(
+        "INSERT INTO tracks(track_id, artist_id, spotify_track_id) VALUES (1, 1, 'track-a')"
+    )
+    conn.execute(
+        """INSERT INTO spotify_track_meta(
+               spotify_track_id, track_name, spotify_album_id
+           ) VALUES ('track-a', 'Track A', 'album-from-track')"""
+    )
+    conn.execute(
+        """INSERT INTO plays(
+               play_id, track_id, source_album_id, ts_date,
+               spotify_album_id_at_play, import_generation_id
+           ) VALUES (1, 1, NULL, '2026-08-23', 'album-at-play', 'generation-new')"""
+    )
+    conn.execute(
+        """INSERT INTO album_spotify_links(
+               album_id, spotify_album_id, evidence
+           ) VALUES (10, 'album-from-link', 'fixture')"""
+    )
+
+    candidates = _scoped_album_candidates(
+        conn,
+        MetadataRefreshScope(
+            generation_id="generation-new",
+            track_ids=frozenset({1}),
+            album_ids=frozenset({10}),
+        ),
+    )
+
+    assert candidates == ["album-at-play", "album-from-link", "album-from-track"]
+
+
+def test_scoped_refresh_retries_global_missing_metadata_and_artist_cover_backlog():
+    from backend.domains.metadata.spotify_refresh import (
+        MetadataRefreshScope,
+        refresh_missing_spotify_metadata,
+    )
+
+    conn = _conn()
+    conn.executemany(
+        """INSERT INTO artists(
+               artist_id, artist_name, spotify_artist_id, image_url
+           ) VALUES (?, ?, ?, ?)""",
+        [
+            (1, "Current Artist", "artist-current", "current.jpg"),
+            (2, "Retry Artist", "artist-retry", None),
+            (3, "Search Retry Artist", None, None),
+        ],
+    )
+    conn.executemany(
+        "INSERT INTO tracks(track_id, artist_id, spotify_track_id) VALUES (?, ?, ?)",
+        [(1, 1, "track-current"), (2, 2, "track-retry"), (3, 3, "track-search")],
+    )
+    conn.executemany(
+        "INSERT INTO track_artists(track_id, artist_id, role) VALUES (?, ?, 'primary')",
+        [(1, 1), (2, 2), (3, 3)],
+    )
+    conn.executemany(
+        """INSERT INTO plays(
+               play_id, track_id, source_album_id, ts_date,
+               spotify_track_id_at_play, import_generation_id
+           ) VALUES (?, ?, ?, '2026-08-23', ?, ?)""",
+        [
+            (1, 1, 10, "track-current", "generation-new"),
+            (2, 2, 20, "track-retry", "generation-failed"),
+            (3, 3, 30, "track-search", "generation-failed"),
+        ],
+    )
+    conn.execute(
+        """INSERT INTO spotify_track_meta(
+               spotify_track_id, track_name, spotify_album_id
+           ) VALUES ('track-current', 'Current', 'album-current')"""
+    )
+    conn.execute(
+        """INSERT INTO spotify_album_meta(
+               spotify_album_id, album_name, image_url, total_tracks
+           ) VALUES ('album-current', 'Current', 'current.jpg', 1)"""
+    )
+
+    class FailingProvider:
+        def get_tracks(self, ids, token):
+            return None
+
+        def get_albums(self, ids, token):
+            return None
+
+        def get_artists_by_ids(self, ids, token):
+            return None
+
+    failed = refresh_missing_spotify_metadata(
+        conn,
+        provider=FailingProvider(),
+        access_token="token",
+        scope=MetadataRefreshScope(
+            generation_id="generation-failed",
+            track_ids=frozenset({2, 3}),
+            album_ids=frozenset({20, 30}),
+            artist_ids=frozenset({2, 3}),
+        ),
+    )
+    assert "tracks_batch_failed" in failed.errors
+    assert "artists_batch_failed" in failed.errors
+
+    class Provider:
+        tracks_requested: list[str] = []
+        albums_requested: list[str] = []
+        artists_requested: list[str] = []
+        searches: list[str] = []
+
+        def get_tracks(self, ids, token):
+            self.tracks_requested.extend(ids)
+            return {
+                "tracks": [
+                    {
+                        "id": value,
+                        "name": value,
+                        "artists": [],
+                        "album": {"id": f"album-{value}"},
+                    }
+                    for value in ids
+                ]
+            }
+
+        def get_albums(self, ids, token):
+            self.albums_requested.extend(ids)
+            return {
+                "albums": [
+                    {
+                        "id": value,
+                        "name": value,
+                        "images": [{"url": f"{value}.jpg"}],
+                        "total_tracks": 1,
+                    }
+                    for value in ids
+                ]
+            }
+
+        def get_artists_by_ids(self, ids, token):
+            self.artists_requested.extend(ids)
+            return {
+                "artists": [
+                    {
+                        "id": value,
+                        "name": "Retry Artist",
+                        "images": [{"url": f"{value}.jpg"}],
+                    }
+                    for value in ids
+                ]
+            }
+
+        def search_artist(self, name, token):
+            self.searches.append(name)
+            return {
+                "id": "artist-search-retry",
+                "name": name,
+                "images": [{"url": "search-retry.jpg"}],
+            }
+
+    provider = Provider()
+    refresh_missing_spotify_metadata(
+        conn,
+        provider=provider,
+        access_token="token",
+        scope=MetadataRefreshScope(
+            generation_id="generation-new",
+            track_ids=frozenset({1}),
+            album_ids=frozenset({10}),
+            artist_ids=frozenset({1}),
+        ),
+    )
+
+    assert "track-retry" in provider.tracks_requested
+    assert "album-track-retry" in provider.albums_requested
+    assert "artist-retry" in provider.artists_requested
+    assert "Search Retry Artist" in provider.searches

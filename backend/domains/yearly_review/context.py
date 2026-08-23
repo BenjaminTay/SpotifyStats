@@ -15,7 +15,7 @@ from backend.domains.settings.repository import SETTINGS_DEFAULTS, SettingsRepos
 from backend.models.yearly_review import YearlyReviewFilterContext
 from backend.services.wrapped_service import _artist_metadata_revision
 
-FILTER_FINGERPRINT_VERSION = "yearly_review_filter_v2"
+FILTER_FINGERPRINT_VERSION = "yearly_review_filter_v3"
 
 FILTER_FIELDS = (
     "min_ms",
@@ -42,11 +42,45 @@ REVISION_FIELDS = (
 )
 
 _TRACK_GROUP_TABLES = ("track_groups", "track_group_members")
-_ALBUM_PROJECT_TABLES = (
-    "album_projects",
-    "album_project_albums",
-    "album_project_tracks",
-)
+
+
+def _album_project_semantic_revision(conn: sqlite3.Connection) -> str:
+    """Hash project meaning without unstable surrogate project ids."""
+    if not _table_exists(conn, "album_projects"):
+        return "unavailable"
+    digest = hashlib.sha256()
+    queries = (
+        """SELECT canonical_name, artist_id, primary_album_id, release_date,
+                  scope, project_type, include_in_charts, is_manual
+           FROM album_projects
+           ORDER BY canonical_name, artist_id, scope, primary_album_id""",
+        """SELECT ap.canonical_name, ap.artist_id, ap.scope,
+                  apa.album_id, apa.role, apa.source_bucket, apa.inferred
+           FROM album_project_albums apa
+           JOIN album_projects ap ON ap.project_id=apa.project_id
+           ORDER BY ap.canonical_name, ap.artist_id, ap.scope, apa.album_id""",
+        """SELECT ap.canonical_name, ap.artist_id, ap.scope,
+                  apt.track_id, apt.membership_role, apt.min_merge_level,
+                  apt.source_album_id, apt.is_exclusive, apt.inferred
+           FROM album_project_tracks apt
+           JOIN album_projects ap ON ap.project_id=apt.project_id
+           ORDER BY ap.canonical_name, ap.artist_id, ap.scope,
+                    apt.track_id, apt.min_merge_level""",
+    )
+    for query in queries:
+        try:
+            rows = conn.execute(query)
+        except sqlite3.OperationalError:
+            digest.update(b"missing\n")
+            continue
+        for row in rows:
+            digest.update(
+                json.dumps(
+                    list(row), ensure_ascii=True, separators=(",", ":"), default=str
+                ).encode()
+            )
+            digest.update(b"\n")
+    return digest.hexdigest()[:20]
 
 
 def _value(source: Mapping[str, Any] | object, key: str) -> Any:
@@ -113,15 +147,15 @@ def collect_yearly_review_revisions(conn: sqlite3.Connection) -> dict[str, str |
         "artist_identity_revision": identity_revision,
         "track_credit_revision": credit_revision,
         "track_group_revision": _table_set_revision(conn, _TRACK_GROUP_TABLES),
-        "album_project_revision": _table_set_revision(conn, _ALBUM_PROJECT_TABLES),
+        "album_project_revision": _album_project_semantic_revision(conn),
     }
 
 
 def fingerprint_filter_values(values: Mapping[str, Any]) -> str:
-    """Return an order-independent fingerprint for semantic filter values."""
+    """Return an order-independent fingerprint for user-selected filters."""
     payload = {
         "fingerprint_version": FILTER_FINGERPRINT_VERSION,
-        **{key: values[key] for key in (*FILTER_FIELDS, *REVISION_FIELDS)},
+        **{key: values[key] for key in FILTER_FIELDS},
     }
     encoded = json.dumps(payload, ensure_ascii=True, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(encoded.encode()).hexdigest()

@@ -213,6 +213,32 @@ class TestCacheManager:
         clear_all_ttl()
         assert _sample_calc3.cache_info().currsize == 0
 
+    def test_playback_invalidation_preserves_unrelated_account_archive_cache(self):
+        from functools import lru_cache
+
+        from backend.core.cache_manager import (
+            invalidate_playback_caches,
+            register_lru,
+        )
+
+        @lru_cache(maxsize=2)
+        def playback_value(value):
+            return value
+
+        @lru_cache(maxsize=2)
+        def archive_value(value):
+            return value
+
+        register_lru("analysis", "test_playback_scope", playback_value)
+        register_lru("account_archive", "test_unrelated_scope", archive_value)
+        playback_value(1)
+        archive_value(1)
+
+        invalidate_playback_caches()
+
+        assert playback_value.cache_info().currsize == 0
+        assert archive_value.cache_info().currsize == 1
+
     def test_invalidate_ttl_clears_entries_and_stats(self):
         from backend.core.cache import ttl_cached
         from backend.core.cache_manager import get_stats, invalidate, register_ttl

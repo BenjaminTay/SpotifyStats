@@ -86,7 +86,7 @@ def test_every_filter_change_changes_fingerprint(field: str, changed) -> None:
     assert baseline.filter_fingerprint != modified.filter_fingerprint
 
 
-def test_revision_change_changes_fingerprint() -> None:
+def test_revision_change_does_not_change_request_filter_fingerprint() -> None:
     conn = sqlite3.connect(":memory:")
     try:
         baseline = build_yearly_review_context(
@@ -103,7 +103,7 @@ def test_revision_change_changes_fingerprint() -> None:
         conn.close()
 
     assert fingerprint_filter_context(baseline) == baseline.filter_fingerprint
-    assert baseline.filter_fingerprint != modified.filter_fingerprint
+    assert baseline.filter_fingerprint == modified.filter_fingerprint
 
 
 def test_yearly_filter_defaults_match_persisted_settings_defaults(monkeypatch) -> None:

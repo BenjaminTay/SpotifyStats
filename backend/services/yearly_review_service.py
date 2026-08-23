@@ -7,6 +7,7 @@ import json
 import logging
 import math
 import os
+import sqlite3
 import threading
 from contextlib import contextmanager
 from contextvars import ContextVar
@@ -65,7 +66,7 @@ def bypass_yearly_review_persistent_cache():
         _persistent_cache_bypass.reset(token)
 
 
-def database_revision() -> str:
+def database_revision(year: int | None = None) -> str:
     """Fingerprint report source facts without reacting to unrelated SQLite writes.
 
     File mtimes and WAL sizes also change when jobs, task logs, or cache rows are
@@ -77,12 +78,46 @@ def database_revision() -> str:
     """
     conn = get_db(readonly=True)
     try:
+        if (
+            year is not None
+            and conn.execute(
+                """SELECT 1 FROM sqlite_master
+               WHERE type='table' AND name='playback_year_partition_state'"""
+            ).fetchone()
+        ):
+            partition = conn.execute(
+                """SELECT prefix_digest FROM playback_year_partition_state
+                   WHERE report_year=?""",
+                (year,),
+            ).fetchone()
+            if partition is not None:
+                return str(partition[0])
+        if (
+            year is None
+            and conn.execute(
+                """SELECT 1 FROM sqlite_master
+               WHERE type='table' AND name='playback_import_state'"""
+            ).fetchone()
+        ):
+            state_columns = {
+                str(row[1])
+                for row in conn.execute("PRAGMA table_info(playback_import_state)").fetchall()
+            }
+            revision_column = "playback_revision" if "playback_revision" in state_columns else "0"
+            state = conn.execute(
+                f"""SELECT dataset_digest, {revision_column}
+                    FROM playback_import_state WHERE state_id=1"""
+            ).fetchone()
+            if state is not None and state[0]:
+                return f"{state[0]}:{int(state[1] or 0)}"
+        year_filter = " WHERE ts_year<=?" if year is not None else ""
+        params = (year,) if year is not None else ()
         row = conn.execute(
-            """SELECT
-                   (SELECT COUNT(*) FROM plays) AS play_count,
-                   (SELECT COALESCE(MAX(play_id), 0) FROM plays) AS max_play_id,
-                   (SELECT COALESCE(MAX(ts), '') FROM plays) AS latest_play_ts,
-                   (SELECT COALESCE(SUM(ms_played), 0) FROM plays) AS total_ms,
+            f"""SELECT
+                   (SELECT COUNT(*) FROM plays{year_filter}) AS play_count,
+                   (SELECT COALESCE(MAX(play_id), 0) FROM plays{year_filter}) AS max_play_id,
+                   (SELECT COALESCE(MAX(ts), '') FROM plays{year_filter}) AS latest_play_ts,
+                   (SELECT COALESCE(SUM(ms_played), 0) FROM plays{year_filter}) AS total_ms,
                    (SELECT COUNT(*) FROM tracks) AS track_count,
                    (SELECT COALESCE(MAX(track_id), 0) FROM tracks) AS max_track_id,
                    (SELECT COUNT(*) FROM albums) AS album_count,
@@ -90,7 +125,8 @@ def database_revision() -> str:
                    (SELECT COUNT(*) FROM artists) AS artist_count,
                    (SELECT COALESCE(MAX(artist_id), 0) FROM artists) AS max_artist_id,
                    (SELECT COALESCE(MAX(version), 0) FROM schema_migrations)
-                       AS schema_version"""
+                       AS schema_version""",
+            params * 4,
         ).fetchone()
         encoded = json.dumps(list(row), ensure_ascii=True, separators=(",", ":"))
         return hashlib.sha256(encoded.encode()).hexdigest()[:20]
@@ -114,23 +150,40 @@ def build_yearly_review_cache_key(
     *,
     language_revision: str,
     db_revision: str,
+    scoped_dependency_revision: str | None = None,
 ) -> str:
+    request_filter = {
+        key: getattr(context, key)
+        for key in (
+            "min_ms",
+            "music_only",
+            "merge_enabled",
+            "dynamic_threshold",
+            "max_merge_gap_minutes",
+            "merge_level",
+            "include_compilations",
+            "bb_top_n",
+            "bb_album_top_n",
+            "bb_artist_top_n",
+            "bb_week_start_dow",
+            "bb_week_start_hour",
+        )
+    }
     payload = {
         "year": year,
         "schema_version": YEARLY_REVIEW_SCHEMA_VERSION,
         "content_version": YEARLY_REVIEW_CONTENT_VERSION,
-        "filter_fingerprint": context.filter_fingerprint,
+        "request_filter": request_filter,
         "relationship_policy_version": RELATIONSHIP_POLICY_VERSION,
         "highlight_policy_version": HIGHLIGHT_POLICY_VERSION,
         "season_stage_policy_version": SEASON_STAGE_POLICY_VERSION,
         "billboard_semantics_version": YEAR_END_SEMANTICS_VERSION,
         "display_taxonomy_version": context.display_taxonomy_version,
-        "artist_metadata_revision": context.artist_metadata_revision,
         "language_revision": language_revision,
         "artist_identity_revision": context.artist_identity_revision,
         "track_credit_revision": context.track_credit_revision,
-        "track_group_revision": context.track_group_revision,
-        "album_project_revision": context.album_project_revision,
+        "scoped_dependency_revision": scoped_dependency_revision
+        or _fallback_dependency_revision(context),
         "database_revision": db_revision,
     }
     encoded = json.dumps(payload, ensure_ascii=True, sort_keys=True, separators=(",", ":"))
@@ -177,12 +230,13 @@ def _build_cached_artifact(
 
 
 def _prepare_artifact(year: int, context: YearlyReviewFilterContext) -> PreparedYearlyReview:
-    db_revision = database_revision()
+    db_revision = database_revision(year)
     return _prepare_artifact_with_revisions(
         year,
         context,
         db_revision=db_revision,
         language_revision=_language_revision(),
+        scoped_dependency_revision=_year_scoped_dependency_revision(year, context),
     )
 
 
@@ -192,12 +246,14 @@ def _prepare_artifact_with_revisions(
     *,
     db_revision: str,
     language_revision: str,
+    scoped_dependency_revision: str | None = None,
 ) -> PreparedYearlyReview:
     key = build_yearly_review_cache_key(
         year,
         context,
         language_revision=language_revision,
         db_revision=db_revision,
+        scoped_dependency_revision=scoped_dependency_revision,
     )
     return PreparedYearlyReview(
         year=year,
@@ -211,17 +267,273 @@ def _prepare_artifact_with_revisions(
 def _prepare_artifacts(
     years: list[int], context: YearlyReviewFilterContext
 ) -> dict[int, PreparedYearlyReview]:
-    db_revision = database_revision()
     language_revision = _language_revision()
     return {
         year: _prepare_artifact_with_revisions(
             year,
             context,
-            db_revision=db_revision,
+            db_revision=database_revision(year),
             language_revision=language_revision,
+            scoped_dependency_revision=_year_scoped_dependency_revision(year, context),
         )
         for year in dict.fromkeys(years)
     }
+
+
+def _fallback_dependency_revision(context: YearlyReviewFilterContext) -> str:
+    value = (
+        f"{context.artist_metadata_revision}:{context.track_group_revision}:"
+        f"{context.album_project_revision}"
+    )
+    return hashlib.sha256(value.encode()).hexdigest()[:20]
+
+
+def _year_scoped_dependency_revision(
+    year: int,
+    context: YearlyReviewFilterContext,
+) -> str:
+    """Hash metadata/group/project facts reachable from the report prefix."""
+    conn = get_db(readonly=True)
+    try:
+        digest = hashlib.sha256(b"spotifystats-year-dependencies-v2\0")
+        queries = (
+            (
+                "artists",
+                """SELECT a.artist_id, a.artist_name, a.spotify_artist_id,
+                      a.genres, a.popularity, a.followers, a.image_url
+               FROM artists a
+               WHERE EXISTS (
+                   SELECT 1 FROM tracks t JOIN plays p ON p.track_id=t.track_id
+                   WHERE t.artist_id=a.artist_id AND p.ts_year<=?
+               ) OR EXISTS (
+                   SELECT 1 FROM track_artists ta JOIN plays p ON p.track_id=ta.track_id
+                   WHERE ta.artist_id=a.artist_id AND p.ts_year<=?
+               )
+               ORDER BY a.artist_id""",
+                (year, year),
+            ),
+            (
+                "spotify_artist_meta",
+                """SELECT sam.spotify_artist_id, sam.artist_name, sam.popularity,
+                          sam.followers, sam.genres, sam.image_url
+                   FROM spotify_artist_meta sam
+                   WHERE EXISTS (
+                       SELECT 1
+                       FROM artists a
+                       JOIN tracks t ON t.artist_id=a.artist_id
+                       JOIN plays p ON p.track_id=t.track_id
+                       WHERE a.artist_name=sam.artist_name AND p.ts_year<=?
+                   ) OR EXISTS (
+                       SELECT 1
+                       FROM artists a
+                       JOIN track_artists ta ON ta.artist_id=a.artist_id
+                       JOIN plays p ON p.track_id=ta.track_id
+                       WHERE a.artist_name=sam.artist_name AND p.ts_year<=?
+                   )
+                   ORDER BY sam.spotify_artist_id""",
+                (year, year),
+            ),
+            (
+                "artist_genre_overrides",
+                """SELECT ago.artist_name, ago.normalized_genres_json,
+                          ago.primary_genre, ago.language, ago.region,
+                          ago.confidence, ago.note
+                   FROM artist_genre_overrides ago
+                   WHERE EXISTS (
+                       SELECT 1
+                       FROM artists a
+                       JOIN tracks t ON t.artist_id=a.artist_id
+                       JOIN plays p ON p.track_id=t.track_id
+                       WHERE a.artist_name=ago.artist_name AND p.ts_year<=?
+                   ) OR EXISTS (
+                       SELECT 1
+                       FROM artists a
+                       JOIN track_artists ta ON ta.artist_id=a.artist_id
+                       JOIN plays p ON p.track_id=ta.track_id
+                       WHERE a.artist_name=ago.artist_name AND p.ts_year<=?
+                   )
+                   ORDER BY ago.artist_name""",
+                (year, year),
+            ),
+            (
+                "artist_genre_sources",
+                """SELECT ags.source_id, ags.artist_name, ags.spotify_artist_id,
+                          ags.source, ags.source_key, ags.normalized_genres_json,
+                          ags.primary_genre, ags.language, ags.region,
+                          ags.confidence, ags.evidence_url, ags.evidence_summary,
+                          ags.status
+                   FROM artist_genre_sources ags
+                   WHERE ags.status='approved' AND (
+                       EXISTS (
+                           SELECT 1
+                           FROM artists a
+                           JOIN tracks t ON t.artist_id=a.artist_id
+                           JOIN plays p ON p.track_id=t.track_id
+                           WHERE a.artist_name=ags.artist_name AND p.ts_year<=?
+                       ) OR EXISTS (
+                           SELECT 1
+                           FROM artists a
+                           JOIN track_artists ta ON ta.artist_id=a.artist_id
+                           JOIN plays p ON p.track_id=ta.track_id
+                           WHERE a.artist_name=ags.artist_name AND p.ts_year<=?
+                       )
+                   )
+                   ORDER BY ags.artist_name, ags.source_id""",
+                (year, year),
+            ),
+            (
+                "tracks",
+                """SELECT t.track_id, t.track_name, t.artist_id, t.album_id,
+                          t.spotify_track_uri, t.spotify_track_id
+                   FROM tracks t
+                   WHERE EXISTS (
+                       SELECT 1 FROM plays p
+                       WHERE p.track_id=t.track_id AND p.ts_year<=?
+                   )
+                   ORDER BY t.track_id""",
+                (year,),
+            ),
+            (
+                "artist_metadata_attribution_overrides",
+                """SELECT amao.track_id, amao.artist_id, amao.reason,
+                          amao.evidence_url
+                   FROM artist_metadata_attribution_overrides amao
+                   WHERE EXISTS (
+                       SELECT 1 FROM plays p
+                       WHERE p.track_id=amao.track_id AND p.ts_year<=?
+                   )
+                   ORDER BY amao.track_id""",
+                (year,),
+            ),
+            (
+                "spotify_track_meta",
+                """SELECT stm.spotify_track_id, stm.track_name, stm.duration_ms,
+                          stm.popularity, stm.explicit, stm.track_number,
+                          stm.disc_number, stm.isrc, stm.spotify_album_id
+                   FROM spotify_track_meta stm
+                   WHERE EXISTS (
+                       SELECT 1
+                       FROM tracks t JOIN plays p ON p.track_id=t.track_id
+                       WHERE t.spotify_track_id=stm.spotify_track_id AND p.ts_year<=?
+                   )
+                   ORDER BY stm.spotify_track_id""",
+                (year,),
+            ),
+            (
+                "spotify_album_meta",
+                """SELECT sam.spotify_album_id, sam.album_name, sam.album_type,
+                          sam.release_date, sam.popularity, sam.label, sam.genres,
+                          sam.image_url, sam.album_artists, sam.total_tracks,
+                          sam.track_list
+                   FROM spotify_album_meta sam
+                   WHERE EXISTS (
+                       SELECT 1
+                       FROM spotify_track_meta stm
+                       JOIN tracks t ON t.spotify_track_id=stm.spotify_track_id
+                       JOIN plays p ON p.track_id=t.track_id
+                       WHERE stm.spotify_album_id=sam.spotify_album_id
+                         AND p.ts_year<=?
+                   )
+                   ORDER BY sam.spotify_album_id""",
+                (year,),
+            ),
+            (
+                "track_groups",
+                """SELECT tg.scope, tg.canonical_name, tg.primary_track_id,
+                      tg.is_manual, tgm.track_id
+               FROM track_group_members tgm
+               JOIN track_groups tg ON tg.group_id=tgm.group_id
+               WHERE EXISTS (
+                   SELECT 1 FROM plays p
+                   WHERE p.track_id=tgm.track_id AND p.ts_year<=?
+               )
+               ORDER BY tg.scope, tg.canonical_name, tg.primary_track_id,
+                        tg.is_manual, tgm.track_id""",
+                (year,),
+            ),
+            (
+                "album_project_tracks",
+                """SELECT ap.canonical_name, ap.artist_id, ap.primary_album_id,
+                      ap.release_date, ap.scope, ap.project_type,
+                      ap.include_in_charts, ap.is_manual,
+                      apt.track_id, apt.membership_role, apt.min_merge_level,
+                      apt.source_album_id, apt.is_exclusive, apt.inferred
+               FROM album_project_tracks apt
+               JOIN album_projects ap ON ap.project_id=apt.project_id
+               WHERE EXISTS (
+                   SELECT 1 FROM plays p
+                   WHERE p.track_id=apt.track_id AND p.ts_year<=?
+               )
+               ORDER BY ap.canonical_name, ap.artist_id, ap.scope,
+                        apt.track_id, apt.min_merge_level""",
+                (year,),
+            ),
+            (
+                "album_project_albums",
+                """SELECT ap.canonical_name, ap.artist_id, ap.primary_album_id,
+                          ap.scope, apa.album_id, apa.role, apa.source_bucket,
+                          apa.inferred
+                   FROM album_project_albums apa
+                   JOIN album_projects ap ON ap.project_id=apa.project_id
+                   WHERE EXISTS (
+                       SELECT 1
+                       FROM album_project_tracks apt
+                       JOIN plays p ON p.track_id=apt.track_id
+                       WHERE apt.project_id=apa.project_id AND p.ts_year<=?
+                   )
+                   ORDER BY ap.canonical_name, ap.artist_id, ap.scope,
+                            apa.album_id""",
+                (year,),
+            ),
+            (
+                "available_playback_years",
+                """SELECT DISTINCT ts_year
+                   FROM plays
+                   WHERE ts_year BETWEEN 2000 AND 2100
+                   ORDER BY ts_year""",
+                (),
+            ),
+            (
+                "available_billboard_years",
+                """SELECT available_year FROM (
+                       SELECT DISTINCT SUBSTR(billboard_week, 1, 4) AS available_year
+                       FROM agg_weekly_tracks
+                       UNION
+                       SELECT DISTINCT SUBSTR(billboard_week, 1, 4) AS available_year
+                       FROM agg_weekly_albums
+                       UNION
+                       SELECT DISTINCT SUBSTR(billboard_week, 1, 4) AS available_year
+                       FROM agg_weekly_artists
+                   )
+                   WHERE available_year BETWEEN '2000' AND '2100'
+                   ORDER BY available_year""",
+                (),
+            ),
+        )
+        for label, query, params in queries:
+            digest.update(label.encode())
+            digest.update(b"\0")
+            try:
+                rows = conn.execute(query, params).fetchall()
+            except sqlite3.OperationalError:
+                digest.update(b"unavailable\n")
+                continue
+            for row in rows:
+                digest.update(
+                    json.dumps(
+                        list(row),
+                        ensure_ascii=True,
+                        separators=(",", ":"),
+                        default=str,
+                    ).encode()
+                )
+                digest.update(b"\n")
+        return digest.hexdigest()[:20]
+    except Exception:
+        logger.exception("Yearly Review scoped dependency revision failed")
+        return _fallback_dependency_revision(context)
+    finally:
+        conn.close()
 
 
 def _refresh_prepared_artifact(prepared: PreparedYearlyReview) -> PreparedYearlyReview:

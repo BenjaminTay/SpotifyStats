@@ -4,7 +4,7 @@ import sqlite3
 
 import pytest
 
-from backend.core.migrations import migrate_037
+from backend.core.migrations import migrate_037, migrate_041
 
 
 def _minimal_connection() -> sqlite3.Connection:
@@ -151,5 +151,35 @@ def test_migrate_037_import_run_columns_match_phase_a_plan() -> None:
 
         with pytest.raises(sqlite3.IntegrityError):
             conn.execute("INSERT INTO playback_import_state(state_id) VALUES (2)")
+    finally:
+        conn.close()
+
+
+def test_migrate_041_upgrades_initial_year_partition_schema() -> None:
+    conn = _minimal_connection()
+    try:
+        conn.execute(
+            """CREATE TABLE playback_year_partition_state (
+                   report_year INTEGER PRIMARY KEY,
+                   direct_digest TEXT NOT NULL,
+                   prefix_digest TEXT NOT NULL,
+                   record_count INTEGER NOT NULL,
+                   source_generation_id TEXT NOT NULL
+            )"""
+        )
+        conn.execute(
+            """INSERT INTO playback_year_partition_state(
+                   report_year, direct_digest, prefix_digest, record_count,
+                   source_generation_id
+               ) VALUES (2025, 'direct', 'v1-prefix', 1, 'old')"""
+        )
+
+        migrate_041(conn)
+
+        columns = {
+            row["name"] for row in conn.execute("PRAGMA table_info(playback_year_partition_state)")
+        }
+        assert {"digest_version", "impact_revision"} <= columns
+        assert conn.execute("SELECT COUNT(*) FROM playback_year_partition_state").fetchone()[0] == 0
     finally:
         conn.close()

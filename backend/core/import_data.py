@@ -686,6 +686,13 @@ def _import_data_impl(
         result["finalized_in_transaction"] = True
     conn.commit()
 
+    # Facts and their active generation are now visible. Drop every runtime
+    # playback payload before derived maintenance starts so requests cannot
+    # serve a cached response from the previous generation during the rebuild.
+    from backend.core.cache_manager import invalidate_playback_caches
+
+    invalidate_playback_caches()
+
     if build_preaggregations:
         # Build pre-aggregated weekly Billboard tables
         if progress_callback:

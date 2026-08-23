@@ -979,10 +979,16 @@ def _publish_aggregation_shadows(
     conn: sqlite3.Connection,
     *,
     param_hash: str,
+    data_generation_id: str | None,
 ) -> None:
     """Atomically replace every live aggregate table with one staged snapshot."""
     conn.execute("BEGIN IMMEDIATE")
     try:
+        current_generation_id = _active_playback_generation(conn)
+        if current_generation_id != data_generation_id:
+            raise RuntimeError(
+                "playback generation changed while Billboard aggregates were building"
+            )
         for live_table, shadow_table in _AGG_SHADOW_TABLES.items():
             conn.execute(f'DELETE FROM main."{live_table}"')
             conn.execute(f'INSERT INTO main."{live_table}" SELECT * FROM temp."{shadow_table}"')
@@ -991,6 +997,56 @@ def _publish_aggregation_shadows(
             "INSERT INTO agg_config(key, value) VALUES ('param_hash', ?)",
             (param_hash,),
         )
+        if data_generation_id is not None:
+            conn.execute(
+                """INSERT INTO agg_config(key, value)
+                   VALUES ('data_generation_id', ?)""",
+                (data_generation_id,),
+            )
+        if conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='track_credit_state'"
+        ).fetchone():
+            conn.execute(
+                """UPDATE track_credit_state
+                   SET active_aggregate_revision=current_revision,
+                       rebuild_status='ready', last_error=NULL, updated_at=datetime('now')
+                   WHERE state_id=1"""
+            )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+
+
+def _active_playback_generation(conn: sqlite3.Connection) -> str | None:
+    """Return the generation bound to the currently published playback facts."""
+    if not conn.execute(
+        """SELECT 1 FROM sqlite_master
+           WHERE type='table' AND name='playback_import_state'"""
+    ).fetchone():
+        return None
+    row = conn.execute(
+        """SELECT active_generation_id FROM playback_import_state
+           WHERE state_id=1"""
+    ).fetchone()
+    return str(row[0]) if row is not None and row[0] else None
+
+
+def _clear_aggregations_for_generation(
+    conn: sqlite3.Connection,
+    *,
+    data_generation_id: str | None,
+) -> None:
+    """Clear live aggregates only if the facts still match this build."""
+    conn.execute("BEGIN IMMEDIATE")
+    try:
+        if _active_playback_generation(conn) != data_generation_id:
+            raise RuntimeError(
+                "playback generation changed while Billboard aggregates were building"
+            )
+        for live_table in _AGG_SHADOW_TABLES:
+            conn.execute(f'DELETE FROM main."{live_table}"')
+        conn.execute("DELETE FROM agg_config")
         if conn.execute(
             "SELECT 1 FROM sqlite_master WHERE type='table' AND name='track_credit_state'"
         ).fetchone():
@@ -1517,7 +1573,23 @@ def check_agg_valid(conn: sqlite3.Connection, param_hash: str) -> bool:
     """Check if the stored aggregation matches the current parameter hash."""
     try:
         row = conn.execute("SELECT value FROM agg_config WHERE key = 'param_hash'").fetchone()
-        return row is not None and row[0] == param_hash
+        if row is None or row[0] != param_hash:
+            return False
+        if not conn.execute(
+            """SELECT 1 FROM sqlite_master
+               WHERE type='table' AND name='playback_import_state'"""
+        ).fetchone():
+            return True
+        active = conn.execute(
+            """SELECT active_generation_id FROM playback_import_state
+               WHERE state_id=1"""
+        ).fetchone()
+        if active is None or not active[0]:
+            return True
+        aggregate = conn.execute(
+            "SELECT value FROM agg_config WHERE key='data_generation_id'"
+        ).fetchone()
+        return aggregate is not None and str(aggregate[0]) == str(active[0])
     except sqlite3.OperationalError:
         return False
 
@@ -1530,6 +1602,7 @@ def build_aggregations(
     progress_callback=None,
     dynamic_threshold: bool = False,
     max_merge_gap_minutes: int | None = 5,
+    expected_generation_id: str | None = None,
 ) -> dict[str, int]:
     """Build all 3 pre-aggregated weekly Billboard tables from the plays table.
 
@@ -1541,6 +1614,12 @@ def build_aggregations(
     import pandas as pd
 
     conn = get_db(readonly=False)
+    build_generation_id = _active_playback_generation(conn)
+    if expected_generation_id is not None and build_generation_id != expected_generation_id:
+        conn.close()
+        raise RuntimeError(
+            "active playback generation does not match the requested aggregate generation"
+        )
 
     f, fp = base_filters(min_ms=0, music_only=music_only)
     where = f"WHERE {f}" if f else ""
@@ -1555,31 +1634,20 @@ def build_aggregations(
             LEFT JOIN spotify_track_meta stm
               ON t.spotify_track_id = stm.spotify_track_id
             {where}
-            ORDER BY p.ts""",
+            ORDER BY p.ts, p.play_id""",
         conn,
         params=fp,
     )
 
     if df.empty:
-        conn.execute("DELETE FROM agg_weekly_tracks")
-        conn.execute("DELETE FROM agg_weekly_albums")
-        conn.execute("DELETE FROM agg_weekly_track_sources")
-        conn.execute("DELETE FROM agg_weekly_artists")
-        conn.execute("DELETE FROM agg_config")
-        if conn.execute(
-            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='track_credit_state'"
-        ).fetchone():
-            conn.execute(
-                """UPDATE track_credit_state
-                   SET active_aggregate_revision=current_revision,
-                       rebuild_status='ready', last_error=NULL, updated_at=datetime('now')
-                   WHERE state_id=1"""
-            )
-        conn.commit()
+        _clear_aggregations_for_generation(
+            conn,
+            data_generation_id=build_generation_id,
+        )
         conn.close()
-        from backend.core.cache_manager import invalidate_all
+        from backend.core.cache_manager import invalidate_playback_caches
 
-        invalidate_all()
+        invalidate_playback_caches()
         return {"tracks": 0, "albums": 0, "track_sources": 0, "artists": 0}
 
     if progress_callback:
@@ -1602,16 +1670,14 @@ def build_aggregations(
         df = filter_effective_plays(df, min_ms=min_ms, dynamic_threshold=dynamic_threshold)
 
     if df.empty:
-        conn.execute("DELETE FROM agg_weekly_tracks")
-        conn.execute("DELETE FROM agg_weekly_albums")
-        conn.execute("DELETE FROM agg_weekly_track_sources")
-        conn.execute("DELETE FROM agg_weekly_artists")
-        conn.execute("DELETE FROM agg_config")
-        conn.commit()
+        _clear_aggregations_for_generation(
+            conn,
+            data_generation_id=build_generation_id,
+        )
         conn.close()
-        from backend.core.cache_manager import invalidate_all
+        from backend.core.cache_manager import invalidate_playback_caches
 
-        invalidate_all()
+        invalidate_playback_caches()
         return {"tracks": 0, "albums": 0, "track_sources": 0, "artists": 0}
 
     event_df = df.copy()
@@ -1769,15 +1835,19 @@ def build_aggregations(
         identity_revision=get_identity_revision(conn),
         track_credit_revision=get_track_credit_revision(conn),
     )
-    _publish_aggregation_shadows(conn, param_hash=param_hash)
+    _publish_aggregation_shadows(
+        conn,
+        param_hash=param_hash,
+        data_generation_id=build_generation_id,
+    )
     conn.close()
 
     # A rebuild changes the source of truth for every Billboard cache.  Clear
     # registered runtime caches here so API-triggered rebuilds cannot continue
     # serving the previous aggregate snapshot from the same process.
-    from backend.core.cache_manager import invalidate_all
+    from backend.core.cache_manager import invalidate_playback_caches
 
-    invalidate_all()
+    invalidate_playback_caches()
 
     return results
 

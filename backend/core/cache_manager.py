@@ -44,6 +44,27 @@ def invalidate(namespace: str) -> None:
                 wrapper.cache_clear()
 
 
+def invalidate_many(*namespaces: str) -> None:
+    """Clear an explicit dependency set without disturbing unrelated domains."""
+    for namespace in dict.fromkeys(namespaces):
+        invalidate(namespace)
+
+
+def invalidate_playback_caches() -> None:
+    """Invalidate only runtime domains whose payloads read playback/dimensions."""
+    invalidate_many(
+        "db",
+        "analysis",
+        "billboard",
+        "profile",
+        "insights",
+        "search",
+        "library",
+        "video",
+        "wrapped",
+    )
+
+
 def invalidate_except(namespace: str, preserved_keys: set[str]) -> None:
     """Clear one namespace while preserving explicitly named cache entries.
 

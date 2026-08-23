@@ -149,9 +149,9 @@ def test_publish_playback_import_state_stays_in_caller_transaction() -> None:
         conn.close()
 
 
-@pytest.mark.parametrize("status", ["success", "noop", "needs_confirmation"])
+@pytest.mark.parametrize("status", ["maintenance_pending", "success", "noop", "needs_confirmation"])
 def test_record_playback_import_run_is_compact_private_and_transactional(
-    status: Literal["success", "noop", "needs_confirmation"],
+    status: Literal["maintenance_pending", "success", "noop", "needs_confirmation"],
 ) -> None:
     incoming = [
         FingerprintRecord(
@@ -183,6 +183,7 @@ def test_record_playback_import_run_is_compact_private_and_transactional(
         ).fetchone()
         payload = json.loads(row["plan_json"])
         assert row["status"] == status
+        assert (row["completed_at"] is None) is (status == "maintenance_pending")
         assert row["incoming_count"] == 1
         assert row["added_count"] == 1
         assert set(payload) == {
@@ -207,6 +208,44 @@ def test_record_playback_import_run_is_compact_private_and_transactional(
             ).fetchone()[0]
             == 0
         )
+    finally:
+        conn.close()
+
+
+def test_record_playback_import_run_promotes_pending_row_without_duplicate() -> None:
+    plan = build_import_plan([], existing_records=[])
+    conn = _connection()
+    try:
+        record_playback_import_run(
+            conn,
+            run_id="run-promote",
+            requested_mode="auto",
+            status="maintenance_pending",
+            plan=plan,
+        )
+        started_at = conn.execute(
+            "SELECT started_at FROM playback_import_runs WHERE run_id='run-promote'"
+        ).fetchone()[0]
+        record_playback_import_run(
+            conn,
+            run_id="run-promote",
+            requested_mode="auto",
+            status="success",
+            plan=plan,
+        )
+        row = conn.execute(
+            "SELECT status, started_at, completed_at FROM playback_import_runs "
+            "WHERE run_id='run-promote'"
+        ).fetchone()
+        assert (
+            conn.execute(
+                "SELECT COUNT(*) FROM playback_import_runs WHERE run_id='run-promote'"
+            ).fetchone()[0]
+            == 1
+        )
+        assert row["status"] == "success"
+        assert row["started_at"] == started_at
+        assert row["completed_at"] is not None
     finally:
         conn.close()
 

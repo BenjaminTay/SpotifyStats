@@ -12,6 +12,7 @@ Job types:
 
 from __future__ import annotations
 
+import json
 import logging
 import queue
 import sqlite3
@@ -105,17 +106,85 @@ class JobQueue:
 
     def start(self, db_path: str):
         """Start worker threads. Call once during app startup."""
-        self._db_path = db_path
-        self._running = True
-        for i in range(self._max_workers):
-            t = threading.Thread(
-                target=self._worker_loop,
-                name=f"job-worker-{i}",
-                daemon=True,
-            )
-            t.start()
-            self._workers.append(t)
+        with self._lock:
+            if self._running:
+                return
+            self._db_path = db_path
+            recovered_jobs = self._recover_persisted_jobs()
+            for job in recovered_jobs:
+                self._q.put(job)
+            self._running = True
+            for i in range(self._max_workers):
+                t = threading.Thread(
+                    target=self._worker_loop,
+                    name=f"job-worker-{i}",
+                    daemon=True,
+                )
+                t.start()
+                self._workers.append(t)
         logger.info("JobQueue started with %d workers.", self._max_workers)
+
+    def _recover_persisted_jobs(self) -> list[Job]:
+        """Recover pending work and reset jobs orphaned by an interrupted process."""
+        if not self._db_path:
+            return []
+
+        conn: sqlite3.Connection | None = None
+        recovered: list[Job] = []
+        now = datetime.now(timezone.utc).isoformat()
+        try:
+            conn = sqlite3.connect(self._db_path, timeout=5)
+            conn.row_factory = sqlite3.Row
+            conn.execute("BEGIN IMMEDIATE")
+            conn.execute(
+                """UPDATE background_jobs
+                   SET status='pending', updated_at=?, error=NULL
+                   WHERE status='running'""",
+                (now,),
+            )
+            rows = conn.execute(
+                """SELECT job_id, job_type, entity_type, entity_id,
+                          payload_json, created_at, attempts
+                   FROM background_jobs
+                   WHERE status='pending'
+                   ORDER BY created_at, job_id"""
+            ).fetchall()
+            for row in rows:
+                try:
+                    payload = json.loads(row["payload_json"] or "{}")
+                    if not isinstance(payload, dict):
+                        raise ValueError("payload_json must contain an object")
+                    recovered.append(
+                        Job(
+                            job_id=str(row["job_id"]),
+                            job_type=str(row["job_type"]),
+                            entity_type=str(row["entity_type"] or ""),
+                            entity_id=str(row["entity_id"] or ""),
+                            payload=payload,
+                            created_at=str(row["created_at"] or ""),
+                            attempts=int(row["attempts"] or 0),
+                        )
+                    )
+                except (TypeError, ValueError, json.JSONDecodeError) as exc:
+                    conn.execute(
+                        """UPDATE background_jobs
+                           SET status='failed', updated_at=?, error=?
+                           WHERE job_id=?""",
+                        (now, f"Invalid persisted job payload: {exc}"[:500], row["job_id"]),
+                    )
+            conn.commit()
+        except sqlite3.OperationalError:
+            if conn is not None:
+                conn.rollback()
+            logger.debug("background_jobs table unavailable; no persisted jobs recovered.")
+            return []
+        finally:
+            if conn is not None:
+                conn.close()
+
+        if recovered:
+            logger.info("Recovered %d persisted background jobs.", len(recovered))
+        return recovered
 
     def stop(self):
         """Graceful shutdown — workers finish current job then exit."""

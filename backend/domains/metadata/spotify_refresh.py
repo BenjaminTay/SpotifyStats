@@ -10,6 +10,10 @@ from dataclasses import dataclass
 TRACK_BATCH_SIZE = 50
 ALBUM_BATCH_SIZE = 20
 ARTIST_BATCH_SIZE = 50
+SCOPED_TRACK_BACKLOG_LIMIT = 200
+SCOPED_ALBUM_BACKLOG_LIMIT = 200
+SCOPED_ARTIST_BACKLOG_LIMIT = 200
+SCOPED_ARTIST_SEARCH_BACKLOG_LIMIT = 100
 
 
 @dataclass(frozen=True)
@@ -25,6 +29,18 @@ class MetadataRefreshReport:
     album_links_backfilled: int = 0
     provider_available: bool = True
     errors: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class MetadataRefreshScope:
+    """Local entities and import generation eligible for targeted refresh."""
+
+    generation_id: str
+    track_ids: frozenset[int] = frozenset()
+    album_ids: frozenset[int] = frozenset()
+    artist_ids: frozenset[int] = frozenset()
+    spotify_track_ids: frozenset[str] = frozenset()
+    spotify_album_ids: frozenset[str] = frozenset()
 
 
 def select_missing_track_ids(conn: sqlite3.Connection, limit: int = 5000) -> list[str]:
@@ -56,7 +72,12 @@ def _normalized_name(value: str | None) -> str:
     return "".join(char for char in normalized if char.isalnum())
 
 
-def _link_local_artist_from_track(conn: sqlite3.Connection, track: dict) -> int:
+def _link_local_artist_from_track(
+    conn: sqlite3.Connection,
+    track: dict,
+    *,
+    scope: MetadataRefreshScope | None = None,
+) -> int:
     spotify_artists = track.get("artists") or []
     if not spotify_artists:
         return 0
@@ -67,13 +88,31 @@ def _link_local_artist_from_track(conn: sqlite3.Connection, track: dict) -> int:
     track_columns = {str(row[1]) for row in conn.execute("PRAGMA table_info(tracks)")}
     if "artist_id" not in track_columns:
         return 0
-    local_rows = conn.execute(
-        """SELECT DISTINCT a.artist_id, a.artist_name
-           FROM tracks t
-           JOIN artists a ON a.artist_id=t.artist_id
-           WHERE t.spotify_track_id=?""",
-        (track.get("id"),),
-    ).fetchall()
+    track_id = track.get("id")
+    if scope is None:
+        local_rows = conn.execute(
+            """SELECT DISTINCT a.artist_id, a.artist_name
+               FROM tracks t
+               JOIN artists a ON a.artist_id=t.artist_id
+               WHERE t.spotify_track_id=?""",
+            (track_id,),
+        ).fetchall()
+    else:
+        local_rows = conn.execute(
+            """SELECT DISTINCT a.artist_id, a.artist_name
+                FROM tracks t
+                JOIN artists a ON a.artist_id=t.artist_id
+                WHERE (
+                    t.spotify_track_id=?
+                    OR EXISTS (
+                        SELECT 1 FROM plays p
+                        WHERE p.import_generation_id=?
+                          AND p.track_id=t.track_id
+                          AND p.spotify_track_id_at_play=?
+                    )
+                )""",
+            (track_id, scope.generation_id, track_id),
+        ).fetchall()
     linked = 0
     for local in local_rows:
         local_name = _normalized_name(local["artist_name"])
@@ -113,7 +152,12 @@ def select_track_ids_for_artist_linkage(conn: sqlite3.Connection, limit: int = 5
     return [str(row["spotify_track_id"]) for row in rows if row["spotify_track_id"]]
 
 
-def upsert_track_batch(conn: sqlite3.Connection, tracks: list[dict]) -> int:
+def upsert_track_batch(
+    conn: sqlite3.Connection,
+    tracks: list[dict],
+    *,
+    scope: MetadataRefreshScope | None = None,
+) -> int:
     updated = 0
     for track in tracks:
         if not track:
@@ -156,15 +200,24 @@ def upsert_track_batch(conn: sqlite3.Connection, tracks: list[dict]) -> int:
                    GROUP BY source_album_id""",
                 (album_id, track["id"]),
             )
-        _link_local_artist_from_track(conn, track)
+        _link_local_artist_from_track(conn, track, scope=scope)
         updated += 1
     conn.commit()
     return updated
 
 
-def backfill_album_links_from_existing_metadata(conn: sqlite3.Connection) -> int:
+def backfill_album_links_from_existing_metadata(
+    conn: sqlite3.Connection,
+    *,
+    scope: MetadataRefreshScope | None = None,
+) -> int:
+    play_scope_sql = ""
+    play_scope_params: tuple[object, ...] = ()
+    if scope is not None:
+        play_scope_sql = " AND import_generation_id=?"
+        play_scope_params = (scope.generation_id,)
     track_cursor = conn.execute(
-        """UPDATE plays
+        f"""UPDATE plays
            SET spotify_track_id_at_play = (
                SELECT t.spotify_track_id
                FROM tracks t
@@ -178,10 +231,11 @@ def backfill_album_links_from_existing_metadata(conn: sqlite3.Connection) -> int
                WHERE t.track_id = plays.track_id
                  AND t.spotify_track_id IS NOT NULL
                  AND t.spotify_track_id != ''
-             )"""
+             ){play_scope_sql}""",
+        play_scope_params,
     )
     album_cursor = conn.execute(
-        """UPDATE plays
+        f"""UPDATE plays
            SET spotify_album_id_at_play = (
                SELECT stm.spotify_album_id
                FROM spotify_track_meta stm
@@ -196,10 +250,15 @@ def backfill_album_links_from_existing_metadata(conn: sqlite3.Connection) -> int
                WHERE stm.spotify_track_id = plays.spotify_track_id_at_play
                  AND stm.spotify_album_id IS NOT NULL
                  AND stm.spotify_album_id != ''
-             )"""
+             ){play_scope_sql}""",
+        play_scope_params,
+    )
+    album_filter, album_params = _integer_scope_filter(
+        "p.source_album_id",
+        None if scope is None else scope.album_ids,
     )
     link_cursor = conn.execute(
-        """INSERT OR REPLACE INTO album_spotify_links(
+        f"""INSERT OR REPLACE INTO album_spotify_links(
                album_id, spotify_album_id, evidence, confidence,
                play_count, track_count, first_seen, last_seen, updated_at)
            SELECT p.source_album_id, stm.spotify_album_id, 'play_track_meta', 0.9,
@@ -211,7 +270,9 @@ def backfill_album_links_from_existing_metadata(conn: sqlite3.Connection) -> int
            WHERE p.source_album_id IS NOT NULL
              AND stm.spotify_album_id IS NOT NULL
              AND stm.spotify_album_id != ''
-           GROUP BY p.source_album_id, stm.spotify_album_id"""
+             {album_filter}
+           GROUP BY p.source_album_id, stm.spotify_album_id""",
+        album_params,
     )
     conn.commit()
     return (
@@ -367,20 +428,31 @@ def upsert_artist_batch(conn: sqlite3.Connection, artists: list[dict]) -> int:
     return updated
 
 
-def sync_local_cover_urls(conn: sqlite3.Connection) -> tuple[int, int]:
+def sync_local_cover_urls(
+    conn: sqlite3.Connection,
+    *,
+    album_ids: frozenset[int] | set[int] | None = None,
+    artist_ids: frozenset[int] | set[int] | None = None,
+) -> tuple[int, int]:
     """Copy resolved Spotify image sources onto local album/artist entities."""
+    album_filter, album_params = _integer_scope_filter("album_id", album_ids)
+    artist_filter, artist_params = _integer_scope_filter("artist_id", artist_ids)
     albums_before = int(
         conn.execute(
-            "SELECT COUNT(*) FROM albums WHERE image_url IS NOT NULL AND image_url!=''"
+            f"""SELECT COUNT(*) FROM albums
+                WHERE image_url IS NOT NULL AND image_url!='' {album_filter}""",
+            album_params,
         ).fetchone()[0]
     )
     artists_before = int(
         conn.execute(
-            "SELECT COUNT(*) FROM artists WHERE image_url IS NOT NULL AND image_url!=''"
+            f"""SELECT COUNT(*) FROM artists
+                WHERE image_url IS NOT NULL AND image_url!='' {artist_filter}""",
+            artist_params,
         ).fetchone()[0]
     )
     conn.execute(
-        """UPDATE albums
+        f"""UPDATE albums
            SET spotify_album_id=COALESCE(
                    NULLIF(spotify_album_id, ''),
                    (SELECT asl.spotify_album_id
@@ -405,10 +477,11 @@ def sync_local_cover_urls(conn: sqlite3.Connection) -> tuple[int, int]:
                              asl.confidence DESC, asl.play_count DESC
                     LIMIT 1)
                )
-           WHERE image_url IS NULL OR image_url=''"""
+           WHERE (image_url IS NULL OR image_url='') {album_filter}""",
+        album_params,
     )
     conn.execute(
-        """UPDATE artists
+        f"""UPDATE artists
            SET image_url=COALESCE(
                NULLIF(image_url, ''),
                (SELECT sam.image_url FROM spotify_artist_meta sam
@@ -420,27 +493,36 @@ def sync_local_cover_urls(conn: sqlite3.Connection) -> tuple[int, int]:
                   AND sam.image_url IS NOT NULL AND sam.image_url!=''
                 LIMIT 1)
            )
-           WHERE image_url IS NULL OR image_url=''"""
+           WHERE (image_url IS NULL OR image_url='') {artist_filter}""",
+        artist_params,
     )
     conn.commit()
     albums_after = int(
         conn.execute(
-            "SELECT COUNT(*) FROM albums WHERE image_url IS NOT NULL AND image_url!=''"
+            f"""SELECT COUNT(*) FROM albums
+                WHERE image_url IS NOT NULL AND image_url!='' {album_filter}""",
+            album_params,
         ).fetchone()[0]
     )
     artists_after = int(
         conn.execute(
-            "SELECT COUNT(*) FROM artists WHERE image_url IS NOT NULL AND image_url!=''"
+            f"""SELECT COUNT(*) FROM artists
+                WHERE image_url IS NOT NULL AND image_url!='' {artist_filter}""",
+            artist_params,
         ).fetchone()[0]
     )
     return albums_after - albums_before, artists_after - artists_before
 
 
 def select_played_artists_missing_covers(
-    conn: sqlite3.Connection, limit: int = 1000
+    conn: sqlite3.Connection,
+    limit: int = 1000,
+    *,
+    artist_ids: frozenset[int] | set[int] | None = None,
 ) -> list[tuple[int, str]]:
+    artist_filter, artist_params = _integer_scope_filter("a.artist_id", artist_ids)
     rows = conn.execute(
-        """SELECT a.artist_id, a.artist_name
+        f"""SELECT a.artist_id, a.artist_name
            FROM artists a
            WHERE (a.image_url IS NULL OR a.image_url='')
              AND EXISTS (
@@ -448,9 +530,10 @@ def select_played_artists_missing_covers(
                JOIN plays p ON p.track_id=ta.track_id
                WHERE ta.artist_id=a.artist_id
              )
+             {artist_filter}
            ORDER BY a.artist_id
            LIMIT ?""",
-        (limit,),
+        (*artist_params, limit),
     ).fetchall()
     return [(int(row["artist_id"]), str(row["artist_name"])) for row in rows]
 
@@ -460,8 +543,10 @@ def refresh_missing_spotify_metadata(
     provider,
     access_token: str | None,
     progress_callback=None,
+    *,
+    scope: MetadataRefreshScope | None = None,
 ) -> MetadataRefreshReport:
-    album_links_backfilled = backfill_album_links_from_existing_metadata(conn)
+    album_links_backfilled = backfill_album_links_from_existing_metadata(conn, scope=scope)
     if not access_token:
         return MetadataRefreshReport(
             album_links_backfilled=album_links_backfilled,
@@ -470,9 +555,23 @@ def refresh_missing_spotify_metadata(
         )
 
     errors: list[str] = []
-    track_ids = list(
-        dict.fromkeys([*select_missing_track_ids(conn), *select_track_ids_for_artist_linkage(conn)])
-    )
+    if scope is None:
+        track_ids = list(
+            dict.fromkeys(
+                [*select_missing_track_ids(conn), *select_track_ids_for_artist_linkage(conn)]
+            )
+        )
+    else:
+        scoped_track_ids = _scoped_track_candidates(conn, scope)
+        track_backlog = list(
+            dict.fromkeys(
+                [
+                    *select_missing_track_ids(conn, limit=SCOPED_TRACK_BACKLOG_LIMIT),
+                    *select_track_ids_for_artist_linkage(conn, limit=SCOPED_TRACK_BACKLOG_LIMIT),
+                ]
+            )
+        )[:SCOPED_TRACK_BACKLOG_LIMIT]
+        track_ids = list(dict.fromkeys([*scoped_track_ids, *track_backlog]))
     tracks_updated = 0
     album_ids_seen: set[str] = set()
 
@@ -488,13 +587,24 @@ def refresh_missing_spotify_metadata(
             errors.append("tracks_batch_failed")
             continue
         tracks = data.get("tracks", [])
-        tracks_updated += upsert_track_batch(conn, tracks)
+        tracks_updated += upsert_track_batch(conn, tracks, scope=scope)
         for track in tracks:
             album_id = track and (track.get("album") or {}).get("id")
             if album_id:
                 album_ids_seen.add(album_id)
 
-    album_ids = list(dict.fromkeys([*album_ids_seen, *select_missing_album_ids(conn)]))
+    if scope is None:
+        album_ids = list(dict.fromkeys([*album_ids_seen, *select_missing_album_ids(conn)]))
+    else:
+        album_ids = list(
+            dict.fromkeys(
+                [
+                    *album_ids_seen,
+                    *_scoped_album_candidates(conn, scope),
+                    *select_missing_album_ids(conn, limit=SCOPED_ALBUM_BACKLOG_LIMIT),
+                ]
+            )
+        )
     albums_updated = 0
     for offset in range(0, len(album_ids), ALBUM_BATCH_SIZE):
         batch = album_ids[offset : offset + ALBUM_BATCH_SIZE]
@@ -509,7 +619,18 @@ def refresh_missing_spotify_metadata(
             continue
         albums_updated += upsert_album_batch(conn, data.get("albums", []))
 
-    artist_ids = select_missing_artist_ids(conn)
+    artist_ids = (
+        select_missing_artist_ids(conn)
+        if scope is None
+        else list(
+            dict.fromkeys(
+                [
+                    *_scoped_artist_candidates(conn, scope),
+                    *select_missing_artist_ids(conn, limit=SCOPED_ARTIST_BACKLOG_LIMIT),
+                ]
+            )
+        )
+    )
     artists_updated = 0
     for offset in range(0, len(artist_ids), ARTIST_BATCH_SIZE):
         batch = artist_ids[offset : offset + ARTIST_BATCH_SIZE]
@@ -524,8 +645,28 @@ def refresh_missing_spotify_metadata(
             continue
         artists_updated += upsert_artist_batch(conn, data.get("artists", []))
 
-    sync_local_cover_urls(conn)
-    search_candidates = select_played_artists_missing_covers(conn)
+    sync_local_cover_urls(
+        conn,
+        album_ids=None if scope is None else scope.album_ids,
+        artist_ids=None if scope is None else scope.artist_ids,
+    )
+    if scope is None:
+        search_candidates = select_played_artists_missing_covers(conn)
+    else:
+        scoped_search_candidates = select_played_artists_missing_covers(
+            conn,
+            artist_ids=scope.artist_ids,
+        )
+        search_backlog = select_played_artists_missing_covers(
+            conn,
+            limit=SCOPED_ARTIST_SEARCH_BACKLOG_LIMIT,
+        )
+        search_candidates = list(
+            {
+                artist_id: (artist_id, artist_name)
+                for artist_id, artist_name in [*scoped_search_candidates, *search_backlog]
+            }.values()
+        )
     artist_searches_updated = 0
     search_artist = getattr(provider, "search_artist", None)
     if callable(search_artist):
@@ -543,7 +684,11 @@ def refresh_missing_spotify_metadata(
                 (artist["id"], local_artist_id),
             )
             artist_searches_updated += upsert_artist_batch(conn, [artist])
-        sync_local_cover_urls(conn)
+        sync_local_cover_urls(
+            conn,
+            album_ids=None if scope is None else scope.album_ids,
+            artist_ids=None if scope is None else scope.artist_ids,
+        )
 
     return MetadataRefreshReport(
         tracks_requested=len(track_ids),
@@ -558,3 +703,157 @@ def refresh_missing_spotify_metadata(
         provider_available=True,
         errors=tuple(errors),
     )
+
+
+def _integer_scope_filter(
+    column: str,
+    values: frozenset[int] | set[int] | None,
+) -> tuple[str, tuple[int, ...]]:
+    if values is None:
+        return "", ()
+    ordered = tuple(sorted(int(value) for value in values))
+    if not ordered:
+        return " AND 0", ()
+    placeholders = ",".join("?" for _ in ordered)
+    return f" AND {column} IN ({placeholders})", ordered
+
+
+def _scoped_track_candidates(
+    conn: sqlite3.Connection,
+    scope: MetadataRefreshScope,
+) -> list[str]:
+    condition, params = _integer_scope_filter("t.track_id", scope.track_ids)
+    rows = conn.execute(
+        f"""SELECT spotify_track_id FROM (
+                SELECT p.spotify_track_id_at_play AS spotify_track_id
+                FROM plays p
+                WHERE p.import_generation_id=?
+                  AND p.spotify_track_id_at_play IS NOT NULL
+                  AND p.spotify_track_id_at_play!=''
+                UNION
+                SELECT t.spotify_track_id
+                FROM tracks t
+                WHERE t.spotify_track_id IS NOT NULL AND t.spotify_track_id!=''
+                  {condition}
+            )
+            ORDER BY spotify_track_id""",
+        (scope.generation_id, *params),
+    ).fetchall()
+    candidates = sorted({str(row[0]) for row in rows if row[0]} | set(scope.spotify_track_ids))
+    return [
+        spotify_id
+        for spotify_id in candidates
+        if conn.execute(
+            "SELECT 1 FROM spotify_track_meta WHERE spotify_track_id=?",
+            (spotify_id,),
+        ).fetchone()
+        is None
+        or _track_needs_artist_link(conn, spotify_id, scope=scope)
+    ]
+
+
+def _track_needs_artist_link(
+    conn: sqlite3.Connection,
+    spotify_track_id: str,
+    *,
+    scope: MetadataRefreshScope | None = None,
+) -> bool:
+    if scope is not None:
+        condition, params = _integer_scope_filter("t.track_id", scope.track_ids)
+        return (
+            conn.execute(
+                f"""SELECT 1 FROM tracks t JOIN artists a ON a.artist_id=t.artist_id
+                    WHERE (a.spotify_artist_id IS NULL OR a.spotify_artist_id='')
+                      AND (
+                          t.spotify_track_id=?
+                          OR EXISTS (
+                              SELECT 1 FROM plays p
+                              WHERE p.import_generation_id=?
+                                AND p.track_id=t.track_id
+                                AND p.spotify_track_id_at_play=?
+                          )
+                      ) {condition}
+                    LIMIT 1""",
+                (spotify_track_id, scope.generation_id, spotify_track_id, *params),
+            ).fetchone()
+            is not None
+        )
+    return (
+        conn.execute(
+            """SELECT 1 FROM tracks t JOIN artists a ON a.artist_id=t.artist_id
+               WHERE t.spotify_track_id=?
+                 AND (a.spotify_artist_id IS NULL OR a.spotify_artist_id='') LIMIT 1""",
+            (spotify_track_id,),
+        ).fetchone()
+        is not None
+    )
+
+
+def _scoped_album_candidates(
+    conn: sqlite3.Connection,
+    scope: MetadataRefreshScope,
+) -> list[str]:
+    track_condition, track_params = _integer_scope_filter("t.track_id", scope.track_ids)
+    album_condition, album_params = _integer_scope_filter("asl.album_id", scope.album_ids)
+    rows = conn.execute(
+        f"""WITH candidates AS (
+                SELECT p.spotify_album_id_at_play AS spotify_album_id
+                FROM plays p
+                WHERE p.import_generation_id=?
+                  AND p.spotify_album_id_at_play IS NOT NULL
+                  AND p.spotify_album_id_at_play!=''
+                UNION
+                SELECT stm.spotify_album_id
+                FROM tracks t
+                JOIN spotify_track_meta stm
+                  ON stm.spotify_track_id=t.spotify_track_id
+                WHERE stm.spotify_album_id IS NOT NULL AND stm.spotify_album_id!=''
+                  {track_condition}
+                UNION
+                SELECT asl.spotify_album_id
+                FROM album_spotify_links asl
+                WHERE asl.spotify_album_id IS NOT NULL AND asl.spotify_album_id!=''
+                  {album_condition}
+            )
+            SELECT DISTINCT candidate.spotify_album_id
+            FROM candidates candidate
+            LEFT JOIN spotify_album_meta sam
+              ON sam.spotify_album_id=candidate.spotify_album_id
+            WHERE (sam.spotify_album_id IS NULL OR sam.image_url IS NULL
+                   OR sam.image_url='' OR sam.total_tracks IS NULL)
+            ORDER BY candidate.spotify_album_id""",
+        (scope.generation_id, *track_params, *album_params),
+    ).fetchall()
+    candidates = {str(row[0]) for row in rows if row[0]}
+    for spotify_album_id in scope.spotify_album_ids:
+        row = conn.execute(
+            """SELECT image_url, total_tracks FROM spotify_album_meta
+               WHERE spotify_album_id=?""",
+            (spotify_album_id,),
+        ).fetchone()
+        if row is None or not row[0] or row[1] is None:
+            candidates.add(spotify_album_id)
+    return sorted(candidates)
+
+
+def _scoped_artist_candidates(
+    conn: sqlite3.Connection,
+    scope: MetadataRefreshScope,
+) -> list[str]:
+    if not scope.artist_ids:
+        return []
+    condition, params = _integer_scope_filter("a.artist_id", scope.artist_ids)
+    rows = conn.execute(
+        f"""SELECT DISTINCT a.spotify_artist_id
+            FROM artists a
+            LEFT JOIN spotify_artist_meta sam
+              ON sam.spotify_artist_id=a.spotify_artist_id
+            WHERE a.spotify_artist_id IS NOT NULL AND a.spotify_artist_id!=''
+              {condition}
+              AND (a.image_url IS NULL OR a.image_url='')
+              AND (sam.spotify_artist_id IS NULL OR sam.image_url IS NULL
+                   OR sam.image_url='')
+            ORDER BY a.spotify_artist_id""",
+        params,
+    ).fetchall()
+    return [str(row[0]) for row in rows]

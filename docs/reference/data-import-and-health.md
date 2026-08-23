@@ -28,7 +28,7 @@
 - 完全重复文件会进入 `blockers`；文件内重复记录、日期范围重叠和跨文件共同记录进入 `warnings`。导入时只对完全相同的记录自动去重，保留同一内容在稳定文件顺序中的第一次出现；日期重叠不会被当成重复，也不会自动合并。源 JSON 永远不会被修改。
 - `POST /api/import/streaming` 会在后台任务真正创建快照前再次执行这份预检：有 `blockers` 时任务状态为 `blocked`；只有 `warnings` 且未传 `confirm_warnings=true` 时状态为 `needs_confirmation`；确认后才会进入计划执行。
 
-增量导入 Phase A–B 使用以下证据与执行规则：
+增量导入 Phase A–C 使用以下证据与执行规则：
 
 - migration 37 为播放事实预留版本化源记录指纹和导入代际，并建立单例活动状态与导入运行记录表；升级前已有播放不会从不完整的数据库列反推原始 JSON 指纹。
 - 预检会从音频、视频记录生成与文件名、文件顺序和重新分包无关的 dataset digest，并返回指纹基线状态、账号身份匹配状态、输入与活动数据集的关系、增删复用数量、日期范围和预计影响的周/年数。
@@ -40,7 +40,8 @@
 - 警告确认和完整替换确认必须携带预检返回的 `confirmation_token`。这个标识绑定输入记录、文件检查结果、账号证据和当前活动数据集；文件或数据库在两次请求之间变化时，旧确认失效并要求重新核对。
 - `append` 不会把输入中缺失的旧记录解释为删除，也不能绕过指纹基线、账号身份和尾部证据；证据不足时 Phase B 阻断追加。`replace` 对风险关系要求 `confirm_plan=true`，确认后仍先创建 SQLite 快照再完整替换。
 - noop 只更新导入状态摘要并记录运行结果，不提升播放或派生 revision，不重建 Billboard、搜索快照、年度结果或封面任务。
-- append 完成基础事实发布后，元数据、Album Project、Billboard 和搜索快照暂时仍走现有完整维护路径。按实体、榜单周和缓存范围局部更新属于 Phase C–D，当前不能把基础追加耗时等同于整个导入任务耗时。
+- append 完成基础事实发布后，会在同一事务生成并持久化 `PlaybackChangeSet`。Spotify 曲目、专辑、艺人元数据和封面只处理相关实体，同时从全局缺失事实中有界抽取历史失败项重试；年度播放分区只从最早受影响年份向后更新，旧年度仍可复用。
+- Album Project 和 Billboard 四张周聚合目前仍完整重建；候选索引与六套精确搜索快照也尚未按 ChangeSet 更新。榜单周字段在 Phase D 完成旧/新逻辑播放链贡献闭包前明确标记为非精确，不能用于局部发布。当前不能把基础追加或 scoped 元数据耗时等同于整个导入任务耗时。
 
 检查不会把文件导入数据库，也不会启动后台 Job。确认文件后，用户仍需显式点击已有的「导入串流数据」或「导入账号数据」。
 
@@ -95,9 +96,9 @@
 
 本轮建立“失败可恢复 + 确定重复不重复计数 + 导入后硬指标复核”的最小边界，并完成增量导入 Phase A–B 的功能路径。写入任务仍保留 SQLite Online Backup；append 在一个事务中批量写入，并在同一次提交内精确核对实际输入/新增指纹、发布活动事实代际；导入器异常时显式 rollback 并关闭写连接，随后才允许快照恢复。
 
-派生维护仍在活动事实发布后执行。若进程被强制终止，可能留下新事实与旧或半完成派生数据；封面和搜索后台任务也尚未绑定导入代际。完整替换仍是旧分批提交路径，硬中止恢复依赖已有快照。这些属于 Phase C–E 的 pending/active 发布、后台任务代际隔离和启动恢复边界，当前没有伪装成跨进程原子切换。
+派生维护仍在活动事实发布后执行。事实、活动代际、年度分区和紧凑 ChangeSet 会在同一事务提交；维护完成前导入运行记录保持 `maintenance_pending`。播放缓存会在事实提交后立即失效，Billboard 聚合只能在活动代际未变化时原子发布。封面后台任务会在进程重启后恢复 pending/orphan running，过期 URL 任务不能覆盖新来源。六套搜索快照的逐代发布与启动恢复、完整替换的硬中止恢复仍属于 Phase D–E；当前完整替换仍依赖导入前快照。
 
-Billboard 四张预聚合表和六套搜索统计目前仍按完整数据维护，而不是周分区或 snapshot delta。只更新受影响周仍需后续建立跨周连续播放变化闭包，不能仅按最新日期假设旧数据不变。
+Billboard 四张预聚合表和六套搜索统计目前仍按完整数据维护，而不是周分区或 snapshot delta。只更新受影响周仍需后续建立跨周连续播放变化闭包，不能仅按最新日期假设旧数据不变。年度分区已经额外覆盖跨年收听区间和可合并的前序连续链；无法证明的榜单周局部范围仍安全回退全量聚合。
 
 ## 相关代码
 
@@ -105,6 +106,8 @@ Billboard 四张预聚合表和六套搜索统计目前仍按完整数据维护�
 - 增量关系分类：`backend/domains/imports/incremental.py`
 - Phase B 执行动作：`backend/domains/imports/execution.py`
 - 指纹基线与运行记录：`backend/domains/imports/state.py`
+- ChangeSet 与年度播放分区：`backend/domains/imports/change_set.py`
+- 增量元数据与封面维护：`backend/domains/metadata/spotify_refresh.py`、`backend/services/cover_cache_service.py`
 - 只读导入计划：`backend/services/import_plan_service.py`
 - 导入快照与回滚：`backend/domains/imports/database_snapshot.py`
 - 后端健康报告：`backend/domains/metadata/import_health.py`

@@ -16,6 +16,11 @@ from backend.core.db import get_db
 from backend.core.import_account_data import ACCOUNT_DATA_DIR, import_all
 from backend.core.import_data import DATA_DIR, import_data
 from backend.dependencies import get_conn
+from backend.domains.imports.change_set import (
+    PlaybackChangeSet,
+    build_playback_change_set,
+    publish_year_partition_state,
+)
 from backend.domains.imports.database_snapshot import (
     create_database_snapshot,
     discard_database_created_by_failed_import,
@@ -141,6 +146,7 @@ def _record_plan_outcome(
     *,
     requested_mode: str,
     status: Literal["success", "noop", "needs_confirmation"],
+    change_set: PlaybackChangeSet | None = None,
 ) -> None:
     conn = get_db(readonly=False)
     try:
@@ -150,6 +156,7 @@ def _record_plan_outcome(
             requested_mode=requested_mode,
             status=status,
             plan=assessment.plan,
+            change_set=change_set,
         )
         conn.commit()
     finally:
@@ -458,6 +465,21 @@ def start_streaming_import(
                     executed_strategy=executed_strategy,
                     conn=conn,
                 )
+                import_result["change_set"] = build_playback_change_set(
+                    conn,
+                    generation_id=str(import_result.get("generation_id") or ""),
+                    strategy=executed_strategy,
+                    plan=assessment.plan,
+                )
+                publish_year_partition_state(conn, import_result["change_set"])
+                record_playback_import_run(
+                    conn,
+                    run_id=job_id,
+                    requested_mode=mode,
+                    status="maintenance_pending",
+                    plan=assessment.plan,
+                    change_set=import_result["change_set"],
+                )
 
             result = import_data(
                 progress_callback=cb,
@@ -478,10 +500,18 @@ def start_streaming_import(
                     result,
                     executed_strategy=executed_strategy,
                 )
-            maintenance = run_post_streaming_import_maintenance(
-                progress_callback=cb,
-                defer_music_search_snapshots=True,
-            )
+            change_set = result.get("change_set")
+            if isinstance(change_set, PlaybackChangeSet):
+                maintenance = run_post_streaming_import_maintenance(
+                    progress_callback=cb,
+                    defer_music_search_snapshots=True,
+                    change_set=change_set,
+                )
+            else:
+                maintenance = run_post_streaming_import_maintenance(
+                    progress_callback=cb,
+                    defer_music_search_snapshots=True,
+                )
             post_import_health = _post_streaming_health_summary()
             if post_import_health["blockers"]:
                 raise PostImportHealthError(
@@ -492,6 +522,7 @@ def start_streaming_import(
                 assessment,
                 requested_mode=mode,
                 status="success",
+                change_set=(change_set if isinstance(change_set, PlaybackChangeSet) else None),
             )
             _jobs[job_id]["status"] = "done"
             _jobs[job_id]["progress_pct"] = 1.0

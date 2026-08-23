@@ -70,6 +70,7 @@ class TestRawFallbackConsistency:
     def test_aggregation_publish_rolls_back_as_one_snapshot(self, isolated_seed_db):
         from backend.core.db import (
             _AGG_SHADOW_TABLES,
+            _active_playback_generation,
             _prepare_aggregation_shadows,
             _publish_aggregation_shadows,
             get_db,
@@ -95,7 +96,11 @@ class TestRawFallbackConsistency:
             )
 
             with pytest.raises(Exception, match="forced publish failure"):
-                _publish_aggregation_shadows(conn, param_hash="should-not-publish")
+                _publish_aggregation_shadows(
+                    conn,
+                    param_hash="should-not-publish",
+                    data_generation_id=_active_playback_generation(conn),
+                )
 
             after_counts = {
                 table: conn.execute(f'SELECT COUNT(*) FROM "{table}"').fetchone()[0]

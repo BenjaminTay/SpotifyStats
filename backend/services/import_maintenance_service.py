@@ -2,11 +2,17 @@
 
 from __future__ import annotations
 
+import time
 from typing import Any
 
 from backend.core.db import build_aggregations, get_db
+from backend.domains.imports.change_set import PlaybackChangeSet
 from backend.domains.metadata.import_health import build_import_health_report
-from backend.domains.metadata.spotify_refresh import refresh_missing_spotify_metadata
+from backend.domains.metadata.spotify_refresh import (
+    MetadataRefreshScope,
+    refresh_missing_spotify_metadata,
+)
+from backend.domains.music_search.revisions import MusicSearchRevisionKind
 from backend.domains.playback.album_projects import rebuild_album_projects
 from backend.domains.settings.repository import SettingsRepository
 from backend.providers.spotify.client import SpotifyProvider
@@ -27,6 +33,7 @@ def run_post_streaming_import_maintenance(
     progress_callback=None,
     *,
     defer_music_search_snapshots: bool = False,
+    change_set: PlaybackChangeSet | None = None,
 ) -> dict[str, Any]:
     """Refresh metadata, rebuild derived statistics, and invalidate runtime caches."""
     conn = get_db(readonly=False)
@@ -35,24 +42,48 @@ def run_post_streaming_import_maintenance(
         token = provider.get_cc_token()
 
         _progress(progress_callback, "刷新 Spotify 元数据...", 0.72)
+        metadata_scope = (
+            MetadataRefreshScope(
+                generation_id=change_set.generation_id,
+                track_ids=change_set.track_ids,
+                album_ids=change_set.album_ids,
+                artist_ids=change_set.artist_ids,
+            )
+            if change_set is not None and change_set.strategy == "incremental"
+            else None
+        )
+        metadata_started = time.perf_counter()
         metadata_report = refresh_missing_spotify_metadata(
             conn,
             provider=provider,
             access_token=token,
             progress_callback=lambda message, _pct: _progress(progress_callback, message, 0.76),
+            scope=metadata_scope,
         )
+        metadata_seconds = time.perf_counter() - metadata_started
 
         _progress(progress_callback, "补齐并排队下载缺失封面...", 0.79)
-        cover_report = enqueue_missing_cover_downloads(conn)
+        cover_started = time.perf_counter()
+        cover_report = enqueue_missing_cover_downloads(
+            conn,
+            album_ids=(change_set.album_ids if metadata_scope is not None else None),
+            artist_ids=(change_set.artist_ids if metadata_scope is not None else None),
+        )
+        cover_seconds = time.perf_counter() - cover_started
 
         _progress(progress_callback, "合并重复曲目（spotify_track_id）...", 0.80)
+        grouping_started = time.perf_counter()
         groups_created, members_added = _auto_group_tracks_by_spotify_id(conn)
+        grouping_seconds = time.perf_counter() - grouping_started
 
         _progress(progress_callback, "重建 album projects...", 0.84)
+        album_projects_started = time.perf_counter()
         rebuild_album_projects(conn)
+        album_projects_seconds = time.perf_counter() - album_projects_started
 
         _progress(progress_callback, "重建 Billboard 预聚合...", 0.9)
         settings = SettingsRepository(conn).load_all()
+        aggregations_started = time.perf_counter()
         agg_results = build_aggregations(
             min_ms=int(settings.get("min_ms", 30_000)),
             music_only=bool(settings.get("music_only", True)),
@@ -60,12 +91,29 @@ def run_post_streaming_import_maintenance(
             week_start_hour=int(settings.get("bb_week_start_hour", 0)),
             dynamic_threshold=True,
             max_merge_gap_minutes=int(settings.get("max_merge_gap_minutes", 5)),
+            expected_generation_id=(change_set.generation_id if change_set is not None else None),
         )
+        aggregations_seconds = time.perf_counter() - aggregations_started
 
+        revision_kinds: list[MusicSearchRevisionKind] = [
+            "playback",
+            "billboard",
+            "candidate",
+        ]
+        if any(
+            (
+                metadata_report.tracks_updated,
+                metadata_report.albums_updated,
+                metadata_report.artists_updated,
+                metadata_report.artist_searches_updated,
+                metadata_report.album_links_backfilled,
+            )
+        ):
+            revision_kinds.append("metadata")
         mark_music_search_for_rebuild(
             reason="streaming import maintenance published",
             documents=True,
-            revision_kinds=("playback", "billboard", "metadata", "candidate"),
+            revision_kinds=tuple(revision_kinds),
             conn=conn,
         )
 
@@ -122,10 +170,23 @@ def run_post_streaming_import_maintenance(
             "cover_missing_albums": cover_report.missing_albums,
             "cover_missing_artists": cover_report.missing_artists,
             "cover_download_jobs_enqueued": cover_report.jobs_enqueued,
+            "cover_sources_scanned": cover_report.sources_scanned,
+            "cover_stale_sources": cover_report.stale_sources,
             "metadata_errors": list(metadata_report.errors),
             "track_groups_created": groups_created,
             "track_group_members_added": members_added,
             "album_projects_rebuilt": True,
+            "maintenance_scope": "incremental" if metadata_scope is not None else "full",
+            "changed_entity_count": change_set.entity_count if change_set is not None else None,
+            "changed_years": sorted(change_set.years) if change_set is not None else [],
+            "changed_billboard_weeks": (
+                sorted(change_set.billboard_weeks) if change_set is not None else []
+            ),
+            "metadata_seconds": round(metadata_seconds, 3),
+            "cover_seconds": round(cover_seconds, 3),
+            "track_grouping_seconds": round(grouping_seconds, 3),
+            "album_projects_seconds": round(album_projects_seconds, 3),
+            "aggregations_seconds": round(aggregations_seconds, 3),
             "agg_track_wks": agg_results.get("tracks", 0),
             "agg_album_wks": agg_results.get("albums", 0),
             "agg_artist_wks": agg_results.get("artists", 0),

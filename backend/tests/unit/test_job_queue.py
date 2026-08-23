@@ -184,6 +184,79 @@ def test_failed_job_retries_and_records_attempt_count(temp_db):
     assert row == ("done", 2, None)
 
 
+def test_start_recovers_pending_and_orphan_running_jobs(temp_db):
+    conn = sqlite3.connect(temp_db)
+    conn.executemany(
+        """INSERT INTO background_jobs(
+               job_id, job_type, entity_type, entity_id, payload_json,
+               status, created_at, attempts, error
+           ) VALUES (?, 'recover', 'entity', ?, '{}', ?, ?, ?, ?)""",
+        [
+            ("pending-job", "pending", "pending", "2026-01-01T00:00:00+00:00", 0, None),
+            (
+                "orphan-job",
+                "orphan",
+                "running",
+                "2026-01-02T00:00:00+00:00",
+                1,
+                "process interrupted",
+            ),
+        ],
+    )
+    conn.commit()
+    conn.close()
+    processed: list[tuple[str, int]] = []
+    complete = threading.Event()
+
+    def handler(job):
+        processed.append((job.entity_id, job.attempts))
+        if len(processed) == 2:
+            complete.set()
+
+    q = JobQueue(max_workers=1)
+    q.register("recover", handler)
+    q.start(temp_db)
+    assert complete.wait(timeout=2)
+    q.stop()
+
+    conn = sqlite3.connect(temp_db)
+    rows = conn.execute(
+        """SELECT job_id, status, attempts, error
+           FROM background_jobs ORDER BY job_id"""
+    ).fetchall()
+    conn.close()
+    assert processed == [("pending", 1), ("orphan", 2)]
+    assert rows == [
+        ("orphan-job", "done", 2, None),
+        ("pending-job", "done", 1, None),
+    ]
+
+
+def test_start_marks_invalid_persisted_payload_failed(temp_db):
+    conn = sqlite3.connect(temp_db)
+    conn.execute(
+        """INSERT INTO background_jobs(
+               job_id, job_type, entity_type, entity_id, payload_json,
+               status, created_at, attempts
+           ) VALUES ('invalid-job', 'recover', 'entity', '1', '[',
+                     'pending', '2026-01-01T00:00:00+00:00', 0)"""
+    )
+    conn.commit()
+    conn.close()
+
+    q = JobQueue(max_workers=0)
+    q.start(temp_db)
+    q.stop()
+
+    conn = sqlite3.connect(temp_db)
+    row = conn.execute(
+        "SELECT status, error FROM background_jobs WHERE job_id='invalid-job'"
+    ).fetchone()
+    conn.close()
+    assert row[0] == "failed"
+    assert row[1].startswith("Invalid persisted job payload:")
+
+
 def test_get_job_queue_singleton():
     from backend.core.job_queue import get_job_queue
 

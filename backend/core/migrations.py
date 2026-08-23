@@ -1383,6 +1383,112 @@ def migrate_037(conn: sqlite3.Connection):
     )
 
 
+@migration(38, "playback_import_change_set_scope")
+def migrate_038(conn: sqlite3.Connection):
+    """Persist compact downstream impact scope for completed imports."""
+    columns = {
+        row["name"] if isinstance(row, sqlite3.Row) else row[1]
+        for row in conn.execute("PRAGMA table_info(playback_import_runs)").fetchall()
+    }
+    if "change_set_json" not in columns:
+        conn.execute("ALTER TABLE playback_import_runs ADD COLUMN change_set_json TEXT")
+
+
+@migration(39, "cover_cache_source_state")
+def migrate_039(conn: sqlite3.Connection):
+    """Track the CDN source represented by each local cover file."""
+    conn.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS cover_cache_state (
+            entity_type TEXT NOT NULL CHECK (entity_type IN ('albums', 'artists')),
+            entity_id INTEGER NOT NULL,
+            source_url_hash TEXT NOT NULL,
+            cached_source_url_hash TEXT,
+            status TEXT NOT NULL CHECK (status IN ('pending', 'ready', 'failed')),
+            last_error TEXT,
+            updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+            PRIMARY KEY(entity_type, entity_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_cover_cache_state_status
+            ON cover_cache_state(status, updated_at);
+        """
+    )
+
+
+@migration(40, "playback_year_partition_state")
+def migrate_040(conn: sqlite3.Connection):
+    """Persist exact annual and prefix digests for scoped yearly caches."""
+    state_columns = {
+        row["name"] if isinstance(row, sqlite3.Row) else row[1]
+        for row in conn.execute("PRAGMA table_info(playback_import_state)").fetchall()
+    }
+    if "playback_revision" not in state_columns:
+        conn.execute(
+            "ALTER TABLE playback_import_state "
+            "ADD COLUMN playback_revision INTEGER NOT NULL DEFAULT 0"
+        )
+    conn.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS playback_year_partition_state (
+            report_year INTEGER PRIMARY KEY,
+            direct_digest TEXT NOT NULL,
+            prefix_digest TEXT NOT NULL,
+            digest_version TEXT NOT NULL DEFAULT 'year-prefix-v2',
+            impact_revision INTEGER NOT NULL DEFAULT 0,
+            record_count INTEGER NOT NULL CHECK (record_count >= 0),
+            first_ts TEXT,
+            latest_ts TEXT,
+            source_generation_id TEXT NOT NULL,
+            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        """
+    )
+    partition_columns = {
+        row["name"] if isinstance(row, sqlite3.Row) else row[1]
+        for row in conn.execute("PRAGMA table_info(playback_year_partition_state)").fetchall()
+    }
+    if "digest_version" not in partition_columns:
+        conn.execute(
+            "ALTER TABLE playback_year_partition_state "
+            "ADD COLUMN digest_version TEXT NOT NULL DEFAULT 'year-prefix-v2'"
+        )
+    if "impact_revision" not in partition_columns:
+        conn.execute(
+            "ALTER TABLE playback_year_partition_state "
+            "ADD COLUMN impact_revision INTEGER NOT NULL DEFAULT 0"
+        )
+
+
+@migration(41, "playback_year_partition_digest_v2")
+def migrate_041(conn: sqlite3.Connection):
+    """Upgrade databases that applied the first Phase C partition schema."""
+    columns = {
+        row["name"] if isinstance(row, sqlite3.Row) else row[1]
+        for row in conn.execute("PRAGMA table_info(playback_year_partition_state)").fetchall()
+    }
+    if not columns:
+        migrate_040(conn)
+        return
+    upgraded = False
+    if "digest_version" not in columns:
+        conn.execute(
+            "ALTER TABLE playback_year_partition_state "
+            "ADD COLUMN digest_version TEXT NOT NULL DEFAULT 'year-prefix-v2'"
+        )
+        upgraded = True
+    if "impact_revision" not in columns:
+        conn.execute(
+            "ALTER TABLE playback_year_partition_state "
+            "ADD COLUMN impact_revision INTEGER NOT NULL DEFAULT 0"
+        )
+        upgraded = True
+    if upgraded:
+        # V1 prefix rows do not carry logical-impact revisions and cannot be
+        # relabelled as V2. An empty state fails safely to the global database
+        # revision and bootstraps exact prefixes on the next import.
+        conn.execute("DELETE FROM playback_year_partition_state")
+
+
 # ── Runner ────────────────────────────────────────────────────────────────
 
 

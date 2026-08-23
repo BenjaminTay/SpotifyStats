@@ -1,6 +1,6 @@
 # Spotify 串流数据增量导入开发规划
 
-> 状态：实施中；Phase A–B 已实现，Phase C–E 待实施
+> 状态：实施中；Phase A–C 已实现，Phase D–E 待实施
 >
 > 创建日期：2026-08-23
 >
@@ -411,7 +411,7 @@ Settings 导入前检查展示自然语言摘要，例如：
 
 实现说明：完整基线导入写满版本化指纹并发布活动代际；已有播放但无基线时必须先确认完整替换。identical 在快照与派生维护前 noop；snapshot superset 和具备共同记录、账号与时间证据的尾部包自动追加。零重合包不会借用固定 Account Data 自动认作同账号，用户可明确选择 fail-closed 尾部验证。确认标识绑定输入与当前基线，append 在同一事务内精确对账旧基线、实际输入和新增指纹并发布活动代际，异常显式 rollback、关闭连接后再进入快照恢复。Phase B 延续现有批次 JSON reader，没有新增独立 TEMP SQLite staging；派生 pending/active 发布、后台任务代际隔离、历史删除/修订和完整替换的硬中止恢复仍留在后续阶段。92,908 条基线加 1 条尾部记录与 92,909 条完整替换的六张基础事实/关系表逐表哈希一致，证据见 [`../reports/2026-08-23-incremental-import-phase-b.md`](../reports/2026-08-23-incremental-import-phase-b.md)。
 
-### Phase C：ChangeSet 驱动的维护（3–4 人日）
+### Phase C：ChangeSet 驱动的维护（已实现，2026-08-23）
 
 - 生成实体、日期、年份、开放周变化范围。
 - 元数据、封面、年度缓存按范围更新。
@@ -419,6 +419,8 @@ Settings 导入前检查展示自然语言摘要，例如：
 - Album Project 暂时全量，记录实际耗时决定是否进入定向重建。
 
 验收：首页和完整周榜优先恢复；旧年度 artifact 保持命中；无关缓存不抖动。
+
+实现说明：事实发布事务会从实际写入代际生成并持久化 `PlaybackChangeSet`，记录本地实体、Spotify 实体、日期、年份、开放周和语义 revision；维护完成前运行状态为 `maintenance_pending`，中断后仍保留恢复依据。增量维护只刷新相关元数据和封面，同时带有界历史失败扫尾；封面任务支持重启恢复、全流程失败记录、来源 URL 哈希和过期任务 CAS。年度总结使用逐年直接/前缀 digest 与报告年前缀可达的元数据、流派、曲目组和 Album Project 依赖摘要，普通最新年追加不会使旧年度播放分区抖动。播放事实提交和聚合发布都会精确失效播放相关缓存，聚合构建绑定活动代际并在发布事务再次核对，避免旧计算冒充新代际。Album Project 与 Billboard 仍全量重建，榜单周影响范围暂标记为非精确；这些成本和六套搜索快照属于 Phase D。92,908 条真实数据库副本加 1 条尾部记录的范围与耗时证据见 [`../reports/2026-08-23-incremental-import-phase-c.md`](../reports/2026-08-23-incremental-import-phase-c.md)。
 
 ### Phase D：Billboard 周分区与搜索快照增量（3–5 人日）
 

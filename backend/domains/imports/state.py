@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Literal
 
+from backend.domains.imports.change_set import PlaybackChangeSet
 from backend.domains.imports.incremental import (
     FINGERPRINT_VERSION,
     FingerprintRecord,
@@ -20,8 +21,8 @@ from backend.domains.imports.incremental import (
     dataset_digest,
 )
 
-PlaybackImportRunStatus = Literal["success", "noop", "needs_confirmation"]
-_ALLOWED_RUN_STATUSES = frozenset({"success", "noop", "needs_confirmation"})
+PlaybackImportRunStatus = Literal["maintenance_pending", "success", "noop", "needs_confirmation"]
+_ALLOWED_RUN_STATUSES = frozenset({"maintenance_pending", "success", "noop", "needs_confirmation"})
 
 
 class FingerprintBaselineError(ValueError):
@@ -107,8 +108,14 @@ def publish_playback_import_state(
     if not generation_id.strip():
         raise ValueError("generation_id must not be empty")
     active_summary = summary or summarise_current_playback_dataset(conn)
+    columns = {str(row[1]) for row in conn.execute("PRAGMA table_info(playback_import_state)")}
+    revision_assignment = (
+        ", playback_revision=playback_import_state.playback_revision+1"
+        if "playback_revision" in columns
+        else ""
+    )
     conn.execute(
-        """INSERT INTO playback_import_state(
+        f"""INSERT INTO playback_import_state(
                state_id, active_generation_id, account_identity_hash,
                fingerprint_version, dataset_digest, record_count,
                first_ts, latest_ts, last_relation, last_strategy, updated_at
@@ -123,7 +130,8 @@ def publish_playback_import_state(
                latest_ts=excluded.latest_ts,
                last_relation=excluded.last_relation,
                last_strategy=excluded.last_strategy,
-               updated_at=excluded.updated_at""",
+               updated_at=excluded.updated_at
+               {revision_assignment}""",
         (
             generation_id,
             account_identity_hash,
@@ -152,8 +160,9 @@ def record_playback_import_run(
     started_at: datetime | None = None,
     completed_at: datetime | None = None,
     error_code: str | None = None,
+    change_set: PlaybackChangeSet | None = None,
 ) -> None:
-    """Record one terminal planning/import outcome without committing it.
+    """Record one planning/import outcome without committing it.
 
     ``plan_json`` is produced internally from a fixed allow-list of aggregate
     fields.  It never serialises source records, file payloads, account names,
@@ -165,34 +174,73 @@ def record_playback_import_run(
     if status not in _ALLOWED_RUN_STATUSES:
         raise ValueError(f"unsupported playback import run status: {status}")
     now = datetime.now(timezone.utc)
-    conn.execute(
-        """INSERT INTO playback_import_runs(
-               run_id, requested_mode, detected_relation, status,
-               incoming_digest, previous_digest,
-               incoming_count, unchanged_count, added_count, removed_count,
-               first_ts, latest_ts, earliest_changed_ts, latest_changed_ts,
-               plan_json, started_at, completed_at, error_code
-           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+    existing = conn.execute(
+        "SELECT started_at FROM playback_import_runs WHERE run_id=?",
+        (run_id,),
+    ).fetchone()
+    if existing is not None:
+        conn.execute("DELETE FROM playback_import_runs WHERE run_id=?", (run_id,))
+    columns = {str(row[1]) for row in conn.execute("PRAGMA table_info(playback_import_runs)")}
+    names = [
+        "run_id",
+        "requested_mode",
+        "detected_relation",
+        "status",
+        "incoming_digest",
+        "previous_digest",
+        "incoming_count",
+        "unchanged_count",
+        "added_count",
+        "removed_count",
+        "first_ts",
+        "latest_ts",
+        "earliest_changed_ts",
+        "latest_changed_ts",
+        "plan_json",
+        "started_at",
+        "completed_at",
+        "error_code",
+    ]
+    values: list[object] = [
+        run_id,
+        requested_mode,
+        plan.relation.value,
+        status,
+        plan.incoming_digest,
+        plan.previous_digest,
+        plan.incoming_count,
+        plan.unchanged_count,
+        plan.added_count,
+        plan.removed_count,
+        _isoformat(plan.incoming_first_ts),
+        _isoformat(plan.incoming_latest_ts),
+        _isoformat(earliest_changed_ts) or (change_set.earliest_changed_ts if change_set else None),
+        _isoformat(latest_changed_ts) or (change_set.latest_changed_ts if change_set else None),
+        _compact_plan_json(plan),
         (
-            run_id,
-            requested_mode,
-            plan.relation.value,
-            status,
-            plan.incoming_digest,
-            plan.previous_digest,
-            plan.incoming_count,
-            plan.unchanged_count,
-            plan.added_count,
-            plan.removed_count,
-            _isoformat(plan.incoming_first_ts),
-            _isoformat(plan.incoming_latest_ts),
-            _isoformat(earliest_changed_ts),
-            _isoformat(latest_changed_ts),
-            _compact_plan_json(plan),
-            _isoformat(started_at or now),
-            _isoformat(completed_at or now),
-            error_code,
+            _isoformat(started_at)
+            if started_at is not None
+            else (str(existing[0]) if existing and existing[0] else _isoformat(now))
         ),
+        None if status == "maintenance_pending" else _isoformat(completed_at or now),
+        error_code,
+    ]
+    if "change_set_json" in columns:
+        names.append("change_set_json")
+        values.append(
+            json.dumps(
+                change_set.to_dict(),
+                ensure_ascii=True,
+                separators=(",", ":"),
+                sort_keys=True,
+            )
+            if change_set is not None
+            else None
+        )
+    placeholders = ", ".join("?" for _ in names)
+    conn.execute(
+        f"INSERT INTO playback_import_runs({', '.join(names)}) VALUES ({placeholders})",
+        values,
     )
 
 
