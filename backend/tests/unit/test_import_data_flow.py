@@ -626,3 +626,118 @@ def test_append_rolls_back_uncommitted_batches_when_processing_fails(tmp_path, m
             conn.close()
     finally:
         _clear_db_caches()
+
+
+def test_replace_rolls_back_clears_and_first_batch_when_second_record_fails(
+    tmp_path, monkeypatch
+) -> None:
+    from backend.core import db as db_mod
+    from backend.core import import_data as import_mod
+
+    db_path = tmp_path / "spotify_stats.db"
+    data_dir = tmp_path / "streaming"
+    data_dir.mkdir()
+    monkeypatch.setattr(db_mod, "DB_PATH", str(db_path))
+    baseline = _streaming_record("baseline")
+    _write_audio_records(data_dir, [baseline])
+
+    try:
+        baseline_result = import_mod.import_data(
+            str(data_dir),
+            build_preaggregations=False,
+            generation_id="baseline-generation",
+        )
+        conn = sqlite3.connect(db_path)
+        try:
+            baseline_track_id = conn.execute("SELECT track_id FROM plays").fetchone()[0]
+            conn.execute(
+                """INSERT INTO agg_weekly_tracks(
+                       billboard_week, track_id, play_count, total_ms
+                   ) VALUES ('2025-12-26', ?, 1, 210000)""",
+                (baseline_track_id,),
+            )
+            conn.execute(
+                """UPDATE playback_import_state
+                   SET active_generation_id='baseline-generation',
+                       dataset_digest=?, record_count=1, last_strategy='full'
+                   WHERE state_id=1""",
+                (baseline_result["dataset_digest"],),
+            )
+            conn.commit()
+            before = {
+                "plays": conn.execute(
+                    """SELECT ts, track_id, source_album_id, source_fingerprint,
+                              import_generation_id FROM plays ORDER BY play_id"""
+                ).fetchall(),
+                "agg": conn.execute(
+                    "SELECT * FROM agg_weekly_tracks ORDER BY billboard_week, track_id"
+                ).fetchall(),
+                "track_albums": conn.execute(
+                    "SELECT * FROM track_albums ORDER BY track_id, album_id"
+                ).fetchall(),
+                "state": conn.execute(
+                    """SELECT active_generation_id, dataset_digest, record_count, last_strategy
+                       FROM playback_import_state WHERE state_id=1"""
+                ).fetchone(),
+            }
+        finally:
+            conn.close()
+
+        first = _streaming_record("replacement-first", timestamp="2026-01-02T00:00:00Z")
+        second = _streaming_record("replacement-second", timestamp="2026-01-03T00:00:00Z")
+        second["master_metadata_album_artist_name"] = "Break Replace"
+        _write_audio_records(data_dir, [first, second])
+        original_cache_artist = import_mod._cache_artist
+
+        def fail_on_second_artist(conn, name, cache):
+            if name == "Break Replace":
+                raise RuntimeError("synthetic replace failure")
+            return original_cache_artist(conn, name, cache)
+
+        monkeypatch.setattr(import_mod, "_PLAY_BATCH_SIZE", 1)
+        monkeypatch.setattr(import_mod, "_cache_artist", fail_on_second_artist)
+
+        with pytest.raises(RuntimeError, match="synthetic replace failure"):
+            import_mod.import_data(
+                str(data_dir),
+                build_preaggregations=False,
+                mode="replace",
+                generation_id="failed-replacement",
+                before_final_commit=lambda _conn, _result: None,
+            )
+
+        conn = sqlite3.connect(db_path)
+        try:
+            after = {
+                "plays": conn.execute(
+                    """SELECT ts, track_id, source_album_id, source_fingerprint,
+                              import_generation_id FROM plays ORDER BY play_id"""
+                ).fetchall(),
+                "agg": conn.execute(
+                    "SELECT * FROM agg_weekly_tracks ORDER BY billboard_week, track_id"
+                ).fetchall(),
+                "track_albums": conn.execute(
+                    "SELECT * FROM track_albums ORDER BY track_id, album_id"
+                ).fetchall(),
+                "state": conn.execute(
+                    """SELECT active_generation_id, dataset_digest, record_count, last_strategy
+                       FROM playback_import_state WHERE state_id=1"""
+                ).fetchone(),
+            }
+            assert after == before
+            assert (
+                conn.execute(
+                    "SELECT COUNT(*) FROM plays WHERE import_generation_id='failed-replacement'"
+                ).fetchone()[0]
+                == 0
+            )
+            assert (
+                conn.execute(
+                    "SELECT COUNT(*) FROM artists WHERE artist_name='Break Replace'"
+                ).fetchone()[0]
+                == 0
+            )
+        finally:
+            conn.close()
+    finally:
+        _clear_db_caches()

@@ -65,6 +65,11 @@ async def lifespan(_app: FastAPI):
         handle_wikipedia_enrich,
     )
     from backend.services.artist_identity_rebuild_service import handle_artist_identity_rebuild
+    from backend.services.import_maintenance_recovery_service import (
+        PLAYBACK_IMPORT_MAINTENANCE_JOB_TYPE,
+        enqueue_pending_import_maintenance,
+        handle_import_maintenance_recovery,
+    )
     from backend.services.music_search_maintenance_service import (
         enqueue_music_search_snapshot_rebuild,
         handle_music_search_snapshot_rebuild,
@@ -77,12 +82,19 @@ async def lifespan(_app: FastAPI):
     job_queue.register("genius_lyrics", handle_genius_lyrics)
     job_queue.register("artist_identity_rebuild", handle_artist_identity_rebuild)
     job_queue.register("track_credit_rebuild", handle_track_credit_rebuild)
+    job_queue.register(
+        PLAYBACK_IMPORT_MAINTENANCE_JOB_TYPE,
+        handle_import_maintenance_recovery,
+    )
     job_queue.register("music_search_snapshot_rebuild", handle_music_search_snapshot_rebuild)
     # Resolve the configured database at lifespan start. Tests and maintenance
     # tools intentionally replace ``db_module.DB_PATH`` with an isolated copy;
     # importing the string at module load would make the persistent JobQueue
     # silently keep targeting the user's real database.
     job_queue.start(db_module.DB_PATH)
+    # Recover a transactionally published import before generic search catch-up
+    # and cache warmup can treat its derived state as current.
+    enqueue_pending_import_maintenance(job_queue)
     from backend.core.db import get_db
     from backend.core.job_queue import Job
     from backend.domains.metadata.artist_identity import get_identity_state

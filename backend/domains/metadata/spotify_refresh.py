@@ -29,6 +29,10 @@ class MetadataRefreshReport:
     album_links_backfilled: int = 0
     provider_available: bool = True
     errors: tuple[str, ...] = ()
+    spotify_track_ids_updated: frozenset[str] = frozenset()
+    spotify_album_ids_updated: frozenset[str] = frozenset()
+    local_album_ids_relinked: frozenset[int] = frozenset()
+    impact_scope_exact: bool = True
 
 
 @dataclass(frozen=True)
@@ -157,6 +161,7 @@ def upsert_track_batch(
     tracks: list[dict],
     *,
     scope: MetadataRefreshScope | None = None,
+    local_album_ids_relinked: set[int] | None = None,
 ) -> int:
     updated = 0
     for track in tracks:
@@ -181,6 +186,17 @@ def upsert_track_batch(
             ),
         )
         if album_id:
+            if local_album_ids_relinked is not None:
+                local_album_ids_relinked.update(
+                    int(row[0])
+                    for row in conn.execute(
+                        """SELECT DISTINCT source_album_id
+                           FROM plays
+                           WHERE spotify_track_id_at_play = ?
+                             AND source_album_id IS NOT NULL""",
+                        (track["id"],),
+                    ).fetchall()
+                )
             conn.execute(
                 """UPDATE plays
                    SET spotify_album_id_at_play = ?
@@ -210,6 +226,7 @@ def backfill_album_links_from_existing_metadata(
     conn: sqlite3.Connection,
     *,
     scope: MetadataRefreshScope | None = None,
+    local_album_ids_relinked: set[int] | None = None,
 ) -> int:
     play_scope_sql = ""
     play_scope_params: tuple[object, ...] = ()
@@ -257,6 +274,21 @@ def backfill_album_links_from_existing_metadata(
         "p.source_album_id",
         None if scope is None else scope.album_ids,
     )
+    if local_album_ids_relinked is not None:
+        local_album_ids_relinked.update(
+            int(row[0])
+            for row in conn.execute(
+                f"""SELECT DISTINCT p.source_album_id
+                    FROM plays p
+                    JOIN spotify_track_meta stm
+                      ON stm.spotify_track_id = p.spotify_track_id_at_play
+                    WHERE p.source_album_id IS NOT NULL
+                      AND stm.spotify_album_id IS NOT NULL
+                      AND stm.spotify_album_id != ''
+                      {album_filter}""",
+                album_params,
+            ).fetchall()
+        )
     link_cursor = conn.execute(
         f"""INSERT OR REPLACE INTO album_spotify_links(
                album_id, spotify_album_id, evidence, confidence,
@@ -546,12 +578,21 @@ def refresh_missing_spotify_metadata(
     *,
     scope: MetadataRefreshScope | None = None,
 ) -> MetadataRefreshReport:
-    album_links_backfilled = backfill_album_links_from_existing_metadata(conn, scope=scope)
+    spotify_track_ids_updated: set[str] = set()
+    spotify_album_ids_updated: set[str] = set()
+    local_album_ids_relinked: set[int] = set()
+    album_links_backfilled = backfill_album_links_from_existing_metadata(
+        conn,
+        scope=scope,
+        local_album_ids_relinked=local_album_ids_relinked,
+    )
     if not access_token:
         return MetadataRefreshReport(
             album_links_backfilled=album_links_backfilled,
             provider_available=False,
             errors=("spotify_credentials_missing",),
+            local_album_ids_relinked=frozenset(local_album_ids_relinked),
+            impact_scope_exact=False,
         )
 
     errors: list[str] = []
@@ -587,11 +628,19 @@ def refresh_missing_spotify_metadata(
             errors.append("tracks_batch_failed")
             continue
         tracks = data.get("tracks", [])
-        tracks_updated += upsert_track_batch(conn, tracks, scope=scope)
+        tracks_updated += upsert_track_batch(
+            conn,
+            tracks,
+            scope=scope,
+            local_album_ids_relinked=local_album_ids_relinked,
+        )
         for track in tracks:
+            track_id = track and track.get("id")
+            if track_id:
+                spotify_track_ids_updated.add(str(track_id))
             album_id = track and (track.get("album") or {}).get("id")
             if album_id:
-                album_ids_seen.add(album_id)
+                album_ids_seen.add(str(album_id))
 
     if scope is None:
         album_ids = list(dict.fromkeys([*album_ids_seen, *select_missing_album_ids(conn)]))
@@ -617,7 +666,11 @@ def refresh_missing_spotify_metadata(
         if data is None:
             errors.append("albums_batch_failed")
             continue
-        albums_updated += upsert_album_batch(conn, data.get("albums", []))
+        albums = data.get("albums", [])
+        albums_updated += upsert_album_batch(conn, albums)
+        spotify_album_ids_updated.update(
+            str(album["id"]) for album in albums if album and album.get("id")
+        )
 
     artist_ids = (
         select_missing_artist_ids(conn)
@@ -702,6 +755,10 @@ def refresh_missing_spotify_metadata(
         album_links_backfilled=album_links_backfilled,
         provider_available=True,
         errors=tuple(errors),
+        spotify_track_ids_updated=frozenset(spotify_track_ids_updated),
+        spotify_album_ids_updated=frozenset(spotify_album_ids_updated),
+        local_album_ids_relinked=frozenset(local_album_ids_relinked),
+        impact_scope_exact=not errors,
     )
 
 

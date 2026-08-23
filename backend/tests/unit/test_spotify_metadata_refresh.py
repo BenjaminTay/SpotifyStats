@@ -297,8 +297,113 @@ def test_refresh_missing_spotify_metadata_without_token_returns_partial_report()
     assert report.provider_available is False
     assert report.errors == ("spotify_credentials_missing",)
     assert report.album_links_backfilled >= 1
+    assert report.local_album_ids_relinked == frozenset({10})
+    assert report.impact_scope_exact is False
     link = conn.execute("SELECT * FROM album_spotify_links").fetchone()
     assert link["album_id"] == 10
+
+
+def test_scoped_refresh_reports_exact_provider_and_backlog_impact_ids():
+    from backend.domains.metadata.spotify_refresh import (
+        MetadataRefreshScope,
+        refresh_missing_spotify_metadata,
+    )
+
+    conn = _conn()
+    conn.execute("INSERT INTO tracks(track_id, spotify_track_id) VALUES (2, 'track-backlog')")
+    conn.execute(
+        """INSERT INTO plays(
+               play_id, track_id, source_album_id, ts_date,
+               spotify_track_id_at_play, import_generation_id
+           ) VALUES (2, 2, 20, '2026-08-20', 'track-backlog', 'generation-old')"""
+    )
+
+    class Provider:
+        def get_tracks(self, ids, token):
+            return {
+                "tracks": [
+                    {
+                        "id": spotify_track_id,
+                        "name": spotify_track_id,
+                        "artists": [],
+                        "album": {"id": f"album-for-{spotify_track_id}"},
+                    }
+                    for spotify_track_id in ids
+                ]
+            }
+
+        def get_albums(self, ids, token):
+            return {
+                "albums": [
+                    {
+                        "id": spotify_album_id,
+                        "name": spotify_album_id,
+                        "images": [],
+                        "artists": [],
+                        "tracks": {"items": []},
+                        "total_tracks": 1,
+                    }
+                    for spotify_album_id in ids
+                ]
+            }
+
+        def get_artists_by_ids(self, ids, token):
+            return {"artists": []}
+
+    report = refresh_missing_spotify_metadata(
+        conn,
+        provider=Provider(),
+        access_token="token",
+        scope=MetadataRefreshScope(
+            generation_id="generation-new",
+            spotify_track_ids=frozenset({"track-scoped"}),
+            spotify_album_ids=frozenset({"album-scoped"}),
+        ),
+    )
+
+    assert report.spotify_track_ids_updated == frozenset({"track-backlog", "track-scoped"})
+    assert report.spotify_album_ids_updated == frozenset(
+        {
+            "album-for-track-backlog",
+            "album-for-track-scoped",
+            "album-scoped",
+        }
+    )
+    assert report.local_album_ids_relinked == frozenset({20})
+    assert report.impact_scope_exact is True
+
+
+def test_refresh_batch_failure_marks_impact_scope_inexact():
+    from backend.domains.metadata.spotify_refresh import (
+        MetadataRefreshScope,
+        refresh_missing_spotify_metadata,
+    )
+
+    conn = _conn()
+
+    class Provider:
+        def get_tracks(self, ids, token):
+            return None
+
+        def get_albums(self, ids, token):
+            return {"albums": []}
+
+        def get_artists_by_ids(self, ids, token):
+            return {"artists": []}
+
+    report = refresh_missing_spotify_metadata(
+        conn,
+        provider=Provider(),
+        access_token="token",
+        scope=MetadataRefreshScope(
+            generation_id="generation-new",
+            spotify_track_ids=frozenset({"track-failed"}),
+        ),
+    )
+
+    assert report.errors == ("tracks_batch_failed",)
+    assert report.spotify_track_ids_updated == frozenset()
+    assert report.impact_scope_exact is False
 
 
 def test_scoped_refresh_does_not_request_unrelated_missing_tracks():

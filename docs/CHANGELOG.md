@@ -2,6 +2,12 @@
 
 本文件只记录按日期排列的变更摘要。详细实施、验收和真实数据证据见 [`reports/README.md`](reports/README.md)；当前规则见 [`reference/`](reference/)。历史条目中的数字和路径仅代表当时状态。
 
+## 2026-08-23 — 增量导入 Phase E 基础恢复边界
+
+- 完整替换从清空旧事实到发布活动代际改为单个 `BEGIN IMMEDIATE` 事务；批次或发布失败会回滚旧播放、周聚合、曲目—专辑关系和活动状态，非空旧 schema 无法安全升级时在任何删除前拒绝执行。
+- `maintenance_pending` 现在可在应用启动时从严格校验的 ChangeSet 恢复：启动任务会核对活动代际、指纹版本、实际记录数与数据集摘要；证据无效或事实漂移会进入 `recovery_blocked`，瞬时维护失败则保持 pending 供持久队列重试。
+- Spotify 元数据刷新报告开始记录实际更新的 Spotify 曲目/专辑和本地专辑重链范围；显式增量 scope 与有界历史 backlog 都会纳入证据，凭据缺失或任一批次失败时不会声称影响范围精确。
+
 ## 2026-08-23 — 增量导入 Phase D2
 
 - migration 42 为六套搜索精确上下文增加稳定策略键、来源数据集/代际、基础 snapshot、构建策略、依赖 digest 和按候选实体键归一化的周榜账本；shared-full 整组六套原子发布时同步引导可复用 lineage。

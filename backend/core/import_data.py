@@ -36,6 +36,59 @@ _PLAY_INSERT_SQL = """INSERT INTO plays(
    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"""
 _PLAY_BATCH_SIZE = 5000
 
+
+def _replace_schema_is_transaction_ready(conn: sqlite3.Connection) -> bool:
+    """Return whether replace can start without an in-transaction migration.
+
+    Historical replace upgraded duplicate dimensions only after deleting and
+    committing playback facts.  That sequence cannot be made rollback-safe.
+    Current versioned databases already have the fingerprint columns and the
+    uniqueness constraints required by the importer; non-empty older schemas
+    must therefore fail before any destructive statement.
+    """
+
+    play_columns = {str(row[1]) for row in conn.execute("PRAGMA table_info(plays)")}
+    required_columns = {
+        "source_fingerprint",
+        "source_fingerprint_version",
+        "import_generation_id",
+    }
+    indexes = {
+        str(row[0]): bool(row[2])
+        for row in conn.execute(
+            """SELECT name, sql, CASE WHEN sql LIKE 'CREATE UNIQUE INDEX%' THEN 1 ELSE 0 END
+               FROM sqlite_master WHERE type='index'"""
+        ).fetchall()
+    }
+    return required_columns.issubset(play_columns) and all(
+        indexes.get(name, False)
+        for name in (
+            "idx_tracks_artist_name",
+            "idx_albums_name_artist",
+            "uq_plays_source_fingerprint",
+        )
+    )
+
+
+def _prepare_replace_schema() -> None:
+    """Upgrade empty/current databases, but fail closed on populated legacy ones."""
+
+    probe = get_db(readonly=False)
+    try:
+        ready = _replace_schema_is_transaction_ready(probe)
+        has_facts = bool(probe.execute("SELECT 1 FROM plays LIMIT 1").fetchone())
+    finally:
+        probe.close()
+    if not ready and has_facts:
+        raise RuntimeError(
+            "non-empty legacy playback schema cannot be upgraded inside an atomic replace; "
+            "migrate or restore it before importing"
+        )
+    # Empty legacy databases and already-versioned databases can be brought to
+    # the latest schema before the playback write transaction starts.
+    ensure_schema()
+
+
 # ── Featured artist parsing ──────────────────────────────────────────────
 
 # Patterns that should NOT be treated as featured artists
@@ -346,10 +399,13 @@ def _import_data_impl(
     init_db()
 
     # Append needs the migration-provided fingerprint columns before it can
-    # verify the active baseline. Replace retains the legacy ordering below so
-    # old duplicate dimensions can be repaired before UNIQUE indexes appear.
+    # verify the active baseline. Replace may upgrade an empty database here;
+    # a populated legacy database fails before any facts are cleared because
+    # its former delete/commit/deduplicate migration sequence was not atomic.
     if mode == "append":
         ensure_schema()
+    else:
+        _prepare_replace_schema()
 
     # Clear old play data and pre-aggregations only for the historical replace
     # strategy. Append must preserve plays, aggregates and track associations.
@@ -361,6 +417,10 @@ def _import_data_impl(
         # baseline so an external writer cannot swap facts between validation
         # and the first append DML statement.
         conn.execute("BEGIN IMMEDIATE")
+    else:
+        # Keep clearing, every inserted batch, the transactional finalizer, and
+        # the active fact publication under one rollback boundary.
+        conn.execute("BEGIN IMMEDIATE")
     if mode == "replace":
         conn.execute("DELETE FROM plays")
         conn.execute("DELETE FROM agg_weekly_tracks")
@@ -369,26 +429,6 @@ def _import_data_impl(
         conn.execute("DELETE FROM agg_weekly_artists")
         conn.execute("DELETE FROM agg_config")
         conn.execute("DELETE FROM track_albums")
-        conn.commit()
-
-        # Deduplicate tracks: keep lowest track_id per (artist_id, track_name)
-        conn.execute(
-            "DELETE FROM tracks WHERE track_id IN ("
-            "SELECT t1.track_id FROM tracks t1 "
-            "JOIN tracks t2 ON t1.artist_id = t2.artist_id AND t1.track_name = t2.track_name "
-            "WHERE t1.track_id > t2.track_id)"
-        )
-        # Deduplicate albums: keep lowest album_id per (album_name, artist_id)
-        conn.execute(
-            "DELETE FROM albums WHERE album_id IN ("
-            "SELECT a1.album_id FROM albums a1 "
-            "JOIN albums a2 ON a1.album_name = a2.album_name AND a1.artist_id = a2.artist_id "
-            "WHERE a1.album_id > a2.album_id)"
-        )
-        conn.commit()
-
-        # Now safe to create UNIQUE indexes (schema upgrade)
-        ensure_schema()
 
     existing_fingerprints = _load_append_fingerprints(conn) if mode == "append" else set()
     previous_dataset_digest = dataset_digest(
@@ -500,8 +540,6 @@ def _import_data_impl(
             # Batch insert every 5000 rows to keep memory in check
             if len(plays_batch) >= _PLAY_BATCH_SIZE:
                 conn.executemany(_PLAY_INSERT_SQL, plays_batch)
-                if mode == "replace":
-                    conn.commit()
                 total_records += len(plays_batch)
                 plays_batch.clear()
 
@@ -518,12 +556,7 @@ def _import_data_impl(
         # Insert remaining batch
         if plays_batch:
             conn.executemany(_PLAY_INSERT_SQL, plays_batch)
-            if mode == "replace":
-                conn.commit()
             total_records += len(plays_batch)
-
-    if mode == "replace":
-        conn.commit()
 
     # ── Import video records ────────────────────────────────────────────
     video_total = 0
@@ -609,8 +642,6 @@ def _import_data_impl(
 
                 if len(plays_batch) >= _PLAY_BATCH_SIZE:
                     conn.executemany(_PLAY_INSERT_SQL, plays_batch)
-                    if mode == "replace":
-                        conn.commit()
                     video_total += len(plays_batch)
                     plays_batch.clear()
 
@@ -625,8 +656,6 @@ def _import_data_impl(
 
             if plays_batch:
                 conn.executemany(_PLAY_INSERT_SQL, plays_batch)
-                if mode == "replace":
-                    conn.commit()
                 video_total += len(plays_batch)
 
     active_records, first_ts, latest_ts, active_digest = _active_dataset_summary(conn)

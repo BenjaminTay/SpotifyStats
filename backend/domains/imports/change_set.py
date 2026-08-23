@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import re
 import sqlite3
 from dataclasses import asdict, dataclass
 from datetime import date, datetime, timedelta
@@ -27,6 +28,10 @@ from backend.domains.playback.logical_timeline import (
 from backend.domains.settings.repository import SettingsRepository
 
 ImportWriteStrategy = Literal["incremental", "full"]
+
+_CHANGE_SET_SCHEMA_VERSION = "playback_change_set_v2"
+_CHANGE_SET_COLLECTION_LIMIT = 250_000
+_MONTH_PATTERN = re.compile(r"^\d{4}-(0[1-9]|1[0-2])$")
 
 logger = logging.getLogger(__name__)
 
@@ -76,9 +81,197 @@ class PlaybackChangeSet:
             "billboard_weeks",
         ):
             payload[key] = sorted(payload[key])
-        payload["schema_version"] = "playback_change_set_v2"
+        payload["schema_version"] = _CHANGE_SET_SCHEMA_VERSION
         payload["entity_count"] = self.entity_count
         return payload
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> PlaybackChangeSet:
+        """Decode persisted recovery evidence without accepting schema drift."""
+
+        if not isinstance(payload, dict):
+            raise ValueError("playback change set must be an object")
+        expected_fields = {
+            *cls.__dataclass_fields__,
+            "schema_version",
+            "entity_count",
+        }
+        if set(payload) != expected_fields:
+            raise ValueError("playback change set fields do not match the current schema")
+        if payload["schema_version"] != _CHANGE_SET_SCHEMA_VERSION:
+            raise ValueError("unsupported playback change set schema version")
+
+        generation_id = _required_string(payload["generation_id"], "generation_id")
+        strategy = payload["strategy"]
+        if strategy not in {"incremental", "full"}:
+            raise ValueError("invalid playback change set strategy")
+        previous_dataset_digest = _optional_string(
+            payload["previous_dataset_digest"], "previous_dataset_digest"
+        )
+        added_count = _non_negative_int(payload["added_count"], "added_count")
+        removed_count = _non_negative_int(payload["removed_count"], "removed_count")
+        earliest_changed_ts = _optional_iso_timestamp(
+            payload["earliest_changed_ts"], "earliest_changed_ts"
+        )
+        latest_changed_ts = _optional_iso_timestamp(
+            payload["latest_changed_ts"], "latest_changed_ts"
+        )
+        track_ids = _integer_set(payload["track_ids"], "track_ids")
+        album_ids = _integer_set(payload["album_ids"], "album_ids")
+        source_album_ids = _integer_set(payload["source_album_ids"], "source_album_ids")
+        artist_ids = _integer_set(payload["artist_ids"], "artist_ids")
+        spotify_track_ids = _string_set(payload["spotify_track_ids"], "spotify_track_ids")
+        spotify_album_ids = _string_set(payload["spotify_album_ids"], "spotify_album_ids")
+        dates = _date_set(payload["dates"], "dates")
+        months = _month_set(payload["months"], "months")
+        years = _year_set(payload["years"], "years")
+        billboard_weeks = _date_set(payload["billboard_weeks"], "billboard_weeks")
+        billboard_scope_exact = payload["billboard_scope_exact"]
+        if type(billboard_scope_exact) is not bool:
+            raise ValueError("billboard_scope_exact must be a boolean")
+        previous_open_week = _optional_date(payload["previous_open_week"], "previous_open_week")
+        current_open_week = _optional_date(payload["current_open_week"], "current_open_week")
+        semantic_revisions = _semantic_revision_map(payload["semantic_revisions"])
+
+        entity_count = _non_negative_int(payload["entity_count"], "entity_count")
+        if entity_count != len(track_ids) + len(album_ids) + len(artist_ids):
+            raise ValueError("playback change set entity_count does not match its ID sets")
+        return cls(
+            generation_id=generation_id,
+            strategy=cast(ImportWriteStrategy, strategy),
+            previous_dataset_digest=previous_dataset_digest,
+            added_count=added_count,
+            removed_count=removed_count,
+            earliest_changed_ts=earliest_changed_ts,
+            latest_changed_ts=latest_changed_ts,
+            track_ids=track_ids,
+            album_ids=album_ids,
+            source_album_ids=source_album_ids,
+            artist_ids=artist_ids,
+            spotify_track_ids=spotify_track_ids,
+            spotify_album_ids=spotify_album_ids,
+            dates=dates,
+            months=months,
+            years=years,
+            billboard_weeks=billboard_weeks,
+            billboard_scope_exact=billboard_scope_exact,
+            previous_open_week=previous_open_week,
+            current_open_week=current_open_week,
+            semantic_revisions=semantic_revisions,
+        )
+
+
+def _required_string(value: Any, field: str) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"{field} must be a non-empty string")
+    return value
+
+
+def _optional_string(value: Any, field: str) -> str | None:
+    if value is None:
+        return None
+    return _required_string(value, field)
+
+
+def _non_negative_int(value: Any, field: str) -> int:
+    if type(value) is not int or value < 0:
+        raise ValueError(f"{field} must be a non-negative integer")
+    return value
+
+
+def _bounded_list(value: Any, field: str) -> list[Any]:
+    if not isinstance(value, list):
+        raise ValueError(f"{field} must be a list")
+    if len(value) > _CHANGE_SET_COLLECTION_LIMIT:
+        raise ValueError(f"{field} exceeds the recovery evidence limit")
+    return value
+
+
+def _integer_set(value: Any, field: str) -> frozenset[int]:
+    values = _bounded_list(value, field)
+    if any(type(item) is not int or item <= 0 for item in values):
+        raise ValueError(f"{field} must contain positive integers")
+    if len(set(values)) != len(values):
+        raise ValueError(f"{field} must not contain duplicates")
+    return frozenset(values)
+
+
+def _string_set(value: Any, field: str) -> frozenset[str]:
+    values = _bounded_list(value, field)
+    if any(not isinstance(item, str) or not item.strip() for item in values):
+        raise ValueError(f"{field} must contain non-empty strings")
+    if len(set(values)) != len(values):
+        raise ValueError(f"{field} must not contain duplicates")
+    return frozenset(values)
+
+
+def _optional_iso_timestamp(value: Any, field: str) -> str | None:
+    encoded = _optional_string(value, field)
+    if encoded is None:
+        return None
+    try:
+        datetime.fromisoformat(encoded.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise ValueError(f"{field} must be an ISO timestamp") from exc
+    return encoded
+
+
+def _parse_date(value: Any, field: str) -> str:
+    encoded = _required_string(value, field)
+    try:
+        date.fromisoformat(encoded)
+    except ValueError as exc:
+        raise ValueError(f"{field} must contain ISO dates") from exc
+    return encoded
+
+
+def _optional_date(value: Any, field: str) -> str | None:
+    if value is None:
+        return None
+    return _parse_date(value, field)
+
+
+def _date_set(value: Any, field: str) -> frozenset[str]:
+    values = _bounded_list(value, field)
+    parsed = [_parse_date(item, field) for item in values]
+    if len(set(parsed)) != len(parsed):
+        raise ValueError(f"{field} must not contain duplicates")
+    return frozenset(parsed)
+
+
+def _month_set(value: Any, field: str) -> frozenset[str]:
+    values = _bounded_list(value, field)
+    if any(not isinstance(item, str) or not _MONTH_PATTERN.fullmatch(item) for item in values):
+        raise ValueError(f"{field} must contain YYYY-MM values")
+    if len(set(values)) != len(values):
+        raise ValueError(f"{field} must not contain duplicates")
+    return frozenset(values)
+
+
+def _year_set(value: Any, field: str) -> frozenset[int]:
+    values = _bounded_list(value, field)
+    if any(type(item) is not int or item < 1 or item > 9999 for item in values):
+        raise ValueError(f"{field} must contain valid years")
+    if len(set(values)) != len(values):
+        raise ValueError(f"{field} must not contain duplicates")
+    return frozenset(values)
+
+
+def _semantic_revision_map(value: Any) -> dict[str, str | int]:
+    if not isinstance(value, dict) or not value:
+        raise ValueError("semantic_revisions must be a non-empty object")
+    if len(value) > 64:
+        raise ValueError("semantic_revisions exceeds the recovery evidence limit")
+    result: dict[str, str | int] = {}
+    for key, item in value.items():
+        if not isinstance(key, str) or not key.strip():
+            raise ValueError("semantic_revisions keys must be non-empty strings")
+        if not isinstance(item, (str, int)) or isinstance(item, bool):
+            raise ValueError("semantic_revisions values must be strings or integers")
+        if isinstance(item, str) and not item.strip():
+            raise ValueError("semantic_revisions string values must not be empty")
+        result[key] = item
+    return result
 
 
 def build_playback_change_set(

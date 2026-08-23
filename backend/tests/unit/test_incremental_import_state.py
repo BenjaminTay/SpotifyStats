@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 import sqlite3
 from datetime import datetime, timezone
-from typing import Literal
 
 import pytest
 
@@ -17,6 +16,7 @@ from backend.domains.imports.incremental import (
 )
 from backend.domains.imports.state import (
     FingerprintBaselineError,
+    PlaybackImportRunStatus,
     publish_playback_import_state,
     record_playback_import_run,
     summarise_current_playback_dataset,
@@ -149,9 +149,12 @@ def test_publish_playback_import_state_stays_in_caller_transaction() -> None:
         conn.close()
 
 
-@pytest.mark.parametrize("status", ["maintenance_pending", "success", "noop", "needs_confirmation"])
+@pytest.mark.parametrize(
+    "status",
+    ["maintenance_pending", "recovery_blocked", "success", "noop", "needs_confirmation"],
+)
 def test_record_playback_import_run_is_compact_private_and_transactional(
-    status: Literal["maintenance_pending", "success", "noop", "needs_confirmation"],
+    status: PlaybackImportRunStatus,
 ) -> None:
     incoming = [
         FingerprintRecord(

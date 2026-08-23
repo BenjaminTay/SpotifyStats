@@ -21,8 +21,16 @@ from backend.domains.imports.incremental import (
     dataset_digest,
 )
 
-PlaybackImportRunStatus = Literal["maintenance_pending", "success", "noop", "needs_confirmation"]
-_ALLOWED_RUN_STATUSES = frozenset({"maintenance_pending", "success", "noop", "needs_confirmation"})
+PlaybackImportRunStatus = Literal[
+    "maintenance_pending",
+    "recovery_blocked",
+    "success",
+    "noop",
+    "needs_confirmation",
+]
+_ALLOWED_RUN_STATUSES = frozenset(
+    {"maintenance_pending", "recovery_blocked", "success", "noop", "needs_confirmation"}
+)
 
 
 class FingerprintBaselineError(ValueError):
@@ -242,6 +250,30 @@ def record_playback_import_run(
         f"INSERT INTO playback_import_runs({', '.join(names)}) VALUES ({placeholders})",
         values,
     )
+
+
+def compare_and_set_playback_import_run_status(
+    conn: sqlite3.Connection,
+    *,
+    run_id: str,
+    expected_status: PlaybackImportRunStatus,
+    status: PlaybackImportRunStatus,
+    error_code: str | None = None,
+) -> bool:
+    """Transition one durable run without replacing its recovery evidence."""
+
+    if expected_status not in _ALLOWED_RUN_STATUSES or status not in _ALLOWED_RUN_STATUSES:
+        raise ValueError("unsupported playback import run status transition")
+    completed_at = (
+        None if status == "maintenance_pending" else _isoformat(datetime.now(timezone.utc))
+    )
+    cursor = conn.execute(
+        """UPDATE playback_import_runs
+           SET status=?, completed_at=?, error_code=?
+           WHERE run_id=? AND status=?""",
+        (status, completed_at, error_code, run_id, expected_status),
+    )
+    return cursor.rowcount == 1
 
 
 def _compact_plan_json(plan: ImportPlan) -> str:
