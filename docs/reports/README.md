@@ -6,6 +6,8 @@
 
 ### 播放统计与详情
 
+- [`2026-08-23-incremental-import-phase-b.md`](2026-08-23-incremental-import-phase-b.md)
+- [`2026-08-23-incremental-import-phase-a.md`](2026-08-23-incremental-import-phase-a.md)
 - [`2026-08-23-cover-cache-and-post-import-performance.md`](2026-08-23-cover-cache-and-post-import-performance.md)
 - [`2026-08-23-import-and-complete-billboard-week-fix.md`](2026-08-23-import-and-complete-billboard-week-fix.md)
 - [`2026-08-19-music-detail-performance-delivery.md`](2026-08-19-music-detail-performance-delivery.md)

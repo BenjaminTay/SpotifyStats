@@ -1,6 +1,11 @@
 from __future__ import annotations
 
+from dataclasses import replace
+
 import pytest
+
+from backend.domains.imports.incremental import FingerprintRecord, build_import_plan
+from backend.services.import_plan_service import StreamingImportAssessment
 
 pytestmark = pytest.mark.contract
 
@@ -14,16 +19,34 @@ class _ImmediateThread:
         self._target()
 
 
+def _assessment(*, blockers=None, warnings=None, plan=None) -> StreamingImportAssessment:
+    plan = plan or build_import_plan([FingerprintRecord(source_type="audio", fingerprint="a" * 64)])
+    return StreamingImportAssessment(
+        report={
+            "status": "blocked" if blockers else ("partial" if warnings else "healthy"),
+            "blockers": list(blockers or []),
+            "warnings": list(warnings or []),
+            "requires_confirmation": False,
+            "confirmation_token": "token-v1",
+            "requested_mode": "auto",
+            "planned_actions": [],
+        },
+        plan=plan,
+        baseline_status="missing",
+        existing_account_identity_hash=None,
+        incoming_account_identity_hash=None,
+    )
+
+
 @pytest.fixture(autouse=True)
 def reset_import_jobs(monkeypatch):
     from backend.api import import_ as import_api
 
     import_api._jobs.clear()
     monkeypatch.setattr(
-        import_api,
-        "inspect_data_sources",
-        lambda streaming_dir, account_dir: {"status": "healthy", "blockers": [], "warnings": []},
+        import_api, "assess_streaming_import", lambda *args, **kwargs: _assessment()
     )
+    monkeypatch.setattr(import_api, "_publish_import_state", lambda *args, **kwargs: None)
     monkeypatch.setattr(
         import_api,
         "create_database_snapshot",
@@ -51,7 +74,7 @@ def test_streaming_import_job_completes_and_exposes_progress(client, monkeypatch
 
     progress_events = []
 
-    def fake_import_data(progress_callback, build_preaggregations=True):
+    def fake_import_data(progress_callback, build_preaggregations=True, **kwargs):
         progress_callback("读取 Extended Streaming History", 0.4)
         progress_events.append(dict(import_api._jobs))
         return {"files": 2, "records": 3, "artists": 4, "albums": 5, "tracks": 6}
@@ -88,6 +111,12 @@ def test_streaming_import_job_completes_and_exposes_progress(client, monkeypatch
             "albums": 5,
             "tracks": 6,
             "duplicate_records_skipped": 0,
+            "unchanged_records": 0,
+            "inserted_records": 0,
+            "active_records": 0,
+            "detected_relation": "baseline_required",
+            "executed_strategy": "full",
+            "noop": False,
             "database_snapshot": {"status": "skipped", "reason": "test"},
             "post_import_health": {
                 "status": "healthy",
@@ -105,7 +134,7 @@ def test_streaming_import_job_completes_and_exposes_progress(client, monkeypatch
 
 def test_import_preflight_is_read_only_and_has_response_contract(client, monkeypatch, tmp_path):
     from backend.api import import_ as import_api
-    from backend.domains.imports.source_inspector import inspect_data_sources
+    from backend.core.db import get_db
 
     streaming_dir = tmp_path / "streaming"
     account_dir = tmp_path / "account"
@@ -114,14 +143,32 @@ def test_import_preflight_is_read_only_and_has_response_contract(client, monkeyp
     (streaming_dir / "Streaming_History_Audio_000.json").write_text("[]", encoding="utf-8")
     monkeypatch.setattr(import_api, "DATA_DIR", str(streaming_dir))
     monkeypatch.setattr(import_api, "ACCOUNT_DATA_DIR", str(account_dir))
-    monkeypatch.setattr(import_api, "inspect_data_sources", inspect_data_sources)
+
+    conn = get_db(readonly=True)
+    try:
+        run_count_before = conn.execute("SELECT COUNT(*) FROM playback_import_runs").fetchone()[0]
+    finally:
+        conn.close()
 
     response = client.get("/api/import/preflight")
 
     assert response.status_code == 200
-    assert response.json()["status"] == "blocked"
-    assert response.json()["streaming_files"][0]["file_name"] == "Streaming_History_Audio_000.json"
+    payload = response.json()
+    assert payload["status"] == "blocked"
+    assert payload["streaming_files"][0]["file_name"] == "Streaming_History_Audio_000.json"
+    assert payload["fingerprint_baseline_status"] == "missing"
+    assert payload["detected_relation"] == "baseline_required"
+    assert payload["requested_mode"] == "auto"
+    assert payload["estimated_strategy"] == "full"
+    assert payload["planned_actions"]
     assert "X-Request-ID" in response.headers
+
+    conn = get_db(readonly=True)
+    try:
+        run_count_after = conn.execute("SELECT COUNT(*) FROM playback_import_runs").fetchone()[0]
+    finally:
+        conn.close()
+    assert run_count_after == run_count_before
 
 
 def test_import_health_has_nested_database_and_derived_sections(client):
@@ -145,8 +192,8 @@ def test_streaming_import_job_runs_derived_maintenance_before_done(client, monke
 
     events = []
 
-    def fake_import_data(progress_callback, build_preaggregations=True):
-        events.append(("import", build_preaggregations))
+    def fake_import_data(progress_callback, build_preaggregations=True, **kwargs):
+        events.append(("import", build_preaggregations, kwargs["mode"]))
         progress_callback("导入基础播放", 0.5)
         return {"total_records": 3, "unique_artists": 1, "unique_albums": 1, "unique_tracks": 1}
 
@@ -167,6 +214,11 @@ def test_streaming_import_job_runs_derived_maintenance_before_done(client, monke
     monkeypatch.setattr(import_api.threading, "Thread", _ImmediateThread)
     monkeypatch.setattr(import_api, "import_data", fake_import_data)
     monkeypatch.setattr(
+        import_api,
+        "_publish_import_state",
+        lambda assessment, result, executed_strategy: events.append(("publish", executed_strategy)),
+    )
+    monkeypatch.setattr(
         import_api, "run_post_streaming_import_maintenance", fake_maintenance, raising=False
     )
 
@@ -175,7 +227,11 @@ def test_streaming_import_job_runs_derived_maintenance_before_done(client, monke
     assert response.status_code == 200
     job_id = response.json()["job_id"]
     status = client.get(f"/api/import/status/{job_id}").json()
-    assert events == [("import", False), ("maintenance", True)]
+    assert events == [
+        ("import", False, "replace"),
+        ("publish", "full"),
+        ("maintenance", True),
+    ]
     assert status["status"] == "done"
     assert status["result"]["maintenance_status"] == "ok"
     assert status["result"]["album_projects_rebuilt"] is True
@@ -190,12 +246,8 @@ def test_streaming_import_blocks_before_snapshot_when_preflight_has_blockers(cli
 
     monkeypatch.setattr(
         import_api,
-        "inspect_data_sources",
-        lambda streaming_dir, account_dir: {
-            "status": "blocked",
-            "blockers": ["存在完全重复文件"],
-            "warnings": [],
-        },
+        "assess_streaming_import",
+        lambda *args, **kwargs: _assessment(blockers=["存在完全重复文件"]),
     )
     monkeypatch.setattr(
         import_api,
@@ -227,17 +279,13 @@ def test_streaming_import_requires_warning_confirmation_then_runs(client, monkey
     import_calls = []
     monkeypatch.setattr(
         import_api,
-        "inspect_data_sources",
-        lambda streaming_dir, account_dir: {
-            "status": "partial",
-            "blockers": [],
-            "warnings": ["日期范围重叠"],
-        },
+        "assess_streaming_import",
+        lambda *args, **kwargs: _assessment(warnings=["日期范围重叠"]),
     )
     monkeypatch.setattr(
         import_api,
         "import_data",
-        lambda progress_callback, build_preaggregations=True: (
+        lambda progress_callback, build_preaggregations=True, **kwargs: (
             import_calls.append(True) or {"total_records": 1}
         ),
     )
@@ -255,11 +303,245 @@ def test_streaming_import_requires_warning_confirmation_then_runs(client, monkey
     assert first_status["result"]["import_started"] is False
     assert import_calls == []
 
-    confirmed_response = client.post("/api/import/streaming?confirm_warnings=true")
+    confirmed_response = client.post(
+        "/api/import/streaming?confirm_warnings=true&confirmation_token=token-v1"
+    )
     confirmed_job_id = confirmed_response.json()["job_id"]
     confirmed_status = client.get(f"/api/import/status/{confirmed_job_id}").json()
     assert confirmed_status["status"] == "done"
     assert import_calls == [True]
+
+
+def test_streaming_import_rejects_confirmation_for_a_changed_plan(client, monkeypatch):
+    from backend.api import import_ as import_api
+
+    import_calls = []
+    monkeypatch.setattr(
+        import_api,
+        "assess_streaming_import",
+        lambda *args, **kwargs: _assessment(warnings=["日期范围重叠"]),
+    )
+    monkeypatch.setattr(
+        import_api,
+        "import_data",
+        lambda **kwargs: import_calls.append(kwargs),
+    )
+    monkeypatch.setattr(import_api.threading, "Thread", _ImmediateThread)
+
+    response = client.post(
+        "/api/import/streaming?confirm_warnings=true&confirmation_token=stale-token"
+    )
+    status = client.get(f"/api/import/status/{response.json()['job_id']}").json()
+
+    assert status["status"] == "needs_confirmation"
+    assert "已变化" in status["message"]
+    assert status["result"]["confirmation_reason"] == "stale_plan"
+    assert status["result"]["preflight"]["confirmation_token"] == "token-v1"
+    assert import_calls == []
+
+
+def test_streaming_import_rejects_a_stale_displayed_plan_without_confirmation_flags(
+    client, monkeypatch
+):
+    from backend.api import import_ as import_api
+
+    import_calls = []
+    monkeypatch.setattr(
+        import_api,
+        "import_data",
+        lambda **kwargs: import_calls.append(kwargs),
+    )
+    monkeypatch.setattr(import_api.threading, "Thread", _ImmediateThread)
+
+    response = client.post("/api/import/streaming?confirmation_token=stale-token")
+    status = client.get(f"/api/import/status/{response.json()['job_id']}").json()
+
+    assert status["status"] == "needs_confirmation"
+    assert status["result"]["confirmation_reason"] == "stale_plan"
+    assert import_calls == []
+
+
+def test_legacy_baseline_explicit_replace_still_requires_confirmation(client, monkeypatch):
+    from backend.api import import_ as import_api
+
+    plan = replace(
+        build_import_plan([FingerprintRecord(source_type="audio", fingerprint="a" * 64)]),
+        existing_count=10,
+        requires_confirmation=True,
+    )
+    import_calls = []
+    monkeypatch.setattr(
+        import_api,
+        "assess_streaming_import",
+        lambda *args, **kwargs: _assessment(plan=plan),
+    )
+    monkeypatch.setattr(
+        import_api,
+        "import_data",
+        lambda **kwargs: import_calls.append(kwargs),
+    )
+    monkeypatch.setattr(import_api.threading, "Thread", _ImmediateThread)
+
+    response = client.post("/api/import/streaming?mode=replace")
+    status = client.get(f"/api/import/status/{response.json()['job_id']}").json()
+
+    assert status["status"] == "needs_confirmation"
+    assert import_calls == []
+
+
+def test_identical_auto_import_is_noop_before_snapshot(client, monkeypatch):
+    from backend.api import import_ as import_api
+
+    record = FingerprintRecord(source_type="audio", fingerprint="a" * 64)
+    plan = build_import_plan([record], existing_records=[record])
+    snapshot_calls = []
+    import_calls = []
+    maintenance_calls = []
+    monkeypatch.setattr(
+        import_api,
+        "assess_streaming_import",
+        lambda *args, **kwargs: _assessment(plan=plan),
+    )
+    monkeypatch.setattr(
+        import_api,
+        "_complete_noop_import",
+        lambda *args, **kwargs: {
+            "detected_relation": "identical",
+            "executed_strategy": "noop",
+            "noop": True,
+            "records": 1,
+        },
+    )
+    monkeypatch.setattr(
+        import_api,
+        "create_database_snapshot",
+        lambda job_id: snapshot_calls.append(job_id),
+    )
+    monkeypatch.setattr(import_api, "import_data", lambda **kwargs: import_calls.append(kwargs))
+    monkeypatch.setattr(
+        import_api,
+        "run_post_streaming_import_maintenance",
+        lambda **kwargs: maintenance_calls.append(kwargs),
+    )
+    monkeypatch.setattr(import_api.threading, "Thread", _ImmediateThread)
+
+    response = client.post("/api/import/streaming?mode=auto")
+    status = client.get(f"/api/import/status/{response.json()['job_id']}").json()
+
+    assert status["status"] == "done"
+    assert status["message"] == "输入数据未变化，跳过导入"
+    assert status["result"]["executed_strategy"] == "noop"
+    assert snapshot_calls == []
+    assert import_calls == []
+    assert maintenance_calls == []
+
+
+def test_snapshot_superset_auto_import_uses_append(client, monkeypatch):
+    from backend.api import import_ as import_api
+
+    old = FingerprintRecord(source_type="audio", fingerprint="a" * 64)
+    new = FingerprintRecord(source_type="audio", fingerprint="b" * 64)
+    plan = build_import_plan([old, new], existing_records=[old])
+    import_modes = []
+    monkeypatch.setattr(
+        import_api,
+        "assess_streaming_import",
+        lambda *args, **kwargs: _assessment(plan=plan),
+    )
+
+    def fake_import_data(**kwargs):
+        import_modes.append(kwargs["mode"])
+        return {
+            "inserted_records": 1,
+            "unchanged_records": 1,
+            "active_records": 2,
+            "generation_id": kwargs["generation_id"],
+        }
+
+    monkeypatch.setattr(import_api, "import_data", fake_import_data)
+    monkeypatch.setattr(
+        import_api,
+        "run_post_streaming_import_maintenance",
+        lambda **kwargs: {"maintenance_status": "ok"},
+    )
+    monkeypatch.setattr(import_api.threading, "Thread", _ImmediateThread)
+
+    response = client.post("/api/import/streaming?mode=auto")
+    status = client.get(f"/api/import/status/{response.json()['job_id']}").json()
+
+    assert status["status"] == "done"
+    assert import_modes == ["append"]
+    assert status["result"]["detected_relation"] == "snapshot_superset"
+    assert status["result"]["executed_strategy"] == "incremental"
+    assert status["result"]["inserted_records"] == 1
+
+
+def test_ambiguous_auto_requires_explicit_confirmed_replace(client, monkeypatch):
+    from backend.api import import_ as import_api
+
+    old = FingerprintRecord(source_type="audio", fingerprint="a" * 64)
+    new = FingerprintRecord(source_type="audio", fingerprint="b" * 64)
+    plan = build_import_plan([new], existing_records=[old])
+    import_modes = []
+    monkeypatch.setattr(
+        import_api,
+        "assess_streaming_import",
+        lambda *args, **kwargs: _assessment(plan=plan),
+    )
+    monkeypatch.setattr(
+        import_api,
+        "import_data",
+        lambda **kwargs: (
+            import_modes.append(kwargs["mode"]) or {"inserted_records": 1, "active_records": 1}
+        ),
+    )
+    monkeypatch.setattr(
+        import_api,
+        "run_post_streaming_import_maintenance",
+        lambda **kwargs: {"maintenance_status": "ok"},
+    )
+    monkeypatch.setattr(import_api.threading, "Thread", _ImmediateThread)
+
+    auto = client.post(
+        "/api/import/streaming?mode=auto&confirm_plan=true&confirmation_token=token-v1"
+    )
+    auto_status = client.get(f"/api/import/status/{auto.json()['job_id']}").json()
+    unconfirmed = client.post("/api/import/streaming?mode=replace")
+    unconfirmed_status = client.get(f"/api/import/status/{unconfirmed.json()['job_id']}").json()
+    confirmed = client.post(
+        "/api/import/streaming?mode=replace&confirm_plan=true&confirmation_token=token-v1"
+    )
+    confirmed_status = client.get(f"/api/import/status/{confirmed.json()['job_id']}").json()
+
+    assert auto_status["status"] == "needs_confirmation"
+    assert unconfirmed_status["status"] == "needs_confirmation"
+    assert confirmed_status["status"] == "done"
+    assert confirmed_status["result"]["executed_strategy"] == "full"
+    assert import_modes == ["replace"]
+
+
+def test_append_mode_cannot_bypass_missing_baseline(client, monkeypatch):
+    from backend.api import import_ as import_api
+
+    import_calls = []
+    monkeypatch.setattr(import_api, "import_data", lambda **kwargs: import_calls.append(kwargs))
+    monkeypatch.setattr(import_api.threading, "Thread", _ImmediateThread)
+
+    response = client.post(
+        "/api/import/streaming?mode=append&confirm_plan=true&confirmation_token=token-v1"
+    )
+    status = client.get(f"/api/import/status/{response.json()['job_id']}").json()
+
+    assert status["status"] == "blocked"
+    assert "完整" in status["message"]
+    assert import_calls == []
+
+
+def test_streaming_import_mode_rejects_unsupported_value(client):
+    response = client.post("/api/import/streaming?mode=merge")
+
+    assert response.status_code == 422
+    assert response.json()["detail"]
 
 
 def test_account_import_job_summarizes_nested_results(client, monkeypatch):
@@ -296,7 +578,7 @@ def test_account_import_job_summarizes_nested_results(client, monkeypatch):
 def test_streaming_import_job_records_error_status(client, monkeypatch):
     from backend.api import import_ as import_api
 
-    def failing_import_data(progress_callback, build_preaggregations=True):
+    def failing_import_data(progress_callback, build_preaggregations=True, **kwargs):
         progress_callback("读取失败前进度", 0.2)
         raise RuntimeError("fixture import failure")
 
@@ -326,7 +608,7 @@ def test_streaming_import_restores_snapshot_when_import_fails(client, monkeypatc
     }
     rollback_calls = []
 
-    def failing_import_data(progress_callback, build_preaggregations=True):
+    def failing_import_data(progress_callback, build_preaggregations=True, **kwargs):
         raise RuntimeError("fixture destructive import failure")
 
     def fake_restore(snapshot_path):
@@ -354,7 +636,7 @@ def test_streaming_import_restores_snapshot_when_maintenance_fails(client, monke
     snapshot = {"status": "created", "path": "/tmp/maintenance-failure-snapshot.db"}
     rollback_calls = []
 
-    def fake_import_data(progress_callback, build_preaggregations=True):
+    def fake_import_data(progress_callback, build_preaggregations=True, **kwargs):
         return {"total_records": 2}
 
     def failing_maintenance(progress_callback, defer_music_search_snapshots=False):
@@ -446,7 +728,7 @@ def test_import_progress_callback_clamps_status_percent(client, monkeypatch):
 
     observed = []
 
-    def fake_import_data(progress_callback, build_preaggregations=True):
+    def fake_import_data(progress_callback, build_preaggregations=True, **kwargs):
         progress_callback("negative progress", -0.5)
         observed.append(next(iter(import_api._jobs.values()))["progress_pct"])
         progress_callback("overflow progress", 1.5)

@@ -1311,6 +1311,78 @@ def migrate_036(conn: sqlite3.Connection):
     )
 
 
+@migration(37, "playback_import_identity_baseline")
+def migrate_037(conn: sqlite3.Connection):
+    """Persist playback record identity and import-generation state.
+
+    Legacy rows deliberately remain without fingerprints: the historical
+    database does not retain every source JSON field needed to reproduce the
+    canonical source fingerprint.  The next baseline import will populate the
+    new columns instead.
+    """
+    play_columns = {
+        row["name"] if isinstance(row, sqlite3.Row) else row[1]
+        for row in conn.execute("PRAGMA table_info(plays)").fetchall()
+    }
+    additions = (
+        ("source_fingerprint", "TEXT"),
+        ("source_fingerprint_version", "INTEGER"),
+        ("import_generation_id", "TEXT"),
+    )
+    for column, column_type in additions:
+        if column not in play_columns:
+            conn.execute(f"ALTER TABLE plays ADD COLUMN {column} {column_type}")
+
+    conn.executescript(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS uq_plays_source_fingerprint
+            ON plays(content_type, source_fingerprint_version, source_fingerprint)
+            WHERE source_fingerprint IS NOT NULL;
+        CREATE INDEX IF NOT EXISTS idx_plays_import_generation
+            ON plays(import_generation_id);
+
+        CREATE TABLE IF NOT EXISTS playback_import_state (
+            state_id INTEGER PRIMARY KEY CHECK (state_id = 1),
+            active_generation_id TEXT,
+            account_identity_hash TEXT,
+            fingerprint_version INTEGER,
+            dataset_digest TEXT,
+            record_count INTEGER NOT NULL DEFAULT 0 CHECK (record_count >= 0),
+            first_ts TEXT,
+            latest_ts TEXT,
+            last_relation TEXT,
+            last_strategy TEXT,
+            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        INSERT OR IGNORE INTO playback_import_state(state_id, record_count)
+            VALUES (1, 0);
+
+        CREATE TABLE IF NOT EXISTS playback_import_runs (
+            run_id TEXT PRIMARY KEY,
+            requested_mode TEXT NOT NULL,
+            detected_relation TEXT,
+            status TEXT NOT NULL,
+            incoming_digest TEXT,
+            previous_digest TEXT,
+            incoming_count INTEGER NOT NULL DEFAULT 0 CHECK (incoming_count >= 0),
+            unchanged_count INTEGER NOT NULL DEFAULT 0 CHECK (unchanged_count >= 0),
+            added_count INTEGER NOT NULL DEFAULT 0 CHECK (added_count >= 0),
+            removed_count INTEGER NOT NULL DEFAULT 0 CHECK (removed_count >= 0),
+            first_ts TEXT,
+            latest_ts TEXT,
+            earliest_changed_ts TEXT,
+            latest_changed_ts TEXT,
+            plan_json TEXT,
+            started_at TEXT NOT NULL DEFAULT (datetime('now')),
+            completed_at TEXT,
+            error_code TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_playback_import_runs_status_started
+            ON playback_import_runs(status, started_at DESC);
+        """
+    )
+
+
 # ── Runner ────────────────────────────────────────────────────────────────
 
 

@@ -76,6 +76,12 @@ class ParameterBoundaryAudit:
 
 
 BOUNDARY_EVIDENCE_BY_KEY: dict[tuple[str, str, str], ParameterEvidence] = {
+    ("query", "mode", "string|enum=auto,append,replace"): ParameterEvidence(
+        "targeted_contract",
+        (),
+        "streaming import contracts cover all three modes and reject unsupported values",
+        ("backend/tests/contract/test_import_api_jobs.py",),
+    ),
     ("query", "view", "string|enum=full,summary,overview"): ParameterEvidence(
         "targeted_contract",
         (),

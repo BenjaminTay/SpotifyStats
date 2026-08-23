@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { queryKeys } from '@/api/query-keys'
 import { api, type SettingsData, type SettingsUpdatePayload, type ImportJob, type ReleaseGroup, type GroupMember, type UngroupedAlbum, type DetectionResult, type TrackGroupCandidate, type TrackGroupConfirmResult, type AlbumRelationConfirmResult, type TrackComparison, type RebuildResult, type VersionMergeScope, type TrackGroupScope, type LLMProfile, type LLMProfileDetail, type LLMProfileCreatePayload, type LLMProfileUpdatePayload, type LLMProfileCreateResult } from '@/lib/api'
+import type { StreamingImportOptions } from '@/types/data-import'
 
 // ── useSettings ─────────────────────────────────────────────
 
@@ -51,7 +52,7 @@ interface UseSettingsResult {
   updateApiKey: (apiKey: string, baseUrl?: string) => Promise<void>
   clearTranslationCache: () => Promise<ClearCacheResult>
   rebuildAgg: () => Promise<RebuildResult>
-  startStreamingImport: (confirmWarnings?: boolean) => void
+  startStreamingImport: (options?: StreamingImportOptions) => void
   startAccountImport: () => void
   streamingJob: ImportJob | null
   accountJob: ImportJob | null
@@ -201,9 +202,14 @@ export function useSettings(): UseSettingsResult {
     pollRef.current.set('streaming', interval)
   }, [refetch])
 
-  const startStreamingImport = useCallback((confirmWarnings = false) => {
-    const query = confirmWarnings ? '?confirm_warnings=true' : ''
-    api.post<{ job_id: string }>(`/import/streaming${query}`).then(({ job_id }) => {
+  const startStreamingImport = useCallback((options: StreamingImportOptions = {}) => {
+    const params: Record<string, string | boolean> = {
+      mode: options.mode ?? 'auto',
+      confirm_warnings: options.confirmWarnings ?? false,
+      confirm_plan: options.confirmPlan ?? false,
+    }
+    if (options.confirmationToken) params.confirmation_token = options.confirmationToken
+    api.postWithParams<{ job_id: string }>('/import/streaming', undefined, params).then(({ job_id }) => {
       setStreamingJob({ job_id, status: 'running', progress_pct: 0, message: '初始化...', result: null })
       pollImport(job_id, setStreamingJob)
     })

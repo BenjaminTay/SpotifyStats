@@ -94,6 +94,26 @@ const preflight: ImportPreflightResponse = {
   warnings: [],
 }
 
+const incrementalPreflight: ImportPreflightResponse = {
+  ...preflight,
+  account_identity_status: 'matched',
+  fingerprint_baseline_status: 'ready',
+  detected_relation: 'snapshot_superset',
+  requested_mode: 'auto',
+  requires_confirmation: false,
+  existing_record_count: 91286,
+  incoming_record_count: 93120,
+  unchanged_record_count: 91286,
+  added_record_count: 1834,
+  removed_record_count: 0,
+  existing_date_range: { first_date: '2022-07-01', last_date: '2026-07-24' },
+  incoming_date_range: { first_date: '2022-07-01', last_date: '2026-08-21' },
+  affected_weeks_count: 2,
+  affected_years_count: 1,
+  planned_actions: ['追加播放事实', '更新受影响榜单周'],
+  estimated_strategy: 'incremental',
+}
+
 describe('data import health UI', () => {
   it('shows health metrics and read-only warnings', () => {
     render(<DataHealthSummary health={health} loading={false} error={null} onRefresh={vi.fn()} />)
@@ -116,5 +136,35 @@ describe('data import health UI', () => {
     expect(screen.getByText('已发现 · 4 条')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: '开始检查' }))
     expect(onRun).toHaveBeenCalledOnce()
+  })
+
+  it('shows a natural-language incremental import plan', () => {
+    render(<ImportPreflightPanel preflight={incrementalPreflight} loading={false} error={null} onRun={vi.fn()} />)
+
+    expect(screen.getByText('播放事实增量')).toBeInTheDocument()
+    expect(screen.getByText('检测到当前数据基础上的完整追加：新增 1,834 条记录，变化涉及 2 个榜单周和 1 个年度范围。')).toBeInTheDocument()
+    expect(screen.getByText('当前仅播放事实增量写入；榜单、搜索和其他派生数据仍执行完整维护。')).toBeInTheDocument()
+    expect(screen.getByText('当前 / 输入：91,286 / 93,120 条')).toBeInTheDocument()
+    expect(screen.getByText('当前范围：2022-07-01 → 2026-07-24')).toBeInTheDocument()
+    expect(screen.getByText('· 更新受影响榜单周')).toBeInTheDocument()
+  })
+
+  it('asks for confirmation when the input relationship is ambiguous', () => {
+    render(
+      <ImportPreflightPanel
+        preflight={{
+          ...incrementalPreflight,
+          detected_relation: 'ambiguous',
+          requires_confirmation: true,
+          estimated_strategy: 'full',
+        }}
+        loading={false}
+        error={null}
+        onRun={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByText('需要确认')).toBeInTheDocument()
+    expect(screen.getByText('无法证明输入包是完整快照还是尾部增量，需要确认导入方式。')).toBeInTheDocument()
   })
 })

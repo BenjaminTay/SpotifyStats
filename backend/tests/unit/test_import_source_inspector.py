@@ -124,3 +124,40 @@ def test_inspect_data_sources_reports_duplicate_files_and_record_overlap(tmp_pat
     assert overlap["overlap_end"] == "2026-01-02"
     assert overlap["shared_record_count"] == 1
     assert any("跨文件完全重复" in warning for warning in report["warnings"])
+
+
+def test_planning_inspection_retains_unique_typed_record_identities(tmp_path):
+    from backend.domains.imports.source_inspector import (
+        inspect_data_sources,
+        inspect_data_sources_for_planning,
+    )
+
+    streaming_dir = tmp_path / "streaming"
+    account_dir = tmp_path / "account"
+    streaming_dir.mkdir()
+    account_dir.mkdir()
+    shared = {"ts": "2026-01-02T01:02:03Z", "ms_played": 30_000}
+    (streaming_dir / "Streaming_History_Audio_000.json").write_text(
+        json.dumps([shared, shared]), encoding="utf-8"
+    )
+    (streaming_dir / "Streaming_History_Video_000.json").write_text(
+        json.dumps([shared]), encoding="utf-8"
+    )
+
+    public_report = inspect_data_sources(streaming_dir, account_dir)
+    planning_report = inspect_data_sources_for_planning(streaming_dir, account_dir)
+
+    assert "_streaming_records" not in public_report
+    assert planning_report["_streaming_records"] == [
+        {
+            "source_type": "audio",
+            "fingerprint": planning_report["_streaming_records"][0]["fingerprint"],
+            "timestamp": "2026-01-02T01:02:03Z",
+        },
+        {
+            "source_type": "video",
+            "fingerprint": planning_report["_streaming_records"][1]["fingerprint"],
+            "timestamp": "2026-01-02T01:02:03Z",
+        },
+    ]
+    assert all("_record_fingerprints" not in item for item in planning_report["streaming_files"])

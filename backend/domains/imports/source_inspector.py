@@ -114,6 +114,7 @@ def _inspect_file(
         "warnings": [],
         "_content_sha256": None,
         "_record_fingerprints": set(),
+        "_record_timestamps": {},
     }
     if not path.exists():
         return base
@@ -150,6 +151,11 @@ def _inspect_file(
     if streaming:
         fingerprints = [record_fingerprint(item) for item in items]
         base["_record_fingerprints"] = set(fingerprints)
+        base["_record_timestamps"] = {
+            fingerprint: item.get("ts")
+            for fingerprint, item in zip(fingerprints, items)
+            if isinstance(item.get("ts"), str)
+        }
         base["duplicate_record_count"] = len(fingerprints) - len(base["_record_fingerprints"])
         timestamps = [_parse_timestamp(item.get("ts")) for item in items]
         invalid_timestamps = sum(
@@ -222,6 +228,8 @@ def _streaming_quality_findings(
 def inspect_data_sources(
     streaming_dir: str | os.PathLike[str],
     account_dir: str | os.PathLike[str],
+    *,
+    _retain_streaming_records: bool = False,
 ) -> dict[str, Any]:
     """Inspect the default export directories without mutating any state."""
 
@@ -291,10 +299,29 @@ def inspect_data_sources(
         warnings.extend(f"{item['file_name']}：{warning}" for warning in item["warnings"])
 
     status = "blocked" if blockers else ("partial" if warnings else "healthy")
+    streaming_records: dict[tuple[str, str], dict[str, Any]] = {}
     for item in streaming_files:
+        if _retain_streaming_records:
+            source_type = "audio" if item["source_key"] == "streaming_audio" else "video"
+            timestamps = item.get("_record_timestamps", {})
+            for fingerprint in item.get("_record_fingerprints", set()):
+                key = (source_type, str(fingerprint))
+                streaming_records.setdefault(
+                    key,
+                    {
+                        "source_type": source_type,
+                        "fingerprint": str(fingerprint),
+                        "timestamp": timestamps.get(fingerprint),
+                    },
+                )
         item.pop("_content_sha256", None)
         item.pop("_record_fingerprints", None)
-    return {
+        item.pop("_record_timestamps", None)
+    for item in account_files:
+        item.pop("_content_sha256", None)
+        item.pop("_record_fingerprints", None)
+        item.pop("_record_timestamps", None)
+    report = {
         "status": status,
         "streaming_files": streaming_files,
         "account_files": account_files,
@@ -303,3 +330,22 @@ def inspect_data_sources(
         "blockers": blockers,
         "warnings": warnings,
     }
+    if _retain_streaming_records:
+        report["_streaming_records"] = list(streaming_records.values())
+    return report
+
+
+def inspect_data_sources_for_planning(
+    streaming_dir: str | os.PathLike[str],
+    account_dir: str | os.PathLike[str],
+) -> dict[str, Any]:
+    """Inspect source files and retain exact record identities for a read-only plan.
+
+    The underscored payload is consumed by the import-plan service and removed
+    before any API response is serialized.
+    """
+    return inspect_data_sources(
+        streaming_dir,
+        account_dir,
+        _retain_streaming_records=True,
+    )

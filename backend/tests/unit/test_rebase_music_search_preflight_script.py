@@ -228,7 +228,13 @@ def test_rebase_migrates_schema_33_quiescent_copy_without_touching_rollback(
     assert rollback.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0] == 33
     rollback.close()
     promoted = sqlite3.connect(quiescent)
-    assert promoted.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0] == 36
+    assert promoted.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0] == 37
+    assert (
+        promoted.execute("SELECT COUNT(*) FROM playback_import_state WHERE state_id=1").fetchone()[
+            0
+        ]
+        == 1
+    )
     assert (
         promoted.execute(
             "SELECT COUNT(*) FROM music_search_snapshot_meta WHERE status='ready'"

@@ -121,6 +121,67 @@ describe('Phase 5 query hook migration', () => {
     expect(result.current.settings?.min_ms).toBe(30000)
   })
 
+  it('starts streaming import in auto mode by default and forwards both confirmation gates', async () => {
+    const client = createClient()
+    vi.spyOn(api, 'get').mockResolvedValue({
+      min_ms: 30000,
+      music_only: true,
+      merge_enabled: true,
+      max_merge_gap_minutes: 5,
+      bb_top_n: 30,
+      bb_album_top_n: 20,
+      bb_artist_top_n: 20,
+      bb_week_start_dow: 4,
+      bb_week_start_hour: 0,
+      include_compilations: false,
+      db_record_count: 12,
+      account_data_imported: true,
+      spotify_connected: false,
+      spotify_profile: null,
+      llm_enabled: false,
+      llm_provider: 'deepseek',
+      llm_model: '',
+      has_llm_key: false,
+      llm_active_profile_id: null,
+      llm_active_profile_name: null,
+      rebuild_pending: false,
+    })
+    const postSpy = vi.spyOn(api, 'postWithParams').mockResolvedValue({ job_id: 'fixture' })
+
+    const { result } = renderHook(() => useSettings(), { wrapper: wrapperFor(client) })
+    await waitFor(() => expect(result.current.loading).toBe(false))
+
+    act(() => {
+      result.current.startStreamingImport()
+    })
+
+    await waitFor(() => {
+      expect(postSpy).toHaveBeenCalledWith('/import/streaming', undefined, {
+        mode: 'auto',
+        confirm_warnings: false,
+        confirm_plan: false,
+      })
+    })
+
+    act(() => {
+      result.current.startStreamingImport({
+        mode: 'replace',
+        confirmWarnings: true,
+        confirmPlan: true,
+        confirmationToken: 'token-v1',
+      })
+    })
+
+    await waitFor(() => {
+      expect(postSpy).toHaveBeenCalledWith('/import/streaming', undefined, {
+        mode: 'replace',
+        confirm_warnings: true,
+        confirm_plan: true,
+        confirmation_token: 'token-v1',
+      })
+    })
+  })
+
   it('invalidates Billboard queries after Billboard settings are updated', async () => {
     const client = createClient()
     const settings = {

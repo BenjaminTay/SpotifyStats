@@ -1,6 +1,6 @@
 # Spotify 串流数据增量导入开发规划
 
-> 状态：待实施
+> 状态：实施中；Phase A–B 已实现，Phase C–E 待实施
 >
 > 创建日期：2026-08-23
 >
@@ -389,7 +389,7 @@ Settings 导入前检查展示自然语言摘要，例如：
 
 ## 16. 分阶段实施与工作量
 
-### Phase A：持久化基线与只读 ImportPlan（2 人日）
+### Phase A：持久化基线与只读 ImportPlan（已实现，2026-08-23）
 
 - Migration 37、指纹列、活动状态和 import run 表。
 - staging reader、dataset digest、账号身份探针。
@@ -398,7 +398,9 @@ Settings 导入前检查展示自然语言摘要，例如：
 
 验收：不改变现有统计结果；七类关系判定单测通过；预检不写库。
 
-### Phase B：安全 noop 与 append-only（2–3 人日）
+实现说明：Phase A 使用源检查器生成只读内存 staging manifest，完成 dataset digest、账号身份探针、关系分类和 API/UI 展示；migration 37 只建立持久化结构。92,908 条真实库副本的预检与自动化验收已通过，证据见 [`../reports/2026-08-23-incremental-import-phase-a.md`](../reports/2026-08-23-incremental-import-phase-a.md)。
+
+### Phase B：安全 noop 与 append-only（已实现，2026-08-23）
 
 - 完整基线导入写入指纹。
 - identical 直接结束。
@@ -406,6 +408,8 @@ Settings 导入前检查展示自然语言摘要，例如：
 - ambiguous、truncated、replacement 保留全量/阻断回退。
 
 验收：追加后的基础事实与全量重建一致；崩溃和唯一索引冲突不改变活动代际。
+
+实现说明：完整基线导入写满版本化指纹并发布活动代际；已有播放但无基线时必须先确认完整替换。identical 在快照与派生维护前 noop；snapshot superset 和具备共同记录、账号与时间证据的尾部包自动追加。零重合包不会借用固定 Account Data 自动认作同账号，用户可明确选择 fail-closed 尾部验证。确认标识绑定输入与当前基线，append 在同一事务内精确对账旧基线、实际输入和新增指纹并发布活动代际，异常显式 rollback、关闭连接后再进入快照恢复。Phase B 延续现有批次 JSON reader，没有新增独立 TEMP SQLite staging；派生 pending/active 发布、后台任务代际隔离、历史删除/修订和完整替换的硬中止恢复仍留在后续阶段。92,908 条基线加 1 条尾部记录与 92,909 条完整替换的六张基础事实/关系表逐表哈希一致，证据见 [`../reports/2026-08-23-incremental-import-phase-b.md`](../reports/2026-08-23-incremental-import-phase-b.md)。
 
 ### Phase C：ChangeSet 驱动的维护（3–4 人日）
 

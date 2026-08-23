@@ -2,6 +2,21 @@
 
 本文件只记录按日期排列的变更摘要。详细实施、验收和真实数据证据见 [`reports/README.md`](reports/README.md)；当前规则见 [`reference/`](reference/)。历史条目中的数字和路径仅代表当时状态。
 
+## 2026-08-23 — 增量导入 Phase B
+
+- 串流导入新增 `auto|append|replace` 执行模式：已有播放但无基线的旧库需确认完整替换，相同输入在快照前 noop，已证明的完整超集或具备共同记录、账号与时间证据的尾部增量只追加新播放；零重合包需明确请求 fail-closed 尾部验证。
+- append 不删除旧事实、聚合和曲目—专辑关系，新增记录写入指纹版本与导入代际；实际输入、新增指纹、ChangeSet 和活动 digest 在提交前精确对账，事实与活动状态同事务发布。
+- 警告与覆盖确认绑定只读计划标识；输入文件或当前数据库变化时旧确认失效。导入异常会显式 rollback 并关闭写连接后再恢复快照。
+- 活动事实代际在基础写入后发布；成功、noop 和等待确认写入紧凑运行记录，不保存原始播放 JSON、用户名或指纹明细。证据不足的 append 被阻断，风险 replace 必须明确确认并保留 SQLite 快照。
+- 92,908 条基线加 1 条尾部记录与 92,909 条完整替换的 plays、artists、albums、tracks、track_albums、track_artists 哈希完全一致。派生维护仍是完整路径，详见 [`reports/2026-08-23-incremental-import-phase-b.md`](reports/2026-08-23-incremental-import-phase-b.md)。
+
+## 2026-08-23 — 增量导入 Phase A
+
+- migration 37 新增版本化源记录指纹、导入代际、活动导入状态与运行记录结构；旧播放不会由不完整数据库列反推原始记录指纹。
+- 串流预检新增只读 dataset digest、账号身份探针与八类输入关系判定，并展示现有/输入/复用/新增/移除数量、日期范围、影响周/年和预计策略。
+- 账号原始标识不进入 API 或持久化状态；预检不写数据库，现有 POST 导入仍保持覆盖式完整导入。安全 noop 与 append-only 写入留待 Phase B。
+- 真实库副本 92,908 条规模的只读预检耗时 1.757 秒，前后数据库 SHA-256 一致；测试与未完成边界见 [`reports/2026-08-23-incremental-import-phase-a.md`](reports/2026-08-23-incremental-import-phase-a.md)。
+
 ## 2026-08-23 — 导入尾段与 Billboard 完整周收口
 
 - 串流导入不再同步等待六套音乐查找精确统计快照：候选索引在导入维护中更新，精确快照标记为 warming 后交给已有后台队列逐套构建；Settings 明确提示后台更新状态。

@@ -6,8 +6,16 @@ import glob
 import json
 import os
 import re
-from typing import Any
+import sqlite3
+from collections.abc import Callable
+from typing import Any, Literal
+from uuid import uuid4
 
+from backend.domains.imports.incremental import (
+    FINGERPRINT_VERSION,
+    FingerprintRecord,
+    dataset_digest,
+)
 from backend.domains.imports.source_inspector import record_fingerprint
 
 from .db import build_aggregations, ensure_schema, get_db, init_db
@@ -18,6 +26,15 @@ DATA_DIR = os.path.join(
     "data",
     "streaming",
 )
+
+_PLAY_INSERT_SQL = """INSERT INTO plays(
+   ts, ts_year, ts_month, ts_week, ts_dow, ts_hour,
+   ts_date, platform, ms_played, conn_country, track_id,
+   reason_start, reason_end, shuffle, skipped, offline, incognito_mode,
+   content_type, source_album_id, spotify_track_id_at_play,
+   source_fingerprint, source_fingerprint_version, import_generation_id)
+   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"""
+_PLAY_BATCH_SIZE = 5000
 
 # ── Featured artist parsing ──────────────────────────────────────────────
 
@@ -165,6 +182,53 @@ def _cache_track(
     return tid
 
 
+def _load_append_fingerprints(conn) -> set[tuple[str, str]]:
+    """Load a complete active fingerprint baseline or reject append mode."""
+
+    total = int(conn.execute("SELECT COUNT(*) FROM plays").fetchone()[0])
+    rows = conn.execute(
+        """SELECT content_type, source_fingerprint
+           FROM plays
+           WHERE source_fingerprint IS NOT NULL
+             AND source_fingerprint_version = ?""",
+        (FINGERPRINT_VERSION,),
+    ).fetchall()
+    if len(rows) != total:
+        raise ValueError(
+            "append mode requires every active play to have a compatible source fingerprint"
+        )
+    keys = {(str(row[0]), str(row[1])) for row in rows}
+    if len(keys) != total:
+        raise ValueError("append mode requires a unique active source fingerprint baseline")
+    return keys
+
+
+def _active_dataset_summary(conn) -> tuple[int, str | None, str | None, str]:
+    """Return the active fingerprint count, date range, and stable digest."""
+
+    rows = conn.execute(
+        """SELECT content_type, source_fingerprint, ts
+           FROM plays
+           WHERE source_fingerprint IS NOT NULL
+             AND source_fingerprint_version = ?
+           ORDER BY content_type, source_fingerprint""",
+        (FINGERPRINT_VERSION,),
+    ).fetchall()
+    active_count = int(conn.execute("SELECT COUNT(*) FROM plays").fetchone()[0])
+    if len(rows) != active_count:
+        raise RuntimeError(
+            "active playback dataset contains records without compatible fingerprints"
+        )
+    date_row = conn.execute("SELECT MIN(ts), MAX(ts) FROM plays").fetchone()
+    records = [FingerprintRecord(source_type=str(row[0]), fingerprint=str(row[1])) for row in rows]
+    return (
+        active_count,
+        str(date_row[0]) if date_row and date_row[0] else None,
+        str(date_row[1]) if date_row and date_row[1] else None,
+        dataset_digest(records),
+    )
+
+
 def import_data(
     data_dir: str | None = None,
     progress_callback=None,
@@ -175,6 +239,54 @@ def import_data(
     agg_dynamic_threshold: bool = True,
     agg_max_merge_gap_minutes: int | None = 5,
     build_preaggregations: bool = True,
+    mode: Literal["replace", "append"] = "replace",
+    generation_id: str | None = None,
+    expected_previous_digest: str | None = None,
+    before_final_commit: Callable[[sqlite3.Connection, dict[str, Any]], None] | None = None,
+) -> dict[str, Any]:
+    """Run the ETL with deterministic rollback and connection cleanup."""
+    connection_holder: list[sqlite3.Connection] = []
+    try:
+        return _import_data_impl(
+            data_dir=data_dir,
+            progress_callback=progress_callback,
+            agg_min_ms=agg_min_ms,
+            agg_music_only=agg_music_only,
+            agg_week_start_dow=agg_week_start_dow,
+            agg_week_start_hour=agg_week_start_hour,
+            agg_dynamic_threshold=agg_dynamic_threshold,
+            agg_max_merge_gap_minutes=agg_max_merge_gap_minutes,
+            build_preaggregations=build_preaggregations,
+            mode=mode,
+            generation_id=generation_id,
+            expected_previous_digest=expected_previous_digest,
+            before_final_commit=before_final_commit,
+            connection_holder=connection_holder,
+        )
+    except Exception:
+        if connection_holder:
+            connection_holder[0].rollback()
+        raise
+    finally:
+        if connection_holder:
+            connection_holder[0].close()
+
+
+def _import_data_impl(
+    data_dir: str | None = None,
+    progress_callback=None,
+    agg_min_ms: int = 30000,
+    agg_music_only: bool = True,
+    agg_week_start_dow: int = 4,
+    agg_week_start_hour: int = 0,
+    agg_dynamic_threshold: bool = True,
+    agg_max_merge_gap_minutes: int | None = 5,
+    build_preaggregations: bool = True,
+    mode: Literal["replace", "append"] = "replace",
+    generation_id: str | None = None,
+    expected_previous_digest: str | None = None,
+    before_final_commit: Callable[[sqlite3.Connection, dict[str, Any]], None] | None = None,
+    connection_holder: list[sqlite3.Connection] | None = None,
 ) -> dict[str, Any]:
     """Import all JSON streaming history files into the SQLite database.
 
@@ -182,10 +294,29 @@ def import_data(
         data_dir: Path to the folder containing JSON files.
         progress_callback: Optional callable(step: str, pct: float) for progress.
         agg_*: Parameters for building pre-aggregated Billboard tables after import.
+        mode: ``replace`` preserves the historical overwrite behavior;
+            ``append`` inserts only fingerprints absent from the active dataset.
+        generation_id: Import generation attached to newly inserted plays. A
+            UUID is generated when the caller does not provide one.
+        before_final_commit: Optional validator/publisher invoked on the import
+            connection after all facts are visible but before the final commit.
 
     Returns:
         Dict with summary stats.
     """
+    if mode not in {"replace", "append"}:
+        raise ValueError("mode must be 'replace' or 'append'")
+    if mode == "append" and (not expected_previous_digest or before_final_commit is None):
+        raise ValueError(
+            "append mode requires an expected previous digest and transactional finalizer"
+        )
+    if generation_id is None:
+        generation_id = str(uuid4())
+    elif not isinstance(generation_id, str) or not generation_id.strip():
+        raise ValueError("generation_id must be a non-empty string")
+    else:
+        generation_id = generation_id.strip()
+
     if data_dir is None:
         data_dir = DATA_DIR
 
@@ -214,36 +345,58 @@ def import_data(
     # Ensure tables exist
     init_db()
 
-    # Clear old play data and pre-aggregations BEFORE ensure_schema,
-    # so we can safely deduplicate dimension tables before UNIQUE indexes are created
+    # Append needs the migration-provided fingerprint columns before it can
+    # verify the active baseline. Replace retains the legacy ordering below so
+    # old duplicate dimensions can be repaired before UNIQUE indexes appear.
+    if mode == "append":
+        ensure_schema()
+
+    # Clear old play data and pre-aggregations only for the historical replace
+    # strategy. Append must preserve plays, aggregates and track associations.
     conn = get_db(readonly=False)
-    conn.execute("DELETE FROM plays")
-    conn.execute("DELETE FROM agg_weekly_tracks")
-    conn.execute("DELETE FROM agg_weekly_albums")
-    conn.execute("DELETE FROM agg_weekly_track_sources")
-    conn.execute("DELETE FROM agg_weekly_artists")
-    conn.execute("DELETE FROM agg_config")
-    conn.execute("DELETE FROM track_albums")
-    conn.commit()
+    if connection_holder is not None:
+        connection_holder.append(conn)
+    if mode == "append":
+        # Acquire the write reservation before reading the active fingerprint
+        # baseline so an external writer cannot swap facts between validation
+        # and the first append DML statement.
+        conn.execute("BEGIN IMMEDIATE")
+    if mode == "replace":
+        conn.execute("DELETE FROM plays")
+        conn.execute("DELETE FROM agg_weekly_tracks")
+        conn.execute("DELETE FROM agg_weekly_albums")
+        conn.execute("DELETE FROM agg_weekly_track_sources")
+        conn.execute("DELETE FROM agg_weekly_artists")
+        conn.execute("DELETE FROM agg_config")
+        conn.execute("DELETE FROM track_albums")
+        conn.commit()
 
-    # Deduplicate tracks: keep lowest track_id per (artist_id, track_name)
-    conn.execute(
-        "DELETE FROM tracks WHERE track_id IN ("
-        "SELECT t1.track_id FROM tracks t1 "
-        "JOIN tracks t2 ON t1.artist_id = t2.artist_id AND t1.track_name = t2.track_name "
-        "WHERE t1.track_id > t2.track_id)"
-    )
-    # Deduplicate albums: keep lowest album_id per (album_name, artist_id)
-    conn.execute(
-        "DELETE FROM albums WHERE album_id IN ("
-        "SELECT a1.album_id FROM albums a1 "
-        "JOIN albums a2 ON a1.album_name = a2.album_name AND a1.artist_id = a2.artist_id "
-        "WHERE a1.album_id > a2.album_id)"
-    )
-    conn.commit()
+        # Deduplicate tracks: keep lowest track_id per (artist_id, track_name)
+        conn.execute(
+            "DELETE FROM tracks WHERE track_id IN ("
+            "SELECT t1.track_id FROM tracks t1 "
+            "JOIN tracks t2 ON t1.artist_id = t2.artist_id AND t1.track_name = t2.track_name "
+            "WHERE t1.track_id > t2.track_id)"
+        )
+        # Deduplicate albums: keep lowest album_id per (album_name, artist_id)
+        conn.execute(
+            "DELETE FROM albums WHERE album_id IN ("
+            "SELECT a1.album_id FROM albums a1 "
+            "JOIN albums a2 ON a1.album_name = a2.album_name AND a1.artist_id = a2.artist_id "
+            "WHERE a1.album_id > a2.album_id)"
+        )
+        conn.commit()
 
-    # Now safe to create UNIQUE indexes (schema upgrade)
-    ensure_schema()
+        # Now safe to create UNIQUE indexes (schema upgrade)
+        ensure_schema()
+
+    existing_fingerprints = _load_append_fingerprints(conn) if mode == "append" else set()
+    previous_dataset_digest = dataset_digest(
+        FingerprintRecord(source_type=source_type, fingerprint=fingerprint)
+        for source_type, fingerprint in existing_fingerprints
+    )
+    if mode == "append" and previous_dataset_digest != expected_previous_digest:
+        raise RuntimeError("active playback baseline changed after import planning")
 
     artist_cache: dict[str, int] = {}
     album_cache: dict[tuple, int] = {}
@@ -253,9 +406,12 @@ def import_data(
     total_records = 0
     total_skipped = 0
     duplicate_records_skipped = 0
+    unchanged_records = 0
     source_records_processed = 0
     seen_audio_records: set[str] = set()
     seen_video_records: set[str] = set()
+    inserted_audio_records: set[str] = set()
+    inserted_video_records: set[str] = set()
 
     for file_idx, filepath in enumerate(json_files):
         with open(filepath, encoding="utf-8") as f:
@@ -270,6 +426,10 @@ def import_data(
                 duplicate_records_skipped += 1
                 continue
             seen_audio_records.add(fingerprint)
+            if ("audio", fingerprint) in existing_fingerprints:
+                unchanged_records += 1
+                continue
+            inserted_audio_records.add(fingerprint)
             ts_raw = rec.get("ts", "")
             country = rec.get("conn_country", "CN")
             time_info = convert_to_local_time(ts_raw, country)
@@ -331,20 +491,17 @@ def import_data(
                     "audio",
                     album_id,  # source_album_id from playback-time album
                     spotify_track_id_at_play,
+                    fingerprint,
+                    FINGERPRINT_VERSION,
+                    generation_id,
                 )
             )
 
             # Batch insert every 5000 rows to keep memory in check
-            if len(plays_batch) >= 5000:
-                conn.executemany(
-                    """INSERT INTO plays(ts, ts_year, ts_month, ts_week, ts_dow, ts_hour,
-                       ts_date, platform, ms_played, conn_country, track_id,
-                       reason_start, reason_end, shuffle, skipped, offline, incognito_mode,
-                       content_type, source_album_id, spotify_track_id_at_play)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                    plays_batch,
-                )
-                conn.commit()
+            if len(plays_batch) >= _PLAY_BATCH_SIZE:
+                conn.executemany(_PLAY_INSERT_SQL, plays_batch)
+                if mode == "replace":
+                    conn.commit()
                 total_records += len(plays_batch)
                 plays_batch.clear()
 
@@ -360,18 +517,13 @@ def import_data(
 
         # Insert remaining batch
         if plays_batch:
-            conn.executemany(
-                """INSERT INTO plays(ts, ts_year, ts_month, ts_week, ts_dow, ts_hour,
-                   ts_date, platform, ms_played, conn_country, track_id,
-                   reason_start, reason_end, shuffle, skipped, offline, incognito_mode,
-                   content_type, source_album_id, spotify_track_id_at_play)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                plays_batch,
-            )
-            conn.commit()
+            conn.executemany(_PLAY_INSERT_SQL, plays_batch)
+            if mode == "replace":
+                conn.commit()
             total_records += len(plays_batch)
 
-    conn.commit()
+    if mode == "replace":
+        conn.commit()
 
     # ── Import video records ────────────────────────────────────────────
     video_total = 0
@@ -388,6 +540,10 @@ def import_data(
                     duplicate_records_skipped += 1
                     continue
                 seen_video_records.add(fingerprint)
+                if ("video", fingerprint) in existing_fingerprints:
+                    unchanged_records += 1
+                    continue
+                inserted_video_records.add(fingerprint)
                 ts_raw = rec.get("ts", "")
                 country = rec.get("conn_country", "CN")
                 time_info = convert_to_local_time(ts_raw, country)
@@ -445,19 +601,16 @@ def import_data(
                         "video",
                         album_id,
                         spotify_track_id_at_play,
+                        fingerprint,
+                        FINGERPRINT_VERSION,
+                        generation_id,
                     )
                 )
 
-                if len(plays_batch) >= 5000:
-                    conn.executemany(
-                        """INSERT INTO plays(ts, ts_year, ts_month, ts_week, ts_dow, ts_hour,
-                           ts_date, platform, ms_played, conn_country, track_id,
-                           reason_start, reason_end, shuffle, skipped, offline, incognito_mode,
-                           content_type, source_album_id, spotify_track_id_at_play)
-                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                        plays_batch,
-                    )
-                    conn.commit()
+                if len(plays_batch) >= _PLAY_BATCH_SIZE:
+                    conn.executemany(_PLAY_INSERT_SQL, plays_batch)
+                    if mode == "replace":
+                        conn.commit()
                     video_total += len(plays_batch)
                     plays_batch.clear()
 
@@ -471,17 +624,66 @@ def import_data(
                         )
 
             if plays_batch:
-                conn.executemany(
-                    """INSERT INTO plays(ts, ts_year, ts_month, ts_week, ts_dow, ts_hour,
-                       ts_date, platform, ms_played, conn_country, track_id,
-                       reason_start, reason_end, shuffle, skipped, offline, incognito_mode,
-                       content_type, source_album_id, spotify_track_id_at_play)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                    plays_batch,
-                )
-                conn.commit()
+                conn.executemany(_PLAY_INSERT_SQL, plays_batch)
+                if mode == "replace":
+                    conn.commit()
                 video_total += len(plays_batch)
 
+    active_records, first_ts, latest_ts, active_digest = _active_dataset_summary(conn)
+    inserted_records = total_records + video_total
+    input_dataset_digest = dataset_digest(
+        [
+            *(
+                FingerprintRecord(source_type="audio", fingerprint=value)
+                for value in seen_audio_records
+            ),
+            *(
+                FingerprintRecord(source_type="video", fingerprint=value)
+                for value in seen_video_records
+            ),
+        ]
+    )
+    inserted_dataset_digest = dataset_digest(
+        [
+            *(
+                FingerprintRecord(source_type="audio", fingerprint=value)
+                for value in inserted_audio_records
+            ),
+            *(
+                FingerprintRecord(source_type="video", fingerprint=value)
+                for value in inserted_video_records
+            ),
+        ]
+    )
+    result = {
+        "total_records": inserted_records,
+        "audio_records": total_records,
+        "video_records": video_total,
+        "inserted_records": inserted_records,
+        "unchanged_records": unchanged_records,
+        "active_records": active_records,
+        "dataset_digest": active_digest,
+        "input_dataset_digest": input_dataset_digest,
+        "inserted_dataset_digest": inserted_dataset_digest,
+        "previous_dataset_digest": previous_dataset_digest,
+        "first_ts": first_ts,
+        "latest_ts": latest_ts,
+        "generation_id": generation_id,
+        "strategy": mode,
+        "total_skipped": total_skipped,
+        "duplicate_records_skipped": duplicate_records_skipped,
+        "unique_artists": len(artist_cache),
+        "unique_albums": len(album_cache),
+        "unique_tracks": len(track_cache),
+        "files_imported": total_files + len(video_files),
+        "agg_track_wks": 0,
+        "agg_album_wks": 0,
+        "agg_artist_wks": 0,
+        "finalized_in_transaction": False,
+    }
+    if before_final_commit is not None:
+        before_final_commit(conn, result)
+        result["finalized_in_transaction"] = True
     conn.commit()
 
     if build_preaggregations:
@@ -509,22 +711,11 @@ def import_data(
     else:
         agg_results = {}
 
-    conn.close()
-
-    result = {
-        "total_records": total_records + video_total,
-        "audio_records": total_records,
-        "video_records": video_total,
-        "total_skipped": total_skipped,
-        "duplicate_records_skipped": duplicate_records_skipped,
-        "unique_artists": len(artist_cache),
-        "unique_albums": len(album_cache),
-        "unique_tracks": len(track_cache),
-        "files_imported": total_files + len(video_files),
-        "agg_track_wks": agg_results.get("tracks", 0),
-        "agg_album_wks": agg_results.get("albums", 0),
-        "agg_artist_wks": agg_results.get("artists", 0),
-    }
+    result.update(
+        agg_track_wks=agg_results.get("tracks", 0),
+        agg_album_wks=agg_results.get("albums", 0),
+        agg_artist_wks=agg_results.get("artists", 0),
+    )
 
     if progress_callback:
         progress_callback("导入完成", 1.0)

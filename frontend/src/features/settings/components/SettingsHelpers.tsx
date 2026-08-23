@@ -4,6 +4,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
 import { AlertCircle, CheckCircle2, ChevronDown, Upload, RefreshCw } from 'lucide-react'
 import type { ImportJob, TrackComparison } from '@/types/settings'
+import type { ImportPreflightResponse, ImportRequestedMode, StreamingImportOptions } from '@/types/data-import'
 
 // ── Toggle ──────────────────────────────────────────────────
 
@@ -152,6 +153,16 @@ function nestedResultStatus(result: Record<string, unknown> | null, key: string)
 }
 
 function maintenanceLabel(job: ImportJob | null) {
+  const explicitNoop = job?.result?.noop
+  const executedStrategy = resultString(job?.result ?? null, 'executed_strategy')
+  const hasCanonicalOutcome = typeof explicitNoop === 'boolean' || executedStrategy !== null
+  const isNoop = explicitNoop === true
+    || executedStrategy === 'noop'
+    || (!hasCanonicalOutcome && (
+      resultString(job?.result ?? null, 'estimated_strategy') === 'noop'
+      || resultString(job?.result ?? null, 'detected_relation') === 'identical'
+    ))
+  if (isNoop) return '数据未变化，已跳过导入'
   const status = resultString(job?.result ?? null, 'maintenance_status')
   const searchSnapshotStatus = resultString(job?.result ?? null, 'music_search_snapshot_status')
   const health = job?.result?.post_import_health
@@ -189,20 +200,57 @@ export function ImportProgressCard({
   statusBadge,
   reimportLabel,
   helpLink,
+  preflight,
+  supportsImportMode = false,
+  onRecheck,
 }: {
   title: string
   label: string
   job: ImportJob | null
-  onStart: (confirmWarnings?: boolean) => void
+  onStart: (options?: StreamingImportOptions) => void
   statusBadge?: React.ReactNode
   reimportLabel?: string
   helpLink?: { text: string; href: string }
+  preflight?: ImportPreflightResponse | null
+  supportsImportMode?: boolean
+  onRecheck?: () => void
 }) {
+  const [importMode, setImportMode] = useState<ImportRequestedMode>(preflight?.requested_mode ?? 'auto')
   const isRunning = job?.status === 'running'
   const isDone = job?.status === 'done'
   const isError = job?.status === 'error'
   const isBlocked = job?.status === 'blocked'
   const needsConfirmation = job?.status === 'needs_confirmation'
+  const jobPreflight = job?.result?.preflight
+  const jobPlan = jobPreflight && typeof jobPreflight === 'object' && !Array.isArray(jobPreflight)
+    ? jobPreflight as Record<string, unknown>
+    : null
+  const jobPlanNeedsConfirmation = jobPlan?.requires_confirmation === true
+  const jobConfirmationToken = resultString(jobPlan, 'confirmation_token')
+  const stalePlanReason = resultString(job?.result ?? null, 'confirmation_reason') === 'stale_plan'
+  const stalePlan = stalePlanReason
+    && (!jobConfirmationToken || preflight?.confirmation_token !== jobConfirmationToken)
+  const stalePlanResolved = stalePlanReason && !stalePlan
+  const confirmationToken = needsConfirmation
+    ? jobConfirmationToken
+    : preflight?.confirmation_token ?? null
+  const canUsePreflightPlan = !isRunning && !isDone && !isBlocked
+  const planNeedsConfirmation = supportsImportMode
+    && (needsConfirmation
+      ? jobPlanNeedsConfirmation
+      : canUsePreflightPlan && preflight?.requires_confirmation === true)
+  const jobWarnings = jobPlan?.warnings
+  const warningNeedsConfirmation = needsConfirmation
+    && !stalePlan
+    && !stalePlanResolved
+    && (!jobPlanNeedsConfirmation || (Array.isArray(jobWarnings) && jobWarnings.length > 0))
+  const planRelation = needsConfirmation
+    ? resultString(jobPlan, 'detected_relation')
+    : preflight?.detected_relation ?? null
+  const canTryAppend = planNeedsConfirmation
+    && ['ambiguous', 'truncated_or_regressive', 'reconciled_snapshot'].includes(planRelation ?? '')
+  const explicitModeSelected = importMode === 'append' || importMode === 'replace'
+  const replaceSelected = importMode === 'replace'
   const postHealth = job?.result?.post_import_health
   const postHealthStatus = postHealth && typeof postHealth === 'object' && !Array.isArray(postHealth)
     ? (postHealth as Record<string, unknown>).status
@@ -309,16 +357,77 @@ export function ImportProgressCard({
             {job.message}
           </div>
           {needsConfirmation && (
-            <p className="pl-5 text-[12px]">数据库尚未修改；再次点击按钮表示你已核对这些警告并继续。</p>
+            <p className="pl-5 text-[12px]">
+              {stalePlan
+                ? '旧确认已失效；请重新运行上方检查，查看最新记录数量、关系和策略。'
+                : planNeedsConfirmation
+                ? '播放事实尚未修改；Phase B 无法自动判定，请选择验证尾部追加或完整替换。'
+                : '数据库尚未修改；再次点击按钮表示你已核对这些警告并继续。'}
+            </p>
           )}
+        </div>
+      )}
+
+      {planNeedsConfirmation && (
+        <div className="space-y-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-[12px]">
+          <p className="font-medium text-amber-900 dark:text-amber-100">选择安全处理方式</p>
+          <div className="flex flex-wrap gap-2">
+            {canTryAppend && (
+              <button
+                type="button"
+                aria-pressed={importMode === 'append'}
+                onClick={() => setImportMode('append')}
+                className={cn(
+                  'rounded-md border px-3 py-2 text-left transition-colors',
+                  importMode === 'append'
+                    ? 'border-amber-600 bg-background text-foreground'
+                    : 'border-border/70 bg-background/60 text-muted-foreground hover:text-foreground',
+                )}
+              >
+                <span className="block font-medium">作为尾部增量验证</span>
+                <span className="mt-0.5 block text-[11px]">仅在属于当前账号时选择；验证失败会阻断，不会删除历史。</span>
+              </button>
+            )}
+            <button
+              type="button"
+              aria-pressed={importMode === 'replace'}
+              onClick={() => setImportMode('replace')}
+              className={cn(
+                'rounded-md border px-3 py-2 text-left transition-colors',
+                importMode === 'replace'
+                  ? 'border-amber-600 bg-background text-foreground'
+                  : 'border-border/70 bg-background/60 text-muted-foreground hover:text-foreground',
+              )}
+            >
+              <span className="block font-medium">使用输入包替换</span>
+              <span className="mt-0.5 block text-[11px]">将输入包视为完整快照，覆盖当前播放数据。</span>
+            </button>
+          </div>
+          <p className="text-[11px] text-amber-800 dark:text-amber-200">
+            追加只接受可证明的尾部记录；完整替换前会创建数据库快照。两种写入后的榜单和其他派生数据暂时都按完整维护流程更新。
+          </p>
         </div>
       )}
 
       <Button
         variant="outline"
         size="sm"
-        onClick={() => onStart(needsConfirmation)}
-        disabled={isRunning}
+        onClick={() => {
+          if (stalePlan) {
+            setImportMode('auto')
+            onRecheck?.()
+            return
+          }
+          onStart({
+            mode: isDone || isBlocked ? 'auto' : importMode,
+            confirmWarnings: warningNeedsConfirmation,
+            confirmPlan: planNeedsConfirmation && replaceSelected,
+            ...(confirmationToken ? { confirmationToken } : {}),
+          })
+        }}
+        disabled={isRunning
+          || (stalePlan && !onRecheck)
+          || (!stalePlan && planNeedsConfirmation && !explicitModeSelected)}
         className="w-fit gap-1.5"
       >
         {isRunning ? (
@@ -328,7 +437,15 @@ export function ImportProgressCard({
         )}
         {isRunning
           ? '导入中...'
-          : needsConfirmation
+          : stalePlan
+            ? '重新检查最新计划'
+          : stalePlanResolved
+            ? '按最新计划导入'
+          : planNeedsConfirmation
+            ? importMode === 'append'
+              ? '验证并追加'
+              : replaceSelected ? '确认完整替换并导入' : '请先选择处理方式'
+            : needsConfirmation
             ? '确认风险并导入'
             : isDone
               ? (reimportLabel || '重新导入')

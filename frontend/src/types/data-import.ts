@@ -35,6 +35,37 @@ export interface ImportDateOverlap {
   shared_record_count: number
 }
 
+export type ImportAccountIdentityStatus = 'unknown' | 'not_provided' | 'matched' | 'mismatched'
+
+export type ImportFingerprintBaselineStatus = 'missing' | 'ready' | 'incompatible'
+
+export type ImportDetectedRelation =
+  | 'unknown'
+  | 'baseline_required'
+  | 'identical'
+  | 'snapshot_superset'
+  | 'delta_tail'
+  | 'reconciled_snapshot'
+  | 'truncated_or_regressive'
+  | 'different_account'
+  | 'ambiguous'
+
+export type ImportRequestedMode = 'auto' | 'append' | 'replace'
+
+export type ImportEstimatedStrategy = 'noop' | 'incremental' | 'mixed' | 'full'
+
+export interface StreamingImportOptions {
+  mode?: ImportRequestedMode
+  confirmWarnings?: boolean
+  confirmPlan?: boolean
+  confirmationToken?: string
+}
+
+export interface ImportDatasetDateRange {
+  first_date: string | null
+  last_date: string | null
+}
+
 export interface ImportPreflightResponse {
   status: ImportHealthStatus
   streaming_files: ImportFileReport[]
@@ -43,6 +74,24 @@ export interface ImportPreflightResponse {
   date_overlaps: ImportDateOverlap[]
   blockers: string[]
   warnings: string[]
+  /** Phase A fields are optional so the UI can still consume older preflight payloads. */
+  account_identity_status?: ImportAccountIdentityStatus
+  fingerprint_baseline_status?: ImportFingerprintBaselineStatus
+  detected_relation?: ImportDetectedRelation
+  requested_mode?: ImportRequestedMode
+  requires_confirmation?: boolean
+  confirmation_token?: string | null
+  existing_record_count?: number
+  incoming_record_count?: number
+  unchanged_record_count?: number
+  added_record_count?: number
+  removed_record_count?: number
+  existing_date_range?: ImportDatasetDateRange | null
+  incoming_date_range?: ImportDatasetDateRange | null
+  affected_weeks_count?: number
+  affected_years_count?: number
+  planned_actions?: string[]
+  estimated_strategy?: ImportEstimatedStrategy
 }
 
 export interface ImportHealthIssue {

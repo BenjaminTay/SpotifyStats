@@ -17,7 +17,7 @@
 
 ## 导入前检查
 
-`GET /api/import/preflight` 只检查本地文件：
+`GET /api/import/preflight` 只读检查本地文件，并把输入记录与当前数据库的持久化指纹基线进行比较：
 
 - 必需输入：至少一个可解析且非空的 `Streaming_History_Audio_*.json`。
 - 可选输入：视频历史和 Account Data 文件。缺失只产生提示，不阻止串流导入。
@@ -26,7 +26,21 @@
 - 预检还会计算串流文件 SHA-256，识别完全重复文件；同一文件内的完全重复记录会计入 `duplicate_record_count`。
 - `date_overlaps` 只表示两个文件的日期区间相交，不直接等同于重复播放；每一对会附带 `shared_record_count`，用于区分“边界日期相交但记录不重复”和“确有共同记录”。
 - 完全重复文件会进入 `blockers`；文件内重复记录、日期范围重叠和跨文件共同记录进入 `warnings`。导入时只对完全相同的记录自动去重，保留同一内容在稳定文件顺序中的第一次出现；日期重叠不会被当成重复，也不会自动合并。源 JSON 永远不会被修改。
-- `POST /api/import/streaming` 会在后台任务真正创建快照前再次执行这份预检：有 `blockers` 时任务状态为 `blocked`；只有 `warnings` 且未传 `confirm_warnings=true` 时状态为 `needs_confirmation`；确认后才会进入快照和导入流程。
+- `POST /api/import/streaming` 会在后台任务真正创建快照前再次执行这份预检：有 `blockers` 时任务状态为 `blocked`；只有 `warnings` 且未传 `confirm_warnings=true` 时状态为 `needs_confirmation`；确认后才会进入计划执行。
+
+增量导入 Phase A–B 使用以下证据与执行规则：
+
+- migration 37 为播放事实预留版本化源记录指纹和导入代际，并建立单例活动状态与导入运行记录表；升级前已有播放不会从不完整的数据库列反推原始 JSON 指纹。
+- 预检会从音频、视频记录生成与文件名、文件顺序和重新分包无关的 dataset digest，并返回指纹基线状态、账号身份匹配状态、输入与活动数据集的关系、增删复用数量、日期范围和预计影响的周/年数。
+- Account Data 中的稳定用户名只用于生成带命名空间的不可逆 SHA-256；API、日志和导入运行表均不返回或保存原始用户名。
+- 旧库没有完整指纹基线时返回 `baseline_required`；相同、超集、尾部增量、历史增删、不完整/倒退、不同账号和证据不足会分别返回明确关系。不能证明时不会自动追加、替换或删除。
+- `GET /api/import/preflight?mode=auto|append|replace` 始终只读；Settings 中的计划卡片解释关系、复用范围和预计策略。
+- `POST /api/import/streaming` 默认 `mode=auto`：空库可直接完整导入；已有播放但缺少指纹基线的旧库无法证明输入包覆盖全部历史，必须明确确认后才完整替换并写满指纹。`identical` 在创建数据库快照前结束为 noop；`snapshot_superset` 和“与活动数据存在共同记录、账号证据相符且全部新增记录位于尾部”的 `delta_tail` 只写新增播放。
+- 完全无共同记录的晚期数据包不会仅凭固定 Account Data 目录中的账号文件自动追加，因为账号文件未必与本次串流包同源。Settings 可让用户明确选择“作为尾部增量验证”；后端会重新按 append 证据 fail closed，验证失败不写入，也不会删除历史。
+- 警告确认和完整替换确认必须携带预检返回的 `confirmation_token`。这个标识绑定输入记录、文件检查结果、账号证据和当前活动数据集；文件或数据库在两次请求之间变化时，旧确认失效并要求重新核对。
+- `append` 不会把输入中缺失的旧记录解释为删除，也不能绕过指纹基线、账号身份和尾部证据；证据不足时 Phase B 阻断追加。`replace` 对风险关系要求 `confirm_plan=true`，确认后仍先创建 SQLite 快照再完整替换。
+- noop 只更新导入状态摘要并记录运行结果，不提升播放或派生 revision，不重建 Billboard、搜索快照、年度结果或封面任务。
+- append 完成基础事实发布后，元数据、Album Project、Billboard 和搜索快照暂时仍走现有完整维护路径。按实体、榜单周和缓存范围局部更新属于 Phase C–D，当前不能把基础追加耗时等同于整个导入任务耗时。
 
 检查不会把文件导入数据库，也不会启动后台 Job。确认文件后，用户仍需显式点击已有的「导入串流数据」或「导入账号数据」。
 
@@ -79,11 +93,19 @@
 - 串流导入成功结果还包含 `duplicate_records_skipped` 和 `post_import_health`。后者只复核 SQLite 完整性、播放记录数量和播放→曲目/专辑关系；这些硬指标失败会按导入异常进入已有回滚路径，普通元数据缺口仍只显示为 `partial` 提醒。
 - 回滚后会清空运行时统计缓存，避免页面继续使用失败导入产生的旧派生结果。
 
-本轮建立“失败可恢复 + 确定重复不重复计数 + 导入后硬指标复核”的最小边界，不改变现有覆盖式导入语义；因此 Billboard 四张预聚合表当前仍按新库全量重建，而不是宣称为 append-only 增量更新。真实规模下这段约 3.3 秒，主要性能问题来自后续六套精确快照和缓存反复失效，已通过后台调度、分阶段计算和精确缓存版本收口。若未来改为只更新受影响周，必须先建立可证明的源记录增删指纹与跨周连续播放边界，不能仅按最新日期假设旧数据不变。
+本轮建立“失败可恢复 + 确定重复不重复计数 + 导入后硬指标复核”的最小边界，并完成增量导入 Phase A–B 的功能路径。写入任务仍保留 SQLite Online Backup；append 在一个事务中批量写入，并在同一次提交内精确核对实际输入/新增指纹、发布活动事实代际；导入器异常时显式 rollback 并关闭写连接，随后才允许快照恢复。
+
+派生维护仍在活动事实发布后执行。若进程被强制终止，可能留下新事实与旧或半完成派生数据；封面和搜索后台任务也尚未绑定导入代际。完整替换仍是旧分批提交路径，硬中止恢复依赖已有快照。这些属于 Phase C–E 的 pending/active 发布、后台任务代际隔离和启动恢复边界，当前没有伪装成跨进程原子切换。
+
+Billboard 四张预聚合表和六套搜索统计目前仍按完整数据维护，而不是周分区或 snapshot delta。只更新受影响周仍需后续建立跨周连续播放变化闭包，不能仅按最新日期假设旧数据不变。
 
 ## 相关代码
 
 - 后端文件检查：`backend/domains/imports/source_inspector.py`
+- 增量关系分类：`backend/domains/imports/incremental.py`
+- Phase B 执行动作：`backend/domains/imports/execution.py`
+- 指纹基线与运行记录：`backend/domains/imports/state.py`
+- 只读导入计划：`backend/services/import_plan_service.py`
 - 导入快照与回滚：`backend/domains/imports/database_snapshot.py`
 - 后端健康报告：`backend/domains/metadata/import_health.py`
 - API：`backend/api/import_.py`

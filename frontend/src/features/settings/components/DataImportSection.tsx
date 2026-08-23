@@ -4,6 +4,7 @@ import { GlassCard } from '@/components/shared/GlassCard'
 import { Badge } from '@/components/ui/badge'
 import { CheckCircle2 } from 'lucide-react'
 import type { ImportJob } from '@/types/settings'
+import type { StreamingImportOptions } from '@/types/data-import'
 import { CollapsibleSection, ImportProgressCard } from '@/features/settings/components/SettingsHelpers'
 import { DataHealthSummary } from '@/features/settings/components/DataHealthSummary'
 import { ImportPreflightPanel } from '@/features/settings/components/ImportPreflightPanel'
@@ -21,7 +22,7 @@ export function DataImportSection({
   accountImported: boolean
   streamingJob: ImportJob | null
   accountJob: ImportJob | null
-  onStreamingImport: (confirmWarnings?: boolean) => void
+  onStreamingImport: (options?: StreamingImportOptions) => void
   onAccountImport: () => void
 }) {
   const imported = dbRecordCount > 0 && accountImported
@@ -71,7 +72,10 @@ export function DataImportSection({
               label={`当前数据库记录数：${new Intl.NumberFormat('zh-CN').format(dbRecordCount)}`}
               job={streamingJob}
               onStart={onStreamingImport}
-              reimportLabel="重新导入（将覆盖现有数据）"
+              preflight={dataHealth.preflight}
+              supportsImportMode
+              onRecheck={() => { void dataHealth.runPreflight() }}
+              reimportLabel="再次检查并导入"
             />
             <ImportProgressCard
               title="账号数据"

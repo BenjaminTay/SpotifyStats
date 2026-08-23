@@ -358,7 +358,10 @@ describe('Settings sections', () => {
           status: 'needs_confirmation',
           progress_pct: 0,
           message: '导入需要确认：发现导入前警告，数据库尚未修改',
-          result: { preflight: { warnings: ['日期范围重叠'] }, import_started: false },
+          result: {
+            preflight: { warnings: ['日期范围重叠'], confirmation_token: 'token-v1' },
+            import_started: false,
+          },
         }}
         onStart={onStart}
       />,
@@ -366,7 +369,209 @@ describe('Settings sections', () => {
 
     expect(screen.getByText('数据库尚未修改；再次点击按钮表示你已核对这些警告并继续。')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: '确认风险并导入' }))
-    expect(onStart).toHaveBeenCalledWith(true)
+    expect(onStart).toHaveBeenCalledWith({
+      mode: 'auto',
+      confirmWarnings: true,
+      confirmPlan: false,
+      confirmationToken: 'token-v1',
+    })
+  })
+
+  it('allows an ambiguous package to request fail-closed tail validation', () => {
+    const onStart = vi.fn()
+    render(
+      <ImportProgressCard
+        title="串流数据"
+        label="当前数据库记录数：1,000"
+        job={null}
+        preflight={{
+          status: 'healthy',
+          streaming_files: [],
+          account_files: [],
+          duplicate_file_groups: [],
+          date_overlaps: [],
+          blockers: [],
+          warnings: [],
+          detected_relation: 'ambiguous',
+          requires_confirmation: true,
+          requested_mode: 'auto',
+          confirmation_token: 'token-v1',
+        }}
+        supportsImportMode
+        onStart={onStart}
+      />,
+    )
+
+    expect(screen.getByRole('button', { name: '请先选择处理方式' })).toBeDisabled()
+    expect(screen.getByText('追加只接受可证明的尾部记录；完整替换前会创建数据库快照。两种写入后的榜单和其他派生数据暂时都按完整维护流程更新。')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /作为尾部增量验证/ }))
+    fireEvent.click(screen.getByRole('button', { name: '验证并追加' }))
+    expect(onStart).toHaveBeenCalledWith({
+      mode: 'append',
+      confirmWarnings: false,
+      confirmPlan: false,
+      confirmationToken: 'token-v1',
+    })
+  })
+
+  it('forces a fresh visible preflight after a confirmation token becomes stale', () => {
+    const onStart = vi.fn()
+    const onRecheck = vi.fn()
+    render(
+      <ImportProgressCard
+        title="串流数据"
+        label="当前数据库记录数：1,000"
+        job={{
+          job_id: 'fixture',
+          status: 'needs_confirmation',
+          progress_pct: 0,
+          message: '输入文件或当前数据已变化，请重新核对最新导入计划',
+          result: {
+            confirmation_reason: 'stale_plan',
+            preflight: {
+              detected_relation: 'snapshot_superset',
+              requires_confirmation: false,
+              confirmation_token: 'token-v2',
+              warnings: [],
+            },
+          },
+        }}
+        supportsImportMode
+        onStart={onStart}
+        onRecheck={onRecheck}
+      />,
+    )
+
+    expect(screen.getByText('旧确认已失效；请重新运行上方检查，查看最新记录数量、关系和策略。')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '重新检查最新计划' }))
+    expect(onRecheck).toHaveBeenCalledOnce()
+    expect(onStart).not.toHaveBeenCalled()
+  })
+
+  it('continues only after the visible preflight matches the refreshed token', () => {
+    const onStart = vi.fn()
+    render(
+      <ImportProgressCard
+        title="串流数据"
+        label="当前数据库记录数：1,000"
+        job={{
+          job_id: 'fixture',
+          status: 'needs_confirmation',
+          progress_pct: 0,
+          message: '输入文件或当前数据已变化，请重新核对最新导入计划',
+          result: {
+            confirmation_reason: 'stale_plan',
+            preflight: {
+              detected_relation: 'snapshot_superset',
+              requires_confirmation: false,
+              confirmation_token: 'token-v2',
+              warnings: [],
+            },
+          },
+        }}
+        preflight={{
+          status: 'healthy',
+          streaming_files: [],
+          account_files: [],
+          duplicate_file_groups: [],
+          date_overlaps: [],
+          blockers: [],
+          warnings: [],
+          detected_relation: 'snapshot_superset',
+          requires_confirmation: false,
+          confirmation_token: 'token-v2',
+        }}
+        supportsImportMode
+        onStart={onStart}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: '按最新计划导入' }))
+    expect(onStart).toHaveBeenCalledWith({
+      mode: 'auto',
+      confirmWarnings: false,
+      confirmPlan: false,
+      confirmationToken: 'token-v2',
+    })
+  })
+
+  it('preserves warning confirmation when a job also needs plan confirmation', () => {
+    const onStart = vi.fn()
+    render(
+      <ImportProgressCard
+        title="串流数据"
+        label="当前数据库记录数：1,000"
+        job={{
+          job_id: 'fixture',
+          status: 'needs_confirmation',
+          progress_pct: 0,
+          message: '需要确认追加或替换方式',
+          result: {
+            preflight: {
+              requires_confirmation: true,
+              warnings: ['日期范围重叠'],
+              confirmation_token: 'token-v1',
+            },
+          },
+        }}
+        supportsImportMode
+        onStart={onStart}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: /使用输入包替换/ }))
+    fireEvent.click(screen.getByRole('button', { name: '确认完整替换并导入' }))
+    expect(onStart).toHaveBeenCalledWith({
+      mode: 'replace',
+      confirmWarnings: true,
+      confirmPlan: true,
+      confirmationToken: 'token-v1',
+    })
+  })
+
+  it('shows an explicit no-op completion result', () => {
+    render(
+      <ImportProgressCard
+        title="串流数据"
+        label="当前数据库记录数：1,000"
+        job={{
+          job_id: 'fixture',
+          status: 'done',
+          progress_pct: 1,
+          message: '无需更新',
+          result: { detected_relation: 'identical', executed_strategy: 'noop', noop: true },
+        }}
+        onStart={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByText('数据未变化，已跳过导入')).toBeInTheDocument()
+    expect(screen.queryByText('导入完成，派生数据已更新')).not.toBeInTheDocument()
+  })
+
+  it('does not mislabel an explicit identical replacement as a no-op', () => {
+    render(
+      <ImportProgressCard
+        title="串流数据"
+        label="当前数据库记录数：1,000"
+        job={{
+          job_id: 'fixture',
+          status: 'done',
+          progress_pct: 1,
+          message: '导入完成',
+          result: {
+            detected_relation: 'identical',
+            executed_strategy: 'full',
+            noop: false,
+            maintenance_status: 'ok',
+          },
+        }}
+        onStart={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByText('导入完成，派生数据已更新')).toBeInTheDocument()
+    expect(screen.queryByText('数据未变化，已跳过导入')).not.toBeInTheDocument()
   })
 
   it('keeps a blocked import from looking like a completed job', () => {
@@ -388,6 +593,6 @@ describe('Settings sections', () => {
 
     expect(screen.getByText('导入已阻断：导入前检查发现硬性问题，数据库未修改')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: '重新检查' }))
-    expect(onStart).toHaveBeenCalledWith(false)
+    expect(onStart).toHaveBeenCalledWith({ mode: 'auto', confirmWarnings: false, confirmPlan: false })
   })
 })

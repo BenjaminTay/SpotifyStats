@@ -7362,6 +7362,13 @@ export interface components {
              */
             confirm_external_id_conflict: boolean;
         };
+        /** ImportDatasetDateRange */
+        ImportDatasetDateRange: {
+            /** First Date */
+            first_date?: string | null;
+            /** Last Date */
+            last_date?: string | null;
+        };
         /** ImportDateOverlap */
         ImportDateOverlap: {
             /** Left File */
@@ -7538,6 +7545,82 @@ export interface components {
             blockers?: string[];
             /** Warnings */
             warnings?: string[];
+            /**
+             * Account Identity Status
+             * @default unknown
+             * @enum {string}
+             */
+            account_identity_status: "unknown" | "not_provided" | "matched" | "mismatched";
+            /**
+             * Fingerprint Baseline Status
+             * @default missing
+             * @enum {string}
+             */
+            fingerprint_baseline_status: "missing" | "ready" | "incompatible";
+            /**
+             * Detected Relation
+             * @default unknown
+             * @enum {string}
+             */
+            detected_relation: "unknown" | "baseline_required" | "identical" | "snapshot_superset" | "delta_tail" | "reconciled_snapshot" | "truncated_or_regressive" | "different_account" | "ambiguous";
+            /**
+             * Requested Mode
+             * @default auto
+             * @enum {string}
+             */
+            requested_mode: "auto" | "append" | "replace";
+            /**
+             * Requires Confirmation
+             * @default false
+             */
+            requires_confirmation: boolean;
+            /** Confirmation Token */
+            confirmation_token?: string | null;
+            /**
+             * Existing Record Count
+             * @default 0
+             */
+            existing_record_count: number;
+            /**
+             * Incoming Record Count
+             * @default 0
+             */
+            incoming_record_count: number;
+            /**
+             * Unchanged Record Count
+             * @default 0
+             */
+            unchanged_record_count: number;
+            /**
+             * Added Record Count
+             * @default 0
+             */
+            added_record_count: number;
+            /**
+             * Removed Record Count
+             * @default 0
+             */
+            removed_record_count: number;
+            existing_date_range?: components["schemas"]["ImportDatasetDateRange"] | null;
+            incoming_date_range?: components["schemas"]["ImportDatasetDateRange"] | null;
+            /**
+             * Affected Weeks Count
+             * @default 0
+             */
+            affected_weeks_count: number;
+            /**
+             * Affected Years Count
+             * @default 0
+             */
+            affected_years_count: number;
+            /** Planned Actions */
+            planned_actions?: string[];
+            /**
+             * Estimated Strategy
+             * @default full
+             * @enum {string}
+             */
+            estimated_strategy: "noop" | "incremental" | "mixed" | "full";
         };
         /**
          * JobStatusResponse
@@ -15817,7 +15900,9 @@ export interface operations {
     };
     get_import_preflight_api_import_preflight_get: {
         parameters: {
-            query?: never;
+            query?: {
+                mode?: "auto" | "append" | "replace";
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -15831,6 +15916,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ImportPreflightResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -15871,6 +15965,12 @@ export interface operations {
             query?: {
                 /** @description 确认导入前警告后继续 */
                 confirm_warnings?: boolean;
+                /** @description 自动判定、只追加或完整替换 */
+                mode?: "auto" | "append" | "replace";
+                /** @description 确认高风险关系后执行完整替换 */
+                confirm_plan?: boolean;
+                /** @description 绑定本次警告或覆盖确认的只读计划标识 */
+                confirmation_token?: string | null;
             };
             header?: never;
             path?: never;
