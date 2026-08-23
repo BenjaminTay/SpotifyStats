@@ -35,6 +35,7 @@
 - [`plans/2026-06-29-ai-agent-harness-quality-roadmap.md`](plans/2026-06-29-ai-agent-harness-quality-roadmap.md)：AI Agent Harness 持续质量路线
 - [`plans/2026-08-06-appification-pwa-capacitor-plan.md`](plans/2026-08-06-appification-pwa-capacitor-plan.md)：PWA、远程部署、真机验收和 Capacitor 决策
 - [`plans/2026-08-16-music-search-direction-realignment.md`](plans/2026-08-16-music-search-direction-realignment.md)：音乐查找候选索引、统计快照和生产复用方向
+- [`plans/2026-08-23-incremental-streaming-import-plan.md`](plans/2026-08-23-incremental-streaming-import-plan.md)：串流数据关系判定、增量写入、派生分区更新和全量回退规划
 
 ## 已确认但仍有实现参考价值的设计
 
