@@ -91,10 +91,24 @@ async def lifespan(_app: FastAPI):
     # tools intentionally replace ``db_module.DB_PATH`` with an isolated copy;
     # importing the string at module load would make the persistent JobQueue
     # silently keep targeting the user's real database.
-    job_queue.start(db_module.DB_PATH)
-    # Recover a transactionally published import before generic search catch-up
-    # and cache warmup can treat its derived state as current.
+    # Recover persisted jobs without starting workers.  This lets import
+    # maintenance enter the startup batch before an older search or cover job
+    # can run.
+    job_queue.prepare(db_module.DB_PATH)
     enqueue_pending_import_maintenance(job_queue)
+    # Import maintenance is a strict pre-worker barrier: merely putting it at
+    # the front of a FIFO queue would still let another worker run generic work
+    # concurrently.
+    job_queue.start(
+        db_module.DB_PATH,
+        priority_job_types=(PLAYBACK_IMPORT_MAINTENANCE_JOB_TYPE,),
+    )
+    from backend.services.cover_cache_service import enqueue_failed_cover_download_recovery
+
+    # Recover only a bounded slice of previously failed covers after the strict
+    # import-maintenance startup barrier. The recovery helper uses explicit
+    # empty scopes, so this cannot turn application startup into a full scan.
+    enqueue_failed_cover_download_recovery(job_queue)
     from backend.core.db import get_db
     from backend.core.job_queue import Job
     from backend.domains.metadata.artist_identity import get_identity_state

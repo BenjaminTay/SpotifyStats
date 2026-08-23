@@ -136,7 +136,7 @@ plan_json, started_at, completed_at, error_code
 
 ### 6.2 临时 staging
 
-使用同一 SQLite 连接的 TEMP 表或独立临时 SQLite 文件保存：
+最终实现使用系统临时目录中的独立 SQLite staging 文件保存：
 
 - `source_type`
 - `source_fingerprint`
@@ -144,7 +144,9 @@ plan_json, started_at, completed_at, error_code
 - 导入器消费的曲目、专辑、艺人、URI 和播放属性
 - 文件序号和记录序号，仅用于稳定错误定位
 
-staging 在活动数据发布前可丢弃，不写入 Git，不作为长期数据资产。解析仍按批次进行，避免同时保留全部 Python dict。
+staging 在活动数据发布前可丢弃，不写入 Git，不作为长期数据资产。每个源 JSON 只解析一次，原始记录按文件顺序写入临时表；预检只读取指纹、时间和字段存在性，ETL 再逐文件解码，不同时保留全部 Python dict。GET 预检可按确认标识短期复用 staging，缓存有数量和 15 分钟生命周期上限；POST 在数据库写入前及最终提交边界重新核对完整文件集合与 SHA-256，任何漂移都回滚并要求重新预检。
+
+正常退出、缓存淘汰和 `atexit` 都会删除 staging；进程崩溃后，下一次首次建立 staging 会执行一次保守孤儿清理。清理只允许处理系统临时目录直系、受控前缀、当前用户所有、权限仍为 `0700` 且超过 24 小时的真实目录；符号链接、权限或归属不明确和较新的目录一律保留。
 
 ### 6.3 数据集摘要
 
@@ -188,7 +190,7 @@ staging 在活动数据发布前可丢弃，不写入 Git，不作为长期数�
 
 `ChangeSet` 至少包含：
 
-- `added_fingerprints`、`removed_fingerprints` 及计数。
+- 新增、移除身份及计数；精确 fingerprint 集合只存在于确认标识绑定的临时 `ImportPlan` 和事实发布事务中，不进入持久化 ChangeSet、日志或 API。
 - 新旧记录的最早/最晚变化时间。
 - 直接涉及的 `track_id`、source album、primary/featured artist。
 - 受影响的自然日、月份、年份和 Billboard 周。
@@ -356,12 +358,15 @@ Settings 导入前检查展示自然语言摘要，例如：
 为每个场景准备两份临时数据库：A 执行增量，B 使用最终输入完整重建。逐项比较：
 
 - `plays` 的稳定自然事实和指纹集合，不比较自增 `play_id`。
-- tracks/albums/artists 与 track credits。
+- 当前播放事实可达的 tracks/albums/artists 与有效 track credits；为人工治理和审计保留但已不可达的历史维表行不做物理删除，也不得进入活动搜索或自动项目。
 - Album Project membership。
 - 四张 Billboard 聚合表。
 - 完整周集合、周榜、Power、纪录和 Year-End。
 - 六套搜索 snapshot 的每个实体上下文。
-- 受影响年份的年度总结确定性事实与 artifact key。
+- 年度总结确定性事实分区；每个被接受且影响该年份的变更必须提升
+  `impact_revision` 并更换 artifact key，identical 必须保持两者不变。不同导入路径的
+  key 可因审计历史不同而不同，不作为事实等价条件；详见
+  [`../../designs/2026-08-23-yearly-artifact-key-invalidation-contract.md`](../../designs/2026-08-23-yearly-artifact-key-invalidation-contract.md)。
 
 使用双向 SQL `EXCEPT` 和稳定排序哈希；任何差异都阻止增量策略发布。
 
@@ -400,7 +405,7 @@ Settings 导入前检查展示自然语言摘要，例如：
 
 验收：不改变现有统计结果；七类关系判定单测通过；预检不写库。
 
-实现说明：Phase A 使用源检查器生成只读内存 staging manifest，完成 dataset digest、账号身份探针、关系分类和 API/UI 展示；migration 37 只建立持久化结构。92,908 条真实库副本的预检与自动化验收已通过，证据见 [`../reports/2026-08-23-incremental-import-phase-a.md`](../reports/2026-08-23-incremental-import-phase-a.md)。
+实现说明：Phase A 最初使用源检查器生成只读内存 manifest，完成 dataset digest、账号身份探针、关系分类和 API/UI 展示；最终收口增加了可复用临时 SQLite staging，消除同一 POST 内的重复源 JSON 解析。migration 37 只建立持久化结构。92,908 条真实库副本的预检与自动化验收已通过，证据见 [`../../reports/2026-08-23-incremental-import-phase-a.md`](../../reports/2026-08-23-incremental-import-phase-a.md)。
 
 ### Phase B：安全 noop 与 append-only（已实现，2026-08-23）
 
@@ -411,7 +416,7 @@ Settings 导入前检查展示自然语言摘要，例如：
 
 验收：追加后的基础事实与全量重建一致；崩溃和唯一索引冲突不改变活动代际。
 
-实现说明：完整基线导入写满版本化指纹并发布活动代际；已有播放但无基线时必须先确认完整替换。identical 在快照与派生维护前 noop；snapshot superset 和具备共同记录、账号与时间证据的尾部包自动追加。零重合包不会借用固定 Account Data 自动认作同账号，用户可明确选择 fail-closed 尾部验证。确认标识绑定输入与当前基线，append 在同一事务内精确对账旧基线、实际输入和新增指纹并发布活动代际，异常显式 rollback、关闭连接后再进入快照恢复。Phase B 延续现有批次 JSON reader，没有新增独立 TEMP SQLite staging；派生 pending/active 发布、后台任务代际隔离、历史删除/修订和完整替换的硬中止恢复仍留在后续阶段。92,908 条基线加 1 条尾部记录与 92,909 条完整替换的六张基础事实/关系表逐表哈希一致，证据见 [`../reports/2026-08-23-incremental-import-phase-b.md`](../reports/2026-08-23-incremental-import-phase-b.md)。
+实现说明：完整基线导入写满版本化指纹并发布活动代际；已有播放但无基线时必须先确认完整替换。identical 在快照与派生维护前 noop；snapshot superset 和具备共同记录、账号与时间证据的尾部包自动追加。零重合包不会借用固定 Account Data 自动认作同账号，用户可明确选择 fail-closed 尾部验证。确认标识绑定输入与当前基线，append 在同一事务内精确对账旧基线、实际输入和新增指纹并发布活动代际，异常显式 rollback、关闭连接后再进入快照恢复。最终导入器直接消费确认标识绑定的临时 SQLite staging；派生 pending/active 发布、后台任务代际隔离、历史删除/修订和完整替换硬中止恢复随后在 Phase C–E 完成。92,908 条基线加 1 条尾部记录与 92,909 条完整替换的六张基础事实/关系表逐表哈希一致，证据见 [`../../reports/2026-08-23-incremental-import-phase-b.md`](../../reports/2026-08-23-incremental-import-phase-b.md)。
 
 ### Phase C：ChangeSet 驱动的维护（已实现，2026-08-23）
 
@@ -422,7 +427,7 @@ Settings 导入前检查展示自然语言摘要，例如：
 
 验收：首页和完整周榜优先恢复；旧年度 artifact 保持命中；无关缓存不抖动。
 
-实现说明：事实发布事务会从实际写入代际生成并持久化 `PlaybackChangeSet`，记录本地实体、Spotify 实体、日期、年份、开放周和语义 revision；维护完成前运行状态为 `maintenance_pending`，中断后仍保留恢复依据。增量维护只刷新相关元数据和封面，同时带有界历史失败扫尾；封面任务支持重启恢复、全流程失败记录、来源 URL 哈希和过期任务 CAS。年度总结使用逐年直接/前缀 digest 与报告年前缀可达的元数据、流派、曲目组和 Album Project 依赖摘要，普通最新年追加不会使旧年度播放分区抖动。播放事实提交和聚合发布都会精确失效播放相关缓存，聚合构建绑定活动代际并在发布事务再次核对，避免旧计算冒充新代际。Album Project 仍全量重建，但推断项目 ID 已稳定复用；Billboard 的精确尾部周分区已在 Phase D1 实现，搜索六套 snapshot 对同周和恰好跨一个开放周的尾部追加均已在 Phase D2 实现增量发布。92,908 条真实数据库副本加 1 条尾部记录的范围与耗时证据见 [`../reports/2026-08-23-incremental-import-phase-c.md`](../reports/2026-08-23-incremental-import-phase-c.md)、[`../reports/2026-08-23-incremental-import-phase-d1.md`](../reports/2026-08-23-incremental-import-phase-d1.md) 与 [`../reports/2026-08-23-incremental-import-phase-d2.md`](../reports/2026-08-23-incremental-import-phase-d2.md)。
+实现说明：事实发布事务会从实际写入代际生成并持久化 `PlaybackChangeSet`，记录本地实体、Spotify 实体、日期、年份、开放周和语义 revision；维护完成前运行状态为 `maintenance_pending`，中断后仍保留恢复依据。增量维护只刷新相关元数据和封面，同时带有界历史失败扫尾；封面任务支持重启恢复、全流程失败记录、来源 URL 哈希和过期任务 CAS。年度总结使用逐年直接/前缀 digest 与报告年前缀可达的元数据、流派、曲目组和 Album Project 依赖摘要，普通最新年追加不会使旧年度播放分区抖动。播放事实提交和聚合发布都会精确失效播放相关缓存，聚合构建绑定活动代际并在发布事务再次核对，避免旧计算冒充新代际。Phase C 当时仍全量重建 Album Project；Phase E 已补齐安全的定向路径。Billboard 的精确尾部周分区在 Phase D1 实现，搜索六套 snapshot 对同周和恰好跨一个开放周的尾部追加在 Phase D2 实现增量发布。92,908 条真实数据库副本加 1 条尾部记录的范围与耗时证据见 [`../../reports/2026-08-23-incremental-import-phase-c.md`](../../reports/2026-08-23-incremental-import-phase-c.md)、[`../../reports/2026-08-23-incremental-import-phase-d1.md`](../../reports/2026-08-23-incremental-import-phase-d1.md) 与 [`../../reports/2026-08-23-incremental-import-phase-d2.md`](../../reports/2026-08-23-incremental-import-phase-d2.md)。
 
 ### Phase D1：Billboard 周分区与搜索共享全量（已实现，2026-08-23）
 
@@ -430,7 +435,7 @@ Settings 导入前检查展示自然语言摘要，例如：
 - 受影响周分区替换、排名和 Year-End 范围失效。
 - 两套逻辑播放帧在三个 merge level 间复用。
 
-验收：尾部变化的四张 Billboard 聚合与全量重建逐表一致；六套 shared-full 与 ordinary build 逐列一致，并且不再为每个变体独立扫描完整历史。真实副本证据见 [`../reports/2026-08-23-incremental-import-phase-d1.md`](../reports/2026-08-23-incremental-import-phase-d1.md)。
+验收：尾部变化的四张 Billboard 聚合与全量重建逐表一致；六套 shared-full 与 ordinary build 逐列一致，并且不再为每个变体独立扫描完整历史。真实副本证据见 [`../../reports/2026-08-23-incremental-import-phase-d1.md`](../../reports/2026-08-23-incremental-import-phase-d1.md)。
 
 ### Phase D2：搜索快照实体级增量（已实现，2026-08-23）
 
@@ -440,7 +445,7 @@ Settings 导入前检查展示自然语言摘要，例如：
 - D2c 已完成：对于恰好跨一个开放周的精确尾部追加，有界读取新完成周及连续播放链闭包，替换六套对应周账本；合并历史账本后按稳定实体 ID 全局重算 chart summary 与 Power score/rank。当前开放周仍不发布，同名不同 ID 的专辑/艺人保持分离。
 - 多周跳跃、历史增删、闭包超过 100,000 行或任何 lineage/候选/依赖/发布栅栏不兼容时继续回退 D1 shared-full，不用不完整证据强行增量。
 
-当前验收：92,908 条真实数据库副本加 1 条尾部记录，同周场景 delta 1.093 秒、shared-full 26.416 秒；跨一周场景 delta 6.500 秒、shared-full 26.339 秒。两场景的六套搜索上下文与六套周账本均全列双向 `EXCEPT=0`；跨周场景还证明旧历史周不变、新完成周发布、当前开放周排除。证据见 [`../reports/2026-08-23-incremental-import-phase-d2.md`](../reports/2026-08-23-incremental-import-phase-d2.md)。
+当前验收：92,908 条真实数据库副本加 1 条尾部记录，同周场景 delta 1.093 秒、shared-full 26.416 秒；跨一周场景 delta 6.500 秒、shared-full 26.339 秒。两场景的六套搜索上下文与六套周账本均全列双向 `EXCEPT=0`；跨周场景还证明旧历史周不变、新完成周发布、当前开放周排除。证据见 [`../../reports/2026-08-23-incremental-import-phase-d2.md`](../../reports/2026-08-23-incremental-import-phase-d2.md)。
 
 ### Phase E：历史修正与局部连续链（已实现，2026-08-23）
 
@@ -451,7 +456,7 @@ Settings 导入前检查展示自然语言摘要，例如：
 
 验收：历史修正场景等价；无法建立闭包时安全回退全量。
 
-实现说明：同账号、双向差异且覆盖完整时间包络的输入只会生成需确认 reconcile 计划；确认后精确删除与新增、最终数据集对账、活动代际和 ChangeSet 同事务发布。旧、新事实视图会双向闭合连续播放链，fixed/dynamic 贡献证明一致时只替换受影响完整 Billboard 周；100,000 行、完整周、语义依赖、代际或邻接门禁失败时全量回退。Album Project 按实际元数据影响定向重建，无关项目和 manual 保持不变；删除或不精确影响仍全量重建。完整 replace 的清空和发布已原子化，`maintenance_pending` 可在启动时严格恢复，真实副本通过 SIGKILL、恢复漂移和一删一增等价验收，小型库通过 20 轮交替 reconcile 压力回归。证据见 [`../reports/2026-08-23-incremental-import-phase-e.md`](../reports/2026-08-23-incremental-import-phase-e.md)。原始工作量估计保留为规划依据。
+实现说明：同账号、双向差异且覆盖完整时间包络的输入只会生成需确认 reconcile 计划；确认后精确删除与新增、最终数据集对账、活动代际和 ChangeSet 同事务发布。旧、新事实视图会双向闭合连续播放链，fixed/dynamic 贡献证明一致时只替换受影响完整 Billboard 周；100,000 行、完整周、语义依赖、代际或邻接门禁失败时全量回退。Album Project 按实际元数据影响定向重建，无关项目和 manual 保持不变；删除或不精确影响仍全量重建。完整 replace 的清空和发布已原子化，`maintenance_pending` 会在普通 search/cover worker 启动前优先恢复。持久维表保留治理历史；事实事务会把自动 `track_albums` 重算为当前活动播放闭包，播放仓库按逐播放来源专辑归属，搜索候选和自动 Album Project 同样只消费活动实体。自动 Track Group 使用 Spotify recording ID + artist ID 的稳定身份，同名不同艺人和主曲翻转不会冲突，人工组不被改写。真实副本通过 SIGKILL、恢复漂移和一删一增等价验收，小型库通过 20 轮交替 reconcile 压力回归。阶段证据见 [`../../reports/2026-08-23-incremental-import-phase-e.md`](../../reports/2026-08-23-incremental-import-phase-e.md)，真实原始指纹完整派生 baseline 与最终 14 项语义投影闭环见 [`../../reports/2026-08-23-incremental-import-final-acceptance.md`](../../reports/2026-08-23-incremental-import-final-acceptance.md)。原始工作量估计保留为规划依据。
 
 ## 17. 建议提交拆分
 

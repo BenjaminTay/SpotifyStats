@@ -20,6 +20,7 @@ pytestmark = pytest.mark.unit
 ROOT = Path(__file__).resolve().parents[3]
 PRODUCTION = ROOT / "deploy" / "production"
 BUILDER_VERSION = MUSIC_SEARCH_SNAPSHOT_BUILDER_VERSION
+REQUIRED_MUSIC_SEARCH_MIGRATION = 42
 VARIANTS = ((2, True), (1, True), (3, True), (2, False), (1, False), (3, False))
 
 
@@ -54,6 +55,7 @@ def _build_preflight_fixture(
         (
             (35, "search identity split"),
             (36, "search candidate ngram index"),
+            (42, "music search incremental lineage"),
             (LATEST_SCHEMA_VERSION, "current schema"),
         ),
     )
@@ -197,7 +199,7 @@ def test_preflight_validator_requires_migration_variants_builder_and_zero_orphan
         "builder_version": BUILDER_VERSION,
         "context_orphan_count": 0,
         "integrity_check": "ok",
-        "required_migration_version": LATEST_SCHEMA_VERSION,
+        "required_migration_version": REQUIRED_MUSIC_SEARCH_MIGRATION,
         "required_migration_applied": True,
         "ready_variants": 6,
         "required_variants": 6,
@@ -230,10 +232,13 @@ def test_preflight_validator_fails_on_context_orphan(tmp_path: Path) -> None:
     assert not output.exists()
 
 
-def test_preflight_validator_requires_current_database_migration(tmp_path: Path) -> None:
+def test_preflight_validator_requires_music_search_lineage_migration(tmp_path: Path) -> None:
     database, rebuild_report, capacity_report = _build_preflight_fixture(tmp_path)
     conn = sqlite3.connect(database)
-    conn.execute("DELETE FROM schema_migrations WHERE version=?", (LATEST_SCHEMA_VERSION,))
+    conn.execute(
+        "DELETE FROM schema_migrations WHERE version=?",
+        (REQUIRED_MUSIC_SEARCH_MIGRATION,),
+    )
     conn.commit()
     conn.close()
     output = tmp_path / "missing-current-migration.json"
@@ -257,7 +262,7 @@ def test_preflight_validator_requires_current_database_migration(tmp_path: Path)
     )
 
     assert completed.returncode == 1
-    assert f"migration {LATEST_SCHEMA_VERSION} is not applied" in completed.stderr
+    assert f"migration {REQUIRED_MUSIC_SEARCH_MIGRATION} is not applied" in completed.stderr
     assert not output.exists()
 
 

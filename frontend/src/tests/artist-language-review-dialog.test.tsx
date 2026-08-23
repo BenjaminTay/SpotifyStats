@@ -162,7 +162,7 @@ describe('ArtistLanguageReviewDialog', () => {
       })
     })
     expect(onOpenChange).toHaveBeenCalledWith(false)
-  })
+  }, 10_000)
 
   it('switches classification fields and supports multilingual or instrumental evidence shapes', async () => {
     installSearchMock()

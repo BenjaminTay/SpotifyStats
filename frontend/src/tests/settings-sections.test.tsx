@@ -403,7 +403,7 @@ describe('Settings sections', () => {
     )
 
     expect(screen.getByRole('button', { name: '请先选择处理方式' })).toBeDisabled()
-    expect(screen.getByText('追加只接受可证明的尾部记录；完整替换前会创建数据库快照。两种写入后的榜单和其他派生数据暂时都按完整维护流程更新。')).toBeInTheDocument()
+    expect(screen.getByText('追加只接受可证明的尾部记录；完整替换前会创建数据库快照。派生维护会优先复用兼容结果，无法证明影响范围或依赖不兼容时自动全量重建。')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: /作为尾部增量验证/ }))
     fireEvent.click(screen.getByRole('button', { name: '验证并追加' }))
     expect(onStart).toHaveBeenCalledWith({

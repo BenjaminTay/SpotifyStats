@@ -143,7 +143,7 @@ describe('data import health UI', () => {
 
     expect(screen.getByText('播放事实增量')).toBeInTheDocument()
     expect(screen.getByText('检测到当前数据基础上的完整追加：新增 1,834 条记录，变化涉及 2 个榜单周和 1 个年度范围。')).toBeInTheDocument()
-    expect(screen.getByText('当前仅播放事实增量写入；榜单、搜索和其他派生数据仍执行完整维护。')).toBeInTheDocument()
+    expect(screen.getByText('播放事实只处理已证明的变化；榜单、专辑项目与搜索会按影响范围和兼容性选择局部更新或安全全量回退，精确搜索快照可能在后台继续预热。')).toBeInTheDocument()
     expect(screen.getByText('当前 / 输入：91,286 / 93,120 条')).toBeInTheDocument()
     expect(screen.getByText('当前范围：2022-07-01 → 2026-07-24')).toBeInTheDocument()
     expect(screen.getByText('· 更新受影响榜单周')).toBeInTheDocument()

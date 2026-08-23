@@ -32,6 +32,8 @@ class MetadataRefreshReport:
     spotify_track_ids_updated: frozenset[str] = frozenset()
     spotify_album_ids_updated: frozenset[str] = frozenset()
     local_album_ids_relinked: frozenset[int] = frozenset()
+    local_album_ids_updated: frozenset[int] = frozenset()
+    local_artist_ids_updated: frozenset[int] = frozenset()
     impact_scope_exact: bool = True
 
 
@@ -81,6 +83,7 @@ def _link_local_artist_from_track(
     track: dict,
     *,
     scope: MetadataRefreshScope | None = None,
+    local_artist_ids_relinked: set[int] | None = None,
 ) -> int:
     spotify_artists = track.get("artists") or []
     if not spotify_artists:
@@ -136,6 +139,8 @@ def _link_local_artist_from_track(
                 (match["id"], local["artist_id"]),
             )
             linked += max(cursor.rowcount, 0)
+            if cursor.rowcount > 0 and local_artist_ids_relinked is not None:
+                local_artist_ids_relinked.add(int(local["artist_id"]))
     return linked
 
 
@@ -162,6 +167,7 @@ def upsert_track_batch(
     *,
     scope: MetadataRefreshScope | None = None,
     local_album_ids_relinked: set[int] | None = None,
+    local_artist_ids_relinked: set[int] | None = None,
 ) -> int:
     updated = 0
     for track in tracks:
@@ -216,7 +222,12 @@ def upsert_track_batch(
                    GROUP BY source_album_id""",
                 (album_id, track["id"]),
             )
-        _link_local_artist_from_track(conn, track, scope=scope)
+        _link_local_artist_from_track(
+            conn,
+            track,
+            scope=scope,
+            local_artist_ids_relinked=local_artist_ids_relinked,
+        )
         updated += 1
     conn.commit()
     return updated
@@ -460,6 +471,47 @@ def upsert_artist_batch(conn: sqlite3.Connection, artists: list[dict]) -> int:
     return updated
 
 
+def _local_album_ids_for_spotify_ids(
+    conn: sqlite3.Connection,
+    spotify_album_ids: set[str],
+) -> set[int]:
+    if not spotify_album_ids:
+        return set()
+    placeholders = ",".join("?" for _ in spotify_album_ids)
+    params = tuple(sorted(spotify_album_ids))
+    return {
+        int(row[0])
+        for row in conn.execute(
+            f"""SELECT album_id FROM albums
+                WHERE spotify_album_id IN ({placeholders})
+                UNION
+                SELECT album_id FROM album_spotify_links
+                WHERE spotify_album_id IN ({placeholders})
+                UNION
+                SELECT source_album_id FROM plays
+                WHERE spotify_album_id_at_play IN ({placeholders})
+                  AND source_album_id IS NOT NULL""",
+            params + params + params,
+        ).fetchall()
+    }
+
+
+def _local_artist_ids_for_spotify_ids(
+    conn: sqlite3.Connection,
+    spotify_artist_ids: set[str],
+) -> set[int]:
+    if not spotify_artist_ids:
+        return set()
+    placeholders = ",".join("?" for _ in spotify_artist_ids)
+    return {
+        int(row[0])
+        for row in conn.execute(
+            f"SELECT artist_id FROM artists WHERE spotify_artist_id IN ({placeholders})",
+            tuple(sorted(spotify_artist_ids)),
+        ).fetchall()
+    }
+
+
 def sync_local_cover_urls(
     conn: sqlite3.Connection,
     *,
@@ -581,6 +633,8 @@ def refresh_missing_spotify_metadata(
     spotify_track_ids_updated: set[str] = set()
     spotify_album_ids_updated: set[str] = set()
     local_album_ids_relinked: set[int] = set()
+    local_album_ids_updated: set[int] = set()
+    local_artist_ids_updated: set[int] = set()
     album_links_backfilled = backfill_album_links_from_existing_metadata(
         conn,
         scope=scope,
@@ -633,6 +687,7 @@ def refresh_missing_spotify_metadata(
             tracks,
             scope=scope,
             local_album_ids_relinked=local_album_ids_relinked,
+            local_artist_ids_relinked=local_artist_ids_updated,
         )
         for track in tracks:
             track_id = track and track.get("id")
@@ -671,6 +726,9 @@ def refresh_missing_spotify_metadata(
         spotify_album_ids_updated.update(
             str(album["id"]) for album in albums if album and album.get("id")
         )
+    local_album_ids_updated.update(
+        _local_album_ids_for_spotify_ids(conn, spotify_album_ids_updated)
+    )
 
     artist_ids = (
         select_missing_artist_ids(conn)
@@ -696,12 +754,25 @@ def refresh_missing_spotify_metadata(
         if data is None:
             errors.append("artists_batch_failed")
             continue
-        artists_updated += upsert_artist_batch(conn, data.get("artists", []))
+        artists = data.get("artists", [])
+        artists_updated += upsert_artist_batch(conn, artists)
+        local_artist_ids_updated.update(
+            _local_artist_ids_for_spotify_ids(
+                conn,
+                {str(artist["id"]) for artist in artists if artist and artist.get("id")},
+            )
+        )
 
+    resolved_album_scope = (
+        None
+        if scope is None
+        else scope.album_ids | local_album_ids_relinked | local_album_ids_updated
+    )
+    resolved_artist_scope = None if scope is None else scope.artist_ids | local_artist_ids_updated
     sync_local_cover_urls(
         conn,
-        album_ids=None if scope is None else scope.album_ids,
-        artist_ids=None if scope is None else scope.artist_ids,
+        album_ids=resolved_album_scope,
+        artist_ids=resolved_artist_scope,
     )
     if scope is None:
         search_candidates = select_played_artists_missing_covers(conn)
@@ -737,10 +808,11 @@ def refresh_missing_spotify_metadata(
                 (artist["id"], local_artist_id),
             )
             artist_searches_updated += upsert_artist_batch(conn, [artist])
+            local_artist_ids_updated.add(local_artist_id)
         sync_local_cover_urls(
             conn,
-            album_ids=None if scope is None else scope.album_ids,
-            artist_ids=None if scope is None else scope.artist_ids,
+            album_ids=resolved_album_scope,
+            artist_ids=(None if scope is None else scope.artist_ids | local_artist_ids_updated),
         )
 
     return MetadataRefreshReport(
@@ -758,6 +830,8 @@ def refresh_missing_spotify_metadata(
         spotify_track_ids_updated=frozenset(spotify_track_ids_updated),
         spotify_album_ids_updated=frozenset(spotify_album_ids_updated),
         local_album_ids_relinked=frozenset(local_album_ids_relinked),
+        local_album_ids_updated=frozenset(local_album_ids_updated),
+        local_artist_ids_updated=frozenset(local_artist_ids_updated),
         impact_scope_exact=not errors,
     )
 

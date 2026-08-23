@@ -111,6 +111,60 @@ def test_rebuild_generation_is_random_but_candidate_version_is_deterministic() -
     assert first["content_digest"] == second["content_digest"]
 
 
+def test_rebuild_excludes_dimensions_unreachable_from_active_plays() -> None:
+    conn = _conn()
+    conn.execute("INSERT INTO artists VALUES (3, 'Removed Artist')")
+    conn.execute("INSERT INTO albums VALUES (30, 'Removed Album', 3)")
+    conn.execute("INSERT INTO tracks VALUES (103, 'Removed Song', 3, 30)")
+    conn.execute("INSERT INTO track_artists VALUES (103, 3, 'primary')")
+
+    report = rebuild_music_search_index(conn)
+    rows = conn.execute(
+        """SELECT kind, label FROM music_search_documents
+           WHERE generation_id=? AND label LIKE 'Removed%'""",
+        (report["generation_id"],),
+    ).fetchall()
+
+    assert rows == []
+    # Reconcile keeps durable raw/governance dimensions for auditability; only
+    # their active-search projection is removed.
+    assert conn.execute("SELECT COUNT(*) FROM tracks WHERE track_id=103").fetchone()[0] == 1
+    assert conn.execute("SELECT COUNT(*) FROM albums WHERE album_id=30").fetchone()[0] == 1
+    assert conn.execute("SELECT COUNT(*) FROM artists WHERE artist_id=3").fetchone()[0] == 1
+
+
+def test_rebuild_uses_current_playback_album_when_reconcile_reuses_track() -> None:
+    conn = _conn()
+    conn.execute("CREATE TABLE IF NOT EXISTS track_albums (track_id INTEGER, album_id INTEGER)")
+    conn.execute("INSERT INTO artists VALUES (3, 'Album Fix Artist')")
+    conn.execute("INSERT INTO albums VALUES (30, 'Old Source Album', 3)")
+    conn.execute("INSERT INTO albums VALUES (31, 'Corrected Source Album', 3)")
+    conn.execute("INSERT INTO tracks VALUES (103, 'Same Recording', 3, 30)")
+    conn.execute("INSERT INTO track_artists VALUES (103, 3, 'primary')")
+    conn.executemany("INSERT INTO track_albums VALUES (103, ?)", [(30,), (31,)])
+    conn.execute("INSERT INTO plays VALUES (5, 103, 180000, 31)")
+
+    report = rebuild_music_search_index(conn)
+    track = conn.execute(
+        """SELECT album_id, album_name, secondary
+           FROM music_search_documents
+           WHERE generation_id=? AND entity_key='track:103' AND merge_level=1""",
+        (report["generation_id"],),
+    ).fetchone()
+    old_album_count = conn.execute(
+        """SELECT COUNT(*) FROM music_search_documents
+           WHERE generation_id=? AND kind='album' AND label='Old Source Album'""",
+        (report["generation_id"],),
+    ).fetchone()[0]
+
+    assert dict(track) == {
+        "album_id": 31,
+        "album_name": "Corrected Source Album",
+        "secondary": "Album Fix Artist · Corrected Source Album",
+    }
+    assert old_album_count == 0
+
+
 def test_track_candidates_follow_l1_l2_merge_semantics_and_keep_version_aliases() -> None:
     conn = _conn()
     conn.execute("INSERT INTO tracks VALUES (103, 'cardigan remaster', 1, 10)")
@@ -175,6 +229,10 @@ def test_repository_ranks_primary_prefix_and_cross_field_tokens() -> None:
 def test_repository_matches_simplified_traditional_and_short_cjk() -> None:
     conn = _conn()
     conn.execute("INSERT INTO artists VALUES (3, '周杰倫')")
+    conn.execute("INSERT INTO albums VALUES (30, '范特西', 3)")
+    conn.execute("INSERT INTO tracks VALUES (103, '安静', 3, 30)")
+    conn.execute("INSERT INTO track_artists VALUES (103, 3, 'primary')")
+    conn.execute("INSERT INTO plays VALUES (5, 103, 180000, 30)")
     rebuild_music_search_index(conn)
 
     simplified = search_music_index(

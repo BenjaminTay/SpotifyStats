@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 import os
 import sqlite3
 from dataclasses import dataclass
@@ -10,6 +11,8 @@ from dataclasses import dataclass
 from backend.core import db as db_module
 from backend.core.job_queue import Job, JobQueue, get_job_queue
 from backend.domains.metadata.spotify_refresh import sync_local_cover_urls
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -99,14 +102,19 @@ def enqueue_missing_cover_downloads(
     artist_ids: set[int] | frozenset[int] | None = None,
     include_failed_backlog: bool = True,
     backlog_limit: int = 200,
+    synchronize_sources: bool = True,
 ) -> CoverCacheBackfillReport:
     """Synchronize sources and enqueue missing, stale, or failed cover files."""
     scoped_albums = None if album_ids is None else set(album_ids)
     scoped_artists = None if artist_ids is None else set(artist_ids)
-    album_synced, artist_synced = sync_local_cover_urls(
-        conn,
-        album_ids=scoped_albums,
-        artist_ids=scoped_artists,
+    album_synced, artist_synced = (
+        sync_local_cover_urls(
+            conn,
+            album_ids=scoped_albums,
+            artist_ids=scoped_artists,
+        )
+        if synchronize_sources
+        else (0, 0)
     )
     if include_failed_backlog and _table_exists(conn, "cover_cache_state"):
         failed = conn.execute(
@@ -182,6 +190,50 @@ def enqueue_missing_cover_downloads(
         sources_scanned=len(sources),
         stale_sources=stale_sources,
     )
+
+
+def enqueue_failed_cover_download_recovery(
+    queue: JobQueue | None = None,
+    *,
+    backlog_limit: int = 50,
+) -> CoverCacheBackfillReport:
+    """Recover a bounded slice of failed covers without scanning all played entities.
+
+    Startup calls this only after import-maintenance priority work has cleared its
+    barrier. Empty explicit scopes are important: the failed-state rows expand
+    those scopes up to ``backlog_limit`` instead of turning startup into a full
+    cover inventory scan.
+    """
+    empty_report = CoverCacheBackfillReport(0, 0, 0, 0, 0)
+    if backlog_limit <= 0:
+        return empty_report
+    conn = db_module.get_db(readonly=False)
+    try:
+        if not _table_exists(conn, "cover_cache_state"):
+            return empty_report
+        failed_exists = conn.execute(
+            "SELECT 1 FROM cover_cache_state WHERE status='failed' LIMIT 1"
+        ).fetchone()
+        if failed_exists is None:
+            return empty_report
+        try:
+            return enqueue_missing_cover_downloads(
+                conn,
+                queue=queue,
+                album_ids=set(),
+                artist_ids=set(),
+                include_failed_backlog=True,
+                backlog_limit=backlog_limit,
+                synchronize_sources=False,
+            )
+        except sqlite3.OperationalError as exc:
+            # Cover recovery is best-effort startup work. A legacy or partially
+            # migrated metadata schema must not prevent the application from
+            # starting; the next import can repair and retry these rows.
+            logger.warning("Skipped failed-cover startup recovery: %s", exc)
+            return empty_report
+    finally:
+        conn.close()
 
 
 def _table_exists(conn: sqlite3.Connection, table: str) -> bool:

@@ -2,6 +2,17 @@
 
 本文件只记录按日期排列的变更摘要。详细实施、验收和真实数据证据见 [`reports/README.md`](reports/README.md)；当前规则见 [`reference/`](reference/)。历史条目中的数字和路径仅代表当时状态。
 
+## 2026-08-23 — 增量导入最终收口
+
+- 最终独立审计补齐活动 `track_albums` 闭包：reconcile/replace 在事实事务内重算自动关系，逐播放来源专辑不再因历史关系重复计数，空自动 Album Project 不再残留；终验以专辑历史纠正的增量 reconcile 对空库完整重建，含 Track Group 在内的 14 项语义投影一致。
+- migration 43–45 将自动 Track Group 身份改为 Spotify recording ID + artist ID，兼容同名不同艺人、人工同名和主曲翻转；真实本地库迁移后保持 24 个组、48 个成员，Track Group 外键检查为空且完整性为 `ok`。
+- 真实 13 个原始导出文件、92,908 条记录在 `/tmp` 空库完成事实、Track Group、Album Project、Billboard、六套搜索、首页与 identical 全链验收，总耗时约 110.5 秒；主库与原始文件保持只读不变。
+- 串流预检与 ETL 共享权限受限的临时 SQLite staging：一次 POST 只解析一次源 JSON，GET 预检可按确认标识短期复用；文件集合和 SHA-256 在 ETL 前及事实提交边界再次校验，staging 在完成、异常、过期或进程退出时清理。
+- 历史 reconcile 的旧/新连续播放链闭包同时驱动 Billboard 周和年度分区；闭包无法证明时保守失效全部活动年份。自动 Album Project 与音乐查找只消费当前播放事实可达闭包，持久治理维表保留审计历史但已淘汰实体不再作为活动候选。
+- 元数据历史 backlog 本轮补齐的本地专辑/艺人 ID 会继续进入封面 URL 同步与下载扫描；Spotify 自动曲目组在主曲排名翻转时原地更新并合并旧自动重复组。
+- 应用启动改为两阶段恢复：先恢复持久任务并补入 `maintenance_pending`，导入维护完成后才启动普通 search/cover worker，避免旧派生任务抢跑。Settings 同步说明局部维护、兼容门禁、全量回退与后台 warming，不再展示 Phase B 旧口径。
+- 已完成的 Phase A–E 规划移入 [`archive/06-productization-closeout/2026-08-23-incremental-streaming-import-plan.md`](archive/06-productization-closeout/2026-08-23-incremental-streaming-import-plan.md)。
+
 ## 2026-08-23 — 增量导入 Phase E
 
 - 完整替换从清空旧事实到发布活动代际改为单个 `BEGIN IMMEDIATE` 事务；批次或发布失败会回滚旧播放、周聚合、曲目—专辑关系和活动状态，非空旧 schema 无法安全升级时在任何删除前拒绝执行。

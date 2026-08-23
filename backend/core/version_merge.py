@@ -447,7 +447,7 @@ def confirm_track_group_candidate(
             if group_id == 0:
                 row = conn.execute(
                     """SELECT group_id FROM track_groups
-                       WHERE canonical_name = ? AND scope = ?""",
+                       WHERE canonical_name = ? AND scope = ? AND is_manual = 1""",
                     (original["track_name"], scope),
                 ).fetchone()
                 group_id = int(row["group_id"]) if row is not None else None

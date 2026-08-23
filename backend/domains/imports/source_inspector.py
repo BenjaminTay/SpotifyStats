@@ -14,7 +14,10 @@ import os
 from collections.abc import Iterable
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from backend.domains.imports.streaming_staging import StreamingImportStaging
 
 ACCOUNT_SOURCES: tuple[tuple[str, str, bool, str], ...] = (
     ("wrapped", "Wrapped2025.json", False, "Wrapped 年度数据"),
@@ -149,6 +152,7 @@ def _inspect_file(
 
     items = list(_record_items(payload))
     if streaming:
+        non_object_count = len(payload) - len(items)
         fingerprints = [record_fingerprint(item) for item in items]
         base["_record_fingerprints"] = set(fingerprints)
         base["_record_timestamps"] = {
@@ -172,6 +176,8 @@ def _inspect_file(
             base["errors"].append(f"{missing_timestamp} 条记录缺少 ts")
         if missing_duration:
             base["warnings"].append(f"{missing_duration} 条记录缺少 ms_played")
+        if non_object_count:
+            base["errors"].append(f"{non_object_count} 条记录不是 JSON 对象")
         if base["errors"]:
             base["status"] = "invalid"
     elif isinstance(payload, dict) and not items and not payload:
@@ -230,25 +236,99 @@ def inspect_data_sources(
     account_dir: str | os.PathLike[str],
     *,
     _retain_streaming_records: bool = False,
+    staging: StreamingImportStaging | None = None,
 ) -> dict[str, Any]:
     """Inspect the default export directories without mutating any state."""
 
     streaming_path = Path(streaming_dir)
     account_path = Path(account_dir)
     streaming_files: list[dict[str, Any]] = []
-    for pattern, source_key, label in (
-        ("Streaming_History_Audio_*.json", "streaming_audio", "音频播放历史"),
-        ("Streaming_History_Video_*.json", "streaming_video", "视频播放历史"),
-    ):
-        for path in sorted(streaming_path.glob(pattern)):
-            streaming_files.append(
-                _inspect_file(
-                    path,
-                    source_key=source_key,
-                    required=source_key == "streaming_audio",
-                    label=label,
-                    streaming=True,
+    if staging is None:
+        for pattern, source_key, label in (
+            ("Streaming_History_Audio_*.json", "streaming_audio", "音频播放历史"),
+            ("Streaming_History_Video_*.json", "streaming_video", "视频播放历史"),
+        ):
+            for path in sorted(streaming_path.glob(pattern)):
+                streaming_files.append(
+                    _inspect_file(
+                        path,
+                        source_key=source_key,
+                        required=source_key == "streaming_audio",
+                        label=label,
+                        streaming=True,
+                    )
                 )
+    else:
+        if staging.source_dir != streaming_path.resolve():
+            raise ValueError("staging source directory does not match streaming_dir")
+        for staged in staging.inspection_rows():
+            source_type = str(staged["source_type"])
+            source_key = f"streaming_{source_type}"
+            records = staged["records"]
+            fingerprints = [
+                str(item["fingerprint"]) for item in records if item["fingerprint"] is not None
+            ]
+            timestamps = {
+                str(item["fingerprint"]): item["timestamp"]
+                for item in records
+                if item["fingerprint"] is not None and isinstance(item["timestamp"], str)
+            }
+            parsed_timestamps = [
+                _parse_timestamp(item["timestamp"])
+                for item in records
+                if isinstance(item["timestamp"], str)
+            ]
+            valid_dates = [
+                parsed.date().isoformat() for parsed in parsed_timestamps if parsed is not None
+            ]
+            missing_timestamp = sum(
+                1 for item in records if item["is_object"] and not item["has_timestamp"]
+            )
+            missing_duration = sum(
+                1 for item in records if item["is_object"] and not item["has_duration"]
+            )
+            non_object_count = sum(1 for item in records if not item["is_object"])
+            invalid_timestamps = sum(
+                1
+                for item in records
+                if isinstance(item["timestamp"], str)
+                and _parse_timestamp(item["timestamp"]) is None
+            )
+            errors = [str(staged["error"])] if staged["error"] else []
+            staged_warnings: list[str] = []
+            if invalid_timestamps:
+                staged_warnings.append(f"{invalid_timestamps} 条记录的时间戳无法解析")
+            if missing_timestamp:
+                errors.append(f"{missing_timestamp} 条记录缺少 ts")
+            if missing_duration:
+                staged_warnings.append(f"{missing_duration} 条记录缺少 ms_played")
+            if non_object_count:
+                errors.append(f"{non_object_count} 条记录不是 JSON 对象")
+            record_count = int(staged["record_count"])
+            status = str(staged["status"])
+            if status == "ok" and record_count == 0:
+                status = "empty"
+                staged_warnings.append("文件可解析，但没有可用记录")
+            if errors:
+                status = "invalid"
+            streaming_files.append(
+                {
+                    "source_key": source_key,
+                    "label": "音频播放历史" if source_type == "audio" else "视频播放历史",
+                    "file_name": staged["file_name"],
+                    "required": source_type == "audio",
+                    "status": status,
+                    "size_bytes": int(staged["size_bytes"]),
+                    "record_count": record_count,
+                    "duplicate_record_count": len(fingerprints) - len(set(fingerprints)),
+                    "first_date": min(valid_dates) if valid_dates else None,
+                    "last_date": max(valid_dates) if valid_dates else None,
+                    "errors": errors,
+                    "warnings": staged_warnings,
+                    "_content_sha256": staged["sha256"],
+                    "_record_fingerprints": set(fingerprints),
+                    "_record_timestamps": timestamps,
+                }
             )
 
     account_files = [
@@ -338,6 +418,8 @@ def inspect_data_sources(
 def inspect_data_sources_for_planning(
     streaming_dir: str | os.PathLike[str],
     account_dir: str | os.PathLike[str],
+    *,
+    staging: StreamingImportStaging | None = None,
 ) -> dict[str, Any]:
     """Inspect source files and retain exact record identities for a read-only plan.
 
@@ -348,4 +430,5 @@ def inspect_data_sources_for_planning(
         streaming_dir,
         account_dir,
         _retain_streaming_records=True,
+        staging=staging,
     )

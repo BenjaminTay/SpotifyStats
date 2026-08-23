@@ -35,6 +35,7 @@ def test_import_maintenance_recovery_is_registered_and_scanned_before_search_sta
 ) -> None:
     from backend.core import job_queue as job_queue_module
     from backend.domains.metadata import artist_identity, track_credits
+    from backend.services import cover_cache_service
     from backend.services import (
         import_maintenance_recovery_service as recovery,
     )
@@ -48,7 +49,11 @@ def test_import_maintenance_recovery_is_registered_and_scanned_before_search_sta
         def register(self, job_type, _handler):
             events.append(f"register:{job_type}")
 
-        def start(self, _db_path):
+        def prepare(self, _db_path):
+            events.append("queue:prepare")
+
+        def start(self, _db_path, *, priority_job_types=()):
+            assert priority_job_types == (recovery.PLAYBACK_IMPORT_MAINTENANCE_JOB_TYPE,)
             events.append("queue:start")
 
         def enqueue_if_not_pending(self, job):
@@ -63,14 +68,25 @@ def test_import_maintenance_recovery_is_registered_and_scanned_before_search_sta
     monkeypatch.setattr(
         recovery,
         "enqueue_pending_import_maintenance",
-        lambda actual_queue: events.append("recovery:scan")
-        if actual_queue is queue
-        else pytest.fail("startup used a different queue"),
+        lambda actual_queue: (
+            events.append("recovery:scan")
+            if actual_queue is queue
+            else pytest.fail("startup used a different queue")
+        ),
     )
     monkeypatch.setattr(
         music_search,
         "enqueue_music_search_snapshot_rebuild",
         lambda: events.append("search:enqueue"),
+    )
+    monkeypatch.setattr(
+        cover_cache_service,
+        "enqueue_failed_cover_download_recovery",
+        lambda actual_queue: (
+            events.append("cover:recover")
+            if actual_queue is queue
+            else pytest.fail("startup used a different queue")
+        ),
     )
     ready_state = {
         "rebuild_status": "ready",
@@ -89,6 +105,9 @@ def test_import_maintenance_recovery_is_registered_and_scanned_before_search_sta
 
     asyncio.run(exercise_lifespan())
 
-    assert events.index("register:playback_import_maintenance") < events.index("queue:start")
-    assert events.index("queue:start") < events.index("recovery:scan")
-    assert events.index("recovery:scan") < events.index("search:enqueue")
+    assert events.index("register:playback_import_maintenance") < events.index("queue:prepare")
+    assert events.index("queue:prepare") < events.index("recovery:scan")
+    assert events.index("recovery:scan") < events.index("queue:start")
+    assert events.index("queue:start") < events.index("cover:recover")
+    assert events.index("cover:recover") < events.index("search:enqueue")
+    assert events.index("queue:start") < events.index("search:enqueue")

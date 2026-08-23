@@ -44,6 +44,21 @@ def _connection() -> sqlite3.Connection:
     )
     conn.execute("INSERT INTO track_albums(track_id, album_id) VALUES (101, 4)")
     conn.executemany(
+        """INSERT INTO plays(
+               play_id, ts, ts_year, ts_month, ts_week, ts_dow, ts_hour,
+               ts_date, platform, ms_played, track_id, source_album_id
+           ) VALUES (?, ?, 2026, 1, 1, 3, 0, '2026-01-01',
+                     'fixture', 180000, ?, ?)""",
+        [
+            (1, "2026-01-01T00:00:01Z", 101, 1),
+            (2, "2026-01-01T00:00:02Z", 101, 4),
+            (3, "2026-01-01T00:00:03Z", 102, 2),
+            (4, "2026-01-01T00:00:04Z", 103, 3),
+            (5, "2026-01-01T00:00:05Z", 104, 4),
+            (6, "2026-01-01T00:00:06Z", 105, 5),
+        ],
+    )
+    conn.executemany(
         """INSERT INTO spotify_album_meta(
                spotify_album_id, album_name, album_type, release_date, total_tracks
            ) VALUES (?, ?, ?, '2026-01-01', 10)""",
@@ -142,6 +157,17 @@ def _project_id(conn: sqlite3.Connection, name: str) -> int:
 
 def _add_exclusive_track_to_alpha(conn: sqlite3.Connection) -> None:
     conn.execute("INSERT INTO track_albums(track_id, album_id) VALUES (104, 2)")
+    next_play_id = int(
+        conn.execute("SELECT COALESCE(MAX(play_id), 0) + 1 FROM plays").fetchone()[0]
+    )
+    conn.execute(
+        """INSERT INTO plays(
+               play_id, ts, ts_year, ts_month, ts_week, ts_dow, ts_hour,
+               ts_date, platform, ms_played, track_id, source_album_id
+           ) VALUES (?, '2026-01-02T00:00:00Z', 2026, 1, 1, 4, 0,
+                     '2026-01-02', 'fixture', 180000, 104, 2)""",
+        (next_play_id,),
+    )
     conn.commit()
 
 
@@ -229,6 +255,52 @@ def test_targeted_rebuild_matches_full_rebuild_for_closed_impact() -> None:
     finally:
         targeted.close()
         full.close()
+
+
+def test_full_rebuild_ignores_stale_album_observations_but_preserves_manual_projects() -> None:
+    conn = _connection()
+    try:
+        manual_before = _project_rows(conn, 900)
+        conn.execute("INSERT INTO track_albums(track_id, album_id) VALUES (101, 3)")
+        conn.execute(
+            """INSERT INTO tracks(
+                   track_id, track_name, artist_id, album_id, spotify_track_id
+               ) VALUES (106, 'Orphan Observation', 1, 1, 'track-orphan')"""
+        )
+        conn.execute("INSERT INTO track_albums(track_id, album_id) VALUES (106, 3)")
+        conn.execute("DELETE FROM plays WHERE track_id=101")
+        conn.execute(
+            """INSERT INTO plays(
+                   play_id, ts, ts_year, ts_month, ts_week, ts_dow, ts_hour,
+                   ts_date, platform, ms_played, track_id, source_album_id
+               ) VALUES (1, '2026-01-01T00:00:00Z', 2026, 1, 1, 3, 0,
+                         '2026-01-01', 'fixture', 180000, 101, 3)"""
+        )
+        conn.commit()
+
+        album_projects.rebuild_album_projects(conn)
+
+        beta_id = _project_id(conn, "Beta")
+        assert {
+            int(row[0])
+            for row in conn.execute(
+                "SELECT track_id FROM album_project_tracks WHERE project_id=?",
+                (beta_id,),
+            )
+        } == {101, 103}
+        assert not conn.execute(
+            """SELECT 1
+               FROM album_project_tracks apt
+               JOIN album_projects ap ON ap.project_id=apt.project_id
+               WHERE apt.track_id=101 AND ap.canonical_name IN ('Alpha', 'Compilation')"""
+        ).fetchall()
+        assert not conn.execute("SELECT 1 FROM album_project_tracks WHERE track_id=106").fetchall()
+        assert _project_rows(conn, 900) == manual_before
+        assert conn.execute(
+            "SELECT 1 FROM track_albums WHERE track_id=101 AND album_id=4"
+        ).fetchone()
+    finally:
+        conn.close()
 
 
 @pytest.mark.parametrize(

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import sqlite3
 import tempfile
@@ -167,7 +168,7 @@ def test_failed_job_retries_and_records_attempt_count(temp_db):
         if len(calls) == 1:
             raise RuntimeError("temporary")
 
-    q = JobQueue(max_workers=1)
+    q = JobQueue(max_workers=1, retry_base_seconds=0.01, retry_max_seconds=0.02)
     q.register("flaky", flaky)
     q.start(temp_db)
     job = Job.create("flaky", "entity", "retry")
@@ -182,6 +183,78 @@ def test_failed_job_retries_and_records_attempt_count(temp_db):
     conn.close()
     assert calls == [1, 2]
     assert row == ("done", 2, None)
+
+
+def test_regular_retry_is_delayed_and_persisted_without_sleep(temp_db, monkeypatch):
+    scheduled: list[tuple[str, float]] = []
+
+    def fail(_job):
+        raise RuntimeError("rate limited")
+
+    q = JobQueue(max_workers=0, retry_base_seconds=4, retry_max_seconds=10)
+    q.register("flaky", fail)
+    q._db_path = temp_db
+    q._running = True
+    monkeypatch.setattr(
+        q,
+        "_schedule_delayed",
+        lambda job, delay: scheduled.append((job.job_id, delay)),
+    )
+    job = Job.create("flaky", "entity", "delayed")
+    q._insert_db_job(job)
+
+    assert q._process_job(job) is True
+
+    conn = sqlite3.connect(temp_db)
+    row = conn.execute(
+        "SELECT status, attempts, error, payload_json FROM background_jobs WHERE job_id=?",
+        (job.job_id,),
+    ).fetchone()
+    conn.close()
+    payload = json.loads(row[3])
+    assert scheduled == [(job.job_id, 4)]
+    assert row[:3] == ("pending", 1, "rate limited")
+    assert payload["__job_queue_next_attempt_at"] == job.next_attempt_at
+
+    recovered = JobQueue(max_workers=0)
+    recovered.prepare(temp_db)
+    assert len(recovered._startup_jobs) == 1
+    assert recovered._startup_jobs[0].next_attempt_at == job.next_attempt_at
+    assert "__job_queue_next_attempt_at" not in recovered._startup_jobs[0].payload
+
+
+def test_retry_delay_is_exponential_and_bounded():
+    q = JobQueue(retry_base_seconds=3, retry_max_seconds=10)
+
+    assert [q._retry_delay(attempt) for attempt in range(1, 6)] == [3, 6, 10, 10, 10]
+
+
+def test_startup_priority_retry_stays_inside_barrier_without_delay(temp_db, monkeypatch):
+    calls: list[int] = []
+    delayed: list[float] = []
+
+    def flaky(job):
+        calls.append(job.attempts)
+        if job.attempts == 1:
+            raise RuntimeError("temporary")
+
+    q = JobQueue(max_workers=0, retry_base_seconds=60, retry_max_seconds=60)
+    q.register("maintenance", flaky)
+    q.prepare(temp_db)
+    job = Job.create("maintenance", "entity", "priority")
+    q.enqueue(job)
+    monkeypatch.setattr(q, "_schedule_delayed", lambda _job, delay: delayed.append(delay))
+
+    q.start(temp_db, priority_job_types=("maintenance",))
+    q.stop()
+
+    assert calls == [1, 2]
+    assert delayed == []
+    conn = sqlite3.connect(temp_db)
+    assert conn.execute(
+        "SELECT status, attempts FROM background_jobs WHERE job_id=?", (job.job_id,)
+    ).fetchone() == ("done", 2)
+    conn.close()
 
 
 def test_start_recovers_pending_and_orphan_running_jobs(temp_db):
@@ -229,6 +302,62 @@ def test_start_recovers_pending_and_orphan_running_jobs(temp_db):
     assert rows == [
         ("orphan-job", "done", 2, None),
         ("pending-job", "done", 1, None),
+    ]
+
+
+def test_startup_priority_job_finishes_before_persisted_generic_workers_start(temp_db):
+    conn = sqlite3.connect(temp_db)
+    conn.executemany(
+        """INSERT INTO background_jobs(
+               job_id, job_type, entity_type, entity_id, payload_json,
+               status, created_at, attempts
+           ) VALUES (?, ?, 'entity', ?, '{}', 'pending', ?, 0)""",
+        [
+            ("old-cover", "cover_download", "cover", "2026-01-01T00:00:00+00:00"),
+            ("old-search", "search_rebuild", "search", "2026-01-02T00:00:00+00:00"),
+        ],
+    )
+    conn.commit()
+    conn.close()
+
+    events: list[str] = []
+    generic_done = threading.Event()
+
+    def maintenance_handler(_job):
+        events.append("maintenance:start")
+        time.sleep(0.05)
+        events.append("maintenance:done")
+
+    def generic_handler(job):
+        events.append(job.entity_id)
+        if "cover" in events and "search" in events:
+            generic_done.set()
+
+    q = JobQueue(max_workers=3)
+    q.register("playback_import_maintenance", maintenance_handler)
+    q.register("cover_download", generic_handler)
+    q.register("search_rebuild", generic_handler)
+    q.prepare(temp_db)
+    maintenance_job = Job.create(
+        "playback_import_maintenance",
+        "playback_import_run",
+        "import",
+    )
+    q.enqueue(maintenance_job)
+    q.start(temp_db, priority_job_types=("playback_import_maintenance",))
+    assert generic_done.wait(timeout=2)
+    q.stop()
+
+    assert events[:2] == ["maintenance:start", "maintenance:done"]
+    assert set(events[2:]) == {"cover", "search"}
+
+    conn = sqlite3.connect(temp_db)
+    rows = conn.execute("SELECT job_type, status FROM background_jobs ORDER BY job_type").fetchall()
+    conn.close()
+    assert rows == [
+        ("cover_download", "done"),
+        ("playback_import_maintenance", "done"),
+        ("search_rebuild", "done"),
     ]
 
 

@@ -236,8 +236,13 @@ CREATE TABLE IF NOT EXISTS track_groups (
     scope             TEXT NOT NULL DEFAULT 'recording' CHECK(scope IN ('recording', 'composition')),
     parent_group_id   INTEGER REFERENCES track_groups(group_id),
     is_manual         INTEGER NOT NULL DEFAULT 0,
+    automatic_spotify_track_id TEXT,
+    automatic_artist_id INTEGER,
     created_at        TEXT DEFAULT (datetime('now')),
-    UNIQUE(canonical_name, scope)
+    CHECK(
+        is_manual = 1
+        OR (automatic_spotify_track_id IS NULL) = (automatic_artist_id IS NULL)
+    )
 );
 
 CREATE TABLE IF NOT EXISTS track_group_members (

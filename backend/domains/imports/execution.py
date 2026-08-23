@@ -1,4 +1,4 @@
-"""Resolve a proven import relationship into a safe Phase B action."""
+"""Resolve a proven import relationship into a safe write action."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from backend.domains.imports.incremental import ImportPlan, ImportRelation
 
 
 class ImportExecutionAction(str, Enum):
-    """Phase B actions; derived maintenance remains full for every write."""
+    """Playback write actions chosen before scoped derived maintenance."""
 
     NOOP = "noop"
     APPEND = "append"
@@ -39,10 +39,10 @@ def resolve_import_execution(
     requested_mode: str = "auto",
     confirm_plan: bool = False,
 ) -> ImportExecutionDecision:
-    """Choose only actions whose safety is proven by Phase B evidence.
+    """Choose only actions whose safety is proven by persisted dataset evidence.
 
     Explicit ``replace`` may resolve a risky relationship after confirmation.
-    Explicit ``append`` never weakens the account/baseline/tail proof: Phase B
+    Explicit ``append`` never weakens the account/baseline/tail proof: the
     does not use a confirmation checkbox as permission to guess.
     """
 
@@ -89,9 +89,9 @@ def resolve_import_execution(
         if relation is ImportRelation.BASELINE_REQUIRED:
             message = "当前数据库没有完整指纹基线，必须先执行完整替换"
         elif relation is ImportRelation.DIFFERENT_ACCOUNT:
-            message = "账号身份不同，Phase B 禁止追加到当前数据库"
+            message = "账号身份不同，系统禁止追加到当前数据库"
         else:
-            message = "Phase B 不能证明该输入适合安全追加，请使用完整替换或补齐证据"
+            message = "系统不能证明该输入适合安全追加，请使用完整替换或补齐证据"
         return ImportExecutionDecision(ImportExecutionAction.BLOCKED, message)
 
     if relation is ImportRelation.BASELINE_REQUIRED:

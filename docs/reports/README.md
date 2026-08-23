@@ -6,6 +6,7 @@
 
 ### 播放统计与详情
 
+- [`2026-08-23-incremental-import-final-acceptance.md`](2026-08-23-incremental-import-final-acceptance.md)
 - [`2026-08-23-incremental-import-phase-e.md`](2026-08-23-incremental-import-phase-e.md)
 - [`2026-08-23-incremental-import-phase-d2.md`](2026-08-23-incremental-import-phase-d2.md)
 - [`2026-08-23-incremental-import-phase-d1.md`](2026-08-23-incremental-import-phase-d1.md)

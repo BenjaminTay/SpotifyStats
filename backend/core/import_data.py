@@ -8,6 +8,7 @@ import os
 import re
 import sqlite3
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any, Literal
 from uuid import uuid4
 
@@ -18,6 +19,7 @@ from backend.domains.imports.incremental import (
     dataset_digest,
 )
 from backend.domains.imports.source_inspector import record_fingerprint
+from backend.domains.imports.streaming_staging import StreamingImportStaging
 
 from .db import build_aggregations, ensure_schema, get_db, init_db
 from .utils import classify_platform, convert_to_local_time
@@ -337,6 +339,115 @@ def _delete_staged_reconcile_rows(conn: sqlite3.Connection, expected_count: int)
         raise RuntimeError("reconcile deletion count changed after the removal scope was validated")
 
 
+def _synchronize_active_track_album_observations(
+    conn: sqlite3.Connection,
+    affected_track_ids: set[int] | None = None,
+) -> None:
+    """Make automatic track/album observations match the active fact set.
+
+    ``track_albums`` has no manual provenance and is populated from streaming
+    imports.  Treating it as an append-only catalog leaks removed reconcile
+    observations into every consumer that joins through ``track_id``.  Rebuild
+    the small distinct projection inside the same transaction that publishes
+    ``plays`` so readers can never observe facts and relationships from
+    different generations.  Reconcile supplies an exact affected-track scope;
+    replace rebuilds the full active projection.
+
+    ``tracks.album_id`` remains the stable primary container while it is still
+    supported by an active play.  If that relationship disappeared, select the
+    most recently observed active album deterministically.  Manual Album
+    Project membership lives in separate ``album_project_*`` tables and is not
+    touched here.
+    """
+
+    conn.execute("DROP TABLE IF EXISTS temp.active_track_album_scope")
+    conn.execute("DROP TABLE IF EXISTS temp.active_track_album_observation")
+    conn.execute(
+        """CREATE TEMP TABLE active_track_album_scope(
+               track_id INTEGER PRIMARY KEY
+           ) WITHOUT ROWID"""
+    )
+    if affected_track_ids is None:
+        conn.execute(
+            """INSERT INTO active_track_album_scope(track_id)
+               SELECT track_id FROM tracks"""
+        )
+    else:
+        conn.executemany(
+            "INSERT INTO active_track_album_scope(track_id) VALUES (?)",
+            ((track_id,) for track_id in sorted(affected_track_ids)),
+        )
+    conn.execute(
+        """CREATE TEMP TABLE active_track_album_observation(
+               track_id INTEGER NOT NULL,
+               album_id INTEGER NOT NULL,
+               last_ts TEXT NOT NULL,
+               PRIMARY KEY(track_id, album_id)
+           ) WITHOUT ROWID"""
+    )
+    conn.execute(
+        """INSERT INTO active_track_album_observation(track_id, album_id, last_ts)
+           SELECT p.track_id, p.source_album_id, MAX(p.ts)
+           FROM plays p
+           JOIN active_track_album_scope scope ON scope.track_id=p.track_id
+           WHERE p.source_album_id IS NOT NULL
+           GROUP BY p.track_id, p.source_album_id"""
+    )
+    conn.execute(
+        """DELETE FROM track_albums
+           WHERE EXISTS (
+               SELECT 1 FROM active_track_album_scope scope
+               WHERE scope.track_id=track_albums.track_id
+           )
+             AND NOT EXISTS (
+               SELECT 1
+               FROM active_track_album_observation active
+               WHERE active.track_id=track_albums.track_id
+                 AND active.album_id=track_albums.album_id
+           )"""
+    )
+    conn.execute(
+        """INSERT OR IGNORE INTO track_albums(track_id, album_id)
+           SELECT track_id, album_id FROM active_track_album_observation"""
+    )
+    conn.execute(
+        """UPDATE tracks
+           SET album_id=(
+               SELECT active.album_id
+               FROM active_track_album_observation active
+               WHERE active.track_id=tracks.track_id
+               ORDER BY active.last_ts DESC, active.album_id ASC
+               LIMIT 1
+           )
+           WHERE EXISTS (
+               SELECT 1 FROM active_track_album_scope scope
+               WHERE scope.track_id=tracks.track_id
+           )
+             AND EXISTS (
+               SELECT 1 FROM active_track_album_observation active
+               WHERE active.track_id=tracks.track_id
+             )
+             AND NOT EXISTS (
+               SELECT 1 FROM active_track_album_observation active
+               WHERE active.track_id=tracks.track_id
+                 AND active.album_id=tracks.album_id
+           )"""
+    )
+    conn.execute(
+        """UPDATE tracks
+           SET album_id=NULL
+           WHERE EXISTS (
+               SELECT 1 FROM active_track_album_scope scope
+               WHERE scope.track_id=tracks.track_id
+           )
+             AND NOT EXISTS (
+               SELECT 1 FROM plays p WHERE p.track_id=tracks.track_id
+           )"""
+    )
+    conn.execute("DROP TABLE active_track_album_observation")
+    conn.execute("DROP TABLE active_track_album_scope")
+
+
 def import_data(
     data_dir: str | None = None,
     progress_callback=None,
@@ -352,6 +463,7 @@ def import_data(
     expected_previous_digest: str | None = None,
     removed_identities: frozenset[RecordIdentity] | None = None,
     before_final_commit: Callable[[sqlite3.Connection, dict[str, Any]], None] | None = None,
+    staging: StreamingImportStaging | None = None,
 ) -> dict[str, Any]:
     """Run the ETL with deterministic rollback and connection cleanup."""
     connection_holder: list[sqlite3.Connection] = []
@@ -371,6 +483,7 @@ def import_data(
             expected_previous_digest=expected_previous_digest,
             removed_identities=removed_identities,
             before_final_commit=before_final_commit,
+            staging=staging,
             connection_holder=connection_holder,
         )
     except Exception:
@@ -397,6 +510,7 @@ def _import_data_impl(
     expected_previous_digest: str | None = None,
     removed_identities: frozenset[RecordIdentity] | None = None,
     before_final_commit: Callable[[sqlite3.Connection, dict[str, Any]], None] | None = None,
+    staging: StreamingImportStaging | None = None,
     connection_holder: list[sqlite3.Connection] | None = None,
 ) -> dict[str, Any]:
     """Import all JSON streaming history files into the SQLite database.
@@ -439,27 +553,29 @@ def _import_data_impl(
     if data_dir is None:
         data_dir = DATA_DIR
 
-    json_files = sorted(glob.glob(os.path.join(data_dir, "Streaming_History_Audio_*.json")))
+    if staging is not None:
+        if staging.source_dir != Path(data_dir).resolve():
+            raise ValueError("staging source directory does not match data_dir")
+        staging.verify_source_manifest()
+        json_files = staging.file_names("audio")
+        video_files = staging.file_names("video")
+    else:
+        json_files = sorted(glob.glob(os.path.join(data_dir, "Streaming_History_Audio_*.json")))
+        video_files = sorted(glob.glob(os.path.join(data_dir, "Streaming_History_Video_*.json")))
 
     if not json_files:
         raise FileNotFoundError(f"No Streaming_History_Audio_*.json files found in {data_dir}")
 
-    # Collect video files too
-    video_files = sorted(glob.glob(os.path.join(data_dir, "Streaming_History_Video_*.json")))
-
-    # Pre-count total records for accurate progress (fast — just json.load)
+    # A staged request already has exact counts from its single JSON parse.
     if progress_callback:
         progress_callback("计算总记录数...", 0.0)
-    total_records_est = 0
-    file_record_counts = {}
-    all_files = list(json_files)
-    if video_files:
-        all_files += video_files
-    for filepath in all_files:
-        with open(filepath, encoding="utf-8") as f:
-            records = json.load(f)
-            file_record_counts[filepath] = len(records)
-            total_records_est += len(records)
+    if staging is not None:
+        total_records_est = staging.record_count()
+    else:
+        total_records_est = 0
+        for filepath in [*json_files, *video_files]:
+            with open(filepath, encoding="utf-8") as f:
+                total_records_est += len(json.load(f))
 
     # Ensure tables exist
     init_db()
@@ -532,8 +648,11 @@ def _import_data_impl(
     inserted_video_records: set[str] = set()
 
     for file_idx, filepath in enumerate(json_files):
-        with open(filepath, encoding="utf-8") as f:
-            records = json.load(f)
+        if staging is not None:
+            records = staging.records_for_file(filepath)
+        else:
+            with open(filepath, encoding="utf-8") as f:
+                records = json.load(f)
 
         plays_batch: list[tuple] = []
 
@@ -640,8 +759,11 @@ def _import_data_impl(
     video_total = 0
     if video_files:
         for file_idx, filepath in enumerate(video_files):
-            with open(filepath, encoding="utf-8") as f:
-                records = json.load(f)
+            if staging is not None:
+                records = staging.records_for_file(filepath)
+            else:
+                with open(filepath, encoding="utf-8") as f:
+                    records = json.load(f)
 
             plays_batch: list[tuple] = []
             for rec in records:
@@ -739,6 +861,19 @@ def _import_data_impl(
     if mode == "reconcile":
         _delete_staged_reconcile_rows(conn, len(removed_impact_rows))
 
+    if mode == "replace":
+        _synchronize_active_track_album_observations(conn)
+    elif mode == "reconcile":
+        affected_track_ids = {
+            int(track_id)
+            for track_id in [
+                *(row.get("track_id") for row in removed_impact_rows),
+                *track_cache.values(),
+            ]
+            if track_id is not None
+        }
+        _synchronize_active_track_album_observations(conn, affected_track_ids)
+
     active_records, first_ts, latest_ts, active_digest = _active_dataset_summary(conn)
     inserted_records = total_records + video_total
     input_dataset_digest = dataset_digest(
@@ -799,6 +934,10 @@ def _import_data_impl(
     }
     if mode == "reconcile":
         result["_removed_impact_rows"] = removed_impact_rows
+    if staging is not None:
+        # Recheck at the transaction boundary as well as before DB setup. If a
+        # confirmed source file changed during ETL, rollback all playback DML.
+        staging.verify_source_manifest()
     if before_final_commit is not None:
         before_final_commit(conn, result)
         result["finalized_in_transaction"] = True

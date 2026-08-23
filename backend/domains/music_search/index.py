@@ -242,8 +242,182 @@ def _track_group_map(
     }
 
 
+def _active_music_entity_ids(
+    conn: sqlite3.Connection,
+) -> tuple[set[int], set[int], set[int]]:
+    """Return the local entity closure reachable from the active play facts.
+
+    Import reconciliation intentionally preserves durable metadata and manual
+    governance rows.  Candidate search, however, represents the active
+    playback dataset and must not resurrect dimensions that are only retained
+    for audit/history after their final play was removed.
+    """
+    track_ids = {
+        int(row[0])
+        for row in conn.execute(
+            "SELECT DISTINCT track_id FROM plays WHERE track_id IS NOT NULL"
+        ).fetchall()
+    }
+    album_ids = {
+        int(row[0])
+        for row in conn.execute(
+            """SELECT source_album_id AS album_id
+               FROM plays WHERE source_album_id IS NOT NULL
+               UNION
+               SELECT t.album_id
+               FROM plays p JOIN tracks t ON t.track_id=p.track_id
+               WHERE t.album_id IS NOT NULL
+                 AND (
+                   NOT EXISTS (
+                     SELECT 1 FROM plays current
+                     WHERE current.track_id=t.track_id
+                       AND current.source_album_id IS NOT NULL
+                   )
+                   OR EXISTS (
+                     SELECT 1 FROM plays current
+                     WHERE current.track_id=t.track_id
+                       AND current.source_album_id=t.album_id
+                   )
+                 )"""
+        ).fetchall()
+    }
+    if _table_exists(conn, "track_albums"):
+        album_ids.update(
+            int(row[0])
+            for row in conn.execute(
+                """SELECT DISTINCT ta.album_id
+                   FROM track_albums ta
+                   WHERE EXISTS (SELECT 1 FROM plays p WHERE p.track_id=ta.track_id)
+                     AND (
+                       NOT EXISTS (
+                         SELECT 1 FROM plays p
+                         WHERE p.track_id=ta.track_id AND p.source_album_id IS NOT NULL
+                       )
+                       OR EXISTS (
+                         SELECT 1 FROM plays p
+                         WHERE p.track_id=ta.track_id AND p.source_album_id=ta.album_id
+                       )
+                     )"""
+            ).fetchall()
+        )
+
+    artist_ids = {
+        int(row[0])
+        for row in conn.execute(
+            """SELECT t.artist_id
+               FROM plays p JOIN tracks t ON t.track_id=p.track_id
+               UNION
+               SELECT al.artist_id
+               FROM albums al
+               WHERE al.album_id IN (
+                   SELECT source_album_id FROM plays WHERE source_album_id IS NOT NULL
+                   UNION
+                   SELECT t.album_id
+                   FROM plays p JOIN tracks t ON t.track_id=p.track_id
+                   WHERE t.album_id IS NOT NULL
+                     AND (
+                       NOT EXISTS (
+                         SELECT 1 FROM plays current
+                         WHERE current.track_id=t.track_id
+                           AND current.source_album_id IS NOT NULL
+                       )
+                       OR EXISTS (
+                         SELECT 1 FROM plays current
+                         WHERE current.track_id=t.track_id
+                           AND current.source_album_id=t.album_id
+                       )
+                     )
+               )"""
+        ).fetchall()
+    }
+    if _table_exists(conn, "track_artists"):
+        artist_ids.update(
+            int(row[0])
+            for row in conn.execute(
+                """SELECT DISTINCT ta.artist_id
+                   FROM track_artists ta
+                   JOIN plays p ON p.track_id=ta.track_id"""
+            ).fetchall()
+        )
+    return track_ids, album_ids, artist_ids
+
+
+def _active_album_project_ids(
+    conn: sqlite3.Connection,
+    *,
+    track_ids: set[int],
+    album_ids: set[int],
+) -> set[int]:
+    project_ids: set[int] = set()
+    if track_ids and _table_exists(conn, "album_project_tracks"):
+        project_ids.update(
+            int(row[0])
+            for row in conn.execute(
+                """SELECT DISTINCT apt.project_id
+                   FROM album_project_tracks apt
+                   JOIN plays p ON p.track_id=apt.track_id"""
+            ).fetchall()
+        )
+    if album_ids and _table_exists(conn, "album_project_albums"):
+        project_ids.update(
+            int(row[0])
+            for row in conn.execute(
+                """SELECT DISTINCT apa.project_id
+                   FROM album_project_albums apa
+                   WHERE apa.album_id IN (
+                       SELECT source_album_id FROM plays WHERE source_album_id IS NOT NULL
+                       UNION
+                       SELECT t.album_id
+                       FROM plays p JOIN tracks t ON t.track_id=p.track_id
+                       WHERE t.album_id IS NOT NULL
+                         AND (
+                           NOT EXISTS (
+                             SELECT 1 FROM plays current
+                             WHERE current.track_id=t.track_id
+                               AND current.source_album_id IS NOT NULL
+                           )
+                           OR EXISTS (
+                             SELECT 1 FROM plays current
+                             WHERE current.track_id=t.track_id
+                               AND current.source_album_id=t.album_id
+                           )
+                         )
+                       UNION
+                       SELECT ta.album_id
+                       FROM track_albums ta
+                       WHERE EXISTS (SELECT 1 FROM plays p WHERE p.track_id=ta.track_id)
+                         AND (
+                           NOT EXISTS (
+                             SELECT 1 FROM plays p
+                             WHERE p.track_id=ta.track_id AND p.source_album_id IS NOT NULL
+                           )
+                           OR EXISTS (
+                             SELECT 1 FROM plays p
+                             WHERE p.track_id=ta.track_id AND p.source_album_id=ta.album_id
+                           )
+                         )
+                   )"""
+            ).fetchall()
+        )
+    return project_ids
+
+
 def build_music_search_documents(conn: sqlite3.Connection) -> list[dict[str, Any]]:
     identity_map = get_artist_identity_map(conn)
+    active_track_ids, active_album_ids, active_artist_ids = _active_music_entity_ids(conn)
+    active_project_ids = _active_album_project_ids(
+        conn,
+        track_ids=active_track_ids,
+        album_ids=active_album_ids,
+    )
+    if active_project_ids:
+        active_artist_ids.update(
+            int(row["artist_id"])
+            for row in conn.execute(
+                "SELECT project_id, artist_id FROM album_projects WHERE artist_id IS NOT NULL"
+            ).fetchall()
+            if int(row["project_id"]) in active_project_ids
+        )
     artist_rows = {
         int(row["artist_id"]): dict(row)
         for row in conn.execute(
@@ -254,7 +428,8 @@ def build_music_search_documents(conn: sqlite3.Connection) -> list[dict[str, Any
     for raw_id, row in artist_rows.items():
         resolution = identity_map.get(raw_id)
         canonical_id = resolution.canonical_artist_id if resolution else raw_id
-        raw_names_by_canonical[canonical_id].append(str(row["artist_name"]))
+        if raw_id in active_artist_ids or canonical_id in active_artist_ids:
+            raw_names_by_canonical[canonical_id].append(str(row["artist_name"]))
 
     credits_by_track: dict[int, list[tuple[int, str]]] = defaultdict(list)
     for credit in get_effective_track_credits(conn):
@@ -276,9 +451,30 @@ def build_music_search_documents(conn: sqlite3.Connection) -> list[dict[str, Any
 
     documents: list[dict[str, Any]] = []
     track_rows = conn.execute(
-        """SELECT t.track_id, t.track_name, t.album_id, t.artist_id,
-                  al.album_name
-           FROM tracks t
+        """WITH active_tracks AS (
+               SELECT t.track_id, t.track_name, t.artist_id,
+                      CASE
+                        WHEN EXISTS (
+                          SELECT 1 FROM plays p
+                          WHERE p.track_id=t.track_id AND p.source_album_id=t.album_id
+                        ) THEN t.album_id
+                        ELSE COALESCE(
+                          (
+                            SELECT p.source_album_id
+                            FROM plays p
+                            WHERE p.track_id=t.track_id AND p.source_album_id IS NOT NULL
+                            GROUP BY p.source_album_id
+                            ORDER BY COUNT(*) DESC, p.source_album_id
+                            LIMIT 1
+                          ),
+                          t.album_id
+                        )
+                      END AS album_id
+               FROM tracks t
+               WHERE EXISTS (SELECT 1 FROM plays p WHERE p.track_id=t.track_id)
+           )
+           SELECT t.track_id, t.track_name, t.album_id, t.artist_id, al.album_name
+           FROM active_tracks t
            LEFT JOIN albums al ON al.album_id=t.album_id
            ORDER BY t.track_id"""
     ).fetchall()
@@ -338,9 +534,14 @@ def build_music_search_documents(conn: sqlite3.Connection) -> list[dict[str, Any
                 )
             )
 
-    for row in conn.execute(
-        "SELECT album_id, album_name, artist_id FROM albums ORDER BY album_id"
-    ).fetchall():
+    album_rows = [
+        row
+        for row in conn.execute(
+            "SELECT album_id, album_name, artist_id FROM albums ORDER BY album_id"
+        ).fetchall()
+        if int(row["album_id"]) in active_album_ids
+    ]
+    for row in album_rows:
         album_id = int(row["album_id"])
         raw_artist_id = int(row["artist_id"])
         resolution = identity_map.get(raw_artist_id)
@@ -371,15 +572,18 @@ def build_music_search_documents(conn: sqlite3.Connection) -> list[dict[str, Any
             )
         )
 
-    if _table_exists(conn, "album_projects"):
-        for row in conn.execute(
+    if _table_exists(conn, "album_projects") and active_project_ids:
+        project_rows = conn.execute(
             """SELECT ap.project_id, ap.canonical_name, ap.artist_id,
                       ap.primary_album_id, ar.artist_name
                FROM album_projects ap
                LEFT JOIN artists ar ON ar.artist_id=ap.artist_id
                WHERE ap.include_in_charts=1
                ORDER BY ap.project_id"""
-        ).fetchall():
+        ).fetchall()
+        for row in project_rows:
+            if int(row["project_id"]) not in active_project_ids:
+                continue
             project_id = int(row["project_id"])
             raw_artist_id = int(row["artist_id"]) if row["artist_id"] else None
             resolution = identity_map.get(raw_artist_id) if raw_artist_id else None

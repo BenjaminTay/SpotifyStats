@@ -361,7 +361,7 @@ export function ImportProgressCard({
               {stalePlan
                 ? '旧确认已失效；请重新运行上方检查，查看最新记录数量、关系和策略。'
                 : planNeedsConfirmation
-                ? '播放事实尚未修改；Phase B 无法自动判定，请选择验证尾部追加或完整替换。'
+                ? '播放事实尚未修改；系统无法自动判定，请选择验证尾部追加或完整替换。'
                 : '数据库尚未修改；再次点击按钮表示你已核对这些警告并继续。'}
             </p>
           )}
@@ -404,7 +404,7 @@ export function ImportProgressCard({
             </button>
           </div>
           <p className="text-[11px] text-amber-800 dark:text-amber-200">
-            追加只接受可证明的尾部记录；完整替换前会创建数据库快照。两种写入后的榜单和其他派生数据暂时都按完整维护流程更新。
+            追加只接受可证明的尾部记录；完整替换前会创建数据库快照。派生维护会优先复用兼容结果，无法证明影响范围或依赖不兼容时自动全量重建。
           </p>
         </div>
       )}

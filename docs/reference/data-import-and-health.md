@@ -26,7 +26,8 @@
 - 预检还会计算串流文件 SHA-256，识别完全重复文件；同一文件内的完全重复记录会计入 `duplicate_record_count`。
 - `date_overlaps` 只表示两个文件的日期区间相交，不直接等同于重复播放；每一对会附带 `shared_record_count`，用于区分“边界日期相交但记录不重复”和“确有共同记录”。
 - 完全重复文件会进入 `blockers`；文件内重复记录、日期范围重叠和跨文件共同记录进入 `warnings`。导入时只对完全相同的记录自动去重，保留同一内容在稳定文件顺序中的第一次出现；日期重叠不会被当成重复，也不会自动合并。源 JSON 永远不会被修改。
-- `POST /api/import/streaming` 会在后台任务真正创建快照前再次执行这份预检：有 `blockers` 时任务状态为 `blocked`；只有 `warnings` 且未传 `confirm_warnings=true` 时状态为 `needs_confirmation`；确认后才会进入计划执行。
+- 预检把串流记录一次解析到权限受限的系统临时 SQLite staging。GET 返回的确认标识可在 15 分钟、最多 3 份的进程内缓存中复用；POST 无论复用还是新建，都让关系检测、计数和 ETL 共享同一 staging，不再重复解析源 JSON。staging 不进入主库或 Git，并在阻断、过期、完成、异常或进程退出时清理。
+- `POST /api/import/streaming` 会在后台任务真正创建快照前再次执行这份预检：有 `blockers` 时任务状态为 `blocked`；只有 `warnings` 且未传 `confirm_warnings=true` 时状态为 `needs_confirmation`；确认后才会进入计划执行。源文件集合与 SHA-256 会在 ETL 前和事实提交边界再次核对，预检后发生任何漂移都回滚并要求重新检查。
 
 增量导入 Phase A–E 使用以下证据与执行规则：
 
@@ -39,15 +40,16 @@
 - 同账号输入同时存在新增和移除、且时间包络覆盖现有首尾时，auto 只会提出需要确认的 `reconciled_snapshot`；确认标识仍绑定输入文件和当前基线。确认后在一个写事务中精确删除旧身份、插入新增身份，并核对最终 count/digest 等于输入快照。时间包络或账号证据不足时不会自动把缺失记录解释为删除。
 - 完全无共同记录的晚期数据包不会仅凭固定 Account Data 目录中的账号文件自动追加，因为账号文件未必与本次串流包同源。Settings 可让用户明确选择“作为尾部增量验证”；后端会重新按 append 证据 fail closed，验证失败不写入，也不会删除历史。
 - 警告确认和完整替换确认必须携带预检返回的 `confirmation_token`。这个标识绑定输入记录、文件检查结果、账号证据和当前活动数据集；文件或数据库在两次请求之间变化时，旧确认失效并要求重新核对。
-- `append` 不会把输入中缺失的旧记录解释为删除，也不能绕过指纹基线、账号身份和尾部证据；证据不足时 Phase B 阻断追加。`replace` 对风险关系要求 `confirm_plan=true`，确认后仍先创建 SQLite 快照再完整替换。
+- `append` 不会把输入中缺失的旧记录解释为删除，也不能绕过指纹基线、账号身份和尾部证据；证据不足时系统阻断追加。`replace` 对风险关系要求 `confirm_plan=true`，确认后仍先创建 SQLite 快照再完整替换。
 - noop 只更新导入状态摘要并记录运行结果，不提升播放或派生 revision，不重建 Billboard、搜索快照、年度结果或封面任务。
 - append 完成基础事实发布后，会在同一事务生成并持久化 `PlaybackChangeSet`。Spotify 曲目、专辑、艺人元数据和封面只处理相关实体，同时从全局缺失事实中有界抽取历史失败项重试；年度播放分区只从最早受影响年份向后更新，旧年度仍可复用。
 - 已证明的尾部追加会为 Billboard 扩展旧、新连续播放链和跨周时长贡献闭包，只重算受影响完整周；非尾部变化、闭包证据不足、依赖不兼容或受影响周超过 25% 时回退完整聚合。四张周聚合在影子表中共同校验并原子发布。
 - 搜索候选仍整体重建。migration 42 为六套精确搜索上下文增加稳定策略键、来源代际、数据集 digest、基础 snapshot、构建策略与依赖 digest，并保存按候选实体键归一化的周榜账本；第一次兼容构建仍使用 `shared_full_snapshot_rebuild`，两个阈值作用域各自复用逻辑帧并在三个 merge level 间共享计算，六套全部成功后才共同激活。
+- reconcile 和 replace 会在播放事实发布事务内同步活动 `track_albums`：已删除事实留下的专辑观察不会继续参与播放统计、自动 Album Project 或搜索；单次播放优先按 `plays.source_album_id` 归属，避免同曲多专辑关系产生重复 fan-out。自动 Track Group 使用 Spotify recording ID + artist ID 的稳定身份，同名不同艺人可以并存，人工组继续独立治理。
 - 已证明的尾部追加如果完全落在同一个当前开放榜单周、没有影响任何已发布完整周，并且六套基础 snapshot、周账本、候选与统计语义依赖全部兼容，则复制旧上下文和周账本，只把新增逻辑播放贡献应用到歌曲、L1 专辑、L2/L3 Album Project 和有效署名艺人的 lifetime 指标，再整组六套原子激活。
 - 精确尾部追加若恰好跨一个开放周，则有界读取新完成周及必要的前后连续播放链，重建 fixed/dynamic、L1/L2/L3 的歌曲、专辑和艺人周账本；旧历史周直接复用，当前开放周仍不发布。合并账本后按稳定实体 ID 全局重算 peak、在榜周数与 Power score/rank，同名不同 ID 的实体不会合并。
 - 两条搜索 delta 路径执行前后都会复核基础 snapshot、活动事实代际、候选与统计依赖，报告策略为 `incremental_snapshot_delta`，且不扫描完整 lifetime 播放事实。多周跳跃、存在删除/历史修正、缺少兼容 lineage/账本、依赖变化、合并关闭、闭包超过 100,000 行或其他成本门禁失败时安全回退 D1 `shared_full_snapshot_rebuild`。
-- Album Project 目前仍完整重建，但自动推断项目会按稳定语义键复用 ID，并精确替换 membership，避免相同输入重建导致搜索实体身份漂移。当前不能把基础追加、scoped 元数据、Billboard 局部耗时或搜索 snapshot delta 等同于整个导入任务耗时；Album Project 定向维护仍待后续阶段。
+- Album Project 在无删除、实际元数据影响闭包精确且规模未超门限时定向重建；存在删除、闭包不精确、依赖不兼容或成本过高时自动全量回退。自动推断项目按稳定语义键复用 ID 并精确替换 membership，manual 与未受影响项目不变。持久曲目、专辑和艺人维表可为人工治理与审计保留历史行，但自动 Album Project 与搜索候选只消费当前播放事实可达闭包，历史 reconcile 或完整替换淘汰的旧实体不会继续作为活动候选。
 
 检查不会把文件导入数据库，也不会启动后台 Job。确认文件后，用户仍需显式点击已有的「导入串流数据」或「导入账号数据」。
 
@@ -111,8 +113,9 @@ Billboard 四张预聚合已经支持精确尾部变化的周分区更新：局�
 ## 相关代码
 
 - 后端文件检查：`backend/domains/imports/source_inspector.py`
+- 临时 SQLite staging：`backend/domains/imports/streaming_staging.py`
 - 增量关系分类：`backend/domains/imports/incremental.py`
-- Phase B 执行动作：`backend/domains/imports/execution.py`
+- 播放事实执行动作：`backend/domains/imports/execution.py`
 - 指纹基线与运行记录：`backend/domains/imports/state.py`
 - ChangeSet 与年度播放分区：`backend/domains/imports/change_set.py`
 - 搜索 snapshot lineage、周账本与增量发布：`backend/domains/music_search/snapshot_lineage.py`、`backend/domains/music_search/snapshot_delta.py`、`backend/domains/music_search/snapshot_ledger.py`、`backend/domains/music_search/snapshot_week_delta.py`

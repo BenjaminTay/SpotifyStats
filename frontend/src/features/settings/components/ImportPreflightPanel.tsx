@@ -141,7 +141,7 @@ export function ImportPreflightPanel({
               <p className="mt-1.5 text-foreground/90">{relationSummary(preflight)}</p>
               {preflight.estimated_strategy === 'incremental' && (
                 <p className="mt-1 text-[11.5px] text-muted-foreground">
-                  当前仅播放事实增量写入；榜单、搜索和其他派生数据仍执行完整维护。
+                  播放事实只处理已证明的变化；榜单、专辑项目与搜索会按影响范围和兼容性选择局部更新或安全全量回退，精确搜索快照可能在后台继续预热。
                 </p>
               )}
               <div className="mt-2 grid gap-x-5 gap-y-1 text-[11.5px] text-muted-foreground sm:grid-cols-2">

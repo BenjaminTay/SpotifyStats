@@ -194,3 +194,66 @@ def test_cover_backfill_observes_provider_url_change_without_overwriting_local_u
     assert conn.execute("SELECT image_url FROM albums WHERE album_id=8").fetchone()[0] == (
         "old-local.jpg"
     )
+
+
+def test_startup_failed_cover_recovery_is_bounded_and_does_not_scan_all_missing(
+    tmp_path, monkeypatch
+):
+    from backend.core import db as db_module
+    from backend.services.cover_cache_service import enqueue_failed_cover_download_recovery
+
+    db_path = tmp_path / "stats.db"
+    monkeypatch.setattr(db_module, "DB_PATH", str(db_path))
+    conn = sqlite3.connect(db_path)
+    conn.executescript(
+        """
+        CREATE TABLE artists(
+            artist_id INTEGER PRIMARY KEY, artist_name TEXT,
+            spotify_artist_id TEXT, image_url TEXT, image_path TEXT
+        );
+        CREATE TABLE albums(
+            album_id INTEGER PRIMARY KEY, album_name TEXT, artist_id INTEGER,
+            spotify_album_id TEXT, image_url TEXT, image_path TEXT
+        );
+        CREATE TABLE tracks(track_id INTEGER PRIMARY KEY, artist_id INTEGER, album_id INTEGER);
+        CREATE TABLE plays(play_id INTEGER PRIMARY KEY, track_id INTEGER, source_album_id INTEGER);
+        CREATE TABLE track_artists(track_id INTEGER, artist_id INTEGER);
+        CREATE TABLE album_spotify_links(
+            album_id INTEGER, spotify_album_id TEXT, confidence REAL,
+            play_count INTEGER, evidence TEXT
+        );
+        CREATE TABLE spotify_album_meta(
+            spotify_album_id TEXT PRIMARY KEY, album_type TEXT, image_url TEXT
+        );
+        CREATE TABLE spotify_artist_meta(
+            spotify_artist_id TEXT PRIMARY KEY, artist_name TEXT, image_url TEXT
+        );
+        CREATE TABLE cover_cache_state(
+            entity_type TEXT NOT NULL, entity_id INTEGER NOT NULL,
+            source_url_hash TEXT NOT NULL, cached_source_url_hash TEXT,
+            status TEXT NOT NULL, last_error TEXT, updated_at TEXT NOT NULL,
+            PRIMARY KEY(entity_type, entity_id)
+        );
+        INSERT INTO artists VALUES
+            (1, 'A1', NULL, 'a1.jpg', NULL),
+            (2, 'A2', NULL, 'a2.jpg', NULL),
+            (3, 'A3', NULL, 'a3.jpg', NULL),
+            (4, 'A4', NULL, 'a4.jpg', NULL);
+        INSERT INTO tracks VALUES (1, 1, NULL), (2, 2, NULL), (3, 3, NULL), (4, 4, NULL);
+        INSERT INTO plays VALUES (1, 1, NULL), (2, 2, NULL), (3, 3, NULL), (4, 4, NULL);
+        INSERT INTO cover_cache_state VALUES
+            ('artists', 1, 'old-1', NULL, 'failed', 'x', '2026-01-01'),
+            ('artists', 2, 'old-2', NULL, 'failed', 'x', '2026-01-02'),
+            ('artists', 3, 'old-3', NULL, 'failed', 'x', '2026-01-03');
+        """
+    )
+    conn.commit()
+    conn.close()
+    queue = _Queue()
+
+    report = enqueue_failed_cover_download_recovery(queue, backlog_limit=2)
+
+    assert report.sources_scanned == 2
+    assert report.jobs_enqueued == 2
+    assert [job.entity_id for job in queue.jobs] == ["1", "2"]
+    assert all(job.entity_id != "4" for job in queue.jobs)

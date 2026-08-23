@@ -69,6 +69,14 @@ def test_album_project_rebuild_uses_linked_album_when_name_match_points_to_singl
                 "INSERT INTO track_albums(track_id, album_id) VALUES (?, ?)",
                 (track_id, album_id),
             )
+            conn.execute(
+                """INSERT INTO plays(
+                       ts, ts_year, ts_month, ts_week, ts_dow, ts_hour,
+                       ts_date, platform, ms_played, track_id, source_album_id
+                   ) VALUES (?, 2026, 6, 23, 0, 12, '2026-06-01',
+                             'fixture', 180000, ?, ?)""",
+                (f"2026-06-01T12:00:{idx:02d}Z", track_id, album_id),
+            )
         conn.commit()
 
         rebuild_album_projects(conn)

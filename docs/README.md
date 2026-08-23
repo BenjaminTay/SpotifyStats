@@ -35,12 +35,12 @@
 - [`plans/2026-06-29-ai-agent-harness-quality-roadmap.md`](plans/2026-06-29-ai-agent-harness-quality-roadmap.md)：AI Agent Harness 持续质量路线
 - [`plans/2026-08-06-appification-pwa-capacitor-plan.md`](plans/2026-08-06-appification-pwa-capacitor-plan.md)：PWA、远程部署、真机验收和 Capacitor 决策
 - [`plans/2026-08-16-music-search-direction-realignment.md`](plans/2026-08-16-music-search-direction-realignment.md)：音乐查找候选索引、统计快照和生产复用方向
-- [`plans/2026-08-23-incremental-streaming-import-plan.md`](plans/2026-08-23-incremental-streaming-import-plan.md)：串流数据关系判定、增量写入、派生分区更新和全量回退规划
 
 ## 已确认但仍有实现参考价值的设计
 
 - [`designs/2026-07-04-genre-review-settings-design.md`](designs/2026-07-04-genre-review-settings-design.md)：Settings 流派审核面板
 - [`designs/2026-08-12-yearly-review-v2-content-data-contract.md`](designs/2026-08-12-yearly-review-v2-content-data-contract.md)：年度总结 V2 内容与数据契约
+- [`designs/2026-08-23-yearly-artifact-key-invalidation-contract.md`](designs/2026-08-23-yearly-artifact-key-invalidation-contract.md)：年度事实等价、受影响年份失效与路径历史 key 契约
 - [`designs/mobile-web-m0-prototype/README.md`](designs/mobile-web-m0-prototype/README.md)：移动端 M0 视觉原型
 
 ## 交付与验证报告
@@ -50,6 +50,8 @@
 - [`reports/2026-08-19-music-detail-performance-delivery.md`](reports/2026-08-19-music-detail-performance-delivery.md)：音乐详情按需加载、旧子页收口与优化前后数据等价性证据
 - [`reports/2026-08-23-incremental-import-phase-d2.md`](reports/2026-08-23-incremental-import-phase-d2.md)：同一开放周搜索 snapshot delta、lineage/周账本与真实库等价性证据
 - [`reports/2026-08-23-incremental-import-phase-d1.md`](reports/2026-08-23-incremental-import-phase-d1.md)：Billboard 周分区、六套搜索 shared-full 复用和真实库等价性证据
+- [`reports/2026-08-23-incremental-import-phase-e.md`](reports/2026-08-23-incremental-import-phase-e.md)：历史修正、事务恢复、局部闭包和真实库副本验收
+- [`reports/2026-08-23-incremental-import-final-acceptance.md`](reports/2026-08-23-incremental-import-final-acceptance.md)：真实 92,908 条源指纹 baseline、完整导入矩阵和增量/替换等价性终验
 
 ## 历史归档
 
@@ -57,6 +59,7 @@
 
 - [`archive/README.md`](archive/README.md)：归档阅读规则与阶段目录
 - [`archive/06-productization-closeout/`](archive/06-productization-closeout/)：最近一次产品化收口阶段
+- [`archive/06-productization-closeout/2026-08-23-incremental-streaming-import-plan.md`](archive/06-productization-closeout/2026-08-23-incremental-streaming-import-plan.md)：已完成的串流增量导入 Phase A–E 规划与实施记录
 - [`archive/01-streamlit-mvp/`](archive/01-streamlit-mvp/) 至 [`archive/05-yearly-report-genre/`](archive/05-yearly-report-genre/)：早期开发阶段
 
 ## 文档维护规则

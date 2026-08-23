@@ -11,4 +11,8 @@
 - 当前生产部署：[`../../../deploy/production/README.md`](../../../deploy/production/README.md)
 - 交付证据索引：[`../../reports/README.md`](../../reports/README.md)
 
+## 已完成规划
+
+- [`2026-08-23-incremental-streaming-import-plan.md`](2026-08-23-incremental-streaming-import-plan.md)：串流数据关系识别、基础事实增量发布、派生分区更新、历史修正与恢复边界。当前运行规则以 [`../../reference/data-import-and-health.md`](../../reference/data-import-and-health.md) 为准，分阶段证据见 [`../../reports/README.md`](../../reports/README.md)。
+
 归档文件保留设计过程、决策和实施边界，不再作为新的开发计划直接执行。若归档内容与当前代码或 `reference/` 冲突，以当前实现和当前参考规则为准。

@@ -524,6 +524,70 @@ def test_reconcile_exact_scope_includes_both_sides_of_cross_week_interval() -> N
         conn.close()
 
 
+def test_reconcile_year_scope_closes_old_and_new_merge_runs_across_year_boundary() -> None:
+    conn = _connection()
+    try:
+        _insert_chart_track(conn, 1, album_id=11, artist_id=21)
+        _insert_chart_track(conn, 99, album_id=99, artist_id=99)
+        predecessor = "2025-12-31T15:59:50Z"
+        corrected = "2025-12-31T16:00:10Z"
+        sentinel = "2026-02-01T00:00:00Z"
+        _insert_chart_play(
+            conn,
+            play_id=1,
+            timestamp=predecessor,
+            ms_played=20_000,
+            track_id=1,
+            source_album_id=11,
+            generation_id="old",
+        )
+        _insert_chart_play(
+            conn,
+            play_id=3,
+            timestamp=corrected,
+            ms_played=10_000,
+            track_id=1,
+            source_album_id=11,
+            generation_id="reconcile",
+        )
+        conn.execute("UPDATE plays SET ts_year=2026, ts_month=1 WHERE play_id=3")
+        _insert_chart_play(
+            conn,
+            play_id=4,
+            timestamp=sentinel,
+            ms_played=40_000,
+            track_id=99,
+            source_album_id=99,
+            generation_id="old",
+        )
+        removed = _removed_chart_row(
+            play_id=2,
+            timestamp=corrected,
+            ms_played=20_000,
+            track_id=1,
+            source_album_id=11,
+        )
+        removed["ts_year"] = 2026
+        removed["ts_month"] = 1
+        plan = _reconcile_plan(
+            removed_ts=corrected,
+            added_ts=corrected,
+            stable_timestamps=[predecessor, sentinel],
+        )
+
+        change_set = build_playback_change_set(
+            conn,
+            generation_id="reconcile",
+            strategy="reconcile",
+            plan=plan,
+            removed_rows=[removed],
+        )
+
+        assert change_set.years == {2025, 2026}
+    finally:
+        conn.close()
+
+
 def test_reconcile_equivalent_old_and_new_contributions_publish_no_weeks() -> None:
     conn = _connection()
     try:
@@ -643,6 +707,60 @@ def test_reconcile_closure_over_budget_falls_back_conservatively(
 
         assert change_set.billboard_scope_exact is False
         assert change_set.billboard_weeks == {"2026-01-02"}
+    finally:
+        conn.close()
+
+
+def test_reconcile_unproven_year_closure_invalidates_every_active_year(monkeypatch) -> None:
+    conn = _connection()
+    try:
+        _insert_chart_track(conn, 1, album_id=11, artist_id=21)
+        _insert_chart_track(conn, 99, album_id=99, artist_id=99)
+        _insert_chart_play(
+            conn,
+            play_id=1,
+            timestamp="2024-06-01T00:00:00Z",
+            ms_played=40_000,
+            track_id=99,
+            source_album_id=99,
+            generation_id="old",
+        )
+        _insert_chart_play(
+            conn,
+            play_id=3,
+            timestamp="2026-01-02T00:00:40Z",
+            ms_played=40_000,
+            track_id=1,
+            source_album_id=11,
+            generation_id="reconcile",
+        )
+        removed = _removed_chart_row(
+            play_id=2,
+            timestamp="2026-01-02T00:00:40Z",
+            ms_played=20_000,
+            track_id=1,
+            source_album_id=11,
+        )
+        plan = _reconcile_plan(
+            removed_ts="2026-01-02T00:00:40Z",
+            added_ts="2026-01-02T00:00:40Z",
+            stable_timestamps=["2024-06-01T00:00:00Z"],
+        )
+
+        def unprovable(*_args, **_kwargs):
+            raise RuntimeError("synthetic unproven closure")
+
+        monkeypatch.setattr(change_set_mod, "_logical_reconcile_closure_rows", unprovable)
+        change_set = build_playback_change_set(
+            conn,
+            generation_id="reconcile",
+            strategy="reconcile",
+            plan=plan,
+            removed_rows=[removed],
+        )
+
+        assert change_set.years == {2024, 2026}
+        assert change_set.billboard_scope_exact is False
     finally:
         conn.close()
 

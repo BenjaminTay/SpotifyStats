@@ -37,6 +37,7 @@ from backend.domains.imports.state import (
     record_playback_import_run,
     summarise_current_playback_dataset,
 )
+from backend.domains.imports.streaming_staging import take_cached_staging
 from backend.domains.metadata.import_health import build_import_health_report
 from backend.models.common import ImportJobCreateResponse, ImportJobStatus
 from backend.models.imports import ImportHealthResponse, ImportPreflightResponse
@@ -63,6 +64,7 @@ def get_import_preflight(
         DATA_DIR,
         ACCOUNT_DATA_DIR,
         requested_mode=mode,
+        retain_staging_for_confirmation=True,
     )
 
 
@@ -172,11 +174,25 @@ def _streaming_execution_gate(
     confirmation_token: str | None,
 ) -> tuple[StreamingImportAssessment, ImportExecutionDecision] | None:
     """Resolve source and relationship evidence before any playback write."""
-    assessment = assess_streaming_import(
-        DATA_DIR,
-        ACCOUNT_DATA_DIR,
-        requested_mode=requested_mode,
-    )
+    staging = take_cached_staging(confirmation_token)
+    if staging is not None:
+        try:
+            staging.verify_source_manifest()
+        except RuntimeError:
+            staging.close()
+            staging = None
+    try:
+        assessment = assess_streaming_import(
+            DATA_DIR,
+            ACCOUNT_DATA_DIR,
+            requested_mode=requested_mode,
+            staging=staging,
+            retain_staging=True,
+        )
+    except Exception:
+        if staging is not None:
+            staging.close()
+        raise
     preflight = assessment.report
     if preflight["blockers"]:
         _jobs[job_id].update(
@@ -185,6 +201,8 @@ def _streaming_execution_gate(
             message="导入已阻断：导入前检查发现硬性问题，数据库未修改",
             result={"preflight": preflight, "import_started": False},
         )
+        if assessment.staging is not None:
+            assessment.staging.close()
         return None
     confirmation_required = confirm_warnings or confirm_plan
     confirmation_is_stale = confirmation_token is not None and (
@@ -207,6 +225,8 @@ def _streaming_execution_gate(
                 "confirmation_reason": "stale_plan",
             },
         )
+        if assessment.staging is not None:
+            assessment.staging.close()
         return None
     if preflight["warnings"] and not confirm_warnings:
         _record_plan_outcome(
@@ -221,6 +241,8 @@ def _streaming_execution_gate(
             message="导入需要确认：发现文件警告，播放事实尚未修改",
             result={"preflight": preflight, "import_started": False},
         )
+        if assessment.staging is not None:
+            assessment.staging.close()
         return None
 
     decision = resolve_import_execution(
@@ -241,6 +263,8 @@ def _streaming_execution_gate(
             message=decision.message,
             result={"preflight": preflight, "import_started": False},
         )
+        if assessment.staging is not None:
+            assessment.staging.close()
         return None
     if decision.action is ImportExecutionAction.BLOCKED:
         _jobs[job_id].update(
@@ -249,6 +273,8 @@ def _streaming_execution_gate(
             message=decision.message,
             result={"preflight": preflight, "import_started": False},
         )
+        if assessment.staging is not None:
+            assessment.staging.close()
         return None
     return assessment, decision
 
@@ -428,6 +454,7 @@ def start_streaming_import(
 
     def _run():
         snapshot = None
+        assessment: StreamingImportAssessment | None = None
         try:
             gated = _streaming_execution_gate(
                 job_id,
@@ -501,6 +528,7 @@ def start_streaming_import(
                     assessment.plan.removed if import_mode == "reconcile" else None
                 ),
                 before_final_commit=publish_before_commit,
+                staging=assessment.staging,
             )
             # Compatibility for test doubles and legacy wrappers that do not
             # invoke the transactional finalizer. The production importer sets
@@ -568,6 +596,9 @@ def start_streaming_import(
                 message = f"{message}（数据库回滚失败：{rollback_error}）"
             _jobs[job_id]["message"] = message
             _jobs[job_id]["result"] = _failure_result(snapshot, rollback, rollback_error)
+        finally:
+            if assessment is not None and assessment.staging is not None:
+                assessment.staging.close()
 
     threading.Thread(target=lambda: _run_with_import_slot(job_id, _run), daemon=True).start()
     return {"job_id": job_id}

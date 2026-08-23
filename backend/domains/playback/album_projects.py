@@ -1024,6 +1024,9 @@ def _bootstrap_from_release_groups(
             (group["group_id"],),
         ).fetchall()
         member_ids = [int(row["album_id"]) for row in member_rows]
+        active_memberships = _tracks_for_albums(conn, member_ids)
+        if not active_memberships:
+            continue
 
         project_id = _upsert_project(
             conn,
@@ -1048,7 +1051,7 @@ def _bootstrap_from_release_groups(
                 primary_album_id=group["primary_album_id"],
             )
         min_merge_level = 3 if group["scope"] == "composition" else 2
-        for track_id, album_id in _tracks_for_albums(conn, member_ids):
+        for track_id, album_id in active_memberships:
             _insert_project_track(
                 conn,
                 project_id=project_id,
@@ -1156,10 +1159,19 @@ def _bootstrap_standalone_album_projects(
         album_params,
     ).fetchall()
 
+    active_memberships_by_album: dict[int, list[tuple[int, int]]] = {}
+    for track_id, album_id in _tracks_for_albums(
+        conn, [int(album["album_id"]) for album in albums]
+    ):
+        active_memberships_by_album.setdefault(album_id, []).append((track_id, album_id))
+
     for album in albums:
+        active_memberships = active_memberships_by_album.get(int(album["album_id"]), [])
+        if not active_memberships:
+            continue
         name_match_type = album["album_type"]  # Spotify type from name-match (or None)
         release_date = album["release_date"]
-        local_tracks = int(album["local_tracks"] or 0)
+        local_tracks = len({track_id for track_id, _album_id in active_memberships})
 
         # ── Resolve album type: Spotify metadata first, links second ──
         resolved = _resolve_standalone_album_type(conn, int(album["album_id"]), name_match_type)
@@ -1208,7 +1220,7 @@ def _bootstrap_standalone_album_projects(
             album_id=album["album_id"],
             primary_album_id=album["album_id"],
         )
-        for track_id, source_album_id in _tracks_for_albums(conn, [int(album["album_id"])]):
+        for track_id, source_album_id in active_memberships:
             _insert_project_track(
                 conn,
                 project_id=project_id,
@@ -1407,15 +1419,48 @@ def _insert_project_track(
 
 
 def _tracks_for_albums(conn: sqlite3.Connection, album_ids: list[int]) -> list[tuple[int, int]]:
+    """Return catalog membership that is still reachable from active playback facts.
+
+    ``track_albums`` is the import-maintained observation projection, while
+    manual project membership lives in separate governance tables.  Keep this
+    consumer defensive as well: automatic Album Projects only use relationships
+    supported by current playback-time evidence, and exclude catalog orphans.
+    """
     if not album_ids:
         return []
     placeholders = ",".join("?" for _ in album_ids)
     rows = conn.execute(
         f"""SELECT DISTINCT track_id, album_id
             FROM (
-                SELECT track_id, album_id FROM tracks WHERE album_id IN ({placeholders})
+                SELECT t.track_id, t.album_id
+                FROM tracks t
+                WHERE t.album_id IN ({placeholders})
+                  AND EXISTS (SELECT 1 FROM plays p WHERE p.track_id=t.track_id)
+                  AND (
+                    NOT EXISTS (
+                        SELECT 1 FROM plays p
+                        WHERE p.track_id=t.track_id AND p.source_album_id IS NOT NULL
+                    )
+                    OR EXISTS (
+                        SELECT 1 FROM plays p
+                        WHERE p.track_id=t.track_id AND p.source_album_id=t.album_id
+                    )
+                  )
                 UNION
-                SELECT track_id, album_id FROM track_albums WHERE album_id IN ({placeholders})
+                SELECT ta.track_id, ta.album_id
+                FROM track_albums ta
+                WHERE ta.album_id IN ({placeholders})
+                  AND EXISTS (SELECT 1 FROM plays p WHERE p.track_id=ta.track_id)
+                  AND (
+                    NOT EXISTS (
+                        SELECT 1 FROM plays p
+                        WHERE p.track_id=ta.track_id AND p.source_album_id IS NOT NULL
+                    )
+                    OR EXISTS (
+                        SELECT 1 FROM plays p
+                        WHERE p.track_id=ta.track_id AND p.source_album_id=ta.album_id
+                    )
+                  )
             )
             ORDER BY album_id, track_id""",
         tuple(album_ids) + tuple(album_ids),

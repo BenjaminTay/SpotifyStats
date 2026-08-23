@@ -587,6 +587,10 @@ def test_scoped_refresh_retries_global_missing_metadata_and_artist_cover_backlog
         ],
     )
     conn.executemany(
+        "INSERT INTO albums(album_id, album_name, artist_id) VALUES (?, ?, ?)",
+        [(10, "Current Album", 1), (20, "Retry Album", 2), (30, "Search Album", 3)],
+    )
+    conn.executemany(
         "INSERT INTO tracks(track_id, artist_id, spotify_track_id) VALUES (?, ?, ?)",
         [(1, 1, "track-current"), (2, 2, "track-retry"), (3, 3, "track-search")],
     )
@@ -696,7 +700,7 @@ def test_scoped_refresh_retries_global_missing_metadata_and_artist_cover_backlog
             }
 
     provider = Provider()
-    refresh_missing_spotify_metadata(
+    report = refresh_missing_spotify_metadata(
         conn,
         provider=provider,
         access_token="token",
@@ -712,3 +716,8 @@ def test_scoped_refresh_retries_global_missing_metadata_and_artist_cover_backlog
     assert "album-track-retry" in provider.albums_requested
     assert "artist-retry" in provider.artists_requested
     assert "Search Retry Artist" in provider.searches
+    assert {20, 30}.issubset(report.local_album_ids_updated)
+    assert {2, 3}.issubset(report.local_artist_ids_updated)
+    assert conn.execute("SELECT image_url FROM albums WHERE album_id=20").fetchone()[0]
+    assert conn.execute("SELECT image_url FROM artists WHERE artist_id=2").fetchone()[0]
+    assert conn.execute("SELECT image_url FROM artists WHERE artist_id=3").fetchone()[0]

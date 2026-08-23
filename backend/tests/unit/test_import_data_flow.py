@@ -638,6 +638,109 @@ def test_reconcile_and_clean_replace_have_equivalent_active_facts(tmp_path, monk
         _clear_db_caches()
 
 
+def test_reconcile_album_correction_replaces_active_relationship_without_fanout(
+    tmp_path, monkeypatch
+) -> None:
+    from backend.core import db as db_mod
+    from backend.core import import_data as import_mod
+    from backend.domains.playback.album_projects import rebuild_album_projects
+    from backend.domains.playback.repository import PlaybackRepository
+
+    db_path = tmp_path / "spotify_stats.db"
+    data_dir = tmp_path / "streaming"
+    data_dir.mkdir()
+    monkeypatch.setattr(db_mod, "DB_PATH", str(db_path))
+    wrong = _streaming_record("album-correction", timestamp="2026-01-02T00:00:00Z")
+    wrong["master_metadata_album_album_name"] = "Wrong Album"
+    corrected = dict(wrong)
+    corrected["master_metadata_album_album_name"] = "Corrected Album"
+    corrected["reason_end"] = "corrected-metadata"
+    _write_audio_records(data_dir, [wrong])
+
+    try:
+        baseline = import_mod.import_data(
+            str(data_dir),
+            build_preaggregations=False,
+            generation_id="album-correction-baseline",
+        )
+        conn = db_mod.get_db(readonly=False)
+        try:
+            conn.executemany(
+                """INSERT INTO spotify_album_meta(
+                       spotify_album_id, album_name, album_type, album_artists,
+                       release_date, total_tracks
+                   ) VALUES (?, ?, 'album', 'Incremental Artist', '2026-01-01', 1)""",
+                [
+                    ("spotify-wrong-album", "Wrong Album"),
+                    ("spotify-corrected-album", "Corrected Album"),
+                ],
+            )
+            conn.commit()
+            rebuild_album_projects(conn)
+            assert conn.execute(
+                "SELECT 1 FROM album_projects WHERE canonical_name='Wrong Album' AND is_manual=0"
+            ).fetchone()
+        finally:
+            conn.close()
+
+        _write_audio_records(data_dir, [corrected])
+        result = import_mod.import_data(
+            str(data_dir),
+            build_preaggregations=False,
+            mode="reconcile",
+            generation_id="album-correction-reconcile",
+            expected_previous_digest=baseline["dataset_digest"],
+            removed_identities=frozenset({RecordIdentity("audio", record_fingerprint(wrong))}),
+            before_final_commit=lambda _conn, _result: None,
+        )
+
+        assert result["active_records"] == 1
+        conn = db_mod.get_db(readonly=False)
+        try:
+            relationship_rows = conn.execute(
+                """SELECT al.album_name
+                   FROM track_albums ta
+                   JOIN albums al ON al.album_id=ta.album_id
+                   ORDER BY al.album_name"""
+            ).fetchall()
+            assert [row["album_name"] for row in relationship_rows] == ["Corrected Album"]
+            assert (
+                conn.execute(
+                    """SELECT al.album_name
+                   FROM tracks t JOIN albums al ON al.album_id=t.album_id"""
+                ).fetchone()["album_name"]
+                == "Corrected Album"
+            )
+
+            repository = PlaybackRepository(conn)
+            assert repository.get_album_play_count("Wrong Album", "Incremental Artist") == 0
+            assert repository.get_album_play_count("Corrected Album", "Incremental Artist") == 1
+            recent = repository.get_recent_plays(limit=20)
+            assert len(recent) == 1
+            assert recent.iloc[0]["album_name"] == "Corrected Album"
+
+            rebuild_album_projects(conn)
+            assert not conn.execute(
+                "SELECT 1 FROM album_projects WHERE canonical_name='Wrong Album' AND is_manual=0"
+            ).fetchone()
+            corrected_project = conn.execute(
+                """SELECT project_id FROM album_projects
+                   WHERE canonical_name='Corrected Album' AND is_manual=0"""
+            ).fetchone()
+            assert corrected_project is not None
+            assert (
+                conn.execute(
+                    "SELECT COUNT(*) FROM album_project_tracks WHERE project_id=?",
+                    (corrected_project["project_id"],),
+                ).fetchone()[0]
+                == 1
+            )
+        finally:
+            conn.close()
+    finally:
+        _clear_db_caches()
+
+
 def test_reconcile_repeated_corrections_do_not_accumulate_duplicate_facts(
     tmp_path, monkeypatch
 ) -> None:
@@ -702,6 +805,16 @@ def test_reconcile_repeated_corrections_do_not_accumulate_duplicate_facts(
                 ).fetchone()[0]
                 == 1
             )
+            assert conn.execute("SELECT COUNT(*) FROM track_albums").fetchone()[0] == 2
+            assert (
+                conn.execute(
+                    """SELECT COUNT(*)
+                       FROM tracks t
+                       WHERE NOT EXISTS (SELECT 1 FROM plays p WHERE p.track_id=t.track_id)
+                         AND t.album_id IS NOT NULL"""
+                ).fetchone()[0]
+                == 0
+            )
         finally:
             conn.close()
     finally:
@@ -747,6 +860,12 @@ def test_reconcile_rolls_back_delete_insert_and_state_when_finalizer_fails(
                 """SELECT active_generation_id, dataset_digest, record_count, last_strategy
                    FROM playback_import_state WHERE state_id=1"""
             ).fetchone()
+            before_track_albums = conn.execute(
+                "SELECT track_id, album_id FROM track_albums ORDER BY track_id, album_id"
+            ).fetchall()
+            before_track_primary_albums = conn.execute(
+                "SELECT track_id, album_id FROM tracks ORDER BY track_id"
+            ).fetchall()
         finally:
             conn.close()
 
@@ -807,6 +926,16 @@ def test_reconcile_rolls_back_delete_insert_and_state_when_finalizer_fails(
                    FROM playback_import_state WHERE state_id=1"""
                 ).fetchone()
                 == before_state
+            )
+            assert (
+                conn.execute(
+                    "SELECT track_id, album_id FROM track_albums ORDER BY track_id, album_id"
+                ).fetchall()
+                == before_track_albums
+            )
+            assert (
+                conn.execute("SELECT track_id, album_id FROM tracks ORDER BY track_id").fetchall()
+                == before_track_primary_albums
             )
         finally:
             conn.close()

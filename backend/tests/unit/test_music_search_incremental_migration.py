@@ -167,5 +167,5 @@ def test_migrate_042_weekly_rows_follow_snapshot_lifecycle() -> None:
 
 
 def test_latest_schema_version_matches_registered_migrations() -> None:
-    assert LATEST_SCHEMA_VERSION == 42
+    assert LATEST_SCHEMA_VERSION == 45
     assert max(version for version, _name, _migration in MIGRATIONS) == LATEST_SCHEMA_VERSION

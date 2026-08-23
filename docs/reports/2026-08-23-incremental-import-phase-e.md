@@ -14,6 +14,8 @@ Phase E 已完成。对于同账号、同时存在新增和移除、且输入时
 
 Spotify 元数据刷新会返回实际更新的 Spotify 曲目/专辑和本地专辑重链范围。无删除且影响闭包精确时，Album Project 只重建相关 release group、standalone 和 compilation closure；manual 与未受影响项目保持不变。存在删除、证据不精确、闭包过大或无法证明时明确全量回退。Spotify 同曲分组也只扫描本次变化或实际刷新到的 Spotify 身份。
 
+最终独立审计继续补齐了活动 `track_albums` 闭包、Track Group 自动身份和 staging 崩溃孤儿清理：reconcile 在事实事务内精确重算受影响曲目的活动专辑关系，播放仓库按逐条播放的 `source_album_id` 归属；自动项目与搜索只消费活动事实可达实体；自动 Track Group 使用 Spotify recording ID + artist ID，不再因同名不同艺人触发生产唯一约束。真实原始指纹 baseline 与完整派生冷构建、identical、两类 append、专辑历史纠正 reconcile 和空库 replace 的 14 项语义投影终验见 [`2026-08-23-incremental-import-final-acceptance.md`](2026-08-23-incremental-import-final-acceptance.md)。
+
 ## 真实数据库副本验收
 
 验收脚本：`scripts/phase_e_real_db_acceptance.py`。源库始终只读，所有迁移、合成修正、硬中止和恢复探针都在 `/tmp` Online Backup 副本完成；报告不输出数据库路径、实体内容、指纹或播放记录行。

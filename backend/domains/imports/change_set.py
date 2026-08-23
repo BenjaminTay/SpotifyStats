@@ -369,6 +369,7 @@ def build_playback_change_set(
     }
     settings = SettingsRepository(conn).load_all()
     years = {int(row["ts_year"]) for row in impact_rows if row["ts_year"] is not None}
+    reconcile_closure_rows: tuple[list[dict[str, Any]], list[dict[str, Any]]] | None = None
     if strategy == "incremental":
         years.update(
             _logical_impact_years(
@@ -383,6 +384,24 @@ def build_playback_change_set(
     if strategy == "reconcile":
         for row in impact_rows:
             years.update(_row_interval_years(row))
+        try:
+            reconcile_closure_rows = _logical_reconcile_closure_rows(
+                conn,
+                generation_id=generation_id,
+                added_rows=[dict(row) for row in rows],
+                removed_rows=old_rows,
+                max_gap_minutes=int(settings.get("max_merge_gap_minutes", 5)),
+            )
+            for row in [*reconcile_closure_rows[0], *reconcile_closure_rows[1]]:
+                years.update(_row_interval_years(row))
+        except Exception:
+            logger.exception(
+                "Unable to prove exact reconcile yearly closure for generation %s; "
+                "falling back to every active playback year.",
+                generation_id,
+            )
+            for active_row in conn.execute("SELECT ts, ms_played FROM plays"):
+                years.update(_row_interval_years(active_row))
 
     week_start_dow = int(settings.get("bb_week_start_dow", 4))
     week_start_hour = int(settings.get("bb_week_start_hour", 0))
@@ -429,6 +448,7 @@ def build_playback_change_set(
                 max_gap_minutes=int(settings.get("max_merge_gap_minutes", 5)),
                 week_start_dow=week_start_dow,
                 week_start_hour=week_start_hour,
+                closure_rows=reconcile_closure_rows,
             )
             billboard_scope_exact = True
         except Exception:
@@ -676,41 +696,16 @@ def _logical_reconcile_billboard_contribution_weeks(
     max_gap_minutes: int,
     week_start_dow: int,
     week_start_hour: int,
+    closure_rows: tuple[list[dict[str, Any]], list[dict[str, Any]]] | None = None,
 ) -> set[str]:
     """Compare exact old/new logical contributions over bounded local run closures."""
 
     del music_only  # Billboard entity facts contain only rows mapped to tracks.
-    if len(added_rows) + len(removed_rows) > _RECONCILE_BILLBOARD_ROW_LIMIT:
-        raise RuntimeError("reconcile change evidence exceeds the 100k row limit")
-    change_keys = {_billboard_row_key(dict(row)) for row in [*added_rows, *removed_rows]}
-    if not change_keys:
-        return set()
-    enriched_removed = _enrich_removed_billboard_rows(conn, removed_rows)
-    budget = _ReconcileRowBudget()
-    old_view = _ReconcileBillboardView(
+    old_rows, new_rows = closure_rows or _logical_reconcile_closure_rows(
         conn,
-        name="old",
         generation_id=generation_id,
-        removed_rows=enriched_removed,
-        exclude_generation=True,
-        budget=budget,
-    )
-    new_view = _ReconcileBillboardView(
-        conn,
-        name="new",
-        generation_id=generation_id,
-        removed_rows=[],
-        exclude_generation=False,
-        budget=budget,
-    )
-    old_rows = _reconcile_affected_run_closure(
-        old_view,
-        change_keys=change_keys,
-        max_gap_minutes=max_gap_minutes,
-    )
-    new_rows = _reconcile_affected_run_closure(
-        new_view,
-        change_keys=change_keys,
+        added_rows=added_rows,
+        removed_rows=removed_rows,
         max_gap_minutes=max_gap_minutes,
     )
 
@@ -745,6 +740,52 @@ def _logical_reconcile_billboard_contribution_weeks(
         }
         changed_weeks.update(str(key[0]) for key in changed_keys)
     return changed_weeks
+
+
+def _logical_reconcile_closure_rows(
+    conn: sqlite3.Connection,
+    *,
+    generation_id: str,
+    added_rows: list[dict[str, Any]],
+    removed_rows: list[dict[str, Any]],
+    max_gap_minutes: int,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Return the exact old/new continuous-run closure shared by yearly and chart deltas."""
+
+    if len(added_rows) + len(removed_rows) > _RECONCILE_BILLBOARD_ROW_LIMIT:
+        raise RuntimeError("reconcile change evidence exceeds the 100k row limit")
+    change_keys = {_billboard_row_key(dict(row)) for row in [*added_rows, *removed_rows]}
+    if not change_keys:
+        return [], []
+    enriched_removed = _enrich_removed_billboard_rows(conn, removed_rows)
+    budget = _ReconcileRowBudget()
+    old_view = _ReconcileBillboardView(
+        conn,
+        name="old",
+        generation_id=generation_id,
+        removed_rows=enriched_removed,
+        exclude_generation=True,
+        budget=budget,
+    )
+    new_view = _ReconcileBillboardView(
+        conn,
+        name="new",
+        generation_id=generation_id,
+        removed_rows=[],
+        exclude_generation=False,
+        budget=budget,
+    )
+    old_rows = _reconcile_affected_run_closure(
+        old_view,
+        change_keys=change_keys,
+        max_gap_minutes=max_gap_minutes,
+    )
+    new_rows = _reconcile_affected_run_closure(
+        new_view,
+        change_keys=change_keys,
+        max_gap_minutes=max_gap_minutes,
+    )
+    return old_rows, new_rows
 
 
 def _reconcile_affected_run_closure(
@@ -1206,7 +1247,7 @@ def _logical_impact_years(
     return years
 
 
-def _row_interval_years(row: sqlite3.Row) -> set[int]:
+def _row_interval_years(row: sqlite3.Row | dict[str, Any]) -> set[int]:
     end = _timestamp(row["ts"])
     if end is None:
         return set()

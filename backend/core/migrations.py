@@ -20,7 +20,7 @@ from backend.core.db import SCHEMA
 logger = logging.getLogger(__name__)
 
 MIGRATIONS: list[tuple[int, str, Callable[[sqlite3.Connection], None]]] = []
-LATEST_SCHEMA_VERSION = 42
+LATEST_SCHEMA_VERSION = 45
 
 _IDEMPOTENT_OPERATIONAL_ERRORS = (
     "already exists",
@@ -1548,6 +1548,272 @@ def migrate_042(conn: sqlite3.Connection):
             );
         """
     )
+
+
+@migration(43, "track_group_automatic_identity")
+def migrate_043(conn: sqlite3.Connection):
+    """Give automatic recording groups a provider identity independent of names.
+
+    The original ``UNIQUE(canonical_name, scope)`` constraint made two Spotify
+    recordings with the same display name compete for one row, even when their
+    artists differed.  Rebuild the table so manual groups retain their
+    name/scope uniqueness while automatic groups are keyed by
+    ``(scope, spotify_track_id, artist_id)``.
+    """
+    columns = {
+        row["name"] if isinstance(row, sqlite3.Row) else row[1]
+        for row in conn.execute("PRAGMA table_info(track_groups)").fetchall()
+    }
+    if {"automatic_spotify_track_id", "automatic_artist_id"} <= columns:
+        conn.executescript(
+            """
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_track_groups_manual_name_scope
+                ON track_groups(canonical_name, scope)
+                WHERE is_manual = 1;
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_track_groups_automatic_identity
+                ON track_groups(scope, automatic_spotify_track_id, automatic_artist_id)
+                WHERE is_manual = 0
+                  AND automatic_spotify_track_id IS NOT NULL
+                  AND automatic_artist_id IS NOT NULL;
+            """
+        )
+        return
+
+    conn.execute("PRAGMA foreign_keys=OFF")
+    try:
+        conn.execute("DROP TABLE IF EXISTS track_groups_new")
+        conn.execute(
+            """CREATE TABLE track_groups_new (
+                group_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                canonical_name TEXT NOT NULL,
+                primary_track_id INTEGER REFERENCES tracks(track_id),
+                scope TEXT NOT NULL DEFAULT 'recording'
+                    CHECK(scope IN ('recording', 'composition')),
+                parent_group_id INTEGER REFERENCES track_groups(group_id),
+                is_manual INTEGER NOT NULL DEFAULT 0,
+                automatic_spotify_track_id TEXT,
+                automatic_artist_id INTEGER,
+                created_at TEXT DEFAULT (datetime('now')),
+                CHECK(
+                    is_manual = 1
+                    OR (automatic_spotify_track_id IS NULL) =
+                       (automatic_artist_id IS NULL)
+                )
+            )"""
+        )
+        conn.execute(
+            """INSERT INTO track_groups_new (
+                   group_id, canonical_name, primary_track_id, scope,
+                   parent_group_id, is_manual, automatic_spotify_track_id,
+                   automatic_artist_id, created_at
+               )
+               SELECT
+                   tg.group_id,
+                   tg.canonical_name,
+                   tg.primary_track_id,
+                   tg.scope,
+                   tg.parent_group_id,
+                   tg.is_manual,
+                   CASE WHEN tg.is_manual=0 AND tg.scope='recording'
+                        THEN NULLIF(t.spotify_track_id, '') END,
+                   CASE WHEN tg.is_manual=0 AND tg.scope='recording'
+                                  AND NULLIF(t.spotify_track_id, '') IS NOT NULL
+                        THEN t.artist_id END,
+                   tg.created_at
+               FROM track_groups tg
+               LEFT JOIN tracks t ON t.track_id=tg.primary_track_id"""
+        )
+
+        duplicate_identities = conn.execute(
+            """SELECT automatic_spotify_track_id, automatic_artist_id,
+                      MIN(group_id) AS owner_id
+               FROM track_groups_new
+               WHERE is_manual=0 AND scope='recording'
+                 AND automatic_spotify_track_id IS NOT NULL
+                 AND automatic_artist_id IS NOT NULL
+               GROUP BY automatic_spotify_track_id, automatic_artist_id
+               HAVING COUNT(*) > 1"""
+        ).fetchall()
+        for spotify_track_id, artist_id, owner_id in duplicate_identities:
+            duplicate_ids = [
+                int(row[0])
+                for row in conn.execute(
+                    """SELECT group_id FROM track_groups_new
+                       WHERE is_manual=0 AND scope='recording'
+                         AND automatic_spotify_track_id=?
+                         AND automatic_artist_id=? AND group_id<>?""",
+                    (spotify_track_id, artist_id, owner_id),
+                ).fetchall()
+            ]
+            for duplicate_id in duplicate_ids:
+                conn.execute(
+                    """INSERT OR IGNORE INTO track_group_members(group_id, track_id)
+                       SELECT ?, track_id FROM track_group_members WHERE group_id=?""",
+                    (owner_id, duplicate_id),
+                )
+                conn.execute("DELETE FROM track_group_members WHERE group_id=?", (duplicate_id,))
+                conn.execute(
+                    "UPDATE track_groups_new SET parent_group_id=? WHERE parent_group_id=?",
+                    (owner_id, duplicate_id),
+                )
+                conn.execute("DELETE FROM track_groups_new WHERE group_id=?", (duplicate_id,))
+
+        conn.execute("DROP TABLE track_groups")
+        conn.execute("ALTER TABLE track_groups_new RENAME TO track_groups")
+        conn.executescript(
+            """
+            CREATE INDEX IF NOT EXISTS idx_track_groups_scope
+                ON track_groups(scope);
+            CREATE INDEX IF NOT EXISTS idx_track_groups_parent
+                ON track_groups(parent_group_id);
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_track_groups_manual_name_scope
+                ON track_groups(canonical_name, scope)
+                WHERE is_manual = 1;
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_track_groups_automatic_identity
+                ON track_groups(scope, automatic_spotify_track_id, automatic_artist_id)
+                WHERE is_manual = 0
+                  AND automatic_spotify_track_id IS NOT NULL
+                  AND automatic_artist_id IS NOT NULL;
+            """
+        )
+    finally:
+        conn.execute("PRAGMA foreign_keys=ON")
+
+
+@migration(44, "track_group_parent_fk_repair")
+def migrate_044(conn: sqlite3.Connection):
+    """Repair the self-reference produced by the first v43 table rebuild.
+
+    A short-lived v43 implementation declared the temporary table's parent FK
+    against ``track_groups_new``.  SQLite preserved that literal target after
+    rename.  Databases created from the corrected schema are already valid;
+    this migration is a no-op for them and repairs only the malformed target.
+    """
+    foreign_keys = conn.execute("PRAGMA foreign_key_list(track_groups)").fetchall()
+    parent_targets = {str(row[2]) for row in foreign_keys if str(row[3]) == "parent_group_id"}
+    if parent_targets == {"track_groups"}:
+        return
+
+    conn.execute("PRAGMA foreign_keys=OFF")
+    try:
+        conn.execute("DROP TABLE IF EXISTS track_groups_repaired")
+        conn.execute(
+            """CREATE TABLE track_groups_repaired (
+                group_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                canonical_name TEXT NOT NULL,
+                primary_track_id INTEGER REFERENCES tracks(track_id),
+                scope TEXT NOT NULL DEFAULT 'recording'
+                    CHECK(scope IN ('recording', 'composition')),
+                parent_group_id INTEGER REFERENCES track_groups(group_id),
+                is_manual INTEGER NOT NULL DEFAULT 0,
+                automatic_spotify_track_id TEXT,
+                automatic_artist_id INTEGER,
+                created_at TEXT DEFAULT (datetime('now')),
+                CHECK(
+                    is_manual = 1
+                    OR (automatic_spotify_track_id IS NULL) =
+                       (automatic_artist_id IS NULL)
+                )
+            )"""
+        )
+        conn.execute(
+            """INSERT INTO track_groups_repaired (
+                   group_id, canonical_name, primary_track_id, scope,
+                   parent_group_id, is_manual, automatic_spotify_track_id,
+                   automatic_artist_id, created_at
+               )
+               SELECT group_id, canonical_name, primary_track_id, scope,
+                      parent_group_id, is_manual, automatic_spotify_track_id,
+                      automatic_artist_id, created_at
+               FROM track_groups"""
+        )
+        conn.execute("DROP TABLE track_groups")
+        conn.execute("ALTER TABLE track_groups_repaired RENAME TO track_groups")
+        conn.executescript(
+            """
+            CREATE INDEX IF NOT EXISTS idx_track_groups_scope
+                ON track_groups(scope);
+            CREATE INDEX IF NOT EXISTS idx_track_groups_parent
+                ON track_groups(parent_group_id);
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_track_groups_manual_name_scope
+                ON track_groups(canonical_name, scope)
+                WHERE is_manual = 1;
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_track_groups_automatic_identity
+                ON track_groups(scope, automatic_spotify_track_id, automatic_artist_id)
+                WHERE is_manual = 0
+                  AND automatic_spotify_track_id IS NOT NULL
+                  AND automatic_artist_id IS NOT NULL;
+            """
+        )
+    finally:
+        conn.execute("PRAGMA foreign_keys=ON")
+
+
+@migration(45, "track_group_automatic_artist_fk_repair")
+def migrate_045(conn: sqlite3.Connection):
+    """Remove the overly strict FK from the automatic artist identity column.
+
+    Historical track rows may preserve a provider artist id that is not present
+    in the local ``artists`` dimension.  The id remains part of the stable
+    automatic identity, but must not create a new referential-integrity failure.
+    """
+    foreign_keys = conn.execute("PRAGMA foreign_key_list(track_groups)").fetchall()
+    if not any(str(row[3]) == "automatic_artist_id" for row in foreign_keys):
+        return
+
+    conn.execute("PRAGMA foreign_keys=OFF")
+    try:
+        conn.execute("DROP TABLE IF EXISTS track_groups_artist_repaired")
+        conn.execute(
+            """CREATE TABLE track_groups_artist_repaired (
+                group_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                canonical_name TEXT NOT NULL,
+                primary_track_id INTEGER REFERENCES tracks(track_id),
+                scope TEXT NOT NULL DEFAULT 'recording'
+                    CHECK(scope IN ('recording', 'composition')),
+                parent_group_id INTEGER REFERENCES track_groups(group_id),
+                is_manual INTEGER NOT NULL DEFAULT 0,
+                automatic_spotify_track_id TEXT,
+                automatic_artist_id INTEGER,
+                created_at TEXT DEFAULT (datetime('now')),
+                CHECK(
+                    is_manual = 1
+                    OR (automatic_spotify_track_id IS NULL) =
+                       (automatic_artist_id IS NULL)
+                )
+            )"""
+        )
+        conn.execute(
+            """INSERT INTO track_groups_artist_repaired (
+                   group_id, canonical_name, primary_track_id, scope,
+                   parent_group_id, is_manual, automatic_spotify_track_id,
+                   automatic_artist_id, created_at
+               )
+               SELECT group_id, canonical_name, primary_track_id, scope,
+                      parent_group_id, is_manual, automatic_spotify_track_id,
+                      automatic_artist_id, created_at
+               FROM track_groups"""
+        )
+        conn.execute("DROP TABLE track_groups")
+        conn.execute("ALTER TABLE track_groups_artist_repaired RENAME TO track_groups")
+        conn.executescript(
+            """
+            CREATE INDEX IF NOT EXISTS idx_track_groups_scope
+                ON track_groups(scope);
+            CREATE INDEX IF NOT EXISTS idx_track_groups_parent
+                ON track_groups(parent_group_id);
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_track_groups_manual_name_scope
+                ON track_groups(canonical_name, scope)
+                WHERE is_manual = 1;
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_track_groups_automatic_identity
+                ON track_groups(scope, automatic_spotify_track_id, automatic_artist_id)
+                WHERE is_manual = 0
+                  AND automatic_spotify_track_id IS NOT NULL
+                  AND automatic_artist_id IS NOT NULL;
+            """
+        )
+    finally:
+        conn.execute("PRAGMA foreign_keys=ON")
 
 
 # ── Runner ────────────────────────────────────────────────────────────────

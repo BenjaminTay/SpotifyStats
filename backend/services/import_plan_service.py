@@ -22,6 +22,7 @@ from backend.domains.imports.incremental import (
     dataset_digest,
 )
 from backend.domains.imports.source_inspector import inspect_data_sources_for_planning
+from backend.domains.imports.streaming_staging import StreamingImportStaging, cache_staging
 from backend.domains.playback.logical_timeline import billboard_week_for_timestamps
 from backend.domains.settings.repository import SettingsRepository
 
@@ -37,6 +38,7 @@ class StreamingImportAssessment:
     baseline_status: str
     existing_account_identity_hash: str | None
     incoming_account_identity_hash: str | None
+    staging: StreamingImportStaging | None = None
 
 
 def _parse_timestamp(value: Any) -> datetime | None:
@@ -216,17 +218,17 @@ def _planned_actions(plan: ImportPlan, requested_mode: ImportRequestedMode) -> l
     else:
         primary = "输入关系证据不足，执行前必须确认追加或替换语义"
     if requested_mode == "append" and relation == "baseline_required":
-        execution = "当前库没有完整指纹基线，Phase B 将阻断追加；请先完整替换"
+        execution = "当前库没有完整指纹基线，系统将阻断追加；请先完整替换"
     elif requested_mode == "append" and relation not in {
         "identical",
         "snapshot_superset",
         "delta_tail",
     }:
-        execution = "Phase B 不能证明该输入可安全追加，将阻断写入"
+        execution = "系统不能证明该输入可安全追加，将阻断写入"
     elif requested_mode == "replace":
         execution = "明确选择完整替换；写入前仍会创建数据库快照"
     elif relation == "identical":
-        execution = "Phase B 将跳过数据库快照、播放写入和派生数据重建"
+        execution = "系统将跳过数据库快照、播放写入和派生数据重建"
     elif relation in {"snapshot_superset", "delta_tail"}:
         execution = "只追加新增播放，并按 ChangeSet 选择增量派生维护"
     elif relation == "reconciled_snapshot":
@@ -238,7 +240,7 @@ def _planned_actions(plan: ImportPlan, requested_mode: ImportRequestedMode) -> l
     elif relation == "baseline_required":
         execution = "空库将执行一次完整导入以建立持久化指纹基线"
     else:
-        execution = "Phase B 不会在证据不足时自动追加；请明确选择完整替换"
+        execution = "系统不会在证据不足时自动追加；请明确选择完整替换"
     return [primary, execution]
 
 
@@ -269,15 +271,20 @@ def _confirmation_token(
     return hashlib.sha256(canonical).hexdigest()
 
 
-def assess_streaming_import(
+def _assess_streaming_import_with_staging(
     streaming_dir: str | os.PathLike[str],
     account_dir: str | os.PathLike[str],
     *,
-    requested_mode: ImportRequestedMode = "auto",
-    conn: sqlite3.Connection | None = None,
+    requested_mode: ImportRequestedMode,
+    conn: sqlite3.Connection | None,
+    staging: StreamingImportStaging,
 ) -> StreamingImportAssessment:
     """Build the public report and retain private execution evidence."""
-    report = inspect_data_sources_for_planning(streaming_dir, account_dir)
+    report = inspect_data_sources_for_planning(
+        streaming_dir,
+        account_dir,
+        staging=staging,
+    )
     internal_records = report.pop("_streaming_records", [])
     incoming_records = [
         FingerprintRecord(
@@ -366,7 +373,39 @@ def assess_streaming_import(
         baseline_status=baseline_status,
         existing_account_identity_hash=existing_account_hash,
         incoming_account_identity_hash=incoming_account_hash,
+        staging=staging,
     )
+
+
+def assess_streaming_import(
+    streaming_dir: str | os.PathLike[str],
+    account_dir: str | os.PathLike[str],
+    *,
+    requested_mode: ImportRequestedMode = "auto",
+    conn: sqlite3.Connection | None = None,
+    staging: StreamingImportStaging | None = None,
+    retain_staging: bool = False,
+) -> StreamingImportAssessment:
+    """Build a plan from one parse, optionally retaining its temporary staging."""
+
+    owns_staging = staging is None
+    active_staging = staging or StreamingImportStaging.build(streaming_dir)
+    completed = False
+    try:
+        assessment = _assess_streaming_import_with_staging(
+            streaming_dir,
+            account_dir,
+            requested_mode=requested_mode,
+            conn=conn,
+            staging=active_staging,
+        )
+        completed = True
+        if not retain_staging:
+            return replace(assessment, staging=None)
+        return assessment
+    finally:
+        if owns_staging and (not retain_staging or not completed):
+            active_staging.close()
 
 
 def build_streaming_import_preflight(
@@ -375,11 +414,26 @@ def build_streaming_import_preflight(
     *,
     requested_mode: ImportRequestedMode = "auto",
     conn: sqlite3.Connection | None = None,
+    retain_staging_for_confirmation: bool = False,
 ) -> dict[str, Any]:
     """Combine source inspection and the persisted baseline without writes."""
-    return assess_streaming_import(
+    assessment = assess_streaming_import(
         streaming_dir,
         account_dir,
         requested_mode=requested_mode,
         conn=conn,
-    ).report
+        retain_staging=retain_staging_for_confirmation,
+    )
+    if (
+        retain_staging_for_confirmation
+        and assessment.staging is not None
+        and not assessment.report["blockers"]
+    ):
+        try:
+            cache_staging(str(assessment.report["confirmation_token"]), assessment.staging)
+        except Exception:
+            assessment.staging.close()
+            raise
+    elif assessment.staging is not None:
+        assessment.staging.close()
+    return assessment.report

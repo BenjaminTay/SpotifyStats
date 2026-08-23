@@ -68,11 +68,11 @@ class PlaybackRepository:
         params: tuple = (album_name,)
         sql = """SELECT COUNT(*) AS cnt FROM plays p
                  JOIN tracks t ON p.track_id = t.track_id
-                 JOIN track_albums ta ON t.track_id = ta.track_id
-                 JOIN albums al ON ta.album_id = al.album_id
+                 JOIN albums al ON al.album_id = COALESCE(p.source_album_id, t.album_id)
+                 LEFT JOIN artists album_artist ON album_artist.artist_id = al.artist_id
                  WHERE al.album_name = ?"""
         if artist_name:
-            sql += " AND al.artist_name = ?"
+            sql += " AND album_artist.artist_name = ?"
             params = (album_name, artist_name)
         row = self.conn.execute(sql, params).fetchone()
         return row["cnt"] if row else 0
@@ -83,8 +83,7 @@ class PlaybackRepository:
                FROM plays p
                LEFT JOIN tracks t ON p.track_id = t.track_id
                LEFT JOIN artists a ON t.artist_id = a.artist_id
-               LEFT JOIN track_albums ta ON t.track_id = ta.track_id
-               LEFT JOIN albums al ON ta.album_id = al.album_id
+               LEFT JOIN albums al ON al.album_id = COALESCE(p.source_album_id, t.album_id)
                ORDER BY p.ts DESC LIMIT ?""",
             self.conn,
             params=(limit,),
