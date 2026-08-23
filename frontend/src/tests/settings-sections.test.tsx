@@ -256,6 +256,28 @@ describe('Settings sections', () => {
     expect(screen.getByText('专辑元数据 +4')).toBeInTheDocument()
   })
 
+  it('shows that exact music search statistics continue in the background', () => {
+    render(
+      <ImportProgressCard
+        title="串流数据"
+        label="当前数据库记录数：1,000"
+        job={{
+          job_id: 'fixture',
+          status: 'done',
+          progress_pct: 1,
+          message: '导入完成',
+          result: {
+            maintenance_status: 'ok',
+            music_search_snapshot_status: 'warming',
+          },
+        }}
+        onStart={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByText('导入完成，音乐查找统计正在后台更新')).toBeInTheDocument()
+  })
+
   it('shows exact duplicate skips and a partial post-import health result', () => {
     render(
       <ImportProgressCard

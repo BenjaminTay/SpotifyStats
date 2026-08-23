@@ -175,17 +175,15 @@ def start_streaming_import(
                 return
             snapshot = create_database_snapshot(job_id=job_id)
             result = import_data(progress_callback=cb, build_preaggregations=False)
-            maintenance = run_post_streaming_import_maintenance(progress_callback=cb)
+            maintenance = run_post_streaming_import_maintenance(
+                progress_callback=cb,
+                defer_music_search_snapshots=True,
+            )
             post_import_health = _post_streaming_health_summary()
             if post_import_health["blockers"]:
                 raise PostImportHealthError(
                     "导入后健康检查未通过：" + "；".join(post_import_health["blockers"])
                 )
-            from backend.services.yearly_review_service import (
-                start_yearly_review_prewarm_thread,
-            )
-
-            start_yearly_review_prewarm_thread()
             _jobs[job_id]["status"] = "done"
             _jobs[job_id]["progress_pct"] = 1.0
             _jobs[job_id]["message"] = "导入完成"

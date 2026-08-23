@@ -153,12 +153,14 @@ function nestedResultStatus(result: Record<string, unknown> | null, key: string)
 
 function maintenanceLabel(job: ImportJob | null) {
   const status = resultString(job?.result ?? null, 'maintenance_status')
+  const searchSnapshotStatus = resultString(job?.result ?? null, 'music_search_snapshot_status')
   const health = job?.result?.post_import_health
   const healthStatus = health && typeof health === 'object' && !Array.isArray(health)
     ? (health as Record<string, unknown>).status
     : null
   if (healthStatus === 'partial' || healthStatus === 'stale') return '导入完成，数据可用但有健康提醒'
   if (status === 'partial') return '播放数据已导入，部分 Spotify 元数据待补全'
+  if (searchSnapshotStatus === 'warming') return '导入完成，音乐查找统计正在后台更新'
   if (status === 'ok') return '导入完成，派生数据已更新'
   return '导入完成'
 }

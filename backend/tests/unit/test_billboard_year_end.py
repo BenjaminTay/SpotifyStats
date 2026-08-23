@@ -167,7 +167,7 @@ def test_v3_year_end_score_is_weekly_score_sum_without_annual_bonuses():
         week_start_hour=0,
     )
 
-    assert response["meta"]["semantics_version"] == "year_end_v3"
+    assert response["meta"]["semantics_version"] == "year_end_v4"
     for family in ("tracks", "albums", "artists"):
         row = response[family][0]
         assert row["year_end_score"] == 400

@@ -44,6 +44,22 @@ def invalidate(namespace: str) -> None:
                 wrapper.cache_clear()
 
 
+def invalidate_except(namespace: str, preserved_keys: set[str]) -> None:
+    """Clear one namespace while preserving explicitly named cache entries.
+
+    Long-running maintenance tasks use this to release heavyweight Billboard
+    DataFrames without discarding the tiny latest-week snapshot consumed by
+    the home page.
+    """
+    with _registry_lock:
+        for key, fn in _lru_registry.get(namespace, {}).items():
+            if key not in preserved_keys and hasattr(fn, "cache_clear"):
+                fn.cache_clear()
+        for key, wrapper in _ttl_registry.get(namespace, {}).items():
+            if key not in preserved_keys and hasattr(wrapper, "cache_clear"):
+                wrapper.cache_clear()
+
+
 def invalidate_all() -> None:
     """Clear all registered caches across all namespaces."""
     with _registry_lock:

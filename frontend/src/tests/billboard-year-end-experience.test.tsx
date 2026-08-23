@@ -80,7 +80,7 @@ function response(year: number, name: string): BillboardYearEndResponse {
       week_start_dow: 4,
       week_start_hour: 12,
       score_label: 'Year-End Score',
-      semantics_version: 'year_end_v3',
+      semantics_version: 'year_end_v4',
       coverage_status: 'year_to_date',
       is_complete_year: false,
       period_start: `${year}-01-02T00:00:00`,

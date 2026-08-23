@@ -32,6 +32,7 @@ from backend.domains.music_search.snapshot import (
     build_music_search_snapshot_set,
     get_ready_music_search_snapshot_key,
     mark_music_search_derived_data_dirty,
+    prepare_music_search_snapshot_set,
 )
 from backend.domains.music_search.variants import build_music_search_variant_contexts
 from backend.domains.settings.repository import SettingsRepository
@@ -279,6 +280,93 @@ def _source_equivalent_legacy_v2_rows(
     return None
 
 
+def _ensure_current_music_search_candidate_index(
+    conn: sqlite3.Connection,
+    *,
+    rebuild_documents: bool,
+) -> tuple[dict[str, Any] | None, dict[str, Any]]:
+    """Build or revalidate the lightweight candidate index only."""
+    state = get_music_search_index_state(conn)
+    expected_source = music_search_source_revision(conn)
+    expected_index_version = expected_candidate_index_version(conn)
+    index_report: dict[str, Any] | None = None
+    index_rebuild_reasons = []
+    if rebuild_documents:
+        index_rebuild_reasons.append("explicit_rebuild_requested")
+    if not state.get("active_generation_id"):
+        index_rebuild_reasons.append("candidate_generation_missing")
+    if state.get("source_revision") != expected_source:
+        index_rebuild_reasons.append("candidate_source_revision_changed")
+    if state.get("candidate_index_version") != expected_index_version:
+        index_rebuild_reasons.append("candidate_index_version_changed")
+    if index_rebuild_reasons:
+        index_report = rebuild_music_search_index(conn)
+    final_index_state = get_music_search_index_state(conn)
+    candidate_report = {
+        "action": "rebuilt" if index_report is not None else "revalidated",
+        "reasons": index_rebuild_reasons or ["exact_candidate_index_version_ready"],
+        "candidate_index_version": final_index_state.get("candidate_index_version"),
+        "content_digest": final_index_state.get("content_digest"),
+        "generation_id": final_index_state.get("active_generation_id"),
+    }
+    return index_report, candidate_report
+
+
+def schedule_current_music_search_derived_data_rebuild(
+    conn: sqlite3.Connection,
+    *,
+    rebuild_documents: bool = False,
+    prewarm_yearly_review: bool = False,
+) -> dict[str, Any]:
+    """Publish candidates now and defer the six expensive exact snapshots."""
+    if not _search_metadata_dependencies_ready(conn):
+        raise RuntimeError("music-search metadata aggregate dependency is not ready")
+    contexts = build_music_search_variant_contexts(conn, _current_filter_values(conn))
+    index_report, candidate_report = _ensure_current_music_search_candidate_index(
+        conn,
+        rebuild_documents=rebuild_documents,
+    )
+    ready_report = _revalidated_snapshot_set_report(conn, contexts)
+    if ready_report is not None:
+        return {
+            "status": "ready",
+            "index": index_report,
+            "candidate_index": candidate_report,
+            "snapshot": ready_report["variants"][0],
+            "snapshot_set": ready_report,
+            "job_id": None,
+        }
+
+    # Write the full current set as pending before the job is queued so GET
+    # readers report `warming` instead of falling through to unavailable/zero.
+    prepare_music_search_snapshot_set(conn, contexts)
+    enqueue_options: dict[str, Any] = {"conn": conn}
+    if prewarm_yearly_review:
+        enqueue_options["prewarm_yearly_review"] = True
+    job_id = enqueue_music_search_snapshot_rebuild(**enqueue_options)
+    default_context = contexts[0]
+    return {
+        "status": "warming",
+        "index": index_report,
+        "candidate_index": candidate_report,
+        "snapshot": {
+            "status": "warming",
+            "snapshot_key": default_context.filter_fingerprint,
+            "filter_fingerprint": default_context.filter_fingerprint,
+            "entity_count": 0,
+            "source_revision": default_context.source_revision,
+        },
+        "snapshot_set": {
+            "status": "warming",
+            "semantic_base_key": default_context.semantic_base_key,
+            "ready_count": 0,
+            "failed_count": 0,
+            "variants": [],
+        },
+        "job_id": job_id,
+    }
+
+
 def rebuild_current_music_search_derived_data(
     conn: sqlite3.Connection,
     *,
@@ -296,38 +384,20 @@ def rebuild_current_music_search_derived_data(
             "all six exact music-search statistics variants must be maintained separately"
         )
 
-    state = get_music_search_index_state(conn)
-    expected_source = music_search_source_revision(conn)
-    expected_index_version = expected_candidate_index_version(conn)
-    index_report: dict[str, Any] | None = None
-    index_rebuild_reasons = []
-    if rebuild_documents:
-        index_rebuild_reasons.append("explicit_rebuild_requested")
-    if not state.get("active_generation_id"):
-        index_rebuild_reasons.append("candidate_generation_missing")
-    if state.get("source_revision") != expected_source:
-        index_rebuild_reasons.append("candidate_source_revision_changed")
-    if state.get("candidate_index_version") != expected_index_version:
-        index_rebuild_reasons.append("candidate_index_version_changed")
-    if index_rebuild_reasons:
-        index_report = rebuild_music_search_index(conn)
+    index_report, candidate_report = _ensure_current_music_search_candidate_index(
+        conn,
+        rebuild_documents=rebuild_documents,
+    )
     # Index generation changes do not invalidate statistics.  Only the exact
     # statistics fingerprint controls whether the six variants are reused.
     snapshot_set_report = snapshot_set_report or _revalidated_snapshot_set_report(conn, contexts)
     if snapshot_set_report is None:
         snapshot_set_report = build_music_search_snapshot_set(conn, contexts)
     default_snapshot = snapshot_set_report["variants"][0]
-    final_index_state = get_music_search_index_state(conn)
     return {
         "status": snapshot_set_report["status"],
         "index": index_report,
-        "candidate_index": {
-            "action": "rebuilt" if index_report is not None else "revalidated",
-            "reasons": index_rebuild_reasons or ["exact_candidate_index_version_ready"],
-            "candidate_index_version": final_index_state.get("candidate_index_version"),
-            "content_digest": final_index_state.get("content_digest"),
-            "generation_id": final_index_state.get("active_generation_id"),
-        },
+        "candidate_index": candidate_report,
         # Compatibility for callers that report the default L2/dynamic result.
         "snapshot": default_snapshot,
         "snapshot_set": snapshot_set_report,
@@ -353,6 +423,10 @@ def handle_music_search_snapshot_rebuild(job: Job) -> None:
             )
     finally:
         conn.close()
+    if job.payload.get("prewarm_yearly_review"):
+        from backend.services.yearly_review_service import start_yearly_review_prewarm_thread
+
+        start_yearly_review_prewarm_thread()
 
 
 def mark_music_search_for_rebuild(
@@ -418,6 +492,7 @@ def enqueue_music_search_snapshot_rebuild(
     rebuild_documents: bool = False,
     entity_id: str | None = None,
     conn: sqlite3.Connection | None = None,
+    prewarm_yearly_review: bool = False,
 ) -> str | None:
     queue = get_job_queue()
     if conn is not None and not queue_targets_connection(queue, conn):
@@ -453,5 +528,6 @@ def enqueue_music_search_snapshot_rebuild(
         "music_search_snapshot",
         exact_key,
         rebuild_documents=rebuild_documents,
+        prewarm_yearly_review=prewarm_yearly_review,
     )
     return queue.enqueue_if_not_pending(job)

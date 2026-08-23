@@ -82,7 +82,9 @@ def test_search_chart_lookup_forwards_complete_nondefault_context(monkeypatch):
             "artist_power_scores": [],
         }
 
-    monkeypatch.setattr(music_search_service, "compute_billboard_data", fake_compute)
+    monkeypatch.setattr(music_search_service, "compute_summaries_staged", fake_compute)
+    monkeypatch.setattr(music_search_service, "compute_power_scores_staged", fake_compute)
+    monkeypatch.setattr(music_search_service, "compute_weekly_data", fake_compute)
 
     music_search_service._build_chart_lookup(
         min_ms=45_000,

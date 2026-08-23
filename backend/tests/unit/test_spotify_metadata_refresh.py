@@ -20,7 +20,29 @@ def _conn():
             spotify_track_id_at_play TEXT,
             spotify_album_id_at_play TEXT
         );
-        CREATE TABLE tracks(track_id INTEGER PRIMARY KEY, spotify_track_id TEXT);
+        CREATE TABLE artists(
+            artist_id INTEGER PRIMARY KEY,
+            artist_name TEXT,
+            spotify_artist_id TEXT,
+            popularity INTEGER,
+            followers INTEGER,
+            genres TEXT,
+            image_url TEXT,
+            image_path TEXT
+        );
+        CREATE TABLE tracks(
+            track_id INTEGER PRIMARY KEY,
+            artist_id INTEGER,
+            spotify_track_id TEXT
+        );
+        CREATE TABLE albums(
+            album_id INTEGER PRIMARY KEY,
+            album_name TEXT,
+            artist_id INTEGER,
+            spotify_album_id TEXT,
+            image_url TEXT,
+            image_path TEXT
+        );
         CREATE TABLE spotify_track_meta(
             spotify_track_id TEXT PRIMARY KEY,
             track_name TEXT,
@@ -44,6 +66,14 @@ def _conn():
             album_artists TEXT,
             total_tracks INTEGER,
             track_list TEXT
+        );
+        CREATE TABLE spotify_artist_meta(
+            spotify_artist_id TEXT PRIMARY KEY,
+            artist_name TEXT NOT NULL,
+            popularity INTEGER,
+            followers INTEGER,
+            genres TEXT,
+            image_url TEXT
         );
         CREATE TABLE album_spotify_links(
             album_id INTEGER NOT NULL,
@@ -112,6 +142,31 @@ def test_upsert_track_batch_updates_play_album_ids_and_album_links():
     assert link["spotify_album_id"] == "album-a"
     assert link["evidence"] == "play_track_api"
     assert link["play_count"] == 1
+
+
+def test_upsert_track_batch_links_exact_local_artist():
+    from backend.domains.metadata.spotify_refresh import upsert_track_batch
+
+    conn = _conn()
+    conn.execute("INSERT INTO artists(artist_id, artist_name) VALUES (7, 'Beyoncé')")
+    conn.execute(
+        "INSERT INTO tracks(track_id, artist_id, spotify_track_id) VALUES (1, 7, 'track-a')"
+    )
+
+    upsert_track_batch(
+        conn,
+        [
+            {
+                "id": "track-a",
+                "name": "Track A",
+                "artists": [{"id": "artist-a", "name": "Beyonce"}],
+                "album": {},
+            }
+        ],
+    )
+
+    row = conn.execute("SELECT spotify_artist_id FROM artists WHERE artist_id=7").fetchone()
+    assert row["spotify_artist_id"] == "artist-a"
 
 
 def test_backfill_album_links_uses_existing_track_metadata():
@@ -183,6 +238,37 @@ def test_upsert_album_batch_preserves_existing_image_when_provider_omits_images(
     assert row["image_url"] == "old.jpg"
     assert row["total_tracks"] == 11
     assert row["track_list"] == '["track-a"]'
+
+
+def test_artist_batch_and_cover_source_sync_fill_local_entities():
+    from backend.domains.metadata.spotify_refresh import (
+        sync_local_cover_urls,
+        upsert_artist_batch,
+    )
+
+    conn = _conn()
+    conn.execute(
+        "INSERT INTO artists(artist_id, artist_name, spotify_artist_id) "
+        "VALUES (7, 'Artist A', 'artist-a')"
+    )
+    updated = upsert_artist_batch(
+        conn,
+        [
+            {
+                "id": "artist-a",
+                "name": "Artist A",
+                "images": [{"url": "artist.jpg"}],
+                "followers": {"total": 12},
+                "genres": ["pop"],
+            }
+        ],
+    )
+
+    assert updated == 1
+    sync_local_cover_urls(conn)
+    row = conn.execute("SELECT image_url, followers FROM artists WHERE artist_id=7").fetchone()
+    assert row["image_url"] == "artist.jpg"
+    assert row["followers"] == 12
 
 
 def test_refresh_missing_spotify_metadata_without_token_returns_partial_report():

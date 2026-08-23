@@ -9,7 +9,10 @@ from sqlite3 import Connection
 
 from backend.core.cache import singleflight
 from backend.core.db import DB_PATH, get_db
-from backend.domains.billboard.latest_snapshot_cache import latest_snapshot_revision
+from backend.domains.billboard.latest_snapshot_cache import (
+    latest_snapshot_revision,
+    snapshot_key,
+)
 from backend.domains.home.overview import build_home_overview
 from backend.models.home import HomeOverviewResponse
 from backend.models.yearly_review import YearlyReviewFilterContext
@@ -45,11 +48,27 @@ def _get_home_overview_cached(
 
 def get_home_overview(conn: Connection, context: YearlyReviewFilterContext) -> HomeOverviewResponse:
     if _is_primary_connection(conn):
+        billboard_key = snapshot_key(
+            context.min_ms,
+            context.music_only,
+            context.bb_top_n,
+            context.bb_album_top_n,
+            context.bb_artist_top_n,
+            context.bb_week_start_dow,
+            context.bb_week_start_hour,
+            None,
+            None,
+            context.merge_level,
+            context.dynamic_threshold,
+            context.max_merge_gap_minutes,
+            context.include_compilations,
+            context.merge_enabled,
+        )
         payload = _get_home_overview_cached(
             context.model_dump_json(),
             database_revision(),
             date.today().isoformat(),
-            latest_snapshot_revision(),
+            latest_snapshot_revision(billboard_key),
             yearly_review_cache_state(context),
         )
     else:

@@ -148,6 +148,42 @@ def test_enqueue_if_not_pending_uses_db_state(temp_db):
     assert q.enqueue_if_not_pending(second) is None
 
 
+def test_pending_dedupe_keeps_album_and_artist_ids_separate(temp_db):
+    q = JobQueue(max_workers=1)
+    q._db_path = temp_db
+
+    album = Job.create("cover_download", "albums", "42")
+    artist = Job.create("cover_download", "artists", "42")
+
+    assert q.enqueue_if_not_pending(album) == album.job_id
+    assert q.enqueue_if_not_pending(artist) == artist.job_id
+
+
+def test_failed_job_retries_and_records_attempt_count(temp_db):
+    calls = []
+
+    def flaky(job):
+        calls.append(job.attempts)
+        if len(calls) == 1:
+            raise RuntimeError("temporary")
+
+    q = JobQueue(max_workers=1)
+    q.register("flaky", flaky)
+    q.start(temp_db)
+    job = Job.create("flaky", "entity", "retry")
+    q.enqueue(job)
+    time.sleep(0.4)
+    q.stop()
+
+    conn = sqlite3.connect(temp_db)
+    row = conn.execute(
+        "SELECT status, attempts, error FROM background_jobs WHERE job_id=?", (job.job_id,)
+    ).fetchone()
+    conn.close()
+    assert calls == [1, 2]
+    assert row == ("done", 2, None)
+
+
 def test_get_job_queue_singleton():
     from backend.core.job_queue import get_job_queue
 

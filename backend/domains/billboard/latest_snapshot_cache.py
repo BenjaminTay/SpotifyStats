@@ -10,6 +10,7 @@ _MAX_ENTRIES = 8
 _lock = RLock()
 _snapshots: OrderedDict[tuple[Any, ...], dict[str, Any]] = OrderedDict()
 _revision = 0
+_key_revisions: dict[tuple[Any, ...], int] = {}
 
 
 def snapshot_key(
@@ -65,6 +66,7 @@ def store_latest_snapshot(key: tuple[Any, ...], payload: dict[str, Any]) -> None
     with _lock:
         _snapshots[key] = snapshot
         _revision += 1
+        _key_revisions[key] = _key_revisions.get(key, 0) + 1
         _snapshots.move_to_end(key)
         while len(_snapshots) > _MAX_ENTRIES:
             _snapshots.popitem(last=False)
@@ -116,12 +118,13 @@ def clear_latest_snapshots() -> None:
     global _revision
     with _lock:
         _snapshots.clear()
+        _key_revisions.clear()
         _revision += 1
 
 
-def latest_snapshot_revision() -> int:
+def latest_snapshot_revision(key: tuple[Any, ...] | None = None) -> int:
     with _lock:
-        return _revision
+        return _revision if key is None else _key_revisions.get(key, 0)
 
 
 clear_latest_snapshots.cache_clear = clear_latest_snapshots  # type: ignore[attr-defined]

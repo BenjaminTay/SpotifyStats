@@ -332,6 +332,34 @@ def test_forced_candidate_rebuild_reuses_exact_statistics_set(monkeypatch) -> No
     assert report["snapshot_set"]["revalidated"] is True
 
 
+def test_deferred_rebuild_publishes_candidates_and_queues_six_snapshots(monkeypatch) -> None:
+    conn = _conn()
+    queued: list[dict[str, object]] = []
+
+    def fake_enqueue(**kwargs):
+        queued.append(kwargs)
+        return "snapshot-job"
+
+    monkeypatch.setattr(maintenance, "enqueue_music_search_snapshot_rebuild", fake_enqueue)
+
+    report = maintenance.schedule_current_music_search_derived_data_rebuild(
+        conn,
+        rebuild_documents=True,
+    )
+
+    assert report["status"] == "warming"
+    assert report["candidate_index"]["action"] == "rebuilt"
+    assert report["snapshot"]["status"] == "warming"
+    assert report["job_id"] == "snapshot-job"
+    assert queued == [{"conn": conn}]
+    assert (
+        conn.execute(
+            "SELECT COUNT(*) FROM music_search_snapshot_meta WHERE status='pending'"
+        ).fetchone()[0]
+        == 6
+    )
+
+
 @pytest.mark.parametrize("component", ("source", "builder", "normalization", "tokenizer"))
 def test_candidate_version_drift_rebuilds_only_candidates(
     monkeypatch,

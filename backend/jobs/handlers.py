@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+import tempfile
 
 from backend.core.job_queue import Job
 from backend.infrastructure.http.client import HttpClient
@@ -30,32 +31,47 @@ def handle_cover_download(job: Job):
         ).fetchone()
         conn.close()
         if not row:
-            return
+            raise ValueError(f"cover source missing: {cover_type}/{entity_id}")
         cdn_url = row["image_url"]
 
+    if cover_type not in {"albums", "artists"}:
+        raise ValueError(f"unsupported cover type: {cover_type}")
+
+    resp = HttpClient(timeout=20, retries=2).get(cdn_url)
+    if resp.status != 200:
+        raise RuntimeError(f"cover download HTTP {resp.status}: {cover_type}/{entity_id}")
+    data = resp.body
+    if len(data) < 1024 or not data.startswith((b"\xff\xd8\xff", b"\x89PNG", b"RIFF")):
+        raise ValueError(f"invalid cover payload: {cover_type}/{entity_id} ({len(data)} bytes)")
+
+    # Write atomically so an interrupted worker never leaves a truncated file
+    # that the cover endpoint later treats as a valid cache hit.
+    from backend.core import db as db_module
+
+    filepath = os.path.join(
+        os.path.dirname(db_module.DB_PATH), "covers", cover_type, f"{entity_id}.jpg"
+    )
+    os.makedirs(os.path.dirname(filepath), exist_ok=True)
+    temp_path = None
     try:
-        resp = HttpClient(timeout=15, retries=1).get(cdn_url)
-        if resp.status != 200:
-            logger.warning(
-                "Cover download returned HTTP %s: %s/%s",
-                resp.status,
-                cover_type,
-                entity_id,
-            )
-            return
-        data = resp.body
+        with tempfile.NamedTemporaryFile(
+            mode="wb", dir=os.path.dirname(filepath), prefix=f".{entity_id}.", delete=False
+        ) as handle:
+            temp_path = handle.name
+            handle.write(data)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temp_path, filepath)
+        temp_path = None
+    finally:
+        if temp_path and os.path.exists(temp_path):
+            os.unlink(temp_path)
 
-        # Determine cache path
-        project_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
-        filepath = os.path.join(project_root, "data", "covers", cover_type, f"{entity_id}.jpg")
-        os.makedirs(os.path.dirname(filepath), exist_ok=True)
-        with open(filepath, "wb") as f:
-            f.write(data)
+    # Update DB only after the final file is safely published.
+    from backend.core.db import get_db
 
-        # Update DB
-        from backend.core.db import get_db
-
-        conn = get_db(readonly=False)
+    conn = get_db(readonly=False)
+    try:
         rel_path = f"covers/{cover_type}/{entity_id}.jpg"
         if cover_type == "albums":
             conn.execute(
@@ -66,10 +82,9 @@ def handle_cover_download(job: Job):
                 "UPDATE artists SET image_path = ? WHERE artist_id = ?", [rel_path, entity_id]
             )
         conn.commit()
+    finally:
         conn.close()
-        logger.info("Cover downloaded: %s/%s", cover_type, entity_id)
-    except Exception:
-        logger.exception("Cover download failed: %s/%s", cover_type, entity_id)
+    logger.info("Cover downloaded: %s/%s", cover_type, entity_id)
 
 
 def handle_wikipedia_enrich(job: Job):

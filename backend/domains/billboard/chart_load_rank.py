@@ -19,6 +19,10 @@ from backend.domains.billboard.data_loader import (
     load_billboard_raw_for_artists,
 )
 from backend.domains.billboard.version_merge import _normalize_album_column
+from backend.domains.billboard.week_coverage import (
+    current_open_billboard_week,
+    keep_complete_billboard_weeks,
+)
 
 
 def billboard_revision_state() -> tuple[int, int, int, int, str]:
@@ -182,6 +186,10 @@ def _load_and_rank_uncached(
     include_compilations=False,
     merge_enabled=True,
 ):
+    open_week = current_open_billboard_week(
+        week_start_dow=bb_week_start_dow,
+        week_start_hour=bb_week_start_hour,
+    )
     _agg_tracks, _agg_albums, _agg_artists = _try_load_from_agg(
         min_ms,
         music_only,
@@ -208,6 +216,26 @@ def _load_and_rank_uncached(
             merge_enabled=merge_enabled,
         )
         df_filtered = _filter_billboard_years(df_raw.copy(), year_start, year_end)
+
+    # The newest observed week is only a partial coverage window.  Keep the
+    # full filtered frame for all-time playback totals and coverage metadata,
+    # but never turn that partial window into weekly rankings or chart history.
+    chart_frame = keep_complete_billboard_weeks(df_filtered, open_week=open_week)
+    chart_agg_tracks = (
+        keep_complete_billboard_weeks(_agg_tracks, open_week=open_week)
+        if _agg_tracks is not None
+        else None
+    )
+    chart_agg_albums = (
+        keep_complete_billboard_weeks(_agg_albums, open_week=open_week)
+        if _agg_albums is not None
+        else None
+    )
+    chart_agg_artists = (
+        keep_complete_billboard_weeks(_agg_artists, open_week=open_week)
+        if _agg_artists is not None
+        else None
+    )
 
     coverage_source = _agg_albums if _agg_tracks is not None else df_filtered
     if (
@@ -238,22 +266,22 @@ def _load_and_rank_uncached(
                 for year, group in coverage_dates.groupby("year", sort=False)
             }
 
-    all_weeks_asc = sorted(df_filtered["billboard_week"].unique().tolist())
+    all_weeks_asc = sorted(chart_frame["billboard_week"].unique().tolist())
     all_weeks_desc = sorted(all_weeks_asc, reverse=True)
     weekly = compute_weekly_rankings(
-        df_filtered, bb_top_n, pre_agg=_agg_tracks, merge_level=merge_level
+        chart_frame, bb_top_n, pre_agg=chart_agg_tracks, merge_level=merge_level
     )
     weekly_album = compute_album_weekly_rankings(
-        df_filtered,
+        chart_frame,
         bb_album_top_n,
-        pre_agg=_agg_albums,
+        pre_agg=chart_agg_albums,
         merge_level=merge_level,
         include_compilations=include_compilations,
     )
 
-    if _agg_artists is not None:
+    if chart_agg_artists is not None:
         weekly_artist = compute_artist_weekly_rankings(
-            df_filtered, bb_artist_top_n, pre_agg=_agg_artists
+            chart_frame, bb_artist_top_n, pre_agg=chart_agg_artists
         )
     else:
         df_artists = load_billboard_raw_for_artists(
@@ -266,6 +294,7 @@ def _load_and_rank_uncached(
             merge_enabled=merge_enabled,
         )
         df_artists = _filter_billboard_years(df_artists, year_start, year_end)
+        df_artists = keep_complete_billboard_weeks(df_artists, open_week=open_week)
         weekly_artist = compute_artist_weekly_rankings(df_artists, bb_artist_top_n)
 
     weekly_album, weekly_artist = _attach_charting_entity_counts(

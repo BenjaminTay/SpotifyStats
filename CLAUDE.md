@@ -44,6 +44,7 @@ SpotifyStats 是本地优先的单用户 Spotify Extended Streaming History 分�
 - 艺人统计必须使用有效曲目署名、canonical artist 和稳定逻辑事件去重；featured artist 不得未经规则 fan-out。
 - 元数据人工治理不得重写原始 `plays`、`tracks`、`track_artists`，必须通过独立覆盖层、revision 和审计事件实现。
 - 语言和流派事实必须保留 unknown、未归属时长及审核边界，不得使用艺人名称或 genre 做启发式补齐。
+- Billboard 只发布完整结束的榜单周；最新播放所在的覆盖边缘周不生成周榜或派生成绩，但其播放仍计入非榜单统计。
 
 ## AI 边界
 
@@ -57,6 +58,7 @@ SpotifyStats 是本地优先的单用户 Spotify Extended Streaming History 分�
 - 新增外部 HTTP 必须经过 `HttpClient` 或对应 Provider，业务 service 不得直接新增 `urllib.request.Request`/`urlopen`。
 - 环境变量统一从 `backend/core/config.py` 读取，业务代码不得直接 `os.getenv()`。
 - 昂贵计算使用规范化 wrapper、缓存和 `singleflight()`，不得在热路径恢复逐行 `apply(axis=1)`、`iterrows()` 或整表重复扫描。
+- 串流导入同步更新音乐查找候选索引，六套精确统计快照通过后台队列继续构建；warming 期间不得回退到搜索 GET 冷建或虚假 0。
 - 开发后端使用 `uvicorn backend.main:app --reload --reload-dir backend`，避免扫描 `.venv`、`node_modules` 和 `data`。
 
 ## 前端约束

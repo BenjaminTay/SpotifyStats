@@ -15,7 +15,7 @@ from backend.domains.billboard.chart_power_score import (
 YEAR_END_TRACK_TOP_N = 50
 YEAR_END_ALBUM_TOP_N = 30
 YEAR_END_ARTIST_TOP_N = 30
-YEAR_END_SEMANTICS_VERSION = "year_end_v3"
+YEAR_END_SEMANTICS_VERSION = "year_end_v4"
 
 EMPTY_HONORS: dict[str, Any] = {
     "year_end_no1_track": None,

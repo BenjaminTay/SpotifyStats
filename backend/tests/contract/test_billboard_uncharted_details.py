@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import date
+
 import pytest
 
 pytestmark = pytest.mark.contract
@@ -60,6 +62,13 @@ def _seed_six_low_volume_entities(monkeypatch) -> tuple[int, str, str]:
     monkeypatch.setattr(
         "backend.domains.billboard.data_loader._try_load_from_agg",
         lambda *args, **kwargs: (None, None, None),
+    )
+    # This fixture tests Top-N eligibility rather than coverage-edge policy.
+    # Pin the following week as open so the 2026-07-03 chart week is complete
+    # regardless of the portable seed's own latest playback timestamp.
+    monkeypatch.setattr(
+        "backend.domains.billboard.chart_load_rank.current_open_billboard_week",
+        lambda **_kwargs: date(2026, 7, 10),
     )
     db_mod._load_plays_cached.cache_clear()
     db_mod._load_plays_for_artists_cached.cache_clear()

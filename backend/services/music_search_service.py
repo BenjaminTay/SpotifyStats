@@ -18,7 +18,11 @@ from backend.models.music_search import (
     MusicSearchResult,
 )
 from backend.services.analysis_stats_service import load_period_plays
-from backend.services.billboard_service import compute_billboard_data
+from backend.services.billboard_service import (
+    compute_power_scores_staged,
+    compute_summaries_staged,
+    compute_weekly_data,
+)
 from backend.services.entity_stats_service import _filter_entity_rows
 
 _ALL_KINDS: tuple[EntityType, ...] = ("track", "album", "artist")
@@ -342,7 +346,7 @@ def _build_chart_lookup(
     include_compilations: bool,
 ) -> dict[str, dict[Any, MusicSearchChartSummary]]:
     try:
-        data = compute_billboard_data(
+        common = dict(
             min_ms=min_ms,
             music_only=music_only,
             bb_top_n=bb_top_n,
@@ -358,6 +362,14 @@ def _build_chart_lookup(
             merge_enabled=merge_enabled,
             include_compilations=include_compilations,
         )
+        # Search context consumes weekly ranks, summaries, and power scores.
+        # Building the full Billboard payload also computes records and other
+        # unused slices, multiplying post-import work across six variants.
+        data = {
+            **compute_weekly_data(**common),
+            **compute_summaries_staged(**common),
+            **compute_power_scores_staged(**common),
+        }
     except sqlite3.OperationalError as exc:
         if "no such" in str(exc).lower():
             return {key: value.copy() for key, value in _EMPTY_CHART_LOOKUP.items()}

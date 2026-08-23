@@ -209,7 +209,7 @@ def run_probe(merge_levels: list[int]) -> dict[str, Any]:
             )
 
             meta = payload["meta"]
-            if meta["semantics_version"] != "year_end_v3":
+            if meta["semantics_version"] != "year_end_v4":
                 issues.append(f"meta: unexpected semantics_version={meta['semantics_version']!r}")
             if int(meta["weekly_top_n"]) != int(settings["bb_top_n"]):
                 issues.append("meta: track weekly cutoff differs from persisted settings")

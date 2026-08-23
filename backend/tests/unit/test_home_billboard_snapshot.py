@@ -67,6 +67,25 @@ def test_latest_snapshot_invalidation_changes_readiness_revision():
     assert get_latest_snapshot_if_cached(key) is None
 
 
+def test_snapshot_revision_is_scoped_to_the_exact_semantic_key():
+    clear_latest_snapshots()
+    home_key = snapshot_key(merge_level=2, dynamic_threshold=True)
+    other_key = snapshot_key(merge_level=3, dynamic_threshold=False)
+    empty = {
+        "meta": {"all_weeks_desc": []},
+        "weekly": [],
+        "weekly_album": [],
+        "weekly_artist": [],
+    }
+
+    store_latest_snapshot(home_key, empty)
+    home_revision = latest_snapshot_revision(home_key)
+    store_latest_snapshot(other_key, empty)
+
+    assert latest_snapshot_revision(home_key) == home_revision
+    assert latest_snapshot_revision(other_key) == 1
+
+
 def test_weekly_staged_computation_populates_the_home_snapshot(monkeypatch):
     clear_latest_snapshots()
     chart_staged_cache._compute_weekly_data_cached.cache_clear()

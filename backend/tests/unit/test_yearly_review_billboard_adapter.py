@@ -53,7 +53,7 @@ def test_preserves_year_end_semantics_coverage_honors_and_album_identity() -> No
     year_end = {
         "meta": {
             "year": 2025,
-            "semantics_version": "year_end_v3",
+            "semantics_version": "year_end_v4",
             "coverage_status": "complete",
             "observed_weeks": 52,
             "expected_weeks": 52,
@@ -75,7 +75,7 @@ def test_preserves_year_end_semantics_coverage_honors_and_album_identity() -> No
         records_payload=records,
     )
 
-    assert result["semantics_version"] == "year_end_v3"
+    assert result["semantics_version"] == "year_end_v4"
     assert result["coverage"].status == "complete"
     assert result["honors"]["year_end_no1_artist"]["artist_name"] == "Singer"
     assert result["charts"]["album"][0]["album_project_id"] == 91
@@ -87,7 +87,7 @@ def test_preserves_year_end_semantics_coverage_honors_and_album_identity() -> No
 
 def test_unknown_album_keeps_explicit_fallback_identity() -> None:
     payload = {
-        "meta": {"coverage_status": "empty", "semantics_version": "year_end_v3"},
+        "meta": {"coverage_status": "empty", "semantics_version": "year_end_v4"},
         "tracks": [],
         "albums": [{"album_name": "Unknown", "artist_name": "Nobody"}],
         "artists": [],
@@ -111,7 +111,7 @@ def test_ambiguous_album_project_name_does_not_invent_identity() -> None:
     conn = _conn()
     conn.execute("INSERT INTO album_projects VALUES (92, 'Album', 3, 1)")
     payload = {
-        "meta": {"coverage_status": "empty", "semantics_version": "year_end_v3"},
+        "meta": {"coverage_status": "empty", "semantics_version": "year_end_v4"},
         "tracks": [],
         "albums": [{"album_name": "Album", "artist_name": "Singer"}],
         "artists": [],
@@ -135,7 +135,7 @@ def test_live_adapter_passes_integer_annual_range_to_billboard_records(monkeypat
     def fake_year_end(**kwargs):
         captured_year_end.update(kwargs)
         return {
-            "meta": {"coverage_status": "empty", "semantics_version": "year_end_v3"},
+            "meta": {"coverage_status": "empty", "semantics_version": "year_end_v4"},
             "tracks": [],
             "albums": [],
             "artists": [],

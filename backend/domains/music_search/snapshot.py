@@ -9,7 +9,7 @@ from typing import Any, Literal, cast
 
 import pandas as pd
 
-from backend.core.cache_manager import invalidate
+from backend.core.cache_manager import invalidate, invalidate_except
 from backend.domains.music_search.context import (
     MUSIC_SEARCH_SNAPSHOT_BUILDER_VERSION,
     MusicSearchFilterContext,
@@ -174,14 +174,16 @@ def _metric_maps(
                 how="left",
             )
             plays_df["track_id"] = plays_df["track_agg_id"].fillna(plays_df["track_id"])
-    track_metrics = (
-        {
-            int(cast(Any, track_id)): (int(len(group)), int(group["ms_played"].sum()))
-            for track_id, group in plays_df.groupby("track_id")
+    if plays_df.empty:
+        track_metrics = {}
+    else:
+        track_grouped = plays_df.groupby("track_id", sort=False)["ms_played"].agg(
+            play_events="size", total_ms="sum"
+        )
+        track_metrics = {
+            int(cast(Any, track_id)): (int(row.play_events), int(row.total_ms))
+            for track_id, row in track_grouped.iterrows()
         }
-        if not plays_df.empty
-        else {}
-    )
     album_frame = compute_album_project_plays(
         plays_df,
         conn,
@@ -189,8 +191,8 @@ def _metric_maps(
         include_compilations=context.include_compilations,
     )
     album_metrics = {
-        int(row["album_project_id"]): (int(row["play_count"]), int(row["total_ms"]))
-        for _, row in album_frame.iterrows()
+        int(row.album_project_id): (int(row.play_count), int(row.total_ms))
+        for row in album_frame.itertuples(index=False)
     }
 
     # Artist fan-out can be substantially larger than the primary play frame.
@@ -209,14 +211,16 @@ def _metric_maps(
         max_merge_gap_minutes=context.max_merge_gap_minutes,
     )
     artist_df = artist_df if artist_df is not None else pd.DataFrame()
-    artist_metrics = (
-        {
-            int(cast(Any, artist_id)): (int(len(group)), int(group["ms_played"].sum()))
-            for artist_id, group in artist_df.groupby("artist_id")
+    if artist_df.empty:
+        artist_metrics = {}
+    else:
+        artist_grouped = artist_df.groupby("artist_id", sort=False)["ms_played"].agg(
+            play_events="size", total_ms="sum"
+        )
+        artist_metrics = {
+            int(cast(Any, artist_id)): (int(row.play_events), int(row.total_ms))
+            for artist_id, row in artist_grouped.iterrows()
         }
-        if not artist_df.empty
-        else {}
-    )
     del artist_df
     invalidate("db")
     gc.collect()
@@ -534,7 +538,10 @@ def build_music_search_snapshot_set(
             finally:
                 # Each heavyweight variant is independent.  Release its cache
                 # before continuing so a resumed set stays within host limits.
-                invalidate("billboard")
+                # Keep the tiny latest-week snapshots warm for the home page.
+                # Only the heavyweight per-variant chart frames need to be
+                # released before the next exact search variant.
+                invalidate_except("billboard", {"latest_snapshot"})
                 invalidate("db")
                 gc.collect()
         report.update(

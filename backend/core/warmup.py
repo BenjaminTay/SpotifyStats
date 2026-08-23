@@ -118,6 +118,22 @@ def warm_common_caches() -> None:
     prewarm_latest_yearly_review()
 
 
+def prewarm_import_critical_caches() -> None:
+    """Warm only the two latency-sensitive surfaces after an import publish."""
+    from backend.services.billboard_service import compute_weekly_data
+
+    conn = get_db()
+    try:
+        _play_filters, billboard_filters = _configured_warmup_filters(conn)
+    finally:
+        conn.close()
+    compute_weekly_data(**billboard_filters)
+
+    from backend.services.home_service import prewarm_default_home_overview
+
+    prewarm_default_home_overview()
+
+
 def start_warmup_thread() -> threading.Thread:
     """Start cache warmup in the background and return the thread."""
 

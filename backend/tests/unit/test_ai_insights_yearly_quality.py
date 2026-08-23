@@ -169,7 +169,7 @@ def _year_end_payload() -> dict[str, Any]:
             "year": 2026,
             "total_weeks": 25,
             "score_label": "Year-End Score",
-            "semantics_version": "year_end_v3",
+            "semantics_version": "year_end_v4",
             "coverage_status": "year_to_date",
             "is_complete_year": False,
             "period_start": "2026-01-02T00:00:00",
@@ -1310,7 +1310,7 @@ def test_yearly_report_cache_key_includes_contract_version():
 
     assert key is not None
     assert "contract_v13" in key
-    assert "year_end_v3" in key
+    assert "year_end_v4" in key
 
 
 def test_yearly_report_year_end_uses_persisted_billboard_settings(

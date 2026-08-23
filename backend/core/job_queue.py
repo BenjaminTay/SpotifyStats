@@ -146,11 +146,11 @@ class JobQueue:
 
     def enqueue_if_not_pending(self, job: Job) -> str | None:
         """Enqueue only if no pending/running job for the same entity+type exists."""
-        if self._has_pending_job(job.job_type, job.entity_id):
+        if self._has_pending_job(job.job_type, job.entity_type, job.entity_id):
             return None
         return self.enqueue(job)
 
-    def _has_pending_job(self, job_type: str, entity_id: str) -> bool:
+    def _has_pending_job(self, job_type: str, entity_type: str, entity_id: str) -> bool:
         """Check if a job for this entity+type is already pending or running."""
         if not self._db_path:
             return False
@@ -159,9 +159,10 @@ class JobQueue:
             conn.row_factory = sqlite3.Row
             row = conn.execute(
                 """SELECT 1 FROM background_jobs
-                   WHERE job_type=? AND entity_id=? AND status IN ('pending','running')
+                   WHERE job_type=? AND entity_type=? AND entity_id=?
+                     AND status IN ('pending','running')
                    LIMIT 1""",
-                (job_type, entity_id),
+                (job_type, entity_type, entity_id),
             ).fetchone()
             conn.close()
             return row is not None
@@ -198,13 +199,28 @@ class JobQueue:
             logger.warning("No handler registered for job type: %s", job.job_type)
             self._update_db_status(job.job_id, "failed", f"No handler for {job.job_type}")
             return
-        self._update_db_status(job.job_id, "running")
+        job.attempts += 1
+        self._update_db_status(job.job_id, "running", attempts=job.attempts)
         try:
             handler(job)
             self._update_db_status(job.job_id, "done")
         except Exception as exc:
             logger.exception("Job %s (%s) failed.", job.job_id, job.job_type)
-            self._update_db_status(job.job_id, "failed", str(exc)[:500])
+            if job.attempts < job.max_attempts and self._running:
+                self._update_db_status(
+                    job.job_id,
+                    "pending",
+                    str(exc)[:500],
+                    attempts=job.attempts,
+                )
+                self._q.put(job)
+            else:
+                self._update_db_status(
+                    job.job_id,
+                    "failed",
+                    str(exc)[:500],
+                    attempts=job.attempts,
+                )
 
     def _insert_db_job(self, job: Job):
         if not self._db_path:
@@ -233,15 +249,29 @@ class JobQueue:
         except sqlite3.OperationalError:
             logger.debug("background_jobs table unavailable; job will run in-memory only.")
 
-    def _update_db_status(self, job_id: str, status: str, error: str | None = None):
+    def _update_db_status(
+        self,
+        job_id: str,
+        status: str,
+        error: str | None = None,
+        *,
+        attempts: int | None = None,
+    ):
         if not self._db_path:
             return
         try:
             conn = sqlite3.connect(self._db_path, timeout=5)
-            conn.execute(
-                "UPDATE background_jobs SET status=?, updated_at=?, error=? WHERE job_id=?",
-                (status, datetime.now(timezone.utc).isoformat(), error, job_id),
-            )
+            if attempts is None:
+                conn.execute(
+                    "UPDATE background_jobs SET status=?, updated_at=?, error=? WHERE job_id=?",
+                    (status, datetime.now(timezone.utc).isoformat(), error, job_id),
+                )
+            else:
+                conn.execute(
+                    """UPDATE background_jobs
+                       SET status=?, updated_at=?, error=?, attempts=? WHERE job_id=?""",
+                    (status, datetime.now(timezone.utc).isoformat(), error, attempts, job_id),
+                )
             conn.commit()
             conn.close()
         except sqlite3.OperationalError:

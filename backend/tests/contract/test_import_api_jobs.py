@@ -56,7 +56,8 @@ def test_streaming_import_job_completes_and_exposes_progress(client, monkeypatch
         progress_events.append(dict(import_api._jobs))
         return {"files": 2, "records": 3, "artists": 4, "albums": 5, "tracks": 6}
 
-    def fake_maintenance(progress_callback):
+    def fake_maintenance(progress_callback, defer_music_search_snapshots=False):
+        assert defer_music_search_snapshots is True
         progress_callback("维护派生数据", 0.8)
         return {"maintenance_status": "ok"}
 
@@ -149,8 +150,8 @@ def test_streaming_import_job_runs_derived_maintenance_before_done(client, monke
         progress_callback("导入基础播放", 0.5)
         return {"total_records": 3, "unique_artists": 1, "unique_albums": 1, "unique_tracks": 1}
 
-    def fake_maintenance(progress_callback):
-        events.append(("maintenance", None))
+    def fake_maintenance(progress_callback, defer_music_search_snapshots=False):
+        events.append(("maintenance", defer_music_search_snapshots))
         progress_callback("维护派生数据", 0.9)
         return {
             "maintenance_status": "ok",
@@ -174,7 +175,7 @@ def test_streaming_import_job_runs_derived_maintenance_before_done(client, monke
     assert response.status_code == 200
     job_id = response.json()["job_id"]
     status = client.get(f"/api/import/status/{job_id}").json()
-    assert events == [("import", False), ("maintenance", None)]
+    assert events == [("import", False), ("maintenance", True)]
     assert status["status"] == "done"
     assert status["result"]["maintenance_status"] == "ok"
     assert status["result"]["album_projects_rebuilt"] is True
@@ -243,7 +244,7 @@ def test_streaming_import_requires_warning_confirmation_then_runs(client, monkey
     monkeypatch.setattr(
         import_api,
         "run_post_streaming_import_maintenance",
-        lambda progress_callback: {"maintenance_status": "ok"},
+        lambda progress_callback, defer_music_search_snapshots=False: {"maintenance_status": "ok"},
     )
     monkeypatch.setattr(import_api.threading, "Thread", _ImmediateThread)
 
@@ -356,7 +357,7 @@ def test_streaming_import_restores_snapshot_when_maintenance_fails(client, monke
     def fake_import_data(progress_callback, build_preaggregations=True):
         return {"total_records": 2}
 
-    def failing_maintenance(progress_callback):
+    def failing_maintenance(progress_callback, defer_music_search_snapshots=False):
         raise RuntimeError("fixture maintenance failure")
 
     monkeypatch.setattr(import_api.threading, "Thread", _ImmediateThread)
@@ -396,7 +397,7 @@ def test_streaming_import_restores_snapshot_when_post_import_health_fails(client
     monkeypatch.setattr(
         import_api,
         "run_post_streaming_import_maintenance",
-        lambda progress_callback: {"maintenance_status": "ok"},
+        lambda progress_callback, defer_music_search_snapshots=False: {"maintenance_status": "ok"},
     )
     monkeypatch.setattr(
         import_api,

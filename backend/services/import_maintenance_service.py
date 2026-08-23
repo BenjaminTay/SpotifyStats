@@ -4,16 +4,17 @@ from __future__ import annotations
 
 from typing import Any
 
-from backend.core.cache_manager import invalidate_all
 from backend.core.db import build_aggregations, get_db
 from backend.domains.metadata.import_health import build_import_health_report
 from backend.domains.metadata.spotify_refresh import refresh_missing_spotify_metadata
 from backend.domains.playback.album_projects import rebuild_album_projects
 from backend.domains.settings.repository import SettingsRepository
 from backend.providers.spotify.client import SpotifyProvider
+from backend.services.cover_cache_service import enqueue_missing_cover_downloads
 from backend.services.music_search_maintenance_service import (
     mark_music_search_for_rebuild,
     rebuild_current_music_search_derived_data,
+    schedule_current_music_search_derived_data_rebuild,
 )
 
 
@@ -22,7 +23,11 @@ def _progress(progress_callback, message: str, pct: float) -> None:
         progress_callback(message, pct)
 
 
-def run_post_streaming_import_maintenance(progress_callback=None) -> dict[str, Any]:
+def run_post_streaming_import_maintenance(
+    progress_callback=None,
+    *,
+    defer_music_search_snapshots: bool = False,
+) -> dict[str, Any]:
     """Refresh metadata, rebuild derived statistics, and invalidate runtime caches."""
     conn = get_db(readonly=False)
     try:
@@ -36,6 +41,9 @@ def run_post_streaming_import_maintenance(progress_callback=None) -> dict[str, A
             access_token=token,
             progress_callback=lambda message, _pct: _progress(progress_callback, message, 0.76),
         )
+
+        _progress(progress_callback, "补齐并排队下载缺失封面...", 0.79)
+        cover_report = enqueue_missing_cover_downloads(conn)
 
         _progress(progress_callback, "合并重复曲目（spotify_track_id）...", 0.80)
         groups_created, members_added = _auto_group_tracks_by_spotify_id(conn)
@@ -61,21 +69,36 @@ def run_post_streaming_import_maintenance(progress_callback=None) -> dict[str, A
             conn=conn,
         )
 
-        _progress(progress_callback, "重建音乐查找索引与精确快照...", 0.94)
-        search_report = rebuild_current_music_search_derived_data(
-            conn,
-            rebuild_documents=True,
-        )
-        if search_report["status"] != "ready":
+        _progress(progress_callback, "核验导入派生数据...", 0.93)
+        health = build_import_health_report(conn)
+
+        # build_aggregations() has already invalidated the previous generation.
+        # Warm the two interactive surfaces before the long exact-search job
+        # is allowed to compete for CPU and SQLite reads.
+        _progress(progress_callback, "预热首页与最新完整榜单...", 0.95)
+        from backend.core.warmup import prewarm_import_critical_caches
+
+        prewarm_import_critical_caches()
+
+        if defer_music_search_snapshots:
+            _progress(progress_callback, "更新音乐查找索引，精确快照转入后台...", 0.98)
+            search_report = schedule_current_music_search_derived_data_rebuild(
+                conn,
+                rebuild_documents=True,
+                prewarm_yearly_review=True,
+            )
+        else:
+            _progress(progress_callback, "重建音乐查找索引与精确快照...", 0.98)
+            search_report = rebuild_current_music_search_derived_data(
+                conn,
+                rebuild_documents=True,
+            )
+        if search_report["status"] not in {"ready", "warming"}:
             snapshot_set = search_report["snapshot_set"]
             raise RuntimeError(
                 "music-search snapshot set incomplete after import: "
                 f"ready={snapshot_set['ready_count']} failed={snapshot_set['failed_count']}"
             )
-
-        _progress(progress_callback, "核验导入派生数据...", 0.96)
-        health = build_import_health_report(conn)
-        invalidate_all()
 
         status = "ok"
         if not metadata_report.provider_available or metadata_report.errors:
@@ -89,7 +112,16 @@ def run_post_streaming_import_maintenance(progress_callback=None) -> dict[str, A
             "tracks_metadata_updated": metadata_report.tracks_updated,
             "albums_metadata_requested": metadata_report.albums_requested,
             "albums_metadata_updated": metadata_report.albums_updated,
+            "artists_metadata_requested": metadata_report.artists_requested,
+            "artists_metadata_updated": metadata_report.artists_updated,
+            "artist_cover_searches_requested": metadata_report.artist_searches_requested,
+            "artist_cover_searches_updated": metadata_report.artist_searches_updated,
             "album_links_backfilled": metadata_report.album_links_backfilled,
+            "cover_album_urls_synced": cover_report.album_urls_synced,
+            "cover_artist_urls_synced": cover_report.artist_urls_synced,
+            "cover_missing_albums": cover_report.missing_albums,
+            "cover_missing_artists": cover_report.missing_artists,
+            "cover_download_jobs_enqueued": cover_report.jobs_enqueued,
             "metadata_errors": list(metadata_report.errors),
             "track_groups_created": groups_created,
             "track_group_members_added": members_added,
@@ -102,6 +134,7 @@ def run_post_streaming_import_maintenance(progress_callback=None) -> dict[str, A
             "music_search_snapshot_entities": search_report["snapshot"]["entity_count"],
             "music_search_snapshot_ready_count": search_report["snapshot_set"]["ready_count"],
             "music_search_snapshot_failed_count": search_report["snapshot_set"]["failed_count"],
+            "music_search_snapshot_job_id": search_report.get("job_id"),
             **health,
         }
     finally:

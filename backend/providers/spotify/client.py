@@ -7,6 +7,7 @@ and uses the shared HttpClient for HTTP transport.
 from __future__ import annotations
 
 import base64
+import unicodedata
 from urllib.parse import quote
 
 from backend.core.config import SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET
@@ -137,26 +138,38 @@ class SpotifyProvider(BaseProvider):
         return None
 
     def search_artist_cover(self, artist_name: str, access_token: str) -> str | None:
-        """Search Spotify for an artist and return the best cover image URL."""
+        """Search Spotify for an exact artist and return its cover image URL."""
+        artist = self.search_artist(artist_name, access_token)
+        if not artist:
+            return None
+        images = artist.get("images", [])
+        return images[0].get("url") if images else None
+
+    def search_artist(self, artist_name: str, access_token: str) -> dict | None:
+        """Return only an exact normalized-name artist search match.
+
+        Cover repair must fail closed instead of silently assigning the first
+        fuzzy Spotify result to a similarly named local artist.
+        """
         query = quote(artist_name)
-        url = f"{self.config.base_url}/search?q={query}&type=artist&limit=3"
+        url = f"{self.config.base_url}/search?q={query}&type=artist&limit=10"
         result = self.api_get(url, access_token)
         if not result:
             return None
         items = result.get("artists", {}).get("items", [])
         if not items:
             return None
-        # Prefer exact name match
+        expected = "".join(
+            char for char in unicodedata.normalize("NFKD", artist_name).casefold() if char.isalnum()
+        )
         for item in items:
-            if item.get("name", "").lower() == artist_name.lower():
-                images = item.get("images", [])
-                if images:
-                    return images[0].get("url")
-        # Fallback
-        for item in items:
-            images = item.get("images", [])
-            if images:
-                return images[0].get("url")
+            candidate = "".join(
+                char
+                for char in unicodedata.normalize("NFKD", item.get("name", "")).casefold()
+                if char.isalnum()
+            )
+            if candidate == expected:
+                return item
         return None
 
     def get_profile(self, access_token: str) -> dict | None:

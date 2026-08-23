@@ -305,6 +305,7 @@ def test_snapshot_set_releases_heavy_caches_after_every_variant(monkeypatch) -> 
     from backend.domains.music_search import snapshot as snapshot_module
 
     released: list[str] = []
+    preserved: list[tuple[str, set[str]]] = []
     collected: list[bool] = []
     monkeypatch.setattr(
         snapshot_module,
@@ -318,6 +319,11 @@ def test_snapshot_set_releases_heavy_caches_after_every_variant(monkeypatch) -> 
         },
     )
     monkeypatch.setattr(snapshot_module, "invalidate", released.append)
+    monkeypatch.setattr(
+        snapshot_module,
+        "invalidate_except",
+        lambda namespace, keys: preserved.append((namespace, keys)),
+    )
     monkeypatch.setattr(snapshot_module.gc, "collect", lambda: collected.append(True))
     contexts = tuple(
         _context(
@@ -331,7 +337,8 @@ def test_snapshot_set_releases_heavy_caches_after_every_variant(monkeypatch) -> 
     report = build_music_search_snapshot_set(conn, contexts)
 
     assert report["ready_count"] == 3
-    assert released == ["billboard", "db"] * 3
+    assert released == ["db"] * 3
+    assert preserved == [("billboard", {"latest_snapshot"})] * 3
     assert collected == [True, True, True]
 
 

@@ -50,7 +50,15 @@ def test_current_candidates_fail_closed_without_exact_snapshot(monkeypatch) -> N
         forbidden,
     )
     monkeypatch.setattr(
-        "backend.services.music_search_service.compute_billboard_data",
+        "backend.services.music_search_service.compute_summaries_staged",
+        forbidden,
+    )
+    monkeypatch.setattr(
+        "backend.services.music_search_service.compute_power_scores_staged",
+        forbidden,
+    )
+    monkeypatch.setattr(
+        "backend.services.music_search_service.compute_weekly_data",
         forbidden,
     )
 
@@ -83,7 +91,15 @@ def test_private_any_local_returns_clickable_candidate_without_context_metrics(
         forbidden,
     )
     monkeypatch.setattr(
-        "backend.services.music_search_service.compute_billboard_data",
+        "backend.services.music_search_service.compute_summaries_staged",
+        forbidden,
+    )
+    monkeypatch.setattr(
+        "backend.services.music_search_service.compute_power_scores_staged",
+        forbidden,
+    )
+    monkeypatch.setattr(
+        "backend.services.music_search_service.compute_weekly_data",
         forbidden,
     )
 
