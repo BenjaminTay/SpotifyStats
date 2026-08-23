@@ -111,7 +111,10 @@ def test_declared_same_account_tail_delta_is_incremental() -> None:
 
 def test_auto_same_account_tail_package_is_incremental() -> None:
     boundary = _record("spotify:track:boundary", timestamp="2026-08-01T00:00:00+00:00")
-    existing = [_record("spotify:track:old"), boundary]
+    existing = [
+        _record("spotify:track:old", timestamp="2026-07-31T00:00:00+00:00"),
+        boundary,
+    ]
     incoming = [boundary, _record("spotify:track:new", timestamp="2026-08-02T00:00:00+00:00")]
 
     plan = build_import_plan(
@@ -177,6 +180,42 @@ def test_confirmed_snapshot_with_additions_and_removals_is_reconciled() -> None:
     assert plan.unchanged_count == 1
     assert plan.added_count == 1
     assert plan.removed_count == 1
+
+
+def test_auto_same_account_full_range_correction_offers_confirmed_reconcile() -> None:
+    first = _record("spotify:track:first", timestamp="2026-08-01T00:00:00+00:00")
+    removed = _record("spotify:track:wrong", timestamp="2026-08-02T00:00:00+00:00")
+    latest = _record("spotify:track:latest", timestamp="2026-08-03T00:00:00+00:00")
+    corrected = _record("spotify:track:correct", timestamp="2026-08-02T00:00:00+00:00")
+
+    plan = build_import_plan(
+        [first, corrected, latest],
+        existing_records=[first, removed, latest],
+        existing_account_identity_hash="same-account",
+        incoming_account_identity_hash="same-account",
+    )
+
+    assert plan.relation is ImportRelation.RECONCILED_SNAPSHOT
+    assert plan.added_count == 1
+    assert plan.removed_count == 1
+    assert plan.requires_confirmation is True
+
+
+def test_auto_historical_difference_without_full_range_coverage_stays_ambiguous() -> None:
+    first = _record("spotify:track:first", timestamp="2026-08-01T00:00:00+00:00")
+    removed = _record("spotify:track:wrong", timestamp="2026-08-02T00:00:00+00:00")
+    latest = _record("spotify:track:latest", timestamp="2026-08-03T00:00:00+00:00")
+    corrected = _record("spotify:track:correct", timestamp="2026-08-02T00:00:00+00:00")
+
+    plan = build_import_plan(
+        [corrected, latest],
+        existing_records=[first, removed, latest],
+        existing_account_identity_hash="same-account",
+        incoming_account_identity_hash="same-account",
+    )
+
+    assert plan.relation is ImportRelation.AMBIGUOUS
+    assert plan.requires_confirmation is True
 
 
 def test_snapshot_subset_is_truncated_or_regressive() -> None:

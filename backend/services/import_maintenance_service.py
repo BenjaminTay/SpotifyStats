@@ -5,7 +5,12 @@ from __future__ import annotations
 import time
 from typing import Any
 
-from backend.core.db import build_aggregations, build_aggregations_for_weeks, get_db
+from backend.core.db import (
+    build_aggregations,
+    build_aggregations_for_replaced_weeks,
+    build_aggregations_for_weeks,
+    get_db,
+)
 from backend.domains.imports.change_set import PlaybackChangeSet
 from backend.domains.metadata.import_health import build_import_health_report
 from backend.domains.metadata.spotify_refresh import (
@@ -13,7 +18,7 @@ from backend.domains.metadata.spotify_refresh import (
     refresh_missing_spotify_metadata,
 )
 from backend.domains.music_search.revisions import MusicSearchRevisionKind
-from backend.domains.playback.album_projects import rebuild_album_projects
+from backend.domains.playback.album_projects import rebuild_album_projects_for_impact
 from backend.domains.settings.repository import SettingsRepository
 from backend.providers.spotify.client import SpotifyProvider
 from backend.services.cover_cache_service import enqueue_missing_cover_downloads
@@ -43,14 +48,20 @@ def run_post_streaming_import_maintenance(
         token = provider.get_cc_token()
 
         _progress(progress_callback, "刷新 Spotify 元数据...", 0.72)
+        targeted_change = change_set is not None and change_set.strategy in {
+            "incremental",
+            "reconcile",
+        }
         metadata_scope = (
             MetadataRefreshScope(
                 generation_id=change_set.generation_id,
                 track_ids=change_set.track_ids,
                 album_ids=change_set.album_ids,
                 artist_ids=change_set.artist_ids,
+                spotify_track_ids=change_set.spotify_track_ids,
+                spotify_album_ids=change_set.spotify_album_ids,
             )
-            if change_set is not None and change_set.strategy == "incremental"
+            if targeted_change and change_set is not None
             else None
         )
         metadata_started = time.perf_counter()
@@ -67,19 +78,42 @@ def run_post_streaming_import_maintenance(
         cover_started = time.perf_counter()
         cover_report = enqueue_missing_cover_downloads(
             conn,
-            album_ids=(change_set.album_ids if metadata_scope is not None else None),
+            album_ids=(
+                change_set.album_ids | metadata_report.local_album_ids_relinked
+                if metadata_scope is not None and change_set is not None
+                else None
+            ),
             artist_ids=(change_set.artist_ids if metadata_scope is not None else None),
         )
         cover_seconds = time.perf_counter() - cover_started
 
         _progress(progress_callback, "合并重复曲目（spotify_track_id）...", 0.80)
         grouping_started = time.perf_counter()
-        groups_created, members_added = _auto_group_tracks_by_spotify_id(conn)
+        groups_created, members_added = _auto_group_tracks_by_spotify_id(
+            conn,
+            track_ids=(
+                change_set.track_ids if targeted_change and change_set is not None else None
+            ),
+            spotify_track_ids=(
+                metadata_report.spotify_track_ids_updated if targeted_change else None
+            ),
+        )
         grouping_seconds = time.perf_counter() - grouping_started
 
         _progress(progress_callback, "重建 album projects...", 0.84)
         album_projects_started = time.perf_counter()
-        rebuild_album_projects(conn)
+        album_project_report = rebuild_album_projects_for_impact(
+            conn,
+            local_album_ids=(
+                change_set.album_ids | metadata_report.local_album_ids_relinked
+                if targeted_change and change_set is not None
+                else ()
+            ),
+            spotify_album_ids=metadata_report.spotify_album_ids_updated,
+            spotify_track_ids=metadata_report.spotify_track_ids_updated,
+            impact_scope_exact=targeted_change and metadata_report.impact_scope_exact,
+            has_deletions=bool(change_set and change_set.removed_count),
+        )
         album_projects_seconds = time.perf_counter() - album_projects_started
 
         _progress(progress_callback, "重建 Billboard 预聚合...", 0.9)
@@ -104,6 +138,30 @@ def run_post_streaming_import_maintenance(
                 dynamic_threshold=True,
                 max_merge_gap_minutes=max_merge_gap_minutes,
                 expected_generation_id=expected_generation_id,
+            )
+        elif change_set is not None and change_set.strategy == "reconcile":
+            active_state = conn.execute(
+                """SELECT active_generation_id, dataset_digest
+                   FROM playback_import_state WHERE state_id=1"""
+            ).fetchone()
+            if (
+                active_state is None
+                or str(active_state["active_generation_id"] or "") != change_set.generation_id
+                or not active_state["dataset_digest"]
+            ):
+                raise RuntimeError("active reconcile facts do not match the maintenance scope")
+            agg_results = build_aggregations_for_replaced_weeks(
+                set(change_set.billboard_weeks),
+                replacement_scope_exact=change_set.billboard_scope_exact,
+                expected_generation_id=change_set.generation_id,
+                expected_dataset_digest=str(active_state["dataset_digest"]),
+                previous_dataset_digest=change_set.previous_dataset_digest,
+                min_ms=min_ms,
+                music_only=music_only,
+                week_start_dow=week_start_dow,
+                week_start_hour=week_start_hour,
+                dynamic_threshold=True,
+                max_merge_gap_minutes=max_merge_gap_minutes,
             )
         else:
             agg_results = build_aggregations(
@@ -208,7 +266,15 @@ def run_post_streaming_import_maintenance(
             "track_groups_created": groups_created,
             "track_group_members_added": members_added,
             "album_projects_rebuilt": True,
-            "maintenance_scope": "incremental" if metadata_scope is not None else "full",
+            "album_project_rebuild_strategy": album_project_report.strategy,
+            "album_project_rebuild_fallback_reason": album_project_report.fallback_reason,
+            "album_project_affected_albums": album_project_report.affected_album_count,
+            "album_project_affected_projects": album_project_report.affected_project_count,
+            "maintenance_scope": (
+                change_set.strategy
+                if metadata_scope is not None and change_set is not None
+                else "full"
+            ),
             "changed_entity_count": change_set.entity_count if change_set is not None else None,
             "changed_years": sorted(change_set.years) if change_set is not None else [],
             "changed_billboard_weeks": (
@@ -237,13 +303,40 @@ def run_post_streaming_import_maintenance(
         conn.close()
 
 
-def _auto_group_tracks_by_spotify_id(conn) -> tuple[int, int]:
+def _auto_group_tracks_by_spotify_id(
+    conn,
+    *,
+    track_ids: frozenset[int] | None = None,
+    spotify_track_ids: frozenset[str] | None = None,
+) -> tuple[int, int]:
     """Create recording-scope track groups for tracks sharing a spotify_track_id
     WITHIN THE SAME ARTIST.  Cross-artist spotify_track_id matches are metadata
     errors and must not be merged.
 
     Returns (groups_created, members_added).
     """
+    if track_ids is not None or spotify_track_ids is not None:
+        impacted_pairs: set[tuple[str, int]] = set()
+        for column, values in (
+            ("track_id", sorted(track_ids or ())),
+            ("spotify_track_id", sorted(spotify_track_ids or ())),
+        ):
+            for offset in range(0, len(values), 800):
+                chunk = values[offset : offset + 800]
+                placeholders = ",".join("?" for _ in chunk)
+                impacted_pairs.update(
+                    (str(row[0]), int(row[1]))
+                    for row in conn.execute(
+                        f"""SELECT DISTINCT spotify_track_id, artist_id
+                            FROM tracks
+                            WHERE {column} IN ({placeholders})
+                              AND spotify_track_id IS NOT NULL
+                              AND spotify_track_id != ''""",
+                        chunk,
+                    ).fetchall()
+                )
+        return _auto_group_impacted_spotify_pairs(conn, impacted_pairs)
+
     # ① Create groups — one per (spotify_track_id, artist_id), primary = most-plays,
     #     canonical_name = primary track's name (no artist suffix needed:
     #     grouping by artist_id prevents cross-artist clashes).
@@ -293,4 +386,57 @@ def _auto_group_tracks_by_spotify_id(conn) -> tuple[int, int]:
     )
     members_added = conn.execute("SELECT CHANGES()").fetchone()[0]
 
+    return groups_created, members_added
+
+
+def _auto_group_impacted_spotify_pairs(
+    conn,
+    impacted_pairs: set[tuple[str, int]],
+) -> tuple[int, int]:
+    """Group only Spotify identities whose local evidence changed this run."""
+
+    groups_created = 0
+    members_added = 0
+    for spotify_track_id, artist_id in sorted(impacted_pairs):
+        tracks = conn.execute(
+            """SELECT t.track_id, t.track_name, COUNT(p.play_id) AS play_count
+               FROM tracks t
+               LEFT JOIN plays p ON p.track_id=t.track_id
+               WHERE t.spotify_track_id=? AND t.artist_id=?
+               GROUP BY t.track_id, t.track_name
+               ORDER BY play_count DESC, t.track_id
+               """,
+            (spotify_track_id, artist_id),
+        ).fetchall()
+        if len(tracks) <= 1:
+            continue
+        primary_track_id = int(tracks[0][0])
+        canonical_name = str(tracks[0][1])
+        cursor = conn.execute(
+            """INSERT OR IGNORE INTO track_groups
+               (canonical_name, primary_track_id, scope, is_manual)
+               VALUES (?, ?, 'recording', 0)""",
+            (canonical_name, primary_track_id),
+        )
+        groups_created += max(cursor.rowcount, 0)
+        group = conn.execute(
+            """SELECT tg.group_id
+               FROM track_groups tg
+               JOIN tracks primary_track ON primary_track.track_id=tg.primary_track_id
+               WHERE tg.scope='recording' AND tg.is_manual=0
+                 AND primary_track.spotify_track_id=?
+                 AND primary_track.artist_id=?
+               ORDER BY tg.group_id LIMIT 1""",
+            (spotify_track_id, artist_id),
+        ).fetchone()
+        if group is None:
+            raise RuntimeError("Spotify recording group identity could not be resolved")
+        group_id = int(group[0])
+        before = conn.total_changes
+        conn.executemany(
+            """INSERT OR IGNORE INTO track_group_members(group_id, track_id)
+               VALUES (?, ?)""",
+            ((group_id, int(track[0])) for track in tracks),
+        )
+        members_added += conn.total_changes - before
     return groups_created, members_added

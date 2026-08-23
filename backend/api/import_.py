@@ -306,7 +306,7 @@ def _publish_import_state(
     assessment: StreamingImportAssessment,
     import_result: dict,
     *,
-    executed_strategy: Literal["incremental", "full"],
+    executed_strategy: Literal["incremental", "reconcile", "full"],
     conn: sqlite3.Connection | None = None,
 ) -> None:
     """Verify facts and publish the active generation before derived maintenance."""
@@ -324,7 +324,7 @@ def _publish_import_state(
 
     if import_result.get("input_dataset_digest") != assessment.plan.incoming_digest:
         raise RuntimeError("source files changed after the import plan was confirmed")
-    if executed_strategy == "incremental" and (
+    if executed_strategy in {"incremental", "reconcile"} and (
         import_result.get("previous_dataset_digest") != assessment.plan.previous_digest
     ):
         raise RuntimeError("active playback baseline changed after import planning")
@@ -363,7 +363,7 @@ def _publish_import_state(
         generation_id = str(import_result.get("generation_id") or "")
         account_identity_hash = (
             assessment.incoming_account_identity_hash
-            if executed_strategy == "full"
+            if executed_strategy in {"full", "reconcile"}
             else (
                 assessment.incoming_account_identity_hash
                 or assessment.existing_account_identity_hash
@@ -451,12 +451,17 @@ def start_streaming_import(
                 return
 
             snapshot = create_database_snapshot(job_id=job_id)
-            import_mode: Literal["append", "replace"] = (
-                "append" if decision.action is ImportExecutionAction.APPEND else "replace"
-            )
-            executed_strategy: Literal["incremental", "full"] = (
-                "incremental" if import_mode == "append" else "full"
-            )
+            import_mode: Literal["append", "reconcile", "replace"]
+            executed_strategy: Literal["incremental", "reconcile", "full"]
+            if decision.action is ImportExecutionAction.APPEND:
+                import_mode = "append"
+                executed_strategy = "incremental"
+            elif decision.action is ImportExecutionAction.RECONCILE:
+                import_mode = "reconcile"
+                executed_strategy = "reconcile"
+            else:
+                import_mode = "replace"
+                executed_strategy = "full"
 
             def publish_before_commit(conn: sqlite3.Connection, import_result: dict) -> None:
                 _publish_import_state(
@@ -470,6 +475,7 @@ def start_streaming_import(
                     generation_id=str(import_result.get("generation_id") or ""),
                     strategy=executed_strategy,
                     plan=assessment.plan,
+                    removed_rows=import_result.get("_removed_impact_rows"),
                 )
                 publish_year_partition_state(conn, import_result["change_set"])
                 record_playback_import_run(
@@ -487,7 +493,12 @@ def start_streaming_import(
                 mode=import_mode,
                 generation_id=uuid.uuid4().hex,
                 expected_previous_digest=(
-                    assessment.plan.previous_digest if import_mode == "append" else None
+                    assessment.plan.previous_digest
+                    if import_mode in {"append", "reconcile"}
+                    else None
+                ),
+                removed_identities=(
+                    assessment.plan.removed if import_mode == "reconcile" else None
                 ),
                 before_final_commit=publish_before_commit,
             )

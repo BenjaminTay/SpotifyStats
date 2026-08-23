@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from datetime import datetime, timezone
 
 import pytest
 
@@ -474,6 +475,73 @@ def test_snapshot_superset_auto_import_uses_append(client, monkeypatch):
     assert status["result"]["detected_relation"] == "snapshot_superset"
     assert status["result"]["executed_strategy"] == "incremental"
     assert status["result"]["inserted_records"] == 1
+
+
+def test_reconcile_auto_requires_bound_confirmation_and_passes_exact_scope(client, monkeypatch):
+    from backend.api import import_ as import_api
+
+    def record(char: str, day: int) -> FingerprintRecord:
+        return FingerprintRecord(
+            source_type="audio",
+            fingerprint=char * 64,
+            timestamp=datetime(2026, 8, day, tzinfo=timezone.utc),
+        )
+
+    first = record("a", 1)
+    removed = record("b", 2)
+    added = record("c", 2)
+    latest = record("d", 3)
+    plan = build_import_plan(
+        [first, added, latest],
+        existing_records=[first, removed, latest],
+        existing_account_identity_hash="same-account",
+        incoming_account_identity_hash="same-account",
+    )
+    import_calls = []
+    monkeypatch.setattr(
+        import_api,
+        "assess_streaming_import",
+        lambda *args, **kwargs: _assessment(plan=plan),
+    )
+
+    def fake_import_data(**kwargs):
+        import_calls.append(kwargs)
+        return {
+            "inserted_records": 1,
+            "unchanged_records": 2,
+            "active_records": 3,
+            "generation_id": kwargs["generation_id"],
+        }
+
+    monkeypatch.setattr(import_api, "import_data", fake_import_data)
+    monkeypatch.setattr(
+        import_api,
+        "run_post_streaming_import_maintenance",
+        lambda **kwargs: {"maintenance_status": "ok"},
+    )
+    monkeypatch.setattr(import_api.threading, "Thread", _ImmediateThread)
+
+    unconfirmed = client.post("/api/import/streaming?mode=auto")
+    unconfirmed_status = client.get(f"/api/import/status/{unconfirmed.json()['job_id']}").json()
+    stale = client.post(
+        "/api/import/streaming?mode=auto&confirm_plan=true&confirmation_token=stale"
+    )
+    stale_status = client.get(f"/api/import/status/{stale.json()['job_id']}").json()
+    confirmed = client.post(
+        "/api/import/streaming?mode=auto&confirm_plan=true&confirmation_token=token-v1"
+    )
+    confirmed_status = client.get(f"/api/import/status/{confirmed.json()['job_id']}").json()
+
+    assert unconfirmed_status["status"] == "needs_confirmation"
+    assert stale_status["status"] == "needs_confirmation"
+    assert stale_status["result"]["confirmation_reason"] == "stale_plan"
+    assert confirmed_status["status"] == "done"
+    assert confirmed_status["result"]["executed_strategy"] == "reconcile"
+    assert len(import_calls) == 1
+    assert import_calls[0]["mode"] == "reconcile"
+    assert import_calls[0]["expected_previous_digest"] == plan.previous_digest
+    assert import_calls[0]["removed_identities"] == plan.removed
+    assert "removed_identities" not in confirmed_status["result"]
 
 
 def test_ambiguous_auto_requires_explicit_confirmed_replace(client, monkeypatch):

@@ -218,6 +218,22 @@ def build_import_plan(
         # cannot distinguish a later delta from another account's history.
         relation = ImportRelation.AMBIGUOUS
     elif (
+        added
+        and removed
+        and accounts_match
+        and coverage is ImportCoverage.UNKNOWN
+        and _range_covers_existing(
+            incoming_range=incoming_range,
+            existing_range=existing_range,
+        )
+    ):
+        # Auto mode may offer (but never silently execute) an exact reconcile
+        # only when the same-account input looks like an authoritative history
+        # snapshot: it contains both sides of a correction and its timestamp
+        # envelope covers the complete active range.  Anything weaker stays
+        # ambiguous so omitted rows cannot be mistaken for deletions.
+        relation = ImportRelation.RECONCILED_SNAPSHOT
+    elif (
         unchanged
         and accounts_match
         and coverage is ImportCoverage.UNKNOWN
@@ -314,6 +330,23 @@ def _is_tail_addition(
         and all(timestamp is not None for timestamp in added_timestamps)
         and min(timestamp for timestamp in added_timestamps if timestamp is not None)
         >= _normalise_timestamp(existing_latest)
+    )
+
+
+def _range_covers_existing(
+    *,
+    incoming_range: tuple[datetime | None, datetime | None],
+    existing_range: tuple[datetime | None, datetime | None],
+) -> bool:
+    incoming_first, incoming_latest = incoming_range
+    existing_first, existing_latest = existing_range
+    return bool(
+        incoming_first is not None
+        and incoming_latest is not None
+        and existing_first is not None
+        and existing_latest is not None
+        and incoming_first <= existing_first
+        and incoming_latest >= existing_latest
     )
 
 

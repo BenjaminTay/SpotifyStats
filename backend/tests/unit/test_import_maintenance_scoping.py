@@ -1,0 +1,86 @@
+from __future__ import annotations
+
+import sqlite3
+
+import pytest
+
+from backend.services.import_maintenance_service import _auto_group_tracks_by_spotify_id
+
+pytestmark = pytest.mark.unit
+
+
+def _grouping_db() -> sqlite3.Connection:
+    conn = sqlite3.connect(":memory:")
+    conn.executescript(
+        """
+        CREATE TABLE tracks (
+            track_id INTEGER PRIMARY KEY,
+            track_name TEXT NOT NULL,
+            artist_id INTEGER NOT NULL,
+            spotify_track_id TEXT
+        );
+        CREATE TABLE plays (
+            play_id INTEGER PRIMARY KEY,
+            track_id INTEGER
+        );
+        CREATE TABLE track_groups (
+            group_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            canonical_name TEXT NOT NULL,
+            primary_track_id INTEGER NOT NULL UNIQUE,
+            scope TEXT NOT NULL,
+            is_manual INTEGER NOT NULL
+        );
+        CREATE TABLE track_group_members (
+            group_id INTEGER NOT NULL,
+            track_id INTEGER NOT NULL,
+            PRIMARY KEY(group_id, track_id)
+        );
+        """
+    )
+    conn.executemany(
+        "INSERT INTO tracks VALUES (?, ?, ?, ?)",
+        (
+            (1, "A one", 10, "spotify-a"),
+            (2, "A two", 10, "spotify-a"),
+            (3, "B one", 20, "spotify-b"),
+            (4, "B two", 20, "spotify-b"),
+        ),
+    )
+    conn.executemany(
+        "INSERT INTO plays(track_id) VALUES (?)",
+        ((2,), (2,), (3,)),
+    )
+    return conn
+
+
+def test_spotify_track_grouping_only_touches_impacted_pairs() -> None:
+    conn = _grouping_db()
+    try:
+        assert _auto_group_tracks_by_spotify_id(
+            conn,
+            track_ids=frozenset({1}),
+            spotify_track_ids=frozenset(),
+        ) == (1, 2)
+        assert conn.execute(
+            """SELECT t.spotify_track_id
+               FROM track_groups tg JOIN tracks t ON t.track_id=tg.primary_track_id"""
+        ).fetchall() == [("spotify-a",)]
+
+        assert _auto_group_tracks_by_spotify_id(
+            conn,
+            track_ids=frozenset(),
+            spotify_track_ids=frozenset({"spotify-b"}),
+        ) == (1, 2)
+        assert conn.execute(
+            """SELECT DISTINCT t.spotify_track_id
+               FROM track_groups tg JOIN tracks t ON t.track_id=tg.primary_track_id
+               ORDER BY t.spotify_track_id"""
+        ).fetchall() == [("spotify-a",), ("spotify-b",)]
+
+        assert _auto_group_tracks_by_spotify_id(
+            conn,
+            track_ids=frozenset({1}),
+            spotify_track_ids=frozenset({"spotify-a"}),
+        ) == (0, 0)
+    finally:
+        conn.close()

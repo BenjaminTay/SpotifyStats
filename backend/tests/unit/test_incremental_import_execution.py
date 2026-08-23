@@ -133,3 +133,21 @@ def test_explicit_replace_is_not_silently_optimised_to_noop() -> None:
         resolve_import_execution(plan, requested_mode="replace").action
         is ImportExecutionAction.REPLACE
     )
+
+
+def test_reconciled_snapshot_requires_confirmation_then_uses_reconcile() -> None:
+    plan = build_import_plan(
+        [_record("a", 1), _record("c", 2), _record("d", 3)],
+        existing_records=[_record("a", 1), _record("b", 2), _record("d", 3)],
+        existing_account_identity_hash="same",
+        incoming_account_identity_hash="same",
+    )
+
+    assert resolve_import_execution(plan).action is ImportExecutionAction.NEEDS_CONFIRMATION
+    decision = resolve_import_execution(plan, confirm_plan=True)
+    assert decision.action is ImportExecutionAction.RECONCILE
+    assert decision.writes_playback is True
+    assert (
+        resolve_import_execution(plan, requested_mode="append", confirm_plan=True).action
+        is ImportExecutionAction.BLOCKED
+    )

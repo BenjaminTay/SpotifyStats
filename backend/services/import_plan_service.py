@@ -228,7 +228,11 @@ def _planned_actions(plan: ImportPlan, requested_mode: ImportRequestedMode) -> l
     elif relation == "identical":
         execution = "Phase B 将跳过数据库快照、播放写入和派生数据重建"
     elif relation in {"snapshot_superset", "delta_tail"}:
-        execution = "Phase B 只追加新增播放；派生维护暂时仍使用完整路径"
+        execution = "只追加新增播放，并按 ChangeSet 选择增量派生维护"
+    elif relation == "reconciled_snapshot":
+        execution = (
+            "确认当前计划后在单个事务中精确删除和新增；派生影响闭包无法证明时自动回退全量重建"
+        )
     elif relation == "baseline_required" and plan.existing_count > 0:
         execution = "旧库无法证明输入包覆盖全部历史；确认后才会完整替换并建立基线"
     elif relation == "baseline_required":

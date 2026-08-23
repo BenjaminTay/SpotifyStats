@@ -2252,6 +2252,404 @@ def _apply_aggregate_map_delta(
     conn.execute(f'DELETE FROM temp."{shadow_table}" WHERE play_count=0 AND total_ms=0')
 
 
+_HISTORICAL_WEEK_REPLACEMENT_MAX_ROWS = 100_000
+
+
+class _HistoricalWeekReplacementFallbackError(RuntimeError):
+    """Internal signal that the bounded proof must use a full rebuild."""
+
+
+def _billboard_week_windows(
+    affected_weeks: set[str],
+    *,
+    week_start_dow: int,
+    week_start_hour: int,
+) -> list[tuple[pd.Timestamp, pd.Timestamp]]:
+    """Return merged UTC windows for valid adjacent local Billboard weeks."""
+    import pandas as pd
+
+    from backend.domains.playback.logical_timeline import PLAYBACK_TIMEZONE
+
+    starts: list[pd.Timestamp] = []
+    for encoded in sorted(affected_weeks):
+        try:
+            local_start = pd.Timestamp(encoded, tz=PLAYBACK_TIMEZONE) + pd.Timedelta(
+                hours=week_start_hour
+            )
+        except (TypeError, ValueError) as exc:
+            raise _HistoricalWeekReplacementFallbackError("affected_week_invalid") from exc
+        if local_start.weekday() != int(week_start_dow):
+            raise _HistoricalWeekReplacementFallbackError("affected_week_boundary_invalid")
+        starts.append(local_start.tz_convert("UTC"))
+    windows: list[tuple[pd.Timestamp, pd.Timestamp]] = []
+    for start in starts:
+        end = start + pd.Timedelta(days=7)
+        if windows and start == windows[-1][1]:
+            windows[-1] = (windows[-1][0], end)
+        else:
+            windows.append((start, end))
+    return windows
+
+
+def _historical_replacement_row_query() -> str:
+    return """SELECT p.play_id, p.ts, p.ts_date, p.ts_dow, p.ts_hour,
+                     p.ms_played, p.track_id, p.source_album_id,
+                     t.album_id, t.artist_id, stm.duration_ms
+              FROM plays p
+              JOIN tracks t ON p.track_id=t.track_id
+              LEFT JOIN spotify_track_meta stm
+                ON t.spotify_track_id=stm.spotify_track_id"""
+
+
+def _historical_rows_can_merge(
+    left: dict[str, Any],
+    right: dict[str, Any],
+    *,
+    max_gap_minutes: int,
+) -> bool:
+    import pandas as pd
+
+    if left["track_id"] != right["track_id"]:
+        return False
+    if left["source_album_id"] != right["source_album_id"]:
+        return False
+    left_end = pd.to_datetime(left["ts"], errors="coerce", utc=True)
+    right_end = pd.to_datetime(right["ts"], errors="coerce", utc=True)
+    if pd.isna(left_end) or pd.isna(right_end):
+        return False
+    right_start = right_end - pd.to_timedelta(max(int(right["ms_played"] or 0), 0), unit="ms")
+    gap = right_start - left_end
+    return pd.Timedelta(seconds=-2) <= gap <= pd.Timedelta(minutes=max_gap_minutes)
+
+
+def _adjacent_historical_row(
+    conn: sqlite3.Connection,
+    row: dict[str, Any],
+    *,
+    forward: bool,
+) -> dict[str, Any] | None:
+    comparator = ">" if forward else "<"
+    order = "ASC" if forward else "DESC"
+    candidate = conn.execute(
+        _historical_replacement_row_query()
+        + f""" WHERE (p.ts {comparator} ? OR (p.ts=? AND p.play_id {comparator} ?))
+              ORDER BY p.ts {order}, p.play_id {order} LIMIT 1""",
+        (row["ts"], row["ts"], row["play_id"]),
+    ).fetchone()
+    return dict(candidate) if candidate is not None else None
+
+
+def _load_historical_week_replacement_frame(
+    conn: sqlite3.Connection,
+    windows: list[tuple[pd.Timestamp, pd.Timestamp]],
+    *,
+    max_gap_minutes: int,
+) -> pd.DataFrame:
+    """Load only current raw rows that can contribute to the target weeks.
+
+    Seed rows overlap one target week by their inferred listened interval.
+    Their complete adjacent same-track/source merge chains are then included
+    so logical event qualification remains identical to a lifetime rebuild.
+    """
+    import pandas as pd
+
+    maximum_ms = int(
+        conn.execute("SELECT COALESCE(MAX(MAX(ms_played, 0)), 0) FROM plays").fetchone()[0] or 0
+    )
+    selected: dict[int, dict[str, Any]] = {}
+    for start, end in windows:
+        upper = end + pd.to_timedelta(maximum_ms, unit="ms")
+        raw_rows = conn.execute(
+            _historical_replacement_row_query()
+            + """ WHERE julianday(p.ts) > julianday(?)
+                    AND julianday(p.ts) < julianday(?)
+                  ORDER BY p.ts, p.play_id
+                  LIMIT ?""",
+            (
+                start.isoformat(),
+                upper.isoformat(),
+                _HISTORICAL_WEEK_REPLACEMENT_MAX_ROWS + 1,
+            ),
+        ).fetchall()
+        if len(raw_rows) > _HISTORICAL_WEEK_REPLACEMENT_MAX_ROWS:
+            raise _HistoricalWeekReplacementFallbackError("historical_scope_row_limit_exceeded")
+        rows = [dict(raw) for raw in raw_rows]
+        overlaps: list[bool] = []
+        for row in rows:
+            end_at = pd.to_datetime(row["ts"], errors="coerce", utc=True)
+            if pd.isna(end_at):
+                overlaps.append(False)
+                continue
+            start_at = end_at - pd.to_timedelta(max(int(row["ms_played"] or 0), 0), unit="ms")
+            overlaps.append(bool(end_at > start and start_at < end))
+
+        # Resolve every in-window run in one linear pass. The previous
+        # implementation issued two ordered SQLite queries for every seed row,
+        # which made a one-week replacement slower than a lifetime rebuild.
+        # Rows that do not themselves overlap the target week are retained when
+        # they belong to a selected run, preserving qualification semantics.
+        run_start = 0
+        selected_runs: list[tuple[int, int]] = []
+        while run_start < len(rows):
+            run_end = run_start + 1
+            while run_end < len(rows) and _historical_rows_can_merge(
+                rows[run_end - 1],
+                rows[run_end],
+                max_gap_minutes=max_gap_minutes,
+            ):
+                run_end += 1
+            if any(overlaps[run_start:run_end]):
+                selected_runs.append((run_start, run_end))
+                for row in rows[run_start:run_end]:
+                    selected[int(row["play_id"])] = row
+            run_start = run_end
+
+        # Only a selected run touching the SQL window boundary can continue
+        # outside the bulk-loaded frame. At most one chain per side needs the
+        # ordered neighbor walker, independent of the number of plays in-week.
+        if selected_runs and selected_runs[0][0] == 0:
+            cursor = rows[0]
+            while True:
+                previous = _adjacent_historical_row(conn, cursor, forward=False)
+                if previous is None or not _historical_rows_can_merge(
+                    previous,
+                    cursor,
+                    max_gap_minutes=max_gap_minutes,
+                ):
+                    break
+                selected[int(previous["play_id"])] = previous
+                if len(selected) > _HISTORICAL_WEEK_REPLACEMENT_MAX_ROWS:
+                    raise _HistoricalWeekReplacementFallbackError(
+                        "historical_scope_row_limit_exceeded"
+                    )
+                cursor = previous
+        if selected_runs and selected_runs[-1][1] == len(rows):
+            cursor = rows[-1]
+            while True:
+                following = _adjacent_historical_row(conn, cursor, forward=True)
+                if following is None or not _historical_rows_can_merge(
+                    cursor,
+                    following,
+                    max_gap_minutes=max_gap_minutes,
+                ):
+                    break
+                selected[int(following["play_id"])] = following
+                if len(selected) > _HISTORICAL_WEEK_REPLACEMENT_MAX_ROWS:
+                    raise _HistoricalWeekReplacementFallbackError(
+                        "historical_scope_row_limit_exceeded"
+                    )
+                cursor = following
+        if len(selected) > _HISTORICAL_WEEK_REPLACEMENT_MAX_ROWS:
+            raise _HistoricalWeekReplacementFallbackError("historical_scope_row_limit_exceeded")
+    if not selected:
+        return pd.DataFrame()
+    return pd.DataFrame(selected.values()).sort_values(["ts", "play_id"]).reset_index(drop=True)
+
+
+def _insert_historical_replacement_maps(
+    conn: sqlite3.Connection,
+    maps: dict[str, tuple[tuple[str, ...], dict[tuple[Any, ...], tuple[int, int]]]],
+    *,
+    affected_weeks: set[str],
+) -> None:
+    for table, shadow_table in _AGG_SHADOW_TABLES.items():
+        key_columns, values = maps[table]
+        columns = [*key_columns, "play_count", "total_ms"]
+        placeholders = ",".join("?" for _ in columns)
+        rows = [
+            (*key, play_count, total_ms)
+            for key, (play_count, total_ms) in sorted(values.items())
+            if str(key[0]) in affected_weeks
+        ]
+        conn.executemany(
+            f'INSERT INTO temp."{shadow_table}" ({",".join(columns)}) VALUES ({placeholders})',
+            rows,
+        )
+
+
+def build_aggregations_for_replaced_weeks(
+    affected_weeks: set[str] | frozenset[str],
+    *,
+    replacement_scope_exact: bool,
+    expected_generation_id: str,
+    expected_dataset_digest: str,
+    previous_dataset_digest: str | None,
+    min_ms: int = 30000,
+    music_only: bool = True,
+    week_start_dow: int = 4,
+    week_start_hour: int = 0,
+    progress_callback=None,
+    dynamic_threshold: bool = False,
+    max_merge_gap_minutes: int | None = 5,
+) -> dict[str, int | str]:
+    """Exactly replace proven historical week partitions from current facts."""
+    import pandas as pd
+
+    def full_fallback(reason: str) -> dict[str, int | str]:
+        result = build_aggregations(
+            min_ms=min_ms,
+            music_only=music_only,
+            week_start_dow=week_start_dow,
+            week_start_hour=week_start_hour,
+            progress_callback=progress_callback,
+            dynamic_threshold=dynamic_threshold,
+            max_merge_gap_minutes=max_merge_gap_minutes,
+            expected_generation_id=expected_generation_id,
+        )
+        result["fallback_reason"] = reason
+        return result
+
+    weeks = {str(week) for week in affected_weeks}
+    if (
+        not replacement_scope_exact
+        or not weeks
+        or max_merge_gap_minutes is None
+        or max_merge_gap_minutes < 0
+    ):
+        return full_fallback("historical_replacement_scope_not_proven")
+
+    conn = get_db(readonly=False)
+    try:
+        build_generation_id = _active_playback_generation(conn)
+        build_dataset_digest = _active_playback_dataset_digest(conn)
+        if (
+            build_generation_id != expected_generation_id
+            or build_dataset_digest != expected_dataset_digest
+        ):
+            raise _HistoricalWeekReplacementFallbackError("historical_active_lineage_drift")
+
+        from backend.domains.metadata.artist_identity import get_identity_revision
+        from backend.domains.metadata.track_credits import get_track_credit_revision
+
+        identity_revision = get_identity_revision(conn)
+        credit_revision = get_track_credit_revision(conn)
+        current_dependencies = _aggregation_semantic_dependencies(
+            conn,
+            identity_revision=identity_revision,
+            track_credit_revision=credit_revision,
+        )
+        reusable_dependencies = dict(current_dependencies)
+        reusable_dependencies.pop("album_project_revision", None)
+        param_hash = _agg_param_hash(
+            min_ms,
+            music_only,
+            week_start_dow,
+            week_start_hour,
+            dynamic_threshold=dynamic_threshold,
+            max_merge_gap_minutes=max_merge_gap_minutes,
+            identity_revision=identity_revision,
+            track_credit_revision=credit_revision,
+        )
+        config = _aggregation_config(conn)
+        if config.get("param_hash") != param_hash or any(
+            config.get(key) != value for key, value in reusable_dependencies.items()
+        ):
+            raise _HistoricalWeekReplacementFallbackError("historical_base_semantics_incompatible")
+        base_generation_id = config.get("data_generation_id")
+        if (
+            previous_dataset_digest is None
+            or not base_generation_id
+            or base_generation_id == build_generation_id
+            or config.get("source_dataset_digest") != previous_dataset_digest
+        ):
+            raise _HistoricalWeekReplacementFallbackError("historical_base_lineage_missing")
+
+        live_weeks = {
+            str(row[0])
+            for row in conn.execute(
+                "SELECT DISTINCT billboard_week FROM agg_weekly_tracks"
+            ).fetchall()
+        }
+        total_weeks = live_weeks | weeks
+        if total_weeks and len(weeks) / len(total_weeks) > 0.25:
+            raise _HistoricalWeekReplacementFallbackError("affected_week_ratio_exceeded")
+        windows = _billboard_week_windows(
+            weeks,
+            week_start_dow=week_start_dow,
+            week_start_hour=week_start_hour,
+        )
+        latest_ts = conn.execute("SELECT MAX(ts) FROM plays").fetchone()[0]
+        from backend.domains.playback.logical_timeline import (
+            billboard_week_for_timestamps,
+        )
+
+        open_week = billboard_week_for_timestamps(
+            pd.Series([latest_ts], dtype=object),
+            week_start_dow=week_start_dow,
+            week_start_hour=week_start_hour,
+        ).iloc[0]
+        if pd.isna(open_week) or any(week >= str(open_week) for week in weeks):
+            raise _HistoricalWeekReplacementFallbackError("affected_week_not_complete")
+
+        raw = _load_historical_week_replacement_frame(
+            conn,
+            windows,
+            max_gap_minutes=int(max_merge_gap_minutes),
+        )
+        if raw.empty:
+            events = raw
+        else:
+            raw["_source_album_id"] = raw["source_album_id"].fillna(0).astype(int)
+            events = merge_consecutive_plays(
+                raw,
+                min_ms,
+                max_gap_minutes=max_merge_gap_minutes,
+                boundary_column="source_album_id",
+                dynamic_threshold=dynamic_threshold,
+            )
+            if min_ms > 0:
+                from backend.domains.playback.counting import filter_effective_plays
+
+                events = filter_effective_plays(
+                    events,
+                    min_ms=min_ms,
+                    dynamic_threshold=dynamic_threshold,
+                )
+        maps = _billboard_aggregate_maps(
+            conn,
+            events,
+            week_start_dow=week_start_dow,
+            week_start_hour=week_start_hour,
+        )
+        _prepare_aggregation_shadows(conn)
+        _copy_unaffected_aggregation_weeks(conn, weeks)
+        _insert_historical_replacement_maps(conn, maps, affected_weeks=weeks)
+        _validate_aggregation_shadows(conn)
+        conn.commit()
+        _publish_aggregation_shadows(
+            conn,
+            param_hash=param_hash,
+            data_generation_id=build_generation_id,
+            data_digest=build_dataset_digest,
+            build_strategy="historical_partition",
+            base_generation_id=base_generation_id,
+            semantic_dependencies=current_dependencies,
+        )
+        results: dict[str, int | str] = {
+            "tracks": int(conn.execute("SELECT COUNT(*) FROM agg_weekly_tracks").fetchone()[0]),
+            "albums": int(conn.execute("SELECT COUNT(*) FROM agg_weekly_albums").fetchone()[0]),
+            "track_sources": int(
+                conn.execute("SELECT COUNT(*) FROM agg_weekly_track_sources").fetchone()[0]
+            ),
+            "artists": int(conn.execute("SELECT COUNT(*) FROM agg_weekly_artists").fetchone()[0]),
+            "build_strategy": "historical_partition",
+            "affected_weeks": len(weeks),
+        }
+    except _HistoricalWeekReplacementFallbackError as exc:
+        conn.close()
+        return full_fallback(str(exc))
+    except Exception as exc:
+        logger.exception("Historical Billboard partition build failed; falling back to full.")
+        conn.close()
+        return full_fallback(f"historical_partition_failed:{type(exc).__name__}:{str(exc)[:120]}")
+    conn.close()
+
+    from backend.core.cache_manager import invalidate_playback_caches
+
+    invalidate_playback_caches()
+    return results
+
+
 def build_aggregations_for_weeks(
     affected_weeks: set[str] | frozenset[str],
     *,

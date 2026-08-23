@@ -7,6 +7,7 @@ import json
 import logging
 import re
 import sqlite3
+from bisect import bisect_left, bisect_right
 from dataclasses import asdict, dataclass
 from datetime import date, datetime, timedelta
 from typing import Any, Literal, cast
@@ -27,7 +28,7 @@ from backend.domains.playback.logical_timeline import (
 )
 from backend.domains.settings.repository import SettingsRepository
 
-ImportWriteStrategy = Literal["incremental", "full"]
+ImportWriteStrategy = Literal["incremental", "reconcile", "full"]
 
 _CHANGE_SET_SCHEMA_VERSION = "playback_change_set_v2"
 _CHANGE_SET_COLLECTION_LIMIT = 250_000
@@ -103,7 +104,7 @@ class PlaybackChangeSet:
 
         generation_id = _required_string(payload["generation_id"], "generation_id")
         strategy = payload["strategy"]
-        if strategy not in {"incremental", "full"}:
+        if strategy not in {"incremental", "reconcile", "full"}:
             raise ValueError("invalid playback change set strategy")
         previous_dataset_digest = _optional_string(
             payload["previous_dataset_digest"], "previous_dataset_digest"
@@ -280,6 +281,7 @@ def build_playback_change_set(
     generation_id: str,
     strategy: ImportWriteStrategy,
     plan: ImportPlan,
+    removed_rows: list[dict[str, Any]] | None = None,
 ) -> PlaybackChangeSet:
     """Derive downstream scope from rows actually written by this generation.
 
@@ -289,7 +291,7 @@ def build_playback_change_set(
     """
     if not generation_id.strip():
         raise ValueError("generation_id must not be empty")
-    if strategy not in {"incremental", "full"}:
+    if strategy not in {"incremental", "reconcile", "full"}:
         raise ValueError(f"unsupported import strategy: {strategy}")
 
     rows = conn.execute(
@@ -299,34 +301,59 @@ def build_playback_change_set(
            FROM plays WHERE import_generation_id=? ORDER BY ts, play_id""",
         (generation_id,),
     ).fetchall()
-    expected = plan.added_count if strategy == "incremental" else plan.incoming_count
+    expected = plan.added_count if strategy in {"incremental", "reconcile"} else plan.incoming_count
     if len(rows) != expected:
         raise RuntimeError(
             f"import generation scope mismatch: expected {expected} rows, found {len(rows)}"
         )
 
-    track_ids = {int(row["track_id"]) for row in rows if row["track_id"] is not None}
+    old_rows = list(removed_rows or [])
+    if strategy == "reconcile":
+        if len(old_rows) != plan.removed_count:
+            raise RuntimeError(
+                "reconcile removal evidence mismatch: "
+                f"expected {plan.removed_count} rows, found {len(old_rows)}"
+            )
+        required = {
+            "play_id",
+            "ts",
+            "ts_date",
+            "ts_year",
+            "ts_month",
+            "track_id",
+            "source_album_id",
+            "ms_played",
+            "spotify_track_id_at_play",
+            "spotify_album_id_at_play",
+        }
+        if any(not required.issubset(row) for row in old_rows):
+            raise RuntimeError("reconcile removal evidence is incomplete")
+    elif old_rows:
+        raise ValueError("removed row evidence is only valid for reconcile strategy")
+
+    impact_rows = [*rows, *old_rows]
+    track_ids = {int(row["track_id"]) for row in impact_rows if row["track_id"] is not None}
     source_album_ids = {
-        int(row["source_album_id"]) for row in rows if row["source_album_id"] is not None
+        int(row["source_album_id"]) for row in impact_rows if row["source_album_id"] is not None
     }
     album_ids = source_album_ids | _album_ids_for_tracks(conn, track_ids)
     artist_ids = _artist_ids_for_tracks(conn, track_ids)
     spotify_track_ids = {
         str(row["spotify_track_id_at_play"])
-        for row in rows
+        for row in impact_rows
         if row["spotify_track_id_at_play"] is not None
         and str(row["spotify_track_id_at_play"]).strip()
     }
     spotify_track_ids.update(_spotify_track_ids_for_tracks(conn, track_ids))
     spotify_album_ids = {
         str(row["spotify_album_id_at_play"])
-        for row in rows
+        for row in impact_rows
         if row["spotify_album_id_at_play"] is not None
         and str(row["spotify_album_id_at_play"]).strip()
     }
     spotify_album_ids.update(_spotify_album_ids_for_tracks(conn, track_ids))
     spotify_album_ids.update(_spotify_album_ids_for_albums(conn, album_ids))
-    timestamps = [str(row["ts"]) for row in rows if row["ts"]]
+    timestamps = [str(row["ts"]) for row in impact_rows if row["ts"]]
     changed_timestamps = list(timestamps)
     if strategy == "full":
         changed_timestamps.extend(
@@ -334,14 +361,14 @@ def build_playback_change_set(
             for value in (plan.existing_first_ts, plan.existing_latest_ts)
             if value is not None
         )
-    dates = {str(row["ts_date"]) for row in rows if row["ts_date"]}
+    dates = {str(row["ts_date"]) for row in impact_rows if row["ts_date"]}
     months = {
         f"{int(row['ts_year']):04d}-{int(row['ts_month']):02d}"
-        for row in rows
+        for row in impact_rows
         if row["ts_year"] is not None and row["ts_month"] is not None
     }
     settings = SettingsRepository(conn).load_all()
-    years = {int(row["ts_year"]) for row in rows if row["ts_year"] is not None}
+    years = {int(row["ts_year"]) for row in impact_rows if row["ts_year"] is not None}
     if strategy == "incremental":
         years.update(
             _logical_impact_years(
@@ -353,6 +380,9 @@ def build_playback_change_set(
         )
     if strategy == "full":
         years.update(_covered_years(plan.existing_first_ts, plan.existing_latest_ts))
+    if strategy == "reconcile":
+        for row in impact_rows:
+            years.update(_row_interval_years(row))
 
     week_start_dow = int(settings.get("bb_week_start_dow", 4))
     week_start_hour = int(settings.get("bb_week_start_hour", 0))
@@ -387,6 +417,31 @@ def build_playback_change_set(
                 week_start_dow=week_start_dow,
                 week_start_hour=week_start_hour,
             )
+    elif strategy == "reconcile":
+        try:
+            weeks = _logical_reconcile_billboard_contribution_weeks(
+                conn,
+                generation_id=generation_id,
+                added_rows=[dict(row) for row in rows],
+                removed_rows=old_rows,
+                min_ms=int(settings.get("min_ms", 30_000)),
+                music_only=bool(settings.get("music_only", True)),
+                max_gap_minutes=int(settings.get("max_merge_gap_minutes", 5)),
+                week_start_dow=week_start_dow,
+                week_start_hour=week_start_hour,
+            )
+            billboard_scope_exact = True
+        except Exception:
+            logger.exception(
+                "Unable to prove exact reconcile Billboard scope for generation %s; "
+                "downstream maintenance must use a full rebuild.",
+                generation_id,
+            )
+            weeks = _conservative_billboard_weeks(
+                impact_rows,
+                week_start_dow=week_start_dow,
+                week_start_hour=week_start_hour,
+            )
     else:
         weeks = _billboard_weeks(
             timestamps,
@@ -404,17 +459,35 @@ def build_playback_change_set(
         week_start_dow=week_start_dow,
         week_start_hour=week_start_hour,
     )
-    for boundary in (previous_open, current_open):
-        if boundary is not None:
-            weeks.add(boundary.isoformat())
-    if current_open is not None and current_open != previous_open:
-        weeks.add((current_open - timedelta(days=7)).isoformat())
+    if strategy == "reconcile":
+        open_weeks = {
+            boundary.isoformat()
+            for boundary in (previous_open, current_open)
+            if boundary is not None
+        }
+        if billboard_scope_exact and weeks & open_weeks:
+            billboard_scope_exact = False
+            weeks.update(
+                _conservative_billboard_weeks(
+                    impact_rows,
+                    week_start_dow=week_start_dow,
+                    week_start_hour=week_start_hour,
+                )
+            )
+    else:
+        for boundary in (previous_open, current_open):
+            if boundary is not None:
+                weeks.add(boundary.isoformat())
+        if current_open is not None and current_open != previous_open:
+            weeks.add((current_open - timedelta(days=7)).isoformat())
 
     return PlaybackChangeSet(
         generation_id=generation_id,
         strategy=strategy,
         previous_dataset_digest=plan.previous_digest,
-        added_count=plan.added_count if strategy == "incremental" else plan.incoming_count,
+        added_count=(
+            plan.added_count if strategy in {"incremental", "reconcile"} else plan.incoming_count
+        ),
         removed_count=plan.removed_count,
         earliest_changed_ts=min(changed_timestamps) if changed_timestamps else None,
         latest_changed_ts=max(changed_timestamps) if changed_timestamps else None,
@@ -467,6 +540,313 @@ def _logical_billboard_contribution_weeks(
     )
     changed_keys = {key for key in old.keys() | new.keys() if old.get(key) != new.get(key)}
     return {str(key[0]) for key in changed_keys}
+
+
+_RECONCILE_BILLBOARD_ROW_LIMIT = 100_000
+
+
+class _ReconcileRowBudget:
+    def __init__(self, limit: int | None = None) -> None:
+        self._limit = _RECONCILE_BILLBOARD_ROW_LIMIT if limit is None else limit
+        self._seen: set[tuple[str, str, int]] = set()
+
+    def observe(self, view: str, row: dict[str, Any] | None) -> dict[str, Any] | None:
+        if row is None:
+            return None
+        key = _billboard_row_key(row)
+        marker = (view, *key)
+        if marker not in self._seen:
+            self._seen.add(marker)
+            if len(self._seen) > self._limit:
+                raise RuntimeError("reconcile Billboard closure exceeds the 100k row limit")
+        return row
+
+
+class _ReconcileBillboardView:
+    """Ordered local reader for the post-write new view or reconstructed old view."""
+
+    def __init__(
+        self,
+        conn: sqlite3.Connection,
+        *,
+        name: str,
+        generation_id: str,
+        removed_rows: list[dict[str, Any]],
+        exclude_generation: bool,
+        budget: _ReconcileRowBudget,
+    ) -> None:
+        self._conn = conn
+        self._name = name
+        self._generation_id = generation_id
+        self._exclude_generation = exclude_generation
+        self._budget = budget
+        self._removed_by_key = {_billboard_row_key(row): row for row in removed_rows}
+        if len(self._removed_by_key) != len(removed_rows):
+            raise RuntimeError("reconcile removal evidence has duplicate global order keys")
+        self._removed_keys = sorted(self._removed_by_key)
+
+    def exact(self, key: tuple[str, int]) -> dict[str, Any] | None:
+        current = self._query_exact(key)
+        virtual = self._removed_by_key.get(key) if self._exclude_generation else None
+        if current is not None and virtual is not None:
+            raise RuntimeError("reconcile old view has an ambiguous global order key")
+        return self._budget.observe(self._name, virtual or current)
+
+    def adjacent(self, key: tuple[str, int], direction: int) -> dict[str, Any] | None:
+        current = self._query_adjacent(key, direction)
+        virtual = self._virtual_adjacent(key, direction)
+        if current is not None and virtual is not None:
+            current_key = _billboard_row_key(current)
+            virtual_key = _billboard_row_key(virtual)
+            if current_key == virtual_key:
+                raise RuntimeError("reconcile old view has an ambiguous adjacent row")
+            if direction < 0:
+                chosen = current if current_key > virtual_key else virtual
+            else:
+                chosen = current if current_key < virtual_key else virtual
+        else:
+            chosen = current or virtual
+        return self._budget.observe(self._name, chosen)
+
+    def _query_exact(self, key: tuple[str, int]) -> dict[str, Any] | None:
+        clause, params = self._generation_clause()
+        row = self._conn.execute(
+            f"""{_RECONCILE_BILLBOARD_SELECT}
+                 WHERE p.track_id IS NOT NULL {clause}
+                   AND p.ts=? AND p.play_id=?""",
+            (*params, *key),
+        ).fetchone()
+        return _normalise_billboard_row(row) if row is not None else None
+
+    def _query_adjacent(
+        self,
+        key: tuple[str, int],
+        direction: int,
+    ) -> dict[str, Any] | None:
+        clause, params = self._generation_clause()
+        operator = "<" if direction < 0 else ">"
+        order = "DESC" if direction < 0 else "ASC"
+        row = self._conn.execute(
+            f"""{_RECONCILE_BILLBOARD_SELECT}
+                 WHERE p.track_id IS NOT NULL {clause}
+                   AND (p.ts {operator} ? OR (p.ts=? AND p.play_id {operator} ?))
+                 ORDER BY p.ts {order}, p.play_id {order} LIMIT 1""",
+            (*params, key[0], key[0], key[1]),
+        ).fetchone()
+        return _normalise_billboard_row(row) if row is not None else None
+
+    def _generation_clause(self) -> tuple[str, tuple[str, ...]]:
+        if not self._exclude_generation:
+            return "", ()
+        return "AND COALESCE(p.import_generation_id, '') != ?", (self._generation_id,)
+
+    def _virtual_adjacent(
+        self,
+        key: tuple[str, int],
+        direction: int,
+    ) -> dict[str, Any] | None:
+        if not self._exclude_generation or not self._removed_keys:
+            return None
+        if direction < 0:
+            index = bisect_left(self._removed_keys, key) - 1
+        else:
+            index = bisect_right(self._removed_keys, key)
+        if index < 0 or index >= len(self._removed_keys):
+            return None
+        return self._removed_by_key[self._removed_keys[index]]
+
+
+_RECONCILE_BILLBOARD_SELECT = """SELECT p.play_id, p.ts, p.ts_date,
+       p.ts_dow, p.ts_hour, p.ms_played,
+       p.track_id, p.source_album_id, t.track_id AS dimension_track_id,
+       t.album_id, t.artist_id, stm.duration_ms
+FROM plays p
+LEFT JOIN tracks t ON p.track_id=t.track_id
+LEFT JOIN spotify_track_meta stm ON t.spotify_track_id=stm.spotify_track_id"""
+
+
+def _logical_reconcile_billboard_contribution_weeks(
+    conn: sqlite3.Connection,
+    *,
+    generation_id: str,
+    added_rows: list[dict[str, Any]],
+    removed_rows: list[dict[str, Any]],
+    min_ms: int,
+    music_only: bool,
+    max_gap_minutes: int,
+    week_start_dow: int,
+    week_start_hour: int,
+) -> set[str]:
+    """Compare exact old/new logical contributions over bounded local run closures."""
+
+    del music_only  # Billboard entity facts contain only rows mapped to tracks.
+    if len(added_rows) + len(removed_rows) > _RECONCILE_BILLBOARD_ROW_LIMIT:
+        raise RuntimeError("reconcile change evidence exceeds the 100k row limit")
+    change_keys = {_billboard_row_key(dict(row)) for row in [*added_rows, *removed_rows]}
+    if not change_keys:
+        return set()
+    enriched_removed = _enrich_removed_billboard_rows(conn, removed_rows)
+    budget = _ReconcileRowBudget()
+    old_view = _ReconcileBillboardView(
+        conn,
+        name="old",
+        generation_id=generation_id,
+        removed_rows=enriched_removed,
+        exclude_generation=True,
+        budget=budget,
+    )
+    new_view = _ReconcileBillboardView(
+        conn,
+        name="new",
+        generation_id=generation_id,
+        removed_rows=[],
+        exclude_generation=False,
+        budget=budget,
+    )
+    old_rows = _reconcile_affected_run_closure(
+        old_view,
+        change_keys=change_keys,
+        max_gap_minutes=max_gap_minutes,
+    )
+    new_rows = _reconcile_affected_run_closure(
+        new_view,
+        change_keys=change_keys,
+        max_gap_minutes=max_gap_minutes,
+    )
+
+    changed_weeks: set[str] = set()
+    for dynamic_threshold in (False, True):
+        old_events = _logical_billboard_events(
+            old_rows,
+            min_ms=min_ms,
+            dynamic_threshold=dynamic_threshold,
+            max_gap_minutes=max_gap_minutes,
+        )
+        new_events = _logical_billboard_events(
+            new_rows,
+            min_ms=min_ms,
+            dynamic_threshold=dynamic_threshold,
+            max_gap_minutes=max_gap_minutes,
+        )
+        old_signature = _logical_billboard_contribution_signature(
+            old_events,
+            week_start_dow=week_start_dow,
+            week_start_hour=week_start_hour,
+        )
+        new_signature = _logical_billboard_contribution_signature(
+            new_events,
+            week_start_dow=week_start_dow,
+            week_start_hour=week_start_hour,
+        )
+        changed_keys = {
+            key
+            for key in old_signature.keys() | new_signature.keys()
+            if old_signature.get(key) != new_signature.get(key)
+        }
+        changed_weeks.update(str(key[0]) for key in changed_keys)
+    return changed_weeks
+
+
+def _reconcile_affected_run_closure(
+    view: _ReconcileBillboardView,
+    *,
+    change_keys: set[tuple[str, int]],
+    max_gap_minutes: int,
+) -> list[dict[str, Any]]:
+    seeds: dict[tuple[str, int], dict[str, Any]] = {}
+    for key in sorted(change_keys):
+        for row in (view.exact(key), view.adjacent(key, -1), view.adjacent(key, 1)):
+            if row is not None:
+                seeds[_billboard_row_key(row)] = row
+
+    closure = dict(seeds)
+    queue = list(seeds.values())
+    while queue:
+        row = queue.pop()
+        key = _billboard_row_key(row)
+        for direction in (-1, 1):
+            neighbor = view.adjacent(key, direction)
+            if neighbor is None or not _rows_share_merge_run(
+                neighbor if direction < 0 else row,
+                row if direction < 0 else neighbor,
+                max_gap_minutes=max_gap_minutes,
+            ):
+                continue
+            neighbor_key = _billboard_row_key(neighbor)
+            if neighbor_key not in closure:
+                closure[neighbor_key] = neighbor
+                queue.append(neighbor)
+    return [closure[key] for key in sorted(closure)]
+
+
+def _enrich_removed_billboard_rows(
+    conn: sqlite3.Connection,
+    removed_rows: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    enriched: list[dict[str, Any]] = []
+    for raw in removed_rows:
+        row = dict(raw)
+        if row.get("track_id") is None:
+            continue
+        dimension = conn.execute(
+            """SELECT t.track_id AS dimension_track_id, t.album_id, t.artist_id,
+                      stm.duration_ms
+               FROM tracks t
+               LEFT JOIN spotify_track_meta stm
+                 ON t.spotify_track_id=stm.spotify_track_id
+               WHERE t.track_id=?""",
+            (row["track_id"],),
+        ).fetchone()
+        if dimension is None:
+            raise RuntimeError("removed playback row no longer maps to a track dimension")
+        row.update(dict(dimension))
+        enriched.append(_normalise_billboard_row(row))
+    return enriched
+
+
+def _normalise_billboard_row(raw: Any) -> dict[str, Any]:
+    row = dict(raw)
+    required = {"play_id", "ts", "ms_played", "track_id", "source_album_id"}
+    if not required.issubset(row):
+        raise RuntimeError("Billboard closure row is missing required facts")
+    if row.get("dimension_track_id") is None:
+        raise RuntimeError("Billboard closure row has no track dimension")
+    try:
+        row["play_id"] = int(row["play_id"])
+        row["track_id"] = int(row["track_id"])
+        row["ms_played"] = int(row["ms_played"] or 0)
+        if row["source_album_id"] is not None:
+            row["source_album_id"] = int(row["source_album_id"])
+        if row.get("album_id") is not None:
+            row["album_id"] = int(row["album_id"])
+        if row.get("artist_id") is not None:
+            row["artist_id"] = int(row["artist_id"])
+        if row.get("duration_ms") is not None:
+            row["duration_ms"] = int(row["duration_ms"])
+    except (TypeError, ValueError) as exc:
+        raise RuntimeError("Billboard closure row has invalid numeric facts") from exc
+    if row["play_id"] <= 0 or row["track_id"] <= 0 or row["ms_played"] < 0:
+        raise RuntimeError("Billboard closure row has invalid fact values")
+    parsed_timestamp = _timestamp(row.get("ts"))
+    if parsed_timestamp is None:
+        raise RuntimeError("Billboard closure row has an invalid timestamp")
+    row["ts"] = str(row["ts"])
+    local_timestamp = parsed_timestamp.tz_convert(PLAYBACK_TIMEZONE)
+    row["ts_date"] = local_timestamp.date().isoformat()
+    row["ts_dow"] = int(local_timestamp.dayofweek)
+    row["ts_hour"] = int(local_timestamp.hour)
+    return row
+
+
+def _billboard_row_key(row: dict[str, Any]) -> tuple[str, int]:
+    try:
+        timestamp = str(row["ts"])
+        play_id = int(row["play_id"])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise RuntimeError("Billboard closure cannot resolve a global order key") from exc
+    if not timestamp or play_id <= 0 or _timestamp(timestamp) is None:
+        raise RuntimeError("Billboard closure has an invalid global order key")
+    return timestamp, play_id
 
 
 def build_billboard_tail_contribution_frames(
@@ -774,7 +1154,7 @@ def publish_year_partition_state(
                 generation,
             ),
         )
-    if change_set.strategy == "incremental":
+    if change_set.strategy in {"incremental", "reconcile"}:
         placeholders = ",".join("?" for _ in active_years)
         conn.execute(
             f"DELETE FROM playback_year_partition_state WHERE report_year NOT IN ({placeholders})",
@@ -962,6 +1342,41 @@ def _billboard_weeks(
         week_start_hour=week_start_hour,
     )
     return {value.isoformat() for value in values.dropna().tolist()}
+
+
+def _conservative_billboard_weeks(
+    rows: list[Any],
+    *,
+    week_start_dow: int,
+    week_start_hour: int,
+) -> set[str]:
+    """Cover every week touched by changed rows' inferred listened intervals."""
+
+    result: set[str] = set()
+    for row in rows:
+        end = _timestamp(row["ts"])
+        if end is None:
+            continue
+        try:
+            played_ms = max(int(row["ms_played"] or 0), 0)
+        except (TypeError, ValueError):
+            continue
+        start = end - pd.to_timedelta(played_ms, unit="ms")
+        boundaries = sorted(
+            _billboard_weeks(
+                [start.isoformat(), end.isoformat()],
+                week_start_dow=week_start_dow,
+                week_start_hour=week_start_hour,
+            )
+        )
+        if not boundaries:
+            continue
+        cursor = date.fromisoformat(boundaries[0])
+        latest = date.fromisoformat(boundaries[-1])
+        while cursor <= latest:
+            result.add(cursor.isoformat())
+            cursor += timedelta(days=7)
+    return result
 
 
 def _semantic_revisions(

@@ -6,7 +6,10 @@ set of canonical songs, while source albums remain explanation metadata.
 
 from __future__ import annotations
 
+import math
 import sqlite3
+from collections.abc import Iterable
+from dataclasses import dataclass
 
 import pandas as pd
 
@@ -20,6 +23,32 @@ SOURCE_BUCKET_ORDER = {
     "other": 6,
     "inferred": 7,
 }
+
+
+@dataclass(frozen=True)
+class AlbumProjectRebuildReport:
+    """Execution evidence for a targeted or conservative full rebuild."""
+
+    strategy: str
+    fallback_reason: str | None
+    affected_album_count: int
+    affected_release_group_count: int
+    affected_project_count: int
+    affected_track_count: int
+
+
+@dataclass(frozen=True)
+class _AlbumProjectImpactPlan:
+    album_ids: frozenset[int]
+    release_group_ids: frozenset[int]
+    project_ids: frozenset[int]
+    track_ids: frozenset[int]
+    compilation_album_ids: frozenset[int]
+
+
+class _AlbumProjectClosureError(RuntimeError):
+    pass
+
 
 _ALBUM_PROJECT_SCHEMA = """
 CREATE TABLE IF NOT EXISTS album_projects (
@@ -125,6 +154,523 @@ def rebuild_album_projects(conn: sqlite3.Connection) -> None:
         conn.execute("RELEASE SAVEPOINT rebuild_album_projects")
         raise
     conn.commit()
+
+
+def rebuild_album_projects_for_impact(
+    conn: sqlite3.Connection,
+    *,
+    local_album_ids: Iterable[int] = (),
+    spotify_album_ids: Iterable[str] = (),
+    spotify_track_ids: Iterable[str] = (),
+    impact_scope_exact: bool,
+    has_deletions: bool = False,
+    max_affected_albums: int = 500,
+    max_affected_ratio: float = 0.25,
+) -> AlbumProjectRebuildReport:
+    """Rebuild the proven Album Project closure or conservatively rebuild all.
+
+    The Spotify ID inputs must describe rows that were actually refreshed, not
+    merely requested. ``local_album_ids`` must include every local album whose
+    Spotify link evidence was rewritten. Deletions are deliberately unsupported
+    because an absent row cannot prove its former reverse mappings.
+    """
+
+    ensure_album_project_schema(conn)
+    if not impact_scope_exact:
+        return _fallback_album_project_rebuild(conn, "impact_scope_inexact")
+    if has_deletions:
+        return _fallback_album_project_rebuild(conn, "deletion_semantics")
+    if max_affected_albums < 0 or not 0 < max_affected_ratio <= 1:
+        raise ValueError("invalid Album Project impact threshold")
+
+    try:
+        plan = _plan_album_project_impact(
+            conn,
+            local_album_ids=local_album_ids,
+            spotify_album_ids=spotify_album_ids,
+            spotify_track_ids=spotify_track_ids,
+        )
+    except (sqlite3.DatabaseError, _AlbumProjectClosureError):
+        return _fallback_album_project_rebuild(conn, "closure_unproven")
+
+    total_albums = int(conn.execute("SELECT COUNT(*) FROM albums").fetchone()[0])
+    ratio_limit = max(1, math.ceil(total_albums * max_affected_ratio))
+    album_limit = min(max_affected_albums, ratio_limit)
+    if len(plan.album_ids | plan.compilation_album_ids) > album_limit:
+        return _fallback_album_project_rebuild(conn, "closure_too_large")
+
+    conn.execute("SAVEPOINT rebuild_album_projects_for_impact")
+    try:
+        affected_project_ids = set(plan.project_ids)
+        if affected_project_ids:
+            placeholders = ",".join("?" for _ in affected_project_ids)
+            params = tuple(sorted(affected_project_ids))
+            conn.execute(
+                f"DELETE FROM album_project_tracks WHERE project_id IN ({placeholders})",
+                params,
+            )
+            conn.execute(
+                f"DELETE FROM album_project_albums WHERE project_id IN ({placeholders})",
+                params,
+            )
+
+        seen_project_ids: set[int] = set()
+        _bootstrap_from_release_groups(
+            conn,
+            seen_project_ids=seen_project_ids,
+            group_ids=set(plan.release_group_ids),
+        )
+        _bootstrap_standalone_album_projects(
+            conn,
+            seen_project_ids=seen_project_ids,
+            album_ids=set(plan.album_ids),
+        )
+        _bootstrap_compilation_exclusive_projects(
+            conn,
+            seen_project_ids=seen_project_ids,
+            album_ids=set(plan.compilation_album_ids),
+        )
+
+        stale_project_ids = sorted(affected_project_ids - seen_project_ids)
+        conn.executemany(
+            "DELETE FROM album_projects WHERE project_id = ? AND is_manual = 0",
+            ((project_id,) for project_id in stale_project_ids),
+        )
+        conn.execute("RELEASE SAVEPOINT rebuild_album_projects_for_impact")
+    except Exception:
+        conn.execute("ROLLBACK TO SAVEPOINT rebuild_album_projects_for_impact")
+        conn.execute("RELEASE SAVEPOINT rebuild_album_projects_for_impact")
+        raise
+    conn.commit()
+
+    return AlbumProjectRebuildReport(
+        strategy="targeted",
+        fallback_reason=None,
+        affected_album_count=len(plan.album_ids | plan.compilation_album_ids),
+        affected_release_group_count=len(plan.release_group_ids),
+        affected_project_count=len(affected_project_ids | seen_project_ids),
+        affected_track_count=len(plan.track_ids),
+    )
+
+
+def _fallback_album_project_rebuild(
+    conn: sqlite3.Connection,
+    reason: str,
+) -> AlbumProjectRebuildReport:
+    rebuild_album_projects(conn)
+    return AlbumProjectRebuildReport(
+        strategy="full",
+        fallback_reason=reason,
+        affected_album_count=int(conn.execute("SELECT COUNT(*) FROM albums").fetchone()[0]),
+        affected_release_group_count=int(
+            conn.execute("SELECT COUNT(*) FROM release_groups").fetchone()[0]
+        ),
+        affected_project_count=int(
+            conn.execute("SELECT COUNT(*) FROM album_projects WHERE is_manual = 0").fetchone()[0]
+        ),
+        affected_track_count=int(
+            conn.execute(
+                """SELECT COUNT(DISTINCT apt.track_id)
+                   FROM album_project_tracks apt
+                   JOIN album_projects ap ON ap.project_id = apt.project_id
+                   WHERE ap.is_manual = 0"""
+            ).fetchone()[0]
+        ),
+    )
+
+
+def _plan_album_project_impact(
+    conn: sqlite3.Connection,
+    *,
+    local_album_ids: Iterable[int],
+    spotify_album_ids: Iterable[str],
+    spotify_track_ids: Iterable[str],
+) -> _AlbumProjectImpactPlan:
+    local_ids = _normalise_integer_ids(local_album_ids)
+    spotify_album_id_set = _normalise_spotify_ids(spotify_album_ids)
+    spotify_track_id_set = _normalise_spotify_ids(spotify_track_ids)
+
+    if local_ids:
+        existing_local_ids = _select_integer_ids(
+            conn,
+            "albums",
+            "album_id",
+            local_ids,
+        )
+        if existing_local_ids != local_ids:
+            raise _AlbumProjectClosureError("unknown local album impact")
+    if spotify_track_id_set:
+        existing_track_meta_ids = _select_text_ids(
+            conn,
+            "spotify_track_meta",
+            "spotify_track_id",
+            spotify_track_id_set,
+        )
+        if existing_track_meta_ids != spotify_track_id_set:
+            raise _AlbumProjectClosureError("missing refreshed Spotify track metadata")
+    if spotify_album_id_set:
+        existing_album_meta_ids = _select_text_ids(
+            conn,
+            "spotify_album_meta",
+            "spotify_album_id",
+            spotify_album_id_set,
+        )
+        if existing_album_meta_ids != spotify_album_id_set:
+            raise _AlbumProjectClosureError("missing refreshed Spotify album metadata")
+
+    seed_album_ids = set(local_ids)
+    impacted_track_ids: set[int] = set()
+    if spotify_track_id_set:
+        placeholders = ",".join("?" for _ in spotify_track_id_set)
+        spotify_track_params = tuple(sorted(spotify_track_id_set))
+        impacted_track_ids.update(
+            int(row[0])
+            for row in conn.execute(
+                f"""SELECT track_id FROM tracks
+                    WHERE spotify_track_id IN ({placeholders})""",
+                spotify_track_params,
+            ).fetchall()
+        )
+        impacted_track_ids.update(
+            int(row[0])
+            for row in conn.execute(
+                f"""SELECT DISTINCT track_id FROM plays
+                    WHERE spotify_track_id_at_play IN ({placeholders})
+                      AND track_id IS NOT NULL""",
+                spotify_track_params,
+            ).fetchall()
+        )
+        seed_album_ids.update(
+            int(row[0])
+            for row in conn.execute(
+                f"""SELECT DISTINCT source_album_id FROM plays
+                    WHERE spotify_track_id_at_play IN ({placeholders})
+                      AND source_album_id IS NOT NULL""",
+                spotify_track_params,
+            ).fetchall()
+        )
+        spotify_album_id_set.update(
+            str(row[0])
+            for row in conn.execute(
+                f"""SELECT DISTINCT spotify_album_id FROM spotify_track_meta
+                    WHERE spotify_track_id IN ({placeholders})
+                      AND spotify_album_id IS NOT NULL
+                      AND spotify_album_id != ''""",
+                spotify_track_params,
+            ).fetchall()
+        )
+
+    if impacted_track_ids:
+        placeholders = ",".join("?" for _ in impacted_track_ids)
+        track_params = tuple(sorted(impacted_track_ids))
+        seed_album_ids.update(
+            int(row[0])
+            for row in conn.execute(
+                f"""SELECT album_id FROM tracks
+                    WHERE track_id IN ({placeholders}) AND album_id IS NOT NULL
+                    UNION
+                    SELECT album_id FROM track_albums
+                    WHERE track_id IN ({placeholders})""",
+                track_params + track_params,
+            ).fetchall()
+        )
+
+    if spotify_album_id_set:
+        placeholders = ",".join("?" for _ in spotify_album_id_set)
+        spotify_album_params = tuple(sorted(spotify_album_id_set))
+        seed_album_ids.update(
+            int(row[0])
+            for row in conn.execute(
+                f"""SELECT album_id FROM album_spotify_links
+                    WHERE spotify_album_id IN ({placeholders})""",
+                spotify_album_params,
+            ).fetchall()
+        )
+        seed_album_ids.update(
+            int(row[0])
+            for row in conn.execute(
+                f"""SELECT DISTINCT al.album_id
+                    FROM albums al
+                    JOIN artists ar ON ar.artist_id = al.artist_id
+                    JOIN spotify_album_meta sam
+                      ON lower(sam.album_name) = lower(al.album_name)
+                     AND (sam.album_artists IS NULL
+                          OR ar.artist_name IS NULL
+                          OR instr(lower(sam.album_artists), lower(ar.artist_name)) > 0)
+                    WHERE sam.spotify_album_id IN ({placeholders})""",
+                spotify_album_params,
+            ).fetchall()
+        )
+
+    album_ids, group_ids, project_ids = _expand_non_compilation_closure(
+        conn,
+        seed_album_ids,
+    )
+    non_compilation_track_ids = {
+        track_id for track_id, _album_id in _tracks_for_albums(conn, sorted(album_ids))
+    }
+    non_compilation_track_ids.update(impacted_track_ids)
+
+    compilation_album_ids, compilation_project_ids, compilation_track_ids = _compilation_closure(
+        conn,
+        album_ids=album_ids,
+        track_ids=non_compilation_track_ids,
+    )
+    return _AlbumProjectImpactPlan(
+        album_ids=frozenset(album_ids),
+        release_group_ids=frozenset(group_ids),
+        project_ids=frozenset(project_ids | compilation_project_ids),
+        track_ids=frozenset(non_compilation_track_ids | compilation_track_ids),
+        compilation_album_ids=frozenset(compilation_album_ids),
+    )
+
+
+def _expand_non_compilation_closure(
+    conn: sqlite3.Connection,
+    seed_album_ids: set[int],
+) -> tuple[set[int], set[int], set[int]]:
+    albums = {
+        int(row["album_id"]): (str(row["album_name"]), int(row["artist_id"]))
+        for row in conn.execute(
+            "SELECT album_id, album_name, artist_id FROM albums ORDER BY album_id"
+        ).fetchall()
+    }
+    group_members: dict[int, set[int]] = {}
+    for row in conn.execute(
+        "SELECT group_id, album_id FROM release_group_members ORDER BY group_id, album_id"
+    ).fetchall():
+        group_members.setdefault(int(row["group_id"]), set()).add(int(row["album_id"]))
+    groups: dict[int, tuple[tuple[str, int, str], set[int]]] = {}
+    for row in conn.execute(
+        """SELECT rg.group_id, rg.canonical_name, rg.artist_id,
+                  rg.primary_album_id, rg.scope, al.artist_id AS primary_artist_id
+           FROM release_groups rg
+           LEFT JOIN albums al ON al.album_id = rg.primary_album_id
+           ORDER BY rg.group_id"""
+    ).fetchall():
+        artist_id = int(row["artist_id"] or 0)
+        if artist_id <= 0 and row["primary_artist_id"] is not None:
+            artist_id = int(row["primary_artist_id"])
+        if artist_id <= 0:
+            continue
+        members = set(group_members.get(int(row["group_id"]), set()))
+        if row["primary_album_id"] is not None:
+            members.add(int(row["primary_album_id"]))
+        groups[int(row["group_id"])] = (
+            (str(row["canonical_name"]), artist_id, str(row["scope"])),
+            members,
+        )
+
+    project_albums: dict[int, set[int]] = {}
+    for row in conn.execute(
+        "SELECT project_id, album_id FROM album_project_albums ORDER BY project_id, album_id"
+    ).fetchall():
+        project_albums.setdefault(int(row["project_id"]), set()).add(int(row["album_id"]))
+    projects: dict[int, tuple[tuple[str, int, str], set[int]]] = {}
+    for row in conn.execute(
+        """SELECT project_id, canonical_name, artist_id, primary_album_id, scope
+           FROM album_projects WHERE is_manual = 0 ORDER BY project_id"""
+    ).fetchall():
+        member_ids = set(project_albums.get(int(row["project_id"]), set()))
+        if row["primary_album_id"] is not None:
+            member_ids.add(int(row["primary_album_id"]))
+        projects[int(row["project_id"])] = (
+            (str(row["canonical_name"]), int(row["artist_id"]), str(row["scope"])),
+            member_ids,
+        )
+
+    album_ids = set(seed_album_ids)
+    group_ids: set[int] = set()
+    project_ids: set[int] = set()
+    while True:
+        before = (len(album_ids), len(group_ids), len(project_ids))
+        semantic_keys = {
+            (album_name, artist_id, "release")
+            for album_id, (album_name, artist_id) in albums.items()
+            if album_id in album_ids
+        }
+        semantic_keys.update(groups[group_id][0] for group_id in group_ids)
+
+        for group_id, (semantic_key, member_ids) in groups.items():
+            if member_ids & album_ids or semantic_key in semantic_keys:
+                group_ids.add(group_id)
+                album_ids.update(member_ids)
+                semantic_keys.add(semantic_key)
+        for album_id, (album_name, artist_id) in albums.items():
+            if (album_name, artist_id, "release") in semantic_keys:
+                album_ids.add(album_id)
+        for project_id, (semantic_key, member_ids) in projects.items():
+            if member_ids & album_ids or semantic_key in semantic_keys:
+                project_ids.add(project_id)
+                album_ids.update(member_ids)
+                semantic_keys.add(semantic_key)
+
+        after = (len(album_ids), len(group_ids), len(project_ids))
+        if after == before:
+            break
+
+    if not album_ids.issubset(albums):
+        raise _AlbumProjectClosureError("Album Project closure referenced a missing album")
+    return album_ids, group_ids, project_ids
+
+
+def _compilation_closure(
+    conn: sqlite3.Connection,
+    *,
+    album_ids: set[int],
+    track_ids: set[int],
+) -> tuple[set[int], set[int], set[int]]:
+    current_compilation_ids = {
+        int(row[0])
+        for row in conn.execute(
+            """SELECT DISTINCT al.album_id
+               FROM albums al
+               JOIN artists ar ON ar.artist_id = al.artist_id
+               JOIN spotify_album_meta sam
+                 ON lower(sam.album_name) = lower(al.album_name)
+                AND sam.album_type = 'compilation'"""
+        ).fetchall()
+    }
+    compilation_tracks = {
+        album_id: {track_id for track_id, _source_album_id in _tracks_for_albums(conn, [album_id])}
+        for album_id in current_compilation_ids
+    }
+
+    project_albums: dict[int, set[int]] = {}
+    for row in conn.execute(
+        """SELECT apa.project_id, apa.album_id
+           FROM album_project_albums apa
+           JOIN album_projects ap ON ap.project_id = apa.project_id
+           WHERE ap.is_manual = 0 AND ap.project_type = 'compilation_exclusive'"""
+    ).fetchall():
+        project_albums.setdefault(int(row["project_id"]), set()).add(int(row["album_id"]))
+    project_tracks: dict[int, set[int]] = {}
+    for row in conn.execute(
+        """SELECT apt.project_id, apt.track_id
+           FROM album_project_tracks apt
+           JOIN album_projects ap ON ap.project_id = apt.project_id
+           WHERE ap.is_manual = 0 AND ap.project_type = 'compilation_exclusive'"""
+    ).fetchall():
+        project_tracks.setdefault(int(row["project_id"]), set()).add(int(row["track_id"]))
+    compilation_projects = {
+        int(row["project_id"]): (
+            (str(row["canonical_name"]), int(row["artist_id"]), str(row["scope"])),
+            int(row["primary_album_id"]) if row["primary_album_id"] is not None else None,
+        )
+        for row in conn.execute(
+            """SELECT project_id, canonical_name, artist_id, primary_album_id, scope
+               FROM album_projects
+               WHERE is_manual = 0 AND project_type = 'compilation_exclusive'"""
+        ).fetchall()
+    }
+
+    selected_album_ids = set(album_ids & current_compilation_ids)
+    selected_album_ids.update(
+        album_id
+        for album_id, member_track_ids in compilation_tracks.items()
+        if member_track_ids & track_ids
+    )
+    selected_project_ids: set[int] = set()
+    for project_id, (_semantic_key, primary_album_id) in compilation_projects.items():
+        member_album_ids = set(project_albums.get(project_id, set()))
+        if primary_album_id is not None:
+            member_album_ids.add(primary_album_id)
+        if member_album_ids & album_ids or project_tracks.get(project_id, set()) & track_ids:
+            selected_project_ids.add(project_id)
+            selected_album_ids.update(member_album_ids)
+
+    albums = {
+        int(row["album_id"]): (str(row["album_name"]), int(row["artist_id"]))
+        for row in conn.execute(
+            "SELECT album_id, album_name, artist_id FROM albums ORDER BY album_id"
+        ).fetchall()
+    }
+    semantic_keys = {
+        (albums[album_id][0], albums[album_id][1], "release")
+        for album_id in selected_album_ids
+        if album_id in albums
+    }
+    for project_id, (semantic_key, _primary_album_id) in compilation_projects.items():
+        if semantic_key in semantic_keys:
+            selected_project_ids.add(project_id)
+            selected_album_ids.update(project_albums.get(project_id, set()))
+    selected_album_ids.update(
+        album_id
+        for album_id in current_compilation_ids
+        if album_id in albums
+        and (albums[album_id][0], albums[album_id][1], "release") in semantic_keys
+    )
+
+    # A former compilation can only disappear safely when it was already part
+    # of the non-compilation source closure (normally via its refreshed album
+    # ID). Otherwise its prior name/type reverse mapping is no longer provable.
+    stale_only_album_ids = selected_album_ids - current_compilation_ids - album_ids
+    if stale_only_album_ids:
+        raise _AlbumProjectClosureError("former compilation mapping is outside impact scope")
+
+    selected_album_ids &= current_compilation_ids
+    selected_track_ids = {
+        track_id
+        for album_id in selected_album_ids
+        for track_id in compilation_tracks.get(album_id, set())
+    }
+    return selected_album_ids, selected_project_ids, selected_track_ids
+
+
+def _normalise_integer_ids(values: Iterable[int]) -> set[int]:
+    try:
+        normalised = {int(value) for value in values}
+    except (TypeError, ValueError) as exc:
+        raise _AlbumProjectClosureError("invalid local album impact") from exc
+    if any(value <= 0 for value in normalised):
+        raise _AlbumProjectClosureError("invalid local album impact")
+    return normalised
+
+
+def _normalise_spotify_ids(values: Iterable[str]) -> set[str]:
+    try:
+        normalised = {str(value).strip() for value in values}
+    except TypeError as exc:
+        raise _AlbumProjectClosureError("invalid Spotify impact") from exc
+    if "" in normalised:
+        raise _AlbumProjectClosureError("invalid Spotify impact")
+    return normalised
+
+
+def _select_integer_ids(
+    conn: sqlite3.Connection,
+    table: str,
+    column: str,
+    values: set[int],
+) -> set[int]:
+    if not values:
+        return set()
+    placeholders = ",".join("?" for _ in values)
+    return {
+        int(row[0])
+        for row in conn.execute(
+            f"SELECT {column} FROM {table} WHERE {column} IN ({placeholders})",
+            tuple(sorted(values)),
+        ).fetchall()
+    }
+
+
+def _select_text_ids(
+    conn: sqlite3.Connection,
+    table: str,
+    column: str,
+    values: set[str],
+) -> set[str]:
+    if not values:
+        return set()
+    placeholders = ",".join("?" for _ in values)
+    return {
+        str(row[0])
+        for row in conn.execute(
+            f"SELECT {column} FROM {table} WHERE {column} IN ({placeholders})",
+            tuple(sorted(values)),
+        ).fetchall()
+    }
 
 
 def _populate_album_projects(
@@ -427,9 +973,18 @@ def _bootstrap_from_release_groups(
     conn: sqlite3.Connection,
     *,
     seen_project_ids: set[int] | None = None,
+    group_ids: set[int] | None = None,
 ) -> None:
+    group_filter = ""
+    group_params: tuple[int, ...] = ()
+    if group_ids is not None:
+        group_params = tuple(sorted(group_ids))
+        if not group_params:
+            return
+        placeholders = ",".join("?" for _ in group_params)
+        group_filter = f"WHERE rg.group_id IN ({placeholders})"
     groups = conn.execute(
-        """SELECT rg.group_id, rg.canonical_name, rg.artist_id, rg.primary_album_id, rg.scope,
+        f"""SELECT rg.group_id, rg.canonical_name, rg.artist_id, rg.primary_album_id, rg.scope,
                   sam.release_date, sam.album_type, sam.total_tracks
            FROM release_groups rg
            LEFT JOIN albums al ON al.album_id = rg.primary_album_id
@@ -437,7 +992,9 @@ def _bootstrap_from_release_groups(
            LEFT JOIN spotify_album_meta sam
              ON lower(sam.album_name) = lower(al.album_name)
             AND (sam.album_artists IS NULL OR ar.artist_name IS NULL OR instr(lower(sam.album_artists), lower(ar.artist_name)) > 0)
-           ORDER BY rg.group_id"""
+           {group_filter}
+           ORDER BY rg.group_id""",
+        group_params,
     ).fetchall()
     for group in groups:
         artist_id = int(group["artist_id"])
@@ -553,9 +1110,18 @@ def _bootstrap_standalone_album_projects(
     conn: sqlite3.Connection,
     *,
     seen_project_ids: set[int] | None = None,
+    album_ids: set[int] | None = None,
 ) -> None:
+    album_filter = ""
+    album_params: tuple[int, ...] = ()
+    if album_ids is not None:
+        album_params = tuple(sorted(album_ids))
+        if not album_params:
+            return
+        placeholders = ",".join("?" for _ in album_params)
+        album_filter = f"AND al.album_id IN ({placeholders})"
     albums = conn.execute(
-        """SELECT al.album_id, al.album_name, al.artist_id, ar.artist_name,
+        f"""SELECT al.album_id, al.album_name, al.artist_id, ar.artist_name,
                   sam.album_type, sam.total_tracks, sam.release_date,
                   (SELECT COUNT(DISTINCT track_id) FROM (
                       SELECT track_id FROM tracks WHERE album_id = al.album_id
@@ -584,8 +1150,10 @@ def _bootstrap_standalone_album_projects(
                WHERE rgm.album_id = al.album_id
                  AND rg.scope = 'release'
            )
+           {album_filter}
            GROUP BY al.album_id
-           ORDER BY al.album_id"""
+           ORDER BY al.album_id""",
+        album_params,
     ).fetchall()
 
     for album in albums:
@@ -681,15 +1249,26 @@ def _bootstrap_compilation_exclusive_projects(
     conn: sqlite3.Connection,
     *,
     seen_project_ids: set[int] | None = None,
+    album_ids: set[int] | None = None,
 ) -> None:
+    album_filter = ""
+    album_params: tuple[int, ...] = ()
+    if album_ids is not None:
+        album_params = tuple(sorted(album_ids))
+        if not album_params:
+            return
+        placeholders = ",".join("?" for _ in album_params)
+        album_filter = f"AND al.album_id IN ({placeholders})"
     compilations = conn.execute(
-        """SELECT al.album_id, al.album_name, al.artist_id, sam.release_date
+        f"""SELECT al.album_id, al.album_name, al.artist_id, sam.release_date
            FROM albums al
            JOIN artists ar ON ar.artist_id = al.artist_id
            JOIN spotify_album_meta sam
              ON lower(sam.album_name) = lower(al.album_name)
             AND sam.album_type = 'compilation'
-           ORDER BY al.album_id"""
+           WHERE 1=1 {album_filter}
+           ORDER BY al.album_id""",
+        album_params,
     ).fetchall()
     for album in compilations:
         exclusive_tracks = [

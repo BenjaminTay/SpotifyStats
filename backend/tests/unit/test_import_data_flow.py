@@ -5,7 +5,7 @@ import sqlite3
 
 import pytest
 
-from backend.domains.imports.incremental import FingerprintRecord, dataset_digest
+from backend.domains.imports.incremental import FingerprintRecord, RecordIdentity, dataset_digest
 from backend.domains.imports.source_inspector import record_fingerprint
 
 pytestmark = pytest.mark.unit
@@ -562,6 +562,254 @@ def test_append_and_clean_replace_are_semantically_equivalent(tmp_path, monkeypa
         assert replacement_result["inserted_records"] == 2
         assert incremental_result["dataset_digest"] == replacement_result["dataset_digest"]
         assert semantic_snapshot(incremental_db) == semantic_snapshot(replacement_db)
+    finally:
+        _clear_db_caches()
+
+
+def test_reconcile_and_clean_replace_have_equivalent_active_facts(tmp_path, monkeypatch) -> None:
+    from backend.core import db as db_mod
+    from backend.core import import_data as import_mod
+
+    reconcile_db = tmp_path / "reconcile.db"
+    replacement_db = tmp_path / "replacement.db"
+    reconcile_dir = tmp_path / "reconcile-streaming"
+    replacement_dir = tmp_path / "replacement-streaming"
+    reconcile_dir.mkdir()
+    replacement_dir.mkdir()
+    shared = _streaming_record("shared", timestamp="2026-01-01T00:00:00Z")
+    removed = _streaming_record("wrong", timestamp="2026-01-02T00:00:00Z")
+    added = _streaming_record("corrected", timestamp="2026-01-02T00:00:00Z")
+    baseline = [shared, removed]
+    final = [shared, added]
+    removed_identity = RecordIdentity("audio", record_fingerprint(removed))
+
+    def active_facts(path) -> list[tuple]:
+        conn = sqlite3.connect(path)
+        try:
+            return conn.execute(
+                """SELECT p.ts, p.ms_played, p.content_type, p.source_fingerprint,
+                          p.spotify_track_id_at_play, t.track_name,
+                          a.album_name, ar.artist_name
+                   FROM plays p
+                   LEFT JOIN tracks t ON t.track_id=p.track_id
+                   LEFT JOIN albums a ON a.album_id=p.source_album_id
+                   LEFT JOIN artists ar ON ar.artist_id=t.artist_id
+                   ORDER BY p.ts, p.source_fingerprint"""
+            ).fetchall()
+        finally:
+            conn.close()
+
+    try:
+        monkeypatch.setattr(db_mod, "DB_PATH", str(reconcile_db))
+        _write_audio_records(reconcile_dir, baseline)
+        baseline_result = import_mod.import_data(
+            str(reconcile_dir),
+            build_preaggregations=False,
+            generation_id="baseline-generation",
+        )
+        _write_audio_records(reconcile_dir, final)
+        reconcile_result = import_mod.import_data(
+            str(reconcile_dir),
+            build_preaggregations=False,
+            mode="reconcile",
+            generation_id="reconcile-generation",
+            expected_previous_digest=baseline_result["dataset_digest"],
+            removed_identities=frozenset({removed_identity}),
+            before_final_commit=lambda _conn, _result: None,
+        )
+
+        _clear_db_caches()
+        monkeypatch.setattr(db_mod, "DB_PATH", str(replacement_db))
+        _write_audio_records(replacement_dir, final)
+        replacement_result = import_mod.import_data(
+            str(replacement_dir),
+            build_preaggregations=False,
+            generation_id="replacement-generation",
+        )
+
+        assert reconcile_result["inserted_records"] == 1
+        assert reconcile_result["unchanged_records"] == 1
+        assert reconcile_result["active_records"] == 2
+        assert reconcile_result["dataset_digest"] == replacement_result["dataset_digest"]
+        assert active_facts(reconcile_db) == active_facts(replacement_db)
+        assert len(reconcile_result["_removed_impact_rows"]) == 1
+        assert "source_fingerprint" not in reconcile_result["_removed_impact_rows"][0]
+    finally:
+        _clear_db_caches()
+
+
+def test_reconcile_repeated_corrections_do_not_accumulate_duplicate_facts(
+    tmp_path, monkeypatch
+) -> None:
+    from backend.core import db as db_mod
+    from backend.core import import_data as import_mod
+
+    db_path = tmp_path / "spotify_stats.db"
+    data_dir = tmp_path / "streaming"
+    data_dir.mkdir()
+    monkeypatch.setattr(db_mod, "DB_PATH", str(db_path))
+    shared = _streaming_record("shared", timestamp="2026-01-01T00:00:00Z")
+    variants = (
+        _streaming_record("variant-a", timestamp="2026-01-02T00:00:00Z"),
+        _streaming_record("variant-b", timestamp="2026-01-02T00:00:00Z"),
+    )
+    _write_audio_records(data_dir, [shared, variants[0]])
+
+    try:
+        result = import_mod.import_data(
+            str(data_dir),
+            build_preaggregations=False,
+            generation_id="stress-baseline",
+        )
+        active_variant = 0
+        for iteration in range(20):
+            next_variant = 1 - active_variant
+            _write_audio_records(data_dir, [shared, variants[next_variant]])
+            result = import_mod.import_data(
+                str(data_dir),
+                build_preaggregations=False,
+                mode="reconcile",
+                generation_id=f"stress-reconcile-{iteration}",
+                expected_previous_digest=result["dataset_digest"],
+                removed_identities=frozenset(
+                    {
+                        RecordIdentity(
+                            "audio",
+                            record_fingerprint(variants[active_variant]),
+                        )
+                    }
+                ),
+                before_final_commit=lambda _conn, _result: None,
+            )
+            assert result["active_records"] == 2
+            assert result["inserted_records"] == 1
+            assert result["unchanged_records"] == 1
+            active_variant = next_variant
+
+        conn = sqlite3.connect(db_path)
+        try:
+            assert conn.execute("SELECT COUNT(*) FROM plays").fetchone()[0] == 2
+            assert (
+                conn.execute(
+                    "SELECT COUNT(DISTINCT content_type || ':' || source_fingerprint) FROM plays"
+                ).fetchone()[0]
+                == 2
+            )
+            assert (
+                conn.execute(
+                    "SELECT COUNT(*) FROM plays WHERE source_fingerprint=?",
+                    (record_fingerprint(variants[active_variant]),),
+                ).fetchone()[0]
+                == 1
+            )
+        finally:
+            conn.close()
+    finally:
+        _clear_db_caches()
+
+
+def test_reconcile_rolls_back_delete_insert_and_state_when_finalizer_fails(
+    tmp_path, monkeypatch
+) -> None:
+    from backend.core import db as db_mod
+    from backend.core import import_data as import_mod
+
+    db_path = tmp_path / "spotify_stats.db"
+    data_dir = tmp_path / "streaming"
+    data_dir.mkdir()
+    monkeypatch.setattr(db_mod, "DB_PATH", str(db_path))
+    shared = _streaming_record("shared", timestamp="2026-01-01T00:00:00Z")
+    removed = _streaming_record("wrong", timestamp="2026-01-02T00:00:00Z")
+    added = _streaming_record("corrected", timestamp="2026-01-02T00:00:00Z")
+    _write_audio_records(data_dir, [shared, removed])
+
+    try:
+        baseline = import_mod.import_data(
+            str(data_dir),
+            build_preaggregations=False,
+            generation_id="baseline-generation",
+        )
+        conn = sqlite3.connect(db_path)
+        try:
+            conn.execute(
+                """UPDATE playback_import_state
+                   SET active_generation_id='baseline-generation', dataset_digest=?,
+                       record_count=2, last_strategy='full'
+                   WHERE state_id=1""",
+                (baseline["dataset_digest"],),
+            )
+            conn.commit()
+            before_plays = conn.execute(
+                """SELECT ts, source_fingerprint, import_generation_id
+                   FROM plays ORDER BY play_id"""
+            ).fetchall()
+            before_state = conn.execute(
+                """SELECT active_generation_id, dataset_digest, record_count, last_strategy
+                   FROM playback_import_state WHERE state_id=1"""
+            ).fetchone()
+        finally:
+            conn.close()
+
+        _write_audio_records(data_dir, [shared, added])
+        removed_identity = RecordIdentity("audio", record_fingerprint(removed))
+
+        with pytest.raises(RuntimeError, match="baseline changed"):
+            import_mod.import_data(
+                str(data_dir),
+                build_preaggregations=False,
+                mode="reconcile",
+                generation_id="stale-generation",
+                expected_previous_digest="stale-digest",
+                removed_identities=frozenset({removed_identity}),
+                before_final_commit=lambda _conn, _result: None,
+            )
+
+        def fail_before_commit(conn, result):
+            assert len(result["_removed_impact_rows"]) == 1
+            assert (
+                conn.execute(
+                    "SELECT COUNT(*) FROM plays WHERE source_fingerprint=?",
+                    (removed_identity.fingerprint,),
+                ).fetchone()[0]
+                == 0
+            )
+            conn.execute(
+                """UPDATE playback_import_state
+                   SET active_generation_id='failed-generation', dataset_digest='bad'
+                   WHERE state_id=1"""
+            )
+            raise RuntimeError("synthetic reconcile finalizer failure")
+
+        monkeypatch.setattr(import_mod, "_PLAY_BATCH_SIZE", 1)
+        with pytest.raises(RuntimeError, match="synthetic reconcile finalizer failure"):
+            import_mod.import_data(
+                str(data_dir),
+                build_preaggregations=False,
+                mode="reconcile",
+                generation_id="failed-generation",
+                expected_previous_digest=baseline["dataset_digest"],
+                removed_identities=frozenset({removed_identity}),
+                before_final_commit=fail_before_commit,
+            )
+
+        conn = sqlite3.connect(db_path)
+        try:
+            assert (
+                conn.execute(
+                    """SELECT ts, source_fingerprint, import_generation_id
+                   FROM plays ORDER BY play_id"""
+                ).fetchall()
+                == before_plays
+            )
+            assert (
+                conn.execute(
+                    """SELECT active_generation_id, dataset_digest, record_count, last_strategy
+                   FROM playback_import_state WHERE state_id=1"""
+                ).fetchone()
+                == before_state
+            )
+        finally:
+            conn.close()
     finally:
         _clear_db_caches()
 

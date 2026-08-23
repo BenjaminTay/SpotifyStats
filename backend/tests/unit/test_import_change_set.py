@@ -14,11 +14,17 @@ from backend.core.db import (
     check_agg_valid,
 )
 from backend.core.migrations import migrate_037, migrate_038, migrate_039, migrate_040
+from backend.domains.imports import change_set as change_set_mod
 from backend.domains.imports.change_set import (
+    PlaybackChangeSet,
     build_playback_change_set,
     publish_year_partition_state,
 )
-from backend.domains.imports.incremental import FingerprintRecord, build_import_plan
+from backend.domains.imports.incremental import (
+    FingerprintRecord,
+    ImportCoverage,
+    build_import_plan,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -64,6 +70,101 @@ def _record(char: str, timestamp: str) -> FingerprintRecord:
         "audio",
         char * 64,
         datetime.fromisoformat(timestamp.replace("Z", "+00:00")),
+    )
+
+
+def _insert_chart_track(
+    conn: sqlite3.Connection,
+    track_id: int,
+    *,
+    album_id: int,
+    artist_id: int,
+    duration_ms: int = 180_000,
+) -> None:
+    spotify_id = f"track-{track_id}"
+    conn.execute(
+        "INSERT INTO tracks(track_id, album_id, artist_id, spotify_track_id) VALUES (?, ?, ?, ?)",
+        (track_id, album_id, artist_id, spotify_id),
+    )
+    conn.execute(
+        "INSERT INTO spotify_track_meta(spotify_track_id, duration_ms) VALUES (?, ?)",
+        (spotify_id, duration_ms),
+    )
+
+
+def _insert_chart_play(
+    conn: sqlite3.Connection,
+    *,
+    play_id: int,
+    timestamp: str,
+    ms_played: int,
+    track_id: int,
+    source_album_id: int,
+    generation_id: str,
+) -> None:
+    parsed = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+    conn.execute(
+        """INSERT INTO plays(
+               play_id, ts, ts_date, ts_year, ts_month, track_id,
+               source_album_id, ms_played, content_type, source_fingerprint,
+               source_fingerprint_version, import_generation_id
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'audio', ?, 1, ?)""",
+        (
+            play_id,
+            timestamp,
+            parsed.date().isoformat(),
+            parsed.year,
+            parsed.month,
+            track_id,
+            source_album_id,
+            ms_played,
+            f"{play_id:064x}",
+            generation_id,
+        ),
+    )
+
+
+def _removed_chart_row(
+    *,
+    play_id: int,
+    timestamp: str,
+    ms_played: int,
+    track_id: int,
+    source_album_id: int,
+) -> dict[str, object]:
+    parsed = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+    return {
+        "play_id": play_id,
+        "ts": timestamp,
+        "ts_date": parsed.date().isoformat(),
+        "ts_year": parsed.year,
+        "ts_month": parsed.month,
+        "track_id": track_id,
+        "source_album_id": source_album_id,
+        "ms_played": ms_played,
+        "spotify_track_id_at_play": f"play-track-{track_id}",
+        "spotify_album_id_at_play": f"play-album-{source_album_id}",
+    }
+
+
+def _reconcile_plan(
+    *,
+    removed_ts: str,
+    added_ts: str,
+    stable_timestamps: list[str],
+):
+    removed = _record("a", removed_ts)
+    added = _record("b", added_ts)
+    stable = [
+        FingerprintRecord(
+            "audio", f"{index + 10:064x}", datetime.fromisoformat(value.replace("Z", "+00:00"))
+        )
+        for index, value in enumerate(stable_timestamps)
+    ]
+    return build_import_plan(
+        [*stable, added],
+        existing_records=[*stable, removed],
+        coverage=ImportCoverage.SNAPSHOT,
     )
 
 
@@ -147,6 +248,401 @@ def test_change_set_fails_closed_when_generation_count_does_not_match_plan() -> 
             build_playback_change_set(
                 conn, generation_id="missing", strategy="incremental", plan=plan
             )
+    finally:
+        conn.close()
+
+
+def test_reconcile_change_set_unions_old_and_new_compact_impact_and_falls_back() -> None:
+    conn = _connection()
+    try:
+        old = _record("a", "2026-01-02T01:00:00Z")
+        shared = _record("s", "2026-01-03T01:00:00Z")
+        new = _record("b", "2026-01-02T02:00:00Z")
+        plan = build_import_plan(
+            [new, shared],
+            existing_records=[old, shared],
+            coverage=ImportCoverage.SNAPSHOT,
+        )
+        conn.executemany(
+            "INSERT INTO tracks(track_id, album_id, artist_id, spotify_track_id) VALUES (?, ?, ?, ?)",
+            [(1, 11, 21, "canonical-old"), (2, 12, 22, "canonical-new")],
+        )
+        conn.executemany(
+            "INSERT INTO track_artists VALUES (?, ?, ?)",
+            [(1, 21, "primary"), (2, 22, "primary")],
+        )
+        conn.execute(
+            """INSERT INTO plays(
+                   play_id, ts, ts_date, ts_year, ts_month, track_id,
+                   source_album_id, ms_played, spotify_track_id_at_play,
+                   spotify_album_id_at_play, content_type, source_fingerprint,
+                   source_fingerprint_version, import_generation_id
+               ) VALUES (2, ?, '2026-01-02', 2026, 1, 2, 12, 180000,
+                         'play-new', 'album-new', 'audio', ?, 1, 'reconcile')""",
+            (new.timestamp.isoformat(), new.fingerprint),
+        )
+        removed = {
+            "play_id": 1,
+            "ts": old.timestamp.isoformat(),
+            "ts_date": "2026-01-02",
+            "ts_year": 2026,
+            "ts_month": 1,
+            "track_id": 1,
+            "source_album_id": 11,
+            "ms_played": 180_000,
+            "spotify_track_id_at_play": "play-old",
+            "spotify_album_id_at_play": "album-old",
+        }
+
+        change_set = build_playback_change_set(
+            conn,
+            generation_id="reconcile",
+            strategy="reconcile",
+            plan=plan,
+            removed_rows=[removed],
+        )
+
+        assert change_set.added_count == 1
+        assert change_set.removed_count == 1
+        assert change_set.track_ids == {1, 2}
+        assert change_set.album_ids == {11, 12}
+        assert change_set.artist_ids == {21, 22}
+        assert change_set.spotify_track_ids == {
+            "canonical-old",
+            "canonical-new",
+            "play-old",
+            "play-new",
+        }
+        assert change_set.spotify_album_ids == {"album-old", "album-new"}
+        assert change_set.dates == {"2026-01-02"}
+        assert change_set.years == {2026}
+        assert change_set.billboard_weeks
+        assert change_set.billboard_scope_exact is False
+        assert "source_fingerprint" not in change_set.to_dict()
+        assert PlaybackChangeSet.from_dict(change_set.to_dict()) == change_set
+    finally:
+        conn.close()
+
+
+def test_reconcile_exact_scope_closes_an_interior_deleted_run() -> None:
+    conn = _connection()
+    try:
+        _insert_chart_track(conn, 1, album_id=11, artist_id=21)
+        _insert_chart_track(conn, 2, album_id=12, artist_id=22)
+        _insert_chart_track(conn, 99, album_id=99, artist_id=99)
+        stable_timestamps = [
+            "2026-01-02T00:00:20Z",
+            "2026-01-02T00:01:00Z",
+            "2026-02-01T00:00:00Z",
+        ]
+        _insert_chart_play(
+            conn,
+            play_id=1,
+            timestamp=stable_timestamps[0],
+            ms_played=20_000,
+            track_id=1,
+            source_album_id=11,
+            generation_id="old",
+        )
+        _insert_chart_play(
+            conn,
+            play_id=3,
+            timestamp=stable_timestamps[1],
+            ms_played=20_000,
+            track_id=1,
+            source_album_id=11,
+            generation_id="old",
+        )
+        _insert_chart_play(
+            conn,
+            play_id=4,
+            timestamp="2026-01-10T00:00:00Z",
+            ms_played=40_000,
+            track_id=2,
+            source_album_id=12,
+            generation_id="reconcile",
+        )
+        _insert_chart_play(
+            conn,
+            play_id=5,
+            timestamp=stable_timestamps[2],
+            ms_played=40_000,
+            track_id=99,
+            source_album_id=99,
+            generation_id="old",
+        )
+        removed = _removed_chart_row(
+            play_id=2,
+            timestamp="2026-01-02T00:00:40Z",
+            ms_played=20_000,
+            track_id=1,
+            source_album_id=11,
+        )
+        plan = _reconcile_plan(
+            removed_ts="2026-01-02T00:00:40Z",
+            added_ts="2026-01-10T00:00:00Z",
+            stable_timestamps=stable_timestamps,
+        )
+
+        change_set = build_playback_change_set(
+            conn,
+            generation_id="reconcile",
+            strategy="reconcile",
+            plan=plan,
+            removed_rows=[removed],
+        )
+
+        assert change_set.billboard_scope_exact is True
+        assert "2026-01-02" in change_set.billboard_weeks
+    finally:
+        conn.close()
+
+
+def test_reconcile_replacement_can_bridge_and_split_a_merge_run() -> None:
+    conn = _connection()
+    try:
+        _insert_chart_track(conn, 1, album_id=11, artist_id=21)
+        _insert_chart_track(conn, 2, album_id=12, artist_id=22)
+        _insert_chart_track(conn, 99, album_id=99, artist_id=99)
+        stable_timestamps = [
+            "2026-01-02T00:00:20Z",
+            "2026-01-02T00:01:00Z",
+            "2026-02-01T00:00:00Z",
+        ]
+        _insert_chart_play(
+            conn,
+            play_id=1,
+            timestamp=stable_timestamps[0],
+            ms_played=20_000,
+            track_id=1,
+            source_album_id=11,
+            generation_id="old",
+        )
+        _insert_chart_play(
+            conn,
+            play_id=3,
+            timestamp=stable_timestamps[1],
+            ms_played=20_000,
+            track_id=1,
+            source_album_id=11,
+            generation_id="old",
+        )
+        _insert_chart_play(
+            conn,
+            play_id=4,
+            timestamp="2026-01-02T00:00:40Z",
+            ms_played=20_000,
+            track_id=1,
+            source_album_id=11,
+            generation_id="reconcile",
+        )
+        _insert_chart_play(
+            conn,
+            play_id=5,
+            timestamp=stable_timestamps[2],
+            ms_played=40_000,
+            track_id=99,
+            source_album_id=99,
+            generation_id="old",
+        )
+        removed = _removed_chart_row(
+            play_id=2,
+            timestamp="2026-01-02T00:00:40Z",
+            ms_played=20_000,
+            track_id=2,
+            source_album_id=12,
+        )
+        plan = _reconcile_plan(
+            removed_ts="2026-01-02T00:00:40Z",
+            added_ts="2026-01-02T00:00:40Z",
+            stable_timestamps=stable_timestamps,
+        )
+
+        change_set = build_playback_change_set(
+            conn,
+            generation_id="reconcile",
+            strategy="reconcile",
+            plan=plan,
+            removed_rows=[removed],
+        )
+
+        assert change_set.billboard_scope_exact is True
+        assert change_set.billboard_weeks == {"2026-01-02"}
+    finally:
+        conn.close()
+
+
+def test_reconcile_exact_scope_includes_both_sides_of_cross_week_interval() -> None:
+    conn = _connection()
+    try:
+        _insert_chart_track(conn, 1, album_id=11, artist_id=21)
+        _insert_chart_track(conn, 99, album_id=99, artist_id=99)
+        boundary_end = "2026-01-01T16:01:00Z"
+        sentinel = "2026-02-01T00:00:00Z"
+        _insert_chart_play(
+            conn,
+            play_id=2,
+            timestamp=boundary_end,
+            ms_played=120_000,
+            track_id=1,
+            source_album_id=11,
+            generation_id="reconcile",
+        )
+        _insert_chart_play(
+            conn,
+            play_id=3,
+            timestamp=sentinel,
+            ms_played=40_000,
+            track_id=99,
+            source_album_id=99,
+            generation_id="old",
+        )
+        removed = _removed_chart_row(
+            play_id=1,
+            timestamp=boundary_end,
+            ms_played=30_000,
+            track_id=1,
+            source_album_id=11,
+        )
+        plan = _reconcile_plan(
+            removed_ts=boundary_end,
+            added_ts=boundary_end,
+            stable_timestamps=[sentinel],
+        )
+
+        change_set = build_playback_change_set(
+            conn,
+            generation_id="reconcile",
+            strategy="reconcile",
+            plan=plan,
+            removed_rows=[removed],
+        )
+
+        assert change_set.billboard_scope_exact is True
+        assert change_set.billboard_weeks == {"2025-12-26", "2026-01-02"}
+    finally:
+        conn.close()
+
+
+def test_reconcile_equivalent_old_and_new_contributions_publish_no_weeks() -> None:
+    conn = _connection()
+    try:
+        _insert_chart_track(conn, 1, album_id=11, artist_id=21)
+        _insert_chart_track(conn, 99, album_id=99, artist_id=99)
+        timestamp = "2026-01-02T00:00:40Z"
+        sentinel = "2026-02-01T00:00:00Z"
+        _insert_chart_play(
+            conn,
+            play_id=2,
+            timestamp=timestamp,
+            ms_played=40_000,
+            track_id=1,
+            source_album_id=11,
+            generation_id="reconcile",
+        )
+        _insert_chart_play(
+            conn,
+            play_id=3,
+            timestamp=sentinel,
+            ms_played=40_000,
+            track_id=99,
+            source_album_id=99,
+            generation_id="old",
+        )
+        removed = _removed_chart_row(
+            play_id=1,
+            timestamp=timestamp,
+            ms_played=40_000,
+            track_id=1,
+            source_album_id=11,
+        )
+        plan = _reconcile_plan(
+            removed_ts=timestamp,
+            added_ts=timestamp,
+            stable_timestamps=[sentinel],
+        )
+
+        change_set = build_playback_change_set(
+            conn,
+            generation_id="reconcile",
+            strategy="reconcile",
+            plan=plan,
+            removed_rows=[removed],
+        )
+
+        assert change_set.billboard_scope_exact is True
+        assert change_set.billboard_weeks == set()
+    finally:
+        conn.close()
+
+
+def test_reconcile_closure_over_budget_falls_back_conservatively(
+    monkeypatch,
+) -> None:
+    conn = _connection()
+    try:
+        monkeypatch.setattr(change_set_mod, "_RECONCILE_BILLBOARD_ROW_LIMIT", 4)
+        _insert_chart_track(conn, 1, album_id=11, artist_id=21)
+        _insert_chart_track(conn, 2, album_id=12, artist_id=22)
+        _insert_chart_track(conn, 99, album_id=99, artist_id=99)
+        stable_timestamps = [
+            "2026-01-02T00:00:20Z",
+            "2026-01-02T00:01:00Z",
+            "2026-01-02T00:01:20Z",
+            "2026-01-02T00:01:40Z",
+            "2026-02-01T00:00:00Z",
+        ]
+        for index, timestamp in enumerate(stable_timestamps[:-1], start=1):
+            _insert_chart_play(
+                conn,
+                play_id=index,
+                timestamp=timestamp,
+                ms_played=20_000,
+                track_id=1,
+                source_album_id=11,
+                generation_id="old",
+            )
+        _insert_chart_play(
+            conn,
+            play_id=10,
+            timestamp="2026-01-02T00:00:40Z",
+            ms_played=20_000,
+            track_id=1,
+            source_album_id=11,
+            generation_id="reconcile",
+        )
+        _insert_chart_play(
+            conn,
+            play_id=11,
+            timestamp=stable_timestamps[-1],
+            ms_played=40_000,
+            track_id=99,
+            source_album_id=99,
+            generation_id="old",
+        )
+        removed = _removed_chart_row(
+            play_id=9,
+            timestamp="2026-01-02T00:00:40Z",
+            ms_played=20_000,
+            track_id=2,
+            source_album_id=12,
+        )
+        plan = _reconcile_plan(
+            removed_ts="2026-01-02T00:00:40Z",
+            added_ts="2026-01-02T00:00:40Z",
+            stable_timestamps=stable_timestamps,
+        )
+
+        change_set = build_playback_change_set(
+            conn,
+            generation_id="reconcile",
+            strategy="reconcile",
+            plan=plan,
+            removed_rows=[removed],
+        )
+
+        assert change_set.billboard_scope_exact is False
+        assert change_set.billboard_weeks == {"2026-01-02"}
     finally:
         conn.close()
 

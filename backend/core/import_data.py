@@ -14,6 +14,7 @@ from uuid import uuid4
 from backend.domains.imports.incremental import (
     FINGERPRINT_VERSION,
     FingerprintRecord,
+    RecordIdentity,
     dataset_digest,
 )
 from backend.domains.imports.source_inspector import record_fingerprint
@@ -282,6 +283,60 @@ def _active_dataset_summary(conn) -> tuple[int, str | None, str | None, str]:
     )
 
 
+def _stage_reconcile_removals(
+    conn: sqlite3.Connection,
+    removed_identities: frozenset[RecordIdentity],
+) -> list[dict[str, Any]]:
+    """Validate and stage exact removals, returning compact pre-delete evidence."""
+
+    conn.execute(
+        """CREATE TEMP TABLE reconcile_removed_identity(
+               content_type TEXT NOT NULL,
+               source_fingerprint TEXT NOT NULL,
+               PRIMARY KEY(content_type, source_fingerprint)
+           ) WITHOUT ROWID"""
+    )
+    conn.executemany(
+        "INSERT INTO reconcile_removed_identity VALUES (?, ?)",
+        ((item.source_type, item.fingerprint) for item in removed_identities),
+    )
+    rows = conn.execute(
+        """SELECT p.play_id, p.ts, p.ts_date, p.ts_year, p.ts_month,
+                  p.track_id, p.source_album_id, p.ms_played,
+                  p.spotify_track_id_at_play, p.spotify_album_id_at_play
+           FROM plays p
+           JOIN reconcile_removed_identity r
+             ON r.content_type=p.content_type
+            AND r.source_fingerprint=p.source_fingerprint
+           WHERE p.source_fingerprint_version=?
+           ORDER BY p.ts, p.play_id""",
+        (FINGERPRINT_VERSION,),
+    ).fetchall()
+    if len(rows) != len(removed_identities):
+        raise RuntimeError(
+            "reconcile removal scope does not exactly match the active fingerprint baseline"
+        )
+    # Fingerprints and raw source records deliberately do not cross this
+    # boundary.  This compact fact-impact evidence is safe to persist as part
+    # of the downstream ChangeSet.
+    return [dict(row) for row in rows]
+
+
+def _delete_staged_reconcile_rows(conn: sqlite3.Connection, expected_count: int) -> None:
+    cursor = conn.execute(
+        """DELETE FROM plays
+           WHERE source_fingerprint_version=?
+             AND EXISTS (
+                 SELECT 1 FROM reconcile_removed_identity r
+                 WHERE r.content_type=plays.content_type
+                   AND r.source_fingerprint=plays.source_fingerprint
+             )""",
+        (FINGERPRINT_VERSION,),
+    )
+    if cursor.rowcount != expected_count:
+        raise RuntimeError("reconcile deletion count changed after the removal scope was validated")
+
+
 def import_data(
     data_dir: str | None = None,
     progress_callback=None,
@@ -292,9 +347,10 @@ def import_data(
     agg_dynamic_threshold: bool = True,
     agg_max_merge_gap_minutes: int | None = 5,
     build_preaggregations: bool = True,
-    mode: Literal["replace", "append"] = "replace",
+    mode: Literal["replace", "append", "reconcile"] = "replace",
     generation_id: str | None = None,
     expected_previous_digest: str | None = None,
+    removed_identities: frozenset[RecordIdentity] | None = None,
     before_final_commit: Callable[[sqlite3.Connection, dict[str, Any]], None] | None = None,
 ) -> dict[str, Any]:
     """Run the ETL with deterministic rollback and connection cleanup."""
@@ -313,6 +369,7 @@ def import_data(
             mode=mode,
             generation_id=generation_id,
             expected_previous_digest=expected_previous_digest,
+            removed_identities=removed_identities,
             before_final_commit=before_final_commit,
             connection_holder=connection_holder,
         )
@@ -335,9 +392,10 @@ def _import_data_impl(
     agg_dynamic_threshold: bool = True,
     agg_max_merge_gap_minutes: int | None = 5,
     build_preaggregations: bool = True,
-    mode: Literal["replace", "append"] = "replace",
+    mode: Literal["replace", "append", "reconcile"] = "replace",
     generation_id: str | None = None,
     expected_previous_digest: str | None = None,
+    removed_identities: frozenset[RecordIdentity] | None = None,
     before_final_commit: Callable[[sqlite3.Connection, dict[str, Any]], None] | None = None,
     connection_holder: list[sqlite3.Connection] | None = None,
 ) -> dict[str, Any]:
@@ -348,7 +406,9 @@ def _import_data_impl(
         progress_callback: Optional callable(step: str, pct: float) for progress.
         agg_*: Parameters for building pre-aggregated Billboard tables after import.
         mode: ``replace`` preserves the historical overwrite behavior;
-            ``append`` inserts only fingerprints absent from the active dataset.
+            ``append`` inserts only fingerprints absent from the active dataset;
+            ``reconcile`` atomically deletes and inserts the identities proven
+            by a confirmed authoritative snapshot plan.
         generation_id: Import generation attached to newly inserted plays. A
             UUID is generated when the caller does not provide one.
         before_final_commit: Optional validator/publisher invoked on the import
@@ -357,12 +417,18 @@ def _import_data_impl(
     Returns:
         Dict with summary stats.
     """
-    if mode not in {"replace", "append"}:
-        raise ValueError("mode must be 'replace' or 'append'")
-    if mode == "append" and (not expected_previous_digest or before_final_commit is None):
+    if mode not in {"replace", "append", "reconcile"}:
+        raise ValueError("mode must be 'replace', 'append' or 'reconcile'")
+    if mode in {"append", "reconcile"} and (
+        not expected_previous_digest or before_final_commit is None
+    ):
         raise ValueError(
-            "append mode requires an expected previous digest and transactional finalizer"
+            f"{mode} mode requires an expected previous digest and transactional finalizer"
         )
+    if mode == "reconcile" and not removed_identities:
+        raise ValueError("reconcile mode requires a non-empty exact removal scope")
+    if mode != "reconcile" and removed_identities:
+        raise ValueError("removed identities are only valid in reconcile mode")
     if generation_id is None:
         generation_id = str(uuid4())
     elif not isinstance(generation_id, str) or not generation_id.strip():
@@ -402,7 +468,7 @@ def _import_data_impl(
     # verify the active baseline. Replace may upgrade an empty database here;
     # a populated legacy database fails before any facts are cleared because
     # its former delete/commit/deduplicate migration sequence was not atomic.
-    if mode == "append":
+    if mode in {"append", "reconcile"}:
         ensure_schema()
     else:
         _prepare_replace_schema()
@@ -412,7 +478,7 @@ def _import_data_impl(
     conn = get_db(readonly=False)
     if connection_holder is not None:
         connection_holder.append(conn)
-    if mode == "append":
+    if mode in {"append", "reconcile"}:
         # Acquire the write reservation before reading the active fingerprint
         # baseline so an external writer cannot swap facts between validation
         # and the first append DML statement.
@@ -430,13 +496,25 @@ def _import_data_impl(
         conn.execute("DELETE FROM agg_config")
         conn.execute("DELETE FROM track_albums")
 
-    existing_fingerprints = _load_append_fingerprints(conn) if mode == "append" else set()
+    existing_fingerprints = (
+        _load_append_fingerprints(conn) if mode in {"append", "reconcile"} else set()
+    )
     previous_dataset_digest = dataset_digest(
         FingerprintRecord(source_type=source_type, fingerprint=fingerprint)
         for source_type, fingerprint in existing_fingerprints
     )
-    if mode == "append" and previous_dataset_digest != expected_previous_digest:
+    if mode in {"append", "reconcile"} and (previous_dataset_digest != expected_previous_digest):
         raise RuntimeError("active playback baseline changed after import planning")
+    removed_impact_rows: list[dict[str, Any]] = []
+    if mode == "reconcile":
+        exact_removals = frozenset(removed_identities or ())
+        active_identities = {
+            RecordIdentity(source_type=source_type, fingerprint=fingerprint)
+            for source_type, fingerprint in existing_fingerprints
+        }
+        if not exact_removals.issubset(active_identities):
+            raise RuntimeError("reconcile removal scope is not a subset of the active baseline")
+        removed_impact_rows = _stage_reconcile_removals(conn, exact_removals)
 
     artist_cache: dict[str, int] = {}
     album_cache: dict[tuple, int] = {}
@@ -658,6 +736,9 @@ def _import_data_impl(
                 conn.executemany(_PLAY_INSERT_SQL, plays_batch)
                 video_total += len(plays_batch)
 
+    if mode == "reconcile":
+        _delete_staged_reconcile_rows(conn, len(removed_impact_rows))
+
     active_records, first_ts, latest_ts, active_digest = _active_dataset_summary(conn)
     inserted_records = total_records + video_total
     input_dataset_digest = dataset_digest(
@@ -684,6 +765,12 @@ def _import_data_impl(
             ),
         ]
     )
+    if mode == "reconcile":
+        incoming_unique_count = len(seen_audio_records) + len(seen_video_records)
+        if active_records != incoming_unique_count or active_digest != input_dataset_digest:
+            raise RuntimeError(
+                "reconcile result does not exactly match the confirmed incoming dataset"
+            )
     result = {
         "total_records": inserted_records,
         "audio_records": total_records,
@@ -710,6 +797,8 @@ def _import_data_impl(
         "agg_artist_wks": 0,
         "finalized_in_transaction": False,
     }
+    if mode == "reconcile":
+        result["_removed_impact_rows"] = removed_impact_rows
     if before_final_commit is not None:
         before_final_commit(conn, result)
         result["finalized_in_transaction"] = True

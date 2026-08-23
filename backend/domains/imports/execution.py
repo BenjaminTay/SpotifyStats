@@ -13,6 +13,7 @@ class ImportExecutionAction(str, Enum):
 
     NOOP = "noop"
     APPEND = "append"
+    RECONCILE = "reconcile"
     REPLACE = "replace"
     NEEDS_CONFIRMATION = "needs_confirmation"
     BLOCKED = "blocked"
@@ -27,6 +28,7 @@ class ImportExecutionDecision:
     def writes_playback(self) -> bool:
         return self.action in {
             ImportExecutionAction.APPEND,
+            ImportExecutionAction.RECONCILE,
             ImportExecutionAction.REPLACE,
         }
 
@@ -70,6 +72,17 @@ def resolve_import_execution(
         return ImportExecutionDecision(
             ImportExecutionAction.APPEND,
             "只追加已证明不存在于活动数据集的新播放记录",
+        )
+
+    if relation is ImportRelation.RECONCILED_SNAPSHOT and requested_mode == "auto":
+        if not confirm_plan:
+            return ImportExecutionDecision(
+                ImportExecutionAction.NEEDS_CONFIRMATION,
+                "检测到同账号完整快照中的删除和新增；确认后才会精确协调历史事实",
+            )
+        return ImportExecutionDecision(
+            ImportExecutionAction.RECONCILE,
+            "按已确认计划精确删除旧身份并插入新增身份",
         )
 
     if requested_mode == "append":
