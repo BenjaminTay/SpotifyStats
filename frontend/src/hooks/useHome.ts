@@ -12,7 +12,9 @@ const HOME_PREVIEW_MAX_UPDATES = 7
 
 function isPreviewPending(data: HomeOverviewResponse | undefined): boolean {
   if (!data || data.state === 'empty') return false
-  return data.billboard.state === 'unavailable' || data.yearly_review.state === 'not_generated'
+  return data.cache_state === 'warming'
+    || data.billboard.state === 'unavailable'
+    || data.yearly_review.state === 'not_generated'
 }
 
 export function useHomeOverview(filters: AnalysisFilters, enabled = true) {

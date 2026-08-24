@@ -400,14 +400,14 @@ export interface EntityStatsResponse extends AnalysisStatsResponse {
     last_6_months: number | null
     last_4_weeks: number | null
     current_period: number | null
-  }
+  } | null
   recent_plays: RecentPlayRow[]
   top250_counts?: {
     lifetime: number
     last_6_months: number
     last_4_weeks: number
-  }
-  recent_50_count?: number
+  } | null
+  recent_50_count?: number | null
   track_breakdown?: AnalysisChartRow[]
   top_tracks?: AnalysisChartRow[]
   top_albums?: AnalysisChartRow[]

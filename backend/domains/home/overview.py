@@ -30,6 +30,18 @@ EMPTY_SUMMARY = {
     "weekend_pct": 0.0,
 }
 
+EMPTY_DURATION_FRAME = pd.DataFrame(columns=["ms_played", "ts_date"])
+HOME_PLAY_COLUMNS = (
+    "p.play_id, p.ts, p.ts_date, p.ts_hour, p.ts_dow, p.track_id, "
+    "p.source_album_id, p.ms_played, t.track_name, t.artist_id, "
+    "a.artist_name, al.album_name, stm.duration_ms"
+)
+HOME_ARTIST_COLUMNS = (
+    "p.play_id, p.ts, p.ts_date, p.ts_hour, p.ts_dow, p.track_id, "
+    "p.source_album_id, p.ms_played, t.track_name, a.artist_name, "
+    "al.album_name, stm.duration_ms"
+)
+
 
 def _today() -> date:
     return date.today()
@@ -54,7 +66,20 @@ def _period(start: date, end: date) -> dict[str, str]:
 
 
 def _track_frame(conn: sqlite3.Connection, df: pd.DataFrame, merge_level: int) -> pd.DataFrame:
-    result = df.copy()
+    # Keep the lifetime helper narrow: copying the full logical-event frame
+    # (including interval objects and provider columns) doubled homepage peak
+    # memory even though headline/rediscovery only consume these six facts.
+    required = (
+        "play_id",
+        "track_id",
+        "track_name",
+        "artist_name",
+        "ts_date",
+        "ts_hour",
+        "ts_dow",
+        "ms_played",
+    )
+    result = df[[column for column in required if column in df.columns]].copy()
     result["home_track_id"] = result["track_id"]
     result["home_track_name"] = result["track_name"]
     if merge_level <= 1 or result.empty:
@@ -596,6 +621,7 @@ def build_home_overview(
     )
     df = load_plays(
         conn,
+        columns=HOME_PLAY_COLUMNS,
         min_ms=context.min_ms,
         music_only=context.music_only,
         merge_enabled=context.merge_enabled,
@@ -660,18 +686,30 @@ def build_home_overview(
             "rediscovery": None,
         }
 
+    # Artist fan-out is needed only for the recent-leader card.  Restrict its
+    # source read to the two compared four-week windows (plus one boundary day)
+    # instead of duplicating the complete archive in memory.
+    dates = pd.to_datetime(df["ts_date"]).dt.date
+    first, latest = dates.min(), dates.max()
+    artist_window_start = latest - timedelta(days=56)
     artist_df = load_plays_for_artists(
         conn,
+        columns=HOME_ARTIST_COLUMNS,
+        extra_where="p.ts_date >= ?",
+        extra_params=[artist_window_start.isoformat()],
         min_ms=context.min_ms,
         music_only=context.music_only,
         merge_enabled=context.merge_enabled,
         dynamic_threshold=context.dynamic_threshold,
         max_merge_gap_minutes=context.max_merge_gap_minutes,
     )
-    dates = pd.to_datetime(df["ts_date"]).dt.date
-    first, latest = dates.min(), dates.max()
     all_tracks = _track_frame(conn, df, context.merge_level)
-    all_artist_count = int(artist_df["artist_id"].nunique()) if not artist_df.empty else 0
+    from backend.domains.metadata.track_credits import get_effective_track_credit_frame
+
+    effective_credits = get_effective_track_credit_frame(conn, set(df["track_id"].dropna()))
+    all_artist_count = (
+        int(effective_credits["artist_id"].nunique()) if not effective_credits.empty else 0
+    )
     album_count, _album_rows = chart_rows(
         conn,
         df,
@@ -681,6 +719,7 @@ def build_home_overview(
         0,
         context.merge_level,
         context.include_compilations,
+        duration_frame=EMPTY_DURATION_FRAME,
     )
     recent, current, previous, _raw_current = _recent_payload(conn, df, artist_df, context)
     return {

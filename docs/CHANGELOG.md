@@ -2,6 +2,15 @@
 
 本文件只记录按日期排列的变更摘要。详细实施、验收和真实数据证据见 [`reports/README.md`](reports/README.md)；当前规则见 [`reference/`](reference/)。历史条目中的数字和路径仅代表当时状态。
 
+## 2026-08-24 — 首页与音乐详情加载性能修复
+
+- 详情 `summary` 改为直接读取精确音乐查找 snapshot 与轻量元数据，不再先构建完整 Billboard 详情；歌曲、专辑、艺人冷摘要均进入 500ms 门禁。
+- 首页增加 revision/filter 精确持久快照和语义 LKG，revision 变化时先返回明确 `warming` 的旧 snapshot 并后台重建；首页构建缩窄播放列、近期艺人 fan-out 和不必要的时长计算。
+- 实体播放统计拆分为首屏基础事实与后台全局排名；目标播放保留一行左上下文，避免 SQL 预筛选破坏连续播放边界。三类快速统计与完整统计的共同字段逐字段一致。
+- `singleflight` 改为按参数键去重，CPU 重型后台任务串行，首页优先预热，避免不同实体请求和导入后维护互相阻塞。
+- 修复专辑/艺人“单曲成绩”“专辑成绩”错误读取摘要未知状态而显示未入榜的问题；真实库浏览器复核 23 首专辑成员歌曲、301 首艺人歌曲和 18 张艺人专辑正确展示。
+- 后端 unit 1,342 项、contract 369 项、前端 559 项、生产构建、独立冷进程性能门禁、桌面/390px 浏览器与文档审计通过；完整证据见 [`reports/2026-08-24-home-detail-loading-performance-repair.md`](reports/2026-08-24-home-detail-loading-performance-repair.md)。
+
 ## 2026-08-23 — 增量导入最终收口
 
 - 最终独立审计补齐活动 `track_albums` 闭包：reconcile/replace 在事实事务内重算自动关系，逐播放来源专辑不再因历史关系重复计数，空自动 Album Project 不再残留；终验以专辑历史纠正的增量 reconcile 对空库完整重建，含 Track Group 在内的 14 项语义投影一致。

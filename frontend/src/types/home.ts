@@ -114,6 +114,7 @@ export interface HomeRediscoveryTrack {
 export interface HomeOverviewResponse {
   schema_version: 'home_overview_v1' | string
   generated_at: string
+  cache_state?: 'fresh' | 'warming' | 'stale'
   filter_fingerprint: string
   state: HomeState
   coverage: HomeCoverage

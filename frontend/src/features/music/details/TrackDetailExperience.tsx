@@ -149,14 +149,6 @@ export function TrackDetailExperience() {
                 <TrackDetailHero data={data} trackId={trackId ?? ''} onBack={() => navigate(-1)} />
               )}
 
-              {/* Version Group */}
-              {data.meta?.version_group && (
-                <VersionGroupSection
-                  kind="track"
-                  data={data.meta.version_group}
-                />
-              )}
-
               {isPhone ? (
                 <MobileMusicDetailNav
                   activeTab={activeTab}
@@ -187,7 +179,12 @@ export function TrackDetailExperience() {
               {activeTab === 'overview' && (
                 overviewPending || !overviewData
                   ? <Skeleton className="h-[420px] w-full rounded-[16px]" />
-                  : <TrackOverviewSection data={overviewData} />
+                  : <>
+                      {overviewData.meta?.version_group && (
+                        <VersionGroupSection kind="track" data={overviewData.meta.version_group} />
+                      )}
+                      <TrackOverviewSection data={overviewData} />
+                    </>
               )}
               {activeTab === 'stats' && <EntityStatsPanel kind="track" trackId={trackId} />}
             </>

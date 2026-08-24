@@ -14,6 +14,11 @@ from backend.core.cache import singleflight
 from backend.core.cache_manager import register_lru
 from backend.core.db import get_db
 from backend.domains.billboard.chart_load_rank import billboard_revision_state
+from backend.domains.billboard.detail_summary import (
+    build_album_detail_summary,
+    build_artist_detail_summary,
+    build_track_detail_summary,
+)
 from backend.domains.billboard.details import (
     get_album_chart_detail,
     get_artist_chart_detail,
@@ -87,6 +92,10 @@ def select_track_detail_view(payload: dict, view: DetailView) -> dict:
             "summary",
         ),
     )
+    if isinstance(result.get("meta"), dict):
+        meta = dict(result["meta"])
+        meta.pop("version_group", None)
+        result["meta"] = meta
     result.update({"history": [], "chart_data": {}})
     return result
 
@@ -126,6 +135,8 @@ def select_album_detail_view(payload: dict, view: DetailView) -> dict:
         meta = dict(result["meta"])
         meta.pop("release_group", None)
         result["meta"] = meta
+        result["info"] = None
+        result["track_chart_status"] = None
     elif view == "overview":
         for key in ("album_weekly_history", "album_no1_by_week", "best_singles_overlay"):
             result[key] = payload.get(key, [])
@@ -184,6 +195,10 @@ def select_artist_detail_view(
             "best_albums_overlay",
         ):
             result[key] = payload.get(key, [])
+    elif view == "summary":
+        result["info"] = None
+        result["track_chart_status"] = None
+        result["album_chart_status"] = None
     elif view == "tracks":
         tracks = payload.get("tracks", [])
         result["tracks"] = tracks[offset : offset + limit]
@@ -200,11 +215,19 @@ def select_artist_detail_view(
 
 
 def get_track_detail_view(*args, view: DetailView = "full") -> dict:
+    if view == "summary":
+        summary = build_track_detail_summary(tuple(args))
+        if summary is not None:
+            return summary
     payload = _track_detail_cached(tuple(args), detail_revision_state())
     return select_track_detail_view(payload, view)
 
 
 def get_album_detail_view(*args, view: DetailView = "full") -> dict:
+    if view == "summary":
+        summary = build_album_detail_summary(tuple(args))
+        if summary is not None:
+            return summary
     payload = _album_detail_cached(tuple(args), detail_revision_state())
     return select_album_detail_view(payload, view)
 
@@ -215,6 +238,10 @@ def get_artist_detail_view(
     limit: int = 50,
     offset: int = 0,
 ) -> dict:
+    if view == "summary":
+        summary = build_artist_detail_summary(tuple(args))
+        if summary is not None:
+            return summary
     payload = _artist_detail_cached(tuple(args), detail_revision_state())
     return select_artist_detail_view(payload, view, limit=limit, offset=offset)
 

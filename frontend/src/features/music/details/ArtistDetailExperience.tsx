@@ -72,8 +72,8 @@ export function ArtistDetailExperience() {
     enabled: activeTab === 'albums' && !!artistName && !filtersLoading,
   })
   const isCharted = data?.chart_status === 'charted' || !!data?.chart_summary
-  const hasTrackChart = data?.track_chart_status === 'charted'
-  const hasAlbumChart = data?.album_chart_status === 'charted'
+  const summaryTrackChartStatus = data?.track_chart_status
+  const summaryAlbumChartStatus = data?.album_chart_status
 
   useEffect(() => {
     if (!data?.found || !artistName || data.artist_name === artistName) return
@@ -136,8 +136,22 @@ export function ArtistDetailExperience() {
                     facts={[
                       { label: '有效播放', value: `${(data.effective_play_count ?? 0).toLocaleString('zh-CN')} 次` },
                       { label: '艺人榜', value: data.chart_summary ? `PK #${data.chart_summary.peak_position}` : '尚未入榜', accent: data.chart_summary?.peak_position === 1 },
-                      { label: '入榜歌曲', value: hasTrackChart ? `${data.info?.total_tracks ?? 0} 首` : '暂无' },
-                      { label: '入榜专辑', value: hasAlbumChart ? `${data.info?.total_albums ?? 0} 张` : '暂无' },
+                      {
+                        label: '入榜歌曲',
+                        value: summaryTrackChartStatus == null
+                          ? '进入查看'
+                          : summaryTrackChartStatus === 'charted'
+                            ? `${data.info?.total_tracks ?? 0} 首`
+                            : '暂无',
+                      },
+                      {
+                        label: '入榜专辑',
+                        value: summaryAlbumChartStatus == null
+                          ? '进入查看'
+                          : summaryAlbumChartStatus === 'charted'
+                            ? `${data.info?.total_albums ?? 0} 张`
+                            : '暂无',
+                      },
                     ]}
                   />
                 </div>
@@ -180,7 +194,7 @@ export function ArtistDetailExperience() {
               {activeTab === 'tracks' && (
                 tracksPending || !tracksData ? (
                   <Skeleton className="h-[420px] w-full rounded-[16px]" />
-                ) : hasTrackChart && tracksData.info ? (
+                ) : tracksData.track_chart_status === 'charted' && tracksData.info ? (
                   <MusicTracksSection
                     artistName={tracksData.artist_name}
                     info={tracksData.info}
@@ -205,7 +219,7 @@ export function ArtistDetailExperience() {
               {activeTab === 'albums' && (
                 albumsPending || !albumsData ? (
                   <Skeleton className="h-[420px] w-full rounded-[16px]" />
-                ) : hasAlbumChart && albumsData.info ? (
+                ) : albumsData.album_chart_status === 'charted' && albumsData.info ? (
                   <ArtistAlbumsSection
                     artistName={albumsData.artist_name}
                     info={albumsData.info}

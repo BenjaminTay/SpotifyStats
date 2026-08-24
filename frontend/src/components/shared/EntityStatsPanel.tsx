@@ -34,13 +34,20 @@ function entityStatsRequest(
   target: EntityStatsTarget,
   filters: AnalysisFilters,
   apiParams: Record<string, ApiQueryParam>,
+  includeRankContext = false,
 ) {
   const { kind, trackId, albumName, artistName, mergeLevel } = target
   const entityId = (trackId ?? albumName ?? artistName) != null ? String(trackId ?? albumName ?? artistName) : ''
   const resolvedMergeLevel = mergeLevel ?? getDefaultMergeLevel()
+  const periodParams = {
+    period: apiParams.period,
+    ...(apiParams.start_date ? { start_date: apiParams.start_date } : {}),
+    ...(apiParams.end_date ? { end_date: apiParams.end_date } : {}),
+  }
   const statsParams = {
     ...filters,
-    ...apiParams,
+    ...periodParams,
+    include_rank_context: includeRankContext,
     ...(kind === 'album'
       ? { merge_level: resolvedMergeLevel, ...(artistName ? { artist: artistName } : {}) }
       : {}),
@@ -51,16 +58,16 @@ function entityStatsRequest(
     queryKey: queryKeys.music.entityStats(kind, entityId, statsParams),
     queryFn: () => {
       if (kind === 'track' && trackId != null) {
-        return api.get<EntityStatsResponse>(`/music/tracks/${trackId}/stats`, { ...filters, ...apiParams })
+        return api.get<EntityStatsResponse>(`/music/tracks/${trackId}/stats`, { ...filters, ...periodParams, include_rank_context: includeRankContext })
       }
       if (kind === 'album' && albumName) {
         return api.get<EntityStatsResponse>(
           `/music/albums/${encodeURIComponent(albumName)}/stats`,
-          { ...filters, ...apiParams, ...(artistName ? { artist: artistName } : {}), merge_level: resolvedMergeLevel },
+          { ...filters, ...periodParams, ...(artistName ? { artist: artistName } : {}), merge_level: resolvedMergeLevel, include_rank_context: includeRankContext },
         )
       }
       if (kind === 'artist' && artistName) {
-        return api.get<EntityStatsResponse>(`/music/artists/${encodeURIComponent(artistName)}/stats`, { ...filters, ...apiParams })
+        return api.get<EntityStatsResponse>(`/music/artists/${encodeURIComponent(artistName)}/stats`, { ...filters, ...periodParams, include_rank_context: includeRankContext })
       }
       return Promise.resolve({ found: false } as EntityStatsResponse)
     },
@@ -121,6 +128,17 @@ export function EntityStatsPanel({
     queryKey: request.queryKey,
     queryFn: request.queryFn,
     enabled: !filtersLoading && entityId !== '',
+  })
+  const rankRequest = entityStatsRequest(
+    { kind, trackId, albumName, artistName, mergeLevel },
+    filters,
+    apiParams,
+    true,
+  )
+  const { data: rankData, isPending: rankPending } = useQuery({
+    queryKey: rankRequest.queryKey,
+    queryFn: rankRequest.queryFn,
+    enabled: !filtersLoading && entityId !== '' && data?.found === true,
   })
   const queryError = error instanceof Error ? error.message : error ? String(error) : null
 
@@ -288,27 +306,32 @@ export function EntityStatsPanel({
       </div>
 
       {/* KPIs Row 2: 个人排名 */}
-      {data.ranks && (
+      {rankPending && (
+        <div className="entity-stats-kpi-grid grid gap-5 md:grid-cols-2 xl:grid-cols-4" aria-label="排名统计加载中">
+          {Array.from({ length: 4 }, (_, index) => <Skeleton key={index} className="h-[112px] rounded-[16px]" />)}
+        </div>
+      )}
+      {rankData?.ranks && (
         <div className="entity-stats-kpi-grid grid gap-5 md:grid-cols-2 xl:grid-cols-4">
-          <KpiCard label="全时段排名" value={rankLabel(data.ranks.lifetime)} />
-          <KpiCard label="近 6 个月排名" value={rankLabel(data.ranks.last_6_months)} />
-          <KpiCard label="近 4 周排名" value={rankLabel(data.ranks.last_4_weeks)} />
-          <KpiCard label="当前区间排名" value={rankLabel(data.ranks.current_period)} />
+          <KpiCard label="全时段排名" value={rankLabel(rankData.ranks.lifetime)} />
+          <KpiCard label="近 6 个月排名" value={rankLabel(rankData.ranks.last_6_months)} />
+          <KpiCard label="近 4 周排名" value={rankLabel(rankData.ranks.last_4_weeks)} />
+          <KpiCard label="当前区间排名" value={rankLabel(rankData.ranks.current_period)} />
         </div>
       )}
 
       {/* KPIs Row 3: Top 250 上榜 & 近期活跃 */}
-      {(data.top250_counts || data.recent_50_count != null) && (
+      {(rankData?.top250_counts || rankData?.recent_50_count != null) && (
         <div className="entity-stats-kpi-grid grid gap-5 md:grid-cols-2 xl:grid-cols-4">
-          {data.top250_counts && (
+          {rankData?.top250_counts && (
             <>
-              <KpiCard label="全时段 Top 250 上榜" value={fmt(data.top250_counts.lifetime)} />
-              <KpiCard label="近 6 个月 Top 250 上榜" value={fmt(data.top250_counts.last_6_months)} />
-              <KpiCard label="近 4 周 Top 250 上榜" value={fmt(data.top250_counts.last_4_weeks)} />
+              <KpiCard label="全时段 Top 250 上榜" value={fmt(rankData.top250_counts.lifetime)} />
+              <KpiCard label="近 6 个月 Top 250 上榜" value={fmt(rankData.top250_counts.last_6_months)} />
+              <KpiCard label="近 4 周 Top 250 上榜" value={fmt(rankData.top250_counts.last_4_weeks)} />
             </>
           )}
-          {data.recent_50_count != null && (
-            <KpiCard label="最近 50 次播放中出现" value={`${data.recent_50_count} 次`} />
+          {rankData?.recent_50_count != null && (
+            <KpiCard label="最近 50 次播放中出现" value={`${rankData.recent_50_count} 次`} />
           )}
         </div>
       )}

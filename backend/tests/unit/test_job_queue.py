@@ -392,3 +392,29 @@ def test_get_job_queue_singleton():
     q1 = get_job_queue()
     q2 = get_job_queue()
     assert q1 is q2
+
+
+def test_cpu_heavy_jobs_are_serialized_across_workers(temp_db):
+    active = 0
+    max_active = 0
+    state_lock = threading.Lock()
+
+    def heavy_handler(_job):
+        nonlocal active, max_active
+        with state_lock:
+            active += 1
+            max_active = max(max_active, active)
+        time.sleep(0.05)
+        with state_lock:
+            active -= 1
+
+    q = JobQueue(max_workers=2)
+    q.register("artist_identity_rebuild", heavy_handler)
+    q.register("music_search_snapshot_rebuild", heavy_handler)
+    q.start(temp_db)
+    q.enqueue(Job.create("artist_identity_rebuild", "artist_identity", "all"))
+    q.enqueue(Job.create("music_search_snapshot_rebuild", "music_search", "all"))
+    q.wait_until_idle()
+    q.stop()
+
+    assert max_active == 1

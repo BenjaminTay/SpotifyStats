@@ -239,8 +239,8 @@ describe('未入榜实体详情', () => {
       const common = {
         found: true,
         chart_status: 'charted',
-        track_chart_status: 'charted',
-        album_chart_status: 'not_charted',
+        track_chart_status: null,
+        album_chart_status: null,
         effective_play_count: 100,
         artist_name: 'Paged Artist',
         cover_url: null,
@@ -264,6 +264,8 @@ describe('未入榜实体详情', () => {
         const offset = Number(params.offset ?? 0)
         return Promise.resolve({
           ...common,
+          track_chart_status: 'charted',
+          album_chart_status: 'not_charted',
           tracks_total: 51,
           tracks_limit: 50,
           tracks_offset: offset,
@@ -303,5 +305,118 @@ describe('未入榜实体详情', () => {
       expect.objectContaining({ view: 'tracks', limit: 50, offset: 50 }),
     ))
     expect(await screen.findByText('分页歌曲 51')).toBeInTheDocument()
+  })
+
+  it('专辑摘要未知子榜状态时，以单曲页签响应展示真实成绩', async () => {
+    vi.spyOn(api, 'get').mockImplementation((path: string, params?: Record<string, unknown>) => {
+      if (path !== '/billboard/album/Charted Album') {
+        return Promise.reject(new Error(`unexpected GET ${path}`))
+      }
+      const common = {
+        found: true,
+        chart_status: 'charted',
+        track_chart_status: null,
+        effective_play_count: 90,
+        album_name: 'Charted Album',
+        artist_name: 'Charted Artist',
+        cover_url: null,
+        meta: null,
+        info: null,
+        chart_summary: { peak_position: 2, weeks_on_chart: 3 },
+        album_weekly_history: [],
+        album_no1_by_week: [],
+        best_singles_overlay: [],
+        tracks: [],
+      }
+      if (params?.view === 'tracks') {
+        return Promise.resolve({
+          ...common,
+          track_chart_status: 'charted',
+          info: { total_tracks: 1, top1: 0, top5: 1, top10: 1, weeks_at_no1: 0 },
+          tracks: [{
+            track_id: 77,
+            track_name: 'Real Chart Song',
+            artist_names: ['Charted Artist'],
+            cover_url: null,
+            peak_position: 3,
+            weeks_on_chart: 2,
+            weeks_at_peak: 1,
+            first_week: '2026-01-01',
+            first_peak_week: '2026-01-08',
+            last_week: '2026-01-08',
+            total_chart_plays: 80,
+            power_score: 20,
+            power_rank: 5,
+          }],
+        })
+      }
+      return Promise.resolve(common)
+    })
+
+    render(<AlbumDetailExperience />, {
+      wrapper: detailWrapper('/music/albums/Charted%20Album?artist=Charted%20Artist&tab=tracks'),
+    })
+
+    expect(await screen.findByText('Real Chart Song')).toBeInTheDocument()
+    expect(screen.queryByText('暂无歌曲进入单曲榜')).not.toBeInTheDocument()
+  })
+
+  it('艺人摘要未知子榜状态时，以专辑页签响应展示真实成绩', async () => {
+    vi.spyOn(api, 'get').mockImplementation((path: string, params?: Record<string, unknown>) => {
+      if (path !== '/billboard/artist/Charted Artist') {
+        return Promise.reject(new Error(`unexpected GET ${path}`))
+      }
+      const common = {
+        found: true,
+        chart_status: 'charted',
+        track_chart_status: null,
+        album_chart_status: null,
+        effective_play_count: 120,
+        artist_name: 'Charted Artist',
+        cover_url: null,
+        meta: null,
+        info: null,
+        chart_summary: { peak_position: 1, weeks_on_chart: 4 },
+        artist_weekly_history: [],
+        artist_no1_by_week: [],
+        week_no1_albums: [],
+        best_singles_overlay: [],
+        best_albums_overlay: [],
+        tracks: [],
+        albums: [],
+      }
+      if (params?.view === 'albums') {
+        return Promise.resolve({
+          ...common,
+          album_chart_status: 'charted',
+          info: {
+            total_albums: 1,
+            num_no1_albums: 0,
+            album_no1_weeks: 0,
+          },
+          albums: [{
+            album_name: 'Real Chart Album',
+            cover_url: null,
+            peak: 4,
+            pk_wks: 1,
+            weeks: 2,
+            total_plays: 100,
+            power_score: 30,
+            power_rank: 7,
+            first_week: '2026-01-01',
+            first_peak_week: '2026-01-08',
+            last_week: '2026-01-08',
+          }],
+        })
+      }
+      return Promise.resolve(common)
+    })
+
+    render(<ArtistDetailExperience />, {
+      wrapper: detailWrapper('/music/artists/Charted%20Artist?tab=albums'),
+    })
+
+    expect(await screen.findByText('Real Chart Album')).toBeInTheDocument()
+    expect(screen.queryByText('暂无专辑进入专辑榜')).not.toBeInTheDocument()
   })
 })

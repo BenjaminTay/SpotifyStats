@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify music detail views are lossless and optionally match saved baselines."""
+"""Verify lightweight detail shells, lossless subviews, and latency gates."""
 
 from __future__ import annotations
 
@@ -42,8 +42,13 @@ def fetch(base_url: str, path: str, **params: Any) -> tuple[Any, dict[str, Any]]
     started = time.perf_counter()
     with urlopen(url, timeout=120) as response:  # noqa: S310 - explicit local probe URL
         raw = response.read()
+        server_timing = response.headers.get("Server-Timing")
     elapsed_ms = round((time.perf_counter() - started) * 1000, 2)
-    return json.loads(raw), {"elapsed_ms": elapsed_ms, "bytes": len(raw)}
+    return json.loads(raw), {
+        "elapsed_ms": elapsed_ms,
+        "bytes": len(raw),
+        "server_timing": server_timing,
+    }
 
 
 def assert_equal(actual: Any, expected: Any, label: str) -> None:
@@ -53,22 +58,36 @@ def assert_equal(actual: Any, expected: Any, label: str) -> None:
 
 def verify_track(base_url: str, track_id: int) -> tuple[dict, dict]:
     path = f"/api/billboard/track/{track_id}"
-    full, full_metric = fetch(base_url, path, view="full")
     summary, summary_metric = fetch(base_url, path, view="summary")
+    full, full_metric = fetch(base_url, path, view="full")
     overview, overview_metric = fetch(base_url, path, view="overview")
 
     assert_equal(overview, full, "track overview/full")
-    expected_summary = dict(full)
-    expected_summary.update({"history": [], "chart_data": {}})
-    assert_equal(summary, expected_summary, "track summary")
+    for key in (
+        "found",
+        "chart_status",
+        "track_id",
+        "track_name",
+        "artist_name",
+        "artist_names",
+        "primary_artist_name",
+        "cover_url",
+        "summary",
+    ):
+        assert_equal(summary.get(key), full.get(key), f"track summary.{key}")
+    expected_meta = dict(full.get("meta") or {})
+    expected_meta.pop("version_group", None)
+    assert_equal(summary.get("meta"), expected_meta or None, "track summary.meta")
+    assert_equal(summary.get("history"), [], "track summary.history")
+    assert_equal(summary.get("chart_data"), {}, "track summary.chart_data")
     return full, {"full": full_metric, "summary": summary_metric, "overview": overview_metric}
 
 
 def verify_album(base_url: str, album_name: str, artist_name: str) -> tuple[dict, dict]:
     path = f"/api/billboard/album/{quote(album_name, safe='')}"
     common = {"artist_name": artist_name}
-    full, full_metric = fetch(base_url, path, **common, view="full")
     summary, summary_metric = fetch(base_url, path, **common, view="summary")
+    full, full_metric = fetch(base_url, path, **common, view="full")
     overview, overview_metric = fetch(base_url, path, **common, view="overview")
     tracks, tracks_metric = fetch(base_url, path, **common, view="tracks")
     project, project_metric = fetch(base_url, path, **common, view="project")
@@ -76,12 +95,10 @@ def verify_album(base_url: str, album_name: str, artist_name: str) -> tuple[dict
     shared = (
         "found",
         "chart_status",
-        "track_chart_status",
         "effective_play_count",
         "album_name",
         "artist_name",
         "cover_url",
-        "info",
         "chart_summary",
     )
     for key in shared:
@@ -89,6 +106,8 @@ def verify_album(base_url: str, album_name: str, artist_name: str) -> tuple[dict
     expected_meta = dict(full.get("meta") or {})
     expected_meta.pop("release_group", None)
     assert_equal(summary.get("meta"), expected_meta, "album summary.meta")
+    assert_equal(summary.get("info"), None, "album summary.info")
+    assert_equal(summary.get("track_chart_status"), None, "album summary.track_chart_status")
     for key in ("album_weekly_history", "album_no1_by_week", "best_singles_overlay"):
         assert_equal(overview.get(key), full.get(key), f"album overview.{key}")
     assert_equal(tracks.get("tracks"), full.get("tracks"), "album tracks")
@@ -105,25 +124,25 @@ def verify_album(base_url: str, album_name: str, artist_name: str) -> tuple[dict
 
 def verify_artist(base_url: str, artist_name: str, page_size: int) -> tuple[dict, dict]:
     path = f"/api/billboard/artist/{quote(artist_name, safe='')}"
-    full, full_metric = fetch(base_url, path, view="full")
     summary, summary_metric = fetch(base_url, path, view="summary")
+    full, full_metric = fetch(base_url, path, view="full")
     overview, overview_metric = fetch(base_url, path, view="overview")
     albums, albums_metric = fetch(base_url, path, view="albums")
 
     shared = (
         "found",
         "chart_status",
-        "track_chart_status",
-        "album_chart_status",
         "effective_play_count",
         "artist_name",
         "cover_url",
         "meta",
-        "info",
         "chart_summary",
     )
     for key in shared:
         assert_equal(summary.get(key), full.get(key), f"artist summary.{key}")
+    assert_equal(summary.get("info"), None, "artist summary.info")
+    assert_equal(summary.get("track_chart_status"), None, "artist summary.track_chart_status")
+    assert_equal(summary.get("album_chart_status"), None, "artist summary.album_chart_status")
     for key in (
         "artist_weekly_history",
         "artist_no1_by_week",
@@ -170,6 +189,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--artist-track-page-size", type=int, default=50)
     parser.add_argument("--baseline-dir", type=Path)
     parser.add_argument("--output", type=Path)
+    parser.add_argument("--max-summary-ms", type=float, default=500.0)
     return parser.parse_args()
 
 
@@ -182,6 +202,18 @@ def main() -> int:
         args.artist_name,
         args.artist_track_page_size,
     )
+    summary_times = {
+        "track": track_metrics["summary"]["elapsed_ms"],
+        "album": album_metrics["summary"]["elapsed_ms"],
+        "artist": artist_metrics["summary"]["elapsed_ms"],
+    }
+    too_slow = {
+        kind: elapsed for kind, elapsed in summary_times.items() if elapsed > args.max_summary_ms
+    }
+    if too_slow:
+        raise AssertionError(
+            f"detail summary latency exceeds {args.max_summary_ms:.0f}ms: {too_slow}"
+        )
     report = {
         "status": "pass",
         "facts": {
@@ -199,6 +231,10 @@ def main() -> int:
             },
         },
         "metrics": {"track": track_metrics, "album": album_metrics, "artist": artist_metrics},
+        "gates": {
+            "max_summary_ms": args.max_summary_ms,
+            "summary_elapsed_ms": summary_times,
+        },
     }
     rendered = json.dumps(report, ensure_ascii=False, indent=2)
     if args.output:

@@ -360,29 +360,37 @@ def music_search_context(
 @router.get("/tracks/{track_id}/stats", response_model=EntityStatsResponse)
 def track_stats(
     track_id: int,
+    response: Response,
     filters: PlayFilters = Depends(),
     period: str = Query(default="lifetime"),
     start_date: str | None = Query(default=None),
     end_date: str | None = Query(default=None),
+    include_rank_context: bool = Query(default=True),
     conn: Connection = Depends(get_conn),
 ):
-    return get_track_stats(
-        conn,
-        track_id,
-        filters.min_ms,
-        filters.music_only,
-        filters.merge_enabled,
-        period,
-        start_date,
-        end_date,
-        filters.dynamic_threshold,
-        filters.max_merge_gap_minutes,
-    )
+    timing = MusicSearchTiming()
+    with timing.measure("entity_stats"):
+        result = get_track_stats(
+            conn,
+            track_id,
+            filters.min_ms,
+            filters.music_only,
+            filters.merge_enabled,
+            period,
+            start_date,
+            end_date,
+            filters.dynamic_threshold,
+            filters.max_merge_gap_minutes,
+            include_rank_context,
+        )
+    response.headers["Server-Timing"] = timing.server_timing_header()
+    return result
 
 
 @router.get("/albums/{album_name}/stats", response_model=EntityStatsResponse)
 def album_stats(
     album_name: str,
+    response: Response,
     artist: str | None = Query(default=None),
     filters: PlayFilters = Depends(),
     merge_level: int = Query(
@@ -394,45 +402,58 @@ def album_stats(
     period: str = Query(default="lifetime"),
     start_date: str | None = Query(default=None),
     end_date: str | None = Query(default=None),
+    include_rank_context: bool = Query(default=True),
     conn: Connection = Depends(get_conn),
 ):
-    return get_album_stats(
-        conn,
-        album_name,
-        artist,
-        filters.min_ms,
-        filters.music_only,
-        filters.merge_enabled,
-        period,
-        start_date,
-        end_date,
-        filters.dynamic_threshold,
-        filters.max_merge_gap_minutes,
-        merge_level=merge_level,
-    )
+    timing = MusicSearchTiming()
+    with timing.measure("entity_stats"):
+        result = get_album_stats(
+            conn,
+            album_name,
+            artist,
+            filters.min_ms,
+            filters.music_only,
+            filters.merge_enabled,
+            period,
+            start_date,
+            end_date,
+            filters.dynamic_threshold,
+            filters.max_merge_gap_minutes,
+            merge_level=merge_level,
+            include_rank_context=include_rank_context,
+        )
+    response.headers["Server-Timing"] = timing.server_timing_header()
+    return result
 
 
 @router.get("/artists/{artist_name}/stats", response_model=EntityStatsResponse)
 def artist_stats(
     artist_name: str,
+    response: Response,
     filters: PlayFilters = Depends(),
     period: str = Query(default="lifetime"),
     start_date: str | None = Query(default=None),
     end_date: str | None = Query(default=None),
+    include_rank_context: bool = Query(default=True),
     conn: Connection = Depends(get_conn),
 ):
-    return get_artist_stats(
-        conn,
-        artist_name,
-        filters.min_ms,
-        filters.music_only,
-        filters.merge_enabled,
-        period,
-        start_date,
-        end_date,
-        filters.dynamic_threshold,
-        filters.max_merge_gap_minutes,
-    )
+    timing = MusicSearchTiming()
+    with timing.measure("entity_stats"):
+        result = get_artist_stats(
+            conn,
+            artist_name,
+            filters.min_ms,
+            filters.music_only,
+            filters.merge_enabled,
+            period,
+            start_date,
+            end_date,
+            filters.dynamic_threshold,
+            filters.max_merge_gap_minutes,
+            include_rank_context,
+        )
+    response.headers["Server-Timing"] = timing.server_timing_header()
+    return result
 
 
 @router.get(

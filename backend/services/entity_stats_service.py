@@ -2,16 +2,24 @@
 
 from __future__ import annotations
 
+import os
 import sqlite3
+from functools import lru_cache, partial
 from typing import Any
 
 import pandas as pd
 
+from backend.core.cache import singleflight
 from backend.core.db import (
+    DB_PATH,
+    get_db,
     get_track_artist_names_map,
+    load_plays,
     load_plays_for_artists,
 )
+from backend.domains.music_search.revisions import get_music_search_revision_state
 from backend.services.analysis_stats_service import (
+    PERIOD_LABELS,
     _cumulative_trend,
     _daily_metrics,
     _daily_trend,
@@ -54,6 +62,63 @@ def _entity_base(
         "weekday_distribution": _weekday_distribution(entity_df, duration_frame),
         "month_distribution": _month_distribution(entity_df, duration_frame),
         "year_distribution": _year_distribution(entity_df, duration_frame),
+    }
+
+
+def _scoped_play_loader(track_ids: list[int], *, music_only: bool):
+    """Load target rows plus the preceding eligible row for exact merging.
+
+    Logical-event reconstruction happens after SQL selection. Selecting only
+    target tracks can therefore merge two target plays that were separated by
+    another track in the real timeline. The one-row left context preserves the
+    same run boundaries as the full-library loader without materialising the
+    whole library.
+    """
+
+    if not track_ids:
+        return partial(load_plays, extra_where="0")
+    placeholders = ",".join("?" for _ in track_ids)
+    eligible_where = "WHERE track_id IS NOT NULL" if music_only else ""
+    selector = f"""p.play_id IN (
+        WITH ordered AS (
+            SELECT play_id, track_id,
+                   LAG(play_id) OVER (ORDER BY ts, play_id) AS previous_play_id
+            FROM plays {eligible_where}
+        ), target AS (
+            SELECT play_id, previous_play_id FROM ordered
+            WHERE track_id IN ({placeholders})
+        )
+        SELECT play_id FROM target
+        UNION
+        SELECT previous_play_id FROM target WHERE previous_play_id IS NOT NULL
+    )"""
+    return partial(load_plays, extra_where=selector, extra_params=track_ids)
+
+
+def _global_period_bounds(
+    conn: sqlite3.Connection,
+    *,
+    period: str,
+    start_date: str | None,
+    end_date: str | None,
+    music_only: bool,
+) -> dict:
+    if period == "custom":
+        return {
+            "period": "custom",
+            "label": PERIOD_LABELS["custom"],
+            "start_date": start_date,
+            "end_date": end_date,
+        }
+    where = "WHERE track_id IS NOT NULL" if music_only else ""
+    row = conn.execute(
+        f"SELECT MIN(date(ts, 'localtime')), MAX(date(ts, 'localtime')) FROM plays {where}"
+    ).fetchone()
+    return {
+        "period": "lifetime",
+        "label": PERIOD_LABELS["lifetime"],
+        "start_date": str(row[0]) if row and row[0] is not None else None,
+        "end_date": str(row[1]) if row and row[1] is not None else None,
     }
 
 
@@ -201,7 +266,7 @@ def _top250_counts(
     }
 
 
-def get_track_stats(
+def _build_track_stats(
     conn: sqlite3.Connection,
     track_id: int,
     min_ms: int,
@@ -212,7 +277,10 @@ def get_track_stats(
     end_date: str | None = None,
     dynamic_threshold: bool = False,
     max_merge_gap_minutes: int | None = 5,
+    include_rank_context: bool = True,
 ) -> dict:
+    scoped = not include_rank_context and period in {"lifetime", "custom"}
+    loader = _scoped_play_loader([track_id], music_only=music_only) if scoped else None
     all_df, current_df, resolved = load_period_plays(
         conn,
         min_ms,
@@ -224,7 +292,17 @@ def get_track_stats(
         dynamic_threshold=dynamic_threshold,
         max_merge_gap_minutes=max_merge_gap_minutes,
         attach_duration_slices=False,
+        _loader=loader,
     )
+    if scoped:
+        resolved = _global_period_bounds(
+            conn,
+            period=period,
+            start_date=start_date,
+            end_date=end_date,
+            music_only=music_only,
+        )
+        current_df = filter_period_events(all_df, resolved)
     entity_all = all_df[all_df["track_id"] == track_id]
     entity_df = current_df[current_df["track_id"] == track_id]
     if entity_all.empty:
@@ -250,15 +328,19 @@ def get_track_stats(
             },
             "first_played": str(entity_all["ts"].min()),
             "last_played": str(entity_all["ts"].max()),
-            "ranks": _ranks(
-                conn,
-                all_df,
-                current_df,
-                resolved,
-                "track",
-                track_id=int(track_id),
+            "ranks": (
+                _ranks(
+                    conn,
+                    all_df,
+                    current_df,
+                    resolved,
+                    "track",
+                    track_id=int(track_id),
+                )
+                if include_rank_context
+                else None
             ),
-            "recent_plays": recent_plays(conn, entity_df, 50),
+            "recent_plays": recent_plays(conn, entity_df, 50) if include_rank_context else [],
         }
     )
     return data
@@ -317,6 +399,31 @@ def _resolve_album_project_song_keys(
     return set(keyed["canonical_song_key"].tolist())
 
 
+def _resolve_album_project_track_ids(
+    conn: sqlite3.Connection, album_name: str, artist_name: str, merge_level: int = 2
+) -> list[int]:
+    from backend.domains.playback.album_projects import ensure_album_projects
+
+    ensure_album_projects(conn)
+    project_id = _resolve_album_project_id(conn, album_name, artist_name, merge_level)
+    if project_id is not None:
+        rows = conn.execute(
+            """SELECT DISTINCT track_id FROM album_project_tracks
+               WHERE project_id=? AND min_merge_level<=? ORDER BY track_id""",
+            (project_id, merge_level),
+        ).fetchall()
+        if rows:
+            return [int(row[0]) for row in rows]
+    rows = conn.execute(
+        """SELECT t.track_id FROM tracks t
+           JOIN albums al ON al.album_id=t.album_id
+           JOIN artists ar ON ar.artist_id=al.artist_id
+           WHERE al.album_name=? AND ar.artist_name=? ORDER BY t.track_id""",
+        (album_name, artist_name),
+    ).fetchall()
+    return [int(row[0]) for row in rows]
+
+
 def _resolve_album_project_album_names(
     conn: sqlite3.Connection, album_name: str, artist_name: str, merge_level: int = 2
 ) -> list[str]:
@@ -350,7 +457,7 @@ def _resolve_album_project_album_names(
     return names
 
 
-def get_album_stats(
+def _build_album_stats(
     conn: sqlite3.Connection,
     album_name: str,
     artist: str | None,
@@ -363,8 +470,26 @@ def get_album_stats(
     dynamic_threshold: bool = False,
     max_merge_gap_minutes: int | None = 5,
     merge_level: int = 2,
+    include_rank_context: bool = True,
 ) -> dict:
     from backend.domains.playback.album_projects import apply_canonical_song_keys
+
+    artist_name = artist
+    if not artist_name:
+        row = conn.execute(
+            """SELECT ar.artist_name FROM albums al
+               JOIN artists ar ON ar.artist_id=al.artist_id
+               WHERE al.album_name=? ORDER BY al.album_id LIMIT 1""",
+            (album_name,),
+        ).fetchone()
+        artist_name = str(row[0]) if row else None
+    scoped = not include_rank_context and period in {"lifetime", "custom"}
+    track_ids = (
+        _resolve_album_project_track_ids(conn, album_name, artist_name, merge_level)
+        if scoped and artist_name
+        else []
+    )
+    loader = _scoped_play_loader(track_ids, music_only=music_only) if scoped else None
 
     all_df, current_df, resolved = load_period_plays(
         conn,
@@ -377,8 +502,17 @@ def get_album_stats(
         dynamic_threshold=dynamic_threshold,
         max_merge_gap_minutes=max_merge_gap_minutes,
         attach_duration_slices=False,
+        _loader=loader,
     )
-    artist_name = artist
+    if scoped:
+        resolved = _global_period_bounds(
+            conn,
+            period=period,
+            start_date=start_date,
+            end_date=end_date,
+            music_only=music_only,
+        )
+        current_df = filter_period_events(all_df, resolved)
     if not artist_name:
         matches = all_df[all_df["album_name"] == album_name]
         if not matches.empty:
@@ -416,15 +550,18 @@ def get_album_stats(
     data = _entity_base(all_df, entity_df, resolved, entity_duration)
     # Keep the legacy summary payload bounded; the detail UI uses the dedicated
     # rankings endpoint for every page instead of downloading the full project.
-    _, breakdown = chart_rows(
-        conn,
-        entity_df,
-        "track",
-        "plays",
-        20,
-        0,
-        duration_frame=build_duration_frame(entity_all, resolved),
-    )
+    if include_rank_context:
+        _, breakdown = chart_rows(
+            conn,
+            entity_df,
+            "track",
+            "plays",
+            20,
+            0,
+            duration_frame=entity_duration,
+        )
+    else:
+        breakdown = []
     data.update(
         {
             "found": True,
@@ -436,25 +573,33 @@ def get_album_stats(
             },
             "first_played": str(entity_all["ts"].min()),
             "last_played": str(entity_all["ts"].max()),
-            "ranks": _ranks(
-                conn,
-                all_df,
-                current_df,
-                resolved,
-                "album",
-                album_name=album_name,
-                album_names=album_names,
-                artist_name=artist_name,
+            "ranks": (
+                _ranks(
+                    conn,
+                    all_df,
+                    current_df,
+                    resolved,
+                    "album",
+                    album_name=album_name,
+                    album_names=album_names,
+                    artist_name=artist_name,
+                )
+                if include_rank_context
+                else None
             ),
-            "top250_counts": _top250_counts(
-                conn,
-                all_df,
-                album_name=album_name,
-                album_names=album_names,
-                artist_name=artist_name,
+            "top250_counts": (
+                _top250_counts(
+                    conn,
+                    all_df,
+                    album_name=album_name,
+                    album_names=album_names,
+                    artist_name=artist_name,
+                )
+                if include_rank_context
+                else None
             ),
             "track_breakdown": breakdown,
-            "recent_plays": recent_plays(conn, entity_df, 50),
+            "recent_plays": recent_plays(conn, entity_df, 50) if include_rank_context else [],
         }
     )
     return data
@@ -586,7 +731,7 @@ def _filter_artist_owned_album_events(
     return keyed[keyed["canonical_song_key"].isin(owned_song_keys)].copy()
 
 
-def get_artist_stats(
+def _build_artist_stats(
     conn: sqlite3.Connection,
     artist_name: str,
     min_ms: int,
@@ -597,12 +742,27 @@ def get_artist_stats(
     end_date: str | None = None,
     dynamic_threshold: bool = False,
     max_merge_gap_minutes: int | None = 5,
+    include_rank_context: bool = True,
 ) -> dict:
     from backend.domains.metadata.artist_identity import resolve_artist_name
 
     identity = resolve_artist_name(conn, artist_name)
     if identity is not None:
         artist_name = identity.display_name
+    scoped = not include_rank_context and period in {"lifetime", "custom"}
+    if scoped:
+        from backend.domains.metadata.track_credits import get_effective_track_credits
+
+        track_ids = sorted(
+            {
+                int(row["track_id"])
+                for row in get_effective_track_credits(conn)
+                if str(row["artist_name"]) == artist_name
+            }
+        )
+        loader = _scoped_play_loader(track_ids, music_only=music_only)
+    else:
+        loader = load_plays_for_artists
     all_df, current_df, resolved = load_period_plays(
         conn,
         min_ms,
@@ -614,48 +774,69 @@ def get_artist_stats(
         dynamic_threshold=dynamic_threshold,
         max_merge_gap_minutes=max_merge_gap_minutes,
         attach_duration_slices=False,
-        _loader=load_plays_for_artists,
+        _loader=loader,
     )
+    if scoped:
+        resolved = _global_period_bounds(
+            conn,
+            period=period,
+            start_date=start_date,
+            end_date=end_date,
+            music_only=music_only,
+        )
+        current_df = filter_period_events(all_df, resolved)
+        target_ids = set(track_ids)
+        all_df = all_df[all_df["track_id"].isin(target_ids)].copy()
+        current_df = current_df[current_df["track_id"].isin(target_ids)].copy()
+        all_df["artist_name"] = artist_name
+        current_df["artist_name"] = artist_name
     entity_all = all_df[all_df["artist_name"] == artist_name]
     entity_df = current_df[current_df["artist_name"] == artist_name]
     if entity_all.empty:
         return {"found": False}
     entity_duration = build_duration_frame(entity_all, resolved)
-    _, top_tracks = chart_rows(
-        conn,
-        entity_df,
-        "track",
-        "plays",
-        20,
-        0,
-        duration_frame=entity_duration,
-    )
-    owned_album_all = _filter_artist_owned_album_events(conn, entity_all, artist_name)
-    owned_album_df = _filter_artist_owned_album_events(conn, entity_df, artist_name)
-    owned_album_duration = build_duration_frame(owned_album_all, resolved)
-    _, top_albums = chart_rows(
-        conn,
-        owned_album_df,
-        "album",
-        "plays",
-        20,
-        0,
-        duration_frame=owned_album_duration,
-    )
-    if "_logical_event_id" in all_df.columns:
+    if include_rank_context:
+        _, top_tracks = chart_rows(
+            conn,
+            entity_df,
+            "track",
+            "plays",
+            20,
+            0,
+            duration_frame=entity_duration,
+        )
+        owned_album_all = _filter_artist_owned_album_events(conn, entity_all, artist_name)
+        owned_album_df = _filter_artist_owned_album_events(conn, entity_df, artist_name)
+        owned_album_duration = build_duration_frame(owned_album_all, resolved)
+        _, top_albums = chart_rows(
+            conn,
+            owned_album_df,
+            "album",
+            "plays",
+            20,
+            0,
+            duration_frame=owned_album_duration,
+        )
+    else:
+        top_tracks, top_albums = [], []
+    if include_rank_context and "_logical_event_id" in all_df.columns:
         recent_ids = (
             all_df.sort_values("ts", ascending=False)
             .drop_duplicates("_logical_event_id")
             .head(50)["_logical_event_id"]
         )
         recent_50_all = all_df[all_df["_logical_event_id"].isin(set(recent_ids))]
-    else:
+    elif include_rank_context:
         recent_50_all = all_df.sort_values("ts", ascending=False).head(50)
-    recent_50_artist_rows = recent_50_all[recent_50_all["artist_name"] == artist_name]
-    if "_logical_event_id" in recent_50_artist_rows.columns:
-        recent_50_count = int(recent_50_artist_rows["_logical_event_id"].nunique())
     else:
+        recent_50_all = all_df.iloc[0:0]
+    recent_50_artist_rows = recent_50_all[recent_50_all["artist_name"] == artist_name]
+    if include_rank_context and "_logical_event_id" in recent_50_artist_rows.columns:
+        recent_50_count: int | None = int(recent_50_artist_rows["_logical_event_id"].nunique())
+    elif include_rank_context:
         recent_50_count = int(len(recent_50_artist_rows))
+    else:
+        recent_50_count = None
     data = _entity_base(all_df, entity_df, resolved, entity_duration)
     data.update(
         {
@@ -667,19 +848,27 @@ def get_artist_stats(
             },
             "first_played": str(entity_all["ts"].min()),
             "last_played": str(entity_all["ts"].max()),
-            "ranks": _ranks(
-                conn,
-                all_df,
-                current_df,
-                resolved,
-                "artist",
-                artist_name=artist_name,
+            "ranks": (
+                _ranks(
+                    conn,
+                    all_df,
+                    current_df,
+                    resolved,
+                    "artist",
+                    artist_name=artist_name,
+                )
+                if include_rank_context
+                else None
             ),
-            "top250_counts": _top250_counts(conn, all_df, artist_name=artist_name),
+            "top250_counts": (
+                _top250_counts(conn, all_df, artist_name=artist_name)
+                if include_rank_context
+                else None
+            ),
             "recent_50_count": recent_50_count,
             "top_tracks": top_tracks,
             "top_albums": top_albums,
-            "recent_plays": recent_plays(conn, entity_df, 50),
+            "recent_plays": recent_plays(conn, entity_df, 50) if include_rank_context else [],
         }
     )
     return data
@@ -928,3 +1117,157 @@ def get_entity_play_dates(
         return []
     counts = df.groupby("ts_date").size().reset_index(name="count").sort_values("ts_date")
     return [{"date": str(r.ts_date), "count": int(r.count)} for r in counts.itertuples(index=False)]
+
+
+# Keep the builders directly callable for in-memory/unit-test databases, while
+# primary-database API reads use bounded revision-keyed response caches.
+def _is_primary_connection(conn: sqlite3.Connection) -> bool:
+    row = conn.execute("PRAGMA database_list").fetchone()
+    path = str(row[2] or "") if row is not None else ""
+    return bool(path) and os.path.realpath(path) == os.path.realpath(DB_PATH)
+
+
+def _entity_stats_revision_state(conn: sqlite3.Connection) -> tuple[int, int, int, int]:
+    state = get_music_search_revision_state(conn)
+    return (
+        state.playback_revision,
+        state.metadata_revision,
+        state.settings_revision,
+        state.candidate_revision,
+    )
+
+
+@singleflight
+@lru_cache(maxsize=128)
+def _track_stats_cached(args: tuple, _revision_state: tuple) -> dict:
+    conn = get_db(readonly=True)
+    try:
+        return _build_track_stats(conn, *args)
+    finally:
+        conn.close()
+
+
+@singleflight
+@lru_cache(maxsize=64)
+def _album_stats_cached(args: tuple, _revision_state: tuple) -> dict:
+    conn = get_db(readonly=True)
+    try:
+        return _build_album_stats(conn, *args)
+    finally:
+        conn.close()
+
+
+@singleflight
+@lru_cache(maxsize=64)
+def _artist_stats_cached(args: tuple, _revision_state: tuple) -> dict:
+    conn = get_db(readonly=True)
+    try:
+        return _build_artist_stats(conn, *args)
+    finally:
+        conn.close()
+
+
+def get_track_stats(
+    conn: sqlite3.Connection,
+    track_id: int,
+    min_ms: int,
+    music_only: bool,
+    merge_enabled: bool,
+    period: str = "lifetime",
+    start_date: str | None = None,
+    end_date: str | None = None,
+    dynamic_threshold: bool = False,
+    max_merge_gap_minutes: int | None = 5,
+    include_rank_context: bool = True,
+) -> dict:
+    args = (
+        track_id,
+        min_ms,
+        music_only,
+        merge_enabled,
+        period,
+        start_date,
+        end_date,
+        dynamic_threshold,
+        max_merge_gap_minutes,
+        include_rank_context,
+    )
+    if _is_primary_connection(conn):
+        return _track_stats_cached(args, _entity_stats_revision_state(conn))
+    return _build_track_stats(conn, *args)
+
+
+def get_album_stats(
+    conn: sqlite3.Connection,
+    album_name: str,
+    artist: str | None,
+    min_ms: int,
+    music_only: bool,
+    merge_enabled: bool,
+    period: str = "lifetime",
+    start_date: str | None = None,
+    end_date: str | None = None,
+    dynamic_threshold: bool = False,
+    max_merge_gap_minutes: int | None = 5,
+    merge_level: int = 2,
+    include_rank_context: bool = True,
+) -> dict:
+    args = (
+        album_name,
+        artist,
+        min_ms,
+        music_only,
+        merge_enabled,
+        period,
+        start_date,
+        end_date,
+        dynamic_threshold,
+        max_merge_gap_minutes,
+        merge_level,
+        include_rank_context,
+    )
+    if _is_primary_connection(conn):
+        return _album_stats_cached(args, _entity_stats_revision_state(conn))
+    return _build_album_stats(
+        conn,
+        *args[:-2],
+        merge_level=merge_level,
+        include_rank_context=include_rank_context,
+    )
+
+
+def get_artist_stats(
+    conn: sqlite3.Connection,
+    artist_name: str,
+    min_ms: int,
+    music_only: bool,
+    merge_enabled: bool,
+    period: str = "lifetime",
+    start_date: str | None = None,
+    end_date: str | None = None,
+    dynamic_threshold: bool = False,
+    max_merge_gap_minutes: int | None = 5,
+    include_rank_context: bool = True,
+) -> dict:
+    args = (
+        artist_name,
+        min_ms,
+        music_only,
+        merge_enabled,
+        period,
+        start_date,
+        end_date,
+        dynamic_threshold,
+        max_merge_gap_minutes,
+        include_rank_context,
+    )
+    if _is_primary_connection(conn):
+        return _artist_stats_cached(args, _entity_stats_revision_state(conn))
+    return _build_artist_stats(conn, *args)
+
+
+from backend.core.cache_manager import register_lru  # noqa: E402
+
+register_lru("analysis", "track_entity_stats", _track_stats_cached)
+register_lru("analysis", "album_entity_stats", _album_stats_cached)
+register_lru("analysis", "artist_entity_stats", _artist_stats_cached)

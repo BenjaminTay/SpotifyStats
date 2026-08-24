@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import time
 from functools import wraps
-from threading import RLock
+from threading import Lock, RLock
 
 
 def ttl_cached(ttl_seconds: float, namespace: str = "default"):
@@ -62,18 +62,48 @@ def ttl_cached(ttl_seconds: float, namespace: str = "default"):
 
 
 def singleflight(fn):
-    """Serialize cache misses so concurrent identical expensive calls don't duplicate work."""
-    lock = RLock()
+    """Deduplicate concurrent calls by key without serializing unrelated work.
+
+    The previous implementation used one global lock per wrapped function.  A
+    slow cold miss for one entity therefore blocked cache hits and misses for
+    every other entity.  Per-key locks retain identical-call deduplication while
+    allowing independent home/detail/stat requests to proceed concurrently.
+    """
+    locks_guard = RLock()
+    locks: dict[tuple, tuple[Lock, int]] = {}
+
+    def call_key(args, kwargs) -> tuple:
+        return args, tuple(sorted(kwargs.items()))
 
     @wraps(fn)
     def wrapper(*args, **kwargs):
-        with lock:
-            return fn(*args, **kwargs)
+        key = call_key(args, kwargs)
+        with locks_guard:
+            lock, users = locks.get(key, (Lock(), 0))
+            locks[key] = (lock, users + 1)
+        try:
+            with lock:
+                return fn(*args, **kwargs)
+        finally:
+            with locks_guard:
+                current = locks.get(key)
+                if current is not None:
+                    current_lock, users = current
+                    if users <= 1:
+                        locks.pop(key, None)
+                    else:
+                        locks[key] = (current_lock, users - 1)
 
     if hasattr(fn, "cache_clear"):
         wrapper.cache_clear = fn.cache_clear
     if hasattr(fn, "cache_info"):
         wrapper.cache_info = fn.cache_info
+
+    def singleflight_stats():
+        with locks_guard:
+            return {"active_keys": len(locks)}
+
+    wrapper.singleflight_stats = singleflight_stats
     return wrapper
 
 

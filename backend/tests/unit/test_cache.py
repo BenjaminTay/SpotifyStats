@@ -133,6 +133,55 @@ class TestSingleflight:
         assert serial_work(1) == 1
         assert results == [("enter", 1), ("exit", 1)]
 
+    def test_same_key_cache_miss_runs_once_and_releases_lock(self):
+        from concurrent.futures import ThreadPoolExecutor
+        from functools import lru_cache
+
+        from backend.core.cache import singleflight
+
+        calls = 0
+        started = threading.Event()
+
+        @singleflight
+        @lru_cache(maxsize=4)
+        def work(value):
+            nonlocal calls
+            calls += 1
+            started.set()
+            time.sleep(0.05)
+            return value * 2
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            first = executor.submit(work, 5)
+            assert started.wait(timeout=1)
+            second = executor.submit(work, 5)
+            assert first.result(timeout=1) == 10
+            assert second.result(timeout=1) == 10
+
+        assert calls == 1
+        assert work.singleflight_stats() == {"active_keys": 0}
+
+    def test_different_keys_run_concurrently(self):
+        from concurrent.futures import ThreadPoolExecutor
+
+        from backend.core.cache import singleflight
+
+        entered = threading.Barrier(2)
+
+        @singleflight
+        def work(value):
+            entered.wait(timeout=1)
+            time.sleep(0.05)
+            return value
+
+        started = time.perf_counter()
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            assert sorted(executor.map(work, (1, 2))) == [1, 2]
+        elapsed = time.perf_counter() - started
+
+        assert elapsed < 0.15
+        assert work.singleflight_stats() == {"active_keys": 0}
+
 
 class TestCacheManager:
     """CacheManager: registration, invalidation, stats."""

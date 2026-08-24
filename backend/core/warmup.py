@@ -70,11 +70,27 @@ def _configured_warmup_filters(conn) -> tuple[dict, dict]:
 
 def warm_common_caches() -> None:
     """Prime expensive default caches used by first-page navigation."""
+    # Restore the persisted last-known-good home snapshot before starting any
+    # CPU-heavy analysis work, so the first navigation is never queued behind
+    # a complete archive scan.
+    from backend.services.home_service import prewarm_default_home_overview
+
+    prewarm_default_home_overview()
+
     conn = get_db()
     try:
         play_filters, billboard_filters = _configured_warmup_filters(conn)
         load_plays(conn, **play_filters)
         load_plays_for_artists(conn, **play_filters)
+    finally:
+        conn.close()
+
+    # Publish/restore Billboard facts before the secondary analysis surfaces.
+    compute_billboard_data(**billboard_filters)
+    prewarm_default_home_overview()
+
+    conn = get_db()
+    try:
         get_analysis_stats(conn, **play_filters, period="lifetime")
         get_analysis_charts(
             conn,
@@ -103,12 +119,6 @@ def warm_common_caches() -> None:
         get_archive_overview(conn)
     finally:
         conn.close()
-
-    compute_billboard_data(**billboard_filters)
-
-    from backend.services.home_service import prewarm_default_home_overview
-
-    prewarm_default_home_overview()
 
     # Persist the latest deterministic Yearly Review artifact after shared
     # playback/Billboard caches are warm. This runs inside the existing daemon

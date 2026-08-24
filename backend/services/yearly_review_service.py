@@ -15,6 +15,7 @@ from functools import lru_cache
 from types import SimpleNamespace
 from typing import Any
 
+from backend.core.cache import singleflight
 from backend.core.db import get_db
 from backend.domains.billboard.year_end import YEAR_END_SEMANTICS_VERSION
 from backend.domains.metadata.artist_languages import artist_language_fact_revision
@@ -229,14 +230,36 @@ def _build_cached_artifact(
     return result
 
 
-def _prepare_artifact(year: int, context: YearlyReviewFilterContext) -> PreparedYearlyReview:
-    db_revision = database_revision(year)
+@singleflight
+@lru_cache(maxsize=64)
+def _prepare_artifact_cached(
+    year: int,
+    context_json: str,
+    db_revision: str,
+    language_revision: str,
+) -> PreparedYearlyReview:
+    context = YearlyReviewFilterContext.model_validate_json(context_json)
     return _prepare_artifact_with_revisions(
         year,
         context,
         db_revision=db_revision,
-        language_revision=_language_revision(),
+        language_revision=language_revision,
         scoped_dependency_revision=_year_scoped_dependency_revision(year, context),
+    )
+
+
+def _prepare_artifact(year: int, context: YearlyReviewFilterContext) -> PreparedYearlyReview:
+    """Prepare an exact artifact key while reusing the expensive scoped digest.
+
+    The context already carries governed metadata/group/project revisions.  A
+    changed playback prefix or governed dependency therefore changes one of the
+    cheap outer keys and naturally selects a new cached preparation.
+    """
+    return _prepare_artifact_cached(
+        year,
+        context.model_dump_json(),
+        database_revision(year),
+        _language_revision(),
     )
 
 
@@ -825,3 +848,4 @@ def get_yearly_review_available_years() -> YearlyReviewAvailableYearsResponse:
 from backend.core.cache_manager import register_lru  # noqa: E402
 
 register_lru("yearly_review", "report_artifact", _build_cached_artifact)
+register_lru("yearly_review", "prepared_artifact", _prepare_artifact_cached)

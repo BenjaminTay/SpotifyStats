@@ -7149,6 +7149,12 @@ export interface components {
             schema_version: "home_overview_v1";
             /** Generated At */
             generated_at: string;
+            /**
+             * Cache State
+             * @default fresh
+             * @enum {string}
+             */
+            cache_state: "fresh" | "warming" | "stale";
             /** Filter Fingerprint */
             filter_fingerprint: string;
             /**
@@ -16243,6 +16249,7 @@ export interface operations {
                 period?: string;
                 start_date?: string | null;
                 end_date?: string | null;
+                include_rank_context?: boolean;
                 /** @description 最短播放时长 (毫秒) */
                 min_ms?: number;
                 /** @description 仅音乐 */
@@ -16292,6 +16299,7 @@ export interface operations {
                 period?: string;
                 start_date?: string | null;
                 end_date?: string | null;
+                include_rank_context?: boolean;
                 /** @description 最短播放时长 (毫秒) */
                 min_ms?: number;
                 /** @description 仅音乐 */
@@ -16338,6 +16346,7 @@ export interface operations {
                 period?: string;
                 start_date?: string | null;
                 end_date?: string | null;
+                include_rank_context?: boolean;
                 /** @description 最短播放时长 (毫秒) */
                 min_ms?: number;
                 /** @description 仅音乐 */

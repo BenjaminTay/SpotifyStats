@@ -70,7 +70,7 @@ def _load_detail_access_stats(
             max_merge_gap_minutes,
         )
         if kind == "track" and track_id is not None:
-            return get_track_stats(conn, track_id, *common)
+            return get_track_stats(conn, track_id, *common, include_rank_context=False)
         if kind == "album" and album_name is not None:
             return get_album_stats(
                 conn,
@@ -78,9 +78,10 @@ def _load_detail_access_stats(
                 artist_name,
                 *common,
                 merge_level=merge_level,
+                include_rank_context=False,
             )
         if kind == "artist" and artist_name is not None:
-            return get_artist_stats(conn, artist_name, *common)
+            return get_artist_stats(conn, artist_name, *common, include_rank_context=False)
         return {"found": False}
     finally:
         conn.close()

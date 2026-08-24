@@ -21,6 +21,7 @@ import time
 import uuid
 from collections import deque
 from collections.abc import Callable
+from contextlib import nullcontext
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from os.path import realpath
@@ -111,6 +112,7 @@ class JobQueue:
         self._retry_base_seconds = max(0.0, retry_base_seconds)
         self._retry_max_seconds = max(self._retry_base_seconds, retry_max_seconds)
         self._retry_timers: dict[str, threading.Timer] = {}
+        self._cpu_heavy_gate = threading.Semaphore(1)
 
     # ── Registration ───────────────────────────────────────────────────
 
@@ -280,6 +282,10 @@ class JobQueue:
             if not self._workers:
                 self._drain_queue()
 
+    def wait_until_idle(self) -> None:
+        """Wait until every currently queued job has completed."""
+        self._q.join()
+
     # ── Enqueue ────────────────────────────────────────────────────────
 
     def enqueue(self, job: Job) -> str:
@@ -401,7 +407,14 @@ class JobQueue:
         job.attempts += 1
         self._update_db_status(job.job_id, "running", attempts=job.attempts)
         try:
-            handler(job)
+            cpu_heavy = job.job_type in {
+                "artist_identity_rebuild",
+                "track_credit_rebuild",
+                "playback_import_maintenance",
+                "music_search_snapshot_rebuild",
+            }
+            with self._cpu_heavy_gate if cpu_heavy else nullcontext():
+                handler(job)
             self._update_db_status(job.job_id, "done")
             return True
         except Exception as exc:

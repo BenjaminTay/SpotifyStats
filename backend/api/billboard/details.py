@@ -16,10 +16,11 @@ from __future__ import annotations
 
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel
 
 from backend.dependencies import BillboardFilters, MergeConfig
+from backend.domains.music_search.timing import MusicSearchTiming
 from backend.services.billboard_service import (
     get_album_detail_view,
     get_artist_detail_view,
@@ -167,30 +168,34 @@ class ArtistMultiRequest(BaseModel):
 )
 def track_history(
     track_id: int,
+    response: Response,
     filters: BillboardFilters = Depends(),
     merge: MergeConfig = Depends(),
     include_compilations: bool = Query(False),
     view: TrackDetailView = Query("full"),
 ):
     """Get detailed track chart history with change column and gapped chart data."""
-    result = get_track_detail_view(
-        track_id,
-        filters.min_ms,
-        filters.music_only,
-        filters.bb_top_n,
-        filters.bb_album_top_n,
-        filters.bb_artist_top_n,
-        filters.bb_week_start_dow,
-        filters.bb_week_start_hour,
-        filters.year_start,
-        filters.year_end,
-        filters.dynamic_threshold,
-        filters.max_merge_gap_minutes,
-        filters.merge_enabled,
-        merge.merge_level,
-        include_compilations,
-        view=view,
-    )
+    timing = MusicSearchTiming()
+    with timing.measure("detail_service"):
+        result = get_track_detail_view(
+            track_id,
+            filters.min_ms,
+            filters.music_only,
+            filters.bb_top_n,
+            filters.bb_album_top_n,
+            filters.bb_artist_top_n,
+            filters.bb_week_start_dow,
+            filters.bb_week_start_hour,
+            filters.year_start,
+            filters.year_end,
+            filters.dynamic_threshold,
+            filters.max_merge_gap_minutes,
+            filters.merge_enabled,
+            merge.merge_level,
+            include_compilations,
+            view=view,
+        )
+    response.headers["Server-Timing"] = timing.server_timing_header()
     if not result.get("found"):
         raise HTTPException(status_code=404, detail="Track not found")
     return result
@@ -203,6 +208,7 @@ def track_history(
 )
 def artist_chart_detail(
     artist_name: str,
+    response: Response,
     filters: BillboardFilters = Depends(),
     merge: MergeConfig = Depends(),
     include_compilations: bool = Query(False),
@@ -211,26 +217,29 @@ def artist_chart_detail(
     offset: int = Query(0, ge=0),
 ):
     """Get detailed artist chart data: weekly history, track/album performances, trend overlay."""
-    result = get_artist_detail_view(
-        artist_name,
-        filters.min_ms,
-        filters.music_only,
-        filters.bb_top_n,
-        filters.bb_album_top_n,
-        filters.bb_artist_top_n,
-        filters.bb_week_start_dow,
-        filters.bb_week_start_hour,
-        filters.year_start,
-        filters.year_end,
-        filters.dynamic_threshold,
-        filters.max_merge_gap_minutes,
-        filters.merge_enabled,
-        merge.merge_level,
-        include_compilations,
-        view=view,
-        limit=limit,
-        offset=offset,
-    )
+    timing = MusicSearchTiming()
+    with timing.measure("detail_service"):
+        result = get_artist_detail_view(
+            artist_name,
+            filters.min_ms,
+            filters.music_only,
+            filters.bb_top_n,
+            filters.bb_album_top_n,
+            filters.bb_artist_top_n,
+            filters.bb_week_start_dow,
+            filters.bb_week_start_hour,
+            filters.year_start,
+            filters.year_end,
+            filters.dynamic_threshold,
+            filters.max_merge_gap_minutes,
+            filters.merge_enabled,
+            merge.merge_level,
+            include_compilations,
+            view=view,
+            limit=limit,
+            offset=offset,
+        )
+    response.headers["Server-Timing"] = timing.server_timing_header()
     if not result.get("found"):
         raise HTTPException(status_code=404, detail="Artist not found")
     return result
@@ -243,6 +252,7 @@ def artist_chart_detail(
 )
 def album_chart_detail(
     album_name: str,
+    response: Response,
     artist_name: str = Query(default="", description="Artist name for disambiguation"),
     filters: BillboardFilters = Depends(),
     merge: MergeConfig = Depends(),
@@ -250,25 +260,28 @@ def album_chart_detail(
     view: AlbumDetailView = Query("full"),
 ):
     """Get detailed album chart data: weekly history, track performances, trend overlay."""
-    result = get_album_detail_view(
-        album_name,
-        artist_name,
-        filters.min_ms,
-        filters.music_only,
-        filters.bb_top_n,
-        filters.bb_album_top_n,
-        filters.bb_artist_top_n,
-        filters.bb_week_start_dow,
-        filters.bb_week_start_hour,
-        filters.year_start,
-        filters.year_end,
-        filters.dynamic_threshold,
-        filters.max_merge_gap_minutes,
-        filters.merge_enabled,
-        merge.merge_level,
-        include_compilations,
-        view=view,
-    )
+    timing = MusicSearchTiming()
+    with timing.measure("detail_service"):
+        result = get_album_detail_view(
+            album_name,
+            artist_name,
+            filters.min_ms,
+            filters.music_only,
+            filters.bb_top_n,
+            filters.bb_album_top_n,
+            filters.bb_artist_top_n,
+            filters.bb_week_start_dow,
+            filters.bb_week_start_hour,
+            filters.year_start,
+            filters.year_end,
+            filters.dynamic_threshold,
+            filters.max_merge_gap_minutes,
+            filters.merge_enabled,
+            merge.merge_level,
+            include_compilations,
+            view=view,
+        )
+    response.headers["Server-Timing"] = timing.server_timing_header()
     if not result.get("found"):
         raise HTTPException(status_code=404, detail="Album not found")
     return result

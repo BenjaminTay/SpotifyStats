@@ -19,6 +19,7 @@ data/spotify_stats.db-wal
 data/*.db.pre-*
 data/yearly_review_cache.db*
 data/covers/
+data/cache/
 
 # Claude Code session data
 .claude/

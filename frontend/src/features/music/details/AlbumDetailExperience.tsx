@@ -67,10 +67,10 @@ export function AlbumDetailExperience() {
   const { data: projectData } = useQuery({
     queryKey: queryKeys.music.albumDetail(albumName ?? '', artistName, mergeLevel, { ...billboardParams, artist_name: artistName, view: 'project' }),
     queryFn: () => api.get<AlbumDetailResponse>('/billboard/album/' + albumName!, { ...billboardParams, artist_name: artistName, view: 'project' }),
-    enabled: activeTab === 'stats' && !!albumName && !filtersLoading,
+    enabled: activeTab === 'stats' && data?.found === true && !!albumName && !filtersLoading,
   })
   const isCharted = data?.chart_status === 'charted' || !!data?.chart_summary
-  const hasTrackChart = data?.track_chart_status === 'charted'
+  const summaryTrackChartStatus = data?.track_chart_status
 
   useEffect(() => {
     if (!requestedTab || TABS.some((tab) => tab.key === requestedTab)) return
@@ -130,7 +130,14 @@ export function AlbumDetailExperience() {
                     facts={[
                       { label: '有效播放', value: `${(data.effective_play_count ?? 0).toLocaleString('zh-CN')} 次` },
                       { label: '专辑榜', value: data.chart_summary ? `PK #${data.chart_summary.peak_position}` : '尚未入榜', accent: data.chart_summary?.peak_position === 1 },
-                      { label: '成员单曲', value: hasTrackChart ? `${data.info?.total_tracks ?? 0} 首入榜` : '暂无入榜' },
+                      {
+                        label: '成员单曲',
+                        value: summaryTrackChartStatus == null
+                          ? '进入查看'
+                          : summaryTrackChartStatus === 'charted'
+                            ? `${data.info?.total_tracks ?? 0} 首入榜`
+                            : '暂无入榜',
+                      },
                       { label: '走势排名', value: data.chart_summary?.power_rank ? `#${data.chart_summary.power_rank}` : '—' },
                     ]}
                   />
@@ -186,7 +193,7 @@ export function AlbumDetailExperience() {
               {activeTab === 'tracks' && (
                 tracksPending || !tracksData ? (
                   <Skeleton className="h-[420px] w-full rounded-[16px]" />
-                ) : hasTrackChart && tracksData.info ? (
+                ) : tracksData.track_chart_status === 'charted' && tracksData.info ? (
                   <MusicTracksSection
                     artistName={tracksData.artist_name}
                     info={tracksData.info}

@@ -122,6 +122,7 @@ class HomeRediscovery(BaseModel):
 class HomeOverviewResponse(BaseModel):
     schema_version: Literal["home_overview_v1"] = "home_overview_v1"
     generated_at: str
+    cache_state: Literal["fresh", "warming", "stale"] = "fresh"
     filter_fingerprint: str
     state: Literal["ready", "limited", "empty"]
     coverage: HomeCoverage
