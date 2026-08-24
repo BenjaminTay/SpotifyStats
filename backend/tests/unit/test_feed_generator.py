@@ -18,6 +18,11 @@ class TestOrchestratorStructure:
 
         assert callable(_generate_core_posts)
 
+    def test_generate_core_posts_deduplicates_identical_cold_builds(self):
+        from backend.domains.community.feed_generator import _generate_core_posts
+
+        assert callable(_generate_core_posts.singleflight_stats)
+
     def test_generate_all_posts_without_conn_returns_list(self):
         """When called without DB connection, returns empty list (no data to generate from)."""
         from backend.domains.community.feed_generator import generate_all_posts

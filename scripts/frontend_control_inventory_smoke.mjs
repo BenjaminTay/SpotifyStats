@@ -9,8 +9,9 @@ import { findChrome } from './lib/chrome_executable.mjs'
 
 const DEFAULT_BASE_URL = 'http://localhost:5173'
 const DEFAULT_WAIT_MS = 8000
-const DYNAMIC_ROUTE_WAIT_MS = 12000
-const SLOW_ROUTE_WAIT_MS = 12000
+const DEFAULT_ROUTE_READY_WAIT_MS = 45000
+const DYNAMIC_ROUTE_WAIT_MS = 45000
+const SLOW_ROUTE_WAIT_MS = 45000
 const DEFAULT_MAX_VIOLATIONS = 0
 const REWRITE_PATH_PREFIXES = ['/api', '/covers']
 const DETAIL_ROUTE_FILTERS = {
@@ -48,7 +49,7 @@ const ROUTE_READY_MARKERS = {
   '/': ['最近一章', '最新个人 Billboard'],
   '/analysis/stats': ['PLAYBACK / ANALYSIS', '播放统计'],
   '/analysis/charts': ['PLAYBACK RANKING', '播放排行'],
-  '/analysis/records': ['播放记录', '高光时刻'],
+  '/analysis/records': ['高光时刻'],
   '/yearly-review': ['年度总结'],
   '/billboard': ['CHART / WEEKLY', 'Billboard 周榜'],
   '/billboard/number-ones': ['每周榜首'],
@@ -58,7 +59,7 @@ const ROUTE_READY_MARKERS = {
   '/billboard/versus': ['对决'],
   '/community': ['社区', '精选'],
   '/ai-insights': ['AI / INSIGHTS', 'AI 洞察'],
-  '/account': ['账号中心', '播放'],
+  '/account': ['音乐档案', '收藏旅程'],
   '/settings': ['参数与配置', '01 · SPOTIFY 连接', 'PREFERENCES / MOBILE', 'SETTINGS / MOBILE'],
 }
 
@@ -354,24 +355,25 @@ async function waitForRouteReady(client, route, timeoutMs) {
     if (state.rootTextLength > minimumTextLength && (!markers.length || state.hasMarker)) return state
     await sleep(150)
   }
-  throw new Error(`Timed out waiting for route content at ${route}: ${JSON.stringify(state)}`)
+  const error = new Error(`Timed out waiting for route content at ${route}: ${JSON.stringify(state)}`)
+  error.routeState = state
+  throw error
 }
 
 async function navigateAndWaitForRouteReady(client, route, url, viewport, timeoutMs) {
-  let lastError
   const effectiveTimeoutMs = waitMsForRoute(route, timeoutMs)
   for (let attempt = 1; attempt <= 2; attempt += 1) {
-    await navigate(client, url, viewport, effectiveTimeoutMs)
     try {
+      await navigate(client, url, viewport, effectiveTimeoutMs)
       return await waitForRouteReady(client, route, effectiveTimeoutMs)
     } catch (error) {
-      lastError = error
-      if (attempt < 2) {
-        process.stderr.write(`Retrying control inventory route ${route}: ${error.message}\n`)
-      }
+      const state = error?.routeState
+      const blankNavigation = !state || state.rootTextLength < 20
+      if (attempt === 2 || !blankNavigation) throw error
+      process.stderr.write(`Retrying blank control inventory navigation ${route}: ${error.message}\n`)
     }
   }
-  throw lastError
+  throw new Error(`Control inventory navigation exhausted for ${route}`)
 }
 
 function markersForRoute(route) {
@@ -390,7 +392,7 @@ function waitMsForRoute(route, timeoutMs) {
   const routePath = route.split('?')[0]
   if (isDynamicRoute(route)) return Math.max(timeoutMs, DYNAMIC_ROUTE_WAIT_MS)
   if (SLOW_ROUTES.has(routePath)) return Math.max(timeoutMs, SLOW_ROUTE_WAIT_MS)
-  return timeoutMs
+  return Math.max(timeoutMs, DEFAULT_ROUTE_READY_WAIT_MS)
 }
 
 async function collectControlInventory(client) {

@@ -46,6 +46,14 @@ def test_frontend_long_list_smoke_script_covers_named_long_lists():
     assert "Runtime.consoleAPICalled" in source
 
 
+def test_frontend_long_list_smoke_waits_for_slow_data_without_renavigating():
+    source = (ROOT / "scripts" / "frontend_long_list_smoke.mjs").read_text(encoding="utf-8")
+
+    assert "const SLOW_DATA_WAIT_MS = 45000" in source
+    assert source.count("waitMs: Math.max(ctx.waitMs, SLOW_DATA_WAIT_MS)") == 2
+    assert "await openAllFeed()\n    beforeRows = await waitForPosts()" not in source
+
+
 def test_frontend_long_list_smoke_script_matches_playback_records_range_pager():
     source = (ROOT / "scripts" / "frontend_long_list_smoke.mjs").read_text(encoding="utf-8")
 

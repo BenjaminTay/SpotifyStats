@@ -76,10 +76,22 @@ export function ArtistIdentitySection({ initialSearch = '' }: { initialSearch?: 
 
   const confirmCreate = async () => {
     if (!draft || state == null) return
+    const externalIds = selected.flatMap((candidate) =>
+      candidate.external_ids.map((link) => ({
+        artist_id: candidate.artist_id,
+        provider: link.provider,
+        external_id: link.external_id,
+        evidence_type: link.evidence_type,
+        evidence_source: 'artist_identity_candidate',
+        confidence: link.confidence,
+        verified: Boolean(link.verified),
+      })),
+    )
     await identity.create.mutateAsync({
       ...draft,
       expected_revision: state.current_revision,
       confirm_external_id_conflict: confirmConflict,
+      external_ids: externalIds,
     })
     setSelected([])
     setCanonicalId(null)

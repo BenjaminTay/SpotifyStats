@@ -7,7 +7,7 @@ from datetime import datetime
 
 import pandas as pd
 
-from backend.core.cache import ttl_cached
+from backend.core.cache import singleflight, ttl_cached
 from backend.domains.community.accounts import ACCOUNT_BY_HANDLE
 from backend.domains.community.feed_data import (
     _compute_personal_weekly,
@@ -72,6 +72,7 @@ from backend.domains.community.historical_state import HistoricalState
 from backend.domains.community.post_types import CommunityPost
 
 
+@singleflight
 @ttl_cached(ttl_seconds=600, namespace="community")
 def _generate_core_posts(
     min_ms: int = 30000,

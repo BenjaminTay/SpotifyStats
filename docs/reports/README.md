@@ -44,6 +44,7 @@
 
 ### 元数据、AI 与质量门禁
 
+- [`2026-08-24-fullstack-gate-repair.md`](2026-08-24-fullstack-gate-repair.md)
 - [`2026-07-16-genre-source-quality-audit.md`](2026-07-16-genre-source-quality-audit.md)
 - [`2026-07-15-genre-language-pre-review-execution.md`](2026-07-15-genre-language-pre-review-execution.md)
 - [`2026-07-05-artist-genre-seed-audit.md`](2026-07-05-artist-genre-seed-audit.md)

@@ -52,6 +52,8 @@ def test_frontend_cross_browser_smoke_script_covers_browser_families_and_flows()
     assert "llm_enabled" in source
     assert "has_llm_key" in source
     assert "settings-controls" in source
+    assert "assert_switch_available" in source
+    assert "click_switch_by_label" not in source
     assert "settings-data-import" in source
     assert "path: '/yearly-review'" in source
     assert "run_yearly_review(browser)" in source
@@ -60,8 +62,15 @@ def test_frontend_cross_browser_smoke_script_covers_browser_families_and_flows()
     assert "hasLegacyYearly" in source
     assert "Phone Yearly Review V2 did not become ready" in source
     assert "Phone legacy yearly summary did not become ready" not in source
-    assert "年度纪录分页" in source
+    assert "年度总结章节" in source
+    assert "Yearly records chapter did not become visible" in source
+    assert "年度纪录分页" not in source
     assert "年度附录分页" in source
+    assert 'name="完整榜单"' in source
+    assert 'name="打开目录"' not in source
+    assert ".yearly-v2-month-ledger > summary" in source
+    assert 'has_text="查看每个月"' in source
+    assert "展开十二个月事实账本" not in source
     assert "Retired Official Wrapped switch is still visible" in source
     assert "Current year selector still includes a status suffix" in source
     assert "expand_section_for_text" in source
@@ -83,6 +92,8 @@ def test_frontend_cross_browser_smoke_script_covers_browser_families_and_flows()
     assert "max-scroll-overflow" in source
     assert "const DYNAMIC_ROUTE_WAIT_MS = 20000" in source
     assert "FRONTEND_DYNAMIC_ROUTE_WAIT_MS" in source
+    assert "SEARCH_WAIT_MS = max(WAIT_MS, 30000)" in source
+    assert "timeout_ms=SEARCH_WAIT_MS" in source
     assert "def wait_ms_for_route(route)" in source
 
 
@@ -99,6 +110,15 @@ def test_frontend_cross_browser_smoke_script_can_rewrite_preview_api_requests():
     assert "route.abort()" in source
     assert "'/api'" in source
     assert "'/covers'" in source
+
+
+def test_frontend_cross_browser_smoke_checks_search_before_settings_mutate_revisions():
+    source = (ROOT / "scripts" / "frontend_cross_browser_smoke.mjs").read_text(encoding="utf-8")
+    main_start = source.index("def main():")
+
+    assert source.index("run_music_search(browser)", main_start) < source.index(
+        "run_core_interactions(browser)", main_start
+    )
 
 
 def test_frontend_cross_browser_smoke_script_waits_for_network_before_closing_pages():

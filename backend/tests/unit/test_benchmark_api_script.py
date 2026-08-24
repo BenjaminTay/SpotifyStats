@@ -43,6 +43,14 @@ def test_benchmark_api_exposes_reusable_performance_cli():
     assert "--slow-ms" in result.stdout
     assert "--fail-on-slow" in result.stdout
     assert "--json-output" in result.stdout
+    assert "default 22: 1 cold + 21" in result.stdout
+    assert "hot)" in result.stdout
+
+
+def test_benchmark_api_default_has_enough_hot_samples_for_p95():
+    from scripts.benchmark_api import DEFAULT_RUNS
+
+    assert DEFAULT_RUNS == 22
 
 
 def test_benchmark_api_marks_slow_hot_p95_endpoints():

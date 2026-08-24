@@ -61,6 +61,7 @@ class IdentityUpdateRequest(BaseModel):
     idempotency_key: str = Field(min_length=8, max_length=200)
     reason: str | None = Field(default=None, max_length=500)
     confirm_external_id_conflict: bool = False
+    external_ids: list[IdentityExternalIdInput] = Field(default_factory=list)
 
 
 class IdentityUndoRequest(BaseModel):
@@ -183,6 +184,7 @@ def update_identity(
             idempotency_key=body.idempotency_key,
             reason=body.reason or "个人管理直接修改",
             confirm_external_id_conflict=body.confirm_external_id_conflict,
+            external_ids=[item.model_dump() for item in body.external_ids],
         )
     except ValueError as exc:
         conn.rollback()

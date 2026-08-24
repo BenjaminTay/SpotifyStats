@@ -81,6 +81,18 @@ def _conn():
             genres TEXT,
             image_url TEXT
         );
+        CREATE TABLE artist_identity_external_ids(
+            link_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            artist_id INTEGER NOT NULL,
+            provider TEXT NOT NULL,
+            external_id TEXT NOT NULL,
+            evidence_type TEXT NOT NULL,
+            evidence_source TEXT,
+            confidence REAL NOT NULL DEFAULT 1.0,
+            verified INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            UNIQUE(artist_id, provider, external_id)
+        );
         CREATE TABLE album_spotify_links(
             album_id INTEGER NOT NULL,
             spotify_album_id TEXT NOT NULL,
@@ -173,6 +185,85 @@ def test_upsert_track_batch_links_exact_local_artist():
 
     row = conn.execute("SELECT spotify_artist_id FROM artists WHERE artist_id=7").fetchone()
     assert row["spotify_artist_id"] == "artist-a"
+    link = conn.execute(
+        """SELECT provider, external_id, evidence_type, evidence_source, verified
+           FROM artist_identity_external_ids WHERE artist_id=7"""
+    ).fetchone()
+    assert tuple(link) == (
+        "spotify",
+        "artist-a",
+        "artist_metadata",
+        "spotify_track_api_exact_artist_name",
+        1,
+    )
+
+
+def test_track_artist_linkage_never_downgrades_verified_external_id_evidence():
+    from backend.domains.metadata.spotify_refresh import upsert_track_batch
+
+    conn = _conn()
+    conn.execute("INSERT INTO artists(artist_id, artist_name) VALUES (7, 'Beyoncé')")
+    conn.execute(
+        "INSERT INTO tracks(track_id, artist_id, spotify_track_id) VALUES (1, 7, 'track-a')"
+    )
+    conn.execute(
+        """INSERT INTO artist_identity_external_ids(
+               artist_id, provider, external_id, evidence_type,
+               evidence_source, confidence, verified
+           ) VALUES (7, 'spotify', 'artist-a', 'user_confirmed',
+                     'manual-review', 1.0, 1)"""
+    )
+
+    upsert_track_batch(
+        conn,
+        [
+            {
+                "id": "track-a",
+                "name": "Track A",
+                "artists": [{"id": "artist-a", "name": "Beyonce"}],
+                "album": {},
+            }
+        ],
+    )
+
+    link = conn.execute(
+        """SELECT evidence_type, evidence_source, confidence, verified
+           FROM artist_identity_external_ids
+           WHERE artist_id=7 AND provider='spotify' AND external_id='artist-a'"""
+    ).fetchone()
+    assert tuple(link) == ("user_confirmed", "manual-review", 1.0, 1)
+
+
+def test_track_artist_linkage_backfills_governance_link_for_existing_provider_id():
+    from backend.domains.metadata.spotify_refresh import upsert_track_batch
+
+    conn = _conn()
+    conn.execute(
+        """INSERT INTO artists(artist_id, artist_name, spotify_artist_id)
+           VALUES (7, 'Beyoncé', 'artist-a')"""
+    )
+    conn.execute(
+        "INSERT INTO tracks(track_id, artist_id, spotify_track_id) VALUES (1, 7, 'track-a')"
+    )
+
+    upsert_track_batch(
+        conn,
+        [
+            {
+                "id": "track-a",
+                "name": "Track A",
+                "artists": [{"id": "artist-a", "name": "Beyonce"}],
+                "album": {},
+            }
+        ],
+    )
+
+    assert tuple(
+        conn.execute(
+            """SELECT provider, external_id, verified
+               FROM artist_identity_external_ids WHERE artist_id=7"""
+        ).fetchone()
+    ) == ("spotify", "artist-a", 1)
 
 
 def test_backfill_album_links_uses_existing_track_metadata():

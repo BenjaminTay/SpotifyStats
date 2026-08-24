@@ -27,6 +27,14 @@ Settings 的“音乐源数据管理”是人工音乐事实治理的唯一入�
 - artist weekly aggregates 在临时表中重建并原子切换。重建失败记录 `failed`，允许重试，读取不得混用旧 aggregate。
 - undo 本身也是新审计事件和新 revision，不删除历史。
 
+### 3.1 艺人 provider ID 的持久化规则
+
+- `artists.spotify_artist_id` 是本地实体的便捷投影；稳定 provider 身份事实必须同时写入 `artist_identity_external_ids`，不能只留在 `artists` 或 `spotify_artist_meta`。
+- 曲目元数据精确同名关联或艺人精确搜索写入本地 Spotify artist ID 时，同一事务补写 `provider=spotify` 的 verified 外部 ID。重复刷新不得降低已有人工作证的 `evidence_type`、`evidence_source`、`confidence` 或 `verified`。
+- 艺人身份创建和更新都可携带成员级 external IDs。已核对的不同 provider ID 必须全部保留为冲突事实，再由 `provider_metadata_artist_id` 明确选择展示元数据来源；禁止为了消除冲突删除未被选中的稳定 ID。
+- 身份事件的 before/after 快照包含活动成员的 external IDs；undo 恢复对应成员当时的外部 ID 状态，并继续以新事件和新 revision 留痕。
+- 候选页发现的 provider ID 会随确认写入治理层。名称只能用于寻找候选，最终关联仍绑定本地 `artist_id + provider + external_id`。
+
 ## 4. API
 
 统一前缀为 `/api/music-metadata/track-credits`：
@@ -49,3 +57,4 @@ Settings 的“音乐源数据管理”是人工音乐事实治理的唯一入�
 - 搜索、音乐详情、Billboard、对决、播放记录、合作曲、账号、Wrapped、社区和 AI 报告读取同一有效署名；缓存键包含 track-credit revision 或在 mutation 后精准失效。
 - Settings 在 1440px 与 390px 下可完成搜索、稳定 ID 选择、直接应用、轻量人工修改列表、撤销和失败重试，且无页面级横向溢出。append-only 事件仍保留在后端，但不作为默认工作流展示。
 - 详情页链接必须包含 `metadata` 目标、实体参数、`return_to` 与 `#music-metadata-management`，Settings 自动定位、展开并预填对应模块。
+- provider 刷新、身份创建、身份更新和 undo 必须覆盖 external-ID 持久化、冲突保留、人工证据不降级和 before/after 对称恢复；真实数据测试只断言跨接口一致性与治理不变量，不硬编码会随合法新播放增长的累计次数。

@@ -1,7 +1,7 @@
 # 年度总结统计语义修复报告
 
 日期：2026-08-24
-状态：**PASS（年度总结修复范围）；项目全栈门禁为 Partial，8 个无关既有/真实数据漂移失败另列**
+状态：**PASS（年度总结修复范围）；后续项目全栈门禁已完成修复并转为 Pass**
 适用内容版本：`yearly_review_v2_14`
 当前规则：[`../reference/playback-stats-rules.md`](../reference/playback-stats-rules.md)
 设计契约：[`../designs/2026-08-12-yearly-review-v2-content-data-contract.md`](../designs/2026-08-12-yearly-review-v2-content-data-contract.md)
@@ -89,6 +89,8 @@ probe v6 使用当前默认过滤指纹对 2023–2026 绕过旧持久命中重�
 - 1 项真实 Billboard 专辑详情仍硬编码 2 个在榜周，当前数据为 3 周。
 
 因此年度修复范围为 Pass；仓库全栈总门禁保持 Partial。没有为了让无关旧断言变绿而篡改当前数据或扩大本次实现范围。
+
+> 后续状态（2026-08-24）：上述 8 项已逐项归因并按真实统计规则修复，且继续修复了门禁脚本发现的冷加载、并发、可访问性和采样缺口。最新本地全栈门禁为 Pass；完整证据见 [`2026-08-24-fullstack-gate-repair.md`](2026-08-24-fullstack-gate-repair.md)。本节保留的是首次年度修复验收时的历史快照。
 
 ## 5. 边界
 

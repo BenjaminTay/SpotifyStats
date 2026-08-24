@@ -410,6 +410,8 @@ function RecentPlaysContent({
         </span>
         <div className="flex items-center gap-1">
           <button
+            type="button"
+            aria-label="上一页"
             disabled={page <= 1 || loading}
             onClick={() => setPage((p) => p - 1)}
             className={cn(
@@ -417,7 +419,7 @@ function RecentPlaysContent({
               (page <= 1 || loading) && 'opacity-30 cursor-not-allowed',
             )}
           >
-            <ChevronLeft className="h-4 w-4" />
+            <ChevronLeft className="h-4 w-4" aria-hidden="true" />
           </button>
           {Array.from({ length: Math.min(totalPages, 7) }, (_, i) => {
             let pageNum: number
@@ -447,6 +449,8 @@ function RecentPlaysContent({
             )
           })}
           <button
+            type="button"
+            aria-label="下一页"
             disabled={page >= totalPages || loading}
             onClick={() => setPage((p) => p + 1)}
             className={cn(
@@ -454,7 +458,7 @@ function RecentPlaysContent({
               (page >= totalPages || loading) && 'opacity-30 cursor-not-allowed',
             )}
           >
-            <ChevronRight className="h-4 w-4" />
+            <ChevronRight className="h-4 w-4" aria-hidden="true" />
           </button>
         </div>
       </div>

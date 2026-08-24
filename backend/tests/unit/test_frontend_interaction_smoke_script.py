@@ -34,6 +34,7 @@ def test_frontend_interaction_smoke_script_covers_core_non_destructive_flows():
     source = (ROOT / "scripts" / "frontend_interaction_smoke.mjs").read_text(encoding="utf-8")
 
     assert "const DEFAULT_WAIT_MS = 5000" in source
+    assert "const MOBILE_DATA_WAIT_MS = 30000" in source
     assert "async function waitForText" in source
     assert "async function waitForAnyText" in source
     assert "async function waitForPath" in source
@@ -58,7 +59,9 @@ def test_frontend_interaction_smoke_script_covers_core_non_destructive_flows():
     assert "DATA IMPORT" not in source
     assert "BILLBOARD PARAMETERS" not in source
     assert "VERSION MERGE" not in source
-    assert "过滤参数已更新" in source
+    assert "assertSwitchAvailable" in source
+    assert "clickSwitchByLabel" not in source
+    assert "过滤参数已更新" not in source
     assert "当前数据库记录数" in source
     assert "导入 Spotify 账号数据包" in source
     assert "艺人语言数据" in source
@@ -70,6 +73,7 @@ def test_frontend_interaction_smoke_script_covers_core_non_destructive_flows():
     assert "clickText(client, '开始审核'" not in source
     assert "chineseStyle" in source
     assert "Runtime.consoleAPICalled" in source
+    assert "Math.max(waitMs, MOBILE_DATA_WAIT_MS)" in source
 
 
 def test_frontend_interaction_smoke_script_can_rewrite_preview_api_requests():

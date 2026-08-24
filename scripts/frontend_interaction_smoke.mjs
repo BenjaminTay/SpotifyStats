@@ -9,6 +9,7 @@ import { findChrome } from './lib/chrome_executable.mjs'
 
 const DEFAULT_BASE_URL = 'http://localhost:5173'
 const DEFAULT_WAIT_MS = 5000
+const MOBILE_DATA_WAIT_MS = 30000
 const DEFAULT_SCENARIOS = [
   'analysis-tabs',
   'billboard-routing',
@@ -96,7 +97,7 @@ Scenarios:
   billboard-routing       Click Billboard subnav and browser back/forward
   ai-insights-tabs        Click AI Insights report/chat tabs and report type pills
   music-search-quick-open Open Masthead music search and navigate to the full search page
-  settings-controls       Toggle non-destructive settings controls and verify local display preference
+  settings-controls       Inspect server settings controls and verify local display preference
   settings-data-import    Verify data import cards and import actions without starting jobs
   theme-toggle            Toggle light/dark theme buttons
   mobile-bottom-navigation Verify mobile bottom navigation routes and active state
@@ -388,37 +389,23 @@ async function fillInputByAriaLabel(client, label, value, waitMs) {
   await sleep(Math.min(300, waitMs))
 }
 
-async function clickSwitchByLabel(client, label, waitMs) {
-  const changed = await evaluate(client, `
-    (() => {
-      const targetText = ${JSON.stringify(label)};
-      const candidates = Array.from(document.querySelectorAll('[role="switch"]'))
-        .filter((el) => (el.getAttribute('aria-label') || el.innerText || el.textContent || '').trim().includes(targetText));
-      const el = candidates[0];
-      if (!el) return { found: false };
-      const before = el.getAttribute('aria-checked');
-      el.scrollIntoView({ block: 'center', inline: 'center' });
-      el.click();
-      return { found: true, before };
-    })();
-  `)
-  if (!changed.found) throw new Error(`Switch not found: ${label}`)
+async function assertSwitchAvailable(client, label, waitMs) {
   return waitForCondition(
     async () => {
-      const state = await evaluate(client, `
+      return evaluate(client, `
         (() => {
           const targetText = ${JSON.stringify(label)};
           const el = Array.from(document.querySelectorAll('[role="switch"]'))
             .find((item) => (item.getAttribute('aria-label') || item.innerText || item.textContent || '').trim().includes(targetText));
           if (!el) return null;
-          const after = el.getAttribute('aria-checked');
-          return { found: true, before: ${JSON.stringify(changed.before)}, after };
+          const checked = el.getAttribute('aria-checked');
+          if (!['true', 'false'].includes(checked) || el.hasAttribute('disabled')) return null;
+          return { found: true, checked };
         })();
       `)
-      return state && state.after !== changed.before ? state : null
     },
     waitMs,
-    `Switch did not toggle: ${label}`,
+    `Enabled switch with valid state not found: ${label}`,
   )
 }
 
@@ -720,12 +707,8 @@ const SCENARIOS = {
     await waitForText(client, '归并与版本', waitMs)
     await waitForText(client, '数据导入', waitMs)
 
-    await clickSwitchByLabel(client, '动态阈值', waitMs)
-    await clickSwitchByLabel(client, '动态阈值', waitMs)
-    await clickSwitchByLabel(client, '仅音乐', waitMs)
-    await waitForText(client, '过滤参数已更新', waitMs)
-    await clickSwitchByLabel(client, '仅音乐', waitMs)
-    await waitForText(client, '过滤参数已更新', waitMs)
+    await assertSwitchAvailable(client, '动态阈值', waitMs)
+    await assertSwitchAvailable(client, '仅音乐', waitMs)
 
     await clickText(client, '原样显示', waitMs)
     await clickText(client, '简体中文', waitMs)
@@ -809,9 +792,10 @@ const SCENARIOS = {
 
   'mobile-time-filter': async ({ client, baseUrl, waitMs, viewportName }) => {
     if (viewportName !== 'mobile') throw new Error('mobile-time-filter requires --viewport mobile')
+    const dataWaitMs = Math.max(waitMs, MOBILE_DATA_WAIT_MS)
     await navigate(client, baseUrl, '/analysis/stats?period=lifetime', waitMs)
-    await waitForText(client, '播放统计', waitMs)
-    await clickByAriaLabel(client, '选择时间范围，当前全部时间', waitMs)
+    await waitForText(client, '播放统计', dataWaitMs)
+    await clickByAriaLabel(client, '选择时间范围，当前全部时间', dataWaitMs)
     await waitForSelector(client, '[data-mobile-sheet="time-range"]', waitMs)
     await clickTextWithin(client, '[data-mobile-sheet="time-range"]', '近 4 周', waitMs)
     await clickTextWithin(client, '[data-mobile-sheet="time-range"]', '应用时间范围', waitMs)

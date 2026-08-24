@@ -52,6 +52,9 @@ def test_frontend_control_inventory_smoke_checks_interactive_control_contracts()
     assert "Could not resolve all control inventory detail routes" in source
     assert "参数与配置" in source
     assert "01 · SPOTIFY 连接" in source
+    assert "'/account': ['音乐档案', '收藏旅程']" in source
+    assert "'/analysis/records': ['高光时刻']" in source
+    assert "'/analysis/records': ['播放记录', '高光时刻']" not in source
     assert "SETTINGS / CONFIGURATION" not in source
     assert "00 · SPOTIFY 连接" not in source
 
@@ -80,8 +83,13 @@ def test_frontend_control_inventory_smoke_resets_page_between_viewport_passes():
 
     assert "about:blank" in source
     assert "Reset same-route viewport passes" in source
-    assert "Retrying control inventory route" in source
+    assert "Retrying control inventory route" not in source
+    assert "Retrying blank control inventory navigation" in source
+    assert "state.rootTextLength < 20" in source
+    assert "for (let attempt = 1; attempt <= 2; attempt += 1)" in source
     assert "const DEFAULT_WAIT_MS = 8000" in source
-    assert "const DYNAMIC_ROUTE_WAIT_MS = 12000" in source
+    assert "const DEFAULT_ROUTE_READY_WAIT_MS = 45000" in source
+    assert "const DYNAMIC_ROUTE_WAIT_MS = 45000" in source
+    assert "const SLOW_ROUTE_WAIT_MS = 45000" in source
     assert "function waitMsForRoute(route, timeoutMs)" in source
     assert "function isDynamicRoute(route)" in source

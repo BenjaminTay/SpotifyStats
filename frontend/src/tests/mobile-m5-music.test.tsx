@@ -195,4 +195,28 @@ describe('M5 mobile music search and details', () => {
     expect(row).toHaveTextContent('专辑 Lover')
     expect(screen.queryByRole('table')).not.toBeInTheDocument()
   })
+
+  it('gives desktop recent-play pagination controls accessible names', async () => {
+    const fetchPage = vi.fn().mockResolvedValue({
+      total: 51,
+      limit: 50,
+      offset: 0,
+      rows: [],
+    })
+    render(
+      <MemoryRouter>
+        <RecentPlaysSection
+          kind="track"
+          entityId="42"
+          filters={{} as never}
+          apiParams={{ period: 'lifetime' }}
+          fetchPage={fetchPage}
+          fetchPlayDates={vi.fn().mockResolvedValue([])}
+        />
+      </MemoryRouter>,
+    )
+
+    expect(await screen.findByRole('button', { name: '上一页' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: '下一页' })).toBeEnabled()
+  })
 })

@@ -16,11 +16,22 @@ export interface IdentityDraft {
   display_name: string
 }
 
+interface IdentityExternalIdWrite {
+  artist_id: number
+  provider: string
+  external_id: string
+  evidence_type: string
+  evidence_source?: string
+  confidence?: number
+  verified?: boolean
+}
+
 interface IdentityWrite extends IdentityDraft {
   expected_revision: number
   idempotency_key: string
   reason?: string
   confirm_external_id_conflict?: boolean
+  external_ids?: IdentityExternalIdWrite[]
 }
 
 interface IdentityUpdate {
@@ -33,6 +44,7 @@ interface IdentityUpdate {
   idempotency_key: string
   reason?: string
   confirm_external_id_conflict?: boolean
+  external_ids?: IdentityExternalIdWrite[]
 }
 
 function idempotencyKey(prefix: string): string {

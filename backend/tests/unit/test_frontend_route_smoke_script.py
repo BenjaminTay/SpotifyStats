@@ -58,6 +58,14 @@ def test_frontend_route_smoke_script_checks_route_content_markers():
     assert "ROUTE_READY_MARKERS" in source
     assert "'/billboard/records': ['冠军圣殿']" in source
     assert "'/analysis/records': ['播放记录', '高光时刻']" in source
+    assert "'/account': ['音乐档案', '收藏旅程']" in source
+    assert "'/settings': ['设置', 'Spotify']" in source
+    assert "for (let attempt = 1; attempt <= 2; attempt += 1)" in source
+    assert "RETRY" in source
+    assert "const SLOW_ROUTE_WAIT_MS = 45000" in source
+    assert "ROUTE_READY_POLL_INTERVAL_MS" in source
+    assert "await client.send('Page.navigate', { url })" in source
+    assert "async function navigateAndReadState" not in source
     assert "'/analysis/records': ['有效播放', '狂热时刻']" not in source
     assert "missing route content marker" in source
     assert "--disable-route-markers" in source
@@ -93,6 +101,7 @@ def test_frontend_route_smoke_default_wait_allows_cold_route_content():
     source = (ROOT / "scripts" / "frontend_route_smoke.mjs").read_text(encoding="utf-8")
 
     assert "const DEFAULT_WAIT_MS = 5000" in source
+    assert "const DEFAULT_ROUTE_READY_WAIT_MS = 12000" in source
     assert "const DYNAMIC_ROUTE_WAIT_MS = 12000" in source
     assert "isDynamicRoute(route)" in source
 

@@ -7367,6 +7367,8 @@ export interface components {
              * @default false
              */
             confirm_external_id_conflict: boolean;
+            /** External Ids */
+            external_ids?: components["schemas"]["IdentityExternalIdInput"][];
         };
         /** ImportDatasetDateRange */
         ImportDatasetDateRange: {

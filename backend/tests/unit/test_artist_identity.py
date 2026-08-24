@@ -352,7 +352,100 @@ def test_create_group_persists_audited_external_ids_and_remains_undoable():
         532,
         765,
     }
+    assert (
+        conn.execute(
+            """SELECT 1 FROM artist_identity_external_ids
+               WHERE provider='musicbrainz'"""
+        ).fetchone()
+        is None
+    )
     assert _raw_hash(conn) == before_hash
+
+
+def test_update_group_persists_external_ids_in_audit_and_restores_them_on_undo():
+    conn = _database()
+    group = list_artist_identity_groups(conn)[0]
+    before_links = [
+        tuple(row)
+        for row in conn.execute(
+            """SELECT artist_id, provider, external_id, evidence_type,
+                      evidence_source, confidence, verified
+               FROM artist_identity_external_ids
+               WHERE artist_id IN (532, 765)
+               ORDER BY artist_id, provider, external_id"""
+        )
+    ]
+    updated = update_artist_identity_group(
+        conn,
+        identity_id=group["identity_id"],
+        add_ids=[],
+        remove_ids=[],
+        canonical_artist_id=532,
+        display_name="Jolin Tsai",
+        provider_metadata_artist_id=765,
+        expected_revision=get_identity_revision(conn),
+        idempotency_key="test-update-external-links",
+        reason="user confirmed conflicting provider identities",
+        confirm_external_id_conflict=True,
+        external_ids=[
+            {
+                "artist_id": 532,
+                "provider": "musicbrainz",
+                "external_id": "musicbrainz-jolin-main",
+                "evidence_type": "user_confirmed_provider_metadata",
+                "evidence_source": "manual-review",
+                "confidence": 1.0,
+                "verified": True,
+            },
+            {
+                "artist_id": 765,
+                "provider": "musicbrainz",
+                "external_id": "musicbrainz-jolin-alias",
+                "evidence_type": "user_confirmed_provider_metadata",
+                "evidence_source": "manual-review",
+                "confidence": 1.0,
+                "verified": True,
+            },
+        ],
+    )
+    event = conn.execute(
+        "SELECT after_json FROM artist_identity_events WHERE event_id=?",
+        (updated["event_id"],),
+    ).fetchone()
+    assert "musicbrainz-jolin-main" in event["after_json"]
+    assert "musicbrainz-jolin-alias" in event["after_json"]
+
+    repeated = update_artist_identity_group(
+        conn,
+        identity_id=group["identity_id"],
+        add_ids=[],
+        remove_ids=[],
+        canonical_artist_id=532,
+        display_name="Jolin Tsai",
+        expected_revision=0,
+        idempotency_key="test-update-external-links",
+        reason="idempotent retry",
+    )
+    assert repeated == updated
+
+    undo_artist_identity_event(
+        conn,
+        event_id=updated["event_id"],
+        expected_revision=updated["revision"],
+        idempotency_key="test-update-external-links-undo",
+        reason="restore provider links",
+    )
+    restored_links = [
+        tuple(row)
+        for row in conn.execute(
+            """SELECT artist_id, provider, external_id, evidence_type,
+                      evidence_source, confidence, verified
+               FROM artist_identity_external_ids
+               WHERE artist_id IN (532, 765)
+               ORDER BY artist_id, provider, external_id"""
+        )
+    ]
+    assert restored_links == before_links
 
 
 def test_create_group_requires_confirmation_for_prospective_provider_conflict():

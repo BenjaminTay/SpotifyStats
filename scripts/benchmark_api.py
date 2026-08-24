@@ -5,7 +5,7 @@ Measures cold-start (cache miss) and hot-request (cache hit) response times
 for key Billboard endpoints, plus response body sizes (raw and gzip).
 
 Usage:
-    python scripts/benchmark_api.py                    # all endpoints, 3 runs each
+    python scripts/benchmark_api.py                    # all endpoints, 22 runs each
     python scripts/benchmark_api.py --endpoint /api/billboard/data  # single endpoint
     python scripts/benchmark_api.py --warmup           # pre-warm caches, then measure hot only
 """
@@ -22,6 +22,7 @@ import time
 DEFAULT_BASE_URL = "http://localhost:8000"
 TIMEOUT = 120.0  # cold Billboard data computation can be slow
 DEFAULT_SLOW_MS = 500
+DEFAULT_RUNS = 22  # one cold request plus 21 hot samples for a meaningful P95
 
 ENDPOINTS = [
     "/api/billboard/data",
@@ -36,7 +37,7 @@ ENDPOINTS = [
 ]
 
 
-def measure(endpoint: str, runs: int = 3, base_url: str = DEFAULT_BASE_URL) -> dict:
+def measure(endpoint: str, runs: int = DEFAULT_RUNS, base_url: str = DEFAULT_BASE_URL) -> dict:
     """Measure cold and hot response times for an endpoint."""
     try:
         import httpx
@@ -205,7 +206,12 @@ def main():
     parser = argparse.ArgumentParser(description="API performance benchmark")
     parser.add_argument("--base-url", default=DEFAULT_BASE_URL, help="API base URL")
     parser.add_argument("--endpoint", help="Benchmark a single endpoint")
-    parser.add_argument("--runs", type=int, default=3, help="Number of runs per endpoint")
+    parser.add_argument(
+        "--runs",
+        type=int,
+        default=DEFAULT_RUNS,
+        help=f"Number of runs per endpoint (default {DEFAULT_RUNS}: 1 cold + 21 hot)",
+    )
     parser.add_argument(
         "--warmup", action="store_true", help="Pre-warm caches, then measure hot only"
     )

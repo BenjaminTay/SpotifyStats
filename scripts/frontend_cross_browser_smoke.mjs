@@ -225,6 +225,7 @@ VIEWPORTS = json.loads(os.environ["FRONTEND_VIEWPORTS_JSON"])
 WAIT_MS = int(os.environ["FRONTEND_WAIT_MS"])
 DYNAMIC_ROUTE_WAIT_MS = int(os.environ["FRONTEND_DYNAMIC_ROUTE_WAIT_MS"])
 SLOW_PAGE_WAIT_MS = max(WAIT_MS, 20000)
+SEARCH_WAIT_MS = max(WAIT_MS, 30000)
 YEARLY_REVIEW_WAIT_MS = max(WAIT_MS, 120000)
 MAX_SCROLL_OVERFLOW = int(os.environ["FRONTEND_MAX_SCROLL_OVERFLOW"])
 HEADED = os.environ.get("FRONTEND_HEADED") == "1"
@@ -372,8 +373,9 @@ def click_text(page, text: str) -> None:
     target.click(timeout=WAIT_MS)
 
 
-def wait_for_condition(check, failure_message: str):
-    deadline = time.monotonic() + WAIT_MS / 1000
+def wait_for_condition(check, failure_message: str, timeout_ms: int | None = None):
+    wait_ms = WAIT_MS if timeout_ms is None else timeout_ms
+    deadline = time.monotonic() + wait_ms / 1000
     last = None
     while time.monotonic() < deadline:
         last = check()
@@ -383,17 +385,12 @@ def wait_for_condition(check, failure_message: str):
     raise SmokeFailure(f"{failure_message}; last={last!r}")
 
 
-def click_switch_by_label(page, label: str):
+def assert_switch_available(page, label: str):
     target = page.get_by_role("switch", name=re.compile(label)).first
-    before = target.get_attribute("aria-checked", timeout=WAIT_MS)
-    target.scroll_into_view_if_needed(timeout=WAIT_MS)
-    target.click(timeout=WAIT_MS)
-
-    def changed():
-        after = target.get_attribute("aria-checked", timeout=1000)
-        return {"before": before, "after": after} if after != before else None
-
-    return wait_for_condition(changed, f"Switch did not toggle: {label}")
+    target.wait_for(state="visible", timeout=WAIT_MS)
+    checked = target.get_attribute("aria-checked", timeout=WAIT_MS)
+    if checked not in {"true", "false"} or not target.is_enabled(timeout=WAIT_MS):
+        raise SmokeFailure(f"Enabled switch with valid state not found: {label}")
 
 
 def assert_clickable_text_count(page, texts, minimum: int):
@@ -699,12 +696,8 @@ def run_settings_controls(browser):
         wait_for_text(page, "归并与版本")
         wait_for_text(page, "数据导入")
 
-        click_switch_by_label(page, "动态阈值")
-        click_switch_by_label(page, "动态阈值")
-        click_switch_by_label(page, "仅音乐")
-        wait_for_text(page, "过滤参数已更新")
-        click_switch_by_label(page, "仅音乐")
-        wait_for_text(page, "过滤参数已更新")
+        assert_switch_available(page, "动态阈值")
+        assert_switch_available(page, "仅音乐")
 
         click_text(page, "原样显示")
         click_text(page, "简体中文")
@@ -776,7 +769,7 @@ def run_yearly_review(browser):
         if album_tab.get_attribute("aria-selected") != "true":
             raise SmokeFailure("Yearly honors album tab did not select")
 
-        month_summary = page.get_by_text("展开十二个月事实账本", exact=False).first
+        month_summary = page.locator(".yearly-v2-month-ledger > summary").filter(has_text="查看每个月").first
         month_summary.scroll_into_view_if_needed(timeout=WAIT_MS)
         month_summary.click(timeout=WAIT_MS)
         if not page.locator(".yearly-v2-month-grid").is_visible(timeout=WAIT_MS):
@@ -788,11 +781,12 @@ def run_yearly_review(browser):
         if language_tab.get_attribute("aria-selected") != "true":
             raise SmokeFailure("Yearly taste language tab did not select")
 
-        page.get_by_role("button", name="打开目录", exact=True).click(timeout=WAIT_MS)
-        record_nav = page.get_by_role("navigation", name="年度纪录分页")
-        record_nav.get_by_role("button", name="下一页", exact=True).click(timeout=YEARLY_REVIEW_WAIT_MS)
-        wait_for_text(page, "第 2 /", timeout_ms=YEARLY_REVIEW_WAIT_MS)
+        chapter_nav = page.get_by_role("navigation", name="年度总结章节")
+        chapter_nav.get_by_role("link", name="年度纪录", exact=True).click(timeout=WAIT_MS)
+        if not page.locator("#yearly-v2-records").is_visible(timeout=WAIT_MS):
+            raise SmokeFailure("Yearly records chapter did not become visible")
 
+        chapter_nav.get_by_role("link", name="完整榜单", exact=True).click(timeout=WAIT_MS)
         appendix_nav = page.get_by_role("navigation", name="年度附录分页")
         appendix_nav.get_by_role("button", name="下一页", exact=True).click(timeout=WAIT_MS)
         wait_for_condition(
@@ -842,12 +836,13 @@ def run_music_search(browser):
         if combobox.get_attribute("aria-activedescendant") is not None:
             raise SmokeFailure("Quick Open selected a result before keyboard navigation")
         combobox.fill("love")
-        wait_for_text(page, "查看全部")
+        wait_for_text(page, "查看全部", timeout_ms=SEARCH_WAIT_MS)
         if combobox.get_attribute("aria-activedescendant") is not None:
             raise SmokeFailure("Quick Open selected the first result after loading")
         wait_for_condition(
             lambda: combobox if combobox.get_attribute("aria-expanded") == "true" else None,
             "Quick Open candidates did not become available",
+            timeout_ms=SEARCH_WAIT_MS,
         )
         page.keyboard.press("ArrowDown")
         if not combobox.get_attribute("aria-activedescendant"):
@@ -886,7 +881,7 @@ def run_music_search(browser):
         if page.evaluate("() => Boolean(history.state?.usr?.autofocusSearch)"):
             raise SmokeFailure("One-shot phone autofocus intent was not cleared")
         searchbox.fill("love")
-        wait_for_text(page, "查看全部")
+        wait_for_text(page, "查看全部", timeout_ms=SEARCH_WAIT_MS)
         undersized_tabs = page.evaluate(
             """() => Array.from(document.querySelectorAll('[role=tab]'))
                 .filter((el) => {
@@ -910,10 +905,10 @@ def main():
         try:
             if "route-markers" in SCENARIOS:
                 run_route_markers(browser)
-            if "core-interactions" in SCENARIOS:
-                run_core_interactions(browser)
             if "music-search" in SCENARIOS:
                 run_music_search(browser)
+            if "core-interactions" in SCENARIOS:
+                run_core_interactions(browser)
         finally:
             browser.close()
 

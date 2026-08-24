@@ -98,7 +98,7 @@ def _link_local_artist_from_track(
     track_id = track.get("id")
     if scope is None:
         local_rows = conn.execute(
-            """SELECT DISTINCT a.artist_id, a.artist_name
+            """SELECT DISTINCT a.artist_id, a.artist_name, a.spotify_artist_id
                FROM tracks t
                JOIN artists a ON a.artist_id=t.artist_id
                WHERE t.spotify_track_id=?""",
@@ -106,7 +106,7 @@ def _link_local_artist_from_track(
         ).fetchall()
     else:
         local_rows = conn.execute(
-            """SELECT DISTINCT a.artist_id, a.artist_name
+            """SELECT DISTINCT a.artist_id, a.artist_name, a.spotify_artist_id
                 FROM tracks t
                 JOIN artists a ON a.artist_id=t.artist_id
                 WHERE (
@@ -132,6 +132,7 @@ def _link_local_artist_from_track(
             None,
         )
         if match and match.get("id"):
+            existing_spotify_artist_id = str(local["spotify_artist_id"] or "")
             cursor = conn.execute(
                 """UPDATE artists SET spotify_artist_id=?
                    WHERE artist_id=?
@@ -139,6 +140,17 @@ def _link_local_artist_from_track(
                 (match["id"], local["artist_id"]),
             )
             linked += max(cursor.rowcount, 0)
+            if cursor.rowcount > 0 or existing_spotify_artist_id == str(match["id"]):
+                from backend.domains.metadata.artist_identity import (
+                    sync_artist_spotify_external_id,
+                )
+
+                sync_artist_spotify_external_id(
+                    conn,
+                    artist_id=int(local["artist_id"]),
+                    spotify_artist_id=str(match["id"]),
+                    evidence_source="spotify_track_api_exact_artist_name",
+                )
             if cursor.rowcount > 0 and local_artist_ids_relinked is not None:
                 local_artist_ids_relinked.add(int(local["artist_id"]))
     return linked
@@ -806,6 +818,16 @@ def refresh_missing_spotify_metadata(
             conn.execute(
                 "UPDATE artists SET spotify_artist_id=? WHERE artist_id=?",
                 (artist["id"], local_artist_id),
+            )
+            from backend.domains.metadata.artist_identity import (
+                sync_artist_spotify_external_id,
+            )
+
+            sync_artist_spotify_external_id(
+                conn,
+                artist_id=int(local_artist_id),
+                spotify_artist_id=str(artist["id"]),
+                evidence_source="spotify_artist_search_exact_name",
             )
             artist_searches_updated += upsert_artist_batch(conn, [artist])
             local_artist_ids_updated.add(local_artist_id)

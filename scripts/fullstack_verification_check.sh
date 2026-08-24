@@ -8,7 +8,7 @@ BACKEND_URL=${BACKEND_URL:-http://127.0.0.1:8000}
 FRONTEND_URL=${FRONTEND_URL:-http://localhost:5173}
 PREVIEW_URL=${PREVIEW_URL:-}
 PREVIEW_API_URL=${PREVIEW_API_URL:-$BACKEND_URL}
-BENCHMARK_RUNS=${BENCHMARK_RUNS:-3}
+BENCHMARK_RUNS=${BENCHMARK_RUNS:-22}
 SLOW_MS=${SLOW_MS:-500}
 BENCHMARK_JSON=${BENCHMARK_JSON:-/tmp/spotify_api_benchmark.json}
 OPENAPI_OPERATION_AUDIT_JSON=${OPENAPI_OPERATION_AUDIT_JSON:-/tmp/spotify_openapi_operation_audit.json}
@@ -59,7 +59,7 @@ Options:
   --frontend-url <url>      Frontend dev URL for browser smoke, default http://localhost:5173
   --preview-url <url>      Optional Vite preview URL; when set, preview smoke also runs
   --preview-api-url <url>  Backend URL used by preview smoke request rewriting
-  --benchmark-runs <n>     Number of benchmark requests per endpoint, default 3
+  --benchmark-runs <n>     Number of benchmark requests per endpoint, default 22
   --slow-ms <ms>           API hot P95 slow threshold, default 500
   --benchmark-json <path>  JSON benchmark output path, default /tmp/spotify_api_benchmark.json
   --openapi-operation-audit-json <path>

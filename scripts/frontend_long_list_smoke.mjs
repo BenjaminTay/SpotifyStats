@@ -9,6 +9,7 @@ import { findChrome } from './lib/chrome_executable.mjs'
 
 const DEFAULT_BASE_URL = 'http://localhost:5173'
 const DEFAULT_WAIT_MS = 8000
+const SLOW_DATA_WAIT_MS = 45000
 const DEFAULT_SCENARIOS = [
   'records-mini-rank',
   'all-time-table',
@@ -729,13 +730,7 @@ async function exerciseCommunityFeed({ client, baseUrl, waitMs }) {
     waitMs,
     'Community feed did not render posts',
   )
-  let beforeRows
-  try {
-    beforeRows = await waitForPosts()
-  } catch {
-    await openAllFeed()
-    beforeRows = await waitForPosts()
-  }
+  const beforeRows = await waitForPosts()
 
   // Track /api/community network responses via CDP
   const communityRequests = []
@@ -817,7 +812,7 @@ const SCENARIOS = {
   }),
   'community-feed': (ctx) => exerciseCommunityFeed({
     ...ctx,
-    waitMs: Math.max(ctx.waitMs, 20000),
+    waitMs: Math.max(ctx.waitMs, SLOW_DATA_WAIT_MS),
   }),
   'recent-plays': (ctx) => exercisePaginatedList({
     ...ctx,
@@ -828,6 +823,7 @@ const SCENARIOS = {
   }),
   'saved-tracks': (ctx) => exercisePaginatedList({
     ...ctx,
+    waitMs: Math.max(ctx.waitMs, SLOW_DATA_WAIT_MS),
     route: '/account',
     readyText: '收藏库',
     pagePattern: '第\\s*\\d+\\s*/\\s*\\d+\\s*页',

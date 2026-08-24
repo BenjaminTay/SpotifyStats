@@ -14,6 +14,19 @@ from backend.domains.playback.album_projects import (
 )
 
 
+def _add_active_play(
+    conn: sqlite3.Connection, *, play_id: int, track_id: int, album_id: int
+) -> None:
+    conn.execute(
+        """INSERT INTO plays(
+               play_id, ts, ts_year, ts_month, ts_week, ts_dow, ts_hour,
+               ts_date, platform, ms_played, track_id, source_album_id
+           ) VALUES (?, '2026-01-05T12:00:00Z', 2026, 1, 2, 0, 12,
+                     '2026-01-05', 'fixture', 180000, ?, ?)""",
+        (play_id, track_id, album_id),
+    )
+
+
 def test_ensure_album_projects_is_idempotent():
     conn = sqlite3.connect(":memory:")
     conn.row_factory = sqlite3.Row
@@ -24,6 +37,7 @@ def test_ensure_album_projects_is_idempotent():
         conn.execute(
             "INSERT INTO tracks(track_id, track_name, artist_id, album_id) VALUES (1, 'Song', 1, 1)"
         )
+        _add_active_play(conn, play_id=1, track_id=1, album_id=1)
         conn.execute(
             """INSERT INTO spotify_album_meta
                (spotify_album_id, album_name, album_type, release_date, total_tracks)
@@ -62,6 +76,7 @@ def test_album_project_plays_accepts_preaggregated_weighted_rows():
         conn.execute(
             "INSERT INTO tracks(track_id, track_name, artist_id, album_id) VALUES (1, 'Song', 1, 1)"
         )
+        _add_active_play(conn, play_id=1, track_id=1, album_id=1)
         conn.execute(
             """INSERT INTO spotify_album_meta
                (spotify_album_id, album_name, album_type, release_date, total_tracks)
@@ -114,6 +129,7 @@ def test_album_project_weekly_plays_groups_weighted_rows_by_billboard_week():
         conn.execute(
             "INSERT INTO tracks(track_id, track_name, artist_id, album_id) VALUES (1, 'Song', 1, 1)"
         )
+        _add_active_play(conn, play_id=1, track_id=1, album_id=1)
         conn.execute(
             """INSERT INTO spotify_album_meta
                (spotify_album_id, album_name, album_type, release_date, total_tracks)

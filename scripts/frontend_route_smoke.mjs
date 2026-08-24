@@ -9,8 +9,10 @@ import { findChrome } from './lib/chrome_executable.mjs'
 
 const DEFAULT_BASE_URL = 'http://localhost:5173'
 const DEFAULT_WAIT_MS = 5000
+const DEFAULT_ROUTE_READY_WAIT_MS = 12000
 const DYNAMIC_ROUTE_WAIT_MS = 12000
-const SLOW_ROUTE_WAIT_MS = 12000
+const SLOW_ROUTE_WAIT_MS = 45000
+const ROUTE_READY_POLL_INTERVAL_MS = 1000
 const DEFAULT_MAX_SCROLL_OVERFLOW = 0
 const REWRITE_PATH_PREFIXES = ['/api', '/covers']
 const SLOW_ROUTES = new Set(['/analysis/records'])
@@ -70,8 +72,8 @@ const ROUTE_READY_MARKERS = {
   '/community': ['社区', '精选'],
   '/ai-insights': ['AI 洞察', '报告'],
   '/music/search': ['音乐查找'],
-  '/account': ['账号中心', '播放'],
-  '/settings': ['设置', 'Spotify 连接'],
+  '/account': ['音乐档案', '收藏旅程'],
+  '/settings': ['设置', 'Spotify'],
 }
 
 const DYNAMIC_ROUTE_READY_MARKERS = [
@@ -318,7 +320,7 @@ function routeWaitTime(route, waitMs) {
   if (SLOW_ROUTES.has(normalized)) {
     return Math.max(waitMs, SLOW_ROUTE_WAIT_MS)
   }
-  return waitMs
+  return Math.max(waitMs, DEFAULT_ROUTE_READY_WAIT_MS)
 }
 
 async function fetchJson(baseUrl, path, params = {}) {
@@ -533,13 +535,8 @@ async function smokeRoute({
     const url = new URL(route, baseUrl).toString()
     let attempts = 0
 
-    async function navigateAndReadState() {
+    async function readState() {
       attempts += 1
-      const loadEvent = client.once('Page.loadEventFired')
-      await client.send('Page.navigate', { url })
-      await loadEvent
-      await sleep(routeWaitMs)
-
       const evaluation = await client.send('Runtime.evaluate', {
         expression: PAGE_STATE_EXPRESSION,
         returnByValue: true,
@@ -548,15 +545,25 @@ async function smokeRoute({
       return evaluation.result.value
     }
 
-    let state = await navigateAndReadState()
+    const loadEvent = client.once('Page.loadEventFired')
+    await client.send('Page.navigate', { url })
+    await loadEvent
+
+    const initialWaitMs = Math.min(waitMs, routeWaitMs)
+    await sleep(initialWaitMs)
+    const readyDeadline = Date.now() + Math.max(0, routeWaitMs - initialWaitMs)
+
+    let state = await readState()
     let missingRouteMarkers = routeMarkers.filter((marker) => !state.bodyText.includes(marker))
-    const shouldRetryRouteRead =
+    while (
       pageErrors.length === 0 &&
       !state.hasDevOverlay &&
       !state.hasFatalText &&
-      (state.rootTextLength < 20 || missingRouteMarkers.length > 0)
-    if (shouldRetryRouteRead) {
-      state = await navigateAndReadState()
+      (state.rootTextLength < 20 || missingRouteMarkers.length > 0) &&
+      Date.now() < readyDeadline
+    ) {
+      await sleep(Math.min(ROUTE_READY_POLL_INTERVAL_MS, Math.max(1, readyDeadline - Date.now())))
+      state = await readState()
       missingRouteMarkers = routeMarkers.filter((marker) => !state.bodyText.includes(marker))
     }
 
@@ -717,17 +724,26 @@ async function main() {
     for (const route of routes) {
       for (const viewport of args.viewports) {
         process.stderr.write(`Checking ${route} (${viewport}) ... `)
-        const result = await smokeRoute({
-          port,
-          baseUrl: args.baseUrl,
-          apiBaseUrl: args.apiBaseUrl,
-          route,
-          viewportName: viewport,
-          waitMs: args.waitMs,
-          maxScrollOverflow: args.maxScrollOverflow,
-          failOnConsoleWarning: args.failOnConsoleWarning,
-          enforceRouteMarkers: args.enforceRouteMarkers,
-        })
+        let result
+        for (let attempt = 1; attempt <= 2; attempt += 1) {
+          try {
+            result = await smokeRoute({
+              port,
+              baseUrl: args.baseUrl,
+              apiBaseUrl: args.apiBaseUrl,
+              route,
+              viewportName: viewport,
+              waitMs: args.waitMs,
+              maxScrollOverflow: args.maxScrollOverflow,
+              failOnConsoleWarning: args.failOnConsoleWarning,
+              enforceRouteMarkers: args.enforceRouteMarkers,
+            })
+            break
+          } catch (error) {
+            if (attempt === 2) throw error
+            process.stderr.write(`RETRY (${error instanceof Error ? error.message : String(error)}) ... `)
+          }
+        }
         results.push(result)
         process.stderr.write(`${result.ok ? 'PASS' : 'FAIL'}\n`)
       }

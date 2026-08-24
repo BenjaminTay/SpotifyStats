@@ -49,6 +49,7 @@ def test_fullstack_verification_check_script_covers_delivery_matrix():
     source = (ROOT / "scripts" / "fullstack_verification_check.sh").read_text(encoding="utf-8")
 
     assert "FRONTEND_URL=${FRONTEND_URL:-http://localhost:5173}" in source
+    assert "BENCHMARK_RUNS=${BENCHMARK_RUNS:-22}" in source
     assert "pytest backend/tests/ -q" in source
     assert "pre-commit run --all-files" in source
     assert "scripts/phase5_check.sh" in source

@@ -310,6 +310,125 @@ def _external_id_conflicts(conn: sqlite3.Connection, artist_ids: list[int]) -> l
     ]
 
 
+def _normalize_external_id_links(
+    links: list[dict[str, Any]] | None,
+    *,
+    allowed_artist_ids: list[int],
+) -> list[dict[str, Any]]:
+    allowed = set(allowed_artist_ids)
+    normalized: list[dict[str, Any]] = []
+    for link in links or []:
+        artist_id = int(link.get("artist_id", 0))
+        if artist_id not in allowed:
+            raise ValueError("外部身份关联的艺人必须属于所选成员")
+        provider = str(link.get("provider") or "").strip().lower()
+        external_id = str(link.get("external_id") or "").strip()
+        evidence_type = str(link.get("evidence_type") or "").strip()
+        confidence = float(link.get("confidence", 1.0))
+        if not provider or not external_id or not evidence_type:
+            raise ValueError("外部身份关联缺少 provider、external_id 或证据类型")
+        if confidence < 0 or confidence > 1:
+            raise ValueError("外部身份关联 confidence 必须在 0 到 1 之间")
+        normalized.append(
+            {
+                "artist_id": artist_id,
+                "provider": provider,
+                "external_id": external_id,
+                "evidence_type": evidence_type,
+                "evidence_source": str(link.get("evidence_source") or "").strip() or None,
+                "confidence": confidence,
+                "verified": 1 if bool(link.get("verified", True)) else 0,
+            }
+        )
+    return normalized
+
+
+def _upsert_user_external_id_links(conn: sqlite3.Connection, links: list[dict[str, Any]]) -> None:
+    for link in links:
+        conn.execute(
+            """INSERT INTO artist_identity_external_ids(
+                   artist_id, provider, external_id, evidence_type,
+                   evidence_source, confidence, verified
+               ) VALUES (?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT(artist_id, provider, external_id) DO UPDATE SET
+                   evidence_type=excluded.evidence_type,
+                   evidence_source=excluded.evidence_source,
+                   confidence=excluded.confidence,
+                   verified=excluded.verified""",
+            (
+                link["artist_id"],
+                link["provider"],
+                link["external_id"],
+                link["evidence_type"],
+                link["evidence_source"],
+                link["confidence"],
+                link["verified"],
+            ),
+        )
+
+
+def _has_prospective_external_id_conflict(
+    conn: sqlite3.Connection,
+    artist_ids: list[int],
+    links: list[dict[str, Any]],
+) -> bool:
+    verified_by_provider: dict[str, set[str]] = {}
+    if artist_ids and _table_exists(conn, "artist_identity_external_ids"):
+        placeholders = ",".join("?" for _ in artist_ids)
+        rows = conn.execute(
+            f"""SELECT provider, external_id
+                FROM artist_identity_external_ids
+                WHERE verified=1 AND artist_id IN ({placeholders})""",
+            artist_ids,
+        ).fetchall()
+        for row in rows:
+            verified_by_provider.setdefault(str(row["provider"]), set()).add(
+                str(row["external_id"])
+            )
+    for link in links:
+        if link["verified"]:
+            verified_by_provider.setdefault(link["provider"], set()).add(link["external_id"])
+    return any(len(values) > 1 for values in verified_by_provider.values())
+
+
+def sync_artist_spotify_external_id(
+    conn: sqlite3.Connection,
+    *,
+    artist_id: int,
+    spotify_artist_id: str,
+    evidence_source: str,
+) -> None:
+    """Persist a provider assignment without weakening earlier verified evidence.
+
+    Provider refresh is derived metadata maintenance, so it does not create an
+    artist-identity revision by itself. A later user identity mutation captures
+    these links in its before/after audit snapshots.
+    """
+    external_id = str(spotify_artist_id).strip()
+    if not external_id or not _table_exists(conn, "artist_identity_external_ids"):
+        return
+    conn.execute(
+        """INSERT INTO artist_identity_external_ids(
+               artist_id, provider, external_id, evidence_type,
+               evidence_source, confidence, verified
+           ) VALUES (?, 'spotify', ?, 'artist_metadata', ?, 1.0, 1)
+           ON CONFLICT(artist_id, provider, external_id) DO UPDATE SET
+               evidence_type=CASE
+                   WHEN artist_identity_external_ids.verified=1
+                   THEN artist_identity_external_ids.evidence_type
+                   ELSE excluded.evidence_type
+               END,
+               evidence_source=CASE
+                   WHEN artist_identity_external_ids.verified=1
+                   THEN artist_identity_external_ids.evidence_source
+                   ELSE excluded.evidence_source
+               END,
+               confidence=MAX(artist_identity_external_ids.confidence, excluded.confidence),
+               verified=MAX(artist_identity_external_ids.verified, excluded.verified)""",
+        (artist_id, external_id, evidence_source),
+    )
+
+
 def search_artist_identity_candidates(
     conn: sqlite3.Connection, query: str, limit: int = 20
 ) -> list[dict[str, Any]]:
@@ -634,36 +753,13 @@ def create_artist_identity_group(
         raise ValueError("所选艺人存在不同的 provider / 外部 ID；请确认后再合并")
     reason = reason.strip() or "个人管理直接合并"
     unique_ids = list(dict.fromkeys(int(value) for value in artist_ids))
-    normalized_external_ids: list[dict[str, Any]] = []
-    for link in external_ids or []:
-        artist_id = int(link.get("artist_id", 0))
-        if artist_id not in unique_ids:
-            raise ValueError("外部身份关联的艺人必须属于所选成员")
-        provider = str(link.get("provider") or "").strip().lower()
-        external_id = str(link.get("external_id") or "").strip()
-        evidence_type = str(link.get("evidence_type") or "").strip()
-        confidence = float(link.get("confidence", 1.0))
-        if not provider or not external_id or not evidence_type:
-            raise ValueError("外部身份关联缺少 provider、external_id 或证据类型")
-        if confidence < 0 or confidence > 1:
-            raise ValueError("外部身份关联 confidence 必须在 0 到 1 之间")
-        normalized_external_ids.append(
-            {
-                "artist_id": artist_id,
-                "provider": provider,
-                "external_id": external_id,
-                "evidence_type": evidence_type,
-                "evidence_source": str(link.get("evidence_source") or "").strip() or None,
-                "confidence": confidence,
-                "verified": 1 if bool(link.get("verified", True)) else 0,
-            }
-        )
-    verified_by_provider: dict[str, set[str]] = {}
-    for link in normalized_external_ids:
-        if link["verified"]:
-            verified_by_provider.setdefault(link["provider"], set()).add(link["external_id"])
-    prospective_conflict = any(len(values) > 1 for values in verified_by_provider.values())
-    if prospective_conflict and not confirm_external_id_conflict:
+    normalized_external_ids = _normalize_external_id_links(
+        external_ids, allowed_artist_ids=unique_ids
+    )
+    if (
+        _has_prospective_external_id_conflict(conn, unique_ids, normalized_external_ids)
+        and not confirm_external_id_conflict
+    ):
         raise ValueError("所选艺人存在不同的 provider / 外部 ID；请确认后再合并")
     placeholders = ",".join("?" for _ in unique_ids)
     existing_groups = [
@@ -727,27 +823,7 @@ def create_artist_identity_group(
                 ),
             ),
         )
-    for link in normalized_external_ids:
-        conn.execute(
-            """INSERT INTO artist_identity_external_ids(
-                   artist_id, provider, external_id, evidence_type,
-                   evidence_source, confidence, verified
-               ) VALUES (?, ?, ?, ?, ?, ?, ?)
-               ON CONFLICT(artist_id, provider, external_id) DO UPDATE SET
-                   evidence_type=excluded.evidence_type,
-                   evidence_source=excluded.evidence_source,
-                   confidence=excluded.confidence,
-                   verified=excluded.verified""",
-            (
-                link["artist_id"],
-                link["provider"],
-                link["external_id"],
-                link["evidence_type"],
-                link["evidence_source"],
-                link["confidence"],
-                link["verified"],
-            ),
-        )
+    _upsert_user_external_id_links(conn, normalized_external_ids)
     _sync_legacy_projection(conn)
     after = _active_snapshot(conn)
     event_id = _record_event(
@@ -779,7 +855,14 @@ def update_artist_identity_group(
     reason: str,
     actor: str = "local_user",
     confirm_external_id_conflict: bool = False,
+    external_ids: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
+    prior = conn.execute(
+        "SELECT event_id, revision, identity_id FROM artist_identity_events WHERE idempotency_key=?",
+        (idempotency_key,),
+    ).fetchone()
+    if prior:
+        return {"event_id": prior[0], "revision": prior[1], "identity_id": prior[2]}
     group = conn.execute(
         "SELECT * FROM artist_identity_groups WHERE identity_id=? AND status='active'",
         (identity_id,),
@@ -810,12 +893,20 @@ def update_artist_identity_group(
     next_provider_artist_id = provider_metadata_artist_id or current_provider_artist_id
     if next_provider_artist_id is not None and int(next_provider_artist_id) not in next_ids:
         raise ValueError("provider metadata artist 必须属于身份组")
+    normalized_external_ids = _normalize_external_id_links(
+        external_ids, allowed_artist_ids=next_ids
+    )
     preview = (
         preview_artist_identity_merge(conn, next_ids, next_canonical, next_display)
         if len(next_ids) >= 2
         else {"blocked": False}
     )
     if preview["blocked"] and not confirm_external_id_conflict:
+        raise ValueError("所选艺人存在不同的 provider / 外部 ID；请确认后再修改")
+    if (
+        _has_prospective_external_id_conflict(conn, next_ids, normalized_external_ids)
+        and not confirm_external_id_conflict
+    ):
         raise ValueError("所选艺人存在不同的 provider / 外部 ID；请确认后再修改")
     reason = reason.strip() or "个人管理直接修改"
     for artist_id in add_ids or []:
@@ -872,6 +963,7 @@ def update_artist_identity_group(
            WHERE identity_id=? AND active=1""",
         (next_canonical, identity_id),
     )
+    _upsert_user_external_id_links(conn, normalized_external_ids)
     _sync_legacy_projection(conn)
     after = _active_snapshot(conn)
     event_id = _record_event(
@@ -890,10 +982,27 @@ def update_artist_identity_group(
 
 
 def _restore_snapshot(conn: sqlite3.Connection, snapshot: dict[str, Any]) -> None:
+    current_artist_ids = {
+        int(member["artist_id"])
+        for group in _active_snapshot(conn).get("groups", [])
+        for member in group.get("members", [])
+    }
+    target_artist_ids = {
+        int(member["artist_id"])
+        for group in snapshot.get("groups", [])
+        for member in group.get("members", [])
+    }
+    restored_artist_ids = sorted(current_artist_ids | target_artist_ids)
     conn.execute("UPDATE artist_identity_groups SET status='archived', updated_at=datetime('now')")
     conn.execute(
         "UPDATE artist_identity_members SET active=0, removed_at=datetime('now') WHERE active=1"
     )
+    if restored_artist_ids and _table_exists(conn, "artist_identity_external_ids"):
+        placeholders = ",".join("?" for _ in restored_artist_ids)
+        conn.execute(
+            f"DELETE FROM artist_identity_external_ids WHERE artist_id IN ({placeholders})",
+            restored_artist_ids,
+        )
     for group in snapshot.get("groups", []):
         identity_id = int(group["identity_id"])
         group_columns = {
@@ -959,6 +1068,13 @@ def _restore_snapshot(conn: sqlite3.Connection, snapshot: dict[str, Any]) -> Non
                     member["evidence_json"],
                     member["confidence"],
                 ),
+            )
+            _upsert_user_external_id_links(
+                conn,
+                [
+                    {**link, "artist_id": member["artist_id"]}
+                    for link in member.get("external_ids", [])
+                ],
             )
     _sync_legacy_projection(conn)
 

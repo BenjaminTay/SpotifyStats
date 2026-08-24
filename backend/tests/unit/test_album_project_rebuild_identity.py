@@ -53,6 +53,14 @@ def _add_release(
         "INSERT INTO release_group_members(group_id, album_id) VALUES (?, ?)",
         (group_id, album_id),
     )
+    conn.execute(
+        """INSERT INTO plays(
+               ts, ts_year, ts_month, ts_week, ts_dow, ts_hour, ts_date,
+               platform, ms_played, track_id, source_album_id
+           ) VALUES (?, 2026, 1, 2, 0, 12, '2026-01-05',
+                     'fixture', 180000, ?, ?)""",
+        (f"2026-01-05T12:{track_id % 60:02d}:00Z", track_id, album_id),
+    )
 
 
 def _snapshot(conn: sqlite3.Connection) -> dict[str, list[tuple[object, ...]]]:
@@ -76,6 +84,13 @@ def test_rebuild_reuses_inferred_ids_and_replaces_membership_with_foreign_keys_o
         conn.execute(
             """INSERT INTO tracks(track_id, track_name, artist_id, album_id)
                VALUES (110, 'Alpha Bonus', 1, 10)"""
+        )
+        conn.execute(
+            """INSERT INTO plays(
+                   ts, ts_year, ts_month, ts_week, ts_dow, ts_hour, ts_date,
+                   platform, ms_played, track_id, source_album_id
+               ) VALUES ('2026-02-01T12:00:00Z', 2026, 2, 5, 6, 12,
+                         '2026-02-01', 'fixture', 180000, 110, 10)"""
         )
         conn.execute(
             """INSERT INTO spotify_album_meta(
