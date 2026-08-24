@@ -13,6 +13,7 @@ import sqlite3
 from typing import Any
 
 from backend.core.db import get_db
+from backend.domains.metadata.album_detail_meta import resolve_album_detail_meta
 from backend.domains.metadata.artist_genres import resolve_artist_genres
 from backend.domains.metadata.artist_identity import resolve_artist_id, resolve_artist_name
 from backend.domains.metadata.artist_spotify_meta import resolve_artist_spotify_meta
@@ -124,23 +125,23 @@ def _track_meta(conn: sqlite3.Connection, track_id: int) -> dict | None:
     return meta or None
 
 
-def _album_meta(conn: sqlite3.Connection, album_name: str, artist_name: str) -> dict | None:
-    row = conn.execute(
-        """SELECT sam.album_type, sam.release_date, sam.popularity,
-                  sam.label, sam.total_tracks
-           FROM album_spotify_links asl
-           JOIN spotify_album_meta sam ON sam.spotify_album_id=asl.spotify_album_id
-           JOIN albums al ON al.album_id=asl.album_id
-           JOIN artists ar ON ar.artist_id=al.artist_id
-           WHERE lower(al.album_name)=lower(?) AND lower(ar.artist_name)=lower(?)
-           ORDER BY CASE sam.album_type WHEN 'album' THEN 0 ELSE 1 END,
-                    asl.confidence DESC, sam.release_date DESC
-           LIMIT 1""",
-        (album_name, artist_name),
-    ).fetchone()
-    if row is None:
-        return None
-    return {key: row[key] for key in row.keys() if row[key] is not None} or None
+def _album_meta(
+    conn: sqlite3.Connection,
+    album_name: str,
+    artist_name: str,
+    *,
+    merge_level: int = 2,
+    album_project_id: int | None = None,
+    album_id: int | None = None,
+) -> dict | None:
+    return resolve_album_detail_meta(
+        conn,
+        album_name,
+        artist_name,
+        merge_level=merge_level,
+        album_project_id=album_project_id,
+        album_id=album_id,
+    )
 
 
 def _artist_meta(conn: sqlite3.Connection, artist_name: str) -> dict | None:
@@ -286,7 +287,14 @@ def build_album_detail_summary(args: tuple) -> dict | None:
             "album_name": resolved_album,
             "artist_name": resolved_artist,
             "cover_url": document["cover_url"],
-            "meta": _album_meta(conn, resolved_album, resolved_artist),
+            "meta": _album_meta(
+                conn,
+                resolved_album,
+                resolved_artist,
+                merge_level=int(values["merge_level"]),
+                album_project_id=document["album_project_id"],
+                album_id=document["album_id"],
+            ),
             "info": None,
             "chart_summary": chart,
             "album_project": None,

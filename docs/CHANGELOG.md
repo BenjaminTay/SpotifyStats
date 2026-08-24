@@ -2,6 +2,12 @@
 
 本文件只记录按日期排列的变更摘要。详细实施、验收和真实数据证据见 [`reports/README.md`](reports/README.md)；当前规则见 [`reference/`](reference/)。历史条目中的数字和路径仅代表当时状态。
 
+## 2026-08-25 — 专辑详情发行日期版本消歧
+
+- 专辑详情摘要与完整响应统一使用共享元数据解析器；L2/L3 以 `album_projects.release_date` 为规范发行日，并优先选择发行日期、项目主版本和名称匹配的 Spotify 元数据，不再让日期更晚的 Deluxe、Anniversary、Bonus、精选集或原声带覆盖原版。
+- L1 具体版本仍保留自身发行日期；原始播放、Spotify 专辑元数据和 `album_spotify_links` 来源证据不被重写。`Short n' Sweet` 恢复为 `2024-08-23` 和原版 12 首曲目，真实库完整项目日期差异探针归零。
+- 后端 unit 1,358 项、contract 369 项、前端相关 19 项、生产构建、Ruff、文档审计及桌面/390px 真实浏览器验收通过；390px 无横向溢出且控制台无错误。
+
 ## 2026-08-25 — 全栈门禁 P1 重复发行周期请求去重
 
 - `pytest --durations=50` 将后端 19%–22% 的稳定慢段定位到两个完全相同的 Taylor Swift 发行周期 overview 请求，修改前分别耗时 160.67 秒和 165.30 秒。

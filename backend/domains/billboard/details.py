@@ -13,6 +13,7 @@ from backend.core.db import (
 )
 from backend.core.json_helpers import df_to_json
 from backend.domains.billboard.chart_compute import compute_billboard_data
+from backend.domains.metadata.album_detail_meta import resolve_album_detail_meta
 from backend.domains.metadata.artist_genres import resolve_artist_genres
 from backend.domains.metadata.artist_spotify_meta import resolve_artist_spotify_meta
 
@@ -406,79 +407,22 @@ def _get_album_spotify_meta(
     artist_name,
     merge_level=2,
     weighted_frame: pd.DataFrame | None = None,
+    album_project_id: int | None = None,
+    album_id: int | None = None,
 ):
     """Fetch Spotify metadata for an album by name + artist."""
     conn = get_db()
-    # Prefer album_spotify_links (confidence-scored) over the old track-chain path.
-    # Sort album-type rows first so a full album isn't shadowed by a same-name single.
-    row = None
-    try:
-        row = conn.execute(
-            """SELECT sam.album_type, sam.release_date, sam.popularity,
-                      sam.label, sam.total_tracks
-               FROM album_spotify_links asl
-               JOIN spotify_album_meta sam ON sam.spotify_album_id = asl.spotify_album_id
-               JOIN albums al ON al.album_id = asl.album_id
-               JOIN artists a ON a.artist_id = al.artist_id
-               WHERE al.album_name = ? AND a.artist_name = ?
-               ORDER BY CASE sam.album_type WHEN 'album' THEN 0 ELSE 1 END,
-                        asl.confidence DESC,
-                        sam.release_date DESC
-               LIMIT 1""",
-            (album_name, artist_name),
-        ).fetchone()
-    except Exception:
-        pass  # album_spotify_links may not exist yet (fresh DB / seed DB)
-
-    if not row:
-        # Fallback: old track-chain path with deterministic ordering
-        row = conn.execute(
-            """SELECT DISTINCT sam.album_type, sam.release_date, sam.popularity,
-                      sam.label, sam.total_tracks
-               FROM albums al
-               JOIN artists a ON al.artist_id = a.artist_id
-               JOIN track_albums ta ON ta.album_id = al.album_id
-               JOIN tracks t ON ta.track_id = t.track_id
-               JOIN spotify_track_meta stm
-                 ON t.spotify_track_id = stm.spotify_track_id
-               JOIN spotify_album_meta sam ON stm.spotify_album_id = sam.spotify_album_id
-               WHERE al.album_name = ? AND a.artist_name = ?
-               ORDER BY CASE sam.album_type WHEN 'album' THEN 0 ELSE 1 END,
-                        sam.total_tracks DESC,
-                        sam.release_date DESC
-               LIMIT 1""",
-            (album_name, artist_name),
-        ).fetchone()
-
-    if not row:
-        conn.close()
-        return None
-
-    meta = {}
-    if row["album_type"]:
-        meta["album_type"] = row["album_type"]
-    if row["release_date"]:
-        meta["release_date"] = row["release_date"]
-    if row["popularity"] is not None:
-        meta["popularity"] = row["popularity"]
-    if row["label"]:
-        meta["label"] = row["label"]
-    if row["total_tracks"] is not None:
-        meta["total_tracks"] = row["total_tracks"]
-    else:
-        # Fallback: count from local track_albums
-        conn2 = get_db()
-        tc = conn2.execute(
-            """SELECT COUNT(DISTINCT ta.track_id) as cnt
-               FROM albums al
-               JOIN artists a ON al.artist_id = a.artist_id
-               JOIN track_albums ta ON ta.album_id = al.album_id
-               WHERE al.album_name = ? AND a.artist_name = ?""",
-            (album_name, artist_name),
-        ).fetchone()
-        conn2.close()
-        if tc and tc["cnt"] > 0:
-            meta["total_tracks"] = tc["cnt"]
+    meta = (
+        resolve_album_detail_meta(
+            conn,
+            album_name,
+            artist_name,
+            merge_level=merge_level,
+            album_project_id=album_project_id,
+            album_id=album_id,
+        )
+        or {}
+    )
 
     # Release group: if this album belongs to a release_group, include all versions
     _attach_album_release_group(
@@ -1744,6 +1688,7 @@ def get_album_chart_detail(
             resolved_artist,
             merge_level,
             detail_weighted_frame,
+            album_project_id=(album_project or {}).get("album_project_id"),
         ),
         "info": (
             {

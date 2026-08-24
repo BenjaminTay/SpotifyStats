@@ -672,6 +672,7 @@ Billboard Year-End 年榜不是单纯的年度播放量榜。它先使用当前 
 
 - canonical album project 名称。
 - primary album 封面。
+- L2/L3 顶部发行日期使用 `album_projects.release_date`；具体 Spotify 版本的发行日期只在版本列表中展示，不能用日期更晚的 Deluxe、Anniversary、Bonus、精选集或原声带覆盖项目发行日。
 - album project track set。
 - 标准版/豪华版/重录版等发行版本。
 - 独有曲目。
