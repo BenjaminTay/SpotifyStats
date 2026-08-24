@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import subprocess
 from pathlib import Path
 
@@ -42,7 +43,170 @@ def test_fullstack_verification_check_script_exposes_reusable_cli():
     assert "--resource-snapshot-json" in result.stdout
     assert "--resource-max-total-rss-mb" in result.stdout
     assert "--resource-max-total-cpu-percent" in result.stdout
+    assert "--list-stages" in result.stdout
+    assert "--only" in result.stdout
+    assert "--from" in result.stdout
+    assert "--dry-run" in result.stdout
+    assert "--summary-json" in result.stdout
     assert "default http://localhost:5173" in result.stdout
+
+
+def test_fullstack_verification_lists_stable_stage_keys():
+    script = ROOT / "scripts" / "fullstack_verification_check.sh"
+
+    result = subprocess.run(
+        ["sh", str(script), "--list-stages"],
+        cwd=ROOT,
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.splitlines() == [
+        "quality",
+        "backend",
+        "api",
+        "browser-routes",
+        "browser-interactions",
+        "browser-inventory",
+        "browser-compat",
+        "optional",
+    ]
+
+
+def test_fullstack_verification_rejects_conflicting_stage_selectors():
+    script = ROOT / "scripts" / "fullstack_verification_check.sh"
+
+    result = subprocess.run(
+        [
+            "sh",
+            str(script),
+            "--only",
+            "api",
+            "--from",
+            "browser-inventory",
+            "--dry-run",
+        ],
+        cwd=ROOT,
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+
+    assert result.returncode == 2
+    assert "mutually exclusive" in result.stderr
+
+
+@pytest.mark.parametrize("stage", ["", "missing-stage", "api,missing-stage"])
+def test_fullstack_verification_rejects_unknown_or_empty_stages(stage: str):
+    script = ROOT / "scripts" / "fullstack_verification_check.sh"
+
+    result = subprocess.run(
+        ["sh", str(script), "--only", stage, "--dry-run"],
+        cwd=ROOT,
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+
+    assert result.returncode == 2
+    assert "stage" in result.stderr.lower()
+
+
+def test_fullstack_verification_dry_run_writes_partial_stage_summary(tmp_path: Path):
+    script = ROOT / "scripts" / "fullstack_verification_check.sh"
+    summary = tmp_path / "summary.json"
+
+    result = subprocess.run(
+        [
+            "sh",
+            str(script),
+            "--only",
+            "api,browser-inventory",
+            "--dry-run",
+            "--summary-json",
+            str(summary),
+        ],
+        cwd=ROOT,
+        check=False,
+        text=True,
+        capture_output=True,
+        env={"PATH": "/usr/bin:/bin"},
+    )
+
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(summary.read_text(encoding="utf-8"))
+    assert payload["overall_status"] == "PARTIAL"
+    assert payload["selection"] == {
+        "mode": "only",
+        "stages": ["api", "browser-inventory"],
+    }
+    assert payload["dry_run"] is True
+    stage_statuses = {item["name"]: item["status"] for item in payload["stages"]}
+    assert stage_statuses["api"] == "NOT_RUN"
+    assert stage_statuses["browser-inventory"] == "NOT_RUN"
+    assert stage_statuses["browser-compat"] == "NOT_RUN"
+    assert "Full-stack status: PARTIAL" in result.stdout
+
+
+def test_fullstack_verification_from_selects_required_suffix_in_dry_run(tmp_path: Path):
+    script = ROOT / "scripts" / "fullstack_verification_check.sh"
+    summary = tmp_path / "summary.json"
+
+    result = subprocess.run(
+        [
+            "sh",
+            str(script),
+            "--from",
+            "browser-inventory",
+            "--dry-run",
+            "--summary-json",
+            str(summary),
+        ],
+        cwd=ROOT,
+        check=False,
+        text=True,
+        capture_output=True,
+        env={"PATH": "/usr/bin:/bin"},
+    )
+
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(summary.read_text(encoding="utf-8"))
+    assert payload["selection"] == {
+        "mode": "from",
+        "stages": ["browser-inventory", "browser-compat"],
+    }
+    assert payload["overall_status"] == "PARTIAL"
+
+
+def test_fullstack_verification_reports_blocked_service_precondition(tmp_path: Path):
+    script = ROOT / "scripts" / "fullstack_verification_check.sh"
+    summary = tmp_path / "summary.json"
+
+    result = subprocess.run(
+        [
+            "sh",
+            str(script),
+            "--only",
+            "api",
+            "--backend-url",
+            "http://127.0.0.1:1",
+            "--summary-json",
+            str(summary),
+        ],
+        cwd=ROOT,
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+
+    assert result.returncode == 1
+    payload = json.loads(summary.read_text(encoding="utf-8"))
+    assert payload["overall_status"] == "BLOCKED"
+    stage_statuses = {item["name"]: item["status"] for item in payload["stages"]}
+    assert stage_statuses["api"] == "BLOCKED"
+    assert stage_statuses["backend"] == "NOT_RUN"
 
 
 def test_fullstack_verification_check_script_covers_delivery_matrix():

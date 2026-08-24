@@ -26,6 +26,7 @@
 - [`reference/2026-07-04-artist-genre-taxonomy.md`](reference/2026-07-04-artist-genre-taxonomy.md)：流派四轴与消费展示 taxonomy
 - [`reference/artist-language-statistics.md`](reference/artist-language-statistics.md)：艺人语言事实、审核和播放语言统计
 - [`reference/data-import-and-health.md`](reference/data-import-and-health.md)：导入前检查、导入后健康报告和数据库边界
+- [`reference/fullstack-verification.md`](reference/fullstack-verification.md)：完整/局部门禁、阶段状态、耗时报告和证据边界
 
 ## 当前进行中的计划
 
@@ -35,6 +36,7 @@
 - [`plans/2026-06-29-ai-agent-harness-quality-roadmap.md`](plans/2026-06-29-ai-agent-harness-quality-roadmap.md)：AI Agent Harness 持续质量路线
 - [`plans/2026-08-06-appification-pwa-capacitor-plan.md`](plans/2026-08-06-appification-pwa-capacitor-plan.md)：PWA、远程部署、真机验收和 Capacitor 决策
 - [`plans/2026-08-16-music-search-direction-realignment.md`](plans/2026-08-16-music-search-direction-realignment.md)：音乐查找候选索引、统计快照和生产复用方向
+- [`plans/2026-08-24-fullstack-gate-duration-optimization-plan.md`](plans/2026-08-24-fullstack-gate-duration-optimization-plan.md)：P0 编排与 P1 首项重复请求去重已完成，待低干扰三次计时验收
 
 ## 已确认但仍有实现参考价值的设计
 
@@ -50,6 +52,7 @@
 - [`reports/2026-08-24-home-detail-loading-performance-repair.md`](reports/2026-08-24-home-detail-loading-performance-repair.md)：首页/详情冷加载、实体统计分层、按键并发与子榜错误空态的完整修复证据
 - [`reports/2026-08-24-yearly-review-semantic-correction.md`](reports/2026-08-24-yearly-review-semantic-correction.md)：年度里程碑、日极值、首次发现、部分月窗口与跨章节 identity/分母修复证据
 - [`reports/2026-08-24-fullstack-gate-repair.md`](reports/2026-08-24-fullstack-gate-repair.md)：真实数据断言、艺人 provider ID、浏览器门禁、社区并发与最终全栈 Pass 证据
+- [`reports/2026-08-24-fullstack-gate-duration-optimization.md`](reports/2026-08-24-fullstack-gate-duration-optimization.md)：阶段化、同轮去重、局部反馈、完整计时与性能波动验收证据
 - [`reports/2026-08-19-music-detail-performance-delivery.md`](reports/2026-08-19-music-detail-performance-delivery.md)：音乐详情按需加载、旧子页收口与优化前后数据等价性证据
 - [`reports/2026-08-23-incremental-import-phase-d2.md`](reports/2026-08-23-incremental-import-phase-d2.md)：同一开放周搜索 snapshot delta、lineage/周账本与真实库等价性证据
 - [`reports/2026-08-23-incremental-import-phase-d1.md`](reports/2026-08-23-incremental-import-phase-d1.md)：Billboard 周分区、六套搜索 shared-full 复用和真实库等价性证据

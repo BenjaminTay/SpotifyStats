@@ -2,6 +2,21 @@
 
 本文件只记录按日期排列的变更摘要。详细实施、验收和真实数据证据见 [`reports/README.md`](reports/README.md)；当前规则见 [`reference/`](reference/)。历史条目中的数字和路径仅代表当时状态。
 
+## 2026-08-25 — 全栈门禁 P1 重复发行周期请求去重
+
+- `pytest --durations=50` 将后端 19%–22% 的稳定慢段定位到两个完全相同的 Taylor Swift 发行周期 overview 请求，修改前分别耗时 160.67 秒和 165.30 秒。
+- 两个测试改为共享 module-scoped 只读响应；全部结构、指标与封面 URL 断言保留，第二个测试仍真实请求本地 cover endpoint。`test_api.py` 109 项由 405.73 秒降到 278.79 秒。
+- 修改后的默认完整门禁 Full Pass；运行期间持续共享 CPU/浏览器负载使总耗时达到 34 分 8 秒，不能作为干净基线。25 分钟和三次稳定目标仍为 Partial，不启用 xdist、不自动重试性能门槛。
+- 追加证据见 [`reports/2026-08-24-fullstack-gate-duration-optimization.md`](reports/2026-08-24-fullstack-gate-duration-optimization.md)。
+
+## 2026-08-24 — 全栈总门禁阶段化与耗时优化 P0
+
+- 总门禁拆为 quality、backend、api、browser-routes、browser-interactions、browser-inventory、browser-compat 和 optional 稳定阶段，新增 `--only`、`--from`、`--dry-run` 与阶段 JSON；局部成功只能标为 Partial，失败和前置阻塞均保留机器可读证据。
+- Phase 5 新增父门禁专用的后端测试去重入口；默认独立运行仍完整执行 unit、contract、Ruff、前端测试与 build。pre-commit 与 Phase 5 的 Ruff 因配置不等价继续保留。
+- 完整验收发现并修复移动端紧凑分页按钮 36px 高度低于 44px 触控目标的问题；修复后控件清单与长列表通过。
+- 两次默认完整门禁分别在约 27 分 48 秒和 29 分 7 秒通过；第三次因 `/api/billboard/all-time` 热 P95 581.4ms 超过 500ms 失败，局部 API 复核恢复通过但不覆盖完整失败。P0 编排 Pass，25 分钟和三轮稳定目标 Partial，计划继续 P1 慢测试与性能负载 profile。
+- 完整证据见 [`reports/2026-08-24-fullstack-gate-duration-optimization.md`](reports/2026-08-24-fullstack-gate-duration-optimization.md)。
+
 ## 2026-08-24 — 项目全栈总门禁修复
 
 - 将会随合法导入增长的真实数据测试改为动态核对跨接口不变量，补齐 Album Project 有效播放夹具；艺人身份治理全链持久化 provider external IDs，并保留 Jolin 两个不同 Spotify ID 的已验证冲突证据。

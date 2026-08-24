@@ -87,6 +87,8 @@ SpotifyStats 是本地优先的单用户 Spotify Extended Streaming History 分�
 - Phase 5：`sh scripts/phase5_check.sh`
 - 全栈：`sh scripts/fullstack_verification_check.sh --backend-url http://127.0.0.1:8000 --frontend-url http://127.0.0.1:5173`
 
+全栈局部排障使用 `--only` / `--from`，稳定阶段、状态与机器可读耗时规则见 [docs/reference/fullstack-verification.md](docs/reference/fullstack-verification.md)。局部成功只能标记为 Partial；只有默认完整模式的全部必需阶段通过才是本地全栈 Pass。
+
 只读审计、真实数据库探针、浏览器验收和生产发布证据必须分别报告，不得把本地单元测试描述成真实部署已通过。
 
 ## 文档和 Git 约定

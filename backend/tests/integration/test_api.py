@@ -654,6 +654,14 @@ class TestBillboard:
 # ═══════════════════════════════════════════════════════════════════════════
 
 
+@pytest.fixture(scope="module")
+def taylor_release_cycle_overview(client, default_params):
+    """Build the identical Taylor Swift overview once for its read-only assertions."""
+    response = client.get("/api/billboard/release-cycle/artist/Taylor Swift", params=default_params)
+    assert response.status_code == 200
+    return response.json()
+
+
 class TestReleaseCycle:
     def test_artist_list_format(self, client, default_params):
         r = client.get("/api/billboard/release-cycle/artist-list", params=default_params)
@@ -665,10 +673,8 @@ class TestReleaseCycle:
         assert "track_count" in data[0]
         assert data[0]["track_count"] > 0
 
-    def test_artist_overview(self, client, default_params):
-        r = client.get("/api/billboard/release-cycle/artist/Taylor Swift", params=default_params)
-        assert r.status_code == 200
-        d = r.json()
+    def test_artist_overview(self, taylor_release_cycle_overview):
+        d = taylor_release_cycle_overview
         assert d["artist_name"] == "Taylor Swift"
         assert len(d["releases"]) > 10
         assert len(d["rank_trend"]) > 100
@@ -680,10 +686,8 @@ class TestReleaseCycle:
         assert d["releases"][0]["cover_url"].startswith("/covers/albums/")
         assert d["release_events"][0]["cover_url"].startswith("/covers/albums/")
 
-    def test_artist_overview_release_covers_resolve(self, client, default_params):
-        r = client.get("/api/billboard/release-cycle/artist/Taylor Swift", params=default_params)
-        assert r.status_code == 200
-        d = r.json()
+    def test_artist_overview_release_covers_resolve(self, client, taylor_release_cycle_overview):
+        d = taylor_release_cycle_overview
         target = next(c for c in d["cycles"] if c["album_name"] == "THE TORTURED POETS DEPARTMENT")
         assert target["cover_url"].startswith("/covers/albums/")
 
